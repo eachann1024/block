@@ -22,9 +22,12 @@ mod menu;
 mod search;
 #[path = "app_settings.rs"]
 mod settings;
+#[path = "app_settings_view.rs"]
+mod settings_view;
 
 use file_ops::{FileOp, Renaming, TreeMenu};
 pub use search::{OpenSearch, OpenSettings};
+pub use tabs::{CloseTab, NewTab, NextTab, PrevTab};
 use search::Search;
 use settings::SettingsModal;
 
@@ -73,9 +76,10 @@ impl Workspace {
             let context_target = context_target.clone();
             cx.defer(move |cx| context_target.update(cx, |this, cx| this.open_tree_menu(target, position, cx)));
         }));
-        tree.update(cx, |tree, _| tree.on_open(move |path, _, cx| {
+        tree.update(cx, |tree, _| tree.on_open(move |path, window, cx| {
             workspace.update(cx, |this, cx| {
                 if !this.busy() {
+                    this.close_settings(window, cx);
                     this.open_file(path, cx);
                 }
             });
