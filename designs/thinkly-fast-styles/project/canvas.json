@@ -1,19 +1,149 @@
-{"v":3,"createdOnFiles":{"v":1,"at":"2026-11-03T09:25:24Z"},"title":"Thinkly Fast 四版风格","launch":{"view":"canvas"},"pages":[],
-"boards":{
-"Main.dc.html":{"x":0,"y":0,"w":1440,"h":900,"title":"A 纸面 · 工作区","expand":"fill"},
-"A-Export.dc.html":{"x":1520,"y":0,"w":1440,"h":900,"title":"A 纸面 · 生成图片","expand":"fill"},
-"B-Workspace.dc.html":{"x":0,"y":1300,"w":1440,"h":900,"title":"B 石墨 · 工作区","expand":"fill"},
-"B-Export.dc.html":{"x":1520,"y":1300,"w":1440,"h":900,"title":"B 石墨 · 生成图片","expand":"fill"},
-"C-Workspace.dc.html":{"x":0,"y":2600,"w":1440,"h":900,"title":"C 墨韵 · 工作区","expand":"fill"},
-"C-Export.dc.html":{"x":1520,"y":2600,"w":1440,"h":900,"title":"C 墨韵 · 生成图片","expand":"fill"},
-"D-Workspace.dc.html":{"x":0,"y":3900,"w":1440,"h":900,"title":"D 网格 · 工作区","expand":"fill"},
-"D-Export.dc.html":{"x":1520,"y":3900,"w":1440,"h":900,"title":"D 网格 · 生成图片","expand":"fill"}
-},
-"order":["Main.dc.html","A-Export.dc.html","B-Workspace.dc.html","B-Export.dc.html","C-Workspace.dc.html","C-Export.dc.html","D-Workspace.dc.html","D-Export.dc.html"],
-"notes":{
-"tA":{"x":0,"y":-280,"text":"A 纸面 Ocean","kind":"title1","maxW":2960},
-"tB":{"x":0,"y":1020,"text":"B 石墨 Graphite","kind":"title1","maxW":2960},
-"tC":{"x":0,"y":2320,"text":"C 墨韵 Editorial","kind":"title1","maxW":2960},
-"tD":{"x":0,"y":3620,"text":"D 网格 Swiss","kind":"title1","maxW":2960}
-},
-"designSystems":[]}
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-03T09:25:24Z"
+ },
+ "title": "Thinkly Fast 四版风格",
+ "launch": {
+  "view": "canvas"
+ },
+ "pages": [],
+ "boards": {
+  "Main.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "A 纸面 · 工作区",
+   "expand": "fill"
+  },
+  "A-Export.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "A 纸面 · 生成图片",
+   "expand": "fill"
+  },
+  "Layout-1.dc.html": {
+   "x": 0,
+   "y": 1300,
+   "w": 1440,
+   "h": 900,
+   "title": "位置 1 · 库名切换 + 加号",
+   "expand": "fill"
+  },
+  "Layout-2.dc.html": {
+   "x": 1520,
+   "y": 1300,
+   "w": 1440,
+   "h": 900,
+   "title": "位置 2 · 标题栏",
+   "expand": "fill"
+  },
+  "Layout-3.dc.html": {
+   "x": 3040,
+   "y": 1300,
+   "w": 1440,
+   "h": 900,
+   "title": "位置 3 · 侧栏底部",
+   "expand": "fill"
+  },
+  "Layout-4.dc.html": {
+   "x": 4560,
+   "y": 1300,
+   "w": 1440,
+   "h": 900,
+   "title": "位置 4 · 树内行",
+   "expand": "fill"
+  },
+  "Icons-1.dc.html": {
+   "x": 0,
+   "y": 2600,
+   "w": 1280,
+   "h": 800,
+   "title": "图标 1 · 细线圆端"
+  },
+  "Icons-2.dc.html": {
+   "x": 1360,
+   "y": 2600,
+   "w": 1280,
+   "h": 800,
+   "title": "图标 2 · 空心/实心成对"
+  },
+  "Icons-3.dc.html": {
+   "x": 2720,
+   "y": 2600,
+   "w": 1280,
+   "h": 800,
+   "title": "图标 3 · 几何直角"
+  },
+  "Icons-4.dc.html": {
+   "x": 4080,
+   "y": 2600,
+   "w": 1280,
+   "h": 800,
+   "title": "图标 4 · 双色"
+  },
+  "Duo-Set.dc.html": {
+   "x": 0,
+   "y": 3800,
+   "w": 1600,
+   "h": 1200,
+   "title": "双色 · 精修全套"
+  },
+  "Duo-Tree.dc.html": {
+   "x": 1680,
+   "y": 3800,
+   "w": 1600,
+   "h": 1200,
+   "title": "双色 · 文件夹与文件 三版"
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "A-Export.dc.html",
+  "Layout-1.dc.html",
+  "Layout-2.dc.html",
+  "Layout-3.dc.html",
+  "Layout-4.dc.html",
+  "Icons-1.dc.html",
+  "Icons-2.dc.html",
+  "Icons-3.dc.html",
+  "Icons-4.dc.html",
+  "Duo-Set.dc.html",
+  "Duo-Tree.dc.html"
+ ],
+ "notes": {
+  "tA": {
+   "x": 0,
+   "y": -280,
+   "text": "A 纸面 Ocean",
+   "kind": "title1",
+   "maxW": 2960
+  },
+  "tL": {
+   "x": 0,
+   "y": 1020,
+   "text": "选择文件夹与新建笔记的位置",
+   "kind": "title1",
+   "maxW": 6000
+  },
+  "tI": {
+   "x": 0,
+   "y": 2320,
+   "text": "图标库",
+   "kind": "title1",
+   "maxW": 5360
+  },
+  "tT": {
+   "x": 0,
+   "y": 3520,
+   "text": "双色 · 精修",
+   "kind": "title1",
+   "maxW": 3280
+  }
+ },
+ "designSystems": []
+}
