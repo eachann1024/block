@@ -3,6 +3,7 @@ mod editor;
 mod export;
 mod files;
 mod icons;
+mod quick;
 mod theme;
 
 use gpui::{
@@ -13,12 +14,23 @@ use gpui::{
 actions!(thinkly_fast, [Quit, ExportImage]);
 
 fn main() {
+    if let Ok(state) = files::load_state() {
+        theme::apply_state(&state);
+    }
     Application::new().with_assets(icons::Icons).run(|cx: &mut App| {
+        gpui_component::init(cx);
+        // The app is light-only; without this, inputs follow macOS dark mode (white text, black field).
+        gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx);
         cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
         editor::bind_keys(cx);
+        quick::init(cx);
         cx.set_menus(vec![Menu {
             name: "Thinkly".into(),
-            items: vec![MenuItem::action("导出图片", ExportImage)],
+            items: vec![
+                MenuItem::action("偏好设置… ⌘,", app::OpenSettings),
+                MenuItem::action("速记小窗 ⌥N", quick::ToggleQuickNote),
+                MenuItem::action("导出图片", ExportImage),
+            ],
         }]);
         let bounds = Bounds::centered(None, size(px(1100.), px(760.)), cx);
         let opened = cx.open_window(
@@ -28,7 +40,7 @@ fn main() {
                 titlebar: Some(TitlebarOptions {
                     title: Some("Thinkly".into()),
                     appears_transparent: true,
-                    traffic_light_position: Some(point(px(12.), px(16.))),
+                    traffic_light_position: Some(point(px(16.), px(14.))),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -50,9 +62,22 @@ fn main() {
                         if !ready { cx.notify(); }
                         ready
                     });
-                    if ready { cx.quit(); }
+                    // Both editors must checkpoint before quitting; evaluate the quick one regardless.
+                    let quick_ready = quick::prepare_to_quit(cx);
+                    if ready && quick_ready { cx.quit(); }
                 });
                 let menu_target = workspace.clone();
+                let settings_target = workspace.clone();
+                quick::set_main_window(window.window_handle().downcast::<gpui_component::Root>(), workspace.clone(), cx);
+                cx.on_action(move |_: &app::OpenSettings, cx: &mut App| {
+                    let Some(handle) = cx.active_window() else { return };
+                    let settings_target = settings_target.clone();
+                    let _ = cx.update_window(handle, move |_, window, cx| {
+                        settings_target.update(cx, |this, cx| {
+                            this.open_settings(window, cx);
+                        });
+                    });
+                });
                 cx.on_action(move |_: &ExportImage, cx: &mut App| {
                     let Some(handle) = cx.active_window() else { return };
                     let _ = menu_target.update(cx, |this, cx| {
@@ -63,7 +88,8 @@ fn main() {
                         });
                     });
                 });
-                workspace
+                // gpui-component inputs (rename, find) require Root as the window's first layer.
+                cx.new(|cx| gpui_component::Root::new(workspace, window, cx))
             },
         );
         if opened.is_err() {
