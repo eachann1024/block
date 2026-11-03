@@ -1,10 +1,26 @@
 mod budget;
+mod chrome;
+mod decor_blocks;
+mod decor_marks;
+mod decor_paper;
+mod decor_shapes;
 mod job;
 mod layout;
 mod paint;
+mod palette;
+mod rich;
+mod style;
+mod table;
+mod view;
+mod view_ui;
+mod view_widgets;
+
+pub(crate) use budget::validate_snapshot;
+pub use view::{ExportSlot, ExportView, Snapshot, active_view};
 
 pub use budget::{ExportError, preflight};
-pub use job::{Cancellation, ExportJob, ExportReport, Timings, export_to_path, write_png};
+pub use job::{Cancellation, ExportJob, Timings, write_png};
+pub use palette::{ExportTheme, RenderOptions};
 
 use crate::editor::model::Block;
 use cosmic_text::{FontSystem, SwashCache};
@@ -14,18 +30,12 @@ use std::{sync::Mutex, time::Instant};
 // The glyph cache is dropped between jobs so arbitrary documents cannot grow it forever.
 static FONTS: Mutex<Option<FontSystem>> = Mutex::new(None);
 
-/// Render a complete, bounded document. Errors never return a truncated image.
-/// Kept as the public entry point; callers now receive a typed Result.
-pub fn render_png(blocks: &[Block]) -> Result<Vec<u8>, ExportError> {
-    render_with_cancel(blocks, &Cancellation::default()).map(|(bytes, _)| bytes)
-}
-
 pub fn render_with_cancel(
     blocks: &[Block],
+    options: RenderOptions,
     cancel: &Cancellation,
 ) -> Result<(Vec<u8>, Timings), ExportError> {
     cancel.check()?;
-    budget::validate(blocks)?;
     let start = Instant::now();
     let mut storage = FONTS.try_lock().map_err(|_| ExportError::Busy)?;
     let fonts = storage.get_or_insert_with(FontSystem::new);
@@ -35,7 +45,7 @@ pub fn render_with_cancel(
     };
     cancel.check()?;
     let start = Instant::now();
-    let layout = layout::build(blocks, fonts, cancel)?;
+    let layout = layout::build(blocks, fonts, cancel, options)?;
     timings.layout = start.elapsed();
     let start = Instant::now();
     let image = paint::rasterize(&layout, fonts, &mut SwashCache::new(), cancel)?;

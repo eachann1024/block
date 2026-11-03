@@ -2,7 +2,8 @@ use gpui::{App, KeyBinding};
 
 use super::view::{
     Backspace, Bold, Code, Copy, Cut, Delete, Down, Enter, Italic, Left, Paste, Right, SelectAll,
-    SelectLeft, SelectRight, SelectUp, SelectDown, Strike, Up, Undo, Redo, Cancel, Save,
+    SelectLeft, SelectRight, SelectUp, SelectDown, Strike, Underline, EditLink, Up, Undo, Redo, Cancel, Save, NextCell, PreviousCell, TableMenuKey,
+    SetParagraph, SetH1, SetH2, SetH3, MoveBlockUp, MoveBlockDown, ExitBlock, DocStart, DocEnd, Find, ImageGrow, ImageShrink,
 };
 
 pub fn bind_keys(cx: &mut App) {
@@ -20,6 +21,10 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("escape", Cancel, Some("Editor")),
         KeyBinding::new("cmd-s", Save, Some("Editor")),
         KeyBinding::new("enter", Enter, Some("Editor")),
+        KeyBinding::new("shift-enter", ExitBlock, Some("Editor")),
+        KeyBinding::new("cmd-enter", ExitBlock, Some("Editor")),
+        KeyBinding::new("tab", NextCell, Some("Editor")),
+        KeyBinding::new("shift-tab", PreviousCell, Some("Editor")),
         KeyBinding::new("backspace", Backspace, Some("Editor")),
         KeyBinding::new("delete", Delete, Some("Editor")),
         KeyBinding::new("cmd-a", SelectAll, Some("Editor")),
@@ -30,5 +35,19 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-i", Italic, Some("Editor")),
         KeyBinding::new("cmd-shift-s", Strike, Some("Editor")),
         KeyBinding::new("cmd-e", Code, Some("Editor")),
+        KeyBinding::new("cmd-u", Underline, Some("Editor")),
+        KeyBinding::new("cmd-k", EditLink, Some("Editor")),
+        KeyBinding::new("cmd-alt-0", SetParagraph, Some("Editor")),
+        KeyBinding::new("cmd-alt-1", SetH1, Some("Editor")),
+        KeyBinding::new("cmd-alt-2", SetH2, Some("Editor")),
+        KeyBinding::new("cmd-alt-3", SetH3, Some("Editor")),
+        KeyBinding::new("cmd-shift-up", MoveBlockUp, Some("Editor")),
+        KeyBinding::new("cmd-shift-down", MoveBlockDown, Some("Editor")),
+        KeyBinding::new("shift-f10", TableMenuKey, Some("Editor")),
+        KeyBinding::new("cmd-up", DocStart, Some("Editor")),
+        KeyBinding::new("cmd-down", DocEnd, Some("Editor")),
+        KeyBinding::new("cmd-=", ImageGrow, Some("Editor")),
+        KeyBinding::new("cmd--", ImageShrink, Some("Editor")),
+        KeyBinding::new("cmd-f", Find, Some("Editor")),
     ]);
 }

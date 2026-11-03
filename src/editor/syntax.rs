@@ -1,84 +1,128 @@
-//! Small, lossless lexical highlighter. Unsupported languages keep plain text.
-//! Offsets always refer to UTF-8 boundaries in the original source.
-use gpui::{FontWeight, TextRun};
-use crate::theme::Theme;
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::editor) enum TokenKind { Keyword, String, Comment, Number }
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::editor) struct Token { pub start: usize, pub end: usize, pub kind: TokenKind }
+//! Tree-sitter highlighting through gpui-component; all ranges remain UTF-8 bytes.
+use std::{cell::RefCell, collections::VecDeque, ops::Range, sync::{Arc, Once}};
+use gpui::{HighlightStyle, TextRun};
+use gpui_component::highlighter::{HighlightTheme, LanguageConfig, LanguageRegistry, SyntaxHighlighter};
+use ropey::Rope;
 
-pub(in crate::editor) fn tokens(source: &str, language: &str) -> Vec<Token> {
-    let language = language.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
-    let python = matches!(language.as_str(), "python" | "py");
-    let rust = matches!(language.as_str(), "rust" | "rs");
-    let javascript = matches!(language.as_str(), "javascript" | "js" | "typescript" | "ts" | "jsx" | "tsx");
-    let json = language == "json";
-    if !python && !rust && !javascript && !json { return Vec::new(); }
-    let bytes = source.as_bytes(); let mut at = 0; let mut out = Vec::new();
-    while at < bytes.len() {
-        let start = at;
-        let comment = (python && bytes[at] == b'#') || (!python && !json && source[at..].starts_with("//"));
-        if comment {
-            at = source[at..].find('\n').map(|n| at+n).unwrap_or(bytes.len());
-            out.push(Token { start, end: at, kind: TokenKind::Comment }); continue;
-        }
-        if !python && !json && source[at..].starts_with("/*") {
-            at += 2; let mut depth = 1usize;
-            while at < bytes.len() && depth > 0 {
-                if rust && source[at..].starts_with("/*") { depth += 1; at += 2; }
-                else if source[at..].starts_with("*/") { depth -= 1; at += 2; }
-                else { at += source[at..].chars().next().unwrap().len_utf8(); }
-            }
-            out.push(Token { start, end: at, kind: TokenKind::Comment }); continue;
-        }
-        let quote = bytes[at];
-        if quote == b'"' || (!json && quote == b'\'') || (javascript && quote == b'`') {
-            // Rust lifetimes are identifiers, not unterminated character strings.
-            if rust && quote == b'\'' && source[at+1..].chars().next().is_some_and(|c| c.is_alphabetic()) {
-                let end = at + 1 + source[at+1..].chars().next().unwrap().len_utf8();
-                if bytes.get(end) != Some(&b'\'') { at += 1; continue; }
-            }
-            let triple = python && bytes.get(at..at+3).is_some_and(|s| s == [quote, quote, quote]);
-            let delimiter = if triple { 3 } else { 1 }; at += delimiter;
-            while at < bytes.len() {
-                if bytes[at] == b'\\' {
-                    at += 1;
-                    if at < bytes.len() { at += source[at..].chars().next().unwrap().len_utf8(); }
-                } else if bytes.get(at..at+delimiter).is_some_and(|s| s.iter().all(|b| *b == quote)) { at += delimiter; break; }
-                else { at += source[at..].chars().next().unwrap().len_utf8(); }
-            }
-            out.push(Token { start, end: at, kind: TokenKind::String }); continue;
-        }
-        if quote.is_ascii_digit() {
-            at += 1;
-            while at < bytes.len() && (bytes[at].is_ascii_alphanumeric() || matches!(bytes[at], b'.' | b'_')) { at += 1; }
-            out.push(Token { start, end: at, kind: TokenKind::Number }); continue;
-        }
-        if quote.is_ascii_alphabetic() || quote == b'_' {
-            at += 1;
-            while at < bytes.len() && (bytes[at].is_ascii_alphanumeric() || bytes[at] == b'_') { at += 1; }
-            let word = &source[start..at];
-            if matches!(word, "fn"|"let"|"mut"|"pub"|"struct"|"enum"|"impl"|"use"|"mod"|"match"|"self"|"Self"|"trait"|"where"|"move"|"unsafe"|"const"|"static"|"async"|"await"|"return"|"if"|"else"|"for"|"while"|"loop"|"in"|"break"|"continue"|"true"|"false"|"null"|"None"|"Some"|"True"|"False"|"def"|"class"|"import"|"from"|"as"|"with"|"try"|"except"|"finally"|"raise"|"yield"|"lambda"|"pass"|"and"|"or"|"not"|"is"|"function"|"var"|"new"|"this"|"throw"|"catch"|"switch"|"case"|"default"|"export"|"interface"|"type"|"extends"|"implements"|"typeof"|"undefined") {
-                out.push(Token { start, end: at, kind: TokenKind::Keyword });
-            }
-            continue;
-        }
-        at += source[at..].chars().next().unwrap().len_utf8();
-    }
-    out
+type StyledRanges = Arc<[(Range<usize>, HighlightStyle)]>;
+struct CachedHighlight { language: String, source: String, styles: StyledRanges }
+thread_local! {
+    // Bound memory while retaining visible blocks across repeated layout passes.
+    static CACHE: RefCell<VecDeque<CachedHighlight>> = const { RefCell::new(VecDeque::new()) };
 }
-pub(in crate::editor) fn runs(source: &str, language: &str, base: TextRun) -> Vec<TextRun> {
-    let theme = Theme::ocean(); let mut cursor = 0; let mut out = Vec::new();
-    for token in tokens(source, language) {
-        if cursor < token.start { let mut run = base.clone(); run.len = token.start-cursor; out.push(run); }
-        let mut run = base.clone(); run.len = token.end-token.start;
-        match token.kind {
-            TokenKind::Keyword => { run.color = theme.accent; run.font.weight = FontWeight::BOLD; }
-            TokenKind::String => run.color = theme.accent,
-            TokenKind::Comment | TokenKind::Number => run.color = theme.text_secondary,
+
+fn init_languages() {
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        let registry = LanguageRegistry::singleton();
+        let mut plain = registry.language("json").expect("built-in JSON grammar");
+        plain.name = "text".into();
+        plain.highlights = "".into();
+        registry.register("text", &plain);
+        macro_rules! register {
+            ($name:expr, $grammar:expr, $highlights:expr, $injections:expr, [$($dependency:expr),*]) => {{
+                let config = LanguageConfig::new(
+                    $name, $grammar.into(), vec![$($dependency.into()),*],
+                    &normalize_captures($highlights), $injections, "",
+                );
+                registry.register($name, &config);
+            }};
         }
-        out.push(run); cursor = token.end;
+        register!("python", tree_sitter_python::LANGUAGE,
+            tree_sitter_python::HIGHLIGHTS_QUERY, "", []);
+        register!("rust", tree_sitter_rust::LANGUAGE,
+            tree_sitter_rust::HIGHLIGHTS_QUERY, "", []);
+        let javascript = format!("{}\n{}", tree_sitter_javascript::HIGHLIGHT_QUERY,
+            tree_sitter_javascript::JSX_HIGHLIGHT_QUERY);
+        register!("javascript", tree_sitter_javascript::LANGUAGE, &javascript, "", []);
+        let typescript = format!("{}\n{}", tree_sitter_javascript::HIGHLIGHT_QUERY,
+            tree_sitter_typescript::HIGHLIGHTS_QUERY);
+        register!("typescript", tree_sitter_typescript::LANGUAGE_TYPESCRIPT, &typescript, "", []);
+        let tsx = format!("{}\n{}", javascript, tree_sitter_typescript::HIGHLIGHTS_QUERY);
+        register!("tsx", tree_sitter_typescript::LANGUAGE_TSX, &tsx, "", []);
+        register!("css", tree_sitter_css::LANGUAGE, tree_sitter_css::HIGHLIGHTS_QUERY, "", []);
+        register!("html", tree_sitter_html::LANGUAGE, tree_sitter_html::HIGHLIGHTS_QUERY,
+            tree_sitter_html::INJECTIONS_QUERY, ["javascript", "css"]);
+        register!("markdown_inline", tree_sitter_md::INLINE_LANGUAGE,
+            tree_sitter_md::HIGHLIGHT_QUERY_INLINE, "", []);
+        register!("markdown", tree_sitter_md::LANGUAGE, tree_sitter_md::HIGHLIGHT_QUERY_BLOCK,
+            tree_sitter_md::INJECTION_QUERY_BLOCK, ["markdown_inline", "html"]);
+    });
+}
+
+// Grammar crates use Tree-sitter's text.* names; the component theme uses these names.
+fn normalize_captures(query: &str) -> String {
+    let mut query = query.to_owned();
+    for (from, to) in [
+        ("@text.title", "@title"), ("@text.emphasis", "@emphasis"),
+        ("@text.strong", "@emphasis.strong"), ("@text.uri", "@link_uri"),
+        ("@text.reference", "@link_text"),
+    ] {
+        query = query.replace(from, to);
     }
-    if cursor < source.len() { let mut run = base; run.len = source.len()-cursor; out.push(run); }
-    out
+    query
+}
+
+fn language_name(language: &str) -> Option<&'static str> {
+    match language.split_whitespace().next().unwrap_or("").to_ascii_lowercase().as_str() {
+        "python" | "py" => Some("python"),
+        "rust" | "rs" => Some("rust"),
+        "javascript" | "js" | "jsx" => Some("javascript"),
+        "typescript" | "ts" => Some("typescript"),
+        "tsx" => Some("tsx"),
+        "json" | "jsonc" => Some("json"),
+        "markdown" | "md" => Some("markdown"),
+        "html" | "htm" => Some("html"),
+        "css" => Some("css"),
+        _ => None,
+    }
+}
+
+fn styles(source: &str, language: &str) -> StyledRanges {
+    CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(index) = cache.iter().position(|entry| entry.language == language && entry.source == source) {
+            let entry = cache.remove(index).unwrap();
+            let styles = entry.styles.clone();
+            cache.push_back(entry);
+            return styles;
+        }
+        init_languages();
+        let mut highlighter = SyntaxHighlighter::new(language);
+        highlighter.update(None, &Rope::from_str(source));
+        let styles: StyledRanges = highlighter.styles(&(0..source.len()), &HighlightTheme::default_light()).into();
+        // Large opaque blocks should not occupy the cache indefinitely.
+        if source.len() <= 256 * 1024 {
+            if cache.len() == 64 { cache.pop_front(); }
+            cache.push_back(CachedHighlight { language: language.into(), source: source.into(), styles: styles.clone() });
+        }
+        styles
+    })
+}
+
+pub(in crate::editor) fn runs(source: &str, language: &str, mut base: TextRun) -> Vec<TextRun> {
+    if source.is_empty() { return Vec::new(); }
+    base.len = source.len();
+    let Some(language) = language_name(language) else { return vec![base]; };
+    let mut runs = Vec::new();
+    let mut cursor = 0;
+    for (range, style) in styles(source, language).iter() {
+        if range.start < cursor || range.start >= range.end || range.end > source.len()
+            || !source.is_char_boundary(range.start) || !source.is_char_boundary(range.end) { continue; }
+        if cursor < range.start {
+            let mut run = base.clone(); run.len = range.start - cursor; runs.push(run);
+        }
+        let mut run = base.clone();
+        run.len = range.len();
+        if let Some(color) = style.color { run.color = color; }
+        if let Some(weight) = style.font_weight { run.font.weight = weight; }
+        if let Some(font_style) = style.font_style { run.font.style = font_style; }
+        if let Some(color) = style.background_color { run.background_color = Some(color); }
+        if let Some(underline) = style.underline { run.underline = Some(underline); }
+        if let Some(strikethrough) = style.strikethrough { run.strikethrough = Some(strikethrough); }
+        runs.push(run);
+        cursor = range.end;
+    }
+    if cursor < source.len() { base.len = source.len() - cursor; runs.push(base); }
+    runs
 }

@@ -1,7 +1,8 @@
 //! Virtualized sidebar. Selection is committed only by the editor observer.
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use gpui::{Context, CursorStyle, MouseButton, UniformListScrollHandle, div, prelude::*, px, uniform_list};
+use gpui::{Context, CursorStyle, Entity, FontWeight, MouseButton, UniformListScrollHandle, div, prelude::*, px, uniform_list};
+use gpui_component::input::{Input, InputState};
 use crate::icons::{Icon, icon};
 use crate::theme::Theme;
 use super::index::{Row, TreeIndex};
@@ -12,12 +13,22 @@ pub struct FileTree {
     enabled: bool,
     scroll: UniformListScrollHandle,
     on_open: Option<Box<dyn Fn(PathBuf, &mut gpui::Window, &mut gpui::App) + 'static>>,
+    on_context: Option<std::rc::Rc<ContextHandler>>,
+    menu_target: Option<PathBuf>,
+    /// Row whose name is being edited in place.
+    renaming: Option<(PathBuf, Entity<InputState>)>,
+    /// Folder row last clicked: the target of new notes and folders.
+    focus_dir: Option<PathBuf>,
 }
+
+/// Right-click target: a row (path, is_dir) or the empty list area.
+type ContextHandler = dyn Fn(Option<(PathBuf, bool)>, gpui::Point<gpui::Pixels>, &mut gpui::Window, &mut gpui::App);
 
 impl FileTree {
     pub fn new() -> Self {
         Self { index: TreeIndex::default(), selected: None, enabled: true,
-            scroll: UniformListScrollHandle::new(), on_open: None }
+            scroll: UniformListScrollHandle::new(), on_open: None, on_context: None, menu_target: None,
+            renaming: None, focus_dir: None }
     }
 
     pub fn set_index(&mut self, index: TreeIndex, cx: &mut Context<Self>) {
@@ -29,12 +40,49 @@ impl FileTree {
         cx.notify();
     }
 
+    /// Rescan result after a file operation: keep expansion, selection and scroll.
+    pub fn replace_index(&mut self, mut index: TreeIndex, expand: Option<PathBuf>, cx: &mut Context<Self>) {
+        let mut expanded = self.index.expanded_paths();
+        expanded.extend(expand);
+        index.restore_expanded(&expanded);
+        let previous = std::mem::replace(&mut self.index, index);
+        cx.background_executor().spawn(async move { drop(previous); }).detach();
+        cx.notify();
+    }
+
+    pub fn on_context(&mut self, handler: impl Fn(Option<(PathBuf, bool)>, gpui::Point<gpui::Pixels>, &mut gpui::Window, &mut gpui::App) + 'static) {
+        self.on_context = Some(std::rc::Rc::new(handler));
+    }
+
+    pub fn set_menu_target(&mut self, path: Option<PathBuf>, cx: &mut Context<Self>) {
+        if self.menu_target != path { self.menu_target = path; cx.notify(); }
+    }
+
     pub fn set_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
         if self.enabled != enabled { self.enabled = enabled; cx.notify(); }
     }
 
     pub fn select(&mut self, path: Option<PathBuf>, cx: &mut Context<Self>) {
-        if self.selected != path { self.selected = path; cx.notify(); }
+        let next_focus_dir = if path.is_some() { None } else { self.focus_dir.clone() };
+        if self.selected == path && self.focus_dir == next_focus_dir { return; }
+        self.focus_dir = next_focus_dir;
+        self.selected = path;
+        cx.notify();
+    }
+
+    pub fn focus_dir(&self) -> Option<&Path> { self.focus_dir.as_deref() }
+
+    pub fn set_renaming(&mut self, renaming: Option<(PathBuf, Entity<InputState>)>, cx: &mut Context<Self>) {
+        self.renaming = renaming;
+        cx.notify();
+    }
+
+    pub fn folders(&self) -> Vec<(PathBuf, usize, String)> { self.index.folders() }
+
+    pub fn scroll_to(&mut self, path: &Path) {
+        if let Some(rank) = self.index.visible_rank(path) {
+            self.scroll.scroll_to_item(rank, gpui::ScrollStrategy::Center);
+        }
     }
 
     pub fn contains_root_path(&self, path: &Path) -> bool { self.index.contains_root_path(path) }
@@ -52,12 +100,22 @@ impl FileTree {
 impl Render for FileTree {
     fn render(&mut self, _: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::ocean();
-        uniform_list("file-list", self.index.len(), cx.processor(|this, range: std::ops::Range<usize>, _, cx| {
+        let hover = theme.hover;
+        uniform_list("file-list", self.index.len(), cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
             range.filter_map(|rank| this.index.row(rank)).map(|(index, row, expanded)| {
-                file_row(index, row, expanded, this.selected.as_deref(), this.enabled, cx)
+                let target = this.menu_target.as_deref() == Some(row.path.as_ref());
+                let focused = this.focus_dir.as_deref() == Some(row.path.as_ref());
+                let editing = this.renaming.as_ref().filter(|(p, _)| p.as_path() == row.path.as_ref()).map(|(_, input)| input.clone());
+                file_row(index, row, expanded, this.selected.as_deref(), this.enabled, editing, target, cx)
+                    .when(target, |row| row.bg(hover))
+                    .when(focused, |row| row.bg(Theme::ocean().selected))
             }).collect::<Vec<_>>()
         }))
         .track_scroll(self.scroll.clone())
+        .on_mouse_down(MouseButton::Right, cx.listener(|this, event: &gpui::MouseDownEvent, window, cx| {
+            if !this.enabled { return; }
+            if let Some(handler) = this.on_context.clone() { handler(None, event.position, window, cx); }
+        }))
         .size_full()
         .text_size(theme.ui_font)
         .text_color(theme.text)
@@ -65,42 +123,77 @@ impl Render for FileTree {
 }
 
 fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>, enabled: bool,
-    cx: &mut Context<FileTree>) -> gpui::Stateful<gpui::Div> {
+    editing: Option<Entity<InputState>>, target: bool, cx: &mut Context<FileTree>) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
     let path = row.path.clone();
     let dir = row.dir;
     let is_selected = selected == Some(path.as_ref());
+    let is_editing = editing.is_some();
+    let is_target = target;
     let (arrow, kind) = match (dir, expanded) {
         (false, _) => (None, Icon::Note),
         (true, false) => (Some(Icon::ChevronRight), Icon::Folder),
         (true, true) => (Some(Icon::ChevronDown), Icon::FolderOpen),
     };
     let colors = theme.icon_colors(theme.text_secondary);
-    let label = if dir { row.name.clone() } else {
-        Path::new(&row.name).file_stem().unwrap_or_default().to_string_lossy().into_owned()
-    };
+    let label = row.stem.clone();
     div()
         .id(path.clone())
+        .group("tree-row")
+        .w_full()
         .h(theme.menu_item_height)
-        .mx_1()
-        .pl(px(12. + row.depth as f32 * 14.))
-        .pr_2()
+        .pl(px(4. + row.depth as f32 * 18.))
+        .pr(px(8.))
         .flex()
         .items_center()
-        .gap_1()
-        .rounded_sm()
+        .gap(px(8.))
+        .rounded_md()
         .border_1()
         .border_color(gpui::transparent_black())
         .when(enabled, |row| row.cursor(CursorStyle::PointingHand))
-        .when(is_selected, |row| row.bg(theme.selected).border_color(theme.accent))
+        .when(is_selected, |row| row.bg(theme.selected).border_color(theme.accent).font_weight(FontWeight(460.)))
         .when(!is_selected && enabled, |row| row.hover(|style| style.bg(theme.hover)))
         .child(div().w(px(16.)).h(px(16.)).flex_none().children(arrow.map(|a| icon(a, px(16.), colors))))
-        .child(icon(kind, px(16.), colors))
-        .child(div().flex_1().overflow_hidden().child(label))
+        .child(div().ml(px(2.)).flex_none().child(icon(kind, px(16.), colors)))
+        .when_some(editing.clone(), |row, _| row.border_color(theme.accent).bg(gpui::white()))
+        .child(match editing {
+            Some(input) => div().flex_1().h(px(24.)).rounded(px(3.)).bg(theme.selected)
+                .child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).h(px(24.)).px(px(2.))),
+            None => div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(label),
+        })
+        // Hover "⋯": opens the same menu as a right-click, anchored under the button.
+        .when(enabled && !is_editing, |row| row.child(
+            div().id("row-more").size(px(22.)).flex_none().flex().items_center().justify_center().rounded(px(5.))
+                .invisible().group_hover("tree-row", |style| style.visible())
+                .when(is_target, |b| b.visible().bg(theme.btn_hover))
+                .hover(|style| style.bg(theme.btn_hover))
+                .on_mouse_down(MouseButton::Left, cx.listener({
+                    let path = path.clone();
+                    move |this, event: &gpui::MouseDownEvent, window, cx| {
+                        cx.stop_propagation();
+                        if !this.enabled || this.renaming.is_some() { return; }
+                        if let Some(handler) = this.on_context.clone() {
+                            handler(Some((path.to_path_buf(), dir)), event.position, window, cx);
+                        }
+                    }
+                }))
+                .child(icon(Icon::More, px(14.), colors))))
+        .on_mouse_down(MouseButton::Right, cx.listener({
+            let path = path.clone();
+            move |this, event: &gpui::MouseDownEvent, window, cx| {
+                cx.stop_propagation();
+                if !this.enabled { return; }
+                if let Some(handler) = this.on_context.clone() {
+                    handler(Some((path.to_path_buf(), dir)), event.position, window, cx);
+                }
+            }
+        }))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
             if !this.enabled { return; }
+            if this.renaming.is_some() { return; }
             if dir {
                 this.index.toggle(index, &path);
+                this.focus_dir = Some(path.to_path_buf());
                 cx.notify();
             } else if let Some(handler) = &this.on_open {
                 // The editor treats the current path as a no-op and cancels a
