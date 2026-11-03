@@ -5,17 +5,40 @@ A small macOS notes app built with GPUI and Rust. A slim take on Thinkly.
 - Open a folder and browse its Markdown files as a tree (folders first, then
   case-insensitive natural order). The last folder is remembered in
   `~/Library/Application Support/thinkly-fast/state.json`.
-- Create a note (`未命名.md`, numbered on collision) and edit it as blocks:
+- Create a note (`未命名.md`, with a unique fallback name on collision) and edit it as blocks:
   paragraphs, H1–H3, lists, quotes and to-dos. Typing `# `, `- `, `1. `,
   `> ` or `[] ` at the start of a line converts the block. Edits save back to
   the file after a short debounce.
 - Hover a block for its handle: `+` inserts an empty block below, the grip
   drags to reorder. Select text for bold, italic, strike, inline code, heading
   cycling and export.
-- Export the whole note (Thinkly → 导出图片) or the selected block (the `图`
-  button) to a 720px-wide PNG at 2x.
+- Select text across blocks, copy/cut it, and undo or redo editing transactions.
+  Wrapped text, headings and input-method ranges share the text layout.
+- Fenced code keeps literal newlines, with limited lexical highlighting for
+  Rust, JavaScript/TypeScript, JSON and Python. Unsupported Markdown structures
+  use editable source text where the block model cannot represent them. These
+  source blocks keep their syntax on save; inline rich-format commands do not
+  apply until an explicit block-type conversion.
+- Export the whole note (Thinkly → 导出图片) or the exact selected text (the `图`
+  button) to a PNG at 2x with a 720px text column. Layout, rasterization and
+  writing run in the background. Export accepts at most 256 blocks, 128 KiB of
+  text and metadata, 8,192 formatting ranges and 16 megapixels; larger requests
+  fail explicitly. The confirmed output path is used unchanged.
+- Saves use an atomic replacement and check for external changes. Failed or
+  conflicting saves retain a recovery draft under
+  `~/Library/Application Support/Thinkly Fast/Recovery`. The empty editor can
+  recover the latest draft, including one whose original file was deleted.
+  “Keep draft and close” checkpoints unsaved work before closing, so a conflicting
+  or deleted original does not prevent opening another document.
 
-One font (the system UI font with PingFang SC) and one width (720px).
+The main text uses the system UI font with PingFang SC and a 720px column.
+Large documents use persistent model snapshots and visible-row rendering.
+Million-line parsing, full serialization and single very long paragraphs still
+have substantial costs; background work does not guarantee a 50ms total latency.
+
+Verification methods, measured results and remaining gaps are recorded in
+[the interaction audit](docs/interaction-audit.md). GPUI simulation and isolated
+filesystem checks do not establish native macOS IME, dialog or visual behavior.
 
 ```sh
 cargo run
