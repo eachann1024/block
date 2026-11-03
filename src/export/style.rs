@@ -3,8 +3,32 @@ use std::collections::BTreeMap;
 
 use cosmic_text::Color;
 
-use super::palette::ExportTheme;
+use super::palette::{ExportTheme, Palette};
 use crate::editor::model::Kind;
+
+pub(super) fn row_text_color(theme: ExportTheme, kind: Kind, code: bool, pal: &Palette) -> Color {
+    if code {
+        return if theme == ExportTheme::Neon {
+            pal.accent
+        } else {
+            pal.text
+        };
+    }
+    match kind {
+        Kind::Quote => pal.quote_fg,
+        Kind::H1 | Kind::H3 => pal.title,
+        Kind::H2 => match theme {
+            ExportTheme::Riso => pal.text,
+            ExportTheme::Neon | ExportTheme::Journal => pal.accent,
+            ExportTheme::Kraft
+            | ExportTheme::Mono
+            | ExportTheme::Ink
+            | ExportTheme::Press
+            | ExportTheme::Film => pal.title,
+        },
+        _ => pal.text,
+    }
+}
 
 pub(super) fn block_font_size(theme: ExportTheme, kind: Kind, code: bool) -> f32 {
     if code {
@@ -60,7 +84,7 @@ pub(super) fn block_box_metrics(
         Kind::Quote => (0.0, 20.0, 14.0, 14.0),
         Kind::H1 if theme == ExportTheme::Riso => (0.0, 18.0, 14.0, 14.0),
         Kind::H1 if theme == ExportTheme::Press => (0.0, 0.0, 4.0, 22.0),
-        Kind::H2 if matches!(theme, ExportTheme::Riso | ExportTheme::Neon) => (0.0, 10.0, 4.0, 4.0),
+        Kind::H2 if matches!(theme, ExportTheme::Riso | ExportTheme::Neon) => (0.0, 0.0, 2.0, 4.0),
         Kind::H2 if theme == ExportTheme::Press => (0.0, 0.0, 0.0, 6.0),
         Kind::H2 => (0.0, 0.0, 0.0, 2.0),
         Kind::Bullet | Kind::Todo | Kind::Numbered => (

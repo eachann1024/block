@@ -12,6 +12,7 @@ mod rich;
 mod style;
 mod table;
 mod view;
+mod view_stage;
 mod view_ui;
 mod view_widgets;
 

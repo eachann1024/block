@@ -26,7 +26,12 @@ pub(super) fn paint_block_bg(image: &mut Pixmap, row: &Row, layout: &Layout, pal
                 fill_rounded_rect(image, x, row.y, w, row.height, 8.0, pal.code_bg);
                 paint_dashed_rect(image, x, row.y, w, row.height, 1.5, pal.code_border);
             }
-            ExportTheme::Riso | ExportTheme::Neon => {
+            ExportTheme::Riso => {
+                fill_rect(image, x + 5.0, row.y + 5.0, w, row.height, pal.accent);
+                fill_rect(image, x, row.y, w, row.height, pal.code_bg);
+                stroke_rect(image, x, row.y, w, row.height, 2.0, pal.code_border);
+            }
+            ExportTheme::Neon => {
                 fill_rect(image, x, row.y, w, row.height, pal.code_bg);
                 stroke_rect(image, x, row.y, w, row.height, 2.0, pal.code_border);
             }
@@ -47,52 +52,54 @@ pub(super) fn paint_block_bg(image: &mut Pixmap, row: &Row, layout: &Layout, pal
                 fill_rect(image, x, row.y, 2.0, row.height, pal.quote_bar);
             }
             ExportTheme::Journal => {
+                let qw = (buffer_max_line_w(&row.buffer) + 44.0).clamp(240.0, w);
                 fill_rounded_rect(
                     image,
                     x + 2.0,
                     row.y + 3.0,
-                    w,
+                    qw,
                     row.height,
                     4.0,
-                    Color::rgba(120, 95, 50, 22),
+                    Color::rgba(90, 70, 30, 30),
                 );
-                fill_rounded_rect(image, x, row.y, w, row.height, 4.0, pal.quote_bg);
+                fill_rounded_rect(image, x, row.y, qw, row.height, 4.0, pal.quote_bg);
                 paint_tape(
                     image,
-                    x + w * 0.5 - 48.0,
-                    row.y - 9.0,
+                    x + qw * 0.5 - 48.0,
+                    row.y - 10.0,
                     96.0,
-                    18.0,
-                    -2.0,
-                    true,
+                    20.0,
+                    2.0,
+                    false,
                     6.0,
-                    Color::rgba(226, 132, 104, 158),
-                    Color::rgba(244, 196, 170, 158),
+                    Color::rgba(116, 160, 150, 148),
+                    Color::rgba(186, 214, 204, 148),
                 );
             }
             ExportTheme::Kraft => {
+                let qw = (buffer_max_line_w(&row.buffer) + 44.0).clamp(240.0, w);
                 fill_rounded_rect(
                     image,
                     x + 3.0,
                     row.y + 4.0,
-                    w,
+                    qw,
                     row.height,
                     4.0,
                     Color::rgba(0, 0, 0, 90),
                 );
-                fill_rounded_rect(image, x, row.y, w, row.height, 4.0, pal.quote_bg);
-                stroke_rounded_rect(image, x, row.y, w, row.height, 4.0, 1.0, pal.quote_bar);
+                fill_rounded_rect(image, x, row.y, qw, row.height, 4.0, pal.quote_bg);
+                stroke_rounded_rect(image, x, row.y, qw, row.height, 4.0, 1.0, pal.quote_bar);
                 paint_tape(
                     image,
-                    x + w * 0.5 - 48.0,
-                    row.y - 9.0,
+                    x + qw * 0.5 - 48.0,
+                    row.y - 10.0,
                     96.0,
-                    18.0,
-                    -2.0,
-                    true,
-                    6.0,
-                    Color::rgba(232, 178, 64, 198),
-                    Color::rgba(196, 140, 40, 198),
+                    20.0,
+                    3.0,
+                    false,
+                    5.0,
+                    Color::rgba(92, 166, 150, 184),
+                    Color::rgba(64, 124, 112, 184),
                 );
             }
             ExportTheme::Riso | ExportTheme::Neon => {
@@ -105,6 +112,30 @@ pub(super) fn paint_block_bg(image: &mut Pixmap, row: &Row, layout: &Layout, pal
             }
         },
         Kind::H1 => match theme {
+            ExportTheme::Journal => {
+                let tw = buffer_max_line_w(&row.buffer);
+                fill_rounded_rect(
+                    image,
+                    x - 2.0,
+                    row.y + row.height * 0.56,
+                    (tw + 8.0).min(w),
+                    row.height * 0.34,
+                    2.0,
+                    Color::rgba(245, 215, 122, 215),
+                );
+            }
+            ExportTheme::Kraft => {
+                let tw = buffer_max_line_w(&row.buffer);
+                fill_rounded_rect(
+                    image,
+                    x - 2.0,
+                    row.y + row.height * 0.56,
+                    (tw + 8.0).min(w),
+                    row.height * 0.34,
+                    2.0,
+                    Color::rgba(240, 195, 90, 92),
+                );
+            }
             ExportTheme::Riso => {
                 paint_multiply_rect(
                     image,
@@ -128,33 +159,25 @@ pub(super) fn paint_block_bg(image: &mut Pixmap, row: &Row, layout: &Layout, pal
         Kind::H2 => {
             let tw = buffer_max_line_w(&row.buffer);
             match theme {
-                ExportTheme::Journal => {
-                    fill_rounded_rect(
-                        image,
-                        x - 2.0,
-                        row.y + row.height - 12.0,
-                        (tw + 12.0).min(w),
-                        10.0,
-                        2.0,
-                        Color::rgba(245, 215, 122, 190),
-                    );
-                }
-                ExportTheme::Kraft => {
-                    fill_rounded_rect(
-                        image,
-                        x - 2.0,
-                        row.y + row.height - 12.0,
-                        (tw + 12.0).min(w),
-                        10.0,
-                        2.0,
-                        Color::rgba(240, 195, 90, 82),
-                    );
-                }
                 ExportTheme::Riso => {
-                    fill_rect(image, x, row.y, (tw + 20.0).min(w), row.height, pal.accent);
+                    fill_rect(
+                        image,
+                        x,
+                        row.y + row.height * 0.52,
+                        (tw + 14.0).min(w),
+                        row.height * 0.42,
+                        Color::rgba(255, 90, 168, 115),
+                    );
                 }
                 ExportTheme::Neon => {
-                    fill_rect(image, x, row.y, (tw + 20.0).min(w), row.height, pal.accent2);
+                    fill_rect(
+                        image,
+                        x,
+                        row.y + row.height * 0.52,
+                        (tw + 14.0).min(w),
+                        row.height * 0.42,
+                        Color::rgba(255, 106, 61, 140),
+                    );
                 }
                 ExportTheme::Press => {
                     fill_rect(image, x, row.y + row.height - 2.0, w, 1.0, pal.divider);
@@ -191,13 +214,12 @@ pub(super) fn paint_list_marker(
                 fill_circle(image, x + 11.0, cy, 11.0, pal.accent);
                 if let Some(buf) = &row.marker {
                     let mw = buffer_max_line_w(buf);
-                    let fg = Color::rgb(243, 238, 227);
                     text(
                         image,
                         buf,
                         x + 11.0 - mw * 0.5,
                         cy - 8.5,
-                        (pal, fg),
+                        (pal, pal.text),
                         fonts,
                         cache,
                         cancel,
