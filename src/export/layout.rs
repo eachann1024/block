@@ -1,18 +1,22 @@
+//! Single-column document layout parameterized by paper style margins and typography.
 use cosmic_text::{
-    Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping, Weight, Wrap,
+    Align, Attrs, Buffer, CacheKeyFlags, Color, Family, FontSystem, Metrics, Shaping, Weight,
 };
 
+use super::palette::{ExportTheme, RenderOptions};
+use super::style::{block_box_metrics, block_font_size, block_gap_after};
 use super::{Cancellation, ExportError, budget};
 use crate::editor::model::{Block, Kind, MarkKind};
 
-pub(super) const CONTENT: f32 = 720.0;
-pub(super) const MARGIN: f32 = 48.0;
+pub(super) const PAGE_WIDTH: f32 = 816.0;
 pub(super) const SCALE: f32 = 2.0;
 pub(super) const STRIKE: usize = 4;
 pub(super) const CODE: usize = 8;
 
 pub(super) struct Row {
     pub buffer: Buffer,
+    pub backgrounds: Vec<Color>,
+    pub frame: Option<super::table::Frame>,
     pub marker: Option<Buffer>,
     pub label: Option<Buffer>,
     pub kind: Kind,
@@ -29,11 +33,22 @@ pub(super) struct Row {
 
 pub(super) struct Layout {
     pub rows: Vec<Row>,
+    pub chrome: super::chrome::ChromeLayout,
+    pub options: RenderOptions,
+    pub margin_top: f32,
+    pub margin_left: f32,
+    pub content_width: f32,
+    pub footer_y: f32,
     pub width: u32,
     pub height: u32,
 }
 
-fn attributes(kind: Kind, marks: &[MarkKind], code_block: bool) -> Attrs<'static> {
+pub(super) fn attributes(
+    theme: ExportTheme,
+    kind: Kind,
+    marks: &[MarkKind],
+    code_block: bool,
+) -> Attrs<'static> {
     let flags = marks.iter().fold(0, |bits, mark| {
         bits | match mark {
             MarkKind::Bold => 1,
@@ -42,51 +57,65 @@ fn attributes(kind: Kind, marks: &[MarkKind], code_block: bool) -> Attrs<'static
             MarkKind::Code => CODE,
         }
     });
+    let family = if code_block || flags & CODE != 0 {
+        Family::Monospace
+    } else if matches!(kind, Kind::H1 | Kind::H2 | Kind::H3)
+        || (kind == Kind::Quote && matches!(theme, ExportTheme::Press | ExportTheme::Film))
+    {
+        Family::Name(theme.heading_family())
+    } else {
+        Family::Name(theme.body_family())
+    };
+    let weight = if flags & 1 != 0 {
+        Weight::BOLD
+    } else if kind == Kind::H1 && theme == ExportTheme::Film {
+        Weight::LIGHT
+    } else if matches!(kind, Kind::H1 | Kind::H2 | Kind::H3)
+        || (kind == Kind::Quote && matches!(theme, ExportTheme::Riso | ExportTheme::Neon))
+    {
+        Weight::BOLD
+    } else {
+        Weight::NORMAL
+    };
+    let italic = if flags & 2 != 0 {
+        CacheKeyFlags::FAKE_ITALIC
+    } else {
+        CacheKeyFlags::empty()
+    };
     Attrs::new()
-        .family(if code_block || flags & CODE != 0 {
-            Family::Monospace
-        } else {
-            Family::Name("PingFang SC")
-        })
-        .weight(
-            if flags & 1 != 0 || matches!(kind, Kind::H1 | Kind::H2 | Kind::H3) {
-                Weight::BOLD
-            } else {
-                Weight::NORMAL
-            },
-        )
-        // Keep the covering upright face: cosmic-text 0.14's italic fallback
-        // can select SF Italic for CJK, yielding .notdef instead of PingFang.
-        // Swash applies the oblique transform only to these marked ranges.
-        .cache_key_flags(if flags & 2 != 0 {
-            CacheKeyFlags::FAKE_ITALIC
-        } else {
-            CacheKeyFlags::empty()
-        })
+        .family(family)
+        .weight(weight)
+        .cache_key_flags(italic)
         .metadata(flags)
 }
 
-fn require_glyphs(buffer: &Buffer) -> Result<(), ExportError> {
+pub(super) fn require_glyphs(buffer: &Buffer) -> Result<(), ExportError> {
     if buffer
         .layout_runs()
         .any(|run| run.glyphs.iter().any(|glyph| glyph.glyph_id == 0))
     {
         return Err(ExportError::Rendering(
-            "installed fonts do not cover all characters; no image was exported",
+            "已安装字体无法覆盖所有字符，未生成图片",
         ));
     }
     Ok(())
 }
 
-fn plain(fonts: &mut FontSystem, text: &str, size: f32, width: f32) -> Result<Buffer, ExportError> {
-    let mut buffer = Buffer::new(fonts, Metrics::new(size, size * 1.5));
+pub(super) fn plain(
+    fonts: &mut FontSystem,
+    theme: ExportTheme,
+    text: &str,
+    size: f32,
+    width: f32,
+) -> Result<Buffer, ExportError> {
+    let mut buffer = Buffer::new(fonts, Metrics::new(size, size * 1.4));
     buffer.set_size(fonts, Some(width), None);
-    buffer.set_text(
-        fonts,
-        text,
-        &attributes(Kind::Paragraph, &[], false),
-        Shaping::Advanced,
-    );
+    let attrs = if matches!(theme, ExportTheme::Riso | ExportTheme::Neon) && size <= 13.0 {
+        Attrs::new().family(Family::Monospace).weight(Weight::BOLD)
+    } else {
+        attributes(theme, Kind::Paragraph, &[], false)
+    };
+    buffer.set_text(fonts, text, &attrs, Shaping::Advanced);
     buffer.shape_until_scroll(fonts, false);
     require_glyphs(&buffer)?;
     Ok(buffer)
@@ -96,66 +125,74 @@ pub(super) fn build(
     blocks: &[Block],
     fonts: &mut FontSystem,
     cancel: &Cancellation,
+    options: RenderOptions,
 ) -> Result<Layout, ExportError> {
     budget::validate(blocks)?;
+    let theme = options.theme;
+    let pal = theme.palette();
+    let (margin_top, margin_right, margin_bottom, margin_left) = theme.margins();
+    let content_width = PAGE_WIDTH - margin_left - margin_right;
+    let chrome = super::chrome::build_chrome(fonts, &options, &pal, margin_left, content_width);
     let mut rows = Vec::with_capacity(blocks.len());
-    let mut y = MARGIN;
-    let numbers = crate::editor::model::list_numbers(blocks.iter());
-    let markers: Vec<_> = numbers
-        .into_iter()
-        .map(|number| {
-            number
-                .map(|n| plain(fonts, &format!("{n}."), 17.0, CONTENT))
-                .transpose()
-        })
-        .collect::<Result<_, _>>()?;
+    let mut y = margin_top + chrome.header_h;
+
+    let markers = build_markers(blocks, fonts, theme, content_width)?;
     let mut gutters = std::collections::BTreeMap::<usize, f32>::new();
+    let default_g = if matches!(theme, ExportTheme::Riso | ExportTheme::Neon) {
+        34.0
+    } else {
+        28.0
+    };
     for (block, marker) in blocks.iter().zip(&markers) {
         if let Some(marker) = marker {
-            let width = marker.layout_runs().map(|r| r.line_w).fold(0.0, f32::max);
-            let gutter = gutters.entry(block.meta.indent).or_insert(28.0);
-            *gutter = gutter.max(width + 12.0);
+            let w = marker.layout_runs().map(|r| r.line_w).fold(0.0, f32::max);
+            let gutter = gutters.entry(block.meta.indent).or_insert(default_g);
+            *gutter = gutter.max(w + 12.0);
         }
     }
+
     for (block, marker) in blocks.iter().zip(markers) {
         cancel.check()?;
-        let size = match block.kind {
-            Kind::H1 => 28.0,
-            Kind::H2 => 22.0,
-            Kind::H3 => 19.0,
-            _ => 17.0,
-        };
-        let line_height = size * 1.5;
-        let code = block.meta.code_language.is_some();
-        let indent = block.meta.indent as f32 * 8.5;
-        if indent > CONTENT - 80.0 {
-            return Err(ExportError::ResourceLimit(
-                "indent leaves insufficient text width",
-            ));
+        if let Some(table) = &block.meta.table {
+            y = super::table::append(
+                table,
+                &mut rows,
+                y,
+                margin_left,
+                content_width,
+                theme,
+                fonts,
+                cancel,
+            )? + 10.0;
+            continue;
         }
-        let gutter = marker
-            .as_ref()
-            .map(|_| gutters[&block.meta.indent])
-            .unwrap_or(match block.kind {
-                Kind::Bullet | Kind::Todo => 28.0,
-                Kind::Quote => 16.0,
-                _ => 0.0,
-            });
-        let padding = if code { 8.0 } else { 0.0 };
-        let width = CONTENT - indent - gutter - padding * 2.0;
+        let code = block.meta.code_language.is_some();
+        let size = block_font_size(theme, block.kind, code);
+        let line_height = size * if block.kind == Kind::H1 { 1.25 } else { 1.55 };
+        let indent = block.meta.indent as f32 * 8.5;
+        if indent > content_width - 80.0 {
+            return Err(ExportError::ResourceLimit("缩进过深，文字宽度不足"));
+        }
+        let (gutter, pad_x, pad_top, pad_bottom) = block_box_metrics(
+            theme,
+            block.kind,
+            code,
+            marker.is_some(),
+            block.meta.indent,
+            &gutters,
+        );
+        let width = content_width - indent - gutter - pad_x * 2.0;
         if width < 32.0 {
-            return Err(ExportError::ResourceLimit(
-                "list marker leaves insufficient text width",
-            ));
+            return Err(ExportError::ResourceLimit("列表标记占用过宽，文字宽度不足"));
         }
         let label = block
             .meta
             .code_language
             .as_deref()
             .filter(|s| !s.is_empty())
-            .map(|s| plain(fonts, s, 11.0, width))
+            .map(|s| plain(fonts, theme, s, 11.0, width))
             .transpose()?;
-        let label_height = label
+        let label_h = label
             .as_ref()
             .map(|b| {
                 b.layout_runs()
@@ -164,82 +201,85 @@ pub(super) fn build(
                     + 4.0
             })
             .unwrap_or(0.0);
-        let mut buffer = Buffer::new(fonts, Metrics::new(size, line_height));
-        buffer.set_size(fonts, Some(width), None);
-        buffer.set_wrap(fonts, Wrap::WordOrGlyph);
-        let mut spans = Vec::with_capacity(block.spans.len() * 2 + 1);
-        let mut cursor = 0;
-        for span in &block.spans {
-            if cursor < span.start {
-                spans.push((
-                    &block.text[cursor..span.start],
-                    attributes(block.kind, &[], code),
-                ));
-            }
-            spans.push((
-                &block.text[span.start..span.end],
-                attributes(block.kind, &span.marks, code),
-            ));
-            cursor = span.end;
-        }
-        if cursor < block.text.len() {
-            spans.push((&block.text[cursor..], attributes(block.kind, &[], code)));
-        }
-        if spans.is_empty() {
-            spans.push(("", attributes(block.kind, &[], code)));
-        }
-        buffer.set_rich_text(
+        let align = (theme == ExportTheme::Press && matches!(block.kind, Kind::H1 | Kind::Quote))
+            .then_some(Align::Center);
+        let shaped = super::rich::shape(
+            block,
             fonts,
-            spans,
-            &attributes(block.kind, &[], code),
-            Shaping::Advanced,
-            None,
-        );
-        buffer.shape_until_scroll(fonts, false);
-        require_glyphs(&buffer)?;
-        let text_height = buffer
-            .layout_runs()
-            .map(|run| run.line_top + run.line_height)
-            .fold(line_height, f32::max);
-        for run in buffer.layout_runs() {
-            if run.line_w > width + 0.5 {
-                return Err(ExportError::Rendering(
-                    "a glyph cannot fit within the available width",
-                ));
-            }
-        }
-        let height = text_height + padding * 2.0 + label_height;
-        // Actual layout, next block origin and canvas allocation share the same height.
-        budget::canvas(
-            (CONTENT + MARGIN * 2.0) * SCALE,
-            (y + height + MARGIN) * SCALE,
+            size,
+            width,
+            align,
+            attributes(theme, block.kind, &[], code),
         )?;
+        let text_h = shaped
+            .buffer
+            .layout_runs()
+            .map(|r| r.line_top + r.line_height)
+            .fold(line_height, f32::max);
+        let height = text_h + pad_top + pad_bottom + label_h;
+        budget::canvas(PAGE_WIDTH * SCALE, (y + height + margin_bottom) * SCALE)?;
         rows.push(Row {
-            buffer,
+            buffer: shaped.buffer,
+            backgrounds: shaped.backgrounds,
+            frame: None,
             marker,
             label,
             kind: block.kind,
             checked: block.checked,
             code,
-            x: MARGIN + indent + gutter + padding,
-            marker_x: MARGIN + indent,
+            x: margin_left + indent + gutter + pad_x,
+            marker_x: margin_left + indent,
             y,
-            text_y: y + padding + label_height,
+            text_y: y + pad_top + label_h,
             height,
             width,
             line_height,
         });
-        y += height
-            + if matches!(block.kind, Kind::H1 | Kind::H2 | Kind::H3) {
-                12.0
-            } else {
-                6.0
-            };
+        y += height + block_gap_after(block.kind, code);
     }
-    let (width, height) = budget::canvas((CONTENT + MARGIN * 2.0) * SCALE, (y + MARGIN) * SCALE)?;
+
+    let footer_y = y + 12.0;
+    let end = footer_y + chrome.footer_h + margin_bottom;
+    let (width, height) = budget::canvas(PAGE_WIDTH * SCALE, end * SCALE)?;
     Ok(Layout {
         rows,
+        chrome,
+        options,
+        margin_top,
+        margin_left,
+        content_width,
+        footer_y,
         width,
         height,
     })
+}
+
+fn build_markers(
+    blocks: &[Block],
+    fonts: &mut FontSystem,
+    theme: ExportTheme,
+    content_width: f32,
+) -> Result<Vec<Option<Buffer>>, ExportError> {
+    let numbers = crate::editor::model::list_numbers(blocks.iter());
+    let circle_nums = matches!(theme, ExportTheme::Riso | ExportTheme::Neon);
+    let mut bullet_seq = 0u64;
+    blocks
+        .iter()
+        .zip(numbers)
+        .map(|(b, ord)| {
+            bullet_seq = if b.kind == Kind::Bullet {
+                bullet_seq + 1
+            } else {
+                0
+            };
+            if circle_nums {
+                let n = ord.or_else(|| (b.kind == Kind::Bullet).then_some(bullet_seq));
+                n.map(|v| plain(fonts, theme, &format!("{v}"), 12.0, content_width))
+                    .transpose()
+            } else {
+                ord.map(|v| plain(fonts, theme, &format!("{v}."), 17.0, content_width))
+                    .transpose()
+            }
+        })
+        .collect()
 }

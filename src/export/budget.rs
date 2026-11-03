@@ -17,6 +17,7 @@ pub enum ExportError {
     Busy,
     ResourceLimit(&'static str),
     InvalidInput(&'static str),
+    UnsupportedTable(&'static str),
     Rendering(&'static str),
     Encoding(String),
     Write(std::io::Error),
@@ -25,23 +26,23 @@ pub enum ExportError {
 impl fmt::Display for ExportError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Cancelled => write!(f, "Export cancelled"),
-            Self::Dialog(error) => write!(f, "Export dialog failed: {error}"),
-            Self::Empty => write!(f, "Nothing selected to export"),
-            Self::Busy => write!(
-                f,
-                "An export is already running; try again after it finishes"
-            ),
-            Self::ResourceLimit(reason) => write!(
-                f,
-                "Export exceeds the image budget ({reason}). Select a smaller range; nothing was exported"
-            ),
-            Self::InvalidInput(reason) => {
-                write!(f, "Export contains invalid text formatting: {reason}")
+            Self::Cancelled => write!(f, "已取消生成"),
+            Self::Dialog(error) => write!(f, "保存对话框出错：{error}"),
+            Self::Empty => write!(f, "没有可生成的内容"),
+            Self::Busy => write!(f, "已有生成任务在进行，请稍后再试"),
+            Self::ResourceLimit(reason) => {
+                write!(f, "内容超出图片限制（{reason}），请缩小范围；未生成图片")
             }
-            Self::Rendering(reason) => write!(f, "Image rendering failed: {reason}"),
-            Self::Encoding(error) => write!(f, "PNG encoding failed: {error}"),
-            Self::Write(error) => write!(f, "Could not save exported image: {error}"),
+            Self::InvalidInput(reason) => write!(f, "内容格式无效：{reason}"),
+            Self::UnsupportedTable(reason) => {
+                write!(
+                    f,
+                    "表格无法完整生成图片（{reason}）；仅支持基础结构化的 Markdown / HTML 表格"
+                )
+            }
+            Self::Rendering(reason) => write!(f, "图片渲染失败：{reason}"),
+            Self::Encoding(error) => write!(f, "PNG 编码失败：{error}"),
+            Self::Write(error) => write!(f, "无法保存图片：{error}"),
         }
     }
 }
@@ -52,27 +53,100 @@ pub fn preflight(count: usize, text_bytes: usize, spans: usize) -> Result<(), Ex
         return Err(ExportError::Empty);
     }
     if count > MAX_BLOCKS {
-        return Err(ExportError::ResourceLimit("maximum 256 blocks"));
+        return Err(ExportError::ResourceLimit("最多 256 个块"));
     }
     if text_bytes > MAX_TEXT_BYTES {
-        return Err(ExportError::ResourceLimit("maximum 128 KiB of text"));
+        return Err(ExportError::ResourceLimit("最多 128 KiB 文本"));
     }
     if spans > MAX_SPANS {
-        return Err(ExportError::ResourceLimit("maximum 8192 formatting ranges"));
+        return Err(ExportError::ResourceLimit("最多 8192 个格式范围"));
     }
     Ok(())
 }
 
 pub(super) fn validate(blocks: &[Block]) -> Result<(), ExportError> {
-    preflight(blocks.len(), 0, 0)?;
-    let (mut bytes, mut spans) = (0usize, 0usize);
-    for block in blocks {
-        bytes = bytes
-            .saturating_add(block.text.len())
-            .saturating_add(block.meta.code_language.as_ref().map_or(0, String::len))
-            .saturating_add(block.meta.raw_source.as_ref().map_or(0, String::len));
-        spans = spans.saturating_add(block.spans.len());
-        preflight(blocks.len(), bytes, spans)?;
+    validate_snapshot(blocks.len(), blocks.iter().map(|b| (b, 0..b.text.len())))
+}
+
+/// Account for everything retained by a snapshot before cloning, including original HTML.
+/// Ordinary blocks are sliced; table slices retain source, originals and empty grid cells.
+pub(crate) fn validate_snapshot<'a>(
+    count: usize,
+    blocks: impl Iterator<Item = (&'a Block, std::ops::Range<usize>)>,
+) -> Result<(), ExportError> {
+    preflight(count, 0, 0)?;
+    let mut tally = Tally {
+        count,
+        bytes: 0,
+        spans: 0,
+        cells: 0,
+    };
+    for (block, range) in blocks {
+        if range.start > range.end
+            || !block.text.is_char_boundary(range.start)
+            || !block.text.is_char_boundary(range.end)
+        {
+            return Err(ExportError::InvalidInput("选区必须位于 UTF-8 字符边界"));
+        }
+        tally.block(block, Some(range))?;
+    }
+    Ok(())
+}
+
+struct Tally {
+    count: usize,
+    bytes: usize,
+    spans: usize,
+    cells: usize,
+}
+impl Tally {
+    fn add(&mut self, bytes: usize, spans: usize) -> Result<(), ExportError> {
+        self.bytes = self.bytes.saturating_add(bytes);
+        self.spans = self.spans.saturating_add(spans);
+        preflight(self.count, self.bytes, self.spans)
+    }
+    fn attrs(&mut self, attrs: &[(String, String)]) -> Result<(), ExportError> {
+        for (name, value) in attrs {
+            self.add(name.len().saturating_add(value.len()), 1)?;
+        }
+        Ok(())
+    }
+    fn block(
+        &mut self,
+        block: &Block,
+        range: Option<std::ops::Range<usize>>,
+    ) -> Result<(), ExportError> {
+        let range = range.unwrap_or(0..block.text.len());
+        let table = block.meta.table.as_ref();
+        self.add(
+            if table.is_some() {
+                block.text.len()
+            } else {
+                range.len()
+            },
+            0,
+        )?;
+        for value in [&block.meta.code_language, &block.meta.unsupported_reason] {
+            self.add(value.as_ref().map_or(0, String::len), 0)?;
+        }
+        self.add(
+            block.meta.raw_source.as_ref().map_or(0, |s| {
+                if table.is_some() || range == (0..block.text.len()) {
+                    s.len()
+                } else {
+                    range.len()
+                }
+            }),
+            0,
+        )?;
+        self.add(
+            block
+                .meta
+                .html_paragraph
+                .as_ref()
+                .map_or(0, |shell| shell.source.len()),
+            0,
+        )?;
         let mut end = 0;
         for span in &block.spans {
             if span.start < end
@@ -83,13 +157,60 @@ pub(super) fn validate(blocks: &[Block]) -> Result<(), ExportError> {
                 || span.marks.len() > 4
             {
                 return Err(ExportError::InvalidInput(
-                    "ranges must be ordered, disjoint UTF-8 boundaries",
+                    "格式范围必须有序、不重叠且位于 UTF-8 边界",
                 ));
             }
             end = span.end;
+            if span.start < range.end && span.end > range.start {
+                self.add(0, 1)?;
+            }
         }
+        for tag in &block.meta.inline {
+            if tag.start >= tag.end
+                || tag.end > block.text.len()
+                || !block.text.is_char_boundary(tag.start)
+                || !block.text.is_char_boundary(tag.end)
+            {
+                return Err(ExportError::InvalidInput("HTML 范围必须位于 UTF-8 边界"));
+            }
+            if tag.start < range.end && tag.end > range.start {
+                self.add(tag.name.len(), 1)?;
+                self.attrs(&tag.attrs)?;
+            }
+        }
+        if let Some(table) = table {
+            super::table::validate(table)?;
+            self.add(table.source.len(), 0)?;
+            self.attrs(&table.attrs)?;
+            for width in &table.column_widths {
+                self.add(width.as_ref().map_or(0, String::len), 1)?;
+            }
+            for row in &table.rows {
+                for cell in &row.cells {
+                    self.cells += 1;
+                    if self.cells > 2048 {
+                        return Err(ExportError::ResourceLimit("最多 2048 个表格单元格"));
+                    }
+                    if cell.content.meta.table.is_some() || cell.original.meta.table.is_some() {
+                        return Err(ExportError::UnsupportedTable("嵌套表格"));
+                    }
+                    self.attrs(&cell.attrs)?;
+                    self.block(&cell.content, None)?;
+                    self.block(&cell.original, None)?;
+                }
+            }
+        } else if block.meta.raw_source.is_some()
+            && block.meta.unsupported_reason.is_some()
+            && block
+                .text
+                .as_bytes()
+                .windows(6)
+                .any(|part| part.eq_ignore_ascii_case(b"<table"))
+        {
+            return Err(ExportError::UnsupportedTable("不支持的非结构化 HTML 表格"));
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 pub(super) fn canvas(width: f32, height: f32) -> Result<(u32, u32), ExportError> {
@@ -102,7 +223,7 @@ pub(super) fn canvas(width: f32, height: f32) -> Result<(u32, u32), ExportError>
             .is_none_or(|pixels| pixels > MAX_PIXELS)
     {
         return Err(ExportError::ResourceLimit(
-            "maximum 16 megapixels / 64 MiB pixel buffer",
+            "最多 1600 万像素 / 64 MiB 像素缓冲",
         ));
     }
     Ok((width.ceil() as u32, height.ceil() as u32))

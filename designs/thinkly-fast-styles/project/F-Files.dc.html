@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>新建与右键菜单 · 代码块</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input{font-family:inherit}
+.row{font:inherit;font-size:14px;line-height:20px;width:100%;height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#20242c;text-align:left;cursor:pointer;box-sizing:border-box}
+.row:hover{background:#eef3fc}
+.btn{font:inherit;font-size:13px;font-weight:460;height:36px;padding:0 8px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;white-space:nowrap}
+.btn-2{background:#ffffff;color:#20242c;border:1px solid #dcdcdc}
+.btn-1{background:#2f3540;color:#ffffff;border:0}
+.ib{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#526071;padding:0;cursor:pointer}
+.ib:hover{background:#eef3fc;color:#20242c}
+.kbd{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:4px;background:#f1f1f1;border:1px solid #e1e1e1;font-size:11px;color:#526071}
+.mi{font:inherit;width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#20242c;font-size:13px;text-align:left;cursor:pointer}
+.mi:hover{background:#eef3fc}
+.mi .k{margin-left:auto;font-size:12px;color:#6d7784}
+</style>
+</helmet>
+<div style="width:100%;height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:#f1f1f1;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;font-size:14px;line-height:20px;overflow:hidden">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;padding:0 16px;gap:12px">
+<div aria-hidden="true" style="display:flex;gap:8px;width:52px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<div style="flex:1;text-align:center;font-size:13px;color:#526071">发布清单</div>
+<div aria-hidden="true" style="width:52px;flex:none"></div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+
+<aside aria-label="文件列表" style="width:260px;flex:none;background:#fafafa;border-right:1px solid #e6e6e6;box-sizing:border-box;display:flex;flex-direction:column;min-height:0;position:relative">
+<div style="display:flex;gap:8px;padding:12px 12px 8px">
+<button class="btn btn-2" style="flex:1;min-width:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>选择文件夹</button>
+<button class="btn btn-1" style="flex:1;min-width:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>新建笔记</button>
+</div>
+<div style="padding:0 12px 8px">
+<button class="btn btn-2" style="width:100%;justify-content:flex-start;height:32px;color:#526071;font-weight:400"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg><span style="flex:1;text-align:left">搜索笔记</span><span class="kbd">⌘K</span></button>
+</div>
+<div style="display:flex;align-items:center;gap:2px;padding:4px 12px 6px 20px">
+<div style="flex:1;font-size:12px;line-height:16px;color:#526071">本地笔记</div>
+<button class="ib" aria-label="新建笔记"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"></path><path d="M13 11v6M10 14h6"></path></svg></button>
+<button class="ib" aria-label="新建文件夹" style="background:#eef3fc;color:#20242c"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M12 10.5v5M9.5 13h5"></path></svg></button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;padding:0 8px 12px;display:flex;flex-direction:column;gap:2px">
+<div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 4px 0 8px;border-radius:6px;background:#ffffff;box-shadow:inset 0 0 0 1px #547dd0">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+<label style="flex:1;min-width:0;display:flex"><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">文件夹名称</span><input value="新建文件夹" style="width:100%;height:24px;border:0;outline:0;background:#d6e3fb;font-size:14px;color:#20242c;border-radius:3px;padding:0 2px"></label>
+</div>
+<button class="row"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>会议记录</button>
+<button class="row" style="padding-left:28px">周会 11-03</button>
+<button class="row" style="padding-left:28px">需求评审</button>
+<button class="row">产品原则</button>
+<button class="row" aria-pressed="true" style="background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;font-weight:460">发布清单</button>
+<button class="row">读书摘录</button>
+</div>
+
+<div role="menu" aria-label="文件操作" style="position:absolute;top:322px;left:150px;z-index:4;width:188px;padding:4px;background:#ffffff;border:1px solid #e4e4e4;border-radius:8px;box-shadow:0 10px 28px rgba(32,36,44,.12);display:flex;flex-direction:column;gap:1px">
+<button class="mi" role="menuitem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M14 13h-5M11.5 10.5L14 13l-2.5 2.5"></path></svg>在访达中显示</button>
+<button class="mi" role="menuitem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"></path></svg>重命名<span class="k">↵</span></button>
+<button class="mi" role="menuitem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>移动到…</button>
+<div aria-hidden="true" style="height:1px;background:#ececec;margin:3px 6px"></div>
+<button class="mi" role="menuitem" style="color:#c2362b"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg>移到废纸篓<span class="k">⌘⌫</span></button>
+</div>
+</aside>
+
+<main style="flex:999 1 560px;min-width:0;background:#ffffff;overflow:auto">
+<div style="box-sizing:border-box;width:100%;max-width:816px;margin:0 auto;padding:36px 28px 64px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;gap:8px"><div style="width:44px;flex:none"></div><h1 style="flex:1;min-width:0;max-width:720px;margin:0;font-size:28px;line-height:1.35;font-weight:560;letter-spacing:-0.01em">发布清单</h1></div>
+<div style="display:flex;gap:8px"><div style="width:44px;flex:none"></div><p style="flex:1;min-width:0;max-width:720px;margin:0;font-size:17px;line-height:1.5">打包前先确认签名身份，再执行构建脚本。行内命令写成 <code style="font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-size:15px;background:#f2f3f5;border-radius:4px;padding:1px 5px">bun run build</code>。</p></div>
+<div style="display:flex;gap:8px"><div style="width:44px;flex:none"></div>
+<figure style="flex:1;min-width:0;max-width:720px;margin:0;background:#f5f6f8;border:1px solid #eceef1;border-radius:8px;overflow:hidden">
+<figcaption style="display:flex;align-items:center;height:30px;padding:0 8px 0 14px;font-size:12px;color:#526071;border-bottom:1px solid #eceef1"><span style="flex:1">bash</span><button class="ib" aria-label="复制代码"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"></path></svg></button></figcaption>
+<pre style="margin:0;padding:12px 14px 14px;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-size:14px;line-height:1.6;color:#20242c;white-space:pre-wrap">security find-identity -v -p codesigning
+bun run build
+open "/Applications/Thinkly Fast.app"</pre>
+</figure></div>
+<div style="display:flex;gap:8px"><div style="width:44px;flex:none"></div><p style="flex:1;min-width:0;max-width:720px;margin:0;font-size:17px;line-height:1.5">构建完成后在访达中确认应用已替换，再打开验证。</p></div>
+</div>
+</main>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

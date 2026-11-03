@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<title>改动预览 C 并入正文标题行</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.ico{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:7px;background:transparent;color:#b4b4b4;cursor:pointer}
+.ico:hover{background:#343434;color:#ececec}
+.ico.ok{color:#8fd4a0}
+.link{font:inherit;font-size:13px;border:0;padding:0;background:transparent;color:#b4b4b4;cursor:pointer;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#555}
+td,th{padding:10px 8px;text-align:left;font-weight:400;border-bottom:1px solid #2e2e2e;white-space:nowrap}
+th{color:#b4b4b4;font-size:13px}
+</style>
+</helmet>
+<div style="width:560px;height:700px;box-sizing:border-box;padding:20px;background:#181818;font-family:-apple-system,'PingFang SC',system-ui,sans-serif;color:#ececec">
+<div style="background:#1f1f1f;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:14px">
+
+<div style="display:flex;align-items:center;gap:8px;color:#8fd4a0;font-size:15px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>已应用
+</div>
+<div style="display:flex;align-items:center;gap:10px;background:#2c2c2c;border-radius:8px;padding:10px 12px;font-size:14px;color:#b4b4b4">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>执行过程<span style="margin-left:auto">50.6 秒</span>
+</div>
+
+<p style="margin:4px 0 0;font-size:15px;font-weight:600;line-height:1.55">重构页面，移除 JSON 代码块与多余指引，保留并优化为账号总览与工具表格。</p>
+
+<div style="border-radius:12px;background:#262626;overflow:hidden">
+<div style="display:flex;align-items:center;gap:6px;padding:6px 6px 6px 14px;background:#2c2c2c">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b4b4b4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg>
+<span style="font-size:13px">账号总览清单</span>
+<span style="font-size:12px;color:#8a8a8a">+18 −42 行 ·</span>
+<button class="link">看差异</button>
+<div style="margin-left:auto;display:flex;gap:2px">
+<button class="ico ok" aria-label="复制原文（已复制）" title="已复制原文"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg></button>
+<button class="ico" aria-label="复制新内容" title="复制新内容"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></button>
+</div>
+</div>
+<div style="padding:14px;display:flex;flex-direction:column;gap:10px">
+<div style="font-size:20px;font-weight:600">账号总览清单</div>
+<table style="width:100%;border-collapse:collapse;font-size:13px">
+<tr><th>#</th><th>账号</th><th>2FA</th><th>到期</th></tr>
+<tr><td>1</td><td>[账号 1]</td><td>[密钥]</td><td>[日期]</td></tr>
+<tr><td>2</td><td>[账号 2]</td><td>[密钥]</td><td>[日期]</td></tr>
+<tr><td style="border:0">3</td><td style="border:0">[账号 3]</td><td style="border:0">[密钥]</td><td style="border:0">[日期]</td></tr>
+</table>
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":560,"height":700}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

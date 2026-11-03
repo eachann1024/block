@@ -57,7 +57,7 @@ impl QuickView {
         let hint = |keys: SharedString, label: &'static str| div().flex().items_center().gap(px(4.)).child(kbd(keys)).child(label);
         div().h(px(32.)).flex_none().flex().items_center().gap(px(12.)).px(px(14.)).border_t_1().border_color(theme.hairline)
             .text_size(px(11.)).text_color(theme.text_secondary)
-            .child(hint(quick_label.into(), "呼出 / 隐藏")).child(hint("⌘1–5".into(), "切换"))
+            .child(hint(quick_label.into(), "呼出 / 隐藏")).child(hint("⌘1–5".into(), "切换")).child(hint("⌘F".into(), "查找"))
             .child(div().ml_auto().overflow_hidden().whitespace_nowrap().text_ellipsis().child(status))
     }
 

@@ -1,0 +1,286 @@
+//! Keyboard shortcuts for block type (cmd-alt-0..3) and moving blocks (cmd-shift-up/down).
+use gpui::{Context, Window};
+use super::{block_menu::{Cmd, Mode}, model::Kind, view::Editor};
+
+impl Editor {
+    pub(super) fn set_kind_shortcut(&mut self, kind: Kind, cx: &mut Context<Self>) {
+        if self.path.is_none() { return; }
+        self.commit_composition(cx);
+        let (_, _, first, last) = self.ordered();
+        let before = self.snapshot();
+        for index in first..=last {
+            let block = &self.doc.blocks[index];
+            if block.meta.table.is_some() || block.meta.raw_source.is_some() || block.meta.code_language.is_some() { continue; }
+            let id = block.id; self.doc.set_kind(id, kind);
+        }
+        self.record(before, cx);
+    }
+    /// Cmd+Up / Cmd+Down: caret to the start of the first block or the end of the last one.
+    pub(super) fn doc_edge(&mut self, end: bool, extend: bool, cx: &mut Context<Self>) {
+        let block = if end { self.doc.blocks.last() } else { self.doc.blocks.first() };
+        let Some(at) = block.map(|b| super::view::selection::Position { block: b.id, offset: if end { b.text.len() } else { 0 } }) else { return };
+        self.table_sel = None; self.preferred_x = None;
+        self.set_head(at, extend, cx);
+        // The first frame only brings the far block into view; once it has a layout, reveal the caret exactly.
+        cx.spawn(async move |this, cx| {
+            for _ in 0..2 {
+                cx.background_executor().timer(std::time::Duration::from_millis(40)).await;
+                if this.update(cx, |this, cx| { this.reveal_caret = true; cx.notify(); }).is_err() { return; }
+            }
+        }).detach();
+    }
+    pub(super) fn move_block_shortcut(&mut self, up: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.path.is_none() { return; }
+        let id = self.caret.head.block;
+        self.run_block_cmd(id, Mode::Slash, if up { Cmd::MoveUp } else { Cmd::MoveDown }, window, cx);
+    }
+}
+
+use super::{input::transactions::ListChange, model::Block, view::selection::Position};
+
+fn is_list(block: &Block) -> bool { matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) }
+fn is_divider(block: &Block) -> bool {
+    block.meta.raw_source.is_some() && super::image_source::spec_of(block).is_none()
+        && { let t = block.text.trim(); t.len() >= 3 && ["*", "-", "_"].iter().any(|c| t.chars().all(|v| v.to_string() == *c)) }
+}
+/// Blocks that must never be merged into or out of by Backspace/Delete.
+fn structural(block: &Block) -> bool { block.meta.raw_source.is_some() || block.meta.code_language.is_some() }
+
+impl Editor {
+    fn drop_block(&mut self, index: usize, to: Position, cx: &mut Context<Self>) {
+        let before = self.snapshot();
+        self.doc.splice_blocks(index..index + 1, Vec::new());
+        self.caret.anchor = to; self.caret.head = to;
+        self.record_changes(before, vec![ListChange { start: index, before: 1, after: 0 }], true, cx);
+    }
+    fn demote(&mut self, id: u64, cx: &mut Context<Self>) {
+        let before = self.snapshot(); self.doc.set_kind(id, Kind::Paragraph); self.record(before, cx);
+    }
+    /// Enter on a nested empty list item outdents it; Enter at the start of a non-empty
+    /// block inserts an empty block above and leaves this block (kind, checked) in place.
+    pub(super) fn enter_rules(&mut self, cx: &mut Context<Self>) -> bool {
+        if !self.caret.is_empty() { return false; }
+        let at = self.caret.head;
+        let Some(index) = self.doc.index_of(at.block) else { return false };
+        let block = &self.doc.blocks[index];
+        if block.meta.table.is_some() || structural(block) || block.meta.html_paragraph.is_some() { return false; }
+        if block.text.is_empty() {
+            if is_list(block) && block.meta.indent > 0 { self.tab_outside_table(false, cx); return true; }
+            return false;
+        }
+        if at.offset != 0 { return false; }
+        let list = is_list(block);
+        let mut fresh = Block::new(0, if list { block.kind } else { Kind::Paragraph }, String::new());
+        if list { fresh.meta.indent = block.meta.indent; fresh.meta.list_start = block.meta.list_start; }
+        let id = block.id;
+        let before = self.snapshot();
+        if let Some(b) = self.doc.get_mut(id) { b.meta.list_start = None; }
+        self.doc.refresh_block(id);
+        self.doc.splice_blocks(index..index, vec![fresh]);
+        self.record_changes(before, vec![ListChange { start: index, before: 1, after: 2 }], true, cx);
+        true
+    }
+    /// Collapsed Backspace at a block start / Delete at a block end, before the generic merge.
+    pub(super) fn boundary_rules(&mut self, forward: bool, cx: &mut Context<Self>) -> bool {
+        if !self.caret.is_empty() { return false; }
+        let at = self.caret.head;
+        let Some(index) = self.doc.index_of(at.block) else { return false };
+        let block = self.doc.blocks[index].clone();
+        if block.meta.table.is_some() { return false; }
+        if is_divider(&block) {
+            // The caret sits on a divider: Backspace/Delete removes the whole line instead of editing "***".
+            let prev = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()).filter(|b| b.meta.table.is_none());
+            let next = self.doc.blocks.get(index + 1).cloned().filter(|b| b.meta.table.is_none());
+            let to = match (forward, prev, next) {
+                (true, _, Some(n)) | (false, None, Some(n)) => Position { block: n.id, offset: 0 },
+                (_, Some(p), _) => Position { block: p.id, offset: p.text.len() },
+                _ => return true,
+            };
+            self.drop_block(index, to, cx);
+            return true;
+        }
+        if forward {
+            if at.offset != block.text.len() { return false; }
+            let Some(next) = self.doc.blocks.get(index + 1).cloned() else { return false };
+            if next.meta.table.is_some() { return false; }
+            if structural(&block) { return true; }
+            if !structural(&next) { return false; }
+            if block.text.is_empty() && !is_divider(&next) && block.meta.html_paragraph.is_none() {
+                self.drop_block(index, Position { block: next.id, offset: 0 }, cx);
+            }
+            return true;
+        }
+        if at.offset != 0 { return false; }
+        if block.meta.code_language.is_some() {
+            if block.text.is_empty() { self.demote(block.id, cx); }
+            else if let Some(prev) = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()) {
+                self.set_head(Position { block: prev.id, offset: prev.text.len() }, false, cx);
+            }
+            return true;
+        }
+        if block.meta.raw_source.is_some() || block.meta.html_paragraph.is_some() { return false; }
+        match block.kind {
+            Kind::H1 | Kind::H2 | Kind::H3 | Kind::Quote => { self.demote(block.id, cx); return true; }
+            Kind::Bullet | Kind::Numbered | Kind::Todo => {
+                if block.meta.indent > 0 { self.tab_outside_table(false, cx); } else { self.demote(block.id, cx); }
+                return true;
+            }
+            Kind::Paragraph => {}
+        }
+        let Some(prev) = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()) else { return false };
+        if prev.meta.table.is_some() || !structural(&prev) { return false; }
+        if is_divider(&prev) {
+            if block.text.is_empty() {
+                let to = index.checked_sub(2).map(|i| &self.doc.blocks[i])
+                    .filter(|b| b.meta.table.is_none() && !is_divider(b))
+                    .map(|b| Position { block: b.id, offset: b.text.len() });
+                if let Some(to) = to { self.drop_block(index, to, cx); }
+            }
+            return true;
+        }
+        let to = Position { block: prev.id, offset: prev.text.len() };
+        if block.text.is_empty() { self.drop_block(index, to, cx); } else { self.set_head(to, false, cx); }
+        true
+    }
+    /// Shift/Cmd+Enter: leave a code block for a new paragraph below; elsewhere act like Enter.
+    pub(super) fn exit_block(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.path.is_none() { return; }
+        let id = self.caret.head.block;
+        if self.doc.get(id).is_some_and(|b| b.meta.code_language.is_some()) {
+            self.add_below(id, window, cx);
+        } else if self.doc.get(id).is_some_and(|b| b.meta.table.is_some()) {
+            self.replace(None, "\n", window, cx);
+        } else { self.handle(&super::view::EditorAction::Enter, window, cx); }
+    }
+    /// Deleting a selection that spans blocks keeps what is left of the end blocks as
+    /// separate blocks (same type and nesting) instead of merging them into one.
+    pub(super) fn delete_across(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.caret.is_empty() { return false; }
+        let (a, b, ai, bi) = self.ordered();
+        if ai == bi || !self.can_replace_selection() { return false; }
+        let before = self.snapshot();
+        let first = self.doc.blocks[ai].clone(); let last = self.doc.blocks[bi].clone();
+        // Source-backed blocks (images, dividers, HTML) are never cut in half.
+        let head = (a.offset > 0).then(|| if first.meta.raw_source.is_some() { first.clone() } else { first.slice(0..a.offset) });
+        let tail = (b.offset < last.text.len()).then(|| if last.meta.raw_source.is_some() { last.clone() } else { last.slice(b.offset..last.text.len()) });
+        let mut pieces = Vec::new();
+        let at = match (&head, &tail) {
+            (Some(h), _) => Position { block: h.id, offset: h.text.len() },
+            (None, Some(t)) => Position { block: t.id, offset: 0 },
+            (None, None) => {
+                let empty = if first.meta.table.is_some() || first.meta.raw_source.is_some() {
+                    Block::new(first.id, Kind::Paragraph, String::new())
+                } else { first.slice(0..0) };
+                pieces.push(empty);
+                Position { block: first.id, offset: 0 }
+            }
+        };
+        pieces.extend(head); pieces.extend(tail);
+        self.doc.splice_blocks(ai..bi + 1, pieces);
+        self.caret.anchor = at; self.caret.head = at;
+        self.record(before, cx);
+        true
+    }
+    /// Remember a copy that should paste back as blocks: several blocks, or one whole non-paragraph block.
+    pub(super) fn remember_blocks(&mut self, plain: &str) {
+        let (_, _, ai, bi) = self.ordered();
+        let whole = |i: usize| self.selected_range(self.doc.blocks[i].id).is_some_and(|r| r == (0..self.doc.blocks[i].text.len()));
+        let one = &self.doc.blocks[ai];
+        let rich = ai != bi || (whole(ai) && (one.kind != Kind::Paragraph || one.meta.code_language.is_some()) && one.meta.table.is_none());
+        if !rich { self.block_clip = None; return; }
+        let blocks: Vec<Block> = (ai..=bi).filter_map(|i| {
+            let block = &self.doc.blocks[i];
+            self.selected_range(block.id).map(|r| if block.meta.raw_source.is_some() { block.clone() } else { block.slice(r) })
+        }).collect();
+        let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(blocks));
+        self.block_clip = Some((plain.to_owned(), markdown));
+    }
+    /// Keys while an Esc block selection is active. Returns true when the key was consumed.
+    pub(super) fn block_selection_key(&mut self, action: &super::view::EditorAction, cx: &mut Context<Self>) -> bool {
+        use super::view::EditorAction::*;
+        let Some((anchor, head)) = self.block_sel else { return false };
+        let last = self.doc.blocks.len().saturating_sub(1);
+        let (lo, hi) = (anchor.min(head).min(last), anchor.max(head).min(last));
+        match action {
+            Up | Down => {
+                let head = if matches!(action, Up) { head.saturating_sub(1) } else { (head + 1).min(last) };
+                self.block_sel = Some((anchor, head));
+                let id = self.doc.blocks[head].id; self.caret.anchor = Position { block: id, offset: 0 }; self.caret.head = self.caret.anchor;
+                cx.notify(); true
+            }
+            Backspace | Delete | Cut | Copy => {
+                if !matches!(action, Backspace | Delete) {
+                    let blocks: Vec<Block> = (lo..=hi).map(|i| self.doc.blocks[i].clone()).collect();
+                    let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(blocks));
+                    let plain = markdown.trim_end().to_owned();
+                    self.block_clip = Some((plain.clone(), markdown));
+                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(plain));
+                }
+                if !matches!(action, Copy) {
+                    self.block_sel = None;
+                    let before = self.snapshot();
+                    let n = hi - lo + 1;
+                    self.doc.splice_blocks(lo..hi + 1, Vec::new());
+                    let mut added = 0;
+                    if self.doc.blocks.len() == 0 { self.doc.splice_blocks(0..0, vec![Block::new(0, Kind::Paragraph, String::new())]); added = 1; }
+                    let at = lo.min(self.doc.blocks.len() - 1);
+                    let id = self.doc.blocks[at].id; self.caret.anchor = Position { block: id, offset: 0 }; self.caret.head = self.caret.anchor;
+                    self.record_changes(before, vec![crate::editor::input::transactions::ListChange { start: lo, before: n, after: added }], true, cx);
+                }
+                cx.notify(); true
+            }
+            SelectAll => { self.block_sel = Some((0, last)); cx.notify(); true }
+            Cancel => { self.block_sel = None; cx.notify(); true }
+            _ => { self.block_sel = None; cx.notify(); false }
+        }
+    }
+    /// A selected image or HTML block has no text range: copy it whole so paste recreates the same block.
+    pub(super) fn copy_whole_block(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(block) = self.doc.get(self.caret.head.block).filter(|b| structural(b) && b.meta.code_language.is_none()).cloned() else { return false };
+        let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(vec![block]));
+        let plain = markdown.trim_end().to_owned();
+        self.block_clip = Some((plain.clone(), markdown));
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(plain));
+        true
+    }
+    /// Paste an in-app block copy back as blocks, splitting the caret's block when needed.
+    pub(super) fn paste_blocks(&mut self, text: &str, cx: &mut Context<Self>) -> bool {
+        let Some((plain, markdown)) = self.block_clip.clone() else { return false };
+        if plain != text.replace("\r\n", "\n") { return false; }
+        let mut blocks: Vec<Block> = super::markdown::parse(&markdown).blocks.iter().cloned().collect();
+        let blank = |b: &Block| b.text.is_empty() && b.kind == Kind::Paragraph && b.meta.raw_source.is_none() && b.meta.table.is_none() && b.meta.code_language.is_none();
+        while blocks.last().is_some_and(blank) { blocks.pop(); }
+        while blocks.first().is_some_and(blank) { blocks.remove(0); }
+        if blocks.is_empty() { return false; }
+        if !self.caret.is_empty() {
+            if !self.can_replace_selection() { return false; }
+            if !self.delete_across(cx) { self.replace_selection("", false, cx); }
+        }
+        let at = self.caret.head;
+        let Some(index) = self.doc.index_of(at.block) else { return false };
+        let cur = self.doc.blocks[index].clone();
+        if cur.meta.table.is_some() || structural(&cur) { return false; }
+        let before = self.snapshot();
+        for b in blocks.iter_mut() { b.id = 0; }
+        let count = blocks.len();
+        let mut pieces = Vec::new();
+        let lead = if cur.text.is_empty() { 0 } else {
+            let mut n = 0;
+            if at.offset > 0 { pieces.push(cur.slice(0..at.offset)); n = 1; }
+            n
+        };
+        pieces.extend(blocks);
+        if !cur.text.is_empty() && at.offset < cur.text.len() {
+            let mut tail = cur.slice(at.offset..cur.text.len());
+            if at.offset > 0 { tail.id = 0; tail.meta.list_start = None; }
+            pieces.push(tail);
+        }
+        let total = pieces.len();
+        self.doc.splice_blocks(index..index + 1, pieces);
+        let last = &self.doc.blocks[index + lead + count - 1];
+        let to = Position { block: last.id, offset: last.text.len() };
+        self.caret.anchor = to; self.caret.head = to;
+        self.record_changes(before, vec![ListChange { start: index, before: 1, after: total }], true, cx);
+        true
+    }
+}

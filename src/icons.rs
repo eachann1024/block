@@ -116,7 +116,6 @@ icons! {
     LinkOff => "link-off" [Line],
     TbMinus => "tb-minus" [Line],
     TbPlus => "tb-plus" [Line],
-    TbReset => "tb-reset" [Line],
 }
 
 /// The three tints of one icon.

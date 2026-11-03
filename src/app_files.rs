@@ -78,6 +78,7 @@ impl Workspace {
         let name = display_name(&path, dir);
         let input = cx.new(|cx| InputState::new(window, cx).default_value(name));
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
+            InputEvent::Focus => window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx),
             InputEvent::PressEnter { .. } => this.commit_rename(window, cx),
             InputEvent::Blur if this.renaming.is_some() => this.cancel_rename(window, cx),
             _ => {}
@@ -87,7 +88,9 @@ impl Workspace {
             tree.set_renaming(Some((path.clone(), input.clone())), cx);
         });
         input.update(cx, |input, cx| input.focus(window, cx));
-        cx.defer_in(window, |_, window, cx| {
+        let focus_input = input.clone();
+        cx.defer_in(window, move |_, window, cx| {
+            focus_input.update(cx, |input, cx| input.focus(window, cx));
             window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx);
         });
         self.renaming = Some(Renaming { path, dir, input, _sub: sub });
