@@ -161,6 +161,7 @@ const fn hex(value: u32) -> Hsla {
 const OCEAN_LIGHT: Theme = Theme {
     shell: hex(0xf1f1f1),
     sidebar: hex(0xfafafa),
+    settings_bg: hex(0xf8f8f8),
     paper: hex(0xffffff),
     menu: hex(0xffffff),
     text: hex(0x20242c),
@@ -190,6 +191,7 @@ const OCEAN_LIGHT: Theme = Theme {
 const OCEAN_DARK: Theme = Theme {
     shell: hex(0x343434),
     sidebar: hex(0x222222),
+    settings_bg: hex(0x181818),
     paper: hex(0x181818),
     menu: hex(0x222222),
     text: hex(0xececec),
@@ -220,6 +222,7 @@ const OCEAN_DARK: Theme = Theme {
 pub struct Theme {
     pub shell: Hsla,
     pub sidebar: Hsla,
+    pub settings_bg: Hsla,
     pub paper: Hsla,
     pub menu: Hsla,
     pub text: Hsla,

@@ -39,8 +39,14 @@ pub(crate) fn bind_keys(cx: &mut App) {
 }
 
 impl Workspace {
+    pub(crate) fn new_tab(&mut self, window: &mut gpui::Window, cx: &mut Context<Self>) {
+        if !self.busy() {
+            self.new_item(false, window, cx);
+        }
+    }
+
     pub(super) fn bind_tab_actions(&self, root: gpui::Div, cx: &mut Context<Self>) -> gpui::Div {
-        root.on_action(cx.listener(|this, _: &NewTab, window, cx| if !this.busy() { this.new_item(false, window, cx) }))
+        root.on_action(cx.listener(|this, _: &NewTab, window, cx| this.new_tab(window, cx)))
             .on_action(cx.listener(|this, _: &CloseTab, _, cx| this.close_active_tab(cx)))
             .on_action(cx.listener(|this, _: &NextTab, _, cx| this.step_tab(1, cx)))
             .on_action(cx.listener(|this, _: &PrevTab, _, cx| this.step_tab(-1, cx)))
@@ -56,6 +62,7 @@ impl Workspace {
     }
 
     pub(crate) fn open_file(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        self.settings = None;
         if !self.tabs.contains(&path) {
             self.tabs.push(path.clone());
         }
@@ -90,7 +97,7 @@ impl Workspace {
         cx.notify();
     }
 
-    pub(super) fn close_active_tab(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn close_active_tab(&mut self, cx: &mut Context<Self>) {
         if let Some(active) = self.selected.clone()
             .or_else(|| self.editor.read(cx).current_path().map(Path::to_path_buf))
         {
@@ -98,7 +105,7 @@ impl Workspace {
         }
     }
 
-    pub(super) fn step_tab(&mut self, delta: isize, cx: &mut Context<Self>) {
+    pub(crate) fn step_tab(&mut self, delta: isize, cx: &mut Context<Self>) {
         if self.busy() || self.tabs.len() < 2 { return; }
         let cur = self.selected.as_ref().and_then(|s| self.tabs.iter().position(|p| p == s)).unwrap_or(0);
         let next = (cur as isize + delta).rem_euclid(self.tabs.len() as isize) as usize;
@@ -241,8 +248,11 @@ impl Workspace {
             .when(multi && !active, |t| t.text_color(theme.text_secondary)
                 .hover(|s| s.bg(theme.hover).text_color(theme.text)))
             .when(!multi, |t| t.text_color(theme.text).hover(|s| s.bg(theme.hover)))
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                if !this.busy() { this.open_file(open_path.clone(), cx); }
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
+                if !this.busy() {
+                    this.close_settings(window, cx);
+                    this.open_file(open_path.clone(), cx);
+                }
             }))
             .on_mouse_down(MouseButton::Middle, cx.listener(move |this, _, _, cx| {
                 cx.stop_propagation();

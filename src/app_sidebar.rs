@@ -94,7 +94,6 @@ impl Workspace {
         if self.switcher_open { out.push(self.switcher_menu(cx)); }
         if let Some(menu) = &self.menu { out.extend(self.tree_menu(&menu.target, menu.position, menu.moving, cx)); }
         out.extend(self.search_view(cx));
-        out.extend(self.settings_view(cx));
         out
     }
 
