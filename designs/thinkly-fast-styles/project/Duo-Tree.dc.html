@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>双色 · 文件夹与文件 三版</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button{font-family:inherit}
+.board{--fl:#c9d8f3;--ac:#547dd0}
+.fl{fill:var(--fl)}
+.ac{stroke:var(--ac)}
+svg.on{color:var(--ac)}
+.col{display:flex;flex-direction:column;gap:20px;min-width:0}
+.sec{display:flex;flex-direction:column;gap:8px}
+.cap{margin:0;font-size:12px;line-height:16px;color:#526071;letter-spacing:.02em}
+.cons{display:flex;gap:16px}
+.tile{display:flex;flex-direction:column;align-items:center;gap:6px}
+.big{width:96px;height:96px;display:block;color:#20242c;background:#ffffff;box-shadow:0 0 0 1px #e6e6e6}
+.set{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px 0}
+.cell{display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px 0}
+.sizes{display:flex;align-items:flex-end;gap:10px;height:24px;color:#20242c}
+.i16{width:16px;height:16px;display:block}
+.i20{width:20px;height:20px;display:block}
+.i24{width:24px;height:24px;display:block}
+.name{font-size:12px;line-height:16px;color:#526071;text-align:center;white-space:nowrap}
+.side{width:260px;box-sizing:border-box;padding:8px;background:#fafafa;border-right:1px solid #e6e6e6;display:flex;flex-direction:column;color:#20242c}
+.row{font:inherit;font-size:14px;line-height:20px;height:32px;width:100%;flex:none;display:flex;align-items:center;padding:0 8px 0 4px;border:0;border-radius:6px;background:transparent;color:inherit;text-align:left;cursor:pointer;box-sizing:border-box}
+.row:hover,.row.hov{background:#eef3fc}
+.row.sel{background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0}
+.d1{padding-left:22px}
+.d2{padding-left:40px}
+.chev{width:16px;height:16px;flex:none;display:block;color:#526071}
+.ti{width:16px;height:16px;flex:none;display:block;margin:0 8px 0 2px}
+.lbl{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden}
+.fade{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
+.dk{background:#222222;border-right-color:#3a3a3a;color:#ececec;--fl:#3a4a66;--ac:#8fb0ee}
+.dk .chev{color:#a3abb8}
+.dk .row:hover,.dk .row.hov{background:#2d3138}
+.dk .row.sel{background:#2b3a57;box-shadow:inset 0 0 0 1px #8fb0ee}
+</style>
+</helmet>
+<div class="board" style="width:1600px;height:1200px;box-sizing:border-box;padding:32px 40px 28px;display:flex;flex-direction:column;gap:28px;background:#ffffff;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c">
+
+<header style="display:flex;align-items:baseline;justify-content:space-between;gap:24px">
+<div style="display:flex;align-items:baseline;gap:16px">
+<h1 style="margin:0;font-size:28px;line-height:36px;font-weight:560;letter-spacing:-0.02em">文件夹与文件 · 三版</h1>
+<p style="margin:0;font-size:14px;line-height:20px;color:#526071">双色：1.5px 圆端主线 + 浅面 #c9d8f3，强调色只给动作细节；横竖主线全落在 .25 / .75，16px 下正好 1 像素。</p>
+</div>
+<p class="cap">24 网格 · 2px 安全边</p>
+</header>
+
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:48px;align-items:start">
+<sc-for list="{{schemes}}" as="s" hint-placeholder-count="3">
+<section class="col">
+
+<div style="display:flex;flex-direction:column;gap:4px">
+<h2 style="margin:0;font-size:18px;line-height:26px;font-weight:600">{{s.title}}</h2>
+<p style="margin:0;font-size:13px;line-height:20px;color:#526071">{{s.desc}}</p>
+</div>
+
+<div class="sec">
+<p class="cap">构造 · 96px（24 格 + 2px 安全边）</p>
+<div class="cons">
+<sc-for list="{{s.cons}}" as="c" hint-placeholder-count="3">
+<div class="tile">
+<svg class="big" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.grid}}" stroke="#e4e9f1" stroke-width=".06"></path><rect x="2" y="2" width="20" height="20" stroke="#9db6e8" stroke-width=".08" stroke-dasharray=".4 .3"></rect><g stroke="currentColor" stroke-width="1.5"><path class="fl" stroke="none" d="{{c.f}}"></path><path d="{{c.l}}"></path><path class="ac" d="{{c.a}}"></path></g></svg>
+<span class="name">{{c.cap}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div class="sec">
+<p class="cap">图标组 · 16 / 20 / 24</p>
+<div class="set">
+<sc-for list="{{s.set}}" as="ic" hint-placeholder-count="7">
+<div class="cell">
+<div class="sizes">
+<svg class="i16 {{ic.on}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="fl" stroke="none" d="{{ic.f}}"></path><path d="{{ic.l}}"></path><path class="ac" d="{{ic.a}}"></path></svg>
+<svg class="i20 {{ic.on}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="fl" stroke="none" d="{{ic.f}}"></path><path d="{{ic.l}}"></path><path class="ac" d="{{ic.a}}"></path></svg>
+<svg class="i24 {{ic.on}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="fl" stroke="none" d="{{ic.f}}"></path><path d="{{ic.l}}"></path><path class="ac" d="{{ic.a}}"></path></svg>
+</div>
+<span class="name">{{ic.name}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div class="sec">
+<p class="cap">文件树 · 浅色</p>
+<nav class="side" aria-label="{{s.navLight}}">
+<sc-for list="{{s.tree}}" as="r" hint-placeholder-count="10">
+<button type="button" class="row {{r.cls}}" aria-expanded="{{r.exp}}">
+<svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{r.chev}}"></path></svg>
+<svg class="ti {{r.on}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="fl" stroke="none" d="{{r.f}}"></path><path d="{{r.l}}"></path><path class="ac" d="{{r.a}}"></path></svg>
+<span class="lbl {{r.fade}}">{{r.lbl}}</span>
+</button>
+</sc-for>
+</nav>
+</div>
+
+<div class="sec">
+<p class="cap">深色</p>
+<nav class="side dk" aria-label="{{s.navDark}}">
+<sc-for list="{{s.dark}}" as="r" hint-placeholder-count="4">
+<button type="button" class="row {{r.cls}}" aria-expanded="{{r.exp}}">
+<svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{r.chev}}"></path></svg>
+<svg class="ti {{r.on}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="fl" stroke="none" d="{{r.f}}"></path><path d="{{r.l}}"></path><path class="ac" d="{{r.a}}"></path></svg>
+<span class="lbl {{r.fade}}">{{r.lbl}}</span>
+</button>
+</sc-for>
+</nav>
+</div>
+
+</section>
+</sc-for>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1200}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var PLUS = 'M17.25 14.25V20.25M14.25 17.25H20.25';
+    var CHECK = 'M14.25 17.25L16.5 19.5L20.25 15.75';
+
+    // 方案 1：圆润舌片（统一半径 2.25）
+    var T1 = 'M8.25 8.25V7.5A2.25 2.25 0 0 1 10.5 5.25H12A2.25 2.25 0 0 1 14.25 7.5V8.25';
+    var B1 = 'M6 8.25H18A2.25 2.25 0 0 1 20.25 10.5V16.5A2.25 2.25 0 0 1 18 18.75H6A2.25 2.25 0 0 1 3.75 16.5V10.5A2.25 2.25 0 0 1 6 8.25Z';
+    var L1 = 'M3.75 11.25H20.25';
+    var S1 = {
+      folder: { f: 'M3.75 11.25H20.25V16.5A2.25 2.25 0 0 1 18 18.75H6A2.25 2.25 0 0 1 3.75 16.5Z', l: B1 + T1 + L1 },
+      open: { f: 'M3.75 18.75L6.75 12.75H20.25L17.25 18.75Z', l: 'M3.75 18.75V10.5A2.25 2.25 0 0 1 6 8.25H18A2.25 2.25 0 0 1 20.25 10.5V12.75' + T1 + 'M3.75 18.75L6.75 12.75H20.25L17.25 18.75Z' },
+      empty: { l: B1 + T1 + L1 },
+      note: { f: 'M14.25 3.75V6A2.25 2.25 0 0 0 16.5 8.25H18.75Z', l: 'M7.5 3.75H14.25L18.75 8.25V18A2.25 2.25 0 0 1 16.5 20.25H7.5A2.25 2.25 0 0 1 5.25 18V6A2.25 2.25 0 0 1 7.5 3.75ZM14.25 3.75V6A2.25 2.25 0 0 0 16.5 8.25H18.75M8.25 12.75H15.75M8.25 15.75H12.75' },
+      add: { f: 'M12.75 3.75V6A2.25 2.25 0 0 0 15 8.25H17.25Z', l: 'M11.25 20.25H7.5A2.25 2.25 0 0 1 5.25 18V6A2.25 2.25 0 0 1 7.5 3.75H12.75L17.25 8.25V11.25M12.75 3.75V6A2.25 2.25 0 0 0 15 8.25H17.25M8.25 12.75H12.75', a: PLUS },
+      pick: { f: 'M3.75 11.25H20.25V12.75H12.75V18.75H6A2.25 2.25 0 0 1 3.75 16.5Z', l: 'M12.75 18.75H6A2.25 2.25 0 0 1 3.75 16.5V10.5A2.25 2.25 0 0 1 6 8.25H18A2.25 2.25 0 0 1 20.25 10.5V12.75' + T1 + L1, a: CHECK }
+    };
+
+    // 方案 2：平舌 + 内页（统一半径 1.5）
+    var O2 = 'M5.25 5.25H11.25L14.25 8.25H18.75A1.5 1.5 0 0 1 20.25 9.75V17.25A1.5 1.5 0 0 1 18.75 18.75H5.25A1.5 1.5 0 0 1 3.75 17.25V6.75A1.5 1.5 0 0 1 5.25 5.25Z';
+    var S2 = {
+      folder: { f: 'M3.75 15H20.25V17.25A1.5 1.5 0 0 1 18.75 18.75H5.25A1.5 1.5 0 0 1 3.75 17.25Z', l: O2 + 'M3.75 11.25H20.25' },
+      open: { f: 'M3.75 16.5H20.25V17.25A1.5 1.5 0 0 1 18.75 18.75H5.25A1.5 1.5 0 0 1 3.75 17.25Z', l: 'M12.75 6.75L11.25 5.25H5.25A1.5 1.5 0 0 0 3.75 6.75V17.25A1.5 1.5 0 0 0 5.25 18.75H18.75A1.5 1.5 0 0 0 20.25 17.25V9.75A1.5 1.5 0 0 0 18.75 8.25M9.75 12.75V8.25A1.5 1.5 0 0 1 11.25 6.75H17.25A1.5 1.5 0 0 1 18.75 8.25V12.75M3.75 12.75H20.25' },
+      empty: { l: O2 + 'M3.75 11.25H20.25' },
+      note: { f: 'M8.25 7.5H12.75A.75 .75 0 0 1 13.5 8.25V9.75A.75 .75 0 0 1 12.75 10.5H8.25A.75 .75 0 0 1 7.5 9.75V8.25A.75 .75 0 0 1 8.25 7.5Z', l: 'M6.75 3.75H14.25L18.75 8.25V18.75A1.5 1.5 0 0 1 17.25 20.25H6.75A1.5 1.5 0 0 1 5.25 18.75V5.25A1.5 1.5 0 0 1 6.75 3.75ZM8.25 14.25H14.25' },
+      add: { f: 'M8.25 7.5H11.25A.75 .75 0 0 1 12 8.25V9.75A.75 .75 0 0 1 11.25 10.5H8.25A.75 .75 0 0 1 7.5 9.75V8.25A.75 .75 0 0 1 8.25 7.5Z', l: 'M11.25 20.25H6.75A1.5 1.5 0 0 1 5.25 18.75V5.25A1.5 1.5 0 0 1 6.75 3.75H12.75L17.25 8.25V11.25M8.25 14.25H11.25', a: PLUS },
+      pick: { f: 'M3.75 15H12.75V18.75H5.25A1.5 1.5 0 0 1 3.75 17.25Z', l: 'M12.75 18.75H5.25A1.5 1.5 0 0 1 3.75 17.25V6.75A1.5 1.5 0 0 1 5.25 5.25H11.25L14.25 8.25H18.75A1.5 1.5 0 0 1 20.25 9.75V12.75M3.75 11.25H20.25', a: CHECK }
+    };
+
+    // 方案 3：前后层（统一半径 2.25）
+    var BK = 'M3.75 13.5V7.5A2.25 2.25 0 0 1 6 5.25H9L12 8.25H18A2.25 2.25 0 0 1 20.25 10.5V13.5';
+    var FR = 'M6 11.25H18A2.25 2.25 0 0 1 20.25 13.5V16.5A2.25 2.25 0 0 1 18 18.75H6A2.25 2.25 0 0 1 3.75 16.5V13.5A2.25 2.25 0 0 1 6 11.25Z';
+    var FLAP = 'M12.75 6.75V7.5A2.25 2.25 0 0 0 15 9.75H15.75';
+    var S3 = {
+      folder: { f: FR, l: BK + FR },
+      open: { f: 'M3.75 18.75L6 14.25H20.25L18 18.75Z', l: 'M3.75 18.75V7.5A2.25 2.25 0 0 1 6 5.25H9L12 8.25H18A2.25 2.25 0 0 1 20.25 10.5V14.25M3.75 18.75L6 14.25H20.25L18 18.75Z' },
+      empty: { l: BK + FR },
+      note: { f: FLAP + 'Z', l: 'M8.25 6.75V6A2.25 2.25 0 0 1 10.5 3.75H16.5A2.25 2.25 0 0 1 18.75 6V15A2.25 2.25 0 0 1 16.5 17.25H15.75M7.5 6.75H12.75L15.75 9.75V18A2.25 2.25 0 0 1 13.5 20.25H7.5A2.25 2.25 0 0 1 5.25 18V9A2.25 2.25 0 0 1 7.5 6.75Z' + FLAP + 'M8.25 14.25H12.75M8.25 17.25H11.25' },
+      add: { f: FLAP + 'Z', l: 'M8.25 6.75V6A2.25 2.25 0 0 1 10.5 3.75H16.5A2.25 2.25 0 0 1 18.75 6V11.25M15.75 12.75V9.75L12.75 6.75H7.5A2.25 2.25 0 0 0 5.25 9V18A2.25 2.25 0 0 0 7.5 20.25H11.25' + FLAP + 'M8.25 14.25H11.25', a: PLUS },
+      pick: { f: 'M6 11.25H18A2.25 2.25 0 0 1 20.25 13.5H12.75V18.75H6A2.25 2.25 0 0 1 3.75 16.5V13.5A2.25 2.25 0 0 1 6 11.25Z', l: BK + 'M12.75 18.75H6A2.25 2.25 0 0 1 3.75 16.5V13.5A2.25 2.25 0 0 1 6 11.25H18A2.25 2.25 0 0 1 20.25 13.5', a: CHECK }
+    };
+
+    var grid = '';
+    for (var i = 1; i < 24; i++) { grid += 'M' + i + ' 0V24M0 ' + i + 'H24'; }
+
+    function ic(x) { return { f: x.f || '', l: x.l || '', a: x.a || '' }; }
+
+    var NAMES = [['folder', '文件夹'], ['open', '文件夹展开'], ['empty', '空文件夹'], ['note', '笔记文件'], ['cur', '笔记（当前打开）'], ['add', '新建笔记'], ['pick', '选择文件夹']];
+    var CH = { r: 'M6.25 4.5L9.75 8L6.25 11.5', d: 'M4.5 6.25L8 9.75L11.5 6.25' };
+    // [名称, 层级, 图标, 箭头, 状态, 渐隐]
+    var LIGHT = [
+      ['会议记录', 0, 'open', 'd'],
+      ['周会 11-03', 1, 'note', '', 'sel'],
+      ['季度复盘', 1, 'note', ''],
+      ['项目', 0, 'open', 'd'],
+      ['设计稿', 1, 'open', 'd'],
+      ['首页改版方案第三轮评审意见与后续排期', 2, 'note', '', '', true],
+      ['归档', 0, 'folder', 'r', 'hov'],
+      ['草稿', 0, 'empty', ''],
+      ['读书笔记', 0, 'note', ''],
+      ['待办清单', 0, 'note', '']
+    ];
+    var DARK = [
+      ['会议记录', 0, 'open', 'd'],
+      ['周会 11-03', 1, 'note', '', 'sel'],
+      ['季度复盘', 1, 'note', ''],
+      ['归档', 0, 'folder', 'r', 'hov']
+    ];
+
+    function rows(I, list) {
+      return list.map(function (r) {
+        var x = ic(I[r[2]]);
+        return {
+          lbl: r[0],
+          cls: 'd' + r[1] + (r[4] ? ' ' + r[4] : ''),
+          chev: CH[r[3]] || '',
+          exp: r[3] === 'd' ? true : (r[3] === 'r' ? false : undefined),
+          on: r[4] === 'sel' ? 'on' : '',
+          fade: r[5] ? 'fade' : '',
+          f: x.f, l: x.l, a: x.a
+        };
+      });
+    }
+
+    function scheme(title, desc, I) {
+      return {
+        title: title,
+        desc: desc,
+        navLight: title + ' 文件树浅色',
+        navDark: title + ' 文件树深色',
+        cons: [['folder', '文件夹'], ['open', '文件夹展开'], ['note', '笔记文件']].map(function (k) {
+          var x = ic(I[k[0]]);
+          return { f: x.f, l: x.l, a: x.a, cap: k[1], grid: grid };
+        }),
+        set: NAMES.map(function (k) {
+          var x = ic(I[k[0] === 'cur' ? 'note' : k[0]]);
+          return { f: x.f, l: x.l, a: x.a, name: k[1], on: k[0] === 'cur' ? 'on' : '' };
+        }),
+        tree: rows(I, LIGHT),
+        dark: rows(I, DARK)
+      };
+    }
+
+    return {
+      schemes: [
+        scheme('方案 1 · 圆润舌片', '舌片是嵌在顶边中段的独立圆凸起，前片填浅色；展开时前片向前下倾斜，露出后片。笔记为圆角纸张 + 圆弧折角。', S1),
+        scheme('方案 2 · 平舌 + 内页', '扁平长舌片与主体一笔连成，只在前片下半填色；展开时探出一张内页。笔记右上切角，填色是一条标题条。', S2),
+        scheme('方案 3 · 前后层', '描边后片 + 实色前片两层叠放，前片略矮、圆角嵌进后片；展开时前片降低并倾斜。笔记两页叠放，后页只露边缘。', S3)
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
