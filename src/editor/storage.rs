@@ -85,13 +85,22 @@ fn write_draft(path: &Path, source: &str, base: Fingerprint) -> Result<(), Strin
 }
 pub(super) fn save(path: &Path, doc: &Doc, base: Fingerprint) -> Result<Fingerprint, String> {
     let source = markdown::serialize(doc);
-    // Write recovery first; a failed/conflicting save must survive process exit.
-    write_draft(path, &source, base)?;
-    let current = fs::read(path).map_err(|e| format!("File removed or unreadable; recovery draft retained: {e}"))?;
+    let current = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            let _ = write_draft(path, &source, base);
+            return Err(format!("File removed or unreadable; recovery draft retained: {e}"));
+        }
+    };
     if fingerprint(&current) != base {
+        let _ = write_draft(path, &source, base);
         return Err("External changes conflict with this document. Recovery draft retained; original file untouched.".into());
     }
-    atomic_write(path, source.as_bytes(), Some(base)).map_err(|e| format!("Save failed; recovery draft retained: {e}"))?;
-    let _ = fs::remove_file(draft_path(path));
+    if let Err(e) = atomic_write(path, source.as_bytes(), Some(base)) {
+        let _ = write_draft(path, &source, base);
+        return Err(format!("Save failed; recovery draft retained: {e}"));
+    }
+    let draft = draft_path(path);
+    if draft.exists() { let _ = fs::remove_file(draft); }
     Ok(fingerprint(source.as_bytes()))
 }

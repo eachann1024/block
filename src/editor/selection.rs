@@ -61,6 +61,9 @@ impl Editor {
     pub fn export_block_count(&self, selected_only: bool) -> usize {
         self.export_indices(selected_only).len()
     }
+    pub fn export_contains_table(&self, selected_only: bool) -> bool {
+        self.export_indices(selected_only).any(|i| self.doc.blocks[i].meta.table.is_some())
+    }
     pub fn export_budget(&self, selected_only: bool) -> (usize, usize) {
         self.export_indices(selected_only).fold((0usize, 0usize), |(bytes, spans), i| {
             let b = &self.doc.blocks[i];
@@ -84,9 +87,9 @@ impl Editor {
     pub(in crate::editor) fn reset_document(&mut self, doc: Doc) {
         self.caret = Caret::new(doc.blocks[0].id);
         self.doc = doc;
-        self.history.clear(); self.redo.clear(); self.composition_before = None;
-        self.dragging = None; self.drag_over = None; self.selecting = false;
-        self.hover = None; self.layouts.clear(); self.preferred_x = None::<Pixels>; self.pending_vertical = None;
+        self.history.clear(); self.redo.clear(); self.nowrap.clear();
+        self.preferred_x = None::<Pixels>;
+        self.clear_transient_overlays();
         self.list.reset(self.doc.blocks.len());
     }
 }

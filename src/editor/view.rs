@@ -1,26 +1,31 @@
 //! Editor entity: shared state, virtual list, and public document lifecycle.
 use std::{collections::HashMap, path::PathBuf};
 use gpui::{App, Context, FocusHandle, Focusable, ListAlignment, ListState, MouseButton,
-    Pixels, Window, actions, div, list, prelude::*, px};
+    Pixels, Point, Window, actions, div, list, prelude::*, px};
 use crate::theme::Theme;
 use super::model::Doc;
 use super::input::transactions::{Snapshot, HistoryEntry};
 #[path = "selection.rs"] pub(super) mod selection;
 #[path = "layout.rs"] pub(super) mod layout;
+#[path = "interaction.rs"] pub(super) mod interaction;
 #[path = "syntax.rs"] pub(super) mod syntax;
 #[path = "protocol.rs"] mod protocol;
 #[path = "storage.rs"] mod storage;
 #[path = "lifecycle.rs"] mod lifecycle;
+#[path = "session.rs"] mod session;
 use selection::Caret;
 use layout::TextLayout;
 use lifecycle::Persistence;
 
 actions!(editor, [Backspace, Delete, Left, Right, SelectLeft, SelectRight, SelectAll,
     Up, Down, SelectUp, SelectDown, Enter, Copy, Cut, Paste, Bold, Italic, Strike, Code,
-    Undo, Redo, Cancel, Save]);
+    Undo, Redo, Cancel, Save, NextCell, PreviousCell, TableMenuKey,
+    SetParagraph, SetH1, SetH2, SetH3, MoveBlockUp, MoveBlockDown, Underline, EditLink, ExitBlock,
+    DocStart, DocEnd, Find, ImageGrow, ImageShrink]);
 pub(super) enum EditorAction {
     Backspace, Delete, Left, Right, SelectLeft, SelectRight, SelectAll, Up, Down,
     SelectUp, SelectDown, Enter, Copy, Cut, Paste, Bold, Italic, Strike, Code, Undo, Redo, Cancel, Save,
+    NextCell, PreviousCell,
 }
 pub struct Editor {
     pub(super) doc: Doc,
@@ -28,8 +33,21 @@ pub struct Editor {
     pub(super) caret: Caret,
     pub(super) hover: Option<u64>,
     pub(super) dragging: Option<u64>,
-    pub(super) drag_over: Option<usize>,
+    pub(super) drag_over: Option<interaction::DropTarget>,
     pub(super) selecting: bool,
+    pub(super) block_menu: Option<super::block_menu::BlockMenu>,
+    pub(super) grip_origin: Option<Point<Pixels>>,
+    /// Code blocks the user switched to no-wrap (view state only, never saved).
+    pub(super) nowrap: std::collections::HashSet<u64>,
+    pub(super) table_sel: Option<(u64, super::table_actions::TableSel)>,
+    pub(super) table_menu: Option<super::table_actions::TableMenu>,
+    pub(super) table_drag: Option<super::table_actions::TableDrag>,
+    pub(super) table_chrome: Option<super::table_actions::TableChrome>,
+    pub(super) selection_origin: Option<(selection::Position, selection::Position, usize)>,
+    pub(super) toolbar_anchor: Option<Point<Pixels>>,
+    pub(super) format: Option<super::format_cmds::FormatPop>,
+    pub(super) link_focus: FocusHandle,
+    pub(super) link_ui: super::link_pop::LinkUi,
     pub(super) layouts: HashMap<u64, TextLayout>,
     pub(super) list: ListState,
     pub(super) preferred_x: Option<Pixels>,
@@ -42,18 +60,31 @@ pub struct Editor {
     pub(super) redo: Vec<HistoryEntry>,
     pub(super) composition_before: Option<Snapshot>,
     persistence: Persistence,
+    pointer_subscriptions: Vec<gpui::Subscription>,
+    /// Last in-app block copy: (plain text put on the clipboard, Markdown of the copied blocks).
+    pub(super) block_clip: Option<(String, String)>,
+    /// Esc block selection: (anchor index, head index).
+    pub(super) block_sel: Option<(usize, usize)>,
+    /// Quick-note mode: no floating toolbar, no block handles, narrower padding, no status bar.
+    pub(super) minimal: bool,
+    pub(super) find: Option<super::find::FindState>,
+    sessions: HashMap<PathBuf, session::TabSession>,
 }
 impl Editor {
     pub fn new(cx: &mut Context<Self>) -> Self {
         cx.on_app_quit(|editor, _| { editor.prepare_to_quit(); async {} }).detach();
         let doc = Doc::empty(); let caret = Caret::new(doc.blocks[0].id);
         Self { doc, caret, focus: cx.focus_handle(), hover: None, dragging: None,
-            drag_over: None, selecting: false, layouts: HashMap::new(),
+            drag_over: None, selecting: false, block_menu: None, grip_origin: None, nowrap: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, link_ui: Default::default(), link_focus: cx.focus_handle(), layouts: HashMap::new(),
             list: ListState::new(1, ListAlignment::Top, px(120.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
-            persistence: Persistence::default() }
+            persistence: Persistence::default(), pointer_subscriptions: Vec::new(), block_clip: None, block_sel: None, minimal: false, find: None, sessions: HashMap::new() }
     }
+    pub fn set_minimal(&mut self, minimal: bool) { self.minimal = minimal; }
+    pub fn reset_layouts(&mut self) { self.layouts.clear(); }
+    pub fn status_text(&self) -> &str { &self.status }
+    pub fn is_dirty(&self) -> bool { self.dirty }
     fn reveal(&mut self) {
         if !self.reveal_caret { return; }
         if let Some(layout) = self.layouts.get(&self.caret.head.block) {
@@ -63,13 +94,14 @@ impl Editor {
                 self.list.scroll_by(p.y + layout.line_height - viewport.bottom());
             }
         } else if let Some(index) = self.doc.index_of(self.caret.head.block) {
-            self.list.scroll_to(gpui::ListOffset { item_ix: index, offset_in_item: px(0.) });
+            self.list.scroll_to_reveal_item(index);
         }
     }
 }
 impl Focusable for Editor { fn focus_handle(&self, _: &App) -> FocusHandle { self.focus.clone() } }
 impl Render for Editor {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.track_pointer_lifecycle(window, cx);
         let theme = Theme::ocean(); self.reveal();
         let input_editor = cx.entity();
         let input = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
@@ -83,12 +115,40 @@ impl Render for Editor {
         let rows = list(self.list.clone(), move |index, _, cx| {
             editor.update(cx, |this, cx| {
                 let block = &this.doc.blocks[index];
-                let number = this.doc.list_number(block.id);
-                super::chrome::block_row(cx.entity(), block, this.hover == Some(block.id), this.drag_over == Some(index), number, cx).into_any_element()
+                let number = (block.kind == super::model::Kind::Numbered).then(|| this.doc.list_number(block.id)).flatten();
+                let edge = this.drag_over.filter(|target| target.index == index).map(|target| target.after);
+                let handles = !this.minimal && this.hover == Some(block.id) || this.caret.head.block == block.id || this.dragging == Some(block.id);
+                let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
+                let row = super::chrome::block_row(cx.entity(), block, handles, edge, number, this.caret.head.block == block.id, this.path.clone(), this.nowrap.contains(&block.id), cx);
+                div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
+                    // Round only the outer corners so stacked rows read as one band.
+                    .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md())).child(row).into_any_element()
             })
-        }).size_full();
-        div().id("editor").key_context("Editor").track_focus(&self.focus).size_full()
-            .relative().flex().flex_col().bg(theme.paper)
+        }).size_full().pt(px(36.)).pb(px(64.));
+        let rows = if self.minimal { div().flex_1().min_w_0().h_full().ml(px(-52.)).child(rows).into_any_element() } else { rows.into_any_element() };
+        let anchor_editor = cx.entity();
+        // Runs after all rows paint: layout retries never publish overlay geometry.
+        let anchor_sync = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
+            anchor_editor.update(cx, |this, cx| {
+                // `cx.notify()` is dropped while the window is painting, so changes here are
+                // published by a deferred notify that runs once this frame has finished.
+                let mut changed = false;
+                let anchor = this.selection_toolbar_anchor(bounds, window);
+                if this.toolbar_anchor != anchor { this.toolbar_anchor = anchor; changed = true; }
+                let chrome = this.table_chrome_geometry(window);
+                let same = match (&this.table_chrome, &chrome) {
+                    (None, None) => true,
+                    (Some(a), Some(b)) => a.block == b.block && a.cell == b.cell && a.bounds == b.bounds
+                        && a.columns == b.columns && a.rows == b.rows,
+                    _ => false };
+                if !same { this.table_chrome = chrome; changed = true; }
+                if changed { let me = cx.entity().downgrade(); cx.defer(move |cx| { me.update(cx, |_, cx| cx.notify()).ok(); }); }
+            });
+        }).absolute().size_full();
+        let floating = self.toolbar_anchor.filter(|_| !self.minimal && !self.caret.is_empty() && !self.selecting && self.dragging.is_none()
+            && self.caret.composing.is_none() && window.is_window_active() && self.focus.is_focused(window));
+        div().id("editor").key_context("Editor").track_focus(&self.focus).size_full().min_w_0()
+            .relative().flex().flex_col().overflow_hidden().bg(theme.paper)
             .child(input)
             .on_action(cx.listener(|this, _: &Left, w, cx| this.handle(&EditorAction::Left, w, cx)))
             .on_action(cx.listener(|this, _: &Right, w, cx| this.handle(&EditorAction::Right, w, cx)))
@@ -100,6 +160,8 @@ impl Render for Editor {
             .on_action(cx.listener(|this, _: &SelectUp, w, cx| this.handle(&EditorAction::SelectUp, w, cx)))
             .on_action(cx.listener(|this, _: &SelectDown, w, cx| this.handle(&EditorAction::SelectDown, w, cx)))
             .on_action(cx.listener(|this, _: &Enter, w, cx| this.handle(&EditorAction::Enter, w, cx)))
+            .on_action(cx.listener(|this, _: &NextCell, w, cx| this.handle(&EditorAction::NextCell, w, cx)))
+            .on_action(cx.listener(|this, _: &PreviousCell, w, cx| this.handle(&EditorAction::PreviousCell, w, cx)))
             .on_action(cx.listener(|this, _: &Backspace, w, cx| this.handle(&EditorAction::Backspace, w, cx)))
             .on_action(cx.listener(|this, _: &Delete, w, cx| this.handle(&EditorAction::Delete, w, cx)))
             .on_action(cx.listener(|this, _: &Copy, w, cx| this.handle(&EditorAction::Copy, w, cx)))
@@ -113,22 +175,64 @@ impl Render for Editor {
             .on_action(cx.listener(|this, _: &Redo, w, cx| this.handle(&EditorAction::Redo, w, cx)))
             .on_action(cx.listener(|this, _: &Cancel, w, cx| this.handle(&EditorAction::Cancel, w, cx)))
             .on_action(cx.listener(|this, _: &Save, w, cx| this.handle(&EditorAction::Save, w, cx)))
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, event, window, cx| this.pointer_down(event, window, cx)))
             .on_mouse_move(cx.listener(|this, event, _, cx| this.pointer_move(event, cx)))
-            .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| this.finish_drag(cx)))
-            .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.dragging = None; this.drag_over = None; this.selecting = false; cx.notify(); }))
-            .child(super::chrome::toolbar(cx.entity(), self.path.is_some(), self.caret.head.block))
-            .child(div().flex_1().min_h_0().w_full().max_w(theme.content_width).mx_auto()
+            .on_mouse_up(MouseButton::Left, cx.listener(|this, event: &gpui::MouseUpEvent, _, cx| this.finish_drag(event.position, cx)))
+            .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.clear_pointer(); cx.notify(); }))
+            .child(div().flex_1().min_h_0().min_w_0().w_full().mx_auto()
+                .max_w(super::chrome::standard_width(theme.content_width))
+                .when(self.minimal, |paper| paper.flex().pr(px(8.)))
+                // Minimal mode pulls the (unused) handle gutter out of view: 20px text padding.
                 .when(self.path.is_some(), |paper| paper.child(rows))
-                .when(self.path.is_none(), |paper| paper.flex().flex_col().gap_3().items_center().justify_center()
-                    .text_color(theme.text_secondary).child("Select a document to start editing")
+                .when(self.path.is_none() && !self.persistence.loading, |paper| paper.flex().flex_col().gap_3().items_center().justify_center()
+                    .text_color(theme.text_secondary).child("选择一篇文档开始编辑")
                     .child(div().id("recover-draft").px_3().py_1().rounded_md().bg(theme.hover)
-                        .cursor(gpui::CursorStyle::PointingHand).child("Recover latest draft")
+                        .cursor(gpui::CursorStyle::PointingHand).child("恢复最近草稿")
                         .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.recover_latest_draft(cx))))))
-            .child(div().min_h(px(26.)).flex_none().px_3().flex().items_center().gap_3().text_size(px(12.)).text_color(theme.text_secondary)
+            .when(!self.minimal, |root| root.child(div().min_h(px(26.)).flex_none().px_3().flex().items_center().gap_3().text_size(px(12.)).text_color(theme.text_secondary)
                 .child(div().flex_1().child(self.status.clone()))
                 .when(self.path.is_some() && self.dirty, |bar| bar.child(div().id("keep-draft-close")
                     .px_2().py_1().rounded_md().bg(theme.hover).cursor(gpui::CursorStyle::PointingHand)
-                    .child("Keep draft and close")
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.keep_draft_and_close(cx); })))))
+                    .child("保留草稿并关闭")
+                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.keep_draft_and_close(cx); }))))))
+            .when_some(self.table_chrome.clone(), |root, chrome| {
+                let dims = self.table_dimensions(chrome.block).unwrap_or((1, 1));
+                root.children(super::table_chrome::overlay(cx.entity(), &chrome, self.table_sel, self.table_menu, self.table_drag, dims))
+            })
+            .on_drop(cx.listener(|this, paths: &gpui::ExternalPaths, window, cx| {
+                let (id, place) = this.drop_target(window.mouse_position())
+                    .unwrap_or((this.caret.head.block, super::image_import::Place::After));
+                this.import_images(id, place, paths.paths().to_vec(), window, cx);
+            }))
+            .when_some(self.block_menu, |root, menu| {
+                let entries = self.block_menu_entries();
+                if entries.is_empty() { root } else { root.child(super::block_menu::overlay(cx.entity(), menu, entries)) }
+            })
+            .on_action(cx.listener(|this, _: &SetParagraph, _, cx| this.set_kind_shortcut(super::model::Kind::Paragraph, cx)))
+            .on_action(cx.listener(|this, _: &SetH1, _, cx| this.set_kind_shortcut(super::model::Kind::H1, cx)))
+            .on_action(cx.listener(|this, _: &SetH2, _, cx| this.set_kind_shortcut(super::model::Kind::H2, cx)))
+            .on_action(cx.listener(|this, _: &SetH3, _, cx| this.set_kind_shortcut(super::model::Kind::H3, cx)))
+            .on_action(cx.listener(|this, _: &MoveBlockUp, w, cx| this.move_block_shortcut(true, w, cx)))
+            .on_action(cx.listener(|this, _: &MoveBlockDown, w, cx| this.move_block_shortcut(false, w, cx)))
+            .on_action(cx.listener(|this, _: &DocStart, _, cx| this.doc_edge(false, false, cx)))
+            .on_action(cx.listener(|this, _: &DocEnd, _, cx| this.doc_edge(true, false, cx)))
+            .on_action(cx.listener(|this, _: &TableMenuKey, _, cx| this.open_cell_menu(cx)))
+            .on_action(cx.listener(|this, _: &Underline, _, cx| this.underline(cx)))
+            .on_action(cx.listener(|this, _: &EditLink, w, cx| this.open_link(w, cx)))
+            .on_action(cx.listener(|this, _: &ImageGrow, _, cx| this.step_selected_image(10, cx)))
+            .on_action(cx.listener(|this, _: &ImageShrink, _, cx| this.step_selected_image(-10, cx)))
+            .on_action(cx.listener(|this, _: &ExitBlock, w, cx| this.exit_block(w, cx)))
+            .on_action(cx.listener(|this, _: &Find, w, cx| this.open_find(w, cx)))
+            .on_mouse_down(MouseButton::Right, cx.listener(|this, event: &gpui::MouseDownEvent, window, cx| {
+                this.pointer_down(&gpui::MouseDownEvent { button: MouseButton::Left, click_count: 1, ..event.clone() }, window, cx);
+                this.selecting = false;
+                if let Some((id, r, c)) = this.cell_of_caret() { this.open_table_menu(id, super::table_actions::TableSel::Cell(r, c), event.position, cx); }
+            }))
+            .when_some(floating, |root, anchor| root.child(gpui::deferred(
+                super::chrome::selection_toolbar(cx.entity(), self.caret.head.block, anchor))))
+            .when_some(self.format.clone(), |root, pop| root.child(super::format_ui::popover(cx.entity(), &pop, &self.link_focus)))
+            .when_some(self.link_pill(cx.entity(), window), |root, pill| root.child(pill))
+            .child(anchor_sync)
+            .children(super::find_bar::find_bar(self, cx))
     }
 }

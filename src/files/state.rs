@@ -5,34 +5,102 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Default)]
-struct State { folder: Option<PathBuf> }
+#[derive(Serialize, Deserialize, Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeMode {
+    #[default]
+    Light,
+    Dark,
+    System,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum FontChoice {
+    #[default]
+    Sans,
+    Serif,
+    Mono,
+}
+
+/// Unknown/missing keys default, so older state files keep loading.
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+pub struct State {
+    pub folder: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notebooks: Vec<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar_width: Option<f32>,
+    #[serde(default)]
+    pub theme: ThemeMode,
+    #[serde(default)]
+    pub font_family: FontChoice,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_smoothing: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shortcut_search: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shortcut_quick: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub open_tabs: Vec<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_tab: Option<PathBuf>,
+}
 static NEXT: AtomicU64 = AtomicU64::new(0);
+static WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+const MAX_NOTEBOOKS: usize = 12;
 
 fn state_path() -> io::Result<PathBuf> {
     let home = std::env::var_os("HOME").ok_or_else(|| io::Error::other("HOME 未设置"))?;
     Ok(PathBuf::from(home).join("Library/Application Support/thinkly-fast/state.json"))
 }
 
-pub fn load_folder() -> io::Result<Option<PathBuf>> { load_folder_at(&state_path()?) }
-pub fn save_folder(folder: &Path) -> io::Result<()> { save_folder_at(&state_path()?, folder) }
+pub fn load_state() -> io::Result<State> { load_state_at(&state_path()?) }
 
-pub fn load_folder_at(path: &Path) -> io::Result<Option<PathBuf>> {
-    let text = match fs::read(path) {
-        Ok(text) => text,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error),
-    };
-    let state: State = serde_json::from_slice(&text)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-    // A missing remembered folder is reported by scan, never silently discarded.
-    Ok(state.folder)
+/// Read-modify-write under one lock so width and folder saves never clobber each other.
+pub fn update_state(change: impl FnOnce(&mut State)) -> io::Result<State> {
+    let _guard = WRITE.lock().unwrap_or_else(|poison| poison.into_inner());
+    let path = state_path()?;
+    let mut state = load_state_at(&path).unwrap_or_default();
+    change(&mut state);
+    write_state_at(&path, &state)?;
+    Ok(state)
 }
 
-pub fn save_folder_at(path: &Path, folder: &Path) -> io::Result<()> {
+/// Opening a folder makes it the current notebook and the most recent one.
+pub fn save_folder(folder: &Path) -> io::Result<State> {
+    update_state(|state| {
+        if state.folder.as_deref() != Some(folder) {
+            state.open_tabs.clear();
+            state.active_tab = None;
+        }
+        state.folder = Some(folder.to_owned());
+        if !state.notebooks.iter().any(|known| known == folder) {
+            state.notebooks.insert(0, folder.to_owned());
+            state.notebooks.truncate(MAX_NOTEBOOKS);
+        }
+    })
+}
+
+pub fn load_state_at(path: &Path) -> io::Result<State> {
+    let text = match fs::read(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(State::default()),
+        Err(error) => return Err(error),
+    };
+    let mut state: State = serde_json::from_slice(&text)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    // A missing remembered folder is reported by scan, never silently discarded.
+    if let Some(folder) = state.folder.clone() {
+        if !state.notebooks.contains(&folder) { state.notebooks.insert(0, folder); }
+    }
+    Ok(state)
+}
+
+fn write_state_at(path: &Path, state: &State) -> io::Result<()> {
     let parent = path.parent().ok_or_else(|| io::Error::other("无效的偏好路径"))?;
     fs::create_dir_all(parent)?;
-    let bytes = serde_json::to_vec_pretty(&State { folder: Some(folder.to_owned()) })?;
+    let bytes = serde_json::to_vec_pretty(state)?;
     let (temp, mut file) = (0..64).find_map(|_| {
         let temp = parent.join(format!(".state-{}-{}.tmp", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
         match OpenOptions::new().write(true).create_new(true).open(&temp) {

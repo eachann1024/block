@@ -3,15 +3,28 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{ops::Index, sync::Arc};
 
 type Link = Option<Arc<Node>>;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Run { indent: usize, count: u64, start: u64 }
+fn single_run(b: &Block) -> Option<Run> {
+    matches!(b.kind, Kind::Numbered | Kind::Bullet | Kind::Todo).then_some(Run {
+        indent: b.meta.indent, count: u64::from(b.kind == Kind::Numbered), start: b.meta.list_start.unwrap_or(1),
+    })
+}
+fn merge_run(a: Run, b: Run) -> Run {
+    if a.indent < b.indent { a } else if b.indent < a.indent { b }
+    else if a.count > 0 && b.count > 0 { Run { indent: a.indent, count: a.count + b.count, start: a.start } }
+    else { Run { indent: a.indent, count: 0, start: 0 } }
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Node { key: u128, priority: u64, size: usize, block: Arc<Block>, left: Link, right: Link, run: Option<(usize,u64)> }
+struct Node { key: u128, priority: u64, size: usize, block: Arc<Block>, left: Link, right: Link, run: Option<Run> }
 fn size(link: &Link) -> usize { link.as_ref().map_or(0, |n| n.size) }
 fn update(node: &mut Node) {
     node.size = 1 + size(&node.left) + size(&node.right);
-    let indent = node.block.meta.indent;
-    node.run = (node.block.kind == Kind::Numbered
-        && node.left.as_ref().is_none_or(|n| n.run.map(|run|run.0) == Some(indent))
-        && node.right.as_ref().is_none_or(|n| n.run.map(|run|run.0) == Some(indent))).then_some((indent,node.left.as_ref().and_then(|n|n.run).map_or(node.block.meta.list_start.unwrap_or(1),|run|run.1)));
+    node.run = single_run(&node.block).and_then(|mut r| {
+        if let Some(left) = &node.left { r = merge_run(left.run?, r); }
+        if let Some(right) = &node.right { r = merge_run(r, right.run?); }
+        Some(r)
+    });
 }
 fn priority(mut id: u64) -> u64 {
     id = id.wrapping_add(0x9e3779b97f4a7c15);
@@ -119,9 +132,11 @@ impl Blocks {
         let mut state=(1u64,block.meta.list_start.unwrap_or(1));
         fn scan(root:&Link,key:u128,full:bool,indent:usize,state:&mut (u64,u64))->bool {
             let Some(n)=root else {return false;};
-            if full && let Some((depth,start))=n.run {
-                if depth==indent {state.0=state.0.saturating_add(n.size as u64);state.1=start;}
-                return depth<indent;
+            if full && let Some(run)=n.run {
+                if run.indent>indent {return false;}
+                if run.indent==indent && run.count>0 {
+                    state.0=state.0.saturating_add(run.count);state.1=run.start;return false;
+                }
             }
             if !full && n.key>=key {return scan(&n.left,key,false,indent,state);}
             if scan(&n.right,key,full,indent,state) {return true;}
@@ -147,7 +162,7 @@ impl Blocks {
             else { low + (high-low)/2 };
         self.ids.insert(block.id, key);
         let node = Some(Arc::new(Node { key, priority: priority(block.id), size: 1,
-            run: (block.kind == Kind::Numbered).then_some((block.meta.indent,block.meta.list_start.unwrap_or(1))),
+            run: single_run(&block),
             block: Arc::new(block), left: None, right: None }));
         let (a, b) = split(self.root.take(), index);
         self.root = join(join(a, node), b);
@@ -207,7 +222,7 @@ impl FromIterator<Block> for Blocks {
         for (i, block) in iter.into_iter().enumerate() {
             let key = (i as u128 + 1) << 64; result.ids.insert(block.id, key);
             let mut node = Node { key, priority: priority(block.id), size: 1,
-                run: (block.kind == Kind::Numbered).then_some((block.meta.indent,block.meta.list_start.unwrap_or(1))),
+                run: single_run(&block),
             block: Arc::new(block), left: None, right: None };
             let mut left = None;
             while stack.last().is_some_and(|n| n.priority > node.priority) {
