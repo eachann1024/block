@@ -1,7 +1,10 @@
-mod scan;
+mod create;
+pub mod index;
+pub mod scan;
 mod sort;
-mod state;
+pub mod state;
 pub mod tree;
 
-pub use scan::{fresh_note_path, scan};
+pub use create::{create_note_at, note_candidates};
+pub use scan::scan;
 pub use state::{load_folder, save_folder};
