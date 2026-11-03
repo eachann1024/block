@@ -136,9 +136,10 @@ impl Workspace {
 
     fn open_hit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(path) = self.search.as_ref().and_then(|s| s.hits.get(s.selected)).map(|h| h.path.clone()) else { return };
+        self.settings = None;
         self.close_search(window, cx);
         if self.busy() { return; }
-        self.editor.update(cx, |editor, cx| editor.open(path, cx));
+        self.open_file(path, cx);
     }
 
     pub(super) fn search_view(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
