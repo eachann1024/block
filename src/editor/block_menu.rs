@@ -66,8 +66,10 @@ impl Editor {
                 let Some(block) = self.doc.get(menu.block) else { return Vec::new() };
                 if !block.text.is_empty() && !block.text.starts_with('/') { return Vec::new(); }
                 let query = block.text.trim_start_matches('/').to_lowercase();
-                SLASH.into_iter().filter(|c| query.is_empty() || c.label().contains(&query) || c.keywords().contains(&query))
-                    .map(Some).collect()
+                let mut hits: Vec<Cmd> = SLASH.into_iter().filter(|c| query.is_empty() || c.label().to_lowercase().contains(&query) || c.keywords().contains(&query)).collect();
+                // Prefix matches on the label rank first, so "/ai" puts AI 写作 on top.
+                if !query.is_empty() { hits.sort_by_key(|c| !c.label().to_lowercase().starts_with(&query)); }
+                hits.into_iter().map(Some).collect()
             }
             Mode::Handle => {
                 let Some(block) = self.doc.get(menu.block) else { return Vec::new() };
@@ -124,18 +126,36 @@ impl Editor {
         items.push(Some(if kind == BlockType::Table { Cmd::TableOp(TableCmd::DeleteTable) } else { Cmd::Delete }));
         items
     }
+    fn selectable_menu_cmds(&self) -> Vec<Cmd> {
+        self.block_menu_entries().into_iter().flatten().filter(|c| !matches!(c, Cmd::Header(_))).collect()
+    }
     pub(super) fn block_menu_step(&mut self, down: bool, cx: &mut Context<Self>) -> bool {
-        let Some(mut menu) = self.block_menu.filter(|m| m.mode == Mode::Slash) else { return false };
-        let count = self.block_menu_entries().len();
+        let Some(mut menu) = self.block_menu else { return false };
+        let count = self.selectable_menu_cmds().len();
         if count == 0 { return false; }
         menu.index = if down { (menu.index + 1) % count } else { (menu.index + count - 1) % count };
         self.block_menu = Some(menu); cx.notify(); true
     }
     pub(super) fn block_menu_pick(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let Some(menu) = self.block_menu.filter(|m| m.mode == Mode::Slash) else { return false };
-        let entries = self.block_menu_entries();
-        let Some(Some(cmd)) = entries.get(menu.index.min(entries.len().saturating_sub(1))).copied() else { return false };
+        let Some(menu) = self.block_menu else { return false };
+        let cmds = self.selectable_menu_cmds();
+        let Some(cmd) = cmds.get(menu.index.min(cmds.len().saturating_sub(1))).copied() else { return false };
         self.run_block_cmd(menu.block, menu.mode, cmd, window, cx); true
+    }
+    pub(super) fn block_menu_nav(&mut self, right: bool, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(menu) = self.block_menu.filter(|m| m.mode == Mode::Handle) else { return false };
+        if right {
+            let cmds = self.selectable_menu_cmds();
+            if let Some(cmd @ Cmd::Open(..)) = cmds.get(menu.index.min(cmds.len().saturating_sub(1))).copied() {
+                self.run_block_cmd(menu.block, menu.mode, cmd, window, cx);
+            }
+        } else if menu.sub != Sub::Root {
+            self.run_block_cmd(menu.block, menu.mode, Cmd::Back, window, cx);
+        } else {
+            self.block_menu = None;
+            cx.notify();
+        }
+        true
     }
     /// Toolbar insertion: use the caret block when it is an empty paragraph, otherwise add below it.
     pub(super) fn insert_here(&mut self, cmd: Cmd, window: &mut Window, cx: &mut Context<Self>) {
@@ -223,18 +243,17 @@ impl Editor {
                 caret = Some(Position { block: self.doc.blocks[at].id, offset: 0 });
             }
             Cmd::Duplicate => {
-                let mut copy = block.clone(); copy.id = 0;
-                self.doc.splice_blocks(index + 1..index + 1, vec![copy]);
-                changes.push(ListChange { start: index + 1, before: 0, after: 1 });
+                let hi_ext = self.list_subtree_end(index);
+                let copies: Vec<Block> = (index..=hi_ext).map(|i| { let mut b = self.doc.blocks[i].clone(); b.id = 0; b }).collect();
+                let count = copies.len();
+                self.doc.splice_blocks(hi_ext + 1..hi_ext + 1, copies);
+                changes.push(ListChange { start: hi_ext + 1, before: 0, after: count });
             }
             Cmd::CopyText => { cx.write_to_clipboard(gpui::ClipboardItem::new_string(block.text.clone())); return; }
             Cmd::MoveUp | Cmd::MoveDown => {
-                let to = if cmd == Cmd::MoveUp { index.saturating_sub(1) } else { index + 1 };
-                if to != index && to < self.doc.blocks.len() {
-                    self.doc.move_block(id, to);
-                    changes.push(ListChange { start: index, before: 1, after: 0 });
-                    changes.push(ListChange { start: to, before: 0, after: 1 });
-                }
+                self.move_block_range(index, index, cmd == Cmd::MoveUp, cx);
+                window.focus(&self.focus); cx.notify();
+                return;
             }
             Cmd::Header(_) | Cmd::Open(..) | Cmd::Back | Cmd::TurnTo(..) | Cmd::CodeTo(_) | Cmd::SetLanguage(..) | Cmd::CopyCode
                 | Cmd::TableOp(_) | Cmd::CopyImage | Cmd::RevealImage | Cmd::AlignImage(..) | Cmd::ToggleWrap(_) => return,
