@@ -1,10 +1,12 @@
 mod create;
+pub mod ops;
 pub mod index;
 pub mod scan;
+pub mod search;
 mod sort;
 pub mod state;
 pub mod tree;
 
-pub use create::{create_note_at, note_candidates};
+pub use create::{create_note, create_note_at, note_candidates};
 pub use scan::scan;
-pub use state::{load_folder, save_folder};
+pub use state::{load_state, save_folder, update_state};

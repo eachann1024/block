@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>设置 · 方案 B 侧栏弹出式面板</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#779de8}a:hover{color:#9ab6f0}
+button,input,select{font-family:inherit}
+.row{font:inherit;font-size:14px;line-height:20px;font-weight:400;width:100%;height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border:0;border-radius:6px;background:transparent;text-align:left;cursor:pointer;box-sizing:border-box}
+.btn{font:inherit;font-size:14px;font-weight:460;height:36px;padding:0 10px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;white-space:nowrap}
+.btn:active{transform:scale(.98)}
+.seg{font:inherit;font-size:14px;font-weight:460;height:32px;flex:1;padding:0 8px;border:0;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;white-space:nowrap}
+.kbd{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;justify-content:center;height:28px;padding:0 8px;border-radius:6px;font-size:14px;cursor:pointer;border:1px solid transparent;box-sizing:border-box;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</helmet>
+<div style="width:100%;height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:{{shellBg}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:{{textPrimary}};font-size:14px;line-height:20px;overflow:hidden;position:relative;-webkit-font-smoothing:{{smoothingCss}}">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;padding:0 16px;gap:12px">
+<div aria-hidden="true" style="display:flex;gap:8px;width:52px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<div style="flex:1;text-align:center;font-size:14px;color:{{textSecondary}}">周会 11-03</div>
+<div aria-hidden="true" style="width:52px;flex:none"></div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+<aside aria-label="文件列表" style="width:260px;flex:none;background:{{sidebarBg}};border-right:1px solid {{borderCol}};box-sizing:border-box;display:flex;flex-direction:column;min-height:0;position:relative">
+<div style="display:flex;gap:8px;padding:12px 12px 8px">
+<button class="btn" style="flex:1;min-width:0;background:{{paperBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">选择文件夹</button>
+<button class="btn" style="flex:1;min-width:0;background:{{primaryBg}};color:#ffffff;border:0">新建笔记</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;padding:4px 8px 12px;display:flex;flex-direction:column;gap:2px">
+<button class="row" style="color:{{textPrimary}}">会议记录</button>
+<button class="row" style="padding-left:28px;background:{{selectedBg}};color:{{textPrimary}};box-shadow:inset 0 0 0 1px {{accent}};font-weight:460">周会 11-03</button>
+<button class="row" style="padding-left:28px;color:{{textPrimary}}">需求评审</button>
+<button class="row" style="color:{{textPrimary}}">产品原则</button>
+<button class="row" style="color:{{textPrimary}}">发布清单</button>
+</div>
+<div style="flex:none;height:44px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-top:1px solid {{borderCol}}">
+<span style="font-size:14px;color:{{textSecondary}}">本地笔记</span>
+<button aria-label="打开设置" style="width:30px;height:30px;border:0;border-radius:6px;background:{{selectedBg}};color:{{textPrimary}};box-shadow:inset 0 0 0 1px {{accent}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.77 1.05 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+</button>
+</div>
+</aside>
+
+<main style="flex:999 1 560px;min-width:0;background:{{paperBg}};overflow:auto;font-family:{{editorFontStack}}">
+<div style="box-sizing:border-box;width:100%;max-width:816px;margin:0 auto;padding:36px 28px 64px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;align-items:flex-start;gap:8px"><div style="width:44px;flex:none"></div><h1 style="flex:1;min-width:0;max-width:720px;margin:0;font-size:28px;line-height:1.35;font-weight:560;letter-spacing:-0.01em">把周会改成异步</h1></div>
+<div style="display:flex;align-items:flex-start;gap:8px"><div style="width:44px;flex:none"></div><p style="flex:1;min-width:0;max-width:720px;margin:0;font-size:17px;line-height:1.5">上周排了三场同步会，两场结束时没有结论。人到齐，并不等于事情被推进。</p></div>
+<div style="display:flex;align-items:flex-start;gap:8px"><div style="width:44px;flex:none"></div><p style="flex:1;min-width:0;max-width:720px;margin:0;font-size:17px;line-height:1.5">与其等所有人空出同一段时间，不如把状态写在这里：这周要什么、卡在哪、需要谁看一眼。</p></div>
+<div style="display:flex;align-items:flex-start;gap:8px"><div style="width:44px;flex:none"></div><blockquote style="flex:1;min-width:0;max-width:720px;margin:0;padding:2px 0 2px 14px;border-left:2px solid {{quoteBar}};font-size:17px;line-height:1.5">会议是例外，不是节奏。一段文字能说清的，不要再约三十分钟。</blockquote></div>
+<div style="display:flex;align-items:flex-start;gap:8px"><div style="width:44px;flex:none"></div><h2 style="flex:1;min-width:0;max-width:720px;margin:0;font-size:22px;line-height:1.4;font-weight:560">保留下来的三件事</h2></div>
+<div style="display:flex;align-items:flex-start;gap:8px"><div style="width:44px;flex:none"></div><p style="flex:1;min-width:0;max-width:720px;margin:0;font-size:17px;line-height:1.5">无遮罩弹出设置，调节深浅主题、正文字体或字体平滑时可直接对比右侧正文渲染细节。</p></div>
+</div>
+</main>
+</div>
+
+<div role="dialog" aria-label="快捷设置浮层" style="position:absolute;left:12px;bottom:52px;width:320px;background:{{menuBg}};border:1px solid {{borderCol}};border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,0.38);padding:14px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
+
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="font-size:14px;font-weight:560;color:{{textPrimary}}">外观主题</div>
+<div role="group" aria-label="外观主题" style="display:flex;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};gap:2px">
+<sc-for list="{{themes}}" as="t" hint-placeholder-count="3">
+<button class="seg" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button>
+</sc-for>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="font-size:14px;font-weight:560;color:{{textPrimary}}">正文字体</div>
+<div role="group" aria-label="正文字体" style="display:flex;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};gap:2px">
+<sc-for list="{{fonts}}" as="f" hint-placeholder-count="3">
+<button class="seg" onClick="{{f.pick}}" style="{{f.style}}">{{f.label}}</button>
+</sc-for>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;min-height:32px;gap:12px">
+<span style="font-size:14px;color:{{textPrimary}}">字体平滑</span>
+<button role="switch" aria-checked="{{smoothOn}}" aria-label="切换字体平滑" onClick="{{toggleSmooth}}" style="font:inherit;height:30px;padding:0 10px;border-radius:6px;border:1px solid {{smoothBorder}};background:{{smoothBg}};color:{{textPrimary}};font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+<span style="width:7px;height:7px;border-radius:4px;background:{{smoothDot}}"></span>
+<span>{{smoothLabel}}</span>
+</button>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px solid {{borderCol}}">
+<div style="font-size:14px;font-weight:560;color:{{textPrimary}}">快捷键</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;height:32px;gap:8px">
+<span style="font-size:14px;color:{{textPrimary}}">搜索与全局唤起</span>
+<button class="kbd" style="background:{{selectedBg}};border-color:{{accent}};color:{{textPrimary}};box-shadow:inset 0 0 0 1px {{accent}}">⌘⇧K</button>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;height:32px;gap:8px">
+<span style="font-size:14px;color:{{textPrimary}}">速记小窗</span>
+<button class="kbd" style="background:{{shellBg}};border-color:{{btnBorder}};color:{{textPrimary}}">⌥N</button>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;height:32px;gap:8px">
+<span style="font-size:14px;color:{{textPrimary}}">当前笔记查找</span>
+<button class="kbd" style="background:{{shellBg}};border-color:{{btnBorder}};color:{{textPrimary}}">⌘F</button>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;height:32px;gap:8px">
+<span style="font-size:14px;color:{{textPrimary}}">新建笔记</span>
+<button class="kbd" style="background:{{shellBg}};border-color:{{btnBorder}};color:{{textPrimary}}">⌘N</button>
+</div>
+</div>
+
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["light","dark","system"]},"font":{"editor":"enum","default":"serif","options":["sans","serif","mono"]},"smooth":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = {
+      theme: null,
+      font: null,
+      smooth: null
+    };
+  }
+  renderVals() {
+    const themeMode = this.state.theme ?? this.props.theme ?? 'dark';
+    const isDark = themeMode !== 'light';
+    const fontMode = this.state.font ?? this.props.font ?? 'serif';
+    const smoothOn = this.state.smooth ?? this.props.smooth ?? true;
+
+    const shellBg = isDark ? '#343434' : '#f1f1f1';
+    const sidebarBg = isDark ? '#222222' : '#fafafa';
+    const paperBg = isDark ? '#181818' : '#ffffff';
+    const menuBg = isDark ? '#222222' : '#ffffff';
+    const textPrimary = isDark ? '#ececec' : '#20242c';
+    const textSecondary = isDark ? '#b4b4b4' : '#526071';
+    const accent = isDark ? '#779de8' : '#547dd0';
+    const selectedBg = isDark ? '#343434' : '#e5edfc';
+    const borderCol = isDark ? '#383838' : '#e6e6e6';
+    const btnBorder = isDark ? '#444444' : '#dcdcdc';
+    const primaryBg = isDark ? '#445066' : '#2f3540';
+    const quoteBar = isDark ? '#48505e' : '#d5dbe3';
+
+    const segStyle = (active) => active
+      ? `background:${selectedBg};color:${textPrimary};box-shadow:inset 0 0 0 1px ${accent}`
+      : `background:transparent;color:${textSecondary}`;
+
+    const themes = [
+      { id: 'light', label: '浅色' },
+      { id: 'dark', label: '深色' },
+      { id: 'system', label: '跟随系统' }
+    ].map((t) => ({
+      ...t,
+      style: segStyle(themeMode === t.id),
+      pick: () => this.setState({ theme: t.id })
+    }));
+
+    const fonts = [
+      { id: 'sans', label: '无衬线' },
+      { id: 'serif', label: '文楷' },
+      { id: 'mono', label: '等宽' }
+    ].map((f) => ({
+      ...f,
+      style: segStyle(fontMode === f.id),
+      pick: () => this.setState({ font: f.id })
+    }));
+
+    const editorFontStack = fontMode === 'serif'
+      ? "'LXGW WenKai','Songti SC','STSong',Georgia,serif"
+      : fontMode === 'mono'
+        ? "'JetBrains Mono',ui-monospace,Menlo,'PingFang SC',monospace"
+        : "Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif";
+
+    return {
+      shellBg,
+      sidebarBg,
+      paperBg,
+      menuBg,
+      textPrimary,
+      textSecondary,
+      accent,
+      selectedBg,
+      borderCol,
+      btnBorder,
+      primaryBg,
+      quoteBar,
+      themes,
+      fonts,
+      editorFontStack,
+      smoothOn,
+      smoothLabel: smoothOn ? '已开启' : '已关闭',
+      smoothBg: smoothOn ? selectedBg : shellBg,
+      smoothBorder: smoothOn ? accent : btnBorder,
+      smoothDot: smoothOn ? accent : textSecondary,
+      smoothingCss: smoothOn ? 'antialiased' : 'auto',
+      toggleSmooth: () => this.setState({ smooth: !smoothOn })
+    };
+  }
+}
+</script>
+</body>
+</html>
