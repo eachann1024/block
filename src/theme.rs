@@ -3,6 +3,8 @@
 
 use gpui::{Hsla, Pixels, hsla, px};
 
+use crate::icons::IconColors;
+
 fn hex(value: u32) -> Hsla {
     let r = ((value >> 16) & 0xff) as f32 / 255.0;
     let g = ((value >> 8) & 0xff) as f32 / 255.0;
@@ -38,6 +40,7 @@ pub struct Theme {
     pub text: Hsla,
     pub text_secondary: Hsla,
     pub accent: Hsla,
+    pub icon_fill: Hsla,
     pub hover: Hsla,
     pub selected: Hsla,
     pub hairline: Hsla,
@@ -51,6 +54,11 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// Icon tints: `line` is the stroke color the caller wants.
+    pub fn icon_colors(&self, line: Hsla) -> IconColors {
+        IconColors { line, fill: self.icon_fill, accent: self.accent }
+    }
+
     pub fn ocean() -> Self {
         Self {
             shell: hex(0xf1f1f1),
@@ -60,6 +68,7 @@ impl Theme {
             text: hex(0x20242c),
             text_secondary: hex(0x526071),
             accent: hex(0x547dd0),
+            icon_fill: hex(0xc9d8f3),
             hover: hex(0xeef3fc),
             selected: hex(0xe5edfc),
             hairline: hex(0xe4e6ea),
