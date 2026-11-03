@@ -190,7 +190,7 @@ impl Workspace {
             .window_control_area(WindowControlArea::Drag)
             .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
             .when(tab_count > 1, |l| l.child(
-                div().ml_auto().text_size(px(11.)).text_color(theme.text_secondary).opacity(0.65)
+                div().ml_auto().text_size(px(12.)).line_height(px(16.)).text_color(theme.text_secondary)
                     .child(format!("{tab_count} 篇已打开")),
             ));
         let mut right = div().id("titlebar-tabs").flex_1().min_w_0().h_full().flex().items_center()
@@ -219,7 +219,7 @@ impl Workspace {
                         cx.stop_propagation();
                         this.new_item(false, window, cx);
                     }))
-                    .child(icon(Icon::Plus, px(13.), theme.icon_colors(theme.text_secondary))));
+                    .child(icon(Icon::Plus, px(14.), theme.icon_colors(theme.text_secondary))));
             }
             right = right.child(div().id("titlebar-drag-spacer").flex_1().min_w(px(16.)).h_full()
                 .window_control_area(WindowControlArea::Drag)
@@ -239,12 +239,18 @@ impl Workspace {
         let mid_path = path.clone();
         let close_path = path;
         let icon_tint = if multi && active { theme.icon_colors(theme.accent) } else { theme.icon_colors(theme.text_secondary) };
-        div().id(("tab", ix)).group(group.clone()).h(px(28.)).min_w(px(84.)).max_w(if multi { px(196.) } else { px(240.) })
-            .when(multi, |t| t.flex_basis(px(168.)).flex_shrink())
-            .px(px(8.)).rounded(px(6.)).flex().items_center().gap(px(6.))
-            .cursor(CursorStyle::PointingHand).text_size(px(13.))
-            .when(multi && active, |t| t.bg(theme.selected).border_1().border_color(theme.accent)
-                .text_color(theme.text).font_weight(FontWeight(500.)))
+        let close_btn = div().id(("tab-close", ix)).size(px(18.)).flex_none().flex().items_center().justify_center().rounded(px(4.))
+            .hover(|s| s.bg(theme.selection))
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                this.close_tab(close_path.clone(), cx);
+            }))
+            .child(icon(Icon::Close, px(12.), theme.icon_colors(theme.text_secondary)));
+        let pill = div().id(("tab", ix)).group(group.clone()).h(px(28.)).min_w(px(104.)).max_w(if multi { px(196.) } else { px(240.) })
+            .when(multi, |t| t.flex_basis(px(176.)).flex_shrink())
+            .pl(px(10.)).pr(px(6.)).rounded(px(6.)).flex().items_center().gap(px(6.))
+            .cursor(CursorStyle::PointingHand).text_size(px(13.)).font_weight(FontWeight(460.))
+            .when(multi && active, |t| t.bg(theme.selected).border_1().border_color(theme.accent).text_color(theme.text))
             .when(multi && !active, |t| t.text_color(theme.text_secondary)
                 .hover(|s| s.bg(theme.hover).text_color(theme.text)))
             .when(!multi, |t| t.text_color(theme.text).hover(|s| s.bg(theme.hover)))
@@ -258,16 +264,18 @@ impl Workspace {
                 cx.stop_propagation();
                 this.close_tab(mid_path.clone(), cx);
             }))
-            .child(icon(Icon::Note, px(13.), icon_tint))
-            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(label))
-            .when(dirty, |t| t.child(div().size(px(6.)).flex_none().rounded_full().bg(theme.accent)))
-            .child(div().id(("tab-close", ix)).size(px(18.)).flex_none().flex().items_center().justify_center().rounded(px(4.))
-                .when(!multi || !active, |b| b.invisible().group_hover(group, |s| s.visible()))
-                .hover(|s| s.bg(theme.btn_hover))
-                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                    cx.stop_propagation();
-                    this.close_tab(close_path.clone(), cx);
-                }))
-                .child(icon(Icon::Close, px(11.), theme.icon_colors(theme.text_secondary))))
+            .child(icon(Icon::Note, px(14.), icon_tint))
+            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(label));
+        if multi && active {
+            pill.when(dirty, |t| t.child(div().size(px(6.)).flex_none().rounded_full().bg(theme.accent)))
+                .child(close_btn)
+        } else {
+            pill.child(
+                div().size(px(18.)).flex_none().relative().flex().items_center().justify_center()
+                    .when(dirty, |s| s.child(div().size(px(6.)).rounded_full().bg(theme.accent)
+                        .group_hover(group.clone(), |d| d.invisible())))
+                    .child(close_btn.absolute().inset_0().invisible().group_hover(group, |b| b.visible())),
+            )
+        }
     }
 }
