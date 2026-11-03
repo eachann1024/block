@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>设置 · 方案 C 画布内页与实时字体预览</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input,select{font-family:inherit}
+.row{font:inherit;font-size:14px;line-height:20px;font-weight:400;width:100%;height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border:0;border-radius:6px;background:transparent;text-align:left;cursor:pointer;box-sizing:border-box}
+.btn{font:inherit;font-size:14px;font-weight:460;height:36px;padding:0 10px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;white-space:nowrap}
+.btn:active{transform:scale(.98)}
+.seg{font:inherit;font-size:14px;font-weight:460;height:34px;padding:0 14px;border:0;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;white-space:nowrap}
+.kbd{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;justify-content:center;height:30px;padding:0 10px;border-radius:6px;font-size:14px;cursor:pointer;border:1px solid transparent;box-sizing:border-box;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</helmet>
+<div style="width:100%;height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:{{shellBg}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:{{textPrimary}};font-size:14px;line-height:20px;overflow:hidden;position:relative;-webkit-font-smoothing:{{smoothingCss}}">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;padding:0 16px;gap:12px">
+<div aria-hidden="true" style="display:flex;gap:8px;width:52px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<div style="flex:1;text-align:center;font-size:14px;color:{{textSecondary}}">设置</div>
+<div aria-hidden="true" style="width:52px;flex:none"></div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+<aside aria-label="文件列表" style="width:260px;flex:none;background:{{sidebarBg}};border-right:1px solid {{borderCol}};box-sizing:border-box;display:flex;flex-direction:column;min-height:0">
+<div style="display:flex;gap:8px;padding:12px 12px 8px">
+<button class="btn" style="flex:1;min-width:0;background:{{paperBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">选择文件夹</button>
+<button class="btn" style="flex:1;min-width:0;background:{{primaryBg}};color:#ffffff;border:0">新建笔记</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;padding:4px 8px 12px;display:flex;flex-direction:column;gap:2px">
+<button class="row" style="color:{{textPrimary}}">会议记录</button>
+<button class="row" style="padding-left:28px;color:{{textPrimary}}">周会 11-03</button>
+<button class="row" style="padding-left:28px;color:{{textPrimary}}">需求评审</button>
+<button class="row" style="color:{{textPrimary}}">产品原则</button>
+<button class="row" style="color:{{textPrimary}}">发布清单</button>
+</div>
+<div style="flex:none;height:44px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-top:1px solid {{borderCol}}">
+<span style="font-size:14px;color:{{textSecondary}}">本地笔记</span>
+<button aria-label="返回笔记" style="height:30px;padding:0 10px;border:0;border-radius:6px;background:{{selectedBg}};color:{{textPrimary}};box-shadow:inset 0 0 0 1px {{accent}};font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+<span>设置中</span>
+</button>
+</div>
+</aside>
+
+<main style="flex:999 1 560px;min-width:0;background:{{settingsBg}};overflow:auto">
+<div style="box-sizing:border-box;width:100%;max-width:720px;margin:0 auto;padding:40px 28px 64px;display:flex;flex-direction:column;gap:28px">
+
+<div style="display:flex;align-items:center;justify-content:space-between">
+<h1 style="margin:0;font-size:24px;line-height:32px;font-weight:560;letter-spacing:-0.01em;color:{{textPrimary}}">设置</h1>
+<button class="btn" style="height:32px;background:{{paperBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">返回编辑</button>
+</div>
+
+<section aria-label="外观与字体" style="background:{{paperBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">外观与字体</h2>
+
+<div style="display:flex;align-items:center;justify-content:space-between;min-height:36px;gap:16px">
+<span style="font-size:14px;color:{{textPrimary}}">外观主题</span>
+<div role="group" aria-label="外观主题" style="display:inline-flex;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};gap:2px">
+<sc-for list="{{themes}}" as="t" hint-placeholder-count="3">
+<button class="seg" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button>
+</sc-for>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;min-height:36px;gap:16px">
+<span style="font-size:14px;color:{{textPrimary}}">正文字体</span>
+<div role="group" aria-label="正文字体" style="display:inline-flex;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};gap:2px">
+<sc-for list="{{fonts}}" as="f" hint-placeholder-count="3">
+<button class="seg" onClick="{{f.pick}}" style="{{f.style}}">{{f.label}}</button>
+</sc-for>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;min-height:36px;gap:16px">
+<span style="font-size:14px;color:{{textPrimary}}">字体平滑</span>
+<button role="switch" aria-checked="{{smoothOn}}" aria-label="切换字体平滑" onClick="{{toggleSmooth}}" style="font:inherit;height:34px;padding:0 14px;border-radius:8px;border:1px solid {{smoothBorder}};background:{{smoothBg}};color:{{textPrimary}};font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:8px;cursor:pointer">
+<span style="width:8px;height:8px;border-radius:4px;background:{{smoothDot}}"></span>
+<span>{{smoothLabel}}</span>
+</button>
+</div>
+
+<div style="padding:14px 16px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};font-family:{{editorFontStack}}">
+<p style="margin:0;font-size:17px;line-height:1.5;color:{{textPrimary}}">把周会改成异步：一段文字能说清的事，不再约三十分钟同步会。0123456789</p>
+</div>
+</section>
+
+<section aria-label="基础快捷键" style="background:{{paperBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:12px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">基础快捷键</h2>
+
+<div style="display:flex;align-items:center;justify-content:space-between;min-height:36px;gap:16px">
+<span style="font-size:14px;color:{{textPrimary}}">搜索与全局唤起</span>
+<button class="kbd" style="background:{{selectedBg}};border-color:{{accent}};color:{{textPrimary}};box-shadow:inset 0 0 0 1px {{accent}}">⌘⇧K</button>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;min-height:36px;gap:16px">
+<span style="font-size:14px;color:{{textPrimary}}">速记小窗</span>
+<button class="kbd" style="background:{{shellBg}};border-color:{{btnBorder}};color:{{textPrimary}}">⌥N</button>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;min-height:36px;gap:16px">
+<span style="font-size:14px;color:{{textPrimary}}">当前笔记查找</span>
+<button class="kbd" style="background:{{shellBg}};border-color:{{btnBorder}};color:{{textPrimary}}">⌘F</button>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;min-height:36px;gap:16px">
+<span style="font-size:14px;color:{{textPrimary}}">新建笔记</span>
+<button class="kbd" style="background:{{shellBg}};border-color:{{btnBorder}};color:{{textPrimary}}">⌘N</button>
+</div>
+</section>
+
+</div>
+</main>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"light","options":["light","dark","system"]},"font":{"editor":"enum","default":"sans","options":["sans","serif","mono"]},"smooth":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = {
+      theme: null,
+      font: null,
+      smooth: null
+    };
+  }
+  renderVals() {
+    const themeMode = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = themeMode === 'dark';
+    const fontMode = this.state.font ?? this.props.font ?? 'sans';
+    const smoothOn = this.state.smooth ?? this.props.smooth ?? true;
+
+    const shellBg = isDark ? '#343434' : '#f1f1f1';
+    const sidebarBg = isDark ? '#222222' : '#fafafa';
+    const settingsBg = isDark ? '#181818' : '#f8f8f8';
+    const paperBg = isDark ? '#222222' : '#ffffff';
+    const textPrimary = isDark ? '#ececec' : '#20242c';
+    const textSecondary = isDark ? '#b4b4b4' : '#526071';
+    const accent = isDark ? '#779de8' : '#547dd0';
+    const selectedBg = isDark ? '#343434' : '#e5edfc';
+    const borderCol = isDark ? '#383838' : '#e6e6e6';
+    const btnBorder = isDark ? '#444444' : '#dcdcdc';
+    const primaryBg = isDark ? '#445066' : '#2f3540';
+
+    const segStyle = (active) => active
+      ? `background:${selectedBg};color:${textPrimary};box-shadow:inset 0 0 0 1px ${accent}`
+      : `background:transparent;color:${textSecondary}`;
+
+    const themes = [
+      { id: 'light', label: '浅色' },
+      { id: 'dark', label: '深色' },
+      { id: 'system', label: '跟随系统' }
+    ].map((t) => ({
+      ...t,
+      style: segStyle(themeMode === t.id),
+      pick: () => this.setState({ theme: t.id })
+    }));
+
+    const fonts = [
+      { id: 'sans', label: '默认无衬线' },
+      { id: 'serif', label: '霞鹜文楷' },
+      { id: 'mono', label: '等宽' }
+    ].map((f) => ({
+      ...f,
+      style: segStyle(fontMode === f.id),
+      pick: () => this.setState({ font: f.id })
+    }));
+
+    const editorFontStack = fontMode === 'serif'
+      ? "'LXGW WenKai','Songti SC','STSong',Georgia,serif"
+      : fontMode === 'mono'
+        ? "'JetBrains Mono',ui-monospace,Menlo,'PingFang SC',monospace"
+        : "Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif";
+
+    return {
+      shellBg,
+      sidebarBg,
+      settingsBg,
+      paperBg,
+      textPrimary,
+      textSecondary,
+      accent,
+      selectedBg,
+      borderCol,
+      btnBorder,
+      primaryBg,
+      themes,
+      fonts,
+      editorFontStack,
+      smoothOn,
+      smoothLabel: smoothOn ? '灰度抗锯齿（已开启）' : '系统默认',
+      smoothBg: smoothOn ? selectedBg : shellBg,
+      smoothBorder: smoothOn ? accent : btnBorder,
+      smoothDot: smoothOn ? accent : textSecondary,
+      smoothingCss: smoothOn ? 'antialiased' : 'auto',
+      toggleSmooth: () => this.setState({ smooth: !smoothOn })
+    };
+  }
+}
+</script>
+</body>
+</html>
