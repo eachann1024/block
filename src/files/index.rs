@@ -8,12 +8,21 @@ use super::scan::{Node, compare_names};
 pub struct Row {
     pub path: Arc<Path>,
     pub name: String,
+    pub stem: gpui::SharedString,
     pub dir: bool,
     pub depth: usize,
     descendants: usize,
     root_name: Arc<str>,
     root_path: Arc<Path>,
     root_dir: bool,
+}
+
+fn row_stem(name: &str, dir: bool) -> gpui::SharedString {
+    if dir {
+        name.to_owned().into()
+    } else {
+        Path::new(name).file_stem().unwrap_or_default().to_string_lossy().into_owned().into()
+    }
 }
 
 type Link = Option<Box<Entry>>;
@@ -72,14 +81,64 @@ impl TreeIndex {
         })
     }
 
+    /// Expanded directories, so a rescan after a file operation keeps the view.
+    pub fn expanded_paths(&self) -> std::collections::HashSet<PathBuf> {
+        let mut out = std::collections::HashSet::new();
+        fn walk(link: &Link, out: &mut std::collections::HashSet<PathBuf>) {
+            let Some(n) = link else { return };
+            walk(&n.left, out);
+            if n.expanded { out.insert(n.row.path.to_path_buf()); }
+            walk(&n.right, out);
+        }
+        walk(&self.root, &mut out);
+        out
+    }
+
+    /// Every directory as (path, depth, name) in preorder, hidden rows included.
+    pub fn folders(&self) -> Vec<(PathBuf, usize, String)> {
+        fn walk(link: &Link, out: &mut Vec<(PathBuf, usize, String)>) {
+            let Some(n) = link else { return };
+            walk(&n.left, out);
+            if n.row.dir { out.push((n.row.path.to_path_buf(), n.row.depth, n.row.name.clone())); }
+            walk(&n.right, out);
+        }
+        let mut out = Vec::new();
+        walk(&self.root, &mut out);
+        out
+    }
+
+    /// Visible rank of a row, for scrolling it into view.
+    pub fn visible_rank(&mut self, path: &Path) -> Option<usize> {
+        (0..self.len().min(200_000)).find(|&rank| self.row(rank).is_some_and(|(_, row, _)| row.path.as_ref() == path))
+    }
+
+    pub fn restore_expanded(&mut self, paths: &std::collections::HashSet<PathBuf>) {
+        if paths.is_empty() { return; }
+        fn collect(link: &Link, offset: usize, paths: &std::collections::HashSet<PathBuf>, out: &mut Vec<(usize, Arc<Path>)>) {
+            let Some(n) = link else { return };
+            collect(&n.left, offset, paths, out);
+            let index = offset + size(&n.left);
+            if n.row.dir && paths.contains(n.row.path.as_ref()) {
+                out.push((index, n.row.path.clone()));
+            }
+            collect(&n.right, index + 1, paths, out);
+        }
+        let mut matches = Vec::new();
+        collect(&self.root, 0, paths, &mut matches);
+        for (index, path) in matches {
+            self.toggle(index, &path);
+        }
+    }
+
     /// New notes belong to the root; insertion touches only the search path.
     pub fn insert_note(&mut self, path: PathBuf) {
         if self.contains_root_path(&path) { return; }
         let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
         let rank = insertion_rank(&self.root, false, &name, &path);
+        let stem = row_stem(&name, false);
         let row = Row {
             root_name: Arc::from(name.as_str()), root_path: Arc::from(path.as_path()),
-            root_dir: false, name, path: Arc::from(path), dir: false, depth: 0, descendants: 0,
+            root_dir: false, name, stem, path: Arc::from(path), dir: false, depth: 0, descendants: 0,
         };
         let entry = self.entry(row);
         let (left, right) = split(self.root.take(), rank);
@@ -101,7 +160,8 @@ impl TreeIndex {
 
 fn flatten(node: Node, depth: usize, root: &(Arc<str>, Arc<Path>, bool), rows: &mut Vec<Row>) {
     let start = rows.len();
-    rows.push(Row { path: Arc::from(node.path), name: node.name, dir: node.dir, depth,
+    let stem = row_stem(&node.name, node.dir);
+    rows.push(Row { path: Arc::from(node.path), name: node.name, stem, dir: node.dir, depth,
         descendants: 0, root_name: root.0.clone(), root_path: root.1.clone(), root_dir: root.2 });
     for child in node.children { flatten(child, depth + 1, root, rows); }
     rows[start].descendants = rows.len() - start - 1;
