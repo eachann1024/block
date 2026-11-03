@@ -11,6 +11,7 @@ impl Editor {
         if self.path.is_none() { return; }
         self.pending_vertical = None;
         if !matches!(action, Cancel) { self.commit_composition(cx); }
+        if self.block_selection_key(action, cx) { return; }
         match action {
             Left | Right | SelectLeft | SelectRight => {
                 self.preferred_x = None;
@@ -21,24 +22,46 @@ impl Editor {
                 } else { self.step(forward) };
                 self.set_head(at, extend, cx);
             }
+            // First press selects the caret's block, the next one the whole document.
+            SelectAll if { let (a, b, ai, bi) = self.ordered(); let block = &self.doc.blocks[ai];
+                ai == bi && block.meta.table.is_none() && !(a.offset == 0 && b.offset == block.text.len()) } => {
+                let id = self.caret.head.block; let len = self.block_text().len();
+                self.caret.anchor = Position { block: id, offset: 0 };
+                self.set_head(Position { block: id, offset: len }, true, cx);
+            }
             SelectAll => {
                 self.caret.anchor = Position { block: self.doc.blocks[0].id, offset: 0 };
                 let last = &self.doc.blocks[self.doc.blocks.len()-1];
                 self.set_head(Position { block: last.id, offset: last.text.len() }, true, cx);
             }
+            Up | Down if self.block_menu_step(matches!(action, Down), cx) => {}
             Up | Down | SelectUp | SelectDown => self.vertical(matches!(action, Down | SelectDown), matches!(action, SelectUp | SelectDown), cx),
+            Enter if self.block_menu_pick(window, cx) => {}
+            // A focused image hides its source line, so keys act on the block instead of editing it.
+            Enter if let Some(id) = self.focused_image() => self.add_below(id, window, cx),
+            Backspace | Delete if let Some(id) = self.focused_image() =>
+                self.run_block_cmd(id, super::block_menu::Mode::Handle, super::block_menu::Cmd::Delete, window, cx),
+            Enter if self.divider_on_enter(cx) => {}
+            Enter if self.table_enter(cx) => {}
+            Enter if self.enter_rules(cx) => {}
             Enter => {
                 let id = self.caret.head.block;
                 if self.caret.is_empty() && self.block_text().is_empty() && self.doc.get(id).is_some_and(|b| b.kind != Kind::Paragraph) {
                     let before = self.snapshot(); self.doc.set_kind(id, Kind::Paragraph); self.record(before, cx);
                 } else { self.replace_selection("\n", false, cx); }
             }
+            NextCell | PreviousCell => self.table_tab(matches!(action, NextCell), cx),
+            Backspace | Delete if self.boundary_rules(matches!(action, Delete), cx) => {}
+            Backspace | Delete if self.delete_across(cx) => {}
             Backspace | Delete => {
+                let caret_before = self.caret.clone();
                 if self.caret.is_empty() {
                     let at = self.step(matches!(action, Delete));
                     self.caret.head = at;
                 }
-                self.replace_selection("", false, cx);
+                if !self.can_replace_selection() {
+                    self.caret = caret_before; self.table_edit_rejected(cx);
+                } else { self.replace_selection("", false, cx); }
             }
             Copy | Cut => {
                 if !self.caret.is_empty() {
@@ -49,13 +72,26 @@ impl Editor {
                         let block = &self.doc.blocks[i];
                         if let Some(range) = self.selected_range(block.id) { text.push_str(&block.text[range]); }
                     }
+                    self.remember_blocks(&text);
                     cx.write_to_clipboard(ClipboardItem::new_string(text));
-                    if matches!(action, Cut) { self.replace_selection("", false, cx); }
+                    if matches!(action, Cut) && !self.delete_across(cx) { self.replace_selection("", false, cx); }
+                } else if self.copy_whole_block(cx) && matches!(action, Cut) { self.handle(&EditorAction::Backspace, window, cx); }
+            }
+            Paste => {
+                let item = cx.read_from_clipboard();
+                let image = item.as_ref().and_then(|item| item.entries().iter().find_map(|entry| match entry {
+                    gpui::ClipboardEntry::Image(image) => Some((image.bytes.clone(), match image.format {
+                        gpui::ImageFormat::Jpeg => "jpg", gpui::ImageFormat::Gif => "gif", gpui::ImageFormat::Webp => "webp", _ => "png" })),
+                    _ => None }));
+                let files = super::clipboard_files::image_paths();
+                if !files.is_empty() {
+                    let id = self.caret.head.block; self.import_images(id, super::image_import::Place::After, files, window, cx);
+                } else if let Some((bytes, ext)) = image.filter(|_| item.as_ref().and_then(|i| i.text()).is_none()) {
+                    let id = self.caret.head.block; self.import_image_bytes(id, bytes, ext, window, cx);
+                } else if let Some(text) = item.and_then(|item| item.text()) {
+                    if !self.paste_blocks(&text, cx) && !self.paste_tsv(&text, cx) { self.replace_selection(&text, false, cx); }
                 }
             }
-            Paste => if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-                self.replace_selection(&text, false, cx);
-            },
             Bold => self.mark(MarkKind::Bold, cx), Italic => self.mark(MarkKind::Italic, cx),
             Strike => self.mark(MarkKind::Strike, cx), Code => self.mark(MarkKind::Code, cx),
             Undo => self.undo(false, cx), Redo => self.undo(true, cx), Save => self.save(cx),
@@ -65,7 +101,9 @@ impl Editor {
                     self.list.reset(self.doc.blocks.len()); self.changed(cx);
                 }
                 self.caret.composing = None;
-                self.dragging = None; self.drag_over = None; self.selecting = false; cx.notify();
+                let idle = self.block_menu.is_none() && self.toolbar_anchor.is_none() && self.table_menu.is_none() && self.table_sel.is_none();
+                if idle { self.block_sel = self.doc.index_of(self.caret.head.block).map(|i| (i, i)); }
+                self.clear_pointer(); self.toolbar_anchor = None; self.block_menu = None; cx.notify();
             }
         }
         let _ = window;
@@ -80,12 +118,32 @@ impl Editor {
         let next = if forward { index.checked_add(1).filter(|i| *i < self.doc.blocks.len()) } else { index.checked_sub(1) };
         next.map(|i| { let b = &self.doc.blocks[i]; Position { block: b.id, offset: if forward { 0 } else { b.text.len() } } }).unwrap_or(at)
     }
-    pub(super) fn replace(&mut self, range: Option<Range<usize>>, text: &str, _: &mut Window, cx: &mut Context<Self>) {
+    /// The image block holding a collapsed caret; its source is hidden and must not be typed into.
+    pub(super) fn focused_image(&self) -> Option<u64> {
+        let id = self.caret.head.block;
+        (self.caret.is_empty() && self.doc.get(id).is_some_and(|b| super::image_source::spec_of(b).is_some())).then_some(id)
+    }
+    pub(super) fn replace(&mut self, range: Option<Range<usize>>, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
+        let range = match self.focused_image() { Some(id) if !text.is_empty() => { self.add_below(id, window, cx); None } _ => range };
+        let caret_before = self.caret.clone();
         self.set_replacement_range(range);
+        let text = if text == "、" && self.slash_alias_ready() { "/" } else { text };
+        if !self.can_replace_selection() {
+            self.caret = caret_before; self.table_edit_rejected(cx); return;
+        }
         let composing = self.composition_before.is_some();
         self.replace_selection(text, !composing, cx);
         if composing { self.commit_composition(cx); }
+        else if matches!(text, ">" | "-" | "》") { self.arrow_rule(cx); }
+        if text == "/" {
+            let id = self.caret.head.block;
+            if self.doc.get(id).is_some_and(|b| b.text == "/" && b.kind == Kind::Paragraph && b.meta.table.is_none() && b.meta.raw_source.is_none() && b.meta.code_language.is_none()) {
+                let anchor = self.layouts.get(&id).map(|l| gpui::point(l.bounds.left(), l.bounds.bottom() + gpui::px(4.)))
+                    .unwrap_or_else(|| gpui::point(gpui::px(300.), gpui::px(200.)));
+                self.open_block_menu(id, anchor, super::block_menu::Mode::Slash, cx);
+            }
+        }
     }
     pub(super) fn set_replacement_range(&mut self, range: Option<Range<usize>>) {
         let range = range.map(|r| from_utf16(self.block_text(), &r)).or(self.caret.composing.clone());
@@ -104,23 +162,6 @@ impl Editor {
             window.focus(&self.focus);
             self.record_changes(before, vec![transactions::ListChange { start: index + 1, before: 0, after: 1 }], true, cx);
         }
-    }
-    pub(super) fn finish_drag(&mut self, cx: &mut Context<Self>) {
-        if let Some(id) = self.dragging.take() {
-            if let Some(to) = self.drag_over.take() {
-                if self.path.is_some() && self.doc.index_of(id) != Some(to) {
-                    self.commit_composition(cx);
-                    let Some(from) = self.doc.index_of(id) else { return; };
-                    let to = to.min(self.doc.blocks.len()-1);
-                    let before = self.snapshot(); self.doc.move_block(id, to);
-                    self.record_changes(before, vec![
-                        transactions::ListChange { start: from, before: 1, after: 0 },
-                        transactions::ListChange { start: to, before: 0, after: 1 },
-                    ], true, cx);
-                }
-            }
-        }
-        self.selecting = false; cx.notify();
     }
 }
 pub(super) fn to_utf16(text: &str, range: &Range<usize>) -> Range<usize> {

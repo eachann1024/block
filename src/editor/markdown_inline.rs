@@ -1,107 +1,165 @@
-use super::super::model::{Block, MarkKind, Span};
+use super::super::model::{Block, InlineTag, MarkKind, Span};
+use super::html::{self, HtmlValue};
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 
-pub(super) fn parse(input: &str) -> Option<(String,Vec<Span>)> {
-    if !input.bytes().any(|b| b.is_ascii_punctuation()) { return Some((input.to_owned(),Vec::new())); }
-    if let Some(simple) = simple_mark(input) { return Some(simple); }
-    // Sentinel prevents inline fragments from being parsed as headings, lists or HTML blocks.
+type RichText = (String, Vec<Span>, Vec<InlineTag>);
+#[derive(Default)]
+struct Builder {
+    text: String, spans: Vec<Span>, inline: Vec<InlineTag>, marks: [u32;4],
+    html: Vec<(String, usize, Vec<(String, String)>, Option<usize>)>,
+    links: Vec<(usize, Vec<(String, String)>)>,
+}
+impl Builder {
+    fn append(&mut self, value: &str) {
+        let start = self.text.len(); self.text.push_str(value);
+        if value.is_empty() { return; }
+        let marks: Vec<_> = [MarkKind::Bold,MarkKind::Italic,MarkKind::Strike,MarkKind::Code]
+            .into_iter().filter(|mark| self.marks[*mark as usize] > 0).collect();
+        if marks.is_empty() { return; }
+        if let Some(last) = self.spans.last_mut() && last.end == start && last.marks == marks {
+            last.end = self.text.len();
+        } else { self.spans.push(Span { start, end:self.text.len(), marks }); }
+    }
+    fn html(&mut self, value: HtmlValue) -> Option<()> {
+        match value {
+            HtmlValue::Text(text) => self.append(&text),
+            HtmlValue::Tag { name, attrs, close, empty } => {
+                if name == "br" && !close && attrs.is_empty() { self.append("\n"); return Some(()); }
+                if !matches!(name.as_str(), "a"|"span"|"strong"|"b"|"em"|"i"|"del"|"s"|"code"|"u")
+                    || empty { return None; }
+                let mark = match name.as_str() { "strong"|"b" => Some(0), "em"|"i" => Some(1),
+                    "del"|"s" => Some(2), "code" => Some(3), _ => None };
+                if close {
+                    let (opened, start, attrs, mark) = self.html.pop()?;
+                    if opened != name { return None; }
+                    if let Some(mark) = mark { self.marks[mark] = self.marks[mark].checked_sub(1)?; }
+                    if start < self.text.len() && (mark.is_none() || !attrs.is_empty()) {
+                        self.inline.push(InlineTag { start, end:self.text.len(),
+                            name:if mark.is_some() { "span".into() } else { name }, attrs });
+                    }
+                } else {
+                    if let Some(mark) = mark { self.marks[mark] += 1; }
+                    self.html.push((name, self.text.len(), attrs, mark));
+                }
+            }
+        }
+        Some(())
+    }
+    fn finish(mut self) -> Option<RichText> {
+        if !self.html.is_empty() || !self.links.is_empty() { return None; }
+        self.inline.sort_by_key(|tag| (tag.start, std::cmp::Reverse(tag.end)));
+        // Wrappers are re-emitted per segment, so adjacent equal tags are one logical range.
+        let mut merged: Vec<InlineTag> = Vec::new();
+        for tag in self.inline {
+            if let Some(prev) = merged.iter_mut().rev().find(|p| p.end == tag.start && p.name == tag.name && p.attrs == tag.attrs) {
+                prev.end = tag.end;
+            } else { merged.push(tag); }
+        }
+        Some((self.text, self.spans, merged))
+    }
+}
+
+pub(super) fn parse(input: &str) -> Option<RichText> {
+    if !input.bytes().any(|b| b.is_ascii_punctuation()) {
+        return Some((input.to_owned(), Vec::new(), Vec::new()));
+    }
+    // The sentinel prevents an inline fragment from being interpreted as a block.
     let source = format!("x {input}"); let mut skip = 2;
-    let mut text = String::with_capacity(input.len()); let mut spans = Vec::new();
-    let mut marks = [0u32;4]; let mut html_stack = Vec::new();
-    for event in Parser::new_ext(&source,Options::ENABLE_STRIKETHROUGH) {
+    let mut b = Builder::default();
+    for event in Parser::new_ext(&source, Options::ENABLE_STRIKETHROUGH) {
         match event {
             Event::Start(Tag::Paragraph) | Event::End(TagEnd::Paragraph) => {},
-            Event::Start(Tag::Strong) => marks[0]+=1,
-            Event::End(TagEnd::Strong) => marks[0]=marks[0].saturating_sub(1),
-            Event::Start(Tag::Emphasis) => marks[1]+=1,
-            Event::End(TagEnd::Emphasis) => marks[1]=marks[1].saturating_sub(1),
-            Event::Start(Tag::Strikethrough) => marks[2]+=1,
-            Event::End(TagEnd::Strikethrough) => marks[2]=marks[2].saturating_sub(1),
+            Event::Start(Tag::Strong) => b.marks[0] += 1,
+            Event::End(TagEnd::Strong) => b.marks[0] = b.marks[0].checked_sub(1)?,
+            Event::Start(Tag::Emphasis) => b.marks[1] += 1,
+            Event::End(TagEnd::Emphasis) => b.marks[1] = b.marks[1].checked_sub(1)?,
+            Event::Start(Tag::Strikethrough) => b.marks[2] += 1,
+            Event::End(TagEnd::Strikethrough) => b.marks[2] = b.marks[2].checked_sub(1)?,
+            Event::Start(Tag::Link { dest_url, title, .. }) => {
+                let mut attrs = vec![("href".into(), dest_url.to_string())];
+                if !title.is_empty() { attrs.push(("title".into(), title.to_string())); }
+                b.links.push((b.text.len(), attrs));
+            },
+            Event::End(TagEnd::Link) => {
+                let (start, attrs) = b.links.pop()?;
+                if start < b.text.len() { b.inline.push(InlineTag {
+                    start, end:b.text.len(), name:"a".into(), attrs }); }
+            },
             Event::Text(value) => {
-                let n = skip.min(value.len()); skip -= n; append(&mut text,&mut spans,&value[n..],&marks);
+                let n = skip.min(value.len()); skip -= n; b.append(&value[n..]);
             },
-            Event::Code(value) => { marks[3]+=1; append(&mut text,&mut spans,&value,&marks); marks[3]-=1; },
-            Event::InlineHtml(value) => {
-                let (mark,close) = match value.as_ref() {
-                    "<strong>" => (0,false),"</strong>" => (0,true),
-                    "<em>" => (1,false),"</em>" => (1,true),
-                    "<del>" => (2,false),"</del>" => (2,true),
-                    "<code>" => (3,false),"</code>" => (3,true),
-                    _ => return None,
-                };
-                if close { if html_stack.pop()!=Some(mark) { return None; } marks[mark]-=1; }
-                else { marks[mark]+=1; html_stack.push(mark); }
-            },
-            Event::SoftBreak => append(&mut text,&mut spans,"\n",&marks),
+            Event::Code(value) => { b.marks[3] += 1; b.append(&value); b.marks[3] -= 1; },
+            Event::InlineHtml(value) => for token in html::tokens(&value)? { b.html(token.value)?; },
+            Event::SoftBreak | Event::HardBreak => b.append("\n"),
             _ => return None,
         }
     }
-    if !html_stack.is_empty() { return None; }
-    Some((text,spans))
+    b.finish()
 }
-fn simple_mark(input:&str)->Option<(String,Vec<Span>)> {
-    // Common single-run lines avoid allocating an entire CommonMark parser per block.
-    for (token,mark) in [("**",MarkKind::Bold),("*",MarkKind::Italic),("~~",MarkKind::Strike),("`",MarkKind::Code)] {
-        let Some(start)=input.find(token) else {continue;};
-        let body_start=start+token.len();
-        let Some(relative)=input[body_start..].find(token) else {continue;};
-        let close=body_start+relative; let after=close+token.len();
-        let body=&input[body_start..close];
-        if !body.chars().all(|c|c.is_alphanumeric() || c.is_whitespace())
-            || body.is_empty() || body.starts_with(char::is_whitespace) || body.ends_with(char::is_whitespace)
-            || input[..start].bytes().chain(body.bytes()).chain(input[after..].bytes()).any(|b|b.is_ascii_punctuation()) {continue;}
-        let mut text=String::with_capacity(input.len()-2*token.len());
-        text.push_str(&input[..start]);text.push_str(body);text.push_str(&input[after..]);
-        return Some((text,vec![Span{start,end:start+body.len(),marks:vec![mark]}]));
-    }
-    None
+/// HTML cell text must not accidentally interpret literal Markdown punctuation.
+pub(super) fn parse_html(input: &str) -> Option<RichText> {
+    let mut b = Builder::default();
+    for token in html::tokens(input)? { b.html(token.value)?; }
+    b.finish()
 }
-fn append(text: &mut String, spans: &mut Vec<Span>, value: &str, counts: &[u32;4]) {
-    let start=text.len(); text.push_str(value);
-    if value.is_empty() { return; }
-    let marks:Vec<_>=[MarkKind::Bold,MarkKind::Italic,MarkKind::Strike,MarkKind::Code]
-        .into_iter().filter(|m| counts[*m as usize]>0).collect();
-    if marks.is_empty() { return; }
-    if let Some(last)=spans.last_mut() && last.end==start && last.marks==marks { last.end=text.len(); }
-    else { spans.push(Span {start,end:text.len(),marks}); }
-}
-/// HTML inline marks are valid Markdown and avoid ambiguous adjacent delimiter runs,
-/// whitespace-sensitive emphasis, and code/strong combinations. Entities protect literals.
-pub(super) fn serialize(block: &Block,out: &mut String) {
-    let mut cursor=0;
-    // Public Block fields may arrive from deserialization: normalize before slicing if needed.
-    let normalized;
-    let mut end=0;
-    let valid=block.spans.iter().all(|s| {
-        let ok=s.start>=end && s.start<s.end && s.end<=block.text.len()
-            && block.text.is_char_boundary(s.start) && block.text.is_char_boundary(s.end);
-        end=s.end; ok
-    });
-    let spans=if valid { &block.spans } else { normalized={let mut b=block.clone();b.normalize_spans();b}; &normalized.spans };
-    for span in spans {
-        escape(&block.text[cursor..span.start],out);
-        for mark in &span.marks { out.push_str(tag(*mark,false)); }
-        escape(&block.text[span.start..span.end],out);
-        for mark in span.marks.iter().rev() { out.push_str(tag(*mark,true)); }
-        cursor=span.end;
-    }
-    escape(&block.text[cursor..],out);
-}
-fn tag(mark:MarkKind,close:bool)->&'static str {
-    match (mark,close) {
-        (MarkKind::Bold,false)=>"<strong>",(MarkKind::Bold,true)=>"</strong>",
-        (MarkKind::Italic,false)=>"<em>",(MarkKind::Italic,true)=>"</em>",
-        (MarkKind::Strike,false)=>"<del>",(MarkKind::Strike,true)=>"</del>",
-        (MarkKind::Code,false)=>"<code>",(MarkKind::Code,true)=>"</code>",
+
+/// Split at all semantic boundaries so overlapping marks and HTML attributes survive.
+/// Close/reopen wrappers at crossing ranges to produce valid nested HTML.
+pub(super) fn serialize(block: &Block, out: &mut String) {
+    let mut block = block.clone(); block.normalize_spans();
+    let mut boundaries = vec![0, block.text.len()];
+    for span in &block.spans { boundaries.extend([span.start, span.end]); }
+    let valid: Vec<_> = block.meta.inline.iter().filter(|tag|
+        tag.start < tag.end && tag.end <= block.text.len()
+        && block.text.is_char_boundary(tag.start) && block.text.is_char_boundary(tag.end)).collect();
+    // Plain `[text](url)` links match what thinkly writes; other anchors stay HTML.
+    let mut bracket: Vec<&InlineTag> = Vec::new();
+    let mut candidates: Vec<_> = valid.iter().copied().filter(|t| t.name == "a"
+        && t.attrs.len() == 1 && t.attrs[0].0 == "href").collect();
+    candidates.sort_by_key(|t| t.start);
+    for link in candidates { if bracket.last().is_none_or(|last| last.end <= link.start) { bracket.push(link); } }
+    let tags: Vec<_> = valid.iter().copied().filter(|t| !bracket.iter().any(|b| std::ptr::eq(*b, *t))).collect();
+    for tag in valid.iter() { boundaries.extend([tag.start, tag.end]); }
+    boundaries.sort_unstable(); boundaries.dedup();
+    for pair in boundaries.windows(2) {
+        let (start, end) = (pair[0], pair[1]);
+        let link = bracket.iter().find(|tag| tag.start <= start && end <= tag.end);
+        if link.is_some_and(|tag| tag.start == start) { out.push('['); }
+        let active: Vec<_> = tags.iter().filter(|tag| tag.start <= start && end <= tag.end).collect();
+        for tag in &active { html::open_tag(&tag.name, &tag.attrs, out); }
+        let marks = block.spans.iter().find(|span| span.start <= start && end <= span.end)
+            .map_or(&[][..], |span| span.marks.as_slice());
+        for mark in marks { out.push_str(tag(*mark, false)); }
+        escape(&block.text[start..end], out);
+        for mark in marks.iter().rev() { out.push_str(tag(*mark, true)); }
+        for tag in active.iter().rev() { out.push_str("</"); out.push_str(&tag.name); out.push('>'); }
+        if let Some(tag) = link.filter(|tag| tag.end == end) {
+            out.push_str("](");
+            for ch in tag.attrs[0].1.chars() {
+                match ch { ' '|'('|')'|'<'|'>'|'\\'|'"'|'\n' => { let mut b = [0u8; 4];
+                    for byte in ch.encode_utf8(&mut b).bytes() { out.push_str(&format!("%{byte:02X}")); } }
+                    _ => out.push(ch) }
+            }
+            out.push(')');
+        }
     }
 }
-fn escape(value:&str,out:&mut String) {
+fn tag(mark: MarkKind, close: bool) -> &'static str {
+    match (mark, close) {
+        (MarkKind::Bold,false) => "<strong>", (MarkKind::Bold,true) => "</strong>",
+        (MarkKind::Italic,false) => "<em>", (MarkKind::Italic,true) => "</em>",
+        (MarkKind::Strike,false) => "<del>", (MarkKind::Strike,true) => "</del>",
+        (MarkKind::Code,false) => "<code>", (MarkKind::Code,true) => "</code>",
+    }
+}
+fn escape(value: &str, out: &mut String) {
     use std::fmt::Write;
-    let leading = value.len()-value.trim_start_matches(' ').len();
+    let leading = value.len() - value.trim_start_matches(' ').len();
     let trailing = value.trim_end_matches(' ').len();
-    for (at,ch) in value.char_indices() {
-        if ch.is_ascii_punctuation() || matches!(ch,'\n'|'\r'|'\t') { let _=write!(out,"&#{};",ch as u32); }
-        else if ch==' ' && (at<leading || at>=trailing) { out.push_str("&#32;"); }
+    for (at, ch) in value.char_indices() {
+        if ch == '\n' { out.push_str("<br>"); }
+        else if ch.is_ascii_punctuation() || matches!(ch, '\r'|'\t') { let _ = write!(out, "&#{};", ch as u32); }
+        else if ch == ' ' && (at < leading || at >= trailing) { out.push_str("&#32;"); }
         else { out.push(ch); }
     }
 }
