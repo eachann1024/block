@@ -27,6 +27,10 @@ fn main() {
         cx.set_menus(vec![Menu {
             name: "Thinkly".into(),
             items: vec![
+                MenuItem::action("新建标签页 ⌘T", app::NewTab),
+                MenuItem::action("关闭标签页 ⌘W", app::CloseTab),
+                MenuItem::action("下一个标签页 ⌃Tab", app::NextTab),
+                MenuItem::action("上一个标签页 ⌃⇧Tab", app::PrevTab),
                 MenuItem::action("偏好设置… ⌘,", app::OpenSettings),
                 MenuItem::action("速记小窗 ⌥N", quick::ToggleQuickNote),
                 MenuItem::action("导出图片", ExportImage),
@@ -68,7 +72,33 @@ fn main() {
                 });
                 let menu_target = workspace.clone();
                 let settings_target = workspace.clone();
+                let tab_target = workspace.clone();
                 quick::set_main_window(window.window_handle().downcast::<gpui_component::Root>(), workspace.clone(), cx);
+                cx.on_action({
+                    let target = tab_target.clone();
+                    move |_: &app::NewTab, cx: &mut App| {
+                        let Some(handle) = cx.active_window() else { return };
+                        let target = target.clone();
+                        let _ = cx.update_window(handle, move |_, window, cx| {
+                            target.update(cx, |this, cx| this.new_tab(window, cx));
+                        });
+                    }
+                });
+                cx.on_action({
+                    let target = tab_target.clone();
+                    move |_: &app::CloseTab, cx: &mut App| {
+                        target.update(cx, |this, cx| this.close_active_tab(cx));
+                    }
+                });
+                cx.on_action({
+                    let target = tab_target.clone();
+                    move |_: &app::NextTab, cx: &mut App| {
+                        target.update(cx, |this, cx| this.step_tab(1, cx));
+                    }
+                });
+                cx.on_action(move |_: &app::PrevTab, cx: &mut App| {
+                    tab_target.update(cx, |this, cx| this.step_tab(-1, cx));
+                });
                 cx.on_action(move |_: &app::OpenSettings, cx: &mut App| {
                     let Some(handle) = cx.active_window() else { return };
                     let settings_target = settings_target.clone();
