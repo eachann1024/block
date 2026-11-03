@@ -44,6 +44,9 @@ enum Layer {
     Accent,
 }
 
+// Tree glyphs follow Duo-Tree: notes are scheme 2 (flat tab, inner rule);
+// closed and open folders are scheme 3 (back sheet, front panel). Chrome
+// icons stay the refined Duo set, which has no per-column variant.
 icons! {
     Folder => "folder" [Fill, Line],
     FolderOpen => "folder-open" [Fill, Line],
