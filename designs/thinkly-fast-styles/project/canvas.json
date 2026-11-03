@@ -1,0 +1,19 @@
+{"v":3,"createdOnFiles":{"v":1,"at":"2026-11-03T09:25:24Z"},"title":"Thinkly Fast 四版风格","launch":{"view":"canvas"},"pages":[],
+"boards":{
+"Main.dc.html":{"x":0,"y":0,"w":1440,"h":900,"title":"A 纸面 · 工作区","expand":"fill"},
+"A-Export.dc.html":{"x":1520,"y":0,"w":1440,"h":900,"title":"A 纸面 · 生成图片","expand":"fill"},
+"B-Workspace.dc.html":{"x":0,"y":1300,"w":1440,"h":900,"title":"B 石墨 · 工作区","expand":"fill"},
+"B-Export.dc.html":{"x":1520,"y":1300,"w":1440,"h":900,"title":"B 石墨 · 生成图片","expand":"fill"},
+"C-Workspace.dc.html":{"x":0,"y":2600,"w":1440,"h":900,"title":"C 墨韵 · 工作区","expand":"fill"},
+"C-Export.dc.html":{"x":1520,"y":2600,"w":1440,"h":900,"title":"C 墨韵 · 生成图片","expand":"fill"},
+"D-Workspace.dc.html":{"x":0,"y":3900,"w":1440,"h":900,"title":"D 网格 · 工作区","expand":"fill"},
+"D-Export.dc.html":{"x":1520,"y":3900,"w":1440,"h":900,"title":"D 网格 · 生成图片","expand":"fill"}
+},
+"order":["Main.dc.html","A-Export.dc.html","B-Workspace.dc.html","B-Export.dc.html","C-Workspace.dc.html","C-Export.dc.html","D-Workspace.dc.html","D-Export.dc.html"],
+"notes":{
+"tA":{"x":0,"y":-280,"text":"A 纸面 Ocean","kind":"title1","maxW":2960},
+"tB":{"x":0,"y":1020,"text":"B 石墨 Graphite","kind":"title1","maxW":2960},
+"tC":{"x":0,"y":2320,"text":"C 墨韵 Editorial","kind":"title1","maxW":2960},
+"tD":{"x":0,"y":3620,"text":"D 网格 Swiss","kind":"title1","maxW":2960}
+},
+"designSystems":[]}

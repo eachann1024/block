@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>工作区</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body { margin: 0; }
+a { color: #111111; } a:hover { color: #d6501f; }
+button:focus-visible, input:focus-visible { outline: 1px solid #d6501f; outline-offset: 1px; }
+</style>
+</helmet>
+<div style="box-sizing: border-box; min-height: 900px; height: 100vh; background: #ececec; display: flex; flex-direction: column; font-family: Inter, 'PingFang SC', 'Hiragino Sans GB', sans-serif; color: #111111; font-variant-numeric: tabular-nums;">
+  <header style="height: 40px; flex-shrink: 0; display: flex; align-items: center; background: #ffffff; border-bottom: 1px solid #d9d9d9; box-sizing: border-box;">
+    <div style="width: 280px; flex-shrink: 0; height: 100%; box-sizing: border-box; border-right: 1px solid #d9d9d9; display: flex; align-items: center; gap: 8px; padding: 0 14px;">
+      <div style="display: flex; gap: 6px; align-items: center;" aria-hidden="true">
+        <span style="width: 12px; height: 12px; border-radius: 0; background: #ff5f57; border: 1px solid #e0443e; display: block;"></span>
+        <span style="width: 12px; height: 12px; border-radius: 0; background: #febc2e; border: 1px solid #d9a322; display: block;"></span>
+        <span style="width: 12px; height: 12px; border-radius: 0; background: #28c840; border: 1px solid #1aab31; display: block;"></span>
+      </div>
+      <span style="margin-left: 8px; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #555555; font-weight: 600;">Thinkly</span>
+    </div>
+    <div style="flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+        <span style="font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: #555555; font-weight: 600; flex-shrink: 0;">Editor</span>
+        <span style="color: #d9d9d9;">/</span>
+        <span style="font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">快速编辑器的块约定</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0; flex-shrink: 0;">
+        <a href="D-Export.dc.html" style="height: 28px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; background: #d6501f; color: #ffffff; text-decoration: none; font-size: 12px; font-weight: 600; letter-spacing: 0.04em;">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1.5" y="2.5" width="11" height="9" stroke="#ffffff" stroke-width="1.2"></rect><path d="M1.5 9.5 L4.5 7 L6.5 8.5 L9 5.5 L12.5 8.5" stroke="#ffffff" stroke-width="1.2" fill="none"></path></svg>
+          生成图片
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap;">
+    <aside style="width: 280px; flex: 0 0 280px; background: #ffffff; border-right: 1px solid #d9d9d9; display: flex; flex-direction: column; min-height: 0; box-sizing: border-box;">
+      <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid #d9d9d9;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <span style="font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 600; color: #555555;">Files</span>
+          <span style="font-size: 10px; letter-spacing: 0.08em; color: #555555;">08</span>
+        </div>
+        <button type="button" style="height: 36px; width: 100%; box-sizing: border-box; border: 1px solid #111111; background: #ffffff; color: #111111; font-family: inherit; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; padding: 0 10px;">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.5 4.5 V12 H12.5 V4.5" stroke="#111111" stroke-width="1.2"></path><path d="M1.5 4.5 L3 2 H6 L7.2 3.4 H12.5 V4.5" stroke="#111111" stroke-width="1.2" fill="none"></path></svg>
+          选择文件夹
+        </button>
+        <button type="button" style="height: 36px; width: 100%; box-sizing: border-box; border: 1px solid #d6501f; background: #d6501f; color: #ffffff; font-family: inherit; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; padding: 0 10px;">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 2 V12 M2 7 H12" stroke="#ffffff" stroke-width="1.4"></path></svg>
+          新建笔记
+        </button>
+      </div>
+
+      <div style="flex: 1; min-height: 0; overflow: auto;">
+        <div style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid #d9d9d9; background: #ffffff;">
+          <span style="width: 22px; font-size: 11px; color: #555555; font-variant-numeric: tabular-nums;">01</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 L6 7.5 L9 4.5" stroke="#111111" stroke-width="1.2"></path></svg>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.5 4.2 V11.5 H12.5 V4.2 H6.6 L5.6 3 H1.5 Z" stroke="#111111" stroke-width="1.1" fill="none"></path></svg>
+          <span style="font-size: 13px; font-weight: 600;">草稿</span>
+        </div>
+        <div style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 34px; border-bottom: 1px solid #d9d9d9;">
+          <span style="width: 22px; font-size: 11px; color: #555555;">02</span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 1.5 H8.5 L11 4 V12.5 H3 Z" stroke="#555555" stroke-width="1.1"></path><path d="M8.5 1.5 V4 H11" stroke="#555555" stroke-width="1.1"></path></svg>
+          <span style="font-size: 13px; color: #555555;">会议逐字稿</span>
+        </div>
+        <div style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 34px; border-bottom: 1px solid #d9d9d9;">
+          <span style="width: 22px; font-size: 11px; color: #555555;">03</span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 1.5 H8.5 L11 4 V12.5 H3 Z" stroke="#555555" stroke-width="1.1"></path><path d="M8.5 1.5 V4 H11" stroke="#555555" stroke-width="1.1"></path></svg>
+          <span style="font-size: 13px; color: #555555;">下周待办</span>
+        </div>
+
+        <div style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid #d9d9d9;">
+          <span style="width: 22px; font-size: 11px; color: #555555;">04</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M4.5 3 L7.5 6 L4.5 9" stroke="#111111" stroke-width="1.2"></path></svg>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.5 4.2 V11.5 H12.5 V4.2 H6.6 L5.6 3 H1.5 Z" stroke="#111111" stroke-width="1.1" fill="none"></path></svg>
+          <span style="font-size: 13px; font-weight: 600;">产品备忘</span>
+        </div>
+
+        <div style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid #d9d9d9; background: #ffffff; box-shadow: inset 2px 0 0 #d6501f;">
+          <span style="width: 22px; font-size: 11px; color: #d6501f; font-weight: 600;">05</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"></svg>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 1.5 H8.5 L11 4 V12.5 H3 Z" stroke="#d6501f" stroke-width="1.2"></path><path d="M8.5 1.5 V4 H11" stroke="#d6501f" stroke-width="1.2"></path></svg>
+          <span style="font-size: 13px; font-weight: 600;">快速编辑器的块约定</span>
+        </div>
+
+        <div style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid #d9d9d9;">
+          <span style="width: 22px; font-size: 11px; color: #555555;">06</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M4.5 3 L7.5 6 L4.5 9" stroke="#111111" stroke-width="1.2"></path></svg>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1.5 4.2 V11.5 H12.5 V4.2 H6.6 L5.6 3 H1.5 Z" stroke="#111111" stroke-width="1.1" fill="none"></path></svg>
+          <span style="font-size: 13px; font-weight: 600;">阅读</span>
+        </div>
+
+        <div style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid #d9d9d9;">
+          <span style="width: 22px; font-size: 11px; color: #555555;">07</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"></svg>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 1.5 H8.5 L11 4 V12.5 H3 Z" stroke="#555555" stroke-width="1.1"></path><path d="M8.5 1.5 V4 H11" stroke="#555555" stroke-width="1.1"></path></svg>
+          <span style="font-size: 13px; color: #555555;">出版清单</span>
+        </div>
+        <div style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid #d9d9d9;">
+          <span style="width: 22px; font-size: 11px; color: #555555;">08</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"></svg>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 1.5 H8.5 L11 4 V12.5 H3 Z" stroke="#555555" stroke-width="1.1"></path><path d="M8.5 1.5 V4 H11" stroke="#555555" stroke-width="1.1"></path></svg>
+          <span style="font-size: 13px; color: #555555;">字体与行宽</span>
+        </div>
+      </div>
+
+      <div style="height: 36px; flex-shrink: 0; border-top: 1px solid #d9d9d9; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 11px; color: #555555; letter-spacing: 0.06em;">
+        <span>笔记库</span>
+        <span style="font-variant-numeric: tabular-nums;">~/Notes</span>
+      </div>
+    </aside>
+
+    <main style="flex: 999 1 560px; min-width: 0; background: #ffffff; overflow: auto; display: flex; flex-direction: column;">
+      <div style="height: 28px; flex-shrink: 0; border-bottom: 1px solid #d9d9d9; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #555555; font-weight: 600;">
+        <span>Editor · 正文</span>
+        <span style="letter-spacing: 0.08em; text-transform: none; font-weight: 500;">720 × 17 / 1.5</span>
+      </div>
+
+      <div style="flex: 1; display: flex; justify-content: center; padding: 36px 24px 64px;">
+        <article style="width: 100%; max-width: 720px; position: relative;">
+          <div style="display: flex; align-items: flex-start; gap: 0; margin: 0 0 8px;">
+            <div style="width: 44px; flex-shrink: 0;"></div>
+            <h1 style="margin: 0; font-size: 28px; line-height: 1.35; font-weight: 700; letter-spacing: -0.02em;">快速编辑器的块约定</h1>
+          </div>
+
+          <div style="display: flex; align-items: flex-start;">
+            <div style="width: 44px; flex-shrink: 0; height: 26px;"></div>
+            <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #111111;">正文只保留一种宽度。净宽 720 像素，字号 17，行高 1.5。没有全宽切换，也没有衬线或等宽字体选项。</p>
+          </div>
+
+          <div style="display: flex; align-items: flex-start; margin-top: 18px; position: relative;">
+            <div style="width: 44px; flex-shrink: 0; display: flex; align-items: flex-start; justify-content: flex-end; padding-top: 2px; gap: 2px;">
+              <button type="button" aria-label="拖动块" style="width: 22px; height: 22px; border: 1px solid #d9d9d9; background: #ffffff; padding: 0; display: flex; align-items: center; justify-content: center; cursor: grab;">
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="none" aria-hidden="true"><circle cx="3" cy="2.5" r="1" fill="#555555"></circle><circle cx="7" cy="2.5" r="1" fill="#555555"></circle><circle cx="3" cy="7" r="1" fill="#555555"></circle><circle cx="7" cy="7" r="1" fill="#555555"></circle><circle cx="3" cy="11.5" r="1" fill="#555555"></circle><circle cx="7" cy="11.5" r="1" fill="#555555"></circle></svg>
+              </button>
+              <button type="button" aria-label="在此块下方新增" style="width: 22px; height: 22px; border: 1px solid #d9d9d9; background: #ffffff; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 2 V10 M2 6 H10" stroke="#111111" stroke-width="1.2"></path></svg>
+              </button>
+            </div>
+            <div style="flex: 1; min-width: 0; border-left: 2px solid #d6501f; padding-left: 10px; box-sizing: border-box;">
+              <p style="margin: 0; font-size: 17px; line-height: 1.5;">块是最小的编辑单元：<span style="background: #111111; color: #ffffff;">标题、段落、列表、引用和待办</span>。悬停在块上时，左侧出现把手：拖动点阵和加号。</p>
+              <div style="position: absolute; left: 44px; top: 36px; z-index: 2; display: flex; align-items: center; background: #ffffff; border: 1px solid #111111; height: 36px;">
+                <button type="button" aria-label="加粗" style="width: 32px; height: 36px; border: 0; border-right: 1px solid #d9d9d9; background: #ffffff; font-family: inherit; font-weight: 700; font-size: 13px; cursor: pointer;">B</button>
+                <button type="button" aria-label="斜体" style="width: 32px; height: 36px; border: 0; border-right: 1px solid #d9d9d9; background: #ffffff; font-family: inherit; font-style: italic; font-size: 13px; cursor: pointer;">I</button>
+                <button type="button" aria-label="删除线" style="width: 32px; height: 36px; border: 0; border-right: 1px solid #d9d9d9; background: #ffffff; font-family: inherit; text-decoration: line-through; font-size: 13px; cursor: pointer;">S</button>
+                <button type="button" aria-label="行内代码" style="width: 32px; height: 36px; border: 0; border-right: 1px solid #d9d9d9; background: #ffffff; font-family: inherit; font-size: 12px; cursor: pointer;">&lt;/&gt;</button>
+                <button type="button" aria-label="链接" style="width: 32px; height: 36px; border: 0; border-right: 1px solid #d9d9d9; background: #ffffff; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5.5 8.5 L8.5 5.5" stroke="#111111" stroke-width="1.2"></path><path d="M6 4.2 L7.2 3 C8.2 2 9.8 2 10.8 3 C11.8 4 11.8 5.6 10.8 6.6 L9.6 7.8" stroke="#111111" stroke-width="1.2" fill="none"></path><path d="M8 9.8 L6.8 11 C5.8 12 4.2 12 3.2 11 C2.2 10 2.2 8.4 3.2 7.4 L4.4 6.2" stroke="#111111" stroke-width="1.2" fill="none"></path></svg>
+                </button>
+                <button type="button" aria-label="标题级别" style="height: 36px; padding: 0 8px; border: 0; border-right: 1px solid #d9d9d9; background: #ffffff; font-family: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; cursor: pointer;">H2</button>
+                <button type="button" style="height: 36px; padding: 0 10px; border: 0; background: #ffffff; color: #d6501f; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;">生成图片</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: flex-start; margin-top: 56px;">
+            <div style="width: 44px; flex-shrink: 0;"></div>
+            <h2 style="margin: 0; font-size: 20px; line-height: 1.4; font-weight: 700;">把手与空行</h2>
+          </div>
+
+          <div style="display: flex; align-items: flex-start; margin-top: 10px;">
+            <div style="width: 44px; flex-shrink: 0;"></div>
+            <ul style="margin: 0; padding: 0 0 0 1.15em; font-size: 17px; line-height: 1.5;">
+              <li style="margin: 0 0 4px;">文件夹始终排在笔记前面，同级再按名称排序。</li>
+              <li style="margin: 0;">选中文字后浮出工具栏：加粗、斜体、删除线、行内代码、链接、标题级别。</li>
+            </ul>
+          </div>
+
+          <div style="display: flex; align-items: flex-start; margin-top: 14px;">
+            <div style="width: 44px; flex-shrink: 0;"></div>
+            <blockquote style="margin: 0; padding: 2px 0 2px 12px; border-left: 1px solid #111111; font-size: 17px; line-height: 1.5; color: #555555;">空段落不显示拖动点阵，只留下加号和淡色占位。</blockquote>
+          </div>
+
+          <div style="display: flex; align-items: center; margin-top: 14px;">
+            <div style="width: 44px; flex-shrink: 0;"></div>
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 17px; line-height: 1.5; cursor: pointer;">
+              <input type="checkbox" checked="checked" style="width: 16px; height: 16px; margin: 0; accent-color: #d6501f;">
+              <span>标准宽度已锁定，不再提供全宽</span>
+            </label>
+          </div>
+
+          <div style="display: flex; align-items: center; margin-top: 8px; min-height: 28px;">
+            <div style="width: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end;">
+              <button type="button" aria-label="在空行新增块" style="width: 22px; height: 22px; border: 1px solid #d9d9d9; background: #ffffff; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 2 V10 M2 6 H10" stroke="#555555" stroke-width="1.2"></path></svg>
+              </button>
+            </div>
+            <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #9a9a9a;">输入文字…</p>
+          </div>
+        </article>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>墨韵 · 生成图片</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&amp;display=swap">
+<style>
+body{margin:0}
+button,input,label{font-family:"Noto Serif SC",serif}
+</style>
+</helmet>
+<div style="height:900px;box-sizing:border-box;background:#f7f4ee;color:#26231f;font-family:'Noto Serif SC',serif;display:flex;flex-direction:column;overflow:hidden">
+  <div style="height:52px;flex:none;display:flex;align-items:center;gap:16px;padding:0 20px;border-bottom:1px solid #e3ddd1;background:#f7f4ee">
+    <div style="display:flex;align-items:center;gap:8px;flex:none">
+      <span style="width:12px;height:12px;border-radius:4px;background:#c4554a"></span>
+      <span style="width:12px;height:12px;border-radius:4px;background:#c4a15a"></span>
+      <span style="width:12px;height:12px;border-radius:4px;background:#7d8a62"></span>
+    </div>
+    <div style="flex:1;text-align:center;font-size:13px;letter-spacing:0.04em;color:#6b6459">生成图片 — 雨后书房</div>
+    <div style="width:68px;flex:none"></div>
+  </div>
+  <div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+    <section style="flex:999 1 560px;min-width:0;min-height:0;background:#f1ede4;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px;gap:16px">
+      <div style="font-size:13px;letter-spacing:0.08em;color:#6b6459">预览 · 选中的块</div>
+      <div style="width:100%;max-width:560px;background:#fffdf8;border:1px solid #e3ddd1;border-radius:4px;box-sizing:border-box;padding:48px 40px;display:flex;flex-direction:column;gap:28px">
+        <div style="width:36px;height:2px;background:#b4472f"></div>
+        <p style="margin:0;font-size:17px;line-height:1.5;color:#26231f">把安静留在句子里，不要急着把它说完。</p>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;border-top:1px solid #e3ddd1;padding-top:16px">
+          <span style="font-size:13px;color:#6b6459">雨后书房</span>
+          <span style="font-size:13px;color:#6b6459">标准宽度</span>
+        </div>
+      </div>
+    </section>
+    <aside style="flex:1 1 280px;max-width:360px;min-width:260px;background:#fffdf8;border-left:1px solid #e3ddd1;box-sizing:border-box;padding:28px 24px;display:flex;flex-direction:column;gap:28px">
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <h1 style="margin:0;font-size:22px;font-weight:700;line-height:1.5">生成图片</h1>
+        <p style="margin:0;font-size:14px;line-height:1.5;color:#6b6459">只导出选中的块，不包含整篇笔记。</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:13px;color:#6b6459">范围</div>
+        <div style="display:flex;gap:8px">
+          <button type="button" style="flex:1;height:44px;border:1px solid #e3ddd1;border-radius:4px;background:#fffdf8;color:#6b6459;font-size:14px;cursor:pointer">整篇</button>
+          <button type="button" aria-pressed="true" style="flex:1;height:44px;border:1px solid #b4472f;border-radius:4px;background:#b4472f;color:#fffdf8;font-size:14px;cursor:pointer">选中</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:13px;color:#6b6459">主题</div>
+        <div style="display:flex;gap:8px">
+          <button type="button" aria-pressed="true" style="flex:1;height:44px;border:1px solid #b4472f;border-radius:4px;background:#fffdf8;color:#b4472f;font-size:14px;cursor:pointer">浅</button>
+          <button type="button" style="flex:1;height:44px;border:1px solid #e3ddd1;border-radius:4px;background:#fffdf8;color:#6b6459;font-size:14px;cursor:pointer">深</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:4px;border-top:1px solid #e3ddd1">
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <div style="font-size:14px">宽度</div>
+          <div style="font-size:13px;color:#6b6459">固定为标准，净宽 720</div>
+        </div>
+        <div style="font-size:14px;color:#26231f">标准</div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <label for="watermark" style="font-size:14px">水印</label>
+        <input id="watermark" type="checkbox" aria-label="水印" style="width:18px;height:18px;accent-color:#b4472f">
+      </div>
+      <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+        <button type="button" style="height:44px;border:none;border-radius:4px;background:#b4472f;color:#fffdf8;font-size:15px;cursor:pointer">保存 PNG</button>
+        <button type="button" style="height:44px;border:1px solid #e3ddd1;border-radius:4px;background:#fffdf8;color:#26231f;font-size:15px;cursor:pointer">复制</button>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
