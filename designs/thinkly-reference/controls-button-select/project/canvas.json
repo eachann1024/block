@@ -1,0 +1,19 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-11-02T09:00:00Z" },
+  "title": "全局按钮与下拉框",
+  "launch": { "view": "canvas" },
+  "pages": [
+    { "id": "buttons", "name": "按钮" },
+    { "id": "select", "name": "下拉框" }
+  ],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1080, "h": 860, "title": "按钮 · 浅色", "page": "buttons", "is_interactive": true },
+    "ButtonsDark.dc.html": { "x": 1160, "y": 0, "w": 1080, "h": 860, "title": "按钮 · 深色", "page": "buttons", "is_interactive": true },
+    "Select.dc.html": { "x": 0, "y": 0, "w": 1080, "h": 860, "title": "下拉框 · 浅色", "page": "select", "is_interactive": true },
+    "SelectDark.dc.html": { "x": 1160, "y": 0, "w": 1080, "h": 860, "title": "下拉框 · 深色", "page": "select", "is_interactive": true }
+  },
+  "order": ["Main.dc.html", "ButtonsDark.dc.html", "Select.dc.html", "SelectDark.dc.html"],
+  "notes": {},
+  "designSystems": []
+}

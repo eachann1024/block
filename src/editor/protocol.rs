@@ -21,10 +21,15 @@ impl EntityInputHandler for Editor {
     fn replace_text_in_range(&mut self, range: Option<Range<usize>>, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.replace(range, text, window, cx);
     }
-    fn replace_and_mark_text_in_range(&mut self, range: Option<Range<usize>>, text: &str, selected: Option<Range<usize>>, _: &mut Window, cx: &mut Context<Self>) {
+    fn replace_and_mark_text_in_range(&mut self, range: Option<Range<usize>>, text: &str, selected: Option<Range<usize>>, window: &mut Window, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
-        if self.composition_before.is_none() { self.composition_before = Some(self.snapshot()); }
+        let range = match self.focused_image() { Some(id) if !text.is_empty() => { self.add_below(id, window, cx); None } _ => range };
+        let before = self.snapshot();
         self.set_replacement_range(range);
+        if !self.can_replace_selection() {
+            self.caret = before.caret; self.table_edit_rejected(cx); return;
+        }
+        if self.composition_before.is_none() { self.composition_before = Some(before); }
         let start = self.ordered().0.offset;
         self.replace_selection(text, false, cx);
         let id = self.caret.head.block;

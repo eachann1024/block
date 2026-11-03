@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>按钮 深色</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..600&display=swap">
+<style>
+body{margin:0}
+
+.th-l{--ink:#1f1e1d;--ink2:#5e5d59;--dis:#8a8983;--canvas:#f8f8f8;--menu:#ffffff;--input:#ffffff;--muted:#f1f1ee;--line:#e0dfdc;--fline:#d9d8d4;--hover:#eef3fc;--sel:#e5edfc;--accent:#547dd0;--d-bg:#fff1f2;--d-line:#d92d20;--d-fg:#b42318;--link:#3f64b4;--shadow:0 8px 24px rgba(60,45,30,.1),0 1px 3px rgba(60,45,30,.08);
+--sec-bg:#ffffff;--ter-bg:#ebebe8;--pri-bg:#2b3446;--f-top:#fff;--f-bot:#f1f3f6;--s-top:#f1f3f5;--s-bot:#e4e7eb;--p-top:#454e60;--p-bot:#2b3446;--p-ftop:#626f86;--p-fbot:#45536b;--edge:rgb(24 35 52 / .18);--shine:rgb(255 255 255 / .94);--shade:rgb(15 23 42 / .08);--drop:rgb(15 23 42 / .07);--press:rgb(15 23 42 / .15)}
+.th-d{--ink:#f0efec;--ink2:#c3c2b7;--dis:#8f8e88;--canvas:#181818;--menu:#222222;--input:#262624;--muted:#343434;--line:#3c3c3c;--fline:#4a4a4a;--hover:#2c2c2c;--sel:#343434;--accent:#779de8;--d-bg:#481f24;--d-line:#e27d75;--d-fg:#ffb4ab;--link:#8fb0ee;--shadow:0 10px 28px rgba(0,0,0,.42),0 1px 3px rgba(0,0,0,.3);
+--sec-bg:#2c2c2c;--ter-bg:#3a3a3a;--pri-bg:#58647b;--f-top:#3b3f47;--f-bot:#31353d;--s-top:#30343b;--s-bot:#2a2d33;--p-top:#737f96;--p-bot:#58647b;--p-ftop:#8995ac;--p-fbot:#68768f;--edge:rgb(10 14 22 / .55);--shine:rgb(255 255 255 / .2);--shade:rgb(0 0 0 / .3);--drop:rgb(0 0 0 / .25);--press:rgb(0 0 0 / .5)}
+.th{--p-edge:#1b2332;--p-shine:rgb(255 255 255 / .18);--p-shade:rgb(0 0 0 / .22);--p-drop:rgb(25 34 48 / .19);--p-press:rgb(0 0 0 / .4);font-family:Inter,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;font-size:14px;line-height:20px;color:var(--ink);-webkit-font-smoothing:antialiased}
+.th h1{margin:0;font-size:20px;line-height:28px;font-weight:560;letter-spacing:-.01em}
+.th h2{margin:0;font-size:15px;line-height:22px;font-weight:560}
+.th .cap{font-size:12px;line-height:16px;color:var(--ink2)}
+.th .lab{font-size:13px;line-height:20px;color:var(--ink2)}
+.th *{box-sizing:border-box}
+@keyframes spin{ from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+@keyframes pin{ from{opacity:0;transform:translateY(-6px) scale(.96)} to{opacity:1;transform:none} }
+@keyframes pout{ from{opacity:1;transform:none} to{opacity:0;transform:translateY(-4px) scale(.98)} }
+.spin{animation:spin .9s linear infinite}
+@media (prefers-reduced-motion: reduce){ .spin{animation:none} .pop,.pop-out{animation:none!important} .th *{transition:none!important} }
+
+
+.btn{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border:1px solid transparent;border-radius:8px;font-family:inherit;font-size:14px;font-weight:460;line-height:20px;white-space:nowrap;cursor:pointer;outline:none;color:var(--ink);background:transparent;transition:transform 120ms ease,background-color 150ms ease,border-color 150ms ease,color 150ms ease,box-shadow 150ms ease}
+.btn svg{flex-shrink:0}
+.sz-c{height:36px;padding:0 12px}
+.sz-s{height:28px;padding:0 10px;font-size:13px;gap:6px}
+.surf{background-color:var(--bg);border-color:var(--be);color:var(--bf)}
+.v-sec{--bg:var(--sec-bg);--be:var(--fline);--bf:var(--ink);--bh:var(--hover);--bfo:var(--hover);--ba:var(--sel)}
+.v-ter{--bg:var(--ter-bg);--be:transparent;--bf:var(--ink);--bh:color-mix(in srgb,var(--ter-bg) 90%,var(--ink));--bfo:color-mix(in srgb,var(--ter-bg) 90%,var(--ink));--ba:color-mix(in srgb,var(--ter-bg) 80%,var(--ink))}
+.v-pri{--bg:var(--pri-bg);--be:transparent;--bf:#fff;--bh:color-mix(in srgb,var(--pri-bg) 86%,white);--bfo:color-mix(in srgb,var(--pri-bg) 86%,white);--ba:color-mix(in srgb,var(--pri-bg) 85%,black)}
+.v-dng{--bg:var(--d-bg);--be:var(--d-line);--bf:var(--d-fg);--bh:color-mix(in srgb,var(--d-bg) 88%,var(--d-line));--bfo:color-mix(in srgb,var(--d-bg) 88%,var(--d-line));--ba:color-mix(in srgb,var(--d-bg) 78%,var(--d-line))}
+.surf:is(:hover,.is-hover):not(:disabled):not([aria-busy="true"]){background-color:var(--bh)}
+.surf:is(:focus-visible,.is-focus):not(:disabled){background-color:var(--bfo)}
+.surf:is(:active,.is-active):not(:disabled):not([aria-busy="true"]){background-color:var(--ba);transform:scale(.98)}
+.v-gho{background:transparent;color:var(--ink)}
+.v-gho:is(:hover,.is-hover,:focus-visible,.is-focus):not(:disabled):not([aria-busy="true"]){background:var(--hover)}
+.v-gho:is(:active,.is-active):not(:disabled):not([aria-busy="true"]){background:var(--sel);transform:scale(.98)}
+.v-lnk{background:transparent;color:var(--link);padding:0 4px;text-decoration:underline;text-decoration-color:color-mix(in srgb,currentColor 45%,transparent);text-underline-offset:4px}
+.v-lnk:is(:hover,.is-hover,:focus-visible,.is-focus):not(:disabled):not([aria-busy="true"]){color:var(--ink);text-decoration-color:currentColor}
+.v-lnk:is(:active,.is-active):not(:disabled):not([aria-busy="true"]){color:var(--ink);text-decoration-color:currentColor;opacity:.72}
+.btn.btn:is([aria-pressed="true"],[aria-expanded="true"],.is-sel):not(:disabled){background-color:var(--sel);color:var(--ink);border-color:transparent;box-shadow:inset 0 0 0 1px var(--accent);transform:none}
+.btn[aria-busy="true"]{cursor:progress;transform:none}
+.btn.btn:disabled,.btn.btn.is-dis{background-color:var(--muted);color:var(--dis);border-color:var(--line);box-shadow:none;transform:none;cursor:not-allowed;opacity:1}
+.v-gho:disabled,.v-lnk:disabled{background-color:transparent!important;border-color:transparent!important}
+.ibtn{width:32px;height:32px;padding:0;border-radius:10px;gap:0}
+.ibtn.ib-c{width:28px;height:28px;border-radius:8px}
+.ibtn.ib-s{width:24px;height:24px;border-radius:6px}
+.mx{display:grid;grid-template-columns:72px repeat(7,minmax(0,1fr));column-gap:12px;row-gap:14px;align-items:center}
+.mx .c{display:flex;justify-content:flex-start}
+.row{display:flex;align-items:center;gap:12px}
+.grp{display:flex;flex-direction:column;gap:10px}
+
+</style>
+</helmet>
+<div class="th {{themeClass}}" style="width:1080px;height:860px;padding:40px 48px;display:flex;flex-direction:column;gap:32px;background:var(--canvas);position:relative">
+<div class="row" style="gap:12px;align-items:baseline"><h1>按钮</h1><span class="lab">深色</span></div>
+<div class="mx">
+<span></span>
+<span class="cap">默认</span>
+<span class="cap">悬停</span>
+<span class="cap">键盘焦点</span>
+<span class="cap">按下</span>
+<span class="cap">选中</span>
+<span class="cap">加载中</span>
+<span class="cap">禁用</span>
+<span class="lab">主要</span>
+<div class="c"><button type="button" class="btn surf v-pri"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>新建</button></div>
+<div class="c"><button type="button" class="btn surf v-pri is-hover"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>新建</button></div>
+<div class="c"><button type="button" class="btn surf v-pri is-focus"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>新建</button></div>
+<div class="c"><button type="button" class="btn surf v-pri is-active"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>新建</button></div>
+<div class="c"><button type="button" aria-pressed="true" class="btn surf v-pri is-sel"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>新建</button></div>
+<div class="c"><button type="button" aria-busy="true" class="btn surf v-pri"><svg class="spin" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke-opacity=".25"></circle><path d="M13.5 8A5.5 5.5 0 0 0 8 2.5"></path></svg>新建</button></div>
+<div class="c"><button type="button" disabled class="btn surf v-pri"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>新建</button></div>
+<span class="lab">次要</span>
+<div class="c"><button type="button" class="btn surf v-sec"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10.5V3M5 6l3-3 3 3M3.5 12.5h9"></path></svg>导出</button></div>
+<div class="c"><button type="button" class="btn surf v-sec is-hover"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10.5V3M5 6l3-3 3 3M3.5 12.5h9"></path></svg>导出</button></div>
+<div class="c"><button type="button" class="btn surf v-sec is-focus"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10.5V3M5 6l3-3 3 3M3.5 12.5h9"></path></svg>导出</button></div>
+<div class="c"><button type="button" class="btn surf v-sec is-active"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10.5V3M5 6l3-3 3 3M3.5 12.5h9"></path></svg>导出</button></div>
+<div class="c"><button type="button" aria-pressed="true" class="btn surf v-sec is-sel"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10.5V3M5 6l3-3 3 3M3.5 12.5h9"></path></svg>导出</button></div>
+<div class="c"><button type="button" aria-busy="true" class="btn surf v-sec"><svg class="spin" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke-opacity=".25"></circle><path d="M13.5 8A5.5 5.5 0 0 0 8 2.5"></path></svg>导出</button></div>
+<div class="c"><button type="button" disabled class="btn surf v-sec"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10.5V3M5 6l3-3 3 3M3.5 12.5h9"></path></svg>导出</button></div>
+<span class="lab">三级</span>
+<div class="c"><button type="button" class="btn surf v-ter"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3"></path></svg>重置</button></div>
+<div class="c"><button type="button" class="btn surf v-ter is-hover"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3"></path></svg>重置</button></div>
+<div class="c"><button type="button" class="btn surf v-ter is-focus"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3"></path></svg>重置</button></div>
+<div class="c"><button type="button" class="btn surf v-ter is-active"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3"></path></svg>重置</button></div>
+<div class="c"><button type="button" aria-pressed="true" class="btn surf v-ter is-sel"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3"></path></svg>重置</button></div>
+<div class="c"><button type="button" aria-busy="true" class="btn surf v-ter"><svg class="spin" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke-opacity=".25"></circle><path d="M13.5 8A5.5 5.5 0 0 0 8 2.5"></path></svg>重置</button></div>
+<div class="c"><button type="button" disabled class="btn surf v-ter"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3"></path></svg>重置</button></div>
+<span class="lab">透明</span>
+<div class="c"><button type="button" class="btn v-gho"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01"></path></svg>更多</button></div>
+<div class="c"><button type="button" class="btn v-gho is-hover"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01"></path></svg>更多</button></div>
+<div class="c"><button type="button" class="btn v-gho is-focus"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01"></path></svg>更多</button></div>
+<div class="c"><button type="button" class="btn v-gho is-active"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01"></path></svg>更多</button></div>
+<div class="c"><button type="button" aria-pressed="true" class="btn v-gho is-sel"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01"></path></svg>更多</button></div>
+<div class="c"><button type="button" aria-busy="true" class="btn v-gho"><svg class="spin" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke-opacity=".25"></circle><path d="M13.5 8A5.5 5.5 0 0 0 8 2.5"></path></svg>更多</button></div>
+<div class="c"><button type="button" disabled class="btn v-gho"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01"></path></svg>更多</button></div>
+<span class="lab">文字</span>
+<div class="c"><button type="button" class="btn v-lnk">查看详情</button></div>
+<div class="c"><button type="button" class="btn v-lnk is-hover">查看详情</button></div>
+<div class="c"><button type="button" class="btn v-lnk is-focus">查看详情</button></div>
+<div class="c"><button type="button" class="btn v-lnk is-active">查看详情</button></div>
+<div class="c"><span class="lab">—</span></div>
+<div class="c"><button type="button" aria-busy="true" class="btn v-lnk"><svg class="spin" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke-opacity=".25"></circle><path d="M13.5 8A5.5 5.5 0 0 0 8 2.5"></path></svg>查看详情</button></div>
+<div class="c"><button type="button" disabled class="btn v-lnk">查看详情</button></div>
+<span class="lab">危险</span>
+<div class="c"><button type="button" class="btn surf v-dng"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8M7 7v3.5M9 7v3.5"></path></svg>删除</button></div>
+<div class="c"><button type="button" class="btn surf v-dng is-hover"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8M7 7v3.5M9 7v3.5"></path></svg>删除</button></div>
+<div class="c"><button type="button" class="btn surf v-dng is-focus"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8M7 7v3.5M9 7v3.5"></path></svg>删除</button></div>
+<div class="c"><button type="button" class="btn surf v-dng is-active"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8M7 7v3.5M9 7v3.5"></path></svg>删除</button></div>
+<div class="c"><button type="button" aria-pressed="true" class="btn surf v-dng is-sel"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8M7 7v3.5M9 7v3.5"></path></svg>删除</button></div>
+<div class="c"><button type="button" aria-busy="true" class="btn surf v-dng"><svg class="spin" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke-opacity=".25"></circle><path d="M13.5 8A5.5 5.5 0 0 0 8 2.5"></path></svg>删除</button></div>
+<div class="c"><button type="button" disabled class="btn surf v-dng"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8M7 7v3.5M9 7v3.5"></path></svg>删除</button></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px"><h2>尺寸与图标按钮</h2>
+<div class="row" style="gap:48px;align-items:flex-start">
+<div class="grp"><span class="cap">主要</span><div class="row">
+<button type="button" class="btn surf v-pri"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>默认 40</button>
+<button type="button" class="btn surf v-pri sz-c"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>紧凑 36</button>
+<button type="button" class="btn surf v-pri sz-s"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>小 28</button></div></div>
+<div class="grp"><span class="cap">次要</span><div class="row">
+<button type="button" class="btn surf v-sec"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10.5V3M5 6l3-3 3 3M3.5 12.5h9"></path></svg>默认 40</button>
+<button type="button" class="btn surf v-sec sz-c"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10.5V3M5 6l3-3 3 3M3.5 12.5h9"></path></svg>紧凑 36</button>
+<button type="button" class="btn surf v-sec sz-s"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10.5V3M5 6l3-3 3 3M3.5 12.5h9"></path></svg>小 28</button></div></div>
+<div class="grp"><span class="cap">图标按钮</span><div class="row">
+<button type="button" class="btn v-gho ibtn" aria-label="更多"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01"></path></svg></button>
+<button type="button" class="btn v-gho ibtn ib-c" aria-label="新建"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button type="button" class="btn v-gho ibtn ib-s" aria-label="删除"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8M7 7v3.5M9 7v3.5"></path></svg></button>
+<button type="button" class="btn v-gho ibtn is-sel" aria-pressed="true" aria-label="选中"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></button></div></div></div></div>
+<div style="display:flex;flex-direction:column;gap:16px"><h2>实时交互</h2>
+<div class="row" style="gap:48px;align-items:flex-start">
+<div class="grp"><span class="cap">点击加载并完成</span>
+<button type="button" class="btn surf v-pri" aria-busy="{{busy}}" onClick="{{save}}">
+<sc-if value="{{busy}}" hint-placeholder-val="{{ false }}"><svg class="spin" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke-opacity=".25"></circle><path d="M13.5 8A5.5 5.5 0 0 0 8 2.5"></path></svg></sc-if>
+<sc-if value="{{done}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></sc-if>
+<sc-if value="{{idle}}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></sc-if>
+<span>{{saveLabel}}</span></button></div>
+<div class="grp"><span class="cap">点击切换选中</span>
+<button type="button" class="btn surf v-sec" aria-pressed="{{pinned}}" onClick="{{pin}}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg><span>{{pinLabel}}</span></button></div>
+<div class="grp"><span class="cap">透明图标切换</span>
+<button type="button" class="btn v-gho ibtn" aria-pressed="{{star}}" aria-label="收藏" onClick="{{toggleStar}}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></button></div>
+<div class="grp"><span class="cap">危险操作</span>
+<button type="button" class="btn surf v-dng" onClick="{{noop}}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8M7 7v3.5M9 7v3.5"></path></svg>删除</button></div></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":true},"$preview":{"width":1080,"height":860}}'>
+class Component extends DCLogic {
+state = { busy: false, done: false, pinned: false, star: false };
+componentWillUnmount() { clearTimeout(this.t); }
+renderVals() {
+const s = this.state;
+const d = this.props.dark;
+const dark = d === true || d === 'true';
+return {
+themeClass: dark ? 'th-d' : 'th-l',
+busy: s.busy, done: s.done && !s.busy, idle: !s.busy && !s.done,
+saveLabel: s.busy ? '保存中' : (s.done ? '已保存' : '保存'),
+pinned: s.pinned, pinLabel: s.pinned ? '已固定' : '固定', star: s.star,
+save: () => {
+if (this.state.busy) return;
+this.setState({ busy: true, done: false });
+this.t = setTimeout(() => this.setState({ busy: false, done: true }), 1400);
+},
+pin: () => this.setState({ pinned: !this.state.pinned }),
+toggleStar: () => this.setState({ star: !this.state.star }),
+noop: () => {},
+};
+}
+}
+</script>
+</body>
+</html>
