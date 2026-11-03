@@ -14,7 +14,6 @@ actions!(thinkly_fast, [Quit, ExportImage]);
 
 fn main() {
     Application::new().with_assets(icons::Icons).run(|cx: &mut App| {
-        cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
         cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
         editor::bind_keys(cx);
         cx.set_menus(vec![Menu {
@@ -36,6 +35,23 @@ fn main() {
             },
             |window, cx| {
                 let workspace = cx.new(|cx| app::Workspace::new(window, cx));
+                let close_editor = workspace.read(cx).editor.clone();
+                let quit_editor = close_editor.clone();
+                window.on_window_should_close(cx, move |_, cx| {
+                    close_editor.update(cx, |editor, cx| {
+                        let ready = editor.prepare_to_quit();
+                        if !ready { cx.notify(); }
+                        ready
+                    })
+                });
+                cx.on_action(move |_: &Quit, cx: &mut App| {
+                    let ready = quit_editor.update(cx, |editor, cx| {
+                        let ready = editor.prepare_to_quit();
+                        if !ready { cx.notify(); }
+                        ready
+                    });
+                    if ready { cx.quit(); }
+                });
                 let menu_target = workspace.clone();
                 cx.on_action(move |_: &ExportImage, cx: &mut App| {
                     let Some(handle) = cx.active_window() else { return };

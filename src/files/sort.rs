@@ -1,49 +1,34 @@
-//! Case-insensitive natural ordering: digit runs compare numerically, the rest
-//! by lowercased char.
+//! Deterministic natural ordering, including arbitrarily long digit runs.
+use std::cmp::Ordering;
 
-pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
-    let (mut a, mut b) = (a.chars().peekable(), b.chars().peekable());
+pub fn natural_cmp(mut a: &str, mut b: &str) -> Ordering {
     loop {
-        match (a.peek().copied(), b.peek().copied()) {
-            (None, None) => return std::cmp::Ordering::Equal,
-            (None, Some(_)) => return std::cmp::Ordering::Less,
-            (Some(_), None) => return std::cmp::Ordering::Greater,
+        match (a.chars().next(), b.chars().next()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
             (Some(ca), Some(cb)) if ca.is_ascii_digit() && cb.is_ascii_digit() => {
-                let (na, la) = take_number(&mut a);
-                let (nb, lb) = take_number(&mut b);
-                match (na.cmp(&nb), la.cmp(&lb)) {
-                    (std::cmp::Ordering::Equal, len) if len != std::cmp::Ordering::Equal => {
-                        return len;
-                    }
-                    (ord, _) if ord != std::cmp::Ordering::Equal => return ord,
-                    _ => {}
-                }
+                let na = take_number(&mut a);
+                let nb = take_number(&mut b);
+                let sa = na.trim_start_matches('0');
+                let sb = nb.trim_start_matches('0');
+                let ord = sa.len().cmp(&sb.len()).then_with(|| sa.cmp(sb))
+                    .then_with(|| na.len().cmp(&nb.len()));
+                if ord != Ordering::Equal { return ord; }
             }
             (Some(ca), Some(cb)) => {
-                a.next();
-                b.next();
+                a = &a[ca.len_utf8()..];
+                b = &b[cb.len_utf8()..];
                 let ord = ca.to_lowercase().cmp(cb.to_lowercase());
-                if ord != std::cmp::Ordering::Equal {
-                    return ord;
-                }
+                if ord != Ordering::Equal { return ord; }
             }
         }
     }
 }
 
-/// (numeric value, digit count) so "01" sorts before "1" when values tie.
-fn take_number(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> (u128, usize) {
-    let mut value = 0u128;
-    let mut len = 0usize;
-    let mut overflow = false;
-    while let Some(c) = chars.peek().copied().filter(|c| c.is_ascii_digit()) {
-        chars.next();
-        len += 1;
-        if let Some(next) = value.checked_mul(10).and_then(|v| v.checked_add((c as u8 - b'0') as u128)) {
-            value = next;
-        } else {
-            overflow = true;
-        }
-    }
-    (if overflow { u128::MAX } else { value }, len)
+fn take_number<'a>(text: &mut &'a str) -> &'a str {
+    let len = text.bytes().take_while(u8::is_ascii_digit).count();
+    let (number, rest) = text.split_at(len);
+    *text = rest;
+    number
 }
