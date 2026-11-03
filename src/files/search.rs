@@ -12,12 +12,13 @@ const AFTER: usize = 56;
 pub struct Hit {
     pub path: PathBuf,
     pub title: String,
-    /// Folder relative to the workspace root ("" at the root).
+    /// Subfolder + note label relative to the workspace root ("" at the root).
     pub folder: String,
     pub title_match: bool,
     pub title_marks: Vec<Range<usize>>,
     pub snippet: String,
     pub marks: Vec<Range<usize>>,
+    pub count: usize,
 }
 
 /// Lowercase that keeps byte offsets valid (falls back to ASCII-only folding).
@@ -54,7 +55,9 @@ fn inspect(root: &Path, path: &Path, query: &str) -> Option<Hit> {
     let title_marks = find_all(&stem, query);
     let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     let body = if size <= MAX_FILE_BYTES { std::fs::read_to_string(path).unwrap_or_default() } else { String::new() };
-    let found = find_all(&body, query).into_iter().next();
+    let body_matches = find_all(&body, query);
+    let count = body_matches.len();
+    let found = body_matches.into_iter().next();
     if title_marks.is_empty() && found.is_none() { return None; }
     let (snippet, marks) = match found {
         Some(range) => {
@@ -64,11 +67,12 @@ fn inspect(root: &Path, path: &Path, query: &str) -> Option<Hit> {
         }
         None => (first_line(&body), Vec::new()),
     };
-    let folder = path.parent().and_then(|p| p.strip_prefix(root).ok()).map(|p| {
+    let rel_folder = path.parent().and_then(|p| p.strip_prefix(root).ok()).map(|p| {
         p.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join(" / ")
     }).unwrap_or_default();
+    let folder = if rel_folder.is_empty() { String::new() } else { format!("{rel_folder} / {stem}") };
     Some(Hit { path: path.to_owned(), title: stem, folder, title_match: !title_marks.is_empty(),
-        title_marks, snippet, marks })
+        title_marks, snippet, marks, count })
 }
 
 /// Title matches first, then body matches; at most `limit` hits in total.
