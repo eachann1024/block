@@ -163,8 +163,8 @@ impl Editor {
         }).min_by(|a, b| a.top().partial_cmp(&b.top()).unwrap_or(std::cmp::Ordering::Equal))?;
         use crate::editor::chrome::{TOOLBAR_HEIGHT, TOOLBAR_WIDTH};
         let x = rect.left().max(bounds.left()+px(8.)).min((bounds.right()-TOOLBAR_WIDTH-px(8.)).max(bounds.left()));
-        let above = rect.top() - TOOLBAR_HEIGHT - px(6.);
-        let y = if above >= viewport.top() { above } else { rect.bottom()+px(6.) };
+        let above = rect.top() - TOOLBAR_HEIGHT - px(8.);
+        let y = if above >= viewport.top() { above } else { rect.bottom()+px(8.) };
         Some(point(x, y.min((viewport.bottom()-TOOLBAR_HEIGHT).max(viewport.top())).max(viewport.top())))
     }
 }
