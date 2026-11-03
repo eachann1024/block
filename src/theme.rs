@@ -1,16 +1,139 @@
-//! Ocean paper theme (design A). Every color, radius and size the UI paints
-//! comes from here so a later skin only has to swap this struct.
+//! Ocean paper theme (design A) in Light and Dark, plus process-wide appearance,
+//! typography, font-smoothing and shortcut settings backed by `state.json`.
 
-use gpui::{Hsla, Pixels, hsla, px};
-
+use std::process::Command;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use gpui::{Hsla, Pixels, px};
+pub use crate::files::state::{FontChoice, ThemeMode};
 use crate::icons::IconColors;
 
-fn hex(value: u32) -> Hsla {
+pub const DEFAULT_SEARCH_SHORTCUT: &str = "cmd-shift-k";
+pub const DEFAULT_QUICK_SHORTCUT: &str = "alt-n";
+
+static THEME_MODE: AtomicU8 = AtomicU8::new(0);
+static IS_DARK: AtomicBool = AtomicBool::new(false);
+static FONT_CHOICE: AtomicU8 = AtomicU8::new(0);
+static SMOOTHING: AtomicBool = AtomicBool::new(true);
+static SHORTCUTS: Mutex<Option<(String, String)>> = Mutex::new(None);
+
+fn system_is_dark() -> bool {
+    Command::new("defaults")
+        .args(["read", "-g", "AppleInterfaceStyle"])
+        .output()
+        .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).trim().eq_ignore_ascii_case("dark"))
+}
+
+pub fn apply_state(state: &crate::files::state::State) {
+    set_theme_mode(state.theme);
+    set_font_choice(state.font_family);
+    set_font_smoothing(state.font_smoothing.unwrap_or(true));
+    let search = state.shortcut_search.clone().unwrap_or_else(|| DEFAULT_SEARCH_SHORTCUT.into());
+    let quick = state.shortcut_quick.clone().unwrap_or_else(|| DEFAULT_QUICK_SHORTCUT.into());
+    set_shortcuts(search, quick);
+}
+
+pub fn theme_mode() -> ThemeMode {
+    match THEME_MODE.load(Ordering::Relaxed) {
+        1 => ThemeMode::Dark,
+        2 => ThemeMode::System,
+        _ => ThemeMode::Light,
+    }
+}
+
+pub fn set_theme_mode(mode: ThemeMode) {
+    let code = match mode { ThemeMode::Light => 0, ThemeMode::Dark => 1, ThemeMode::System => 2 };
+    THEME_MODE.store(code, Ordering::Relaxed);
+    let dark = match mode {
+        ThemeMode::Light => false,
+        ThemeMode::Dark => true,
+        ThemeMode::System => system_is_dark(),
+    };
+    IS_DARK.store(dark, Ordering::Relaxed);
+}
+
+pub fn is_dark() -> bool { IS_DARK.load(Ordering::Relaxed) }
+
+pub fn font_choice() -> FontChoice {
+    match FONT_CHOICE.load(Ordering::Relaxed) {
+        1 => FontChoice::Serif,
+        2 => FontChoice::Mono,
+        _ => FontChoice::Sans,
+    }
+}
+
+pub fn set_font_choice(font: FontChoice) {
+    let code = match font { FontChoice::Sans => 0, FontChoice::Serif => 1, FontChoice::Mono => 2 };
+    FONT_CHOICE.store(code, Ordering::Relaxed);
+}
+
+pub fn editor_font() -> (&'static str, &'static [&'static str]) {
+    match font_choice() {
+        FontChoice::Sans => (".SystemUIFont", &["PingFang SC", "Hiragino Sans GB"]),
+        FontChoice::Serif => ("LXGW WenKai", &["Songti SC", "STSong", "Georgia", "PingFang SC"]),
+        FontChoice::Mono => ("JetBrains Mono", &["Menlo", "Monaco", "PingFang SC"]),
+    }
+}
+
+pub fn font_smoothing() -> bool { SMOOTHING.load(Ordering::Relaxed) }
+
+pub fn set_font_smoothing(on: bool) {
+    SMOOTHING.store(on, Ordering::Relaxed);
+    let val = if on { "2" } else { "0" };
+    std::thread::spawn(move || {
+        let _ = Command::new("defaults")
+            .args(["write", "app.thinkly.fast", "AppleFontSmoothing", "-int", val])
+            .status();
+    });
+}
+
+pub fn search_shortcut() -> String {
+    SHORTCUTS.lock().unwrap_or_else(|e| e.into_inner())
+        .as_ref().map(|(s, _)| s.clone()).unwrap_or_else(|| DEFAULT_SEARCH_SHORTCUT.into())
+}
+
+pub fn quick_shortcut() -> String {
+    SHORTCUTS.lock().unwrap_or_else(|e| e.into_inner())
+        .as_ref().map(|(_, q)| q.clone()).unwrap_or_else(|| DEFAULT_QUICK_SHORTCUT.into())
+}
+
+pub fn set_shortcuts(search: String, quick: String) {
+    *SHORTCUTS.lock().unwrap_or_else(|e| e.into_inner()) = Some((search, quick));
+}
+
+pub fn format_hotkey(spec: &str) -> String {
+    let (mut ctrl, mut alt, mut shift, mut cmd, mut key) = (false, false, false, false, String::new());
+    for part in spec.split('-').filter(|s| !s.is_empty()) {
+        match part.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => ctrl = true,
+            "alt" | "opt" | "option" => alt = true,
+            "shift" => shift = true,
+            "cmd" | "super" | "meta" => cmd = true,
+            "space" => key = "Space".into(),
+            "comma" => key = ",".into(),
+            "period" => key = ".".into(),
+            "slash" => key = "/".into(),
+            "minus" => key = "-".into(),
+            "equal" => key = "=".into(),
+            other => key = other.to_ascii_uppercase(),
+        }
+    }
+    if spec.ends_with("--") { key = "-".into(); }
+    let mut out = String::new();
+    if ctrl { out.push('⌃'); }
+    if alt { out.push('⌥'); }
+    if shift { out.push('⇧'); }
+    if cmd { out.push('⌘'); }
+    out.push_str(&key);
+    out
+}
+
+const fn hex(value: u32) -> Hsla {
     let r = ((value >> 16) & 0xff) as f32 / 255.0;
     let g = ((value >> 8) & 0xff) as f32 / 255.0;
     let b = (value & 0xff) as f32 / 255.0;
-    let max = r.max(g).max(b);
-    let min = r.min(g).min(b);
+    let max = if r >= g && r >= b { r } else if g >= b { g } else { b };
+    let min = if r <= g && r <= b { r } else if g <= b { g } else { b };
     let l = (max + min) / 2.0;
     let d = max - min;
     let s = if d == 0.0 {
@@ -29,9 +152,68 @@ fn hex(value: u32) -> Hsla {
     } else {
         ((r - g) / d + 4.0) / 6.0
     };
-    hsla(h, s, l, 1.0)
+    Hsla { h, s, l, a: 1.0 }
 }
 
+const OCEAN_LIGHT: Theme = Theme {
+    shell: hex(0xf1f1f1),
+    sidebar: hex(0xfafafa),
+    paper: hex(0xffffff),
+    menu: hex(0xffffff),
+    text: hex(0x20242c),
+    text_secondary: hex(0x526071),
+    accent: hex(0x547dd0),
+    icon_fill: hex(0xc9d8f3),
+    hover: hex(0xeef3fc),
+    selected: hex(0xe5edfc),
+    hairline: hex(0xe4e6ea),
+    code_bg: hex(0xf2f4f8),
+    quote_bar: hex(0xd5dbe3),
+    primary: hex(0x2f3540),
+    primary_hover: hex(0x3b4250),
+    btn_border: hex(0xdcdcdc),
+    btn_hover: hex(0xf7f7f7),
+    menu_border: hex(0xe4e4e4),
+    sidebar_border: hex(0xe6e6e6),
+    preview_bg: hex(0xe9e9e9),
+    selection: hex(0xd6e3fb),
+    menu_item_height: px(32.),
+    sidebar_width: px(260.),
+    content_width: px(720.),
+    editor_font: px(17.),
+    ui_font: px(14.),
+};
+
+const OCEAN_DARK: Theme = Theme {
+    shell: hex(0x343434),
+    sidebar: hex(0x222222),
+    paper: hex(0x181818),
+    menu: hex(0x222222),
+    text: hex(0xececec),
+    text_secondary: hex(0xb4b4b4),
+    accent: hex(0x779de8),
+    icon_fill: hex(0x31456a),
+    hover: hex(0x2c2c2c),
+    selected: hex(0x343434),
+    hairline: hex(0x2e2e2e),
+    code_bg: hex(0x242424),
+    quote_bar: hex(0x484848),
+    primary: hex(0x445066),
+    primary_hover: hex(0x52607a),
+    btn_border: hex(0x444444),
+    btn_hover: hex(0x2c2c2c),
+    menu_border: hex(0x383838),
+    sidebar_border: hex(0x333333),
+    preview_bg: hex(0x262626),
+    selection: hex(0x2d426b),
+    menu_item_height: px(32.),
+    sidebar_width: px(260.),
+    content_width: px(720.),
+    editor_font: px(17.),
+    ui_font: px(14.),
+};
+
+#[derive(Clone, Copy)]
 pub struct Theme {
     pub shell: Hsla,
     pub sidebar: Hsla,
@@ -46,8 +228,19 @@ pub struct Theme {
     pub hairline: Hsla,
     pub code_bg: Hsla,
     pub quote_bar: Hsla,
+    pub primary: Hsla,
+    pub primary_hover: Hsla,
+    pub btn_border: Hsla,
+    pub btn_hover: Hsla,
+    pub menu_border: Hsla,
+    pub sidebar_border: Hsla,
+    /// Backdrop behind the export preview card.
+    pub preview_bg: Hsla,
+    /// Text selection highlight.
+    pub selection: Hsla,
     pub menu_item_height: Pixels,
     pub sidebar_width: Pixels,
+    /// Standard body text width, excluding block handles, markers and insets.
     pub content_width: Pixels,
     pub editor_font: Pixels,
     pub ui_font: Pixels,
@@ -60,25 +253,6 @@ impl Theme {
     }
 
     pub fn ocean() -> Self {
-        Self {
-            shell: hex(0xf1f1f1),
-            sidebar: hex(0xfafafa),
-            paper: hex(0xffffff),
-            menu: hex(0xffffff),
-            text: hex(0x20242c),
-            text_secondary: hex(0x526071),
-            accent: hex(0x547dd0),
-            icon_fill: hex(0xc9d8f3),
-            hover: hex(0xeef3fc),
-            selected: hex(0xe5edfc),
-            hairline: hex(0xe4e6ea),
-            code_bg: hex(0xf2f4f8),
-            quote_bar: hex(0xc5d0e6),
-            menu_item_height: px(32.),
-            sidebar_width: px(248.),
-            content_width: px(720.),
-            editor_font: px(17.),
-            ui_font: px(14.),
-        }
+        if is_dark() { OCEAN_DARK } else { OCEAN_LIGHT }
     }
 }

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>标签 3 · 居中胶囊切换</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button{font-family:inherit}
+.row{font:inherit;font-size:14px;line-height:20px;font-weight:400;width:100%;height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#20242c;text-align:left;cursor:pointer;box-sizing:border-box}
+.row:hover{background:#eef3fc}
+.btn{font:inherit;font-size:13px;font-weight:460;height:36px;padding:0 8px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;white-space:nowrap}
+.btn:active{transform:scale(.98)}
+.btn-2{background:#ffffff;color:#20242c;border:1px solid #dcdcdc}
+.btn-2:hover{background:#f7f7f7}
+.btn-1{background:#2f3540;color:#ffffff;border:0}
+.btn-1:hover{background:#3b4250}
+.ib{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#526071;padding:0;cursor:pointer;flex:none}
+.ib:hover{background:#eef3fc;color:#20242c}
+.hbtn{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:4px;background:transparent;color:#526071;padding:0;cursor:pointer}
+.hbtn:hover{background:#eef3fc;color:#20242c}
+.ctab{font:inherit;font-size:13px;line-height:20px;font-weight:460;height:26px;min-width:96px;max-width:176px;display:inline-flex;align-items:center;gap:6px;padding:0 6px 0 10px;border:0;border-radius:6px;background:transparent;color:#526071;cursor:pointer;box-sizing:border-box}
+.ctab:hover{background:#eef3fc;color:#20242c}
+.ctab-active{background:#ffffff;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0}
+.ctab-active:hover{background:#ffffff}
+.tab-close{width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:4px;background:transparent;color:#526071;padding:0;cursor:pointer;flex:none}
+.tab-close:hover{background:#eef3fc;color:#20242c}
+.tab-label{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-align:left;mask-image:linear-gradient(90deg,#000 82%,transparent);-webkit-mask-image:linear-gradient(90deg,#000 82%,transparent)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</helmet>
+<div style="width:100%;height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:#f1f1f1;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;font-size:14px;line-height:20px;overflow:hidden">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;padding:0 16px;gap:12px">
+<div aria-hidden="true" style="display:flex;gap:8px;width:52px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+
+<div style="flex:1;min-width:0;display:flex;justify-content:center">
+<nav aria-label="居中胶囊标签槽" style="display:inline-flex;align-items:center;gap:2px;padding:3px;background:#e8eaee;border-radius:8px;max-width:720px">
+<div class="ctab ctab-active" role="tab" aria-selected="true">
+<span class="tab-label">周会 11-03</span>
+<button class="tab-close" aria-label="关闭周会 11-03"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</div>
+<div class="ctab" role="tab" aria-selected="false">
+<span class="tab-label">发布清单</span>
+<span aria-label="未保存" style="width:6px;height:6px;border-radius:3px;background:#547dd0;flex:none;margin:0 4px"></span>
+</div>
+<div class="ctab" role="tab" aria-selected="false">
+<span class="tab-label">需求评审与多端同步架构纪要</span>
+</div>
+<div class="ctab" role="tab" aria-selected="false">
+<span class="tab-label">产品原则</span>
+</div>
+<button class="ib" aria-label="新建标签页"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+</nav>
+</div>
+
+<div aria-hidden="true" style="width:52px;flex:none"></div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+
+<aside aria-label="文件列表" style="width:260px;flex:none;background:#fafafa;border-right:1px solid #e6e6e6;box-sizing:border-box;display:flex;flex-direction:column;min-height:0">
+<div style="display:flex;gap:8px;padding:12px 12px 8px">
+<button class="btn btn-2" style="flex:1;min-width:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left">本地笔记</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+<button class="btn btn-1" style="flex:none;padding:0 12px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>新建笔记</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;padding:4px 8px 12px;display:flex;flex-direction:column;gap:2px">
+<button class="row"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>会议记录</button>
+<button class="row" aria-pressed="true" style="padding-left:28px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;font-weight:460">周会 11-03</button>
+<button class="row" style="padding-left:28px">需求评审与多端同步架构纪要</button>
+<button class="row"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>归档</button>
+<button class="row"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>阅读</button>
+<button class="row">产品原则</button>
+<button class="row">发布清单</button>
+<button class="row">速记</button>
+</div>
+</aside>
+
+<main style="flex:999 1 560px;min-width:0;background:#ffffff;overflow:auto;display:flex;flex-direction:column">
+<div style="flex:1;box-sizing:border-box;width:100%;max-width:816px;margin:0 auto;padding:36px 28px 64px;display:flex;flex-direction:column;gap:14px">
+
+<div style="display:flex;align-items:flex-start;gap:8px">
+<div style="width:44px;flex:none"></div>
+<h1 style="flex:1;min-width:0;max-width:720px;margin:0;font-size:28px;line-height:1.35;font-weight:560;letter-spacing:-0.01em">把周会改成异步</h1>
+</div>
+
+<div style="display:flex;align-items:flex-start;gap:8px">
+<div style="width:44px;flex:none"></div>
+<p style="flex:1;min-width:0;max-width:720px;margin:0;font-size:17px;line-height:1.5">上周排了三场同步会，两场结束时没有结论。人到齐，并不等于事情被推进。</p>
+</div>
+
+<div style="display:flex;align-items:flex-start;gap:8px">
+<div style="width:44px;flex:none;display:flex;justify-content:flex-end;gap:2px;padding-top:1px">
+<button class="hbtn" aria-label="拖动块"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="5" cy="2.5" r="1" fill="#526071"></circle><circle cx="9" cy="2.5" r="1" fill="#526071"></circle><circle cx="5" cy="7" r="1" fill="#526071"></circle><circle cx="9" cy="7" r="1" fill="#526071"></circle><circle cx="5" cy="11.5" r="1" fill="#526071"></circle><circle cx="9" cy="11.5" r="1" fill="#526071"></circle></svg></button>
+<button class="hbtn" aria-label="添加块"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+</div>
+<p style="flex:1;min-width:0;max-width:720px;margin:0;font-size:17px;line-height:1.5">居中胶囊槽将打开的标签收拢在标题栏中央，单标签时自然退化为纯文本标题。</p>
+</div>
+
+<div style="display:flex;align-items:flex-start;gap:8px">
+<div style="width:44px;flex:none"></div>
+<blockquote style="flex:1;min-width:0;max-width:720px;margin:0;padding:2px 0 2px 14px;border-left:2px solid #d5dbe3;font-size:17px;line-height:1.5">会议是例外，不是节奏。一段文字能说清的，不要再约三十分钟。</blockquote>
+</div>
+
+<div style="display:flex;align-items:flex-start;gap:8px">
+<div style="width:44px;flex:none"></div>
+<h2 style="flex:1;min-width:0;max-width:720px;margin:0;font-size:22px;line-height:1.4;font-weight:560">保留下来的三件事</h2>
+</div>
+
+</div>
+</main>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
