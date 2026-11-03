@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>折角 · 空状态</title><script src="./support.js"></script></head>
+<body>
+<x-dc>
+<helmet><style>body{margin:0}button{font-family:inherit}button:focus-visible{outline:2px solid #3d63b0;outline-offset:3px}</style></helmet>
+<div style="width:1600px;height:860px;box-sizing:border-box;padding:48px;background:#ffffff;color:#20242c;font-family:Inter,-apple-system,'PingFang SC',system-ui,sans-serif;--blue:{{blue}};--tint:{{tint}}">
+<header style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:40px">
+<div><p style="margin:0 0 10px;font-size:12px;letter-spacing:2px;color:#526071">OCEAN / 03</p><h1 style="margin:0;font-size:32px;line-height:40px;font-weight:600;letter-spacing:-1px">折角</h1></div>
+<p style="margin:0 0 5px;font-size:14px;color:#526071">Thinkly Fast</p>
+</header>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px">
+<section style="display:flex;flex-direction:column;gap:14px">
+<p style="margin:0;font-size:12px;line-height:18px;color:#526071">01 / 未选文件夹</p>
+<div style="height:600px;box-sizing:border-box;border:1px solid #e6eaf0;border-radius:12px;overflow:hidden;background:#fcfdff">
+<div style="height:44px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 18px;border-bottom:1px solid #e6eaf0;font-size:12px;color:#526071;background:#f6f8fc"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h6l2 2h8v11H4Z" fill="#c9d8f3" stroke="#526071" stroke-width="1.5" stroke-linejoin="round"></path></svg>本地文件夹</div>
+<div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:32px 20px 24px">
+<svg width="220" height="176" viewBox="0 0 200 160" aria-hidden="true" style="display:block;flex:none">
+<g fill="none" stroke="#20242c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M55 48l18-16h40v87H64q-9 0-9-9Z" fill="var(--tint)"></path>
+<path d="M55 48l30 9v73l-30-20Z" fill="#ffffff"></path>
+<path d="M86 93V69h15l6 5h39v45H86Z" fill="var(--tint)"></path>
+<path d="M86 87h60v32H86Z" fill="#ffffff"></path>
+<path d="M98 39h32l15 15v48H98Z" fill="#ffffff"></path><path d="M130 39v15h15" fill="var(--blue)"></path>
+<path d="M111 67v1m19-1v1" stroke-width="3.2"></path>
+<path d="M102 91q-10 15-22 10"></path>
+</g></svg>
+<h2 style="margin:22px 0 9px;font-size:18px;line-height:26px;font-weight:600">先选一个笔记文件夹</h2>
+<p style="margin:0;min-height:44px;font-size:13px;line-height:22px;color:#526071">打开本地文件夹，<br>让想法有个落脚的地方。</p>
+<button type="button" style="margin-top:24px;height:44px;padding:0 22px;border:1px solid var(--tint);border-radius:7px;background:var(--tint);color:#20242c;font-size:13px;font-weight:600">选择文件夹</button>
+</div></div></section>
+<section style="display:flex;flex-direction:column;gap:14px">
+<p style="margin:0;font-size:12px;line-height:18px;color:#526071">02 / 空文件夹</p>
+<div style="height:600px;box-sizing:border-box;border:1px solid #e6eaf0;border-radius:12px;overflow:hidden;background:#fcfdff">
+<div style="height:44px;box-sizing:border-box;display:flex;align-items:center;padding:0 18px;border-bottom:1px solid #e6eaf0;font-size:12px;color:#526071;background:#f6f8fc">新文件夹</div>
+<div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:32px 20px 24px">
+<svg width="220" height="176" viewBox="0 0 200 160" aria-hidden="true" style="display:block;flex:none">
+<g fill="none" stroke="#20242c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M62 43Q62 32 73 32H121L140 51V108Q140 119 129 119H77Q62 119 62 104Z" fill="var(--tint)"></path>
+<path d="M121 32v19h19" fill="var(--blue)"></path>
+<path d="M79 52h36l15 15v38H79Z" fill="#ffffff"></path>
+<path d="M115 52v15h15" fill="var(--tint)"></path>
+<path d="M93 77v1m19-1v1" stroke-width="3.2"></path>
+<path d="M120 66h26l12 12v58h-38Z" fill="#ffffff"></path><path d="M146 66v12h12" fill="var(--tint)"></path>
+<path d="M130 103h17m-8.5-8.5v17" stroke="#547dd0"></path>
+<path d="M79 91q-18 8-10 21m56-14q-12 16-19 7"></path>
+<path d="M42 132h20l6 5h41v13H42Z" fill="var(--tint)"></path>
+</g></svg>
+<h2 style="margin:22px 0 9px;font-size:18px;line-height:26px;font-weight:600">从第一篇笔记开始</h2>
+<p style="margin:0;min-height:44px;font-size:13px;line-height:22px;color:#526071">这个文件夹里还没有笔记。<br>写下一点，慢慢展开。</p>
+<button type="button" style="margin-top:24px;height:44px;padding:0 22px;border:1px solid var(--tint);border-radius:7px;background:var(--tint);color:#20242c;font-size:13px;font-weight:600">新建笔记</button>
+<button type="button" style="height:44px;padding:0 16px;border:0;background:transparent;color:#526071;font-size:12px">切换文件夹</button>
+</div></div></section>
+<section style="display:flex;flex-direction:column;gap:14px">
+<p style="margin:0;font-size:12px;line-height:18px;color:#526071">03 / 未选笔记</p>
+<div style="height:600px;box-sizing:border-box;border:1px solid #e6eaf0;border-radius:12px;overflow:hidden;background:#fcfdff">
+<div style="height:44px;box-sizing:border-box;display:flex;align-items:center;padding:0 18px;border-bottom:1px solid #e6eaf0;font-size:12px;color:#526071;background:#f6f8fc">工作笔记</div>
+<div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:32px 20px 24px">
+<svg width="220" height="176" viewBox="0 0 200 160" aria-hidden="true" style="display:block;flex:none">
+<g fill="none" stroke="#20242c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<g transform="rotate(-8 100 80)">
+<path d="M62 43Q62 32 73 32H121L140 51V108Q140 119 129 119H77Q62 119 62 104Z" fill="var(--tint)"></path>
+<path d="M121 32v19h19" fill="var(--blue)"></path>
+<path d="M79 52h36l15 15v38H79Z" fill="#ffffff"></path>
+<path d="M115 52v15h15" fill="var(--tint)"></path>
+<path d="M90 77v1m19-1v1" stroke-width="3.2"></path>
+<path d="M79 91q-20 7-30-2m82 6q13 7 9 18"></path></g>
+<path d="M31 63l-9 9 9 9m-9-9h25" stroke="#547dd0"></path>
+<path d="M111 132h44v17h-44Z" fill="var(--tint)"></path><path d="M117 126h44v17h-44Z" fill="#ffffff"></path><path d="M125 134h26" stroke="#547dd0" stroke-width="1.5"></path>
+</g></svg>
+<h2 style="margin:22px 0 9px;font-size:18px;line-height:26px;font-weight:600">打开一篇，继续想</h2>
+<p style="margin:0;min-height:44px;font-size:13px;line-height:22px;color:#526071">从左侧选择笔记开始编辑，<br>也可以写下新的想法。</p>
+<button type="button" style="margin-top:24px;height:44px;padding:0 22px;border:1px solid #d5dce7;border-radius:7px;background:#ffffff;color:#526071;font-size:13px">新建笔记</button>
+</div></div></section>
+<section style="display:flex;flex-direction:column;gap:14px">
+<p style="margin:0;font-size:12px;line-height:18px;color:#526071">04 / 读取失败</p>
+<div style="height:600px;box-sizing:border-box;border:1px solid #e6eaf0;border-radius:12px;overflow:hidden;background:#fcfdff">
+<div style="height:44px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 18px;border-bottom:1px solid #e6eaf0;font-size:12px;color:#526071;background:#f6f8fc"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="#526071" stroke-width="1.5"></circle><path d="M12 7v6m0 3v1" stroke="#526071" stroke-width="1.5" stroke-linecap="round"></path></svg>读取异常</div>
+<div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:32px 20px 24px">
+<svg width="220" height="176" viewBox="0 0 200 160" aria-hidden="true" style="display:block;flex:none">
+<g fill="none" stroke="#20242c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M53 48q0-11 11-11h48l19 19v57q0 11-11 11H68q-15 0-15-15Z" fill="var(--tint)"></path><path d="M112 37v19h19" fill="var(--blue)"></path>
+<g transform="rotate(7 104 83)"><path d="M75 58h36l15 15v38H75Z" fill="#ffffff"></path><path d="M111 58v15h15" fill="var(--tint)"></path><path d="M88 82v1m19-1v1" stroke-width="3.2"></path></g>
+<path d="M73 101q-10 10-16 6m67-10q10 8 8 17"></path>
+<path d="M119 121v-12h15l7 5h12m10 0h12v33h-21m-11 0h-24v-17" fill="#ffffff"></path>
+<path d="M120 130h22m12 0h20" stroke="#547dd0" stroke-dasharray="3 5"></path>
+<path d="M147 87a12 12 0 1 1 17-2m0-7v7h-7" stroke="#547dd0"></path>
+</g></svg>
+<h2 style="margin:22px 0 9px;font-size:18px;line-height:26px;font-weight:600">暂时无法读取文件夹</h2>
+<p style="margin:0;min-height:44px;font-size:13px;line-height:22px;color:#526071">检查文件夹是否仍可访问，<br>然后重试，或选择其他文件夹。</p>
+<button type="button" style="margin-top:24px;height:44px;padding:0 22px;border:1px solid var(--tint);border-radius:7px;background:var(--tint);color:#20242c;font-size:13px;font-weight:600">重试</button>
+<button type="button" style="height:44px;padding:0 16px;border:0;background:transparent;color:#526071;font-size:12px">选择其他文件夹</button>
+</div></div></section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"blue":{"editor":"color","default":"#547dd0"},"tint":{"editor":"color","default":"#c9d8f3"},"$preview":{"width":1600,"height":860}}'>
+class Component extends DCLogic { renderVals() { return { blue: this.props.blue ?? '#547dd0', tint: this.props.tint ?? '#c9d8f3' }; } }
+</script>
+</body>
+</html>

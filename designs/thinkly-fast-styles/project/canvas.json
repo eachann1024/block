@@ -99,6 +99,27 @@
    "w": 1600,
    "h": 1200,
    "title": "双色 · 文件夹与文件 三版"
+  },
+  "Mascot-Folio.dc.html": {
+   "x": 0,
+   "y": 5400,
+   "w": 1600,
+   "h": 860,
+   "title": "形象 A · 页隼 · 四状态"
+  },
+  "Mascot-Ink.dc.html": {
+   "x": 1680,
+   "y": 5400,
+   "w": 1600,
+   "h": 860,
+   "title": "形象 B · 墨团 · 四状态"
+  },
+  "Mascot-Fold.dc.html": {
+   "x": 3360,
+   "y": 5400,
+   "w": 1600,
+   "h": 860,
+   "title": "形象 C · 折角 · 四状态"
   }
  },
  "order": [
@@ -113,7 +134,10 @@
   "Icons-3.dc.html",
   "Icons-4.dc.html",
   "Duo-Set.dc.html",
-  "Duo-Tree.dc.html"
+  "Duo-Tree.dc.html",
+  "Mascot-Folio.dc.html",
+  "Mascot-Ink.dc.html",
+  "Mascot-Fold.dc.html"
  ],
  "notes": {
   "tA": {
@@ -143,6 +167,13 @@
    "text": "双色 · 精修",
    "kind": "title1",
    "maxW": 3280
+  },
+  "tM": {
+   "x": 0,
+   "y": 5120,
+   "text": "Ocean · 原创形象与空状态",
+   "kind": "title1",
+   "maxW": 4960
   }
  },
  "designSystems": []
