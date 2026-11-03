@@ -260,9 +260,9 @@ impl Editor {
         };
         self.table_menu = Some(TableMenu { block: id, sel, anchor }); cx.notify();
     }
-    /// Shift+F10: the row and column options for the cell holding the caret.
+    /// Shift+F10: the row and column options for the cell holding the caret, or the block handle menu outside tables.
     pub(in crate::editor) fn open_cell_menu(&mut self, cx: &mut Context<Self>) {
-        let Some((id, r, c)) = self.cell_of_caret() else { return };
+        let Some((id, r, c)) = self.cell_of_caret() else { self.open_handle_menu_shortcut(cx); return };
         let Some(layout) = self.layouts.get(&id) else { return };
         let (rows, columns) = table_layout::spans(layout);
         let (Some(x), Some(y)) = (columns.get(c).map(|s| s.0), rows.get(r).map(|s| s.1)) else { return };

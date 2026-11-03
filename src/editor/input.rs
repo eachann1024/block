@@ -11,7 +11,15 @@ impl Editor {
         if self.path.is_none() { return; }
         self.pending_vertical = None;
         if !matches!(action, Cancel) { self.commit_composition(cx); }
-        if self.block_selection_key(action, cx) { return; }
+        match action {
+            Up | Down if self.block_menu_step(matches!(action, Down), cx) => return,
+            Enter if self.block_menu_pick(window, cx) => return,
+            Left | Right if self.block_menu_nav(matches!(action, Right), window, cx) => return,
+            Backspace if self.block_menu_nav(false, window, cx) => return,
+            Cancel if self.block_menu.is_some() => { self.block_menu = None; cx.notify(); return; }
+            _ => {}
+        }
+        if self.block_selection_key(action, window, cx) { return; }
         match action {
             Left | Right | SelectLeft | SelectRight => {
                 self.preferred_x = None;
@@ -101,22 +109,33 @@ impl Editor {
                     self.list.reset(self.doc.blocks.len()); self.changed(cx);
                 }
                 self.caret.composing = None;
-                let idle = self.block_menu.is_none() && self.toolbar_anchor.is_none() && self.table_menu.is_none() && self.table_sel.is_none();
-                if idle { self.block_sel = self.doc.index_of(self.caret.head.block).map(|i| (i, i)); }
+                let idle = self.block_menu.is_none() && self.format.is_none() && self.table_menu.is_none() && self.table_sel.is_none();
+                if idle {
+                    let (_, _, ai, bi) = self.ordered();
+                    self.block_sel = Some((ai, bi));
+                    self.caret.anchor = self.caret.head;
+                }
                 self.clear_pointer(); self.toolbar_anchor = None; self.block_menu = None; cx.notify();
             }
         }
         let _ = window;
     }
-    fn step(&self, forward: bool) -> Position {
+    pub(super) fn step(&self, forward: bool) -> Position {
         let at = self.caret.head;
-        let text = self.block_text();
-        let mut cursor = GraphemeCursor::new(boundary(text, at.offset), text.len(), true);
-        let next = if forward { cursor.next_boundary(text, 0) } else { cursor.prev_boundary(text, 0) };
-        if let Ok(Some(offset)) = next { return Position { offset, ..at }; }
+        let atomic = self.doc.get(at.block).is_some_and(|b| super::image_source::spec_of(b).is_some() || super::block_menu::is_divider(b));
+        if !atomic {
+            let text = self.block_text();
+            let mut cursor = GraphemeCursor::new(boundary(text, at.offset), text.len(), true);
+            let next = if forward { cursor.next_boundary(text, 0) } else { cursor.prev_boundary(text, 0) };
+            if let Ok(Some(offset)) = next { return Position { offset, ..at }; }
+        }
         let index = self.doc.index_of(at.block).unwrap_or(0);
         let next = if forward { index.checked_add(1).filter(|i| *i < self.doc.blocks.len()) } else { index.checked_sub(1) };
-        next.map(|i| { let b = &self.doc.blocks[i]; Position { block: b.id, offset: if forward { 0 } else { b.text.len() } } }).unwrap_or(at)
+        next.map(|i| {
+            let b = &self.doc.blocks[i];
+            let next_atomic = super::image_source::spec_of(b).is_some() || super::block_menu::is_divider(b);
+            Position { block: b.id, offset: if forward || next_atomic { 0 } else { b.text.len() } }
+        }).unwrap_or(at)
     }
     /// The image block holding a collapsed caret; its source is hidden and must not be typed into.
     pub(super) fn focused_image(&self) -> Option<u64> {
@@ -133,6 +152,15 @@ impl Editor {
             self.caret = caret_before; self.table_edit_rejected(cx); return;
         }
         let composing = self.composition_before.is_some();
+        // thinkly `emptyParagraphAiShortcut`: space in an empty paragraph opens inline AI.
+        if text == " " && !composing && self.caret.is_empty() {
+            let id = self.caret.head.block;
+            if self.doc.get(id).is_some_and(|b| b.text.is_empty() && b.kind == Kind::Paragraph && b.meta.table.is_none() && b.meta.raw_source.is_none() && b.meta.code_language.is_none()) {
+                let anchor = self.layouts.get(&id).map(|l| gpui::point(l.bounds.left(), l.bounds.bottom() + gpui::px(4.)));
+                self.open_ai_block(id, false, anchor, window, cx);
+                return;
+            }
+        }
         self.replace_selection(text, !composing, cx);
         if composing { self.commit_composition(cx); }
         else if matches!(text, ">" | "-" | "》") { self.arrow_rule(cx); }
