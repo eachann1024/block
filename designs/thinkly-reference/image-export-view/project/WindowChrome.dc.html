@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<title>独立窗口 · 标题栏与窗口特性</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3f66b8}
+.lab{font-size:12px;font-weight:460;color:#526071}
+.wc{width:46px;height:44px;display:grid;place-items:center;color:#20242c}
+.ft{display:flex;gap:12px;padding:12px 14px;background:#ffffff;border:1px solid #e6e6e6;border-radius:10px}
+.ft b{display:block;font-size:13px;font-weight:560;margin-bottom:3px}
+.ft p{margin:0;font-size:12px;line-height:18px;color:#526071}
+.ft code{font-family:'SF Mono',ui-monospace,Menlo,monospace;font-size:11px;color:#3f4a5a;background:#f1f3f6;border-radius:4px;padding:1px 4px}
+.ic{width:28px;height:28px;flex:none;border-radius:7px;background:#eef3fc;color:#547dd0;display:grid;place-items:center}
+</style>
+</helmet>
+<div style="width:1280px;height:800px;box-sizing:border-box;padding:40px 48px;background:#f7f7f7;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;display:grid;grid-template-columns:520px 1fr;gap:40px">
+
+<div style="display:flex;flex-direction:column;gap:22px">
+<div>
+<h2 style="margin:0;font-size:20px;font-weight:600">统一标题栏</h2>
+<p style="margin:6px 0 0;font-size:13px;line-height:20px;color:#526071">所有独立窗口共用主窗口的标题栏：44px 高、与内容同底色、无系统边框。左侧是窗口名和上下文，右侧放这个窗口的主要操作。</p>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<span class="lab">macOS · 隐藏系统标题栏，红绿灯垂直居中</span>
+<div style="background:#f1f1f1;border:1px solid #dedede;border-radius:10px;overflow:hidden">
+<div style="height:44px;display:flex;align-items:center;gap:10px;padding:0 12px 0 16px">
+<div aria-hidden="true" style="display:flex;gap:8px;width:60px"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<span style="font-size:14px;font-weight:560">反思</span><span style="font-size:13px;color:#526071">10月27日 – 11月2日</span>
+<span style="flex:1"></span>
+<span style="font-size:12px;color:#526071;border:1px dashed #b8c2d0;border-radius:6px;padding:4px 8px">窗口操作区</span>
+</div>
+<div style="height:44px;margin:0 8px 8px;background:#ffffff;border:1px solid #e6e6e6;border-radius:8px"></div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<span class="lab">Windows · 无边框，右侧自绘最小化 / 最大化 / 关闭</span>
+<div style="background:#f1f1f1;border:1px solid #dedede;border-radius:8px;overflow:hidden">
+<div style="height:44px;display:flex;align-items:center;gap:10px;padding-left:16px">
+<span style="font-size:14px;font-weight:560">反思</span><span style="font-size:13px;color:#526071">10月27日 – 11月2日</span>
+<span style="flex:1"></span>
+<span style="font-size:12px;color:#526071;border:1px dashed #b8c2d0;border-radius:6px;padding:4px 8px">窗口操作区</span>
+<div style="display:flex;margin-left:6px">
+<span class="wc" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor"/></svg></span>
+<span class="wc" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x=".5" y=".5" width="9" height="9" stroke="currentColor"/></svg></span>
+<span class="wc" aria-hidden="true" style="background:#c42b1c;color:#ffffff"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor"/></svg></span>
+</div>
+</div>
+<div style="height:44px;margin:0 8px 8px;background:#ffffff;border:1px solid #e6e6e6;border-radius:8px"></div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<span class="lab">拖动区域</span>
+<div style="position:relative;height:44px;background:#f1f1f1;border:1px solid #dedede;border-radius:8px;display:flex;align-items:center;gap:10px;padding:0 12px 0 16px;overflow:hidden">
+<span style="position:absolute;inset:0;background:repeating-linear-gradient(135deg,rgba(84,125,208,.10) 0 6px,transparent 6px 12px)" aria-hidden="true"></span>
+<span style="position:relative;font-size:14px;font-weight:560">标题与空白处：可拖动</span>
+<span style="flex:1"></span>
+<span style="position:relative;font-size:12px;background:#ffffff;border:1px solid #dcdcdc;border-radius:6px;padding:4px 8px">按钮、输入框、分段：不拖动</span>
+</div>
+<span style="font-size:12px;line-height:18px;color:#526071">Linux 用指针拖动，双击空白处最大化；macOS 与 Windows 走系统拖动区域。</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+<div>
+<h2 style="margin:0;font-size:20px;font-weight:600">每个独立窗口都具备</h2>
+<p style="margin:6px 0 0;font-size:13px;line-height:20px;color:#526071">来自现有主窗口、速记和资源清理窗口的能力，统一下沉到一个窗口工厂里。</p>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+<div class="ft"><span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg></span><div><b>跟随浅色 / 深色</b><p>窗口底色在创建时就按主题设好，打开不闪白；切换主题实时同步。<code>bindWindowAppearance</code></p></div></div>
+<div class="ft"><span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span><div><b>⌘W / Ctrl+W 关闭</b><p>和标签页一致的关闭快捷键；确认类小窗口另外支持 Esc。<code>bindCloseTabAccelerator</code></p></div></div>
+<div class="ft"><span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M9 12h6"/></svg></span><div><b>同类只开一个</b><p>再次打开时把已有窗口拉到前面，不重复创建。</p></div></div>
+<div class="ft"><span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"/></svg></span><div><b>记住位置与大小</b><p>按窗口类型保存；换了显示器时拉回可见区域，并有最小尺寸。<code>workAreaNear</code></p></div></div>
+<div class="ft"><span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18L9 6l5 12M6 14h6M15 18l3-7 3 7"/></svg></span><div><b>字号、缩放、语言一致</b><p>界面字号、页面缩放和语言沿用主窗口设置，改动后各窗口同步。</p></div></div>
+<div class="ft"><span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></span><div><b>与主窗口联动</b><p>在独立窗口里点笔记，会在主窗口打开并前置，独立窗口留着继续看。</p></div></div>
+<div class="ft"><span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="13" height="11" rx="2"/><rect x="9" y="10" width="12" height="10" rx="2"/></svg></span><div><b>确认类是子窗口</b><p>重置、删除这类确认挂在主窗口下、居中弹出并阻断主窗口，不会被压到后面。</p></div></div>
+<div class="ft"><span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg></span><div><b>收紧权限</b><p>禁止跳转、新开窗口和权限请求，链接一律交给系统浏览器。</p></div></div>
+<div class="ft"><span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="8"/></svg></span><div><b>关闭后释放</b><p>关闭即回收进程资源；进行中的任务（如反思生成）在主窗口继续跑。</p></div></div>
+<div class="ft"><span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h7"/></svg></span><div><b>窗口菜单与 Dock</b><p>窗口名进入系统“窗口”菜单，可用 ⌘` 在 Thinkly 的窗口之间切换。</p></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+renderVals(){return {};}
+}
+</script>
+</body>
+</html>

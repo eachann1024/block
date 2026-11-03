@@ -13,6 +13,7 @@ impl Render for Workspace {
         let root = div().size_full().relative().flex().flex_col().overflow_hidden().bg(theme.shell).text_color(theme.text)
             .key_context("Workspace").track_focus(&self.root_focus)
             .on_action(cx.listener(|this, _: &OpenSearch, window, cx| this.open_search(window, cx)))
+            .on_action(cx.listener(|this, _: &crate::editor::view::Find, window, cx| this.editor.update(cx, |e, cx| e.open_find(window, cx))))
             .on_action(cx.listener(|this, _: &OpenSettings, window, cx| this.open_settings(window, cx)))
             .on_action(cx.listener(|this, _: &NewNote, window, cx| if !this.busy() { this.new_item(false, window, cx) }))
             .on_action(cx.listener(|this, _: &NewFolder, window, cx| if !this.busy() { this.new_item(true, window, cx) }))

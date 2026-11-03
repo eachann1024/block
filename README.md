@@ -14,11 +14,17 @@ A small macOS notes app built with GPUI and Rust. A slim take on Thinkly.
   cycling and export.
 - Select text across blocks, copy/cut it, and undo or redo editing transactions.
   Wrapped text, headings and input-method ranges share the text layout.
-- Fenced code keeps literal newlines, with limited lexical highlighting for
-  Rust, JavaScript/TypeScript, JSON and Python. Unsupported Markdown structures
-  use editable source text where the block model cannot represent them. These
-  source blocks keep their syntax on save; inline rich-format commands do not
-  apply until an explicit block-type conversion.
+- Fenced code keeps literal newlines and uses gpui-component's tree-sitter
+  highlighting for Rust, JavaScript/TypeScript, JSON, Python, CSS, HTML and Markdown.
+  Markdown import also retains H4–H6, setext headings and links.
+- Pipe tables and supported HTML tables use structured cells with shared caret,
+  selection, undo and save state. HTML cell edits retain the surrounding source,
+  column widths and merged-cell attributes. Tab and Shift-Tab move between cells.
+  Unsupported Markdown or HTML structures remain editable source with a visible
+  explanation; arbitrary browser CSS is not supported.
+- The persistent width switch chooses a standard 720px body or the available
+  editor width. Block menus provide insertion, duplication, movement and deletion.
+  Mermaid and math entries currently create code blocks, not rendered diagrams.
 - Export the whole note (Thinkly → 导出图片) or the exact selected text (the `图`
   button) to a PNG at 2x with a 720px text column. Layout, rasterization and
   writing run in the background. Export accepts at most 256 blocks, 128 KiB of

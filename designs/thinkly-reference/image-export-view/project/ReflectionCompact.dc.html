@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<title>反思 · 单行紧凑标题栏</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><style>
+body{margin:0}button{font:inherit;cursor:pointer}button:hover{background-color:#eef3fc!important}button:focus-visible{outline:none;background-color:#e5edfc!important}button:active{transform:scale(.98)}button{transition:background-color .15s,transform .12s}button:disabled{cursor:default}a{color:#526071}a:hover{color:#20242c}
+@media(max-width:760px){.range-date{display:none!important}.topbar{gap:8px!important}.signals{width:58px!important}.schedule-label{display:none!important}}
+@media(max-width:440px){.signals{display:none!important}.topbar{padding-inline:12px!important}.scope-button{padding-inline:9px!important}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></helmet>
+<div style="width:100%;height:800px;display:flex;flex-direction:column;box-sizing:border-box;background:#f1f1f1;color:#20242c;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;font-size:14px;overflow:hidden">
+<header class="topbar" style="height:56px;flex:none;display:flex;align-items:center;gap:20px;padding:0 16px;white-space:nowrap">
+<div class="signals" aria-hidden="true" style="width:82px;display:flex;gap:8px;flex:none"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+<h1 style="margin:0;font-size:14px;line-height:20px;font-weight:560;white-space:nowrap;flex:none">反思</h1>
+<span class="range-date" style="font-size:12px;color:#526071;font-variant-numeric:tabular-nums">{{range}}</span>
+<div style="flex:1;min-width:0"></div>
+<span title="{{scheduleTitle}}" style="font-size:12px;color:#526071;display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 7v5l3 2"></path></svg><span><span class="schedule-label">下次生成 · </span>{{schedule}}</span></span>
+<div role="group" aria-label="时间范围" style="display:flex;align-items:center;gap:2px">
+<sc-for list="{{scopes}}" as="s" hint-placeholder-count="3"><button class="scope-button" aria-pressed="{{s.selected}}" onClick="{{s.pick}}" style="{{s.style}}">{{s.label}}</button></sc-for>
+</div>
+<button aria-label="重新读取记录" title="重新读取记录" onClick="{{reload}}" style="width:44px;height:44px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:#526071;flex:none"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10a8 8 0 1 0-2 8M20 4v6h-6"></path></svg></button>
+</header>
+<main style="margin:0 8px 8px;flex:1;min-height:0;display:flex;flex-direction:column;background:#ffffff;border:1px solid #dedede;border-radius:10px;overflow:auto">
+<div style="flex:1;min-height:420px;display:flex;align-items:center;justify-content:center;padding:32px 24px 68px;box-sizing:border-box">
+<section aria-label="反思记录状态" aria-live="polite" style="display:flex;flex-direction:column;align-items:center;gap:0;text-align:center;max-width:480px;width:100%">
+<svg width="216" height="120" viewBox="0 0 216 120" fill="none" aria-hidden="true" style="margin-bottom:24px;color:#5e5d59">
+<g stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray=".01 5.4"><path d="M59 30h68a6 6 0 0 1 6 6v56H53V36a6 6 0 0 1 6-6ZM53 48h80M72 22v16M113 22v16" opacity=".65"></path><path d="M144 50h18v51H82" opacity=".25"></path></g>
+<g fill="#547dd0"><circle cx="75" cy="64" r="2"></circle><circle cx="93" cy="64" r="2"></circle><circle cx="111" cy="64" r="2"></circle></g>
+<g fill="currentColor" opacity=".28"><circle cx="75" cy="80" r="1.5"></circle><circle cx="93" cy="80" r="1.5"></circle><circle cx="111" cy="80" r="1.5"></circle></g>
+<path d="M19 38v-9h14M183 87h14v-9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-dasharray=".01 6" opacity=".25"></path>
+</svg>
+<sc-if value="{{empty}}" hint-placeholder-val="{{true}}"><h2 style="margin:0;font-size:17px;line-height:26px;font-weight:560">当前范围内暂无编辑记录</h2><p style="margin:10px 0 0;font-size:13px;line-height:21px;color:#526071">切换到更长的时间范围，查看更早的编辑。</p></sc-if>
+<sc-if value="{{failed}}" hint-placeholder-val="{{false}}"><h2 style="margin:0;font-size:17px;line-height:26px;font-weight:560">编辑记录暂时无法读取</h2><p style="margin:10px 0 0;font-size:13px;line-height:21px;color:#526071">请重新读取后再查看反思。</p></sc-if>
+<sc-if value="{{loading}}" hint-placeholder-val="{{false}}"><h2 style="margin:0;font-size:17px;line-height:26px;font-weight:560">正在读取编辑记录</h2><p style="margin:10px 0 0;font-size:13px;line-height:21px;color:#526071">{{range}}</p></sc-if>
+<sc-if value="{{empty}}" hint-placeholder-val="{{true}}"><div style="display:flex;gap:12px;margin-top:24px;align-items:center"><button onClick="{{expand}}" style="height:44px;padding:0 18px;border:1px solid #d6d9df;border-radius:8px;background:#ffffff;color:#20242c;font-size:13px;font-weight:460">{{expandLabel}}</button><button onClick="{{reload}}" style="height:44px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#526071;font-size:13px">重新读取</button></div></sc-if>
+<sc-if value="{{failed}}" hint-placeholder-val="{{false}}"><button onClick="{{reload}}" style="height:44px;margin-top:24px;padding:0 18px;border:1px solid #d6d9df;border-radius:8px;background:#ffffff;color:#20242c;font-size:13px">重新读取</button></sc-if>
+</section>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"recordState":{"editor":"enum","options":["范围内为空","读取失败","读取中"],"default":"范围内为空"},"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+constructor(p){super(p);this.state={scope:7,reloading:false};}
+componentWillUnmount(){clearTimeout(this.timer);}
+reload(){this.setState({reloading:true});clearTimeout(this.timer);this.timer=setTimeout(()=>this.setState({reloading:false}),1000);}
+renderVals(){
+const scope=this.state.scope;
+const config={7:{range:'2026/10/28 – 11/3',schedule:'6 天后',exact:'2026/11/9 00:00'},30:{range:'2026/10/5 – 11/3',schedule:'28 天后',exact:'2026/12/1 00:00'},90:{range:'2026/8/6 – 11/3',schedule:'59 天后',exact:'2027/1/1 00:00'}}[scope];
+const mode=this.state.reloading?'读取中':(this.props.recordState||'范围内为空');
+return {range:config.range,schedule:config.schedule,scheduleTitle:'下次生成：'+config.exact,empty:mode==='范围内为空',failed:mode==='读取失败',loading:mode==='读取中',reload:()=>this.reload(),expandLabel:scope===7?'查看最近 30 天':scope===30?'查看最近 90 天':'重新读取记录',expand:()=>scope===90?this.reload():this.setState({scope:scope===7?30:90}),scopes:[7,30,90].map(n=>({label:n+' 天',selected:n===scope,pick:()=>this.setState({scope:n}),style:'height:44px;padding:0 14px;border-radius:8px;font-size:13px;font-weight:460;white-space:nowrap;border:'+(n===scope?'1px solid #547dd0':'1px solid transparent')+';background:'+(n===scope?'#ffffff':'transparent')+';color:'+(n===scope?'#20242c':'#526071')}))};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>快捷键与快捷输入</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+.kbd{display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:5px;background:#f1f1f1;border:1px solid #e1e1e1;font-size:12px;color:#20242c;white-space:nowrap}
+.src{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-size:13px;background:#f2f3f5;border-radius:4px;padding:2px 6px;color:#20242c;white-space:nowrap}
+.r{display:flex;align-items:center;gap:12px;height:34px;border-bottom:1px solid #f0f0f0;font-size:14px}
+.r span:first-child{flex:1;min-width:0}
+h2{margin:0 0 6px;font-size:13px;font-weight:560;color:#526071;letter-spacing:.02em}
+</style>
+</helmet>
+<div style="width:1280px;height:800px;box-sizing:border-box;padding:40px 48px;background:#ffffff;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;display:flex;flex-direction:column;gap:28px">
+<div style="display:flex;align-items:baseline;gap:16px">
+<h1 style="margin:0;font-size:26px;font-weight:560">快捷键与快捷输入</h1>
+<p style="margin:0;font-size:14px;color:#526071">输入规则在行首键入后按空格触发，⌘Z 可撤回为原文</p>
+</div>
+<div style="flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,1fr);gap:40px">
+
+<section style="display:flex;flex-direction:column">
+<h2>窗口与搜索</h2>
+<div class="r"><span>当前笔记查找</span><span class="kbd">⌘F</span></div>
+<div class="r"><span>下一个 / 上一个匹配</span><span class="kbd">↵</span><span class="kbd">⇧↵</span></div>
+<div class="r"><span>搜索与全局唤起（含任意应用）</span><span class="kbd">⌘⇧K</span></div>
+<div class="r"><span>速记小窗（任意应用）</span><span class="kbd">⌥N</span></div>
+<div class="r"><span>切换速记槽位</span><span class="kbd">⌘1–5</span></div>
+<div class="r"><span>新建笔记</span><span class="kbd">⌘N</span></div>
+<div class="r"><span>新建文件夹</span><span class="kbd">⌘⇧N</span></div>
+<div class="r"><span>关闭浮层</span><span class="kbd">esc</span></div>
+</section>
+
+<section style="display:flex;flex-direction:column">
+<h2>编辑</h2>
+<div class="r"><span>加粗 / 斜体 / 下划线</span><span class="kbd">⌘B</span><span class="kbd">⌘I</span><span class="kbd">⌘U</span></div>
+<div class="r"><span>删除线</span><span class="kbd">⌘⇧S</span></div>
+<div class="r"><span>行内代码</span><span class="kbd">⌘E</span></div>
+<div class="r"><span>插入 / 编辑链接</span><span class="kbd">⌘⇧K</span></div>
+<div class="r"><span>正文 / 标题 1–3</span><span class="kbd">⌥⌘0–3</span></div>
+<div class="r"><span>上移 / 下移块</span><span class="kbd">⌘⇧↑</span><span class="kbd">⌘⇧↓</span></div>
+<div class="r"><span>撤销 / 重做</span><span class="kbd">⌘Z</span><span class="kbd">⌘⇧Z</span></div>
+<div class="r"><span>图片放大 / 缩小</span><span class="kbd">⌘=</span><span class="kbd">⌘−</span></div>
+<div class="r"><span>块菜单</span><span class="kbd">⇧F10</span></div>
+</section>
+
+<section style="display:flex;flex-direction:column">
+<h2>快捷输入</h2>
+<div class="r"><span>标题 1–6</span><span class="src"># 空格</span><span class="src">###### 空格</span></div>
+<div class="r"><span>无序列表</span><span class="src">-</span><span class="src">*</span><span class="src">+</span></div>
+<div class="r"><span>有序列表</span><span class="src">1.</span><span class="src">1)</span></div>
+<div class="r"><span>待办</span><span class="src">[]</span><span class="src">[x]</span><span class="src">【】</span></div>
+<div class="r"><span>引用</span><span class="src">&gt;</span><span class="src">＞</span></div>
+<div class="r"><span>代码块</span><span class="src">```js</span><span class="src">~~~</span></div>
+<div class="r"><span>分隔线</span><span class="src">---</span><span class="src">***</span><span class="src">___</span></div>
+<div class="r"><span>箭头</span><span class="src">-&gt; →</span><span class="src">&lt;- ←</span><span class="src">=&gt; ⇒</span></div>
+<div class="r"><span>插入菜单</span><span class="src">/</span><span class="src">、</span></div>
+</section>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
