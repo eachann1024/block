@@ -34,7 +34,7 @@ impl Editor {
         if self.path.is_some() || !self.persistence.saving.is_empty() { cx.notify(); return; }
         let generation = self.persistence.generation;
         self.persistence.loading = true;
-        self.report_status("Reading recovery drafts…".into(), cx);
+        self.report_status("正在读取恢复草稿…".into(), cx);
         let task = cx.background_executor().spawn(async { storage::latest_draft() });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -46,7 +46,7 @@ impl Editor {
                         this.persistence.base = loaded.base;
                         this.persistence.gate.lock().unwrap().saved.insert(path.clone(), loaded.base);
                         this.reset_document(loaded.doc); this.path = Some(path); this.dirty = true;
-                        this.status = "Recovered draft. Deleted or externally changed originals remain protected; copy or export to preserve elsewhere.".into();
+                        this.status = "已恢复草稿。原文件若已删除或被外部修改仍受保护，可复制或导出备份".into();
                         this.refresh_find_matches(cx);
                     }
                     Err(error) => this.status = error,
@@ -61,10 +61,10 @@ impl Editor {
     }
     pub fn open(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if self.path.as_ref() == Some(&path) && self.persistence.pending.is_none() {
-            if self.status == "Opening document…" {
-                self.status = if self.persistence.saving.contains(&path) { "Saving…".into() }
-                    else if self.dirty { "Unsaved changes".into() }
-                    else { String::new() };
+            if self.status == "正在打开…" {
+                self.status = if self.persistence.saving.contains(&path) { "正在保存…".into() }
+                    else if self.dirty { "未保存更改".into() }
+                    else { "已保存 · 内存会话就绪".into() };
             }
             cx.notify(); return;
         }
@@ -124,7 +124,7 @@ impl Editor {
         self.persistence.generation += 1;
         let generation = self.persistence.generation;
         self.persistence.loading = true;
-        self.status = "Opening document…".into(); cx.notify();
+        self.status = "正在打开…".into(); cx.notify();
         let request_path = path.clone();
         let task = cx.background_executor().spawn(async move { storage::load(&request_path) });
         cx.spawn(async move |this, cx| {
@@ -138,7 +138,7 @@ impl Editor {
                         this.persistence.gate.lock().unwrap().saved.insert(path.clone(), loaded.base);
                         this.reset_document(loaded.doc); this.path = Some(path);
                         this.dirty = loaded.recovered;
-                        this.status = if loaded.recovered { "Recovered unsaved draft. Review before saving.".into() } else { String::new() };
+                        this.status = if loaded.recovered { "已恢复未保存草稿，请确认后保存".into() } else { "已保存 · 内存会话就绪".into() };
                         this.refresh_find_matches(cx);
                     }
                     Err(error) => {
@@ -158,7 +158,7 @@ impl Editor {
         if self.path.is_none() { return; }
         self.dirty = true;
         self.persistence.revision += 1;
-        self.status = "Unsaved changes".into();
+        self.status = "未保存更改".into();
         let revision = self.persistence.revision;
         self.persistence.timer = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_millis(400)).await;
@@ -180,11 +180,11 @@ impl Editor {
         if self.persistence.saving.contains(&path) { return; }
         let (doc, base, revision) = if self.path.as_ref() == Some(&path) {
             if !self.dirty { return; }
-            self.status = "Saving…".into();
+            self.status = "正在保存…".into();
             (self.doc.clone(), self.persistence.base, self.persistence.revision)
         } else if let Some(sess) = self.sessions.get_mut(&path) {
             if !sess.dirty { return; }
-            sess.status = "Saving…".into();
+            sess.status = "正在保存…".into();
             (sess.doc.clone(), sess.base, sess.revision)
         } else { return; };
         self.persistence.saving.insert(path.clone());
@@ -208,11 +208,11 @@ impl Editor {
                     Ok(Some(base)) => {
                         if this.path.as_ref() == Some(&path) {
                             this.persistence.base = base;
-                            if this.persistence.revision == revision { this.dirty = false; this.status = "Saved".into(); }
+                            if this.persistence.revision == revision { this.dirty = false; this.status = "已保存".into(); }
                             else if this.dirty { this.touch(cx); }
                         } else if let Some(sess) = this.sessions.get_mut(&path) {
                             sess.base = base;
-                            if sess.revision == revision { sess.dirty = false; sess.status = "Saved".into(); }
+                            if sess.revision == revision { sess.dirty = false; sess.status = "已保存".into(); }
                             else if sess.dirty { this.spawn_save(path.clone(), cx); }
                         }
                         if this.persistence.saving.is_empty() && this.persistence.pending.is_some() { this.advance(cx); }
@@ -265,10 +265,23 @@ impl Editor {
     }
     pub fn keep_draft_and_close(&mut self, cx: &mut Context<Self>) -> bool {
         self.commit_composition(cx);
-        if !self.prepare_to_quit() { cx.notify(); return false; }
+        self.persistence.timer = None;
+        if let Some(path) = self.path.clone() {
+            self.persistence.saving.remove(&path);
+            if self.dirty {
+                let base = self.persistence.gate.lock().unwrap().saved.get(&path).copied().unwrap_or(self.persistence.base);
+                self.persistence.base = base;
+                if let Err(error) = storage::save_draft(&path, &self.doc, base) {
+                    self.status = error;
+                    cx.notify();
+                    return false;
+                }
+            }
+            self.sessions.remove(&path);
+        }
         self.reset_document(Doc::empty());
         self.path = None; self.dirty = false;
-        self.status = "Draft retained. Use Recover latest draft to reopen it.".into();
+        self.status = "草稿已保留，可通过「恢复最近草稿」重新打开".into();
         cx.notify(); true
     }
 }
