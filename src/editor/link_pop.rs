@@ -2,7 +2,7 @@
 use std::ops::Range;
 use gpui::{AnyElement, ClipboardItem, Context, CursorStyle, Entity, MouseButton, Pixels, Point, Window, div, point, prelude::*, px, rgb};
 use crate::icons::Icon;
-use super::{format_cmds::{FormatPop, normalize_url}, toolbar::{HOVER, INK, glyph, pill, sep}, view::{Editor, selection::Position}};
+use super::{format_cmds::normalize_url, toolbar::{HOVER, INK, glyph, pill, sep}, view::{Editor, selection::Position}};
 
 /// Pointer-hover state for the link popover.
 #[derive(Default)]
@@ -43,8 +43,7 @@ impl Editor {
     }
     fn edit_link_at(&mut self, block: u64, range: &Range<usize>, url: String, anchor: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
         self.select_link(block, range);
-        self.format = Some(FormatPop::Link { url, existing: true, anchor });
-        window.focus(&self.link_focus); cx.notify();
+        self.show_link_popover(url, true, anchor, window, cx);
     }
     fn unlink_at(&mut self, block: u64, range: &Range<usize>, window: &mut Window, cx: &mut Context<Self>) {
         self.select_link(block, range);
@@ -70,12 +69,12 @@ impl Editor {
                 .child(pill().id("link-pill").pl(px(12.)).gap(px(2.))
                     .child(div().text_size(px(13.)).text_color(rgb(INK)).whitespace_nowrap().child(middle_ellipsis(&url)))
                     .child(sep())
-                    .child(button("link-open", Icon::LinkOpen, "打开", Box::new(move |_, cx| cx.open_url(&normalize_url(&open_url)))))
-                    .child(button("link-copy", Icon::LinkCopy, "复制", Box::new(move |_, cx| {
+                    .child(button("link-open", Icon::LinkOpen, "打开链接", Box::new(move |_, cx| cx.open_url(&normalize_url(&open_url)))))
+                    .child(button("link-copy", Icon::LinkCopy, "复制链接", Box::new(move |_, cx| {
                         cx.write_to_clipboard(ClipboardItem::new_string(copy_url.clone()));
                         e_copy.update(cx, |this, cx| { this.status = "已复制链接".into(); cx.notify(); });
                     })))
-                    .child(button("link-edit", Icon::LinkEdit, "编辑", Box::new(move |window, cx| {
+                    .child(button("link-edit", Icon::LinkEdit, "编辑链接", Box::new(move |window, cx| {
                         e_edit.update(cx, |this, cx| this.edit_link_at(block, &edit_range, edit_url.clone(), anchor, window, cx));
                     })))
                     .child(button("link-unlink", Icon::LinkOff, "移除链接", Box::new(move |window, cx| {

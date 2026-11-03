@@ -20,8 +20,12 @@ use lifecycle::Persistence;
 actions!(editor, [Backspace, Delete, Left, Right, SelectLeft, SelectRight, SelectAll,
     Up, Down, SelectUp, SelectDown, Enter, Copy, Cut, Paste, Bold, Italic, Strike, Code,
     Undo, Redo, Cancel, Save, NextCell, PreviousCell, TableMenuKey,
-    SetParagraph, SetH1, SetH2, SetH3, MoveBlockUp, MoveBlockDown, Underline, EditLink, ExitBlock,
-    DocStart, DocEnd, Find, ImageGrow, ImageShrink]);
+    SetParagraph, SetH1, SetH2, SetH3, SetTodo, SetBullet, SetNumbered, SetCode, SetQuote,
+    MoveBlockUp, MoveBlockDown, DuplicateBlock, OpenHandleMenu, CmdEnter, Underline, EditLink, ExitBlock,
+    DocStart, DocEnd, SelectDocStart, SelectDocEnd, Find, ImageGrow, ImageShrink,
+    LineStart, LineEnd, SelectLineStart, SelectLineEnd, LogicalLineStart, LogicalLineEnd,
+    WordLeft, WordRight, SelectWordLeft, SelectWordRight,
+    DeleteWordLeft, DeleteWordRight, DeleteLineLeft, DeleteLineRight]);
 pub(super) enum EditorAction {
     Backspace, Delete, Left, Right, SelectLeft, SelectRight, SelectAll, Up, Down,
     SelectUp, SelectDown, Enter, Copy, Cut, Paste, Bold, Italic, Strike, Code, Undo, Redo, Cancel, Save,
@@ -46,7 +50,6 @@ pub struct Editor {
     pub(super) selection_origin: Option<(selection::Position, selection::Position, usize)>,
     pub(super) toolbar_anchor: Option<Point<Pixels>>,
     pub(super) format: Option<super::format_cmds::FormatPop>,
-    pub(super) link_focus: FocusHandle,
     pub(super) link_ui: super::link_pop::LinkUi,
     pub(super) layouts: HashMap<u64, TextLayout>,
     pub(super) list: ListState,
@@ -75,7 +78,7 @@ impl Editor {
         cx.on_app_quit(|editor, _| { editor.prepare_to_quit(); async {} }).detach();
         let doc = Doc::empty(); let caret = Caret::new(doc.blocks[0].id);
         Self { doc, caret, focus: cx.focus_handle(), hover: None, dragging: None,
-            drag_over: None, selecting: false, block_menu: None, grip_origin: None, nowrap: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, link_ui: Default::default(), link_focus: cx.focus_handle(), layouts: HashMap::new(),
+            drag_over: None, selecting: false, block_menu: None, grip_origin: None, nowrap: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, link_ui: Default::default(), layouts: HashMap::new(),
             list: ListState::new(1, ListAlignment::Top, px(120.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
@@ -214,10 +217,34 @@ impl Render for Editor {
                 .on_action(cx.listener(|this, _: &SetH1, _, cx| this.set_kind_shortcut(super::model::Kind::H1, cx)))
                 .on_action(cx.listener(|this, _: &SetH2, _, cx| this.set_kind_shortcut(super::model::Kind::H2, cx)))
                 .on_action(cx.listener(|this, _: &SetH3, _, cx| this.set_kind_shortcut(super::model::Kind::H3, cx)))
+                .on_action(cx.listener(|this, _: &SetTodo, _, cx| this.set_kind_shortcut(super::model::Kind::Todo, cx)))
+                .on_action(cx.listener(|this, _: &SetBullet, _, cx| this.set_kind_shortcut(super::model::Kind::Bullet, cx)))
+                .on_action(cx.listener(|this, _: &SetNumbered, _, cx| this.set_kind_shortcut(super::model::Kind::Numbered, cx)))
+                .on_action(cx.listener(|this, _: &SetCode, _, cx| this.set_code_shortcut(cx)))
+                .on_action(cx.listener(|this, _: &SetQuote, _, cx| this.set_kind_shortcut(super::model::Kind::Quote, cx)))
+                .on_action(cx.listener(|this, _: &DuplicateBlock, w, cx| this.duplicate_blocks(w, cx)))
+                .on_action(cx.listener(|this, _: &OpenHandleMenu, _, cx| this.open_handle_menu_shortcut(cx)))
+                .on_action(cx.listener(|this, _: &CmdEnter, w, cx| this.cmd_enter(w, cx)))
                 .on_action(cx.listener(|this, _: &MoveBlockUp, w, cx| this.move_block_shortcut(true, w, cx)))
                 .on_action(cx.listener(|this, _: &MoveBlockDown, w, cx| this.move_block_shortcut(false, w, cx)))
                 .on_action(cx.listener(|this, _: &DocStart, _, cx| this.doc_edge(false, false, cx)))
                 .on_action(cx.listener(|this, _: &DocEnd, _, cx| this.doc_edge(true, false, cx)))
+                .on_action(cx.listener(|this, _: &SelectDocStart, _, cx| this.doc_edge(false, true, cx)))
+                .on_action(cx.listener(|this, _: &SelectDocEnd, _, cx| this.doc_edge(true, true, cx)))
+                .on_action(cx.listener(|this, _: &LineStart, _, cx| this.line_edge(false, false, false, cx)))
+                .on_action(cx.listener(|this, _: &LineEnd, _, cx| this.line_edge(true, false, false, cx)))
+                .on_action(cx.listener(|this, _: &SelectLineStart, _, cx| this.line_edge(false, true, false, cx)))
+                .on_action(cx.listener(|this, _: &SelectLineEnd, _, cx| this.line_edge(true, true, false, cx)))
+                .on_action(cx.listener(|this, _: &LogicalLineStart, _, cx| this.line_edge(false, false, true, cx)))
+                .on_action(cx.listener(|this, _: &LogicalLineEnd, _, cx| this.line_edge(true, false, true, cx)))
+                .on_action(cx.listener(|this, _: &WordLeft, _, cx| this.move_word(false, false, cx)))
+                .on_action(cx.listener(|this, _: &WordRight, _, cx| this.move_word(true, false, cx)))
+                .on_action(cx.listener(|this, _: &SelectWordLeft, _, cx| this.move_word(false, true, cx)))
+                .on_action(cx.listener(|this, _: &SelectWordRight, _, cx| this.move_word(true, true, cx)))
+                .on_action(cx.listener(|this, _: &DeleteWordLeft, w, cx| this.delete_word(false, w, cx)))
+                .on_action(cx.listener(|this, _: &DeleteWordRight, w, cx| this.delete_word(true, w, cx)))
+                .on_action(cx.listener(|this, _: &DeleteLineLeft, w, cx| this.delete_line(false, w, cx)))
+                .on_action(cx.listener(|this, _: &DeleteLineRight, w, cx| this.delete_line(true, w, cx)))
                 .on_action(cx.listener(|this, _: &TableMenuKey, _, cx| this.open_cell_menu(cx)))
                 .on_action(cx.listener(|this, _: &Underline, _, cx| this.underline(cx)))
                 .on_action(cx.listener(|this, _: &EditLink, w, cx| this.open_link(w, cx)))
@@ -231,7 +258,7 @@ impl Render for Editor {
                 }))
                 .when_some(floating, |root, anchor| root.child(gpui::deferred(
                     super::chrome::selection_toolbar(cx.entity(), self.caret.head.block, anchor))))
-                .when_some(self.format.clone(), |root, pop| root.child(super::format_ui::popover(cx.entity(), &pop, &self.link_focus)))
+                .when_some(self.format.clone(), |root, pop| root.child(super::format_ui::popover(cx.entity(), &pop)))
                 .when_some(self.link_pill(cx.entity(), window), |root, pill| root.child(pill))
                 .child(anchor_sync))
             .children(super::find_bar::find_bar(self, cx))

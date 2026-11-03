@@ -141,6 +141,18 @@ impl TextLayout {
         out.push(Bounds::new(point(self.bounds.left(), b.y), size((b.x-self.bounds.left()).max(px(1.5)), self.line_height)));
         out
     }
+    pub fn visual_line_bounds(&self, offset: usize) -> (usize, usize) {
+        if !self.cells.is_empty() {
+            let cell = self.cells.iter().find(|cell| cell.range.start <= offset && offset <= cell.range.end)
+                .unwrap_or_else(|| if offset < self.cells[0].range.start { &self.cells[0] } else { self.cells.last().unwrap() });
+            let (s, e) = cell.text.visual_line_bounds(offset.saturating_sub(cell.range.start));
+            return (cell.range.start + s, cell.range.start + e);
+        }
+        let p = self.point(offset);
+        let start = self.hit(point(self.bounds.left(), p.y + px(1.)));
+        let end = self.hit(point(self.bounds.right() + px(10000.), p.y + px(1.)));
+        (start, end)
+    }
 }
 impl Editor {
     pub(in crate::editor) fn hit(&self, point: Point<Pixels>) -> Option<Position> {
@@ -195,7 +207,9 @@ impl Editor {
             let next = if down { index.checked_add(1).filter(|i| *i < self.doc.blocks.len()) } else { index.checked_sub(1) };
             if let Some(i) = next {
                 let b = &self.doc.blocks[i];
-                let offset = if let Some(layout) = self.layouts.get(&b.id) {
+                let offset = if crate::editor::image_source::spec_of(b).is_some() {
+                    0
+                } else if let Some(layout) = self.layouts.get(&b.id) {
                     let y = if down { layout.bounds.top() } else { layout.bounds.bottom()-px(1.) };
                     layout.hit(point(self.preferred_x.unwrap_or(layout.bounds.left()), y))
                 } else {

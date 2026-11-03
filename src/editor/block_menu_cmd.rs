@@ -65,9 +65,20 @@ impl Cmd {
     /// Keyboard shortcut shown at the right of a row, for commands that have one.
     pub(in crate::editor) fn hint(self) -> Option<&'static str> {
         Some(match self {
-            Cmd::Turn(Kind::Paragraph) | Cmd::TurnTo(Kind::Paragraph, _) => "⌘⌥0", Cmd::Turn(Kind::H1) | Cmd::TurnTo(Kind::H1, _) => "⌘⌥1",
-            Cmd::Turn(Kind::H2) | Cmd::TurnTo(Kind::H2, _) => "⌘⌥2", Cmd::Turn(Kind::H3) | Cmd::TurnTo(Kind::H3, _) => "⌘⌥3",
-            Cmd::MoveUp => "⌘⇧↑", Cmd::MoveDown => "⌘⇧↓",
+            Cmd::Turn(Kind::Paragraph) | Cmd::TurnTo(Kind::Paragraph, _) => "⌘⌥0",
+            Cmd::Turn(Kind::H1) | Cmd::TurnTo(Kind::H1, _) => "⌘⌥1",
+            Cmd::Turn(Kind::H2) | Cmd::TurnTo(Kind::H2, _) => "⌘⌥2",
+            Cmd::Turn(Kind::H3) | Cmd::TurnTo(Kind::H3, _) => "⌘⌥3",
+            Cmd::Turn(Kind::Todo) | Cmd::TurnTo(Kind::Todo, _) => "⌘⌥4",
+            Cmd::Turn(Kind::Bullet) | Cmd::TurnTo(Kind::Bullet, _) => "⌘⌥5",
+            Cmd::Turn(Kind::Numbered) | Cmd::TurnTo(Kind::Numbered, _) => "⌘⌥6",
+            Cmd::Code("") | Cmd::CodeTo(_) => "⌘⌥8",
+            Cmd::Turn(Kind::Quote) | Cmd::TurnTo(Kind::Quote, _) => "⌘⌥9",
+            Cmd::Duplicate => "⌘D",
+            Cmd::Cut => "⌘X",
+            Cmd::Delete => "⌫",
+            Cmd::MoveUp => "⌥↑",
+            Cmd::MoveDown => "⌥↓",
             _ => return None,
         })
     }

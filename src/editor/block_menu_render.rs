@@ -1,7 +1,7 @@
 //! Block menu rendering: the floating list and its rows.
 use gpui::{AnyElement, CursorStyle, Entity, FontWeight, MouseButton, div, prelude::*, px, transparent_black};
 use crate::{editor::{menu_style, view::Editor}, icons::{Icon, IconColors, icon}, theme::Theme};
-use super::{BlockMenu, Cmd, MENU_WIDTH, Mode};
+use super::{BlockMenu, Cmd, MENU_WIDTH};
 
 pub(in crate::editor) fn overlay(editor: Entity<Editor>, menu: BlockMenu, entries: Vec<Option<Cmd>>) -> AnyElement {
     let theme = Theme::ocean(); let id = menu.block; let mode = menu.mode;
@@ -14,7 +14,7 @@ pub(in crate::editor) fn overlay(editor: Entity<Editor>, menu: BlockMenu, entrie
             Some(Cmd::Header(title)) => list = list.child(div().px(px(8.)).pt(px(4.)).pb(px(2.)).text_size(px(12.))
                 .text_color(theme.text_secondary).child(title)),
             Some(cmd) => {
-                let active = mode == Mode::Slash && position == menu.index; position += 1;
+                let active = position == menu.index; position += 1;
                 let item_editor = editor.clone();
                 list = list.child(row(("block-menu-item", index), cmd, active, &theme)
                     .on_mouse_down(MouseButton::Left, move |_, window, cx| {
