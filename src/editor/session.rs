@@ -86,7 +86,11 @@ impl Editor {
         self.nowrap = session.nowrap;
         self.preferred_x = session.preferred_x;
         self.dirty = session.dirty;
-        self.status = session.status;
+        self.status = if !session.dirty && (session.status.is_empty() || session.status == "已保存") {
+            "已保存 · 内存会话就绪".into()
+        } else {
+            session.status
+        };
         self.persistence.revision = session.revision;
         self.persistence.base = session.base;
         self.persistence.timer = None;
