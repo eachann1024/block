@@ -15,6 +15,9 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &OpenSearch, window, cx| this.open_search(window, cx)))
             .on_action(cx.listener(|this, _: &crate::editor::view::Find, window, cx| this.editor.update(cx, |e, cx| e.open_find(window, cx))))
             .on_action(cx.listener(|this, _: &OpenSettings, window, cx| this.open_settings(window, cx)))
+            .on_action(cx.listener(|this, _: &crate::editor::ai::OpenAiSettings, window, cx| if this.settings.is_none() { this.open_settings(window, cx) }))
+            .on_action(cx.listener(|this, _: &crate::editor::ai::ToggleAiPanel, window, cx| { crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); cx.notify(); }))
+            .on_action(cx.listener(|this, _: &crate::editor::ai::AddSelectionToChat, window, cx| { crate::editor::ai::chat::add_selection(this.editor.clone(), window, cx); cx.notify(); }))
             .on_action(cx.listener(|this, _: &NewNote, window, cx| if !this.busy() { this.new_item(false, window, cx) }))
             .on_action(cx.listener(|this, _: &NewFolder, window, cx| if !this.busy() { this.new_item(true, window, cx) }))
             .on_action(cx.listener(|this, _: &Dismiss, window, cx| if !this.dismiss(window, cx) { cx.propagate() }));
@@ -22,7 +25,10 @@ impl Render for Workspace {
             .child(self.titlebar(cx))
             .child(div().flex_1().min_h_0().flex()
                 .child(self.sidebar(cx))
-                .child(div().flex_1().min_w_0().h_full().child(self.editor.clone())))
+                .child(self.settings_view(cx).unwrap_or_else(|| {
+                    div().flex_1().min_w_0().h_full().child(self.editor.clone()).into_any_element()
+                }))
+                .children(crate::editor::ai::chat::panel(cx)))
             // The export view has its own title row and back button, so it covers the window.
             .children(export.map(|view| {
                 div().absolute().top_0().left_0().size_full().occlude().bg(theme.shell).child(view)
@@ -67,15 +73,18 @@ impl Workspace {
 
     fn settings_footer(&self, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
+        let active = self.settings.is_some();
         div().flex_none().px(px(8.)).py(px(6.)).border_t_1().border_color(theme.hairline)
             .child(div().id("settings-button").h(px(32.)).px(px(10.)).flex().items_center().gap(px(8.))
-                .rounded(px(6.)).text_size(px(14.)).text_color(theme.text_secondary)
-                .cursor(gpui::CursorStyle::PointingHand)
-                .hover(move |s| s.bg(theme.hover).text_color(theme.text))
+                .rounded(px(6.)).border_1().text_size(px(14.)).cursor(gpui::CursorStyle::PointingHand)
+                .when(active, |b| b.bg(theme.selected).border_color(theme.accent)
+                    .text_color(theme.text).font_weight(gpui::FontWeight(460.)))
+                .when(!active, |b| b.border_color(gpui::transparent_black()).text_color(theme.text_secondary)
+                    .hover(move |s| s.bg(theme.hover).text_color(theme.text)))
                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| this.open_settings(window, cx)))
-                .child(icon(Icon::Sliders, px(15.), theme.icon_colors(theme.text_secondary)))
-                .child(div().flex_1().child("偏好设置"))
-                .child(kbd("⌘,")))
+                .child(icon(Icon::Sliders, px(15.), theme.icon_colors(if active { theme.accent } else { theme.text_secondary })))
+                .child(div().flex_1().child(if active { "设置中" } else { "设置" }))
+                .when(!active, |b| b.child(kbd("⌘,"))))
     }
 
     /// Notebook name with the two quick-create buttons on the right.
