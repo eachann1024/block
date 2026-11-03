@@ -1,5 +1,6 @@
+use std::cmp::Ordering;
+use std::io;
 use std::path::{Path, PathBuf};
-
 use super::sort::natural_cmp;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -10,66 +11,80 @@ pub struct Node {
     pub children: Vec<Node>,
 }
 
+#[derive(Debug)]
+pub struct Scan {
+    pub nodes: Vec<Node>,
+    pub warnings: Vec<String>,
+    pub warning_count: usize,
+}
+
 const IGNORED: &[&str] = &[
     "node_modules", "dist", "build", "target", "__pycache__", ".next", ".nuxt", ".venv", "venv",
 ];
 
 pub fn ignored(name: &str) -> bool {
-    name.starts_with('.')
-        || name.starts_with("~$")
-        || IGNORED.iter().any(|item| *item == name)
-        || matches!(name.to_ascii_lowercase().as_str(), "thumbs.db" | "desktop.ini")
+    name.starts_with('.') || name.starts_with("~$") || IGNORED.contains(&name)
+        || name.eq_ignore_ascii_case("thumbs.db") || name.eq_ignore_ascii_case("desktop.ini")
 }
 
 pub fn is_markdown(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    lower.ends_with(".md") || lower.ends_with(".markdown")
+    Path::new(name).extension().is_some_and(|ext| {
+        ext.eq_ignore_ascii_case("md") || ext.eq_ignore_ascii_case("markdown")
+    })
 }
 
-/// Folders first, then case-insensitive natural order by name.
-pub fn sort_nodes(nodes: &mut [Node]) {
-    nodes.sort_by(|a, b| b.dir.cmp(&a.dir).then_with(|| natural_cmp(&a.name, &b.name)));
-    for node in nodes {
-        sort_nodes(&mut node.children);
+pub fn compare(a: &Node, b: &Node) -> Ordering {
+    compare_names(a.dir, &a.name, b.dir, &b.name).then_with(|| a.path.cmp(&b.path))
+}
+
+pub fn compare_names(a_dir: bool, a: &str, b_dir: bool, b: &str) -> Ordering {
+    b_dir.cmp(&a_dir).then_with(|| natural_cmp(a, b)).then_with(|| a.cmp(b))
+}
+
+/// Sort this level exactly once. Descendants have already been sorted by scan.
+pub fn sort_nodes(nodes: &mut [Node]) { nodes.sort_by(compare); }
+
+/// Run on a worker. Root errors abort; child errors retain siblings and diagnostics.
+/// Directory symlinks are not followed, avoiding cycles and workspace escapes.
+pub fn scan(dir: &Path) -> io::Result<Scan> {
+    let mut result = Scan { nodes: Vec::new(), warnings: Vec::new(), warning_count: 0 };
+    result.nodes = read_level(dir, &mut result, 0)?;
+    Ok(result)
+}
+
+fn warn(result: &mut Scan, path: &Path, error: impl std::fmt::Display) {
+    result.warning_count += 1;
+    if result.warnings.len() < 8 {
+        result.warnings.push(format!("{}：{error}", path.display()));
     }
 }
 
-/// Reads `dir` one level deep worth of recursion. Only markdown files and
-/// folders survive; hidden and tooling directories are dropped.
-pub fn scan(dir: &Path) -> Vec<Node> {
+fn read_level(dir: &Path, result: &mut Scan, depth: usize) -> io::Result<Vec<Node>> {
+    if depth > 256 { return Err(io::Error::other("目录层级超过 256 层")); }
+    let entries = std::fs::read_dir(dir)?;
     let mut nodes = Vec::new();
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return nodes;
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if ignored(&name) {
-            continue;
-        }
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => { warn(result, dir, error); continue; }
+        };
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if ignored(&name) { continue; }
         let path = entry.path();
-        let dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-        if dir {
-            nodes.push(Node { children: scan(&path), name, path, dir: true });
-        } else if is_markdown(&name) {
-            nodes.push(Node { children: Vec::new(), name, path, dir: false });
+        let kind = match entry.file_type() {
+            Ok(kind) => kind,
+            Err(error) => { warn(result, &path, error); continue; }
+        };
+        if kind.is_dir() {
+            let children = read_level(&path, result, depth + 1).unwrap_or_else(|error| {
+                warn(result, &path, error);
+                Vec::new()
+            });
+            nodes.push(Node { name, path, dir: true, children });
+        } else if (kind.is_file() || kind.is_symlink()) && is_markdown(&name) {
+            nodes.push(Node { name, path, dir: false, children: Vec::new() });
         }
     }
     sort_nodes(&mut nodes);
-    nodes
-}
-
-/// `未命名.md`, then `未命名 2.md`, `未命名 3.md`, ...
-pub fn fresh_note_path(dir: &Path) -> PathBuf {
-    let base = "未命名";
-    let plain = dir.join(format!("{base}.md"));
-    if !plain.exists() {
-        return plain;
-    }
-    for n in 2..10_000 {
-        let candidate = dir.join(format!("{base} {n}.md"));
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-    dir.join(format!("{base} {}.md", std::process::id()))
+    Ok(nodes)
 }
