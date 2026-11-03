@@ -2,9 +2,11 @@ mod chrome;
 #[path = "../export/driver.rs"]
 mod export_driver;
 mod input;
+mod nav;
 mod input_rules;
 mod indent;
 mod block_shortcuts;
+mod block_ops;
 mod keys;
 pub mod markdown;
 pub mod model;
@@ -20,7 +22,7 @@ mod format_ui;
 mod toolbar;
 mod link_pop;
 #[path = "../ai/mod.rs"]
-mod ai;
+pub(crate) mod ai;
 mod clipboard_files;
 mod image_source;
 mod image_import;
