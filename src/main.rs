@@ -2,6 +2,7 @@ mod app;
 mod editor;
 mod export;
 mod files;
+mod icons;
 mod theme;
 
 use gpui::{
@@ -12,7 +13,7 @@ use gpui::{
 actions!(thinkly_fast, [Quit, ExportImage]);
 
 fn main() {
-    Application::new().run(|cx: &mut App| {
+    Application::new().with_assets(icons::Icons).run(|cx: &mut App| {
         cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
         cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
         editor::bind_keys(cx);
