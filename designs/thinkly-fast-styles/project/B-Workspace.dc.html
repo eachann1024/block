@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>石墨 · 工作区</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body { margin: 0; }
+a { color: #6cb6c9; }
+a:hover { color: #9ed0dc; }
+</style>
+</helmet>
+<div style="height: 900px; box-sizing: border-box; background: #1c1c1e; color: #ececec; font-family: Inter, system-ui, sans-serif; font-size: 13px; line-height: 1.4; display: flex; flex-direction: column; overflow: hidden">
+
+  <div style="height: 40px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #1c1c1e; border-bottom: 1px solid #2c2c2e; box-sizing: border-box">
+    <div style="display: flex; align-items: center; gap: 6px; flex: none">
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #ff5f57; display: block"></span>
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #febc2e; display: block"></span>
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #28c840; display: block"></span>
+    </div>
+    <div style="flex: 1; min-width: 0; text-align: center; color: #a8a8ad; font-size: 13px; font-weight: 500; letter-spacing: 0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">周会笔记 — Thinkly Fast</div>
+    <div style="width: 52px; flex: none"></div>
+  </div>
+
+  <div style="flex: 1; min-height: 0; display: flex">
+
+    <aside style="width: 248px; flex: none; background: #222224; border-right: 1px solid #2c2c2e; display: flex; flex-direction: column; min-height: 0">
+      <div style="padding: 10px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid #2c2c2e; flex: none">
+        <button type="button" style="height: 28px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 8px; background: transparent; color: #ececec; border: 1px solid #3a3a3c; border-radius: 6px; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; text-align: left">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style="flex: none"><path d="M1.5 4.2V11a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V5.4a1 1 0 0 0-1-1H7.1L5.7 2.8H2.5a1 1 0 0 0-1 1.4Z" stroke="#a8a8ad" stroke-width="1.2" stroke-linejoin="round"></path></svg>
+          选择文件夹
+        </button>
+        <button type="button" style="height: 28px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 8px; background: #6cb6c9; color: #101416; border: none; border-radius: 6px; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style="flex: none"><path d="M7 2.5v9M2.5 7h9" stroke="#101416" stroke-width="1.4" stroke-linecap="round"></path></svg>
+          新建笔记
+        </button>
+      </div>
+
+      <div style="flex: 1; min-height: 0; overflow: auto; padding: 6px 0 10px">
+        <div style="height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 10px; color: #ececec; box-sizing: border-box">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="flex: none"><path d="M3 4.5 6 7.5 9 4.5" stroke="#a8a8ad" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style="flex: none"><path d="M1.5 4V11.2a.8.8 0 0 0 .8.8h9.4a.8.8 0 0 0 .8-.8V5.2a.8.8 0 0 0-.8-.8H6.6L5.3 3H2.3a.8.8 0 0 0-.8 1Z" stroke="#a8a8ad" stroke-width="1.1" stroke-linejoin="round"></path></svg>
+          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">工作</span>
+        </div>
+        <div style="height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 28px; color: #ececec; box-sizing: border-box">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="flex: none"><path d="M4.5 3 7.5 6 4.5 9" stroke="#6e6e73" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style="flex: none"><path d="M1.5 4V11.2a.8.8 0 0 0 .8.8h9.4a.8.8 0 0 0 .8-.8V5.2a.8.8 0 0 0-.8-.8H6.6L5.3 3H2.3a.8.8 0 0 0-.8 1Z" stroke="#a8a8ad" stroke-width="1.1" stroke-linejoin="round"></path></svg>
+          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">归档</span>
+        </div>
+        <div style="height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 28px; background: #2a3a40; color: #ececec; box-sizing: border-box; border-left: 2px solid #6cb6c9">
+          <span style="width: 12px; flex: none"></span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style="flex: none"><path d="M3.2 1.8h5.2L11 4.4v7.8a.8.8 0 0 1-.8.8H3.2a.8.8 0 0 1-.8-.8V2.6a.8.8 0 0 1 .8-.8Z" stroke="#6cb6c9" stroke-width="1.1" stroke-linejoin="round"></path><path d="M8 1.8V4.6h3" stroke="#6cb6c9" stroke-width="1.1" stroke-linejoin="round"></path></svg>
+          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">周会笔记</span>
+        </div>
+        <div style="height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 28px; color: #a8a8ad; box-sizing: border-box">
+          <span style="width: 12px; flex: none"></span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style="flex: none"><path d="M3.2 1.8h5.2L11 4.4v7.8a.8.8 0 0 1-.8.8H3.2a.8.8 0 0 1-.8-.8V2.6a.8.8 0 0 1 .8-.8Z" stroke="#a8a8ad" stroke-width="1.1" stroke-linejoin="round"></path><path d="M8 1.8V4.6h3" stroke="#a8a8ad" stroke-width="1.1" stroke-linejoin="round"></path></svg>
+          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">发布检查单</span>
+        </div>
+
+        <div style="height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 10px; color: #ececec; box-sizing: border-box; margin-top: 2px">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="flex: none"><path d="M4.5 3 7.5 6 4.5 9" stroke="#6e6e73" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style="flex: none"><path d="M1.5 4V11.2a.8.8 0 0 0 .8.8h9.4a.8.8 0 0 0 .8-.8V5.2a.8.8 0 0 0-.8-.8H6.6L5.3 3H2.3a.8.8 0 0 0-.8 1Z" stroke="#a8a8ad" stroke-width="1.1" stroke-linejoin="round"></path></svg>
+          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">阅读</span>
+        </div>
+
+        <div style="height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 10px; color: #a8a8ad; box-sizing: border-box">
+          <span style="width: 12px; flex: none"></span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style="flex: none"><path d="M3.2 1.8h5.2L11 4.4v7.8a.8.8 0 0 1-.8.8H3.2a.8.8 0 0 1-.8-.8V2.6a.8.8 0 0 1 .8-.8Z" stroke="#a8a8ad" stroke-width="1.1" stroke-linejoin="round"></path><path d="M8 1.8V4.6h3" stroke="#a8a8ad" stroke-width="1.1" stroke-linejoin="round"></path></svg>
+          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">随手记</span>
+        </div>
+      </div>
+
+      <div style="height: 32px; flex: none; display: flex; align-items: center; padding: 0 12px; border-top: 1px solid #2c2c2e; color: #a8a8ad; font-size: 12px; box-sizing: border-box">~/Notes</div>
+    </aside>
+
+    <main style="flex: 1; min-width: 0; background: #18181a; overflow: auto; display: flex; justify-content: center">
+      <div style="width: 100%; max-width: 720px; box-sizing: border-box; padding: 48px 56px 96px; position: relative">
+
+        <h1 style="margin: 0 0 8px; font-size: 28px; line-height: 1.3; font-weight: 600; color: #ececec; letter-spacing: -0.02em">周会笔记</h1>
+        <div style="margin: 0 0 28px; color: #a8a8ad; font-size: 13px">11 月 3 日 · 产品周会</div>
+
+        <div style="position: relative; margin: 0 -40px 2px; padding: 2px 40px">
+          <div style="position: absolute; left: 4px; top: 2px; display: flex; align-items: center; gap: 2px">
+            <button type="button" aria-label="拖动块" style="width: 18px; height: 22px; padding: 0; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: 4px; color: #6e6e73; cursor: grab">
+              <svg width="10" height="14" viewBox="0 0 10 14" fill="none" aria-hidden="true"><circle cx="3" cy="2.5" r="1" fill="#8e8e93"></circle><circle cx="7" cy="2.5" r="1" fill="#8e8e93"></circle><circle cx="3" cy="7" r="1" fill="#8e8e93"></circle><circle cx="7" cy="7" r="1" fill="#8e8e93"></circle><circle cx="3" cy="11.5" r="1" fill="#8e8e93"></circle><circle cx="7" cy="11.5" r="1" fill="#8e8e93"></circle></svg>
+            </button>
+            <button type="button" aria-label="在下方添加块" style="width: 18px; height: 22px; padding: 0; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: 4px; color: #a8a8ad; cursor: pointer">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 2v8M2 6h8" stroke="#a8a8ad" stroke-width="1.3" stroke-linecap="round"></path></svg>
+            </button>
+          </div>
+          <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #ececec">本周把精简版收到三件事：打开本地文件夹、快速改 Markdown、把笔记导成长图。其余都先不做。</p>
+        </div>
+
+        <h2 style="margin: 22px 0 8px; font-size: 20px; line-height: 1.4; font-weight: 600; color: #ececec">这周定下来的</h2>
+
+        <div style="display: flex; align-items: flex-start; gap: 8px; margin: 0 0 4px">
+          <span style="width: 6px; height: 6px; border-radius: 3px; background: #a8a8ad; flex: none; margin-top: 10px"></span>
+          <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #ececec">文件列表始终文件夹在前，再按名称排序。</p>
+        </div>
+        <div style="display: flex; align-items: flex-start; gap: 8px; margin: 0 0 4px">
+          <span style="width: 6px; height: 6px; border-radius: 3px; background: #a8a8ad; flex: none; margin-top: 10px"></span>
+          <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #ececec">正文只保留标准宽度，净宽 720，不做全宽切换。</p>
+        </div>
+        <div style="display: flex; align-items: flex-start; gap: 8px; margin: 0 0 10px">
+          <span style="width: 6px; height: 6px; border-radius: 3px; background: #a8a8ad; flex: none; margin-top: 10px"></span>
+          <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #ececec">导出分两种：整篇生成，或只生成选中的块。</p>
+        </div>
+
+        <div style="position: relative; margin: 6px -40px 8px; padding: 6px 40px 8px; background: rgba(108, 182, 201, 0.12); border-radius: 4px; box-shadow: inset 0 0 0 1px #6cb6c9">
+          <div style="position: absolute; left: 50%; top: -36px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 3px; background: #2c2c2e; border: 1px solid #3a3a3c; border-radius: 6px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); z-index: 2">
+            <button type="button" aria-label="加粗" style="width: 28px; height: 26px; padding: 0; background: transparent; border: none; border-radius: 4px; color: #ececec; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer">B</button>
+            <button type="button" aria-label="斜体" style="width: 28px; height: 26px; padding: 0; background: transparent; border: none; border-radius: 4px; color: #ececec; font-family: inherit; font-size: 13px; font-style: italic; cursor: pointer">I</button>
+            <button type="button" aria-label="删除线" style="width: 28px; height: 26px; padding: 0; background: transparent; border: none; border-radius: 4px; color: #ececec; font-family: inherit; font-size: 13px; text-decoration: line-through; cursor: pointer">S</button>
+            <button type="button" aria-label="行内代码" style="height: 26px; padding: 0 7px; background: transparent; border: none; border-radius: 4px; color: #ececec; font-family: ui-monospace, monospace; font-size: 12px; cursor: pointer">&lt;/&gt;</button>
+            <button type="button" aria-label="链接" style="width: 28px; height: 26px; padding: 0; background: transparent; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M6 7.6a2.6 2.6 0 0 0 3.9.3l1.6-1.6a2.6 2.6 0 0 0-3.7-3.7L6.7 3.7" stroke="#ececec" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M8 6.4a2.6 2.6 0 0 0-3.9-.3L2.5 7.7a2.6 2.6 0 0 0 3.7 3.7l1.1-1.1" stroke="#ececec" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </button>
+            <span style="width: 1px; height: 14px; background: #3a3a3c; margin: 0 2px"></span>
+            <button type="button" aria-label="标题级别" style="height: 26px; padding: 0 7px; background: transparent; border: none; border-radius: 4px; color: #ececec; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer">H2</button>
+            <button type="button" style="height: 26px; padding: 0 8px; margin-left: 2px; background: #6cb6c9; color: #101416; border: none; border-radius: 4px; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap">生成图片</button>
+          </div>
+          <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #ececec">选中这一段时，工具栏只留加粗、斜体、删除线、行内代码、链接、标题级别，再加一个生成图片。</p>
+        </div>
+
+        <blockquote style="margin: 14px 0; padding: 2px 0 2px 12px; border-left: 2px solid #3a3a3c">
+          <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #a8a8ad">少一个开关，就少一次在会上解释它。</p>
+        </blockquote>
+
+        <div style="display: flex; align-items: flex-start; gap: 8px; margin: 8px 0 2px">
+          <span style="width: 14px; height: 14px; margin-top: 6px; flex: none; border-radius: 3px; border: 1px solid #6cb6c9; background: #6cb6c9; box-sizing: border-box; display: flex; align-items: center; justify-content: center">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 5.2 4.1 7.2 8 3" stroke="#101416" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          </span>
+          <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #8e8e93; text-decoration: line-through">对齐现有笔记应用的侧栏密度</p>
+        </div>
+        <div style="display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 10px">
+          <span style="width: 14px; height: 14px; margin-top: 6px; flex: none; border-radius: 3px; border: 1px solid #5a5a5e; box-sizing: border-box"></span>
+          <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #ececec">确认空行也能插入下一块</p>
+        </div>
+
+        <div style="position: relative; margin: 4px -40px 0; padding: 4px 40px; min-height: 28px">
+          <div style="position: absolute; left: 22px; top: 4px">
+            <button type="button" aria-label="在空行添加块" style="width: 20px; height: 20px; padding: 0; display: flex; align-items: center; justify-content: center; background: transparent; border: 1px solid #3a3a3c; border-radius: 4px; cursor: pointer">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 2v8M2 6h8" stroke="#6e6e73" stroke-width="1.3" stroke-linecap="round"></path></svg>
+            </button>
+          </div>
+          <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #5c5c61">输入文字…</p>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
