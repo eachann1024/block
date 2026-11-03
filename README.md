@@ -20,3 +20,11 @@ One font (the system UI font with PingFang SC) and one width (720px).
 ```sh
 cargo run
 ```
+
+Release 包只通过这一条命令构建并安装：
+
+```sh
+bun run build
+```
+
+它编译 locked release，打包为 `Thinkly Fast.app`（`dev.eachann.thinkly-fast`），做 ad-hoc 签名，替换 `/Applications/Thinkly Fast.app` 后启动。已在运行的本应用会先被要求退出；超时仍在运行则停止并报错，不强制结束。`/Applications/Thinkly.app` 不在范围内。
