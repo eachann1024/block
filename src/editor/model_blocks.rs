@@ -7,10 +7,19 @@ impl Block {
     pub fn slice(&self, range: Range<usize>) -> Self {
         let valid = spans::valid(&self.text,&range);
         let text = if valid { self.text[range.clone()].to_owned() } else { String::new() };
+        if valid && let Some(table) = &self.meta.table {
+            return Block::from_table(self.id, if range == (0..self.text.len()) {
+                table.clone()
+            } else { table.slice(range) });
+        }
         let meta = BlockMeta { indent:self.meta.indent, list_start:self.meta.list_start,
             code_language:self.meta.code_language.clone(),
             code_empty_line:valid && self.text.is_empty() && self.meta.code_empty_line,
-            raw_source:self.meta.raw_source.as_ref().map(|_| text.clone()) };
+            raw_source:self.meta.raw_source.as_ref().map(|_| text.clone()),
+            inline:super::inline_ops::slice(&self.meta.inline, range.clone()),
+            html_paragraph:self.meta.html_paragraph.clone(),
+            unsupported_reason:self.meta.unsupported_reason.clone(),
+            heading_level:self.meta.heading_level, table:None, tight:self.meta.tight };
         let mut out = Self { id:self.id,kind:self.kind,text,checked:self.checked,spans:Vec::new(),meta };
         if !valid { return out; }
         // Canonical spans are ordered: visit only intersecting runs, not the full block.
@@ -22,7 +31,7 @@ impl Block {
         out.normalize_spans(); out
     }
     pub fn split_off(&mut self, at: usize, new_id: u64, kind: Kind) -> Option<Block> {
-        if !self.text.is_char_boundary(at) { return None; }
+        if self.meta.table.is_some() || !self.text.is_char_boundary(at) { return None; }
         let mut right = self.slice(at..self.text.len()); right.id = new_id; right.kind = kind;
         right.checked = false; right.meta.list_start = None;
         // A split must not duplicate the imported blank-body sentinel.
@@ -30,9 +39,14 @@ impl Block {
         *self = self.slice(0..at); Some(right)
     }
     pub fn append(&mut self, other: &Block) {
+        // Tables are structural blocks; callers must splice them rather than concatenate projections.
+        if self.meta.table.is_some() || other.meta.table.is_some() { return; }
         let offset = self.text.len(); self.text.push_str(&other.text);
         if !self.text.is_empty() { self.meta.code_empty_line = false; }
         self.spans.extend(other.spans.iter().map(|s| Span { start:s.start+offset,end:s.end+offset,marks:s.marks.clone() }));
+        self.meta.inline.extend(other.meta.inline.iter().map(|tag| {
+            let mut tag = tag.clone(); tag.start += offset; tag.end += offset; tag
+        }));
         self.normalize_spans();
     }
 }

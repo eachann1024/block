@@ -46,13 +46,19 @@ impl Editor {
     }
     pub(in crate::editor) fn undo(&mut self, redo: bool, cx: &mut Context<Self>) {
         self.commit_composition(cx);
-        let item = if redo { self.redo.pop() } else { self.history.pop() };
-        if let Some(mut item) = item {
+        self.composition_before = None;
+        // An entry that restores the very same document would only move the selection
+        // (select the text without removing it); keep popping until text really changes.
+        loop {
+            let item = if redo { self.redo.pop() } else { self.history.pop() };
+            let Some(mut item) = item else { break };
+            let same = item.state.doc == self.doc;
             let target = std::mem::replace(&mut item.state, self.snapshot());
             self.apply_changes(&item.changes, redo);
-            self.doc = target.doc; self.caret = target.caret;
+            self.doc = target.doc; self.caret = target.caret; self.caret.composing = None;
             if redo { self.history.push(item); } else { self.redo.push(item); }
             self.changed(cx);
+            if !same { break; }
         }
     }
     pub(in crate::editor) fn commit_composition(&mut self, cx: &mut Context<Self>) {
@@ -62,14 +68,41 @@ impl Editor {
             self.record_changes(before, vec![change], false, cx);
         }
     }
+    pub(in crate::editor) fn can_replace_selection(&self) -> bool {
+        let (a, b, ai, bi) = self.ordered();
+        if ai == bi && let Some(table) = &self.doc.blocks[ai].meta.table {
+            return table.cell_at_range(&(a.offset..b.offset)).is_some()
+                || (a.offset == 0 && b.offset == self.doc.blocks[ai].text.len());
+        }
+        (ai..=bi).all(|index| {
+            let block = &self.doc.blocks[index];
+            block.meta.table.is_none() || self.selected_range(block.id)
+                .is_some_and(|range| range == (0..block.text.len()))
+        })
+    }
+    pub(in crate::editor) fn set_table_cell(&mut self, id: u64, row: usize, cell: usize,
+        text: String, cx: &mut Context<Self>) {
+        self.commit_composition(cx);
+        let Some(index) = self.doc.index_of(id) else { return; };
+        let before = self.snapshot();
+        if self.doc.set_table_cell_text(id, row, cell, text) {
+            self.record_changes(before, vec![ListChange { start:index, before:1, after:1 }], true, cx);
+        }
+    }
     pub(in crate::editor) fn replace_selection(&mut self, text: &str, marker: bool, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
         self.pending_vertical = None;
         let (a, b, ai, bi) = self.ordered();
         if a == b && text.is_empty() { return; }
+        if !self.can_replace_selection() {
+            self.status = "Select within one table cell, or select the entire table to replace it".into();
+            cx.notify(); return;
+        }
         let before = self.snapshot();
         let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-        if ai == bi && self.doc.get(a.block).is_some_and(|b| b.meta.code_language.is_some() || b.meta.raw_source.is_some()) {
+        if ai == bi && self.doc.get(a.block).is_some_and(|blk| blk.meta.code_language.is_some()
+            || blk.meta.raw_source.is_some() || blk.meta.table.as_ref().is_some_and(|t|
+                t.cell_at_range(&(a.offset..b.offset)).is_some())) {
             self.doc.replace_range(a.block, a.offset..b.offset, &normalized);
             let at = Position { block: a.block, offset: a.offset + normalized.len() };
             self.caret.anchor = at; self.caret.head = at; self.caret.composing = None;
@@ -79,20 +112,28 @@ impl Editor {
         }
         let mut id = a.block;
         let mut offset = a.offset + normalized.len();
-        if ai == bi && !normalized.contains('\n') {
+        if ai == bi && !normalized.contains('\n') && self.doc.blocks[ai].meta.table.is_none() {
             self.doc.replace_range(a.block, a.offset..b.offset, &normalized);
         } else {
-            let mut combined = self.doc.blocks[ai].clone();
-            if ai == bi { combined.replace_range(a.offset..b.offset, &normalized); }
-            else {
-                combined.replace_range(a.offset..combined.text.len(), &normalized);
-                let suffix = self.doc.blocks[bi].slice(b.offset..self.doc.blocks[bi].text.len());
-                combined.append(&suffix);
+            let starts_table = self.doc.blocks[ai].meta.table.is_some();
+            let mut combined = if starts_table {
+                crate::editor::model::Block::new(a.block, Kind::Paragraph, String::new())
+            } else { self.doc.blocks[ai].clone() };
+            if ai == bi {
+                if starts_table { combined.replace_range(0..0, &normalized); offset = normalized.len(); }
+                else { combined.replace_range(a.offset..b.offset, &normalized); }
+            } else {
+                let prefix = if starts_table { 0 } else { a.offset };
+                combined.replace_range(prefix..combined.text.len(), &normalized); offset = prefix + normalized.len();
+                if self.doc.blocks[bi].meta.table.is_none() {
+                    let suffix = self.doc.blocks[bi].slice(b.offset..self.doc.blocks[bi].text.len());
+                    combined.append(&suffix);
+                }
             }
             let carry = match combined.kind { Kind::Bullet | Kind::Numbered | Kind::Todo | Kind::Quote => combined.kind, _ => Kind::Paragraph };
             let mut pieces = Vec::new(); let mut start = 0;
             for (newline, _) in normalized.match_indices('\n') {
-                let end = a.offset + newline;
+                let end = if starts_table { newline } else { a.offset + newline };
                 pieces.push(combined.slice(start..end)); start = end + 1;
             }
             pieces.push(combined.slice(start..combined.text.len()));
@@ -104,18 +145,7 @@ impl Editor {
             id = self.doc.blocks[ai + count - 1].id;
             if count > 1 { offset = normalized.rsplit('\n').next().unwrap_or("").len(); }
         }
-        if marker && normalized == " " && ai == bi && a == b {
-            if let Some(block) = self.doc.get(id) {
-                if block.kind == Kind::Paragraph {
-                    if let Some((kind, eaten)) = crate::editor::model::marker_kind(&block.text) {
-                        if offset == eaten {
-                            self.doc.replace_range(id, 0..eaten, "");
-                            self.doc.set_kind(id, kind); offset = 0;
-                        }
-                    }
-                }
-            }
-        }
+        if marker && normalized == " " && ai == bi && a == b { self.space_rule(&mut id, &mut offset); }
         let at = Position { block: id, offset };
         self.caret.anchor = at; self.caret.head = at; self.caret.composing = None;
         if self.composition_before.is_none() { self.record(before, cx); }
@@ -141,6 +171,10 @@ impl Editor {
     }
     pub(in crate::editor) fn cycle_heading(&mut self, id: u64, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
+        if self.doc.get(id).is_some_and(|block| block.meta.table.is_some()) {
+            self.status = "Table cells keep their table structure; heading conversion is unavailable".into();
+            cx.notify(); return;
+        }
         self.commit_composition(cx);
         let Some(index) = self.doc.index_of(id) else { return; };
         let before = self.snapshot();

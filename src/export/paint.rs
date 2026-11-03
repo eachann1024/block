@@ -1,8 +1,11 @@
-//! Draw only the buffers used to compute layout; no second wrapping pass.
-use cosmic_text::{Buffer, FontSystem, SwashCache};
-use tiny_skia::{Color, Paint, Pixmap, Rect, Transform};
+//! Rasterize the pre-shaped layout buffers and procedural style decorations onto a Pixmap.
+use cosmic_text::{Buffer, Color, FontSystem, SwashCache};
+use tiny_skia::Pixmap;
 
-use super::layout::{CODE, Layout, Row, SCALE, STRIKE};
+use super::decor_shapes::fill_rect;
+use super::layout::{Layout, Row, SCALE, STRIKE};
+use super::palette::{ExportTheme, Palette};
+use super::rich::{BACKGROUND_SHIFT, UNDERLINE};
 use super::{Cancellation, ExportError};
 use crate::editor::model::Kind;
 
@@ -14,108 +17,153 @@ pub(super) fn rasterize(
 ) -> Result<Pixmap, ExportError> {
     cancel.check()?;
     let mut image = Pixmap::new(layout.width, layout.height)
-        .ok_or(ExportError::Rendering("pixel allocation failed"))?;
-    image.fill(Color::WHITE);
+        .ok_or(ExportError::Rendering("像素缓冲分配失败"))?;
+    let pal = layout.options.theme.palette();
+
+    super::decor_paper::paint_paper(&mut image, layout, &pal, cancel)?;
+    super::chrome::paint_chrome(&mut image, layout, &pal, fonts, cache, cancel)?;
+
     for row in &layout.rows {
         cancel.check()?;
-        if row.code {
-            rect(
-                &mut image,
-                row.x - 8.0,
-                row.y,
-                row.width + 16.0,
-                row.height,
-                [242, 244, 247],
-            );
+        if let Some(frame) = &row.frame {
+            if let Some(color) = frame.background {
+                fill_rect(
+                    &mut image,
+                    frame.x,
+                    frame.y,
+                    frame.width,
+                    frame.height,
+                    pal.bg(color),
+                );
+            }
+            let border = pal.table_border;
+            for (x, y, w, h) in [
+                (frame.x, frame.y, frame.width, 0.5),
+                (frame.x, frame.y, 0.5, frame.height),
+                (frame.x + frame.width - 0.5, frame.y, 0.5, frame.height),
+                (frame.x, frame.y + frame.height - 0.5, frame.width, 0.5),
+            ] {
+                fill_rect(&mut image, x, y, w, h, border);
+            }
+        } else {
+            super::decor_blocks::paint_block_bg(&mut image, row, layout, &pal);
+            super::decor_blocks::paint_list_marker(
+                &mut image, row, layout, &pal, fonts, cache, cancel,
+            )?;
         }
-        marker(&mut image, row, fonts, cache, cancel)?;
+
         if let Some(label) = &row.label {
-            text(&mut image, label, row.x, row.y + 8.0, fonts, cache, cancel)?;
+            text(
+                &mut image,
+                label,
+                row.x,
+                row.y + 8.0,
+                (&pal, pal.secondary),
+                fonts,
+                cache,
+                cancel,
+            )?;
         }
+
         for run in row.buffer.layout_runs() {
             for glyph in run.glyphs {
-                if glyph.metadata & CODE != 0 {
-                    rect(
+                let index = glyph.metadata >> BACKGROUND_SHIFT;
+                if let Some(color) = index.checked_sub(1).and_then(|i| row.backgrounds.get(i)) {
+                    fill_rect(
                         &mut image,
                         row.x + glyph.x,
-                        row.text_y + run.line_top + 1.0,
+                        row.text_y + run.line_top + 1.,
                         glyph.w,
-                        run.line_height - 2.0,
-                        [237, 240, 245],
+                        run.line_height - 2.,
+                        pal.bg(*color),
                     );
                 }
             }
+        }
+
+        let fg = row_text_color(layout.options.theme, row, &pal);
+        if layout.options.theme == ExportTheme::Neon && row.kind == Kind::H1 {
+            text(
+                &mut image,
+                &row.buffer,
+                row.x + 3.0,
+                row.text_y + 3.0,
+                (&pal, pal.accent2),
+                fonts,
+                cache,
+                cancel,
+            )?;
         }
         text(
             &mut image,
             &row.buffer,
             row.x,
             row.text_y,
+            (&pal, fg),
             fonts,
             cache,
             cancel,
         )?;
+
         for run in row.buffer.layout_runs() {
             for glyph in run.glyphs {
                 if glyph.metadata & STRIKE != 0 {
-                    rect(
+                    fill_rect(
                         &mut image,
                         row.x + glyph.x,
                         row.text_y + run.line_y - glyph.font_size * 0.3,
                         glyph.w,
-                        1.0,
-                        [32, 36, 44],
+                        1.,
+                        glyph.color_opt.map_or(fg, |c| pal.fg(c)),
+                    );
+                }
+                if glyph.metadata & UNDERLINE != 0 {
+                    fill_rect(
+                        &mut image,
+                        row.x + glyph.x,
+                        row.text_y + run.line_y + 2.,
+                        glyph.w,
+                        1.,
+                        glyph.color_opt.map_or(fg, |c| pal.fg(c)),
                     );
                 }
             }
         }
     }
+
+    super::decor_marks::paint_top_tapes(&mut image, layout);
     Ok(image)
 }
 
-fn rect(image: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, color: [u8; 3]) {
-    let mut paint = Paint::default();
-    paint.set_color_rgba8(color[0], color[1], color[2], 255);
-    if let Some(rect) = Rect::from_xywh(x * SCALE, y * SCALE, w * SCALE, h * SCALE) {
-        image.fill_rect(rect, &paint, Transform::identity(), None);
+fn row_text_color(theme: ExportTheme, row: &Row, pal: &Palette) -> Color {
+    if row.code {
+        return if theme == ExportTheme::Neon {
+            pal.accent
+        } else {
+            pal.text
+        };
     }
-}
-
-fn marker(
-    image: &mut Pixmap,
-    row: &Row,
-    fonts: &mut FontSystem,
-    cache: &mut SwashCache,
-    cancel: &Cancellation,
-) -> Result<(), ExportError> {
-    let x = row.marker_x;
-    let y = row.text_y + row.line_height / 2.0;
     match row.kind {
-        Kind::Bullet => rect(image, x + 5.0, y - 2.5, 5.0, 5.0, [82, 96, 113]),
-        Kind::Quote => rect(image, x, row.y, 3.0, row.height, [197, 208, 230]),
-        Kind::Todo => {
-            rect(image, x + 2.0, y - 7.0, 14.0, 14.0, [84, 125, 208]);
-            if !row.checked {
-                rect(image, x + 3.0, y - 6.0, 12.0, 12.0, [255, 255, 255]);
-            } else {
-                rect(image, x + 5.0, y, 3.0, 2.0, [255, 255, 255]);
-                rect(image, x + 8.0, y - 3.0, 2.0, 5.0, [255, 255, 255]);
-            }
-        }
-        _ => {}
+        Kind::Quote => pal.quote_fg,
+        Kind::H1 | Kind::H3 => pal.title,
+        Kind::H2 => match theme {
+            ExportTheme::Riso => Color::rgb(243, 238, 227),
+            ExportTheme::Neon => Color::rgb(20, 21, 43),
+            ExportTheme::Journal | ExportTheme::Kraft => pal.accent,
+            ExportTheme::Mono | ExportTheme::Ink => pal.secondary,
+            ExportTheme::Press | ExportTheme::Film => pal.title,
+        },
+        _ => pal.text,
     }
-    if let Some(marker) = &row.marker {
-        text(image, marker, x, row.text_y, fonts, cache, cancel)?;
-    }
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
-fn text(
+pub(super) fn text(
     image: &mut Pixmap,
     buffer: &Buffer,
     x: f32,
     y: f32,
+    (pal, default): (&Palette, Color),
     fonts: &mut FontSystem,
     cache: &mut SwashCache,
     cancel: &Cancellation,
@@ -130,7 +178,7 @@ fn text(
             cache.with_pixels(
                 fonts,
                 physical.cache_key,
-                cosmic_text::Color::rgb(32, 36, 44),
+                glyph.color_opt.map_or(default, |c| pal.fg(c)),
                 |dx, dy, color| {
                     let px = physical.x + dx;
                     let py = physical.y + dy;
@@ -139,7 +187,6 @@ fn text(
                     }
                     let index = ((py * width + px) * 4) as usize;
                     let alpha = color.a() as u32;
-                    // The canvas remains opaque. Direct source-over avoids a tiny-skia path per pixel.
                     for (channel, source) in
                         [color.r(), color.g(), color.b()].into_iter().enumerate()
                     {

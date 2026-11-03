@@ -36,7 +36,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-shift-s", Strike, Some("Editor")),
         KeyBinding::new("cmd-e", Code, Some("Editor")),
         KeyBinding::new("cmd-u", Underline, Some("Editor")),
-        KeyBinding::new("cmd-k", EditLink, Some("Editor")),
+        KeyBinding::new("cmd-shift-k", EditLink, Some("Editor")),
         KeyBinding::new("cmd-alt-0", SetParagraph, Some("Editor")),
         KeyBinding::new("cmd-alt-1", SetH1, Some("Editor")),
         KeyBinding::new("cmd-alt-2", SetH2, Some("Editor")),
@@ -49,5 +49,6 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-=", ImageGrow, Some("Editor")),
         KeyBinding::new("cmd--", ImageShrink, Some("Editor")),
         KeyBinding::new("cmd-f", Find, Some("Editor")),
+        KeyBinding::new("cmd-f", Find, None),
     ]);
 }

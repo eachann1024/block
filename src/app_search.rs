@@ -1,4 +1,4 @@
-//! Global search palette (⌘⇧K) and the workspace-level key bindings.
+//! Global search palette (⌘K) and the workspace-level key bindings.
 use std::ops::Range;
 use std::time::Duration;
 use gpui::{
@@ -32,6 +32,9 @@ pub(super) fn bind_keys(cx: &mut App) {
     let search_key = search_shortcut();
     cx.bind_keys([
         KeyBinding::new(&search_key, OpenSearch, None),
+        KeyBinding::new("cmd-k", OpenSearch, None),
+        KeyBinding::new("cmd-shift-k", OpenSearch, None),
+        KeyBinding::new("alt-cmd-k", OpenSearch, None),
         KeyBinding::new("cmd-,", OpenSettings, None),
         KeyBinding::new("cmd-n", NewNote, Some("Workspace")),
         KeyBinding::new("cmd-shift-n", NewFolder, Some("Workspace")),
@@ -76,6 +79,8 @@ impl Workspace {
             _ => {}
         });
         input.update(cx, |input, cx| input.focus(window, cx));
+        let focus_input = input.clone();
+        cx.defer_in(window, move |_, window, cx| focus_input.update(cx, |input, cx| input.focus(window, cx)));
         self.search = Some(Search { input, hits: Vec::new(), selected: 0, epoch: 0, searching: false,
             asked: false, scroll: ScrollHandle::new(), _sub: sub });
         cx.notify();
@@ -179,7 +184,7 @@ impl Workspace {
                     .child(div().flex().items_center().gap(px(6.)).child(kbd("↑↓")).child("选择"))
                     .child(div().flex().items_center().gap(px(6.)).child(kbd("↵")).child("打开"))
                     .child(div().flex().items_center().gap(px(6.)).child(kbd("esc")).child("关闭"))
-                    .child(div().ml_auto().flex().items_center().gap(px(6.)).child(kbd(hotkey_label)).child("在任意应用中唤起"))))
+                    .child(div().ml_auto().child(format!("{hotkey_label} 搜索与全局唤起")))))
             .into_any_element())
     }
 
