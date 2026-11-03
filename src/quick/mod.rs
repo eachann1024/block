@@ -106,6 +106,8 @@ fn open(cx: &mut App) {
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             window_min_size: Some(size(px(420.), px(360.))),
+            is_minimizable: false,
+            is_resizable: false,
             titlebar: Some(TitlebarOptions {
                 title: Some("速记".into()),
                 appears_transparent: true,

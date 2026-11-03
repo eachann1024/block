@@ -14,7 +14,9 @@ pub struct Meta {
     pub active: usize,
 }
 
-pub fn default_name(slot: usize) -> String { format!("速记 {}", slot + 1) }
+pub fn default_name(slot: usize) -> String {
+    if slot == 0 { "灵感".into() } else { format!("速记 {}", slot + 1) }
+}
 
 /// `~/Library/Application Support/Thinkly Fast/quick` on macOS.
 pub fn dir() -> PathBuf {
@@ -42,7 +44,7 @@ pub fn load_meta() -> Meta {
         .and_then(|bytes| serde_json::from_slice::<Meta>(&bytes).ok()).unwrap_or_default();
     for slot in 0..SLOTS {
         match meta.names.get(slot) {
-            Some(name) if !name.trim().is_empty() => {}
+            Some(name) if !name.trim().is_empty() && !(slot == 0 && name == "速记 1") => {}
             _ => { if slot < meta.names.len() { meta.names[slot] = default_name(slot); } else { meta.names.push(default_name(slot)); } }
         }
     }
