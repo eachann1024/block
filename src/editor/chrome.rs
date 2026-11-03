@@ -2,6 +2,7 @@
 
 use gpui::{CursorStyle, MouseButton, MouseUpEvent, StatefulInteractiveElement, div, prelude::*, px};
 
+use crate::icons::{Icon, icon};
 use crate::theme::Theme;
 
 use super::model::{Block, Kind, MarkKind};
@@ -88,27 +89,26 @@ fn handle(
     move_listener: impl Fn(&gpui::MouseMoveEvent, &mut gpui::Window, &mut gpui::App) + 'static,
     drop_listener: impl Fn(&MouseUpEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> impl IntoElement {
-    let theme = Theme::ocean();
     div()
         .absolute()
         .left(px(0.))
         .top(px(4.))
         .flex()
         .gap(px(2.))
-        .child(handle_button("+", ("add", id as usize), theme.clone_pair(), add_listener))
+        .child(handle_button(Icon::Plus, ("add", id as usize), add_listener))
         .child(
-            handle_button("\u{2807}", ("drag", id as usize), theme.clone_pair(), drag_listener)
+            handle_button(Icon::Drag, ("drag", id as usize), drag_listener)
                 .on_mouse_move(move_listener)
                 .on_mouse_up(MouseButton::Left, drop_listener),
         )
 }
 
 fn handle_button(
-    label: &'static str,
+    glyph: Icon,
     id: (&'static str, usize),
-    colors: (gpui::Hsla, gpui::Hsla),
     on_down: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> gpui::Stateful<gpui::Div> {
+    let theme = Theme::ocean();
     div()
         .id(id)
         .size(px(18.))
@@ -116,11 +116,9 @@ fn handle_button(
         .flex()
         .items_center()
         .justify_center()
-        .text_size(px(13.))
-        .text_color(colors.1)
-        .hover(|style| style.bg(colors.0))
+        .hover(|style| style.bg(theme.hover))
         .cursor(CursorStyle::PointingHand)
-        .child(label)
+        .child(icon(glyph, px(16.), theme.icon_colors(theme.text_secondary)))
         .on_mouse_down(MouseButton::Left, on_down)
 }
 
@@ -138,23 +136,23 @@ fn toolbar(editor: gpui::Entity<Editor>, id: u64) -> impl IntoElement {
         .border_color(theme.hairline)
         .rounded_lg()
         .shadow_md()
-        .child(mark_button("B", MarkKind::Bold, editor.clone()))
-        .child(mark_button("I", MarkKind::Italic, editor.clone()))
-        .child(mark_button("S", MarkKind::Strike, editor.clone()))
-        .child(mark_button("</>", MarkKind::Code, editor.clone()))
+        .child(mark_button(Icon::Bold, MarkKind::Bold, editor.clone()))
+        .child(mark_button(Icon::Italic, MarkKind::Italic, editor.clone()))
+        .child(mark_button(Icon::Strike, MarkKind::Strike, editor.clone()))
+        .child(mark_button(Icon::Code, MarkKind::Code, editor.clone()))
         .child(heading_button(editor.clone(), id))
         .child(export_button(editor))
 }
 
-fn mark_button(label: &'static str, mark: MarkKind, editor: gpui::Entity<Editor>) -> gpui::Div {
-    bar_button(label).on_mouse_down(MouseButton::Left, move |_, _, cx| {
+fn mark_button(glyph: Icon, mark: MarkKind, editor: gpui::Entity<Editor>) -> gpui::Div {
+    bar_button(glyph).on_mouse_down(MouseButton::Left, move |_, _, cx| {
         editor.update(cx, |this, cx| this.mark(mark, cx));
         cx.stop_propagation();
     })
 }
 
 fn heading_button(editor: gpui::Entity<Editor>, id: u64) -> gpui::Div {
-    bar_button("H").on_mouse_down(MouseButton::Left, move |_, _, cx| {
+    bar_button(Icon::Heading).on_mouse_down(MouseButton::Left, move |_, _, cx| {
         editor.update(cx, |this, cx| {
             let kind = this.doc.blocks.iter().find(|b| b.id == id).map(|b| b.kind);
             let next = match kind {
@@ -171,33 +169,22 @@ fn heading_button(editor: gpui::Entity<Editor>, id: u64) -> gpui::Div {
 }
 
 fn export_button(editor: gpui::Entity<Editor>) -> gpui::Div {
-    bar_button("图").on_mouse_down(MouseButton::Left, move |_, window, cx| {
+    bar_button(Icon::Image).ml(px(6.)).on_mouse_down(MouseButton::Left, move |_, window, cx| {
         editor.update(cx, |this, cx| super::export_selected(this, window, cx));
         cx.stop_propagation();
     })
 }
 
-fn bar_button(label: &'static str) -> gpui::Div {
+fn bar_button(glyph: Icon) -> gpui::Div {
     let theme = Theme::ocean();
     div()
-        .px_2()
-        .h(theme.menu_item_height)
+        .size(px(28.))
+        .flex_none()
         .flex()
         .items_center()
-        .text_size(theme.ui_font)
-        .text_color(theme.text)
-        .rounded_sm()
+        .justify_center()
+        .rounded_md()
         .cursor(CursorStyle::PointingHand)
         .hover(|style| style.bg(theme.hover))
-        .child(label)
-}
-
-trait ColorPair {
-    fn clone_pair(&self) -> (gpui::Hsla, gpui::Hsla);
-}
-
-impl ColorPair for Theme {
-    fn clone_pair(&self) -> (gpui::Hsla, gpui::Hsla) {
-        (self.hover, self.text_secondary)
-    }
+        .child(icon(glyph, px(16.), theme.icon_colors(theme.text_secondary)))
 }
