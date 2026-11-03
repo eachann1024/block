@@ -13,11 +13,22 @@ use gpui::{
 
 actions!(thinkly_fast, [Quit, ExportImage]);
 
+struct Assets;
+impl gpui::AssetSource for Assets {
+    fn load(&self, path: &str) -> gpui::Result<Option<std::borrow::Cow<'static, [u8]>>> {
+        if path == "icons/tb-reset.line.svg" {
+            return Ok(Some(std::borrow::Cow::Borrowed(include_bytes!("../assets/icons/tb-reset.line.svg"))));
+        }
+        icons::Icons.load(path)
+    }
+    fn list(&self, path: &str) -> gpui::Result<Vec<gpui::SharedString>> { icons::Icons.list(path) }
+}
+
 fn main() {
     if let Ok(state) = files::load_state() {
         theme::apply_state(&state);
     }
-    Application::new().with_assets(icons::Icons).run(|cx: &mut App| {
+    Application::new().with_assets(Assets).run(|cx: &mut App| {
         gpui_component::init(cx);
         // The app is light-only; without this, inputs follow macOS dark mode (white text, black field).
         gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx);
