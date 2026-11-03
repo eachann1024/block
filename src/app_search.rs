@@ -72,7 +72,7 @@ impl Workspace {
         if self.renaming.is_some() { self.cancel_rename(window, cx); }
         if self.settings.is_some() { self.close_settings(window, cx); }
         self.close_overlays(cx);
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder("搜索笔记标题与正文"));
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder("搜索标题与正文"));
         let sub = cx.subscribe_in(&input, window, |this, input, event: &InputEvent, window, cx| match event {
             InputEvent::Change => { let query = input.read(cx).value().to_string(); this.run_search(query, cx); }
             InputEvent::PressEnter { .. } => this.open_hit(window, cx),
@@ -151,8 +151,10 @@ impl Workspace {
         for (title_group, label) in [(true, "标题匹配"), (false, "正文匹配")] {
             let group = search.hits.iter().enumerate().filter(|(_, h)| h.title_match == title_group).collect::<Vec<_>>();
             if group.is_empty() { continue; }
-            let header = if title_group { label.to_owned() } else { format!("{label} · {} 处", group.len()) };
-            rows.push(div().px(px(12.)).pt(px(8.)).pb(px(4.)).text_size(px(11.)).font_weight(FontWeight(600.)).text_color(theme.text_secondary)
+            let total: usize = group.iter().map(|(_, h)| h.count.max(1)).sum();
+            let header = if title_group { label.to_owned() } else { format!("{label} · {total} 处") };
+            let pt = if rows.is_empty() { px(6.) } else { px(10.) };
+            rows.push(div().px(px(12.)).pt(pt).pb(px(2.)).text_size(px(12.)).line_height(px(16.)).text_color(theme.text_secondary)
                 .child(header).into_any_element());
             rows.extend(group.into_iter().map(|(ix, hit)| self.hit_row(ix, hit, ix == search.selected, cx)));
         }
@@ -182,7 +184,7 @@ impl Workspace {
                 .child(div().h(px(36.)).flex_none().px(px(16.)).flex().items_center().gap(px(16.))
                     .border_t_1().border_color(border).bg(theme.sidebar)
                     .text_size(px(12.)).text_color(theme.text_secondary)
-                    .child(div().flex().items_center().gap(px(6.)).child(kbd("↑↓")).child("选择"))
+                    .child(div().flex().items_center().gap(px(6.)).child(kbd("↑")).child(kbd("↓")).child("选择"))
                     .child(div().flex().items_center().gap(px(6.)).child(kbd("↵")).child("打开"))
                     .child(div().flex().items_center().gap(px(6.)).child(kbd("esc")).child("关闭"))
                     .child(div().ml_auto().child(format!("{hotkey_label} 搜索与全局唤起")))))
@@ -191,7 +193,8 @@ impl Workspace {
 
     fn hit_row(&self, ix: usize, hit: &Hit, selected: bool, cx: &mut Context<Self>) -> AnyElement {
         let theme = Theme::ocean();
-        div().id(("hit", ix)).px(px(12.)).py(px(8.)).flex().flex_col().gap(px(4.)).rounded(px(6.))
+        let right = if !hit.title_match && hit.count > 1 { format!("{} 处", hit.count) } else { hit.folder.clone() };
+        div().id(("hit", ix)).px(px(12.)).py(px(8.)).flex().flex_col().gap(px(2.)).rounded(px(6.))
             .border_1().border_color(if selected { theme.accent } else { gpui::transparent_black() })
             .when(selected, |row| row.bg(theme.selected))
             .when(!selected, |row| row.hover(|style| style.bg(theme.hover)))
@@ -206,7 +209,7 @@ impl Workspace {
                     .text_size(px(14.)).font_weight(FontWeight(500.))
                     .child(highlighted(hit.title.clone(), &hit.title_marks)))
                 .child(div().flex_none().max_w(px(220.)).overflow_hidden().whitespace_nowrap().text_ellipsis()
-                    .text_size(px(12.)).text_color(theme.text_secondary).child(hit.folder.clone())))
+                    .text_size(px(12.)).text_color(theme.text_secondary).child(right)))
             .when(!hit.snippet.is_empty(), |row| row.child(div().pl(px(22.)).overflow_hidden().whitespace_nowrap().text_ellipsis()
                 .text_size(px(13.)).text_color(theme.text_secondary)
                 .child(highlighted(hit.snippet.clone(), &hit.marks))))

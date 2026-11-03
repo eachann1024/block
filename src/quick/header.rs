@@ -37,12 +37,11 @@ impl QuickView {
             .bg(theme.paper).border_1().border_color(theme.btn_border).text_size(px(12.)).font_weight(FontWeight(460.))
             .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.btn_hover)).whitespace_nowrap()
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, w, cx| this.save_to_note(w, cx)))
-            .child(icon(Icon::Note, px(13.), theme.icon_colors(theme.text))).child("保存到笔记");
+            .child(icon(Icon::NoteCheck, px(13.), theme.icon_colors(theme.text))).child("保存到笔记");
         let help = div().id("quick-help").w(px(28.)).h(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
             .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.help = !this.help; cx.notify(); }))
-            .child(div().size(px(15.)).flex().items_center().justify_center().rounded_full().border_1().border_color(theme.text_secondary)
-                .text_size(px(10.)).font_weight(FontWeight(600.)).text_color(theme.text_secondary).child("?"));
+            .child(icon(Icon::HelpCircle, px(15.), theme.icon_colors(theme.text_secondary)));
         let _ = window;
         // Left padding clears the traffic lights drawn over the transparent titlebar.
         div().h(px(40.)).flex_none().flex().items_center().gap(px(8.)).pl(px(78.)).pr(px(8.))
