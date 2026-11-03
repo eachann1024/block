@@ -6,7 +6,7 @@ use tiny_skia::Pixmap;
 
 use super::decor_blocks::buffer_max_line_w;
 use super::decor_marks::paint_stamp;
-use super::decor_shapes::fill_rect;
+use super::decor_shapes::{fill_rect, paint_diamond, stroke_rounded_rect};
 use super::layout::{Layout, SCALE};
 use super::paint::text;
 use super::palette::{ExportTheme, Palette, RenderOptions};
@@ -29,20 +29,11 @@ struct ChromeText {
 }
 
 #[derive(Clone, Copy)]
-enum Anchor {
-    L(f32),
-    C(f32),
-    R(f32),
-}
+enum Anchor { L(f32), C(f32), R(f32) }
 
 type Spec<'a> = (&'a str, &'static str, f32, bool, Anchor, f32, Color);
 
-struct DateInfo {
-    year: i64,
-    month: u32,
-    day: u32,
-    weekday: &'static str,
-}
+struct DateInfo { year: i64, month: u32, day: u32, weekday: &'static str }
 
 #[rustfmt::skip]
 pub(super) fn build_chrome(
@@ -60,21 +51,34 @@ pub(super) fn build_chrome(
 
     let (header_h, header_items) = match theme {
         ExportTheme::Mono | ExportTheme::Ink => {
+            let l = if options.show_title && !options.title.trim().is_empty() {
+                format!("THINKLY FAST · {title}")
+            } else {
+                "THINKLY FAST".to_string()
+            };
             let r = format!("{:04} · {:02} · {:02}", d.year, d.month, d.day);
             (64.0, items(fonts, &[
-                ("THINKLY FAST", "SF Mono", 12.0, false, Anchor::L(left), 0.0, sec),
+                (&l, "SF Mono", 12.0, false, Anchor::L(left), 0.0, sec),
                 (&r, "SF Mono", 12.0, false, Anchor::R(right), 0.0, sec),
             ]))
         }
         ExportTheme::Journal | ExportTheme::Kraft => {
-            let l = format!("{}  {:04} / {:02} / {:02}", d.weekday, d.year, d.month, d.day);
-            (36.0, items(fonts, &[
-                (&l, "SF Mono", 13.0, false, Anchor::L(left), 0.0, sec),
-                (title, "PingFang SC", 13.0, false, Anchor::R(right), 0.0, sec),
-            ]))
+            let date = format!("{:04} / {:02} / {:02}", d.year, d.month, d.day);
+            let mut specs = vec![
+                (d.weekday, "SF Mono", 12.0, false, Anchor::C(left + 22.0), 0.0, sec),
+                (date.as_str(), "SF Mono", 13.0, false, Anchor::L(left + 54.0), 0.0, sec),
+            ];
+            if options.show_title {
+                specs.push((title, "PingFang SC", 13.0, false, Anchor::R(right), 0.0, sec));
+            }
+            (36.0, items(fonts, &specs))
         }
         ExportTheme::Riso => {
-            let l = format!("NO. {:02}{:02} / {}", d.month, d.day, title);
+            let l = if options.show_title {
+                format!("NO. {:02}{:02} / {}", d.month, d.day, title)
+            } else {
+                format!("NO. {:02}{:02}", d.month, d.day)
+            };
             (38.0, items(fonts, &[
                 (&l, "SF Mono", 12.0, true, Anchor::L(left), 0.0, pal.text),
                 ("RISO · 2-COLOR", "SF Mono", 12.0, true, Anchor::R(right), 0.0, pal.accent),
@@ -91,7 +95,11 @@ pub(super) fn build_chrome(
             ]))
         }
         ExportTheme::Neon => {
-            let l = format!("ISSUE #{:02}{:02} · NIGHT SHIFT", d.month, d.day);
+            let l = if options.show_title {
+                format!("ISSUE #{:02}{:02} · {}", d.month, d.day, title)
+            } else {
+                format!("ISSUE #{:02}{:02} · NIGHT SHIFT", d.month, d.day)
+            };
             (38.0, items(fonts, &[
                 (&l, "SF Mono", 12.0, true, Anchor::L(left), 0.0, pal.accent),
                 ("SILKSCREEN · 2-INK", "SF Mono", 12.0, true, Anchor::R(right), 0.0, pal.accent2),
@@ -141,7 +149,7 @@ fn build_footer(
         ExportTheme::Mono | ExportTheme::Ink => {
             let r = if theme == ExportTheme::Ink { "DARK EDITION · 01 / 01" } else { "PAGE 01 / 01" };
             (54.0, items(fonts, &[
-                ("THINKLY FAST", "SF Mono", 12.0, false, Anchor::L(left), 32.0, sec),
+                ("THINKLY FAST", "SF Mono", 12.0, false, Anchor::L(left + 16.0), 32.0, sec),
                 (r, "SF Mono", 12.0, false, Anchor::R(right), 32.0, sec),
             ]), None)
         }
@@ -162,10 +170,13 @@ fn build_footer(
                 (&r, "SF Mono", 12.0, true, Anchor::R(right), 34.0, rc),
             ]), None)
         }
-        ExportTheme::Press => (52.0, items(fonts, &[
-            ("本报由 THINKLY FAST 排印", "Songti SC", 12.0, false, Anchor::L(left), 30.0, sec),
-            ("第 一 版", "Songti SC", 12.0, false, Anchor::R(right), 30.0, sec),
-        ]), None),
+        ExportTheme::Press => {
+            let r = format!("{:04}-{:02}-{:02}", d.year, d.month, d.day);
+            (52.0, items(fonts, &[
+                ("THINKLY FAST 印行", "Songti SC", 12.0, false, Anchor::L(left), 30.0, sec),
+                (&r, "Songti SC", 12.0, false, Anchor::R(right), 30.0, sec),
+            ]), None)
+        }
         ExportTheme::Film => {
             let r = format!("DEVELOPED {:04}-{:02}-{:02}", d.year, d.month, d.day);
             (46.0, items(fonts, &[
@@ -188,11 +199,14 @@ pub(super) fn paint_chrome(
     let (x, w, hy) = (layout.margin_left, layout.content_width, layout.margin_top);
     let h_page = layout.height as f32 / SCALE;
     match theme {
-        ExportTheme::Mono => fill_rect(image, x, hy + 28.0, w, 1.0, pal.divider),
-        ExportTheme::Ink => fill_rect(image, x, hy + 28.0, w, 1.0, Color::rgb(42, 42, 42)),
+        ExportTheme::Mono | ExportTheme::Ink => fill_rect(image, x, hy + 28.0, w, 3.0, pal.title),
+        ExportTheme::Journal | ExportTheme::Kraft => {
+            stroke_rounded_rect(image, x, hy - 2.0, 44.0, 20.0, 10.0, 1.5, pal.secondary);
+        }
         ExportTheme::Press => {
-            fill_rect(image, x, hy + 22.0, w, 2.0, pal.divider);
-            fill_rect(image, x, hy + 82.0, w, 1.0, pal.divider);
+            fill_rect(image, x, hy + 22.0, w, 3.0, pal.divider);
+            fill_rect(image, x, hy + 80.0, w, 1.0, pal.divider);
+            fill_rect(image, x, hy + 84.0, w, 1.0, pal.divider);
         }
         _ => {}
     }
@@ -206,8 +220,19 @@ pub(super) fn paint_chrome(
     if layout.options.footer {
         let fy = layout.footer_y;
         match theme {
-            ExportTheme::Mono | ExportTheme::Press => fill_rect(image, x, fy + 16.0, w, 1.0, pal.divider),
-            ExportTheme::Ink => fill_rect(image, x, fy + 16.0, w, 1.0, Color::rgb(42, 42, 42)),
+            ExportTheme::Mono => {
+                fill_rect(image, x, fy + 16.0, w, 1.0, pal.divider);
+                fill_rect(image, x, fy + 35.0, 8.0, 8.0, pal.title);
+            }
+            ExportTheme::Ink => {
+                fill_rect(image, x, fy + 16.0, w, 1.0, Color::rgb(42, 42, 42));
+                fill_rect(image, x, fy + 35.0, 8.0, 8.0, pal.title);
+            }
+            ExportTheme::Press => {
+                fill_rect(image, x, fy + 14.0, w, 1.0, pal.divider);
+                fill_rect(image, x, fy + 17.0, w, 1.0, pal.divider);
+                paint_diamond(image, x + w * 0.5, fy + 36.0, 4.5, pal.accent);
+            }
             ExportTheme::Riso | ExportTheme::Neon => fill_rect(image, x, fy + 16.0, w, 2.0, pal.divider),
             _ => {}
         }
