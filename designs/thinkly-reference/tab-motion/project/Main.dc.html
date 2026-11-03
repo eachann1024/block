@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<title>A 完整流程</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#526071}a:hover{color:#20242c}
+.tm-slot{flex:none;overflow:hidden;height:28px}
+.tm-tab{height:28px;width:calc(100% - 4px);display:flex;align-items:center;border-radius:6px;box-sizing:border-box;overflow:hidden}
+.tm-tab:hover .tm-x,.tm-tab[data-active="true"] .tm-x{opacity:1}
+.tm-tab[data-count="multi"]:hover{background-color:#eef3fc}
+.tm-tab[data-count="multi"][data-active="true"],.tm-tab[data-count="multi"][data-active="true"]:hover{background-color:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;color:#20242c}
+.tm-title{flex:1;min-width:0;height:28px;border:0;background:transparent;font:inherit;color:inherit;text-align:left;padding:0 0 0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
+.tm-x{opacity:0;flex:none;width:20px;height:20px;margin-right:4px;border:0;border-radius:4px;background:transparent;color:#526071;display:grid;place-items:center;padding:0;transition:opacity 120ms}
+.tm-x:hover{background:rgba(32,36,44,.08)}
+.tm-rail::-webkit-scrollbar{display:none}
+.tm-btn{height:32px;padding:0 14px;border-radius:8px;border:1px solid rgba(32,36,44,.12);background:#fff;font:inherit;font-size:13px;color:#20242c;cursor:pointer}
+.tm-btn[aria-pressed="true"]{background:#e5edfc;border-color:#547dd0}
+@media (prefers-reduced-motion:reduce){.tm-slot,.tm-tab,.tm-title{transition:none !important}}
+</style>
+</helmet>
+<main style="position: relative; width: 1280px; height: 800px; background: #f1f1f1; overflow: hidden; font-family: Inter, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; color: #20242c">
+<div style="position: absolute; left: 16px; top: 15px; display: flex; gap: 8px">
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #28c840"></span>
+</div>
+<div style="position: absolute; left: 92px; top: 6px; width: 1100px; height: 32px; display: flex; align-items: center; gap: 4px">
+<div class="tm-rail" role="tablist" aria-label="打开的标签页" style="width: 760px; height: 28px; display: flex; align-items: center; overflow-x: auto; scrollbar-width: none">
+<sc-for list="{{ tabs }}" as="t" hint-placeholder-count="2">
+<div class="tm-slot" style="width: {{ t.w }}px; transition: width {{ t.dur }}ms cubic-bezier(.2,0,0,1) {{ t.delay }}ms">
+<div class="tm-tab" role="tab" aria-selected="{{ t.selected }}" data-active="{{ t.selected }}" data-count="{{ countMode }}" style="font-size: 13px; font-weight: 460; color: {{ t.color }}; transition: background-color {{ chromeDur }}ms ease, box-shadow {{ chromeDur }}ms ease, color {{ chromeDur }}ms ease">
+<button class="tm-title" type="button" onClick="{{ t.activate }}" style="opacity: {{ t.op }}; transform: translateX({{ t.dx }}px); transition: opacity {{ t.fade }}ms ease {{ t.fadeDelay }}ms, transform {{ t.fade }}ms cubic-bezier(.2,0,0,1) {{ t.fadeDelay }}ms">{{ t.title }}</button>
+<button class="tm-x" type="button" aria-label="关闭标签页" onClick="{{ t.close }}" style="transition: opacity {{ t.fade }}ms ease"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3l6 6M9 3l-6 6"></path></svg></button>
+</div>
+</div>
+</sc-for>
+</div>
+<button type="button" aria-label="新标签页" onClick="{{ openManual }}" style="width: 28px; height: 28px; flex: none; border: 0; border-radius: 6px; background: transparent; color: #526071; display: grid; place-items: center; cursor: pointer"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M7 2.5v9M2.5 7h9"></path></svg></button>
+</div>
+<div style="position: absolute; left: 0; top: 44px; bottom: 8px; width: 52px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+<span style="width: 32px; height: 32px; border-radius: 8px; background: #fff; box-shadow: 0 0 0 1px rgba(32,36,44,.08)"></span>
+<span style="width: 32px; height: 32px; border-radius: 8px; background: rgba(32,36,44,.05)"></span>
+<span style="width: 32px; height: 32px; border-radius: 8px; background: rgba(32,36,44,.05)"></span>
+</div>
+<section style="position: absolute; left: 52px; top: 44px; right: 6px; bottom: 6px; border-radius: 10px; background: #ffffff; box-shadow: 0 0 0 1px rgba(32,36,44,.08); display: flex; gap: 48px; padding: 56px 64px; box-sizing: border-box">
+<div style="flex: 1; display: flex; flex-direction: column; gap: 20px; min-width: 0">
+<p style="margin: 0; font-size: 12px; line-height: 16px; letter-spacing: .04em; color: #526071">当前步骤</p>
+<h1 style="margin: 0; font-size: 28px; line-height: 36px; font-weight: 560">{{ stepTitle }}</h1>
+<p style="margin: 0; font-size: 15px; line-height: 24px; color: #526071; max-width: 560px">{{ stepBody }}</p>
+<div style="display: flex; gap: 8px; margin-top: 12px">
+<button class="tm-btn" type="button" aria-pressed="{{ auto }}" onClick="{{ toggleAuto }}">自动演示</button>
+<button class="tm-btn" type="button" aria-pressed="{{ slow }}" onClick="{{ toggleSlow }}">慢放 ×4</button>
+<button class="tm-btn" type="button" onClick="{{ reset }}">重置</button>
+</div>
+<p style="margin: 0; font-size: 13px; line-height: 20px; color: #526071">也可以手动操作：点 + 新建、点标签切换、悬停后点 × 关闭。手动操作会暂停自动演示。</p>
+</div>
+<ol style="width: 360px; flex: none; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px">
+<sc-for list="{{ steps }}" as="s" hint-placeholder-count="6">
+<li style="display: flex; gap: 12px; padding: 10px 12px; border-radius: 8px; background: {{ s.bg }}; box-shadow: {{ s.ring }}; transition: background-color 150ms ease">
+<span style="width: 20px; flex: none; font-size: 13px; line-height: 20px; color: #526071; font-variant-numeric: tabular-nums">{{ s.n }}</span>
+<span style="font-size: 14px; line-height: 20px">{{ s.label }}</span>
+</li>
+</sc-for>
+</ol>
+</section>
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+var RAIL = 760, SCROLL_W = 155, MOVE = 220, FADE_OUT = 90, CLOSE_LAG = 60, FADE_IN = 140, FADE_IN_LAG = 80, CHROME = 150;
+var STEPS = [
+  { label: '1 → 2：单标签让位，新标签展开', title: '新建第二个标签', body: '单标签从占满收窄到一半，新标签的槽位从 0 宽同步展开；标题延后 80ms 淡入并右移 4px 落位。选中底色与描边在 150ms 内淡入，单标签样式平滑过渡到多标签样式。' },
+  { label: '2 → 3：三等分同步重排', title: '新建第三个标签', body: '所有槽位用同一条曲线、同一时长重新等分，标题始终左对齐、不缩放，只是可见宽度变化。' },
+  { label: '3 → 4：切换到滚动模式', title: '新建第四个标签', body: '达到 4 个后改为固定 155px。已有标签从等分宽度平滑收到 155px，新标签在末尾展开，不出现跳变。' },
+  { label: '关闭未选中的标签', title: '关闭未选中的标签', body: '先用 90ms 淡出标题和 ×，60ms 后槽位从当前宽度收拢到 0（含间距），右侧邻居顺势平移补位；回到等分模式时其他标签同步变宽。' },
+  { label: '关闭选中的标签', title: '关闭选中的标签', body: '选中态立刻交给右侧邻居（没有则左侧），底色在 150ms 内淡入；被关的标签只淡出、收拢，不再保留选中底色，避免两个选中态叠在一起。' },
+  { label: '2 → 1：剩余标签占满', title: '关闭到只剩一个', body: '剩下的标签以同一条曲线占满剩余空间；选中底色与描边同步淡出，变成单标签的纯文字样式。文字不拉伸、不重影。' }
+];
+class Component extends DCLogic {
+  state = { tabs: [{ id: 't1', title: '产品路线图', phase: 'live' }], active: 't1', step: -1, auto: true, slow: false, lastAction: 'open', seq: 1 };
+  componentDidMount() { this.schedule(1400); }
+  componentWillUnmount() { clearTimeout(this.loop); (this.timers || []).forEach(clearTimeout); }
+  k() { return this.state.slow ? 4 : 1; }
+  later(fn, ms) { this.timers = this.timers || []; this.timers.push(setTimeout(fn, ms)); }
+  schedule(ms) { clearTimeout(this.loop); if (this.state.auto) this.loop = setTimeout(() => this.tick(), ms * this.k()); }
+  tick() {
+    var s = this.state, live = s.tabs.filter(t => t.phase !== 'out');
+    var next = (s.step + 1) % STEPS.length;
+    if (next === 0 && live.length !== 1) { this.schedule(800); return; }
+    if (next === 0) this.open('需求评审');
+    if (next === 1) this.open('周报 11-02');
+    if (next === 2) this.open('读书笔记');
+    if (next === 3) this.close(live[1].id);
+    if (next === 4) this.close(this.state.active);
+    if (next === 5) this.close(this.state.active);
+    this.setState({ step: next });
+    this.schedule(next === 5 ? 2600 : 1900);
+  }
+  open(title) {
+    var id = 'n' + (this.state.seq + 1);
+    this.setState({ seq: this.state.seq + 1, lastAction: 'open', active: id, tabs: this.state.tabs.concat([{ id: id, title: title, phase: 'in' }]) });
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      this.setState({ tabs: this.state.tabs.map(t => t.id === id ? Object.assign({}, t, { phase: 'live' }) : t) });
+    }));
+  }
+  close(id) {
+    var s = this.state, live = s.tabs.filter(t => t.phase !== 'out');
+    if (live.length <= 1) return;
+    var i = live.findIndex(t => t.id === id), active = s.active;
+    if (active === id) active = (live[i + 1] || live[i - 1]).id;
+    this.setState({ lastAction: 'close', active: active, tabs: s.tabs.map(t => t.id === id ? Object.assign({}, t, { phase: 'out' }) : t) });
+    this.later(() => this.setState({ tabs: this.state.tabs.filter(t => t.id !== id) }), (CLOSE_LAG + MOVE + 40) * this.k());
+  }
+  manual(fn) { clearTimeout(this.loop); this.setState({ auto: false }); fn(); }
+  renderVals() {
+    var s = this.state, k = this.k(), live = s.tabs.filter(t => t.phase !== 'out'), n = live.length;
+    var slot = n < 4 ? Math.floor(RAIL / n) : SCROLL_W + 4;
+    var closing = s.lastAction === 'close';
+    var tabs = s.tabs.map(t => {
+      var shown = t.phase === 'live', selected = t.id === s.active && t.phase !== 'out';
+      return {
+        title: t.title, selected: selected ? 'true' : 'false',
+        color: n > 1 && !selected ? '#526071' : '#20242c',
+        w: shown ? slot : 0,
+        dur: MOVE * k, delay: (closing ? CLOSE_LAG : 0) * k,
+        op: shown ? 1 : 0, dx: t.phase === 'in' ? -4 : 0,
+        fade: (t.phase === 'out' ? FADE_OUT : FADE_IN) * k,
+        fadeDelay: (t.phase === 'live' && !closing ? FADE_IN_LAG : 0) * k,
+        activate: () => this.manual(() => this.setState({ active: t.id })),
+        close: () => this.manual(() => this.close(t.id))
+      };
+    });
+    var cur = STEPS[s.step] || { title: '准备开始', body: '从单个标签开始，依次演示新建、切换到滚动模式、关闭未选中、关闭选中，最后回到单标签占满。' };
+    return {
+      tabs: tabs, countMode: n > 1 ? 'multi' : 'single', chromeDur: CHROME * k,
+      stepTitle: cur.title, stepBody: cur.body,
+      auto: s.auto ? 'true' : 'false', slow: s.slow ? 'true' : 'false',
+      steps: STEPS.map((x, i) => ({ n: i + 1, label: x.label, bg: i === s.step ? '#e5edfc' : 'transparent', ring: i === s.step ? 'inset 0 0 0 1px #547dd0' : 'none' })),
+      openManual: () => this.manual(() => this.open('新标签页 ' + (this.state.seq + 1))),
+      toggleAuto: () => { var a = !this.state.auto; this.setState({ auto: a }, () => this.schedule(500)); if (!a) clearTimeout(this.loop); },
+      toggleSlow: () => this.setState({ slow: !this.state.slow }),
+      reset: () => { clearTimeout(this.loop); this.setState({ tabs: [{ id: 't1', title: '产品路线图', phase: 'live' }], active: 't1', step: -1, auto: true, lastAction: 'open' }, () => this.schedule(1200)); }
+    };
+  }
+}
+</script>
+</body>
+</html>

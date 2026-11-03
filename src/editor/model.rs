@@ -3,6 +3,9 @@ use std::ops::Range;
 #[path = "model_sequence.rs"] mod sequence;
 #[path = "model_spans.rs"] mod spans;
 #[path = "model_blocks.rs"] mod block_ops;
+#[path = "model_inline.rs"] mod inline_ops;
+#[path = "model_table.rs"] mod table;
+pub use table::{Table, TableRow, TableCell, TableFormat, CellAlignment};
 pub use sequence::Blocks;
 pub use block_ops::{Numbering, list_numbers};
 
@@ -13,6 +16,14 @@ pub enum MarkKind { Bold, Italic, Strike, Code }
 /// Ordered, disjoint UTF-8 byte ranges. Adjacent equal mark sets are coalesced.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Span { pub start: usize, pub end: usize, pub marks: Vec<MarkKind> }
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InlineTag {
+    pub start: usize, pub end: usize, pub name: String,
+    pub attrs: Vec<(String, String)>,
+}
+/// Imported HTML paragraph shell; inline content remains ordinary editable rich text.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HtmlParagraph { pub source: String, pub content: Range<usize> }
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BlockMeta {
@@ -24,6 +35,15 @@ pub struct BlockMeta {
     pub code_empty_line: bool,
     /// Unsupported Markdown is literal editable source, never silently interpreted.
     pub raw_source: Option<String>,
+    /// Display why a source block cannot be edited visually without data loss.
+    pub unsupported_reason: Option<String>,
+    pub inline: Vec<InlineTag>,
+    pub html_paragraph: Option<HtmlParagraph>,
+    /// H4–H6 keep the existing heading kind vocabulary and carry the exact level here.
+    pub heading_level: Option<u8>,
+    pub table: Option<Table>,
+    /// The source had no blank line after this block where the serializer would write one.
+    pub tight: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Block {
@@ -76,7 +96,8 @@ impl Doc {
         self.refresh_block(id);
     }
     pub fn set_kind(&mut self, id: u64, kind: Kind) {
-        if let Some(block) = self.get_mut(id) { block.kind = kind; block.meta.raw_source = None; block.meta.code_language = None; block.meta.code_empty_line = false;
+        if self.get(id).is_some_and(|block| block.meta.table.is_some()) { return; }
+        if let Some(block) = self.get_mut(id) { block.kind = kind; block.meta.heading_level = None; block.meta.raw_source = None; block.meta.unsupported_reason = None; block.meta.code_language = None; block.meta.code_empty_line = false; block.meta.html_paragraph = None;
             if !matches!(kind, Kind::Bullet | Kind::Numbered | Kind::Todo) { block.meta.indent = 0; block.meta.list_start = None; }
         }
         self.refresh_block(id);
@@ -101,7 +122,8 @@ impl Doc {
     /// Merge adjacent blocks, retaining left metadata; returns the join byte offset.
     pub fn merge_blocks(&mut self, left: u64, right: u64) -> Option<usize> {
         let i = self.index_of(left)?;
-        if self.index_of(right)? != i + 1 { return None; }
+        if self.index_of(right)? != i + 1 || self.get(left)?.meta.table.is_some()
+            || self.get(right)?.meta.table.is_some() { return None; }
         let other = self.blocks.remove(i + 1); let block = self.get_mut(left)?;
         let at = block.text.len(); block.append(&other); self.refresh_block(left); Some(at)
     }

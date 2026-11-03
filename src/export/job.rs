@@ -6,7 +6,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use super::ExportError;
@@ -51,19 +51,12 @@ impl Drop for ExportJob {
 }
 
 #[derive(Debug, Default)]
+#[allow(dead_code)] // kept for diagnostics via Debug
 pub struct Timings {
     pub font_setup: Duration,
     pub layout: Duration,
     pub raster: Duration,
     pub encoding: Duration,
-    pub write: Duration,
-}
-
-#[derive(Debug)]
-pub struct ExportReport {
-    pub path: PathBuf,
-    pub bytes: usize,
-    pub timings: Timings,
 }
 
 struct Temporary(PathBuf);
@@ -117,20 +110,4 @@ pub fn write_png(path: &Path, bytes: &[u8], cancel: &Cancellation) -> Result<(),
     cancel.check()?;
     std::fs::rename(&temporary.0, path).map_err(ExportError::Write)?;
     Ok(())
-}
-
-pub fn export_to_path(
-    blocks: &[crate::editor::model::Block],
-    path: &Path,
-    cancel: &Cancellation,
-) -> Result<ExportReport, ExportError> {
-    let (bytes, mut timings) = super::render_with_cancel(blocks, cancel)?;
-    let start = Instant::now();
-    write_png(path, &bytes, cancel)?;
-    timings.write = start.elapsed();
-    Ok(ExportReport {
-        path: path.to_owned(),
-        bytes: bytes.len(),
-        timings,
-    })
 }

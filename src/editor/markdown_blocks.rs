@@ -42,8 +42,7 @@ pub(super) fn classify(line: &str) -> (Kind,&str,bool,usize,Option<u64>,bool) {
     let indent = line[..line.len()-body.len()].chars().map(|c| if c=='\t' {4} else {1}).sum();
     let compact: String = line.chars().filter(|c| !c.is_whitespace()).collect();
     let rule = compact.len()>=3 && ['-','*','_','='].iter().any(|c| compact.chars().all(|v| v==*c));
-    if rule || line.ends_with("  ") || line.ends_with('\\') || line.contains("][")
-        || body.starts_with("+ ") || body.starts_with("* ") {
+    if rule || line.contains("][") {
         return (Kind::Paragraph,line,false,0,None,true);
     }
     for (prefix,kind) in [("- [ ] ",Kind::Todo),("- [x] ",Kind::Todo),("- [X] ",Kind::Todo),
@@ -53,15 +52,15 @@ pub(super) fn classify(line: &str) -> (Kind,&str,bool,usize,Option<u64>,bool) {
         }
     }
     let digits = body.bytes().take_while(u8::is_ascii_digit).count();
-    if digits > 0 && body[digits..].starts_with(") ") { return (Kind::Paragraph,line,false,0,None,true); }
-    if digits > 0 && body[digits..].starts_with(". ") {
+    if digits > 0 && (body[digits..].starts_with(". ") || body[digits..].starts_with(") ")) {
         if let Ok(start) = body[..digits].parse::<u64>() {
             return (Kind::Numbered,&body[digits+2..],false,indent,Some(start),false);
         }
         return (Kind::Paragraph,line,false,0,None,true);
     }
     if indent > 0 { return (Kind::Paragraph,line,false,0,None,true); }
-    for (prefix,kind) in [("### ",Kind::H3),("## ",Kind::H2),("# ",Kind::H1),("> ",Kind::Quote)] {
+    for (prefix,kind) in [("###### ",Kind::H3),("##### ",Kind::H3),("#### ",Kind::H3),
+        ("### ",Kind::H3),("## ",Kind::H2),("# ",Kind::H1),("> ",Kind::Quote)] {
         if let Some(text) = body.strip_prefix(prefix) {
             if kind==Kind::Quote && (text.starts_with('>') || super::super::model::marker_kind(text).is_some() || fence(text).is_some()) { return (Kind::Paragraph,line,false,0,None,true); }
             let mut text = text;
@@ -72,9 +71,8 @@ pub(super) fn classify(line: &str) -> (Kind,&str,bool,usize,Option<u64>,bool) {
             return (kind,text,false,0,None,false);
         }
     }
-    let opaque = rule || line.starts_with("####") || line.contains('|') || line.starts_with("<!--")
+    let opaque = rule || line.starts_with("<!--")
         || line.starts_with("$$") || line.starts_with(":::") || line.starts_with("[[")
-        || line.starts_with("<!") || line.starts_with("[^") || line.contains("]: ")
-        || line.ends_with("  ") || line.ends_with('\\');
+        || line.starts_with("<!") || line.starts_with("[^") || line.contains("]: ");
     (Kind::Paragraph,line,false,0,None,opaque)
 }

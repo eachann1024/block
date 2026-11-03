@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<title>导出卡片 · 共享组件</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Noto+Serif+SC:wght@400;700&amp;family=Courier+Prime:wght@400;700&amp;family=Ma+Shan+Zheng&amp;family=Fraunces:wght@400;500;600&amp;family=Space+Grotesk:wght@500;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="{{frame}}">
+<sc-for list="{{fd}}" as="d" hint-placeholder-count="0"><span aria-hidden="true" style="{{d.s}}"></span></sc-for>
+<sc-for list="{{fields}}" as="f" hint-placeholder-count="0"><span aria-hidden="true" style="{{f.s}}"><sc-for list="{{f.cells}}" as="c" hint-placeholder-count="0"><span style="{{c.s}}"></span></sc-for></span></sc-for>
+<article style="{{card}}">
+<sc-for list="{{cd}}" as="d" hint-placeholder-count="0"><span aria-hidden="true" style="{{d.s}}"></span></sc-for>
+<sc-if value="{{titlePre}}" hint-placeholder-val="{{false}}"><div aria-hidden="true" style="{{titlePreS}}">· · ·</div></sc-if>
+<sc-if value="{{showTitle}}" hint-placeholder-val="{{true}}"><h1 style="{{h1}}">{{heading}}</h1></sc-if>
+<sc-if value="{{afterRule}}" hint-placeholder-val="{{false}}"><span aria-hidden="true" style="{{afterRuleS}}"></span></sc-if>
+<sc-for list="{{blocks}}" as="b" hint-placeholder-count="6">
+<sc-if value="{{b.isP}}" hint-placeholder-val="{{true}}"><p style="{{p}}">{{b.t}}<sc-if value="{{b.m}}" hint-placeholder-val="{{false}}"><mark style="{{mark}}">{{b.m}}</mark>{{b.t2}}</sc-if></p></sc-if>
+<sc-if value="{{b.isH2}}" hint-placeholder-val="{{false}}"><h2 style="{{h2}}">{{b.t}}</h2></sc-if>
+<sc-if value="{{b.isLi}}" hint-placeholder-val="{{false}}"><div style="{{li}}"><span aria-hidden="true" style="{{bullet}}"></span><span>{{b.t}}</span></div></sc-if>
+<sc-if value="{{b.isQ}}" hint-placeholder-val="{{false}}"><blockquote style="{{q}}"><sc-if value="{{quoteMark}}" hint-placeholder-val="{{false}}"><span aria-hidden="true" style="{{quoteMarkS}}">“</span></sc-if>{{b.t}}</blockquote></sc-if>
+<sc-if value="{{b.isImg}}" hint-placeholder-val="{{false}}"><div style="{{img}}">{{b.t}}</div></sc-if>
+</sc-for>
+<sc-if value="{{empty}}" hint-placeholder-val="{{false}}"><p style="{{emptyS}}">没有可导出的内容</p></sc-if>
+<sc-if value="{{showFoot}}" hint-placeholder-val="{{true}}">
+<footer style="{{foot}}">
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+<sc-if value="{{brand}}" hint-placeholder-val="{{true}}"><span style="{{brandS}}">{{brand}}</span></sc-if>
+<sc-if value="{{stamp}}" hint-placeholder-val="{{true}}"><span style="font-variant-numeric:tabular-nums">{{stamp}}</span></sc-if>
+</div>
+</footer>
+</sc-if>
+</article>
+<sc-if value="{{qr}}" hint-placeholder-val="{{false}}"><div role="img" aria-label="贡献图点阵，暗含二维码，扫码打开 note.cooool.top" style="{{bandS}}"><sc-for list="{{band}}" as="c" hint-placeholder-count="0"><span style="{{c.s}}"></span></sc-for></div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["original","stationery","mocha-mousse","brutalist","notebook","github-light","medium","kenya-hara","typewriter","risograph","poster","github-dark","vercel-dark","tokyo-night","catppuccin","synthwave"],"default":"github-light"},"w":{"editor":"int","default":520,"min":280,"max":900},"opts":{"editor":null},"blocks":{"editor":null},"heading":{"editor":null},"$preview":{"width":520,"height":800}}'>
+var F={sys:"-apple-system,'PingFang SC',system-ui,sans-serif",inter:"Inter,-apple-system,'PingFang SC',sans-serif",serif:"'Noto Serif SC',Georgia,serif",mono:"'Courier Prime','Courier New',monospace",hand:"'Ma Shan Zheng','Kaiti SC',cursive",fr:"Fraunces,Georgia,'Noto Serif SC',serif",sg:"'Space Grotesk',Inter,sans-serif"};
+var LT="#1f1e1d",LS="#5e5d59",DT="#f0efec",DS="#c3c2b7";
+// g bg card tx sub ac | outer pad, card pad, radius, border, shadow | title size weight align | body font, title font, footer visible
+var T0={
+"original":["cur","#ffffff","#ffffff","#20242c","#526071","#547dd0",24,28,0,"0","none",28,650,"left","sys","sys",1],
+"notebook":["light","#ffffff","#ffffff",LT,LS,"#2563eb",28,40,12,"1px solid #e9e9e7","0 1px 2px rgba(15,23,42,.04)",26,700,"left","sys","sys",1],
+"github-light":["light","#ffffff","#ffffff",LT,LS,"#0969da",56,40,12,"1px solid #d1d9e0","none",26,600,"left","inter","inter",1],
+"github-dark":["dark","#0d1117","#0d1117",DT,DS,"#2f81f7",56,40,12,"1px solid #30363d","none",26,600,"left","inter","inter",1],
+"medium":["light","#faf9f6","#ffffff",LT,LS,"#1a8917",64,48,4,"0","0 2px 8px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.06)",34,400,"center","serif","serif",1],
+"kenya-hara":["light","#fefefe","transparent",LT,LS,"#888888",80,0,0,"0","none",20,300,"left","sys","sys",0],
+"typewriter":["light","#f5f0e6","#faf6ed",LT,LS,"#8b4513",56,40,2,"1px solid #e8e0d0","0 1px 3px rgba(80,60,30,.08),inset 0 0 40px rgba(139,90,43,.05)",24,700,"left","mono","mono",1],
+"stationery":["light","#fef9e7","#fffef5",LT,LS,"#d97706",52,36,12,"1px solid #f0e8d0","0 2px 10px rgba(180,140,70,.08)",26,400,"left","sys","hand",1],
+"mocha-mousse":["light","#f5ede0","#fdf8ee",LT,LS,"#a47864",60,44,18,"0","0 4px 24px rgba(164,120,100,.1)",30,500,"left","sys","fr",1],
+"brutalist":["light","#f5f5f5","#ffffff",LT,LS,"#ff5500",56,40,0,"2px solid #0a0a0a","6px 6px 0 #0a0a0a",42,700,"left","inter","sg",1],
+"risograph":["light","#faf5ec","#fffaf0",LT,LS,"#f06f6f",56,42,4,"1px solid #d4c5a8","none",28,600,"left","sys","fr",1],
+"poster":["dark","#121a2c","transparent",DT,DS,"#00d9ff",56,40,0,"0","none",42,900,"center","inter","inter",1],
+"vercel-dark":["dark","#0a0a0a","#0a0a0a",DT,DS,"#ffffff",64,44,0,"1px solid #262626","none",34,600,"left","inter","inter",1],
+"tokyo-night":["dark","#1a1b26","#24283b",DT,DS,"#7aa2f7",56,42,14,"1px solid #292e42","0 12px 32px rgba(0,0,0,.4)",28,600,"left","inter","inter",1],
+"catppuccin":["dark","#24273a","#1e2030",DT,DS,"#c6a0f6",56,40,14,"1px solid #363a4f","0 10px 30px rgba(0,0,0,.35)",28,600,"left","inter","inter",1],
+"synthwave":["dark","#170a2e","#1c0d38",DT,DS,"#ff2a6d",56,42,18,"1px solid rgba(255,42,109,.25)","none",32,700,"left","inter","sg",1]};
+var QR="1111111000110100001100111111110000010011110111110101000001101110100110100100010010111011011101001001001110010101110110111010111000110001001011101100000100100000001111010000011111111010101010101010111111100000000110000000111000000000001100111011100010001110100001010110101000101101111111000101011011000010001010001011010100100000001010111101001100011011011110111111100101010011110011100001100111001001101101111011101111111111110101110111111000010110000010111001101100101111111001110101100111011010000011001110100101001001001000111011111101110000110110000000001001100111000011011100011110101001001010011111111000000000010100100101010001101111111110100010110101101010100100000100000111001001000100111011101001110111011011111110010111010100001011111000011010101110101111000000001001001011000001001110101111110101101011111110011111010101101100010";
+var SAMPLE=[{k:"p",t:"试了六周，周会从每周一小时缩成十五分钟的站会，其余全部放进共享文档。最明显的变化是：",m:"讨论变少了，但决定变快了",t2:"。"},{k:"h2",t:"保留下来的三件事"},{k:"li",t:"周一前写好本周目标，一句话即可"},{k:"li",t:"阻塞问题直接在文档里 @ 负责人"},{k:"li",t:"周五回看，只记录偏差"},{k:"q",t:"异步不是少沟通，而是把沟通写下来。"}];
+// Contribution-graph dot fields. With qr=1 the rightmost 37 columns hold the QR (29 modules + 4-cell quiet zone);
+// light: dark-green modules on pale cells; dark: inverted (bright modules on dark cells), like GitHub's own graph.
+var PL=["#ebedf0","#aceebb","#4ac26b","#2da44e","#116329"],PD=["#161b22","#0e4429","#006d32","#26a641","#39d353"],FC={};
+function dots(dark,cell,rows,cols,ramp,qr,seed){var key=[dark?1:0,cell,rows,cols,ramp,qr,seed].join("|");if(FC[key])return FC[key];
+var P=dark?PD:PL,out=[],q0=qr?cols-37:cols,rad=";border-radius:"+(cell>2?1:.5)+"px";
+function r(){seed=(seed*1103515245+12345)%2147483648;return seed/2147483648;}
+for(var y=0;y<rows;y++)for(var x=0;x<cols;x++){var v=r(),u=r(),c;
+if(x>=q0){var qx=x-q0-4,qy=y-4,bit=qx>=0&&qx<29&&qy>=0&&qy<29&&QR.charAt(qy*29+qx)==="1";
+c=bit?(u<.6?P[4]:dark?P[3]:"#1a7f37"):(v<.14?P[1]:P[0]);}
+else{var d=ramp?.03+.37*Math.pow(x/Math.max(1,q0),1.6):.2;c=v<d?P[1+Math.floor(u*4)]:P[0];}
+out.push({s:"background:"+c+rad});}
+return FC[key]=out;}
+function rgba(h,a){if(h.length===4)h="#"+h[1]+h[1]+h[2]+h[2]+h[3]+h[3];return"rgba("+parseInt(h.substr(1,2),16)+","+parseInt(h.substr(3,2),16)+","+parseInt(h.substr(5,2),16)+","+a+")";}
+function grain(c,a,k){return{img:"repeating-radial-gradient(circle at 17% 23%,"+rgba(c,a)+" 0 .6px,transparent .6px 3px),repeating-radial-gradient(circle at 71% 63%,"+rgba(c,a)+" 0 .5px,transparent .5px 4px)",size:"auto"};}
+class Component extends DCLogic {
+renderVals(){
+var id=this.props.theme||"github-light",R=T0[id]||T0["github-light"],w=Number(this.props.w)||520,k=w/680,o=this.props.opts||{};
+var T={g:R[0],bg:R[1],card:R[2],tx:R[3],sub:R[4],ac:R[5],mx:R[6],cp:R[7],r:R[8],bd:R[9],sh:R[10],ts:R[11],tw:R[12],ta:R[13],bf:F[R[14]],tf:F[R[15]],wm:!!R[16]};
+var dark=T.g==="dark",orig=id==="original",p=function(n){return(Math.round(n*k*10)/10)+"px";};
+var fd=[],cd=[],bgImg="",bgSize="auto",titleX="",textX="",quoteX="",dv=dark?"rgba(255,255,255,.12)":"rgba(0,0,0,.08)",mono=false,qr=false,titlePre=false,quoteMark=false,afterRule=false,afterRuleS="";
+var abs="position:absolute;pointer-events:none;";
+var rule=function(c,t,g){titleX+=";padding-bottom:"+p(g)+";border-bottom:"+t+"px solid "+c;};
+var corners=function(inset,c,len,arr,box){[["top","left"],["top","right"],["bottom","left"],["bottom","right"]].forEach(function(s){arr.push({s:abs+s[0]+":"+p(inset)+";"+s[1]+":"+p(inset)+";width:"+p(len)+";height:"+p(len)+";border-"+s[0]+":1px solid "+c+";border-"+s[1]+":1px solid "+c});});};
+if(id==="notebook")cd.push({s:abs+"top:-1px;right:"+p(28)+";width:"+p(14)+";height:"+p(38)+";background:"+T.ac+";clip-path:polygon(0 0,100% 0,100% 100%,50% 78%,0 100%)"});
+if(id==="github-light"||id==="github-dark"){rule(dark?"#30363d":"#d1d9e0",1,10);dv=dark?"#30363d":"#d1d9e0";qr=true;}
+if(id==="medium"){cd.push({s:abs+"top:"+p(18)+";left:"+p(T.cp)+";right:"+p(T.cp)+";height:"+p(3)+";border-top:2px solid "+T.tx+";border-bottom:1px solid "+T.tx});titlePre=true;quoteMark=true;quoteX="border-left:0;padding:0 0 0 "+p(4)+";font-style:italic;font-size:"+p(19)+";color:"+T.tx;}
+if(id==="kenya-hara"){fd.push({s:abs+"inset:0;background:repeating-linear-gradient(83deg,"+rgba("#8a8172",.07)+" 0 1px,transparent 1px 9px),repeating-linear-gradient(-71deg,"+rgba("#8a8172",.05)+" 0 1px,transparent 1px 13px)"});corners(28,"#d4d4d4",14,fd);fd.push({s:abs+"right:"+p(34)+";bottom:"+p(34)+";width:"+p(13)+";height:"+p(13)+";background:#b8432f"});}
+if(id==="typewriter"){var g1=grain("#6b5434",.08);bgImg=g1.img;textX=";text-shadow:0 0 "+p(.7)+" rgba(59,50,38,.35)";cd.push({s:abs+"top:"+p(-36)+";right:"+p(-30)+";width:"+p(140)+";height:"+p(140)+";border-radius:50%;border:"+p(5)+" solid "+rgba("#8b5a2b",.14)+";box-shadow:inset 0 0 0 "+p(2)+" "+rgba("#8b5a2b",.06)});mono=true;dv="#d4c9b8";}
+if(id==="stationery"){cd.push({s:abs+"top:"+p(-14)+";left:50%;width:"+p(118)+";height:"+p(28)+";margin-left:"+p(-59)+";background:rgba(252,196,57,.55);transform:rotate(-2deg)"});bgImg="radial-gradient(circle,rgba(180,140,70,.18) "+p(1.2)+",transparent "+p(1.6)+")";bgSize=p(18)+" "+p(18);titleX+=";text-decoration:underline wavy "+T.ac+";text-decoration-thickness:"+p(1.5)+";text-underline-offset:"+p(8);}
+if(id==="mocha-mousse"){bgImg=grain("#7a5a44",.06).img;textX=";text-shadow:0 1px 0 rgba(255,255,255,.75)";cd.push({s:abs+"right:"+p(36)+";bottom:"+p(-18)+";width:"+p(36)+";height:"+p(36)+";border-radius:50%;background:#a47864;box-shadow:inset 0 0 0 "+p(4)+" rgba(255,255,255,.16),0 2px 4px rgba(90,60,40,.25)"});}
+if(id==="brutalist"){cd.push({s:abs+"top:"+p(-15)+";left:"+p(28)+";width:"+p(64)+";height:"+p(14)+";background:#ff5500;border:2px solid #0a0a0a;border-bottom:0"});rule("#0a0a0a",Math.max(2,Math.round(4*k)),14);fd.push({s:abs+"left:"+p(T.mx)+";bottom:"+p(16)+";width:"+p(148)+";height:"+p(16)+";background:repeating-linear-gradient(-45deg,#0a0a0a 0 "+p(6)+",#ff5500 "+p(6)+" "+p(12)+")"});}
+if(id==="risograph"){titleX+=";text-shadow:"+p(1.5)+" 0 0 rgba(240,111,111,.55),"+p(-1)+" "+p(.5)+" 0 rgba(0,120,191,.35)";fd.push({s:abs+"top:"+p(T.mx+8)+";left:"+p(T.mx+8)+";right:"+p(T.mx-8)+";bottom:"+p(T.mx-8)+";border-radius:"+p(T.r)+";background:radial-gradient(circle,"+rgba(T.ac,.42)+" "+p(1.3)+",transparent "+p(1.8)+") 0 0/"+p(6)+" "+p(6)});fd.push({s:abs+"inset:0;background:"+grain("#7a5c3c",.07).img});quoteX="border-left:1.5px solid "+T.ac;mono=true;dv="#f0b4ac";}
+if(id==="poster"){fd.push({s:abs+"top:0;right:0;width:"+p(260)+";height:"+p(260)+";background:radial-gradient(circle,rgba(0,217,255,.16) "+p(2.4)+",transparent "+p(3)+") 0 0/"+p(9)+" "+p(9)+";-webkit-mask-image:linear-gradient(225deg,#000 20%,transparent 75%);mask-image:linear-gradient(225deg,#000 20%,transparent 75%)"});fd.push({s:abs+"inset:0;background:"+grain("#ffffff",.05).img});afterRule=true;afterRuleS="display:block;width:"+p(56)+";height:"+p(5)+";background:"+T.ac+";margin:0 auto "+p(26);}
+if(id==="vercel-dark"){fd.push({s:abs+"inset:0;background:linear-gradient(#161616 1px,transparent 1px) 0 0/"+p(64)+" "+p(64)+",linear-gradient(90deg,#161616 1px,transparent 1px) 0 0/"+p(64)+" "+p(64)});[["top","left"],["top","right"],["bottom","left"],["bottom","right"]].forEach(function(s){cd.push({s:abs+s[0]+":"+p(-8)+";"+s[1]+":"+p(-8)+";width:"+p(15)+";height:"+p(15)+";background:linear-gradient(#5c5c5c,#5c5c5c) center/1px 100% no-repeat,linear-gradient(#5c5c5c,#5c5c5c) center/100% 1px no-repeat"});});}
+if(id==="tokyo-night"){var st=[[8,12],[22,70],[37,30],[55,85],[68,18],[83,52],[93,88],[14,92],[47,8],[76,96],[3,48],[61,40]].map(function(a,i){return"radial-gradient("+(i%3?1:1.5)+"px "+(i%3?1:1.5)+"px at "+a[0]+"% "+a[1]+"%,rgba(192,202,245,"+(i%2?.55:.8)+"),transparent)";}).join(",");fd.push({s:abs+"inset:0;background:"+st});cd.push({s:abs+"top:0;left:"+p(T.r)+";right:"+p(T.r)+";height:2px;background:linear-gradient(90deg,#7aa2f7 0 16.6%,#bb9af7 0 33.3%,#7dcfff 0 50%,#9ece6a 0 66.6%,#e0af68 0 83.3%,#f7768e 0)"});}
+if(id==="catppuccin"){cd.push({s:abs+"inset:"+p(8)+";border:1px dashed rgba(198,160,246,.3);border-radius:"+p(T.r-6)});var pc=["#f4dbd6","#f5bde6","#c6a0f6","#8aadf4","#a6da95","#eed49f"];fd.push({s:abs+"left:"+p(T.mx)+";bottom:"+p(22)+";width:"+p(6*14)+";height:"+p(8)+";background:"+pc.map(function(c,i){return"radial-gradient(circle,"+c+" "+p(3.5)+",transparent "+p(4)+") "+p(i*14)+" 0/"+p(8)+" "+p(8)+" no-repeat";}).join(",")});}
+if(id==="synthwave"){fd.push({s:abs+"left:-20%;right:-20%;bottom:0;height:"+p(170)+";background:linear-gradient(rgba(255,42,109,.32) 1px,transparent 1px) 0 0/100% "+p(18)+",linear-gradient(90deg,rgba(255,42,109,.32) 1px,transparent 1px) 0 0/"+p(36)+" 100%;transform:perspective("+p(220)+") rotateX(58deg);transform-origin:bottom"});fd.push({s:abs+"top:"+p(18)+";right:"+p(24)+";width:"+p(132)+";height:"+p(132)+";border-radius:50%;background:linear-gradient(#ffd27a,rgba(255,92,120,.5));-webkit-mask-image:linear-gradient(#000 52%,transparent 52% 58%,#000 58% 68%,transparent 68% 72%,#000 72% 82%,transparent 82% 85%,#000 85%);mask-image:linear-gradient(#000 52%,transparent 52% 58%,#000 58% 68%,transparent 68% 72%,#000 72% 82%,transparent 82% 85%,#000 85%)"});bgImg="repeating-linear-gradient(rgba(255,255,255,.025) 0 1px,transparent 1px 3px)";}
+var footOn=T.wm&&o.footer!==false,brandTxt=footOn&&o.brand!==false?String(o.brandText==null?"Thinkly":o.brandText).trim():"";
+var now=new Date(),dd=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0");
+var stamp=footOn&&o.date!==false?(o.time!==false?dd+" 14:32:08":dd):"";
+var heading=this.props.heading==null?"把周会改成异步之后":this.props.heading,showTitle=o.title!==false&&!!heading;
+var blocks=(this.props.blocks||SAMPLE).map(function(b){return{t:b.t,m:b.m||"",t2:b.t2||"",isP:b.k==="p",isH2:b.k==="h2",isLi:b.k==="li",isQ:b.k==="q",isImg:b.k==="img"};});
+var cell=Math.max(2,Math.round(3*k)),fields=[],band=[],bandS="";
+if(qr){var mxPx=Math.round(T.mx*k*10)/10,pitch=cell+1,cols=Math.floor((w-2*mxPx+1)/pitch),ed=Math.max(4,Math.round((mxPx-2*pitch)/2)),tc=Math.round(cols*.7);
+var gs=function(c,n){return"display:grid;grid-template-columns:repeat("+c+","+cell+"px);grid-auto-rows:"+cell+"px;gap:1px";},mask=function(m){return";-webkit-mask-image:"+m+";mask-image:"+m;};
+fields.push({s:abs+"top:"+ed+"px;right:"+mxPx+"px;"+gs(tc)+mask("linear-gradient(90deg,transparent,#000 75%)"),cells:dots(dark,cell,2,tc,0,0,11)});
+fields.push({s:abs+"top:"+mxPx+"px;right:"+ed+"px;"+gs(2)+mask("linear-gradient(#000 25%,transparent)"),cells:dots(dark,cell,48,2,0,0,23)});
+bandS="position:relative;z-index:1;margin-top:"+p(24)+";"+gs(cols)+";justify-content:end"+mask("linear-gradient(90deg,transparent,#000 "+Math.round((cols-37)/cols*100)+"%)");
+band=dots(dark,cell,37,cols,1,1,20260517);}
+var body="font-size:"+p(16)+";line-height:1.75"+textX;
+return{
+frame:"position:relative;isolation:isolate;overflow:hidden;width:"+w+"px;box-sizing:border-box;background:"+T.bg+";padding:"+p(T.mx)+";font-family:"+T.bf+";color:"+T.tx+";transition:background-color .2s",
+fd:fd,cd:cd,fields:fields,band:band,bandS:bandS,
+card:"position:relative;z-index:1;box-sizing:border-box;background-color:"+T.card+(bgImg?";background-image:"+bgImg+";background-size:"+bgSize:"")+";border:"+T.bd+";border-radius:"+p(T.r)+";box-shadow:"+T.sh+";padding:"+p(T.cp)+";transition:background-color .2s",
+titlePre:titlePre,titlePreS:"text-align:center;color:"+T.sub+";letter-spacing:.5em;margin:"+p(10)+" 0 "+p(14)+";font-size:"+p(16),
+showTitle:showTitle,heading:heading,
+h1:"margin:0 0 "+p(afterRule?18:16)+";font-family:"+T.tf+";font-size:"+p(T.ts)+";font-weight:"+T.tw+";line-height:1.3;text-align:"+T.ta+";letter-spacing:"+(T.tw>=600?"-.01em":"0")+textX+titleX,
+afterRule:afterRule&&showTitle,afterRuleS:afterRuleS,
+blocks:blocks,empty:!blocks.length&&!showTitle,emptyS:"margin:0;padding:"+p(24)+" 0;text-align:center;font-size:"+p(14)+";color:"+T.sub,
+p:"margin:0 0 "+p(14)+";"+body,
+mark:orig?"background:#fff1a8;color:inherit;border-radius:2px;padding:0 2px":"background:"+rgba(T.ac,dark?.24:.14)+";color:inherit;border-radius:2px;padding:0 2px",
+h2:"margin:"+p(24)+" 0 "+p(10)+";font-family:"+T.tf+";font-size:"+p(19)+";font-weight:"+(T.tw>=600?650:600)+";line-height:1.4"+textX,
+li:"display:flex;gap:"+p(10)+";margin:0 0 "+p(6)+";"+body,
+bullet:"flex:none;width:"+p(5)+";height:"+p(5)+";border-radius:50%;margin-top:"+p(12)+";background:"+(orig?T.tx:T.ac),
+q:"position:relative;margin:"+p(18)+" 0 0;padding:"+p(2)+" 0 "+p(2)+" "+p(14)+";border-left:"+p(3)+" solid "+(orig?"#d6dbe3":T.ac)+";color:"+T.sub+";"+body+(quoteX?";"+quoteX:""),
+quoteMark:quoteMark,quoteMarkS:"display:block;height:"+p(26)+";font-family:Georgia,serif;font-size:"+p(54)+";line-height:1;color:"+T.ac,
+img:"height:"+p(150)+";margin:0 0 "+p(14)+";border-radius:"+p(Math.min(T.r,8))+";display:grid;place-items:center;font-size:"+p(13)+";color:"+T.sub+";background:"+(dark?"rgba(255,255,255,.06)":"rgba(0,0,0,.05)"),
+showFoot:footOn&&(!!brandTxt||!!stamp),brand:brandTxt,stamp:stamp,qr:qr,
+foot:"display:flex;align-items:flex-end;gap:"+p(16)+";margin-top:"+p(28)+";"+(footOn&&(brandTxt||stamp)?"padding-top:"+p(18)+";border-top:1px "+(mono?"dashed ":"solid ")+dv+";":"")+"font-size:"+p(11)+";line-height:1.5;color:"+T.sub+(mono?";font-family:"+F.mono:""),
+brandS:"font-size:"+p(12)+";font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"};
+}
+}
+</script>
+</body>
+</html>

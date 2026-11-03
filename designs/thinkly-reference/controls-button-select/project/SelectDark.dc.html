@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>下拉框 深色</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..600&display=swap">
+<style>
+body{margin:0}
+
+.th-l{--ink:#1f1e1d;--ink2:#5e5d59;--dis:#8a8983;--canvas:#f8f8f8;--menu:#ffffff;--input:#ffffff;--muted:#f1f1ee;--line:#e0dfdc;--fline:#d9d8d4;--hover:#eef3fc;--sel:#e5edfc;--accent:#547dd0;--d-bg:#fff1f2;--d-line:#d92d20;--d-fg:#b42318;--link:#3f64b4;--shadow:0 8px 24px rgba(60,45,30,.1),0 1px 3px rgba(60,45,30,.08);
+--sec-bg:#ffffff;--ter-bg:#ebebe8;--pri-bg:#2b3446;--f-top:#fff;--f-bot:#f1f3f6;--s-top:#f1f3f5;--s-bot:#e4e7eb;--p-top:#454e60;--p-bot:#2b3446;--p-ftop:#626f86;--p-fbot:#45536b;--edge:rgb(24 35 52 / .18);--shine:rgb(255 255 255 / .94);--shade:rgb(15 23 42 / .08);--drop:rgb(15 23 42 / .07);--press:rgb(15 23 42 / .15)}
+.th-d{--ink:#f0efec;--ink2:#c3c2b7;--dis:#8f8e88;--canvas:#181818;--menu:#222222;--input:#262624;--muted:#343434;--line:#3c3c3c;--fline:#4a4a4a;--hover:#2c2c2c;--sel:#343434;--accent:#779de8;--d-bg:#481f24;--d-line:#e27d75;--d-fg:#ffb4ab;--link:#8fb0ee;--shadow:0 10px 28px rgba(0,0,0,.42),0 1px 3px rgba(0,0,0,.3);
+--sec-bg:#2c2c2c;--ter-bg:#3a3a3a;--pri-bg:#58647b;--f-top:#3b3f47;--f-bot:#31353d;--s-top:#30343b;--s-bot:#2a2d33;--p-top:#737f96;--p-bot:#58647b;--p-ftop:#8995ac;--p-fbot:#68768f;--edge:rgb(10 14 22 / .55);--shine:rgb(255 255 255 / .2);--shade:rgb(0 0 0 / .3);--drop:rgb(0 0 0 / .25);--press:rgb(0 0 0 / .5)}
+.th{--p-edge:#1b2332;--p-shine:rgb(255 255 255 / .18);--p-shade:rgb(0 0 0 / .22);--p-drop:rgb(25 34 48 / .19);--p-press:rgb(0 0 0 / .4);font-family:Inter,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;font-size:14px;line-height:20px;color:var(--ink);-webkit-font-smoothing:antialiased}
+.th h1{margin:0;font-size:20px;line-height:28px;font-weight:560;letter-spacing:-.01em}
+.th h2{margin:0;font-size:15px;line-height:22px;font-weight:560}
+.th .cap{font-size:12px;line-height:16px;color:var(--ink2)}
+.th .lab{font-size:13px;line-height:20px;color:var(--ink2)}
+.th *{box-sizing:border-box}
+@keyframes spin{ from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+@keyframes pin{ from{opacity:0;transform:translateY(-6px) scale(.96)} to{opacity:1;transform:none} }
+@keyframes pout{ from{opacity:1;transform:none} to{opacity:0;transform:translateY(-4px) scale(.98)} }
+.spin{animation:spin .9s linear infinite}
+@media (prefers-reduced-motion: reduce){ .spin{animation:none} .pop,.pop-out{animation:none!important} .th *{transition:none!important} }
+
+
+.sf{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;height:40px;padding:0 12px;border:1px solid var(--fline);border-radius:12px;background:var(--input);color:var(--ink);font:inherit;font-size:14px;line-height:20px;text-align:left;cursor:pointer;outline:none;transition:background-color 150ms ease,border-color 150ms ease,color 150ms ease}
+.sf .val{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sf .chev{color:var(--ink2);flex-shrink:0;transition:transform 150ms ease,color 150ms ease}
+.sf:is(:hover,.is-hover):not(:disabled){background:var(--hover)}
+.sf:is(:hover,.is-hover):not(:disabled) .chev{color:var(--ink)}
+.sf.sf:is(:focus-visible,.is-focus,.is-open,[aria-expanded="true"]):not(:disabled){border-color:var(--accent);background:var(--input)}
+.sf:is(.is-open,[aria-expanded="true"]) .chev{transform:rotate(180deg);color:var(--ink)}
+.sf.sf[aria-invalid="true"]{border-color:var(--d-line)}
+.sf.sf:disabled{background:var(--muted);color:var(--dis);border-color:var(--line);cursor:not-allowed}
+.sf:disabled .chev{color:var(--dis)}
+.sf.sf-c{height:36px}
+.sf.sf-s{height:28px;padding:0 10px;font-size:13px;border-radius:8px}
+.err{margin-top:6px;font-size:13px;line-height:20px;color:var(--d-fg)}
+.panel{box-sizing:border-box;background:var(--menu);border:1px solid var(--line);border-radius:8px;padding:6px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:6px;min-width:224px}
+.grpbox{display:flex;flex-direction:column;gap:2px}
+.gl{padding:2px 8px;font-size:12px;line-height:18px;font-weight:560;color:var(--ink2)}
+.pop{animation:pin 200ms cubic-bezier(.23,1,.32,1) both;transform-origin:top left}
+.pop-out{animation:pout 150ms ease both;transform-origin:top left}
+.opt{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:0 8px;border:0;border-radius:4px;background:transparent;color:var(--ink);font:inherit;font-size:14px;line-height:20px;font-weight:400;text-align:left;cursor:pointer;outline:none;transition:background-color 150ms ease,color 150ms ease,box-shadow 150ms ease}
+.opt svg{flex-shrink:0}
+.opt .ck{margin-left:auto;display:inline-flex;visibility:hidden}
+.opt.sel .ck{visibility:visible}
+.opt.opt:is(:hover,.is-hover,.is-kbd,:focus-visible):not(:disabled){background:var(--hover)}
+.opt.opt.sel:not(:disabled){background:var(--sel);box-shadow:inset 0 0 0 1px var(--accent)}
+.opt.opt:disabled,.opt.opt.is-dis{background:transparent;color:var(--dis);cursor:not-allowed;box-shadow:none}
+.opt.dng{color:var(--d-fg)}
+.opt.opt.dng:is(:hover,.is-hover,:focus-visible){background:var(--d-bg)}
+.opt .sc{margin-left:auto;font-size:12px;line-height:18px;color:var(--ink2);white-space:nowrap}
+.opt:is(:hover,.is-hover,.sel) .sc{color:inherit}
+.tb{box-sizing:border-box;display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 12px 0 16px;border:1px solid var(--fline);border-radius:8px;background:var(--sec-bg);color:var(--ink);font:inherit;font-size:14px;font-weight:460;line-height:20px;cursor:pointer;outline:none;transition:transform 120ms ease,background-color 150ms ease,border-color 150ms ease,color 150ms ease,box-shadow 150ms ease}
+.tb .chev{transition:transform 150ms ease}
+.tb:hover,.tb:focus-visible{background:var(--hover)}
+.tb:active{background:var(--sel);transform:scale(.98)}
+.tb.tb[aria-expanded="true"]{background:var(--sel);border-color:transparent;box-shadow:inset 0 0 0 1px var(--accent);transform:none}
+.tb[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.scrim{position:absolute;left:0;top:0;right:0;bottom:0;z-index:5;border:0;padding:0;margin:0;background:transparent;cursor:default}
+.live{position:relative;z-index:6}
+.mx6{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));column-gap:20px;align-items:start}
+.col{display:flex;flex-direction:column;gap:8px}
+.row{display:flex;align-items:flex-start}
+
+</style>
+</helmet>
+<div class="th {{themeClass}}" style="width:1080px;height:860px;padding:40px 48px;display:flex;flex-direction:column;gap:32px;background:var(--canvas);position:relative">
+<sc-if value="{{anyOpen}}" hint-placeholder-val="{{ false }}"><button type="button" class="scrim" tabindex="-1" aria-hidden="true" onClick="{{closeAll}}"></button></sc-if>
+<div style="display:flex;align-items:baseline;gap:12px"><h1>下拉框</h1><span class="lab">深色</span></div>
+<div style="display:flex;flex-direction:column;gap:16px"><h2>触发器状态</h2><div class="mx6"><div class="col"><span class="cap">默认</span><button type="button" class="sf " aria-label="默认" ><span class="val">修改时间</span><span class="chev"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg></span></button></div>
+<div class="col"><span class="cap">悬停</span><button type="button" class="sf is-hover" aria-label="悬停" ><span class="val">修改时间</span><span class="chev"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg></span></button></div>
+<div class="col"><span class="cap">键盘焦点</span><button type="button" class="sf is-focus" aria-label="键盘焦点" ><span class="val">修改时间</span><span class="chev"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg></span></button></div>
+<div class="col"><span class="cap">展开</span><button type="button" class="sf is-open" aria-label="展开" aria-expanded="true"><span class="val">修改时间</span><span class="chev"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg></span></button></div>
+<div class="col"><span class="cap">错误</span><button type="button" class="sf" aria-label="错误" aria-invalid="true"><span class="val">请选择</span><span class="chev"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg></span></button><span class="err">请选择排序方式</span></div>
+<div class="col"><span class="cap">禁用</span><button type="button" class="sf " aria-label="禁用" disabled><span class="val">修改时间</span><span class="chev"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg></span></button></div></div></div>
+<div style="display:flex;flex-direction:column;gap:16px"><h2>尺寸</h2><div class="row" style="gap:20px;width:100%">
+<div class="col" style="width:200px"><span class="cap">默认 40</span><button type="button" class="sf" aria-label="默认 40"><span class="val">修改时间</span><span class="chev"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg></span></button></div>
+<div class="col" style="width:200px"><span class="cap">紧凑 36</span><button type="button" class="sf sf-c" aria-label="紧凑 36"><span class="val">修改时间</span><span class="chev"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg></span></button></div>
+<div class="col" style="width:200px"><span class="cap">小 28</span><button type="button" class="sf sf-s" aria-label="小 28"><span class="val">修改时间</span><span class="chev"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg></span></button></div></div></div>
+<div class="row" style="gap:20px">
+<div style="width:500px;display:flex;flex-direction:column;gap:16px"><h2>实时示例</h2>
+<div class="row" style="gap:40px">
+<div class="col live" style="width:230px"><span class="cap">选择框</span>
+<button type="button" class="sf" aria-label="排序方式" aria-haspopup="listbox" aria-expanded="{{open}}" onClick="{{toggle}}" onKeyDown="{{keydown}}"><span class="val">{{valueLabel}}</span><span class="chev"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg></span></button>
+<sc-if value="{{open}}" hint-placeholder-val="{{ false }}"><div style="position:relative;height:0"><div class="{{panelCls}}" role="listbox" aria-label="排序方式" style="position:absolute;left:0;top:0;width:100%;min-width:0">
+<div class="grpbox"><sc-for list="{{opts}}" as="o" hint-placeholder-count="4"><button type="button" role="option" class="{{o.cls}}" aria-selected="{{o.selected}}" disabled="{{o.disabled}}" onClick="{{o.pick}}" onMouseEnter="{{o.enter}}"><span>{{o.label}}</span><span class="ck"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span></button></sc-for></div></div></div></sc-if></div>
+<div class="col live" style="width:230px"><span class="cap">操作菜单</span>
+<div><button type="button" class="tb" aria-haspopup="menu" aria-expanded="{{mopen}}" onClick="{{mtoggle}}"><span>更多操作</span><span class="chev"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg></span></button></div>
+<sc-if value="{{mopen}}" hint-placeholder-val="{{ false }}"><div style="position:relative;height:0"><div class="{{menuCls}}" role="menu" style="position:absolute;left:0;top:0;width:224px">
+<div class="grpbox"><button type="button" role="menuitem" class="opt " onClick="{{closeAll}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13l.7-3L10.5 3.2a1.3 1.3 0 0 1 1.8 0l.5.5a1.3 1.3 0 0 1 0 1.8L6 12.3 3 13z"></path></svg><span>重命名</span><span class="sc">F2</span></button><button type="button" role="menuitem" class="opt " onClick="{{closeAll}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 5.5h6v7h-6zM3.5 10.5v-7h6"></path></svg><span>复制</span><span class="sc">⌘D</span></button><button type="button" role="menuitem" class="opt is-dis" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h9M9 5l3 3-3 3"></path></svg><span>移动到</span></button></div>
+<div class="grpbox"><button type="button" role="menuitem" class="opt dng" onClick="{{closeAll}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8M7 7v3.5M9 7v3.5"></path></svg><span>删除</span></button></div></div></div></sc-if></div>
+</div></div>
+<div style="display:flex;flex-direction:column;gap:16px"><h2>面板状态</h2>
+<div class="row" style="gap:16px"><div class="panel" style="width:224px"><div class="grpbox"><span class="gl">排序依据</span>
+<button type="button" role="option" class="opt " aria-selected="false"><span>默认项</span><span class="ck"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span></button>
+<button type="button" role="option" class="opt is-hover" aria-selected="false"><span>悬停项</span><span class="ck"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span></button>
+<button type="button" role="option" class="opt is-kbd" aria-selected="false"><span>键盘活动项</span><span class="ck"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span></button>
+<button type="button" role="option" class="opt sel" aria-selected="true"><span>选中项</span><span class="ck"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span></button>
+<button type="button" role="option" class="opt is-dis" aria-selected="false" disabled><span>禁用项</span><span class="ck"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span></button></div></div><div class="panel" style="width:224px"><div class="grpbox">
+<button type="button" role="menuitem" class="opt " ><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13l.7-3L10.5 3.2a1.3 1.3 0 0 1 1.8 0l.5.5a1.3 1.3 0 0 1 0 1.8L6 12.3 3 13z"></path></svg><span>重命名</span><span class="sc">F2</span></button>
+<button type="button" role="menuitem" class="opt is-hover" ><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 5.5h6v7h-6zM3.5 10.5v-7h6"></path></svg><span>复制</span><span class="sc">⌘D</span></button>
+<button type="button" role="menuitem" class="opt is-dis" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h9M9 5l3 3-3 3"></path></svg><span>移动到</span></button></div>
+<div class="grpbox"><button type="button" role="menuitem" class="opt dng" ><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8M7 7v3.5M9 7v3.5"></path></svg><span>删除</span></button></div></div></div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":true},"$preview":{"width":1080,"height":860}}'>
+class Component extends DCLogic {
+state = { open: false, leaving: false, value: 0, active: 0, mopen: false, mleaving: false };
+componentWillUnmount() { clearTimeout(this.t1); clearTimeout(this.t2); }
+closeSel() {
+if (!this.state.open || this.state.leaving) return;
+this.setState({ leaving: true });
+this.t1 = setTimeout(() => this.setState({ open: false, leaving: false }), 150);
+}
+closeMenu() {
+if (!this.state.mopen || this.state.mleaving) return;
+this.setState({ mleaving: true });
+this.t2 = setTimeout(() => this.setState({ mopen: false, mleaving: false }), 150);
+}
+renderVals() {
+const s = this.state;
+const d = this.props.dark;
+const dark = d === true || d === 'true';
+const OPTS = [{ label: '修改时间' }, { label: '创建时间' }, { label: '标题' }, { label: '手动排序', disabled: true }];
+const pickAt = (i) => {
+if (OPTS[i].disabled) return;
+this.setState({ value: i });
+this.closeSel();
+};
+return {
+themeClass: dark ? 'th-d' : 'th-l',
+open: s.open && !s.leaving, mopen: s.mopen && !s.mleaving,
+anyOpen: s.open || s.mopen,
+valueLabel: OPTS[s.value].label,
+panelCls: s.leaving ? 'panel pop-out' : 'panel pop',
+menuCls: s.mleaving ? 'panel pop-out' : 'panel pop',
+opts: OPTS.map((o, i) => ({
+label: o.label,
+disabled: !!o.disabled,
+selected: String(i === s.value),
+cls: 'opt' + (i === s.value ? ' sel' : '') + (i === s.active && !o.disabled ? ' is-kbd' : ''),
+pick: () => pickAt(i),
+enter: () => { if (!o.disabled) this.setState({ active: i }); },
+})),
+toggle: () => {
+if (this.state.open) { this.closeSel(); return; }
+this.closeMenu();
+this.setState({ open: true, leaving: false, active: this.state.value });
+},
+mtoggle: () => {
+if (this.state.mopen) { this.closeMenu(); return; }
+this.closeSel();
+this.setState({ mopen: true, mleaving: false });
+},
+closeAll: () => { this.closeSel(); this.closeMenu(); },
+keydown: (e) => {
+const st = this.state;
+if (!st.open) return;
+const n = OPTS.length;
+const step = (dir) => {
+let i = st.active;
+for (let k = 0; k < n; k++) { i = (i + dir + n) % n; if (!OPTS[i].disabled) break; }
+this.setState({ active: i });
+};
+if (e.key === 'ArrowDown') { e.preventDefault(); step(1); }
+else if (e.key === 'ArrowUp') { e.preventDefault(); step(-1); }
+else if (e.key === 'Escape') { e.preventDefault(); this.closeSel(); }
+else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickAt(st.active); }
+},
+};
+}
+}
+</script>
+</body>
+</html>
