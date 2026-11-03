@@ -1,180 +1,388 @@
 {
- "v": 3,
- "createdOnFiles": {
-  "v": 1,
-  "at": "2026-11-03T09:25:24Z"
- },
- "title": "Thinkly Fast 四版风格",
- "launch": {
-  "view": "canvas"
- },
- "pages": [],
- "boards": {
-  "Main.dc.html": {
-   "x": 0,
-   "y": 0,
-   "w": 1440,
-   "h": 900,
-   "title": "A 纸面 · 工作区",
-   "expand": "fill"
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-03T09:25:24Z"
   },
-  "A-Export.dc.html": {
-   "x": 1520,
-   "y": 0,
-   "w": 1440,
-   "h": 900,
-   "title": "A 纸面 · 生成图片",
-   "expand": "fill"
+  "title": "Thinkly Fast 四版风格",
+  "launch": {
+    "view": "canvas"
   },
-  "Layout-1.dc.html": {
-   "x": 0,
-   "y": 1300,
-   "w": 1440,
-   "h": 900,
-   "title": "位置 1 · 库名切换 + 加号",
-   "expand": "fill"
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "A 纸面 · 工作区",
+      "expand": "fill"
+    },
+    "A-Export.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "A 纸面 · 生成图片",
+      "expand": "fill"
+    },
+    "Layout-1.dc.html": {
+      "x": 0,
+      "y": 1300,
+      "w": 1440,
+      "h": 900,
+      "title": "位置 1 · 库名切换 + 加号",
+      "expand": "fill"
+    },
+    "Layout-2.dc.html": {
+      "x": 1520,
+      "y": 1300,
+      "w": 1440,
+      "h": 900,
+      "title": "位置 2 · 标题栏",
+      "expand": "fill"
+    },
+    "Layout-3.dc.html": {
+      "x": 3040,
+      "y": 1300,
+      "w": 1440,
+      "h": 900,
+      "title": "位置 3 · 侧栏底部",
+      "expand": "fill"
+    },
+    "Layout-4.dc.html": {
+      "x": 4560,
+      "y": 1300,
+      "w": 1440,
+      "h": 900,
+      "title": "位置 4 · 树内行",
+      "expand": "fill"
+    },
+    "Icons-1.dc.html": {
+      "x": 0,
+      "y": 2600,
+      "w": 1280,
+      "h": 800,
+      "title": "图标 1 · 细线圆端"
+    },
+    "Icons-2.dc.html": {
+      "x": 1360,
+      "y": 2600,
+      "w": 1280,
+      "h": 800,
+      "title": "图标 2 · 空心/实心成对"
+    },
+    "Icons-3.dc.html": {
+      "x": 2720,
+      "y": 2600,
+      "w": 1280,
+      "h": 800,
+      "title": "图标 3 · 几何直角"
+    },
+    "Icons-4.dc.html": {
+      "x": 4080,
+      "y": 2600,
+      "w": 1280,
+      "h": 800,
+      "title": "图标 4 · 双色"
+    },
+    "Duo-Set.dc.html": {
+      "x": 0,
+      "y": 3800,
+      "w": 1600,
+      "h": 1200,
+      "title": "双色 · 精修全套"
+    },
+    "Duo-Tree.dc.html": {
+      "x": 1680,
+      "y": 3800,
+      "w": 1600,
+      "h": 1200,
+      "title": "双色 · 文件夹与文件 三版"
+    },
+    "Mascot-Folio.dc.html": {
+      "x": 0,
+      "y": 5400,
+      "w": 1600,
+      "h": 860,
+      "title": "形象 A · 页隼 · 四状态"
+    },
+    "Mascot-Ink.dc.html": {
+      "x": 1680,
+      "y": 5400,
+      "w": 1600,
+      "h": 860,
+      "title": "形象 B · 墨团 · 四状态"
+    },
+    "Mascot-Fold.dc.html": {
+      "x": 3360,
+      "y": 5400,
+      "w": 1600,
+      "h": 860,
+      "title": "形象 C · 折角 · 四状态"
+    },
+    "F-Find.dc.html": {
+      "x": 0,
+      "y": 6760,
+      "w": 1440,
+      "h": 900,
+      "title": "搜索 · 当前笔记查找 ⌘F",
+      "expand": "fill"
+    },
+    "F-Search.dc.html": {
+      "x": 1520,
+      "y": 6760,
+      "w": 1440,
+      "h": 900,
+      "title": "搜索 · 全局搜索 ⌘⇧K",
+      "expand": "fill"
+    },
+    "F-Files.dc.html": {
+      "x": 3040,
+      "y": 6760,
+      "w": 1440,
+      "h": 900,
+      "title": "文件 · 新建与右键菜单 · 代码块",
+      "expand": "fill"
+    },
+    "F-QuickNote.dc.html": {
+      "x": 4560,
+      "y": 6760,
+      "w": 480,
+      "h": 620,
+      "title": "速记小窗 ⌥N"
+    },
+    "F-Shortcuts.dc.html": {
+      "x": 5120,
+      "y": 6760,
+      "w": 1280,
+      "h": 800,
+      "title": "快捷键与快捷输入"
+    },
+    "F-Inline.dc.html": {
+      "x": 0,
+      "y": 7780,
+      "w": 1440,
+      "h": 900,
+      "title": "选区工具栏 · 链接浮层 · 图片缩放",
+      "expand": "fill"
+    },
+    "X-L1-Mono.dc.html": {
+      "x": 0,
+      "y": 9100,
+      "w": 816,
+      "h": 1040,
+      "title": "浅 1 · 黑白素纸（默认）"
+    },
+    "X-L2-Journal.dc.html": {
+      "x": 896,
+      "y": 9100,
+      "w": 816,
+      "h": 1040,
+      "title": "浅 2 · 手账便签"
+    },
+    "X-L3-Riso.dc.html": {
+      "x": 1792,
+      "y": 9100,
+      "w": 816,
+      "h": 1040,
+      "title": "浅 3 · 野性孔版"
+    },
+    "X-L4-Press.dc.html": {
+      "x": 2688,
+      "y": 9100,
+      "w": 816,
+      "h": 1040,
+      "title": "浅 4 · 铅字号外"
+    },
+    "X-D1-Ink.dc.html": {
+      "x": 0,
+      "y": 10440,
+      "w": 816,
+      "h": 1040,
+      "title": "深 1 · 墨黑（默认）"
+    },
+    "X-D2-Kraft.dc.html": {
+      "x": 896,
+      "y": 10440,
+      "w": 816,
+      "h": 1040,
+      "title": "深 2 · 黑卡手账"
+    },
+    "X-D3-Neon.dc.html": {
+      "x": 1792,
+      "y": 10440,
+      "w": 816,
+      "h": 1040,
+      "title": "深 3 · 霓虹丝印"
+    },
+    "X-D4-Film.dc.html": {
+      "x": 2688,
+      "y": 10440,
+      "w": 816,
+      "h": 1040,
+      "title": "深 4 · 暗房胶片"
+    },
+    "S-Settings-1.dc.html": {
+      "x": 0,
+      "y": 11900,
+      "w": 1440,
+      "h": 900,
+      "title": "设置 1 · 居中设置弹窗（浅色）",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "S-Settings-2.dc.html": {
+      "x": 1520,
+      "y": 11900,
+      "w": 1440,
+      "h": 900,
+      "title": "设置 2 · 侧栏弹出式面板（深色）",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "S-Settings-3.dc.html": {
+      "x": 3040,
+      "y": 11900,
+      "w": 1440,
+      "h": 900,
+      "title": "设置 3 · 画布内页与实时字体预览",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Tabs-1-Titlebar.dc.html": {
+      "x": 0,
+      "y": 13300,
+      "w": 1440,
+      "h": 900,
+      "title": "标签 1 · 顶栏内嵌（推荐）",
+      "expand": "fill"
+    },
+    "Tabs-2-PaperStrip.dc.html": {
+      "x": 1520,
+      "y": 13300,
+      "w": 1440,
+      "h": 900,
+      "title": "标签 2 · 纸面书签条",
+      "expand": "fill"
+    },
+    "Tabs-3-Capsule.dc.html": {
+      "x": 3040,
+      "y": 13300,
+      "w": 1440,
+      "h": 900,
+      "title": "标签 3 · 居中胶囊切换",
+      "expand": "fill"
+    }
   },
-  "Layout-2.dc.html": {
-   "x": 1520,
-   "y": 1300,
-   "w": 1440,
-   "h": 900,
-   "title": "位置 2 · 标题栏",
-   "expand": "fill"
+  "order": [
+    "Main.dc.html",
+    "A-Export.dc.html",
+    "Layout-1.dc.html",
+    "Layout-2.dc.html",
+    "Layout-3.dc.html",
+    "Layout-4.dc.html",
+    "Icons-1.dc.html",
+    "Icons-2.dc.html",
+    "Icons-3.dc.html",
+    "Icons-4.dc.html",
+    "Duo-Set.dc.html",
+    "Duo-Tree.dc.html",
+    "Mascot-Folio.dc.html",
+    "Mascot-Ink.dc.html",
+    "Mascot-Fold.dc.html",
+    "F-Find.dc.html",
+    "F-Search.dc.html",
+    "F-Files.dc.html",
+    "F-QuickNote.dc.html",
+    "F-Shortcuts.dc.html",
+    "F-Inline.dc.html",
+    "X-L1-Mono.dc.html",
+    "X-L2-Journal.dc.html",
+    "X-L3-Riso.dc.html",
+    "X-L4-Press.dc.html",
+    "X-D1-Ink.dc.html",
+    "X-D2-Kraft.dc.html",
+    "X-D3-Neon.dc.html",
+    "X-D4-Film.dc.html",
+    "S-Settings-1.dc.html",
+    "S-Settings-2.dc.html",
+    "S-Settings-3.dc.html",
+    "Tabs-1-Titlebar.dc.html",
+    "Tabs-2-PaperStrip.dc.html",
+    "Tabs-3-Capsule.dc.html"
+  ],
+  "notes": {
+    "tA": {
+      "x": 0,
+      "y": -280,
+      "text": "A 纸面 Ocean",
+      "kind": "title1",
+      "maxW": 2960
+    },
+    "tL": {
+      "x": 0,
+      "y": 1020,
+      "text": "选择文件夹与新建笔记的位置",
+      "kind": "title1",
+      "maxW": 6000
+    },
+    "tI": {
+      "x": 0,
+      "y": 2320,
+      "text": "图标库",
+      "kind": "title1",
+      "maxW": 5360
+    },
+    "tT": {
+      "x": 0,
+      "y": 3520,
+      "text": "双色 · 精修",
+      "kind": "title1",
+      "maxW": 3280
+    },
+    "tM": {
+      "x": 0,
+      "y": 5120,
+      "text": "Ocean · 原创形象与空状态",
+      "kind": "title1",
+      "maxW": 4960
+    },
+    "tF": {
+      "x": 0,
+      "y": 6480,
+      "text": "小窗 · 搜索 · 文件操作",
+      "kind": "title1",
+      "maxW": 6400
+    },
+    "tX": {
+      "x": 0,
+      "y": 8840,
+      "text": "生成图片 · 浅色四版",
+      "kind": "title1",
+      "maxW": 3504
+    },
+    "tXD": {
+      "x": 0,
+      "y": 10180,
+      "text": "生成图片 · 深色四版",
+      "kind": "title1",
+      "maxW": 3504
+    },
+    "tS": {
+      "x": 0,
+      "y": 11620,
+      "text": "最小化设置 · 主题 / 字体 / 平滑 / 快捷键 三版",
+      "kind": "title1",
+      "maxW": 4480
+    },
+    "tTabs": {
+      "x": 0,
+      "y": 13020,
+      "text": "多标签页 · 三版风格",
+      "kind": "title1",
+      "maxW": 4480
+    }
   },
-  "Layout-3.dc.html": {
-   "x": 3040,
-   "y": 1300,
-   "w": 1440,
-   "h": 900,
-   "title": "位置 3 · 侧栏底部",
-   "expand": "fill"
-  },
-  "Layout-4.dc.html": {
-   "x": 4560,
-   "y": 1300,
-   "w": 1440,
-   "h": 900,
-   "title": "位置 4 · 树内行",
-   "expand": "fill"
-  },
-  "Icons-1.dc.html": {
-   "x": 0,
-   "y": 2600,
-   "w": 1280,
-   "h": 800,
-   "title": "图标 1 · 细线圆端"
-  },
-  "Icons-2.dc.html": {
-   "x": 1360,
-   "y": 2600,
-   "w": 1280,
-   "h": 800,
-   "title": "图标 2 · 空心/实心成对"
-  },
-  "Icons-3.dc.html": {
-   "x": 2720,
-   "y": 2600,
-   "w": 1280,
-   "h": 800,
-   "title": "图标 3 · 几何直角"
-  },
-  "Icons-4.dc.html": {
-   "x": 4080,
-   "y": 2600,
-   "w": 1280,
-   "h": 800,
-   "title": "图标 4 · 双色"
-  },
-  "Duo-Set.dc.html": {
-   "x": 0,
-   "y": 3800,
-   "w": 1600,
-   "h": 1200,
-   "title": "双色 · 精修全套"
-  },
-  "Duo-Tree.dc.html": {
-   "x": 1680,
-   "y": 3800,
-   "w": 1600,
-   "h": 1200,
-   "title": "双色 · 文件夹与文件 三版"
-  },
-  "Mascot-Folio.dc.html": {
-   "x": 0,
-   "y": 5400,
-   "w": 1600,
-   "h": 860,
-   "title": "形象 A · 页隼 · 四状态"
-  },
-  "Mascot-Ink.dc.html": {
-   "x": 1680,
-   "y": 5400,
-   "w": 1600,
-   "h": 860,
-   "title": "形象 B · 墨团 · 四状态"
-  },
-  "Mascot-Fold.dc.html": {
-   "x": 3360,
-   "y": 5400,
-   "w": 1600,
-   "h": 860,
-   "title": "形象 C · 折角 · 四状态"
-  }
- },
- "order": [
-  "Main.dc.html",
-  "A-Export.dc.html",
-  "Layout-1.dc.html",
-  "Layout-2.dc.html",
-  "Layout-3.dc.html",
-  "Layout-4.dc.html",
-  "Icons-1.dc.html",
-  "Icons-2.dc.html",
-  "Icons-3.dc.html",
-  "Icons-4.dc.html",
-  "Duo-Set.dc.html",
-  "Duo-Tree.dc.html",
-  "Mascot-Folio.dc.html",
-  "Mascot-Ink.dc.html",
-  "Mascot-Fold.dc.html"
- ],
- "notes": {
-  "tA": {
-   "x": 0,
-   "y": -280,
-   "text": "A 纸面 Ocean",
-   "kind": "title1",
-   "maxW": 2960
-  },
-  "tL": {
-   "x": 0,
-   "y": 1020,
-   "text": "选择文件夹与新建笔记的位置",
-   "kind": "title1",
-   "maxW": 6000
-  },
-  "tI": {
-   "x": 0,
-   "y": 2320,
-   "text": "图标库",
-   "kind": "title1",
-   "maxW": 5360
-  },
-  "tT": {
-   "x": 0,
-   "y": 3520,
-   "text": "双色 · 精修",
-   "kind": "title1",
-   "maxW": 3280
-  },
-  "tM": {
-   "x": 0,
-   "y": 5120,
-   "text": "Ocean · 原创形象与空状态",
-   "kind": "title1",
-   "maxW": 4960
-  }
- },
- "designSystems": []
+  "designSystems": []
 }
