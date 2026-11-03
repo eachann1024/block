@@ -1,13 +1,14 @@
 //! Selection formatting beyond marks: underline, colour, links and clear-format.
-use std::ops::Range;
-use gpui::{Context, Pixels, Point, Window, point, px};
+use std::{ops::Range, rc::Rc};
+use gpui::{AppContext as _, Context, Entity, Pixels, Point, Subscription, Window, point, px};
+use gpui_component::input::{InputEvent, InputState};
 use super::{model::{Doc, MarkKind}, view::Editor};
 
 /// Popovers opened from the selection toolbar. `anchor` is fixed at open time
 /// because the toolbar hides while the link field owns focus.
 #[derive(Clone)]
 pub(super) enum FormatPop {
-    Link { url: String, existing: bool, anchor: Point<Pixels> },
+    Link { input: Entity<InputState>, existing: bool, anchor: Point<Pixels>, _sub: Rc<Subscription> },
     Palette { anchor: Point<Pixels> },
     /// Text-type and list dropdowns of the selection toolbar.
     Kinds { anchor: Point<Pixels>, current: Option<super::model::Kind> },
@@ -80,24 +81,51 @@ impl Editor {
         self.format = Some(FormatPop::Palette { anchor: self.pop_anchor(window) + point(px(0.), px(40.)) });
         cx.notify();
     }
-    pub(super) fn open_link(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((id, range)) = self.selection_ranges().first().cloned() else { return };
-        let current = self.doc.get(id).and_then(|b| b.link_at(range.start)).map(|(_, url)| url);
-        self.format = Some(FormatPop::Link { existing: current.is_some(), url: current.unwrap_or_default(), anchor: self.pop_anchor(window) });
-        window.focus(&self.link_focus);
+    pub(super) fn show_link_popover(&mut self, initial: String, existing: bool, anchor: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
+        let input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx).placeholder("粘贴或输入链接");
+            if !initial.is_empty() { state.set_value(initial, window, cx); }
+            state
+        });
+        let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| {
+            if let InputEvent::PressEnter { secondary: false } = event { this.link_save(window, cx); }
+        });
+        input.update(cx, |s, cx| s.focus(window, cx));
+        let focus_input = input.clone();
+        cx.defer_in(window, move |_, window, cx| {
+            focus_input.update(cx, |s, cx| s.focus(window, cx));
+        });
+        self.format = Some(FormatPop::Link { input, existing, anchor, _sub: Rc::new(sub) });
         cx.notify();
+    }
+    pub(super) fn open_link(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some((id, range)) = self.selection_ranges().first().cloned() {
+            let current = self.doc.get(id).and_then(|b| b.link_at(range.start)).map(|(_, url)| url);
+            let existing = current.is_some();
+            let anchor = self.pop_anchor(window);
+            self.show_link_popover(current.unwrap_or_default(), existing, anchor, window, cx);
+            return;
+        }
+        let at = self.caret.head;
+        if let Some((range, url)) = self.doc.get(at.block).and_then(|b| b.link_at(at.offset)) {
+            self.caret.anchor = super::view::selection::Position { block: at.block, offset: range.start };
+            self.caret.head = super::view::selection::Position { block: at.block, offset: range.end };
+            let anchor = self.layouts.get(&at.block).and_then(|l| l.rects(range).first().copied())
+                .map(|r| point(r.left(), r.bottom())).unwrap_or_else(|| self.pop_anchor(window));
+            self.show_link_popover(url, true, anchor, window, cx);
+            return;
+        }
+        cx.propagate();
     }
     pub(super) fn close_format(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(FormatPop::Ai(s)) = self.format.as_ref() { s.cancel.store(true, std::sync::atomic::Ordering::Relaxed); }
         if self.format.take().is_some() { window.focus(&self.focus); }
         cx.notify();
     }
-    pub(super) fn link_edit(&mut self, f: impl FnOnce(&mut String), cx: &mut Context<Self>) {
-        if let Some(FormatPop::Link { url, .. }) = self.format.as_mut() { f(url); cx.notify(); }
-    }
     /// Saves the field; an empty URL removes the link, like thinkly's 移除.
     pub(super) fn link_save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(FormatPop::Link { url, .. }) = self.format.clone() else { return };
+        let Some(FormatPop::Link { input, .. }) = self.format.clone() else { return };
+        let url = input.read(cx).value().to_string();
         let href = normalize_url(&url);
         self.edit_selection(cx, |doc, id, range| doc.set_link(id, range, (!href.is_empty()).then_some(href.as_str())));
         self.close_format(window, cx);

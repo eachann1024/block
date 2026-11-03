@@ -1,16 +1,22 @@
-//! Keyboard shortcuts for block type (cmd-alt-0..3) and moving blocks (cmd-shift-up/down).
+//! Keyboard shortcuts for block type (cmd-alt-0..9) and block editing boundaries.
 use gpui::{Context, Window};
-use super::{block_menu::{Cmd, Mode}, model::Kind, view::Editor};
+use super::{model::Kind, view::Editor};
 
 impl Editor {
     pub(super) fn set_kind_shortcut(&mut self, kind: Kind, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
         self.commit_composition(cx);
-        let (_, _, first, last) = self.ordered();
+        let last_idx = self.doc.blocks.len().saturating_sub(1);
+        let (first, last) = if let Some((a, b)) = self.block_sel {
+            (a.min(b).min(last_idx), a.max(b).min(last_idx))
+        } else {
+            let (_, _, f, l) = self.ordered();
+            (f, l)
+        };
         let before = self.snapshot();
         for index in first..=last {
             let block = &self.doc.blocks[index];
-            if block.meta.table.is_some() || block.meta.raw_source.is_some() || block.meta.code_language.is_some() { continue; }
+            if block.meta.table.is_some() || block.meta.raw_source.is_some() { continue; }
             let id = block.id; self.doc.set_kind(id, kind);
         }
         self.record(before, cx);
@@ -19,7 +25,7 @@ impl Editor {
     pub(super) fn doc_edge(&mut self, end: bool, extend: bool, cx: &mut Context<Self>) {
         let block = if end { self.doc.blocks.last() } else { self.doc.blocks.first() };
         let Some(at) = block.map(|b| super::view::selection::Position { block: b.id, offset: if end { b.text.len() } else { 0 } }) else { return };
-        self.table_sel = None; self.preferred_x = None;
+        self.table_sel = None; self.preferred_x = None; self.block_sel = None;
         self.set_head(at, extend, cx);
         // The first frame only brings the far block into view; once it has a layout, reveal the caret exactly.
         cx.spawn(async move |this, cx| {
@@ -28,11 +34,6 @@ impl Editor {
                 if this.update(cx, |this, cx| { this.reveal_caret = true; cx.notify(); }).is_err() { return; }
             }
         }).detach();
-    }
-    pub(super) fn move_block_shortcut(&mut self, up: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if self.path.is_none() { return; }
-        let id = self.caret.head.block;
-        self.run_block_cmd(id, Mode::Slash, if up { Cmd::MoveUp } else { Cmd::MoveDown }, window, cx);
     }
 }
 
@@ -194,45 +195,6 @@ impl Editor {
         }).collect();
         let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(blocks));
         self.block_clip = Some((plain.to_owned(), markdown));
-    }
-    /// Keys while an Esc block selection is active. Returns true when the key was consumed.
-    pub(super) fn block_selection_key(&mut self, action: &super::view::EditorAction, cx: &mut Context<Self>) -> bool {
-        use super::view::EditorAction::*;
-        let Some((anchor, head)) = self.block_sel else { return false };
-        let last = self.doc.blocks.len().saturating_sub(1);
-        let (lo, hi) = (anchor.min(head).min(last), anchor.max(head).min(last));
-        match action {
-            Up | Down => {
-                let head = if matches!(action, Up) { head.saturating_sub(1) } else { (head + 1).min(last) };
-                self.block_sel = Some((anchor, head));
-                let id = self.doc.blocks[head].id; self.caret.anchor = Position { block: id, offset: 0 }; self.caret.head = self.caret.anchor;
-                cx.notify(); true
-            }
-            Backspace | Delete | Cut | Copy => {
-                if !matches!(action, Backspace | Delete) {
-                    let blocks: Vec<Block> = (lo..=hi).map(|i| self.doc.blocks[i].clone()).collect();
-                    let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(blocks));
-                    let plain = markdown.trim_end().to_owned();
-                    self.block_clip = Some((plain.clone(), markdown));
-                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(plain));
-                }
-                if !matches!(action, Copy) {
-                    self.block_sel = None;
-                    let before = self.snapshot();
-                    let n = hi - lo + 1;
-                    self.doc.splice_blocks(lo..hi + 1, Vec::new());
-                    let mut added = 0;
-                    if self.doc.blocks.len() == 0 { self.doc.splice_blocks(0..0, vec![Block::new(0, Kind::Paragraph, String::new())]); added = 1; }
-                    let at = lo.min(self.doc.blocks.len() - 1);
-                    let id = self.doc.blocks[at].id; self.caret.anchor = Position { block: id, offset: 0 }; self.caret.head = self.caret.anchor;
-                    self.record_changes(before, vec![crate::editor::input::transactions::ListChange { start: lo, before: n, after: added }], true, cx);
-                }
-                cx.notify(); true
-            }
-            SelectAll => { self.block_sel = Some((0, last)); cx.notify(); true }
-            Cancel => { self.block_sel = None; cx.notify(); true }
-            _ => { self.block_sel = None; cx.notify(); false }
-        }
     }
     /// A selected image or HTML block has no text range: copy it whole so paste recreates the same block.
     pub(super) fn copy_whole_block(&mut self, cx: &mut Context<Self>) -> bool {

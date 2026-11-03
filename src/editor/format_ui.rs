@@ -1,7 +1,8 @@
 //! Link field and colour palette popovers for the selection toolbar.
-use gpui::{AnyElement, CursorStyle, Entity, FocusHandle, MouseButton, div, prelude::*, px, rgb};
+use gpui::{AnyElement, CursorStyle, Entity, MouseButton, div, prelude::*, px, rgb};
+use gpui_component::input::{Escape, Input, InputState};
 use super::toolbar::{ACCENT, BG, BORDER, HOVER, INK, MUTED, SEP};
-use super::{format_cmds::FormatPop, view::{Backspace, Cancel, Copy, Cut, Down, Editor, Enter, Left, Paste, Right, SelectAll, Up}};
+use super::{format_cmds::FormatPop, view::{Cancel, Editor}};
 
 /// thinkly's palette: (stored name, label, text hex, background hex). The hex
 /// values are the light-theme ones from thinkly's `text-colors.json`.
@@ -11,10 +12,10 @@ const PALETTE: [(&str, &str, u32, u32); 9] = [
     ("blue", "蓝色", 0x245bb2, 0xddebf1), ("purple", "紫色", 0x6940a5, 0xeae4f2), ("pink", "粉色", 0xad1a72, 0xf4dfeb),
 ];
 
-pub(super) fn popover(editor: Entity<Editor>, pop: &FormatPop, focus: &FocusHandle) -> AnyElement {
+pub(super) fn popover(editor: Entity<Editor>, pop: &FormatPop) -> AnyElement {
     let (anchor, body, pad) = match pop {
         FormatPop::Ai(session) => return super::ai::panel::render(editor, session),
-        FormatPop::Link { url, existing, anchor } => (*anchor, link_field(editor, url, *existing, focus), 4.),
+        FormatPop::Link { input, existing, anchor, .. } => (*anchor, link_field(editor, input, *existing), 4.),
         FormatPop::Palette { anchor } => (*anchor, palette(editor), 10.),
         FormatPop::Kinds { anchor, current } => (*anchor, super::toolbar::menu(editor, true, *current), 4.),
         FormatPop::Lists { anchor, current } => (*anchor, super::toolbar::menu(editor, false, *current), 4.),
@@ -35,35 +36,14 @@ fn action_button(label: &'static str, id: &'static str, run: impl Fn(&mut Editor
         })
 }
 
-/// Hand-rolled field: GPUI has no text input, so keys arrive through `on_key_down`.
-/// Actions bound for the document are swallowed here so typing never edits the text.
-fn link_field(editor: Entity<Editor>, url: &str, _existing: bool, focus: &FocusHandle) -> AnyElement {
-    let key_editor = editor.clone();
-    macro_rules! swallow { ($el:expr, $($a:ty),*) => { $el$(.on_action(|_: &$a, _, _| {}))* } }
-    let field = div().id("link-field").track_focus(focus).key_context("LinkField").flex().items_center().gap(px(6.)).pl(px(6.))
-        .on_action({ let e = editor.clone(); move |_: &Enter, w, cx| e.update(cx, |this, cx| this.link_save(w, cx)) })
-        .on_action({ let e = editor.clone(); move |_: &Cancel, w, cx| e.update(cx, |this, cx| this.close_format(w, cx)) })
-        .on_action({ let e = editor.clone(); move |_: &Backspace, _, cx| e.update(cx, |this, cx| this.link_edit(|u| { u.pop(); }, cx)) })
-        .on_action({ let e = editor.clone(); move |_: &Paste, _, cx| {
-            if let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()) {
-                e.update(cx, |this, cx| this.link_edit(|u| u.push_str(text.lines().next().unwrap_or_default().trim()), cx));
-            }
-        }})
-        .on_action({ let e = editor.clone(); move |_: &SelectAll, _, cx| e.update(cx, |this, cx| this.link_edit(|u| u.clear(), cx)) })
-        .on_key_down(move |event, _, cx| {
-            let key = &event.keystroke;
-            if key.modifiers.platform || key.modifiers.control || key.modifiers.function { return; }
-            if let Some(text) = key.key_char.clone().filter(|t| !t.chars().any(char::is_control)) {
-                key_editor.update(cx, |this, cx| this.link_edit(|u| u.push_str(&text), cx));
-            }
-            cx.stop_propagation();
-        })
-        .child(div().w(px(260.)).h(px(28.)).px(px(8.)).rounded(px(6.)).bg(rgb(0x33363c)).text_size(px(13.)).flex().items_center().overflow_hidden()
-            .when(url.is_empty(), |f| f.text_color(rgb(MUTED)).child("粘贴或输入链接"))
-            .when(!url.is_empty(), |f| f.text_color(rgb(INK)).child(url.to_owned()))
-            .child(div().w(px(1.)).h(px(14.)).ml(px(1.)).bg(rgb(INK))))
-        .child(action_button("确定", "link-save", |this, w, cx| this.link_save(w, cx), editor, true));
-    swallow!(field, Left, Right, Up, Down, Cut, Copy).into_any_element()
+fn link_field(editor: Entity<Editor>, input: &Entity<InputState>, _existing: bool) -> AnyElement {
+    div().id("link-field").flex().items_center().gap(px(6.)).pl(px(6.))
+        .on_action({ let e = editor.clone(); move |_: &Escape, w, cx| { e.update(cx, |this, cx| this.close_format(w, cx)); cx.stop_propagation(); } })
+        .on_action({ let e = editor.clone(); move |_: &Cancel, w, cx| { e.update(cx, |this, cx| this.close_format(w, cx)); cx.stop_propagation(); } })
+        .child(div().w(px(260.)).h(px(28.)).px(px(8.)).rounded(px(6.)).bg(rgb(0x33363c)).text_size(px(13.)).text_color(rgb(INK)).flex().items_center().overflow_hidden()
+            .child(div().flex_1().min_w_0().child(Input::new(input).appearance(false).bordered(false).focus_bordered(false).text_size(px(13.)))))
+        .child(action_button("确定", "link-save", |this, w, cx| this.link_save(w, cx), editor, true))
+        .into_any_element()
 }
 
 fn swatch(editor: &Entity<Editor>, id: (&'static str, usize), prop: &'static str, name: Option<&'static str>, _label: &'static str, hex: Option<u32>, background: bool) -> impl IntoElement {
