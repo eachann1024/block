@@ -9,6 +9,7 @@ impl Workspace {
     pub(super) fn use_folder_guarded(&mut self, folder: PathBuf, startup_epoch: Option<u64>, cx: &mut Context<Self>) {
         if self.busy() { return; }
         if self.restore_superseded(startup_epoch, cx) { return; }
+        let startup_tabs = self.startup_tabs.take();
         self.loading = true;
         self.notice = format!("正在扫描 {}…", folder.display());
         self.refresh(cx);
@@ -19,8 +20,20 @@ impl Workspace {
                 let notice = if scan.warning_count > 0 {
                     format!("部分目录未能读取（{} 项）：{}", scan.warning_count, scan.warnings.join("；"))
                 } else if scan.nodes.is_empty() { "此文件夹没有 Markdown 笔记或可浏览的子目录".into() }
-                else { "选择笔记开始编辑".into() };
-                Ok::<_, std::io::Error>(PreparedFolder { path: folder, index: TreeIndex::new(scan.nodes), notice })
+                else { String::new() };
+                let mut tabs = Vec::new();
+                let mut active_tab = None;
+                if let Some((saved_tabs, saved_active)) = startup_tabs {
+                    for tab in saved_tabs {
+                        if tab.starts_with(&folder) && tab.is_file() && !tabs.contains(&tab) {
+                            tabs.push(tab);
+                        }
+                    }
+                    active_tab = saved_active.filter(|a| tabs.contains(a)).or_else(|| tabs.first().cloned());
+                }
+                Ok::<_, std::io::Error>(PreparedFolder {
+                    path: folder, index: TreeIndex::new(scan.nodes), notice, tabs, active_tab,
+                })
             }).await;
             let _ = this.update(cx, |this, cx| {
                 this.loading = false;
@@ -66,17 +79,24 @@ impl Workspace {
         let Some(prepared) = self.pending.take() else { return };
         let folder = prepared.path;
         self.folder = Some(folder.clone());
+        self.tabs = prepared.tabs;
         self.selected = None;
         self.notice = prepared.notice;
         self.tree.update(cx, |tree, cx| tree.set_index(prepared.index, cx));
+        if let Some(active) = prepared.active_tab {
+            self.open_file(active, cx);
+        } else {
+            self.save_tabs_state(cx);
+        }
         self.persisting = true;
         self.refresh(cx);
         cx.spawn(async move |this, cx| {
             let saved = cx.background_executor().spawn(async move { save_folder(&folder) }).await;
             let _ = this.update(cx, |this, cx| {
                 this.persisting = false;
-                if let Err(error) = saved {
-                    this.notice = format!("{}；文件夹已打开，但偏好未能保存：{error}", this.notice);
+                match saved {
+                    Ok(state) => this.notebooks = state.notebooks,
+                    Err(error) => this.notice = format!("{}；文件夹已打开，但偏好未能保存：{error}", this.notice),
                 }
                 this.refresh(cx);
             });
