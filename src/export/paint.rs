@@ -3,7 +3,7 @@ use cosmic_text::{Buffer, Color, FontSystem, SwashCache};
 use tiny_skia::Pixmap;
 
 use super::decor_shapes::fill_rect;
-use super::layout::{Layout, Row, SCALE, STRIKE};
+use super::layout::{Layout, SCALE, STRIKE};
 use super::palette::{ExportTheme, Palette};
 use super::rich::{BACKGROUND_SHIFT, UNDERLINE};
 use super::{Cancellation, ExportError};
@@ -81,7 +81,7 @@ pub(super) fn rasterize(
             }
         }
 
-        let fg = row_text_color(layout.options.theme, row, &pal);
+        let fg = super::style::row_text_color(layout.options.theme, row.kind, row.code, &pal);
         if layout.options.theme == ExportTheme::Neon && row.kind == Kind::H1 {
             text(
                 &mut image,
@@ -133,28 +133,6 @@ pub(super) fn rasterize(
 
     super::decor_marks::paint_top_tapes(&mut image, layout);
     Ok(image)
-}
-
-fn row_text_color(theme: ExportTheme, row: &Row, pal: &Palette) -> Color {
-    if row.code {
-        return if theme == ExportTheme::Neon {
-            pal.accent
-        } else {
-            pal.text
-        };
-    }
-    match row.kind {
-        Kind::Quote => pal.quote_fg,
-        Kind::H1 | Kind::H3 => pal.title,
-        Kind::H2 => match theme {
-            ExportTheme::Riso => Color::rgb(243, 238, 227),
-            ExportTheme::Neon => Color::rgb(20, 21, 43),
-            ExportTheme::Journal | ExportTheme::Kraft => pal.accent,
-            ExportTheme::Mono | ExportTheme::Ink => pal.secondary,
-            ExportTheme::Press | ExportTheme::Film => pal.title,
-        },
-        _ => pal.text,
-    }
 }
 
 #[allow(clippy::too_many_arguments)]

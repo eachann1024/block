@@ -14,12 +14,25 @@ pub enum ExportTheme {
     Film,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RenderOptions {
     pub theme: ExportTheme,
     pub card: bool,
+    pub show_title: bool,
     pub footer: bool,
     pub title: String,
+}
+
+impl Default for RenderOptions {
+    fn default() -> Self {
+        Self {
+            theme: ExportTheme::default(),
+            card: false,
+            show_title: true,
+            footer: true,
+            title: String::new(),
+        }
+    }
 }
 
 pub(super) struct Palette {
@@ -70,16 +83,16 @@ impl ExportTheme {
         if dark { Self::Ink } else { Self::Mono }
     }
 
-    /// `(paper_rgb, accent_rgb, secondary_accent_rgb)` for the sidebar swatch cards.
+    /// `(paper_rgb, accent_rgb, inner_card_rgb)` for the sidebar swatch cards.
     pub fn swatch(self) -> (u32, u32, u32) {
         match self {
-            Self::Mono => (0xffffff, 0x111111, 0x111111),
-            Self::Journal => (0xf6f0e1, 0xb5462f, 0xf5d77a),
-            Self::Riso => (0xf3eee3, 0x1d3fa8, 0xff5aa8),
-            Self::Press => (0xece4d2, 0x9c2b1f, 0x22201b),
-            Self::Ink => (0x0e0e0e, 0xededed, 0x3a3a3a),
-            Self::Kraft => (0x1d1b18, 0xf0c35a, 0xe07a5f),
-            Self::Neon => (0x14152b, 0x3fe0d0, 0xff6a3d),
+            Self::Mono => (0xffffff, 0x111111, 0xffffff),
+            Self::Journal => (0xf6f0e1, 0xb5462f, 0xfff6b8),
+            Self::Riso => (0xf3eee3, 0xff5aa8, 0xf3eee3),
+            Self::Press => (0xece4d2, 0x9c2b1f, 0xe3d9c3),
+            Self::Ink => (0x0e0e0e, 0xededed, 0x1c1c1c),
+            Self::Kraft => (0x1d1b18, 0xf0c35a, 0x2c2a24),
+            Self::Neon => (0x14152b, 0x3fe0d0, 0x1e2040),
             Self::Film => (0x141210, 0xf2a33a, 0x0a0908),
         }
     }

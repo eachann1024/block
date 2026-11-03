@@ -2,10 +2,12 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, FontWeight, Hsla, IntoElement, ParentElement, Styled, Window, div, prelude::*, px,
+    App, ClickEvent, FontWeight, Hsla, IntoElement, ParentElement, Styled, Window, div, prelude::*,
+    px,
 };
 
 use super::palette::ExportTheme;
+use crate::icons::{Icon, icon};
 use crate::theme::Theme;
 
 fn c(value: u32) -> Hsla {
@@ -115,10 +117,16 @@ fn swatch_card(
     on_pick: Rc<dyn Fn(&ExportTheme, &mut Window, &mut App)>,
 ) -> impl IntoElement {
     let theme = Theme::ocean();
-    let (paper_hex, accent_hex, _) = style.swatch();
+    let (paper_hex, accent_hex, inner_hex) = style.swatch();
+    let inner = div()
+        .w(px(16.))
+        .h(px(12.))
+        .bg(c(inner_hex))
+        .border_t(px(2.))
+        .border_color(c(accent_hex));
     let chip = div()
-        .w(px(20.))
-        .h(px(20.))
+        .w(px(24.))
+        .h(px(18.))
         .flex_none()
         .rounded(px(4.))
         .bg(c(paper_hex))
@@ -126,13 +134,15 @@ fn swatch_card(
         .border_color(c(if style.is_dark() { 0x3a3a3a } else { 0xd8d2c5 }))
         .overflow_hidden()
         .flex()
-        .flex_col()
-        .justify_end()
-        .child(div().w_full().h(px(5.)).bg(c(accent_hex)));
+        .items_end()
+        .justify_center()
+        .child(inner);
+    let label = div().flex_1().min_w_0().truncate().child(style.label());
     let base = div()
         .id(("export-style", index))
         .flex_1()
-        .h(px(36.))
+        .min_w_0()
+        .h(px(40.))
         .px(px(10.))
         .rounded(px(8.))
         .border_1()
@@ -143,7 +153,14 @@ fn swatch_card(
         .text_size(px(13.))
         .font_weight(FontWeight(460.))
         .child(chip)
-        .child(style.label());
+        .child(label)
+        .when(selected, |d| {
+            d.child(icon(
+                Icon::Check,
+                px(13.),
+                theme.icon_colors(theme.accent),
+            ))
+        });
     let base = if selected {
         base.bg(theme.selected)
             .border_color(theme.accent)
@@ -155,6 +172,52 @@ fn swatch_card(
             .hover(move |s| s.bg(theme.btn_hover).text_color(theme.text))
     };
     base.on_click(move |_, window, cx| on_pick(&style, window, cx))
+}
+
+pub(super) fn switch_row(
+    id: &'static str,
+    label: &'static str,
+    on: bool,
+    on_toggle: Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>,
+) -> impl IntoElement {
+    let theme = Theme::ocean();
+    let knob = div()
+        .absolute()
+        .top(px(2.))
+        .left(px(if on { 14. } else { 2. }))
+        .size(px(14.))
+        .rounded(px(7.))
+        .bg(c(0xffffff));
+    div()
+        .h(px(32.))
+        .flex()
+        .items_center()
+        .justify_between()
+        .child(div().text_size(px(13.)).child(label))
+        .child(
+            div()
+                .id(id)
+                .relative()
+                .w(px(30.))
+                .h(px(18.))
+                .rounded(px(9.))
+                .cursor_pointer()
+                .bg(if on { theme.accent } else { c(0xd5d8de) })
+                .on_click(move |ev, window, cx| on_toggle(ev, window, cx))
+                .child(knob),
+        )
+}
+
+pub(super) fn fmt_int(n: u32) -> String {
+    let s = n.to_string();
+    let mut out = String::new();
+    for (i, ch) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out.chars().rev().collect()
 }
 
 pub(super) fn button(

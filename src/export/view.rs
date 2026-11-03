@@ -1,6 +1,6 @@
 //! "生成图片" view state: option changes re-render the PNG on the background executor,
 //! save writes exactly the previewed bytes, copy puts the same PNG on the clipboard.
-use std::{sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use gpui::{
     App, ClipboardItem, Context, Entity, FocusHandle, Focusable, Global, Image, ImageFormat, Window,
@@ -20,8 +20,7 @@ pub struct ExportSlot(pub Option<Entity<ExportView>>);
 impl Global for ExportSlot {}
 
 pub fn active_view(cx: &App) -> Option<Entity<ExportView>> {
-    cx.try_global::<ExportSlot>()
-        .and_then(|slot| slot.0.clone())
+    cx.try_global::<ExportSlot>().and_then(|slot| slot.0.clone())
 }
 
 pub struct ExportView {
@@ -30,10 +29,15 @@ pub struct ExportView {
     pub(super) selection: Option<Snapshot>,
     pub(super) use_selection: bool,
     pub(super) style: ExportTheme,
+    pub(super) light_style: ExportTheme,
+    pub(super) dark_style: ExportTheme,
+    pub(super) show_title: bool,
     pub(super) watermark: bool,
+    pub(super) zoom: Option<f32>,
     pub(super) png: Option<Arc<Image>>,
     pub(super) error: Option<String>,
     pub(super) notice: Option<String>,
+    pub(super) saved_path: Option<PathBuf>,
     pub(super) rendering: bool,
     pub(super) saving: bool,
     pub(super) copied: bool,
@@ -58,10 +62,15 @@ impl ExportView {
             use_selection: use_selection && selection.is_some(),
             selection,
             style: ExportTheme::default(),
+            light_style: ExportTheme::default_for(false),
+            dark_style: ExportTheme::default_for(true),
+            show_title: true,
             watermark: true,
+            zoom: None,
             png: None,
             error: None,
             notice: None,
+            saved_path: None,
             rendering: false,
             saving: false,
             copied: false,
@@ -92,7 +101,7 @@ impl ExportView {
 
     pub(super) fn set_dark(&mut self, dark: bool, cx: &mut Context<Self>) {
         if dark != self.style.is_dark() {
-            self.style = ExportTheme::default_for(dark);
+            self.style = if dark { self.dark_style } else { self.light_style };
             self.request(cx);
         }
     }
@@ -100,8 +109,18 @@ impl ExportView {
     pub(super) fn set_style(&mut self, style: ExportTheme, cx: &mut Context<Self>) {
         if style != self.style {
             self.style = style;
+            if style.is_dark() {
+                self.dark_style = style;
+            } else {
+                self.light_style = style;
+            }
             self.request(cx);
         }
+    }
+
+    pub(super) fn toggle_title(&mut self, cx: &mut Context<Self>) {
+        self.show_title = !self.show_title;
+        self.request(cx);
     }
 
     pub(super) fn toggle_watermark(&mut self, cx: &mut Context<Self>) {
@@ -109,10 +128,33 @@ impl ExportView {
         self.request(cx);
     }
 
-    /// Re-render for the current options. A running render is cancelled and redone.
+    pub(super) fn zoom_in(&mut self, base: f32, cx: &mut Context<Self>) {
+        let next = ((self.zoom.unwrap_or(base) + 0.15) * 20.0).round() / 20.0;
+        self.zoom = Some(next.clamp(0.5, 1.5));
+        cx.notify();
+    }
+
+    pub(super) fn zoom_out(&mut self, base: f32, cx: &mut Context<Self>) {
+        let next = ((self.zoom.unwrap_or(base) - 0.15) * 20.0).round() / 20.0;
+        self.zoom = Some(next.clamp(0.5, 1.5));
+        cx.notify();
+    }
+
+    pub(super) fn zoom_reset(&mut self, cx: &mut Context<Self>) {
+        self.zoom = None;
+        cx.notify();
+    }
+
+    pub(super) fn reveal_saved(&self) {
+        if let Some(path) = &self.saved_path {
+            let _ = std::process::Command::new("open").arg("-R").arg(path).spawn();
+        }
+    }
+
     pub fn request(&mut self, cx: &mut Context<Self>) {
         self.copied = false;
         self.notice = None;
+        self.saved_path = None;
         cx.notify();
         if self.rendering {
             self.dirty = true;
@@ -136,17 +178,16 @@ impl ExportView {
                 return;
             }
         };
-        let job = match ExportJob::begin() {
-            Ok(job) => job,
-            Err(error) => {
-                self.error = Some(error.to_string());
-                self.dirty = false;
-                return;
-            }
+        let Ok(job) = ExportJob::begin().map_err(|e| {
+            self.error = Some(e.to_string());
+            self.dirty = false;
+        }) else {
+            return;
         };
         let options = RenderOptions {
             theme: self.style,
             card: false,
+            show_title: self.show_title,
             footer: self.watermark,
             title: self.title.clone(),
         };
@@ -157,9 +198,9 @@ impl ExportView {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    let result = render_with_cancel(&blocks, options, &job.cancellation);
+                    let res = render_with_cancel(&blocks, options, &job.cancellation);
                     drop(job);
-                    result
+                    res
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
@@ -186,17 +227,13 @@ impl ExportView {
     }
 
     pub(super) fn copy(&mut self, cx: &mut Context<Self>) {
-        let Some(png) = self.png.clone().filter(|_| self.ready()) else {
-            return;
-        };
+        let Some(png) = self.png.clone().filter(|_| self.ready()) else { return };
         cx.write_to_clipboard(ClipboardItem::new_image(&png));
         self.copied = true;
         self.notice = Some("已复制到剪贴板".into());
         cx.notify();
         cx.spawn(async move |this, cx| {
-            cx.background_executor()
-                .timer(Duration::from_millis(1600))
-                .await;
+            cx.background_executor().timer(Duration::from_millis(1600)).await;
             let _ = this.update(cx, |this, cx| {
                 this.copied = false;
                 cx.notify();
@@ -206,19 +243,15 @@ impl ExportView {
     }
 
     pub(super) fn save(&mut self, cx: &mut Context<Self>) {
-        let Some(png) = self.png.clone().filter(|_| self.ready()) else {
-            return;
-        };
-        let directory = std::env::var_os("HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_default();
+        let Some(png) = self.png.clone().filter(|_| self.ready()) else { return };
+        let directory = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
         let name = format!("{}.png", self.title.replace(['/', ':'], "-"));
         let prompt = cx.prompt_for_new_path(&directory, Some(&name));
         self.saving = true;
         self.notice = Some("请选择保存位置".into());
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let message = match prompt.await {
+            let outcome = match prompt.await {
                 Ok(Ok(Some(path))) => {
                     let written = cx
                         .background_executor()
@@ -227,17 +260,21 @@ impl ExportView {
                         })
                         .await;
                     match written {
-                        Ok(path) => format!("已保存到 {}", path.display()),
-                        Err(error) => error.to_string(),
+                        Ok(path) => {
+                            let file = path.file_name().and_then(|s| s.to_str()).unwrap_or("image.png");
+                            (format!("已保存 {file}"), Some(path))
+                        }
+                        Err(error) => (error.to_string(), None),
                     }
                 }
-                Ok(Ok(None)) => ExportError::Cancelled.to_string(),
-                Ok(Err(error)) => ExportError::Dialog(error.to_string()).to_string(),
-                Err(error) => ExportError::Dialog(error.to_string()).to_string(),
+                Ok(Ok(None)) => (ExportError::Cancelled.to_string(), None),
+                Ok(Err(error)) => (ExportError::Dialog(error.to_string()).to_string(), None),
+                Err(error) => (ExportError::Dialog(error.to_string()).to_string(), None),
             };
             let _ = this.update(cx, |this, cx| {
                 this.saving = false;
-                this.notice = Some(message);
+                this.notice = Some(outcome.0);
+                this.saved_path = outcome.1;
                 cx.notify();
             });
         })
