@@ -59,6 +59,12 @@ pub struct Editor {
 
 impl Editor {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        cx.on_app_quit(|editor, _| {
+            if editor.dirty {
+                editor.save_now();
+            }
+            async {}
+        }).detach();
         let doc = Doc::empty();
         let block = doc.blocks[0].id;
         Self {
