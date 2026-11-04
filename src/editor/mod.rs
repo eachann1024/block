@@ -45,6 +45,6 @@ mod fold;
 pub mod view;
 
 #[cfg(not(target_family = "wasm"))]
-pub use export_driver::export_document;
+pub use export_driver::{export_document, export_selected};
 pub use keys::bind_keys;
 pub use view::Editor;

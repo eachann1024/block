@@ -43,25 +43,32 @@ impl QuickView {
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.help = !this.help; cx.notify(); }))
             .child(icon(Icon::HelpCircle, px(15.), theme.icon_colors(theme.text_secondary)));
         let _ = window;
-        // Left padding clears the traffic lights drawn over the transparent titlebar.
-        div().h(px(40.)).flex_none().flex().items_center().gap(px(8.)).pl(px(78.)).pr(px(8.))
+        let mac = cfg!(target_os = "macos");
+        // Left padding clears the traffic lights on macOS; on Windows/Linux the close button sits on the right.
+        div().h(px(40.)).flex_none().flex().items_center().gap(px(8.))
+            .pl(px(if mac { 78. } else { 14. })).pr(px(if mac { 8. } else { 0. }))
             .bg(theme.sidebar).border_b_1().border_color(theme.hairline)
             .window_control_area(gpui::WindowControlArea::Drag)
             .child(slots).child(name).child(save).child(help)
+            .child(crate::ui::window_controls::window_controls("quick-win", false, false))
     }
 
     pub(super) fn footer(&self, status: String) -> impl IntoElement {
         let theme = Theme::ocean();
+        let mac = cfg!(target_os = "macos");
         let quick_label = format_hotkey(&quick_shortcut());
         let hint = |keys: SharedString, label: &'static str| div().flex().items_center().gap(px(4.)).child(kbd(keys)).child(label);
         div().h(px(32.)).flex_none().flex().items_center().gap(px(12.)).px(px(14.)).border_t_1().border_color(theme.hairline)
             .text_size(px(11.)).text_color(theme.text_secondary)
-            .child(hint(quick_label.into(), tr("呼出 / 隐藏", "Toggle"))).child(hint("⌘1–5".into(), tr("切换", "Switch"))).child(hint("⌘F".into(), tr("查找", "Find")))
+            .child(hint(quick_label.into(), tr("呼出 / 隐藏", "Toggle")))
+            .child(hint((if mac { "⌘1–5" } else { "Ctrl+1–5" }).into(), tr("切换", "Switch")))
+            .child(hint((if mac { "⌘F" } else { "Ctrl+F" }).into(), tr("查找", "Find")))
             .child(div().ml_auto().overflow_hidden().whitespace_nowrap().text_ellipsis().child(status))
     }
 
     pub(super) fn help_popover(&self) -> impl IntoElement {
         let theme = Theme::ocean();
+        let mac = cfg!(target_os = "macos");
         let quick_label = format_hotkey(&quick_shortcut());
         let row = |keys: SharedString, label: &'static str| div().flex().items_center().justify_between().gap(px(16.))
             .child(div().child(label)).child(kbd(keys));
@@ -69,8 +76,10 @@ impl QuickView {
             .rounded(px(8.)).bg(theme.menu).border_1().border_color(theme.menu_border).shadow_md().occlude()
             .text_size(px(12.)).text_color(theme.text)
             .child(div().font_weight(FontWeight(600.)).child(tr("使用说明", "Quick Note Tips")))
-            .child(row(quick_label.into(), tr("呼出 / 隐藏速记", "Toggle Quick Note"))).child(row("⌘1–5".into(), tr("切换槽位", "Switch Slot")))
-            .child(row("Esc / ⌘W".into(), tr("隐藏小窗", "Hide Window"))).child(row("⌘F".into(), tr("查找", "Find")))
+            .child(row(quick_label.into(), tr("呼出 / 隐藏速记", "Toggle Quick Note")))
+            .child(row((if mac { "⌘1–5" } else { "Ctrl+1–5" }).into(), tr("切换槽位", "Switch Slot")))
+            .child(row((if mac { "Esc / ⌘W" } else { "Esc / Ctrl+W" }).into(), tr("隐藏小窗", "Hide Window")))
+            .child(row((if mac { "⌘F" } else { "Ctrl+F" }).into(), tr("查找", "Find")))
             .child(div().text_color(theme.text_secondary).child(tr("内容自动保存；点名称可重命名；保存到笔记会新建一篇笔记。", "Auto-saves changes. Click slot name to rename. Save to Note creates a new note.")))
     }
 }
