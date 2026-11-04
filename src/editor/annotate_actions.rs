@@ -45,11 +45,17 @@ impl Editor {
             cx.notify();
             return;
         }
-        let Some(note) = self.annotate.annotations.iter().find(|note| note.id == id) else { return };
-        if note.is_applied() {
+        let Some(note) = self.annotate.annotations.iter().find(|note| note.id == id).cloned() else { return };
+        if note.is_applied() || note.body.is_empty() {
             self.annotate.active_annotation = Some(id);
             self.annotate.followup = None;
             self.toolbar_anchor = None;
+            if let Some((block_id, range, _)) = resolve_annotation_span(&self.doc, &note) {
+                self.ensure_block_visible(block_id);
+                self.caret.anchor = Position { block: block_id, offset: range.start };
+                self.caret.head = self.caret.anchor;
+                self.table_sel = None;
+            }
             cx.notify();
             return;
         }
@@ -63,12 +69,11 @@ impl Editor {
         self.annotate.active_annotation = Some(id);
         self.annotate.followup = Some(AnnotationFollowup { annotation_id: id, input: input.clone(), _sub: sub });
         self.toolbar_anchor = None;
-        if let Some(note) = self.annotate.annotations.iter().find(|note| note.id == id).cloned()
-            && let Some((block_id, range, _)) = resolve_annotation_span(&self.doc, &note)
-        {
+        if let Some((block_id, range, _)) = resolve_annotation_span(&self.doc, &note) {
             self.ensure_block_visible(block_id);
             self.caret.anchor = Position { block: block_id, offset: range.start };
-            self.caret.head = Position { block: block_id, offset: range.end };
+            self.caret.head = self.caret.anchor;
+            self.table_sel = None;
             self.reveal_caret = true;
         }
         cx.defer_in(window, move |_, window, cx| { input.update(cx, |state, cx| state.focus(window, cx)); });

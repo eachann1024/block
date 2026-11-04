@@ -15,6 +15,10 @@ pub(super) const HL_ACTIVE_BG: u32 = 0xfdda8c;
 pub(super) const HL_SELECT_BG_DARK: u32 = 0x4a3c21;
 pub(super) const HL_ACTIVE_BG_DARK: u32 = 0x81611e;
 pub(super) const HL_AI_BG: u32 = 0xfdf3c4;
+pub(super) const HL_TABLE_BORDER: u32 = 0xb77700;
+pub(super) const HL_TABLE_BORDER_ACTIVE: u32 = 0xa66a00;
+pub(super) const HL_TABLE_BORDER_DARK: u32 = 0xdb9300;
+pub(super) const HL_TABLE_BORDER_ACTIVE_DARK: u32 = 0xfab219;
 pub(super) const ANNOTATION_PENDING: u32 = 0xf5c84c;
 pub(super) const ANNOTATION_GENERATED: u32 = 0x547dd0;
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -124,13 +128,17 @@ fn find_snippet(doc: &Doc, preferred_index: usize, preferred_start: usize, needl
         .min_by_key(|(dist, _, _)| *dist).map(|(_, id, range)| (id, range))
 }
 
+fn is_whole_table_span(doc: &Doc, block_id: u64, range: &Range<usize>) -> bool {
+    doc.get(block_id).is_some_and(|b| b.meta.table.is_some() && (range.is_empty() || (range.start == 0 && range.end >= b.text.len())))
+}
+
 /// Paints comment anchors (`#fab219` at 20% / 45% active, eased 200ms), composer selection, AI spans; no borders.
 pub(super) fn paint_highlights(editor: &Editor, block: u64, layout: &TextLayout, window: &mut Window) {
     let dark = crate::theme::is_dark();
     let (base, active_bg) = if dark { (HL_SELECT_BG_DARK, HL_ACTIVE_BG_DARK) } else { (HL_SELECT_BG, HL_ACTIVE_BG) };
     for annotation in &editor.annotate.annotations {
         let Some((id, range, is_ai)) = resolve_annotation_span(&editor.doc, annotation) else { continue };
-        if id != block || range.is_empty() { continue; }
+        if id != block || range.is_empty() || is_whole_table_span(&editor.doc, block, &range) { continue; }
         let target = if editor.annotate.active_annotation == Some(annotation.id) { 1. } else { 0. };
         let level = crate::ui::fade::level(annotation.id, target, window);
         let normal = if is_ai && !dark { HL_AI_BG } else { base };
@@ -139,12 +147,37 @@ pub(super) fn paint_highlights(editor: &Editor, block: u64, layout: &TextLayout,
             window.paint_quad(quad(rect, px(2.), color, px(0.), transparent_black(), BorderStyle::default()));
         }
     }
-    let composing = editor.annotate.composer.as_ref().filter(|c| c.block_id == block && !c.range.is_empty()).map(|c| c.range.clone());
-    let reacting = editor.annotate.reactions.as_ref().filter(|p| p.block_id == block && !p.range.is_empty()).map(|p| p.range.clone());
+    let composing = editor.annotate.composer.as_ref().filter(|c| c.block_id == block && !c.range.is_empty() && !is_whole_table_span(&editor.doc, block, &c.range)).map(|c| c.range.clone());
+    let reacting = editor.annotate.reactions.as_ref().filter(|p| p.block_id == block && !p.range.is_empty() && !is_whole_table_span(&editor.doc, block, &p.range)).map(|p| p.range.clone());
     for range in composing.into_iter().chain(reacting) {
         for rect in layout.rects(range) {
             window.paint_quad(quad(rect, px(2.), rgb(base), px(0.), transparent_black(), BorderStyle::default()));
         }
+    }
+}
+
+/// Paints a 2px solid amber outline around commented/reacted whole tables (`--cds-border-editor-comment`).
+pub(super) fn paint_table_highlights(editor: &Editor, block: u64, layout: &TextLayout, window: &mut Window) {
+    if layout.cells.is_empty() { return; }
+    let Some(grid) = super::table_layout::grid_rect(layout) else { return };
+    let dark = crate::theme::is_dark();
+    let (base, active) = if dark { (HL_TABLE_BORDER_DARK, HL_TABLE_BORDER_ACTIVE_DARK) } else { (HL_TABLE_BORDER, HL_TABLE_BORDER_ACTIVE) };
+    let mut border_color = None;
+    for annotation in &editor.annotate.annotations {
+        let Some((id, range, _)) = resolve_annotation_span(&editor.doc, annotation) else { continue };
+        if id != block || !is_whole_table_span(&editor.doc, block, &range) { continue; }
+        let target = if editor.annotate.active_annotation == Some(annotation.id) { 1. } else { 0. };
+        let level = crate::ui::fade::level(annotation.id, target, window);
+        border_color = Some(crate::ui::fade::mix(base, active, level));
+        if target > 0. { break; }
+    }
+    if border_color.is_none() {
+        let composing = editor.annotate.composer.as_ref().is_some_and(|c| c.block_id == block && is_whole_table_span(&editor.doc, block, &c.range));
+        let reacting = editor.annotate.reactions.as_ref().is_some_and(|p| p.block_id == block && is_whole_table_span(&editor.doc, block, &p.range));
+        if composing || reacting { border_color = Some(rgb(base).into()); }
+    }
+    if let Some(color) = border_color {
+        window.paint_quad(quad(grid, px(0.), transparent_black(), px(2.), color, BorderStyle::Solid));
     }
 }
 
@@ -231,6 +264,9 @@ impl Editor {
             });
         }
         self.persist_annotations();
+        self.caret.anchor = self.caret.head;
+        self.table_sel = None;
+        self.toolbar_anchor = None;
         cx.notify();
     }
 
@@ -246,6 +282,7 @@ impl Editor {
         });
         self.persist_annotations();
         self.caret.anchor = self.caret.head; // collapse selection so the floating toolbar doesn't reappear
+        self.table_sel = None;
         self.toolbar_anchor = None;
         window.focus(&self.focus, cx);
         cx.notify();
