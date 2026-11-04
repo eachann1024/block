@@ -173,6 +173,12 @@ icons! {
     ProvOpenai => "prov-openai" [Line],
     ProvAnthropic => "prov-anthropic" [Line],
     ProvDeepseek => "prov-deepseek" [Line],
+    KeyCommand => "key-command" [Line],
+    KeyOption => "key-option" [Line],
+    KeyReturn => "key-return" [Line],
+    KeyShift => "key-shift" [Line],
+    KeyControl => "key-control" [Line],
+    KeyBackspace => "key-backspace" [Line],
 }
 
 /// The three tints of one icon.
