@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use gpui::{
-    Animation, AnimationExt, AnyElement, Context, CursorStyle, Hsla, IntoElement,
+    Animation, AnimationExt, AnyElement, Context, Hsla, IntoElement,
     MouseButton, Pixels, Point, SharedString, anchored, deferred, div, ease_out_quint,
     linear_color_stop, linear_gradient, point, prelude::*, px, transparent_black,
 };
@@ -149,7 +149,7 @@ impl Workspace {
         cx.notify();
     }
 
-    pub(super) fn dismiss_tab_menu(&mut self, cx: &mut Context<Self>) -> bool {
+    pub(crate) fn dismiss_tab_menu(&mut self, cx: &mut Context<Self>) -> bool {
         let had = TAB_UI.with(|ui| ui.borrow_mut().menu.take().is_some());
         if had { cx.notify(); }
         had
@@ -220,12 +220,9 @@ impl Workspace {
         let ix = self.tabs.iter().position(|p| p == &menu.path).unwrap_or(menu.index.min(tab_count - 1));
         let target_path = self.tabs.get(ix)?.clone();
         let (has_others, has_right) = (tab_count > 1, ix + 1 < tab_count);
-        let theme = Theme::ocean();
         let (close_one, close_others) = (target_path.clone(), target_path);
-        let card = div().id("tab-context-menu").occlude().w(px(168.)).p(px(4.)).rounded(px(8.))
-            .bg(theme.menu).border_1().border_color(theme.menu_border).shadow_md().flex().flex_col().text_color(theme.text)
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+        let card = crate::dropdown::shell("tab-context-menu")
+            .w(px(176.))
             .child(tab_menu_item("tab-menu-close", tr("关闭", "Close"), true, cx.listener(move |this, _, _, cx| {
                 this.close_tab(close_one.clone(), cx);
             })))
@@ -235,7 +232,7 @@ impl Workspace {
             .child(tab_menu_item("tab-menu-close-right", tr("关闭右侧", "Close to the Right"), has_right, cx.listener(move |this, _, _, cx| {
                 this.close_tabs_to_right(ix, cx);
             })))
-            .child(div().h(px(1.)).my(px(4.)).mx(px(6.)).bg(theme.hairline))
+            .child(crate::dropdown::separator())
             .child(tab_menu_item("tab-menu-close-all", tr("关闭全部", "Close All"), true, cx.listener(|this, _, _, cx| {
                 this.close_all_tabs(cx);
             })));
@@ -253,11 +250,14 @@ fn tab_menu_item(
     id: &'static str, label: &'static str, enabled: bool,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> gpui::Stateful<gpui::Div> {
-    let theme = Theme::ocean();
-    div().id(id).h(theme.menu_item_height).px(px(10.)).rounded(px(6.))
-        .flex().items_center().text_size(px(13.)).line_height(px(18.)).text_color(theme.text)
-        .when(enabled, |row| row.cursor(CursorStyle::PointingHand).hover(|s| s.bg(theme.hover))
-            .on_mouse_down(MouseButton::Left, on_click))
-        .when(!enabled, |row| row.opacity(0.42))
-        .child(label)
+    crate::dropdown::row_with(
+        id,
+        crate::dropdown::RowSpec {
+            icon: None,
+            label: label.into(),
+            disabled: !enabled,
+            ..Default::default()
+        },
+    )
+    .when(enabled, |row| row.on_mouse_down(MouseButton::Left, on_click))
 }

@@ -2,22 +2,68 @@
 use crate::{editor::model::Kind, icons::Icon, theme::tr};
 use super::kind_icon;
 
-/// Code languages offered by the code block picker: (fence tag, label).
+/// Code languages offered by the code block picker in `C-Code-Block.dc.html` order: (fence tag, label).
 pub(in crate::editor) const LANGUAGES: [(&str, &str); 18] = [
-    ("", "纯文本"), ("rust", "Rust"), ("javascript", "JavaScript"), ("typescript", "TypeScript"), ("python", "Python"),
-    ("bash", "Shell"), ("json", "JSON"), ("html", "HTML"), ("css", "CSS"), ("markdown", "Markdown"), ("sql", "SQL"),
-    ("go", "Go"), ("swift", "Swift"), ("java", "Java"), ("cpp", "C++"), ("yaml", "YAML"), ("mermaid", "Mermaid 图表"),
-    ("math", "数学公式"),
+    ("", "auto"),
+    ("csv", "CSV"),
+    ("latex", "LaTeX"),
+    ("markdown", "Markdown"),
+    ("mermaid", "Mermaid"),
+    ("plaintext", "Plain Text"),
+    ("bash", "Bash"),
+    ("css", "CSS"),
+    ("html", "HTML"),
+    ("javascript", "JavaScript"),
+    ("json", "JSON"),
+    ("lean", "Lean"),
+    ("python", "Python"),
+    ("rust", "Rust"),
+    ("sql", "SQL"),
+    ("typescript", "TypeScript"),
+    ("xml", "XML"),
+    ("yaml", "YAML"),
 ];
+
+pub(in crate::editor) fn canonical_lang_tag(tag: &str) -> &'static str {
+    let token = tag.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
+    match token.as_str() {
+        "" | "auto" => "",
+        "csv" => "csv",
+        "latex" | "math" | "tex" | "katex" => "latex",
+        "markdown" | "md" => "markdown",
+        "mermaid" => "mermaid",
+        "plaintext" | "text" | "plain" | "txt" => "plaintext",
+        "bash" | "sh" | "shell" | "zsh" => "bash",
+        "css" => "css",
+        "html" | "htm" => "html",
+        "javascript" | "js" | "jsx" => "javascript",
+        "json" | "jsonc" => "json",
+        "lean" | "lean4" => "lean",
+        "python" | "py" => "python",
+        "rust" | "rs" => "rust",
+        "sql" => "sql",
+        "typescript" | "ts" | "tsx" => "typescript",
+        "xml" | "svg" => "xml",
+        "yaml" | "yml" => "yaml",
+        _ => "",
+    }
+}
+
 pub(in crate::editor) fn language_label(tag: &str) -> &'static str {
-    let tag = tag.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
-    let tag = match tag.as_str() { "js" => "javascript", "ts" => "typescript", "py" => "python", "sh" | "shell" | "zsh" => "bash",
-        "md" => "markdown", "c++" => "cpp", "yml" => "yaml", "latex" | "tex" => "math", other => other }.to_owned();
-    match tag.as_str() {
-        "" => tr("纯文本", "Plain Text"),
-        "mermaid" => tr("Mermaid 图表", "Mermaid Diagram"),
-        "math" => tr("数学公式", "Math Formula"),
-        other => LANGUAGES.iter().find(|(t, _)| *t == other).map_or_else(|| tr("其他", "Other"), |(_, l)| *l),
+    let canon = canonical_lang_tag(tag);
+    if canon.is_empty() && !tag.trim().is_empty() && !tag.trim().eq_ignore_ascii_case("auto") {
+        return tr("其他", "Other");
+    }
+    LANGUAGES.iter().find(|(t, _)| *t == canon).map_or("auto", |(_, l)| *l)
+}
+
+pub(in crate::editor) fn language_icon(tag: &str) -> Option<Icon> {
+    match canonical_lang_tag(tag) {
+        "csv" => Some(Icon::Table),
+        "latex" => Some(Icon::Math),
+        "markdown" => Some(Icon::Note),
+        "mermaid" => Some(Icon::Diagram),
+        _ => None,
     }
 }
 #[derive(Clone, Copy, PartialEq)]
