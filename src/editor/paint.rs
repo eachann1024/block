@@ -35,7 +35,11 @@ impl Element for BlockText {
         if let Some(language) = &fenced { style.margin = super::code_block::margin(language); }
         style.min_size.width = if nowrap { gpui::Length::Auto } else { px(0.).into() };
         let _ = line_height;
-        let (size_px, factor) = block_metrics(kind, fenced.is_some(), self.editor.read(cx).minimal, f32::from(theme.editor_font));
+        let (mut size_px, factor) = block_metrics(kind, fenced.is_some(), self.editor.read(cx).minimal, f32::from(theme.editor_font));
+        if kind == Kind::H3 && fenced.is_none() {
+            let level = self.editor.read(cx).doc.get(self.block).and_then(|b| b.meta.heading_level);
+            size_px = match level { Some(4) => 17., Some(5) => 16., Some(6) => 15., _ => size_px };
+        }
         let (font_size, line_height) = (px(size_px), px(size_px) * factor);
         let editor_entity = self.editor.clone();
         let block_id = self.block;

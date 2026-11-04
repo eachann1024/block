@@ -31,7 +31,7 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<std::ops::R
         let foreground = text_runs::attribute_color(&cell.attrs, false)
             .or_else(|| text_runs::attribute_color(&table.attrs, false)).unwrap_or(theme.text);
         let mut runs = text_runs::runs(&cell.content, &text, foreground);
-        if cell.header { for run in &mut runs { run.font.weight = FontWeight::SEMIBOLD; } }
+        if cell.header { for run in &mut runs { run.font.weight = FontWeight::MEDIUM; } }
         let cell_sel = selected.as_ref().and_then(|sel| {
             let a = sel.start.max(range.start) - range.start;
             let b = sel.end.min(range.end) - range.start;
@@ -71,7 +71,7 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<std::ops::R
             size((frame.size.width-px(PAD_X*2.)).max(px(1.)), text_height));
         let background = text_runs::attribute_color(&cell.attrs, true)
             .or_else(|| text_runs::attribute_color(&table.attrs, true))
-            .or_else(|| cell.header.then_some(theme.code_bg));
+            .or_else(|| cell.header.then_some(theme.hover));
         CellLayout { range, frame, text:Box::new(text), background }
     }).collect();
     TextLayout { bounds:Bounds::new(point(px(0.),px(0.)), size(width,*ys.last().unwrap_or(&line_height))),
