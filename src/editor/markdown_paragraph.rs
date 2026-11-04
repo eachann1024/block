@@ -29,24 +29,46 @@ pub(super) fn parse(id: u64, source: &str) -> Result<Block, &'static str> {
     let tokens = html::tokens(body).ok_or("Malformed or unsupported HTML paragraph is retained as source")?;
     let first = tokens.first().ok_or("Empty HTML paragraph source")?;
     let last = tokens.last().ok_or("Incomplete HTML paragraph")?;
-    // Paragraph-level attributes need a block-style model, so retain them as raw HTML.
-    if !matches!(&first.value, HtmlValue::Tag { name, attrs, close:false, empty:false }
-        if name == "p" && attrs.is_empty())
-        || !matches!(&last.value, HtmlValue::Tag { name, attrs, close:true, empty:false }
-            if name == "p" && attrs.is_empty()) || first.range.end > last.range.start {
+    let indent = match &first.value {
+        HtmlValue::Tag { name, attrs, close: false, empty: false } if name == "p" && attrs.is_empty() => None,
+        HtmlValue::Tag { name, attrs, close: false, empty: false }
+            if name == "p" && attrs.len() == 1 && attrs[0].0 == "data-indent" =>
+        {
+            Some(attrs[0].1.trim().parse::<usize>().ok().filter(|&n| n > 0).map(|n| n.min(12))
+                .ok_or("Unsupported paragraph wrapper is retained as original HTML")?)
+        }
+        _ => return Err("Unsupported paragraph wrapper is retained as original HTML"),
+    };
+    if !matches!(&last.value, HtmlValue::Tag { name, attrs, close:true, empty:false }
+        if name == "p" && attrs.is_empty()) || first.range.end > last.range.start {
         return Err("Unsupported paragraph wrapper is retained as original HTML");
     }
     let leading = source.len() - source.trim_start().len();
     let content = leading + first.range.end..leading + last.range.start;
-    let (text, spans, annotations) = inline::parse_html(&source[content.clone()])
-        .ok_or("Paragraph contains unsupported HTML; the original paragraph is retained")?;
+    let inner = &source[content.clone()];
+    let (text, spans, annotations) = if indent.is_some() {
+        inline::parse(inner).or_else(|| inline::parse_html(inner))
+    } else {
+        inline::parse_html(inner)
+    }.ok_or("Paragraph contains unsupported HTML; the original paragraph is retained")?;
     let mut block = Block::new(id, Kind::Paragraph, text);
     block.spans = spans; block.meta.inline = annotations;
-    block.meta.html_paragraph = Some(HtmlParagraph { source:source.to_owned(), content });
+    if let Some(indent) = indent {
+        block.meta.indent = indent;
+    } else {
+        block.meta.html_paragraph = Some(HtmlParagraph { source:source.to_owned(), content });
+    }
     Ok(block)
 }
 
 pub(super) fn serialize(block: &Block, out: &mut String) {
+    if block.meta.indent > 0 {
+        use std::fmt::Write;
+        let _ = write!(out, "<p data-indent=\"{}\">", block.meta.indent.min(12));
+        inline::serialize(block, out);
+        out.push_str("</p>\n");
+        return;
+    }
     let paragraph = block.meta.html_paragraph.as_ref().expect("HTML paragraph metadata");
     let original = paragraph.source.get(paragraph.content.clone());
     if let Some(content) = original {
