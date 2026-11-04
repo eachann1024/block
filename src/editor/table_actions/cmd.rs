@@ -2,6 +2,7 @@
 use crate::{editor::model::CellAlignment, theme::tr};
 use super::TableSel;
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(in crate::editor) enum TableCmd {
     InsertRowAbove, InsertRowBelow, InsertColLeft, InsertColRight,
