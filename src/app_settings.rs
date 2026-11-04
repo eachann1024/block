@@ -1,5 +1,5 @@
 //! Preferences state and actions (⌘,): theme, editor font, and global hotkeys.
-use gpui::{Context, FocusHandle, Keystroke, Window};
+use gpui::{AppContext, Context, FocusHandle, Keystroke, Window};
 use crate::files::state::{FontChoice, LanguageMode, ThemeMode, update_state};
 use crate::icons::Icon;
 use crate::theme::{
@@ -21,11 +21,10 @@ pub(crate) enum SettingsTab {
     Appearance,
     General,
     Shortcuts,
-    Storage,
 }
 
 impl SettingsTab {
-    pub(crate) const ALL: [Self; 5] = [Self::Ai, Self::Appearance, Self::General, Self::Shortcuts, Self::Storage];
+    pub(crate) const ALL: [Self; 4] = [Self::Ai, Self::Appearance, Self::General, Self::Shortcuts];
 
     pub(crate) fn title(self) -> &'static str {
         match self {
@@ -33,7 +32,6 @@ impl SettingsTab {
             Self::Appearance => tr("外观与字体", "Appearance & Fonts"),
             Self::General => tr("通用与编辑", "General & Editing"),
             Self::Shortcuts => tr("基础快捷键", "Shortcuts"),
-            Self::Storage => tr("本地文件夹", "Local Folder"),
         }
     }
 
@@ -43,7 +41,6 @@ impl SettingsTab {
             Self::Appearance => Icon::Sliders,
             Self::General => Icon::NoteCheck,
             Self::Shortcuts => Icon::Code,
-            Self::Storage => Icon::FolderOpen,
         }
     }
 }
@@ -52,6 +49,8 @@ pub(crate) struct SettingsModal {
     pub focus: FocusHandle,
     pub recording: Option<ShortcutKind>,
     pub tab: SettingsTab,
+    pub assets_input: gpui::Entity<gpui_component::input::InputState>,
+    pub _assets_sub: gpui::Subscription,
 }
 
 pub(super) fn keystroke_to_spec(ks: &Keystroke) -> Option<String> {
@@ -94,7 +93,48 @@ impl Workspace {
         self.close_overlays(cx);
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
-        self.settings = Some(SettingsModal { focus, recording: None, tab });
+        let assets_input = cx.new(|cx| {
+            gpui_component::input::InputState::new(window, cx)
+                .placeholder(crate::theme::DEFAULT_ASSETS_FOLDER)
+                .default_value(crate::theme::assets_folder())
+        });
+        let _assets_sub = cx.subscribe_in(&assets_input, window, |this, input, event: &gpui_component::input::InputEvent, window, cx| {
+            match event {
+                gpui_component::input::InputEvent::Change => {
+                    let val = input.read(cx).value().to_string();
+                    let sanitized = crate::theme::sanitize_assets_folder(&val);
+                    if sanitized != crate::theme::assets_folder() {
+                        crate::theme::set_assets_folder(sanitized.clone());
+                        cx.background_executor().spawn(async move {
+                            let _ = update_state(|s| {
+                                s.assets_folder = (sanitized != crate::theme::DEFAULT_ASSETS_FOLDER).then_some(sanitized);
+                            });
+                        }).detach();
+                        this.rescan_current_folder(cx);
+                    }
+                    cx.notify();
+                }
+                gpui_component::input::InputEvent::Blur => {
+                    let val = input.read(cx).value().to_string();
+                    let sanitized = crate::theme::sanitize_assets_folder(&val);
+                    if val != sanitized {
+                        input.update(cx, |i, cx| i.set_value(sanitized.clone(), window, cx));
+                    }
+                    if sanitized != crate::theme::assets_folder() {
+                        crate::theme::set_assets_folder(sanitized.clone());
+                        cx.background_executor().spawn(async move {
+                            let _ = update_state(|s| {
+                                s.assets_folder = (sanitized != crate::theme::DEFAULT_ASSETS_FOLDER).then_some(sanitized);
+                            });
+                        }).detach();
+                        this.rescan_current_folder(cx);
+                    }
+                    cx.notify();
+                }
+                _ => {}
+            }
+        });
+        self.settings = Some(SettingsModal { focus, recording: None, tab, assets_input, _assets_sub });
         crate::editor::ai::settings::ensure(window, cx);
         cx.notify();
     }
@@ -175,5 +215,52 @@ impl Workspace {
         }).detach();
         if let Some(modal) = &mut self.settings { modal.recording = None; }
         cx.notify();
+    }
+
+    pub(super) fn set_hide_assets(&mut self, hide: bool, cx: &mut Context<Self>) {
+        crate::theme::set_hide_assets_folder(hide);
+        cx.background_executor().spawn(async move {
+            let _ = update_state(|s| {
+                s.hide_assets_folder = (!hide).then_some(false);
+            });
+        }).detach();
+        self.rescan_current_folder(cx);
+        cx.notify();
+    }
+
+    pub(super) fn reset_assets_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        crate::theme::set_assets_folder(crate::theme::DEFAULT_ASSETS_FOLDER.into());
+        crate::theme::set_hide_assets_folder(true);
+        if let Some(modal) = &self.settings {
+            modal.assets_input.update(cx, |input, cx| {
+                input.set_value(crate::theme::DEFAULT_ASSETS_FOLDER, window, cx);
+            });
+        }
+        cx.background_executor().spawn(async move {
+            let _ = update_state(|s| {
+                s.assets_folder = None;
+                s.hide_assets_folder = None;
+            });
+        }).detach();
+        self.rescan_current_folder(cx);
+        cx.notify();
+    }
+
+    pub(super) fn rescan_current_folder(&mut self, cx: &mut Context<Self>) {
+        if self.busy() { return; }
+        let Some(root) = self.folder.clone() else { return };
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move {
+                let scan_res = crate::files::scan::scan(&root)?;
+                let index = crate::files::index::TreeIndex::new(scan_res.nodes);
+                Ok::<_, std::io::Error>(index)
+            }).await;
+            let _ = this.update(cx, |this, cx| {
+                if let Ok(index) = result {
+                    this.tree.update(cx, |tree, cx| tree.replace_index(index, None, None, cx));
+                    this.refresh(cx);
+                }
+            });
+        }).detach();
     }
 }

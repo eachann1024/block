@@ -27,6 +27,10 @@ pub fn ignored(name: &str) -> bool {
         || name.eq_ignore_ascii_case("thumbs.db") || name.eq_ignore_ascii_case("desktop.ini")
 }
 
+pub fn ignored_dir(name: &str) -> bool {
+    ignored(name) || (crate::theme::hide_assets_folder() && name.eq_ignore_ascii_case(&crate::theme::assets_folder()))
+}
+
 pub fn is_markdown(name: &str) -> bool {
     Path::new(name).extension().and_then(|e| e.to_str()).is_some_and(|ext| {
         matches!(
@@ -87,6 +91,7 @@ fn read_level(dir: &Path, result: &mut Scan, depth: usize) -> io::Result<Vec<Nod
             Err(error) => { warn(result, &path, error); continue; }
         };
         if kind.is_dir() {
+            if ignored_dir(&name) { continue; }
             let children = read_level(&path, result, depth + 1).unwrap_or_else(|error| {
                 warn(result, &path, error);
                 Vec::new()
