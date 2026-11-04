@@ -56,11 +56,13 @@ impl Workspace {
                 .child(toolbar_icon_button("new-folder", Icon::FolderPlus, enabled, tr("新建文件夹", "New Folder"), cx.listener(|this, _, window, cx| {
                     this.new_item(true, window, cx);
                 }))))
-            // Workspace progress/errors are only reported here, so keep a compact line.
-            .when(!self.notice.is_empty(), |side| side.child(
-                div().id("workspace-status").max_h(px(48.)).overflow_y_scroll().px(px(20.)).pb(px(4.))
-                    .text_size(px(12.)).text_color(theme.text_secondary).child(self.notice.clone())))
-            .child(div().flex_1().min_h_0().overflow_hidden().pt(px(0.)).pb(px(8.)).child(self.tree.clone()))
+            // Workspace progress/errors float over the list bottom so showing or
+            // clearing them never reflows (shakes) the file rows.
+            .child(div().flex_1().min_h_0().overflow_hidden().relative().pt(px(0.)).pb(px(8.)).child(self.tree.clone())
+                .when(!self.notice.is_empty(), |list| list.child(
+                    div().id("workspace-status").absolute().left_0().right_0().bottom_0().max_h(px(48.)).overflow_y_scroll()
+                        .px(px(20.)).py(px(4.)).bg(theme.sidebar)
+                        .text_size(px(12.)).text_color(theme.text_secondary).child(self.notice.clone()))))
             .child(self.settings_footer(cx))
             .child(self.resize_handle(cx))
     }
