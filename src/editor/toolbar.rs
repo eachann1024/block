@@ -1,4 +1,4 @@
-//! Floating selection toolbar (F-Toolbar): light pill of 32px icon buttons split by hairline separators.
+//! Floating selection toolbar (F-Toolbar): light pill of 28px icon buttons split by hairline separators.
 use std::{cell::RefCell, collections::HashMap};
 use gpui::{BoxShadow, Bounds, Context, CursorStyle, Entity, MouseButton, Pixels, Point, Window,
     div, point, prelude::*, px, rgba};
@@ -48,7 +48,7 @@ impl RenderOnce for SelectionToolbar {
         // Narrow editors (AI 助手 open): wrap onto a second row inside the editor
         // instead of running under the chat panel.
         let room = editor.read(cx).list.viewport_bounds().size.width - px(16.);
-        let bar = pill().id("selection-toolbar").max_w(room).flex_wrap().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        let bar = pill().px(px(4.)).py(px(6.)).gap(px(4.)).id("selection-toolbar").max_w(room).flex_wrap().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(button(Icon::TbComment, tr("添加批注", "Add comment"), false, false, false, editor.clone(), |this, w, cx| this.start_annotation(w, cx)))
             .child(button(Icon::TbReaction, tr("添加表情回应", "Add reaction"), false, false, false, editor.clone(), |this, w, cx| this.open_reactions(w, cx)))
             .child(sep())
@@ -73,7 +73,7 @@ impl RenderOnce for SelectionToolbar {
 
 fn disabled_button(g: Icon) -> gpui::Div {
     let dim = if is_dark() { 0x5a5a5a } else { 0x9a9994 };
-    div().h(px(32.)).min_w(px(32.)).flex_none().flex().items_center().justify_center().px(px(6.)).rounded(px(8.))
+    div().h(px(28.)).min_w(px(28.)).flex_none().flex().items_center().justify_center().px(px(6.)).rounded(px(8.))
         .cursor(CursorStyle::Arrow).child(glyph(g, 18., dim))
 }
 
@@ -81,7 +81,7 @@ fn button(g: Icon, tip: &'static str, on: bool, open: bool, dropdown: bool, edit
     run: impl Fn(&mut Editor, &mut Window, &mut Context<Editor>) + 'static) -> gpui::Stateful<gpui::Div> {
     let tc = ToolbarColors::current();
     let ink = if on { tc.on_ink } else { tc.ink };
-    icon_toggle_button(tip, g, tip, on, open)
+    icon_toggle_button(tip, g, tip, on, open).h(px(28.)).min_w(px(28.))
         .when(dropdown, |b| b.child(glyph(Icon::TbChevron, 10., ink))
             .child(gpui::canvas(move |bounds, _, _| { BOUNDS.with(|m| { m.borrow_mut().insert(tip, bounds); }); }, |_, _, _, _| {})
                 .absolute().top_0().left_0().size_full()))

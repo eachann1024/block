@@ -120,6 +120,7 @@ impl Element for BlockText {
         (id, measured)
     }
     fn prepaint(&mut self, _: Option<&GlobalElementId>, _: Option<&gpui::InspectorElementId>, bounds: Bounds<Pixels>, state: &mut Measured, window: &mut Window, cx: &mut App) -> TextLayout {
+        let fresh = state.borrow().is_some();
         let mut layout = state.borrow_mut().take()
             .or_else(|| self.editor.update(cx, |this, _| this.layouts.remove(&self.block)))
             .unwrap_or_else(|| TextLayout { bounds: Bounds::default(), lines: Vec::new(), line_height: px(21.), cells: Vec::new(), alignment: TextAlign::Left });
@@ -127,6 +128,11 @@ impl Element for BlockText {
         if delta.x != px(0.) || delta.y != px(0.) { layout.translate(delta); }
         layout.bounds = bounds;
         let editor = self.editor.read(cx);
+        if !layout.cells.is_empty() {
+            // Wide tables scroll sideways; keep the caret's cell in view when it moves.
+            let caret = (editor.reveal_caret && editor.caret.head.block == self.block).then_some(editor.caret.head.offset);
+            table_layout::settle(self.editor.entity_id(), self.block, &mut layout, fresh, caret);
+        }
         if editor.reveal_caret && editor.caret.head.block == self.block {
             let offset = vertical_offset(editor, self.block, &layout).unwrap_or(editor.caret.head.offset);
             window.request_autoscroll(Bounds::new(layout.point(offset), size(px(2.), layout.line_height)));
@@ -152,11 +158,17 @@ impl Element for BlockText {
         };
         let fenced = self.editor.read(cx).doc.get(self.block).and_then(|b| b.meta.code_language.clone());
         if let Some(language) = &fenced { super::code_block::paint_card(layout.bounds, language, window, cx); }
-        super::find_bar::paint_matches(self.editor.read(cx), self.block, layout, window);
-        super::annotate::paint_highlights(self.editor.read(cx), self.block, layout, window);
-        table_layout::paint_background(layout, window);
+        // A table scrolls inside the block minus the extend-button room; everything it draws is clipped to that.
+        let is_table = !layout.cells.is_empty();
+        let clip = is_table.then(|| gpui::ContentMask { bounds: table_layout::visible(layout.bounds) });
+        if is_table { table_layout::track_wheel(self.editor.clone(), self.block, layout, window); }
+        window.with_content_mask(clip, |window| {
+            super::find_bar::paint_matches(self.editor.read(cx), self.block, layout, window);
+            super::annotate::paint_highlights(self.editor.read(cx), self.block, layout, window);
+            table_layout::paint_background(layout, window);
+        });
         super::ai::preview::paint_outline(self.editor.read(cx), self.block, layout, window);
-        if !layout.cells.is_empty() { super::table_actions::track_hover(self.editor.clone(), self.block, layout, window); }
+        if is_table { super::table_actions::track_hover(self.editor.clone(), self.block, layout, window); }
         let tint = {
             let editor = self.editor.read(cx);
             match (editor.table_sel, editor.doc.get(self.block).and_then(|b| b.meta.table.as_ref())) {
@@ -165,42 +177,33 @@ impl Element for BlockText {
                 _ => None,
             }
         };
-        if let Some((sel, columns)) = tint {
-            use super::table_actions::TableSel;
-            let dark = crate::theme::is_dark();
-            let (head_color, body_color): (gpui::Hsla, gpui::Hsla) = match (dark, sel) {
-                (true, _) => (gpui::rgba(0x4c8bf533).into(), gpui::rgba(0x4c8bf522).into()),
-                (false, TableSel::Whole) => (gpui::rgba(0x2a78d61a).into(), gpui::rgba(0x2a78d61a).into()),
-                (false, TableSel::Column(_)) => (gpui::rgb(0xf0eee6).into(), gpui::rgba(0x73726c0e).into()),
-                (false, _) => (gpui::rgb(0xf0eee6).into(), gpui::rgba(0x73726c0a).into()),
-            };
-            for (i, cell) in layout.cells.iter().enumerate() {
-                let (r, c) = (i / columns, i % columns);
-                let hit = match sel { TableSel::Row(x) => r == x, TableSel::Column(x) => c == x, TableSel::Whole => true, TableSel::Cell(..) => false };
-                if hit { window.paint_quad(fill(cell.frame, if r == 0 { head_color } else { body_color })); }
-            }
-            table_layout::paint_grid_lines(layout, window);
-        }
-        paint_lines(layout, true, window, cx);
-        if focused {
-            if !tint.is_some_and(|(s, _)| matches!(s, super::table_actions::TableSel::Whole)) {
-                if let Some(range) = selected {
-                    for rect in layout.rects(range) { window.paint_quad(quad(rect, px(2.), Theme::ocean().selection, 0., transparent_black(), BorderStyle::default())); }
+        window.with_content_mask(clip, |window| {
+            if let Some((sel, columns)) = tint { table_layout::paint_selection(layout, sel, columns, window); }
+            paint_lines(layout, true, window, cx);
+            if focused {
+                if !tint.is_some_and(|(s, _)| matches!(s, super::table_actions::TableSel::Whole)) {
+                    if let Some(range) = selected {
+                        // Crossing cells selects whole cells with the accent tint; otherwise highlight the text.
+                        if !table_layout::paint_cell_selection(layout, &range, window) {
+                            for rect in layout.rects(range) { window.paint_quad(quad(rect, px(2.), Theme::ocean().selection, 0., transparent_black(), BorderStyle::default())); }
+                        }
+                    }
                 }
-            }
-            if head.block == self.block {
-                if empty {
-                    let p = layout.point(head.offset);
-                    window.paint_quad(fill(Bounds::new(p, size(px(1.5), layout.line_height)), Theme::ocean().accent));
-                }
-                if let Some(range) = composing {
-                    for rect in layout.rects(range) {
-                        window.paint_quad(fill(Bounds::new(point(rect.left(), rect.bottom()-px(1.)), size(rect.size.width, px(1.))), Theme::ocean().accent));
+                if head.block == self.block {
+                    if empty {
+                        let p = layout.point(head.offset);
+                        window.paint_quad(fill(Bounds::new(p, size(px(1.5), layout.line_height)), Theme::ocean().accent));
+                    }
+                    if let Some(range) = composing {
+                        for rect in layout.rects(range) {
+                            window.paint_quad(fill(Bounds::new(point(rect.left(), rect.bottom()-px(1.)), size(rect.size.width, px(1.))), Theme::ocean().accent));
+                        }
                     }
                 }
             }
-        }
-        paint_lines(layout, false, window, cx);
+            paint_lines(layout, false, window, cx);
+            if is_table { table_layout::paint_edge(layout, window); }
+        });
         if placeholder { paint_placeholder(layout, window, cx); }
         let saved = std::mem::replace(layout, TextLayout {
             bounds: Bounds::default(), lines: Vec::new(), line_height: px(0.), cells: Vec::new(), alignment: TextAlign::Left,
