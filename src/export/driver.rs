@@ -60,6 +60,7 @@ fn open(
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| crate::theme::tr("未命名", "Untitled").into());
     let restore = editor.focus_handle(cx);
+    editor.clear_transient_overlays();
     let view = cx.new(|cx| ExportView::new(title, whole, selection, prefer_selection, restore, cx));
     view.update(cx, |view, cx| view.request(cx));
     let focus = view.read(cx).focus_handle(cx);

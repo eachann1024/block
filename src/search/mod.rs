@@ -1,6 +1,7 @@
 //! Shared search state, debounced query runner, and result list rendering
 //! used by both the in-app search overlay (`app_search.rs`) and the standalone
 //! floating search window (`search/window.rs`).
+#[cfg(not(target_family = "wasm"))]
 pub mod window;
 
 use std::ops::Range;
