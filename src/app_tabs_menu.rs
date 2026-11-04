@@ -18,26 +18,15 @@ pub(super) const TAB_MAX_W: f32 = 220.;
 pub(super) const TAB_FADE_W: f32 = 20.;
 
 #[derive(Clone)]
-struct TabMenu {
-    index: usize,
-    path: PathBuf,
-    position: Point<Pixels>,
-}
+struct TabMenu { index: usize, path: PathBuf, position: Point<Pixels> }
 
 #[derive(Clone)]
-pub(super) struct ClosingGhost {
-    pub index: usize,
-    pub label: String,
-    pub seq: u64,
-}
+pub(super) struct ClosingGhost { pub index: usize, pub label: String, pub seq: u64 }
 
 #[derive(Default)]
 struct TabUiState {
-    menu: Option<TabMenu>,
-    page_menu: Option<Point<Pixels>>,
-    opening: Option<(PathBuf, u64)>,
-    closing: Option<ClosingGhost>,
-    seq: u64,
+    menu: Option<TabMenu>, page_menu: Option<Point<Pixels>>,
+    opening: Option<(PathBuf, u64)>, closing: Option<ClosingGhost>, seq: u64,
 }
 
 thread_local! {
@@ -85,16 +74,17 @@ pub(super) fn record_tab_close(index: usize, label: String, cx: &mut Context<Wor
     }).detach();
 }
 
-/// Renders an icon whose stroke switches from `base` to `hover` when `group` is hovered.
+/// Renders an icon that is mono (`base`) at rest and switches to duo (`hover`, `fill`, `accent`) when `group` is hovered.
 pub(crate) fn hover_tinted_icon(
     group: SharedString, glyph: Icon, size: f32, base: Hsla, hover: Hsla, fill: Hsla,
 ) -> gpui::Div {
     let theme = Theme::ocean();
-    let colors = |line| IconColors { line, fill, accent: theme.accent };
+    let idle = IconColors { line: base, fill: transparent_black(), accent: base };
+    let active = IconColors { line: hover, fill, accent: theme.accent };
     div().relative().flex_none().size(px(size))
-        .child(div().group_hover(group.clone(), |s| s.invisible()).child(icon(glyph, px(size), colors(base))))
+        .child(div().group_hover(group.clone(), |s| s.invisible()).child(icon(glyph, px(size), idle)))
         .child(div().absolute().top_0().left_0().invisible().group_hover(group, |s| s.visible())
-            .child(icon(glyph, px(size), colors(hover))))
+            .child(icon(glyph, px(size), active)))
 }
 
 /// Right-edge horizontal fade ramp from transparent `color` to solid `color`.
@@ -129,7 +119,7 @@ pub(super) fn render_closing_ghost(ghost: &ClosingGhost) -> impl IntoElement {
     div().id(("tab-closing", ghost.seq as usize)).h(px(28.)).flex_none().overflow_hidden()
         .rounded(px(6.)).flex().items_center().gap(px(6.)).text_size(px(13.)).line_height(px(18.))
         .text_color(theme.text_secondary)
-        .child(icon(Icon::Note, px(14.), theme.icon_colors(theme.text_secondary)))
+        .child(icon(Icon::Note, px(14.), theme.mono_icon_colors(theme.text_secondary)))
         .child(div().relative().flex_1().min_w_0().h_full().flex().items_center().overflow_hidden()
             .child(div().whitespace_nowrap().child(ghost.label.clone()))
             .child(tab_fade(theme.shell).absolute().top_0().bottom_0().right_0()))
@@ -189,7 +179,11 @@ impl Workspace {
                 TAB_UI.with(|ui| { let mut s = ui.borrow_mut(); s.menu = None; s.page_menu = if s.page_menu.is_some() { None } else { Some(anchor) }; });
                 cx.notify();
             }))
-            .child(hover_tinted_icon(more_group, Icon::More, 16., if page_open { theme.accent } else { theme.text_secondary }, theme.text, transparent_black()));
+            .child(if page_open {
+                icon(Icon::More, px(16.), theme.icon_colors(theme.accent))
+            } else {
+                hover_tinted_icon(more_group, Icon::More, 16., theme.text_secondary, theme.text, theme.icon_fill)
+            });
         div().h_full().flex_none().flex().items_center()
             .when(has_note, |d| d.child(more))
             .child(crate::ui::window_controls::window_controls("main-win", true, true))

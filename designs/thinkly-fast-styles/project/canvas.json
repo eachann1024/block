@@ -63,112 +63,34 @@
       "expand": "fill",
       "title": "文件树 · 新建与右键菜单"
     },
-    "F-QuickNote.dc.html": {
-      "page": "workspace",
-      "x": 3040,
-      "y": 0,
-      "w": 440,
-      "h": 520,
-      "is_interactive": true,
-      "title": "速记小窗 · 方案 A · 纯白素纸（单页无栏，与主窗口解耦）"
-    },
     "QuickNote-V2-Dots.dc.html": {
       "page": "workspace",
-      "x": 3560,
-      "y": 0,
-      "w": 440,
-      "h": 520,
-      "is_interactive": true,
-      "title": "速记小窗 · 方案 B（已采用）· 3 槽圆点 + Shift 上下滚动切换（独立面板）"
-    },
-    "QuickNote-V3-FloatAction.dc.html": {
-      "page": "workspace",
-      "x": 4080,
-      "y": 0,
-      "w": 440,
-      "h": 520,
-      "is_interactive": true,
-      "title": "速记小窗 · 方案 C · 底部悬浮三槽胶囊"
-    },
-    "Tabs-V1-InPlace.dc.html": {
-      "page": "workspace",
-      "x": 0,
-      "y": 1020,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "方案 A · 原地切换与历史前后退（推荐：单击替换当前标签，⌘+点击或点 + 才新开）"
-    },
-    "Tabs-V2-Preview.dc.html": {
-      "page": "workspace",
-      "x": 1520,
-      "y": 1020,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "方案 B · 单一预览槽（单击复用斜体预览标签，双击或编辑自动转正）"
-    },
-    "Tabs-V3-Pinned.dc.html": {
-      "page": "workspace",
       "x": 3040,
-      "y": 1020,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
+      "y": 0,
+      "w": 440,
+      "h": 520,
       "is_interactive": true,
-      "title": "方案 C · 常驻钉选胶囊 + 单篇阅读流（平时无标签堆积，按需钉选常驻）"
-    },
-    "Sidebar-V1-User.dc.html": {
-      "page": "workspace",
-      "x": 0,
-      "y": 2040,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "侧栏底栏 · 方案 A（按你的想法：工作区下拉移至左下 + 右下小设置图标）"
+      "title": "速记小窗 · 3 槽圆点 + Shift 上下滚动切换（独立面板）"
     },
     "Sidebar-V2-Clean.dc.html": {
       "page": "workspace",
-      "x": 1520,
-      "y": 2040,
+      "x": 0,
+      "y": 1020,
       "w": 1440,
       "h": 900,
       "expand": "fill",
       "is_interactive": true,
-      "title": "侧栏底栏 · 方案 B（已采用）· 顶部「搜索+新建」单行去重 + 底栏无框胶囊与迷你设置"
-    },
-    "Rename-V1-InlineField.dc.html": {
-      "page": "workspace",
-      "x": 0,
-      "y": 3060,
-      "w": 1440,
-      "h": 920,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "重命名 · 方案 A · 原位单层内嵌框（外行不画框 + 24px 白底单描边 + 右侧 22px 原位 ↵ 确认）"
+      "title": "侧栏底栏 · 顶部「搜索+新建」单行去重 + 底栏无框胶囊与迷你设置"
     },
     "Rename-V2-RowCapsule.dc.html": {
       "page": "workspace",
       "x": 1520,
-      "y": 3060,
+      "y": 1020,
       "w": 1440,
       "h": 920,
       "expand": "fill",
       "is_interactive": true,
-      "title": "重命名 · 方案 B（已采用）· 整行合一焦点舱（32px 整行白底蓝框 + 内部无框透明输入 + 图标联动点亮）"
-    },
-    "Rename-V3-PopoverCard.dc.html": {
-      "page": "workspace",
-      "x": 3040,
-      "y": 3060,
-      "w": 1440,
-      "h": 920,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "重命名 · 方案 C · 锚定浮层重命名卡（原行保持选中 + 下方 244px 全宽浮层卡片 + 完整显示长文件名）"
+      "title": "重命名 · 整行合一焦点舱（32px 整行白底蓝框 + 内部无框透明输入 + 图标联动点亮）"
     },
     "F-Toolbar.dc.html": {
       "page": "editor",
@@ -179,24 +101,25 @@
       "expand": "fill",
       "title": "选区工具栏与调色盘"
     },
-    "F-Annotate.dc.html": {
-      "page": "editor",
-      "x": 1520,
-      "y": 0,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "title": "AI 标注模式与评论卡片"
-    },
     "F-Image-Toolbar.dc.html": {
       "page": "editor",
-      "x": 3040,
+      "x": 1520,
       "y": 0,
       "w": 1440,
       "h": 980,
       "expand": "fill",
       "is_interactive": true,
       "title": "图片工具栏 · 胶囊浮条与更多菜单"
+    },
+    "Annotate-V1-TopBar.dc.html": {
+      "page": "editor",
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 920,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "紧凑批注 · 宽屏单行微字条 + 窄窗页边数字微章与点击原位浮层 Popover"
     },
     "T-Table-Handles.dc.html": {
       "page": "editor",
@@ -227,36 +150,6 @@
       "expand": "fill",
       "is_interactive": true,
       "title": "全局 Tooltip 规范（浅色 / 深色）"
-    },
-    "Annotate-V1-TopBar.dc.html": {
-      "page": "editor",
-      "x": 0,
-      "y": 2200,
-      "w": 1440,
-      "h": 920,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "紧凑批注 A（推荐）· 宽屏单行微字条 + 窄窗页边数字微章与点击原位浮层 Popover"
-    },
-    "Annotate-V2-BottomDock.dc.html": {
-      "page": "editor",
-      "x": 1520,
-      "y": 2200,
-      "w": 1440,
-      "h": 920,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "紧凑批注 B · 宽屏行尾圆角小胶囊 + 窄窗段落内联紧贴微条 Inline Strip"
-    },
-    "Annotate-V3-RailHeader.dc.html": {
-      "page": "editor",
-      "x": 3040,
-      "y": 2200,
-      "w": 1440,
-      "h": 920,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "紧凑批注 C · 宽屏页边无框眉批 + 窄窗顶栏汇总胶囊与底部悬浮抽屉 Sheet"
     },
     "F-Find.dc.html": {
       "page": "search",
@@ -403,24 +296,14 @@
       "title": "代码块 · 居右控件与滚动即收起的通用下拉"
     },
     "Menu-Icons-V1-Duo.dc.html": {
-      "x": 0,
-      "y": 1100,
-      "w": 1440,
-      "h": 1320,
-      "page": "code",
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "方案 A · 双色语义线稿（延续 Duo 1.5px 圆端线稿 + 浅蓝语义面 + 强调蓝点睛）"
-    },
-    "Menu-Icons-V2-Badge.dc.html": {
       "x": 1520,
-      "y": 1100,
+      "y": 0,
       "w": 1440,
       "h": 1320,
       "page": "code",
       "expand": "fill",
       "is_interactive": true,
-      "title": "方案 B · 微缩语法铭牌与高对比单线几何（18×18 键帽方章 + 语法定界符微雕）"
+      "title": "菜单与下拉图标 · 双色语义线稿（1.5px 圆端线稿 + 浅蓝语义面 + 强调蓝点睛）"
     },
     "M-Motion-System.dc.html": {
       "page": "motion",
@@ -436,26 +319,15 @@
   "order": [
     "Main.dc.html",
     "F-Files.dc.html",
-    "F-QuickNote.dc.html",
     "QuickNote-V2-Dots.dc.html",
-    "QuickNote-V3-FloatAction.dc.html",
-    "Tabs-V1-InPlace.dc.html",
-    "Tabs-V2-Preview.dc.html",
-    "Tabs-V3-Pinned.dc.html",
-    "Sidebar-V1-User.dc.html",
     "Sidebar-V2-Clean.dc.html",
-    "Rename-V1-InlineField.dc.html",
     "Rename-V2-RowCapsule.dc.html",
-    "Rename-V3-PopoverCard.dc.html",
     "F-Toolbar.dc.html",
-    "F-Annotate.dc.html",
     "F-Image-Toolbar.dc.html",
+    "Annotate-V1-TopBar.dc.html",
     "T-Table-Handles.dc.html",
     "T-Heading-Collapse.dc.html",
     "T-Tooltip-System.dc.html",
-    "Annotate-V1-TopBar.dc.html",
-    "Annotate-V2-BottomDock.dc.html",
-    "Annotate-V3-RailHeader.dc.html",
     "F-Find.dc.html",
     "F-Search.dc.html",
     "S-Settings-3.dc.html",
@@ -474,7 +346,6 @@
     "Mascot-Folio.dc.html",
     "C-Code-Block.dc.html",
     "Menu-Icons-V1-Duo.dc.html",
-    "Menu-Icons-V2-Badge.dc.html",
     "M-Motion-System.dc.html"
   ],
   "notes": {},
