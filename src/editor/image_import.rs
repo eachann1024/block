@@ -32,8 +32,13 @@ impl Editor {
     }
     pub(super) fn note_dir(&self) -> Option<PathBuf> { self.path.as_ref()?.parent().map(Path::to_path_buf) }
     fn assets_dir(&mut self, cx: &mut Context<Self>) -> Option<PathBuf> {
-        let assets = self.note_dir()?.join("assets");
-        if let Err(error) = std::fs::create_dir_all(&assets) { self.status = format!("{}: {error}", crate::theme::tr("无法创建 assets 文件夹", "Failed to create assets folder")); cx.notify(); return None; }
+        let folder = crate::theme::assets_folder();
+        let assets = self.note_dir()?.join(&folder);
+        if let Err(error) = std::fs::create_dir_all(&assets) {
+            self.status = format!("{}: {error}", crate::theme::tr("无法创建资源文件夹", "Failed to create assets folder"));
+            cx.notify();
+            return None;
+        }
         Some(assets)
     }
     /// Copy images into `assets/` and insert one image block per file.
@@ -57,7 +62,8 @@ impl Editor {
         self.insert_blocks(id, Place::After, vec![raw_block(&Self::image_line("pasted", &name))], window, cx);
     }
     fn image_line(alt: &str, name: &str) -> String {
-        image_source::format(&image_source::ImageSpec { alt: alt.replace(['[', ']'], ""), src: format!("./assets/{name}"),
+        let folder = crate::theme::assets_folder();
+        image_source::format(&image_source::ImageSpec { alt: alt.replace(['[', ']'], ""), src: format!("./{folder}/{name}"),
             title: None, width: None, align: image_source::Align::Left })
     }
     /// Block under `position` (list geometry, so static images count; nearest text block as fallback) and the side to insert on.

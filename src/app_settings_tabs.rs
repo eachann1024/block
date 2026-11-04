@@ -1,12 +1,13 @@
 //! Bodies of the non-AI Settings tabs: appearance, general, shortcuts and local folder.
-use gpui::{Context, CursorStyle, FontWeight, MouseButton, div, prelude::*, px};
+use gpui::{Context, CursorStyle, MouseButton, div, prelude::*, px};
+use gpui_component::input::Input;
 use crate::files::state::{FontChoice, LanguageMode, ThemeMode};
 use crate::theme::{
-    DEFAULT_QUICK_SHORTCUT, DEFAULT_SEARCH_SHORTCUT, Theme, font_choice, language_mode, quick_shortcut,
-    search_shortcut, theme_mode, tr,
+    DEFAULT_ASSETS_FOLDER, DEFAULT_QUICK_SHORTCUT, DEFAULT_SEARCH_SHORTCUT, Theme, assets_folder,
+    font_choice, hide_assets_folder, language_mode, quick_shortcut, search_shortcut, theme_mode, tr,
 };
 use crate::ui::settings_controls::{
-    action_button, card_title, segmented, setting_row, settings_card, shortcut_recorder, static_badge, static_keycap,
+    card_title, segmented, setting_row, settings_card, shortcut_recorder, static_badge, static_keycap,
 };
 use super::Workspace;
 use super::settings::ShortcutKind;
@@ -36,13 +37,48 @@ impl Workspace {
                 .child(setting_row(tr("正文字体", "Editor Font"), font_seg(cx))))
     }
 
-    pub(super) fn general_tab(&self) -> gpui::Div {
-        div().child(settings_card(16.).child(card_title(tr("编辑与行为", "Editing & Behavior")))
-            .child(setting_row(tr("标准阅读版心", "Standard Reading Width"), static_badge("672px", true)))
-            .child(setting_row(tr("块把手触发方式", "Block Handle"),
-                static_badge(tr("悬停与聚焦时显示", "Show on Hover & Focus"), false)))
-            .child(setting_row(tr("自动保存笔记修改", "Auto-save Edits"),
-                static_badge(tr("实时写入本地文件", "Saved Live to Disk"), false))))
+    pub(super) fn general_tab(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let theme = Theme::ocean();
+        let hide_assets = hide_assets_folder();
+        let hide_seg = segmented("hide-assets-seg", [
+            (tr("默认隐藏", "Hidden by Default"), hide_assets, true),
+            (tr("始终显示", "Always Show"), !hide_assets, false),
+        ], |hide, cx: &mut Context<Self>| Box::new(cx.listener(move |this, _, _, cx| this.set_hide_assets(hide, cx))));
+        let assets_customized = assets_folder() != DEFAULT_ASSETS_FOLDER || !hide_assets_folder();
+        let reset_btn = div().id("reset-assets")
+            .px(px(8.)).py(px(4.)).rounded(crate::ui::radius::CONTROL).text_size(px(14.)).text_color(theme.accent)
+            .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                cx.stop_propagation();
+                this.reset_assets_settings(window, cx);
+            }))
+            .child(tr("恢复默认", "Reset"));
+
+        div().flex().flex_col().gap(px(24.))
+            .child(settings_card(16.).child(card_title(tr("编辑与行为", "Editing & Behavior")))
+                .child(setting_row(tr("标准阅读版心", "Standard Reading Width"), static_badge("672px", true)))
+                .child(setting_row(tr("块把手触发方式", "Block Handle"),
+                    static_badge(tr("悬停与聚焦时显示", "Show on Hover & Focus"), false)))
+                .child(setting_row(tr("自动保存笔记修改", "Auto-save Edits"),
+                    static_badge(tr("实时写入本地文件", "Saved Live to Disk"), false))))
+            .child(settings_card(16.)
+                .child(div().flex().items_center().justify_between()
+                    .child(card_title(tr("静态资源", "Static Assets")))
+                    .when(assets_customized, |row| row.child(reset_btn)))
+                .when_some(self.settings.as_ref(), |card, modal| {
+                    card.child(setting_row(
+                        tr("全局资源文件夹名", "Global Assets Folder"),
+                        div().flex().items_center().gap(px(10.))
+                            .child(
+                                div().w(px(168.)).h(px(32.)).px(px(8.)).rounded(crate::ui::radius::CONTROL)
+                                    .bg(theme.shell).border_1().border_color(theme.btn_border)
+                                    .flex().items_center()
+                                    .child(Input::new(&modal.assets_input).appearance(false).bordered(false).focus_bordered(false))
+                            )
+                            .child(static_badge(format!("./{}/", assets_folder()), true)),
+                    ))
+                })
+                .child(setting_row(tr("列表与搜索可见性", "List & Search Visibility"), hide_seg(cx))))
     }
 
     pub(super) fn shortcuts_tab(&self, cx: &mut Context<Self>) -> gpui::Div {
@@ -62,7 +98,7 @@ impl Workspace {
             .child(div().flex().items_center().justify_between()
                 .child(card_title(tr("基础快捷键", "Shortcuts")))
                 .when(customized, |row| row.child(div().id("reset-shortcuts")
-                    .px(px(8.)).py(px(4.)).rounded(px(6.)).text_size(px(14.)).text_color(theme.accent)
+                    .px(px(8.)).py(px(4.)).rounded(crate::ui::radius::CONTROL).text_size(px(14.)).text_color(theme.accent)
                     .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                         cx.stop_propagation();
@@ -79,21 +115,5 @@ impl Workspace {
             .child(setting_row(tr("AI 助手面板", "AI Assistant Panel"), static_keycap("secondary-j"))))
     }
 
-    pub(super) fn storage_tab(&self, cx: &mut Context<Self>) -> gpui::Div {
-        let theme = Theme::ocean();
-        let path = self.folder.clone();
-        let label = path.as_ref().map_or_else(|| tr("尚未选择", "Not selected").to_owned(), |p| p.display().to_string());
-        let can_reveal = path.is_some();
-        let reveal = action_button("storage-reveal", tr("在访达中打开", "Show in Finder"), false, can_reveal)
-            .when(can_reveal, |b| b.on_mouse_down(MouseButton::Left, move |_, _, _| {
-                if let Some(p) = &path { crate::files::ops::reveal_in_finder(p); }
-            }));
-        let change = action_button("storage-change", tr("更换目录", "Change Folder"), false, !self.busy())
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.choose_folder(window, cx)));
-        div().child(settings_card(16.).child(card_title(tr("工作区目录", "Workspace Folder")))
-            .child(setting_row(tr("当前工作区目录", "Current Folder"), div().flex_1().min_w_0().flex().items_center().justify_end().gap(px(8.))
-                .child(div().flex_1().min_w_0().max_w(px(260.)).overflow_hidden().whitespace_nowrap().text_ellipsis()
-                    .text_size(px(14.)).font_weight(FontWeight(460.)).text_color(theme.text_secondary).child(label))
-                .child(reveal).child(change))))
-    }
+
 }

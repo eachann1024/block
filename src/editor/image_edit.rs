@@ -92,9 +92,10 @@ impl Editor {
         let new_name = format!("{stem}-crop-{stamp}.{ext}");
         let (dest, new_src) = if image_source::is_remote(&spec.src) {
             if let Some(note_dir) = self.path.as_deref().and_then(std::path::Path::parent) {
-                let assets = note_dir.join("assets");
+                let folder = crate::theme::assets_folder();
+                let assets = note_dir.join(&folder);
                 let _ = std::fs::create_dir_all(&assets);
-                (assets.join(&new_name), format!("./assets/{new_name}"))
+                (assets.join(&new_name), format!("./{folder}/{new_name}"))
             } else {
                 let dest = path.with_file_name(&new_name);
                 let src = dest.to_string_lossy().into_owned();
