@@ -29,7 +29,7 @@ struct Pending {
     lines: Vec<WrappedLine>, natural: Pixels,
 }
 
-pub(super) fn measure(table: &Table, width: Pixels, selected: Option<Range<usize>>, window: &mut Window) -> TextLayout {
+pub(super) fn measure(table: &Table, width: Pixels, selected: Option<Range<usize>>, link_ranges: &[Range<usize>], window: &mut Window) -> TextLayout {
     let theme = Theme::ocean();
     let font_size = px(FONT_SIZE);
     let line_height = px(LINE_HEIGHT);
@@ -49,6 +49,12 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<Range<usize
         let foreground = text_runs::attribute_color(&cell.attrs, false)
             .or_else(|| text_runs::attribute_color(&table.attrs, false)).unwrap_or(default_fg);
         let runs = text_runs::runs(&cell.content, &text, foreground);
+        let cell_links: Vec<Range<usize>> = link_ranges.iter().filter_map(|r| {
+            let a = r.start.max(range.start);
+            let b = r.end.min(range.end);
+            (a < b).then(|| (a - range.start)..(b - range.start))
+        }).collect();
+        let runs = text_runs::underline_ranges(&text, runs, &cell_links);
         let cell_sel = selected.as_ref().and_then(|sel| {
             let a = sel.start.max(range.start);
             let b = sel.end.min(range.end);
