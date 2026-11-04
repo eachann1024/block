@@ -24,11 +24,14 @@ pub struct DropdownPalette {
     pub bg: Hsla,
     pub text: Hsla,
     pub icon: Hsla,
+    pub icon_fill: Hsla,
+    pub icon_accent: Hsla,
     pub muted: Hsla,
     pub hover_bg: Hsla,
     pub checked_bg: Hsla,
     pub sep: Hsla,
     pub danger_fg: Hsla,
+    pub danger_fill: Hsla,
     pub danger_hover_bg: Hsla,
     pub danger_hover_fg: Hsla,
 }
@@ -37,15 +40,17 @@ pub fn palette() -> DropdownPalette {
     if is_dark() {
         DropdownPalette {
             bg: rgb(0x222222).into(), text: rgb(0xececec).into(), icon: rgb(0xb4b4b4).into(),
+            icon_fill: rgb(0x31456a).into(), icon_accent: rgb(0x779de8).into(),
             muted: rgb(0x8e8d88).into(), hover_bg: rgba(0xffffff12).into(), checked_bg: rgba(0xffffff12).into(),
-            sep: rgba(0xffffff1a).into(), danger_fg: rgb(0xf28b82).into(),
+            sep: rgba(0xffffff1a).into(), danger_fg: rgb(0xf28b82).into(), danger_fill: rgba(0xf28b822e).into(),
             danger_hover_bg: rgb(0xd03b3b).into(), danger_hover_fg: rgb(0xffffff).into(),
         }
     } else {
         DropdownPalette {
-            bg: rgb(0xffffff).into(), text: rgb(0x1f1e1d).into(), icon: rgb(0x52514e).into(),
+            bg: rgb(0xffffff).into(), text: rgb(0x1f1e1d).into(), icon: rgb(0x3d3c39).into(),
+            icon_fill: rgb(0xc9d8f3).into(), icon_accent: rgb(0x547dd0).into(),
             muted: rgb(0x898781).into(), hover_bg: rgba(0x0b0b0b0d).into(), checked_bg: rgba(0x0000000d).into(),
-            sep: rgba(0x0b0b0b1a).into(), danger_fg: rgb(0x8e2626).into(),
+            sep: rgba(0x0b0b0b1a).into(), danger_fg: rgb(0x8e2626).into(), danger_fill: rgba(0xd03b3b24).into(),
             danger_hover_bg: rgb(0xd03b3b).into(), danger_hover_fg: rgb(0xffffff).into(),
         }
     }
@@ -108,6 +113,11 @@ pub fn line_icon(glyph: Icon, size: f32, color: Hsla) -> impl IntoElement {
     icon(glyph, px(size), IconColors { line: color, fill: transparent_black(), accent: color })
 }
 
+pub fn duo_icon(glyph: Icon, size: f32) -> impl IntoElement {
+    let p = palette();
+    icon(glyph, px(size), IconColors { line: p.icon, fill: p.icon_fill, accent: p.icon_accent })
+}
+
 #[derive(Default)]
 pub struct RowSpec {
     pub icon: Option<Icon>,
@@ -126,13 +136,15 @@ pub fn row_with(id: impl Into<ElementId>, spec: RowSpec) -> Stateful<Div> {
         .flex().items_center().text_size(px(14.)).line_height(px(20.)).when(spec.disabled, |s| s.opacity(0.4));
     let row = if spec.danger {
         let fg = if spec.highlighted && !spec.disabled { p.danger_hover_fg } else { p.danger_fg };
+        let base_c = IconColors { line: p.danger_fg, fill: p.danger_fill, accent: p.danger_fg };
+        let hov_c = IconColors { line: p.danger_hover_fg, fill: rgba(0xffffff33).into(), accent: p.danger_hover_fg };
         let lead = div().relative().size(px(16.)).flex_none().flex().items_center().justify_center()
             .when_some(spec.icon, |slot, g| {
                 if spec.disabled || spec.highlighted {
-                    slot.child(line_icon(g, 16., fg))
+                    slot.child(icon(g, px(16.), if spec.highlighted && !spec.disabled { hov_c } else { base_c }))
                 } else {
-                    slot.child(div().group_hover("dd-danger-row", |s| s.invisible()).child(line_icon(g, 16., p.danger_fg)))
-                        .child(div().absolute().top_0().left_0().invisible().group_hover("dd-danger-row", |s| s.visible()).child(line_icon(g, 16., p.danger_hover_fg)))
+                    slot.child(div().group_hover("dd-danger-row", |s| s.invisible()).child(icon(g, px(16.), base_c)))
+                        .child(div().absolute().top_0().left_0().invisible().group_hover("dd-danger-row", |s| s.visible()).child(icon(g, px(16.), hov_c)))
                 }
             });
         row.group("dd-danger-row").text_color(fg)
@@ -141,7 +153,7 @@ pub fn row_with(id: impl Into<ElementId>, spec: RowSpec) -> Stateful<Div> {
             .child(lead)
     } else {
         let lead = div().size(px(16.)).flex_none().flex().items_center().justify_center()
-            .when_some(spec.icon, |slot, g| slot.child(line_icon(g, 16., p.icon)));
+            .when_some(spec.icon, |slot, g| slot.child(duo_icon(g, 16.)));
         row.text_color(p.text)
             .when(spec.checked, move |s| s.bg(p.checked_bg))
             .when(spec.highlighted && !spec.disabled, move |s| s.bg(p.hover_bg))

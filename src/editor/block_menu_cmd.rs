@@ -58,13 +58,27 @@ pub(in crate::editor) fn language_label(tag: &str) -> &'static str {
 }
 
 pub(in crate::editor) fn language_icon(tag: &str) -> Option<Icon> {
-    match canonical_lang_tag(tag) {
-        "csv" => Some(Icon::Table),
-        "latex" => Some(Icon::Math),
-        "markdown" => Some(Icon::Note),
-        "mermaid" => Some(Icon::Diagram),
-        _ => None,
-    }
+    Some(match canonical_lang_tag(tag) {
+        "" => Icon::LangAuto,
+        "csv" => Icon::Table,
+        "latex" => Icon::Math,
+        "markdown" => Icon::Note,
+        "mermaid" => Icon::Diagram,
+        "plaintext" => Icon::LangPlain,
+        "bash" => Icon::LangBash,
+        "css" => Icon::LangCss,
+        "html" => Icon::LangHtml,
+        "javascript" => Icon::LangJs,
+        "json" => Icon::LangJson,
+        "lean" => Icon::LangLean,
+        "python" => Icon::LangPython,
+        "rust" => Icon::LangRust,
+        "sql" => Icon::LangSql,
+        "typescript" => Icon::LangTs,
+        "xml" => Icon::LangXml,
+        "yaml" => Icon::LangYaml,
+        _ => Icon::Code,
+    })
 }
 #[derive(Clone, Copy, PartialEq)]
 pub(in crate::editor) enum Cmd {
@@ -133,9 +147,10 @@ impl Cmd {
             Cmd::Turn(kind) => kind_icon(kind),
             Cmd::Callout => Icon::Callout,
             Cmd::Columns => Icon::Columns,
-            Cmd::Code("mermaid") | Cmd::SetLanguage("mermaid", _) => Icon::Diagram,
-            Cmd::Code("math") | Cmd::SetLanguage("math", _) => Icon::Math,
-            Cmd::Code(_) | Cmd::SetLanguage(..) => Icon::Code,
+            Cmd::Code("mermaid") => Icon::Diagram,
+            Cmd::Code("math") => Icon::Math,
+            Cmd::SetLanguage(tag, _) => return language_icon(tag),
+            Cmd::Code(_) => Icon::Code,
             Cmd::Table => Icon::Table, Cmd::Divider => Icon::Divider, Cmd::Image => Icon::Image, Cmd::Ai => Icon::Sparkles,
             Cmd::Delete => Icon::Trash,
         })
