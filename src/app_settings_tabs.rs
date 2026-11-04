@@ -69,10 +69,11 @@ impl Workspace {
                         this.reset_shortcuts(cx);
                     }))
                     .child(tr("恢复默认", "Reset")))))
-            .child(setting_row(tr("搜索与全局唤起", "Search & Switcher"),
+            .child(setting_row(tr("全局唤出", "Global Summon"),
                 shortcut_recorder("rec-search", &search_spec, recording == Some(ShortcutKind::Search), record(ShortcutKind::Search))))
             .child(setting_row(tr("速记小窗", "Quick Note"),
                 shortcut_recorder("rec-quick", &quick_spec, recording == Some(ShortcutKind::Quick), record(ShortcutKind::Quick))))
+            .child(setting_row(tr("搜索笔记", "Search Notes"), static_keycap("secondary-k")))
             .child(setting_row(tr("当前笔记查找", "Find in Note"), static_keycap("secondary-f")))
             .child(setting_row(tr("新建笔记", "New Note"), static_keycap("secondary-n")))
             .child(setting_row(tr("AI 助手面板", "AI Assistant Panel"), static_keycap("secondary-j"))))
