@@ -156,7 +156,7 @@ fn build_footer(
         }
         ExportTheme::Journal | ExportTheme::Kraft => {
             let is_j = theme == ExportTheme::Journal;
-            let l = if is_j { crate::theme::tr("Yu · 随手记", "Yu · journal") } else { crate::theme::tr("Yu · 黑卡手账", "Yu · kraft") };
+            let l = if is_j { crate::theme::tr("Block · 随手记", "Block · journal") } else { crate::theme::tr("Block · 黑卡手账", "Block · kraft") };
             let sc = if is_j { Color::rgba(181, 70, 47, 215) } else { Color::rgba(224, 122, 95, 220) };
             let s1 = make_buf(fonts, "YU", "SF Mono", 10.0, true);
             let s2 = make_buf(fonts, &format!("{:02}·{:02}", d.month, d.day), "SF Mono", 15.0, true);

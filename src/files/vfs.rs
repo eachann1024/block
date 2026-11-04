@@ -24,9 +24,9 @@ static VFS: LazyLock<Mutex<Vfs>> = LazyLock::new(|| Mutex::new(seed()));
 
 fn seed() -> Vfs {
     let en = crate::theme::is_en();
-    let root = PathBuf::from("/Yu");
+    let root = PathBuf::from("/Block");
     let sub = root.join(if en { "Design Notes" } else { "设计笔记" });
-    let welcome = root.join(if en { "Welcome to Yu.md" } else { "欢迎使用 Yu.md" });
+    let welcome = root.join(if en { "Welcome to Block.md" } else { "欢迎使用 Block.md" });
     let arch = root.join(if en { "Sub-Millisecond Block Editor.md" } else { "毫秒级块级编辑器.md" });
     let guide = sub.join(if en { "Typography & Share Cards.md" } else { "排版与导出卡片指南.md" });
 

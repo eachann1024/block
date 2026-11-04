@@ -1,8 +1,8 @@
-//! Preloaded Chinese and English demo notes for the Yu web hero stage.
+//! Preloaded Chinese and English demo notes for the Block web hero stage.
 
-pub const DEMO_NOTE: &str = r#"# Yu · 文字之隅，落笔即成
+pub const DEMO_NOTE: &str = r#"# Block · 文字之隅，落笔即成
 
-欢迎体验直接在浏览器中运行的 **Yu** 真实编辑器（基于 Rust + GPUI 编译为 WebAssembly）。将鼠标悬停在任意段落旁，即可唤出左侧的拖拽把手；空行旁还会出现 + 插入按钮。
+欢迎体验直接在浏览器中运行的 **Block** 真实编辑器（基于 Rust + GPUI 编译为 WebAssembly）。将鼠标悬停在任意段落旁，即可唤出左侧的拖拽把手；空行旁还会出现 + 插入按钮。
 
 ## 块把手、拖拽重排与块转换
 
@@ -36,9 +36,9 @@ fn reorder_block(blocks: &mut Vec<Block>, from: usize, to: usize) {
 ```
 "#;
 
-pub const DEMO_NOTE_EN: &str = r#"# Yu · A Quiet Corner for Crisp Markdown
+pub const DEMO_NOTE_EN: &str = r#"# Block · A Quiet Corner for Crisp Markdown
 
-Welcome to the live **Yu** editor running directly in your browser via Rust + GPUI compiled to WebAssembly. Hover beside any block to reveal its drag handle, or click the `+` button next to an empty line to insert a new block.
+Welcome to the live **Block** editor running directly in your browser via Rust + GPUI compiled to WebAssembly. Hover beside any paragraph to reveal its drag handle, or click the `+` button next to an empty line to insert a new section.
 
 ## Block Handles, Drag-to-Reorder & Slash Menu
 
