@@ -1,9 +1,9 @@
-//! Preferences state and actions (⌘,): theme, editor font, font smoothing, and global hotkeys.
+//! Preferences state and actions (⌘,): theme, editor font, and global hotkeys.
 use gpui::{Context, FocusHandle, Keystroke, Window};
 use crate::files::state::{FontChoice, LanguageMode, ThemeMode, update_state};
 use crate::theme::{
-    DEFAULT_QUICK_SHORTCUT, DEFAULT_SEARCH_SHORTCUT, font_smoothing, quick_shortcut,
-    search_shortcut, set_font_choice, set_font_smoothing, set_language_mode, set_shortcuts, set_theme_mode,
+    DEFAULT_QUICK_SHORTCUT, DEFAULT_SEARCH_SHORTCUT, quick_shortcut,
+    search_shortcut, set_font_choice, set_language_mode, set_shortcuts, set_theme_mode,
 };
 use super::Workspace;
 
@@ -86,15 +86,6 @@ impl Workspace {
         }).detach();
         self.editor.update(cx, |editor, cx| { editor.reset_layouts(); cx.notify(); });
         crate::quick::refresh_style(cx);
-        cx.notify();
-    }
-
-    pub(super) fn toggle_smoothing(&mut self, cx: &mut Context<Self>) {
-        let next = !font_smoothing();
-        set_font_smoothing(next);
-        cx.background_executor().spawn(async move {
-            let _ = update_state(|s| s.font_smoothing = Some(next));
-        }).detach();
         cx.notify();
     }
 
