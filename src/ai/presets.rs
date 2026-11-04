@@ -32,6 +32,24 @@ impl Preset {
     pub(crate) fn label(&self) -> &'static str {
         tr(self.zh, self.en)
     }
+
+    pub(crate) fn icon(&self) -> crate::icons::Icon {
+        use crate::icons::Icon;
+        match self.id {
+            "openai" => Icon::ProvOpenai,
+            "anthropic" => Icon::ProvAnthropic,
+            "gemini" => Icon::ProvGemini,
+            "deepseek" => Icon::ProvDeepseek,
+            "openrouter" => Icon::ProvOpenrouter,
+            "siliconflow" => Icon::ProvSiliconflow,
+            "moonshot" => Icon::ProvMoonshot,
+            "zhipu" => Icon::ProvZhipu,
+            "dashscope" => Icon::ProvDashscope,
+            "ollama" => Icon::ProvOllama,
+            "lmstudio" => Icon::ProvLmstudio,
+            _ => Icon::ProvCustom,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]

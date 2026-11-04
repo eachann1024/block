@@ -199,20 +199,21 @@ impl Render for AiSettings {
         let menu = dropdown::shell("ai-provider-menu").w(px(260.)).children(
             PRESETS.iter().enumerate().map(|(ix, p)| {
                 let pid = p.id;
-                dropdown::row(("ai-preset", ix), None, p.label(), self.provider == pid)
+                dropdown::row(("ai-preset", ix), Some(p.icon()), p.label(), self.provider == pid)
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| {
                         cx.stop_propagation(); this.select_provider(pid, w, cx);
                     }))
             }),
         );
         let provider_select = div().relative().w(px(260.)).h(px(32.))
-            .child(div().id("ai-provider-trigger").size_full().px(px(10.)).flex().items_center().justify_between()
+            .child(div().id("ai-provider-trigger").size_full().px(px(10.)).flex().items_center().gap(px(8.)).justify_between()
                 .rounded(px(6.)).border_1().border_color(if menu_open { theme.accent } else { theme.btn_border }).bg(theme.paper)
                 .text_size(px(13.)).text_color(if preset.is_some() { theme.text } else { theme.text_secondary })
                 .cursor(CursorStyle::PointingHand).hover(move |s| s.border_color(theme.accent))
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                     cx.stop_propagation(); this.menu_open = !this.menu_open; cx.notify();
                 }))
+                .when_some(preset, |d, p| d.child(dropdown::duo_icon(p.icon(), 16.)))
                 .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(provider_label))
                 .child(dropdown::line_icon(Icon::ChevronDown, 14., theme.text_secondary)))
             .when(menu_open, |d| d.child(deferred(div().absolute().top(px(36.)).left_0().child(menu)).with_priority(3)));
