@@ -19,6 +19,13 @@ pub fn default_name(slot: usize) -> String {
     else { format!("速记 {}", slot + 1) }
 }
 
+pub fn is_default_name(slot: usize, name: &str) -> bool {
+    let trimmed = name.trim();
+    trimmed == format!("速记 {}", slot + 1)
+        || trimmed == format!("Quick {}", slot + 1)
+        || (slot == 0 && matches!(trimmed, "灵感" | "Ideas"))
+}
+
 /// `~/Library/Application Support/Thinkly Fast/quick` on macOS.
 pub fn dir() -> PathBuf {
     let base = dirs::data_dir().or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))
