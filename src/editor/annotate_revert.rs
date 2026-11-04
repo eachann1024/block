@@ -13,34 +13,18 @@ struct RestoreTarget {
 }
 
 impl Editor {
-    pub(crate) fn restore_all_annotations(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let ids = self.annotate.annotations.iter().filter(|note| note.has_rewrite())
-            .map(|note| note.id).collect::<Vec<_>>();
-        self.restore_annotations(&ids, window, cx);
-    }
-
     pub(crate) fn restore_annotation(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         self.restore_annotations(&[id], window, cx);
     }
 
     fn restore_annotations(&mut self, ids: &[u64], window: &mut Window, cx: &mut Context<Self>) {
+        let _ = window;
         let mut targets = Vec::new();
         let mut invalid = Vec::new();
         let mut changed = false;
         for id in ids {
             let Some(note) = self.annotate.annotations.iter().find(|note| note.id == *id).cloned() else { continue };
-            if !note.has_rewrite() { continue; }
-            if !note.is_applied() {
-                if let Some(note) = self.annotate.annotations.iter_mut().find(|note| note.id == *id) {
-                    note.ai_rewritten = None;
-                    note.ai_error = None;
-                    note.streaming = false;
-                    note.request_id = None;
-                    note.applied = Some(false);
-                    changed = true;
-                }
-                continue;
-            }
+            if !note.has_rewrite() || !note.is_applied() { continue; }
             let Some((block_id, range, _)) = resolve_annotation_span(&self.doc, &note) else {
                 invalid.push(*id);
                 continue;
@@ -104,17 +88,6 @@ impl Editor {
                     note.ai_error = None;
                 }
             }
-            if self.annotate.active_annotation.is_some_and(|id| ids.contains(&id)) {
-                self.annotate.active_annotation = None;
-                self.annotate.followup = None;
-                window.focus(&self.focus, cx);
-            }
-            changed = true;
-        }
-        if self.annotate.active_annotation.is_some_and(|id| ids.contains(&id)) {
-            self.annotate.active_annotation = None;
-            self.annotate.followup = None;
-            window.focus(&self.focus, cx);
             changed = true;
         }
         if changed { self.persist_annotations(); cx.notify(); }

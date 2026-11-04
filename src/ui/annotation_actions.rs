@@ -17,13 +17,13 @@ fn action_btn(
     div().id(id).h(px(height)).px(px(pad_x)).flex_none().rounded(px(6.)).border_1()
         .flex().items_center().justify_center().text_size(px(14.)).line_height(px(20.))
         .when(tone == BatchTone::Accent, |button| {
-            button.bg(theme.selected).border_color(theme.accent).text_color(theme.text).font_weight(FontWeight(500.))
+            button.bg(theme.accent).border_color(theme.accent).text_color(gpui::rgb(0xffffff)).font_weight(FontWeight(460.))
         })
         .when(tone == BatchTone::Neutral, |button| {
-            button.bg(theme.paper).border_color(theme.btn_border).text_color(theme.text_secondary)
+            button.bg(theme.paper).border_color(theme.btn_border).text_color(theme.text)
         })
         .when(enabled, |button| button.cursor(CursorStyle::PointingHand)
-            .hover(move |style| style.bg(theme.hover).text_color(theme.text)))
+            .hover(move |style| if tone == BatchTone::Accent { style.opacity(0.9) } else { style.bg(theme.hover).text_color(theme.text) }))
         .when(!enabled, |button| button.cursor(CursorStyle::Arrow).opacity(0.6))
         .when(enabled, |button| button.on_mouse_down(MouseButton::Left, on_press))
         .child(label.into())
@@ -37,14 +37,4 @@ pub fn batch_button(
     on_press: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     action_btn(id, label, 28., 10., tone, enabled, on_press)
-}
-
-pub fn compact_action_button(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    tone: BatchTone,
-    enabled: bool,
-    on_press: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<Div> {
-    action_btn(id, label, 26., 10., tone, enabled, on_press)
 }
