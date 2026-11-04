@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>标题折叠 · 普通块禁用把手 · 锚点与交互</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1f64d8;text-decoration:none}a:hover{color:#154cb0;text-decoration:underline}
+button{font-family:inherit}
+.fold-btn{width:28px;height:28px;border-radius:8px;border:0;background:#f2f1ef;color:#37352f;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;flex:none;box-sizing:border-box}
+.fold-btn:hover{background:#e8e6e2}
+.anchor-btn{width:26px;height:26px;border-radius:6px;border:0;background:transparent;color:#37352f;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;flex:none}
+.anchor-btn:hover{background:#f2f1ef}
+.tip{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:8px;background:#0f0f0f;color:#ffffff;font-size:13px;font-weight:450;line-height:18px;letter-spacing:-0.01em;white-space:nowrap;box-shadow:0 4px 12px rgba(15,15,15,.16)}
+.h-serif{font-family:'Songti SC','STSong','Noto Serif CJK SC',Georgia,serif;font-size:26px;line-height:36px;font-weight:600;color:#141413;margin:0}
+.tbl{width:100%;border-collapse:collapse;border:1px solid #e3e1dc;font-size:15px;line-height:22px;color:#1f1e1d;background:#ffffff}
+.tbl th,.tbl td{border:1px solid #e3e1dc;padding:10px 14px;text-align:left;vertical-align:middle;font-weight:400;box-sizing:border-box}
+.tbl th{background:#f5f3ef;color:#5e5d59}
+.tbl-grip{position:absolute;left:-38px;top:6px;width:26px;height:26px;border-radius:8px;border:0;background:#f3f1ec;color:#6e6c66;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;box-sizing:border-box}
+.tbl-grip:hover{background:#eae7e0;color:#37352f}
+.code-tag{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:18px;padding:2px 7px;border-radius:5px;background:#f2f1ee;color:#5e5d59;border:1px solid #e5e3de}
+</style>
+</helmet>
+<div style="width:100%;height:980px;box-sizing:border-box;display:flex;flex-direction:column;background:#f7f7f5;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#1f1e1d;font-size:14px;line-height:20px;overflow:hidden">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;padding:0 16px;gap:12px;background:#f7f7f5;border-bottom:1px solid #ececea">
+<div aria-hidden="true" style="display:flex;gap:8px;width:52px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<div style="flex:1;text-align:center;font-size:13px;color:#5e5d59">标题章节折叠 · 普通块把手暂时禁用（保留代码）</div>
+<div style="display:flex;gap:6px">
+<button onClick="{{toggleFold}}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #dcdad4;background:#ffffff;color:#1f1e1d;font-size:12px;cursor:pointer">{{toggleLabel}}</button>
+</div>
+</header>
+
+<main style="flex:1;min-height:0;background:#ffffff;overflow:auto;padding:40px 64px 56px;box-sizing:border-box;display:flex;flex-direction:column;gap:40px">
+
+<section style="max-width:860px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#5e5d59">
+<span>1. 标题悬停：左侧仅显示圆角浅灰折叠箭头按钮 + 顶部黑底 Tooltip「Collapse section」，右侧显示链接锚点图标（无六点块把手）</span>
+</div>
+
+<div style="position:relative;padding:42px 44px 16px 44px;border:1px solid #eceae4;border-radius:12px;background:#ffffff">
+<div style="position:absolute;left:20px;top:10px">
+<span class="tip">{{tooltipText}}</span>
+</div>
+
+<div style="position:relative;display:flex;align-items:center;gap:10px">
+<button class="fold-btn" onClick="{{toggleFold}}" aria-label="{{tooltipText}}" style="margin-left:-38px">
+<sc-if value="{{isExpanded}}" hint-placeholder-val="{{true}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+</sc-if>
+<sc-if value="{{isCollapsed}}" hint-placeholder-val="{{false}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+</sc-if>
+</button>
+<h2 class="h-serif">先定返程：周日从潮汕站走</h2>
+<button class="anchor-btn" aria-label="复制章节链接">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+</button>
+</div>
+
+<sc-if value="{{isExpanded}}" hint-placeholder-val="{{true}}">
+<div style="margin-top:18px;display:flex;flex-direction:column;gap:16px">
+<p style="margin:0;font-size:16px;line-height:28px;font-weight:600">
+<span style="background:#fdf1d6;padding:2px 0">周日 11/15 坐潮汕站 18:23 的 G6315，20:54 到广州南。她在广州南下车，你转 21:38 的 C7777，23:0</span>7 到阳江站。
+</p>
+
+<div style="position:relative">
+<button class="tbl-grip" aria-label="选中整张表格">
+<svg width="12" height="14" viewBox="0 0 12 14" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="3" r="1.2"/><circle cx="8.5" cy="3" r="1.2"/><circle cx="3.5" cy="7" r="1.2"/><circle cx="8.5" cy="7" r="1.2"/><circle cx="3.5" cy="11" r="1.2"/><circle cx="8.5" cy="11" r="1.2"/></svg>
+</button>
+<table class="tbl">
+<thead>
+<tr>
+<th style="width:21%">周日方案</th>
+<th style="width:25%">她到广州</th>
+<th style="width:27%">你到阳江</th>
+<th style="width:27%">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="color:#1f64d8;font-weight:600">G6315：潮汕 18:23</td>
+<td>广州南 20:54</td>
+<td>21:38 转 <a href="#c7777">C7777</a>，阳江 23:07</td>
+<td style="font-weight:600">首选，下午能玩到约 17:15</td>
+</tr>
+<tr>
+<td style="color:#1f64d8">G3815：潮汕 18:39</td>
+<td>广州南 21:17</td>
+<td>换乘只有 21 分钟</td>
+<td>备选，太赶</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<p style="margin:0;font-size:15px;line-height:24px;color:#1f1e1d">
+<strong style="font-weight:600">买票前用 12306 查 11 月 15 日的实际班次。</strong>潮汕站车次来自 10 月 22 日携程页。
+</p>
+</div>
+</sc-if>
+
+<sc-if value="{{isCollapsed}}" hint-placeholder-val="{{false}}">
+<div style="margin-top:10px;font-size:13px;color:#787670">章节已折叠（隐藏管辖下的段落与表格，后续同级标题不受影响）</div>
+</sc-if>
+</div>
+</section>
+
+<section style="max-width:860px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px">
+<div style="font-size:13px;color:#5e5d59">2. 把手重构范围与规则对照（代码保留，普通块暂时禁用把手与块菜单）</div>
+
+<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:16px">
+<div style="padding:18px;border:1px solid #e5e3de;border-radius:10px;background:#faf9f7;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<strong style="font-size:14px;color:#1f1e1d">普通块（段落 / 列表 / 引用等）</strong>
+<span class="code-tag">暂时禁用</span>
+</div>
+<p style="margin:0;font-size:14px;line-height:22px;color:#5e5d59">不渲染左侧六点块把手与空行加号，也不弹出块级操作菜单；现有 EditorSideMenu 实现代码完整保留并加注释说明。</p>
+</div>
+
+<div style="padding:18px;border:1px solid #e5e3de;border-radius:10px;background:#faf9f7;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<strong style="font-size:14px;color:#1f1e1d">表格块（Table）</strong>
+<span class="code-tag" style="background:#e7effd;color:#1f57c0;border-color:#c6dafc">保留并重构</span>
+</div>
+<p style="margin:0;font-size:14px;line-height:22px;color:#5e5d59">左侧显示 28×28 圆角六点把手，点击整表蓝色高亮选中并浮现顶部选区工具栏（不弹块菜单）；列／行胶囊把手点击高亮对应行列并弹出紧凑操作菜单。</p>
+</div>
+
+<div style="padding:18px;border:1px solid #e5e3de;border-radius:10px;background:#faf9f7;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<strong style="font-size:14px;color:#1f1e1d">标题块（H1 / H2 / H3）</strong>
+<span class="code-tag" style="background:#e7effd;color:#1f57c0;border-color:#c6dafc">独立折叠</span>
+</div>
+<p style="margin:0;font-size:14px;line-height:22px;color:#5e5d59">悬停时左侧显示 28×28 浅灰圆角折叠按钮（带 Collapse / Expand section 提示），右侧显示章节链接图标，点击直接折叠或展开该章节。</p>
+</div>
+</div>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"collapsed":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+constructor(p) {
+super(p);
+this.state = { collapsed: null };
+}
+renderVals() {
+const collapsed = this.state.collapsed ?? this.props.collapsed ?? false;
+return {
+isExpanded: !collapsed,
+isCollapsed: Boolean(collapsed),
+tooltipText: collapsed ? 'Expand section' : 'Collapse section',
+toggleLabel: collapsed ? '当前：已折叠（点击展开）' : '当前：已展开（点击折叠）',
+toggleFold: () => this.setState({ collapsed: !collapsed })
+};
+}
+}
+</script>
+</body>
+</html>

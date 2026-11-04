@@ -16,7 +16,7 @@ fn icon_btn(id: impl Into<SharedString>, glyph_icon: Icon, tip: &'static str) ->
     let theme = Theme::ocean();
     div().id(id.into()).size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
         .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
-        .tooltip(move |w, cx| gpui_component::tooltip::Tooltip::new(tip).build(w, cx))
+        .tooltip(crate::theme::tooltip(tip))
         .child(glyph(glyph_icon, 16., theme.text_secondary))
 }
 
@@ -47,7 +47,7 @@ impl Render for AiChat {
                         .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(13.)).child(c.title.clone()))
                         .child(div().id(SharedString::from(format!("conv-del-{id}"))).size(px(22.)).flex().items_center().justify_center().rounded(px(4.))
                             .hover(move |s| s.bg(theme.shell))
-                            .tooltip(|w, cx| gpui_component::tooltip::Tooltip::new("删除会话").build(w, cx))
+                            .tooltip(crate::theme::tooltip("删除会话"))
                             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                                 cx.stop_propagation();
                                 if this.current == Some(id) { this.stop(); this.current = None; }
@@ -154,7 +154,7 @@ impl Render for AiChat {
             icon_btn("ai-chat-stop", Icon::Stop, "停止生成").on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.stop(); cx.notify(); }))
         } else {
             div().id("ai-chat-send").size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(8.)).bg(theme.primary)
-                .cursor(CursorStyle::PointingHand).tooltip(|w, cx| gpui_component::tooltip::Tooltip::new("发送消息").build(w, cx))
+                .cursor(CursorStyle::PointingHand).tooltip(crate::theme::tooltip("发送消息"))
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, w, cx| this.send(w, cx)))
                 .child(glyph(Icon::ArrowUp, 16., gpui::white()))
         };

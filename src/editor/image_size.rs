@@ -8,7 +8,7 @@ fn step_button(editor: &Entity<Editor>, id: u64, slot: usize, icon: impl IntoEle
     let editor = editor.clone();
     div().id(("image-size", id as usize * 4 + slot)).size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
         .cursor(CursorStyle::PointingHand).hover(|s| s.bg(rgb(HOVER))).child(icon)
-        .tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(tip).build(window, cx))
+        .tooltip(crate::theme::tooltip(tip))
         .on_mouse_down(MouseButton::Left, move |_, _: &mut Window, cx| {
             editor.update(cx, |this, cx| run(this, cx)); cx.stop_propagation();
         })
