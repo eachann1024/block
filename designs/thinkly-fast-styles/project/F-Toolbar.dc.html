@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>浅色 · 选区工具栏与下拉</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#2f6fe4}a:hover{color:#1f57c0}
+button{font-family:inherit}
+.bar{display:inline-flex;align-items:center;gap:2px;padding:4px 6px;background:#ffffff;border:1px solid #ececea;border-radius:14px;box-shadow:0 8px 24px rgba(31,30,29,.10),0 1px 3px rgba(31,30,29,.06)}
+.tb{height:32px;min-width:32px;display:inline-flex;align-items:center;justify-content:center;gap:1px;border:0;border-radius:8px;background:transparent;color:#37352f;padding:0 6px;cursor:pointer;flex:none;box-sizing:border-box}
+.tb:hover{background:#f1f1ef}
+.tb.on{background:#e7effd;color:#2f6fe4}
+.tb.open{background:#efefed}
+.sep{width:1px;height:20px;background:#e6e6e3;margin:0 4px;flex:none}
+.menu{background:#ffffff;border:1px solid #ececea;border-radius:12px;box-shadow:0 12px 32px rgba(31,30,29,.12),0 1px 3px rgba(31,30,29,.06);padding:6px;box-sizing:border-box}
+.mi{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:#37352f;font-size:14px;width:100%;text-align:left;cursor:pointer;box-sizing:border-box}
+.mi:hover{background:#f1f1ef}
+.mi .g{width:20px;display:inline-flex;justify-content:center;color:#5e5d59;flex:none}
+.lbl{font-size:12px;line-height:16px;color:#5e5d59;padding:6px 8px 4px}
+.grid{display:grid;grid-template-columns:repeat(5,32px);gap:2px;padding:0 8px}
+.sw{width:32px;height:32px;border:1px solid transparent;border-radius:6px;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-sizing:border-box}
+.sw:hover{background:#f1f1ef}
+.sw.on{background:#e7effd;border-color:#b9cff7}
+.sw .A{font-family:Georgia,'Songti SC',serif;font-size:20px;line-height:1}
+.sw .B{width:24px;height:24px;border-radius:6px;border:1px solid rgba(31,30,29,.12);box-sizing:border-box}
+.cap{font-size:12px;line-height:16px;color:#5e5d59;margin:0 0 10px}
+.sel{background:#cfe0fb}
+</style>
+</helmet>
+<div style="width:100%;height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:#f7f7f5;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#1f1e1d;font-size:14px;line-height:20px;overflow:hidden">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;padding:0 16px;gap:12px;background:#f7f7f5;border-bottom:1px solid #ececea">
+<div aria-hidden="true" style="display:flex;gap:8px;width:52px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<div style="flex:1;text-align:center;font-size:13px;color:#5e5d59">周日行程</div>
+<div aria-hidden="true" style="width:52px;flex:none"></div>
+</header>
+
+<main style="flex:1;min-height:0;background:#ffffff;overflow:auto;display:flex;gap:56px;padding:40px 48px;box-sizing:border-box">
+
+<section style="flex:1;min-width:0;max-width:760px">
+<p class="cap">选中文字后：白色胶囊工具栏，位于选区上方 8px；激活项浅蓝底蓝字，打开下拉的按钮浅灰底</p>
+<div style="position:relative;padding-top:64px">
+<div style="position:absolute;top:0;left:24px">
+<div class="bar" role="toolbar" aria-label="选区工具栏">
+<button class="tb" aria-label="添加批注"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/></svg></button>
+<button class="tb" aria-label="添加表情回应"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-6-7.75"/><path d="M9 14.5c.8 1 1.8 1.5 3 1.5s2.2-.5 3-1.5"/><path d="M9 10h.01M15 10h.01"/><path d="M19 3v5M16.5 5.5h5"/></svg></button>
+<span class="sep"></span>
+<button class="tb" aria-label="文字类型"><span style="font-size:11px;font-weight:600">т</span><span style="font-size:16px;font-weight:600">T</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+<span class="sep"></span>
+<button class="tb on" aria-label="粗体" aria-pressed="true"><span style="font-weight:700;font-size:16px">B</span></button>
+<button class="tb" aria-label="斜体"><span style="font-style:italic;font-family:Georgia,serif;font-size:17px">I</span></button>
+<button class="tb" aria-label="下划线"><span style="text-decoration:underline;font-size:16px">U</span></button>
+<button class="tb" aria-label="删除线"><span style="text-decoration:line-through;font-size:16px">S</span></button>
+<button class="tb" aria-label="行内代码"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4c-2 0-2 1.5-2 3v2c0 1.5-1 3-2 3 1 0 2 1.5 2 3v2c0 1.5 0 3 2 3M16 4c2 0 2 1.5 2 3v2c0 1.5 1 3 2 3-1 0-2 1.5-2 3v2c0 1.5 0 3-2 3"/></svg></button>
+<button class="tb" aria-label="颜色；点击应用上次颜色"><span style="position:relative;display:inline-flex"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 0 0 0 18c1.2 0 1.8-.8 1.8-1.7 0-1.2-1-1.6-1-2.6 0-.9.7-1.7 1.8-1.7H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/></svg><span style="position:absolute;left:2px;right:2px;bottom:-2px;height:2px;border-radius:1px;background:#f6e9d9"></span></span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+<span class="sep"></span>
+<button class="tb open" aria-label="列表"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".9" fill="currentColor"/><circle cx="4.5" cy="12" r=".9" fill="currentColor"/><circle cx="4.5" cy="18" r=".9" fill="currentColor"/></svg><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+<span class="sep"></span>
+<button class="tb" aria-label="链接"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></button>
+</div>
+</div>
+<h1 style="margin:0 0 12px;font-size:30px;line-height:38px;font-weight:600">周日行程</h1>
+<p style="margin:0 0 10px;font-size:16px;line-height:28px">上午九点出发，先去 <span class="sel"><b>西湖边的早餐铺</b>，再沿苏堤步行到</span> 花港观鱼。</p>
+<p style="margin:0 0 10px;font-size:16px;line-height:28px">下午视天气决定：晴天去 <span style="color:#974e08">九溪</span>，下雨就去 <span style="background:#fbf3db">博物馆</span>。</p>
+<ul style="margin:0;padding-left:22px;font-size:16px;line-height:28px"><li>带伞</li><li>预约门票</li></ul>
+</div>
+</section>
+
+<section style="width:520px;flex:none;display:grid;grid-template-columns:240px 240px;gap:24px 40px;align-content:start">
+<div>
+<p class="cap">TT▾ 文字类型（当前项右侧 ✓）</p>
+<div class="menu" style="width:220px">
+<button class="mi"><span class="g" style="font-weight:600">T</span><span style="flex:1">Text</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#37352f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="当前"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>
+<button class="mi"><span class="g" style="font-weight:600">H<sub style="font-size:9px">1</sub></span><span>Heading 1</span></button>
+<button class="mi"><span class="g" style="font-weight:600">H<sub style="font-size:9px">2</sub></span><span>Heading 2</span></button>
+<button class="mi"><span class="g" style="font-weight:600">H<sub style="font-size:9px">3</sub></span><span>Heading 3</span></button>
+</div>
+</div>
+<div>
+<p class="cap">列表▾（当前列表类型带 ✓）</p>
+<div class="menu" style="width:220px">
+<button class="mi"><span class="g"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".9" fill="currentColor"/><circle cx="4.5" cy="12" r=".9" fill="currentColor"/><circle cx="4.5" cy="18" r=".9" fill="currentColor"/></svg></span><span>Bulleted list</span></button>
+<button class="mi"><span class="g"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M10 6h10M10 12h10M10 18h10"/><path d="M4 5l1.5-1v5M4 14.5c0-1 2.5-1 2.5.2 0 1-2.5 2-2.5 3.3h2.5"/></svg></span><span>Numbered list</span></button>
+<button class="mi"><span class="g"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.2l2.4 2.4 4.6-4.8"/></svg></span><span>Checklist</span></button>
+</div>
+</div>
+<div style="grid-column:1 / span 2">
+<p class="cap">调色盘▾：悬停打开（离开 150ms 关闭），单击按钮直接套用上次颜色；再次单击已套用的上次颜色则清除。选文字色会清背景色，反之亦然；按钮底部 2px 色条 = 上次颜色</p>
+<div class="menu" style="width:fit-content;padding:6px 0 8px">
+<div class="lbl" style="padding-left:12px">文本颜色</div>
+<div class="grid">
+<button class="sw on" aria-label="默认" aria-pressed="true"><span class="A" style="color:#1f1e1d">A</span></button>
+<button class="sw" aria-label="灰色"><span class="A" style="color:#5e5d59">A</span></button>
+<button class="sw" aria-label="褐色"><span class="A" style="color:#64473a">A</span></button>
+<button class="sw" aria-label="红色"><span class="A" style="color:#b42318">A</span></button>
+<button class="sw" aria-label="橙色"><span class="A" style="color:#974e08">A</span></button>
+<button class="sw" aria-label="黄色"><span class="A" style="color:#855600">A</span></button>
+<button class="sw" aria-label="绿色"><span class="A" style="color:#086b42">A</span></button>
+<button class="sw" aria-label="蓝色"><span class="A" style="color:#245bb2">A</span></button>
+<button class="sw" aria-label="紫色"><span class="A" style="color:#6940a5">A</span></button>
+<button class="sw" aria-label="粉色"><span class="A" style="color:#ad1a72">A</span></button>
+</div>
+<div class="lbl" style="padding-left:12px;padding-top:8px">背景颜色</div>
+<div class="grid">
+<button class="sw on" aria-label="无背景" aria-pressed="true"><span class="B" style="background:transparent"></span></button>
+<button class="sw" aria-label="灰色背景"><span class="B" style="background:#ebeced"></span></button>
+<button class="sw" aria-label="褐色背景"><span class="B" style="background:#e9e5e3"></span></button>
+<button class="sw" aria-label="红色背景"><span class="B" style="background:#fbe4e4"></span></button>
+<button class="sw" aria-label="橙色背景"><span class="B" style="background:#f6e9d9"></span></button>
+<button class="sw" aria-label="黄色背景"><span class="B" style="background:#fbf3db"></span></button>
+<button class="sw" aria-label="绿色背景"><span class="B" style="background:#ddedea"></span></button>
+<button class="sw" aria-label="蓝色背景"><span class="B" style="background:#ddebf1"></span></button>
+<button class="sw" aria-label="紫色背景"><span class="B" style="background:#eae4f2"></span></button>
+<button class="sw" aria-label="粉色背景"><span class="B" style="background:#f4dfeb"></span></button>
+</div>
+</div>
+</div>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
