@@ -13,7 +13,7 @@ pub(super) fn hovered() -> Option<(u64, usize, usize)> { HOVER.with(|h| h.get())
 pub(super) fn track_hover(editor: Entity<Editor>, block: u64, layout: &TextLayout, window: &mut Window) {
     let Some(grid) = table_layout::grid_rect(layout) else { return };
     let (rows, columns) = table_layout::spans(layout);
-    let reach = Bounds::from_corners(grid.origin - point(px(36.), px(32.)), grid.bottom_right() + point(px(48.), px(36.)));
+    let reach = Bounds::from_corners(grid.origin - point(px(36.), px(32.)), grid.bottom_right() + point(px(56.), px(36.)));
     window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, _, cx| {
         if phase != gpui::DispatchPhase::Bubble || event.dragging() { return; }
         let at = event.position; let current = hovered();
@@ -286,7 +286,7 @@ impl Editor {
         let layout = self.layouts.get(&id)?;
         let bounds = table_layout::grid_rect(layout)?;
         // Hover is only refreshed on mouse move; after a scroll (Cmd+Up, caret jumps) re-check the pointer.
-        let reach = Bounds::from_corners(bounds.origin - point(px(36.), px(32.)), bounds.bottom_right() + point(px(48.), px(36.)));
+        let reach = Bounds::from_corners(bounds.origin - point(px(36.), px(32.)), bounds.bottom_right() + point(px(56.), px(36.)));
         if frozen.is_none() && !reach.contains(&window.mouse_position()) { return None; }
         let viewport = self.list.viewport_bounds();
         if bounds.bottom() < viewport.top() || bounds.top() > viewport.bottom() { return None; }
