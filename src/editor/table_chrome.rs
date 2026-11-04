@@ -123,10 +123,12 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
                         cx.stop_propagation();
                     })));
         }
-        if !whole_selected && table.top() >= view.top() && table.bottom() <= view.bottom() {
+        let col_top = table.top().max(view.top());
+        let col_bottom = table.bottom().min(view.bottom());
+        if !whole_selected && col_bottom - col_top >= px(24.) {
             let add_col = editor.clone();
-            out.push(floating(point(table.right() + px(2.), table.top()),
-                add_bar("table-add-col", px(18.), table.size.height, tr("添加列", "Add column"))
+            out.push(floating(point(table.right() + px(2.), col_top),
+                add_bar("table-add-col", px(18.), col_bottom - col_top, tr("添加列", "Add column"))
                     .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                         add_col.update(cx, |this, cx| { this.table_command(id, TableSel::Whole, TableCmd::AppendColumn, cx); window.focus(&this.focus, cx); });
                         cx.stop_propagation();
