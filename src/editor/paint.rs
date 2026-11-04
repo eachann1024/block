@@ -41,19 +41,8 @@ impl Element for BlockText {
         let id = window.request_measured_layout(style, move |known, available, window, cx| {
             let room = known.width.or(match available.width { AvailableSpace::Definite(w) => Some(w), _ => None }).unwrap_or(px(0.));
             let width = known.width.unwrap_or_else(|| match available.width { AvailableSpace::Definite(w) => w, _ => px(640.) }).max(px(1.));
-            let (selected, link_ranges) = {
-                let editor = editor_entity.read(cx);
-                let whole = editor.table_sel == Some((block_id, super::table_actions::TableSel::Whole));
-                let sel = (editor.focus.is_focused(window) && !whole).then(|| editor.selected_range(block_id)).flatten();
-                (sel, editor.active_link_ranges(block_id, window))
-            };
-            let sel_hash = selected.as_ref().map_or(0, |r| ((r.start as u64).wrapping_add(1) << 32) ^ (r.end as u64).wrapping_add(1))
-                ^ link_ranges.iter().fold(0u64, |acc, r| acc.rotate_left(13) ^ ((r.start as u64).wrapping_add(3) << 32) ^ (r.end as u64).wrapping_add(7));
-            let key = super::view::layout::LayoutKey {
-                content: content ^ sel_hash,
-                width_bits: if nowrap { 0 } else { f32::from(width).to_bits() },
-                nowrap,
-            };
+            let code_hash = editor_entity.read(cx).code_active_hash(block_id, window);
+            let key = super::view::layout::LayoutKey { content: content ^ code_hash, width_bits: if nowrap { 0 } else { f32::from(width).to_bits() }, nowrap };
             let editor_id = editor_entity.entity_id();
             if !composing && super::view::layout::get_key(editor_id, block_id) == Some(key) {
                 let borrow = output.borrow();
@@ -66,7 +55,7 @@ impl Element for BlockText {
                     return size(width, cached.bounds.size.height.max(line_height));
                 }
             }
-            let (text, runs, table) = {
+            let (text, runs, table, code_spans) = {
                 let editor = editor_entity.read(cx);
                 let Some(block) = editor.doc.get(block_id) else { return size(width, line_height); };
                 let text: SharedString = if block.text.is_empty() { "\u{200b}".into() } else { block.text.clone().into() };
@@ -74,10 +63,7 @@ impl Element for BlockText {
                 if matches!(block.kind, Kind::H1 | Kind::H2 | Kind::H3) {
                     let is_h6 = block.kind == Kind::H3 && block.meta.heading_level == Some(6);
                     let weight = FontWeight(if is_h6 { 500. } else { 600. });
-                    for run in &mut runs {
-                        run.font.weight = weight;
-                        if is_h6 { run.color = theme.text_secondary; }
-                    }
+                    for run in &mut runs { run.font.weight = weight; if is_h6 { run.color = theme.text_secondary; } }
                 }
                 let language = block.meta.code_language.as_deref().or_else(|| {
                     block.meta.raw_source.as_ref().map(|_| if text.trim_start().starts_with('<') { "html" } else { "markdown" })
@@ -88,39 +74,35 @@ impl Element for BlockText {
                     runs = super::view::syntax::runs(&text, language, base);
                 }
                 // Inline AI review: the rewrite is diffed in place (thinkly inlinePreview).
-                let (text, runs) = match editor.ai_preview(block_id, &runs) { Some((t, r)) => (t.into(), r), None => (text, runs) };
-                (text, runs, block.meta.table.clone())
+                let (text, runs, has_ai) = match editor.ai_preview(block_id, &runs) { Some((t, r)) => (t.into(), r, true), None => (text, runs, false) };
+                let code_spans = if has_ai { Vec::new() } else { super::inline_code::code_spans(block) };
+                let (text, runs) = super::inline_code::prepare_shaping(&text, runs, &code_spans, super::inline_code::active_code_span(editor, block_id, window).as_ref());
+                (text, runs, block.meta.table.clone(), code_spans)
             };
             if nowrap {
-                let runs = super::text_runs::tint_selection(&text, runs, selected, theme.selection_text);
                 let shaped = window.text_system().shape_text(text, font_size, &runs, None, None).unwrap_or_default();
                 let widest = shaped.iter().map(|l| l.width()).fold(px(0.), |a, b| a.max(b)) + px(2.);
                 let mut start = 0;
                 let lines = shaped.into_iter().map(|line| { let offset = start; start += line.len() + 1; (offset, line) }).collect();
-                let layout = TextLayout { bounds: Bounds::default(), lines, line_height, cells: Vec::new(), alignment: TextAlign::Left };
+                let layout = TextLayout { bounds: Bounds::default(), lines, line_height, cells: Vec::new(), alignment: TextAlign::Left, code_spans };
                 let height = layout.height().max(line_height);
-                *output.borrow_mut() = Some(layout);
-                super::view::layout::set_key(editor_id, block_id, key);
+                *output.borrow_mut() = Some(layout); super::view::layout::set_key(editor_id, block_id, key);
                 return size(widest.max(room).max(px(1.)), height);
             }
             if let Some(table) = &table {
-                let mut layout = table_layout::measure(table, width, selected, &link_ranges, window);
+                let mut layout = table_layout::measure(table, width, window);
                 let height = layout.height() + px(table_layout::EXTEND_ROOM);
                 layout.bounds.size = size(width, height);
-                *output.borrow_mut() = Some(layout);
-                super::view::layout::set_key(editor_id, block_id, key);
+                *output.borrow_mut() = Some(layout); super::view::layout::set_key(editor_id, block_id, key);
                 return size(width, height);
             }
-            let runs = super::text_runs::underline_ranges(&text, runs, &link_ranges);
-            let runs = super::text_runs::tint_selection(&text, runs, selected, theme.selection_text);
             let shaped = window.text_system().shape_text(text, font_size, &runs, Some(width), None).unwrap_or_default();
             let mut start = 0;
             let lines = shaped.into_iter().map(|line| { let offset = start; start += line.len() + 1; (offset, line) }).collect();
-            let mut layout = TextLayout { bounds: Bounds::default(), lines, line_height, cells: Vec::new(), alignment: TextAlign::Left };
+            let mut layout = TextLayout { bounds: Bounds::default(), lines, line_height, cells: Vec::new(), alignment: TextAlign::Left, code_spans };
             let height = layout.height().max(line_height);
             layout.bounds.size = size(width, height);
-            *output.borrow_mut() = Some(layout);
-            super::view::layout::set_key(editor_id, block_id, key);
+            *output.borrow_mut() = Some(layout); super::view::layout::set_key(editor_id, block_id, key);
             size(width, height)
         });
         (id, measured)
@@ -129,7 +111,7 @@ impl Element for BlockText {
         let fresh = state.borrow().is_some();
         let mut layout = state.borrow_mut().take()
             .or_else(|| self.editor.update(cx, |this, _| this.layouts.remove(&self.block)))
-            .unwrap_or_else(|| TextLayout { bounds: Bounds::default(), lines: Vec::new(), line_height: px(21.), cells: Vec::new(), alignment: TextAlign::Left });
+            .unwrap_or_else(|| TextLayout::empty(px(21.)));
         let delta = bounds.origin - layout.bounds.origin;
         if delta.x != px(0.) || delta.y != px(0.) { layout.translate(delta); }
         layout.bounds = bounds;
@@ -155,13 +137,14 @@ impl Element for BlockText {
             }
             if this.caret.head.block == self.block { this.reveal_caret = false; }
         });
-        let (focused, selected, head, empty, composing, placeholder) = {
+        let (focused, selected, head, empty, composing, placeholder, link_ranges) = {
             let editor = self.editor.read(cx);
             let blank = editor.doc.get(self.block).is_some_and(|b| b.text.is_empty() && b.kind == Kind::Paragraph
                 && b.meta.table.is_none() && b.meta.raw_source.is_none());
             (editor.focus.is_focused(window), editor.selected_range(self.block), editor.caret.head,
                 editor.caret.is_empty(), editor.caret.composing.clone(),
-                blank && editor.path.is_some() && editor.caret.head.block == self.block && editor.caret.composing.is_none())
+                blank && editor.path.is_some() && editor.caret.head.block == self.block && editor.caret.composing.is_none(),
+                editor.active_link_ranges(self.block, window))
         };
         let fenced = self.editor.read(cx).doc.get(self.block).and_then(|b| b.meta.code_language.clone());
         if let Some(language) = &fenced { super::code_block::paint_card(layout.bounds, language, window, cx); }
@@ -186,13 +169,16 @@ impl Element for BlockText {
         };
         window.with_content_mask(clip, |window| {
             if let Some((sel, columns)) = tint { table_layout::paint_selection(layout, sel, columns, window); }
+            super::inline_code::paint_chips(self.editor.read(cx), self.block, layout, window);
             paint_lines(layout, true, window, cx);
+            let mut sel_rects = Vec::new();
             if focused {
                 if !tint.is_some_and(|(s, _)| matches!(s, super::table_actions::TableSel::Whole)) {
                     if let Some(range) = selected {
                         // Crossing cells selects whole cells with the accent tint; otherwise highlight the text.
                         if !table_layout::paint_cell_selection(layout, &range, window) {
-                            for rect in layout.rects(range) { window.paint_quad(quad(rect, px(2.), Theme::ocean().selection, 0., transparent_black(), BorderStyle::default())); }
+                            sel_rects = layout.rects(range);
+                            for rect in &sel_rects { window.paint_quad(quad(*rect, px(2.), Theme::ocean().selection, 0., transparent_black(), BorderStyle::default())); }
                         }
                     }
                 }
@@ -216,15 +202,20 @@ impl Element for BlockText {
                 }
             }
             paint_lines(layout, false, window, cx);
+            for rect in &sel_rects {
+                window.with_content_mask(Some(gpui::ContentMask { bounds: *rect }), |window| super::text_runs::paint_tinted_lines(layout, Theme::ocean().selection_text, window));
+            }
+            let link_ul = gpui::UnderlineStyle { color: Some(rgb(0x256abf).into()), thickness: px(1.), wavy: false };
+            for range in link_ranges {
+                for rect in layout.rects(range) { window.paint_underline(point(rect.left(), rect.bottom() - px(3.)), rect.size.width, &link_ul); }
+            }
             if is_table {
                 table_layout::paint_edge(layout, window);
                 super::annotate::paint_table_highlights(self.editor.read(cx), self.block, layout, window);
             }
         });
         if placeholder { paint_placeholder(layout, window, cx); }
-        let saved = std::mem::replace(layout, TextLayout {
-            bounds: Bounds::default(), lines: Vec::new(), line_height: px(0.), cells: Vec::new(), alignment: TextAlign::Left,
-        });
+        let saved = std::mem::replace(layout, TextLayout::empty(px(0.)));
         self.editor.update(cx, |this, _| { this.layouts.insert(self.block, saved); });
         let _ = bounds;
     }
@@ -236,36 +227,25 @@ pub(super) fn metrics(kind: Kind, base: f32) -> (f32, f32) {
 pub(super) fn heading_metrics(kind: Kind, level: Option<u8>, fenced: bool, minimal: bool, base: f32) -> (f32, f32) {
     if fenced { return (14., 1.5); }
     match (kind, level) {
-        (Kind::H3, Some(4)) => (16., 1.4),
-        (Kind::H3, Some(5 | 6)) => (14., 1.45),
+        (Kind::H3, Some(4)) => (16., 1.4), (Kind::H3, Some(5 | 6)) => (14., 1.45),
         (Kind::H1 | Kind::H2 | Kind::H3, _) => metrics(kind, base),
-        _ if minimal => (16., 1.5),
-        _ => (base, 1.5),
+        _ if minimal => (16., 1.5), _ => (base, 1.5),
     }
 }
-thread_local! {
-    static PLACEHOLDER: RefCell<Option<(u16, gpui::ShapedLine)>> = const { RefCell::new(None) };
-}
+thread_local! { static PLACEHOLDER: RefCell<Option<(u16, gpui::ShapedLine)>> = const { RefCell::new(None) }; }
 /// Hint drawn over the zero-width placeholder glyph; never part of the text or hit testing.
 fn paint_placeholder(layout: &TextLayout, window: &mut Window, cx: &mut App) {
     let dark = crate::theme::is_dark();
     let font_size = layout.lines.first().map_or(Theme::ocean().editor_font, |(_, l)| l.font_size());
-    let key = (crate::theme::font_choice() as u16)
-        | ((crate::theme::is_en() as u16) << 4)
-        | ((dark as u16) << 5)
-        | ((f32::from(font_size) as u16) << 8);
+    let key = (crate::theme::font_choice() as u16) | ((crate::theme::is_en() as u16) << 4)
+        | ((dark as u16) << 5) | ((f32::from(font_size) as u16) << 8);
     let line = PLACEHOLDER.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.as_ref().is_none_or(|(c, _)| *c != key) {
-            let text = SharedString::from(crate::theme::tr(
-                "输入 / 或 、 唤出菜单，或开始输入…",
-                "Type / to open menu, or start typing…",
-            ));
+            let text = SharedString::from(crate::theme::tr("输入 / 或 、 唤出菜单，或开始输入…", "Type / to open menu, or start typing…"));
             let color = if dark { rgb(0x6e6d68) } else { rgb(0x9b9a95) };
-            let mut run = plain(text.len(), color.into());
-            run.font.weight = FontWeight::NORMAL;
-            let line = window.text_system().shape_line(text, font_size, &[run], None);
-            *slot = Some((key, line));
+            let mut run = plain(text.len(), color.into()); run.font.weight = FontWeight::NORMAL;
+            *slot = Some((key, window.text_system().shape_line(text, font_size, &[run], None)));
         }
         slot.as_ref().map(|(_, l)| l.clone()).unwrap()
     });
@@ -283,11 +263,8 @@ fn paint_lines(layout: &TextLayout, backgrounds: bool, window: &mut Window, cx: 
     let mut y = layout.bounds.top();
     for (_, line) in &layout.lines {
         let origin = point(layout.bounds.left(),y);
-        if backgrounds {
-            let _ = line.paint_background(origin,layout.line_height,layout.alignment,Some(layout.bounds),window,cx);
-        } else {
-            let _ = line.paint(origin,layout.line_height,layout.alignment,Some(layout.bounds),window,cx);
-        }
+        let _ = if backgrounds { line.paint_background(origin,layout.line_height,layout.alignment,Some(layout.bounds),window,cx) }
+            else { line.paint(origin,layout.line_height,layout.alignment,Some(layout.bounds),window,cx) };
         y += line.size(layout.line_height).height;
     }
 }
