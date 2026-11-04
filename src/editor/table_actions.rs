@@ -9,19 +9,41 @@ pub(super) use cmd::{TableCmd, menu_items};
 thread_local! {
     /// (table block, row, column) under the pointer; the chrome follows hover, not the caret.
     static HOVER: std::cell::Cell<Option<(u64, usize, usize)>> = const { std::cell::Cell::new(None) };
+    static HITBOXES: std::cell::RefCell<std::collections::HashMap<(gpui::EntityId, u64), gpui::Hitbox>> = Default::default();
 }
 pub(super) fn hovered() -> Option<(u64, usize, usize)> { HOVER.with(|h| h.get()) }
+pub(super) fn reach_rect(layout: &TextLayout) -> Option<Bounds<Pixels>> {
+    let grid = table_layout::grid_rect(layout)?.intersect(&table_layout::visible(layout.bounds));
+    Some(Bounds::from_corners(grid.origin - point(px(16.), px(14.)), grid.bottom_right() + point(px(50.), px(24.))))
+}
+pub(super) fn unoccluded(editor: gpui::EntityId, block: u64, rect: Bounds<Pixels>, window: &Window) -> bool {
+    HITBOXES.with(|h| {
+        let map = h.borrow();
+        let Some(hb) = map.get(&(editor, block)) else { return true };
+        let mask = hb.bounds.intersect(&hb.content_mask.bounds);
+        let pts = [rect.origin, point(rect.right() - px(1.), rect.top()), point(rect.left(), rect.bottom() - px(1.)),
+            point(rect.right() - px(1.), rect.bottom() - px(1.)), rect.center()];
+        pts.into_iter().filter(|p| mask.contains(p)).all(|p| hb.is_hovered_at(p, window))
+    })
+}
 /// Registered while a table paints. The reach covers the outside handles and the extend buttons,
 /// so moving from a cell onto its handle keeps the chrome. Off-grid axes keep the last index.
-pub(super) fn track_hover(editor: Entity<Editor>, block: u64, layout: &TextLayout, window: &mut Window) {
+pub(super) fn track_hover(editor: Entity<Editor>, block: u64, layout: &TextLayout, hitbox: Option<gpui::Hitbox>, window: &mut Window) {
     // Only the part inside the horizontal scroll window counts as the table.
     let Some(grid) = table_layout::grid_rect(layout).map(|g| g.intersect(&table_layout::visible(layout.bounds))) else { return };
+    let Some(reach) = reach_rect(layout) else { return };
     let (rows, columns) = table_layout::spans(layout);
-    let reach = Bounds::from_corners(grid.origin - point(px(36.), px(32.)), grid.bottom_right() + point(px(56.), px(36.)));
-    window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, _, cx| {
+    if let Some(hb) = &hitbox {
+        HITBOXES.with(|h| { h.borrow_mut().insert((editor.entity_id(), block), hb.clone()); });
+        if hovered().is_some_and(|h| h.0 == block) && !hb.should_handle_scroll(window) {
+            HOVER.with(|h| h.set(None));
+        }
+    }
+    window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, window, cx| {
         if phase != gpui::DispatchPhase::Bubble || event.dragging() { return; }
         let at = event.position; let current = hovered();
-        let next = reach.contains(&at).then(|| {
+        let unoccluded = hitbox.as_ref().is_none_or(|hb| hb.should_handle_scroll(window));
+        let next = (unoccluded && reach.contains(&at)).then(|| {
             let last = current.filter(|h| h.0 == block);
             let r = if at.y >= grid.top() && at.y < grid.bottom() { table_layout::span_index(&rows, at.y) }
                 else { last.map(|h| h.1).or_else(|| table_layout::span_index(&rows, at.y)) };
@@ -238,7 +260,7 @@ impl Editor {
     }
     /// Reads geometry published by the final paint, so overlays never use prepaint attempts.
     /// Shown for the hovered table; an open menu, drag or selection keeps the chrome visible.
-    pub(in crate::editor) fn table_chrome_geometry(&self, window: &Window) -> Option<TableChrome> {
+    pub(in crate::editor) fn table_chrome_geometry(&self, editor_id: gpui::EntityId, window: &Window) -> Option<TableChrome> {
         if self.path.is_none() || self.dragging.is_some() { return None; }
         let frozen = self.table_menu.map(|m| m.block)
             .or(self.table_drag.map(|d| d.block)).or(self.table_extend.as_ref().map(|e| e.block))
@@ -255,8 +277,9 @@ impl Editor {
         let layout = self.layouts.get(&id)?;
         let bounds = table_layout::grid_rect(layout)?.intersect(&table_layout::visible(layout.bounds));
         // Hover is only refreshed on mouse move; after a scroll (Cmd+Up, caret jumps) re-check the pointer.
-        let reach = Bounds::from_corners(bounds.origin - point(px(36.), px(32.)), bounds.bottom_right() + point(px(56.), px(36.)));
-        if frozen.is_none() && !reach.contains(&window.mouse_position()) { return None; }
+        let reach = reach_rect(layout)?;
+        let pointer_ok = HITBOXES.with(|h| h.borrow().get(&(editor_id, id)).map(|hb| hb.should_handle_scroll(window))).unwrap_or(true);
+        if frozen.is_none() && (!pointer_ok || !reach.contains(&window.mouse_position())) { return None; }
         let viewport = self.list.viewport_bounds();
         if bounds.bottom() < viewport.top() || bounds.top() > viewport.bottom() { return None; }
         let (rows, columns) = table_layout::spans(layout);

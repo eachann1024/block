@@ -71,6 +71,7 @@ pub fn shell() -> Div {
         .border_color(rgb(tc.border))
         .bg(rgb(tc.bg))
         .shadow(shadows())
+        .occlude()
 }
 
 pub fn pill(id: impl Into<ElementId>, width: Option<Pixels>) -> Stateful<Div> {

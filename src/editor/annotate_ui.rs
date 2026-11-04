@@ -198,7 +198,7 @@ fn reaction_popover(picker: ReactionPicker, selected_reaction: Option<String>, c
             )
         },
     );
-    div().id("annotate-reactions-backdrop").absolute().top_0().left_0().size_full()
+    div().id("annotate-reactions-backdrop").absolute().top_0().left_0().size_full().occlude()
         .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
             this.annotate.reactions = None;
             cx.notify();
