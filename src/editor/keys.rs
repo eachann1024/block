@@ -1,7 +1,7 @@
 use gpui::{App, KeyBinding};
 
 use super::view::{
-    Backspace, Bold, Cancel, CmdEnter, Code, Copy, Cut, Delete, DeleteLineLeft, DeleteLineRight,
+    Annotate, CopyMarkdown, ExportImage, Backspace, Bold, Cancel, CmdEnter, Code, Copy, Cut, Delete, DeleteLineLeft, DeleteLineRight,
     DeleteWordLeft, DeleteWordRight, DocEnd, DocStart, Down, DuplicateBlock, EditLink, Enter,
     ExitBlock, Find, ImageGrow, ImageShrink, Italic, Left, LineEnd, LineStart, LogicalLineEnd,
     LogicalLineStart, MoveBlockDown, MoveBlockUp, NextCell, Paste, PreviousCell,
@@ -77,6 +77,9 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd--", ImageShrink, Some("Editor")),
         KeyBinding::new("cmd-f", Find, Some("Editor")),
         KeyBinding::new("cmd-f", Find, None),
+        KeyBinding::new("shift-cmd-e", ExportImage, Some("Editor")),
+        KeyBinding::new("alt-cmd-c", CopyMarkdown, Some("Editor")),
+        KeyBinding::new("alt-cmd-m", Annotate, Some("Editor")),
     ]);
     #[cfg(target_os = "macos")]
     cx.bind_keys([
@@ -110,5 +113,28 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-end", DocEnd, Some("Editor")),
         KeyBinding::new("ctrl-shift-home", SelectDocStart, Some("Editor")),
         KeyBinding::new("ctrl-shift-end", SelectDocEnd, Some("Editor")),
+        KeyBinding::new("ctrl-shift-e", ExportImage, Some("Editor")),
+        KeyBinding::new("ctrl-alt-c", CopyMarkdown, Some("Editor")),
+        KeyBinding::new("ctrl-alt-m", Annotate, Some("Editor")),
+        KeyBinding::new("ctrl-z", Undo, Some("Editor")),
+        KeyBinding::new("ctrl-shift-z", Redo, Some("Editor")),
+        KeyBinding::new("ctrl-s", Save, Some("Editor")),
+        KeyBinding::new("ctrl-enter", CmdEnter, Some("Editor")),
+        KeyBinding::new("ctrl-a", SelectAll, Some("Editor")),
+        KeyBinding::new("ctrl-c", Copy, Some("Editor")),
+        KeyBinding::new("ctrl-x", Cut, Some("Editor")),
+        KeyBinding::new("ctrl-v", Paste, Some("Editor")),
+        KeyBinding::new("ctrl-b", Bold, Some("Editor")),
+        KeyBinding::new("ctrl-i", Italic, Some("Editor")),
+        KeyBinding::new("ctrl-u", Underline, Some("Editor")),
+        KeyBinding::new("ctrl-e", Code, Some("Editor")),
+        KeyBinding::new("ctrl-d", DuplicateBlock, Some("Editor")),
+        KeyBinding::new("ctrl-f", Find, Some("Editor")),
+        KeyBinding::new("ctrl-f", Find, None),
+        KeyBinding::new("ctrl-=", ImageGrow, Some("Editor")),
+        KeyBinding::new("ctrl--", ImageShrink, Some("Editor")),
+        KeyBinding::new("ctrl-shift-s", Strike, Some("Editor")),
+        KeyBinding::new("ctrl-shift-x", Strike, Some("Editor")),
+        KeyBinding::new("ctrl-shift-k", EditLink, Some("Editor")),
     ]);
 }

@@ -185,7 +185,7 @@ impl Workspace {
                 let (notice, trashed, renamed, open, expand) = match op {
                     FileOp::Trash { path, .. } => {
                         ops::move_to_trash(&path)?;
-                        (tr("已移到废纸篓", "Moved to Trash"), Some(path), None, None, None)
+                        (ops::trashed_notice(), Some(path), None, None, None)
                     }
                     FileOp::Rename { path, name, dir, reopen } => {
                         let target = ops::rename(&path, &name, dir)?;

@@ -11,7 +11,7 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 const DEFAULT_MAX_TOKENS: u32 = 8192;
 
 fn curl(config: &Config, path: &str, with_body: bool, max_time: &str) -> Command {
-    let mut cmd = Command::new("/usr/bin/curl");
+    let mut cmd = Command::new(if cfg!(target_os = "macos") { "/usr/bin/curl" } else { "curl" });
     cmd.args([
         "-sS", "-N", "--connect-timeout", "5", "--max-time", max_time,
         "-H", "content-type: application/json",

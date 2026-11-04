@@ -24,7 +24,7 @@ struct FoldStore {
 }
 
 fn store_path() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Application Support/Thinkly Fast/heading-folds.json"))
+    Some(crate::files::app_data_dir("Thinkly Fast").join("heading-folds.json"))
 }
 
 fn load_store() -> FoldStore {

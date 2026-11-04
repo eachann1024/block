@@ -139,6 +139,9 @@ icons! {
     RowInsertBelow => "row-insert-below" [Line],
     RowDelete => "row-delete" [Line],
     GripHorizontal => "grip-horizontal" [Line],
+    Minus => "minus" [Line],
+    WindowMax => "window-max" [Line],
+    WindowRestore => "window-restore" [Line],
 }
 
 /// The three tints of one icon.

@@ -83,6 +83,15 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-4", SlotFour, Some("QuickNote")),
         KeyBinding::new("cmd-5", SlotFive, Some("QuickNote")),
     ]);
+    #[cfg(not(target_os = "macos"))]
+    cx.bind_keys([
+        KeyBinding::new("ctrl-w", HideQuickNote, Some("QuickNote")),
+        KeyBinding::new("ctrl-1", SlotOne, Some("QuickNote")),
+        KeyBinding::new("ctrl-2", SlotTwo, Some("QuickNote")),
+        KeyBinding::new("ctrl-3", SlotThree, Some("QuickNote")),
+        KeyBinding::new("ctrl-4", SlotFour, Some("QuickNote")),
+        KeyBinding::new("ctrl-5", SlotFive, Some("QuickNote")),
+    ]);
     cx.on_action(|_: &ToggleQuickNote, cx: &mut App| toggle(cx));
     start_hotkey(cx);
 }
@@ -125,7 +134,7 @@ fn open(cx: &mut App) {
             titlebar: Some(TitlebarOptions {
                 title: Some(crate::theme::tr("速记", "Quick Note").into()),
                 appears_transparent: true,
-                traffic_light_position: Some(point(px(16.), px(14.))),
+                traffic_light_position: cfg!(target_os = "macos").then_some(point(px(16.), px(14.))),
                 ..Default::default()
             }),
             ..Default::default()

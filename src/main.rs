@@ -53,7 +53,11 @@ fn main() {
         gpui_component::init(cx);
         // The app is light-only; without this, inputs follow macOS dark mode (white text, black field).
         gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx);
-        cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
+        cx.bind_keys([
+            KeyBinding::new("cmd-q", Quit, None),
+            #[cfg(not(target_os = "macos"))]
+            KeyBinding::new("ctrl-q", Quit, None),
+        ]);
         editor::bind_keys(cx);
         quick::init(cx);
         apply_app_menus(cx);
@@ -65,7 +69,7 @@ fn main() {
                 titlebar: Some(TitlebarOptions {
                     title: Some("Thinkly".into()),
                     appears_transparent: true,
-                    traffic_light_position: Some(point(px(16.), px(14.))),
+                    traffic_light_position: cfg!(target_os = "macos").then_some(point(px(16.), px(14.))),
                     ..Default::default()
                 }),
                 ..Default::default()

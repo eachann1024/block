@@ -104,11 +104,14 @@ impl ExportView {
             .flex_none()
             .flex()
             .items_center()
-            .px(px(16.))
+            .pl(px(16.))
+            .pr(px(if cfg!(target_os = "macos") { 16. } else { 0. }))
             .gap(px(12.))
-            .child(div().w(px(52.)).flex_none())
+            .window_control_area(gpui::WindowControlArea::Drag)
+            .child(div().w(px(if cfg!(target_os = "macos") { 52. } else { 138. })).flex_none())
             .child(center)
-            .child(div().w(px(52.)).flex_none())
+            .when(cfg!(target_os = "macos"), |d| d.child(div().w(px(52.)).flex_none()))
+            .child(crate::ui::window_controls::window_controls("export-win", true, true))
     }
 
     fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -208,7 +211,7 @@ impl ExportView {
                                     .font_weight(FontWeight(500.))
                                     .text_color(theme.accent)
                                     .on_click(cx.listener(|this, _: &ClickEvent, _, _| this.reveal_saved()))
-                                    .child(tr("在访达中显示", "Show in Finder")),
+                                    .child(crate::files::ops::reveal_label()),
                             )
                         }),
                 )

@@ -1,7 +1,7 @@
 //! Link field and colour palette popovers for the selection toolbar.
 use gpui::{AnyElement, CursorStyle, Entity, MouseButton, div, prelude::*, px, rgb};
 use gpui_component::input::{Escape, Input, InputState};
-use crate::dropdown;
+use crate::{dropdown::{self, RowSpec}, icons::Icon, theme::tr};
 use super::toolbar::ToolbarColors;
 use super::{format_cmds::{FormatPop, palette::PalettePopover}, view::{Cancel, Editor}};
 
@@ -16,10 +16,32 @@ pub(super) fn popover(editor: Entity<Editor>, pop: &FormatPop) -> AnyElement {
             )
             .into_any_element()
         }
+        FormatPop::SelectionMenu { anchor } => dropdown::deferred_popover(*anchor, selection_menu(editor), 2).into_any_element(),
         FormatPop::Palette { anchor } => dropdown::deferred_popover(*anchor, PalettePopover { editor }, 2).into_any_element(),
         FormatPop::Kinds { anchor, current } => dropdown::deferred_popover(*anchor, super::toolbar::menu(editor, true, *current), 2).into_any_element(),
         FormatPop::Lists { anchor, current } => dropdown::deferred_popover(*anchor, super::toolbar::menu(editor, false, *current), 2).into_any_element(),
     }
+}
+
+/// Right-click menu over a selection: export it as an image, comment on it, or copy it.
+fn selection_menu(editor: Entity<Editor>) -> AnyElement {
+    let mac = cfg!(target_os = "macos");
+    let row = |id: &'static str, icon: Icon, label: &'static str, hint: &'static str, run: fn(&mut Editor, &mut gpui::Window, &mut gpui::Context<Editor>)| {
+        let editor = editor.clone();
+        dropdown::row_with(id, RowSpec { icon: Some(icon), label: label.into(), hint: Some(hint.into()), ..Default::default() })
+            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                editor.update(cx, |this, cx| { this.format = None; run(this, window, cx); cx.notify(); });
+                cx.stop_propagation();
+            })
+    };
+    dropdown::shell("selection-context-menu").w(px(236.))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+        .child(row("sel-export-img", Icon::Image, tr("选中内容生成图片…", "Export Selection as Image…"), if mac { "⇧⌘E" } else { "Ctrl+Shift+E" }, |this, w, cx| this.export_image(w, cx)))
+        .child(row("sel-annotate", Icon::TbComment, tr("添加批注", "Add Comment"), if mac { "⌥⌘M" } else { "Ctrl+Alt+M" }, |this, w, cx| this.start_annotation(w, cx)))
+        .child(dropdown::separator())
+        .child(row("sel-copy", Icon::Copy, tr("复制", "Copy"), if mac { "⌘C" } else { "Ctrl+C" }, |this, w, cx| this.handle(&super::view::EditorAction::Copy, w, cx)))
+        .into_any_element()
 }
 
 fn action_button(label: &'static str, id: &'static str, run: impl Fn(&mut Editor, &mut gpui::Window, &mut gpui::Context<Editor>) + 'static, editor: Entity<Editor>, accent: bool) -> impl IntoElement {
