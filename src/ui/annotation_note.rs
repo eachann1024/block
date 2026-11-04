@@ -104,12 +104,16 @@ pub fn glyph_action(id: impl Into<ElementId>, glyph: &'static str, accent: bool)
 /// Follow-up submit button (`↵` in wide rail, `发送 ↵` in narrow popover).
 pub fn send_button(id: impl Into<ElementId>, label: impl Into<SharedString>, compact: bool) -> Stateful<Div> {
     let theme = Theme::ocean();
+    let label = label.into();
     div().id(id).flex_none().border_1().border_color(theme.accent).bg(theme.selected).text_color(theme.text)
         .when(compact, |b| b.size(px(28.)).rounded(px(5.)))
         .when(!compact, |b| b.h(px(30.)).px(px(12.)).rounded(px(6.)).font_weight(FontWeight(500.)))
         .flex().items_center().justify_center().text_size(px(14.)).line_height(px(20.))
         .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
-        .child(label.into())
+        .child(crate::ui::shortcut_label::shortcut_label(
+            label,
+            crate::ui::shortcut_label::ShortcutStyle::ui(px(11.), px(16.), FontWeight::MEDIUM, theme.text),
+        ))
 }
 
 /// Dismiss pill (`收起`) in the narrow in-place popover header.

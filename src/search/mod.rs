@@ -105,12 +105,7 @@ impl SearchState {
     }
 }
 
-pub fn kbd(label: impl Into<SharedString>) -> Div {
-    let theme = Theme::ocean();
-    div().h(px(20.)).px(px(6.)).flex().flex_none().items_center().justify_center().rounded(px(4.))
-        .bg(theme.shell).border_1().border_color(theme.btn_border)
-        .text_size(px(11.)).text_color(theme.text_secondary).child(label.into())
-}
+pub(crate) use crate::ui::shortcut_label::kbd;
 
 pub fn highlighted(text: String, marks: &[Range<usize>]) -> StyledText {
     let bg = if is_dark() { gpui::rgb(0x5c4813) } else { gpui::rgb(0xfbe7a6) };
@@ -143,7 +138,12 @@ pub fn render_footer() -> Div {
         .child(div().flex().items_center().gap(px(6.)).child(kbd("↑")).child(kbd("↓")).child(tr("选择", "Select")))
         .child(div().flex().items_center().gap(px(6.)).child(kbd("↵")).child(tr("打开", "Open")))
         .child(div().flex().items_center().gap(px(6.)).child(kbd("esc")).child(tr("关闭", "Close")))
-        .child(div().ml_auto().child(format!("{hotkey_label} {}", tr("全局唤出", "Global Summon"))))
+        .child(
+            div().ml_auto().child(crate::ui::shortcut_label::shortcut_label(
+                format!("{hotkey_label} {}", tr("全局唤出", "Global Summon")),
+                crate::ui::shortcut_label::ShortcutStyle::ui(px(11.), px(16.), gpui::FontWeight::NORMAL, theme.text_secondary),
+            )),
+        )
 }
 
 pub fn render_body<V: 'static>(
