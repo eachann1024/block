@@ -1,5 +1,5 @@
 //! Block-level commands shared by the "+" menu, the slash menu, the block handle menu and the top toolbar.
-use gpui::{Context, Pixels, Point, Window, point, px};
+use gpui::{Context, Pixels, Point, Size, Window, point, px};
 use super::{input::transactions::ListChange, model::{Block, Kind, Table},
     image_source::Align, table_actions::{TableCmd, TableSel}, view::{Editor, selection::Position}};
 use crate::icons::Icon;
@@ -13,8 +13,11 @@ use cmd::{LANGUAGES, SLASH, language_label};
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Mode { Handle, Slash }
 #[derive(Clone, Copy)]
-pub(super) struct BlockMenu { pub block: u64, pub anchor: Point<Pixels>, pub mode: Mode, pub index: usize, pub sub: Sub }
-/// Which page of the handle menu is showing; sub pages replace the root list in place.
+pub(super) struct BlockMenu {
+    pub block: u64, pub anchor: Point<Pixels>, pub mode: Mode, pub index: usize,
+    pub sub: Sub, pub sub_index: usize, pub kind: BlockType, pub lang: &'static str, pub viewport: Size<Pixels>,
+}
+/// Which cascading side submenu of the handle menu is open.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub(super) enum Sub { #[default] Root, Convert, Language }
 /// What a handle menu is about, decided from the block itself.
@@ -44,19 +47,49 @@ fn raw_block(text: &str) -> Block {
 }
 fn paragraph() -> Block { Block::new(0, Kind::Paragraph, String::new()) }
 
+/// Entries inside the active cascading side submenu.
+pub(super) fn sub_entries(menu: &BlockMenu) -> Vec<Cmd> {
+    match menu.sub {
+        Sub::Root => Vec::new(),
+        Sub::Convert => {
+            let current = match menu.kind { BlockType::Text(k) => Some(k), _ => None };
+            let mut items: Vec<Cmd> = [Kind::Paragraph, Kind::H1, Kind::H2, Kind::H3, Kind::Todo, Kind::Bullet, Kind::Numbered, Kind::Quote]
+                .into_iter().map(|k| Cmd::TurnTo(k, current == Some(k))).collect();
+            items.push(Cmd::CodeTo(menu.kind == BlockType::Code));
+            items
+        }
+        Sub::Language => LANGUAGES.iter().map(|(tag, label)| Cmd::SetLanguage(tag, *label == menu.lang)).collect(),
+    }
+}
+
 impl Editor {
     pub(super) fn open_block_menu(&mut self, id: u64, anchor: Point<Pixels>, mode: Mode, cx: &mut Context<Self>) {
         self.table_menu = None;
         // Handle menus open beside the handle (6px gap, top aligned), on its left when there is room, as in the reference.
         let anchor = match (mode, super::chrome::grip_bounds(id)) {
             (Mode::Handle, Some(grip)) => {
-                let left = grip.left() - px(MENU_GAP + MENU_WIDTH);
+                let left = grip.left() - px(MENU_GAP + HANDLE_MENU_WIDTH);
                 point(if left >= px(24.) { left } else { grip.right() + px(MENU_GAP) }, grip.top())
             }
             _ => anchor,
         };
-        self.block_menu = Some(BlockMenu { block: id, anchor, mode, index: 0, sub: Sub::Root });
+        let (kind, lang) = match self.doc.get(id) {
+            Some(b) => (block_type(b), b.meta.code_language.as_deref().map(language_label).unwrap_or("")),
+            None => (BlockType::Text(Kind::Paragraph), ""),
+        };
+        self.block_menu = Some(BlockMenu { block: id, anchor, mode, index: 0, sub: Sub::Root, sub_index: 0, kind, lang, viewport: Size::default() });
         cx.notify();
+    }
+    pub(super) fn open_submenu(&mut self, index: usize, sub: Sub, window: &Window, cx: &mut Context<Self>) {
+        if let Some(menu) = self.block_menu.as_mut() {
+            let viewport = window.viewport_size();
+            if menu.sub != sub || menu.index != index || menu.viewport != viewport {
+                menu.index = index;
+                if menu.sub != sub { menu.sub = sub; menu.sub_index = 0; }
+                menu.viewport = viewport;
+                cx.notify();
+            }
+        }
     }
     /// Entries currently shown; the slash menu filters by what follows the slash.
     pub(super) fn block_menu_entries(&self) -> Vec<Option<Cmd>> {
@@ -66,44 +99,27 @@ impl Editor {
                 let Some(block) = self.doc.get(menu.block) else { return Vec::new() };
                 if !block.text.is_empty() && !block.text.starts_with('/') { return Vec::new(); }
                 let query = block.text.trim_start_matches('/').to_lowercase();
-                let mut hits: Vec<Cmd> = SLASH.into_iter().filter(|c| query.is_empty() || c.label().to_lowercase().contains(&query) || c.keywords().contains(&query)).collect();
+                if query.is_empty() { return SLASH.to_vec(); }
+                let mut hits: Vec<Cmd> = SLASH.into_iter().flatten()
+                    .filter(|c| c.label().to_lowercase().contains(&query) || c.keywords().contains(&query))
+                    .collect();
                 // Prefix matches on the label rank first, so "/ai" puts AI 写作 on top.
                 if !query.is_empty() { hits.sort_by_key(|c| !c.label().to_lowercase().starts_with(&query)); }
                 hits.into_iter().map(Some).collect()
             }
             Mode::Handle => {
                 let Some(block) = self.doc.get(menu.block) else { return Vec::new() };
-                self.handle_entries(block, menu.sub)
+                self.handle_entries(block)
             }
         }
     }
     /// Handle menu for one block: its own tools first, then the shared block actions, delete last.
-    fn handle_entries(&self, block: &Block, sub: Sub) -> Vec<Option<Cmd>> {
+    fn handle_entries(&self, block: &Block) -> Vec<Option<Cmd>> {
         let kind = block_type(block);
-        match sub {
-            Sub::Convert => {
-                let current = match kind { BlockType::Text(k) => Some(k), _ => None };
-                let mut items = vec![Some(Cmd::Back), None];
-                items.extend([Kind::Paragraph, Kind::H1, Kind::H2, Kind::H3, Kind::Todo, Kind::Bullet, Kind::Numbered, Kind::Quote]
-                    .map(|k| Some(Cmd::TurnTo(k, current == Some(k)))));
-                items.push(Some(Cmd::CodeTo(kind == BlockType::Code)));
-                return items;
-            }
-            Sub::Language => {
-                let current = block.meta.code_language.as_deref().map(language_label).unwrap_or("");
-                let mut items = vec![Some(Cmd::Back), None];
-                items.extend(LANGUAGES.iter().map(|(tag, label)| Some(Cmd::SetLanguage(tag, *label == current))));
-                return items;
-            }
-            Sub::Root => {}
-        }
         let mut items: Vec<Option<Cmd>> = Vec::new();
         match kind {
-            BlockType::Code => {
-                let language = block.meta.code_language.as_deref().map(language_label).unwrap_or("纯文本");
-                items.extend([Some(Cmd::Open(Sub::Language, language)), Some(Cmd::CopyCode),
-                    Some(Cmd::ToggleWrap(!self.nowrap.contains(&block.id))), Some(Cmd::Open(Sub::Convert, "代码块")), None]);
-            }
+            BlockType::Code => items.extend([Some(Cmd::Open(Sub::Language)), Some(Cmd::CopyCode),
+                Some(Cmd::ToggleWrap(!self.nowrap.contains(&block.id))), Some(Cmd::Open(Sub::Convert)), None]),
             BlockType::Table => items.extend([Some(Cmd::TableOp(TableCmd::SelectTable)), Some(Cmd::TableOp(TableCmd::CopyTable)), None,
                 Some(Cmd::TableOp(TableCmd::AppendRow)), Some(Cmd::TableOp(TableCmd::AppendColumn)), None]),
             BlockType::Image => {
@@ -112,18 +128,14 @@ impl Editor {
                 items.extend([Align::Left, Align::Center, Align::Right].map(|a| Some(Cmd::AlignImage(a, a == align))));
                 items.push(None);
             }
-            BlockType::Text(k) => {
-                let label = Cmd::Turn(k).label();
-                items.extend([Some(Cmd::Open(Sub::Convert, label)), Some(Cmd::CopyText), None]);
-            }
+            BlockType::Text(_) => items.extend([Some(Cmd::Open(Sub::Convert)), Some(Cmd::CopyText), None]),
             BlockType::Divider | BlockType::Source => {}
         }
         items.extend([Cmd::InsertAbove, Cmd::InsertBelow, Cmd::Duplicate, Cmd::Cut].map(Some));
         let index = self.doc.index_of(block.id).unwrap_or(0);
         if index > 0 { items.push(Some(Cmd::MoveUp)); }
         if index + 1 < self.doc.blocks.len() { items.push(Some(Cmd::MoveDown)); }
-        items.push(None);
-        items.push(Some(if kind == BlockType::Table { Cmd::TableOp(TableCmd::DeleteTable) } else { Cmd::Delete }));
+        items.extend([None, Some(if kind == BlockType::Table { Cmd::TableOp(TableCmd::DeleteTable) } else { Cmd::Delete })]);
         items
     }
     fn selectable_menu_cmds(&self) -> Vec<Cmd> {
@@ -131,47 +143,49 @@ impl Editor {
     }
     pub(super) fn block_menu_step(&mut self, down: bool, cx: &mut Context<Self>) -> bool {
         let Some(mut menu) = self.block_menu else { return false };
-        let count = self.selectable_menu_cmds().len();
+        let in_sub = menu.mode == Mode::Handle && menu.sub != Sub::Root;
+        let count = if in_sub { sub_entries(&menu).len() } else { self.selectable_menu_cmds().len() };
         if count == 0 { return false; }
-        menu.index = if down { (menu.index + 1) % count } else { (menu.index + count - 1) % count };
+        let slot = if in_sub { &mut menu.sub_index } else { &mut menu.index };
+        let cur = (*slot).min(count - 1);
+        *slot = if down { (cur + 1) % count } else { (cur + count - 1) % count };
         self.block_menu = Some(menu); cx.notify(); true
     }
     pub(super) fn block_menu_pick(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some(menu) = self.block_menu else { return false };
-        let cmds = self.selectable_menu_cmds();
-        let Some(cmd) = cmds.get(menu.index.min(cmds.len().saturating_sub(1))).copied() else { return false };
+        let (items, idx) = if menu.mode == Mode::Handle && menu.sub != Sub::Root {
+            (sub_entries(&menu), menu.sub_index)
+        } else {
+            (self.selectable_menu_cmds(), menu.index)
+        };
+        let Some(cmd) = items.get(idx.min(items.len().saturating_sub(1))).copied() else { return false };
         self.run_block_cmd(menu.block, menu.mode, cmd, window, cx); true
     }
     pub(super) fn block_menu_nav(&mut self, right: bool, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some(menu) = self.block_menu.filter(|m| m.mode == Mode::Handle) else { return false };
         if right {
             let cmds = self.selectable_menu_cmds();
-            if let Some(cmd @ Cmd::Open(..)) = cmds.get(menu.index.min(cmds.len().saturating_sub(1))).copied() {
+            if let Some(cmd @ Cmd::Open(_)) = cmds.get(menu.index.min(cmds.len().saturating_sub(1))).copied() {
                 self.run_block_cmd(menu.block, menu.mode, cmd, window, cx);
             }
         } else if menu.sub != Sub::Root {
-            self.run_block_cmd(menu.block, menu.mode, Cmd::Back, window, cx);
-        } else {
-            self.block_menu = None;
+            if let Some(m) = self.block_menu.as_mut() { m.sub = Sub::Root; m.sub_index = 0; }
             cx.notify();
+        } else {
+            self.block_menu = None; cx.notify();
         }
         true
     }
     /// Toolbar insertion: use the caret block when it is an empty paragraph, otherwise add below it.
     pub(super) fn insert_here(&mut self, cmd: Cmd, window: &mut Window, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
-        let id = self.caret.head.block;
-        self.run_block_cmd(id, Mode::Slash, cmd, window, cx);
+        self.run_block_cmd(self.caret.head.block, Mode::Slash, cmd, window, cx);
     }
     pub(super) fn run_block_cmd(&mut self, id: u64, mode: Mode, cmd: Cmd, window: &mut Window, cx: &mut Context<Self>) {
         match cmd {
             Cmd::Header(_) => return,
-            Cmd::Open(sub, _) => {
-                if let Some(menu) = self.block_menu.as_mut() { menu.sub = sub; menu.index = 0; }
-                cx.notify(); return;
-            }
-            Cmd::Back => {
-                if let Some(menu) = self.block_menu.as_mut() { menu.sub = Sub::Root; menu.index = 0; }
+            Cmd::Open(sub) => {
+                if let Some(m) = self.block_menu.as_mut() { m.sub = sub; m.sub_index = 0; m.viewport = window.viewport_size(); }
                 cx.notify(); return;
             }
             _ => {}
@@ -255,7 +269,7 @@ impl Editor {
                 window.focus(&self.focus); cx.notify();
                 return;
             }
-            Cmd::Header(_) | Cmd::Open(..) | Cmd::Back | Cmd::TurnTo(..) | Cmd::CodeTo(_) | Cmd::SetLanguage(..) | Cmd::CopyCode
+            Cmd::Header(_) | Cmd::Open(_) | Cmd::TurnTo(..) | Cmd::CodeTo(_) | Cmd::SetLanguage(..) | Cmd::CopyCode
                 | Cmd::TableOp(_) | Cmd::CopyImage | Cmd::RevealImage | Cmd::AlignImage(..) | Cmd::ToggleWrap(_) => return,
             Cmd::Cut | Cmd::Delete => {
                 if cmd == Cmd::Cut {
@@ -278,5 +292,7 @@ impl Editor {
     }
 }
 
-const MENU_WIDTH: f32 = 224.;
+pub(super) const SLASH_MENU_WIDTH: f32 = 224.;
+pub(super) const HANDLE_MENU_WIDTH: f32 = 196.;
+pub(super) const SUBMENU_WIDTH: f32 = 176.;
 const MENU_GAP: f32 = 6.;
