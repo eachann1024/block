@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>标题折叠 · 普通块禁用把手 · 锚点与交互</title>
+<title>标题折叠 · 普通块禁用把手 · 交互</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -15,8 +15,6 @@ a{color:#1f64d8;text-decoration:none}a:hover{color:#154cb0;text-decoration:under
 button{font-family:inherit}
 .fold-btn{width:28px;height:28px;border-radius:8px;border:0;background:#f2f1ef;color:#37352f;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;flex:none;box-sizing:border-box}
 .fold-btn:hover{background:#e8e6e2}
-.anchor-btn{width:26px;height:26px;border-radius:6px;border:0;background:transparent;color:#37352f;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;flex:none}
-.anchor-btn:hover{background:#f2f1ef}
 .tip{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:8px;background:#0f0f0f;color:#ffffff;font-size:13px;font-weight:450;line-height:18px;letter-spacing:-0.01em;white-space:nowrap;box-shadow:0 4px 12px rgba(15,15,15,.16)}
 .h-serif{font-family:'Songti SC','STSong','Noto Serif CJK SC',Georgia,serif;font-size:26px;line-height:36px;font-weight:600;color:#141413;margin:0}
 .tbl{width:100%;border-collapse:collapse;border:1px solid #e3e1dc;font-size:15px;line-height:22px;color:#1f1e1d;background:#ffffff}
@@ -41,7 +39,7 @@ button{font-family:inherit}
 
 <section style="max-width:860px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px">
 <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#5e5d59">
-<span>1. 标题悬停：左侧仅显示圆角浅灰折叠箭头按钮 + 顶部黑底 Tooltip「Collapse section」，右侧显示链接锚点图标（无六点块把手）</span>
+<span>1. 标题悬停：左侧仅显示圆角浅灰折叠箭头按钮 + 顶部黑底 Tooltip「Collapse section」（无六点块把手）</span>
 </div>
 
 <div style="position:relative;padding:42px 44px 16px 44px;border:1px solid #eceae4;border-radius:12px;background:#ffffff">
@@ -59,9 +57,6 @@ button{font-family:inherit}
 </sc-if>
 </button>
 <h2 class="h-serif">先定返程：周日从潮汕站走</h2>
-<button class="anchor-btn" aria-label="复制章节链接">
-<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-</button>
 </div>
 
 <sc-if value="{{isExpanded}}" hint-placeholder-val="{{true}}">
@@ -137,7 +132,7 @@ button{font-family:inherit}
 <strong style="font-size:14px;color:#1f1e1d">标题块（H1 / H2 / H3）</strong>
 <span class="code-tag" style="background:#e7effd;color:#1f57c0;border-color:#c6dafc">独立折叠</span>
 </div>
-<p style="margin:0;font-size:14px;line-height:22px;color:#5e5d59">悬停时左侧显示 28×28 浅灰圆角折叠按钮（带 Collapse / Expand section 提示），右侧显示章节链接图标，点击直接折叠或展开该章节。</p>
+<p style="margin:0;font-size:14px;line-height:22px;color:#5e5d59">悬停时左侧显示 28×28 浅灰圆角折叠按钮（带 Collapse / Expand section 提示），点击直接折叠或展开该章节。</p>
 </div>
 </div>
 </section>
