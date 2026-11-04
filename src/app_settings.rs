@@ -1,9 +1,10 @@
 //! Preferences state and actions (⌘,): theme, editor font, and global hotkeys.
 use gpui::{Context, FocusHandle, Keystroke, Window};
 use crate::files::state::{FontChoice, LanguageMode, ThemeMode, update_state};
+use crate::icons::Icon;
 use crate::theme::{
     DEFAULT_QUICK_SHORTCUT, DEFAULT_SEARCH_SHORTCUT, quick_shortcut,
-    search_shortcut, set_font_choice, set_language_mode, set_shortcuts, set_theme_mode,
+    search_shortcut, set_font_choice, set_language_mode, set_shortcuts, set_theme_mode, tr,
 };
 use super::Workspace;
 
@@ -13,9 +14,44 @@ pub(crate) enum ShortcutKind {
     Quick,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum SettingsTab {
+    #[default]
+    Ai,
+    Appearance,
+    General,
+    Shortcuts,
+    Storage,
+}
+
+impl SettingsTab {
+    pub(crate) const ALL: [Self; 5] = [Self::Ai, Self::Appearance, Self::General, Self::Shortcuts, Self::Storage];
+
+    pub(crate) fn title(self) -> &'static str {
+        match self {
+            Self::Ai => tr("AI 助手", "AI Assistant"),
+            Self::Appearance => tr("外观与字体", "Appearance & Fonts"),
+            Self::General => tr("通用与编辑", "General & Editing"),
+            Self::Shortcuts => tr("基础快捷键", "Shortcuts"),
+            Self::Storage => tr("本地文件夹", "Local Folder"),
+        }
+    }
+
+    pub(crate) fn icon(self) -> Icon {
+        match self {
+            Self::Ai => Icon::Sparkles,
+            Self::Appearance => Icon::Sliders,
+            Self::General => Icon::NoteCheck,
+            Self::Shortcuts => Icon::Code,
+            Self::Storage => Icon::FolderOpen,
+        }
+    }
+}
+
 pub(crate) struct SettingsModal {
     pub focus: FocusHandle,
     pub recording: Option<ShortcutKind>,
+    pub tab: SettingsTab,
 }
 
 pub(super) fn keystroke_to_spec(ks: &Keystroke) -> Option<String> {
@@ -38,9 +74,19 @@ pub(super) fn keystroke_to_spec(ks: &Keystroke) -> Option<String> {
 }
 
 impl Workspace {
+    /// Toggles the Settings page (opens on the AI tab, closes when already open).
     pub(crate) fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.settings.is_some() {
             self.close_settings(window, cx);
+        } else {
+            self.open_settings_tab(SettingsTab::Ai, window, cx);
+        }
+    }
+
+    pub(crate) fn open_settings_tab(&mut self, tab: SettingsTab, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(m) = &mut self.settings {
+            m.tab = tab;
+            cx.notify();
             return;
         }
         if self.renaming.is_some() { self.cancel_rename(window, cx); }
@@ -48,9 +94,17 @@ impl Workspace {
         self.close_overlays(cx);
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
-        self.settings = Some(SettingsModal { focus, recording: None });
+        self.settings = Some(SettingsModal { focus, recording: None, tab });
         crate::editor::ai::settings::ensure(window, cx);
         cx.notify();
+    }
+
+    pub(super) fn select_settings_tab(&mut self, tab: SettingsTab, cx: &mut Context<Self>) {
+        if let Some(m) = &mut self.settings {
+            m.tab = tab;
+            m.recording = None;
+            cx.notify();
+        }
     }
 
     pub(super) fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
