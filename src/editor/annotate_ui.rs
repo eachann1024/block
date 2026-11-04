@@ -40,13 +40,16 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
                 let y = target.map(|(id, offset)| row_target(editor, id, offset)).unwrap_or(px(24.)).max(next_y + px(28.));
                 let id = note.id;
                 let is_active = editor.annotate.active_annotation == Some(id);
+                let is_highlighted = is_active || editor.annotate.hovered_annotation == Some(id);
                 next_y = y;
                 if note.body.is_empty() && !note.reactions.is_empty() {
-                    markers.push(annotation_note::reaction_pill(SharedString::from(format!("annotation-marker-{id}")), &note.reactions[0], is_active)
+                    let emoji = note.reactions[0].clone();
+                    markers.push(annotation_note::reaction_pill(SharedString::from(format!("annotation-marker-{id}")), &emoji, is_highlighted)
                         .absolute().top(y).right(px(12.)).occlude()
-                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
+                        .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx)))
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
-                            this.toggle_annotation_detail(id, window, cx);
+                            this.toggle_reaction_on_note(id, &emoji, cx);
                         })).into_any_element());
                 } else {
                     markers.push(div().absolute().top(y).right(px(12.)).child(annotate_pop::badge(&note, index + 1, is_active, cx)).into_any_element());
@@ -73,7 +76,7 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
                 let id = note.id;
                 let followup = editor.annotate.followup.as_ref()
                     .filter(|field| field.annotation_id == id).map(|field| field.input.clone());
-                (y, id, annotation_row(note, editor.annotate.active_annotation, followup, cx).into_any_element())
+                (y, id, annotation_row(note, editor.annotate.active_annotation, editor.annotate.hovered_annotation, followup, cx).into_any_element())
             }).collect();
         if let Some(composer) = &editor.annotate.composer {
             let input = composer.input.clone();
