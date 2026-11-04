@@ -10,7 +10,7 @@ use gpui::{App, AppContext, Bounds, Entity, Global, KeyBinding, TitlebarOptions,
 use crate::{app::Workspace, editor::view::Editor};
 use view::QuickView;
 
-actions!(quick_note, [ToggleQuickNote, HideQuickNote, SaveToNote, ToggleHelp, SlotOne, SlotTwo, SlotThree, SlotFour, SlotFive]);
+actions!(quick_note, [ToggleQuickNote, HideQuickNote, SaveToNote, SlotOne, SlotTwo, SlotThree, SlotFour, SlotFive]);
 
 static QUICK_HK_ID: AtomicU32 = AtomicU32::new(0);
 static SEARCH_HK_ID: AtomicU32 = AtomicU32::new(0);
@@ -124,17 +124,17 @@ pub fn toggle(cx: &mut App) {
 }
 
 fn open(cx: &mut App) {
-    let bounds = Bounds::centered(None, size(px(480.), px(620.)), cx);
+    let bounds = Bounds::centered(None, size(px(440.), px(520.)), cx);
     let opened = cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            window_min_size: Some(size(px(420.), px(360.))),
+            window_min_size: Some(size(px(380.), px(320.))),
             is_minimizable: false,
             is_resizable: false,
             titlebar: Some(TitlebarOptions {
                 title: Some(crate::theme::tr("速记", "Quick Note").into()),
                 appears_transparent: true,
-                traffic_light_position: cfg!(target_os = "macos").then_some(point(px(16.), px(14.))),
+                traffic_light_position: cfg!(target_os = "macos").then_some(point(px(16.), px(16.))),
                 ..Default::default()
             }),
             ..Default::default()

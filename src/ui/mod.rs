@@ -1,3 +1,4 @@
+pub mod dot_pager;
 pub mod dropdown;
 pub mod fade;
 pub mod floating_bar;
