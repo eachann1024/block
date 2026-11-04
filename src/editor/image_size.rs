@@ -1,31 +1,215 @@
-//! Image size pill (− / percent / + / original) and the 10% keyboard steps.
-use gpui::{Context, CursorStyle, Entity, MouseButton, Window, div, prelude::*, px, rgb};
-use crate::icons::Icon;
-use super::{image_source::spec_of, image_view::sizes, toolbar::{HOVER, INK, glyph, pill, sep}, view::Editor};
+//! Floating image toolbar (7 actions), `⋯` 4-item menu, and AltText / Size / Crop popovers.
+use gpui::{Context, CursorStyle, Entity, FontWeight, MouseButton, Window, deferred, div, prelude::*, px, rgb};
+use gpui_component::input::{Escape, Input, InputState};
+use crate::{icons::Icon, theme::{is_dark, tooltip, tr}};
+use super::{
+    image_edit::ImagePop,
+    image_source::{Align, spec_of},
+    image_view::sizes,
+    toolbar::{ToolbarColors, glyph, menu_shadows, pill, sep},
+    view::{Editor, selection::Position},
+};
 
-fn step_button(editor: &Entity<Editor>, id: u64, slot: usize, icon: impl IntoElement, tip: &'static str,
-    run: impl Fn(&mut Editor, &mut Context<Editor>) + 'static) -> impl IntoElement {
+fn tb_btn(
+    editor: &Entity<Editor>, id: u64, slot: usize, g: Icon, tip: &'static str, on: bool, open: bool,
+    run: impl Fn(&mut Editor, &mut Window, &mut Context<Editor>) + 'static,
+) -> impl IntoElement {
+    let tc = ToolbarColors::current();
+    let ink = if on { tc.on_ink } else { tc.ink };
     let editor = editor.clone();
-    div().id(("image-size", id as usize * 4 + slot)).size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
-        .cursor(CursorStyle::PointingHand).hover(|s| s.bg(rgb(HOVER))).child(icon)
-        .tooltip(crate::theme::tooltip(tip))
-        .on_mouse_down(MouseButton::Left, move |_, _: &mut Window, cx| {
-            editor.update(cx, |this, cx| run(this, cx)); cx.stop_propagation();
+    div().id(("img-tb", id as usize * 16 + slot)).size(px(32.)).flex_none().flex().items_center().justify_center().rounded(px(8.))
+        .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(rgb(tc.hover)))
+        .when(open && !on, |b| b.bg(rgb(tc.open_bg)))
+        .when(on, |b| b.bg(rgb(tc.on_bg)))
+        .child(glyph(g, 18., ink))
+        .tooltip(tooltip(tip))
+        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+            editor.update(cx, |this, cx| run(this, window, cx));
+            cx.stop_propagation();
         })
 }
-/// Dark pill at the image's top-right corner showing the share of the content width.
-pub(super) fn size_pill(editor: &Entity<Editor>, id: u64, percent: u32) -> impl IntoElement {
-    div().absolute().top(px(10.)).right(px(10.)).on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .child(pill().p(px(3.)).gap(px(2.))
-            .child(step_button(editor, id, 0, glyph(Icon::TbMinus, 15., INK), "缩小", move |this, cx| this.step_image(id, -10, cx)))
-            .child(div().min_w(px(40.)).flex().justify_center().text_size(px(12.)).text_color(rgb(INK)).child(format!("{percent}%")))
-            .child(step_button(editor, id, 1, glyph(Icon::TbPlus, 15., INK), "放大", move |this, cx| this.step_image(id, 10, cx)))
-            .child(sep())
-            .child(step_button(editor, id, 2, glyph(Icon::TbReset, 15., INK), "原始宽度",
-                move |this, cx| this.edit_image(id, |s| s.width = None, cx))))
+
+/// Top-centered floating capsule toolbar + active dropdown/popover for a selected image block.
+pub(super) fn image_toolbar(
+    editor: &Entity<Editor>, id: u64, align: Align, percent: u32, pop: Option<ImagePop>,
+) -> impl IntoElement {
+    let crop_open = matches!(pop, Some(ImagePop::Crop));
+    let more_open = matches!(pop, Some(ImagePop::More));
+    let bar = pill().id(("img-toolbar", id as usize)).py(px(5.)).px(px(7.)).gap(px(3.)).rounded(px(15.))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(tb_btn(editor, id, 0, Icon::TbComment, tr("添加评论", "Add comment"), false, false, move |this, w, cx| {
+            this.image_menu = None;
+            let at = Position { block: id, offset: 0 };
+            this.caret.anchor = at; this.caret.head = at;
+            this.start_annotation(w, cx);
+        }))
+        .child(tb_btn(editor, id, 1, Icon::TbReaction, tr("添加表情回应", "Add reaction"), false, false, move |this, w, cx| {
+            this.image_menu = None;
+            let at = Position { block: id, offset: 0 };
+            this.caret.anchor = at; this.caret.head = at;
+            this.open_reactions(w, cx);
+        }))
+        .child(sep())
+        .child(tb_btn(editor, id, 2, Icon::AlignLeft, tr("左对齐", "Align left"), align == Align::Left, false,
+            move |this, _, cx| { this.image_menu = None; this.edit_image(id, |s| s.align = Align::Left, cx); }))
+        .child(tb_btn(editor, id, 3, Icon::AlignCenter, tr("居中对齐", "Align center"), align == Align::Center, false,
+            move |this, _, cx| { this.image_menu = None; this.edit_image(id, |s| s.align = Align::Center, cx); }))
+        .child(tb_btn(editor, id, 4, Icon::AlignRight, tr("右对齐", "Align right"), align == Align::Right, false,
+            move |this, _, cx| { this.image_menu = None; this.edit_image(id, |s| s.align = Align::Right, cx); }))
+        .child(sep())
+        .child(tb_btn(editor, id, 5, Icon::Crop, tr("裁剪图片", "Crop image"), false, crop_open, move |this, _, cx| {
+            this.image_menu = if crop_open { None } else { Some((id, ImagePop::Crop)) };
+            cx.notify();
+        }))
+        .child(tb_btn(editor, id, 6, Icon::More, tr("更多图片操作", "More image options"), false, more_open, move |this, _, cx| {
+            this.image_menu = if more_open { None } else { Some((id, ImagePop::More)) };
+            cx.notify();
+        }));
+
+    let sub = pop.map(|p| match p {
+        ImagePop::More => more_menu(editor, id).into_any_element(),
+        ImagePop::AltText(input) => alt_popover(editor, id, &input).into_any_element(),
+        ImagePop::Size => size_popover(editor, id, percent).into_any_element(),
+        ImagePop::Crop => crop_popover(editor, id).into_any_element(),
+    });
+
+    deferred(
+        div().relative().flex().flex_col().items_center()
+            .child(bar)
+            .when_some(sub, |d, s| d.child(div().mt(px(8.)).child(s))),
+    ).with_priority(3)
+}
+
+fn menu_card(id: (&'static str, usize), width: f32) -> gpui::Stateful<gpui::Div> {
+    let tc = ToolbarColors::current();
+    div().id(id).w(px(width)).p(px(6.)).rounded(px(14.)).border_1().border_color(rgb(tc.border))
+        .bg(rgb(tc.bg)).shadow(menu_shadows()).flex().flex_col().gap(px(2.))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+}
+
+fn more_menu(editor: &Entity<Editor>, id: u64) -> impl IntoElement {
+    let tc = ToolbarColors::current();
+    let dark = is_dark();
+    let item = |slot: usize, g: Icon, label: &'static str, danger: bool,
+        run: Box<dyn Fn(&mut Editor, &mut Window, &mut Context<Editor>)>| {
+        let fg = if danger { if dark { 0xe26d68 } else { 0xd94841 } } else { tc.ink };
+        let hover = if danger { if dark { 0x3a2727 } else { 0xfdf0ef } } else { tc.hover };
+        let ed = editor.clone();
+        div().id(("img-more-item", id as usize * 8 + slot)).h(px(36.)).px(px(10.)).rounded(px(8.))
+            .flex().items_center().gap(px(10.)).cursor(CursorStyle::PointingHand)
+            .text_size(px(14.)).font_weight(FontWeight(450.)).text_color(rgb(fg))
+            .hover(move |s| s.bg(rgb(hover)))
+            .child(glyph(g, 16., fg))
+            .child(div().flex_1().child(label))
+            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                ed.update(cx, |this, cx| run(this, window, cx));
+                cx.stop_propagation();
+            })
+    };
+    menu_card(("img-more-menu", id as usize), 184.)
+        .child(item(0, Icon::Copy, tr("复制图片", "Copy image"), false,
+            Box::new(move |this, _, cx| { this.image_menu = None; this.copy_image(id, cx); })))
+        .child(item(1, Icon::LinkEdit, tr("编辑替代文本", "Edit alt text"), false,
+            Box::new(move |this, w, cx| this.open_image_alt(id, w, cx))))
+        .child(item(2, Icon::Sliders, tr("设置图片尺寸", "Set image size"), false,
+            Box::new(move |this, _, cx| { this.image_menu = Some((id, ImagePop::Size)); cx.notify(); })))
+        .child(div().h(px(1.)).my(px(4.)).mx(px(8.)).bg(rgb(tc.sep)))
+        .child(item(3, Icon::Trash, tr("删除图片", "Delete image"), true,
+            Box::new(move |this, w, cx| this.delete_image(id, w, cx))))
+}
+
+fn alt_popover(editor: &Entity<Editor>, id: u64, input: &Entity<InputState>) -> impl IntoElement {
+    let tc = ToolbarColors::current();
+    let (e_save, e_cancel, e_esc) = (editor.clone(), editor.clone(), editor.clone());
+    menu_card(("img-alt-pop", id as usize), 320.).p(px(8.))
+        .on_action(move |_: &Escape, w, cx| {
+            e_esc.update(cx, |this, cx| { this.image_menu = None; w.focus(&this.focus); cx.notify(); });
+            cx.stop_propagation();
+        })
+        .child(div().flex().items_center().gap(px(6.))
+            .child(div().flex_1().min_w_0().h(px(30.)).px(px(8.)).rounded(px(7.)).bg(rgb(tc.input_bg))
+                .text_size(px(13.)).text_color(rgb(tc.ink)).flex().items_center().overflow_hidden()
+                .child(Input::new(input).appearance(false).bordered(false).focus_bordered(false).text_size(px(13.))))
+            .child(div().id(("img-alt-save", id as usize)).h(px(30.)).px(px(10.)).rounded(px(7.))
+                .bg(rgb(tc.accent)).text_color(rgb(0xffffff)).text_size(px(13.)).font_weight(FontWeight(500.))
+                .flex().items_center().cursor(CursorStyle::PointingHand)
+                .child(tr("保存", "Save"))
+                .on_mouse_down(MouseButton::Left, move |_, w, cx| {
+                    e_save.update(cx, |this, cx| this.save_image_alt(id, w, cx));
+                    cx.stop_propagation();
+                }))
+            .child(div().id(("img-alt-cancel", id as usize)).h(px(30.)).px(px(8.)).rounded(px(7.))
+                .hover(move |s| s.bg(rgb(tc.hover))).text_color(rgb(tc.ink)).text_size(px(13.))
+                .flex().items_center().cursor(CursorStyle::PointingHand)
+                .child(tr("取消", "Cancel"))
+                .on_mouse_down(MouseButton::Left, move |_, w, cx| {
+                    e_cancel.update(cx, |this, cx| { this.image_menu = None; w.focus(&this.focus); cx.notify(); });
+                    cx.stop_propagation();
+                })))
+}
+
+fn size_popover(editor: &Entity<Editor>, id: u64, percent: u32) -> impl IntoElement {
+    let tc = ToolbarColors::current();
+    let mut row = pill().id(("img-size-pop", id as usize)).p(px(5.)).gap(px(3.))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+    for (idx, pct) in [25_u32, 50, 75, 100].into_iter().enumerate() {
+        let on = (percent as i32 - pct as i32).abs() <= 4;
+        let ed = editor.clone();
+        row = row.child(div().id(("img-pct", id as usize * 8 + idx)).h(px(28.)).px(px(8.)).rounded(px(7.))
+            .flex().items_center().cursor(CursorStyle::PointingHand).text_size(px(12.)).font_weight(FontWeight(500.))
+            .when(on, |b| b.bg(rgb(tc.on_bg)).text_color(rgb(tc.on_ink)))
+            .when(!on, |b| b.hover(move |s| s.bg(rgb(tc.hover))).text_color(rgb(tc.ink)))
+            .child(format!("{pct}%"))
+            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                ed.update(cx, |this, cx| this.set_image_percent(id, pct, cx));
+                cx.stop_propagation();
+            }));
+    }
+    row.child(sep())
+        .child(tb_btn(editor, id, 8, Icon::TbMinus, tr("缩小", "Zoom out"), false, false,
+            move |this, _, cx| this.step_image(id, -10, cx)))
+        .child(div().min_w(px(38.)).flex().justify_center().text_size(px(12.)).text_color(rgb(tc.ink)).child(format!("{percent}%")))
+        .child(tb_btn(editor, id, 9, Icon::TbPlus, tr("放大", "Zoom in"), false, false,
+            move |this, _, cx| this.step_image(id, 10, cx)))
+        .child(tb_btn(editor, id, 10, Icon::TbReset, tr("原始宽度", "Original size"), false, false,
+            move |this, _, cx| { this.image_menu = None; this.edit_image(id, |s| s.width = None, cx); }))
+}
+
+fn crop_popover(editor: &Entity<Editor>, id: u64) -> impl IntoElement {
+    let tc = ToolbarColors::current();
+    let presets: [(&'static str, Option<(u32, u32)>); 4] = [
+        ("16:9", Some((16, 9))),
+        ("4:3", Some((4, 3))),
+        ("1:1", Some((1, 1))),
+        (tr("裁边 15%", "Trim 15%"), None),
+    ];
+    let mut row = pill().id(("img-crop-pop", id as usize)).p(px(5.)).gap(px(4.))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+    for (idx, (label, ratio)) in presets.into_iter().enumerate() {
+        let ed = editor.clone();
+        row = row.child(div().id(("img-crop-opt", id as usize * 8 + idx)).h(px(28.)).px(px(10.)).rounded(px(7.))
+            .flex().items_center().cursor(CursorStyle::PointingHand).text_size(px(12.)).font_weight(FontWeight(500.))
+            .text_color(rgb(tc.ink)).hover(move |s| s.bg(rgb(tc.hover)))
+            .child(label)
+            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                ed.update(cx, |this, cx| this.crop_image(id, ratio, cx));
+                cx.stop_propagation();
+            }));
+    }
+    row
 }
 
 impl Editor {
+    pub(super) fn set_image_percent(&mut self, id: u64, pct: u32, cx: &mut Context<Self>) {
+        if pct >= 100 {
+            self.edit_image(id, |s| s.width = None, cx);
+            return;
+        }
+        let (base, _) = sizes(cx, id);
+        let base = if base > 0. { base } else { 560. };
+        let width = (base * pct as f32 / 100.).round() as u32;
+        self.edit_image(id, |s| s.width = Some(width), cx);
+    }
     /// Moves the width to the next multiple of 10% of the original width, within 10%..=100%.
     pub(super) fn step_image(&mut self, id: u64, delta: i32, cx: &mut Context<Self>) {
         let (base, _) = sizes(cx, id);

@@ -5,7 +5,7 @@ use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use gpui::{AnyView, App, Context, FontWeight, Hsla, IntoElement, Pixels, Render, SharedString, Window, div, prelude::*, px, rgb, rgba};
-pub use crate::files::state::{FontChoice, ThemeMode};
+pub use crate::files::state::{FontChoice, LanguageMode, ThemeMode};
 use crate::icons::IconColors;
 
 pub const DEFAULT_SEARCH_SHORTCUT: &str = "cmd-shift-k";
@@ -16,6 +16,38 @@ static IS_DARK: AtomicBool = AtomicBool::new(false);
 static FONT_CHOICE: AtomicU8 = AtomicU8::new(0);
 static SMOOTHING: AtomicBool = AtomicBool::new(true);
 static SHORTCUTS: Mutex<Option<(String, String)>> = Mutex::new(None);
+static LANGUAGE_MODE: AtomicU8 = AtomicU8::new(0);
+static IS_EN: AtomicBool = AtomicBool::new(false);
+
+fn system_is_en() -> bool {
+    if let Ok(out) = Command::new("defaults").args(["read", "-g", "AppleLanguages"]).output() {
+        let s = String::from_utf8_lossy(&out.stdout).to_ascii_lowercase();
+        for line in s.lines() {
+            let t = line.trim().trim_matches(|c: char| c == '"' || c == ',' || c == '(' || c == ')').trim();
+            if t.starts_with("zh") { return false; }
+            if t.starts_with("en") { return true; }
+        }
+    }
+    std::env::var("LC_ALL").or_else(|_| std::env::var("LANG"))
+        .map(|v| v.to_ascii_lowercase().starts_with("en")).unwrap_or(false)
+}
+
+pub fn language_mode() -> LanguageMode {
+    match LANGUAGE_MODE.load(Ordering::Relaxed) { 1 => LanguageMode::Zh, 2 => LanguageMode::En, _ => LanguageMode::System }
+}
+
+pub fn set_language_mode(mode: LanguageMode) {
+    let (code, en) = match mode {
+        LanguageMode::System => (0, system_is_en()),
+        LanguageMode::Zh => (1, false),
+        LanguageMode::En => (2, true),
+    };
+    LANGUAGE_MODE.store(code, Ordering::Relaxed);
+    IS_EN.store(en, Ordering::Relaxed);
+}
+
+pub fn is_en() -> bool { IS_EN.load(Ordering::Relaxed) }
+pub fn tr(zh: &'static str, en: &'static str) -> &'static str { if is_en() { en } else { zh } }
 
 fn system_is_dark() -> bool {
     Command::new("defaults")
@@ -25,6 +57,7 @@ fn system_is_dark() -> bool {
 }
 
 pub fn apply_state(state: &crate::files::state::State) {
+    set_language_mode(state.language);
     set_theme_mode(state.theme);
     set_font_choice(state.font_family);
     set_font_smoothing(state.font_smoothing.unwrap_or(true));
