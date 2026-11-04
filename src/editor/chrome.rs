@@ -29,8 +29,8 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
     let nowrap = nowrap && block.meta.code_language.is_some();
     let focus_editor = editor.clone();
     let blank = block.text.is_empty() && block.meta.table.is_none() && block.meta.raw_source.is_none();
-    // Images never expose their Markdown/HTML line, as in the reference; dividers show source only while focused.
-    let static_view = image.is_some() || (!active && rule);
+    // Images and dividers are atomic blocks and never expose their Markdown/HTML source line.
+    let static_view = image.is_some() || rule;
     div().id(("block", id as usize)).relative().w_full().min_w_0().py(px(if minimal { 5. } else { BLOCK_PAD }))
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
             if this.minimal { return; }
@@ -69,7 +69,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                 .when_some(image, |body, (path, spec)| body.child(super::image_view::image_block(focus_editor.clone(), id, path, spec, active, cx)))
                 .when(static_view && rule, |body| body.child(
                     div().id(("rule", id as usize)).h(px(22.)).flex().items_center().cursor(CursorStyle::PointingHand)
-                        .child(div().h(px(1.)).w_full().bg(theme.hairline))
+                        .child(div().h(px(if active { 2. } else { 1. })).w_full().bg(if active { theme.accent } else { theme.hairline }))
                         .on_mouse_down(MouseButton::Left, { let e = focus_editor.clone(); move |_, window, cx| {
                             e.update(cx, |this, cx| this.focus_block(id, window, cx)); cx.stop_propagation();
                         }})))

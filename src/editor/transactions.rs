@@ -138,7 +138,10 @@ impl Editor {
             }
             pieces.push(combined.slice(start..combined.text.len()));
             for (i, piece) in pieces.iter_mut().enumerate() {
-                if i > 0 { piece.id = 0; piece.kind = carry; piece.checked = false; piece.meta.list_start = None; }
+                if i > 0 {
+                    piece.id = 0; piece.kind = carry; piece.checked = false;
+                    piece.meta.list_start = None; piece.meta.heading_level = None;
+                }
             }
             let count = pieces.len();
             self.doc.splice_blocks(ai..bi + 1, pieces);
@@ -146,10 +149,25 @@ impl Editor {
             if count > 1 { offset = normalized.rsplit('\n').next().unwrap_or("").len(); }
         }
         if marker && normalized == " " && ai == bi && a == b { self.space_rule(&mut id, &mut offset); }
+        if marker && matches!(normalized.as_str(), "-" | "*") && ai == bi && a == b {
+            self.divider_rule(&mut id, &mut offset);
+        }
         let at = Position { block: id, offset };
         self.caret.anchor = at; self.caret.head = at; self.caret.composing = None;
         if self.composition_before.is_none() { self.record(before, cx); }
         else { self.invalidate_edit(&before); self.changed(cx); }
+    }
+    pub(in crate::editor) fn insert_in_block(&mut self, text: &str, cx: &mut Context<Self>) {
+        if self.path.is_none() { return; }
+        self.commit_composition(cx);
+        self.pending_vertical = None; self.preferred_x = None;
+        let (a, b, ai, bi) = self.ordered();
+        if ai != bi { self.replace_selection(text, false, cx); return; }
+        let before = self.snapshot();
+        self.doc.replace_range(a.block, a.offset..b.offset, text);
+        let at = Position { block: a.block, offset: a.offset + text.len() };
+        self.caret.anchor = at; self.caret.head = at; self.caret.composing = None;
+        self.record(before, cx);
     }
     pub(in crate::editor) fn mark(&mut self, mark: MarkKind, cx: &mut Context<Self>) {
         if self.path.is_none() || self.caret.is_empty() { return; }
