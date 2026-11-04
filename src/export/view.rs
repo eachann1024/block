@@ -10,6 +10,7 @@ use super::{
     Cancellation, ExportError, ExportJob, ExportTheme, RenderOptions, render_with_cancel, write_png,
 };
 use crate::editor::model::Block;
+use crate::theme::tr;
 
 /// A scope's snapshot, or why it cannot be exported.
 pub type Snapshot = Result<Arc<Vec<Block>>, String>;
@@ -230,7 +231,7 @@ impl ExportView {
         let Some(png) = self.png.clone().filter(|_| self.ready()) else { return };
         cx.write_to_clipboard(ClipboardItem::new_image(&png));
         self.copied = true;
-        self.notice = Some("已复制到剪贴板".into());
+        self.notice = Some(tr("已复制到剪贴板", "Copied to clipboard").into());
         cx.notify();
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_millis(1600)).await;
@@ -248,7 +249,7 @@ impl ExportView {
         let name = format!("{}.png", self.title.replace(['/', ':'], "-"));
         let prompt = cx.prompt_for_new_path(&directory, Some(&name));
         self.saving = true;
-        self.notice = Some("请选择保存位置".into());
+        self.notice = Some(tr("请选择保存位置", "Choose save location").into());
         cx.notify();
         cx.spawn(async move |this, cx| {
             let outcome = match prompt.await {
@@ -262,7 +263,7 @@ impl ExportView {
                     match written {
                         Ok(path) => {
                             let file = path.file_name().and_then(|s| s.to_str()).unwrap_or("image.png");
-                            (format!("已保存 {file}"), Some(path))
+                            (format!("{} {file}", tr("已保存", "Saved")), Some(path))
                         }
                         Err(error) => (error.to_string(), None),
                     }

@@ -1,4 +1,4 @@
-//! Image block rendering: aligned picture, corner resize handles and top-right zoom pill.
+//! Image block rendering: aligned picture, corner resize handles and floating top-centered toolbar.
 use std::{collections::HashMap, path::PathBuf};
 use gpui::{App, Context, CursorStyle, Entity, Global, MouseButton, SharedString, Window, div, prelude::*, px};
 use super::{image_source::{Align, ImageSpec}, view::Editor};
@@ -65,10 +65,11 @@ fn resize_end(editor: &Entity<Editor>, id: u64, cx: &mut App) {
 
 /// 10px white rounded square on a corner; dragging it resizes the width in proportion (the height follows).
 fn handle(id: u64, left: bool, top: bool, dir: f32, group: &SharedString, show: bool) -> impl IntoElement {
+    let ring = if crate::theme::is_dark() { 0x2b6be6 } else { 0x2f6fe4 };
     div().id(("image-resize", id as usize * 4 + usize::from(left) + 2 * usize::from(top))).absolute().size(px(10.))
         .when(left, |s| s.left(px(-5.))).when(!left, |s| s.right(px(-5.)))
         .when(top, |s| s.top(px(-5.))).when(!top, |s| s.bottom(px(-5.)))
-        .bg(gpui::white()).border(px(1.5)).border_color(gpui::rgb(0x547dd0)).rounded(px(3.))
+        .bg(gpui::white()).border(px(1.5)).border_color(gpui::rgb(ring)).rounded(px(3.))
         .cursor(if left == top { CursorStyle::ResizeUpLeftDownRight } else { CursorStyle::ResizeUpRightDownLeft })
         .invisible().when(show, |s| s.visible()).group_hover(group.clone(), |s| s.visible())
         .on_drag(Resize { id, dir }, |resize, _, window, cx| {
@@ -95,6 +96,7 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, path: PathBuf, spec: 
         ui.paths.insert(id, path.clone());
         (base_of(ui, id), ui.drag.filter(|d| d.id == id))
     };
+    let pop = editor.read(cx).image_menu.as_ref().filter(|(mid, _)| *mid == id).map(|(_, p)| p.clone());
     let dragging = draft.is_some() && cx.has_active_drag();
     let limit = if base > 0. { base } else { DEFAULT_MAX };
     let width = if dragging { draft.map(|d| d.width) } else { spec.width.map(|w| w as f32) }
@@ -108,10 +110,14 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, path: PathBuf, spec: 
     let picture = gpui::img(path).rounded(px(6.));
     let picture = match width { Some(w) => picture.w(px(w)), None => picture.max_w(px(DEFAULT_MAX)).max_h(px(420.)) };
     let (move_editor, up_editor, out_editor) = (editor.clone(), editor.clone(), editor.clone());
-    div().relative().w_full().py_1().flex()
-        .when(spec.align == Align::Center, |s| s.justify_center()).when(spec.align == Align::Right, |s| s.justify_end())
+    let ring = if crate::theme::is_dark() { 0x2b6be6 } else { 0x2f6fe4 };
+    let pct = size_percent(draft.map(|d| d.width), spec.width, base);
+    div().relative().w_full().py_1().flex().flex_col()
+        .when(spec.align == Align::Center, |s| s.items_center()).when(spec.align == Align::Right, |s| s.items_end())
         .child(gpui::canvas(|bounds, _, cx| { cx.default_global::<ImageUi>().avail = f32::from(bounds.size.width); }, |_, _, _, _| {})
             .absolute().size_full())
+        .when(show, |s| s.child(div().absolute().top(px(-44.)).left_0().right_0().flex().justify_center()
+            .child(super::image_size::image_toolbar(&editor, id, spec.align, pct, pop))))
         .child(div().id(("image", id as usize)).relative().flex_none().group(group.clone())
             .child(picture)
             .child(gpui::canvas(move |bounds, _, cx| {
@@ -120,15 +126,15 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, path: PathBuf, spec: 
                 ui.measured.insert(id, w);
                 if record_natural && w > 0. { ui.natural.insert(natural_path.clone(), w); }
             }, |_, _, _, _| {}).absolute().size_full())
-            .when(active, |s| s.child(div().absolute().inset_0().rounded(px(6.)).border(px(2.)).border_color(gpui::rgb(0x547dd0))))
+            .when(active, |s| s.child(div().absolute().inset_0().rounded(px(6.)).border(px(2.)).border_color(gpui::rgb(ring))))
             .child(handle(id, true, true, -scale, &group, show)).child(handle(id, false, true, scale, &group, show))
             .child(handle(id, true, false, -scale, &group, show)).child(handle(id, false, false, scale, &group, show))
-            .when(show, |s| s.child(super::image_size::size_pill(&editor, id, size_percent(draft.map(|d| d.width), spec.width, base))))
             .on_drag_move::<Resize>(move |event, _, cx| resize_move(&move_editor, id, f32::from(event.event.position.x), cx))
             .on_mouse_up(MouseButton::Left, move |_, _, cx| resize_end(&up_editor, id, cx))
             .on_mouse_up_out(MouseButton::Left, move |_, _, cx| resize_end(&out_editor, id, cx))
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                focus.update(cx, |this, cx| this.focus_block(id, window, cx)); cx.stop_propagation();
+                focus.update(cx, |this, cx| { this.image_menu = None; this.focus_block(id, window, cx); });
+                cx.stop_propagation();
             }))
 }
 

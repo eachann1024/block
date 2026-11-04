@@ -8,7 +8,7 @@ use gpui::{
 use gpui_component::input::{Input, InputEvent, InputState};
 use crate::files::search::{Hit, search_notes};
 use crate::icons::{Icon, icon};
-use crate::theme::{Theme, format_hotkey, is_dark, search_shortcut};
+use crate::theme::{Theme, format_hotkey, is_dark, search_shortcut, tr};
 use super::Workspace;
 
 actions!(workspace, [OpenSearch, OpenSettings, NewNote, NewFolder, Dismiss, SearchUp, SearchDown]);
@@ -73,7 +73,7 @@ impl Workspace {
         if self.renaming.is_some() { self.cancel_rename(window, cx); }
         if self.settings.is_some() { self.close_settings(window, cx); }
         self.close_overlays(cx);
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder("搜索标题与正文"));
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(tr("搜索标题与正文", "Search titles and content")));
         let sub = cx.subscribe_in(&input, window, |this, input, event: &InputEvent, window, cx| match event {
             InputEvent::Change => { let query = input.read(cx).value().to_string(); this.run_search(query, cx); }
             InputEvent::PressEnter { .. } => this.open_hit(window, cx),
@@ -149,18 +149,30 @@ impl Workspace {
         let border = theme.hairline;
         let hotkey_label = format_hotkey(&search_shortcut());
         let mut rows: Vec<AnyElement> = Vec::new();
-        for (title_group, label) in [(true, "标题匹配"), (false, "正文匹配")] {
+        for (title_group, label) in [(true, tr("标题匹配", "Title Matches")), (false, tr("正文匹配", "Content Matches"))] {
             let group = search.hits.iter().enumerate().filter(|(_, h)| h.title_match == title_group).collect::<Vec<_>>();
             if group.is_empty() { continue; }
             let total: usize = group.iter().map(|(_, h)| h.count.max(1)).sum();
-            let header = if title_group { label.to_owned() } else { format!("{label} · {total} 处") };
+            let header = if title_group {
+                label.to_owned()
+            } else if crate::theme::is_en() {
+                format!("{label} · {total} matches")
+            } else {
+                format!("{label} · {total} 处")
+            };
             let pt = if rows.is_empty() { px(6.) } else { px(10.) };
             rows.push(div().px(px(12.)).pt(pt).pb(px(2.)).text_size(px(12.)).line_height(px(16.)).text_color(theme.text_secondary)
                 .child(header).into_any_element());
             rows.extend(group.into_iter().map(|(ix, hit)| self.hit_row(ix, hit, ix == search.selected, cx)));
         }
         let empty = search.hits.is_empty();
-        let hint = if !search.asked { "输入关键词搜索标题与正文" } else if search.searching { "正在搜索…" } else { "没有找到匹配的笔记" };
+        let hint = if !search.asked {
+            tr("输入关键词搜索标题与正文", "Type keywords to search titles and content")
+        } else if search.searching {
+            tr("正在搜索…", "Searching…")
+        } else {
+            tr("没有找到匹配的笔记", "No matching notes found")
+        };
         Some(div().id("search-overlay").absolute().top_0().left_0().size_full().occlude()
             .bg(gpui::rgba(0x20242c2e)).flex().flex_col().items_center().pt(px(96.)).px(px(24.))
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.close_search(window, cx)))
@@ -185,16 +197,20 @@ impl Workspace {
                 .child(div().h(px(36.)).flex_none().px(px(16.)).flex().items_center().gap(px(16.))
                     .border_t_1().border_color(border).bg(theme.sidebar)
                     .text_size(px(12.)).text_color(theme.text_secondary)
-                    .child(div().flex().items_center().gap(px(6.)).child(kbd("↑")).child(kbd("↓")).child("选择"))
-                    .child(div().flex().items_center().gap(px(6.)).child(kbd("↵")).child("打开"))
-                    .child(div().flex().items_center().gap(px(6.)).child(kbd("esc")).child("关闭"))
-                    .child(div().ml_auto().child(format!("{hotkey_label} 搜索与全局唤起")))))
+                    .child(div().flex().items_center().gap(px(6.)).child(kbd("↑")).child(kbd("↓")).child(tr("选择", "Select")))
+                    .child(div().flex().items_center().gap(px(6.)).child(kbd("↵")).child(tr("打开", "Open")))
+                    .child(div().flex().items_center().gap(px(6.)).child(kbd("esc")).child(tr("关闭", "Close")))
+                    .child(div().ml_auto().child(format!("{hotkey_label} {}", tr("搜索与全局唤起", "Search & Switcher"))))))
             .into_any_element())
     }
 
     fn hit_row(&self, ix: usize, hit: &Hit, selected: bool, cx: &mut Context<Self>) -> AnyElement {
         let theme = Theme::ocean();
-        let right = if !hit.title_match && hit.count > 1 { format!("{} 处", hit.count) } else { hit.folder.clone() };
+        let right = if !hit.title_match && hit.count > 1 {
+            if crate::theme::is_en() { format!("{} matches", hit.count) } else { format!("{} 处", hit.count) }
+        } else {
+            hit.folder.clone()
+        };
         div().id(("hit", ix)).px(px(12.)).py(px(8.)).flex().flex_col().gap(px(2.)).rounded(px(6.))
             .border_1().border_color(if selected { theme.accent } else { gpui::transparent_black() })
             .when(selected, |row| row.bg(theme.selected))

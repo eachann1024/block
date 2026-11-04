@@ -4,7 +4,7 @@ use gpui::{
     Window, WindowControlArea, anchored, deferred, div, point, prelude::*, px,
 };
 use crate::icons::{Icon, icon};
-use crate::theme::Theme;
+use crate::theme::{Theme, tr};
 use super::{Workspace, file_ops::display_name, tabs::hover_tinted_icon, update_state_width};
 use super::menu::{ItemId, menu_item, menu_surface, separator};
 
@@ -91,7 +91,7 @@ impl Workspace {
 
     pub(super) fn notebook_switcher(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::ocean();
-        let name = self.folder.as_ref().map(|path| display_name(path, true)).unwrap_or_else(|| "选择笔记本".into());
+        let name = self.folder.as_ref().map(|path| display_name(path, true)).unwrap_or_else(|| tr("选择笔记本", "Select Notebook").into());
         let enabled = !self.busy();
         let open = self.switcher_open;
         div().id("notebook-switcher").flex_1().min_w_0().h(px(36.)).px(px(10.)).flex().items_center().gap(px(8.))
@@ -142,7 +142,7 @@ impl Workspace {
                 .into_any_element()
         }).collect();
         if !items.is_empty() { items.push(separator()); }
-        items.push(menu_item(ItemId::Name("add-notebook"), Icon::Plus, "选择文件夹…".into(), false, false,
+        items.push(menu_item(ItemId::Name("add-notebook"), Icon::Plus, tr("选择文件夹…", "Choose Folder…").into(), false, false,
             cx.listener(|this, _, window, cx| { this.close_overlays(cx); this.choose_folder(window, cx); })).into_any_element());
         let width = self.sidebar_width - px(24.);
         deferred(anchored().position(point(px(12.), px(SWITCHER_TOP))).snap_to_window_with_margin(px(8.))

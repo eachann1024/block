@@ -3,7 +3,7 @@ use std::{fs, time::Duration};
 use gpui::{Context, Entity, FocusHandle, Focusable, Subscription, Task, Window, div, prelude::*, px};
 use gpui_component::input::{InputEvent, InputState};
 use crate::editor::view::Editor;
-use crate::theme::Theme;
+use crate::theme::{Theme, tr};
 use super::{HideQuickNote, SaveToNote, SlotFive, SlotFour, SlotOne, SlotThree, SlotTwo, ToggleHelp, save, store};
 
 pub struct QuickView {
@@ -34,7 +34,7 @@ impl QuickView {
         let _ = store::save_meta(&self.meta);
         match store::ensure_slot(slot) {
             Ok(path) => self.editor.update(cx, |editor, cx| editor.open(path, cx)),
-            Err(error) => self.set_notice(format!("无法打开速记：{error}"), cx),
+            Err(error) => self.set_notice(format!("{}: {error}", tr("无法打开速记", "Cannot open quick note")), cx),
         }
         window.focus(&self.editor.focus_handle(cx));
         cx.notify();
@@ -57,7 +57,7 @@ impl QuickView {
     }
 
     pub(super) fn begin_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let name = self.meta.names[self.meta.active].clone();
+        let name = store::display_name(self.meta.active, &self.meta.names[self.meta.active]);
         let input = cx.new(|cx| InputState::new(window, cx).default_value(name));
         let subs = vec![cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| {
             if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) { this.commit_rename(window, cx); }
@@ -91,7 +91,7 @@ impl QuickView {
 
     pub(super) fn save_to_note(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.saving { return; }
-        let Some(folder) = save::target_folder() else { return self.set_notice("请先在主窗口选择文件夹".into(), cx) };
+        let Some(folder) = save::target_folder() else { return self.set_notice(tr("请先在主窗口选择文件夹", "Choose a folder in the main window first").into(), cx) };
         self.saving = true;
         self.editor.update(cx, |editor, cx| editor.save(cx));
         let slot = self.meta.active;
@@ -111,7 +111,7 @@ impl QuickView {
             let _ = this.update_in(cx, |this, _, cx| {
                 this.saving = false;
                 match result {
-                    Ok(None) => this.set_notice("速记为空，无需保存".into(), cx),
+                    Ok(None) => this.set_notice(tr("速记为空，无需保存", "Quick note is empty").into(), cx),
                     Ok(Some((path, text))) => {
                         let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                         super::notify_saved_note(path, cx);
@@ -125,10 +125,14 @@ impl QuickView {
                                 let _ = fs::write(&slot_file, "");
                                 editor.open(slot_file, cx);
                             });
-                            this.set_notice(format!("已保存到 {file}"), cx);
-                        } else { this.set_notice(format!("已保存到 {file}（速记已保留）"), cx); }
+                            this.set_notice(format!("{} {file}", tr("已保存到", "Saved to")), cx);
+                        } else if crate::theme::is_en() {
+                            this.set_notice(format!("Saved to {file} (slot kept)"), cx);
+                        } else {
+                            this.set_notice(format!("已保存到 {file}（速记已保留）"), cx);
+                        }
                     }
-                    Err(error) => this.set_notice(format!("保存失败：{error}"), cx),
+                    Err(error) => this.set_notice(format!("{}: {error}", tr("保存失败", "Failed to save")), cx),
                 }
             });
         }).detach();
@@ -138,10 +142,10 @@ impl QuickView {
         if !self.notice.is_empty() { return self.notice.clone(); }
         let editor = self.editor.read(cx);
         match editor.status_text() {
-            "" | "Saved" => "已保存".into(),
-            "Saving…" => "保存中…".into(),
-            "Unsaved changes" => "未保存".into(),
-            "Opening document…" => "正在打开…".into(),
+            "" | "Saved" => tr("已保存", "Saved").into(),
+            "Saving…" => tr("保存中…", "Saving…").into(),
+            "Unsaved changes" => tr("未保存", "Unsaved").into(),
+            "Opening document…" => tr("正在打开…", "Opening…").into(),
             other => other.to_owned(),
         }
     }

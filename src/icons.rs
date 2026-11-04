@@ -66,6 +66,7 @@ icons! {
     AlignLeft => "align-left" [Line],
     AlignCenter => "align-center" [Line],
     AlignRight => "align-right" [Line],
+    Crop => "crop" [Line],
     Trash => "trash" [Line],
     Text => "text" [Line],
     Heading1 => "heading-1" [Line],

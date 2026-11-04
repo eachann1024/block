@@ -2,7 +2,7 @@
 use std::path::PathBuf;
 use gpui::{AppContext, Context, Focusable, Window};
 use crate::editor::view::Editor;
-use crate::theme::Theme;
+use crate::theme::{Theme, tr};
 use crate::files::{create_note_at, note_candidates, load_state, save_folder, scan, index::TreeIndex, tree::FileTree};
 
 #[path = "app_view.rs"]
@@ -127,7 +127,7 @@ impl Workspace {
                 if path.is_none() { this.commit_folder(cx); }
                 else {
                     this.discard_pending(cx);
-                    this.notice = "目录未切换：当前笔记未能保存，请处理编辑器中的错误后重试".into();
+                    this.notice = tr("目录未切换：当前笔记未能保存，请处理编辑器中的错误后重试", "Folder switch canceled: could not save current note").into();
                     this.refresh(cx);
                 }
             }
@@ -140,7 +140,7 @@ impl Workspace {
                 if !blocked { this.run_file_op(cx); }
                 else {
                     this.file_op = None;
-                    this.notice = "操作已取消：当前笔记未能保存，请处理编辑器中的错误后重试".into();
+                    this.notice = tr("操作已取消：当前笔记未能保存，请处理编辑器中的错误后重试", "Operation canceled: could not save current note").into();
                     this.refresh(cx);
                 }
             }
@@ -152,7 +152,7 @@ impl Workspace {
         crate::files::tree::bind_keys(cx);
         let this = Self { folder: None, folder_error: None, tree, editor, selected: None, tabs: Vec::new(), startup_tabs: None, dirty_bits: 0, loading: true,
             choosing: false, creating: false, persisting: false, pending: None,
-            notice: "正在读取工作区偏好…".into(), sidebar_width: Theme::ocean().sidebar_width,
+            notice: tr("正在读取工作区偏好…", "Loading workspace preferences…").into(), sidebar_width: Theme::ocean().sidebar_width,
             sidebar_collapsed: false, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
             settings: None, file_op: None, working: false, root_focus: cx.focus_handle(),
             _editor_subscription: subscription };
@@ -168,9 +168,9 @@ impl Workspace {
                 }
                 match saved.map(|state| state.folder) {
                     Ok(Some(folder)) => this.use_folder_guarded(folder, Some(startup_epoch), cx),
-                    Ok(None) => { this.notice = "选择文件夹以浏览 Markdown 笔记".into(); this.refresh(cx); }
+                    Ok(None) => { this.notice = tr("选择文件夹以浏览 Markdown 笔记", "Select a folder to browse Markdown notes").into(); this.refresh(cx); }
                     Err(error) => {
-                        this.notice = format!("无法读取工作区偏好：{error}。请选择文件夹重试");
+                        this.notice = format!("{}: {error}", tr("无法读取工作区偏好", "Failed to read workspace preferences"));
                         this.refresh(cx);
                     }
                 }
@@ -194,10 +194,10 @@ impl Workspace {
         if self.busy() { return; }
         let Some(folder) = self.folder.clone() else { return };
         self.creating = true;
-        self.notice = "正在新建笔记…".into();
+        self.notice = tr("正在新建笔记…", "Creating note…").into();
         self.refresh(cx);
         cx.spawn(async move |this, cx| {
-            let mut result = Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "无法分配唯一笔记名称，请重试"));
+            let mut result = Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, tr("无法分配唯一笔记名称，请重试", "Could not allocate a unique note name, please retry")));
             for path in note_candidates(&folder) {
                 // A deleted disk file can still own a row and an open draft.
                 // Never allocate that identity to a new empty document.
@@ -218,17 +218,18 @@ impl Workspace {
                 match result {
                     Ok(path) => {
                         this.tree.update(cx, |tree, cx| tree.insert_note(path.clone(), cx));
-                        this.notice = "笔记已创建".into();
+                        let created_msg = tr("笔记已创建", "Note created");
+                        this.notice = created_msg.into();
                         this.open_file(path, cx);
                         // Success is transient; errors and folder warnings stay until replaced.
                         cx.spawn(async move |this, cx| {
                             cx.background_executor().timer(std::time::Duration::from_secs(3)).await;
                             let _ = this.update(cx, |this, cx| {
-                                if this.notice == "笔记已创建" { this.notice.clear(); this.refresh(cx); }
+                                if this.notice == created_msg { this.notice.clear(); this.refresh(cx); }
                             });
                         }).detach();
                     }
-                    Err(error) => this.notice = format!("新建失败：{error}"),
+                    Err(error) => this.notice = format!("{}: {error}", tr("新建失败", "Failed to create")),
                 }
                 this.refresh(cx);
             });

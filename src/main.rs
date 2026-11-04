@@ -25,6 +25,21 @@ impl gpui::AssetSource for Assets {
     fn list(&self, path: &str) -> gpui::Result<Vec<gpui::SharedString>> { icons::Icons.list(path) }
 }
 
+pub fn apply_app_menus(cx: &mut gpui::App) {
+    cx.set_menus(vec![Menu {
+        name: "Thinkly".into(),
+        items: vec![
+            MenuItem::action(theme::tr("新建标签页 ⌘T", "New Tab ⌘T"), app::NewTab),
+            MenuItem::action(theme::tr("关闭标签页 ⌘W", "Close Tab ⌘W"), app::CloseTab),
+            MenuItem::action(theme::tr("下一个标签页 ⌃Tab", "Next Tab ⌃Tab"), app::NextTab),
+            MenuItem::action(theme::tr("上一个标签页 ⌃⇧Tab", "Previous Tab ⌃⇧Tab"), app::PrevTab),
+            MenuItem::action(theme::tr("偏好设置… ⌘,", "Settings… ⌘,"), app::OpenSettings),
+            MenuItem::action(theme::tr("速记小窗 ⌥N", "Quick Note ⌥N"), quick::ToggleQuickNote),
+            MenuItem::action(theme::tr("导出图片", "Export Image"), ExportImage),
+        ],
+    }]);
+}
+
 fn main() {
     if let Ok(state) = files::load_state() {
         theme::apply_state(&state);
@@ -37,18 +52,7 @@ fn main() {
         cx.bind_keys([KeyBinding::new("secondary-q", Quit, None)]);
         editor::bind_keys(cx);
         quick::init(cx);
-        cx.set_menus(vec![Menu {
-            name: "Thinkly".into(),
-            items: vec![
-                MenuItem::action("新建标签页 ⌘T", app::NewTab),
-                MenuItem::action("关闭标签页 ⌘W", app::CloseTab),
-                MenuItem::action("下一个标签页 ⌃Tab", app::NextTab),
-                MenuItem::action("上一个标签页 ⌃⇧Tab", app::PrevTab),
-                MenuItem::action("偏好设置… ⌘,", app::OpenSettings),
-                MenuItem::action("速记小窗 ⌥N", quick::ToggleQuickNote),
-                MenuItem::action("导出图片", ExportImage),
-            ],
-        }]);
+        apply_app_menus(cx);
         let bounds = Bounds::centered(None, size(px(1100.), px(760.)), cx);
         let opened = cx.open_window(
             WindowOptions {

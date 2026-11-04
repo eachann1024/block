@@ -1,5 +1,6 @@
 use std::{collections::{HashMap, HashSet}, path::{Path, PathBuf}, sync::{Arc, Mutex}, time::Duration};
 use gpui::{Context, Task};
+use crate::theme::tr;
 use super::{Editor, Doc, storage::{self, Fingerprint}};
 
 #[derive(Clone)]
@@ -34,7 +35,7 @@ impl Editor {
         if self.path.is_some() || !self.persistence.saving.is_empty() { cx.notify(); return; }
         let generation = self.persistence.generation;
         self.persistence.loading = true;
-        self.report_status("正在读取恢复草稿…".into(), cx);
+        self.report_status(tr("正在读取恢复草稿…", "Recovering draft…").into(), cx);
         let task = cx.background_executor().spawn(async { storage::latest_draft() });
         cx.spawn(async move |this, cx| {
             let result = task.await;
@@ -48,7 +49,7 @@ impl Editor {
                         this.reset_document(loaded.doc);
                         this.folded = crate::editor::fold::restore_folds(&path, &this.doc);
                         this.path = Some(path); this.dirty = true;
-                        this.status = "已恢复草稿。原文件若已删除或被外部修改仍受保护，可复制或导出备份".into();
+                        this.status = tr("已恢复草稿。原文件若已删除或被外部修改仍受保护，可复制或导出备份", "Draft recovered. Copy or export a backup if the original file changed").into();
                         this.refresh_find_matches(cx);
                     }
                     Err(error) => this.status = error,
@@ -63,10 +64,10 @@ impl Editor {
     }
     pub fn open(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if self.path.as_ref() == Some(&path) && self.persistence.pending.is_none() {
-            if self.status == "正在打开…" {
-                self.status = if self.persistence.saving.contains(&path) { "正在保存…".into() }
-                    else if self.dirty { "未保存更改".into() }
-                    else { "已保存 · 内存会话就绪".into() };
+            if self.status == "正在打开…" || self.status == "Opening…" {
+                self.status = if self.persistence.saving.contains(&path) { tr("正在保存…", "Saving…").into() }
+                    else if self.dirty { tr("未保存更改", "Unsaved changes").into() }
+                    else { tr("已保存 · 内存会话就绪", "Saved · Ready").into() };
             }
             cx.notify(); return;
         }
@@ -126,7 +127,7 @@ impl Editor {
         self.persistence.generation += 1;
         let generation = self.persistence.generation;
         self.persistence.loading = true;
-        self.status = "正在打开…".into(); cx.notify();
+        self.status = tr("正在打开…", "Opening…").into(); cx.notify();
         let request_path = path.clone();
         let task = cx.background_executor().spawn(async move { storage::load(&request_path) });
         cx.spawn(async move |this, cx| {
@@ -142,7 +143,7 @@ impl Editor {
                         this.folded = crate::editor::fold::restore_folds(&path, &this.doc);
                         this.path = Some(path);
                         this.dirty = loaded.recovered;
-                        this.status = if loaded.recovered { "已恢复未保存草稿，请确认后保存".into() } else { "已保存 · 内存会话就绪".into() };
+                        this.status = if loaded.recovered { tr("已恢复未保存草稿，请确认后保存", "Recovered unsaved draft; please review and save").into() } else { tr("已保存 · 内存会话就绪", "Saved · Ready").into() };
                         this.refresh_find_matches(cx);
                     }
                     Err(error) => {
@@ -162,7 +163,7 @@ impl Editor {
         if self.path.is_none() { return; }
         self.dirty = true;
         self.persistence.revision += 1;
-        self.status = "未保存更改".into();
+        self.status = tr("未保存更改", "Unsaved changes").into();
         let revision = self.persistence.revision;
         self.persistence.timer = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_millis(400)).await;
@@ -184,11 +185,11 @@ impl Editor {
         if self.persistence.saving.contains(&path) { return; }
         let (doc, base, revision) = if self.path.as_ref() == Some(&path) {
             if !self.dirty { return; }
-            self.status = "正在保存…".into();
+            self.status = tr("正在保存…", "Saving…").into();
             (self.doc.clone(), self.persistence.base, self.persistence.revision)
         } else if let Some(sess) = self.sessions.get_mut(&path) {
             if !sess.dirty { return; }
-            sess.status = "正在保存…".into();
+            sess.status = tr("正在保存…", "Saving…").into();
             (sess.doc.clone(), sess.base, sess.revision)
         } else { return; };
         self.persistence.saving.insert(path.clone());
@@ -212,11 +213,11 @@ impl Editor {
                     Ok(Some(base)) => {
                         if this.path.as_ref() == Some(&path) {
                             this.persistence.base = base;
-                            if this.persistence.revision == revision { this.dirty = false; this.status = "已保存".into(); }
+                            if this.persistence.revision == revision { this.dirty = false; this.status = tr("已保存", "Saved").into(); }
                             else if this.dirty { this.touch(cx); }
                         } else if let Some(sess) = this.sessions.get_mut(&path) {
                             sess.base = base;
-                            if sess.revision == revision { sess.dirty = false; sess.status = "已保存".into(); }
+                            if sess.revision == revision { sess.dirty = false; sess.status = tr("已保存", "Saved").into(); }
                             else if sess.dirty { this.spawn_save(path.clone(), cx); }
                         }
                         if this.persistence.saving.is_empty() && this.persistence.pending.is_some() { this.advance(cx); }
@@ -285,7 +286,7 @@ impl Editor {
         }
         self.reset_document(Doc::empty());
         self.path = None; self.dirty = false;
-        self.status = "草稿已保留，可通过「恢复最近草稿」重新打开".into();
+        self.status = tr("草稿已保留，可通过「恢复最近草稿」重新打开", "Draft kept; reopen via 'Recover Latest Draft'").into();
         cx.notify(); true
     }
 }
