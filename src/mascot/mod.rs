@@ -1,0 +1,239 @@
+mod art;
+
+pub use art::{MascotState, illustration, load_asset};
+
+use gpui::{
+    AnyElement, App, Context, CursorStyle, Div, FontWeight, Focusable, Hsla, IntoElement,
+    MouseButton, MouseDownEvent, ParentElement, Stateful, Styled, Window, div, prelude::*, px, rgb,
+};
+use crate::app::{NewNote, Workspace};
+use crate::editor::view::Editor;
+use crate::theme::{Theme, is_dark};
+
+pub fn editor_empty(cx: &mut Context<Editor>) -> Div {
+    let new_note = outlined_button(
+        "mascot-new-note",
+        "新建笔记",
+        true,
+        cx.listener(|this, _, window, cx| {
+            cx.stop_propagation();
+            window.focus(&this.focus_handle(cx));
+            window.dispatch_action(Box::new(NewNote), cx);
+        }),
+    );
+    let recover = secondary_button(
+        "recover-draft",
+        "恢复最近草稿",
+        true,
+        cx.listener(|this, _, _, cx| {
+            cx.stop_propagation();
+            this.recover_latest_draft(cx);
+        }),
+    );
+    card(
+        MascotState::NoNote,
+        "打开一篇，继续想",
+        &["从左侧选择笔记开始编辑，", "也可以写下新的想法。"],
+        div().child(new_note).child(recover),
+    )
+}
+
+impl Workspace {
+    pub(crate) fn mascot_view(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let editor = self.editor.read(cx);
+        if editor.current_path().is_some() || editor.is_loading() {
+            return None;
+        }
+        let available = !self.busy();
+        let theme = Theme::ocean();
+        let content = if self.folder_error.is_some() {
+            let retry = primary_button(
+                "mascot-retry",
+                "重试",
+                available,
+                cx.listener(|this, _, _, cx| this.retry_folder(cx)),
+            );
+            let choose = secondary_button(
+                "mascot-choose-other",
+                "选择其他文件夹",
+                available,
+                cx.listener(|this, _, window, cx| this.choose_folder(window, cx)),
+            );
+            card(
+                MascotState::ReadError,
+                "暂时无法读取文件夹",
+                &["检查文件夹是否仍可访问，", "然后重试，或选择其他文件夹。"],
+                div().child(retry).child(choose),
+            )
+        } else if self.loading {
+            return Some(div().flex_1().min_w_0().h_full().bg(theme.paper).into_any_element());
+        } else if self.folder.is_none() {
+            let choose = primary_button(
+                "mascot-choose-folder",
+                "选择文件夹",
+                available,
+                cx.listener(|this, _, window, cx| this.choose_folder(window, cx)),
+            );
+            card(
+                MascotState::NoFolder,
+                "先选一个笔记文件夹",
+                &["打开本地文件夹，", "让想法有个落脚的地方。"],
+                div().child(choose),
+            )
+        } else if !self.tree.read(cx).has_notes() {
+            let create = primary_button(
+                "mascot-new-note",
+                "新建笔记",
+                available,
+                cx.listener(|this, _, window, cx| this.new_tab(window, cx)),
+            );
+            let switch = secondary_button(
+                "mascot-switch-folder",
+                "切换文件夹",
+                available,
+                cx.listener(|this, _, window, cx| this.choose_folder(window, cx)),
+            );
+            card(
+                MascotState::EmptyFolder,
+                "从第一篇笔记开始",
+                &["这个文件夹里还没有笔记。", "写下一点，慢慢展开。"],
+                div().child(create).child(switch),
+            )
+        } else {
+            return None;
+        };
+        Some(
+            div()
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .bg(theme.paper)
+                .child(content)
+                .into_any_element(),
+        )
+    }
+}
+
+fn card(state: MascotState, title: &'static str, body: &[&'static str], actions: Div) -> Div {
+    let theme = Theme::ocean();
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .px(px(24.))
+        .text_center()
+        .child(illustration(state))
+        .child(
+            div()
+                .mt(px(22.))
+                .mb(px(9.))
+                .text_size(px(18.))
+                .line_height(px(26.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(theme.text)
+                .child(title),
+        )
+        .child(
+            div()
+                .min_h(px(44.))
+                .flex()
+                .flex_col()
+                .items_center()
+                .text_size(px(13.))
+                .line_height(px(22.))
+                .text_color(theme.text_secondary)
+                .children(body.iter().copied().map(|line| div().child(line))),
+        )
+        .child(actions.mt(px(24.)).flex().items_center().gap(px(10.)))
+}
+
+fn primary_button(
+    id: &'static str,
+    label: &'static str,
+    enabled: bool,
+    on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    let hover_bg: Hsla = if is_dark() { rgb(0x3b537f).into() } else { rgb(0xbacdf0).into() };
+    div()
+        .id(id)
+        .h(px(44.))
+        .px(px(22.))
+        .rounded(px(7.))
+        .border_1()
+        .border_color(gpui::transparent_black())
+        .bg(theme.icon_fill)
+        .text_color(theme.text)
+        .text_size(px(13.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(enabled, |b| {
+            b.cursor(CursorStyle::PointingHand)
+                .hover(move |s| s.bg(hover_bg))
+                .on_mouse_down(MouseButton::Left, on_down)
+        })
+        .when(!enabled, |b| b.opacity(0.5))
+        .child(label)
+}
+
+fn outlined_button(
+    id: &'static str,
+    label: &'static str,
+    enabled: bool,
+    on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    let border: Hsla = if is_dark() { theme.btn_border } else { rgb(0xd5dce7).into() };
+    div()
+        .id(id)
+        .h(px(44.))
+        .px(px(22.))
+        .rounded(px(7.))
+        .border_1()
+        .border_color(border)
+        .bg(theme.paper)
+        .text_color(theme.text_secondary)
+        .text_size(px(13.))
+        .font_weight(FontWeight::MEDIUM)
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(enabled, |b| {
+            b.cursor(CursorStyle::PointingHand)
+                .hover(move |s| s.bg(theme.btn_hover).text_color(theme.text))
+                .on_mouse_down(MouseButton::Left, on_down)
+        })
+        .when(!enabled, |b| b.opacity(0.5))
+        .child(label)
+}
+
+fn secondary_button(
+    id: &'static str,
+    label: &'static str,
+    enabled: bool,
+    on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    div()
+        .id(id)
+        .h(px(44.))
+        .px(px(16.))
+        .rounded(px(7.))
+        .text_color(theme.text_secondary)
+        .text_size(px(12.))
+        .font_weight(FontWeight::MEDIUM)
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(enabled, |b| {
+            b.cursor(CursorStyle::PointingHand)
+                .hover(move |s| s.bg(theme.hover).text_color(theme.text))
+                .on_mouse_down(MouseButton::Left, on_down)
+        })
+        .when(!enabled, |b| b.opacity(0.5))
+        .child(label)
+}

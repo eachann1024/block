@@ -87,6 +87,8 @@ impl FileTree {
 
     pub fn contains_root_path(&self, path: &Path) -> bool { self.index.contains_root_path(path) }
 
+    pub fn has_notes(&self) -> bool { self.index.has_notes() }
+
     pub fn insert_note(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.index.insert_note(path);
         cx.notify();
