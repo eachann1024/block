@@ -154,6 +154,7 @@ impl Element for BlockText {
         let fenced = self.editor.read(cx).doc.get(self.block).and_then(|b| b.meta.code_language.clone());
         if let Some(language) = &fenced { super::code_block::paint_card(layout.bounds, language, window, cx); }
         super::find_bar::paint_matches(self.editor.read(cx), self.block, layout, window);
+        super::annotate::paint_highlights(self.editor.read(cx), self.block, layout, window);
         table_layout::paint_background(layout, window);
         super::ai::preview::paint_outline(self.editor.read(cx), self.block, layout, window);
         if !layout.cells.is_empty() { super::table_actions::track_hover(self.editor.clone(), self.block, layout, window); }

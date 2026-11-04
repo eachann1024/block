@@ -7,15 +7,15 @@ pub(super) mod session;
 pub(super) mod panel;
 pub(super) mod preview;
 pub(crate) mod settings;
+mod chat_ui;
 pub(crate) mod chat;
 pub(super) mod agent;
 pub(crate) mod md_view;
 
-gpui::actions!(ai, [OpenAiSettings, ToggleAiPanel, AddSelectionToChat]);
+gpui::actions!(ai, [OpenAiSettings, ToggleAiPanel]);
 
 pub fn bind_keys(cx: &mut gpui::App) {
     cx.bind_keys([
         gpui::KeyBinding::new("cmd-j", ToggleAiPanel, None),
-        gpui::KeyBinding::new("cmd-shift-u", AddSelectionToChat, Some("Editor")),
     ]);
 }
