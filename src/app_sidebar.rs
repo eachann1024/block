@@ -105,7 +105,6 @@ impl Workspace {
         let name = self.folder.as_ref().map(|path| display_name(path, true)).unwrap_or_else(|| tr("选择笔记本", "Select Notebook").into());
         let enabled = self.ui_enabled();
         let open = self.switcher_open;
-        let note_count = self.folder.as_ref().map(|_| self.tree.read(cx).note_count().to_string());
         div().id("notebook-switcher").group("notebook-switcher").relative().children(crate::ui::smoke_overlay::probe("notebook-switcher")).flex_1().min_w_0().h(px(30.)).px(px(8.)).flex().items_center().gap(px(7.))
             .rounded(px(6.)).text_size(px(14.)).font_weight(FontWeight(500.)).text_color(theme.text)
             .when(open, |b| b.bg(theme.hover))
@@ -118,13 +117,9 @@ impl Workspace {
                     cx.notify();
                 })))
             .when(!enabled, |b| b.opacity(0.5))
-            .child(stateful_icon("notebook-switcher", Icon::FolderOpen, px(15.), open, theme.mono_icon_colors(theme.text), theme.icon_colors(theme.text)))
+            .child(stateful_icon("notebook-switcher", Icon::FolderOpen, px(16.), open, theme.mono_icon_colors(theme.text), theme.icon_colors(theme.text)))
             .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(name))
-            .when_some(note_count, |b, count| {
-                b.child(div().flex_none().text_size(px(14.)).font_weight(FontWeight::NORMAL)
-                    .text_color(theme.text_secondary).child(count))
-            })
-            .child(stateful_icon("notebook-switcher", Icon::ChevronUp, px(12.), open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text_secondary)))
+            .child(stateful_icon("notebook-switcher", Icon::ChevronUp, px(16.), open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text_secondary)))
     }
 
     /// Window-level overlays: outside-click catcher, switcher list, tree menu, search.
