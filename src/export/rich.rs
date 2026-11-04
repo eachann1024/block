@@ -109,12 +109,6 @@ pub(super) fn shape(
     buffer.set_rich_text(spans, &base, Shaping::Advanced, alignment);
     buffer.shape_until_scroll(fonts, false);
     require_glyphs(&buffer)?;
-    if buffer.layout_runs().any(|run| run.line_w > width + 0.5) {
-        return Err(ExportError::Rendering(crate::theme::tr(
-            "单个字符超出可用宽度",
-            "Single character exceeds available width",
-        )));
-    }
     Ok(Shaped {
         buffer,
         backgrounds,

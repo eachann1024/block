@@ -92,6 +92,7 @@ icons! {
     NotePlus => "note-plus" [Line],
     FolderPlus => "folder-plus" [Line],
     Pencil => "pencil" [Line],
+    ArrowLeft => "arrow-left" [Line],
     ArrowRight => "arrow-right" [Line],
     InsertAbove => "insert-above" [Line],
     InsertBelow => "insert-below" [Line],
