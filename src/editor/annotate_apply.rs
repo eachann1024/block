@@ -188,8 +188,8 @@ impl Editor {
                     note.ai_error = None;
                 }
             }
-            if self.annotate.followup.as_ref().is_some_and(|f| applied_ids.contains(&f.annotation_id)) {
-                self.annotate.followup = None;
+            self.normalize_annotations();
+            if self.annotate.followup.is_none() && self.annotate.editing.is_none() {
                 window.focus(&self.focus, cx);
             }
         }
