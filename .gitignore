@@ -1,4 +1,5 @@
 /target
+/web/target
 /dist
 .DS_Store
 .artifact-server.json

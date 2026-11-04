@@ -1,5 +1,6 @@
 mod chrome;
 mod columns;
+#[cfg(not(target_family = "wasm"))]
 #[path = "../export/driver.rs"]
 mod export_driver;
 mod input;
@@ -43,6 +44,7 @@ mod find_bar;
 mod fold;
 pub mod view;
 
+#[cfg(not(target_family = "wasm"))]
 pub use export_driver::export_document;
 pub use keys::bind_keys;
 pub use view::Editor;
