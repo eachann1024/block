@@ -8,7 +8,7 @@ const MARKER_WIDTH: f32 = 24.;
 pub(super) const ROW_GAP: f32 = 8.;
 const BLOCK_PAD: f32 = 7.;
 /// Estimated floating toolbar size, used to keep it inside the editor.
-pub(super) const TOOLBAR_WIDTH: Pixels = px(440.);
+pub(super) const TOOLBAR_WIDTH: Pixels = px(536.); // incl. the two AI buttons
 pub(super) const TOOLBAR_HEIGHT: Pixels = px(42.);
 pub(super) const RIGHT_INSET: f32 = 12.;
 pub(super) fn standard_width(body_width: Pixels) -> Pixels {

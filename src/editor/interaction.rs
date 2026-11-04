@@ -184,8 +184,10 @@ impl Editor {
         }).min_by(|a, b| a.top().partial_cmp(&b.top()).unwrap_or(std::cmp::Ordering::Equal))?;
         use crate::editor::chrome::{TOOLBAR_HEIGHT, TOOLBAR_WIDTH};
         let x = rect.left().max(bounds.left()+px(8.)).min((bounds.right()-TOOLBAR_WIDTH-px(8.)).max(bounds.left()));
-        let above = rect.top() - TOOLBAR_HEIGHT - px(8.);
+        // The toolbar wraps to two rows when it is wider than the editor (toolbar.rs).
+        let height = if viewport.size.width - px(16.) < TOOLBAR_WIDTH { TOOLBAR_HEIGHT * 2. - px(8.) } else { TOOLBAR_HEIGHT };
+        let above = rect.top() - height - px(8.);
         let y = if above >= viewport.top() { above } else { rect.bottom()+px(8.) };
-        Some(point(x, y.min((viewport.bottom()-TOOLBAR_HEIGHT).max(viewport.top())).max(viewport.top())))
+        Some(point(x, y.min((viewport.bottom()-height).max(viewport.top())).max(viewport.top())))
     }
 }
