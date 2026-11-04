@@ -255,7 +255,7 @@ impl AiChat {
         if let Some(d) = path.parent() { let _ = std::fs::create_dir_all(d); }
         let fresh = !path.exists();
         let _ = std::fs::write(&path, text);
-        if fresh { crate::quick::notify_saved_note(path, cx); }
+        if fresh { crate::search::window::notify_saved_note(path, cx); }
         text.to_owned()
     }
     pub(super) fn apply_plan(&mut self, at: usize, cx: &mut Context<Self>) {

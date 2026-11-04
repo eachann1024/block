@@ -3,7 +3,7 @@
 use std::{fs, io, path::PathBuf};
 use serde::{Deserialize, Serialize};
 
-pub const SLOTS: usize = 5;
+pub const SLOTS: usize = 3;
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Meta {
@@ -17,11 +17,6 @@ pub fn default_name(slot: usize) -> String {
     if slot == 0 { crate::theme::tr("灵感", "Ideas").into() }
     else if crate::theme::is_en() { format!("Quick {}", slot + 1) }
     else { format!("速记 {}", slot + 1) }
-}
-
-pub fn is_default_name(slot: usize, name: &str) -> bool {
-    if slot == 0 { matches!(name, "灵感" | "Ideas" | "速记 1" | "Quick 1") }
-    else { name == format!("速记 {}", slot + 1) || name == format!("Quick {}", slot + 1) }
 }
 
 /// `~/Library/Application Support/Thinkly Fast/quick` on macOS.
