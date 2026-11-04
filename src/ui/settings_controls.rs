@@ -23,7 +23,7 @@ pub fn mono_font() -> Font {
 
 pub fn settings_card(gap_px: f32) -> gpui::Div {
     let theme = Theme::ocean();
-    div().bg(card_bg()).border_1().border_color(theme.hairline).rounded(px(10.))
+    div().w_full().min_w_0().overflow_hidden().bg(card_bg()).border_1().border_color(theme.hairline).rounded(px(10.))
         .py(px(18.)).px(px(20.)).flex().flex_col().gap(px(gap_px))
 }
 
@@ -34,8 +34,8 @@ pub fn card_title(title: &'static str) -> gpui::Div {
 
 pub fn setting_row(title: &'static str, control: impl IntoElement) -> gpui::Div {
     let theme = Theme::ocean();
-    div().min_h(px(36.)).flex().items_center().justify_between().gap(px(16.))
-        .child(div().text_size(px(14.)).text_color(theme.text).child(title))
+    div().w_full().min_w_0().min_h(px(36.)).flex().items_center().justify_between().gap(px(16.))
+        .child(div().flex_none().whitespace_nowrap().text_size(px(14.)).text_color(theme.text).child(title))
         .child(control)
 }
 
