@@ -23,6 +23,23 @@ pub enum FontChoice {
     Mono,
 }
 
+fn default_color_name() -> String { "default".into() }
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LastFormatColors {
+    #[serde(default = "default_color_name")]
+    pub text_color: String,
+    #[serde(default = "default_color_name")]
+    pub background_color: String,
+}
+
+impl Default for LastFormatColors {
+    fn default() -> Self {
+        Self { text_color: default_color_name(), background_color: default_color_name() }
+    }
+}
+
 /// Unknown/missing keys default, so older state files keep loading.
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct State {
@@ -45,6 +62,8 @@ pub struct State {
     pub open_tabs: Vec<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_tab: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_format_colors: Option<LastFormatColors>,
 }
 static NEXT: AtomicU64 = AtomicU64::new(0);
 static WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
