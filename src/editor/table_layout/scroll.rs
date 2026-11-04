@@ -54,6 +54,19 @@ pub(in crate::editor) fn settle(editor: EntityId, block: u64, layout: &mut TextL
     STATE.with(|s| { s.borrow_mut().insert(key, state); });
 }
 
+/// Scrolls one table by `delta` pixels (positive moves toward the right edge); false when already at an end.
+pub(in crate::editor) fn scroll_by(editor: EntityId, block: u64, layout: &TextLayout, delta: f32) -> bool {
+    let max = max_offset(layout);
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        let state = s.entry((editor, block)).or_default();
+        let next = (state.offset + delta).clamp(0., max);
+        let moved = next != state.offset;
+        state.offset = next;
+        moved
+    })
+}
+
 /// Registered while a scrollable table paints: sideways wheel or trackpad motion over the grid scrolls it.
 pub(in crate::editor) fn track_wheel(editor: Entity<Editor>, block: u64, layout: &TextLayout, window: &mut Window) {
     let max = max_offset(layout);
