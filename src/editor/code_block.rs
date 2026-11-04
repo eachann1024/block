@@ -44,16 +44,8 @@ pub(super) fn is_math(language: &str) -> bool {
     canonical_lang_tag(language) == "latex"
 }
 
-pub(super) fn is_csv(language: &str) -> bool {
-    canonical_lang_tag(language) == "csv"
-}
-
-pub(super) fn is_markdown(language: &str) -> bool {
-    canonical_lang_tag(language) == "markdown"
-}
-
 pub(super) fn is_preview_lang(language: &str) -> bool {
-    is_mermaid(language) || is_math(language) || is_csv(language) || is_markdown(language)
+    is_mermaid(language) || is_math(language)
 }
 
 pub(super) fn is_menu_open_for(block_id: u64) -> bool {
