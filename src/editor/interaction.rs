@@ -75,7 +75,8 @@ impl Editor {
     }
     pub(in crate::editor) fn pointer_down(&mut self, event: &gpui::MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         self.table_menu = None; self.table_sel = None; self.block_menu = None; self.block_sel = None;
-        self.annotate.active_annotation = None; self.annotate.followup = None;
+        let prev_active = self.annotate.active_annotation.take();
+        self.annotate.followup = None;
         crate::editor::code_block::close_menus();
         self.close_format(window, cx);
         if self.path.is_none() || !self.list.viewport_bounds().contains(&event.position) { return; }
@@ -90,6 +91,12 @@ impl Editor {
             self.selection_origin = Some((self.caret.anchor, end, clicks));
             self.selecting = true; self.preferred_x = None; self.toolbar_anchor = None;
             self.reveal_caret = false; window.focus(&self.focus, cx);
+            if clicks == 1 && !event.modifiers.shift
+                && let Some(note_id) = self.annotation_at(at)
+                && prev_active != Some(note_id)
+            {
+                self.activate_target_annotation(note_id, window, cx);
+            }
         }
     }
     fn drag_span(&self, id: u64) -> Option<(usize, usize, Option<(u64, usize)>)> {
@@ -152,6 +159,10 @@ impl Editor {
                     self.caret.anchor = if before { end } else { start };
                     self.set_head(if before { a } else { b }, true, cx);
                 } else { self.set_head(at, true, cx); }
+            }
+            if !self.caret.is_empty() {
+                self.annotate.active_annotation = None;
+                self.annotate.followup = None;
             }
             self.reveal_caret = false;
         }
