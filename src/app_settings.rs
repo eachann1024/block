@@ -115,6 +115,7 @@ impl Workspace {
 
     pub(super) fn select_theme(&mut self, mode: ThemeMode, cx: &mut Context<Self>) {
         set_theme_mode(mode);
+        crate::theme::sync_gpui_theme(cx);
         cx.background_executor().spawn(async move {
             let _ = update_state(|s| s.theme = mode);
         }).detach();
