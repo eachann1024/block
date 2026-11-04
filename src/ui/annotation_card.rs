@@ -135,8 +135,9 @@ pub fn render_card_state(id: u64, state: CardState) -> Div {
     match state {
         CardState::Draft { body, on_edit, on_delete } => root.child(
             div().w_full().flex().items_start().gap(px(8.))
-                .child(div().size(px(8.)).mt(px(6.)).flex_none().rounded_full().bg(rgb(0xf5c84c)))
-                .child(div().flex_1().min_w_0().text_size(px(14.)).line_height(px(20.)).text_color(theme.text).child(body))
+                // Text row is padded to the 26px ghost-button height so a single line sits centered.
+                .child(div().size(px(8.)).mt(px(9.)).flex_none().rounded_full().bg(rgb(0xf5c84c)))
+                .child(div().flex_1().min_w_0().py(px(3.)).text_size(px(14.)).line_height(px(20.)).text_color(theme.text).child(body))
                 .child(ghost_icon_button(("ann-edit", id), Icon::Pencil, tr("编辑批注", "Edit annotation"), on_edit))
                 .child(ghost_icon_button(("ann-del", id), Icon::Trash, tr("删除批注", "Delete annotation"), on_delete)),
         ),
