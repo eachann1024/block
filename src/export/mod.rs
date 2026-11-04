@@ -4,6 +4,13 @@ mod decor_blocks;
 mod decor_marks;
 mod decor_paper;
 mod decor_shapes;
+mod export_docx;
+mod export_docx_xml;
+mod export_html;
+mod export_html_blocks;
+mod export_pdf;
+mod export_zip;
+mod format;
 mod job;
 mod layout;
 mod paint;
@@ -12,6 +19,7 @@ mod rich;
 mod style;
 mod table;
 mod view;
+mod view_actions;
 mod view_stage;
 mod view_ui;
 mod view_widgets;
@@ -20,22 +28,24 @@ pub(crate) use budget::validate_snapshot;
 pub use view::{ExportSlot, ExportView, Snapshot, active_view};
 
 pub use budget::{ExportError, preflight};
-pub use job::{Cancellation, ExportJob, Timings, write_png};
+pub use format::ExportFormat;
+pub use job::{Cancellation, ExportJob, Timings, write_bytes, write_png};
 pub use palette::{ExportTheme, RenderOptions};
 
 use crate::editor::model::Block;
 use cosmic_text::{FontSystem, SwashCache};
+use tiny_skia::Pixmap;
 use std::{sync::Mutex, time::Instant};
 
 // One font database for all jobs; all glyphs in a job share one raster cache.
 // The glyph cache is dropped between jobs so arbitrary documents cannot grow it forever.
 static FONTS: Mutex<Option<FontSystem>> = Mutex::new(None);
 
-pub fn render_with_cancel(
+pub(super) fn render_pixmap(
     blocks: &[Block],
     options: RenderOptions,
     cancel: &Cancellation,
-) -> Result<(Vec<u8>, Timings), ExportError> {
+) -> Result<(Pixmap, Timings), ExportError> {
     cancel.check()?;
     let start = Instant::now();
     let mut storage = FONTS.try_lock().map_err(|_| ExportError::Busy)?;
@@ -55,6 +65,15 @@ pub fn render_with_cancel(
     drop(layout);
     drop(storage);
     cancel.check()?;
+    Ok((image, timings))
+}
+
+pub fn render_with_cancel(
+    blocks: &[Block],
+    options: RenderOptions,
+    cancel: &Cancellation,
+) -> Result<(Vec<u8>, Timings), ExportError> {
+    let (image, mut timings) = render_pixmap(blocks, options, cancel)?;
     let start = Instant::now();
     let bytes = image
         .encode_png()
