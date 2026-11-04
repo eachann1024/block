@@ -1,6 +1,6 @@
-# thinkly-fast
+# Yu
 
-A small macOS notes app built with GPUI and Rust. A slim take on Thinkly.
+Yu 是 macOS 原生的 Markdown 块编辑器（基于 GPUI 与 Rust 构建）。文字之隅，落笔即成——打开、输入、拖动，都在毫秒内完成。
 
 - Open a folder and browse its Markdown files as a tree (folders first, then
   case-insensitive natural order). The last folder is remembered in
@@ -25,7 +25,7 @@ A small macOS notes app built with GPUI and Rust. A slim take on Thinkly.
 - The persistent width switch chooses a standard 720px body or the available
   editor width. Block menus provide insertion, duplication, movement and deletion.
   Mermaid and math entries currently create code blocks, not rendered diagrams.
-- Export the whole note (Thinkly → 导出图片) or the exact selected text (the `图`
+- Export the whole note (Yu → 导出图片) or the exact selected text (the `图`
   button) to a PNG at 2x with a 720px text column. Layout, rasterization and
   writing run in the background. Export accepts at most 256 blocks, 128 KiB of
   text and metadata, 8,192 formatting ranges and 16 megapixels; larger requests
