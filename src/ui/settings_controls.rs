@@ -47,6 +47,20 @@ pub fn static_badge(label: impl Into<SharedString>, mono: bool) -> gpui::Div {
         .child(label.into())
 }
 
+pub fn tag_chip(
+    id: impl Into<gpui::ElementId>, label: impl Into<SharedString>, active: bool, mono: bool,
+) -> gpui::Stateful<gpui::Div> {
+    let theme = Theme::ocean();
+    div().id(id).h(px(28.)).px(px(10.)).flex().items_center().rounded(px(6.)).text_size(px(13.))
+        .when(mono, |d| d.font(mono_font()))
+        .bg(if active { theme.selected } else { theme.shell })
+        .border_1().border_color(if active { theme.accent } else { theme.hairline })
+        .text_color(if active { theme.text } else { theme.text_secondary })
+        .cursor(CursorStyle::PointingHand)
+        .hover(move |s| s.bg(if active { theme.selected } else { theme.hover }).text_color(theme.text))
+        .child(label.into())
+}
+
 pub fn action_button(
     id: &'static str, label: impl Into<SharedString>, active: bool, enabled: bool,
 ) -> gpui::Stateful<gpui::Div> {
