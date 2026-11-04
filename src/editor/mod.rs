@@ -5,6 +5,7 @@ mod export_driver;
 mod input;
 mod nav;
 mod input_rules;
+mod inline_rules;
 mod indent;
 mod block_shortcuts;
 mod block_ops;
@@ -22,6 +23,8 @@ mod format_cmds;
 mod format_ui;
 mod toolbar;
 mod link_pop;
+mod annotate;
+mod annotate_ui;
 #[path = "../ai/mod.rs"]
 pub(crate) mod ai;
 mod clipboard_files;
