@@ -28,8 +28,11 @@ pub fn ignored(name: &str) -> bool {
 }
 
 pub fn is_markdown(name: &str) -> bool {
-    Path::new(name).extension().is_some_and(|ext| {
-        ext.eq_ignore_ascii_case("md") || ext.eq_ignore_ascii_case("markdown")
+    Path::new(name).extension().and_then(|e| e.to_str()).is_some_and(|ext| {
+        matches!(
+            ext.to_ascii_lowercase().as_str(),
+            "md" | "markdown" | "mdown" | "mkd" | "mkdn" | "mdwn" | "mdtxt" | "mdtext" | "mdx"
+        )
     })
 }
 

@@ -21,11 +21,53 @@ pub(super) enum FormatPop {
     SelectionMenu { anchor: Point<Pixels> },
 }
 
-/// Bare domains get `https://`; anything with a scheme, path or fragment is kept.
-pub(super) fn normalize_url(raw: &str) -> String {
+/// Bare domains get `https://`, bare emails get `mailto:`; anything with a scheme, path or fragment is kept.
+pub(crate) fn normalize_url(raw: &str) -> String {
     let url = raw.trim();
     let has_scheme = url.split_once(':').is_some_and(|(s, _)| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c)));
-    if url.is_empty() || has_scheme || url.starts_with(['/', '#', '.']) || !url.contains('.') { url.to_owned() } else { format!("https://{url}") }
+    if url.is_empty() || has_scheme || url.starts_with(['/', '#', '.']) || !url.contains('.') {
+        url.to_owned()
+    } else if url.contains('@') && !url.contains('/') {
+        format!("mailto:{url}")
+    } else {
+        format!("https://{url}")
+    }
+}
+
+/// Opens a URL or local path via the system default app on a background thread so AppKit
+/// activation callbacks (`windowDidResignKey:`) never re-enter GPUI's `AppCell` borrow.
+pub(crate) fn open_external_url(raw: &str, base_note: Option<&std::path::Path>) {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() { return; }
+    let target = base_note
+        .and_then(|p| p.parent())
+        .and_then(|parent| {
+            let candidate = parent.join(trimmed);
+            candidate.exists().then(|| candidate.to_string_lossy().into_owned())
+        })
+        .unwrap_or_else(|| normalize_url(trimmed));
+    if target.is_empty() { return; }
+    std::thread::spawn(move || {
+        use std::process::{Command, Stdio};
+        #[cfg(target_os = "macos")]
+        let res = Command::new("/usr/bin/open")
+            .arg(&target)
+            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
+            .status();
+        #[cfg(target_os = "linux")]
+        let res = Command::new("xdg-open")
+            .arg(&target)
+            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
+            .status();
+        #[cfg(target_os = "windows")]
+        let res = Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", &target])
+            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
+            .status();
+        if let Err(err) = res {
+            crate::log::warn(&format!("failed to open url {target}: {err}"));
+        }
+    });
 }
 
 /// Pressed states for the selection toolbar; a mark is on only when it covers every selected character.
@@ -183,9 +225,10 @@ impl Editor {
         self.close_format(window, cx);
     }
     /// Cmd/Ctrl-click on a link opens it instead of moving the caret.
-    pub(super) fn open_link_at(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) -> bool {
+    pub(super) fn open_link_at(&mut self, position: Point<Pixels>, _cx: &mut Context<Self>) -> bool {
         let Some((block, range)) = self.link_under(position) else { return false };
         let Some((_, url)) = self.doc.get(block).and_then(|b| b.link_at(range.start)) else { return false };
-        cx.open_url(&normalize_url(&url)); true
+        open_external_url(&url, self.path.as_deref());
+        true
     }
 }

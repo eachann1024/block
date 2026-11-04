@@ -21,6 +21,8 @@ export function logIssue(level, msg) {
   } catch {}
 }
 
+const markdownExtensions = ["md", "markdown", "mdown", "mkd", "mkdn", "mdwn", "mdtxt", "mdtext", "mdx"];
+
 const plistKeys = [
   ["CFBundleName", appName],
   ["CFBundleDisplayName", appName],
@@ -31,17 +33,55 @@ const plistKeys = [
   ["CFBundleShortVersionString", "0.1.0"],
   ["LSMinimumSystemVersion", "12.0"],
   ["NSHighResolutionCapable", true],
+  [
+    "CFBundleDocumentTypes",
+    [
+      {
+        CFBundleTypeName: "Markdown Document",
+        CFBundleTypeRole: "Editor",
+        LSHandlerRank: "Alternate",
+        LSItemContentTypes: ["net.daringfireball.markdown", "public.markdown", "public.plain-text"],
+        CFBundleTypeExtensions: markdownExtensions,
+        CFBundleTypeMIMETypes: ["text/markdown", "text/x-markdown"],
+      },
+    ],
+  ],
+  [
+    "UTImportedTypeDeclarations",
+    [
+      {
+        UTTypeIdentifier: "net.daringfireball.markdown",
+        UTTypeDescription: "Markdown Document",
+        UTTypeConformsTo: ["public.plain-text", "public.text"],
+        UTTypeTagSpecification: {
+          "public.filename-extension": markdownExtensions,
+          "public.mime-type": ["text/markdown", "text/x-markdown"],
+        },
+      },
+    ],
+  ],
 ];
 
 export function plist() {
   const body = plistKeys
-    .map(([key, value]) => `  <key>${key}</key>\n  ${tag(value)}`)
+    .map(([key, value]) => `  <key>${key}</key>\n${tag(value, "  ")}`)
     .join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n${body}\n</dict>\n</plist>\n`;
 }
 
-function tag(value) {
-  return typeof value === "boolean" ? `<${value}/>` : `<string>${value}</string>`;
+function tag(value, indent = "") {
+  if (typeof value === "boolean") return `${indent}<${value}/>`;
+  if (Array.isArray(value)) {
+    const items = value.map((item) => tag(item, `${indent}  `)).join("\n");
+    return `${indent}<array>\n${items}\n${indent}</array>`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value)
+      .map(([k, v]) => `${indent}  <key>${k}</key>\n${tag(v, `${indent}  `)}`)
+      .join("\n");
+    return `${indent}<dict>\n${entries}\n${indent}</dict>`;
+  }
+  return `${indent}<string>${value}</string>`;
 }
 
 export function run(command, args, options = {}) {

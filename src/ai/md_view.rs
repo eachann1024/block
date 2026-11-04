@@ -46,7 +46,7 @@ fn inline(block: &Block, id: String) -> AnyElement {
     let styled = StyledText::new(SharedString::from(text)).with_highlights(hl);
     if ranges.is_empty() { return styled.into_any_element(); }
     InteractiveText::new(SharedString::from(id), styled)
-        .on_click(ranges, move |ix, _, cx| { if let Some(h) = hrefs.get(ix) { cx.open_url(h); } })
+        .on_click(ranges, move |ix, _, _| { if let Some(h) = hrefs.get(ix) { crate::editor::open_external_url(h, None); } })
         .into_any_element()
 }
 
