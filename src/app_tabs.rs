@@ -108,8 +108,10 @@ impl Workspace {
         cx.notify();
     }
     pub(crate) fn close_active_tab(&mut self, cx: &mut Context<Self>) {
-        if let Some(active) = self.selected.clone().or_else(|| self.editor.read(cx).current_path().map(Path::to_path_buf)) {
-            self.close_tab(active, cx);
+        if self.tabs.len() > 1 {
+            if let Some(active) = self.selected.clone().or_else(|| self.editor.read(cx).current_path().map(Path::to_path_buf)) {
+                self.close_tab(active, cx);
+            }
         }
     }
     pub(crate) fn step_tab(&mut self, delta: isize, cx: &mut Context<Self>) {
@@ -203,7 +205,7 @@ impl Workspace {
             let plus = if can_create { Some({
                 let new_group: SharedString = "tab-new-btn".into();
                 div().id("tab-new").group(new_group.clone()).size(px(26.)).flex_none()
-                    .flex().items_center().justify_center().rounded(px(6.)).cursor(CursorStyle::PointingHand)
+                    .flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).cursor(CursorStyle::PointingHand)
                     .hover(|s| s.bg(theme.hover))
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
                         cx.stop_propagation();
@@ -235,38 +237,37 @@ impl Workspace {
         let (open_path, mid_path, menu_path, close_path) = (path.clone(), path.clone(), path.clone(), path.clone());
         let anim_seq = if multi { opening_seq(&path) } else { None };
         let close_btn = div().id(("tab-close", ix)).group(close_group.clone()).size(px(18.)).flex_none()
-            .flex().items_center().justify_center().rounded(px(4.)).hover(|s| s.bg(theme.selection))
+            .flex().items_center().justify_center().rounded(crate::ui::radius::MICRO_SM).hover(|s| s.bg(theme.selection))
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                 cx.stop_propagation();
                 this.close_tab(close_path.clone(), cx);
             }))
             .child(hover_tinted_icon(close_group, Icon::Close, 12., theme.text_secondary, theme.text, theme.icon_fill));
-        let note_icon = if multi && active {
-            icon(Icon::Note, px(14.), theme.icon_colors(theme.accent)).into_any_element()
-        } else {
-            hover_tinted_icon(group.clone(), Icon::Note, 14., theme.text_secondary, theme.text, theme.icon_fill).into_any_element()
-        };
+        let note_icon = if multi && active { icon(Icon::Note, px(14.), theme.icon_colors(theme.accent)).into_any_element() }
+            else if multi { hover_tinted_icon(group.clone(), Icon::Note, 14., theme.text_secondary, theme.text, theme.icon_fill).into_any_element() }
+            else { icon(Icon::Note, px(14.), theme.mono_icon_colors(theme.text_secondary)).into_any_element() };
         let mut pill = div().id(("tab", ix)).group(group.clone()).h(px(28.)).overflow_hidden()
-            .when(multi, |t| t.w(px(TAB_MAX_W)).flex_basis(px(TAB_BASIS_W)).flex_shrink_1().min_w(px(TAB_MIN_W)).max_w(px(TAB_MAX_W)))
-            .when(!multi, |t| t.min_w_0().max_w(px(SINGLE_TAB_MAX_W)).flex_shrink_1())
-            .pl(px(10.)).pr(px(6.)).rounded(px(6.)).flex().items_center().relative().when(ix == 0, |t| t.children(crate::ui::smoke_overlay::probe("tab-0")))
-            .cursor(CursorStyle::PointingHand).text_size(px(13.)).line_height(px(18.)).font_weight(FontWeight(460.))
+            .when(multi, |t| t.w(px(TAB_MAX_W)).flex_basis(px(TAB_BASIS_W)).flex_shrink_1().min_w(px(TAB_MIN_W)).max_w(px(TAB_MAX_W)).cursor(CursorStyle::PointingHand))
+            .when(!multi, |t| t.min_w_0().max_w(px(SINGLE_TAB_MAX_W)).flex_shrink_1().text_color(theme.text)
+                .window_control_area(WindowControlArea::Drag).on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); }))
+            .pl(px(10.)).pr(px(if multi { 6. } else { 10. })).rounded(crate::ui::radius::CONTROL).flex().items_center().relative().when(ix == 0, |t| t.children(crate::ui::smoke_overlay::probe("tab-0")))
+            .text_size(px(13.)).line_height(px(18.)).font_weight(FontWeight(460.))
             .when(multi && active, |t| t.bg(theme.selected).border_1().border_color(theme.accent).text_color(theme.text))
             .when(multi && !active, |t| t.border_1().border_color(transparent_black()).text_color(theme.text_secondary)
                 .hover(|s| s.bg(theme.hover).text_color(theme.text)))
-            .when(!multi, |t| t.text_color(theme.text).hover(|s| s.bg(theme.hover)))
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| if !this.busy() {
-                this.close_settings(window, cx);
-                this.open_file(open_path.clone(), cx);
-            }))
-            .on_mouse_down(MouseButton::Middle, cx.listener(move |this, _, _, cx| {
-                cx.stop_propagation();
-                this.close_tab(mid_path.clone(), cx);
-            }))
-            .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
-                cx.stop_propagation();
-                this.open_tab_menu(ix, menu_path.clone(), event.position, cx);
-            }))
+            .when(multi, |t| t
+                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| if !this.busy() {
+                    this.close_settings(window, cx);
+                    this.open_file(open_path.clone(), cx);
+                }))
+                .on_mouse_down(MouseButton::Middle, cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.close_tab(mid_path.clone(), cx);
+                }))
+                .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.open_tab_menu(ix, menu_path.clone(), event.position, cx);
+                })))
             .child(div().mr(px(6.)).flex_none().flex().items_center().child(note_icon));
         pill = if multi && active {
             pill.child(div().relative().flex_1().min_w_0().h_full().flex().items_center().overflow_hidden()
@@ -277,14 +278,11 @@ impl Workspace {
         } else if multi {
             pill.child(render_inactive_tab_body(label, group, dirty, close_btn))
         } else {
-            let single_fade_x = SINGLE_TAB_MAX_W - 58. - TAB_FADE_W;
+            let single_fade_x = SINGLE_TAB_MAX_W - 40. - TAB_FADE_W;
             pill.child(div().relative().flex_shrink_1().min_w_0().h_full().flex().items_center().overflow_hidden()
                 .child(div().whitespace_nowrap().child(label))
-                .child(tab_fade(theme.shell).absolute().top_0().bottom_0().left(px(single_fade_x)).group_hover(group.clone(), |s| s.invisible()))
-                .child(tab_fade(theme.hover).absolute().top_0().bottom_0().left(px(single_fade_x)).invisible().group_hover(group.clone(), |s| s.visible())))
-                .child(div().ml(px(4.)).size(px(18.)).flex_none().relative().flex().items_center().justify_center()
-                    .when(dirty, |s| s.child(div().size(px(6.)).rounded_full().bg(theme.accent).group_hover(group.clone(), |d| d.invisible())))
-                    .child(close_btn.absolute().inset_0().invisible().group_hover(group, |b| b.visible())))
+                .child(tab_fade(theme.shell).absolute().top_0().bottom_0().left(px(single_fade_x))))
+                .when(dirty, |t| t.child(div().ml(px(6.)).size(px(6.)).flex_none().rounded_full().bg(theme.accent)))
         };
         if let Some(seq) = anim_seq {
             pill.with_animation(("tab-open-anim", seq), Animation::new(Duration::from_millis(TAB_ANIM_MS)).with_easing(ease_out_quint()), |el, d| {
