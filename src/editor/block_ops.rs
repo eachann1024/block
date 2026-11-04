@@ -1,7 +1,7 @@
 //! Notion-parity block operations: subtree-aware move, duplicate, code/menu shortcuts, and Esc block selection keys.
-use gpui::{ClipboardItem, Context, Window, point, px};
+use gpui::{ClipboardItem, Context, Window};
 use super::{
-    block_menu::{Mode, is_divider},
+    block_menu::is_divider,
     input::transactions::ListChange,
     model::{Block, Doc, Kind},
     view::{Editor, EditorAction, selection::Position},
@@ -130,18 +130,6 @@ impl Editor {
             }
         }
         self.record(before, cx);
-    }
-
-    /// Cmd+/: open the block handle menu for the active block.
-    #[allow(unreachable_code, unused_variables)]
-    pub(super) fn open_handle_menu_shortcut(&mut self, cx: &mut Context<Self>) {
-        // 暂时禁用普通块把手菜单快捷键（保留下方实现代码）
-        return;
-        if self.path.is_none() { return; }
-        let id = self.block_sel.and_then(|(_, h)| self.doc.blocks.get(h.min(self.doc.blocks.len().saturating_sub(1))).map(|b| b.id))
-            .unwrap_or(self.caret.head.block);
-        let anchor = self.layouts.get(&id).map(|l| point(l.bounds.left(), l.bounds.top())).unwrap_or_else(|| point(px(280.), px(160.)));
-        self.open_block_menu(id, anchor, Mode::Handle, cx);
     }
 
     /// Cmd+Enter: toggle `checked` when on a Todo block (or Todo blocks in `block_sel`), else `exit_block`.

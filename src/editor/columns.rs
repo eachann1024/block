@@ -4,10 +4,9 @@
 use std::ops::Range;
 use gpui::{AnyElement, Context, MouseButton, Window, div, prelude::*, px, rgba};
 use super::{
-    block_menu::{Cmd, Mode},
     chrome::{HANDLE_WIDTH, RIGHT_INSET, ROW_GAP, TypeMark, grip_button, render_block_row},
     input::transactions::ListChange,
-    model::{Block, Doc, Kind},
+    model::{Block, Kind},
     view::{Editor, interaction::DropTarget, selection::Position},
 };
 use crate::icons::Icon;
@@ -170,73 +169,6 @@ impl Editor {
         *caret = Some(Position { block: self.doc.blocks[at].id, offset: 0 });
     }
 
-    pub(in crate::editor) fn columns_group_entries(&self, gid: u64) -> Vec<Option<Cmd>> {
-        let Some(r) = self.column_group_by_id(gid) else { return Vec::new() };
-        let mut items: Vec<Option<Cmd>> = vec![Some(Cmd::InsertAbove), Some(Cmd::InsertBelow), Some(Cmd::Duplicate), Some(Cmd::Cut)];
-        if r.start > 0 { items.push(Some(Cmd::MoveUp)); }
-        if r.end < self.doc.blocks.len() { items.push(Some(Cmd::MoveDown)); }
-        items.extend([None, Some(Cmd::Delete)]);
-        items
-    }
-
-    pub(in crate::editor) fn run_columns_group_cmd(&mut self, gid: u64, cmd: Cmd, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(r) = self.column_group_by_id(gid) else { return };
-        self.commit_composition(cx);
-        let before = self.snapshot();
-        let n = r.len();
-        match cmd {
-            Cmd::InsertAbove | Cmd::InsertBelow => {
-                let at = if cmd == Cmd::InsertAbove { r.start } else { r.end };
-                self.doc.splice_blocks(at..at, vec![Block::new(0, Kind::Paragraph, String::new())]);
-                let pos = Position { block: self.doc.blocks[at].id, offset: 0 };
-                self.caret.anchor = pos; self.caret.head = pos;
-                self.record_changes(before, vec![ListChange { start: at, before: 0, after: 1 }], true, cx);
-            }
-            Cmd::Duplicate => {
-                let new_gid = self.doc.fresh_id();
-                let copies: Vec<Block> = (r.clone()).map(|i| {
-                    let mut b = self.doc.blocks[i].clone(); b.id = 0;
-                    if let Some((_, c)) = b.meta.column { b.meta.column = Some((new_gid, c)); }
-                    b
-                }).collect();
-                self.doc.splice_blocks(r.end..r.end, copies);
-                self.record_changes(before, vec![ListChange { start: r.end, before: 0, after: n }], true, cx);
-            }
-            Cmd::MoveUp | Cmd::MoveDown => {
-                let to = if cmd == Cmd::MoveUp {
-                    if r.start == 0 { return; }
-                    self.column_group_range(r.start - 1).map_or(r.start - 1, |pr| pr.start)
-                } else {
-                    if r.end >= self.doc.blocks.len() { return; }
-                    self.column_group_range(r.end).map_or_else(|| self.list_subtree_end(r.end) + 1, |nr| nr.end) - n
-                };
-                let moved: Vec<Block> = (r.clone()).map(|i| self.doc.blocks[i].clone()).collect();
-                self.doc.splice_blocks(r.clone(), Vec::new());
-                self.doc.splice_blocks(to..to, moved);
-                self.record_changes(before, vec![ListChange { start: r.start, before: n, after: 0 }, ListChange { start: to, before: 0, after: n }], true, cx);
-            }
-            Cmd::Cut | Cmd::Delete => {
-                if cmd == Cmd::Cut {
-                    let group_blocks: Vec<Block> = (r.clone()).map(|i| self.doc.blocks[i].clone()).collect();
-                    let markdown = super::markdown::serialize(&Doc::from_blocks(group_blocks));
-                    let plain = markdown.trim_end().to_owned();
-                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(plain.clone()));
-                    self.block_clip = Some((plain, markdown));
-                }
-                self.doc.splice_blocks(r.clone(), Vec::new());
-                let added = if self.doc.blocks.is_empty() {
-                    self.doc.splice_blocks(0..0, vec![Block::new(0, Kind::Paragraph, String::new())]); 1
-                } else { 0 };
-                let at = r.start.min(self.doc.blocks.len() - 1);
-                let pos = Position { block: self.doc.blocks[at].id, offset: 0 };
-                self.caret.anchor = pos; self.caret.head = pos;
-                self.record_changes(before, vec![ListChange { start: r.start, before: n, after: added }], true, cx);
-            }
-            _ => return,
-        }
-        self.layouts.clear(); window.focus(&self.focus); cx.notify();
-    }
-
     pub(in crate::editor) fn finish_group_drag(&mut self, gid: u64, target: DropTarget, cx: &mut Context<Self>) {
         let Some(r) = self.column_group_by_id(gid) else { return };
         let slot = target.index + usize::from(target.after);
@@ -259,7 +191,6 @@ pub(in crate::editor) fn columns_row(this: &Editor, group: Range<usize>, cx: &mu
     let max_col = (group.clone()).filter_map(|i| this.doc.blocks[i].meta.column.map(|(_, c)| c)).max().unwrap_or(1).max(1);
     let group_active = !this.minimal && this.path.is_some() && (
         this.hover == Some(handle_id) || this.dragging == Some(handle_id)
-        || this.block_menu.as_ref().is_some_and(|m| m.mode == Mode::Handle && m.block == handle_id)
         || (group.clone()).any(|i| { let bid = this.doc.blocks[i].id; this.hover == Some(bid) || this.caret.head.block == bid })
     );
     let mut cols_el = div().flex().flex_row().w_full().gap(px(12.));
@@ -273,12 +204,10 @@ pub(in crate::editor) fn columns_row(this: &Editor, group: Range<usize>, cx: &mu
         for (idx, _) in indices { card = card.child(render_block_row(this, idx, cx)); }
         cols_el = cols_el.child(card);
     }
-    // 暂时禁用普通块把手与块菜单（保留完整实现代码以备后续恢复）
-    let show_col_grip = false && group_active;
     let handle = div().w(px(HANDLE_WIDTH)).flex_shrink_0().pt(px(6.)).flex().items_start().justify_end().pr(px(ROW_GAP))
         .on_mouse_move(cx.listener(move |this, _, _, cx| this.hover_block(handle_id, true, cx)))
-        .when(show_col_grip, |row| row.child(grip_button(TypeMark::Icon(Icon::Columns), handle_id, ("col-grip", gid as usize), cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
-            this.begin_drag(handle_id, cx); this.grip_origin = Some(event.position); cx.stop_propagation();
+        .when(group_active, |row| row.child(grip_button(TypeMark::Icon(Icon::Columns), ("col-grip", gid as usize), cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
+            this.begin_drag(handle_id, cx); cx.stop_propagation();
         })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
             if this.dragging == Some(handle_id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
         }))));
