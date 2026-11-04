@@ -8,6 +8,7 @@ use super::model::{Block, Doc, Kind, Numbering};
 #[path = "markdown_containers.rs"] mod containers;
 #[path = "markdown_raw_guard.rs"] mod raw_guard;
 
+pub fn strip_frontmatter(source: &str) -> &str { blocks::strip_frontmatter(source) }
 pub fn rebuild_table_source(table: &mut super::model::Table) { table::rebuild(table) }
 pub(super) fn serialize_table(table: &super::model::Table, out: &mut String) { table::serialize(table, out) }
 
@@ -24,6 +25,9 @@ pub fn parse(source: &str) -> Doc {
     while index < lines.len() {
         let raw_line = lines[index]; let line = raw_line.trim_end_matches(['\r','\n']);
         let id = result.len() as u64 + 1;
+        if index == 0 && let Some((block, count, bytes)) = blocks::parse_frontmatter(id, &lines) {
+            offset += bytes; index += count; result.push(block); continue;
+        }
         if super::image_source::parse(line).is_some() {
             offset += raw_line.len(); index += 1;
             result.push(raw(id, raw_line.to_owned(), "Image")); continue;
@@ -157,6 +161,7 @@ pub fn serialize(doc: &Doc) -> String {
             containers::serialize_columns(&blocks[start..at], &mut out);
             continue;
         }
+        let is_first = at == 0;
         at += 1;
         if let Some(table) = &block.meta.table { table::serialize(table, &mut out); continue; }
         if block.meta.raw_source.is_some() { out.push_str(&block.text); continue; }
@@ -165,6 +170,8 @@ pub fn serialize(doc: &Doc) -> String {
             paragraph::serialize(block, &mut out); continue;
         }
         if let Some(language) = &block.meta.code_language {
+            if blocks::serialize_frontmatter(block, is_first, &mut out) { continue; }
+            let language = if language == "yaml-frontmatter" { "yaml" } else { language.as_str() };
             let marker = if language.contains('`') { '~' } else { '`' };
             let mut longest = 0; let mut run = 0;
             for ch in block.text.chars() {

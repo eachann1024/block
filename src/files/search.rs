@@ -46,7 +46,9 @@ fn snippet_around(text: &str, at: Range<usize>) -> String {
 }
 
 fn first_line(text: &str) -> String {
-    let line = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    let body = crate::editor::markdown::strip_frontmatter(text);
+    let source = if body.trim().is_empty() { text } else { body };
+    let line = source.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
     line.trim_start_matches('#').trim().chars().take(70).collect()
 }
 
