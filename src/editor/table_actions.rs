@@ -134,6 +134,10 @@ impl Editor {
         let row = match sel { TableSel::Row(r) | TableSel::Cell(r, _) => Some(r), _ => None };
         let column = match sel { TableSel::Column(c) | TableSel::Cell(_, c) => Some(c), _ => None };
         self.table_menu = None;
+        if matches!(cmd, TableCmd::InsertColLeft | TableCmd::InsertColRight | TableCmd::DuplicateColumn | TableCmd::AppendColumn
+            | TableCmd::MoveColLeft | TableCmd::MoveColRight | TableCmd::DeleteColumn) {
+            table_layout::reset_manual(cx.entity_id(), id);
+        }
         match cmd {
             TableCmd::SelectTable => self.select_whole_table(id, cx),
             TableCmd::CopyTable => {
@@ -147,6 +151,7 @@ impl Editor {
                 }
                 cx.notify();
             }
+            TableCmd::FitWidth => { table_layout::toggle_fit(cx.entity_id(), id); self.relayout_table(id, cx); }
             TableCmd::DeleteTable => {
                 let Some(index) = self.doc.index_of(id) else { return };
                 self.commit_composition(cx); let before = self.snapshot();
@@ -200,6 +205,7 @@ impl Editor {
                 self.table_edit(drag.block, move |t| t.move_row(from, to).then_some((to, 0)), cx);
             },
             TableSel::Column(from) => {
+                table_layout::reset_manual(cx.entity_id(), drag.block);
                 self.table_edit(drag.block, move |t| t.move_column(from, to).then_some((0, to)), cx);
             },
             _ => {}

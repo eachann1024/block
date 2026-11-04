@@ -8,7 +8,7 @@ pub(in crate::editor) enum TableCmd {
     InsertRowAbove, InsertRowBelow, InsertColLeft, InsertColRight,
     MoveRowUp, MoveRowDown, MoveColLeft, MoveColRight,
     Align(CellAlignment), ClearRow, ClearColumn, DeleteRow, DeleteColumn,
-    DeleteTable, SelectTable, CopyTable,
+    DeleteTable, SelectTable, CopyTable, FitWidth,
     DuplicateRow, DuplicateColumn, AppendRow, AppendColumn,
 }
 impl TableCmd {
@@ -27,6 +27,7 @@ impl TableCmd {
             TableCmd::DeleteRow => tr("删除行", "Delete row"), TableCmd::DeleteColumn => tr("删除列", "Delete column"),
             TableCmd::DeleteTable => tr("删除表格", "Delete table"), TableCmd::SelectTable => tr("选中表格", "Select table"),
             TableCmd::CopyTable => tr("复制表格", "Copy table"),
+            TableCmd::FitWidth => tr("适应页面宽度", "Fit to page width"),
             TableCmd::DuplicateRow => tr("复制行", "Duplicate row"), TableCmd::DuplicateColumn => tr("复制列", "Duplicate column"),
         }
     }
@@ -43,7 +44,7 @@ impl TableCmd {
             TableCmd::Align(CellAlignment::Left) => Icon::AlignLeft, TableCmd::Align(CellAlignment::Center) => Icon::AlignCenter,
             TableCmd::Align(CellAlignment::Right) => Icon::AlignRight, TableCmd::ClearRow | TableCmd::ClearColumn => Icon::Eraser,
             TableCmd::DeleteTable => Icon::Trash, TableCmd::SelectTable => Icon::SelectAll,
-            TableCmd::CopyTable => Icon::Copy, TableCmd::DuplicateRow | TableCmd::DuplicateColumn => Icon::Duplicate,
+            TableCmd::CopyTable => Icon::Copy, TableCmd::FitWidth => Icon::Columns, TableCmd::DuplicateRow | TableCmd::DuplicateColumn => Icon::Duplicate,
         }
     }
     pub fn danger(self) -> bool { matches!(self, TableCmd::DeleteTable) }
@@ -58,7 +59,7 @@ pub(in crate::editor) fn menu_items(sel: TableSel, _rows: usize, _columns: usize
         TableSel::Column(_) => vec![Some(InsertColLeft), Some(InsertColRight), Some(DeleteColumn)],
         TableSel::Row(_) => vec![Some(InsertRowAbove), Some(InsertRowBelow), Some(DeleteRow)],
         TableSel::Cell(..) => vec![Some(InsertRowAbove), Some(InsertRowBelow), Some(InsertColLeft), Some(InsertColRight),
-            None, Some(DeleteRow), Some(DeleteColumn), None, Some(SelectTable), Some(CopyTable), Some(DeleteTable)],
-        TableSel::Whole => vec![Some(SelectTable), Some(CopyTable), None, Some(DeleteTable)],
+            None, Some(DeleteRow), Some(DeleteColumn), None, Some(SelectTable), Some(CopyTable), Some(FitWidth), None, Some(DeleteTable)],
+        TableSel::Whole => vec![Some(SelectTable), Some(CopyTable), Some(FitWidth), None, Some(DeleteTable)],
     }
 }
