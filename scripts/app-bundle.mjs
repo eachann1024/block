@@ -1,13 +1,25 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { accessSync, constants, existsSync, lstatSync, mkdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 export const appName = "Thinkly Fast";
 export const bundleId = "dev.eachann.thinkly-fast";
 export const installPath = "/Applications/Thinkly Fast.app";
 export const installedExecutable = `${installPath}/Contents/MacOS/thinkly-fast`;
+export const logDir = join(homedir(), "Library/Logs/ThinklyFast");
+export const buildLogPath = join(logDir, "build.log");
+export const runtimeLogPath = join(logDir, "thinkly-fast.log");
+
+export function buildLog(msg) {
+  const line = `[${new Date().toISOString()}] [build] ${msg}\n`;
+  process.stdout.write(line);
+  try {
+    mkdirSync(logDir, { recursive: true });
+    appendFileSync(buildLogPath, line);
+  } catch {}
+}
 
 const plistKeys = [
   ["CFBundleName", appName],
@@ -43,20 +55,41 @@ export function run(command, args, options = {}) {
 }
 
 export function binaryPath(root) {
-  const message = run("cargo", ["build", "--locked", "--release", "--message-format", "json"], {
+  const t0 = Date.now();
+  buildLog("compiling release binary (cargo build --locked --release)...");
+  const result = spawnSync("cargo", ["build", "--locked", "--release", "--message-format", "json"], {
     cwd: root,
+    encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
-    stdio: ["ignore", "pipe", "inherit"],
+    stdio: ["ignore", "pipe", "pipe"],
   });
-  const built = message
+  if (result.error) throw result.error;
+  const entries = (result.stdout ?? "")
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line))
-    .filter((entry) => entry.reason === "compiler-artifact" && entry.target?.name === "thinkly-fast" && entry.target?.kind?.includes("bin") && entry.executable);
+    .flatMap((line) => {
+      try { return [JSON.parse(line)]; } catch { return []; }
+    });
+  const rendered = [];
+  for (const entry of entries) {
+    if (entry.reason === "compiler-message" && entry.message?.rendered) {
+      const msg = entry.message.rendered.trim();
+      rendered.push(msg);
+      buildLog(`compiler ${entry.message.level ?? "diag"}: ${msg}`);
+    }
+  }
+  if (result.status !== 0) {
+    const fallback = (result.stderr ?? "").trim();
+    throw new Error(rendered.join("\n\n") || fallback || `cargo exited ${result.status}`);
+  }
+  const built = entries.filter(
+    (entry) => entry.reason === "compiler-artifact" && entry.target?.name === "thinkly-fast" && entry.target?.kind?.includes("bin") && entry.executable
+  );
   const executable = built.at(-1)?.executable;
   if (!executable?.startsWith("/") || !executable.endsWith("/thinkly-fast") || !existsSync(executable)) {
     throw new Error("release build did not report the thinkly-fast executable");
   }
+  buildLog(`compiled ${executable} in ${((Date.now() - t0) / 1000).toFixed(2)}s`);
   return executable;
 }
 
@@ -72,7 +105,7 @@ export function assertSystemLibraries(executable) {
 
 export function sign(bundle) {
   run("plutil", ["-lint", join(bundle, "Contents/Info.plist")]);
-  run("strip", ["-x", join(bundle, "Contents/MacOS/thinkly-fast")]);
+  // Preserve symbol table and DWARF line tables so release backtraces and macOS .ips crash logs resolve file:line.
   run("codesign", ["--force", "--sign", "-", bundle]);
   verifySignature(bundle);
 }
