@@ -75,6 +75,7 @@ impl Editor {
     }
     pub(in crate::editor) fn pointer_down(&mut self, event: &gpui::MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         self.table_menu = None; self.table_sel = None; self.block_menu = None; self.block_sel = None;
+        self.annotate.active_annotation = None; self.annotate.followup = None;
         crate::editor::code_block::close_menus();
         self.close_format(window, cx);
         if self.path.is_none() || !self.list.viewport_bounds().contains(&event.position) { return; }

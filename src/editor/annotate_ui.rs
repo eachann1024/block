@@ -43,17 +43,28 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
                 let id = note.id;
                 let is_active = editor.annotate.active_annotation == Some(id);
                 let status = if note.has_rewrite() { ANNOTATION_GENERATED } else { ANNOTATION_PENDING };
-                layer = layer.child(div().id(SharedString::from(format!("annotation-marker-{id}")))
-                    .absolute().top(y).right(px(12.)).min_w(px(24.)).h(px(24.)).px(px(6.))
-                    .rounded(px(6.)).border_l_2().border_color(rgb(status)).bg(Theme::ocean().paper)
-                    .flex().items_center().justify_center().text_size(px(14.)).text_color(Theme::ocean().text_secondary)
-                    .cursor(CursorStyle::PointingHand).occlude()
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
-                        cx.stop_propagation();
-                        this.toggle_annotation_detail(id, window, cx);
-                    })).child(format!("{}", index + 1)));
-                next_y = y + if is_active { px(92.) } else { px(28.) };
-                if is_active {
+                if note.body.is_empty() && !note.reactions.is_empty() {
+                    layer = layer.child(
+                        annotation_note::reaction_pill(SharedString::from(format!("annotation-marker-{id}")), &note.reactions[0], is_active)
+                            .absolute().top(y).right(px(12.)).occlude()
+                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
+                                cx.stop_propagation();
+                                this.toggle_annotation_detail(id, window, cx);
+                            })),
+                    );
+                } else {
+                    layer = layer.child(div().id(SharedString::from(format!("annotation-marker-{id}")))
+                        .absolute().top(y).right(px(12.)).min_w(px(24.)).h(px(24.)).px(px(6.))
+                        .rounded(px(6.)).border_l_2().border_color(rgb(status)).bg(Theme::ocean().paper)
+                        .flex().items_center().justify_center().text_size(px(14.)).text_color(Theme::ocean().text_secondary)
+                        .cursor(CursorStyle::PointingHand).occlude()
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.toggle_annotation_detail(id, window, cx);
+                        })).child(format!("{}", index + 1)));
+                }
+                next_y = y + if is_active && !note.body.is_empty() { px(92.) } else { px(28.) };
+                if is_active && !note.body.is_empty() {
                     let followup = editor.annotate.followup.as_ref()
                         .filter(|field| field.annotation_id == id).map(|field| field.input.clone());
                     layer = layer.child(div().absolute().top(y + px(28.)).right(px(16.)).w(px(RAIL_W)).occlude()
@@ -105,7 +116,13 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
         rail
     });
 
-    let reactions = editor.annotate.reactions.clone().map(|picker| reaction_popover(picker, cx));
+    let reactions = editor.annotate.reactions.clone().map(|picker| {
+        let selected = picker.annotation_id
+            .and_then(|id| editor.annotate.annotations.iter().find(|n| n.id == id))
+            .map(|n| n.reactions.clone())
+            .unwrap_or_default();
+        reaction_popover(picker, selected, cx)
+    });
     Some(div().absolute().top_0().left_0().size_full().children(rail).children(reactions).into_any_element())
 }
 
@@ -127,11 +144,26 @@ fn annotation_row(
     let is_applied = note.is_applied();
     let has_rewrite = note.has_rewrite();
     let is_active = active_id == Some(id);
+    if note.body.is_empty() {
+        let pills = note.reactions.iter().enumerate().map(|(idx, emoji)| {
+            annotation_note::reaction_pill(SharedString::from(format!("reaction-pill-{id}-{idx}")), emoji, is_active)
+        });
+        return div()
+            .id(SharedString::from(format!("annotation-row-{id}")))
+            .w_full()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap(px(6.))
+            .children(pills)
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
+                this.toggle_annotation_detail(id, window, cx);
+            }));
+    }
     let theme = Theme::ocean();
     let status = if has_rewrite { ANNOTATION_GENERATED } else { ANNOTATION_PENDING };
-    let label = if note.body.is_empty() { note.reactions.join(" ") } else { note.body.clone() };
     let text = div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-        .text_size(px(14.)).line_height(px(20.)).text_color(theme.text_secondary).child(label);
+        .text_size(px(14.)).line_height(px(20.)).text_color(theme.text_secondary).child(note.body.clone());
     let actions = if has_rewrite {
         let state = if is_applied {
             div().size(px(22.)).flex_none().flex().items_center().justify_center()
@@ -159,6 +191,13 @@ fn annotation_row(
         div().mt(px(2.)).max_h(px(60.)).overflow_hidden().text_size(px(14.)).line_height(px(20.))
             .text_color(theme.text).child(text)
     });
+    let pills = (!note.reactions.is_empty()).then(|| {
+        div().mt(px(6.)).flex().flex_wrap().items_center().gap(px(6.)).children(
+            note.reactions.iter().enumerate().map(|(idx, emoji)| {
+                annotation_note::reaction_pill(SharedString::from(format!("reaction-pill-{id}-{idx}")), emoji, is_active)
+            }),
+        )
+    });
     let error = is_active.then(|| note.ai_error.clone()).flatten().map(|message| {
         div().mt(px(4.)).text_size(px(14.)).line_height(px(20.)).text_color(rgb(0xb42318)).child(message)
     });
@@ -168,7 +207,7 @@ fn annotation_row(
             .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| cx.stop_propagation()))
             .child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)).px(px(0.)))
     });
-    let body = div().w_full().min_w_0().child(head).children(candidate).children(input).children(error);
+    let body = div().w_full().min_w_0().child(head).children(candidate).children(pills).children(input).children(error);
     annotation_note::rail_note(SharedString::from(format!("annotation-row-{id}")), status, body)
         .when(!is_applied, |row| row.cursor(CursorStyle::PointingHand)
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
@@ -198,7 +237,7 @@ fn composer_row(
         }))
 }
 
-fn reaction_popover(picker: ReactionPicker, cx: &mut Context<Editor>) -> impl IntoElement {
+fn reaction_popover(picker: ReactionPicker, selected_reactions: Vec<String>, cx: &mut Context<Editor>) -> impl IntoElement {
     let x = (picker.anchor.x - px(120.)).max(px(24.));
     let y = (picker.anchor.y + px(8.)).max(px(48.));
     let bar = REACTIONS.iter().enumerate().fold(
@@ -206,14 +245,14 @@ fn reaction_popover(picker: ReactionPicker, cx: &mut Context<Editor>) -> impl In
             .rounded(px(10.)).bg(Theme::ocean().menu).shadow(popover_shadows())
             .flex().items_center().gap(px(4.)).occlude(),
         |row, (index, &emoji)| {
-            row.child(div().id(SharedString::from(format!("pick-emoji-{index}"))).size(px(30.)).rounded(px(6.))
-                .flex().items_center().justify_center().text_size(px(16.)).cursor(CursorStyle::PointingHand)
-                .hover(|style| style.bg(Theme::ocean().hover))
-                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                    cx.stop_propagation();
-                    this.pick_reaction(emoji, cx);
-                }))
-                .child(emoji))
+            let selected = selected_reactions.iter().any(|r| r == emoji);
+            row.child(
+                annotation_note::reaction_picker_item(SharedString::from(format!("pick-emoji-{index}")), emoji, selected)
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.pick_reaction(emoji, cx);
+                    })),
+            )
         },
     );
     div().id("annotate-reactions-backdrop").absolute().top_0().left_0().size_full()
