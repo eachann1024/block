@@ -25,7 +25,7 @@ const INDEX_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Yu</title>
+  <title>Block</title>
   <link rel="icon" type="image/png" sizes="32x32" href="./favicon-light-32.png" media="(prefers-color-scheme: light)" />
   <link rel="icon" type="image/png" sizes="32x32" href="./favicon-dark-32.png" media="(prefers-color-scheme: dark)" />
   <link rel="apple-touch-icon" href="./apple-touch-icon-light.png" />
@@ -99,7 +99,7 @@ const INDEX_HTML = `<!doctype html>
 </head>
 <body>
   <div id="editor-stage">
-    <div id="editor-loading">正在加载 Yu 编辑器…</div>
+    <div id="editor-loading">正在加载 Block 编辑器…</div>
   </div>
   <script type="module">
     import init from "./thinkly_fast_web.js?v=4";
