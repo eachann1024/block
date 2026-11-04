@@ -1,8 +1,9 @@
 use gpui::{
-    App, Context, IntoElement, ParentElement, Render, Window, div, prelude::*, px,
+    Context, IntoElement, ParentElement, Render, Window, div, prelude::*, px,
 };
 use crate::icons::{Icon, icon};
 use crate::theme::{Theme, format_hotkey, search_shortcut, tr};
+use crate::ui::icon_button::icon_button;
 use super::Workspace;
 use super::search::{Dismiss, NewFolder, NewNote, OpenSearch, OpenSettings, kbd};
 
@@ -100,15 +101,4 @@ impl Workspace {
                 this.new_item(true, window, cx);
             })))
     }
-}
-
-fn icon_button(id: &'static str, glyph: Icon, enabled: bool,
-    on_down: impl Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> gpui::Stateful<gpui::Div> {
-    let theme = Theme::ocean();
-    div().id(id).size(px(24.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
-        .when(enabled, |b| b.cursor(gpui::CursorStyle::PointingHand).hover(|style| style.bg(theme.hover))
-            .on_mouse_down(gpui::MouseButton::Left, on_down))
-        .when(!enabled, |b| b.opacity(0.5))
-        .child(icon(glyph, px(14.), theme.icon_colors(theme.text_secondary)))
 }

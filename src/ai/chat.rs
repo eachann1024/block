@@ -9,8 +9,8 @@ use gpui_component::input::{InputEvent, InputState};
 use super::{agent, provider::{self, Event}};
 use crate::editor::view::Editor;
 
-const FIRST_PLACEHOLDER: &str = "向 AI 提问，/ 调用指令或 Skill，@ 引用笔记或本地文件…";
-pub(super) const FOLLOW_PLACEHOLDER: &str = "继续追问…";
+fn first_placeholder() -> &'static str { crate::theme::tr("向 AI 提问，/ 调用指令或 Skill，@ 引用笔记或本地文件…", "Ask AI, / for commands or Skills, @ to reference notes…") }
+pub(super) fn follow_placeholder() -> &'static str { crate::theme::tr("继续追问…", "Ask a follow-up…") }
 const MAX_STEPS: usize = 8;
 
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -89,9 +89,9 @@ impl Editor {
 
 impl AiChat {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder(FIRST_PLACEHOLDER));
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(first_placeholder()));
         let sub = cx.subscribe_in(&input, window, |this, _, e: &InputEvent, window, cx| match e {
-            InputEvent::PressEnter { secondary: false } => this.send(window, cx),
+            InputEvent::PressEnter { secondary: false, .. } => this.send(window, cx),
             InputEvent::Change => cx.notify(),
             _ => {}
         });
@@ -115,7 +115,7 @@ impl AiChat {
     pub(super) fn new_conv(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.stop();
         self.current = None; self.error = None; self.history = false; self.refs.clear(); self.skills.clear();
-        self.input.update(cx, |i, cx| { i.set_value("", window, cx); i.set_placeholder(FIRST_PLACEHOLDER, window, cx); i.focus(window, cx); });
+        self.input.update(cx, |i, cx| { i.set_value("", window, cx); i.set_placeholder(first_placeholder(), window, cx); i.focus(window, cx); });
         cx.notify();
     }
     fn push(&mut self, role: &str, content: String) { self.push_msg(Msg { role: role.into(), content, ..Default::default() }); }
@@ -123,7 +123,7 @@ impl AiChat {
         let content = msg.content.clone();
         let id = self.current.unwrap_or_else(|| {
             let id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
-            let title: String = content.lines().find(|l| !l.trim().is_empty() && !l.starts_with('>')).unwrap_or("新会话").chars().take(24).collect();
+            let title: String = content.lines().find(|l| !l.trim().is_empty() && !l.starts_with('>')).unwrap_or(crate::theme::tr("新会话", "New Chat")).chars().take(24).collect();
             self.convs.insert(0, Conv { id, title, messages: Vec::new() });
             self.current = Some(id);
             id
@@ -150,7 +150,7 @@ impl AiChat {
         let content = if shown.is_empty() { question } else { format!("{shown}{question}") };
         self.push_msg(Msg { role: "user".into(), content, context: (!context.is_empty()).then_some(context), ..Default::default() });
         self.error = None;
-        self.input.update(cx, |i, cx| { i.set_value("", window, cx); i.set_placeholder(FOLLOW_PLACEHOLDER, window, cx); });
+        self.input.update(cx, |i, cx| { i.set_value("", window, cx); i.set_placeholder(follow_placeholder(), window, cx); });
         self.run_turn(0, cx);
     }
 

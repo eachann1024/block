@@ -147,7 +147,7 @@ fn plan(a: &Value, ctx: &Ctx) -> (Value, Option<Plan>) {
             }
             "edit" => OpKind::Edit { markdown: arg(o, "markdown").to_owned() },
             "create" => {
-                let t = Some(arg(o, "title")).filter(|s| !s.is_empty()).unwrap_or("未命名");
+                let t = Some(arg(o, "title")).filter(|s| !s.is_empty()).unwrap_or(crate::theme::tr("未命名", "Untitled"));
                 ops.push(Op { page: t.to_owned(), kind: OpKind::Create { markdown: arg(o, "markdown").to_owned() } });
                 continue;
             }

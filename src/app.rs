@@ -26,7 +26,7 @@ mod settings;
 mod settings_view;
 
 use file_ops::{FileOp, Renaming, TreeMenu};
-pub use search::{NewNote, OpenSearch, OpenSettings};
+pub use search::{Dismiss, NewNote, OpenSearch, OpenSettings, SearchDown, SearchUp};
 pub use tabs::{CloseTab, NewTab, NextTab, PrevTab};
 use search::Search;
 use settings::SettingsModal;
@@ -113,7 +113,8 @@ impl Workspace {
                 this.selected = path.clone();
                 this.tree.update(cx, |tree, cx| tree.select(path.clone(), cx));
                 if path.is_some() && !this.tree.read(cx).is_focused(window) {
-                    window.focus(&editor.focus_handle(cx));
+                    let focus = editor.focus_handle(cx);
+                    window.focus(&focus, cx);
                 }
                 this.save_tabs_state(cx);
                 cx.notify();
@@ -147,6 +148,13 @@ impl Workspace {
         });
         // The export view lives in a global slot (opened from the editor); re-render on open/close.
         cx.observe_global::<crate::export::ExportSlot>(|_, cx| cx.notify()).detach();
+        crate::dropdown::register_workspace(&cx.entity());
+        cx.observe_window_activation(window, |this, window, cx| {
+            if !window.is_window_active() {
+                this.dismiss_dropdowns(cx);
+                crate::dropdown::dismiss_all(cx);
+            }
+        }).detach();
         search::bind_keys(cx);
         tabs::bind_keys(cx);
         crate::files::tree::bind_keys(cx);
@@ -156,7 +164,7 @@ impl Workspace {
             sidebar_collapsed: false, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
             settings: None, file_op: None, working: false, root_focus: cx.focus_handle(),
             _editor_subscription: subscription };
-        window.focus(&this.root_focus);
+        window.focus(&this.root_focus, cx);
         cx.spawn(async move |this, cx| {
             let saved = cx.background_executor().spawn(async { load_state() }).await;
             let _ = this.update(cx, |this, cx| {

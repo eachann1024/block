@@ -7,7 +7,7 @@
   "title": "Thinkly Fast 视觉系统",
   "launch": {
     "view": "canvas",
-    "page": "workspace"
+    "page": "motion"
   },
   "pages": [
     {
@@ -33,6 +33,14 @@
     {
       "id": "visual",
       "name": "图标与吉祥物"
+    },
+    {
+      "id": "code",
+      "name": "代码块与下拉"
+    },
+    {
+      "id": "motion",
+      "name": "交互与动效"
     }
   ],
   "boards": {
@@ -245,6 +253,26 @@
       "w": 1600,
       "h": 860,
       "title": "原创形象 · 页隼 · 四状态"
+    },
+    "C-Code-Block.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 980,
+      "page": "code",
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "代码块 · 居右控件与滚动即收起的通用下拉"
+    },
+    "M-Motion-System.dc.html": {
+      "page": "motion",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1360,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "全局交互显现动效规范 · gpui_transitions 驱动"
     }
   },
   "order": [
@@ -271,7 +299,9 @@
     "X-D3-Neon.dc.html",
     "X-D4-Film.dc.html",
     "Duo-Set.dc.html",
-    "Mascot-Folio.dc.html"
+    "Mascot-Folio.dc.html",
+    "C-Code-Block.dc.html",
+    "M-Motion-System.dc.html"
   ],
   "notes": {},
   "designSystems": []
