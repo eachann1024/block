@@ -74,7 +74,7 @@ impl gpui::AssetSource for Assets {
 
 pub fn apply_app_menus(cx: &mut gpui::App) {
     cx.set_menus(vec![Menu {
-        name: "Yu".into(),
+        name: "Block".into(),
         items: vec![
             MenuItem::action(theme::tr("新建标签页 ⌘T", "New Tab ⌘T"), app::NewTab),
             MenuItem::action(theme::tr("关闭标签页 ⌘W", "Close Tab ⌘W"), app::CloseTab),
@@ -131,7 +131,7 @@ fn main() {
                 display_id,
                 window_min_size: Some(min_size),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("Yu".into()),
+                    title: Some("Block".into()),
                     appears_transparent: true,
                     traffic_light_position: cfg!(target_os = "macos").then_some(point(px(16.), px(13.))),
                     ..Default::default()

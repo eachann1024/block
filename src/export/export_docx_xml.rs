@@ -265,7 +265,7 @@ pub(super) fn body(
     }
     if options.footer {
         let props = format!("<w:pBdr><w:top w:val=\"single\" w:sz=\"4\" w:space=\"8\" w:color=\"{}\"/></w:pBdr><w:spacing w:before=\"480\"/>", hex(pal.divider));
-        let run = format!("<w:r><w:rPr><w:color w:val=\"{}\"/><w:sz w:val=\"18\"/></w:rPr><w:t>Yu</w:t></w:r>", hex(pal.secondary));
+        let run = format!("<w:r><w:rPr><w:color w:val=\"{}\"/><w:sz w:val=\"18\"/></w:rPr><w:t>Block</w:t></w:r>", hex(pal.secondary));
         out.push_str(&para(None, &props, &run));
     }
     out.push_str(&format!(

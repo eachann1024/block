@@ -1,8 +1,8 @@
 //! Seed Markdown note templates for the in-memory VFS.
 
-pub(super) const NOTE_WELCOME: &str = r#"# 欢迎使用 Yu —— 毫秒级原生 Markdown 笔记
+pub(super) const NOTE_WELCOME: &str = r#"# 欢迎使用 Block —— 毫秒级原生 Markdown 笔记
 
-这是一份直接运行在浏览器 **WebAssembly + WebGPU/Canvas** 中的真实 **Yu (Thinkly Fast)** 工作区。左侧文件树、多标签页、全局搜索（⌘K）、设置面板（⌘,）与生成长图（⇧⌘E）均由同一套 Rust + GPUI 代码直接驱动。
+这是一份直接运行在浏览器 **WebAssembly + WebGPU/Canvas** 中的真实 **Block (Thinkly Fast)** 工作区。左侧文件树、多标签页、全局搜索（⌘K）、设置面板（⌘,）与生成长图（⇧⌘E）均由同一套 Rust + GPUI 代码直接驱动。
 
 > [!TIP]
 > 试着在左侧文件树切换笔记、新建笔记（⌘N）、按 / 呼出块菜单，或点击右上角 ··· → **生成图片…** 体验完整功能。
@@ -15,7 +15,7 @@ pub(super) const NOTE_WELCOME: &str = r#"# 欢迎使用 Yu —— 毫秒级原�
 
 ## 性能与架构对比
 
-| 维度 | Yu (Rust + GPUI) | 传统 Electron 笔记 |
+| 维度 | Block (Rust + GPUI) | 传统 Electron 笔记 |
 | :--- | :--- | :--- |
 | 冷启动耗时 | **< 40 ms** | 1,200 – 2,800 ms |
 | 空闲内存占用 | **~28 MB** | 350 – 800 MB |
@@ -38,7 +38,7 @@ $$
 
 pub(super) const NOTE_ARCH: &str = r#"# 毫秒级块级编辑器架构
 
-Yu 将每一篇 Markdown 文档拆分为独立的块级节点（Block），配合虚拟列表与增量排版缓存，即使面对十万字长文也能保持 120fps 的丝滑滚动与输入。
+Block 将每一篇 Markdown 文档拆分为独立的块级节点，配合虚拟列表与增量排版缓存，即使面对十万字长文也能保持 120fps 的丝滑滚动与输入。
 
 ## 快捷键速查
 
@@ -58,7 +58,7 @@ Yu 将每一篇 Markdown 文档拆分为独立的块级节点（Block），配�
 
 pub(super) const NOTE_GUIDE: &str = r#"# 排版与导出卡片指南
 
-Yu 内置了由 `tiny-skia` 与 `cosmic-text` 驱动的离线排版渲染引擎，可将当前笔记或选中片段一键渲染为 2× 高清 PNG 长图、可交互 HTML、矢量 PDF 或标准 `.docx` 文档。
+Block 内置了由 `tiny-skia` 与 `cosmic-text` 驱动的离线排版渲染引擎，可将当前笔记或选中片段一键渲染为 2× 高清 PNG 长图、可交互 HTML、矢量 PDF 或标准 `.docx` 文档。
 
 > [!NOTE]
 > 点击窗口右上角的 `···` 按钮并选择 **生成图片…（⇧⌘E）**，即可实时切换「留白、暖纸、墨夜、赛博、手账、极光」六款主题。
@@ -70,9 +70,9 @@ Yu 内置了由 `tiny-skia` 与 `cosmic-text` 驱动的离线排版渲染引擎�
 - **PDF / Word 文档** — 适合正式归档、打印与跨团队协作交付
 "#;
 
-pub(super) const NOTE_WELCOME_EN: &str = r#"# Welcome to Yu — Instant Native Markdown Notes
+pub(super) const NOTE_WELCOME_EN: &str = r#"# Welcome to Block — Instant Native Markdown Notes
 
-You are using the live **Yu (Thinkly Fast)** workspace compiled directly to **WebAssembly + WebGPU/Canvas**. The file tree, multi-tab bar, global search (`⌘K`), preferences (`⌘,`), and share-card export (`⇧⌘E`) all run on the exact same Rust + GPUI codebase as the macOS desktop app.
+You are using the live **Block (Thinkly Fast)** workspace compiled directly to **WebAssembly + WebGPU/Canvas**. The file tree, multi-tab bar, global search (`⌘K`), preferences (`⌘,`), and share-card export (`⇧⌘E`) all run on the exact same Rust + GPUI codebase as the macOS desktop app.
 
 > [!TIP]
 > Switch notes in the sidebar, create a new note (`⌘N`), type `/` on an empty line to open the block menu, or click `···` → **Export Image…** in the top-right corner to try it out.
@@ -85,7 +85,7 @@ You are using the live **Yu (Thinkly Fast)** workspace compiled directly to **We
 
 ## Architecture at a Glance
 
-| Metric | Yu (Rust + GPUI) | Typical Electron Note App |
+| Metric | Block (Rust + GPUI) | Typical Electron Note App |
 | :--- | :--- | :--- |
 | Cold launch | **< 40 ms** | 1,200 – 2,800 ms |
 | Idle memory | **~28 MB** | 350 – 800 MB |
@@ -108,7 +108,7 @@ $$
 
 pub(super) const NOTE_ARCH_EN: &str = r#"# Sub-Millisecond Block Editor
 
-Yu parses every Markdown document into discrete block nodes backed by a virtualized list and incremental layout cache, sustaining 120 fps scrolling and typing even on 100,000-word documents.
+Block parses every Markdown document into discrete structural nodes backed by a virtualized list and incremental layout cache, sustaining 120 fps scrolling and typing even on 100,000-word documents.
 
 ## Keyboard Shortcuts
 
@@ -128,7 +128,7 @@ Yu parses every Markdown document into discrete block nodes backed by a virtuali
 
 pub(super) const NOTE_GUIDE_EN: &str = r#"# Typography & Share Cards
 
-Yu includes an offline typesetting pipeline powered by `tiny-skia` and `cosmic-text` that turns any note—or selected passage—into a 2× Retina PNG card, self-contained HTML page, vector PDF, or standard `.docx` document.
+Block includes an offline typesetting pipeline powered by `tiny-skia` and `cosmic-text` that turns any note—or selected passage—into a 2× Retina PNG card, self-contained HTML page, vector PDF, or standard `.docx` document.
 
 > [!NOTE]
 > Click `···` in the top-right corner and choose **Export Image… (`⇧⌘E`)** to preview all six curated paper themes: Minimal, Warm Paper, Ink Night, Cyber, Journal, and Aurora.

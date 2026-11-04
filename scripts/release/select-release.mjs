@@ -207,7 +207,7 @@ async function main() {
     release_tag: tag,
     auto_bump: autoBump,
   });
-  summary(`准备发布 Yu ${tag}（autoBump=${autoBump}, notes=${plan.notesSource}）`);
+  summary(`准备发布 Block ${tag}（autoBump=${autoBump}, notes=${plan.notesSource}）`);
 }
 
 if (import.meta.main) {

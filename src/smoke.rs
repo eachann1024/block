@@ -25,7 +25,7 @@ pub fn init_sandbox() -> Option<PathBuf> {
     let setup = || -> std::io::Result<()> {
         std::fs::create_dir_all(&notebook)?;
         let welcome = notebook.join("Welcome.md");
-        std::fs::write(&welcome, "# Yu\n\n点击验证初始段落。\n")?;
+        std::fs::write(&welcome, "# Block\n\n点击验证初始段落。\n")?;
         crate::files::state::set_state_path_override(sandbox.join("state.json"));
         crate::files::save_folder(&notebook)?;
         crate::files::update_state(|s| { s.open_tabs = vec![welcome.clone()]; s.active_tab = Some(welcome); })?;
