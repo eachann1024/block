@@ -25,7 +25,7 @@ pub(super) fn popover(editor: Entity<Editor>, pop: &FormatPop) -> AnyElement {
 
 /// Right-click menu over a selection: export it as an image, comment on it, or copy it.
 fn selection_menu(editor: Entity<Editor>) -> AnyElement {
-    let mac = cfg!(target_os = "macos");
+    let mac = cfg!(any(target_os = "macos", target_family = "wasm"));
     let row = |id: &'static str, icon: Icon, label: &'static str, hint: &'static str, run: fn(&mut Editor, &mut gpui::Window, &mut gpui::Context<Editor>)| {
         let editor = editor.clone();
         dropdown::row_with(id, RowSpec { icon: Some(icon), label: label.into(), hint: Some(hint.into()), ..Default::default() })

@@ -1,4 +1,5 @@
 //! Per-style header, masthead, film edge markings, and watermark footer.
+#[cfg(not(target_family = "wasm"))]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
@@ -275,7 +276,10 @@ fn items(fonts: &mut FontSystem, specs: &[Spec<'_>]) -> Vec<ChromeText> {
 }
 
 fn today() -> DateInfo {
+    #[cfg(not(target_family = "wasm"))]
     let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    #[cfg(target_family = "wasm")]
+    let secs = (js_sys::Date::now() / 1000.) as u64; // SystemTime::now() panics on wasm32
     let days = (secs / 86_400) as i64;
     let weekday = ["THU", "FRI", "SAT", "SUN", "MON", "TUE", "WED"][days.rem_euclid(7) as usize];
     let z = days + 719_468;
