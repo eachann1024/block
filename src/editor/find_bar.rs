@@ -12,7 +12,7 @@ fn tint(color: gpui::Hsla) -> IconColors { IconColors { line: color, fill: trans
 
 fn button(glyph: Icon, id: &'static str, on: impl Fn(&mut Editor, &mut Window, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean();
-    div().id(id).size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
+    div().id(id).relative().children(crate::ui::smoke_overlay::probe(id)).size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
         .cursor(CursorStyle::PointingHand).hover(|s| s.bg(theme.hover))
         .child(icon(glyph, px(14.), tint(theme.text_secondary)))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| { on(this, window, cx); cx.stop_propagation(); }))

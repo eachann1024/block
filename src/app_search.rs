@@ -13,7 +13,7 @@ pub(super) use crate::search::kbd;
 actions!(workspace, [OpenSearch, OpenSettings, NewNote, NewFolder, Dismiss, SearchUp, SearchDown]);
 
 pub(crate) struct Search {
-    state: SearchState,
+    pub(super) state: SearchState,
     _sub: gpui::Subscription,
 }
 

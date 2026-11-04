@@ -1,13 +1,17 @@
 //! `--smoke`: a visible, scripted click and keyboard pass over the real window.
 //! It runs against a throw-away sandbox, never the user's notes or `state.json`.
+//! This file is the runner; the scripted steps live in `smoke_steps.rs`.
 use std::{path::PathBuf, time::Duration};
 use gpui::{
     AnyWindowHandle, App, AppContext, AsyncApp, Entity, Keystroke, Modifiers, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, PlatformInput, Pixels, Point, Window, point, px,
+    MouseMoveEvent, MouseUpEvent, PlatformInput, Pixels, Point, Window,
 };
-use crate::{app::Workspace, ui::smoke_overlay};
+use crate::{app::Workspace, editor::Editor, ui::smoke_overlay};
 
-const STEPS: usize = 7;
+#[path = "smoke_steps.rs"]
+mod steps;
+
+const STEPS: usize = 12;
 
 pub fn is_requested() -> bool { std::env::args().any(|a| a == "--smoke" || a == "--smoke-test") }
 pub fn keep_open() -> bool { std::env::args().any(|a| a == "--keep-open") }
@@ -56,8 +60,18 @@ impl Run {
         cx.update(|cx| f(self.workspace.read(cx), cx))
     }
 
+    fn editor<R>(&self, cx: &AsyncApp, f: impl FnOnce(&Editor) -> R) -> R {
+        cx.update(|cx| f(self.workspace.read(cx).editor.read(cx)))
+    }
+
     fn redraw(&self, cx: &AsyncApp) {
         cx.update(|cx| self.workspace.update(cx, |_, cx| cx.notify()));
+    }
+
+    /// Shows `label` in the HUD without a click ripple.
+    fn hud(&self, cx: &AsyncApp, label: &str) {
+        cx.update(|_| smoke_overlay::set_step(None, label.to_owned()));
+        self.redraw(cx);
     }
 
     async fn wait_until(&self, cx: &AsyncApp, max_ms: u64, cond: impl Fn(&Workspace, &App) -> bool) -> bool {
@@ -94,22 +108,22 @@ impl Run {
         self.click_at(cx, center, label).await
     }
 
-    fn press(&self, cx: &AsyncApp, key: &str) -> Result<(), String> {
-        let stroke = Keystroke { modifiers: Modifiers::default(), key: key.to_owned(), key_char: None };
-        self.win(cx, |window, cx| { window.dispatch_keystroke(stroke, cx); })
+    /// One key press, e.g. "enter" or "cmd-z"; a short pause lets the UI settle.
+    async fn press(&self, cx: &AsyncApp, key: &'static str) -> Result<(), String> {
+        let stroke = Keystroke::parse(key).map_err(|e| format!("无效按键 {key}: {e}"))?;
+        self.win(cx, |window, cx| { window.dispatch_keystroke(stroke, cx); })?;
+        sleep(cx, 110).await;
+        Ok(())
     }
 
     async fn type_text(&self, cx: &AsyncApp, text: &str) -> Result<(), String> {
         for ch in text.chars() {
-            let shift = ch.is_uppercase();
-            let stroke = Keystroke {
-                modifiers: Modifiers { shift, ..Modifiers::default() },
-                key: ch.to_lowercase().to_string(),
-                key_char: None,
-            };
+            let key = if ch == ' ' { "space".to_owned() } else { ch.to_lowercase().to_string() };
+            let stroke = Keystroke { modifiers: Modifiers { shift: ch.is_uppercase(), ..Modifiers::default() }, key, key_char: None };
             self.win(cx, |window, cx| { window.dispatch_keystroke(stroke, cx); })?;
             sleep(cx, 35).await;
         }
+        sleep(cx, 120).await;
         Ok(())
     }
 
@@ -117,73 +131,6 @@ impl Run {
         if !ok { return Err(format!("Step {n}/{STEPS}: {title}")); }
         println!("[PASS] Step {n}/{STEPS}: {title}");
         Ok(())
-    }
-
-    async fn all_steps(&self, cx: &mut AsyncApp) -> Result<(), String> {
-        let cx = &*cx;
-        let ready = self.wait_until(cx, 4000, |w, _| !w.loading && !w.busy() && w.folder.is_some()).await;
-        if !ready { return Err("工作区未能在 4 秒内就绪".into()); }
-        sleep(cx, 350).await;
-        // Step 1/2: collapse and expand the sidebar.
-        self.click_target(cx, "sidebar-toggle", "Step 1/7 · 点击收起侧边栏").await?;
-        self.check(1, self.query(cx, |w, _| w.sidebar_collapsed), "收起侧边栏")?;
-        self.click_target(cx, "sidebar-toggle", "Step 2/7 · 点击展开侧边栏").await?;
-        self.check(2, self.query(cx, |w, _| !w.sidebar_collapsed), "展开侧边栏")?;
-        // Step 3: new note opens a second tab.
-        sleep(cx, 120).await;
-        self.click_target(cx, "new-note", "Step 3/7 · 点击新建笔记").await?;
-        let opened = self.wait_until(cx, 2000, |w, _| !w.busy() && w.tab_count() >= 2).await;
-        self.check(3, opened, "新建笔记并打开标签页")?;
-        sleep(cx, 250).await;
-        self.editor_step(cx).await?;
-        self.overlay_steps(cx).await
-    }
-
-    async fn editor_step(&self, cx: &AsyncApp) -> Result<(), String> {
-        let bounds = smoke_overlay::target_bounds("editor").ok_or("找不到点击目标 editor")?;
-        let spot = point(bounds.center().x - px(120.), bounds.top() + px(96.));
-        self.click_at(cx, spot, "Step 4/7 · 点击编辑区，输入 / 打开斜杠菜单").await?;
-        self.press(cx, "/")?;
-        sleep(cx, 300).await;
-        let editor = self.query(cx, |w, _| w.editor.clone());
-        let menu = cx.update(|cx| editor.read(cx).slash_menu_open());
-        self.check(4, menu, "斜杠菜单已显示")?;
-        self.press(cx, "down")?;
-        sleep(cx, 120).await;
-        self.press(cx, "up")?;
-        sleep(cx, 120).await;
-        self.press(cx, "enter")?;
-        sleep(cx, 180).await;
-        cx.update(|_| smoke_overlay::set_step(None, "Step 4/7 · 输入 SmokeClickOK"));
-        self.redraw(cx);
-        self.type_text(cx, "SmokeClickOK").await?;
-        sleep(cx, 200).await;
-        let text = cx.update(|cx| editor.read(cx).markdown_text());
-        self.check(4, text.contains("SmokeClickOK"), "编辑区输入内容已写入文档")
-    }
-
-    async fn overlay_steps(&self, cx: &AsyncApp) -> Result<(), String> {
-        self.click_target(cx, "search-button", "Step 5/7 · 点击打开搜索弹窗").await?;
-        self.check(5, self.query(cx, |w, _| w.search_is_open()), "搜索弹窗已打开")?;
-        sleep(cx, 260).await;
-        self.press(cx, "escape")?;
-        sleep(cx, 200).await;
-        self.check(5, self.query(cx, |w, _| !w.search_is_open()), "Esc 关闭搜索弹窗")?;
-
-        self.click_target(cx, "notebook-switcher", "Step 6/7 · 点击切换笔记本菜单").await?;
-        self.check(6, self.query(cx, |w, _| w.switcher_is_open()), "笔记本菜单已打开")?;
-        sleep(cx, 260).await;
-        // Clicking the switcher again would close and instantly re-toggle it; click outside instead.
-        let editor = smoke_overlay::target_bounds("editor").ok_or("找不到点击目标 editor")?;
-        let outside = point(editor.right() - px(120.), editor.center().y);
-        self.click_at(cx, outside, "Step 6/7 · 点击空白处收起笔记本菜单").await?;
-        self.check(6, self.query(cx, |w, _| !w.switcher_is_open()), "笔记本菜单已关闭")?;
-
-        self.click_target(cx, "settings-button", "Step 7/7 · 点击打开设置页").await?;
-        self.check(7, self.query(cx, |w, _| w.settings_is_open()), "设置页已打开")?;
-        sleep(cx, 300).await;
-        self.click_target(cx, "settings-back", "Step 7/7 · 点击返回编辑").await?;
-        self.check(7, self.query(cx, |w, _| !w.settings_is_open()), "返回编辑，设置页已关闭")
     }
 
     async fn finish(&self, outcome: Result<(), String>, sandbox: Option<PathBuf>, cx: &mut AsyncApp) {
