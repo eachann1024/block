@@ -12,6 +12,12 @@ impl Editor {
         self.pending_vertical = None;
         if !matches!(action, Cancel) { self.commit_composition(cx); }
         match action {
+            Up | Down if super::code_block::step_lang_picker(matches!(action, Down), cx) => return,
+            Enter if let Some((id, tag, same)) = super::code_block::take_picked_lang(&self.doc) => {
+                self.run_block_cmd(id, super::block_menu::Mode::Handle, super::block_menu::Cmd::SetLanguage(tag, same), window, cx);
+                return;
+            }
+            Cancel if super::code_block::close_lang_picker_if_open(cx) => return,
             Up | Down if self.block_menu_step(matches!(action, Down), cx) => return,
             Enter if self.block_menu_pick(window, cx) => return,
             Cancel if self.block_menu.is_some() => { self.block_menu = None; cx.notify(); return; }
@@ -210,7 +216,7 @@ impl Editor {
         let before = self.snapshot();
         if let Some(id) = self.doc.insert_after(id, Kind::Paragraph, String::new()) {
             self.set_head(Position { block: id, offset: 0 }, false, cx);
-            window.focus(&self.focus);
+            window.focus(&self.focus, cx);
             self.record_changes(before, vec![transactions::ListChange { start: index + 1, before: 0, after: 1 }], true, cx);
         }
     }

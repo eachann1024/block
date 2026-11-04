@@ -35,6 +35,7 @@ mod image_view;
 mod image_size;
 mod table_chrome;
 mod code_block;
+mod code_block_preview;
 mod diagram_preview;
 mod math_preview;
 mod find;
@@ -44,3 +45,4 @@ pub mod view;
 
 pub use export_driver::export_document;
 pub use keys::bind_keys;
+pub use view::Editor;

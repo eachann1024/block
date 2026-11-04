@@ -5,12 +5,12 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
     sync::Arc,
 };
-use gpui::{AnyElement, Context, Entity, Image, ImageFormat, div, img, prelude::*, px, rgb};
+use gpui::{AnyElement, Context, Entity, Image, ImageFormat, div, img, prelude::*, px};
 use mermaid_rs_renderer::{
     LayoutConfig, Theme as MermaidTheme, compute_layout, measure_svg_dimensions,
     parse_mermaid_strict, render::render_svg_with_dimensions,
 };
-use crate::theme::{Theme, is_dark};
+use crate::theme::{Theme, is_dark, tr};
 use super::view::Editor;
 
 const MAX_PREVIEW_W: f32 = 650.;
@@ -140,20 +140,19 @@ fn render_mermaid_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32, f32), S
 }
 
 fn concise_error(raw: &str) -> String {
-    let line = raw.lines().find(|l| !l.trim().is_empty()).unwrap_or("语法错误").trim();
-    let clipped: String = line.chars().take(120).collect();
-    format!("图表语法错误：{clipped}")
+    let line = raw.lines().find(|l| !l.trim().is_empty()).unwrap_or(tr("语法错误", "Syntax error")).trim();
+    line.chars().take(120).collect()
 }
 
-pub(super) fn view(
+pub(super) fn render_state(
     editor: Entity<Editor>,
     block_id: u64,
     source: &str,
     cx: &mut Context<Editor>,
-) -> AnyElement {
+) -> (Option<AnyElement>, Option<String>) {
     let theme = Theme::ocean();
     if source.trim().is_empty() {
-        return placeholder("输入 Mermaid 代码以预览图表", &theme);
+        return (Some(placeholder(tr("输入 Mermaid 代码以预览图表", "Enter Mermaid code to preview"), &theme)), None);
     }
     let dark = is_dark();
     let key = hash_source(source, dark);
@@ -161,10 +160,10 @@ pub(super) fn view(
     match state {
         Some(PreviewState::Ready { image, width, height }) => {
             LAST_READY.with(|lr| { lr.borrow_mut().insert(block_id, (image.clone(), width, height)); });
-            render_image(image, width, height)
+            (Some(render_image(image, width, height)), None)
         }
-        Some(PreviewState::Error(msg)) => error_banner(&msg),
-        Some(PreviewState::Pending) => fallback_or_loading(block_id, &theme),
+        Some(PreviewState::Error(msg)) => (None, Some(msg)),
+        Some(PreviewState::Pending) => (Some(fallback_or_loading(block_id, &theme)), None),
         None => {
             CACHE.with(|c| { c.borrow_mut().insert(key, PreviewState::Pending); });
             let src = source.to_owned();
@@ -186,7 +185,7 @@ pub(super) fn view(
                 });
                 let _ = entity.update(cx, |_, cx| cx.notify());
             }).detach();
-            fallback_or_loading(block_id, &theme)
+            (Some(fallback_or_loading(block_id, &theme)), None)
         }
     }
 }
@@ -204,20 +203,10 @@ pub(super) fn placeholder(text: &'static str, theme: &Theme) -> AnyElement {
         .into_any_element()
 }
 
-pub(super) fn error_banner(msg: &str) -> AnyElement {
-    let dark = is_dark();
-    let fg = if dark { rgb(0xf28b82) } else { rgb(0xc53929) };
-    let bg = if dark { rgb(0x2a1a1d) } else { rgb(0xfdecea) };
-    div().w_full().px(px(12.)).py(px(8.)).rounded(px(6.)).bg(bg)
-        .text_size(px(14.)).text_color(fg)
-        .child(msg.to_owned())
-        .into_any_element()
-}
-
 fn fallback_or_loading(block_id: u64, theme: &Theme) -> AnyElement {
     if let Some((image, w, h)) = LAST_READY.with(|lr| lr.borrow().get(&block_id).cloned()) {
         render_image(image, w, h)
     } else {
-        placeholder("正在渲染图表…", theme)
+        placeholder(tr("正在渲染图表…", "Rendering diagram…"), theme)
     }
 }

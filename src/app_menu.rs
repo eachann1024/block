@@ -2,57 +2,60 @@
 //! shared surface/item/separator used by the notebook switcher.
 use std::path::{Path, PathBuf};
 use gpui::{
-    AnyElement, App, Context, CursorStyle, Hsla, MouseButton, Pixels, Window, anchored, deferred, div, point,
+    AnyElement, App, Context, Hsla, MouseButton, Pixels, Stateful, Div, Window, anchored, deferred, div, point,
     prelude::*, px,
 };
-use crate::icons::{Icon, icon};
-use crate::theme::{Theme, tr};
+use crate::{
+    dropdown::{self, RowSpec},
+    icons::Icon,
+    theme::{Theme, tr},
+};
 use super::{Workspace, file_ops::display_name};
 
 const MENU_WIDTH: f32 = 188.;
-const ITEM_GAP: f32 = 1.;
-
-pub(super) fn danger() -> Hsla { gpui::rgb(0xc2362b).into() }
+const ITEM_GAP: f32 = 0.;
 
 pub(super) enum ItemId { Path(PathBuf), Name(&'static str) }
 
-pub(super) fn menu_surface(width: Pixels) -> gpui::Div {
-    let theme = Theme::ocean();
-    div().w(width).p(px(4.)).flex().flex_col().gap(px(ITEM_GAP)).rounded(px(8.)).bg(theme.menu)
-        .border_1().border_color(theme.menu_border).shadow_md().occlude()
-        .text_size(px(13.)).text_color(theme.text)
+pub(super) fn menu_surface(width: Pixels) -> Stateful<Div> {
+    dropdown::shell("workspace-menu").w(width)
 }
 
 pub(super) fn separator() -> AnyElement {
-    div().mx(px(6.)).my(px(3.)).h(px(1.)).bg(Theme::ocean().hairline).into_any_element()
+    dropdown::separator().into_any_element()
 }
 
 fn shortcut_hint(label: &'static str) -> gpui::Div {
-    let muted: Hsla = if crate::theme::is_dark() {
-        Theme::ocean().text_secondary
-    } else {
-        gpui::rgb(0x6d7784).into()
-    };
-    div().ml_auto().flex_none().text_size(px(12.)).text_color(muted).child(label)
+    let muted: Hsla = dropdown::palette().muted;
+    div().ml_auto().pl(px(8.)).flex_none().text_size(px(12.)).text_color(muted).child(label)
 }
 
-pub(super) fn menu_item(id: ItemId, glyph: Icon, label: String, checked: bool, destructive: bool,
+pub(super) fn menu_item(
+    id: ItemId,
+    glyph: Icon,
+    label: String,
+    checked: bool,
+    destructive: bool,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> gpui::Stateful<gpui::Div> {
-    let theme = Theme::ocean();
-    let fg = if destructive { danger() } else { theme.text };
+) -> Stateful<Div> {
     let id: gpui::ElementId = match id {
         ItemId::Path(path) => gpui::ElementId::Name(format!("menu:{}", path.display()).into()),
         ItemId::Name(name) => name.into(),
     };
-    div().id(id).h(theme.menu_item_height).px(px(10.)).flex().items_center().gap(px(8.)).rounded(px(6.))
-        .text_color(fg).cursor(CursorStyle::PointingHand)
-        .when(checked, |b| b.bg(theme.selected))
-        .hover(|style| style.bg(theme.hover))
-        .on_mouse_down(MouseButton::Left, move |event, window, cx| { cx.stop_propagation(); on_click(event, window, cx); })
-        .child(div().flex_none().child(icon(glyph, px(15.), theme.icon_colors(if destructive { fg } else { theme.text_secondary }))))
-        .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(label))
-        .when(checked, |b| b.child(div().flex_none().child(icon(Icon::Check, px(15.), theme.icon_colors(theme.accent)))))
+    dropdown::row_with(
+        id,
+        RowSpec {
+            icon: Some(glyph),
+            label: label.into(),
+            checked,
+            danger: destructive,
+            ..Default::default()
+        },
+    )
+    .on_mouse_down(MouseButton::Left, move |event, window, cx| {
+        cx.stop_propagation();
+        on_click(event, window, cx);
+    })
 }
 
 impl Workspace {

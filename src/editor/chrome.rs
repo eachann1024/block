@@ -1,6 +1,11 @@
 //! Stable gutters, a persistent width switch, and selection-only formatting.
-use gpui::{CursorStyle, MouseButton, Pixels, div, prelude::*, px, rgb, rgba, transparent_black};
-use crate::{icons::{Icon, IconColors, icon}, theme::{Theme, is_dark, tr}};
+use gpui::{CursorStyle, MouseButton, Pixels, div, prelude::*, px, rgb, transparent_black};
+use crate::{
+    icons::{Icon, IconColors, icon},
+    theme::{Theme, is_dark, tr},
+    ui::reveal::{fold_button, handle_button},
+};
+pub(super) use crate::ui::reveal::grip_button;
 use super::{model::{Block, Kind}, paint::BlockText, view::Editor};
 
 pub(super) const HANDLE_WIDTH: f32 = 56.;
@@ -54,8 +59,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
     let static_view = image.is_some() || rule;
     let code_lang = block.meta.code_language.clone();
     let preview_lang = code_lang.as_deref().is_some_and(super::code_block::is_preview_lang);
-    let in_edit_mode = active;
-    let preview_only = preview_lang && !in_edit_mode;
+    let code_visible = handles || active;
     let first_line_h = if rule { 22. } else if code_lang.is_some() { 30. } else { line };
     let handle_top = if is_table || image.is_some() {
         4.
@@ -69,7 +73,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
         }))
         .child(div().flex().items_start().w_full().min_w_0().gap(px(ROW_GAP)).pr(px(right_inset))
             .child(div().w(px(handle_w)).h(px(0.)).flex_none().relative()
-                .child(div().absolute().right_0().top(px(handle_top)).h(px(26.)).flex().items_center().justify_end().gap(px(2.))
+                .child(crate::ui::motion::reveal_fade(div().absolute().right_0().top(px(handle_top)).h(px(26.)).flex().items_center().justify_end().gap(px(2.))
                     .when(regular_handles && !blank, |row| row
                         .child(grip_button(("drag", id as usize), grip_active, cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
                             this.begin_drag(id, cx); cx.stop_propagation();
@@ -85,16 +89,19 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                         }))))
                     .when(!minimal && is_table && handles, |row| row
                         .child(table_grip_button(("tbl-grip", id as usize), grip_active, cx.listener(move |this, _: &gpui::MouseDownEvent, window, cx| {
-                            window.focus(&this.focus);
+                            window.focus(&this.focus, cx);
                             this.table_menu = None;
                             this.block_menu = None;
                             this.select_whole_table(id, cx);
+                            this.begin_drag(id, cx);
                             cx.stop_propagation();
+                        })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
+                            if this.dragging == Some(id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
                         }))))
                     .when(!minimal && is_heading && (handles || folded), |row| row
                         .child(fold_button(folded, ("fold", id as usize), cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
                             this.toggle_fold(id, cx); cx.stop_propagation();
-                        }))))))
+                        })))), ("handle-reveal", id as usize))))
             .when(marker_width > 0., |row| row.child(div().w(px(marker_width)).pl(px(indent)).flex_none().text_color(theme.text)
                 .text_size(px(size)).line_height(px(line))
                 .when(block.kind == Kind::Todo, |row| row.child(todo_box(checked, (line - 17.).max(0.) / 2., move |cx| {
@@ -121,28 +128,26 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                         .on_mouse_down(MouseButton::Left, { let e = focus_editor.clone(); move |_, window, cx| {
                             e.update(cx, |this, cx| this.focus_block(id, window, cx)); cx.stop_propagation();
                         }})))
-                .when(!static_view && !preview_only && !nowrap, |body| body.child(BlockText { editor: editor.clone(), block: id }))
+                .when(!static_view && !preview_lang && !nowrap, |body| body.child(BlockText { editor: editor.clone(), block: id }))
                 // No-wrap code scrolls sideways inside its own box instead of pushing past the column.
-                .when(!static_view && !preview_only && nowrap, |body| body.child(div().id(("code-scroll", id as usize)).w_full().min_w_0().flex()
+                .when(!static_view && !preview_lang && nowrap, |body| body.child(div().id(("code-scroll", id as usize)).w_full().min_w_0().flex()
                     .overflow_x_scroll().child(BlockText { editor: editor.clone(), block: id })))
                 .when(!static_view && preview_lang, |body| {
+                    let source_el = if nowrap {
+                        div().id(("code-scroll", id as usize)).w_full().min_w_0().flex()
+                            .overflow_x_scroll().child(BlockText { editor: editor.clone(), block: id }).into_any_element()
+                    } else {
+                        BlockText { editor: editor.clone(), block: id }.into_any_element()
+                    };
                     let lang = code_lang.as_deref().unwrap_or_default();
-                    body.child(super::code_block::preview_card(editor.clone(), id, lang, &block.text, in_edit_mode, cx))
+                    body.child(super::code_block_preview::preview_block(editor.clone(), id, lang, &block.text, active, code_visible, source_el, cx))
                 })
-                .when(!static_view && code_lang.is_some(), |body| {
-                    body.child(super::code_block::copy_button(editor, id, code_lang.unwrap_or_default(), cx))
+                .when(!static_view && !preview_lang && code_lang.is_some(), |body| {
+                    body.child(super::code_block::copy_button(editor, id, code_lang.unwrap_or_default(), code_visible, cx))
                 })))
         .when_some(drop_edge, |row, after| row.child(div().absolute().left(px(handle_w)).right(px(right_inset))
             .h(px(2.)).bg(theme.accent)
             .when(after, |line| line.bottom_0()).when(!after, |line| line.top_0())))
-}
-/// Icon that switches from `base` to `hover` colour while its `group` is hovered.
-fn hover_icon(glyph: Icon, size: f32, base: gpui::Hsla, hover: gpui::Hsla) -> impl IntoElement {
-    let theme = Theme::ocean();
-    let tint = |line| IconColors { line, fill: transparent_black(), accent: theme.accent };
-    div().relative().flex_none().size(px(size))
-        .child(div().group_hover("hover-icon", |s| s.invisible()).child(icon(glyph, px(size), tint(base))))
-        .child(div().absolute().top_0().left_0().invisible().group_hover("hover-icon", |s| s.visible()).child(icon(glyph, px(size), tint(hover))))
 }
 fn todo_box(checked: bool, top: f32, toggle: impl Fn(&mut gpui::App) + 'static) -> impl IntoElement {
     let dark = is_dark();
@@ -154,42 +159,8 @@ fn todo_box(checked: bool, top: f32, toggle: impl Fn(&mut gpui::App) + 'static) 
             IconColors { line: rgb(0xffffff).into(), fill: transparent_black(), accent: transparent_black() })))
         .on_mouse_down(MouseButton::Left, move |_, _, cx| { toggle(cx); cx.stop_propagation(); })
 }
-/// The 6-dot drag grip handle of a block with content.
-pub(super) fn grip_button(id: (&'static str, usize), active: bool, listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
-    let theme = Theme::ocean();
-    let dark = is_dark();
-    let bg_hover: gpui::Hsla = if dark { rgb(0x2c2c2a).into() } else { rgb(0xf5f4ed).into() };
-    let base_fg: gpui::Hsla = if dark { theme.text_secondary } else { rgba(0x1f1e1d8c).into() };
-    let hover_fg: gpui::Hsla = if dark { theme.text } else { rgb(0x1f1e1d).into() };
-    div().id(id).group("hover-icon").size(px(26.)).flex_none().rounded(px(8.)).flex().items_center().justify_center()
-        .when(active, move |s| s.bg(bg_hover)).hover(move |s| s.bg(bg_hover)).cursor(CursorStyle::PointingHand)
-        .child(hover_icon(Icon::Drag, 14., if active { hover_fg } else { base_fg }, hover_fg))
-        .on_mouse_down(MouseButton::Left, listener)
-}
-fn handle_button(glyph: Icon, id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
-    let theme = Theme::ocean();
-    let bg_hover: gpui::Hsla = if is_dark() { rgb(0x2c2c2a).into() } else { rgba(0x0b0b0b0d).into() };
-    div().id(id).group("hover-icon").size(px(24.)).flex_none().rounded(px(6.)).flex().items_center().justify_center()
-        .hover(move |s| s.bg(bg_hover)).cursor(CursorStyle::PointingHand)
-        .child(hover_icon(glyph, 14., theme.text_secondary, theme.text))
-        .on_mouse_down(MouseButton::Left, listener)
-}
 fn table_grip_button(id: (&'static str, usize), active: bool, listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
-    grip_button(id, active, listener)
-}
-fn fold_button(folded: bool, id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
-    let theme = Theme::ocean();
-    let dark = is_dark();
-    let bg_hover: gpui::Hsla = if dark { rgb(0x2c2c2a).into() } else { rgba(0x0b0b0b0d).into() };
-    let base_fg: gpui::Hsla = if dark { theme.text_secondary } else { rgb(0x52514e).into() };
-    let hover_fg: gpui::Hsla = if dark { theme.text } else { rgb(0x1f1e1d).into() };
-    let glyph = if folded { Icon::TbChevronRight } else { Icon::TbChevron };
-    let tip = if folded { tr("展开章节", "Expand section") } else { tr("折叠章节", "Collapse section") };
-    div().id(id).group("hover-icon").size(px(24.)).flex_none().rounded(px(6.))
-        .flex().items_center().justify_center().hover(move |s| s.bg(bg_hover)).cursor(CursorStyle::PointingHand)
-        .tooltip(move |window, cx| crate::theme::build_tooltip(tip, window, cx))
-        .child(hover_icon(glyph, 14., base_fg, hover_fg))
-        .on_mouse_down(MouseButton::Left, listener)
+    grip_button(id, active, listener).mr(px(4.))
 }
 pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Context<Editor>) -> gpui::AnyElement {
     let block = &this.doc.blocks[index];
