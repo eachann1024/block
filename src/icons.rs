@@ -118,6 +118,7 @@ icons! {
     TbLink => "tb-link" [Line],
     TbImage => "tb-image" [Line],
     TbChevron => "tb-chevron" [Line],
+    TbChevronRight => "tb-chevron-right" [Line],
     LinkOpen => "link-open" [Line],
     LinkCopy => "link-copy" [Line],
     LinkEdit => "link-edit" [Line],
