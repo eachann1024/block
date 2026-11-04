@@ -38,7 +38,7 @@ pub fn apply_app_menus(cx: &mut gpui::App) {
             MenuItem::action(theme::tr("上一个标签页 ⌃⇧Tab", "Previous Tab ⌃⇧Tab"), app::PrevTab),
             MenuItem::action(theme::tr("偏好设置… ⌘,", "Settings… ⌘,"), app::OpenSettings),
             MenuItem::action(theme::tr("速记小窗 ⌥N", "Quick Note ⌥N"), quick::ToggleQuickNote),
-            MenuItem::action(theme::tr("导出图片", "Export Image"), ExportImage),
+            MenuItem::action(theme::tr("导出…", "Export…"), ExportImage),
         ],
         disabled: false,
     }]);
