@@ -170,18 +170,9 @@ icons! {
     AiColloquial => "ai-colloquial" [Fill, Line, Accent],
     AiList => "ai-list" [Fill, Line, Accent],
     AiTasks => "ai-tasks" [Fill, Line, Accent],
-    ProvOpenai => "prov-openai" [Fill, Line, Accent],
-    ProvAnthropic => "prov-anthropic" [Fill, Line, Accent],
-    ProvGemini => "prov-gemini" [Fill, Line, Accent],
-    ProvDeepseek => "prov-deepseek" [Fill, Line, Accent],
-    ProvOpenrouter => "prov-openrouter" [Fill, Line, Accent],
-    ProvSiliconflow => "prov-siliconflow" [Fill, Line, Accent],
-    ProvMoonshot => "prov-moonshot" [Fill, Line, Accent],
-    ProvZhipu => "prov-zhipu" [Fill, Line, Accent],
-    ProvDashscope => "prov-dashscope" [Fill, Line, Accent],
-    ProvOllama => "prov-ollama" [Fill, Line, Accent],
-    ProvLmstudio => "prov-lmstudio" [Fill, Line, Accent],
-    ProvCustom => "prov-custom" [Fill, Line, Accent],
+    ProvOpenai => "prov-openai" [Line],
+    ProvAnthropic => "prov-anthropic" [Line],
+    ProvDeepseek => "prov-deepseek" [Line],
 }
 
 /// The three tints of one icon.
@@ -221,4 +212,9 @@ pub fn icon(icon: Icon, size: Pixels, colors: IconColors) -> impl IntoElement {
         root = root.child(svg().absolute().top_0().left_0().size(size).path(*path).text_color(color));
     }
     root
+}
+
+/// Single-silhouette brand glyph painted in one brand colour.
+pub fn brand_icon(glyph: Icon, size: Pixels, brand: Hsla) -> impl IntoElement {
+    icon(glyph, size, IconColors { line: brand, fill: brand, accent: brand })
 }
