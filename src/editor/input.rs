@@ -17,6 +17,8 @@ impl Editor {
             Left | Right if self.block_menu_nav(matches!(action, Right), window, cx) => return,
             Backspace if self.block_menu_nav(false, window, cx) => return,
             Cancel if self.block_menu.is_some() => { self.block_menu = None; cx.notify(); return; }
+            Cancel if self.annotate.reactions.is_some() => { self.annotate.reactions = None; cx.notify(); return; }
+            Cancel if self.annotate.composer.is_some() => { self.close_annotation_composer(window, cx); return; }
             Cancel if self.ai_session().is_some() => { self.ai_close(window, cx); return; }
             _ => {}
         }
@@ -99,7 +101,7 @@ impl Editor {
                 } else if let Some((bytes, ext)) = image.filter(|_| item.as_ref().and_then(|i| i.text()).is_none()) {
                     let id = self.caret.head.block; self.import_image_bytes(id, bytes, ext, window, cx);
                 } else if let Some(text) = item.and_then(|item| item.text()) {
-                    if !self.paste_blocks(&text, cx) && !self.paste_tsv(&text, cx) { self.replace_selection(&text, false, cx); }
+                    if !self.paste_url_over_selection(&text, cx) && !self.paste_blocks(&text, cx) && !self.paste_tsv(&text, cx) { self.replace_selection(&text, false, cx); }
                 }
             }
             Bold => self.mark(MarkKind::Bold, cx), Italic => self.mark(MarkKind::Italic, cx),
@@ -158,6 +160,7 @@ impl Editor {
             self.caret = caret_before; self.table_edit_rejected(cx); return;
         }
         let composing = self.composition_before.is_some();
+        if !composing && self.wrap_selection(text, cx) { return; }
         // thinkly `emptyParagraphAiShortcut`: space in an empty paragraph opens inline AI.
         if text == " " && !composing && self.caret.is_empty() {
             let id = self.caret.head.block;
@@ -170,6 +173,7 @@ impl Editor {
         self.replace_selection(text, !composing, cx);
         if composing { self.commit_composition(cx); }
         else if matches!(text, ">" | "-" | "》") { self.arrow_rule(cx); }
+        else if matches!(text, "*" | "_" | "~" | "`" | "=" | ")") { self.inline_rule(text, cx); }
         if text == "/" {
             let id = self.caret.head.block;
             if self.doc.get(id).is_some_and(|b| b.text == "/" && b.kind == Kind::Paragraph && b.meta.table.is_none() && b.meta.raw_source.is_none() && b.meta.code_language.is_none()) {
