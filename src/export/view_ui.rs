@@ -6,10 +6,11 @@ use gpui::{
     prelude::*, px,
 };
 
+use super::format::ExportFormat;
 use super::palette::ExportTheme;
 use super::view::ExportView;
 use super::view_stage::{MIN_SCALE, PREVIEW_PAD_X};
-use super::view_widgets::{button, section, segmented, style_grid, switch_row};
+use super::view_widgets::{button, format_bar, section, segmented, style_grid, switch_row};
 use crate::icons::{Icon, IconColors, icon};
 use crate::theme::{Theme, tr};
 
@@ -89,7 +90,7 @@ impl ExportView {
             .justify_center()
             .gap(px(8.))
             .child(back)
-            .child(div().text_size(px(13.)).font_weight(FontWeight(560.)).child(tr("生成图片", "Export Image")))
+            .child(div().text_size(px(13.)).font_weight(FontWeight(560.)).child(tr("导出", "Export")))
             .child(
                 div()
                     .min_w_0()
@@ -114,9 +115,13 @@ impl ExportView {
         let theme = Theme::ocean();
         let has_sel = self.selection.is_some();
         let is_dark = self.style.is_dark();
+        let formats = format_bar(
+            self.format,
+            Rc::new(cx.listener(|this, fmt: &ExportFormat, _, cx| this.set_format(*fmt, cx))),
+        );
         let scope = segmented(
             "scope",
-            [(tr("整篇", "Full Note"), !self.use_selection, true), (tr("选中生成", "Selection"), self.use_selection, has_sel)],
+            [(tr("整篇", "Full Note"), !self.use_selection, true), (tr("选中导出", "Selection"), self.use_selection, has_sel)],
             true,
             Rc::new(cx.listener(|this, idx: &usize, _, cx| this.set_scope(*idx == 1, cx))),
         );
@@ -174,6 +179,7 @@ impl ExportView {
             .flex()
             .flex_col()
             .gap(px(18.))
+            .child(section(tr("格式", "Format"), formats))
             .child(section(tr("范围", "Scope"), scope))
             .child(section(tr("主题", "Theme"), theme_sec))
             .child(section(tr("宽度", "Width"), width_box))
@@ -216,7 +222,7 @@ impl ExportView {
         fill.a = 0.35;
         let colors = IconColors { line: c(0xffffff), fill, accent: c(0xffffff) };
         let glyph = icon(Icon::Download, px(14.), colors);
-        button("export-save", tr("保存 PNG", "Save PNG"), glyph, true, ready)
+        button("export-save", self.format.save_label(), glyph, true, ready)
             .when(ready, |b| b.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.save(cx))))
     }
 

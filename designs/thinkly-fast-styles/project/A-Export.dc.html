@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>生成图片</title>
+<title>导出</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -40,7 +40,7 @@ button{font-family:inherit}
 <div aria-hidden="true" style="display:flex;gap:8px;width:52px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
 <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;min-width:0">
 <button class="ib" aria-label="返回笔记"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></button>
-<span style="font-size:13px;font-weight:560">生成图片</span>
+<span style="font-size:13px;font-weight:560">导出</span>
 <span style="font-size:13px;color:#526071">周会 · 11 月 3 日</span>
 </div>
 <div aria-hidden="true" style="width:52px;flex:none"></div>
@@ -93,12 +93,23 @@ button{font-family:inherit}
 </div>
 </main>
 
-<aside aria-label="生成选项" style="width:300px;flex:none;background:#ffffff;border-left:1px solid #e6e6e6;box-sizing:border-box;padding:16px;display:flex;flex-direction:column;gap:18px;min-height:0;overflow:auto">
+<aside aria-label="导出选项" style="width:300px;flex:none;background:#ffffff;border-left:1px solid #e6e6e6;box-sizing:border-box;padding:16px;display:flex;flex-direction:column;gap:18px;min-height:0;overflow:auto">
+<section style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:12px;line-height:16px;color:#526071;font-weight:460">格式</div>
+<div style="display:flex;padding:2px;gap:2px;background:#f1f1f1;border-radius:8px">
+<button class="seg" aria-pressed="true" style="font-size:12px;font-weight:500;background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0">PNG</button>
+<button class="seg" style="font-size:12px;font-weight:500">PDF</button>
+<button class="seg" style="font-size:12px;font-weight:500">Word</button>
+<button class="seg" style="font-size:12px;font-weight:500">MD</button>
+<button class="seg" style="font-size:12px;font-weight:500">HTML</button>
+</div>
+</section>
+
 <section style="display:flex;flex-direction:column;gap:8px">
 <div style="font-size:12px;line-height:16px;color:#526071;font-weight:460">范围</div>
 <div style="display:flex;padding:2px;background:#f1f1f1;border-radius:8px">
 <button class="seg" aria-pressed="true" style="background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0">整篇</button>
-<button class="seg">选中生成</button>
+<button class="seg">选中导出</button>
 </div>
 </section>
 
