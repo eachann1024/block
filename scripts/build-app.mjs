@@ -11,7 +11,7 @@ const lockPath = join(root, "dist/.build.lock");
 
 if (import.meta.main) {
   try {
-    const install = !process.argv.includes("--no-install") && process.env.THINKLY_FAST_NO_INSTALL !== "1";
+    const install = !process.argv.includes("--no-install") && process.env.BLOCK_NO_INSTALL !== "1";
     const app = await buildApp({ install });
     console.log(app);
     if (install) console.log(installPath);
@@ -45,7 +45,7 @@ export async function buildApp({ install = true } = {}) {
     const resources = join(bundle, "Contents/Resources");
     mkdirSync(resources, { recursive: true });
     cpSync(join(root, "assets/app-icon/AppIcon.icns"), join(resources, "AppIcon.icns"));
-    const packaged = join(macos, "thinkly-fast");
+    const packaged = join(macos, "block");
     const copied = spawnSync("cp", [executable, packaged]);
     if (copied.status !== 0) throw new Error("failed to copy the release binary");
     chmodSync(packaged, 0o755);

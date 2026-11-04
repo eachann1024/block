@@ -2,7 +2,7 @@
 
 pub(super) const NOTE_WELCOME: &str = r#"# 欢迎使用 Block —— 毫秒级原生 Markdown 笔记
 
-这是一份直接运行在浏览器 **WebAssembly + WebGPU/Canvas** 中的真实 **Block (Thinkly Fast)** 工作区。左侧文件树、多标签页、全局搜索（⌘K）、设置面板（⌘,）与生成长图（⇧⌘E）均由同一套 Rust + GPUI 代码直接驱动。
+这是一份直接运行在浏览器 **WebAssembly + WebGPU/Canvas** 中的真实 **Block** 工作区。左侧文件树、多标签页、全局搜索（⌘K）、设置面板（⌘,）与生成长图（⇧⌘E）均由同一套 Rust + GPUI 代码直接驱动。
 
 > [!TIP]
 > 试着在左侧文件树切换笔记、新建笔记（⌘N）、按 / 呼出块菜单，或点击右上角 ··· → **生成图片…** 体验完整功能。
@@ -72,7 +72,7 @@ Block 内置了由 `tiny-skia` 与 `cosmic-text` 驱动的离线排版渲染引�
 
 pub(super) const NOTE_WELCOME_EN: &str = r#"# Welcome to Block — Instant Native Markdown Notes
 
-You are using the live **Block (Thinkly Fast)** workspace compiled directly to **WebAssembly + WebGPU/Canvas**. The file tree, multi-tab bar, global search (`⌘K`), preferences (`⌘,`), and share-card export (`⇧⌘E`) all run on the exact same Rust + GPUI codebase as the macOS desktop app.
+You are using the live **Block** workspace compiled directly to **WebAssembly + WebGPU/Canvas**. The file tree, multi-tab bar, global search (`⌘K`), preferences (`⌘,`), and share-card export (`⇧⌘E`) all run on the exact same Rust + GPUI codebase as the macOS desktop app.
 
 > [!TIP]
 > Switch notes in the sidebar, create a new note (`⌘N`), type `/` on an empty line to open the block menu, or click `···` → **Export Image…** in the top-right corner to try it out.

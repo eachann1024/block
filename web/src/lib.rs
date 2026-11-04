@@ -1,4 +1,4 @@
-//! WebAssembly entry point mounting the full Thinkly Fast GPUI workspace (`src/app.rs`,
+//! WebAssembly entry point mounting the full Block GPUI workspace (`src/app.rs`,
 //! `src/files`, `src/editor`, `src/search`, `src/export`) inside `#editor-stage`.
 #![allow(dead_code, unused_imports)]
 use std::borrow::Cow;
