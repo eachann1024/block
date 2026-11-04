@@ -35,6 +35,7 @@ mod annotate_ui;
 pub(crate) mod ai;
 mod clipboard_files;
 mod image_source;
+mod image_remote;
 mod image_import;
 mod image_edit;
 mod image_view;
