@@ -5,6 +5,10 @@ use super::{input::transactions::ListChange, model::{Block, Kind}, view::Editor}
 fn is_list(block: &Block) -> bool {
     matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) && block.meta.table.is_none() && block.meta.raw_source.is_none()
 }
+fn is_paragraph(block: &Block) -> bool {
+    block.kind == Kind::Paragraph && block.meta.table.is_none() && block.meta.raw_source.is_none()
+        && block.meta.code_language.is_none() && block.meta.callout.is_none()
+}
 
 impl Editor {
     pub(in crate::editor) fn tab_outside_table(&mut self, forward: bool, cx: &mut Context<Self>) {
@@ -15,6 +19,18 @@ impl Editor {
         // Never insert a literal tab: it serializes as `&#9;`.
         if block.meta.code_language.is_some() {
             self.code_tab(id, forward, cx);
+            return;
+        }
+        if is_paragraph(block) {
+            let Some(index) = self.doc.index_of(id) else { return };
+            let old = block.meta.indent;
+            let new = if forward { (old + 2).min(12) } else { old.saturating_sub(2) };
+            if new == old { return; }
+            self.commit_composition(cx);
+            let before = self.snapshot();
+            if let Some(b) = self.doc.get_mut(id) { b.meta.indent = new; b.meta.html_paragraph = None; }
+            self.doc.refresh_block(id);
+            self.record_changes(before, vec![ListChange { start: index, before: 1, after: 1 }], true, cx);
             return;
         }
         if !is_list(block) { return; }
@@ -110,6 +126,25 @@ impl Editor {
     /// keeping relative nesting (and the last item's children).
     fn tab_group(&mut self, ai: usize, mut bi: usize, forward: bool, cx: &mut Context<Self>) {
         let lists: Vec<usize> = (ai..=bi).filter(|i| is_list(&self.doc.blocks[*i])).collect();
+        if lists.is_empty() {
+            let paras: Vec<usize> = (ai..=bi).filter(|i| is_paragraph(&self.doc.blocks[*i])).collect();
+            if !paras.iter().any(|&i| {
+                let old = self.doc.blocks[i].meta.indent;
+                (if forward { (old + 2).min(12) } else { old.saturating_sub(2) }) != old
+            }) { return; }
+            self.commit_composition(cx);
+            let before = self.snapshot();
+            for i in paras {
+                let id = self.doc.blocks[i].id;
+                let old = self.doc.blocks[i].meta.indent;
+                let new = if forward { (old + 2).min(12) } else { old.saturating_sub(2) };
+                if let Some(b) = self.doc.get_mut(id) { b.meta.indent = new; b.meta.html_paragraph = None; }
+                self.doc.refresh_block(id);
+            }
+            let count = bi - ai + 1;
+            self.record_changes(before, vec![ListChange { start: ai, before: count, after: count }], true, cx);
+            return;
+        }
         let Some(&first) = lists.first() else { return };
         let delta: isize = if forward {
             let old = self.doc.blocks[first].meta.indent;
