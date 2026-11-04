@@ -2,7 +2,7 @@
 //! shared surface/item/separator used by the notebook switcher.
 use std::path::{Path, PathBuf};
 use gpui::{
-    AnyElement, App, Context, Hsla, MouseButton, Pixels, Stateful, Div, Window, anchored, deferred, div, point,
+    AnyElement, App, Context, MouseButton, Pixels, Stateful, Div, Window, anchored, deferred, div, point,
     prelude::*, px,
 };
 use crate::{
@@ -24,29 +24,24 @@ pub(super) fn separator() -> AnyElement {
     dropdown::separator().into_any_element()
 }
 
-fn shortcut_hint(label: &'static str) -> gpui::Div {
-    let muted: Hsla = dropdown::palette().muted;
-    let style = crate::ui::shortcut_label::ShortcutStyle::ui(
-        px(12.),
-        px(16.),
-        gpui::FontWeight::NORMAL,
-        muted,
-    );
-    div()
-        .ml_auto()
-        .pl(px(8.))
-        .flex_none()
-        .flex()
-        .items_center()
-        .child(crate::ui::shortcut_label::shortcut_label(label, style))
-}
-
 pub(super) fn menu_item(
     id: ItemId,
     glyph: Icon,
     label: String,
     checked: bool,
     destructive: bool,
+    on_click: impl Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    menu_item_hint(id, glyph, label, checked, destructive, None, on_click)
+}
+
+fn menu_item_hint(
+    id: ItemId,
+    glyph: Icon,
+    label: String,
+    checked: bool,
+    destructive: bool,
+    hint: Option<&'static str>,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let id: gpui::ElementId = match id {
@@ -60,6 +55,7 @@ pub(super) fn menu_item(
             label: label.into(),
             checked,
             danger: destructive,
+            hint: hint.map(Into::into),
             ..Default::default()
         },
     )
@@ -76,13 +72,13 @@ impl Workspace {
         let mut items: Vec<AnyElement> = Vec::new();
         if !dir {
             let p = path.clone();
-            items.push(menu_item(ItemId::Name("open-new-tab"), Icon::NotePlus, tr("在新标签页打开", "Open in New Tab").into(), false, false,
+            let open_hint = if cfg!(target_os = "macos") { tr("⌘+点击", "⌘+Click") } else { tr("Ctrl+点击", "Ctrl+Click") };
+            items.push(menu_item_hint(ItemId::Name("open-new-tab"), Icon::NotePlus, tr("在新标签页打开", "Open in New Tab").into(), false, false, Some(open_hint),
                 cx.listener(move |this, _, window, cx| {
                     this.close_overlays(cx);
                     this.close_settings(window, cx);
                     this.open_file_in_new_tab(p.clone(), cx);
                 }))
-                .child(shortcut_hint(if cfg!(target_os = "macos") { tr("⌘+点击", "⌘+Click") } else { tr("Ctrl+点击", "Ctrl+Click") }))
                 .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
                 if *hovered { if let Some(menu) = &mut this.menu { if menu.moving { menu.moving = false; cx.notify(); } } }
             }))
@@ -104,9 +100,9 @@ impl Workspace {
             }))
             .into_any_element());
         let p = path.clone();
-        items.push(menu_item(ItemId::Name("rename"), Icon::Pencil, tr("重命名", "Rename").into(), false, false,
+        let rename_hint = if cfg!(target_os = "macos") { "↵" } else { "F2" };
+        items.push(menu_item_hint(ItemId::Name("rename"), Icon::Pencil, tr("重命名", "Rename").into(), false, false, Some(rename_hint),
             cx.listener(move |this, _, window, cx| this.start_rename(p.clone(), dir, window, cx)))
-            .child(shortcut_hint(if cfg!(target_os = "macos") { "↵" } else { "F2" }))
             .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
                 if *hovered { if let Some(menu) = &mut this.menu { if menu.moving { menu.moving = false; cx.notify(); } } }
             }))
@@ -131,9 +127,9 @@ impl Workspace {
         .into_any_element());
         items.push(separator());
         let p = path.clone();
-        items.push(menu_item(ItemId::Name("trash"), Icon::Trash, crate::files::ops::trash_label().into(), false, true,
+        let trash_hint = if cfg!(target_os = "macos") { "⌘⌫" } else { "Del" };
+        items.push(menu_item_hint(ItemId::Name("trash"), Icon::Trash, crate::files::ops::trash_label().into(), false, true, Some(trash_hint),
             cx.listener(move |this, _, _, cx| this.trash(p.clone(), cx)))
-            .child(shortcut_hint(if cfg!(target_os = "macos") { "⌘⌫" } else { "Del" }))
             .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
                 if *hovered { if let Some(menu) = &mut this.menu { if menu.moving { menu.moving = false; cx.notify(); } } }
             }))

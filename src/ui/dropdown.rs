@@ -171,7 +171,7 @@ pub fn row_with(id: impl Into<ElementId>, spec: RowSpec) -> Stateful<Div> {
             .child(lead)
     };
     row.child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(spec.label))
-        .when_some(spec.hint, |r, h| r.child(div().ml_auto().pl(px(8.)).flex_none().text_size(px(12.)).text_color(p.muted).child(h)))
+        .when_some(spec.hint, |r, h| r.child(crate::ui::shortcut_label::shortcut_hint(h, p.muted)))
         .when(spec.chevron, |r| r.child(div().ml_auto().pl(px(8.)).flex_none().flex().items_center().child(line_icon(Icon::TbChevronRight, 12., p.muted))))
         .when(spec.checked, |r| r.child(div().ml_auto().pl(px(12.)).flex_none().flex().items_center()
             .child(div().size(px(16.)).flex().items_center().justify_center().child(line_icon(Icon::Check, 16., p.text)))))
