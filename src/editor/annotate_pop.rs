@@ -6,7 +6,7 @@ use crate::ui::{
     annotation_card::{card_shell, floating_shadows, render_card_state},
     annotation_note,
 };
-use super::{annotate::Annotation, annotate_rail::build_card_state, view::Editor};
+use super::{annotate::Annotation, annotate_fit::card_width, annotate_rail::build_card_state, view::Editor};
 
 const POP_MAX_W: f32 = 340.;
 
@@ -42,7 +42,8 @@ pub(super) fn popover_layer(
 ) -> AnyElement {
     let id = note.id;
     let margin = px(16.);
-    let card_w = if editor_w > px(80.) { (editor_w - px(56.)).min(px(POP_MAX_W)).max(px(240.)) } else { px(POP_MAX_W) };
+    let max_w = if editor_w > px(80.) { (editor_w - px(56.)).min(px(POP_MAX_W)).max(px(148.)) } else { px(POP_MAX_W) };
+    let card_w = card_width(&note, editing.is_some(), followup.is_some(), max_w);
     let reserve = if editor_h > px(0.) { (editor_h * 0.45).clamp(px(140.), px(260.)) } else { px(220.) };
     let max_top = if editor_h > margin * 2. { (editor_h - margin - reserve).max(margin) } else { margin };
     let top = (target_y - px(6.)).max(margin).min(max_top);

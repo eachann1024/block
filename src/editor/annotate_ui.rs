@@ -7,8 +7,8 @@ use crate::{theme::Theme, ui::annotation_note};
 use super::{
     annotate::{ReactionPicker, resolve_annotation_span},
     annotate_fit::{
-        BADGE_STEP, INLINE_GAP, INLINE_RIGHT, card_height, composer_height, fit_inline_card,
-        measure_row, refresh_from_render, row_target, state_kind,
+        BADGE_STEP, INLINE_GAP, INLINE_MAX_W, INLINE_RIGHT, card_height, card_width,
+        composer_height, fit_inline_card, measure_row, refresh_from_render, row_target, state_kind,
     },
     annotate_pop,
     annotate_rail::{RAIL_W, annotation_row, composer_row},
@@ -51,7 +51,7 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
             let mut popover = None;
             let mut next_y = px(12.);
             let mut notes = editor.annotate.annotations.iter()
-                .filter(|note| !note.is_applied() || note.has_rewrite())
+                .filter(|note| !note.is_applied() || !note.reactions.is_empty())
                 .cloned()
                 .map(|note| {
                     let target = resolve_annotation_span(&editor.doc, &note).map(|(id, range, _)| (id, range.start));
@@ -84,7 +84,8 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
                 let has_followup = followup.is_some();
                 let kind = state_kind(&note, has_edit, has_followup);
                 let card_h = card_height(&note, has_edit, has_followup);
-                if let Some((top, card_w)) = fit_inline_card(editor, target_block, target_y, next_y, card_h) {
+                let pref_w = card_width(&note, has_edit, has_followup, px(INLINE_MAX_W));
+                if let Some((top, card_w)) = fit_inline_card(editor, target_block, target_y, next_y, card_h, pref_w) {
                     next_y = top + card_h + px(INLINE_GAP);
                     let row = annotation_row(note, editor.annotate.active_annotation, editor.annotate.hovered_annotation, editing, followup, cx);
                     markers.push(
@@ -118,8 +119,8 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
             }
             return layer;
         }
-        let mut rows: Vec<(Pixels, u64, u8, Pixels, AnyElement)> = editor.annotate.annotations.iter()
-            .filter(|note| !note.is_applied() || note.has_rewrite()).cloned().map(|note| {
+        let mut rows: Vec<(Pixels, u64, u8, Pixels, Pixels, AnyElement)> = editor.annotate.annotations.iter()
+            .filter(|note| !note.is_applied() || !note.reactions.is_empty()).cloned().map(|note| {
                 let target = resolve_annotation_span(&editor.doc, &note).map(|(id, range, _)| (id, range.start));
                 let y = target.map(|(id, offset)| row_target(editor, id, offset)).unwrap_or(px(24.));
                 let id = note.id;
@@ -129,12 +130,13 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
                     .filter(|field| field.annotation_id == id).map(|field| field.input.clone());
                 let kind = state_kind(&note, editing.is_some(), followup.is_some());
                 let h = card_height(&note, editing.is_some(), followup.is_some());
-                (y, id, kind, h, annotation_row(note, editor.annotate.active_annotation, editor.annotate.hovered_annotation, editing, followup, cx).into_any_element())
+                let w = card_width(&note, editing.is_some(), followup.is_some(), px(RAIL_W));
+                (y, id, kind, h, w, annotation_row(note, editor.annotate.active_annotation, editor.annotate.hovered_annotation, editing, followup, cx).into_any_element())
             }).collect();
         if let Some(composer) = &editor.annotate.composer {
             let input = composer.input.clone();
             let has_text = !input.read(cx).value().trim().is_empty();
-            rows.push((row_target(editor, composer.block_id, composer.range.start), 0, 0, composer_height(),
+            rows.push((row_target(editor, composer.block_id, composer.range.start), 0, 0, composer_height(), px(RAIL_W),
                 composer_row(input, has_text, cx).into_any_element()));
         }
         rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -142,10 +144,10 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
         let rail_right = ((editor.annotate.editor_width - px(crate::ui::scrollbar::GUTTER) - (std_w + px(RAIL_SLOT))) / 2.)
             .max(px(0.)) + px(crate::ui::scrollbar::GUTTER);
         let mut rail = div().id("annotate-rail").absolute().top_0().right(rail_right).w(px(RAIL_W)).h_full();
-        for (target, id, kind, height, row) in rows {
+        for (target, id, kind, height, width, row) in rows {
             let top = target.max(bottom + px(12.));
             bottom = top + height;
-            rail = rail.child(div().absolute().top(top).w_full().occlude().child(row).child(measure_row(id, kind, cx)));
+            rail = rail.child(div().absolute().top(top).left_0().w(width).occlude().child(row).child(measure_row(id, kind, cx)));
         }
         rail
     });
@@ -164,7 +166,7 @@ fn reaction_popover(picker: ReactionPicker, selected_reaction: Option<String>, c
     let y = (picker.anchor.y + px(8.)).max(px(48.));
     let bar = REACTIONS.iter().enumerate().fold(
         div().id("annotate-reactions").absolute().left(x).top(y).px(px(8.)).py(px(6.))
-            .rounded(px(10.)).bg(Theme::ocean().menu).shadow(popover_shadows())
+            .rounded(crate::ui::radius::SURFACE).bg(Theme::ocean().menu).shadow(popover_shadows())
             .flex().items_center().gap(px(4.)).occlude(),
         |row, (index, &emoji)| {
             let selected = selected_reaction.as_deref() == Some(emoji);

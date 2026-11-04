@@ -49,6 +49,29 @@ pub(super) fn state_kind(note: &Annotation, has_edit: bool, has_followup: bool) 
     else { 0 }
 }
 
+fn text_width_px(text: &str) -> f32 {
+    text.lines()
+        .map(|line| line.chars().map(|ch| if ch.is_ascii() { 8.0 } else { 14.5 }).sum::<f32>())
+        .fold(0.0_f32, f32::max)
+}
+
+pub(super) fn card_width(note: &Annotation, has_edit: bool, has_followup: bool, max_w: Pixels) -> Pixels {
+    let kind = state_kind(note, has_edit, has_followup);
+    let body_w = text_width_px(&note.body);
+    let rewrite_w = note.ai_rewritten.as_deref().map_or(0.0, text_width_px);
+    let err_w = note.ai_error.as_deref().map_or(0.0, text_width_px);
+    let ideal = match kind {
+        0 => (116.0 + body_w).max(136.0),
+        1 => (48.0 + body_w).max(200.0),
+        2 => (54.0 + body_w).max(168.0),
+        3 => (52.0 + rewrite_w).max(168.0),
+        4 => (52.0 + rewrite_w).max(236.0),
+        5 => 148.0,
+        _ => (100.0 + err_w).max(168.0),
+    };
+    px(ideal).min(max_w)
+}
+
 pub(super) fn card_height(note: &Annotation, has_edit: bool, has_followup: bool) -> Pixels {
     let kind = state_kind(note, has_edit, has_followup);
     if let Some(h) = ROW_HEIGHTS.with(|heights| heights.borrow().get(&(note.id, kind)).copied()) {
@@ -210,7 +233,14 @@ pub(super) fn sync_after_paint(editor: &mut Editor, bounds: Bounds<Pixels>) -> b
 /// Checks if an annotation card of height `card_h` fits in the empty margin to the right of
 /// rendered lines overlapping its vertical band (with 12px clearance and >=200px width).
 /// Returns `Some((top, card_w))` when expanded inline, or `None` when it must collapse to a badge.
-pub(super) fn fit_inline_card(editor: &Editor, target_block: Option<u64>, target_y: Pixels, min_top: Pixels, card_h: Pixels) -> Option<(Pixels, Pixels)> {
+pub(super) fn fit_inline_card(
+    editor: &Editor,
+    target_block: Option<u64>,
+    target_y: Pixels,
+    min_top: Pixels,
+    card_h: Pixels,
+    preferred_w: Pixels,
+) -> Option<(Pixels, Pixels)> {
     let snap = &editor.annotate.fit_snapshot;
     let block_id = target_block?;
     if snap.editor_w <= px(0.) || snap.blocks.binary_search(&block_id).is_err() { return None; }
@@ -222,6 +252,7 @@ pub(super) fn fit_inline_card(editor: &Editor, target_block: Option<u64>, target
     } else {
         [base_top, base_top, base_top]
     };
+    let min_needed = preferred_w.min(px(INLINE_MIN_W));
     for (i, cand_top) in candidates.into_iter().enumerate() {
         if i > 0 && cand_top == candidates[i - 1] { continue; }
         let band_top = cand_top + px(2.);
@@ -233,8 +264,8 @@ pub(super) fn fit_inline_card(editor: &Editor, target_block: Option<u64>, target
             }
         }
         let available = card_right - (max_right + px(INLINE_CLEARANCE));
-        if available >= px(INLINE_MIN_W) {
-            return Some((cand_top, available.min(px(INLINE_MAX_W))));
+        if available >= min_needed {
+            return Some((cand_top, preferred_w.min(available).min(px(INLINE_MAX_W))));
         }
     }
     None

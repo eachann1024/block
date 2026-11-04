@@ -78,7 +78,7 @@ pub(super) struct AnnotateState {
 
 impl AnnotateState {
     pub(super) fn has_visible_rail(&self) -> bool {
-        self.composer.is_some() || self.annotations.iter().any(|note| !note.is_applied() || note.has_rewrite())
+        self.composer.is_some() || self.annotations.iter().any(|note| !note.is_applied() || !note.reactions.is_empty())
     }
 }
 
