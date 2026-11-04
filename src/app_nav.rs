@@ -177,17 +177,24 @@ impl Workspace {
         cx.notify();
     }
 
-    pub(super) fn render_nav_buttons(&self, cx: &mut Context<Self>) -> gpui::Div {
-        let can_back = !self.busy() && self.nav.can_go_back();
-        let can_fwd = !self.busy() && self.nav.can_go_forward();
-        div().ml(px(2.)).flex_none().flex().items_center().gap(px(2.))
-            .child(icon_button("nav-back", Icon::ChevronLeft, can_back, cx.listener(|this, _, _, cx| {
+    /// Back/forward buttons shown only when the matching history direction exists.
+    pub(super) fn nav_button_count(&self) -> usize {
+        usize::from(self.nav.can_go_back()) + usize::from(self.nav.can_go_forward())
+    }
+
+    pub(super) fn render_nav_buttons(&self, cx: &mut Context<Self>) -> Option<gpui::Div> {
+        let show_back = self.nav.can_go_back();
+        let show_fwd = self.nav.can_go_forward();
+        if !show_back && !show_fwd { return None; }
+        let enabled = !self.busy();
+        Some(div().flex_none().flex().items_center().gap(px(2.))
+            .when(show_back, |d| d.child(icon_button("nav-back", Icon::ChevronLeft, enabled, cx.listener(|this, _, _, cx| {
                 cx.stop_propagation();
                 this.navigate_back(cx);
-            })))
-            .child(icon_button("nav-forward", Icon::ChevronRight, can_fwd, cx.listener(|this, _, _, cx| {
+            }))))
+            .when(show_fwd, |d| d.child(icon_button("nav-forward", Icon::ChevronRight, enabled, cx.listener(|this, _, _, cx| {
                 cx.stop_propagation();
                 this.navigate_forward(cx);
-            })))
+            })))))
     }
 }
