@@ -10,11 +10,12 @@ mod quick;
 mod search;
 mod theme;
 pub mod ui;
+pub mod window_bounds;
 
 use std::{path::PathBuf, sync::Mutex, time::Duration};
 use gpui::{
-    App, AppContext, Bounds, KeyBinding, Menu, MenuItem, TitlebarOptions,
-    WindowBounds, WindowOptions, actions, point, px, size,
+    App, AppContext, KeyBinding, Menu, MenuItem, TitlebarOptions,
+    WindowOptions, actions, point, px, size,
 };
 
 actions!(thinkly_fast, [Quit, ExportImage]);
@@ -87,15 +88,18 @@ pub fn apply_app_menus(cx: &mut gpui::App) {
 fn main() {
     log::init();
     enqueue_open_inputs(std::env::args().skip(1));
-    if let Ok(state) = files::load_state() {
-        theme::apply_state(&state);
+    let initial_state = files::load_state().ok();
+    if let Some(state) = &initial_state {
+        theme::apply_state(state);
     }
+    let saved_main_bounds = initial_state.as_ref().and_then(|s| s.main_window_bounds);
+    let saved_quick_bounds = initial_state.as_ref().and_then(|s| s.quick_window_bounds);
     let app = gpui_platform::application().with_assets(Assets);
     app.on_open_urls(|urls| enqueue_open_inputs(urls));
     app.on_reopen(|cx| {
         search::window::activate_main_window(cx);
     });
-    app.run(|cx: &mut App| {
+    app.run(move |cx: &mut App| {
         theme::init_fonts(&cx.text_system().all_font_names());
         gpui_component::init(cx);
         // The app is light-only; without this, inputs follow macOS dark mode (white text, black field).
@@ -106,13 +110,20 @@ fn main() {
             KeyBinding::new("ctrl-q", Quit, None),
         ]);
         editor::bind_keys(cx);
-        quick::init(cx);
+        quick::init(saved_quick_bounds, cx);
         apply_app_menus(cx);
-        let bounds = Bounds::centered(None, size(px(1100.), px(760.)), cx);
+        let min_size = size(px(760.), px(480.));
+        let (window_bounds, display_id) = window_bounds::resolve_window_bounds(
+            saved_main_bounds,
+            size(px(1100.), px(760.)),
+            min_size,
+            cx,
+        );
         let opened = cx.open_window(
             WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                window_min_size: Some(size(px(760.), px(480.))),
+                window_bounds: Some(window_bounds),
+                display_id,
+                window_min_size: Some(min_size),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Thinkly".into()),
                     appears_transparent: true,
@@ -125,7 +136,9 @@ fn main() {
                 let workspace = cx.new(|cx| app::Workspace::new(window, cx));
                 let close_editor = workspace.read(cx).editor.clone();
                 let quit_editor = close_editor.clone();
-                window.on_window_should_close(cx, move |_, cx| {
+                window.on_window_should_close(cx, move |window, cx| {
+                    let bounds = window_bounds::capture_window_bounds(window, cx);
+                    let _ = files::update_state(|s| s.main_window_bounds = Some(bounds));
                     let ready = close_editor.update(cx, |editor, cx| {
                         let ready = editor.prepare_to_quit();
                         if !ready { cx.notify(); }
