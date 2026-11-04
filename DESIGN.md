@@ -1,6 +1,6 @@
-# Thinkly Fast 设计语言与配色规范（Ocean Paper）
+# Yu 设计语言与配色规范（Ocean Paper）
 
-> 内容优先、紧凑克制、严格对齐、精准轮廓、全局一致。本文是 `thinkly-fast`（桌面端 GPUI 实现与 `designs/thinkly-fast-styles` 画板）的强制视觉与交互基线，与 `src/theme.rs` 及 `thinkly` 主项目完全对齐。
+> 内容优先、紧凑克制、严格对齐、精准轮廓、全局一致。本文是 Yu（`thinkly-fast` 桌面端 GPUI 实现与 `designs/thinkly-fast-styles` 画板）的强制视觉与交互基线，与 `src/theme.rs` 完全对齐。
 
 ---
 

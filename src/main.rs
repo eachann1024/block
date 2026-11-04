@@ -72,7 +72,7 @@ impl gpui::AssetSource for Assets {
 
 pub fn apply_app_menus(cx: &mut gpui::App) {
     cx.set_menus(vec![Menu {
-        name: "Thinkly".into(),
+        name: "Yu".into(),
         items: vec![
             MenuItem::action(theme::tr("新建标签页 ⌘T", "New Tab ⌘T"), app::NewTab),
             MenuItem::action(theme::tr("关闭标签页 ⌘W", "Close Tab ⌘W"), app::CloseTab),
@@ -93,6 +93,8 @@ fn main() {
     let initial_state = files::load_state().ok();
     if let Some(state) = &initial_state {
         theme::apply_state(state);
+    } else {
+        theme::set_language_mode(files::state::LanguageMode::System);
     }
     let saved_main_bounds = initial_state.as_ref().and_then(|s| s.main_window_bounds);
     let saved_quick_bounds = initial_state.as_ref().and_then(|s| s.quick_window_bounds);
@@ -127,7 +129,7 @@ fn main() {
                 display_id,
                 window_min_size: Some(min_size),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("Thinkly".into()),
+                    title: Some("Yu".into()),
                     appears_transparent: true,
                     traffic_light_position: cfg!(target_os = "macos").then_some(point(px(16.), px(14.))),
                     ..Default::default()

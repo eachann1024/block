@@ -1,8 +1,8 @@
-//! Preloaded Chinese demo note for the Thinkly Fast web hero stage.
+//! Preloaded Chinese demo note for the Yu web hero stage.
 
-pub const DEMO_NOTE: &str = r#"# Thinkly Fast · 原生块级笔记
+pub const DEMO_NOTE: &str = r#"# Yu · 文字之隅，落笔即成
 
-欢迎体验直接在浏览器中运行的 **Thinkly Fast** 真实编辑器（基于 Rust + GPUI 编译为 WebAssembly）。将鼠标悬停在任意段落旁，即可唤出左侧的拖拽把手；空行旁还会出现 + 插入按钮。
+欢迎体验直接在浏览器中运行的 **Yu** 真实编辑器（基于 Rust + GPUI 编译为 WebAssembly）。将鼠标悬停在任意段落旁，即可唤出左侧的拖拽把手；空行旁还会出现 + 插入按钮。
 
 ## 块把手、拖拽重排与块转换
 

@@ -69,7 +69,7 @@ pub fn render_markdown(blocks: &[Block], options: &RenderOptions) -> String {
         if !out.ends_with('\n') {
             out.push('\n');
         }
-        out.push_str("\n---\n*Thinkly*\n");
+        out.push_str("\n---\n*Yu*\n");
     }
     out
 }
