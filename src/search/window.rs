@@ -186,7 +186,7 @@ fn open(cx: &mut App) {
         |window, cx| {
             let view = cx.new(|cx| SearchWindow::new(window, cx));
             cx.global_mut::<SearchWindowGlobal>().view = Some(view.clone());
-            cx.new(|cx| gpui_component::Root::new(view, window, cx))
+            cx.new(|cx| gpui_component::Root::new(view, window, cx).bg(gpui::transparent_black()))
         },
     );
     match opened {
