@@ -20,6 +20,7 @@ mod table_input;
 mod table_actions;
 mod table_extend;
 mod table_drag_scroll;
+mod table_resize;
 mod block_menu;
 mod menu_style;
 mod format_cmds;
