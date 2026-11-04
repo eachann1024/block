@@ -127,16 +127,26 @@ fn state_path() -> io::Result<PathBuf> {
     Ok(app_data_dir("thinkly-fast").join("state.json"))
 }
 
-pub fn load_state() -> io::Result<State> { load_state_at(&state_path()?) }
+pub fn load_state() -> io::Result<State> {
+    #[cfg(target_family = "wasm")]
+    { return super::vfs::load_state(); }
+    #[cfg(not(target_family = "wasm"))]
+    load_state_at(&state_path()?)
+}
 
 /// Read-modify-write under one lock so width and folder saves never clobber each other.
 pub fn update_state(change: impl FnOnce(&mut State)) -> io::Result<State> {
-    let _guard = WRITE.lock().unwrap_or_else(|poison| poison.into_inner());
-    let path = state_path()?;
-    let mut state = load_state_at(&path).unwrap_or_default();
-    change(&mut state);
-    write_state_at(&path, &state)?;
-    Ok(state)
+    #[cfg(target_family = "wasm")]
+    { return super::vfs::update_state(change); }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let _guard = WRITE.lock().unwrap_or_else(|poison| poison.into_inner());
+        let path = state_path()?;
+        let mut state = load_state_at(&path).unwrap_or_default();
+        change(&mut state);
+        write_state_at(&path, &state)?;
+        Ok(state)
+    }
 }
 
 /// Opening a folder makes it the current notebook and the most recent one.

@@ -69,6 +69,15 @@ const INDEX_HTML = `<!doctype html>
       background: #fbfaf7;
       overflow: hidden;
     }
+    #editor-stage > canvas {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      display: block !important;
+      outline: none !important;
+      z-index: 2 !important;
+    }
     #editor-loading {
       position: absolute;
       inset: 0;

@@ -50,9 +50,14 @@ pub fn sort_nodes(nodes: &mut [Node]) { nodes.sort_by(compare); }
 /// Run on a worker. Root errors abort; child errors retain siblings and diagnostics.
 /// Directory symlinks are not followed, avoiding cycles and workspace escapes.
 pub fn scan(dir: &Path) -> io::Result<Scan> {
-    let mut result = Scan { nodes: Vec::new(), warnings: Vec::new(), warning_count: 0 };
-    result.nodes = read_level(dir, &mut result, 0)?;
-    Ok(result)
+    #[cfg(target_family = "wasm")]
+    { return super::vfs::scan_dir(dir); }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let mut result = Scan { nodes: Vec::new(), warnings: Vec::new(), warning_count: 0 };
+        result.nodes = read_level(dir, &mut result, 0)?;
+        Ok(result)
+    }
 }
 
 fn warn(result: &mut Scan, path: &Path, error: impl std::fmt::Display) {
