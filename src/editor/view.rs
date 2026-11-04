@@ -221,12 +221,6 @@ impl Render for Editor {
                         .when(self.path.is_some(), |paper| paper.child(rows))
                         .when(self.path.is_none() && !self.persistence.loading, |paper| paper.child(crate::mascot::editor_empty(cx))))
                     .when(self.path.is_some(), |area| area.child(scrollbar::vertical("editor-scrollbar", &self.list, px(pad.0 + pad.1)))))
-                .when(!self.minimal && cfg!(not(target_family = "wasm")), |root| root.child(div().min_h(px(26.)).flex_none().px_3().flex().items_center().gap_3().text_size(px(12.)).text_color(theme.text_secondary)
-                    .child(div().flex_1().child(self.status.clone()))
-                    .when(self.path.is_some() && self.dirty, |bar| bar.child(div().id("keep-draft-close")
-                        .px_2().py_1().rounded_md().bg(theme.hover).cursor(gpui::CursorStyle::PointingHand)
-                        .child(crate::theme::tr("保留草稿并关闭", "Keep draft & close"))
-                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.keep_draft_and_close(cx); }))))))
                 .when_some(self.table_chrome.clone(), |root, chrome| {
                     let dims = self.table_dimensions(chrome.block).unwrap_or((1, 1));
                     root.children(super::table_chrome::overlay(cx.entity(), &chrome, self.table_sel, self.table_menu, self.table_drag, dims))
