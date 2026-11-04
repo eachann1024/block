@@ -14,8 +14,12 @@ pub fn icon_button(
     on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
+    let id: ElementId = id.into();
+    let probe = crate::ui::smoke_overlay::probe_for(&id);
     div()
         .id(id)
+        .relative()
+        .children(probe)
         .size(px(24.))
         .flex_none()
         .flex()
@@ -73,8 +77,12 @@ pub fn back_button(
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
+    let id: ElementId = id.into();
+    let probe = crate::ui::smoke_overlay::probe_for(&id);
     div()
         .id(id)
+        .relative()
+        .children(probe)
         .h(px(28.))
         .px(px(10.))
         .flex_none()
@@ -101,8 +109,12 @@ pub fn header_action_button(
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
     let fg = if active { theme.accent } else { theme.text_secondary };
+    let id: ElementId = id.into();
+    let probe = crate::ui::smoke_overlay::probe_for(&id);
     div()
         .id(id)
+        .relative()
+        .children(probe)
         .size(px(30.))
         .flex_none()
         .flex()
@@ -125,8 +137,12 @@ pub fn toolbar_icon_button(
     on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
+    let id: ElementId = id.into();
+    let probe = crate::ui::smoke_overlay::probe_for(&id);
     div()
         .id(id)
+        .relative()
+        .children(probe)
         .size(px(32.))
         .flex_none()
         .flex()
@@ -155,8 +171,12 @@ pub fn dock_icon_button(
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
     let fg = if active { theme.accent } else { theme.text_secondary };
+    let id: ElementId = id.into();
+    let probe = crate::ui::smoke_overlay::probe_for(&id);
     div()
         .id(id)
+        .relative()
+        .children(probe)
         .size(px(30.))
         .flex_none()
         .flex()

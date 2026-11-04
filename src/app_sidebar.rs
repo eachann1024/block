@@ -34,7 +34,7 @@ impl Workspace {
             .pl(px(TITLEBAR_LEFT_PAD)).pr(px(10.)).border_r_1().border_color(theme.sidebar_border)
             .window_control_area(WindowControlArea::Drag)
             .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
-            .child(div().id("sidebar-toggle").group(btn_group.clone()).ml_auto().size(px(26.)).flex_none()
+            .child(div().id("sidebar-toggle").relative().children(crate::ui::smoke_overlay::probe("sidebar-toggle")).group(btn_group.clone()).ml_auto().size(px(26.)).flex_none()
                 .flex().items_center().justify_center().rounded(px(6.)).cursor(CursorStyle::PointingHand)
                 .hover(|s| s.bg(theme.hover))
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
@@ -96,7 +96,7 @@ impl Workspace {
         let enabled = !self.busy();
         let open = self.switcher_open;
         let note_count = self.folder.as_ref().map(|_| self.tree.read(cx).note_count().to_string());
-        div().id("notebook-switcher").flex_1().min_w_0().h(px(30.)).px(px(8.)).flex().items_center().gap(px(7.))
+        div().id("notebook-switcher").relative().children(crate::ui::smoke_overlay::probe("notebook-switcher")).flex_1().min_w_0().h(px(30.)).px(px(8.)).flex().items_center().gap(px(7.))
             .rounded(px(6.)).text_size(px(14.)).font_weight(FontWeight(500.)).text_color(theme.text)
             .when(open, |b| b.bg(theme.hover))
             .when(enabled, |b| b.cursor(CursorStyle::PointingHand).hover(|style| style.bg(theme.hover))
