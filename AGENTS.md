@@ -2,6 +2,7 @@
 
 - 改完后执行 `bun run build`：构建 release macOS `.app`，安装替换 `/Applications/Thinkly Fast.app` 并启动。失败如实报告，不把构建成功当成功能通过。
 - 验收按影响面选最小必要检查。不新增永久测试，临时检查确认后删除。不动桌面 UI。
+- 崩溃与错误排查查看 `~/Library/Logs/ThinklyFast/thinkly-fast.log`（及 macOS `~/Library/Logs/DiagnosticReports/thinkly-fast-*.ips`）；日志文件只允许写入警告、错误与崩溃记录（`WARN` / `ERROR` / `PANIC`），不写入普通 `INFO` 日志。
 
 ## 版本与代码组织
 

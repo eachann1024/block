@@ -172,7 +172,6 @@ impl Editor {
         self.annotate.reactions = None;
         self.format = None;
         self.annotate.composer = Some(AnnotateComposer { block_id, block_index, range, quote, send_to_claude, input, _sub: sub });
-        focus_input.update(cx, |i, cx| i.focus(window, cx));
         cx.defer_in(window, move |_, window, cx| { focus_input.update(cx, |i, cx| i.focus(window, cx)); });
         cx.notify();
     }
@@ -229,7 +228,7 @@ impl Editor {
         let Some(composer) = &self.annotate.composer else { return };
         let body = composer.input.read(cx).value().trim().to_owned();
         if body.is_empty() { return; }
-        let composer = self.annotate.composer.take().unwrap();
+        let Some(composer) = self.annotate.composer.take() else { return };
         let (id, sent_to_claude, quote) = (next_id(), composer.send_to_claude && !composer.range.is_empty(), composer.quote.clone());
         self.annotate.comments.push(Comment {
             id, block_index: composer.block_index, start: composer.range.start, end: composer.range.end,

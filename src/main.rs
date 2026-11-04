@@ -137,11 +137,10 @@ fn main() {
                 });
                 cx.on_action(move |_: &ExportImage, cx: &mut App| {
                     let Some(handle) = cx.active_window() else { return };
-                    let _ = menu_target.update(cx, |this, cx| {
-                        let _ = cx.update_window(handle, |_, window, cx| {
-                            this.editor.update(cx, |editor, cx| {
-                                crate::editor::export_document(editor, window, cx)
-                            });
+                    let editor = menu_target.read(cx).editor.clone();
+                    let _ = cx.update_window(handle, move |_, window, cx| {
+                        editor.update(cx, |editor, cx| {
+                            crate::editor::export_document(editor, window, cx)
                         });
                     });
                 });
