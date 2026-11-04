@@ -19,9 +19,10 @@ impl Workspace {
                 .children(SettingsTab::ALL.into_iter().enumerate().map(|(ix, tab)| {
                     let active = current == Some(tab);
                     let cat_group = SharedString::from(format!("settings-cat-{ix}"));
-                    div().id(("settings-tab", ix)).group(cat_group.clone()).h(px(34.)).px(px(10.)).rounded(px(6.)).flex().items_center().gap(px(8.))
-                        .text_size(px(14.)).cursor(CursorStyle::PointingHand)
-                        .when(active, |d| d.bg(theme.selected).border_1().border_color(theme.accent)
+                    div().id(("settings-tab", ix)).group(cat_group.clone()).w_full().h(px(34.)).flex_none().px(px(10.)).rounded(px(6.)).flex().items_center().gap(px(8.))
+                        .border_1().border_color(gpui::transparent_black())
+                        .text_size(px(14.)).line_height(px(20.)).cursor(CursorStyle::PointingHand)
+                        .when(active, |d| d.bg(theme.selected).border_color(theme.accent)
                             .text_color(theme.text).font_weight(FontWeight(460.)))
                         .when(!active, |d| d.text_color(theme.text_secondary)
                             .hover(move |s| s.bg(theme.hover).text_color(theme.text)))
@@ -30,9 +31,7 @@ impl Workspace {
                         .child(tab.title())
                 })))
             .child(div().h(px(44.)).flex_none().px(px(12.)).border_t_1().border_color(theme.sidebar_border)
-                .flex().items_center().justify_between().gap(px(8.))
-                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-                    .text_size(px(14.)).text_color(theme.text_secondary).child(tr("本地笔记", "Local Notes")))
+                .flex().items_center().justify_end()
                 .child(div().id("settings-sidebar-back").group("settings-back").flex_none().h(px(28.)).px(px(10.)).rounded(px(6.)).bg(card_bg())
                     .border_1().border_color(theme.btn_border).flex().items_center().gap(px(6.))
                     .text_size(px(14.)).font_weight(FontWeight(460.)).text_color(theme.text)
