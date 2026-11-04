@@ -29,6 +29,7 @@ pub(in crate::editor) fn block_hash(block: &crate::editor::model::Block) -> u64 
     }
     let mut h = std::collections::hash_map::DefaultHasher::new();
     (block.kind as u8, block.meta.heading_level, block.meta.callout.map(|c| c as u8), &block.meta.code_language, block.meta.raw_source.is_some()).hash(&mut h);
+    (crate::theme::font_choice() as u8).hash(&mut h);
     hash_inline(block, &mut h);
     if let Some(table) = &block.meta.table {
         (table.format as u8, table.columns, &table.column_widths, &table.attrs, table.rows.len()).hash(&mut h);

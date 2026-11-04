@@ -58,7 +58,7 @@ pub(super) fn runs(block: &Block, text: &str, color: Hsla) -> Vec<TextRun> {
             .map_or(&[][..], |span| span.marks.as_slice());
         if marks.contains(&MarkKind::Bold) { run.font.weight = FontWeight::BOLD; }
         if marks.contains(&MarkKind::Italic) { run.font.style = FontStyle::Italic; }
-        if marks.contains(&MarkKind::Code) { run.font.family = "Menlo".into(); run.background_color = Some(Theme::ocean().code_bg); }
+        if marks.contains(&MarkKind::Code) { run.font.family = crate::theme::mono_font_family().into(); run.font.fallbacks = None; run.background_color = Some(Theme::ocean().code_bg); }
         if marks.contains(&MarkKind::Strike) { run.strikethrough = Some(StrikethroughStyle { color:Some(color), thickness:px(1.) }); }
         for tag in block.meta.inline.iter().filter(|tag| tag.start <= start && end <= tag.end) {
             if tag.name == "a" {
@@ -81,7 +81,7 @@ pub(super) fn plain(len: usize, color: Hsla) -> TextRun {
     let (family, fallbacks) = crate::theme::editor_font();
     TextRun { len, font:Font { family:family.into(), weight:FontWeight::NORMAL,
         style:FontStyle::Normal, features:FontFeatures::default(),
-        fallbacks:Some(FontFallbacks::from_fonts(fallbacks.iter().map(|s| (*s).to_string()).collect())) },
+        fallbacks:(!fallbacks.is_empty()).then(|| FontFallbacks::from_fonts(fallbacks.iter().map(|s| (*s).to_string()).collect())) },
         color, background_color:None, underline:None, strikethrough:None }
 }
 pub(super) fn tint_selection(text: &str, runs: Vec<TextRun>, sel: Option<std::ops::Range<usize>>, color: Hsla) -> Vec<TextRun> {
