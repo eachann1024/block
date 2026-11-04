@@ -21,8 +21,8 @@ pub(in crate::editor) enum Cmd {
     InsertAbove, InsertBelow, Duplicate, Cut, CopyText, MoveUp, MoveDown, Delete,
     /// Group title inside the handle menu; not clickable.
     Header(&'static str),
-    /// Opens a sub page; the label is the current value shown at the right.
-    Open(Sub, &'static str), Back,
+    /// Opens a cascading side submenu (`转换为 →` or `代码语言 →`).
+    Open(Sub),
     /// Conversion target; `true` marks the block's current type.
     TurnTo(Kind, bool), CodeTo(bool),
     SetLanguage(&'static str, bool), CopyCode,
@@ -41,8 +41,8 @@ impl Cmd {
             Cmd::Table => "表格", Cmd::Divider => "分隔线", Cmd::Image => "图片", Cmd::Ai => "AI 写作",
             Cmd::InsertAbove => "在上方插入空行", Cmd::InsertBelow => "在下方插入空行", Cmd::Duplicate => "复制这个块", Cmd::Cut => "剪切",
             Cmd::CopyText => "复制文本", Cmd::MoveUp => "上移", Cmd::MoveDown => "下移", Cmd::Delete => "删除",
-            Cmd::Header(title) => title, Cmd::Back => "返回",
-            Cmd::Open(Sub::Convert, _) => "转换为", Cmd::Open(Sub::Language, _) => "代码语言", Cmd::Open(Sub::Root, _) => "",
+            Cmd::Header(title) => title,
+            Cmd::Open(Sub::Convert) => "转换为", Cmd::Open(Sub::Language) => "代码语言", Cmd::Open(Sub::Root) => "",
             Cmd::TurnTo(kind, _) => Cmd::Turn(kind).label(), Cmd::CodeTo(_) => "代码块",
             Cmd::SetLanguage(tag, _) => language_label(tag), Cmd::CopyCode => "复制代码",
             Cmd::TableOp(op) => op.label(),
@@ -98,17 +98,21 @@ impl Cmd {
             Cmd::TableOp(TableCmd::SelectTable) => Icon::SelectAll,
             Cmd::TableOp(TableCmd::DeleteTable) | Cmd::Delete => Icon::Trash,
             Cmd::MoveUp => Icon::ArrowUp, Cmd::MoveDown => Icon::ArrowDown,
-            Cmd::RevealImage => Icon::FolderOpen, Cmd::Back => Icon::ChevronLeft,
+            Cmd::RevealImage => Icon::FolderOpen,
             Cmd::AlignImage(Align::Left, _) => Icon::AlignLeft, Cmd::AlignImage(Align::Center, _) => Icon::AlignCenter,
             Cmd::AlignImage(Align::Right, _) => Icon::AlignRight,
-            Cmd::Open(Sub::Language, _) => Icon::Code, Cmd::Open(Sub::Convert, _) => Icon::Heading,
+            Cmd::Open(Sub::Language) => Icon::Code, Cmd::Open(Sub::Convert) => Icon::Heading,
             Cmd::ToggleWrap(_) => Icon::Wrap,
             _ => return None,
         })
     }
 }
-pub(super) const SLASH: [Cmd; 15] = [
-    Cmd::Turn(Kind::Paragraph), Cmd::Turn(Kind::H1), Cmd::Turn(Kind::H2), Cmd::Turn(Kind::H3),
-    Cmd::Turn(Kind::Todo), Cmd::Turn(Kind::Bullet), Cmd::Turn(Kind::Numbered), Cmd::Turn(Kind::Quote),
-    Cmd::Code(""), Cmd::Code("mermaid"), Cmd::Code("math"), Cmd::Table, Cmd::Divider, Cmd::Image, Cmd::Ai,
+pub(super) const SLASH: [Option<Cmd>; 17] = [
+    Some(Cmd::Turn(Kind::H1)), Some(Cmd::Turn(Kind::H2)), Some(Cmd::Turn(Kind::H3)), Some(Cmd::Table),
+    None,
+    Some(Cmd::Turn(Kind::Paragraph)), Some(Cmd::Turn(Kind::Bullet)), Some(Cmd::Turn(Kind::Todo)),
+    Some(Cmd::Code("")), Some(Cmd::Divider), Some(Cmd::Image),
+    Some(Cmd::Turn(Kind::Numbered)), Some(Cmd::Turn(Kind::Quote)),
+    None,
+    Some(Cmd::Code("mermaid")), Some(Cmd::Code("math")), Some(Cmd::Ai),
 ];
