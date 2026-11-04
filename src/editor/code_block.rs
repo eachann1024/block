@@ -52,8 +52,8 @@ pub(super) fn margin(_language: &str) -> Edges<Length> {
 /// Paint the card behind the text `bounds` (which exclude the margin).
 pub(super) fn paint_card(bounds: Bounds<Pixels>, language: &str, window: &mut Window, _cx: &mut App) {
     let dark = is_dark();
-    let bg = if dark { rgb(0x16191e) } else { rgb(0xf5f6f8) };
-    let border = if dark { rgb(0x282c34) } else { rgb(0xeceef1) };
+    let bg = if dark { rgb(0x16191e) } else { rgb(0xf8f8f6) };
+    let border = if dark { rgb(0x282c34) } else { rgb(0xe8e6e0) };
     let top = HEADER_H + PAD_TOP;
     let card = Bounds::new(
         bounds.origin - point(px(PAD_X), px(top)),
@@ -81,8 +81,8 @@ pub(super) fn preview_card(
     cx: &mut Context<Editor>,
 ) -> impl IntoElement {
     let dark = is_dark();
-    let bg = if dark { rgb(0x16191e) } else { rgb(0xf5f6f8) };
-    let border = if dark { rgb(0x282c34) } else { rgb(0xeceef1) };
+    let bg = if dark { rgb(0x16191e) } else { rgb(0xf8f8f6) };
+    let border = if dark { rgb(0x282c34) } else { rgb(0xe8e6e0) };
     let content = if is_mermaid(language) {
         super::diagram_preview::view(editor, block_id, source, cx)
     } else {
