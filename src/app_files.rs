@@ -86,6 +86,7 @@ impl Workspace {
 
     pub(super) fn start_rename(&mut self, path: PathBuf, dir: bool, window: &mut Window, cx: &mut Context<Self>) {
         self.close_overlays(cx);
+        self.renaming = None;
         let name = display_name(&path, dir);
         let input = cx.new(|cx| InputState::new(window, cx).default_value(name));
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
@@ -102,7 +103,6 @@ impl Workspace {
             tree.scroll_to(&path);
             tree.set_renaming(Some((path.clone(), input.clone())), cx);
         });
-        input.update(cx, |input, cx| input.focus(window, cx));
         let focus_input = input.clone();
         cx.defer_in(window, move |_, window, cx| {
             focus_input.update(cx, |input, cx| input.focus(window, cx));
@@ -218,7 +218,7 @@ impl Workspace {
                         if let Some(open) = next_open { this.open_file(open, cx); }
                         this.flash(notice.into(), cx);
                     }
-                    Err(error) => this.notice = format!("{}: {error}", tr("操作失败", "Operation failed")),
+                    Err(error) => { crate::log::error(&format!("file operation failed: {error}")); this.notice = format!("{}: {error}", tr("操作失败", "Operation failed")); }
                 }
                 this.refresh(cx);
             });
@@ -266,7 +266,7 @@ impl Workspace {
                             this.flash(tr("笔记已创建", "Note created").into(), cx);
                         }
                     }
-                    Err(error) => { this.notice = format!("{}: {error}", tr("新建失败", "Failed to create")); this.refresh(cx); }
+                    Err(error) => { crate::log::error(&format!("failed to create item: {error}")); this.notice = format!("{}: {error}", tr("新建失败", "Failed to create")); this.refresh(cx); }
                 }
             });
         }).detach();

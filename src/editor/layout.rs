@@ -102,7 +102,7 @@ impl TextLayout {
                 let dy = (cell.frame.top()-point.y).max(px(0.)).max(point.y-cell.frame.bottom());
                 dx + dy
             };
-            let cell = self.cells.iter().min_by(|a,b| distance(a).partial_cmp(&distance(b)).unwrap()).unwrap();
+            let cell = self.cells.iter().min_by(|a,b| distance(a).partial_cmp(&distance(b)).unwrap_or(std::cmp::Ordering::Equal)).unwrap();
             return cell.range.start + cell.text.hit(point).min(cell.range.len());
         }
         let mut y = self.bounds.top();

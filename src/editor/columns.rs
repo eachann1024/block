@@ -59,7 +59,7 @@ impl Editor {
         let (mut added, mut i) = (0, 0);
         while i < self.doc.blocks.len() {
             let Some(r) = self.column_group_range(i) else { i += 1; continue };
-            let gid = self.doc.blocks[r.start].meta.column.unwrap().0;
+            let Some((gid, _)) = self.doc.blocks.get(r.start).and_then(|b| b.meta.column) else { i = r.end.max(i + 1); continue };
             let max_col = (r.clone()).filter_map(|k| self.doc.blocks[k].meta.column.map(|(_, c)| c)).max().unwrap_or(1).max(1);
             let mut rebuilt: Vec<Block> = Vec::new();
             for col in 0..=max_col {
@@ -97,7 +97,7 @@ impl Editor {
         }
         let next = self.next_visible_index(index, down)?;
         let Some(r) = self.column_group_range(next) else { return Some(next) };
-        let gid = self.doc.blocks[r.start].meta.column.unwrap().0;
+        let Some((gid, _)) = self.doc.blocks.get(r.start).and_then(|b| b.meta.column) else { return Some(next) };
         let max_col = (r.clone()).filter_map(|k| self.doc.blocks[k].meta.column.map(|(_, c)| c)).max().unwrap_or(0);
         let probe_x = self.preferred_x.or_else(|| self.layouts.get(&self.caret.head.block).map(|l| l.point(self.caret.head.offset).x));
         let chosen_col = probe_x.and_then(|x| {
