@@ -75,6 +75,33 @@ pub(in crate::editor) fn doc_to_shaped(doc_offset: usize, code_spans: &[Range<us
     doc_offset + shift
 }
 
+pub(in crate::editor) fn doc_range_to_shaped(range: Range<usize>, code_spans: &[Range<usize>]) -> Range<usize> {
+    let mut start_shift = 0usize;
+    for span in code_spans {
+        if range.start < span.start { break; }
+        if range.start == span.start { start_shift += PAD_BYTES; break; }
+        start_shift += PAD_BYTES;
+        if range.start < span.end { break; }
+        if range.start == span.end {
+            if range.end > span.end { start_shift += PAD_BYTES; }
+            break;
+        }
+        start_shift += PAD_BYTES;
+    }
+    let mut end_shift = 0usize;
+    for span in code_spans {
+        if range.end < span.start { break; }
+        if range.end == span.start {
+            if range.start >= span.start { end_shift += PAD_BYTES; }
+            break;
+        }
+        end_shift += PAD_BYTES;
+        if range.end <= span.end { break; }
+        end_shift += PAD_BYTES;
+    }
+    (range.start + start_shift)..(range.end + end_shift)
+}
+
 pub(in crate::editor) fn shaped_to_doc(shaped_offset: usize, code_spans: &[Range<usize>]) -> usize {
     let mut shift = 0usize;
     for span in code_spans {
@@ -126,6 +153,60 @@ pub(in crate::editor) fn paint_chips(layout: &TextLayout, window: &mut Window) {
         return;
     }
     paint_layout_chips(layout, window);
+}
+
+pub(in crate::editor) fn paint_selection(layout: &TextLayout, range: Range<usize>, window: &mut Window) -> Vec<Bounds<Pixels>> {
+    let sel_color = Theme::ocean().selection;
+    if !layout.cells.is_empty() || layout.code_spans.is_empty() || range.is_empty() {
+        let rects = layout.rects(range);
+        for r in &rects {
+            window.paint_quad(quad(*r, px(2.), sel_color, 0., gpui::transparent_black(), BorderStyle::default()));
+        }
+        return rects;
+    }
+    let font_px = layout.lines.first().map(|(_, l)| l.font_size()).unwrap_or(px(16.));
+    let chip_h = (font_px + px(5.)).round().min(layout.line_height - px(2.)).max(px(18.));
+    let pad_x = px(5.5);
+    let mut out = Vec::new();
+    let mut cursor = range.start;
+    for span in &layout.code_spans {
+        if span.end <= cursor { continue; }
+        if span.start >= range.end { break; }
+        if cursor < span.start {
+            let plain_end = span.start.min(range.end);
+            for r in layout.rects(cursor..plain_end) {
+                window.paint_quad(quad(r, px(2.), sel_color, 0., gpui::transparent_black(), BorderStyle::default()));
+                out.push(r);
+            }
+            cursor = plain_end;
+        }
+        let s = cursor.max(span.start);
+        let e = range.end.min(span.end);
+        if s < e {
+            let rects = layout.rects(s..e);
+            for (idx, r) in rects.iter().enumerate() {
+                let top = r.top() + ((r.size.height - chip_h) * 0.5).round();
+                let extend_left = s == span.start || idx > 0;
+                let extend_right = e == span.end || idx + 1 < rects.len();
+                let left = r.left() - if extend_left { pad_x } else { px(0.) };
+                let right = r.right() + if extend_right { pad_x } else { px(0.) };
+                let l_rad = if extend_left { px(5.5) } else { px(2.) };
+                let r_rad = if extend_right { px(5.5) } else { px(2.) };
+                let corners = Corners { top_left: l_rad, bottom_left: l_rad, top_right: r_rad, bottom_right: r_rad };
+                let box_bounds = Bounds::new(point(left, top), size((right - left).max(px(2.)), chip_h));
+                window.paint_quad(quad(box_bounds, corners, sel_color, 0., gpui::transparent_black(), BorderStyle::default()));
+                out.push(box_bounds);
+            }
+            cursor = e;
+        }
+    }
+    if cursor < range.end {
+        for r in layout.rects(cursor..range.end) {
+            window.paint_quad(quad(r, px(2.), sel_color, 0., gpui::transparent_black(), BorderStyle::default()));
+            out.push(r);
+        }
+    }
+    out
 }
 
 impl Editor {
