@@ -8,7 +8,8 @@ use super::view::{
     Redo, Right, Save, SelectAll, SelectDocEnd, SelectDocStart, SelectDown, SelectLeft,
     SelectLineEnd, SelectLineStart, SelectRight, SelectUp, SelectWordLeft, SelectWordRight,
     SetBullet, SetCode, SetH1, SetH2, SetH3, SetNumbered, SetParagraph, SetQuote, SetTodo, Strike,
-    TableMenuKey, Underline, Undo, Up, WordLeft, WordRight,
+    TableMenuKey, Underline, Undo, Up, WordLeft, WordRight, ToggleHighlight, ClearFormat, ToggleFold,
+    PastePlain,
 };
 
 pub fn bind_keys(cx: &mut App) {
@@ -59,6 +60,15 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-e", Code, Some("Editor")),
         KeyBinding::new("cmd-u", Underline, Some("Editor")),
         KeyBinding::new("cmd-shift-k", EditLink, Some("Editor")),
+        // Without a selection or link `open_link` propagates, so ⌘K still reaches the global search.
+        KeyBinding::new("cmd-k", EditLink, Some("Editor")),
+        KeyBinding::new("cmd-shift-h", ToggleHighlight, Some("Editor")),
+        KeyBinding::new("cmd-shift-\\", ClearFormat, Some("Editor")),
+        KeyBinding::new("cmd-shift-v", PastePlain, Some("Editor")),
+        KeyBinding::new("cmd-shift-7", SetNumbered, Some("Editor")),
+        KeyBinding::new("cmd-shift-8", SetBullet, Some("Editor")),
+        KeyBinding::new("cmd-shift-9", SetQuote, Some("Editor")),
+        KeyBinding::new("cmd-alt-t", ToggleFold, Some("Editor")),
         KeyBinding::new("cmd-alt-0", SetParagraph, Some("Editor")), KeyBinding::new("ctrl-shift-0", SetParagraph, Some("Editor")),
         KeyBinding::new("cmd-alt-1", SetH1, Some("Editor")), KeyBinding::new("ctrl-shift-1", SetH1, Some("Editor")),
         KeyBinding::new("cmd-alt-2", SetH2, Some("Editor")), KeyBinding::new("ctrl-shift-2", SetH2, Some("Editor")),
@@ -82,7 +92,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("alt-cmd-c", CopyMarkdown, Some("Editor")),
         KeyBinding::new("alt-cmd-m", Annotate, Some("Editor")),
     ]);
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_family = "wasm"))]
     cx.bind_keys([
         KeyBinding::new("cmd-left", LineStart, Some("Editor")),
         KeyBinding::new("cmd-right", LineEnd, Some("Editor")),
@@ -121,14 +131,11 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-shift-z", Redo, Some("Editor")),
         KeyBinding::new("ctrl-s", Save, Some("Editor")),
         KeyBinding::new("ctrl-enter", CmdEnter, Some("Editor")),
-        KeyBinding::new("ctrl-a", SelectAll, Some("Editor")),
         KeyBinding::new("ctrl-c", Copy, Some("Editor")),
         KeyBinding::new("ctrl-x", Cut, Some("Editor")),
         KeyBinding::new("ctrl-v", Paste, Some("Editor")),
         KeyBinding::new("ctrl-b", Bold, Some("Editor")),
         KeyBinding::new("ctrl-i", Italic, Some("Editor")),
-        KeyBinding::new("ctrl-u", Underline, Some("Editor")),
-        KeyBinding::new("ctrl-e", Code, Some("Editor")),
         KeyBinding::new("ctrl-d", DuplicateBlock, Some("Editor")),
         KeyBinding::new("ctrl-f", Find, Some("Editor")),
         KeyBinding::new("ctrl-f", Find, None),
@@ -137,5 +144,36 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-shift-s", Strike, Some("Editor")),
         KeyBinding::new("ctrl-shift-x", Strike, Some("Editor")),
         KeyBinding::new("ctrl-shift-k", EditLink, Some("Editor")),
+        KeyBinding::new("ctrl-shift-h", ToggleHighlight, Some("Editor")),
+        KeyBinding::new("ctrl-shift-\\", ClearFormat, Some("Editor")),
+        KeyBinding::new("ctrl-shift-v", PastePlain, Some("Editor")),
+        KeyBinding::new("ctrl-alt-t", ToggleFold, Some("Editor")),
+    ]);
+    #[cfg(not(any(target_os = "macos", target_family = "wasm")))]
+    cx.bind_keys([
+        KeyBinding::new("ctrl-a", SelectAll, Some("Editor")),
+        KeyBinding::new("ctrl-e", Code, Some("Editor")),
+        KeyBinding::new("ctrl-u", Underline, Some("Editor")),
+        KeyBinding::new("ctrl-k", EditLink, Some("Editor")),
+    ]);
+    // macOS browsers report the Option-composed character as `event.key`, so the
+    // Option shortcuts are bound to those glyphs too.
+    #[cfg(target_family = "wasm")]
+    cx.bind_keys([
+        KeyBinding::new("cmd-alt-º", SetParagraph, Some("Editor")),
+        KeyBinding::new("cmd-alt-¡", SetH1, Some("Editor")),
+        KeyBinding::new("cmd-alt-™", SetH2, Some("Editor")),
+        KeyBinding::new("cmd-alt-£", SetH3, Some("Editor")),
+        KeyBinding::new("cmd-alt-¢", SetTodo, Some("Editor")),
+        KeyBinding::new("cmd-alt-∞", SetBullet, Some("Editor")),
+        KeyBinding::new("cmd-alt-§", SetNumbered, Some("Editor")),
+        KeyBinding::new("cmd-alt-•", SetCode, Some("Editor")),
+        KeyBinding::new("cmd-alt-ª", SetQuote, Some("Editor")),
+        KeyBinding::new("cmd-alt-†", ToggleFold, Some("Editor")),
+        KeyBinding::new("alt-cmd-ç", CopyMarkdown, Some("Editor")),
+        KeyBinding::new("alt-cmd-µ", Annotate, Some("Editor")),
+        KeyBinding::new("alt-∫", WordLeft, Some("Editor")),
+        KeyBinding::new("alt-ƒ", WordRight, Some("Editor")),
+        KeyBinding::new("alt-∂", DeleteWordRight, Some("Editor")),
     ]);
 }
