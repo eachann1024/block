@@ -10,8 +10,17 @@ use super::menu::{ItemId, menu_item, menu_surface, separator};
 
 pub(super) const MIN_WIDTH: f32 = 200.;
 pub(super) const MAX_WIDTH: f32 = 420.;
-const COLLAPSED_HEADER_WIDTH: f32 = if cfg!(target_os = "macos") { 168. } else { 98. };
 const TITLEBAR_LEFT_PAD: f32 = if cfg!(target_os = "macos") { 76. } else { 10. };
+const TITLEBAR_RIGHT_PAD: f32 = 10.;
+const TOGGLE_SIZE: f32 = 26.;
+const NAV_BUTTON_SIZE: f32 = 24.;
+const TITLEBAR_GAP: f32 = 2.;
+
+/// Collapsed header hugs its content: traffic lights, optional nav buttons, then the toggle.
+fn collapsed_header_width(nav_buttons: usize) -> f32 {
+    let nav = nav_buttons as f32;
+    TITLEBAR_LEFT_PAD + TITLEBAR_RIGHT_PAD + TOGGLE_SIZE + nav * (NAV_BUTTON_SIZE + TITLEBAR_GAP)
+}
 
 pub(super) fn clamp_width(width: Pixels) -> Pixels { width.clamp(px(MIN_WIDTH), px(MAX_WIDTH)) }
 
@@ -27,22 +36,23 @@ impl Workspace {
     /// Top-left titlebar cell housing traffic lights and the Version B sidebar toggle button.
     pub(super) fn titlebar_left(&self, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         let theme = Theme::ocean();
-        let width = if self.sidebar_collapsed { px(COLLAPSED_HEADER_WIDTH) } else { self.sidebar_width };
+        let width = if self.sidebar_collapsed { px(collapsed_header_width(self.nav_button_count())) } else { self.sidebar_width };
         let glyph = if self.sidebar_collapsed { Icon::SidebarExpand } else { Icon::SidebarCollapse };
         let btn_group: SharedString = "sidebar-toggle-btn".into();
         div().id("titlebar-left").w(width).h_full().flex_none().flex().items_center()
-            .pl(px(TITLEBAR_LEFT_PAD)).pr(px(10.)).border_r_1().border_color(theme.sidebar_border)
+            .pl(px(TITLEBAR_LEFT_PAD)).pr(px(TITLEBAR_RIGHT_PAD)).border_r_1().border_color(theme.sidebar_border)
             .window_control_area(WindowControlArea::Drag)
             .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
-            .child(div().id("sidebar-toggle").relative().children(crate::ui::smoke_overlay::probe("sidebar-toggle")).group(btn_group.clone()).ml_auto().size(px(26.)).flex_none()
-                .flex().items_center().justify_center().rounded(px(6.)).cursor(CursorStyle::PointingHand)
-                .hover(|s| s.bg(theme.hover))
-                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                    cx.stop_propagation();
-                    this.toggle_sidebar(cx);
-                }))
-                .child(hover_tinted_icon(btn_group, glyph, 16., theme.text_secondary, theme.text, theme.icon_fill)))
-            .child(self.render_nav_buttons(cx))
+            .child(div().ml_auto().flex_none().flex().items_center().gap(px(TITLEBAR_GAP))
+                .children(self.render_nav_buttons(cx))
+                .child(div().id("sidebar-toggle").relative().children(crate::ui::smoke_overlay::probe("sidebar-toggle")).group(btn_group.clone()).size(px(TOGGLE_SIZE)).flex_none()
+                    .flex().items_center().justify_center().rounded(px(6.)).cursor(CursorStyle::PointingHand)
+                    .hover(|s| s.bg(theme.hover))
+                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.toggle_sidebar(cx);
+                    }))
+                    .child(hover_tinted_icon(btn_group, glyph, 16., theme.text_secondary, theme.text, theme.icon_fill))))
     }
 
     /// Invisible 8px strip over the sidebar's right border.
@@ -148,7 +158,7 @@ impl Workspace {
                 .into_any_element()
         }).collect();
         if !items.is_empty() { items.push(separator()); }
-        items.push(menu_item(ItemId::Name("add-notebook"), Icon::Plus, tr("选择文件夹…", "Choose Folder…").into(), false, false,
+        items.push(menu_item(ItemId::Name("add-notebook"), Icon::FolderPlus, tr("选择文件夹…", "Choose Folder…").into(), false, false,
             cx.listener(|this, _, window, cx| { this.close_overlays(cx); this.choose_folder(window, cx); })).into_any_element());
         let row_count = self.notebooks.len() + 1;
         let sep_h = if self.notebooks.is_empty() { 0. } else { 11. };
