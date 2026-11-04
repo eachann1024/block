@@ -127,7 +127,7 @@ impl Render for Editor {
             }
         }).absolute().size_full();
         let editor = cx.entity();
-        let pad = if self.minimal { (18., 12.) } else { (36., 64.) };
+        let pad = if self.minimal { (18., 12.) } else { (64., 160.) };
         if self.list.item_count() != self.doc.blocks.len() {
             crate::log::warn(&format!("editor list item_count ({}) != doc.blocks.len() ({}); resetting", self.list.item_count(), self.doc.blocks.len()));
             self.list.reset(self.doc.blocks.len());
