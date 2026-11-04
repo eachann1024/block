@@ -162,7 +162,10 @@ pub fn refresh_style(cx: &mut App) {
     else {
         return;
     };
-    let _ = handle.update(cx, |_, _, cx| view.update(cx, |_, cx| cx.notify()));
+    let _ = handle.update(cx, |_, window, cx| view.update(cx, |this, cx| {
+        this.state.input.update(cx, |i, cx| i.set_placeholder(tr("搜索标题与正文", "Search titles and content"), window, cx));
+        cx.notify();
+    }));
 }
 
 fn open(cx: &mut App) {

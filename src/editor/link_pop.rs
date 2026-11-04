@@ -97,7 +97,11 @@ impl Editor {
         let rect = *self.layouts.get(block)?.rects(range.clone()).first()?;
         let viewport = self.list.viewport_bounds();
         if rect.bottom() <= viewport.top() || rect.top() >= viewport.bottom() { return None; }
-        let label = if cfg!(any(target_os = "macos", target_family = "wasm")) { "⌘-click or ⌥↩ to open" } else { "Ctrl-click or Alt+Enter to open" };
+        let label = if cfg!(any(target_os = "macos", target_family = "wasm")) {
+            tr("⌘-点击或 ⌥↩ 打开", "⌘-click or ⌥↩ to open")
+        } else {
+            tr("Ctrl-点击或 Alt+Enter 打开", "Ctrl-click or Alt+Enter to open")
+        };
         Some(anchored_tooltip_above(rect, viewport.top(), label, ("link-hover-tip", (*block as usize) ^ (range.start << 16)), window))
     }
     fn link_pill(&self, editor: Entity<Editor>, window: &Window) -> Option<AnyElement> {

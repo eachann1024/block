@@ -74,7 +74,7 @@ fn temporary(path: &Path) -> Result<(Temporary, File), ExportError> {
     if path.file_name().is_none() {
         return Err(ExportError::Write(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            "missing filename",
+            crate::theme::tr("缺少文件名", "missing filename"),
         )));
     }
     for _ in 0..64 {
@@ -92,7 +92,7 @@ fn temporary(path: &Path) -> Result<(Temporary, File), ExportError> {
     }
     Err(ExportError::Write(std::io::Error::new(
         std::io::ErrorKind::AlreadyExists,
-        "temporary file names exhausted",
+        crate::theme::tr("临时文件名已用尽", "temporary file names exhausted"),
     )))
 }
 

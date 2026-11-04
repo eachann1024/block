@@ -50,6 +50,7 @@ pub fn set_language_mode(mode: LanguageMode) {
     };
     LANGUAGE_MODE.store(code, Ordering::Relaxed);
     IS_EN.store(en, Ordering::Relaxed);
+    gpui_component::set_locale(if en { "en" } else { "zh-CN" });
 }
 
 pub fn is_en() -> bool { IS_EN.load(Ordering::Relaxed) }
@@ -170,7 +171,7 @@ pub fn hotkey_parts(spec: &str) -> Vec<String> {
             "shift" => shift = true,
             "cmd" | "super" | "meta" | "win" => cmd = true,
             "secondary" => secondary = true,
-            "space" => key = "Space".into(),
+            "space" => key = tr("空格", "Space").into(),
             "comma" => key = ",".into(),
             "period" => key = ".".into(),
             "slash" => key = "/".into(),

@@ -108,7 +108,10 @@ impl Editor {
         let (a, b, ai, bi) = self.ordered();
         if a == b && text.is_empty() { return; }
         if !self.can_replace_selection() {
-            self.status = "Select within one table cell, or select the entire table to replace it".into();
+            self.status = crate::theme::tr(
+                "请在单个表格单元格内选择，或选中整个表格以替换",
+                "Select within one table cell, or select the entire table to replace it",
+            ).into();
             cx.notify(); return;
         }
         if ai != bi && (ai..=bi).any(|i| self.doc.blocks[i].meta.column.is_some())
@@ -213,7 +216,10 @@ impl Editor {
     pub(in crate::editor) fn cycle_heading(&mut self, id: u64, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
         if self.doc.get(id).is_some_and(|block| block.meta.table.is_some()) {
-            self.status = "Table cells keep their table structure; heading conversion is unavailable".into();
+            self.status = crate::theme::tr(
+                "表格单元格保持表格结构，不支持转换为标题",
+                "Table cells keep their table structure; heading conversion is unavailable",
+            ).into();
             cx.notify(); return;
         }
         self.commit_composition(cx);
