@@ -106,7 +106,11 @@ impl Editor {
         cx.notify();
     }
     pub(super) fn close_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.find.take().is_some() { window.focus(&self.focus, cx); cx.notify(); }
+        if self.find.take().is_some() {
+            self.caret.anchor = self.caret.head; // drop the match selection so the floating toolbar does not appear
+            self.toolbar_anchor = None;
+            window.focus(&self.focus, cx); cx.notify();
+        }
     }
     /// All match ranges inside `block` plus the one that is current, for the paint layer.
     pub(super) fn find_ranges(&self, block: u64) -> Option<(Vec<Range<usize>>, Option<Range<usize>>)> {

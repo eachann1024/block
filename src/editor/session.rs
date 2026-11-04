@@ -19,7 +19,7 @@ pub(super) struct TabSession {
 }
 
 impl Editor {
-    pub(super) fn clear_transient_overlays(&mut self) {
+    pub(crate) fn clear_transient_overlays(&mut self) {
         self.clear_pointer();
         self.toolbar_anchor = None;
         self.hover = None;
@@ -110,14 +110,14 @@ impl Editor {
 
     pub fn close_session(&mut self, path: &Path, cx: &mut Context<Self>) {
         if let Some(sess) = self.sessions.remove(path) {
-            if sess.dirty && path.exists() && !self.persistence.saving.contains(path) {
+            if sess.dirty && crate::files::ops::exists(path) && !self.persistence.saving.contains(path) {
                 self.spawn_detached_save(path.to_path_buf(), sess.doc, sess.base, cx);
             }
         }
         if self.path.as_deref() == Some(path) {
             self.commit_composition(cx);
             self.persistence.timer = None;
-            if self.dirty && path.exists() && !self.persistence.saving.contains(path) {
+            if self.dirty && crate::files::ops::exists(path) && !self.persistence.saving.contains(path) {
                 let doc = self.doc.clone();
                 let base = self.persistence.base;
                 self.spawn_detached_save(path.to_path_buf(), doc, base, cx);

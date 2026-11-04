@@ -19,11 +19,37 @@ pub fn trashed_notice() -> &'static str {
     if cfg!(target_os = "windows") { tr("已移到回收站", "Moved to Recycle Bin") } else { tr("已移到废纸篓", "Moved to Trash") }
 }
 
+pub fn is_file(path: &Path) -> bool {
+    #[cfg(target_family = "wasm")]
+    { return super::vfs::is_file(path); }
+    #[cfg(not(target_family = "wasm"))]
+    path.is_file()
+}
+
+pub fn is_dir(path: &Path) -> bool {
+    #[cfg(target_family = "wasm")]
+    { return super::vfs::is_dir(path); }
+    #[cfg(not(target_family = "wasm"))]
+    path.is_dir()
+}
+
+pub fn exists(path: &Path) -> bool {
+    #[cfg(target_family = "wasm")]
+    { return super::vfs::exists(path); }
+    #[cfg(not(target_family = "wasm"))]
+    path.exists()
+}
+
 pub fn move_to_trash(path: &Path) -> io::Result<()> {
-    if !path.exists() { return Err(io::Error::new(io::ErrorKind::NotFound, tr("文件已不存在", "File no longer exists"))); }
-    trash_platform(path)?;
-    if path.exists() { return Err(io::Error::other(trash_label())); }
-    Ok(())
+    #[cfg(target_family = "wasm")]
+    { return super::vfs::remove_tree(path); }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        if !path.exists() { return Err(io::Error::new(io::ErrorKind::NotFound, tr("文件已不存在", "File no longer exists"))); }
+        trash_platform(path)?;
+        if path.exists() { return Err(io::Error::other(trash_label())); }
+        Ok(())
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -50,7 +76,7 @@ fn trash_platform(path: &Path) -> io::Result<()> {
     Err(io::Error::other(if detail.is_empty() { tr("无法移到回收站", "Failed to move to Recycle Bin").to_owned() } else { detail }))
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_family = "wasm")))]
 fn trash_platform(path: &Path) -> io::Result<()> {
     if Command::new("gio").arg("trash").arg(path).status().is_ok_and(|status| status.success()) { return Ok(()); }
     // Freedesktop fallback: move into the user's Trash/files folder.
@@ -88,14 +114,19 @@ pub fn rename_target(path: &Path, name: &str, dir: bool) -> io::Result<PathBuf> 
     let target = path.with_file_name(file_name);
     if target == path { return Ok(target); }
     // Case-only renames on a case-insensitive disk resolve to the same inode.
-    let same = target.exists() && path.to_string_lossy().to_lowercase() == target.to_string_lossy().to_lowercase();
-    if target.exists() && !same { return Err(io::Error::new(io::ErrorKind::AlreadyExists, tr("已存在同名项目", "An item with this name already exists"))); }
+    let same = exists(&target) && path.to_string_lossy().to_lowercase() == target.to_string_lossy().to_lowercase();
+    if exists(&target) && !same { return Err(io::Error::new(io::ErrorKind::AlreadyExists, tr("已存在同名项目", "An item with this name already exists"))); }
     Ok(target)
 }
 
 pub fn rename(path: &Path, name: &str, dir: bool) -> io::Result<PathBuf> {
     let target = rename_target(path, name, dir)?;
-    if target != path { std::fs::rename(path, &target)?; }
+    if target != path {
+        #[cfg(target_family = "wasm")]
+        super::vfs::rename_tree(path, &target)?;
+        #[cfg(not(target_family = "wasm"))]
+        std::fs::rename(path, &target)?;
+    }
     Ok(target)
 }
 
@@ -105,7 +136,10 @@ pub fn move_to(path: &Path, dest: &Path) -> io::Result<PathBuf> {
     let name = path.file_name().ok_or_else(|| io::Error::other(tr("无效路径", "Invalid path")))?;
     let target = dest.join(name);
     if target == path { return Ok(target); }
-    if target.exists() { return Err(io::Error::new(io::ErrorKind::AlreadyExists, tr("目标位置已存在同名项目", "Destination already has an item with this name"))); }
+    if exists(&target) { return Err(io::Error::new(io::ErrorKind::AlreadyExists, tr("目标位置已存在同名项目", "Destination already has an item with this name"))); }
+    #[cfg(target_family = "wasm")]
+    super::vfs::rename_tree(path, &target)?;
+    #[cfg(not(target_family = "wasm"))]
     std::fs::rename(path, &target)?;
     Ok(target)
 }
@@ -115,7 +149,11 @@ pub fn create_folder(parent: &Path) -> io::Result<PathBuf> {
     for attempt in 0..100 {
         let name = if attempt == 0 { base.to_owned() } else { format!("{base} {}", attempt + 1) };
         let path = parent.join(name);
-        match std::fs::create_dir(&path) {
+        #[cfg(target_family = "wasm")]
+        let res = super::vfs::create_dir_exclusive(&path);
+        #[cfg(not(target_family = "wasm"))]
+        let res = std::fs::create_dir(&path);
+        match res {
             Ok(()) => return Ok(path),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(error),
@@ -125,11 +163,13 @@ pub fn create_folder(parent: &Path) -> io::Result<PathBuf> {
 }
 
 pub fn reveal_in_finder(path: &Path) {
+    #[cfg(target_family = "wasm")]
+    { let _ = path; return; }
     #[cfg(target_os = "macos")]
     let _ = Command::new("open").arg("-R").arg(path).spawn();
     #[cfg(target_os = "windows")]
     let _ = Command::new("explorer.exe").arg(format!("/select,{}", path.display())).spawn();
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_family = "wasm")))]
     {
         let shown = Command::new("gdbus")
             .args(["call", "--session", "--dest", "org.freedesktop.FileManager1", "--object-path", "/org/freedesktop/FileManager1", "--method", "org.freedesktop.FileManager1.ShowItems"])

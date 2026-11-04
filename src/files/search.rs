@@ -79,6 +79,10 @@ fn inspect(root: &Path, path: &Path, query: &str) -> Option<Hit> {
 
 /// Title matches first, then body matches; at most `limit` hits in total.
 pub fn search_notes(root: &Path, query: &str, limit: usize) -> Vec<Hit> {
+    #[cfg(target_family = "wasm")]
+    { return super::vfs::search_all(root, query, limit); }
+    #[cfg(not(target_family = "wasm"))]
+    {
     let query = query.trim();
     if query.is_empty() { return Vec::new(); }
     let (mut titles, mut bodies) = (Vec::new(), Vec::new());
@@ -105,4 +109,5 @@ pub fn search_notes(root: &Path, query: &str, limit: usize) -> Vec<Hit> {
     titles.extend(bodies);
     titles.truncate(limit);
     titles
+    }
 }

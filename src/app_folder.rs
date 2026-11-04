@@ -36,7 +36,7 @@ impl Workspace {
                 let mut active_tab = None;
                 if let Some((saved_tabs, saved_active)) = startup_tabs {
                     for tab in saved_tabs {
-                        if tab.starts_with(&folder) && tab.is_file() && !tabs.contains(&tab) {
+                        if tab.starts_with(&folder) && crate::files::ops::is_file(&tab) && !tabs.contains(&tab) {
                             tabs.push(tab);
                         }
                     }
@@ -124,6 +124,14 @@ impl Workspace {
 
     pub(crate) fn choose_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.busy() { return; }
+        #[cfg(target_family = "wasm")]
+        {
+            let _ = window;
+            self.use_folder(PathBuf::from("/Yu"), cx);
+            return;
+        }
+        #[cfg(not(target_family = "wasm"))]
+        {
         self.choosing = true;
         self.refresh(cx);
         let prompt = cx.prompt_for_paths(PathPromptOptions {
@@ -144,12 +152,13 @@ impl Workspace {
                 this.refresh(cx);
             });
         }).detach();
+        }
     }
 
     pub(crate) fn open_external_paths(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
         for raw in paths {
             let path = std::fs::canonicalize(&raw).unwrap_or(raw);
-            if (path.is_dir() || (path.is_file() && crate::files::scan::is_markdown(&path.to_string_lossy())))
+            if (crate::files::ops::is_dir(&path) || (crate::files::ops::is_file(&path) && crate::files::scan::is_markdown(&path.to_string_lossy())))
                 && !self.external_open.contains(&path)
             {
                 self.external_open.push(path);
@@ -164,7 +173,7 @@ impl Workspace {
         if self.loading || self.pending.is_some() || self.external_open.is_empty() { return; }
         if self.folder.is_none() {
             if let Some(first) = self.external_open.first().cloned() {
-                if first.is_dir() {
+                if crate::files::ops::is_dir(&first) {
                     self.external_open.remove(0);
                     self.use_folder(first, cx);
                     return;
@@ -177,9 +186,9 @@ impl Workspace {
         }
         let queued = std::mem::take(&mut self.external_open);
         for path in queued {
-            if path.is_dir() {
+            if crate::files::ops::is_dir(&path) {
                 self.use_folder(path, cx);
-            } else if path.is_file() && crate::files::scan::is_markdown(&path.to_string_lossy()) {
+            } else if crate::files::ops::is_file(&path) && crate::files::scan::is_markdown(&path.to_string_lossy()) {
                 self.insert_external_note(path.clone(), cx);
                 self.open_file_in_new_tab(path, cx);
             }

@@ -11,20 +11,26 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 
 pub fn note_candidates(dir: &Path) -> impl Iterator<Item = PathBuf> {
     let dir = dir.to_owned();
+    #[cfg(not(target_family = "wasm"))]
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+    #[cfg(target_family = "wasm")]
+    let stamp = 0u128;
     let base = crate::theme::tr("未命名", "Untitled");
     // Sequential names ("未命名", "未命名 2", ...) first; the unique-stamp form is only a collision fallback.
     (0..SEQUENTIAL + 16).map(move |attempt| {
         let name = if attempt == 0 { format!("{base}.md") } else if attempt < SEQUENTIAL {
             format!("{base} {}.md", attempt + 1)
         } else {
-            format!("{base} {stamp:x}-{}-{}.md", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed))
+            format!("{base} {stamp:x}-{}.md", NEXT.fetch_add(1, Ordering::Relaxed))
         };
         dir.join(name)
     })
 }
 
 pub fn create_note_at(path: &Path) -> io::Result<()> {
+    #[cfg(target_family = "wasm")]
+    { return super::vfs::create_note_exclusive(path); }
+    #[cfg(not(target_family = "wasm"))]
     OpenOptions::new().write(true).create_new(true).open(path).map(|_| ())
 }
 

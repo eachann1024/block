@@ -10,13 +10,10 @@ fn fingerprint(bytes: &[u8]) -> Fingerprint {
     Fingerprint(hash.finish())
 }
 #[cfg(target_family = "wasm")]
-static MEM_FILES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, String>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-#[cfg(target_family = "wasm")]
 impl super::Editor {
     pub fn open_web_markdown(&mut self, path: PathBuf, source: &str, cx: &mut gpui::Context<Self>) {
         let base = fingerprint(source.as_bytes());
-        MEM_FILES.lock().unwrap().insert(path.clone(), source.to_owned());
+        let _ = crate::files::vfs::write_string(&path, source.to_owned());
         self.persistence.base = base;
         self.persistence.gate.lock().unwrap().saved.insert(path.clone(), base);
         self.reset_document(markdown::parse(source));
@@ -52,7 +49,7 @@ pub(super) fn latest_draft() -> Result<(PathBuf, Loaded), String> {
 pub(super) fn load(path: &Path) -> Result<Loaded, String> {
     #[cfg(target_family = "wasm")]
     {
-        let source = MEM_FILES.lock().unwrap().get(path).cloned().unwrap_or_default();
+        let source = crate::files::vfs::read_to_string(path).unwrap_or_default();
         let base = fingerprint(source.as_bytes());
         return Ok(Loaded { doc: markdown::parse(&source), base, recovered: false });
     }
@@ -100,7 +97,7 @@ fn atomic_write(path: &Path, bytes: &[u8], expected: Option<Fingerprint>) -> io:
 pub(super) fn save_draft(path: &Path, doc: &Doc, base: Fingerprint) -> Result<(), String> {
     #[cfg(target_family = "wasm")]
     {
-        MEM_FILES.lock().unwrap().insert(path.to_path_buf(), markdown::serialize(doc));
+        let _ = crate::files::vfs::write_string(path, markdown::serialize(doc));
         let _ = base;
         return Ok(());
     }
@@ -121,7 +118,7 @@ pub(super) fn save(path: &Path, doc: &Doc, base: Fingerprint) -> Result<Fingerpr
     {
         let source = markdown::serialize(doc);
         let next = fingerprint(source.as_bytes());
-        MEM_FILES.lock().unwrap().insert(path.to_path_buf(), source);
+        let _ = crate::files::vfs::write_string(path, source);
         let _ = base;
         return Ok(next);
     }

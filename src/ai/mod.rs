@@ -8,14 +8,17 @@ pub(crate) mod provider;
 pub(super) mod session;
 pub(super) mod panel;
 pub(super) mod preview;
-#[cfg(not(target_family = "wasm"))]
 pub(crate) mod settings;
-#[cfg(not(target_family = "wasm"))]
 mod settings_view;
 #[cfg(not(target_family = "wasm"))]
 mod chat_ui;
 #[cfg(not(target_family = "wasm"))]
 pub(crate) mod chat;
+#[cfg(target_family = "wasm")]
+pub(crate) mod chat {
+    pub fn toggle(_: gpui::WeakEntity<crate::editor::Editor>, _: &mut gpui::Window, _: &mut gpui::App) {}
+    pub fn panel(_: &gpui::App) -> Option<gpui::Empty> { None }
+}
 #[cfg(not(target_family = "wasm"))]
 pub(super) mod agent;
 #[cfg(not(target_family = "wasm"))]
