@@ -9,7 +9,9 @@ pub fn target_folder() -> Option<PathBuf> {
 }
 
 fn sanitize(text: &str) -> String {
-    let line = text.lines().map(str::trim).find(|line| !line.trim_start_matches(['#', '>', '-', '*', ' ']).is_empty()).unwrap_or("");
+    let body = crate::editor::markdown::strip_frontmatter(text);
+    let source = if body.trim().is_empty() { text } else { body };
+    let line = source.lines().map(str::trim).find(|line| !line.trim_start_matches(['#', '>', '-', '*', ' ']).is_empty()).unwrap_or("");
     let line = line.trim_start_matches(['#', '>', '-', '*', ' ']);
     let cleaned: String = line.chars().filter(|c| !matches!(c, '/' | '\\' | ':' | '\0' | '\n' | '\r' | '*' | '?' | '"' | '<' | '>' | '|')).take(40).collect();
     cleaned.trim().trim_start_matches('.').trim().to_owned()

@@ -54,8 +54,9 @@ fn init_languages() {
             tree_sitter_html::INJECTIONS_QUERY, ["javascript", "css"]);
         register!("markdown_inline", tree_sitter_md::INLINE_LANGUAGE,
             tree_sitter_md::HIGHLIGHT_QUERY_INLINE, "", []);
+        register!("yaml", tree_sitter_yaml::LANGUAGE, tree_sitter_yaml::HIGHLIGHTS_QUERY, "", []);
         register!("markdown", tree_sitter_md::LANGUAGE, tree_sitter_md::HIGHLIGHT_QUERY_BLOCK,
-            tree_sitter_md::INJECTION_QUERY_BLOCK, ["markdown_inline", "html"]);
+            tree_sitter_md::INJECTION_QUERY_BLOCK, ["markdown_inline", "html", "yaml"]);
     });
 }
 
@@ -85,6 +86,7 @@ fn language_name(language: &str) -> Option<&'static str> {
         "markdown" | "md" => Some("markdown"),
         "html" | "htm" => Some("html"),
         "css" => Some("css"),
+        "yaml" | "yml" | "yaml-frontmatter" | "frontmatter" => Some("yaml"),
         _ => None,
     }
 }
