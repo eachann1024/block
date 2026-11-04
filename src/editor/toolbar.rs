@@ -119,13 +119,21 @@ impl RenderOnce for SelectionToolbar {
                 .child(mark(Icon::TbItalic, "斜体", MarkKind::Italic, state.italic))
                 .child(button(Icon::TbUnderline, "下划线", state.underline, false, false, editor.clone(), |this, _, cx| this.underline(cx)))
                 .child(mark(Icon::TbStrike, "删除线", MarkKind::Strike, state.strike))
-                .when(!state.table, |bar| bar.child(mark(Icon::TbCode, "行内代码", MarkKind::Code, state.code)))
+                .child(mark(Icon::TbCode, "行内代码", MarkKind::Code, state.code))
                 .child(palette_button(state.colored, palette_open, editor.clone()))
-                .when(text_blocks, |bar| bar.child(sep())
-                    .child(button(Icon::TbList, "列表", false, lists_open, true, editor.clone(), |this, w, cx| this.toggle_menu(false, w, cx))))
-                .when(!state.grid, |bar| bar.child(sep())
-                    .child(button(Icon::TbLink, "链接 ⌘⇧K", state.link, false, false, editor.clone(), |this, w, cx| this.open_link(w, cx)))))
+                .child(sep())
+                .child(button(Icon::TbList, "列表", false, lists_open, true, editor.clone(), |this, w, cx| this.toggle_menu(false, w, cx)))
+                .child(sep())
+                .when(!state.grid, |bar| bar
+                    .child(button(Icon::TbLink, "链接 ⌘⇧K", state.link, false, false, editor.clone(), |this, w, cx| this.open_link(w, cx))))
+                .when(state.grid, |bar| bar.child(disabled_button(Icon::TbLink))))
     }
+}
+
+fn disabled_button(g: Icon) -> gpui::Div {
+    let dim = if is_dark() { 0x5a5a5a } else { 0x9a9994 };
+    div().h(px(32.)).min_w(px(32.)).flex_none().flex().items_center().justify_center().px(px(6.)).rounded(px(8.))
+        .cursor(CursorStyle::Arrow).child(glyph(g, 18., dim))
 }
 
 /// 32px icon toggle (wide with a chevron when it opens a dropdown); pressed is a blue-tinted chip.
@@ -141,7 +149,7 @@ fn button(g: Icon, tip: &'static str, on: bool, open: bool, dropdown: bool, edit
         .when(dropdown, |b| b.child(glyph(Icon::TbChevron, 10., ink))
             .child(gpui::canvas(move |bounds, _, _| { BOUNDS.with(|m| { m.borrow_mut().insert(tip, bounds); }); }, |_, _, _, _| {})
                 .absolute().top_0().left_0().size_full()))
-        .tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(tip).build(window, cx))
+        .tooltip(crate::theme::tooltip(tip))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             editor.update(cx, |this, cx| { run(this, window, cx); if this.format.is_none() { window.focus(&this.focus); } });
             cx.stop_propagation();
@@ -167,7 +175,7 @@ fn palette_button(on: bool, open: bool, editor: Entity<Editor>) -> gpui::Statefu
         .child(glyph(Icon::TbChevron, 10., btn_ink))
         .child(gpui::canvas(move |bounds, _, _| { BOUNDS.with(|m| { m.borrow_mut().insert(TIP, bounds); }); }, |_, _, _, _| {})
             .absolute().top_0().left_0().size_full())
-        .tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(TIP).build(window, cx))
+        .tooltip(crate::theme::tooltip(TIP))
         .on_hover(move |hovered, _, cx| {
             let anchor = drop_anchor(TIP);
             hover_editor.update(cx, |this, cx| this.hover_palette_zone(*hovered, anchor, cx));

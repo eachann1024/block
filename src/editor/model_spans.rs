@@ -116,7 +116,14 @@ impl Block {
         }
         self.spans = out;
     }
-    pub fn link_at(&self, offset: usize) -> Option<(Range<usize>, String)> { inline_ops::link_at(&self.meta.inline, offset) }
+    pub fn link_at(&self, offset: usize) -> Option<(Range<usize>, String)> {
+        if let Some(table) = &self.meta.table {
+            let (r, c, body) = table.cell_ranges().into_iter().find(|(_, _, b)| b.start <= offset && offset <= b.end)?;
+            let (range, url) = inline_ops::link_at(&table.rows[r].cells[c].content.meta.inline, offset - body.start)?;
+            return Some(((range.start + body.start)..(range.end + body.start), url));
+        }
+        inline_ops::link_at(&self.meta.inline, offset)
+    }
 }
 impl Doc {
     fn edit_format(&mut self, id: u64, range: Range<usize>, f: &mut dyn FnMut(&mut Block, Range<usize>)) {
@@ -124,7 +131,24 @@ impl Doc {
         self.refresh_block(id);
     }
     pub fn is_underlined(&self, id: u64, range: Range<usize>) -> bool {
-        self.get(id).is_some_and(|b| inline_ops::is_underlined(&b.meta.inline, &range))
+        self.get(id).is_some_and(|b| {
+            if let Some(table) = &b.meta.table {
+                let mut any = false;
+                for (r, c, body) in table.cell_ranges() {
+                    let start = range.start.max(body.start).min(body.end) - body.start;
+                    let end = range.end.max(body.start).min(body.end) - body.start;
+                    if start < end {
+                        any = true;
+                        if !inline_ops::is_underlined(&table.rows[r].cells[c].content.meta.inline, &(start..end)) {
+                            return false;
+                        }
+                    }
+                }
+                any
+            } else {
+                inline_ops::is_underlined(&b.meta.inline, &range)
+            }
+        })
     }
     pub fn toggle_underline(&mut self, id: u64, range: Range<usize>, on: bool) {
         self.edit_format(id, range, &mut |b, r| {

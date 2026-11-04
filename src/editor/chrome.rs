@@ -15,13 +15,14 @@ pub(super) fn standard_width(body_width: Pixels) -> Pixels {
     body_width + px(HANDLE_WIDTH + ROW_GAP + RIGHT_INSET)
 }
 
-pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
+pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, heading_end_x: Option<Pixels>, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
     let in_col = block.meta.column.is_some();
     let handle_w = if in_col { 36. } else { HANDLE_WIDTH };
     let right_inset = if in_col { 4. } else { RIGHT_INSET };
     let v_pad = if minimal || in_col { 4. } else { BLOCK_PAD };
     let is_heading = super::fold::heading_level(block).is_some();
+    let is_table = block.meta.table.is_some();
     let checked = block.checked;
     let checkbox_editor = editor.clone();
     let marker = match block.kind { Kind::Bullet => "•".into(), Kind::Numbered => format!("{}.", number.unwrap_or(1)), _ => String::new() };
@@ -34,32 +35,40 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
     let nowrap = nowrap && block.meta.code_language.is_some();
     let focus_editor = editor.clone();
     let callout = block.meta.callout;
-    let blank = block.text.is_empty() && block.meta.table.is_none() && block.meta.raw_source.is_none() && callout.is_none();
+    let blank = block.text.is_empty() && !is_table && block.meta.raw_source.is_none() && callout.is_none();
     // Images and dividers are atomic blocks and never expose their Markdown/HTML source line.
     let static_view = image.is_some() || rule;
     let code_lang = block.meta.code_language.clone();
     let preview_lang = code_lang.as_deref().is_some_and(super::code_block::is_preview_lang);
     let in_edit_mode = active;
     let preview_only = preview_lang && !in_edit_mode;
-    let handle_top = (line - 22.).max(0.) / 2. + if callout.is_some() { 12. } else { 0. };
+    let handle_top = if is_table { 6. } else if is_heading { (line - 28.).max(0.) / 2. } else { (line - 22.).max(0.) / 2. + if callout.is_some() { 12. } else { 0. } };
+    let regular_handles = !minimal && !is_table && handles;
     div().id(("block", id as usize)).relative().w_full().min_w_0().py(px(v_pad))
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
             this.hover_block(id, *hovered, cx);
         }))
         .child(div().flex().items_start().w_full().min_w_0().gap(px(ROW_GAP)).pr(px(right_inset))
             .child(div().w(px(handle_w)).flex_none().flex().justify_end().gap(px(2.)).pt(px(handle_top))
-                .when(handles && !blank, |row| row
-                    .child(grip_button(type_mark(block), id, ("drag", id as usize), cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
-                        this.begin_drag(id, cx); this.grip_origin = Some(event.position); cx.stop_propagation();
+                .when(regular_handles && !blank, |row| row
+                    .child(grip_button(type_mark(block), id, ("drag", id as usize), cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
+                        this.begin_drag(id, cx); cx.stop_propagation();
                     })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
-                        // A press-release on the handle itself is a click, whatever the root saw.
                         if this.dragging == Some(id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
                     }))))
-                .when(handles && blank, |row| row
+                .when(regular_handles && blank, |row| row
                     .child(handle_button(Icon::Plus, ("add", id as usize), cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
                         this.add_below(id, window, cx);
                         let at = this.caret.head.block;
                         this.open_block_menu(at, event.position + gpui::point(px(-10.), px(22.)), super::block_menu::Mode::Slash, cx);
+                        cx.stop_propagation();
+                    }))))
+                .when(!minimal && is_table && handles, |row| row
+                    .child(table_grip_button(("tbl-grip", id as usize), cx.listener(move |this, _: &gpui::MouseDownEvent, window, cx| {
+                        window.focus(&this.focus);
+                        this.table_menu = None;
+                        this.block_menu = None;
+                        this.select_whole_table(id, cx);
                         cx.stop_propagation();
                     }))))
                 .when(!minimal && is_heading && (handles || folded), |row| row
@@ -102,6 +111,14 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                 })
                 .when(!static_view && code_lang.is_some(), |body| {
                     body.child(super::code_block::copy_button(editor, id, code_lang.unwrap_or_default(), cx))
+                })
+                .when(!minimal && is_heading && handles && !blank, |body| {
+                    let top = (line - 26.).max(0.) / 2.;
+                    let btn = heading_link_button(block.text.clone(), ("h-link", id as usize)).absolute().top(px(top));
+                    body.child(match heading_end_x {
+                        Some(x) => btn.left((x + px(8.)).min(theme.content_width - px(26.))),
+                        None => btn.right_0(),
+                    })
                 })))
         .when_some(drop_edge, |row, after| row.child(div().absolute().left(px(handle_w)).right(px(right_inset))
             .h(px(2.)).bg(theme.accent)
@@ -140,6 +157,7 @@ fn type_mark(block: &Block) -> TypeMark {
     }
 }
 /// The handle of a block with content: type mark plus grip in one 22px-high target, as in the reference.
+#[allow(dead_code)]
 pub(super) fn grip_button(mark: TypeMark, block: u64, id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
     let (base, hover) = (theme.text_secondary, theme.text);
@@ -149,7 +167,6 @@ pub(super) fn grip_button(mark: TypeMark, block: u64, id: (&'static str, usize),
         .hover(|s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
         .child(mark)
         .child(hover_icon(Icon::Drag, 14., base, hover))
-        // Remember where the handle sits so its menu opens beside it, not at the pointer.
         .child(gpui::canvas(move |bounds, _, _| { GRIP_BOUNDS.with(|b| { b.borrow_mut().insert(block, bounds); }); }, |_, _, _, _| {})
             .absolute().top_0().left_0().size_full())
         .on_mouse_down(MouseButton::Left, listener)
@@ -166,22 +183,74 @@ fn handle_button(glyph: Icon, id: (&'static str, usize), listener: impl Fn(&gpui
         .child(hover_icon(glyph, 14., theme.text_secondary, theme.text))
         .on_mouse_down(MouseButton::Left, listener)
 }
-fn fold_button(folded: bool, id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
-    let theme = Theme::ocean();
-    let glyph = if folded { Icon::ChevronRight } else { Icon::ChevronDown };
-    div().id(id).group("hover-icon").w(px(18.)).h(px(22.)).flex_none().rounded(px(4.)).flex().items_center().justify_center()
-        .hover(|s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
-        .child(hover_icon(glyph, 14., theme.text_secondary, theme.text))
+fn table_grip_button(id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
+    let dark = crate::theme::is_dark();
+    let (bg, hover_bg, base, hover_fg) = if dark {
+        (rgb(0x262626), rgb(0x303030), rgb(0x9e9e9e), rgb(0xd4d4d4))
+    } else {
+        (rgb(0xf2f0eb), rgb(0xeae7e0), rgb(0x6e6c66), rgb(0x37352f))
+    };
+    div().id(id).group("hover-icon").w(px(28.)).h(px(28.)).flex_none().rounded(px(8.)).bg(bg)
+        .flex().items_center().justify_center().hover(move |s| s.bg(hover_bg)).cursor(CursorStyle::PointingHand)
+        .child(hover_icon(Icon::Drag, 14., base.into(), hover_fg.into()))
         .on_mouse_down(MouseButton::Left, listener)
+}
+fn fold_button(folded: bool, id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
+    let dark = crate::theme::is_dark();
+    let (bg, hover_bg, fg) = if dark {
+        (rgb(0x262626), rgb(0x303030), rgb(0xd4d4d4))
+    } else {
+        (rgb(0xf2f1ef), rgb(0xe8e6e2), rgb(0x37352f))
+    };
+    let glyph = if folded { Icon::ChevronRight } else { Icon::ChevronDown };
+    let tip = if folded { "Expand section" } else { "Collapse section" };
+    div().id(id).w(px(28.)).h(px(28.)).flex_none().rounded(px(8.)).bg(bg)
+        .flex().items_center().justify_center().hover(move |s| s.bg(hover_bg)).cursor(CursorStyle::PointingHand)
+        .tooltip(move |window, cx| crate::theme::build_tooltip(tip, window, cx))
+        .child(icon(glyph, px(14.), IconColors { line: fg.into(), fill: transparent_black(), accent: transparent_black() }))
+        .on_mouse_down(MouseButton::Left, listener)
+}
+fn heading_link_button(heading_text: String, id: (&'static str, usize)) -> gpui::Stateful<gpui::Div> {
+    let theme = Theme::ocean();
+    let dark = crate::theme::is_dark();
+    let fg: gpui::Hsla = if dark { theme.text_secondary } else { rgb(0x37352f).into() };
+    let hover_bg: gpui::Hsla = if dark { theme.hover } else { rgb(0xf2f1ef).into() };
+    div().id(id).w(px(26.)).h(px(26.)).flex_none().rounded(px(6.))
+        .flex().items_center().justify_center().hover(move |s| s.bg(hover_bg)).cursor(CursorStyle::PointingHand)
+        .tooltip(|window, cx| crate::theme::build_tooltip("Copy link to section", window, cx))
+        .child(icon(Icon::TbLink, px(15.), IconColors { line: fg, fill: transparent_black(), accent: transparent_black() }))
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string(heading_slug(&heading_text)));
+            cx.stop_propagation();
+        })
+}
+fn heading_slug(text: &str) -> String {
+    let mut slug = String::from("#");
+    let mut dash = false;
+    for ch in text.trim().chars() {
+        if ch.is_alphanumeric() {
+            for lower in ch.to_lowercase() { slug.push(lower); }
+            dash = false;
+        } else if !dash && slug.len() > 1 {
+            slug.push('-');
+            dash = true;
+        }
+    }
+    if slug.ends_with('-') { slug.pop(); }
+    slug
 }
 pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Context<Editor>) -> gpui::AnyElement {
     let block = &this.doc.blocks[index];
     let number = (block.kind == Kind::Numbered).then(|| this.doc.list_number(block.id)).flatten();
     let edge = this.drag_over.filter(|target| target.index == index).map(|target| target.after);
-    let handles = !this.minimal && (this.hover == Some(block.id) || this.caret.head.block == block.id || this.dragging == Some(block.id));
+    let whole_table = block.meta.table.is_some() && this.table_sel == Some((block.id, super::table_actions::TableSel::Whole));
+    let handles = !this.minimal && (this.hover == Some(block.id) || this.caret.head.block == block.id || this.dragging == Some(block.id) || whole_table);
     let folded = !this.minimal && this.is_heading_folded(block.id);
     let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
-    let row = block_row(cx.entity(), block, handles, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, cx);
+    let heading_end_x = super::fold::heading_level(block).is_some()
+        .then(|| this.layouts.get(&block.id).and_then(|l| l.lines.first().map(|(_, line)| line.width())))
+        .flatten();
+    let row = block_row(cx.entity(), block, handles, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, heading_end_x, cx);
     div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
         .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md())).child(row).into_any_element()
 }
