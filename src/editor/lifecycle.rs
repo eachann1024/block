@@ -68,7 +68,7 @@ impl Editor {
             if self.status == "正在打开…" || self.status == "Opening…" {
                 self.status = if self.persistence.saving.contains(&path) { tr("正在保存…", "Saving…").into() }
                     else if self.dirty { tr("未保存更改", "Unsaved changes").into() }
-                    else { tr("已保存 · 内存会话就绪", "Saved · Ready").into() };
+                    else { String::new() };
             }
             cx.notify(); return;
         }
@@ -144,7 +144,7 @@ impl Editor {
                         this.folded = crate::editor::fold::restore_folds(&path, &this.doc);
                         this.path = Some(path);
                         this.dirty = loaded.recovered;
-                        this.status = if loaded.recovered { tr("已恢复未保存草稿，请确认后保存", "Recovered unsaved draft; please review and save").into() } else { tr("已保存 · 内存会话就绪", "Saved · Ready").into() };
+                        this.status = if loaded.recovered { tr("已恢复未保存草稿，请确认后保存", "Recovered unsaved draft; please review and save").into() } else { String::new() };
                         this.refresh_find_matches(cx);
                     }
                     Err(error) => {
