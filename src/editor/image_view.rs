@@ -1,7 +1,12 @@
 //! Image block rendering: aligned picture, corner resize handles and floating top-centered toolbar.
 use std::{collections::HashMap, path::PathBuf};
 use gpui::{App, Context, CursorStyle, Entity, Global, MouseButton, SharedString, Window, div, prelude::*, px};
-use super::{image_edit::ImagePop, image_source::{Align, ImageSpec}, view::Editor};
+use super::{
+    image_edit::ImagePop,
+    image_remote::RemoteImageState,
+    image_source::{Align, ImageSpec, ImageTarget},
+    view::Editor,
+};
 
 /// Smallest width an image can be dragged or stepped to, as a share of the content width.
 const MIN_SHARE: f32 = 0.1;
@@ -90,10 +95,20 @@ impl Editor {
     }
 }
 
-pub(super) fn image_block(editor: Entity<Editor>, id: u64, path: PathBuf, spec: ImageSpec, active: bool, pop: Option<ImagePop>, cx: &mut App) -> impl IntoElement {
+pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, spec: ImageSpec, active: bool, pop: Option<ImagePop>, cx: &mut App) -> impl IntoElement {
+    let (ready_path, remote_pending) = match target {
+        ImageTarget::Local(path) => (Some(path), None),
+        ImageTarget::Remote(url) => match super::image_remote::request(editor.clone(), id, &url, cx) {
+            RemoteImageState::Ready(path) => (Some(path), None),
+            RemoteImageState::Loading => (None, Some((url, false))),
+            RemoteImageState::Failed => (None, Some((url, true))),
+        },
+    };
     let (base, draft) = {
         let ui = cx.default_global::<ImageUi>();
-        ui.paths.insert(id, path.clone());
+        if let Some(p) = &ready_path {
+            ui.paths.insert(id, p.clone());
+        }
         (base_of(ui, id), ui.drag.filter(|d| d.id == id))
     };
     let dragging = draft.is_some() && cx.has_active_drag();
@@ -105,12 +120,42 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, path: PathBuf, spec: 
     let group: SharedString = format!("image-{id}").into();
     let scale = if spec.align == Align::Center { 2. } else { 1. };
     let focus = editor.clone();
+    let ring = if crate::theme::is_dark() { 0x2b6be6 } else { 0x2f6fe4 };
+    let pct = size_percent(draft.map(|d| d.width), spec.width, base);
+    if let Some((url, failed)) = remote_pending {
+        let theme = crate::theme::Theme::ocean();
+        let card_w = width.unwrap_or(DEFAULT_MAX);
+        let label = if failed {
+            crate::theme::tr("图片加载失败，点击重试", "Failed to load image, click to retry")
+        } else {
+            crate::theme::tr("正在加载图片…", "Loading image…")
+        };
+        return div().relative().w_full().flex().flex_col()
+            .when(spec.align == Align::Center, |s| s.items_center()).when(spec.align == Align::Right, |s| s.items_end())
+            .child(gpui::canvas(|bounds, _, cx| { cx.default_global::<ImageUi>().avail = f32::from(bounds.size.width); }, |_, _, _, _| {})
+                .absolute().size_full())
+            .when(show, |s| s.child(div().absolute().top(px(-44.)).left_0().right_0().flex().justify_center()
+                .child(super::image_size::image_toolbar(&editor, id, spec.align, pct, pop))))
+            .child(div().id(("image", id as usize)).relative().w(px(card_w)).h(px(120.)).rounded(px(6.))
+                .bg(theme.hover).border_1().border_color(if active { gpui::rgb(ring).into() } else { theme.hairline })
+                .flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
+                .text_size(px(14.)).text_color(theme.text_secondary)
+                .child(label)
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    if failed { super::image_remote::retry(&url); }
+                    focus.update(cx, |this, cx| {
+                        this.image_menu = None;
+                        this.focus_block(id, window, cx);
+                        cx.notify();
+                    });
+                    cx.stop_propagation();
+                }));
+    }
+    let path = ready_path.unwrap_or_default();
     let natural_path = path.clone();
     let picture = gpui::img(path).rounded(px(4.));
     let picture = match width { Some(w) => picture.w(px(w)), None => picture.max_w(px(DEFAULT_MAX)).max_h(px(420.)) };
-    let (move_editor, up_editor, out_editor) = (editor.clone(), editor.clone(), editor.clone());
-    let ring = if crate::theme::is_dark() { 0x2b6be6 } else { 0x2f6fe4 };
-    let pct = size_percent(draft.map(|d| d.width), spec.width, base);
+    let (move_editor, up_editor, out_editor, canvas_editor) = (editor.clone(), editor.clone(), editor.clone(), editor.clone());
     div().relative().w_full().flex().flex_col()
         .when(spec.align == Align::Center, |s| s.items_center()).when(spec.align == Align::Right, |s| s.items_end())
         .child(gpui::canvas(|bounds, _, cx| { cx.default_global::<ImageUi>().avail = f32::from(bounds.size.width); }, |_, _, _, _| {})
@@ -122,8 +167,16 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, path: PathBuf, spec: 
             .child(gpui::canvas(move |bounds, _, cx| {
                 let w = f32::from(bounds.size.width);
                 let ui = cx.default_global::<ImageUi>();
-                ui.measured.insert(id, w);
+                let prev_w = ui.measured.insert(id, w).unwrap_or(0.);
                 if record_natural && w > 0. { ui.natural.insert(natural_path.clone(), w); }
+                if prev_w == 0. && w > 0. {
+                    canvas_editor.update(cx, |this, cx| {
+                        if let Some(idx) = this.doc.index_of(id) && idx < this.list.item_count() {
+                            this.list.splice(idx..idx + 1, 1);
+                            cx.notify();
+                        }
+                    });
+                }
             }, |_, _, _, _| {}).absolute().size_full())
             .when(active, |s| s.child(div().absolute().inset_0().rounded(px(4.)).border(px(2.)).border_color(gpui::rgb(ring))))
             .child(handle(id, true, true, -scale, &group, show)).child(handle(id, false, true, scale, &group, show))

@@ -90,17 +90,30 @@ impl Editor {
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("png");
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() % 100_000).unwrap_or(1);
         let new_name = format!("{stem}-crop-{stamp}.{ext}");
-        let dest = path.with_file_name(&new_name);
+        let (dest, new_src) = if image_source::is_remote(&spec.src) {
+            if let Some(note_dir) = self.path.as_deref().and_then(std::path::Path::parent) {
+                let assets = note_dir.join("assets");
+                let _ = std::fs::create_dir_all(&assets);
+                (assets.join(&new_name), format!("./assets/{new_name}"))
+            } else {
+                let dest = path.with_file_name(&new_name);
+                let src = dest.to_string_lossy().into_owned();
+                (dest, src)
+            }
+        } else {
+            let dest = path.with_file_name(&new_name);
+            let src = match spec.src.rfind('/') {
+                Some(pos) => format!("{}/{new_name}", &spec.src[..pos]),
+                None => new_name,
+            };
+            (dest, src)
+        };
         let ok = Command::new("/usr/bin/sips").args(["-c", &ch.to_string(), &cw.to_string()])
             .arg(&path).arg("--out").arg(&dest).status().is_ok_and(|s| s.success());
         if !ok {
             self.status = tr("无法裁剪此图片格式", "Unable to crop this image format").into();
             cx.notify(); return;
         }
-        let new_src = match spec.src.rfind('/') {
-            Some(pos) => format!("{}/{new_name}", &spec.src[..pos]),
-            None => new_name,
-        };
         self.edit_image(id, |s| { s.src = new_src; s.width = None; }, cx);
         self.status = tr("已裁剪图片", "Image cropped").into();
         cx.notify();

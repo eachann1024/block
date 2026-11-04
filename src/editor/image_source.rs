@@ -138,14 +138,47 @@ pub(super) fn format(spec: &ImageSpec) -> String {
     }
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub(super) enum ImageTarget {
+    Local(PathBuf),
+    Remote(String),
+}
+
+pub(super) fn is_remote(src: &str) -> bool {
+    let s = src.trim().as_bytes();
+    (s.len() > 7 && s[..7].eq_ignore_ascii_case(b"http://"))
+        || (s.len() > 8 && s[..8].eq_ignore_ascii_case(b"https://"))
+}
+
 pub(super) fn spec_of(block: &Block) -> Option<ImageSpec> { parse(block.meta.raw_source.as_deref()?) }
 
 pub(super) fn resolve_path(spec: &ImageSpec, note: Option<&Path>) -> Option<PathBuf> {
-    if spec.src.contains("://") { return None; }
-    let path = PathBuf::from(spec.src.replace("%20", " "));
+    let src = spec.src.trim();
+    if is_remote(src) {
+        return super::image_remote::cached_path(src);
+    }
+    if src.as_bytes().get(..7).is_some_and(|p| p.eq_ignore_ascii_case(b"file://")) {
+        let rest = &src[7..];
+        let rest = if rest.as_bytes().get(..9).is_some_and(|p| p.eq_ignore_ascii_case(b"localhost")) {
+            &rest[9..]
+        } else {
+            rest
+        };
+        return Some(PathBuf::from(rest.replace("%20", " ")));
+    }
+    if src.contains("://") { return None; }
+    let path = PathBuf::from(src.replace("%20", " "));
     if path.is_absolute() { return Some(path); }
     Some(note?.parent()?.join(path))
 }
+
+pub(super) fn resolve_target(spec: &ImageSpec, note: Option<&Path>) -> Option<ImageTarget> {
+    if is_remote(&spec.src) {
+        return Some(ImageTarget::Remote(spec.src.trim().to_owned()));
+    }
+    resolve_path(spec, note).map(ImageTarget::Local)
+}
+
 /// Local image path for an image block, resolved next to the note.
 pub(super) fn image_path(block: &Block, note: Option<&Path>) -> Option<PathBuf> {
     resolve_path(&spec_of(block)?, note)
