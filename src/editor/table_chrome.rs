@@ -1,7 +1,8 @@
 //! Table controls shown while the pointer is over a table: row and column capsule handles
 //! on the grid border, the bottom add-row bar, the right add-column bar, the top-right more button, drop line, and menus.
 use gpui::{AnyElement, Div, Entity, MouseButton, Pixels, Point, Stateful, div, point, prelude::*, px};
-use super::{table_layout, table_actions::{TableChrome, TableCmd, TableDrag, TableMenu, TableSel, menu_items}, view::Editor};
+mod resize;
+use super::{table_layout, table_resize, table_actions::{TableChrome, TableCmd, TableDrag, TableMenu, TableSel, menu_items}, view::Editor};
 use crate::{
     dropdown::{self, RowSpec},
     theme::{Theme, tr},
@@ -51,14 +52,15 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
     let Some(&(top, bottom)) = chrome.rows.get(r) else { return out };
     let table = chrome.bounds;
     let dragging = drag.filter(|d| d.moved && d.block == id);
+    let resizing = table_resize::active().filter(|r| r.block == id);
     let view = chrome.viewport;
     // The part of the active column inside the horizontal scroll window; a column scrolled away has no grip.
     let (seen_left, seen_right) = (left.max(table.left()), right.min(table.right()));
-    let show_column = dragging.is_none_or(|d| matches!(d.sel, TableSel::Column(_)))
+    let show_column = dragging.is_none_or(|d| matches!(d.sel, TableSel::Column(_))) && resizing.is_none()
         && seen_left < seen_right && table.top() - px(GRIP_SHORT / 2.) >= view.top();
     let row_border_adj = if r + 1 < chrome.rows.len() { px(1.) } else { px(0.) };
     let row_center = (top + bottom + row_border_adj) / 2.;
-    let show_row = dragging.is_none_or(|d| matches!(d.sel, TableSel::Row(_)))
+    let show_row = dragging.is_none_or(|d| matches!(d.sel, TableSel::Row(_))) && resizing.is_none()
         && row_center - px(GRIP_LONG / 2.) >= view.top() && row_center + px(GRIP_LONG / 2.) <= view.bottom();
     if show_column {
         let col_border_adj = if c + 1 < chrome.columns.len() && seen_right == right { px(1.) } else { px(0.) };
@@ -113,7 +115,8 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
                     cx.stop_propagation();
                 })));
     }
-    if dragging.is_none() {
+    if dragging.is_none() { out.extend(resize::zones(&editor, chrome, resizing.map(|r| r.col))); }
+    if dragging.is_none() && resizing.is_none() {
         let whole_selected = sel == Some((id, TableSel::Whole));
         if !whole_selected && table.bottom() + px(20.) <= view.bottom() {
             let add_row = editor.clone();
