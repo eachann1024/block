@@ -1,8 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync, rmSync } from "node:fs";
+import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 export const appName = "Thinkly Fast";
 export const bundleId = "dev.eachann.thinkly-fast";
@@ -63,8 +66,22 @@ const plistKeys = [
   ],
 ];
 
-export function plist() {
+export function readAppVersion(root = repoRoot) {
+  try {
+    const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    if (typeof pkg.version === "string" && /^\d+\.\d+\.\d+$/.test(pkg.version)) return pkg.version;
+  } catch {}
+  try {
+    const cargo = readFileSync(join(root, "Cargo.toml"), "utf8");
+    const match = /^version\s*=\s*"(\d+\.\d+\.\d+)"/m.exec(cargo);
+    if (match) return match[1];
+  } catch {}
+  return "0.1.0";
+}
+
+export function plist(version = readAppVersion()) {
   const body = plistKeys
+    .map(([key, value]) => [key, key === "CFBundleShortVersionString" ? version : value])
     .map(([key, value]) => `  <key>${key}</key>\n${tag(value, "  ")}`)
     .join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n${body}\n</dict>\n</plist>\n`;
