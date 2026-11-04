@@ -41,8 +41,11 @@ impl RenderOnce for SelectionToolbar {
         let state = editor.read(cx).toolbar_state();
         let mark = |g, tip, kind: MarkKind, on| button(g, tip, on, false, editor.clone(), move |this, _, cx| this.mark(kind, cx));
         let text_blocks = !state.table;
+        // Narrow editors (AI 助手 open): wrap onto a second row inside the editor
+        // instead of running under the chat panel.
+        let room = editor.read(cx).list.viewport_bounds().size.width - px(16.);
         gpui::anchored().position(self.anchor).snap_to_window_with_margin(px(8.)).child(
-            pill().id("selection-toolbar").on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            pill().id("selection-toolbar").max_w(room).flex_wrap().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .when(text_blocks, |bar| bar.child(button(Icon::TbType, "文字类型", false, true, editor.clone(), |this, w, cx| this.toggle_menu(true, w, cx)))
                     .child(sep()))
                 .child(mark(Icon::TbBold, "粗体", MarkKind::Bold, state.bold))
@@ -58,7 +61,8 @@ impl RenderOnce for SelectionToolbar {
                 .when(!state.grid, |bar| bar.child(button(Icon::TbLink, "链接 ⌘⇧K", state.link, false, editor.clone(), |this, w, cx| this.open_link(w, cx))))
                 .when(!state.table, |bar| bar.child(button(Icon::TbImage, "生成图片", false, false, editor.clone(), |this, w, cx| super::export_selected(this, w, cx))))
                 .child(sep())
-                .child(button(Icon::Sparkles, "AI 润色", false, false, editor.clone(), |this, w, cx| this.open_ai(w, cx))))
+                .child(button(Icon::Sparkles, "AI 润色", false, false, editor.clone(), |this, w, cx| this.open_ai(w, cx)))
+                .child(button(Icon::MessageSquare, "将选区加入对话", false, false, editor.clone(), |_, w, cx| w.dispatch_action(Box::new(super::ai::AddSelectionToChat), cx))))
     }
 }
 
