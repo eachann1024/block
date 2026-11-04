@@ -66,9 +66,11 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
                 } else {
                     markers.push(div().absolute().top(y).right(px(12.)).child(annotate_pop::badge(&note, index + 1, is_active, cx)).into_any_element());
                     if is_active {
+                        let editing = editor.annotate.editing.as_ref().filter(|field| field.annotation_id == id).map(|field| field.input.clone());
                         let followup = editor.annotate.followup.as_ref().filter(|field| field.annotation_id == id).map(|field| field.input.clone());
                         popover = Some(annotate_pop::popover_layer(
                             note,
+                            editing,
                             followup,
                             y,
                             editor.annotate.editor_width,
@@ -93,9 +95,11 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
                 let target = resolve_annotation_span(&editor.doc, &note).map(|(id, range, _)| (id, range.start));
                 let y = target.map(|(id, offset)| row_target(editor, id, offset)).unwrap_or(px(24.));
                 let id = note.id;
+                let editing = editor.annotate.editing.as_ref()
+                    .filter(|field| field.annotation_id == id).map(|field| field.input.clone());
                 let followup = editor.annotate.followup.as_ref()
                     .filter(|field| field.annotation_id == id).map(|field| field.input.clone());
-                (y, id, annotation_row(note, editor.annotate.active_annotation, editor.annotate.hovered_annotation, followup, cx).into_any_element())
+                (y, id, annotation_row(note, editor.annotate.active_annotation, editor.annotate.hovered_annotation, editing, followup, cx).into_any_element())
             }).collect();
         if let Some(composer) = &editor.annotate.composer {
             let input = composer.input.clone();

@@ -8,6 +8,7 @@ use crate::theme::tr;
 use super::{model::Doc, view::{Editor, layout::TextLayout}};
 #[path = "annotate_ai.rs"] mod ai;
 #[path = "annotate_actions.rs"] mod actions;
+#[path = "annotate_apply.rs"] mod apply;
 #[path = "annotate_reactions.rs"] mod reactions;
 #[path = "annotate_revert.rs"] mod revert;
 
@@ -15,13 +16,15 @@ pub(super) const HL_SELECT_BG: u32 = 0xfef0d1;
 pub(super) const HL_ACTIVE_BG: u32 = 0xfdda8c;
 pub(super) const HL_SELECT_BG_DARK: u32 = 0x4a3c21;
 pub(super) const HL_ACTIVE_BG_DARK: u32 = 0x81611e;
-pub(super) const HL_AI_BG: u32 = 0xfdf3c4;
+pub(super) const HL_DONE_BG: u32 = 0xe5edfc;
+pub(super) const HL_DONE_FLASH: u32 = 0xc9d8f3;
+pub(super) const HL_DONE_BG_DARK: u32 = 0x2d426b;
+pub(super) const HL_DONE_FLASH_DARK: u32 = 0x31456a;
 pub(super) const HL_TABLE_BORDER: u32 = 0xb77700;
 pub(super) const HL_TABLE_BORDER_ACTIVE: u32 = 0xa66a00;
 pub(super) const HL_TABLE_BORDER_DARK: u32 = 0xdb9300;
 pub(super) const HL_TABLE_BORDER_ACTIVE_DARK: u32 = 0xfab219;
 pub(super) const ANNOTATION_PENDING: u32 = 0xf5c84c;
-pub(super) const ANNOTATION_GENERATED: u32 = 0x547dd0;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(super) struct Annotation {
     pub id: u64, pub block_index: usize, pub start: usize, pub end: usize,
@@ -38,7 +41,8 @@ pub(super) struct Annotation {
 impl Annotation {
     pub(super) fn is_applied(&self) -> bool { self.applied.unwrap_or(self.ai_rewritten.is_some()) }
     pub(super) fn is_pending(&self) -> bool {
-        !self.is_applied() && self.ai_rewritten.is_none() && !self.body.trim().is_empty() && !self.quote.trim().is_empty()
+        !self.is_applied() && !self.has_rewrite() && !self.streaming && self.ai_error.is_none()
+            && !self.body.trim().is_empty() && !self.quote.trim().is_empty()
     }
     pub(super) fn is_generated(&self) -> bool { !self.is_applied() && self.ai_rewritten.as_ref().is_some_and(|text| !text.is_empty()) }
     pub(super) fn has_rewrite(&self) -> bool { self.ai_rewritten.as_ref().is_some_and(|text| !text.is_empty()) }
@@ -50,7 +54,11 @@ pub(super) struct AnnotateComposer {
 }
 
 pub(super) struct AnnotationFollowup {
-    pub annotation_id: u64, pub input: Entity<InputState>, _sub: Subscription,
+    pub annotation_id: u64, pub input: Entity<InputState>, pub _sub: Subscription,
+}
+
+pub(super) struct AnnotationEdit {
+    pub annotation_id: u64, pub input: Entity<InputState>, pub _sub: Subscription,
 }
 
 #[derive(Clone)]
@@ -62,7 +70,7 @@ pub(super) struct ReactionPicker {
 #[derive(Default)]
 pub(super) struct AnnotateState {
     pub loaded_path: Option<PathBuf>, pub annotations: Vec<Annotation>, pub composer: Option<AnnotateComposer>,
-    pub followup: Option<AnnotationFollowup>, pub reactions: Option<ReactionPicker>,
+    pub followup: Option<AnnotationFollowup>, pub editing: Option<AnnotationEdit>, pub reactions: Option<ReactionPicker>,
     pub active_annotation: Option<u64>, pub hovered_annotation: Option<u64>,
     pub editor_top: Pixels, pub editor_width: Pixels, pub editor_height: Pixels, pub request_seq: u64,
 }
@@ -110,12 +118,12 @@ pub(super) fn resolve_annotation_span(doc: &Doc, annotation: &Annotation) -> Opt
     }
     if !annotation.quote.is_empty() {
         if let Some((id, range)) = find_snippet(doc, annotation.block_index, annotation.start, &annotation.quote) {
-            return Some((id, range, annotation.ai_rewritten.is_some()));
+            return Some((id, range, false));
         }
     }
     doc.blocks.get(annotation.block_index).map(|b| {
         let end = annotation.end.min(b.text.len());
-        (b.id, annotation.start.min(end)..end, annotation.ai_rewritten.is_some())
+        (b.id, annotation.start.min(end)..end, false)
     })
 }
 
@@ -149,18 +157,26 @@ pub(super) fn is_whole_table_span(doc: &Doc, block_id: u64, range: &Range<usize>
     doc.get(block_id).is_some_and(|b| b.meta.table.is_some() && (range.is_empty() || (range.start == 0 && range.end >= b.text.len())))
 }
 
-/// Paints comment anchors (`#fab219` at 20% / 45% active, eased 200ms), composer selection, AI spans; no borders.
+/// Paints comment anchors (`#fef0d1` / `#fdda8c` active or breathing while streaming, `#e5edfc` when applied).
 pub(super) fn paint_highlights(editor: &Editor, block: u64, layout: &TextLayout, window: &mut Window) {
     let dark = crate::theme::is_dark();
     let (base, active_bg) = if dark { (HL_SELECT_BG_DARK, HL_ACTIVE_BG_DARK) } else { (HL_SELECT_BG, HL_ACTIVE_BG) };
+    let (done_bg, done_flash) = if dark { (HL_DONE_BG_DARK, HL_DONE_FLASH_DARK) } else { (HL_DONE_BG, HL_DONE_FLASH) };
     for annotation in &editor.annotate.annotations {
         let Some((id, range, is_ai)) = resolve_annotation_span(&editor.doc, annotation) else { continue };
         if id != block || range.is_empty() || is_whole_table_span(&editor.doc, block, &range) { continue; }
         let active = editor.annotate.active_annotation == Some(annotation.id) || editor.annotate.hovered_annotation == Some(annotation.id);
-        let target = if active { 1. } else { 0. };
-        let level = crate::ui::fade::level(annotation.id, target, window);
-        let normal = if is_ai && !dark { HL_AI_BG } else { base };
-        let color = crate::ui::fade::mix(normal, active_bg, level);
+        let color = if annotation.streaming {
+            let level = crate::ui::fade::breathe(window);
+            crate::ui::fade::mix(base, active_bg, level)
+        } else if is_ai {
+            let flash_t = crate::ui::fade::flash(annotation.id, window);
+            let hover_t = crate::ui::fade::level(annotation.id, if active { 1. } else { 0. }, window);
+            crate::ui::fade::mix(done_bg, done_flash, flash_t.max(hover_t))
+        } else {
+            let level = crate::ui::fade::level(annotation.id, if active { 1. } else { 0. }, window);
+            crate::ui::fade::mix(base, active_bg, level)
+        };
         for rect in layout.rects(range) {
             window.paint_quad(quad(rect, px(2.), color, px(0.), transparent_black(), BorderStyle::default()));
         }
@@ -185,10 +201,13 @@ pub(super) fn paint_table_highlights(editor: &Editor, block: u64, layout: &TextL
         let Some((id, range, _)) = resolve_annotation_span(&editor.doc, annotation) else { continue };
         if id != block || !is_whole_table_span(&editor.doc, block, &range) { continue; }
         let engaged = editor.annotate.active_annotation == Some(annotation.id) || editor.annotate.hovered_annotation == Some(annotation.id);
-        let target = if engaged { 1. } else { 0. };
-        let level = crate::ui::fade::level(annotation.id, target, window);
+        let level = if annotation.streaming {
+            crate::ui::fade::breathe(window)
+        } else {
+            crate::ui::fade::level(annotation.id, if engaged { 1. } else { 0. }, window)
+        };
         border_color = Some(crate::ui::fade::mix(base, active, level));
-        if target > 0. { break; }
+        if engaged || annotation.streaming { break; }
     }
     if border_color.is_none() {
         let composing = editor.annotate.composer.as_ref().is_some_and(|c| c.block_id == block && is_whole_table_span(&editor.doc, block, &c.range));
@@ -207,6 +226,7 @@ impl Editor {
             self.annotate.annotations = self.path.as_deref().map(load_for).unwrap_or_default();
             self.annotate.composer = None;
             self.annotate.followup = None;
+            self.annotate.editing = None;
             self.annotate.reactions = None;
             self.annotate.active_annotation = None;
             self.annotate.hovered_annotation = None;

@@ -64,3 +64,26 @@ pub fn modal_enter<E: IntoElement + Styled + AnimationExt + 'static>(
         |el, delta| el.opacity(delta).mt(px(-8.0 * (1.0 - delta))),
     )
 }
+
+pub fn slide_in_right<E: IntoElement + Styled + AnimationExt + 'static>(
+    el: E,
+    id: impl Into<ElementId>,
+) -> impl IntoElement {
+    el.with_animation(
+        id,
+        Animation::new(Duration::from_millis(240)).with_easing(cubic_bezier(0.2, 0.8, 0.2, 1.0)),
+        |el, delta| el.opacity(delta).relative().left(px(16.0 * (1.0 - delta))),
+    )
+}
+
+pub fn fade_up<E: IntoElement + Styled + AnimationExt + 'static>(
+    el: E,
+    id: impl Into<ElementId>,
+) -> impl IntoElement {
+    el.with_animation(
+        id,
+        Animation::new(Duration::from_millis(300)).with_easing(ease_out_quart()),
+        |el, delta| el.opacity(delta).relative().top(px(4.0 * (1.0 - delta))),
+    )
+}
+
