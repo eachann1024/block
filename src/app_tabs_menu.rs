@@ -155,11 +155,16 @@ impl Workspace {
         if self.editor.read(cx).current_path() != Some(path.as_path()) {
             self.open_file(path, cx);
         }
+        if !self.editor.read(cx).is_loading() {
+            self.editor.update(cx, |e, cx| crate::editor::export_document(e, window, cx));
+            cx.notify();
+            return;
+        }
         let editor = self.editor.clone();
         cx.spawn_in(window, async move |_, cx| {
             for _ in 0..50 {
-                if !editor.read_with(cx, |e, _| e.is_loading()) { break; }
                 cx.background_executor().timer(Duration::from_millis(10)).await;
+                if !editor.read_with(cx, |e, _| e.is_loading()) { break; }
             }
             let _ = cx.update(|window, cx| editor.update(cx, |e, cx| crate::editor::export_document(e, window, cx)));
         }).detach();
@@ -169,7 +174,7 @@ impl Workspace {
         let theme = Theme::ocean();
         let page_open = TAB_UI.with(|ui| ui.borrow().page_menu.is_some());
         let more_group: SharedString = "titlebar-more-btn".into();
-        let more = div().id("titlebar-more").group(more_group.clone()).size(px(26.)).mr(px(if cfg!(target_os = "macos") { 10. } else { 4. }))
+        let more = div().id("titlebar-more").group(more_group.clone()).size(px(26.)).mr(px(if cfg!(any(target_os = "macos", target_family = "wasm")) { 10. } else { 4. }))
             .flex_none().flex().items_center().justify_center().rounded(px(6.)).cursor(gpui::CursorStyle::PointingHand)
             .when(page_open, |b| b.bg(theme.selected)).when(!page_open, |b| b.hover(|s| s.bg(theme.hover)))
             .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
@@ -240,7 +245,7 @@ impl Workspace {
 
     pub(super) fn render_tab_context_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let (menu, page_pos) = TAB_UI.with(|ui| { let s = ui.borrow(); (s.menu.clone(), s.page_menu) });
-        let mac = cfg!(target_os = "macos");
+        let mac = cfg!(any(target_os = "macos", target_family = "wasm"));
         let exp_hint = if mac { "⇧⌘E" } else { "Ctrl+Shift+E" };
         let (position, card) = if let Some(pos) = page_pos {
             let path = self.selected.clone().or_else(|| self.editor.read(cx).current_path().map(Path::to_path_buf))?;

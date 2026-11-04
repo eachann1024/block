@@ -120,7 +120,7 @@ impl Workspace {
     pub(crate) fn navigate_back(&mut self, cx: &mut Context<Self>) {
         if self.busy() { return; }
         while let Some(path) = self.nav.go_back() {
-            if path.is_file() {
+            if crate::files::ops::is_file(&path) {
                 self.open_file_with_mode(path, false, false, cx);
                 break;
             }
@@ -130,7 +130,7 @@ impl Workspace {
     pub(crate) fn navigate_forward(&mut self, cx: &mut Context<Self>) {
         if self.busy() { return; }
         while let Some(path) = self.nav.go_forward() {
-            if path.is_file() {
+            if crate::files::ops::is_file(&path) {
                 self.open_file_with_mode(path, false, false, cx);
                 break;
             }

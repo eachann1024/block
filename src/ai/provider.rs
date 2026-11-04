@@ -67,10 +67,14 @@ pub(crate) fn stored() -> Config {
 }
 
 pub(crate) fn save(config: &Config) -> Result<(), String> {
-    let path = settings_path().ok_or_else(|| tr("找不到 HOME 目录", "HOME directory not found").to_owned())?;
-    if let Some(dir) = path.parent() { std::fs::create_dir_all(dir).map_err(|e| e.to_string())?; }
-    let json = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())
+    #[cfg(target_family = "wasm")]
+    { let _ = config; return Ok(()); }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let path = settings_path().ok_or_else(|| tr("找不到 HOME 目录", "HOME directory not found").to_owned())?;
+        if let Some(dir) = path.parent() { std::fs::create_dir_all(dir).map_err(|e| e.to_string())?; }
+        std::fs::write(path, serde_json::to_string_pretty(config).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    }
 }
 
 pub(crate) fn normalize(mut c: Config) -> Config {
@@ -159,6 +163,7 @@ pub(super) fn service_error(body: &str, code: u16) -> String {
 
 /// Lists models offered by the configured provider (`GET /models`).
 pub(crate) fn list_models(config: &Config) -> Result<Vec<String>, String> {
+    if cfg!(target_family = "wasm") { return Err(tr("网页演示版暂不连接在线 AI 服务", "Online AI is disabled in web demo").into()); }
     if config.base_url.trim().is_empty() { return Err(missing_url_msg().into()); }
     if config.key_required() && config.api_key.trim().is_empty() { return Err(missing_key_msg().into()); }
     if config.effective_protocol() == Protocol::Anthropic { return anthropic::list_models(config); }
@@ -187,6 +192,7 @@ fn resolve_model(config: &Config) -> Result<String, (String, bool)> {
 
 /// Connection test: one tiny completion (`max_tokens: 8`), no notes or local context.
 pub(crate) fn test_connection(config: &Config) -> Result<(), String> {
+    if cfg!(target_family = "wasm") { return Err(tr("网页演示版暂不连接在线 AI 服务", "Online AI is disabled in web demo").into()); }
     let model = resolve_model(config).map_err(|(m, _)| m)?;
     if config.effective_protocol() == Protocol::Anthropic { return anthropic::test_connection(config, &model); }
     let body = serde_json::json!({ "model": model, "max_tokens": 8, "messages": [{ "role": "user", "content": "ping" }] }).to_string();

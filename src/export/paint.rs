@@ -155,12 +155,15 @@ pub(super) fn text(
             if glyph.glyph_id == 0 {
                 continue;
             }
+            let glyph_color = glyph.color_opt.map_or(default, |c| pal.fg(c));
             let physical = glyph.physical((x * SCALE, (y + run.line_y) * SCALE), SCALE);
+            let mut drew = false;
             cache.with_pixels(
                 fonts,
                 physical.cache_key,
-                glyph.color_opt.map_or(default, |c| pal.fg(c)),
+                glyph_color,
                 |dx, dy, color| {
+                    drew = true;
                     let px = physical.x + dx;
                     let py = physical.y + dy;
                     if px < 0 || py < 0 || px >= width || py >= height {
@@ -178,6 +181,13 @@ pub(super) fn text(
                     }
                 },
             );
+            #[cfg(target_family = "wasm")]
+            if !drew {
+                super::web_cjk::paint_glyph(
+                    pixels, width, height, run.text, glyph, x, y + run.line_y, SCALE, glyph_color,
+                );
+            }
+            let _ = drew;
         }
     }
     Ok(())

@@ -77,11 +77,13 @@ impl ExportView {
         } else {
             match (&self.png, &self.error) {
                 (Some(png), _) => {
+                    let src: gpui::ImageSource = self
+                        .preview_img
+                        .clone()
+                        .map_or_else(|| png.clone().into(), Into::into);
                     let picture = match dims {
-                        Some((w, h)) => {
-                            img(png.clone()).w(px(w / SCALE * scale)).h(px(h / SCALE * scale))
-                        }
-                        None => img(png.clone()).w_full(),
+                        Some((w, h)) => img(src).w(px(w / SCALE * scale)).h(px(h / SCALE * scale)),
+                        None => img(src).w_full(),
                     };
                     div()
                         .flex_none()
