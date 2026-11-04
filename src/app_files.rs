@@ -91,6 +91,7 @@ impl Workspace {
         let input = cx.new(|cx| InputState::new(window, cx).default_value(name));
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
             InputEvent::Focus => window.defer(cx, |window, cx| window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx)),
+            InputEvent::Change => this.tree.update(cx, |_, cx| cx.notify()),
             InputEvent::PressEnter { .. } => this.commit_rename(window, cx),
             InputEvent::Blur if this.renaming.is_some() => {
                 this.renaming = None;

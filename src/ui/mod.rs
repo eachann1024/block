@@ -6,6 +6,7 @@ pub mod icon_button;
 pub mod modal;
 pub mod motion;
 pub mod popover;
+pub mod rename_row;
 pub mod reveal;
 pub mod scrollbar;
 pub mod settings_controls;

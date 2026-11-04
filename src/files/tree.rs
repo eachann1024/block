@@ -5,7 +5,7 @@ use gpui::{
     App, Context, CursorStyle, Entity, FocusHandle, FontWeight, KeyBinding, MouseButton,
     UniformListScrollHandle, actions, div, prelude::*, px, uniform_list,
 };
-use gpui_component::input::{Input, InputState};
+use gpui_component::input::InputState;
 use crate::icons::{Icon, icon};
 use crate::theme::Theme;
 use super::index::{Row, TreeIndex};
@@ -202,8 +202,9 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
     };
     let active_folder = focused && selected.is_none();
     let highlighted = is_selected || active_folder;
+    let rename_vis = editing.as_ref().map(|input| crate::ui::rename_row::inspect(&path, dir, input, cx));
     let chevron_colors = theme.icon_colors(theme.text_secondary);
-    let icon_colors = theme.icon_colors(if highlighted { theme.accent } else { theme.text_secondary });
+    let icon_colors = rename_vis.as_ref().map(|v| v.icon_colors).unwrap_or_else(|| theme.icon_colors(if highlighted { theme.accent } else { theme.text_secondary }));
     let label = row.stem.clone();
     div()
         .id(path.clone())
@@ -222,15 +223,17 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
         .when(highlighted, |row| row.bg(theme.selected).border_color(theme.accent).font_weight(FontWeight(460.)))
         .when(focused && !highlighted, |row| row.bg(theme.selected))
         .when(is_target && !highlighted && !focused, |row| row.bg(theme.hover))
-        .when(!highlighted && !focused && enabled, |row| row.hover(|style| style.bg(theme.hover)))
+        .when(!highlighted && !focused && !is_editing && enabled, |row| row.hover(|style| style.bg(theme.hover)))
         .when_some(arrow, |row, a| row.child(
             div().size(px(18.)).flex_none().flex().items_center().justify_center().child(icon(a, px(18.), chevron_colors))))
         .child(div().size(px(16.)).flex_none().flex().items_center().justify_center().child(icon(kind, px(16.), icon_colors)))
-        .when_some(editing.clone(), |row, _| row.border_color(theme.accent).bg(theme.paper))
-        .child(match editing {
-            Some(input) => div().flex_1().h(px(24.)).rounded(px(3.)).bg(theme.selection)
-                .child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).h(px(24.)).px(px(2.))),
+        .when_some(rename_vis.as_ref(), |row, vis| crate::ui::rename_row::style_capsule(row, vis))
+        .child(match &editing {
+            Some(input) => crate::ui::rename_row::input_slot(input),
             None => div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(label),
+        })
+        .when_some(editing.as_ref().zip(rename_vis.as_ref()), |row, (input, vis)| {
+            row.child(crate::ui::rename_row::trailing_slot(input, vis))
         })
         // Hover "⋯": opens the same menu as a right-click, anchored under the button.
         .when(!is_editing, |row| row.child(
@@ -275,7 +278,8 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
         }))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
             if !this.enabled { return; }
-            if this.renaming.is_some() { return; }
+            if is_editing { cx.stop_propagation(); return; }
+            if this.renaming.is_some() { window.focus(&this.focus, cx); return; }
             window.focus(&this.focus, cx);
             if dir {
                 this.index.toggle(index, &path);
