@@ -34,6 +34,7 @@ pub(super) struct ClosingGhost {
 #[derive(Default)]
 struct TabUiState {
     menu: Option<TabMenu>,
+    page_menu: Option<Point<Pixels>>,
     opening: Option<(PathBuf, u64)>,
     closing: Option<ClosingGhost>,
     seq: u64,
@@ -44,7 +45,7 @@ thread_local! {
 }
 
 pub(super) fn clear_tab_menu() {
-    TAB_UI.with(|ui| ui.borrow_mut().menu = None);
+    TAB_UI.with(|ui| { let mut s = ui.borrow_mut(); s.menu = None; s.page_menu = None; });
 }
 
 pub(super) fn record_tab_open(path: PathBuf) {
@@ -145,14 +146,46 @@ pub(super) fn render_closing_ghost(ghost: &ClosingGhost) -> impl IntoElement {
 impl Workspace {
     pub(super) fn open_tab_menu(&mut self, index: usize, path: PathBuf, position: Point<Pixels>, cx: &mut Context<Self>) {
         if self.busy() { return; }
-        TAB_UI.with(|ui| ui.borrow_mut().menu = Some(TabMenu { index, path, position }));
+        TAB_UI.with(|ui| { let mut s = ui.borrow_mut(); s.page_menu = None; s.menu = Some(TabMenu { index, path, position }); });
         cx.notify();
     }
 
     pub(crate) fn dismiss_tab_menu(&mut self, cx: &mut Context<Self>) -> bool {
-        let had = TAB_UI.with(|ui| ui.borrow_mut().menu.take().is_some());
+        let had = TAB_UI.with(|ui| {
+            let mut s = ui.borrow_mut();
+            s.menu.take().is_some() || s.page_menu.take().is_some()
+        });
         if had { cx.notify(); }
         had
+    }
+
+    pub(crate) fn export_note(&mut self, path: PathBuf, window: &mut gpui::Window, cx: &mut Context<Self>) {
+        clear_tab_menu();
+        self.close_overlays(cx);
+        if self.editor.read(cx).current_path() != Some(path.as_path()) {
+            self.open_file(path, cx);
+        }
+        self.editor.update(cx, |editor, cx| crate::editor::export_document(editor, window, cx));
+    }
+
+    pub(super) fn render_titlebar_tail(&self, has_note: bool, cx: &mut Context<Self>) -> gpui::Div {
+        let theme = Theme::ocean();
+        let page_open = TAB_UI.with(|ui| ui.borrow().page_menu.is_some());
+        let more_group: SharedString = "titlebar-more-btn".into();
+        let more = div().id("titlebar-more").group(more_group.clone()).size(px(26.)).mr(px(if cfg!(target_os = "macos") { 10. } else { 4. }))
+            .flex_none().flex().items_center().justify_center().rounded(px(6.)).cursor(gpui::CursorStyle::PointingHand)
+            .when(page_open, |b| b.bg(theme.selected)).when(!page_open, |b| b.hover(|s| s.bg(theme.hover)))
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
+                cx.stop_propagation();
+                this.close_overlays(cx);
+                let anchor = point(event.position.x - px(188.), px(38.));
+                TAB_UI.with(|ui| { let mut s = ui.borrow_mut(); s.menu = None; s.page_menu = if s.page_menu.is_some() { None } else { Some(anchor) }; });
+                cx.notify();
+            }))
+            .child(hover_tinted_icon(more_group, Icon::More, 16., if page_open { theme.accent } else { theme.text_secondary }, theme.text, transparent_black()));
+        div().h_full().flex_none().flex().items_center()
+            .when(has_note, |d| d.child(more))
+            .child(crate::ui::window_controls::window_controls("main-win", true, true))
     }
 
     pub(crate) fn close_other_tabs(&mut self, keep_path: PathBuf, cx: &mut Context<Self>) {
@@ -161,16 +194,12 @@ impl Workspace {
         let removed: Vec<PathBuf> = self.tabs.iter().filter(|p| *p != &keep_path).cloned().collect();
         if removed.is_empty() { return; }
         self.tabs = vec![keep_path.clone()];
-        let need_open = self.selected.as_ref() != Some(&keep_path)
-            || self.editor.read(cx).current_path() != Some(keep_path.as_path());
+        let need_open = self.selected.as_ref() != Some(&keep_path) || self.editor.read(cx).current_path() != Some(keep_path.as_path());
         self.editor.update(cx, |editor, cx| {
             if need_open { editor.open(keep_path.clone(), cx); }
             for tab in &removed { editor.close_session(tab, cx); }
         });
-        if need_open {
-            self.selected = Some(keep_path.clone());
-            self.tree.update(cx, |tree, cx| tree.select(Some(keep_path), cx));
-        }
+        if need_open { self.selected = Some(keep_path.clone()); self.tree.update(cx, |tree, cx| tree.select(Some(keep_path), cx)); }
         self.save_tabs_state(cx);
         cx.notify();
     }
@@ -183,15 +212,10 @@ impl Workspace {
             || self.editor.read(cx).current_path().is_some_and(|p| removed.iter().any(|r| r == p));
         let fallback = self.tabs.get(index).cloned();
         self.editor.update(cx, |editor, cx| {
-            if active_removed {
-                if let Some(ref next) = fallback { editor.open(next.clone(), cx); }
-            }
+            if active_removed { if let Some(ref next) = fallback { editor.open(next.clone(), cx); } }
             for tab in &removed { editor.close_session(tab, cx); }
         });
-        if active_removed {
-            self.selected = fallback.clone();
-            self.tree.update(cx, |tree, cx| tree.select(fallback, cx));
-        }
+        if active_removed { self.selected = fallback.clone(); self.tree.update(cx, |tree, cx| tree.select(fallback, cx)); }
         self.save_tabs_state(cx);
         cx.notify();
     }
@@ -214,50 +238,55 @@ impl Workspace {
     }
 
     pub(super) fn render_tab_context_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let menu = TAB_UI.with(|ui| ui.borrow().menu.clone())?;
-        let tab_count = self.tabs.len();
-        if tab_count == 0 { return None; }
-        let ix = self.tabs.iter().position(|p| p == &menu.path).unwrap_or(menu.index.min(tab_count - 1));
-        let target_path = self.tabs.get(ix)?.clone();
-        let (has_others, has_right) = (tab_count > 1, ix + 1 < tab_count);
-        let (close_one, close_others) = (target_path.clone(), target_path);
-        let card = crate::dropdown::shell("tab-context-menu")
-            .w(px(176.))
-            .child(tab_menu_item("tab-menu-close", tr("关闭", "Close"), true, cx.listener(move |this, _, _, cx| {
-                this.close_tab(close_one.clone(), cx);
-            })))
-            .child(tab_menu_item("tab-menu-close-others", tr("关闭其他", "Close Others"), has_others, cx.listener(move |this, _, _, cx| {
-                this.close_other_tabs(close_others.clone(), cx);
-            })))
-            .child(tab_menu_item("tab-menu-close-right", tr("关闭右侧", "Close to the Right"), has_right, cx.listener(move |this, _, _, cx| {
-                this.close_tabs_to_right(ix, cx);
-            })))
-            .child(crate::dropdown::separator())
-            .child(tab_menu_item("tab-menu-close-all", tr("关闭全部", "Close All"), true, cx.listener(|this, _, _, cx| {
-                this.close_all_tabs(cx);
-            })));
+        let (menu, page_pos) = TAB_UI.with(|ui| { let s = ui.borrow(); (s.menu.clone(), s.page_menu) });
+        let mac = cfg!(target_os = "macos");
+        let exp_hint = if mac { "⇧⌘E" } else { "Ctrl+Shift+E" };
+        let (position, card) = if let Some(pos) = page_pos {
+            let path = self.selected.clone().or_else(|| self.editor.read(cx).current_path().map(Path::to_path_buf))?;
+            let (exp_path, rev_path) = (path.clone(), path);
+            let card = crate::dropdown::shell("page-more-menu").w(px(216.))
+                .child(tab_menu_row("page-export-image", Some(Icon::Image), tr("生成图片…", "Export as Image…"), Some(exp_hint), true,
+                    cx.listener(move |this, _, window, cx| this.export_note(exp_path.clone(), window, cx))))
+                .child(tab_menu_row("page-copy-md", Some(Icon::Copy), tr("复制 Markdown", "Copy Markdown"), Some(if mac { "⌥⌘C" } else { "Ctrl+Alt+C" }), true,
+                    cx.listener(|this, _, _, cx| { clear_tab_menu(); this.editor.update(cx, |e, cx| e.copy_markdown(cx)); cx.notify(); })))
+                .child(crate::dropdown::separator())
+                .child(tab_menu_row("page-reveal", Some(Icon::FolderReveal), crate::files::ops::reveal_label(), None, true,
+                    cx.listener(move |_, _, _, cx| { clear_tab_menu(); crate::files::ops::reveal_in_finder(&rev_path); cx.notify(); })));
+            (pos, card)
+        } else {
+            let menu = menu?;
+            let tab_count = self.tabs.len();
+            if tab_count == 0 { return None; }
+            let ix = self.tabs.iter().position(|p| p == &menu.path).unwrap_or(menu.index.min(tab_count - 1));
+            let target_path = self.tabs.get(ix)?.clone();
+            let (has_others, has_right) = (tab_count > 1, ix + 1 < tab_count);
+            let (exp_path, close_one, close_others) = (target_path.clone(), target_path.clone(), target_path);
+            let card = crate::dropdown::shell("tab-context-menu").w(px(204.))
+                .child(tab_menu_row("tab-menu-export", Some(Icon::Image), tr("生成图片…", "Export as Image…"), Some(exp_hint), true,
+                    cx.listener(move |this, _, window, cx| this.export_note(exp_path.clone(), window, cx))))
+                .child(crate::dropdown::separator())
+                .child(tab_menu_row("tab-menu-close", None, tr("关闭", "Close"), None, true, cx.listener(move |this, _, _, cx| this.close_tab(close_one.clone(), cx))))
+                .child(tab_menu_row("tab-menu-close-others", None, tr("关闭其他", "Close Others"), None, has_others, cx.listener(move |this, _, _, cx| this.close_other_tabs(close_others.clone(), cx))))
+                .child(tab_menu_row("tab-menu-close-right", None, tr("关闭右侧", "Close to the Right"), None, has_right, cx.listener(move |this, _, _, cx| this.close_tabs_to_right(ix, cx))))
+                .child(crate::dropdown::separator())
+                .child(tab_menu_row("tab-menu-close-all", None, tr("关闭全部", "Close All"), None, true, cx.listener(|this, _, _, cx| this.close_all_tabs(cx))));
+            (menu.position, card)
+        };
         let backdrop = deferred(anchored().position(point(px(0.), px(0.))).child(
             div().id("tab-menu-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black())
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.dismiss_tab_menu(cx); }))
                 .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { this.dismiss_tab_menu(cx); })),
         )).with_priority(1);
-        let popup = deferred(anchored().position(menu.position).snap_to_window_with_margin(px(8.)).child(card)).with_priority(2);
+        let popup = deferred(anchored().position(position).snap_to_window_with_margin(px(8.)).child(card)).with_priority(2);
         Some(div().child(backdrop).child(popup).into_any_element())
     }
 }
 
-fn tab_menu_item(
-    id: &'static str, label: &'static str, enabled: bool,
+fn tab_menu_row(
+    id: &'static str, icon: Option<Icon>, label: &'static str, hint: Option<&'static str>, enabled: bool,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> gpui::Stateful<gpui::Div> {
-    crate::dropdown::row_with(
-        id,
-        crate::dropdown::RowSpec {
-            icon: None,
-            label: label.into(),
-            disabled: !enabled,
-            ..Default::default()
-        },
-    )
-    .when(enabled, |row| row.on_mouse_down(MouseButton::Left, on_click))
+    crate::dropdown::row_with(id, crate::dropdown::RowSpec {
+        icon, label: label.into(), hint: hint.map(Into::into), disabled: !enabled, ..Default::default()
+    }).when(enabled, |row| row.on_mouse_down(MouseButton::Left, on_click))
 }

@@ -53,7 +53,7 @@ impl Config {
 }
 
 fn settings_path() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Application Support/thinkly-fast/ai.json"))
+    Some(crate::files::app_data_dir("thinkly-fast").join("ai.json"))
 }
 
 /// What is saved on disk (the settings form edits this).
@@ -93,7 +93,7 @@ pub(crate) enum Event {
 }
 
 fn curl(config: &Config, path: &str, with_body: bool, max_time: &str) -> Command {
-    let mut cmd = Command::new("/usr/bin/curl");
+    let mut cmd = Command::new(if cfg!(target_os = "macos") { "/usr/bin/curl" } else { "curl" });
     cmd.args(["-sS", "-N", "--connect-timeout", "5", "--max-time", max_time, "-H", "content-type: application/json"]);
     if !config.api_key.is_empty() { cmd.arg("-H").arg(format!("authorization: Bearer {}", config.api_key)); }
     if with_body { cmd.args(["--data-binary", "@-"]); }

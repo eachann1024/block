@@ -32,8 +32,7 @@ struct Draft { path: PathBuf, source: String, base: u64 }
 pub(super) struct Loaded { pub doc: Doc, pub base: Fingerprint, pub recovered: bool }
 fn draft_path(path: &Path) -> PathBuf {
     let key = fingerprint(path.as_os_str().as_encoded_bytes()).0;
-    let root = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    root.join("Library/Application Support/Thinkly Fast/Recovery").join(format!("{key:016x}.json"))
+    crate::files::app_data_dir("Thinkly Fast").join("Recovery").join(format!("{key:016x}.json"))
 }
 pub(super) fn latest_draft() -> Result<(PathBuf, Loaded), String> {
     let root = draft_path(Path::new("unused")).parent().unwrap().to_path_buf();
