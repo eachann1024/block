@@ -14,14 +14,14 @@ use crate::{
 pub const GRIP_LONG: f32 = 24.;
 pub const GRIP_SHORT: f32 = 14.;
 
-/// 6x2 dots, 4px apart, 1.5px wide (radius .75), centred in the grip's inner area.
-fn dots(vertical: bool, color: Hsla) -> Div {
-    let (long, short) = (22., 12.);
+/// 3x2 dots (2x3 when vertical), 4px apart center-to-center, 1.5px diameter, inside a 12x8 (or 8x12) box.
+pub fn dots(vertical: bool, color: Hsla) -> Div {
+    let (long, short) = (12., 8.);
     let (w, h) = if vertical { (short, long) } else { (long, short) };
     let mut grid = div().relative().flex_none().w(px(w)).h(px(h));
-    for along in 0..6 {
+    for along in 0..3 {
         for across in 0..2 {
-            let (a, b) = (1. + 4. * along as f32 - 0.75, 4. + 4. * across as f32 - 0.75);
+            let (a, b) = (2. + 4. * along as f32 - 0.75, 2. + 4. * across as f32 - 0.75);
             let (x, y) = if vertical { (b, a) } else { (a, b) };
             grid = grid.child(div().absolute().left(px(x)).top(px(y)).size(px(1.5)).rounded_full().bg(color));
         }
@@ -29,13 +29,21 @@ fn dots(vertical: bool, color: Hsla) -> Div {
     grid
 }
 
-/// At rest only a 12x8 block shows; hovered, pressed or with its menu open the grip grows into the
-/// white 24x14 capsule with a dot grid. The hit area is the same size in both states.
+/// At rest a 24x8 / 8x24 pill shows; hovered, pressed or with its menu open the grip grows into the
+/// 24x14 / 14x24 capsule with a 6-dot grid. The hit area is the same size in both states.
 pub fn grip(id: (&'static str, usize), vertical: bool, expanded: bool, dragging: bool, tip: &'static str) -> Stateful<Div> {
     let dark = is_dark();
     let (w, h) = if vertical { (GRIP_SHORT, GRIP_LONG) } else { (GRIP_LONG, GRIP_SHORT) };
-    let bg: Hsla = if dark { rgb(0x262626).into() } else { rgb(0xffffff).into() };
-    let border: Hsla = if dark { rgb(0x6b6b6b).into() } else { rgba(0x1f1e1d52).into() };
+    let bg: Hsla = if dark {
+        if expanded { rgb(0x262626).into() } else { rgb(0x1e1e1e).into() }
+    } else {
+        rgb(0xffffff).into()
+    };
+    let border: Hsla = if dark {
+        if expanded { rgb(0x6b6b6b).into() } else { rgb(0x555555).into() }
+    } else {
+        rgba(0x1f1e1d52).into()
+    };
     let dot: Hsla = if dark { Theme::ocean().text.opacity(0.55) } else { rgba(0x1f1e1d8c).into() };
     let shell = div().id(id).w(px(w)).h(px(h)).flex_none().flex().items_center().justify_center()
         .cursor(CursorStyle::OpenHand);
@@ -46,8 +54,8 @@ pub fn grip(id: (&'static str, usize), vertical: bool, expanded: bool, dragging:
                 Animation::new(Duration::from_millis(150)).with_easing(ease_out_expo()),
                 |el, delta| el.opacity(delta)))
     } else {
-        let (rw, rh) = if vertical { (8., 12.) } else { (12., 8.) };
-        shell.child(div().w(px(rw)).h(px(rh)).rounded(px(4.)).bg(bg).border_1().border_color(border))
+        let (rw, rh) = if vertical { (8., GRIP_LONG) } else { (GRIP_LONG, 8.) };
+        shell.child(div().w(px(rw)).h(px(rh)).rounded_full().bg(bg).border_1().border_color(border))
     };
     shell.when(!dragging, |el| el.tooltip(move |window, cx| build_tooltip(tip, window, cx)))
 }
