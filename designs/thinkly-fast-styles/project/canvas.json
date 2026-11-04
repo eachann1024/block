@@ -111,15 +111,14 @@
       "is_interactive": true,
       "title": "图片工具栏 · 胶囊浮条与更多菜单"
     },
-    "Annotate-V1-TopBar.dc.html": {
+    "F-Annotate.dc.html": {
       "page": "editor",
       "x": 3040,
       "y": 0,
       "w": 1440,
-      "h": 920,
+      "h": 900,
       "expand": "fill",
-      "is_interactive": true,
-      "title": "紧凑批注 · 宽屏单行微字条 + 窄窗页边数字微章与点击原位浮层 Popover"
+      "title": "AI 标注模式与评论卡片"
     },
     "T-Table-Handles.dc.html": {
       "page": "editor",
@@ -150,6 +149,36 @@
       "expand": "fill",
       "is_interactive": true,
       "title": "全局 Tooltip 规范（浅色 / 深色）"
+    },
+    "Annotate-V1-TopBar.dc.html": {
+      "page": "editor",
+      "x": 0,
+      "y": 2200,
+      "w": 1440,
+      "h": 920,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "紧凑批注 A（推荐）· 宽屏单行微字条 + 窄窗页边数字微章与点击原位浮层 Popover"
+    },
+    "Annotate-V2-BottomDock.dc.html": {
+      "page": "editor",
+      "x": 1520,
+      "y": 2200,
+      "w": 1440,
+      "h": 920,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "紧凑批注 B · 宽屏行尾圆角小胶囊 + 窄窗段落内联紧贴微条 Inline Strip"
+    },
+    "Annotate-V3-RailHeader.dc.html": {
+      "page": "editor",
+      "x": 3040,
+      "y": 2200,
+      "w": 1440,
+      "h": 920,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "紧凑批注 C · 宽屏页边无框眉批 + 窄窗顶栏汇总胶囊与底部悬浮抽屉 Sheet"
     },
     "F-Find.dc.html": {
       "page": "search",
@@ -324,10 +353,13 @@
     "Rename-V2-RowCapsule.dc.html",
     "F-Toolbar.dc.html",
     "F-Image-Toolbar.dc.html",
-    "Annotate-V1-TopBar.dc.html",
+    "F-Annotate.dc.html",
     "T-Table-Handles.dc.html",
     "T-Heading-Collapse.dc.html",
     "T-Tooltip-System.dc.html",
+    "Annotate-V1-TopBar.dc.html",
+    "Annotate-V2-BottomDock.dc.html",
+    "Annotate-V3-RailHeader.dc.html",
     "F-Find.dc.html",
     "F-Search.dc.html",
     "S-Settings-3.dc.html",
