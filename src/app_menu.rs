@@ -71,21 +71,33 @@ impl Workspace {
                     this.open_file_in_new_tab(p.clone(), cx);
                 }))
                 .child(shortcut_hint(if cfg!(target_os = "macos") { tr("⌘+点击", "⌘+Click") } else { tr("Ctrl+点击", "Ctrl+Click") }))
-                .into_any_element());
+                .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                if *hovered { if let Some(menu) = &mut this.menu { if menu.moving { menu.moving = false; cx.notify(); } } }
+            }))
+            .into_any_element());
             let p = path.clone();
             items.push(menu_item(ItemId::Name("export-image"), Icon::Image, tr("生成图片…", "Export as Image…").into(), false, false,
                 cx.listener(move |this, _, window, cx| this.export_note(p.clone(), window, cx)))
-                .into_any_element());
+                .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                if *hovered { if let Some(menu) = &mut this.menu { if menu.moving { menu.moving = false; cx.notify(); } } }
+            }))
+            .into_any_element());
             items.push(separator());
         }
         let p = path.clone();
         items.push(menu_item(ItemId::Name("reveal"), Icon::FolderReveal, crate::files::ops::reveal_label().into(), false, false,
             cx.listener(move |this, _, _, cx| { this.close_overlays(cx); crate::files::ops::reveal_in_finder(&p); }))
+            .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                if *hovered { if let Some(menu) = &mut this.menu { if menu.moving { menu.moving = false; cx.notify(); } } }
+            }))
             .into_any_element());
         let p = path.clone();
         items.push(menu_item(ItemId::Name("rename"), Icon::Pencil, tr("重命名", "Rename").into(), false, false,
             cx.listener(move |this, _, window, cx| this.start_rename(p.clone(), dir, window, cx)))
             .child(shortcut_hint(if cfg!(target_os = "macos") { "↵" } else { "F2" }))
+            .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                if *hovered { if let Some(menu) = &mut this.menu { if menu.moving { menu.moving = false; cx.notify(); } } }
+            }))
             .into_any_element());
         items.push(dropdown::row_with(
             "move",
@@ -96,9 +108,12 @@ impl Workspace {
                 ..Default::default()
             },
         )
+        .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+            if *hovered { if let Some(menu) = &mut this.menu { if !menu.moving { menu.moving = true; cx.notify(); } } }
+        }))
         .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
             cx.stop_propagation();
-            if let Some(menu) = &mut this.menu { menu.moving = !menu.moving; }
+            if let Some(menu) = &mut this.menu { menu.moving = true; }
             cx.notify();
         }))
         .into_any_element());
@@ -107,6 +122,9 @@ impl Workspace {
         items.push(menu_item(ItemId::Name("trash"), Icon::Trash, crate::files::ops::trash_label().into(), false, true,
             cx.listener(move |this, _, _, cx| this.trash(p.clone(), cx)))
             .child(shortcut_hint(if cfg!(target_os = "macos") { "⌘⌫" } else { "Del" }))
+            .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                if *hovered { if let Some(menu) = &mut this.menu { if menu.moving { menu.moving = false; cx.notify(); } } }
+            }))
             .into_any_element());
         let mut out = vec![deferred(anchored().position(position).snap_to_window_with_margin(px(8.))
             .child(menu_surface(px(MENU_WIDTH)).children(items))).with_priority(2).into_any_element()];
