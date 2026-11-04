@@ -51,7 +51,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
         .child(div().flex().items_start().w_full().min_w_0().gap(px(ROW_GAP)).pr(px(right_inset))
             .child(div().w(px(handle_w)).flex_none().flex().justify_end().gap(px(2.)).pt(px(handle_top))
                 .when(regular_handles && !blank, |row| row
-                    .child(grip_button(type_mark(block), id, ("drag", id as usize), cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
+                    .child(grip_button(type_mark(block), ("drag", id as usize), cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
                         this.begin_drag(id, cx); cx.stop_propagation();
                     })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
                         if this.dragging == Some(id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
@@ -149,7 +149,7 @@ fn type_mark(block: &Block) -> TypeMark {
         if super::code_block::is_math(lang) { return TypeMark::Icon(Icon::Math); }
     }
     match super::block_menu::block_type(block) {
-        BlockType::Callout => TypeMark::Icon(Icon::Callout), BlockType::Columns => TypeMark::Icon(Icon::Columns),
+        BlockType::Callout => TypeMark::Icon(Icon::Callout),
         BlockType::Code => TypeMark::Icon(Icon::Code), BlockType::Image => TypeMark::Icon(Icon::Image),
         BlockType::Table => TypeMark::Icon(Icon::Table), BlockType::Divider => TypeMark::Icon(Icon::Divider),
         BlockType::Source => TypeMark::Icon(Icon::Source),
@@ -157,8 +157,7 @@ fn type_mark(block: &Block) -> TypeMark {
     }
 }
 /// The handle of a block with content: type mark plus grip in one 22px-high target, as in the reference.
-#[allow(dead_code)]
-pub(super) fn grip_button(mark: TypeMark, block: u64, id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
+pub(super) fn grip_button(mark: TypeMark, id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
     let (base, hover) = (theme.text_secondary, theme.text);
     let TypeMark::Icon(glyph) = mark;
@@ -167,15 +166,8 @@ pub(super) fn grip_button(mark: TypeMark, block: u64, id: (&'static str, usize),
         .hover(|s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
         .child(mark)
         .child(hover_icon(Icon::Drag, 14., base, hover))
-        .child(gpui::canvas(move |bounds, _, _| { GRIP_BOUNDS.with(|b| { b.borrow_mut().insert(block, bounds); }); }, |_, _, _, _| {})
-            .absolute().top_0().left_0().size_full())
         .on_mouse_down(MouseButton::Left, listener)
 }
-thread_local! {
-    static GRIP_BOUNDS: std::cell::RefCell<std::collections::HashMap<u64, gpui::Bounds<gpui::Pixels>>> = Default::default();
-}
-/// Last painted bounds of a block's handle, in window coordinates.
-pub(super) fn grip_bounds(block: u64) -> Option<gpui::Bounds<gpui::Pixels>> { GRIP_BOUNDS.with(|b| b.borrow().get(&block).copied()) }
 fn handle_button(glyph: Icon, id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
     div().id(id).group("hover-icon").size(px(22.)).flex_none().rounded(px(4.)).flex().items_center().justify_center()

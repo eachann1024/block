@@ -14,8 +14,6 @@ impl Editor {
         match action {
             Up | Down if self.block_menu_step(matches!(action, Down), cx) => return,
             Enter if self.block_menu_pick(window, cx) => return,
-            Left | Right if self.block_menu_nav(matches!(action, Right), window, cx) => return,
-            Backspace if self.block_menu_nav(false, window, cx) => return,
             Cancel if self.block_menu.is_some() => { self.block_menu = None; cx.notify(); return; }
             Cancel if self.annotate.reactions.is_some() => { self.annotate.reactions = None; cx.notify(); return; }
             Cancel if self.annotate.composer.is_some() => { self.close_annotation_composer(window, cx); return; }
