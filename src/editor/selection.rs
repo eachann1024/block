@@ -92,5 +92,6 @@ impl Editor {
         self.preferred_x = None::<Pixels>;
         self.clear_transient_overlays();
         self.list.reset(self.doc.blocks.len());
+        self.link_ui.quiet = Some(self.caret.head);
     }
 }
