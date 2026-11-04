@@ -137,7 +137,7 @@ pub fn render_footer() -> Div {
     let theme = Theme::ocean();
     let hotkey_label = format_hotkey(&search_shortcut());
     div().h(px(36.)).flex_none().px(px(16.)).flex().items_center().gap(px(16.))
-        .border_t_1().border_color(theme.hairline).bg(theme.sidebar)
+        .rounded_b(px(11.)).border_t_1().border_color(theme.hairline).bg(theme.sidebar)
         .text_size(px(12.)).text_color(theme.text_secondary)
         .child(div().flex().items_center().gap(px(6.)).child(kbd("↑")).child(kbd("↓")).child(tr("选择", "Select")))
         .child(div().flex().items_center().gap(px(6.)).child(kbd("↵")).child(tr("打开", "Open")))
