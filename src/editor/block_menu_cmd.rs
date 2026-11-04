@@ -1,6 +1,6 @@
 //! The block command vocabulary: `Cmd` plus its labels, search keywords, icons and the language / slash tables.
 use crate::{editor::{image_source::Align, model::Kind, table_actions::TableCmd}, icons::Icon};
-use super::{Sub, kind_icon};
+use super::{BlockMenu, BlockType, Sub, kind_icon};
 
 /// Code languages offered by the handle menu: (fence tag, label).
 pub(in crate::editor) const LANGUAGES: [(&str, &str); 18] = [
@@ -17,14 +17,14 @@ pub(in crate::editor) fn language_label(tag: &str) -> &'static str {
 }
 #[derive(Clone, Copy, PartialEq)]
 pub(in crate::editor) enum Cmd {
-    Turn(Kind), Code(&'static str), Table, Divider, Image, Ai,
+    Turn(Kind), TurnHeading(u8), Code(&'static str), Table, Divider, Image, Ai,
     InsertAbove, InsertBelow, Duplicate, Cut, CopyText, MoveUp, MoveDown, Delete,
     /// Group title inside the handle menu; not clickable.
     Header(&'static str),
     /// Opens a cascading side submenu (`转换为 →` or `代码语言 →`).
     Open(Sub),
     /// Conversion target; `true` marks the block's current type.
-    TurnTo(Kind, bool), CodeTo(bool),
+    TurnTo(Kind, bool), TurnHeadingTo(u8, bool), CodeTo(bool),
     SetLanguage(&'static str, bool), CopyCode,
     TableOp(TableCmd),
     CopyImage, RevealImage, AlignImage(Align, bool),
@@ -35,7 +35,8 @@ impl Cmd {
     pub(in crate::editor) fn label(self) -> &'static str {
         match self {
             Cmd::Turn(Kind::Paragraph) => "正文", Cmd::Turn(Kind::H1) => "一级标题", Cmd::Turn(Kind::H2) => "二级标题",
-            Cmd::Turn(Kind::H3) => "三级标题", Cmd::Turn(Kind::Bullet) => "无序列表", Cmd::Turn(Kind::Numbered) => "有序列表",
+            Cmd::Turn(Kind::H3) => "三级标题", Cmd::TurnHeading(4) => "四级标题", Cmd::TurnHeading(5) => "五级标题",
+            Cmd::TurnHeading(_) => "六级标题", Cmd::Turn(Kind::Bullet) => "无序列表", Cmd::Turn(Kind::Numbered) => "有序列表",
             Cmd::Turn(Kind::Quote) => "引用", Cmd::Turn(Kind::Todo) => "待办清单",
             Cmd::Code("mermaid") => "Mermaid 图表", Cmd::Code("math") => "数学公式", Cmd::Code(_) => "代码块",
             Cmd::Table => "表格", Cmd::Divider => "分隔线", Cmd::Image => "图片", Cmd::Ai => "AI 写作",
@@ -43,7 +44,8 @@ impl Cmd {
             Cmd::CopyText => "复制文本", Cmd::MoveUp => "上移", Cmd::MoveDown => "下移", Cmd::Delete => "删除",
             Cmd::Header(title) => title,
             Cmd::Open(Sub::Convert) => "转换为", Cmd::Open(Sub::Language) => "代码语言", Cmd::Open(Sub::Root) => "",
-            Cmd::TurnTo(kind, _) => Cmd::Turn(kind).label(), Cmd::CodeTo(_) => "代码块",
+            Cmd::TurnTo(kind, _) => Cmd::Turn(kind).label(), Cmd::TurnHeadingTo(lvl, _) => Cmd::TurnHeading(lvl).label(),
+            Cmd::CodeTo(_) => "代码块",
             Cmd::SetLanguage(tag, _) => language_label(tag), Cmd::CopyCode => "复制代码",
             Cmd::TableOp(op) => op.label(),
             Cmd::ToggleWrap(_) => "自动换行",
@@ -55,6 +57,7 @@ impl Cmd {
         match self {
             Cmd::Turn(Kind::Paragraph) => "text paragraph zhengwen", Cmd::Turn(Kind::H1) => "h1 heading title biaoti",
             Cmd::Turn(Kind::H2) => "h2 heading", Cmd::Turn(Kind::H3) => "h3 heading",
+            Cmd::TurnHeading(4) => "h4 heading", Cmd::TurnHeading(5) => "h5 heading", Cmd::TurnHeading(_) => "h6 heading",
             Cmd::Turn(Kind::Bullet) => "bullet list ul liebiao", Cmd::Turn(Kind::Numbered) => "number ordered list ol",
             Cmd::Turn(Kind::Quote) => "quote yinyong", Cmd::Turn(Kind::Todo) => "todo task check daiban",
             Cmd::Code("mermaid") => "mermaid diagram flow", Cmd::Code("math") => "math latex formula gongshi",
@@ -83,10 +86,13 @@ impl Cmd {
         })
     }
     pub(in crate::editor) fn danger(self) -> bool { matches!(self, Cmd::Delete | Cmd::TableOp(TableCmd::DeleteTable)) }
-    pub(in crate::editor) fn checked(self) -> bool { matches!(self, Cmd::TurnTo(_, true) | Cmd::CodeTo(true) | Cmd::SetLanguage(_, true) | Cmd::AlignImage(_, true) | Cmd::ToggleWrap(true)) }
+    pub(in crate::editor) fn checked(self) -> bool {
+        matches!(self, Cmd::TurnTo(_, true) | Cmd::TurnHeadingTo(_, true) | Cmd::CodeTo(true) | Cmd::SetLanguage(_, true) | Cmd::AlignImage(_, true) | Cmd::ToggleWrap(true))
+    }
     pub(in crate::editor) fn leading(self) -> Option<Icon> {
         Some(match self {
             Cmd::Turn(kind) | Cmd::TurnTo(kind, _) => kind_icon(kind),
+            Cmd::TurnHeading(_) | Cmd::TurnHeadingTo(..) => Icon::Heading,
             Cmd::Code("mermaid") | Cmd::SetLanguage("mermaid", _) => Icon::Diagram,
             Cmd::Code("math") | Cmd::SetLanguage("math", _) => Icon::Math,
             Cmd::Code(_) | Cmd::CodeTo(_) | Cmd::SetLanguage(..) => Icon::Code,
@@ -116,3 +122,26 @@ pub(super) const SLASH: [Option<Cmd>; 17] = [
     None,
     Some(Cmd::Code("mermaid")), Some(Cmd::Code("math")), Some(Cmd::Ai),
 ];
+/// Entries inside the active cascading side submenu.
+pub(in crate::editor) fn sub_entries(menu: &BlockMenu) -> Vec<Cmd> {
+    match menu.sub {
+        Sub::Root => Vec::new(),
+        Sub::Convert => {
+            let current = match menu.kind { BlockType::Text(k) => Some(k), _ => None };
+            let mut items = vec![
+                Cmd::TurnTo(Kind::Paragraph, current == Some(Kind::Paragraph)),
+                Cmd::TurnTo(Kind::H1, current == Some(Kind::H1)),
+                Cmd::TurnTo(Kind::H2, current == Some(Kind::H2)),
+                Cmd::TurnTo(Kind::H3, current == Some(Kind::H3) && menu.heading_level.is_none()),
+                Cmd::TurnHeadingTo(4, current == Some(Kind::H3) && menu.heading_level == Some(4)),
+                Cmd::TurnHeadingTo(5, current == Some(Kind::H3) && menu.heading_level == Some(5)),
+                Cmd::TurnHeadingTo(6, current == Some(Kind::H3) && menu.heading_level == Some(6)),
+            ];
+            items.extend([Kind::Todo, Kind::Bullet, Kind::Numbered, Kind::Quote]
+                .into_iter().map(|k| Cmd::TurnTo(k, current == Some(k))));
+            items.push(Cmd::CodeTo(menu.kind == BlockType::Code));
+            items
+        }
+        Sub::Language => LANGUAGES.iter().map(|(tag, label)| Cmd::SetLanguage(tag, *label == menu.lang)).collect(),
+    }
+}
