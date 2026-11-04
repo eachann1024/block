@@ -32,6 +32,10 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
     let blank = block.text.is_empty() && block.meta.table.is_none() && block.meta.raw_source.is_none();
     // Images and dividers are atomic blocks and never expose their Markdown/HTML source line.
     let static_view = image.is_some() || rule;
+    let code_lang = block.meta.code_language.clone();
+    let preview_lang = code_lang.as_deref().is_some_and(super::code_block::is_preview_lang);
+    let in_edit_mode = active;
+    let preview_only = preview_lang && !in_edit_mode;
     div().id(("block", id as usize)).relative().w_full().min_w_0().py(px(if minimal { 5. } else { BLOCK_PAD }))
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
             this.hover_block(id, *hovered, cx);
@@ -76,12 +80,16 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                         .on_mouse_down(MouseButton::Left, { let e = focus_editor.clone(); move |_, window, cx| {
                             e.update(cx, |this, cx| this.focus_block(id, window, cx)); cx.stop_propagation();
                         }})))
-                .when(!static_view && !nowrap, |body| body.child(BlockText { editor: editor.clone(), block: id }))
+                .when(!static_view && !preview_only && !nowrap, |body| body.child(BlockText { editor: editor.clone(), block: id }))
                 // No-wrap code scrolls sideways inside its own box instead of pushing past the column.
-                .when(!static_view && nowrap, |body| body.child(div().id(("code-scroll", id as usize)).w_full().min_w_0().flex()
+                .when(!static_view && !preview_only && nowrap, |body| body.child(div().id(("code-scroll", id as usize)).w_full().min_w_0().flex()
                     .overflow_x_scroll().child(BlockText { editor: editor.clone(), block: id })))
-                .when(!static_view && block.meta.code_language.is_some(), |body| {
-                    body.child(super::code_block::copy_button(editor, id, cx))
+                .when(!static_view && preview_lang, |body| {
+                    let lang = code_lang.as_deref().unwrap_or_default();
+                    body.child(super::code_block::preview_card(editor.clone(), id, lang, &block.text, in_edit_mode, cx))
+                })
+                .when(!static_view && code_lang.is_some(), |body| {
+                    body.child(super::code_block::copy_button(editor, id, code_lang.unwrap_or_default(), cx))
                 })))
         .when_some(drop_edge, |row, after| row.child(div().absolute().left(px(HANDLE_WIDTH)).right(px(RIGHT_INSET))
             .h(px(2.)).bg(theme.accent)
@@ -107,6 +115,10 @@ fn todo_box(checked: bool, top: f32, toggle: impl Fn(&mut gpui::App) + 'static) 
 enum TypeMark { Icon(Icon) }
 fn type_mark(block: &Block) -> TypeMark {
     use super::block_menu::BlockType;
+    if let Some(lang) = block.meta.code_language.as_deref() {
+        if super::code_block::is_mermaid(lang) { return TypeMark::Icon(Icon::Diagram); }
+        if super::code_block::is_math(lang) { return TypeMark::Icon(Icon::Math); }
+    }
     match super::block_menu::block_type(block) {
         BlockType::Code => TypeMark::Icon(Icon::Code), BlockType::Image => TypeMark::Icon(Icon::Image),
         BlockType::Table => TypeMark::Icon(Icon::Table), BlockType::Divider => TypeMark::Icon(Icon::Divider),
