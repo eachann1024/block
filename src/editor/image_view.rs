@@ -1,4 +1,4 @@
-//! Image block rendering: aligned picture, corner resize handles and floating top-centered toolbar.
+//! Image block rendering: aligned picture, side resize handles and floating top-centered toolbar.
 use std::{collections::HashMap, fs::File, io::Read, path::{Path, PathBuf}};
 use gpui::{App, Context, CursorStyle, Entity, Global, MouseButton, ObjectFit, Resource, SharedString, Window, div, prelude::*, px};
 use super::{
@@ -138,18 +138,24 @@ fn resize_end(editor: &Entity<Editor>, id: u64, cx: &mut App) {
     });
 }
 
-/// 10px white rounded square on a corner; dragging it resizes the width in proportion (the height follows).
-fn handle(id: u64, left: bool, top: bool, dir: f32, group: &SharedString, show: bool) -> impl IntoElement {
-    let ring = if crate::theme::is_dark() { 0x2b6be6 } else { 0x2f6fe4 };
-    div().id(("image-resize", id as usize * 4 + usize::from(left) + 2 * usize::from(top))).absolute().size(px(10.))
-        .when(left, |s| s.left(px(-5.))).when(!left, |s| s.right(px(-5.)))
-        .when(top, |s| s.top(px(-5.))).when(!top, |s| s.bottom(px(-5.)))
-        .bg(gpui::white()).border(px(1.5)).border_color(gpui::rgb(ring)).rounded(px(3.))
-        .cursor(if left == top { CursorStyle::ResizeUpLeftDownRight } else { CursorStyle::ResizeUpRightDownLeft })
-        .invisible().when(show, |s| s.visible()).group_hover(group.clone(), |s| s.visible())
-        .on_drag(Resize { id, dir }, |resize, _, window, cx| {
-            begin(resize, f32::from(window.mouse_position().x), cx); cx.new(|_| Ghost)
-        })
+/// Centered side pill handle with a 12px hit area; dragging it resizes the width in proportion (the height follows).
+fn handle(id: u64, left: bool, dir: f32, img_h: Option<f32>, group: &SharedString, show: bool) -> impl IntoElement {
+    let bar_h = match img_h {
+        Some(h) if h < 64. => (h * 0.6).round().max(16.),
+        _ => 48.,
+    };
+    let bar_color = if crate::theme::is_dark() { 0x707070 } else { 0x9a9a9a };
+    div().absolute().top_0().bottom_0()
+        .when(left, |s| s.left(px(-12.5))).when(!left, |s| s.right(px(-12.5)))
+        .flex().items_center()
+        .child(div().id(("image-resize", id as usize * 2 + usize::from(left)))
+            .w(px(12.)).h(px(bar_h + 16.)).flex().items_center().justify_center()
+            .cursor(CursorStyle::ResizeLeftRight)
+            .invisible().when(show, |s| s.visible()).group_hover(group.clone(), |s| s.visible())
+            .on_drag(Resize { id, dir }, |resize, _, window, cx| {
+                begin(resize, f32::from(window.mouse_position().x), cx); cx.new(|_| Ghost)
+            })
+            .child(div().w(px(3.)).h(px(bar_h)).rounded(px(3.)).bg(gpui::rgb(bar_color))))
 }
 
 /// The block under `position`, preferring rendered list geometry so static images are found too.
@@ -202,7 +208,7 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
     let group: SharedString = format!("image-{id}").into();
     let scale = if spec.align == Align::Center { 2. } else { 1. };
     let focus = editor.clone();
-    let ring = if crate::theme::is_dark() { 0x2b6be6 } else { 0x2f6fe4 };
+    let ring = 0x547dd0;
     let pct = size_percent(draft.map(|d| d.width), spec.width, base);
     if let Some((url, failed)) = remote_pending {
         let theme = crate::theme::Theme::ocean();
@@ -244,6 +250,7 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
         Some((tw, th)) => picture.w(px(tw)).h(px(th)).object_fit(ObjectFit::Fill),
         None => match width { Some(w) => picture.w(px(w)), None => picture.max_w(px(DEFAULT_MAX)).max_h(px(DEFAULT_MAX_H)) },
     };
+    let img_h = target_size.map(|(_, th)| th);
     let (move_editor, up_editor, out_editor, canvas_editor) = (editor.clone(), editor.clone(), editor.clone(), editor.clone());
     div().relative().w_full().flex().flex_col().items_start()
         .when(spec.align == Align::Center, |s| s.items_center()).when(spec.align == Align::Right, |s| s.items_end())
@@ -269,9 +276,9 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
                     });
                 }
             }).absolute().size_full())
-            .when(active, |s| s.child(div().absolute().inset_0().rounded(px(4.)).border(px(2.)).border_color(gpui::rgb(ring))))
-            .child(handle(id, true, true, -scale, &group, show)).child(handle(id, false, true, scale, &group, show))
-            .child(handle(id, true, false, -scale, &group, show)).child(handle(id, false, false, scale, &group, show))
+            .when(active, |s| s.child(div().absolute().top(px(-6.)).left(px(-6.)).right(px(-6.)).bottom(px(-6.)).rounded(px(8.)).border(px(2.)).border_color(gpui::rgb(ring))))
+            .child(handle(id, true, -scale, img_h, &group, show))
+            .child(handle(id, false, scale, img_h, &group, show))
             .on_drag_move::<Resize>(move |event, _, cx| resize_move(&move_editor, id, f32::from(event.event.position.x), cx))
             .on_mouse_up(MouseButton::Left, move |_, _, cx| resize_end(&up_editor, id, cx))
             .on_mouse_up_out(MouseButton::Left, move |_, _, cx| resize_end(&out_editor, id, cx))
