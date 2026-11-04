@@ -7,25 +7,40 @@ use crate::theme::Theme;
 const PAD_Y: f32 = 9.;
 const PAD_X: f32 = 12.;
 const MIN_ROW: f32 = 44.;
+const COL_GAP: f32 = 24.;
 /// Room kept right of and below the grid for the add-column and add-row buttons.
 pub(super) const EXTEND_ROOM: f32 = 28.;
 pub(super) fn measure(table: &Table, width: Pixels, selected: Option<std::ops::Range<usize>>, window: &mut Window) -> TextLayout {
-    let theme = Theme::ocean(); let font_size = px(14.); let line_height = px(24.);
-    let width = (width - px(EXTEND_ROOM)).max(px(1.));
+    let theme = Theme::ocean();
+    let is_cols = table.is_columns();
+    let font_size = if is_cols { theme.editor_font } else { px(14.) };
+    let line_height = px(24.);
+    let width = if is_cols { width.max(px(1.)) } else { (width - px(EXTEND_ROOM)).max(px(1.)) };
     let count = table.columns.max(1);
-    let mut widths: Vec<f32> = (0..count).map(|index| table.column_widths.get(index)
-        .and_then(|value| value.as_deref()).and_then(|value| value.strip_suffix("px"))
-        .and_then(|value| value.parse::<f32>().ok()).filter(|value| value.is_finite() && *value > 0.)
-        .unwrap_or(120.)).collect();
-    let total = widths.iter().sum::<f32>(); let available = f32::from(width).max(1.);
-    for value in &mut widths { *value = *value / total * available; }
-    let mut xs = vec![px(0.)];
-    for value in widths { xs.push(*xs.last().unwrap() + px(value)); }
+    let col_spans: Vec<(Pixels, Pixels)> = if is_cols {
+        let gap = COL_GAP * (count.saturating_sub(1) as f32);
+        let each = ((f32::from(width) - gap).max(count as f32)) / (count as f32);
+        (0..count).map(|c| {
+            let left = c as f32 * (each + COL_GAP);
+            (px(left), px(left + each))
+        }).collect()
+    } else {
+        let mut widths: Vec<f32> = (0..count).map(|index| table.column_widths.get(index)
+            .and_then(|value| value.as_deref()).and_then(|value| value.strip_suffix("px"))
+            .and_then(|value| value.parse::<f32>().ok()).filter(|value| value.is_finite() && *value > 0.)
+            .unwrap_or(120.)).collect();
+        let total = widths.iter().sum::<f32>(); let available = f32::from(width).max(1.);
+        for value in &mut widths { *value = *value / total * available; }
+        let mut xs = vec![px(0.)];
+        for value in widths { xs.push(*xs.last().unwrap() + px(value)); }
+        (0..count).map(|c| (xs[c], xs[c + 1])).collect()
+    };
     let mut heights = vec![px(MIN_ROW); table.rows.len()];
     let ranges = table.cell_ranges(); let mut cells = Vec::new();
     for (row, cell_index, range) in ranges {
         let cell = &table.rows[row].cells[cell_index];
-        let cell_width = xs[cell.column+cell.colspan] - xs[cell.column];
+        let end_col = (cell.column + cell.colspan).saturating_sub(1).min(count - 1);
+        let cell_width = col_spans[end_col].1 - col_spans[cell.column].0;
         let text: SharedString = if cell.content.text.is_empty() { "\u{200b}".into() }
             else { cell.content.text.clone().into() };
         let foreground = text_runs::attribute_color(&cell.attrs, false)
@@ -62,11 +77,12 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<std::ops::R
     for height in heights { ys.push(*ys.last().unwrap() + height); }
     let cells = cells.into_iter().map(|(row,index,range,mut text,_)| {
         let cell = &table.rows[row].cells[index];
-        let frame = Bounds::new(point(xs[cell.column],ys[row]),
-            size(xs[cell.column+cell.colspan]-xs[cell.column], ys[row+cell.rowspan]-ys[row]));
-        // Vertically centred like `vertical-align: middle`.
+        let (left, right) = (col_spans[cell.column].0, col_spans[(cell.column+cell.colspan).saturating_sub(1).min(count-1)].1);
+        let frame = Bounds::new(point(left,ys[row]),
+            size(right - left, ys[row+cell.rowspan]-ys[row]));
+        // Vertically centred like `vertical-align: middle` for tables; top-aligned for columns.
         let text_height = text.height().max(line_height);
-        let top = ((frame.size.height - text_height) / 2.).max(px(PAD_Y));
+        let top = if is_cols { px(PAD_Y) } else { ((frame.size.height - text_height) / 2.).max(px(PAD_Y)) };
         text.bounds = Bounds::new(frame.origin+point(px(PAD_X),top),
             size((frame.size.width-px(PAD_X*2.)).max(px(1.)), text_height));
         let background = text_runs::attribute_color(&cell.attrs, true)
@@ -78,8 +94,16 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<std::ops::R
         lines:Vec::new(), line_height, cells, alignment:TextAlign::Left }
 }
 
-pub(super) fn paint_background(layout: &TextLayout, window: &mut Window) {
-    let border = Theme::ocean().menu_border;
+pub(super) fn paint_background(layout: &TextLayout, is_columns: bool, window: &mut Window) {
+    let theme = Theme::ocean();
+    if is_columns {
+        for cell in &layout.cells {
+            window.paint_quad(gpui::quad(cell.frame, px(6.), gpui::transparent_black(),
+                px(1.), theme.hairline, gpui::BorderStyle::default()));
+        }
+        return;
+    }
+    let border = theme.menu_border;
     let Some(grid) = grid_rect(layout) else { return };
     for cell in &layout.cells {
         if let Some(color) = cell.background { window.paint_quad(gpui::fill(cell.frame,color)); }

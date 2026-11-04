@@ -32,7 +32,7 @@ impl Editor {
             }
             // First press selects the caret's block, the next one the whole document.
             SelectAll if { let (a, b, ai, bi) = self.ordered(); let block = &self.doc.blocks[ai];
-                ai == bi && block.meta.table.is_none() && !(a.offset == 0 && b.offset == block.text.len()) } => {
+                ai == bi && block.meta.table.as_ref().is_none_or(|t| t.is_columns()) && !(a.offset == 0 && b.offset == block.text.len()) } => {
                 let id = self.caret.head.block; let len = self.block_text().len();
                 self.caret.anchor = Position { block: id, offset: 0 };
                 self.set_head(Position { block: id, offset: len }, true, cx);
@@ -83,7 +83,7 @@ impl Editor {
                     }
                     self.remember_blocks(&text);
                     cx.write_to_clipboard(ClipboardItem::new_string(text));
-                    if matches!(action, Cut) && !self.delete_across(cx) { self.replace_selection("", false, cx); }
+                    if matches!(action, Cut) && !self.boundary_rules(false, cx) && !self.delete_across(cx) { self.replace_selection("", false, cx); }
                 } else if self.copy_whole_block(cx) && matches!(action, Cut) { self.handle(&EditorAction::Backspace, window, cx); }
             }
             Paste => {
