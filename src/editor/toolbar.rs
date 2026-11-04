@@ -4,8 +4,7 @@ use gpui::{BoxShadow, Bounds, Context, CursorStyle, Entity, MouseButton, Pixels,
     div, point, prelude::*, px, rgba};
 use crate::{icons::Icon, theme::{is_dark, tr}};
 pub(super) use crate::ui::floating_bar::{
-    HOVER, INK, ToolbarColors,
-    animate as animate_bar, glyph, icon_toggle_button, sep, shell as pill,
+    ToolbarColors, animate as animate_bar, glyph, icon_toggle_button, sep, shell as pill,
 };
 use super::{format_cmds::FormatPop, model::{Kind, MarkKind}, view::Editor};
 
