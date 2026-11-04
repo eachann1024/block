@@ -170,9 +170,9 @@ impl Element for BlockText {
         let clip = is_table.then(|| gpui::ContentMask { bounds: table_layout::visible(layout.bounds) });
         if is_table { table_layout::track_wheel(self.editor.clone(), self.block, layout, window); }
         window.with_content_mask(clip, |window| {
+            table_layout::paint_background(layout, window);
             super::find_bar::paint_matches(self.editor.read(cx), self.block, layout, window);
             super::annotate::paint_highlights(self.editor.read(cx), self.block, layout, window);
-            table_layout::paint_background(layout, window);
         });
         super::ai::preview::paint_outline(self.editor.read(cx), self.block, layout, window);
         if is_table { super::table_actions::track_hover(self.editor.clone(), self.block, layout, window); }
@@ -216,7 +216,10 @@ impl Element for BlockText {
                 }
             }
             paint_lines(layout, false, window, cx);
-            if is_table { table_layout::paint_edge(layout, window); }
+            if is_table {
+                table_layout::paint_edge(layout, window);
+                super::annotate::paint_table_highlights(self.editor.read(cx), self.block, layout, window);
+            }
         });
         if placeholder { paint_placeholder(layout, window, cx); }
         let saved = std::mem::replace(layout, TextLayout {
