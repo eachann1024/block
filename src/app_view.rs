@@ -35,6 +35,7 @@ impl Render for Workspace {
             }))
             .children(self.overlays(window, cx))
             .children(self.resize_capture(cx))
+            .children(crate::ui::smoke_overlay::render())
     }
 }
 
@@ -65,7 +66,7 @@ impl Workspace {
     fn search_button(&self, enabled: bool, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         let theme = Theme::ocean();
         let shortcut = format_hotkey(&search_shortcut());
-        div().id("search-button").flex_1().min_w_0().h(px(32.)).px(px(9.)).flex().items_center().gap(px(6.))
+        div().id("search-button").relative().children(crate::ui::smoke_overlay::probe("search-button")).flex_1().min_w_0().h(px(32.)).px(px(9.)).flex().items_center().gap(px(6.))
             .rounded(px(8.)).bg(theme.paper).border_1().border_color(if self.search.is_some() { theme.accent } else { theme.btn_border })
             .text_size(px(14.)).text_color(theme.text_secondary)
             .when(enabled, |b| b.cursor(gpui::CursorStyle::PointingHand).hover(|style| style.bg(theme.btn_hover))

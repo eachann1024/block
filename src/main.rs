@@ -8,6 +8,7 @@ pub mod log;
 mod mascot;
 mod quick;
 mod search;
+mod smoke;
 mod theme;
 pub mod ui;
 pub mod window_bounds;
@@ -87,6 +88,7 @@ pub fn apply_app_menus(cx: &mut gpui::App) {
 
 fn main() {
     log::init();
+    let smoke_sandbox = smoke::init_sandbox();
     enqueue_open_inputs(std::env::args().skip(1));
     let initial_state = files::load_state().ok();
     if let Some(state) = &initial_state {
@@ -100,6 +102,7 @@ fn main() {
         search::window::activate_main_window(cx);
     });
     app.run(move |cx: &mut App| {
+        let smoke_sandbox = smoke_sandbox.clone();
         theme::init_fonts(&cx.text_system().all_font_names());
         gpui_component::init(cx);
         // The app is light-only; without this, inputs follow macOS dark mode (white text, black field).
@@ -180,6 +183,9 @@ fn main() {
                         }
                     }
                 }).detach();
+                if smoke::is_requested() {
+                    smoke::spawn(window.window_handle(), workspace.clone(), smoke_sandbox.clone(), cx);
+                }
                 search::window::set_main_window(window.window_handle().downcast::<gpui_component::Root>(), workspace.clone(), cx);
                 cx.on_action({
                     let target = tab_target.clone();
