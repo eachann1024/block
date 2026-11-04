@@ -10,7 +10,7 @@ use super::menu::{ItemId, menu_item, menu_surface, separator};
 
 pub(super) const MIN_WIDTH: f32 = 220.;
 pub(super) const MAX_WIDTH: f32 = 420.;
-const TITLEBAR_LEFT_PAD: f32 = if cfg!(target_os = "macos") { 76. } else { 10. };
+const TITLEBAR_LEFT_PAD: f32 = if cfg!(any(target_os = "macos", target_family = "wasm")) { 82. } else { 10. };
 const TITLEBAR_RIGHT_PAD: f32 = 10.;
 const TOGGLE_SIZE: f32 = 26.;
 const NAV_BUTTON_SIZE: f32 = 24.;
@@ -39,10 +39,16 @@ impl Workspace {
         let width = if self.sidebar_collapsed { px(collapsed_header_width(self.nav_button_count())) } else { self.sidebar_width };
         let glyph = if self.sidebar_collapsed { Icon::SidebarExpand } else { Icon::SidebarCollapse };
         let btn_group: SharedString = "sidebar-toggle-btn".into();
-        div().id("titlebar-left").w(width).h_full().flex_none().flex().items_center()
+        div().id("titlebar-left").w(width).h_full().flex_none().relative().flex().items_center()
             .pl(px(TITLEBAR_LEFT_PAD)).pr(px(TITLEBAR_RIGHT_PAD)).border_r_1().border_color(theme.sidebar_border)
             .window_control_area(WindowControlArea::Drag)
             .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
+            .when(cfg!(target_family = "wasm"), |d| d.child(
+                div().absolute().left(px(14.)).top_0().bottom_0().flex().items_center().gap(px(8.))
+                    .child(div().size(px(12.)).rounded_full().bg(gpui::rgb(0xff5f57)))
+                    .child(div().size(px(12.)).rounded_full().bg(gpui::rgb(0xfebc2e)))
+                    .child(div().size(px(12.)).rounded_full().bg(gpui::rgb(0x28c840)))
+            ))
             .child(div().ml_auto().flex_none().flex().items_center().gap(px(TITLEBAR_GAP))
                 .children(self.render_nav_buttons(cx))
                 .child(div().id("sidebar-toggle").relative().children(crate::ui::smoke_overlay::probe("sidebar-toggle")).group(btn_group.clone()).size(px(TOGGLE_SIZE)).flex_none()
