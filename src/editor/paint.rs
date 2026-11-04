@@ -41,8 +41,7 @@ impl Element for BlockText {
         let id = window.request_measured_layout(style, move |known, available, window, cx| {
             let room = known.width.or(match available.width { AvailableSpace::Definite(w) => Some(w), _ => None }).unwrap_or(px(0.));
             let width = known.width.unwrap_or_else(|| match available.width { AvailableSpace::Definite(w) => w, _ => px(640.) }).max(px(1.));
-            let code_hash = editor_entity.read(cx).code_active_hash(block_id, window);
-            let key = super::view::layout::LayoutKey { content: content ^ code_hash, width_bits: if nowrap { 0 } else { f32::from(width).to_bits() }, nowrap };
+            let key = super::view::layout::LayoutKey { content, width_bits: if nowrap { 0 } else { f32::from(width).to_bits() }, nowrap };
             let editor_id = editor_entity.entity_id();
             if !composing && super::view::layout::get_key(editor_id, block_id) == Some(key) {
                 let borrow = output.borrow();
@@ -76,7 +75,7 @@ impl Element for BlockText {
                 // Inline AI review: the rewrite is diffed in place (thinkly inlinePreview).
                 let (text, runs, has_ai) = match editor.ai_preview(block_id, &runs) { Some((t, r)) => (t.into(), r, true), None => (text, runs, false) };
                 let code_spans = if has_ai { Vec::new() } else { super::inline_code::code_spans(block) };
-                let (text, runs) = super::inline_code::prepare_shaping(&text, runs, &code_spans, super::inline_code::active_code_span(editor, block_id, window).as_ref());
+                let (text, runs) = super::inline_code::prepare_shaping(&text, runs, &code_spans);
                 (text, runs, block.meta.table.clone(), code_spans)
             };
             if nowrap {
