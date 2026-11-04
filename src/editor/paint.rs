@@ -34,13 +34,21 @@ impl Element for BlockText {
         style.flex_basis = relative(0.).into();
         if let Some(language) = &fenced { style.margin = super::code_block::margin(language); }
         style.min_size.width = if nowrap { gpui::Length::Auto } else { px(0.).into() };
+        let _ = line_height;
+        let (size_px, factor) = block_metrics(kind, fenced.is_some(), self.editor.read(cx).minimal, f32::from(theme.editor_font));
+        let (font_size, line_height) = (px(size_px), px(size_px) * factor);
         let editor_entity = self.editor.clone();
         let block_id = self.block;
         let id = window.request_measured_layout(style, move |known, available, window, cx| {
             let room = known.width.or(match available.width { AvailableSpace::Definite(w) => Some(w), _ => None }).unwrap_or(px(0.));
             let width = known.width.unwrap_or_else(|| match available.width { AvailableSpace::Definite(w) => w, _ => px(640.) }).max(px(1.));
+            let selected = {
+                let editor = editor_entity.read(cx);
+                editor.focus.is_focused(window).then(|| editor.selected_range(block_id)).flatten()
+            };
+            let sel_hash = selected.as_ref().map_or(0, |r| ((r.start as u64).wrapping_add(1) << 32) ^ (r.end as u64).wrapping_add(1));
             let key = super::view::layout::LayoutKey {
-                content,
+                content: content ^ sel_hash,
                 width_bits: if nowrap { 0 } else { f32::from(width).to_bits() },
                 nowrap,
             };
@@ -74,6 +82,7 @@ impl Element for BlockText {
                 (text, runs, block.meta.table.clone())
             };
             if nowrap {
+                let runs = super::text_runs::tint_selection(&text, runs, selected, theme.selection_text);
                 let shaped = window.text_system().shape_text(text, font_size, &runs, None, None).unwrap_or_default();
                 let widest = shaped.iter().map(|l| l.width()).fold(px(0.), |a, b| a.max(b)) + px(2.);
                 let mut start = 0;
@@ -85,13 +94,14 @@ impl Element for BlockText {
                 return size(widest.max(room).max(px(1.)), height);
             }
             if let Some(table) = &table {
-                let mut layout = table_layout::measure(table, width, window);
+                let mut layout = table_layout::measure(table, width, selected, window);
                 let height = layout.height() + px(table_layout::EXTEND_ROOM);
                 layout.bounds.size = size(width, height);
                 *output.borrow_mut() = Some(layout);
                 super::view::layout::set_key(editor_id, block_id, key);
                 return size(width, height);
             }
+            let runs = super::text_runs::tint_selection(&text, runs, selected, theme.selection_text);
             let shaped = window.text_system().shape_text(text, font_size, &runs, Some(width), None).unwrap_or_default();
             let mut start = 0;
             let lines = shaped.into_iter().map(|line| { let offset = start; start += line.len() + 1; (offset, line) }).collect();
@@ -186,6 +196,14 @@ impl Element for BlockText {
 /// (font size px, line-height factor) per block kind; shared with the handle gutter.
 pub(super) fn metrics(kind: Kind, base: f32) -> (f32, f32) {
     match kind { Kind::H1 => (28., 1.35), Kind::H2 => (22., 1.4), Kind::H3 => (19., 1.5), _ => (base, 1.5) }
+}
+pub(super) fn block_metrics(kind: Kind, fenced: bool, minimal: bool, base: f32) -> (f32, f32) {
+    if fenced { return (14., 1.6); }
+    match kind {
+        Kind::H1 | Kind::H2 | Kind::H3 => metrics(kind, base),
+        _ if minimal => (16., 1.55),
+        _ => (base, 1.5),
+    }
 }
 thread_local! {
     static PLACEHOLDER: RefCell<Option<gpui::ShapedLine>> = const { RefCell::new(None) };
