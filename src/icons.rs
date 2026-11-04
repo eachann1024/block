@@ -4,7 +4,7 @@
 
 use std::borrow::Cow;
 
-use gpui::{AssetSource, Hsla, IntoElement, Pixels, Result, SharedString, div, prelude::*, svg};
+use gpui::{AssetSource, Div, Hsla, IntoElement, Pixels, Result, SharedString, div, prelude::*, svg};
 
 /// Declares every icon with the layers its SVG files provide.
 macro_rules! icons {
@@ -50,99 +50,99 @@ enum Layer {
 icons! {
     Folder => "folder" [Fill, Line],
     FolderOpen => "folder-open" [Fill, Line],
-    Note => "note" [Fill, Line],
+    Note => "note" [Fill, Line, Accent],
     ChevronRight => "chevron-right" [Fill, Line],
     ChevronLeft => "chevron-left" [Fill, Line],
     Download => "download" [Fill, Line],
     Copy => "copy" [Fill, Line],
     Check => "check" [Fill, Line],
     ChevronDown => "chevron-down" [Fill, Line],
-    Plus => "plus" [Line],
-    Drag => "drag" [Line],
+    Plus => "plus" [Fill, Line],
+    Drag => "drag" [Fill, Line],
     Code => "code" [Fill, Line],
     Heading => "heading" [Fill, Line],
     Eraser => "eraser" [Fill, Line],
     Image => "image" [Fill, Line, Accent],
-    AlignLeft => "align-left" [Line],
-    AlignCenter => "align-center" [Line],
-    AlignRight => "align-right" [Line],
-    Crop => "crop" [Line],
-    Trash => "trash" [Line],
-    Text => "text" [Line],
-    Heading1 => "heading-1" [Line],
-    Heading2 => "heading-2" [Line],
-    Heading3 => "heading-3" [Line],
-    ListBullet => "list-bullet" [Line],
-    ListNumbered => "list-numbered" [Line],
-    Todo => "todo" [Line],
-    Quote => "quote" [Line],
-    Callout => "callout" [Line],
-    Columns => "columns" [Line],
+    AlignLeft => "align-left" [Fill, Line, Accent],
+    AlignCenter => "align-center" [Fill, Line, Accent],
+    AlignRight => "align-right" [Fill, Line, Accent],
+    Crop => "crop" [Fill, Line, Accent],
+    Trash => "trash" [Fill, Line, Accent],
+    Text => "text" [Fill, Line, Accent],
+    Heading1 => "heading-1" [Fill, Line, Accent],
+    Heading2 => "heading-2" [Fill, Line, Accent],
+    Heading3 => "heading-3" [Fill, Line, Accent],
+    ListBullet => "list-bullet" [Fill, Line, Accent],
+    ListNumbered => "list-numbered" [Fill, Line, Accent],
+    Todo => "todo" [Fill, Line, Accent],
+    Quote => "quote" [Fill, Line, Accent],
+    Callout => "callout" [Fill, Line, Accent],
+    Columns => "columns" [Fill, Line, Accent],
     Table => "table" [Fill, Line],
-    Divider => "divider" [Line],
+    Divider => "divider" [Fill, Line, Accent],
     Diagram => "diagram" [Fill, Line, Accent],
     Math => "math" [Fill, Line, Accent],
-    ArrowUp => "arrow-up" [Line],
-    ArrowDown => "arrow-down" [Line],
-    Wrap => "wrap" [Line],
-    SelectAll => "select-all" [Line],
-    Source => "source" [Line],
-    Duplicate => "duplicate" [Line],
-    Cut => "cut" [Line],
-    NotePlus => "note-plus" [Line],
-    FolderPlus => "folder-plus" [Line],
-    Pencil => "pencil" [Line],
-    ArrowLeft => "arrow-left" [Line],
-    ArrowRight => "arrow-right" [Line],
-    InsertAbove => "insert-above" [Line],
-    InsertBelow => "insert-below" [Line],
-    Sparkles => "sparkles" [Line],
-    Close => "close" [Line],
-    More => "more" [Line],
-    FindSearch => "search" [Line],
+    ArrowUp => "arrow-up" [Fill, Line, Accent],
+    ArrowDown => "arrow-down" [Fill, Line, Accent],
+    Wrap => "wrap" [Fill, Line, Accent],
+    SelectAll => "select-all" [Fill, Line, Accent],
+    Source => "source" [Fill, Line, Accent],
+    Duplicate => "duplicate" [Fill, Line, Accent],
+    Cut => "cut" [Fill, Line, Accent],
+    NotePlus => "note-plus" [Fill, Line, Accent],
+    FolderPlus => "folder-plus" [Fill, Line, Accent],
+    Pencil => "pencil" [Fill, Line, Accent],
+    ArrowLeft => "arrow-left" [Fill, Line, Accent],
+    ArrowRight => "arrow-right" [Fill, Line, Accent],
+    InsertAbove => "insert-above" [Fill, Line, Accent],
+    InsertBelow => "insert-below" [Fill, Line, Accent],
+    Sparkles => "sparkles" [Fill, Line, Accent],
+    Close => "close" [Fill, Line],
+    More => "more" [Fill, Line, Accent],
+    FindSearch => "search" [Fill, Line, Accent],
     Sliders => "sliders" [Fill, Line],
-    Stop => "stop" [Line],
-    MessageSquare => "message-square" [Line],
-    History => "history" [Line],
-    AiPlus => "ai-plus" [Line],
+    Stop => "stop" [Fill, Line],
+    MessageSquare => "message-square" [Fill, Line, Accent],
+    History => "history" [Fill, Line, Accent],
+    AiPlus => "ai-plus" [Fill, Line, Accent],
     // Selection toolbar, link popover and image size pill (F-Toolbar / F-Inline).
-    TbComment => "tb-comment" [Line],
-    TbReaction => "tb-reaction" [Line],
-    TbType => "tb-type" [Line],
-    TbBold => "tb-bold" [Line],
-    TbItalic => "tb-italic" [Line],
-    TbUnderline => "tb-underline" [Line],
-    TbStrike => "tb-strike" [Line],
-    TbCode => "tb-code" [Line],
-    TbPalette => "tb-palette" [Line],
-    TbList => "tb-list" [Line],
-    TbLink => "tb-link" [Line],
-    TbImage => "tb-image" [Line],
-    TbChevron => "tb-chevron" [Line],
-    TbChevronRight => "tb-chevron-right" [Line],
-    LinkOpen => "link-open" [Line],
-    LinkCopy => "link-copy" [Line],
-    LinkEdit => "link-edit" [Line],
-    LinkOff => "link-off" [Line],
-    TbMinus => "tb-minus" [Line],
-    TbPlus => "tb-plus" [Line],
-    TbReset => "tb-reset" [Line],
-    NoteCheck => "note-check" [Line],
-    HelpCircle => "help-circle" [Line],
-    ChevronUp => "chevron-up" [Line],
+    TbComment => "tb-comment" [Fill, Line, Accent],
+    TbReaction => "tb-reaction" [Fill, Line, Accent],
+    TbType => "tb-type" [Fill, Line, Accent],
+    TbBold => "tb-bold" [Fill, Line],
+    TbItalic => "tb-italic" [Fill, Line],
+    TbUnderline => "tb-underline" [Fill, Line, Accent],
+    TbStrike => "tb-strike" [Fill, Line, Accent],
+    TbCode => "tb-code" [Fill, Line, Accent],
+    TbPalette => "tb-palette" [Fill, Line, Accent],
+    TbList => "tb-list" [Fill, Line, Accent],
+    TbLink => "tb-link" [Fill, Line, Accent],
+    TbImage => "tb-image" [Fill, Line, Accent],
+    TbChevron => "tb-chevron" [Fill, Line],
+    TbChevronRight => "tb-chevron-right" [Fill, Line],
+    LinkOpen => "link-open" [Fill, Line, Accent],
+    LinkCopy => "link-copy" [Fill, Line, Accent],
+    LinkEdit => "link-edit" [Fill, Line, Accent],
+    LinkOff => "link-off" [Fill, Line, Accent],
+    TbMinus => "tb-minus" [Fill, Line],
+    TbPlus => "tb-plus" [Fill, Line],
+    TbReset => "tb-reset" [Fill, Line, Accent],
+    NoteCheck => "note-check" [Fill, Line, Accent],
+    HelpCircle => "help-circle" [Fill, Line, Accent],
+    ChevronUp => "chevron-up" [Fill, Line],
     FolderReveal => "folder-reveal" [Fill, Line],
     SidebarCollapse => "sidebar-collapse" [Fill, Line, Accent],
-    SidebarExpand => "sidebar-expand" [Line, Accent],
-    ColInsertLeft => "col-insert-left" [Line],
-    ColInsertRight => "col-insert-right" [Line],
-    ColDelete => "col-delete" [Line],
-    RowInsertAbove => "row-insert-above" [Line],
-    RowInsertBelow => "row-insert-below" [Line],
-    RowDelete => "row-delete" [Line],
-    GripHorizontal => "grip-horizontal" [Line],
-    Minus => "minus" [Line],
-    WindowMax => "window-max" [Line],
-    WindowRestore => "window-restore" [Line],
+    SidebarExpand => "sidebar-expand" [Fill, Line, Accent],
+    ColInsertLeft => "col-insert-left" [Fill, Line, Accent],
+    ColInsertRight => "col-insert-right" [Fill, Line, Accent],
+    ColDelete => "col-delete" [Fill, Line, Accent],
+    RowInsertAbove => "row-insert-above" [Fill, Line, Accent],
+    RowInsertBelow => "row-insert-below" [Fill, Line, Accent],
+    RowDelete => "row-delete" [Fill, Line, Accent],
+    GripHorizontal => "grip-horizontal" [Fill, Line],
+    Minus => "minus" [Fill, Line],
+    WindowMax => "window-max" [Fill, Line],
+    WindowRestore => "window-restore" [Fill, Line],
     // Scheme A · Duo semantic menu icons (languages, tabs, inline AI, providers).
     LangAuto => "lang-auto" [Fill, Line, Accent],
     LangPlain => "lang-plain" [Fill, Line, Accent],
@@ -201,7 +201,7 @@ impl AssetSource for Icons {
 }
 
 /// Stacks the fill, line and accent layers, painted in that order.
-pub fn icon(icon: Icon, size: Pixels, colors: IconColors) -> impl IntoElement {
+pub fn icon(icon: Icon, size: Pixels, colors: IconColors) -> Div {
     let mut root = div().relative().flex_none().size(size);
     for (layer, path) in icon.layers() {
         let color = match layer {
@@ -212,6 +212,42 @@ pub fn icon(icon: Icon, size: Pixels, colors: IconColors) -> impl IntoElement {
         root = root.child(svg().absolute().top_0().left_0().size(size).path(*path).text_color(color));
     }
     root
+}
+
+/// Renders `active_colors` when `active` is true; otherwise renders `idle` by default
+/// and switches to `active_colors` when the enclosing `.group(group)` is hovered.
+pub fn stateful_icon(
+    group: impl Into<SharedString>,
+    glyph: Icon,
+    size: Pixels,
+    active: bool,
+    idle: IconColors,
+    active_colors: IconColors,
+) -> Div {
+    if active {
+        return icon(glyph, size, active_colors);
+    }
+    let g: SharedString = group.into();
+    div()
+        .relative()
+        .size(size)
+        .flex_none()
+        .child(
+            div()
+                .size(size)
+                .group_hover(g.clone(), |s| s.invisible())
+                .child(icon(glyph, size, idle)),
+        )
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size(size)
+                .invisible()
+                .group_hover(g, |s| s.visible())
+                .child(icon(glyph, size, active_colors)),
+        )
 }
 
 /// Single-silhouette brand glyph painted in one brand colour.

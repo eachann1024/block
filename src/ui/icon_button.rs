@@ -1,9 +1,9 @@
 use gpui::{
-    App, CursorStyle, Div, ElementId, Hsla, MouseButton, MouseDownEvent, Stateful, Window, div,
-    prelude::*, px, rgb, transparent_black,
+    App, CursorStyle, Div, ElementId, Hsla, MouseButton, MouseDownEvent, SharedString, Stateful,
+    Window, div, prelude::*, px, rgb,
 };
 use crate::{
-    icons::{Icon, IconColors, icon},
+    icons::{Icon, icon, stateful_icon},
     theme::{Theme, is_dark},
 };
 
@@ -15,9 +15,17 @@ pub fn icon_button(
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
     let id: ElementId = id.into();
+    let group = SharedString::from(format!("ib-{id:?}"));
     let probe = crate::ui::smoke_overlay::probe_for(&id);
+    let fg = theme.text_secondary;
+    let lead = if enabled {
+        stateful_icon(group.clone(), glyph, px(14.), false, theme.mono_icon_colors(fg), theme.icon_colors(theme.text))
+    } else {
+        icon(glyph, px(14.), theme.mono_icon_colors(fg))
+    };
     div()
         .id(id)
+        .group(group)
         .relative()
         .children(probe)
         .size(px(24.))
@@ -32,7 +40,7 @@ pub fn icon_button(
                 .on_mouse_down(MouseButton::Left, on_down)
         })
         .when(!enabled, |b| b.opacity(0.5))
-        .child(icon(glyph, px(14.), theme.icon_colors(theme.text_secondary)))
+        .child(lead)
 }
 
 pub fn copy_button(
@@ -45,10 +53,13 @@ pub fn copy_button(
     let hover_fg: Hsla = if dark { rgb(0xe6e9ef).into() } else { rgb(0x16181c).into() };
     let hover_bg = if dark { rgb(0x252a34) } else { rgb(0xe8eaee) };
     let glyph = if copied { Icon::Check } else { Icon::Copy };
-    let tint = |line| IconColors { line, fill: transparent_black(), accent: transparent_black() };
+    let theme = Theme::ocean();
+    let id: ElementId = id.into();
+    let group = SharedString::from(format!("ib-{id:?}"));
+    let icon_fg = if copied { hover_fg } else { base_fg };
     div()
         .id(id)
-        .group("ui-copy-btn")
+        .group(group.clone())
         .size(px(24.))
         .rounded(px(6.))
         .flex()
@@ -56,18 +67,14 @@ pub fn copy_button(
         .justify_center()
         .cursor(CursorStyle::PointingHand)
         .hover(move |s| s.bg(hover_bg))
-        .child(
-            div()
-                .relative()
-                .flex_none()
-                .size(px(13.))
-                .child(div().group_hover("ui-copy-btn", |s| s.invisible()).child(icon(glyph, px(13.), tint(base_fg))))
-                .child(
-                    div().absolute().top_0().left_0().invisible()
-                        .group_hover("ui-copy-btn", |s| s.visible())
-                        .child(icon(glyph, px(13.), tint(hover_fg))),
-                ),
-        )
+        .child(stateful_icon(
+            group,
+            glyph,
+            px(13.),
+            copied,
+            theme.mono_icon_colors(icon_fg),
+            theme.icon_colors(hover_fg),
+        ))
         .on_mouse_down(MouseButton::Left, on_down)
 }
 
@@ -78,9 +85,11 @@ pub fn back_button(
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
     let id: ElementId = id.into();
+    let group = SharedString::from(format!("ib-{id:?}"));
     let probe = crate::ui::smoke_overlay::probe_for(&id);
     div()
         .id(id)
+        .group(group.clone())
         .relative()
         .children(probe)
         .h(px(28.))
@@ -96,7 +105,14 @@ pub fn back_button(
         .text_color(theme.text)
         .hover(move |s| s.bg(theme.hover))
         .on_click(on_click)
-        .child(icon(Icon::ArrowLeft, px(15.), theme.icon_colors(theme.text)))
+        .child(stateful_icon(
+            group,
+            Icon::ArrowLeft,
+            px(15.),
+            false,
+            theme.mono_icon_colors(theme.text),
+            theme.icon_colors(theme.text),
+        ))
         .child(label)
 }
 
@@ -110,9 +126,11 @@ pub fn header_action_button(
     let theme = Theme::ocean();
     let fg = if active { theme.accent } else { theme.text_secondary };
     let id: ElementId = id.into();
+    let group = SharedString::from(format!("ib-{id:?}"));
     let probe = crate::ui::smoke_overlay::probe_for(&id);
     div()
         .id(id)
+        .group(group.clone())
         .relative()
         .children(probe)
         .size(px(30.))
@@ -126,7 +144,14 @@ pub fn header_action_button(
         .hover(move |s| s.bg(theme.hover))
         .tooltip(crate::ui::tooltip::tooltip(tip))
         .on_mouse_down(MouseButton::Left, on_down)
-        .child(icon(glyph, px(16.), theme.icon_colors(fg)))
+        .child(stateful_icon(
+            group,
+            glyph,
+            px(16.),
+            active,
+            theme.mono_icon_colors(fg),
+            theme.icon_colors(if active { fg } else { theme.text }),
+        ))
 }
 
 pub fn toolbar_icon_button(
@@ -138,9 +163,17 @@ pub fn toolbar_icon_button(
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
     let id: ElementId = id.into();
+    let group = SharedString::from(format!("ib-{id:?}"));
     let probe = crate::ui::smoke_overlay::probe_for(&id);
+    let fg = theme.text;
+    let lead = if enabled {
+        stateful_icon(group.clone(), glyph, px(15.), false, theme.mono_icon_colors(fg), theme.icon_colors(theme.text))
+    } else {
+        icon(glyph, px(15.), theme.mono_icon_colors(fg))
+    };
     div()
         .id(id)
+        .group(group)
         .relative()
         .children(probe)
         .size(px(32.))
@@ -159,7 +192,7 @@ pub fn toolbar_icon_button(
                 .on_mouse_down(MouseButton::Left, on_down)
         })
         .when(!enabled, |b| b.opacity(0.5))
-        .child(icon(glyph, px(15.), theme.icon_colors(theme.text)))
+        .child(lead)
 }
 
 pub fn dock_icon_button(
@@ -172,9 +205,11 @@ pub fn dock_icon_button(
     let theme = Theme::ocean();
     let fg = if active { theme.accent } else { theme.text_secondary };
     let id: ElementId = id.into();
+    let group = SharedString::from(format!("ib-{id:?}"));
     let probe = crate::ui::smoke_overlay::probe_for(&id);
     div()
         .id(id)
+        .group(group.clone())
         .relative()
         .children(probe)
         .size(px(30.))
@@ -188,7 +223,14 @@ pub fn dock_icon_button(
         .when(!active, |b| b.hover(move |s| s.bg(theme.hover)))
         .tooltip(crate::ui::tooltip::tooltip(tip))
         .on_mouse_down(MouseButton::Left, on_down)
-        .child(icon(glyph, px(16.), theme.icon_colors(fg)))
+        .child(stateful_icon(
+            group,
+            glyph,
+            px(16.),
+            active,
+            theme.mono_icon_colors(fg),
+            theme.icon_colors(if active { theme.accent } else { theme.text }),
+        ))
 }
 
 

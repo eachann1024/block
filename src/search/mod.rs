@@ -13,7 +13,7 @@ use gpui::{
 };
 use gpui_component::input::{Input, InputState};
 use crate::files::search::{Hit, search_notes};
-use crate::icons::{Icon, icon};
+use crate::icons::{Icon, icon, stateful_icon};
 use crate::theme::{Theme, format_hotkey, is_dark, is_en, search_shortcut, tr};
 use crate::ui::scrollbar;
 
@@ -125,7 +125,7 @@ pub fn render_header(
     let theme = Theme::ocean();
     div().h(px(52.)).flex_none().px(px(16.)).flex().items_center().gap(px(10.))
         .border_b_1().border_color(theme.hairline)
-        .child(icon(Icon::FindSearch, px(18.), theme.icon_colors(theme.text_secondary)))
+        .child(icon(Icon::FindSearch, px(18.), theme.mono_icon_colors(theme.text_secondary)))
         .child(div().flex_1().min_w_0().text_size(px(16.))
             .child(Input::new(input).appearance(false).bordered(false).focus_bordered(false)))
         .child(div().id("search-esc").cursor(CursorStyle::PointingHand)
@@ -210,14 +210,15 @@ fn hit_row<V: 'static>(
     } else {
         hit.folder.clone()
     };
-    div().id(("hit", ix)).relative().when(ix == 0, |r| r.children(crate::ui::smoke_overlay::probe("search-hit-0"))).px(px(12.)).py(px(8.)).flex().flex_col().gap(px(2.)).rounded(px(6.))
+    let hit_group = SharedString::from(format!("search-hit-{ix}"));
+    div().id(("hit", ix)).group(hit_group.clone()).relative().when(ix == 0, |r| r.children(crate::ui::smoke_overlay::probe("search-hit-0"))).px(px(12.)).py(px(8.)).flex().flex_col().gap(px(2.)).rounded(px(6.))
         .border_1().border_color(if selected { theme.accent } else { gpui::transparent_black() })
         .when(selected, |row| row.bg(theme.selected))
         .when(!selected, |row| row.hover(|style| style.bg(theme.hover)))
         .cursor(CursorStyle::PointingHand)
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| on_pick(this, ix, window, cx)))
         .child(div().flex().items_center().gap(px(8.))
-            .child(div().flex_none().child(icon(Icon::Note, px(14.), theme.icon_colors(theme.text_secondary))))
+            .child(div().flex_none().child(stateful_icon(hit_group, Icon::Note, px(14.), selected, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if selected { theme.accent } else { theme.text }))))
             .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
                 .text_size(px(14.)).font_weight(FontWeight(500.))
                 .child(highlighted(hit.title.clone(), &hit.title_marks)))
