@@ -73,7 +73,7 @@ impl Block {
             if range.is_empty() && range.start > 0 { s.start < range.start && range.start <= s.end }
             else { s.start <= range.start && range.start < s.end }
         }).map_or_else(Vec::new, |s| s.marks.clone());
-        if range.is_empty() && !self.spans.iter().any(|s| s.marks.contains(&MarkKind::Code) && s.start < range.start && range.start < s.end) {
+        if !self.spans.iter().any(|s| s.marks.contains(&MarkKind::Code) && s.start < range.start && range.end <= s.end) {
             inherited.retain(|m| *m != MarkKind::Code);
         }
         let mut out = Vec::new();

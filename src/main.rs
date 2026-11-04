@@ -21,6 +21,8 @@ use gpui::{
 
 actions!(thinkly_fast, [Quit, ExportImage]);
 
+pub fn sync_ime_cursor_area(_x: f32, _y: f32, _h: f32) {}
+
 static OPEN_QUEUE: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
 
 fn url_or_arg_to_path(raw: &str) -> Option<PathBuf> {
