@@ -44,7 +44,7 @@ impl Render for Workspace {
 impl Workspace {
     fn sidebar(&self, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
-        let enabled = !self.busy() && self.folder.is_some();
+        let enabled = self.ui_enabled();
         let new_note_tip = if cfg!(target_os = "macos") { tr("新建笔记 ⌘N", "New Note ⌘N") } else { tr("新建笔记 Ctrl+N", "New Note Ctrl+N") };
         div().w(self.sidebar_width).flex_none().h_full().relative().flex().flex_col()
             .bg(theme.sidebar).border_r_1().border_color(theme.sidebar_border)

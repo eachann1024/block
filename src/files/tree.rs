@@ -51,15 +51,10 @@ impl FileTree {
 
     pub fn focus_handle(&self) -> &FocusHandle { &self.focus }
     pub fn note_count(&self) -> usize { self.index.note_count() }
-
     pub fn is_focused(&self, window: &gpui::Window) -> bool { self.focus.is_focused(window) }
 
     pub fn active_target(&self) -> Option<(PathBuf, bool)> {
-        if let Some(dir) = &self.focus_dir {
-            Some((dir.clone(), true))
-        } else {
-            self.selected.as_ref().map(|p| (p.clone(), false))
-        }
+        self.focus_dir.as_ref().map(|d| (d.clone(), true)).or_else(|| self.selected.as_ref().map(|p| (p.clone(), false)))
     }
 
     pub fn set_index(&mut self, index: TreeIndex, cx: &mut Context<Self>) {
@@ -73,8 +68,13 @@ impl FileTree {
     }
 
     /// Rescan result after a file operation: keep expansion, selection and scroll.
-    pub fn replace_index(&mut self, mut index: TreeIndex, expand: Option<PathBuf>, cx: &mut Context<Self>) {
+    pub fn replace_index(&mut self, mut index: TreeIndex, expand: Option<PathBuf>, renamed: Option<(&Path, &Path)>, cx: &mut Context<Self>) {
         let mut expanded = self.index.expanded_paths();
+        if let Some((from, to)) = renamed {
+            expanded = expanded.into_iter().map(|p| super::ops::rebase(&p, from, to).unwrap_or(p)).collect();
+            if let Some(p) = self.focus_dir.as_deref().and_then(|p| super::ops::rebase(p, from, to)) { self.focus_dir = Some(p); }
+            if let Some(p) = self.selected.as_deref().and_then(|p| super::ops::rebase(p, from, to)) { self.selected = Some(p); }
+        }
         expanded.extend(expand);
         index.restore_expanded(&expanded);
         let previous = std::mem::replace(&mut self.index, index);
@@ -103,24 +103,31 @@ impl FileTree {
     }
 
     pub fn focus_dir(&self) -> Option<&Path> { self.focus_dir.as_deref() }
-
     pub fn selected(&self) -> Option<&Path> { self.selected.as_deref() }
 
     pub fn set_renaming(&mut self, renaming: Option<(PathBuf, Entity<InputState>)>, cx: &mut Context<Self>) {
-        self.renaming = renaming;
-        cx.notify();
+        self.renaming = renaming; cx.notify();
+    }
+
+    pub fn finish_rename(&mut self, path: &Path, stem: gpui::SharedString, cx: &mut Context<Self>) {
+        self.renaming = None; self.index.set_stem(path, stem); cx.notify();
     }
 
     pub fn folders(&self) -> Vec<(PathBuf, usize, String)> { self.index.folders() }
 
     pub fn scroll_to(&mut self, path: &Path) {
+        use gpui_component::scroll::ScrollbarHandle as _;
         if let Some(rank) = self.index.visible_rank(path) {
-            self.scroll.scroll_to_item(rank, gpui::ScrollStrategy::Center);
+            let vh = self.scroll.viewport_bounds().size.height;
+            let top = -self.scroll.offset().y;
+            let y = px(rank as f32 * 34.);
+            if vh <= px(0.) || y < top || y + px(34.) > top + vh {
+                self.scroll.scroll_to_item(rank, gpui::ScrollStrategy::Center);
+            }
         }
     }
 
     pub fn contains_root_path(&self, path: &Path) -> bool { self.index.contains_root_path(path) }
-
     pub fn has_notes(&self) -> bool { self.index.has_notes() }
 
     pub fn insert_note(&mut self, path: PathBuf, cx: &mut Context<Self>) {
@@ -131,11 +138,9 @@ impl FileTree {
     pub fn on_open(&mut self, handler: impl Fn(PathBuf, bool, &mut gpui::Window, &mut gpui::App) + 'static) {
         self.on_open = Some(Box::new(handler));
     }
-
     pub fn on_rename(&mut self, handler: impl Fn((PathBuf, bool), &mut gpui::Window, &mut gpui::App) + 'static) {
         self.on_rename = Some(Box::new(handler));
     }
-
     pub fn on_trash(&mut self, handler: impl Fn(PathBuf, &mut gpui::Window, &mut gpui::App) + 'static) {
         self.on_trash = Some(Box::new(handler));
     }
@@ -209,19 +214,9 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
         None => stateful_icon("tree-row", kind, px(16.), highlighted || is_target, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if highlighted { theme.accent } else { theme.text })),
     };
     let label = row.stem.clone();
-    div()
-        .id(path.clone())
-        .group("tree-row")
-        .w_full()
-        .h(theme.menu_item_height)
-        .pl(px(8. + row.depth as f32 * 20.))
-        .pr(px(8.))
-        .flex()
-        .items_center()
-        .gap(px(6.))
-        .rounded(px(6.))
-        .border_1()
-        .border_color(gpui::transparent_black())
+    div().id(path.clone()).group("tree-row").w_full().h(theme.menu_item_height).line_height(px(20.))
+        .pl(px(8. + row.depth as f32 * 20.)).pr(px(8.)).flex().items_center().gap(px(6.)).rounded(px(6.))
+        .border_1().border_color(gpui::transparent_black())
         .when(enabled, |row| row.cursor(CursorStyle::PointingHand))
         .when(highlighted, |row| row.bg(theme.selected).border_color(theme.accent).font_weight(FontWeight(460.)))
         .when(focused && !highlighted, |row| row.bg(theme.selected))
@@ -251,6 +246,8 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
                     move |this, event: &gpui::MouseDownEvent, window, cx| {
                         cx.stop_propagation();
                         if !this.enabled || this.renaming.is_some() { return; }
+                        this.menu_target = Some(path.to_path_buf());
+                        cx.notify();
                         if let Some(handler) = this.on_context.clone() {
                             handler(Some((path.to_path_buf(), dir)), event.position, window, cx);
                         }
@@ -262,7 +259,8 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
             move |this, event: &gpui::MouseDownEvent, window, cx| {
                 cx.stop_propagation();
                 if !this.enabled { return; }
-                window.focus(&this.focus, cx);
+                this.menu_target = Some(path.to_path_buf());
+                cx.notify();
                 if let Some(handler) = this.on_context.clone() {
                     handler(Some((path.to_path_buf(), dir)), event.position, window, cx);
                 }

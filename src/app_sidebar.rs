@@ -103,7 +103,7 @@ impl Workspace {
     pub(super) fn notebook_switcher(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::ocean();
         let name = self.folder.as_ref().map(|path| display_name(path, true)).unwrap_or_else(|| tr("选择笔记本", "Select Notebook").into());
-        let enabled = !self.busy();
+        let enabled = self.ui_enabled();
         let open = self.switcher_open;
         let note_count = self.folder.as_ref().map(|_| self.tree.read(cx).note_count().to_string());
         div().id("notebook-switcher").group("notebook-switcher").relative().children(crate::ui::smoke_overlay::probe("notebook-switcher")).flex_1().min_w_0().h(px(30.)).px(px(8.)).flex().items_center().gap(px(7.))

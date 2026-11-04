@@ -184,6 +184,31 @@ impl Editor {
         }
     }
 
+    pub fn has_dirty_under(&self, prefix: &Path) -> bool {
+        (self.path.as_ref().is_some_and(|p| p.starts_with(prefix)) && self.dirty)
+            || self.sessions.iter().any(|(k, s)| k.starts_with(prefix) && s.dirty)
+    }
+
+    pub fn flush_under(&mut self, prefix: &Path, cx: &mut Context<Self>) -> bool {
+        self.persistence.generation += 1;
+        self.persistence.loading = false;
+        let dirty_keys: Vec<PathBuf> = self.sessions.iter()
+            .filter(|(k, s)| k.starts_with(prefix) && s.dirty)
+            .map(|(k, _)| k.clone()).collect();
+        for key in dirty_keys { self.spawn_save(key, cx); }
+        if let Some(cur) = self.path.clone().filter(|p| p.starts_with(prefix)) {
+            self.commit_composition(cx);
+            self.persistence.timer = None;
+            if self.dirty { self.spawn_save(cur, cx); }
+        }
+        if !self.persistence.saving.is_empty() {
+            self.persistence.pending = Some(Pending::ReleaseUnder);
+            cx.notify();
+            return false;
+        }
+        true
+    }
+
     pub fn release_under(&mut self, prefix: &Path, cx: &mut Context<Self>) -> bool {
         self.persistence.generation += 1;
         self.persistence.loading = false;
