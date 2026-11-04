@@ -272,11 +272,11 @@ impl Workspace {
                 .child(tab_menu_row("tab-menu-export", Some(Icon::Image), tr("生成图片…", "Export as Image…"), Some(exp_hint), true,
                     cx.listener(move |this, _, window, cx| this.export_note(exp_path.clone(), window, cx))))
                 .child(crate::dropdown::separator())
-                .child(tab_menu_row("tab-menu-close", None, tr("关闭", "Close"), None, true, cx.listener(move |this, _, _, cx| this.close_tab(close_one.clone(), cx))))
-                .child(tab_menu_row("tab-menu-close-others", None, tr("关闭其他", "Close Others"), None, has_others, cx.listener(move |this, _, _, cx| this.close_other_tabs(close_others.clone(), cx))))
-                .child(tab_menu_row("tab-menu-close-right", None, tr("关闭右侧", "Close to the Right"), None, has_right, cx.listener(move |this, _, _, cx| this.close_tabs_to_right(ix, cx))))
+                .child(tab_menu_row("tab-menu-close", Some(Icon::TabClose), tr("关闭", "Close"), None, true, cx.listener(move |this, _, _, cx| this.close_tab(close_one.clone(), cx))))
+                .child(tab_menu_row("tab-menu-close-others", Some(Icon::TabCloseOthers), tr("关闭其他", "Close Others"), None, has_others, cx.listener(move |this, _, _, cx| this.close_other_tabs(close_others.clone(), cx))))
+                .child(tab_menu_row("tab-menu-close-right", Some(Icon::TabCloseRight), tr("关闭右侧", "Close to the Right"), None, has_right, cx.listener(move |this, _, _, cx| this.close_tabs_to_right(ix, cx))))
                 .child(crate::dropdown::separator())
-                .child(tab_menu_row("tab-menu-close-all", None, tr("关闭全部", "Close All"), None, true, cx.listener(|this, _, _, cx| this.close_all_tabs(cx))));
+                .child(tab_menu_row("tab-menu-close-all", Some(Icon::TabCloseAll), tr("关闭全部", "Close All"), None, true, cx.listener(|this, _, _, cx| this.close_all_tabs(cx))));
             (menu.position, card)
         };
         let backdrop = deferred(anchored().position(point(px(0.), px(0.))).child(
@@ -294,6 +294,6 @@ fn tab_menu_row(
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> gpui::Stateful<gpui::Div> {
     crate::dropdown::row_with(id, crate::dropdown::RowSpec {
-        icon, label: label.into(), hint: hint.map(Into::into), disabled: !enabled, ..Default::default()
+        icon, label: label.into(), hint: hint.map(Into::into), danger: id == "tab-menu-close-all", disabled: !enabled, ..Default::default()
     }).when(enabled, |row| row.on_mouse_down(MouseButton::Left, on_click))
 }

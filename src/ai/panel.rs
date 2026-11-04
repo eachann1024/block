@@ -21,35 +21,49 @@ fn press(el: gpui::Stateful<gpui::Div>, editor: &Entity<Editor>, run: impl Fn(&m
     })
 }
 
+fn preset_icon(p: Preset) -> Icon {
+    match p {
+        Preset::Polish => Icon::AiPolish,
+        Preset::Simplify => Icon::AiSimplify,
+        Preset::English => Icon::AiTransEn,
+        Preset::Chinese => Icon::AiTransZh,
+        Preset::Jargon => Icon::AiJargon,
+        Preset::Colloquial => Icon::AiColloquial,
+        Preset::List => Icon::AiList,
+        Preset::Tasks => Icon::AiTasks,
+    }
+}
+
 /// Transparent tag button (thinkly `.inline-ai-tag`); `primary` is the filled 应用修改.
-fn tag(id: impl Into<SharedString>, label: impl Into<SharedString>, primary: bool, open: bool, editor: &Entity<Editor>,
+fn tag(id: impl Into<SharedString>, lead: Option<Icon>, label: impl Into<SharedString>, primary: bool, open: bool, editor: &Entity<Editor>,
     run: impl Fn(&mut Editor, &mut gpui::Window, &mut gpui::Context<Editor>) + 'static) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
-    let el = div().id(id.into()).h(px(32.)).px(px(12.)).flex_none().flex().items_center().gap(px(4.)).rounded(px(8.))
+    let el = div().id(id.into()).h(px(32.)).px(px(12.)).flex_none().flex().items_center().gap(px(5.)).rounded(px(8.))
         .text_size(px(14.4)).cursor(CursorStyle::PointingHand)
         .when(primary, |d| d.bg(theme.primary).text_color(gpui::white()).font_weight(FontWeight(500.)).hover(move |s| s.bg(theme.primary_hover)))
         .when(!primary, |d| d.text_color(theme.text).border_1().border_color(theme.hairline).hover(move |s| s.bg(theme.hover)))
         .when(open, |d| d.bg(theme.hover))
+        .when_some(lead, |d, ic| d.child(crate::dropdown::duo_icon(ic, 15.)))
         .child(label.into());
     press(el, editor, run)
 }
 
 fn menu_tag(id: &'static str, label: &'static str, which: AiMenu, current: AiMenu, editor: &Entity<Editor>) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
-    tag(id, label, false, current == which, editor, move |this, _, cx| this.ai_toggle_menu(which, cx))
+    tag(id, None, label, false, current == which, editor, move |this, _, cx| this.ai_toggle_menu(which, cx))
         .child(div().text_color(theme.text_secondary).text_size(px(11.)).child(if current == which { "▴" } else { "▾" }))
 }
 
 fn menu_item(p: Preset, editor: &Entity<Editor>) -> gpui::Stateful<gpui::Div> {
     press(
-        crate::dropdown::row(SharedString::from(format!("ai-item-{p:?}")), None, p.label(), false),
+        crate::dropdown::row(SharedString::from(format!("ai-item-{p:?}")), Some(preset_icon(p)), p.label(), false),
         editor,
         move |this, w, cx| this.ai_preset(p, w, cx),
     )
 }
 
 fn preset_tag(p: Preset, editor: &Entity<Editor>) -> gpui::Stateful<gpui::Div> {
-    tag(SharedString::from(format!("ai-preset-{p:?}")), p.label(), false, false, editor, move |this, w, cx| this.ai_preset(p, w, cx))
+    tag(SharedString::from(format!("ai-preset-{p:?}")), Some(preset_icon(p)), p.label(), false, false, editor, move |this, w, cx| this.ai_preset(p, w, cx))
 }
 
 pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyElement {
@@ -128,13 +142,13 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyEle
         }
         AiStatus::Thinking { .. } => {}
         AiStatus::Review { .. } => {
-            footer = footer.child(tag("ai-accept", tr("应用修改", "Apply Changes"), true, false, &editor, |this, w, cx| this.ai_accept(w, cx)))
-                .child(tag("ai-discard", tr("放弃", "Discard"), false, false, &editor, |this, w, cx| this.ai_close(w, cx)))
-                .child(tag("ai-retry", tr("重新生成", "Regenerate"), false, false, &editor, |this, w, cx| this.ai_retry(w, cx)));
+            footer = footer.child(tag("ai-accept", None, tr("应用修改", "Apply Changes"), true, false, &editor, |this, w, cx| this.ai_accept(w, cx)))
+                .child(tag("ai-discard", None, tr("放弃", "Discard"), false, false, &editor, |this, w, cx| this.ai_close(w, cx)))
+                .child(tag("ai-retry", None, tr("重新生成", "Regenerate"), false, false, &editor, |this, w, cx| this.ai_retry(w, cx)));
         }
         AiStatus::Error { .. } => {
             if !s.prompt.is_empty() {
-                footer = footer.child(tag("ai-retry", tr("重试", "Retry"), false, false, &editor, |this, w, cx| this.ai_retry(w, cx)));
+                footer = footer.child(tag("ai-retry", None, tr("重试", "Retry"), false, false, &editor, |this, w, cx| this.ai_retry(w, cx)));
             }
         }
     }
