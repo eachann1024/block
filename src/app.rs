@@ -44,6 +44,7 @@ pub struct Workspace {
     tabs: Vec<PathBuf>,
     pub(super) nav: nav::NavHistory,
     startup_tabs: Option<(Vec<PathBuf>, Option<PathBuf>)>,
+    pub(super) external_open: Vec<PathBuf>,
     dirty_bits: u64,
     pub(crate) loading: bool,
     choosing: bool,
@@ -173,7 +174,7 @@ impl Workspace {
         tabs::bind_keys(cx);
         nav::bind_keys(cx);
         crate::files::tree::bind_keys(cx);
-        let this = Self { folder: None, folder_error: None, tree, editor, selected: None, tabs: Vec::new(), nav: nav::NavHistory::default(), startup_tabs: None, dirty_bits: 0, loading: true,
+        let this = Self { folder: None, folder_error: None, tree, editor, selected: None, tabs: Vec::new(), nav: nav::NavHistory::default(), startup_tabs: None, external_open: Vec::new(), dirty_bits: 0, loading: true,
             choosing: false, creating: false, persisting: false, pending: None,
             notice: tr("正在读取工作区偏好…", "Loading workspace preferences…").into(), sidebar_width: Theme::ocean().sidebar_width,
             sidebar_collapsed: false, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
@@ -191,10 +192,15 @@ impl Workspace {
                 }
                 match saved.map(|state| state.folder) {
                     Ok(Some(folder)) => this.use_folder_guarded(folder, Some(startup_epoch), cx),
-                    Ok(None) => { this.notice = tr("选择文件夹以浏览 Markdown 笔记", "Select a folder to browse Markdown notes").into(); this.refresh(cx); }
+                    Ok(None) => {
+                        this.notice = tr("选择文件夹以浏览 Markdown 笔记", "Select a folder to browse Markdown notes").into();
+                        this.refresh(cx);
+                        this.drain_external_open(cx);
+                    }
                     Err(error) => {
                         this.notice = format!("{}: {error}", tr("无法读取工作区偏好", "Failed to read workspace preferences"));
                         this.refresh(cx);
+                        this.drain_external_open(cx);
                     }
                 }
             });
