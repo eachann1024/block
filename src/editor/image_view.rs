@@ -1,7 +1,7 @@
 //! Image block rendering: aligned picture, corner resize handles and floating top-centered toolbar.
 use std::{collections::HashMap, path::PathBuf};
 use gpui::{App, Context, CursorStyle, Entity, Global, MouseButton, SharedString, Window, div, prelude::*, px};
-use super::{image_source::{Align, ImageSpec}, view::Editor};
+use super::{image_edit::ImagePop, image_source::{Align, ImageSpec}, view::Editor};
 
 /// Smallest width an image can be dragged or stepped to, as a share of the content width.
 const MIN_SHARE: f32 = 0.1;
@@ -90,13 +90,12 @@ impl Editor {
     }
 }
 
-pub(super) fn image_block(editor: Entity<Editor>, id: u64, path: PathBuf, spec: ImageSpec, active: bool, cx: &mut App) -> impl IntoElement {
+pub(super) fn image_block(editor: Entity<Editor>, id: u64, path: PathBuf, spec: ImageSpec, active: bool, pop: Option<ImagePop>, cx: &mut App) -> impl IntoElement {
     let (base, draft) = {
         let ui = cx.default_global::<ImageUi>();
         ui.paths.insert(id, path.clone());
         (base_of(ui, id), ui.drag.filter(|d| d.id == id))
     };
-    let pop = editor.read(cx).image_menu.as_ref().filter(|(mid, _)| *mid == id).map(|(_, p)| p.clone());
     let dragging = draft.is_some() && cx.has_active_drag();
     let limit = if base > 0. { base } else { DEFAULT_MAX };
     let width = if dragging { draft.map(|d| d.width) } else { spec.width.map(|w| w as f32) }
