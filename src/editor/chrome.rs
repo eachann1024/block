@@ -3,7 +3,7 @@ use gpui::{CursorStyle, MouseButton, Pixels, div, prelude::*, px, rgb, transpare
 use crate::{icons::{Icon, IconColors, icon}, theme::Theme};
 use super::{model::{Block, Kind}, paint::BlockText, view::Editor};
 
-const HANDLE_WIDTH: f32 = 44.;
+const HANDLE_WIDTH: f32 = 56.;
 const MARKER_WIDTH: f32 = 24.;
 const ROW_GAP: f32 = 8.;
 const BLOCK_PAD: f32 = 7.;
@@ -15,8 +15,9 @@ pub(super) fn standard_width(body_width: Pixels) -> Pixels {
     body_width + px(HANDLE_WIDTH + ROW_GAP + RIGHT_INSET)
 }
 
-pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
+pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
+    let is_heading = super::fold::heading_level(block).is_some();
     let checked = block.checked;
     let checkbox_editor = editor.clone();
     let marker = match block.kind { Kind::Bullet => "•".into(), Kind::Numbered => format!("{}.", number.unwrap_or(1)), _ => String::new() };
@@ -33,9 +34,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
     let static_view = image.is_some() || rule;
     div().id(("block", id as usize)).relative().w_full().min_w_0().py(px(if minimal { 5. } else { BLOCK_PAD }))
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
-            if this.minimal { return; }
-            let next = if *hovered { Some(id) } else if this.hover == Some(id) { None } else { this.hover };
-            if this.hover != next { this.hover = next; cx.notify(); }
+            this.hover_block(id, *hovered, cx);
         }))
         .child(div().flex().items_start().w_full().min_w_0().gap(px(ROW_GAP)).pr(px(RIGHT_INSET))
             .child(div().w(px(HANDLE_WIDTH)).flex_none().flex().justify_end().gap(px(2.)).pt(px((line - 22.).max(0.) / 2.))
@@ -52,6 +51,10 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                         let at = this.caret.head.block;
                         this.open_block_menu(at, event.position + gpui::point(px(-10.), px(22.)), super::block_menu::Mode::Slash, cx);
                         cx.stop_propagation();
+                    }))))
+                .when(!minimal && is_heading && (handles || folded), |row| row
+                    .child(fold_button(folded, ("fold", id as usize), cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
+                        this.toggle_fold(id, cx); cx.stop_propagation();
                     })))))
             .when(marker_width > 0., |row| row.child(div().w(px(marker_width)).pl(px(indent)).flex_none().text_color(theme.text_secondary)
                 .text_size(px(size)).line_height(px(line))
@@ -134,6 +137,14 @@ pub(super) fn grip_bounds(block: u64) -> Option<gpui::Bounds<gpui::Pixels>> { GR
 fn handle_button(glyph: Icon, id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
     div().id(id).group("hover-icon").size(px(22.)).flex_none().rounded(px(4.)).flex().items_center().justify_center()
+        .hover(|s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
+        .child(hover_icon(glyph, 14., theme.text_secondary, theme.text))
+        .on_mouse_down(MouseButton::Left, listener)
+}
+fn fold_button(folded: bool, id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
+    let theme = Theme::ocean();
+    let glyph = if folded { Icon::ChevronRight } else { Icon::ChevronDown };
+    div().id(id).group("hover-icon").w(px(18.)).h(px(22.)).flex_none().rounded(px(4.)).flex().items_center().justify_center()
         .hover(|s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
         .child(hover_icon(glyph, 14., theme.text_secondary, theme.text))
         .on_mouse_down(MouseButton::Left, listener)

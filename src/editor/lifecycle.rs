@@ -45,7 +45,9 @@ impl Editor {
                     Ok((path, loaded)) => {
                         this.persistence.base = loaded.base;
                         this.persistence.gate.lock().unwrap().saved.insert(path.clone(), loaded.base);
-                        this.reset_document(loaded.doc); this.path = Some(path); this.dirty = true;
+                        this.reset_document(loaded.doc);
+                        this.folded = crate::editor::fold::restore_folds(&path, &this.doc);
+                        this.path = Some(path); this.dirty = true;
                         this.status = "已恢复草稿。原文件若已删除或被外部修改仍受保护，可复制或导出备份".into();
                         this.refresh_find_matches(cx);
                     }
@@ -136,7 +138,9 @@ impl Editor {
                     Ok(loaded) => {
                         this.persistence.base = loaded.base;
                         this.persistence.gate.lock().unwrap().saved.insert(path.clone(), loaded.base);
-                        this.reset_document(loaded.doc); this.path = Some(path);
+                        this.reset_document(loaded.doc);
+                        this.folded = crate::editor::fold::restore_folds(&path, &this.doc);
+                        this.path = Some(path);
                         this.dirty = loaded.recovered;
                         this.status = if loaded.recovered { "已恢复未保存草稿，请确认后保存".into() } else { "已保存 · 内存会话就绪".into() };
                         this.refresh_find_matches(cx);

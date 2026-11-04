@@ -14,12 +14,12 @@ pub(super) fn css<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a s
 pub(super) fn color(value: &str, background: bool) -> Option<Hsla> {
     let named = match (value, background) {
         ("default",_) => return None,
-        ("gray",false) => "#787774", ("brown",false) => "#9f6b53", ("red",false) => "#d44c47",
-        ("orange",false) => "#d9730d", ("yellow",false) => "#cb912f", ("green",false) => "#448361",
-        ("blue",false) => "#337ea9", ("purple",false) => "#9065b0", ("pink",false) => "#c14c8a",
-        ("gray",true) => "#ebeced", ("brown",true) => "#e9e5e3", ("red",true) => "#fbe4e4",
-        ("orange",true) => "#f6e9d9", ("yellow",true) => "#fbf3db", ("green",true) => "#ddedea",
-        ("blue",true) => "#ddebf1", ("purple",true) => "#eae4f2", ("pink",true) => "#f4dfeb",
+        ("gray",false) => "#6e6e73", ("brown",false) => "#9f6b53", ("red",false) => "#d93025",
+        ("orange",false) => "#d9730d", ("yellow",false) => "#b06000", ("green",false) => "#188038",
+        ("blue",false) => "#1a73e8", ("purple",false) => "#7627bb", ("pink",false) => "#c14c8a",
+        ("gray",true) => "rgba(110, 110, 115, 0.14)", ("brown",true) => "#e9e5e3", ("red",true) => "rgba(217, 48, 37, 0.14)",
+        ("orange",true) => "#f6e9d9", ("yellow",true) => "rgba(249, 171, 0, 0.22)", ("green",true) => "rgba(24, 128, 56, 0.14)",
+        ("blue",true) => "rgba(26, 115, 232, 0.14)", ("purple",true) => "rgba(118, 39, 187, 0.14)", ("pink",true) => "#f4dfeb",
         ("black",_) => "#000000", ("white",_) => "#ffffff", _ => value,
     };
     if let Ok(rgba) = Rgba::try_from(named) { return Some(rgba.into()); }

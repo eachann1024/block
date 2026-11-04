@@ -31,9 +31,29 @@ impl Editor {
         self.dragging = None; self.drag_over = None; self.selecting = false;
         self.selection_origin = None; self.table_drag = None;
     }
+    pub(in crate::editor) fn hover_block(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
+        if self.minimal { return; }
+        self.hover_gen = self.hover_gen.wrapping_add(1);
+        if hovered {
+            if self.hover != Some(id) { self.hover = Some(id); cx.notify(); }
+            return;
+        }
+        if self.hover != Some(id) { return; }
+        let generation = self.hover_gen;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(200)).await;
+            this.update(cx, |this, cx| {
+                if this.hover_gen == generation && this.hover == Some(id) {
+                    this.hover = None;
+                    cx.notify();
+                }
+            }).ok();
+        }).detach();
+    }
     pub(in crate::editor) fn begin_drag(&mut self, id: u64, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
         self.commit_composition(cx); self.clear_pointer();
+        self.hover_gen = self.hover_gen.wrapping_add(1);
         self.dragging = Some(id); self.hover = Some(id); self.toolbar_anchor = None;
         cx.notify();
     }

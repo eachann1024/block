@@ -10,7 +10,7 @@ use super::input::transactions::{Snapshot, HistoryEntry};
 #[path = "interaction.rs"] pub(super) mod interaction;
 #[path = "syntax.rs"] pub(super) mod syntax;
 #[path = "protocol.rs"] mod protocol;
-#[path = "storage.rs"] mod storage;
+#[path = "storage.rs"] pub(super) mod storage;
 #[path = "lifecycle.rs"] mod lifecycle;
 #[path = "session.rs"] mod session;
 use selection::Caret;
@@ -36,6 +36,7 @@ pub struct Editor {
     pub(super) focus: FocusHandle,
     pub(super) caret: Caret,
     pub(super) hover: Option<u64>,
+    pub(super) hover_gen: u64,
     pub(super) dragging: Option<u64>,
     pub(super) drag_over: Option<interaction::DropTarget>,
     pub(super) selecting: bool,
@@ -43,6 +44,8 @@ pub struct Editor {
     pub(super) grip_origin: Option<Point<Pixels>>,
     /// Code blocks the user switched to no-wrap (view state only, never saved).
     pub(super) nowrap: std::collections::HashSet<u64>,
+    /// Folded heading block IDs for the active note (view/session state, never serialized to Markdown).
+    pub(super) folded: std::collections::HashSet<u64>,
     pub(super) table_sel: Option<(u64, super::table_actions::TableSel)>,
     pub(super) table_menu: Option<super::table_actions::TableMenu>,
     pub(super) table_drag: Option<super::table_actions::TableDrag>,
@@ -77,8 +80,8 @@ impl Editor {
     pub fn new(cx: &mut Context<Self>) -> Self {
         cx.on_app_quit(|editor, _| { editor.prepare_to_quit(); async {} }).detach();
         let doc = Doc::empty(); let caret = Caret::new(doc.blocks[0].id);
-        Self { doc, caret, focus: cx.focus_handle(), hover: None, dragging: None,
-            drag_over: None, selecting: false, block_menu: None, grip_origin: None, nowrap: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, link_ui: Default::default(), layouts: HashMap::new(),
+        Self { doc, caret, focus: cx.focus_handle(), hover: None, hover_gen: 0, dragging: None,
+            drag_over: None, selecting: false, block_menu: None, grip_origin: None, nowrap: Default::default(), folded: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, link_ui: Default::default(), layouts: HashMap::new(),
             list: ListState::new(1, ListAlignment::Top, px(120.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
@@ -117,12 +120,18 @@ impl Render for Editor {
         let editor = cx.entity();
         let rows = list(self.list.clone(), move |index, _, cx| {
             editor.update(cx, |this, cx| {
+                if !this.minimal && this.is_index_hidden(index) {
+                    let id = this.doc.blocks[index].id;
+                    this.layouts.remove(&id);
+                    return div().id(("folded-row", id as usize)).into_any_element();
+                }
                 let block = &this.doc.blocks[index];
                 let number = (block.kind == super::model::Kind::Numbered).then(|| this.doc.list_number(block.id)).flatten();
                 let edge = this.drag_over.filter(|target| target.index == index).map(|target| target.after);
-                let handles = !this.minimal && this.hover == Some(block.id) || this.caret.head.block == block.id || this.dragging == Some(block.id);
+                let handles = !this.minimal && (this.hover == Some(block.id) || this.caret.head.block == block.id || this.dragging == Some(block.id));
+                let folded = !this.minimal && this.is_heading_folded(block.id);
                 let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
-                let row = super::chrome::block_row(cx.entity(), block, handles, edge, number, this.caret.head.block == block.id, this.path.clone(), this.nowrap.contains(&block.id), this.minimal, cx);
+                let row = super::chrome::block_row(cx.entity(), block, handles, folded, edge, number, this.caret.head.block == block.id, this.path.clone(), this.nowrap.contains(&block.id), this.minimal, cx);
                 div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
                     // Round only the outer corners so stacked rows read as one band.
                     .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md())).child(row).into_any_element()
