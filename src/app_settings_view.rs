@@ -130,17 +130,17 @@ fn preview_font() -> Font {
         weight: FontWeight::NORMAL,
         style: FontStyle::Normal,
         features: FontFeatures::default(),
-        fallbacks: Some(FontFallbacks::from_fonts(fallbacks.iter().map(|s| (*s).to_string()).collect())),
+        fallbacks: (!fallbacks.is_empty()).then(|| FontFallbacks::from_fonts(fallbacks.iter().map(|s| (*s).to_string()).collect())),
     }
 }
 
 fn mono_font() -> Font {
     Font {
-        family: "JetBrains Mono".into(),
+        family: crate::theme::mono_font_family().into(),
         weight: FontWeight::NORMAL,
         style: FontStyle::Normal,
         features: FontFeatures::default(),
-        fallbacks: Some(FontFallbacks::from_fonts(vec!["Menlo".into(), "PingFang SC".into()])),
+        fallbacks: None,
     }
 }
 
