@@ -179,7 +179,7 @@ impl Render for Editor {
             && self.block_menu.is_none() && self.table_menu.is_none() && window.is_window_active() && self.focus.is_focused(window));
         let std_w = super::chrome::standard_width(theme.content_width);
         let vw = self.list.viewport_bounds().size.width;
-        let rail_w = if !self.minimal && self.annotate.has_visible_rail() && (vw <= px(0.) || vw >= px(860.)) { px(308.) } else { px(0.) };
+        let rail_w = if !self.minimal && self.annotate.has_visible_rail() && (vw <= px(0.) || vw >= px(860.)) { px(232.) } else { px(0.) };
         div().size_full().min_w_0().relative()
             .on_action(cx.listener(|this, _: &Find, w, cx| this.open_find(w, cx)))
             .child(div().id("editor").key_context("Editor").track_focus(&self.focus).size_full().min_w_0()
@@ -216,8 +216,7 @@ impl Render for Editor {
                 .on_mouse_move(cx.listener(|this, event, _, cx| this.pointer_move(event, cx)))
                 .on_mouse_up(MouseButton::Left, cx.listener(|this, event: &gpui::MouseUpEvent, _, cx| this.finish_drag(event.position, cx)))
                 .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.clear_pointer(); cx.notify(); }))
-                // Scroll area: the column is centred in what is left after the stable scrollbar gutter,
-                // shifting left only when needed to keep the 308px comment rail clear.
+                // The column is centred after the scrollbar gutter, leaving 232px for the annotation rail.
                 .child(div().flex_1().min_h_0().min_w_0().w_full().relative().flex().pr(px(scrollbar::GUTTER) + rail_w)
                     .on_scroll(scrollbar::forward_wheel(&self.list))
                     .child(div().h_full().min_w_0().w_full().mx_auto().max_w(std_w + rail_w).flex().justify_end()
