@@ -4,12 +4,11 @@
 use std::ops::Range;
 use gpui::{AnyElement, Context, MouseButton, Window, div, prelude::*, px, rgba};
 use super::{
-    chrome::{HANDLE_WIDTH, RIGHT_INSET, ROW_GAP, TypeMark, grip_button, render_block_row},
+    chrome::{HANDLE_WIDTH, RIGHT_INSET, ROW_GAP, grip_button, render_block_row},
     input::transactions::ListChange,
     model::{Block, Kind},
     view::{Editor, interaction::DropTarget, selection::Position},
 };
-use crate::icons::Icon;
 
 pub(in crate::editor) const GROUP_HANDLE_BIT: u64 = 1 << 62;
 pub(in crate::editor) fn group_handle_id(gid: u64) -> u64 { GROUP_HANDLE_BIT | gid }
@@ -206,7 +205,7 @@ pub(in crate::editor) fn columns_row(this: &Editor, group: Range<usize>, cx: &mu
     }
     let handle = div().w(px(HANDLE_WIDTH)).flex_shrink_0().pt(px(6.)).flex().items_start().justify_end().pr(px(ROW_GAP))
         .on_mouse_move(cx.listener(move |this, _, _, cx| this.hover_block(handle_id, true, cx)))
-        .when(group_active, |row| row.child(grip_button(TypeMark::Icon(Icon::Columns), ("col-grip", gid as usize), cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
+        .when(group_active, |row| row.child(grip_button(("col-grip", gid as usize), cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
             this.begin_drag(handle_id, cx); cx.stop_propagation();
         })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
             if this.dragging == Some(handle_id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }

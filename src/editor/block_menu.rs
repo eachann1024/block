@@ -16,19 +16,7 @@ pub(super) enum Mode { Handle, Slash }
 pub(super) struct BlockMenu {
     pub block: u64, pub anchor: Point<Pixels>, pub mode: Mode, pub index: usize,
 }
-/// What type of block this is, used by the handle's type mark.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum BlockType { Text(Kind), Callout, Code, Table, Image, Divider, Source }
-pub(super) fn block_type(block: &Block) -> BlockType {
-    if block.meta.table.is_some() { BlockType::Table }
-    else if block.meta.callout.is_some() { BlockType::Callout }
-    else if block.meta.code_language.is_some() { BlockType::Code }
-    else if is_divider(block) { BlockType::Divider }
-    else if super::image_source::spec_of(block).is_some() { BlockType::Image }
-    else if block.meta.raw_source.is_some() { BlockType::Source }
-    else { BlockType::Text(block.kind) }
-}
-/// The line icon for a text block type, shared by menus and the handle's type mark.
+/// The line icon for a text block type, shared by slash/block menus.
 pub(super) fn kind_icon(kind: Kind) -> Icon {
     match kind {
         Kind::Paragraph => Icon::Text, Kind::H1 => Icon::Heading1, Kind::H2 => Icon::Heading2, Kind::H3 => Icon::Heading3,
