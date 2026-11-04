@@ -54,6 +54,7 @@ impl Editor {
             Enter if self.enter_rules(cx) => {}
             Enter => {
                 let id = self.caret.head.block;
+                self.unfold_heading(id, cx);
                 if self.caret.is_empty() && self.block_text().is_empty() && self.doc.get(id).is_some_and(|b| b.kind != Kind::Paragraph) {
                     let before = self.snapshot(); self.doc.set_kind(id, Kind::Paragraph); self.record(before, cx);
                 } else { self.replace_selection("\n", false, cx); }
@@ -130,7 +131,7 @@ impl Editor {
             if let Ok(Some(offset)) = next { return Position { offset, ..at }; }
         }
         let index = self.doc.index_of(at.block).unwrap_or(0);
-        let next = if forward { index.checked_add(1).filter(|i| *i < self.doc.blocks.len()) } else { index.checked_sub(1) };
+        let next = self.next_visible_index(index, forward);
         next.map(|i| {
             let b = &self.doc.blocks[i];
             let next_atomic = super::image_source::spec_of(b).is_some() || super::block_menu::is_divider(b);

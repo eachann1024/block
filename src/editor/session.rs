@@ -10,6 +10,7 @@ pub(super) struct TabSession {
     pub history: Vec<HistoryEntry>,
     pub redo: Vec<HistoryEntry>,
     pub nowrap: HashSet<u64>,
+    pub folded: HashSet<u64>,
     pub preferred_x: Option<Pixels>,
     pub dirty: bool,
     pub status: String,
@@ -62,13 +63,14 @@ impl Editor {
         let history = std::mem::take(&mut self.history);
         let redo = std::mem::take(&mut self.redo);
         let nowrap = std::mem::take(&mut self.nowrap);
+        let folded = std::mem::take(&mut self.folded);
         let preferred_x = self.preferred_x.take();
         let dirty = std::mem::replace(&mut self.dirty, false);
         let status = std::mem::take(&mut self.status);
         let revision = self.persistence.revision;
         let base = self.persistence.base;
         self.sessions.insert(path.clone(), TabSession {
-            doc, caret, list, history, redo, nowrap, preferred_x, dirty, status, revision, base,
+            doc, caret, list, history, redo, nowrap, folded, preferred_x, dirty, status, revision, base,
         });
         if dirty {
             self.spawn_save(path.clone(), cx);
@@ -84,6 +86,7 @@ impl Editor {
         self.history = session.history;
         self.redo = session.redo;
         self.nowrap = session.nowrap;
+        self.folded = session.folded;
         self.preferred_x = session.preferred_x;
         self.dirty = session.dirty;
         self.status = if !session.dirty && (session.status.is_empty() || session.status == "已保存") {
@@ -152,6 +155,7 @@ impl Editor {
         let keys: Vec<PathBuf> = self.sessions.keys().filter(|k| k.starts_with(from)).cloned().collect();
         for old in keys {
             if let (Some(new_key), Some(sess)) = (crate::files::ops::rebase(&old, from, to), self.sessions.remove(&old)) {
+                crate::editor::fold::save_folds_for(&new_key, &sess.doc, &sess.folded);
                 self.sessions.insert(new_key, sess);
             }
         }
@@ -166,6 +170,7 @@ impl Editor {
         if let Some(cur) = self.path.clone() {
             if let Some(rebased) = crate::files::ops::rebase(&cur, from, to) {
                 self.path = Some(rebased);
+                self.persist_folds();
                 cx.notify();
             }
         }
