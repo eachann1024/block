@@ -63,14 +63,21 @@ impl Workspace {
         cx: &mut Context<Self>) -> Vec<AnyElement> {
         let (path, dir) = target.clone();
         let mut items: Vec<AnyElement> = Vec::new();
+        if !dir {
+            let p = path.clone();
+            items.push(menu_item(ItemId::Name("export-image"), Icon::Image, tr("生成图片…", "Export as Image…").into(), false, false,
+                cx.listener(move |this, _, window, cx| this.export_note(p.clone(), window, cx)))
+                .into_any_element());
+            items.push(separator());
+        }
         let p = path.clone();
-        items.push(menu_item(ItemId::Name("reveal"), Icon::FolderReveal, tr("在访达中显示", "Reveal in Finder").into(), false, false,
+        items.push(menu_item(ItemId::Name("reveal"), Icon::FolderReveal, crate::files::ops::reveal_label().into(), false, false,
             cx.listener(move |this, _, _, cx| { this.close_overlays(cx); crate::files::ops::reveal_in_finder(&p); }))
             .into_any_element());
         let p = path.clone();
         items.push(menu_item(ItemId::Name("rename"), Icon::Pencil, tr("重命名", "Rename").into(), false, false,
             cx.listener(move |this, _, window, cx| this.start_rename(p.clone(), dir, window, cx)))
-            .child(shortcut_hint("↵"))
+            .child(shortcut_hint(if cfg!(target_os = "macos") { "↵" } else { "F2" }))
             .into_any_element());
         items.push(menu_item(ItemId::Name("move"), Icon::ArrowRight, tr("移动到…", "Move to…").into(), moving, false,
             cx.listener(|this, _, _, cx| {
@@ -79,15 +86,16 @@ impl Workspace {
             })).into_any_element());
         items.push(separator());
         let p = path.clone();
-        items.push(menu_item(ItemId::Name("trash"), Icon::Trash, tr("移到废纸篓", "Move to Trash").into(), false, true,
+        items.push(menu_item(ItemId::Name("trash"), Icon::Trash, crate::files::ops::trash_label().into(), false, true,
             cx.listener(move |this, _, _, cx| this.trash(p.clone(), cx)))
-            .child(shortcut_hint("⌘⌫"))
+            .child(shortcut_hint(if cfg!(target_os = "macos") { "⌘⌫" } else { "Del" }))
             .into_any_element());
         let mut out = vec![deferred(anchored().position(position).snap_to_window_with_margin(px(8.))
             .child(menu_surface(px(MENU_WIDTH)).children(items))).with_priority(2).into_any_element()];
         if moving {
-            // Third row of the parent menu: 4px padding + two rows and gaps.
-            let at = point(position.x + px(MENU_WIDTH + 4.), position.y + px(4. + 2. * (32. + ITEM_GAP)));
+            let move_row = if dir { 2. } else { 3. };
+            let sep_offset = if dir { 0. } else { 9. };
+            let at = point(position.x + px(MENU_WIDTH + 4.), position.y + px(4. + sep_offset + move_row * (32. + ITEM_GAP)));
             out.push(deferred(anchored().position(at).snap_to_window_with_margin(px(8.))
                 .child(self.move_list(&path, dir, cx))).with_priority(3).into_any_element());
         }

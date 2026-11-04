@@ -37,6 +37,17 @@ pub(super) fn bind_keys(cx: &mut App) {
         KeyBinding::new("up", SearchUp, Some("SearchPalette")),
         KeyBinding::new("down", SearchDown, Some("SearchPalette")),
     ]);
+    #[cfg(not(target_os = "macos"))]
+    cx.bind_keys([
+        KeyBinding::new("ctrl-k", OpenSearch, None),
+        KeyBinding::new("ctrl-shift-k", OpenSearch, None),
+        KeyBinding::new("ctrl-alt-k", OpenSearch, None),
+        KeyBinding::new("ctrl-p", OpenSearch, None),
+        KeyBinding::new("ctrl-,", OpenSettings, None),
+        KeyBinding::new("ctrl-n", NewNote, Some("Workspace")),
+        KeyBinding::new("ctrl-shift-n", NewFolder, Some("Workspace")),
+        KeyBinding::new("ctrl-w", Dismiss, Some("SearchPalette")),
+    ]);
 }
 
 impl Workspace {

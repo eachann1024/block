@@ -84,7 +84,7 @@ impl Workspace {
                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| this.open_settings(window, cx)))
                 .child(icon(Icon::Sliders, px(15.), theme.icon_colors(if active { theme.accent } else { theme.text_secondary })))
                 .child(div().flex_1().child(if active { tr("设置中", "Settings") } else { tr("设置", "Settings") }))
-                .when(!active, |b| b.child(kbd("⌘,"))))
+                .when(!active, |b| b.child(kbd(if cfg!(target_os = "macos") { "⌘," } else { "Ctrl+," }))))
     }
 
     /// Notebook name with the two quick-create buttons on the right.

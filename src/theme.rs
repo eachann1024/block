@@ -24,12 +24,14 @@ static LANGUAGE_MODE: AtomicU8 = AtomicU8::new(0);
 static IS_EN: AtomicBool = AtomicBool::new(false);
 
 fn system_is_en() -> bool {
-    if let Ok(out) = Command::new("defaults").args(["read", "-g", "AppleLanguages"]).output() {
-        let s = String::from_utf8_lossy(&out.stdout).to_ascii_lowercase();
-        for line in s.lines() {
-            let t = line.trim().trim_matches(|c: char| c == '"' || c == ',' || c == '(' || c == ')').trim();
-            if t.starts_with("zh") { return false; }
-            if t.starts_with("en") { return true; }
+    if cfg!(target_os = "macos") {
+        if let Ok(out) = Command::new("defaults").args(["read", "-g", "AppleLanguages"]).output() {
+            let s = String::from_utf8_lossy(&out.stdout).to_ascii_lowercase();
+            for line in s.lines() {
+                let t = line.trim().trim_matches(|c: char| c == '"' || c == ',' || c == '(' || c == ')').trim();
+                if t.starts_with("zh") { return false; }
+                if t.starts_with("en") { return true; }
+            }
         }
     }
     std::env::var("LC_ALL").or_else(|_| std::env::var("LANG"))
@@ -54,10 +56,11 @@ pub fn is_en() -> bool { IS_EN.load(Ordering::Relaxed) }
 pub fn tr(zh: &'static str, en: &'static str) -> &'static str { if is_en() { en } else { zh } }
 
 fn system_is_dark() -> bool {
-    Command::new("defaults")
-        .args(["read", "-g", "AppleInterfaceStyle"])
-        .output()
-        .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).trim().eq_ignore_ascii_case("dark"))
+    cfg!(target_os = "macos")
+        && Command::new("defaults")
+            .args(["read", "-g", "AppleInterfaceStyle"])
+            .output()
+            .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).trim().eq_ignore_ascii_case("dark"))
 }
 
 pub fn apply_state(state: &crate::files::state::State) {
@@ -106,8 +109,14 @@ pub fn init_fonts(installed: &[String]) {
             .find(|c| installed.iter().any(|n| n == c))
             .unwrap_or(last)
     };
-    let serif = pick(&["LXGW WenKai", "LXGW WenKai Screen", "Kaiti SC", "Songti SC"], "Songti SC");
-    let mono = pick(&["JetBrains Mono", "Menlo", "Monaco"], "Menlo");
+    let serif = pick(
+        &["LXGW WenKai", "LXGW WenKai Screen", "Kaiti SC", "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", "SimSun"],
+        if cfg!(target_os = "windows") { "SimSun" } else if cfg!(target_os = "linux") { "Noto Serif CJK SC" } else { "Songti SC" },
+    );
+    let mono = pick(
+        &["JetBrains Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono"],
+        if cfg!(target_os = "windows") { "Consolas" } else if cfg!(target_os = "linux") { "DejaVu Sans Mono" } else { "Menlo" },
+    );
     let _ = RESOLVED_FONTS.set((serif, mono));
 }
 
@@ -122,12 +131,13 @@ pub fn editor_font() -> (&'static str, &'static [&'static str]) {
     match font_choice() {
         FontChoice::Sans => (".SystemUIFont", &[]),
         FontChoice::Serif if serif == "Songti SC" => (serif, &[]),
-        FontChoice::Serif => (serif, &["Songti SC"]),
+        FontChoice::Serif => (serif, &["Songti SC", "Noto Serif CJK SC", "SimSun"]),
     }
 }
 
 pub fn set_font_smoothing(on: bool) {
     SMOOTHING.store(on, Ordering::Relaxed);
+    if !cfg!(target_os = "macos") { return; }
     let val = if on { "2" } else { "0" };
     std::thread::spawn(move || {
         let _ = Command::new("defaults")

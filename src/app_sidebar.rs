@@ -10,7 +10,8 @@ use super::menu::{ItemId, menu_item, menu_surface, separator};
 
 pub(super) const MIN_WIDTH: f32 = 200.;
 pub(super) const MAX_WIDTH: f32 = 420.;
-const COLLAPSED_HEADER_WIDTH: f32 = 116.;
+const COLLAPSED_HEADER_WIDTH: f32 = if cfg!(target_os = "macos") { 116. } else { 46. };
+const TITLEBAR_LEFT_PAD: f32 = if cfg!(target_os = "macos") { 76. } else { 10. };
 const SWITCHER_TOP: f32 = 40. + 12. + 36. + 4.;
 
 pub(super) fn clamp_width(width: Pixels) -> Pixels { width.clamp(px(MIN_WIDTH), px(MAX_WIDTH)) }
@@ -31,7 +32,7 @@ impl Workspace {
         let glyph = if self.sidebar_collapsed { Icon::SidebarExpand } else { Icon::SidebarCollapse };
         let btn_group: SharedString = "sidebar-toggle-btn".into();
         div().id("titlebar-left").w(width).h_full().flex_none().flex().items_center()
-            .pl(px(76.)).pr(px(10.)).border_r_1().border_color(theme.sidebar_border)
+            .pl(px(TITLEBAR_LEFT_PAD)).pr(px(10.)).border_r_1().border_color(theme.sidebar_border)
             .window_control_area(WindowControlArea::Drag)
             .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
             .child(div().id("sidebar-toggle").group(btn_group.clone()).ml_auto().size(px(26.)).flex_none()

@@ -9,3 +9,4 @@ pub mod reveal;
 pub mod scrollbar;
 pub mod table_controls;
 pub mod tooltip;
+pub mod window_controls;

@@ -127,7 +127,7 @@ impl Editor {
     }
     pub(super) fn reveal_image(&mut self, id: u64, cx: &mut Context<Self>) {
         match self.image_file(id).filter(|p| p.exists()) {
-            Some(path) => if Command::new("open").arg("-R").arg(&path).spawn().is_err() { cx.reveal_path(&path) },
+            Some(path) => crate::files::ops::reveal_in_finder(&path),
             None => { self.status = tr("找不到图片文件", "Image file not found").into(); cx.notify(); }
         }
     }
