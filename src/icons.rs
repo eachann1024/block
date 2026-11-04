@@ -179,6 +179,8 @@ icons! {
     KeyShift => "key-shift" [Line],
     KeyControl => "key-control" [Line],
     KeyBackspace => "key-backspace" [Line],
+    Refresh => "refresh" [Line],
+    Spinner => "spinner" [Line],
 }
 
 /// The three tints of one icon.
