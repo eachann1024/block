@@ -148,3 +148,18 @@ pub fn icon_toggle_button(
         .child(lead)
         .tooltip(tooltip(tip))
 }
+
+pub fn disabled_icon_button(g: Icon) -> Div {
+    let dim = if is_dark() { 0x5a5a5a } else { 0x9a9994 };
+    div()
+        .h(px(28.))
+        .min_w(px(28.))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .px(px(6.))
+        .rounded(px(8.))
+        .cursor(CursorStyle::Arrow)
+        .child(glyph(g, 16., dim))
+}
