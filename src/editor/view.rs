@@ -175,7 +175,8 @@ impl Render for Editor {
             });
         }).absolute().size_full();
         let floating = self.toolbar_anchor.filter(|_| !self.minimal && !self.caret.is_empty() && !self.selecting && self.dragging.is_none()
-            && self.caret.composing.is_none() && window.is_window_active() && self.focus.is_focused(window));
+            && self.caret.composing.is_none() && !matches!(self.format, Some(super::format_cmds::FormatPop::SelectionMenu { .. }))
+            && self.block_menu.is_none() && self.table_menu.is_none() && window.is_window_active() && self.focus.is_focused(window));
         let std_w = super::chrome::standard_width(theme.content_width);
         let vw = self.list.viewport_bounds().size.width;
         let rail_w = if !self.minimal && self.annotate.has_visible_rail() && (vw <= px(0.) || vw >= px(860.)) { px(308.) } else { px(0.) };

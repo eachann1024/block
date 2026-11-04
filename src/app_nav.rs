@@ -186,7 +186,7 @@ impl Workspace {
         let show_back = self.nav.can_go_back();
         let show_fwd = self.nav.can_go_forward();
         if !show_back && !show_fwd { return None; }
-        let enabled = !self.busy();
+        let enabled = self.ui_enabled();
         Some(div().flex_none().flex().items_center().gap(px(2.))
             .when(show_back, |d| d.child(icon_button("nav-back", Icon::ChevronLeft, enabled, cx.listener(|this, _, _, cx| {
                 cx.stop_propagation();

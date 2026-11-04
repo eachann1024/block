@@ -88,9 +88,13 @@ impl Workspace {
         self.close_overlays(cx);
         self.renaming = None;
         let name = display_name(&path, dir);
-        let input = cx.new(|cx| InputState::new(window, cx).default_value(name));
+        let input = cx.new(|cx| {
+            let mut s = InputState::new(window, cx).default_value(name);
+            s.focus(window, cx);
+            s.select_all(window, cx);
+            s
+        });
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
-            InputEvent::Focus => window.defer(cx, |window, cx| window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx)),
             InputEvent::Change => this.tree.update(cx, |_, cx| cx.notify()),
             InputEvent::PressEnter { .. } => this.commit_rename(window, cx),
             InputEvent::Blur if this.renaming.is_some() => {
@@ -100,15 +104,7 @@ impl Workspace {
             }
             _ => {}
         });
-        self.tree.update(cx, |tree, cx| {
-            tree.scroll_to(&path);
-            tree.set_renaming(Some((path.clone(), input.clone())), cx);
-        });
-        let focus_input = input.clone();
-        cx.defer_in(window, move |_, window, cx| {
-            focus_input.update(cx, |input, cx| input.focus(window, cx));
-            window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx);
-        });
+        self.tree.update(cx, |tree, cx| tree.set_renaming(Some((path.clone(), input.clone())), cx));
         self.renaming = Some(Renaming { path, dir, input, _sub: sub });
         cx.notify();
     }
@@ -132,7 +128,7 @@ impl Workspace {
             return;
         }
         self.renaming = None;
-        self.tree.update(cx, |tree, cx| tree.set_renaming(None, cx));
+        self.tree.update(cx, |tree, cx| tree.finish_rename(&path, name.clone().into(), cx));
         let focus = self.tree.read(cx).focus_handle().clone();
         window.focus(&focus, cx);
         let reopen = self.open_under(&path, cx);
@@ -162,11 +158,14 @@ impl Workspace {
     fn start_file_op(&mut self, op: FileOp, cx: &mut Context<Self>) {
         if self.busy() { return; }
         let target = op.source_path().to_path_buf();
-        let releases = self.has_tab_under(&target, cx);
+        let has_tabs = self.has_tab_under(&target, cx);
+        let is_trash = matches!(op, FileOp::Trash { .. });
         self.file_op = Some(op);
-        if !releases { self.run_file_op(cx); return; }
-        let released = self.editor.update(cx, |editor, cx| editor.release_under(&target, cx));
-        if released { self.run_file_op(cx); }
+        if !has_tabs { self.run_file_op(cx); return; }
+        let ready = self.editor.update(cx, |editor, cx| {
+            if is_trash { editor.release_under(&target, cx) } else { editor.flush_under(&target, cx) }
+        });
+        if ready { self.run_file_op(cx); }
         else if !self.editor.read(cx).is_busy() {
             self.file_op = None;
             self.notice = tr("操作已取消：当前笔记未能保存，请处理编辑器中的错误后重试", "Operation canceled: could not save current note").into();
@@ -179,44 +178,51 @@ impl Workspace {
     pub(super) fn run_file_op(&mut self, cx: &mut Context<Self>) {
         let Some(op) = self.file_op.take() else { return };
         let Some(folder) = self.folder.clone() else { return };
+        if let FileOp::Trash { path } = &op {
+            if let Some(open) = self.remove_tabs_under(path, cx)
+                && self.editor.read(cx).current_path() != Some(open.as_path())
+            {
+                self.open_file(open, cx);
+            }
+        }
         self.working = true;
         self.refresh(cx);
         cx.spawn(async move |this, cx| {
             let result = cx.background_executor().spawn(async move {
-                let (notice, trashed, renamed, open, expand) = match op {
+                let (notice, renamed, open, expand) = match op {
                     FileOp::Trash { path, .. } => {
                         ops::move_to_trash(&path)?;
-                        (ops::trashed_notice(), Some(path), None, None, None)
+                        (ops::trashed_notice(), None, None, None)
                     }
                     FileOp::Rename { path, name, dir, reopen } => {
                         let target = ops::rename(&path, &name, dir)?;
                         let open = reopen.and_then(|open| ops::rebase(&open, &path, &target));
-                        (tr("已重命名", "Renamed"), None, Some((path, target)), open, None)
+                        (tr("已重命名", "Renamed"), Some((path, target)), open, None)
                     }
                     FileOp::Move { path, dest, reopen } => {
                         let target = ops::move_to(&path, &dest)?;
                         let expand = (dest != folder).then_some(dest);
                         let open = reopen.and_then(|open| ops::rebase(&open, &path, &target));
-                        (tr("已移动", "Moved"), None, Some((path, target)), open, expand)
+                        (tr("已移动", "Moved"), Some((path, target)), open, expand)
                     }
                 };
                 let index = TreeIndex::new(scan(&folder)?.nodes);
-                Ok::<_, std::io::Error>((notice, trashed, renamed, open, expand, index))
+                Ok::<_, std::io::Error>((notice, renamed, open, expand, index))
             }).await;
             let _ = this.update(cx, |this, cx| {
                 this.working = false;
                 match result {
-                    Ok((notice, trashed, renamed, open, expand, index)) => {
-                        this.tree.update(cx, |tree, cx| tree.replace_index(index, expand, cx));
-                        let next_open = if let Some(prefix) = trashed {
-                            this.remove_tabs_under(&prefix, cx)
-                        } else {
-                            if let Some((from, to)) = renamed {
-                                this.reconcile_tabs_on_rename(&from, &to, cx);
-                            }
-                            open
-                        };
-                        if let Some(open) = next_open { this.open_file(open, cx); }
+                    Ok((notice, renamed, open, expand, index)) => {
+                        let reb = renamed.as_ref().map(|(f, t)| (f.as_path(), t.as_path()));
+                        this.tree.update(cx, |tree, cx| tree.replace_index(index, expand, reb, cx));
+                        if let Some((from, to)) = renamed {
+                            this.reconcile_tabs_on_rename(&from, &to, cx);
+                        }
+                        if let Some(open) = open
+                            && this.editor.read(cx).current_path() != Some(open.as_path())
+                        {
+                            this.open_file(open, cx);
+                        }
                         this.flash(notice.into(), cx);
                     }
                     Err(error) => { crate::log::error(&format!("file operation failed: {error}")); this.notice = format!("{}: {error}", tr("操作失败", "Operation failed")); }
@@ -259,10 +265,12 @@ impl Workspace {
                 this.working = false;
                 match result {
                     Ok((created, index)) => {
-                        this.tree.update(cx, |tree, cx| tree.replace_index(index, parent, cx));
+                        this.tree.update(cx, |tree, cx| tree.replace_index(index, parent, None, cx));
                         this.refresh(cx);
-                        if folder_kind { this.start_rename(created, true, window, cx); }
-                        else {
+                        if folder_kind {
+                            this.tree.update(cx, |tree, _| tree.scroll_to(&created));
+                            this.start_rename(created, true, window, cx);
+                        } else {
                             this.open_file_in_new_tab(created, cx);
                             this.flash(tr("笔记已创建", "Note created").into(), cx);
                         }

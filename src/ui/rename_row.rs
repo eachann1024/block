@@ -45,7 +45,7 @@ pub fn inspect(path: &Path, dir: bool, input: &Entity<InputState>, cx: &App) -> 
 pub fn style_capsule(row: Stateful<Div>, visual: &RenameVisual) -> Stateful<Div> {
     let theme = Theme::ocean();
     row.bg(theme.paper)
-        .border(px(1.5))
+        .border_1()
         .border_color(visual.border)
         .cursor(CursorStyle::IBeam)
 }
@@ -66,7 +66,8 @@ pub fn input_slot(input: &Entity<InputState>) -> Div {
                 .h(px(24.))
                 .px(px(0.))
                 .py(px(0.))
-                .text_size(theme.ui_font),
+                .text_size(theme.ui_font)
+                .line_height(px(20.)),
         )
 }
 
