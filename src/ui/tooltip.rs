@@ -1,20 +1,42 @@
 use gpui::{
-    AnyElement, AnyView, App, Bounds, Context, ElementId, Font, FontFeatures, FontStyle,
-    FontWeight, IntoElement, Pixels, Render, SharedString, TextRun, Window, anchored, deferred,
-    div, point, prelude::*, px, rgb, rgba, transparent_black,
+    AnyElement, AnyView, App, Bounds, Context, ElementId, FontWeight, Hsla, IntoElement, Pixels,
+    Render, SharedString, Window, anchored, deferred, div, point, prelude::*, px, rgb, rgba,
+    transparent_black,
 };
 use crate::theme::is_dark;
+use crate::ui::shortcut_label::{ShortcutStyle, measure_width, shortcut_label};
+
+const TOOLTIP_HEIGHT: f32 = 30.;
+const TOOLTIP_PAD_X: f32 = 12.;
+const TOOLTIP_BORDER: f32 = 1.;
+const TOOLTIP_CHROME_W: f32 = TOOLTIP_PAD_X * 2. + TOOLTIP_BORDER * 2.;
+const TOOLTIP_FONT_SIZE: f32 = 13.;
+const TOOLTIP_LINE_HEIGHT: f32 = 18.;
+const TOOLTIP_OFFSET_ABOVE: f32 = 36.;
+const TOOLTIP_OFFSET_BELOW: f32 = 6.;
+const TOOLTIP_WINDOW_MARGIN: f32 = 8.;
+
+fn tooltip_style(color: Hsla) -> ShortcutStyle {
+    ShortcutStyle::ui(
+        px(TOOLTIP_FONT_SIZE),
+        px(TOOLTIP_LINE_HEIGHT),
+        FontWeight::MEDIUM,
+        color,
+    )
+}
 
 pub fn tooltip_pill(text: impl Into<SharedString>, id: impl Into<ElementId>) -> impl IntoElement {
+    let text: SharedString = text.into();
     let dark = is_dark();
     let (bg, fg, border) = if dark {
         (rgb(0x202020), rgb(0xececec), rgba(0xffffff12))
     } else {
         (rgb(0x0f0f0f), rgb(0xffffff), rgba(0x0f0f0f00))
     };
+    let style = tooltip_style(fg.into());
     let pill = div()
-        .h(px(30.))
-        .px(px(12.))
+        .h(px(TOOLTIP_HEIGHT))
+        .px(px(TOOLTIP_PAD_X))
         .rounded(px(8.))
         .bg(bg)
         .text_color(fg)
@@ -23,11 +45,8 @@ pub fn tooltip_pill(text: impl Into<SharedString>, id: impl Into<ElementId>) -> 
         .shadow_md()
         .flex()
         .items_center()
-        .text_size(px(13.))
-        .line_height(px(18.))
-        .font_weight(FontWeight::MEDIUM)
         .whitespace_nowrap()
-        .child(text.into());
+        .child(shortcut_label(text.as_ref(), style));
     crate::ui::motion::tooltip_enter(pill, id)
 }
 
@@ -39,29 +58,16 @@ pub fn anchored_tooltip_above(
     window: &Window,
 ) -> AnyElement {
     let text: SharedString = text.into();
-    let run = TextRun {
-        len: text.len(),
-        font: Font {
-            family: ".SystemUIFont".into(),
-            weight: FontWeight::MEDIUM,
-            style: FontStyle::Normal,
-            features: FontFeatures::default(),
-            fallbacks: None,
-        },
-        color: transparent_black(),
-        background_color: None,
-        underline: None,
-        strikethrough: None,
-    };
-    let line = window.text_system().shape_line(text.clone(), px(13.), &[run], None);
-    let pill_w = line.width + px(26.);
+    let style = tooltip_style(transparent_black());
+    let content_w = measure_width(text.as_ref(), &style, window);
+    let pill_w = content_w + px(TOOLTIP_CHROME_W);
     let x = target.center().x - pill_w / 2.;
-    let above = target.top() - px(36.);
-    let y = if above >= viewport_top { above } else { target.bottom() + px(6.) };
+    let above = target.top() - px(TOOLTIP_OFFSET_ABOVE);
+    let y = if above >= viewport_top { above } else { target.bottom() + px(TOOLTIP_OFFSET_BELOW) };
     deferred(
         anchored()
             .position(point(x, y))
-            .snap_to_window_with_margin(px(8.))
+            .snap_to_window_with_margin(px(TOOLTIP_WINDOW_MARGIN))
             .child(tooltip_pill(text, id)),
     )
     .into_any_element()

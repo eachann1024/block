@@ -26,7 +26,19 @@ pub(super) fn separator() -> AnyElement {
 
 fn shortcut_hint(label: &'static str) -> gpui::Div {
     let muted: Hsla = dropdown::palette().muted;
-    div().ml_auto().pl(px(8.)).flex_none().text_size(px(12.)).text_color(muted).child(label)
+    let style = crate::ui::shortcut_label::ShortcutStyle::ui(
+        px(12.),
+        px(16.),
+        gpui::FontWeight::NORMAL,
+        muted,
+    );
+    div()
+        .ml_auto()
+        .pl(px(8.))
+        .flex_none()
+        .flex()
+        .items_center()
+        .child(crate::ui::shortcut_label::shortcut_label(label, style))
 }
 
 pub(super) fn menu_item(
