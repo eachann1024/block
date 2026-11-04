@@ -2,7 +2,7 @@ use gpui::{
     Context, IntoElement, MouseButton, NavigationDirection, ParentElement, Render, Window, div, prelude::*, px,
 };
 use crate::icons::{Icon, icon};
-use crate::theme::{Theme, format_hotkey, search_shortcut, tr};
+use crate::theme::{Theme, format_hotkey, tr};
 use crate::ui::icon_button::{dock_icon_button, toolbar_icon_button};
 use super::Workspace;
 use super::search::{Dismiss, NewFolder, NewNote, OpenSearch, OpenSettings, kbd};
@@ -69,7 +69,7 @@ impl Workspace {
 
     fn search_button(&self, enabled: bool, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         let theme = Theme::ocean();
-        let shortcut = format_hotkey(&search_shortcut());
+        let shortcut = format_hotkey("secondary-k");
         div().id("search-button").relative().children(crate::ui::smoke_overlay::probe("search-button")).flex_1().min_w_0().h(px(32.)).px(px(9.)).flex().items_center().gap(px(6.))
             .rounded(px(8.)).bg(theme.paper).border_1().border_color(if self.search.is_some() { theme.accent } else { theme.btn_border })
             .text_size(px(14.)).text_color(theme.text_secondary)

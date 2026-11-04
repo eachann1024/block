@@ -142,7 +142,7 @@ pub fn render_footer() -> Div {
         .child(div().flex().items_center().gap(px(6.)).child(kbd("↑")).child(kbd("↓")).child(tr("选择", "Select")))
         .child(div().flex().items_center().gap(px(6.)).child(kbd("↵")).child(tr("打开", "Open")))
         .child(div().flex().items_center().gap(px(6.)).child(kbd("esc")).child(tr("关闭", "Close")))
-        .child(div().ml_auto().child(format!("{hotkey_label} {}", tr("搜索与全局唤起", "Search & Switcher"))))
+        .child(div().ml_auto().child(format!("{hotkey_label} {}", tr("全局唤出", "Global Summon"))))
 }
 
 pub fn render_body<V: 'static>(
