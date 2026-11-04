@@ -100,6 +100,9 @@ icons! {
     FindSearch => "search" [Line],
     Sliders => "sliders" [Fill, Line],
     Stop => "stop" [Line],
+    MessageSquare => "message-square" [Line],
+    History => "history" [Line],
+    AiPlus => "ai-plus" [Line],
     // Dark selection toolbar, link popover and image size pill (F-Inline).
     TbType => "tb-type" [Line],
     TbBold => "tb-bold" [Line],

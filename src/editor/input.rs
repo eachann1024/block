@@ -17,6 +17,7 @@ impl Editor {
             Left | Right if self.block_menu_nav(matches!(action, Right), window, cx) => return,
             Backspace if self.block_menu_nav(false, window, cx) => return,
             Cancel if self.block_menu.is_some() => { self.block_menu = None; cx.notify(); return; }
+            Cancel if self.ai_session().is_some() => { self.ai_close(window, cx); return; }
             _ => {}
         }
         if self.block_selection_key(action, window, cx) { return; }
@@ -32,7 +33,7 @@ impl Editor {
             }
             // First press selects the caret's block, the next one the whole document.
             SelectAll if { let (a, b, ai, bi) = self.ordered(); let block = &self.doc.blocks[ai];
-                ai == bi && block.meta.table.as_ref().is_none_or(|t| t.is_columns()) && !(a.offset == 0 && b.offset == block.text.len()) } => {
+                ai == bi && block.meta.table.is_none() && !(a.offset == 0 && b.offset == block.text.len()) } => {
                 let id = self.caret.head.block; let len = self.block_text().len();
                 self.caret.anchor = Position { block: id, offset: 0 };
                 self.set_head(Position { block: id, offset: len }, true, cx);
