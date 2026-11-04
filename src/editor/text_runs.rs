@@ -2,7 +2,6 @@
 use gpui::{Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, Hsla, Rgba,
     StrikethroughStyle, TextRun, UnderlineStyle, px};
 use super::model::{Block, MarkKind};
-use crate::theme::Theme;
 
 pub(super) fn css<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
     attrs.iter().find(|(key,_)| key == "style").and_then(|(_,value)|
@@ -116,7 +115,7 @@ pub(super) fn runs(block: &Block, text: &str, color: Hsla) -> Vec<TextRun> {
             .map_or(&[][..], |span| span.marks.as_slice());
         if marks.contains(&MarkKind::Bold) { run.font.weight = FontWeight::SEMIBOLD; }
         if marks.contains(&MarkKind::Italic) { run.font.style = FontStyle::Italic; }
-        if marks.contains(&MarkKind::Code) { run.font.family = crate::theme::mono_font_family().into(); run.font.fallbacks = None; run.background_color = Some(Theme::ocean().code_bg); }
+        if marks.contains(&MarkKind::Code) { run.font.family = crate::theme::mono_font_family().into(); run.font.fallbacks = None; run.font.weight = FontWeight::MEDIUM; run.color = super::inline_code::code_text_color(false); }
         if marks.contains(&MarkKind::Strike) { run.strikethrough = Some(StrikethroughStyle { color:Some(color), thickness:px(1.) }); }
         for tag in block.meta.inline.iter().filter(|tag| tag.start <= start && end <= tag.end) {
             if tag.name == "a" {
@@ -147,56 +146,32 @@ pub(super) fn plain(len: usize, color: Hsla) -> TextRun {
         fallbacks:(!fallbacks.is_empty()).then(|| FontFallbacks::from_fonts(fallbacks.iter().map(|s| (*s).to_string()).collect())) },
         color, background_color:None, underline:None, strikethrough:None }
 }
-pub(super) fn underline_ranges(text: &str, mut runs: Vec<TextRun>, ranges: &[std::ops::Range<usize>]) -> Vec<TextRun> {
-    for range in ranges {
-        let (mut s, mut e) = (range.start.min(text.len()), range.end.min(text.len()));
-        while s > 0 && !text.is_char_boundary(s) { s -= 1; }
-        while e < text.len() && !text.is_char_boundary(e) { e += 1; }
-        if s >= e { continue; }
-        let mut out = Vec::with_capacity(runs.len() + 2);
-        let mut at = 0;
-        for run in runs {
-            let end = at + run.len;
-            if end <= s || at >= e { out.push(run); }
-            else {
-                if at < s { let mut r = run.clone(); r.len = s - at; out.push(r); }
-                let a = at.max(s); let b = end.min(e);
-                if a < b {
-                    let mut r = run.clone(); r.len = b - a;
-                    r.underline = Some(UnderlineStyle { color: Some(r.color), thickness: px(1.), wavy: false });
-                    out.push(r);
+pub(super) fn paint_tinted_lines(layout: &super::view::layout::TextLayout, color: Hsla, window: &mut gpui::Window) {
+    for cell in &layout.cells { paint_tinted_lines(&cell.text, color, window); }
+    let mask = window.content_mask().bounds;
+    if !layout.bounds.intersects(&mask) { return; }
+    let mut y = layout.bounds.top();
+    for (_, line) in &layout.lines {
+        let h = line.size(layout.line_height).height;
+        if y + h > mask.top() && y < mask.bottom() {
+            let raw = &line.unwrapped_layout;
+            let baseline = (layout.line_height - raw.ascent - raw.descent) * 0.5 + raw.ascent;
+            let mut wraps = line.wrap_boundaries.iter().peekable();
+            let (mut visual, mut start_x, mut row_x, mut row_y) = (0, px(0.), layout.bounds.left() + layout.aligned_x(line, 0), y);
+            for (run_ix, run) in raw.runs.iter().enumerate() {
+                for (glyph_ix, g) in run.glyphs.iter().enumerate() {
+                    if wraps.peek() == Some(&&gpui::WrapBoundary { run_ix, glyph_ix }) {
+                        wraps.next(); visual += 1; start_x = g.position.x;
+                        row_x = layout.bounds.left() + layout.aligned_x(line, visual);
+                        row_y += layout.line_height;
+                    }
+                    if !g.is_emoji && row_y + layout.line_height > mask.top() && row_y < mask.bottom() {
+                        let pos = gpui::point(row_x + g.position.x - start_x, row_y + baseline + g.position.y);
+                        let _ = window.paint_glyph(pos, run.font_id, g.id, raw.font_size, color);
+                    }
                 }
-                if end > e { let mut r = run; r.len = end - e; out.push(r); }
             }
-            at = end;
         }
-        runs = out;
+        y += h;
     }
-    runs
-}
-pub(super) fn tint_selection(text: &str, runs: Vec<TextRun>, sel: Option<std::ops::Range<usize>>, color: Hsla) -> Vec<TextRun> {
-    let Some(sel) = sel else { return runs };
-    let (mut s, mut e) = (sel.start.min(text.len()), sel.end.min(text.len()));
-    while s > 0 && !text.is_char_boundary(s) { s -= 1; }
-    while e < text.len() && !text.is_char_boundary(e) { e += 1; }
-    if s >= e { return runs; }
-    let mut out = Vec::with_capacity(runs.len() + 2);
-    let mut at = 0;
-    for run in runs {
-        let end = at + run.len;
-        if end <= s || at >= e { out.push(run); }
-        else {
-            if at < s { let mut r = run.clone(); r.len = s - at; out.push(r); }
-            let a = at.max(s); let b = end.min(e);
-            if a < b {
-                let mut r = run.clone(); r.len = b - a; r.color = color;
-                if let Some(ul) = &mut r.underline { ul.color = Some(color); }
-                if let Some(st) = &mut r.strikethrough { st.color = Some(color); }
-                out.push(r);
-            }
-            if end > e { let mut r = run; r.len = end - e; out.push(r); }
-        }
-        at = end;
-    }
-    out
 }

@@ -27,9 +27,10 @@ struct Pending {
     text: SharedString, runs: Vec<TextRun>,
     /// Shaped without wrapping; reused whenever the column is wide enough.
     lines: Vec<WrappedLine>, natural: Pixels,
+    code_spans: Vec<Range<usize>>,
 }
 
-pub(super) fn measure(table: &Table, width: Pixels, selected: Option<Range<usize>>, link_ranges: &[Range<usize>], window: &mut Window) -> TextLayout {
+pub(super) fn measure(table: &Table, width: Pixels, window: &mut Window) -> TextLayout {
     let theme = Theme::ocean();
     let font_size = px(FONT_SIZE);
     let line_height = px(LINE_HEIGHT);
@@ -49,22 +50,12 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<Range<usize
         let foreground = text_runs::attribute_color(&cell.attrs, false)
             .or_else(|| text_runs::attribute_color(&table.attrs, false)).unwrap_or(default_fg);
         let runs = text_runs::runs(&cell.content, &text, foreground);
-        let cell_links: Vec<Range<usize>> = link_ranges.iter().filter_map(|r| {
-            let a = r.start.max(range.start);
-            let b = r.end.min(range.end);
-            (a < b).then(|| (a - range.start)..(b - range.start))
-        }).collect();
-        let runs = text_runs::underline_ranges(&text, runs, &cell_links);
-        let cell_sel = selected.as_ref().and_then(|sel| {
-            let a = sel.start.max(range.start);
-            let b = sel.end.min(range.end);
-            (a < b).then(|| (a - range.start)..(b - range.start))
-        });
-        let runs = text_runs::tint_selection(&text, runs, cell_sel, theme.selection_text);
+        let code_spans = super::inline_code::code_spans(&cell.content);
+        let (text, runs) = super::inline_code::prepare_shaping(&text, runs, &code_spans, None);
         let lines: Vec<WrappedLine> = window.text_system().shape_text(text.clone(), font_size, &runs, None, None)
             .map(|lines| lines.into_iter().collect()).unwrap_or_default();
         let natural = lines.iter().map(|line| line.width()).fold(px(0.), |a, b| a.max(b));
-        pending.push(Pending { row, index, range, text, runs, lines, natural });
+        pending.push(Pending { row, index, range, text, runs, lines, natural, code_spans });
     }
     // Columns are as wide as their content (like `table-layout: auto`), never stretched to the page.
     let explicit: Vec<Option<f32>> = (0..count).map(|index| table.column_widths.get(index)
@@ -92,7 +83,7 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<Range<usize
     };
     let mut heights = vec![px(MIN_ROW); table.rows.len()];
     let mut cells = Vec::new();
-    for Pending { row, index, range, text, runs, lines, natural } in pending {
+    for Pending { row, index, range, text, runs, lines, natural, code_spans } in pending {
         let cell = &table.rows[row].cells[index];
         let start_col = cell.column.min(count - 1);
         let end_col = (cell.column + cell.colspan).saturating_sub(1).min(count - 1).max(start_col);
@@ -109,7 +100,7 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<Range<usize
         } else { cell.alignment() };
         let alignment = match alignment { CellAlignment::Left => TextAlign::Left,
             CellAlignment::Center => TextAlign::Center, CellAlignment::Right => TextAlign::Right };
-        let text = TextLayout { bounds:Bounds::default(), lines, line_height, cells:Vec::new(), alignment };
+        let text = TextLayout { bounds:Bounds::default(), lines, line_height, cells:Vec::new(), alignment, code_spans };
         let required = (text.height().max(line_height) + px(PAD_Y * 2. + BORDER)).max(px(MIN_ROW));
         if cell.rowspan <= 1 { heights[row] = heights[row].max(required); }
         cells.push((row, index, range, text, required));
@@ -148,7 +139,7 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<Range<usize
     }).collect();
     // Bounds span the visible column so wide grids scroll instead of squeezing.
     TextLayout { bounds:Bounds::new(point(px(0.),px(0.)), size(width,*ys.last().unwrap_or(&line_height))),
-        lines:Vec::new(), line_height, cells, alignment:TextAlign::Left }
+        lines:Vec::new(), line_height, cells, alignment:TextAlign::Left, code_spans:Vec::new() }
 }
 
 /// The painted grid, excluding the extend-button room the block reserves.
