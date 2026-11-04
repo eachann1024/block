@@ -90,7 +90,7 @@ impl ExportView {
         self.cancel.cancel();
         let restore = self.restore.clone();
         cx.set_global(ExportSlot(None));
-        window.focus(&restore);
+        window.focus(&restore, cx);
     }
 
     pub(super) fn set_scope(&mut self, selection: bool, cx: &mut Context<Self>) {

@@ -58,11 +58,11 @@ fn open(
         .current_path()
         .and_then(|path| path.file_stem())
         .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "未命名".into());
+        .unwrap_or_else(|| crate::theme::tr("未命名", "Untitled").into());
     let restore = editor.focus_handle(cx);
     let view = cx.new(|cx| ExportView::new(title, whole, selection, prefer_selection, restore, cx));
     view.update(cx, |view, cx| view.request(cx));
     let focus = view.read(cx).focus_handle(cx);
     cx.set_global(ExportSlot(Some(view)));
-    window.focus(&focus);
+    window.focus(&focus, cx);
 }

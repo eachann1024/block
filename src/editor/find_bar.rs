@@ -25,10 +25,8 @@ pub(super) fn find_bar(editor: &Editor, cx: &mut Context<Editor>) -> Option<impl
     let count = find.matches.len();
     let query_empty = find.input.read(cx).value().is_empty();
     let label = if query_empty { String::new() } else if count == 0 { crate::theme::tr("无结果", "No results").to_owned() } else { format!("{} / {}", find.current + 1, count) };
-    Some(div().id("find-bar").key_context("FindBar").absolute().top(px(12.)).right(px(20.))
-        .py(px(4.)).pr(px(4.)).pl(px(10.))
-        .flex().items_center().gap(px(4.)).rounded(px(8.)).bg(theme.menu).border_1().border_color(theme.menu_border)
-        .shadow_md().text_size(px(12.)).text_color(theme.text).occlude()
+    let card = crate::ui::popover::find_card("find-bar")
+        .key_context("FindBar")
         .on_action(cx.listener(|this, _: &Escape, window, cx| { this.close_find(window, cx); cx.stop_propagation(); }))
         .on_action(cx.listener(|this, _: &ExitBlock, window, cx| { this.find_step(false, window, cx); cx.stop_propagation(); }))
         .child(icon(Icon::FindSearch, px(14.), tint(theme.text_secondary)))
@@ -38,7 +36,8 @@ pub(super) fn find_bar(editor: &Editor, cx: &mut Context<Editor>) -> Option<impl
         .child(div().w(px(1.)).h(px(18.)).mx(px(2.)).flex_none().bg(theme.sidebar_border))
         .child(button(Icon::ChevronUp, "find-prev", |this, w, cx| this.find_step(false, w, cx), cx))
         .child(button(Icon::TbChevron, "find-next", |this, w, cx| this.find_step(true, w, cx), cx))
-        .child(button(Icon::Close, "find-close", |this, w, cx| this.close_find(w, cx), cx)))
+        .child(button(Icon::Close, "find-close", |this, w, cx| this.close_find(w, cx), cx));
+    Some(div().absolute().top(px(12.)).right(px(20.)).child(crate::ui::popover::animate(card, "find-bar-enter")))
 }
 
 /// Paint all matches of `block` under the text; the current match is stronger.

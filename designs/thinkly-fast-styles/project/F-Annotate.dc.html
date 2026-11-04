@@ -15,7 +15,6 @@ a{color:#2f6fe4}a:hover{color:#1f57c0}
 button,input,textarea{font-family:inherit}
 .mark{background:#fbeed5;border-radius:2px}
 .card{background:#ffffff;border:1px solid #ececea;border-radius:16px;box-shadow:0 6px 20px rgba(31,30,29,.07),0 1px 2px rgba(31,30,29,.05);box-sizing:border-box}
-.chip{display:inline-flex;align-items:center;height:22px;padding:0 6px;border-radius:6px;background:#e7effd;color:#2f6fe4;font-weight:500;font-size:14px}
 .av{width:24px;height:24px;border-radius:12px;background:#2f9e6b;color:#ffffff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex:none}
 .cap{font-size:12px;line-height:16px;color:#5e5d59;margin:0}
 .tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#5e5d59}
@@ -56,17 +55,17 @@ button,input,textarea{font-family:inherit}
 
 <div class="card" style="position:absolute;top:392px;left:0;right:0;padding:12px 14px 10px">
 <label for="anno" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">批注内容</label>
-<div style="display:flex;align-items:center;gap:2px;min-height:28px"><span class="chip">@Claude</span><span id="anno" style="display:inline-block;width:1.5px;height:18px;background:#1f1e1d;margin-left:3px"></span></div>
+<div style="display:flex;align-items:center;gap:2px;min-height:28px"><span id="anno" style="display:inline-block;width:1.5px;height:18px;background:#1f1e1d"></span></div>
 <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
-<label style="display:inline-flex;align-items:center;gap:8px;font-size:13px;color:#37352f;cursor:pointer"><input type="checkbox" checked="checked" style="width:16px;height:16px;margin:0;accent-color:#2f6fe4">Send to Claude</label>
+<label style="display:inline-flex;align-items:center;gap:8px;font-size:13px;color:#37352f;cursor:pointer"><input type="checkbox" checked="checked" style="width:16px;height:16px;margin:0;accent-color:#2f6fe4">Send to AI</label>
 <button aria-label="发送批注" style="width:28px;height:28px;border-radius:14px;border:0;background:#e6e6e3;color:#ffffff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg></button>
 </div>
 </div>
 
 <div style="position:absolute;top:560px;left:0;right:0;display:flex;flex-direction:column;gap:6px">
-<p class="cap">选中文字 → 工具栏「添加批注」→ 选区变浅黄，右侧弹出批注卡，默认带 @Claude 与勾选的 Send to Claude</p>
+<p class="cap">选中文字 → 工具栏「添加批注」→ 选区变浅黄，右侧弹出批注卡，默认勾选 Send to AI</p>
 <p class="cap">输入为空时发送键为灰；有内容变蓝（#2f6fe4）。↵ 发送，⇧↵ 换行，Esc 取消并撤掉高亮</p>
-<p class="cap">取消勾选 = 只留评论；勾选 = 评论同时交给 Claude，Claude 修改的段落以浅黄底标出「改动内容」</p>
+<p class="cap">取消勾选 = 只留评论；勾选 = 评论同时交给 AI，AI 修改的段落以浅黄底标出「改动内容」</p>
 <p class="cap">评论卡与被批注文本同高对齐，点击卡片高亮对应文本；不再有「将选区加入对话」入口</p>
 </div>
 </aside>

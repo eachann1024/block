@@ -1,4 +1,4 @@
-//! Right-rail comment cards, `@Claude` composer card, and reaction picker.
+//! Right-rail comment cards, annotation composer card, and reaction picker.
 use std::{cell::RefCell, collections::HashMap};
 use gpui::{
     AnyElement, Context, CursorStyle, FontWeight, IntoElement, MouseButton, ParentElement,
@@ -94,13 +94,13 @@ fn comment_card(comment: Comment, active_id: Option<u64>, cx: &mut Context<Edito
     });
 
     let status = if comment.streaming {
-        Some(div().mt(px(6.)).ml(px(32.)).text_size(px(12.)).text_color(rgb(0x2f6fe4)).child(tr("Claude 正在改写选中内容…", "Claude is rewriting the selection…")))
+        Some(div().mt(px(6.)).ml(px(32.)).text_size(px(12.)).text_color(rgb(0x2f6fe4)).child(tr("AI 正在改写选中内容…", "AI is rewriting the selection…")))
     } else if let Some(err) = &comment.ai_error {
         Some(div().mt(px(6.)).ml(px(32.)).text_size(px(12.)).text_color(rgb(0xb42318)).child(err.clone()))
     } else if comment.ai_rewritten.is_some() {
         Some(div().mt(px(6.)).ml(px(32.)).flex().items_center().gap(px(6.)).text_size(px(12.)).text_color(rgb(0x787774))
             .child(div().size(px(8.)).rounded(px(2.)).bg(rgb(HL_AI_BG)).border_1().border_color(rgb(HL_AI_BORDER)))
-            .child(tr("Claude 已更新原文", "Claude updated the text")))
+            .child(tr("AI 已更新原文", "AI updated the text")))
     } else {
         None
     };
@@ -140,7 +140,7 @@ fn comment_card(comment: Comment, active_id: Option<u64>, cx: &mut Context<Edito
                     this.caret.anchor = Position { block: block_id, offset: range.start };
                     this.caret.head = pos;
                     this.reveal_caret = true;
-                    window.focus(&this.focus);
+                    window.focus(&this.focus, cx);
                 }
             }
             cx.notify();
@@ -158,11 +158,6 @@ fn composer_card(
     cx: &mut Context<Editor>,
 ) -> impl IntoElement {
     let top = div().min_h(px(28.)).flex().items_center().gap(px(6.))
-        .when(send_to_claude, |d| d.child(
-            div().h(px(22.)).px(px(6.)).rounded(px(6.)).bg(rgb(0xe7effd)).text_color(rgb(0x2f6fe4))
-                .text_size(px(14.)).font_weight(FontWeight(500.)).flex_none().flex().items_center()
-                .child("@Claude"),
-        ))
         .child(div().flex_1().min_w_0().h(px(28.)).flex().items_center().text_size(px(14.)).text_color(rgb(0x1f1e1d))
             .child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)).px(px(0.))));
 
@@ -182,7 +177,7 @@ fn composer_card(
                 cx.notify();
             }))
             .child(checkbox)
-            .child(div().text_size(px(13.)).text_color(rgb(0x37352f)).child(tr("发送给 Claude", "Send to Claude"))))
+            .child(div().text_size(px(13.)).text_color(rgb(0x37352f)).child(tr("发送给 AI", "Send to AI"))))
         .child(div().id("annotate-submit").size(px(28.)).rounded(px(14.)).flex_none().flex().items_center().justify_center()
             .bg(rgb(if has_text { 0x2f6fe4 } else { 0xe6e6e3 }))
             .when(has_text, |d| d.cursor(CursorStyle::PointingHand))

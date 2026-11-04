@@ -104,13 +104,16 @@ pub(super) fn shape(
         spans.push(("", base.clone()));
     }
     let mut buffer = Buffer::new(fonts, Metrics::new(size, size * 1.5));
-    buffer.set_size(fonts, Some(width), None);
-    buffer.set_wrap(fonts, Wrap::WordOrGlyph);
-    buffer.set_rich_text(fonts, spans, &base, Shaping::Advanced, alignment);
+    buffer.set_size(Some(width), None);
+    buffer.set_wrap(Wrap::WordOrGlyph);
+    buffer.set_rich_text(spans, &base, Shaping::Advanced, alignment);
     buffer.shape_until_scroll(fonts, false);
     require_glyphs(&buffer)?;
     if buffer.layout_runs().any(|run| run.line_w > width + 0.5) {
-        return Err(ExportError::Rendering("单个字符超出可用宽度"));
+        return Err(ExportError::Rendering(crate::theme::tr(
+            "单个字符超出可用宽度",
+            "Single character exceeds available width",
+        )));
     }
     Ok(Shaped {
         buffer,

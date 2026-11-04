@@ -1,5 +1,5 @@
 //! Annotation mode (F-Annotate): selection comments, emoji reactions, inline
-//! highlights (`#fbeed5` selected / `#fdf3c4` AI-modified), and `@Claude` rewrites.
+//! highlights (`#fbeed5` selected / `#fdf3c4` AI-modified), and AI rewrites.
 use std::{
     collections::BTreeMap, fs, ops::Range, path::{Path, PathBuf}, process::Command,
     sync::{Arc, atomic::AtomicBool, mpsc}, time::{Duration, SystemTime, UNIX_EPOCH},
@@ -163,7 +163,7 @@ impl Editor {
         let send_to_claude = !range.is_empty();
         let input = cx.new(|cx| InputState::new(window, cx).placeholder(tr("输入批注或修改指令…", "Add comment or edit instruction…")));
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
-            InputEvent::PressEnter { secondary: false } => this.submit_annotation(window, cx),
+            InputEvent::PressEnter { secondary: false, .. } => this.submit_annotation(window, cx),
             InputEvent::Change => cx.notify(),
             _ => {}
         });
@@ -193,7 +193,7 @@ impl Editor {
 
     pub(super) fn close_annotation_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.annotate.composer = None;
-        window.focus(&self.focus);
+        window.focus(&self.focus, cx);
         cx.notify();
     }
 
@@ -237,13 +237,13 @@ impl Editor {
             ai_rewritten: None, ai_error: None, streaming: sent_to_claude,
         });
         self.persist_annotations();
-        window.focus(&self.focus);
+        window.focus(&self.focus, cx);
         if sent_to_claude { self.run_claude_annotation(id, quote, body, cx); }
         cx.notify();
     }
 
     fn run_claude_annotation(&mut self, comment_id: u64, quote: String, instruction: String, cx: &mut Context<Self>) {
-        let system = "你是 Thinkly 笔记的批注修订助手（@Claude）。用户在正文中选中了一段文字并附上批注指令。\
+        let system = "你是 Thinkly 笔记的批注修订助手。用户在正文中选中了一段文字并附上批注指令。\
             请严格按照批注指令改写「选中原文」，只直接输出替换后的新文本本身，不要输出任何解释、引号或多余前后缀。".to_owned();
         let user = format!("选中原文：\n{quote}\n\n批注指令：\n{instruction}\n\n请直接输出替换「选中原文」的新文本：");
         let rx = provider::stream(system, user, Arc::new(AtomicBool::new(false)));

@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>全局交互显现动效规范 · gpui_transitions 驱动</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button{font-family:inherit;font-size:14px;line-height:20px;cursor:pointer}
+.seg-btn{height:32px;padding:0 12px;border:0;border-radius:6px;font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:6px;box-sizing:border-box;transition:background-color 150ms ease,color 150ms ease}
+.act-btn{height:32px;padding:0 12px;border-radius:6px;font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:6px;box-sizing:border-box;transition:background-color 150ms ease,border-color 150ms ease,transform 120ms ease}
+.act-btn:active{transform:scale(0.98)}
+.code-inline{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;line-height:20px;padding:2px 6px;border-radius:4px}
+.menu-row{width:100%;height:32px;padding:0 8px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;gap:8px;font-size:14px;line-height:20px;text-align:left;box-sizing:border-box;transition:background-color 120ms ease}
+.tb-btn{height:30px;padding:0 8px;border:0;border-radius:6px;background:transparent;display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:14px;line-height:20px;box-sizing:border-box;transition:background-color 120ms ease}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:1360px;box-sizing:border-box;display:flex;flex-direction:column;background:{{shellBg}};color:{{textPrimary}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px">
+
+<header style="height:48px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:{{shellBg}};border-bottom:1px solid {{hairline}};box-sizing:border-box;gap:16px;flex-wrap:wrap">
+<div style="display:flex;align-items:center;gap:14px">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none">
+<span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+<span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+<span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+</div>
+<h1 style="margin:0;font-size:16px;line-height:24px;font-weight:560;letter-spacing:-0.01em;color:{{textPrimary}}">Thinkly Fast 全局交互出现动效规范（基于 gpui_transitions 0.1.5 + gpui 0.2.2）</h1>
+</div>
+
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<button class="act-btn" onClick="{{replayAll}}" style="background:{{accentBg}};color:#ffffff;border:1px solid {{accentSolid}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg>
+<span>全量重播进场</span>
+</button>
+<button class="act-btn" onClick="{{toggleSlow}}" style="background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accentSolid}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+<span>{{speedLabel}}</span>
+</button>
+<button class="act-btn" onClick="{{toggleReduced}}" style="background:{{reducedBtnBg}};color:{{textPrimary}};border:1px solid {{reducedBtnBorder}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h20"></path><path d="M7 7l-5 5 5 5"></path><path d="M17 7l5 5-5 5"></path></svg>
+<span>{{reducedLabel}}</span>
+</button>
+<button class="act-btn" onClick="{{toggleTheme}}" style="background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>
+<span>{{themeLabel}}</span>
+</button>
+</div>
+</header>
+
+<main style="flex:1;padding:28px 36px 48px;background:{{paperBg}};box-sizing:border-box;display:flex;flex-direction:column;gap:32px">
+
+<section style="max-width:1368px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<h2 style="margin:0;font-size:20px;line-height:28px;font-weight:560;letter-spacing:-0.02em;color:{{textPrimary}}">六类交互出现场景实时沙盒（点击各卡按钮即时预览进场与退场）</h2>
+<span style="font-size:14px;color:{{textSecondary}}">统一遵循进场快起稳停 cubic-bezier(0.16, 1, 0.3, 1)、退场加速收拢、仅动画透明度与微位移（≤ 8px）</span>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:20px">
+
+<!-- 沙盒 1：块把手、标题折叠与表格胶囊 -->
+<div style="border:1px solid {{borderCol}};border-radius:12px;background:{{surfaceBg}};padding:20px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<strong style="font-size:15px;font-weight:560;color:{{textPrimary}}">块把手 · 标题折叠 · 行列胶囊</strong>
+<button class="act-btn" onClick="{{toggleHandles}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">{{handlesBtnText}}</button>
+</div>
+<div style="font-size:14px;color:{{textSecondary}}">进场 120ms · 退场 90ms · 位移 X -3px → 0 · 折叠箭头旋转 0° ↔ -90°（150ms）</div>
+
+<div style="border:1px solid {{hairline}};border-radius:8px;background:{{paperBg}};padding:16px 14px;display:flex;flex-direction:column;gap:12px;min-height:176px;box-sizing:border-box">
+<div style="display:flex;align-items:center;gap:6px">
+<div style="width:54px;flex:none;display:flex;align-items:center;justify-content:flex-end;gap:2px;opacity:{{handleOpacity}};transform:{{handleTransform}};transition:{{handleTransition}}">
+<button onClick="{{toggleHandles}}" aria-label="拖拽或打开块菜单" style="width:22px;height:24px;border:0;border-radius:6px;background:{{hoverBg}};color:{{textSecondary}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+<svg width="12" height="14" viewBox="0 0 12 14" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="3" r="1.2"></circle><circle cx="8.5" cy="3" r="1.2"></circle><circle cx="3.5" cy="7" r="1.2"></circle><circle cx="8.5" cy="7" r="1.2"></circle><circle cx="3.5" cy="11" r="1.2"></circle><circle cx="8.5" cy="11" r="1.2"></circle></svg>
+</button>
+<button onClick="{{toggleFold}}" aria-label="折叠或展开章节" style="width:24px;height:24px;border:0;border-radius:6px;background:{{hoverBg}};color:{{textPrimary}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform:{{foldRotate}};transition:{{foldTransition}}"><path d="M6 9l6 6 6-6"></path></svg>
+</button>
+</div>
+<span style="font-size:16px;font-weight:560;color:{{textPrimary}}">二、编辑器交互动效收敛</span>
+<button onClick="{{toggleFold}}" aria-label="复制标题链接" style="height:24px;padding:0 6px;border:0;border-radius:6px;background:{{hoverBg}};color:{{accentSolid}};font-size:14px;opacity:{{handleOpacity}};transform:{{handleTransform}};transition:{{handleTransition}}">#</button>
+</div>
+
+<div style="padding-left:60px;overflow:hidden;max-height:{{foldBodyMaxH}};opacity:{{foldBodyOpacity}};transition:{{foldBodyTransition}}">
+<div style="font-size:14px;color:{{textSecondary}};margin-bottom:10px">块把手只在鼠标悬停或光标所在块旁显现，移出后 90ms 干净隐退。</div>
+<div style="position:relative;padding-top:8px">
+<div style="display:flex;justify-content:center;margin-bottom:-7px;position:relative;z-index:2;opacity:{{handleOpacity}};transform:{{colPillTransform}};transition:{{handleTransition}}">
+<button onClick="{{toggleHandles}}" aria-label="表格列操作把手" style="width:28px;height:14px;border-radius:999px;border:1px solid {{accentSolid}};background:{{cardBg}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+<svg width="12" height="6" viewBox="0 0 12 6" fill="{{accentSolid}}" aria-hidden="true"><circle cx="2.5" cy="1.5" r="1"></circle><circle cx="6" cy="1.5" r="1"></circle><circle cx="9.5" cy="1.5" r="1"></circle><circle cx="2.5" cy="4.5" r="1"></circle><circle cx="6" cy="4.5" r="1"></circle><circle cx="9.5" cy="4.5" r="1"></circle></svg>
+</button>
+</div>
+<div style="height:34px;border:1px solid {{borderCol}};border-radius:6px;background:{{surfaceBg}};display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:14px;color:{{textPrimary}}">
+<span>模块：src/editor/chrome.rs</span>
+<span style="color:{{textSecondary}}">gpui_transitions::BoolLerp</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- 沙盒 2：选区浮动工具栏与调色盘 -->
+<div style="border:1px solid {{borderCol}};border-radius:12px;background:{{surfaceBg}};padding:20px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<strong style="font-size:15px;font-weight:560;color:{{textPrimary}}">选区工具栏 · 图片浮条 · 调色盘</strong>
+<div style="display:flex;gap:6px">
+<button class="act-btn" onClick="{{toggleToolbar}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">{{toolbarBtnText}}</button>
+<button class="act-btn" onClick="{{togglePalette}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">调色盘</button>
+</div>
+</div>
+<div style="font-size:14px;color:{{textSecondary}}">进场 180ms（Y +4px → 0）· 退场 130ms · 二级调色盘 140ms 锚点展开</div>
+
+<div style="border:1px solid {{hairline}};border-radius:8px;background:{{paperBg}};padding:14px;display:flex;flex-direction:column;gap:10px;min-height:176px;position:relative;box-sizing:border-box">
+<div style="display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:8px;background:{{menuBg}};border:1px solid {{borderCol}};opacity:{{toolbarOpacity}};transform:{{toolbarTransform}};transition:{{toolbarTransition}}">
+<button class="tb-btn" onClick="{{toggleToolbar}}" style="color:{{textPrimary}};font-weight:600">B</button>
+<button class="tb-btn" onClick="{{toggleToolbar}}" style="color:{{textPrimary}};font-style:italic">I</button>
+<button class="tb-btn" onClick="{{toggleToolbar}}" style="color:{{textPrimary}};text-decoration:underline">U</button>
+<button class="tb-btn" onClick="{{togglePalette}}" style="background:{{selectedBg}};color:{{textPrimary}};border:1px solid {{accentSolid}}">
+<span>A</span>
+<span style="width:10px;height:10px;border-radius:3px;background:#547dd0;display:inline-block"></span>
+</button>
+<button class="tb-btn" onClick="{{toggleToolbar}}" style="color:{{textPrimary}}">链接</button>
+<button class="tb-btn" onClick="{{toggleToolbar}}" style="color:{{accentSolid}};font-weight:500">AI 改写 ⌘J</button>
+</div>
+
+<div style="padding:8px 10px;border-radius:8px;background:{{menuBg}};border:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;gap:8px;opacity:{{paletteOpacity}};transform:{{paletteTransform}};transition:{{paletteTransition}}">
+<span style="font-size:14px;color:{{textSecondary}}">文字与高亮色</span>
+<div style="display:flex;gap:6px">
+<button onClick="{{togglePalette}}" aria-label="墨黑" style="width:20px;height:20px;border-radius:4px;border:1px solid {{borderCol}};background:#20242c;padding:0"></button>
+<button onClick="{{togglePalette}}" aria-label="Ocean 蓝" style="width:20px;height:20px;border-radius:4px;border:2px solid {{accentSolid}};background:#e5edfc;padding:0"></button>
+<button onClick="{{togglePalette}}" aria-label="琥珀黄" style="width:20px;height:20px;border-radius:4px;border:1px solid {{borderCol}};background:#fbe7a6;padding:0"></button>
+<button onClick="{{togglePalette}}" aria-label="松石绿" style="width:20px;height:20px;border-radius:4px;border:1px solid {{borderCol}};background:#d3f1e2;padding:0"></button>
+</div>
+</div>
+
+<div style="margin-top:auto;padding:8px 10px;border-radius:6px;background:{{surfaceBg}};font-size:14px;color:{{textPrimary}}">
+<span>已选中文本：</span>
+<span style="background:{{selectedBg}};padding:2px 6px;border-radius:4px;border:1px solid {{accentSolid}}">使用 gpui_transitions 统一驱动浮层进退场</span>
+</div>
+</div>
+</div>
+
+<!-- 沙盒 3：右键菜单、斜杠菜单与二级子菜单 -->
+<div style="border:1px solid {{borderCol}};border-radius:12px;background:{{surfaceBg}};padding:20px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<strong style="font-size:15px;font-weight:560;color:{{textPrimary}}">右键菜单 · 斜杠菜单 · 二级子菜单</strong>
+<div style="display:flex;gap:6px">
+<button class="act-btn" onClick="{{toggleMenu}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">{{menuBtnText}}</button>
+<button class="act-btn" onClick="{{toggleSubmenu}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">子菜单</button>
+</div>
+</div>
+<div style="font-size:14px;color:{{textSecondary}}">一级菜单 160ms（Y -4px → 0）· 二级悬停子菜单 140ms（X -4px → 0）</div>
+
+<div style="border:1px solid {{hairline}};border-radius:8px;background:{{paperBg}};padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:176px;align-items:start;box-sizing:border-box">
+<div style="padding:6px;border-radius:8px;background:{{menuBg}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:2px;opacity:{{menuOpacity}};transform:{{menuTransform}};transition:{{menuTransition}}">
+<button class="menu-row" onClick="{{toggleMenu}}" style="color:{{textPrimary}}"><span>新建同级笔记</span></button>
+<button class="menu-row" onClick="{{toggleSubmenu}}" style="background:{{selectedBg}};color:{{textPrimary}};border:1px solid {{accentSolid}};justify-content:space-between">
+<span>转换为块类型</span>
+<span>▸</span>
+</button>
+<button class="menu-row" onClick="{{toggleMenu}}" style="color:{{textPrimary}}"><span>复制块锚点链接</span></button>
+<button class="menu-row" onClick="{{toggleMenu}}" style="color:#d9534f"><span>删除当前块</span></button>
+</div>
+
+<div style="padding:6px;border-radius:8px;background:{{menuBg}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:2px;opacity:{{submenuOpacity}};transform:{{submenuTransform}};transition:{{submenuTransition}}">
+<button class="menu-row" onClick="{{toggleSubmenu}}" style="background:{{hoverBg}};color:{{textPrimary}}"><span>二级标题 H2</span></button>
+<button class="menu-row" onClick="{{toggleSubmenu}}" style="color:{{textPrimary}}"><span>待办清单 Todo</span></button>
+<button class="menu-row" onClick="{{toggleSubmenu}}" style="color:{{textPrimary}}"><span>高亮提示块 Callout</span></button>
+<button class="menu-row" onClick="{{toggleSubmenu}}" style="color:{{textPrimary}}"><span>代码块 Code</span></button>
+</div>
+</div>
+</div>
+
+<!-- 沙盒 4：标签页槽位、侧栏抽屉与页内查找栏 -->
+<div style="border:1px solid {{borderCol}};border-radius:12px;background:{{surfaceBg}};padding:20px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+<strong style="font-size:15px;font-weight:560;color:{{textPrimary}}">多标签槽位 · 侧栏折叠 · 页内查找 ⌘F</strong>
+<div style="display:flex;gap:6px">
+<button class="act-btn" onClick="{{toggleDrawer}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">侧栏 ⌘\</button>
+<button class="act-btn" onClick="{{toggleTabSlot}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">标签页</button>
+<button class="act-btn" onClick="{{toggleFindBar}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">查找 ⌘F</button>
+</div>
+</div>
+<div style="font-size:14px;color:{{textSecondary}}">侧栏宽度 180ms 可中途打断 · 标签槽位 150ms ease_out_quint · 查找栏 160ms 顶边滑入</div>
+
+<div style="border:1px solid {{hairline}};border-radius:8px;background:{{paperBg}};overflow:hidden;display:flex;flex-direction:column;min-height:176px;box-sizing:border-box">
+<div style="height:36px;background:{{shellBg}};border-bottom:1px solid {{hairline}};display:flex;align-items:center;padding:0 8px;gap:6px">
+<button class="tb-btn" onClick="{{toggleDrawer}}" style="height:26px;padding:0 8px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">侧栏</button>
+<div style="height:26px;padding:0 10px;border-radius:6px;background:{{selectedBg}};border:1px solid {{accentSolid}};color:{{textPrimary}};display:inline-flex;align-items:center;font-size:14px">架构设计.md</div>
+<div style="height:26px;width:{{tabSlotW}};padding:{{tabSlotPad}};border-radius:6px;background:{{hoverBg}};color:{{textSecondary}};display:inline-flex;align-items:center;overflow:hidden;white-space:nowrap;opacity:{{tabSlotOpacity}};transition:{{tabSlotTransition}};font-size:14px">动效规范.md ×</div>
+</div>
+
+<div style="flex:1;display:flex;position:relative;min-height:138px">
+<div style="width:{{drawerW}};background:{{surfaceBg}};border-right:1px solid {{hairline}};overflow:hidden;opacity:{{drawerOpacity}};transition:{{drawerTransition}};display:flex;flex-direction:column;gap:4px;padding:{{drawerPad}};box-sizing:border-box">
+<div style="font-size:14px;color:{{textPrimary}};white-space:nowrap">本地笔记库</div>
+<div style="font-size:14px;color:{{textSecondary}};white-space:nowrap">├─ 架构设计.md</div>
+<div style="font-size:14px;color:{{accentSolid}};white-space:nowrap">└─ 动效规范.md</div>
+</div>
+<div style="flex:1;padding:12px;position:relative;display:flex;flex-direction:column;justify-content:flex-end">
+<div style="position:absolute;top:8px;right:8px;padding:4px 10px;border-radius:8px;background:{{menuBg}};border:1px solid {{accentSolid}};display:flex;align-items:center;gap:8px;opacity:{{findOpacity}};transform:{{findTransform}};transition:{{findTransition}}">
+<span style="font-size:14px;color:{{textPrimary}}">transition</span>
+<span style="font-size:14px;color:{{textSecondary}}">1 / 6</span>
+</div>
+<div style="font-size:14px;color:{{textSecondary}}">侧栏与标签栏仅在各自独立轨道过渡，正文 720px 阅读净宽保持稳定不重排。</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- 沙盒 5：全局搜索 ⌘⇧K、AI 面板 ⌘J 与弹窗遮罩 -->
+<div style="border:1px solid {{borderCol}};border-radius:12px;background:{{surfaceBg}};padding:20px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<strong style="font-size:15px;font-weight:560;color:{{textPrimary}}">全局搜索 ⌘⇧K · AI 面板 ⌘J · 导出预览</strong>
+<div style="display:flex;gap:6px">
+<button class="act-btn" onClick="{{toggleModal}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">{{modalBtnText}}</button>
+<button class="act-btn" onClick="{{toggleAiPanel}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">AI 面板 ⌘J</button>
+</div>
+</div>
+<div style="font-size:14px;color:{{textSecondary}}">遮罩 150ms 淡入 · 模态面板 200ms（Y -8px → 0）· 退场 150ms 同步释放焦点</div>
+
+<div style="border:1px solid {{hairline}};border-radius:8px;background:{{paperBg}};padding:12px;display:flex;flex-direction:column;gap:10px;min-height:176px;box-sizing:border-box">
+<div style="padding:10px 12px;border-radius:10px;background:{{menuBg}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:8px;opacity:{{modalOpacity}};transform:{{modalTransform}};transition:{{modalTransition}}">
+<div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid {{hairline}};padding-bottom:6px">
+<span style="font-size:14px;color:{{textPrimary}};font-weight:500">搜索标题与正文：gpui_transitions</span>
+<span style="font-size:14px;color:{{textSecondary}}">ESC 退出</span>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px;border-radius:6px;background:{{selectedBg}};border:1px solid {{accentSolid}};font-size:14px;color:{{textPrimary}}">
+<span>Thinkly Fast 动效架构指南</span>
+<span style="color:{{accentSolid}}">命中 4 处</span>
+</div>
+</div>
+
+<div style="padding:10px 12px;border-radius:8px;background:{{menuBg}};border:1px solid {{accentSolid}};display:flex;align-items:center;justify-content:space-between;gap:8px;opacity:{{aiOpacity}};transform:{{aiTransform}};transition:{{aiTransition}}">
+<span style="font-size:14px;color:{{textPrimary}}">AI 润色：精简此段交互说明并对齐术语</span>
+<span style="font-size:14px;color:{{accentSolid}};font-weight:500">生成中 · 星轨动效</span>
+</div>
+</div>
+</div>
+
+<!-- 沙盒 6：全局 Tooltip、代码复制切换与链接浮层 -->
+<div style="border:1px solid {{borderCol}};border-radius:12px;background:{{surfaceBg}};padding:20px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<strong style="font-size:15px;font-weight:560;color:{{textPrimary}}">全局 Tooltip · 复制状态切换 · 链接浮层</strong>
+<div style="display:flex;gap:6px">
+<button class="act-btn" onClick="{{toggleTooltip}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">{{tipBtnText}}</button>
+<button class="act-btn" onClick="{{toggleCopied}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{borderCol}}">{{copyBtnText}}</button>
+</div>
+</div>
+<div style="font-size:14px;color:{{textSecondary}}">Tooltip 悬停 280ms 延迟后 120ms 显现 · 复制图标 120ms 切换对勾并 1.5s 复位</div>
+
+<div style="border:1px solid {{hairline}};border-radius:8px;background:{{paperBg}};padding:14px;display:flex;flex-direction:column;justify-content:space-between;gap:12px;min-height:176px;box-sizing:border-box">
+<div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px">
+<div style="height:30px;padding:0 12px;border-radius:8px;background:#0f0f0f;color:#ffffff;display:inline-flex;align-items:center;font-size:14px;font-weight:460;opacity:{{tipOpacity}};transform:{{tipTransform}};transition:{{tipTransition}}">Click for column options · drag to move</div>
+<div style="font-size:14px;color:{{textSecondary}}">无三角箭头 · 6px 触发间距 · 同组横向移动零延迟接力</div>
+</div>
+
+<div style="padding:10px 12px;border-radius:8px;background:{{surfaceBg}};border:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;gap:10px">
+<span class="code-inline" style="color:{{textPrimary}}">gpui_transitions = "0.1.5"</span>
+<button class="act-btn" onClick="{{toggleCopied}}" style="height:28px;padding:0 10px;background:{{copyBadgeBg}};color:{{copyBadgeColor}};border:1px solid {{copyBadgeBorder}}">
+<span>{{copyStateText}}</span>
+</button>
+</div>
+</div>
+</div>
+
+</div>
+</section>
+
+<!-- 第二部分：全量交互出现点与动效参数映射表 -->
+<section style="max-width:1368px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:20px;line-height:28px;font-weight:560;letter-spacing:-0.02em;color:{{textPrimary}}">全站 16 处交互出现场景动效参数与代码落点总表</h2>
+
+<div style="border:1px solid {{borderCol}};border-radius:12px;background:{{cardBg}};overflow-x:auto">
+<div style="min-width:1080px">
+<div style="display:grid;grid-template-columns:220px 210px 180px 160px 230px 1fr;gap:12px;padding:12px 16px;background:{{surfaceBg}};border-bottom:1px solid {{borderCol}};font-size:14px;font-weight:560;color:{{textPrimary}}">
+<div>交互出现元素</div>
+<div>源码模块路径</div>
+<div>进场时长与曲线</div>
+<div>退场时长与曲线</div>
+<div>动画属性（禁止触发布局重排）</div>
+<div>动画库调用方式</div>
+</div>
+
+<div style="display:grid;grid-template-columns:220px 210px 180px 160px 230px 1fr;gap:12px;padding:12px 16px;border-bottom:1px solid {{hairline}};font-size:14px;align-items:center">
+<div style="font-weight:500;color:{{textPrimary}}">块操作把手（+ / 六点拖拽柄）</div>
+<div class="code-inline" style="color:{{textSecondary}}">src/editor/chrome.rs</div>
+<div>120ms · OutCubic</div>
+<div>90ms · InCubic</div>
+<div>opacity 0→1, ml -3px→0</div>
+<div class="code-inline" style="color:{{accentSolid}}">use_keyed_transition + BoolLerp</div>
+</div>
+
+<div style="display:grid;grid-template-columns:220px 210px 180px 160px 230px 1fr;gap:12px;padding:12px 16px;border-bottom:1px solid {{hairline}};font-size:14px;align-items:center">
+<div style="font-weight:500;color:{{textPrimary}}">标题折叠箭头与 # 锚点按钮</div>
+<div class="code-inline" style="color:{{textSecondary}}">src/editor/fold.rs</div>
+<div>150ms · OutQuint</div>
+<div>100ms · InOut</div>
+<div>opacity 0→1, rotate 0°↔-90°</div>
+<div class="code-inline" style="color:{{accentSolid}}">use_keyed_transition (f32 角度)</div>
+</div>
+
+<div style="display:grid;grid-template-columns:220px 210px 180px 160px 230px 1fr;gap:12px;padding:12px 16px;border-bottom:1px solid {{hairline}};font-size:14px;align-items:center">
+<div style="font-weight:500;color:{{textPrimary}}">表格行列胶囊把手与整表工具栏</div>
+<div class="code-inline" style="color:{{textSecondary}}">src/editor/table_chrome.rs</div>
+<div>140ms · bezier(.16,1,.3,1)</div>
+<div>100ms · OutQuad</div>
+<div>opacity 0→1, top/left 微移 3px</div>
+<div class="code-inline" style="color:{{accentSolid}}">use_keyed_transition + BoolLerp</div>
+</div>
+
+<div style="display:grid;grid-template-columns:220px 210px 180px 160px 230px 1fr;gap:12px;padding:12px 16px;border-bottom:1px solid {{hairline}};font-size:14px;align-items:center">
+<div style="font-weight:500;color:{{textPrimary}}">文本选区浮动工具栏与调色盘</div>
+<div class="code-inline" style="color:{{textSecondary}}">src/editor/toolbar.rs</div>
+<div>180ms · bezier(.16,1,.3,1)</div>
+<div>130ms · bezier(.4,0,1,1)</div>
+<div>opacity 0→1, mt +4px→0</div>
+<div class="code-inline" style="color:{{accentSolid}}">use_keyed_transition (anchor)</div>
+</div>
+
+<div style="display:grid;grid-template-columns:220px 210px 180px 160px 230px 1fr;gap:12px;padding:12px 16px;border-bottom:1px solid {{hairline}};font-size:14px;align-items:center">
+<div style="font-weight:500;color:{{textPrimary}}">图片 7 项胶囊工具栏与更多菜单</div>
+<div class="code-inline" style="color:{{textSecondary}}">src/editor/image_size.rs</div>
+<div>180ms · bezier(.16,1,.3,1)</div>
+<div>130ms · OutQuad</div>
+<div>opacity 0→1, mt -4px→0</div>
+<div class="code-inline" style="color:{{accentSolid}}">with_animation + cubic_bezier</div>
+</div>
+
+<div style="display:grid;grid-template-columns:220px 210px 180px 160px 230px 1fr;gap:12px;padding:12px 16px;border-bottom:1px solid {{hairline}};font-size:14px;align-items:center">
+<div style="font-weight:500;color:{{textPrimary}}">链接编辑浮层与代码块语言菜单</div>
+<div class="code-inline" style="color:{{textSecondary}}">src/editor/link_pop.rs</div>
+<div>160ms · bezier(.16,1,.3,1)</div>
+<div>120ms · OutQuad</div>
+<div>opacity 0→1, mt -4px→0</div>
+<div class="code-inline" style="color:{{accentSolid}}">with_animation + cubic_bezier</div>
+</div>
+
+<div style="display:grid;grid-template-columns:220px 210px 180px 160px 230px 1fr;gap:12px;padding:12px 16px;border-bottom:1px solid {{hairline}};font-size:14px;align-items:center">
+<div style="font-weight:500;color:{{textPrimary}}">文件树右键菜单与斜杠块菜单 /</div>
+<div class="code-inline" style="color:{{textSecondary}}">src/app_menu.rs</div>
+<div>160ms · bezier(.16,1,.3,1)</div>
+<div>120ms · OutQuad</div>
+<div>一级 Y -4px→0 · 子菜单 X -4px→0</div>
+<div class="code-inline" style="color:{{accentSolid}}">with_animation + cubic_bezier</div>
+</div>
+
+<div style="display:grid;grid-template-columns:220px 210px 180px 160px 230px 1fr;gap:12px;padding:12px 16px;border-bottom:1px solid {{hairline}};font-size:14px;align-items:center">
+<div style="font-weight:500;color:{{textPrimary}}">多标签新建展开与关闭幽灵收拢</div>
+<div class="code-inline" style="color:{{textSecondary}}">src/app_tabs_menu.rs</div>
+<div>150ms · ease_out_quint</div>
+<div>150ms · ease_out_quint</div>
+<div>w 0↔220px, pl/pr, opacity 0↔1</div>
+<div class="code-inline" style="color:{{accentSolid}}">已落地 with_animation + Ghost</div>
+</div>
+
+<div style="display:grid;grid-template-columns:220px 210px 180px 160px 230px 1fr;gap:12px;padding:12px 16px;border-bottom:1px solid {{hairline}};font-size:14px;align-items:center">
+<div style="font-weight:500;color:{{textPrimary}}">左侧文件树侧栏折叠与展开 ⌘\</div>
+<div class="code-inline" style="color:{{textSecondary}}">src/app_sidebar.rs</div>
+<div>180ms · bezier(.22,1,.36,1)</div>
+<div>160ms · bezier(.22,1,.36,1)</div>
+<div>w 0↔sidebar_width, opacity 0↔1</div>
+<div class="code-inline" style="color:{{accentSolid}}">use_keyed_transition (Pixels)</div>
+</div>
+
+<div style="display:grid;grid-template-columns:220px 210px 180px 160px 230px 1fr;gap:12px;padding:12px 16px;font-size:14px;align-items:center">
+<div style="font-weight:500;color:{{textPrimary}}">全局搜索 ⌘⇧K · 查找 ⌘F · AI 面板</div>
+<div class="code-inline" style="color:{{textSecondary}}">src/app_search.rs · ai/panel.rs</div>
+<div>200ms · bezier(.16,1,.3,1)</div>
+<div>150ms · bezier(.4,0,1,1)</div>
+<div>遮罩 opacity · 面板 mt -8px→0</div>
+<div class="code-inline" style="color:{{accentSolid}}">use_keyed_transition + BoolLerp</div>
+</div>
+</div>
+</div>
+</section>
+
+<!-- 第三部分：Rust + GPUI 0.2.2 动画库选型结论与直接调用范式 -->
+<section style="max-width:1368px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:20px;line-height:28px;font-weight:560;letter-spacing:-0.02em;color:{{textPrimary}}">Rust + GPUI 0.2.2 动画库调研选型与直接调用规范（零自研引擎）</h2>
+
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:20px">
+
+<div style="border:1px solid {{borderCol}};border-radius:12px;background:{{surfaceBg}};padding:20px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<strong style="font-size:16px;font-weight:560;color:{{textPrimary}}">主力状态过渡库：gpui_transitions = "0.1.5"（MIT）</strong>
+<span style="padding:2px 8px;border-radius:6px;background:{{selectedBg}};border:1px solid {{accentSolid}};color:{{accentSolid}};font-size:14px;font-weight:500">精确匹配 gpui = "=0.2.2"</span>
+</div>
+<div style="font-size:14px;color:{{textSecondary}}">解决 GPUI 原生 with_animation 无法中途平滑反向、无退场状态保持的痛点；提供与 use_state 同构的 window.use_keyed_transition，内置 f32、Pixels、Hsla、Point、Size 与 BoolLerp 线性插值，未完成时自动请求下一帧。</div>
+<pre style="margin:0;padding:14px;border-radius:8px;background:{{paperBg}};border:1px solid {{hairline}};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;line-height:20px;color:{{textPrimary}};overflow-x:auto">use gpui_transitions::{BoolLerp, WindowUseTransition};
+use gpui_component::animation::cubic_bezier;
+
+let reveal = window.use_keyed_transition(
+    ("handle-reveal", block_id),
+    cx,
+    Duration::from_millis(120),
+    |_, _| BoolLerp::new(false),
+).with_easing(cubic_bezier(0.22, 1.0, 0.36, 1.0));
+
+let t = reveal.evaluate(window, cx).value();
+row.opacity(t).ml(px(-3.0 * (1.0 - t)))</pre>
+</div>
+
+<div style="border:1px solid {{borderCol}};border-radius:12px;background:{{surfaceBg}};padding:20px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<strong style="font-size:16px;font-weight:560;color:{{textPrimary}}">内置挂载进场库：gpui::AnimationExt + gpui_component::animation</strong>
+<span style="padding:2px 8px;border-radius:6px;background:{{cardBg}};border:1px solid {{borderCol}};color:{{textSecondary}};font-size:14px;font-weight:500">已在 Cargo.toml 零新增依赖</span>
+</div>
+<div style="font-size:14px;color:{{textSecondary}}">适合右键菜单、斜杠块菜单、图片胶囊浮条、链接浮层等挂载即播放的一次性进场（One-shot Entrance）；直接组合 gpui::Animation::new 与 gpui_component::animation::cubic_bezier(0.16, 1.0, 0.3, 1.0)。</div>
+<pre style="margin:0;padding:14px;border-radius:8px;background:{{paperBg}};border:1px solid {{hairline}};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;line-height:20px;color:{{textPrimary}};overflow-x:auto">use gpui::{Animation, AnimationExt, px};
+use gpui_component::animation::cubic_bezier;
+
+menu_card.with_animation(
+    ("popup-enter", menu_epoch),
+    Animation::new(Duration::from_millis(160))
+        .with_easing(cubic_bezier(0.16, 1.0, 0.3, 1.0)),
+    |card, delta| {
+        card.opacity(delta).mt(px(-4.0 * (1.0 - delta)))
+    },
+)</pre>
+</div>
+
+</div>
+</section>
+
+</main>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"darkMode":{"editor":"boolean","default":false,"section":"Appearance"},"slowMotion":{"editor":"boolean","default":false,"section":"Motion"},"reducedMotion":{"editor":"boolean","default":false,"section":"Motion"},"$preview":{"width":1440,"height":1360}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      dark: undefined,
+      slow: undefined,
+      reduced: undefined,
+      handlesOpen: true,
+      folded: false,
+      toolbarOpen: true,
+      paletteOpen: true,
+      menuOpen: true,
+      submenuOpen: true,
+      drawerOpen: true,
+      tabSlotOpen: true,
+      findBarOpen: true,
+      modalOpen: true,
+      aiOpen: true,
+      tipOpen: true,
+      copied: false
+    };
+  }
+
+  renderVals() {
+    const dark = this.state.dark !== undefined ? this.state.dark : (this.props.darkMode ?? false);
+    const slow = this.state.slow !== undefined ? this.state.slow : (this.props.slowMotion ?? false);
+    const reduced = this.state.reduced !== undefined ? this.state.reduced : (this.props.reducedMotion ?? false);
+    const mult = slow ? 4 : 1;
+
+    const dur = (ms) => `${ms * mult}ms`;
+    const easeOut = 'cubic-bezier(0.16, 1, 0.3, 1)';
+    const easeGentle = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+    const handlesOpen = this.state.handlesOpen;
+    const folded = this.state.folded;
+    const toolbarOpen = this.state.toolbarOpen;
+    const paletteOpen = this.state.paletteOpen;
+    const menuOpen = this.state.menuOpen;
+    const submenuOpen = this.state.submenuOpen;
+    const drawerOpen = this.state.drawerOpen;
+    const tabSlotOpen = this.state.tabSlotOpen;
+    const findBarOpen = this.state.findBarOpen;
+    const modalOpen = this.state.modalOpen;
+    const aiOpen = this.state.aiOpen;
+    const tipOpen = this.state.tipOpen;
+    const copied = this.state.copied;
+
+    return {
+      shellBg: dark ? '#343434' : '#f1f1f1',
+      surfaceBg: dark ? '#222222' : '#fafafa',
+      paperBg: dark ? '#181818' : '#ffffff',
+      cardBg: dark ? '#222222' : '#ffffff',
+      menuBg: dark ? '#222222' : '#ffffff',
+      textPrimary: dark ? '#ececec' : '#20242c',
+      textSecondary: dark ? '#b4b4b4' : '#526071',
+      accentSolid: dark ? '#779de8' : '#547dd0',
+      accentBg: dark ? '#547dd0' : '#547dd0',
+      hoverBg: dark ? '#2c2c2c' : '#eef3fc',
+      selectedBg: dark ? '#343434' : '#e5edfc',
+      borderCol: dark ? '#383838' : '#dcdcdc',
+      hairline: dark ? '#2b2b2b' : '#e6e6e6',
+
+      speedLabel: slow ? '0.25× 慢放拆解中' : '1× 标准实速',
+      reducedLabel: reduced ? '减少动态效果：开启' : '减少动态效果：关闭',
+      reducedBtnBg: reduced ? (dark ? '#343434' : '#e5edfc') : (dark ? '#222222' : '#ffffff'),
+      reducedBtnBorder: reduced ? (dark ? '#779de8' : '#547dd0') : (dark ? '#383838' : '#dcdcdc'),
+      themeLabel: dark ? '深色 Ocean' : '浅色 Ocean',
+
+      handlesBtnText: handlesOpen ? '隐藏把手' : '显现把手',
+      handleOpacity: handlesOpen ? '1' : '0',
+      handleTransform: reduced ? 'none' : (handlesOpen ? 'translateX(0px)' : 'translateX(-3px)'),
+      colPillTransform: reduced ? 'none' : (handlesOpen ? 'translateY(0px)' : 'translateY(2px)'),
+      handleTransition: `opacity ${dur(handlesOpen ? 120 : 90)} ${easeGentle}, transform ${dur(handlesOpen ? 120 : 90)} ${easeGentle}`,
+
+      foldRotate: folded ? 'rotate(-90deg)' : 'rotate(0deg)',
+      foldTransition: `transform ${dur(150)} ${easeGentle}`,
+      foldBodyMaxH: folded ? '0px' : '140px',
+      foldBodyOpacity: folded ? '0' : '1',
+      foldBodyTransition: `max-height ${dur(160)} ${easeGentle}, opacity ${dur(120)} ${easeGentle}`,
+
+      toolbarBtnText: toolbarOpen ? '收起浮条' : '弹出浮条',
+      toolbarOpacity: toolbarOpen ? '1' : '0',
+      toolbarTransform: reduced ? 'none' : (toolbarOpen ? 'translateY(0px) scale(1)' : 'translateY(4px) scale(0.97)'),
+      toolbarTransition: `opacity ${dur(toolbarOpen ? 180 : 130)} ${easeOut}, transform ${dur(toolbarOpen ? 180 : 130)} ${easeOut}`,
+
+      paletteOpacity: paletteOpen ? '1' : '0',
+      paletteTransform: reduced ? 'none' : (paletteOpen ? 'translateY(0px) scale(1)' : 'translateY(-4px) scale(0.97)'),
+      paletteTransition: `opacity ${dur(paletteOpen ? 140 : 100)} ${easeOut}, transform ${dur(paletteOpen ? 140 : 100)} ${easeOut}`,
+
+      menuBtnText: menuOpen ? '收起菜单' : '弹出菜单',
+      menuOpacity: menuOpen ? '1' : '0',
+      menuTransform: reduced ? 'none' : (menuOpen ? 'translateY(0px) scale(1)' : 'translateY(-4px) scale(0.97)'),
+      menuTransition: `opacity ${dur(menuOpen ? 160 : 120)} ${easeOut}, transform ${dur(menuOpen ? 160 : 120)} ${easeOut}`,
+
+      submenuOpacity: (menuOpen && submenuOpen) ? '1' : '0',
+      submenuTransform: reduced ? 'none' : ((menuOpen && submenuOpen) ? 'translateX(0px) scale(1)' : 'translateX(-4px) scale(0.97)'),
+      submenuTransition: `opacity ${dur(140)} ${easeOut}, transform ${dur(140)} ${easeOut}`,
+
+      drawerW: drawerOpen ? '128px' : '0px',
+      drawerPad: drawerOpen ? '10px' : '10px 0px',
+      drawerOpacity: drawerOpen ? '1' : '0',
+      drawerTransition: reduced ? `opacity ${dur(100)} linear` : `width ${dur(180)} ${easeGentle}, padding ${dur(180)} ${easeGentle}, opacity ${dur(140)} ${easeGentle}`,
+
+      tabSlotW: tabSlotOpen ? '118px' : '0px',
+      tabSlotPad: tabSlotOpen ? '0 10px' : '0px',
+      tabSlotOpacity: tabSlotOpen ? '1' : '0',
+      tabSlotTransition: reduced ? `opacity ${dur(100)} linear` : `width ${dur(150)} ${easeOut}, padding ${dur(150)} ${easeOut}, opacity ${dur(150)} ${easeOut}`,
+
+      findOpacity: findBarOpen ? '1' : '0',
+      findTransform: reduced ? 'none' : (findBarOpen ? 'translateY(0px)' : 'translateY(-8px)'),
+      findTransition: `opacity ${dur(160)} ${easeOut}, transform ${dur(160)} ${easeOut}`,
+
+      modalBtnText: modalOpen ? '关闭搜索' : '唤起搜索',
+      modalOpacity: modalOpen ? '1' : '0',
+      modalTransform: reduced ? 'none' : (modalOpen ? 'translateY(0px) scale(1)' : 'translateY(-8px) scale(0.97)'),
+      modalTransition: `opacity ${dur(modalOpen ? 200 : 150)} ${easeOut}, transform ${dur(modalOpen ? 200 : 150)} ${easeOut}`,
+
+      aiOpacity: aiOpen ? '1' : '0',
+      aiTransform: reduced ? 'none' : (aiOpen ? 'translateY(0px)' : 'translateY(4px)'),
+      aiTransition: `opacity ${dur(180)} ${easeOut}, transform ${dur(180)} ${easeOut}`,
+
+      tipBtnText: tipOpen ? '隐藏提示' : '显现提示',
+      tipOpacity: tipOpen ? '1' : '0',
+      tipTransform: reduced ? 'none' : (tipOpen ? 'translateY(0px)' : 'translateY(3px)'),
+      tipTransition: `opacity ${dur(tipOpen ? 120 : 90)} ${easeOut}, transform ${dur(tipOpen ? 120 : 90)} ${easeOut}`,
+
+      copyBtnText: copied ? '复位按钮' : '测试复制',
+      copyStateText: copied ? '✓ 已复制' : '复制依赖',
+      copyBadgeBg: copied ? (dark ? '#1f3528' : '#e6f6ec') : (dark ? '#2c2c2c' : '#eef3fc'),
+      copyBadgeColor: copied ? (dark ? '#6dd59c' : '#1f7a4c') : (dark ? '#ececec' : '#20242c'),
+      copyBadgeBorder: copied ? (dark ? '#2f5e41' : '#9adbb5') : (dark ? '#383838' : '#dcdcdc'),
+
+      toggleTheme: () => this.setState({ dark: !dark }),
+      toggleSlow: () => this.setState({ slow: !slow }),
+      toggleReduced: () => this.setState({ reduced: !reduced }),
+      toggleHandles: () => this.setState({ handlesOpen: !handlesOpen }),
+      toggleFold: () => this.setState({ folded: !folded }),
+      toggleToolbar: () => this.setState({ toolbarOpen: !toolbarOpen }),
+      togglePalette: () => this.setState({ paletteOpen: !paletteOpen }),
+      toggleMenu: () => this.setState({ menuOpen: !menuOpen }),
+      toggleSubmenu: () => this.setState({ submenuOpen: !submenuOpen, menuOpen: true }),
+      toggleDrawer: () => this.setState({ drawerOpen: !drawerOpen }),
+      toggleTabSlot: () => this.setState({ tabSlotOpen: !tabSlotOpen }),
+      toggleFindBar: () => this.setState({ findBarOpen: !findBarOpen }),
+      toggleModal: () => this.setState({ modalOpen: !modalOpen }),
+      toggleAiPanel: () => this.setState({ aiOpen: !aiOpen }),
+      toggleTooltip: () => this.setState({ tipOpen: !tipOpen }),
+      toggleCopied: () => this.setState({ copied: !copied }),
+      replayAll: () => {
+        this.setState({
+          handlesOpen: false,
+          toolbarOpen: false,
+          paletteOpen: false,
+          menuOpen: false,
+          submenuOpen: false,
+          drawerOpen: false,
+          tabSlotOpen: false,
+          findBarOpen: false,
+          modalOpen: false,
+          aiOpen: false,
+          tipOpen: false
+        });
+        setTimeout(() => {
+          this.setState({
+            handlesOpen: true,
+            toolbarOpen: true,
+            paletteOpen: true,
+            menuOpen: true,
+            submenuOpen: true,
+            drawerOpen: true,
+            tabSlotOpen: true,
+            findBarOpen: true,
+            modalOpen: true,
+            aiOpen: true,
+            tipOpen: true
+          });
+        }, 180);
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

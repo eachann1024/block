@@ -22,8 +22,8 @@ fn asset_name(ext: &str, assets: &Path) -> String {
 
 impl Editor {
     pub(super) fn pick_image(&mut self, id: u64, replace: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if self.note_dir().is_none() { self.status = "请先打开一篇笔记".into(); cx.notify(); return; }
-        let prompt = cx.prompt_for_paths(gpui::PathPromptOptions { files: true, directories: false, multiple: true, prompt: Some("导入图片".into()) });
+        if self.note_dir().is_none() { self.status = crate::theme::tr("请先打开一篇笔记", "Open a note first").into(); cx.notify(); return; }
+        let prompt = cx.prompt_for_paths(gpui::PathPromptOptions { files: true, directories: false, multiple: true, prompt: Some(crate::theme::tr("导入图片", "Import Image").into()) });
         let place = if replace { Place::Replace } else { Place::After };
         cx.spawn_in(window, async move |this, cx| {
             let Ok(Ok(Some(paths))) = prompt.await else { return };
@@ -33,12 +33,12 @@ impl Editor {
     pub(super) fn note_dir(&self) -> Option<PathBuf> { self.path.as_ref()?.parent().map(Path::to_path_buf) }
     fn assets_dir(&mut self, cx: &mut Context<Self>) -> Option<PathBuf> {
         let assets = self.note_dir()?.join("assets");
-        if let Err(error) = std::fs::create_dir_all(&assets) { self.status = format!("无法创建 assets 文件夹：{error}"); cx.notify(); return None; }
+        if let Err(error) = std::fs::create_dir_all(&assets) { self.status = format!("{}: {error}", crate::theme::tr("无法创建 assets 文件夹", "Failed to create assets folder")); cx.notify(); return None; }
         Some(assets)
     }
     /// Copy images into `assets/` and insert one image block per file.
     pub(super) fn import_images(&mut self, id: u64, place: Place, files: Vec<PathBuf>, window: &mut Window, cx: &mut Context<Self>) {
-        if self.note_dir().is_none() { self.status = "请先打开一篇笔记".into(); cx.notify(); return; }
+        if self.note_dir().is_none() { self.status = crate::theme::tr("请先打开一篇笔记", "Open a note first").into(); cx.notify(); return; }
         let Some(assets) = self.assets_dir(cx) else { return };
         let mut blocks = Vec::new();
         for file in files.into_iter().filter(|f| is_image(f)) {
@@ -68,7 +68,7 @@ impl Editor {
         Some((id, if position.y >= bounds.top() + bounds.size.height / 2. { Place::After } else { Place::Before }))
     }
     fn insert_blocks(&mut self, id: u64, place: Place, mut blocks: Vec<Block>, window: &mut Window, cx: &mut Context<Self>) {
-        if blocks.is_empty() { self.status = "没有可导入的图片".into(); cx.notify(); return; }
+        if blocks.is_empty() { self.status = crate::theme::tr("没有可导入的图片", "No images to import").into(); cx.notify(); return; }
         let index = self.doc.index_of(id).unwrap_or(self.doc.blocks.len().saturating_sub(1));
         let col = self.doc.blocks.get(index).and_then(|b| b.meta.column);
         let replace = place == Place::Replace && self.doc.index_of(id).is_some();
@@ -82,6 +82,6 @@ impl Editor {
         self.caret.anchor = at; self.caret.head = at;
         self.record_changes(before, vec![ListChange { start, before: remove, after: count }], true, cx);
         self.layouts.clear();
-        window.focus(&self.focus); cx.notify();
+        window.focus(&self.focus, cx); cx.notify();
     }
 }

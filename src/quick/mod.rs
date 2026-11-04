@@ -31,13 +31,24 @@ pub fn set_main_window(handle: Option<WindowHandle<gpui_component::Root>>, works
     cx.global_mut::<QuickState>().main = Some((handle, workspace));
 }
 
+pub(crate) fn main_window(cx: &App) -> Option<(Option<WindowHandle<gpui_component::Root>>, Entity<Workspace>)> {
+    cx.try_global::<QuickState>().and_then(|s| s.main.clone())
+}
+
+pub(crate) fn main_folder(cx: &App) -> Option<PathBuf> {
+    cx.try_global::<QuickState>()
+        .and_then(|s| s.main.as_ref())
+        .and_then(|(_, workspace)| workspace.read(cx).folder.clone())
+}
+
 pub(super) fn notify_saved_note(path: PathBuf, cx: &mut App) {
-    if let Some((_, workspace)) = cx.try_global::<QuickState>().and_then(|s| s.main.clone()) {
+    if let Some((_, workspace)) = main_window(cx) {
         workspace.update(cx, |w, cx| w.insert_external_note(path, cx));
     }
 }
 
 pub fn refresh_style(cx: &mut App) {
+    crate::search::window::refresh_style(cx);
     let Some(state) = cx.try_global::<QuickState>() else { return };
     let (editor, window) = (state.editor.clone(), state.window.clone());
     if let Some(editor) = editor {
@@ -49,12 +60,15 @@ pub fn refresh_style(cx: &mut App) {
 }
 
 fn summon_search(cx: &mut App) {
-    let Some((Some(handle), workspace)) = cx.try_global::<QuickState>().and_then(|s| s.main.clone()) else { return };
-    cx.activate(true);
-    let _ = handle.update(cx, |_, window, cx| {
-        window.activate_window();
-        workspace.update(cx, |w, cx| w.summon_search(window, cx));
-    });
+    if let Some((Some(handle), workspace)) = main_window(cx) {
+        if handle.update(cx, |_, window, _| window.is_window_active()).unwrap_or(false) {
+            let _ = handle.update(cx, |_, window, cx| {
+                workspace.update(cx, |w, cx| w.summon_search(window, cx));
+            });
+            return;
+        }
+    }
+    crate::search::window::toggle(cx);
 }
 
 /// Binds keys, the toggle action and the global hotkeys. Call once at startup.
@@ -62,12 +76,12 @@ pub fn init(cx: &mut App) {
     cx.set_global(QuickState::default());
     cx.bind_keys([
         KeyBinding::new("escape", HideQuickNote, Some("QuickNote")),
-        KeyBinding::new("secondary-w", HideQuickNote, Some("QuickNote")),
-        KeyBinding::new("secondary-1", SlotOne, Some("QuickNote")),
-        KeyBinding::new("secondary-2", SlotTwo, Some("QuickNote")),
-        KeyBinding::new("secondary-3", SlotThree, Some("QuickNote")),
-        KeyBinding::new("secondary-4", SlotFour, Some("QuickNote")),
-        KeyBinding::new("secondary-5", SlotFive, Some("QuickNote")),
+        KeyBinding::new("cmd-w", HideQuickNote, Some("QuickNote")),
+        KeyBinding::new("cmd-1", SlotOne, Some("QuickNote")),
+        KeyBinding::new("cmd-2", SlotTwo, Some("QuickNote")),
+        KeyBinding::new("cmd-3", SlotThree, Some("QuickNote")),
+        KeyBinding::new("cmd-4", SlotFour, Some("QuickNote")),
+        KeyBinding::new("cmd-5", SlotFive, Some("QuickNote")),
     ]);
     cx.on_action(|_: &ToggleQuickNote, cx: &mut App| toggle(cx));
     start_hotkey(cx);
@@ -189,10 +203,14 @@ pub fn rebind_hotkeys(cx: &mut App) {
     let quick_spec = crate::theme::quick_shortcut();
     let search_spec = crate::theme::search_shortcut();
     if parse_hotkey(&quick_spec).is_some() {
-        cx.bind_keys([KeyBinding::new(&quick_spec, ToggleQuickNote, None)]);
+        if let Ok(binding) = KeyBinding::load(&quick_spec, Box::new(ToggleQuickNote), None, false, None, cx) {
+            cx.bind_keys([binding]);
+        }
     }
     if parse_hotkey(&search_spec).is_some() {
-        cx.bind_keys([KeyBinding::new(&search_spec, crate::app::OpenSearch, None)]);
+        if let Ok(binding) = KeyBinding::load(&search_spec, Box::new(crate::app::OpenSearch), None, false, None, cx) {
+            cx.bind_keys([binding]);
+        }
     }
     if !cx.has_global::<QuickState>() { return; }
     let state = cx.global_mut::<QuickState>();
@@ -232,8 +250,8 @@ fn start_hotkey(cx: &mut App) {
                     search_pressed |= search_id != 0 && event.id == search_id;
                 }
             }
-            if quick_pressed && cx.update(|cx| toggle(cx)).is_err() { break; }
-            if search_pressed && cx.update(|cx| summon_search(cx)).is_err() { break; }
+            if quick_pressed { cx.update(|cx| toggle(cx)); }
+            if search_pressed { cx.update(|cx| summon_search(cx)); }
         }
     }).detach();
 }

@@ -5,29 +5,30 @@ edition = "2024"
 publish = false
 
 [dependencies]
-gpui = { version = "=0.2.2", default-features = false, features = ["runtime_shaders", "font-kit"] }
-gpui-component = { version = "=0.5.1", default-features = false }
-ropey = { version = "=2.0.0-beta.1", default-features = false, features = ["metric_lines_lf", "metric_utf16"] }
-html5ever = "0.27"
-tree-sitter-css = "0.23.2"
+gpui = { package = "gpui-pre", version = "0.3.11", default-features = false, features = ["font-kit"] }
+gpui_platform = { package = "gpui-pre-platform", version = "0.3.11", default-features = false, features = ["runtime_shaders", "font-kit"] }
+gpui-component = { version = "0.9.0", default-features = false, features = ["tree-sitter"] }
+ropey = { version = "2.0.0-beta.1", default-features = false, features = ["metric_lines_lf", "metric_utf16"] }
+html5ever = "0.40.1"
+tree-sitter-css = "0.25.0"
 tree-sitter-html = "0.23.2"
-tree-sitter-javascript = "0.23.1"
-tree-sitter-md = { version = "0.5.1", default-features = false }
-tree-sitter-python = "0.23.6"
-tree-sitter-rust = "0.24.0"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-md = { version = "0.5.4", default-features = false }
+tree-sitter-python = "0.25.0"
+tree-sitter-rust = "0.24.2"
 tree-sitter-typescript = "0.23.2"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 unicode-segmentation = "1"
-tiny-skia = "0.11"
-cosmic-text = "0.14"
+tiny-skia = "0.12.0"
+cosmic-text = "0.19.0"
 im = "15.1"
 pulldown-cmark = { version = "0.13", default-features = false }
 global-hotkey = "0.9.0"
 dirs = "7.0.0"
 mermaid-rs-renderer = { version = "0.3.1", default-features = false }
-latex-rust = "2.1.1"
+latex-rust = "3.0.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa = "0.26"
+cocoa = "0.27.0"

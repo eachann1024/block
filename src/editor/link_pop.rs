@@ -49,7 +49,7 @@ impl Editor {
         self.select_link(block, range);
         self.link_remove(window, cx);
         self.caret.anchor = self.caret.head;
-        window.focus(&self.focus); cx.notify();
+        window.focus(&self.focus, cx); cx.notify();
     }
     pub(super) fn link_pill(&self, editor: Entity<Editor>, window: &Window) -> Option<AnyElement> {
         let (block, range, url) = self.link_target(window)?;
@@ -63,22 +63,23 @@ impl Editor {
             .hover(|s| s.bg(rgb(HOVER))).child(glyph(g, 16., INK))
             .tooltip(crate::theme::tooltip(tip))
             .on_mouse_down(MouseButton::Left, move |_, window, cx| { run(window, cx); cx.stop_propagation(); });
+        let bar = pill().id("link-pill").pl(px(12.)).gap(px(2.))
+            .child(div().text_size(px(13.)).text_color(rgb(INK)).whitespace_nowrap().child(middle_ellipsis(&url)))
+            .child(sep())
+            .child(button("link-open", Icon::LinkOpen, tr("打开链接", "Open link"), Box::new(move |_, cx| cx.open_url(&normalize_url(&open_url)))))
+            .child(button("link-copy", Icon::LinkCopy, tr("复制链接", "Copy link"), Box::new(move |_, cx| {
+                cx.write_to_clipboard(ClipboardItem::new_string(copy_url.clone()));
+                e_copy.update(cx, |this, cx| { this.status = tr("已复制链接", "Link copied").into(); cx.notify(); });
+            })))
+            .child(button("link-edit", Icon::LinkEdit, tr("编辑链接", "Edit link"), Box::new(move |window, cx| {
+                e_edit.update(cx, |this, cx| this.edit_link_at(block, &edit_range, edit_url.clone(), anchor, window, cx));
+            })))
+            .child(button("link-unlink", Icon::LinkOff, tr("移除链接", "Remove link"), Box::new(move |window, cx| {
+                e_unlink.update(cx, |this, cx| this.unlink_at(block, &unlink_range, window, cx));
+            })));
         Some(gpui::deferred(gpui::anchored().position(anchor).snap_to_window_with_margin(px(8.)).child(
             // The transparent 4px top padding belongs to the popover, so the pointer can cross from text to pill.
             div().pt(px(4.)).on_mouse_move(|_, _, cx| cx.stop_propagation()).on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .child(pill().id("link-pill").pl(px(12.)).gap(px(2.))
-                    .child(div().text_size(px(13.)).text_color(rgb(INK)).whitespace_nowrap().child(middle_ellipsis(&url)))
-                    .child(sep())
-                    .child(button("link-open", Icon::LinkOpen, tr("打开链接", "Open link"), Box::new(move |_, cx| cx.open_url(&normalize_url(&open_url)))))
-                    .child(button("link-copy", Icon::LinkCopy, tr("复制链接", "Copy link"), Box::new(move |_, cx| {
-                        cx.write_to_clipboard(ClipboardItem::new_string(copy_url.clone()));
-                        e_copy.update(cx, |this, cx| { this.status = tr("已复制链接", "Link copied").into(); cx.notify(); });
-                    })))
-                    .child(button("link-edit", Icon::LinkEdit, tr("编辑链接", "Edit link"), Box::new(move |window, cx| {
-                        e_edit.update(cx, |this, cx| this.edit_link_at(block, &edit_range, edit_url.clone(), anchor, window, cx));
-                    })))
-                    .child(button("link-unlink", Icon::LinkOff, tr("移除链接", "Remove link"), Box::new(move |window, cx| {
-                        e_unlink.update(cx, |this, cx| this.unlink_at(block, &unlink_range, window, cx));
-                    })))))).into_any_element())
+                .child(crate::ui::floating_bar::animate(bar, "link-pill-enter")))).into_any_element())
     }
 }

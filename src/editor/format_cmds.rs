@@ -103,12 +103,12 @@ impl Editor {
     }
     pub(super) fn show_link_popover(&mut self, initial: String, existing: bool, anchor: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
         let input = cx.new(|cx| {
-            let mut state = InputState::new(window, cx).placeholder("粘贴或输入链接");
+            let mut state = InputState::new(window, cx).placeholder(crate::theme::tr("粘贴或输入链接", "Paste or enter a link"));
             if !initial.is_empty() { state.set_value(initial, window, cx); }
             state
         });
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| {
-            if let InputEvent::PressEnter { secondary: false } = event { this.link_save(window, cx); }
+            if let InputEvent::PressEnter { secondary: false, .. } = event { this.link_save(window, cx); }
         });
         input.update(cx, |s, cx| s.focus(window, cx));
         let focus_input = input.clone();
@@ -139,7 +139,7 @@ impl Editor {
     }
     pub(super) fn close_format(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(FormatPop::Ai(s)) = self.format.as_ref() { s.cancel.store(true, std::sync::atomic::Ordering::Relaxed); }
-        if self.format.take().is_some() { window.focus(&self.focus); }
+        if self.format.take().is_some() { window.focus(&self.focus, cx); }
         cx.notify();
     }
     /// Saves the field; an empty URL removes the link, like thinkly's 移除.
