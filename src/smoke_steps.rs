@@ -1,6 +1,6 @@
 //! The 12 scripted smoke steps: editor CRUD, in-note find, global search, tabs and settings.
 use gpui::{point, px};
-use super::{AsyncApp, Run, STEPS, sleep, smoke_overlay};
+use super::{AsyncApp, Run, sleep, smoke_overlay};
 
 impl Run {
     /// Bold serializes as `<strong>` (inline HTML) today; accept the `**` form too.
