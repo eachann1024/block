@@ -66,10 +66,14 @@ impl Editor {
         let text = &block.text;
         let range = if clicks >= 3 { 0..text.len() }
             else if clicks == 2 {
-                let probe = at.offset.min(text.len().saturating_sub(1));
-                text.split_word_bound_indices().find(|(start, word)| {
-                    *start <= probe && probe < start + word.len()
-                }).map(|(start, word)| start..start + word.len()).unwrap_or(0..0)
+                if let Some(s) = block.spans.iter().find(|s| s.marks.contains(&crate::editor::model::MarkKind::Code) && s.start < s.end && s.start <= at.offset && at.offset <= s.end) {
+                    s.start..s.end
+                } else {
+                    let probe = at.offset.min(text.len().saturating_sub(1));
+                    text.split_word_bound_indices().find(|(start, word)| {
+                        *start <= probe && probe < start + word.len()
+                    }).map(|(start, word)| start..start + word.len()).unwrap_or(0..0)
+                }
             } else { at.offset..at.offset };
         (Position { offset: range.start, ..at }, Position { offset: range.end, ..at })
     }
@@ -81,7 +85,7 @@ impl Editor {
         self.close_format(window, cx);
         if self.path.is_none() || !self.list.viewport_bounds().contains(&event.position) { return; }
         if (event.modifiers.platform || (!cfg!(target_os = "macos") && event.modifiers.control))
-            && self.open_link_at(event.position, cx) { return; }
+            && (self.open_link_at(event.position, cx) || self.copy_code_at(event.position, cx)) { return; }
         self.commit_composition(cx); self.clear_pointer(); self.pending_vertical = None;
         if let Some(at) = self.hit(event.position) {
             let clicks = event.click_count.max(1);
@@ -137,6 +141,7 @@ impl Editor {
         }
         if !event.dragging() {
             self.update_link_hover(event.position, cx);
+            self.update_code_hover(event.position, cx);
             if self.selecting || self.dragging.is_some() { self.clear_pointer(); cx.notify(); }
             return;
         }
