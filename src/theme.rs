@@ -201,7 +201,7 @@ pub fn hotkey_parts(spec: &str) -> Vec<String> {
 
 pub fn format_hotkey(spec: &str) -> String {
     let parts = hotkey_parts(spec);
-    if cfg!(any(target_os = "macos", target_family = "wasm")) { parts.join(" ") } else { parts.join(" + ") }
+    if cfg!(any(target_os = "macos", target_family = "wasm")) { parts.join("") } else { parts.join(" + ") }
 }
 
 const fn hex(value: u32) -> Hsla {

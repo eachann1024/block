@@ -1,10 +1,10 @@
 //! Floating selection toolbar (F-Toolbar): light pill of 28px icon buttons split by hairline separators.
 use std::{cell::RefCell, collections::HashMap};
-use gpui::{BoxShadow, Bounds, Context, CursorStyle, Entity, MouseButton, Pixels, Point, Window,
-    div, point, prelude::*, px, rgba};
-use crate::{icons::Icon, theme::{is_dark, tr}};
+use gpui::{BoxShadow, Bounds, Context, Entity, MouseButton, Pixels, Point, Window,
+    point, prelude::*, px, rgba};
+use crate::{icons::Icon, theme::tr};
 pub(super) use crate::ui::floating_bar::{
-    ToolbarColors, animate as animate_bar, glyph, icon_toggle_button, sep, shell as pill,
+    ToolbarColors, animate as animate_bar, disabled_icon_button, glyph, icon_toggle_button, sep, shell as pill,
 };
 use super::{format_cmds::FormatPop, model::{Kind, MarkKind}, view::Editor};
 
@@ -70,15 +70,9 @@ impl RenderOnce for SelectionToolbar {
                 .child(sep()))
             .when(rich && !state.grid, |bar| bar
                 .child(button(Icon::TbLink, tr("链接 ⌘⇧K", "Link ⌘⇧K"), state.link, false, false, editor.clone(), |this, w, cx| this.open_link(w, cx))))
-            .when(rich && state.grid, |bar| bar.child(disabled_button(Icon::TbLink)));
+            .when(rich && state.grid, |bar| bar.child(disabled_icon_button(Icon::TbLink)));
         gpui::anchored().position(self.anchor).snap_to_window_with_margin(px(8.)).child(animate_bar(bar, "selection-toolbar-enter"))
     }
-}
-
-fn disabled_button(g: Icon) -> gpui::Div {
-    let dim = if is_dark() { 0x5a5a5a } else { 0x9a9994 };
-    div().h(px(28.)).min_w(px(28.)).flex_none().flex().items_center().justify_center().px(px(6.)).rounded(px(8.))
-        .cursor(CursorStyle::Arrow).child(glyph(g, 18., dim))
 }
 
 fn button(g: Icon, tip: &'static str, on: bool, open: bool, dropdown: bool, editor: Entity<Editor>,
