@@ -52,14 +52,21 @@ pub(in crate::editor) fn paint_selection(layout: &TextLayout, sel: TableSel, col
     }
     paint_grid_lines(layout, window);
 }
-/// A text selection crossing cells selects whole cells. Returns false when it stays in one cell,
-/// which keeps the ordinary text highlight.
+/// A text selection crossing cells selects a rectangle of whole cells, like a spreadsheet: the
+/// first and last touched cells are opposite corners, so dragging down a column selects that
+/// column rather than the row-major text run. Returns false when it stays in one cell.
 pub(in crate::editor) fn paint_cell_selection(layout: &TextLayout, range: &Range<usize>, window: &mut Window) -> bool {
     let hit: Vec<_> = layout.cells.iter()
         .filter(|cell| cell.range.start < range.end && range.start < cell.range.end).collect();
+    let (Some(first), Some(last)) = (hit.first(), hit.last()) else { return false };
     if hit.len() < 2 { return false; }
+    let corners = Bounds::from_corners(
+        point(first.frame.left().min(last.frame.left()), first.frame.top().min(last.frame.top())),
+        point(first.frame.right().max(last.frame.right()), first.frame.bottom().max(last.frame.bottom())));
     let (scale, tint) = (window.scale_factor(), select_tint());
-    for cell in hit { window.paint_quad(fill(snapped(cell.frame, scale), tint)); }
+    for cell in layout.cells.iter().filter(|c| corners.contains(&c.frame.center())) {
+        window.paint_quad(fill(snapped(cell.frame, scale), tint));
+    }
     paint_grid_lines(layout, window);
     true
 }
