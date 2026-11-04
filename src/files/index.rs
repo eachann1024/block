@@ -56,6 +56,13 @@ impl TreeIndex {
 
     pub fn len(&self) -> usize { visible(&self.root) }
 
+    pub fn has_notes(&self) -> bool {
+        fn walk(link: &Link) -> bool {
+            link.as_ref().is_some_and(|n| !n.row.dir || walk(&n.left) || walk(&n.right))
+        }
+        walk(&self.root)
+    }
+
     pub fn row(&mut self, rank: usize) -> Option<(usize, Arc<Row>, bool)> {
         locate(&mut self.root, rank, 0)
     }

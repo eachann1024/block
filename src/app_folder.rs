@@ -6,10 +6,17 @@ impl Workspace {
         self.use_folder_guarded(folder, None, cx);
     }
 
+    pub(crate) fn retry_folder(&mut self, cx: &mut Context<Self>) {
+        if let Some(folder) = self.folder_error.clone() {
+            self.use_folder(folder, cx);
+        }
+    }
+
     pub(super) fn use_folder_guarded(&mut self, folder: PathBuf, startup_epoch: Option<u64>, cx: &mut Context<Self>) {
         if self.busy() { return; }
         if self.restore_superseded(startup_epoch, cx) { return; }
         let startup_tabs = self.startup_tabs.take();
+        let failed_folder = folder.clone();
         self.loading = true;
         self.notice = format!("正在扫描 {}…", folder.display());
         self.refresh(cx);
@@ -42,8 +49,13 @@ impl Workspace {
                     return;
                 }
                 match result {
-                    Err(error) => { this.notice = format!("无法打开文件夹：{error}"); this.refresh(cx); }
+                    Err(error) => {
+                        this.folder_error = Some(failed_folder);
+                        this.notice = format!("无法打开文件夹：{error}");
+                        this.refresh(cx);
+                    }
                     Ok(prepared) => {
+                        this.folder_error = None;
                         this.pending = Some(prepared);
                         let closed = this.editor.update(cx, |editor, cx| editor.close(cx));
                         if closed { this.commit_folder(cx); }
@@ -79,6 +91,7 @@ impl Workspace {
         let Some(prepared) = self.pending.take() else { return };
         let folder = prepared.path;
         self.folder = Some(folder.clone());
+        self.folder_error = None;
         self.tabs = prepared.tabs;
         self.selected = None;
         self.notice = prepared.notice;
@@ -103,7 +116,7 @@ impl Workspace {
         }).detach();
     }
 
-    pub(super) fn choose_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn choose_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.busy() { return; }
         self.choosing = true;
         self.refresh(cx);
