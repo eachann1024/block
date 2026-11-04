@@ -17,19 +17,8 @@ fn c(value: u32) -> Hsla {
 
 pub(super) fn section(title: &'static str, content: impl IntoElement) -> impl IntoElement {
     let theme = Theme::ocean();
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(8.))
-        .child(
-            div()
-                .text_size(px(12.))
-                .line_height(px(16.))
-                .font_weight(FontWeight(460.))
-                .text_color(theme.text_secondary)
-                .child(title),
-        )
-        .child(content)
+    let head = div().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(560.)).text_color(theme.text).child(title);
+    div().flex().flex_col().gap(px(8.)).child(head).child(content)
 }
 
 /// Five-segment format selector: PNG · PDF · Word · MD · HTML.
@@ -38,22 +27,22 @@ pub(super) fn format_bar(
     on_pick: Rc<dyn Fn(&ExportFormat, &mut Window, &mut App)>,
 ) -> impl IntoElement {
     let theme = Theme::ocean();
-    let mut track = div().flex().p(px(2.)).bg(theme.shell).rounded(px(8.)).gap(px(2.));
+    let mut track = div().flex().p(px(3.)).bg(theme.shell).border_1().border_color(theme.hairline).rounded(px(8.)).gap(px(2.));
     for (index, fmt) in ExportFormat::ALL.into_iter().enumerate() {
         let on_pick = on_pick.clone();
         let selected = fmt == current;
         let mut seg = div()
             .id(("export-format", index))
             .flex_1()
-            .h(px(28.))
+            .h(px(32.))
             .flex()
             .items_center()
             .justify_center()
             .rounded(px(6.))
             .border_1()
             .border_color(gpui::transparent_black())
-            .text_size(px(12.))
-            .font_weight(FontWeight(500.))
+            .text_size(px(14.))
+            .font_weight(FontWeight(if selected { 500. } else { 460. }))
             .text_color(theme.text_secondary)
             .cursor_pointer()
             .child(fmt.label());
@@ -71,38 +60,42 @@ pub(super) fn format_bar(
     track
 }
 
-/// Two-state track. `outlined` selects the accent-ring style used by the scope control.
+/// Two-state segmented track with accent selection ring.
 pub(super) fn segmented(
     id: &'static str,
     items: [(&'static str, bool, bool); 2],
-    outlined: bool,
     on_pick: Rc<dyn Fn(&usize, &mut Window, &mut App)>,
 ) -> impl IntoElement {
     let theme = Theme::ocean();
-    let mut track = div().flex().p(px(2.)).bg(theme.shell).rounded(px(8.));
+    let mut track = div()
+        .flex()
+        .p(px(3.))
+        .bg(theme.shell)
+        .border_1()
+        .border_color(theme.hairline)
+        .rounded(px(8.))
+        .gap(px(2.));
     for (index, (label, selected, enabled)) in items.into_iter().enumerate() {
         let on_pick = on_pick.clone();
         let mut seg = div()
             .id((id, index))
             .flex_1()
-            .h(px(28.))
+            .h(px(32.))
             .flex()
             .items_center()
             .justify_center()
             .rounded(px(6.))
             .border_1()
             .border_color(gpui::transparent_black())
-            .text_size(px(13.))
-            .font_weight(FontWeight(460.))
+            .text_size(px(14.))
+            .font_weight(FontWeight(if selected { 500. } else { 460. }))
             .text_color(theme.text_secondary)
             .child(label);
         if selected {
-            seg = seg.text_color(theme.text);
-            seg = if outlined {
-                seg.bg(theme.selected).border_color(theme.accent)
-            } else {
-                seg.bg(theme.paper).shadow_sm()
-            };
+            seg = seg
+                .bg(theme.selected)
+                .border_color(theme.accent)
+                .text_color(theme.text);
         }
         seg = if enabled {
             seg.cursor_pointer()
@@ -144,14 +137,14 @@ fn swatch_card(
     let theme = Theme::ocean();
     let (paper_hex, accent_hex, inner_hex) = style.swatch();
     let inner = div()
-        .w(px(16.))
-        .h(px(12.))
+        .w(px(18.))
+        .h(px(14.))
         .bg(c(inner_hex))
         .border_t(px(2.))
         .border_color(c(accent_hex));
     let chip = div()
-        .w(px(24.))
-        .h(px(18.))
+        .w(px(28.))
+        .h(px(22.))
         .flex_none()
         .rounded(px(4.))
         .bg(c(paper_hex))
@@ -167,22 +160,22 @@ fn swatch_card(
         .id(("export-style", index))
         .flex_1()
         .min_w_0()
-        .h(px(40.))
+        .h(px(52.))
         .px(px(10.))
-        .rounded(px(8.))
+        .rounded(px(10.))
         .border_1()
         .flex()
         .items_center()
-        .gap(px(8.))
+        .gap(px(10.))
         .cursor_pointer()
-        .text_size(px(13.))
-        .font_weight(FontWeight(460.))
+        .text_size(px(14.))
+        .font_weight(FontWeight(if selected { 500. } else { 460. }))
         .child(chip)
         .child(label)
         .when(selected, |d| {
             d.child(icon(
                 Icon::Check,
-                px(13.),
+                px(14.),
                 theme.icon_colors(theme.accent),
             ))
         });
@@ -209,25 +202,25 @@ pub(super) fn switch_row(
     let knob = div()
         .absolute()
         .top(px(2.))
-        .left(px(if on { 14. } else { 2. }))
-        .size(px(14.))
-        .rounded(px(7.))
+        .left(px(if on { 16. } else { 2. }))
+        .size(px(16.))
+        .rounded(px(8.))
         .bg(c(0xffffff));
     div()
-        .h(px(32.))
+        .h(px(40.))
         .flex()
         .items_center()
         .justify_between()
-        .child(div().text_size(px(13.)).child(label))
+        .child(div().text_size(px(14.)).text_color(theme.text).child(label))
         .child(
             div()
                 .id(id)
                 .relative()
-                .w(px(30.))
-                .h(px(18.))
-                .rounded(px(9.))
+                .w(px(34.))
+                .h(px(20.))
+                .rounded(px(10.))
                 .cursor_pointer()
-                .bg(if on { theme.accent } else { c(0xd5d8de) })
+                .bg(if on { theme.accent } else { theme.btn_border })
                 .on_click(move |ev, window, cx| on_toggle(ev, window, cx))
                 .child(knob),
         )
@@ -255,32 +248,28 @@ pub(super) fn button(
     let theme = Theme::ocean();
     let base = div()
         .id(id)
-        .w_full()
-        .h(px(36.))
-        .flex_none()
+        .h(px(38.))
+        .px(px(16.))
         .flex()
         .items_center()
         .justify_center()
         .gap(px(6.))
         .rounded(px(8.))
-        .text_size(px(13.))
-        .font_weight(FontWeight(460.))
+        .text_size(px(14.))
+        .font_weight(FontWeight(500.))
         .child(glyph)
         .child(label);
     let base = if primary {
-        base.bg(theme.primary).text_color(c(0xffffff))
+        base.flex_1().bg(theme.accent).text_color(c(0xffffff))
     } else {
-        base.bg(theme.paper)
+        base.flex_none()
+            .bg(theme.shell)
             .border_1()
             .border_color(theme.btn_border)
             .text_color(theme.text)
     };
     if enabled {
-        let hover = if primary {
-            theme.primary_hover
-        } else {
-            theme.btn_hover
-        };
+        let hover = if primary { c(0x466ec0) } else { theme.btn_hover };
         base.cursor_pointer().hover(move |s| s.bg(hover))
     } else {
         base.opacity(0.5)

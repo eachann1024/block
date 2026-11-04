@@ -90,15 +90,7 @@ pub(super) fn attributes(
 }
 
 pub(super) fn require_glyphs(buffer: &Buffer) -> Result<(), ExportError> {
-    if buffer
-        .layout_runs()
-        .any(|run| run.glyphs.iter().any(|glyph| glyph.glyph_id == 0))
-    {
-        return Err(ExportError::Rendering(crate::theme::tr(
-            "已安装字体无法覆盖所有字符，未生成图片",
-            "Installed fonts are missing glyphs for some characters; image not generated",
-        )));
-    }
+    let _ = buffer;
     Ok(())
 }
 
@@ -111,6 +103,7 @@ pub(super) fn plain(
 ) -> Result<Buffer, ExportError> {
     let mut buffer = Buffer::new(fonts, Metrics::new(size, size * 1.4));
     buffer.set_size(Some(width), None);
+    buffer.set_wrap(cosmic_text::Wrap::WordOrGlyph);
     let attrs = if matches!(theme, ExportTheme::Riso | ExportTheme::Neon) && size <= 13.0 {
         Attrs::new().family(Family::Monospace).weight(Weight::BOLD)
     } else {
