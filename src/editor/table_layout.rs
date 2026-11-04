@@ -88,8 +88,9 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<Range<usize
     let mut cells = Vec::new();
     for Pending { row, index, range, text, runs, lines, natural } in pending {
         let cell = &table.rows[row].cells[index];
-        let end_col = (cell.column + cell.colspan).saturating_sub(1).min(count - 1);
-        let cell_width = col_spans[end_col].1 - col_spans[cell.column].0;
+        let start_col = cell.column.min(count - 1);
+        let end_col = (cell.column + cell.colspan).saturating_sub(1).min(count - 1).max(start_col);
+        let cell_width = col_spans[end_col].1 - col_spans[start_col].0;
         let inner = (cell_width - px(PAD_X * 2. + BORDER)).max(px(1.));
         let lines: Vec<WrappedLine> = if natural <= inner + px(0.5) { lines } else {
             window.text_system().shape_text(text, font_size, &runs, Some(inner), None)
@@ -104,22 +105,26 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<Range<usize
             CellAlignment::Center => TextAlign::Center, CellAlignment::Right => TextAlign::Right };
         let text = TextLayout { bounds:Bounds::default(), lines, line_height, cells:Vec::new(), alignment };
         let required = (text.height().max(line_height) + px(PAD_Y * 2. + BORDER)).max(px(MIN_ROW));
-        if cell.rowspan == 1 { heights[row] = heights[row].max(required); }
+        if cell.rowspan <= 1 { heights[row] = heights[row].max(required); }
         cells.push((row, index, range, text, required));
     }
     // Satisfy merged-cell height after the single-row minimums are known.
     for (row, index, _, _, required) in &cells {
         let cell = &table.rows[*row].cells[*index];
-        let used = heights[*row..*row+cell.rowspan].iter().copied().fold(px(0.), |a,b| a+b);
-        if *required > used { heights[*row+cell.rowspan-1] += *required-used; }
+        let end_row = (*row + cell.rowspan.max(1)).min(heights.len()).max(*row + 1);
+        let used = heights[*row..end_row].iter().copied().fold(px(0.), |a,b| a+b);
+        if *required > used { heights[end_row - 1] += *required-used; }
     }
     let mut ys = vec![px(0.)];
     for height in heights { ys.push(*ys.last().unwrap() + height); }
     let cells = cells.into_iter().map(|(row,index,range,mut text,_)| {
         let cell = &table.rows[row].cells[index];
-        let (left, right) = (col_spans[cell.column].0, col_spans[(cell.column+cell.colspan).saturating_sub(1).min(count-1)].1);
+        let start_col = cell.column.min(count - 1);
+        let end_col = (cell.column+cell.colspan).saturating_sub(1).min(count-1).max(start_col);
+        let (left, right) = (col_spans[start_col].0, col_spans[end_col].1);
+        let end_row = (row + cell.rowspan.max(1)).min(ys.len() - 1).max(row + 1);
         let frame = Bounds::new(point(left,ys[row]),
-            size(right - left, ys[row+cell.rowspan]-ys[row]));
+            size(right - left, ys[end_row]-ys[row]));
         // `vertical-align: top`: padding plus half of the collapsed border.
         let text_height = text.height().max(line_height);
         text.bounds = Bounds::new(frame.origin+point(px(PAD_X + BORDER / 2.), px(PAD_Y + BORDER / 2.)),

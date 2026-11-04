@@ -19,10 +19,21 @@ impl Editor {
             after: (count as isize + self.doc.blocks.len() as isize - before.doc.blocks.len() as isize).max(0) as usize }
     }
     fn apply_changes(&mut self, changes: &[ListChange], forward: bool) {
+        let mut diverged = false;
         if forward {
-            for c in changes { self.list.splice(c.start..c.start+c.before, c.after); }
+            for c in changes {
+                if c.start + c.before <= self.list.item_count() { self.list.splice(c.start..c.start+c.before, c.after); }
+                else { diverged = true; break; }
+            }
         } else {
-            for c in changes.iter().rev() { self.list.splice(c.start..c.start+c.after, c.before); }
+            for c in changes.iter().rev() {
+                if c.start + c.after <= self.list.item_count() { self.list.splice(c.start..c.start+c.after, c.before); }
+                else { diverged = true; break; }
+            }
+        }
+        if diverged || self.list.item_count() != self.doc.blocks.len() {
+            crate::log::warn(&format!("list splice diverged (list={}, doc={}); resetting", self.list.item_count(), self.doc.blocks.len()));
+            self.list.reset(self.doc.blocks.len());
         }
         self.invalidate_column_groups();
         self.layouts.clear();

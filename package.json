@@ -2,7 +2,9 @@
   "name": "thinkly-fast",
   "private": true,
   "scripts": {
+    "dev": "cargo run",
     "build": "bun scripts/build-app.mjs",
-    "build:web": "bun scripts/build-web.mjs"
+    "build:web": "bun scripts/build-web.mjs",
+    "logs": "tail -n 100 -f ~/Library/Logs/ThinklyFast/thinkly-fast.log"
   }
 }

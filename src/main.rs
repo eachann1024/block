@@ -4,6 +4,7 @@ mod editor;
 mod export;
 mod files;
 mod icons;
+pub mod log;
 mod mascot;
 mod quick;
 mod search;
@@ -45,6 +46,7 @@ pub fn apply_app_menus(cx: &mut gpui::App) {
 }
 
 fn main() {
+    log::init();
     if let Ok(state) = files::load_state() {
         theme::apply_state(&state);
     }
@@ -147,7 +149,8 @@ fn main() {
                 cx.new(|cx| gpui_component::Root::new(workspace, window, cx))
             },
         );
-        if opened.is_err() {
+        if let Err(err) = opened {
+            log::error(&format!("failed to open main window: {err:?}"));
             eprintln!("无法打开窗口");
             cx.quit();
             return;
