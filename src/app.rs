@@ -26,7 +26,7 @@ mod settings;
 mod settings_view;
 
 use file_ops::{FileOp, Renaming, TreeMenu};
-pub use search::{OpenSearch, OpenSettings};
+pub use search::{NewNote, OpenSearch, OpenSettings};
 pub use tabs::{CloseTab, NewTab, NextTab, PrevTab};
 use search::Search;
 use settings::SettingsModal;
@@ -34,14 +34,15 @@ use settings::SettingsModal;
 struct PreparedFolder { path: PathBuf, index: TreeIndex, notice: String, tabs: Vec<PathBuf>, active_tab: Option<PathBuf> }
 
 pub struct Workspace {
-    folder: Option<PathBuf>,
-    tree: gpui::Entity<FileTree>,
+    pub(crate) folder: Option<PathBuf>,
+    pub(crate) folder_error: Option<PathBuf>,
+    pub(crate) tree: gpui::Entity<FileTree>,
     pub(crate) editor: gpui::Entity<Editor>,
     selected: Option<PathBuf>,
     tabs: Vec<PathBuf>,
     startup_tabs: Option<(Vec<PathBuf>, Option<PathBuf>)>,
     dirty_bits: u64,
-    loading: bool,
+    pub(crate) loading: bool,
     choosing: bool,
     creating: bool,
     persisting: bool,
@@ -137,7 +138,7 @@ impl Workspace {
         cx.observe_global::<crate::export::ExportSlot>(|_, cx| cx.notify()).detach();
         search::bind_keys(cx);
         tabs::bind_keys(cx);
-        let this = Self { folder: None, tree, editor, selected: None, tabs: Vec::new(), startup_tabs: None, dirty_bits: 0, loading: true,
+        let this = Self { folder: None, folder_error: None, tree, editor, selected: None, tabs: Vec::new(), startup_tabs: None, dirty_bits: 0, loading: true,
             choosing: false, creating: false, persisting: false, pending: None,
             notice: "正在读取工作区偏好…".into(), sidebar_width: Theme::ocean().sidebar_width,
             resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
@@ -166,7 +167,7 @@ impl Workspace {
         this
     }
 
-    fn busy(&self) -> bool {
+    pub(crate) fn busy(&self) -> bool {
         self.loading || self.choosing || self.creating || self.persisting || self.pending.is_some()
             || self.file_op.is_some() || self.working
     }
