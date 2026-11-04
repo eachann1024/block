@@ -135,15 +135,39 @@ impl TextLayout {
                 cell.text.rects(start..end)
             }).collect();
         }
-        let a = self.point(range.start); let b = self.point(range.end);
-        if a.y == b.y { return vec![Bounds::new(a, size((b.x-a.x).max(px(1.5)), self.line_height))]; }
-        let mut out = vec![Bounds::new(a, size((self.bounds.right()-a.x).max(px(1.5)), self.line_height))];
-        let mut y = a.y + self.line_height;
-        while y < b.y {
-            out.push(Bounds::new(point(self.bounds.left(), y), size(self.bounds.size.width, self.line_height)));
-            y += self.line_height;
+        let shaped_range = crate::editor::inline_code::doc_range_to_shaped(range.clone(), &self.code_spans);
+        if shaped_range.is_empty() {
+            let a = self.point(range.start);
+            return vec![Bounds::new(a, size(px(1.5), self.line_height))];
         }
-        out.push(Bounds::new(point(self.bounds.left(), b.y), size((b.x-self.bounds.left()).max(px(1.5)), self.line_height)));
+        let mut out = Vec::new();
+        let mut y = self.bounds.top();
+        for (line_start, line) in &self.lines {
+            let mut r_start = 0usize;
+            for (v, r_end) in line.wrap_boundaries.iter()
+                .map(|wb| line.unwrapped_layout.runs[wb.run_ix].glyphs[wb.glyph_ix].index)
+                .chain(std::iter::once(line.len()))
+                .enumerate()
+            {
+                let a = shaped_range.start.max(line_start + r_start);
+                let b = shaped_range.end.min(line_start + r_end);
+                if a < b {
+                    let (i0, i1) = (a - line_start, b - line_start);
+                    let row_x0 = line.unwrapped_layout.x_for_index(r_start);
+                    let base_x = self.bounds.left() + self.aligned_x(line, v) - row_x0;
+                    let x0 = base_x + line.unwrapped_layout.x_for_index(i0);
+                    let x1 = base_x + line.unwrapped_layout.x_for_index(i1);
+                    let row_y = y + self.line_height * (v as f32);
+                    out.push(Bounds::new(point(x0, row_y), size((x1 - x0).max(px(1.5)), self.line_height)));
+                }
+                r_start = r_end;
+            }
+            y += line.size(self.line_height).height;
+        }
+        if out.is_empty() {
+            let a = self.point(range.start);
+            out.push(Bounds::new(a, size(px(1.5), self.line_height)));
+        }
         out
     }
     pub fn visual_line_bounds(&self, offset: usize) -> (usize, usize) {
