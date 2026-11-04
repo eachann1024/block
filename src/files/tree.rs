@@ -144,6 +144,7 @@ impl Render for FileTree {
         div()
             .id("file-tree-root")
             .size_full()
+            .relative()
             .track_focus(&self.focus)
             .on_scroll(|_, _, cx| crate::dropdown::dismiss_all(cx))
             .when(self.renaming.is_none(), |d| d.key_context("FileTree"))
@@ -176,9 +177,11 @@ impl Render for FileTree {
                     if let Some(handler) = this.on_context.clone() { handler(None, event.position, window, cx); }
                 }))
                 .size_full()
+                .pr(px(crate::ui::scrollbar::GUTTER))
                 .text_size(theme.ui_font)
                 .text_color(theme.text),
             )
+            .child(crate::ui::scrollbar::vertical("tree-scrollbar", &self.scroll, px(0.)))
     }
 }
 

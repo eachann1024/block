@@ -17,8 +17,8 @@ use super::{
 };
 
 const PAD_TOP: f32 = 34.;
-const PAD_X: f32 = 12.;
-const PAD_BOTTOM: f32 = 10.;
+const PAD_X: f32 = 11.7;
+const PAD_BOTTOM: f32 = 9.75;
 const SOURCE_PAD_Y: f32 = 12.;
 const SOURCE_PAD_X: f32 = 16.;
 const LANG_MENU_W: f32 = 200.;
@@ -175,7 +175,7 @@ pub(super) fn top_controls(
     let lang_btn = div().id(("code-lang", block_id as usize))
         .h(px(22.)).px(px(8.)).rounded(px(8.)).border_1().border_color(pill_border).bg(pill_bg)
         .flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
-        .text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight(400.)).text_color(icon_fg)
+        .text_size(px(12.)).line_height(px(18.)).font_weight(FontWeight(400.)).text_color(icon_fg)
         .hover(move |s| s.bg(pill_hover_bg).text_color(hover_fg))
         .when(picker.is_some(), move |s| s.bg(pill_hover_bg).text_color(hover_fg))
         .child(display_lang)

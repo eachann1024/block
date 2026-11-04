@@ -1,8 +1,8 @@
 //! Right-rail comment cards, annotation composer card, and reaction picker.
 use std::{cell::RefCell, collections::HashMap};
 use gpui::{
-    AnyElement, Context, CursorStyle, FontWeight, IntoElement, MouseButton, ParentElement,
-    Pixels, SharedString, Styled, Window, div, prelude::*, px, rgb, transparent_black,
+    AnyElement, BoxShadow, Context, CursorStyle, FontWeight, IntoElement, MouseButton, ParentElement,
+    Pixels, SharedString, Styled, Window, div, point, prelude::*, px, rgb, rgba, transparent_black,
 };
 use gpui_component::input::{Escape, Input};
 use crate::{icons::{Icon, IconColors, icon}, theme::tr};
@@ -12,6 +12,13 @@ use super::{
 };
 
 const REACTIONS: [&str; 8] = ["👍", "❤️", "🎉", "🤔", "👀", "🔥", "✅", "💡"];
+const CARD_W: f32 = 284.;
+
+/// Card elevation: `0 0 0 1px rgba(0,0,0,.08), 0 1px 2px rgba(11,11,11,.06), 0 2px 8px rgba(11,11,11,.08)`.
+fn card_shadows(ring: u32) -> Vec<BoxShadow> {
+    let sh = |color, y, blur, spread| BoxShadow { color, offset: point(px(0.), px(y)), blur_radius: px(blur), spread_radius: px(spread), inset: false };
+    vec![sh(rgba(ring).into(), 0., 0., 1.), sh(rgba(0x0b0b0b0f).into(), 1., 2., 0.), sh(rgba(0x0b0b0b14).into(), 2., 8., 0.)]
+}
 
 fn line_icon(glyph: Icon, size: f32, color: u32) -> impl IntoElement {
     let c = rgb(color).into();
@@ -39,7 +46,7 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
         }
         cards.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         let mut bottom = px(12.);
-        let mut rail = div().id("annotate-rail").absolute().top_0().right(px(24.)).w(px(280.)).h_full();
+        let mut rail = div().id("annotate-rail").absolute().top_0().right(px(24.)).w(px(CARD_W)).h_full();
         for (target, id, card) in cards {
             let top = target.max(bottom + px(12.));
             let height = CARD_HEIGHTS.with(|heights| heights.borrow().get(&id).copied()).unwrap_or(px(100.));
@@ -71,7 +78,7 @@ fn card_target(editor: &Editor, block_id: u64, offset: usize) -> Pixels {
 fn comment_card(comment: Comment, active_id: Option<u64>, cx: &mut Context<Editor>) -> impl IntoElement {
     let cid = comment.id;
     let is_active = active_id == Some(cid);
-    let border_col = if is_active { 0xd5d4ce } else { 0xececea };
+    let ring = if is_active { 0x00000029 } else { 0x00000014 };
     let head = div().flex().items_center().gap(px(8.))
         .child(div().size(px(24.)).rounded(px(12.)).bg(rgb(0x2f9e6b)).text_color(rgb(0xffffff))
             .text_size(px(12.)).font_weight(FontWeight(600.)).flex().items_center().justify_center()
@@ -110,9 +117,9 @@ fn comment_card(comment: Comment, active_id: Option<u64>, cx: &mut Context<Edito
             div().mt(px(8.)).ml(px(32.)).flex().flex_wrap().gap(px(6.)),
             |row, (idx, emoji)| {
                 let emoji_click = emoji.clone();
-                row.child(div().id(SharedString::from(format!("react-{cid}-{idx}"))).px(px(8.)).py(px(2.))
-                    .rounded(px(12.)).bg(rgb(0xf6f5f2)).border_1().border_color(rgb(0xececea))
-                    .text_size(px(13.)).cursor(CursorStyle::PointingHand)
+                row.child(div().id(SharedString::from(format!("react-{cid}-{idx}"))).h(px(24.)).px(px(8.))
+                    .flex().items_center().gap(px(4.)).rounded_full().bg(rgba(0x1757ac1a)).border_1().border_color(transparent_black())
+                    .text_size(px(12.)).line_height(px(12.)).text_color(rgb(0x1757ac)).cursor(CursorStyle::PointingHand)
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         if let Some(c) = this.annotate.comments.iter_mut().find(|c| c.id == cid) {
@@ -129,7 +136,7 @@ fn comment_card(comment: Comment, active_id: Option<u64>, cx: &mut Context<Edito
     });
 
     div().id(SharedString::from(format!("comment-card-{cid}"))).w_full().px(px(14.)).py(px(12.))
-        .rounded(px(16.)).bg(rgb(0xffffff)).border_1().border_color(rgb(border_col)).shadow_md()
+        .rounded(px(12.)).bg(rgb(0xffffff)).shadow(card_shadows(ring))
         .cursor(CursorStyle::PointingHand)
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
             this.annotate.active_comment = Some(cid);
@@ -187,8 +194,8 @@ fn composer_card(
             .child(line_icon(Icon::ArrowUp, 14., 0xffffff)));
 
     div().id("annotate-composer").key_context("AnnotateComposer").w_full()
-        .pt(px(12.)).px(px(14.)).pb(px(10.)).rounded(px(16.))
-        .bg(rgb(0xffffff)).border_1().border_color(rgb(0xececea)).shadow_md()
+        .pt(px(12.)).px(px(14.)).pb(px(10.)).rounded(px(12.))
+        .bg(rgb(0xffffff)).shadow(card_shadows(0x00000014))
         .on_action(cx.listener(|this, _: &Escape, window, cx| {
             this.close_annotation_composer(window, cx);
             cx.stop_propagation();
@@ -202,7 +209,7 @@ fn reaction_popover(picker: ReactionPicker, cx: &mut Context<Editor>) -> impl In
     let y = (picker.anchor.y + px(8.)).max(px(48.));
     let bar = REACTIONS.iter().enumerate().fold(
         div().id("annotate-reactions").absolute().left(x).top(y).px(px(8.)).py(px(6.))
-            .rounded(px(12.)).bg(rgb(0xffffff)).border_1().border_color(rgb(0xececea)).shadow_md()
+            .rounded(px(12.)).bg(rgb(0xffffff)).shadow(card_shadows(0x00000014))
             .flex().items_center().gap(px(4.)).occlude(),
         |row, (idx, &emoji)| {
             row.child(div().id(SharedString::from(format!("pick-emoji-{idx}"))).size(px(28.)).rounded(px(6.))
