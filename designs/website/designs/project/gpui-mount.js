@@ -1,6 +1,6 @@
 (function () {
-  if (window.__THINKLY_GPUI_MOUNTED__) return;
-  window.__THINKLY_GPUI_MOUNTED__ = true;
+  if (window.__BLOCK_GPUI_MOUNTED__) return;
+  window.__BLOCK_GPUI_MOUNTED__ = true;
 
   // Prevent automatic focus() inside GPUI's ImeMirror from scrolling the host page
   const origFocus = HTMLElement.prototype.focus;
@@ -38,8 +38,8 @@
         const m = /^(https?:\/\/[^/]+\/design\/[^/]+\/)/.exec(pHref);
         if (m) {
           return {
-            jsUrl: m[1] + "project/thinkly_fast_web.js",
-            wasmUrl: m[1] + "project/thinkly_fast_web_bg.wasm",
+            jsUrl: m[1] + "project/block_web.js",
+            wasmUrl: m[1] + "project/block_web_bg.wasm",
           };
         }
       }
@@ -47,13 +47,13 @@
     const base = new URL(".", location.href).href;
     if (base.endsWith("/editor/")) {
       return {
-        jsUrl: base + "thinkly_fast_web.js",
-        wasmUrl: base + "thinkly_fast_web_bg.wasm",
+        jsUrl: base + "block_web.js",
+        wasmUrl: base + "block_web_bg.wasm",
       };
     }
     return {
-      jsUrl: base + "editor/thinkly_fast_web.js",
-      wasmUrl: base + "editor/thinkly_fast_web_bg.wasm",
+      jsUrl: base + "editor/block_web.js",
+      wasmUrl: base + "editor/block_web_bg.wasm",
     };
   }
 
@@ -123,14 +123,14 @@
       }
     } catch (err) {
       try {
-        const fallbackJs = new URL("./thinkly_fast_web.js", location.href).href;
-        const fallbackWasm = new URL("./thinkly_fast_web_bg.wasm", location.href).href;
+        const fallbackJs = new URL("./block_web.js", location.href).href;
+        const fallbackWasm = new URL("./block_web_bg.wasm", location.href).href;
         const mod2 = await import(fallbackJs);
         if (typeof mod2.default === "function") {
           await mod2.default(fallbackWasm);
         }
       } catch (err2) {
-        console.error("[Thinkly Fast GPUI] Failed to boot WASM editor:", err, err2);
+        console.error("[Block GPUI] Failed to boot WASM editor:", err, err2);
         return;
       }
     }

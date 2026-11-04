@@ -19,7 +19,7 @@ use gpui::{
     WindowOptions, actions, point, px, size,
 };
 
-actions!(thinkly_fast, [Quit, ExportImage]);
+actions!(block, [Quit, ExportImage]);
 
 pub fn sync_ime_cursor_area(_x: f32, _y: f32, _h: f32) {}
 

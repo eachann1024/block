@@ -79,7 +79,7 @@ fn temporary(path: &Path) -> Result<(Temporary, File), ExportError> {
     }
     for _ in 0..64 {
         let id = NEXT_FILE.fetch_add(1, Ordering::Relaxed);
-        let candidate = directory.join(format!(".thinkly-export-{}-{id}.tmp", std::process::id()));
+        let candidate = directory.join(format!(".block-export-{}-{id}.tmp", std::process::id()));
         match OpenOptions::new()
             .create_new(true)
             .write(true)

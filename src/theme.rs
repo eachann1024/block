@@ -162,7 +162,7 @@ pub fn set_font_smoothing(on: bool) {
     if !cfg!(target_os = "macos") { return; }
     let val = if on { "2" } else { "0" };
     std::thread::spawn(move || {
-        let _ = Command::new("defaults").args(["write", "app.thinkly.fast", "AppleFontSmoothing", "-int", val]).status();
+        let _ = Command::new("defaults").args(["write", "dev.eachann.block", "AppleFontSmoothing", "-int", val]).status();
     });
 }
 

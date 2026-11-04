@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { cpSync, lstatSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { assertInstallTarget, assertWritable, installPath, installedExecutable, remove, sameVolumeTemp, verifySignature } from "./app-bundle.mjs";
+import { assertInstallTarget, assertWritable, installPath, installedExecutable, legacyInstallPath, remove, sameVolumeTemp, verifySignature } from "./app-bundle.mjs";
 import { appPids } from "./stop-app.mjs";
 
 const readyWaitMs = 8000;
@@ -10,7 +10,7 @@ export function prepareInstall(bundle) {
   const present = assertInstallTarget(installPath);
   assertWritable(dirname(installPath));
   const staging = sameVolumeTemp(installPath);
-  const staged = join(staging, "Thinkly Fast.app");
+  const staged = join(staging, "Block.app");
   try {
     cpSync(bundle, staged, { recursive: true });
     verifySignature(staged);
@@ -40,6 +40,7 @@ export function commitInstall(plan) {
     throw error;
   }
   if (plan.present) remove(plan.backup);
+  if (pathExists(legacyInstallPath)) remove(legacyInstallPath);
   plan.keep = false;
   const lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
   spawnSync(lsregister, ["-f", installPath], { stdio: "ignore" });

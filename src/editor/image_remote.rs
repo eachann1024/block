@@ -16,7 +16,7 @@ pub(super) enum RemoteImageState { Loading, Ready(PathBuf), Failed }
 const EXTS: [&str; 6] = ["png", "jpg", "gif", "webp", "bmp", "svg"];
 static CACHE: LazyLock<Mutex<HashMap<String, RemoteImageState>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-fn cache_dir() -> PathBuf { std::env::temp_dir().join("thinkly-fast-remote-images") }
+fn cache_dir() -> PathBuf { std::env::temp_dir().join("block-remote-images") }
 
 fn hash_url(url: &str) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;

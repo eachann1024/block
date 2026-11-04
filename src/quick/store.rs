@@ -26,11 +26,9 @@ pub fn is_default_name(slot: usize, name: &str) -> bool {
         || (slot == 0 && matches!(trimmed, "灵感" | "Ideas"))
 }
 
-/// `~/Library/Application Support/Thinkly Fast/quick` on macOS.
+/// `~/Library/Application Support/Block/quick` on macOS.
 pub fn dir() -> PathBuf {
-    let base = dirs::data_dir().or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))
-        .unwrap_or_else(std::env::temp_dir);
-    base.join("Thinkly Fast").join("quick")
+    crate::files::app_data_dir("Block").join("quick")
 }
 
 pub fn slot_path(slot: usize) -> PathBuf { dir().join(format!("slot-{}.md", slot + 1)) }

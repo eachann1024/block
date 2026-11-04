@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { buildReleaseNotes, listCommits } from "./release-notes.mjs";
 
 export const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
-export const REPO = process.env.GH_REPO || process.env.GITHUB_REPOSITORY || "eachann1024/thinkly-fast";
+export const REPO = process.env.GH_REPO || process.env.GITHUB_REPOSITORY || "eachann1024/block";
 
 export function gh(args, input) {
   return execFileSync("gh", args, {
@@ -50,8 +50,8 @@ export function setCargoTomlVersion(text, version) {
 
 export function setCargoLockVersion(text, version) {
   return text.replace(
-    /(\[\[package\]\]\r?\nname = "thinkly-fast"\r?\nversion = )"\d+\.\d+\.\d+"/,
-    `$1"${version}"`,
+    /(\[\[package\]\]\r?\nname = "block"\r?\nversion = )"\d+\.\d+\.\d+"(\r?\ndependencies =)/,
+    `$1"${version}"$2`,
   );
 }
 
