@@ -72,7 +72,7 @@ pub(super) fn preview_block(
         .text_color(toggle_fg)
         .hover(move |s| s.bg(toggle_hover_bg))
         .child(icon(caret_icon, px(14.), tint))
-        .child("Source")
+        .child(tr("源码", "Source"))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
             cx.stop_propagation();
             let next = !open;

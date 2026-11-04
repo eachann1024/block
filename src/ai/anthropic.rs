@@ -33,7 +33,7 @@ pub(super) fn list_models(config: &Config) -> Result<Vec<String>, String> {
     })?;
     let (body, code) = provider::split_status(&String::from_utf8_lossy(&out.stdout));
     if code == 0 {
-        return Err(tr("网络请求失败，请检查网络或 Base URL", "Network request failed. Check your connection or Base URL").into());
+        return Err(tr("网络请求失败，请检查网络或接口地址", "Network request failed. Check your connection or Base URL").into());
     }
     if !(200..300).contains(&code) { return Err(provider::service_error(&body, code)); }
     let mut ids: Vec<String> = serde_json::from_str::<serde_json::Value>(&body).ok()
@@ -53,7 +53,9 @@ pub(super) fn test_connection(config: &Config, model: &str) -> Result<(), String
         if is_en() { format!("Failed to launch curl: {e}") } else { format!("无法启动 curl：{e}") }
     })?;
     if let Some(mut stdin) = child.stdin.take() { let _ = stdin.write_all(body.as_bytes()); }
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    let out = child.wait_with_output().map_err(|e| {
+        if is_en() { format!("Failed to read curl output: {e}") } else { format!("读取 curl 输出失败：{e}") }
+    })?;
     let (body, code) = provider::split_status(&String::from_utf8_lossy(&out.stdout));
     if code == 0 {
         let err = String::from_utf8_lossy(&out.stderr);
@@ -170,7 +172,8 @@ pub(super) fn stream_turn(
             let Ok(v) = serde_json::from_str::<serde_json::Value>(data) else { continue };
             match v.get("type").and_then(|t| t.as_str()).unwrap_or("") {
                 "error" => {
-                    let err = v.pointer("/error/message").or_else(|| v.get("message")).and_then(|m| m.as_str()).unwrap_or("Anthropic error");
+                    let err = v.pointer("/error/message").or_else(|| v.get("message")).and_then(|m| m.as_str())
+                        .unwrap_or_else(|| tr("Anthropic 服务返回错误", "Anthropic service error"));
                     let _ = child.kill();
                     return fail(provider::format_error(err), false);
                 }
@@ -212,7 +215,7 @@ pub(super) fn stream_turn(
     let _ = child.wait();
     if cancel.load(Ordering::Relaxed) { return; }
     if code == 0 {
-        return fail(tr("网络请求失败，请检查网络或 Base URL", "Network request failed. Check your connection or Base URL").into(), true);
+        return fail(tr("网络请求失败，请检查网络或接口地址", "Network request failed. Check your connection or Base URL").into(), true);
     }
     if !(200..300).contains(&code) {
         return fail(provider::keyed(&config, provider::service_error(other.trim(), code)), code == 401 || code == 403 || code == 404);
