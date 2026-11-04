@@ -50,6 +50,7 @@ pub struct Editor {
     pub(super) table_sel: Option<(u64, super::table_actions::TableSel)>,
     pub(super) table_menu: Option<super::table_actions::TableMenu>,
     pub(super) table_drag: Option<super::table_actions::TableDrag>,
+    pub(super) table_extend: Option<super::table_extend::TableExtend>,
     pub(super) table_chrome: Option<super::table_actions::TableChrome>,
     pub(super) selection_origin: Option<(selection::Position, selection::Position, usize)>,
     pub(super) toolbar_anchor: Option<Point<Pixels>>,
@@ -86,7 +87,7 @@ impl Editor {
         cx.on_app_quit(|editor, _| { editor.prepare_to_quit(); async {} }).detach();
         let doc = Doc::empty(); let caret = Caret::new(doc.blocks[0].id);
         Self { doc, caret, focus: cx.focus_handle(), hover: None, hover_gen: 0, dragging: None,
-            drag_over: None, selecting: false, block_menu: None, nowrap: Default::default(), folded: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, image_menu: None, link_ui: Default::default(), layouts: HashMap::new(),
+            drag_over: None, selecting: false, block_menu: None, nowrap: Default::default(), folded: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_extend: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, image_menu: None, link_ui: Default::default(), layouts: HashMap::new(),
             list: ListState::new(1, ListAlignment::Top, px(120.)), scroll_top: (0, px(0.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
@@ -218,7 +219,7 @@ impl Render for Editor {
                 .on_scroll(|_, _, cx| crate::dropdown::dismiss_all(cx))
                 .on_mouse_move(cx.listener(|this, event, _, cx| this.pointer_move(event, cx)))
                 .on_mouse_up(MouseButton::Left, cx.listener(|this, event: &gpui::MouseUpEvent, _, cx| this.finish_drag(event.position, cx)))
-                .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.clear_pointer(); cx.notify(); }))
+                .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.finish_extend(cx); this.clear_pointer(); cx.notify(); }))
                 // The column is centred alongside the 224px annotation rail when the editor pane has room.
                 .child(div().flex_1().min_h_0().min_w_0().w_full().relative().flex().pr(px(scrollbar::GUTTER))
                     .on_scroll(scrollbar::forward_wheel(&self.list))
