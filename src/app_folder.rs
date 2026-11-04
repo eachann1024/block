@@ -97,6 +97,7 @@ impl Workspace {
         self.folder = Some(folder.clone());
         self.folder_error = None;
         self.tabs = prepared.tabs;
+        self.nav.clear();
         self.selected = None;
         self.notice = prepared.notice;
         self.tree.update(cx, |tree, cx| tree.set_index(prepared.index, cx));

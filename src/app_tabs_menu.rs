@@ -44,11 +44,11 @@ thread_local! {
     static TAB_UI: RefCell<TabUiState> = RefCell::new(TabUiState::default());
 }
 
-pub(super) fn clear_tab_menu() {
+pub(crate) fn clear_tab_menu() {
     TAB_UI.with(|ui| { let mut s = ui.borrow_mut(); s.menu = None; s.page_menu = None; });
 }
 
-pub(super) fn record_tab_open(path: PathBuf) {
+pub(crate) fn record_tab_open(path: PathBuf) {
     TAB_UI.with(|ui| {
         let mut s = ui.borrow_mut();
         s.seq = s.seq.wrapping_add(1);
