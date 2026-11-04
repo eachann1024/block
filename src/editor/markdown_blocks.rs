@@ -2,6 +2,7 @@ use super::Kind;
 pub(super) fn fence(line: &str) -> Option<(u8,usize,&str)> {
     let body = line.trim_start_matches(' ');
     if line.len()-body.len() > 3 { return None; }
+    if body.trim() == "$$" { return Some((b'$', 2, "math")); }
     let marker = *body.as_bytes().first()?;
     if marker != b'`' && marker != b'~' { return None; }
     let width = body.bytes().take_while(|b| *b == marker).count();
@@ -12,8 +13,19 @@ pub(super) fn fence(line: &str) -> Option<(u8,usize,&str)> {
 }
 pub(super) fn closes_fence(line: &str, marker: u8, width: usize) -> bool {
     let body = line.trim_start_matches(' ');
+    if marker == b'$' { return line.len() - body.len() <= 3 && body.trim() == "$$"; }
     line.len()-body.len() <= 3 && body.bytes().take_while(|b| *b == marker).count() >= width
         && body.trim_start_matches(marker as char).trim().is_empty()
+}
+pub(super) fn inline_math_block(line: &str) -> Option<(usize, &str)> {
+    let body = line.trim_start_matches(' ');
+    let indent = line.len() - body.len();
+    let trimmed = body.trim_end();
+    if indent <= 3 && trimmed.starts_with("$$") && trimmed.ends_with("$$") && trimmed.len() > 4 {
+        let inner = trimmed[2..trimmed.len() - 2].trim();
+        if !inner.contains("$$") { return Some((indent, inner)); }
+    }
+    None
 }
 /// A paragraph with delimiters spanning editor lines must stay opaque as a whole.
 pub(super) fn unclosed_inline(line:&str)->bool {

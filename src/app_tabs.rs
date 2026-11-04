@@ -13,9 +13,10 @@ use super::{Workspace, file_ops::display_name, search::Dismiss};
 #[path = "app_tabs_menu.rs"]
 mod tab_menu;
 
+pub(super) use tab_menu::hover_tinted_icon;
 use tab_menu::{
     TAB_ANIM_MS, TAB_BASIS_W, TAB_FADE_W, TAB_MAX_W, TAB_MIN_W, clear_tab_menu, closing_ghost,
-    hover_tinted_icon, opening_seq, record_tab_close, record_tab_open, render_closing_ghost,
+    opening_seq, record_tab_close, record_tab_open, render_closing_ghost,
     render_inactive_tab_body, tab_fade,
 };
 
@@ -23,26 +24,24 @@ const TITLEBAR_HEIGHT: f32 = 40.;
 const SINGLE_TAB_MAX_W: f32 = 240.;
 
 actions!(workspace_tabs, [
-    NewTab, CloseTab, NextTab, PrevTab,
+    NewTab, CloseTab, NextTab, PrevTab, ToggleSidebar,
     SelectTab1, SelectTab2, SelectTab3, SelectTab4, SelectTab5,
     SelectTab6, SelectTab7, SelectTab8, SelectTab9
 ]);
 
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("cmd-t", NewTab, Some("Workspace")),
-        KeyBinding::new("cmd-w", CloseTab, Some("Workspace")),
-        KeyBinding::new("ctrl-tab", NextTab, Some("Workspace")),
-        KeyBinding::new("cmd-shift-]", NextTab, Some("Workspace")),
-        KeyBinding::new("cmd-alt-right", NextTab, Some("Workspace")),
-        KeyBinding::new("ctrl-shift-tab", PrevTab, Some("Workspace")),
-        KeyBinding::new("cmd-shift-[", PrevTab, Some("Workspace")),
-        KeyBinding::new("cmd-alt-left", PrevTab, Some("Workspace")),
-        KeyBinding::new("cmd-1", SelectTab1, Some("Workspace")), KeyBinding::new("cmd-2", SelectTab2, Some("Workspace")),
-        KeyBinding::new("cmd-3", SelectTab3, Some("Workspace")), KeyBinding::new("cmd-4", SelectTab4, Some("Workspace")),
-        KeyBinding::new("cmd-5", SelectTab5, Some("Workspace")), KeyBinding::new("cmd-6", SelectTab6, Some("Workspace")),
-        KeyBinding::new("cmd-7", SelectTab7, Some("Workspace")), KeyBinding::new("cmd-8", SelectTab8, Some("Workspace")),
-        KeyBinding::new("cmd-9", SelectTab9, Some("Workspace")),
+        KeyBinding::new("secondary-t", NewTab, Some("Workspace")), KeyBinding::new("secondary-w", CloseTab, Some("Workspace")),
+        KeyBinding::new("secondary-\\", ToggleSidebar, Some("Workspace")),
+        KeyBinding::new("ctrl-tab", NextTab, Some("Workspace")), KeyBinding::new("ctrl-pagedown", NextTab, Some("Workspace")),
+        KeyBinding::new("secondary-shift-]", NextTab, Some("Workspace")), KeyBinding::new("secondary-alt-right", NextTab, Some("Workspace")),
+        KeyBinding::new("ctrl-shift-tab", PrevTab, Some("Workspace")), KeyBinding::new("ctrl-pageup", PrevTab, Some("Workspace")),
+        KeyBinding::new("secondary-shift-[", PrevTab, Some("Workspace")), KeyBinding::new("secondary-alt-left", PrevTab, Some("Workspace")),
+        KeyBinding::new("secondary-1", SelectTab1, Some("Workspace")), KeyBinding::new("secondary-2", SelectTab2, Some("Workspace")),
+        KeyBinding::new("secondary-3", SelectTab3, Some("Workspace")), KeyBinding::new("secondary-4", SelectTab4, Some("Workspace")),
+        KeyBinding::new("secondary-5", SelectTab5, Some("Workspace")), KeyBinding::new("secondary-6", SelectTab6, Some("Workspace")),
+        KeyBinding::new("secondary-7", SelectTab7, Some("Workspace")), KeyBinding::new("secondary-8", SelectTab8, Some("Workspace")),
+        KeyBinding::new("secondary-9", SelectTab9, Some("Workspace")),
     ]);
 }
 
@@ -53,6 +52,7 @@ impl Workspace {
     }
     pub(super) fn bind_tab_actions(&self, root: gpui::Div, cx: &mut Context<Self>) -> gpui::Div {
         root.on_action(cx.listener(|this, _: &Dismiss, _, cx| if !this.dismiss_tab_menu(cx) { cx.propagate(); }))
+            .on_action(cx.listener(|this, _: &ToggleSidebar, _, cx| this.toggle_sidebar(cx)))
             .on_action(cx.listener(|this, _: &NewTab, window, cx| this.new_tab(window, cx)))
             .on_action(cx.listener(|this, _: &CloseTab, _, cx| this.close_active_tab(cx)))
             .on_action(cx.listener(|this, _: &NextTab, _, cx| this.step_tab(1, cx)))
@@ -171,14 +171,7 @@ impl Workspace {
         let theme = Theme::ocean();
         let tab_count = self.tabs.len();
         let can_create = self.folder.is_some() && !self.busy();
-        let left = div().id("titlebar-left").w(self.sidebar_width).h_full().flex_none().flex().items_center()
-            .pl(px(76.)).pr(px(12.)).border_r_1().border_color(theme.sidebar_border)
-            .window_control_area(WindowControlArea::Drag)
-            .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
-            .when(tab_count > 1, |l| l.child(
-                div().ml_auto().text_size(px(12.)).line_height(px(16.)).text_color(theme.text_secondary)
-                    .child(format!("{tab_count} 篇已打开")),
-            ));
+        let left = self.titlebar_left(cx);
         let mut right = div().id("titlebar-tabs").flex_1().min_w_0().h_full().flex().items_center()
             .gap(px(4.)).px(px(10.)).overflow_hidden();
         if tab_count == 0 {
