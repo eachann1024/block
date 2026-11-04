@@ -1,6 +1,6 @@
 //! Full-window Settings page: header, single-tab body switch and the titlebar breadcrumb.
 use gpui::{
-    AnyElement, Context, CursorStyle, FontWeight, KeyDownEvent, MouseButton, WindowControlArea, div, prelude::*, px,
+    AnyElement, Context, FontWeight, KeyDownEvent, MouseButton, WindowControlArea, div, prelude::*, px,
 };
 use crate::theme::{Theme, tr};
 use super::Workspace;
@@ -49,17 +49,8 @@ impl Workspace {
             }))
             .child(div().w_full().max_w(px(720.)).mx_auto().pt(px(40.)).px(px(28.)).pb(px(64.))
                 .flex().flex_col().gap(px(28.))
-                .child(div().flex().items_center().justify_between()
-                    .child(div().text_size(px(24.)).line_height(px(32.)).font_weight(FontWeight(560.))
-                        .text_color(theme.text).child(tab.title()))
-                    .child(div().id("settings-back").relative().children(crate::ui::smoke_overlay::probe("settings-back"))
-                        .h(px(32.)).px(px(10.)).rounded(crate::ui::radius::CONTROL)
-                        .bg(crate::ui::settings_controls::card_bg()).border_1().border_color(theme.btn_border)
-                        .flex().items_center().justify_center().text_size(px(14.)).font_weight(FontWeight(460.))
-                        .text_color(theme.text).cursor(CursorStyle::PointingHand)
-                        .hover(move |s| s.bg(theme.btn_hover))
-                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.close_settings(window, cx)))
-                        .child(tr("返回编辑", "Back to Editor"))))
+                .child(div().text_size(px(24.)).line_height(px(32.)).font_weight(FontWeight(560.))
+                    .text_color(theme.text).child(tab.title()))
                 .child(self.settings_body(tab, cx)))
             .into_any_element())
     }
