@@ -9,7 +9,7 @@ use super::presets::PRESETS;
 use super::settings::{AiSettings, TestNote};
 use crate::theme::{Theme, is_en, tr};
 use crate::ui::settings_controls::{
-    action_button, card_bg, card_title, mono_font, setting_row, settings_card, toggle_pill,
+    action_button, card_bg, card_title, setting_row, settings_card, tag_chip, toggle_pill,
 };
 
 fn input_box(input: &Entity<InputState>) -> impl IntoElement {
@@ -66,7 +66,7 @@ impl AiSettings {
 
     fn model_card(&self, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
-        let current_model = self.model.read(cx).value().to_string();
+        let current_model = self.model.clone();
         let test_ok = matches!(self.test_note, Some(TestNote::Ok));
         let fetch_label = if self.fetching { tr("获取中…", "Fetching…") }
             else if self.models.is_empty() { tr("获取模型", "Fetch Models") } else { tr("重新获取模型", "Refresh Models") };
@@ -76,29 +76,33 @@ impl AiSettings {
             Some(TestNote::Err(e)) => Some(e.clone()),
             _ => None,
         });
-        let chips = self.models.iter().take(40).cloned().fold(div().flex().flex_wrap().gap(px(6.)), |d, id| {
-            let active = id == current_model;
-            let pick = id.clone();
-            d.child(div().id(SharedString::from(format!("ai-model-{id}"))).h(px(28.)).px(px(10.)).flex().items_center()
-                .rounded(px(6.)).text_size(px(13.)).font(mono_font()).border_1()
-                .border_color(if active { theme.accent } else { theme.hairline })
-                .text_color(if active { theme.accent } else { theme.text_secondary })
-                .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
-                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
-                    this.model.update(cx, |i, cx| i.set_value(pick.clone(), window, cx));
-                    this.save(cx);
-                }))
-                .child(id))
-        });
+        let model_list = if self.models.is_empty() {
+            let hint = if self.fetching {
+                tr("正在获取模型列表…", "Fetching models…")
+            } else {
+                tr("点击「获取模型」加载可用模型", "Click \"Fetch Models\" to load available models")
+            };
+            div().id("ai-model-list").text_size(px(14.)).text_color(theme.text_secondary).child(hint)
+        } else {
+            self.models.iter().cloned().fold(div().id("ai-model-list").flex().flex_wrap().gap(px(6.)), |d, id| {
+                let active = id == current_model;
+                let pick = id.clone();
+                d.child(
+                    tag_chip(SharedString::from(format!("ai-model-{id}")), id, active, true)
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                            this.select_model(pick.clone(), cx);
+                        })),
+                )
+            })
+        };
         settings_card(16.)
             .child(card_title(tr("模型与连接", "Model & Connection")))
-            .child(setting_row(tr("默认模型", "Default Model"), div().flex_1().min_w_0().max_w(px(380.)).flex().items_center().gap(px(8.))
-                .child(field_flex(&self.model))
+            .child(setting_row(tr("默认模型", "Default Model"), div().flex().items_center().gap(px(8.))
                 .child(action_button("ai-fetch-models", fetch_label, false, !self.fetching)
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.fetch_models(cx))))
                 .child(action_button("ai-test", test_label, test_ok, !self.testing)
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.test(cx))))))
-            .when(!self.models.is_empty(), |d| d.child(div().id("ai-model-list").max_h(px(88.)).overflow_y_scroll().child(chips)))
+            .child(model_list)
             .children(error.map(|e| div().text_size(px(13.)).text_color(gpui::rgb(0xb42318)).child(SharedString::from(e))))
     }
 }
