@@ -38,7 +38,28 @@ impl Render for Workspace {
             .children(self.overlays(window, cx))
             .children(self.resize_capture(cx))
             .children(crate::ui::smoke_overlay::render())
+            .child(gpui::deferred(div().on_children_prepainted(|_, window, cx| sync_focused_input_ime(window, cx))).with_priority(10))
     }
+}
+
+fn sync_focused_input_ime(window: &mut Window, cx: &mut gpui::App) {
+    let Some(focused_input) = gpui_component::WindowExt::focused_input(window, cx).and_then(|s| s.as_input().cloned()) else { return };
+    focused_input.update(cx, |state, cx| {
+        if let Some(g) = state.prepaint_caret_geometry() {
+            let cb = g.cursor_bounds();
+            crate::sync_ime_cursor_area(f32::from(cb.origin.x), f32::from(cb.origin.y + g.scroll_offset().y), f32::from(cb.size.height.max(g.line_height())));
+            return;
+        }
+        let ib = state.input_bounds();
+        let range = gpui::EntityInputHandler::marked_text_range(state, window, cx)
+            .or_else(|| gpui::EntityInputHandler::selected_text_range(state, false, window, cx).map(|s| s.range))
+            .unwrap_or(0..0);
+        if let Some(b) = gpui::EntityInputHandler::bounds_for_range(state, range, ib, window, cx) {
+            crate::sync_ime_cursor_area(f32::from(b.origin.x), f32::from(b.origin.y), f32::from(b.size.height));
+        } else if ib.size.height > px(0.) {
+            crate::sync_ime_cursor_area(f32::from(ib.origin.x), f32::from(ib.origin.y), f32::from(ib.size.height));
+        }
+    });
 }
 
 impl Workspace {
