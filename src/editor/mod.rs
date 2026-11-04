@@ -24,6 +24,8 @@ mod format_ui;
 mod toolbar;
 mod link_pop;
 mod annotate;
+mod annotate_pop;
+mod annotate_rail;
 mod annotate_ui;
 #[path = "../ai/mod.rs"]
 pub(crate) mod ai;
