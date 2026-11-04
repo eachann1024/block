@@ -133,14 +133,7 @@ impl Editor {
             cx.notify();
             return;
         }
-        if let (Some(id), Some(origin)) = (self.dragging, self.grip_origin.take()) {
-            if (position - origin).magnitude() < 4. {
-                self.clear_pointer();
-                self.open_block_menu(id, position + point(px(8.), px(8.)), crate::editor::block_menu::Mode::Handle, cx);
-                return;
-            }
-        }
-        if self.dragging.is_some() { self.update_drop(position); }
+        if self.dragging.is_some() && self.drag_over.is_some() { self.update_drop(position); }
         let dragging = self.dragging; let target = self.drag_over;
         self.clear_pointer();
         if let (Some(id), Some(target)) = (dragging, target) {
@@ -174,18 +167,27 @@ impl Editor {
     pub(in crate::editor) fn selection_toolbar_anchor(&self, bounds: gpui::Bounds<Pixels>, window: &Window) -> Option<Point<Pixels>> {
         if self.path.is_none() || self.caret.is_empty() || self.selecting || self.dragging.is_some()
             || self.caret.composing.is_some() || !window.is_window_active() || !self.focus.is_focused(window) { return None; }
-        // Inside a table the toolbar serves one-cell text and cross-cell ranges (link hidden there), not row/column/whole-table selections.
-        if self.table_sel.is_some() { return None; }
         let viewport = self.list.viewport_bounds();
+        use crate::editor::chrome::{TOOLBAR_HEIGHT, TOOLBAR_WIDTH};
+        let height = if viewport.size.width - px(16.) < TOOLBAR_WIDTH { TOOLBAR_HEIGHT * 2. - px(8.) } else { TOOLBAR_HEIGHT };
+        if let Some((table_id, sel)) = self.table_sel {
+            if sel != crate::editor::table_actions::TableSel::Whole { return None; }
+            let tbl = self.table_chrome.as_ref().filter(|c| c.block == table_id).map(|c| c.bounds)
+                .or_else(|| self.layouts.get(&table_id).and_then(crate::editor::table_layout::grid_rect))?;
+            if tbl.bottom() <= viewport.top() || tbl.top() >= viewport.bottom() { return None; }
+            let bar_w = px(396.);
+            let x = (tbl.left() + (tbl.size.width - bar_w) / 2.)
+                .max(bounds.left() + px(8.)).min((bounds.right() - bar_w - px(8.)).max(bounds.left()));
+            let above = tbl.top() - height - px(8.);
+            let y = if above >= viewport.top() { above } else { tbl.bottom() + px(8.) };
+            return Some(point(x, y.min((viewport.bottom() - height).max(viewport.top())).max(viewport.top())));
+        }
         let rect = self.layouts.iter().filter_map(|(id, layout)| {
             let range = self.selected_range(*id)?;
             if range.is_empty() { return None; }
             layout.rects(range).into_iter().find(|r| r.bottom() > viewport.top() && r.top() < viewport.bottom())
         }).min_by(|a, b| a.top().partial_cmp(&b.top()).unwrap_or(std::cmp::Ordering::Equal))?;
-        use crate::editor::chrome::{TOOLBAR_HEIGHT, TOOLBAR_WIDTH};
         let x = rect.left().max(bounds.left()+px(8.)).min((bounds.right()-TOOLBAR_WIDTH-px(8.)).max(bounds.left()));
-        // The toolbar wraps to two rows when it is wider than the editor (toolbar.rs).
-        let height = if viewport.size.width - px(16.) < TOOLBAR_WIDTH { TOOLBAR_HEIGHT * 2. - px(8.) } else { TOOLBAR_HEIGHT };
         let above = rect.top() - height - px(8.);
         let y = if above >= viewport.top() { above } else { rect.bottom()+px(8.) };
         Some(point(x, y.min((viewport.bottom()-height).max(viewport.top())).max(viewport.top())))

@@ -4,7 +4,7 @@
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use gpui::{Hsla, Pixels, px};
+use gpui::{AnyView, App, Context, FontWeight, Hsla, IntoElement, Pixels, Render, SharedString, Window, div, prelude::*, px, rgb, rgba};
 pub use crate::files::state::{FontChoice, ThemeMode};
 use crate::icons::IconColors;
 
@@ -185,101 +185,39 @@ const fn hex(value: u32) -> Hsla {
 }
 
 const OCEAN_LIGHT: Theme = Theme {
-    shell: hex(0xf1f1f1),
-    sidebar: hex(0xfafafa),
-    settings_bg: hex(0xf8f8f8),
-    paper: hex(0xffffff),
-    menu: hex(0xffffff),
-    text: hex(0x20242c),
-    text_secondary: hex(0x526071),
-    accent: hex(0x547dd0),
-    icon_fill: hex(0xc9d8f3),
-    hover: hex(0xeef3fc),
-    selected: hex(0xe5edfc),
-    hairline: hex(0xe4e6ea),
-    code_bg: hex(0xf2f4f8),
-    quote_bar: hex(0xd5dbe3),
-    primary: hex(0x2f3540),
-    primary_hover: hex(0x3b4250),
-    btn_border: hex(0xdcdcdc),
-    btn_hover: hex(0xf7f7f7),
-    menu_border: hex(0xe4e4e4),
-    sidebar_border: hex(0xe6e6e6),
-    preview_bg: hex(0xe9e9e9),
-    selection: hex(0xd6e3fb),
-    selection_text: hex(0x2f5bb7),
-    menu_item_height: px(32.),
-    sidebar_width: px(260.),
-    content_width: px(720.),
-    editor_font: px(17.),
-    ui_font: px(14.),
+    shell: hex(0xf1f1f1), sidebar: hex(0xfafafa), settings_bg: hex(0xf8f8f8),
+    paper: hex(0xffffff), menu: hex(0xffffff), text: hex(0x20242c),
+    text_secondary: hex(0x526071), accent: hex(0x547dd0), icon_fill: hex(0xc9d8f3),
+    hover: hex(0xeef3fc), selected: hex(0xe5edfc), hairline: hex(0xe4e6ea),
+    code_bg: hex(0xf2f4f8), quote_bar: hex(0xd5dbe3), primary: hex(0x2f3540),
+    primary_hover: hex(0x3b4250), btn_border: hex(0xdcdcdc), btn_hover: hex(0xf7f7f7),
+    menu_border: hex(0xe4e4e4), sidebar_border: hex(0xe6e6e6), preview_bg: hex(0xe9e9e9),
+    selection: hex(0xcfe0fb), selection_text: hex(0x1f57c0), menu_item_height: px(32.),
+    sidebar_width: px(260.), content_width: px(720.), editor_font: px(17.), ui_font: px(14.),
 };
 
 const OCEAN_DARK: Theme = Theme {
-    shell: hex(0x343434),
-    sidebar: hex(0x222222),
-    settings_bg: hex(0x181818),
-    paper: hex(0x181818),
-    menu: hex(0x222222),
-    text: hex(0xececec),
-    text_secondary: hex(0xb4b4b4),
-    accent: hex(0x779de8),
-    icon_fill: hex(0x31456a),
-    hover: hex(0x2c2c2c),
-    selected: hex(0x343434),
-    hairline: hex(0x2e2e2e),
-    code_bg: hex(0x242424),
-    quote_bar: hex(0x484848),
-    primary: hex(0x445066),
-    primary_hover: hex(0x52607a),
-    btn_border: hex(0x444444),
-    btn_hover: hex(0x2c2c2c),
-    menu_border: hex(0x383838),
-    sidebar_border: hex(0x333333),
-    preview_bg: hex(0x262626),
-    selection: hex(0x2d426b),
-    selection_text: hex(0x9dbcf5),
-    menu_item_height: px(32.),
-    sidebar_width: px(260.),
-    content_width: px(720.),
-    editor_font: px(17.),
-    ui_font: px(14.),
+    shell: hex(0x343434), sidebar: hex(0x222222), settings_bg: hex(0x181818),
+    paper: hex(0x181818), menu: hex(0x222222), text: hex(0xececec),
+    text_secondary: hex(0xb4b4b4), accent: hex(0x779de8), icon_fill: hex(0x31456a),
+    hover: hex(0x2c2c2c), selected: hex(0x343434), hairline: hex(0x2e2e2e),
+    code_bg: hex(0x242424), quote_bar: hex(0x484848), primary: hex(0x445066),
+    primary_hover: hex(0x52607a), btn_border: hex(0x444444), btn_hover: hex(0x2c2c2c),
+    menu_border: hex(0x383838), sidebar_border: hex(0x333333), preview_bg: hex(0x262626),
+    selection: hex(0x2d426b), selection_text: hex(0x9dbcf5), menu_item_height: px(32.),
+    sidebar_width: px(260.), content_width: px(720.), editor_font: px(17.), ui_font: px(14.),
 };
 
 #[derive(Clone, Copy)]
 pub struct Theme {
-    pub shell: Hsla,
-    pub sidebar: Hsla,
-    pub settings_bg: Hsla,
-    pub paper: Hsla,
-    pub menu: Hsla,
-    pub text: Hsla,
-    pub text_secondary: Hsla,
-    pub accent: Hsla,
-    pub icon_fill: Hsla,
-    pub hover: Hsla,
-    pub selected: Hsla,
-    pub hairline: Hsla,
-    pub code_bg: Hsla,
-    pub quote_bar: Hsla,
-    pub primary: Hsla,
-    pub primary_hover: Hsla,
-    pub btn_border: Hsla,
-    pub btn_hover: Hsla,
-    pub menu_border: Hsla,
-    pub sidebar_border: Hsla,
-    /// Backdrop behind the export preview card.
-    pub preview_bg: Hsla,
-    /// Text selection highlight.
-    pub selection: Hsla,
-    /// Selected text glyph tint (F-Inline `.sel`).
-    pub selection_text: Hsla,
-    pub menu_item_height: Pixels,
-    pub sidebar_width: Pixels,
-    /// Standard body text width, excluding block handles, markers and insets.
-    pub content_width: Pixels,
-    pub editor_font: Pixels,
-    pub ui_font: Pixels,
+    pub shell: Hsla, pub sidebar: Hsla, pub settings_bg: Hsla, pub paper: Hsla,
+    pub menu: Hsla, pub text: Hsla, pub text_secondary: Hsla, pub accent: Hsla,
+    pub icon_fill: Hsla, pub hover: Hsla, pub selected: Hsla, pub hairline: Hsla,
+    pub code_bg: Hsla, pub quote_bar: Hsla, pub primary: Hsla, pub primary_hover: Hsla,
+    pub btn_border: Hsla, pub btn_hover: Hsla, pub menu_border: Hsla, pub sidebar_border: Hsla,
+    pub preview_bg: Hsla, pub selection: Hsla, pub selection_text: Hsla,
+    pub menu_item_height: Pixels, pub sidebar_width: Pixels, pub content_width: Pixels,
+    pub editor_font: Pixels, pub ui_font: Pixels,
 }
 
 impl Theme {
@@ -291,4 +229,34 @@ impl Theme {
     pub fn ocean() -> Self {
         if is_dark() { OCEAN_DARK } else { OCEAN_LIGHT }
     }
+}
+
+pub struct GlobalTooltip {
+    text: SharedString,
+}
+
+impl Render for GlobalTooltip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let dark = is_dark();
+        let (bg, fg, border) = if dark {
+            (rgb(0x202020), rgb(0xececec), rgba(0xffffff12))
+        } else {
+            (rgb(0x0f0f0f), rgb(0xffffff), rgba(0x0f0f0f00))
+        };
+        div().h(px(30.)).px(px(12.)).rounded(px(8.)).bg(bg).text_color(fg)
+            .border_1().border_color(border).shadow_md()
+            .flex().items_center().text_size(px(13.)).line_height(px(18.))
+            .font_weight(FontWeight::MEDIUM).whitespace_nowrap()
+            .child(self.text.clone())
+    }
+}
+
+pub fn build_tooltip(text: impl Into<SharedString>, _window: &mut Window, cx: &mut App) -> AnyView {
+    let text = text.into();
+    cx.new(|_| GlobalTooltip { text }).into()
+}
+
+pub fn tooltip(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    let text = text.into();
+    move |window, cx| build_tooltip(text.clone(), window, cx)
 }

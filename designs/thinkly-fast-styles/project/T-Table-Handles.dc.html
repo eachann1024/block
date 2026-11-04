@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>表格 · 行列胶囊选中前/后 · 整表选中与工具栏</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1f64d8;text-decoration:none}a:hover{color:#154cb0;text-decoration:underline}
+button{font-family:inherit}
+.bar{display:inline-flex;align-items:center;gap:2px;padding:4px 6px;background:#ffffff;border:1px solid #ececea;border-radius:14px;box-shadow:0 8px 24px rgba(31,30,29,.10),0 1px 3px rgba(31,30,29,.06)}
+.tb{height:32px;min-width:32px;display:inline-flex;align-items:center;justify-content:center;gap:1px;border:0;border-radius:8px;background:transparent;color:#37352f;padding:0 6px;cursor:pointer;flex:none;box-sizing:border-box}
+.tb:hover{background:#f1f1ef}
+.tb.dim{color:#9a9994;cursor:default}
+.tb.dim:hover{background:transparent}
+.sep{width:1px;height:20px;background:#e6e6e3;margin:0 4px;flex:none}
+.tbl{width:100%;border-collapse:collapse;border:1px solid #e3e1dc;font-size:15px;line-height:22px;color:#1f1e1d;background:#ffffff}
+.tbl th,.tbl td{position:relative;border:1px solid #e3e1dc;padding:10px 14px;text-align:left;vertical-align:middle;font-weight:400;box-sizing:border-box}
+.tbl th{background:#f5f3ef;color:#5e5d59}
+.tbl.all th{background:#dee4ed;color:#4a525d}
+.tbl.all td{background:#eef3fb}
+.tbl .col-hi-th{background:#dde3ec;color:#4a525d}
+.tbl .col-hi-td{background:#ecf2fa}
+.col-pill-idle{position:absolute;top:0;left:50%;transform:translate(-50%,-50%);width:24px;height:8px;border-radius:999px;border:1px solid #b5b3ad;background:#ffffff;padding:0;cursor:pointer;box-sizing:border-box;z-index:3}
+.row-pill-idle{position:absolute;left:0;top:50%;transform:translate(-50%,-50%);width:8px;height:24px;border-radius:999px;border:1px solid #b5b3ad;background:#ffffff;padding:0;cursor:pointer;box-sizing:border-box;z-index:3}
+.col-pill-active{position:absolute;top:0;left:50%;transform:translate(-50%,-50%);width:26px;height:14px;border-radius:999px;border:1px solid #aba9a3;background:#ffffff;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;box-sizing:border-box;box-shadow:0 1px 2px rgba(31,30,29,.06);z-index:4}
+.row-pill-active{position:absolute;left:0;top:50%;transform:translate(-50%,-50%);width:14px;height:26px;border-radius:999px;border:1px solid #aba9a3;background:#ffffff;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;box-sizing:border-box;box-shadow:0 1px 2px rgba(31,30,29,.06);z-index:4}
+.tbl-grip{position:absolute;left:-42px;top:6px;width:30px;height:30px;border-radius:8px;border:0;background:#f2f0eb;color:#6e6c66;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;box-sizing:border-box}
+.tbl-grip:hover{background:#eae7e0;color:#37352f}
+.tbl-grip.on{background:#f2f0eb;color:#4a4843}
+.more-btn{position:absolute;right:-40px;top:6px;width:28px;height:28px;border-radius:8px;border:1px solid #e5e3de;background:#ffffff;color:#5e5d59;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;box-sizing:border-box}
+.more-btn:hover{background:#f6f5f2;color:#1f1e1d}
+.add-row{margin-top:4px;height:22px;width:100%;border:0;border-radius:6px;background:#f2f1ee;color:#787670;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.add-row:hover{background:#e8e6e1;color:#37352f}
+.cmenu{position:absolute;left:50%;top:11px;transform:translateX(-13px);background:#ffffff;border:1px solid #ececea;border-radius:14px;box-shadow:0 12px 32px rgba(31,30,29,.12),0 2px 6px rgba(31,30,29,.06);padding:8px;width:224px;box-sizing:border-box;z-index:10}
+.cmi{display:flex;align-items:center;gap:12px;height:36px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:#1f1e1d;font-size:15px;font-weight:450;width:100%;text-align:left;cursor:pointer;box-sizing:border-box}
+.cmi:hover{background:#f3f2ef}
+.cmi svg{flex:none;color:#1f1e1d}
+.g-tip{position:absolute;bottom:calc(100% + 13px);left:50%;transform:translateX(-50%);display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:8px;background:#0f0f0f;color:#ffffff;font-size:13px;font-weight:450;line-height:18px;letter-spacing:-0.01em;white-space:nowrap;box-shadow:0 4px 12px rgba(15,15,15,.16);z-index:6}
+</style>
+</helmet>
+<div style="width:100%;height:980px;box-sizing:border-box;display:flex;flex-direction:column;background:#f7f7f5;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#1f1e1d;font-size:14px;line-height:20px;overflow:hidden">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;padding:0 16px;gap:12px;background:#f7f7f5;border-bottom:1px solid #ececea">
+<div aria-hidden="true" style="display:flex;gap:8px;width:52px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<div style="flex:1;text-align:center;font-size:13px;color:#5e5d59">表格行列胶囊（选中前空白 / 悬停激活六点 + Tooltip）· 整表选中与工具栏</div>
+<div style="display:flex;gap:6px">
+<button onClick="{{setColMode}}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #dcdad4;background:{{colBtnBg}};color:#1f1e1d;font-size:12px;cursor:pointer">状态 1：列把手菜单</button>
+<button onClick="{{setTableMode}}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #dcdad4;background:{{tblBtnBg}};color:#1f1e1d;font-size:12px;cursor:pointer">状态 2：点击表格把手全选</button>
+</div>
+</header>
+
+<main style="flex:1;min-height:0;background:#ffffff;overflow:auto;padding:28px 64px 48px;box-sizing:border-box;display:flex;flex-direction:column;gap:32px">
+
+<section style="max-width:860px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:13px;color:#5e5d59">
+1. 行列小胶囊把手「选中前 vs 悬停／选中后」状态对照（对齐图 4、图 5）
+</div>
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:20px">
+<div style="padding:20px 24px 18px;border:1px solid #eceae4;border-radius:10px;background:#ffffff;display:flex;flex-direction:column;gap:14px">
+<div style="font-size:12px;color:#5e5d59">选中前（默认悬停表格）：纯白细边框小胶囊正中压在表头顶边与行左边（横 24×8px / 竖 8×24px）</div>
+<div style="position:relative;padding-top:10px;padding-left:6px">
+<table class="tbl">
+<thead>
+<tr>
+<th style="width:45%">
+<button class="row-pill-idle" aria-label="第一行把手（选中前）"></button>
+<span>路段</span>
+</th>
+<th style="width:55%">
+<button class="col-pill-idle" aria-label="第二列把手（选中前）"></button>
+<span>有驾照</span>
+</th>
+</tr>
+</thead>
+</table>
+</div>
+</div>
+
+<div style="padding:20px 24px 18px;border:1px solid #eceae4;border-radius:10px;background:#ffffff;display:flex;flex-direction:column;gap:14px">
+<div style="font-size:12px;color:#5e5d59">悬停／选中后：胶囊展开为 26×14px 并显现 6 点，正上方 6px 居中浮现全局黑底 Tooltip</div>
+<div style="position:relative;padding-top:40px;padding-left:6px">
+<table class="tbl">
+<thead>
+<tr>
+<th style="width:45%">路段</th>
+<th style="width:55%">
+<span class="g-tip">Click for column options · drag to move</span>
+<button class="col-pill-active" aria-label="第二列把手（悬停激活）">
+<svg width="12" height="6" viewBox="0 0 12 6" fill="#6e6c66" aria-hidden="true"><circle cx="2.5" cy="1.5" r="1"/><circle cx="6" cy="1.5" r="1"/><circle cx="9.5" cy="1.5" r="1"/><circle cx="2.5" cy="4.5" r="1"/><circle cx="6" cy="4.5" r="1"/><circle cx="9.5" cy="4.5" r="1"/></svg>
+</button>
+<span>有驾照</span>
+</th>
+</tr>
+</thead>
+</table>
+</div>
+</div>
+</div>
+</section>
+
+<section style="max-width:860px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:13px;color:#5e5d59">
+2. 点击列顶六点胶囊：整列浅蓝灰高亮 + 胶囊正下方 4px 左对齐弹出三项菜单（底部常驻加行长条）
+</div>
+
+<div style="position:relative;margin:8px 44px 0">
+<button class="more-btn" aria-label="表格更多操作">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>
+</button>
+
+<table class="tbl">
+<thead>
+<tr>
+<th style="width:21%">
+<button class="row-pill-idle" aria-label="第一行操作"></button>
+<span>周日方案</span>
+</th>
+<th class="col-hi-th" style="width:25%">
+<button class="col-pill-active" onClick="{{setColMode}}" aria-label="第二列操作">
+<svg width="12" height="6" viewBox="0 0 12 6" fill="#6e6c66" aria-hidden="true"><circle cx="2.5" cy="1.5" r="1"/><circle cx="6" cy="1.5" r="1"/><circle cx="9.5" cy="1.5" r="1"/><circle cx="2.5" cy="4.5" r="1"/><circle cx="6" cy="4.5" r="1"/><circle cx="9.5" cy="4.5" r="1"/></svg>
+</button>
+<span>她到广州</span>
+<div class="cmenu" role="menu" aria-label="列操作菜单">
+<button class="cmi" role="menuitem">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="12" y="4" width="7" height="16" rx="1.6"/><path d="M3.5 12h5M6 9.5v5"/></svg>
+<span>Insert column left</span>
+</button>
+<button class="cmi" role="menuitem">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="7" height="16" rx="1.6"/><path d="M15.5 12h5M18 9.5v5"/></svg>
+<span>Insert column right</span>
+</button>
+<button class="cmi" role="menuitem">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="7" height="16" rx="1.6"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5"/></svg>
+<span>Delete column</span>
+</button>
+</div>
+</th>
+<th style="width:27%">你到阳江</th>
+<th style="width:27%">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="color:#1f64d8;font-weight:600">G6315：潮汕 18:23</td>
+<td class="col-hi-td">广州南 20:54</td>
+<td>21:38 转 <a href="#c7777">C7777</a>，阳江 23:07</td>
+<td style="font-weight:600">首选，下午能玩到约 17:15</td>
+</tr>
+<tr>
+<td style="color:#1f64d8">G3815：潮汕 18:39</td>
+<td class="col-hi-td">广州南 21:17</td>
+<td>换乘只有 21 分钟</td>
+<td>备选，太赶</td>
+</tr>
+<tr>
+<td style="color:#1f64d8">G5139：汕头 17:19</td>
+<td class="col-hi-td" style="color:#1f64d8">广州东 19:50 或广州 20:03</td>
+<td>阳江北 21:27，不换乘</td>
+<td style="color:#1f64d8">到家早，但周日只够吃午饭</td>
+</tr>
+</tbody>
+</table>
+
+<button class="add-row" aria-label="在底部新增一行">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+</div>
+</section>
+
+<section style="max-width:860px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:13px;color:#5e5d59">
+3. 点击左侧表格六点把手：整张表格高亮选中 + 顶部弹出选区工具栏（不弹块把手菜单，首行/首列胶囊保持选中前空白态）
+</div>
+
+<div style="padding:0 44px;display:flex;flex-direction:column;gap:12px">
+<p style="margin:0;font-size:16px;line-height:28px;font-weight:600">
+<span style="background:#fdf1d6;padding:2px 0">周日 11/15 坐潮汕站 18:23 的 G6315，20:54 到广州南。她在广州南下车，你转 21:38 的 C7777，23:0</span>7 到阳江站。
+</p>
+
+<div style="position:relative;margin-top:46px">
+<div style="position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);z-index:5">
+<div class="bar" role="toolbar" aria-label="表格选中工具栏">
+<button class="tb" aria-label="添加批注"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/></svg></button>
+<button class="tb" aria-label="添加表情回应"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-6-7.75"/><path d="M9 14.5c.8 1 1.8 1.5 3 1.5s2.2-.5 3-1.5"/><path d="M9 10h.01M15 10h.01"/><path d="M19 3v5M16.5 5.5h5"/></svg></button>
+<span class="sep"></span>
+<button class="tb" aria-label="粗体"><span style="font-weight:600;font-size:16px">B</span></button>
+<button class="tb" aria-label="斜体"><span style="font-style:italic;font-family:Georgia,serif;font-size:17px">I</span></button>
+<button class="tb" aria-label="下划线"><span style="text-decoration:underline;font-size:16px">U</span></button>
+<button class="tb" aria-label="删除线"><span style="text-decoration:line-through;font-size:16px">S</span></button>
+<button class="tb" aria-label="行内代码"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4c-2 0-2 1.5-2 3v2c0 1.5-1 3-2 3 1 0 2 1.5 2 3v2c0 1.5 0 3 2 3M16 4c2 0 2 1.5 2 3v2c0 1.5 1 3 2 3-1 0-2 1.5-2 3v2c0 1.5 0 3-2 3"/></svg></button>
+<button class="tb" aria-label="颜色"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 0 0 0 18c1.2 0 1.8-.8 1.8-1.7 0-1.2-1-1.6-1-2.6 0-.9.7-1.7 1.8-1.7H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/></svg><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+<span class="sep"></span>
+<button class="tb" aria-label="列表"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".9" fill="currentColor"/><circle cx="4.5" cy="12" r=".9" fill="currentColor"/><circle cx="4.5" cy="18" r=".9" fill="currentColor"/></svg><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+<span class="sep"></span>
+<button class="tb dim" aria-label="链接（整表选中禁用）" disabled="disabled"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></button>
+</div>
+</div>
+
+<button class="tbl-grip on" onClick="{{setTableMode}}" aria-label="选中整张表格">
+<svg width="12" height="14" viewBox="0 0 12 14" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="3" r="1.2"/><circle cx="8.5" cy="3" r="1.2"/><circle cx="3.5" cy="7" r="1.2"/><circle cx="8.5" cy="7" r="1.2"/><circle cx="3.5" cy="11" r="1.2"/><circle cx="8.5" cy="11" r="1.2"/></svg>
+</button>
+<button class="more-btn" aria-label="表格更多操作">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>
+</button>
+
+<table class="tbl all">
+<thead>
+<tr>
+<th style="width:21%">
+<button class="row-pill-idle" aria-label="第一行操作"></button>
+<button class="col-pill-idle" aria-label="第一列操作"></button>
+<span>周日方案</span>
+</th>
+<th style="width:25%">她到广州</th>
+<th style="width:27%">你到阳江</th>
+<th style="width:27%">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="color:#1f64d8;font-weight:600">G6315：潮汕 18:23</td>
+<td>广州南 20:54</td>
+<td>21:38 转 <a href="#c7777">C7777</a>，阳江 23:07</td>
+<td style="font-weight:600">首选，下午能玩到约 17:15</td>
+</tr>
+<tr>
+<td style="color:#1f64d8">G3815：潮汕 18:39</td>
+<td>广州南 21:17</td>
+<td>换乘只有 21 分钟</td>
+<td>备选，太赶</td>
+</tr>
+<tr>
+<td style="color:#1f64d8">G5139：汕头 17:19</td>
+<td style="color:#1f64d8">广州东 19:50 或广州 20:03</td>
+<td>阳江北 21:27，不换乘</td>
+<td style="color:#1f64d8">到家早，但周日只够吃午饭</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","default":"table","options":["col","table"]},"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+constructor(p) {
+super(p);
+this.state = { mode: null };
+}
+renderVals() {
+const mode = this.state.mode ?? this.props.mode ?? 'table';
+return {
+colBtnBg: mode === 'col' ? '#e7effd' : '#ffffff',
+tblBtnBg: mode === 'table' ? '#e7effd' : '#ffffff',
+setColMode: () => this.setState({ mode: 'col' }),
+setTableMode: () => this.setState({ mode: 'table' })
+};
+}
+}
+</script>
+</body>
+</html>

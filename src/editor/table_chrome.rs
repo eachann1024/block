@@ -1,83 +1,138 @@
-//! Table controls shown while the pointer is over a table: row and column handles outside the
-//! grid, the add-row and add-column buttons, the drop line, and the option menus. All positions are window coordinates from final paint.
-use gpui::{AnyElement, CursorStyle, Entity, MouseButton, Pixels, Point, div, point, prelude::*, px};
-use gpui_component::tooltip::Tooltip;
+//! Table controls shown while the pointer is over a table: row and column capsule handles
+//! on the grid border, the bottom add-row bar, the top-right more button, drop line, and menus.
+use gpui::{AnyElement, CursorStyle, Entity, FontWeight, MouseButton, Pixels, Point, Stateful, Div, div, point, prelude::*, px, rgb};
 use super::{menu_style, table_actions::{TableChrome, TableCmd, TableDrag, TableMenu, TableSel, menu_items}, view::Editor};
-use crate::{icons::{Icon, icon}, theme::Theme};
+use crate::{icons::{Icon, icon}, theme::{Theme, build_tooltip, is_dark}};
+
+thread_local! {
+    static PILL_HOVER: std::cell::Cell<Option<(u64, TableSel)>> = const { std::cell::Cell::new(None) };
+}
 
 fn floating(position: Point<Pixels>, child: impl IntoElement) -> AnyElement {
     gpui::deferred(gpui::anchored().position(position).child(child)).into_any_element()
 }
-/// Six-dot grip: 2 columns x 3 rows for the row handle, 3 columns x 2 rows for the column handle.
-fn grip(vertical: bool, color: gpui::Hsla) -> impl IntoElement {
-    let (lines, per) = if vertical { (3, 2) } else { (2, 3) };
-    let mut grid = div().flex().flex_col().items_center().justify_center().gap(px(2.5));
-    for _ in 0..lines {
-        let mut line = div().flex().gap(px(2.5));
-        for _ in 0..per { line = line.child(div().size(px(2.5)).rounded_full().bg(color)); }
-        grid = grid.child(line);
-    }
-    grid
-}
-/// Reference `.goose-table-handle-btn` inside the left/top chrome: popover fill, menu border, soft shadow.
-fn handle(id: (&'static str, usize), vertical: bool, open: bool, tip: &'static str) -> gpui::Stateful<gpui::Div> {
+
+/// Row/column capsule handle: compact 24x8 / 8x24 pill when idle, 26x14 / 14x26 with 6-dot grip when hovered or active.
+fn capsule(id: (&'static str, usize), vertical: bool, expanded: bool, tip: &'static str) -> Stateful<Div> {
+    let dark = is_dark();
     let theme = Theme::ocean();
-    let (w, h) = if vertical { (px(16.), px(24.)) } else { (px(28.), px(16.)) };
-    div().id(id).w(w).h(h).flex_none().rounded(px(6.)).flex().items_center().justify_center()
-        .bg(if open { theme.hover } else { theme.menu }).border_1().border_color(theme.menu_border)
-        .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0.6, 0.15, 0.13, 0.06), offset: point(px(0.), px(1.)),
-            blur_radius: px(3.), spread_radius: px(0.) }])
-        .hover(|s| s.bg(theme.hover)).cursor(CursorStyle::OpenHand)
-        .child(grip(vertical, if open { theme.text } else { theme.text_secondary }))
-        .tooltip(move |window, cx| Tooltip::new(tip).build(window, cx))
+    let (w, h) = match (vertical, expanded) {
+        (false, false) => (px(24.), px(8.)),
+        (false, true) => (px(26.), px(14.)),
+        (true, false) => (px(8.), px(24.)),
+        (true, true) => (px(14.), px(26.)),
+    };
+    let bg = rgb(if dark { 0x1e1e1e } else { 0xffffff });
+    let border = rgb(match (dark, expanded) {
+        (false, false) => 0xb5b3ad,
+        (false, true) => 0xaba9a3,
+        (true, false) => 0x555555,
+        (true, true) => 0x6b6b6b,
+    });
+    let dot_color = rgb(if dark { 0x9e9e9e } else { 0x6e6c66 }).into();
+    div().id(id).w(w).h(h).flex_none().rounded(px(999.)).flex().items_center().justify_center()
+        .bg(bg).border_1().border_color(border).cursor(CursorStyle::OpenHand)
+        .when(expanded, |el| el.shadow_xs().child(icon(
+            if vertical { Icon::Drag } else { Icon::GripHorizontal },
+            px(12.),
+            theme.icon_colors(dot_color),
+        )))
+        .tooltip(move |window, cx| build_tooltip(tip, window, cx))
 }
-/// Reference `.goose-table-extend-button`: transparent strip with a 16px plus, hover fill only.
-fn extend(id: &'static str, tip: &'static str) -> gpui::Stateful<gpui::Div> {
+
+fn add_row_bar(width: Pixels) -> Stateful<Div> {
+    let dark = is_dark();
     let theme = Theme::ocean();
-    div().id(id).flex().items_center().justify_center().rounded(px(6.))
-        .cursor(CursorStyle::PointingHand).hover(|s| s.bg(theme.hover))
-        .child(icon(Icon::Plus, px(16.), theme.icon_colors(theme.text_secondary)))
-        .tooltip(move |window, cx| Tooltip::new(tip).build(window, cx))
+    let (bg, hover_bg, fg) = if dark {
+        (rgb(0x262626), rgb(0x303030), rgb(0x9e9e9e))
+    } else {
+        (rgb(0xf2f1ee), rgb(0xe8e6e1), rgb(0x787670))
+    };
+    div().id("table-add-row").w(width).h(px(22.)).flex().items_center().justify_center()
+        .rounded(px(6.)).bg(bg).cursor(CursorStyle::PointingHand)
+        .hover(move |s| s.bg(hover_bg))
+        .child(icon(Icon::Plus, px(14.), theme.icon_colors(fg.into())))
+        .tooltip(|window, cx| build_tooltip("Add row", window, cx))
 }
-fn more_button(open: bool) -> gpui::Stateful<gpui::Div> {
+
+fn more_button(open: bool) -> Stateful<Div> {
+    let dark = is_dark();
     let theme = Theme::ocean();
-    div().id("table-more").size(px(24.)).flex_none().rounded(px(6.)).flex().items_center().justify_center()
-        .bg(if open { theme.hover } else { theme.menu }).border_1().border_color(theme.menu_border)
-        .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0.6, 0.15, 0.13, 0.06), offset: point(px(0.), px(1.)),
-            blur_radius: px(3.), spread_radius: px(0.) }])
-        .hover(|s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
-        .child(icon(Icon::More, px(15.), theme.icon_colors(if open { theme.text } else { theme.text_secondary })))
-        .tooltip(|window, cx| Tooltip::new("右键单元格空白处或按 ⇧F10 打开行列操作").build(window, cx))
+    let (bg, hover_bg, border, fg) = if dark {
+        (rgb(if open { 0x2c2c2c } else { 0x222222 }), rgb(0x2c2c2c), rgb(0x383838), rgb(if open { 0xececec } else { 0xb4b4b4 }))
+    } else {
+        (rgb(if open { 0xf6f5f2 } else { 0xffffff }), rgb(0xf6f5f2), rgb(0xe5e3de), rgb(if open { 0x1f1e1d } else { 0x5e5d59 }))
+    };
+    div().id("table-more").w(px(28.)).h(px(28.)).flex_none().rounded(px(8.)).flex().items_center().justify_center()
+        .bg(bg).border_1().border_color(border).cursor(CursorStyle::PointingHand)
+        .hover(move |s| s.bg(hover_bg))
+        .child(icon(Icon::More, px(16.), theme.icon_colors(fg.into())))
+        .tooltip(|window, cx| build_tooltip("Table options", window, cx))
 }
-pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, _sel: Option<(u64, TableSel)>,
+
+fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool) -> Stateful<Div> {
+    let dark = is_dark();
+    let theme = Theme::ocean();
+    let fg: gpui::Hsla = if cmd.danger() {
+        menu_style::danger_color()
+    } else if dark {
+        rgb(0xececec).into()
+    } else {
+        rgb(0x1f1e1d).into()
+    };
+    let hover_bg = rgb(if dark { 0x2f2f2f } else { 0xf3f2ef });
+    div().id(id).w_full().h(px(36.)).flex_none().px(px(10.)).rounded(px(8.))
+        .flex().items_center().gap(px(12.)).text_size(px(15.)).font_weight(FontWeight::MEDIUM).text_color(fg)
+        .when(disabled, |s| s.opacity(0.4))
+        .when(!disabled, move |s| s.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(hover_bg)))
+        .child(icon(cmd.icon(), px(18.), theme.icon_colors(fg)))
+        .child(div().flex_1().min_w_0().child(cmd.label()))
+}
+
+pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<(u64, TableSel)>,
     menu: Option<TableMenu>, drag: Option<TableDrag>, dims: (usize, usize)) -> Vec<AnyElement> {
-    let theme = Theme::ocean(); let id = chrome.block; let (r, c) = chrome.cell;
-    let open = |s: TableSel| menu.is_some_and(|m| m.block == id && m.sel == s);
+    let theme = Theme::ocean();
+    let id = chrome.block;
+    let active_sel = sel.filter(|(b, _)| *b == id).map(|(_, s)| s)
+        .or_else(|| menu.filter(|m| m.block == id).map(|m| m.sel));
+    let (r, c) = match active_sel {
+        Some(TableSel::Column(col)) => (0, col.min(chrome.columns.len().saturating_sub(1))),
+        Some(TableSel::Row(row)) => (row.min(chrome.rows.len().saturating_sub(1)), 0),
+        Some(TableSel::Whole) => (0, 0),
+        _ => chrome.cell,
+    };
+    let is_active = |target: TableSel| sel == Some((id, target)) || menu.is_some_and(|m| m.block == id && m.sel == target);
+    let is_hovered = |target: TableSel| PILL_HOVER.with(|h| h.get() == Some((id, target)));
     let mut out: Vec<AnyElement> = Vec::new();
     let Some(&(left, right)) = chrome.columns.get(c) else { return out };
     let Some(&(top, bottom)) = chrome.rows.get(r) else { return out };
     let table = chrome.bounds;
     let dragging = drag.filter(|d| d.moved && d.block == id);
     let follow = dragging.and_then(|d| d.position.map(|p| (d.sel, p)));
-    // While a row or column is dragged only its handle stays, following the pointer.
     let view = chrome.viewport;
-    // Anchored overlays flip when they overflow, so anything off-screen is hidden or clipped instead.
     let show_column = dragging.is_none_or(|d| matches!(d.sel, TableSel::Column(_))) && table.top() - px(8.) >= view.top();
     let row_mid = match follow { Some((TableSel::Row(_), p)) => p.y, _ => (top + bottom) / 2. };
     let show_row = dragging.is_none_or(|d| matches!(d.sel, TableSel::Row(_)))
-        && row_mid - px(12.) >= view.top() && row_mid + px(12.) <= view.bottom();
-    let strip_top = table.top().max(view.top()); let strip_bottom = table.bottom().min(view.bottom());
+        && row_mid - px(13.) >= view.top() && row_mid + px(13.) <= view.bottom();
     if show_column {
         let x = match follow { Some((TableSel::Column(_), p)) => p.x, _ => (left + right) / 2. };
+        let col_sel = TableSel::Column(c);
+        let expanded = is_active(col_sel) || is_hovered(col_sel);
+        let pos = if expanded { point(x - px(13.), table.top() - px(7.)) } else { point(x - px(12.), table.top() - px(4.)) };
         let col_editor = editor.clone();
-        // Handles straddle the table border, as in the reference, so they stay clear of the block handle and the block above.
-        out.push(floating(point(x - px(14.), table.top() - px(8.)),
-            handle(("table-col", c), false, open(TableSel::Column(c)), "点击打开列操作，按住拖动可移动")
+        let hover_editor = editor.clone();
+        out.push(floating(pos,
+            capsule(("table-col", c), false, expanded, "Click for column options · drag to move")
+                .on_hover(move |hovered: &bool, _, cx| {
+                    let cur = PILL_HOVER.with(|h| h.get());
+                    let next = if *hovered { Some((id, col_sel)) } else if cur == Some((id, col_sel)) { None } else { cur };
+                    if cur != next { PILL_HOVER.with(|h| h.set(next)); hover_editor.update(cx, |_, cx| cx.notify()); }
+                })
                 .on_mouse_down(MouseButton::Left, move |event, _, cx| {
                     let start = event.position;
                     col_editor.update(cx, |this, cx| {
-                        this.table_sel = Some((id, TableSel::Column(c))); this.table_menu = None;
-                        this.table_drag = Some(TableDrag { block: id, sel: TableSel::Column(c), start, moved: false, position: None });
+                        this.table_sel = Some((id, col_sel)); this.table_menu = None;
+                        this.table_drag = Some(TableDrag { block: id, sel: col_sel, start, moved: false, position: None });
                         cx.notify();
                     });
                     cx.stop_propagation();
@@ -85,38 +140,44 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, _sel: Option
     }
     if show_row {
         let y = match follow { Some((TableSel::Row(_), p)) => p.y, _ => (top + bottom) / 2. };
+        let row_sel = TableSel::Row(r);
+        let expanded = is_active(row_sel) || is_hovered(row_sel);
+        let pos = if expanded { point(table.left() - px(7.), y - px(13.)) } else { point(table.left() - px(4.), y - px(12.)) };
         let row_editor = editor.clone();
-        out.push(floating(point(table.left() - px(8.), y - px(12.)),
-            handle(("table-row", r), true, open(TableSel::Row(r)), "点击打开行操作，按住拖动可移动")
+        let hover_editor = editor.clone();
+        out.push(floating(pos,
+            capsule(("table-row", r), true, expanded, "Click for row options · drag to move")
+                .on_hover(move |hovered: &bool, _, cx| {
+                    let cur = PILL_HOVER.with(|h| h.get());
+                    let next = if *hovered { Some((id, row_sel)) } else if cur == Some((id, row_sel)) { None } else { cur };
+                    if cur != next { PILL_HOVER.with(|h| h.set(next)); hover_editor.update(cx, |_, cx| cx.notify()); }
+                })
                 .on_mouse_down(MouseButton::Left, move |event, _, cx| {
                     let start = event.position;
                     row_editor.update(cx, |this, cx| {
-                        this.table_sel = Some((id, TableSel::Row(r))); this.table_menu = None;
-                        this.table_drag = Some(TableDrag { block: id, sel: TableSel::Row(r), start, moved: false, position: None });
+                        this.table_sel = Some((id, row_sel)); this.table_menu = None;
+                        this.table_drag = Some(TableDrag { block: id, sel: row_sel, start, moved: false, position: None });
                         cx.notify();
                     });
                     cx.stop_propagation();
                 })));
     }
     if dragging.is_none() {
-        let add_col = editor.clone(); let add_row = editor.clone();
-        if strip_bottom - strip_top >= px(24.) { out.push(floating(point(table.right() + px(4.), strip_top),
-            extend("table-add-col", "添加列").w(px(24.)).h(strip_bottom - strip_top)
-                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                    add_col.update(cx, |this, cx| { this.table_command(id, TableSel::Whole, TableCmd::AppendColumn, cx); window.focus(&this.focus); });
-                    cx.stop_propagation();
-                }))); }
-        if table.bottom() + px(28.) <= view.bottom() { out.push(floating(point(table.left(), table.bottom() + px(4.)),
-            extend("table-add-row", "添加行").w(table.size.width).h(px(24.))
-                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                    add_row.update(cx, |this, cx| { this.table_command(id, TableSel::Whole, TableCmd::AppendRow, cx); window.focus(&this.focus); });
-                    cx.stop_propagation();
-                }))); }
-        if table.top() + px(4.) >= view.top() && table.top() + px(28.) <= view.bottom() {
+        let whole_selected = sel == Some((id, TableSel::Whole));
+        if !whole_selected && table.bottom() + px(26.) <= view.bottom() {
+            let add_row = editor.clone();
+            out.push(floating(point(table.left(), table.bottom() + px(4.)),
+                add_row_bar(table.size.width)
+                    .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                        add_row.update(cx, |this, cx| { this.table_command(id, TableSel::Whole, TableCmd::AppendRow, cx); window.focus(&this.focus); });
+                        cx.stop_propagation();
+                    })));
+        }
+        if table.top() + px(6.) >= view.top() && table.top() + px(34.) <= view.bottom() {
             let more_editor = editor.clone();
-            let cell_open = menu.is_some_and(|m| m.block == id && matches!(m.sel, TableSel::Cell(..)));
-            let btn_pos = point(table.right() - px(28.), table.top() + px(4.));
-            let menu_anchor = point((table.right() - px(192.)).max(table.left()), table.top() + px(30.));
+            let cell_open = menu.is_some_and(|m| m.block == id && matches!(m.sel, TableSel::Cell(..) | TableSel::Whole));
+            let btn_pos = point(table.right() + px(12.), table.top() + px(6.));
+            let menu_anchor = point((table.right() + px(40.) - px(224.)).max(table.left()), table.top() + px(38.));
             out.push(floating(btn_pos,
                 more_button(cell_open).on_mouse_down(MouseButton::Left, move |_, _, cx| {
                     more_editor.update(cx, |this, cx| {
@@ -127,7 +188,6 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, _sel: Option
                 })));
         }
     }
-    // Drop line at the edge the dragged row or column will land on (`.bn-table-drop-cursor`).
     if let Some(drag) = dragging {
         if let Some((_, edge)) = drag.position.and_then(|position| chrome.drop_target(drag, position)) {
             let (origin, size) = match drag.sel {
@@ -138,20 +198,31 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, _sel: Option
         }
     }
     if let Some(menu) = menu.filter(|m| m.block == id) {
-        let items = menu_items(menu.sel, dims.0, dims.1); let sel = menu.sel;
-        let mut list = menu_style::shell("table-menu", &theme).w(px(192.))
+        let dark = is_dark();
+        let items = menu_items(menu.sel, dims.0, dims.1);
+        let sel = menu.sel;
+        let (bg, border) = if dark { (rgb(0x222222), rgb(0x383838)) } else { (rgb(0xffffff), rgb(0xececea)) };
+        let mut list = div().id("table-menu").w(px(224.)).p(px(8.)).rounded(px(14.))
+            .bg(bg).border_1().border_color(border).shadow_lg()
+            .flex().flex_col().gap(px(2.))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation());
         for (index, item) in items.into_iter().enumerate() {
             match item {
-                None => list = list.child(menu_style::group_gap()),
+                None => list = list.child(menu_style::separator(&theme)),
                 Some(cmd) => {
-                    let menu_editor = editor.clone();
-                    list = list.child(menu_style::item(("table-menu-item", index), cmd.label(), cmd.danger(), false, false, &theme)
-                        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    let disabled = cmd.disabled(dims.0, dims.1);
+                    let row = menu_item(("table-menu-item", index), cmd, disabled);
+                    let row = if disabled {
+                        row
+                    } else {
+                        let menu_editor = editor.clone();
+                        row.on_mouse_down(MouseButton::Left, move |_, window, cx| {
                             menu_editor.update(cx, |this, cx| { this.table_command(id, sel, cmd, cx); window.focus(&this.focus); });
                             cx.stop_propagation();
-                        }));
+                        })
+                    };
+                    list = list.child(row);
                 }
             }
         }

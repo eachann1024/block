@@ -42,5 +42,5 @@ mod find_bar;
 mod fold;
 pub mod view;
 
-pub use export_driver::{export_document, export_selected};
+pub use export_driver::export_document;
 pub use keys::bind_keys;

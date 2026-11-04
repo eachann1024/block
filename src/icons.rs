@@ -130,6 +130,13 @@ icons! {
     FolderReveal => "folder-reveal" [Line],
     SidebarCollapse => "sidebar-collapse" [Fill, Line, Accent],
     SidebarExpand => "sidebar-expand" [Line, Accent],
+    ColInsertLeft => "col-insert-left" [Line],
+    ColInsertRight => "col-insert-right" [Line],
+    ColDelete => "col-delete" [Line],
+    RowInsertAbove => "row-insert-above" [Line],
+    RowInsertBelow => "row-insert-below" [Line],
+    RowDelete => "row-delete" [Line],
+    GripHorizontal => "grip-horizontal" [Line],
 }
 
 /// The three tints of one icon.

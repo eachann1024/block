@@ -107,10 +107,10 @@ impl Editor {
                 _ => SelectionColor::Mixed,
             });
         };
-        for (id, range) in ranges {
-            let Some(block) = self.doc.get(id) else { continue };
+        let mut inspect = |inline: &[InlineTag], range: Range<usize>| {
+            if range.start >= range.end { return; }
             let mut cuts = vec![range.start, range.end];
-            for tag in &block.meta.inline {
+            for tag in inline {
                 if tag.start < range.end && tag.end > range.start {
                     cuts.push(tag.start.max(range.start));
                     cuts.push(tag.end.min(range.end));
@@ -121,14 +121,25 @@ impl Editor {
             for pair in cuts.windows(2) {
                 let (s, e) = (pair[0], pair[1]);
                 if s >= e { continue; }
-                let mut t_col = "default";
-                let mut b_col = "default";
-                for tag in block.meta.inline.iter().filter(|t| t.name == "span" && t.start <= s && e <= t.end) {
+                let (mut t_col, mut b_col) = ("default", "default");
+                for tag in inline.iter().filter(|t| t.name == "span" && t.start <= s && e <= t.end) {
                     if let Some(c) = resolve_tag_color(tag, false) { t_col = c; }
                     if let Some(c) = resolve_tag_color(tag, true) { b_col = c; }
                 }
                 merge(&mut text_acc, t_col);
                 merge(&mut bg_acc, b_col);
+            }
+        };
+        for (id, range) in ranges {
+            let Some(block) = self.doc.get(id) else { continue };
+            if let Some(table) = &block.meta.table {
+                for (row, cell, body) in table.cell_ranges() {
+                    let start = range.start.max(body.start).min(body.end) - body.start;
+                    let end = range.end.max(body.start).min(body.end) - body.start;
+                    if start < end { inspect(&table.rows[row].cells[cell].content.meta.inline, start..end); }
+                }
+            } else {
+                inspect(&block.meta.inline, range);
             }
         }
         (
@@ -259,7 +270,7 @@ pub(in crate::editor) fn render_palette_panel(editor: Entity<Editor>, cx: &gpui:
                         .when(!selected, |d| d.hover(move |s| s.bg(rgb(hover_bg))))
                         .flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
                         .child(inner)
-                        .tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(tip).build(window, cx))
+                        .tooltip(crate::theme::tooltip(tip))
                         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                             editor.update(cx, |this, cx| {
                                 if background { this.apply_bg_color(name, window, cx); }
