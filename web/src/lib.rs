@@ -147,10 +147,23 @@ fn mount_canvas_into_stage() {
     let _ = doc.document_element().map(|el| el.set_attribute("data-editor-ready", "1"));
 }
 
+fn detect_page_language() -> files::state::LanguageMode {
+    let is_en = web_sys::window()
+        .and_then(|win| win.document())
+        .and_then(|doc| doc.document_element())
+        .and_then(|el| el.get_attribute("lang"))
+        .is_some_and(|lang| lang.trim().to_ascii_lowercase().starts_with("en"));
+    if is_en {
+        files::state::LanguageMode::En
+    } else {
+        files::state::LanguageMode::Zh
+    }
+}
+
 #[wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
-    theme::set_language_mode(files::state::LanguageMode::Zh);
+    theme::set_language_mode(detect_page_language());
     theme::set_theme_mode(files::state::ThemeMode::Light);
     theme::set_font_choice(files::state::FontChoice::Sans);
 

@@ -2613,9 +2613,13 @@ impl RenderingParameters {
             .find(|&n| format_features.flags.sample_count_supported(n))
             .unwrap_or(1);
 
-        // Browser canvas glyphs are already gamma-corrected, so disable shader contrast/gamma on wasm.
+        // Both swash (Latin/code) and canvas_text::rasterize (which extracts only the
+        // linear alpha channel from white text on a transparent canvas) produce
+        // un-gamma-corrected alpha masks composited onto a non-linear Bgra8Unorm /
+        // Rgba8Unorm surface. Apply standard GPUI gamma and contrast correction on wasm
+        // as well so dark-on-light glyph stems are not washed out by linear sRGB blending.
         #[cfg(target_family = "wasm")]
-        let gamma = 1.0_f32;
+        let gamma = 1.8_f32;
         #[cfg(not(target_family = "wasm"))]
         let gamma = env::var("ZED_FONTS_GAMMA")
             .ok()
@@ -2625,7 +2629,7 @@ impl RenderingParameters {
         let gamma_ratios = get_gamma_correction_ratios(gamma);
 
         #[cfg(target_family = "wasm")]
-        let grayscale_enhanced_contrast = 0.0_f32;
+        let grayscale_enhanced_contrast = 1.0_f32;
         #[cfg(not(target_family = "wasm"))]
         let grayscale_enhanced_contrast = env::var("ZED_FONTS_GRAYSCALE_ENHANCED_CONTRAST")
             .ok()
