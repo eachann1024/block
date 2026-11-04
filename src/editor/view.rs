@@ -14,9 +14,7 @@ use super::input::transactions::{Snapshot, HistoryEntry};
 #[path = "storage.rs"] pub(super) mod storage;
 #[path = "lifecycle.rs"] mod lifecycle;
 #[path = "session.rs"] mod session;
-use selection::Caret;
-use layout::TextLayout;
-use lifecycle::Persistence;
+use {selection::Caret, layout::TextLayout, lifecycle::Persistence};
 /// Space kept between the caret line and the viewport edge when the caret scrolls into view.
 const REVEAL_MARGIN: f32 = 80.;
 
@@ -24,7 +22,7 @@ actions!(editor, [Backspace, Delete, Left, Right, SelectLeft, SelectRight, Selec
     Up, Down, SelectUp, SelectDown, Enter, Copy, Cut, Paste, Bold, Italic, Strike, Code,
     Undo, Redo, Cancel, Save, NextCell, PreviousCell, TableMenuKey,
     SetParagraph, SetH1, SetH2, SetH3, SetTodo, SetBullet, SetNumbered, SetCode, SetQuote,
-    MoveBlockUp, MoveBlockDown, DuplicateBlock, CmdEnter, Underline, EditLink, ExitBlock,
+    MoveBlockUp, MoveBlockDown, DuplicateBlock, CmdEnter, Underline, EditLink, OpenLinkAtCaret, ExitBlock,
     DocStart, DocEnd, SelectDocStart, SelectDocEnd, Find, ImageGrow, ImageShrink,
     LineStart, LineEnd, SelectLineStart, SelectLineEnd, LogicalLineStart, LogicalLineEnd,
     WordLeft, WordRight, SelectWordLeft, SelectWordRight,
@@ -282,6 +280,7 @@ impl Render for Editor {
                 .on_action(cx.listener(|this, _: &TableMenuKey, _, cx| this.open_cell_menu(cx)))
                 .on_action(cx.listener(|this, _: &Underline, _, cx| this.underline(cx)))
                 .on_action(cx.listener(|this, _: &EditLink, w, cx| this.open_link(w, cx)))
+                .on_action(cx.listener(|this, _: &OpenLinkAtCaret, w, cx| this.open_link_at_caret(w, cx)))
                 .on_action(cx.listener(|this, _: &ImageGrow, _, cx| this.step_selected_image(10, cx)))
                 .on_action(cx.listener(|this, _: &ImageShrink, _, cx| this.step_selected_image(-10, cx)))
                 .on_action(cx.listener(|this, _: &ExitBlock, w, cx| this.exit_block(w, cx)))
@@ -292,7 +291,7 @@ impl Render for Editor {
                 .when_some(floating, |root, anchor| root.child(gpui::deferred(
                     super::chrome::selection_toolbar(cx.entity(), self.caret.head.block, anchor))))
                 .when_some(self.format.clone(), |root, pop| root.child(super::format_ui::popover(cx.entity(), &pop)))
-                .when_some(self.link_pill(cx.entity(), window), |root, pill| root.child(pill))
+                .children(self.link_overlays(cx.entity(), window))
                 .child(anchor_sync))
             .children(super::find_bar::find_bar(self, cx))
             .children(super::annotate_ui::overlay(self, window, cx))
