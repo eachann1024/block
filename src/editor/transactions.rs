@@ -156,8 +156,10 @@ impl Editor {
             id = self.doc.blocks[ai + count - 1].id;
             if count > 1 { offset = normalized.rsplit('\n').next().unwrap_or("").len(); }
         }
-        if marker && normalized == " " && ai == bi && a == b { self.space_rule(&mut id, &mut offset); }
-        if marker && matches!(normalized.as_str(), "-" | "*" | "_") && ai == bi && a == b {
+        if marker && (normalized.ends_with(' ') || normalized.ends_with('\u{3000}')) && !normalized.contains('\n') && ai == bi && a == b {
+            self.space_rule(&mut id, &mut offset);
+        }
+        if marker && matches!(normalized.as_str(), "-" | "*" | "_" | "－" | "＊" | "＿" | "—" | "——") && ai == bi && a == b {
             self.divider_rule(&mut id, &mut offset);
         }
         let at = Position { block: id, offset };
