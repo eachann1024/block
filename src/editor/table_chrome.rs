@@ -1,7 +1,7 @@
 //! Table controls shown while the pointer is over a table: row and column capsule handles
 //! on the grid border, the bottom add-row bar, the right add-column bar, the top-right more button, drop line, and menus.
 use gpui::{AnyElement, Div, Entity, MouseButton, Pixels, Point, Stateful, div, point, prelude::*, px};
-use super::{table_actions::{TableChrome, TableCmd, TableDrag, TableMenu, TableSel, menu_items}, view::Editor};
+use super::{table_layout, table_actions::{TableChrome, TableCmd, TableDrag, TableMenu, TableSel, menu_items}, view::Editor};
 use crate::{
     dropdown::{self, RowSpec},
     theme::{Theme, tr},
@@ -16,7 +16,7 @@ fn floating(position: Point<Pixels>, child: impl IntoElement) -> AnyElement {
     gpui::deferred(gpui::anchored().position(position).child(child)).into_any_element()
 }
 
-fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool) -> Stateful<Div> {
+fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool, checked: bool) -> Stateful<Div> {
     dropdown::row_with(
         id,
         RowSpec {
@@ -24,6 +24,7 @@ fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool) -> Statef
             label: cmd.label().into(),
             danger: cmd.danger(),
             disabled,
+            checked,
             ..Default::default()
         },
     )
@@ -161,13 +162,15 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
     if let Some(menu) = menu.filter(|m| m.block == id) {
         let items = menu_items(menu.sel, dims.0, dims.1);
         let sel = menu.sel;
+        let fitted = table_layout::widths_of(editor.entity_id(), id).fit;
         let mut list = dropdown::shell("table-menu").w(px(224.));
         for (index, item) in items.into_iter().enumerate() {
             match item {
                 None => list = list.child(dropdown::separator()),
                 Some(cmd) => {
                     let disabled = cmd.disabled(dims.0, dims.1);
-                    let row = menu_item(("table-menu-item", index), cmd, disabled);
+                    let checked = cmd == TableCmd::FitWidth && fitted;
+                    let row = menu_item(("table-menu-item", index), cmd, disabled, checked);
                     let row = if disabled {
                         row
                     } else {
