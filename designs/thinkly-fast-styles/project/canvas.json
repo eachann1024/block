@@ -92,6 +92,36 @@
       "is_interactive": true,
       "title": "重命名 · 整行合一焦点舱（32px 整行白底蓝框 + 内部无框透明输入 + 图标联动点亮）"
     },
+    "TitlebarActions-V1-OutlineCapsule.dc.html": {
+      "page": "workspace",
+      "x": 0,
+      "y": 2060,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "顶栏右上角按钮 A（推荐）· 移除冗余 + 号保留 2 键（轻量描边胶囊 + ⋯）"
+    },
+    "TitlebarActions-V2-SplitPill.dc.html": {
+      "page": "workspace",
+      "x": 1520,
+      "y": 2060,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "顶栏右上角按钮 B · 一体式双段胶囊收敛为 1 组控件（统一发送 1 ∣ ⋯）"
+    },
+    "TitlebarActions-V3-RailHeader.dc.html": {
+      "page": "workspace",
+      "x": 3040,
+      "y": 2060,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "顶栏右上角按钮 C · 发送动作归位批注栏头部 + 顶栏右侧恒定仅 ⋯ 1 键"
+    },
     "F-Toolbar.dc.html": {
       "page": "editor",
       "x": 0,
@@ -451,6 +481,9 @@
     "QuickNote-V2-Dots.dc.html",
     "Sidebar-V2-Clean.dc.html",
     "Rename-V2-RowCapsule.dc.html",
+    "TitlebarActions-V1-OutlineCapsule.dc.html",
+    "TitlebarActions-V2-SplitPill.dc.html",
+    "TitlebarActions-V3-RailHeader.dc.html",
     "F-Toolbar.dc.html",
     "F-Image-Toolbar.dc.html",
     "F-Annotate.dc.html",
