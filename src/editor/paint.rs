@@ -21,7 +21,7 @@ impl Element for BlockText {
             let block = editor.doc.get(self.block).expect("visible block exists");
             let nowrap = block.meta.code_language.is_some() && editor.nowrap.contains(&self.block);
             let composing = editor.caret.composing.is_some() && editor.caret.head.block == self.block;
-            (block.kind, block.meta.code_language.clone(), nowrap, composing, super::view::layout::block_hash(block))
+            (block.kind, block.meta.code_language.clone(), nowrap, composing, super::view::layout::block_hash(block) ^ editor.ai_preview_key(self.block))
         };
         let (size_px, factor) = metrics(kind, f32::from(theme.editor_font));
         let font_size = px(size_px);
@@ -83,6 +83,8 @@ impl Element for BlockText {
                     let mut base = plain(text.len(), theme.text); base.font.family = crate::theme::mono_font_family().into(); base.font.fallbacks = None;
                     runs = super::view::syntax::runs(&text, language, base);
                 }
+                // Inline AI review: the rewrite is diffed in place (thinkly inlinePreview).
+                let (text, runs) = match editor.ai_preview(block_id, &runs) { Some((t, r)) => (t.into(), r), None => (text, runs) };
                 (text, runs, block.meta.table.clone())
             };
             if nowrap {
@@ -153,6 +155,7 @@ impl Element for BlockText {
         if let Some(language) = &fenced { super::code_block::paint_card(layout.bounds, language, window, cx); }
         super::find_bar::paint_matches(self.editor.read(cx), self.block, layout, window);
         table_layout::paint_background(layout, window);
+        super::ai::preview::paint_outline(self.editor.read(cx), self.block, layout, window);
         if !layout.cells.is_empty() { super::table_actions::track_hover(self.editor.clone(), self.block, layout, window); }
         let tint = {
             let editor = self.editor.read(cx);
