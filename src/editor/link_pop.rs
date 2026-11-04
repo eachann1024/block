@@ -5,10 +5,12 @@ use gpui::{AnyElement, ClipboardItem, Context, CursorStyle, Entity, MouseButton,
 use crate::{icons::{Icon, stateful_icon}, theme::{Theme, tr}, ui::tooltip::anchored_tooltip_above};
 use super::{format_cmds::open_external_url, toolbar::{ToolbarColors, pill, sep}, view::{Editor, selection::Position}};
 
-/// Pointer-hover state for inline links.
+/// Pointer-hover state for inline links and inline code chips.
 #[derive(Default)]
 pub(super) struct LinkUi {
     hover: Option<(u64, Range<usize>)>,
+    pub(super) code_hover: Option<(u64, Range<usize>)>,
+    pub(super) code_copied: Option<(u64, Range<usize>)>,
     /// Caret restored by opening/navigating to a note: no link pill until the caret really moves.
     pub(super) quiet: Option<Position>,
 }
@@ -31,7 +33,11 @@ fn split_origin(url: &str) -> (&str, &str) {
 }
 
 impl LinkUi {
-    pub(super) fn reset_hover(&mut self) { self.hover = None; }
+    pub(super) fn reset_hover(&mut self) {
+        self.hover = None;
+        self.code_hover = None;
+        self.code_copied = None;
+    }
 }
 
 impl Editor {
@@ -155,6 +161,9 @@ impl Editor {
                 .child(crate::ui::floating_bar::animate(bar, "link-pill-enter")))).into_any_element())
     }
     pub(super) fn link_overlays(&self, editor: Entity<Editor>, window: &Window) -> Vec<AnyElement> {
-        self.link_pill(editor, window).into_iter().chain(self.link_hover_tooltip(window)).collect()
+        self.link_pill(editor, window).into_iter()
+            .chain(self.link_hover_tooltip(window))
+            .chain(self.code_hover_tooltip(window))
+            .collect()
     }
 }
