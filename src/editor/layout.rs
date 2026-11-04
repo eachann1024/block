@@ -207,7 +207,7 @@ impl Editor {
             let next = if down { index.checked_add(1).filter(|i| *i < self.doc.blocks.len()) } else { index.checked_sub(1) };
             if let Some(i) = next {
                 let b = &self.doc.blocks[i];
-                let offset = if crate::editor::image_source::spec_of(b).is_some() {
+                let offset = if crate::editor::image_source::spec_of(b).is_some() || crate::editor::block_menu::is_divider(b) {
                     0
                 } else if let Some(layout) = self.layouts.get(&b.id) {
                     let y = if down { layout.bounds.top() } else { layout.bounds.bottom()-px(1.) };
@@ -219,6 +219,22 @@ impl Editor {
                     b.text.char_indices().nth(column).map(|(i,_)| i).unwrap_or(b.text.len())
                 };
                 target = Some(Position { block: b.id, offset });
+            } else if down && !extend && index + 1 == self.doc.blocks.len() {
+                let cur = &self.doc.blocks[index];
+                let exit = if let Some(t) = &cur.meta.table {
+                    t.cell_at_range(&(at.offset..at.offset)).is_some_and(|(r, c, _)| r + t.rows[r].cells[c].rowspan >= t.rows.len())
+                } else if cur.meta.code_language.is_some() {
+                    !cur.text[at.offset.min(cur.text.len())..].contains('\n')
+                } else { false };
+                if exit {
+                    let before = self.snapshot();
+                    if let Some(id) = self.doc.insert_after(at.block, crate::editor::model::Kind::Paragraph, String::new()) {
+                        self.preferred_x = None;
+                        self.set_head(Position { block: id, offset: 0 }, false, cx);
+                        self.record_changes(before, vec![crate::editor::input::transactions::ListChange { start: index + 1, before: 0, after: 1 }], true, cx);
+                        return;
+                    }
+                }
             }
         }
         if let Some(at) = target { self.set_head(at, extend, cx); }

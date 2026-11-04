@@ -70,6 +70,13 @@ impl Editor {
         if let Some(block) = self.doc.get_mut(id) { edit(block); }
         self.doc.refresh_block(id);
     }
+    /// Convert a plain paragraph whose entire text just became `---` or `***` into a divider immediately.
+    pub(in crate::editor) fn divider_rule(&mut self, id: &mut u64, offset: &mut usize) {
+        let Some(block) = self.doc.get(*id) else { return };
+        if plain(block) && *offset == block.text.len() && matches!(block.text.as_str(), "---" | "***") {
+            *id = self.insert_divider(*id); *offset = 0;
+        }
+    }
     /// Replace the paragraph with a divider plus a fresh paragraph; returns the new paragraph id.
     fn insert_divider(&mut self, id: u64) -> u64 {
         let index = self.doc.index_of(id).unwrap_or(0);
