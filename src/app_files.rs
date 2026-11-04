@@ -80,7 +80,11 @@ impl Workspace {
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
             InputEvent::Focus => window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx),
             InputEvent::PressEnter { .. } => this.commit_rename(window, cx),
-            InputEvent::Blur if this.renaming.is_some() => this.cancel_rename(window, cx),
+            InputEvent::Blur if this.renaming.is_some() => {
+                this.renaming = None;
+                this.tree.update(cx, |tree, cx| tree.set_renaming(None, cx));
+                cx.notify();
+            }
             _ => {}
         });
         self.tree.update(cx, |tree, cx| {
@@ -100,7 +104,8 @@ impl Workspace {
     pub(super) fn cancel_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.renaming.take().is_none() { return; }
         self.tree.update(cx, |tree, cx| tree.set_renaming(None, cx));
-        self.restore_focus(window, cx);
+        let focus = self.tree.read(cx).focus_handle().clone();
+        window.focus(&focus);
         cx.notify();
     }
 
@@ -116,7 +121,8 @@ impl Workspace {
         }
         self.renaming = None;
         self.tree.update(cx, |tree, cx| tree.set_renaming(None, cx));
-        self.restore_focus(window, cx);
+        let focus = self.tree.read(cx).focus_handle().clone();
+        window.focus(&focus);
         let reopen = self.open_under(&path, cx);
         self.start_file_op(FileOp::Rename { path, name, dir, reopen }, cx);
     }

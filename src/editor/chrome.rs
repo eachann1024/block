@@ -76,7 +76,10 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                 .when(!static_view && !nowrap, |body| body.child(BlockText { editor: editor.clone(), block: id }))
                 // No-wrap code scrolls sideways inside its own box instead of pushing past the column.
                 .when(!static_view && nowrap, |body| body.child(div().id(("code-scroll", id as usize)).w_full().min_w_0().flex()
-                    .overflow_x_scroll().child(BlockText { editor, block: id })))))
+                    .overflow_x_scroll().child(BlockText { editor: editor.clone(), block: id })))
+                .when(!static_view && block.meta.code_language.is_some(), |body| {
+                    body.child(super::code_block::copy_button(editor, id, cx))
+                })))
         .when_some(drop_edge, |row, after| row.child(div().absolute().left(px(HANDLE_WIDTH)).right(px(RIGHT_INSET))
             .h(px(2.)).bg(theme.accent)
             .when(after, |line| line.bottom_0()).when(!after, |line| line.top_0())))

@@ -1,7 +1,7 @@
 //! In-note find (Cmd+F): case-insensitive matching over block text plus match navigation.
 use std::ops::Range;
-use gpui::{AppContext as _, Context, Entity, Subscription, Window};
-use gpui_component::input::{InputEvent, InputState};
+use gpui::{AppContext as _, Context, Entity, KeyBinding, Subscription, Window};
+use gpui_component::input::{Enter as InputEnter, InputEvent, InputState};
 use super::view::{Editor, selection::Position};
 
 pub(super) struct FindState {
@@ -44,10 +44,12 @@ impl Editor {
             });
             return;
         }
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder("在当前笔记中查找"));
+        cx.bind_keys([KeyBinding::new("shift-enter", InputEnter { secondary: true }, Some("FindBar"))]);
+        let input = cx.new(|cx| InputState::new(window, cx));
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
             InputEvent::Change => this.refresh_find(true, window, cx),
             InputEvent::PressEnter { secondary: false } => this.find_step(true, window, cx),
+            InputEvent::PressEnter { secondary: true } => this.find_step(false, window, cx),
             _ => {}
         });
         self.find = Some(FindState { input: input.clone(), matches: Vec::new(), current: 0, _subs: vec![sub] });
