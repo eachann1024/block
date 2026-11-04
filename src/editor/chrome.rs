@@ -3,20 +3,24 @@ use gpui::{CursorStyle, MouseButton, Pixels, div, prelude::*, px, rgb, transpare
 use crate::{icons::{Icon, IconColors, icon}, theme::Theme};
 use super::{model::{Block, Kind}, paint::BlockText, view::Editor};
 
-const HANDLE_WIDTH: f32 = 56.;
+pub(super) const HANDLE_WIDTH: f32 = 56.;
 const MARKER_WIDTH: f32 = 24.;
-const ROW_GAP: f32 = 8.;
+pub(super) const ROW_GAP: f32 = 8.;
 const BLOCK_PAD: f32 = 7.;
 /// Estimated floating toolbar size, used to keep it inside the editor.
 pub(super) const TOOLBAR_WIDTH: Pixels = px(440.);
 pub(super) const TOOLBAR_HEIGHT: Pixels = px(42.);
-const RIGHT_INSET: f32 = 12.;
+pub(super) const RIGHT_INSET: f32 = 12.;
 pub(super) fn standard_width(body_width: Pixels) -> Pixels {
     body_width + px(HANDLE_WIDTH + ROW_GAP + RIGHT_INSET)
 }
 
 pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
+    let in_col = block.meta.column.is_some();
+    let handle_w = if in_col { 36. } else { HANDLE_WIDTH };
+    let right_inset = if in_col { 4. } else { RIGHT_INSET };
+    let v_pad = if minimal || in_col { 4. } else { BLOCK_PAD };
     let is_heading = super::fold::heading_level(block).is_some();
     let checked = block.checked;
     let checkbox_editor = editor.clone();
@@ -38,12 +42,12 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
     let in_edit_mode = active;
     let preview_only = preview_lang && !in_edit_mode;
     let handle_top = (line - 22.).max(0.) / 2. + if callout.is_some() { 12. } else { 0. };
-    div().id(("block", id as usize)).relative().w_full().min_w_0().py(px(if minimal { 5. } else { BLOCK_PAD }))
+    div().id(("block", id as usize)).relative().w_full().min_w_0().py(px(v_pad))
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
             this.hover_block(id, *hovered, cx);
         }))
-        .child(div().flex().items_start().w_full().min_w_0().gap(px(ROW_GAP)).pr(px(RIGHT_INSET))
-            .child(div().w(px(HANDLE_WIDTH)).flex_none().flex().justify_end().gap(px(2.)).pt(px(handle_top))
+        .child(div().flex().items_start().w_full().min_w_0().gap(px(ROW_GAP)).pr(px(right_inset))
+            .child(div().w(px(handle_w)).flex_none().flex().justify_end().gap(px(2.)).pt(px(handle_top))
                 .when(handles && !blank, |row| row
                     .child(grip_button(type_mark(block), id, ("drag", id as usize), cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
                         this.begin_drag(id, cx); this.grip_origin = Some(event.position); cx.stop_propagation();
@@ -69,7 +73,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                 })))
                 .when(!marker.is_empty(), |row| row.child(marker))))
             .child(div().flex_1().min_w_0().flex().flex_col().relative()
-                .when(marker_width == 0., |body| body.max_w(theme.content_width))
+                .when(marker_width == 0. && !in_col, |body| body.max_w(theme.content_width))
                 .when(block.kind == Kind::Quote && callout.is_none(), |body| body.pl(px(14.)).child(
                     div().absolute().left_0().top_0().bottom_0().w(px(2.)).bg(theme.quote_bar)))
                 .when_some(callout, |body, _| {
@@ -99,7 +103,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                 .when(!static_view && code_lang.is_some(), |body| {
                     body.child(super::code_block::copy_button(editor, id, code_lang.unwrap_or_default(), cx))
                 })))
-        .when_some(drop_edge, |row, after| row.child(div().absolute().left(px(HANDLE_WIDTH)).right(px(RIGHT_INSET))
+        .when_some(drop_edge, |row, after| row.child(div().absolute().left(px(handle_w)).right(px(right_inset))
             .h(px(2.)).bg(theme.accent)
             .when(after, |line| line.bottom_0()).when(!after, |line| line.top_0())))
 }
@@ -120,7 +124,7 @@ fn todo_box(checked: bool, top: f32, toggle: impl Fn(&mut gpui::App) + 'static) 
         .on_mouse_down(MouseButton::Left, move |_, _, cx| { toggle(cx); cx.stop_propagation(); })
 }
 /// Compact block-type mark drawn before the six-dot grip: an icon where the set has one, else a short glyph.
-enum TypeMark { Icon(Icon) }
+pub(super) enum TypeMark { Icon(Icon) }
 fn type_mark(block: &Block) -> TypeMark {
     use super::block_menu::BlockType;
     if let Some(lang) = block.meta.code_language.as_deref() {
@@ -136,7 +140,7 @@ fn type_mark(block: &Block) -> TypeMark {
     }
 }
 /// The handle of a block with content: type mark plus grip in one 22px-high target, as in the reference.
-fn grip_button(mark: TypeMark, block: u64, id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
+pub(super) fn grip_button(mark: TypeMark, block: u64, id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
     let (base, hover) = (theme.text_secondary, theme.text);
     let TypeMark::Icon(glyph) = mark;
@@ -169,5 +173,16 @@ fn fold_button(folded: bool, id: (&'static str, usize), listener: impl Fn(&gpui:
         .hover(|s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
         .child(hover_icon(glyph, 14., theme.text_secondary, theme.text))
         .on_mouse_down(MouseButton::Left, listener)
+}
+pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Context<Editor>) -> gpui::AnyElement {
+    let block = &this.doc.blocks[index];
+    let number = (block.kind == Kind::Numbered).then(|| this.doc.list_number(block.id)).flatten();
+    let edge = this.drag_over.filter(|target| target.index == index).map(|target| target.after);
+    let handles = !this.minimal && (this.hover == Some(block.id) || this.caret.head.block == block.id || this.dragging == Some(block.id));
+    let folded = !this.minimal && this.is_heading_folded(block.id);
+    let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
+    let row = block_row(cx.entity(), block, handles, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, cx);
+    div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
+        .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md())).child(row).into_any_element()
 }
 pub(super) use super::toolbar::selection_toolbar;

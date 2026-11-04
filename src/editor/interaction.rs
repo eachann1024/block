@@ -2,10 +2,9 @@
 use gpui::{Context, Point, Pixels, Window, point, px};
 use unicode_segmentation::UnicodeSegmentation;
 use super::{Editor, selection::Position};
-use crate::editor::input::transactions::ListChange;
 
 #[derive(Clone, Copy)]
-pub(super) struct DropTarget { pub index: usize, pub after: bool }
+pub(in crate::editor) struct DropTarget { pub index: usize, pub after: bool }
 
 impl Editor {
     pub(in crate::editor) fn track_pointer_lifecycle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -146,23 +145,25 @@ impl Editor {
         self.clear_pointer();
         if let (Some(id), Some(target)) = (dragging, target) {
             if self.path.is_some() && self.list.viewport_bounds().contains(&position) {
-                if let Some(from) = self.doc.index_of(id) {
+                if let Some(gid) = crate::editor::columns::group_from_handle(id) {
+                    self.finish_group_drag(gid, target, cx);
+                } else if let Some(from) = self.doc.index_of(id) {
                     // A list item carries its nested children (deeper-indented list items after it).
                     let list = |b: &crate::editor::model::Block| matches!(b.kind, crate::editor::model::Kind::Bullet | crate::editor::model::Kind::Numbered | crate::editor::model::Kind::Todo);
                     let head = &self.doc.blocks[from];
-                    let n = if list(head) { 1 + (from + 1..self.doc.blocks.len()).take_while(|&i| { let b = &self.doc.blocks[i]; list(b) && b.meta.indent > head.meta.indent }).count() } else { 1 };
+                    let col = head.meta.column;
+                    let n = if list(head) { 1 + (from + 1..self.doc.blocks.len()).take_while(|&i| { let b = &self.doc.blocks[i]; list(b) && b.meta.column == col && b.meta.indent > head.meta.indent }).count() } else { 1 };
+                    let dst_col = self.doc.blocks.get(target.index).and_then(|b| b.meta.column);
                     let slot = target.index + usize::from(target.after);
                     let to = if slot > from { slot.saturating_sub(n) } else { slot }.min(self.doc.blocks.len() - n);
-                    if from != to && !(slot > from && slot < from + n) {
+                    if (from != to || col != dst_col) && !(slot > from && slot < from + n) {
                         self.commit_composition(cx);
                         let before = self.snapshot();
-                        let moved: Vec<_> = (from..from + n).map(|i| self.doc.blocks[i].clone()).collect();
+                        let moved: Vec<_> = (from..from + n).map(|i| { let mut b = self.doc.blocks[i].clone(); b.meta.column = dst_col; b }).collect();
                         self.doc.splice_blocks(from..from + n, Vec::new());
                         self.doc.splice_blocks(to..to, moved);
-                        self.record_changes(before, vec![
-                            ListChange { start: from, before: n, after: 0 },
-                            ListChange { start: to, before: 0, after: n },
-                        ], true, cx);
+                        self.repair_column_groups();
+                        self.record(before, cx);
                     }
                 }
             }

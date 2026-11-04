@@ -4,16 +4,17 @@ use std::{ops::Index, sync::Arc};
 
 type Link = Option<Arc<Node>>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Run { indent: usize, count: u64, start: u64 }
+struct Run { indent: usize, count: u64, start: u64, col: Option<(u64, usize)> }
 fn single_run(b: &Block) -> Option<Run> {
     matches!(b.kind, Kind::Numbered | Kind::Bullet | Kind::Todo).then_some(Run {
-        indent: b.meta.indent, count: u64::from(b.kind == Kind::Numbered), start: b.meta.list_start.unwrap_or(1),
+        indent: b.meta.indent, count: u64::from(b.kind == Kind::Numbered), start: b.meta.list_start.unwrap_or(1), col: b.meta.column,
     })
 }
-fn merge_run(a: Run, b: Run) -> Run {
-    if a.indent < b.indent { a } else if b.indent < a.indent { b }
-    else if a.count > 0 && b.count > 0 { Run { indent: a.indent, count: a.count + b.count, start: a.start } }
-    else { Run { indent: a.indent, count: 0, start: 0 } }
+fn merge_run(a: Run, b: Run) -> Option<Run> {
+    if a.col != b.col { return None; }
+    Some(if a.indent < b.indent { a } else if b.indent < a.indent { b }
+    else if a.count > 0 && b.count > 0 { Run { indent: a.indent, count: a.count + b.count, start: a.start, col: a.col } }
+    else { Run { indent: a.indent, count: 0, start: 0, col: a.col } })
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Node { key: u128, priority: u64, size: usize, block: Arc<Block>, left: Link, right: Link, run: Option<Run> }
@@ -21,8 +22,8 @@ fn size(link: &Link) -> usize { link.as_ref().map_or(0, |n| n.size) }
 fn update(node: &mut Node) {
     node.size = 1 + size(&node.left) + size(&node.right);
     node.run = single_run(&node.block).and_then(|mut r| {
-        if let Some(left) = &node.left { r = merge_run(left.run?, r); }
-        if let Some(right) = &node.right { r = merge_run(r, right.run?); }
+        if let Some(left) = &node.left { r = merge_run(left.run?, r)?; }
+        if let Some(right) = &node.right { r = merge_run(r, right.run?)?; }
         Some(r)
     });
 }
@@ -128,27 +129,27 @@ impl Blocks {
     pub fn list_number(&self,id:u64)->Option<u64> {
         let block=self.by_id(id)?;
         if block.kind!=Kind::Numbered {return None;}
-        let key=self.ids[&id]; let indent=block.meta.indent;
+        let key=self.ids[&id]; let indent=block.meta.indent; let col=block.meta.column;
         let mut state=(1u64,block.meta.list_start.unwrap_or(1));
-        fn scan(root:&Link,key:u128,full:bool,indent:usize,state:&mut (u64,u64))->bool {
+        fn scan(root:&Link,key:u128,full:bool,indent:usize,col:Option<(u64,usize)>,state:&mut (u64,u64))->bool {
             let Some(n)=root else {return false;};
-            if full && let Some(run)=n.run {
+            if full && let Some(run)=n.run && run.col==col {
                 if run.indent>indent {return false;}
                 if run.indent==indent && run.count>0 {
                     state.0=state.0.saturating_add(run.count);state.1=run.start;return false;
                 }
             }
-            if !full && n.key>=key {return scan(&n.left,key,false,indent,state);}
-            if scan(&n.right,key,full,indent,state) {return true;}
+            if !full && n.key>=key {return scan(&n.left,key,false,indent,col,state);}
+            if scan(&n.right,key,full,indent,col,state) {return true;}
             let b=&n.block;
-            if !matches!(b.kind,Kind::Numbered|Kind::Bullet|Kind::Todo) || b.meta.indent<indent {return true;}
+            if b.meta.column!=col || !matches!(b.kind,Kind::Numbered|Kind::Bullet|Kind::Todo) || b.meta.indent<indent {return true;}
             if b.meta.indent==indent {
                 if b.kind!=Kind::Numbered {return true;}
                 state.0=state.0.saturating_add(1);state.1=b.meta.list_start.unwrap_or(1);
             }
-            scan(&n.left,key,true,indent,state)
+            scan(&n.left,key,true,indent,col,state)
         }
-        scan(&self.root,key,false,indent,&mut state); Some(state.1.saturating_add(state.0-1))
+        scan(&self.root,key,false,indent,col,&mut state); Some(state.1.saturating_add(state.0-1))
     }
     pub(super) fn insert(&mut self, index: usize, block: Block) {
         assert!(index <= self.len() && !self.ids.contains_key(&block.id));

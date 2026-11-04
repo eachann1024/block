@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TableFormat { Pipe, Html, Columns }
+pub enum TableFormat { Pipe, Html }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CellAlignment { #[default] Left, Center, Right }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,7 +46,6 @@ impl TableCell {
     }
 }
 impl Table {
-    pub fn is_columns(&self) -> bool { self.format == TableFormat::Columns }
     pub fn cell(&self, row: usize, cell: usize) -> Option<&TableCell> {
         self.rows.get(row)?.cells.get(cell)
     }
@@ -208,10 +207,5 @@ impl Table {
         let mut table = Self { format: TableFormat::Pipe, rows: rows_vec, columns,
             alignments: vec![CellAlignment::Left; columns], column_widths: Vec::new(), attrs: Vec::new(), source: String::new() };
         table.finish_structure(); table
-    }
-    pub fn columns(columns: usize) -> Self {
-        let cells = (0..columns).map(|c| { let mut cell = TableCell::blank(0, c); cell.header = false; cell }).collect();
-        Self { format: TableFormat::Columns, rows: vec![TableRow { cells }], columns,
-            alignments: vec![CellAlignment::Left; columns], column_widths: Vec::new(), attrs: Vec::new(), source: String::new() }
     }
 }
