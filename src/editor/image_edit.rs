@@ -125,6 +125,7 @@ impl Editor {
         }
         cx.notify();
     }
+    #[allow(dead_code)]
     pub(super) fn reveal_image(&mut self, id: u64, cx: &mut Context<Self>) {
         match self.image_file(id).filter(|p| p.exists()) {
             Some(path) => crate::files::ops::reveal_in_finder(&path),

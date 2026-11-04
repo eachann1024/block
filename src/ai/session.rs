@@ -79,6 +79,7 @@ impl Editor {
         cx.notify();
     }
     /// Selection toolbar entry (AI 润色).
+    #[allow(dead_code)]
     pub(in crate::editor) fn open_ai(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.path.is_none() { self.status = tr("当前页面不可编辑或 AI 未开启。", "Page is not editable or AI is disabled.").into(); cx.notify(); return; }
         let parts = self.selection_ranges();
