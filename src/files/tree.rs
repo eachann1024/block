@@ -50,6 +50,7 @@ impl FileTree {
     }
 
     pub fn focus_handle(&self) -> &FocusHandle { &self.focus }
+    pub fn note_count(&self) -> usize { self.index.note_count() }
 
     pub fn is_focused(&self, window: &gpui::Window) -> bool { self.focus.is_focused(window) }
 

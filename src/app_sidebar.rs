@@ -1,7 +1,7 @@
 //! Sidebar chrome: resizable edge, notebook switcher and window-level overlays.
 use gpui::{
     AnyElement, Context, CursorStyle, FontWeight, MouseButton, Pixels, SharedString,
-    Window, WindowControlArea, anchored, deferred, div, point, prelude::*, px,
+    Window, WindowControlArea, div, point, prelude::*, px,
 };
 use crate::icons::{Icon, icon};
 use crate::theme::{Theme, tr};
@@ -12,7 +12,6 @@ pub(super) const MIN_WIDTH: f32 = 200.;
 pub(super) const MAX_WIDTH: f32 = 420.;
 const COLLAPSED_HEADER_WIDTH: f32 = if cfg!(target_os = "macos") { 168. } else { 98. };
 const TITLEBAR_LEFT_PAD: f32 = if cfg!(target_os = "macos") { 76. } else { 10. };
-const SWITCHER_TOP: f32 = 40. + 12. + 36. + 4.;
 
 pub(super) fn clamp_width(width: Pixels) -> Pixels { width.clamp(px(MIN_WIDTH), px(MAX_WIDTH)) }
 
@@ -96,9 +95,10 @@ impl Workspace {
         let name = self.folder.as_ref().map(|path| display_name(path, true)).unwrap_or_else(|| tr("选择笔记本", "Select Notebook").into());
         let enabled = !self.busy();
         let open = self.switcher_open;
-        div().id("notebook-switcher").flex_1().min_w_0().h(px(36.)).px(px(10.)).flex().items_center().gap(px(8.))
-            .rounded(px(8.)).border_1().border_color(theme.btn_border).bg(if open { theme.hover } else { theme.paper })
-            .text_size(px(13.)).font_weight(FontWeight(460.))
+        let note_count = self.folder.as_ref().map(|_| self.tree.read(cx).note_count().to_string());
+        div().id("notebook-switcher").flex_1().min_w_0().h(px(30.)).px(px(8.)).flex().items_center().gap(px(7.))
+            .rounded(px(6.)).text_size(px(14.)).font_weight(FontWeight(500.)).text_color(theme.text)
+            .when(open, |b| b.bg(theme.hover))
             .when(enabled, |b| b.cursor(CursorStyle::PointingHand).hover(|style| style.bg(theme.hover))
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                     cx.stop_propagation();
@@ -108,13 +108,17 @@ impl Workspace {
                     cx.notify();
                 })))
             .when(!enabled, |b| b.opacity(0.5))
-            .child(icon(Icon::FolderOpen, px(18.), theme.icon_colors(theme.text_secondary)))
+            .child(icon(Icon::FolderOpen, px(15.), theme.icon_colors(theme.text)))
             .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(name))
-            .child(icon(Icon::ChevronDown, px(14.), theme.icon_colors(theme.text_secondary)))
+            .when_some(note_count, |b, count| {
+                b.child(div().flex_none().text_size(px(14.)).font_weight(FontWeight::NORMAL)
+                    .text_color(theme.text_secondary).child(count))
+            })
+            .child(icon(Icon::ChevronUp, px(12.), theme.icon_colors(theme.text_secondary)))
     }
 
     /// Window-level overlays: outside-click catcher, switcher list, tree menu, search.
-    pub(super) fn overlays(&self, _: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    pub(super) fn overlays(&self, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut out = Vec::new();
         if self.switcher_open || self.menu.is_some() {
             out.push(div().id("overlay-dismiss").absolute().top_0().left_0().size_full()
@@ -122,13 +126,13 @@ impl Workspace {
                 .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| this.close_overlays(cx)))
                 .into_any_element());
         }
-        if self.switcher_open { out.push(self.switcher_menu(cx)); }
+        if self.switcher_open { out.push(self.switcher_menu(window, cx)); }
         if let Some(menu) = &self.menu { out.extend(self.tree_menu(&menu.target, menu.position, menu.moving, cx)); }
         out.extend(self.search_view(cx));
         out
     }
 
-    fn switcher_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn switcher_menu(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let current = self.folder.clone();
         let mut items: Vec<AnyElement> = self.notebooks.iter().map(|path| {
             let checked = current.as_ref() == Some(path);
@@ -146,9 +150,12 @@ impl Workspace {
         if !items.is_empty() { items.push(separator()); }
         items.push(menu_item(ItemId::Name("add-notebook"), Icon::Plus, tr("选择文件夹…", "Choose Folder…").into(), false, false,
             cx.listener(|this, _, window, cx| { this.close_overlays(cx); this.choose_folder(window, cx); })).into_any_element());
-        let width = self.sidebar_width - px(24.);
-        deferred(anchored().position(point(px(12.), px(SWITCHER_TOP))).snap_to_window_with_margin(px(8.))
-            .child(menu_surface(width).children(items))).with_priority(2).into_any_element()
+        let row_count = self.notebooks.len() + 1;
+        let sep_h = if self.notebooks.is_empty() { 0. } else { 11. };
+        let est_h = (8. + row_count as f32 * 30. - 2. + sep_h).min(crate::ui::dropdown::MAX_HEIGHT);
+        let y = (window.viewport_size().height - px(48. + est_h)).max(px(8.));
+        let width = self.sidebar_width - px(16.);
+        crate::ui::dropdown::deferred_popover(point(px(8.), y), menu_surface(width).children(items), 2).into_any_element()
     }
 }
 
