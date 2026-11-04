@@ -100,6 +100,7 @@ impl Block {
 }
 impl Doc {
     /// Returns false without changing a document when the target is missing or unchanged.
+    #[allow(dead_code)]
     pub fn set_table_cell_text(&mut self, id: u64, row: usize, cell: usize, text: String) -> bool {
         let Some(block) = self.get_mut(id) else { return false; };
         let Some(target) = block.meta.table.as_mut().and_then(|t| t.cell_mut(row, cell)) else { return false; };

@@ -8,6 +8,7 @@ pub(super) use crate::ui::floating_bar::{
 };
 use super::{format_cmds::FormatPop, model::{Kind, MarkKind}, view::Editor};
 
+#[allow(dead_code)]
 pub(super) fn menu_shadows() -> Vec<BoxShadow> {
     vec![
         BoxShadow { color: rgba(0x1f1e1d1f).into(), offset: point(px(0.), px(12.)), blur_radius: px(32.), spread_radius: px(0.), inset: false },
@@ -17,6 +18,7 @@ pub(super) fn menu_shadows() -> Vec<BoxShadow> {
 
 thread_local! { static BOUNDS: RefCell<HashMap<&'static str, Bounds<Pixels>>> = Default::default(); }
 /// Where a dropdown button was last painted: right edge aligned to trigger's right edge, top = trigger bottom + 4.
+#[allow(dead_code)]
 pub(super) fn drop_anchor(key: &'static str) -> Option<Point<Pixels>> {
     BOUNDS.with(|b| b.borrow().get(key).map(|r| crate::dropdown::anchor_below_right(*r, 206., 160., None)))
 }
