@@ -161,28 +161,25 @@ fn handle_button(glyph: Icon, id: (&'static str, usize), listener: impl Fn(&gpui
 }
 fn table_grip_button(id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
-    let hover_bg: gpui::Hsla = if crate::theme::is_dark() { rgb(0x262626).into() } else { rgb(0xf2f1ef).into() };
-    div().id(id).group("hover-icon").size(px(22.)).flex_none().rounded(px(5.))
-        .flex().items_center().justify_center().hover(move |s| s.bg(hover_bg)).cursor(CursorStyle::PointingHand)
+    div().id(id).group("hover-icon").size(px(22.)).flex_none().rounded(px(4.))
+        .flex().items_center().justify_center().hover(|s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
         .child(hover_icon(Icon::Drag, 14., theme.text_secondary, theme.text))
         .on_mouse_down(MouseButton::Left, listener)
 }
 fn fold_button(folded: bool, id: (&'static str, usize), listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
-    let hover_bg: gpui::Hsla = if crate::theme::is_dark() { rgb(0x262626).into() } else { rgb(0xf2f1ef).into() };
     let glyph = if folded { Icon::TbChevronRight } else { Icon::TbChevron };
     let tip = if folded { tr("展开章节", "Expand section") } else { tr("折叠章节", "Collapse section") };
-    div().id(id).group("hover-icon").size(px(22.)).flex_none().rounded(px(5.))
-        .flex().items_center().justify_center().hover(move |s| s.bg(hover_bg)).cursor(CursorStyle::PointingHand)
+    div().id(id).group("hover-icon").size(px(22.)).flex_none().rounded(px(4.))
+        .flex().items_center().justify_center().hover(|s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
         .tooltip(move |window, cx| crate::theme::build_tooltip(tip, window, cx))
         .child(hover_icon(glyph, 12., theme.text_secondary, theme.text))
         .on_mouse_down(MouseButton::Left, listener)
 }
 fn heading_link_button(heading_text: String, id: (&'static str, usize)) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
-    let hover_bg: gpui::Hsla = if crate::theme::is_dark() { rgb(0x262626).into() } else { rgb(0xf2f1ef).into() };
-    div().id(id).group("hover-icon").size(px(22.)).flex_none().rounded(px(5.))
-        .flex().items_center().justify_center().hover(move |s| s.bg(hover_bg)).cursor(CursorStyle::PointingHand)
+    div().id(id).group("hover-icon").size(px(22.)).flex_none().rounded(px(4.))
+        .flex().items_center().justify_center().hover(|s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
         .tooltip(|window, cx| crate::theme::build_tooltip(tr("复制章节链接", "Copy link to section"), window, cx))
         .child(hover_icon(Icon::TbLink, 13., theme.text_secondary, theme.text))
         .on_mouse_down(MouseButton::Left, move |_, _, cx| {
