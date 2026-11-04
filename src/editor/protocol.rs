@@ -18,6 +18,11 @@ impl EntityInputHandler for Editor {
         self.caret.composing.as_ref().map(|range| to_utf16(self.block_text(), range))
     }
     fn unmark_text(&mut self, _: &mut Window, cx: &mut Context<Self>) { self.commit_composition(cx); }
+    fn paste(&mut self, item: gpui::ClipboardItem, window: &mut Window, cx: &mut Context<Self>) {
+        if self.path.is_none() { return; }
+        self.commit_composition(cx);
+        self.paste_clipboard_item(Some(item), window, cx);
+    }
     fn replace_text_in_range(&mut self, range: Option<Range<usize>>, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.replace(range, text, window, cx);
     }

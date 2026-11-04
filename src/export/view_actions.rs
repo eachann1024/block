@@ -94,6 +94,7 @@ impl ExportView {
         .detach();
     }
 
+    #[cfg(not(target_family = "wasm"))]
     pub(super) fn save(&mut self, cx: &mut Context<Self>) {
         if !self.ready() {
             return;
