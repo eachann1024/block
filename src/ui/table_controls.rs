@@ -46,7 +46,7 @@ pub fn grip(id: (&'static str, usize), vertical: bool, expanded: bool, dragging:
     };
     let dot: Hsla = if dark { Theme::ocean().text.opacity(0.55) } else { rgba(0x1f1e1d8c).into() };
     let shell = div().id(id).w(px(w)).h(px(h)).flex_none().flex().items_center().justify_center()
-        .cursor(CursorStyle::OpenHand);
+        .cursor(if dragging { CursorStyle::ClosedHand } else { CursorStyle::OpenHand });
     let shell = if expanded {
         let key = id.1 * 2 + usize::from(vertical);
         shell.rounded(px(7.)).bg(bg).border_1().border_color(border).child(
