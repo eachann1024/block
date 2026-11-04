@@ -3,7 +3,7 @@ use gpui::{
     AnyElement, Context, CursorStyle, FontWeight, MouseButton, Pixels, SharedString,
     Window, WindowControlArea, div, point, prelude::*, px,
 };
-use crate::icons::{Icon, icon};
+use crate::icons::{Icon, stateful_icon};
 use crate::theme::{Theme, tr};
 use super::{Workspace, file_ops::display_name, tabs::hover_tinted_icon, update_state_width};
 use super::menu::{ItemId, menu_item, menu_surface, separator};
@@ -106,7 +106,7 @@ impl Workspace {
         let enabled = !self.busy();
         let open = self.switcher_open;
         let note_count = self.folder.as_ref().map(|_| self.tree.read(cx).note_count().to_string());
-        div().id("notebook-switcher").relative().children(crate::ui::smoke_overlay::probe("notebook-switcher")).flex_1().min_w_0().h(px(30.)).px(px(8.)).flex().items_center().gap(px(7.))
+        div().id("notebook-switcher").group("notebook-switcher").relative().children(crate::ui::smoke_overlay::probe("notebook-switcher")).flex_1().min_w_0().h(px(30.)).px(px(8.)).flex().items_center().gap(px(7.))
             .rounded(px(6.)).text_size(px(14.)).font_weight(FontWeight(500.)).text_color(theme.text)
             .when(open, |b| b.bg(theme.hover))
             .when(enabled, |b| b.cursor(CursorStyle::PointingHand).hover(|style| style.bg(theme.hover))
@@ -118,13 +118,13 @@ impl Workspace {
                     cx.notify();
                 })))
             .when(!enabled, |b| b.opacity(0.5))
-            .child(icon(Icon::FolderOpen, px(15.), theme.icon_colors(theme.text)))
+            .child(stateful_icon("notebook-switcher", Icon::FolderOpen, px(15.), open, theme.mono_icon_colors(theme.text), theme.icon_colors(theme.text)))
             .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(name))
             .when_some(note_count, |b, count| {
                 b.child(div().flex_none().text_size(px(14.)).font_weight(FontWeight::NORMAL)
                     .text_color(theme.text_secondary).child(count))
             })
-            .child(icon(Icon::ChevronUp, px(12.), theme.icon_colors(theme.text_secondary)))
+            .child(stateful_icon("notebook-switcher", Icon::ChevronUp, px(12.), open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text_secondary)))
     }
 
     /// Window-level overlays: outside-click catcher, switcher list, tree menu, search.
@@ -171,7 +171,8 @@ impl Workspace {
 
 fn forget_button(path: std::path::PathBuf, cx: &mut Context<Workspace>) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
-    div().id(gpui::ElementId::Name(format!("forget:{}", path.display()).into()))
+    let group: SharedString = format!("forget:{}", path.display()).into();
+    div().id(gpui::ElementId::Name(group.clone())).group(group.clone())
         .size(px(20.)).flex_none().flex().items_center().justify_center().rounded(px(4.))
         .invisible().group_hover("notebook-item", |style| style.visible())
         .hover(|style| style.bg(theme.btn_hover))
@@ -184,5 +185,5 @@ fn forget_button(path: std::path::PathBuf, cx: &mut Context<Workspace>) -> gpui:
             }).detach();
             cx.notify();
         }))
-        .child(icon(Icon::Close, px(12.), theme.icon_colors(theme.text_secondary)))
+        .child(stateful_icon(group, Icon::Close, px(12.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
 }

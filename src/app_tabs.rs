@@ -207,7 +207,7 @@ impl Workspace {
                         cx.stop_propagation();
                         this.new_item(false, window, cx);
                     }))
-                    .child(hover_tinted_icon(new_group, Icon::Plus, 14., theme.text_secondary, theme.text, transparent_black()))
+                    .child(hover_tinted_icon(new_group, Icon::Plus, 14., theme.text_secondary, theme.text, theme.icon_fill))
             }) } else { None };
             let (plus_left, plus_right) = if multi { (plus, None) } else { (None, plus) };
             right = right.children(plus_left);
@@ -237,13 +237,11 @@ impl Workspace {
                 cx.stop_propagation();
                 this.close_tab(close_path.clone(), cx);
             }))
-            .child(hover_tinted_icon(close_group, Icon::Close, 12., theme.text_secondary, theme.text, transparent_black()));
+            .child(hover_tinted_icon(close_group, Icon::Close, 12., theme.text_secondary, theme.text, theme.icon_fill));
         let note_icon = if multi && active {
             icon(Icon::Note, px(14.), theme.icon_colors(theme.accent)).into_any_element()
-        } else if multi {
-            hover_tinted_icon(group.clone(), Icon::Note, 14., theme.text_secondary, theme.text, theme.icon_fill).into_any_element()
         } else {
-            icon(Icon::Note, px(14.), theme.icon_colors(theme.text_secondary)).into_any_element()
+            hover_tinted_icon(group.clone(), Icon::Note, 14., theme.text_secondary, theme.text, theme.icon_fill).into_any_element()
         };
         let mut pill = div().id(("tab", ix)).group(group.clone()).h(px(28.)).overflow_hidden()
             .when(multi, |t| t.w(px(TAB_MAX_W)).flex_basis(px(TAB_BASIS_W)).flex_shrink_1().min_w(px(TAB_MIN_W)).max_w(px(TAB_MAX_W)))

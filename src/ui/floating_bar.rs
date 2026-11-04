@@ -1,10 +1,10 @@
 use gpui::{
-    AnimationExt, BoxShadow, CursorStyle, Div, ElementId, IntoElement, Pixels, Stateful, Styled,
-    div, point, prelude::*, px, rgb, rgba, transparent_black,
+    AnimationExt, BoxShadow, CursorStyle, Div, ElementId, IntoElement, Pixels, SharedString,
+    Stateful, Styled, div, point, prelude::*, px, rgb, rgba, transparent_black,
 };
 use crate::{
-    icons::{Icon, IconColors, icon},
-    theme::{is_dark, tooltip},
+    icons::{Icon, IconColors, icon, stateful_icon},
+    theme::{Theme, is_dark, tooltip},
 };
 
 pub const BG: u32 = 0xffffff;
@@ -89,9 +89,19 @@ pub fn sep() -> Div {
     div().w(px(1.)).h(px(20.)).mx(px(4.)).flex_none().bg(rgb(tc.sep))
 }
 
-pub fn glyph(glyph: Icon, size: f32, color: u32) -> impl IntoElement {
+pub fn glyph(glyph: Icon, size: f32, color: u32) -> Div {
     let resolved = if is_dark() && color == INK { 0xe8eaee } else { color };
-    icon(glyph, px(size), IconColors { line: rgb(resolved).into(), fill: transparent_black(), accent: transparent_black() })
+    let line: gpui::Hsla = rgb(resolved).into();
+    icon(glyph, px(size), IconColors { line, fill: transparent_black(), accent: line })
+}
+
+pub fn duo_icon_colors(tc: ToolbarColors, on: bool) -> IconColors {
+    let theme = Theme::ocean();
+    if on {
+        IconColors { line: rgb(tc.on_ink).into(), fill: theme.icon_fill, accent: rgb(tc.on_ink).into() }
+    } else {
+        theme.icon_colors(rgb(tc.ink).into())
+    }
 }
 
 pub fn icon_toggle_button(
@@ -103,8 +113,23 @@ pub fn icon_toggle_button(
 ) -> Stateful<Div> {
     let tc = ToolbarColors::current();
     let ink = if on { tc.on_ink } else { tc.ink };
+    let id: ElementId = id.into();
+    let group = SharedString::from(format!("fb-btn-{id:?}"));
+    let lead = if matches!(g, Icon::TbChevron | Icon::TbChevronRight) {
+        glyph(g, 16., ink)
+    } else {
+        stateful_icon(
+            group.clone(),
+            g,
+            px(16.),
+            on || open,
+            Theme::ocean().mono_icon_colors(rgb(ink).into()),
+            duo_icon_colors(tc, on),
+        )
+    };
     div()
         .id(id)
+        .group(group)
         .relative()
         .h(px(32.))
         .min_w(px(32.))
@@ -120,6 +145,6 @@ pub fn icon_toggle_button(
         .when(open && !on, |b| b.bg(rgb(tc.open_bg)))
         .when(on, |b| b.bg(rgb(tc.on_bg)))
         .children(crate::ui::smoke_overlay::probe(match g { Icon::TbBold => "toolbar-bold", Icon::TbItalic => "toolbar-italic", Icon::TbCode => "toolbar-code", _ => tip }))
-        .child(glyph(g, 18., ink))
+        .child(lead)
         .tooltip(tooltip(tip))
 }
