@@ -131,7 +131,7 @@ impl Render for Editor {
                 let handles = !this.minimal && (this.hover == Some(block.id) || this.caret.head.block == block.id || this.dragging == Some(block.id));
                 let folded = !this.minimal && this.is_heading_folded(block.id);
                 let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
-                let row = super::chrome::block_row(cx.entity(), block, handles, folded, edge, number, this.caret.head.block == block.id, this.path.clone(), this.nowrap.contains(&block.id), this.minimal, cx);
+                let row = super::chrome::block_row(cx.entity(), block, handles, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, cx);
                 div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
                     // Round only the outer corners so stacked rows read as one band.
                     .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md())).child(row).into_any_element()
