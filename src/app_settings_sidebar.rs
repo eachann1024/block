@@ -19,7 +19,7 @@ impl Workspace {
                 .children(SettingsTab::ALL.into_iter().enumerate().map(|(ix, tab)| {
                     let active = current == Some(tab);
                     let cat_group = SharedString::from(format!("settings-cat-{ix}"));
-                    div().id(("settings-tab", ix)).group(cat_group.clone()).w_full().h(px(34.)).flex_none().px(px(10.)).rounded(px(6.)).flex().items_center().gap(px(8.))
+                    div().id(("settings-tab", ix)).group(cat_group.clone()).w_full().h(px(34.)).flex_none().px(px(10.)).rounded(crate::ui::radius::CONTROL).flex().items_center().gap(px(8.))
                         .border_1().border_color(gpui::transparent_black())
                         .text_size(px(14.)).line_height(px(20.)).cursor(CursorStyle::PointingHand)
                         .when(active, |d| d.bg(theme.selected).border_color(theme.accent)
@@ -32,7 +32,8 @@ impl Workspace {
                 })))
             .child(div().h(px(44.)).flex_none().px(px(12.)).border_t_1().border_color(theme.sidebar_border)
                 .flex().items_center().justify_end()
-                .child(div().id("settings-sidebar-back").group("settings-back").flex_none().h(px(28.)).px(px(10.)).rounded(px(6.)).bg(card_bg())
+                .child(div().id("settings-sidebar-back").group("settings-back").relative().children(crate::ui::smoke_overlay::probe("settings-back"))
+                    .flex_none().h(px(28.)).px(px(10.)).rounded(crate::ui::radius::CONTROL).bg(card_bg())
                     .border_1().border_color(theme.btn_border).flex().items_center().gap(px(6.))
                     .text_size(px(14.)).font_weight(FontWeight(460.)).text_color(theme.text)
                     .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))

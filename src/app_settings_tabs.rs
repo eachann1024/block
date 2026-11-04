@@ -55,12 +55,6 @@ impl Workspace {
             .child(tr("恢复默认", "Reset"));
 
         div().flex().flex_col().gap(px(24.))
-            .child(settings_card(16.).child(card_title(tr("编辑与行为", "Editing & Behavior")))
-                .child(setting_row(tr("标准阅读版心", "Standard Reading Width"), static_badge("672px", true)))
-                .child(setting_row(tr("块把手触发方式", "Block Handle"),
-                    static_badge(tr("悬停与聚焦时显示", "Show on Hover & Focus"), false)))
-                .child(setting_row(tr("自动保存笔记修改", "Auto-save Edits"),
-                    static_badge(tr("实时写入本地文件", "Saved Live to Disk"), false))))
             .child(settings_card(16.)
                 .child(div().flex().items_center().justify_between()
                     .child(card_title(tr("静态资源", "Static Assets")))
