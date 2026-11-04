@@ -99,7 +99,9 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
     let preview_lang = code_lang.as_deref().is_some_and(super::code_block::is_preview_lang);
     let code_visible = handles || active;
     let first_line_h = if rule { 16. } else if code_lang.is_some() { 30. } else { line };
-    let handle_top = if is_table || image.is_some() {
+    let handle_top = if is_table {
+        4.9
+    } else if image.is_some() {
         4.
     } else {
         ((first_line_h - 26.) / 2. + if callout.is_some() { 12. } else { 0. }).max(-pt)
