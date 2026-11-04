@@ -39,6 +39,14 @@ impl Editor {
     pub(super) fn normalize_annotations(&mut self) -> bool {
         let mut changed = false;
         for note in &mut self.annotate.annotations {
+            if note.is_applied() && note.has_non_reaction_data() {
+                note.body.clear();
+                note.ai_rewritten = None;
+                note.ai_error = None;
+                note.streaming = false;
+                note.request_id = None;
+                changed = true;
+            }
             if note.reactions.len() > 1 {
                 note.reactions.truncate(1);
                 changed = true;
