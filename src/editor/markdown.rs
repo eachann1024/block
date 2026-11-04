@@ -6,6 +6,7 @@ use super::model::{Block, Doc, Kind, Numbering};
 #[path = "markdown_table_html.rs"] mod table_html;
 #[path = "markdown_paragraph.rs"] mod paragraph;
 #[path = "markdown_containers.rs"] mod containers;
+#[path = "markdown_raw_guard.rs"] mod raw_guard;
 
 pub fn rebuild_table_source(table: &mut super::model::Table) { table::rebuild(table) }
 pub(super) fn serialize_table(table: &super::model::Table, out: &mut String) { table::serialize(table, out) }
@@ -17,6 +18,7 @@ fn raw(id: u64, source: String, reason: &str) -> Block {
 }
 /// Line-oriented blocks retain stable identities; tables are semantic blocks with rich cells.
 pub fn parse(source: &str) -> Doc {
+    let decoded = raw_guard::decode(source); let source: &str = &decoded;
     let lines: Vec<_> = source.split_inclusive('\n').collect();
     let mut result = Vec::new(); let mut index = 0; let mut offset = 0;
     while index < lines.len() {
