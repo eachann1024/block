@@ -62,12 +62,12 @@ pub fn init(cx: &mut App) {
     cx.set_global(QuickState::default());
     cx.bind_keys([
         KeyBinding::new("escape", HideQuickNote, Some("QuickNote")),
-        KeyBinding::new("cmd-w", HideQuickNote, Some("QuickNote")),
-        KeyBinding::new("cmd-1", SlotOne, Some("QuickNote")),
-        KeyBinding::new("cmd-2", SlotTwo, Some("QuickNote")),
-        KeyBinding::new("cmd-3", SlotThree, Some("QuickNote")),
-        KeyBinding::new("cmd-4", SlotFour, Some("QuickNote")),
-        KeyBinding::new("cmd-5", SlotFive, Some("QuickNote")),
+        KeyBinding::new("secondary-w", HideQuickNote, Some("QuickNote")),
+        KeyBinding::new("secondary-1", SlotOne, Some("QuickNote")),
+        KeyBinding::new("secondary-2", SlotTwo, Some("QuickNote")),
+        KeyBinding::new("secondary-3", SlotThree, Some("QuickNote")),
+        KeyBinding::new("secondary-4", SlotFour, Some("QuickNote")),
+        KeyBinding::new("secondary-5", SlotFive, Some("QuickNote")),
     ]);
     cx.on_action(|_: &ToggleQuickNote, cx: &mut App| toggle(cx));
     start_hotkey(cx);

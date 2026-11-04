@@ -157,7 +157,7 @@ impl Editor {
             if count > 1 { offset = normalized.rsplit('\n').next().unwrap_or("").len(); }
         }
         if marker && normalized == " " && ai == bi && a == b { self.space_rule(&mut id, &mut offset); }
-        if marker && matches!(normalized.as_str(), "-" | "*") && ai == bi && a == b {
+        if marker && matches!(normalized.as_str(), "-" | "*" | "_") && ai == bi && a == b {
             self.divider_rule(&mut id, &mut offset);
         }
         let at = Position { block: id, offset };

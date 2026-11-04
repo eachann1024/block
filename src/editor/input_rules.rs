@@ -1,8 +1,8 @@
 //! Typing rules mirroring the Electron editor: block prefixes on space, dividers, arrow replacement.
 use gpui::Context;
-use super::{model::{Block, Kind, MarkKind, marker_kind}, view::{Editor, selection::Position}};
+use super::{model::{Block, CalloutKind, Kind, MarkKind, marker_kind}, view::{Editor, selection::Position}};
 
-enum Rule { Code(String), Numbered(u64), Bullet, Todo(bool), Heading(u8), Quote }
+enum Rule { Code(String), Numbered(u64), Bullet, Todo(bool), Heading(u8), Quote, Callout(CalloutKind) }
 
 /// Paragraph that holds ordinary rich text (no code, table, raw source or imported HTML shell).
 pub(super) fn plain(block: &Block) -> bool {
@@ -13,19 +13,36 @@ fn strip_space(prefix: &str) -> &str {
     let mut chars = prefix.chars();
     match chars.next() { Some(c) if c.is_whitespace() => chars.as_str(), _ => prefix }
 }
+fn match_todo(s: &str) -> Option<bool> {
+    for (open, close) in [('[', ']'), ('【', '】')] {
+        if let Some(mid) = s.strip_prefix(open).and_then(|r| r.strip_suffix(close)) {
+            if matches!(mid, "" | " " | "x" | "X") { return Some(mid.eq_ignore_ascii_case("x")); }
+        }
+    }
+    None
+}
+fn match_callout(prefix: &str) -> Option<CalloutKind> {
+    let s = prefix.trim().strip_prefix('>').map(str::trim_start).unwrap_or(prefix.trim());
+    match s.to_ascii_lowercase().as_str() {
+        "[!note]" | "!note" | "!!! note" | ":::note" | ":::info" => Some(CalloutKind::Note),
+        "[!tip]" | "!tip" | "!!! tip" | ":::tip" => Some(CalloutKind::Tip),
+        "[!important]" | "!important" => Some(CalloutKind::Important),
+        "[!warning]" | "!warning" | "!!! warning" | ":::warning" => Some(CalloutKind::Warning),
+        "[!caution]" | "!caution" => Some(CalloutKind::Caution),
+        _ => None,
+    }
+}
 fn match_rule(prefix: &str) -> Option<Rule> {
     if let Some(lang) = prefix.strip_prefix("```").or_else(|| prefix.strip_prefix("~~~")) { return Some(Rule::Code(lang.trim().to_owned())); }
+    if prefix.trim() == "$$" { return Some(Rule::Code("math".to_owned())); }
+    if let Some(callout) = match_callout(prefix) { return Some(Rule::Callout(callout)); }
     let s = strip_space(prefix);
     if let Some(body) = s.strip_suffix(['.', '。', ')', '）']) {
         if !body.is_empty() && body.bytes().all(|b| b.is_ascii_digit()) { return body.parse().ok().map(Rule::Numbered); }
         if matches!(body, "a" | "i" | "A" | "I") { return Some(Rule::Numbered(1)); }
     }
     if matches!(s, "-" | "+" | "*") { return Some(Rule::Bullet); }
-    for (open, close) in [('[', ']'), ('【', '】')] {
-        if let Some(mid) = s.strip_prefix(open).and_then(|r| r.strip_suffix(close)) {
-            if matches!(mid, "" | " " | "x" | "X") { return Some(Rule::Todo(mid.eq_ignore_ascii_case("x"))); }
-        }
-    }
+    if let Some(done) = match_todo(s) { return Some(Rule::Todo(done)); }
     if (4..=6).contains(&prefix.len()) && prefix.bytes().all(|b| b == b'#') { return Some(Rule::Heading(prefix.len() as u8)); }
     if matches!(prefix, "\"" | "“" | "|" | "｜" | ">" | "＞") { return Some(Rule::Quote); }
     None
@@ -43,6 +60,23 @@ impl Editor {
     /// Mutates the block, `id` (divider moves the caret to the trailing paragraph) and `offset`.
     pub(in crate::editor) fn space_rule(&mut self, id: &mut u64, offset: &mut usize) {
         let Some(block) = self.doc.get(*id) else { return };
+        if *offset == 0 || !block.text.is_char_boundary(*offset) { return; }
+        if block.kind == Kind::Bullet {
+            let prefix = strip_space(&block.text[..*offset - 1]);
+            if let Some(done) = match_todo(prefix) {
+                self.doc.replace_range(*id, 0..*offset, ""); *offset = 0;
+                self.doc.set_kind(*id, Kind::Todo); self.set_meta(*id, |b| b.checked = done);
+            }
+            return;
+        }
+        if block.kind == Kind::Quote && block.meta.callout.is_none() {
+            let prefix = &block.text[..*offset - 1];
+            if let Some(kind) = match_callout(prefix) {
+                self.doc.replace_range(*id, 0..*offset, ""); *offset = 0;
+                self.set_meta(*id, |b| b.meta.callout = Some(kind));
+            }
+            return;
+        }
         if block.kind != Kind::Paragraph { return; }
         if let Some((kind, eaten)) = marker_kind(&block.text) {
             if *offset == eaten {
@@ -50,7 +84,7 @@ impl Editor {
             }
             return;
         }
-        if !plain(block) || *offset == 0 || !block.text.is_char_boundary(*offset) { return; }
+        if !plain(block) { return; }
         let prefix = block.text[..*offset - 1].to_owned();
         if is_divider(&prefix) && *offset == block.text.len() {
             *id = self.insert_divider(*id); *offset = 0; return;
@@ -64,16 +98,17 @@ impl Editor {
             Rule::Todo(done) => { self.doc.set_kind(*id, Kind::Todo); self.set_meta(*id, |b| b.checked = done); }
             Rule::Heading(level) => { self.doc.set_kind(*id, Kind::H3); self.set_meta(*id, |b| b.meta.heading_level = Some(level)); }
             Rule::Quote => self.doc.set_kind(*id, Kind::Quote),
+            Rule::Callout(kind) => { self.doc.set_kind(*id, Kind::Quote); self.set_meta(*id, |b| b.meta.callout = Some(kind)); }
         }
     }
     fn set_meta(&mut self, id: u64, edit: impl FnOnce(&mut Block)) {
         if let Some(block) = self.doc.get_mut(id) { edit(block); }
         self.doc.refresh_block(id);
     }
-    /// Convert a plain paragraph whose entire text just became `---` or `***` into a divider immediately.
+    /// Convert a plain paragraph whose entire text just became `---`, `***` or `___` into a divider immediately.
     pub(in crate::editor) fn divider_rule(&mut self, id: &mut u64, offset: &mut usize) {
         let Some(block) = self.doc.get(*id) else { return };
-        if plain(block) && *offset == block.text.len() && matches!(block.text.as_str(), "---" | "***") {
+        if plain(block) && *offset == block.text.len() && matches!(block.text.as_str(), "---" | "***" | "___") {
             *id = self.insert_divider(*id); *offset = 0;
         }
     }
@@ -86,16 +121,30 @@ impl Editor {
         self.doc.splice_blocks(index..index + 1, vec![div, next]);
         self.doc.blocks[index + 1].id
     }
-    /// Enter on `---` (caret at end) becomes a divider; returns whether it handled the key.
+    /// Enter on `---`, `$$`, fence, or callout marker (caret at end) converts the block; returns whether it handled the key.
     pub(super) fn divider_on_enter(&mut self, cx: &mut Context<Self>) -> bool {
         let at = self.caret.head;
         if !self.caret.is_empty() || self.caret.composing.is_some() { return false; }
         let Some(block) = self.doc.get(at.block) else { return false };
-        if !plain(block) || at.offset != block.text.len() { return false; }
+        if at.offset != block.text.len() { return false; }
+        if (plain(block) || (block.kind == Kind::Quote && block.meta.callout.is_none()))
+            && let Some(kind) = match_callout(&block.text)
+        {
+            let before = self.snapshot();
+            self.doc.set_text(at.block, String::new());
+            self.doc.set_kind(at.block, Kind::Quote);
+            self.set_meta(at.block, |b| b.meta.callout = Some(kind));
+            let to = Position { block: at.block, offset: 0 };
+            self.caret.anchor = to; self.caret.head = to;
+            self.record(before, cx); return true;
+        }
+        if !plain(block) { return false; }
         let before = self.snapshot();
-        // A typed fence (```lang or ~~~lang) plus Enter turns the paragraph into a code block.
-        if let Some(lang) = block.text.strip_prefix("```").or_else(|| block.text.strip_prefix("~~~")) {
-            let lang = lang.trim().to_owned();
+        // A typed fence (```lang, ~~~lang, or $$) plus Enter turns the paragraph into a code/math block.
+        let code_lang = block.text.strip_prefix("```").or_else(|| block.text.strip_prefix("~~~"))
+            .map(|l| l.trim().to_owned())
+            .or_else(|| (block.text.trim() == "$$").then(|| "math".to_owned()));
+        if let Some(lang) = code_lang {
             self.doc.set_text(at.block, String::new());
             self.set_meta(at.block, |b| b.meta.code_language = Some(lang));
             let to = Position { block: at.block, offset: 0 };
