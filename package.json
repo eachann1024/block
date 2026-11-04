@@ -1,5 +1,5 @@
 {
-  "name": "thinkly-fast",
+  "name": "block",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "private": true,
@@ -9,6 +9,6 @@
     "build": "bun scripts/build-app.mjs",
     "build:ci": "bun scripts/build-app.mjs --no-install",
     "build:web": "bun scripts/build-web.mjs",
-    "logs": "tail -n 100 -f ~/Library/Logs/ThinklyFast/thinkly-fast.log"
+    "logs": "tail -n 100 -f ~/Library/Logs/Block/block.log"
   }
 }

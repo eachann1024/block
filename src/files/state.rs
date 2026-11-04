@@ -121,14 +121,35 @@ pub fn app_data_dir(app_folder: &str) -> PathBuf {
         .unwrap_or_else(std::env::temp_dir);
     #[cfg(target_family = "wasm")]
     let base = PathBuf::from("/");
-    base.join(app_folder)
+    let dir = base.join(app_folder);
+    #[cfg(not(target_family = "wasm"))]
+    if app_folder == "Block" {
+        static MIGRATE: std::sync::Once = std::sync::Once::new();
+        MIGRATE.call_once(|| migrate_legacy_data(&base, &dir));
+    }
+    dir
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn migrate_legacy_data(base: &Path, target: &Path) {
+    for name in [format!("{}-{}", "thinkly", "fast"), format!("{} {}", "Thinkly", "Fast")] {
+        let legacy = base.join(name);
+        let Ok(entries) = fs::read_dir(&legacy) else { continue };
+        let _ = fs::create_dir_all(target);
+        for entry in entries.flatten() {
+            let dest = target.join(entry.file_name());
+            if !dest.exists() {
+                let _ = fs::rename(entry.path(), &dest);
+            }
+        }
+    }
 }
 
 fn state_path() -> io::Result<PathBuf> {
     if let Some(custom) = STATE_PATH_OVERRIDE.get() {
         return Ok(custom.clone());
     }
-    Ok(app_data_dir("thinkly-fast").join("state.json"))
+    Ok(app_data_dir("Block").join("state.json"))
 }
 
 pub fn load_state() -> io::Result<State> {

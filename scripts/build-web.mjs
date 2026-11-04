@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -102,8 +102,8 @@ const INDEX_HTML = `<!doctype html>
     <div id="editor-loading">正在加载 Block 编辑器…</div>
   </div>
   <script type="module">
-    import init from "./thinkly_fast_web.js?v=4";
-    await init("./thinkly_fast_web_bg.wasm?v=4");
+    import init from "./block_web.js?v=4";
+    await init("./block_web_bg.wasm?v=4");
   </script>
 </body>
 </html>
@@ -124,7 +124,7 @@ export function buildWeb() {
     },
   );
 
-  const rawWasm = join(webDir, "target/wasm32-unknown-unknown/release/thinkly_fast_web.wasm");
+  const rawWasm = join(webDir, "target/wasm32-unknown-unknown/release/block_web.wasm");
   run("wasm-bindgen", [
     "--target",
     "web",
@@ -132,11 +132,11 @@ export function buildWeb() {
     "--out-dir",
     outDir,
     "--out-name",
-    "thinkly_fast_web",
+    "block_web",
     rawWasm,
   ]);
 
-  const bgWasm = join(outDir, "thinkly_fast_web_bg.wasm");
+  const bgWasm = join(outDir, "block_web_bg.wasm");
   run("wasm-opt", [
     "-Oz",
     "--strip-debug",
@@ -168,6 +168,6 @@ export function buildWeb() {
   console.log(`wasm (brotli): ${fmtMiB(brotliBytes.byteLength)}`);
 }
 
-if (import.meta.main) {
+if (import.meta.main || (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)) {
   buildWeb();
 }

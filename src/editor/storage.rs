@@ -29,7 +29,7 @@ struct Draft { path: PathBuf, source: String, base: u64 }
 pub(super) struct Loaded { pub doc: Doc, pub base: Fingerprint, pub recovered: bool }
 fn draft_path(path: &Path) -> PathBuf {
     let key = fingerprint(path.as_os_str().as_encoded_bytes()).0;
-    crate::files::app_data_dir("Thinkly Fast").join("Recovery").join(format!("{key:016x}.json"))
+    crate::files::app_data_dir("Block").join("Recovery").join(format!("{key:016x}.json"))
 }
 pub(super) fn latest_draft() -> Result<(PathBuf, Loaded), String> {
     let root = draft_path(Path::new("unused")).parent().unwrap().to_path_buf();
@@ -72,7 +72,7 @@ fn atomic_write(path: &Path, bytes: &[u8], expected: Option<Fingerprint>) -> io:
     let parent = path.parent().ok_or_else(|| io::Error::other(tr("缺少父级目录", "Missing parent")))?;
     let mut temporary = None;
     for serial in 0..100 {
-        let candidate = parent.join(format!(".thinkly-{}-{serial}.tmp", std::process::id()));
+        let candidate = parent.join(format!(".block-{}-{serial}.tmp", std::process::id()));
         match fs::OpenOptions::new().write(true).create_new(true).open(&candidate) {
             Ok(file) => { temporary = Some((candidate, file)); break; }
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,

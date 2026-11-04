@@ -52,7 +52,7 @@ impl Config {
 }
 
 fn settings_path() -> Option<PathBuf> {
-    Some(crate::files::app_data_dir("thinkly-fast").join("ai.json"))
+    Some(crate::files::app_data_dir("Block").join("ai.json"))
 }
 
 /// What is saved on disk (the settings form edits this).

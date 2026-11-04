@@ -20,7 +20,7 @@ pub fn keep_open() -> bool { std::env::args().any(|a| a == "--keep-open") }
 pub fn init_sandbox() -> Option<PathBuf> {
     if !is_requested() { return None; }
     smoke_overlay::enable_smoke_mode();
-    let sandbox = PathBuf::from("/tmp").join(format!("thinkly-smoke-{}", std::process::id()));
+    let sandbox = PathBuf::from("/tmp").join(format!("block-smoke-{}", std::process::id()));
     let notebook = sandbox.join("notebook");
     let setup = || -> std::io::Result<()> {
         std::fs::create_dir_all(&notebook)?;
