@@ -5,10 +5,15 @@ use gpui::{Hsla, Window, rgb};
 use gpui_component::animation::cubic_bezier;
 
 const DURATION: Duration = Duration::from_millis(200);
+const FLASH_DURATION: Duration = Duration::from_millis(900);
+const BREATHE_PERIOD_SECS: f64 = 1.4;
 
 struct Fade { from: f32, to: f32, start: f64 }
 
-thread_local! { static FADES: RefCell<HashMap<u64, Fade>> = Default::default(); }
+thread_local! {
+    static FADES: RefCell<HashMap<u64, Fade>> = Default::default();
+    static FLASHES: RefCell<HashMap<u64, f64>> = Default::default();
+}
 
 /// Seconds on a monotonic clock. `std::time::Instant` panics on wasm32, so the browser's
 /// `performance.now()` stands in there.
@@ -42,6 +47,33 @@ pub fn level(key: u64, target: f32, window: &mut Window) -> f32 {
         }
         if t < 1. { window.request_animation_frame(); }
         current
+    })
+}
+
+/// Continuous 1.4s ease-in-out breathing wave in `0.0..=1.0` for streaming highlights.
+pub fn breathe(window: &mut Window) -> f32 {
+    window.request_animation_frame();
+    let phase = (now() / BREATHE_PERIOD_SECS) * std::f64::consts::TAU;
+    0.5 - 0.5 * (phase.cos() as f32)
+}
+
+/// Starts a 900ms ease-out flash for `key` (used when an AI rewrite replaces document text).
+pub fn record_flash(key: u64) {
+    FLASHES.with(|map| { map.borrow_mut().insert(key, now()); });
+}
+
+/// Current flash intensity in `0.0..=1.0` (1.0 at start, decaying to 0.0 over 900ms).
+pub fn flash(key: u64, window: &mut Window) -> f32 {
+    FLASHES.with(|map| {
+        let mut map = map.borrow_mut();
+        let Some(&start) = map.get(&key) else { return 0. };
+        let t = (((now() - start) as f32) / FLASH_DURATION.as_secs_f32()).clamp(0., 1.);
+        if t >= 1. {
+            map.remove(&key);
+            return 0.;
+        }
+        window.request_animation_frame();
+        1. - ease(t)
     })
 }
 
