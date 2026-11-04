@@ -89,11 +89,7 @@ impl Editor {
         self.folded = session.folded;
         self.preferred_x = session.preferred_x;
         self.dirty = session.dirty;
-        self.status = if !session.dirty && (session.status.is_empty() || session.status == "已保存" || session.status == "Saved") {
-            crate::theme::tr("已保存 · 内存会话就绪", "Saved · Session ready").into()
-        } else {
-            session.status
-        };
+        self.status = session.status;
         self.persistence.revision = session.revision;
         self.persistence.base = session.base;
         self.persistence.timer = None;
