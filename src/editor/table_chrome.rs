@@ -129,8 +129,8 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
             let add_col = editor.clone();
             out.push(floating(point(table.right() + px(2.), col_top),
                 add_bar("table-add-col", px(18.), col_bottom - col_top, tr("添加列", "Add column"))
-                    .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                        add_col.update(cx, |this, cx| { this.table_command(id, TableSel::Whole, TableCmd::AppendColumn, cx); window.focus(&this.focus, cx); });
+                    .on_mouse_down(MouseButton::Left, move |event, window, cx| {
+                        add_col.update(cx, |this, cx| { this.begin_extend(id, event.position, cx); window.focus(&this.focus, cx); });
                         cx.stop_propagation();
                     })));
         }
