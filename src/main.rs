@@ -105,8 +105,7 @@ fn main() {
         let smoke_sandbox = smoke_sandbox.clone();
         theme::init_fonts(&cx.text_system().all_font_names());
         gpui_component::init(cx);
-        // The app is light-only; without this, inputs follow macOS dark mode (white text, black field).
-        gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx);
+        theme::sync_gpui_theme(cx);
         cx.bind_keys([
             KeyBinding::new("cmd-q", Quit, None),
             #[cfg(not(target_os = "macos"))]
