@@ -9,6 +9,24 @@ fn fingerprint(bytes: &[u8]) -> Fingerprint {
     let mut hash = std::collections::hash_map::DefaultHasher::new(); bytes.hash(&mut hash);
     Fingerprint(hash.finish())
 }
+#[cfg(target_family = "wasm")]
+static MEM_FILES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+#[cfg(target_family = "wasm")]
+impl super::Editor {
+    pub fn open_web_markdown(&mut self, path: PathBuf, source: &str, cx: &mut gpui::Context<Self>) {
+        let base = fingerprint(source.as_bytes());
+        MEM_FILES.lock().unwrap().insert(path.clone(), source.to_owned());
+        self.persistence.base = base;
+        self.persistence.gate.lock().unwrap().saved.insert(path.clone(), base);
+        self.reset_document(markdown::parse(source));
+        self.folded.clear();
+        self.path = Some(path);
+        self.dirty = false;
+        self.status.clear();
+        cx.notify();
+    }
+}
 #[derive(Serialize, Deserialize)]
 struct Draft { path: PathBuf, source: String, base: u64 }
 pub(super) struct Loaded { pub doc: Doc, pub base: Fingerprint, pub recovered: bool }
@@ -33,17 +51,26 @@ pub(super) fn latest_draft() -> Result<(PathBuf, Loaded), String> {
     Err("No readable recovery drafts found".into())
 }
 pub(super) fn load(path: &Path) -> Result<Loaded, String> {
-    let bytes = fs::read(path).map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
-    let source = String::from_utf8(bytes).map_err(|e| format!("Not UTF-8: {e}"))?;
-    let base = fingerprint(source.as_bytes());
-    if let Ok(bytes) = fs::read(draft_path(path)) {
-        if let Ok(draft) = serde_json::from_slice::<Draft>(&bytes) {
-            if draft.path == path {
-                return Ok(Loaded { doc: markdown::parse(&draft.source), base: Fingerprint(draft.base), recovered: true });
+    #[cfg(target_family = "wasm")]
+    {
+        let source = MEM_FILES.lock().unwrap().get(path).cloned().unwrap_or_default();
+        let base = fingerprint(source.as_bytes());
+        return Ok(Loaded { doc: markdown::parse(&source), base, recovered: false });
+    }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let bytes = fs::read(path).map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
+        let source = String::from_utf8(bytes).map_err(|e| format!("Not UTF-8: {e}"))?;
+        let base = fingerprint(source.as_bytes());
+        if let Ok(bytes) = fs::read(draft_path(path)) {
+            if let Ok(draft) = serde_json::from_slice::<Draft>(&bytes) {
+                if draft.path == path {
+                    return Ok(Loaded { doc: markdown::parse(&draft.source), base: Fingerprint(draft.base), recovered: true });
+                }
             }
         }
+        Ok(Loaded { doc: markdown::parse(&source), base, recovered: false })
     }
-    Ok(Loaded { doc: markdown::parse(&source), base, recovered: false })
 }
 fn atomic_write(path: &Path, bytes: &[u8], expected: Option<Fingerprint>) -> io::Result<()> {
     let parent = path.parent().ok_or_else(|| io::Error::other("Missing parent"))?;
@@ -72,6 +99,13 @@ fn atomic_write(path: &Path, bytes: &[u8], expected: Option<Fingerprint>) -> io:
     result
 }
 pub(super) fn save_draft(path: &Path, doc: &Doc, base: Fingerprint) -> Result<(), String> {
+    #[cfg(target_family = "wasm")]
+    {
+        MEM_FILES.lock().unwrap().insert(path.to_path_buf(), markdown::serialize(doc));
+        let _ = base;
+        return Ok(());
+    }
+    #[cfg(not(target_family = "wasm"))]
     write_draft(path, &markdown::serialize(doc), base)
 }
 fn write_draft(path: &Path, source: &str, base: Fingerprint) -> Result<(), String> {
@@ -84,23 +118,34 @@ fn write_draft(path: &Path, source: &str, base: Fingerprint) -> Result<(), Strin
     atomic_write(&target, &bytes, None).map_err(|e| format!("Recovery draft failed: {e}"))
 }
 pub(super) fn save(path: &Path, doc: &Doc, base: Fingerprint) -> Result<Fingerprint, String> {
-    let source = markdown::serialize(doc);
-    let current = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(e) => {
+    #[cfg(target_family = "wasm")]
+    {
+        let source = markdown::serialize(doc);
+        let next = fingerprint(source.as_bytes());
+        MEM_FILES.lock().unwrap().insert(path.to_path_buf(), source);
+        let _ = base;
+        return Ok(next);
+    }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let source = markdown::serialize(doc);
+        let current = match fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                let _ = write_draft(path, &source, base);
+                return Err(format!("File removed or unreadable; recovery draft retained: {e}"));
+            }
+        };
+        if fingerprint(&current) != base {
             let _ = write_draft(path, &source, base);
-            return Err(format!("File removed or unreadable; recovery draft retained: {e}"));
+            return Err("External changes conflict with this document. Recovery draft retained; original file untouched.".into());
         }
-    };
-    if fingerprint(&current) != base {
-        let _ = write_draft(path, &source, base);
-        return Err("External changes conflict with this document. Recovery draft retained; original file untouched.".into());
+        if let Err(e) = atomic_write(path, source.as_bytes(), Some(base)) {
+            let _ = write_draft(path, &source, base);
+            return Err(format!("Save failed; recovery draft retained: {e}"));
+        }
+        let draft = draft_path(path);
+        if draft.exists() { let _ = fs::remove_file(draft); }
+        Ok(fingerprint(source.as_bytes()))
     }
-    if let Err(e) = atomic_write(path, source.as_bytes(), Some(base)) {
-        let _ = write_draft(path, &source, base);
-        return Err(format!("Save failed; recovery draft retained: {e}"));
-    }
-    let draft = draft_path(path);
-    if draft.exists() { let _ = fs::remove_file(draft); }
-    Ok(fingerprint(source.as_bytes()))
 }

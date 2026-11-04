@@ -2,6 +2,7 @@
   "name": "thinkly-fast",
   "private": true,
   "scripts": {
-    "build": "bun scripts/build-app.mjs"
+    "build": "bun scripts/build-app.mjs",
+    "build:web": "bun scripts/build-web.mjs"
   }
 }
