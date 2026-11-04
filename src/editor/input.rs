@@ -23,9 +23,10 @@ impl Editor {
             Cancel if self.block_menu.is_some() => { self.block_menu = None; cx.notify(); return; }
             Cancel if self.annotate.reactions.is_some() => { self.annotate.reactions = None; cx.notify(); return; }
             Cancel if self.annotate.composer.is_some() => { self.close_annotation_composer(window, cx); return; }
+            Cancel if self.annotate.editing.is_some() => { self.cancel_edit_annotation(window, cx); return; }
+            Cancel if self.annotate.followup.is_some() => { self.close_annotation_followup(window, cx); return; }
             Cancel if self.annotate.active_annotation.is_some() => {
                 self.annotate.active_annotation = None;
-                self.annotate.followup = None;
                 cx.notify();
                 return;
             }

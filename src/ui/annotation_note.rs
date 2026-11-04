@@ -1,4 +1,4 @@
-use gpui::{CursorStyle, Div, ElementId, FontWeight, IntoElement, SharedString, Stateful, div, prelude::*, px, rgb, rgba};
+use gpui::{CursorStyle, Div, ElementId, FontWeight, IntoElement, Stateful, div, prelude::*, px, rgb, rgba};
 use crate::theme::Theme;
 
 /// Cardless margin note with a single semantic status rule.
@@ -63,66 +63,6 @@ pub fn reaction_picker_item(id: impl Into<ElementId>, emoji: &str, selected: boo
         .when(selected, |s| s.bg(sel_bg).border_1().border_color(sel_border).text_color(sel_fg))
         .hover(move |s| s.bg(hover_bg))
         .child(emoji.to_owned())
-}
-
-/// 6px status dot (pending / generated).
-pub fn status_dot(status: u32) -> Div {
-    div().size(px(6.)).flex_none().rounded_full().bg(rgb(status))
-}
-
-/// 8px status dot for the in-place narrow popover header.
-pub fn popover_dot(status: u32) -> Div {
-    div().size(px(8.)).flex_none().rounded_full().bg(rgb(status))
-}
-
-/// Wide-rail micro strip container (`border-radius: 8px`, `padding: 8px 10px`, 1px border).
-pub fn strip(id: impl Into<ElementId>, active: bool) -> Stateful<Div> {
-    let theme = Theme::ocean();
-    div().id(id).w_full().px(px(10.)).py(px(8.)).rounded(px(8.)).bg(theme.menu).border_1()
-        .border_color(if active { theme.accent } else { theme.sidebar_border })
-        .flex().flex_col().gap(px(6.))
-        .when(!active, |s| s.hover(move |h| h.bg(theme.hover)))
-}
-
-/// Annotation text inside a micro strip: single-line ellipsized at rest, full multi-line when expanded.
-pub fn strip_text(text: impl Into<SharedString>, expanded: bool) -> Div {
-    div().flex_1().min_w_0().text_size(px(14.)).line_height(px(20.)).text_color(Theme::ocean().text)
-        .when(!expanded, |d| d.overflow_hidden().whitespace_nowrap().text_ellipsis())
-        .child(text.into())
-}
-
-/// Compact 22×22 glyph action (`✓` / `↺`) inside a wide-rail micro strip.
-pub fn glyph_action(id: impl Into<ElementId>, glyph: &'static str, accent: bool) -> Stateful<Div> {
-    let theme = Theme::ocean();
-    div().id(id).size(px(22.)).flex_none().rounded(px(4.)).flex().items_center().justify_center()
-        .text_size(px(14.)).line_height(px(16.))
-        .when(accent, |b| b.bg(theme.selected).text_color(theme.accent))
-        .when(!accent, |b| b.text_color(theme.text_secondary))
-        .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover)).child(glyph)
-}
-
-/// Follow-up submit button (`↵` in wide rail, `发送 ↵` in narrow popover).
-pub fn send_button(id: impl Into<ElementId>, label: impl Into<SharedString>, compact: bool) -> Stateful<Div> {
-    let theme = Theme::ocean();
-    let label = label.into();
-    div().id(id).flex_none().border_1().border_color(theme.accent).bg(theme.selected).text_color(theme.text)
-        .when(compact, |b| b.size(px(28.)).rounded(px(5.)))
-        .when(!compact, |b| b.h(px(30.)).px(px(12.)).rounded(px(6.)).font_weight(FontWeight(500.)))
-        .flex().items_center().justify_center().text_size(px(14.)).line_height(px(20.))
-        .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
-        .child(crate::ui::shortcut_label::shortcut_label(
-            label,
-            crate::ui::shortcut_label::ShortcutStyle::ui(px(11.), px(16.), FontWeight::MEDIUM, theme.text),
-        ))
-}
-
-/// Dismiss pill (`收起`) in the narrow in-place popover header.
-pub fn close_pill(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Stateful<Div> {
-    let theme = Theme::ocean();
-    div().id(id).h(px(26.)).px(px(8.)).flex_none().rounded(px(6.)).bg(theme.shell).text_color(theme.text_secondary)
-        .flex().items_center().justify_center().text_size(px(14.)).line_height(px(20.))
-        .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover).text_color(theme.text))
-        .child(label.into())
 }
 
 /// 24×24 round numbered margin badge for narrow windows, styled per Scheme A spec.
