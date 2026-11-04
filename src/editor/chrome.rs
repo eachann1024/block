@@ -29,19 +29,21 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
     let rule = super::block_menu::is_divider(block);
     let nowrap = nowrap && block.meta.code_language.is_some();
     let focus_editor = editor.clone();
-    let blank = block.text.is_empty() && block.meta.table.is_none() && block.meta.raw_source.is_none();
+    let callout = block.meta.callout;
+    let blank = block.text.is_empty() && block.meta.table.is_none() && block.meta.raw_source.is_none() && callout.is_none();
     // Images and dividers are atomic blocks and never expose their Markdown/HTML source line.
     let static_view = image.is_some() || rule;
     let code_lang = block.meta.code_language.clone();
     let preview_lang = code_lang.as_deref().is_some_and(super::code_block::is_preview_lang);
     let in_edit_mode = active;
     let preview_only = preview_lang && !in_edit_mode;
+    let handle_top = (line - 22.).max(0.) / 2. + if callout.is_some() { 12. } else { 0. };
     div().id(("block", id as usize)).relative().w_full().min_w_0().py(px(if minimal { 5. } else { BLOCK_PAD }))
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
             this.hover_block(id, *hovered, cx);
         }))
         .child(div().flex().items_start().w_full().min_w_0().gap(px(ROW_GAP)).pr(px(RIGHT_INSET))
-            .child(div().w(px(HANDLE_WIDTH)).flex_none().flex().justify_end().gap(px(2.)).pt(px((line - 22.).max(0.) / 2.))
+            .child(div().w(px(HANDLE_WIDTH)).flex_none().flex().justify_end().gap(px(2.)).pt(px(handle_top))
                 .when(handles && !blank, |row| row
                     .child(grip_button(type_mark(block), id, ("drag", id as usize), cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
                         this.begin_drag(id, cx); this.grip_origin = Some(event.position); cx.stop_propagation();
@@ -68,8 +70,14 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                 .when(!marker.is_empty(), |row| row.child(marker))))
             .child(div().flex_1().min_w_0().flex().flex_col().relative()
                 .when(marker_width == 0., |body| body.max_w(theme.content_width))
-                .when(block.kind == Kind::Quote, |body| body.pl(px(14.)).child(
+                .when(block.kind == Kind::Quote && callout.is_none(), |body| body.pl(px(14.)).child(
                     div().absolute().left_0().top_0().bottom_0().w(px(2.)).bg(theme.quote_bar)))
+                .when_some(callout, |body, _| {
+                    body.rounded(px(8.)).bg(theme.hover).border_1().border_color(theme.hairline)
+                        .py(px(12.)).pr(px(16.)).pl(px(44.))
+                        .child(div().absolute().left(px(16.)).top(px(12. + (line - 18.).max(0.) / 2.))
+                            .child(icon(Icon::Callout, px(18.), theme.icon_colors(theme.accent))))
+                })
                 .when_some(block.meta.unsupported_reason.clone().filter(|_| image.is_none() && !rule), |body, reason| body.child(
                     div().text_size(px(11.)).text_color(theme.text_secondary).pb_1()
                         .child(format!("已保留源码 · {reason}"))))
@@ -120,6 +128,7 @@ fn type_mark(block: &Block) -> TypeMark {
         if super::code_block::is_math(lang) { return TypeMark::Icon(Icon::Math); }
     }
     match super::block_menu::block_type(block) {
+        BlockType::Callout => TypeMark::Icon(Icon::Callout), BlockType::Columns => TypeMark::Icon(Icon::Columns),
         BlockType::Code => TypeMark::Icon(Icon::Code), BlockType::Image => TypeMark::Icon(Icon::Image),
         BlockType::Table => TypeMark::Icon(Icon::Table), BlockType::Divider => TypeMark::Icon(Icon::Divider),
         BlockType::Source => TypeMark::Icon(Icon::Source),
