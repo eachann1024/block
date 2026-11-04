@@ -14,7 +14,7 @@ fn action_btn(
     on_press: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
-    div().id(id).h(px(height)).px(px(pad_x)).flex_none().rounded(px(6.)).border_1()
+    div().id(id).h(px(height)).px(px(pad_x)).flex_none().rounded(crate::ui::radius::CONTROL).border_1()
         .flex().items_center().justify_center().text_size(px(14.)).line_height(px(20.))
         .when(tone == BatchTone::Accent, |button| {
             button.bg(theme.selected).border_color(theme.accent).text_color(theme.text).font_weight(FontWeight(500.))

@@ -215,7 +215,7 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
     };
     let label = row.stem.clone();
     div().id(path.clone()).group("tree-row").w_full().h(theme.menu_item_height).line_height(px(20.))
-        .pl(px(8. + row.depth as f32 * 20.)).pr(px(8.)).flex().items_center().gap(px(6.)).rounded(px(6.))
+        .pl(px(8. + row.depth as f32 * 20.)).pr(px(8.)).flex().items_center().gap(px(6.)).rounded(crate::ui::radius::CONTROL)
         .border_1().border_color(gpui::transparent_black())
         .when(enabled, |row| row.cursor(CursorStyle::PointingHand))
         .when(highlighted, |row| row.bg(theme.selected).border_color(theme.accent).font_weight(FontWeight(460.)))
@@ -236,7 +236,7 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
         })
         // Hover "⋯": opens the same menu as a right-click, anchored under the button.
         .when(!is_editing, |row| row.child(
-            div().id("row-more").group("row-more-btn").size(px(22.)).flex_none().flex().items_center().justify_center().rounded(px(5.))
+            div().id("row-more").group("row-more-btn").size(px(22.)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::MICRO_MD)
                 .invisible()
                 .when(enabled, |b| b.group_hover("tree-row", |style| style.visible()))
                 .when(enabled && is_target, |b| b.visible().bg(theme.btn_hover))

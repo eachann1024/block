@@ -133,7 +133,7 @@ pub fn render_footer() -> Div {
     let theme = Theme::ocean();
     let hotkey_label = format_hotkey(&search_shortcut());
     div().h(px(36.)).flex_none().px(px(16.)).flex().items_center().gap(px(16.))
-        .rounded_b(px(11.)).border_t_1().border_color(theme.hairline).bg(theme.sidebar)
+        .rounded_b(crate::ui::radius::SURFACE_INNER).border_t_1().border_color(theme.hairline).bg(theme.sidebar)
         .text_size(px(12.)).text_color(theme.text_secondary)
         .child(div().flex().items_center().gap(px(6.)).child(kbd("↑")).child(kbd("↓")).child(tr("选择", "Select")))
         .child(div().flex().items_center().gap(px(6.)).child(kbd("↵")).child(tr("打开", "Open")))
@@ -212,7 +212,7 @@ fn hit_row<V: 'static>(
         hit.folder.clone()
     };
     let hit_group = SharedString::from(format!("search-hit-{ix}"));
-    div().id(("hit", ix)).group(hit_group.clone()).relative().when(ix == 0, |r| r.children(crate::ui::smoke_overlay::probe("search-hit-0"))).px(px(12.)).py(px(8.)).flex().flex_col().gap(px(2.)).rounded(px(6.))
+    div().id(("hit", ix)).group(hit_group.clone()).relative().when(ix == 0, |r| r.children(crate::ui::smoke_overlay::probe("search-hit-0"))).px(px(12.)).py(px(8.)).flex().flex_col().gap(px(2.)).rounded(crate::ui::radius::CONTROL)
         .border_1().border_color(if selected { theme.accent } else { gpui::transparent_black() })
         .when(selected, |row| row.bg(theme.selected))
         .when(!selected, |row| row.hover(|style| style.bg(theme.hover)))

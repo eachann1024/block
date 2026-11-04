@@ -88,13 +88,13 @@ pub(super) fn popover_layer(
     let rewrite_preview = (!applied).then(|| note.ai_rewritten.clone()).flatten()
         .filter(|s| !s.is_empty())
         .map(|rewritten| {
-            div().w_full().px(px(10.)).py(px(6.)).rounded(px(6.)).bg(theme.shell)
+            div().w_full().px(px(10.)).py(px(6.)).rounded(crate::ui::radius::CONTROL).bg(theme.shell)
                 .text_size(px(14.)).line_height(px(20.)).text_color(theme.text_secondary).child(rewritten)
         });
 
     let input_row = (!applied).then_some(followup).flatten().map(|input| {
         div().w_full().flex_none().flex().items_center().gap(px(6.))
-            .child(div().flex_1().min_w_0().h(px(30.)).px(px(10.)).rounded(px(6.)).bg(theme.shell)
+            .child(div().flex_1().min_w_0().h(px(30.)).px(px(10.)).rounded(crate::ui::radius::CONTROL).bg(theme.shell)
                 .border_1().border_color(theme.btn_border).flex().items_center()
                 .child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)).px(px(0.))))
             .child(annotation_note::send_button(SharedString::from(format!("pop-send-{id}")), tr("发送 ↵", "Send ↵"), false)

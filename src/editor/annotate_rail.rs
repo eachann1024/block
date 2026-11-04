@@ -10,7 +10,7 @@ fn followup_field(id: u64, input: Entity<InputState>, cx: &mut Context<Editor>) 
     let theme = Theme::ocean();
     div().w_full().flex().items_center().gap(px(4.))
         .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| cx.stop_propagation()))
-        .child(div().flex_1().min_w_0().h(px(28.)).px(px(8.)).rounded(px(5.)).bg(theme.shell)
+        .child(div().flex_1().min_w_0().h(px(28.)).px(px(8.)).rounded(crate::ui::radius::CONTROL).bg(theme.shell)
             .border_1().border_color(theme.btn_border).flex().items_center()
             .child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).h(px(26.)).px(px(0.))))
         .child(annotation_note::send_button(SharedString::from(format!("annotation-send-{id}")), "↵", true)
@@ -62,7 +62,7 @@ pub(super) fn annotation_row(
         .children(actions);
     let rewrite_preview = (is_active && !is_applied).then(|| note.ai_rewritten.clone()).flatten()
         .filter(|s| !s.is_empty()).map(|rewritten| {
-            div().w_full().px(px(8.)).py(px(6.)).rounded(px(6.)).bg(theme.shell)
+            div().w_full().px(px(8.)).py(px(6.)).rounded(crate::ui::radius::CONTROL).bg(theme.shell)
                 .text_size(px(14.)).line_height(px(20.)).text_color(theme.text_secondary).child(rewritten)
         });
     let input = (is_active && !is_applied).then_some(followup).flatten().map(|input| followup_field(id, input, cx));
@@ -83,7 +83,7 @@ pub(super) fn composer_row(input: Entity<InputState>, has_text: bool, cx: &mut C
     let field = div().flex_1().min_w_0().h(px(28.)).flex().items_center().text_size(px(14.)).text_color(theme.text)
         .child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)).px(px(0.)));
     let color = rgb(0xffffff).into();
-    let submit = div().id("annotate-submit").size(px(26.)).flex_none().rounded(px(13.)).flex().items_center().justify_center()
+    let submit = div().id("annotate-submit").size(px(26.)).flex_none().rounded(crate::ui::radius::PILL).flex().items_center().justify_center()
         .bg(if has_text { theme.accent } else { theme.btn_border })
         .when(has_text, |button| button.cursor(CursorStyle::PointingHand))
         .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.submit_annotation(window, cx)))

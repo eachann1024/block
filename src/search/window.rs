@@ -257,7 +257,7 @@ impl Render for SearchWindow {
             .flex()
             .flex_col()
             .overflow_hidden()
-            .rounded(px(12.))
+            .rounded(crate::ui::radius::SURFACE)
             .bg(theme.menu)
             .border_1()
             .border_color(theme.menu_border)

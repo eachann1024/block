@@ -117,7 +117,7 @@ pub(super) fn render_inactive_tab_body(
 pub(super) fn render_closing_ghost(ghost: &ClosingGhost) -> impl IntoElement {
     let theme = Theme::ocean();
     div().id(("tab-closing", ghost.seq as usize)).h(px(28.)).flex_none().overflow_hidden()
-        .rounded(px(6.)).flex().items_center().gap(px(6.)).text_size(px(13.)).line_height(px(18.))
+        .rounded(crate::ui::radius::CONTROL).flex().items_center().gap(px(6.)).text_size(px(13.)).line_height(px(18.))
         .text_color(theme.text_secondary)
         .child(icon(Icon::Note, px(14.), theme.mono_icon_colors(theme.text_secondary)))
         .child(div().relative().flex_1().min_w_0().h_full().flex().items_center().overflow_hidden()
@@ -175,7 +175,7 @@ impl Workspace {
         let page_open = TAB_UI.with(|ui| ui.borrow().page_menu.is_some());
         let more_group: SharedString = "titlebar-more-btn".into();
         let more = div().id("titlebar-more").group(more_group.clone()).size(px(26.)).mr(px(if cfg!(any(target_os = "macos", target_family = "wasm")) { 10. } else { 4. }))
-            .flex_none().flex().items_center().justify_center().rounded(px(6.)).cursor(gpui::CursorStyle::PointingHand)
+            .flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).cursor(gpui::CursorStyle::PointingHand)
             .when(page_open, |b| b.bg(theme.selected)).when(!page_open, |b| b.hover(|s| s.bg(theme.hover)))
             .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
                 cx.stop_propagation();

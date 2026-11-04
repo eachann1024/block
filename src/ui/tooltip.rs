@@ -37,7 +37,7 @@ pub fn tooltip_pill(text: impl Into<SharedString>, id: impl Into<ElementId>) -> 
     let pill = div()
         .h(px(TOOLTIP_HEIGHT))
         .px(px(TOOLTIP_PAD_X))
-        .rounded(px(8.))
+        .rounded(crate::ui::radius::CONTROL)
         .bg(bg)
         .text_color(fg)
         .border_1()

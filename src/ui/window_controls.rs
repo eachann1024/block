@@ -18,7 +18,7 @@ fn button(id: impl Into<ElementId>, area: WindowControlArea, glyph: Icon, size: 
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(6.))
+        .rounded(crate::ui::radius::CONTROL)
         .cursor(CursorStyle::PointingHand)
         .child(icon(glyph, px(size), IconColors { line: text, fill: transparent_black(), accent: text }))
         .hover(move |s| if close { s.bg(rgb(0xe81123)).text_color(rgb(0xffffff)) } else { s.bg(theme.hover).text_color(fill) })

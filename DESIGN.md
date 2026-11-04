@@ -52,10 +52,10 @@
 ### 布局与控件尺寸基线
 
 - **顶栏高度**：`40px`，左列宽 `260px`（与侧栏对齐，含窗口红黄绿控制点与侧栏收起按钮）。
-- **左侧栏宽度**：`260px`，列表项高度 `32px`、圆角 `6px`、内边距 `0 8px`。
+- **左侧栏宽度**：`260px`，列表项高度 `32px`、圆角引用 `src/ui/radius::CONTROL`（`8px`）、内边距 `0 8px`。
 - **设置内容区**：背景为 `settings-bg`（`#f8f8f8` / `#181818`），居中容器 `max-width: 720px`，内边距 `40px 28px 64px`。
-- **设置分组卡片**：背景为 `paper`（`#ffffff` / `#222222`），边框 `1px solid border`（`#e4e6ea` / `#2e2e2e`），圆角 `10px`，内边距 `18px 20px`，行间距 `14px–16px`。
-- **分段控制器（Segmented Control）**：外槽 `background: shell; border: 1px solid border; border-radius: 8px; padding: 3px; gap: 2px`；内部按钮 `.seg` 高 `32px–34px`，圆角 `6px`，选中态 `background: selected; color: text-primary; box-shadow: inset 0 0 0 1px accent`。
+- **设置分组卡片**：背景为 `paper`（`#ffffff` / `#222222`），边框 `1px solid border`（`#e4e6ea` / `#2e2e2e`），圆角引用 `src/ui/radius::SURFACE`（`14px`），内边距 `18px 20px`，行间距 `14px–16px`。
+- **分段控制器（Segmented Control）**：外槽 `background: shell; border: 1px solid border; padding: 3px; gap: 2px`，外槽与内部按钮 `.seg`（高 `32px–34px`）圆角统一引用 `src/ui/radius::CONTROL`（`8px`），选中态 `background: selected; color: text-primary; box-shadow: inset 0 0 0 1px accent`。
 - **三联直选卡片（AI 服务商方案 C）**：仅保留 **DeepSeek**、**OpenAI 协议**、**Claude 协议** 三项，横排等宽，默认态 `background: shell; border: 1px solid border`，选中态 `background: selected; border: 1px solid accent; box-shadow: inset 0 0 0 1px accent`。
 
 ---

@@ -165,7 +165,7 @@ pub(super) fn top_controls(
     }));
 
     let lang_btn = div().id(("code-lang", block_id as usize))
-        .h(px(22.)).px(px(8.)).rounded(px(8.)).border_1().border_color(pill_border).bg(pill_bg)
+        .h(px(22.)).px(px(8.)).rounded(crate::ui::radius::CONTROL).border_1().border_color(pill_border).bg(pill_bg)
         .flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
         .text_size(px(12.)).line_height(px(18.)).font_weight(FontWeight(400.)).text_color(icon_fg)
         .hover(move |s| s.bg(pill_hover_bg).text_color(hover_fg))

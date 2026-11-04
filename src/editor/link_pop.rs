@@ -130,7 +130,7 @@ impl Editor {
         let (e_edit, e_unlink, e_copy) = (editor.clone(), editor.clone(), editor);
         let theme = Theme::ocean();
         let button = |id: &'static str, g: Icon, tip: &'static str, run: Box<dyn Fn(&mut Window, &mut gpui::App)>| div().id(id).group(id)
-            .size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.)).cursor(CursorStyle::PointingHand)
+            .size(px(28.)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).cursor(CursorStyle::PointingHand)
             .hover(move |s| s.bg(rgb(tc.hover)))
             .child(stateful_icon(id, g, px(16.), false, theme.mono_icon_colors(rgb(tc.ink).into()), theme.icon_colors(rgb(tc.ink).into())))
             .tooltip(crate::theme::tooltip(tip))

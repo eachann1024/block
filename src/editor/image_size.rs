@@ -29,7 +29,7 @@ pub(super) fn image_toolbar(
 ) -> impl IntoElement {
     let crop_open = matches!(pop, Some(ImagePop::Crop));
     let more_open = matches!(pop, Some(ImagePop::More));
-    let bar = pill().id(("img-toolbar", id as usize)).py(px(5.)).px(px(7.)).gap(px(3.)).rounded(px(15.))
+    let bar = pill().id(("img-toolbar", id as usize)).py(px(5.)).px(px(7.)).gap(px(3.)).rounded(crate::ui::radius::SURFACE)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(tb_btn(editor, id, 0, Icon::TbComment, tr("添加批注", "Add annotation"), false, false, move |this, w, cx| {
             this.image_menu = None;
@@ -117,10 +117,10 @@ fn alt_popover(editor: &Entity<Editor>, id: u64, input: &Entity<InputState>) -> 
             cx.stop_propagation();
         })
         .child(div().flex().items_center().gap(px(6.))
-            .child(div().flex_1().min_w_0().h(px(30.)).px(px(8.)).rounded(px(7.)).bg(rgb(tc.input_bg))
+            .child(div().flex_1().min_w_0().h(px(30.)).px(px(8.)).rounded(crate::ui::radius::CONTROL).bg(rgb(tc.input_bg))
                 .text_size(px(13.)).text_color(rgb(tc.ink)).flex().items_center().overflow_hidden()
                 .child(Input::new(input).appearance(false).bordered(false).focus_bordered(false).text_size(px(13.))))
-            .child(div().id(("img-alt-save", id as usize)).h(px(30.)).px(px(10.)).rounded(px(7.))
+            .child(div().id(("img-alt-save", id as usize)).h(px(30.)).px(px(10.)).rounded(crate::ui::radius::CONTROL)
                 .bg(rgb(tc.accent)).text_color(rgb(0xffffff)).text_size(px(13.)).font_weight(FontWeight(500.))
                 .flex().items_center().cursor(CursorStyle::PointingHand)
                 .child(tr("保存", "Save"))
@@ -128,7 +128,7 @@ fn alt_popover(editor: &Entity<Editor>, id: u64, input: &Entity<InputState>) -> 
                     e_save.update(cx, |this, cx| this.save_image_alt(id, w, cx));
                     cx.stop_propagation();
                 }))
-            .child(div().id(("img-alt-cancel", id as usize)).h(px(30.)).px(px(8.)).rounded(px(7.))
+            .child(div().id(("img-alt-cancel", id as usize)).h(px(30.)).px(px(8.)).rounded(crate::ui::radius::CONTROL)
                 .hover(move |s| s.bg(rgb(tc.hover))).text_color(rgb(tc.ink)).text_size(px(13.))
                 .flex().items_center().cursor(CursorStyle::PointingHand)
                 .child(tr("取消", "Cancel"))
@@ -145,7 +145,7 @@ fn size_popover(editor: &Entity<Editor>, id: u64, percent: u32) -> impl IntoElem
     for (idx, pct) in [25_u32, 50, 75, 100].into_iter().enumerate() {
         let on = (percent as i32 - pct as i32).abs() <= 4;
         let ed = editor.clone();
-        row = row.child(div().id(("img-pct", id as usize * 8 + idx)).h(px(28.)).px(px(8.)).rounded(px(7.))
+        row = row.child(div().id(("img-pct", id as usize * 8 + idx)).h(px(28.)).px(px(8.)).rounded(crate::ui::radius::CONTROL)
             .flex().items_center().cursor(CursorStyle::PointingHand).text_size(px(12.)).font_weight(FontWeight(500.))
             .when(on, |b| b.bg(rgb(tc.on_bg)).text_color(rgb(tc.on_ink)))
             .when(!on, |b| b.hover(move |s| s.bg(rgb(tc.hover))).text_color(rgb(tc.ink)))
@@ -177,7 +177,7 @@ fn crop_popover(editor: &Entity<Editor>, id: u64) -> impl IntoElement {
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
     for (idx, (label, ratio)) in presets.into_iter().enumerate() {
         let ed = editor.clone();
-        row = row.child(div().id(("img-crop-opt", id as usize * 8 + idx)).h(px(28.)).px(px(10.)).rounded(px(7.))
+        row = row.child(div().id(("img-crop-opt", id as usize * 8 + idx)).h(px(28.)).px(px(10.)).rounded(crate::ui::radius::CONTROL)
             .flex().items_center().cursor(CursorStyle::PointingHand).text_size(px(12.)).font_weight(FontWeight(500.))
             .text_color(rgb(tc.ink)).hover(move |s| s.bg(rgb(tc.hover)))
             .child(label)

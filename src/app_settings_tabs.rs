@@ -62,7 +62,7 @@ impl Workspace {
             .child(div().flex().items_center().justify_between()
                 .child(card_title(tr("基础快捷键", "Shortcuts")))
                 .when(customized, |row| row.child(div().id("reset-shortcuts")
-                    .px(px(8.)).py(px(4.)).rounded(px(6.)).text_size(px(14.)).text_color(theme.accent)
+                    .px(px(8.)).py(px(4.)).rounded(crate::ui::radius::CONTROL).text_size(px(14.)).text_color(theme.accent)
                     .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                         cx.stop_propagation();

@@ -62,7 +62,7 @@ pub(super) fn preview_block(
         .h(px(20.))
         .pl(px(2.))
         .pr(px(4.))
-        .rounded(px(6.))
+        .rounded(crate::ui::radius::CONTROL)
         .flex()
         .items_center()
         .gap(px(4.))

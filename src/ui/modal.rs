@@ -36,7 +36,7 @@ pub fn card(id: impl Into<ElementId>, width: Pixels) -> Stateful<Div> {
         .flex()
         .flex_col()
         .overflow_hidden()
-        .rounded(px(12.))
+        .rounded(crate::ui::radius::SURFACE)
         .bg(theme.menu)
         .border_1()
         .border_color(theme.menu_border)

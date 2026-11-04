@@ -220,12 +220,12 @@ pub(in crate::editor) fn render_palette_panel(editor: Entity<Editor>, cx: &gpui:
         let editor = editor.clone();
         col = col.child(
             div().id(("fg-sw", idx))
-                .h(px(28.)).px(px(10.)).flex().items_center().gap(px(8.)).rounded(px(8.))
+                .h(px(28.)).px(px(10.)).flex().items_center().gap(px(8.)).rounded(crate::ui::radius::CONTROL)
                 .cursor(CursorStyle::PointingHand)
                 .when(selected, move |s| s.bg(p.checked_bg))
                 .hover(move |s| s.bg(p.hover_bg))
                 .text_size(px(14.)).line_height(px(20.)).text_color(p.text)
-                .child(div().size(px(16.)).rounded(px(4.)).flex_none().bg(rgb(swatch_hex)).border_1().border_color(rgba(swatch_border)))
+                .child(div().size(px(16.)).rounded(crate::ui::radius::MICRO_SM).flex_none().bg(rgb(swatch_hex)).border_1().border_color(rgba(swatch_border)))
                 .child(div().flex_1().child(tr(spec.zh, spec.en)))
                 .when(selected, move |r| r.child(div().ml_auto().pl(px(12.)).flex_none().flex().items_center().child(crate::dropdown::line_icon(Icon::Check, 16., p.text))))
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -244,16 +244,16 @@ pub(in crate::editor) fn render_palette_panel(editor: Entity<Editor>, cx: &gpui:
         let selected = sel_bg == SelectionColor::Single(name);
         let editor = editor.clone();
         let swatch = if name == "default" {
-            div().size(px(16.)).rounded(px(4.)).flex_none()
+            div().size(px(16.)).rounded(crate::ui::radius::MICRO_SM).flex_none()
                 .border_1().border_color(rgb(if dark { 0x6b707b } else { 0xb5b4b0 }))
         } else {
-            div().size(px(16.)).rounded(px(4.)).flex_none()
+            div().size(px(16.)).rounded(crate::ui::radius::MICRO_SM).flex_none()
                 .bg(rgb(if dark { 0x453a1e } else { 0xfde6b3 }))
                 .border_1().border_color(rgb(if dark { 0x6a582c } else { 0xfcd88c }))
         };
         col = col.child(
             div().id(("bg-sw", idx))
-                .h(px(28.)).px(px(10.)).flex().items_center().gap(px(8.)).rounded(px(8.))
+                .h(px(28.)).px(px(10.)).flex().items_center().gap(px(8.)).rounded(crate::ui::radius::CONTROL)
                 .cursor(CursorStyle::PointingHand)
                 .when(selected, move |s| s.bg(p.checked_bg))
                 .hover(move |s| s.bg(p.hover_bg))

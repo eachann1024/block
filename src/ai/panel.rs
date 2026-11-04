@@ -39,7 +39,7 @@ fn tag(id: impl Into<SharedString>, lead: Option<Icon>, label: impl Into<SharedS
     run: impl Fn(&mut Editor, &mut gpui::Window, &mut gpui::Context<Editor>) + 'static) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
     let id: SharedString = id.into();
-    let el = div().id(id.clone()).group(id.clone()).h(px(32.)).px(px(12.)).flex_none().flex().items_center().gap(px(5.)).rounded(px(8.))
+    let el = div().id(id.clone()).group(id.clone()).h(px(32.)).px(px(12.)).flex_none().flex().items_center().gap(px(5.)).rounded(crate::ui::radius::CONTROL)
         .text_size(px(14.4)).cursor(CursorStyle::PointingHand)
         .when(primary, |d| d.bg(theme.primary).text_color(gpui::white()).font_weight(FontWeight(500.)).hover(move |s| s.bg(theme.primary_hover)))
         .when(!primary, |d| d.text_color(theme.text).border_1().border_color(theme.hairline).hover(move |s| s.bg(theme.hover)))
@@ -82,7 +82,7 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyEle
     let header = div().flex().items_center().gap(px(8.))
         .child(icon(Icon::Sparkles, px(18.), theme.icon_colors(theme.accent)))
         .child(div().flex_1().text_size(px(16.)).font_weight(FontWeight(600.)).child(title))
-        .child(press(div().id("ai-close").group("ai-close").size(px(28.)).flex().items_center().justify_center().rounded(px(6.))
+        .child(press(div().id("ai-close").group("ai-close").size(px(28.)).flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
             .cursor(CursorStyle::PointingHand).hover(move |st| st.bg(theme.hover))
             .tooltip(crate::theme::tooltip(tr("关闭", "Close")))
             .child(stateful_icon("ai-close", Icon::Close, px(16.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text))), &editor, |this, w, cx| this.ai_close(w, cx)));
@@ -90,8 +90,8 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyEle
     // Review shows only the legend; the diff itself is drawn inline in the document.
     let body: Option<AnyElement> = match &s.status {
         AiStatus::Review { .. } => Some(div().flex().items_center().gap(px(8.)).text_size(px(13.))
-            .child(div().px(px(4.)).rounded(px(3.)).bg(del_bg).text_color(del_fg).line_through().child(tr("删除", "Removed")))
-            .child(div().px(px(4.)).rounded(px(3.)).bg(ins_bg).text_color(ins_fg).child(tr("新增", "Added")))
+            .child(div().px(px(4.)).rounded(crate::ui::radius::MICRO_XS).bg(del_bg).text_color(del_fg).line_through().child(tr("删除", "Removed")))
+            .child(div().px(px(4.)).rounded(crate::ui::radius::MICRO_XS).bg(ins_bg).text_color(ins_fg).child(tr("新增", "Added")))
             .into_any_element()),
         AiStatus::Error { message } => Some(div().text_size(px(13.)).text_color(del_fg)
             .child(SharedString::from(if message.is_empty() { tr("生成中断，未对正文进行修改", "Generation interrupted; text unchanged").to_owned() } else { message.clone() }))
@@ -100,20 +100,20 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyEle
     };
 
     // Prompt row: the IME-capable input, or while busy the ticker and 停止.
-    let field = div().min_h(px(40.)).px(px(12.)).flex().items_center().gap(px(8.)).rounded(px(10.))
+    let field = div().min_h(px(40.)).px(px(12.)).flex().items_center().gap(px(8.)).rounded(crate::ui::radius::SURFACE)
         .border_1().border_color(if busy { theme.hairline } else { theme.btn_border }).bg(theme.paper);
     let prompt_row = if let AiStatus::Thinking { tick, partial, reasoning } = &s.status {
         let line = if !reasoning.trim().is_empty() && partial.trim().is_empty() { ticker_line(reasoning) } else { ticker_line(partial) };
         let line = if !line.is_empty() { line } else if !reasoning.is_empty() { tr("正在思考并生成…", "Thinking and writing…").to_owned() } else { tr("思考中", "Thinking").to_owned() };
         field.child(div().size(px(8.)).flex_none().rounded_full().bg(theme.accent).opacity(0.35 + 0.65 * ((*tick % 16) as f32 / 15.)))
             .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(15.)).text_color(theme.text_secondary).child(SharedString::from(line)))
-            .child(press(div().id("ai-stop").group("ai-stop").h(px(28.)).px(px(10.)).flex_none().flex().items_center().gap(px(4.)).rounded(px(6.))
+            .child(press(div().id("ai-stop").group("ai-stop").h(px(28.)).px(px(10.)).flex_none().flex().items_center().gap(px(4.)).rounded(crate::ui::radius::CONTROL)
                 .text_size(px(13.)).cursor(CursorStyle::PointingHand).hover(move |st| st.bg(theme.hover))
                 .tooltip(crate::theme::tooltip(tr("停止", "Stop")))
                 .child(stateful_icon("ai-stop", Icon::Stop, px(14.), false, theme.mono_icon_colors(theme.text), theme.icon_colors(theme.text))).child(tr("停止", "Stop")), &editor, |this, w, cx| this.ai_stop(w, cx)))
     } else {
         field.child(div().flex_1().min_w_0().h(px(28.)).text_size(px(15.)).child(Input::new(&s.input).appearance(false).bordered(false).focus_bordered(false).h(px(28.))))
-            .child(press(div().id("ai-send").h(px(28.)).px(px(10.)).flex_none().flex().items_center().gap(px(4.)).rounded(px(8.))
+            .child(press(div().id("ai-send").h(px(28.)).px(px(10.)).flex_none().flex().items_center().gap(px(4.)).rounded(crate::ui::radius::CONTROL)
                 .bg(theme.primary).text_color(gpui::white()).text_size(px(13.)).cursor(CursorStyle::PointingHand)
                 .tooltip(crate::theme::tooltip(tr("发送（回车）", "Send (Enter)")))
                 .child(tr("发送", "Send")).child(glyph(Icon::ArrowUp, 14., gpui::white())), &editor, |this, w, cx| this.ai_submit_input(w, cx)))
@@ -127,7 +127,7 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyEle
                 .child(menu_tag("ai-translate", tr("翻译", "Translate"), AiMenu::Translate, s.menu, &editor))
                 .child(menu_tag("ai-more", tr("更多", "More"), AiMenu::More, s.menu, &editor))
                 .child(div().flex_1())
-                .child(press(div().id("ai-settings").group("ai-settings").size(px(32.)).flex().items_center().justify_center().rounded(px(8.))
+                .child(press(div().id("ai-settings").group("ai-settings").size(px(32.)).flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
                     .cursor(CursorStyle::PointingHand).hover(move |st| st.bg(theme.hover))
                     .tooltip(crate::theme::tooltip(tr("打开 AI 设置", "Open AI Settings")))
                     .child(stateful_icon("ai-settings", Icon::Sliders, px(16.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text))), &editor, |this, w, cx| this.ai_open_settings(w, cx)));
@@ -157,7 +157,7 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyEle
 
     let key_editor = editor.clone();
     gpui::deferred(gpui::anchored().position(s.anchor).snap_to_window_with_margin(px(12.)).child(
-        div().id("inline-ai").w(px(460.)).p(px(18.)).flex().flex_col().gap(px(14.)).rounded(px(16.))
+        div().id("inline-ai").w(px(460.)).p(px(18.)).flex().flex_col().gap(px(14.)).rounded(crate::ui::radius::SURFACE)
             .border_1().border_color(theme.menu_border).bg(theme.menu).text_color(theme.text).text_size(px(16.))
             .shadow(vec![BoxShadow { color: hsla(0., 0., 0., 0.12), offset: point(px(0.), px(12.)), blur_radius: px(32.), spread_radius: px(0.), inset: false }])
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
