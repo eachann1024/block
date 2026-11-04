@@ -54,21 +54,25 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
     let (seen_left, seen_right) = (left.max(table.left()), right.min(table.right()));
     let show_column = dragging.is_none_or(|d| matches!(d.sel, TableSel::Column(_)))
         && seen_left < seen_right && table.top() - px(GRIP_SHORT / 2.) >= view.top();
+    let row_border_adj = if r + 1 < chrome.rows.len() { px(1.) } else { px(0.) };
+    let row_center = (top + bottom + row_border_adj) / 2.;
     let row_mid = match follow {
-        Some((TableSel::Row(_), s, p)) => ((top + bottom) / 2. + p.y - s.y).clamp(table.top() + px(12.), (table.bottom() - px(12.)).max(table.top() + px(12.))),
-        _ => (top + bottom) / 2.,
+        Some((TableSel::Row(_), s, p)) => (row_center + p.y - s.y).clamp(table.top() + px(12.), (table.bottom() - px(12.)).max(table.top() + px(12.))),
+        _ => row_center,
     };
     let show_row = dragging.is_none_or(|d| matches!(d.sel, TableSel::Row(_)))
         && row_mid - px(13.) >= view.top() && row_mid + px(13.) <= view.bottom();
     if show_column {
+        let col_border_adj = if c + 1 < chrome.columns.len() && seen_right == right { px(1.) } else { px(0.) };
+        let col_center = (seen_left + seen_right + col_border_adj) / 2.;
         let x = match follow {
-            Some((TableSel::Column(_), s, p)) => ((left + right) / 2. + p.x - s.x).clamp(table.left() + px(12.), (table.right() - px(12.)).max(table.left() + px(12.))),
-            _ => (seen_left + seen_right) / 2.,
+            Some((TableSel::Column(_), s, p)) => ((left + right + col_border_adj) / 2. + p.x - s.x).clamp(table.left() + px(12.), (table.right() - px(12.)).max(table.left() + px(12.))),
+            _ => col_center,
         };
         let col_sel = TableSel::Column(c);
         let expanded = is_active(col_sel) || is_hovered(col_sel);
-        // The grip is centred on the top border in both states.
-        let pos = point(x - px(GRIP_LONG / 2.), table.top() - px(GRIP_SHORT / 2.));
+        // The grip is centred on the 1px top border (`table.top() + 0.5px`) in both states.
+        let pos = point(x - px(GRIP_LONG / 2.), table.top() + px(0.5 - GRIP_SHORT / 2.));
         let col_editor = editor.clone();
         let hover_editor = editor.clone();
         out.push(floating(pos,
@@ -93,7 +97,8 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
         let y = row_mid;
         let row_sel = TableSel::Row(r);
         let expanded = is_active(row_sel) || is_hovered(row_sel);
-        let pos = point(table.left() - px(GRIP_SHORT / 2.), y - px(GRIP_LONG / 2.));
+        // The grip is centred on the 1px left border (`table.left() + 0.5px`) in both states.
+        let pos = point(table.left() + px(0.5 - GRIP_SHORT / 2.), y - px(GRIP_LONG / 2.));
         let row_editor = editor.clone();
         let hover_editor = editor.clone();
         out.push(floating(pos,
