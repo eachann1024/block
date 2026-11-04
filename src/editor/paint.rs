@@ -16,14 +16,17 @@ impl Element for BlockText {
     fn source_location(&self) -> Option<&'static core::panic::Location<'static>> { None }
     fn request_layout(&mut self, _: Option<&GlobalElementId>, _: Option<&gpui::InspectorElementId>, window: &mut Window, cx: &mut App) -> (LayoutId, Measured) {
         let theme = Theme::ocean();
-        let (kind, level, fenced, nowrap, composing, content) = {
-            let editor = self.editor.read(cx);
-            let block = editor.doc.get(self.block).expect("visible block exists");
-            let nowrap = block.meta.code_language.is_some() && editor.nowrap.contains(&self.block);
-            let composing = editor.caret.composing.is_some() && editor.caret.head.block == self.block;
-            (block.kind, block.meta.heading_level, block.meta.code_language.clone(), nowrap, composing, super::view::layout::block_hash(block) ^ editor.ai_preview_key(self.block))
-        };
         let measured: Measured = Rc::new(RefCell::new(None));
+        let Some((kind, level, fenced, nowrap, composing, content)) = ({
+            let editor = self.editor.read(cx);
+            editor.doc.get(self.block).map(|block| {
+                let nowrap = block.meta.code_language.is_some() && editor.nowrap.contains(&self.block);
+                let composing = editor.caret.composing.is_some() && editor.caret.head.block == self.block;
+                (block.kind, block.meta.heading_level, block.meta.code_language.clone(), nowrap, composing, super::view::layout::block_hash(block) ^ editor.ai_preview_key(self.block))
+            })
+        }) else {
+            return (window.request_layout(Style::default(), [], cx), measured);
+        };
         let output = measured.clone();
         // The row owns the gutters; measure text only in its remaining flex space.
         let mut style = Style::default();
@@ -63,7 +66,7 @@ impl Element for BlockText {
             }
             let (text, runs, table) = {
                 let editor = editor_entity.read(cx);
-                let block = editor.doc.get(block_id).expect("visible block exists");
+                let Some(block) = editor.doc.get(block_id) else { return size(width, line_height); };
                 let text: SharedString = if block.text.is_empty() { "\u{200b}".into() } else { block.text.clone().into() };
                 let mut runs = runs(block, &text, theme.text);
                 if matches!(block.kind, Kind::H1 | Kind::H2 | Kind::H3) {
@@ -141,8 +144,9 @@ impl Element for BlockText {
     }
     fn paint(&mut self, _: Option<&GlobalElementId>, _: Option<&gpui::InspectorElementId>, bounds: Bounds<Pixels>, _: &mut Measured, layout: &mut TextLayout, window: &mut Window, cx: &mut App) {
         self.editor.update(cx, |this, _| {
-            if let Some(offset) = vertical_offset(this, self.block, layout) {
-                let extend = this.pending_vertical.take().unwrap().3;
+            if let Some(offset) = vertical_offset(this, self.block, layout)
+                && let Some((_, _, _, extend)) = this.pending_vertical.take()
+            {
                 this.caret.head.offset = offset;
                 if !extend { this.caret.anchor = this.caret.head; }
             }
