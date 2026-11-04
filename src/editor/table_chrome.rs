@@ -33,22 +33,23 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
     menu: Option<TableMenu>, drag: Option<TableDrag>, dims: (usize, usize)) -> Vec<AnyElement> {
     let theme = Theme::ocean();
     let id = chrome.block;
-    let active_sel = sel.filter(|(b, _)| *b == id).map(|(_, s)| s)
+    let locked_sel = drag.filter(|d| d.block == id).map(|d| d.sel)
         .or_else(|| menu.filter(|m| m.block == id).map(|m| m.sel));
-    let (r, c) = match active_sel {
-        Some(TableSel::Column(col)) => (0, col.min(chrome.columns.len().saturating_sub(1))),
-        Some(TableSel::Row(row)) => (row.min(chrome.rows.len().saturating_sub(1)), 0),
-        Some(TableSel::Whole) => (0, 0),
-        _ => chrome.cell,
-    };
-    let is_active = |target: TableSel| sel == Some((id, target)) || menu.is_some_and(|m| m.block == id && m.sel == target);
+    let (mut r, mut c) = chrome.cell;
+    match locked_sel {
+        Some(TableSel::Column(col)) => c = col.min(chrome.columns.len().saturating_sub(1)),
+        Some(TableSel::Row(row)) => r = row.min(chrome.rows.len().saturating_sub(1)),
+        _ => {}
+    }
+    let is_active = |target: TableSel| sel == Some((id, target))
+        || menu.is_some_and(|m| m.block == id && m.sel == target)
+        || drag.is_some_and(|d| d.block == id && d.sel == target);
     let is_hovered = |target: TableSel| PILL_HOVER.with(|h| h.get() == Some((id, target)));
     let mut out: Vec<AnyElement> = Vec::new();
     let Some(&(left, right)) = chrome.columns.get(c) else { return out };
     let Some(&(top, bottom)) = chrome.rows.get(r) else { return out };
     let table = chrome.bounds;
     let dragging = drag.filter(|d| d.moved && d.block == id);
-    let follow = dragging.and_then(|d| d.position.map(|p| (d.sel, d.start, p)));
     let view = chrome.viewport;
     // The part of the active column inside the horizontal scroll window; a column scrolled away has no grip.
     let (seen_left, seen_right) = (left.max(table.left()), right.min(table.right()));
@@ -56,19 +57,11 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
         && seen_left < seen_right && table.top() - px(GRIP_SHORT / 2.) >= view.top();
     let row_border_adj = if r + 1 < chrome.rows.len() { px(1.) } else { px(0.) };
     let row_center = (top + bottom + row_border_adj) / 2.;
-    let row_mid = match follow {
-        Some((TableSel::Row(_), s, p)) => (row_center + p.y - s.y).clamp(table.top() + px(12.), (table.bottom() - px(12.)).max(table.top() + px(12.))),
-        _ => row_center,
-    };
     let show_row = dragging.is_none_or(|d| matches!(d.sel, TableSel::Row(_)))
-        && row_mid - px(13.) >= view.top() && row_mid + px(13.) <= view.bottom();
+        && row_center - px(GRIP_LONG / 2.) >= view.top() && row_center + px(GRIP_LONG / 2.) <= view.bottom();
     if show_column {
         let col_border_adj = if c + 1 < chrome.columns.len() && seen_right == right { px(1.) } else { px(0.) };
-        let col_center = (seen_left + seen_right + col_border_adj) / 2.;
-        let x = match follow {
-            Some((TableSel::Column(_), s, p)) => ((left + right + col_border_adj) / 2. + p.x - s.x).clamp(table.left() + px(12.), (table.right() - px(12.)).max(table.left() + px(12.))),
-            _ => col_center,
-        };
+        let x = (seen_left + seen_right + col_border_adj) / 2.;
         let col_sel = TableSel::Column(c);
         let expanded = is_active(col_sel) || is_hovered(col_sel);
         // The grip is centred on the 1px top border (`table.top() + 0.5px`) in both states.
@@ -94,7 +87,7 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
                 })));
     }
     if show_row {
-        let y = row_mid;
+        let y = row_center;
         let row_sel = TableSel::Row(r);
         let expanded = is_active(row_sel) || is_hovered(row_sel);
         // The grip is centred on the 1px left border (`table.left() + 0.5px`) in both states.
