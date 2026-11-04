@@ -106,7 +106,7 @@ pub(super) fn paint_card(bounds: Bounds<Pixels>, language: &str, window: &mut Wi
 fn pill_text(raw_lang: &str) -> String {
     let trimmed = raw_lang.trim();
     let canon = canonical_lang_tag(trimmed);
-    if canon == "plaintext" { "Plain Text".to_owned() }
+    if canon == "plaintext" { crate::theme::tr("纯文本", "Plain Text").to_owned() }
     else if !canon.is_empty() { canon.to_owned() }
     else { trimmed.to_owned() }
 }

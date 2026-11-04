@@ -14,7 +14,7 @@ use crate::theme::{is_en, tr};
 
 fn yes() -> bool { true }
 pub(crate) fn missing_key_msg() -> &'static str {
-    tr("请前往「设置 › AI 助手」选择服务商并填写 API Key", "Go to Settings › AI Assistant to select a provider and enter an API Key")
+    tr("请前往「设置 › AI 助手」选择服务商并填写 API 密钥", "Go to Settings › AI Assistant to select a provider and enter an API Key")
 }
 pub(crate) fn missing_url_msg() -> &'static str {
     tr("请前往「设置 › AI 助手」配置服务商与接口地址", "Go to Settings › AI Assistant to configure a provider and Base URL")
@@ -129,7 +129,7 @@ pub(crate) fn format_error(raw: &str) -> String {
     if lower.contains("network") || lower.contains("econnrefused") || lower.contains("timeout")
         || lower.contains("timed out") || lower.contains("connect") || lower.contains("resolve host")
     {
-        return tr("网络请求失败，请检查网络或 Base URL", "Network request failed. Check your connection or Base URL").into();
+        return tr("网络请求失败，请检查网络或接口地址", "Network request failed. Check your connection or Base URL").into();
     }
     if lower.contains("abort") || lower.contains("cancel") {
         return tr("已停止", "Stopped").into();
@@ -167,7 +167,7 @@ pub(crate) fn list_models(config: &Config) -> Result<Vec<String>, String> {
     })?;
     let (body, code) = split_status(&String::from_utf8_lossy(&out.stdout));
     if code == 0 {
-        return Err(tr("网络请求失败，请检查网络或 Base URL", "Network request failed. Check your connection or Base URL").into());
+        return Err(tr("网络请求失败，请检查网络或接口地址", "Network request failed. Check your connection or Base URL").into());
     }
     if !(200..300).contains(&code) { return Err(service_error(&body, code)); }
     let mut ids: Vec<String> = serde_json::from_str::<serde_json::Value>(&body).ok()
@@ -194,7 +194,9 @@ pub(crate) fn test_connection(config: &Config) -> Result<(), String> {
         if is_en() { format!("Failed to launch curl: {e}") } else { format!("无法启动 curl：{e}") }
     })?;
     if let Some(mut stdin) = child.stdin.take() { let _ = stdin.write_all(body.as_bytes()); }
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    let out = child.wait_with_output().map_err(|e| {
+        if is_en() { format!("Failed to read curl output: {e}") } else { format!("读取 curl 输出失败：{e}") }
+    })?;
     let (body, code) = split_status(&String::from_utf8_lossy(&out.stdout));
     if code == 0 {
         let err = String::from_utf8_lossy(&out.stderr);
@@ -280,7 +282,7 @@ pub(crate) fn stream_agent(msgs: Vec<serde_json::Value>, tools: Option<serde_jso
         let _ = child.wait();
         if cancel.load(Ordering::Relaxed) { return; }
         if code == 0 {
-            return fail(tr("网络请求失败，请检查网络或 Base URL", "Network request failed. Check your connection or Base URL").into(), true);
+            return fail(tr("网络请求失败，请检查网络或接口地址", "Network request failed. Check your connection or Base URL").into(), true);
         }
         if !(200..300).contains(&code) { return fail(keyed(&config, service_error(other.trim(), code)), code == 401 || code == 403 || code == 404); }
         if !got { return fail(tr("AI 未返回可写入的内容。", "AI returned an empty response.").into(), false); }
