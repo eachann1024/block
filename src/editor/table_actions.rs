@@ -212,13 +212,18 @@ impl Editor {
         }
     }
     pub(in crate::editor) fn open_table_menu(&mut self, id: u64, sel: TableSel, anchor: Point<Pixels>, cx: &mut Context<Self>) {
-        // Row menus open right of the row handle, column menus 4px below and left-aligned with the column handle.
+        // Row and column menus open 4px below and left-aligned with their capsule handle.
         let chrome = self.table_chrome.as_ref().filter(|c| c.block == id);
         let anchor = match (sel, chrome) {
-            (TableSel::Row(r), Some(c)) => c.rows.get(r)
-                .map_or(anchor, |s| point(c.bounds.left() + px(11.), (s.0 + s.1) / 2. - px(13.))),
-            (TableSel::Column(i), Some(c)) => c.columns.get(i)
-                .map_or(anchor, |s| point(((s.0 + s.1) / 2. - px(13.)).max(c.bounds.left()), c.bounds.top() + px(11.))),
+            (TableSel::Row(r), Some(c)) => c.rows.get(r).map_or(anchor, |s| {
+                let adj = if r + 1 < c.rows.len() { px(1.) } else { px(0.) };
+                point(c.bounds.left() - px(6.5), (s.0 + s.1 + adj) / 2. + px(16.))
+            }),
+            (TableSel::Column(i), Some(c)) => c.columns.get(i).map_or(anchor, |s| {
+                let (seen_l, seen_r) = (s.0.max(c.bounds.left()), s.1.min(c.bounds.right()));
+                let adj = if i + 1 < c.columns.len() && seen_r == s.1 { px(1.) } else { px(0.) };
+                point(((seen_l + seen_r + adj) / 2. - px(12.)).max(c.bounds.left()), c.bounds.top() + px(11.5))
+            }),
             _ => anchor,
         };
         self.table_menu = Some(TableMenu { block: id, sel, anchor }); cx.notify();
