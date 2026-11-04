@@ -74,6 +74,7 @@ pub struct Editor {
     /// Quick-note mode: no floating toolbar, no block handles, narrower padding, no status bar.
     pub(super) minimal: bool,
     pub(super) find: Option<super::find::FindState>,
+    pub(super) annotate: super::annotate::AnnotateState,
     sessions: HashMap<PathBuf, session::TabSession>,
 }
 impl Editor {
@@ -85,7 +86,7 @@ impl Editor {
             list: ListState::new(1, ListAlignment::Top, px(120.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
-            persistence: Persistence::default(), pointer_subscriptions: Vec::new(), block_clip: None, block_sel: None, minimal: false, find: None, sessions: HashMap::new() }
+            persistence: Persistence::default(), pointer_subscriptions: Vec::new(), block_clip: None, block_sel: None, minimal: false, find: None, annotate: Default::default(), sessions: HashMap::new() }
     }
     pub fn set_minimal(&mut self, minimal: bool) { self.minimal = minimal; }
     pub fn reset_layouts(&mut self) { self.layouts.clear(); }
@@ -108,6 +109,7 @@ impl Editor {
 impl Focusable for Editor { fn focus_handle(&self, _: &App) -> FocusHandle { self.focus.clone() } }
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_annotations();
         self.track_pointer_lifecycle(window, cx);
         let theme = Theme::ocean(); self.reveal();
         let input_editor = cx.entity();
@@ -143,6 +145,7 @@ impl Render for Editor {
                 // `cx.notify()` is dropped while the window is painting, so changes here are
                 // published by a deferred notify that runs once this frame has finished.
                 let mut changed = false;
+                if this.annotate.editor_top != bounds.top() { this.annotate.editor_top = bounds.top(); changed = true; }
                 let anchor = this.selection_toolbar_anchor(bounds, window);
                 if this.toolbar_anchor != anchor { this.toolbar_anchor = anchor; changed = true; }
                 let chrome = this.table_chrome_geometry(window);
@@ -193,6 +196,7 @@ impl Render for Editor {
                 .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.clear_pointer(); cx.notify(); }))
                 .child(div().flex_1().min_h_0().min_w_0().w_full().mx_auto()
                     .max_w(super::chrome::standard_width(theme.content_width))
+                    .when(!self.minimal && self.annotate.has_visible_rail(), |paper| paper.pr(px(308.)))
                     .when(self.minimal, |paper| paper.flex().pr(px(8.)))
                     // Minimal mode pulls the (unused) handle gutter out of view: 20px text padding.
                     .when(self.path.is_some(), |paper| paper.child(rows))
@@ -265,5 +269,6 @@ impl Render for Editor {
                 .when_some(self.link_pill(cx.entity(), window), |root, pill| root.child(pill))
                 .child(anchor_sync))
             .children(super::find_bar::find_bar(self, cx))
+            .children(super::annotate_ui::overlay(self, window, cx))
     }
 }
