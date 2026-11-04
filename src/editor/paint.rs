@@ -22,7 +22,7 @@ impl Element for BlockText {
             editor.doc.get(self.block).map(|block| {
                 let nowrap = block.meta.code_language.is_some() && editor.nowrap.contains(&self.block);
                 let composing = editor.caret.composing.is_some() && editor.caret.head.block == self.block;
-                (block.kind, block.meta.heading_level, block.meta.code_language.clone(), nowrap, composing, super::view::layout::block_hash(block) ^ editor.ai_preview_key(self.block))
+                (block.kind, block.meta.heading_level, block.meta.code_language.clone(), nowrap, composing, super::view::layout::block_hash(block) ^ editor.ai_preview_key(self.block) ^ table_layout::widths_signature(self.editor.entity_id(), self.block))
             })
         }) else {
             return (window.request_layout(Style::default(), [], cx), measured);
@@ -89,7 +89,7 @@ impl Element for BlockText {
                 return size(widest.max(room).max(px(1.)), height);
             }
             if let Some(table) = &table {
-                let mut layout = table_layout::measure(table, width, window);
+                let mut layout = table_layout::measure(table, width, &table_layout::widths_of(editor_id, block_id), window);
                 let height = layout.height() + px(table_layout::EXTEND_ROOM);
                 layout.bounds.size = size(width, height);
                 *output.borrow_mut() = Some(layout); super::view::layout::set_key(editor_id, block_id, key);

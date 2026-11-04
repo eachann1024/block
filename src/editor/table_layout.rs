@@ -6,8 +6,10 @@ use crate::theme::Theme;
 
 mod draw;
 mod scroll;
+mod width;
 pub(super) use draw::{paint_background, paint_cell_selection, paint_selection};
 pub(super) use scroll::{paint_edge, scroll_by, settle, track_wheel, visible};
+pub(super) use width::{MAX_MANUAL, Widths, get as widths_of, reset_manual, set_manual, signature as widths_signature, toggle_fit};
 
 // Reference cells: 15.04px text on a 21.808px line, 6px/10px padding and a collapsed 1px border.
 const FONT_SIZE: f32 = 15.04;
@@ -17,7 +19,7 @@ const PAD_X: f32 = 10.;
 const BORDER: f32 = 1.;
 const MIN_ROW: f32 = 34.8;
 /// Auto-sized columns follow their widest cell, within these bounds.
-const MIN_COL: f32 = 80.;
+pub(super) const MIN_COL: f32 = 80.;
 const MAX_COL: f32 = 381.5;
 /// Room kept right of and below the grid for the add-column and add-row buttons.
 pub(super) const EXTEND_ROOM: f32 = 24.;
@@ -30,7 +32,7 @@ struct Pending {
     code_spans: Vec<Range<usize>>,
 }
 
-pub(super) fn measure(table: &Table, width: Pixels, window: &mut Window) -> TextLayout {
+pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &mut Window) -> TextLayout {
     let theme = Theme::ocean();
     let font_size = px(FONT_SIZE);
     let line_height = px(LINE_HEIGHT);
@@ -57,16 +59,17 @@ pub(super) fn measure(table: &Table, width: Pixels, window: &mut Window) -> Text
         let natural = lines.iter().map(|line| line.width()).fold(px(0.), |a, b| a.max(b));
         pending.push(Pending { row, index, range, text, runs, lines, natural, code_spans });
     }
-    // Columns are as wide as their content (like `table-layout: auto`), never stretched to the page.
-    let explicit: Vec<Option<f32>> = (0..count).map(|index| table.column_widths.get(index)
+    // Columns are as wide as their content (like `table-layout: auto`), never stretched to the page,
+    // unless the session fits them to the page; a width dragged by the user beats the document's own.
+    let explicit: Vec<Option<f32>> = (0..count).map(|index| session.manual_at(index, count).or_else(|| table.column_widths.get(index)
         .and_then(|value| value.as_deref()).and_then(|value| value.strip_suffix("px"))
-        .and_then(|value| value.parse::<f32>().ok()).filter(|value| value.is_finite() && *value > 0.)).collect();
+        .and_then(|value| value.parse::<f32>().ok()).filter(|value| value.is_finite() && *value > 0.))).collect();
     let mut widths: Vec<f32> = explicit.iter().map(|value| value.unwrap_or(MIN_COL)).collect();
     let mut order: Vec<&Pending> = pending.iter().collect();
     order.sort_by_key(|p| table.rows[p.row].cells[p.index].colspan);
     for p in order {
         let cell = &table.rows[p.row].cells[p.index];
-        let need = (f32::from(p.natural) + PAD_X * 2. + BORDER).min(MAX_COL);
+        let need = (f32::from(p.natural) + PAD_X * 2. + BORDER).min(if session.fit { MAX_COL * 4. } else { MAX_COL });
         let first = cell.column.min(count - 1);
         let last = (cell.column + cell.colspan).saturating_sub(1).min(count - 1);
         let free: Vec<usize> = (first..=last).filter(|c| explicit[*c].is_none()).collect();
@@ -75,6 +78,10 @@ pub(super) fn measure(table: &Table, width: Pixels, window: &mut Window) -> Text
             let extra = (need - have) / free.len() as f32;
             for c in free { widths[c] += extra; }
         }
+    }
+    if session.fit {
+        let fixed: Vec<bool> = explicit.iter().map(Option::is_some).collect();
+        widths = width::fit(&widths, &fixed, f32::from(width));
     }
     let col_spans: Vec<(Pixels, Pixels)> = {
         let mut xs = vec![px(0.)];
