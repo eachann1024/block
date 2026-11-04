@@ -45,8 +45,8 @@ impl Editor {
             Up | Down if self.block_menu_step(matches!(action, Down), cx) => {}
             Up | Down | SelectUp | SelectDown => self.vertical(matches!(action, Down | SelectDown), matches!(action, SelectUp | SelectDown), cx),
             Enter if self.block_menu_pick(window, cx) => {}
-            // A focused image hides its source line, so keys act on the block instead of editing it.
-            Enter if let Some(id) = self.focused_image() => self.add_below(id, window, cx),
+            // A focused image or divider hides its source line, so keys act on the block instead of editing it.
+            Enter if let Some(id) = self.focused_atomic() => self.add_below(id, window, cx),
             Backspace | Delete if let Some(id) = self.focused_image() =>
                 self.run_block_cmd(id, super::block_menu::Mode::Handle, super::block_menu::Cmd::Delete, window, cx),
             Enter if self.divider_on_enter(cx) => {}
@@ -142,9 +142,13 @@ impl Editor {
         let id = self.caret.head.block;
         (self.caret.is_empty() && self.doc.get(id).is_some_and(|b| super::image_source::spec_of(b).is_some())).then_some(id)
     }
+    pub(super) fn focused_atomic(&self) -> Option<u64> {
+        let id = self.caret.head.block;
+        (self.caret.is_empty() && self.doc.get(id).is_some_and(|b| super::image_source::spec_of(b).is_some() || super::block_menu::is_divider(b))).then_some(id)
+    }
     pub(super) fn replace(&mut self, range: Option<Range<usize>>, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
-        let range = match self.focused_image() { Some(id) if !text.is_empty() => { self.add_below(id, window, cx); None } _ => range };
+        let range = match self.focused_atomic() { Some(id) if !text.is_empty() => { self.add_below(id, window, cx); None } _ => range };
         let caret_before = self.caret.clone();
         self.set_replacement_range(range);
         let text = if text == "、" && self.slash_alias_ready() { "/" } else { text };
