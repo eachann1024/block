@@ -78,12 +78,15 @@ pub(crate) fn open_external_url(raw: &str, base_note: Option<&std::path::Path>) 
 
 /// Pressed states for the selection toolbar; a mark is on only when it covers every selected character.
 #[derive(Default, Clone, Copy)]
-pub(super) struct ToolbarState { pub bold: bool, pub italic: bool, pub strike: bool, pub code: bool, pub underline: bool, pub link: bool, pub colored: bool, pub table: bool, pub grid: bool }
+pub(super) struct ToolbarState { pub bold: bool, pub italic: bool, pub strike: bool, pub code: bool, pub underline: bool, pub link: bool, pub colored: bool, pub table: bool, pub grid: bool, pub locked: bool, pub plain: bool }
 
 impl Editor {
     pub(super) fn toolbar_state(&self) -> ToolbarState {
         let ranges = self.selection_ranges();
         let mut state = ToolbarState { table: ranges.iter().any(|(id, _)| self.doc.get(*id).is_some_and(|b| b.meta.table.is_some())), ..Default::default() };
+        let any = |f: &dyn Fn(&super::model::Block) -> bool| ranges.iter().any(|(id, _)| self.doc.get(*id).is_some_and(f));
+        state.plain = any(&|b| b.meta.raw_source.is_some() || b.meta.code_language.is_some());
+        state.locked = state.table || state.plain;
         state.grid = ranges.len() > 1 && state.table || ranges.iter().any(|(id, r)| self.doc.get(*id)
             .and_then(|b| b.meta.table.as_ref()).is_some_and(|t| t.cell_at_range(r).is_none()));
         if ranges.is_empty() { return state; }
