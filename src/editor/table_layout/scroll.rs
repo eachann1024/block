@@ -68,12 +68,13 @@ pub(in crate::editor) fn scroll_by(editor: EntityId, block: u64, layout: &TextLa
 }
 
 /// Registered while a scrollable table paints: sideways wheel or trackpad motion over the grid scrolls it.
-pub(in crate::editor) fn track_wheel(editor: Entity<Editor>, block: u64, layout: &TextLayout, window: &mut Window) {
+pub(in crate::editor) fn track_wheel(editor: Entity<Editor>, block: u64, layout: &TextLayout, hitbox: Option<gpui::Hitbox>, window: &mut Window) {
     let max = max_offset(layout);
     if max <= 0. { return; }
     let (area, key) = (visible(layout.bounds), (editor.entity_id(), block));
-    window.on_mouse_event(move |event: &ScrollEvent, phase, _, cx| {
-        if phase != DispatchPhase::Bubble || !area.contains(&event.position) { return; }
+    window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
+        let unoccluded = hitbox.as_ref().is_none_or(|hb| hb.should_handle_scroll(window));
+        if phase != DispatchPhase::Bubble || !unoccluded || !area.contains(&event.position) { return; }
         let delta = event.delta.pixel_delta(px(20.));
         if delta.x.abs() <= delta.y.abs() { return; }
         let moved = STATE.with(|s| {
