@@ -9,15 +9,15 @@ export const bundleId = "dev.eachann.thinkly-fast";
 export const installPath = "/Applications/Thinkly Fast.app";
 export const installedExecutable = `${installPath}/Contents/MacOS/thinkly-fast`;
 export const logDir = join(homedir(), "Library/Logs/ThinklyFast");
-export const buildLogPath = join(logDir, "build.log");
 export const runtimeLogPath = join(logDir, "thinkly-fast.log");
 
-export function buildLog(msg) {
-  const line = `[${new Date().toISOString()}] [build] ${msg}\n`;
-  process.stdout.write(line);
+export function logIssue(level, msg) {
+  const ts = (Date.now() / 1000).toFixed(3);
+  const line = `[${ts}] [${level}] (build) ${msg}\n`;
+  process.stderr.write(line);
   try {
     mkdirSync(logDir, { recursive: true });
-    appendFileSync(buildLogPath, line);
+    appendFileSync(runtimeLogPath, line);
   } catch {}
 }
 
@@ -55,8 +55,6 @@ export function run(command, args, options = {}) {
 }
 
 export function binaryPath(root) {
-  const t0 = Date.now();
-  buildLog("compiling release binary (cargo build --locked --release)...");
   const result = spawnSync("cargo", ["build", "--locked", "--release", "--message-format", "json"], {
     cwd: root,
     encoding: "utf8",
@@ -75,7 +73,8 @@ export function binaryPath(root) {
     if (entry.reason === "compiler-message" && entry.message?.rendered) {
       const msg = entry.message.rendered.trim();
       rendered.push(msg);
-      buildLog(`compiler ${entry.message.level ?? "diag"}: ${msg}`);
+      const level = entry.message.level === "error" ? "ERROR" : entry.message.level === "warning" ? "WARN" : null;
+      if (level) logIssue(level, msg);
     }
   }
   if (result.status !== 0) {
@@ -89,7 +88,6 @@ export function binaryPath(root) {
   if (!executable?.startsWith("/") || !executable.endsWith("/thinkly-fast") || !existsSync(executable)) {
     throw new Error("release build did not report the thinkly-fast executable");
   }
-  buildLog(`compiled ${executable} in ${((Date.now() - t0) / 1000).toFixed(2)}s`);
   return executable;
 }
 

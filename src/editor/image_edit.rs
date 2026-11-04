@@ -60,7 +60,7 @@ impl Editor {
         }).detach();
         let focus_in = input.clone();
         self.image_menu = Some((id, ImagePop::AltText(input)));
-        focus_in.update(cx, |i, cx| i.focus(window, cx));
+        cx.defer_in(window, move |_, window, cx| focus_in.update(cx, |i, cx| i.focus(window, cx)));
         cx.notify();
     }
     pub(super) fn save_image_alt(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
