@@ -61,7 +61,7 @@ impl Workspace {
         let theme = Theme::ocean();
         let shortcut = format_hotkey(&search_shortcut());
         div().id("search-button").mx(px(12.)).mb(px(8.)).h(px(32.)).flex_none().px(px(10.)).flex().items_center().gap(px(8.))
-            .rounded(px(8.)).bg(theme.paper).border_1().border_color(theme.btn_border)
+            .rounded(px(8.)).bg(theme.paper).border_1().border_color(if self.search.is_some() { theme.accent } else { theme.btn_border })
             .text_size(px(13.)).text_color(theme.text_secondary)
             .when(enabled, |b| b.cursor(gpui::CursorStyle::PointingHand).hover(|style| style.bg(theme.btn_hover))
                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| this.open_search(window, cx))))

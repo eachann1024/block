@@ -9,7 +9,7 @@ const PAD_X: f32 = 12.;
 const MIN_ROW: f32 = 44.;
 /// Room kept right of and below the grid for the add-column and add-row buttons.
 pub(super) const EXTEND_ROOM: f32 = 28.;
-pub(super) fn measure(table: &Table, width: Pixels, window: &mut Window) -> TextLayout {
+pub(super) fn measure(table: &Table, width: Pixels, selected: Option<std::ops::Range<usize>>, window: &mut Window) -> TextLayout {
     let theme = Theme::ocean(); let font_size = px(14.); let line_height = px(24.);
     let width = (width - px(EXTEND_ROOM)).max(px(1.));
     let count = table.columns.max(1);
@@ -32,6 +32,12 @@ pub(super) fn measure(table: &Table, width: Pixels, window: &mut Window) -> Text
             .or_else(|| text_runs::attribute_color(&table.attrs, false)).unwrap_or(theme.text);
         let mut runs = text_runs::runs(&cell.content, &text, foreground);
         if cell.header { for run in &mut runs { run.font.weight = FontWeight::SEMIBOLD; } }
+        let cell_sel = selected.as_ref().and_then(|sel| {
+            let a = sel.start.max(range.start) - range.start;
+            let b = sel.end.min(range.end) - range.start;
+            (a < b).then_some(a..b)
+        });
+        let runs = text_runs::tint_selection(&text, runs, cell_sel, theme.selection_text);
         let lines = window.text_system().shape_text(text, font_size, &runs,
             Some((cell_width-px(PAD_X*2.)).max(px(1.))), None).unwrap_or_default();
         let mut at = 0;
