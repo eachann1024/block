@@ -10,8 +10,11 @@ impl Editor {
     pub(in crate::editor) fn track_pointer_lifecycle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.pointer_subscriptions.is_empty() { return; }
         self.pointer_subscriptions.push(cx.observe_window_activation(window, |this, window, cx| {
-            if !window.is_window_active() { this.clear_pointer(); this.toolbar_anchor = None; }
-            else {
+            if !window.is_window_active() {
+                this.clear_pointer();
+                this.link_ui.reset_hover();
+                this.toolbar_anchor = None;
+            } else {
                 // Active state settles after the activation callback; paint again shortly so the
                 // selection toolbar anchor is recomputed without waiting for the next input.
                 cx.spawn(async move |this, cx| {
@@ -23,12 +26,12 @@ impl Editor {
         }));
         self.pointer_subscriptions.push(cx.on_focus(&self.focus, window, |_, _, cx| cx.notify()));
         self.pointer_subscriptions.push(cx.on_blur(&self.focus, window, |this, _, cx| {
-            this.clear_pointer(); this.toolbar_anchor = None; cx.notify();
+            this.clear_pointer(); this.link_ui.reset_hover(); this.toolbar_anchor = None; cx.notify();
         }));
     }
     pub(in crate::editor) fn clear_pointer(&mut self) {
         self.dragging = None; self.drag_over = None; self.selecting = false;
-        self.selection_origin = None; self.table_drag = None; self.link_ui.reset_hover();
+        self.selection_origin = None; self.table_drag = None;
     }
     pub(in crate::editor) fn hover_block(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
         if self.minimal || self.dragging.is_some() || self.table_drag.is_some() || self.selecting { return; }
@@ -51,7 +54,7 @@ impl Editor {
     }
     pub(in crate::editor) fn begin_drag(&mut self, id: u64, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
-        self.commit_composition(cx); self.clear_pointer();
+        self.commit_composition(cx); self.clear_pointer(); self.link_ui.reset_hover();
         self.hover_gen = self.hover_gen.wrapping_add(1);
         self.dragging = Some(id); self.hover = Some(id); self.toolbar_anchor = None;
         cx.notify();
@@ -141,7 +144,6 @@ impl Editor {
         }
         if !event.dragging() {
             self.update_link_hover(event.position, cx);
-            self.update_code_hover(event.position, cx);
             if self.selecting || self.dragging.is_some() { self.clear_pointer(); cx.notify(); }
             return;
         }

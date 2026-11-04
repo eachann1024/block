@@ -1,8 +1,8 @@
 //! Scheme B (TokenChip) inline code spacing, chip painting and ⌘+Click copy.
 use std::ops::Range;
-use gpui::{AnyElement, BorderStyle, Bounds, ClipboardItem, Context, Corners, Hsla, Pixels, Point,
+use gpui::{BorderStyle, Bounds, ClipboardItem, Context, Corners, Hsla, Pixels, Point,
     SharedString, TextRun, Window, fill, point, px, quad, rgb, rgba, size};
-use crate::{theme::{Theme, is_dark, tr}, ui::tooltip::anchored_tooltip_above};
+use crate::theme::{Theme, is_dark, tr};
 use super::{model::{Block, MarkKind}, view::{Editor, layout::TextLayout}};
 
 pub(in crate::editor) const PAD_BYTES: usize = 2;
@@ -18,13 +18,6 @@ pub(in crate::editor) fn code_spans(block: &Block) -> Vec<Range<usize>> {
         }
     }
     out
-}
-
-fn active_code_span(editor: &Editor, block_id: u64, window: &Window) -> Option<Range<usize>> {
-    if !editor.focus.is_focused(window) || !editor.caret.is_empty()
-        || editor.caret.composing.is_some() || editor.caret.head.block != block_id { return None; }
-    let offset = editor.caret.head.offset;
-    code_spans(editor.doc.get(block_id)?).into_iter().find(|s| s.start < offset && offset < s.end)
 }
 
 fn slice_runs(runs: &[TextRun], range: Range<usize>) -> Vec<TextRun> {
@@ -98,29 +91,21 @@ pub(in crate::editor) fn shaped_to_doc(shaped_offset: usize, code_spans: &[Range
     shaped_offset.saturating_sub(shift)
 }
 
-pub(in crate::editor) fn code_text_color(hovered: bool) -> Hsla {
-    match (is_dark(), hovered) {
-        (true, true) => rgb(0x9dbcf5).into(),
-        (true, false) => rgb(0xadc6ff).into(),
-        (false, true) => rgb(0x184f95).into(),
-        (false, false) => rgb(0x1e3a6e).into(),
-    }
+pub(in crate::editor) fn code_text_color() -> Hsla {
+    if is_dark() { rgb(0xadc6ff).into() } else { rgb(0x1e3a6e).into() }
 }
 
-fn paint_layout_chips(layout: &TextLayout, hovered: Option<&Range<usize>>, window: &mut Window) {
+fn paint_layout_chips(layout: &TextLayout, window: &mut Window) {
     if layout.code_spans.is_empty() { return; }
-    let dark = is_dark();
+    let (bg, border, top_hi): (Hsla, Hsla, Hsla) = if is_dark() {
+        (rgb(0x252a34).into(), rgb(0x3a4354).into(), rgba(0xffffff0d).into())
+    } else {
+        (rgb(0xf1f3f7).into(), rgb(0xd5dce6).into(), rgba(0xffffffe0).into())
+    };
     let font_px = layout.lines.first().map(|(_, l)| l.font_size()).unwrap_or(px(16.));
     let chip_h = (font_px + px(5.)).round().min(layout.line_height - px(2.)).max(px(18.));
     let pad_x = px(5.5);
     for span in &layout.code_spans {
-        let is_hover = hovered == Some(span);
-        let (bg, border, top_hi): (Hsla, Hsla, Hsla) = match (dark, is_hover) {
-            (true, true) => (rgb(0x2d426b).into(), rgb(0x779de8).into(), rgba(0xffffff18).into()),
-            (true, false) => (rgb(0x252a34).into(), rgb(0x3a4354).into(), rgba(0xffffff0d).into()),
-            (false, true) => (rgb(0xe5edfc).into(), rgb(0x547dd0).into(), rgba(0xffffffb0).into()),
-            (false, false) => (rgb(0xf1f3f7).into(), rgb(0xd5dce6).into(), rgba(0xffffffe0).into()),
-        };
         for r in layout.rects(span.clone()) {
             let top = r.top() + ((r.size.height - chip_h) * 0.5).round();
             let box_bounds = Bounds::new(point(r.left() - pad_x, top), size(r.size.width + pad_x * 2., chip_h));
@@ -131,19 +116,16 @@ fn paint_layout_chips(layout: &TextLayout, hovered: Option<&Range<usize>>, windo
     }
 }
 
-pub(in crate::editor) fn paint_chips(editor: &Editor, block_id: u64, layout: &TextLayout, window: &mut Window) {
-    let hovered = editor.link_ui.code_hover.as_ref().filter(|(b, _)| *b == block_id).map(|(_, r)| r);
+pub(in crate::editor) fn paint_chips(layout: &TextLayout, window: &mut Window) {
     if !layout.cells.is_empty() {
         for cell in &layout.cells {
             if !cell.text.code_spans.is_empty() {
-                let cell_hover = hovered.and_then(|r| (r.start >= cell.range.start && r.end <= cell.range.end)
-                    .then(|| (r.start - cell.range.start)..(r.end - cell.range.start)));
-                paint_layout_chips(&cell.text, cell_hover.as_ref(), window);
+                paint_layout_chips(&cell.text, window);
             }
         }
         return;
     }
-    paint_layout_chips(layout, hovered, window);
+    paint_layout_chips(layout, window);
 }
 
 impl Editor {
@@ -164,51 +146,16 @@ impl Editor {
             .map(|s| (at.block, s.clone()))
     }
 
-    pub(super) fn update_code_hover(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
-        let found = self.code_under(position);
-        if self.link_ui.code_hover != found {
-            self.link_ui.code_hover = found;
-            if self.link_ui.code_copied != self.link_ui.code_hover { self.link_ui.code_copied = None; }
-            cx.notify();
-        }
-    }
-
     pub(super) fn copy_code_at(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) -> bool {
         let Some((block_id, range)) = self.code_under(position) else { return false };
         let Some(block) = self.doc.get(block_id) else { return false };
         if range.end > block.text.len() || !block.text.is_char_boundary(range.start) || !block.text.is_char_boundary(range.end) {
             return false;
         }
-        let token = block.text[range.clone()].to_owned();
+        let token = block.text[range].to_owned();
         cx.write_to_clipboard(ClipboardItem::new_string(token.clone()));
-        let target = (block_id, range);
-        self.link_ui.code_copied = Some(target.clone());
         self.status = format!("{}: {}", tr("已复制代码", "Copied code"), token);
         cx.notify();
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(std::time::Duration::from_millis(1500)).await;
-            this.update(cx, |this, cx| {
-                if this.link_ui.code_copied.as_ref() == Some(&target) {
-                    this.link_ui.code_copied = None;
-                    cx.notify();
-                }
-            }).ok();
-        }).detach();
         true
-    }
-
-    pub(super) fn code_hover_tooltip(&self, window: &Window) -> Option<AnyElement> {
-        if self.path.is_none() || self.selecting || self.dragging.is_some() || self.table_drag.is_some()
-            || self.caret.composing.is_some() || self.format.is_some() || self.block_menu.is_some() || self.table_menu.is_some() { return None; }
-        let (block, range) = self.link_ui.code_hover.as_ref()?;
-        if active_code_span(self, *block, window).as_ref() == Some(range) { return None; }
-        let rect = *self.layouts.get(block)?.rects(range.clone()).first()?;
-        let viewport = self.list.viewport_bounds();
-        if rect.bottom() <= viewport.top() || rect.top() >= viewport.bottom() { return None; }
-        let copied = self.link_ui.code_copied.as_ref() == Some(&(*block, range.clone()));
-        let label = if copied { tr("已复制", "Copied") }
-            else if cfg!(any(target_os = "macos", target_family = "wasm")) { tr("⌘+点击复制", "⌘+click to copy") }
-            else { tr("Ctrl+点击复制", "Ctrl+click to copy") };
-        Some(anchored_tooltip_above(rect, viewport.top(), label, ("code-hover-tip", (*block as usize) ^ (range.start << 16)), window))
     }
 }
