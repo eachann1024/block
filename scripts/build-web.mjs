@@ -26,6 +26,9 @@ const INDEX_HTML = `<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Yu</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="./favicon-light-32.png" media="(prefers-color-scheme: light)" />
+  <link rel="icon" type="image/png" sizes="32x32" href="./favicon-dark-32.png" media="(prefers-color-scheme: dark)" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon-light.png" />
   <style>
     @font-face {
       font-family: "IBM Plex Sans";
@@ -148,6 +151,9 @@ export function buildWeb() {
   ]);
 
   cpSync(join(webDir, "fonts"), fontsOut, { recursive: true });
+  for (const name of ["favicon-light-32.png", "favicon-dark-32.png", "apple-touch-icon-light.png"]) {
+    cpSync(join(root, "assets/app-icon", name), join(outDir, name));
+  }
   writeFileSync(join(outDir, "index.html"), INDEX_HTML, "utf8");
 
   const wasmBytes = readFileSync(bgWasm);

@@ -41,6 +41,9 @@ export async function buildApp() {
     const macos = join(bundle, "Contents/MacOS");
     mkdirSync(macos, { recursive: true });
     writeFileSync(join(bundle, "Contents/Info.plist"), plist());
+    const resources = join(bundle, "Contents/Resources");
+    mkdirSync(resources, { recursive: true });
+    cpSync(join(root, "assets/app-icon/AppIcon.icns"), join(resources, "AppIcon.icns"));
     const packaged = join(macos, "thinkly-fast");
     const copied = spawnSync("cp", [executable, packaged]);
     if (copied.status !== 0) throw new Error("failed to copy the release binary");
