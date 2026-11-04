@@ -78,7 +78,8 @@ impl Element for BlockText {
                     block.meta.raw_source.as_ref().map(|_| if text.trim_start().starts_with('<') { "html" } else { "markdown" })
                 });
                 if let Some(language) = language {
-                    let mut base = plain(text.len(), theme.text); base.font.family = crate::theme::mono_font_family().into(); base.font.fallbacks = None;
+                    let code_fg: gpui::Hsla = if crate::theme::is_dark() { theme.text } else { rgb(0x393a34).into() };
+                    let mut base = plain(text.len(), code_fg); base.font.family = crate::theme::mono_font_family().into(); base.font.fallbacks = None;
                     runs = super::view::syntax::runs(&text, language, base);
                 }
                 // Inline AI review: the rewrite is diffed in place (thinkly inlinePreview).
@@ -232,7 +233,7 @@ fn paint_placeholder(layout: &TextLayout, window: &mut Window, cx: &mut App) {
     let line = PLACEHOLDER.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.as_ref().is_none_or(|(c, _)| *c != key) {
-            let text = SharedString::from(crate::theme::tr("开始输入，或让 @Claude 撰写或编辑", "Start typing, or ask @Claude to write or edit"));
+            let text = SharedString::from(crate::theme::tr("开始输入…", "Start typing…"));
             let color = if dark { rgb(0x6e6d68) } else { rgb(0x9b9a95) };
             let mut run = plain(text.len(), color.into());
             run.font.weight = FontWeight::NORMAL;
@@ -241,7 +242,7 @@ fn paint_placeholder(layout: &TextLayout, window: &mut Window, cx: &mut App) {
         }
         slot.as_ref().map(|(_, l)| l.clone()).unwrap()
     });
-    let _ = line.paint(layout.bounds.origin, layout.line_height, window, cx);
+    let _ = line.paint(layout.bounds.origin, layout.line_height, gpui::TextAlign::Left, None, window, cx);
 }
 impl IntoElement for BlockText { type Element = Self; fn into_element(self) -> Self { self } }
 fn vertical_offset(editor: &Editor, block: u64, layout: &TextLayout) -> Option<usize> {
