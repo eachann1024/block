@@ -3,7 +3,7 @@
 use std::ops::Range;
 use gpui::{AnyElement, ClipboardItem, Context, CursorStyle, Entity, MouseButton, Pixels, Point, Window, div, point, prelude::*, px, rgb};
 use crate::{icons::Icon, theme::tr, ui::tooltip::anchored_tooltip_above};
-use super::{format_cmds::normalize_url, toolbar::{ToolbarColors, glyph, pill, sep}, view::{Editor, selection::Position}};
+use super::{format_cmds::open_external_url, toolbar::{ToolbarColors, glyph, pill, sep}, view::{Editor, selection::Position}};
 
 /// Pointer-hover state for inline links.
 #[derive(Default)]
@@ -68,7 +68,7 @@ impl Editor {
             self.doc.get(*b)?.link_at(r.start).map(|(_, u)| u)
         });
         if let Some(url) = url {
-            cx.open_url(&normalize_url(&url));
+            open_external_url(&url, self.path.as_deref());
         } else {
             cx.propagate();
         }
@@ -110,6 +110,7 @@ impl Editor {
         let display = middle_ellipsis(&url);
         let (origin, tail) = split_origin(&display);
         let (open_url, copy_url) = (url.clone(), url.clone());
+        let base_note = self.path.clone();
         let (edit_range, unlink_range, edit_url) = (range.clone(), range, url);
         let (e_edit, e_unlink, e_copy) = (editor.clone(), editor.clone(), editor);
         let button = |id: &'static str, g: Icon, tip: &'static str, run: Box<dyn Fn(&mut Window, &mut gpui::App)>| div().id(id)
@@ -123,7 +124,7 @@ impl Editor {
         let bar = pill().id("link-pill").pl(px(12.)).gap(px(2.))
             .child(url_label)
             .child(sep())
-            .child(button("link-open", Icon::LinkOpen, tr("打开链接", "Open link"), Box::new(move |_, cx| cx.open_url(&normalize_url(&open_url)))))
+            .child(button("link-open", Icon::LinkOpen, tr("打开链接", "Open link"), Box::new(move |_, _| open_external_url(&open_url, base_note.as_deref()))))
             .child(button("link-copy", Icon::LinkCopy, tr("复制链接", "Copy link"), Box::new(move |_, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(copy_url.clone()));
                 e_copy.update(cx, |this, cx| { this.status = tr("已复制链接", "Link copied").into(); cx.notify(); });

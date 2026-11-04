@@ -41,6 +41,8 @@ export function commitInstall(plan) {
   }
   if (plan.present) remove(plan.backup);
   plan.keep = false;
+  const lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+  spawnSync(lsregister, ["-f", installPath], { stdio: "ignore" });
 }
 
 function restore(plan, error) {
