@@ -11,7 +11,7 @@ use super::palette::ExportTheme;
 use super::view::ExportView;
 use super::view_stage::{MIN_SCALE, PREVIEW_PAD_X};
 use super::view_widgets::{button, format_bar, section, segmented, style_grid, switch_row};
-use crate::icons::{Icon, IconColors, icon};
+use crate::icons::{Icon, IconColors, icon, stateful_icon};
 use crate::theme::{Theme, tr};
 use crate::ui::icon_button::back_button;
 
@@ -100,7 +100,7 @@ impl ExportView {
                     window.titlebar_double_click();
                 }
             })
-            .child(icon(Icon::Image, px(15.), theme.icon_colors(theme.text_secondary)))
+            .child(icon(Icon::Image, px(15.), theme.mono_icon_colors(theme.text_secondary)))
             .child(
                 div()
                     .min_w_0()
@@ -271,10 +271,13 @@ impl ExportView {
 
     fn copy_button(&self, ready: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::ocean();
-        let glyph = icon(
+        let glyph = stateful_icon(
+            "export-copy",
             if self.copied { Icon::Check } else { Icon::Copy },
             px(15.),
-            theme.icon_colors(theme.text),
+            self.copied,
+            theme.mono_icon_colors(theme.text),
+            theme.icon_colors(if self.copied { theme.accent } else { theme.text }),
         );
         let label = if self.copied { tr("已复制", "Copied") } else { tr("复制", "Copy") };
         button("export-copy", label, glyph, false, ready)

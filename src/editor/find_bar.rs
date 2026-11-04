@@ -1,20 +1,18 @@
 //! Floating find bar (top-right of the editor) and the highlight layer for matches.
 use gpui::{BorderStyle, Bounds, Context, CursorStyle, MouseButton, Pixels, Window, div, prelude::*, px, quad, rgb, transparent_black};
 use gpui_component::input::{Escape, Input};
-use crate::{icons::{Icon, IconColors, icon}, theme::Theme};
+use crate::{icons::{Icon, icon, stateful_icon}, theme::Theme};
 use super::view::{Editor, ExitBlock, layout::TextLayout};
 
 const MATCH: u32 = 0xfbe7a6;
 const CURRENT: u32 = 0xf4c84f;
 const RING: u32 = 0xc9971c;
 
-fn tint(color: gpui::Hsla) -> IconColors { IconColors { line: color, fill: transparent_black(), accent: transparent_black() } }
-
 fn button(glyph: Icon, id: &'static str, on: impl Fn(&mut Editor, &mut Window, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean();
-    div().id(id).relative().children(crate::ui::smoke_overlay::probe(id)).size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
+    div().id(id).group(id).relative().children(crate::ui::smoke_overlay::probe(id)).size(px(32.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
         .cursor(CursorStyle::PointingHand).hover(|s| s.bg(theme.hover))
-        .child(icon(glyph, px(14.), tint(theme.text_secondary)))
+        .child(stateful_icon(id, glyph, px(14.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| { on(this, window, cx); cx.stop_propagation(); }))
 }
 
@@ -29,13 +27,13 @@ pub(super) fn find_bar(editor: &Editor, cx: &mut Context<Editor>) -> Option<impl
         .key_context("FindBar")
         .on_action(cx.listener(|this, _: &Escape, window, cx| { this.close_find(window, cx); cx.stop_propagation(); }))
         .on_action(cx.listener(|this, _: &ExitBlock, window, cx| { this.find_step(false, window, cx); cx.stop_propagation(); }))
-        .child(icon(Icon::FindSearch, px(14.), tint(theme.text_secondary)))
-        .child(div().w(px(180.)).h(px(28.)).flex().items_center().text_size(px(14.))
+        .child(icon(Icon::FindSearch, px(14.), theme.mono_icon_colors(theme.text_secondary)))
+        .child(div().w(px(180.)).h(px(28.)).flex_none().flex().items_center().text_size(px(14.))
             .child(Input::new(&find.input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)).px(px(0.))))
-        .child(div().flex_none().min_w(px(36.)).px(px(6.)).flex().justify_end().text_color(theme.text_secondary).child(label))
+        .child(div().flex_none().w(px(72.)).px(px(6.)).flex().justify_end().text_color(theme.text_secondary).child(label))
         .child(div().w(px(1.)).h(px(18.)).mx(px(2.)).flex_none().bg(theme.sidebar_border))
         .child(button(Icon::ChevronUp, "find-prev", |this, w, cx| this.find_step(false, w, cx), cx))
-        .child(button(Icon::TbChevron, "find-next", |this, w, cx| this.find_step(true, w, cx), cx))
+        .child(button(Icon::ChevronDown, "find-next", |this, w, cx| this.find_step(true, w, cx), cx))
         .child(button(Icon::Close, "find-close", |this, w, cx| this.close_find(w, cx), cx));
     Some(div().absolute().top(px(12.)).right(px(20.)).child(crate::ui::popover::animate(card, "find-bar-enter")))
 }
