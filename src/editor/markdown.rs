@@ -83,6 +83,11 @@ pub fn parse(source: &str) -> Doc {
             if next.bytes().all(|b| b == b'=') { Some(Kind::H1) }
             else if next.bytes().all(|b| b == b'-') { Some(Kind::H2) } else { None }
         });
+        if let Some((indent, math)) = blocks::inline_math_block(line) {
+            let mut block = Block::new(id, Kind::Paragraph, math.to_owned());
+            block.meta.indent = indent; block.meta.code_language = Some("math".to_owned());
+            result.push(block); offset += raw_line.len(); index += 1; continue;
+        }
         if let Some((marker, width, info)) = blocks::fence(line) {
             let indent = line.len() - line.trim_start_matches(' ').len();
             let mut body = String::new(); let mut end = index + 1;
