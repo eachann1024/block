@@ -167,7 +167,7 @@ impl Workspace {
     pub(super) fn titlebar(&self, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         let theme = Theme::ocean();
         let tab_count = self.tabs.len();
-        let can_create = self.folder.is_some() && !self.busy();
+        let can_create = self.ui_enabled();
         let left = self.titlebar_left(cx);
         let mut right = div().id("titlebar-tabs").flex_1().min_w_0().h_full().flex().items_center()
             .gap(px(4.)).px(px(10.)).overflow_hidden();

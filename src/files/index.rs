@@ -121,22 +121,35 @@ impl TreeIndex {
         (0..self.len().min(200_000)).find(|&rank| self.row(rank).is_some_and(|(_, row, _)| row.path.as_ref() == path))
     }
 
+    pub fn set_stem(&mut self, path: &Path, stem: gpui::SharedString) {
+        fn walk(link: &mut Link, path: &Path, stem: &gpui::SharedString) -> bool {
+            let Some(n) = link else { return false };
+            if n.row.path.as_ref() == path {
+                let r = &n.row;
+                n.row = Arc::new(Row {
+                    path: r.path.clone(), name: r.name.clone(), stem: stem.clone(),
+                    dir: r.dir, depth: r.depth, descendants: r.descendants,
+                    root_name: r.root_name.clone(), root_path: r.root_path.clone(), root_dir: r.root_dir,
+                });
+                return true;
+            }
+            walk(&mut n.left, path, stem) || walk(&mut n.right, path, stem)
+        }
+        walk(&mut self.root, path, &stem);
+    }
+
     pub fn restore_expanded(&mut self, paths: &std::collections::HashSet<PathBuf>) {
         if paths.is_empty() { return; }
         fn collect(link: &Link, offset: usize, paths: &std::collections::HashSet<PathBuf>, out: &mut Vec<(usize, Arc<Path>)>) {
             let Some(n) = link else { return };
             collect(&n.left, offset, paths, out);
             let index = offset + size(&n.left);
-            if n.row.dir && paths.contains(n.row.path.as_ref()) {
-                out.push((index, n.row.path.clone()));
-            }
+            if n.row.dir && paths.contains(n.row.path.as_ref()) { out.push((index, n.row.path.clone())); }
             collect(&n.right, index + 1, paths, out);
         }
         let mut matches = Vec::new();
         collect(&self.root, 0, paths, &mut matches);
-        for (index, path) in matches {
-            self.toggle(index, &path);
-        }
+        for (index, path) in matches { self.toggle(index, &path); }
     }
 
     /// New notes belong to the root; insertion touches only the search path.
