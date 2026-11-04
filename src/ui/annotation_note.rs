@@ -1,9 +1,24 @@
 use gpui::{CursorStyle, Div, ElementId, FontWeight, IntoElement, Stateful, div, prelude::*, px, rgb, rgba};
 use crate::theme::Theme;
 
-/// Cardless margin note with a single semantic status rule.
-pub fn rail_note(id: impl Into<ElementId>, status: u32, content: impl IntoElement) -> Stateful<Div> {
-    div().id(id).w_full().border_l_2().border_color(rgb(status)).pl(px(10.)).child(content)
+/// Card container with semantic status indicator and optional floating shadow.
+pub fn rail_note(id: impl Into<ElementId>, status: u32, floating: bool, content: impl IntoElement) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    div()
+        .id(id)
+        .w_full()
+        .px(px(10.))
+        .py(px(6.))
+        .rounded(px(10.))
+        .bg(theme.menu)
+        .border_1()
+        .border_color(theme.accent)
+        .when(floating, |d| d.shadow(crate::ui::annotation_card::floating_shadows()))
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .child(div().size(px(8.)).flex_none().rounded_full().bg(rgb(status)))
+        .child(div().flex_1().min_w_0().child(content))
 }
 
 /// Emoji reaction pill in the right rail (`❤️ 1`, `👀 1`), matching the Tiptap/Claude artifact spec.
@@ -54,7 +69,7 @@ pub fn reaction_picker_item(id: impl Into<ElementId>, emoji: &str, selected: boo
     div()
         .id(id)
         .size(px(30.))
-        .rounded(px(6.))
+        .rounded(crate::ui::radius::CONTROL)
         .flex()
         .items_center()
         .justify_center()
