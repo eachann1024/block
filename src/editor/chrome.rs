@@ -87,7 +87,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
     let indent = block.meta.indent.min(12) as f32 * INDENT_PER_CHAR;
     let marker_width = if matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) { MARKER_WIDTH + indent } else { indent };
     let image = super::image_source::spec_of(block)
-        .and_then(|spec| super::image_source::resolve_path(&spec, note.as_deref()).map(|path| (path, spec)));
+        .and_then(|spec| super::image_source::resolve_target(&spec, note.as_deref()).map(|target| (target, spec)));
     let rule = super::block_menu::is_divider(block);
     let nowrap = nowrap && block.meta.code_language.is_some();
     let focus_editor = editor.clone();
