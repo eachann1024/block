@@ -93,7 +93,7 @@ impl Workspace {
         let shortcut = format_hotkey("secondary-k");
         let search_open = self.search.is_some();
         div().id("search-button").group("sidebar-search-btn").relative().children(crate::ui::smoke_overlay::probe("search-button")).flex_1().min_w_0().h(px(32.)).px(px(9.)).flex().items_center().gap(px(6.))
-            .rounded(px(8.)).bg(theme.paper).border_1().border_color(if search_open { theme.accent } else { theme.btn_border })
+            .rounded(crate::ui::radius::CONTROL).bg(theme.paper).border_1().border_color(if search_open { theme.accent } else { theme.btn_border })
             .text_size(px(14.)).text_color(theme.text_secondary)
             .when(enabled, |b| b.cursor(gpui::CursorStyle::PointingHand).hover(|style| style.bg(theme.btn_hover))
                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| this.open_search(window, cx))))

@@ -17,7 +17,7 @@ pub fn card(id: impl Into<ElementId>, width: Option<Pixels>) -> Stateful<Div> {
         .id(id)
         .when_some(width, |d, w| d.w(w))
         .p(px(4.))
-        .rounded(px(12.))
+        .rounded(crate::ui::radius::SURFACE)
         .bg(p.bg)
         .shadow(shadows())
         .occlude()
@@ -36,7 +36,7 @@ pub fn find_card(id: impl Into<ElementId>) -> Stateful<Div> {
         .flex()
         .items_center()
         .gap(px(4.))
-        .rounded(px(12.))
+        .rounded(crate::ui::radius::SURFACE)
         .bg(theme.menu)
         .border_1()
         .border_color(theme.menu_border)
@@ -46,7 +46,7 @@ pub fn find_card(id: impl Into<ElementId>) -> Stateful<Div> {
         .occlude()
 }
 
-/// In-place annotation popover card (`border-radius: 10px`, `1px` accent border, `12px 14px` padding).
+/// In-place annotation popover card (`border-radius: 14px`, `1px` accent border, `12px 14px` padding).
 pub fn annotation_card(id: impl Into<ElementId>, width: Pixels) -> Stateful<Div> {
     let theme = Theme::ocean();
     div()
@@ -54,7 +54,7 @@ pub fn annotation_card(id: impl Into<ElementId>, width: Pixels) -> Stateful<Div>
         .w(width)
         .px(px(14.))
         .py(px(12.))
-        .rounded(px(10.))
+        .rounded(crate::ui::radius::SURFACE)
         .bg(theme.menu)
         .border_1()
         .border_color(theme.accent)

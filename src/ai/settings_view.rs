@@ -18,7 +18,7 @@ fn input_box(input: &Entity<InputState>) -> impl IntoElement {
 
 fn field_shell() -> gpui::Div {
     let theme = Theme::ocean();
-    div().h(px(34.)).px(px(10.)).flex().items_center().rounded(px(8.)).border_1().border_color(theme.hairline)
+    div().h(px(34.)).px(px(10.)).flex().items_center().rounded(crate::ui::radius::CONTROL).border_1().border_color(theme.hairline)
         .bg(theme.shell).text_size(px(14.))
 }
 
@@ -32,12 +32,12 @@ impl AiSettings {
         let p = &PRESETS[ix];
         let id = p.id;
         let active = self.provider == id;
-        div().id(("ai-pcard", ix)).flex_1().min_w_0().py(px(10.)).px(px(12.)).rounded(px(8.))
+        div().id(("ai-pcard", ix)).flex_1().min_w_0().py(px(10.)).px(px(12.)).rounded(crate::ui::radius::CONTROL)
             .flex().items_center().gap(px(8.)).cursor(CursorStyle::PointingHand)
             .when(active, |d| d.bg(theme.selected).border_1().border_color(theme.accent))
             .when(!active, |d| d.bg(theme.shell).border_1().border_color(theme.hairline).hover(move |s| s.bg(theme.hover)))
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| this.select_provider(id, w, cx)))
-            .child(div().size(px(28.)).rounded(px(6.)).bg(card_bg()).border_1().border_color(theme.hairline)
+            .child(div().size(px(28.)).rounded(crate::ui::radius::CONTROL).bg(card_bg()).border_1().border_color(theme.hairline)
                 .flex().items_center().justify_center().flex_none()
                 .child(crate::icons::brand_icon(p.icon(), px(16.), gpui::rgb(p.brand_rgb).into())))
             .child(div().flex_1().min_w_0().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(500.)).text_color(theme.text)

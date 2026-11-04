@@ -19,7 +19,7 @@ impl Workspace {
                 .children(SettingsTab::ALL.into_iter().enumerate().map(|(ix, tab)| {
                     let active = current == Some(tab);
                     let cat_group = SharedString::from(format!("settings-cat-{ix}"));
-                    div().id(("settings-tab", ix)).group(cat_group.clone()).h(px(34.)).px(px(10.)).rounded(px(6.)).flex().items_center().gap(px(8.))
+                    div().id(("settings-tab", ix)).group(cat_group.clone()).h(px(34.)).px(px(10.)).rounded(crate::ui::radius::CONTROL).flex().items_center().gap(px(8.))
                         .text_size(px(14.)).cursor(CursorStyle::PointingHand)
                         .when(active, |d| d.bg(theme.selected).border_1().border_color(theme.accent)
                             .text_color(theme.text).font_weight(FontWeight(460.)))
@@ -33,7 +33,7 @@ impl Workspace {
                 .flex().items_center().justify_between().gap(px(8.))
                 .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
                     .text_size(px(14.)).text_color(theme.text_secondary).child(tr("本地笔记", "Local Notes")))
-                .child(div().id("settings-sidebar-back").group("settings-back").flex_none().h(px(28.)).px(px(10.)).rounded(px(6.)).bg(card_bg())
+                .child(div().id("settings-sidebar-back").group("settings-back").flex_none().h(px(28.)).px(px(10.)).rounded(crate::ui::radius::CONTROL).bg(card_bg())
                     .border_1().border_color(theme.btn_border).flex().items_center().gap(px(6.))
                     .text_size(px(14.)).font_weight(FontWeight(460.)).text_color(theme.text)
                     .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))

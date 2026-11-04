@@ -27,7 +27,7 @@ pub(super) fn format_bar(
     on_pick: Rc<dyn Fn(&ExportFormat, &mut Window, &mut App)>,
 ) -> impl IntoElement {
     let theme = Theme::ocean();
-    let mut track = div().flex().p(px(3.)).bg(theme.shell).border_1().border_color(theme.hairline).rounded(px(8.)).gap(px(2.));
+    let mut track = div().flex().p(px(3.)).bg(theme.shell).border_1().border_color(theme.hairline).rounded(crate::ui::radius::CONTROL).gap(px(2.));
     for (index, fmt) in ExportFormat::ALL.into_iter().enumerate() {
         let on_pick = on_pick.clone();
         let selected = fmt == current;
@@ -38,7 +38,7 @@ pub(super) fn format_bar(
             .flex()
             .items_center()
             .justify_center()
-            .rounded(px(6.))
+            .rounded(crate::ui::radius::CONTROL)
             .border_1()
             .border_color(gpui::transparent_black())
             .text_size(px(14.))
@@ -73,7 +73,7 @@ pub(super) fn segmented(
         .bg(theme.shell)
         .border_1()
         .border_color(theme.hairline)
-        .rounded(px(8.))
+        .rounded(crate::ui::radius::CONTROL)
         .gap(px(2.));
     for (index, (label, selected, enabled)) in items.into_iter().enumerate() {
         let on_pick = on_pick.clone();
@@ -84,7 +84,7 @@ pub(super) fn segmented(
             .flex()
             .items_center()
             .justify_center()
-            .rounded(px(6.))
+            .rounded(crate::ui::radius::CONTROL)
             .border_1()
             .border_color(gpui::transparent_black())
             .text_size(px(14.))
@@ -146,7 +146,7 @@ fn swatch_card(
         .w(px(28.))
         .h(px(22.))
         .flex_none()
-        .rounded(px(4.))
+        .rounded(crate::ui::radius::MICRO_SM)
         .bg(c(paper_hex))
         .border_1()
         .border_color(c(if style.is_dark() { 0x3a3a3a } else { 0xd8d2c5 }))
@@ -162,7 +162,7 @@ fn swatch_card(
         .min_w_0()
         .h(px(52.))
         .px(px(10.))
-        .rounded(px(10.))
+        .rounded(crate::ui::radius::CONTROL)
         .border_1()
         .flex()
         .items_center()
@@ -255,7 +255,7 @@ pub(super) fn button(
         .items_center()
         .justify_center()
         .gap(px(6.))
-        .rounded(px(8.))
+        .rounded(crate::ui::radius::CONTROL)
         .text_size(px(14.))
         .font_weight(FontWeight(500.))
         .child(glyph)

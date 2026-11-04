@@ -148,7 +148,7 @@ fn reaction_popover(picker: ReactionPicker, selected_reaction: Option<String>, c
     let y = (picker.anchor.y + px(8.)).max(px(48.));
     let bar = REACTIONS.iter().enumerate().fold(
         div().id("annotate-reactions").absolute().left(x).top(y).px(px(8.)).py(px(6.))
-            .rounded(px(10.)).bg(Theme::ocean().menu).shadow(popover_shadows())
+            .rounded(crate::ui::radius::SURFACE).bg(Theme::ocean().menu).shadow(popover_shadows())
             .flex().items_center().gap(px(4.)).occlude(),
         |row, (index, &emoji)| {
             let selected = selected_reaction.as_deref() == Some(emoji);

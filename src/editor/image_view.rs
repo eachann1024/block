@@ -144,7 +144,7 @@ fn handle(id: u64, left: bool, top: bool, dir: f32, group: &SharedString, show: 
     div().id(("image-resize", id as usize * 4 + usize::from(left) + 2 * usize::from(top))).absolute().size(px(10.))
         .when(left, |s| s.left(px(-5.))).when(!left, |s| s.right(px(-5.)))
         .when(top, |s| s.top(px(-5.))).when(!top, |s| s.bottom(px(-5.)))
-        .bg(gpui::white()).border(px(1.5)).border_color(gpui::rgb(ring)).rounded(px(3.))
+        .bg(gpui::white()).border(px(1.5)).border_color(gpui::rgb(ring)).rounded(crate::ui::radius::MICRO_XS)
         .cursor(if left == top { CursorStyle::ResizeUpLeftDownRight } else { CursorStyle::ResizeUpRightDownLeft })
         .invisible().when(show, |s| s.visible()).group_hover(group.clone(), |s| s.visible())
         .on_drag(Resize { id, dir }, |resize, _, window, cx| {

@@ -51,7 +51,7 @@ pub fn grip(id: (&'static str, usize), vertical: bool, expanded: bool, dragging:
     let shell = div().w(px(w)).h(px(h)).flex_none().flex().items_center().justify_center();
     let shell = if expanded {
         let key = id.1 * 2 + usize::from(vertical);
-        shell.rounded(px(7.)).bg(bg).border_1().border_color(border).child(
+        shell.rounded(crate::ui::radius::CONTROL).bg(bg).border_1().border_color(border).child(
             dots(vertical, dot).with_animation(("tgrip-dots", key),
                 Animation::new(Duration::from_millis(150)).with_easing(ease_out_expo()),
                 |el, delta| el.opacity(delta)))
@@ -84,7 +84,7 @@ pub fn thandle(open: bool) -> Stateful<Div> {
     let hover_bg: Hsla = if dark { rgb(0x2c2c2a).into() } else { rgb(0xf5f4ed).into() };
     let base: Hsla = if dark { theme.text_secondary } else { rgb(0x73726c).into() };
     let hover: Hsla = if dark { theme.text } else { rgb(0x1f1e1d).into() };
-    div().id("table-more").group("hover-icon").size(px(26.)).flex_none().rounded(px(8.))
+    div().id("table-more").group("hover-icon").size(px(26.)).flex_none().rounded(crate::ui::radius::CONTROL)
         .flex().items_center().justify_center()
         .when(open, move |s| s.bg(hover_bg))
         .hover(move |s| s.bg(hover_bg))

@@ -203,7 +203,7 @@ impl Workspace {
             let plus = if can_create { Some({
                 let new_group: SharedString = "tab-new-btn".into();
                 div().id("tab-new").group(new_group.clone()).size(px(26.)).flex_none()
-                    .flex().items_center().justify_center().rounded(px(6.)).cursor(CursorStyle::PointingHand)
+                    .flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).cursor(CursorStyle::PointingHand)
                     .hover(|s| s.bg(theme.hover))
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
                         cx.stop_propagation();
@@ -235,7 +235,7 @@ impl Workspace {
         let (open_path, mid_path, menu_path, close_path) = (path.clone(), path.clone(), path.clone(), path.clone());
         let anim_seq = if multi { opening_seq(&path) } else { None };
         let close_btn = div().id(("tab-close", ix)).group(close_group.clone()).size(px(18.)).flex_none()
-            .flex().items_center().justify_center().rounded(px(4.)).hover(|s| s.bg(theme.selection))
+            .flex().items_center().justify_center().rounded(crate::ui::radius::MICRO_SM).hover(|s| s.bg(theme.selection))
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                 cx.stop_propagation();
                 this.close_tab(close_path.clone(), cx);
@@ -249,7 +249,7 @@ impl Workspace {
         let mut pill = div().id(("tab", ix)).group(group.clone()).h(px(28.)).overflow_hidden()
             .when(multi, |t| t.w(px(TAB_MAX_W)).flex_basis(px(TAB_BASIS_W)).flex_shrink_1().min_w(px(TAB_MIN_W)).max_w(px(TAB_MAX_W)))
             .when(!multi, |t| t.min_w_0().max_w(px(SINGLE_TAB_MAX_W)).flex_shrink_1())
-            .pl(px(10.)).pr(px(6.)).rounded(px(6.)).flex().items_center().relative().when(ix == 0, |t| t.children(crate::ui::smoke_overlay::probe("tab-0")))
+            .pl(px(10.)).pr(px(6.)).rounded(crate::ui::radius::CONTROL).flex().items_center().relative().when(ix == 0, |t| t.children(crate::ui::smoke_overlay::probe("tab-0")))
             .cursor(CursorStyle::PointingHand).text_size(px(13.)).line_height(px(18.)).font_weight(FontWeight(460.))
             .when(multi && active, |t| t.bg(theme.selected).border_1().border_color(theme.accent).text_color(theme.text))
             .when(multi && !active, |t| t.border_1().border_color(transparent_black()).text_color(theme.text_secondary)

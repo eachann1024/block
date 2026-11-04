@@ -118,7 +118,7 @@ impl ExportView {
                     .child(tr("· 导出预览", "· Export Preview")),
             );
         let esc_badge = div().h(px(22.)).px(px(7.)).flex_none().flex().items_center()
-            .rounded(px(5.)).bg(theme.paper).border_1().border_color(theme.btn_border)
+            .rounded(crate::ui::radius::MICRO_MD).bg(theme.paper).border_1().border_color(theme.btn_border)
             .text_size(px(12.)).text_color(theme.text_secondary).child("Esc");
         let right = div().flex_none().flex().items_center().justify_end().gap(px(8.))
             .min_w(px(if cfg!(target_os = "macos") { 200. } else { 140. }))
@@ -165,7 +165,7 @@ impl ExportView {
             .flex_col()
             .px(px(12.))
             .py(px(2.))
-            .rounded(px(10.))
+            .rounded(crate::ui::radius::SURFACE)
             .bg(theme.shell)
             .border_1()
             .border_color(theme.hairline)
@@ -212,7 +212,7 @@ impl ExportView {
                     div()
                         .px(px(12.))
                         .py(px(8.))
-                        .rounded(px(8.))
+                        .rounded(crate::ui::radius::CONTROL)
                         .bg(theme.selected)
                         .border_1()
                         .border_color(theme.accent)

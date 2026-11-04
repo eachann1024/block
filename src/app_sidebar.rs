@@ -52,7 +52,7 @@ impl Workspace {
             .child(div().ml_auto().flex_none().flex().items_center().gap(px(TITLEBAR_GAP))
                 .children(self.render_nav_buttons(cx))
                 .child(div().id("sidebar-toggle").relative().children(crate::ui::smoke_overlay::probe("sidebar-toggle")).group(btn_group.clone()).size(px(TOGGLE_SIZE)).flex_none()
-                    .flex().items_center().justify_center().rounded(px(6.)).cursor(CursorStyle::PointingHand)
+                    .flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).cursor(CursorStyle::PointingHand)
                     .hover(|s| s.bg(theme.hover))
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                         cx.stop_propagation();
@@ -112,7 +112,7 @@ impl Workspace {
         let enabled = self.ui_enabled();
         let open = self.switcher_open;
         div().id("notebook-switcher").group("notebook-switcher").relative().children(crate::ui::smoke_overlay::probe("notebook-switcher")).flex_1().min_w_0().h(px(30.)).px(px(8.)).flex().items_center().gap(px(7.))
-            .rounded(px(6.)).text_size(px(14.)).font_weight(FontWeight(500.)).text_color(theme.text)
+            .rounded(crate::ui::radius::CONTROL).text_size(px(14.)).font_weight(FontWeight(500.)).text_color(theme.text)
             .when(open, |b| b.bg(theme.hover))
             .when(enabled, |b| b.cursor(CursorStyle::PointingHand).hover(|style| style.bg(theme.hover))
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
@@ -174,7 +174,7 @@ fn forget_button(path: std::path::PathBuf, cx: &mut Context<Workspace>) -> gpui:
     let theme = Theme::ocean();
     let group: SharedString = format!("forget:{}", path.display()).into();
     div().id(gpui::ElementId::Name(group.clone())).group(group.clone())
-        .size(px(20.)).flex_none().flex().items_center().justify_center().rounded(px(4.))
+        .size(px(20.)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::MICRO_SM)
         .invisible().group_hover("notebook-item", |style| style.visible())
         .hover(|style| style.bg(theme.btn_hover))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {

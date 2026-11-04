@@ -83,7 +83,7 @@ pub fn max_height_for(window: &Window) -> Pixels {
 
 pub fn shell_unbounded(id: impl Into<ElementId>) -> Stateful<Div> {
     let p = palette();
-    div().id(id).max_h(px(MAX_HEIGHT)).overflow_y_scroll().p(px(4.)).rounded(px(12.)).bg(p.bg).shadow(shadows()).occlude()
+    div().id(id).max_h(px(MAX_HEIGHT)).overflow_y_scroll().p(px(4.)).rounded(crate::ui::radius::SURFACE).bg(p.bg).shadow(shadows()).occlude()
         .flex().flex_col().gap(px(2.)).text_size(px(14.)).line_height(px(20.)).text_color(p.text)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
@@ -101,7 +101,7 @@ pub fn pill_trigger(id: impl Into<ElementId>, label: impl Into<SharedString>, op
     let hover_border: Hsla = if dark { rgba(0xffffff38).into() } else { rgba(0x0b0b0b40).into() };
     let fg: Hsla = if dark { rgb(0x8e8d88).into() } else { rgb(0x898781).into() };
     let hover_fg: Hsla = if dark { rgb(0xececec).into() } else { rgb(0x1f1e1d).into() };
-    div().id(id).h(px(22.)).px(px(8.)).rounded(px(8.)).border_1()
+    div().id(id).h(px(22.)).px(px(8.)).rounded(crate::ui::radius::CONTROL).border_1()
         .border_color(if open { hover_border } else { border }).bg(bg).flex().items_center()
         .cursor(CursorStyle::PointingHand).text_size(px(12.)).line_height(px(16.))
         .text_color(if open { hover_fg } else { fg })
@@ -135,7 +135,7 @@ pub fn row_with(id: impl Into<ElementId>, spec: RowSpec) -> Stateful<Div> {
     let id: ElementId = id.into();
     let group = SharedString::from(format!("dd-row-{id:?}"));
     let active = spec.checked || spec.highlighted;
-    let row = div().id(id).group(group.clone()).h(px(ROW_HEIGHT)).w_full().flex_none().px(px(10.)).gap(px(8.)).rounded(px(8.))
+    let row = div().id(id).group(group.clone()).h(px(ROW_HEIGHT)).w_full().flex_none().px(px(10.)).gap(px(8.)).rounded(crate::ui::radius::CONTROL)
         .flex().items_center().text_size(px(14.)).line_height(px(20.)).when(spec.disabled, |s| s.opacity(0.4));
     let row = if spec.danger {
         let fg = if spec.highlighted && !spec.disabled { p.danger_hover_fg } else { p.danger_fg };
