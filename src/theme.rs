@@ -263,3 +263,14 @@ impl Theme {
     }
 }
 
+pub fn sync_gpui_theme(cx: &mut gpui::App) {
+    let mode = if is_dark() { gpui_component::ThemeMode::Dark } else { gpui_component::ThemeMode::Light };
+    gpui_component::Theme::change(mode, None, cx);
+    let ocean = Theme::ocean();
+    let t = gpui_component::Theme::global_mut(cx);
+    t.foreground = ocean.text;
+    t.muted_foreground = ocean.text_secondary;
+    t.selection = ocean.selection;
+    t.caret = ocean.accent;
+    t.ring = ocean.accent;
+}
