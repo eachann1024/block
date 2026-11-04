@@ -3,8 +3,7 @@ use crate::{editor::model::Kind, icons::Icon, theme::tr};
 use super::kind_icon;
 
 /// Code languages offered by the code block picker in `C-Code-Block.dc.html` order: (fence tag, label).
-pub(in crate::editor) const LANGUAGES: [(&str, &str); 18] = [
-    ("", "auto"),
+pub(in crate::editor) const LANGUAGES: [(&str, &str); 17] = [
     ("csv", "CSV"),
     ("latex", "LaTeX"),
     ("markdown", "Markdown"),
@@ -27,12 +26,11 @@ pub(in crate::editor) const LANGUAGES: [(&str, &str); 18] = [
 pub(in crate::editor) fn canonical_lang_tag(tag: &str) -> &'static str {
     let token = tag.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
     match token.as_str() {
-        "" | "auto" => "",
+        "" | "auto" | "plaintext" | "text" | "plain" | "txt" => "plaintext",
         "csv" => "csv",
         "latex" | "math" | "tex" | "katex" => "latex",
         "markdown" | "md" => "markdown",
         "mermaid" => "mermaid",
-        "plaintext" | "text" | "plain" | "txt" => "plaintext",
         "bash" | "sh" | "shell" | "zsh" => "bash",
         "css" => "css",
         "html" | "htm" => "html",
@@ -51,15 +49,14 @@ pub(in crate::editor) fn canonical_lang_tag(tag: &str) -> &'static str {
 
 pub(in crate::editor) fn language_label(tag: &str) -> &'static str {
     let canon = canonical_lang_tag(tag);
-    if canon.is_empty() && !tag.trim().is_empty() && !tag.trim().eq_ignore_ascii_case("auto") {
+    if canon.is_empty() && !tag.trim().is_empty() {
         return tr("其他", "Other");
     }
-    LANGUAGES.iter().find(|(t, _)| *t == canon).map_or("auto", |(_, l)| *l)
+    LANGUAGES.iter().find(|(t, _)| *t == canon).map_or("Plain Text", |(_, l)| *l)
 }
 
 pub(in crate::editor) fn language_icon(tag: &str) -> Option<Icon> {
     Some(match canonical_lang_tag(tag) {
-        "" => Icon::LangAuto,
         "csv" => Icon::Table,
         "latex" => Icon::Math,
         "markdown" => Icon::Note,
