@@ -151,16 +151,10 @@ impl Render for Editor {
         // Runs after all rows paint: layout retries never publish overlay geometry.
         let anchor_sync = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
             anchor_editor.update(cx, |this, cx| {
-                // `cx.notify()` is dropped while the window is painting, so changes here are
-                // published by a deferred notify that runs once this frame has finished.
-                let mut changed = false;
+                let mut changed = super::annotate_fit::sync_after_paint(this, bounds);
                 let top = this.list.logical_scroll_top();
                 let cur_scroll = (top.item_ix, top.offset_in_item);
                 if this.scroll_top != cur_scroll { this.scroll_top = cur_scroll; crate::dropdown::dismiss_all(cx); changed = true; }
-                if this.annotate.editor_top != bounds.top() || this.annotate.editor_width != bounds.size.width || this.annotate.editor_height != bounds.size.height {
-                    (this.annotate.editor_top, this.annotate.editor_width, this.annotate.editor_height) = (bounds.top(), bounds.size.width, bounds.size.height);
-                    changed = true;
-                }
                 if let Some(menu) = &mut this.block_menu && menu.mode == super::block_menu::Mode::Slash
                     && let Some(l) = this.layouts.get(&menu.block)
                 {
