@@ -79,7 +79,7 @@ pub fn max_height_for(window: &Window) -> Pixels {
 pub fn shell_unbounded(id: impl Into<ElementId>) -> Stateful<Div> {
     let p = palette();
     div().id(id).max_h(px(MAX_HEIGHT)).overflow_y_scroll().p(px(4.)).rounded(px(12.)).bg(p.bg).shadow(shadows()).occlude()
-        .flex().flex_col().text_size(px(14.)).line_height(px(20.)).text_color(p.text)
+        .flex().flex_col().gap(px(2.)).text_size(px(14.)).line_height(px(20.)).text_color(p.text)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
         .on_scroll(|_, _, cx| cx.stop_propagation())
@@ -233,32 +233,34 @@ pub fn register_closer(closer: fn() -> bool) {
 }
 
 pub fn dismiss_all(cx: &mut App) {
-    let mut stateless_closed = false;
-    CLOSERS.with(|slot| {
-        for closer in slot.borrow().iter() {
-            if closer() {
-                stateless_closed = true;
+    cx.defer(move |cx| {
+        let mut stateless_closed = false;
+        CLOSERS.with(|slot| {
+            for closer in slot.borrow().iter() {
+                if closer() {
+                    stateless_closed = true;
+                }
+            }
+        });
+        let editors = EDITORS.with(|slot| slot.borrow().clone());
+        for weak in editors {
+            if let Some(entity) = weak.upgrade() {
+                entity.update(cx, |ed, cx| {
+                    if ed.dismiss_dropdowns() || stateless_closed {
+                        cx.notify();
+                    }
+                });
+            }
+        }
+        let workspaces = WORKSPACES.with(|slot| slot.borrow().clone());
+        for weak in workspaces {
+            if let Some(entity) = weak.upgrade() {
+                entity.update(cx, |ws, cx| {
+                    if ws.dismiss_dropdowns(cx) || stateless_closed {
+                        cx.notify();
+                    }
+                });
             }
         }
     });
-    let editors = EDITORS.with(|slot| slot.borrow().clone());
-    for weak in editors {
-        if let Some(entity) = weak.upgrade() {
-            entity.update(cx, |ed, cx| {
-                if ed.dismiss_dropdowns() || stateless_closed {
-                    cx.notify();
-                }
-            });
-        }
-    }
-    let workspaces = WORKSPACES.with(|slot| slot.borrow().clone());
-    for weak in workspaces {
-        if let Some(entity) = weak.upgrade() {
-            entity.update(cx, |ws, cx| {
-                if ws.dismiss_dropdowns(cx) || stateless_closed {
-                    cx.notify();
-                }
-            });
-        }
-    }
 }
