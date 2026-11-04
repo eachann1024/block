@@ -6,14 +6,18 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+const SEQUENTIAL: usize = 1000;
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
 pub fn note_candidates(dir: &Path) -> impl Iterator<Item = PathBuf> {
     let dir = dir.to_owned();
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
     let base = crate::theme::tr("未命名", "Untitled");
-    (0..64).map(move |attempt| {
-        let name = if attempt == 0 { format!("{base}.md") } else {
+    // Sequential names ("未命名", "未命名 2", ...) first; the unique-stamp form is only a collision fallback.
+    (0..SEQUENTIAL + 16).map(move |attempt| {
+        let name = if attempt == 0 { format!("{base}.md") } else if attempt < SEQUENTIAL {
+            format!("{base} {}.md", attempt + 1)
+        } else {
             format!("{base} {stamp:x}-{}-{}.md", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed))
         };
         dir.join(name)
