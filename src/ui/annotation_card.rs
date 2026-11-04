@@ -33,25 +33,87 @@ pub fn spinner(id: impl Into<ElementId>, color: Hsla) -> impl IntoElement {
     )
 }
 
-/// Titlebar accent button: `统一发送（n）` / `生成中…`, disabled when `n == 0` or streaming.
+/// Titlebar split-pill left segment: `统一发送 n` / `生成中…`, styled for the combined action pill.
 pub fn send_all_button(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
+    count: Option<usize>,
     generating: bool,
     enabled: bool,
     on_click: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
-    let white: Hsla = rgb(0xffffff).into();
-    div().id(id).h(px(28.)).px(px(12.)).gap(px(6.)).flex_none().rounded(px(6.))
-        .bg(theme.accent).text_color(white).text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(460.))
-        .flex().items_center().justify_center()
-        .when(generating, |btn| btn.child(spinner("titlebar-annotate-spin", white)))
-        .child(label.into())
-        .when(enabled, |btn| {
-            btn.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(accent_hover())).on_mouse_down(MouseButton::Left, on_click)
-        })
-        .when(!enabled, |btn| btn.cursor(CursorStyle::Arrow).opacity(0.5))
+    let active = enabled || generating;
+    let fg: Hsla = if active {
+        if is_dark() { rgb(0xe6eefc).into() } else { rgb(0x184f95).into() }
+    } else {
+        theme.text_secondary
+    };
+    let mut btn = div()
+        .id(id)
+        .h(px(24.))
+        .px(px(9.))
+        .gap(px(6.))
+        .flex_none()
+        .rounded(px(6.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(active, |s| s.bg(theme.selected))
+        .when(!active, |s| s.bg(gpui::transparent_black()).opacity(0.55))
+        .text_color(fg)
+        .text_size(px(14.))
+        .line_height(px(20.))
+        .font_weight(FontWeight(460.));
+
+    if generating {
+        btn = btn.child(spinner("titlebar-annotate-spin", theme.accent));
+    } else {
+        btn = btn.child(div().size(px(7.)).flex_none().rounded_full().bg(rgb(0xf5c84c)));
+    }
+
+    btn = btn.child(label.into());
+
+    if let Some(n) = count.filter(|&n| n > 0 && !generating) {
+        btn = btn.child(
+            div()
+                .text_color(theme.accent)
+                .font_weight(FontWeight(600.))
+                .child(SharedString::from(n.to_string())),
+        );
+    }
+
+    if enabled {
+        btn.cursor(CursorStyle::PointingHand)
+            .hover(move |s| s.bg(theme.hover))
+            .on_mouse_down(MouseButton::Left, on_click)
+    } else {
+        btn.cursor(CursorStyle::Arrow)
+    }
+}
+
+/// Unified split pill container for the titlebar right rail (`send_segment` | `more_button`).
+pub fn titlebar_split_pill(send_segment: Option<Stateful<Div>>, more_button: Stateful<Div>) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    if let Some(send_btn) = send_segment {
+        div()
+            .id("titlebar-action-pill")
+            .h(px(28.))
+            .p(px(2.))
+            .gap(px(2.))
+            .flex_none()
+            .flex()
+            .items_center()
+            .rounded(crate::ui::radius::CONTROL)
+            .border_1()
+            .border_color(theme.btn_border)
+            .bg(theme.menu)
+            .child(send_btn)
+            .child(div().w(px(1.)).h(px(14.)).flex_none().bg(theme.btn_border))
+            .child(more_button)
+    } else {
+        div().id("titlebar-action-pill").flex_none().flex().items_center().child(more_button)
+    }
 }
 
 /// Subtle 2-layer tight shadow for floating annotation popovers (inline cards stay flat).
