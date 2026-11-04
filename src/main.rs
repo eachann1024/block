@@ -131,7 +131,7 @@ fn main() {
                 titlebar: Some(TitlebarOptions {
                     title: Some("Yu".into()),
                     appears_transparent: true,
-                    traffic_light_position: cfg!(target_os = "macos").then_some(point(px(16.), px(14.))),
+                    traffic_light_position: cfg!(target_os = "macos").then_some(point(px(16.), px(13.))),
                     ..Default::default()
                 }),
                 ..Default::default()
