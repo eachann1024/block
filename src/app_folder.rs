@@ -106,6 +106,7 @@ impl Workspace {
         } else {
             self.save_tabs_state(cx);
         }
+        self.drain_external_open(cx);
         self.persisting = true;
         self.refresh(cx);
         cx.spawn(async move |this, cx| {
@@ -143,5 +144,45 @@ impl Workspace {
                 this.refresh(cx);
             });
         }).detach();
+    }
+
+    pub(crate) fn open_external_paths(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
+        for raw in paths {
+            let path = std::fs::canonicalize(&raw).unwrap_or(raw);
+            if (path.is_dir() || (path.is_file() && crate::files::scan::is_markdown(&path.to_string_lossy())))
+                && !self.external_open.contains(&path)
+            {
+                self.external_open.push(path);
+            }
+        }
+        if !self.loading && self.pending.is_none() {
+            self.drain_external_open(cx);
+        }
+    }
+
+    pub(super) fn drain_external_open(&mut self, cx: &mut Context<Self>) {
+        if self.loading || self.pending.is_some() || self.external_open.is_empty() { return; }
+        if self.folder.is_none() {
+            if let Some(first) = self.external_open.first().cloned() {
+                if first.is_dir() {
+                    self.external_open.remove(0);
+                    self.use_folder(first, cx);
+                    return;
+                }
+                if let Some(parent) = first.parent().map(std::path::Path::to_path_buf) {
+                    self.use_folder(parent, cx);
+                    return;
+                }
+            }
+        }
+        let queued = std::mem::take(&mut self.external_open);
+        for path in queued {
+            if path.is_dir() {
+                self.use_folder(path, cx);
+            } else if path.is_file() && crate::files::scan::is_markdown(&path.to_string_lossy()) {
+                self.insert_external_note(path.clone(), cx);
+                self.open_file_in_new_tab(path, cx);
+            }
+        }
     }
 }

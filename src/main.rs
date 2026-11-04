@@ -11,12 +11,51 @@ mod search;
 mod theme;
 pub mod ui;
 
+use std::{path::PathBuf, sync::Mutex, time::Duration};
 use gpui::{
     App, AppContext, Bounds, KeyBinding, Menu, MenuItem, TitlebarOptions,
     WindowBounds, WindowOptions, actions, point, px, size,
 };
 
 actions!(thinkly_fast, [Quit, ExportImage]);
+
+static OPEN_QUEUE: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+fn url_or_arg_to_path(raw: &str) -> Option<PathBuf> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.starts_with('-') { return None; }
+    let encoded = trimmed.strip_prefix("file://localhost").or_else(|| trimmed.strip_prefix("file://"))?;
+    let mut bytes = Vec::with_capacity(encoded.len());
+    let src = encoded.as_bytes();
+    let mut i = 0;
+    while i < src.len() {
+        if src[i] == b'%' && i + 2 < src.len()
+            && let Ok(hex) = std::str::from_utf8(&src[i + 1..i + 3])
+            && let Ok(b) = u8::from_str_radix(hex, 16)
+        {
+            bytes.push(b);
+            i += 3;
+        } else {
+            bytes.push(src[i]);
+            i += 1;
+        }
+    }
+    Some(PathBuf::from(String::from_utf8_lossy(&bytes).into_owned()))
+}
+
+fn enqueue_open_inputs<I: IntoIterator<Item = String>>(inputs: I) {
+    let Ok(mut q) = OPEN_QUEUE.lock() else { return };
+    for s in inputs {
+        let p = url_or_arg_to_path(&s).unwrap_or_else(|| PathBuf::from(s.trim()));
+        if !p.as_os_str().is_empty() && !p.to_string_lossy().starts_with('-') {
+            q.push(p);
+        }
+    }
+}
+
+fn take_open_queue() -> Vec<PathBuf> {
+    OPEN_QUEUE.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default()
+}
 
 struct Assets;
 impl gpui::AssetSource for Assets {
@@ -47,10 +86,13 @@ pub fn apply_app_menus(cx: &mut gpui::App) {
 
 fn main() {
     log::init();
+    enqueue_open_inputs(std::env::args().skip(1));
     if let Ok(state) = files::load_state() {
         theme::apply_state(&state);
     }
-    gpui_platform::application().with_assets(Assets).run(|cx: &mut App| {
+    let app = gpui_platform::application().with_assets(Assets);
+    app.on_open_urls(|urls| enqueue_open_inputs(urls));
+    app.run(|cx: &mut App| {
         theme::init_fonts(&cx.text_system().all_font_names());
         gpui_component::init(cx);
         // The app is light-only; without this, inputs follow macOS dark mode (white text, black field).
@@ -100,6 +142,24 @@ fn main() {
                 let menu_target = workspace.clone();
                 let settings_target = workspace.clone();
                 let tab_target = workspace.clone();
+                let open_target = workspace.clone();
+                let initial_open = take_open_queue();
+                if !initial_open.is_empty() {
+                    open_target.update(cx, |w, cx| w.open_external_paths(initial_open, cx));
+                }
+                cx.spawn(async move |cx| {
+                    loop {
+                        cx.background_executor().timer(Duration::from_millis(150)).await;
+                        let queued = take_open_queue();
+                        if !queued.is_empty() {
+                            let target = open_target.clone();
+                            cx.update(|cx| {
+                                cx.activate(true);
+                                target.update(cx, |w, cx| w.open_external_paths(queued, cx));
+                            });
+                        }
+                    }
+                }).detach();
                 quick::set_main_window(window.window_handle().downcast::<gpui_component::Root>(), workspace.clone(), cx);
                 cx.on_action({
                     let target = tab_target.clone();
