@@ -84,6 +84,30 @@ impl Editor {
         self.apply_annotations(&[id], window, cx);
     }
 
+    pub(crate) fn hover_annotation(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
+        let next = if hovered { Some(id) } else if self.annotate.hovered_annotation == Some(id) { None } else { return };
+        if self.annotate.hovered_annotation != next {
+            self.annotate.hovered_annotation = next;
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn toggle_reaction_on_note(&mut self, id: u64, emoji: &str, cx: &mut Context<Self>) {
+        let Some(note) = self.annotate.annotations.iter_mut().find(|n| n.id == id) else { return };
+        if let Some(pos) = note.reactions.iter().position(|r| r == emoji) {
+            note.reactions.remove(pos);
+        } else {
+            note.reactions.push(emoji.to_owned());
+        }
+        if note.body.is_empty() && note.reactions.is_empty() {
+            self.annotate.annotations.retain(|n| n.id != id);
+            if self.annotate.active_annotation == Some(id) { self.annotate.active_annotation = None; self.annotate.followup = None; }
+            if self.annotate.hovered_annotation == Some(id) { self.annotate.hovered_annotation = None; }
+        }
+        self.persist_annotations();
+        cx.notify();
+    }
+
     fn submit_annotation_followup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some((id, input, follow_up)) = self.annotate.followup.as_ref()
             .filter(|followup| self.annotate.active_annotation == Some(followup.annotation_id))

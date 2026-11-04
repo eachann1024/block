@@ -62,7 +62,7 @@ pub(super) struct ReactionPicker {
 pub(super) struct AnnotateState {
     pub loaded_path: Option<PathBuf>, pub annotations: Vec<Annotation>, pub composer: Option<AnnotateComposer>,
     pub followup: Option<AnnotationFollowup>, pub reactions: Option<ReactionPicker>,
-    pub active_annotation: Option<u64>, pub editor_top: Pixels, pub request_seq: u64,
+    pub active_annotation: Option<u64>, pub hovered_annotation: Option<u64>, pub editor_top: Pixels, pub request_seq: u64,
 }
 
 impl AnnotateState {
@@ -139,7 +139,8 @@ pub(super) fn paint_highlights(editor: &Editor, block: u64, layout: &TextLayout,
     for annotation in &editor.annotate.annotations {
         let Some((id, range, is_ai)) = resolve_annotation_span(&editor.doc, annotation) else { continue };
         if id != block || range.is_empty() || is_whole_table_span(&editor.doc, block, &range) { continue; }
-        let target = if editor.annotate.active_annotation == Some(annotation.id) { 1. } else { 0. };
+        let active = editor.annotate.active_annotation == Some(annotation.id) || editor.annotate.hovered_annotation == Some(annotation.id);
+        let target = if active { 1. } else { 0. };
         let level = crate::ui::fade::level(annotation.id, target, window);
         let normal = if is_ai && !dark { HL_AI_BG } else { base };
         let color = crate::ui::fade::mix(normal, active_bg, level);
@@ -166,7 +167,8 @@ pub(super) fn paint_table_highlights(editor: &Editor, block: u64, layout: &TextL
     for annotation in &editor.annotate.annotations {
         let Some((id, range, _)) = resolve_annotation_span(&editor.doc, annotation) else { continue };
         if id != block || !is_whole_table_span(&editor.doc, block, &range) { continue; }
-        let target = if editor.annotate.active_annotation == Some(annotation.id) { 1. } else { 0. };
+        let engaged = editor.annotate.active_annotation == Some(annotation.id) || editor.annotate.hovered_annotation == Some(annotation.id);
+        let target = if engaged { 1. } else { 0. };
         let level = crate::ui::fade::level(annotation.id, target, window);
         border_color = Some(crate::ui::fade::mix(base, active, level));
         if target > 0. { break; }
@@ -190,6 +192,7 @@ impl Editor {
             self.annotate.followup = None;
             self.annotate.reactions = None;
             self.annotate.active_annotation = None;
+            self.annotate.hovered_annotation = None;
         }
     }
 

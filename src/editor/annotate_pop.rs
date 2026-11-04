@@ -17,7 +17,9 @@ pub(super) fn badge(note: &Annotation, index: usize, active: bool, cx: &mut Cont
     let id = note.id;
     let status = if note.has_rewrite() { ANNOTATION_GENERATED } else { ANNOTATION_PENDING };
     annotation_note::badge(SharedString::from(format!("annotation-marker-{id}")), index, status, active)
-        .occlude().on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
+        .occlude()
+        .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx)))
+        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
             cx.stop_propagation();
             this.toggle_annotation_detail(id, window, cx);
         }))
