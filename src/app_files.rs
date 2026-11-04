@@ -89,7 +89,7 @@ impl Workspace {
         let name = display_name(&path, dir);
         let input = cx.new(|cx| InputState::new(window, cx).default_value(name));
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
-            InputEvent::Focus => window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx),
+            InputEvent::Focus => window.defer(cx, |window, cx| window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx)),
             InputEvent::PressEnter { .. } => this.commit_rename(window, cx),
             InputEvent::Blur if this.renaming.is_some() => {
                 this.renaming = None;
@@ -262,7 +262,7 @@ impl Workspace {
                         this.refresh(cx);
                         if folder_kind { this.start_rename(created, true, window, cx); }
                         else {
-                            this.open_file(created, cx);
+                            this.open_file_in_new_tab(created, cx);
                             this.flash(tr("笔记已创建", "Note created").into(), cx);
                         }
                     }

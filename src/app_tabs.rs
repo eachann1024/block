@@ -13,10 +13,10 @@ use super::{Workspace, file_ops::display_name, search::Dismiss};
 #[path = "app_tabs_menu.rs"]
 mod tab_menu;
 
-pub(super) use tab_menu::hover_tinted_icon;
+pub(super) use tab_menu::{clear_tab_menu, hover_tinted_icon, record_tab_open};
 use tab_menu::{
-    TAB_ANIM_MS, TAB_BASIS_W, TAB_FADE_W, TAB_MAX_W, TAB_MIN_W, clear_tab_menu, closing_ghost,
-    opening_seq, record_tab_close, record_tab_open, render_closing_ghost,
+    TAB_ANIM_MS, TAB_BASIS_W, TAB_FADE_W, TAB_MAX_W, TAB_MIN_W, closing_ghost,
+    opening_seq, record_tab_close, render_closing_ghost,
     render_inactive_tab_body, tab_fade,
 };
 
@@ -67,6 +67,8 @@ impl Workspace {
             .on_action(cx.listener(|this, _: &CloseTab, _, cx| this.close_active_tab(cx)))
             .on_action(cx.listener(|this, _: &NextTab, _, cx| this.step_tab(1, cx)))
             .on_action(cx.listener(|this, _: &PrevTab, _, cx| this.step_tab(-1, cx)))
+            .on_action(cx.listener(|this, _: &super::nav::NavigateBack, _, cx| this.navigate_back(cx)))
+            .on_action(cx.listener(|this, _: &super::nav::NavigateForward, _, cx| this.navigate_forward(cx)))
             .on_action(cx.listener(|this, _: &SelectTab1, _, cx| this.select_tab_index(0, false, cx)))
             .on_action(cx.listener(|this, _: &SelectTab2, _, cx| this.select_tab_index(1, false, cx)))
             .on_action(cx.listener(|this, _: &SelectTab3, _, cx| this.select_tab_index(2, false, cx)))
@@ -78,17 +80,7 @@ impl Workspace {
             .on_action(cx.listener(|this, _: &SelectTab9, _, cx| this.select_tab_index(8, true, cx)))
     }
     pub(crate) fn open_file(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        clear_tab_menu();
-        self.settings = None;
-        if !self.tabs.contains(&path) {
-            self.tabs.push(path.clone());
-            if self.tabs.len() > 1 { record_tab_open(path.clone()); }
-        }
-        self.selected = Some(path.clone());
-        self.tree.update(cx, |tree, cx| tree.select(Some(path.clone()), cx));
-        self.editor.update(cx, |editor, cx| editor.open(path, cx));
-        self.save_tabs_state(cx);
-        cx.notify();
+        self.open_file_with_mode(path, false, true, cx);
     }
     pub(crate) fn close_tab(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         clear_tab_menu();
@@ -136,6 +128,7 @@ impl Workspace {
             if !updated.contains(&next) { updated.push(next); }
         }
         self.tabs = updated;
+        self.nav.rebase(from, to);
         if let Some(rebased) = self.selected.as_ref().and_then(|sel| crate::files::ops::rebase(sel, from, to)) {
             self.selected = Some(rebased.clone());
             self.tree.update(cx, |tree, cx| tree.select(Some(rebased), cx));
@@ -145,6 +138,7 @@ impl Workspace {
     }
     pub(super) fn remove_tabs_under(&mut self, prefix: &Path, cx: &mut Context<Self>) -> Option<PathBuf> {
         clear_tab_menu();
+        self.nav.remove_under(prefix);
         let active_idx = self.selected.as_ref().and_then(|s| self.tabs.iter().position(|p| p == s));
         let active_removed = self.selected.as_ref().is_some_and(|s| s.starts_with(prefix))
             || self.editor.read(cx).current_path().is_some_and(|p| p.starts_with(prefix));
