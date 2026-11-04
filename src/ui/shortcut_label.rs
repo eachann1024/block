@@ -5,7 +5,7 @@
 
 use gpui::{
     Div, Font, FontFeatures, FontStyle, FontWeight, Hsla, Pixels, SharedString, TextRun, Window,
-    div, prelude::*, transparent_black,
+    div, prelude::*, px, transparent_black,
 };
 use crate::icons::{Icon, IconColors, icon};
 
@@ -57,6 +57,8 @@ pub fn key_char_icon(ch: char) -> Option<Icon> {
         '⇧' => Some(Icon::KeyShift),
         '⌃' => Some(Icon::KeyControl),
         '⌫' => Some(Icon::KeyBackspace),
+        '↑' => Some(Icon::ArrowUp),
+        '↓' => Some(Icon::ArrowDown),
         _ => None,
     }
 }
@@ -155,4 +157,47 @@ pub fn measure_width(text: &str, style: &ShortcutStyle, window: &Window) -> Pixe
         }
     }
     width
+}
+
+pub fn shortcut_hint(text: impl AsRef<str>, color: Hsla) -> Div {
+    let style = ShortcutStyle::ui(px(12.), px(16.), FontWeight::NORMAL, color);
+    div().ml_auto().pl(px(8.)).flex_none().flex().items_center().child(shortcut_label(text, style))
+}
+
+pub fn kbd(text: impl AsRef<str>) -> Div {
+    let theme = crate::theme::Theme::ocean();
+    let style = ShortcutStyle::ui(px(11.), px(16.), FontWeight::NORMAL, theme.text_secondary);
+    div()
+        .h(px(18.))
+        .px(px(5.))
+        .rounded(px(4.))
+        .bg(theme.shell)
+        .border_1()
+        .border_color(theme.btn_border)
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .child(shortcut_label(text, style))
+}
+
+pub fn keycap_chip(part: impl AsRef<str>, recording: bool) -> Div {
+    let theme = crate::theme::Theme::ocean();
+    let dark = crate::theme::is_dark();
+    let bg = if dark { 0x252a31 } else { 0xf4f4f2 };
+    let bd = if recording { theme.accent } else { theme.btn_border };
+    let fg = if recording { theme.accent } else { theme.text };
+    let style = ShortcutStyle::ui(px(12.), px(16.), FontWeight::MEDIUM, fg);
+    div()
+        .min_w(px(22.))
+        .h(px(22.))
+        .px(px(6.))
+        .rounded(px(5.))
+        .bg(gpui::rgb(bg))
+        .border_1()
+        .border_color(bd)
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(shortcut_label(part, style))
 }

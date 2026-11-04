@@ -95,20 +95,8 @@ pub fn segmented<V: 'static, T: Copy + 'static, const N: usize>(
     }
 }
 
-fn keycap_chip(part: SharedString) -> gpui::Div {
-    let theme = Theme::ocean();
-    let key_glyph = crate::ui::shortcut_label::key_icon(part.as_ref());
-    let is_symbol = key_glyph.is_some();
-    let cap_bg = if is_dark() { theme.shell } else { theme.paper };
-    let chip = div().h(px(22.)).min_w(px(22.)).px(if is_symbol { px(2.) } else { px(6.) }).rounded(px(5.))
-        .bg(cap_bg).border_1().border_color(theme.btn_border)
-        .flex().items_center().justify_center()
-        .text_color(theme.text);
-    if let Some(glyph) = key_glyph {
-        chip.child(crate::ui::shortcut_label::key_glyph_box(glyph, px(16.), theme.text))
-    } else {
-        chip.font(mono_font()).text_size(px(12.)).line_height(px(14.)).font_weight(FontWeight(500.)).child(part)
-    }
+pub fn keycap_chip(part: impl AsRef<str>, recording: bool) -> gpui::Div {
+    crate::ui::shortcut_label::keycap_chip(part, recording)
 }
 
 pub fn shortcut_recorder(
@@ -128,7 +116,7 @@ pub fn shortcut_recorder(
         let prompt: SharedString = crate::theme::tr("按下快捷键…", "Press shortcut…").into();
         tray.child(div().px(px(6.)).text_size(px(14.)).font_weight(FontWeight(500.)).text_color(theme.accent).child(prompt))
     } else {
-        tray.children(hotkey_parts(spec).into_iter().map(|p| keycap_chip(p.into())))
+        tray.children(hotkey_parts(spec).into_iter().map(|p| keycap_chip(p, recording)))
     }
 }
 
@@ -138,5 +126,5 @@ pub fn static_keycap(spec: &str) -> gpui::Div {
     div().h(px(32.)).px(px(5.)).flex().items_center().justify_center().gap(px(4.)).rounded(px(8.))
         .bg(tray_bg).border_1().border_color(theme.hairline)
         .cursor(CursorStyle::Arrow)
-        .children(hotkey_parts(spec).into_iter().map(|p| keycap_chip(p.into())))
+        .children(hotkey_parts(spec).into_iter().map(|p| keycap_chip(p, false)))
 }
