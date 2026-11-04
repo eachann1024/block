@@ -89,8 +89,8 @@ fn styles(source: &str, language: &str) -> StyledRanges {
         }
         init_languages();
         let mut highlighter = SyntaxHighlighter::new(language);
-        highlighter.update(None, &Rope::from_str(source));
-        let styles: StyledRanges = highlighter.styles(&(0..source.len()), &HighlightTheme::default_light()).into();
+        highlighter.update(None, &Rope::from_str(source), None);
+        let styles: StyledRanges = highlighter.styles(&(0..source.len()), &*HighlightTheme::default_light()).into();
         // Large opaque blocks should not occupy the cache indefinitely.
         if source.len() <= 256 * 1024 {
             if cache.len() == 64 { cache.pop_front(); }

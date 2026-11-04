@@ -1,14 +1,17 @@
 mod app;
+mod dropdown;
 mod editor;
 mod export;
 mod files;
 mod icons;
 mod mascot;
 mod quick;
+mod search;
 mod theme;
+pub mod ui;
 
 use gpui::{
-    App, AppContext, Application, Bounds, KeyBinding, Menu, MenuItem, TitlebarOptions,
+    App, AppContext, Bounds, KeyBinding, Menu, MenuItem, TitlebarOptions,
     WindowBounds, WindowOptions, actions, point, px, size,
 };
 
@@ -37,6 +40,7 @@ pub fn apply_app_menus(cx: &mut gpui::App) {
             MenuItem::action(theme::tr("速记小窗 ⌥N", "Quick Note ⌥N"), quick::ToggleQuickNote),
             MenuItem::action(theme::tr("导出图片", "Export Image"), ExportImage),
         ],
+        disabled: false,
     }]);
 }
 
@@ -44,12 +48,12 @@ fn main() {
     if let Ok(state) = files::load_state() {
         theme::apply_state(&state);
     }
-    Application::new().with_assets(Assets).run(|cx: &mut App| {
+    gpui_platform::application().with_assets(Assets).run(|cx: &mut App| {
         theme::init_fonts(&cx.text_system().all_font_names());
         gpui_component::init(cx);
         // The app is light-only; without this, inputs follow macOS dark mode (white text, black field).
         gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx);
-        cx.bind_keys([KeyBinding::new("secondary-q", Quit, None)]);
+        cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
         editor::bind_keys(cx);
         quick::init(cx);
         apply_app_menus(cx);

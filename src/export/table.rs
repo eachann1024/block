@@ -21,17 +21,18 @@ pub(super) struct Frame {
 }
 
 pub(super) fn validate(table: &Table) -> Result<(), ExportError> {
+    use crate::theme::tr;
     let rows = table.rows.len();
     if rows == 0 || table.columns == 0 {
-        return Err(ExportError::InvalidInput("表格必须包含行和列"));
+        return Err(ExportError::InvalidInput(tr("表格必须包含行和列", "Table must have rows and columns")));
     }
     if rows > 256 || table.columns > 32 {
-        return Err(ExportError::ResourceLimit("表格最多 256 行 / 32 列"));
+        return Err(ExportError::ResourceLimit(tr("表格最多 256 行 / 32 列", "Max 256 rows / 32 columns in table")));
     }
     if (!table.column_widths.is_empty() && table.column_widths.len() != table.columns)
         || table.alignments.len() > table.columns
     {
-        return Err(ExportError::InvalidInput("表格列信息与网格不一致"));
+        return Err(ExportError::InvalidInput(tr("表格列信息与网格不一致", "Table column metadata does not match grid")));
     }
     let mut occupied = vec![false; rows * table.columns];
     for (r, row) in table.rows.iter().enumerate() {
@@ -43,19 +44,19 @@ pub(super) fn validate(table: &Table) -> Result<(), ExportError> {
                 || cell.colspan > table.columns - cell.column
                 || cell.rowspan > rows - r
             {
-                return Err(ExportError::InvalidInput("表格合并范围超出网格"));
+                return Err(ExportError::InvalidInput(tr("表格合并范围超出网格", "Merged table cell exceeds grid bounds")));
             }
             for y in r..r + cell.rowspan {
                 for x in cell.column..cell.column + cell.colspan {
                     if std::mem::replace(&mut occupied[y * table.columns + x], true) {
-                        return Err(ExportError::InvalidInput("表格合并单元格重叠"));
+                        return Err(ExportError::InvalidInput(tr("表格合并单元格重叠", "Merged table cells overlap")));
                     }
                 }
             }
         }
     }
     if occupied.contains(&false) {
-        return Err(ExportError::InvalidInput("表格网格存在空缺"));
+        return Err(ExportError::InvalidInput(tr("表格网格存在空缺", "Table grid has missing cells")));
     }
     Ok(())
 }
@@ -73,7 +74,10 @@ fn width(value: &str, content_width: f32) -> Result<f32, ExportError> {
         .filter(|n| n.is_finite() && *n > 0.)
         .map(|n| n * factor)
         .filter(|n| n.is_finite())
-        .ok_or(ExportError::UnsupportedTable("正像素或百分比以外的宽度"))
+        .ok_or(ExportError::UnsupportedTable(crate::theme::tr(
+            "正像素或百分比以外的宽度",
+            "Table width must be positive pixels or percentage",
+        )))
 }
 
 fn columns(table: &Table, content_width: f32) -> Result<Vec<f32>, ExportError> {
@@ -103,7 +107,7 @@ fn columns(table: &Table, content_width: f32) -> Result<Vec<f32>, ExportError> {
         .collect();
     let total: f32 = widths.iter().sum();
     if !total.is_finite() {
-        return Err(ExportError::ResourceLimit("表格列宽溢出"));
+        return Err(ExportError::ResourceLimit(crate::theme::tr("表格列宽溢出", "Table column width overflow")));
     }
     let mut xs = vec![0.];
     for value in widths {
@@ -156,7 +160,10 @@ pub(super) fn append(
             cancel.check()?;
             let width = xs[cell.column + cell.colspan] - xs[cell.column];
             if width <= PAD * 2. + 1. {
-                return Err(ExportError::ResourceLimit("表格列过多，文字宽度不足"));
+                return Err(ExportError::ResourceLimit(crate::theme::tr(
+                    "表格列过多，文字宽度不足",
+                    "Too many table columns; insufficient text width",
+                )));
             }
             let mut attrs = layout::attributes(theme, Kind::Paragraph, &[], false);
             if cell.header || style::bold(&table.attrs) || style::bold(&cell.attrs) {

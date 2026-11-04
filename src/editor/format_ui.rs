@@ -1,22 +1,25 @@
 //! Link field and colour palette popovers for the selection toolbar.
 use gpui::{AnyElement, CursorStyle, Entity, MouseButton, div, prelude::*, px, rgb};
 use gpui_component::input::{Escape, Input, InputState};
-use super::toolbar::{ToolbarColors, menu_shadows};
+use crate::dropdown;
+use super::toolbar::ToolbarColors;
 use super::{format_cmds::{FormatPop, palette::PalettePopover}, view::{Cancel, Editor}};
 
 pub(super) fn popover(editor: Entity<Editor>, pop: &FormatPop) -> AnyElement {
-    let tc = ToolbarColors::current();
-    let (anchor, body, pad) = match pop {
-        FormatPop::Ai(session) => return super::ai::panel::render(editor, session),
-        FormatPop::Link { input, existing, anchor, .. } => (*anchor, link_field(editor, input, *existing), 4.),
-        FormatPop::Palette { anchor } => (*anchor, PalettePopover { editor }.into_any_element(), 6.),
-        FormatPop::Kinds { anchor, current } => (*anchor, super::toolbar::menu(editor, true, *current), 6.),
-        FormatPop::Lists { anchor, current } => (*anchor, super::toolbar::menu(editor, false, *current), 6.),
-    };
-    gpui::deferred(gpui::anchored().position(anchor).snap_to_window().child(
-        div().rounded(px(12.)).border_1().border_color(rgb(tc.border)).bg(rgb(tc.bg)).shadow(menu_shadows()).p(px(pad))
-            .text_size(px(12.)).text_color(rgb(tc.ink)).on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(body))).into_any_element()
+    match pop {
+        FormatPop::Ai(session) => super::ai::panel::render(editor, session),
+        FormatPop::Link { input, existing, anchor, .. } => {
+            dropdown::deferred_popover(
+                *anchor,
+                crate::ui::popover::card("format-link-card", None).child(link_field(editor, input, *existing)),
+                2,
+            )
+            .into_any_element()
+        }
+        FormatPop::Palette { anchor } => dropdown::deferred_popover(*anchor, PalettePopover { editor }, 2).into_any_element(),
+        FormatPop::Kinds { anchor, current } => dropdown::deferred_popover(*anchor, super::toolbar::menu(editor, true, *current), 2).into_any_element(),
+        FormatPop::Lists { anchor, current } => dropdown::deferred_popover(*anchor, super::toolbar::menu(editor, false, *current), 2).into_any_element(),
+    }
 }
 
 fn action_button(label: &'static str, id: &'static str, run: impl Fn(&mut Editor, &mut gpui::Window, &mut gpui::Context<Editor>) + 'static, editor: Entity<Editor>, accent: bool) -> impl IntoElement {

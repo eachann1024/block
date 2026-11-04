@@ -1,12 +1,12 @@
 //! Floating image toolbar (7 actions), `⋯` 4-item menu, and AltText / Size / Crop popovers.
 use gpui::{Context, CursorStyle, Entity, FontWeight, MouseButton, Window, deferred, div, prelude::*, px, rgb};
 use gpui_component::input::{Escape, Input, InputState};
-use crate::{icons::Icon, theme::{is_dark, tooltip, tr}};
+use crate::{dropdown::{self, RowSpec}, icons::Icon, theme::tr, ui::{floating_bar, popover}};
 use super::{
     image_edit::ImagePop,
     image_source::{Align, spec_of},
     image_view::sizes,
-    toolbar::{ToolbarColors, glyph, menu_shadows, pill, sep},
+    toolbar::{ToolbarColors, pill, sep},
     view::{Editor, selection::Position},
 };
 
@@ -14,15 +14,9 @@ fn tb_btn(
     editor: &Entity<Editor>, id: u64, slot: usize, g: Icon, tip: &'static str, on: bool, open: bool,
     run: impl Fn(&mut Editor, &mut Window, &mut Context<Editor>) + 'static,
 ) -> impl IntoElement {
-    let tc = ToolbarColors::current();
-    let ink = if on { tc.on_ink } else { tc.ink };
     let editor = editor.clone();
-    div().id(("img-tb", id as usize * 16 + slot)).size(px(32.)).flex_none().flex().items_center().justify_center().rounded(px(8.))
-        .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(rgb(tc.hover)))
-        .when(open && !on, |b| b.bg(rgb(tc.open_bg)))
-        .when(on, |b| b.bg(rgb(tc.on_bg)))
-        .child(glyph(g, 18., ink))
-        .tooltip(tooltip(tip))
+    floating_bar::icon_toggle_button(("img-tb", id as usize * 16 + slot), g, tip, on, open)
+        .size(px(32.))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             editor.update(cx, |this, cx| run(this, window, cx));
             cx.stop_propagation();
@@ -75,36 +69,32 @@ pub(super) fn image_toolbar(
 
     deferred(
         div().relative().flex().flex_col().items_center()
-            .child(bar)
-            .when_some(sub, |d, s| d.child(div().mt(px(8.)).child(s))),
+            .child(floating_bar::animate(bar, ("img-toolbar-enter", id as usize)))
+            .when_some(sub, |d, s| d.child(popover::animate(div().mt(px(8.)).child(s), ("img-pop-enter", id as usize)))),
     ).with_priority(3)
 }
 
 fn menu_card(id: (&'static str, usize), width: f32) -> gpui::Stateful<gpui::Div> {
-    let tc = ToolbarColors::current();
-    div().id(id).w(px(width)).p(px(6.)).rounded(px(14.)).border_1().border_color(rgb(tc.border))
-        .bg(rgb(tc.bg)).shadow(menu_shadows()).flex().flex_col().gap(px(2.))
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+    dropdown::shell(id).w(px(width))
 }
 
 fn more_menu(editor: &Entity<Editor>, id: u64) -> impl IntoElement {
-    let tc = ToolbarColors::current();
-    let dark = is_dark();
     let item = |slot: usize, g: Icon, label: &'static str, danger: bool,
         run: Box<dyn Fn(&mut Editor, &mut Window, &mut Context<Editor>)>| {
-        let fg = if danger { if dark { 0xe26d68 } else { 0xd94841 } } else { tc.ink };
-        let hover = if danger { if dark { 0x3a2727 } else { 0xfdf0ef } } else { tc.hover };
         let ed = editor.clone();
-        div().id(("img-more-item", id as usize * 8 + slot)).h(px(36.)).px(px(10.)).rounded(px(8.))
-            .flex().items_center().gap(px(10.)).cursor(CursorStyle::PointingHand)
-            .text_size(px(14.)).font_weight(FontWeight(450.)).text_color(rgb(fg))
-            .hover(move |s| s.bg(rgb(hover)))
-            .child(glyph(g, 16., fg))
-            .child(div().flex_1().child(label))
-            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                ed.update(cx, |this, cx| run(this, window, cx));
-                cx.stop_propagation();
-            })
+        dropdown::row_with(
+            ("img-more-item", id as usize * 8 + slot),
+            RowSpec {
+                icon: Some(g),
+                label: label.into(),
+                danger,
+                ..Default::default()
+            },
+        )
+        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+            ed.update(cx, |this, cx| run(this, window, cx));
+            cx.stop_propagation();
+        })
     };
     menu_card(("img-more-menu", id as usize), 184.)
         .child(item(0, Icon::Copy, tr("复制图片", "Copy image"), false,
@@ -113,7 +103,7 @@ fn more_menu(editor: &Entity<Editor>, id: u64) -> impl IntoElement {
             Box::new(move |this, w, cx| this.open_image_alt(id, w, cx))))
         .child(item(2, Icon::Sliders, tr("设置图片尺寸", "Set image size"), false,
             Box::new(move |this, _, cx| { this.image_menu = Some((id, ImagePop::Size)); cx.notify(); })))
-        .child(div().h(px(1.)).my(px(4.)).mx(px(8.)).bg(rgb(tc.sep)))
+        .child(dropdown::separator())
         .child(item(3, Icon::Trash, tr("删除图片", "Delete image"), true,
             Box::new(move |this, w, cx| this.delete_image(id, w, cx))))
 }
@@ -123,7 +113,7 @@ fn alt_popover(editor: &Entity<Editor>, id: u64, input: &Entity<InputState>) -> 
     let (e_save, e_cancel, e_esc) = (editor.clone(), editor.clone(), editor.clone());
     menu_card(("img-alt-pop", id as usize), 320.).p(px(8.))
         .on_action(move |_: &Escape, w, cx| {
-            e_esc.update(cx, |this, cx| { this.image_menu = None; w.focus(&this.focus); cx.notify(); });
+            e_esc.update(cx, |this, cx| { this.image_menu = None; w.focus(&this.focus, cx); cx.notify(); });
             cx.stop_propagation();
         })
         .child(div().flex().items_center().gap(px(6.))
@@ -143,7 +133,7 @@ fn alt_popover(editor: &Entity<Editor>, id: u64, input: &Entity<InputState>) -> 
                 .flex().items_center().cursor(CursorStyle::PointingHand)
                 .child(tr("取消", "Cancel"))
                 .on_mouse_down(MouseButton::Left, move |_, w, cx| {
-                    e_cancel.update(cx, |this, cx| { this.image_menu = None; w.focus(&this.focus); cx.notify(); });
+                    e_cancel.update(cx, |this, cx| { this.image_menu = None; w.focus(&this.focus, cx); cx.notify(); });
                     cx.stop_propagation();
                 })))
 }

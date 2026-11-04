@@ -6,7 +6,6 @@ use crate::{
         format_cmds::FormatPop,
         model::InlineTag,
         text_runs::{css, named_color_hex},
-        toolbar::{ToolbarColors, glyph},
         view::Editor,
     },
     icons::Icon,
@@ -207,11 +206,12 @@ impl RenderOnce for PalettePopover {
 pub(in crate::editor) fn render_palette_panel(editor: Entity<Editor>, cx: &gpui::App) -> AnyElement {
     let (sel_text, sel_bg) = editor.read(cx).selection_colors();
     let dark = is_dark();
-    let tc = ToolbarColors::current();
+    let p = crate::dropdown::palette();
     let swatch_border = if dark { 0xffffff24 } else { 0x1f1e1d1f };
 
-    let mut col = div().id("palette-panel").w(px(188.)).flex().flex_col()
-        .child(div().pt(px(4.)).pb(px(4.)).px(px(10.)).text_size(px(12.)).line_height(px(16.)).text_color(rgb(tc.muted)).child(tr("文本", "Text")));
+    let mut col = crate::dropdown::shell("palette-panel")
+        .w(px(196.))
+        .child(crate::dropdown::group_label(tr("文本", "Text")));
 
     for (idx, spec) in TEXT_SWATCHES.iter().enumerate() {
         let name = spec.name;
@@ -220,12 +220,14 @@ pub(in crate::editor) fn render_palette_panel(editor: Entity<Editor>, cx: &gpui:
         let editor = editor.clone();
         col = col.child(
             div().id(("fg-sw", idx))
-                .h(px(32.)).px(px(10.)).flex().items_center().gap(px(10.)).rounded(px(8.))
-                .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(rgb(tc.hover)))
-                .text_size(px(14.)).text_color(rgb(tc.ink))
+                .h(px(28.)).px(px(10.)).flex().items_center().gap(px(8.)).rounded(px(8.))
+                .cursor(CursorStyle::PointingHand)
+                .when(selected, move |s| s.bg(p.checked_bg))
+                .hover(move |s| s.bg(p.hover_bg))
+                .text_size(px(14.)).line_height(px(20.)).text_color(p.text)
                 .child(div().size(px(16.)).rounded(px(4.)).flex_none().bg(rgb(swatch_hex)).border_1().border_color(rgba(swatch_border)))
                 .child(div().flex_1().child(tr(spec.zh, spec.en)))
-                .when(selected, |r| r.child(glyph(Icon::Check, 16., tc.ink)))
+                .when(selected, move |r| r.child(div().ml_auto().pl(px(12.)).flex_none().flex().items_center().child(crate::dropdown::line_icon(Icon::Check, 16., p.text))))
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     editor.update(cx, |this, cx| this.apply_text_color(name, window, cx));
                     cx.stop_propagation();
@@ -234,8 +236,8 @@ pub(in crate::editor) fn render_palette_panel(editor: Entity<Editor>, cx: &gpui:
     }
 
     col = col
-        .child(div().h(px(1.)).my(px(5.)).mx(px(-6.)).bg(rgb(tc.border)))
-        .child(div().pt(px(4.)).pb(px(4.)).px(px(10.)).text_size(px(12.)).line_height(px(16.)).text_color(rgb(tc.muted)).child(tr("高亮", "Highlight")));
+        .child(crate::dropdown::separator())
+        .child(crate::dropdown::group_label(tr("高亮", "Highlight")));
 
     for (idx, spec) in HIGHLIGHT_SWATCHES.iter().enumerate() {
         let name = spec.name;
@@ -251,12 +253,14 @@ pub(in crate::editor) fn render_palette_panel(editor: Entity<Editor>, cx: &gpui:
         };
         col = col.child(
             div().id(("bg-sw", idx))
-                .h(px(32.)).px(px(10.)).flex().items_center().gap(px(10.)).rounded(px(8.))
-                .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(rgb(tc.hover)))
-                .text_size(px(14.)).text_color(rgb(tc.ink))
+                .h(px(28.)).px(px(10.)).flex().items_center().gap(px(8.)).rounded(px(8.))
+                .cursor(CursorStyle::PointingHand)
+                .when(selected, move |s| s.bg(p.checked_bg))
+                .hover(move |s| s.bg(p.hover_bg))
+                .text_size(px(14.)).line_height(px(20.)).text_color(p.text)
                 .child(swatch)
                 .child(div().flex_1().child(tr(spec.zh, spec.en)))
-                .when(selected, |r| r.child(glyph(Icon::Check, 16., tc.ink)))
+                .when(selected, move |r| r.child(div().ml_auto().pl(px(12.)).flex_none().flex().items_center().child(crate::dropdown::line_icon(Icon::Check, 16., p.text))))
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     editor.update(cx, |this, cx| this.apply_bg_color(name, window, cx));
                     cx.stop_propagation();

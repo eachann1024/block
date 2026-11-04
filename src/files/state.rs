@@ -81,7 +81,7 @@ static WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 const MAX_NOTEBOOKS: usize = 12;
 
 fn state_path() -> io::Result<PathBuf> {
-    let home = std::env::var_os("HOME").ok_or_else(|| io::Error::other("HOME 未设置"))?;
+    let home = std::env::var_os("HOME").ok_or_else(|| io::Error::other(crate::theme::tr("HOME 未设置", "HOME is not set")))?;
     Ok(PathBuf::from(home).join("Library/Application Support/thinkly-fast/state.json"))
 }
 
@@ -128,7 +128,7 @@ pub fn load_state_at(path: &Path) -> io::Result<State> {
 }
 
 fn write_state_at(path: &Path, state: &State) -> io::Result<()> {
-    let parent = path.parent().ok_or_else(|| io::Error::other("无效的偏好路径"))?;
+    let parent = path.parent().ok_or_else(|| io::Error::other(crate::theme::tr("无效的偏好路径", "Invalid preferences path")))?;
     fs::create_dir_all(parent)?;
     let bytes = serde_json::to_vec_pretty(state)?;
     let (temp, mut file) = (0..64).find_map(|_| {
@@ -138,7 +138,7 @@ fn write_state_at(path: &Path, state: &State) -> io::Result<()> {
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => None,
             Err(error) => Some(Err(error)),
         }
-    }).unwrap_or_else(|| Err(io::Error::other("无法创建临时偏好文件")))?;
+    }).unwrap_or_else(|| Err(io::Error::other(crate::theme::tr("无法创建临时偏好文件", "Failed to create temporary preferences file"))))?;
     let result = (|| {
         file.write_all(&bytes)?;
         file.sync_all()?;

@@ -55,12 +55,15 @@ pub fn scan(dir: &Path) -> io::Result<Scan> {
 fn warn(result: &mut Scan, path: &Path, error: impl std::fmt::Display) {
     result.warning_count += 1;
     if result.warnings.len() < 8 {
-        result.warnings.push(format!("{}：{error}", path.display()));
+        let sep = crate::theme::tr("：", ": ");
+        result.warnings.push(format!("{}{sep}{error}", path.display()));
     }
 }
 
 fn read_level(dir: &Path, result: &mut Scan, depth: usize) -> io::Result<Vec<Node>> {
-    if depth > 256 { return Err(io::Error::other("目录层级超过 256 层")); }
+    if depth > 256 {
+        return Err(io::Error::other(crate::theme::tr("目录层级超过 256 层", "Directory depth exceeds 256 levels")));
+    }
     let entries = std::fs::read_dir(dir)?;
     let mut nodes = Vec::new();
     for entry in entries {

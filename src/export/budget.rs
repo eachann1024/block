@@ -51,17 +51,18 @@ impl fmt::Display for ExportError {
 impl std::error::Error for ExportError {}
 
 pub fn preflight(count: usize, text_bytes: usize, spans: usize) -> Result<(), ExportError> {
+    use crate::theme::tr;
     if count == 0 {
         return Err(ExportError::Empty);
     }
     if count > MAX_BLOCKS {
-        return Err(ExportError::ResourceLimit("最多 256 个块"));
+        return Err(ExportError::ResourceLimit(tr("最多 256 个块", "Max 256 blocks")));
     }
     if text_bytes > MAX_TEXT_BYTES {
-        return Err(ExportError::ResourceLimit("最多 128 KiB 文本"));
+        return Err(ExportError::ResourceLimit(tr("最多 128 KiB 文本", "Max 128 KiB text")));
     }
     if spans > MAX_SPANS {
-        return Err(ExportError::ResourceLimit("最多 8192 个格式范围"));
+        return Err(ExportError::ResourceLimit(tr("最多 8192 个格式范围", "Max 8192 format spans")));
     }
     Ok(())
 }
@@ -88,7 +89,10 @@ pub(crate) fn validate_snapshot<'a>(
             || !block.text.is_char_boundary(range.start)
             || !block.text.is_char_boundary(range.end)
         {
-            return Err(ExportError::InvalidInput("选区必须位于 UTF-8 字符边界"));
+            return Err(ExportError::InvalidInput(crate::theme::tr(
+                "选区必须位于 UTF-8 字符边界",
+                "Selection must align to UTF-8 character boundaries",
+            )));
         }
         tally.block(block, Some(range))?;
     }
@@ -158,9 +162,10 @@ impl Tally {
                 || !block.text.is_char_boundary(span.end)
                 || span.marks.len() > 4
             {
-                return Err(ExportError::InvalidInput(
+                return Err(ExportError::InvalidInput(crate::theme::tr(
                     "格式范围必须有序、不重叠且位于 UTF-8 边界",
-                ));
+                    "Format spans must be ordered, non-overlapping, and on UTF-8 boundaries",
+                )));
             }
             end = span.end;
             if span.start < range.end && span.end > range.start {
@@ -173,7 +178,10 @@ impl Tally {
                 || !block.text.is_char_boundary(tag.start)
                 || !block.text.is_char_boundary(tag.end)
             {
-                return Err(ExportError::InvalidInput("HTML 范围必须位于 UTF-8 边界"));
+                return Err(ExportError::InvalidInput(crate::theme::tr(
+                    "HTML 范围必须位于 UTF-8 边界",
+                    "HTML spans must align to UTF-8 boundaries",
+                )));
             }
             if tag.start < range.end && tag.end > range.start {
                 self.add(tag.name.len(), 1)?;
@@ -191,10 +199,16 @@ impl Tally {
                 for cell in &row.cells {
                     self.cells += 1;
                     if self.cells > 2048 {
-                        return Err(ExportError::ResourceLimit("最多 2048 个表格单元格"));
+                        return Err(ExportError::ResourceLimit(crate::theme::tr(
+                            "最多 2048 个表格单元格",
+                            "Max 2048 table cells",
+                        )));
                     }
                     if cell.content.meta.table.is_some() || cell.original.meta.table.is_some() {
-                        return Err(ExportError::UnsupportedTable("嵌套表格"));
+                        return Err(ExportError::UnsupportedTable(crate::theme::tr(
+                            "嵌套表格",
+                            "Nested tables",
+                        )));
                     }
                     self.attrs(&cell.attrs)?;
                     self.block(&cell.content, None)?;
@@ -209,7 +223,10 @@ impl Tally {
                 .windows(6)
                 .any(|part| part.eq_ignore_ascii_case(b"<table"))
         {
-            return Err(ExportError::UnsupportedTable("不支持的非结构化 HTML 表格"));
+            return Err(ExportError::UnsupportedTable(crate::theme::tr(
+                "不支持的非结构化 HTML 表格",
+                "Unsupported unstructured HTML table",
+            )));
         }
         Ok(())
     }
@@ -224,9 +241,10 @@ pub(super) fn canvas(width: f32, height: f32) -> Result<(u32, u32), ExportError>
             .checked_mul(height.ceil() as u64)
             .is_none_or(|pixels| pixels > MAX_PIXELS)
     {
-        return Err(ExportError::ResourceLimit(
+        return Err(ExportError::ResourceLimit(crate::theme::tr(
             "最多 1600 万像素 / 64 MiB 像素缓冲",
-        ));
+            "Max 16 MP / 64 MiB pixel buffer",
+        )));
     }
     Ok((width.ceil() as u32, height.ceil() as u32))
 }
