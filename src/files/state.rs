@@ -80,9 +80,20 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 static WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 const MAX_NOTEBOOKS: usize = 12;
 
+/// Per-user app data folder: `~/Library/Application Support` on macOS, `%APPDATA%` on Windows,
+/// `$XDG_DATA_HOME` (or `~/.local/share`) on Linux.
+pub fn app_data_dir(app_folder: &str) -> PathBuf {
+    #[cfg(not(target_family = "wasm"))]
+    let base = dirs::data_dir()
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
+        .unwrap_or_else(std::env::temp_dir);
+    #[cfg(target_family = "wasm")]
+    let base = PathBuf::from("/");
+    base.join(app_folder)
+}
+
 fn state_path() -> io::Result<PathBuf> {
-    let home = std::env::var_os("HOME").ok_or_else(|| io::Error::other(crate::theme::tr("HOME 未设置", "HOME is not set")))?;
-    Ok(PathBuf::from(home).join("Library/Application Support/thinkly-fast/state.json"))
+    Ok(app_data_dir("thinkly-fast").join("state.json"))
 }
 
 pub fn load_state() -> io::Result<State> { load_state_at(&state_path()?) }

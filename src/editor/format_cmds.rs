@@ -17,6 +17,8 @@ pub(super) enum FormatPop {
     Kinds { anchor: Point<Pixels>, current: Option<super::model::Kind> },
     Lists { anchor: Point<Pixels>, current: Option<super::model::Kind> },
     Ai(Box<crate::editor::ai::session::AiSession>),
+    /// Right-click menu over a non-empty selection; keeps the selection alive.
+    SelectionMenu { anchor: Point<Pixels> },
 }
 
 /// Bare domains get `https://`; anything with a scheme, path or fragment is kept.
@@ -136,6 +138,33 @@ impl Editor {
             return;
         }
         cx.propagate();
+    }
+    /// Copies the whole note as Markdown (the page menu's 「复制 Markdown」).
+    pub(crate) fn copy_markdown(&mut self, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(super::markdown::serialize(&self.doc)));
+        self.status = crate::theme::tr("已复制 Markdown", "Copied Markdown").into();
+        cx.notify();
+    }
+    /// Opens the 「生成图片」 view for the selection, or the whole note when nothing is selected.
+    #[cfg(not(target_family = "wasm"))]
+    pub(crate) fn export_image(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.format = None;
+        if self.selection_ranges().is_empty() { super::export_document(self, window, cx) } else { super::export_selected(self, window, cx) }
+    }
+    #[cfg(target_family = "wasm")]
+    pub(crate) fn export_image(&mut self, _: &mut Window, _: &mut Context<Self>) { self.format = None; }
+    /// Right button: over a selection it opens the context menu, otherwise it moves the caret
+    /// (and opens the table menu inside a table cell).
+    pub(super) fn right_click(&mut self, event: &gpui::MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.selection_ranges().is_empty() {
+            self.table_menu = None; self.block_menu = None;
+            self.format = Some(FormatPop::SelectionMenu { anchor: event.position });
+            cx.notify();
+            return;
+        }
+        self.pointer_down(&gpui::MouseDownEvent { button: gpui::MouseButton::Left, click_count: 1, ..event.clone() }, window, cx);
+        self.selecting = false;
+        if let Some((id, r, c)) = self.cell_of_caret() { self.open_table_menu(id, super::table_actions::TableSel::Cell(r, c), event.position, cx); }
     }
     pub(super) fn close_format(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(FormatPop::Ai(s)) = self.format.as_ref() { s.cancel.store(true, std::sync::atomic::Ordering::Relaxed); }

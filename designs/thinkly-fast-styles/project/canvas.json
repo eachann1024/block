@@ -7,7 +7,7 @@
   "title": "Thinkly Fast 视觉系统",
   "launch": {
     "view": "canvas",
-    "page": "motion"
+    "page": "workspace"
   },
   "pages": [
     {
@@ -70,6 +70,36 @@
       "w": 480,
       "h": 620,
       "title": "速记小窗 ⌥N"
+    },
+    "Tabs-V1-InPlace.dc.html": {
+      "page": "workspace",
+      "x": 0,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "方案 A · 原地切换与历史前后退（推荐：单击替换当前标签，⌘+点击或点 + 才新开）"
+    },
+    "Tabs-V2-Preview.dc.html": {
+      "page": "workspace",
+      "x": 1520,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "方案 B · 单一预览槽（单击复用斜体预览标签，双击或编辑自动转正）"
+    },
+    "Tabs-V3-Pinned.dc.html": {
+      "page": "workspace",
+      "x": 3040,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "方案 C · 常驻钉选胶囊 + 单篇阅读流（平时无标签堆积，按需钉选常驻）"
     },
     "F-Toolbar.dc.html": {
       "page": "editor",
@@ -165,9 +195,18 @@
       "h": 800,
       "title": "快捷键与快捷输入速查"
     },
-    "A-Export.dc.html": {
+    "E-Trigger-2-Menu.dc.html": {
       "page": "export",
       "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "生成图片 · 触发入口（顶栏更多菜单与右键上下文）"
+    },
+    "A-Export.dc.html": {
+      "page": "export",
+      "x": 1520,
       "y": 0,
       "w": 1440,
       "h": 900,
@@ -279,6 +318,9 @@
     "Main.dc.html",
     "F-Files.dc.html",
     "F-QuickNote.dc.html",
+    "Tabs-V1-InPlace.dc.html",
+    "Tabs-V2-Preview.dc.html",
+    "Tabs-V3-Pinned.dc.html",
     "F-Toolbar.dc.html",
     "F-Annotate.dc.html",
     "F-Image-Toolbar.dc.html",
@@ -289,6 +331,7 @@
     "F-Search.dc.html",
     "S-Settings-3.dc.html",
     "F-Shortcuts.dc.html",
+    "E-Trigger-2-Menu.dc.html",
     "A-Export.dc.html",
     "X-L1-Mono.dc.html",
     "X-L2-Journal.dc.html",

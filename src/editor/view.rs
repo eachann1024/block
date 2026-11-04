@@ -28,7 +28,7 @@ actions!(editor, [Backspace, Delete, Left, Right, SelectLeft, SelectRight, Selec
     DocStart, DocEnd, SelectDocStart, SelectDocEnd, Find, ImageGrow, ImageShrink,
     LineStart, LineEnd, SelectLineStart, SelectLineEnd, LogicalLineStart, LogicalLineEnd,
     WordLeft, WordRight, SelectWordLeft, SelectWordRight,
-    DeleteWordLeft, DeleteWordRight, DeleteLineLeft, DeleteLineRight]);
+    DeleteWordLeft, DeleteWordRight, DeleteLineLeft, DeleteLineRight, ExportImage, CopyMarkdown, Annotate]);
 pub(super) enum EditorAction {
     Backspace, Delete, Left, Right, SelectLeft, SelectRight, SelectAll, Up, Down,
     SelectUp, SelectDown, Enter, Copy, Cut, Paste, Bold, Italic, Strike, Code, Undo, Redo, Cancel, Save,
@@ -277,11 +277,10 @@ impl Render for Editor {
                 .on_action(cx.listener(|this, _: &ImageGrow, _, cx| this.step_selected_image(10, cx)))
                 .on_action(cx.listener(|this, _: &ImageShrink, _, cx| this.step_selected_image(-10, cx)))
                 .on_action(cx.listener(|this, _: &ExitBlock, w, cx| this.exit_block(w, cx)))
-                .on_mouse_down(MouseButton::Right, cx.listener(|this, event: &gpui::MouseDownEvent, window, cx| {
-                    this.pointer_down(&gpui::MouseDownEvent { button: MouseButton::Left, click_count: 1, ..event.clone() }, window, cx);
-                    this.selecting = false;
-                    if let Some((id, r, c)) = this.cell_of_caret() { this.open_table_menu(id, super::table_actions::TableSel::Cell(r, c), event.position, cx); }
-                }))
+                .on_action(cx.listener(|this, _: &ExportImage, w, cx| this.export_image(w, cx)))
+                .on_action(cx.listener(|this, _: &CopyMarkdown, _, cx| this.copy_markdown(cx)))
+                .on_action(cx.listener(|this, _: &Annotate, w, cx| this.start_annotation(w, cx)))
+                .on_mouse_down(MouseButton::Right, cx.listener(|this, event: &gpui::MouseDownEvent, window, cx| this.right_click(event, window, cx)))
                 .when_some(floating, |root, anchor| root.child(gpui::deferred(
                     super::chrome::selection_toolbar(cx.entity(), self.caret.head.block, anchor))))
                 .when_some(self.format.clone(), |root, pop| root.child(super::format_ui::popover(cx.entity(), &pop)))
