@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>浅色 · AI 标注模式</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#2f6fe4}a:hover{color:#1f57c0}
+button,input,textarea{font-family:inherit}
+.mark{background:#fbeed5;border-radius:2px}
+.card{background:#ffffff;border:1px solid #ececea;border-radius:16px;box-shadow:0 6px 20px rgba(31,30,29,.07),0 1px 2px rgba(31,30,29,.05);box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;height:22px;padding:0 6px;border-radius:6px;background:#e7effd;color:#2f6fe4;font-weight:500;font-size:14px}
+.av{width:24px;height:24px;border-radius:12px;background:#2f9e6b;color:#ffffff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex:none}
+.cap{font-size:12px;line-height:16px;color:#5e5d59;margin:0}
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#5e5d59}
+.dot{width:10px;height:10px;border-radius:3px;background:#fbeed5;border:1px solid #ecd9b4}
+</style>
+</helmet>
+<div style="width:100%;height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:#f7f7f5;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#1f1e1d;font-size:14px;line-height:20px;overflow:hidden">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;padding:0 16px;gap:12px;border-bottom:1px solid #ececea">
+<div aria-hidden="true" style="display:flex;gap:8px;width:52px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<div style="flex:1;text-align:center;font-size:13px;color:#5e5d59">学习计划</div>
+<div style="display:flex;gap:16px;flex:none"><span class="tag"><span class="dot"></span>选中色 / 已批注</span><span class="tag"><span class="dot" style="background:#fdf3c4;border-color:#efd77a"></span>AI 改动内容</span></div>
+</header>
+
+<main style="flex:1;min-height:0;background:#ffffff;overflow:auto;display:flex;justify-content:center;gap:40px;padding:40px 48px;box-sizing:border-box">
+
+<article style="width:640px;flex:none;font-size:16px;line-height:28px">
+<h1 style="margin:0 0 16px;font-size:30px;line-height:38px;font-weight:600">学习计划</h1>
+<h2 style="margin:0 0 8px;font-size:22px;line-height:30px;font-weight:600"><span style="background:#fdf3c4;border-radius:2px">总路线</span></h2>
+<p style="margin:0 0 12px">先用两周把基础语法过一遍，<span class="mark">每天固定一小时，周末做一次小结</span>，避免越学越散。</p>
+<p style="margin:0 0 12px">第三周开始做小项目：<span class="mark">一个命令行记账工具</span>，覆盖文件读写与错误处理。</p>
+<h2 style="margin:20px 0 8px;font-size:22px;line-height:30px;font-weight:600">资料</h2>
+<ul style="margin:0 0 12px;padding-left:22px"><li>官方教程</li><li>练习题合集</li></ul>
+<p style="margin:0;color:#5e5d59"><span class="mark">第四周复盘</span>，决定下一阶段方向。</p>
+</article>
+
+<aside style="width:340px;flex:none;position:relative">
+<div style="position:absolute;top:96px;left:0;right:0;display:flex;flex-direction:column;gap:12px">
+<div class="card" style="padding:12px 14px">
+<div style="display:flex;align-items:center;gap:8px"><span class="av">D</span><b style="font-weight:600">dgsd</b><span style="color:#85847e;font-size:12px">12:25</span></div>
+<p style="margin:6px 0 0 32px">可以</p>
+</div>
+<div class="card" style="padding:12px 14px">
+<div style="display:flex;align-items:center;gap:8px"><span class="av">D</span><b style="font-weight:600">dgsd</b><span style="color:#85847e;font-size:12px">12:25</span></div>
+<p style="margin:6px 0 0 32px">没问题</p>
+</div>
+</div>
+
+<div class="card" style="position:absolute;top:392px;left:0;right:0;padding:12px 14px 10px">
+<label for="anno" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">批注内容</label>
+<div style="display:flex;align-items:center;gap:2px;min-height:28px"><span class="chip">@Claude</span><span id="anno" style="display:inline-block;width:1.5px;height:18px;background:#1f1e1d;margin-left:3px"></span></div>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
+<label style="display:inline-flex;align-items:center;gap:8px;font-size:13px;color:#37352f;cursor:pointer"><input type="checkbox" checked="checked" style="width:16px;height:16px;margin:0;accent-color:#2f6fe4">Send to Claude</label>
+<button aria-label="发送批注" style="width:28px;height:28px;border-radius:14px;border:0;background:#e6e6e3;color:#ffffff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg></button>
+</div>
+</div>
+
+<div style="position:absolute;top:560px;left:0;right:0;display:flex;flex-direction:column;gap:6px">
+<p class="cap">选中文字 → 工具栏「添加批注」→ 选区变浅黄，右侧弹出批注卡，默认带 @Claude 与勾选的 Send to Claude</p>
+<p class="cap">输入为空时发送键为灰；有内容变蓝（#2f6fe4）。↵ 发送，⇧↵ 换行，Esc 取消并撤掉高亮</p>
+<p class="cap">取消勾选 = 只留评论；勾选 = 评论同时交给 Claude，Claude 修改的段落以浅黄底标出「改动内容」</p>
+<p class="cap">评论卡与被批注文本同高对齐，点击卡片高亮对应文本；不再有「将选区加入对话」入口</p>
+</div>
+</aside>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
