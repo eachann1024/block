@@ -118,6 +118,8 @@ icons! {
     TbPlus => "tb-plus" [Line],
     NoteCheck => "note-check" [Line],
     HelpCircle => "help-circle" [Line],
+    ChevronUp => "chevron-up" [Line],
+    FolderReveal => "folder-reveal" [Line],
 }
 
 /// The three tints of one icon.
