@@ -4,6 +4,7 @@ use gpui::{
     prelude::*, px,
 };
 
+use super::format::{ExportFormat, render_markdown};
 use super::layout::SCALE;
 use super::view::ExportView;
 use super::view_widgets::{fmt_int, png_size};
@@ -27,39 +28,95 @@ impl ExportView {
             .map(|(w, _)| (room / (w / SCALE)).clamp(MIN_SCALE, 1.))
             .unwrap_or_else(|| (room / 816.).clamp(MIN_SCALE, 1.));
         let scale = self.zoom.unwrap_or(fit_scale);
-        let body: AnyElement = match (&self.png, &self.error) {
-            (Some(png), _) => {
-                let picture = match dims {
-                    Some((w, h)) => {
-                        img(png.clone()).w(px(w / SCALE * scale)).h(px(h / SCALE * scale))
-                    }
-                    None => img(png.clone()).w_full(),
-                };
-                div()
-                    .flex_none()
-                    .shadow_lg()
-                    .when(self.rendering, |d| d.opacity(0.55))
-                    .child(picture)
-                    .into_any_element()
+        let body: AnyElement = if self.format == ExportFormat::Markdown {
+            match self.active_blocks() {
+                Ok(blocks) => {
+                    let md = render_markdown(&blocks, &self.render_options());
+                    let pal = self.style.palette();
+                    let bg = c(pal.inner_canvas.0 & 0xff_ff_ff);
+                    let fg = c(pal.text.0 & 0xff_ff_ff);
+                    let border = c(pal.code_border.0 & 0xff_ff_ff);
+                    div()
+                        .w(px((816. * scale).round()))
+                        .p(px((48. * scale).round()))
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_color(border)
+                        .bg(bg)
+                        .text_color(fg)
+                        .shadow_lg()
+                        .font_family("Menlo")
+                        .text_size(px((13. * scale).clamp(11., 18.)))
+                        .line_height(px((22. * scale).clamp(18., 30.)))
+                        .child(md)
+                        .into_any_element()
+                }
+                Err(msg) => div()
+                    .w_full()
+                    .max_w(px(480.))
+                    .text_size(px(13.))
+                    .text_color(c(DANGER))
+                    .child(msg)
+                    .into_any_element(),
             }
-            (None, Some(msg)) => div()
-                .w_full()
-                .max_w(px(480.))
-                .text_size(px(13.))
-                .text_color(c(DANGER))
-                .child(msg.clone())
-                .into_any_element(),
-            (None, None) => div()
-                .text_size(px(13.))
-                .text_color(theme.text_secondary)
-                .child(tr("正在生成…", "Rendering…"))
-                .into_any_element(),
+        } else {
+            match (&self.png, &self.error) {
+                (Some(png), _) => {
+                    let picture = match dims {
+                        Some((w, h)) => {
+                            img(png.clone()).w(px(w / SCALE * scale)).h(px(h / SCALE * scale))
+                        }
+                        None => img(png.clone()).w_full(),
+                    };
+                    div()
+                        .flex_none()
+                        .shadow_lg()
+                        .when(self.rendering, |d| d.opacity(0.55))
+                        .child(picture)
+                        .into_any_element()
+                }
+                (None, Some(msg)) => div()
+                    .w_full()
+                    .max_w(px(480.))
+                    .text_size(px(13.))
+                    .text_color(c(DANGER))
+                    .child(msg.clone())
+                    .into_any_element(),
+                (None, None) => div()
+                    .text_size(px(13.))
+                    .text_color(theme.text_secondary)
+                    .child(tr("正在生成…", "Rendering…"))
+                    .into_any_element(),
+            }
         };
-        let dim_label = match dims {
-            Some((pw, ph)) => {
-                format!("{} × {} px · {}", fmt_int(pw as u32), fmt_int(ph as u32), tr("2× 高清", "2× HD"))
+        let dim_label = match self.format {
+            ExportFormat::Png => match dims {
+                Some((pw, ph)) => format!(
+                    "PNG · {} × {} px · {}",
+                    fmt_int(pw as u32),
+                    fmt_int(ph as u32),
+                    tr("2× 高清", "2× HD")
+                ),
+                None => tr("PNG · 816 px 纸宽 · 2× 高清", "PNG · 816 px page · 2× HD").to_string(),
+            },
+            ExportFormat::Pdf => match dims {
+                Some((pw, ph)) => format!(
+                    "PDF · {} × {} pt · {}",
+                    fmt_int((pw / SCALE) as u32),
+                    fmt_int((ph / SCALE) as u32),
+                    tr("矢量/高清纸面", "HD Page")
+                ),
+                None => tr("PDF · 高清纸面", "PDF · HD Page").to_string(),
+            },
+            ExportFormat::Word => {
+                format!("Word (.docx) · {}", self.style.label())
             }
-            None => tr("816 px 纸宽 · 2× 高清", "816 px page · 2× HD").to_string(),
+            ExportFormat::Markdown => {
+                tr("Markdown (.md) · 纯文本源码", "Markdown (.md) · Plain text").to_string()
+            }
+            ExportFormat::Html => {
+                format!("HTML (.html) · {}", self.style.label())
+            }
         };
         let zoom_label = self
             .zoom

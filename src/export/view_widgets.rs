@@ -6,6 +6,7 @@ use gpui::{
     px,
 };
 
+use super::format::ExportFormat;
 use super::palette::ExportTheme;
 use crate::icons::{Icon, icon};
 use crate::theme::Theme;
@@ -29,6 +30,45 @@ pub(super) fn section(title: &'static str, content: impl IntoElement) -> impl In
                 .child(title),
         )
         .child(content)
+}
+
+/// Five-segment format selector: PNG · PDF · Word · MD · HTML.
+pub(super) fn format_bar(
+    current: ExportFormat,
+    on_pick: Rc<dyn Fn(&ExportFormat, &mut Window, &mut App)>,
+) -> impl IntoElement {
+    let theme = Theme::ocean();
+    let mut track = div().flex().p(px(2.)).bg(theme.shell).rounded(px(8.)).gap(px(2.));
+    for (index, fmt) in ExportFormat::ALL.into_iter().enumerate() {
+        let on_pick = on_pick.clone();
+        let selected = fmt == current;
+        let mut seg = div()
+            .id(("export-format", index))
+            .flex_1()
+            .h(px(28.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(6.))
+            .border_1()
+            .border_color(gpui::transparent_black())
+            .text_size(px(12.))
+            .font_weight(FontWeight(500.))
+            .text_color(theme.text_secondary)
+            .cursor_pointer()
+            .child(fmt.label());
+        if selected {
+            seg = seg
+                .bg(theme.selected)
+                .border_color(theme.accent)
+                .text_color(theme.text);
+        } else {
+            seg = seg.hover(|h| h.text_color(theme.text));
+        }
+        seg = seg.on_click(move |_, window, cx| on_pick(&fmt, window, cx));
+        track = track.child(seg);
+    }
+    track
 }
 
 /// Two-state track. `outlined` selects the accent-ring style used by the scope control.
@@ -85,27 +125,12 @@ pub(super) fn style_grid(
     let row0 = div()
         .flex()
         .gap(px(8.))
-        .child(swatch_card(
-            0,
-            items[0],
-            current == items[0],
-            on_pick.clone(),
-        ))
-        .child(swatch_card(
-            1,
-            items[1],
-            current == items[1],
-            on_pick.clone(),
-        ));
+        .child(swatch_card(0, items[0], current == items[0], on_pick.clone()))
+        .child(swatch_card(1, items[1], current == items[1], on_pick.clone()));
     let row1 = div()
         .flex()
         .gap(px(8.))
-        .child(swatch_card(
-            2,
-            items[2],
-            current == items[2],
-            on_pick.clone(),
-        ))
+        .child(swatch_card(2, items[2], current == items[2], on_pick.clone()))
         .child(swatch_card(3, items[3], current == items[3], on_pick));
     div().flex().flex_col().gap(px(8.)).child(row0).child(row1)
 }
