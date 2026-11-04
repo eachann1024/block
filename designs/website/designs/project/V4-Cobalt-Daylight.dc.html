@@ -1,0 +1,987 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Yu · 版本四 · 晴空钴蓝 · 瑞士光学工程</title>
+<script src="./support.js"></script>
+<script src="./gpui-mount.js" defer></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&amp;family=Noto+Serif+SC:wght@600;700&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#F6F8FC;color:#0B1528}
+a{color:#0B1528;text-decoration:none}
+button{font-family:inherit;font-size:14px;line-height:20px;cursor:pointer}
+.nav-link{color:#3B4A66;font-size:15px;line-height:22px;font-weight:500;padding:8px 14px;border-radius:8px;text-decoration:none;transition:color 140ms ease,background-color 140ms ease}
+.nav-link:hover{color:#0B1528;background:#E6EEFF;text-decoration:none}
+.btn-cobalt{height:48px;padding:0 24px;border-radius:10px;border:1px solid #153FA8;background:#1B4FD0;color:#FFFFFF;font-size:16px;line-height:24px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 6px 18px rgba(27,79,208,0.22);text-decoration:none;box-sizing:border-box;transition:background-color 140ms ease,transform 140ms ease}
+.btn-cobalt:hover{background:#153FA8;color:#FFFFFF;text-decoration:none}
+.btn-secondary{height:48px;padding:0 20px;border-radius:10px;border:1px solid #B8C7E0;background:#FFFFFF;color:#0B1528;font-size:15px;line-height:22px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;box-sizing:border-box;transition:background-color 140ms ease,border-color 140ms ease}
+.btn-secondary:hover{background:#ECF1F9;border-color:#1B4FD0;color:#0B1528;text-decoration:none}
+.nav-cta{height:38px;padding:0 16px;border-radius:8px;border:1px solid #153FA8;background:#1B4FD0;color:#FFFFFF;font-size:14px;line-height:20px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;box-sizing:border-box;transition:background-color 140ms ease}
+.nav-cta:hover{background:#153FA8;color:#FFFFFF;text-decoration:none}
+.mono{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+.serif-heading{font-family:'Noto Serif SC','Plus Jakarta Sans',Georgia,serif;letter-spacing:-0.02em;color:#0B1528}
+.tree-item{width:100%;height:32px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#3B4A66;font-size:14px;line-height:20px;display:flex;align-items:center;gap:8px;text-align:left;box-sizing:border-box}
+.tree-item:hover{background:#ECF1F9;color:#0B1528}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:0.01ms !important;transition-duration:0.01ms !important}
+}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:100vh;box-sizing:border-box;display:flex;flex-direction:column;background:#F6F8FC;color:#0B1528;font-family:'Plus Jakarta Sans',-apple-system,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;font-size:16px;line-height:26px">
+
+<!-- 顶部导航栏 -->
+<header style="width:100%;background:rgba(246,248,252,0.92);border-bottom:1px solid #D8E1F0;box-sizing:border-box">
+<div style="max-width:1220px;margin:0 auto;height:76px;padding:0 32px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;box-sizing:border-box">
+
+<div style="display:flex;align-items:center;gap:12px">
+<a href="#top" style="display:inline-flex;align-items:center;gap:10px;color:#0B1528;text-decoration:none">
+<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+<rect x="1" y="1" width="26" height="26" rx="6" fill="#1B4FD0"></rect>
+<rect x="6" y="7" width="6" height="3.5" rx="1" fill="#FFFFFF"></rect>
+<rect x="14" y="7" width="8" height="3.5" rx="1" fill="#B8C7E0"></rect>
+<rect x="6" y="12.5" width="16" height="3.5" rx="1" fill="#FFFFFF"></rect>
+<rect x="6" y="18" width="10" height="3.5" rx="1" fill="#E6EEFF"></rect>
+</svg>
+<span style="font-size:19px;line-height:24px;font-weight:700;letter-spacing:-0.02em;color:#0B1528">Yu</span>
+</a>
+<span class="mono" style="height:24px;padding:0 8px;border-radius:6px;background:#E6EEFF;border:1px solid #B8C7E0;color:#153FA8;font-size:14px;line-height:22px;font-weight:600;display:inline-flex;align-items:center">macOS Native</span>
+</div>
+
+<nav aria-label="主导航" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+<a class="nav-link" href="#performance">性能</a>
+<a class="nav-link" href="#blocks">块编辑器</a>
+<a class="nav-link" href="#ai">AI</a>
+<a class="nav-link" href="#image">生成图片</a>
+<a class="nav-link" href="#download">下载</a>
+</nav>
+
+<div style="display:flex;align-items:center;gap:12px">
+<a class="nav-cta" href="#download">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.33c.64-.78 1.08-1.86.96-2.94-.93.04-2.06.62-2.72 1.4-.58.68-1.1 1.79-.96 2.84 1.04.08 2.08-.52 2.72-1.3"></path></svg>
+<span>下载 macOS 版</span>
+</a>
+</div>
+
+</div>
+</header>
+
+<!-- 首屏 Hero -->
+<section id="top" style="position:relative;padding:64px 32px 104px;overflow:hidden;box-sizing:border-box">
+<canvas ref="{{heroCanvasRef}}" width="1440" height="920" aria-hidden="true" style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:1440px;height:920px;pointer-events:none"></canvas>
+
+<div style="position:relative;z-index:1;max-width:1220px;margin:0 auto;display:flex;flex-direction:column;gap:48px">
+
+<!-- 首屏标题与主操作区 -->
+<div style="display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:32px;align-items:flex-end">
+<div style="grid-column:span 8;display:flex;flex-direction:column;gap:24px">
+<h1 class="serif-heading" style="margin:0;font-size:42px;line-height:1.28;font-weight:700;color:#0B1528">
+文字之隅，落笔即成
+</h1>
+<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+<a class="btn-cobalt" href="#download">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.33c.64-.78 1.08-1.86.96-2.94-.93.04-2.06.62-2.72 1.4-.58.68-1.1 1.79-.96 2.84 1.04.08 2.08-.52 2.72-1.3"></path></svg>
+<span>下载 macOS 版</span>
+</a>
+<a class="btn-secondary" href="#performance">
+<span>查看实测对比</span>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"></path></svg>
+</a>
+</div>
+</div>
+
+<div style="grid-column:span 4;background:#FFFFFF;border:1px solid #D8E1F0;border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box;box-shadow:0 4px 14px rgba(11,21,40,0.04)">
+<div class="mono" style="font-size:14px;line-height:20px;font-weight:600;color:#1B4FD0">适用于 Apple 芯片 Mac · 本地 .md 纯文本存储 · v0.4.2</div>
+<div style="height:1px;background:#D8E1F0"></div>
+<div style="display:flex;justify-content:space-between;font-size:14px;line-height:20px;color:#3B4A66">
+<span>10 万块首屏：<strong class="mono" style="color:#0B1528">24.5 ms</strong></span>
+<span>按键上屏：<strong class="mono" style="color:#0B1528">2.4 ms</strong></span>
+<span>内存：<strong class="mono" style="color:#0B1528">117 MB</strong></span>
+</div>
+</div>
+</div>
+
+<!-- 16:10 真实 GPUI WebAssembly 编辑器舞台 (#editor-stage) -->
+<div id="editor-stage" style="width:100%;max-width:1220px;aspect-ratio:16 / 10;min-height:740px;background:#FBFAF7;border:1px solid #B8C7E0;border-radius:14px;box-shadow:0 24px 60px rgba(11,21,40,0.10),0 2px 8px rgba(27,79,208,0.06);overflow:hidden;position:relative;box-sizing:border-box">
+<div id="editor-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:#586885;background:#FBFAF7;pointer-events:none;transition:opacity 180ms ease">正在启动 Yu GPUI 编辑器…</div>
+</div>
+
+</div>
+</section>
+
+<!-- 第二屏：#performance 性能实测对比 -->
+<section id="performance" style="padding:104px 32px;background:#ECF1F9;border-top:1px solid #D8E1F0;border-bottom:1px solid #D8E1F0;box-sizing:border-box">
+<div style="max-width:1220px;margin:0 auto;display:flex;flex-direction:column;gap:40px">
+
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+<div style="display:flex;flex-direction:column;gap:12px;max-width:680px">
+<h2 class="serif-heading" style="margin:0;font-size:38px;line-height:1.24;font-weight:700">大文档也是即开即写</h2>
+<p style="margin:0;font-size:17px;line-height:28px;color:#3B4A66">
+直接与日常高频使用的 VS Code、Obsidian 和 Notion 放在同一份 Markdown 样本下实测。点击下方文档规模切换查看不同负载表现：
+</p>
+</div>
+
+<!-- 交互式负载切换器 -->
+<div style="display:inline-flex;padding:4px;border-radius:10px;background:#FFFFFF;border:1px solid #B8C7E0;gap:4px;flex-wrap:wrap">
+<button type="button" onClick="{{selectWorkload100k}}" style="{{workloadBtn100kStyle}}">10 万块 · 4.3 MB 极限长文</button>
+<button type="button" onClick="{{selectWorkload50k}}" style="{{workloadBtn50kStyle}}">5 万块 · 整本书稿</button>
+<button type="button" onClick="{{selectWorkload10k}}" style="{{workloadBtn10kStyle}}">1 万块 · 日常周报</button>
+</div>
+</div>
+
+<!-- 三张核心指标横向对比卡 -->
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px">
+
+<!-- 指标 1：打开首屏耗时 -->
+<div style="background:#FFFFFF;border:1px solid #B8C7E0;border-radius:12px;padding:28px;display:flex;flex-direction:column;justify-content:space-between;gap:24px;box-sizing:border-box;box-shadow:0 8px 24px rgba(11,21,40,0.04)">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<span style="font-size:16px;font-weight:700;color:#0B1528">{{openCardTitle}}</span>
+<span class="mono" style="height:26px;padding:0 10px;border-radius:999px;background:#E6EEFF;color:#153FA8;font-size:14px;font-weight:600;display:inline-flex;align-items:center">{{openBadgeText}}</span>
+</div>
+<div style="display:flex;align-items:baseline;gap:10px">
+<span class="mono" style="font-size:42px;line-height:1.1;font-weight:700;color:#1B4FD0">{{tfOpenVal}}</span>
+<span style="font-size:14px;color:#586885">Yu 实测</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:14px">
+<!-- Yu -->
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;font-size:14px;font-weight:600;color:#0B1528">
+<span>Yu (macOS Native)</span>
+<span class="mono" style="color:#1B4FD0">{{tfOpenVal}}</span>
+</div>
+<div style="height:10px;border-radius:999px;background:#F1F5FB;overflow:hidden">
+<div style="width:5%;height:100%;border-radius:999px;background:#1B4FD0"></div>
+</div>
+</div>
+
+<!-- VS Code -->
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;font-size:14px;color:#3B4A66">
+<span>VS Code</span>
+<span class="mono">{{vsOpenVal}}</span>
+</div>
+<div style="height:10px;border-radius:999px;background:#F1F5FB;overflow:hidden">
+<div style="width:28%;height:100%;border-radius:999px;background:#94A6C4"></div>
+</div>
+</div>
+
+<!-- Obsidian -->
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;font-size:14px;color:#3B4A66">
+<span>Obsidian</span>
+<span class="mono">{{obOpenVal}}</span>
+</div>
+<div style="height:10px;border-radius:999px;background:#F1F5FB;overflow:hidden">
+<div style="width:58%;height:100%;border-radius:999px;background:#94A6C4"></div>
+</div>
+</div>
+
+<!-- Notion -->
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;font-size:14px;color:#3B4A66">
+<span>Notion</span>
+<span class="mono">{{noOpenVal}}</span>
+</div>
+<div style="height:10px;border-radius:999px;background:#F1F5FB;overflow:hidden">
+<div style="width:96%;height:100%;border-radius:999px;background:#B8C7E0"></div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- 指标 2：输入一个字到画面更新 (含 120Hz 8.3ms 满帧线) -->
+<div style="background:#FFFFFF;border:1px solid #B8C7E0;border-radius:12px;padding:28px;display:flex;flex-direction:column;justify-content:space-between;gap:24px;box-sizing:border-box;box-shadow:0 8px 24px rgba(11,21,40,0.04)">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<span style="font-size:16px;font-weight:700;color:#0B1528">{{typeCardTitle}}</span>
+<span class="mono" style="height:26px;padding:0 10px;border-radius:999px;background:#FEF3C7;border:1px solid #F59E0B;color:#9A5200;font-size:14px;font-weight:600;display:inline-flex;align-items:center">120Hz 满帧响应</span>
+</div>
+<div style="display:flex;align-items:baseline;gap:10px">
+<span class="mono" style="font-size:42px;line-height:1.1;font-weight:700;color:#1B4FD0">{{tfTypeVal}}</span>
+<span class="mono" style="font-size:14px;color:#9A5200;font-weight:600">远低于 8.3 ms 满帧线</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:14px;position:relative">
+<!-- 8.3ms 120Hz 参考说明条 -->
+<div style="padding:6px 10px;border-radius:6px;background:#FFFBEB;border:1px solid #F59E0B;display:flex;align-items:center;justify-content:space-between;font-size:14px;color:#9A5200">
+<span style="font-weight:600">ProMotion 120Hz 单帧预算上限</span>
+<span class="mono" style="font-weight:700">8.3 ms 满帧线</span>
+</div>
+
+<!-- Yu -->
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;font-size:14px;font-weight:600;color:#0B1528">
+<span>Yu (稳居单帧内)</span>
+<span class="mono" style="color:#1B4FD0">{{tfTypeVal}}</span>
+</div>
+<div style="height:10px;border-radius:999px;background:#F1F5FB;position:relative;overflow:hidden">
+<div style="width:7%;height:100%;border-radius:999px;background:#1B4FD0"></div>
+<div style="position:absolute;left:18%;top:0;bottom:0;width:2px;background:#D97706"></div>
+</div>
+</div>
+
+<!-- VS Code -->
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;font-size:14px;color:#3B4A66">
+<span>VS Code</span>
+<span class="mono">{{vsTypeVal}}</span>
+</div>
+<div style="height:10px;border-radius:999px;background:#F1F5FB;position:relative;overflow:hidden">
+<div style="width:32%;height:100%;border-radius:999px;background:#94A6C4"></div>
+<div style="position:absolute;left:18%;top:0;bottom:0;width:2px;background:#D97706"></div>
+</div>
+</div>
+
+<!-- Obsidian -->
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;font-size:14px;color:#3B4A66">
+<span>Obsidian</span>
+<span class="mono">{{obTypeVal}}</span>
+</div>
+<div style="height:10px;border-radius:999px;background:#F1F5FB;position:relative;overflow:hidden">
+<div style="width:56%;height:100%;border-radius:999px;background:#94A6C4"></div>
+<div style="position:absolute;left:18%;top:0;bottom:0;width:2px;background:#D97706"></div>
+</div>
+</div>
+
+<!-- Notion -->
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;font-size:14px;color:#3B4A66">
+<span>Notion</span>
+<span class="mono">{{noTypeVal}}</span>
+</div>
+<div style="height:10px;border-radius:999px;background:#F1F5FB;position:relative;overflow:hidden">
+<div style="width:95%;height:100%;border-radius:999px;background:#B8C7E0"></div>
+<div style="position:absolute;left:18%;top:0;bottom:0;width:2px;background:#D97706"></div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- 指标 3：打开文档时的内存占用 -->
+<div style="background:#FFFFFF;border:1px solid #B8C7E0;border-radius:12px;padding:28px;display:flex;flex-direction:column;justify-content:space-between;gap:24px;box-sizing:border-box;box-shadow:0 8px 24px rgba(11,21,40,0.04)">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<span style="font-size:16px;font-weight:700;color:#0B1528">{{memCardTitle}}</span>
+<span class="mono" style="height:26px;padding:0 10px;border-radius:999px;background:#E6EEFF;color:#153FA8;font-size:14px;font-weight:600;display:inline-flex;align-items:center">仅为同类 1/5 至 1/10</span>
+</div>
+<div style="display:flex;align-items:baseline;gap:10px">
+<span class="mono" style="font-size:42px;line-height:1.1;font-weight:700;color:#1B4FD0">{{tfMemVal}}</span>
+<span style="font-size:14px;color:#586885">无 Electron / Chromium 开销</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:14px">
+<!-- Yu -->
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;font-size:14px;font-weight:600;color:#0B1528">
+<span>Yu (macOS Native)</span>
+<span class="mono" style="color:#1B4FD0">{{tfMemVal}}</span>
+</div>
+<div style="height:10px;border-radius:999px;background:#F1F5FB;overflow:hidden">
+<div style="width:11%;height:100%;border-radius:999px;background:#1B4FD0"></div>
+</div>
+</div>
+
+<!-- VS Code -->
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;font-size:14px;color:#3B4A66">
+<span>VS Code</span>
+<span class="mono">{{vsMemVal}}</span>
+</div>
+<div style="height:10px;border-radius:999px;background:#F1F5FB;overflow:hidden">
+<div style="width:48%;height:100%;border-radius:999px;background:#94A6C4"></div>
+</div>
+</div>
+
+<!-- Obsidian -->
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;font-size:14px;color:#3B4A66">
+<span>Obsidian</span>
+<span class="mono">{{obMemVal}}</span>
+</div>
+<div style="height:10px;border-radius:999px;background:#F1F5FB;overflow:hidden">
+<div style="width:62%;height:100%;border-radius:999px;background:#94A6C4"></div>
+</div>
+</div>
+
+<!-- Notion -->
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;justify-content:space-between;font-size:14px;color:#3B4A66">
+<span>Notion</span>
+<span class="mono">{{noMemVal}}</span>
+</div>
+<div style="height:10px;border-radius:999px;background:#F1F5FB;overflow:hidden">
+<div style="width:96%;height:100%;border-radius:999px;background:#B8C7E0"></div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-top:4px;font-size:14px;line-height:22px;color:#586885">
+<span>Apple M 系列芯片 Mac 实测，测试样本为同一份 10 万段标准 Markdown 文档，数值越低越好。</span>
+<span class="mono" style="color:#3B4A66">基准环境：macOS 15 · Apple M3 Max · 120Hz ProMotion 显示器</span>
+</div>
+
+</div>
+</section>
+
+<!-- 第三屏：#blocks 块级交互解剖 (2x2 高精度交互解剖图) -->
+<section id="blocks" style="padding:108px 32px;background:#F6F8FC;box-sizing:border-box">
+<div style="max-width:1220px;margin:0 auto;display:flex;flex-direction:column;gap:44px">
+
+<div style="display:flex;flex-direction:column;gap:12px;max-width:720px">
+<h2 class="serif-heading" style="margin:0;font-size:38px;line-height:1.24;font-weight:700">每一段都是一个块，怎么摆弄都顺手</h2>
+<p style="margin:0;font-size:17px;line-height:28px;color:#3B4A66">
+兼顾纯文本 Markdown 的干净通用与块编辑器的结构操控力。不用记复杂快捷键，鼠标与键盘都能直觉操作。
+</p>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px">
+
+<!-- 模块 1：拖动重排 -->
+<div style="background:#FFFFFF;border:1px solid #B8C7E0;border-radius:14px;padding:28px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+<div style="display:flex;flex-direction:column;gap:6px">
+<h3 style="margin:0;font-size:21px;line-height:28px;font-weight:700;color:#0B1528">拖动重排</h3>
+<p style="margin:0;font-size:15px;line-height:24px;color:#3B4A66">按住左侧把手就能把整段、整章移到新位置</p>
+</div>
+
+<div style="background:#F6F8FC;border:1px solid #D8E1F0;border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:12px">
+<div style="padding:10px 14px;border-radius:8px;background:#FFFFFF;border:1px solid #D8E1F0;font-size:14px;color:#586885">
+01. 先在本地目录初始化 Markdown 笔记仓库，保持纯文本结构。
+</div>
+
+<!-- 蓝色插入引导线 -->
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:10px;height:10px;border-radius:5px;background:#1B4FD0;flex:none"></span>
+<div style="flex:1;height:2px;background:#1B4FD0"></div>
+<span class="mono" style="height:24px;padding:0 10px;border-radius:999px;background:#1B4FD0;color:#FFFFFF;font-size:14px;font-weight:600;display:inline-flex;align-items:center">松开移至此处</span>
+</div>
+
+<!-- 正在被拖动的块卡片 -->
+<div style="padding:12px 14px;border-radius:8px;background:#FFFFFF;border:1.5px solid #1B4FD0;box-shadow:0 12px 28px rgba(27,79,208,0.16);display:flex;align-items:center;gap:10px;transform:translateX(8px)">
+<span aria-hidden="true" style="width:22px;height:24px;border-radius:5px;background:#E6EEFF;color:#1B4FD0;display:inline-flex;align-items:center;justify-content:center;flex:none">
+<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><circle cx="3.5" cy="2.5" r="1.1"></circle><circle cx="8.5" cy="2.5" r="1.1"></circle><circle cx="3.5" cy="6" r="1.1"></circle><circle cx="8.5" cy="6" r="1.1"></circle><circle cx="3.5" cy="9.5" r="1.1"></circle><circle cx="8.5" cy="9.5" r="1.1"></circle></svg>
+</span>
+<span style="font-size:14px;font-weight:600;color:#0B1528">02. 按住六点把手拖动整段或整章，松手自动修正上下文缩进。</span>
+</div>
+
+<div style="padding:10px 14px;border-radius:8px;background:#FFFFFF;border:1px solid #D8E1F0;font-size:14px;color:#586885">
+03. 底层 Markdown 文件实时同步行序，无任何私有标记污染。
+</div>
+</div>
+</div>
+
+<!-- 模块 2：折叠章节 -->
+<div style="background:#FFFFFF;border:1px solid #B8C7E0;border-radius:14px;padding:28px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+<div style="display:flex;flex-direction:column;gap:6px">
+<h3 style="margin:0;font-size:21px;line-height:28px;font-weight:700;color:#0B1528">折叠章节</h3>
+<p style="margin:0;font-size:15px;line-height:24px;color:#3B4A66">长文档按标题一键收起，只看当前正在写的部分</p>
+</div>
+
+<div style="background:#F6F8FC;border:1px solid #D8E1F0;border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:12px">
+<!-- 已折叠的 H2 章节 -->
+<div style="padding:12px 14px;border-radius:8px;background:#ECF1F9;border:1px solid #B8C7E0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+<div style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:#0B1528">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1B4FD0" stroke-width="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+<span>第二章 · 历史归档与参考资料</span>
+</div>
+<span class="mono" style="height:26px;padding:0 10px;border-radius:999px;background:#E6EEFF;color:#153FA8;font-size:14px;font-weight:600;display:inline-flex;align-items:center">已收起 42 个块 · 3,180 字</span>
+</div>
+
+<!-- 展开中的 H2 章节 -->
+<div style="padding:14px;border-radius:8px;background:#FFFFFF;border:1px solid #D8E1F0;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:#0B1528">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1B4FD0" stroke-width="2.4" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+<span>第三章 · 当前撰写内容</span>
+</div>
+<div style="padding-left:22px;font-size:14px;line-height:22px;color:#3B4A66">
+收起上方数千字的历史参考后，当前屏幕只保留正在推进的第三章正文，滚动条与视觉焦点清爽干净。
+</div>
+<div style="padding-left:22px;display:flex;align-items:center;gap:8px;font-size:14px;color:#1B4FD0;font-weight:600">
+<span class="mono">H3</span>
+<span>3.1 核心指标验收清单</span>
+</div>
+</div>
+</div>
+</div>
+
+<!-- 模块 3：随时转换 (含 Mermaid SVG 与 KaTeX 公式预览) -->
+<div style="background:#FFFFFF;border:1px solid #B8C7E0;border-radius:14px;padding:28px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+<div style="display:flex;flex-direction:column;gap:6px">
+<h3 style="margin:0;font-size:21px;line-height:28px;font-weight:700;color:#0B1528">随时转换</h3>
+<p style="margin:0;font-size:15px;line-height:24px;color:#3B4A66">在标题、列表、待办、代码、引用、表格和公式之间直接切换</p>
+</div>
+
+<div style="background:#F6F8FC;border:1px solid #D8E1F0;border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<span class="mono" style="height:28px;padding:0 10px;border-radius:6px;background:#1B4FD0;color:#FFFFFF;font-size:14px;font-weight:600;display:inline-flex;align-items:center">+ 空行新建</span>
+<span class="mono" style="height:28px;padding:0 10px;border-radius:6px;background:#E6EEFF;color:#153FA8;font-size:14px;font-weight:600;display:inline-flex;align-items:center">/ 斜杠转换</span>
+<span style="font-size:14px;color:#586885">原生支持流程图与数学公式实时渲染：</span>
+</div>
+
+<!-- Mermaid 流程图块预览 -->
+<div style="padding:12px 14px;border-radius:8px;background:#FFFFFF;border:1px solid #D8E1F0;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;justify-content:space-between;font-size:14px;color:#586885">
+<span class="mono" style="font-weight:600;color:#0B1528">Mermaid 流程图块</span>
+<span class="mono">实时矢量渲染</span>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0">
+<span style="padding:6px 10px;border-radius:6px;background:#ECF1F9;border:1px solid #B8C7E0;font-size:14px;font-weight:600;color:#0B1528">解析 Markdown</span>
+<svg width="20" height="14" viewBox="0 0 20 14" fill="none" stroke="#1B4FD0" stroke-width="2" aria-hidden="true"><path d="M1 7h16M12 2l5 5-5 5"></path></svg>
+<span style="padding:6px 10px;border-radius:6px;background:#E6EEFF;border:1px solid #1B4FD0;font-size:14px;font-weight:600;color:#153FA8">增量块树</span>
+<svg width="20" height="14" viewBox="0 0 20 14" fill="none" stroke="#1B4FD0" stroke-width="2" aria-hidden="true"><path d="M1 7h16M12 2l5 5-5 5"></path></svg>
+<span style="padding:6px 10px;border-radius:6px;background:#ECF1F9;border:1px solid #B8C7E0;font-size:14px;font-weight:600;color:#0B1528">GPU 光栅化</span>
+</div>
+</div>
+
+<!-- KaTeX 数学公式块预览 -->
+<div style="padding:10px 14px;border-radius:8px;background:#FFFFFF;border:1px solid #D8E1F0;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<span class="mono" style="font-size:14px;color:#586885">KaTeX 公式块</span>
+<span class="mono" style="font-size:15px;font-weight:600;color:#0B1528">T_frame(n) = O(log n) &lt; 8.3 ms</span>
+</div>
+</div>
+</div>
+
+<!-- 模块 4：中文直接触发 -->
+<div style="background:#FFFFFF;border:1px solid #B8C7E0;border-radius:14px;padding:28px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+<div style="display:flex;flex-direction:column;gap:6px">
+<h3 style="margin:0;font-size:21px;line-height:28px;font-weight:700;color:#0B1528">中文直接触发</h3>
+<p style="margin:0;font-size:15px;line-height:24px;color:#3B4A66">中文输入法下敲全角符号，一样直接变成标题、引用和列表</p>
+</div>
+
+<div style="background:#F6F8FC;border:1px solid #D8E1F0;border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;justify-content:space-between;font-size:14px;color:#586885">
+<span>拼音输入法下直接敲入（无需切英文）</span>
+<span class="mono" style="color:#1B4FD0;font-weight:600">0 ms 自动识别成块</span>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center">
+<div class="mono" style="padding:10px 12px;border-radius:8px;background:#FFFFFF;border:1px solid #D8E1F0;font-size:14px;color:#3B4A66">＃＃ 二级标题</div>
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B4FD0" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+<div style="padding:10px 12px;border-radius:8px;background:#E6EEFF;border:1px solid #B8C7E0;font-size:15px;font-weight:700;color:#0B1528">H2 二级标题</div>
+
+<div class="mono" style="padding:10px 12px;border-radius:8px;background:#FFFFFF;border:1px solid #D8E1F0;font-size:14px;color:#3B4A66">＞ 核心结论</div>
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B4FD0" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+<div style="padding:10px 12px;border-radius:8px;background:#FFFFFF;border:1px solid #B8C7E0;font-size:14px;font-weight:600;color:#0B1528">引用块：核心结论</div>
+
+<div class="mono" style="padding:10px 12px;border-radius:8px;background:#FFFFFF;border:1px solid #D8E1F0;font-size:14px;color:#3B4A66">－ 待办事项</div>
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B4FD0" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+<div style="padding:10px 12px;border-radius:8px;background:#FFFFFF;border:1px solid #D8E1F0;font-size:14px;font-weight:600;color:#0B1528">• 列表项：待办事项</div>
+</div>
+</div>
+</div>
+
+</div>
+
+</div>
+</section>
+
+<!-- 第四屏：#ai AI 直接在笔记里改 -->
+<section id="ai" style="padding:104px 32px;background:#ECF1F9;border-top:1px solid #D8E1F0;border-bottom:1px solid #D8E1F0;box-sizing:border-box">
+<div style="max-width:1220px;margin:0 auto;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:40px;align-items:center">
+
+<!-- 左列：说明与交互模式切换 -->
+<div style="grid-column:span 5;display:flex;flex-direction:column;gap:24px">
+<h2 class="serif-heading" style="margin:0;font-size:38px;line-height:1.24;font-weight:700">AI 直接在笔记里改</h2>
+
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="padding:14px 16px;border-radius:10px;background:#FFFFFF;border:1px solid #D8E1F0;display:flex;flex-direction:column;gap:4px">
+<strong style="font-size:16px;color:#0B1528">选中文字直接改写</strong>
+<span style="font-size:14px;line-height:22px;color:#3B4A66">选中一段话就能润色、精简、翻译或续写，结果以行内对比卡片直接嵌在原段下方。</span>
+</div>
+
+<div style="padding:14px 16px;border-radius:10px;background:#FFFFFF;border:1px solid #D8E1F0;display:flex;flex-direction:column;gap:4px">
+<strong style="font-size:16px;color:#0B1528">侧边栏连续对话</strong>
+<span style="font-size:14px;line-height:22px;color:#3B4A66">自动携带当前笔记块上下文（如 #14–#18），不用在浏览器和编辑器之间来回复制粘贴。</span>
+</div>
+
+<div style="padding:14px 16px;border-radius:10px;background:#FFFFFF;border:1px solid #D8E1F0;display:flex;flex-direction:column;gap:4px">
+<strong style="font-size:16px;color:#0B1528">所有改动随时撤回</strong>
+<span style="font-size:14px;line-height:22px;color:#3B4A66">逐段确认「应用修改」或「放弃」，即使应用后也能随时按 ⌘Z 退回原稿。</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:10px">
+<span style="font-size:14px;font-weight:600;color:#586885">点击切换预览 AI 行内改写效果：</span>
+<div style="display:inline-flex;padding:4px;border-radius:10px;background:#FFFFFF;border:1px solid #B8C7E0;gap:6px;align-self:flex-start">
+<button type="button" onClick="{{selectAiPolish}}" style="{{aiBtnPolishStyle}}">润色</button>
+<button type="button" onClick="{{selectAiConcise}}" style="{{aiBtnConciseStyle}}">精简</button>
+<button type="button" onClick="{{selectAiTranslate}}" style="{{aiBtnTranslateStyle}}">翻译</button>
+</div>
+</div>
+</div>
+
+<!-- 右列：编辑器行内 Diff 卡片 + 侧栏对话预览 -->
+<div style="grid-column:span 7;background:#FFFFFF;border:1px solid #B8C7E0;border-radius:14px;box-shadow:0 16px 40px rgba(11,21,40,0.08);overflow:hidden;display:grid;grid-template-columns:1.35fr 0.85fr;box-sizing:border-box">
+
+<!-- 左侧笔记正文与行内 Diff 审查卡 -->
+<div style="padding:24px;border-right:1px solid #D8E1F0;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;justify-content:space-between;font-size:14px;color:#586885">
+<span class="mono">块 #15 · 已选中段落</span>
+<span class="mono" style="color:#1B4FD0;font-weight:600">{{aiModeLabel}}</span>
+</div>
+
+<!-- 原文选中态 -->
+<div style="padding:12px 14px;border-radius:8px;background:#F1F5FB;border:1px solid #B8C7E0;font-size:14px;line-height:22px;color:#586885;text-decoration:line-through">
+我们这个编辑器在打开很大的 Markdown 文件的时候速度非常快，因为底层没有用网页套壳，而是专门写了块索引结构。
+</div>
+
+<!-- AI 提案行内对比卡 -->
+<div style="padding:16px;border-radius:10px;background:#F6F8FC;border:1.5px solid #1B4FD0;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="font-size:14px;font-weight:700;color:#153FA8">{{aiDiffBadge}}</span>
+<span class="mono" style="font-size:14px;color:#586885">耗时 380 ms</span>
+</div>
+
+<div style="padding:12px;border-radius:8px;background:#E6EEFF;color:#0B1528;font-size:15px;line-height:24px;font-weight:500">
+{{aiResultText}}
+</div>
+
+<!-- 操作按钮栏 -->
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding-top:4px">
+<div style="display:flex;align-items:center;gap:6px">
+<button type="button" onClick="{{selectAiPolish}}" style="height:30px;padding:0 10px;border-radius:6px;border:1px solid #B8C7E0;background:#FFFFFF;color:#0B1528;font-size:14px">润色</button>
+<button type="button" onClick="{{selectAiConcise}}" style="height:30px;padding:0 10px;border-radius:6px;border:1px solid #B8C7E0;background:#FFFFFF;color:#0B1528;font-size:14px">精简</button>
+<button type="button" onClick="{{selectAiTranslate}}" style="height:30px;padding:0 10px;border-radius:6px;border:1px solid #B8C7E0;background:#FFFFFF;color:#0B1528;font-size:14px">翻译</button>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="height:32px;padding:0 12px;border-radius:6px;background:#1B4FD0;color:#FFFFFF;font-size:14px;font-weight:600;display:inline-flex;align-items:center">应用修改</span>
+<span style="height:32px;padding:0 12px;border-radius:6px;border:1px solid #B8C7E0;background:#FFFFFF;color:#3B4A66;font-size:14px;display:inline-flex;align-items:center">放弃</span>
+</div>
+</div>
+</div>
+</div>
+
+<!-- 右侧紧凑型 AI 侧栏对话预览 -->
+<div style="padding:20px;background:#F6F8FC;display:flex;flex-direction:column;justify-content:space-between;gap:14px">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700;color:#0B1528">
+<span>笔记 AI 侧栏</span>
+<span class="mono" style="padding:2px 8px;border-radius:4px;background:#E6EEFF;color:#153FA8;font-size:14px">已引用当前块 #14–#18</span>
+</div>
+
+<div style="padding:12px;border-radius:8px;background:#FFFFFF;border:1px solid #D8E1F0;font-size:14px;line-height:21px;color:#3B4A66">
+请结合第 #14 至 #18 块的实测表格，把这段口语草稿改成客观克制的技术说明。
+</div>
+
+<div style="padding:12px;border-radius:8px;background:#E6EEFF;border:1px solid #B8C7E0;font-size:14px;line-height:21px;color:#0B1528">
+已根据上下文生成改写方案，并在左侧第 #15 块下方打开了行内对比卡片，可直接点击「应用修改」替换原段。
+</div>
+</div>
+
+<div style="padding:10px 12px;border-radius:8px;background:#FFFFFF;border:1px solid #B8C7E0;display:flex;align-items:center;justify-content:space-between;font-size:14px;color:#586885">
+<span>继续追问当前笔记...</span>
+<span class="mono" style="color:#1B4FD0;font-weight:600">↵</span>
+</div>
+</div>
+
+</div>
+
+</div>
+</section>
+
+<!-- 第五屏：#image 一篇笔记，一张图 -->
+<section id="image" style="padding:108px 32px;background:#F6F8FC;box-sizing:border-box">
+<div style="max-width:1220px;margin:0 auto;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:40px;align-items:center">
+
+<!-- 左列：说明与纸张主题切换器 -->
+<div style="grid-column:span 5;display:flex;flex-direction:column;gap:24px">
+<h2 class="serif-heading" style="margin:0;font-size:38px;line-height:1.24;font-weight:700">一篇笔记，一张图</h2>
+<p style="margin:0;font-size:17px;line-height:28px;color:#3B4A66">
+整篇笔记或选中的几段话，右键就能导出成排版干净的长图。内置多种纸张与配色，不用再去别的工具里重新排版。
+</p>
+
+<div style="display:flex;flex-direction:column;gap:12px">
+<span style="font-size:14px;font-weight:600;color:#586885">点击切换纸张与印章风格：</span>
+<div style="display:flex;flex-direction:column;gap:10px">
+<button type="button" onClick="{{selectThemePlain}}" style="{{themeBtnPlainStyle}}">
+<span style="display:inline-flex;align-items:center;gap:10px">
+<span aria-hidden="true" style="width:18px;height:18px;border-radius:4px;background:#FFFFFF;border:1.5px solid #0B1528"></span>
+<strong style="font-size:15px">黑白素纸</strong>
+</span>
+<span style="font-size:14px;color:#586885">高对比度纯白印张 · 适合技术手记与周报</span>
+</button>
+
+<button type="button" onClick="{{selectThemeMemo}}" style="{{themeBtnMemoStyle}}">
+<span style="display:inline-flex;align-items:center;gap:10px">
+<span aria-hidden="true" style="width:18px;height:18px;border-radius:4px;background:#FBF6EB;border:1.5px solid #9A5200"></span>
+<strong style="font-size:15px">手账便签</strong>
+</span>
+<span style="font-size:14px;color:#586885">暖米色纹理纸面 · 适合读书摘录与随笔</span>
+</button>
+
+<button type="button" onClick="{{selectThemeRiso}}" style="{{themeBtnRisoStyle}}">
+<span style="display:inline-flex;align-items:center;gap:10px">
+<span aria-hidden="true" style="width:18px;height:18px;border-radius:4px;background:#EEF3FF;border:1.5px solid #1B4FD0"></span>
+<strong style="font-size:15px">野性孔版</strong>
+</span>
+<span style="font-size:14px;color:#586885">钴蓝孔版印刷风 · 适合观点卡片与社群分享</span>
+</button>
+</div>
+</div>
+</div>
+
+<!-- 右列：右键导出为图片菜单 + 动态渲染长图预览卡 -->
+<div style="grid-column:span 7;background:#FFFFFF;border:1px solid #B8C7E0;border-radius:14px;padding:28px;display:grid;grid-template-columns:0.95fr 1.15fr;gap:24px;align-items:center;box-sizing:border-box;box-shadow:0 12px 32px rgba(11,21,40,0.06)">
+
+<!-- (A) 编辑器选中块与右键菜单 -->
+<div style="background:#F6F8FC;border:1px solid #D8E1F0;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:14px;font-weight:600;color:#586885">1. 选中段落或右键当前笔记</div>
+<div style="padding:12px;border-radius:8px;background:#E6EEFF;border:1px solid #B8C7E0;display:flex;flex-direction:column;gap:6px;font-size:14px;color:#0B1528">
+<strong>潮汕周末出行安排</strong>
+<span>周五傍晚从广州南出发，周日晚上返程。</span>
+<span class="mono" style="color:#153FA8">周五晚 · G6329 · 18:40 出发</span>
+</div>
+
+<!-- 模拟 macOS 右键上下文菜单 -->
+<div style="background:#FFFFFF;border:1px solid #B8C7E0;border-radius:8px;padding:6px;box-shadow:0 10px 24px rgba(11,21,40,0.10);display:flex;flex-direction:column;gap:2px">
+<div style="height:34px;padding:0 10px;border-radius:6px;background:#1B4FD0;color:#FFFFFF;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:space-between">
+<span style="display:inline-flex;align-items:center;gap:8px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.5"></circle><path d="M21 15l-5-5L5 20"></path></svg>
+<span>导出为图片…</span>
+</span>
+<span class="mono" style="font-size:14px">⇧⌘E</span>
+</div>
+<div style="height:32px;padding:0 10px;border-radius:6px;color:#3B4A66;font-size:14px;display:flex;align-items:center;justify-content:space-between">
+<span>复制 Markdown 源码</span>
+<span class="mono" style="font-size:14px;color:#586885">⌘C</span>
+</div>
+<div style="height:32px;padding:0 10px;border-radius:6px;color:#3B4A66;font-size:14px;display:flex;align-items:center;justify-content:space-between">
+<span>导出为 PDF / Word…</span>
+<span class="mono" style="font-size:14px;color:#586885">⌘E</span>
+</div>
+</div>
+</div>
+
+<!-- (B) 动态纸张长图预览卡 -->
+<div style="{{paperCardStyle}}">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<span class="mono" style="{{paperStampStyle}}">{{paperBadgeText}}</span>
+<span class="mono" style="font-size:14px;color:#586885">2x Retina PNG</span>
+</div>
+
+<h3 class="serif-heading" style="margin:0;font-size:22px;line-height:1.3;font-weight:700;color:#0B1528">潮汕周末出行安排</h3>
+<div style="{{paperDividerStyle}}"></div>
+
+<p style="margin:0;font-size:14px;line-height:22px;color:#0B1528">
+周五傍晚从广州南出发，周日晚上返程。酒店定在牌坊街附近，步行就能去吃早餐。
+</p>
+
+<div style="display:flex;flex-direction:column;gap:6px;font-size:14px;color:#0B1528">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:14px;height:14px;border-radius:3px;border:1.5px solid #1B4FD0;background:#1B4FD0;display:inline-flex;align-items:center;justify-content:center;flex:none">
+<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#FFFFFF" stroke-width="2" aria-hidden="true"><path d="M2.5 6l2.5 2.5 4.5-5"></path></svg>
+</span>
+<span>已完成：高铁票与牌坊街民宿预订</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:14px;height:14px;border-radius:3px;border:1.5px solid #3B4A66;flex:none"></span>
+<span>待办：带上便携充电器、相机和雨伞</span>
+</div>
+</div>
+
+<table style="width:100%;border-collapse:collapse;font-size:14px;line-height:20px;background:#FFFFFF">
+<tr>
+<td style="border:1px solid #B8C7E0;padding:6px 10px;font-weight:600;color:#0B1528">周五晚去程</td>
+<td class="mono" style="border:1px solid #B8C7E0;padding:6px 10px;color:#153FA8">G6329 · 18:40</td>
+</tr>
+<tr>
+<td style="border:1px solid #B8C7E0;padding:6px 10px;font-weight:600;color:#0B1528">周日晚返程</td>
+<td class="mono" style="border:1px solid #B8C7E0;padding:6px 10px;color:#153FA8">G6315 · 20:15</td>
+</tr>
+</table>
+
+<div style="display:flex;align-items:center;justify-content:space-between;padding-top:6px;font-size:14px;color:#586885">
+<span>由 Yu 排版生成</span>
+<span class="mono">{{paperFooterCode}}</span>
+</div>
+</div>
+
+</div>
+
+</div>
+</section>
+
+<!-- 第六屏：#download 下载区 -->
+<section id="download" style="padding:104px 32px;background:#FFFFFF;border-top:1px solid #D8E1F0;box-sizing:border-box">
+<div style="max-width:980px;margin:0 auto;background:#ECF1F9;border:1px solid #B8C7E0;border-radius:16px;padding:56px 40px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:24px;box-sizing:border-box;box-shadow:0 16px 40px rgba(11,21,40,0.05)">
+
+<h2 class="serif-heading" style="margin:0;font-size:40px;line-height:1.22;font-weight:700;color:#0B1528">在 Mac 上开始写</h2>
+
+<p style="margin:0;max-width:620px;font-size:17px;line-height:28px;color:#3B4A66">
+适用于 Apple 芯片的 Mac。笔记直接保存为本地 Markdown 文件，随时可用任何工具打开。
+</p>
+
+<div style="display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;margin-top:4px">
+<a class="btn-cobalt" href="/download?k=thinkly-fast-macos.dmg">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.33c.64-.78 1.08-1.86.96-2.94-.93.04-2.06.62-2.72 1.4-.58.68-1.1 1.79-.96 2.84 1.04.08 2.08-.52 2.72-1.3"></path></svg>
+<span>下载 macOS 版</span>
+</a>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding-top:6px">
+<span class="mono" style="height:30px;padding:0 12px;border-radius:6px;background:#FFFFFF;border:1px solid #D8E1F0;color:#0B1528;font-size:14px;display:inline-flex;align-items:center">macOS 13.0+ (Apple Silicon)</span>
+<span class="mono" style="height:30px;padding:0 12px;border-radius:6px;background:#FFFFFF;border:1px solid #D8E1F0;color:#0B1528;font-size:14px;display:inline-flex;align-items:center">安装包约 14 MB</span>
+<span class="mono" style="height:30px;padding:0 12px;border-radius:6px;background:#FFFFFF;border:1px solid #D8E1F0;color:#153FA8;font-size:14px;font-weight:600;display:inline-flex;align-items:center">离线可用 · 零云端锁定</span>
+</div>
+
+</div>
+</section>
+
+<!-- 页脚 -->
+<footer style="padding:36px 32px;background:#F6F8FC;border-top:1px solid #D8E1F0;margin-top:auto;box-sizing:border-box">
+<div style="max-width:1220px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;font-size:14px;line-height:22px;color:#586885">
+<div style="display:flex;align-items:center;gap:10px">
+<strong style="color:#0B1528">Yu</strong>
+<span>· macOS 原生 Markdown 块编辑器 · © 2026</span>
+</div>
+<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+<a href="#performance" style="color:#3B4A66">性能实测</a>
+<a href="#blocks" style="color:#3B4A66">块编辑器</a>
+<a href="#ai" style="color:#3B4A66">AI 改写</a>
+<a href="#image" style="color:#3B4A66">导出长图</a>
+<a href="#download" style="color:#1B4FD0;font-weight:600">下载 macOS 版</a>
+</div>
+</div>
+</footer>
+
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":5200}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      sidebarOpen: true,
+      workload: '100k',
+      aiMode: 'polish',
+      paperTheme: 'plain'
+    };
+    this.heroCanvas = null;
+    this.rafId = null;
+    this.startTime = Date.now();
+  }
+
+  componentDidMount() {
+    this.startWaveLoop();
+  }
+
+  componentWillUnmount() {
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+
+  startWaveLoop() {
+    const prefersReduced = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const render = () => {
+      const elapsed = (Date.now() - this.startTime) * 0.001;
+      this.drawCobaltWave(elapsed, prefersReduced);
+      if (!prefersReduced) {
+        this.rafId = requestAnimationFrame(render);
+      }
+    };
+    render();
+  }
+
+  drawCobaltWave(t, reduced) {
+    const canvas = this.heroCanvas;
+    if (!canvas || !canvas.getContext) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const step = 24;
+    const cols = Math.floor(w / step);
+    const rows = Math.floor(h / step);
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x = c * step + 12;
+        const y = r * step + 12;
+        const wave = reduced
+          ? (Math.sin(c * 0.25 + r * 0.2) * 0.5 + 0.5)
+          : (Math.sin(t * 0.6 + c * 0.22 + r * 0.18) * 0.5 + 0.5);
+        if (wave < 0.3) continue;
+        const alpha = (0.03 + wave * 0.05).toFixed(3);
+        ctx.fillStyle = `rgba(27, 79, 208, ${alpha})`;
+        ctx.fillRect(x, y, 2.5, 2.5);
+      }
+    }
+  }
+
+  renderVals() {
+    const sidebarOpen = this.state.sidebarOpen;
+    const workload = this.state.workload;
+    const aiMode = this.state.aiMode;
+    const paperTheme = this.state.paperTheme;
+
+    const btnActive = 'height:36px;padding:0 14px;border-radius:7px;border:1px solid #153FA8;background:#1B4FD0;color:#FFFFFF;font-size:14px;font-weight:600';
+    const btnIdle = 'height:36px;padding:0 14px;border-radius:7px;border:1px solid transparent;background:transparent;color:#3B4A66;font-size:14px;font-weight:500';
+
+    let openCardTitle = '打开 10 万块文档到显示首屏';
+    let typeCardTitle = '在 10 万块文档里输入一个字到画面更新';
+    let memCardTitle = '打开 10 万块文档时的内存占用';
+    let openBadgeText = '快 17×–320×';
+    let tfOpenVal = '24.5 ms';
+    let vsOpenVal = '~420 ms';
+    let obOpenVal = '~1,800 ms';
+    let noOpenVal = '> 8,000 ms';
+    let tfTypeVal = '2.4 ms';
+    let vsTypeVal = '~16 ms';
+    let obTypeVal = '~45 ms';
+    let noTypeVal = '~180 ms';
+    let tfMemVal = '117 MB';
+    let vsMemVal = '~540 MB';
+    let obMemVal = '~680 MB';
+    let noMemVal = '~1,120 MB';
+
+    if (workload === '50k') {
+      openCardTitle = '打开 5 万块文档到显示首屏';
+      typeCardTitle = '在 5 万块文档里输入一个字到画面更新';
+      memCardTitle = '打开 5 万块文档时的内存占用';
+      openBadgeText = '快 16×–240×';
+      tfOpenVal = '14.2 ms';
+      vsOpenVal = '~230 ms';
+      obOpenVal = '~940 ms';
+      noOpenVal = '~3,600 ms';
+      tfTypeVal = '1.9 ms';
+      vsTypeVal = '~12 ms';
+      obTypeVal = '~28 ms';
+      noTypeVal = '~95 ms';
+      tfMemVal = '82 MB';
+      vsMemVal = '~410 MB';
+      obMemVal = '~520 MB';
+      noMemVal = '~860 MB';
+    } else if (workload === '10k') {
+      openCardTitle = '打开 1 万块文档到显示首屏';
+      typeCardTitle = '在 1 万块文档里输入一个字到画面更新';
+      memCardTitle = '打开 1 万块文档时的内存占用';
+      openBadgeText = '快 12×–150×';
+      tfOpenVal = '6.8 ms';
+      vsOpenVal = '~85 ms';
+      obOpenVal = '~310 ms';
+      noOpenVal = '~1,100 ms';
+      tfTypeVal = '1.4 ms';
+      vsTypeVal = '~9 ms';
+      obTypeVal = '~16 ms';
+      noTypeVal = '~48 ms';
+      tfMemVal = '54 MB';
+      vsMemVal = '~310 MB';
+      obMemVal = '~390 MB';
+      noMemVal = '~620 MB';
+    }
+
+    let aiModeLabel = '当前模式：润色（学术与技术书面化）';
+    let aiDiffBadge = 'AI 润色建议 · 保持原意更紧凑';
+    let aiResultText = 'Yu 摒弃了笨重的浏览器套壳方案，直接基于 macOS 原生增量块索引树构建；即使面对十万块规模的超长 Markdown 文档，也能在 24.5 ms 内完成首屏渲染。';
+
+    if (aiMode === 'concise') {
+      aiModeLabel = '当前模式：精简（提炼核心事实）';
+      aiDiffBadge = 'AI 精简建议 · 字数减少 48%';
+      aiResultText = '基于 macOS 原生块索引树，Yu 可在 24.5 ms 内秒开十万块级 Markdown 长文档。';
+    } else if (aiMode === 'translate') {
+      aiModeLabel = '当前模式：中译英（地道技术文档风格）';
+      aiDiffBadge = 'AI 翻译建议 · English Technical Prose';
+      aiResultText = 'Built on a native macOS block-index tree rather than a web wrapper, Yu opens 100,000-block Markdown documents in just 24.5 ms.';
+    }
+
+    const themeCardBase = 'width:100%;padding:12px 16px;border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;box-sizing:border-box';
+    const themeBtnPlainStyle = paperTheme === 'plain'
+      ? `${themeCardBase};background:#E6EEFF;border:1.5px solid #1B4FD0;color:#0B1528`
+      : `${themeCardBase};background:#FFFFFF;border:1px solid #B8C7E0;color:#0B1528`;
+    const themeBtnMemoStyle = paperTheme === 'memo'
+      ? `${themeCardBase};background:#E6EEFF;border:1.5px solid #1B4FD0;color:#0B1528`
+      : `${themeCardBase};background:#FFFFFF;border:1px solid #B8C7E0;color:#0B1528`;
+    const themeBtnRisoStyle = paperTheme === 'riso'
+      ? `${themeCardBase};background:#E6EEFF;border:1.5px solid #1B4FD0;color:#0B1528`
+      : `${themeCardBase};background:#FFFFFF;border:1px solid #B8C7E0;color:#0B1528`;
+
+    let paperCardStyle = 'padding:24px;border-radius:12px;background:#FFFFFF;border:1.5px solid #0B1528;box-shadow:0 14px 32px rgba(11,21,40,0.08);display:flex;flex-direction:column;gap:14px;box-sizing:border-box';
+    let paperStampStyle = 'height:24px;padding:0 8px;border-radius:4px;background:#0B1528;color:#FFFFFF;font-size:14px;font-weight:600;display:inline-flex;align-items:center';
+    let paperDividerStyle = 'height:1.5px;background:#0B1528';
+    let paperBadgeText = '黑白素纸 · SWISS MONO';
+    let paperFooterCode = 'PAPER #01 · PURE WHITE';
+
+    if (paperTheme === 'memo') {
+      paperCardStyle = 'padding:24px;border-radius:12px;background:#FBF7EE;border:1.5px solid #C8B696;box-shadow:0 14px 32px rgba(11,21,40,0.08);display:flex;flex-direction:column;gap:14px;box-sizing:border-box';
+      paperStampStyle = 'height:24px;padding:0 8px;border-radius:4px;background:#FEF3C7;border:1px solid #D97706;color:#9A5200;font-size:14px;font-weight:600;display:inline-flex;align-items:center';
+      paperDividerStyle = 'height:1px;background:#C8B696';
+      paperBadgeText = '手账便签 · WARM ARCHIVE';
+      paperFooterCode = 'PAPER #02 · IVORY NOTE';
+    } else if (paperTheme === 'riso') {
+      paperCardStyle = 'padding:24px;border-radius:12px;background:#EEF3FF;border:2px solid #1B4FD0;box-shadow:0 14px 32px rgba(27,79,208,0.14);display:flex;flex-direction:column;gap:14px;box-sizing:border-box';
+      paperStampStyle = 'height:24px;padding:0 8px;border-radius:4px;background:#1B4FD0;color:#FFFFFF;font-size:14px;font-weight:600;display:inline-flex;align-items:center';
+      paperDividerStyle = 'height:2px;background:#1B4FD0';
+      paperBadgeText = '野性孔版 · COBALT RISO';
+      paperFooterCode = 'PAPER #03 · RISOGRAPH BLUE';
+    }
+
+    return {
+      heroCanvasRef: (el) => { this.heroCanvas = el; },
+      sidebarOpen,
+      toggleSidebar: () => {
+        this.setState({ sidebarOpen: !this.state.sidebarOpen });
+      },
+      workloadBtn100kStyle: workload === '100k' ? btnActive : btnIdle,
+      workloadBtn50kStyle: workload === '50k' ? btnActive : btnIdle,
+      workloadBtn10kStyle: workload === '10k' ? btnActive : btnIdle,
+      selectWorkload100k: () => { this.setState({ workload: '100k' }); },
+      selectWorkload50k: () => { this.setState({ workload: '50k' }); },
+      selectWorkload10k: () => { this.setState({ workload: '10k' }); },
+      openCardTitle,
+      typeCardTitle,
+      memCardTitle,
+      openBadgeText,
+      tfOpenVal,
+      vsOpenVal,
+      obOpenVal,
+      noOpenVal,
+      tfTypeVal,
+      vsTypeVal,
+      obTypeVal,
+      noTypeVal,
+      tfMemVal,
+      vsMemVal,
+      obMemVal,
+      noMemVal,
+      aiBtnPolishStyle: aiMode === 'polish' ? btnActive : btnIdle,
+      aiBtnConciseStyle: aiMode === 'concise' ? btnActive : btnIdle,
+      aiBtnTranslateStyle: aiMode === 'translate' ? btnActive : btnIdle,
+      selectAiPolish: () => { this.setState({ aiMode: 'polish' }); },
+      selectAiConcise: () => { this.setState({ aiMode: 'concise' }); },
+      selectAiTranslate: () => { this.setState({ aiMode: 'translate' }); },
+      aiModeLabel,
+      aiDiffBadge,
+      aiResultText,
+      themeBtnPlainStyle,
+      themeBtnMemoStyle,
+      themeBtnRisoStyle,
+      selectThemePlain: () => { this.setState({ paperTheme: 'plain' }); },
+      selectThemeMemo: () => { this.setState({ paperTheme: 'memo' }); },
+      selectThemeRiso: () => { this.setState({ paperTheme: 'riso' }); },
+      paperCardStyle,
+      paperStampStyle,
+      paperDividerStyle,
+      paperBadgeText,
+      paperFooterCode
+    };
+  }
+}
+</script>
+</body>
+</html>
