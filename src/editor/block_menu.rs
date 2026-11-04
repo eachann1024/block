@@ -6,16 +6,17 @@ use crate::icons::Icon;
 
 #[path = "block_menu_cmd.rs"] mod cmd;
 #[path = "block_menu_render.rs"] mod render;
-pub(super) use cmd::Cmd;
+pub(super) use cmd::{Cmd, LANGUAGES, language_label, sub_entries};
 pub(super) use render::overlay;
-use cmd::{LANGUAGES, SLASH, language_label};
+use cmd::SLASH;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Mode { Handle, Slash }
 #[derive(Clone, Copy)]
 pub(super) struct BlockMenu {
     pub block: u64, pub anchor: Point<Pixels>, pub mode: Mode, pub index: usize,
-    pub sub: Sub, pub sub_index: usize, pub kind: BlockType, pub lang: &'static str, pub viewport: Size<Pixels>,
+    pub sub: Sub, pub sub_index: usize, pub kind: BlockType, pub heading_level: Option<u8>,
+    pub lang: &'static str, pub viewport: Size<Pixels>,
 }
 /// Which cascading side submenu of the handle menu is open.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -47,21 +48,6 @@ fn raw_block(text: &str) -> Block {
 }
 fn paragraph() -> Block { Block::new(0, Kind::Paragraph, String::new()) }
 
-/// Entries inside the active cascading side submenu.
-pub(super) fn sub_entries(menu: &BlockMenu) -> Vec<Cmd> {
-    match menu.sub {
-        Sub::Root => Vec::new(),
-        Sub::Convert => {
-            let current = match menu.kind { BlockType::Text(k) => Some(k), _ => None };
-            let mut items: Vec<Cmd> = [Kind::Paragraph, Kind::H1, Kind::H2, Kind::H3, Kind::Todo, Kind::Bullet, Kind::Numbered, Kind::Quote]
-                .into_iter().map(|k| Cmd::TurnTo(k, current == Some(k))).collect();
-            items.push(Cmd::CodeTo(menu.kind == BlockType::Code));
-            items
-        }
-        Sub::Language => LANGUAGES.iter().map(|(tag, label)| Cmd::SetLanguage(tag, *label == menu.lang)).collect(),
-    }
-}
-
 impl Editor {
     pub(super) fn open_block_menu(&mut self, id: u64, anchor: Point<Pixels>, mode: Mode, cx: &mut Context<Self>) {
         self.table_menu = None;
@@ -73,11 +59,11 @@ impl Editor {
             }
             _ => anchor,
         };
-        let (kind, lang) = match self.doc.get(id) {
-            Some(b) => (block_type(b), b.meta.code_language.as_deref().map(language_label).unwrap_or("")),
-            None => (BlockType::Text(Kind::Paragraph), ""),
+        let (kind, heading_level, lang) = match self.doc.get(id) {
+            Some(b) => (block_type(b), b.meta.heading_level, b.meta.code_language.as_deref().map(language_label).unwrap_or("")),
+            None => (BlockType::Text(Kind::Paragraph), None, ""),
         };
-        self.block_menu = Some(BlockMenu { block: id, anchor, mode, index: 0, sub: Sub::Root, sub_index: 0, kind, lang, viewport: Size::default() });
+        self.block_menu = Some(BlockMenu { block: id, anchor, mode, index: 0, sub: Sub::Root, sub_index: 0, kind, heading_level, lang, viewport: Size::default() });
         cx.notify();
     }
     pub(super) fn open_submenu(&mut self, index: usize, sub: Sub, window: &Window, cx: &mut Context<Self>) {
@@ -202,15 +188,15 @@ impl Editor {
             Cmd::CopyImage => { self.copy_image(id, cx); return; }
             Cmd::RevealImage => { self.reveal_image(id, cx); return; }
             Cmd::AlignImage(align, _) => { self.edit_image(id, |s| s.align = align, cx); window.focus(&self.focus); return; }
-            Cmd::TurnTo(_, true) | Cmd::CodeTo(true) | Cmd::SetLanguage(_, true) => { cx.notify(); return; }
+            Cmd::TurnTo(_, true) | Cmd::TurnHeadingTo(_, true) | Cmd::CodeTo(true) | Cmd::SetLanguage(_, true) => { cx.notify(); return; }
             Cmd::CopyCode => {
                 let text = self.doc.get(id).map(|b| b.text.clone()).unwrap_or_default();
                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)); self.status = "已复制代码".into(); cx.notify(); return;
             }
             _ => {}
         }
-        let cmd = match cmd { Cmd::TurnTo(kind, _) => Cmd::Turn(kind), Cmd::CodeTo(_) => Cmd::Code(""),
-            Cmd::SetLanguage(tag, _) => Cmd::Code(tag), other => other };
+        let cmd = match cmd { Cmd::TurnTo(kind, _) => Cmd::Turn(kind), Cmd::TurnHeadingTo(lvl, _) => Cmd::TurnHeading(lvl),
+            Cmd::CodeTo(_) => Cmd::Code(""), Cmd::SetLanguage(tag, _) => Cmd::Code(tag), other => other };
         self.commit_composition(cx);
         let Some(index) = self.doc.index_of(id) else { return };
         let Some(block) = self.doc.get(id) else { return };
@@ -224,6 +210,14 @@ impl Editor {
             Cmd::Turn(kind) => {
                 if slash_target { self.doc.set_text(id, String::new()); }
                 self.doc.set_kind(id, kind);
+                changes.push(ListChange { start: index, before: 1, after: 1 });
+                caret = Some(Position { block: id, offset: self.doc.get(id).map_or(0, |b| b.text.len()) });
+            }
+            Cmd::TurnHeading(lvl) => {
+                if slash_target { self.doc.set_text(id, String::new()); }
+                self.doc.set_kind(id, Kind::H3);
+                if let Some(b) = self.doc.get_mut(id) { b.meta.heading_level = Some(lvl); }
+                self.doc.refresh_block(id);
                 changes.push(ListChange { start: index, before: 1, after: 1 });
                 caret = Some(Position { block: id, offset: self.doc.get(id).map_or(0, |b| b.text.len()) });
             }
@@ -269,7 +263,7 @@ impl Editor {
                 window.focus(&self.focus); cx.notify();
                 return;
             }
-            Cmd::Header(_) | Cmd::Open(_) | Cmd::TurnTo(..) | Cmd::CodeTo(_) | Cmd::SetLanguage(..) | Cmd::CopyCode
+            Cmd::Header(_) | Cmd::Open(_) | Cmd::TurnTo(..) | Cmd::TurnHeadingTo(..) | Cmd::CodeTo(_) | Cmd::SetLanguage(..) | Cmd::CopyCode
                 | Cmd::TableOp(_) | Cmd::CopyImage | Cmd::RevealImage | Cmd::AlignImage(..) | Cmd::ToggleWrap(_) => return,
             Cmd::Cut | Cmd::Delete => {
                 if cmd == Cmd::Cut {

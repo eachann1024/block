@@ -39,6 +39,16 @@ fn extend(id: &'static str, tip: &'static str) -> gpui::Stateful<gpui::Div> {
         .child(icon(Icon::Plus, px(16.), theme.icon_colors(theme.text_secondary)))
         .tooltip(move |window, cx| Tooltip::new(tip).build(window, cx))
 }
+fn more_button(open: bool) -> gpui::Stateful<gpui::Div> {
+    let theme = Theme::ocean();
+    div().id("table-more").size(px(24.)).flex_none().rounded(px(6.)).flex().items_center().justify_center()
+        .bg(if open { theme.hover } else { theme.menu }).border_1().border_color(theme.menu_border)
+        .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0.6, 0.15, 0.13, 0.06), offset: point(px(0.), px(1.)),
+            blur_radius: px(3.), spread_radius: px(0.) }])
+        .hover(|s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
+        .child(icon(Icon::More, px(15.), theme.icon_colors(if open { theme.text } else { theme.text_secondary })))
+        .tooltip(|window, cx| Tooltip::new("右键单元格空白处或按 ⇧F10 打开行列操作").build(window, cx))
+}
 pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, _sel: Option<(u64, TableSel)>,
     menu: Option<TableMenu>, drag: Option<TableDrag>, dims: (usize, usize)) -> Vec<AnyElement> {
     let theme = Theme::ocean(); let id = chrome.block; let (r, c) = chrome.cell;
@@ -102,6 +112,20 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, _sel: Option
                     add_row.update(cx, |this, cx| { this.table_command(id, TableSel::Whole, TableCmd::AppendRow, cx); window.focus(&this.focus); });
                     cx.stop_propagation();
                 }))); }
+        if table.top() + px(4.) >= view.top() && table.top() + px(28.) <= view.bottom() {
+            let more_editor = editor.clone();
+            let cell_open = menu.is_some_and(|m| m.block == id && matches!(m.sel, TableSel::Cell(..)));
+            let btn_pos = point(table.right() - px(28.), table.top() + px(4.));
+            let menu_anchor = point((table.right() - px(192.)).max(table.left()), table.top() + px(30.));
+            out.push(floating(btn_pos,
+                more_button(cell_open).on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                    more_editor.update(cx, |this, cx| {
+                        let (mr, mc) = this.cell_of_caret().filter(|x| x.0 == id).map(|x| (x.1, x.2)).unwrap_or((r, c));
+                        this.open_table_menu(id, TableSel::Cell(mr, mc), menu_anchor, cx);
+                    });
+                    cx.stop_propagation();
+                })));
+        }
     }
     // Drop line at the edge the dragged row or column will land on (`.bn-table-drop-cursor`).
     if let Some(drag) = dragging {
