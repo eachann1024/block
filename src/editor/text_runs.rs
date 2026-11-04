@@ -150,6 +150,7 @@ pub(super) fn tint_selection(text: &str, runs: Vec<TextRun>, sel: Option<std::op
             let a = at.max(s); let b = end.min(e);
             if a < b {
                 let mut r = run.clone(); r.len = b - a; r.color = color;
+                if let Some(ul) = &mut r.underline { ul.color = Some(color); }
                 if let Some(st) = &mut r.strikethrough { st.color = Some(color); }
                 out.push(r);
             }
