@@ -63,6 +63,7 @@ impl Editor {
         self.status = message; cx.notify();
     }
     pub fn open(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        crate::log::set_context(format!("note={}", path.display()));
         if self.path.as_ref() == Some(&path) && self.persistence.pending.is_none() {
             if self.status == "正在打开…" || self.status == "Opening…" {
                 self.status = if self.persistence.saving.contains(&path) { tr("正在保存…", "Saving…").into() }
@@ -141,12 +142,14 @@ impl Editor {
                         this.persistence.gate.lock().unwrap().saved.insert(path.clone(), loaded.base);
                         this.reset_document(loaded.doc);
                         this.folded = crate::editor::fold::restore_folds(&path, &this.doc);
+                        crate::log::info(&format!("opened note {} (blocks={}, recovered={})", path.display(), this.doc.blocks.len(), loaded.recovered));
                         this.path = Some(path);
                         this.dirty = loaded.recovered;
                         this.status = if loaded.recovered { tr("已恢复未保存草稿，请确认后保存", "Recovered unsaved draft; please review and save").into() } else { tr("已保存 · 内存会话就绪", "Saved · Ready").into() };
                         this.refresh_find_matches(cx);
                     }
                     Err(error) => {
+                        crate::log::error(&format!("failed to load note {}: {error}", path.display()));
                         if let Some(prev) = prev {
                             if let Some(sess) = this.sessions.remove(&prev) {
                                 this.restore_session(prev, sess, cx);
@@ -224,6 +227,7 @@ impl Editor {
                     }
                     Ok(None) => {}
                     Err(error) => {
+                        crate::log::error(&format!("failed to save note {}: {error}", path.display()));
                         let was_closing = matches!(this.persistence.pending, Some(Pending::Close | Pending::ReleaseUnder));
                         this.persistence.pending = None;
                         if this.path.as_ref() == Some(&path) { this.status = error; }
