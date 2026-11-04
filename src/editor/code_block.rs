@@ -113,7 +113,6 @@ pub(super) fn paint_card(bounds: Bounds<Pixels>, language: &str, window: &mut Wi
 
 fn pill_text(raw_lang: &str) -> String {
     let trimmed = raw_lang.trim();
-    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("auto") { return "auto".to_owned(); }
     let canon = canonical_lang_tag(trimmed);
     if canon == "plaintext" { "Plain Text".to_owned() }
     else if !canon.is_empty() { canon.to_owned() }
@@ -151,6 +150,7 @@ pub(super) fn top_controls(
 
     let copied = COPIED_BLOCKS.with(|set| set.borrow().contains(&block_id));
     let cur_canon = canonical_lang_tag(&raw_lang);
+    let default_idx = LANGUAGES.iter().position(|(t, _)| *t == "plaintext").unwrap_or(0);
     let display_lang = pill_text(&raw_lang);
     let picker = LANG_PICKER.with(|slot| slot.borrow().filter(|p| p.block_id == block_id));
     let show_bar = visible || picker.is_some();
@@ -194,7 +194,7 @@ pub(super) fn top_controls(
                 cx.notify();
                 return;
             }
-            let checked_idx = LANGUAGES.iter().position(|(t, _)| *t == cur_canon).unwrap_or(0);
+            let checked_idx = LANGUAGES.iter().position(|(t, _)| *t == cur_canon).unwrap_or(default_idx);
             let fallback = point(event.position.x - px(LANG_MENU_W), event.position.y + px(12.));
             window.focus(&this.focus, cx);
             LANG_PICKER.with(|slot| {
