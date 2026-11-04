@@ -12,7 +12,7 @@ fn tint(color: gpui::Hsla) -> IconColors { IconColors { line: color, fill: trans
 
 fn button(glyph: Icon, id: &'static str, on: impl Fn(&mut Editor, &mut Window, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean();
-    div().id(id).size(px(24.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
+    div().id(id).size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
         .cursor(CursorStyle::PointingHand).hover(|s| s.bg(theme.hover))
         .child(icon(glyph, px(14.), tint(theme.text_secondary)))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| { on(this, window, cx); cx.stop_propagation(); }))
@@ -25,17 +25,19 @@ pub(super) fn find_bar(editor: &Editor, cx: &mut Context<Editor>) -> Option<impl
     let count = find.matches.len();
     let query_empty = find.input.read(cx).value().is_empty();
     let label = if query_empty { String::new() } else if count == 0 { "无结果".to_owned() } else { format!("{} / {}", find.current + 1, count) };
-    Some(div().id("find-bar").absolute().top(px(10.)).right(px(18.)).w(px(340.)).h(px(36.)).px(px(8.))
-        .flex().items_center().gap(px(4.)).rounded(px(8.)).bg(rgb(0xffffff)).border_1().border_color(rgb(0xe4e4e4))
+    Some(div().id("find-bar").key_context("FindBar").absolute().top(px(12.)).right(px(20.))
+        .py(px(4.)).pr(px(4.)).pl(px(10.))
+        .flex().items_center().gap(px(4.)).rounded(px(8.)).bg(theme.menu).border_1().border_color(theme.menu_border)
         .shadow_md().text_size(px(12.)).text_color(theme.text).occlude()
         .on_action(cx.listener(|this, _: &Escape, window, cx| { this.close_find(window, cx); cx.stop_propagation(); }))
         .on_action(cx.listener(|this, _: &ExitBlock, window, cx| { this.find_step(false, window, cx); cx.stop_propagation(); }))
         .child(icon(Icon::FindSearch, px(14.), tint(theme.text_secondary)))
-        .child(div().flex_1().min_w_0().child(Input::new(&find.input).appearance(false).bordered(false).focus_bordered(false)))
-        .child(div().flex_none().min_w(px(44.)).flex().justify_end().text_color(theme.text_secondary).child(label))
-        .child(div().w(px(1.)).h(px(16.)).flex_none().bg(rgb(0xeaeaea)))
-        .child(button(Icon::ArrowUp, "find-prev", |this, w, cx| this.find_step(false, w, cx), cx))
-        .child(button(Icon::ArrowDown, "find-next", |this, w, cx| this.find_step(true, w, cx), cx))
+        .child(div().w(px(180.)).h(px(28.)).flex().items_center().text_size(px(14.))
+            .child(Input::new(&find.input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)).px(px(0.))))
+        .child(div().flex_none().min_w(px(36.)).px(px(6.)).flex().justify_end().text_color(theme.text_secondary).child(label))
+        .child(div().w(px(1.)).h(px(18.)).mx(px(2.)).flex_none().bg(theme.sidebar_border))
+        .child(button(Icon::ChevronUp, "find-prev", |this, w, cx| this.find_step(false, w, cx), cx))
+        .child(button(Icon::TbChevron, "find-next", |this, w, cx| this.find_step(true, w, cx), cx))
         .child(button(Icon::Close, "find-close", |this, w, cx| this.close_find(w, cx), cx)))
 }
 
