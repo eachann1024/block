@@ -100,7 +100,8 @@ impl Editor {
                 self.list.scroll_by(p.y + layout.line_height - viewport.bottom());
             }
         } else if let Some(index) = self.doc.index_of(self.caret.head.block) {
-            self.list.scroll_to_reveal_item(index);
+            let row = self.column_group_range(index).map_or(index, |r| r.start);
+            self.list.scroll_to_reveal_item(row);
         }
     }
 }
@@ -125,16 +126,13 @@ impl Render for Editor {
                     this.layouts.remove(&id);
                     return div().id(("folded-row", id as usize)).into_any_element();
                 }
-                let block = &this.doc.blocks[index];
-                let number = (block.kind == super::model::Kind::Numbered).then(|| this.doc.list_number(block.id)).flatten();
-                let edge = this.drag_over.filter(|target| target.index == index).map(|target| target.after);
-                let handles = !this.minimal && (this.hover == Some(block.id) || this.caret.head.block == block.id || this.dragging == Some(block.id));
-                let folded = !this.minimal && this.is_heading_folded(block.id);
-                let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
-                let row = super::chrome::block_row(cx.entity(), block, handles, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, cx);
-                div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
-                    // Round only the outer corners so stacked rows read as one band.
-                    .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md())).child(row).into_any_element()
+                if let Some(range) = this.column_group_range(index) {
+                    if index == range.start {
+                        return super::columns::columns_row(this, range, cx);
+                    }
+                    return div().id(("col-member", this.doc.blocks[index].id as usize)).into_any_element();
+                }
+                super::chrome::render_block_row(this, index, cx)
             })
         }).size_full().pt(px(if self.minimal { 18. } else { 36. })).pb(px(if self.minimal { 12. } else { 64. }));
         let rows = if self.minimal { div().flex_1().min_w_0().h_full().ml(px(-32.)).child(rows).into_any_element() } else { rows.into_any_element() };

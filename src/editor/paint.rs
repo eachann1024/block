@@ -98,9 +98,8 @@ impl Element for BlockText {
                 return size(widest.max(room).max(px(1.)), height);
             }
             if let Some(table) = &table {
-                let is_cols = table.is_columns();
                 let mut layout = table_layout::measure(table, width, selected, window);
-                let height = layout.height() + if is_cols { px(0.) } else { px(table_layout::EXTEND_ROOM) };
+                let height = layout.height() + px(table_layout::EXTEND_ROOM);
                 layout.bounds.size = size(width, height);
                 *output.borrow_mut() = Some(layout);
                 super::view::layout::set_key(editor_id, block_id, key);
@@ -150,15 +149,11 @@ impl Element for BlockText {
                 editor.caret.is_empty(), editor.caret.composing.clone(),
                 blank && editor.path.is_some() && editor.caret.head.block == self.block && editor.caret.composing.is_none())
         };
-        let (fenced, is_columns) = {
-            let editor = self.editor.read(cx);
-            let b = editor.doc.get(self.block);
-            (b.and_then(|b| b.meta.code_language.clone()), b.and_then(|b| b.meta.table.as_ref()).is_some_and(|t| t.is_columns()))
-        };
+        let fenced = self.editor.read(cx).doc.get(self.block).and_then(|b| b.meta.code_language.clone());
         if let Some(language) = &fenced { super::code_block::paint_card(layout.bounds, language, window, cx); }
         super::find_bar::paint_matches(self.editor.read(cx), self.block, layout, window);
-        table_layout::paint_background(layout, is_columns, window);
-        if !layout.cells.is_empty() && !is_columns { super::table_actions::track_hover(self.editor.clone(), self.block, layout, window); }
+        table_layout::paint_background(layout, window);
+        if !layout.cells.is_empty() { super::table_actions::track_hover(self.editor.clone(), self.block, layout, window); }
         let tint = {
             let editor = self.editor.read(cx);
             match (editor.table_sel, editor.doc.get(self.block).and_then(|b| b.meta.table.as_ref())) {
@@ -175,11 +170,6 @@ impl Element for BlockText {
                 let hit = match sel { TableSel::Row(x) => r == x, TableSel::Column(x) => c == x, TableSel::Whole => true, TableSel::Cell(..) => false };
                 if hit { window.paint_quad(fill(cell.frame, color)); }
             }
-        } else if is_columns && focused && selected.as_ref().is_some_and(|r| !r.is_empty() && r.start == 0
-            && r.end == self.editor.read(cx).doc.get(self.block).map_or(0, |b| b.text.len()))
-        {
-            let mut color = Theme::ocean().accent; color.a = 0.14;
-            for cell in &layout.cells { window.paint_quad(quad(cell.frame, px(6.), color, px(0.), transparent_black(), BorderStyle::default())); }
         }
         paint_lines(layout, true, window, cx);
         if focused {

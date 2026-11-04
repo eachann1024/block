@@ -45,7 +45,7 @@ fn save_store(store: &FoldStore) {
 }
 
 pub(super) fn heading_level(block: &Block) -> Option<u8> {
-    if block.meta.code_language.is_some() || block.meta.raw_source.is_some() || block.meta.table.is_some() {
+    if block.meta.column.is_some() || block.meta.code_language.is_some() || block.meta.raw_source.is_some() || block.meta.table.is_some() {
         return None;
     }
     match block.kind {

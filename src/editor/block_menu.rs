@@ -25,7 +25,7 @@ pub(super) enum Sub { #[default] Root, Convert, Language }
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum BlockType { Text(Kind), Callout, Columns, Code, Table, Image, Divider, Source }
 pub(super) fn block_type(block: &Block) -> BlockType {
-    if let Some(t) = &block.meta.table { if t.is_columns() { BlockType::Columns } else { BlockType::Table } }
+    if block.meta.table.is_some() { BlockType::Table }
     else if block.meta.callout.is_some() { BlockType::Callout }
     else if block.meta.code_language.is_some() { BlockType::Code }
     else if is_divider(block) { BlockType::Divider }
@@ -60,10 +60,11 @@ impl Editor {
             }
             _ => anchor,
         };
-        let (kind, heading_level, lang) = match self.doc.get(id) {
-            Some(b) => (block_type(b), b.meta.heading_level, b.meta.code_language.as_deref().map(language_label).unwrap_or("")),
-            None => (BlockType::Text(Kind::Paragraph), None, ""),
-        };
+        let (kind, heading_level, lang) = if super::columns::group_from_handle(id).is_some() {
+            (BlockType::Columns, None, "")
+        } else if let Some(b) = self.doc.get(id) {
+            (block_type(b), b.meta.heading_level, b.meta.code_language.as_deref().map(language_label).unwrap_or(""))
+        } else { (BlockType::Text(Kind::Paragraph), None, "") };
         self.block_menu = Some(BlockMenu { block: id, anchor, mode, index: 0, sub: Sub::Root, sub_index: 0, kind, heading_level, lang, viewport: Size::default() });
         cx.notify();
     }
@@ -88,16 +89,14 @@ impl Editor {
                 let query = block.text.trim_start_matches('/').to_lowercase();
                 if query.is_empty() { return SLASH.to_vec(); }
                 let mut hits: Vec<Cmd> = SLASH.into_iter().flatten()
-                    .filter(|c| c.label().to_lowercase().contains(&query) || c.keywords().contains(&query))
-                    .collect();
-                // Prefix matches on the label rank first, so "/ai" puts AI 写作 on top.
-                if !query.is_empty() { hits.sort_by_key(|c| !c.label().to_lowercase().starts_with(&query)); }
+                    .filter(|c| c.label().to_lowercase().contains(&query) || c.keywords().contains(&query)).collect();
+                hits.sort_by_key(|c| !c.label().to_lowercase().starts_with(&query));
                 hits.into_iter().map(Some).collect()
             }
-            Mode::Handle => {
-                let Some(block) = self.doc.get(menu.block) else { return Vec::new() };
-                self.handle_entries(block)
-            }
+            Mode::Handle => super::columns::group_from_handle(menu.block).map_or_else(
+                || self.doc.get(menu.block).map_or_else(Vec::new, |b| self.handle_entries(b)),
+                |gid| self.columns_group_entries(gid),
+            ),
         }
     }
     /// Handle menu for one block: its own tools first, then the shared block actions, delete last.
@@ -120,8 +119,8 @@ impl Editor {
         }
         items.extend([Cmd::InsertAbove, Cmd::InsertBelow, Cmd::Duplicate, Cmd::Cut].map(Some));
         let index = self.doc.index_of(block.id).unwrap_or(0);
-        if index > 0 { items.push(Some(Cmd::MoveUp)); }
-        if index + 1 < self.doc.blocks.len() { items.push(Some(Cmd::MoveDown)); }
+        if index > 0 && self.doc.blocks[index - 1].meta.column == block.meta.column { items.push(Some(Cmd::MoveUp)); }
+        if index + 1 < self.doc.blocks.len() && self.doc.blocks[index + 1].meta.column == block.meta.column { items.push(Some(Cmd::MoveDown)); }
         items.extend([None, Some(if kind == BlockType::Table { Cmd::TableOp(TableCmd::DeleteTable) } else { Cmd::Delete })]);
         items
     }
@@ -179,6 +178,9 @@ impl Editor {
         }
         let menu_anchor = self.block_menu.as_ref().map(|m| m.anchor);
         self.block_menu = None;
+        if let Some(gid) = super::columns::group_from_handle(id) {
+            self.run_columns_group_cmd(gid, cmd, window, cx); return;
+        }
         match cmd {
             Cmd::Ai => { self.open_ai_block(id, mode == Mode::Slash, menu_anchor, window, cx); return; }
             Cmd::TableOp(op) => { self.table_command(id, TableSel::Whole, op, cx); window.focus(&self.focus); cx.notify(); return; }
@@ -235,11 +237,15 @@ impl Editor {
                 changes.push(ListChange { start: index, before: 1, after: 1 });
                 if !was_code { caret = Some(Position { block: id, offset: 0 }); }
             }
-            Cmd::Table | Cmd::Columns | Cmd::Divider => {
-                let new = match cmd { Cmd::Table => Block::from_table(0, Table::blank(3, 3)),
-                    Cmd::Columns => Block::from_table(0, Table::columns(2)), _ => raw_block("***\n") };
-                let trailing = index + 1 >= self.doc.blocks.len() || cmd == Cmd::Divider;
-                let mut blocks = vec![new]; if trailing { blocks.push(paragraph()); }
+            Cmd::Columns => { self.insert_columns(index, slash_target, window, cx); return; }
+            Cmd::Table | Cmd::Divider => {
+                let col = block.meta.column;
+                let mut new = if cmd == Cmd::Table { Block::from_table(0, Table::blank(3, 3)) } else { raw_block("***\n") };
+                new.meta.column = col;
+                let trailing = index + 1 >= self.doc.blocks.len() || cmd == Cmd::Divider
+                    || self.doc.blocks.get(index + 1).is_some_and(|n| n.meta.column != col);
+                let mut blocks = vec![new];
+                if trailing { let mut p = paragraph(); p.meta.column = col; blocks.push(p); }
                 let (start, remove) = if slash_target { (index, 1) } else { (index + 1, 0) };
                 let count = blocks.len();
                 self.doc.splice_blocks(start..start + remove, blocks);
@@ -251,7 +257,8 @@ impl Editor {
             Cmd::Ai => return,
             Cmd::InsertAbove | Cmd::InsertBelow => {
                 let at = if cmd == Cmd::InsertAbove { index } else { index + 1 };
-                self.doc.splice_blocks(at..at, vec![paragraph()]);
+                let mut p = paragraph(); p.meta.column = block.meta.column;
+                self.doc.splice_blocks(at..at, vec![p]);
                 changes.push(ListChange { start: at, before: 0, after: 1 });
                 caret = Some(Position { block: self.doc.blocks[at].id, offset: 0 });
             }
@@ -265,11 +272,8 @@ impl Editor {
             Cmd::CopyText => { cx.write_to_clipboard(gpui::ClipboardItem::new_string(block.text.clone())); return; }
             Cmd::MoveUp | Cmd::MoveDown => {
                 self.move_block_range(index, index, cmd == Cmd::MoveUp, cx);
-                window.focus(&self.focus); cx.notify();
-                return;
+                window.focus(&self.focus); cx.notify(); return;
             }
-            Cmd::Header(_) | Cmd::Open(_) | Cmd::TurnTo(..) | Cmd::TurnHeadingTo(..) | Cmd::CalloutTo(_) | Cmd::CodeTo(_) | Cmd::SetLanguage(..)
-                | Cmd::CopyCode | Cmd::TableOp(_) | Cmd::CopyImage | Cmd::RevealImage | Cmd::AlignImage(..) | Cmd::ToggleWrap(_) => return,
             Cmd::Cut | Cmd::Delete => {
                 if cmd == Cmd::Cut {
                     let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(vec![block.clone()]));
@@ -277,12 +281,9 @@ impl Editor {
                     cx.write_to_clipboard(gpui::ClipboardItem::new_string(plain.clone()));
                     self.block_clip = Some((plain, markdown));
                 }
-                let only = self.doc.blocks.len() == 1;
-                self.doc.remove(id);
-                changes.push(if only { ListChange { start: 0, before: 1, after: 1 } } else { ListChange { start: index, before: 1, after: 0 } });
-                let at = index.min(self.doc.blocks.len() - 1);
-                caret = Some(Position { block: self.doc.blocks[at].id, offset: 0 });
+                self.delete_single_block(id, index, &mut changes, &mut caret);
             }
+            _ => return,
         }
         if let Some(at) = caret { self.caret.anchor = at; self.caret.head = at; }
         self.record_changes(before, changes, true, cx);
