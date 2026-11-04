@@ -56,6 +56,7 @@ impl TreeIndex {
     }
 
     pub fn len(&self) -> usize { visible(&self.root) }
+    #[allow(dead_code)]
     pub fn note_count(&self) -> usize { self.notes }
 
     pub fn has_notes(&self) -> bool {
