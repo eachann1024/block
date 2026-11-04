@@ -69,7 +69,7 @@ impl Workspace {
                 .child(div().flex().items_center().justify_between()
                     .child(div().text_size(px(24.)).line_height(px(32.)).font_weight(FontWeight(560.))
                         .text_color(theme.text).child(tr("设置", "Settings")))
-                    .child(div().id("settings-back").h(px(32.)).px(px(10.)).rounded(px(8.))
+                    .child(div().id("settings-back").relative().children(crate::ui::smoke_overlay::probe("settings-back")).h(px(32.)).px(px(10.)).rounded(px(8.))
                         .bg(theme.paper).border_1().border_color(theme.btn_border)
                         .flex().items_center().justify_center().text_size(px(14.)).font_weight(FontWeight(460.))
                         .text_color(theme.text).cursor(CursorStyle::PointingHand)

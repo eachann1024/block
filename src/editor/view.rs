@@ -179,6 +179,7 @@ impl Render for Editor {
             .on_action(cx.listener(|this, _: &Find, w, cx| this.open_find(w, cx)))
             .child(div().id("editor").key_context("Editor").track_focus(&self.focus).size_full().min_w_0()
                 .relative().flex().flex_col().overflow_hidden().bg(theme.paper)
+                .children(crate::ui::smoke_overlay::probe("editor"))
                 .child(input)
                 .on_action(cx.listener(|this, _: &Left, w, cx| this.handle(&EditorAction::Left, w, cx)))
                 .on_action(cx.listener(|this, _: &Right, w, cx| this.handle(&EditorAction::Right, w, cx)))

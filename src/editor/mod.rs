@@ -42,6 +42,7 @@ mod math_preview;
 mod find;
 mod find_bar;
 mod fold;
+mod smoke_api;
 pub mod view;
 
 #[cfg(not(target_family = "wasm"))]
