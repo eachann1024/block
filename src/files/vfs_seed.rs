@@ -69,3 +69,73 @@ Yu 内置了由 `tiny-skia` 与 `cosmic-text` 驱动的离线排版渲染引擎�
 - **HTML 网页** — 单文件内联样式，完美保留代码高亮、表格与排版细节
 - **PDF / Word 文档** — 适合正式归档、打印与跨团队协作交付
 "#;
+
+pub(super) const NOTE_WELCOME_EN: &str = r#"# Welcome to Yu — Instant Native Markdown Notes
+
+You are using the live **Yu (Thinkly Fast)** workspace compiled directly to **WebAssembly + WebGPU/Canvas**. The file tree, multi-tab bar, global search (`⌘K`), preferences (`⌘,`), and share-card export (`⇧⌘E`) all run on the exact same Rust + GPUI codebase as the macOS desktop app.
+
+> [!TIP]
+> Switch notes in the sidebar, create a new note (`⌘N`), type `/` on an empty line to open the block menu, or click `···` → **Export Image…** in the top-right corner to try it out.
+
+## Workspace Highlights
+
+- [x] **Sidebar file tree & multi-tab bar** — create notes or folders, rename inline, open context menus, and switch tabs effortlessly
+- [x] **Live block-level editing** — headings, checklists, multi-column layouts, syntax-highlighted code, LaTeX math, and interactive tables respond on every keystroke
+- [ ] Click into any paragraph below to start typing, or select text to bring up the floating formatting toolbar
+
+## Architecture at a Glance
+
+| Metric | Yu (Rust + GPUI) | Typical Electron Note App |
+| :--- | :--- | :--- |
+| Cold launch | **< 40 ms** | 1,200 – 2,800 ms |
+| Idle memory | **~28 MB** | 350 – 800 MB |
+| On-disk format | **Plain `.md` files** | Proprietary DB / cloud lock-in |
+
+## Code Blocks & Math
+
+```rust
+pub fn render_workspace(note: &MarkdownDoc, gpu: &mut GpuCanvas) {
+    for block in note.visible_blocks() {
+        gpu.paint_block(block);
+    }
+}
+```
+
+$$
+\mathcal{L}(\theta) = \mathbb{E}_{x \sim p_{\text{data}}}\bigl[-\log p_{\theta}(x)\bigr] + \lambda \|\theta\|_2^2
+$$
+"#;
+
+pub(super) const NOTE_ARCH_EN: &str = r#"# Sub-Millisecond Block Editor
+
+Yu parses every Markdown document into discrete block nodes backed by a virtualized list and incremental layout cache, sustaining 120 fps scrolling and typing even on 100,000-word documents.
+
+## Keyboard Shortcuts
+
+| Action | macOS Shortcut | Description |
+| :--- | :--- | :--- |
+| Global Search | `⌘K` | Search note titles and full text across your workspace |
+| New Note | `⌘N` | Create a new Markdown note in the current folder and open it |
+| Find in Note | `⌘F` | Highlight and step through matches inside the active note |
+| Export Image | `⇧⌘E` | Render a crisp 2× Retina share card across six paper themes |
+
+## Working with Blocks
+
+1. Hover to the left of any block to click `+` or drag the `⋮⋮` handle to reorder
+2. Type `/` on an empty line to insert headings, tables, code blocks, callouts, or math
+3. Open the top-right `···` menu to copy clean Markdown or export a shareable card
+"#;
+
+pub(super) const NOTE_GUIDE_EN: &str = r#"# Typography & Share Cards
+
+Yu includes an offline typesetting pipeline powered by `tiny-skia` and `cosmic-text` that turns any note—or selected passage—into a 2× Retina PNG card, self-contained HTML page, vector PDF, or standard `.docx` document.
+
+> [!NOTE]
+> Click `···` in the top-right corner and choose **Export Image… (`⇧⌘E`)** to preview all six curated paper themes: Minimal, Warm Paper, Ink Night, Cyber, Journal, and Aurora.
+
+## Export Formats
+
+- **PNG Card (2×)** — crisp long-form cards ready to share in chat or social feeds
+- **HTML Document** — single-file inline styles preserving code highlighting, tables, and layout
+- **PDF / Word (`.docx`)** — clean deliverables for archiving, printing, and team handoff
+"#;

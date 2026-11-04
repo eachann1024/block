@@ -1,4 +1,4 @@
-//! Preloaded Chinese demo note for the Yu web hero stage.
+//! Preloaded Chinese and English demo notes for the Yu web hero stage.
 
 pub const DEMO_NOTE: &str = r#"# Yu · 文字之隅，落笔即成
 
@@ -35,3 +35,43 @@ fn reorder_block(blocks: &mut Vec<Block>, from: usize, to: usize) {
 }
 ```
 "#;
+
+pub const DEMO_NOTE_EN: &str = r#"# Yu · A Quiet Corner for Crisp Markdown
+
+Welcome to the live **Yu** editor running directly in your browser via Rust + GPUI compiled to WebAssembly. Hover beside any block to reveal its drag handle, or click the `+` button next to an empty line to insert a new block.
+
+## Block Handles, Drag-to-Reorder & Slash Menu
+
+Click the disclosure arrow next to any heading to fold its section, drag the `⋮⋮` handle to reorder blocks, or type `/` on an empty line to insert or convert block types.
+
+- [x] Hover any paragraph to reveal the drag handle, or `+` on an empty line
+- [x] Drag any block up or down with a live drop indicator
+- [ ] Type `/` on an empty line to convert into a heading, quote, checklist, or code block
+
+> Writing should feel as immediate as pen on paper: structured blocks stay in lockstep with clean plain-text Markdown without breaking your flow.
+
+## Shortcuts & Structured Blocks
+
+| Action | Trigger | What It Does |
+| --- | --- | --- |
+| Insert block | Click `+` beside an empty line | Open the block picker and insert a new block |
+| Reorder block | Drag the `⋮⋮` handle vertically | Rearrange paragraphs and sections in place |
+| Slash command | Type `/` on an empty line | Insert headings, tables, code blocks, or tasks |
+| Delete to line start | `⌘ + Backspace` | Delete from cursor to start of line (`⌘←` / `⌘→` jumps to start / end) |
+| Turn into block | `⌥⌘1` … `⌥⌘9` | Switch between headings, checklists, lists, code, and quotes |
+| Find in note | `⌘F` | Highlight and step through matches in the current note |
+| Export card | `⇧⌘E` | Export your note as a Retina PNG card, PDF, Word, Markdown, or HTML |
+
+```rust
+fn reorder_block(blocks: &mut Vec<Block>, from: usize, to: usize) {
+    if from < blocks.len() && to <= blocks.len() {
+        let item = blocks.remove(from);
+        blocks.insert(to.min(blocks.len()), item);
+    }
+}
+```
+"#;
+
+pub fn demo_note(is_en: bool) -> &'static str {
+    if is_en { DEMO_NOTE_EN } else { DEMO_NOTE }
+}
