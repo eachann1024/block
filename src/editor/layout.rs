@@ -204,7 +204,7 @@ impl Editor {
             }
         }
         if target.is_none() {
-            let next = if down { index.checked_add(1).filter(|i| *i < self.doc.blocks.len()) } else { index.checked_sub(1) };
+            let next = self.next_visible_index(index, down);
             if let Some(i) = next {
                 let b = &self.doc.blocks[i];
                 let offset = if crate::editor::image_source::spec_of(b).is_some() || crate::editor::block_menu::is_divider(b) {
@@ -219,7 +219,7 @@ impl Editor {
                     b.text.char_indices().nth(column).map(|(i,_)| i).unwrap_or(b.text.len())
                 };
                 target = Some(Position { block: b.id, offset });
-            } else if down && !extend && index + 1 == self.doc.blocks.len() {
+            } else if down && !extend && self.next_visible_index(index, true).is_none() {
                 let cur = &self.doc.blocks[index];
                 let exit = if let Some(t) = &cur.meta.table {
                     t.cell_at_range(&(at.offset..at.offset)).is_some_and(|(r, c, _)| r + t.rows[r].cells[c].rowspan >= t.rows.len())

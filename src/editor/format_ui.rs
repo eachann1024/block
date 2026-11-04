@@ -4,12 +4,12 @@ use gpui_component::input::{Escape, Input, InputState};
 use super::toolbar::{ACCENT, BG, BORDER, HOVER, INK, MUTED, SEP};
 use super::{format_cmds::FormatPop, view::{Cancel, Editor}};
 
-/// thinkly's palette: (stored name, label, text hex, background hex). The hex
-/// values are the light-theme ones from thinkly's `text-colors.json`.
-const PALETTE: [(&str, &str, u32, u32); 9] = [
-    ("gray", "灰色", 0x5e5d59, 0xebeced), ("brown", "褐色", 0x64473a, 0xe9e5e3), ("red", "红色", 0xb42318, 0xfbe4e4),
-    ("orange", "橙色", 0x974e08, 0xf6e9d9), ("yellow", "黄色", 0x855600, 0xfbf3db), ("green", "绿色", 0x086b42, 0xddedea),
-    ("blue", "蓝色", 0x245bb2, 0xddebf1), ("purple", "紫色", 0x6940a5, 0xeae4f2), ("pink", "粉色", 0xad1a72, 0xf4dfeb),
+/// thinkly's DESIGN.md palette: 7 swatches per row (Default + 6 named colours)
+/// with translucent highlight backgrounds (`rgba`).
+const PALETTE: [(&str, &str, u32, u32); 6] = [
+    ("gray", "灰色", 0x6e6e73, 0x6e6e7324), ("red", "红色", 0xd93025, 0xd9302524),
+    ("yellow", "黄色", 0xb06000, 0xf9ab0038), ("green", "绿色", 0x188038, 0x18803824),
+    ("blue", "蓝色", 0x1a73e8, 0x1a73e824), ("purple", "紫色", 0x7627bb, 0x7627bb24),
 ];
 
 pub(super) fn popover(editor: Entity<Editor>, pop: &FormatPop) -> AnyElement {
@@ -48,14 +48,22 @@ fn link_field(editor: Entity<Editor>, input: &Entity<InputState>, _existing: boo
 
 fn swatch(editor: &Entity<Editor>, id: (&'static str, usize), prop: &'static str, name: Option<&'static str>, _label: &'static str, hex: Option<u32>, background: bool) -> impl IntoElement {
     let editor = editor.clone();
-    let ink: gpui::Hsla = hex.filter(|_| !background).map_or(rgb(INK).into(), |h| rgb(h).into());
+    let ink: gpui::Hsla = match (background, hex) {
+        (false, Some(h)) => rgb(h).into(),
+        (true, Some(_)) => rgb(0x1d1d1f).into(),
+        _ => rgb(INK).into(),
+    };
+    let label = if background && hex.is_none() { "∅" } else { "A" };
     div().id(id).size(px(22.)).rounded_md().border_1().border_color(rgb(SEP)).flex().items_center().justify_center()
         .cursor(CursorStyle::PointingHand).text_color(ink)
-        .when_some(hex.filter(|_| background), |s, h| s.bg(rgb(h)))
-        // Text colours sit on a light chip so dark inks stay readable on the dark popover.
-        .when(!background && hex.is_some(), |s| s.bg(rgb(0xf3f4f6)))
+        // Colour and translucent highlight swatches sit on a light chip so they read true on the dark popover.
+        .when(hex.is_some(), |s| s.bg(rgb(0xf3f4f6)))
         .hover(|s| s.border_color(rgb(ACCENT)))
-        .child(if background && hex.is_none() { "∅" } else { "A" })
+        .child(if let Some(rgba) = hex.filter(|_| background) {
+            div().size_full().rounded(px(5.)).bg(gpui::rgba(rgba)).flex().items_center().justify_center().child(label).into_any_element()
+        } else {
+            div().child(label).into_any_element()
+        })
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             editor.update(cx, |this, cx| { this.apply_style(prop, name, cx); this.close_format(window, cx); });
             cx.stop_propagation();

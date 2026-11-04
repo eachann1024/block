@@ -29,7 +29,7 @@ impl Editor {
     }
     /// Cmd+Up / Cmd+Down: caret to the start of the first block or the end of the last one.
     pub(super) fn doc_edge(&mut self, end: bool, extend: bool, cx: &mut Context<Self>) {
-        let block = if end { self.doc.blocks.last() } else { self.doc.blocks.first() };
+        let block = if end { self.last_visible_index().and_then(|i| self.doc.blocks.get(i)) } else { self.doc.blocks.first() };
         let Some(at) = block.map(|b| super::view::selection::Position { block: b.id, offset: if end { b.text.len() } else { 0 } }) else { return };
         self.table_sel = None; self.preferred_x = None; self.block_sel = None;
         self.set_head(at, extend, cx);

@@ -33,6 +33,7 @@ mod table_chrome;
 mod code_block;
 mod find;
 mod find_bar;
+mod fold;
 pub mod view;
 
 pub use export_driver::{export_document, export_selected};
