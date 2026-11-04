@@ -51,6 +51,7 @@ pub(in crate::editor) struct TextLayout {
     pub line_height: Pixels,
     pub cells: Vec<CellLayout>,
     pub alignment: gpui::TextAlign,
+    pub code_spans: Vec<std::ops::Range<usize>>,
 }
 pub(in crate::editor) struct CellLayout {
     pub range: std::ops::Range<usize>,
@@ -59,7 +60,10 @@ pub(in crate::editor) struct CellLayout {
     pub background: Option<gpui::Hsla>,
 }
 impl TextLayout {
-    fn aligned_x(&self, line: &WrappedLine, visual: usize) -> Pixels {
+    pub fn empty(line_height: Pixels) -> Self {
+        Self { bounds: Bounds::default(), lines: Vec::new(), line_height, cells: Vec::new(), alignment: gpui::TextAlign::Left, code_spans: Vec::new() }
+    }
+    pub(in crate::editor) fn aligned_x(&self, line: &WrappedLine, visual: usize) -> Pixels {
         let mut starts = vec![px(0.)];
         starts.extend(line.wrap_boundaries.iter().map(|edge|
             line.unwrapped_layout.runs[edge.run_ix].glyphs[edge.glyph_ix].position.x));
@@ -84,6 +88,7 @@ impl TextLayout {
                     else { self.cells.last().unwrap() });
             return cell.text.point(offset.saturating_sub(cell.range.start));
         }
+        let offset = crate::editor::inline_code::doc_to_shaped(offset, &self.code_spans);
         let mut y = px(0.);
         for (i, (start, line)) in self.lines.iter().enumerate() {
             if offset <= start + line.len() || i + 1 == self.lines.len() {
@@ -112,7 +117,8 @@ impl TextLayout {
                 let local_y = (point.y-y).max(px(0.)).min(height-px(0.01));
                 let position = gpui::point(point.x - self.bounds.left()
                     - self.aligned_x(line, (local_y / self.line_height) as usize), local_y);
-                return start + line.closest_index_for_position(position, self.line_height).unwrap_or_else(|i| i);
+                let raw = start + line.closest_index_for_position(position, self.line_height).unwrap_or_else(|i| i);
+                return crate::editor::inline_code::shaped_to_doc(raw, &self.code_spans);
             }
             y += height;
         }
