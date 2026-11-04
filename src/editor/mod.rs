@@ -28,6 +28,7 @@ mod format_ui;
 mod toolbar;
 mod link_pop;
 mod annotate;
+mod annotate_fit;
 mod annotate_pop;
 mod annotate_rail;
 mod annotate_ui;

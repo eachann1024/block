@@ -3,9 +3,8 @@
 use gpui::{AnyElement, Context, Entity, IntoElement, MouseButton, ParentElement, Pixels, SharedString, Styled, Window, div, prelude::*, px};
 use gpui_component::input::{Escape, InputState};
 use crate::ui::{
-    annotation_card::{card_shell, render_card_state},
+    annotation_card::{card_shell, floating_shadows, render_card_state},
     annotation_note,
-    popover,
 };
 use super::{annotate::Annotation, annotate_rail::build_card_state, view::Editor};
 
@@ -13,6 +12,7 @@ const POP_MAX_W: f32 = 340.;
 
 fn close(editor: &mut Editor, window: &mut Window, cx: &mut Context<Editor>) {
     editor.annotate.active_annotation = None;
+    editor.annotate.hovered_annotation = None;
     editor.annotate.followup = None;
     editor.annotate.editing = None;
     window.focus(&editor.focus, cx);
@@ -30,7 +30,7 @@ pub(super) fn badge(note: &Annotation, index: usize, active: bool, cx: &mut Cont
         }))
 }
 
-/// In-place popover card for the active annotation in narrow mode, clamped to the editor bounds.
+/// In-place popover card for a hovered or pinned collapsed badge in narrow mode.
 pub(super) fn popover_layer(
     note: Annotation,
     editing: Option<Entity<InputState>>,
@@ -61,12 +61,13 @@ pub(super) fn popover_layer(
     card_shell(SharedString::from(format!("annotation-pop-{id}")), true)
         .w(card_w)
         .max_h(max_h)
-        .shadow(popover::shadows())
+        .shadow(floating_shadows())
         .occlude()
         .absolute()
         .top(top)
-        .right(px(42.))
+        .right(px(40.))
         .key_context("AnnotationPopover")
+        .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx)))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_action(cx.listener(move |this, _: &Escape, window, cx| {
             if this.annotate.editing.as_ref().is_some_and(|e| e.annotation_id == id) {
