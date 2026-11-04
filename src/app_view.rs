@@ -1,5 +1,5 @@
 use gpui::{
-    Context, IntoElement, ParentElement, Render, Window, div, prelude::*, px,
+    Context, IntoElement, MouseButton, NavigationDirection, ParentElement, Render, Window, div, prelude::*, px,
 };
 use crate::icons::{Icon, icon};
 use crate::theme::{Theme, format_hotkey, search_shortcut, tr};
@@ -20,7 +20,9 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &crate::editor::ai::ToggleAiPanel, window, cx| { crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); cx.notify(); }))
             .on_action(cx.listener(|this, _: &NewNote, window, cx| if !this.busy() { this.new_item(false, window, cx) }))
             .on_action(cx.listener(|this, _: &NewFolder, window, cx| if !this.busy() { this.new_item(true, window, cx) }))
-            .on_action(cx.listener(|this, _: &Dismiss, window, cx| if !this.dismiss(window, cx) { cx.propagate() }));
+            .on_action(cx.listener(|this, _: &Dismiss, window, cx| if !this.dismiss(window, cx) { cx.propagate() }))
+            .on_mouse_down(MouseButton::Navigate(NavigationDirection::Back), cx.listener(|this, _, _, cx| this.navigate_back(cx)))
+            .on_mouse_down(MouseButton::Navigate(NavigationDirection::Forward), cx.listener(|this, _, _, cx| this.navigate_forward(cx)));
         self.bind_tab_actions(root, cx)
             .child(self.titlebar(cx))
             .child(div().flex_1().min_h_0().flex()
