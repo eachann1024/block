@@ -222,10 +222,10 @@ pub fn search_all(root: &Path, query: &str, limit: usize) -> Vec<Hit> {
 
 const NOTE_WELCOME: &str = r#"# 欢迎使用 Yu —— 毫秒级原生 Markdown 笔记
 
-这是一份直接运行在浏览器 **WebAssembly + WebGPU/Canvas** 中的真实 **Yu (Thinkly Fast)** 工作区。左侧文件树、多标签页、全局搜索（`⌘K`）、设置面板（`⌘,`）与生成长图（`⇧⌘E`）均由同一套 Rust + GPUI 代码直接驱动。
+这是一份直接运行在浏览器 **WebAssembly + WebGPU/Canvas** 中的真实 **Yu (Thinkly Fast)** 工作区。左侧文件树、多标签页、全局搜索（⌘K）、设置面板（⌘,）与生成长图（⇧⌘E）均由同一套 Rust + GPUI 代码直接驱动。
 
 > [!TIP]
-> 试着在左侧文件树切换笔记、新建笔记（`⌘N`）、按 `/` 呼出块菜单，或点击右上角 `···` → **生成图片…** 体验完整功能。
+> 试着在左侧文件树切换笔记、新建笔记（⌘N）、按 / 呼出块菜单，或点击右上角 ··· → **生成图片…** 体验完整功能。
 
 ## 核心工作区体验
 
