@@ -128,6 +128,8 @@ icons! {
     HelpCircle => "help-circle" [Line],
     ChevronUp => "chevron-up" [Line],
     FolderReveal => "folder-reveal" [Line],
+    SidebarCollapse => "sidebar-collapse" [Fill, Line, Accent],
+    SidebarExpand => "sidebar-expand" [Line, Accent],
 }
 
 /// The three tints of one icon.

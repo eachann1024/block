@@ -49,6 +49,7 @@ pub struct Workspace {
     pending: Option<PreparedFolder>,
     notice: String,
     sidebar_width: gpui::Pixels,
+    pub(crate) sidebar_collapsed: bool,
     /// (pointer x at press, width at press) while the edge is dragged.
     resizing: Option<(gpui::Pixels, gpui::Pixels)>,
     notebooks: Vec<PathBuf>,
@@ -152,7 +153,7 @@ impl Workspace {
         let this = Self { folder: None, folder_error: None, tree, editor, selected: None, tabs: Vec::new(), startup_tabs: None, dirty_bits: 0, loading: true,
             choosing: false, creating: false, persisting: false, pending: None,
             notice: "正在读取工作区偏好…".into(), sidebar_width: Theme::ocean().sidebar_width,
-            resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
+            sidebar_collapsed: false, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
             settings: None, file_op: None, working: false, root_focus: cx.focus_handle(),
             _editor_subscription: subscription };
         window.focus(&this.root_focus);

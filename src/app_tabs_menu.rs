@@ -85,7 +85,7 @@ pub(super) fn record_tab_close(index: usize, label: String, cx: &mut Context<Wor
 }
 
 /// Renders an icon whose stroke switches from `base` to `hover` when `group` is hovered.
-pub(super) fn hover_tinted_icon(
+pub(crate) fn hover_tinted_icon(
     group: SharedString, glyph: Icon, size: f32, base: Hsla, hover: Hsla, fill: Hsla,
 ) -> gpui::Div {
     let theme = Theme::ocean();

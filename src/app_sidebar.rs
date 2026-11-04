@@ -1,20 +1,49 @@
 //! Sidebar chrome: resizable edge, notebook switcher and window-level overlays.
 use gpui::{
-    AnyElement, Context, CursorStyle, FontWeight, MouseButton, Pixels, Window,
-    anchored, deferred, div, point, prelude::*, px,
+    AnyElement, Context, CursorStyle, FontWeight, MouseButton, Pixels, SharedString,
+    Window, WindowControlArea, anchored, deferred, div, point, prelude::*, px,
 };
 use crate::icons::{Icon, icon};
 use crate::theme::Theme;
-use super::{Workspace, file_ops::display_name, update_state_width};
+use super::{Workspace, file_ops::display_name, tabs::hover_tinted_icon, update_state_width};
 use super::menu::{ItemId, menu_item, menu_surface, separator};
 
 pub(super) const MIN_WIDTH: f32 = 200.;
 pub(super) const MAX_WIDTH: f32 = 420.;
+const COLLAPSED_HEADER_WIDTH: f32 = 116.;
 const SWITCHER_TOP: f32 = 40. + 12. + 32. + 4.;
 
 pub(super) fn clamp_width(width: Pixels) -> Pixels { width.clamp(px(MIN_WIDTH), px(MAX_WIDTH)) }
 
 impl Workspace {
+    pub(crate) fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
+        self.switcher_open = false;
+        self.menu = None;
+        self.resizing = None;
+        self.sidebar_collapsed = !self.sidebar_collapsed;
+        cx.notify();
+    }
+
+    /// Top-left titlebar cell housing traffic lights and the Version B sidebar toggle button.
+    pub(super) fn titlebar_left(&self, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let theme = Theme::ocean();
+        let width = if self.sidebar_collapsed { px(COLLAPSED_HEADER_WIDTH) } else { self.sidebar_width };
+        let glyph = if self.sidebar_collapsed { Icon::SidebarExpand } else { Icon::SidebarCollapse };
+        let btn_group: SharedString = "sidebar-toggle-btn".into();
+        div().id("titlebar-left").w(width).h_full().flex_none().flex().items_center()
+            .pl(px(76.)).pr(px(10.)).border_r_1().border_color(theme.sidebar_border)
+            .window_control_area(WindowControlArea::Drag)
+            .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
+            .child(div().id("sidebar-toggle").group(btn_group.clone()).ml_auto().size(px(26.)).flex_none()
+                .flex().items_center().justify_center().rounded(px(6.)).cursor(CursorStyle::PointingHand)
+                .hover(|s| s.bg(theme.hover))
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.toggle_sidebar(cx);
+                }))
+                .child(hover_tinted_icon(btn_group, glyph, 16., theme.text_secondary, theme.text, theme.icon_fill)))
+    }
+
     /// Invisible 8px strip over the sidebar's right border.
     pub(super) fn resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::ocean();
