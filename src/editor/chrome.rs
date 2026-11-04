@@ -28,7 +28,7 @@ fn block_v_pad(block: &Block, minimal: bool, in_col: bool) -> (f32, f32) {
     }
 }
 
-pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bool, grip_active: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, heading_end_x: Option<Pixels>, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
+pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bool, grip_active: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, heading_end_x: Option<Pixels>, image_pop: Option<super::image_edit::ImagePop>, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
     let in_col = block.meta.column.is_some();
     let handle_w = if in_col { 42. } else { HANDLE_WIDTH };
@@ -108,7 +108,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                 .when_some(block.meta.unsupported_reason.clone().filter(|_| image.is_none() && !rule), |body, reason| body.child(
                     div().text_size(px(11.)).text_color(theme.text_secondary).pb_1()
                         .child(format!("{} · {reason}", tr("已保留源码", "Source preserved")))))
-                .when_some(image, |body, (path, spec)| body.child(super::image_view::image_block(focus_editor.clone(), id, path, spec, active, cx)))
+                .when_some(image, |body, (path, spec)| body.child(super::image_view::image_block(focus_editor.clone(), id, path, spec, active, image_pop, cx)))
                 .when(static_view && rule, |body| body.child(
                     div().id(("rule", id as usize)).h(px(22.)).flex().items_center().cursor(CursorStyle::PointingHand)
                         .child(div().h(px(if active { 2. } else { 1. })).w_full().bg(if active { theme.accent } else { theme.hairline }))
@@ -235,7 +235,8 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let heading_end_x = super::fold::heading_level(block).is_some()
         .then(|| this.layouts.get(&block.id).and_then(|l| l.lines.first().map(|(_, line)| line.width())))
         .flatten();
-    let row = block_row(cx.entity(), block, handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, heading_end_x, cx);
+    let image_pop = this.image_menu.as_ref().filter(|(mid, _)| *mid == block.id).map(|(_, p)| p.clone());
+    let row = block_row(cx.entity(), block, handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, heading_end_x, image_pop, cx);
     div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
         .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md())).child(row).into_any_element()
 }
