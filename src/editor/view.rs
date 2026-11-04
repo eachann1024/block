@@ -177,7 +177,8 @@ impl Render for Editor {
         let floating = self.toolbar_anchor.filter(|_| !self.minimal && !self.caret.is_empty() && !self.selecting && self.dragging.is_none()
             && self.caret.composing.is_none() && window.is_window_active() && self.focus.is_focused(window));
         let std_w = super::chrome::standard_width(theme.content_width);
-        let rail_w = if !self.minimal && self.annotate.has_visible_rail() { px(308.) } else { px(0.) };
+        let vw = self.list.viewport_bounds().size.width;
+        let rail_w = if !self.minimal && self.annotate.has_visible_rail() && (vw <= px(0.) || vw >= px(860.)) { px(308.) } else { px(0.) };
         div().size_full().min_w_0().relative()
             .on_action(cx.listener(|this, _: &Find, w, cx| this.open_find(w, cx)))
             .child(div().id("editor").key_context("Editor").track_focus(&self.focus).size_full().min_w_0()
