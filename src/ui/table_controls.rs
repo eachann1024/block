@@ -2,7 +2,7 @@
 //! The add bars live in `reveal::table_add_bar`, which already carries the shared values.
 use std::time::Duration;
 use gpui::{
-    Animation, AnimationExt, CursorStyle, Div, Hsla, Stateful, div, prelude::*, px, rgb, rgba,
+    Animation, AnimationExt, CursorStyle, Div, Hsla, Pixels, SharedString, Stateful, div, prelude::*, px, rgb, rgba,
 };
 use crate::{
     icons::{Icon, icon},
@@ -63,6 +63,18 @@ pub fn grip(id: (&'static str, usize), vertical: bool, expanded: bool, dragging:
         .cursor(if dragging { CursorStyle::ClosedHand } else { CursorStyle::OpenHand })
         .child(shell)
         .when(!dragging, |el| el.tooltip(move |window, cx| build_tooltip(tip, window, cx)))
+}
+
+/// Grab zone over a column boundary, as tall as the table: a col-resize cursor everywhere in it and a
+/// 2px accent line (centred `line_at` px from its left edge) while hovered or `active`.
+pub fn col_resize(id: (&'static str, usize), width: f32, height: Pixels, line_at: f32, active: bool) -> Stateful<Div> {
+    let accent = Theme::ocean().accent;
+    let group = SharedString::from(format!("col-resize-{}", id.1));
+    let line = div().absolute().top(px(0.)).left(px(line_at - 1.)).w(px(2.)).h_full().rounded_full()
+        .when(active, move |l| l.bg(accent))
+        .group_hover(group.clone(), move |l| l.bg(accent));
+    div().id(id).group(group).relative().w(px(width)).h(height).flex_none()
+        .cursor(CursorStyle::ResizeColumn).child(line)
 }
 
 /// 26x26 options button: transparent, #f5f4ed on hover or while its menu is open.
