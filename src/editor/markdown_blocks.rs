@@ -1,4 +1,4 @@
-use super::Kind;
+use super::super::model::{Block, Kind};
 pub(super) fn fence(line: &str) -> Option<(u8,usize,&str)> {
     let body = line.trim_start_matches(' ');
     if line.len()-body.len() > 3 { return None; }
@@ -87,4 +87,80 @@ pub(super) fn classify(line: &str) -> (Kind,&str,bool,usize,Option<u64>,bool) {
         || line.starts_with("$$") || line.starts_with(":::") || line.starts_with("[[")
         || line.starts_with("<!") || line.starts_with("[^") || line.contains("]: ");
     (Kind::Paragraph,line,false,0,None,opaque)
+}
+
+// ---- YAML frontmatter: a leading `---` ... `---` pair is shown as a `yaml-frontmatter` code block. ----
+fn is_frontmatter_open(line: &str) -> bool {
+    let line = line.trim_end_matches(['\r', '\n']);
+    line.strip_prefix('\u{feff}').unwrap_or(line).trim_end_matches([' ', '\t']) == "---"
+}
+fn is_frontmatter_close(line: &str) -> bool {
+    line.trim_end_matches(['\r', '\n']).trim_end_matches([' ', '\t']) == "---"
+}
+fn after_key(rest: &str) -> bool {
+    rest.strip_prefix(':').is_some_and(|r| r.is_empty() || r.starts_with([' ', '\t']))
+}
+/// `key:` where the colon ends the line or is followed by a space/tab; the key is quoted or plain text.
+fn has_yaml_key(trimmed: &str) -> bool {
+    if let Some(quote) = trimmed.chars().next().filter(|c| matches!(c, '"' | '\'')) {
+        let mut escaped = false;
+        for (i, ch) in trimmed.char_indices().skip(1) {
+            if quote == '"' && ch == '\\' && !escaped { escaped = true; continue; }
+            if ch == quote && !escaped { return after_key(trimmed[i + 1..].trim_start_matches([' ', '\t'])); }
+            escaped = false;
+        }
+        return false;
+    }
+    let digits = trimmed.bytes().take_while(u8::is_ascii_digit).count();
+    if trimmed.starts_with(['>', '`', '|']) || (digits > 0 && trimmed[digits..].starts_with(['.', ')'])) { return false; }
+    trimmed.char_indices().any(|(i, ch)| ch == ':' && i > 0 && after_key(&trimmed[i..])
+        && !trimmed[..i].chars().any(char::is_control))
+}
+/// Tells real frontmatter from two horizontal rules wrapped around ordinary Markdown.
+fn looks_like_frontmatter(inner: &[&str]) -> bool {
+    if inner.iter().all(|l| l.trim().is_empty()) { return true; }
+    let (mut has_blank, mut has_yaml_construct) = (false, false);
+    for raw in inner {
+        let line = raw.trim_end_matches(['\r', '\n']);
+        if line.trim().is_empty() { has_blank = true; continue; }
+        if fence(line).is_some() { return false; }
+        let trimmed = line.trim_start_matches([' ', '\t']);
+        if trimmed.starts_with('#') || line.len() > trimmed.len() { continue; }
+        let construct = trimmed == "-" || trimmed.starts_with("- ") || trimmed.starts_with("-\t")
+            || trimmed.starts_with(['%', '{', '}', '[', ']', '&', '*', '?']) || has_yaml_key(trimmed);
+        if !construct { return false; }
+        has_yaml_construct = true;
+    }
+    has_yaml_construct || !has_blank
+}
+pub(super) fn parse_frontmatter(id: u64, lines: &[&str]) -> Option<(Block, usize, usize)> {
+    if lines.is_empty() || !is_frontmatter_open(lines[0]) { return None; }
+    let end = (1..lines.len()).find(|&i| is_frontmatter_close(lines[i]))?;
+    if !looks_like_frontmatter(&lines[1..end]) { return None; }
+    let mut body = lines[1..end].concat();
+    let empty_line = body == "\n" || body == "\r\n";
+    if body.ends_with('\n') { body.pop(); if body.ends_with('\r') { body.pop(); } }
+    let mut block = Block::new(id, Kind::Paragraph, body);
+    block.meta.code_empty_line = empty_line;
+    block.meta.code_language = Some("yaml-frontmatter".to_owned());
+    Some((block, end + 1, lines[..=end].iter().map(|l| l.len()).sum()))
+}
+/// False when the block must stay a fenced code block so the document reloads unchanged.
+pub(super) fn serialize_frontmatter(block: &Block, at_top: bool, out: &mut String) -> bool {
+    if !(at_top && block.meta.column.is_none() && block.meta.indent == 0
+        && block.meta.code_language.as_deref() == Some("yaml-frontmatter")) { return false; }
+    let inner: Vec<&str> = block.text.split('\n').collect();
+    if inner.iter().any(|l| is_frontmatter_close(l)) || !looks_like_frontmatter(&inner) { return false; }
+    out.push_str("---\n");
+    if !block.text.is_empty() { out.push_str(&block.text); out.push('\n'); }
+    else if block.meta.code_empty_line { out.push('\n'); }
+    out.push_str("---\n");
+    true
+}
+pub(super) fn strip_frontmatter(source: &str) -> &str {
+    let lines: Vec<_> = source.split_inclusive('\n').collect();
+    match parse_frontmatter(1, &lines) {
+        Some((_, _, bytes)) => source[bytes..].trim_start_matches(['\r', '\n']),
+        None => source,
+    }
 }

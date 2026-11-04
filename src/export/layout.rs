@@ -197,6 +197,7 @@ pub(super) fn build(
             .code_language
             .as_deref()
             .filter(|s| !s.is_empty())
+            .map(|s| if matches!(s.to_ascii_lowercase().as_str(), "yaml-frontmatter" | "frontmatter") { "yaml" } else { s })
             .map(|s| plain(fonts, theme, s, 11.0, width))
             .transpose()?;
         let label_h = label
