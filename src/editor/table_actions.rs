@@ -237,9 +237,10 @@ impl Editor {
         if self.path.is_none() || self.dragging.is_some() { return None; }
         let frozen = self.table_menu.map(|m| m.block)
             .or(self.table_drag.map(|d| d.block)).or(self.table_extend.as_ref().map(|e| e.block))
+            .or(super::table_resize::active().map(|r| r.block))
             .or(self.table_sel.map(|(id, _)| id));
         let (id, cell) = match frozen {
-            Some(id) => (id, hovered().filter(|h| h.0 == id && self.table_menu.is_none() && self.table_drag.is_none() && self.table_extend.is_none())
+            Some(id) => (id, hovered().filter(|h| h.0 == id && self.table_menu.is_none() && self.table_drag.is_none() && self.table_extend.is_none() && super::table_resize::active().is_none())
                 .map(|h| (h.1, h.2))
                 .or_else(|| self.table_chrome.as_ref().filter(|c| c.block == id).map(|c| c.cell))
                 .or_else(|| self.cell_of_caret().filter(|x| x.0 == id).map(|x| (x.1, x.2))).unwrap_or((0, 0))),
