@@ -177,6 +177,9 @@ impl Editor {
         if marker && matches!(normalized.as_str(), "-" | "*" | "_" | "－" | "＊" | "＿" | "—" | "——") && ai == bi && a == b {
             self.divider_rule(&mut id, &mut offset);
         }
+        if !marker && self.promote_image_block(id) {
+            offset = 0;
+        }
         let at = Position { block: id, offset };
         self.caret.anchor = at; self.caret.head = at; self.caret.composing = None;
         if self.composition_before.is_none() { self.record(before, cx); }

@@ -206,6 +206,21 @@ impl Editor {
             }
             ")" => {
                 if escaped(before_caret, close_pos) { return; }
+                if block.kind == super::model::Kind::Paragraph
+                    && block.meta.table.is_none()
+                    && block.meta.code_language.is_none()
+                    && block.meta.raw_source.is_none()
+                    && block.meta.callout.is_none()
+                    && block.spans.is_empty()
+                    && super::image_source::parse(&block.text).is_some()
+                {
+                    let before = self.snapshot();
+                    self.promote_image_block(at.block);
+                    let to = Position { block: at.block, offset: 0 };
+                    self.caret.anchor = to; self.caret.head = to;
+                    self.record(before, cx);
+                    return;
+                }
                 let head = &before_caret[..close_pos];
                 let Some(mid) = head.rfind("](") else { return };
                 if escaped(head, mid) { return; }
@@ -244,5 +259,26 @@ impl Editor {
         let to = Position { block: block_id, offset: range.end };
         self.caret.anchor = to; self.caret.head = to;
         self.record(before, cx);
+    }
+
+    pub(in crate::editor) fn promote_image_block(&mut self, id: u64) -> bool {
+        let Some(block) = self.doc.get(id) else { return false };
+        let is_plain = block.kind == super::model::Kind::Paragraph
+            && block.meta.table.is_none()
+            && block.meta.code_language.is_none()
+            && block.meta.raw_source.is_none()
+            && block.meta.callout.is_none()
+            && block.spans.is_empty();
+        if !is_plain || super::image_source::parse(&block.text).is_none() {
+            return false;
+        }
+        if let Some(block) = self.doc.get_mut(id) {
+            let line = format!("{}\n", block.text.trim_end_matches(['\r', '\n']));
+            block.text = line.clone();
+            block.meta.raw_source = Some(line);
+            block.meta.unsupported_reason = Some("Image".to_owned());
+        }
+        self.doc.refresh_block(id);
+        true
     }
 }
