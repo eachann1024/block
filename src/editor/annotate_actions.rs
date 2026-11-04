@@ -46,38 +46,32 @@ impl Editor {
             return;
         }
         let Some(note) = self.annotate.annotations.iter().find(|note| note.id == id).cloned() else { return };
-        if note.is_applied() || note.body.is_empty() {
-            self.annotate.active_annotation = Some(id);
-            self.annotate.followup = None;
-            self.toolbar_anchor = None;
-            if let Some((block_id, range, _)) = resolve_annotation_span(&self.doc, &note) {
-                self.ensure_block_visible(block_id);
-                self.caret.anchor = Position { block: block_id, offset: range.start };
-                self.caret.head = self.caret.anchor;
-                self.table_sel = None;
-            }
-            cx.notify();
-            return;
-        }
-        let input = cx.new(|cx| InputState::new(window, cx)
-            .placeholder(tr("继续对话微调… ↵", "Continue refining… ↵")));
-        let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| {
-            if matches!(event, InputEvent::PressEnter { secondary: false, .. }) {
-                this.submit_annotation_followup(window, cx);
-            } else if matches!(event, InputEvent::Change) { cx.notify(); }
-        });
         self.annotate.active_annotation = Some(id);
-        self.annotate.followup = Some(AnnotationFollowup { annotation_id: id, input: input.clone(), _sub: sub });
+        self.annotate.followup = None;
         self.toolbar_anchor = None;
         if let Some((block_id, range, _)) = resolve_annotation_span(&self.doc, &note) {
             self.ensure_block_visible(block_id);
             self.caret.anchor = Position { block: block_id, offset: range.start };
             self.caret.head = self.caret.anchor;
             self.table_sel = None;
-            self.reveal_caret = true;
+            if !note.is_applied() && !note.body.is_empty() { self.reveal_caret = true; }
         }
-        cx.defer_in(window, move |_, window, cx| { input.update(cx, |state, cx| state.focus(window, cx)); });
+        if !note.is_applied() && !note.body.is_empty() {
+            let input = self.open_followup_input(id, window, cx);
+            cx.defer_in(window, move |_, window, cx| { input.update(cx, |state, cx| state.focus(window, cx)); });
+        }
         cx.notify();
+    }
+
+    fn open_followup_input(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) -> gpui::Entity<InputState> {
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(tr("继续对话微调… ↵", "Continue refining… ↵")));
+        let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| {
+            if matches!(event, InputEvent::PressEnter { secondary: false, .. }) {
+                this.submit_annotation_followup(window, cx);
+            } else if matches!(event, InputEvent::Change) { cx.notify(); }
+        });
+        self.annotate.followup = Some(AnnotationFollowup { annotation_id: id, input: input.clone(), _sub: sub });
+        input
     }
 
     pub(crate) fn apply_annotation(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
@@ -92,16 +86,43 @@ impl Editor {
         }
     }
 
-    fn submit_annotation_followup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::editor) fn annotation_at(&self, pos: Position) -> Option<u64> {
+        self.annotate.annotations.iter().rev()
+            .filter(|note| !note.body.is_empty() && (!note.is_applied() || note.has_rewrite()))
+            .find_map(|note| {
+                let (block_id, range, _) = resolve_annotation_span(&self.doc, note)?;
+                if block_id != pos.block { return None; }
+                let inside = super::is_whole_table_span(&self.doc, block_id, &range)
+                    || (pos.offset >= range.start && pos.offset < range.end);
+                inside.then_some(note.id)
+            })
+    }
+
+    pub(in crate::editor) fn activate_target_annotation(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        if self.annotate.active_annotation == Some(id) {
+            self.annotate.active_annotation = None;
+            self.annotate.followup = None;
+            return;
+        }
+        let Some(note) = self.annotate.annotations.iter().find(|note| note.id == id).cloned() else { return };
+        self.annotate.active_annotation = Some(id);
+        self.annotate.followup = None;
+        if !note.is_applied() && !note.body.is_empty() {
+            self.open_followup_input(id, window, cx);
+        }
+    }
+
+    pub(crate) fn submit_annotation_followup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some((id, input, follow_up)) = self.annotate.followup.as_ref()
             .filter(|followup| self.annotate.active_annotation == Some(followup.annotation_id))
             .map(|followup| (followup.annotation_id, followup.input.clone(), followup.input.read(cx).value().trim().to_owned()))
         else { return };
-        if follow_up.is_empty() { return; }
         let Some(note) = self.annotate.annotations.iter().find(|note| note.id == id && !note.is_applied() && !note.streaming) else { return };
+        if follow_up.is_empty() && !note.is_pending() { return; }
         let task = ai::RewriteTask {
             id, selected_text: note.quote.clone(), annotation: note.body.clone(),
-            previous_rewrite: note.ai_rewritten.clone(), follow_up: Some(follow_up),
+            previous_rewrite: note.ai_rewritten.clone(),
+            follow_up: (!follow_up.is_empty()).then_some(follow_up),
         };
         input.update(cx, |state, cx| { state.set_value("", window, cx); state.focus(window, cx); });
         self.start_annotation_request(vec![task], cx);

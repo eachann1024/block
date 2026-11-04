@@ -12,8 +12,20 @@ use super::{
     view::Editor,
 };
 
-/// Wide layout needs room for the 224px rail beside the standard column.
-pub(super) fn is_wide(viewport: Pixels) -> bool { viewport <= px(0.) || viewport >= px(860.) }
+/// Extra width beside `std_w` needed to fit the 224px micro-strip rail (`8px` extra gap + `224px` rail).
+pub(super) const RAIL_SLOT: f32 = RAIL_W + 8.;
+
+/// True when the editor pane has enough horizontal room for `std_w` + gap + `224px` rail + scrollbar gutter
+/// without shrinking the standard 672px body column.
+pub(super) fn can_fit_wide_rail(editor: &Editor, std_w: Pixels) -> bool {
+    let min_w = std_w + px(RAIL_SLOT + crate::ui::scrollbar::GUTTER);
+    let actual_w = if editor.annotate.editor_width > px(0.) {
+        editor.annotate.editor_width
+    } else {
+        editor.list.viewport_bounds().size.width
+    };
+    actual_w <= px(0.) || actual_w >= min_w
+}
 const REACTIONS: [&str; 8] = ["👍", "❤️", "🎉", "🤔", "👀", "🔥", "✅", "💡"];
 
 fn popover_shadows() -> Vec<BoxShadow> {
@@ -26,8 +38,8 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
     let has_rail = editor.annotate.has_visible_rail();
     let has_reactions = editor.annotate.reactions.is_some();
     if !has_rail && !has_reactions { return None; }
-    let viewport = editor.list.viewport_bounds().size.width;
-    let narrow = !is_wide(viewport);
+    let std_w = super::chrome::standard_width(Theme::ocean().content_width);
+    let narrow = !can_fit_wide_rail(editor, std_w);
 
     let rail = has_rail.then(|| {
         if narrow {
@@ -55,11 +67,18 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
                     markers.push(div().absolute().top(y).right(px(12.)).child(annotate_pop::badge(&note, index + 1, is_active, cx)).into_any_element());
                     if is_active {
                         let followup = editor.annotate.followup.as_ref().filter(|field| field.annotation_id == id).map(|field| field.input.clone());
-                        popover = Some(annotate_pop::popover_layer(note, followup, y, cx));
+                        popover = Some(annotate_pop::popover_layer(
+                            note,
+                            followup,
+                            y,
+                            editor.annotate.editor_width,
+                            editor.annotate.editor_height,
+                            cx,
+                        ));
                     }
                 }
             }
-            let mut layer = div().id("annotate-rail").absolute().top_0().left_0().size_full().children(popover).children(markers);
+            let mut layer = div().id("annotate-rail").absolute().top_0().left_0().size_full().children(markers).children(popover);
             if let Some(composer) = &editor.annotate.composer {
                 let input = composer.input.clone();
                 let has_text = !input.read(cx).value().trim().is_empty();
@@ -86,7 +105,9 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
         }
         rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         let mut bottom = px(12.);
-        let mut rail = div().id("annotate-rail").absolute().top_0().right(px(24.)).w(px(RAIL_W)).h_full();
+        let rail_right = ((editor.annotate.editor_width - px(crate::ui::scrollbar::GUTTER) - (std_w + px(RAIL_SLOT))) / 2.)
+            .max(px(0.)) + px(crate::ui::scrollbar::GUTTER);
+        let mut rail = div().id("annotate-rail").absolute().top_0().right(rail_right).w(px(RAIL_W)).h_full();
         for (target, id, row) in rows {
             let top = target.max(bottom + px(12.));
             let height = ROW_HEIGHTS.with(|heights| heights.borrow().get(&id).copied()).unwrap_or(px(24.));
