@@ -117,7 +117,7 @@ pub(super) fn render_inactive_tab_body(
 pub(super) fn render_closing_ghost(ghost: &ClosingGhost) -> impl IntoElement {
     let theme = Theme::ocean();
     div().id(("tab-closing", ghost.seq as usize)).h(px(28.)).flex_none().overflow_hidden()
-        .rounded(px(6.)).flex().items_center().gap(px(6.)).text_size(px(13.)).line_height(px(18.))
+        .rounded(crate::ui::radius::CONTROL).flex().items_center().gap(px(6.)).text_size(px(13.)).line_height(px(18.))
         .text_color(theme.text_secondary)
         .child(icon(Icon::Note, px(14.), theme.mono_icon_colors(theme.text_secondary)))
         .child(div().relative().flex_1().min_w_0().h_full().flex().items_center().overflow_hidden()
@@ -174,24 +174,26 @@ impl Workspace {
         let theme = Theme::ocean();
         let page_open = TAB_UI.with(|ui| ui.borrow().page_menu.is_some());
         let more_group: SharedString = "titlebar-more-btn".into();
-        let more = div().id("titlebar-more").group(more_group.clone()).size(px(26.)).mr(px(if cfg!(any(target_os = "macos", target_family = "wasm")) { 10. } else { 4. }))
-            .flex_none().flex().items_center().justify_center().rounded(px(6.)).cursor(gpui::CursorStyle::PointingHand)
-            .when(page_open, |b| b.bg(theme.selected)).when(!page_open, |b| b.hover(|s| s.bg(theme.hover)))
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
-                cx.stop_propagation();
-                this.close_overlays(cx);
-                let anchor = point(event.position.x - px(188.), px(38.));
-                TAB_UI.with(|ui| { let mut s = ui.borrow_mut(); s.menu = None; s.page_menu = if s.page_menu.is_some() { None } else { Some(anchor) }; });
-                cx.notify();
-            }))
-            .child(if page_open {
-                icon(Icon::More, px(16.), theme.icon_colors(theme.accent))
-            } else {
-                hover_tinted_icon(more_group, Icon::More, 16., theme.text_secondary, theme.text, theme.icon_fill)
-            });
-        div().h_full().flex_none().flex().items_center()
-            .when(has_note, |d| d.child(more))
-            .child(crate::ui::window_controls::window_controls("main-win", true, true))
+        let tail_actions = if has_note {
+            let send_seg = self.annotation_actions(cx);
+            let (sz, rd) = if send_seg.is_some() { (px(24.), px(6.)) } else { (px(26.), crate::ui::radius::CONTROL) };
+            let more = div().id("titlebar-more").group(more_group.clone()).size(sz).rounded(rd)
+                .flex_none().flex().items_center().justify_center().cursor(gpui::CursorStyle::PointingHand)
+                .when(page_open, |b| b.bg(theme.selected)).when(!page_open, |b| b.hover(|s| s.bg(theme.hover)))
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.close_overlays(cx);
+                    let anchor = point(event.position.x - px(188.), px(38.));
+                    TAB_UI.with(|ui| { let mut s = ui.borrow_mut(); s.menu = None; s.page_menu = if s.page_menu.is_some() { None } else { Some(anchor) }; });
+                    cx.notify();
+                }))
+                .child(if page_open { icon(Icon::More, px(16.), theme.icon_colors(theme.accent)) } else { hover_tinted_icon(more_group, Icon::More, 16., theme.text_secondary, theme.text, theme.icon_fill) });
+            let mr = if cfg!(any(target_os = "macos", target_family = "wasm")) { 10. } else { 4. };
+            Some(crate::ui::annotation_card::titlebar_split_pill(send_seg, more).mr(px(mr)))
+        } else {
+            None
+        };
+        div().h_full().flex_none().flex().items_center().children(tail_actions).child(crate::ui::window_controls::window_controls("main-win", true, true))
     }
 
     pub(crate) fn close_other_tabs(&mut self, keep_path: PathBuf, cx: &mut Context<Self>) {
