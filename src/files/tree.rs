@@ -15,7 +15,9 @@ actions!(file_tree, [RenameSelected, TrashSelected]);
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("enter", RenameSelected, Some("FileTree")),
-        KeyBinding::new("cmd-backspace", TrashSelected, Some("FileTree")),
+        KeyBinding::new("f2", RenameSelected, Some("FileTree")),
+        KeyBinding::new("secondary-backspace", TrashSelected, Some("FileTree")),
+        KeyBinding::new("delete", TrashSelected, Some("FileTree")),
     ]);
 }
 
