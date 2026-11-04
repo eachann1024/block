@@ -56,39 +56,45 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
     let preview_lang = code_lang.as_deref().is_some_and(super::code_block::is_preview_lang);
     let in_edit_mode = active;
     let preview_only = preview_lang && !in_edit_mode;
-    let handle_top = if is_table { 4. } else { (line - 26.).max(0.) / 2. + if callout.is_some() { 12. } else { 0. } };
+    let first_line_h = if rule { 22. } else if code_lang.is_some() { 30. } else { line };
+    let handle_top = if is_table || image.is_some() {
+        4.
+    } else {
+        ((first_line_h - 26.) / 2. + if callout.is_some() { 12. } else { 0. }).max(-pt)
+    };
     let regular_handles = !minimal && !is_table && handles;
     div().id(("block", id as usize)).relative().w_full().min_w_0().pt(px(pt)).pb(px(pb))
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
             this.hover_block(id, *hovered, cx);
         }))
         .child(div().flex().items_start().w_full().min_w_0().gap(px(ROW_GAP)).pr(px(right_inset))
-            .child(div().w(px(handle_w)).flex_none().flex().items_center().justify_end().gap(px(2.)).pt(px(handle_top))
-                .when(regular_handles && !blank, |row| row
-                    .child(grip_button(("drag", id as usize), grip_active, cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
-                        this.begin_drag(id, cx); cx.stop_propagation();
-                    })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
-                        if this.dragging == Some(id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
-                    }))))
-                .when(regular_handles && blank, |row| row
-                    .child(handle_button(Icon::Plus, ("add", id as usize), cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
-                        this.add_below(id, window, cx);
-                        let at = this.caret.head.block;
-                        this.open_block_menu(at, event.position + gpui::point(px(-10.), px(22.)), super::block_menu::Mode::Slash, cx);
-                        cx.stop_propagation();
-                    }))))
-                .when(!minimal && is_table && handles, |row| row
-                    .child(table_grip_button(("tbl-grip", id as usize), grip_active, cx.listener(move |this, _: &gpui::MouseDownEvent, window, cx| {
-                        window.focus(&this.focus);
-                        this.table_menu = None;
-                        this.block_menu = None;
-                        this.select_whole_table(id, cx);
-                        cx.stop_propagation();
-                    }))))
-                .when(!minimal && is_heading && (handles || folded), |row| row
-                    .child(fold_button(folded, ("fold", id as usize), cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
-                        this.toggle_fold(id, cx); cx.stop_propagation();
-                    })))))
+            .child(div().w(px(handle_w)).h(px(0.)).flex_none().relative()
+                .child(div().absolute().right_0().top(px(handle_top)).h(px(26.)).flex().items_center().justify_end().gap(px(2.))
+                    .when(regular_handles && !blank, |row| row
+                        .child(grip_button(("drag", id as usize), grip_active, cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
+                            this.begin_drag(id, cx); cx.stop_propagation();
+                        })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
+                            if this.dragging == Some(id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
+                        }))))
+                    .when(regular_handles && blank, |row| row
+                        .child(handle_button(Icon::Plus, ("add", id as usize), cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
+                            this.add_below(id, window, cx);
+                            let at = this.caret.head.block;
+                            this.open_block_menu(at, event.position + gpui::point(px(-10.), px(22.)), super::block_menu::Mode::Slash, cx);
+                            cx.stop_propagation();
+                        }))))
+                    .when(!minimal && is_table && handles, |row| row
+                        .child(table_grip_button(("tbl-grip", id as usize), grip_active, cx.listener(move |this, _: &gpui::MouseDownEvent, window, cx| {
+                            window.focus(&this.focus);
+                            this.table_menu = None;
+                            this.block_menu = None;
+                            this.select_whole_table(id, cx);
+                            cx.stop_propagation();
+                        }))))
+                    .when(!minimal && is_heading && (handles || folded), |row| row
+                        .child(fold_button(folded, ("fold", id as usize), cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
+                            this.toggle_fold(id, cx); cx.stop_propagation();
+                        }))))))
             .when(marker_width > 0., |row| row.child(div().w(px(marker_width)).pl(px(indent)).flex_none().text_color(theme.text)
                 .text_size(px(size)).line_height(px(line))
                 .when(block.kind == Kind::Todo, |row| row.child(todo_box(checked, (line - 17.).max(0.) / 2., move |cx| {
