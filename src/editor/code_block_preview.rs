@@ -1,8 +1,8 @@
-//! Renderable code blocks (`mermaid`, `latex`/`math`, `csv`, `markdown`) with `Source` toggle,
-//! CSV/Markdown table preview, and error bar matching `C-Code-Block.dc.html`.
+//! Renderable code blocks (`mermaid`, `latex`/`math`) with `Source` toggle
+//! and error bar matching `C-Code-Block.dc.html`.
 use std::{cell::RefCell, collections::HashMap};
 use gpui::{
-    AnyElement, Context, CursorStyle, Entity, FontWeight, IntoElement, MouseButton, div,
+    AnyElement, Context, CursorStyle, Entity, IntoElement, MouseButton, div,
     prelude::*, px, rgb, rgba, transparent_black,
 };
 use crate::{
@@ -27,7 +27,7 @@ fn set_source_open(block_id: u64, open: bool) {
     });
 }
 
-/// Render a previewable code block (`mermaid`, `latex`, `csv`, `markdown`) with top-left `Source`
+/// Render a previewable code block (`mermaid`, `latex`) with top-left `Source`
 /// toggle, top-right language pill, rendered preview, collapsible source editor, and error bar.
 pub(super) fn preview_block(
     editor: Entity<Editor>,
@@ -174,7 +174,7 @@ fn render_preview_body(
             div().w_full().min_w_0().py(px(16.)).px(px(12.)).child(inner).into_any_element()
         });
         (body, err)
-    } else if code_block::is_math(language) {
+    } else {
         let (el, err) = super::math_preview::render_state(editor, block_id, source, cx);
         let bg = if dark { rgb(0x16191e) } else { rgb(0xf8f8f6) };
         let body = el.map(|inner| {
@@ -190,103 +190,5 @@ fn render_preview_body(
                 .into_any_element()
         });
         (body, err)
-    } else if code_block::is_csv(language) {
-        (Some(render_csv(source)), None)
-    } else {
-        (Some(render_markdown(source)), None)
     }
-}
-
-fn render_csv(source: &str) -> AnyElement {
-    let rows: Vec<Vec<String>> = source
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| l.split(',').map(|c| c.trim().to_owned()).collect())
-        .collect();
-    div().w_full().min_w_0().py(px(4.)).child(simple_table(&rows)).into_any_element()
-}
-
-fn render_markdown(source: &str) -> AnyElement {
-    let dark = is_dark();
-    let text_col = if dark { rgb(0xf0efed) } else { rgb(0x1f1e1d) };
-    let mut out = div().w_full().min_w_0().py(px(4.)).flex().flex_col().gap(px(8.));
-    let mut table_rows: Vec<Vec<String>> = Vec::new();
-
-    let flush_table = |out: gpui::Div, rows: &mut Vec<Vec<String>>| -> gpui::Div {
-        if rows.is_empty() {
-            return out;
-        }
-        let tbl = simple_table(rows);
-        rows.clear();
-        out.child(tbl)
-    };
-
-    for raw in source.lines() {
-        let line = raw.trim();
-        if line.starts_with('|') && line.ends_with('|') && line.len() > 2 {
-            let cells: Vec<String> = line[1..line.len() - 1]
-                .split('|')
-                .map(|c| c.trim().to_owned())
-                .collect();
-            let is_sep = cells.iter().all(|c| !c.is_empty() && c.chars().all(|ch| matches!(ch, '-' | ':' | ' ')));
-            if !is_sep {
-                table_rows.push(cells);
-            }
-            continue;
-        }
-        out = flush_table(out, &mut table_rows);
-        if line.is_empty() {
-            continue;
-        }
-        if let Some(h) = line.strip_prefix("### ") {
-            out = out.child(div().text_size(px(16.)).line_height(px(22.)).font_weight(FontWeight(600.)).text_color(text_col).child(h.to_owned()));
-        } else if let Some(h) = line.strip_prefix("## ") {
-            out = out.child(div().text_size(px(18.)).line_height(px(24.)).font_weight(FontWeight(600.)).text_color(text_col).child(h.to_owned()));
-        } else if let Some(h) = line.strip_prefix("# ") {
-            out = out.child(div().text_size(px(20.)).line_height(px(26.)).font_weight(FontWeight(600.)).text_color(text_col).child(h.to_owned()));
-        } else {
-            out = out.child(div().text_size(px(14.)).line_height(px(21.)).text_color(text_col).child(line.to_owned()));
-        }
-    }
-    out = flush_table(out, &mut table_rows);
-    out.into_any_element()
-}
-
-fn simple_table(rows: &[Vec<String>]) -> AnyElement {
-    let dark = is_dark();
-    let border_col = if dark { rgb(0x3a3d45) } else { rgb(0xc9c7c0) };
-    let head_bg = if dark { rgba(0xffffff0a) } else { rgba(0x0000000a) };
-    let text_col = if dark { rgb(0xf0efed) } else { rgb(0x1f1e1d) };
-    let cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
-    if cols == 0 {
-        return div().into_any_element();
-    }
-    let mut table = div()
-        .flex()
-        .flex_col()
-        .border_t_1()
-        .border_l_1()
-        .border_color(border_col)
-        .text_size(px(13.))
-        .line_height(px(19.5))
-        .text_color(text_col);
-    for (r_idx, row) in rows.iter().enumerate() {
-        let is_head = r_idx == 0;
-        let mut tr_el = div().flex().when(is_head, |d| d.bg(head_bg).font_weight(FontWeight(600.)));
-        for c_idx in 0..cols {
-            let cell_text = row.get(c_idx).cloned().unwrap_or_default();
-            tr_el = tr_el.child(
-                div()
-                    .min_w(px(72.))
-                    .px(px(10.))
-                    .py(px(3.))
-                    .border_r_1()
-                    .border_b_1()
-                    .border_color(border_col)
-                    .child(cell_text),
-            );
-        }
-        table = table.child(tr_el);
-    }
-    table.into_any_element()
 }
