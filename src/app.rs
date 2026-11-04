@@ -98,7 +98,8 @@ impl Workspace {
             let path = editor.read(cx).current_path().map(|path| path.to_owned());
             let loading = editor.read(cx).is_loading();
             let busy = editor.read(cx).is_busy();
-            if !loading && this.pending.is_none() && this.file_op.is_none() && this.selected != path {
+            if !loading && this.pending.is_none() && this.file_op.is_none()
+                && (this.selected != path || this.tree.read(cx).selected() != path.as_deref()) {
                 if let Some(p) = &path {
                     if !this.tabs.contains(p) { this.tabs.push(p.clone()); }
                 } else if let Some(prev) = &this.selected {
