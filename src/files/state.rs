@@ -18,9 +18,9 @@ pub enum ThemeMode {
 #[serde(rename_all = "lowercase")]
 pub enum FontChoice {
     #[default]
+    #[serde(alias = "mono")]
     Sans,
     Serif,
-    Mono,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Copy, Debug, PartialEq, Eq)]
