@@ -1,6 +1,6 @@
 //! Tree-sitter highlighting through gpui-component; all ranges remain UTF-8 bytes.
 #[cfg(not(target_family = "wasm"))]
-use std::{cell::RefCell, collections::VecDeque, ops::Range, sync::{Arc, Once}};
+use std::{cell::RefCell, collections::VecDeque, ops::Range, sync::{Arc, LazyLock, Once}};
 #[cfg(not(target_family = "wasm"))]
 use gpui::HighlightStyle;
 use gpui::TextRun;
@@ -12,12 +12,64 @@ use ropey::Rope;
 #[cfg(not(target_family = "wasm"))]
 type StyledRanges = Arc<[(Range<usize>, HighlightStyle)]>;
 #[cfg(not(target_family = "wasm"))]
-struct CachedHighlight { language: String, source: String, styles: StyledRanges }
+struct CachedHighlight { language: String, source: String, dark: bool, styles: StyledRanges }
 #[cfg(not(target_family = "wasm"))]
 thread_local! {
     // Bound memory while retaining visible blocks across repeated layout passes.
     static CACHE: RefCell<VecDeque<CachedHighlight>> = const { RefCell::new(VecDeque::new()) };
 }
+
+#[cfg(not(target_family = "wasm"))]
+static DARK_THEME: LazyLock<HighlightTheme> = LazyLock::new(|| {
+    serde_json::from_str(r##"{
+        "name": "GitHub Ice Dark",
+        "appearance": "dark",
+        "style": {
+            "editor.foreground": "#e6edf3",
+            "editor.background": "#1d2026",
+            "syntax": {
+                "attribute": { "color": "#79c0ff" },
+                "boolean": { "color": "#79c0ff" },
+                "comment": { "color": "#87909c" },
+                "comment.doc": { "color": "#87909c" },
+                "constant": { "color": "#79c0ff" },
+                "constructor": { "color": "#ffa657" },
+                "embedded": { "color": "#e6edf3" },
+                "emphasis": { "font_style": "italic" },
+                "emphasis.strong": { "font_weight": 700 },
+                "enum": { "color": "#ffa657" },
+                "function": { "color": "#d2a8ff" },
+                "keyword": { "color": "#ff7b72" },
+                "label": { "color": "#79c0ff" },
+                "link_text": { "color": "#a5d6ff" },
+                "link_uri": { "color": "#79c0ff", "font_style": "italic" },
+                "number": { "color": "#79c0ff" },
+                "operator": { "color": "#79c0ff" },
+                "preproc": { "color": "#ff7b72" },
+                "property": { "color": "#7ee787" },
+                "punctuation": { "color": "#8b949e" },
+                "punctuation.bracket": { "color": "#8b949e" },
+                "punctuation.delimiter": { "color": "#8b949e" },
+                "punctuation.list_marker": { "color": "#79c0ff" },
+                "punctuation.special": { "color": "#ff7b72" },
+                "string": { "color": "#a5d6ff" },
+                "string.escape": { "color": "#79c0ff" },
+                "string.regex": { "color": "#a5d6ff" },
+                "string.special": { "color": "#a5d6ff" },
+                "string.special.symbol": { "color": "#79c0ff" },
+                "tag": { "color": "#7ee787" },
+                "tag.doctype": { "color": "#ff7b72" },
+                "text.code.span": { "color": "#a5d6ff" },
+                "text.literal": { "color": "#a5d6ff" },
+                "title": { "color": "#79c0ff", "font_weight": 600 },
+                "type": { "color": "#ffa657" },
+                "variable": { "color": "#e6edf3" },
+                "variable.special": { "color": "#ff7b72" },
+                "variant": { "color": "#ffa657" }
+            }
+        }
+    }"##).expect("valid dark highlight theme JSON")
+});
 
 #[cfg(not(target_family = "wasm"))]
 fn init_languages() {
@@ -93,9 +145,10 @@ fn language_name(language: &str) -> Option<&'static str> {
 
 #[cfg(not(target_family = "wasm"))]
 fn styles(source: &str, language: &str) -> StyledRanges {
+    let dark = crate::theme::is_dark();
     CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
-        if let Some(index) = cache.iter().position(|entry| entry.language == language && entry.source == source) {
+        if let Some(index) = cache.iter().position(|entry| entry.language == language && entry.dark == dark && entry.source == source) {
             let entry = cache.remove(index).unwrap();
             let styles = entry.styles.clone();
             cache.push_back(entry);
@@ -104,11 +157,12 @@ fn styles(source: &str, language: &str) -> StyledRanges {
         init_languages();
         let mut highlighter = SyntaxHighlighter::new(language);
         highlighter.update(None, &Rope::from_str(source), None);
-        let styles: StyledRanges = highlighter.styles(&(0..source.len()), &*HighlightTheme::default_light()).into();
+        let theme: &HighlightTheme = if dark { &DARK_THEME } else { &HighlightTheme::default_light() };
+        let styles: StyledRanges = highlighter.styles(&(0..source.len()), theme).into();
         // Large opaque blocks should not occupy the cache indefinitely.
         if source.len() <= 256 * 1024 {
             if cache.len() == 64 { cache.pop_front(); }
-            cache.push_back(CachedHighlight { language: language.into(), source: source.into(), styles: styles.clone() });
+            cache.push_back(CachedHighlight { language: language.into(), source: source.into(), dark, styles: styles.clone() });
         }
         styles
     })

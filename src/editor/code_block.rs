@@ -95,7 +95,7 @@ pub(super) fn margin(language: &str) -> Edges<Length> {
 /// Paint the borderless `#f8f8f6` card (`radius 6`) behind normal code blocks.
 pub(super) fn paint_card(bounds: Bounds<Pixels>, language: &str, window: &mut Window, _cx: &mut App) {
     if is_preview_lang(language) { return; }
-    let bg = if is_dark() { rgb(0x16191e) } else { rgb(0xf8f8f6) };
+    let bg = if is_dark() { rgb(0x1d2026) } else { rgb(0xf8f8f6) };
     let card = Bounds::new(
         bounds.origin - point(px(PAD_X), px(PAD_TOP)),
         size(bounds.size.width + px(PAD_X * 2.), bounds.size.height + px(PAD_TOP + PAD_BOTTOM)),
@@ -134,11 +134,11 @@ pub(super) fn top_controls(
 ) -> impl IntoElement {
     dropdown::register_closer(close_menus);
     let dark = is_dark();
-    let icon_fg: gpui::Hsla = if dark { rgb(0x9aa3b2).into() } else { rgb(0x898781).into() };
-    let hover_fg: gpui::Hsla = if dark { rgb(0xf0efed).into() } else { rgb(0x1f1e1d).into() };
-    let pill_bg: gpui::Hsla = if dark { rgb(0x1f2228).into() } else { rgb(0xfcfcfb).into() };
-    let pill_hover_bg: gpui::Hsla = if dark { rgb(0x2a2e36).into() } else { rgb(0xf4f3f0).into() };
-    let pill_border: gpui::Hsla = if dark { rgba(0xffffff1a).into() } else { rgba(0x0b0b0b1a).into() };
+    let icon_fg: gpui::Hsla = if dark { rgb(0x8b949e).into() } else { rgb(0x898781).into() };
+    let hover_fg: gpui::Hsla = if dark { rgb(0xe6edf3).into() } else { rgb(0x1f1e1d).into() };
+    let pill_bg: gpui::Hsla = if dark { rgb(0x262a33).into() } else { rgb(0xfcfcfb).into() };
+    let pill_hover_bg: gpui::Hsla = if dark { rgb(0x323844).into() } else { rgb(0xf4f3f0).into() };
+    let pill_border: gpui::Hsla = if dark { rgba(0xffffff17).into() } else { rgba(0x0b0b0b1a).into() };
 
     let copied = COPIED_BLOCKS.with(|set| set.borrow().contains(&block_id));
     let cur_canon = canonical_lang_tag(&raw_lang);
