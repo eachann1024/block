@@ -19,9 +19,10 @@ impl Editor {
     /// End index (inclusive) of `start`'s nested list subtree.
     pub(super) fn list_subtree_end(&self, start: usize) -> usize {
         let Some(head) = self.doc.blocks.get(start).filter(|b| is_list(b)) else { return start };
-        let base = head.meta.indent;
+        let (base, col) = (head.meta.indent, head.meta.column);
         let mut end = start;
-        while end + 1 < self.doc.blocks.len() && is_list(&self.doc.blocks[end + 1]) && self.doc.blocks[end + 1].meta.indent > base {
+        while end + 1 < self.doc.blocks.len() && is_list(&self.doc.blocks[end + 1])
+            && self.doc.blocks[end + 1].meta.column == col && self.doc.blocks[end + 1].meta.indent > base {
             end += 1;
         }
         end
@@ -32,18 +33,21 @@ impl Editor {
         let last_idx = self.doc.blocks.len().saturating_sub(1);
         let (lo, hi_sel) = (lo.min(last_idx), hi.min(last_idx));
         let hi_ext = self.list_subtree_end(hi_sel);
+        let col = self.doc.blocks[lo].meta.column;
         let n = hi_ext - lo + 1;
         let to = if up {
-            if lo == 0 { return None; }
+            if lo == 0 || (col.is_some() && self.doc.blocks[lo - 1].meta.column != col) { return None; }
             let first = &self.doc.blocks[lo];
-            if is_list(first) && is_list(&self.doc.blocks[lo - 1]) && self.doc.blocks[lo - 1].meta.indent > first.meta.indent {
+            if col.is_none() && let Some(r) = self.column_group_range(lo - 1) { r.start }
+            else if is_list(first) && is_list(&self.doc.blocks[lo - 1]) && self.doc.blocks[lo - 1].meta.indent > first.meta.indent {
                 let mut p = lo - 1;
-                while p > 0 && is_list(&self.doc.blocks[p]) && self.doc.blocks[p].meta.indent > first.meta.indent { p -= 1; }
+                while p > 0 && is_list(&self.doc.blocks[p]) && self.doc.blocks[p].meta.column == col && self.doc.blocks[p].meta.indent > first.meta.indent { p -= 1; }
                 p
             } else { lo - 1 }
         } else {
-            if hi_ext + 1 >= self.doc.blocks.len() { return None; }
-            self.list_subtree_end(hi_ext + 1) + 1 - n
+            if hi_ext + 1 >= self.doc.blocks.len() || (col.is_some() && self.doc.blocks[hi_ext + 1].meta.column != col) { return None; }
+            if col.is_none() && let Some(r) = self.column_group_range(hi_ext + 1) { r.end - n }
+            else { self.list_subtree_end(hi_ext + 1) + 1 - n }
         };
         if to == lo { return None; }
         self.commit_composition(cx);
@@ -213,9 +217,10 @@ impl Editor {
                     let before = self.snapshot();
                     let n = hi - lo + 1;
                     self.doc.splice_blocks(lo..hi + 1, Vec::new());
+                    let repaired = self.repair_column_groups();
                     let added = if self.doc.blocks.is_empty() {
                         self.doc.splice_blocks(0..0, vec![Block::new(0, Kind::Paragraph, String::new())]); 1
-                    } else { 0 };
+                    } else { repaired };
                     let at = lo.min(self.doc.blocks.len() - 1);
                     let pos = Position { block: self.doc.blocks[at].id, offset: 0 };
                     self.caret.anchor = pos; self.caret.head = pos;

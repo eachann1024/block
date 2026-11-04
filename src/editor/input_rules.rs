@@ -80,7 +80,10 @@ impl Editor {
     /// Replace the paragraph with a divider plus a fresh paragraph; returns the new paragraph id.
     fn insert_divider(&mut self, id: u64) -> u64 {
         let index = self.doc.index_of(id).unwrap_or(0);
-        self.doc.splice_blocks(index..index + 1, vec![raw_divider(), Block::new(0, Kind::Paragraph, String::new())]);
+        let col = self.doc.blocks.get(index).and_then(|b| b.meta.column);
+        let mut div = raw_divider(); div.meta.column = col;
+        let mut next = Block::new(0, Kind::Paragraph, String::new()); next.meta.column = col;
+        self.doc.splice_blocks(index..index + 1, vec![div, next]);
         self.doc.blocks[index + 1].id
     }
     /// Enter on `---` (caret at end) becomes a divider; returns whether it handled the key.

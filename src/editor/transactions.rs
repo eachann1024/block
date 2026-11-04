@@ -24,6 +24,7 @@ impl Editor {
         } else {
             for c in changes.iter().rev() { self.list.splice(c.start..c.start+c.after, c.before); }
         }
+        self.invalidate_column_groups();
         self.layouts.clear();
     }
     pub(in crate::editor) fn record_changes(&mut self, before: Snapshot, changes: Vec<ListChange>, apply: bool, cx: &mut Context<Self>) {
@@ -54,8 +55,8 @@ impl Editor {
             let Some(mut item) = item else { break };
             let same = item.state.doc == self.doc;
             let target = std::mem::replace(&mut item.state, self.snapshot());
-            self.apply_changes(&item.changes, redo);
             self.doc = target.doc; self.caret = target.caret; self.caret.composing = None;
+            self.apply_changes(&item.changes, redo);
             if redo { self.history.push(item); } else { self.redo.push(item); }
             self.changed(cx);
             if !same { break; }
@@ -98,6 +99,12 @@ impl Editor {
             self.status = "Select within one table cell, or select the entire table to replace it".into();
             cx.notify(); return;
         }
+        if ai != bi && (ai..=bi).any(|i| self.doc.blocks[i].meta.column.is_some())
+            && self.doc.blocks[ai].meta.column != self.doc.blocks[bi].meta.column {
+            self.delete_across(cx);
+            if !text.is_empty() { self.replace_selection(text, marker, cx); }
+            return;
+        }
         let before = self.snapshot();
         let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
         if ai == bi && self.doc.get(a.block).is_some_and(|blk| blk.meta.code_language.is_some()
@@ -117,7 +124,8 @@ impl Editor {
         } else {
             let starts_table = self.doc.blocks[ai].meta.table.is_some();
             let mut combined = if starts_table {
-                crate::editor::model::Block::new(a.block, Kind::Paragraph, String::new())
+                let mut b = crate::editor::model::Block::new(a.block, Kind::Paragraph, String::new());
+                b.meta.column = self.doc.blocks[ai].meta.column; b
             } else { self.doc.blocks[ai].clone() };
             if ai == bi {
                 if starts_table { combined.replace_range(0..0, &normalized); offset = normalized.len(); }

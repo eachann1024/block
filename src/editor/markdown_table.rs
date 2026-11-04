@@ -54,7 +54,6 @@ fn cell_count(line: &str) -> usize {
 }
 
 pub(super) fn serialize(table: &Table, out: &mut String) {
-    if table.format == TableFormat::Columns { super::containers::serialize_columns(table, out); return; }
     if table.format == TableFormat::Html { table_html::serialize(table, out); return; }
     // An untouched table is emitted exactly as imported, including escapes and whitespace.
     if table.rows.iter().flat_map(|row| &row.cells).all(|cell| cell.content == *cell.original) {
