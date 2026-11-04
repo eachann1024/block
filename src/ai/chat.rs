@@ -9,7 +9,7 @@ use gpui_component::input::{InputEvent, InputState};
 use super::{agent, provider::{self, Event}};
 use crate::editor::view::Editor;
 
-fn first_placeholder() -> &'static str { crate::theme::tr("向 AI 提问，/ 调用指令或 Skill，@ 引用笔记或本地文件…", "Ask AI, / for commands or Skills, @ to reference notes…") }
+pub(super) fn first_placeholder() -> &'static str { crate::theme::tr("向 AI 提问，/ 调用指令或技能，@ 引用笔记或本地文件…", "Ask AI, / for commands or Skills, @ to reference notes…") }
 pub(super) fn follow_placeholder() -> &'static str { crate::theme::tr("继续追问…", "Ask a follow-up…") }
 const MAX_STEPS: usize = 8;
 
@@ -25,7 +25,6 @@ pub(super) struct Msg {
 
 #[derive(Clone)]
 pub(super) enum Pick { Page(String), Skill(String), NewConv }
-
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct Conv { pub id: u64, pub title: String, pub messages: Vec<Msg> }
 
@@ -41,6 +40,7 @@ pub(crate) struct AiChat {
     pub(super) error: Option<String>,
     pub(super) history: bool,
     pub(super) open: bool,
+    pub(super) last_en: bool,
     pub(super) editor: Option<WeakEntity<Editor>>,
     pub(super) scroll: ScrollHandle,
     _sub: Subscription,
@@ -97,7 +97,7 @@ impl AiChat {
         });
         let convs: Vec<Conv> = store_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         AiChat { convs, current: None, input, refs: Vec::new(), skills: Vec::new(), partial: String::new(), streaming: None, serial: 0, error: None,
-            history: false, open: false, editor: None, scroll: ScrollHandle::new(), _sub: sub }
+            history: false, open: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), _sub: sub }
     }
     pub(super) fn persist(&self) {
         let Some(p) = store_path() else { return };

@@ -71,7 +71,7 @@ impl Workspace {
                     this.close_settings(window, cx);
                     this.open_file_in_new_tab(p.clone(), cx);
                 }))
-                .child(shortcut_hint(if cfg!(target_os = "macos") { "⌘Click" } else { "Ctrl+Click" }))
+                .child(shortcut_hint(if cfg!(target_os = "macos") { tr("⌘单击", "⌘Click") } else { tr("Ctrl+单击", "Ctrl+Click") }))
                 .into_any_element());
             let p = path.clone();
             items.push(menu_item(ItemId::Name("export-image"), Icon::Image, tr("生成图片…", "Export as Image…").into(), false, false,

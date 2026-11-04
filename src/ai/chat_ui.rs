@@ -3,7 +3,7 @@ use gpui::{CursorStyle, FontWeight, IntoElement, MouseButton, ParentElement, Ren
 use gpui_component::input::Input;
 
 use super::agent;
-use super::chat::{AiChat, Msg, Pick, follow_placeholder};
+use super::chat::{AiChat, Msg, Pick, first_placeholder, follow_placeholder};
 use super::provider;
 use crate::icons::{Icon, IconColors, icon};
 use crate::theme::{Theme, is_en, tr};
@@ -21,7 +21,12 @@ fn icon_btn(id: impl Into<SharedString>, glyph_icon: Icon, tip: &'static str) ->
 }
 
 impl Render for AiChat {
-    fn render(&mut self, _: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
+        if self.last_en != is_en() {
+            self.last_en = is_en();
+            let ph = if self.conv().is_some() { follow_placeholder() } else { first_placeholder() };
+            self.input.update(cx, |i, cx| i.set_placeholder(ph, window, cx));
+        }
         let theme = Theme::ocean();
         let model = provider::config().model;
         let header = div().h(px(44.)).flex_none().px(px(12.)).flex().items_center().gap(px(4.)).border_b_1().border_color(theme.hairline)
@@ -124,7 +129,7 @@ impl Render for AiChat {
         let picker = picker_open.then(|| {
             let list = if picks.is_empty() {
                 div().p(px(10.)).text_size(px(12.)).text_color(theme.text_secondary)
-                    .child(if token.starts_with('@') { tr("没有匹配的笔记", "No matching notes") } else { tr("没有匹配的指令或 Skill", "No matching commands or skills") })
+                    .child(if token.starts_with('@') { tr("没有匹配的笔记", "No matching notes") } else { tr("没有匹配的指令或技能", "No matching commands or skills") })
             } else {
                 picks.into_iter().enumerate().fold(div().flex().flex_col().p(px(4.)), |d, (i, (pick, name, desc))| {
                     let tlen = token.len();
@@ -147,7 +152,7 @@ impl Render for AiChat {
                 })
             };
             div().mx(px(12.)).max_h(px(240.)).rounded(px(8.)).border_1().border_color(theme.menu_border).bg(theme.menu).shadow_md()
-                .child(div().px(px(10.)).pt(px(6.)).text_size(px(11.)).text_color(theme.text_secondary).child(if token.starts_with('@') { tr("引用笔记", "Reference Note") } else { tr("指令与 Skill", "Commands & Skills") }))
+                .child(div().px(px(10.)).pt(px(6.)).text_size(px(11.)).text_color(theme.text_secondary).child(if token.starts_with('@') { tr("引用笔记", "Reference Note") } else { tr("指令与技能", "Commands & Skills") }))
                 .child(list)
         });
         let busy = self.streaming.is_some();
@@ -181,7 +186,7 @@ impl Render for AiChat {
 
 fn tool_label(name: &str) -> &'static str {
     match name {
-        "loadSkill" => tr("加载 Skill", "Load skill"),
+        "loadSkill" => tr("加载技能", "Load skill"),
         "listPages" => tr("列出页面", "List pages"),
         "searchNotes" => tr("搜索笔记", "Search notes"),
         "readPage" => tr("读取页面", "Read page"),

@@ -52,7 +52,10 @@ pub(in crate::editor) fn language_label(tag: &str) -> &'static str {
     if canon.is_empty() && !tag.trim().is_empty() {
         return tr("其他", "Other");
     }
-    LANGUAGES.iter().find(|(t, _)| *t == canon).map_or("Plain Text", |(_, l)| *l)
+    if canon == "plaintext" {
+        return tr("纯文本", "Plain Text");
+    }
+    LANGUAGES.iter().find(|(t, _)| *t == canon).map_or_else(|| tr("纯文本", "Plain Text"), |(_, l)| *l)
 }
 
 pub(in crate::editor) fn language_icon(tag: &str) -> Option<Icon> {
