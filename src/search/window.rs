@@ -1,12 +1,13 @@
 //! Standalone 680x460 floating search window summoned by the global search hotkey
 //! when the main window is not active.
+use std::path::PathBuf;
 use gpui::{
     App, AppContext, Bounds, Context, Entity, Global, IntoElement, ParentElement, Render,
     Subscription, Window, WindowBackgroundAppearance, WindowBounds, WindowControlArea,
     WindowHandle, WindowKind, WindowOptions, div, prelude::*, px, size,
 };
 use gpui_component::input::{InputEvent, InputState};
-use crate::app::{Dismiss, OpenSearch, SearchDown, SearchUp};
+use crate::app::{Dismiss, OpenSearch, SearchDown, SearchUp, Workspace};
 use crate::theme::{Theme, tr};
 use super::{SearchState, render_body, render_footer, render_header};
 
@@ -14,6 +15,7 @@ use super::{SearchState, render_body, render_footer, render_header};
 struct SearchWindowGlobal {
     view: Option<Entity<SearchWindow>>,
     window: Option<(WindowHandle<gpui_component::Root>, Entity<SearchWindow>)>,
+    main: Option<(Option<WindowHandle<gpui_component::Root>>, Entity<Workspace>)>,
 }
 impl Global for SearchWindowGlobal {}
 
@@ -21,6 +23,111 @@ pub struct SearchWindow {
     state: SearchState,
     _input_sub: Subscription,
     _blur_sub: Subscription,
+}
+
+pub fn set_main_window(
+    handle: Option<WindowHandle<gpui_component::Root>>,
+    workspace: Entity<Workspace>,
+    cx: &mut App,
+) {
+    if !cx.has_global::<SearchWindowGlobal>() {
+        cx.set_global(SearchWindowGlobal::default());
+    }
+    cx.global_mut::<SearchWindowGlobal>().main = Some((handle, workspace));
+}
+
+pub(crate) fn main_window(
+    cx: &App,
+) -> Option<(Option<WindowHandle<gpui_component::Root>>, Entity<Workspace>)> {
+    cx.try_global::<SearchWindowGlobal>().and_then(|s| s.main.clone())
+}
+
+pub(crate) fn main_folder(cx: &App) -> Option<PathBuf> {
+    cx.try_global::<SearchWindowGlobal>()
+        .and_then(|s| s.main.as_ref())
+        .and_then(|(_, workspace)| workspace.read(cx).folder.clone())
+}
+
+pub(crate) fn notify_saved_note(path: PathBuf, cx: &mut App) {
+    if let Some((_, workspace)) = main_window(cx) {
+        workspace.update(cx, |w, cx| w.insert_external_note(path, cx));
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[allow(deprecated)]
+fn app_windows() -> cocoa::base::id {
+    use cocoa::{appkit::NSApplication, base::{SEL, id, nil, selector}};
+    unsafe extern "C" { fn objc_msgSend(); }
+    unsafe {
+        let app = NSApplication::sharedApplication(nil);
+        let send: unsafe extern "C" fn(id, SEL) -> id = std::mem::transmute(objc_msgSend as *const ());
+        send(app, selector("windows"))
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[allow(deprecated)]
+pub fn hide_main_window_on_close() -> bool {
+    use cocoa::{appkit::NSWindow, base::nil, foundation::NSArray};
+    unsafe {
+        let windows = app_windows();
+        let mut hidden = false;
+        for i in 0..NSArray::count(windows) {
+            let win = NSArray::objectAtIndex(windows, i);
+            if NSWindow::level(win) == 0 {
+                NSWindow::orderOut_(win, nil);
+                hidden = true;
+            }
+        }
+        hidden
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn hide_main_window_on_close() -> bool { false }
+
+#[cfg(target_os = "macos")]
+#[allow(deprecated)]
+fn show_native_main_window() {
+    use cocoa::{appkit::NSWindow, base::{BOOL, SEL, YES, id, nil, selector}, foundation::NSArray};
+    unsafe extern "C" { fn objc_msgSend(); }
+    unsafe {
+        let windows = app_windows();
+        let is_mini: unsafe extern "C" fn(id, SEL) -> BOOL = std::mem::transmute(objc_msgSend as *const ());
+        for i in 0..NSArray::count(windows) {
+            let win = NSArray::objectAtIndex(windows, i);
+            if NSWindow::level(win) == 0 {
+                if is_mini(win, selector("isMiniaturized")) == YES {
+                    NSWindow::deminiaturize_(win, nil);
+                }
+                NSWindow::makeKeyAndOrderFront_(win, nil);
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn show_native_main_window() {}
+
+pub fn activate_main_window(cx: &mut App) {
+    show_native_main_window();
+    cx.activate(true);
+    if let Some((Some(main_handle), _)) = main_window(cx) {
+        let _ = main_handle.update(cx, |_, main_win, _| main_win.activate_window());
+    }
+}
+
+pub fn summon_from_hotkey(cx: &mut App) {
+    if let Some((Some(handle), workspace)) = main_window(cx) {
+        if handle.update(cx, |_, window, _| window.is_window_active()).unwrap_or(false) {
+            let _ = handle.update(cx, |_, window, cx| {
+                workspace.update(cx, |w, cx| w.summon_search(window, cx));
+            });
+            return;
+        }
+    }
+    toggle(cx);
 }
 
 pub fn toggle(cx: &mut App) {
@@ -98,7 +205,7 @@ impl SearchWindow {
             match event {
                 InputEvent::Change => {
                     let query = input.read(cx).value().to_string();
-                    let root = crate::quick::main_folder(cx);
+                    let root = main_folder(cx);
                     this.state.run_search(root, query, cx, |this| Some(&mut this.state));
                 }
                 InputEvent::PressEnter { .. } => this.open_hit(window, cx),
@@ -115,11 +222,7 @@ impl SearchWindow {
         cx.defer_in(window, move |_, window, cx| {
             focus_input.update(cx, |input, cx| input.focus(window, cx));
         });
-        Self {
-            state: SearchState::new(input),
-            _input_sub: input_sub,
-            _blur_sub: blur_sub,
-        }
+        Self { state: SearchState::new(input), _input_sub: input_sub, _blur_sub: blur_sub }
     }
 
     pub(crate) fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -132,10 +235,9 @@ impl SearchWindow {
     fn open_hit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(path) = self.state.selected_path() else { return };
         self.close(window, cx);
-        let Some((Some(main_handle), workspace)) = crate::quick::main_window(cx) else { return };
-        cx.activate(true);
+        let Some((Some(main_handle), workspace)) = main_window(cx) else { return };
+        activate_main_window(cx);
         let _ = main_handle.update(cx, |_, main_win, cx| {
-            main_win.activate_window();
             workspace.update(cx, |w, cx| w.open_from_search(path, main_win, cx));
         });
     }
@@ -144,7 +246,7 @@ impl SearchWindow {
 impl Render for SearchWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::ocean();
-        let has_folder = crate::quick::main_folder(cx).is_some();
+        let has_folder = main_folder(cx).is_some();
         div()
             .id("search-window")
             .key_context("SearchPalette")
