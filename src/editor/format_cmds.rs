@@ -1,4 +1,7 @@
 //! Selection formatting beyond marks: underline, colour, links and clear-format.
+#[path = "palette.rs"]
+pub(super) mod palette;
+
 use std::{ops::Range, rc::Rc};
 use gpui::{AppContext as _, Context, Entity, Pixels, Point, Subscription, Window, point, px};
 use gpui_component::input::{InputEvent, InputState};
@@ -41,9 +44,7 @@ impl Editor {
         state.strike = all(MarkKind::Strike); state.code = all(MarkKind::Code);
         state.underline = ranges.iter().all(|(id, r)| self.doc.is_underlined(*id, r.clone()));
         state.link = ranges.iter().any(|(id, r)| self.doc.get(*id).and_then(|b| b.link_at(r.start)).is_some());
-        state.colored = ranges.iter().any(|(id, r)| self.doc.get(*id).is_some_and(|b| b.meta.inline.iter().any(|t|
-            t.name == "span" && t.start < r.end && t.end > r.start
-            && ["color", "background-color"].iter().any(|p| crate::editor::text_runs::css(&t.attrs, p).is_some()))));
+        state.colored = self.has_selection_color();
         state
     }
     pub(super) fn selection_ranges(&self) -> Vec<(u64, Range<usize>)> {
@@ -66,16 +67,19 @@ impl Editor {
         let on = !self.selection_ranges().iter().all(|(id, r)| self.doc.is_underlined(*id, r.clone()));
         self.edit_selection(cx, |doc, id, range| doc.toggle_underline(id, range, on));
     }
+    #[allow(dead_code)]
     pub(super) fn clear_formatting(&mut self, cx: &mut Context<Self>) {
         self.edit_selection(cx, |doc, id, range| doc.clear_format(id, range));
     }
     /// `prop` is `color` or `background-color`; `None` resets to the default.
+    #[allow(dead_code)]
     pub(super) fn apply_style(&mut self, prop: &str, value: Option<&str>, cx: &mut Context<Self>) {
         self.edit_selection(cx, |doc, id, range| doc.set_style(id, range, prop, value));
     }
     fn pop_anchor(&self, window: &Window) -> Point<Pixels> {
         self.toolbar_anchor.unwrap_or_else(|| window.mouse_position() + point(px(0.), px(12.)))
     }
+    #[allow(dead_code)]
     pub(super) fn open_palette(&mut self, window: &Window, cx: &mut Context<Self>) {
         if self.selection_ranges().is_empty() { return; }
         self.format = Some(FormatPop::Palette { anchor: self.pop_anchor(window) + point(px(0.), px(40.)) });

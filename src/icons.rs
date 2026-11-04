@@ -103,7 +103,9 @@ icons! {
     MessageSquare => "message-square" [Line],
     History => "history" [Line],
     AiPlus => "ai-plus" [Line],
-    // Dark selection toolbar, link popover and image size pill (F-Inline).
+    // Selection toolbar, link popover and image size pill (F-Toolbar / F-Inline).
+    TbComment => "tb-comment" [Line],
+    TbReaction => "tb-reaction" [Line],
     TbType => "tb-type" [Line],
     TbBold => "tb-bold" [Line],
     TbItalic => "tb-italic" [Line],
