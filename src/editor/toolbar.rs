@@ -45,7 +45,8 @@ impl RenderOnce for SelectionToolbar {
             )
         };
         let mark = |g, tip, kind: MarkKind, on| button(g, tip, on, false, false, editor.clone(), move |this, _, cx| this.mark(kind, cx));
-        let text_blocks = !state.table;
+        let text_blocks = !state.locked;
+        let rich = !state.plain;
         // Narrow editors (AI 助手 open): wrap onto a second row inside the editor
         // instead of running under the chat panel.
         let room = editor.read(cx).list.viewport_bounds().size.width - px(16.);
@@ -56,18 +57,20 @@ impl RenderOnce for SelectionToolbar {
             .when(text_blocks, |bar| bar
                 .child(button(Icon::TbType, tr("文字类型", "Text type"), false, kinds_open, true, editor.clone(), |this, w, cx| this.toggle_menu(true, w, cx)))
                 .child(sep()))
-            .child(mark(Icon::TbBold, tr("粗体", "Bold"), MarkKind::Bold, state.bold))
-            .child(mark(Icon::TbItalic, tr("斜体", "Italic"), MarkKind::Italic, state.italic))
-            .child(button(Icon::TbUnderline, tr("下划线", "Underline"), state.underline, false, false, editor.clone(), |this, _, cx| this.underline(cx)))
-            .child(mark(Icon::TbStrike, tr("删除线", "Strikethrough"), MarkKind::Strike, state.strike))
-            .child(mark(Icon::TbCode, tr("行内代码", "Inline code"), MarkKind::Code, state.code))
-            .child(palette_button(state.colored, palette_open, editor.clone()))
-            .child(sep())
-            .child(button(Icon::TbList, tr("列表", "Lists"), false, lists_open, true, editor.clone(), |this, w, cx| this.toggle_menu(false, w, cx)))
-            .child(sep())
-            .when(!state.grid, |bar| bar
+            .when(rich, |bar| bar
+                .child(mark(Icon::TbBold, tr("粗体", "Bold"), MarkKind::Bold, state.bold))
+                .child(mark(Icon::TbItalic, tr("斜体", "Italic"), MarkKind::Italic, state.italic))
+                .child(button(Icon::TbUnderline, tr("下划线", "Underline"), state.underline, false, false, editor.clone(), |this, _, cx| this.underline(cx)))
+                .child(mark(Icon::TbStrike, tr("删除线", "Strikethrough"), MarkKind::Strike, state.strike))
+                .child(mark(Icon::TbCode, tr("行内代码", "Inline code"), MarkKind::Code, state.code))
+                .child(palette_button(state.colored, palette_open, editor.clone()))
+                .child(sep()))
+            .when(text_blocks, |bar| bar
+                .child(button(Icon::TbList, tr("列表", "Lists"), false, lists_open, true, editor.clone(), |this, w, cx| this.toggle_menu(false, w, cx)))
+                .child(sep()))
+            .when(rich && !state.grid, |bar| bar
                 .child(button(Icon::TbLink, tr("链接 ⌘⇧K", "Link ⌘⇧K"), state.link, false, false, editor.clone(), |this, w, cx| this.open_link(w, cx))))
-            .when(state.grid, |bar| bar.child(disabled_button(Icon::TbLink)));
+            .when(rich && state.grid, |bar| bar.child(disabled_button(Icon::TbLink)));
         gpui::anchored().position(self.anchor).snap_to_window_with_margin(px(8.)).child(animate_bar(bar, "selection-toolbar-enter"))
     }
 }
