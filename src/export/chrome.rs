@@ -53,9 +53,9 @@ pub(super) fn build_chrome(
     let (header_h, header_items) = match theme {
         ExportTheme::Mono | ExportTheme::Ink => {
             let l = if options.show_title && !options.title.trim().is_empty() {
-                format!("THINKLY FAST · {title}")
+                format!("YU · {title}")
             } else {
-                "THINKLY FAST".to_string()
+                "YU".to_string()
             };
             let r = format!("{:04} · {:02} · {:02}", d.year, d.month, d.day);
             (64.0, items(fonts, &[
@@ -90,9 +90,9 @@ pub(super) fn build_chrome(
             let r = if crate::theme::is_en() { format!("{:04}.{:02}.{:02}", d.year, d.month, d.day) } else { format!("{:04} 年 {} 月 {} 日", d.year, d.month, d.day) };
             (106.0, items(fonts, &[
                 (&l, "Songti SC", 12.0, false, Anchor::L(left), 0.0, sec),
-                ("THINKLY FAST DAILY", "Songti SC", 12.0, false, Anchor::C(mid), 0.0, sec),
+                ("YU DAILY", "Songti SC", 12.0, false, Anchor::C(mid), 0.0, sec),
                 (&r, "Songti SC", 12.0, false, Anchor::R(right), 0.0, sec),
-                (crate::theme::tr("思 考 快 报", "THINKLY PRESS"), "Songti SC", 34.0, true, Anchor::C(mid), 32.0, pal.title),
+                (crate::theme::tr("隅 报", "YU PRESS"), "Songti SC", 34.0, true, Anchor::C(mid), 32.0, pal.title),
             ]))
         }
         ExportTheme::Neon => {
@@ -115,7 +115,7 @@ pub(super) fn build_chrome(
     let film_edges = if theme == ExportTheme::Film {
         let ac = pal.accent;
         items(fonts, &[
-            ("THINKLY 400", "SF Mono", 11.0, false, Anchor::L(24.0), 32.0, ac),
+            ("YU 400", "SF Mono", 11.0, false, Anchor::L(24.0), 32.0, ac),
             ("▸ 11A", "SF Mono", 11.0, false, Anchor::C(310.0), 32.0, ac),
             ("▸ 12", "SF Mono", 11.0, false, Anchor::C(535.0), 32.0, ac),
             ("▸ 12A", "SF Mono", 11.0, false, Anchor::R(792.0), 32.0, ac),
@@ -150,15 +150,15 @@ fn build_footer(
         ExportTheme::Mono | ExportTheme::Ink => {
             let r = if theme == ExportTheme::Ink { "DARK EDITION · 01 / 01" } else { "PAGE 01 / 01" };
             (54.0, items(fonts, &[
-                ("THINKLY FAST", "SF Mono", 12.0, false, Anchor::L(left + 16.0), 32.0, sec),
+                ("YU", "SF Mono", 12.0, false, Anchor::L(left + 16.0), 32.0, sec),
                 (r, "SF Mono", 12.0, false, Anchor::R(right), 32.0, sec),
             ]), None)
         }
         ExportTheme::Journal | ExportTheme::Kraft => {
             let is_j = theme == ExportTheme::Journal;
-            let l = if is_j { crate::theme::tr("thinkly fast · 随手记", "thinkly fast · journal") } else { crate::theme::tr("thinkly fast · 黑卡手账", "thinkly fast · kraft") };
+            let l = if is_j { crate::theme::tr("Yu · 随手记", "Yu · journal") } else { crate::theme::tr("Yu · 黑卡手账", "Yu · kraft") };
             let sc = if is_j { Color::rgba(181, 70, 47, 215) } else { Color::rgba(224, 122, 95, 220) };
-            let s1 = make_buf(fonts, "THINKLY", "SF Mono", 10.0, true);
+            let s1 = make_buf(fonts, "YU", "SF Mono", 10.0, true);
             let s2 = make_buf(fonts, &format!("{:02}·{:02}", d.month, d.day), "SF Mono", 15.0, true);
             let s3 = make_buf(fonts, &format!("{:04}", d.year), "SF Mono", 10.0, true);
             (76.0, items(fonts, &[(l, "Kaiti SC", 14.0, false, Anchor::L(left), 38.0, sec)]), Some(([s1, s2, s3], sc)))
@@ -167,21 +167,21 @@ fn build_footer(
             let r = format!("PRINTED {:04}-{:02}-{:02}", d.year, d.month, d.day);
             let (lc, rc) = if theme == ExportTheme::Riso { (pal.text, pal.accent) } else { (pal.accent, pal.accent2) };
             (56.0, items(fonts, &[
-                ("THINKLY FAST", "SF Mono", 12.0, true, Anchor::L(left), 34.0, lc),
+                ("YU", "SF Mono", 12.0, true, Anchor::L(left), 34.0, lc),
                 (&r, "SF Mono", 12.0, true, Anchor::R(right), 34.0, rc),
             ]), None)
         }
         ExportTheme::Press => {
             let r = format!("{:04}-{:02}-{:02}", d.year, d.month, d.day);
             (52.0, items(fonts, &[
-                (crate::theme::tr("THINKLY FAST 印行", "THINKLY FAST PRESS"), "Songti SC", 12.0, false, Anchor::L(left), 30.0, sec),
+                (crate::theme::tr("YU 印行", "YU PRESS"), "Songti SC", 12.0, false, Anchor::L(left), 30.0, sec),
                 (&r, "Songti SC", 12.0, false, Anchor::R(right), 30.0, sec),
             ]), None)
         }
         ExportTheme::Film => {
             let r = format!("DEVELOPED {:04}-{:02}-{:02}", d.year, d.month, d.day);
             (46.0, items(fonts, &[
-                ("THINKLY FAST", "SF Mono", 12.0, false, Anchor::L(left), 24.0, sec),
+                ("YU", "SF Mono", 12.0, false, Anchor::L(left), 24.0, sec),
                 (&r, "SF Mono", 12.0, false, Anchor::R(right), 24.0, sec),
             ]), None)
         }
