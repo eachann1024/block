@@ -140,7 +140,7 @@ impl Editor {
         let table = self.doc.get(id)?.meta.table.as_ref()?; Some((table.rows.len(), table.columns))
     }
     pub(in crate::editor) fn cell_of_caret(&self) -> Option<(u64, usize, usize)> {
-        let at = self.caret.head; let table = self.doc.get(at.block)?.meta.table.as_ref().filter(|t| !t.is_columns())?;
+        let at = self.caret.head; let table = self.doc.get(at.block)?.meta.table.as_ref()?;
         table.cell_ranges().into_iter().find(|(_, _, body)| body.start <= at.offset && at.offset <= body.end)
             .map(|(r, c, _)| (at.block, r, c))
     }
@@ -278,7 +278,7 @@ impl Editor {
                 .or_else(|| self.cell_of_caret().filter(|x| x.0 == id).map(|x| (x.1, x.2))).unwrap_or((0, 0))),
             None => { let (id, r, c) = hovered()?; (id, (r, c)) }
         };
-        self.doc.get(id)?.meta.table.as_ref().filter(|t| !t.is_columns())?;
+        self.doc.get(id)?.meta.table.as_ref()?;
         let layout = self.layouts.get(&id)?;
         let bounds = table_layout::grid_rect(layout)?;
         // Hover is only refreshed on mouse move; after a scroll (Cmd+Up, caret jumps) re-check the pointer.
