@@ -21,6 +21,10 @@ pub const DEMO_NOTE: &str = r#"# Thinkly Fast · 原生块级笔记
 | 插入块 | 点击空行旁的 + 按钮 | 弹出菜单并插入新块 |
 | 拖拽重排 | 按住左侧拖拽把手上下拖动 | 跨段落调整文档结构顺序 |
 | 斜杠指令 | 在空行输入 / | 快速插入标题、表格、代码块与任务项 |
+| 删除至行首 | ⌘ + Backspace | 删除光标到行首的内容（⌘← / ⌘→ 跳到行首 / 行尾） |
+| 切换块类型 | ⌥⌘1 … ⌥⌘9 | 标题、待办、列表、代码块与引用 |
+| 查找 | ⌘F | 在笔记中查找并高亮 |
+| 生成图片 | ⇧⌘E | 把笔记导出为图片、PDF、Word、Markdown 或 HTML |
 
 ```rust
 fn reorder_block(blocks: &mut Vec<Block>, from: usize, to: usize) {

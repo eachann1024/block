@@ -24,7 +24,8 @@ pulldown-cmark = { version = "0.13", default-features = false }
 mermaid-rs-renderer = { version = "0.3.1", default-features = false }
 latex-rust = "3.0.1"
 wasm-bindgen = "0.2.130"
-web-sys = { version = "0.3", features = ["Document", "Element", "HtmlCanvasElement", "HtmlElement", "Node", "Window"] }
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Blob", "BlobPropertyBag", "console", "Document", "Element", "HtmlAnchorElement", "HtmlCanvasElement", "HtmlElement", "Node", "Performance", "Url", "Window"] }
 console_error_panic_hook = "0.1.7"
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
