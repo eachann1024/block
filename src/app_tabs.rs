@@ -75,6 +75,7 @@ impl Workspace {
             if self.tabs.len() > 1 { record_tab_open(path.clone()); }
         }
         self.selected = Some(path.clone());
+        self.tree.update(cx, |tree, cx| tree.select(Some(path.clone()), cx));
         self.editor.update(cx, |editor, cx| editor.open(path, cx));
         self.save_tabs_state(cx);
         cx.notify();
@@ -91,6 +92,7 @@ impl Workspace {
             if !self.tabs.is_empty() {
                 let next_path = self.tabs[idx.min(self.tabs.len() - 1)].clone();
                 self.selected = Some(next_path.clone());
+                self.tree.update(cx, |tree, cx| tree.select(Some(next_path.clone()), cx));
                 self.editor.update(cx, |editor, cx| { editor.open(next_path, cx); editor.close_session(&path, cx); });
             } else {
                 self.editor.update(cx, |editor, cx| editor.close_session(&path, cx));
@@ -128,7 +130,10 @@ impl Workspace {
         }
         self.tabs = updated;
         if let Some(sel) = &self.selected {
-            if let Some(rebased) = crate::files::ops::rebase(sel, from, to) { self.selected = Some(rebased); }
+            if let Some(rebased) = crate::files::ops::rebase(sel, from, to) {
+                self.selected = Some(rebased.clone());
+                self.tree.update(cx, |tree, cx| tree.select(Some(rebased), cx));
+            }
         }
         self.editor.update(cx, |editor, cx| editor.rename_session(from, to, cx));
         self.save_tabs_state(cx);

@@ -52,7 +52,7 @@ impl Workspace {
                 div().id("workspace-status").max_h(px(48.)).overflow_y_scroll().px(px(20.)).pb(px(4.))
                     .text_size(px(12.)).text_color(theme.text_secondary).child(self.notice.clone())))
             .child(self.group_row(available && self.folder.is_some(), cx))
-            .child(div().flex_1().min_h_0().overflow_hidden().px(px(8.)).pb(px(8.)).child(self.tree.clone()))
+            .child(div().flex_1().min_h_0().overflow_hidden().pt(px(2.)).pb(px(8.)).child(self.tree.clone()))
             .child(self.settings_footer(cx))
             .child(self.resize_handle(cx))
     }
@@ -74,8 +74,8 @@ impl Workspace {
     fn settings_footer(&self, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
         let active = self.settings.is_some();
-        div().flex_none().px(px(8.)).py(px(6.)).border_t_1().border_color(theme.hairline)
-            .child(div().id("settings-button").h(px(32.)).px(px(10.)).flex().items_center().gap(px(8.))
+        div().flex_none().px(px(12.)).py(px(6.)).border_t_1().border_color(theme.hairline)
+            .child(div().id("settings-button").h(px(32.)).px(px(8.)).flex().items_center().gap(px(6.))
                 .rounded(px(6.)).border_1().text_size(px(14.)).cursor(gpui::CursorStyle::PointingHand)
                 .when(active, |b| b.bg(theme.selected).border_color(theme.accent)
                     .text_color(theme.text).font_weight(gpui::FontWeight(460.)))
