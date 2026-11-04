@@ -11,7 +11,7 @@ impl Editor {
     pub(crate) fn annotation_summary(&self) -> (usize, bool, bool) {
         let drafts = self.annotate.annotations.iter().filter(|note| note.is_pending()).count();
         let generating = self.annotate.annotations.iter().any(|note| note.streaming);
-        let has_any = self.annotate.annotations.iter().any(|note| !note.body.trim().is_empty());
+        let has_any = self.annotate.annotations.iter().any(|note| !note.is_applied() && !note.body.trim().is_empty());
         (drafts, generating, has_any)
     }
 
@@ -68,7 +68,7 @@ impl Editor {
 
     pub(in crate::editor) fn annotation_at(&self, pos: Position) -> Option<u64> {
         self.annotate.annotations.iter().rev()
-            .filter(|note| !note.body.is_empty() && (!note.is_applied() || note.has_rewrite()))
+            .filter(|note| !note.body.is_empty() && !note.is_applied())
             .find_map(|note| {
                 let (block_id, range, _) = resolve_annotation_span(&self.doc, note)?;
                 if block_id != pos.block { return None; }
