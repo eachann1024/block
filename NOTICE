@@ -1,0 +1,16 @@
+Yu (thinkly-fast)
+Copyright 2026 eachann1024
+
+This product includes software and assets developed by third parties:
+
+1. gpui-pre-wgpu (web/vendor/gpui-pre-wgpu)
+   Copyright 2022 - 2025 Zed Industries, Inc.
+   Licensed under the Apache License, Version 2.0 (see web/vendor/gpui-pre-wgpu/LICENSE-APACHE).
+
+2. IBM Plex Sans (web/fonts/IBMPlexSans-Regular.ttf, web/fonts/IBMPlexSans-SemiBold.ttf)
+   Copyright (c) 2017 IBM Corp. with Reserved Font Name "Plex".
+   Licensed under the SIL Open Font License, Version 1.1 (https://openfontlicense.org).
+
+3. JetBrains Mono (web/fonts/JetBrainsMono-Regular.ttf)
+   Copyright (c) 2020 JetBrains s.r.o. with Reserved Font Name "JetBrains Mono".
+   Licensed under the SIL Open Font License, Version 1.1 (https://openfontlicense.org).

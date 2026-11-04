@@ -1,10 +1,13 @@
 {
   "name": "thinkly-fast",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
   "private": true,
   "scripts": {
     "dev": "cargo run",
     "test": "cargo run -- --smoke",
     "build": "bun scripts/build-app.mjs",
+    "build:ci": "bun scripts/build-app.mjs --no-install",
     "build:web": "bun scripts/build-web.mjs",
     "logs": "tail -n 100 -f ~/Library/Logs/ThinklyFast/thinkly-fast.log"
   }
