@@ -2,7 +2,7 @@
 //! typography, font-smoothing and shortcut settings backed by `state.json`.
 
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use gpui::{Hsla, Pixels, px};
 pub use crate::files::state::{FontChoice, ThemeMode};
@@ -70,11 +70,37 @@ pub fn set_font_choice(font: FontChoice) {
     FONT_CHOICE.store(code, Ordering::Relaxed);
 }
 
+/// Resolved (serif, mono) primary families, picked from the installed font names.
+static RESOLVED_FONTS: OnceLock<(&'static str, &'static str)> = OnceLock::new();
+
+/// Picks the first installed candidate. gpui drops fallbacks and weight when the primary
+/// family is missing, and naming "PingFang SC" as a fallback makes CoreText resolve the
+/// duplicate PingFangUI.ttc (same PostScript names, different glyph IDs) and garble CJK.
+pub fn init_fonts(installed: &[String]) {
+    let pick = |candidates: &[&'static str], last: &'static str| {
+        candidates.iter().copied()
+            .find(|c| installed.iter().any(|n| n == c))
+            .unwrap_or(last)
+    };
+    let serif = pick(&["LXGW WenKai", "LXGW WenKai Screen", "Kaiti SC", "Songti SC"], "Songti SC");
+    let mono = pick(&["JetBrains Mono", "Menlo", "Monaco"], "Menlo");
+    let _ = RESOLVED_FONTS.set((serif, mono));
+}
+
+fn resolved() -> (&'static str, &'static str) {
+    RESOLVED_FONTS.get().copied().unwrap_or(("Songti SC", "Menlo"))
+}
+
+pub fn mono_font_family() -> &'static str { resolved().1 }
+
 pub fn editor_font() -> (&'static str, &'static [&'static str]) {
+    let (serif, mono) = resolved();
     match font_choice() {
-        FontChoice::Sans => (".SystemUIFont", &["PingFang SC", "Hiragino Sans GB"]),
-        FontChoice::Serif => ("LXGW WenKai", &["Songti SC", "STSong", "Georgia", "PingFang SC"]),
-        FontChoice::Mono => ("JetBrains Mono", &["Menlo", "Monaco", "PingFang SC"]),
+        FontChoice::Sans => (".SystemUIFont", &[]),
+        FontChoice::Serif if serif == "Songti SC" => (serif, &[]),
+        FontChoice::Serif => (serif, &["Songti SC"]),
+        FontChoice::Mono if mono == "Menlo" => (mono, &[]),
+        FontChoice::Mono => (mono, &["Menlo"]),
     }
 }
 
