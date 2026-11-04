@@ -12,6 +12,8 @@ use super::{Workspace, file_ops::display_name, search::Dismiss};
 
 #[path = "app_tabs_menu.rs"]
 mod tab_menu;
+#[path = "app_tabs_annotations.rs"]
+mod annotations;
 
 pub(super) use tab_menu::{clear_tab_menu, hover_tinted_icon, record_tab_open};
 use tab_menu::{
@@ -198,6 +200,7 @@ impl Workspace {
                 strip = strip.child(render_closing_ghost(g));
             }
             right = right.child(strip);
+            right = right.children(self.annotation_actions(cx));
             let plus = if can_create { Some({
                 let new_group: SharedString = "tab-new-btn".into();
                 div().id("tab-new").group(new_group.clone()).size(px(26.)).flex_none()

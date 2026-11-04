@@ -36,13 +36,13 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
         if narrow {
             let mut layer = div().id("annotate-rail").absolute().top_0().left_0().size_full();
             let mut next_y = px(0.);
-            let notes = editor.annotate.annotations.iter().filter(|note| !note.is_applied()).cloned().collect::<Vec<_>>();
+            let notes = editor.annotate.annotations.iter().filter(|note| !note.is_applied() || note.has_rewrite()).cloned().collect::<Vec<_>>();
             for (index, note) in notes.into_iter().enumerate() {
                 let target = resolve_annotation_span(&editor.doc, &note).map(|(id, range, _)| (id, range.start));
                 let y = target.map(|(id, offset)| row_target(editor, id, offset)).unwrap_or(px(24.)).max(next_y + px(28.));
                 let id = note.id;
                 let is_active = editor.annotate.active_annotation == Some(id);
-                let status = if note.is_generated() { ANNOTATION_GENERATED } else { ANNOTATION_PENDING };
+                let status = if note.has_rewrite() { ANNOTATION_GENERATED } else { ANNOTATION_PENDING };
                 layer = layer.child(div().id(SharedString::from(format!("annotation-marker-{id}")))
                     .absolute().top(y).right(px(12.)).min_w(px(24.)).h(px(24.)).px(px(6.))
                     .rounded(px(6.)).border_l_2().border_color(rgb(status)).bg(Theme::ocean().paper)
@@ -70,7 +70,7 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
             return layer;
         }
         let mut rows: Vec<(Pixels, u64, AnyElement)> = editor.annotate.annotations.iter()
-            .filter(|note| !note.is_applied()).cloned().map(|note| {
+            .filter(|note| !note.is_applied() || note.has_rewrite()).cloned().map(|note| {
                 let target = resolve_annotation_span(&editor.doc, &note).map(|(id, range, _)| (id, range.start));
                 let y = target.map(|(id, offset)| row_target(editor, id, offset)).unwrap_or(px(24.));
                 let id = note.id;
@@ -124,45 +124,56 @@ fn annotation_row(
     cx: &mut Context<Editor>,
 ) -> impl IntoElement {
     let id = note.id;
+    let is_applied = note.is_applied();
+    let has_rewrite = note.has_rewrite();
     let is_active = active_id == Some(id);
     let theme = Theme::ocean();
-    let status = if note.is_generated() { ANNOTATION_GENERATED } else { ANNOTATION_PENDING };
+    let status = if has_rewrite { ANNOTATION_GENERATED } else { ANNOTATION_PENDING };
     let label = if note.body.is_empty() { note.reactions.join(" ") } else { note.body.clone() };
     let text = div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
         .text_size(px(14.)).line_height(px(20.)).text_color(theme.text_secondary).child(label);
-    let actions = if note.is_generated() {
-        let apply = div().id(SharedString::from(format!("annotation-apply-{id}"))).size(px(22.)).flex_none()
-            .rounded(px(4.)).flex().items_center().justify_center().text_size(px(14.)).text_color(theme.accent)
+    let actions = if has_rewrite {
+        let state = if is_applied {
+            div().size(px(22.)).flex_none().flex().items_center().justify_center()
+                .text_size(px(14.)).text_color(theme.accent).child("✓").into_any_element()
+        } else {
+            div().id(SharedString::from(format!("annotation-apply-{id}"))).size(px(22.)).flex_none()
+                .rounded(px(4.)).flex().items_center().justify_center().text_size(px(14.)).text_color(theme.accent)
+                .cursor(CursorStyle::PointingHand).hover(|style| style.bg(theme.hover))
+                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.apply_annotation(id, window, cx);
+                })).child("✓").into_any_element()
+        };
+        let restore = div().id(SharedString::from(format!("annotation-restore-{id}"))).size(px(22.)).flex_none()
+            .rounded(px(4.)).flex().items_center().justify_center().text_size(px(14.)).text_color(theme.text_secondary)
             .cursor(CursorStyle::PointingHand).hover(|style| style.bg(theme.hover))
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
                 cx.stop_propagation();
-                this.apply_annotation(id, window, cx);
-            })).child("✓");
-        let revert = div().id(SharedString::from(format!("annotation-revert-{id}"))).size(px(22.)).flex_none()
-            .rounded(px(4.)).flex().items_center().justify_center().text_size(px(14.)).text_color(theme.text_secondary)
-            .cursor(CursorStyle::PointingHand).hover(|style| style.bg(theme.hover))
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                cx.stop_propagation();
-                this.revert_annotation(id, cx);
+                this.restore_annotation(id, window, cx);
             })).child("↺");
-        Some(div().flex_none().flex().items_center().gap(px(2.)).child(apply).child(revert))
+        Some(div().flex_none().flex().items_center().gap(px(2.)).child(state).child(restore))
     } else { None };
     let head = div().w_full().h(px(22.)).flex().items_center().gap(px(4.)).child(text).children(actions);
+    let candidate = note.ai_rewritten.clone().filter(|_| has_rewrite).map(|text| {
+        div().mt(px(2.)).max_h(px(60.)).overflow_hidden().text_size(px(14.)).line_height(px(20.))
+            .text_color(theme.text).child(text)
+    });
     let error = is_active.then(|| note.ai_error.clone()).flatten().map(|message| {
         div().mt(px(4.)).text_size(px(14.)).line_height(px(20.)).text_color(rgb(0xb42318)).child(message)
     });
-    let input = is_active.then_some(followup).flatten().map(|input| {
+    let input = (is_active && !is_applied).then_some(followup).flatten().map(|input| {
         div().mt(px(6.)).h(px(30.)).px(px(8.)).rounded(px(5.)).bg(theme.shell)
             .border_1().border_color(theme.btn_border).flex().items_center()
             .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| cx.stop_propagation()))
             .child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)).px(px(0.)))
     });
-    let body = div().w_full().min_w_0().child(head).children(input).children(error);
+    let body = div().w_full().min_w_0().child(head).children(candidate).children(input).children(error);
     annotation_note::rail_note(SharedString::from(format!("annotation-row-{id}")), status, body)
-        .cursor(CursorStyle::PointingHand)
-        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
-            this.toggle_annotation_detail(id, window, cx);
-        }))
+        .when(!is_applied, |row| row.cursor(CursorStyle::PointingHand)
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
+                this.toggle_annotation_detail(id, window, cx);
+            })))
 }
 
 fn composer_row(
