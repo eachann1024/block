@@ -8,12 +8,17 @@ pub(super) fn danger_color() -> Hsla { hsla(0.0, 0.62, 0.45, 1.) }
 
 /// Menu shell: callers add the width, scrolling limits and mouse handlers.
 pub(super) fn shell(id: impl Into<ElementId>, theme: &Theme) -> Stateful<Div> {
-    div().id(id).p(px(6.)).rounded(px(8.)).border_1().border_color(theme.menu_border).bg(theme.paper)
-        .flex().flex_col().gap(px(2.)).text_size(px(14.)).line_height(px(20.)).text_color(theme.text)
+    div().id(id).p(px(6.)).rounded(px(8.)).border_1().border_color(theme.menu_border).bg(theme.menu)
+        .flex().flex_col().gap(px(2.)).text_size(theme.ui_font).line_height(px(20.)).text_color(theme.text)
 }
 
 /// Blank space between groups: 2px row gap on both sides plus this makes the 6px group gap.
 pub(super) fn group_gap() -> Div { div().h(px(2.)).flex_none() }
+
+/// Hairline divider between groups in the slash command menu.
+pub(super) fn separator(theme: &Theme) -> Div {
+    div().mx(px(4.)).my(px(3.)).h(px(1.)).flex_none().bg(theme.hairline)
+}
 
 /// One menu row; `active` is the keyboard highlight and `disabled` dims it and drops hover and clicks.
 pub(super) fn item(id: impl Into<ElementId>, label: &'static str, danger: bool, active: bool, disabled: bool,
