@@ -56,8 +56,8 @@ impl TableCmd {
 pub(in crate::editor) fn menu_items(sel: TableSel, _rows: usize, _columns: usize) -> Vec<Option<TableCmd>> {
     use TableCmd::*;
     match sel {
-        TableSel::Column(_) => vec![Some(DeleteColumn)],
-        TableSel::Row(_) => vec![Some(DeleteRow)],
+        TableSel::Column(_) => vec![Some(InsertColLeft), Some(InsertColRight), Some(DeleteColumn)],
+        TableSel::Row(_) => vec![Some(InsertRowAbove), Some(InsertRowBelow), Some(DeleteRow)],
         TableSel::Cell(..) => vec![Some(DeleteRow), Some(DeleteColumn), None,
             Some(SelectTable), Some(CopyTable), Some(FitWidth), None, Some(DeleteTable)],
         TableSel::Whole => vec![Some(SelectTable), Some(CopyTable), Some(FitWidth), None, Some(DeleteTable)],
