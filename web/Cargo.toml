@@ -1,0 +1,37 @@
+[package]
+name = "thinkly-fast-web"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+gpui = { package = "gpui-pre", version = "0.3.11", default-features = false }
+gpui_web = { package = "gpui-pre-web", version = "0.3.11", default-features = false }
+gpui-component = { version = "0.9.0", default-features = false }
+ropey = { version = "2.0.0-beta.1", default-features = false, features = ["metric_lines_lf", "metric_utf16"] }
+html5ever = "0.40.1"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-segmentation = "1"
+tiny-skia = "0.12.0"
+cosmic-text = "0.19.0"
+im = "15.1"
+pulldown-cmark = { version = "0.13", default-features = false }
+mermaid-rs-renderer = { version = "0.3.1", default-features = false }
+latex-rust = "3.0.1"
+wasm-bindgen = "0.2.130"
+web-sys = { version = "0.3", features = ["Document", "Element", "HtmlCanvasElement", "HtmlElement", "Node", "Window"] }
+console_error_panic_hook = "0.1.7"
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"

@@ -222,6 +222,12 @@ pub(crate) fn stream_messages(messages: Vec<(String, String)>, cancel: Arc<Atomi
 /// One streamed turn with optional `tools`; tool-call deltas are sent as `Event::ToolCalls` before `Done`.
 pub(crate) fn stream_agent(msgs: Vec<serde_json::Value>, tools: Option<serde_json::Value>, cancel: Arc<AtomicBool>) -> mpsc::Receiver<Event> {
     let (tx, rx) = mpsc::channel();
+    #[cfg(target_family = "wasm")]
+    {
+        let _ = (msgs, tools, cancel);
+        let _ = tx.send(Event::Failed { message: tr("网页演示版暂不连接在线 AI 服务", "Online AI is disabled in web demo").into(), settings: false });
+    }
+    #[cfg(not(target_family = "wasm"))]
     std::thread::spawn(move || {
         let config = config();
         let fail = |message: String, settings: bool| { let _ = tx.send(Event::Failed { message, settings }); };
