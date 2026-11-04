@@ -48,7 +48,8 @@ impl Element for BlockText {
             let width = known.width.unwrap_or_else(|| match available.width { AvailableSpace::Definite(w) => w, _ => px(640.) }).max(px(1.));
             let selected = {
                 let editor = editor_entity.read(cx);
-                editor.focus.is_focused(window).then(|| editor.selected_range(block_id)).flatten()
+                let whole = editor.table_sel == Some((block_id, super::table_actions::TableSel::Whole));
+                (editor.focus.is_focused(window) && !whole).then(|| editor.selected_range(block_id)).flatten()
             };
             let sel_hash = selected.as_ref().map_or(0, |r| ((r.start as u64).wrapping_add(1) << 32) ^ (r.end as u64).wrapping_add(1));
             let key = super::view::layout::LayoutKey {
@@ -168,17 +169,25 @@ impl Element for BlockText {
         };
         if let Some((sel, columns)) = tint {
             use super::table_actions::TableSel;
-            let mut color = Theme::ocean().accent; color.a = 0.14;
+            let dark = crate::theme::is_dark();
+            let (head_color, body_color): (gpui::Hsla, gpui::Hsla) = match (dark, sel) {
+                (true, _) => (gpui::rgba(0x4c8bf533).into(), gpui::rgba(0x4c8bf522).into()),
+                (false, TableSel::Whole) => (gpui::rgb(0xdee4ed).into(), gpui::rgb(0xeef3fb).into()),
+                (false, _) => (gpui::rgb(0xdde3ec).into(), gpui::rgb(0xecf2fa).into()),
+            };
             for (i, cell) in layout.cells.iter().enumerate() {
                 let (r, c) = (i / columns, i % columns);
                 let hit = match sel { TableSel::Row(x) => r == x, TableSel::Column(x) => c == x, TableSel::Whole => true, TableSel::Cell(..) => false };
-                if hit { window.paint_quad(fill(cell.frame, color)); }
+                if hit { window.paint_quad(fill(cell.frame, if r == 0 { head_color } else { body_color })); }
             }
+            table_layout::paint_grid_lines(layout, window);
         }
         paint_lines(layout, true, window, cx);
         if focused {
-            if let Some(range) = selected {
-                for rect in layout.rects(range) { window.paint_quad(quad(rect, px(2.), Theme::ocean().selection, 0., transparent_black(), BorderStyle::default())); }
+            if !tint.is_some_and(|(s, _)| matches!(s, super::table_actions::TableSel::Whole)) {
+                if let Some(range) = selected {
+                    for rect in layout.rects(range) { window.paint_quad(quad(rect, px(2.), Theme::ocean().selection, 0., transparent_black(), BorderStyle::default())); }
+                }
             }
             if head.block == self.block {
                 if empty {

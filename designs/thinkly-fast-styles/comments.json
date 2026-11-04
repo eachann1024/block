@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "threads": [
+    {
+      "id": "c_ccfd8b9dca",
+      "anchor": "#dc-root > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > section:nth-of-type(2) > div:nth-of-type(2) > button:nth-of-type(2) > dct:nth-of-type(50) > dcee045310b730e69225000:nth-of-type(1)",
+      "label": "表格 · 行列胶囊选中前/后 · 整表选中与工具栏 › text",
+      "detail": "T-Table-Handles.dc.html: #49:1/1/1/1/1 text",
+      "location": {
+        "file": "project/T-Table-Handles.dc.html",
+        "board": "T-Table-Handles.dc.html"
+      },
+      "status": "resolved",
+      "createdAt": "2026-11-04T04:47:59.059Z",
+      "updatedAt": "2026-11-04T04:52:10.919Z",
+      "messages": [
+        {
+          "id": "m_65859793bc",
+          "author": {
+            "kind": "user",
+            "name": "eachann"
+          },
+          "text": "位置不对 并且菜单的样式位置也不对",
+          "at": "2026-11-04T04:47:59.059Z"
+        },
+        {
+          "id": "m_07529b3d12",
+          "author": {
+            "kind": "agent",
+            "name": "agent"
+          },
+          "text": "已按截图 1:1 修正：列/行胶囊直接骑跨在对应单元格顶边正中与左边正中（top:0;left:50% 与 left:0;top:50%），列操作菜单紧贴当前列六点胶囊正下方 4px 并左对齐（224px 宽、14px 圆角、36px 行高）。",
+          "at": "2026-11-04T04:52:10.919Z"
+        }
+      ],
+      "resolvedAt": "2026-11-04T04:52:10.919Z"
+    }
+  ]
+}

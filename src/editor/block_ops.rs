@@ -133,7 +133,10 @@ impl Editor {
     }
 
     /// Cmd+/: open the block handle menu for the active block.
+    #[allow(unreachable_code, unused_variables)]
     pub(super) fn open_handle_menu_shortcut(&mut self, cx: &mut Context<Self>) {
+        // 暂时禁用普通块把手菜单快捷键（保留下方实现代码）
+        return;
         if self.path.is_none() { return; }
         let id = self.block_sel.and_then(|(_, h)| self.doc.blocks.get(h.min(self.doc.blocks.len().saturating_sub(1))).map(|b| b.id))
             .unwrap_or(self.caret.head.block);

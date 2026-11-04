@@ -1,18 +1,18 @@
 //! Native table adapter: cells use the same rich runs, caret and IME geometry as paragraphs.
-use gpui::{Bounds, FontWeight, Pixels, SharedString, TextAlign, Window, point, px, size};
+use gpui::{Bounds, Pixels, SharedString, TextAlign, Window, point, px, size};
 use super::{model::{Table, CellAlignment}, text_runs, view::layout::{TextLayout, CellLayout}};
 use crate::theme::Theme;
 
-// Reference cells: 44px minimum row, 9px/12px padding, 14px text on a 24px line.
-const PAD_Y: f32 = 9.;
-const PAD_X: f32 = 12.;
+// Reference cells: 44px minimum row, 10px/14px padding, 15px text on a 22px line.
+const PAD_Y: f32 = 10.;
+const PAD_X: f32 = 14.;
 const MIN_ROW: f32 = 44.;
 /// Room kept right of and below the grid for the add-column and add-row buttons.
 pub(super) const EXTEND_ROOM: f32 = 28.;
 pub(super) fn measure(table: &Table, width: Pixels, selected: Option<std::ops::Range<usize>>, window: &mut Window) -> TextLayout {
     let theme = Theme::ocean();
-    let font_size = px(14.);
-    let line_height = px(24.);
+    let font_size = px(15.);
+    let line_height = px(22.);
     let width = (width - px(EXTEND_ROOM)).max(px(1.));
     let count = table.columns.max(1);
     let col_spans: Vec<(Pixels, Pixels)> = {
@@ -34,10 +34,15 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<std::ops::R
         let cell_width = col_spans[end_col].1 - col_spans[cell.column].0;
         let text: SharedString = if cell.content.text.is_empty() { "\u{200b}".into() }
             else { cell.content.text.clone().into() };
+        let default_fg: gpui::Hsla = match (crate::theme::is_dark(), cell.header) {
+            (false, true) => gpui::rgb(0x5e5d59).into(),
+            (false, false) => gpui::rgb(0x1f1e1d).into(),
+            (true, true) => gpui::rgb(0xb4b4b4).into(),
+            (true, false) => theme.text,
+        };
         let foreground = text_runs::attribute_color(&cell.attrs, false)
-            .or_else(|| text_runs::attribute_color(&table.attrs, false)).unwrap_or(theme.text);
-        let mut runs = text_runs::runs(&cell.content, &text, foreground);
-        if cell.header { for run in &mut runs { run.font.weight = FontWeight::MEDIUM; } }
+            .or_else(|| text_runs::attribute_color(&table.attrs, false)).unwrap_or(default_fg);
+        let runs = text_runs::runs(&cell.content, &text, foreground);
         let cell_sel = selected.as_ref().and_then(|sel| {
             let a = sel.start.max(range.start) - range.start;
             let b = sel.end.min(range.end) - range.start;
@@ -76,9 +81,15 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<std::ops::R
         let top = ((frame.size.height - text_height) / 2.).max(px(PAD_Y));
         text.bounds = Bounds::new(frame.origin+point(px(PAD_X),top),
             size((frame.size.width-px(PAD_X*2.)).max(px(1.)), text_height));
+        let default_bg: Option<gpui::Hsla> = match (crate::theme::is_dark(), cell.header) {
+            (false, true) => Some(gpui::rgb(0xf5f3ef).into()),
+            (false, false) => Some(gpui::rgb(0xffffff).into()),
+            (true, true) => Some(gpui::rgba(0xffffff08).into()),
+            (true, false) => None,
+        };
         let background = text_runs::attribute_color(&cell.attrs, true)
             .or_else(|| text_runs::attribute_color(&table.attrs, true))
-            .or_else(|| cell.header.then_some(theme.hover));
+            .or(default_bg);
         CellLayout { range, frame, text:Box::new(text), background }
     }).collect();
     TextLayout { bounds:Bounds::new(point(px(0.),px(0.)), size(width,*ys.last().unwrap_or(&line_height))),
@@ -86,12 +97,18 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<std::ops::R
 }
 
 pub(super) fn paint_background(layout: &TextLayout, window: &mut Window) {
-    let theme = Theme::ocean();
-    let border = theme.menu_border;
-    let Some(grid) = grid_rect(layout) else { return };
     for cell in &layout.cells {
         if let Some(color) = cell.background { window.paint_quad(gpui::fill(cell.frame,color)); }
     }
+    paint_grid_lines(layout, window);
+}
+pub(super) fn paint_grid_lines(layout: &TextLayout, window: &mut Window) {
+    let border: gpui::Hsla = if crate::theme::is_dark() {
+        Theme::ocean().menu_border
+    } else {
+        gpui::rgb(0xe3e1dc).into()
+    };
+    let Some(grid) = grid_rect(layout) else { return };
     // Collapsed 1px grid: every cell draws its top and left edge; the outer frame closes it.
     for cell in &layout.cells {
         let frame = cell.frame;

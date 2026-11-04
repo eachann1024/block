@@ -68,7 +68,7 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyEle
         .child(div().flex_1().text_size(px(16.)).font_weight(FontWeight(600.)).child(title))
         .child(press(div().id("ai-close").size(px(28.)).flex().items_center().justify_center().rounded(px(6.))
             .cursor(CursorStyle::PointingHand).hover(move |st| st.bg(theme.hover))
-            .tooltip(|w, cx| gpui_component::tooltip::Tooltip::new("关闭").build(w, cx))
+            .tooltip(crate::theme::tooltip("关闭"))
             .child(glyph(Icon::Close, 16., theme.text_secondary)), &editor, |this, w, cx| this.ai_close(w, cx)));
 
     // Review shows only the legend; the diff itself is drawn inline in the document.
@@ -93,13 +93,13 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyEle
             .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(15.)).text_color(theme.text_secondary).child(SharedString::from(line)))
             .child(press(div().id("ai-stop").h(px(28.)).px(px(10.)).flex_none().flex().items_center().gap(px(4.)).rounded(px(6.))
                 .text_size(px(13.)).cursor(CursorStyle::PointingHand).hover(move |st| st.bg(theme.hover))
-                .tooltip(|w, cx| gpui_component::tooltip::Tooltip::new("停止").build(w, cx))
+                .tooltip(crate::theme::tooltip("停止"))
                 .child(glyph(Icon::Stop, 14., theme.text)).child("停止"), &editor, |this, w, cx| this.ai_stop(w, cx)))
     } else {
         field.child(div().flex_1().min_w_0().h(px(28.)).text_size(px(15.)).child(Input::new(&s.input).appearance(false).bordered(false).focus_bordered(false).h(px(28.))))
             .child(press(div().id("ai-send").h(px(28.)).px(px(10.)).flex_none().flex().items_center().gap(px(4.)).rounded(px(8.))
                 .bg(theme.primary).text_color(gpui::white()).text_size(px(13.)).cursor(CursorStyle::PointingHand)
-                .tooltip(|w, cx| gpui_component::tooltip::Tooltip::new("发送（回车）").build(w, cx))
+                .tooltip(crate::theme::tooltip("发送（回车）"))
                 .child("发送").child(glyph(Icon::ArrowUp, 14., gpui::white())), &editor, |this, w, cx| this.ai_submit_input(w, cx)))
     };
 
@@ -113,7 +113,7 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyEle
                 .child(div().flex_1())
                 .child(press(div().id("ai-settings").size(px(32.)).flex().items_center().justify_center().rounded(px(8.))
                     .cursor(CursorStyle::PointingHand).hover(move |st| st.bg(theme.hover))
-                    .tooltip(|w, cx| gpui_component::tooltip::Tooltip::new("打开 AI 设置").build(w, cx))
+                    .tooltip(crate::theme::tooltip("打开 AI 设置"))
                     .child(glyph(Icon::Sliders, 16., theme.text_secondary)), &editor, |this, w, cx| this.ai_open_settings(w, cx)));
             let items: &[Preset] = match s.menu {
                 AiMenu::Translate => &[Preset::English, Preset::Chinese],

@@ -36,9 +36,25 @@ impl Editor {
         let mut state = ToolbarState { table: ranges.iter().any(|(id, _)| self.doc.get(*id).is_some_and(|b| b.meta.table.is_some())), ..Default::default() };
         state.grid = ranges.len() > 1 && state.table || ranges.iter().any(|(id, r)| self.doc.get(*id)
             .and_then(|b| b.meta.table.as_ref()).is_some_and(|t| t.cell_at_range(r).is_none()));
-        if ranges.is_empty() || state.table { return state; }
+        if ranges.is_empty() { return state; }
+        let span_cov = |spans: &[super::model::Span], r: &Range<usize>, mark: MarkKind| {
+            spans.iter().filter(|s| s.marks.contains(&mark)).map(|s| s.end.min(r.end).saturating_sub(s.start.max(r.start))).sum::<usize>() >= r.len()
+        };
         let all = |mark: MarkKind| ranges.iter().all(|(id, r)| self.doc.get(*id).is_some_and(|b| {
-            b.spans.iter().filter(|s| s.marks.contains(&mark)).map(|s| s.end.min(r.end).saturating_sub(s.start.max(r.start))).sum::<usize>() >= r.len()
+            if let Some(table) = &b.meta.table {
+                let mut any = false;
+                for (row, cell, body) in table.cell_ranges() {
+                    let start = r.start.max(body.start).min(body.end) - body.start;
+                    let end = r.end.max(body.start).min(body.end) - body.start;
+                    if start < end {
+                        any = true;
+                        if !span_cov(&table.rows[row].cells[cell].content.spans, &(start..end), mark) { return false; }
+                    }
+                }
+                any
+            } else {
+                span_cov(&b.spans, r, mark)
+            }
         }));
         state.bold = all(MarkKind::Bold); state.italic = all(MarkKind::Italic);
         state.strike = all(MarkKind::Strike); state.code = all(MarkKind::Code);

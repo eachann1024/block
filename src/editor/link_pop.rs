@@ -61,7 +61,7 @@ impl Editor {
         let button = |id: &'static str, g: Icon, tip: &'static str, run: Box<dyn Fn(&mut Window, &mut gpui::App)>| div().id(id)
             .size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.)).cursor(CursorStyle::PointingHand)
             .hover(|s| s.bg(rgb(HOVER))).child(glyph(g, 16., INK))
-            .tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(tip).build(window, cx))
+            .tooltip(crate::theme::tooltip(tip))
             .on_mouse_down(MouseButton::Left, move |_, window, cx| { run(window, cx); cx.stop_propagation(); });
         Some(gpui::deferred(gpui::anchored().position(anchor).snap_to_window_with_margin(px(8.)).child(
             // The transparent 4px top padding belongs to the popover, so the pointer can cross from text to pill.
