@@ -84,6 +84,11 @@ impl Editor {
             self.annotate.active_annotation = None;
             self.annotate.followup = None;
         }
+        if let Some(edit) = &self.annotate.editing
+            && !self.annotate.annotations.iter().any(|n| n.id == edit.annotation_id)
+        {
+            self.annotate.editing = None;
+        }
         if let Some(hovered) = self.annotate.hovered_annotation
             && !self.annotate.annotations.iter().any(|n| n.id == hovered)
         {
