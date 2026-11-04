@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>重命名 · 方案 A · 原位单层内嵌框</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;background:#f1f1f1;-webkit-font-smoothing:antialiased}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input{font-family:inherit;font-size:14px}
+*{box-sizing:border-box}
+::selection{background:#cde2fb;color:#184f95}
+.ib{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#526071;padding:0;cursor:pointer;flex:none}
+.ib:hover{background:#eef3fc;color:#20242c}
+.top-act{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #dcdcdc;border-radius:8px;background:#ffffff;color:#20242c;padding:0;cursor:pointer;flex:none}
+.top-act:hover{background:#eef3fc;border-color:#547dd0}
+.tree-row{width:100%;height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;background:transparent;color:#20242c;border:0;cursor:pointer;text-align:left}
+.tree-row:hover{background:#eef3fc}
+.tree-row-selected{width:100%;height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;color:#20242c;font-weight:460;border:0;cursor:pointer;text-align:left}
+.row-more{width:22px;height:22px;flex:none;display:inline-flex;align-items:center;justify-content:center;border-radius:5px;border:0;background:transparent;color:#526071;padding:0;cursor:pointer}
+.row-more:hover{background:#dce7fa;color:#20242c}
+.seg-btn{height:32px;padding:0 12px;border-radius:6px;border:0;background:transparent;color:#526071;font-size:14px;font-weight:460;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.seg-btn-on{height:32px;padding:0 12px;border-radius:6px;border:0;background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0;font-size:14px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:920px;display:flex;flex-direction:column;background:#f1f1f1;color:#20242c;font-size:14px;line-height:20px">
+
+  <header style="height:40px;flex:none;display:flex;align-items:center;border-bottom:1px solid #e6e6e6;background:#f1f1f1">
+    <div style="width:260px;height:100%;flex:none;display:flex;align-items:center;gap:4px;padding:0 10px 0 16px;border-right:1px solid #e6e6e6">
+      <div aria-hidden="true" style="display:flex;gap:8px;margin-right:auto">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      </div>
+      <button type="button" class="ib" aria-label="收起左侧栏">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="#c9d8f3"></path><rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect><path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path><path d="M15.75 9.75L13.25 12L15.75 14.25" stroke="#547dd0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </button>
+    </div>
+
+    <nav aria-label="已打开标签页" style="flex:1;min-width:0;height:100%;display:flex;align-items:center;gap:6px;padding:0 12px">
+      <div style="height:28px;padding:0 10px;border-radius:6px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;display:inline-flex;align-items:center;gap:6px;color:#20242c;font-weight:460">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="#c9d8f3" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+        <span>{{noteName}}</span>
+      </div>
+    </nav>
+
+    <div style="display:flex;align-items:center;gap:8px;padding:0 14px">
+      <div style="display:inline-flex;padding:3px;gap:2px;background:#f1f1f1;border:1px solid #e4e6ea;border-radius:8px">
+        <button type="button" class="{{stateSelectAllClass}}" onClick="{{setSelectAllState}}">初态：全选</button>
+        <button type="button" class="{{stateTypingClass}}" onClick="{{setTypingState}}">输入：纯白底</button>
+        <button type="button" class="{{stateErrorClass}}" onClick="{{setErrorState}}">校验：重名警示</button>
+      </div>
+    </div>
+  </header>
+
+  <div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+
+    <aside aria-label="文件列表" style="width:260px;flex:none;background:#fafafa;border-right:1px solid #e6e6e6;display:flex;flex-direction:column;justify-content:space-between;min-height:0">
+      <div style="display:flex;flex-direction:column;min-height:0;flex:1">
+        <div style="padding:10px 12px 8px;display:flex;align-items:center;gap:6px">
+          <button type="button" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;background:#ffffff;color:#526071;border:1px solid #dcdcdc;display:flex;align-items:center;gap:6px;cursor:pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="#c9d8f3" stroke="none"></circle><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4.2 4.2"></path></svg>
+            <span style="flex:1;text-align:left">搜索</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;padding:1px 5px;border-radius:4px;background:#f1f1f1;border:1px solid #dcdcdc;color:#526071">⇧⌘K</span>
+          </button>
+          <button type="button" class="top-act" aria-label="新建笔记">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.75 3.75H13.5V8.25A1 1 0 0 0 14.5 9.25H18.75V12.5A5.5 5.5 0 0 0 12.5 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="#c9d8f3" stroke="none"></path><path d="M12.25 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75H13.5L18.75 9V12.25M13.5 3.75V8A1 1 0 0 0 14.5 9H18.75"></path><path d="M17.25 14.25V20.25M14.25 17.25H20.25" stroke="#547dd0"></path></svg>
+          </button>
+          <button type="button" class="top-act" aria-label="新建文件夹">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 9.75H20.25V12.5A5.5 5.5 0 0 0 12.75 18.75H5.75A2 2 0 0 1 3.75 16.75Z" fill="#c9d8f3" stroke="none"></path><path d="M12.25 18.75H5.75A2 2 0 0 1 3.75 16.75V7.25A2 2 0 0 1 5.75 5.25H9.25L11.25 7H18.25A2 2 0 0 1 20.25 9V12.25M3.75 9.75H20.25"></path><path d="M17.25 14.25V20.25M14.25 17.25H20.25" stroke="#547dd0"></path></svg>
+          </button>
+        </div>
+
+        <div style="flex:1;padding:0 12px 12px;display:flex;flex-direction:column;gap:2px">
+          <div class="tree-row">
+            <span style="width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:#526071">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+            </span>
+            <span style="width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:#526071">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#c9d8f3" stroke="none"></path><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>
+            </span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">assets</span>
+            <span style="width:22px;height:22px;flex:none"></span>
+          </div>
+
+          <sc-if value="{{renamingFolder}}" hint-placeholder-val="{{false}}">
+            <div style="width:100%;height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;background:transparent">
+              <span style="width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:#526071">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+              </span>
+              <span style="width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:#547dd0">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#c9d8f3" stroke="none"></path><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>
+              </span>
+              <label style="flex:1;min-width:0;height:24px;margin-left:-5px;padding:0 5px;border-radius:5px;background:#ffffff;box-shadow:{{fieldRing}};display:flex;align-items:center">
+                <span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">重命名文件夹</span>
+                <input value="{{folderDraft}}" onInput="{{onFolderInput}}" style="width:100%;height:20px;border:0;outline:0;padding:0;background:{{textHighlightBg}};color:{{textHighlightColor}};font-size:14px;line-height:20px;border-radius:2px">
+              </label>
+              <button type="button" class="row-more" onClick="{{commitRename}}" aria-label="确认重命名" style="background:#eef3fc;color:#547dd0">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M12.5 4.5v4.5a1.5 1.5 0 0 1-1.5 1.5H4M6.5 8L4 10.5 6.5 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{notRenamingFolder}}" hint-placeholder-val="{{true}}">
+            <button type="button" class="tree-row" onClick="{{editFolder}}">
+              <span style="width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:#526071">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+              </span>
+              <span style="width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:#526071">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#c9d8f3" stroke="none"></path><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>
+              </span>
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{folderName}}</span>
+              <span style="width:22px;height:22px;flex:none"></span>
+            </button>
+          </sc-if>
+
+          <div class="tree-row">
+            <span style="width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:#526071">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.75 3.75H13.5V8.25A1 1 0 0 0 14.5 9.25H18.75V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="#c9d8f3" stroke="none"></path><path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75ZM13.5 3.75V8A1 1 0 0 0 14.5 9H18.75M8.5 16.25H13.25"></path><path d="M8.5 12.75H15.25" stroke="#547dd0"></path></svg>
+            </span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Gemini</span>
+            <span style="width:22px;height:22px;flex:none"></span>
+          </div>
+
+          <!-- 方案 A 核心：原位单层内嵌框（外层行保持原状态，不画白底和双层蓝框；仅文字槽变为 24px 白底单描边输入框，右侧 22px 槽位切换为 ↵ 确认） -->
+          <sc-if value="{{renamingNote}}" hint-placeholder-val="{{true}}">
+            <div style="width:100%;height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;background:#e5edfc">
+              <span style="width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:#547dd0">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="#c9d8f3" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+              </span>
+              <label style="flex:1;min-width:0;height:24px;margin-left:-5px;padding:0 5px;border-radius:5px;background:#ffffff;box-shadow:{{fieldRing}};display:flex;align-items:center">
+                <span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">重命名笔记</span>
+                <input value="{{noteDraft}}" onInput="{{onNoteInput}}" style="width:100%;height:20px;border:0;outline:0;padding:0;background:{{textHighlightBg}};color:{{textHighlightColor}};font-size:14px;line-height:20px;font-weight:460;border-radius:2px">
+              </label>
+              <button type="button" class="row-more" onClick="{{commitRename}}" aria-label="确认重命名" style="background:#dce7fa;color:#3d63b0">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M12.5 4.5v4.5a1.5 1.5 0 0 1-1.5 1.5H4M6.5 8L4 10.5 6.5 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{notRenamingNote}}" hint-placeholder-val="{{false}}">
+            <button type="button" class="tree-row-selected" onClick="{{editNote}}">
+              <span style="width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:#547dd0">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="#c9d8f3" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+              </span>
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{noteName}}</span>
+              <span class="row-more">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" fill="currentColor"></circle><circle cx="8" cy="8" r="1.2" fill="currentColor"></circle><circle cx="12.5" cy="8" r="1.2" fill="currentColor"></circle></svg>
+              </span>
+            </button>
+          </sc-if>
+
+          <div class="tree-row">
+            <span style="width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:#526071">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.75 3.75H13.5V8.25A1 1 0 0 0 14.5 9.25H18.75V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="#c9d8f3" stroke="none"></path><path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75ZM13.5 3.75V8A1 1 0 0 0 14.5 9H18.75M8.5 16.25H13.25"></path><path d="M8.5 12.75H15.25" stroke="#547dd0"></path></svg>
+            </span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">图片焚决</span>
+            <span style="width:22px;height:22px;flex:none"></span>
+          </div>
+
+          <div class="tree-row">
+            <span style="width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:#526071">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.75 3.75H13.5V8.25A1 1 0 0 0 14.5 9.25H18.75V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="#c9d8f3" stroke="none"></path><path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75ZM13.5 3.75V8A1 1 0 0 0 14.5 9H18.75M8.5 16.25H13.25"></path><path d="M8.5 12.75H15.25" stroke="#547dd0"></path></svg>
+            </span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">日常常用</span>
+            <span style="width:22px;height:22px;flex:none"></span>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:6px 8px;border-top:1px solid #e6e6e6;display:flex;align-items:center;gap:4px">
+        <button type="button" style="flex:1;height:30px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#20242c;font-weight:500;display:inline-flex;align-items:center;gap:7px;cursor:pointer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#20242c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#c9d8f3" stroke="none"></path><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>
+          <span style="flex:1;text-align:left">提示词</span>
+          <span style="color:#526071;font-weight:400">9</span>
+        </button>
+      </div>
+    </aside>
+
+    <main style="flex:999 1 640px;min-width:0;background:#ffffff;padding:40px 44px 64px;display:flex;flex-direction:column;gap:28px">
+      <div style="max-width:760px;display:flex;flex-direction:column;gap:10px">
+        <h1 style="margin:0;font-size:24px;line-height:32px;font-weight:560;color:#20242c">方案 A · 原位单层内嵌框（Inline Crisp Field）</h1>
+        <p style="margin:0;font-size:15px;line-height:24px;color:#526071">外层 32px 行保持静默（不画整行白底与外层蓝框，消除「框套框」重影），仅文字区域原位切换为 24px 高纯白单描边输入框；右侧 22×22 槽位保持占位并切换为 ↵ 确认按钮，进入/退出重命名时文字首字与行宽 0px 跳动。</p>
+      </div>
+
+      <!-- 现存问题 vs 方案 A 修复对比 -->
+      <div style="max-width:760px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">
+        <div style="padding:18px 20px;border-radius:10px;background:#f8f8f8;border:1px solid #e4e6ea;display:flex;flex-direction:column;gap:12px">
+          <div style="font-size:15px;font-weight:560;color:#b91c1c">修改前：双层框套框 + 永久蓝底 + 宽度跳动</div>
+          <div style="padding:10px;border-radius:8px;background:#fafafa;border:1px solid #e6e6e6">
+            <div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;background:#ffffff;box-shadow:inset 0 0 0 1px #547dd0">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="#c9d8f3" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+              <div style="flex:1;height:24px;border-radius:3px;background:#cde2fb;padding:0 2px;display:flex;align-items:center;color:#20242c;font-size:14px">实际落地业务采集</div>
+            </div>
+          </div>
+          <div style="font-size:14px;line-height:22px;color:#526071">1. 外层行画白底蓝框，内层又套一层 24px 蓝底框；<br>2. 输入容器写死 <code style="font-family:'JetBrains Mono',monospace;background:#eef0f4;padding:1px 4px;border-radius:4px">bg(theme.selection)</code>，取消全选后底色依然整条发蓝；<br>3. 右侧 22px 按钮被移除，文本宽度跳变 28px。</div>
+        </div>
+
+        <div style="padding:18px 20px;border-radius:10px;background:#ffffff;border:1px solid #547dd0;box-shadow:inset 0 0 0 1px #547dd0;display:flex;flex-direction:column;gap:12px">
+          <div style="font-size:15px;font-weight:560;color:#20242c">方案 A（推荐）：单层内嵌白框 + 22px 槽位守恒</div>
+          <div style="padding:10px;border-radius:8px;background:#fafafa;border:1px solid #e6e6e6">
+            <div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;background:#e5edfc">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="#c9d8f3" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+              <div style="flex:1;height:24px;margin-left:-5px;padding:0 5px;border-radius:5px;background:#ffffff;box-shadow:inset 0 0 0 1px #547dd0;display:flex;align-items:center;color:#20242c;font-size:14px">实际落地业务采集</div>
+              <span style="width:22px;height:22px;border-radius:5px;background:#dce7fa;color:#3d63b0;display:inline-flex;align-items:center;justify-content:center;flex:none">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M12.5 4.5v4.5a1.5 1.5 0 0 1-1.5 1.5H4M6.5 8L4 10.5 6.5 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </span>
+            </div>
+          </div>
+          <div style="font-size:14px;line-height:22px;color:#20242c">1. 外层行不加白底与边框，仅文字槽为 24px 纯白底 + 1px 强调色内轮廓；<br>2. 选区高亮仅作用于选中文本，敲字时立刻退为干净白底；<br>3. 右侧 22×22 槽位原位变为 ↵ 提交按钮，全程零位移。</div>
+        </div>
+      </div>
+
+      <!-- 三态与深浅色完整规范 -->
+      <div style="max-width:760px;padding:20px 22px;border-radius:10px;background:#f8f8f8;border:1px solid #e4e6ea;display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:15px;font-weight:560;color:#20242c">方案 A · 三态与深色模式对照（点击左侧「New Project」或「实际落地业务采集」可直接试改）</span>
+          <div style="display:flex;gap:8px">
+            <button type="button" onClick="{{editFolder}}" style="height:28px;padding:0 10px;border-radius:6px;border:1px solid #dcdcdc;background:#ffffff;color:#20242c;cursor:pointer">试改文件夹名</button>
+            <button type="button" onClick="{{editNote}}" style="height:28px;padding:0 10px;border-radius:6px;border:1px solid #dcdcdc;background:#ffffff;color:#20242c;cursor:pointer">试改笔记名</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+          <!-- Ocean Light 三态 -->
+          <div style="padding:14px;border-radius:8px;background:#fafafa;border:1px solid #e6e6e6;display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:14px;font-weight:500;color:#526071">Ocean Light（浅色侧栏 #fafafa）</div>
+            <div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;background:#e5edfc">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="#c9d8f3" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+              <div style="flex:1;height:24px;margin-left:-5px;padding:0 5px;border-radius:5px;background:#ffffff;box-shadow:inset 0 0 0 1px #547dd0;display:flex;align-items:center"><span style="background:#cde2fb;color:#184f95;border-radius:2px;padding:0 1px">实际落地业务采集</span></div>
+              <span style="width:22px;height:22px;border-radius:5px;background:#dce7fa;color:#3d63b0;display:inline-flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px">↵</span>
+            </div>
+            <div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;background:transparent">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#c9d8f3" stroke="none"></path><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>
+              <div style="flex:1;height:24px;margin-left:-5px;padding:0 5px;border-radius:5px;background:#ffffff;box-shadow:inset 0 0 0 1px #547dd0;display:flex;align-items:center;color:#20242c">New Project<span style="width:1.5px;height:15px;background:#547dd0;margin-left:1px;display:inline-block"></span></div>
+              <span style="width:22px;height:22px;border-radius:5px;background:#eef3fc;color:#547dd0;display:inline-flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px">↵</span>
+            </div>
+          </div>
+
+          <!-- Ocean Dark 三态 -->
+          <div style="padding:14px;border-radius:8px;background:#222222;border:1px solid #333333;display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:14px;font-weight:500;color:#b4b4b4">Ocean Dark（深色侧栏 #222222）</div>
+            <div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;background:#343434">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#779de8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="#31456a" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+              <div style="flex:1;height:24px;margin-left:-5px;padding:0 5px;border-radius:5px;background:#181818;box-shadow:inset 0 0 0 1px #779de8;display:flex;align-items:center"><span style="background:#2d426b;color:#ececec;border-radius:2px;padding:0 1px">实际落地业务采集</span></div>
+              <span style="width:22px;height:22px;border-radius:5px;background:#2c2c2c;color:#779de8;display:inline-flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px">↵</span>
+            </div>
+            <div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;background:transparent">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#b4b4b4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#779de8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#31456a" stroke="none"></path><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>
+              <div style="flex:1;height:24px;margin-left:-5px;padding:0 5px;border-radius:5px;background:#181818;box-shadow:inset 0 0 0 1px #779de8;display:flex;align-items:center;color:#ececec">New Project<span style="width:1.5px;height:15px;background:#779de8;margin-left:1px;display:inline-block"></span></div>
+              <span style="width:22px;height:22px;border-radius:5px;background:#2c2c2c;color:#779de8;display:inline-flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px">↵</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"visualState":{"editor":"enum","default":"selectAll","options":["selectAll","typing","error"]},"$preview":{"width":1440,"height":920}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      target: 'note',
+      mode: null,
+      noteName: '实际落地业务采集',
+      noteDraft: '实际落地业务采集',
+      folderName: 'New Project',
+      folderDraft: 'New Project'
+    };
+  }
+  renderVals() {
+    const mode = this.state.mode ?? this.props.visualState ?? 'selectAll';
+    const renamingNote = this.state.target === 'note';
+    const renamingFolder = this.state.target === 'folder';
+    const isSelectAll = mode === 'selectAll';
+    const isError = mode === 'error';
+    return {
+      noteName: this.state.noteName,
+      noteDraft: this.state.noteDraft,
+      folderName: this.state.folderName,
+      folderDraft: this.state.folderDraft,
+      renamingNote,
+      notRenamingNote: !renamingNote,
+      renamingFolder,
+      notRenamingFolder: !renamingFolder,
+      fieldRing: isError ? 'inset 0 0 0 1px #c2362b' : 'inset 0 0 0 1px #547dd0',
+      textHighlightBg: isSelectAll ? '#cde2fb' : 'transparent',
+      textHighlightColor: isSelectAll ? '#184f95' : '#20242c',
+      stateSelectAllClass: mode === 'selectAll' ? 'seg-btn-on' : 'seg-btn',
+      stateTypingClass: mode === 'typing' ? 'seg-btn-on' : 'seg-btn',
+      stateErrorClass: mode === 'error' ? 'seg-btn-on' : 'seg-btn',
+      setSelectAllState: () => this.setState({ mode: 'selectAll' }),
+      setTypingState: () => this.setState({ mode: 'typing' }),
+      setErrorState: () => this.setState({ mode: 'error' }),
+      editNote: () => this.setState({ target: 'note', mode: 'selectAll', noteDraft: this.state.noteName }),
+      editFolder: () => this.setState({ target: 'folder', mode: 'selectAll', folderDraft: this.state.folderName }),
+      onNoteInput: (e) => this.setState({ noteDraft: e && e.target ? e.target.value : this.state.noteDraft, mode: 'typing' }),
+      onFolderInput: (e) => this.setState({ folderDraft: e && e.target ? e.target.value : this.state.folderDraft, mode: 'typing' }),
+      commitRename: () => {
+        if (this.state.target === 'note') {
+          const next = (this.state.noteDraft || '').trim() || this.state.noteName;
+          this.setState({ noteName: next, noteDraft: next, target: 'none' });
+        } else if (this.state.target === 'folder') {
+          const next = (this.state.folderDraft || '').trim() || this.state.folderName;
+          this.setState({ folderName: next, folderDraft: next, target: 'none' });
+        }
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>
