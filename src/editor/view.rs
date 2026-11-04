@@ -96,11 +96,8 @@ impl Editor {
     pub fn status_text(&self) -> &str { &self.status }
     pub fn is_dirty(&self) -> bool { self.dirty }
     pub(crate) fn dismiss_dropdowns(&mut self) -> bool {
-        self.block_menu.take().is_some()
-            | self.table_menu.take().is_some()
-            | self.format.take().is_some()
-            | self.image_menu.take().is_some()
-            | super::code_block::close_menus()
+        self.block_menu.take().is_some() | self.table_menu.take().is_some()
+            | self.format.take().is_some() | self.image_menu.take().is_some() | super::code_block::close_menus()
     }
     fn reveal(&mut self) {
         if !self.reveal_caret { return; }
@@ -115,16 +112,13 @@ impl Editor {
 impl Focusable for Editor { fn focus_handle(&self, _: &App) -> FocusHandle { self.focus.clone() } }
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.sync_annotations();
-        self.track_pointer_lifecycle(window, cx);
+        self.sync_annotations(); self.track_pointer_lifecycle(window, cx);
         let theme = Theme::ocean(); self.reveal();
         let input_editor = cx.entity();
         let input = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
             input_editor.update(cx, |this, _| { this.layouts.clear(); });
             let editor = input_editor.read(cx);
-            if editor.path.is_some() {
-                window.handle_input(&editor.focus, gpui::ElementInputHandler::new(bounds, input_editor.clone()), cx);
-            }
+            if editor.path.is_some() { window.handle_input(&editor.focus, gpui::ElementInputHandler::new(bounds, input_editor.clone()), cx); }
         }).absolute().size_full();
         let editor = cx.entity();
         let pad = if self.minimal { (18., 12.) } else { (64., 160.) };
@@ -139,14 +133,11 @@ impl Render for Editor {
                     return div().into_any_element();
                 }
                 if !this.minimal && this.is_index_hidden(index) {
-                    let id = this.doc.blocks[index].id;
-                    this.layouts.remove(&id);
+                    let id = this.doc.blocks[index].id; this.layouts.remove(&id);
                     return div().id(("folded-row", id as usize)).into_any_element();
                 }
                 if let Some(range) = this.column_group_range(index) {
-                    if index == range.start {
-                        return super::columns::columns_row(this, range, cx);
-                    }
+                    if index == range.start { return super::columns::columns_row(this, range, cx); }
                     return div().id(("col-member", this.doc.blocks[index].id as usize)).into_any_element();
                 }
                 super::chrome::render_block_row(this, index, cx)
@@ -162,11 +153,14 @@ impl Render for Editor {
                 let mut changed = false;
                 let top = this.list.logical_scroll_top();
                 let cur_scroll = (top.item_ix, top.offset_in_item);
-                if this.scroll_top != cur_scroll {
-                    this.scroll_top = cur_scroll;
-                    crate::dropdown::dismiss_all(cx);
-                }
+                if this.scroll_top != cur_scroll { this.scroll_top = cur_scroll; crate::dropdown::dismiss_all(cx); }
                 if this.annotate.editor_top != bounds.top() { this.annotate.editor_top = bounds.top(); changed = true; }
+                if let Some(menu) = &mut this.block_menu && menu.mode == super::block_menu::Mode::Slash
+                    && let Some(l) = this.layouts.get(&menu.block)
+                {
+                    let next = gpui::point(l.bounds.left(), l.bounds.bottom() + px(4.));
+                    if menu.anchor != next { menu.anchor = next; changed = true; }
+                }
                 let anchor = this.selection_toolbar_anchor(bounds, window);
                 if this.toolbar_anchor != anchor { this.toolbar_anchor = anchor; changed = true; }
                 let chrome = this.table_chrome_geometry(window);

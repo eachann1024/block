@@ -199,7 +199,14 @@ impl Element for BlockText {
                 if head.block == self.block {
                     if empty {
                         let p = layout.point(head.offset);
-                        window.paint_quad(fill(Bounds::new(p, size(px(1.5), layout.line_height)), Theme::ocean().accent));
+                        let line_h = layout.cells.first().map_or(layout.line_height, |c| c.text.line_height);
+                        let font_px = layout.cells.first()
+                            .and_then(|c| c.text.lines.first().map(|(_, l)| l.font_size()))
+                            .or_else(|| layout.lines.first().map(|(_, l)| l.font_size()))
+                            .unwrap_or(line_h * 0.67);
+                        let caret_h = (font_px * 1.125).round().min(line_h);
+                        let origin = point(p.x, p.y + ((line_h - caret_h) * 0.5).round());
+                        window.paint_quad(fill(Bounds::new(origin, size(px(1.5), caret_h)), Theme::ocean().accent));
                     }
                     if let Some(range) = composing {
                         for rect in layout.rects(range) {
@@ -234,20 +241,27 @@ pub(super) fn heading_metrics(kind: Kind, level: Option<u8>, fenced: bool, minim
     }
 }
 thread_local! {
-    static PLACEHOLDER: RefCell<Option<(u8, gpui::ShapedLine)>> = const { RefCell::new(None) };
+    static PLACEHOLDER: RefCell<Option<(u16, gpui::ShapedLine)>> = const { RefCell::new(None) };
 }
 /// Hint drawn over the zero-width placeholder glyph; never part of the text or hit testing.
 fn paint_placeholder(layout: &TextLayout, window: &mut Window, cx: &mut App) {
     let dark = crate::theme::is_dark();
-    let key = (crate::theme::font_choice() as u8) | ((crate::theme::is_en() as u8) << 4) | ((dark as u8) << 5);
+    let font_size = layout.lines.first().map_or(Theme::ocean().editor_font, |(_, l)| l.font_size());
+    let key = (crate::theme::font_choice() as u16)
+        | ((crate::theme::is_en() as u16) << 4)
+        | ((dark as u16) << 5)
+        | ((f32::from(font_size) as u16) << 8);
     let line = PLACEHOLDER.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.as_ref().is_none_or(|(c, _)| *c != key) {
-            let text = SharedString::from(crate::theme::tr("开始输入…", "Start typing…"));
+            let text = SharedString::from(crate::theme::tr(
+                "输入 / 或 、 唤出菜单，或开始输入…",
+                "Type / to open menu, or start typing…",
+            ));
             let color = if dark { rgb(0x6e6d68) } else { rgb(0x9b9a95) };
             let mut run = plain(text.len(), color.into());
             run.font.weight = FontWeight::NORMAL;
-            let line = window.text_system().shape_line(text, Theme::ocean().editor_font, &[run], None);
+            let line = window.text_system().shape_line(text, font_size, &[run], None);
             *slot = Some((key, line));
         }
         slot.as_ref().map(|(_, l)| l.clone()).unwrap()

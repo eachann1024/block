@@ -15,11 +15,13 @@ a{color:#3559a8}a:hover{color:#233f7d}
 button{font-family:inherit}
 .ib-close{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;padding:0;cursor:pointer;flex:none;transition:background-color .14s ease,color .14s ease}
 .ib-close:hover{background:#e81123;color:#ffffff}
+.ib-save{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;padding:0;cursor:pointer;flex:none;transition:background-color .14s ease,color .14s ease}
+.ib-save:hover{background:rgba(128,128,128,0.12)}
 .dot-btn{width:22px;height:24px;border:0;background:transparent;padding:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border-radius:6px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </helmet>
-<div onWheel="{{onWheel}}" style="width:440px;height:520px;box-sizing:border-box;display:flex;flex-direction:column;background:{{paperBg}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:{{textPrimary}};font-size:16px;line-height:26px;overflow:hidden;border:1px solid {{borderCol}};border-radius:14px;-webkit-font-smoothing:antialiased">
+<div onWheel="{{onWheel}}" style="width:440px;height:520px;box-sizing:border-box;display:flex;flex-direction:column;background:{{paperBg}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:{{textPrimary}};font-size:16px;line-height:24px;overflow:hidden;border:1px solid {{borderCol}};border-radius:14px;-webkit-font-smoothing:antialiased">
 
 <header style="height:44px;flex:none;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 12px 0 16px;box-sizing:border-box">
 <div style="display:flex;align-items:center">
@@ -45,6 +47,13 @@ button{font-family:inherit}
 </nav>
 
 <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
+<button type="button" class="ib-save" aria-label="存入正式笔记" title="存入正式笔记" style="color:{{iconCol}}">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M9.5 2H4.2C3.54 2 3 2.54 3 3.2v9.6c0 .66.54 1.2 1.2 1.2h7.6c.66 0 1.2-.54 1.2-1.2V5.5L9.5 2z"></path>
+<path d="M9.2 2.2v3.3h3.3"></path>
+<path d="M6 9.3l1.5 1.5L10.3 8" stroke="{{accent}}" stroke-width="1.5"></path>
+</svg>
+</button>
 <sc-if value="{{isWin}}" hint-placeholder-val="{{false}}">
 <button type="button" class="ib-close" aria-label="隐藏速记" style="color:{{iconCol}}">
 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"></path></svg>
@@ -53,15 +62,15 @@ button{font-family:inherit}
 </div>
 </header>
 
-<main style="flex:1;min-height:0;overflow:auto;padding:12px 28px 28px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
+<main style="flex:1;min-height:0;overflow:hidden;padding:12px 28px 28px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
 <sc-if value="{{on1}}" hint-placeholder-val="{{true}}">
-<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">周五回看只记录偏差，不复述进度。</p>
-<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">小窗与主窗口彻底解耦，主窗口隐藏或关闭时独立呼出小窗不会唤醒主窗口。</p>
-<ul style="margin:0;padding-left:20px;font-size:16px;line-height:26px;color:{{textPrimary}};display:flex;flex-direction:column;gap:4px">
-<li>顶部仅保留 3 个便签圆点，无主窗口转存或状态干扰</li>
-<li>按住 Shift 上下滚动滚轮，或点击圆点即可切换上下便签</li>
+<p style="margin:0;font-size:16px;line-height:24px;color:{{textPrimary}}">周五回看只记录偏差，不复述进度。</p>
+<p style="margin:0;font-size:16px;line-height:24px;color:{{textPrimary}}">右上角可一键存入笔记本，默认隐藏滚动条且不会唤醒已隐藏的主窗口。</p>
+<ul style="margin:0;padding-left:20px;font-size:16px;line-height:24px;color:{{textPrimary}};display:flex;flex-direction:column;gap:4px">
+<li>按住 Shift 上下滚动滚轮，或点击圆点切换 3 个便签</li>
+<li>输入 / 或 、 紧贴当前行弹出命令菜单</li>
 </ul>
-<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">明天确认一下签名证书的续期时间<span aria-hidden="true" style="display:inline-block;width:2px;height:19px;background:{{accent}};vertical-align:-4px;margin-left:2px;border-radius:1px"></span></p>
+<p style="margin:0;font-size:16px;line-height:24px;color:{{textPrimary}}">明天确认一下签名证书的续期时间<span aria-hidden="true" style="display:inline-block;width:1.5px;height:18px;background:{{accent}};vertical-align:-3px;margin-left:2px;border-radius:1px"></span></p>
 </sc-if>
 
 <sc-if value="{{on2}}" hint-placeholder-val="{{false}}">

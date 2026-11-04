@@ -67,6 +67,7 @@ pub struct Workspace {
     working: bool,
     /// Keeps the Workspace key context alive when nothing else has focus.
     root_focus: gpui::FocusHandle,
+    bounds_task: Option<gpui::Task<()>>,
     _editor_subscription: gpui::Subscription,
 }
 
@@ -170,6 +171,15 @@ impl Workspace {
                 crate::dropdown::dismiss_all(cx);
             }
         }).detach();
+        cx.observe_window_bounds(window, |this, window, cx| {
+            let bounds = crate::window_bounds::capture_window_bounds(window, cx);
+            this.bounds_task = Some(cx.spawn(async move |_, cx| {
+                cx.background_executor().timer(std::time::Duration::from_millis(250)).await;
+                cx.background_executor().spawn(async move {
+                    let _ = crate::files::update_state(move |s| s.main_window_bounds = Some(bounds));
+                }).await;
+            }));
+        }).detach();
         search::bind_keys(cx);
         tabs::bind_keys(cx);
         nav::bind_keys(cx);
@@ -179,7 +189,7 @@ impl Workspace {
             notice: tr("正在读取工作区偏好…", "Loading workspace preferences…").into(), sidebar_width: Theme::ocean().sidebar_width,
             sidebar_collapsed: false, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
             settings: None, file_op: None, working: false, root_focus: cx.focus_handle(),
-            _editor_subscription: subscription };
+            bounds_task: None, _editor_subscription: subscription };
         window.focus(&this.root_focus, cx);
         cx.spawn(async move |this, cx| {
             let saved = cx.background_executor().spawn(async { load_state() }).await;
