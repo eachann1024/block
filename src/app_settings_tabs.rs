@@ -90,8 +90,8 @@ impl Workspace {
         let change = action_button("storage-change", tr("更换目录", "Change Folder"), false, !self.busy())
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.choose_folder(window, cx)));
         div().child(settings_card(16.).child(card_title(tr("工作区目录", "Workspace Folder")))
-            .child(setting_row(tr("当前工作区目录", "Current Folder"), div().flex().items_center().gap(px(8.))
-                .child(div().max_w(px(300.)).overflow_hidden().whitespace_nowrap().text_ellipsis()
+            .child(setting_row(tr("当前工作区目录", "Current Folder"), div().flex_1().min_w_0().flex().items_center().justify_end().gap(px(8.))
+                .child(div().flex_1().min_w_0().max_w(px(260.)).overflow_hidden().whitespace_nowrap().text_ellipsis()
                     .text_size(px(14.)).font_weight(FontWeight(460.)).text_color(theme.text_secondary).child(label))
                 .child(reveal).child(change))))
     }
