@@ -210,6 +210,36 @@
       "is_interactive": true,
       "title": "行内代码 C · 墨迹微底刊印风（无框纯柔底 + 1.5px 底边基线标尺 + 连续分隔符自动避让）"
     },
+    "TopInsert-V1-HoverSlot.dc.html": {
+      "page": "editor",
+      "x": 0,
+      "y": 4300,
+      "w": 1440,
+      "h": 960,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "首块上插 A（推荐）· 顶缘感应插入槽 + 首字符 ↑ / Backspace 破壁上插"
+    },
+    "TopInsert-V2-CaretEscape.dc.html": {
+      "page": "editor",
+      "x": 1520,
+      "y": 4300,
+      "w": 1440,
+      "h": 960,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "首块上插 B · 块首虚拟幽灵行 + 首字符 Enter 整体下推代码块"
+    },
+    "TopInsert-V3-HandleMenu.dc.html": {
+      "page": "editor",
+      "x": 3040,
+      "y": 4300,
+      "w": 1440,
+      "h": 960,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "首块上插 C · 左侧双联把手胶囊 (+↑ / ⋮⋮) + 代码块顶栏上插按钮"
+    },
     "F-Find.dc.html": {
       "page": "search",
       "x": 0,
@@ -364,6 +394,36 @@
       "is_interactive": true,
       "title": "菜单与下拉图标 · 双色语义线稿（1.5px 圆端线稿 + 浅蓝语义面 + 强调蓝点睛）"
     },
+    "CodeBlock-V1-GraphiteCard.dc.html": {
+      "x": 0,
+      "y": 1440,
+      "w": 1440,
+      "h": 1020,
+      "page": "code",
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "深色代码配色 A（推荐）· Ocean Mist 海洋雾灰（冷润海雾蓝键名 + 鼠尾草绿字符串）"
+    },
+    "CodeBlock-V2-HeaderBar.dc.html": {
+      "x": 1520,
+      "y": 1440,
+      "w": 1440,
+      "h": 1020,
+      "page": "code",
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "深色代码配色 B · Warm Espresso 暖墨琥珀（纯暖炭灰底 + 琥珀金键名 + 青瓷绿字符串）"
+    },
+    "CodeBlock-V3-InsetGutter.dc.html": {
+      "x": 3040,
+      "y": 1440,
+      "w": 1440,
+      "h": 1020,
+      "page": "code",
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "深色代码配色 C · GitHub Ice 极夜冰晶（翡翠绿键名 + 冰晶浅蓝字符串）"
+    },
     "M-Motion-System.dc.html": {
       "page": "motion",
       "x": 0,
@@ -393,6 +453,9 @@
     "InlineCode-V1-WarmPill.dc.html",
     "InlineCode-V2-TokenChip.dc.html",
     "InlineCode-V3-InkRuler.dc.html",
+    "TopInsert-V1-HoverSlot.dc.html",
+    "TopInsert-V2-CaretEscape.dc.html",
+    "TopInsert-V3-HandleMenu.dc.html",
     "F-Find.dc.html",
     "F-Search.dc.html",
     "S-Settings-3.dc.html",
@@ -411,6 +474,9 @@
     "Mascot-Folio.dc.html",
     "C-Code-Block.dc.html",
     "Menu-Icons-V1-Duo.dc.html",
+    "CodeBlock-V1-GraphiteCard.dc.html",
+    "CodeBlock-V2-HeaderBar.dc.html",
+    "CodeBlock-V3-InsetGutter.dc.html",
     "M-Motion-System.dc.html"
   ],
   "notes": {},
