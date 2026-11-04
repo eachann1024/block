@@ -178,7 +178,7 @@ impl Workspace {
         if let Some(modal) = &self.settings {
             right = self.settings_breadcrumb(right, modal.tab);
         } else if tab_count == 0 {
-            let title = self.folder.as_ref().map(|p| display_name(p, true)).unwrap_or_else(|| "Yu".into());
+            let title = self.folder.as_ref().map(|p| display_name(p, true)).unwrap_or_else(|| "Block".into());
             right = right.window_control_area(WindowControlArea::Drag)
                 .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
                 .child(div().overflow_hidden().whitespace_nowrap()
