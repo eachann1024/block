@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Yu · 版本三 · 柔和杂志</title>
+<script src="./support.js"></script>
+<script src="./gpui-mount.js" defer></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&amp;family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Noto+Serif+SC:wght@500;600&amp;display=swap">
+<style>
+body{margin:0;background:#FBF9F5;color:#141413}
+a{color:#141413;text-decoration:none}
+a:hover{color:#3D3B37;text-decoration:underline}
+button{font-family:inherit;font-size:14px;line-height:20px;cursor:pointer}
+.pill-link{padding:6px 14px;border-radius:999px;color:#45433E;font-size:15px;font-weight:500;text-decoration:none;transition:background-color 150ms ease,color 150ms ease}
+.pill-link:hover{background:#EFEAE0;color:#141413;text-decoration:none}
+.pill-cta{height:46px;padding:0 26px;border-radius:999px;border:1px solid #C4613F;background:#D97757;color:#FBF9F5;font-size:15px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;box-sizing:border-box;transition:background-color 150ms ease}
+.pill-cta:hover{background:#C4613F;color:#FBF9F5;text-decoration:none}
+.pill-nav-cta{height:36px;padding:0 16px;border-radius:999px;border:1px solid #C4613F;background:#D97757;color:#FBF9F5;font-size:14px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;box-sizing:border-box;transition:background-color 150ms ease}
+.pill-nav-cta:hover{background:#C4613F;color:#FBF9F5;text-decoration:none}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:0.01ms !important;transition-duration:0.01ms !important}
+}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:4800px;box-sizing:border-box;display:flex;flex-direction:column;background:#FBF9F5;color:#141413;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:16px;line-height:26px">
+
+<!-- 顶部导航 -->
+<header style="padding:24px 32px 0;box-sizing:border-box">
+<div style="max-width:1160px;margin:0 auto;min-height:60px;padding:6px 14px 6px 20px;border-radius:999px;border:1px solid #E6E0D4;background:#F6F2E9;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;box-sizing:border-box">
+<a href="#top" style="display:inline-flex;align-items:center;gap:10px;color:#141413;text-decoration:none">
+<svg width="24" height="24" viewBox="0 0 24 24" role="img" aria-label="Yu">
+<circle cx="12" cy="12" r="10" fill="#141413"></circle>
+<circle cx="9" cy="10" r="1.5" fill="#FBF9F5"></circle>
+<circle cx="15" cy="10" r="1.5" fill="#FBF9F5"></circle>
+<circle cx="9" cy="14" r="1.5" fill="#FBF9F5"></circle>
+<circle cx="15" cy="14" r="1.5" fill="#8C8980"></circle>
+</svg>
+<span style="font-family:Fraunces,'Noto Serif SC',serif;font-size:18px;font-weight:600;color:#141413">Yu</span>
+</a>
+
+<nav aria-label="主导航" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+<a class="pill-link" href="#performance">性能</a>
+<a class="pill-link" href="#blocks">块编辑器</a>
+<a class="pill-link" href="#ai">AI</a>
+<a class="pill-link" href="#image">生成图片</a>
+<a class="pill-nav-cta" href="#download">下载</a>
+</nav>
+</div>
+</header>
+
+<!-- 首屏（双栏杂志题头 + 唯一点阵水印背景） -->
+<section id="top" style="position:relative;overflow:hidden;padding:64px 32px 120px;box-sizing:border-box">
+<canvas ref="{{heroWaterCanvasRef}}" width="1280" height="420" aria-hidden="true" style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:1280px;height:420px;pointer-events:none"></canvas>
+
+<div style="position:relative;z-index:2;max-width:1160px;margin:0 auto;display:flex;flex-direction:column;gap:56px">
+
+<div style="display:grid;grid-template-columns:repeat(12, minmax(0, 1fr));gap:32px;align-items:end">
+<div style="grid-column:span 8">
+<h1 style="margin:0;font-family:'Noto Serif SC',Fraunces,Georgia,serif;font-size:36px;line-height:1.38;font-weight:600;letter-spacing:-0.02em;color:#141413">
+文字之隅，落笔即成
+</h1>
+</div>
+<div style="grid-column:span 4;display:flex;flex-direction:column;align-items:flex-start;gap:18px">
+<div style="display:flex;flex-direction:column;align-items:flex-start;gap:10px">
+<a class="pill-cta" href="#download">下载 macOS 版</a>
+<span style="font-size:14px;line-height:22px;color:#5E5D59">适用于 Apple 芯片的 Mac · 文件就是本地 Markdown</span>
+</div>
+</div>
+</div>
+
+<!-- 编辑器窗口 (#editor-stage, 16:10 真实 GPUI WebAssembly 渲染) -->
+<div id="editor-stage" style="width:100%;max-width:1160px;aspect-ratio:16 / 10;min-height:690px;border-radius:18px;border:1px solid #DFD9CC;background:#FBFAF7;box-shadow:0 24px 64px rgba(20,20,19,0.08);overflow:hidden;position:relative;box-sizing:border-box">
+<div id="editor-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:#5E5D59;background:#FBFAF7;pointer-events:none;transition:opacity 180ms ease">正在启动 Yu GPUI 编辑器…</div>
+</div>
+
+</div>
+</section>
+
+<!-- 性能区 (#performance) -->
+<section id="performance" style="padding:120px 32px;border-top:1px solid #E6E0D4;border-bottom:1px solid #E6E0D4;background:#F4EFE6;box-sizing:border-box">
+<div style="max-width:1160px;margin:0 auto;display:grid;grid-template-columns:repeat(12, minmax(0, 1fr));gap:40px;align-items:start">
+
+<div style="grid-column:span 4;display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-family:'Noto Serif SC',Fraunces,Georgia,serif;font-size:38px;line-height:1.25;font-weight:600;color:#141413">
+大文档也是即开即写
+</h2>
+<p style="margin:0;font-size:14px;line-height:22px;color:#5E5D59">
+Apple 芯片 Mac 上以同一份 10 万段 Markdown 文档对比，数值越低越好。
+</p>
+</div>
+
+<div style="grid-column:span 8;display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:20px">
+
+<!-- 1. 打开首屏 -->
+<div style="background:#FBF9F5;border:1px solid #E4DECFE0;border-radius:16px;padding:22px 20px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+<div style="display:flex;flex-direction:column;gap:6px">
+<strong style="font-family:Fraunces,'JetBrains Mono',serif;font-size:40px;line-height:1.1;font-weight:600;color:#D97757">24.5 ms</strong>
+<span style="font-size:15px;line-height:22px;font-weight:500;color:#141413">打开 10 万块到首屏</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:20px">
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between;color:#141413;font-weight:600"><span>Yu</span><span style="font-family:'JetBrains Mono',monospace;color:#D97757">24.5 ms</span></div>
+<div style="height:6px;border-radius:999px;background:#EAE4D7;overflow:hidden"><div style="width:3%;min-width:6px;height:100%;border-radius:999px;background:#D97757"></div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between;color:#5E5D59"><span>VS Code</span><span style="font-family:'JetBrains Mono',monospace">~420 ms</span></div>
+<div style="height:6px;border-radius:999px;background:#EAE4D7;overflow:hidden"><div style="width:18%;height:100%;border-radius:999px;background:#C8C2B4"></div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between;color:#5E5D59"><span>Obsidian</span><span style="font-family:'JetBrains Mono',monospace">~1,800 ms</span></div>
+<div style="height:6px;border-radius:999px;background:#EAE4D7;overflow:hidden"><div style="width:46%;height:100%;border-radius:999px;background:#C8C2B4"></div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between;color:#5E5D59"><span>Notion</span><span style="font-family:'JetBrains Mono',monospace">&gt; 8,000 ms</span></div>
+<div style="height:6px;border-radius:999px;background:#EAE4D7;overflow:hidden"><div style="width:100%;height:100%;border-radius:999px;background:#C8C2B4"></div></div>
+</div>
+</div>
+</div>
+
+<!-- 2. 输入响应 -->
+<div style="background:#FBF9F5;border:1px solid #E4DECFE0;border-radius:16px;padding:22px 20px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+<div style="display:flex;flex-direction:column;gap:6px">
+<strong style="font-family:Fraunces,'JetBrains Mono',serif;font-size:40px;line-height:1.1;font-weight:600;color:#D97757">2.4 ms</strong>
+<span style="font-size:15px;line-height:22px;font-weight:500;color:#141413">输入一字到画面更新</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:20px">
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between;color:#141413;font-weight:600"><span>Yu</span><span style="font-family:'JetBrains Mono',monospace;color:#D97757">2.4 ms</span></div>
+<div style="height:6px;border-radius:999px;background:#EAE4D7;overflow:hidden"><div style="width:3%;min-width:6px;height:100%;border-radius:999px;background:#D97757"></div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between;color:#5E5D59"><span>VS Code</span><span style="font-family:'JetBrains Mono',monospace">~16 ms</span></div>
+<div style="height:6px;border-radius:999px;background:#EAE4D7;overflow:hidden"><div style="width:15%;height:100%;border-radius:999px;background:#C8C2B4"></div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between;color:#5E5D59"><span>Obsidian</span><span style="font-family:'JetBrains Mono',monospace">~45 ms</span></div>
+<div style="height:6px;border-radius:999px;background:#EAE4D7;overflow:hidden"><div style="width:36%;height:100%;border-radius:999px;background:#C8C2B4"></div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between;color:#5E5D59"><span>Notion</span><span style="font-family:'JetBrains Mono',monospace">~180 ms</span></div>
+<div style="height:6px;border-radius:999px;background:#EAE4D7;overflow:hidden"><div style="width:100%;height:100%;border-radius:999px;background:#C8C2B4"></div></div>
+</div>
+</div>
+</div>
+
+<!-- 3. 内存占用 -->
+<div style="background:#FBF9F5;border:1px solid #E4DECFE0;border-radius:16px;padding:22px 20px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+<div style="display:flex;flex-direction:column;gap:6px">
+<strong style="font-family:Fraunces,'JetBrains Mono',serif;font-size:40px;line-height:1.1;font-weight:600;color:#D97757">117 MB</strong>
+<span style="font-size:15px;line-height:22px;font-weight:500;color:#141413">10 万块文档内存占用</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:20px">
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between;color:#141413;font-weight:600"><span>Yu</span><span style="font-family:'JetBrains Mono',monospace;color:#D97757">117 MB</span></div>
+<div style="height:6px;border-radius:999px;background:#EAE4D7;overflow:hidden"><div style="width:10%;min-width:8px;height:100%;border-radius:999px;background:#D97757"></div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between;color:#5E5D59"><span>VS Code</span><span style="font-family:'JetBrains Mono',monospace">~540 MB</span></div>
+<div style="height:6px;border-radius:999px;background:#EAE4D7;overflow:hidden"><div style="width:48%;height:100%;border-radius:999px;background:#C8C2B4"></div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between;color:#5E5D59"><span>Obsidian</span><span style="font-family:'JetBrains Mono',monospace">~680 MB</span></div>
+<div style="height:6px;border-radius:999px;background:#EAE4D7;overflow:hidden"><div style="width:61%;height:100%;border-radius:999px;background:#C8C2B4"></div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;justify-content:space-between;color:#5E5D59"><span>Notion</span><span style="font-family:'JetBrains Mono',monospace">~1,120 MB</span></div>
+<div style="height:6px;border-radius:999px;background:#EAE4D7;overflow:hidden"><div style="width:100%;height:100%;border-radius:999px;background:#C8C2B4"></div></div>
+</div>
+</div>
+</div>
+
+</div>
+
+</div>
+</section>
+
+<!-- 块编辑器区 (#blocks) · 柔和杂志列表式图文对照 -->
+<section id="blocks" style="padding:128px 32px;background:#FBF9F5;box-sizing:border-box">
+<div style="max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:56px">
+
+<h2 style="margin:0;font-family:'Noto Serif SC',Fraunces,Georgia,serif;font-size:38px;line-height:1.25;font-weight:600;color:#141413">
+每一段都能抓起来
+</h2>
+
+<div style="display:flex;flex-direction:column">
+
+<!-- 1. 拖动重排 -->
+<div style="padding:32px 0;border-top:1px solid #E6E0D4;display:grid;grid-template-columns:repeat(12, minmax(0, 1fr));gap:32px;align-items:center">
+<div style="grid-column:span 5;display:flex;flex-direction:column;gap:8px">
+<h3 style="margin:0;font-size:22px;line-height:30px;font-weight:600;color:#141413">拖动重排</h3>
+<p style="margin:0;font-size:16px;line-height:26px;color:#45433E">按住段落左边的把手，把整段拖到任何位置。</p>
+</div>
+<div style="grid-column:span 7;border-radius:14px;border:1px solid #E4DECFE0;background:#FFFFFF;padding:18px 24px;display:flex;flex-direction:column;gap:8px">
+<div style="padding-left:28px;font-size:14px;color:#8C8980">先整理周五晚上的出发车次</div>
+<div style="height:2px;background:#141413;margin-left:28px"></div>
+<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:#F8F6F1;border:1px solid #DFD9CC;font-size:15px;color:#141413">
+<span aria-hidden="true" style="width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;color:#45433E">
+<svg width="12" height="14" viewBox="0 0 12 14" fill="currentColor"><circle cx="3.5" cy="3" r="1.2"></circle><circle cx="8.5" cy="3" r="1.2"></circle><circle cx="3.5" cy="7" r="1.2"></circle><circle cx="8.5" cy="7" r="1.2"></circle><circle cx="3.5" cy="11" r="1.2"></circle><circle cx="8.5" cy="11" r="1.2"></circle></svg>
+</span>
+<span>周日傍晚从潮汕站返程回广州南</span>
+</div>
+</div>
+</div>
+
+<!-- 2. 折叠章节 -->
+<div style="padding:32px 0;border-top:1px solid #E6E0D4;display:grid;grid-template-columns:repeat(12, minmax(0, 1fr));gap:32px;align-items:center">
+<div style="grid-column:span 5;display:flex;flex-direction:column;gap:8px">
+<h3 style="margin:0;font-size:22px;line-height:30px;font-weight:600;color:#141413">折叠章节</h3>
+<p style="margin:0;font-size:16px;line-height:26px;color:#45433E">点标题旁的箭头，收起整个章节。</p>
+</div>
+<div style="grid-column:span 7;border-radius:14px;border:1px solid #E4DECFE0;background:#FFFFFF;padding:18px 24px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:8px">
+<span aria-hidden="true" style="width:24px;height:24px;border-radius:6px;background:#F2EFE8;color:#141413;display:inline-flex;align-items:center;justify-content:center">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"></path></svg>
+</span>
+<strong style="font-size:16px;color:#141413">一、第一天行程与住宿</strong>
+<span style="padding:2px 8px;border-radius:6px;background:#F2EFE8;color:#5E5D59;font-size:14px">已收起</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<span aria-hidden="true" style="width:24px;height:24px;border-radius:6px;color:#5E5D59;display:inline-flex;align-items:center;justify-content:center">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg>
+</span>
+<strong style="font-size:16px;color:#141413">二、第二天返程车次</strong>
+</div>
+</div>
+</div>
+
+<!-- 3. 随时转换 -->
+<div style="padding:32px 0;border-top:1px solid #E6E0D4;display:grid;grid-template-columns:repeat(12, minmax(0, 1fr));gap:32px;align-items:center">
+<div style="grid-column:span 5;display:flex;flex-direction:column;gap:8px">
+<h3 style="margin:0;font-size:22px;line-height:30px;font-weight:600;color:#141413">随时转换</h3>
+<p style="margin:0;font-size:16px;line-height:26px;color:#45433E">段落、标题、待办、引用、代码块之间一键互转。</p>
+</div>
+<div style="grid-column:span 7;border-radius:14px;border:1px solid #E4DECFE0;background:#FFFFFF;padding:18px 24px;display:flex;align-items:center;gap:16px">
+<span aria-hidden="true" style="width:26px;height:26px;border-radius:6px;background:#F2EFE8;color:#141413;display:inline-flex;align-items:center;justify-content:center;flex:none">
+<svg width="12" height="14" viewBox="0 0 12 14" fill="currentColor"><circle cx="3.5" cy="3" r="1.2"></circle><circle cx="8.5" cy="3" r="1.2"></circle><circle cx="3.5" cy="7" r="1.2"></circle><circle cx="8.5" cy="7" r="1.2"></circle><circle cx="3.5" cy="11" r="1.2"></circle><circle cx="8.5" cy="11" r="1.2"></circle></svg>
+</span>
+<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:14px">
+<span style="padding:5px 12px;border-radius:6px;background:#ECE7DC;color:#141413;font-weight:500">标题 ✓</span>
+<span style="padding:5px 12px;border-radius:6px;background:#FAF8F3;border:1px solid #E6E0D4;color:#45433E">段落</span>
+<span style="padding:5px 12px;border-radius:6px;background:#FAF8F3;border:1px solid #E6E0D4;color:#45433E">待办</span>
+<span style="padding:5px 12px;border-radius:6px;background:#FAF8F3;border:1px solid #E6E0D4;color:#45433E">引用</span>
+<span style="padding:5px 12px;border-radius:6px;background:#FAF8F3;border:1px solid #E6E0D4;color:#45433E">代码块</span>
+</div>
+</div>
+</div>
+
+<!-- 4. 中文直接触发 -->
+<div style="padding:32px 0;border-top:1px solid #E6E0D4;border-bottom:1px solid #E6E0D4;display:grid;grid-template-columns:repeat(12, minmax(0, 1fr));gap:32px;align-items:center">
+<div style="grid-column:span 5;display:flex;flex-direction:column;gap:8px">
+<h3 style="margin:0;font-size:22px;line-height:30px;font-weight:600;color:#141413">中文直接触发</h3>
+<p style="margin:0;font-size:16px;line-height:26px;color:#45433E">用中文输入法打「＃ 」「【】」「＞ 」，不切英文也能变成标题、待办和引用。</p>
+</div>
+<div style="grid-column:span 7;border-radius:14px;border:1px solid #E4DECFE0;background:#FFFFFF;padding:18px 24px;display:flex;flex-direction:column;gap:8px;font-size:14px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="padding:2px 8px;border-radius:5px;background:#F2EFE8;font-family:'JetBrains Mono',monospace;color:#141413">＃ 空格</span>
+<span style="color:#8C8980">→</span>
+<strong style="font-size:15px;color:#141413">一级标题</strong>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="padding:2px 8px;border-radius:5px;background:#F2EFE8;font-family:'JetBrains Mono',monospace;color:#141413">【】空格</span>
+<span style="color:#8C8980">→</span>
+<span style="display:inline-flex;align-items:center;gap:6px;color:#141413"><span style="width:14px;height:14px;border-radius:3px;border:1.5px solid #45433E;display:inline-block"></span><span>待办事项</span></span>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="padding:2px 8px;border-radius:5px;background:#F2EFE8;font-family:'JetBrains Mono',monospace;color:#141413">＞ 空格</span>
+<span style="color:#8C8980">→</span>
+<span style="padding-left:8px;border-left:2px solid #8C8980;color:#45433E">引用段落</span>
+</div>
+</div>
+</div>
+
+</div>
+
+<p style="margin:0;font-size:17px;line-height:28px;color:#45433E">
+表格、代码、流程图和公式也是块，写完直接显示渲染结果。
+</p>
+
+</div>
+</section>
+
+<!-- AI 区 (#ai) -->
+<section id="ai" style="padding:112px 32px;border-top:1px solid #E6E0D4;background:#F4EFE6;box-sizing:border-box">
+<div style="max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:48px">
+
+<h2 style="margin:0;font-family:'Noto Serif SC',Fraunces,Georgia,serif;font-size:38px;line-height:1.25;font-weight:600;color:#141413">
+AI 直接在笔记里改
+</h2>
+
+<div style="display:grid;grid-template-columns:repeat(12, minmax(0, 1fr));gap:40px;align-items:center">
+
+<div style="grid-column:span 5;display:flex;flex-direction:column;gap:28px">
+<div style="display:flex;flex-direction:column;gap:6px">
+<h3 style="margin:0;font-size:22px;line-height:30px;font-weight:600;color:#141413">选中就能改</h3>
+<p style="margin:0;font-size:16px;line-height:26px;color:#45433E">选中一段，让 AI 润色、精简或翻译；改动用删除线和高亮标出，确认后才写入。</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<h3 style="margin:0;font-size:22px;line-height:30px;font-weight:600;color:#141413">边写边问</h3>
+<p style="margin:0;font-size:16px;line-height:26px;color:#45433E">按 ⌘J 打开侧边对话，用 @ 引用其他笔记一起提问。</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<h3 style="margin:0;font-size:22px;line-height:30px;font-weight:600;color:#141413">改动可撤回</h3>
+<p style="margin:0;font-size:16px;line-height:26px;color:#45433E">AI 先给出修改方案，你确认后才应用，随时一键撤回。</p>
+</div>
+<p style="margin:0;font-size:14px;line-height:22px;color:#5E5D59">可接入你自己的模型服务，填写地址和 API Key 即可。</p>
+</div>
+
+<div style="grid-column:span 7;border-radius:14px;border:1px solid #E6E0D4;background:#FFFFFF;padding:24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+<div style="border:1px dashed #B9B3A4;border-radius:8px;padding:10px 12px;font-size:15px;line-height:26px;color:#1F1E1D">周五傍晚从广州南出发，周日晚上返程。<span style="background:rgba(220,38,38,0.12);color:#B42318;text-decoration:line-through;border-radius:3px">酒店定在牌坊街附近，步行就能去吃早餐，两天都不用打车赶路。</span><span style="background:rgba(30,160,100,0.14);color:#087443;border-radius:3px">酒店在牌坊街附近，步行即可吃早餐，两天都不用打车。</span></div>
+<div style="border:1px solid #E6E0D4;border-radius:16px;background:#FFFFFF;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 12px 32px rgba(20,20,19,0.08);box-sizing:border-box">
+<div style="display:flex;align-items:center;gap:8px;color:#141413">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>
+<span style="flex:1;font-size:16px;line-height:24px;font-weight:600">编辑所选内容</span>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5E5D59" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+</div>
+<div style="min-height:40px;padding:6px 6px 6px 12px;display:flex;align-items:center;gap:8px;border-radius:10px;border:1px solid #D4CEBF;box-sizing:border-box">
+<span style="flex:1;min-width:0;font-size:14px;line-height:20px;color:#6F6C64">告诉 AI 如何处理这段内容（如：润色、精简、翻译…）</span>
+<span style="height:28px;padding:0 10px;border-radius:8px;background:#141413;color:#FBF9F5;font-size:14px;display:inline-flex;align-items:center;flex:none">发送</span>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:6px;font-size:14px;color:#141413">
+<span style="height:32px;padding:0 12px;border-radius:8px;border:1px solid #E6E0D4;display:inline-flex;align-items:center;box-sizing:border-box">润色</span>
+<span style="height:32px;padding:0 12px;border-radius:8px;border:1px solid #E6E0D4;display:inline-flex;align-items:center;box-sizing:border-box">精简</span>
+<span style="height:32px;padding:0 12px;border-radius:8px;border:1px solid #E6E0D4;display:inline-flex;align-items:center;box-sizing:border-box">翻译 ▾</span>
+<span style="height:32px;padding:0 12px;border-radius:8px;border:1px solid #E6E0D4;display:inline-flex;align-items:center;box-sizing:border-box">更多 ▾</span>
+</div>
+<div style="height:1px;background:#EEE9DD"></div>
+
+<div style="display:flex;flex-wrap:wrap;gap:6px;font-size:14px;color:#141413">
+<span style="height:32px;padding:0 12px;border-radius:8px;background:#141413;color:#FBF9F5;font-weight:500;display:inline-flex;align-items:center;box-sizing:border-box">应用修改</span>
+<span style="height:32px;padding:0 12px;border-radius:8px;border:1px solid #E6E0D4;display:inline-flex;align-items:center;box-sizing:border-box">放弃</span>
+</div>
+</div>
+</div>
+
+</div>
+
+</div>
+</section>
+
+<!-- 生成图片区 (#image) -->
+<section id="image" style="padding:112px 32px;background:#FBF9F5;box-sizing:border-box">
+<div style="max-width:1080px;margin:0 auto;display:grid;grid-template-columns:repeat(12, minmax(0, 1fr));gap:40px;align-items:center">
+
+<div style="grid-column:span 7;border-radius:14px;border:1px solid #E6E0D4;background:#FFFFFF;padding:24px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+<div style="display:flex;align-items:center;gap:16px">
+<div style="flex:1;min-width:0;align-self:stretch;border:1px solid #E6E0D4;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:6px;font-size:14px;line-height:22px;color:#1F1E1D;box-sizing:border-box">
+<div style="background:#ECE7DC;border-radius:3px;padding:2px 6px"><strong style="font-size:17px;line-height:26px">潮汕周末出行安排</strong></div>
+<div style="background:#ECE7DC;border-radius:3px;padding:2px 6px">周五傍晚从广州南出发，周日晚上返程。</div>
+<div style="background:#ECE7DC;border-radius:3px;padding:2px 6px;display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:3px;border:1.5px solid #87867F;box-sizing:border-box;flex:none"></span><span>带上便携充电器和雨伞</span></div>
+<div style="background:#ECE7DC;border-radius:3px;padding:2px 6px">周五晚 · G6329 · 18:40 出发</div>
+<div style="padding:2px 6px;color:#45433E">酒店定在牌坊街附近，步行就能去吃早餐。</div>
+</div>
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#87867F" stroke-width="2" aria-hidden="true" style="flex:none"><path d="M9 6l6 6-6 6"></path></svg>
+<div style="width:210px;flex:none;height:300px;overflow:hidden;border:1px solid #E6E0D4;background:#FFFFFF;box-shadow:0 8px 24px rgba(20,20,19,0.08);padding:20px 18px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:22px;color:#111111">
+<strong style="font-size:18px;line-height:26px">潮汕周末出行安排</strong>
+<div style="height:1px;background:#111111"></div>
+<span>周五傍晚从广州南出发，周日晚上返程。</span>
+<div style="display:flex;align-items:flex-start;gap:8px"><span style="width:14px;height:14px;margin-top:4px;border-radius:3px;border:1.5px solid #444444;box-sizing:border-box;flex:none"></span><span>带上便携充电器和雨伞</span></div>
+<table style="width:100%;border-collapse:collapse;font-size:14px;line-height:20px"><tr><td style="border:1px solid #B4B4B4;padding:4px 6px">周五晚</td><td style="border:1px solid #B4B4B4;padding:4px 6px">G6329</td></tr><tr><td style="border:1px solid #B4B4B4;padding:4px 6px">周日晚</td><td style="border:1px solid #B4B4B4;padding:4px 6px">G6315</td></tr></table>
+</div>
+</div>
+<div style="display:flex;gap:12px;flex-wrap:wrap">
+<span style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:999px;border:1.5px solid #141413;box-sizing:border-box;font-size:14px;font-weight:550;color:#141413"><span aria-hidden="true" style="width:28px;height:28px;border-radius:14px;background:#FFFFFF;border:1px solid #E6E0D4;display:inline-flex;align-items:center;justify-content:center;flex:none"><span style="width:10px;height:10px;border-radius:5px;background:#111111"></span></span>黑白素纸</span>
+<span style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:999px;border:1px solid #E6E0D4;box-sizing:border-box;font-size:14px;color:#141413"><span aria-hidden="true" style="width:28px;height:28px;border-radius:14px;background:#F6F0E1;border:1px solid #E6E0D4;display:inline-flex;align-items:center;justify-content:center;flex:none"><span style="width:10px;height:10px;border-radius:5px;background:#B5462F"></span></span>手账便签</span>
+<span style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:999px;border:1px solid #E6E0D4;box-sizing:border-box;font-size:14px;color:#141413"><span aria-hidden="true" style="width:28px;height:28px;border-radius:14px;background:#F3EEE3;border:1px solid #E6E0D4;display:inline-flex;align-items:center;justify-content:center;flex:none"><span style="width:10px;height:10px;border-radius:5px;background:#FF5AA8"></span></span>野性孔版</span>
+</div>
+</div>
+
+<div style="grid-column:span 5;display:flex;flex-direction:column;gap:20px">
+<h2 style="margin:0;font-family:'Noto Serif SC',Fraunces,Georgia,serif;font-size:38px;line-height:1.25;font-weight:600;color:#141413">
+一篇笔记，一张图
+</h2>
+<p style="margin:0;font-size:17px;line-height:28px;color:#45433E">选中几段或整篇笔记，直接生成长图，发朋友圈和群聊都清楚；可以换纸张和配色。</p>
+</div>
+
+</div>
+</section>
+
+<!-- 下载区 (#download) -->
+<section id="download" style="padding:112px 32px;border-top:1px solid #E6E0D4;background:#F4EFE6;box-sizing:border-box">
+<div style="max-width:960px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:28px;text-align:center">
+
+<h2 style="margin:0;font-family:'Noto Serif SC',Fraunces,Georgia,serif;font-size:38px;line-height:1.25;font-weight:600;color:#141413">
+下载 Yu
+</h2>
+
+<div style="display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap">
+<a class="pill-cta" href="/download?k=thinkly-fast-macos.dmg">下载 macOS 版</a>
+<span style="font-size:14px;line-height:22px;color:#5E5D59">适用于 Apple 芯片的 Mac</span>
+</div>
+
+</div>
+</section>
+
+<!-- 页脚 -->
+<footer style="padding:40px 32px;border-top:1px solid #E6E0D4;background:#FBF9F5;margin-top:auto;box-sizing:border-box">
+<div style="max-width:1160px;margin:0 auto;text-align:center;font-size:14px;line-height:22px;color:#5E5D59">
+Yu · © 2026
+</div>
+</footer>
+
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":4800}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.heroWaterCanvas = null;
+    this.rafId = null;
+    this.startTime = Date.now();
+  }
+
+  componentDidMount() {
+    this.startLoop();
+  }
+
+  componentWillUnmount() {
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+
+  startLoop() {
+    const prefersReduced = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const stepFrame = () => {
+      const t = (Date.now() - this.startTime) * 0.001;
+      this.drawBlockWatermark(t, prefersReduced);
+      if (!prefersReduced) {
+        this.rafId = requestAnimationFrame(stepFrame);
+      }
+    };
+    stepFrame();
+  }
+
+  drawBlockWatermark(t, reduced) {
+    const canvas = this.heroWaterCanvas;
+    if (!canvas || !canvas.getContext) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const step = 16;
+    const cols = Math.floor(w / step);
+    const rows = Math.floor(h / step);
+
+    for (let r = 2; r < rows - 2; r++) {
+      for (let c = 2; c < cols - 2; c++) {
+        const inBand = (r % 5 < 3) && (c % 14 < 10);
+        if (!inBand) continue;
+        const pulse = reduced ? 0.5 : (Math.sin(t * 0.35 + r * 0.4 + c * 0.15) * 0.5 + 0.5);
+        const alpha = 0.025 + pulse * 0.045;
+        ctx.fillStyle = `rgba(20, 20, 19, ${alpha.toFixed(3)})`;
+        ctx.fillRect(c * step, r * step, 3, 3);
+      }
+    }
+  }
+
+  renderVals() {
+    return {
+      heroWaterCanvasRef: (el) => { this.heroWaterCanvas = el; }
+    };
+  }
+}
+</script>
+</body>
+</html>

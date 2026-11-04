@@ -1,0 +1,96 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Main.dc.html": {
+      "expand": "fill",
+      "h": 5240,
+      "is_interactive": true,
+      "title": "版本一 · 书卷人文",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "V2-Instrument-Grid.dc.html": {
+      "expand": "fill",
+      "h": 4780,
+      "is_interactive": true,
+      "title": "版本二 · 极简现代",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "V3-Kinetic-Atelier.dc.html": {
+      "expand": "fill",
+      "h": 4800,
+      "is_interactive": true,
+      "title": "版本三 · 柔和杂志",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "V4-Cobalt-Daylight.dc.html": {
+      "expand": "fill",
+      "h": 5200,
+      "is_interactive": true,
+      "title": "版本四 · 晴空钴蓝（瑞士光学工程）",
+      "w": 1440,
+      "x": 0,
+      "y": 5640
+    },
+    "V5-Obsidian-Precision.dc.html": {
+      "expand": "fill",
+      "h": 5200,
+      "is_interactive": true,
+      "title": "版本五 · 曜石暗夜（极客原生 Pro）",
+      "w": 1440,
+      "x": 1520,
+      "y": 5640
+    },
+    "V6-Botanical-Studio.dc.html": {
+      "expand": "fill",
+      "h": 5200,
+      "is_interactive": true,
+      "title": "版本六 · 松烟竹青（东方现代书房）",
+      "w": 1440,
+      "x": 3040,
+      "y": 5640
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-11-04T10:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "header_note": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "Yu 官网首页 · 性能与块编辑器为主，AI 与生成图片为辅",
+      "w": 240,
+      "x": 0,
+      "y": -260
+    },
+    "row2_note": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "全新色板与高密度细节版 · 晴空钴蓝 / 曜石暗夜 / 松烟竹青",
+      "w": 240,
+      "x": 0,
+      "y": 5380
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "V2-Instrument-Grid.dc.html",
+    "V3-Kinetic-Atelier.dc.html",
+    "V4-Cobalt-Daylight.dc.html",
+    "V5-Obsidian-Precision.dc.html",
+    "V6-Botanical-Studio.dc.html"
+  ],
+  "pages": [],
+  "title": "Yu 官网首页设计"
+}

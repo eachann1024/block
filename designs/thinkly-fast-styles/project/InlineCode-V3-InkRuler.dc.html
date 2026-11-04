@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>行内代码 C · 墨迹微底刊印风（无框纯柔底 + 1.5px 底边基线标尺 + 连续分隔符自动避让）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;background:#f1f1f1;-webkit-font-smoothing:antialiased}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input,textarea{font-family:inherit;font-size:14px}
+*{box-sizing:border-box}
+::selection{background:#cde2fb;color:#184f95}
+.ic-v3-light{display:inline-block;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:13.5px;line-height:20px;padding:1px 6px 0;margin:0 3.5px;border-radius:4px 4px 2px 2px;background:#f5f3ee;border-bottom:1.5px solid #c5d3ec;color:#1f3b6d;vertical-align:baseline}
+.ic-v3-dark{display:inline-block;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:13.5px;line-height:20px;padding:1px 6px 0;margin:0 3.5px;border-radius:4px 4px 2px 2px;background:#232323;border-bottom:1.5px solid #455d87;color:#a9c4f5;vertical-align:baseline}
+.ic-v3-focus-light{display:inline-block;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:13.5px;line-height:20px;padding:1px 6px 0;margin:0 3.5px;border-radius:4px 4px 2px 2px;background:#edf2fc;border-bottom:2px solid #547dd0;color:#184f95;vertical-align:baseline}
+.ic-v3-focus-dark{display:inline-block;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:13.5px;line-height:20px;padding:1px 6px 0;margin:0 3.5px;border-radius:4px 4px 2px 2px;background:#25334d;border-bottom:2px solid #779de8;color:#9dbcf5;vertical-align:baseline}
+.sep-chip-light{display:inline-block;margin:0 4px;color:#8a8984;letter-spacing:0.5px}
+.sep-chip-dark{display:inline-block;margin:0 4px;color:#6e6e6e;letter-spacing:0.5px}
+.ic-legacy-light{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:16px;background:#f3f1ec;color:#1f1e1d}
+.ic-legacy-dark{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:16px;background:#242424;color:#ececec}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:940px;display:flex;flex-direction:column;background:{{pageBg}};color:{{textPrimary}};font-size:14px;line-height:20px">
+
+  <!-- 顶部状态与明暗切换控制条 -->
+  <header style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:{{barBg}};border-bottom:1px solid {{borderCol}}">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+      </div>
+      <span style="font-weight:560;color:{{textPrimary}}">行内代码 C · 墨迹微底刊印风（无四周全框 + 1.5px 底边基线标尺）</span>
+      <span style="color:{{textSecondary}}">适合高密度长文与连续分隔符场景，消除盒状碎片感，同时彻底拉开字段间距</span>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
+        <button type="button" onClick="{{setStateRead}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{readBg}};color:{{readCol}};box-shadow:{{readRing}};font-weight:460;cursor:pointer">常规阅读</button>
+        <button type="button" onClick="{{setStateFocus}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{focusBg}};color:{{focusCol}};box-shadow:{{focusRing}};font-weight:460;cursor:pointer">光标在内底线点亮</button>
+        <button type="button" onClick="{{setStateSep}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{sepBg}};color:{{sepCol}};box-shadow:{{sepRing}};font-weight:460;cursor:pointer">分隔符 `----` 自动避让</button>
+      </div>
+
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
+        <button type="button" onClick="{{setLight}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{lightBtnBg}};color:{{lightBtnCol}};box-shadow:{{lightBtnRing}};font-weight:460;cursor:pointer">浅色 Ocean Light</button>
+        <button type="button" onClick="{{setDark}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{darkBtnBg}};color:{{darkBtnCol}};box-shadow:{{darkBtnRing}};font-weight:460;cursor:pointer">深色 Ocean Dark</button>
+      </div>
+    </div>
+  </header>
+
+  <main style="flex:1;max-width:1180px;width:100%;margin:0 auto;padding:32px 28px 56px;display:flex;flex-direction:column;gap:24px">
+
+    <!-- 1. 问题复现 vs 方案 C 直观对比卡片 -->
+    <section style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">截图原场景对比 · 轻盈刊印底线托起等宽字符</span>
+        <span style="font-size:14px;color:{{textSecondary}}">去除左右竖框阻塞感 · 底部 1.5px 浅海蓝标尺锚定起止范围 · 3.5px 外部间隙</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <!-- 改动前 -->
+        <div style="padding:16px 18px;border-radius:8px;background:{{subSurface}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:14px;font-weight:500;color:{{textSecondary}}">当前现状（色块硬切字面）</span>
+            <span style="font-size:14px;color:#b42318">下划线 `_` 贴死底边</span>
+          </div>
+          <div style="padding:14px 12px;border-radius:6px;background:{{paperBg}};border:1px solid {{borderCol}};display:flex;align-items:center;gap:10px;font-size:16px;line-height:26px;color:{{editorText}}">
+            <span aria-hidden="true" style="color:{{handleCol}};display:inline-flex;align-items:center">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"/><circle cx="10.5" cy="3.5" r="1.2"/><circle cx="5.5" cy="8" r="1.2"/><circle cx="10.5" cy="8" r="1.2"/><circle cx="5.5" cy="12.5" r="1.2"/><circle cx="10.5" cy="12.5" r="1.2"/></svg>
+            </span>
+            <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #8a8984;display:inline-block;flex:none"></span>
+            <div>格式：邮箱----密码----邮箱<code class="{{legacyCodeCls}}">client_id</code>----邮箱<code class="{{legacyCodeCls}}">refresh_token</code></div>
+          </div>
+        </div>
+
+        <!-- 改动后：方案 C -->
+        <div style="padding:16px 18px;border-radius:8px;background:{{selectedSurface}};border:1px solid {{accentCol}};display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:14px;font-weight:560;color:{{textPrimary}}">方案 C · 墨迹微底 + 底边基线标尺（不打断阅读眼动）</span>
+            <span style="font-size:14px;color:{{accentCol}};font-weight:500">下划线 `_` 与底边自然分离</span>
+          </div>
+          <div style="padding:14px 12px;border-radius:6px;background:{{paperBg}};border:1px solid {{borderCol}};display:flex;align-items:center;gap:10px;font-size:16px;line-height:26px;color:{{editorText}}">
+            <span aria-hidden="true" style="color:{{handleCol}};display:inline-flex;align-items:center">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"/><circle cx="10.5" cy="3.5" r="1.2"/><circle cx="5.5" cy="8" r="1.2"/><circle cx="10.5" cy="8" r="1.2"/><circle cx="5.5" cy="12.5" r="1.2"/><circle cx="10.5" cy="12.5" r="1.2"/></svg>
+            </span>
+            <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #8a8984;display:inline-block;flex:none"></span>
+            <div>格式：邮箱----密码----邮箱<code class="{{v3CodeCls}}">client_id</code>----邮箱<code class="{{v3CodeCls}}">refresh_token</code></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 真实编辑器版心（700px）交互逻辑演示 -->
+    <section style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:28px 32px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid {{borderCol}};padding-bottom:14px">
+        <span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">编辑器标准版心（700px）· 焦点底线点亮与连续分隔符排印优化</span>
+        <span style="font-size:14px;color:{{textSecondary}}">点击顶部按钮预览「光标在内底线点亮」与「分隔符 ---- 自动避让」</span>
+      </div>
+
+      <div style="max-width:700px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px;font-size:16px;line-height:26px;color:{{editorText}}">
+
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;margin:0 -8px;border-radius:6px;background:{{activeRowBg}}">
+          <span aria-hidden="true" style="color:{{handleCol}};display:inline-flex;align-items:center">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"/><circle cx="10.5" cy="3.5" r="1.2"/><circle cx="5.5" cy="8" r="1.2"/><circle cx="10.5" cy="8" r="1.2"/><circle cx="5.5" cy="12.5" r="1.2"/><circle cx="10.5" cy="12.5" r="1.2"/></svg>
+          </span>
+          <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #8a8984;display:inline-block;flex:none"></span>
+
+          <sc-if value="{{isRead}}" hint-placeholder-val="{{true}}">
+            <div>格式：邮箱----密码----邮箱<code class="{{v3CodeCls}}">client_id</code>----邮箱<code class="{{v3CodeCls}}">refresh_token</code></div>
+          </sc-if>
+
+          <sc-if value="{{isFocus}}" hint-placeholder-val="{{false}}">
+            <div style="display:flex;align-items:center;flex-wrap:wrap">
+              <span>格式：邮箱----密码----邮箱</span>
+              <code class="{{v3FocusCls}}">client<span style="display:inline-block;width:1.5px;height:16px;background:{{accentCol}};vertical-align:middle;margin:0 0.5px"></span>_id</code>
+              <span>----邮箱</span>
+              <code class="{{v3CodeCls}}">refresh_token</code>
+              <span style="margin-left:8px;font-size:14px;color:{{accentCol}}">← 光标位于代码内：底边标尺加深为 2px Ocean 蓝，明确提示当前输入会沿用代码样式</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{isSep}}" hint-placeholder-val="{{false}}">
+            <div style="display:flex;align-items:center;flex-wrap:wrap">
+              <span>格式：邮箱</span>
+              <span class="{{sepCls}}">----</span>
+              <span>密码</span>
+              <span class="{{sepCls}}">----</span>
+              <span>邮箱</span>
+              <code class="{{v3CodeCls}}">client_id</code>
+              <span class="{{sepCls}}">----</span>
+              <span>邮箱</span>
+              <code class="{{v3CodeCls}}">refresh_token</code>
+              <span style="margin-left:8px;font-size:14px;color:{{accentCol}}">← 连续 `----` 自动收敛字距并退让灰度，凸显两侧字段</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <p style="margin:4px 0 0 24px">
+          在大段技术说明中，例如调用 <code class="{{v3CodeCls}}">POST /oauth2/v2.0/token</code> 传入 <code class="{{v3CodeCls}}">client_id</code>、<code class="{{v3CodeCls}}">scope</code> 与 <code class="{{v3CodeCls}}">refresh_token</code> 时，方案 C 依靠微暖底色与底边细标尺区分代码，既解决了贴字拥挤，又保持整页纸面安静纯粹。
+        </p>
+      </div>
+    </section>
+
+    <!-- 3. 方案 C 核心特性说明（3 栏） -->
+    <section style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">1. 底边标尺定位起止边界</span>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          省去左右两侧竖向边框，改用 <code class="{{v3CodeCls}}">1.5px</code> 浅海蓝底边（<code class="{{v3CodeCls}}">#c5d3ec</code>）托住等宽文字，既彻底释放了 <code class="{{v3CodeCls}}">client_id</code> 中下划线 <code class="{{v3CodeCls}}">_</code> 的底部空间，又清晰标示每个行内代码的起止宽度。
+        </p>
+      </div>
+
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">2. 内外状态看底线即知</span>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          解决「光标在边界处分不清继续打字是不是代码」的痛点：只要光标还在代码属性内，底边标尺立刻点亮为 <code class="{{v3CodeCls}}">2px</code> 强调蓝；一旦按 <code class="{{v3CodeCls}}">→</code> 跨出右边界，底线恢复静态浅色。
+        </p>
+      </div>
+
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">3. 连续连字符与中西文微距</span>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          针对笔记中常见的 <code class="{{v3CodeCls}}">----</code>、<code class="{{v3CodeCls}}">::</code>、<code class="{{v3CodeCls}}">|</code> 等字段连接符，以及汉字紧邻英文代码的场景，自动留出 <code class="{{v3CodeCls}}">3.5px</code> 视觉缓冲带，彻底告别粘连。
+        </p>
+      </div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = { dark: false, mode: 'read' };
+  }
+  setLight() { this.setState({ dark: false }); }
+  setDark() { this.setState({ dark: true }); }
+  setStateRead() { this.setState({ mode: 'read' }); }
+  setStateFocus() { this.setState({ mode: 'focus' }); }
+  setStateSep() { this.setState({ mode: 'sep' }); }
+
+  renderVals() {
+    const d = this.state.dark;
+    const m = this.state.mode;
+    const activeBg = d ? '#343434' : '#e5edfc';
+    const activeCol = d ? '#ececec' : '#20242c';
+    const activeRing = d ? 'inset 0 0 0 1px #779de8' : 'inset 0 0 0 1px #547dd0';
+    const idleCol = d ? '#b4b4b4' : '#526071';
+
+    return {
+      pageBg: d ? '#181818' : '#f8f8f8',
+      barBg: d ? '#222222' : '#fafafa',
+      shellBg: d ? '#343434' : '#f1f1f1',
+      cardBg: d ? '#222222' : '#ffffff',
+      paperBg: d ? '#181818' : '#ffffff',
+      subSurface: d ? '#1b1b1b' : '#f8f8f8',
+      selectedSurface: d ? '#232c3d' : '#f3f7fe',
+      activeRowBg: m === 'read' ? 'transparent' : (d ? '#232c3d' : '#f5f8fe'),
+      borderCol: d ? '#2e2e2e' : '#e4e6ea',
+      btnBorder: d ? '#444444' : '#dcdcdc',
+      textPrimary: d ? '#ececec' : '#20242c',
+      textSecondary: d ? '#b4b4b4' : '#526071',
+      editorText: d ? '#ececec' : '#1f1e1d',
+      handleCol: d ? '#6e6e6e' : '#b0afa9',
+      accentCol: d ? '#779de8' : '#547dd0',
+
+      v3CodeCls: d ? 'ic-v3-dark' : 'ic-v3-light',
+      v3FocusCls: d ? 'ic-v3-focus-dark' : 'ic-v3-focus-light',
+      sepCls: d ? 'sep-chip-dark' : 'sep-chip-light',
+      legacyCodeCls: d ? 'ic-legacy-dark' : 'ic-legacy-light',
+
+      isRead: m === 'read',
+      isFocus: m === 'focus',
+      isSep: m === 'sep',
+
+      readBg: m === 'read' ? activeBg : 'transparent',
+      readCol: m === 'read' ? activeCol : idleCol,
+      readRing: m === 'read' ? activeRing : 'none',
+
+      focusBg: m === 'focus' ? activeBg : 'transparent',
+      focusCol: m === 'focus' ? activeCol : idleCol,
+      focusRing: m === 'focus' ? activeRing : 'none',
+
+      sepBg: m === 'sep' ? activeBg : 'transparent',
+      sepCol: m === 'sep' ? activeCol : idleCol,
+      sepRing: m === 'sep' ? activeRing : 'none',
+
+      lightBtnBg: !d ? activeBg : 'transparent',
+      lightBtnCol: !d ? activeCol : idleCol,
+      lightBtnRing: !d ? activeRing : 'none',
+
+      darkBtnBg: d ? activeBg : 'transparent',
+      darkBtnCol: d ? activeCol : idleCol,
+      darkBtnRing: d ? activeRing : 'none'
+    };
+  }
+}
+</script>
+</body>
+</html>
