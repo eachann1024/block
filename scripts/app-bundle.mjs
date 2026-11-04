@@ -29,6 +29,7 @@ const plistKeys = [
   ["CFBundleIdentifier", bundleId],
   ["CFBundleExecutable", "thinkly-fast"],
   ["CFBundlePackageType", "APPL"],
+  ["CFBundleIconFile", "AppIcon"],
   ["CFBundleVersion", "1"],
   ["CFBundleShortVersionString", "0.1.0"],
   ["LSMinimumSystemVersion", "12.0"],
