@@ -166,7 +166,7 @@ pub fn serialize(doc: &Doc) -> String {
         if let Some(table) = &block.meta.table { table::serialize(table, &mut out); continue; }
         if block.meta.raw_source.is_some() { out.push_str(&block.text); continue; }
         if let Some(callout) = block.meta.callout { containers::serialize_callout(block, callout, &mut out); continue; }
-        if block.kind == Kind::Paragraph && (block.meta.html_paragraph.is_some() || block.meta.indent > 0) {
+        if block.meta.html_paragraph.is_some() || (block.kind == Kind::Paragraph && block.meta.indent > 0) {
             paragraph::serialize(block, &mut out); continue;
         }
         if let Some(language) = &block.meta.code_language {
