@@ -27,11 +27,11 @@ fn margins(block: &Block) -> (f32, f32) {
     match (block.kind, block.meta.heading_level) {
         (Kind::H1, _) => (0., 8.),
         (Kind::H2, _) => (35.2, 11.),
-        (Kind::H3, Some(4)) => (20., 6.),
-        (Kind::H3, Some(5 | 6)) => (16., 5.),
+        (Kind::H3, Some(4)) => (20.8, 4.8),
+        (Kind::H3, Some(5 | 6)) => (16.8, 3.5),
         (Kind::H3, _) => (25.2, 7.2),
         (Kind::Quote, _) if block.meta.callout.is_none() => (12.8, 12.8),
-        _ if block.meta.code_language.is_some() => (8.4, 8.4),
+        _ if super::block_menu::is_divider(block) => (16.5, 16.5),
         _ => (9.6, 9.6),
     }
 }
@@ -43,7 +43,23 @@ fn is_list_kind(block: &Block) -> bool {
 fn collapsed_gap(prev: &Block, block: &Block) -> f32 {
     if is_list_kind(prev) && is_list_kind(block) && prev.meta.column.is_none() { return 4.; }
     let above = if prev.meta.column.is_some() { 9.6 } else { margins(prev).1 };
-    above.max(margins(block).0)
+    let below = if prev.kind == Kind::H1
+        && !matches!(block.kind, Kind::H1 | Kind::H2 | Kind::H3)
+        && !super::block_menu::is_divider(block)
+        && block.meta.table.is_none()
+    {
+        0.
+    } else {
+        margins(block).0
+    };
+    if prev.meta.table.is_some() {
+        let next_mt = if block.meta.table.is_some() { 18. } else { below };
+        return (10. + next_mt - super::table_layout::EXTEND_ROOM).max(0.);
+    }
+    if block.meta.table.is_some() {
+        return above.max(2.) + 16.;
+    }
+    above.max(below)
 }
 /// (top, bottom) padding of a row; the gap between rows is carried by the lower row's top.
 fn row_pads(this: &Editor, index: usize) -> (f32, f32) {
@@ -93,8 +109,8 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
             this.hover_block(id, *hovered, cx);
         }))
-        .child(div().flex().items_start().w_full().min_w_0().gap(px(ROW_GAP)).pr(px(right_inset))
-            .child(div().w(px(handle_w)).h(px(0.)).flex_none().relative()
+        .child(div().flex().items_start().w_full().min_w_0().pr(px(right_inset))
+            .child(div().w(px(handle_w)).h(px(0.)).mr(px(ROW_GAP)).flex_none().relative()
                 .child(crate::ui::motion::reveal_fade(div().absolute().right_0().top(px(handle_top)).h(px(26.)).flex().items_center().justify_end().gap(px(2.))
                     .when(regular_handles && !blank, |row| row
                         .child(grip_button(("drag", id as usize), grip_active, cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
@@ -168,7 +184,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                 .when(!static_view && !preview_lang && code_lang.is_some(), |body| {
                     body.child(super::code_block::copy_button(editor, id, code_lang.unwrap_or_default(), code_visible, cx))
                 })))
-        .when_some(drop_edge, |row, after| row.child(div().absolute().left(px(handle_w)).right(px(right_inset))
+        .when_some(drop_edge, |row, after| row.child(div().absolute().left(px(handle_w + ROW_GAP)).right(px(right_inset))
             .h(px(2.)).bg(theme.accent)
             .when(after, |line| line.bottom_0()).when(!after, |line| line.top_0())))
 }
@@ -176,7 +192,7 @@ fn todo_box(checked: bool, top: f32, toggle: impl Fn(&mut gpui::App) + 'static) 
     let dark = is_dark();
     let border: gpui::Hsla = if checked { rgb(0x2f6fe4).into() } else if dark { rgb(0x787772).into() } else { gpui::rgba(0x0b0b0b80).into() };
     let hover_border: gpui::Hsla = if checked { rgb(0x1f57c0).into() } else if dark { rgb(0x9b9a95).into() } else { gpui::rgba(0x0b0b0bcc).into() };
-    div().mt(px(top)).ml(px(4.)).size(px(16.)).flex().items_center().justify_center().rounded(px(4.)).cursor(CursorStyle::PointingHand)
+    div().mt(px(top)).ml(px(4.8)).size(px(16.)).flex().items_center().justify_center().rounded(px(4.)).cursor(CursorStyle::PointingHand)
         .border_1().border_color(border).hover(move |s| s.border_color(hover_border))
         .when(checked, |b| b.bg(rgb(0x2f6fe4)).hover(|s| s.bg(rgb(0x1f57c0))).child(icon(Icon::Check, px(12.),
             IconColors { line: rgb(0xffffff).into(), fill: transparent_black(), accent: transparent_black() })))
