@@ -94,6 +94,7 @@ impl Editor {
         self.persistence.base = session.base;
         self.persistence.timer = None;
         self.path = Some(path);
+        self.link_ui.quiet = Some(self.caret.head);
         self.refresh_find_matches(cx);
         cx.notify();
     }

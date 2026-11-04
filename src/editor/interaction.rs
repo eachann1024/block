@@ -28,7 +28,7 @@ impl Editor {
     }
     pub(in crate::editor) fn clear_pointer(&mut self) {
         self.dragging = None; self.drag_over = None; self.selecting = false;
-        self.selection_origin = None; self.table_drag = None; self.link_ui = Default::default();
+        self.selection_origin = None; self.table_drag = None; self.link_ui.reset_hover();
     }
     pub(in crate::editor) fn hover_block(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
         if self.minimal || self.dragging.is_some() || self.table_drag.is_some() || self.selecting { return; }
