@@ -1,6 +1,6 @@
 # Yu
 
-Yu 是 macOS 原生的 Markdown 块编辑器（基于 GPUI 与 Rust 构建）。文字之隅，落笔即成——打开、输入、拖动，都在毫秒内完成。
+文字之隅，落笔即成。
 
 - Open a folder and browse its Markdown files as a tree (folders first, then
   case-insensitive natural order). The last folder is remembered in
