@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "cargo run",
+    "test": "cargo run -- --smoke",
     "build": "bun scripts/build-app.mjs",
     "build:web": "bun scripts/build-web.mjs",
     "logs": "tail -n 100 -f ~/Library/Logs/ThinklyFast/thinkly-fast.log"
