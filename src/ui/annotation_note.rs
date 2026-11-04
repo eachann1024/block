@@ -70,32 +70,72 @@ pub fn status_dot(status: u32) -> Div {
     div().size(px(6.)).flex_none().rounded_full().bg(rgb(status))
 }
 
-/// Single-line micro strip (36px): `[dot] text [actions]`, no card, no shadow.
+/// 8px status dot for the in-place narrow popover header.
+pub fn popover_dot(status: u32) -> Div {
+    div().size(px(8.)).flex_none().rounded_full().bg(rgb(status))
+}
+
+/// Wide-rail micro strip container (`border-radius: 8px`, `padding: 8px 10px`, 1px border).
 pub fn strip(id: impl Into<ElementId>, active: bool) -> Stateful<Div> {
     let theme = Theme::ocean();
-    div().id(id).w_full().h(px(36.)).px(px(8.)).rounded(px(6.)).flex().items_center().gap(px(8.))
-        .when(active, |s| s.bg(theme.selected))
-        .hover(move |s| s.bg(theme.hover))
+    div().id(id).w_full().px(px(10.)).py(px(8.)).rounded(px(8.)).bg(theme.menu).border_1()
+        .border_color(if active { theme.accent } else { theme.sidebar_border })
+        .flex().flex_col().gap(px(6.))
+        .when(!active, |s| s.hover(move |h| h.bg(theme.hover)))
 }
 
-/// Ellipsized single-line annotation text.
-pub fn strip_text(text: impl Into<SharedString>) -> Div {
-    div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-        .text_size(px(14.)).line_height(px(20.)).text_color(Theme::ocean().text_secondary).child(text.into())
+/// Annotation text inside a micro strip: single-line ellipsized at rest, full multi-line when expanded.
+pub fn strip_text(text: impl Into<SharedString>, expanded: bool) -> Div {
+    div().flex_1().min_w_0().text_size(px(14.)).line_height(px(20.)).text_color(Theme::ocean().text)
+        .when(!expanded, |d| d.overflow_hidden().whitespace_nowrap().text_ellipsis())
+        .child(text.into())
 }
 
-/// Compact glyph action (`✓` / `↺`) inside a strip.
+/// Compact 22×22 glyph action (`✓` / `↺`) inside a wide-rail micro strip.
 pub fn glyph_action(id: impl Into<ElementId>, glyph: &'static str, accent: bool) -> Stateful<Div> {
     let theme = Theme::ocean();
-    div().id(id).size(px(24.)).flex_none().rounded(px(4.)).flex().items_center().justify_center()
-        .text_size(px(14.)).text_color(if accent { theme.accent } else { theme.text_secondary })
+    div().id(id).size(px(22.)).flex_none().rounded(px(4.)).flex().items_center().justify_center()
+        .text_size(px(14.)).line_height(px(16.))
+        .when(accent, |b| b.bg(theme.selected).text_color(theme.accent))
+        .when(!accent, |b| b.text_color(theme.text_secondary))
         .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover)).child(glyph)
 }
 
-/// Round numbered margin badge for narrow windows, tinted by status.
-pub fn badge(id: impl Into<ElementId>, index: usize, status: u32, active: bool) -> Stateful<Div> {
-    div().id(id).size(px(22.)).rounded_full().bg(rgb(status)).flex().items_center().justify_center()
-        .text_size(px(14.)).line_height(px(16.)).font_weight(FontWeight(500.)).text_color(rgb(0x2b2b2b))
-        .cursor(CursorStyle::PointingHand).when(active, |s| s.border_2().border_color(Theme::ocean().accent))
+/// Follow-up submit button (`↵` in wide rail, `发送 ↵` in narrow popover).
+pub fn send_button(id: impl Into<ElementId>, label: impl Into<SharedString>, compact: bool) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    div().id(id).flex_none().border_1().border_color(theme.accent).bg(theme.selected).text_color(theme.text)
+        .when(compact, |b| b.size(px(28.)).rounded(px(5.)))
+        .when(!compact, |b| b.h(px(30.)).px(px(12.)).rounded(px(6.)).font_weight(FontWeight(500.)))
+        .flex().items_center().justify_center().text_size(px(14.)).line_height(px(20.))
+        .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
+        .child(label.into())
+}
+
+/// Dismiss pill (`收起`) in the narrow in-place popover header.
+pub fn close_pill(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    div().id(id).h(px(26.)).px(px(8.)).flex_none().rounded(px(6.)).bg(theme.shell).text_color(theme.text_secondary)
+        .flex().items_center().justify_center().text_size(px(14.)).line_height(px(20.))
+        .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover).text_color(theme.text))
+        .child(label.into())
+}
+
+/// 24×24 round numbered margin badge for narrow windows, styled per Scheme A spec.
+pub fn badge(id: impl Into<ElementId>, index: usize, generated: bool, active: bool) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    let dark = crate::theme::is_dark();
+    let bg = if generated {
+        theme.selected
+    } else if dark {
+        rgb(0x4a3c21).into()
+    } else {
+        rgb(0xfef0d1).into()
+    };
+    let border = if active || generated { theme.accent } else { theme.btn_border };
+    div().id(id).size(px(24.)).rounded_full().bg(bg).border_1().border_color(border)
+        .flex().items_center().justify_center()
+        .text_size(px(14.)).line_height(px(16.)).font_weight(FontWeight(600.)).text_color(theme.text)
+        .cursor(CursorStyle::PointingHand).hover(move |s| s.border_color(theme.accent))
         .child(format!("{index}"))
 }
