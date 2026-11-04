@@ -191,6 +191,20 @@ impl Editor {
         cx.notify();
     }
 
+    /// Folds or unfolds the heading at the caret, or the nearest heading that governs it (⌘⌥T).
+    pub(super) fn toggle_fold_at_caret(&mut self, cx: &mut Context<Self>) {
+        let id = self.caret.head.block;
+        let Some(index) = self.doc.index_of(id) else { return };
+        if heading_level(&self.doc.blocks[index]).is_some() {
+            return self.toggle_fold(id, cx);
+        }
+        let governing = (0..index).rev().find(|&i| heading_level(&self.doc.blocks[i]).is_some() && index < fold_end(&self.doc, i));
+        if let Some(h) = governing {
+            let hid = self.doc.blocks[h].id;
+            self.toggle_fold(hid, cx);
+        }
+    }
+
     pub(super) fn unfold_heading(&mut self, id: u64, cx: &mut Context<Self>) -> bool {
         if !self.folded.remove(&id) {
             return false;
