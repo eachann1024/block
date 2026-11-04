@@ -31,7 +31,7 @@ pub(super) fn image_toolbar(
     let more_open = matches!(pop, Some(ImagePop::More));
     let bar = pill().id(("img-toolbar", id as usize)).py(px(5.)).px(px(7.)).gap(px(3.)).rounded(px(15.))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .child(tb_btn(editor, id, 0, Icon::TbComment, tr("添加评论", "Add comment"), false, false, move |this, w, cx| {
+        .child(tb_btn(editor, id, 0, Icon::TbComment, tr("添加批注", "Add annotation"), false, false, move |this, w, cx| {
             this.image_menu = None;
             let at = Position { block: id, offset: 0 };
             this.caret.anchor = at; this.caret.head = at;

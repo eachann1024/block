@@ -1,70 +1,86 @@
 //! Annotation mode (F-Annotate): selection comments, emoji reactions, inline
 //! highlights (`#fef0d1` anchor / `#fdda8c` active / `#fdf3c4` AI-modified), and AI rewrites.
-use std::{
-    collections::BTreeMap, fs, ops::Range, path::{Path, PathBuf}, process::Command,
-    sync::{Arc, atomic::AtomicBool, mpsc}, time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{collections::BTreeMap, fs, ops::Range, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
 use gpui::{BorderStyle, Context, Entity, Pixels, Point, Subscription, Window, point, prelude::*, px, quad, rgb, transparent_black};
 use gpui_component::input::{InputEvent, InputState};
 use serde::{Deserialize, Serialize};
 use crate::theme::tr;
-use super::{
-    ai::provider::{self, Event}, input::transactions::ListChange, model::Doc,
-    view::{Editor, layout::TextLayout, selection::Position},
-};
+use super::{model::Doc, view::{Editor, layout::TextLayout}};
+#[path = "annotate_ai.rs"] mod ai;
+#[path = "annotate_actions.rs"] mod actions;
+#[path = "annotate_revert.rs"] mod revert;
 
 pub(super) const HL_SELECT_BG: u32 = 0xfef0d1;
 pub(super) const HL_ACTIVE_BG: u32 = 0xfdda8c;
 pub(super) const HL_SELECT_BG_DARK: u32 = 0x4a3c21;
 pub(super) const HL_ACTIVE_BG_DARK: u32 = 0x81611e;
 pub(super) const HL_AI_BG: u32 = 0xfdf3c4;
-pub(super) const HL_AI_BORDER: u32 = 0xefd77a;
+pub(super) const ANNOTATION_PENDING: u32 = 0xf5c84c;
+pub(super) const ANNOTATION_GENERATED: u32 = 0x547dd0;
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(super) struct Comment {
+pub(super) struct Annotation {
     pub id: u64, pub block_index: usize, pub start: usize, pub end: usize,
-    pub quote: String, pub author: String, pub avatar: String, pub time: String,
-    pub body: String, pub sent_to_claude: bool,
+    pub quote: String, pub body: String,
     #[serde(default)] pub reactions: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")] pub ai_rewritten: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")] pub ai_error: Option<String>,
+    /// Missing means a legacy rewrite already changed the document.
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub applied: Option<bool>,
     #[serde(skip)] pub streaming: bool,
+    #[serde(skip)] pub request_id: Option<u64>,
+}
+
+impl Annotation {
+    pub(super) fn is_applied(&self) -> bool { self.applied.unwrap_or(self.ai_rewritten.is_some()) }
+    pub(super) fn is_pending(&self) -> bool {
+        !self.is_applied() && self.ai_rewritten.is_none() && !self.body.trim().is_empty() && !self.quote.trim().is_empty()
+    }
+    pub(super) fn is_generated(&self) -> bool { !self.is_applied() && self.ai_rewritten.as_ref().is_some_and(|text| !text.is_empty()) }
+    pub(super) fn has_rewrite(&self) -> bool { self.ai_rewritten.as_ref().is_some_and(|text| !text.is_empty()) }
 }
 
 pub(super) struct AnnotateComposer {
     pub block_id: u64, pub block_index: usize, pub range: Range<usize>, pub quote: String,
-    pub send_to_claude: bool, pub input: Entity<InputState>, _sub: Subscription,
+    pub input: Entity<InputState>, _sub: Subscription,
+}
+
+pub(super) struct AnnotationFollowup {
+    pub annotation_id: u64, pub input: Entity<InputState>, _sub: Subscription,
 }
 
 #[derive(Clone)]
 pub(super) struct ReactionPicker {
     pub block_id: u64, pub block_index: usize, pub range: Range<usize>,
-    pub quote: String, pub comment_id: Option<u64>, pub anchor: Point<Pixels>,
+    pub quote: String, pub annotation_id: Option<u64>, pub anchor: Point<Pixels>,
 }
 
 #[derive(Default)]
 pub(super) struct AnnotateState {
-    pub loaded_path: Option<PathBuf>, pub comments: Vec<Comment>, pub composer: Option<AnnotateComposer>,
-    pub reactions: Option<ReactionPicker>, pub active_comment: Option<u64>, pub editor_top: Pixels,
+    pub loaded_path: Option<PathBuf>, pub annotations: Vec<Annotation>, pub composer: Option<AnnotateComposer>,
+    pub followup: Option<AnnotationFollowup>, pub reactions: Option<ReactionPicker>,
+    pub active_annotation: Option<u64>, pub editor_top: Pixels, pub request_seq: u64,
 }
 
 impl AnnotateState {
-    pub(super) fn has_visible_rail(&self) -> bool { !self.comments.is_empty() || self.composer.is_some() }
+    pub(super) fn has_visible_rail(&self) -> bool {
+        self.composer.is_some() || self.annotations.iter().any(|note| !note.is_applied() || note.has_rewrite())
+    }
 }
 
 #[derive(Default, Serialize, Deserialize)]
-struct AnnotationStore { notes: BTreeMap<String, Vec<Comment>> }
+struct AnnotationStore { notes: BTreeMap<String, Vec<Annotation>> }
 
 fn store_path() -> Option<PathBuf> {
     Some(crate::files::app_data_dir("Thinkly Fast").join("annotations.json"))
 }
 
-fn load_for(path: &Path) -> Vec<Comment> {
+fn load_for(path: &Path) -> Vec<Annotation> {
     let store: AnnotationStore = store_path().and_then(|p| fs::read_to_string(p).ok())
         .and_then(|raw| serde_json::from_str(&raw).ok()).unwrap_or_default();
     store.notes.get(path.to_string_lossy().as_ref()).cloned().unwrap_or_default()
 }
 
-fn save_for(path: &Path, comments: &[Comment]) {
+fn save_for(path: &Path, comments: &[Annotation]) {
     let Some(file) = store_path() else { return };
     if let Some(parent) = file.parent() { let _ = fs::create_dir_all(parent); }
     let mut store: AnnotationStore = fs::read_to_string(&file).ok().and_then(|raw| serde_json::from_str(&raw).ok()).unwrap_or_default();
@@ -77,21 +93,23 @@ fn save_for(path: &Path, comments: &[Comment]) {
 fn next_id() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(1) }
 #[cfg(target_family = "wasm")]
 fn next_id() -> u64 { let _ = (SystemTime::UNIX_EPOCH, UNIX_EPOCH); static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
-fn now_hm() -> String {
-    Command::new("date").arg("+%H:%M").output().ok().and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).unwrap_or_else(|| tr("刚刚", "Just now").into())
-}
-/// Resolves a comment's current `(block_id, byte_range, is_ai_modified)` in `doc`.
-pub(super) fn resolve_comment_span(doc: &Doc, comment: &Comment) -> Option<(u64, Range<usize>, bool)> {
-    if let Some(rewritten) = comment.ai_rewritten.as_deref().filter(|s| !s.is_empty()) {
-        if let Some((id, range)) = find_snippet(doc, comment.block_index, comment.start, rewritten) { return Some((id, range, true)); }
+/// Resolves an annotation's current `(block_id, byte_range, is_ai_modified)` in `doc`.
+pub(super) fn resolve_annotation_span(doc: &Doc, annotation: &Annotation) -> Option<(u64, Range<usize>, bool)> {
+    if annotation.is_applied()
+        && let Some(rewritten) = annotation.ai_rewritten.as_deref().filter(|s| !s.is_empty())
+    {
+        if let Some((id, range)) = find_snippet(doc, annotation.block_index, annotation.start, rewritten) {
+            return Some((id, range, true));
+        }
     }
-    if !comment.quote.is_empty() {
-        if let Some((id, range)) = find_snippet(doc, comment.block_index, comment.start, &comment.quote) { return Some((id, range, false)); }
+    if !annotation.quote.is_empty() {
+        if let Some((id, range)) = find_snippet(doc, annotation.block_index, annotation.start, &annotation.quote) {
+            return Some((id, range, annotation.ai_rewritten.is_some()));
+        }
     }
-    doc.blocks.get(comment.block_index).map(|b| {
-        let end = comment.end.min(b.text.len());
-        (b.id, comment.start.min(end)..end, comment.ai_rewritten.is_some())
+    doc.blocks.get(annotation.block_index).map(|b| {
+        let end = annotation.end.min(b.text.len());
+        (b.id, annotation.start.min(end)..end, annotation.ai_rewritten.is_some())
     })
 }
 
@@ -110,11 +128,11 @@ fn find_snippet(doc: &Doc, preferred_index: usize, preferred_start: usize, needl
 pub(super) fn paint_highlights(editor: &Editor, block: u64, layout: &TextLayout, window: &mut Window) {
     let dark = crate::theme::is_dark();
     let (base, active_bg) = if dark { (HL_SELECT_BG_DARK, HL_ACTIVE_BG_DARK) } else { (HL_SELECT_BG, HL_ACTIVE_BG) };
-    for comment in &editor.annotate.comments {
-        let Some((id, range, is_ai)) = resolve_comment_span(&editor.doc, comment) else { continue };
+    for annotation in &editor.annotate.annotations {
+        let Some((id, range, is_ai)) = resolve_annotation_span(&editor.doc, annotation) else { continue };
         if id != block || range.is_empty() { continue; }
-        let target = if editor.annotate.active_comment == Some(comment.id) { 1. } else { 0. };
-        let level = crate::ui::fade::level(comment.id, target, window);
+        let target = if editor.annotate.active_annotation == Some(annotation.id) { 1. } else { 0. };
+        let level = crate::ui::fade::level(annotation.id, target, window);
         let normal = if is_ai && !dark { HL_AI_BG } else { base };
         let color = crate::ui::fade::mix(normal, active_bg, level);
         for rect in layout.rects(range) {
@@ -134,15 +152,16 @@ impl Editor {
     pub(super) fn sync_annotations(&mut self) {
         if self.annotate.loaded_path != self.path {
             self.annotate.loaded_path = self.path.clone();
-            self.annotate.comments = self.path.as_deref().map(load_for).unwrap_or_default();
+            self.annotate.annotations = self.path.as_deref().map(load_for).unwrap_or_default();
             self.annotate.composer = None;
+            self.annotate.followup = None;
             self.annotate.reactions = None;
-            self.annotate.active_comment = None;
+            self.annotate.active_annotation = None;
         }
     }
 
     pub(super) fn persist_annotations(&self) {
-        if let Some(path) = self.path.as_deref() { save_for(path, &self.annotate.comments); }
+        if let Some(path) = self.path.as_deref() { save_for(path, &self.annotate.annotations); }
     }
 
     fn selected_annotation_target(&self) -> Option<(u64, usize, Range<usize>, String)> {
@@ -157,12 +176,11 @@ impl Editor {
         (!quote.trim().is_empty()).then_some((a.block, ai, range, quote))
     }
 
-    /// Toolbar 「添加批注」: highlight the selection and open the composer card.
+    /// Toolbar 「添加批注」: highlight the selection and open the composer.
     pub(super) fn start_annotation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.sync_annotations();
         let Some((block_id, block_index, range, quote)) = self.selected_annotation_target() else { return };
-        let send_to_claude = !range.is_empty();
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder(tr("输入批注或修改指令…", "Add comment or edit instruction…")));
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(tr("输入批注或修改指令…", "Add an annotation or edit instruction…")));
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
             InputEvent::PressEnter { secondary: false, .. } => this.submit_annotation(window, cx),
             InputEvent::Change => cx.notify(),
@@ -171,7 +189,7 @@ impl Editor {
         let focus_input = input.clone();
         self.annotate.reactions = None;
         self.format = None;
-        self.annotate.composer = Some(AnnotateComposer { block_id, block_index, range, quote, send_to_claude, input, _sub: sub });
+        self.annotate.composer = Some(AnnotateComposer { block_id, block_index, range, quote, input, _sub: sub });
         cx.defer_in(window, move |_, window, cx| { focus_input.update(cx, |i, cx| i.focus(window, cx)); });
         cx.notify();
     }
@@ -183,11 +201,11 @@ impl Editor {
         let anchor = self.toolbar_anchor
             .or_else(|| self.list.bounds_for_item(block_index).map(|b| point(b.center().x, b.top())))
             .unwrap_or_else(|| point(px(360.), px(140.)));
-        let comment_id = self.annotate.comments.iter()
-            .find(|c| c.block_index == block_index && (c.quote == quote || c.ai_rewritten.as_deref() == Some(quote.as_str())))
-            .map(|c| c.id);
+        let annotation_id = self.annotate.annotations.iter()
+            .find(|note| note.block_index == block_index && (note.quote == quote || note.ai_rewritten.as_deref() == Some(quote.as_str())))
+            .map(|note| note.id);
         self.format = None;
-        self.annotate.reactions = Some(ReactionPicker { block_id, block_index, range, quote, comment_id, anchor });
+        self.annotate.reactions = Some(ReactionPicker { block_id, block_index, range, quote, annotation_id, anchor });
         cx.notify();
     }
 
@@ -199,27 +217,19 @@ impl Editor {
 
     pub(super) fn pick_reaction(&mut self, emoji: &str, cx: &mut Context<Self>) {
         let Some(picker) = self.annotate.reactions.take() else { return };
-        let existing = picker.comment_id.and_then(|id| self.annotate.comments.iter_mut().find(|c| c.id == id));
-        if let Some(comment) = existing {
-            if let Some(idx) = comment.reactions.iter().position(|r| r == emoji) { comment.reactions.remove(idx); }
-            else { comment.reactions.push(emoji.to_owned()); }
-            let (id, empty) = (comment.id, comment.body.is_empty() && comment.reactions.is_empty());
-            if empty { self.annotate.comments.retain(|c| c.id != id); }
+        let existing = picker.annotation_id.and_then(|id| self.annotate.annotations.iter_mut().find(|note| note.id == id));
+        if let Some(note) = existing {
+            if let Some(idx) = note.reactions.iter().position(|r| r == emoji) { note.reactions.remove(idx); }
+            else { note.reactions.push(emoji.to_owned()); }
+            let (id, empty) = (note.id, note.body.is_empty() && note.reactions.is_empty());
+            if empty { self.annotate.annotations.retain(|item| item.id != id); }
         } else {
-            self.annotate.comments.push(Comment {
+            self.annotate.annotations.push(Annotation {
                 id: next_id(), block_index: picker.block_index, start: picker.range.start, end: picker.range.end,
-                quote: picker.quote, author: tr("安静的写作者", "Quiet Writer").into(), avatar: tr("安", "Q").into(), time: now_hm(),
-                body: String::new(), sent_to_claude: false, reactions: vec![emoji.to_owned()],
-                ai_rewritten: None, ai_error: None, streaming: false,
+                quote: picker.quote, body: String::new(), reactions: vec![emoji.to_owned()], ai_rewritten: None,
+                ai_error: None, applied: Some(false), streaming: false, request_id: None,
             });
         }
-        self.persist_annotations();
-        cx.notify();
-    }
-
-    pub(super) fn delete_comment(&mut self, id: u64, cx: &mut Context<Self>) {
-        self.annotate.comments.retain(|c| c.id != id);
-        if self.annotate.active_comment == Some(id) { self.annotate.active_comment = None; }
         self.persist_annotations();
         cx.notify();
     }
@@ -229,71 +239,15 @@ impl Editor {
         let body = composer.input.read(cx).value().trim().to_owned();
         if body.is_empty() { return; }
         let Some(composer) = self.annotate.composer.take() else { return };
-        let (id, sent_to_claude, quote) = (next_id(), composer.send_to_claude && !composer.range.is_empty(), composer.quote.clone());
-        self.annotate.comments.push(Comment {
-            id, block_index: composer.block_index, start: composer.range.start, end: composer.range.end,
-            quote: quote.clone(), author: tr("安静的写作者", "Quiet Writer").into(), avatar: tr("安", "Q").into(), time: now_hm(),
-            body: body.clone(), sent_to_claude, reactions: Vec::new(),
-            ai_rewritten: None, ai_error: None, streaming: sent_to_claude,
+        self.annotate.annotations.push(Annotation {
+            id: next_id(), block_index: composer.block_index, start: composer.range.start, end: composer.range.end,
+            quote: composer.quote, body, reactions: Vec::new(), ai_rewritten: None, ai_error: None,
+            applied: Some(false), streaming: false, request_id: None,
         });
         self.persist_annotations();
+        self.caret.anchor = self.caret.head; // collapse selection so the floating toolbar doesn't reappear
+        self.toolbar_anchor = None;
         window.focus(&self.focus, cx);
-        if sent_to_claude { self.run_claude_annotation(id, quote, body, cx); }
         cx.notify();
-    }
-
-    fn run_claude_annotation(&mut self, comment_id: u64, quote: String, instruction: String, cx: &mut Context<Self>) {
-        let system = "你是 Thinkly 笔记的批注修订助手。用户在正文中选中了一段文字并附上批注指令。\
-            请严格按照批注指令改写「选中原文」，只直接输出替换后的新文本本身，不要输出任何解释、引号或多余前后缀。".to_owned();
-        let user = format!("选中原文：\n{quote}\n\n批注指令：\n{instruction}\n\n请直接输出替换「选中原文」的新文本：");
-        let rx = provider::stream(system, user, Arc::new(AtomicBool::new(false)));
-        cx.spawn(async move |this, cx| {
-            let mut buf = String::new();
-            loop {
-                cx.background_executor().timer(Duration::from_millis(40)).await;
-                let mut done = false;
-                let ok = this.update(cx, |this, cx| {
-                    loop {
-                        match rx.try_recv() {
-                            Ok(Event::Thinking(_)) | Ok(Event::ToolCalls(_)) => {}
-                            Ok(Event::Delta(t)) => buf.push_str(&t),
-                            Ok(Event::Done) => { done = true; this.finish_claude_annotation(comment_id, buf.trim(), cx); break; }
-                            Ok(Event::Failed { message, .. }) => {
-                                done = true;
-                                if let Some(c) = this.annotate.comments.iter_mut().find(|c| c.id == comment_id) {
-                                    c.streaming = false;
-                                    c.ai_error = Some(provider::format_error(&message));
-                                }
-                                this.persist_annotations();
-                                break;
-                            }
-                            Err(mpsc::TryRecvError::Empty) => break,
-                            Err(mpsc::TryRecvError::Disconnected) => { done = true; break; }
-                        }
-                    }
-                    cx.notify();
-                });
-                if ok.is_err() || done { break; }
-            }
-        }).detach();
-    }
-
-    fn finish_claude_annotation(&mut self, comment_id: u64, clean: &str, cx: &mut Context<Self>) {
-        if let Some(c) = (!clean.is_empty()).then(|| self.annotate.comments.iter().find(|c| c.id == comment_id).cloned()).flatten() {
-            if let Some((block_id, range, _)) = resolve_comment_span(&self.doc, &c) {
-                if let Some(idx) = self.doc.index_of(block_id) {
-                    let before = self.snapshot();
-                    self.doc.replace_range(block_id, range.clone(), clean);
-                    let pos = Position { block: block_id, offset: range.start + clean.len() };
-                    self.caret.anchor = pos; self.caret.head = pos;
-                    self.record_changes(before, vec![ListChange { start: idx, before: 1, after: 1 }], true, cx);
-                }
-            }
-        }
-        if let Some(c) = self.annotate.comments.iter_mut().find(|c| c.id == comment_id) {
-            c.streaming = false;
-            if !clean.is_empty() { c.ai_rewritten = Some(clean.to_owned()); }
-        }
-        self.persist_annotations();
     }
 }

@@ -1,3 +1,5 @@
+pub mod annotation_actions;
+pub mod annotation_note;
 pub mod dot_pager;
 pub mod dropdown;
 pub mod fade;
