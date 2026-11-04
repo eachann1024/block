@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>批注 · 统一发送交互稿</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button{font:inherit;cursor:pointer}
+button:disabled{cursor:default;opacity:.5}
+.ib{width:30px;height:30px;border:1px solid #dcdcdc;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;padding:0;color:#52514e}
+.ib:hover{background:#eef3fc}
+.ib-ok{background:#547dd0;border-color:#547dd0;color:#fff}
+.ib-ok:hover{background:#3d63b0}
+.gi{width:26px;height:26px;border:0;border-radius:6px;background:transparent;display:flex;align-items:center;justify-content:center;padding:0;color:#52514e}
+.gi:hover{background:#eef3fc}
+@keyframes shimmer{0%{background-position:-240px 0}100%{background-position:240px 0}}
+.sk{height:12px;border-radius:4px;background:linear-gradient(90deg,#eef0f3 0,#dfe6f3 50%,#eef0f3 100%);background-size:240px 12px;animation:shimmer 1.2s linear infinite}
+@keyframes breathe{0%,100%{background-color:#fef0d1}50%{background-color:#fdda8c}}
+.hl-gen{animation:breathe 1.4s ease-in-out infinite;border-radius:2px}
+@keyframes flash{0%{background-color:#c9d8f3}100%{background-color:#e5edfc}}
+.hl-done{animation:flash .9s ease-out;border-radius:2px}
+@keyframes slideIn{0%{opacity:0;transform:translateX(16px)}100%{opacity:1;transform:translateX(0)}}
+.slide{animation:slideIn .24s cubic-bezier(.2,.8,.2,1)}
+@keyframes fadeUp{0%{opacity:0;transform:translateY(4px)}100%{opacity:1;transform:translateY(0)}}
+.fade{animation:fadeUp .3s ease-out}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin .9s linear infinite}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; display: flex; flex-direction: column; background: #ffffff; color: #1f1e1d; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; font-size: 14px; line-height: 20px; overflow: hidden">
+  <div style="height: 40px; flex: none; display: flex; align-items: center; background: #f1f1f1; border-bottom: 1px solid #e6e6e6">
+    <div style="width: 260px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 14px; box-sizing: border-box">
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #ff5f57"></span>
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #febc2e"></span>
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #28c840"></span>
+    </div>
+    <div style="flex: 1; padding: 0 12px; font-weight: 460">产品周报.md</div>
+    <div style="display: flex; align-items: center; gap: 6px; padding: 0 12px">
+      <button onClick="{{reset}}" style="height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #52514e">重置演示</button>
+      <button onClick="{{sendAll}}" disabled="{{sendDisabled}}" style="height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 6px; border: 0; background: #547dd0; color: #ffffff; font-weight: 460">
+        <sc-if value="{{generating}}" hint-placeholder-val="{{false}}">
+          <svg class="spin" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M7 1.5a5.5 5.5 0 1 1-5.5 5.5"/></svg>
+        </sc-if>
+        <span>{{sendLabel}}</span>
+      </button>
+    </div>
+  </div>
+  <div style="flex: 1; min-height: 0; display: flex">
+    <div style="width: 260px; flex: none; background: #fafafa; border-right: 1px solid #e6e6e6; padding: 12px 8px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px">
+      <div style="height: 32px; display: flex; align-items: center; padding: 0 8px; border-radius: 6px; color: #52514e">路线图.md</div>
+      <div style="height: 32px; display: flex; align-items: center; padding: 0 8px; border-radius: 6px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; font-weight: 460">产品周报.md</div>
+      <div style="height: 32px; display: flex; align-items: center; padding: 0 8px; border-radius: 6px; color: #52514e">访谈记录.md</div>
+    </div>
+    <div style="flex: 1; min-width: 0; display: flex; justify-content: center; gap: 32px; padding: 48px 24px 0; box-sizing: border-box; overflow: auto">
+      <div style="width: 580px; flex: none; font-size: 16px; line-height: 28px; display: flex; flex-direction: column; gap: 16px">
+        <h1 style="margin: 0 0 4px; font-size: 28px; line-height: 36px; font-weight: 600">第 44 周产品周报</h1>
+        <sc-for list="{{paras}}" as="p" hint-placeholder-count="4">
+          <p style="margin: 0">{{p.pre}}<span class="{{p.markClass}}" style="background: {{p.markBg}}; color: {{p.markColor}}; border-radius: 2px">{{p.mark}}</span>{{p.post}}</p>
+        </sc-for>
+        <p style="margin: 0; color: #52514e">下周计划：发布 0.9 预览版，收集第一批外部反馈。</p>
+      </div>
+      <div style="width: 300px; flex: none; display: flex; flex-direction: column; gap: 12px; padding-bottom: 24px">
+        <sc-for list="{{cards}}" as="n" hint-placeholder-count="3">
+          <div class="fade" style="background: #ffffff; border: 1px solid {{n.border}}; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px">
+
+            <sc-if value="{{n.isDraft}}" hint-placeholder-val="{{true}}">
+              <div style="display: flex; align-items: flex-start; gap: 8px">
+                <span style="width: 8px; height: 8px; border-radius: 4px; background: #f5c84c; margin-top: 6px; flex: none"></span>
+                <span style="flex: 1">{{n.body}}</span>
+                <button class="gi" aria-label="编辑批注" onClick="{{n.edit}}"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 11.5l.6-2.6 6.6-6.6 2 2-6.6 6.6-2.6.6z"/></svg></button>
+                <button class="gi" aria-label="删除批注" onClick="{{n.remove}}"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4h9M5.5 4V2.5h3V4M3.8 4l.6 7.5h5.2l.6-7.5"/></svg></button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{n.isEditing}}" hint-placeholder-val="{{false}}">
+              <label style="height: 32px; display: flex; align-items: center; padding: 0 8px; border-radius: 6px; background: #f1f1f1; border: 1px solid #547dd0">
+                <input value="{{n.editText}}" onChange="{{n.onEdit}}" aria-label="批注内容" style="flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; outline: none; color: #1f1e1d">
+              </label>
+              <div style="display: flex; justify-content: flex-end; gap: 6px">
+                <button onClick="{{n.cancelEdit}}" style="height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid #dcdcdc; background: #ffffff; color: #1f1e1d">取消</button>
+                <button onClick="{{n.saveEdit}}" style="height: 28px; padding: 0 10px; border-radius: 6px; border: 0; background: #547dd0; color: #ffffff">保存</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{n.isGenerating}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; gap: 8px; color: #52514e">
+                <svg class="spin" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#547dd0" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M7 1.5a5.5 5.5 0 1 1-5.5 5.5"/></svg>
+                <span style="flex: 1">{{n.body}}</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 6px; background: #f8f8f8">
+                <div class="sk" style="width: 100%"></div>
+                <div class="sk" style="width: 72%"></div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{n.showResult}}" hint-placeholder-val="{{false}}">
+              <div class="fade" style="padding: 10px; border-radius: 6px; background: #e5edfc; color: #184f95; font-size: 14px; line-height: 22px">{{n.latest}}</div>
+            </sc-if>
+
+            <sc-if value="{{n.isReview}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; gap: 6px">
+                <button class="ib ib-ok" aria-label="同意，替换原文" onClick="{{n.accept}}"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5l3 3 6-7"/></svg></button>
+                <button class="ib" aria-label="不满意" onClick="{{n.reject}}"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7"/></svg></button>
+                <button class="ib" aria-label="重新生成" onClick="{{n.regen}}"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.5 7a4.5 4.5 0 1 1-1.3-3.2M11.5 2v2.5H9"/></svg></button>
+                <span style="flex: 1"></span>
+                <button class="gi" aria-label="不改了，删除这条批注" onClick="{{n.remove}}"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4h9M5.5 4V2.5h3V4M3.8 4l.6 7.5h5.2l.6-7.5"/></svg></button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{n.isReject}}" hint-placeholder-val="{{false}}">
+              <div class="slide" style="display: flex; align-items: center; gap: 6px">
+                <button class="ib" aria-label="收起" onClick="{{n.cancelReject}}"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7"/></svg></button>
+                <label style="flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; padding: 0 8px; border-radius: 6px; background: #f1f1f1; border: 1px solid #547dd0">
+                  <input value="{{n.feedback}}" onChange="{{n.onFeedback}}" placeholder="哪里不满意？" aria-label="修改意见" style="flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; outline: none; color: #1f1e1d">
+                </label>
+                <button class="ib ib-ok" aria-label="按意见重新生成" onClick="{{n.regenWithFeedback}}"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5l3 3 6-7"/></svg></button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{n.isAccepted}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; gap: 8px; color: #52514e">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#547dd0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5l3 3 6-7"/></svg>
+                <span style="flex: 1">已替换</span>
+                <button onClick="{{n.undo}}" style="height: 26px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #547dd0">撤销</button>
+              </div>
+            </sc-if>
+
+          </div>
+        </sc-for>
+        <sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+          <div style="color: #52514e; padding: 8px 4px">没有批注了</div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+const SEED = [
+  { id: 1, body: '补上样本量', status: 'draft', round: 0, feedback: '', editText: '' },
+  { id: 2, body: '太空泛，写成具体交付', status: 'draft', round: 0, feedback: '', editText: '' },
+  { id: 3, body: '补一句平台差异', status: 'draft', round: 0, feedback: '', editText: '' }
+];
+const QUOTES = {
+  1: '导出 PDF 的成功率提升到了 98%',
+  2: '这周我们团队主要完成了非常多的工作，整体进展还是比较顺利的',
+  3: '图片粘贴在 Windows 上仍然不稳定'
+};
+const REWRITES = {
+  1: ['导出 PDF 成功率提升到 98%（1,240 次导出）', '导出 PDF 成功率从 91% 提升到 98%，样本 1,240 次', '基于 1,240 次导出，PDF 成功率达到 98%'],
+  2: ['本周交付三项：表格列宽拖拽、批注采纳流程、启动提速 40%', '本周完成表格列宽拖拽和批注采纳流程，启动时间缩短 40%', '三项已上线：列宽拖拽、批注采纳、启动提速 40%'],
+  3: ['图片粘贴在 Windows 上仍不稳定（macOS 正常）', 'Windows 下图片粘贴偶发失败，macOS 未复现', '图片粘贴仅在 Windows 上偶发失败']
+};
+const PARAS = [
+  { pre: '本周重点放在编辑器体验上。', id: 1, post: '，剩余失败集中在超长表格。' },
+  { pre: '', id: 2, post: '。下周进入发布前的回归测试。' },
+  { pre: '用户反馈里提到最多的问题是同步偶尔会丢失最后几秒的输入，修复已经合入。', id: 0, post: '' },
+  { pre: '风险方面，', id: 3, post: '，需要在发布前补一轮手测。' }
+];
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { notes: SEED.map((n) => ({ ...n })) };
+    this.timers = [];
+  }
+  componentWillUnmount() { this.timers.forEach(clearTimeout); }
+  patch(id, fields) {
+    this.setState({ notes: this.state.notes.map((n) => (n.id === id ? { ...n, ...fields } : n)) });
+  }
+  generate(id, delay, nextRound) {
+    this.timers.push(setTimeout(() => {
+      const cur = this.state.notes.find((n) => n.id === id);
+      if (!cur || cur.status !== 'generating') return;
+      this.patch(id, { status: 'review', round: nextRound });
+    }, delay));
+  }
+  renderVals() {
+    const notes = this.state.notes;
+    const drafts = notes.filter((n) => n.status === 'draft').length;
+    const generating = notes.some((n) => n.status === 'generating');
+    const byId = {};
+    notes.forEach((n) => { byId[n.id] = n; });
+    const paras = PARAS.map((p) => {
+      const n = byId[p.id];
+      if (!p.id || !n) return { pre: p.pre, mark: p.id ? QUOTES[p.id] : '', post: p.post, markClass: '', markBg: 'transparent', markColor: 'inherit' };
+      const latest = REWRITES[n.id][n.round % 3];
+      if (n.status === 'accepted') return { pre: p.pre, mark: latest, post: p.post, markClass: 'hl-done', markBg: '#e5edfc', markColor: '#184f95' };
+      return { pre: p.pre, mark: QUOTES[p.id], post: p.post, markClass: n.status === 'generating' ? 'hl-gen' : '', markBg: '#fef0d1', markColor: 'inherit' };
+    });
+    const cards = notes.map((n) => {
+      const nextRound = n.status === 'draft' ? n.round : n.round + 1;
+      return {
+        ...n,
+        latest: REWRITES[n.id][n.round % 3],
+        border: n.status === 'reject' ? '#547dd0' : '#e4e6ea',
+        isDraft: n.status === 'draft',
+        isEditing: n.status === 'editing',
+        isGenerating: n.status === 'generating',
+        showResult: n.status === 'review' || n.status === 'reject',
+        isReview: n.status === 'review',
+        isReject: n.status === 'reject',
+        isAccepted: n.status === 'accepted',
+        edit: () => this.patch(n.id, { status: 'editing', editText: n.body }),
+        onEdit: (e) => this.patch(n.id, { editText: e.target.value }),
+        cancelEdit: () => this.patch(n.id, { status: 'draft' }),
+        saveEdit: () => this.patch(n.id, { status: 'draft', body: n.editText.trim() || n.body }),
+        remove: () => this.setState({ notes: notes.filter((x) => x.id !== n.id) }),
+        accept: () => this.patch(n.id, { status: 'accepted' }),
+        undo: () => this.patch(n.id, { status: 'review' }),
+        reject: () => this.patch(n.id, { status: 'reject', feedback: '' }),
+        cancelReject: () => this.patch(n.id, { status: 'review' }),
+        onFeedback: (e) => this.patch(n.id, { feedback: e.target.value }),
+        regen: () => { this.patch(n.id, { status: 'generating' }); this.generate(n.id, 1600, n.round + 1); },
+        regenWithFeedback: () => { this.patch(n.id, { status: 'generating', body: n.feedback.trim() || n.body }); this.generate(n.id, 1600, n.round + 1); }
+      };
+    });
+    return {
+      paras,
+      cards,
+      empty: notes.length === 0,
+      generating,
+      sendDisabled: drafts === 0 || generating,
+      sendLabel: generating ? '生成中…' : (drafts > 0 ? '统一发送（' + drafts + '）' : '统一发送'),
+      sendAll: () => {
+        const ids = notes.filter((n) => n.status === 'draft').map((n) => n.id);
+        this.setState({ notes: notes.map((n) => (n.status === 'draft' ? { ...n, status: 'generating' } : n)) });
+        ids.forEach((id, i) => this.generate(id, 1400 + i * 700, 0));
+      },
+      reset: () => { this.timers.forEach(clearTimeout); this.timers = []; this.setState({ notes: SEED.map((n) => ({ ...n })) }); }
+    };
+  }
+}
+</script>
+</body>
+</html>
