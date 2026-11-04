@@ -41,8 +41,10 @@ pub mod mascot {
 #[path = "../../src/files"]
 pub mod files {
     pub mod state;
+    pub use state::app_data_dir;
     pub mod ops {
         use std::path::{Path, PathBuf};
+        pub fn reveal_in_finder(_path: &Path) {}
         pub fn rebase(target: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
             target.strip_prefix(from).ok().map(|rel| to.join(rel))
         }
