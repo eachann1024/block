@@ -25,7 +25,7 @@ impl Render for Workspace {
             .child(self.titlebar(cx))
             .child(div().flex_1().min_h_0().flex()
                 .child(self.sidebar(cx))
-                .child(self.settings_view(cx).unwrap_or_else(|| {
+                .child(self.settings_view(cx).or_else(|| self.mascot_view(cx)).unwrap_or_else(|| {
                     div().flex_1().min_w_0().h_full().child(self.editor.clone()).into_any_element()
                 }))
                 .children(crate::editor::ai::chat::panel(cx)))
