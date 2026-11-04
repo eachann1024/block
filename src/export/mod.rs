@@ -24,6 +24,8 @@ mod view_stage;
 mod view_ui;
 mod view_widgets;
 #[cfg(target_family = "wasm")]
+mod web_cjk;
+#[cfg(target_family = "wasm")]
 mod web_save;
 
 pub(crate) use budget::validate_snapshot;
@@ -69,9 +71,12 @@ fn new_font_system() -> FontSystem {
     for data in crate::WEB_FONTS {
         db.load_font_data(data.to_vec());
     }
+    for fam in ["PingFang SC", "Songti SC", "Kaiti SC"] {
+        db.load_font_data(web_cjk::metric_font(fam));
+    }
     db.set_sans_serif_family("PingFang SC");
-    db.set_serif_family("PingFang SC");
-    db.set_monospace_family("Menlo");
+    db.set_serif_family("Songti SC");
+    db.set_monospace_family("JetBrains Mono");
     FontSystem::new_with_locale_and_db("zh-CN".to_string(), db)
 }
 
