@@ -7,7 +7,7 @@ use gpui::{
 use super::layout::SCALE;
 use super::view::ExportView;
 use super::view_widgets::{fmt_int, png_size};
-use crate::theme::Theme;
+use crate::theme::{Theme, tr};
 
 pub(super) const PREVIEW_PAD_X: f32 = 32.;
 const PREVIEW_PAD_TOP: f32 = 36.;
@@ -52,18 +52,18 @@ impl ExportView {
             (None, None) => div()
                 .text_size(px(13.))
                 .text_color(theme.text_secondary)
-                .child("正在生成…")
+                .child(tr("正在生成…", "Rendering…"))
                 .into_any_element(),
         };
         let dim_label = match dims {
             Some((pw, ph)) => {
-                format!("{} × {} px · 2× 高清", fmt_int(pw as u32), fmt_int(ph as u32))
+                format!("{} × {} px · {}", fmt_int(pw as u32), fmt_int(ph as u32), tr("2× 高清", "2× HD"))
             }
-            None => "816 px 纸宽 · 2× 高清".to_string(),
+            None => tr("816 px 纸宽 · 2× 高清", "816 px page · 2× HD").to_string(),
         };
         let zoom_label = self
             .zoom
-            .map_or_else(|| "适应".into(), |z| format!("{}%", (z * 100.).round() as i32));
+            .map_or_else(|| tr("适应", "Fit").into(), |z| format!("{}%", (z * 100.).round() as i32));
         let scroller = div()
             .id("export-preview")
             .size_full()

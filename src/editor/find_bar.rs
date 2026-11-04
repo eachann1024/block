@@ -24,7 +24,7 @@ pub(super) fn find_bar(editor: &Editor, cx: &mut Context<Editor>) -> Option<impl
     let theme = Theme::ocean();
     let count = find.matches.len();
     let query_empty = find.input.read(cx).value().is_empty();
-    let label = if query_empty { String::new() } else if count == 0 { "无结果".to_owned() } else { format!("{} / {}", find.current + 1, count) };
+    let label = if query_empty { String::new() } else if count == 0 { crate::theme::tr("无结果", "No results").to_owned() } else { format!("{} / {}", find.current + 1, count) };
     Some(div().id("find-bar").key_context("FindBar").absolute().top(px(12.)).right(px(20.))
         .py(px(4.)).pr(px(4.)).pl(px(10.))
         .flex().items_center().gap(px(4.)).rounded(px(8.)).bg(theme.menu).border_1().border_color(theme.menu_border)

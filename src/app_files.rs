@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use gpui::{AppContext, Context, Focusable, Pixels, Point, Window};
 use gpui_component::input::{InputEvent, InputState};
 use crate::files::{create_note, ops, scan, index::TreeIndex};
+use crate::theme::tr;
 use super::Workspace;
 
 pub(crate) struct TreeMenu {
@@ -116,7 +117,7 @@ impl Workspace {
         if name == display_name(&path, dir) { self.cancel_rename(window, cx); return; }
         // Reject empty or duplicate names here so the input stays open for a fix.
         if let Err(error) = ops::rename_target(&path, &name, dir) {
-            self.flash(format!("无法重命名：{error}"), cx);
+            self.flash(format!("{}: {error}", tr("无法重命名", "Cannot rename")), cx);
             return;
         }
         self.renaming = None;
@@ -157,9 +158,9 @@ impl Workspace {
         if released { self.run_file_op(cx); }
         else if !self.editor.read(cx).is_busy() {
             self.file_op = None;
-            self.notice = "操作已取消：当前笔记未能保存，请处理编辑器中的错误后重试".into();
+            self.notice = tr("操作已取消：当前笔记未能保存，请处理编辑器中的错误后重试", "Operation canceled: could not save current note").into();
         } else {
-            self.notice = "正在保存当前笔记…".into();
+            self.notice = tr("正在保存当前笔记…", "Saving current note…").into();
         }
         self.refresh(cx);
     }
@@ -174,18 +175,18 @@ impl Workspace {
                 let (notice, trashed, renamed, open, expand) = match op {
                     FileOp::Trash { path, .. } => {
                         ops::move_to_trash(&path)?;
-                        ("已移到废纸篓", Some(path), None, None, None)
+                        (tr("已移到废纸篓", "Moved to Trash"), Some(path), None, None, None)
                     }
                     FileOp::Rename { path, name, dir, reopen } => {
                         let target = ops::rename(&path, &name, dir)?;
                         let open = reopen.and_then(|open| ops::rebase(&open, &path, &target));
-                        ("已重命名", None, Some((path, target)), open, None)
+                        (tr("已重命名", "Renamed"), None, Some((path, target)), open, None)
                     }
                     FileOp::Move { path, dest, reopen } => {
                         let target = ops::move_to(&path, &dest)?;
                         let expand = (dest != folder).then_some(dest);
                         let open = reopen.and_then(|open| ops::rebase(&open, &path, &target));
-                        ("已移动", None, Some((path, target)), open, expand)
+                        (tr("已移动", "Moved"), None, Some((path, target)), open, expand)
                     }
                 };
                 let index = TreeIndex::new(scan(&folder)?.nodes);
@@ -207,7 +208,7 @@ impl Workspace {
                         if let Some(open) = next_open { this.open_file(open, cx); }
                         this.flash(notice.into(), cx);
                     }
-                    Err(error) => this.notice = format!("操作失败：{error}"),
+                    Err(error) => this.notice = format!("{}: {error}", tr("操作失败", "Operation failed")),
                 }
                 this.refresh(cx);
             });
@@ -252,10 +253,10 @@ impl Workspace {
                         if folder_kind { this.start_rename(created, true, window, cx); }
                         else {
                             this.open_file(created, cx);
-                            this.flash("笔记已创建".into(), cx);
+                            this.flash(tr("笔记已创建", "Note created").into(), cx);
                         }
                     }
-                    Err(error) => { this.notice = format!("新建失败：{error}"); this.refresh(cx); }
+                    Err(error) => { this.notice = format!("{}: {error}", tr("新建失败", "Failed to create")); this.refresh(cx); }
                 }
             });
         }).detach();

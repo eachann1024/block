@@ -2,7 +2,7 @@ use gpui::{
     App, Context, IntoElement, ParentElement, Render, Window, div, prelude::*, px,
 };
 use crate::icons::{Icon, icon};
-use crate::theme::{Theme, format_hotkey, search_shortcut};
+use crate::theme::{Theme, format_hotkey, search_shortcut, tr};
 use super::Workspace;
 use super::search::{Dismiss, NewFolder, NewNote, OpenSearch, OpenSettings, kbd};
 
@@ -66,7 +66,7 @@ impl Workspace {
                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| this.open_search(window, cx))))
             .when(!enabled, |b| b.opacity(0.5))
             .child(icon(Icon::FindSearch, px(14.), theme.icon_colors(theme.text_secondary)))
-            .child(div().flex_1().child("搜索笔记"))
+            .child(div().flex_1().child(tr("搜索笔记", "Search notes")))
             .child(kbd(shortcut))
     }
 
@@ -82,7 +82,7 @@ impl Workspace {
                     .hover(move |s| s.bg(theme.hover).text_color(theme.text)))
                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| this.open_settings(window, cx)))
                 .child(icon(Icon::Sliders, px(15.), theme.icon_colors(if active { theme.accent } else { theme.text_secondary })))
-                .child(div().flex_1().child(if active { "设置中" } else { "设置" }))
+                .child(div().flex_1().child(if active { tr("设置中", "Settings") } else { tr("设置", "Settings") }))
                 .when(!active, |b| b.child(kbd("⌘,"))))
     }
 

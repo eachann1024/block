@@ -6,7 +6,7 @@ use gpui::{
     anchored, deferred, div, point, prelude::*, px, quad, rgb, size, transparent_black,
 };
 use gpui_component::{Sizable, input::{Input, InputEvent, InputState}};
-use crate::{icons::{Icon, IconColors, icon}, theme::{Theme, is_dark}};
+use crate::{icons::{Icon, IconColors, icon}, theme::{Theme, is_dark, tr}};
 use super::{
     block_menu::{Cmd, LANGUAGES, Mode, language_label},
     menu_style,
@@ -131,26 +131,15 @@ pub(super) fn copy_button(editor: Entity<Editor>, block_id: u64, raw_lang: Strin
     let glyph = if copied { Icon::Check } else { Icon::Copy };
     let tint = |line| IconColors { line, fill: transparent_black(), accent: transparent_black() };
     let mapped = language_label(&raw_lang);
-    let display_lang = if mapped == "其他" && !raw_lang.is_empty() { raw_lang.clone() } else { mapped.to_owned() };
+    let display_lang = if (mapped == "其他" || mapped == "Other") && !raw_lang.is_empty() { raw_lang.clone() } else { mapped.to_owned() };
     let picker_state = LANG_PICKER.with(|slot| {
         slot.borrow().as_ref().filter(|p| p.block_id == block_id).map(|p| (p.anchor, p.input.clone()))
     });
 
-    let lang_btn = div()
-        .id(("code-lang", block_id as usize))
-        .group("code-lang")
-        .absolute()
-        .top(px(3.))
-        .left(px(8.))
-        .h(px(24.))
-        .px(px(6.))
-        .rounded(px(4.))
-        .flex()
-        .items_center()
-        .gap(px(4.))
-        .cursor(CursorStyle::PointingHand)
-        .text_size(px(12.))
-        .text_color(base_fg)
+    let lang_btn = div().id(("code-lang", block_id as usize)).group("code-lang")
+        .absolute().top(px(3.)).left(px(8.)).h(px(24.)).px(px(6.)).rounded(px(4.))
+        .flex().items_center().gap(px(4.)).cursor(CursorStyle::PointingHand)
+        .text_size(px(12.)).text_color(base_fg)
         .hover(move |s| s.bg(hover_bg).text_color(hover_fg))
         .when(picker_state.is_some(), move |s| s.bg(hover_bg).text_color(hover_fg))
         .child(display_lang)
@@ -171,14 +160,15 @@ pub(super) fn copy_button(editor: Entity<Editor>, block_id: u64, raw_lang: Strin
             let anchor = LANG_BOUNDS.with(|b| b.borrow().get(&block_id).copied())
                 .map(|b| point(b.left(), b.bottom() + px(4.)))
                 .unwrap_or_else(|| event.position + point(px(0.), px(16.)));
-            let input = cx.new(|cx| InputState::new(window, cx).placeholder("搜索语言…"));
+            let input = cx.new(|cx| InputState::new(window, cx).placeholder(tr("搜索语言…", "Search language…")));
             let input_ref = input.clone();
             let sub = cx.subscribe_in(&input, window, move |this, _, ev: &InputEvent, window, cx| {
                 match ev {
                     InputEvent::Change => cx.notify(),
                     InputEvent::PressEnter { .. } => {
                         let q = input_ref.read(cx).value().to_string();
-                        if let Some((tag, label)) = filtered_languages(&q).first().copied() {
+                        if let Some((tag, _)) = filtered_languages(&q).first().copied() {
+                            let label = language_label(tag);
                             let cur = this.doc.get(block_id)
                                 .and_then(|b| b.meta.code_language.as_deref())
                                 .map(language_label).unwrap_or("");
@@ -254,7 +244,8 @@ fn lang_dropdown(
     let items = filtered_languages(&query);
     let mut list = div().id(("code-lang-list", block_id as usize))
         .max_h(px(220.)).overflow_y_scroll().flex().flex_col().gap(px(2.));
-    for (idx, (tag, label)) in items.into_iter().enumerate() {
+    for (idx, (tag, _)) in items.into_iter().enumerate() {
+        let label = language_label(tag);
         let checked = label == current_label;
         let pick_editor = editor.clone();
         list = list.child(

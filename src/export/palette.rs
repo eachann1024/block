@@ -59,15 +59,16 @@ impl ExportTheme {
     }
 
     pub fn label(self) -> &'static str {
+        use crate::theme::tr;
         match self {
-            Self::Mono => "黑白素纸",
-            Self::Journal => "手账便签",
-            Self::Riso => "野性孔版",
-            Self::Press => "铅字号外",
-            Self::Ink => "墨黑",
-            Self::Kraft => "黑卡手账",
-            Self::Neon => "霓虹丝印",
-            Self::Film => "暗房胶片",
+            Self::Mono => tr("黑白素纸", "Mono"),
+            Self::Journal => tr("手账便签", "Journal"),
+            Self::Riso => tr("野性孔版", "Risograph"),
+            Self::Press => tr("铅字号外", "Press"),
+            Self::Ink => tr("墨黑", "Ink"),
+            Self::Kraft => tr("黑卡手账", "Kraft"),
+            Self::Neon => tr("霓虹丝印", "Neon"),
+            Self::Film => tr("暗房胶片", "Film"),
         }
     }
 

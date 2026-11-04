@@ -8,12 +8,12 @@ use gpui::{
 };
 use crate::app::{NewNote, Workspace};
 use crate::editor::view::Editor;
-use crate::theme::{Theme, is_dark};
+use crate::theme::{Theme, is_dark, tr};
 
 pub fn editor_empty(cx: &mut Context<Editor>) -> Div {
     let new_note = outlined_button(
         "mascot-new-note",
-        "新建笔记",
+        tr("新建笔记", "New Note"),
         true,
         cx.listener(|this, _, window, cx| {
             cx.stop_propagation();
@@ -23,7 +23,7 @@ pub fn editor_empty(cx: &mut Context<Editor>) -> Div {
     );
     let recover = secondary_button(
         "recover-draft",
-        "恢复最近草稿",
+        tr("恢复最近草稿", "Recover Recent Draft"),
         true,
         cx.listener(|this, _, _, cx| {
             cx.stop_propagation();
@@ -32,8 +32,8 @@ pub fn editor_empty(cx: &mut Context<Editor>) -> Div {
     );
     card(
         MascotState::NoNote,
-        "打开一篇，继续想",
-        &["从左侧选择笔记开始编辑，", "也可以写下新的想法。"],
+        tr("打开一篇，继续想", "Open a Note to Continue"),
+        &[tr("从左侧选择笔记开始编辑，", "Select a note from the sidebar,"), tr("也可以写下新的想法。", "or start a new thought.")],
         div().child(new_note).child(recover),
     )
 }
@@ -49,20 +49,20 @@ impl Workspace {
         let content = if self.folder_error.is_some() {
             let retry = primary_button(
                 "mascot-retry",
-                "重试",
+                tr("重试", "Retry"),
                 available,
                 cx.listener(|this, _, _, cx| this.retry_folder(cx)),
             );
             let choose = secondary_button(
                 "mascot-choose-other",
-                "选择其他文件夹",
+                tr("选择其他文件夹", "Choose Another Folder"),
                 available,
                 cx.listener(|this, _, window, cx| this.choose_folder(window, cx)),
             );
             card(
                 MascotState::ReadError,
-                "暂时无法读取文件夹",
-                &["检查文件夹是否仍可访问，", "然后重试，或选择其他文件夹。"],
+                tr("暂时无法读取文件夹", "Cannot Read Folder"),
+                &[tr("检查文件夹是否仍可访问，", "Check if the folder is still accessible,"), tr("然后重试，或选择其他文件夹。", "then retry or choose another folder.")],
                 div().child(retry).child(choose),
             )
         } else if self.loading {
@@ -70,33 +70,33 @@ impl Workspace {
         } else if self.folder.is_none() {
             let choose = primary_button(
                 "mascot-choose-folder",
-                "选择文件夹",
+                tr("选择文件夹", "Choose Folder"),
                 available,
                 cx.listener(|this, _, window, cx| this.choose_folder(window, cx)),
             );
             card(
                 MascotState::NoFolder,
-                "先选一个笔记文件夹",
-                &["打开本地文件夹，", "让想法有个落脚的地方。"],
+                tr("先选一个笔记文件夹", "Choose a Notes Folder"),
+                &[tr("打开本地文件夹，", "Open a local folder"), tr("让想法有个落脚的地方。", "to keep your notes in one place.")],
                 div().child(choose),
             )
         } else if !self.tree.read(cx).has_notes() {
             let create = primary_button(
                 "mascot-new-note",
-                "新建笔记",
+                tr("新建笔记", "New Note"),
                 available,
                 cx.listener(|this, _, window, cx| this.new_tab(window, cx)),
             );
             let switch = secondary_button(
                 "mascot-switch-folder",
-                "切换文件夹",
+                tr("切换文件夹", "Switch Folder"),
                 available,
                 cx.listener(|this, _, window, cx| this.choose_folder(window, cx)),
             );
             card(
                 MascotState::EmptyFolder,
-                "从第一篇笔记开始",
-                &["这个文件夹里还没有笔记。", "写下一点，慢慢展开。"],
+                tr("从第一篇笔记开始", "Start with Your First Note"),
+                &[tr("这个文件夹里还没有笔记。", "This folder has no notes yet."), tr("写下一点，慢慢展开。", "Jot something down and let it grow.")],
                 div().child(create).child(switch),
             )
         } else {

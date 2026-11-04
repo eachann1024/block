@@ -1,6 +1,6 @@
 //! Stable gutters, a persistent width switch, and selection-only formatting.
 use gpui::{CursorStyle, MouseButton, Pixels, div, prelude::*, px, rgb, transparent_black};
-use crate::{icons::{Icon, IconColors, icon}, theme::Theme};
+use crate::{icons::{Icon, IconColors, icon}, theme::{Theme, tr}};
 use super::{model::{Block, Kind}, paint::BlockText, view::Editor};
 
 pub(super) const HANDLE_WIDTH: f32 = 56.;
@@ -93,7 +93,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                 })
                 .when_some(block.meta.unsupported_reason.clone().filter(|_| image.is_none() && !rule), |body, reason| body.child(
                     div().text_size(px(11.)).text_color(theme.text_secondary).pb_1()
-                        .child(format!("已保留源码 · {reason}"))))
+                        .child(format!("{} · {reason}", tr("已保留源码", "Source preserved")))))
                 .when_some(image, |body, (path, spec)| body.child(super::image_view::image_block(focus_editor.clone(), id, path, spec, active, cx)))
                 .when(static_view && rule, |body| body.child(
                     div().id(("rule", id as usize)).h(px(22.)).flex().items_center().cursor(CursorStyle::PointingHand)
@@ -195,7 +195,7 @@ fn fold_button(folded: bool, id: (&'static str, usize), listener: impl Fn(&gpui:
         (rgb(0xf2f1ef), rgb(0xe8e6e2), rgb(0x37352f))
     };
     let glyph = if folded { Icon::ChevronRight } else { Icon::ChevronDown };
-    let tip = if folded { "Expand section" } else { "Collapse section" };
+    let tip = if folded { tr("展开章节", "Expand section") } else { tr("折叠章节", "Collapse section") };
     div().id(id).w(px(28.)).h(px(28.)).flex_none().rounded(px(8.)).bg(bg)
         .flex().items_center().justify_center().hover(move |s| s.bg(hover_bg)).cursor(CursorStyle::PointingHand)
         .tooltip(move |window, cx| crate::theme::build_tooltip(tip, window, cx))
@@ -209,7 +209,7 @@ fn heading_link_button(heading_text: String, id: (&'static str, usize)) -> gpui:
     let hover_bg: gpui::Hsla = if dark { theme.hover } else { rgb(0xf2f1ef).into() };
     div().id(id).w(px(26.)).h(px(26.)).flex_none().rounded(px(6.))
         .flex().items_center().justify_center().hover(move |s| s.bg(hover_bg)).cursor(CursorStyle::PointingHand)
-        .tooltip(|window, cx| crate::theme::build_tooltip("Copy link to section", window, cx))
+        .tooltip(|window, cx| crate::theme::build_tooltip(tr("复制章节链接", "Copy link to section"), window, cx))
         .child(icon(Icon::TbLink, px(15.), IconColors { line: fg, fill: transparent_black(), accent: transparent_black() }))
         .on_mouse_down(MouseButton::Left, move |_, _, cx| {
             cx.write_to_clipboard(gpui::ClipboardItem::new_string(heading_slug(&heading_text)));
