@@ -27,6 +27,15 @@ pub(super) fn separator() -> AnyElement {
     div().mx(px(6.)).my(px(3.)).h(px(1.)).bg(Theme::ocean().hairline).into_any_element()
 }
 
+fn shortcut_hint(label: &'static str) -> gpui::Div {
+    let muted: Hsla = if crate::theme::is_dark() {
+        Theme::ocean().text_secondary
+    } else {
+        gpui::rgb(0x6d7784).into()
+    };
+    div().ml_auto().flex_none().text_size(px(12.)).text_color(muted).child(label)
+}
+
 pub(super) fn menu_item(id: ItemId, glyph: Icon, label: String, checked: bool, destructive: bool,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> gpui::Stateful<gpui::Div> {
@@ -52,12 +61,14 @@ impl Workspace {
         let (path, dir) = target.clone();
         let mut items: Vec<AnyElement> = Vec::new();
         let p = path.clone();
-        items.push(menu_item(ItemId::Name("reveal"), Icon::FolderOpen, "在访达中显示".into(), false, false,
+        items.push(menu_item(ItemId::Name("reveal"), Icon::FolderReveal, "在访达中显示".into(), false, false,
             cx.listener(move |this, _, _, cx| { this.close_overlays(cx); crate::files::ops::reveal_in_finder(&p); }))
             .into_any_element());
         let p = path.clone();
         items.push(menu_item(ItemId::Name("rename"), Icon::Pencil, "重命名".into(), false, false,
-            cx.listener(move |this, _, window, cx| this.start_rename(p.clone(), dir, window, cx))).into_any_element());
+            cx.listener(move |this, _, window, cx| this.start_rename(p.clone(), dir, window, cx)))
+            .child(shortcut_hint("↵"))
+            .into_any_element());
         items.push(menu_item(ItemId::Name("move"), Icon::ArrowRight, "移动到…".into(), moving, false,
             cx.listener(|this, _, _, cx| {
                 if let Some(menu) = &mut this.menu { menu.moving = !menu.moving; }
@@ -66,7 +77,9 @@ impl Workspace {
         items.push(separator());
         let p = path.clone();
         items.push(menu_item(ItemId::Name("trash"), Icon::Trash, "移到废纸篓".into(), false, true,
-            cx.listener(move |this, _, _, cx| this.trash(p.clone(), cx))).into_any_element());
+            cx.listener(move |this, _, _, cx| this.trash(p.clone(), cx)))
+            .child(shortcut_hint("⌘⌫"))
+            .into_any_element());
         let mut out = vec![deferred(anchored().position(position).snap_to_window_with_margin(px(8.))
             .child(menu_surface(px(MENU_WIDTH)).children(items))).with_priority(2).into_any_element()];
         if moving {
