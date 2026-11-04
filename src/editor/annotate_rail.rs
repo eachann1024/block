@@ -14,16 +14,32 @@ fn followup_field(input: Entity<InputState>, cx: &mut Context<Editor>) -> impl I
         .child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)).px(px(0.)))
 }
 
-pub(super) fn annotation_row(note: Annotation, active_id: Option<u64>, followup: Option<Entity<InputState>>, cx: &mut Context<Editor>) -> impl IntoElement {
+pub(super) fn annotation_row(
+    note: Annotation,
+    active_id: Option<u64>,
+    hovered_id: Option<u64>,
+    followup: Option<Entity<InputState>>,
+    cx: &mut Context<Editor>,
+) -> impl IntoElement {
     let id = note.id;
     let (is_applied, has_rewrite, is_active) = (note.is_applied(), note.has_rewrite(), active_id == Some(id));
+    let is_highlighted = is_active || hovered_id == Some(id);
     let toggle = move |this: &mut Editor, window: &mut gpui::Window, cx: &mut Context<Editor>| this.toggle_annotation_detail(id, window, cx);
+    let reaction_pills = (!note.reactions.is_empty()).then(|| {
+        div().w_full().flex().flex_wrap().items_center().gap(px(6.)).children(
+            note.reactions.iter().enumerate().map(|(idx, emoji)| {
+                let emoji_str = emoji.clone();
+                annotation_note::reaction_pill(SharedString::from(format!("reaction-pill-{id}-{idx}")), emoji, is_highlighted)
+                    .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx)))
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.toggle_reaction_on_note(id, &emoji_str, cx);
+                    }))
+            }),
+        )
+    });
     if note.body.is_empty() {
-        let pills = note.reactions.iter().enumerate().map(|(idx, emoji)| {
-            annotation_note::reaction_pill(SharedString::from(format!("reaction-pill-{id}-{idx}")), emoji, is_active)
-        });
-        return div().w_full().child(div().id(SharedString::from(format!("annotation-row-{id}"))).w_full().flex().flex_wrap().items_center().gap(px(6.))
-            .children(pills).on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| toggle(this, window, cx))));
+        return div().id(SharedString::from(format!("annotation-row-{id}"))).w_full().children(reaction_pills);
     }
     let status = if has_rewrite { ANNOTATION_GENERATED } else { ANNOTATION_PENDING };
     let apply = has_rewrite.then(|| {
@@ -37,13 +53,15 @@ pub(super) fn annotation_row(note: Annotation, active_id: Option<u64>, followup:
     let strip = annotation_note::strip(SharedString::from(format!("annotation-row-{id}")), is_active)
         .child(annotation_note::status_dot(status)).child(annotation_note::strip_text(note.body.clone()))
         .children(apply).children(restore)
+        .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx)))
         .when(!is_applied, |row| row.cursor(CursorStyle::PointingHand)
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| toggle(this, window, cx))));
     let input = (is_active && !is_applied).then_some(followup).flatten().map(|input| followup_field(input, cx));
     let error = is_active.then(|| note.ai_error.clone()).flatten().map(|message| {
         div().px(px(8.)).mt(px(2.)).text_size(px(14.)).line_height(px(20.)).text_color(rgb(0xb42318)).child(message)
     });
-    div().w_full().child(strip).children(input).children(error)
+    div().id(SharedString::from(format!("annotation-wrap-{id}"))).w_full().child(strip)
+        .children(reaction_pills.map(|p| p.mt(px(4.)))).children(input).children(error)
 }
 
 pub(super) fn composer_row(input: Entity<InputState>, has_text: bool, cx: &mut Context<Editor>) -> impl IntoElement {
