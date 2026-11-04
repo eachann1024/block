@@ -182,10 +182,10 @@ impl Editor {
         self.edit_selection(cx, |doc, id, range| doc.set_link(id, range, None));
         self.close_format(window, cx);
     }
-    /// Cmd-click on a link opens it instead of moving the caret.
+    /// Cmd/Ctrl-click on a link opens it instead of moving the caret.
     pub(super) fn open_link_at(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) -> bool {
-        let Some(at) = self.hit(position) else { return false };
-        let Some((_, url)) = self.doc.get(at.block).and_then(|b| b.link_at(at.offset)) else { return false };
-        cx.open_url(&url); true
+        let Some((block, range)) = self.link_under(position) else { return false };
+        let Some((_, url)) = self.doc.get(block).and_then(|b| b.link_at(range.start)) else { return false };
+        cx.open_url(&normalize_url(&url)); true
     }
 }

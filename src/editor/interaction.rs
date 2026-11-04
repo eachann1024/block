@@ -28,7 +28,7 @@ impl Editor {
     }
     pub(in crate::editor) fn clear_pointer(&mut self) {
         self.dragging = None; self.drag_over = None; self.selecting = false;
-        self.selection_origin = None; self.table_drag = None;
+        self.selection_origin = None; self.table_drag = None; self.link_ui = Default::default();
     }
     pub(in crate::editor) fn hover_block(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
         if self.minimal || self.dragging.is_some() || self.table_drag.is_some() || self.selecting { return; }
@@ -78,7 +78,8 @@ impl Editor {
         crate::editor::code_block::close_menus();
         self.close_format(window, cx);
         if self.path.is_none() || !self.list.viewport_bounds().contains(&event.position) { return; }
-        if event.modifiers.platform && self.open_link_at(event.position, cx) { return; }
+        if (event.modifiers.platform || (!cfg!(target_os = "macos") && event.modifiers.control))
+            && self.open_link_at(event.position, cx) { return; }
         self.commit_composition(cx); self.clear_pointer(); self.pending_vertical = None;
         if let Some(at) = self.hit(event.position) {
             let clicks = event.click_count.max(1);

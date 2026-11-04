@@ -41,12 +41,14 @@ impl Element for BlockText {
         let id = window.request_measured_layout(style, move |known, available, window, cx| {
             let room = known.width.or(match available.width { AvailableSpace::Definite(w) => Some(w), _ => None }).unwrap_or(px(0.));
             let width = known.width.unwrap_or_else(|| match available.width { AvailableSpace::Definite(w) => w, _ => px(640.) }).max(px(1.));
-            let selected = {
+            let (selected, link_ranges) = {
                 let editor = editor_entity.read(cx);
                 let whole = editor.table_sel == Some((block_id, super::table_actions::TableSel::Whole));
-                (editor.focus.is_focused(window) && !whole).then(|| editor.selected_range(block_id)).flatten()
+                let sel = (editor.focus.is_focused(window) && !whole).then(|| editor.selected_range(block_id)).flatten();
+                (sel, editor.active_link_ranges(block_id, window))
             };
-            let sel_hash = selected.as_ref().map_or(0, |r| ((r.start as u64).wrapping_add(1) << 32) ^ (r.end as u64).wrapping_add(1));
+            let sel_hash = selected.as_ref().map_or(0, |r| ((r.start as u64).wrapping_add(1) << 32) ^ (r.end as u64).wrapping_add(1))
+                ^ link_ranges.iter().fold(0u64, |acc, r| acc.rotate_left(13) ^ ((r.start as u64).wrapping_add(3) << 32) ^ (r.end as u64).wrapping_add(7));
             let key = super::view::layout::LayoutKey {
                 content: content ^ sel_hash,
                 width_bits: if nowrap { 0 } else { f32::from(width).to_bits() },
@@ -102,13 +104,14 @@ impl Element for BlockText {
                 return size(widest.max(room).max(px(1.)), height);
             }
             if let Some(table) = &table {
-                let mut layout = table_layout::measure(table, width, selected, window);
+                let mut layout = table_layout::measure(table, width, selected, &link_ranges, window);
                 let height = layout.height() + px(table_layout::EXTEND_ROOM);
                 layout.bounds.size = size(width, height);
                 *output.borrow_mut() = Some(layout);
                 super::view::layout::set_key(editor_id, block_id, key);
                 return size(width, height);
             }
+            let runs = super::text_runs::underline_ranges(&text, runs, &link_ranges);
             let runs = super::text_runs::tint_selection(&text, runs, selected, theme.selection_text);
             let shaped = window.text_system().shape_text(text, font_size, &runs, Some(width), None).unwrap_or_default();
             let mut start = 0;
