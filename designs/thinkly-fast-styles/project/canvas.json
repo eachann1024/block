@@ -7,7 +7,7 @@
   "title": "Thinkly Fast 视觉系统",
   "launch": {
     "view": "canvas",
-    "page": "workspace"
+    "page": "settings"
   },
   "pages": [
     {
@@ -67,9 +67,28 @@
       "page": "workspace",
       "x": 3040,
       "y": 0,
-      "w": 480,
-      "h": 620,
-      "title": "速记小窗 ⌥N"
+      "w": 440,
+      "h": 520,
+      "is_interactive": true,
+      "title": "速记小窗 · 方案 A · 纯白素纸（单页无栏，仅留右上角转存图标）"
+    },
+    "QuickNote-V2-Dots.dc.html": {
+      "page": "workspace",
+      "x": 3560,
+      "y": 0,
+      "w": 440,
+      "h": 520,
+      "is_interactive": true,
+      "title": "速记小窗 · 方案 B（已采用）· 圆点槽位 + Shift 上下滚动切换便签"
+    },
+    "QuickNote-V3-FloatAction.dc.html": {
+      "page": "workspace",
+      "x": 4080,
+      "y": 0,
+      "w": 440,
+      "h": 520,
+      "is_interactive": true,
+      "title": "速记小窗 · 方案 C · 悬浮胶囊（顶部零按钮 + 右下悬浮转存）"
     },
     "Tabs-V1-InPlace.dc.html": {
       "page": "workspace",
@@ -182,10 +201,10 @@
       "x": 0,
       "y": 0,
       "w": 1440,
-      "h": 940,
+      "h": 1420,
       "expand": "fill",
       "is_interactive": true,
-      "title": "设置 · 独立分键键帽（按系统自适应）"
+      "title": "独立设置页面 · 左侧设置分组导航 + 方案 C 三联 AI 服务商直选（DeepSeek / OpenAI 协议 / Claude 协议）"
     },
     "F-Shortcuts.dc.html": {
       "page": "settings",
@@ -303,6 +322,26 @@
       "is_interactive": true,
       "title": "代码块 · 居右控件与滚动即收起的通用下拉"
     },
+    "Menu-Icons-V1-Duo.dc.html": {
+      "x": 0,
+      "y": 1100,
+      "w": 1440,
+      "h": 1320,
+      "page": "code",
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "方案 A · 双色语义线稿（延续 Duo 1.5px 圆端线稿 + 浅蓝语义面 + 强调蓝点睛）"
+    },
+    "Menu-Icons-V2-Badge.dc.html": {
+      "x": 1520,
+      "y": 1100,
+      "w": 1440,
+      "h": 1320,
+      "page": "code",
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "方案 B · 微缩语法铭牌与高对比单线几何（18×18 键帽方章 + 语法定界符微雕）"
+    },
     "M-Motion-System.dc.html": {
       "page": "motion",
       "x": 0,
@@ -318,6 +357,8 @@
     "Main.dc.html",
     "F-Files.dc.html",
     "F-QuickNote.dc.html",
+    "QuickNote-V2-Dots.dc.html",
+    "QuickNote-V3-FloatAction.dc.html",
     "Tabs-V1-InPlace.dc.html",
     "Tabs-V2-Preview.dc.html",
     "Tabs-V3-Pinned.dc.html",
@@ -344,6 +385,8 @@
     "Duo-Set.dc.html",
     "Mascot-Folio.dc.html",
     "C-Code-Block.dc.html",
+    "Menu-Icons-V1-Duo.dc.html",
+    "Menu-Icons-V2-Badge.dc.html",
     "M-Motion-System.dc.html"
   ],
   "notes": {},

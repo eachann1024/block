@@ -92,3 +92,29 @@ pub fn back_button(
         .child(label)
 }
 
+pub fn header_action_button(
+    id: impl Into<ElementId>,
+    glyph: Icon,
+    active: bool,
+    tip: impl Into<gpui::SharedString>,
+    on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    let fg = if active { theme.accent } else { theme.text_secondary };
+    div()
+        .id(id)
+        .size(px(30.))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(8.))
+        .cursor(CursorStyle::PointingHand)
+        .when(active, |b| b.bg(theme.hover))
+        .hover(move |s| s.bg(theme.hover))
+        .tooltip(crate::ui::tooltip::tooltip(tip))
+        .on_mouse_down(MouseButton::Left, on_down)
+        .child(icon(glyph, px(16.), theme.icon_colors(fg)))
+}
+
+
