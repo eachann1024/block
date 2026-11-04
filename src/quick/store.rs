@@ -4,7 +4,6 @@ use std::{fs, io, path::PathBuf};
 use serde::{Deserialize, Serialize};
 
 pub const SLOTS: usize = 5;
-pub const MAX_NAME: usize = 24;
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Meta {
@@ -23,10 +22,6 @@ pub fn default_name(slot: usize) -> String {
 pub fn is_default_name(slot: usize, name: &str) -> bool {
     if slot == 0 { matches!(name, "灵感" | "Ideas" | "速记 1" | "Quick 1") }
     else { name == format!("速记 {}", slot + 1) || name == format!("Quick {}", slot + 1) }
-}
-
-pub fn display_name(slot: usize, name: &str) -> String {
-    if is_default_name(slot, name) { default_name(slot) } else { name.to_owned() }
 }
 
 /// `~/Library/Application Support/Thinkly Fast/quick` on macOS.
@@ -70,9 +65,4 @@ pub fn save_meta(meta: &Meta) -> io::Result<()> {
     let temp = path.with_extension("json.tmp");
     fs::write(&temp, serde_json::to_vec_pretty(meta).map_err(io::Error::other)?)?;
     fs::rename(temp, path)
-}
-
-pub fn clean_name(slot: usize, raw: &str) -> String {
-    let name: String = raw.trim().chars().take(MAX_NAME).collect();
-    if name.trim().is_empty() { default_name(slot) } else { name.trim().to_owned() }
 }

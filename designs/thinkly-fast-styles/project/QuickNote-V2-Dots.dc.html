@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>速记小窗 · 方案 B · 圆点槽位（Shift + 滚轮切换）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#3559a8}a:hover{color:#233f7d}
+button{font-family:inherit}
+.ib{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;padding:0;cursor:pointer;flex:none;transition:background-color .14s ease,color .14s ease}
+.ib:hover{background:#eef3fc}
+.ib-close:hover{background:#e81123;color:#ffffff}
+.dot-btn{width:22px;height:24px;border:0;background:transparent;padding:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border-radius:6px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</helmet>
+<div onWheel="{{onWheel}}" style="width:440px;height:520px;box-sizing:border-box;display:flex;flex-direction:column;background:{{paperBg}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:{{textPrimary}};font-size:16px;line-height:26px;overflow:hidden;border:1px solid {{borderCol}};border-radius:14px;-webkit-font-smoothing:antialiased">
+
+<header style="height:44px;flex:none;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 12px 0 16px;box-sizing:border-box">
+<div style="display:flex;align-items:center">
+<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none">
+<span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+<span style="width:12px;height:12px;border-radius:6px;background:{{dotMuted}}"></span>
+<span style="width:12px;height:12px;border-radius:6px;background:{{dotMuted}}"></span>
+</div>
+</sc-if>
+</div>
+
+<nav aria-label="切换速记便签（支持 Shift + 上下滚轮）" title="点击或按住 Shift 上下滚动切换便签" style="display:flex;align-items:center;gap:2px">
+<button type="button" class="dot-btn" onClick="{{pick1}}" aria-label="便签 1" aria-pressed="{{on1}}">
+<span style="width:{{w1}};height:6px;border-radius:999px;background:{{bg1}};transition:width .16s ease,background-color .16s ease"></span>
+</button>
+<button type="button" class="dot-btn" onClick="{{pick2}}" aria-label="便签 2" aria-pressed="{{on2}}">
+<span style="width:{{w2}};height:6px;border-radius:999px;background:{{bg2}};transition:width .16s ease,background-color .16s ease"></span>
+</button>
+<button type="button" class="dot-btn" onClick="{{pick3}}" aria-label="便签 3" aria-pressed="{{on3}}">
+<span style="width:{{w3}};height:6px;border-radius:999px;background:{{bg3}};transition:width .16s ease,background-color .16s ease"></span>
+</button>
+<button type="button" class="dot-btn" onClick="{{pick4}}" aria-label="便签 4" aria-pressed="{{on4}}">
+<span style="width:{{w4}};height:6px;border-radius:999px;background:{{bg4}};transition:width .16s ease,background-color .16s ease"></span>
+</button>
+<button type="button" class="dot-btn" onClick="{{pick5}}" aria-label="便签 5" aria-pressed="{{on5}}">
+<span style="width:{{w5}};height:6px;border-radius:999px;background:{{bg5}};transition:width .16s ease,background-color .16s ease"></span>
+</button>
+</nav>
+
+<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
+<button type="button" class="ib" onClick="{{toggleSaved}}" aria-label="存入正式笔记" title="存入正式笔记" style="color:{{iconCol}};background:{{saveBtnBg}}">
+<sc-if value="{{notSaved}}" hint-placeholder-val="{{true}}">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M6.5 3.75h7.5l4.5 4.5v12H6.5z" fill="{{duoFill}}"></path>
+<path d="M6.5 3.75h7.5l4.5 4.5v12H6.5z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M14 3.75v4.5h4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M9.75 14.25l1.75 1.75 3.5-3.5" stroke="{{accent}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</sc-if>
+<sc-if value="{{isSaved}}" hint-placeholder-val="{{false}}">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<circle cx="12" cy="12" r="8.25" fill="{{duoFill}}" stroke="{{accent}}" stroke-width="1.6"></circle>
+<path d="M8.75 12.25l2.25 2.25 4.5-4.5" stroke="{{accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</sc-if>
+</button>
+<sc-if value="{{isWin}}" hint-placeholder-val="{{false}}">
+<button type="button" class="ib ib-close" aria-label="隐藏速记" style="color:{{iconCol}}">
+<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"></path></svg>
+</button>
+</sc-if>
+</div>
+</header>
+
+<main style="flex:1;min-height:0;overflow:auto;padding:12px 28px 28px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
+<sc-if value="{{on1}}" hint-placeholder-val="{{true}}">
+<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">周五回看只记录偏差，不复述进度。</p>
+<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">导出图片时默认带日期，标题可按需关闭。</p>
+<ul style="margin:0;padding-left:20px;font-size:16px;line-height:26px;color:{{textPrimary}};display:flex;flex-direction:column;gap:4px">
+<li>顶部圆点静默指示当前便签，无数字与命名干扰</li>
+<li>按住 Shift 上下滚动滚轮，或点击圆点即可切换上下便签</li>
+</ul>
+<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">明天确认一下签名证书的续期时间<span aria-hidden="true" style="display:inline-block;width:2px;height:19px;background:{{accent}};vertical-align:-4px;margin-left:2px;border-radius:1px"></span></p>
+</sc-if>
+
+<sc-if value="{{on2}}" hint-placeholder-val="{{false}}">
+<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">下个版本只保留最高频使用的快捷入口。</p>
+<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">把所有次要说明收进设置页，保持编辑界面绝对干净<span aria-hidden="true" style="display:inline-block;width:2px;height:19px;background:{{accent}};vertical-align:-4px;margin-left:2px;border-radius:1px"></span></p>
+</sc-if>
+
+<sc-if value="{{on3}}" hint-placeholder-val="{{false}}">
+<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">书单备忘：《设计中的设计》《网格系统与版式设计》<span aria-hidden="true" style="display:inline-block;width:2px;height:19px;background:{{accent}};vertical-align:-4px;margin-left:2px;border-radius:1px"></span></p>
+</sc-if>
+
+<sc-if value="{{on4}}" hint-placeholder-val="{{false}}">
+<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">接口联调清单：确认流式响应中断时的重连策略<span aria-hidden="true" style="display:inline-block;width:2px;height:19px;background:{{accent}};vertical-align:-4px;margin-left:2px;border-radius:1px"></span></p>
+</sc-if>
+
+<sc-if value="{{on5}}" hint-placeholder-val="{{false}}">
+<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">周末采购：咖啡豆、滤纸、Type-C 短线<span aria-hidden="true" style="display:inline-block;width:2px;height:19px;background:{{accent}};vertical-align:-4px;margin-left:2px;border-radius:1px"></span></p>
+</sc-if>
+</main>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"platform":{"editor":"enum","default":"macOS","options":["macOS","Windows / Linux"],"label":"系统平台"},"theme":{"editor":"enum","default":"浅色","options":["浅色","深色"],"label":"外观主题"},"$preview":{"width":440,"height":520}}'>
+class Component extends DCLogic {
+constructor() {
+super();
+this.state = { slot: 1, saved: false };
+this._lastWheel = 0;
+}
+renderVals() {
+const isWin = this.props.platform === 'Windows / Linux';
+const isMac = !isWin;
+const dark = this.props.theme === '深色';
+const s = this.state.slot || 1;
+const isSaved = Boolean(this.state.saved);
+const accent = dark ? '#6f96ec' : '#3559a8';
+const idleDot = dark ? '#384152' : '#c6cfd9';
+return {
+isMac,
+isWin,
+isSaved,
+notSaved: !isSaved,
+on1: s === 1,
+on2: s === 2,
+on3: s === 3,
+on4: s === 4,
+on5: s === 5,
+w1: s === 1 ? '18px' : '6px',
+w2: s === 2 ? '18px' : '6px',
+w3: s === 3 ? '18px' : '6px',
+w4: s === 4 ? '18px' : '6px',
+w5: s === 5 ? '18px' : '6px',
+bg1: s === 1 ? accent : idleDot,
+bg2: s === 2 ? accent : idleDot,
+bg3: s === 3 ? accent : idleDot,
+bg4: s === 4 ? accent : idleDot,
+bg5: s === 5 ? accent : idleDot,
+paperBg: dark ? '#161920' : '#ffffff',
+borderCol: dark ? '#2a303c' : '#dcdcdc',
+textPrimary: dark ? '#eef2f8' : '#181c23',
+iconCol: dark ? '#98a4b8' : '#475467',
+dotMuted: dark ? '#343b48' : '#dcdcdc',
+accent,
+duoFill: dark ? '#243558' : '#c9d8f3',
+saveBtnBg: isSaved ? (dark ? '#1f2d4a' : '#eef3fc') : 'transparent',
+pick1: () => this.setState({ slot: 1 }),
+pick2: () => this.setState({ slot: 2 }),
+pick3: () => this.setState({ slot: 3 }),
+pick4: () => this.setState({ slot: 4 }),
+pick5: () => this.setState({ slot: 5 }),
+toggleSaved: () => this.setState({ saved: !this.state.saved }),
+onWheel: (e) => {
+if (!e || !e.shiftKey) return;
+if (e.preventDefault) e.preventDefault();
+const now = Date.now();
+if (now - this._lastWheel < 140) return;
+const raw = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+if (Math.abs(raw) < 2) return;
+this._lastWheel = now;
+const dir = raw > 0 ? 1 : -1;
+const next = ((s - 1 + dir + 5) % 5) + 1;
+this.setState({ slot: next });
+}
+};
+}
+}
+</script>
+</body>
+</html>
