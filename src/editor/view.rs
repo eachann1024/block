@@ -154,8 +154,11 @@ impl Render for Editor {
                 let mut changed = false;
                 let top = this.list.logical_scroll_top();
                 let cur_scroll = (top.item_ix, top.offset_in_item);
-                if this.scroll_top != cur_scroll { this.scroll_top = cur_scroll; crate::dropdown::dismiss_all(cx); }
-                if this.annotate.editor_top != bounds.top() { this.annotate.editor_top = bounds.top(); changed = true; }
+                if this.scroll_top != cur_scroll { this.scroll_top = cur_scroll; crate::dropdown::dismiss_all(cx); changed = true; }
+                if this.annotate.editor_top != bounds.top() || this.annotate.editor_width != bounds.size.width || this.annotate.editor_height != bounds.size.height {
+                    (this.annotate.editor_top, this.annotate.editor_width, this.annotate.editor_height) = (bounds.top(), bounds.size.width, bounds.size.height);
+                    changed = true;
+                }
                 if let Some(menu) = &mut this.block_menu && menu.mode == super::block_menu::Mode::Slash
                     && let Some(l) = this.layouts.get(&menu.block)
                 {
@@ -179,8 +182,7 @@ impl Render for Editor {
             && self.caret.composing.is_none() && !matches!(self.format, Some(super::format_cmds::FormatPop::SelectionMenu { .. }))
             && self.block_menu.is_none() && self.table_menu.is_none() && window.is_window_active() && self.focus.is_focused(window));
         let std_w = super::chrome::standard_width(theme.content_width);
-        let vw = self.list.viewport_bounds().size.width;
-        let rail_w = if !self.minimal && self.annotate.has_visible_rail() && super::annotate_ui::is_wide(vw) { px(248.) } else { px(0.) };
+        let rail_slot = if !self.minimal && self.annotate.has_visible_rail() && super::annotate_ui::can_fit_wide_rail(self, std_w) { px(super::annotate_ui::RAIL_SLOT) } else { px(0.) };
         div().size_full().min_w_0().relative()
             .on_action(cx.listener(|this, _: &Find, w, cx| this.open_find(w, cx)))
             .child(div().id("editor").key_context("Editor").track_focus(&self.focus).size_full().min_w_0()
@@ -217,10 +219,10 @@ impl Render for Editor {
                 .on_mouse_move(cx.listener(|this, event, _, cx| this.pointer_move(event, cx)))
                 .on_mouse_up(MouseButton::Left, cx.listener(|this, event: &gpui::MouseUpEvent, _, cx| this.finish_drag(event.position, cx)))
                 .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.clear_pointer(); cx.notify(); }))
-                // The column is centred after the scrollbar gutter, leaving 248px (224px rail + gutter) for the annotation rail.
-                .child(div().flex_1().min_h_0().min_w_0().w_full().relative().flex().pr(px(scrollbar::GUTTER) + rail_w)
+                // The column is centred alongside the 224px annotation rail when the editor pane has room.
+                .child(div().flex_1().min_h_0().min_w_0().w_full().relative().flex().pr(px(scrollbar::GUTTER))
                     .on_scroll(scrollbar::forward_wheel(&self.list))
-                    .child(div().h_full().min_w_0().w_full().mx_auto().max_w(std_w + rail_w).flex().justify_end()
+                    .child(div().h_full().min_w_0().w_full().mx_auto().max_w(std_w + rail_slot).flex().justify_start()
                         .child(div().h_full().min_w_0().w_full().max_w(std_w)
                             .when(self.minimal, |paper| paper.flex())
                             // Minimal mode pulls the (unused) handle gutter out of view: 20px text padding.
