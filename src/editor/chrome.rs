@@ -9,7 +9,10 @@ pub(super) use crate::ui::reveal::grip_button;
 use super::{model::{Block, Kind}, paint::BlockText, view::Editor};
 
 pub(super) const HANDLE_WIDTH: f32 = 56.;
-const MARKER_WIDTH: f32 = 24.;
+/// ul/ol padding-left in the reference page; also one marker column.
+const MARKER_WIDTH: f32 = 29.68;
+/// Nesting is stored as marker characters; two of them make one list level.
+const INDENT_PER_CHAR: f32 = MARKER_WIDTH / 2.;
 pub(super) const ROW_GAP: f32 = 4.;
 /// Estimated floating toolbar size, used to keep it inside the editor.
 pub(super) const TOOLBAR_WIDTH: Pixels = px(460.);
@@ -19,26 +22,45 @@ pub(super) fn standard_width(body_width: Pixels) -> Pixels {
     body_width + px(HANDLE_WIDTH + ROW_GAP + RIGHT_INSET)
 }
 
-fn block_v_pad(block: &Block, minimal: bool, in_col: bool) -> (f32, f32) {
-    if minimal || in_col { return (2., 2.); }
+/// CSS (margin-top, margin-bottom) of a block in the reference page.
+fn margins(block: &Block) -> (f32, f32) {
     match (block.kind, block.meta.heading_level) {
-        (Kind::H1, _) => (8., 4.),
-        (Kind::H2, _) => (22., 6.),
-        (Kind::H3, Some(4)) => (14., 4.),
-        (Kind::H3, Some(5 | 6)) => (12., 3.),
-        (Kind::H3, _) => (18., 5.),
-        (Kind::Bullet | Kind::Numbered | Kind::Todo, _) => (2., 2.),
-        (Kind::Quote, _) if block.meta.callout.is_none() => (6., 6.),
-        _ => (5., 5.),
+        (Kind::H1, _) => (0., 8.),
+        (Kind::H2, _) => (35.2, 11.),
+        (Kind::H3, Some(4)) => (20., 6.),
+        (Kind::H3, Some(5 | 6)) => (16., 5.),
+        (Kind::H3, _) => (25.2, 7.2),
+        (Kind::Quote, _) if block.meta.callout.is_none() => (12.8, 12.8),
+        _ if block.meta.code_language.is_some() => (8.4, 8.4),
+        _ => (9.6, 9.6),
     }
 }
+fn is_list_kind(block: &Block) -> bool {
+    matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo)
+}
+/// Space above `block` after margin collapsing with `prev`: list items sit 4px apart
+/// (adjacent lists have no extra margin), everything else uses the larger margin.
+fn collapsed_gap(prev: &Block, block: &Block) -> f32 {
+    if is_list_kind(prev) && is_list_kind(block) && prev.meta.column.is_none() { return 4.; }
+    let above = if prev.meta.column.is_some() { 9.6 } else { margins(prev).1 };
+    above.max(margins(block).0)
+}
+/// (top, bottom) padding of a row; the gap between rows is carried by the lower row's top.
+fn row_pads(this: &Editor, index: usize) -> (f32, f32) {
+    let block = &this.doc.blocks[index];
+    if this.minimal || block.meta.column.is_some() { return (2., 2.); }
+    let top = this.next_visible_index(index, false)
+        .map_or(0., |prev| collapsed_gap(&this.doc.blocks[prev], block));
+    let bottom = if this.next_visible_index(index, true).is_none() { margins(block).1 } else { 0. };
+    (top, bottom)
+}
 
-pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bool, grip_active: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
+pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
     let in_col = block.meta.column.is_some();
     let handle_w = if in_col { 42. } else { HANDLE_WIDTH };
     let right_inset = if in_col { 4. } else { RIGHT_INSET };
-    let (pt, pb) = block_v_pad(block, minimal, in_col);
+    let (pt, pb) = pads;
     let is_heading = super::fold::heading_level(block).is_some();
     let is_table = block.meta.table.is_some();
     let checked = block.checked;
@@ -46,7 +68,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
     let marker = match block.kind { Kind::Bullet => "•".into(), Kind::Numbered => format!("{}.", number.unwrap_or(1)), _ => String::new() };
     let (size, factor) = super::paint::heading_metrics(block.kind, block.meta.heading_level, block.meta.code_language.is_some(), minimal, f32::from(theme.editor_font));
     let line = size * factor;
-    let indent = block.meta.indent.min(12) as f32 * 12.;
+    let indent = block.meta.indent.min(12) as f32 * INDENT_PER_CHAR;
     let marker_width = if matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) { MARKER_WIDTH + indent } else { indent };
     let image = super::image_source::spec_of(block)
         .and_then(|spec| super::image_source::resolve_path(&spec, note.as_deref()).map(|path| (path, spec)));
@@ -60,7 +82,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
     let code_lang = block.meta.code_language.clone();
     let preview_lang = code_lang.as_deref().is_some_and(super::code_block::is_preview_lang);
     let code_visible = handles || active;
-    let first_line_h = if rule { 22. } else if code_lang.is_some() { 30. } else { line };
+    let first_line_h = if rule { 16. } else if code_lang.is_some() { 30. } else { line };
     let handle_top = if is_table || image.is_some() {
         4.
     } else {
@@ -104,13 +126,14 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                         })))), ("handle-reveal", id as usize))))
             .when(marker_width > 0., |row| row.child(div().w(px(marker_width)).pl(px(indent)).flex_none().text_color(theme.text)
                 .text_size(px(size)).line_height(px(line))
-                .when(block.kind == Kind::Todo, |row| row.child(todo_box(checked, (line - 17.).max(0.) / 2., move |cx| {
+                .when(block.kind == Kind::Todo, |row| row.child(todo_box(checked, (line - 16.).max(0.) / 2., move |cx| {
                     checkbox_editor.update(cx, |this, cx| this.toggle_checked(id, cx));
                 })))
-                .when(!marker.is_empty(), |row| row.child(marker))))
+                // Outside markers sit flush against the text like CSS `list-style-position: outside`.
+                .when(!marker.is_empty(), |row| row.flex().justify_end().pr(px(8.)).child(marker))))
             .child(div().flex_1().min_w_0().flex().flex_col().relative()
                 .when(marker_width == 0. && !in_col, |body| body.max_w(theme.content_width))
-                .when(block.kind == Kind::Quote && callout.is_none(), |body| body.pl(px(16.)).child(
+                .when(block.kind == Kind::Quote && callout.is_none(), |body| body.pl(px(16.)).py(px(1.6)).child(
                     div().absolute().left_0().top_0().bottom_0().w(px(3.)).bg(theme.quote_bar)))
                 .when_some(callout, |body, _| {
                     body.rounded(px(8.)).bg(theme.hover).border_1().border_color(theme.hairline)
@@ -123,8 +146,8 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                         .child(format!("{} · {reason}", tr("已保留源码", "Source preserved")))))
                 .when_some(image, |body, (path, spec)| body.child(super::image_view::image_block(focus_editor.clone(), id, path, spec, active, image_pop, cx)))
                 .when(static_view && rule, |body| body.child(
-                    div().id(("rule", id as usize)).h(px(22.)).flex().items_center().cursor(CursorStyle::PointingHand)
-                        .child(div().h(px(if active { 2. } else { 1. })).w_full().bg(if active { theme.accent } else { theme.hairline }))
+                    div().id(("rule", id as usize)).h(px(16.)).flex().items_center().cursor(CursorStyle::PointingHand)
+                        .child(div().h(px(if active { 2. } else { 1. })).w_full().bg(if active { theme.accent } else if is_dark() { theme.hairline } else { gpui::rgba(0x0b0b0b33).into() }))
                         .on_mouse_down(MouseButton::Left, { let e = focus_editor.clone(); move |_, window, cx| {
                             e.update(cx, |this, cx| this.focus_block(id, window, cx)); cx.stop_propagation();
                         }})))
@@ -151,10 +174,10 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
 }
 fn todo_box(checked: bool, top: f32, toggle: impl Fn(&mut gpui::App) + 'static) -> impl IntoElement {
     let dark = is_dark();
-    let border: gpui::Hsla = if checked { rgb(0x2f6fe4).into() } else if dark { rgb(0x787772).into() } else { rgb(0x8c8b85).into() };
-    let hover_border: gpui::Hsla = if checked { rgb(0x1f57c0).into() } else if dark { rgb(0x9b9a95).into() } else { rgb(0x5e5d59).into() };
-    div().mt(px(top)).size(px(17.)).flex().items_center().justify_center().rounded(px(4.)).cursor(CursorStyle::PointingHand)
-        .border(px(1.5)).border_color(border).hover(move |s| s.border_color(hover_border))
+    let border: gpui::Hsla = if checked { rgb(0x2f6fe4).into() } else if dark { rgb(0x787772).into() } else { gpui::rgba(0x0b0b0b80).into() };
+    let hover_border: gpui::Hsla = if checked { rgb(0x1f57c0).into() } else if dark { rgb(0x9b9a95).into() } else { gpui::rgba(0x0b0b0bcc).into() };
+    div().mt(px(top)).ml(px(4.)).size(px(16.)).flex().items_center().justify_center().rounded(px(4.)).cursor(CursorStyle::PointingHand)
+        .border_1().border_color(border).hover(move |s| s.border_color(hover_border))
         .when(checked, |b| b.bg(rgb(0x2f6fe4)).hover(|s| s.bg(rgb(0x1f57c0))).child(icon(Icon::Check, px(12.),
             IconColors { line: rgb(0xffffff).into(), fill: transparent_black(), accent: transparent_black() })))
         .on_mouse_down(MouseButton::Left, move |_, _, cx| { toggle(cx); cx.stop_propagation(); })
@@ -172,7 +195,7 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let folded = !this.minimal && this.is_heading_folded(block.id);
     let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
     let image_pop = this.image_menu.as_ref().filter(|(mid, _)| *mid == block.id).map(|(_, p)| p.clone());
-    let row = block_row(cx.entity(), block, handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, cx);
+    let row = block_row(cx.entity(), block, row_pads(this, index), handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, cx);
     div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
         .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md())).child(row).into_any_element()
 }
