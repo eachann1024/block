@@ -14,8 +14,31 @@ pub(super) fn is_list(block: &Block) -> bool {
 fn is_atomic(block: &Block) -> bool {
     super::image_source::spec_of(block).is_some() || is_divider(block)
 }
+pub(in crate::editor) fn needs_top_insert(block: &Block) -> bool {
+    block.meta.code_language.is_some()
+        || block.meta.table.is_some()
+        || block.meta.raw_source.is_some()
+        || super::image_source::spec_of(block).is_some()
+        || block.meta.callout.is_some()
+        || block.kind == Kind::Quote
+        || block.meta.column.is_some()
+}
 
 impl Editor {
+    /// Insert a new plain paragraph at the very top of the document (index 0) and focus it.
+    pub(in crate::editor) fn insert_top_paragraph(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.path.is_none() || self.doc.blocks.is_empty() { return false; }
+        self.commit_composition(cx);
+        let before = self.snapshot();
+        self.doc.splice_blocks(0..0, vec![Block::new(0, Kind::Paragraph, String::new())]);
+        let id = self.doc.blocks[0].id;
+        self.table_sel = None; self.table_menu = None; self.block_sel = None; self.preferred_x = None;
+        self.set_head(Position { block: id, offset: 0 }, false, cx);
+        self.record_changes(before, vec![ListChange { start: 0, before: 0, after: 1 }], true, cx);
+        self.layouts.clear();
+        self.list.scroll_to_reveal_item(0);
+        true
+    }
     /// End index (inclusive) of `start`'s nested list subtree.
     pub(super) fn list_subtree_end(&self, start: usize) -> usize {
         let Some(head) = self.doc.blocks.get(start).filter(|b| is_list(b)) else { return start };

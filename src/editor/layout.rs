@@ -265,6 +265,19 @@ impl Editor {
                         return;
                     }
                 }
+            } else if !down && !extend && self.vertical_target(index, false).is_none()
+                && self.doc.blocks.first().is_some_and(crate::editor::block_ops::needs_top_insert)
+            {
+                let cur = &self.doc.blocks[index];
+                let at_top_edge = cur.meta.table.is_some()
+                    || at.offset == 0
+                    || crate::editor::image_source::spec_of(cur).is_some()
+                    || crate::editor::block_menu::is_divider(cur);
+                if at_top_edge {
+                    self.insert_top_paragraph(cx);
+                    return;
+                }
+                target = Some(Position { block: at.block, offset: 0 });
             }
         }
         if let Some(at) = target { self.set_head(at, extend, cx); }

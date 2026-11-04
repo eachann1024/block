@@ -136,3 +136,49 @@ pub fn fold_button(
         .child(hover_icon(glyph, 14., base_fg, hover_fg))
         .on_mouse_down(MouseButton::Left, listener)
 }
+
+pub fn top_insert_slot(
+    id: (&'static str, usize),
+    handle_w: f32,
+    row_gap: f32,
+    right_inset: f32,
+    visible: bool,
+    listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    let dark = is_dark();
+    let pill_bg: Hsla = if dark { rgba(0x2d426b80).into() } else { rgba(0xdbeafecc).into() };
+    let pill_border: Hsla = theme.accent.opacity(if dark { 0.55 } else { 0.45 });
+    let bar_bg: Hsla = if dark { rgba(0x2d426b38).into() } else { rgba(0xdbeafe66).into() };
+    let bar_hover_bg: Hsla = if dark { rgba(0x2d426b66).into() } else { rgba(0xdbeafeb3).into() };
+    div()
+        .id(id)
+        .group("top-slot")
+        .w_full()
+        .min_w_0()
+        .pr(px(right_inset))
+        .pb(px(6.))
+        .flex()
+        .items_center()
+        .cursor(CursorStyle::PointingHand)
+        .opacity(if visible { 1. } else { 0. })
+        .group_hover("top-slot", |s| s.opacity(1.))
+        .on_mouse_down(MouseButton::Left, listener)
+        .child(
+            div().w(px(handle_w)).mr(px(row_gap)).flex_none().flex().justify_end().items_center().child(
+                div().size(px(24.)).rounded(px(6.)).bg(pill_bg).border_1().border_color(pill_border)
+                    .flex().items_center().justify_center()
+                    .child(icon(Icon::Plus, px(13.), IconColors { line: theme.accent, fill: transparent_black(), accent: theme.accent })),
+            ),
+        )
+        .child(
+            div().flex_1().min_w_0().max_w(theme.content_width).h(px(28.)).px(px(12.)).rounded(px(7.))
+                .bg(bar_bg).border_1().border_color(pill_border)
+                .group_hover("top-slot", move |s| s.bg(bar_hover_bg).border_color(theme.accent))
+                .flex().items_center().justify_between()
+                .child(div().flex().items_center().gap(px(6.)).text_size(px(13.)).text_color(theme.accent)
+                    .child(tr("点击在文档最上方插入新行", "Click to insert a new line at the top")))
+                .child(div().flex().items_center().gap(px(4.)).text_size(px(12.)).text_color(theme.text_secondary)
+                    .child(tr("首字符 ↑ / ⌫", "↑ / ⌫ at start"))),
+        )
+}
