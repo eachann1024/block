@@ -1,9 +1,9 @@
 //! Fenced code block card: padding via layout margin, painted background, border, language picker and copy button.
 use std::{cell::RefCell, collections::{HashMap, HashSet}, time::Duration};
 use gpui::{
-    App, BorderStyle, Bounds, ClipboardItem, Context, CursorStyle, Edges, Entity, Focusable,
-    FontWeight, IntoElement, Length, MouseButton, Pixels, Point, Subscription, Window, anchored,
-    deferred, div, point, prelude::*, px, quad, rgb, size, transparent_black,
+    App, BorderStyle, Bounds, ClipboardItem, Corners, Context, CursorStyle, Edges, Entity,
+    Focusable, FontWeight, IntoElement, Length, MouseButton, Pixels, Point, Subscription, Window,
+    anchored, deferred, div, point, prelude::*, px, quad, rgb, size, transparent_black,
 };
 use gpui_component::{Sizable, input::{Input, InputEvent, InputState}};
 use crate::{icons::{Icon, IconColors, icon}, theme::{Theme, is_dark}};
@@ -31,6 +31,18 @@ thread_local! {
     static LANG_PICKER: RefCell<Option<LangPicker>> = const { RefCell::new(None) };
 }
 
+pub(super) fn is_mermaid(language: &str) -> bool {
+    language.trim().eq_ignore_ascii_case("mermaid")
+}
+
+pub(super) fn is_math(language: &str) -> bool {
+    matches!(language.trim().to_ascii_lowercase().as_str(), "math" | "latex" | "tex" | "katex")
+}
+
+pub(super) fn is_preview_lang(language: &str) -> bool {
+    is_mermaid(language) || is_math(language)
+}
+
 /// Space around the text that the card occupies (30px header + 12px/14px/14px code area padding).
 pub(super) fn margin(_language: &str) -> Edges<Length> {
     let top = HEADER_H + PAD_TOP;
@@ -38,7 +50,7 @@ pub(super) fn margin(_language: &str) -> Edges<Length> {
 }
 
 /// Paint the card behind the text `bounds` (which exclude the margin).
-pub(super) fn paint_card(bounds: Bounds<Pixels>, _language: &str, window: &mut Window, _cx: &mut App) {
+pub(super) fn paint_card(bounds: Bounds<Pixels>, language: &str, window: &mut Window, _cx: &mut App) {
     let dark = is_dark();
     let bg = if dark { rgb(0x16191e) } else { rgb(0xf5f6f8) };
     let border = if dark { rgb(0x282c34) } else { rgb(0xeceef1) };
@@ -47,11 +59,55 @@ pub(super) fn paint_card(bounds: Bounds<Pixels>, _language: &str, window: &mut W
         bounds.origin - point(px(PAD_X), px(top)),
         size(bounds.size.width + px(PAD_X * 2.), bounds.size.height + px(top + PAD_BOTTOM)),
     );
-    window.paint_quad(quad(card, px(8.), bg, px(1.), border, BorderStyle::Solid));
+    let radii = if is_preview_lang(language) {
+        Corners { top_left: px(8.), top_right: px(8.), bottom_right: px(0.), bottom_left: px(0.) }
+    } else {
+        Corners::all(px(8.))
+    };
+    window.paint_quad(quad(card, radii, bg, px(1.), border, BorderStyle::Solid));
     window.paint_quad(gpui::fill(
         Bounds::new(card.origin + point(px(1.), px(HEADER_H)), size(card.size.width - px(2.), px(1.))),
         border,
     ));
+}
+
+/// Rendered preview section for ```mermaid and ```math blocks (standalone card or edit-mode footer).
+pub(super) fn preview_card(
+    editor: Entity<Editor>,
+    block_id: u64,
+    language: &str,
+    source: &str,
+    in_edit_mode: bool,
+    cx: &mut Context<Editor>,
+) -> impl IntoElement {
+    let dark = is_dark();
+    let bg = if dark { rgb(0x16191e) } else { rgb(0xf5f6f8) };
+    let border = if dark { rgb(0x282c34) } else { rgb(0xeceef1) };
+    let content = if is_mermaid(language) {
+        super::diagram_preview::view(editor, block_id, source, cx)
+    } else {
+        super::math_preview::view(editor, block_id, source, cx)
+    };
+    if in_edit_mode {
+        div().id(("code-preview", block_id as usize)).w_full().min_w_0().px(px(PAD_X)).py(px(14.))
+            .bg(bg).border_l_1().border_r_1().border_b_1().border_color(border).rounded_b(px(8.))
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                window.focus(&this.focus);
+                cx.stop_propagation();
+            }))
+            .child(content)
+            .into_any_element()
+    } else {
+        div().id(("code-preview", block_id as usize)).w_full().min_w_0().pt(px(HEADER_H))
+            .bg(bg).border_1().border_color(border).rounded(px(8.)).cursor(CursorStyle::PointingHand)
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
+                this.block_sel = None;
+                this.focus_block(block_id, window, cx);
+                cx.stop_propagation();
+            }))
+            .child(div().w_full().min_w_0().px(px(PAD_X)).py(px(16.)).border_t_1().border_color(border).child(content))
+            .into_any_element()
+    }
 }
 
 fn close_lang_picker() {
@@ -66,7 +122,7 @@ fn filtered_languages(query: &str) -> Vec<(&'static str, &'static str)> {
 }
 
 /// Header controls (clickable language picker + "复制代码" button) overlaid on a fenced code block.
-pub(super) fn copy_button(editor: Entity<Editor>, block_id: u64, cx: &mut Context<Editor>) -> impl IntoElement {
+pub(super) fn copy_button(editor: Entity<Editor>, block_id: u64, raw_lang: String, cx: &mut Context<Editor>) -> impl IntoElement {
     let dark = is_dark();
     let base_fg: gpui::Hsla = if dark { rgb(0x9aa3b2).into() } else { rgb(0x526071).into() };
     let hover_fg: gpui::Hsla = if dark { rgb(0xe6e9ef).into() } else { rgb(0x16181c).into() };
@@ -74,8 +130,6 @@ pub(super) fn copy_button(editor: Entity<Editor>, block_id: u64, cx: &mut Contex
     let copied = COPIED_BLOCKS.with(|set| set.borrow().contains(&block_id));
     let glyph = if copied { Icon::Check } else { Icon::Copy };
     let tint = |line| IconColors { line, fill: transparent_black(), accent: transparent_black() };
-    let raw_lang = editor.read(cx).doc.get(block_id)
-        .and_then(|b| b.meta.code_language.clone()).unwrap_or_default();
     let mapped = language_label(&raw_lang);
     let display_lang = if mapped == "其他" && !raw_lang.is_empty() { raw_lang.clone() } else { mapped.to_owned() };
     let picker_state = LANG_PICKER.with(|slot| {
