@@ -14,6 +14,21 @@ pub(super) struct TableExtend {
 }
 
 impl Editor {
+    /// While the bar is held the pointer may leave the editor (or the window): window-level listeners keep the drag alive.
+    pub(super) fn track_extend_pointer(&mut self, window: &mut gpui::Window, cx: &mut Context<Self>) {
+        if self.table_extend.is_none() { return; }
+        let editor = cx.entity();
+        window.on_mouse_event({ let editor = editor.clone(); move |event: &gpui::MouseMoveEvent, phase, _, cx| {
+            if phase != gpui::DispatchPhase::Capture { return; }
+            editor.update(cx, |this, cx| {
+                if !event.dragging() { this.clear_pointer(); cx.notify(); } else { this.extend_move(event.position.x, cx); }
+            });
+        } });
+        window.on_mouse_event(move |_: &gpui::MouseUpEvent, phase, _, cx| {
+            if phase != gpui::DispatchPhase::Capture { return; }
+            editor.update(cx, |this, cx| this.finish_extend(cx));
+        });
+    }
     pub(super) fn begin_extend(&mut self, id: u64, start: Point<Pixels>, cx: &mut Context<Self>) {
         self.commit_composition(cx);
         let Some(mut original) = self.doc.get(id).and_then(|b| b.meta.table.clone()) else { return };
