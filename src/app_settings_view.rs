@@ -53,7 +53,7 @@ impl Workspace {
                     .child(div().text_size(px(24.)).line_height(px(32.)).font_weight(FontWeight(560.))
                         .text_color(theme.text).child(tab.title()))
                     .child(div().id("settings-back").relative().children(crate::ui::smoke_overlay::probe("settings-back"))
-                        .h(px(32.)).px(px(10.)).rounded(px(8.))
+                        .h(px(32.)).px(px(10.)).rounded(crate::ui::radius::CONTROL)
                         .bg(crate::ui::settings_controls::card_bg()).border_1().border_color(theme.btn_border)
                         .flex().items_center().justify_center().text_size(px(14.)).font_weight(FontWeight(460.))
                         .text_color(theme.text).cursor(CursorStyle::PointingHand)
@@ -68,9 +68,8 @@ impl Workspace {
         match tab {
             SettingsTab::Ai => div().children(crate::editor::ai::settings::section(cx)).into_any_element(),
             SettingsTab::Appearance => self.appearance_tab(cx).into_any_element(),
-            SettingsTab::General => self.general_tab().into_any_element(),
+            SettingsTab::General => self.general_tab(cx).into_any_element(),
             SettingsTab::Shortcuts => self.shortcuts_tab(cx).into_any_element(),
-            SettingsTab::Storage => self.storage_tab(cx).into_any_element(),
         }
     }
 }

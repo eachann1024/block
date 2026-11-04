@@ -10,6 +10,9 @@ use super::search::{Hit, find_all};
 use super::state::State;
 use crate::theme::tr;
 
+mod vfs_seed;
+use vfs_seed::*;
+
 struct Vfs {
     dirs: BTreeSet<PathBuf>,
     files: BTreeMap<PathBuf, String>,
@@ -166,6 +169,7 @@ fn build_level(vfs: &Vfs, dir: &Path) -> Vec<Node> {
     for sub in &vfs.dirs {
         if sub != dir && sub.parent() == Some(dir) {
             if let Some(name) = sub.file_name().map(|n| n.to_string_lossy().into_owned()) {
+                if super::scan::ignored_dir(&name) { continue; }
                 nodes.push(Node {
                     name,
                     path: sub.clone(),
@@ -200,6 +204,11 @@ pub fn search_all(root: &Path, query: &str, limit: usize) -> Vec<Hit> {
     let (mut titles, mut bodies) = (Vec::new(), Vec::new());
     for (path, body) in &vfs.files {
         if !path.starts_with(root) { continue; }
+        if path.strip_prefix(root).ok().is_some_and(|rel| {
+            rel.components().any(|c| super::scan::ignored_dir(&c.as_os_str().to_string_lossy()))
+        }) {
+            continue;
+        }
         let Some(stem) = path.file_stem().map(|s| s.to_string_lossy().into_owned()) else { continue };
         let title_marks = find_all(&stem, query);
         let body_matches = find_all(body, query);
@@ -219,73 +228,3 @@ pub fn search_all(root: &Path, query: &str, limit: usize) -> Vec<Hit> {
     titles.truncate(limit);
     titles
 }
-
-const NOTE_WELCOME: &str = r#"# 欢迎使用 Yu —— 毫秒级原生 Markdown 笔记
-
-这是一份直接运行在浏览器 **WebAssembly + WebGPU/Canvas** 中的真实 **Yu (Thinkly Fast)** 工作区。左侧文件树、多标签页、全局搜索（⌘K）、设置面板（⌘,）与生成长图（⇧⌘E）均由同一套 Rust + GPUI 代码直接驱动。
-
-> [!TIP]
-> 试着在左侧文件树切换笔记、新建笔记（⌘N）、按 / 呼出块菜单，或点击右上角 ··· → **生成图片…** 体验完整功能。
-
-## 核心工作区体验
-
-- [x] **左侧文件树与多标签页** — 支持新建笔记、新建文件夹、内联重命名、右键菜单与标签页切换
-- [x] **所见即所得块级编辑** — 标题、待办清单、多列分栏、代码高亮、数学公式、表格交互全部实时响应
-- [ ] 在下方任意段落直接输入文字，或选中文本体验浮动格式工具栏
-
-## 性能与架构对比
-
-| 维度 | Yu (Rust + GPUI) | 传统 Electron 笔记 |
-| :--- | :--- | :--- |
-| 冷启动耗时 | **< 40 ms** | 1,200 – 2,800 ms |
-| 空闲内存占用 | **~28 MB** | 350 – 800 MB |
-| 本地存储格式 | **纯正 `.md` 文件** | 私有数据库 / 锁定云端 |
-
-## 代码块与数学公式
-
-```rust
-pub fn render_workspace(note: &MarkdownDoc, gpu: &mut GpuCanvas) {
-    for block in note.visible_blocks() {
-        gpu.paint_block(block);
-    }
-}
-```
-
-$$
-\mathcal{L}(\theta) = \mathbb{E}_{x \sim p_{\text{data}}}\bigl[-\log p_{\theta}(x)\bigr] + \lambda \|\theta\|_2^2
-$$
-"#;
-
-const NOTE_ARCH: &str = r#"# 毫秒级块级编辑器架构
-
-Yu 将每一篇 Markdown 文档拆分为独立的块级节点（Block），配合虚拟列表与增量排版缓存，即使面对十万字长文也能保持 120fps 的丝滑滚动与输入。
-
-## 快捷键速查
-
-| 功能 | macOS 快捷键 | 说明 |
-| :--- | :--- | :--- |
-| 全局搜索 | `⌘K` | 按标题与正文毫秒级检索工作区全部笔记 |
-| 新建笔记 | `⌘N` | 在当前目录立即创建新 Markdown 笔记并打开标签页 |
-| 页内查找 | `⌘F` | 当前笔记内高亮匹配与替换 |
-| 生成图片 | `⇧⌘E` | 导出 6 款精选纸张主题的高清 2× 视网膜长图 |
-
-## 块级交互清单
-
-1. 将鼠标悬停在任意段落左侧，点击 `+` 或拖拽 `⋮⋮` 把手调整顺序
-2. 输入 `/` 即可过滤并插入标题、表格、代码块、标注框或数学公式
-3. 点击右上角 `···` 菜单可一键复制 Markdown 源码或生成分享长图
-"#;
-
-const NOTE_GUIDE: &str = r#"# 排版与导出卡片指南
-
-Yu 内置了由 `tiny-skia` 与 `cosmic-text` 驱动的离线排版渲染引擎，可将当前笔记或选中片段一键渲染为 2× 高清 PNG 长图、可交互 HTML、矢量 PDF 或标准 `.docx` 文档。
-
-> [!NOTE]
-> 点击窗口右上角的 `···` 按钮并选择 **生成图片…（⇧⌘E）**，即可实时切换「留白、暖纸、墨夜、赛博、手账、极光」六款主题。
-
-## 支持导出的格式
-
-- **PNG 长图（2×）** — 适合直接分享至社交媒体与即时通讯工具
-- **HTML 网页** — 单文件内联样式，完美保留代码高亮、表格与排版细节
-- **PDF / Word 文档** — 适合正式归档、打印与跨团队协作交付
-"#;

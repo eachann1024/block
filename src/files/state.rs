@@ -81,6 +81,10 @@ pub struct State {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub font_smoothing: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assets_folder: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hide_assets_folder: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcut_search: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcut_quick: Option<String>,

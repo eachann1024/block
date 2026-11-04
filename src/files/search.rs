@@ -94,8 +94,10 @@ pub fn search_notes(root: &Path, query: &str, limit: usize) -> Vec<Hit> {
             if ignored(&name) { continue; }
             let Ok(kind) = entry.file_type() else { continue };
             let path = entry.path();
-            if kind.is_dir() { stack.push(path); }
-            else if (kind.is_file() || kind.is_symlink()) && is_markdown(&name) {
+            if kind.is_dir() {
+                if super::scan::ignored_dir(&name) { continue; }
+                stack.push(path);
+            } else if (kind.is_file() || kind.is_symlink()) && is_markdown(&name) {
                 if let Some(hit) = inspect(root, &path, query) {
                     if hit.title_match { titles.push(hit) } else { bodies.push(hit) }
                 }

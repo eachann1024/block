@@ -14,6 +14,7 @@ pub const DEFAULT_SEARCH_SHORTCUT: &str = "cmd-shift-k";
 #[cfg(not(target_os = "macos"))]
 pub const DEFAULT_SEARCH_SHORTCUT: &str = "ctrl-shift-k";
 pub const DEFAULT_QUICK_SHORTCUT: &str = "alt-n";
+pub const DEFAULT_ASSETS_FOLDER: &str = "assets";
 
 static THEME_MODE: AtomicU8 = AtomicU8::new(0);
 static IS_DARK: AtomicBool = AtomicBool::new(false);
@@ -22,20 +23,42 @@ static SMOOTHING: AtomicBool = AtomicBool::new(true);
 static SHORTCUTS: Mutex<Option<(String, String)>> = Mutex::new(None);
 static LANGUAGE_MODE: AtomicU8 = AtomicU8::new(0);
 static IS_EN: AtomicBool = AtomicBool::new(false);
+static ASSETS_FOLDER: Mutex<Option<String>> = Mutex::new(None);
+static HIDE_ASSETS_FOLDER: AtomicBool = AtomicBool::new(true);
+
+pub fn sanitize_assets_folder(raw: &str) -> String {
+    let mut s = raw.trim();
+    while let Some(rest) = s.strip_prefix("./").or_else(|| s.strip_prefix(".\\")) { s = rest.trim(); }
+    let s = s.trim_matches(|c: char| c == '/' || c == '\\');
+    let replaced = s.replace("..", "-");
+    let cleaned: String = replaced.chars().map(|c| match c { '/' | '\\' | ':' | '\0' => '-', _ => c }).collect();
+    let trimmed = cleaned.trim_matches(|c: char| c == '/' || c == '\\' || c == '.' || c.is_whitespace());
+    if trimmed.is_empty() { DEFAULT_ASSETS_FOLDER.into() } else { trimmed.to_string() }
+}
+
+pub fn assets_folder() -> String {
+    ASSETS_FOLDER.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_else(|| DEFAULT_ASSETS_FOLDER.into())
+}
+
+pub fn set_assets_folder(name: String) {
+    let sanitized = sanitize_assets_folder(&name);
+    *ASSETS_FOLDER.lock().unwrap_or_else(|e| e.into_inner()) = Some(sanitized);
+}
+
+pub fn hide_assets_folder() -> bool { HIDE_ASSETS_FOLDER.load(Ordering::Relaxed) }
+pub fn set_hide_assets_folder(hide: bool) { HIDE_ASSETS_FOLDER.store(hide, Ordering::Relaxed); }
 
 fn system_is_en() -> bool {
     if cfg!(target_os = "macos") {
         if let Ok(out) = Command::new("defaults").args(["read", "-g", "AppleLanguages"]).output() {
-            let s = String::from_utf8_lossy(&out.stdout).to_ascii_lowercase();
-            for line in s.lines() {
+            for line in String::from_utf8_lossy(&out.stdout).to_ascii_lowercase().lines() {
                 let t = line.trim().trim_matches(|c: char| c == '"' || c == ',' || c == '(' || c == ')').trim();
                 if t.starts_with("zh") { return false; }
                 if t.starts_with("en") { return true; }
             }
         }
     }
-    std::env::var("LC_ALL").or_else(|_| std::env::var("LANG"))
-        .map(|v| v.to_ascii_lowercase().starts_with("en")).unwrap_or(false)
+    std::env::var("LC_ALL").or_else(|_| std::env::var("LANG")).map(|v| v.to_ascii_lowercase().starts_with("en")).unwrap_or(false)
 }
 
 pub fn language_mode() -> LanguageMode {
@@ -57,11 +80,8 @@ pub fn is_en() -> bool { IS_EN.load(Ordering::Relaxed) }
 pub fn tr(zh: &'static str, en: &'static str) -> &'static str { if is_en() { en } else { zh } }
 
 fn system_is_dark() -> bool {
-    cfg!(target_os = "macos")
-        && Command::new("defaults")
-            .args(["read", "-g", "AppleInterfaceStyle"])
-            .output()
-            .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).trim().eq_ignore_ascii_case("dark"))
+    cfg!(target_os = "macos") && Command::new("defaults").args(["read", "-g", "AppleInterfaceStyle"])
+        .output().is_ok_and(|out| String::from_utf8_lossy(&out.stdout).trim().eq_ignore_ascii_case("dark"))
 }
 
 pub fn apply_state(state: &crate::files::state::State) {
@@ -69,6 +89,9 @@ pub fn apply_state(state: &crate::files::state::State) {
     set_theme_mode(state.theme);
     set_font_choice(state.font_family);
     set_font_smoothing(state.font_smoothing.unwrap_or(true));
+    if let Some(folder) = &state.assets_folder { set_assets_folder(folder.clone()); }
+    else { set_assets_folder(DEFAULT_ASSETS_FOLDER.into()); }
+    set_hide_assets_folder(state.hide_assets_folder.unwrap_or(true));
     let search = state.shortcut_search.as_deref()
         .filter(|s| !s.eq_ignore_ascii_case("cmd-k"))
         .unwrap_or(DEFAULT_SEARCH_SHORTCUT)
@@ -106,9 +129,7 @@ static RESOLVED_FONTS: OnceLock<(&'static str, &'static str)> = OnceLock::new();
 /// duplicate PingFangUI.ttc (same PostScript names, different glyph IDs) and garble CJK.
 pub fn init_fonts(installed: &[String]) {
     let pick = |candidates: &[&'static str], last: &'static str| {
-        candidates.iter().copied()
-            .find(|c| installed.iter().any(|n| n == c))
-            .unwrap_or(last)
+        candidates.iter().copied().find(|c| installed.iter().any(|n| n == c)).unwrap_or(last)
     };
     let serif = pick(
         &["LXGW WenKai", "LXGW WenKai Screen", "Kaiti SC", "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", "SimSun"],
@@ -141,20 +162,16 @@ pub fn set_font_smoothing(on: bool) {
     if !cfg!(target_os = "macos") { return; }
     let val = if on { "2" } else { "0" };
     std::thread::spawn(move || {
-        let _ = Command::new("defaults")
-            .args(["write", "app.thinkly.fast", "AppleFontSmoothing", "-int", val])
-            .status();
+        let _ = Command::new("defaults").args(["write", "app.thinkly.fast", "AppleFontSmoothing", "-int", val]).status();
     });
 }
 
 pub fn search_shortcut() -> String {
-    SHORTCUTS.lock().unwrap_or_else(|e| e.into_inner())
-        .as_ref().map(|(s, _)| s.clone()).unwrap_or_else(|| DEFAULT_SEARCH_SHORTCUT.into())
+    SHORTCUTS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|(s, _)| s.clone()).unwrap_or_else(|| DEFAULT_SEARCH_SHORTCUT.into())
 }
 
 pub fn quick_shortcut() -> String {
-    SHORTCUTS.lock().unwrap_or_else(|e| e.into_inner())
-        .as_ref().map(|(_, q)| q.clone()).unwrap_or_else(|| DEFAULT_QUICK_SHORTCUT.into())
+    SHORTCUTS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|(_, q)| q.clone()).unwrap_or_else(|| DEFAULT_QUICK_SHORTCUT.into())
 }
 
 pub fn set_shortcuts(search: String, quick: String) {
@@ -162,8 +179,7 @@ pub fn set_shortcuts(search: String, quick: String) {
 }
 
 pub fn hotkey_parts(spec: &str) -> Vec<String> {
-    let (mut ctrl, mut alt, mut shift, mut cmd, mut secondary, mut key) =
-        (false, false, false, false, false, String::new());
+    let (mut ctrl, mut alt, mut shift, mut cmd, mut secondary, mut key) = (false, false, false, false, false, String::new());
     for part in spec.split('-').filter(|s| !s.is_empty()) {
         match part.to_ascii_lowercase().as_str() {
             "ctrl" | "control" => ctrl = true,
@@ -191,9 +207,7 @@ pub fn hotkey_parts(spec: &str) -> Vec<String> {
         if ctrl || secondary { out.push("Ctrl".into()); }
         if shift { out.push("Shift".into()); }
         if alt { out.push("Alt".into()); }
-        if cmd {
-            out.push(if cfg!(target_os = "windows") { "Win".into() } else { "Super".into() });
-        }
+        if cmd { out.push(if cfg!(target_os = "windows") { "Win".into() } else { "Super".into() }); }
     }
     if !key.is_empty() { out.push(key); }
     out
@@ -205,11 +219,8 @@ pub fn format_hotkey(spec: &str) -> String {
 }
 
 const fn hex(value: u32) -> Hsla {
-    let r = ((value >> 16) & 0xff) as f32 / 255.0;
-    let g = ((value >> 8) & 0xff) as f32 / 255.0;
-    let b = (value & 0xff) as f32 / 255.0;
-    let max = if r >= g && r >= b { r } else if g >= b { g } else { b };
-    let min = if r <= g && r <= b { r } else if g <= b { g } else { b };
+    let (r, g, b) = (((value >> 16) & 0xff) as f32 / 255.0, ((value >> 8) & 0xff) as f32 / 255.0, (value & 0xff) as f32 / 255.0);
+    let (max, min) = (if r >= g && r >= b { r } else if g >= b { g } else { b }, if r <= g && r <= b { r } else if g <= b { g } else { b });
     let (l, d) = ((max + min) / 2.0, max - min);
     let s = if d == 0.0 { 0.0 } else if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
     let h = if d == 0.0 { 0.0 } else if max == r { ((g - b) / d + if g < b { 6.0 } else { 0.0 }) / 6.0 }
