@@ -7,7 +7,7 @@ use gpui::{
 use crate::{
     app::Workspace,
     editor::Editor,
-    icons::{Icon, IconColors, icon},
+    icons::{Icon, IconColors, icon, stateful_icon},
     theme::is_dark,
 };
 
@@ -132,28 +132,38 @@ pub struct RowSpec {
 
 pub fn row_with(id: impl Into<ElementId>, spec: RowSpec) -> Stateful<Div> {
     let p = palette();
-    let row = div().id(id).h(px(ROW_HEIGHT)).w_full().flex_none().px(px(10.)).gap(px(8.)).rounded(px(8.))
+    let id: ElementId = id.into();
+    let group = SharedString::from(format!("dd-row-{id:?}"));
+    let active = spec.checked || spec.highlighted;
+    let row = div().id(id).group(group.clone()).h(px(ROW_HEIGHT)).w_full().flex_none().px(px(10.)).gap(px(8.)).rounded(px(8.))
         .flex().items_center().text_size(px(14.)).line_height(px(20.)).when(spec.disabled, |s| s.opacity(0.4));
     let row = if spec.danger {
         let fg = if spec.highlighted && !spec.disabled { p.danger_hover_fg } else { p.danger_fg };
-        let base_c = IconColors { line: p.danger_fg, fill: p.danger_fill, accent: p.danger_fg };
+        let idle_c = IconColors { line: p.danger_fg, fill: transparent_black(), accent: p.danger_fg };
         let hov_c = IconColors { line: p.danger_hover_fg, fill: rgba(0xffffff33).into(), accent: p.danger_hover_fg };
         let lead = div().relative().size(px(16.)).flex_none().flex().items_center().justify_center()
             .when_some(spec.icon, |slot, g| {
-                if spec.disabled || spec.highlighted {
-                    slot.child(icon(g, px(16.), if spec.highlighted && !spec.disabled { hov_c } else { base_c }))
+                if spec.disabled {
+                    slot.child(icon(g, px(16.), idle_c))
                 } else {
-                    slot.child(div().group_hover("dd-danger-row", |s| s.invisible()).child(icon(g, px(16.), base_c)))
-                        .child(div().absolute().top_0().left_0().invisible().group_hover("dd-danger-row", |s| s.visible()).child(icon(g, px(16.), hov_c)))
+                    slot.child(stateful_icon(group.clone(), g, px(16.), active, idle_c, hov_c))
                 }
             });
-        row.group("dd-danger-row").text_color(fg)
+        row.text_color(fg)
             .when(spec.highlighted && !spec.disabled, move |s| s.bg(p.danger_hover_bg))
             .when(!spec.disabled, move |s| s.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(p.danger_hover_bg).text_color(p.danger_hover_fg)))
             .child(lead)
     } else {
+        let idle_c = IconColors { line: p.icon, fill: transparent_black(), accent: p.icon };
+        let active_c = IconColors { line: p.icon, fill: p.icon_fill, accent: p.icon_accent };
         let lead = div().size(px(16.)).flex_none().flex().items_center().justify_center()
-            .when_some(spec.icon, |slot, g| slot.child(duo_icon(g, 16.)));
+            .when_some(spec.icon, |slot, g| {
+                if spec.disabled {
+                    slot.child(icon(g, px(16.), idle_c))
+                } else {
+                    slot.child(stateful_icon(group.clone(), g, px(16.), active, idle_c, active_c))
+                }
+            });
         row.text_color(p.text)
             .when(spec.checked, move |s| s.bg(p.checked_bg))
             .when(spec.highlighted && !spec.disabled, move |s| s.bg(p.hover_bg))
