@@ -153,7 +153,7 @@ pub(super) fn annotation_row(
         .children(reaction_pills.map(|p| p.mt(px(4.))))
 }
 
-pub(super) fn composer_row(input: Entity<InputState>, has_text: bool, cx: &mut Context<Editor>) -> impl IntoElement {
+pub(super) fn composer_row(input: Entity<InputState>, has_text: bool, floating: bool, cx: &mut Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean();
     let field = div().flex_1().min_w_0().h(px(28.)).flex().items_center().text_size(px(14.)).text_color(theme.text)
         .child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)).px(px(0.)));
@@ -163,8 +163,9 @@ pub(super) fn composer_row(input: Entity<InputState>, has_text: bool, cx: &mut C
         .when(has_text, |button| button.cursor(CursorStyle::PointingHand))
         .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.submit_annotation(window, cx)))
         .child(icon(Icon::ArrowUp, px(14.), IconColors { line: color, fill: gpui::transparent_black(), accent: color }));
-    annotation_note::rail_note("annotate-composer", ANNOTATION_PENDING,
+    annotation_note::rail_note("annotate-composer", ANNOTATION_PENDING, floating,
         div().w_full().h(px(30.)).flex().items_center().gap(px(6.)).child(field).child(submit))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .key_context("AnnotateComposer")
         .on_action(cx.listener(|this, _: &Escape, window, cx| { this.close_annotation_composer(window, cx); cx.stop_propagation(); }))
 }

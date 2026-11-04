@@ -88,7 +88,7 @@ pub(super) fn card_height(note: &Annotation, has_edit: bool, has_followup: bool)
 }
 
 pub(super) fn composer_height() -> Pixels {
-    ROW_HEIGHTS.with(|heights| heights.borrow().get(&(0, 0)).copied()).unwrap_or(px(34.))
+    ROW_HEIGHTS.with(|heights| heights.borrow().get(&(0, 0)).copied()).unwrap_or(px(44.))
 }
 
 pub(super) fn measure_row(id: u64, kind: u8, cx: &mut Context<Editor>) -> impl IntoElement {
@@ -122,6 +122,20 @@ pub(super) fn row_target(editor: &Editor, block_id: u64, offset: usize) -> Pixel
                 .map(|bounds| bounds.top() - editor.annotate.editor_top)
         })
         .unwrap_or(px(24.)).max(px(24.))
+}
+
+pub(super) fn row_bottom(editor: &Editor, block_id: u64, target_y: Pixels) -> Pixels {
+    let mut bottom = px(0.);
+    for line in &editor.annotate.fit_snapshot.lines {
+        if line.top <= target_y + px(4.) && line.bottom >= target_y && line.bottom > bottom {
+            bottom = line.bottom;
+        }
+    }
+    if bottom > target_y {
+        bottom
+    } else {
+        editor.layouts.get(&block_id).map(|l| target_y + l.line_height).unwrap_or(target_y + px(28.))
+    }
 }
 
 fn build_snapshot(editor: &Editor, editor_left: Pixels, editor_top: Pixels, editor_w: Pixels, editor_h: Pixels) -> LayoutSnapshot {
@@ -162,7 +176,8 @@ fn build_snapshot(editor: &Editor, editor_left: Pixels, editor_top: Pixels, edit
             {
                 let row_top = y + layout.line_height * (v as f32) - editor_top;
                 let row_x0 = line.unwrapped_layout.x_for_index(r_start);
-                let row_x1 = line.unwrapped_layout.x_for_index(r_end);
+                let end_x = line.unwrapped_layout.x_for_index(r_end);
+                let row_x1 = if r_end >= line.len() { end_x.max(line.unwrapped_layout.width) } else { end_x };
                 let right = layout.bounds.left() + layout.aligned_x(line, v) + (row_x1 - row_x0) - editor_left;
                 lines.push(LineBand { top: row_top, bottom: row_top + layout.line_height, right });
                 r_start = r_end;

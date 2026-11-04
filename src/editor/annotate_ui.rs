@@ -8,7 +8,8 @@ use super::{
     annotate::{ReactionPicker, resolve_annotation_span},
     annotate_fit::{
         BADGE_STEP, INLINE_GAP, INLINE_MAX_W, INLINE_RIGHT, card_height, card_width,
-        composer_height, fit_inline_card, measure_row, refresh_from_render, row_target, state_kind,
+        composer_height, fit_inline_card, measure_row, refresh_from_render, row_bottom,
+        row_target, state_kind,
     },
     annotate_pop,
     annotate_rail::{RAIL_W, annotation_row, composer_row},
@@ -27,7 +28,7 @@ pub(super) fn can_fit_wide_rail(editor: &Editor, std_w: Pixels) -> bool {
     } else {
         editor.list.viewport_bounds().size.width
     };
-    actual_w <= px(0.) || actual_w >= min_w
+    actual_w > px(0.) && actual_w >= min_w
 }
 const REACTIONS: [&str; 8] = ["👍", "❤️", "🎉", "🤔", "👀", "🔥", "✅", "💡"];
 
@@ -114,8 +115,26 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
                 let input = composer.input.clone();
                 let has_text = !input.read(cx).value().trim().is_empty();
                 let y = row_target(editor, composer.block_id, composer.range.start);
-                layer = layer.child(div().absolute().top(y).right(px(16.)).w(px(RAIL_W)).occlude()
-                    .child(composer_row(input, has_text, cx)));
+                let comp_h = composer_height();
+                if let Some((top, card_w)) = fit_inline_card(editor, Some(composer.block_id), y, next_y, comp_h, px(RAIL_W)) {
+                    layer = layer.child(
+                        div().absolute().top(top).right(px(INLINE_RIGHT)).w(card_w).occlude()
+                            .child(composer_row(input, has_text, false, cx))
+                            .child(measure_row(0, 0, cx)),
+                    );
+                } else {
+                    let below_y = (row_bottom(editor, composer.block_id, y) + px(8.)).max(px(16.));
+                    let ed_h = editor.annotate.editor_height;
+                    let max_top = if ed_h > comp_h + px(24.) { (ed_h - comp_h - px(16.)).max(px(16.)) } else { below_y };
+                    let pop_top = below_y.min(max_top);
+                    let ed_w = editor.annotate.editor_width;
+                    let pop_w = if ed_w > px(80.) { (ed_w - px(48.)).min(px(280.)).max(px(180.)) } else { px(RAIL_W) };
+                    layer = layer.child(
+                        div().absolute().top(pop_top).right(px(24.)).w(pop_w).occlude()
+                            .child(composer_row(input, has_text, true, cx))
+                            .child(measure_row(0, 0, cx)),
+                    );
+                }
             }
             return layer;
         }
@@ -137,7 +156,7 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
             let input = composer.input.clone();
             let has_text = !input.read(cx).value().trim().is_empty();
             rows.push((row_target(editor, composer.block_id, composer.range.start), 0, 0, composer_height(), px(RAIL_W),
-                composer_row(input, has_text, cx).into_any_element()));
+                composer_row(input, has_text, false, cx).into_any_element()));
         }
         rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         let mut bottom = px(12.);
