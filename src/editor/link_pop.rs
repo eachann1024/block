@@ -2,8 +2,8 @@
 //! tooltip above it; placing the caret inside a link opens the action pill below it.
 use std::ops::Range;
 use gpui::{AnyElement, ClipboardItem, Context, CursorStyle, Entity, MouseButton, Pixels, Point, Window, div, point, prelude::*, px, rgb};
-use crate::{icons::Icon, theme::tr, ui::tooltip::anchored_tooltip_above};
-use super::{format_cmds::open_external_url, toolbar::{ToolbarColors, glyph, pill, sep}, view::{Editor, selection::Position}};
+use crate::{icons::{Icon, stateful_icon}, theme::{Theme, tr}, ui::tooltip::anchored_tooltip_above};
+use super::{format_cmds::open_external_url, toolbar::{ToolbarColors, pill, sep}, view::{Editor, selection::Position}};
 
 /// Pointer-hover state for inline links.
 #[derive(Default)]
@@ -98,9 +98,9 @@ impl Editor {
         let viewport = self.list.viewport_bounds();
         if rect.bottom() <= viewport.top() || rect.top() >= viewport.bottom() { return None; }
         let label = if cfg!(any(target_os = "macos", target_family = "wasm")) {
-            tr("⌘-点击或 ⌥↩ 打开", "⌘-click or ⌥↩ to open")
+            tr("⌘+点击或 ⌥↩ 打开", "⌘+click or ⌥↩ to open")
         } else {
-            tr("Ctrl-点击或 Alt+Enter 打开", "Ctrl-click or Alt+Enter to open")
+            tr("Ctrl+点击或 Alt+Enter 打开", "Ctrl+click or Alt+Enter to open")
         };
         Some(anchored_tooltip_above(rect, viewport.top(), label, ("link-hover-tip", (*block as usize) ^ (range.start << 16)), window))
     }
@@ -117,9 +117,11 @@ impl Editor {
         let base_note = self.path.clone();
         let (edit_range, unlink_range, edit_url) = (range.clone(), range, url);
         let (e_edit, e_unlink, e_copy) = (editor.clone(), editor.clone(), editor);
-        let button = |id: &'static str, g: Icon, tip: &'static str, run: Box<dyn Fn(&mut Window, &mut gpui::App)>| div().id(id)
+        let theme = Theme::ocean();
+        let button = |id: &'static str, g: Icon, tip: &'static str, run: Box<dyn Fn(&mut Window, &mut gpui::App)>| div().id(id).group(id)
             .size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.)).cursor(CursorStyle::PointingHand)
-            .hover(move |s| s.bg(rgb(tc.hover))).child(glyph(g, 16., tc.ink))
+            .hover(move |s| s.bg(rgb(tc.hover)))
+            .child(stateful_icon(id, g, px(16.), false, theme.mono_icon_colors(rgb(tc.ink).into()), theme.icon_colors(rgb(tc.ink).into())))
             .tooltip(crate::theme::tooltip(tip))
             .on_mouse_down(MouseButton::Left, move |_, window, cx| { run(window, cx); cx.stop_propagation(); });
         let url_label = div().flex().items_center().text_size(px(13.)).whitespace_nowrap()

@@ -1,5 +1,5 @@
 use gpui::{
-    App, CursorStyle, Div, Hsla, IntoElement, MouseButton, MouseDownEvent, Pixels, Stateful,
+    App, CursorStyle, Div, Hsla, MouseButton, MouseDownEvent, Pixels, Stateful,
     Window, div, prelude::*, px, rgb, rgba, transparent_black,
 };
 use crate::{
@@ -7,18 +7,17 @@ use crate::{
     theme::{Theme, build_tooltip, is_dark, tr},
 };
 
-pub fn hover_icon(glyph: Icon, size: f32, base: Hsla, hover: Hsla) -> impl IntoElement {
+pub fn hover_icon(glyph: Icon, size: f32, base: Hsla, hover: Hsla) -> Div {
     let theme = Theme::ocean();
-    let tint = |line| IconColors { line, fill: transparent_black(), accent: theme.accent };
     div()
         .relative()
         .flex_none()
         .size(px(size))
-        .child(div().group_hover("hover-icon", |s| s.invisible()).child(icon(glyph, px(size), tint(base))))
+        .child(div().group_hover("hover-icon", |s| s.invisible()).child(icon(glyph, px(size), theme.mono_icon_colors(base))))
         .child(
             div().absolute().top_0().left_0().invisible()
                 .group_hover("hover-icon", |s| s.visible())
-                .child(icon(glyph, px(size), tint(hover))),
+                .child(icon(glyph, px(size), theme.icon_colors(hover))),
         )
 }
 
@@ -41,7 +40,7 @@ pub fn table_add_bar(id: &'static str, w: Pixels, h: Pixels, tip: &'static str) 
         .cursor(CursorStyle::PointingHand)
         .hover(move |s| s.bg(hover_bg))
         .active(move |s| s.bg(active_bg))
-        .child(icon(Icon::Plus, px(12.), theme.icon_colors(fg)))
+        .child(icon(Icon::Plus, px(12.), IconColors { line: fg, fill: transparent_black(), accent: fg }))
         .tooltip(move |window, cx| build_tooltip(tip, window, cx))
 }
 

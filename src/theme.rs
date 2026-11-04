@@ -259,6 +259,11 @@ impl Theme {
         IconColors { line, fill: self.icon_fill, accent: self.accent }
     }
 
+    /// Mono-tone icon colors for default/idle state: transparent fill, accent matches line stroke.
+    pub fn mono_icon_colors(&self, line: Hsla) -> IconColors {
+        IconColors { line, fill: gpui::transparent_black(), accent: line }
+    }
+
     pub fn ocean() -> Self {
         if is_dark() { OCEAN_DARK } else { OCEAN_LIGHT }
     }

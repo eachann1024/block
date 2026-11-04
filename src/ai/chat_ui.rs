@@ -1,23 +1,28 @@
 //! Rendering and batch-plan card UI for `AiChat`.
-use gpui::{CursorStyle, FontWeight, IntoElement, MouseButton, ParentElement, Render, SharedString, Styled, Window, div, prelude::*, px, transparent_black};
+use gpui::{CursorStyle, FontWeight, IntoElement, MouseButton, ParentElement, Render, SharedString, Styled, Window, div, prelude::*, px};
 use gpui_component::input::Input;
 
 use super::agent;
 use super::chat::{AiChat, Msg, Pick, first_placeholder, follow_placeholder};
 use super::provider;
-use crate::icons::{Icon, IconColors, icon};
+use crate::icons::{Icon, icon, stateful_icon};
 use crate::theme::{Theme, is_en, tr};
 
 fn glyph(i: Icon, size: f32, color: gpui::Hsla) -> impl IntoElement {
-    icon(i, px(size), IconColors { line: color, fill: transparent_black(), accent: color })
+    icon(i, px(size), Theme::ocean().mono_icon_colors(color))
 }
 
-fn icon_btn(id: impl Into<SharedString>, glyph_icon: Icon, tip: &'static str) -> gpui::Stateful<gpui::Div> {
+fn duo_glyph(i: Icon, size: f32, color: gpui::Hsla) -> impl IntoElement {
+    icon(i, px(size), Theme::ocean().icon_colors(color))
+}
+
+fn icon_btn(id: impl Into<SharedString>, glyph_icon: Icon, tip: &'static str, active: bool) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
-    div().id(id.into()).size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
+    let id: SharedString = id.into();
+    div().id(id.clone()).group(id.clone()).size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
         .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
         .tooltip(crate::theme::tooltip(tip))
-        .child(glyph(glyph_icon, 16., theme.text_secondary))
+        .child(stateful_icon(id, glyph_icon, px(15.), active, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if active { theme.accent } else { theme.text })))
 }
 
 impl Render for AiChat {
@@ -30,11 +35,11 @@ impl Render for AiChat {
         let theme = Theme::ocean();
         let model = provider::config().model;
         let header = div().h(px(44.)).flex_none().px(px(12.)).flex().items_center().gap(px(4.)).border_b_1().border_color(theme.hairline)
-            .child(glyph(Icon::Sparkles, 16., theme.accent))
+            .child(duo_glyph(Icon::Sparkles, 16., theme.accent))
             .child(div().flex_1().pl(px(4.)).text_size(px(14.)).font_weight(FontWeight(600.)).child(tr("AI 助手", "AI Assistant")))
-            .child(icon_btn("ai-chat-new", Icon::AiPlus, tr("新建会话", "New chat")).on_mouse_down(MouseButton::Left, cx.listener(|this, _, w, cx| this.new_conv(w, cx))))
-            .child(icon_btn("ai-chat-history", Icon::History, tr("历史会话", "Chat history")).on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.history = !this.history; cx.notify(); })))
-            .child(icon_btn("ai-chat-close", Icon::Close, tr("关闭 AI", "Close AI")).on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.open = false; cx.notify(); })));
+            .child(icon_btn("ai-chat-new", Icon::AiPlus, tr("新建会话", "New chat"), false).on_mouse_down(MouseButton::Left, cx.listener(|this, _, w, cx| this.new_conv(w, cx))))
+            .child(icon_btn("ai-chat-history", Icon::History, tr("历史会话", "Chat history"), self.history).on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.history = !this.history; cx.notify(); })))
+            .child(icon_btn("ai-chat-close", Icon::Close, tr("关闭 AI", "Close AI"), false).on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.open = false; cx.notify(); })));
 
         let history = self.history.then(|| {
             let list = if self.convs.iter().all(|c| c.messages.is_empty()) {
@@ -42,6 +47,7 @@ impl Render for AiChat {
             } else {
                 self.convs.iter().filter(|c| !c.messages.is_empty()).fold(div().flex().flex_col().p(px(4.)), |d, c| {
                     let (id, active) = (c.id, Some(c.id) == self.current);
+                    let del_id = SharedString::from(format!("conv-del-{id}"));
                     d.child(div().id(SharedString::from(format!("conv-{id}"))).h(px(32.)).px(px(8.)).flex().items_center().gap(px(6.)).rounded(px(6.))
                         .when(active, |r| r.bg(theme.hover)).hover(move |s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
                         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| {
@@ -50,7 +56,7 @@ impl Render for AiChat {
                             cx.notify();
                         }))
                         .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(13.)).child(c.title.clone()))
-                        .child(div().id(SharedString::from(format!("conv-del-{id}"))).size(px(22.)).flex().items_center().justify_center().rounded(px(4.))
+                        .child(div().id(del_id.clone()).group(del_id.clone()).size(px(22.)).flex().items_center().justify_center().rounded(px(4.))
                             .hover(move |s| s.bg(theme.shell))
                             .tooltip(crate::theme::tooltip(tr("删除会话", "Delete chat")))
                             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
@@ -58,7 +64,7 @@ impl Render for AiChat {
                                 if this.current == Some(id) { this.stop(); this.current = None; }
                                 this.convs.retain(|c| c.id != id); this.persist(); cx.notify();
                             }))
-                            .child(glyph(Icon::Trash, 13., theme.text_secondary))))
+                            .child(stateful_icon(del_id, Icon::Trash, px(13.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
                 })
             };
             div().id("ai-chat-history-list").mx(px(8.)).mt(px(6.)).max_h(px(260.)).overflow_y_scroll().rounded(px(8.)).border_1()
@@ -97,20 +103,21 @@ impl Render for AiChat {
             .child(div().flex_1().flex().flex_col().gap(px(2.))
                 .child(div().font_weight(FontWeight(600.)).text_color(gpui::rgb(0xb42318)).child(tr("本轮失败原因", "Request failed")))
                 .child(div().text_color(theme.text).child(e)))
-            .child(icon_btn("ai-chat-error-close", Icon::Close, tr("关闭错误提示", "Dismiss error")).on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.error = None; cx.notify(); }))));
+            .child(icon_btn("ai-chat-error-close", Icon::Close, tr("关闭错误提示", "Dismiss error"), false).on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.error = None; cx.notify(); }))));
 
         let chip_list: Vec<(bool, String)> = self.refs.iter().map(|r| (true, r.clone())).chain(self.skills.iter().map(|s| (false, s.clone()))).collect();
         let chips = chip_list.into_iter().enumerate().fold(div().flex().flex_wrap().gap(px(4.)), |d, (i, (is_ref, name))| {
+            let x_id = SharedString::from(format!("chip-x-{i}"));
             d.child(div().id(SharedString::from(format!("chip-{i}"))).flex().items_center().gap(px(4.)).px(px(6.)).py(px(2.)).rounded(px(6.))
                 .bg(theme.hover).text_size(px(12.))
-                .child(glyph(if is_ref { Icon::Note } else { Icon::Sparkles }, 12., theme.accent))
+                .child(duo_glyph(if is_ref { Icon::Note } else { Icon::Sparkles }, 12., theme.accent))
                 .child(if is_ref { name.clone() } else { format!("/{name}") })
-                .child(div().id(SharedString::from(format!("chip-x-{i}"))).cursor(CursorStyle::PointingHand)
+                .child(div().id(x_id.clone()).group(x_id.clone()).cursor(CursorStyle::PointingHand)
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                         if is_ref { this.refs.retain(|r| r != &name); } else { this.skills.retain(|s| s != &name); }
                         cx.notify();
                     }))
-                    .child(glyph(Icon::Close, 10., theme.text_secondary))))
+                    .child(stateful_icon(x_id, Icon::Close, px(10.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
         });
         let value = self.input.read(cx).value().to_string();
         let token = value.rsplit(char::is_whitespace).next().unwrap_or("").to_owned();
@@ -157,7 +164,7 @@ impl Render for AiChat {
         });
         let busy = self.streaming.is_some();
         let action = if busy {
-            icon_btn("ai-chat-stop", Icon::Stop, tr("停止生成", "Stop generating")).on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.stop(); cx.notify(); }))
+            icon_btn("ai-chat-stop", Icon::Stop, tr("停止生成", "Stop generating"), false).on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.stop(); cx.notify(); }))
         } else {
             div().id("ai-chat-send").size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(8.)).bg(theme.primary)
                 .cursor(CursorStyle::PointingHand).tooltip(crate::theme::tooltip(tr("发送消息", "Send message")))

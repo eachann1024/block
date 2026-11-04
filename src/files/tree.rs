@@ -6,7 +6,7 @@ use gpui::{
     UniformListScrollHandle, actions, div, prelude::*, px, uniform_list,
 };
 use gpui_component::input::InputState;
-use crate::icons::{Icon, icon};
+use crate::icons::{Icon, icon, stateful_icon};
 use crate::theme::Theme;
 use super::index::{Row, TreeIndex};
 
@@ -203,8 +203,11 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
     let active_folder = focused && selected.is_none();
     let highlighted = is_selected || active_folder;
     let rename_vis = editing.as_ref().map(|input| crate::ui::rename_row::inspect(&path, dir, input, cx));
-    let chevron_colors = theme.icon_colors(theme.text_secondary);
-    let icon_colors = rename_vis.as_ref().map(|v| v.icon_colors).unwrap_or_else(|| theme.icon_colors(if highlighted { theme.accent } else { theme.text_secondary }));
+    let row_active = highlighted || is_target || rename_vis.is_some();
+    let kind_icon = match &rename_vis {
+        Some(vis) => icon(kind, px(16.), vis.icon_colors),
+        None => stateful_icon("tree-row", kind, px(16.), highlighted || is_target, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if highlighted { theme.accent } else { theme.text })),
+    };
     let label = row.stem.clone();
     div()
         .id(path.clone())
@@ -225,8 +228,9 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
         .when(is_target && !highlighted && !focused, |row| row.bg(theme.hover))
         .when(!highlighted && !focused && !is_editing && enabled, |row| row.hover(|style| style.bg(theme.hover)))
         .when_some(arrow, |row, a| row.child(
-            div().size(px(18.)).flex_none().flex().items_center().justify_center().child(icon(a, px(18.), chevron_colors))))
-        .child(div().size(px(16.)).flex_none().flex().items_center().justify_center().child(icon(kind, px(16.), icon_colors)))
+            div().size(px(18.)).flex_none().flex().items_center().justify_center()
+                .child(stateful_icon("tree-row", a, px(18.), row_active, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text_secondary)))))
+        .child(div().size(px(16.)).flex_none().flex().items_center().justify_center().child(kind_icon))
         .when_some(rename_vis.as_ref(), |row, vis| crate::ui::rename_row::style_capsule(row, vis))
         .child(match &editing {
             Some(input) => crate::ui::rename_row::input_slot(input),
@@ -237,7 +241,7 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
         })
         // Hover "⋯": opens the same menu as a right-click, anchored under the button.
         .when(!is_editing, |row| row.child(
-            div().id("row-more").size(px(22.)).flex_none().flex().items_center().justify_center().rounded(px(5.))
+            div().id("row-more").group("row-more-btn").size(px(22.)).flex_none().flex().items_center().justify_center().rounded(px(5.))
                 .invisible()
                 .when(enabled, |b| b.group_hover("tree-row", |style| style.visible()))
                 .when(enabled && is_target, |b| b.visible().bg(theme.btn_hover))
@@ -252,7 +256,7 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
                         }
                     }
                 }))
-                .child(icon(Icon::More, px(14.), chevron_colors))))
+                .child(stateful_icon("row-more-btn", Icon::More, px(14.), is_target, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
         .on_mouse_down(MouseButton::Right, cx.listener({
             let path = path.clone();
             move |this, event: &gpui::MouseDownEvent, window, cx| {

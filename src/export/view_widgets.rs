@@ -248,6 +248,7 @@ pub(super) fn button(
     let theme = Theme::ocean();
     let base = div()
         .id(id)
+        .group(id)
         .h(px(38.))
         .px(px(16.))
         .flex()

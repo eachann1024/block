@@ -5,7 +5,7 @@ use gpui::{
     Animation, AnimationExt, CursorStyle, Div, Hsla, Stateful, div, prelude::*, px, rgb, rgba,
 };
 use crate::{
-    icons::Icon,
+    icons::{Icon, icon},
     theme::{Theme, build_tooltip, is_dark, tr},
     ui::{motion::ease_out_expo, reveal::hover_icon},
 };
@@ -72,6 +72,10 @@ pub fn thandle(open: bool) -> Stateful<Div> {
         .when(open, move |s| s.bg(hover_bg))
         .hover(move |s| s.bg(hover_bg))
         .cursor(CursorStyle::PointingHand)
-        .child(hover_icon(Icon::More, 16., if open { hover } else { base }, hover))
+        .child(if open {
+            icon(Icon::More, px(16.), theme.icon_colors(hover))
+        } else {
+            hover_icon(Icon::More, 16., base, hover)
+        })
         .tooltip(|window, cx| build_tooltip(tr("表格选项", "Table options"), window, cx))
 }

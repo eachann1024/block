@@ -1,7 +1,7 @@
 use gpui::{
     Context, IntoElement, MouseButton, NavigationDirection, ParentElement, Render, Window, div, prelude::*, px,
 };
-use crate::icons::{Icon, icon};
+use crate::icons::{Icon, stateful_icon};
 use crate::theme::{Theme, format_hotkey, tr};
 use crate::ui::icon_button::{dock_icon_button, toolbar_icon_button};
 use super::Workspace;
@@ -70,13 +70,14 @@ impl Workspace {
     fn search_button(&self, enabled: bool, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         let theme = Theme::ocean();
         let shortcut = format_hotkey("secondary-k");
-        div().id("search-button").relative().children(crate::ui::smoke_overlay::probe("search-button")).flex_1().min_w_0().h(px(32.)).px(px(9.)).flex().items_center().gap(px(6.))
-            .rounded(px(8.)).bg(theme.paper).border_1().border_color(if self.search.is_some() { theme.accent } else { theme.btn_border })
+        let search_open = self.search.is_some();
+        div().id("search-button").group("sidebar-search-btn").relative().children(crate::ui::smoke_overlay::probe("search-button")).flex_1().min_w_0().h(px(32.)).px(px(9.)).flex().items_center().gap(px(6.))
+            .rounded(px(8.)).bg(theme.paper).border_1().border_color(if search_open { theme.accent } else { theme.btn_border })
             .text_size(px(14.)).text_color(theme.text_secondary)
             .when(enabled, |b| b.cursor(gpui::CursorStyle::PointingHand).hover(|style| style.bg(theme.btn_hover))
                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| this.open_search(window, cx))))
             .when(!enabled, |b| b.opacity(0.5))
-            .child(icon(Icon::FindSearch, px(14.), theme.icon_colors(theme.text_secondary)))
+            .child(stateful_icon("sidebar-search-btn", Icon::FindSearch, px(14.), search_open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
             .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(tr("搜索", "Search")))
             .child(kbd(shortcut))
     }
