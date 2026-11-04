@@ -66,6 +66,7 @@ impl FileTree {
         // Destroying an old million-node tree is worker work as well.
         cx.background_executor().spawn(async move { drop(previous); }).detach();
         self.selected = None;
+        self.focus_dir = None;
         self.scroll = UniformListScrollHandle::new();
         cx.notify();
     }
@@ -101,6 +102,8 @@ impl FileTree {
     }
 
     pub fn focus_dir(&self) -> Option<&Path> { self.focus_dir.as_deref() }
+
+    pub fn selected(&self) -> Option<&Path> { self.selected.as_deref() }
 
     pub fn set_renaming(&mut self, renaming: Option<(PathBuf, Entity<InputState>)>, cx: &mut Context<Self>) {
         self.renaming = renaming;
@@ -140,7 +143,6 @@ impl FileTree {
 impl Render for FileTree {
     fn render(&mut self, _: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::ocean();
-        let hover = theme.hover;
         div()
             .id("file-tree-root")
             .size_full()
@@ -166,9 +168,8 @@ impl Render for FileTree {
                         let target = this.menu_target.as_deref() == Some(row.path.as_ref());
                         let focused = this.focus_dir.as_deref() == Some(row.path.as_ref());
                         let editing = this.renaming.as_ref().filter(|(p, _)| p.as_path() == row.path.as_ref()).map(|(_, input)| input.clone());
-                        file_row(index, row, expanded, this.selected.as_deref(), this.enabled, editing, target, cx)
-                            .when(target, |row| row.bg(hover))
-                            .when(focused, |row| row.bg(Theme::ocean().selected))
+                        div().w_full().pb(px(2.))
+                            .child(file_row(index, row, expanded, this.selected.as_deref(), this.enabled, editing, target, focused, cx))
                     }).collect::<Vec<_>>()
                 }))
                 .track_scroll(&self.scroll)
@@ -177,7 +178,7 @@ impl Render for FileTree {
                     if let Some(handler) = this.on_context.clone() { handler(None, event.position, window, cx); }
                 }))
                 .size_full()
-                .pr(px(crate::ui::scrollbar::GUTTER))
+                .px(px(12.))
                 .text_size(theme.ui_font)
                 .text_color(theme.text),
             )
@@ -186,7 +187,7 @@ impl Render for FileTree {
 }
 
 fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>, enabled: bool,
-    editing: Option<Entity<InputState>>, target: bool, cx: &mut Context<FileTree>) -> gpui::Stateful<gpui::Div> {
+    editing: Option<Entity<InputState>>, target: bool, focused: bool, cx: &mut Context<FileTree>) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
     let path = row.path.clone();
     let dir = row.dir;
@@ -198,26 +199,32 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
         (true, false) => (Some(Icon::ChevronRight), Icon::Folder),
         (true, true) => (Some(Icon::ChevronDown), Icon::FolderOpen),
     };
-    let colors = theme.icon_colors(theme.text_secondary);
+    let active_folder = focused && selected.is_none();
+    let highlighted = is_selected || active_folder;
+    let chevron_colors = theme.icon_colors(theme.text_secondary);
+    let icon_colors = theme.icon_colors(if highlighted { theme.accent } else { theme.text_secondary });
     let label = row.stem.clone();
     div()
         .id(path.clone())
         .group("tree-row")
         .w_full()
         .h(theme.menu_item_height)
-        .pl(px(4. + row.depth as f32 * 18.))
+        .pl(px(8. + row.depth as f32 * 20.))
         .pr(px(8.))
         .flex()
         .items_center()
-        .gap(px(8.))
-        .rounded_md()
+        .gap(px(6.))
+        .rounded(px(6.))
         .border_1()
         .border_color(gpui::transparent_black())
         .when(enabled, |row| row.cursor(CursorStyle::PointingHand))
-        .when(is_selected, |row| row.bg(theme.selected).border_color(theme.accent).font_weight(FontWeight(460.)))
-        .when(!is_selected && enabled, |row| row.hover(|style| style.bg(theme.hover)))
-        .child(div().w(px(16.)).h(px(16.)).flex_none().children(arrow.map(|a| icon(a, px(16.), colors))))
-        .child(div().ml(px(2.)).flex_none().child(icon(kind, px(16.), colors)))
+        .when(highlighted, |row| row.bg(theme.selected).border_color(theme.accent).font_weight(FontWeight(460.)))
+        .when(focused && !highlighted, |row| row.bg(theme.selected))
+        .when(is_target && !highlighted && !focused, |row| row.bg(theme.hover))
+        .when(!highlighted && !focused && enabled, |row| row.hover(|style| style.bg(theme.hover)))
+        .when_some(arrow, |row, a| row.child(
+            div().size(px(14.)).flex_none().flex().items_center().justify_center().child(icon(a, px(14.), chevron_colors))))
+        .child(div().size(px(16.)).flex_none().flex().items_center().justify_center().child(icon(kind, px(16.), icon_colors)))
         .when_some(editing.clone(), |row, _| row.border_color(theme.accent).bg(theme.paper))
         .child(match editing {
             Some(input) => div().flex_1().h(px(24.)).rounded(px(3.)).bg(theme.selection)
@@ -240,7 +247,7 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
                         }
                     }
                 }))
-                .child(icon(Icon::More, px(14.), colors))))
+                .child(icon(Icon::More, px(14.), chevron_colors))))
         .on_mouse_down(MouseButton::Right, cx.listener({
             let path = path.clone();
             move |this, event: &gpui::MouseDownEvent, window, cx| {
@@ -261,7 +268,7 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
                 this.focus_dir = Some(path.to_path_buf());
                 cx.notify();
             } else {
-                this.focus_dir = None;
+                if this.focus_dir.take().is_some() { cx.notify(); }
                 if let Some(handler) = &this.on_open {
                     // The editor treats the current path as a no-op and cancels a
                     // pending different open, so A → B → A keeps A selected.
