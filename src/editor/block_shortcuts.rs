@@ -19,7 +19,7 @@ impl Editor {
         let before = self.snapshot();
         for index in first..=last {
             let block = &self.doc.blocks[index];
-            if block.meta.table.is_some() || block.meta.raw_source.is_some() { continue; }
+            if block.meta.table.is_some() || block.meta.raw_source.is_some() || block.meta.code_language.is_some() { continue; }
             let id = block.id; self.doc.set_kind(id, target);
         }
         self.record(before, cx);
