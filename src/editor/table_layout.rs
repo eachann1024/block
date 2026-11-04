@@ -7,7 +7,7 @@ use crate::theme::Theme;
 mod draw;
 mod scroll;
 pub(super) use draw::{paint_background, paint_cell_selection, paint_selection};
-pub(super) use scroll::{paint_edge, settle, track_wheel, visible};
+pub(super) use scroll::{paint_edge, scroll_by, settle, track_wheel, visible};
 
 // Reference cells: 15.04px text on a 21.808px line, 6px/10px padding and a collapsed 1px border.
 const FONT_SIZE: f32 = 15.04;

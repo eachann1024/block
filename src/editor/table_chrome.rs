@@ -5,7 +5,7 @@ use super::{table_actions::{TableChrome, TableCmd, TableDrag, TableMenu, TableSe
 use crate::{
     dropdown::{self, RowSpec},
     theme::{Theme, tr},
-    ui::{reveal::table_add_bar as add_bar, table_controls::{GRIP_LONG, GRIP_SHORT, grip, thandle}},
+    ui::{reveal::table_add_bar as add_bar, table_controls::{GRIP_LONG, GRIP_PAD, GRIP_SHORT, grip, thandle}},
 };
 
 thread_local! {
@@ -65,7 +65,7 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
         let col_sel = TableSel::Column(c);
         let expanded = is_active(col_sel) || is_hovered(col_sel);
         // The grip is centred on the 1px top border (`table.top() + 0.5px`) in both states.
-        let pos = point(x - px(GRIP_LONG / 2.), table.top() + px(0.5 - GRIP_SHORT / 2.));
+        let pos = point(x - px(GRIP_LONG / 2. + GRIP_PAD), table.top() + px(0.5 - GRIP_SHORT / 2. - GRIP_PAD));
         let col_editor = editor.clone();
         let hover_editor = editor.clone();
         out.push(floating(pos,
@@ -80,7 +80,7 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
                     let start = event.position;
                     col_editor.update(cx, |this, cx| {
                         this.table_sel = Some((id, col_sel)); this.table_menu = None;
-                        this.table_drag = Some(TableDrag { block: id, sel: col_sel, start, moved: false, position: None });
+                        this.table_drag = Some(TableDrag { block: id, sel: col_sel, start, moved: false, position: None, target: None });
                         cx.notify();
                     });
                     cx.stop_propagation();
@@ -91,7 +91,7 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
         let row_sel = TableSel::Row(r);
         let expanded = is_active(row_sel) || is_hovered(row_sel);
         // The grip is centred on the 1px left border (`table.left() + 0.5px`) in both states.
-        let pos = point(table.left() + px(0.5 - GRIP_SHORT / 2.), y - px(GRIP_LONG / 2.));
+        let pos = point(table.left() + px(0.5 - GRIP_SHORT / 2. - GRIP_PAD), y - px(GRIP_LONG / 2. + GRIP_PAD));
         let row_editor = editor.clone();
         let hover_editor = editor.clone();
         out.push(floating(pos,
@@ -106,7 +106,7 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
                     let start = event.position;
                     row_editor.update(cx, |this, cx| {
                         this.table_sel = Some((id, row_sel)); this.table_menu = None;
-                        this.table_drag = Some(TableDrag { block: id, sel: row_sel, start, moved: false, position: None });
+                        this.table_drag = Some(TableDrag { block: id, sel: row_sel, start, moved: false, position: None, target: None });
                         cx.notify();
                     });
                     cx.stop_propagation();
@@ -150,7 +150,7 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
         }
     }
     if let Some(drag) = dragging {
-        if let Some((_, edge)) = drag.position.and_then(|position| chrome.drop_target(drag, position)) {
+        if let Some(edge) = drag.target.and_then(|to| chrome.edge(drag.sel, to)) {
             let (origin, size) = match drag.sel {
                 TableSel::Column(_) => (point(edge - px(1.5), table.top()), gpui::size(px(3.), table.size.height)),
                 _ => (point(table.left(), edge - px(1.5)), gpui::size(table.size.width, px(3.))),

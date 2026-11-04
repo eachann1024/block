@@ -13,6 +13,8 @@ use crate::{
 /// Long and short side of the grip hit area; a column grip is 24x14, a row grip 14x24.
 pub const GRIP_LONG: f32 = 24.;
 pub const GRIP_SHORT: f32 = 14.;
+/// Invisible margin around the grip that still counts as hovering or grabbing it.
+pub const GRIP_PAD: f32 = 4.;
 
 /// 3x2 dots (2x3 when vertical), 4px apart center-to-center, 1.5px diameter, inside a 12x8 (or 8x12) box.
 pub fn dots(vertical: bool, color: Hsla) -> Div {
@@ -30,7 +32,8 @@ pub fn dots(vertical: bool, color: Hsla) -> Div {
 }
 
 /// At rest a 24x8 / 8x24 pill shows; hovered, pressed or with its menu open the grip grows into the
-/// 24x14 / 14x24 capsule with a 6-dot grid. The hit area is the same size in both states.
+/// 24x14 / 14x24 capsule with a 6-dot grid. The hit area is the same size in both states and reaches
+/// `GRIP_PAD` past the painted capsule on every side, so the handle is easy to hit and hold.
 pub fn grip(id: (&'static str, usize), vertical: bool, expanded: bool, dragging: bool, tip: &'static str) -> Stateful<Div> {
     let dark = is_dark();
     let (w, h) = if vertical { (GRIP_SHORT, GRIP_LONG) } else { (GRIP_LONG, GRIP_SHORT) };
@@ -45,8 +48,7 @@ pub fn grip(id: (&'static str, usize), vertical: bool, expanded: bool, dragging:
         rgba(0x1f1e1d52).into()
     };
     let dot: Hsla = if dark { Theme::ocean().text.opacity(0.55) } else { rgba(0x1f1e1d8c).into() };
-    let shell = div().id(id).w(px(w)).h(px(h)).flex_none().flex().items_center().justify_center()
-        .cursor(if dragging { CursorStyle::ClosedHand } else { CursorStyle::OpenHand });
+    let shell = div().w(px(w)).h(px(h)).flex_none().flex().items_center().justify_center();
     let shell = if expanded {
         let key = id.1 * 2 + usize::from(vertical);
         shell.rounded(px(7.)).bg(bg).border_1().border_color(border).child(
@@ -57,7 +59,10 @@ pub fn grip(id: (&'static str, usize), vertical: bool, expanded: bool, dragging:
         let (rw, rh) = if vertical { (8., GRIP_LONG) } else { (GRIP_LONG, 8.) };
         shell.child(div().w(px(rw)).h(px(rh)).rounded_full().bg(bg).border_1().border_color(border))
     };
-    shell.when(!dragging, |el| el.tooltip(move |window, cx| build_tooltip(tip, window, cx)))
+    div().id(id).w(px(w + GRIP_PAD * 2.)).h(px(h + GRIP_PAD * 2.)).flex_none().flex().items_center().justify_center()
+        .cursor(if dragging { CursorStyle::ClosedHand } else { CursorStyle::OpenHand })
+        .child(shell)
+        .when(!dragging, |el| el.tooltip(move |window, cx| build_tooltip(tip, window, cx)))
 }
 
 /// 26x26 options button: transparent, #f5f4ed on hover or while its menu is open.
