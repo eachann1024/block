@@ -54,6 +54,8 @@ pub(super) struct TableMenu { pub block: u64, pub sel: TableSel, pub anchor: Poi
 pub(super) struct TableDrag {
     pub block: u64, pub sel: TableSel, pub start: Point<Pixels>, pub moved: bool,
     pub position: Option<Point<Pixels>>,
+    /// Row or column the drop would land on; the indicator line and the final move both read this.
+    pub target: Option<usize>,
 }
 #[derive(Clone)]
 pub(super) struct TableChrome {
@@ -64,21 +66,28 @@ pub(super) struct TableChrome {
     pub viewport: Bounds<Pixels>,
 }
 impl TableChrome {
-    /// Keep the insertion edge and final destination tied to the same nearest-center rule.
-    pub fn drop_target(&self, drag: TableDrag, position: Point<Pixels>) -> Option<(usize, Pixels)> {
+    fn axis(&self, sel: TableSel) -> Option<(&[(Pixels, Pixels)], usize)> {
+        match sel { TableSel::Row(from) => Some((&self.rows, from)), TableSel::Column(from) => Some((&self.columns, from)), _ => None }
+    }
+    /// The row or column whose centre is nearest the pointer on the current geometry; `None` when
+    /// that is the dragged one itself.
+    pub fn target_at(&self, drag: TableDrag, position: Point<Pixels>) -> Option<usize> {
         if self.block != drag.block { return None; }
-        let (spans, from, at) = match drag.sel {
-            TableSel::Row(from) => (&self.rows, from, position.y),
-            TableSel::Column(from) => (&self.columns, from, position.x),
-            _ => return None,
-        };
+        let (spans, from) = self.axis(drag.sel)?;
+        let at = if matches!(drag.sel, TableSel::Row(_)) { position.y } else { position.x };
         spans.get(from)?;
-        let (to, &(start, end)) = spans.iter().enumerate().min_by(|a, b| {
+        let (to, _) = spans.iter().enumerate().min_by(|a, b| {
             let da = (((a.1.0 + a.1.1) / 2.) - at).abs();
             let db = (((b.1.0 + b.1.1) / 2.) - at).abs();
             da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
         })?;
-        (from != to).then_some((to, if to < from { start } else { end }))
+        (from != to).then_some(to)
+    }
+    /// Where the insertion line sits for a move to `to`, on the current geometry.
+    pub fn edge(&self, sel: TableSel, to: usize) -> Option<Pixels> {
+        let (spans, from) = self.axis(sel)?;
+        let &(start, end) = spans.get(to)?;
+        Some(if to < from { start } else { end })
     }
 }
 
@@ -185,7 +194,7 @@ impl Editor {
     /// Moves a row or column to where a drag ended.
     pub(in crate::editor) fn table_drop(&mut self, drag: TableDrag, position: Point<Pixels>, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
-        let Some((to, _)) = self.table_chrome.as_ref().and_then(|c| c.drop_target(drag, position)) else { return };
+        let Some(to) = drag.target.or_else(|| self.table_chrome.as_ref().and_then(|c| c.target_at(drag, position))) else { return };
         match drag.sel {
             TableSel::Row(from) => {
                 self.table_edit(drag.block, move |t| t.move_row(from, to).then_some((to, 0)), cx);
