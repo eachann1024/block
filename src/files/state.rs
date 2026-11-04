@@ -99,9 +99,18 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 static WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 const MAX_NOTEBOOKS: usize = 12;
 
+static STATE_PATH_OVERRIDE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Smoke runs isolate preferences, drafts and folds in a sandbox: all per-user data lives
+/// next to the overridden state file instead of the real app data folder.
+pub fn set_state_path_override(path: PathBuf) { let _ = STATE_PATH_OVERRIDE.set(path); }
+
 /// Per-user app data folder: `~/Library/Application Support` on macOS, `%APPDATA%` on Windows,
 /// `$XDG_DATA_HOME` (or `~/.local/share`) on Linux.
 pub fn app_data_dir(app_folder: &str) -> PathBuf {
+    if let Some(root) = STATE_PATH_OVERRIDE.get().and_then(|path| path.parent()) {
+        return root.join("data").join(app_folder);
+    }
     #[cfg(not(target_family = "wasm"))]
     let base = dirs::data_dir()
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
@@ -112,6 +121,9 @@ pub fn app_data_dir(app_folder: &str) -> PathBuf {
 }
 
 fn state_path() -> io::Result<PathBuf> {
+    if let Some(custom) = STATE_PATH_OVERRIDE.get() {
+        return Ok(custom.clone());
+    }
     Ok(app_data_dir("thinkly-fast").join("state.json"))
 }
 

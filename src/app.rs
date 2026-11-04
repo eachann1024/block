@@ -17,6 +17,8 @@ mod folder;
 mod sidebar;
 #[path = "app_files.rs"]
 mod file_ops;
+#[path = "app_smoke.rs"]
+mod smoke_probe;
 
 #[path = "app_menu.rs"]
 mod menu;
