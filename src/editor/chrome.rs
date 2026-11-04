@@ -192,11 +192,11 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
 }
 fn todo_box(checked: bool, top: f32, toggle: impl Fn(&mut gpui::App) + 'static) -> impl IntoElement {
     let dark = is_dark();
-    let border: gpui::Hsla = if checked { rgb(0x2f6fe4).into() } else if dark { rgb(0x787772).into() } else { gpui::rgba(0x0b0b0b80).into() };
-    let hover_border: gpui::Hsla = if checked { rgb(0x1f57c0).into() } else if dark { rgb(0x9b9a95).into() } else { gpui::rgba(0x0b0b0bcc).into() };
+    let border: gpui::Hsla = if checked { rgb(0x4774cf).into() } else if dark { rgb(0x858585).into() } else { gpui::rgba(0x0b0b0b80).into() };
+    let hover_border: gpui::Hsla = if checked { rgb(0x3a62b8).into() } else if dark { rgb(0xa3a3a3).into() } else { gpui::rgba(0x0b0b0bcc).into() };
     div().mt(px(top)).ml(px(4.8)).size(px(16.)).relative().children(crate::ui::smoke_overlay::probe("todo-checkbox")).flex().items_center().justify_center().rounded(px(4.)).cursor(CursorStyle::PointingHand)
-        .when(!checked, |b| b.border_1().border_color(border)).hover(move |s| if checked { s.bg(rgb(0x1f57c0)) } else { s.border_color(hover_border) })
-        .when(checked, |b| b.bg(rgb(0x2f6fe4)).child(icon(Icon::Check, px(12.),
+        .when(!checked, |b| b.border_1().border_color(border)).hover(move |s| if checked { s.bg(rgb(0x3a62b8)) } else { s.border_color(hover_border) })
+        .when(checked, |b| b.bg(rgb(0x4774cf)).child(icon(Icon::Check, px(12.),
             IconColors { line: rgb(0xffffff).into(), fill: transparent_black(), accent: transparent_black() })))
         .on_mouse_down(MouseButton::Left, move |_, _, cx| { toggle(cx); cx.stop_propagation(); })
 }
