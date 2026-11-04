@@ -5,16 +5,17 @@ use std::time::Duration;
 use gpui::{
     Animation, AnimationExt, AnyElement, Context, CursorStyle, Hsla, IntoElement,
     MouseButton, Pixels, Point, SharedString, anchored, deferred, div, ease_out_quint,
-    point, prelude::*, px, transparent_black,
+    linear_color_stop, linear_gradient, point, prelude::*, px, transparent_black,
 };
 use crate::icons::{Icon, IconColors, icon};
 use crate::theme::Theme;
 use super::Workspace;
 
 pub(super) const TAB_ANIM_MS: u64 = 150;
-pub(super) const TAB_BASIS_W: f32 = 176.;
-pub(super) const TAB_MIN_W: f32 = 104.;
-pub(super) const TAB_MAX_W: f32 = 196.;
+pub(super) const TAB_BASIS_W: f32 = 220.;
+pub(super) const TAB_MIN_W: f32 = 76.;
+pub(super) const TAB_MAX_W: f32 = 220.;
+pub(super) const TAB_FADE_W: f32 = 20.;
 
 #[derive(Clone)]
 struct TabMenu {
@@ -95,6 +96,32 @@ pub(super) fn hover_tinted_icon(
             .child(icon(glyph, px(size), colors(hover))))
 }
 
+/// Right-edge horizontal fade ramp from transparent `color` to solid `color`.
+pub(super) fn tab_fade(color: Hsla) -> gpui::Div {
+    div().w(px(TAB_FADE_W)).h_full().flex_none()
+        .bg(linear_gradient(90., linear_color_stop(color.opacity(0.), 0.), linear_color_stop(color, 1.)))
+}
+
+/// Renders the title and right-side fade / dirty-dot / close-button slot for an inactive multi-tab pill.
+pub(super) fn render_inactive_tab_body(
+    label: String, group: SharedString, dirty: bool, close_btn: gpui::Stateful<gpui::Div>,
+) -> gpui::Div {
+    let theme = Theme::ocean();
+    let normal_end = div().absolute().top_0().bottom_0().right_0().flex().items_center()
+        .group_hover(group.clone(), |s| s.invisible())
+        .child(tab_fade(theme.shell))
+        .when(dirty, |s| s.child(div().w(px(14.)).h_full().bg(theme.shell).flex().items_center().justify_center()
+            .child(div().size(px(6.)).rounded_full().bg(theme.accent))));
+    let hover_end = div().absolute().top_0().bottom_0().right_0().flex().items_center()
+        .invisible().group_hover(group, |s| s.visible())
+        .child(tab_fade(theme.hover))
+        .child(div().w(px(18.)).h_full().bg(theme.hover).flex().items_center().justify_center().child(close_btn));
+    div().relative().flex_1().min_w_0().h_full().flex().items_center().overflow_hidden()
+        .child(div().whitespace_nowrap().child(label))
+        .child(normal_end)
+        .child(hover_end)
+}
+
 /// Collapsing ghost slot for a recently closed tab (150ms ease-out width animation).
 pub(super) fn render_closing_ghost(ghost: &ClosingGhost) -> impl IntoElement {
     let theme = Theme::ocean();
@@ -102,7 +129,9 @@ pub(super) fn render_closing_ghost(ghost: &ClosingGhost) -> impl IntoElement {
         .rounded(px(6.)).flex().items_center().gap(px(6.)).text_size(px(13.)).line_height(px(18.))
         .text_color(theme.text_secondary)
         .child(icon(Icon::Note, px(14.), theme.icon_colors(theme.text_secondary)))
-        .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(ghost.label.clone()))
+        .child(div().relative().flex_1().min_w_0().h_full().flex().items_center().overflow_hidden()
+            .child(div().whitespace_nowrap().child(ghost.label.clone()))
+            .child(tab_fade(theme.shell).absolute().top_0().bottom_0().right_0()))
         .with_animation(
             ("tab-close-anim", ghost.seq),
             Animation::new(Duration::from_millis(TAB_ANIM_MS)).with_easing(ease_out_quint()),

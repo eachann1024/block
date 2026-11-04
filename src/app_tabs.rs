@@ -14,8 +14,9 @@ use super::{Workspace, file_ops::display_name, search::Dismiss};
 mod tab_menu;
 
 use tab_menu::{
-    TAB_ANIM_MS, TAB_BASIS_W, TAB_MAX_W, TAB_MIN_W, clear_tab_menu, closing_ghost,
+    TAB_ANIM_MS, TAB_BASIS_W, TAB_FADE_W, TAB_MAX_W, TAB_MIN_W, clear_tab_menu, closing_ghost,
     hover_tinted_icon, opening_seq, record_tab_close, record_tab_open, render_closing_ghost,
+    render_inactive_tab_body, tab_fade,
 };
 
 const TITLEBAR_HEIGHT: f32 = 40.;
@@ -37,14 +38,10 @@ pub(crate) fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-shift-tab", PrevTab, Some("Workspace")),
         KeyBinding::new("cmd-shift-[", PrevTab, Some("Workspace")),
         KeyBinding::new("cmd-alt-left", PrevTab, Some("Workspace")),
-        KeyBinding::new("cmd-1", SelectTab1, Some("Workspace")),
-        KeyBinding::new("cmd-2", SelectTab2, Some("Workspace")),
-        KeyBinding::new("cmd-3", SelectTab3, Some("Workspace")),
-        KeyBinding::new("cmd-4", SelectTab4, Some("Workspace")),
-        KeyBinding::new("cmd-5", SelectTab5, Some("Workspace")),
-        KeyBinding::new("cmd-6", SelectTab6, Some("Workspace")),
-        KeyBinding::new("cmd-7", SelectTab7, Some("Workspace")),
-        KeyBinding::new("cmd-8", SelectTab8, Some("Workspace")),
+        KeyBinding::new("cmd-1", SelectTab1, Some("Workspace")), KeyBinding::new("cmd-2", SelectTab2, Some("Workspace")),
+        KeyBinding::new("cmd-3", SelectTab3, Some("Workspace")), KeyBinding::new("cmd-4", SelectTab4, Some("Workspace")),
+        KeyBinding::new("cmd-5", SelectTab5, Some("Workspace")), KeyBinding::new("cmd-6", SelectTab6, Some("Workspace")),
+        KeyBinding::new("cmd-7", SelectTab7, Some("Workspace")), KeyBinding::new("cmd-8", SelectTab8, Some("Workspace")),
         KeyBinding::new("cmd-9", SelectTab9, Some("Workspace")),
     ]);
 }
@@ -188,7 +185,7 @@ impl Workspace {
             let title = self.folder.as_ref().map(|p| display_name(p, true)).unwrap_or_else(|| "Thinkly".into());
             right = right.window_control_area(WindowControlArea::Drag)
                 .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
-                .child(div().overflow_hidden().whitespace_nowrap().text_ellipsis()
+                .child(div().overflow_hidden().whitespace_nowrap()
                     .text_size(px(13.)).line_height(px(18.)).text_color(theme.text_secondary).child(title));
         } else {
             let multi = tab_count > 1;
@@ -251,10 +248,10 @@ impl Workspace {
         } else {
             icon(Icon::Note, px(14.), theme.icon_colors(theme.text_secondary)).into_any_element()
         };
-        let mut pill = div().id(("tab", ix)).group(group.clone()).h(px(28.))
-            .when(multi, |t| t.flex_basis(px(TAB_BASIS_W)).flex_grow().flex_shrink().min_w(px(TAB_MIN_W)).max_w(px(TAB_MAX_W)))
+        let mut pill = div().id(("tab", ix)).group(group.clone()).h(px(28.)).overflow_hidden()
+            .when(multi, |t| t.w(px(TAB_MAX_W)).flex_basis(px(TAB_BASIS_W)).flex_shrink().min_w(px(TAB_MIN_W)).max_w(px(TAB_MAX_W)))
             .when(!multi, |t| t.min_w_0().max_w(px(SINGLE_TAB_MAX_W)).flex_shrink())
-            .pl(px(10.)).pr(px(6.)).rounded(px(6.)).flex().items_center().gap(px(6.))
+            .pl(px(10.)).pr(px(6.)).rounded(px(6.)).flex().items_center()
             .cursor(CursorStyle::PointingHand).text_size(px(13.)).line_height(px(18.)).font_weight(FontWeight(460.))
             .when(multi && active, |t| t.bg(theme.selected).border_1().border_color(theme.accent).text_color(theme.text))
             .when(multi && !active, |t| t.border_1().border_color(transparent_black()).text_color(theme.text_secondary)
@@ -272,19 +269,28 @@ impl Workspace {
                 cx.stop_propagation();
                 this.open_tab_menu(ix, menu_path.clone(), event.position, cx);
             }))
-            .child(note_icon)
-            .child(div().when(multi, |l| l.flex_1()).when(!multi, |l| l.flex_shrink())
-                .min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(label));
+            .child(div().mr(px(6.)).flex_none().flex().items_center().child(note_icon));
         pill = if multi && active {
-            pill.when(dirty, |t| t.child(div().size(px(6.)).flex_none().rounded_full().bg(theme.accent))).child(close_btn)
+            pill.child(div().relative().flex_1().min_w_0().h_full().flex().items_center().overflow_hidden()
+                .child(div().whitespace_nowrap().child(label))
+                .child(tab_fade(theme.selected).absolute().top_0().bottom_0().right_0()))
+                .when(dirty, |t| t.child(div().mr(px(4.)).size(px(6.)).flex_none().rounded_full().bg(theme.accent)))
+                .child(close_btn)
+        } else if multi {
+            pill.child(render_inactive_tab_body(label, group, dirty, close_btn))
         } else {
-            pill.child(div().size(px(18.)).flex_none().relative().flex().items_center().justify_center()
-                .when(dirty, |s| s.child(div().size(px(6.)).rounded_full().bg(theme.accent).group_hover(group.clone(), |d| d.invisible())))
-                .child(close_btn.absolute().inset_0().invisible().group_hover(group, |b| b.visible())))
+            let single_fade_x = SINGLE_TAB_MAX_W - 58. - TAB_FADE_W;
+            pill.child(div().relative().flex_shrink().min_w_0().h_full().flex().items_center().overflow_hidden()
+                .child(div().whitespace_nowrap().child(label))
+                .child(tab_fade(theme.shell).absolute().top_0().bottom_0().left(px(single_fade_x)).group_hover(group.clone(), |s| s.invisible()))
+                .child(tab_fade(theme.hover).absolute().top_0().bottom_0().left(px(single_fade_x)).invisible().group_hover(group.clone(), |s| s.visible())))
+                .child(div().ml(px(4.)).size(px(18.)).flex_none().relative().flex().items_center().justify_center()
+                    .when(dirty, |s| s.child(div().size(px(6.)).rounded_full().bg(theme.accent).group_hover(group.clone(), |d| d.invisible())))
+                    .child(close_btn.absolute().inset_0().invisible().group_hover(group, |b| b.visible())))
         };
         if let Some(seq) = anim_seq {
             pill.with_animation(("tab-open-anim", seq), Animation::new(Duration::from_millis(TAB_ANIM_MS)).with_easing(ease_out_quint()), |el, d| {
-                el.flex_basis(px(TAB_BASIS_W * d)).min_w(px(TAB_MIN_W * d)).max_w(px(TAB_MAX_W * d)).opacity(d)
+                el.w(px(TAB_MAX_W * d)).flex_basis(px(TAB_BASIS_W * d)).min_w(px(TAB_MIN_W * d)).max_w(px(TAB_MAX_W * d)).opacity(d)
             }).into_any_element()
         } else {
             pill.into_any_element()
