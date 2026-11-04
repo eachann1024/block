@@ -99,6 +99,10 @@ fn temporary(path: &Path) -> Result<(Temporary, File), ExportError> {
 /// The confirmed path is never rewritten, including its extension. A failure before
 /// the atomic rename preserves the previous destination and removes our staging file.
 pub fn write_png(path: &Path, bytes: &[u8], cancel: &Cancellation) -> Result<(), ExportError> {
+    write_bytes(path, bytes, cancel)
+}
+
+pub fn write_bytes(path: &Path, bytes: &[u8], cancel: &Cancellation) -> Result<(), ExportError> {
     cancel.check()?;
     let (temporary, mut file) = temporary(path)?;
     for chunk in bytes.chunks(64 * 1024) {
