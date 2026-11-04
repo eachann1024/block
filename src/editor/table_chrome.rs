@@ -1,8 +1,8 @@
 //! Table controls shown while the pointer is over a table: row and column capsule handles
 //! on the grid border, the bottom add-row bar, the right add-column bar, the top-right more button, drop line, and menus.
-use gpui::{AnyElement, Div, Entity, MouseButton, Pixels, Point, Stateful, div, point, prelude::*, px};
+use gpui::{AnyElement, Bounds, Div, Entity, MouseButton, Pixels, Point, Stateful, Window, div, point, prelude::*, px, size};
 mod resize;
-use super::{table_layout, table_resize, table_actions::{TableChrome, TableCmd, TableDrag, TableMenu, TableSel, menu_items}, view::Editor};
+use super::{table_layout, table_resize, table_actions::{TableChrome, TableCmd, TableDrag, TableMenu, TableSel, menu_items, unoccluded}, view::Editor};
 use crate::{
     dropdown::{self, RowSpec},
     theme::{Theme, tr},
@@ -14,7 +14,7 @@ thread_local! {
 }
 
 fn floating(position: Point<Pixels>, child: impl IntoElement) -> AnyElement {
-    gpui::deferred(gpui::anchored().position(position).child(child)).into_any_element()
+    gpui::anchored().position(position).child(child).into_any_element()
 }
 
 fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool, checked: bool) -> Stateful<Div> {
@@ -32,7 +32,7 @@ fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool, checked: 
 }
 
 pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<(u64, TableSel)>,
-    menu: Option<TableMenu>, drag: Option<TableDrag>, dims: (usize, usize)) -> Vec<AnyElement> {
+    menu: Option<TableMenu>, drag: Option<TableDrag>, dims: (usize, usize), window: &Window) -> Vec<AnyElement> {
     let theme = Theme::ocean();
     let id = chrome.block;
     let locked_sel = drag.filter(|d| d.block == id).map(|d| d.sel)
@@ -56,16 +56,22 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
     let view = chrome.viewport;
     // The part of the active column inside the horizontal scroll window; a column scrolled away has no grip.
     let (seen_left, seen_right) = (left.max(table.left()), right.min(table.right()));
+    let col_border_adj = if c + 1 < chrome.columns.len() && seen_right == right { px(1.) } else { px(0.) };
+    let col_x = (seen_left + seen_right + col_border_adj) / 2.;
+    let col_sel = TableSel::Column(c);
+    let col_rect = Bounds::new(point(col_x - px(GRIP_LONG / 2.), table.top() + px(0.5 - GRIP_SHORT / 2.)), size(px(GRIP_LONG), px(GRIP_SHORT)));
     let show_column = dragging.is_none_or(|d| matches!(d.sel, TableSel::Column(_))) && resizing.is_none()
-        && seen_left < seen_right && table.top() - px(GRIP_SHORT / 2.) >= view.top();
+        && seen_left < seen_right && table.top() - px(GRIP_SHORT / 2.) >= view.top()
+        && (is_active(col_sel) || unoccluded(editor.entity_id(), id, col_rect, window));
     let row_border_adj = if r + 1 < chrome.rows.len() { px(1.) } else { px(0.) };
     let row_center = (top + bottom + row_border_adj) / 2.;
+    let row_sel = TableSel::Row(r);
+    let row_rect = Bounds::new(point(table.left() + px(0.5 - GRIP_SHORT / 2.), row_center - px(GRIP_LONG / 2.)), size(px(GRIP_SHORT), px(GRIP_LONG)));
     let show_row = dragging.is_none_or(|d| matches!(d.sel, TableSel::Row(_))) && resizing.is_none()
-        && row_center - px(GRIP_LONG / 2.) >= view.top() && row_center + px(GRIP_LONG / 2.) <= view.bottom();
+        && row_center - px(GRIP_LONG / 2.) >= view.top() && row_center + px(GRIP_LONG / 2.) <= view.bottom()
+        && (is_active(row_sel) || unoccluded(editor.entity_id(), id, row_rect, window));
     if show_column {
-        let col_border_adj = if c + 1 < chrome.columns.len() && seen_right == right { px(1.) } else { px(0.) };
-        let x = (seen_left + seen_right + col_border_adj) / 2.;
-        let col_sel = TableSel::Column(c);
+        let x = col_x;
         let expanded = is_active(col_sel) || is_hovered(col_sel);
         // The grip is centred on the 1px top border (`table.top() + 0.5px`) in both states.
         let pos = point(x - px(GRIP_LONG / 2. + GRIP_PAD), table.top() + px(0.5 - GRIP_SHORT / 2. - GRIP_PAD));
@@ -91,7 +97,6 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
     }
     if show_row {
         let y = row_center;
-        let row_sel = TableSel::Row(r);
         let expanded = is_active(row_sel) || is_hovered(row_sel);
         // The grip is centred on the 1px left border (`table.left() + 0.5px`) in both states.
         let pos = point(table.left() + px(0.5 - GRIP_SHORT / 2. - GRIP_PAD), y - px(GRIP_LONG / 2. + GRIP_PAD));
@@ -138,10 +143,12 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
                         cx.stop_propagation();
                     })));
         }
-        if table.top() >= view.top() && table.top() + px(26.) <= view.bottom() {
+        let btn_pos = point(table.right() + px(22.), table.top());
+        let cell_open = menu.is_some_and(|m| m.block == id && matches!(m.sel, TableSel::Cell(..) | TableSel::Whole));
+        if table.top() >= view.top() && table.top() + px(26.) <= view.bottom()
+            && (cell_open || unoccluded(editor.entity_id(), id, Bounds::new(btn_pos, size(px(26.), px(26.))), window))
+        {
             let more_editor = editor.clone();
-            let cell_open = menu.is_some_and(|m| m.block == id && matches!(m.sel, TableSel::Cell(..) | TableSel::Whole));
-            let btn_pos = point(table.right() + px(22.), table.top());
             let menu_anchor = point((table.right() + px(48.) - px(224.)).max(table.left()), table.top() + px(32.));
             out.push(floating(btn_pos,
                 thandle(cell_open).on_mouse_down(MouseButton::Left, move |_, _, cx| {

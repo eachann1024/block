@@ -164,7 +164,7 @@ impl Render for Editor {
                 let exp = crate::export::active_view(cx).is_some();
                 let anchor = (!exp).then(|| this.selection_toolbar_anchor(bounds, window)).flatten();
                 if this.toolbar_anchor != anchor { this.toolbar_anchor = anchor; changed = true; }
-                let chrome = (!exp).then(|| this.table_chrome_geometry(window)).flatten();
+                let chrome = (!exp).then(|| this.table_chrome_geometry(cx.entity_id(), window)).flatten();
                 let same = match (&this.table_chrome, &chrome) {
                     (None, None) => true,
                     (Some(a), Some(b)) => a.block == b.block && a.cell == b.cell && a.bounds == b.bounds
@@ -227,7 +227,7 @@ impl Render for Editor {
                     .when(self.path.is_some(), |area| area.child(scrollbar::vertical("editor-scrollbar", &self.list, px(pad.0 + pad.1)))))
                 .when_some(self.table_chrome.clone(), |root, chrome| {
                     let dims = self.table_dimensions(chrome.block).unwrap_or((1, 1));
-                    root.children(super::table_chrome::overlay(cx.entity(), &chrome, self.table_sel, self.table_menu, self.table_drag, dims))
+                    root.children(super::table_chrome::overlay(cx.entity(), &chrome, self.table_sel, self.table_menu, self.table_drag, dims, window))
                 })
                 .on_drop(cx.listener(|this, paths: &gpui::ExternalPaths, window, cx| {
                     let (id, place) = this.drop_target(window.mouse_position())
