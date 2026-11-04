@@ -181,6 +181,7 @@ const OCEAN_LIGHT: Theme = Theme {
     sidebar_border: hex(0xe6e6e6),
     preview_bg: hex(0xe9e9e9),
     selection: hex(0xd6e3fb),
+    selection_text: hex(0x2f5bb7),
     menu_item_height: px(32.),
     sidebar_width: px(260.),
     content_width: px(720.),
@@ -211,6 +212,7 @@ const OCEAN_DARK: Theme = Theme {
     sidebar_border: hex(0x333333),
     preview_bg: hex(0x262626),
     selection: hex(0x2d426b),
+    selection_text: hex(0x9dbcf5),
     menu_item_height: px(32.),
     sidebar_width: px(260.),
     content_width: px(720.),
@@ -244,6 +246,8 @@ pub struct Theme {
     pub preview_bg: Hsla,
     /// Text selection highlight.
     pub selection: Hsla,
+    /// Selected text glyph tint (F-Inline `.sel`).
+    pub selection_text: Hsla,
     pub menu_item_height: Pixels,
     pub sidebar_width: Pixels,
     /// Standard body text width, excluding block handles, markers and insets.

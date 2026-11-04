@@ -1,5 +1,5 @@
 //! Image size pill (− / percent / + / original) and the 10% keyboard steps.
-use gpui::{Context, CursorStyle, Entity, MouseButton, Window, div, prelude::*, px, rgb, svg};
+use gpui::{Context, CursorStyle, Entity, MouseButton, Window, div, prelude::*, px, rgb};
 use crate::icons::Icon;
 use super::{image_source::spec_of, image_view::sizes, toolbar::{HOVER, INK, glyph, pill, sep}, view::Editor};
 
@@ -21,7 +21,7 @@ pub(super) fn size_pill(editor: &Entity<Editor>, id: u64, percent: u32) -> impl 
             .child(div().min_w(px(40.)).flex().justify_center().text_size(px(12.)).text_color(rgb(INK)).child(format!("{percent}%")))
             .child(step_button(editor, id, 1, glyph(Icon::TbPlus, 15., INK), "放大", move |this, cx| this.step_image(id, 10, cx)))
             .child(sep())
-            .child(step_button(editor, id, 2, svg().size(px(15.)).path("icons/tb-reset.line.svg").text_color(rgb(INK)), "原始宽度",
+            .child(step_button(editor, id, 2, glyph(Icon::TbReset, 15., INK), "原始宽度",
                 move |this, cx| this.edit_image(id, |s| s.width = None, cx))))
 }
 
