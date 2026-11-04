@@ -166,7 +166,8 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
         let items = menu_items(menu.sel, dims.0, dims.1);
         let sel = menu.sel;
         let fitted = table_layout::widths_of(editor.entity_id(), id).fit;
-        let mut list = dropdown::shell("table-menu").w(px(224.));
+        let width = if matches!(sel, TableSel::Row(_) | TableSel::Column(_)) { px(188.) } else { px(224.) };
+        let mut list = dropdown::shell("table-menu").w(width);
         for (index, item) in items.into_iter().enumerate() {
             match item {
                 None => list = list.child(dropdown::separator()),
