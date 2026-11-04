@@ -171,7 +171,9 @@ impl Workspace {
         let left = self.titlebar_left(cx);
         let mut right = div().id("titlebar-tabs").flex_1().min_w_0().h_full().flex().items_center()
             .gap(px(4.)).px(px(10.)).overflow_hidden();
-        if tab_count == 0 {
+        if let Some(modal) = &self.settings {
+            right = self.settings_breadcrumb(right, modal.tab);
+        } else if tab_count == 0 {
             let title = self.folder.as_ref().map(|p| display_name(p, true)).unwrap_or_else(|| "Thinkly".into());
             right = right.window_control_area(WindowControlArea::Drag)
                 .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
@@ -196,25 +198,28 @@ impl Workspace {
                 strip = strip.child(render_closing_ghost(g));
             }
             right = right.child(strip);
-            if can_create {
+            let plus = if can_create { Some({
                 let new_group: SharedString = "tab-new-btn".into();
-                right = right.child(div().id("tab-new").group(new_group.clone()).size(px(26.)).flex_none()
+                div().id("tab-new").group(new_group.clone()).size(px(26.)).flex_none()
                     .flex().items_center().justify_center().rounded(px(6.)).cursor(CursorStyle::PointingHand)
                     .hover(|s| s.bg(theme.hover))
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
                         cx.stop_propagation();
                         this.new_item(false, window, cx);
                     }))
-                    .child(hover_tinted_icon(new_group, Icon::Plus, 14., theme.text_secondary, theme.text, transparent_black())));
-            }
+                    .child(hover_tinted_icon(new_group, Icon::Plus, 14., theme.text_secondary, theme.text, transparent_black()))
+            }) } else { None };
+            let (plus_left, plus_right) = if multi { (plus, None) } else { (None, plus) };
+            right = right.children(plus_left);
             right = right.child(div().id("titlebar-drag-spacer").flex_1().min_w(px(16.)).h_full()
                 .window_control_area(WindowControlArea::Drag)
                 .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); }));
+            right = right.children(plus_right);
         }
         div().id("titlebar").h(px(TITLEBAR_HEIGHT)).w_full().flex_none().flex().items_center()
             .bg(theme.shell).border_b_1().border_color(theme.sidebar_border)
             .child(left).child(right)
-            .child(self.render_titlebar_tail(tab_count > 0, cx))
+            .child(self.render_titlebar_tail(self.settings.is_none() && tab_count > 0, cx))
             .children(self.render_tab_context_menu(cx))
     }
 
