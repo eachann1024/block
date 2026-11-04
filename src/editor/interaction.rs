@@ -123,7 +123,7 @@ impl Editor {
         if let Some(mut drag) = self.table_drag {
             if !event.dragging() { self.clear_pointer(); cx.notify(); return; }
             drag.moved |= (event.position - drag.start).magnitude() > 4.;
-            drag.position = self.list.viewport_bounds().contains(&event.position).then_some(event.position);
+            drag.position = Some(event.position);
             self.table_drag = Some(drag); cx.notify();
             return;
         }
