@@ -31,10 +31,10 @@ impl Editor {
     }
     pub(in crate::editor) fn clear_pointer(&mut self) {
         self.dragging = None; self.drag_over = None; self.selecting = false;
-        self.selection_origin = None; self.table_drag = None;
+        self.selection_origin = None; self.table_drag = None; self.cancel_extend();
     }
     pub(in crate::editor) fn hover_block(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
-        if self.minimal || self.dragging.is_some() || self.table_drag.is_some() || self.selecting { return; }
+        if self.minimal || self.dragging.is_some() || self.table_drag.is_some() || self.table_extend.is_some() || self.selecting { return; }
         self.hover_gen = self.hover_gen.wrapping_add(1);
         if hovered {
             if self.hover != Some(id) { self.hover = Some(id); cx.notify(); }
@@ -135,6 +135,10 @@ impl Editor {
         });
     }
     pub(in crate::editor) fn pointer_move(&mut self, event: &gpui::MouseMoveEvent, cx: &mut Context<Self>) {
+        if self.table_extend.is_some() {
+            if !event.dragging() { self.clear_pointer(); cx.notify(); } else { self.extend_move(event.position.x, cx); }
+            return;
+        }
         if let Some(mut drag) = self.table_drag {
             if !event.dragging() { self.clear_pointer(); cx.notify(); return; }
             drag.moved |= (event.position - drag.start).magnitude() > 4.;
@@ -176,6 +180,7 @@ impl Editor {
         cx.notify();
     }
     pub(in crate::editor) fn finish_drag(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        if self.table_extend.is_some() { self.finish_extend(cx); return; }
         if let Some(drag) = self.table_drag.take() {
             if drag.moved { self.table_sel = None; self.table_drop(drag, position, cx); }
             else { self.open_table_menu(drag.block, drag.sel, position + point(px(0.), px(14.)), cx); }
