@@ -1,13 +1,14 @@
 //! Annotation mode (F-Annotate): selection comments, emoji reactions, inline
 //! highlights (`#fef0d1` anchor / `#fdda8c` active / `#fdf3c4` AI-modified), and AI rewrites.
 use std::{collections::BTreeMap, fs, ops::Range, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
-use gpui::{BorderStyle, Context, Entity, Pixels, Point, Subscription, Window, point, prelude::*, px, quad, rgb, transparent_black};
+use gpui::{BorderStyle, Context, Entity, Pixels, Point, Subscription, Window, prelude::*, px, quad, rgb, transparent_black};
 use gpui_component::input::{InputEvent, InputState};
 use serde::{Deserialize, Serialize};
 use crate::theme::tr;
 use super::{model::Doc, view::{Editor, layout::TextLayout}};
 #[path = "annotate_ai.rs"] mod ai;
 #[path = "annotate_actions.rs"] mod actions;
+#[path = "annotate_reactions.rs"] mod reactions;
 #[path = "annotate_revert.rs"] mod revert;
 
 pub(super) const HL_SELECT_BG: u32 = 0xfef0d1;
@@ -62,7 +63,8 @@ pub(super) struct ReactionPicker {
 pub(super) struct AnnotateState {
     pub loaded_path: Option<PathBuf>, pub annotations: Vec<Annotation>, pub composer: Option<AnnotateComposer>,
     pub followup: Option<AnnotationFollowup>, pub reactions: Option<ReactionPicker>,
-    pub active_annotation: Option<u64>, pub hovered_annotation: Option<u64>, pub editor_top: Pixels, pub request_seq: u64,
+    pub active_annotation: Option<u64>, pub hovered_annotation: Option<u64>,
+    pub editor_top: Pixels, pub editor_width: Pixels, pub editor_height: Pixels, pub request_seq: u64,
 }
 
 impl AnnotateState {
@@ -117,18 +119,33 @@ pub(super) fn resolve_annotation_span(doc: &Doc, annotation: &Annotation) -> Opt
     })
 }
 
-fn find_snippet(doc: &Doc, preferred_index: usize, preferred_start: usize, needle: &str) -> Option<(u64, Range<usize>)> {
-    if let Some(block) = doc.blocks.get(preferred_index) {
-        let end = preferred_start.saturating_add(needle.len());
-        if end <= block.text.len() && block.text.get(preferred_start..end) == Some(needle) { return Some((block.id, preferred_start..end)); }
-        if let Some(pos) = block.text.find(needle) { return Some((block.id, pos..(pos + needle.len()))); }
+fn find_in_text(text: &str, preferred_start: usize, needle: &str) -> Option<Range<usize>> {
+    if needle.is_empty() { return None; }
+    let end = preferred_start.saturating_add(needle.len());
+    if end <= text.len() && text.get(preferred_start..end) == Some(needle) {
+        return Some(preferred_start..end);
     }
-    doc.blocks.iter().enumerate()
-        .filter_map(|(idx, b)| b.text.find(needle).map(|pos| (idx.abs_diff(preferred_index), b.id, pos..(pos + needle.len()))))
-        .min_by_key(|(dist, _, _)| *dist).map(|(_, id, range)| (id, range))
+    text.match_indices(needle)
+        .min_by_key(|(pos, _)| pos.abs_diff(preferred_start))
+        .map(|(pos, _)| pos..(pos + needle.len()))
 }
 
-fn is_whole_table_span(doc: &Doc, block_id: u64, range: &Range<usize>) -> bool {
+fn find_snippet(doc: &Doc, preferred_index: usize, preferred_start: usize, needle: &str) -> Option<(u64, Range<usize>)> {
+    if let Some(block) = doc.blocks.get(preferred_index)
+        && let Some(range) = find_in_text(&block.text, preferred_start, needle)
+    {
+        return Some((block.id, range));
+    }
+    doc.blocks.iter().enumerate()
+        .filter_map(|(idx, b)| {
+            find_in_text(&b.text, preferred_start, needle)
+                .map(|range| (idx.abs_diff(preferred_index), range.start.abs_diff(preferred_start), b.id, range))
+        })
+        .min_by_key(|(block_dist, start_dist, _, _)| (*block_dist, *start_dist))
+        .map(|(_, _, id, range)| (id, range))
+}
+
+pub(super) fn is_whole_table_span(doc: &Doc, block_id: u64, range: &Range<usize>) -> bool {
     doc.get(block_id).is_some_and(|b| b.meta.table.is_some() && (range.is_empty() || (range.start == 0 && range.end >= b.text.len())))
 }
 
@@ -193,6 +210,9 @@ impl Editor {
             self.annotate.reactions = None;
             self.annotate.active_annotation = None;
             self.annotate.hovered_annotation = None;
+            if self.normalize_annotations() {
+                self.persist_annotations();
+            }
         }
     }
 
@@ -200,7 +220,7 @@ impl Editor {
         if let Some(path) = self.path.as_deref() { save_for(path, &self.annotate.annotations); }
     }
 
-    fn selected_annotation_target(&self) -> Option<(u64, usize, Range<usize>, String)> {
+    pub(super) fn selected_annotation_target(&self) -> Option<(u64, usize, Range<usize>, String)> {
         let (a, _b, ai, _bi) = self.ordered();
         let block = self.doc.blocks.get(ai)?;
         if let Some(spec) = super::image_source::spec_of(block) {
@@ -230,46 +250,9 @@ impl Editor {
         cx.notify();
     }
 
-    /// Toolbar 「添加表情回应」: open the reaction picker for the selection.
-    pub(super) fn open_reactions(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.sync_annotations();
-        let Some((block_id, block_index, range, quote)) = self.selected_annotation_target() else { return };
-        let anchor = self.toolbar_anchor
-            .or_else(|| self.list.bounds_for_item(block_index).map(|b| point(b.center().x, b.top())))
-            .unwrap_or_else(|| point(px(360.), px(140.)));
-        let annotation_id = self.annotate.annotations.iter()
-            .find(|note| note.block_index == block_index && (note.quote == quote || note.ai_rewritten.as_deref() == Some(quote.as_str())))
-            .map(|note| note.id);
-        self.format = None;
-        self.annotate.reactions = Some(ReactionPicker { block_id, block_index, range, quote, annotation_id, anchor });
-        cx.notify();
-    }
-
     pub(super) fn close_annotation_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.annotate.composer = None;
         window.focus(&self.focus, cx);
-        cx.notify();
-    }
-
-    pub(super) fn pick_reaction(&mut self, emoji: &str, cx: &mut Context<Self>) {
-        let Some(picker) = self.annotate.reactions.take() else { return };
-        let existing = picker.annotation_id.and_then(|id| self.annotate.annotations.iter_mut().find(|note| note.id == id));
-        if let Some(note) = existing {
-            if let Some(idx) = note.reactions.iter().position(|r| r == emoji) { note.reactions.remove(idx); }
-            else { note.reactions.push(emoji.to_owned()); }
-            let (id, empty) = (note.id, note.body.is_empty() && note.reactions.is_empty());
-            if empty { self.annotate.annotations.retain(|item| item.id != id); }
-        } else {
-            self.annotate.annotations.push(Annotation {
-                id: next_id(), block_index: picker.block_index, start: picker.range.start, end: picker.range.end,
-                quote: picker.quote, body: String::new(), reactions: vec![emoji.to_owned()], ai_rewritten: None,
-                ai_error: None, applied: Some(false), streaming: false, request_id: None,
-            });
-        }
-        self.persist_annotations();
-        self.caret.anchor = self.caret.head;
-        self.table_sel = None;
-        self.toolbar_anchor = None;
         cx.notify();
     }
 

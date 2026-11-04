@@ -25,17 +25,15 @@ pub(super) fn annotation_row(
     let (is_applied, has_rewrite, is_active) = (note.is_applied(), note.has_rewrite(), active_id == Some(id));
     let is_highlighted = is_active || hovered_id == Some(id);
     let toggle = move |this: &mut Editor, window: &mut gpui::Window, cx: &mut Context<Editor>| this.toggle_annotation_detail(id, window, cx);
-    let reaction_pills = (!note.reactions.is_empty()).then(|| {
-        div().w_full().flex().flex_wrap().items_center().gap(px(6.)).children(
-            note.reactions.iter().enumerate().map(|(idx, emoji)| {
-                let emoji_str = emoji.clone();
-                annotation_note::reaction_pill(SharedString::from(format!("reaction-pill-{id}-{idx}")), emoji, is_highlighted)
-                    .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx)))
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                        cx.stop_propagation();
-                        this.toggle_reaction_on_note(id, &emoji_str, cx);
-                    }))
-            }),
+    let reaction_pills = note.reactions.first().map(|emoji| {
+        let emoji_str = emoji.clone();
+        div().w_full().flex().flex_wrap().items_center().gap(px(6.)).child(
+            annotation_note::reaction_pill(SharedString::from(format!("reaction-pill-{id}-0")), emoji, is_highlighted)
+                .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx)))
+                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.toggle_reaction_on_note(id, &emoji_str, cx);
+                })),
         )
     });
     if note.body.is_empty() {
