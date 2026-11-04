@@ -19,7 +19,7 @@ function createDmgWithRetry(stageDir, outDmg) {
       run("hdiutil", [
         "create",
         "-volname",
-        "Yu",
+        "Block",
         "-srcfolder",
         stageDir,
         "-ov",
@@ -76,7 +76,7 @@ export async function packageRelease() {
     const sums = files.map((name) => `${sha256File(join(RELEASE_DIR, name))}  ${name}\n`).join("");
     writeFileSync(join(RELEASE_DIR, "SHA256SUMS.txt"), sums, "utf8");
 
-    console.log(`Packaged Yu v${version}:`);
+    console.log(`Packaged Block v${version}:`);
     console.log(`  ${dmgPath}`);
     console.log(`  ${zipPath}`);
   } finally {
