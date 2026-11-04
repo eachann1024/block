@@ -116,7 +116,8 @@ impl Editor {
         let list = is_list(block);
         let mut fresh = Block::new(0, if list { block.kind } else { Kind::Paragraph }, String::new());
         fresh.meta.column = block.meta.column;
-        if list { fresh.meta.indent = block.meta.indent; fresh.meta.list_start = block.meta.list_start; }
+        if list || block.kind == Kind::Paragraph { fresh.meta.indent = block.meta.indent; }
+        if list { fresh.meta.list_start = block.meta.list_start; }
         let (id, before) = (block.id, self.snapshot());
         if let Some(b) = self.doc.get_mut(id) { b.meta.list_start = None; }
         self.doc.refresh_block(id); self.doc.splice_blocks(index..index, vec![fresh]);
@@ -164,6 +165,7 @@ impl Editor {
                 if block.meta.indent > 0 { self.tab_outside_table(false, cx); } else { self.demote(block.id, cx); }
                 return true;
             }
+            Kind::Paragraph if block.meta.indent > 0 => { self.tab_outside_table(false, cx); return true; }
             Kind::Paragraph => {}
         }
         let prev = index.checked_sub(1).map(|i| self.doc.blocks[i].clone());
@@ -237,7 +239,7 @@ impl Editor {
         let (_, _, ai, bi) = self.ordered();
         let whole = |i: usize| self.selected_range(self.doc.blocks[i].id).is_some_and(|r| r == (0..self.doc.blocks[i].text.len()));
         let one = &self.doc.blocks[ai];
-        let rich = ai != bi || (whole(ai) && (one.kind != Kind::Paragraph || one.meta.code_language.is_some()) && one.meta.table.is_none());
+        let rich = ai != bi || (whole(ai) && (one.kind != Kind::Paragraph || one.meta.indent > 0 || one.meta.code_language.is_some()) && one.meta.table.is_none());
         if !rich { self.block_clip = None; return; }
         let blocks: Vec<Block> = (ai..=bi).filter_map(|i| {
             let block = &self.doc.blocks[i];
@@ -260,7 +262,7 @@ impl Editor {
         let Some((plain, markdown)) = self.block_clip.clone() else { return false };
         if plain != text.replace("\r\n", "\n") { return false; }
         let mut blocks: Vec<Block> = super::markdown::parse(&markdown).blocks.iter().cloned().collect();
-        let blank = |b: &Block| b.text.is_empty() && b.kind == Kind::Paragraph && b.meta.raw_source.is_none() && b.meta.table.is_none() && b.meta.code_language.is_none() && b.meta.column.is_none();
+        let blank = |b: &Block| b.text.is_empty() && b.kind == Kind::Paragraph && b.meta.indent == 0 && b.meta.raw_source.is_none() && b.meta.table.is_none() && b.meta.code_language.is_none() && b.meta.column.is_none();
         while blocks.last().is_some_and(blank) { blocks.pop(); }
         while blocks.first().is_some_and(blank) { blocks.remove(0); }
         if blocks.is_empty() { return false; }
