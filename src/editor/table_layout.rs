@@ -44,9 +44,9 @@ pub(super) fn measure(table: &Table, width: Pixels, selected: Option<std::ops::R
             .or_else(|| text_runs::attribute_color(&table.attrs, false)).unwrap_or(default_fg);
         let runs = text_runs::runs(&cell.content, &text, foreground);
         let cell_sel = selected.as_ref().and_then(|sel| {
-            let a = sel.start.max(range.start) - range.start;
-            let b = sel.end.min(range.end) - range.start;
-            (a < b).then_some(a..b)
+            let a = sel.start.max(range.start);
+            let b = sel.end.min(range.end);
+            (a < b).then(|| (a - range.start)..(b - range.start))
         });
         let runs = text_runs::tint_selection(&text, runs, cell_sel, theme.selection_text);
         let lines = window.text_system().shape_text(text, font_size, &runs,
