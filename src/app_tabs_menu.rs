@@ -1,0 +1,234 @@
+//! Tab context menu (batch close) and open/close width animations for `Tabs-1-Titlebar`.
+use std::cell::RefCell;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+use gpui::{
+    Animation, AnimationExt, AnyElement, Context, CursorStyle, Hsla, IntoElement,
+    MouseButton, Pixels, Point, SharedString, anchored, deferred, div, ease_out_quint,
+    point, prelude::*, px, transparent_black,
+};
+use crate::icons::{Icon, IconColors, icon};
+use crate::theme::Theme;
+use super::Workspace;
+
+pub(super) const TAB_ANIM_MS: u64 = 150;
+pub(super) const TAB_BASIS_W: f32 = 176.;
+pub(super) const TAB_MIN_W: f32 = 104.;
+pub(super) const TAB_MAX_W: f32 = 196.;
+
+#[derive(Clone)]
+struct TabMenu {
+    index: usize,
+    path: PathBuf,
+    position: Point<Pixels>,
+}
+
+#[derive(Clone)]
+pub(super) struct ClosingGhost {
+    pub index: usize,
+    pub label: String,
+    pub seq: u64,
+}
+
+#[derive(Default)]
+struct TabUiState {
+    menu: Option<TabMenu>,
+    opening: Option<(PathBuf, u64)>,
+    closing: Option<ClosingGhost>,
+    seq: u64,
+}
+
+thread_local! {
+    static TAB_UI: RefCell<TabUiState> = RefCell::new(TabUiState::default());
+}
+
+pub(super) fn clear_tab_menu() {
+    TAB_UI.with(|ui| ui.borrow_mut().menu = None);
+}
+
+pub(super) fn record_tab_open(path: PathBuf) {
+    TAB_UI.with(|ui| {
+        let mut s = ui.borrow_mut();
+        s.seq = s.seq.wrapping_add(1);
+        let seq = s.seq;
+        s.opening = Some((path, seq));
+    });
+}
+
+pub(super) fn opening_seq(path: &Path) -> Option<u64> {
+    TAB_UI.with(|ui| ui.borrow().opening.as_ref().and_then(|(p, seq)| (p == path).then_some(*seq)))
+}
+
+pub(super) fn closing_ghost() -> Option<ClosingGhost> {
+    TAB_UI.with(|ui| ui.borrow().closing.clone())
+}
+
+pub(super) fn record_tab_close(index: usize, label: String, cx: &mut Context<Workspace>) {
+    let seq = TAB_UI.with(|ui| {
+        let mut s = ui.borrow_mut();
+        s.seq = s.seq.wrapping_add(1);
+        let seq = s.seq;
+        s.closing = Some(ClosingGhost { index, label, seq });
+        seq
+    });
+    cx.spawn(async move |this, cx| {
+        cx.background_executor().timer(Duration::from_millis(TAB_ANIM_MS)).await;
+        let _ = this.update(cx, |_, cx| {
+            let cleared = TAB_UI.with(|ui| {
+                let mut s = ui.borrow_mut();
+                if s.closing.as_ref().is_some_and(|g| g.seq == seq) { s.closing = None; true } else { false }
+            });
+            if cleared { cx.notify(); }
+        });
+    }).detach();
+}
+
+/// Renders an icon whose stroke switches from `base` to `hover` when `group` is hovered.
+pub(super) fn hover_tinted_icon(
+    group: SharedString, glyph: Icon, size: f32, base: Hsla, hover: Hsla, fill: Hsla,
+) -> gpui::Div {
+    let theme = Theme::ocean();
+    let colors = |line| IconColors { line, fill, accent: theme.accent };
+    div().relative().flex_none().size(px(size))
+        .child(div().group_hover(group.clone(), |s| s.invisible()).child(icon(glyph, px(size), colors(base))))
+        .child(div().absolute().top_0().left_0().invisible().group_hover(group, |s| s.visible())
+            .child(icon(glyph, px(size), colors(hover))))
+}
+
+/// Collapsing ghost slot for a recently closed tab (150ms ease-out width animation).
+pub(super) fn render_closing_ghost(ghost: &ClosingGhost) -> impl IntoElement {
+    let theme = Theme::ocean();
+    div().id(("tab-closing", ghost.seq as usize)).h(px(28.)).flex_none().overflow_hidden()
+        .rounded(px(6.)).flex().items_center().gap(px(6.)).text_size(px(13.)).line_height(px(18.))
+        .text_color(theme.text_secondary)
+        .child(icon(Icon::Note, px(14.), theme.icon_colors(theme.text_secondary)))
+        .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(ghost.label.clone()))
+        .with_animation(
+            ("tab-close-anim", ghost.seq),
+            Animation::new(Duration::from_millis(TAB_ANIM_MS)).with_easing(ease_out_quint()),
+            |el, delta| {
+                let k = (1.0 - delta).max(0.0);
+                el.w(px(TAB_BASIS_W * k)).pl(px(10. * k)).pr(px(6. * k)).opacity(k)
+            },
+        )
+}
+
+impl Workspace {
+    pub(super) fn open_tab_menu(&mut self, index: usize, path: PathBuf, position: Point<Pixels>, cx: &mut Context<Self>) {
+        if self.busy() { return; }
+        TAB_UI.with(|ui| ui.borrow_mut().menu = Some(TabMenu { index, path, position }));
+        cx.notify();
+    }
+
+    pub(super) fn dismiss_tab_menu(&mut self, cx: &mut Context<Self>) -> bool {
+        let had = TAB_UI.with(|ui| ui.borrow_mut().menu.take().is_some());
+        if had { cx.notify(); }
+        had
+    }
+
+    pub(crate) fn close_other_tabs(&mut self, keep_path: PathBuf, cx: &mut Context<Self>) {
+        clear_tab_menu();
+        if self.busy() || !self.tabs.contains(&keep_path) { return; }
+        let removed: Vec<PathBuf> = self.tabs.iter().filter(|p| *p != &keep_path).cloned().collect();
+        if removed.is_empty() { return; }
+        self.tabs = vec![keep_path.clone()];
+        let need_open = self.selected.as_ref() != Some(&keep_path)
+            || self.editor.read(cx).current_path() != Some(keep_path.as_path());
+        self.editor.update(cx, |editor, cx| {
+            if need_open { editor.open(keep_path.clone(), cx); }
+            for tab in &removed { editor.close_session(tab, cx); }
+        });
+        if need_open {
+            self.selected = Some(keep_path.clone());
+            self.tree.update(cx, |tree, cx| tree.select(Some(keep_path), cx));
+        }
+        self.save_tabs_state(cx);
+        cx.notify();
+    }
+
+    pub(crate) fn close_tabs_to_right(&mut self, index: usize, cx: &mut Context<Self>) {
+        clear_tab_menu();
+        if self.busy() || index + 1 >= self.tabs.len() { return; }
+        let removed = self.tabs.split_off(index + 1);
+        let active_removed = self.selected.as_ref().is_some_and(|s| removed.contains(s))
+            || self.editor.read(cx).current_path().is_some_and(|p| removed.iter().any(|r| r == p));
+        let fallback = self.tabs.get(index).cloned();
+        self.editor.update(cx, |editor, cx| {
+            if active_removed {
+                if let Some(ref next) = fallback { editor.open(next.clone(), cx); }
+            }
+            for tab in &removed { editor.close_session(tab, cx); }
+        });
+        if active_removed {
+            self.selected = fallback.clone();
+            self.tree.update(cx, |tree, cx| tree.select(fallback, cx));
+        }
+        self.save_tabs_state(cx);
+        cx.notify();
+    }
+
+    pub(crate) fn close_all_tabs(&mut self, cx: &mut Context<Self>) {
+        clear_tab_menu();
+        if self.busy() || self.tabs.is_empty() { return; }
+        let removed = std::mem::take(&mut self.tabs);
+        let current = self.editor.read(cx).current_path().map(Path::to_path_buf);
+        self.editor.update(cx, |editor, cx| {
+            for tab in &removed { editor.close_session(tab, cx); }
+            if let Some(cur) = current.filter(|c| !removed.contains(c)) {
+                editor.close_session(&cur, cx);
+            }
+        });
+        self.selected = None;
+        self.tree.update(cx, |tree, cx| tree.select(None, cx));
+        self.save_tabs_state(cx);
+        cx.notify();
+    }
+
+    pub(super) fn render_tab_context_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let menu = TAB_UI.with(|ui| ui.borrow().menu.clone())?;
+        let tab_count = self.tabs.len();
+        if tab_count == 0 { return None; }
+        let ix = self.tabs.iter().position(|p| p == &menu.path).unwrap_or(menu.index.min(tab_count - 1));
+        let target_path = self.tabs.get(ix)?.clone();
+        let (has_others, has_right) = (tab_count > 1, ix + 1 < tab_count);
+        let theme = Theme::ocean();
+        let (close_one, close_others) = (target_path.clone(), target_path);
+        let card = div().id("tab-context-menu").occlude().w(px(168.)).p(px(4.)).rounded(px(8.))
+            .bg(theme.menu).border_1().border_color(theme.menu_border).shadow_md().flex().flex_col().text_color(theme.text)
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+            .child(tab_menu_item("tab-menu-close", "关闭", true, cx.listener(move |this, _, _, cx| {
+                this.close_tab(close_one.clone(), cx);
+            })))
+            .child(tab_menu_item("tab-menu-close-others", "关闭其他", has_others, cx.listener(move |this, _, _, cx| {
+                this.close_other_tabs(close_others.clone(), cx);
+            })))
+            .child(tab_menu_item("tab-menu-close-right", "关闭右侧", has_right, cx.listener(move |this, _, _, cx| {
+                this.close_tabs_to_right(ix, cx);
+            })))
+            .child(div().h(px(1.)).my(px(4.)).mx(px(6.)).bg(theme.hairline))
+            .child(tab_menu_item("tab-menu-close-all", "关闭全部", true, cx.listener(|this, _, _, cx| {
+                this.close_all_tabs(cx);
+            })));
+        let backdrop = deferred(anchored().position(point(px(0.), px(0.))).child(
+            div().id("tab-menu-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black())
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.dismiss_tab_menu(cx); }))
+                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { this.dismiss_tab_menu(cx); })),
+        )).with_priority(1);
+        let popup = deferred(anchored().position(menu.position).snap_to_window_with_margin(px(8.)).child(card)).with_priority(2);
+        Some(div().child(backdrop).child(popup).into_any_element())
+    }
+}
+
+fn tab_menu_item(
+    id: &'static str, label: &'static str, enabled: bool,
+    on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
+) -> gpui::Stateful<gpui::Div> {
+    let theme = Theme::ocean();
+    div().id(id).h(theme.menu_item_height).px(px(10.)).rounded(px(6.))
+        .flex().items_center().text_size(px(13.)).line_height(px(18.)).text_color(theme.text)
+        .when(enabled, |row| row.cursor(CursorStyle::PointingHand).hover(|s| s.bg(theme.hover))
+            .on_mouse_down(MouseButton::Left, on_click))
+        .when(!enabled, |row| row.opacity(0.42))
+        .child(label)
+}
