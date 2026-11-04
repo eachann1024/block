@@ -17,9 +17,6 @@ actions!(thinkly_fast, [Quit, ExportImage]);
 struct Assets;
 impl gpui::AssetSource for Assets {
     fn load(&self, path: &str) -> gpui::Result<Option<std::borrow::Cow<'static, [u8]>>> {
-        if path == "icons/tb-reset.line.svg" {
-            return Ok(Some(std::borrow::Cow::Borrowed(include_bytes!("../assets/icons/tb-reset.line.svg"))));
-        }
         if let Some(bytes) = mascot::load_asset(path) {
             return Ok(Some(std::borrow::Cow::Borrowed(bytes)));
         }

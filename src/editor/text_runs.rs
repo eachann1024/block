@@ -84,3 +84,28 @@ pub(super) fn plain(len: usize, color: Hsla) -> TextRun {
         fallbacks:Some(FontFallbacks::from_fonts(fallbacks.iter().map(|s| (*s).to_string()).collect())) },
         color, background_color:None, underline:None, strikethrough:None }
 }
+pub(super) fn tint_selection(text: &str, runs: Vec<TextRun>, sel: Option<std::ops::Range<usize>>, color: Hsla) -> Vec<TextRun> {
+    let Some(sel) = sel else { return runs };
+    let (mut s, mut e) = (sel.start.min(text.len()), sel.end.min(text.len()));
+    while s > 0 && !text.is_char_boundary(s) { s -= 1; }
+    while e < text.len() && !text.is_char_boundary(e) { e += 1; }
+    if s >= e { return runs; }
+    let mut out = Vec::with_capacity(runs.len() + 2);
+    let mut at = 0;
+    for run in runs {
+        let end = at + run.len;
+        if end <= s || at >= e { out.push(run); }
+        else {
+            if at < s { let mut r = run.clone(); r.len = s - at; out.push(r); }
+            let a = at.max(s); let b = end.min(e);
+            if a < b {
+                let mut r = run.clone(); r.len = b - a; r.color = color;
+                if let Some(st) = &mut r.strikethrough { st.color = Some(color); }
+                out.push(r);
+            }
+            if end > e { let mut r = run; r.len = end - e; out.push(r); }
+        }
+        at = end;
+    }
+    out
+}
