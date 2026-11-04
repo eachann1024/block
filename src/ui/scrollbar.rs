@@ -38,7 +38,8 @@ fn styles(styles: ScrollbarStyles) -> ScrollbarStyles {
         .thumb_active(thumb(true))
 }
 
-/// Vertical scrollbar for a scroll area, always visible while the content overflows.
+/// Vertical scrollbar for a scroll area, hidden by default and shown while scrolling
+/// when the content overflows.
 ///
 /// Place it as a child of a `relative` container that has exactly the scroll area's box and
 /// reserves [`GUTTER`] on its right. `content_padding` is padding the scroll area adds around
@@ -50,10 +51,16 @@ pub fn vertical<H: ScrollbarHandle + Clone>(
     content_padding: Pixels,
 ) -> Div {
     let content = handle.content_size();
+    let viewport = handle.viewport_bounds().size;
     let shrink = px(END_INSET * 2.);
-    let scroll_size = size(content.width, (content.height + content_padding - shrink).max(px(0.)));
+    let total_height = if content.height > viewport.height {
+        (content.height + content_padding - shrink).max(px(0.))
+    } else {
+        px(0.)
+    };
+    let scroll_size = size(content.width, total_height);
     div().absolute().top(px(END_INSET)).bottom(px(END_INSET)).right_0().w(px(GUTTER)).child(
-        Scrollbar::vertical(handle).id(id).mode(ScrollbarMode::Always).styles(styles)
+        Scrollbar::vertical(handle).id(id).mode(ScrollbarMode::Scrolling).styles(styles)
             .viewport_from_layout().scroll_size(scroll_size),
     )
 }

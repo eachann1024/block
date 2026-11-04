@@ -49,6 +49,21 @@ impl Default for LastFormatColors {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedWindowBounds {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_id: Option<u32>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fullscreen: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub maximized: bool,
+}
+
 /// Unknown/missing keys default, so older state files keep loading.
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct State {
@@ -75,6 +90,10 @@ pub struct State {
     pub active_tab: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_format_colors: Option<LastFormatColors>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub main_window_bounds: Option<SavedWindowBounds>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quick_window_bounds: Option<SavedWindowBounds>,
 }
 static NEXT: AtomicU64 = AtomicU64::new(0);
 static WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
