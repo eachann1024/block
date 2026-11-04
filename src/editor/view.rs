@@ -189,11 +189,7 @@ impl Render for Editor {
                     .when(self.minimal, |paper| paper.flex().pr(px(8.)))
                     // Minimal mode pulls the (unused) handle gutter out of view: 20px text padding.
                     .when(self.path.is_some(), |paper| paper.child(rows))
-                    .when(self.path.is_none() && !self.persistence.loading, |paper| paper.flex().flex_col().gap_3().items_center().justify_center()
-                        .text_color(theme.text_secondary).child("选择一篇文档开始编辑")
-                        .child(div().id("recover-draft").px_3().py_1().rounded_md().bg(theme.hover)
-                            .cursor(gpui::CursorStyle::PointingHand).child("恢复最近草稿")
-                            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.recover_latest_draft(cx))))))
+                    .when(self.path.is_none() && !self.persistence.loading, |paper| paper.child(crate::mascot::editor_empty(cx))))
                 .when(!self.minimal, |root| root.child(div().min_h(px(26.)).flex_none().px_3().flex().items_center().gap_3().text_size(px(12.)).text_color(theme.text_secondary)
                     .child(div().flex_1().child(self.status.clone()))
                     .when(self.path.is_some() && self.dirty, |bar| bar.child(div().id("keep-draft-close")
