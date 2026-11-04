@@ -168,7 +168,7 @@ impl Element for BlockText {
         };
         window.with_content_mask(clip, |window| {
             if let Some((sel, columns)) = tint { table_layout::paint_selection(layout, sel, columns, window); }
-            super::inline_code::paint_chips(self.editor.read(cx), self.block, layout, window);
+            super::inline_code::paint_chips(layout, window);
             paint_lines(layout, true, window, cx);
             let mut sel_rects = Vec::new();
             if focused {

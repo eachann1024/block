@@ -115,7 +115,7 @@ pub(super) fn runs(block: &Block, text: &str, color: Hsla) -> Vec<TextRun> {
             .map_or(&[][..], |span| span.marks.as_slice());
         if marks.contains(&MarkKind::Bold) { run.font.weight = FontWeight::SEMIBOLD; }
         if marks.contains(&MarkKind::Italic) { run.font.style = FontStyle::Italic; }
-        if marks.contains(&MarkKind::Code) { run.font.family = crate::theme::mono_font_family().into(); run.font.fallbacks = None; run.font.weight = FontWeight::MEDIUM; run.color = super::inline_code::code_text_color(false); }
+        if marks.contains(&MarkKind::Code) { run.font.family = crate::theme::mono_font_family().into(); run.font.fallbacks = None; run.font.weight = FontWeight::MEDIUM; run.color = super::inline_code::code_text_color(); }
         if marks.contains(&MarkKind::Strike) { run.strikethrough = Some(StrikethroughStyle { color:Some(color), thickness:px(1.) }); }
         for tag in block.meta.inline.iter().filter(|tag| tag.start <= start && end <= tag.end) {
             if tag.name == "a" {
