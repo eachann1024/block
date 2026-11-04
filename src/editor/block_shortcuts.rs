@@ -44,8 +44,7 @@ use super::{input::transactions::ListChange, model::Block, view::selection::Posi
 
 fn is_list(block: &Block) -> bool { matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) }
 fn is_divider(block: &Block) -> bool {
-    block.meta.raw_source.is_some() && super::image_source::spec_of(block).is_none()
-        && { let t = block.text.trim(); t.len() >= 3 && ["*", "-", "_"].iter().any(|c| t.chars().all(|v| v.to_string() == *c)) }
+    super::image_source::spec_of(block).is_none() && super::block_menu::is_divider(block)
 }
 /// Blocks that must never be merged into or out of by Backspace/Delete.
 fn structural(block: &Block) -> bool { block.meta.raw_source.is_some() || block.meta.code_language.is_some() }
