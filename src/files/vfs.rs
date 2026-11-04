@@ -10,6 +10,7 @@ use super::search::{Hit, find_all};
 use super::state::State;
 use crate::theme::tr;
 
+#[path = "vfs_seed.rs"]
 mod vfs_seed;
 use vfs_seed::*;
 
@@ -22,11 +23,12 @@ struct Vfs {
 static VFS: LazyLock<Mutex<Vfs>> = LazyLock::new(|| Mutex::new(seed()));
 
 fn seed() -> Vfs {
+    let en = crate::theme::is_en();
     let root = PathBuf::from("/Yu");
-    let sub = root.join("设计笔记");
-    let welcome = root.join("欢迎使用 Yu.md");
-    let arch = root.join("毫秒级块级编辑器.md");
-    let guide = sub.join("排版与导出卡片指南.md");
+    let sub = root.join(if en { "Design Notes" } else { "设计笔记" });
+    let welcome = root.join(if en { "Welcome to Yu.md" } else { "欢迎使用 Yu.md" });
+    let arch = root.join(if en { "Sub-Millisecond Block Editor.md" } else { "毫秒级块级编辑器.md" });
+    let guide = sub.join(if en { "Typography & Share Cards.md" } else { "排版与导出卡片指南.md" });
 
     let mut dirs = BTreeSet::new();
     dirs.insert(PathBuf::from("/"));
@@ -34,13 +36,14 @@ fn seed() -> Vfs {
     dirs.insert(sub);
 
     let mut files = BTreeMap::new();
-    files.insert(welcome.clone(), NOTE_WELCOME.to_owned());
-    files.insert(arch.clone(), NOTE_ARCH.to_owned());
-    files.insert(guide.clone(), NOTE_GUIDE.to_owned());
+    files.insert(welcome.clone(), (if en { NOTE_WELCOME_EN } else { NOTE_WELCOME }).to_owned());
+    files.insert(arch.clone(), (if en { NOTE_ARCH_EN } else { NOTE_ARCH }).to_owned());
+    files.insert(guide.clone(), (if en { NOTE_GUIDE_EN } else { NOTE_GUIDE }).to_owned());
 
     let state = State {
         folder: Some(root.clone()),
         notebooks: vec![root],
+        language: crate::theme::language_mode(),
         open_tabs: vec![welcome.clone(), arch, guide],
         active_tab: Some(welcome),
         ..State::default()
