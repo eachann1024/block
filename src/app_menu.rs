@@ -12,7 +12,7 @@ use crate::{
 };
 use super::{Workspace, file_ops::display_name};
 
-const MENU_WIDTH: f32 = 188.;
+const MENU_WIDTH: f32 = 232.;
 
 pub(super) enum ItemId { Path(PathBuf), Name(&'static str) }
 
@@ -92,7 +92,6 @@ impl Workspace {
             RowSpec {
                 icon: Some(Icon::ArrowRight),
                 label: tr("移动到…", "Move to…").into(),
-                highlighted: moving,
                 chevron: true,
                 ..Default::default()
             },
@@ -130,6 +129,12 @@ impl Workspace {
         for (folder, depth, name) in self.tree.read(cx).folders() {
             if dir && folder.starts_with(path) { continue; }
             choices.push((folder, depth + 1, name));
+        }
+        // Other opened notebooks are valid destinations too.
+        for other in &self.notebooks {
+            if Some(other) != self.folder.as_ref() && !path.starts_with(other) {
+                choices.push((other.clone(), 0, display_name(other, true)));
+            }
         }
         let items = choices.into_iter().filter(|(folder, ..)| current.as_deref() != Some(folder.as_path()))
             .map(|(folder, depth, name)| {
