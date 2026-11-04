@@ -1,4 +1,5 @@
-//! Right-rail comment cards, `@Claude` composer card, reaction picker, and legend tags for F-Annotate.
+//! Right-rail comment cards, `@Claude` composer card, and reaction picker.
+use std::{cell::RefCell, collections::HashMap};
 use gpui::{
     AnyElement, Context, CursorStyle, FontWeight, IntoElement, MouseButton, ParentElement,
     Pixels, SharedString, Styled, Window, div, prelude::*, px, rgb, transparent_black,
@@ -6,7 +7,7 @@ use gpui::{
 use gpui_component::input::{Escape, Input};
 use crate::icons::{Icon, IconColors, icon};
 use super::{
-    annotate::{Comment, HL_AI_BG, HL_AI_BORDER, HL_SELECT_BG, HL_SELECT_BORDER, ReactionPicker, resolve_comment_span},
+    annotate::{Comment, HL_AI_BG, HL_AI_BORDER, ReactionPicker, resolve_comment_span},
     view::{Editor, selection::Position},
 };
 
@@ -24,40 +25,46 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
     if !has_rail && !has_reactions { return None; }
 
     let rail = has_rail.then(|| {
-        let top_y = rail_top_offset(editor);
-        let comments: Vec<Comment> = editor.annotate.comments.clone();
-        let mut stack = div().id("annotate-rail").absolute().top(top_y).right(px(24.)).w(px(280.))
-            .max_h(px(560.)).overflow_y_scroll().flex().flex_col().gap(px(12.)).occlude();
-        for comment in comments {
-            stack = stack.child(comment_card(comment, editor.annotate.active_comment, cx));
-        }
+        let mut cards: Vec<(Pixels, u64, AnyElement)> = editor.annotate.comments.iter().cloned().map(|comment| {
+            let target = resolve_comment_span(&editor.doc, &comment).map(|(id, range, _)| (id, range.start));
+            let y = target.map(|(id, offset)| card_target(editor, id, offset)).unwrap_or(px(24.));
+            let id = comment.id;
+            (y, id, comment_card(comment, editor.annotate.active_comment, cx).into_any_element())
+        }).collect();
         if let Some(composer) = &editor.annotate.composer {
             let input = composer.input.clone();
-            let send_to_claude = composer.send_to_claude;
             let has_text = !input.read(cx).value().trim().is_empty();
-            stack = stack.child(composer_card(input, send_to_claude, has_text, cx));
+            cards.push((card_target(editor, composer.block_id, composer.range.start), 0,
+                composer_card(input, composer.send_to_claude, has_text, cx).into_any_element()));
         }
-        stack
+        cards.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut bottom = px(12.);
+        let mut rail = div().id("annotate-rail").absolute().top_0().right(px(24.)).w(px(280.)).h_full();
+        for (target, id, card) in cards {
+            let top = target.max(bottom + px(12.));
+            let height = CARD_HEIGHTS.with(|heights| heights.borrow().get(&id).copied()).unwrap_or(px(100.));
+            bottom = top + height;
+            let entity = cx.entity().downgrade();
+            let measure = gpui::canvas(move |bounds, _, _| {
+                let changed = CARD_HEIGHTS.with(|heights| heights.borrow_mut().insert(id, bounds.size.height) != Some(bounds.size.height));
+                changed
+            }, move |_, changed, _, cx| {
+                if changed { let entity = entity.clone(); cx.defer(move |cx| { entity.update(cx, |_, cx| cx.notify()).ok(); }); }
+            }).absolute().size_full();
+            rail = rail.child(div().absolute().top(top).w_full().occlude().child(card).child(measure));
+        }
+        rail
     });
 
-    let legend = has_rail.then(legend_bar);
     let reactions = editor.annotate.reactions.clone().map(|picker| reaction_popover(picker, cx));
-
-    Some(div().absolute().top_0().left_0().size_full()
-        .children(legend)
-        .children(rail)
-        .children(reactions)
-        .into_any_element())
+    Some(div().absolute().top_0().left_0().size_full().children(rail).children(reactions).into_any_element())
 }
 
-fn rail_top_offset(editor: &Editor) -> Pixels {
-    let target = editor.annotate.comments.first()
-        .and_then(|c| resolve_comment_span(&editor.doc, c).map(|(id, r, _)| (id, r.start)))
-        .or_else(|| editor.annotate.composer.as_ref().map(|c| (c.block_id, c.range.start)));
-    let Some((block_id, offset)) = target else { return px(96.) };
-    let Some(layout) = editor.layouts.get(&block_id) else { return px(96.) };
-    let y = layout.point(offset).y - editor.annotate.editor_top;
-    y.max(px(24.)).min(px(360.))
+thread_local! { static CARD_HEIGHTS: RefCell<HashMap<u64, Pixels>> = RefCell::new(HashMap::new()); }
+
+fn card_target(editor: &Editor, block_id: u64, offset: usize) -> Pixels {
+    editor.layouts.get(&block_id).map(|layout| layout.point(offset).y - editor.annotate.editor_top)
+        .unwrap_or(px(24.)).max(px(24.))
 }
 
 fn comment_card(comment: Comment, active_id: Option<u64>, cx: &mut Context<Editor>) -> impl IntoElement {
@@ -82,11 +89,6 @@ fn comment_card(comment: Comment, active_id: Option<u64>, cx: &mut Context<Edito
 
     let body = (!comment.body.is_empty()).then(|| {
         div().mt(px(6.)).ml(px(32.)).text_size(px(14.)).line_height(px(21.)).text_color(rgb(0x1f1e1d))
-            .flex().flex_wrap().items_center().gap(px(4.))
-            .when(comment.sent_to_claude, |d| d.child(
-                div().h(px(20.)).px(px(5.)).rounded(px(5.)).bg(rgb(0xe7effd)).text_color(rgb(0x2f6fe4))
-                    .text_size(px(12.)).font_weight(FontWeight(500.)).flex().items_center().child("@Claude"),
-            ))
             .child(comment.body.clone())
     });
 
@@ -197,18 +199,6 @@ fn composer_card(
         }))
         .child(top)
         .child(foot)
-}
-
-fn legend_bar() -> impl IntoElement {
-    let tag = |bg: u32, border: u32, label: &'static str| {
-        div().px(px(10.)).py(px(4.)).rounded(px(999.)).bg(rgb(0xf6f5f2)).border_1().border_color(rgb(0xececea))
-            .flex().items_center().gap(px(6.)).text_size(px(12.)).text_color(rgb(0x787774))
-            .child(div().size(px(10.)).rounded(px(3.)).bg(rgb(bg)).border_1().border_color(rgb(border)))
-            .child(label)
-    };
-    div().id("annotate-legend").absolute().left(px(56.)).bottom(px(32.)).flex().items_center().gap(px(16.)).occlude()
-        .child(tag(HL_SELECT_BG, HL_SELECT_BORDER, "批注选中内容"))
-        .child(tag(HL_AI_BG, HL_AI_BORDER, "AI 改动内容"))
 }
 
 fn reaction_popover(picker: ReactionPicker, cx: &mut Context<Editor>) -> impl IntoElement {
