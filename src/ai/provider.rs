@@ -42,8 +42,7 @@ impl Default for Config {
 }
 impl Config {
     pub(crate) fn effective_protocol(&self) -> Protocol {
-        if self.provider == "custom" { self.protocol }
-        else { presets::find(&self.provider).map_or(self.protocol, |p| p.protocol) }
+        presets::find(&self.provider).map_or(self.protocol, |p| p.protocol)
     }
     pub(crate) fn key_required(&self) -> bool { presets::find(&self.provider).map_or(true, |p| p.key_required) }
     pub(crate) fn is_complete(&self) -> bool {
@@ -60,10 +59,9 @@ fn settings_path() -> Option<PathBuf> {
 pub(crate) fn stored() -> Config {
     let mut c: Config = settings_path().and_then(|p| std::fs::read(p).ok())
         .and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-    if c.provider.trim().is_empty() && !c.base_url.trim().is_empty() {
-        if let Some(p) = presets::infer_from_base_url(&c.base_url) {
-            c.provider = p.id.into(); c.protocol = p.protocol;
-        } else { c.provider = "custom".into(); }
+    c.provider = presets::normalize_provider_id(&c.provider, c.protocol, &c.base_url).to_owned();
+    if let Some(p) = presets::find(&c.provider) {
+        if c.base_url.trim().is_empty() { c.base_url = p.base_url.to_owned(); c.protocol = p.protocol; }
     }
     c
 }

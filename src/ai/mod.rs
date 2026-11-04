@@ -11,6 +11,8 @@ pub(super) mod preview;
 #[cfg(not(target_family = "wasm"))]
 pub(crate) mod settings;
 #[cfg(not(target_family = "wasm"))]
+mod settings_view;
+#[cfg(not(target_family = "wasm"))]
 mod chat_ui;
 #[cfg(not(target_family = "wasm"))]
 pub(crate) mod chat;
