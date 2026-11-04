@@ -9,6 +9,8 @@ use crate::files::{create_note_at, note_candidates, load_state, save_folder, sca
 mod view;
 #[path = "app_tabs.rs"]
 mod tabs;
+#[path = "app_nav.rs"]
+mod nav;
 #[path = "app_folder.rs"]
 mod folder;
 #[path = "app_sidebar.rs"]
@@ -40,6 +42,7 @@ pub struct Workspace {
     pub(crate) editor: gpui::Entity<Editor>,
     selected: Option<PathBuf>,
     tabs: Vec<PathBuf>,
+    pub(super) nav: nav::NavHistory,
     startup_tabs: Option<(Vec<PathBuf>, Option<PathBuf>)>,
     dirty_bits: u64,
     pub(crate) loading: bool,
@@ -80,19 +83,29 @@ impl Workspace {
             let context_target = context_target.clone();
             cx.defer(move |cx| context_target.update(cx, |this, cx| this.open_tree_menu(target, position, cx)));
         }));
-        tree.update(cx, |tree, _| tree.on_open(move |path, window, cx| {
-            workspace.update(cx, |this, cx| {
-                if !this.busy() {
-                    this.close_settings(window, cx);
-                    this.open_file(path, cx);
-                }
+        tree.update(cx, |tree, _| tree.on_open(move |path, in_new_tab, window, cx| {
+            // Defer so FileTree releases its EntityMap lease before Workspace updates self.tree.
+            let workspace = workspace.clone();
+            window.defer(cx, move |window, cx| {
+                workspace.update(cx, |this, cx| {
+                    if !this.busy() {
+                        this.close_settings(window, cx);
+                        if in_new_tab { this.open_file_in_new_tab(path, cx); } else { this.open_file(path, cx); }
+                    }
+                });
             });
         }));
         tree.update(cx, |tree, _| tree.on_rename(move |(path, dir), window, cx| {
-            rename_target.update(cx, |this, cx| if !this.busy() { this.start_rename(path, dir, window, cx); });
+            let rename_target = rename_target.clone();
+            window.defer(cx, move |window, cx| {
+                rename_target.update(cx, |this, cx| if !this.busy() { this.start_rename(path, dir, window, cx); });
+            });
         }));
         tree.update(cx, |tree, _| tree.on_trash(move |path, _, cx| {
-            trash_target.update(cx, |this, cx| if !this.busy() { this.trash(path, cx); });
+            let trash_target = trash_target.clone();
+            cx.defer(move |cx| {
+                trash_target.update(cx, |this, cx| if !this.busy() { this.trash(path, cx); });
+            });
         }));
         let subscription = cx.observe_in(&editor, window, |this, editor, window, cx| {
             let path = editor.read(cx).current_path().map(|path| path.to_owned());
@@ -158,8 +171,9 @@ impl Workspace {
         }).detach();
         search::bind_keys(cx);
         tabs::bind_keys(cx);
+        nav::bind_keys(cx);
         crate::files::tree::bind_keys(cx);
-        let this = Self { folder: None, folder_error: None, tree, editor, selected: None, tabs: Vec::new(), startup_tabs: None, dirty_bits: 0, loading: true,
+        let this = Self { folder: None, folder_error: None, tree, editor, selected: None, tabs: Vec::new(), nav: nav::NavHistory::default(), startup_tabs: None, dirty_bits: 0, loading: true,
             choosing: false, creating: false, persisting: false, pending: None,
             notice: tr("正在读取工作区偏好…", "Loading workspace preferences…").into(), sidebar_width: Theme::ocean().sidebar_width,
             sidebar_collapsed: false, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
@@ -229,7 +243,7 @@ impl Workspace {
                         this.tree.update(cx, |tree, cx| tree.insert_note(path.clone(), cx));
                         let created_msg = tr("笔记已创建", "Note created");
                         this.notice = created_msg.into();
-                        this.open_file(path, cx);
+                        this.open_file_in_new_tab(path, cx);
                         // Success is transient; errors and folder warnings stay until replaced.
                         cx.spawn(async move |this, cx| {
                             cx.background_executor().timer(std::time::Duration::from_secs(3)).await;
