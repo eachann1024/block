@@ -141,9 +141,12 @@ impl Editor {
         }
         if let Some(mut drag) = self.table_drag {
             if !event.dragging() { self.clear_pointer(); cx.notify(); return; }
-            drag.moved |= (event.position - drag.start).magnitude() > 4.;
+            drag.moved |= (event.position - drag.start).magnitude() > 3.;
             drag.position = Some(event.position);
-            self.table_drag = Some(drag); cx.notify();
+            drag.target = if drag.moved { self.table_chrome.as_ref().and_then(|c| c.target_at(drag, event.position)) } else { None };
+            self.table_drag = Some(drag);
+            if drag.moved { self.ensure_drag_ticker(cx); }
+            cx.notify();
             return;
         }
         if !event.dragging() {
