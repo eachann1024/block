@@ -6,7 +6,7 @@ use crate::icons::Icon;
 
 #[path = "block_menu_cmd.rs"] mod cmd;
 #[path = "block_menu_render.rs"] mod render;
-pub(super) use cmd::{Cmd, LANGUAGES, language_label};
+pub(super) use cmd::{Cmd, LANGUAGES, canonical_lang_tag, language_icon, language_label};
 pub(super) use render::overlay;
 use cmd::SLASH;
 
@@ -142,7 +142,7 @@ impl Editor {
         if let Some(at) = caret { self.caret.anchor = at; self.caret.head = at; }
         self.record_changes(before, changes, true, cx);
         self.layouts.clear();
-        window.focus(&self.focus); cx.notify();
+        window.focus(&self.focus, cx); cx.notify();
     }
 }
 

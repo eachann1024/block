@@ -3,7 +3,7 @@ use gpui::{Context, Point, Pixels, Window, point, px};
 use unicode_segmentation::UnicodeSegmentation;
 use super::{Editor, selection::Position};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::editor) struct DropTarget { pub index: usize, pub after: bool }
 
 impl Editor {
@@ -31,7 +31,7 @@ impl Editor {
         self.selection_origin = None; self.table_drag = None;
     }
     pub(in crate::editor) fn hover_block(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
-        if self.minimal { return; }
+        if self.minimal || self.dragging.is_some() || self.table_drag.is_some() || self.selecting { return; }
         self.hover_gen = self.hover_gen.wrapping_add(1);
         if hovered {
             if self.hover != Some(id) { self.hover = Some(id); cx.notify(); }
@@ -59,7 +59,7 @@ impl Editor {
     pub(in crate::editor) fn focus_block(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         let at = Position { block: id, offset: 0 };
         self.caret.anchor = at; self.caret.head = at; self.selecting = false; self.block_menu = None;
-        window.focus(&self.focus); cx.notify();
+        window.focus(&self.focus, cx); cx.notify();
     }
     fn extent(&self, at: Position, clicks: usize) -> (Position, Position) {
         let text = &self.doc.get(at.block).unwrap().text;
@@ -74,6 +74,7 @@ impl Editor {
     }
     pub(in crate::editor) fn pointer_down(&mut self, event: &gpui::MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         self.table_menu = None; self.table_sel = None; self.block_menu = None; self.block_sel = None;
+        crate::editor::code_block::close_menus();
         self.close_format(window, cx);
         if self.path.is_none() || !self.list.viewport_bounds().contains(&event.position) { return; }
         if event.modifiers.platform && self.open_link_at(event.position, cx) { return; }
@@ -85,14 +86,35 @@ impl Editor {
             if !event.modifiers.shift { self.caret.anchor = start; }
             self.selection_origin = Some((self.caret.anchor, end, clicks));
             self.selecting = true; self.preferred_x = None; self.toolbar_anchor = None;
-            self.reveal_caret = false; window.focus(&self.focus);
+            self.reveal_caret = false; window.focus(&self.focus, cx);
         }
+    }
+    fn drag_span(&self, id: u64) -> Option<(usize, usize, Option<(u64, usize)>)> {
+        let from = self.doc.index_of(id)?;
+        let list = |b: &crate::editor::model::Block| matches!(b.kind, crate::editor::model::Kind::Bullet | crate::editor::model::Kind::Numbered | crate::editor::model::Kind::Todo);
+        let head = &self.doc.blocks[from];
+        let col = head.meta.column;
+        let n = if list(head) {
+            1 + (from + 1..self.doc.blocks.len()).take_while(|&i| {
+                let b = &self.doc.blocks[i];
+                list(b) && b.meta.column == col && b.meta.indent > head.meta.indent
+            }).count()
+        } else { 1 };
+        Some((from, n, col))
     }
     fn update_drop(&mut self, position: Point<Pixels>) {
         self.drag_over = self.hit(position).and_then(|at| {
             let layout = self.layouts.get(&at.block)?;
-            Some(DropTarget { index: self.doc.index_of(at.block)?,
-                after: position.y >= layout.bounds.top() + layout.bounds.size.height / 2. })
+            let index = self.doc.index_of(at.block)?;
+            let after = position.y >= layout.bounds.top() + layout.bounds.size.height / 2.;
+            if let Some(id) = self.dragging.filter(|&id| crate::editor::columns::group_from_handle(id).is_none()) {
+                if let Some((from, n, col)) = self.drag_span(id) {
+                    let dst_col = self.doc.blocks.get(index).and_then(|b| b.meta.column);
+                    let slot = index + usize::from(after);
+                    if col == dst_col && slot >= from && slot <= from + n { return None; }
+                }
+            }
+            Some(DropTarget { index, after })
         });
     }
     pub(in crate::editor) fn pointer_move(&mut self, event: &gpui::MouseMoveEvent, cx: &mut Context<Self>) {
@@ -110,10 +132,16 @@ impl Editor {
         }
         if self.dragging.is_none() && !self.selecting { return; }
         let viewport = self.list.viewport_bounds();
-        if event.position.y < viewport.top()+px(24.) { self.list.scroll_by(px(-18.)); }
-        if event.position.y > viewport.bottom()-px(24.) { self.list.scroll_by(px(18.)); }
-        if self.dragging.is_some() { self.update_drop(event.position); }
-        else if let Some(at) = self.hit(event.position) {
+        let mut scrolled = false;
+        if event.position.y < viewport.top()+px(24.) { self.list.scroll_by(px(-18.)); scrolled = true; }
+        if event.position.y > viewport.bottom()-px(24.) { self.list.scroll_by(px(18.)); scrolled = true; }
+        if self.dragging.is_some() {
+            let prev = self.drag_over;
+            self.update_drop(event.position);
+            if self.drag_over != prev || scrolled { cx.notify(); }
+            return;
+        }
+        if let Some(at) = self.hit(event.position) {
             if let Some((start, end, clicks)) = self.selection_origin {
                 if clicks > 1 {
                     let (a, b) = self.extent(at, clicks);
@@ -140,16 +168,12 @@ impl Editor {
             if self.path.is_some() && self.list.viewport_bounds().contains(&position) {
                 if let Some(gid) = crate::editor::columns::group_from_handle(id) {
                     self.finish_group_drag(gid, target, cx);
-                } else if let Some(from) = self.doc.index_of(id) {
-                    // A list item carries its nested children (deeper-indented list items after it).
-                    let list = |b: &crate::editor::model::Block| matches!(b.kind, crate::editor::model::Kind::Bullet | crate::editor::model::Kind::Numbered | crate::editor::model::Kind::Todo);
-                    let head = &self.doc.blocks[from];
-                    let col = head.meta.column;
-                    let n = if list(head) { 1 + (from + 1..self.doc.blocks.len()).take_while(|&i| { let b = &self.doc.blocks[i]; list(b) && b.meta.column == col && b.meta.indent > head.meta.indent }).count() } else { 1 };
+                } else if let Some((from, n, col)) = self.drag_span(id) {
                     let dst_col = self.doc.blocks.get(target.index).and_then(|b| b.meta.column);
                     let slot = target.index + usize::from(target.after);
                     let to = if slot > from { slot.saturating_sub(n) } else { slot }.min(self.doc.blocks.len() - n);
                     if (from != to || col != dst_col) && !(slot > from && slot < from + n) {
+                        let keep_table_sel = self.table_sel == Some((id, crate::editor::table_actions::TableSel::Whole));
                         self.commit_composition(cx);
                         let before = self.snapshot();
                         let moved: Vec<_> = (from..from + n).map(|i| { let mut b = self.doc.blocks[i].clone(); b.meta.column = dst_col; b }).collect();
@@ -157,6 +181,8 @@ impl Editor {
                         self.doc.splice_blocks(to..to, moved);
                         self.repair_column_groups();
                         self.record(before, cx);
+                        self.hover = Some(id);
+                        if keep_table_sel { self.select_whole_table(id, cx); }
                     }
                 }
             }
