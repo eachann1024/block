@@ -11,7 +11,7 @@ pub(super) struct BlockText { pub editor: gpui::Entity<Editor>, pub block: u64 }
 type Measured = Rc<RefCell<Option<TextLayout>>>;
 impl Element for BlockText {
     type RequestLayoutState = Measured;
-    type PrepaintState = TextLayout;
+    type PrepaintState = (TextLayout, Option<gpui::Hitbox>);
     fn id(&self) -> Option<ElementId> { None }
     fn source_location(&self) -> Option<&'static core::panic::Location<'static>> { None }
     fn request_layout(&mut self, _: Option<&GlobalElementId>, _: Option<&gpui::InspectorElementId>, window: &mut Window, cx: &mut App) -> (LayoutId, Measured) {
@@ -106,7 +106,7 @@ impl Element for BlockText {
         });
         (id, measured)
     }
-    fn prepaint(&mut self, _: Option<&GlobalElementId>, _: Option<&gpui::InspectorElementId>, bounds: Bounds<Pixels>, state: &mut Measured, window: &mut Window, cx: &mut App) -> TextLayout {
+    fn prepaint(&mut self, _: Option<&GlobalElementId>, _: Option<&gpui::InspectorElementId>, bounds: Bounds<Pixels>, state: &mut Measured, window: &mut Window, cx: &mut App) -> (TextLayout, Option<gpui::Hitbox>) {
         let fresh = state.borrow().is_some();
         let mut layout = state.borrow_mut().take()
             .or_else(|| self.editor.update(cx, |this, _| this.layouts.remove(&self.block)))
@@ -124,9 +124,13 @@ impl Element for BlockText {
             let offset = vertical_offset(editor, self.block, &layout).unwrap_or(editor.caret.head.offset);
             window.request_autoscroll(Bounds::new(layout.point(offset), size(px(2.), layout.line_height)));
         }
-        layout
+        let hitbox = (!layout.cells.is_empty())
+            .then(|| super::table_actions::reach_rect(&layout))
+            .flatten()
+            .map(|reach| window.insert_hitbox(reach, gpui::HitboxBehavior::Normal));
+        (layout, hitbox)
     }
-    fn paint(&mut self, _: Option<&GlobalElementId>, _: Option<&gpui::InspectorElementId>, bounds: Bounds<Pixels>, _: &mut Measured, layout: &mut TextLayout, window: &mut Window, cx: &mut App) {
+    fn paint(&mut self, _: Option<&GlobalElementId>, _: Option<&gpui::InspectorElementId>, bounds: Bounds<Pixels>, _: &mut Measured, (layout, hitbox): &mut (TextLayout, Option<gpui::Hitbox>), window: &mut Window, cx: &mut App) {
         self.editor.update(cx, |this, _| {
             if let Some(offset) = vertical_offset(this, self.block, layout)
                 && let Some((_, _, _, extend)) = this.pending_vertical.take()
@@ -150,14 +154,14 @@ impl Element for BlockText {
         // A table scrolls inside the block minus the extend-button room; everything it draws is clipped to that.
         let is_table = !layout.cells.is_empty();
         let clip = is_table.then(|| gpui::ContentMask { bounds: table_layout::visible(layout.bounds) });
-        if is_table { table_layout::track_wheel(self.editor.clone(), self.block, layout, window); }
+        if is_table { table_layout::track_wheel(self.editor.clone(), self.block, layout, hitbox.clone(), window); }
         window.with_content_mask(clip, |window| {
             table_layout::paint_background(layout, window);
             super::find_bar::paint_matches(self.editor.read(cx), self.block, layout, window);
             super::annotate::paint_highlights(self.editor.read(cx), self.block, layout, window);
         });
         super::ai::preview::paint_outline(self.editor.read(cx), self.block, layout, window);
-        if is_table { super::table_actions::track_hover(self.editor.clone(), self.block, layout, window); }
+        if is_table { super::table_actions::track_hover(self.editor.clone(), self.block, layout, hitbox.clone(), window); }
         let tint = {
             let editor = self.editor.read(cx);
             match (editor.table_sel, editor.doc.get(self.block).and_then(|b| b.meta.table.as_ref())) {

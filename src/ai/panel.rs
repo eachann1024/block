@@ -157,9 +157,10 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyEle
 
     let key_editor = editor.clone();
     gpui::deferred(gpui::anchored().position(s.anchor).snap_to_window_with_margin(px(12.)).child(
-        div().id("inline-ai").w(px(460.)).p(px(18.)).flex().flex_col().gap(px(14.)).rounded(px(16.))
+        div().id("inline-ai").w(px(460.)).p(px(18.)).flex().flex_col().gap(px(14.)).rounded(crate::ui::radius::SURFACE)
             .border_1().border_color(theme.menu_border).bg(theme.menu).text_color(theme.text).text_size(px(16.))
             .shadow(vec![BoxShadow { color: hsla(0., 0., 0., 0.12), offset: point(px(0.), px(12.)), blur_radius: px(32.), spread_radius: px(0.), inset: false }])
+            .occlude()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             // Keys the prompt field lets bubble must not reach the document underneath.
             .on_action(|_: &view::Backspace, _, _| {})
