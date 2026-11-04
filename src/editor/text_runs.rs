@@ -93,6 +93,12 @@ pub(super) fn attribute_color(attrs: &[(String,String)], background: bool) -> Op
     if background {
         if let Some(value) = css(attrs, "background").and_then(|value| color(value, true)) { return Some(value); }
     }
+    let html_attr = if background { "bgcolor" } else { "color" };
+    if let Some((_, value)) = attrs.iter().find(|(k, _)| k.eq_ignore_ascii_case(html_attr))
+        && let Some(c) = color(value, background)
+    {
+        return Some(c);
+    }
     let suffix = if background { "background-color" } else { "text-color" };
     attrs.iter().find_map(|(key,value)| ((key == &format!("data-thinkly-{suffix}"))
         || key == &format!("data-goose-{suffix}")).then(|| color(value, background)).flatten())
@@ -116,8 +122,14 @@ pub(super) fn runs(block: &Block, text: &str, color: Hsla) -> Vec<TextRun> {
             if tag.name == "a" {
                 run.color = gpui::rgb(0x256abf).into();
             }
-            if tag.name == "u" || css(&tag.attrs,"text-decoration").is_some_and(|value| value.contains("underline")) {
+            if matches!(tag.name.as_str(), "u" | "ins") || css(&tag.attrs,"text-decoration").is_some_and(|value| value.contains("underline")) {
                 run.underline = Some(UnderlineStyle { color:None, thickness:px(1.), wavy:false });
+            }
+            if css(&tag.attrs,"text-decoration").is_some_and(|value| value.contains("line-through")) {
+                run.strikethrough = Some(StrikethroughStyle { color:Some(run.color), thickness:px(1.) });
+            }
+            if tag.name == "mark" && run.background_color.is_none() {
+                run.background_color = super::text_runs::color("yellow", true);
             }
             if let Some(color) = attribute_color(&tag.attrs, false) { run.color = color; }
             if let Some(color) = attribute_color(&tag.attrs, true) { run.background_color = Some(color); }

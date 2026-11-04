@@ -49,12 +49,23 @@ pub(super) fn unclosed_inline(line:&str)->bool {
     }
     code!=0 || brackets!=0 || marks.into_iter().any(|v|v)
 }
+fn is_html_hr(body: &str) -> bool {
+    let b = body.trim();
+    b.eq_ignore_ascii_case("<hr>") || b.eq_ignore_ascii_case("<hr/>") || b.eq_ignore_ascii_case("<hr />")
+}
+fn is_empty_block_comment(body: &str) -> bool {
+    matches!(body.trim(), "<!-- thinkly:empty-block=paragraph -->" | "<!-- goose-note:empty-block=paragraph -->")
+}
 /// Unrepresented constructs stay literal instead of being flattened into false semantics.
 pub(super) fn classify(line: &str) -> (Kind,&str,bool,usize,Option<u64>,bool) {
     let body = line.trim_start_matches([' ','\t']);
     let indent = line[..line.len()-body.len()].chars().map(|c| if c=='\t' {4} else {1}).sum();
+    if is_empty_block_comment(body) {
+        return (Kind::Paragraph, "", false, 0, None, false);
+    }
     let compact: String = line.chars().filter(|c| !c.is_whitespace()).collect();
-    let rule = compact.len()>=3 && ['-','*','_','='].iter().any(|c| compact.chars().all(|v| v==*c));
+    let rule = (compact.len()>=3 && ['-','*','_','='].iter().any(|c| compact.chars().all(|v| v==*c)))
+        || is_html_hr(body);
     if rule || line.contains("][") {
         return (Kind::Paragraph,line,false,0,None,true);
     }
@@ -71,7 +82,6 @@ pub(super) fn classify(line: &str) -> (Kind,&str,bool,usize,Option<u64>,bool) {
         }
         return (Kind::Paragraph,line,false,0,None,true);
     }
-    if indent > 0 { return (Kind::Paragraph,line,false,0,None,true); }
     for (prefix,kind) in [("###### ",Kind::H3),("##### ",Kind::H3),("#### ",Kind::H3),
         ("### ",Kind::H3),("## ",Kind::H2),("# ",Kind::H1),("> ",Kind::Quote)] {
         if let Some(text) = body.strip_prefix(prefix) {
@@ -81,13 +91,14 @@ pub(super) fn classify(line: &str) -> (Kind,&str,bool,usize,Option<u64>,bool) {
                 let stripped = text.trim_end_matches('#');
                 if stripped.ends_with(char::is_whitespace) { text = stripped.trim_end(); }
             }
-            return (kind,text,false,0,None,false);
+            return (kind,text,false,indent,None,false);
         }
     }
-    let opaque = rule || line.starts_with("<!--")
-        || line.starts_with("$$") || line.starts_with(":::") || line.starts_with("[[")
-        || line.starts_with("<!") || line.starts_with("[^") || line.contains("]: ");
-    (Kind::Paragraph,line,false,0,None,opaque)
+    let opaque = rule || body.starts_with("<!--")
+        || body.starts_with("$$") || body.starts_with(":::") || body.starts_with("[[")
+        || body.starts_with("<!") || body.starts_with("[^") || line.contains("]: ");
+    if opaque { return (Kind::Paragraph,line,false,0,None,true); }
+    (Kind::Paragraph,body,false,indent,None,false)
 }
 
 // ---- YAML frontmatter: a leading `---` ... `---` pair is shown as a `yaml-frontmatter` code block. ----

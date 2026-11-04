@@ -24,11 +24,29 @@ impl Builder {
         match value {
             HtmlValue::Text(text) => self.append(&text),
             HtmlValue::Tag { name, attrs, close, empty } => {
-                if name == "br" && !close && attrs.is_empty() { self.append("\n"); return Some(()); }
-                if !matches!(name.as_str(), "a"|"span"|"strong"|"b"|"em"|"i"|"del"|"s"|"code"|"u")
-                    || empty { return None; }
-                let mark = match name.as_str() { "strong"|"b" => Some(0), "em"|"i" => Some(1),
-                    "del"|"s" => Some(2), "code" => Some(3), _ => None };
+                let name = name.to_ascii_lowercase();
+                if name == "br" {
+                    if !close { self.append("\n"); }
+                    return Some(());
+                }
+                if name == "wbr" { return Some(()); }
+                if !matches!(
+                    name.as_str(),
+                    "a" | "span" | "strong" | "b" | "em" | "i" | "del" | "s" | "strike"
+                    | "code" | "kbd" | "samp" | "tt" | "var" | "u" | "ins" | "mark" | "font"
+                    | "sub" | "sup" | "small" | "big" | "q" | "cite" | "abbr" | "dfn"
+                    | "time" | "ruby" | "rt" | "rp" | "bdi" | "bdo" | "label"
+                ) {
+                    return None;
+                }
+                if empty { return Some(()); }
+                let mark = match name.as_str() {
+                    "strong" | "b" => Some(0),
+                    "em" | "i" | "cite" | "dfn" | "var" => Some(1),
+                    "del" | "s" | "strike" => Some(2),
+                    "code" | "kbd" | "samp" | "tt" => Some(3),
+                    _ => None,
+                };
                 if close {
                     let (opened, start, attrs, mark) = self.html.pop()?;
                     if opened != name { return None; }
