@@ -86,6 +86,7 @@ pub(crate) fn normalize(mut c: Config) -> Config {
 
 pub(crate) fn config() -> Config { normalize(stored()) }
 
+#[allow(dead_code)]
 pub(crate) enum Event {
     Thinking(String), Delta(String), Done, Failed { message: String, settings: bool },
     /// Function calls the model asked for this turn: (id, name, JSON arguments).

@@ -63,8 +63,25 @@ function pathExists(path) {
   }
 }
 
+function detachedLaunchEnv() {
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (
+      value === undefined ||
+      key.startsWith("HC_") ||
+      key.startsWith("HERDR_") ||
+      key.startsWith("CLAUDE") ||
+      key === "__CFBundleIdentifier"
+    ) {
+      continue;
+    }
+    env[key] = value;
+  }
+  return env;
+}
+
 export async function openInstalled(previous) {
-  const opened = spawnSync("open", [installPath], { encoding: "utf8" });
+  const opened = spawnSync("open", [installPath], { encoding: "utf8", env: detachedLaunchEnv() });
   if (opened.status !== 0) throw new Error((opened.stderr || opened.stdout || "open failed").trim());
   const deadline = Date.now() + readyWaitMs;
   while (Date.now() < deadline) {

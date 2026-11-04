@@ -168,10 +168,10 @@ impl Workspace {
         self.selected = Some(path.clone());
         self.tree.update(cx, |tree, cx| tree.select(Some(path.clone()), cx));
         self.editor.update(cx, |editor, cx| {
+            editor.open(path, cx);
             if let Some(old) = evicted {
                 editor.close_session(&old, cx);
             }
-            editor.open(path, cx);
         });
         self.save_tabs_state(cx);
         cx.notify();
