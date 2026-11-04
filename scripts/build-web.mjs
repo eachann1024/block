@@ -25,7 +25,7 @@ const INDEX_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Thinkly Fast · Editor Stage</title>
+  <title>Yu</title>
   <style>
     @font-face {
       font-family: "IBM Plex Sans";
@@ -87,7 +87,7 @@ const INDEX_HTML = `<!doctype html>
 </head>
 <body>
   <div id="editor-stage">
-    <div id="editor-loading">正在加载 Thinkly Fast 编辑器…</div>
+    <div id="editor-loading">正在加载 Yu 编辑器…</div>
   </div>
   <script type="module">
     import init from "./thinkly_fast_web.js";

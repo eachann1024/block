@@ -58,6 +58,9 @@ pub mod files {
         pub fn rebase(target: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
             target.strip_prefix(from).ok().map(|rel| to.join(rel))
         }
+        pub fn rename_target(path: &Path, _new_name: &str, _dir: bool) -> std::io::Result<PathBuf> {
+            Ok(path.to_path_buf())
+        }
     }
 }
 
@@ -97,11 +100,11 @@ impl WebStage {
             .text_size(px(14.)).text_color(theme.text_secondary);
         div().h(px(40.)).flex_none().flex().items_center().justify_between().px(px(12.))
             .bg(theme.shell).border_b_1().border_color(theme.sidebar_border)
-            .child(div().text_size(px(14.)).font_weight(gpui::FontWeight(560.)).text_color(theme.text).child("Thinkly Fast"))
+            .child(div().text_size(px(14.)).font_weight(gpui::FontWeight(560.)).text_color(theme.text).child("Yu"))
             .child(div().flex().items_center().gap(px(4.))
                 .child(action("web-find").child(icon(icons::Icon::FindSearch, px(15.), tint)).child("⌘F")
                     .on_click(move |_, window, cx| find.update(cx, |e, cx| e.open_find(window, cx))))
-                .child(action("web-export").child(icon(icons::Icon::Image, px(15.), tint)).child("生成图片 ⇧⌘E")
+                .child(action("web-export").child(icon(icons::Icon::Image, px(15.), tint)).child(theme::tr("生成图片 ⇧⌘E", "Export as Image ⇧⌘E"))
                     .on_click(move |_, window, cx| export.update(cx, |e, cx| editor::export_document(e, window, cx)))))
     }
 }
