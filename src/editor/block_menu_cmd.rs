@@ -44,7 +44,7 @@ pub(in crate::editor) fn canonical_lang_tag(tag: &str) -> &'static str {
         "sql" => "sql",
         "typescript" | "ts" | "tsx" => "typescript",
         "xml" | "svg" => "xml",
-        "yaml" | "yml" => "yaml",
+        "yaml" | "yml" | "yaml-frontmatter" | "frontmatter" => "yaml",
         _ => "",
     }
 }
