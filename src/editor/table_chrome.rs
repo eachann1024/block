@@ -1,8 +1,8 @@
 //! Table controls shown while the pointer is over a table: row and column capsule handles
 //! on the grid border, the bottom add-row bar, the top-right more button, drop line, and menus.
-use gpui::{AnyElement, CursorStyle, Entity, FontWeight, MouseButton, Pixels, Point, Stateful, Div, div, point, prelude::*, px, rgb};
+use gpui::{AnyElement, CursorStyle, Entity, FontWeight, MouseButton, Pixels, Point, Stateful, Div, div, point, prelude::*, px};
 use super::{menu_style, table_actions::{TableChrome, TableCmd, TableDrag, TableMenu, TableSel, menu_items}, view::Editor};
-use crate::{icons::{Icon, icon}, theme::{Theme, build_tooltip, is_dark, tr}};
+use crate::{icons::{Icon, icon}, theme::{Theme, build_tooltip, tr}};
 
 thread_local! {
     static PILL_HOVER: std::cell::Cell<Option<(u64, TableSel)>> = const { std::cell::Cell::new(None) };
@@ -14,7 +14,6 @@ fn floating(position: Point<Pixels>, child: impl IntoElement) -> AnyElement {
 
 /// Row/column capsule handle: compact 24x8 / 8x24 pill when idle, 26x14 / 14x26 with 6-dot grip when hovered or active.
 fn capsule(id: (&'static str, usize), vertical: bool, expanded: bool, tip: &'static str) -> Stateful<Div> {
-    let dark = is_dark();
     let theme = Theme::ocean();
     let (w, h) = match (vertical, expanded) {
         (false, false) => (px(24.), px(8.)),
@@ -22,14 +21,9 @@ fn capsule(id: (&'static str, usize), vertical: bool, expanded: bool, tip: &'sta
         (true, false) => (px(8.), px(24.)),
         (true, true) => (px(14.), px(26.)),
     };
-    let bg = rgb(if dark { 0x1e1e1e } else { 0xffffff });
-    let border = rgb(match (dark, expanded) {
-        (false, false) => 0xb5b3ad,
-        (false, true) => 0xaba9a3,
-        (true, false) => 0x555555,
-        (true, true) => 0x6b6b6b,
-    });
-    let dot_color = rgb(if dark { 0x9e9e9e } else { 0x6e6c66 }).into();
+    let bg = if expanded { theme.hover } else { theme.paper };
+    let border = if expanded { theme.accent } else { theme.btn_border };
+    let dot_color = theme.text;
     div().id(id).w(w).h(h).flex_none().rounded(px(999.)).flex().items_center().justify_center()
         .bg(bg).border_1().border_color(border).cursor(CursorStyle::OpenHand)
         .when(expanded, |el| el.shadow_xs().child(icon(
@@ -41,48 +35,32 @@ fn capsule(id: (&'static str, usize), vertical: bool, expanded: bool, tip: &'sta
 }
 
 fn add_row_bar(width: Pixels) -> Stateful<Div> {
-    let dark = is_dark();
     let theme = Theme::ocean();
-    let (bg, hover_bg, fg) = if dark {
-        (rgb(0x262626), rgb(0x303030), rgb(0x9e9e9e))
-    } else {
-        (rgb(0xf2f1ee), rgb(0xe8e6e1), rgb(0x787670))
-    };
-    div().id("table-add-row").w(width).h(px(22.)).flex().items_center().justify_center()
-        .rounded(px(6.)).bg(bg).cursor(CursorStyle::PointingHand)
-        .hover(move |s| s.bg(hover_bg))
-        .child(icon(Icon::Plus, px(14.), theme.icon_colors(fg.into())))
+    div().id("table-add-row").group("hover-icon").w(width).h(px(22.)).flex().items_center().justify_center()
+        .rounded(px(6.)).bg(theme.code_bg).cursor(CursorStyle::PointingHand)
+        .hover(move |s| s.bg(theme.hover))
+        .child(icon(Icon::Plus, px(14.), theme.icon_colors(theme.text_secondary)))
         .tooltip(|window, cx| build_tooltip(tr("添加行", "Add row"), window, cx))
 }
 
 fn more_button(open: bool) -> Stateful<Div> {
-    let dark = is_dark();
     let theme = Theme::ocean();
-    let (bg, hover_bg, border, fg) = if dark {
-        (rgb(if open { 0x2c2c2c } else { 0x222222 }), rgb(0x2c2c2c), rgb(0x383838), rgb(if open { 0xececec } else { 0xb4b4b4 }))
-    } else {
-        (rgb(if open { 0xf6f5f2 } else { 0xffffff }), rgb(0xf6f5f2), rgb(0xe5e3de), rgb(if open { 0x1f1e1d } else { 0x5e5d59 }))
-    };
+    let bg = if open { theme.selected } else { theme.paper };
+    let border = if open { theme.accent } else { theme.btn_border };
+    let fg = if open { theme.text } else { theme.text_secondary };
     div().id("table-more").w(px(28.)).h(px(28.)).flex_none().rounded(px(8.)).flex().items_center().justify_center()
         .bg(bg).border_1().border_color(border).cursor(CursorStyle::PointingHand)
-        .hover(move |s| s.bg(hover_bg))
-        .child(icon(Icon::More, px(16.), theme.icon_colors(fg.into())))
+        .hover(move |s| s.bg(theme.hover))
+        .child(icon(Icon::More, px(16.), theme.icon_colors(fg)))
         .tooltip(|window, cx| build_tooltip(tr("表格选项", "Table options"), window, cx))
 }
 
 fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool) -> Stateful<Div> {
-    let dark = is_dark();
     let theme = Theme::ocean();
-    let fg: gpui::Hsla = if cmd.danger() {
-        menu_style::danger_color()
-    } else if dark {
-        rgb(0xececec).into()
-    } else {
-        rgb(0x1f1e1d).into()
-    };
-    let hover_bg = rgb(if dark { 0x2f2f2f } else { 0xf3f2ef });
-    div().id(id).w_full().h(px(36.)).flex_none().px(px(10.)).rounded(px(8.))
-        .flex().items_center().gap(px(12.)).text_size(px(15.)).font_weight(FontWeight::MEDIUM).text_color(fg)
+    let fg = if cmd.danger() { menu_style::danger_color() } else { theme.text };
+    let hover_bg = theme.hover;
+    div().id(id).w_full().min_h(theme.menu_item_height).flex_none().px(px(10.)).rounded(px(4.))
+        .flex().items_center().gap(px(12.)).text_size(theme.ui_font).font_weight(FontWeight::MEDIUM).text_color(fg)
         .when(disabled, |s| s.opacity(0.4))
         .when(!disabled, move |s| s.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(hover_bg)))
         .child(icon(cmd.icon(), px(18.), theme.icon_colors(fg)))
@@ -198,12 +176,10 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
         }
     }
     if let Some(menu) = menu.filter(|m| m.block == id) {
-        let dark = is_dark();
         let items = menu_items(menu.sel, dims.0, dims.1);
         let sel = menu.sel;
-        let (bg, border) = if dark { (rgb(0x222222), rgb(0x383838)) } else { (rgb(0xffffff), rgb(0xececea)) };
-        let mut list = div().id("table-menu").w(px(224.)).p(px(8.)).rounded(px(14.))
-            .bg(bg).border_1().border_color(border).shadow_lg()
+        let mut list = div().id("table-menu").w(px(224.)).p(px(6.)).rounded(px(8.))
+            .bg(theme.menu).border_1().border_color(theme.menu_border).shadow_lg()
             .flex().flex_col().gap(px(2.))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation());
