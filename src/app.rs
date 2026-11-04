@@ -34,7 +34,7 @@ mod settings_sidebar;
 mod settings_tabs;
 
 use file_ops::{FileOp, Renaming, TreeMenu};
-pub use search::{Dismiss, NewNote, OpenSearch, OpenSettings, SearchDown, SearchUp};
+pub use search::{Dismiss, OpenSearch, OpenSettings, SearchDown, SearchUp};
 pub use tabs::{CloseTab, NewTab, NextTab, PrevTab};
 use search::Search;
 use settings::SettingsModal;
