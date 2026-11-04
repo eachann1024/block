@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>速记小窗 · 方案 C · 悬浮胶囊</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#3559a8}a:hover{color:#233f7d}
+button{font-family:inherit}
+.ib-close{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;padding:0;cursor:pointer}
+.ib-close:hover{background:#e81123;color:#ffffff}
+.fab{font:inherit;height:36px;padding:0 14px;border-radius:999px;font-size:14px;line-height:20px;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer;box-sizing:border-box;transition:background-color .14s ease,border-color .14s ease}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</helmet>
+<div style="position:relative;width:440px;height:520px;box-sizing:border-box;display:flex;flex-direction:column;background:{{paperBg}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:{{textPrimary}};font-size:16px;line-height:26px;overflow:hidden;border:1px solid {{borderCol}};border-radius:14px;-webkit-font-smoothing:antialiased">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 16px;box-sizing:border-box">
+<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none">
+<span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+<span style="width:12px;height:12px;border-radius:6px;background:{{dotMuted}}"></span>
+<span style="width:12px;height:12px;border-radius:6px;background:{{dotMuted}}"></span>
+</div>
+</sc-if>
+<sc-if value="{{isWin}}" hint-placeholder-val="{{false}}">
+<button type="button" class="ib-close" aria-label="隐藏速记" style="margin-left:auto;color:{{iconCol}}">
+<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"></path></svg>
+</button>
+</sc-if>
+</header>
+
+<main style="flex:1;min-height:0;overflow:auto;padding:8px 28px 68px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
+<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">周五回看只记录偏差，不复述进度。</p>
+<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">导出图片时默认带日期，标题可按需关闭。</p>
+<ul style="margin:0;padding-left:20px;font-size:16px;line-height:26px;color:{{textPrimary}};display:flex;flex-direction:column;gap:4px">
+<li>顶部彻底清空功能控件，打开即专注书写</li>
+<li>右下角仅悬浮一枚轻量归档胶囊，不占整行底栏</li>
+</ul>
+<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">明天确认一下签名证书的续期时间<span aria-hidden="true" style="display:inline-block;width:2px;height:19px;background:{{accent}};vertical-align:-4px;margin-left:2px;border-radius:1px"></span></p>
+</main>
+
+<div style="position:absolute;right:20px;bottom:18px;display:flex;align-items:center">
+<button type="button" class="fab" onClick="{{toggleSaved}}" style="background:{{fabBg}};color:{{fabText}};border:1px solid {{fabBorder}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M6.5 3.75h7.5l4.5 4.5v12H6.5z" fill="{{duoFill}}"></path>
+<path d="M6.5 3.75h7.5l4.5 4.5v12H6.5z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M9.75 14.25l1.75 1.75 3.5-3.5" stroke="{{accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span>{{fabLabel}}</span>
+</button>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"platform":{"editor":"enum","default":"macOS","options":["macOS","Windows / Linux"],"label":"系统平台"},"theme":{"editor":"enum","default":"浅色","options":["浅色","深色"],"label":"外观主题"},"$preview":{"width":440,"height":520}}'>
+class Component extends DCLogic {
+constructor() {
+super();
+this.state = { saved: false };
+}
+renderVals() {
+const isWin = this.props.platform === 'Windows / Linux';
+const isMac = !isWin;
+const dark = this.props.theme === '深色';
+const isSaved = Boolean(this.state.saved);
+return {
+isMac,
+isWin,
+paperBg: dark ? '#161920' : '#ffffff',
+borderCol: dark ? '#2a303c' : '#dcdcdc',
+textPrimary: dark ? '#eef2f8' : '#181c23',
+iconCol: dark ? '#98a4b8' : '#475467',
+dotMuted: dark ? '#343b48' : '#dcdcdc',
+accent: dark ? '#6f96ec' : '#3559a8',
+duoFill: dark ? '#243558' : '#c9d8f3',
+fabBg: isSaved ? (dark ? '#1f2d4a' : '#e6eefc') : (dark ? '#1e232d' : '#f6f8fc'),
+fabText: dark ? '#eef2f8' : '#181c23',
+fabBorder: isSaved ? (dark ? '#476ec2' : '#547dd0') : (dark ? '#323946' : '#d5dce6'),
+fabLabel: isSaved ? '已存入笔记' : '存入笔记',
+toggleSaved: () => this.setState({ saved: !this.state.saved })
+};
+}
+}
+</script>
+</body>
+</html>
