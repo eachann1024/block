@@ -181,21 +181,30 @@ impl Element for BlockText {
                     }
                 }
                 if head.block == self.block {
+                    let p = layout.point(head.offset);
+                    let line_h = layout.cells.first().map_or(layout.line_height, |c| c.text.line_height);
+                    let font_px = layout.cells.first()
+                        .and_then(|c| c.text.lines.first().map(|(_, l)| l.font_size()))
+                        .or_else(|| layout.lines.first().map(|(_, l)| l.font_size()))
+                        .unwrap_or(line_h * 0.67);
+                    let caret_h = (font_px * 1.125).round().min(line_h);
+                    let origin = point(p.x, p.y + ((line_h - caret_h) * 0.5).round());
                     if empty {
-                        let p = layout.point(head.offset);
-                        let line_h = layout.cells.first().map_or(layout.line_height, |c| c.text.line_height);
-                        let font_px = layout.cells.first()
-                            .and_then(|c| c.text.lines.first().map(|(_, l)| l.font_size()))
-                            .or_else(|| layout.lines.first().map(|(_, l)| l.font_size()))
-                            .unwrap_or(line_h * 0.67);
-                        let caret_h = (font_px * 1.125).round().min(line_h);
-                        let origin = point(p.x, p.y + ((line_h - caret_h) * 0.5).round());
                         window.paint_quad(fill(Bounds::new(origin, size(px(1.5), caret_h)), Theme::ocean().accent));
+                        crate::sync_ime_cursor_area(f32::from(origin.x), f32::from(origin.y), f32::from(caret_h));
                     }
                     if let Some(range) = composing {
-                        for rect in layout.rects(range) {
+                        let rects = layout.rects(range);
+                        if let Some(rect) = rects.last().or_else(|| rects.first()) {
+                            crate::sync_ime_cursor_area(f32::from(rect.left()), f32::from(rect.top()), f32::from(rect.size.height));
+                        }
+                        for rect in rects {
                             window.paint_quad(fill(Bounds::new(point(rect.left(), rect.bottom()-px(1.)), size(rect.size.width, px(1.))), Theme::ocean().accent));
                         }
+                    } else if !empty {
+                        let start = self.editor.read(cx).ordered().0;
+                        let sp = if start.block == self.block { layout.point(start.offset) } else { p };
+                        crate::sync_ime_cursor_area(f32::from(sp.x), f32::from(sp.y), f32::from(line_h));
                     }
                 }
             }

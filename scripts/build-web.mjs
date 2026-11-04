@@ -32,21 +32,21 @@ const INDEX_HTML = `<!doctype html>
   <style>
     @font-face {
       font-family: "IBM Plex Sans";
-      src: url("./fonts/IBMPlexSans-Regular.ttf?v=2") format("truetype");
+      src: url("./fonts/IBMPlexSans-Regular.ttf?v=4") format("truetype");
       font-weight: 400;
       font-style: normal;
       font-display: swap;
     }
     @font-face {
       font-family: "IBM Plex Sans";
-      src: url("./fonts/IBMPlexSans-SemiBold.ttf?v=2") format("truetype");
+      src: url("./fonts/IBMPlexSans-SemiBold.ttf?v=4") format("truetype");
       font-weight: 600;
       font-style: normal;
       font-display: swap;
     }
     @font-face {
       font-family: "JetBrains Mono";
-      src: url("./fonts/JetBrainsMono-Regular.ttf?v=2") format("truetype");
+      src: url("./fonts/JetBrainsMono-Regular.ttf?v=4") format("truetype");
       font-weight: 400;
       font-style: normal;
       font-display: swap;
@@ -102,8 +102,8 @@ const INDEX_HTML = `<!doctype html>
     <div id="editor-loading">正在加载 Yu 编辑器…</div>
   </div>
   <script type="module">
-    import init from "./thinkly_fast_web.js?v=2";
-    await init("./thinkly_fast_web_bg.wasm?v=2");
+    import init from "./thinkly_fast_web.js?v=4";
+    await init("./thinkly_fast_web_bg.wasm?v=4");
   </script>
 </body>
 </html>

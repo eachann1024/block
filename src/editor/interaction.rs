@@ -61,8 +61,8 @@ impl Editor {
     }
     pub(in crate::editor) fn focus_block(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         let at = Position { block: id, offset: 0 };
-        self.caret.anchor = at; self.caret.head = at; self.selecting = false; self.block_menu = None;
-        window.focus(&self.focus, cx); cx.notify();
+        self.set_head(at, false, cx); self.selecting = false; self.block_menu = None;
+        window.focus(&self.focus, cx);
     }
     fn extent(&self, at: Position, clicks: usize) -> (Position, Position) {
         let Some(block) = self.doc.get(at.block) else { return (at, at); };

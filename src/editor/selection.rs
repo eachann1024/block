@@ -48,6 +48,11 @@ impl Editor {
         if !extend { self.caret.anchor = at; }
         self.caret.composing = None;
         self.reveal_caret = true;
+        if let Some(layout) = self.layouts.get(&at.block) {
+            let p = layout.point(at.offset);
+            let line_h = layout.cells.first().map_or(layout.line_height, |c| c.text.line_height);
+            crate::sync_ime_cursor_area(f32::from(p.x), f32::from(p.y), f32::from(line_h));
+        }
         cx.notify();
     }
     pub(in crate::editor) fn block_text(&self) -> &str {
