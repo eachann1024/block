@@ -51,7 +51,7 @@ pub(super) fn measure(table: &Table, width: Pixels, window: &mut Window) -> Text
             .or_else(|| text_runs::attribute_color(&table.attrs, false)).unwrap_or(default_fg);
         let runs = text_runs::runs(&cell.content, &text, foreground);
         let code_spans = super::inline_code::code_spans(&cell.content);
-        let (text, runs) = super::inline_code::prepare_shaping(&text, runs, &code_spans, None);
+        let (text, runs) = super::inline_code::prepare_shaping(&text, runs, &code_spans);
         let lines: Vec<WrappedLine> = window.text_system().shape_text(text.clone(), font_size, &runs, None, None)
             .map(|lines| lines.into_iter().collect()).unwrap_or_default();
         let natural = lines.iter().map(|line| line.width()).fold(px(0.), |a, b| a.max(b));

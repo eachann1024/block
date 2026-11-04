@@ -1,4 +1,4 @@
-//! Scheme B (TokenChip) inline code spacing, backtick reveal on caret entry, chip painting and ⌘+Click copy.
+//! Scheme B (TokenChip) inline code spacing, chip painting and ⌘+Click copy.
 use std::ops::Range;
 use gpui::{AnyElement, BorderStyle, Bounds, ClipboardItem, Context, Corners, Hsla, Pixels, Point,
     SharedString, TextRun, Window, fill, point, px, quad, rgb, rgba, size};
@@ -20,7 +20,7 @@ pub(in crate::editor) fn code_spans(block: &Block) -> Vec<Range<usize>> {
     out
 }
 
-pub(in crate::editor) fn active_code_span(editor: &Editor, block_id: u64, window: &Window) -> Option<Range<usize>> {
+fn active_code_span(editor: &Editor, block_id: u64, window: &Window) -> Option<Range<usize>> {
     if !editor.focus.is_focused(window) || !editor.caret.is_empty()
         || editor.caret.composing.is_some() || editor.caret.head.block != block_id { return None; }
     let offset = editor.caret.head.offset;
@@ -41,19 +41,10 @@ fn slice_runs(runs: &[TextRun], range: Range<usize>) -> Vec<TextRun> {
     out
 }
 
-fn delim_run(len: usize) -> TextRun {
-    let color: Hsla = if is_dark() { rgba(0x779de8b8).into() } else { rgba(0x547dd0b8).into() };
-    let mut r = super::text_runs::plain(len, color);
-    r.font.family = crate::theme::mono_font_family().into();
-    r.font.fallbacks = None;
-    r
-}
-
 pub(in crate::editor) fn prepare_shaping(
     text: &str,
     runs: Vec<TextRun>,
     code_spans: &[Range<usize>],
-    active: Option<&Range<usize>>,
 ) -> (SharedString, Vec<TextRun>) {
     if code_spans.is_empty() { return (SharedString::from(text.to_owned()), runs); }
     let plain_col = Theme::ocean().text;
@@ -65,13 +56,12 @@ pub(in crate::editor) fn prepare_shaping(
             out_text.push_str(&text[cursor..span.start]);
             out_runs.extend(slice_runs(&runs, cursor..span.start));
         }
-        let is_active = active == Some(span);
-        out_text.push_str(if is_active { " `" } else { "  " });
-        out_runs.push(if is_active { delim_run(PAD_BYTES) } else { super::text_runs::plain(PAD_BYTES, plain_col) });
+        out_text.push_str("  ");
+        out_runs.push(super::text_runs::plain(PAD_BYTES, plain_col));
         out_text.push_str(&text[span.start..span.end]);
         out_runs.extend(slice_runs(&runs, span.start..span.end));
-        out_text.push_str(if is_active { "` " } else { "  " });
-        out_runs.push(if is_active { delim_run(PAD_BYTES) } else { super::text_runs::plain(PAD_BYTES, plain_col) });
+        out_text.push_str("  ");
+        out_runs.push(super::text_runs::plain(PAD_BYTES, plain_col));
         cursor = span.end;
     }
     if cursor < text.len() {
@@ -117,26 +107,24 @@ pub(in crate::editor) fn code_text_color(hovered: bool) -> Hsla {
     }
 }
 
-fn paint_layout_chips(layout: &TextLayout, active: Option<&Range<usize>>, hovered: Option<&Range<usize>>, window: &mut Window) {
+fn paint_layout_chips(layout: &TextLayout, hovered: Option<&Range<usize>>, window: &mut Window) {
     if layout.code_spans.is_empty() { return; }
     let dark = is_dark();
     let font_px = layout.lines.first().map(|(_, l)| l.font_size()).unwrap_or(px(16.));
     let chip_h = (font_px + px(5.)).round().min(layout.line_height - px(2.)).max(px(18.));
+    let pad_x = px(5.5);
     for span in &layout.code_spans {
-        let (is_active, is_hover) = (active == Some(span), hovered == Some(span));
-        let (bg, border, top_hi, border_style): (Hsla, Hsla, Hsla, BorderStyle) = match (dark, is_hover, is_active) {
-            (true, true, _) => (rgb(0x2d426b).into(), rgb(0x779de8).into(), rgba(0xffffff18).into(), BorderStyle::Solid),
-            (true, false, true) => (rgb(0x232c3d).into(), rgb(0x779de8).into(), rgba(0xffffff12).into(), BorderStyle::Dashed),
-            (true, false, false) => (rgb(0x252a34).into(), rgb(0x3a4354).into(), rgba(0xffffff0d).into(), BorderStyle::Solid),
-            (false, true, _) => (rgb(0xe5edfc).into(), rgb(0x547dd0).into(), rgba(0xffffffb0).into(), BorderStyle::Solid),
-            (false, false, true) => (rgb(0xf3f7fe).into(), rgb(0x547dd0).into(), rgba(0xffffffb0).into(), BorderStyle::Dashed),
-            (false, false, false) => (rgb(0xf1f3f7).into(), rgb(0xd5dce6).into(), rgba(0xffffffe0).into(), BorderStyle::Solid),
+        let is_hover = hovered == Some(span);
+        let (bg, border, top_hi): (Hsla, Hsla, Hsla) = match (dark, is_hover) {
+            (true, true) => (rgb(0x2d426b).into(), rgb(0x779de8).into(), rgba(0xffffff18).into()),
+            (true, false) => (rgb(0x252a34).into(), rgb(0x3a4354).into(), rgba(0xffffff0d).into()),
+            (false, true) => (rgb(0xe5edfc).into(), rgb(0x547dd0).into(), rgba(0xffffffb0).into()),
+            (false, false) => (rgb(0xf1f3f7).into(), rgb(0xd5dce6).into(), rgba(0xffffffe0).into()),
         };
-        let pad_x = if is_active { px(9.5) } else { px(5.5) };
         for r in layout.rects(span.clone()) {
             let top = r.top() + ((r.size.height - chip_h) * 0.5).round();
             let box_bounds = Bounds::new(point(r.left() - pad_x, top), size(r.size.width + pad_x * 2., chip_h));
-            window.paint_quad(quad(box_bounds, Corners::all(px(5.5)), bg, px(1.), border, border_style));
+            window.paint_quad(quad(box_bounds, Corners::all(px(5.5)), bg, px(1.), border, BorderStyle::Solid));
             let hi_bounds = Bounds::new(point(box_bounds.left() + px(3.), box_bounds.top() + px(1.)), size((box_bounds.size.width - px(6.)).max(px(0.)), px(1.)));
             window.paint_quad(fill(hi_bounds, top_hi));
         }
@@ -150,13 +138,12 @@ pub(in crate::editor) fn paint_chips(editor: &Editor, block_id: u64, layout: &Te
             if !cell.text.code_spans.is_empty() {
                 let cell_hover = hovered.and_then(|r| (r.start >= cell.range.start && r.end <= cell.range.end)
                     .then(|| (r.start - cell.range.start)..(r.end - cell.range.start)));
-                paint_layout_chips(&cell.text, None, cell_hover.as_ref(), window);
+                paint_layout_chips(&cell.text, cell_hover.as_ref(), window);
             }
         }
         return;
     }
-    let active = active_code_span(editor, block_id, window);
-    paint_layout_chips(layout, active.as_ref(), hovered, window);
+    paint_layout_chips(layout, hovered, window);
 }
 
 impl Editor {
@@ -223,13 +210,5 @@ impl Editor {
             else if cfg!(any(target_os = "macos", target_family = "wasm")) { tr("⌘+点击复制", "⌘+click to copy") }
             else { tr("Ctrl+点击复制", "Ctrl+click to copy") };
         Some(anchored_tooltip_above(rect, viewport.top(), label, ("code-hover-tip", (*block as usize) ^ (range.start << 16)), window))
-    }
-
-    pub(super) fn code_active_hash(&self, block_id: u64, window: &Window) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        active_code_span(self, block_id, window).hash(&mut h);
-        self.link_ui.code_hover.as_ref().filter(|(b, _)| *b == block_id).hash(&mut h);
-        h.finish()
     }
 }
