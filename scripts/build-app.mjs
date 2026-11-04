@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, cpSync, lstatSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { appName, assertSystemLibraries, binaryPath, buildLog, buildLogPath, installPath, installedExecutable, plist, remove, runtimeLogPath, sign, workspaceTemp } from "./app-bundle.mjs";
+import { appName, assertSystemLibraries, binaryPath, installPath, logIssue, plist, remove, sign, workspaceTemp } from "./app-bundle.mjs";
 import { commitInstall, openInstalled, prepareInstall } from "./install-app.mjs";
 import { matchingPids, stopRunningApp } from "./stop-app.mjs";
 
@@ -14,10 +14,9 @@ if (import.meta.main) {
     const app = await buildApp();
     console.log(app);
     console.log(installPath);
-    buildLog(`logs: build=${buildLogPath} runtime=${runtimeLogPath}`);
   } catch (error) {
     const detail = error instanceof Error ? error.stack || error.message : String(error);
-    buildLog(`ERROR: ${detail}`);
+    logIssue("ERROR", detail);
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
   }
@@ -53,8 +52,7 @@ export async function buildApp() {
     const previous = matchingPids(executable);
     await stopRunningApp(executable);
     commitInstall(job.plan);
-    const started = await openInstalled(previous);
-    for (const pid of started) buildLog(`started pid=${pid} ${installedExecutable}`);
+    await openInstalled(previous);
     return distApp;
   } finally {
     process.off("SIGINT", onSignal);

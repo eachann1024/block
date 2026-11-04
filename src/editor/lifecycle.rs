@@ -142,7 +142,6 @@ impl Editor {
                         this.persistence.gate.lock().unwrap().saved.insert(path.clone(), loaded.base);
                         this.reset_document(loaded.doc);
                         this.folded = crate::editor::fold::restore_folds(&path, &this.doc);
-                        crate::log::info(&format!("opened note {} (blocks={}, recovered={})", path.display(), this.doc.blocks.len(), loaded.recovered));
                         this.path = Some(path);
                         this.dirty = loaded.recovered;
                         this.status = if loaded.recovered { tr("已恢复未保存草稿，请确认后保存", "Recovered unsaved draft; please review and save").into() } else { tr("已保存 · 内存会话就绪", "Saved · Ready").into() };

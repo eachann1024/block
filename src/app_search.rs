@@ -58,7 +58,8 @@ impl Workspace {
     pub(super) fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.folder.is_none() { return; }
         if let Some(search) = &self.search {
-            search.state.input.update(cx, |input, cx| input.focus(window, cx));
+            let focus_input = search.state.input.clone();
+            cx.defer_in(window, move |_, window, cx| focus_input.update(cx, |input, cx| input.focus(window, cx)));
             return;
         }
         if self.renaming.is_some() { self.cancel_rename(window, cx); }
@@ -76,7 +77,6 @@ impl Workspace {
             InputEvent::PressEnter { .. } => this.open_hit(window, cx),
             _ => {}
         });
-        input.update(cx, |input, cx| input.focus(window, cx));
         let focus_input = input.clone();
         cx.defer_in(window, move |_, window, cx| focus_input.update(cx, |input, cx| input.focus(window, cx)));
         self.search = Some(Search { state: SearchState::new(input), _sub: sub });
