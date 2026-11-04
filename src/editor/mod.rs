@@ -1,6 +1,5 @@
 mod chrome;
 mod columns;
-#[cfg(not(target_family = "wasm"))]
 #[path = "../export/driver.rs"]
 mod export_driver;
 mod input;
@@ -45,7 +44,6 @@ mod fold;
 mod smoke_api;
 pub mod view;
 
-#[cfg(not(target_family = "wasm"))]
 pub use export_driver::{export_document, export_selected};
 pub(crate) use format_cmds::open_external_url;
 pub use keys::bind_keys;

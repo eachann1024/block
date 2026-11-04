@@ -93,21 +93,12 @@ impl Editor {
                     if matches!(action, Cut) && !self.boundary_rules(false, cx) && !self.delete_across(cx) { self.replace_selection("", false, cx); }
                 } else if self.copy_whole_block(cx) && matches!(action, Cut) { self.handle(&EditorAction::Backspace, window, cx); }
             }
-            Paste => {
-                let item = cx.read_from_clipboard();
-                let image = item.as_ref().and_then(|item| item.entries().iter().find_map(|entry| match entry {
-                    gpui::ClipboardEntry::Image(image) => Some((image.bytes.clone(), match image.format {
-                        gpui::ImageFormat::Jpeg => "jpg", gpui::ImageFormat::Gif => "gif", gpui::ImageFormat::Webp => "webp", _ => "png" })),
-                    _ => None }));
-                let files = super::clipboard_files::image_paths();
-                if !files.is_empty() {
-                    let id = self.caret.head.block; self.import_images(id, super::image_import::Place::After, files, window, cx);
-                } else if let Some((bytes, ext)) = image.filter(|_| item.as_ref().and_then(|i| i.text()).is_none()) {
-                    let id = self.caret.head.block; self.import_image_bytes(id, bytes, ext, window, cx);
-                } else if let Some(text) = item.and_then(|item| item.text()) {
-                    if !self.paste_url_over_selection(&text, cx) && !self.paste_blocks(&text, cx) && !self.paste_tsv(&text, cx) { self.replace_selection(&text, false, cx); }
-                }
-            }
+            Paste => match cx.read_from_clipboard() {
+                // Browsers deliver clipboard data through the DOM `paste` event (-> `EntityInputHandler::paste`);
+                // propagating keeps gpui-web from cancelling that event on the Cmd+V keydown.
+                None if cfg!(target_family = "wasm") => cx.propagate(),
+                item => self.paste_clipboard_item(item, window, cx),
+            },
             Bold => self.mark(MarkKind::Bold, cx), Italic => self.mark(MarkKind::Italic, cx),
             Strike => self.mark(MarkKind::Strike, cx), Code => self.mark(MarkKind::Code, cx),
             Undo => self.undo(false, cx), Redo => self.undo(true, cx), Save => self.save(cx),
@@ -127,6 +118,21 @@ impl Editor {
             }
         }
         let _ = window;
+    }
+    /// Smart paste shared by `Cmd+V` and the web `paste` event: images, plain text, tables, blocks, links.
+    pub(super) fn paste_clipboard_item(&mut self, item: Option<ClipboardItem>, window: &mut Window, cx: &mut Context<Self>) {
+        let image = item.as_ref().and_then(|item| item.entries().iter().find_map(|entry| match entry {
+            gpui::ClipboardEntry::Image(image) => Some((image.bytes.clone(), match image.format {
+                gpui::ImageFormat::Jpeg => "jpg", gpui::ImageFormat::Gif => "gif", gpui::ImageFormat::Webp => "webp", _ => "png" })),
+            _ => None }));
+        let files = super::clipboard_files::image_paths();
+        if !files.is_empty() {
+            let id = self.caret.head.block; self.import_images(id, super::image_import::Place::After, files, window, cx);
+        } else if let Some((bytes, ext)) = image.filter(|_| item.as_ref().and_then(|i| i.text()).is_none()) {
+            let id = self.caret.head.block; self.import_image_bytes(id, bytes, ext, window, cx);
+        } else if let Some(text) = item.and_then(|item| item.text()) {
+            if !self.paste_url_over_selection(&text, cx) && !self.paste_blocks(&text, cx) && !self.paste_tsv(&text, cx) { self.replace_selection(&text, false, cx); }
+        }
     }
     pub(super) fn step(&self, forward: bool) -> Position {
         let at = self.caret.head;

@@ -153,10 +153,10 @@ impl Cmd {
         })
     }
 }
-pub(super) const SLASH: [Option<Cmd>; 19] = [
+pub(super) const SLASH: [Option<Cmd>; 18] = [
     Some(Cmd::Turn(Kind::H1)), Some(Cmd::Turn(Kind::H2)), Some(Cmd::Turn(Kind::H3)), Some(Cmd::Table),
     None,
-    Some(Cmd::Turn(Kind::Paragraph)), Some(Cmd::Turn(Kind::Bullet)), Some(Cmd::Turn(Kind::Todo)),
+    Some(Cmd::Turn(Kind::Bullet)), Some(Cmd::Turn(Kind::Todo)),
     Some(Cmd::Code("")), Some(Cmd::Divider), Some(Cmd::Image),
     Some(Cmd::Turn(Kind::Numbered)), Some(Cmd::Turn(Kind::Quote)), Some(Cmd::Callout), Some(Cmd::Columns),
     None,
