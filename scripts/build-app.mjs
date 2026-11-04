@@ -11,9 +11,10 @@ const lockPath = join(root, "dist/.build.lock");
 
 if (import.meta.main) {
   try {
-    const app = await buildApp();
+    const install = !process.argv.includes("--no-install") && process.env.THINKLY_FAST_NO_INSTALL !== "1";
+    const app = await buildApp({ install });
     console.log(app);
-    console.log(installPath);
+    if (install) console.log(installPath);
   } catch (error) {
     const detail = error instanceof Error ? error.stack || error.message : String(error);
     logIssue("ERROR", detail);
@@ -22,7 +23,7 @@ if (import.meta.main) {
   }
 }
 
-export async function buildApp() {
+export async function buildApp({ install = true } = {}) {
   if (process.platform !== "darwin") throw new Error("macOS is required");
   const job = { staging: "", plan: null, release: null };
   const onSignal = () => {
@@ -50,12 +51,14 @@ export async function buildApp() {
     chmodSync(packaged, 0o755);
     assertSystemLibraries(packaged);
     sign(bundle);
-    job.plan = prepareInstall(bundle);
+    if (install) job.plan = prepareInstall(bundle);
     const distApp = publishDist(bundle);
-    const previous = matchingPids(executable);
-    await stopRunningApp(executable);
-    commitInstall(job.plan);
-    await openInstalled(previous);
+    if (install) {
+      const previous = matchingPids(executable);
+      await stopRunningApp(executable);
+      commitInstall(job.plan);
+      await openInstalled(previous);
+    }
     return distApp;
   } finally {
     process.off("SIGINT", onSignal);
