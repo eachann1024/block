@@ -31,6 +31,8 @@ mod image_view;
 mod image_size;
 mod table_chrome;
 mod code_block;
+mod diagram_preview;
+mod math_preview;
 mod find;
 mod find_bar;
 mod fold;
