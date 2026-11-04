@@ -50,7 +50,7 @@ impl RenderOnce for SelectionToolbar {
         // instead of running under the chat panel.
         let room = editor.read(cx).list.viewport_bounds().size.width - px(16.);
         let bar = pill().px(px(4.)).py(px(6.)).gap(px(4.)).id("selection-toolbar").max_w(room).flex_wrap().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(button(Icon::TbComment, tr("添加批注", "Add comment"), false, false, false, editor.clone(), |this, w, cx| this.start_annotation(w, cx)))
+            .child(button(Icon::TbComment, tr("添加批注", "Add annotation"), false, false, false, editor.clone(), |this, w, cx| this.start_annotation(w, cx)))
             .child(button(Icon::TbReaction, tr("添加表情回应", "Add reaction"), false, false, false, editor.clone(), |this, w, cx| this.open_reactions(w, cx)))
             .child(sep())
             .when(text_blocks, |bar| bar
