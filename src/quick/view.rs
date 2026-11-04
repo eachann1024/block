@@ -1,8 +1,5 @@
-//! Quick-note window root: five slots backed by Markdown files, edited by a minimal Editor.
-use std::{
-    fs,
-    time::{Duration, Instant},
-};
+//! Quick-note window root: three independent slots backed by Markdown files, edited by a minimal Editor.
+use std::time::{Duration, Instant};
 use gpui::{
     Context, DispatchPhase, Entity, FocusHandle, Focusable, ScrollEvent, Subscription, Task,
     Window, div, prelude::*, px,
@@ -11,17 +8,13 @@ use crate::{
     editor::view::Editor,
     theme::{Theme, tr},
 };
-use super::{
-    HideQuickNote, SaveToNote, SlotFive, SlotFour, SlotOne, SlotThree, SlotTwo, save, store,
-};
+use super::{HideQuickNote, SlotOne, SlotThree, SlotTwo, store};
 
 pub struct QuickView {
     pub(super) editor: Entity<Editor>,
     pub(super) meta: store::Meta,
     pub(super) notice: String,
-    pub(super) saved_flash: bool,
     notice_task: Option<Task<()>>,
-    saving: bool,
     wheel_accum: f32,
     last_wheel_event: Option<Instant>,
     last_wheel_switch: Option<Instant>,
@@ -42,9 +35,7 @@ impl QuickView {
             editor,
             meta,
             notice: String::new(),
-            saved_flash: false,
             notice_task: None,
-            saving: false,
             wheel_accum: 0.,
             last_wheel_event: None,
             last_wheel_switch: None,
@@ -61,7 +52,7 @@ impl QuickView {
         match store::ensure_slot(slot) {
             Ok(path) => self.editor.update(cx, |editor, cx| editor.open(path, cx)),
             Err(error) => {
-                self.set_notice(format!("{}: {error}", tr("无法打开速记", "Cannot open quick note")), false, cx);
+                self.set_notice(format!("{}: {error}", tr("无法打开速记", "Cannot open quick note")), cx);
             }
         }
         let focus = self.editor.focus_handle(cx);
@@ -72,7 +63,6 @@ impl QuickView {
     pub(super) fn switch(&mut self, slot: usize, window: &mut Window, cx: &mut Context<Self>) {
         if slot != self.meta.active {
             self.notice.clear();
-            self.saved_flash = false;
             self.open_slot(slot, window, cx);
         } else {
             let focus = self.editor.focus_handle(cx);
@@ -107,14 +97,12 @@ impl QuickView {
         self.switch(next, window, cx);
     }
 
-    pub(super) fn set_notice(&mut self, text: String, flash: bool, cx: &mut Context<Self>) {
+    pub(super) fn set_notice(&mut self, text: String, cx: &mut Context<Self>) {
         self.notice = text;
-        self.saved_flash = flash;
         self.notice_task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_secs(3)).await;
             let _ = this.update(cx, |this, cx| {
                 this.notice.clear();
-                this.saved_flash = false;
                 cx.notify();
             });
         }));
@@ -137,88 +125,9 @@ impl QuickView {
                 }
                 cx.background_executor().timer(Duration::from_millis(50)).await;
             }
-            let _ = this.update_in(cx, |_, window, _| window.remove_window());
-        })
-        .detach();
-    }
-
-    pub(super) fn save_to_note(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.saving {
-            return;
-        }
-        let Some(folder) = save::target_folder() else {
-            return self.set_notice(
-                tr("请先在主窗口选择文件夹", "Choose a folder in the main window first").into(),
-                false,
-                cx,
-            );
-        };
-        self.saving = true;
-        self.editor.update(cx, |editor, cx| editor.save(cx));
-        let slot = self.meta.active;
-        let name = self.meta.names[slot].clone();
-        cx.spawn_in(window, async move |this, cx| {
-            for _ in 0..60 {
-                let busy = this
-                    .update(cx, |this, cx| {
-                        let e = this.editor.read(cx);
-                        e.is_dirty() || e.is_busy()
-                    })
-                    .unwrap_or(false);
-                if !busy {
-                    break;
-                }
-                cx.background_executor().timer(Duration::from_millis(50)).await;
-            }
-            let job = cx.background_executor().spawn(async move {
-                let text = fs::read_to_string(store::slot_path(slot)).unwrap_or_default();
-                if text.trim().is_empty() {
-                    return Ok(None);
-                }
-                save::write_note(&folder, slot, &name, &text).map(|path| Some((path, text)))
-            });
-            let result = job.await;
-            let _ = this.update_in(cx, |this, _, cx| {
-                this.saving = false;
-                match result {
-                    Ok(None) => this.set_notice(
-                        tr("速记为空，无需保存", "Quick note is empty").into(),
-                        false,
-                        cx,
-                    ),
-                    Ok(Some((path, text))) => {
-                        let file = path
-                            .file_name()
-                            .map(|n| n.to_string_lossy().into_owned())
-                            .unwrap_or_default();
-                        super::notify_saved_note(path, cx);
-                        let unchanged =
-                            fs::read_to_string(store::slot_path(slot)).is_ok_and(|now| now == text);
-                        let clean = !this.editor.read(cx).is_dirty();
-                        if unchanged && clean && slot == this.meta.active {
-                            let slot_file = store::slot_path(slot);
-                            this.editor.update(cx, |editor, cx| {
-                                editor.close(cx);
-                                let _ = fs::write(&slot_file, "");
-                                editor.open(slot_file, cx);
-                            });
-                            this.set_notice(
-                                format!("{} {file}", tr("已存入", "Saved to")),
-                                true,
-                                cx,
-                            );
-                        } else if crate::theme::is_en() {
-                            this.set_notice(format!("Saved to {file}"), true, cx);
-                        } else {
-                            this.set_notice(format!("已存入 {file}"), true, cx);
-                        }
-                    }
-                    Err(error) => this.set_notice(
-                        format!("{}: {error}", tr("保存失败", "Failed to save")),
-                        false,
-                        cx,
-                    ),
-                }
+            let _ = this.update_in(cx, |_, window, cx| {
+                super::clear_window_state(cx);
+                window.remove_window();
             });
         })
         .detach();
@@ -270,9 +179,6 @@ impl Render for QuickView {
             .on_action(cx.listener(|this, _: &SlotOne, w, cx| this.switch(0, w, cx)))
             .on_action(cx.listener(|this, _: &SlotTwo, w, cx| this.switch(1, w, cx)))
             .on_action(cx.listener(|this, _: &SlotThree, w, cx| this.switch(2, w, cx)))
-            .on_action(cx.listener(|this, _: &SlotFour, w, cx| this.switch(3, w, cx)))
-            .on_action(cx.listener(|this, _: &SlotFive, w, cx| this.switch(4, w, cx)))
-            .on_action(cx.listener(|this, _: &SaveToNote, w, cx| this.save_to_note(w, cx)))
             .on_action(cx.listener(|this, _: &HideQuickNote, w, cx| this.close(w, cx)))
             // Esc is an editor action (block selection) when the editor has focus; the window hides instead.
             .capture_action(cx.listener(|this, _: &crate::editor::view::Cancel, w, cx| {

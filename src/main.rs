@@ -92,6 +92,9 @@ fn main() {
     }
     let app = gpui_platform::application().with_assets(Assets);
     app.on_open_urls(|urls| enqueue_open_inputs(urls));
+    app.on_reopen(|cx| {
+        search::window::activate_main_window(cx);
+    });
     app.run(|cx: &mut App| {
         theme::init_fonts(&cx.text_system().all_font_names());
         gpui_component::init(cx);
@@ -123,11 +126,15 @@ fn main() {
                 let close_editor = workspace.read(cx).editor.clone();
                 let quit_editor = close_editor.clone();
                 window.on_window_should_close(cx, move |_, cx| {
-                    close_editor.update(cx, |editor, cx| {
+                    let ready = close_editor.update(cx, |editor, cx| {
                         let ready = editor.prepare_to_quit();
                         if !ready { cx.notify(); }
                         ready
-                    })
+                    });
+                    if ready && search::window::hide_main_window_on_close() {
+                        return false;
+                    }
+                    ready
                 });
                 cx.on_action(move |_: &Quit, cx: &mut App| {
                     let ready = quit_editor.update(cx, |editor, cx| {
@@ -154,13 +161,13 @@ fn main() {
                         if !queued.is_empty() {
                             let target = open_target.clone();
                             cx.update(|cx| {
-                                cx.activate(true);
+                                search::window::activate_main_window(cx);
                                 target.update(cx, |w, cx| w.open_external_paths(queued, cx));
                             });
                         }
                     }
                 }).detach();
-                quick::set_main_window(window.window_handle().downcast::<gpui_component::Root>(), workspace.clone(), cx);
+                search::window::set_main_window(window.window_handle().downcast::<gpui_component::Root>(), workspace.clone(), cx);
                 cx.on_action({
                     let target = tab_target.clone();
                     move |_: &app::NewTab, cx: &mut App| {
