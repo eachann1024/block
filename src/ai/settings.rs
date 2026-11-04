@@ -7,14 +7,14 @@ use gpui_component::input::{InputEvent, InputState};
 
 use super::presets::{self, Protocol, ProviderProfile};
 use super::provider::{self, Config};
-use crate::theme::{is_en, tr};
+use crate::theme::is_en;
 
 pub(super) enum TestNote { Ok, Err(String) }
 
 pub(crate) struct AiSettings {
     pub(super) enabled: bool, pub(super) provider: String, protocol: Protocol,
     providers: BTreeMap<String, ProviderProfile>, pub(super) show_key: bool, pub(super) last_en: bool,
-    pub(super) base_url: Entity<InputState>, pub(super) api_key: Entity<InputState>, pub(super) model: Entity<InputState>,
+    pub(super) base_url: Entity<InputState>, pub(super) api_key: Entity<InputState>, pub(super) model: String,
     pub(super) models: Vec<String>, pub(super) models_err: Option<String>,
     pub(super) fetching: bool, pub(super) testing: bool, pub(super) test_note: Option<TestNote>,
     _subs: Vec<Subscription>,
@@ -34,22 +34,23 @@ pub(crate) fn section(cx: &App) -> Option<Entity<AiSettings>> {
     cx.try_global::<Holder>().map(|h| h.0.clone())
 }
 
-fn placeholders(provider: &str, protocol: Protocol) -> (&'static str, &'static str, &'static str) {
+fn placeholders(provider: &str, protocol: Protocol) -> (&'static str, &'static str) {
     let preset = presets::find(provider);
     let url_ph = preset.map_or("https://api.example.com/v1", |p| p.base_url);
     let key_ph = if preset.map_or(protocol, |p| p.protocol) == Protocol::Anthropic { "sk-ant-…" } else { "sk-…" };
-    (url_ph, key_ph, tr("选择或输入模型 ID", "Select or enter model ID"))
+    (url_ph, key_ph)
 }
 
 impl AiSettings {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let c = provider::stored();
-        let (url_ph, key_ph, model_ph) = placeholders(&c.provider, c.protocol);
+        let (url_ph, key_ph) = placeholders(&c.provider, c.protocol);
         let base_url = cx.new(|cx| InputState::new(window, cx).placeholder(url_ph).default_value(c.base_url.clone()));
         let api_key = cx.new(|cx| InputState::new(window, cx).placeholder(key_ph).masked(true).default_value(c.api_key.clone()));
-        let model = cx.new(|cx| InputState::new(window, cx).placeholder(model_ph).default_value(c.model.clone()));
+        let model = c.model.trim().to_owned();
+        let models = if model.is_empty() { Vec::new() } else { vec![model.clone()] };
         let mut subs = Vec::new();
-        for input in [&base_url, &api_key, &model] {
+        for input in [&base_url, &api_key] {
             subs.push(cx.subscribe(input, |this: &mut Self, _, e: &InputEvent, cx| {
                 if matches!(e, InputEvent::Change) { this.save(cx); }
             }));
@@ -58,23 +59,22 @@ impl AiSettings {
         let mut this = AiSettings {
             enabled: c.enabled, provider: c.provider, protocol: c.protocol, providers: c.providers,
             show_key: false, last_en: is_en(), base_url, api_key, model,
-            models: Vec::new(), models_err: None, fetching: false, testing: false, test_note: None, _subs: subs,
+            models, models_err: None, fetching: false, testing: false, test_note: None, _subs: subs,
         };
         if should_fetch { this.fetch_models(cx); }
         this
     }
 
     pub(super) fn sync_placeholders(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let (url_ph, key_ph, model_ph) = placeholders(&self.provider, self.protocol);
+        let (url_ph, key_ph) = placeholders(&self.provider, self.protocol);
         self.base_url.update(cx, |i, cx| i.set_placeholder(url_ph, window, cx));
         self.api_key.update(cx, |i, cx| i.set_placeholder(key_ph, window, cx));
-        self.model.update(cx, |i, cx| i.set_placeholder(model_ph, window, cx));
     }
 
     fn current(&self, cx: &App) -> Config {
         let base_url = self.base_url.read(cx).value().trim().to_owned();
         let api_key = self.api_key.read(cx).value().trim().to_owned();
-        let model = self.model.read(cx).value().trim().to_owned();
+        let model = self.model.trim().to_owned();
         let mut providers = self.providers.clone();
         if !self.provider.trim().is_empty() {
             providers.insert(self.provider.clone(), ProviderProfile {
@@ -97,7 +97,7 @@ impl AiSettings {
     pub(super) fn select_provider(&mut self, id: &'static str, window: &mut Window, cx: &mut Context<Self>) {
         self.providers = self.current(cx).providers;
         self.provider = id.to_owned();
-        self.models.clear(); self.models_err = None; self.test_note = None;
+        self.models_err = None; self.test_note = None;
         let preset_url = presets::find(id).map_or("", |p| p.base_url);
         let preset_proto = presets::find(id).map_or(Protocol::Openai, |p| p.protocol);
         let (proto, url, key, mdl) = match self.providers.get(id).cloned() {
@@ -111,9 +111,16 @@ impl AiSettings {
         self.sync_placeholders(window, cx);
         self.base_url.update(cx, |i, cx| i.set_value(url, window, cx));
         self.api_key.update(cx, |i, cx| i.set_value(key, window, cx));
-        self.model.update(cx, |i, cx| i.set_value(mdl, window, cx));
+        self.model = mdl.trim().to_owned();
+        self.models = if self.model.is_empty() { Vec::new() } else { vec![self.model.clone()] };
         self.save(cx);
         if self.current(cx).is_complete() { self.fetch_models(cx); }
+    }
+
+    pub(super) fn select_model(&mut self, id: String, cx: &mut Context<Self>) {
+        self.model = id;
+        self.test_note = None;
+        self.save(cx);
     }
 
     pub(super) fn fetch_models(&mut self, cx: &mut Context<Self>) {
@@ -126,8 +133,17 @@ impl AiSettings {
             let _ = this.update(cx, |this, cx| {
                 this.fetching = false;
                 match result {
-                    Ok(ids) => { this.models = ids; this.models_err = None; }
-                    Err(e) => { this.models.clear(); this.models_err = Some(e); }
+                    Ok(mut ids) => {
+                        if ids.is_empty() && !this.model.is_empty() {
+                            ids.push(this.model.clone());
+                        }
+                        this.models = ids;
+                        this.models_err = None;
+                    }
+                    Err(e) => {
+                        this.models = if this.model.is_empty() { Vec::new() } else { vec![this.model.clone()] };
+                        this.models_err = Some(e);
+                    }
                 }
                 cx.notify();
             });
