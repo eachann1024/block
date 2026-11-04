@@ -7,7 +7,6 @@ use gpui::{
 use gpui_component::input::{Input, InputState};
 use crate::icons::IconColors;
 use crate::theme::{Theme, is_dark, tr};
-use crate::ui::settings_controls::mono_font;
 
 pub struct RenameVisual {
     pub border: Hsla,
@@ -105,9 +104,6 @@ pub fn trailing_slot(input: &Entity<InputState>, visual: &RenameVisual) -> AnyEl
         .bg(theme.shell)
         .border_1()
         .border_color(theme.btn_border)
-        .font(mono_font())
-        .text_size(px(12.))
-        .line_height(px(12.))
         .text_color(theme.text_secondary)
         .cursor(CursorStyle::PointingHand)
         .hover(move |s| s.bg(theme.hover).text_color(theme.text))
@@ -116,6 +112,9 @@ pub fn trailing_slot(input: &Entity<InputState>, visual: &RenameVisual) -> AnyEl
             let fh = input.read(cx).focus_handle(cx);
             fh.dispatch_action(&gpui_component::input::Enter { secondary: false, shift: false }, window, cx);
         })
-        .child("↵")
+        .child(crate::ui::shortcut_label::shortcut_label(
+            "↵",
+            crate::ui::shortcut_label::ShortcutStyle::ui(px(10.5), px(14.), gpui::FontWeight::NORMAL, theme.text_secondary),
+        ))
         .into_any_element()
 }
