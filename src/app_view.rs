@@ -3,7 +3,7 @@ use gpui::{
 };
 use crate::icons::{Icon, icon};
 use crate::theme::{Theme, format_hotkey, search_shortcut, tr};
-use crate::ui::icon_button::icon_button;
+use crate::ui::icon_button::{dock_icon_button, toolbar_icon_button};
 use super::Workspace;
 use super::search::{Dismiss, NewFolder, NewNote, OpenSearch, OpenSettings, kbd};
 
@@ -41,18 +41,23 @@ impl Render for Workspace {
 impl Workspace {
     fn sidebar(&self, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
-        let available = !self.busy();
+        let enabled = !self.busy() && self.folder.is_some();
+        let new_note_tip = if cfg!(target_os = "macos") { tr("新建笔记 ⌘N", "New Note ⌘N") } else { tr("新建笔记 Ctrl+N", "New Note Ctrl+N") };
         div().w(self.sidebar_width).flex_none().h_full().relative().flex().flex_col()
             .bg(theme.sidebar).border_r_1().border_color(theme.sidebar_border)
-            .child(div().flex().gap(px(8.)).pt(px(12.)).px(px(12.)).pb(px(8.))
-                .child(self.notebook_switcher(cx)))
-            .child(self.search_button(available && self.folder.is_some(), cx))
+            .child(div().flex_none().pt(px(10.)).px(px(10.)).pb(px(8.)).flex().items_center().gap(px(6.))
+                .child(self.search_button(enabled, cx))
+                .child(toolbar_icon_button("new-note", Icon::NotePlus, enabled, new_note_tip, cx.listener(|this, _, window, cx| {
+                    this.new_item(false, window, cx);
+                })))
+                .child(toolbar_icon_button("new-folder", Icon::FolderPlus, enabled, tr("新建文件夹", "New Folder"), cx.listener(|this, _, window, cx| {
+                    this.new_item(true, window, cx);
+                }))))
             // Workspace progress/errors are only reported here, so keep a compact line.
             .when(!self.notice.is_empty(), |side| side.child(
                 div().id("workspace-status").max_h(px(48.)).overflow_y_scroll().px(px(20.)).pb(px(4.))
                     .text_size(px(12.)).text_color(theme.text_secondary).child(self.notice.clone())))
-            .child(self.group_row(available && self.folder.is_some(), cx))
-            .child(div().flex_1().min_h_0().overflow_hidden().pt(px(2.)).pb(px(8.)).child(self.tree.clone()))
+            .child(div().flex_1().min_h_0().overflow_hidden().pt(px(0.)).pb(px(8.)).child(self.tree.clone()))
             .child(self.settings_footer(cx))
             .child(self.resize_handle(cx))
     }
@@ -60,45 +65,25 @@ impl Workspace {
     fn search_button(&self, enabled: bool, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         let theme = Theme::ocean();
         let shortcut = format_hotkey(&search_shortcut());
-        div().id("search-button").mx(px(12.)).mb(px(8.)).h(px(32.)).flex_none().px(px(10.)).flex().items_center().gap(px(8.))
+        div().id("search-button").flex_1().min_w_0().h(px(32.)).px(px(9.)).flex().items_center().gap(px(6.))
             .rounded(px(8.)).bg(theme.paper).border_1().border_color(if self.search.is_some() { theme.accent } else { theme.btn_border })
-            .text_size(px(13.)).text_color(theme.text_secondary)
+            .text_size(px(14.)).text_color(theme.text_secondary)
             .when(enabled, |b| b.cursor(gpui::CursorStyle::PointingHand).hover(|style| style.bg(theme.btn_hover))
                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| this.open_search(window, cx))))
             .when(!enabled, |b| b.opacity(0.5))
             .child(icon(Icon::FindSearch, px(14.), theme.icon_colors(theme.text_secondary)))
-            .child(div().flex_1().child(tr("搜索笔记", "Search notes")))
+            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(tr("搜索", "Search")))
             .child(kbd(shortcut))
     }
 
     fn settings_footer(&self, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
-        let active = self.settings.is_some();
-        div().flex_none().px(px(12.)).py(px(6.)).border_t_1().border_color(theme.hairline)
-            .child(div().id("settings-button").h(px(32.)).px(px(8.)).flex().items_center().gap(px(6.))
-                .rounded(px(6.)).border_1().text_size(px(14.)).cursor(gpui::CursorStyle::PointingHand)
-                .when(active, |b| b.bg(theme.selected).border_color(theme.accent)
-                    .text_color(theme.text).font_weight(gpui::FontWeight(460.)))
-                .when(!active, |b| b.border_color(gpui::transparent_black()).text_color(theme.text_secondary)
-                    .hover(move |s| s.bg(theme.hover).text_color(theme.text)))
-                .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| this.open_settings(window, cx)))
-                .child(icon(Icon::Sliders, px(15.), theme.icon_colors(if active { theme.accent } else { theme.text_secondary })))
-                .child(div().flex_1().child(if active { tr("设置中", "Settings") } else { tr("设置", "Settings") }))
-                .when(!active, |b| b.child(kbd(if cfg!(target_os = "macos") { "⌘," } else { "Ctrl+," }))))
-    }
-
-    /// Notebook name with the two quick-create buttons on the right.
-    fn group_row(&self, enabled: bool, cx: &mut Context<Self>) -> gpui::Div {
-        let theme = Theme::ocean();
-        let name = self.folder.as_ref().map(|p| super::file_ops::display_name(p, true)).unwrap_or_default();
-        div().flex_none().flex().items_center().gap(px(2.)).pl(px(20.)).pr(px(12.)).pt(px(4.)).pb(px(6.))
-            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-                .text_size(px(12.)).text_color(theme.text_secondary).child(name))
-            .child(icon_button("new-note", Icon::NotePlus, enabled, cx.listener(|this, _, window, cx| {
-                this.new_item(false, window, cx);
-            })))
-            .child(icon_button("new-folder", Icon::FolderPlus, enabled, cx.listener(|this, _, window, cx| {
-                this.new_item(true, window, cx);
-            })))
+        let tip = if cfg!(target_os = "macos") { tr("设置 ⌘,", "Settings ⌘,") } else { tr("设置 Ctrl+,", "Settings Ctrl+,") };
+        div().flex_none().px(px(8.)).py(px(6.)).border_t_1().border_color(theme.hairline)
+            .flex().items_center().gap(px(4.)).bg(theme.sidebar)
+            .child(self.notebook_switcher(cx))
+            .child(div().w(px(1.)).h(px(16.)).flex_none().bg(theme.sidebar_border))
+            .child(dock_icon_button("settings-button", Icon::Sliders, self.settings.is_some(), tip,
+                cx.listener(|this, _, window, cx| this.open_settings(window, cx))))
     }
 }
