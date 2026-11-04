@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方案 A · 原地切换与历史前后退</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#3559a8}a:hover{color:#233f7d}
+button{font-family:inherit}
+.ib{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#3d4856;padding:0;cursor:pointer;flex:none}
+.ib:hover{background:#e6eefc;color:#181c23}
+.ib-off{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#8a94a2;padding:0;cursor:default;flex:none;opacity:0.45}
+.tab-pill{height:28px;min-width:116px;max-width:216px;flex:0 1 196px;display:inline-flex;align-items:center;padding:0 4px 0 2px;border-radius:6px;background:transparent;color:#3d4856;box-sizing:border-box}
+.tab-pill:hover{background:#e8effc;color:#181c23}
+.tab-pill-active{background:#dfe9fc;color:#181c23;box-shadow:inset 0 0 0 1px #476ec2}
+.tab-main{font:inherit;font-size:14px;line-height:20px;font-weight:460;flex:1;min-width:0;height:100%;display:inline-flex;align-items:center;gap:6px;padding:0 6px 0 8px;border:0;background:transparent;color:inherit;cursor:pointer;text-align:left}
+.tab-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tab-close{width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:4px;background:transparent;color:#3d4856;padding:0;cursor:pointer;flex:none}
+.tab-close:hover{background:#cddcf8;color:#181c23}
+.row{font:inherit;font-size:14px;line-height:20px;font-weight:400;width:100%;height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#181c23;text-align:left;cursor:pointer;box-sizing:border-box}
+.row:hover{background:#e8effc}
+.row-active{background:#dfe9fc;box-shadow:inset 0 0 0 1px #476ec2;font-weight:500}
+.mode-btn{font:inherit;font-size:14px;line-height:20px;height:28px;padding:0 10px;border-radius:6px;border:1px solid #cfd6e2;background:#ffffff;color:#28313e;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.mode-btn-on{border-color:#476ec2;background:#dfe9fc;color:#181c23;font-weight:500}
+</style>
+</helmet>
+<div style="width:100%;min-height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:#f1f1f1;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#181c23;font-size:14px;line-height:20px;overflow:hidden">
+
+<header style="height:42px;flex:none;display:flex;align-items:center;border-bottom:1px solid #e2e4e8;box-sizing:border-box;background:#f1f1f1">
+<div style="width:260px;flex:none;height:100%;box-sizing:border-box;display:flex;align-items:center;gap:4px;padding:0 10px 0 16px;border-right:1px solid #e2e4e8">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none;margin-right:auto"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<button type="button" class="{{backBtnClass}}" onClick="{{goBack}}" aria-label="后退到上一篇笔记" title="后退 ⌘[">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>
+</button>
+<button type="button" class="{{fwdBtnClass}}" onClick="{{goForward}}" aria-label="前进到下一篇笔记" title="前进 ⌘]">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+</button>
+</div>
+
+<nav aria-label="已打开标签页" style="flex:1;min-width:0;height:100%;display:flex;align-items:center;gap:6px;padding:0 10px;overflow:hidden">
+<sc-for list="{{tabs}}" as="tab" hint-placeholder-count="2">
+<div class="{{tab.pillClass}}">
+<button type="button" class="tab-main" onClick="{{tab.select}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{tab.iconStroke}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M6 3.75h8l4 4V20.25H6z" fill="{{tab.iconFill}}" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span class="tab-label">{{tab.title}}</span>
+</button>
+<button type="button" class="tab-close" aria-label="{{tab.closeLabel}}" onClick="{{tab.close}}">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+</button>
+</div>
+</sc-for>
+<button type="button" class="ib" onClick="{{openBlankTab}}" aria-label="新建标签页" title="新建标签页 ⌘T">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+</button>
+</nav>
+
+<div style="display:flex;align-items:center;gap:8px;padding:0 14px;height:100%;border-left:1px solid #e2e4e8;box-sizing:border-box">
+<button type="button" class="{{cmdModeClass}}" onClick="{{toggleCmdMode}}">
+<span>{{cmdModeLabel}}</span>
+</button>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+<aside aria-label="文件列表" style="width:260px;flex:none;background:#fafafa;border-right:1px solid #e2e4e8;box-sizing:border-box;display:flex;flex-direction:column;min-height:0">
+<div style="padding:14px 12px 10px;border-bottom:1px solid #eceef2;display:flex;flex-direction:column;gap:6px">
+<div style="font-size:14px;font-weight:560;color:#181c23">单击 = 原地翻阅</div>
+<div style="font-size:14px;line-height:20px;color:#3d4856">随便点下面 6 篇笔记，只替换当前标签页；点左上 ‹ › 可按浏览历史前后退。</div>
+</div>
+
+<div style="flex:1;min-height:0;overflow:auto;padding:10px 8px;display:flex;flex-direction:column;gap:4px">
+<sc-for list="{{notes}}" as="item" hint-placeholder-count="6">
+<button type="button" class="{{item.rowClass}}" onClick="{{item.click}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{item.stroke}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M6 3.75h8l4 4V20.25H6z" fill="{{item.fill}}" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{item.title}}</span>
+<span style="font-size:14px;color:#3d4856">{{item.hint}}</span>
+</button>
+</sc-for>
+</div>
+</aside>
+
+<main style="flex:999 1 560px;min-width:0;background:#ffffff;overflow:auto">
+<div style="box-sizing:border-box;width:100%;max-width:816px;margin:0 auto;padding:44px 36px 72px;display:flex;flex-direction:column;gap:18px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;border-radius:10px;background:#f4f7fd;border:1px solid #d7e2f8;color:#24324b;font-size:14px;line-height:20px">
+<span>当前状态：顶栏共 <strong>{{tabCount}}</strong> 个标签页 · 历史记录第 {{historyPos}} 步（共 {{historyTotal}} 步）</span>
+<button type="button" onClick="{{openInNewTabNow}}" style="font:inherit;font-size:14px;height:28px;padding:0 10px;border-radius:6px;border:1px solid #476ec2;background:#ffffff;color:#24324b;cursor:pointer">将下一篇在新标签页打开</button>
+</div>
+
+<h1 style="margin:8px 0 0;font-size:28px;line-height:1.35;font-weight:600;letter-spacing:-0.02em;color:#181c23">{{activeTitle}}</h1>
+<p style="margin:0;font-size:17px;line-height:1.65;color:#242a33;max-width:68ch">{{activeLead}}</p>
+<p style="margin:0;font-size:17px;line-height:1.65;color:#242a33;max-width:68ch">{{activeBody}}</p>
+<blockquote style="margin:4px 0;padding:4px 0 4px 16px;border-left:1px solid #9fb4df;font-size:16px;line-height:1.6;color:#354153">{{activeQuote}}</blockquote>
+</div>
+</main>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"cmdClickMode":{"editor":"boolean","default":false,"label":"模拟按住 ⌘ 点击（新标签打开）"},"$preview":{"width":1440,"height":900}}'>
+const NOTES = [
+  {
+    id: 'weekly',
+    title: '周会 11-03',
+    lead: '上周排了三场同步会，两场结束时没有结论。人到齐，并不等于事情被推进。',
+    body: '在左侧文件树直接单击其他笔记时，当前这个「周会 11-03」标签会直接原地切换为新点的笔记，不会把顶栏塞满。',
+    quote: '只有按住 ⌘ 单击、鼠标中键点击、右键选「在新标签页打开」或点顶栏 + 号时，才会真正新建标签页。'
+  },
+  {
+    id: 'review',
+    title: '需求评审',
+    lead: '每次评审只回答三个问题：解决谁的什么痛点、不做的边界在哪里、怎么验证上线后真的生效。',
+    body: '顺着目录挨个翻阅笔记时，顶栏始终保持清爽；如果想退回刚才看过的上一篇笔记，点左上角的 ‹ 后退按钮即可。',
+    quote: '翻看十篇笔记只用一扇窗，需要对照两篇笔记时再开第二扇窗。'
+  },
+  {
+    id: 'principles',
+    title: '产品原则',
+    lead: '默认行为必须顺应最高频的动作。在笔记软件里，顺着列表翻找旧笔记的频率远高于同时并排编辑五篇文档。',
+    body: '因此单击默认在当前标签页内跳转，把「新建标签页」留给显式意图（⌘+点击 / 顶栏 + 号）。',
+    quote: '少即是多：不制造需要用户事后手动清理的标签页垃圾。'
+  },
+  {
+    id: 'release',
+    title: '发布清单',
+    lead: '打包前确认签名身份，执行构建脚本后替换本地应用并启动验证。',
+    body: '你可以试试点击右上角的「模拟 ⌘+点击：关 / 开」按钮，开启后再点左侧笔记，就会在新标签页中打开。',
+    quote: '显式新开与原地翻阅互不干扰。'
+  },
+  {
+    id: 'reading',
+    title: '读书摘录',
+    lead: '好的工具像一把顺手的裁纸刀，拿起就能切开纸页，而不会每次下刀都弹出一排开关。',
+    body: '如果点的笔记已经在另一个标签页里打开过，单击会直接激活那个已有标签页，不会重复创建。',
+    quote: '保持工作区只有你真正关心的那几篇常驻文档。'
+  },
+  {
+    id: 'roadmap',
+    title: '四季度规划',
+    lead: '把编辑器打磨到零卡顿、零多余视觉噪音，所有高频操作都能在两次点击或一个快捷键内完成。',
+    body: '现在可以试试点顶栏左上角的 ‹ 和 › 按钮，在你刚才翻阅过的笔记历史之间来回切换。',
+    quote: '原地跳转配合历史栈，既有单窗口的干净，又不丢浏览轨迹。'
+  }
+];
+
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      tabs: ['weekly', 'principles'],
+      activeTabIdx: 0,
+      history: ['weekly'],
+      historyIdx: 0,
+      cmdMode: null
+    };
+  }
+  isCmdMode() {
+    return this.state.cmdMode === null ? !!this.props.cmdClickMode : this.state.cmdMode;
+  }
+  toggleCmdMode() {
+    this.setState({ cmdMode: !this.isCmdMode() });
+  }
+  openInNewTabNow() {
+    this.setState({ cmdMode: true });
+  }
+  openNote(id) {
+    const tabs = [...this.state.tabs];
+    let activeTabIdx = this.state.activeTabIdx;
+    const existingIdx = tabs.indexOf(id);
+    if (existingIdx !== -1) {
+      activeTabIdx = existingIdx;
+    } else if (this.isCmdMode() || tabs.length === 0) {
+      tabs.push(id);
+      activeTabIdx = tabs.length - 1;
+    } else {
+      tabs[activeTabIdx] = id;
+    }
+    let history = [...this.state.history];
+    let historyIdx = this.state.historyIdx;
+    if (history[historyIdx] !== id) {
+      history = history.slice(0, historyIdx + 1);
+      history.push(id);
+      historyIdx = history.length - 1;
+    }
+    this.setState({ tabs, activeTabIdx, history, historyIdx });
+  }
+  openBlankTab() {
+    const tabs = [...this.state.tabs];
+    const unused = NOTES.find((n) => !tabs.includes(n.id)) || NOTES[0];
+    tabs.push(unused.id);
+    this.setState({ tabs, activeTabIdx: tabs.length - 1 });
+  }
+  goBack() {
+    if (this.state.historyIdx <= 0) return;
+    const historyIdx = this.state.historyIdx - 1;
+    const id = this.state.history[historyIdx];
+    const tabs = [...this.state.tabs];
+    let activeTabIdx = this.state.activeTabIdx;
+    const existingIdx = tabs.indexOf(id);
+    if (existingIdx !== -1) {
+      activeTabIdx = existingIdx;
+    } else {
+      tabs[activeTabIdx] = id;
+    }
+    this.setState({ tabs, activeTabIdx, historyIdx });
+  }
+  goForward() {
+    if (this.state.historyIdx + 1 >= this.state.history.length) return;
+    const historyIdx = this.state.historyIdx + 1;
+    const id = this.state.history[historyIdx];
+    const tabs = [...this.state.tabs];
+    let activeTabIdx = this.state.activeTabIdx;
+    const existingIdx = tabs.indexOf(id);
+    if (existingIdx !== -1) {
+      activeTabIdx = existingIdx;
+    } else {
+      tabs[activeTabIdx] = id;
+    }
+    this.setState({ tabs, activeTabIdx, historyIdx });
+  }
+  renderVals() {
+    const { tabs, activeTabIdx, history, historyIdx } = this.state;
+    const cmdOn = this.isCmdMode();
+    const activeId = tabs[activeTabIdx] || 'weekly';
+    const activeNote = NOTES.find((n) => n.id === activeId) || NOTES[0];
+    const canBack = historyIdx > 0;
+    const canFwd = historyIdx + 1 < history.length;
+
+    return {
+      backBtnClass: canBack ? 'ib' : 'ib-off',
+      fwdBtnClass: canFwd ? 'ib' : 'ib-off',
+      goBack: () => this.goBack(),
+      goForward: () => this.goForward(),
+      openBlankTab: () => this.openBlankTab(),
+      toggleCmdMode: () => this.toggleCmdMode(),
+      openInNewTabNow: () => this.openInNewTabNow(),
+      cmdModeClass: cmdOn ? 'mode-btn mode-btn-on' : 'mode-btn',
+      cmdModeLabel: cmdOn ? '⌘+点击新开：已开启' : '单击原地切换（点此模拟 ⌘+点击）',
+      tabCount: String(tabs.length),
+      historyPos: String(historyIdx + 1),
+      historyTotal: String(history.length),
+      activeTitle: activeNote.title,
+      activeLead: activeNote.lead,
+      activeBody: activeNote.body,
+      activeQuote: activeNote.quote,
+      tabs: tabs.map((id, idx) => {
+        const note = NOTES.find((n) => n.id === id) || NOTES[0];
+        const isAct = idx === activeTabIdx;
+        return {
+          title: note.title,
+          pillClass: isAct ? 'tab-pill tab-pill-active' : 'tab-pill',
+          iconStroke: isAct ? '#3559a8' : '#3d4856',
+          iconFill: isAct ? '#c5d6f5' : 'none',
+          closeLabel: '关闭 ' + note.title,
+          select: () => this.setState({ activeTabIdx: idx }),
+          close: () => {
+            if (tabs.length <= 1) return;
+            const nextTabs = tabs.filter((_, i) => i !== idx);
+            const nextActive = activeTabIdx >= nextTabs.length ? nextTabs.length - 1 : activeTabIdx;
+            this.setState({ tabs: nextTabs, activeTabIdx: nextActive });
+          }
+        };
+      }),
+      notes: NOTES.map((n) => {
+        const isAct = n.id === activeId;
+        const inTab = tabs.includes(n.id);
+        return {
+          title: n.title,
+          rowClass: isAct ? 'row row-active' : 'row',
+          stroke: isAct ? '#3559a8' : '#3d4856',
+          fill: isAct ? '#c5d6f5' : 'none',
+          hint: isAct ? '当前' : (inTab ? '已开' : ''),
+          click: () => this.openNote(n.id)
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
