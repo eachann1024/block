@@ -1,20 +1,21 @@
 //! 速记小窗: a standalone 440x520 non-activating panel with three Markdown slots, toggled by a global ⌥N hotkey.
 mod header;
 mod panel;
+mod save;
 mod store;
 mod view;
 
 use std::{sync::atomic::{AtomicU32, Ordering}, time::Duration};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::{Code, HotKey, Modifiers}};
 use gpui::{
-    App, AppContext, Bounds, Entity, Global, KeyBinding, TitlebarOptions, WindowBounds,
+    App, AppContext, Entity, Global, KeyBinding, TitlebarOptions,
     WindowHandle, WindowKind, WindowOptions, actions, point, px, size,
 };
-use crate::editor::view::Editor;
+use crate::{editor::view::Editor, files::state::SavedWindowBounds};
 use panel::{configure_quick_panel, order_out_quick_panel, prepare_quick_summon};
 use view::QuickView;
 
-actions!(quick_note, [ToggleQuickNote, HideQuickNote, SlotOne, SlotTwo, SlotThree]);
+actions!(quick_note, [ToggleQuickNote, HideQuickNote, SaveToNote, SlotOne, SlotTwo, SlotThree]);
 
 static QUICK_HK_ID: AtomicU32 = AtomicU32::new(0);
 static SEARCH_HK_ID: AtomicU32 = AtomicU32::new(0);
@@ -24,11 +25,18 @@ struct QuickState {
     view: Option<Entity<QuickView>>,
     window: Option<(WindowHandle<gpui_component::Root>, Entity<QuickView>)>,
     editor: Option<Entity<Editor>>,
+    bounds: Option<SavedWindowBounds>,
     /// Kept alive for as long as the app runs, otherwise the hotkey is unregistered.
     hotkey: Option<GlobalHotKeyManager>,
     registered: Vec<HotKey>,
 }
 impl Global for QuickState {}
+
+pub(super) fn remember_bounds(bounds: SavedWindowBounds, cx: &mut App) {
+    if cx.has_global::<QuickState>() {
+        cx.global_mut::<QuickState>().bounds = Some(bounds);
+    }
+}
 
 pub(super) fn clear_window_state(cx: &mut App) {
     order_out_quick_panel();
@@ -50,11 +58,12 @@ pub fn refresh_style(cx: &mut App) {
 }
 
 /// Binds keys, the toggle action and the global hotkeys. Call once at startup.
-pub fn init(cx: &mut App) {
-    cx.set_global(QuickState::default());
+pub fn init(saved_bounds: Option<SavedWindowBounds>, cx: &mut App) {
+    cx.set_global(QuickState { bounds: saved_bounds, ..Default::default() });
     cx.bind_keys([
         KeyBinding::new("escape", HideQuickNote, Some("QuickNote")),
         KeyBinding::new("cmd-w", HideQuickNote, Some("QuickNote")),
+        KeyBinding::new("cmd-shift-s", SaveToNote, Some("QuickNote")),
         KeyBinding::new("cmd-1", SlotOne, Some("QuickNote")),
         KeyBinding::new("cmd-2", SlotTwo, Some("QuickNote")),
         KeyBinding::new("cmd-3", SlotThree, Some("QuickNote")),
@@ -62,6 +71,7 @@ pub fn init(cx: &mut App) {
     #[cfg(not(target_os = "macos"))]
     cx.bind_keys([
         KeyBinding::new("ctrl-w", HideQuickNote, Some("QuickNote")),
+        KeyBinding::new("ctrl-shift-s", SaveToNote, Some("QuickNote")),
         KeyBinding::new("ctrl-1", SlotOne, Some("QuickNote")),
         KeyBinding::new("ctrl-2", SlotTwo, Some("QuickNote")),
         KeyBinding::new("ctrl-3", SlotThree, Some("QuickNote")),
@@ -107,17 +117,28 @@ pub fn toggle(cx: &mut App) {
 
 fn open(cx: &mut App) {
     prepare_quick_summon();
-    let bounds = Bounds::centered(None, size(px(440.), px(520.)), cx);
+    let saved_bounds = cx
+        .try_global::<QuickState>()
+        .and_then(|s| s.bounds)
+        .or_else(|| crate::files::load_state().ok().and_then(|s| s.quick_window_bounds));
+    let min_size = size(px(380.), px(320.));
+    let (window_bounds, display_id) = crate::window_bounds::resolve_window_bounds(
+        saved_bounds,
+        size(px(440.), px(520.)),
+        min_size,
+        cx,
+    );
     let opened = cx.open_window(
         WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
-            window_min_size: Some(size(px(380.), px(320.))),
+            window_bounds: Some(window_bounds),
+            display_id,
+            window_min_size: Some(min_size),
             kind: WindowKind::PopUp,
             focus: true,
             show: true,
             is_movable: true,
             is_minimizable: false,
-            is_resizable: false,
+            is_resizable: true,
             titlebar: Some(TitlebarOptions {
                 title: Some(crate::theme::tr("速记", "Quick Note").into()),
                 appears_transparent: true,
@@ -131,7 +152,10 @@ fn open(cx: &mut App) {
             let editor = view.read(cx).editor.clone();
             cx.global_mut::<QuickState>().editor = Some(editor.clone());
             // Traffic-light close: write a recovery checkpoint synchronously and order out the panel.
-            window.on_window_should_close(cx, move |_, cx| {
+            window.on_window_should_close(cx, move |window, cx| {
+                let bounds = crate::window_bounds::capture_window_bounds(window, cx);
+                remember_bounds(bounds, cx);
+                let _ = crate::files::update_state(move |s| s.quick_window_bounds = Some(bounds));
                 let ready = editor.update(cx, |editor, cx| {
                     let ready = editor.prepare_to_quit();
                     if !ready { cx.notify(); }
