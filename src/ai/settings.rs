@@ -7,14 +7,15 @@ use gpui_component::input::{InputEvent, InputState};
 
 use super::presets::{self, Protocol, ProviderProfile};
 use super::provider::{self, Config};
-use crate::theme::is_en;
+use crate::theme::{is_en, tr};
 
 pub(super) enum TestNote { Ok, Err(String) }
 
 pub(crate) struct AiSettings {
     pub(super) enabled: bool, pub(super) provider: String, protocol: Protocol,
     providers: BTreeMap<String, ProviderProfile>, pub(super) show_key: bool, pub(super) last_en: bool,
-    pub(super) base_url: Entity<InputState>, pub(super) api_key: Entity<InputState>, pub(super) model: String,
+    pub(super) base_url: Entity<InputState>, pub(super) api_key: Entity<InputState>,
+    pub(super) model_filter: Entity<InputState>, pub(super) model: String,
     pub(super) models: Vec<String>, pub(super) models_err: Option<String>,
     pub(super) fetching: bool, pub(super) testing: bool, pub(super) test_note: Option<TestNote>,
     _subs: Vec<Subscription>,
@@ -47,18 +48,22 @@ impl AiSettings {
         let (url_ph, key_ph) = placeholders(&c.provider, c.protocol);
         let base_url = cx.new(|cx| InputState::new(window, cx).placeholder(url_ph).default_value(c.base_url.clone()));
         let api_key = cx.new(|cx| InputState::new(window, cx).placeholder(key_ph).masked(true).default_value(c.api_key.clone()));
+        let model_filter = cx.new(|cx| InputState::new(window, cx).placeholder(tr("筛选模型…", "Filter models…")));
         let model = c.model.trim().to_owned();
         let models = if model.is_empty() { Vec::new() } else { vec![model.clone()] };
         let mut subs = Vec::new();
         for input in [&base_url, &api_key] {
             subs.push(cx.subscribe(input, |this: &mut Self, _, e: &InputEvent, cx| {
-                if matches!(e, InputEvent::Change) { this.save(cx); }
+                if matches!(e, InputEvent::Change) { this.test_note = None; this.save(cx); }
             }));
         }
+        subs.push(cx.subscribe(&model_filter, |_: &mut Self, _, e: &InputEvent, cx| {
+            if matches!(e, InputEvent::Change) { cx.notify(); }
+        }));
         let should_fetch = c.is_complete();
         let mut this = AiSettings {
             enabled: c.enabled, provider: c.provider, protocol: c.protocol, providers: c.providers,
-            show_key: false, last_en: is_en(), base_url, api_key, model,
+            show_key: false, last_en: is_en(), base_url, api_key, model_filter, model,
             models, models_err: None, fetching: false, testing: false, test_note: None, _subs: subs,
         };
         if should_fetch { this.fetch_models(cx); }
@@ -69,6 +74,7 @@ impl AiSettings {
         let (url_ph, key_ph) = placeholders(&self.provider, self.protocol);
         self.base_url.update(cx, |i, cx| i.set_placeholder(url_ph, window, cx));
         self.api_key.update(cx, |i, cx| i.set_placeholder(key_ph, window, cx));
+        self.model_filter.update(cx, |i, cx| i.set_placeholder(tr("筛选模型…", "Filter models…"), window, cx));
     }
 
     fn current(&self, cx: &App) -> Config {
@@ -111,6 +117,7 @@ impl AiSettings {
         self.sync_placeholders(window, cx);
         self.base_url.update(cx, |i, cx| i.set_value(url, window, cx));
         self.api_key.update(cx, |i, cx| i.set_value(key, window, cx));
+        self.model_filter.update(cx, |i, cx| i.set_value(String::new(), window, cx));
         self.model = mdl.trim().to_owned();
         self.models = if self.model.is_empty() { Vec::new() } else { vec![self.model.clone()] };
         self.save(cx);
@@ -134,8 +141,8 @@ impl AiSettings {
                 this.fetching = false;
                 match result {
                     Ok(mut ids) => {
-                        if ids.is_empty() && !this.model.is_empty() {
-                            ids.push(this.model.clone());
+                        if !this.model.is_empty() && !ids.contains(&this.model) {
+                            ids.insert(0, this.model.clone());
                         }
                         this.models = ids;
                         this.models_err = None;

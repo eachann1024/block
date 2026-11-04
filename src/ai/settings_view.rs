@@ -7,9 +7,10 @@ use gpui_component::input::{Input, InputState};
 
 use super::presets::PRESETS;
 use super::settings::{AiSettings, TestNote};
-use crate::theme::{Theme, is_en, tr};
+use crate::theme::{Theme, is_dark, is_en, tr};
 use crate::ui::settings_controls::{
-    action_button, card_bg, card_title, setting_row, settings_card, tag_chip, toggle_pill,
+    action_button, card_bg, card_title, selected_bg, setting_row, settings_card,
+    status_action_button, tag_chip, toggle_pill,
 };
 
 fn input_box(input: &Entity<InputState>) -> impl IntoElement {
@@ -18,7 +19,7 @@ fn input_box(input: &Entity<InputState>) -> impl IntoElement {
 
 fn field_shell() -> gpui::Div {
     let theme = Theme::ocean();
-    div().h(px(34.)).px(px(10.)).flex().items_center().rounded(px(8.)).border_1().border_color(theme.hairline)
+    div().h(px(34.)).px(px(10.)).flex().items_center().rounded(crate::ui::radius::CONTROL).border_1().border_color(theme.btn_border)
         .bg(theme.shell).text_size(px(14.))
 }
 
@@ -32,12 +33,12 @@ impl AiSettings {
         let p = &PRESETS[ix];
         let id = p.id;
         let active = self.provider == id;
-        div().id(("ai-pcard", ix)).flex_1().min_w_0().py(px(10.)).px(px(12.)).rounded(px(8.))
+        div().id(("ai-pcard", ix)).flex_1().min_w_0().py(px(10.)).px(px(12.)).rounded(crate::ui::radius::CONTROL)
             .flex().items_center().gap(px(8.)).cursor(CursorStyle::PointingHand)
-            .when(active, |d| d.bg(theme.selected).border_1().border_color(theme.accent))
-            .when(!active, |d| d.bg(theme.shell).border_1().border_color(theme.hairline).hover(move |s| s.bg(theme.hover)))
+            .when(active, |d| d.bg(selected_bg()).border_1().border_color(theme.accent))
+            .when(!active, |d| d.bg(theme.shell).border_1().border_color(theme.btn_border).hover(move |s| s.bg(theme.hover)))
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| this.select_provider(id, w, cx)))
-            .child(div().size(px(28.)).rounded(px(6.)).bg(card_bg()).border_1().border_color(theme.hairline)
+            .child(div().size(px(28.)).rounded(crate::ui::radius::CONTROL).bg(card_bg()).border_1().border_color(theme.hairline)
                 .flex().items_center().justify_center().flex_none()
                 .child(crate::icons::brand_icon(p.icon(), px(16.), gpui::rgb(p.brand_rgb).into())))
             .child(div().flex_1().min_w_0().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(500.)).text_color(theme.text)
@@ -72,10 +73,40 @@ impl AiSettings {
             else if self.models.is_empty() { tr("获取模型", "Fetch Models") } else { tr("重新获取模型", "Refresh Models") };
         let test_label = if self.testing { tr("测试中…", "Testing…") }
             else if test_ok { tr("连接正常", "Connected") } else { tr("连接测试", "Test Connection") };
+        let fetch_icon = if self.fetching { crate::icons::Icon::Spinner } else { crate::icons::Icon::Refresh };
+        let test_icon = if self.testing {
+            crate::icons::Icon::Spinner
+        } else if test_ok {
+            crate::icons::Icon::Check
+        } else {
+            crate::icons::Icon::Sparkles
+        };
         let error = self.models_err.clone().or_else(|| match &self.test_note {
             Some(TestNote::Err(e)) => Some(e.clone()),
             _ => None,
         });
+        let filter_query = self.model_filter.read(cx).value().trim().to_lowercase();
+        let filter_box = field_shell().flex_1().min_w_0().gap(px(6.))
+            .child(crate::icons::icon(crate::icons::Icon::FindSearch, px(15.), theme.mono_icon_colors(theme.text_secondary)))
+            .child(input_box(&self.model_filter))
+            .when(!filter_query.is_empty(), |d| {
+                d.child(
+                    div().id("ai-filter-clear").size(px(20.)).rounded(px(4.)).flex().items_center().justify_center()
+                        .cursor(CursorStyle::PointingHand)
+                        .hover(move |s| s.bg(theme.hover))
+                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, w, cx| {
+                            this.model_filter.update(cx, |i, cx| i.set_value(String::new(), w, cx));
+                            cx.notify();
+                        }))
+                        .child(crate::icons::icon(crate::icons::Icon::Close, px(12.), theme.mono_icon_colors(theme.text_secondary))),
+                )
+            });
+        let toolbar = div().w_full().min_w_0().flex().items_center().gap(px(8.))
+            .child(filter_box)
+            .child(status_action_button("ai-fetch-models", Some(fetch_icon), fetch_label, false, !self.fetching)
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.fetch_models(cx))))
+            .child(status_action_button("ai-test", Some(test_icon), test_label, test_ok, !self.testing)
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.test(cx))));
         let model_list = if self.models.is_empty() {
             let hint = if self.fetching {
                 tr("正在获取模型列表…", "Fetching models…")
@@ -84,26 +115,39 @@ impl AiSettings {
             };
             div().id("ai-model-list").text_size(px(14.)).text_color(theme.text_secondary).child(hint)
         } else {
-            self.models.iter().cloned().fold(div().id("ai-model-list").flex().flex_wrap().gap(px(6.)), |d, id| {
-                let active = id == current_model;
-                let pick = id.clone();
-                d.child(
-                    tag_chip(SharedString::from(format!("ai-model-{id}")), id, active, true)
-                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                            this.select_model(pick.clone(), cx);
-                        })),
-                )
-            })
+            let filtered: Vec<String> = self.models.iter()
+                .filter(|m| filter_query.is_empty() || m.to_lowercase().contains(&filter_query))
+                .cloned()
+                .collect();
+            if filtered.is_empty() {
+                div().id("ai-model-list").text_size(px(14.)).text_color(theme.text_secondary)
+                    .child(tr("无匹配的模型", "No matching models"))
+            } else {
+                filtered.into_iter().fold(div().id("ai-model-list").flex().flex_wrap().gap(px(8.)), |d, id| {
+                    let active = id == current_model;
+                    let pick = id.clone();
+                    d.child(
+                        tag_chip(SharedString::from(format!("ai-model-{id}")), id, active, true)
+                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                                this.select_model(pick.clone(), cx);
+                            })),
+                    )
+                })
+            }
         };
+        let dark = is_dark();
         settings_card(16.)
             .child(card_title(tr("模型与连接", "Model & Connection")))
-            .child(setting_row(tr("默认模型", "Default Model"), div().flex().items_center().gap(px(8.))
-                .child(action_button("ai-fetch-models", fetch_label, false, !self.fetching)
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.fetch_models(cx))))
-                .child(action_button("ai-test", test_label, test_ok, !self.testing)
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.test(cx))))))
+            .child(toolbar)
             .child(model_list)
-            .children(error.map(|e| div().text_size(px(13.)).text_color(gpui::rgb(0xb42318)).child(SharedString::from(e))))
+            .children(error.map(|e| {
+                div().px(px(12.)).py(px(8.)).rounded(crate::ui::radius::CONTROL).border_1()
+                    .bg(if dark { gpui::rgb(0x3a1d1d) } else { gpui::rgb(0xfef3f2) })
+                    .border_color(if dark { gpui::rgb(0x6e2c2c) } else { gpui::rgb(0xfecdca) })
+                    .text_size(px(14.))
+                    .text_color(if dark { gpui::rgb(0xf97066) } else { gpui::rgb(0xb42318) })
+                    .child(SharedString::from(e))
+            }))
     }
 }
 
