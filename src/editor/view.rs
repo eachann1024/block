@@ -175,6 +175,8 @@ impl Render for Editor {
         }).absolute().size_full();
         let floating = self.toolbar_anchor.filter(|_| !self.minimal && !self.caret.is_empty() && !self.selecting && self.dragging.is_none()
             && self.caret.composing.is_none() && window.is_window_active() && self.focus.is_focused(window));
+        let std_w = super::chrome::standard_width(theme.content_width);
+        let rail_w = if !self.minimal && self.annotate.has_visible_rail() { px(308.) } else { px(0.) };
         div().size_full().min_w_0().relative()
             .on_action(cx.listener(|this, _: &Find, w, cx| this.open_find(w, cx)))
             .child(div().id("editor").key_context("Editor").track_focus(&self.focus).size_full().min_w_0()
@@ -211,16 +213,16 @@ impl Render for Editor {
                 .on_mouse_move(cx.listener(|this, event, _, cx| this.pointer_move(event, cx)))
                 .on_mouse_up(MouseButton::Left, cx.listener(|this, event: &gpui::MouseUpEvent, _, cx| this.finish_drag(event.position, cx)))
                 .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.clear_pointer(); cx.notify(); }))
-                // Scroll area: the column is centred in what is left after the stable scrollbar gutter.
-                .child(div().flex_1().min_h_0().min_w_0().w_full().relative().flex().pr(px(scrollbar::GUTTER))
+                // Scroll area: the column is centred in what is left after the stable scrollbar gutter,
+                // shifting left only when needed to keep the 308px comment rail clear.
+                .child(div().flex_1().min_h_0().min_w_0().w_full().relative().flex().pr(px(scrollbar::GUTTER) + rail_w)
                     .on_scroll(scrollbar::forward_wheel(&self.list))
-                    .child(div().h_full().min_w_0().w_full().mx_auto()
-                        .max_w(super::chrome::standard_width(theme.content_width))
-                        .when(!self.minimal && self.annotate.has_visible_rail(), |paper| paper.pr(px(308.)))
-                        .when(self.minimal, |paper| paper.flex())
-                        // Minimal mode pulls the (unused) handle gutter out of view: 20px text padding.
-                        .when(self.path.is_some(), |paper| paper.child(rows))
-                        .when(self.path.is_none() && !self.persistence.loading, |paper| paper.child(crate::mascot::editor_empty(cx))))
+                    .child(div().h_full().min_w_0().w_full().mx_auto().max_w(std_w + rail_w).flex().justify_end()
+                        .child(div().h_full().min_w_0().w_full().max_w(std_w)
+                            .when(self.minimal, |paper| paper.flex())
+                            // Minimal mode pulls the (unused) handle gutter out of view: 20px text padding.
+                            .when(self.path.is_some(), |paper| paper.child(rows))
+                            .when(self.path.is_none() && !self.persistence.loading, |paper| paper.child(crate::mascot::editor_empty(cx)))))
                     .when(self.path.is_some(), |area| area.child(scrollbar::vertical("editor-scrollbar", &self.list, px(pad.0 + pad.1)))))
                 .when_some(self.table_chrome.clone(), |root, chrome| {
                     let dims = self.table_dimensions(chrome.block).unwrap_or((1, 1));
