@@ -1,8 +1,8 @@
 //! Visible block shaping supplies drawing, selection, hit testing and IME geometry.
 use std::{cell::RefCell, rc::Rc};
-use gpui::{App, AvailableSpace, BorderStyle, Bounds, Element, ElementId, FontWeight, GlobalElementId,
+use gpui::{App, AvailableSpace, Bounds, Element, ElementId, FontWeight, GlobalElementId,
     IntoElement, LayoutId, Pixels, SharedString, Style, TextAlign, Window,
-    fill, point, px, quad, relative, rgb, size, transparent_black};
+    fill, point, px, relative, rgb, size};
 use crate::theme::Theme;
 use super::{model::Kind, text_runs::{runs, plain}, table_layout,
     view::{Editor, layout::TextLayout}};
@@ -176,8 +176,7 @@ impl Element for BlockText {
                     if let Some(range) = selected {
                         // Crossing cells selects whole cells with the accent tint; otherwise highlight the text.
                         if !table_layout::paint_cell_selection(layout, &range, window) {
-                            sel_rects = layout.rects(range);
-                            for rect in &sel_rects { window.paint_quad(quad(*rect, px(2.), Theme::ocean().selection, 0., transparent_black(), BorderStyle::default())); }
+                            sel_rects = super::inline_code::paint_selection(layout, range, window);
                         }
                     }
                 }
