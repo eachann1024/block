@@ -106,12 +106,12 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, path: PathBuf, spec: 
     let scale = if spec.align == Align::Center { 2. } else { 1. };
     let focus = editor.clone();
     let natural_path = path.clone();
-    let picture = gpui::img(path).rounded(px(6.));
+    let picture = gpui::img(path).rounded(px(4.));
     let picture = match width { Some(w) => picture.w(px(w)), None => picture.max_w(px(DEFAULT_MAX)).max_h(px(420.)) };
     let (move_editor, up_editor, out_editor) = (editor.clone(), editor.clone(), editor.clone());
     let ring = if crate::theme::is_dark() { 0x2b6be6 } else { 0x2f6fe4 };
     let pct = size_percent(draft.map(|d| d.width), spec.width, base);
-    div().relative().w_full().py_1().flex().flex_col()
+    div().relative().w_full().flex().flex_col()
         .when(spec.align == Align::Center, |s| s.items_center()).when(spec.align == Align::Right, |s| s.items_end())
         .child(gpui::canvas(|bounds, _, cx| { cx.default_global::<ImageUi>().avail = f32::from(bounds.size.width); }, |_, _, _, _| {})
             .absolute().size_full())
@@ -125,7 +125,7 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, path: PathBuf, spec: 
                 ui.measured.insert(id, w);
                 if record_natural && w > 0. { ui.natural.insert(natural_path.clone(), w); }
             }, |_, _, _, _| {}).absolute().size_full())
-            .when(active, |s| s.child(div().absolute().inset_0().rounded(px(6.)).border(px(2.)).border_color(gpui::rgb(ring))))
+            .when(active, |s| s.child(div().absolute().inset_0().rounded(px(4.)).border(px(2.)).border_color(gpui::rgb(ring))))
             .child(handle(id, true, true, -scale, &group, show)).child(handle(id, false, true, scale, &group, show))
             .child(handle(id, true, false, -scale, &group, show)).child(handle(id, false, false, scale, &group, show))
             .on_drag_move::<Resize>(move |event, _, cx| resize_move(&move_editor, id, f32::from(event.event.position.x), cx))

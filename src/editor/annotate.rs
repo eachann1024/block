@@ -1,10 +1,10 @@
 //! Annotation mode (F-Annotate): selection comments, emoji reactions, inline
-//! highlights (`#fbeed5` selected / `#fdf3c4` AI-modified), and AI rewrites.
+//! highlights (`#fef0d1` anchor / `#fdda8c` active / `#fdf3c4` AI-modified), and AI rewrites.
 use std::{
     collections::BTreeMap, fs, ops::Range, path::{Path, PathBuf}, process::Command,
     sync::{Arc, atomic::AtomicBool, mpsc}, time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use gpui::{BorderStyle, Bounds, Context, Entity, Pixels, Point, Subscription, Window, point, prelude::*, px, quad, rgb, transparent_black};
+use gpui::{BorderStyle, Context, Entity, Pixels, Point, Subscription, Window, point, prelude::*, px, quad, rgb, transparent_black};
 use gpui_component::input::{InputEvent, InputState};
 use serde::{Deserialize, Serialize};
 use crate::theme::tr;
@@ -13,11 +13,12 @@ use super::{
     view::{Editor, layout::TextLayout, selection::Position},
 };
 
-pub(super) const HL_SELECT_BG: u32 = 0xfbeed5;
-pub(super) const HL_SELECT_BORDER: u32 = 0xecd9b4;
+pub(super) const HL_SELECT_BG: u32 = 0xfef0d1;
+pub(super) const HL_ACTIVE_BG: u32 = 0xfdda8c;
+pub(super) const HL_SELECT_BG_DARK: u32 = 0x4a3c21;
+pub(super) const HL_ACTIVE_BG_DARK: u32 = 0x81611e;
 pub(super) const HL_AI_BG: u32 = 0xfdf3c4;
 pub(super) const HL_AI_BORDER: u32 = 0xefd77a;
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(super) struct Comment {
     pub id: u64, pub block_index: usize, pub start: usize, pub end: usize,
@@ -72,13 +73,14 @@ fn save_for(path: &Path, comments: &[Comment]) {
     if let Ok(json) = serde_json::to_string_pretty(&store) { let _ = fs::write(file, json); }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn next_id() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(1) }
-
+#[cfg(target_family = "wasm")]
+fn next_id() -> u64 { let _ = (SystemTime::UNIX_EPOCH, UNIX_EPOCH); static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
 fn now_hm() -> String {
     Command::new("date").arg("+%H:%M").output().ok().and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).unwrap_or_else(|| tr("刚刚", "Just now").into())
 }
-
 /// Resolves a comment's current `(block_id, byte_range, is_ai_modified)` in `doc`.
 pub(super) fn resolve_comment_span(doc: &Doc, comment: &Comment) -> Option<(u64, Range<usize>, bool)> {
     if let Some(rewritten) = comment.ai_rewritten.as_deref().filter(|s| !s.is_empty()) {
@@ -104,27 +106,26 @@ fn find_snippet(doc: &Doc, preferred_index: usize, preferred_start: usize, needl
         .min_by_key(|(dist, _, _)| *dist).map(|(_, id, range)| (id, range))
 }
 
-/// Paints `#fbeed5` (annotated selection) and `#fdf3c4` (AI-modified) spans under block text.
+/// Paints comment anchors (`#fab219` at 20% / 45% active, eased 200ms), composer selection, AI spans; no borders.
 pub(super) fn paint_highlights(editor: &Editor, block: u64, layout: &TextLayout, window: &mut Window) {
+    let dark = crate::theme::is_dark();
+    let (base, active_bg) = if dark { (HL_SELECT_BG_DARK, HL_ACTIVE_BG_DARK) } else { (HL_SELECT_BG, HL_ACTIVE_BG) };
     for comment in &editor.annotate.comments {
         let Some((id, range, is_ai)) = resolve_comment_span(&editor.doc, comment) else { continue };
         if id != block || range.is_empty() { continue; }
-        let (bg, border_col) = if is_ai { (HL_AI_BG, HL_AI_BORDER) } else { (HL_SELECT_BG, HL_SELECT_BORDER) };
-        let active = editor.annotate.active_comment == Some(comment.id);
+        let target = if editor.annotate.active_comment == Some(comment.id) { 1. } else { 0. };
+        let level = crate::ui::fade::level(comment.id, target, window);
+        let normal = if is_ai && !dark { HL_AI_BG } else { base };
+        let color = crate::ui::fade::mix(normal, active_bg, level);
         for rect in layout.rects(range) {
-            let rect: Bounds<Pixels> = rect;
-            let (bw, bc, bs) = if active { (px(1.), gpui::Hsla::from(rgb(border_col)), BorderStyle::Solid) } else { (px(0.), transparent_black(), BorderStyle::default()) };
-            window.paint_quad(quad(rect, px(2.), rgb(bg), bw, bc, bs));
+            window.paint_quad(quad(rect, px(2.), color, px(0.), transparent_black(), BorderStyle::default()));
         }
     }
-    if let Some(c) = editor.annotate.composer.as_ref().filter(|c| c.block_id == block && !c.range.is_empty()) {
-        for rect in layout.rects(c.range.clone()) {
-            window.paint_quad(quad(rect, px(2.), rgb(HL_SELECT_BG), px(1.), rgb(HL_SELECT_BORDER), BorderStyle::Solid));
-        }
-    }
-    if let Some(p) = editor.annotate.reactions.as_ref().filter(|p| p.block_id == block && !p.range.is_empty()) {
-        for rect in layout.rects(p.range.clone()) {
-            window.paint_quad(quad(rect, px(2.), rgb(HL_SELECT_BG), px(0.), transparent_black(), BorderStyle::default()));
+    let composing = editor.annotate.composer.as_ref().filter(|c| c.block_id == block && !c.range.is_empty()).map(|c| c.range.clone());
+    let reacting = editor.annotate.reactions.as_ref().filter(|p| p.block_id == block && !p.range.is_empty()).map(|p| p.range.clone());
+    for range in composing.into_iter().chain(reacting) {
+        for rect in layout.rects(range) {
+            window.paint_quad(quad(rect, px(2.), rgb(base), px(0.), transparent_black(), BorderStyle::default()));
         }
     }
 }

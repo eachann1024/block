@@ -24,15 +24,15 @@ pub(super) fn named_color_hex(value: &str, background: bool, dark: bool) -> Opti
         ("blue" | "#245bb2" | "#a8c8ff" | "#1a73e8", false) => "blue",
         ("purple" | "#5036b1" | "#6940a5" | "#d0baf8" | "#7627bb", false) => "purple",
         ("pink" | "#ad1a72" | "#f1b6d7" | "#c14c8a", false) => "pink",
-        ("gray" | "#ebeced" | "#3d3d3a", true) => "gray",
+        ("gray" | "grey" | "#ebeced" | "#e1e1de" | "#3d3d3a", true) => "gray",
         ("brown" | "#e9e5e3" | "#49352c", true) => "brown",
         ("red" | "#fbe4e4" | "#512b31", true) => "red",
         ("orange" | "#f6e9d9" | "#50351f", true) => "orange",
-        ("yellow" | "#f9e8c1" | "#fbf3db" | "#453a1e", true) => "yellow",
-        ("green" | "#ddedea" | "#253f34", true) => "green",
-        ("blue" | "#ddebf1" | "#223f52", true) => "blue",
-        ("purple" | "#eae4f2" | "#3b3055", true) => "purple",
-        ("pink" | "#f4dfeb" | "#4b2c42", true) => "pink",
+        ("yellow" | "#f9e8c1" | "#fbf3db" | "#fde6b3" | "#453a1e", true) => "yellow",
+        ("green" | "#ddedea" | "#c7eac5" | "#253f34", true) => "green",
+        ("blue" | "#ddebf1" | "#cfe2f9" | "#223f52", true) => "blue",
+        ("purple" | "#eae4f2" | "#e0dcf8" | "#3b3055", true) => "purple",
+        ("pink" | "#f4dfeb" | "#f7d3e1" | "#4b2c42", true) => "pink",
         _ => return None,
     };
     Some(match (name, background, dark) {
@@ -46,15 +46,15 @@ pub(super) fn named_color_hex(value: &str, background: bool, dark: bool) -> Opti
         ("blue", false, false) => "#245bb2", ("blue", false, true) => "#a8c8ff",
         ("purple", false, false) => "#5036b1", ("purple", false, true) => "#d0baf8",
         ("pink", false, false) => "#ad1a72", ("pink", false, true) => "#f1b6d7",
-        ("gray", true, false) => "#ebeced", ("gray", true, true) => "#3d3d3a",
+        ("gray", true, false) => "#e1e1de", ("gray", true, true) => "#3d3d3a",
         ("brown", true, false) => "#e9e5e3", ("brown", true, true) => "#49352c",
         ("red", true, false) => "#fbe4e4", ("red", true, true) => "#512b31",
         ("orange", true, false) => "#f6e9d9", ("orange", true, true) => "#50351f",
-        ("yellow", true, false) => "#f9e8c1", ("yellow", true, true) => "#453a1e",
-        ("green", true, false) => "#ddedea", ("green", true, true) => "#253f34",
-        ("blue", true, false) => "#ddebf1", ("blue", true, true) => "#223f52",
-        ("purple", true, false) => "#eae4f2", ("purple", true, true) => "#3b3055",
-        ("pink", true, false) => "#f4dfeb", ("pink", true, true) => "#4b2c42",
+        ("yellow", true, false) => "#fde6b3", ("yellow", true, true) => "#453a1e",
+        ("green", true, false) => "#c7eac5", ("green", true, true) => "#253f34",
+        ("blue", true, false) => "#cfe2f9", ("blue", true, true) => "#223f52",
+        ("purple", true, false) => "#e0dcf8", ("purple", true, true) => "#3b3055",
+        ("pink", true, false) => "#f7d3e1", ("pink", true, true) => "#4b2c42",
         _ => return None,
     })
 }
@@ -108,21 +108,20 @@ pub(super) fn runs(block: &Block, text: &str, color: Hsla) -> Vec<TextRun> {
         let (start,end) = (edge[0],edge[1]); let mut run = plain(end-start, color);
         let marks = block.spans.iter().find(|span| span.start <= start && end <= span.end)
             .map_or(&[][..], |span| span.marks.as_slice());
-        if marks.contains(&MarkKind::Bold) { run.font.weight = FontWeight::BOLD; }
+        if marks.contains(&MarkKind::Bold) { run.font.weight = FontWeight::SEMIBOLD; }
         if marks.contains(&MarkKind::Italic) { run.font.style = FontStyle::Italic; }
         if marks.contains(&MarkKind::Code) { run.font.family = crate::theme::mono_font_family().into(); run.font.fallbacks = None; run.background_color = Some(Theme::ocean().code_bg); }
         if marks.contains(&MarkKind::Strike) { run.strikethrough = Some(StrikethroughStyle { color:Some(color), thickness:px(1.) }); }
         for tag in block.meta.inline.iter().filter(|tag| tag.start <= start && end <= tag.end) {
             if tag.name == "a" {
                 run.color = gpui::rgb(0x256abf).into();
-                run.underline = Some(UnderlineStyle { color:Some(gpui::rgb(0x9dbcf5).into()), thickness:px(1.), wavy:false });
             }
             if tag.name == "u" || css(&tag.attrs,"text-decoration").is_some_and(|value| value.contains("underline")) {
                 run.underline = Some(UnderlineStyle { color:None, thickness:px(1.), wavy:false });
             }
             if let Some(color) = attribute_color(&tag.attrs, false) { run.color = color; }
             if let Some(color) = attribute_color(&tag.attrs, true) { run.background_color = Some(color); }
-            if matches!(css(&tag.attrs,"font-weight"), Some("bold"|"600"|"700"|"800"|"900")) { run.font.weight = FontWeight::BOLD; }
+            if matches!(css(&tag.attrs,"font-weight"), Some("bold"|"600"|"700"|"800"|"900")) { run.font.weight = FontWeight::SEMIBOLD; }
             if css(&tag.attrs,"font-style") == Some("italic") { run.font.style = FontStyle::Italic; }
         }
         result.push(run);
