@@ -13,7 +13,7 @@ pub(super) fn hovered() -> Option<(u64, usize, usize)> { HOVER.with(|h| h.get())
 pub(super) fn track_hover(editor: Entity<Editor>, block: u64, layout: &TextLayout, window: &mut Window) {
     let Some(grid) = table_layout::grid_rect(layout) else { return };
     let (rows, columns) = table_layout::spans(layout);
-    let reach = Bounds::from_corners(grid.origin - point(px(36.), px(32.)), grid.bottom_right() + point(px(36.), px(36.)));
+    let reach = Bounds::from_corners(grid.origin - point(px(36.), px(32.)), grid.bottom_right() + point(px(48.), px(36.)));
     window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, _, cx| {
         if phase != gpui::DispatchPhase::Bubble || event.dragging() { return; }
         let at = event.position; let current = hovered();
@@ -87,50 +87,49 @@ pub(super) enum TableCmd {
 impl TableCmd {
     pub fn label(self) -> &'static str {
         match self {
-            TableCmd::InsertRowAbove => "在上方插入行", TableCmd::InsertRowBelow => "在下方插入行",
-            TableCmd::InsertColLeft => "在左侧插入列", TableCmd::InsertColRight => "在右侧插入列",
-            TableCmd::MoveRowUp => "上移一行", TableCmd::MoveRowDown => "下移一行",
-            TableCmd::MoveColLeft => "左移一列", TableCmd::MoveColRight => "右移一列",
-            TableCmd::Align(CellAlignment::Left) => "列左对齐", TableCmd::Align(CellAlignment::Center) => "列居中",
-            TableCmd::Align(CellAlignment::Right) => "列右对齐",
-            TableCmd::ClearRow | TableCmd::ClearColumn => "清空内容",
-            TableCmd::DeleteRow => "删除行", TableCmd::DeleteColumn => "删除列",
-            TableCmd::DeleteTable => "删除表格", TableCmd::SelectTable => "选中整个表格",
-            TableCmd::CopyTable => "复制表格",
-            TableCmd::DuplicateRow => "复制行", TableCmd::DuplicateColumn => "复制列",
-            TableCmd::AppendRow => "在末尾添加行", TableCmd::AppendColumn => "在末尾添加列",
+            TableCmd::InsertRowAbove => "Insert row above", TableCmd::InsertRowBelow => "Insert row below",
+            TableCmd::InsertColLeft => "Insert column left", TableCmd::InsertColRight => "Insert column right",
+            TableCmd::MoveRowUp => "Move row up", TableCmd::MoveRowDown => "Move row down",
+            TableCmd::MoveColLeft => "Move column left", TableCmd::MoveColRight => "Move column right",
+            TableCmd::Align(CellAlignment::Left) => "Align left", TableCmd::Align(CellAlignment::Center) => "Align center",
+            TableCmd::Align(CellAlignment::Right) => "Align right",
+            TableCmd::ClearRow | TableCmd::ClearColumn => "Clear contents",
+            TableCmd::DeleteRow => "Delete row", TableCmd::DeleteColumn => "Delete column",
+            TableCmd::DeleteTable => "Delete table", TableCmd::SelectTable => "Select table",
+            TableCmd::CopyTable => "Copy table",
+            TableCmd::DuplicateRow => "Duplicate row", TableCmd::DuplicateColumn => "Duplicate column",
+            TableCmd::AppendRow => "Insert row below", TableCmd::AppendColumn => "Insert column right",
         }
     }
-    pub fn danger(self) -> bool { matches!(self, TableCmd::DeleteRow | TableCmd::DeleteColumn | TableCmd::DeleteTable) }
+    pub fn icon(self) -> crate::icons::Icon {
+        use crate::icons::Icon;
+        match self {
+            TableCmd::InsertColLeft => Icon::ColInsertLeft,
+            TableCmd::InsertColRight | TableCmd::AppendColumn => Icon::ColInsertRight,
+            TableCmd::DeleteColumn => Icon::ColDelete, TableCmd::DeleteRow => Icon::RowDelete,
+            TableCmd::InsertRowAbove => Icon::RowInsertAbove,
+            TableCmd::InsertRowBelow | TableCmd::AppendRow => Icon::RowInsertBelow,
+            TableCmd::MoveRowUp => Icon::ArrowUp, TableCmd::MoveRowDown => Icon::ArrowDown,
+            TableCmd::MoveColLeft => Icon::ChevronLeft, TableCmd::MoveColRight => Icon::ChevronRight,
+            TableCmd::Align(CellAlignment::Left) => Icon::AlignLeft, TableCmd::Align(CellAlignment::Center) => Icon::AlignCenter,
+            TableCmd::Align(CellAlignment::Right) => Icon::AlignRight, TableCmd::ClearRow | TableCmd::ClearColumn => Icon::Eraser,
+            TableCmd::DeleteTable => Icon::Trash, TableCmd::SelectTable => Icon::SelectAll,
+            TableCmd::CopyTable => Icon::Copy, TableCmd::DuplicateRow | TableCmd::DuplicateColumn => Icon::Duplicate,
+        }
+    }
+    pub fn danger(self) -> bool { matches!(self, TableCmd::DeleteTable) }
+    pub fn disabled(self, rows: usize, columns: usize) -> bool {
+        matches!((self, rows, columns), (TableCmd::DeleteRow, 0..=1, _) | (TableCmd::DeleteColumn, _, 0..=1))
+    }
 }
 /// Menu contents for each kind of selection, in display order. `None` separates groups.
-pub(super) fn menu_items(sel: TableSel, rows: usize, columns: usize) -> Vec<Option<TableCmd>> {
+pub(super) fn menu_items(sel: TableSel, _rows: usize, _columns: usize) -> Vec<Option<TableCmd>> {
     use TableCmd::*;
     match sel {
-        TableSel::Column(c) => {
-            let mut items = vec![Some(InsertColLeft), Some(InsertColRight), Some(DuplicateColumn)];
-            if c > 0 { items.push(Some(MoveColLeft)); }
-            if c + 1 < columns { items.push(Some(MoveColRight)); }
-            items.extend([None, Some(Align(CellAlignment::Left)), Some(Align(CellAlignment::Center)),
-                Some(Align(CellAlignment::Right)), None, Some(ClearColumn)]);
-            if columns > 1 { items.push(Some(DeleteColumn)); }
-            items
-        }
-        TableSel::Row(r) => {
-            let mut items = vec![Some(InsertRowAbove), Some(InsertRowBelow), Some(DuplicateRow)];
-            if r > 0 { items.push(Some(MoveRowUp)); }
-            if r + 1 < rows { items.push(Some(MoveRowDown)); }
-            items.extend([None, Some(ClearRow)]);
-            if rows > 1 { items.push(Some(DeleteRow)); }
-            items
-        }
-        TableSel::Cell(..) => {
-            let mut items = vec![Some(InsertRowAbove), Some(InsertRowBelow), Some(InsertColLeft), Some(InsertColRight), None];
-            if rows > 1 { items.push(Some(DeleteRow)); }
-            if columns > 1 { items.push(Some(DeleteColumn)); }
-            items.extend([None, Some(SelectTable), Some(CopyTable), Some(DeleteTable)]);
-            items
-        }
+        TableSel::Column(_) => vec![Some(InsertColLeft), Some(InsertColRight), Some(DeleteColumn)],
+        TableSel::Row(_) => vec![Some(InsertRowAbove), Some(InsertRowBelow), Some(DeleteRow)],
+        TableSel::Cell(..) => vec![Some(InsertRowAbove), Some(InsertRowBelow), Some(InsertColLeft), Some(InsertColRight),
+            None, Some(DeleteRow), Some(DeleteColumn), None, Some(SelectTable), Some(CopyTable), Some(DeleteTable)],
         TableSel::Whole => vec![Some(SelectTable), Some(CopyTable), None, Some(DeleteTable)],
     }
 }
@@ -250,31 +249,36 @@ impl Editor {
         }
     }
     pub(in crate::editor) fn open_table_menu(&mut self, id: u64, sel: TableSel, anchor: Point<Pixels>, cx: &mut Context<Self>) {
-        // Row menus open right of the row handle, column menus below the column handle.
+        // Row menus open right of the row handle, column menus 4px below and left-aligned with the column handle.
         let chrome = self.table_chrome.as_ref().filter(|c| c.block == id);
         let anchor = match (sel, chrome) {
-            (TableSel::Row(r), Some(c)) => c.rows.get(r).map_or(anchor, |s| point(c.bounds.left(), s.0)),
+            (TableSel::Row(r), Some(c)) => c.rows.get(r)
+                .map_or(anchor, |s| point(c.bounds.left() + px(11.), (s.0 + s.1) / 2. - px(13.))),
             (TableSel::Column(i), Some(c)) => c.columns.get(i)
-                .map_or(anchor, |s| point((s.0 + s.1) / 2. - px(14.), c.bounds.top())),
+                .map_or(anchor, |s| point((s.0 + s.1) / 2. - px(13.), c.bounds.top() + px(11.))),
             _ => anchor,
         };
         self.table_menu = Some(TableMenu { block: id, sel, anchor }); cx.notify();
     }
-    /// Shift+F10: the row and column options for the cell holding the caret, or the block handle menu outside tables.
+    /// Shift+F10: the row and column options for the cell holding the caret.
     pub(in crate::editor) fn open_cell_menu(&mut self, cx: &mut Context<Self>) {
-        let Some((id, r, c)) = self.cell_of_caret() else { self.open_handle_menu_shortcut(cx); return };
+        let Some((id, r, c)) = self.cell_of_caret() else { return };
         let Some(layout) = self.layouts.get(&id) else { return };
         let (rows, columns) = table_layout::spans(layout);
         let (Some(x), Some(y)) = (columns.get(c).map(|s| s.0), rows.get(r).map(|s| s.1)) else { return };
         self.open_table_menu(id, TableSel::Cell(r, c), point(x, y), cx);
     }
     /// Reads geometry published by the final paint, so overlays never use prepaint attempts.
-    /// Shown for the hovered table; an open menu or a drag freezes it on its row and column.
+    /// Shown for the hovered table; an open menu, drag or selection keeps the chrome visible.
     pub(in crate::editor) fn table_chrome_geometry(&self, window: &Window) -> Option<TableChrome> {
         if self.path.is_none() { return None; }
-        let frozen = self.table_menu.map(|m| m.block).or(self.table_drag.map(|d| d.block));
+        let frozen = self.table_menu.map(|m| m.block)
+            .or(self.table_drag.map(|d| d.block))
+            .or(self.table_sel.map(|(id, _)| id));
         let (id, cell) = match frozen {
-            Some(id) => (id, self.table_chrome.as_ref().filter(|c| c.block == id).map(|c| c.cell)
+            Some(id) => (id, hovered().filter(|h| h.0 == id && self.table_menu.is_none() && self.table_drag.is_none())
+                .map(|h| (h.1, h.2))
+                .or_else(|| self.table_chrome.as_ref().filter(|c| c.block == id).map(|c| c.cell))
                 .or_else(|| self.cell_of_caret().filter(|x| x.0 == id).map(|x| (x.1, x.2))).unwrap_or((0, 0))),
             None => { let (id, r, c) = hovered()?; (id, (r, c)) }
         };
@@ -282,7 +286,7 @@ impl Editor {
         let layout = self.layouts.get(&id)?;
         let bounds = table_layout::grid_rect(layout)?;
         // Hover is only refreshed on mouse move; after a scroll (Cmd+Up, caret jumps) re-check the pointer.
-        let reach = Bounds::from_corners(bounds.origin - point(px(36.), px(32.)), bounds.bottom_right() + point(px(36.), px(36.)));
+        let reach = Bounds::from_corners(bounds.origin - point(px(36.), px(32.)), bounds.bottom_right() + point(px(48.), px(36.)));
         if frozen.is_none() && !reach.contains(&window.mouse_position()) { return None; }
         let viewport = self.list.viewport_bounds();
         if bounds.bottom() < viewport.top() || bounds.top() > viewport.bottom() { return None; }

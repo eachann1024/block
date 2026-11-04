@@ -273,9 +273,11 @@ pub(in crate::editor) fn columns_row(this: &Editor, group: Range<usize>, cx: &mu
         for (idx, _) in indices { card = card.child(render_block_row(this, idx, cx)); }
         cols_el = cols_el.child(card);
     }
+    // 暂时禁用普通块把手与块菜单（保留完整实现代码以备后续恢复）
+    let show_col_grip = false && group_active;
     let handle = div().w(px(HANDLE_WIDTH)).flex_shrink_0().pt(px(6.)).flex().items_start().justify_end().pr(px(ROW_GAP))
         .on_mouse_move(cx.listener(move |this, _, _, cx| this.hover_block(handle_id, true, cx)))
-        .when(group_active, |row| row.child(grip_button(TypeMark::Icon(Icon::Columns), handle_id, ("col-grip", gid as usize), cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
+        .when(show_col_grip, |row| row.child(grip_button(TypeMark::Icon(Icon::Columns), handle_id, ("col-grip", gid as usize), cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
             this.begin_drag(handle_id, cx); this.grip_origin = Some(event.position); cx.stop_propagation();
         })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
             if this.dragging == Some(handle_id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
