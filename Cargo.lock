@@ -511,6 +511,38 @@ dependencies = [
 
 [[package]]
 name = "block"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cocoa 0.27.0",
+ "cosmic-text",
+ "dirs 7.0.0",
+ "global-hotkey",
+ "gpui-component",
+ "gpui-pre",
+ "gpui-pre-platform",
+ "html5ever 0.40.1",
+ "im",
+ "latex-rust",
+ "mermaid-rs-renderer",
+ "pulldown-cmark",
+ "ropey",
+ "serde",
+ "serde_json",
+ "tiny-skia 0.12.0",
+ "tree-sitter-css",
+ "tree-sitter-html",
+ "tree-sitter-javascript",
+ "tree-sitter-md",
+ "tree-sitter-python",
+ "tree-sitter-rust",
+ "tree-sitter-typescript",
+ "tree-sitter-yaml",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "block"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d8c1fef690941d3e7788d328517591fecc684c084084702d6ff1641e993699a"
@@ -740,7 +772,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6140449f97a6e97f9511815c5632d84c8aacf8ac271ad77c559218161a1373c"
 dependencies = [
  "bitflags 1.3.2",
- "block",
+ "block 0.1.6",
  "cocoa-foundation 0.1.2",
  "core-foundation 0.9.4",
  "core-graphics 0.23.2",
@@ -756,7 +788,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e0d7076fd2bf3e3864683161b46e8b72277cdd0d304d6291faceea6e7db9a14"
 dependencies = [
  "bitflags 2.13.2",
- "block",
+ "block 0.1.6",
  "cocoa-foundation 0.2.1",
  "core-foundation 0.10.1",
  "core-graphics 0.25.0",
@@ -772,7 +804,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c6234cbb2e4c785b456c0644748b1ac416dd045799740356f8363dfe00c93f7"
 dependencies = [
  "bitflags 1.3.2",
- "block",
+ "block 0.1.6",
  "core-foundation 0.9.4",
  "core-graphics-types 0.1.3",
  "libc",
@@ -786,7 +818,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81411967c50ee9a1fc11365f8c585f863a22a9697c89239c452292c40ba79b0d"
 dependencies = [
  "bitflags 2.13.2",
- "block",
+ "block 0.1.6",
  "core-foundation 0.10.1",
  "core-graphics-types 0.2.0",
  "objc",
@@ -3972,7 +4004,7 @@ version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1add1b659e36c9607c7aab864a76c7a4c2760cd0cd2e120f3fb8b952c7e22bf9"
 dependencies = [
- "block",
+ "block 0.1.6",
  "objc",
  "objc_id",
 ]
@@ -5567,7 +5599,7 @@ version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22411b57f7d49e7fe08025198813ee6fd65e1ee5eff4ebc7880c12c82bde4c60"
 dependencies = [
- "block",
+ "block 0.1.6",
  "dispatch",
  "objc",
  "objc-foundation",
@@ -6273,38 +6305,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "thinkly-fast"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cocoa 0.27.0",
- "cosmic-text",
- "dirs 7.0.0",
- "global-hotkey",
- "gpui-component",
- "gpui-pre",
- "gpui-pre-platform",
- "html5ever 0.40.1",
- "im",
- "latex-rust",
- "mermaid-rs-renderer",
- "pulldown-cmark",
- "ropey",
- "serde",
- "serde_json",
- "tiny-skia 0.12.0",
- "tree-sitter-css",
- "tree-sitter-html",
- "tree-sitter-javascript",
- "tree-sitter-md",
- "tree-sitter-python",
- "tree-sitter-rust",
- "tree-sitter-typescript",
- "tree-sitter-yaml",
- "unicode-segmentation",
 ]
 
 [[package]]

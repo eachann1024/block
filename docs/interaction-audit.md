@@ -1,6 +1,6 @@
-# Thinkly Fast 交互与性能验收
+# Block 交互与性能验收
 
-范围：GPUI/Rust 的 Thinkly Fast。修改前基线：`3cbe3b262d0011fef24fe5fa1d4d7c4bcbd60edd`。不修改原 Thinkly 项目。
+范围：GPUI/Rust 的 Block。修改前基线：`3cbe3b262d0011fef24fe5fa1d4d7c4bcbd60edd`。不修改原 Thinkly 项目。
 
 ## 判定规则
 
@@ -170,6 +170,6 @@ release编译结束后，在相同1100×760 GPUI debug测试二进制中测量�
 
 ## 生产交付
 
-`bun run build` 已成功（exit 0）：locked release构建、签名、安装替换与启动完成，安装路径 `/Applications/Thinkly Fast.app`，构建产物 `dist/Thinkly Fast.app`，本次启动PID `59417`。该结果只证明构建/安装/启动链路，不代表原生交互验收。
+`bun run build` 已成功（exit 0）：locked release构建、签名、安装替换与启动完成，安装路径 `/Applications/Block.app`，构建产物 `dist/Block.app`，本次启动PID `59417`。该结果只证明构建/安装/启动链路，不代表原生交互验收。
 
 实现提交：`bda0752`；三套设计候选提交：`90816c2`。本任务临时探针、fixtures、独立副本、日志及指定debug测试二进制已清理，保留正式报告、设计溯源和生产包。仓库未配置remote，无法推送。

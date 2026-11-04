@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: thinkly-fast-release-${{ github.ref }}
+  group: block-release-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -97,7 +97,7 @@ jobs:
         run: bun scripts/release/package-release.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: thinkly-fast-macos-${{ env.SOURCE_SHA }}
+          name: block-macos-${{ env.SOURCE_SHA }}
           path: dist/release/
           if-no-files-found: error
           retention-days: 14

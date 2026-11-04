@@ -24,7 +24,7 @@ struct FoldStore {
 }
 
 fn store_path() -> Option<PathBuf> {
-    Some(crate::files::app_data_dir("Thinkly Fast").join("heading-folds.json"))
+    Some(crate::files::app_data_dir("Block").join("heading-folds.json"))
 }
 
 fn load_store() -> FoldStore {
