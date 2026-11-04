@@ -116,6 +116,7 @@ icons! {
     LinkOff => "link-off" [Line],
     TbMinus => "tb-minus" [Line],
     TbPlus => "tb-plus" [Line],
+    TbReset => "tb-reset" [Line],
     NoteCheck => "note-check" [Line],
     HelpCircle => "help-circle" [Line],
     ChevronUp => "chevron-up" [Line],

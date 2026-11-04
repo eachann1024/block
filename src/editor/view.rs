@@ -122,13 +122,13 @@ impl Render for Editor {
                 let edge = this.drag_over.filter(|target| target.index == index).map(|target| target.after);
                 let handles = !this.minimal && this.hover == Some(block.id) || this.caret.head.block == block.id || this.dragging == Some(block.id);
                 let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
-                let row = super::chrome::block_row(cx.entity(), block, handles, edge, number, this.caret.head.block == block.id, this.path.clone(), this.nowrap.contains(&block.id), cx);
+                let row = super::chrome::block_row(cx.entity(), block, handles, edge, number, this.caret.head.block == block.id, this.path.clone(), this.nowrap.contains(&block.id), this.minimal, cx);
                 div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
                     // Round only the outer corners so stacked rows read as one band.
                     .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md())).child(row).into_any_element()
             })
-        }).size_full().pt(px(36.)).pb(px(64.));
-        let rows = if self.minimal { div().flex_1().min_w_0().h_full().ml(px(-52.)).child(rows).into_any_element() } else { rows.into_any_element() };
+        }).size_full().pt(px(if self.minimal { 18. } else { 36. })).pb(px(if self.minimal { 12. } else { 64. }));
+        let rows = if self.minimal { div().flex_1().min_w_0().h_full().ml(px(-32.)).child(rows).into_any_element() } else { rows.into_any_element() };
         let anchor_editor = cx.entity();
         // Runs after all rows paint: layout retries never publish overlay geometry.
         let anchor_sync = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
