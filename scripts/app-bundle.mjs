@@ -28,7 +28,7 @@ const markdownExtensions = ["md", "markdown", "mdown", "mkd", "mkdn", "mdwn", "m
 
 const plistKeys = [
   ["CFBundleName", appName],
-  ["CFBundleDisplayName", "Yu"],
+  ["CFBundleDisplayName", "Block"],
   ["CFBundleIdentifier", bundleId],
   ["CFBundleExecutable", "thinkly-fast"],
   ["CFBundlePackageType", "APPL"],

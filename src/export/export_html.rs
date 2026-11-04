@@ -75,7 +75,7 @@ pub fn render_html(blocks: &[Block], options: &RenderOptions) -> String {
     out.push_str(&render_blocks(blocks));
     if options.footer {
         out.push_str(&format!(
-            "<footer class=\"doc-footer\"><span>Yu</span><span>{}</span></footer>\n",
+            "<footer class=\"doc-footer\"><span>Block</span><span>{}</span></footer>\n",
             esc(options.theme.label())
         ));
     }

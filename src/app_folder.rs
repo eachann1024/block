@@ -127,7 +127,7 @@ impl Workspace {
         #[cfg(target_family = "wasm")]
         {
             let _ = window;
-            self.use_folder(PathBuf::from("/Yu"), cx);
+            self.use_folder(PathBuf::from("/Block"), cx);
             return;
         }
         #[cfg(not(target_family = "wasm"))]

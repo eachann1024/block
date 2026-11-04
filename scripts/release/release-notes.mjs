@@ -127,7 +127,7 @@ export async function polishReleaseNotes({ version, commits, env = process.env }
           temperature: 0.3,
           messages: [
             { role: "system", content: readFileSync(PROMPT_PATH, "utf8") },
-            { role: "user", content: `Yu ${version} 的提交记录（共 ${inputLines.length} 条）：\n\n${inputLines.join("\n")}` },
+            { role: "user", content: `Block ${version} 的提交记录（共 ${inputLines.length} 条）：\n\n${inputLines.join("\n")}` },
           ],
         }),
       });

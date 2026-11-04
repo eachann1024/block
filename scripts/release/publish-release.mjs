@@ -69,7 +69,7 @@ export async function publishRelease() {
   });
 
   const existing = getReleases().find((r) => r.tag_name === tag);
-  const title = `Yu ${version}`;
+  const title = `Block ${version}`;
 
   if (!existing) {
     gh([
