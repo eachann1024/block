@@ -7,7 +7,11 @@ use super::{format_cmds::open_external_url, toolbar::{ToolbarColors, pill, sep},
 
 /// Pointer-hover state for inline links.
 #[derive(Default)]
-pub(super) struct LinkUi { hover: Option<(u64, Range<usize>)> }
+pub(super) struct LinkUi {
+    hover: Option<(u64, Range<usize>)>,
+    /// Caret restored by opening/navigating to a note: no link pill until the caret really moves.
+    pub(super) quiet: Option<Position>,
+}
 
 /// `https://host/aaaa…tail`: keeps the head and the end, which carry the host and the file name.
 fn middle_ellipsis(url: &str) -> String {
@@ -24,6 +28,10 @@ fn split_origin(url: &str) -> (&str, &str) {
         return url.split_at(scheme_end + slash);
     }
     (url, "")
+}
+
+impl LinkUi {
+    pub(super) fn reset_hover(&mut self) { self.hover = None; }
 }
 
 impl Editor {
@@ -46,6 +54,7 @@ impl Editor {
             || self.selecting || self.dragging.is_some() || self.table_drag.is_some()
             || self.caret.composing.is_some() || !self.focus.is_focused(window) { return None; }
         let head = self.caret.head;
+        if self.link_ui.quiet == Some(head) { return None; }
         let block = self.doc.get(head.block)?;
         block.link_at(head.offset)
             .or_else(|| head.offset.checked_sub(1).and_then(|o| block.link_at(o)))
