@@ -92,7 +92,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
     let nowrap = nowrap && block.meta.code_language.is_some();
     let focus_editor = editor.clone();
     let callout = block.meta.callout;
-    let blank = block.text.is_empty() && !is_table && block.meta.raw_source.is_none() && callout.is_none();
+    let blank = block.kind == Kind::Paragraph && block.meta.code_language.is_none() && block.text.is_empty() && !is_table && block.meta.raw_source.is_none() && callout.is_none();
     // Images and dividers are atomic blocks and never expose their Markdown/HTML source line.
     let static_view = image.is_some() || rule;
     let code_lang = block.meta.code_language.clone();
