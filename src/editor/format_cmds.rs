@@ -47,6 +47,12 @@ pub(crate) fn open_external_url(raw: &str, base_note: Option<&std::path::Path>) 
         })
         .unwrap_or_else(|| normalize_url(trimmed));
     if target.is_empty() { return; }
+    #[cfg(target_family = "wasm")]
+    {
+        if let Some(win) = web_sys::window() { let _ = win.open_with_url_and_target(&target, "_blank"); }
+        return;
+    }
+    #[cfg(not(target_family = "wasm"))]
     std::thread::spawn(move || {
         use std::process::{Command, Stdio};
         #[cfg(target_os = "macos")]
@@ -127,12 +133,20 @@ impl Editor {
         let on = !self.selection_ranges().iter().all(|(id, r)| self.doc.is_underlined(*id, r.clone()));
         self.edit_selection(cx, |doc, id, range| doc.toggle_underline(id, range, on));
     }
-    #[allow(dead_code)]
     pub(super) fn clear_formatting(&mut self, cx: &mut Context<Self>) {
         self.edit_selection(cx, |doc, id, range| doc.clear_format(id, range));
     }
+    /// Toggles the yellow highlight on the selection (⌘⇧H).
+    pub(super) fn toggle_highlight(&mut self, cx: &mut Context<Self>) {
+        if self.selection_ranges().is_empty() { return; }
+        let on = matches!(self.selection_colors().1, palette::SelectionColor::Single("yellow"));
+        self.apply_style("background-color", (!on).then_some("yellow"), cx);
+    }
+    /// Pastes the clipboard text verbatim, skipping link, block and table conversion (⌘⇧V).
+    pub(super) fn paste_plain(&mut self, cx: &mut Context<Self>) {
+        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) { self.replace_selection(&text, false, cx); }
+    }
     /// `prop` is `color` or `background-color`; `None` resets to the default.
-    #[allow(dead_code)]
     pub(super) fn apply_style(&mut self, prop: &str, value: Option<&str>, cx: &mut Context<Self>) {
         self.edit_selection(cx, |doc, id, range| doc.set_style(id, range, prop, value));
     }
@@ -187,13 +201,10 @@ impl Editor {
         cx.notify();
     }
     /// Opens the 「生成图片」 view for the selection, or the whole note when nothing is selected.
-    #[cfg(not(target_family = "wasm"))]
     pub(crate) fn export_image(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.format = None;
         if self.selection_ranges().is_empty() { super::export_document(self, window, cx) } else { super::export_selected(self, window, cx) }
     }
-    #[cfg(target_family = "wasm")]
-    pub(crate) fn export_image(&mut self, _: &mut Window, _: &mut Context<Self>) { self.format = None; }
     /// Right button: over a selection it opens the context menu, otherwise it moves the caret
     /// (and opens the table menu inside a table cell).
     pub(super) fn right_click(&mut self, event: &gpui::MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
