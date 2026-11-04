@@ -46,6 +46,31 @@ pub fn find_card(id: impl Into<ElementId>) -> Stateful<Div> {
         .occlude()
 }
 
+/// In-place annotation popover card (`border-radius: 10px`, `1px` accent border, `12px 14px` padding).
+pub fn annotation_card(id: impl Into<ElementId>, width: Pixels) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    div()
+        .id(id)
+        .w(width)
+        .px(px(14.))
+        .py(px(12.))
+        .rounded(px(10.))
+        .bg(theme.menu)
+        .border_1()
+        .border_color(theme.accent)
+        .shadow(shadows())
+        .occlude()
+        .overflow_y_scroll()
+        .text_size(px(14.))
+        .line_height(px(20.))
+        .text_color(theme.text)
+        .flex()
+        .flex_col()
+        .gap(px(8.))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_scroll(|_, _, cx| cx.stop_propagation())
+}
+
 pub fn animate<E: IntoElement + Styled + AnimationExt + 'static>(
     el: E,
     id: impl Into<ElementId>,
