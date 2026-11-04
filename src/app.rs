@@ -67,11 +67,13 @@ pub struct Workspace {
 
 impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let tree = cx.new(|_| FileTree::new());
+        let tree = cx.new(FileTree::new);
         let editor = cx.new(|cx| Editor::new(cx));
         let startup_epoch = editor.read(cx).interaction_epoch();
         let workspace = cx.entity();
         let context_target = cx.entity();
+        let rename_target = cx.entity();
+        let trash_target = cx.entity();
         tree.update(cx, |tree, _| tree.on_context(move |target, position, _, cx| {
             // The tree is mid-update while dispatching; defer so the menu may mark its row.
             let context_target = context_target.clone();
@@ -84,6 +86,12 @@ impl Workspace {
                     this.open_file(path, cx);
                 }
             });
+        }));
+        tree.update(cx, |tree, _| tree.on_rename(move |(path, dir), window, cx| {
+            rename_target.update(cx, |this, cx| if !this.busy() { this.start_rename(path, dir, window, cx); });
+        }));
+        tree.update(cx, |tree, _| tree.on_trash(move |path, _, cx| {
+            trash_target.update(cx, |this, cx| if !this.busy() { this.trash(path, cx); });
         }));
         let subscription = cx.observe_in(&editor, window, |this, editor, window, cx| {
             let path = editor.read(cx).current_path().map(|path| path.to_owned());
@@ -103,7 +111,9 @@ impl Workspace {
                 }
                 this.selected = path.clone();
                 this.tree.update(cx, |tree, cx| tree.select(path.clone(), cx));
-                if path.is_some() { window.focus(&editor.focus_handle(cx)); }
+                if path.is_some() && !this.tree.read(cx).is_focused(window) {
+                    window.focus(&editor.focus_handle(cx));
+                }
                 this.save_tabs_state(cx);
                 cx.notify();
             }
@@ -138,6 +148,7 @@ impl Workspace {
         cx.observe_global::<crate::export::ExportSlot>(|_, cx| cx.notify()).detach();
         search::bind_keys(cx);
         tabs::bind_keys(cx);
+        crate::files::tree::bind_keys(cx);
         let this = Self { folder: None, folder_error: None, tree, editor, selected: None, tabs: Vec::new(), startup_tabs: None, dirty_bits: 0, loading: true,
             choosing: false, creating: false, persisting: false, pending: None,
             notice: "正在读取工作区偏好…".into(), sidebar_width: Theme::ocean().sidebar_width,
