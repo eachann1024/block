@@ -157,8 +157,11 @@ impl Workspace {
             if this.file_op.is_some() && !busy {
                 let blocked = this.file_op.as_ref().is_some_and(|op| {
                     let p = op.source_path();
-                    editor.read(cx).current_path().is_some_and(|cur| cur.starts_with(p))
-                        || this.tabs.iter().any(|t| t.starts_with(p) && editor.read(cx).is_path_dirty(t))
+                    let ed = editor.read(cx);
+                    match op {
+                        FileOp::Trash { .. } => ed.current_path().is_some_and(|cur| cur.starts_with(p)) || ed.has_dirty_under(p),
+                        FileOp::Rename { .. } | FileOp::Move { .. } => ed.has_dirty_under(p),
+                    }
                 });
                 if !blocked { this.run_file_op(cx); }
                 else {
@@ -229,8 +232,12 @@ impl Workspace {
             || self.file_op.is_some() || self.working
     }
 
+    pub(crate) fn ui_enabled(&self) -> bool {
+        self.folder.is_some() && !self.loading && self.pending.is_none()
+    }
+
     fn refresh(&mut self, cx: &mut Context<Self>) {
-        let enabled = !self.busy();
+        let enabled = self.ui_enabled();
         self.tree.update(cx, |tree, cx| tree.set_enabled(enabled, cx));
         cx.notify();
     }
