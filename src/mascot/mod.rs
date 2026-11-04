@@ -17,7 +17,8 @@ pub fn editor_empty(cx: &mut Context<Editor>) -> Div {
         true,
         cx.listener(|this, _, window, cx| {
             cx.stop_propagation();
-            window.focus(&this.focus_handle(cx));
+            let focus = this.focus_handle(cx);
+            window.focus(&focus, cx);
             window.dispatch_action(Box::new(NewNote), cx);
         }),
     );

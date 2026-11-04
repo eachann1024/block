@@ -94,9 +94,10 @@ pub(super) fn require_glyphs(buffer: &Buffer) -> Result<(), ExportError> {
         .layout_runs()
         .any(|run| run.glyphs.iter().any(|glyph| glyph.glyph_id == 0))
     {
-        return Err(ExportError::Rendering(
+        return Err(ExportError::Rendering(crate::theme::tr(
             "已安装字体无法覆盖所有字符，未生成图片",
-        ));
+            "Installed fonts are missing glyphs for some characters; image not generated",
+        )));
     }
     Ok(())
 }
@@ -109,13 +110,13 @@ pub(super) fn plain(
     width: f32,
 ) -> Result<Buffer, ExportError> {
     let mut buffer = Buffer::new(fonts, Metrics::new(size, size * 1.4));
-    buffer.set_size(fonts, Some(width), None);
+    buffer.set_size(Some(width), None);
     let attrs = if matches!(theme, ExportTheme::Riso | ExportTheme::Neon) && size <= 13.0 {
         Attrs::new().family(Family::Monospace).weight(Weight::BOLD)
     } else {
         attributes(theme, Kind::Paragraph, &[], false)
     };
-    buffer.set_text(fonts, text, &attrs, Shaping::Advanced);
+    buffer.set_text(text, &attrs, Shaping::Advanced, None);
     buffer.shape_until_scroll(fonts, false);
     require_glyphs(&buffer)?;
     Ok(buffer)
@@ -171,7 +172,10 @@ pub(super) fn build(
         let line_height = size * if block.kind == Kind::H1 { 1.25 } else { 1.55 };
         let indent = block.meta.indent as f32 * 8.5;
         if indent > content_width - 80.0 {
-            return Err(ExportError::ResourceLimit("缩进过深，文字宽度不足"));
+            return Err(ExportError::ResourceLimit(crate::theme::tr(
+                "缩进过深，文字宽度不足",
+                "Indentation is too deep; insufficient text width",
+            )));
         }
         let (gutter, pad_x, pad_top, pad_bottom) = block_box_metrics(
             theme,
@@ -183,7 +187,10 @@ pub(super) fn build(
         );
         let width = content_width - indent - gutter - pad_x * 2.0;
         if width < 32.0 {
-            return Err(ExportError::ResourceLimit("列表标记占用过宽，文字宽度不足"));
+            return Err(ExportError::ResourceLimit(crate::theme::tr(
+                "列表标记占用过宽，文字宽度不足",
+                "List marker is too wide; insufficient text width",
+            )));
         }
         let label = block
             .meta

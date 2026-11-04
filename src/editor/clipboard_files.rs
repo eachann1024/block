@@ -10,6 +10,7 @@ pub(super) fn is_image(path: &std::path::Path) -> bool {
 
 /// Image files currently copied to the system clipboard (empty off macOS or when none).
 #[cfg(target_os = "macos")]
+#[allow(deprecated)]
 pub(super) fn image_paths() -> Vec<PathBuf> {
     use cocoa::{appkit::NSPasteboard, base::{id, nil}, foundation::{NSArray, NSString}};
     use std::sync::OnceLock;

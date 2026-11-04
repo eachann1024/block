@@ -45,7 +45,6 @@ pub(in crate::editor) fn block_hash(block: &crate::editor::model::Block) -> u64 
     h.finish()
 }
 
-#[derive(Clone)]
 pub(in crate::editor) struct TextLayout {
     pub bounds: Bounds<Pixels>,
     pub lines: Vec<(usize, WrappedLine)>,
@@ -53,7 +52,6 @@ pub(in crate::editor) struct TextLayout {
     pub cells: Vec<CellLayout>,
     pub alignment: gpui::TextAlign,
 }
-#[derive(Clone)]
 pub(in crate::editor) struct CellLayout {
     pub range: std::ops::Range<usize>,
     pub frame: Bounds<Pixels>,

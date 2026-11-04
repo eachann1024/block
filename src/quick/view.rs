@@ -36,7 +36,8 @@ impl QuickView {
             Ok(path) => self.editor.update(cx, |editor, cx| editor.open(path, cx)),
             Err(error) => self.set_notice(format!("{}: {error}", tr("无法打开速记", "Cannot open quick note")), cx),
         }
-        window.focus(&self.editor.focus_handle(cx));
+        let focus = self.editor.focus_handle(cx);
+        window.focus(&focus, cx);
         cx.notify();
     }
 
@@ -44,7 +45,10 @@ impl QuickView {
         self.commit_rename(window, cx);
         self.help = false;
         if slot != self.meta.active { self.notice.clear(); self.open_slot(slot, window, cx); }
-        else { window.focus(&self.editor.focus_handle(cx)); }
+        else {
+            let focus = self.editor.focus_handle(cx);
+            window.focus(&focus, cx);
+        }
     }
 
     pub(super) fn set_notice(&mut self, text: String, cx: &mut Context<Self>) {
@@ -72,7 +76,8 @@ impl QuickView {
         let slot = self.meta.active;
         self.meta.names[slot] = store::clean_name(slot, input.read(cx).value().as_ref());
         let _ = store::save_meta(&self.meta);
-        window.focus(&self.editor.focus_handle(cx));
+        let focus = self.editor.focus_handle(cx);
+        window.focus(&focus, cx);
         cx.notify();
     }
 
