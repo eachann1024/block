@@ -28,9 +28,9 @@ fn download(name: &str, mime: &str, bytes: &[u8]) -> Result<(), String> {
     options.set_type(mime);
     let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &options).map_err(fail)?;
     let url = web_sys::Url::create_object_url_with_blob(&blob).map_err(fail)?;
-    let document = web_sys::window().and_then(|w| w.document()).ok_or("no document")?;
+    let document = web_sys::window().and_then(|w| w.document()).ok_or_else(|| tr("无法访问页面文档", "no document").to_string())?;
     let anchor: web_sys::HtmlAnchorElement = document.create_element("a").map_err(fail)?
-        .dyn_into().map_err(|_| "not an anchor".to_string())?;
+        .dyn_into().map_err(|_| tr("无法创建下载链接", "not an anchor").to_string())?;
     anchor.set_href(&url);
     anchor.set_download(name);
     anchor.click();
