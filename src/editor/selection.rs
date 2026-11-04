@@ -43,6 +43,7 @@ impl Editor {
     pub(in crate::editor) fn set_head(&mut self, mut at: Position, extend: bool, cx: &mut Context<Self>) {
         if let Some(block) = self.doc.get(at.block) { at.offset = boundary(&block.text, at.offset); }
         else { return; }
+        self.ensure_block_visible(at.block);
         self.caret.head = at;
         if !extend { self.caret.anchor = at; }
         self.caret.composing = None;
@@ -87,7 +88,7 @@ impl Editor {
     pub(in crate::editor) fn reset_document(&mut self, doc: Doc) {
         self.caret = Caret::new(doc.blocks[0].id);
         self.doc = doc;
-        self.history.clear(); self.redo.clear(); self.nowrap.clear();
+        self.history.clear(); self.redo.clear(); self.nowrap.clear(); self.folded.clear();
         self.preferred_x = None::<Pixels>;
         self.clear_transient_overlays();
         self.list.reset(self.doc.blocks.len());
