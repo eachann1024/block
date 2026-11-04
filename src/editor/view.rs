@@ -21,7 +21,7 @@ actions!(editor, [Backspace, Delete, Left, Right, SelectLeft, SelectRight, Selec
     Up, Down, SelectUp, SelectDown, Enter, Copy, Cut, Paste, Bold, Italic, Strike, Code,
     Undo, Redo, Cancel, Save, NextCell, PreviousCell, TableMenuKey,
     SetParagraph, SetH1, SetH2, SetH3, SetTodo, SetBullet, SetNumbered, SetCode, SetQuote,
-    MoveBlockUp, MoveBlockDown, DuplicateBlock, OpenHandleMenu, CmdEnter, Underline, EditLink, ExitBlock,
+    MoveBlockUp, MoveBlockDown, DuplicateBlock, CmdEnter, Underline, EditLink, ExitBlock,
     DocStart, DocEnd, SelectDocStart, SelectDocEnd, Find, ImageGrow, ImageShrink,
     LineStart, LineEnd, SelectLineStart, SelectLineEnd, LogicalLineStart, LogicalLineEnd,
     WordLeft, WordRight, SelectWordLeft, SelectWordRight,
@@ -41,7 +41,6 @@ pub struct Editor {
     pub(super) drag_over: Option<interaction::DropTarget>,
     pub(super) selecting: bool,
     pub(super) block_menu: Option<super::block_menu::BlockMenu>,
-    pub(super) grip_origin: Option<Point<Pixels>>,
     /// Code blocks the user switched to no-wrap (view state only, never saved).
     pub(super) nowrap: std::collections::HashSet<u64>,
     /// Folded heading block IDs for the active note (view/session state, never serialized to Markdown).
@@ -82,7 +81,7 @@ impl Editor {
         cx.on_app_quit(|editor, _| { editor.prepare_to_quit(); async {} }).detach();
         let doc = Doc::empty(); let caret = Caret::new(doc.blocks[0].id);
         Self { doc, caret, focus: cx.focus_handle(), hover: None, hover_gen: 0, dragging: None,
-            drag_over: None, selecting: false, block_menu: None, grip_origin: None, nowrap: Default::default(), folded: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, link_ui: Default::default(), layouts: HashMap::new(),
+            drag_over: None, selecting: false, block_menu: None, nowrap: Default::default(), folded: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, link_ui: Default::default(), layouts: HashMap::new(),
             list: ListState::new(1, ListAlignment::Top, px(120.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
@@ -230,7 +229,6 @@ impl Render for Editor {
                 .on_action(cx.listener(|this, _: &SetCode, _, cx| this.set_code_shortcut(cx)))
                 .on_action(cx.listener(|this, _: &SetQuote, _, cx| this.set_kind_shortcut(super::model::Kind::Quote, cx)))
                 .on_action(cx.listener(|this, _: &DuplicateBlock, w, cx| this.duplicate_blocks(w, cx)))
-                .on_action(cx.listener(|this, _: &OpenHandleMenu, _, cx| this.open_handle_menu_shortcut(cx)))
                 .on_action(cx.listener(|this, _: &CmdEnter, w, cx| this.cmd_enter(w, cx)))
                 .on_action(cx.listener(|this, _: &MoveBlockUp, w, cx| this.move_block_shortcut(true, w, cx)))
                 .on_action(cx.listener(|this, _: &MoveBlockDown, w, cx| this.move_block_shortcut(false, w, cx)))
