@@ -50,11 +50,11 @@ impl Workspace {
             .bg(theme.sidebar).border_r_1().border_color(theme.sidebar_border)
             .child(div().flex_none().pt(px(10.)).px(px(10.)).pb(px(8.)).flex().items_center().gap(px(6.))
                 .child(self.search_button(enabled, cx))
-                .child(toolbar_icon_button("new-note", Icon::NotePlus, enabled, new_note_tip, cx.listener(|this, _, window, cx| {
-                    this.new_item(false, window, cx);
-                })))
                 .child(toolbar_icon_button("new-folder", Icon::FolderPlus, enabled, tr("新建文件夹", "New Folder"), cx.listener(|this, _, window, cx| {
                     this.new_item(true, window, cx);
+                })))
+                .child(toolbar_icon_button("new-note", Icon::NotePlus, enabled, new_note_tip, cx.listener(|this, _, window, cx| {
+                    this.new_item(false, window, cx);
                 }))))
             // Workspace progress/errors float over the list bottom so showing or
             // clearing them never reflows (shakes) the file rows.
