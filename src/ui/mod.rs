@@ -8,6 +8,7 @@ pub mod motion;
 pub mod popover;
 pub mod reveal;
 pub mod scrollbar;
+pub mod settings_controls;
 pub mod smoke_overlay;
 pub mod table_controls;
 pub mod tooltip;

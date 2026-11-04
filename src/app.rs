@@ -28,6 +28,10 @@ mod search;
 mod settings;
 #[path = "app_settings_view.rs"]
 mod settings_view;
+#[path = "app_settings_sidebar.rs"]
+mod settings_sidebar;
+#[path = "app_settings_tabs.rs"]
+mod settings_tabs;
 
 use file_ops::{FileOp, Renaming, TreeMenu};
 pub use search::{Dismiss, NewNote, OpenSearch, OpenSettings, SearchDown, SearchUp};
