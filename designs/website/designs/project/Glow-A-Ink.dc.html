@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Yu 首屏 · 宣纸墨晕光晕</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:#F7F6F2;color:#141413;font-family:Inter,-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;font-size:16px;line-height:26px;-webkit-font-smoothing:antialiased}
+a{color:#141413;text-decoration:none}
+a:hover{color:#3D3B36;text-decoration:underline}
+.nav-item{color:#4A4842;font-size:15px;line-height:22px;font-weight:500;padding:11px 12px;border-radius:6px;transition:color 140ms ease,background-color 140ms ease}
+.nav-item:hover{color:#141413;background:#ECEAE3;text-decoration:none}
+.nav-cta{height:44px;padding:0 16px;border:1px solid #C4613F;border-radius:6px;background:#D97757;color:#FAF9F5;font-size:14px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;transition:background-color 140ms ease}
+.nav-cta:hover,.cta-main:hover{background:#C4613F;color:#FAF9F5;text-decoration:none}
+.cta-main{height:46px;padding:0 24px;border:1px solid #C4613F;border-radius:8px;background:#D97757;color:#FAF9F5;font-size:15px;font-weight:600;display:inline-flex;align-items:center;gap:8px;transition:background-color 140ms ease}
+
+/* 墨晕层：只存在于 #top 内；上沿接导航处淡入，首屏下半段之前完全淡出 */
+.ink-layer{position:absolute;inset:0;pointer-events:none;z-index:0;isolation:isolate;
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 110px,#000 36%,transparent 68%);
+  mask-image:linear-gradient(to bottom,transparent 0,#000 110px,#000 36%,transparent 68%)}
+.ink{position:absolute;mix-blend-mode:multiply;will-change:transform;animation:ink-drift-a calc(16s / var(--ink-speed,1)) ease-in-out infinite alternate}
+.ink-core{width:100%;height:100%;border-radius:46% 54% 61% 39% / 42% 47% 53% 58%;filter:blur(var(--ink-blur,72px));will-change:transform,opacity;animation:ink-breathe calc(12s / var(--ink-speed,1)) ease-in-out infinite alternate}
+.ink-2{animation-name:ink-drift-b;animation-duration:calc(14s / var(--ink-speed,1));animation-delay:-9s}
+.ink-3{animation-name:ink-drift-c;animation-duration:calc(19s / var(--ink-speed,1));animation-delay:-17s}
+.ink-4{animation-name:ink-drift-b;animation-duration:calc(20s / var(--ink-speed,1));animation-delay:-23s;animation-direction:alternate-reverse}
+.ink-5{animation-name:ink-drift-c;animation-duration:calc(13s / var(--ink-speed,1));animation-delay:-5s}
+.ink-2 .ink-core{border-radius:58% 42% 37% 63% / 55% 38% 62% 45%;animation-duration:calc(15s / var(--ink-speed,1));animation-delay:-12s}
+.ink-3 .ink-core{border-radius:39% 61% 52% 48% / 61% 43% 57% 39%;animation-duration:calc(11s / var(--ink-speed,1));animation-delay:-4s}
+.ink-4 .ink-core{border-radius:63% 37% 45% 55% / 40% 58% 42% 60%;animation-duration:calc(17s / var(--ink-speed,1));animation-delay:-20s}
+.ink-5 .ink-core{border-radius:44% 56% 66% 34% / 52% 36% 64% 48%;animation-duration:calc(10s / var(--ink-speed,1));animation-delay:-8s}
+@keyframes ink-drift-a{0%{transform:translate3d(0,0,0) rotate(0deg)}50%{transform:translate3d(-32%,22%,0) rotate(28deg)}100%{transform:translate3d(24%,-18%,0) rotate(-18deg)}}
+@keyframes ink-drift-b{0%{transform:translate3d(0,0,0) rotate(0deg)}50%{transform:translate3d(28%,-26%,0) rotate(-30deg)}100%{transform:translate3d(-26%,20%,0) rotate(20deg)}}
+@keyframes ink-drift-c{0%{transform:translate3d(0,0,0) rotate(0deg)}50%{transform:translate3d(-22%,-30%,0) rotate(36deg)}100%{transform:translate3d(34%,14%,0) rotate(-14deg)}}
+@keyframes ink-breathe{0%{transform:rotate(0deg) scale(1,1);opacity:.35}50%{transform:rotate(60deg) scale(1.35,.78);opacity:1}100%{transform:rotate(-40deg) scale(.75,1.3);opacity:.55}}
+.ink-grain{position:absolute;inset:0;width:100%;height:100%;opacity:.22;mix-blend-mode:multiply}
+
+/* 落地：IntersectionObserver 离开首屏 → paused；标签页隐藏 → paused；减少动态效果 → still（静止成一帧） */
+.ink-layer[data-ink="paused"] .ink,.ink-layer[data-ink="paused"] .ink-core{animation-play-state:paused}
+.ink-layer[data-ink="still"] .ink,.ink-layer[data-ink="still"] .ink-core{animation:none}
+@media (prefers-reduced-motion: reduce){.ink,.ink-core{animation:none !important}}
+
+#editor-stage{width:100%;max-width:1180px;aspect-ratio:16 / 10;min-height:700px;border:1px solid #DCD8CE;border-radius:12px;background:#FBFAF7;box-shadow:0 20px 50px rgba(20,20,19,.07);overflow:hidden;position:relative;display:flex;flex-direction:column}
+@media (max-width: 920px){#editor-stage{min-height:520px}.metric-row{grid-template-columns:1fr !important}}
+@media (max-width: 600px){.hero-title{font-size:30px !important}}
+</style>
+</helmet>
+<div style="width:100%;display:flex;flex-direction:column;background:#F7F6F2;color:#141413">
+
+<header style="width:100%;background:#F7F6F2;position:relative;z-index:2">
+<div style="max-width:1180px;margin:0 auto;min-height:80px;padding:0 32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px">
+<a href="#top" style="display:inline-flex;align-items:center;gap:10px;min-height:44px;color:#141413;text-decoration:none">
+<svg width="22" height="22" viewBox="0 0 22 22" role="img" aria-label="Yu">
+<rect x="1" y="1" width="20" height="20" rx="4" fill="#141413"></rect>
+<rect x="5" y="6" width="4" height="3" fill="#F7F6F2"></rect>
+<rect x="11" y="6" width="6" height="3" fill="#F7F6F2"></rect>
+<rect x="5" y="11" width="12" height="3" fill="#F7F6F2"></rect>
+<rect x="5" y="16" width="7" height="2" fill="#8C8A82"></rect>
+</svg>
+<span style="font-family:'Space Grotesk',Inter,sans-serif;font-size:18px;font-weight:600;letter-spacing:-0.02em;color:#141413">Yu</span>
+</a>
+<nav aria-label="主导航" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<a class="nav-item" href="#performance">性能</a>
+<a class="nav-item" href="#blocks">块编辑器</a>
+<a class="nav-item" href="#ai">AI</a>
+<a class="nav-item" href="#image">生成图片</a>
+<a class="nav-cta" href="#download">下载</a>
+</nav>
+</div>
+</header>
+
+<section id="top" ref="{{heroRef}}" style="position:relative;overflow:hidden;padding:64px 32px 120px">
+<div class="ink-layer" data-ink="{{inkMode}}" data-pause-offscreen="true" aria-hidden="true" style="--ink-speed: {{speed}}; --ink-blur: {{blurPx}}; --ink-alpha: {{intensity}}">
+<div class="ink ink-1" style="left:50%;top:-140px;width:640px;height:470px;opacity:calc(var(--ink-alpha) * .24)">
+<div class="ink-core" style="background:radial-gradient(closest-side,{{inkColor}} 0%,{{inkColor}} 38%,transparent 100%)"></div>
+</div>
+<div class="ink ink-2" style="left:71%;top:120px;width:540px;height:430px;opacity:calc(var(--ink-alpha) * .22)">
+<div class="ink-core" style="background:radial-gradient(closest-side,#C99A5B 0%,#C99A5B 34%,transparent 100%)"></div>
+</div>
+<div class="ink ink-3" style="left:28%;top:-20px;width:500px;height:380px;opacity:calc(var(--ink-alpha) * .15)">
+<div class="ink-core" style="background:radial-gradient(closest-side,#7F9C9A 0%,#7F9C9A 30%,transparent 100%)"></div>
+</div>
+<div class="ink ink-4" style="left:-9%;top:250px;width:580px;height:440px;opacity:calc(var(--ink-alpha) * .18)">
+<div class="ink-core" style="background:radial-gradient(closest-side,{{inkColor}} 0%,#E3A486 40%,transparent 100%)"></div>
+</div>
+<div class="ink ink-5" style="left:86%;top:380px;width:360px;height:300px;opacity:calc(var(--ink-alpha) * .14)">
+<div class="ink-core" style="background:radial-gradient(closest-side,#C4613F 0%,#C4613F 30%,transparent 100%)"></div>
+</div>
+<sc-if value="{{grain}}" hint-placeholder-val="{{ true }}">
+<svg class="ink-grain" aria-hidden="true">
+<filter id="ink-paper" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch"></feTurbulence><feColorMatrix values="0 0 0 0 0.08  0 0 0 0 0.08  0 0 0 0 0.07  0 0 0 0.55 0"></feColorMatrix></filter>
+<rect width="100%" height="100%" filter="url(#ink-paper)"></rect>
+</svg>
+</sc-if>
+</div>
+
+<div style="position:relative;z-index:1;max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:56px">
+<div style="max-width:740px;display:flex;flex-direction:column;align-items:flex-start;gap:20px">
+<h1 class="hero-title" style="margin:0;max-width:680px;font-family:'Space Grotesk','PingFang SC','Microsoft YaHei',sans-serif;font-size:38px;line-height:1.34;font-weight:700;letter-spacing:-0.02em;color:#141413">文字之隅，落笔即成</h1>
+<div style="display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:6px">
+<a class="cta-main" href="#download">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v8"></path><path d="M4.5 7.5 8 11l3.5-3.5"></path><path d="M3 13.5h10"></path></svg>
+下载 macOS 版
+</a>
+<span style="font-size:14px;line-height:22px;color:#5E5D59">适用于 Apple 芯片的 Mac · 文件就是本地 Markdown</span>
+</div>
+</div>
+
+<div id="editor-stage" role="region" aria-label="Yu 实时 GPUI 块编辑器（设计稿占位）">
+<div style="height:44px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid #E5E2D9;background:#F4F2EC">
+<span style="width:12px;height:12px;border-radius:50%;background:#DCD8CE"></span>
+<span style="width:12px;height:12px;border-radius:50%;background:#DCD8CE"></span>
+<span style="width:12px;height:12px;border-radius:50%;background:#DCD8CE"></span>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:32px;text-align:center">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#8C8A82" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 8h18"></path><path d="M7 12h6"></path><path d="M7 16h10"></path></svg>
+<span style="font-size:15px;line-height:22px;font-weight:500;color:#3D3B36">#editor-stage · 实时 GPUI 编辑器</span>
+<span style="font-size:14px;line-height:22px;color:#5E5D59">落地时此处挂载 WebAssembly 编辑器，窗口本身不透明，墨晕只在其四周与上方洇开</span>
+</div>
+</div>
+</div>
+</section>
+
+<section id="performance" style="position:relative;overflow:hidden;padding:120px 32px 80px;border-top:1px solid #E5E2D9;background:#EFECE4">
+<div style="position:relative;max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:48px">
+<h2 style="margin:0;font-family:'Space Grotesk','PingFang SC',sans-serif;font-size:38px;line-height:1.22;font-weight:700;letter-spacing:-0.02em;color:#141413">大文档也是即开即写</h2>
+<div class="metric-row" style="padding:32px 0;border-top:1px solid #DEDAD0;display:grid;grid-template-columns:repeat(12, minmax(0, 1fr));gap:32px;align-items:center">
+<div style="grid-column:span 5;display:flex;flex-direction:column;gap:8px">
+<strong style="font-family:'Space Grotesk','JetBrains Mono',monospace;font-size:52px;line-height:1.05;font-weight:700;letter-spacing:-0.03em;color:#C4613F">24.5 ms</strong>
+<span style="font-size:17px;line-height:26px;font-weight:500;color:#141413">打开 10 万块文档到显示首屏</span>
+</div>
+<div style="grid-column:span 7;display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:20px">
+<div style="display:grid;grid-template-columns:110px 1fr 88px;align-items:center;gap:12px">
+<span style="color:#141413;font-weight:600">Yu</span>
+<div style="height:8px;border-radius:4px;background:#E2DED4;overflow:hidden"><div style="width:3%;min-width:6px;height:100%;border-radius:4px;background:#D97757"></div></div>
+<span style="font-family:'JetBrains Mono',monospace;text-align:right;color:#B4532F;font-weight:600">24.5 ms</span>
+</div>
+<div style="display:grid;grid-template-columns:110px 1fr 88px;align-items:center;gap:12px">
+<span style="color:#5E5D59">VS Code</span>
+<div style="height:8px;border-radius:4px;background:#E2DED4;overflow:hidden"><div style="width:18%;height:100%;border-radius:4px;background:#C5C1B5"></div></div>
+<span style="font-family:'JetBrains Mono',monospace;text-align:right;color:#5E5D59">~420 ms</span>
+</div>
+<div style="display:grid;grid-template-columns:110px 1fr 88px;align-items:center;gap:12px">
+<span style="color:#5E5D59">Obsidian</span>
+<div style="height:8px;border-radius:4px;background:#E2DED4;overflow:hidden"><div style="width:46%;height:100%;border-radius:4px;background:#C5C1B5"></div></div>
+<span style="font-family:'JetBrains Mono',monospace;text-align:right;color:#5E5D59">~1,800 ms</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"speed":{"editor":"range","default":1,"min":0.5,"max":2,"step":0.1,"unit":"x","section":"墨晕"},"intensity":{"editor":"range","default":1,"min":0.5,"max":1.3,"step":0.05,"unit":"x","section":"墨晕"},"blur":{"editor":"range","default":72,"min":40,"max":120,"step":4,"unit":"px","section":"墨晕"},"inkColor":{"editor":"color","default":"#D97757","options":["#D97757","#C99A5B","#7F9C9A"],"section":"墨晕"},"grain":{"editor":"boolean","default":true,"section":"墨晕"},"motion":{"editor":"enum","default":"auto","options":["auto","still"],"section":"墨晕"},"$preview":{"width":1440,"height":1600}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { heroVisible: true, pageHidden: false, reduced: false };
+  }
+
+  componentDidMount() {
+    // 离开首屏即暂停动画，回到首屏再继续
+    if (typeof IntersectionObserver !== 'undefined' && this.hero) {
+      this.io = new IntersectionObserver((entries) => {
+        const visible = entries.some((e) => e.isIntersecting);
+        if (visible !== this.state.heroVisible) this.setState({ heroVisible: visible });
+      }, { threshold: 0 });
+      this.io.observe(this.hero);
+    }
+    // 系统「减少动态效果」：静止成一帧
+    if (window.matchMedia) {
+      this.mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      this.onMq = () => this.setState({ reduced: this.mq.matches });
+      this.onMq();
+      if (this.mq.addEventListener) this.mq.addEventListener('change', this.onMq);
+    }
+    // 标签页不可见时同样暂停
+    this.onVis = () => this.setState({ pageHidden: document.hidden });
+    document.addEventListener('visibilitychange', this.onVis);
+  }
+
+  componentWillUnmount() {
+    if (this.io) this.io.disconnect();
+    if (this.mq && this.mq.removeEventListener) this.mq.removeEventListener('change', this.onMq);
+    document.removeEventListener('visibilitychange', this.onVis);
+  }
+
+  renderVals() {
+    const still = this.state.reduced || (this.props.motion ?? 'auto') === 'still';
+    const paused = !this.state.heroVisible || this.state.pageHidden;
+    return {
+      heroRef: (el) => { this.hero = el; },
+      inkMode: still ? 'still' : (paused ? 'paused' : 'run'),
+      speed: this.props.speed ?? 1,
+      intensity: this.props.intensity ?? 1,
+      blurPx: (this.props.blur ?? 72) + 'px',
+      inkColor: this.props.inkColor ?? '#D97757',
+      grain: this.props.grain ?? true
+    };
+  }
+}
+</script>
+</body>
+</html>

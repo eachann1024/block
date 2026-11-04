@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Yu 首屏 · 流场颗粒光雾</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:#F7F6F2;color:#141413;font-family:Inter,-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;font-size:16px;line-height:26px;-webkit-font-smoothing:antialiased}
+a{color:#141413;text-decoration:none}
+a:hover{color:#3D3B36;text-decoration:underline}
+.nav-item{color:#4A4842;font-size:15px;line-height:22px;font-weight:500;padding:6px 12px;border-radius:6px;text-decoration:none;transition:color 140ms ease,background-color 140ms ease}
+.nav-item:hover{color:#141413;background:#ECEAE3;text-decoration:none}
+.nav-cta{height:36px;padding:0 16px;border:1px solid #C4613F;border-radius:6px;background:#D97757;color:#FAF9F5;font-size:14px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;transition:background-color 140ms ease}
+.nav-cta:hover,.cta-main:hover{background:#C4613F;color:#FAF9F5;text-decoration:none}
+.cta-main{height:46px;padding:0 24px;border:1px solid #C4613F;border-radius:8px;background:#D97757;color:#FAF9F5;font-size:15px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;transition:background-color 140ms ease}
+@media (max-width:920px){.grid-12{display:flex !important;flex-direction:column !important}.stage{min-height:520px !important}}
+</style>
+</helmet>
+<div style="width:100%;display:flex;flex-direction:column;background:#F7F6F2;color:#141413">
+
+<header style="width:100%;background:#F7F6F2">
+<div style="max-width:1180px;margin:0 auto;height:80px;padding:0 32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px">
+<a href="#top" style="display:inline-flex;align-items:center;gap:10px;color:#141413;text-decoration:none">
+<svg width="22" height="22" viewBox="0 0 22 22" role="img" aria-label="Yu">
+<rect x="1" y="1" width="20" height="20" rx="4" fill="#141413"></rect>
+<rect x="5" y="6" width="4" height="3" fill="#F7F6F2"></rect>
+<rect x="11" y="6" width="6" height="3" fill="#F7F6F2"></rect>
+<rect x="5" y="11" width="12" height="3" fill="#F7F6F2"></rect>
+<rect x="5" y="16" width="7" height="2" fill="#8C8A82"></rect>
+</svg>
+<span style="font-family:'Space Grotesk',Inter,sans-serif;font-size:18px;font-weight:600;letter-spacing:-0.02em;color:#141413">Yu</span>
+</a>
+<nav aria-label="主导航" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<a class="nav-item" href="#performance">性能</a>
+<a class="nav-item" href="#blocks">块编辑器</a>
+<a class="nav-item" href="#ai">AI</a>
+<a class="nav-item" href="#image">生成图片</a>
+<a class="nav-cta" href="#download">下载</a>
+</nav>
+</div>
+</header>
+
+<section id="top" ref="{{sectionRef}}" onPointerMove="{{onHeroMove}}" onPointerLeave="{{onHeroLeave}}" style="position:relative;overflow:hidden;isolation:isolate;padding:64px 32px 120px">
+<div aria-hidden="true" style="position:absolute;inset:0;z-index:0;pointer-events:none;-webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,0) 0%,#000 8%,#000 48%,rgba(0,0,0,0) 74%);mask-image:linear-gradient(to bottom,rgba(0,0,0,0) 0%,#000 8%,#000 48%,rgba(0,0,0,0) 74%)">
+<canvas ref="{{canvasRef}}" width="180" height="140" style="position:absolute;inset:0;width:100%;height:100%;display:block"></canvas>
+</div>
+
+<div style="position:relative;z-index:1;max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:56px">
+<div style="max-width:740px;display:flex;flex-direction:column;align-items:flex-start;gap:20px">
+<h1 style="margin:0;max-width:680px;font-family:'Space Grotesk','PingFang SC','Microsoft YaHei',sans-serif;font-size:38px;line-height:1.34;font-weight:700;letter-spacing:-0.02em;color:#141413">文字之隅，落笔即成</h1>
+<div style="display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:6px">
+<a class="cta-main" href="/download?k=thinkly-fast-macos.dmg">下载 macOS 版</a>
+<span style="font-size:14px;line-height:22px;color:#5E5D59">适用于 Apple 芯片的 Mac · 文件就是本地 Markdown</span>
+</div>
+</div>
+
+<div class="stage" role="region" aria-label="Yu 实时 GPUI 块编辑器" style="width:100%;max-width:1180px;aspect-ratio:16 / 10;min-height:700px;border:1px solid #DCD8CE;border-radius:12px;background:#FBFAF7;box-shadow:0 20px 50px rgba(20,20,19,0.07);overflow:hidden;position:relative;display:flex;flex-direction:column">
+<div style="height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid #E8E5DD">
+<svg width="52" height="12" viewBox="0 0 52 12" aria-hidden="true">
+<circle cx="6" cy="6" r="5" fill="none" stroke="#C9C5BA" stroke-width="1.2"></circle>
+<circle cx="26" cy="6" r="5" fill="none" stroke="#C9C5BA" stroke-width="1.2"></circle>
+<circle cx="46" cy="6" r="5" fill="none" stroke="#C9C5BA" stroke-width="1.2"></circle>
+</svg>
+</div>
+<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px">
+<span style="font-size:14px;line-height:22px;color:#5E5D59">[编辑器窗口 · 真实 GPUI 编辑器挂载位 #editor-stage]</span>
+</div>
+</div>
+</div>
+</section>
+
+<section id="performance" style="position:relative;overflow:hidden;padding:120px 32px;border-top:1px solid #E5E2D9;background:#EFECE4">
+<div style="position:relative;max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:48px">
+<h2 style="margin:0;font-family:'Space Grotesk','PingFang SC',sans-serif;font-size:38px;line-height:1.22;font-weight:700;letter-spacing:-0.02em;color:#141413">大文档也是即开即写</h2>
+<div class="grid-12" style="padding:32px 0;border-top:1px solid #DEDAD0;display:grid;grid-template-columns:repeat(12, minmax(0, 1fr));gap:32px;align-items:center">
+<div style="grid-column:span 5;display:flex;flex-direction:column;gap:8px">
+<strong style="font-family:'Space Grotesk',monospace;font-size:52px;line-height:1.05;font-weight:700;letter-spacing:-0.03em;color:#C4613F">24.5 ms</strong>
+<span style="font-size:17px;line-height:26px;font-weight:500;color:#141413">打开 10 万块文档到显示首屏</span>
+</div>
+<div style="grid-column:span 7;display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:20px">
+<div style="display:grid;grid-template-columns:110px 1fr 88px;align-items:center;gap:12px">
+<span style="color:#141413;font-weight:600">Yu</span>
+<div style="height:8px;border-radius:4px;background:#E2DED4;overflow:hidden"><div style="width:3%;min-width:6px;height:100%;border-radius:4px;background:#D97757"></div></div>
+<span style="font-family:monospace;text-align:right;color:#A84F31;font-weight:600">24.5 ms</span>
+</div>
+<div style="display:grid;grid-template-columns:110px 1fr 88px;align-items:center;gap:12px">
+<span style="color:#5E5D59">VS Code</span>
+<div style="height:8px;border-radius:4px;background:#E2DED4;overflow:hidden"><div style="width:18%;height:100%;border-radius:4px;background:#C5C1B5"></div></div>
+<span style="font-family:monospace;text-align:right;color:#5E5D59">~420 ms</span>
+</div>
+<div style="display:grid;grid-template-columns:110px 1fr 88px;align-items:center;gap:12px">
+<span style="color:#5E5D59">Obsidian</span>
+<div style="height:8px;border-radius:4px;background:#E2DED4;overflow:hidden"><div style="width:46%;height:100%;border-radius:4px;background:#C5C1B5"></div></div>
+<span style="font-family:monospace;text-align:right;color:#5E5D59">~1,800 ms</span>
+</div>
+<div style="display:grid;grid-template-columns:110px 1fr 88px;align-items:center;gap:12px">
+<span style="color:#5E5D59">Notion</span>
+<div style="height:8px;border-radius:4px;background:#E2DED4;overflow:hidden"><div style="width:100%;height:100%;border-radius:4px;background:#C5C1B5"></div></div>
+<span style="font-family:monospace;text-align:right;color:#5E5D59">&gt; 8,000 ms</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"speed":{"editor":"range","default":1,"min":0,"max":2,"step":0.1,"section":"流场"},"intensity":{"editor":"range","default":0.42,"min":0.2,"max":0.56,"step":0.02,"section":"流场"},"grain":{"editor":"range","default":0.55,"min":0,"max":1,"step":0.05,"section":"流场"},"pull":{"editor":"range","default":0.5,"min":0,"max":1,"step":0.05,"section":"流场"},"scale":{"editor":"enum","default":"8","options":["6","8","12"],"section":"流场"},"$preview":{"width":1440,"height":1600}}'>
+// 色源：位置为首屏 section 的归一化坐标（x 占宽、y 占高），r 以高度为单位
+const GLOW_SOURCES = [
+  { c: [150, 172, 192], x: 0.80, y: 0.10, r: 0.34, ax: 0.07, ay: 0.05, fx: 0.11, fy: 0.08, p: 0.0 },
+  { c: [226, 170, 150], x: 0.16, y: 0.30, r: 0.30, ax: 0.06, ay: 0.06, fx: 0.09, fy: 0.13, p: 1.7 },
+  { c: [176, 192, 204], x: 0.02, y: 0.52, r: 0.26, ax: 0.04, ay: 0.07, fx: 0.14, fy: 0.10, p: 3.1 },
+  { c: [235, 195, 174], x: 0.97, y: 0.44, r: 0.28, ax: 0.04, ay: 0.06, fx: 0.10, fy: 0.15, p: 4.6 }
+];
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.section = null;
+    this.canvas = null;
+    this.raf = 0;
+    this.last = 0;
+    this.t = 12;
+    this.running = false;
+    this.visible = true;
+    this.target = null;
+    this.pull = { x: 0.5, y: 0.3, amt: 0 };
+    this.reduced = typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.sectionRef = (el) => { this.section = el; };
+    this.canvasRef = (el) => { this.canvas = el; };
+    this.onHeroMove = (e) => {
+      if (this.reduced || !this.section) return;
+      const r = this.section.getBoundingClientRect();
+      this.target = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+    };
+    this.onHeroLeave = () => { this.target = null; };
+    this.tick = (now) => {
+      this.raf = requestAnimationFrame(this.tick);
+      if (now - this.last < 32) return; // 约 30fps
+      const dt = Math.min(0.1, (now - this.last) / 1000);
+      this.last = now;
+      this.t += dt * (this.props.speed ?? 1);
+      this.easePull();
+      this.draw();
+    };
+    this.buildNoise();
+  }
+
+  componentDidMount() {
+    if (!this.section || !this.canvas) return;
+    this.ctx = this.canvas.getContext('2d');
+    this.grainPattern = this.buildGrain();
+    this.resize();
+    if (typeof ResizeObserver !== 'undefined') {
+      this.ro = new ResizeObserver(() => { this.resize(); if (!this.running) this.draw(); });
+      this.ro.observe(this.section);
+    }
+    if (typeof IntersectionObserver !== 'undefined') {
+      this.io = new IntersectionObserver((entries) => {
+        this.visible = entries[0].isIntersecting;
+        this.visible ? this.start() : this.stop();
+      }, { threshold: 0 });
+      this.io.observe(this.section);
+    }
+    this.draw();
+    this.start();
+  }
+
+  componentDidUpdate() {
+    if (!this.ctx) return;
+    this.resize();
+    if (!this.running) this.draw();
+  }
+
+  componentWillUnmount() {
+    this.stop();
+    if (this.ro) this.ro.disconnect();
+    if (this.io) this.io.disconnect();
+    this.ro = this.io = null;
+  }
+
+  start() {
+    if (this.reduced || this.running || !this.visible || !this.ctx) return;
+    this.running = true;
+    this.last = performance.now();
+    this.raf = requestAnimationFrame(this.tick);
+  }
+
+  stop() {
+    if (this.raf) cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    this.running = false;
+  }
+
+  makeCanvas(w, h) {
+    if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    return c;
+  }
+
+  // 值噪声：固定种子的置换表，避免每帧调用 Math.sin
+  buildNoise() {
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    this.vals = new Float32Array(256);
+    const p = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) { this.vals[i] = rnd(); p[i] = i; }
+    for (let i = 255; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const s = p[i]; p[i] = p[j]; p[j] = s; }
+    this.perm = new Uint8Array(512);
+    for (let i = 0; i < 512; i++) this.perm[i] = p[i & 255];
+  }
+
+  noise(x, y) {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const P = this.perm, V = this.vals, X = xi & 255, Y = yi & 255;
+    const a = V[P[P[X] + Y]], b = V[P[P[X + 1] + Y]];
+    const c = V[P[P[X] + Y + 1]], d = V[P[P[X + 1] + Y + 1]];
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+
+  // 胶片颗粒：一次生成 128px 噪点图块，每帧随机平移
+  buildGrain() {
+    const n = 128;
+    const tile = this.makeCanvas(n, n);
+    const tctx = tile.getContext('2d');
+    const img = tctx.createImageData(n, n);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const light = Math.random() < 0.5;
+      d[i] = light ? 255 : 20; d[i + 1] = light ? 255 : 20; d[i + 2] = light ? 252 : 19;
+      const r = Math.random();
+      d[i + 3] = Math.round(r * r * 110);
+    }
+    tctx.putImageData(img, 0, 0);
+    return this.ctx.createPattern(tile, 'repeat');
+  }
+
+  resize() {
+    const W = Math.max(1, Math.round(this.section.clientWidth));
+    const H = Math.max(1, Math.round(this.section.clientHeight));
+    const k = Number(this.props.scale ?? 8) || 8;
+    const fw = Math.max(24, Math.round(W / k)), fh = Math.max(24, Math.round(H / k));
+    if (this.canvas.width !== W || this.canvas.height !== H) { this.canvas.width = W; this.canvas.height = H; }
+    if (!this.field || this.field.width !== fw || this.field.height !== fh) {
+      this.field = this.makeCanvas(fw, fh);
+      this.fctx = this.field.getContext('2d');
+      this.fimg = this.fctx.createImageData(fw, fh);
+    }
+    // 标题与正文所在区域：色雾在此减弱，保证文字对比度
+    const left = Math.max(32, (W - 1180) / 2);
+    this.safe = { cx: (left + 300) / H, cy: 150 / H, rx: 440 / H, ry: 150 / H };
+  }
+
+  easePull() {
+    const tg = this.target;
+    this.pull.amt += ((tg ? 1 : 0) - this.pull.amt) * 0.03;
+    if (tg) {
+      this.pull.x += (tg.x - this.pull.x) * 0.035;
+      this.pull.y += (tg.y - this.pull.y) * 0.035;
+    }
+  }
+
+  renderField() {
+    const fw = this.field.width, fh = this.field.height, d = this.fimg.data;
+    const t = this.t, aspect = fw / fh;
+    const intensity = Math.min(0.56, this.props.intensity ?? 0.42);
+    const pk = 0.16 * (this.props.pull ?? 0.5) * this.pull.amt;
+    const S = GLOW_SOURCES.map((s) => {
+      let x = s.x + s.ax * Math.sin(t * s.fx + s.p);
+      let y = s.y + s.ay * Math.cos(t * s.fy + s.p * 1.3);
+      x += (this.pull.x - x) * pk;
+      y += (this.pull.y - y) * pk;
+      return { x: x * aspect, y: y, inv: 1 / (s.r * s.r), c: s.c };
+    });
+    const sf = this.safe;
+    let i = 0;
+    for (let py = 0; py < fh; py++) {
+      const v = (py + 0.5) / fh;
+      const vt = v < 0.4 ? 1 : v > 0.76 ? 0 : 1 - (v - 0.4) / 0.36;
+      const vf = vt * vt * (3 - 2 * vt);
+      for (let px = 0; px < fw; px++, i += 4) {
+        if (vf <= 0) { d[i + 3] = 0; continue; }
+        const u = (px + 0.5) / fh;
+        const wu = u + (this.noise(u * 2.2 + t * 0.035, v * 2.2 - t * 0.02) - 0.5) * 0.3;
+        const wv = v + (this.noise(u * 2.2 + 17.3 - t * 0.025, v * 2.2 + 9.1 + t * 0.03) - 0.5) * 0.3;
+        let A = 0, R = 0, G = 0, B = 0;
+        for (let k = 0; k < S.length; k++) {
+          const s = S[k], dx = wu - s.x, dy = wv - s.y;
+          const w = Math.exp(-(dx * dx + dy * dy) * s.inv);
+          A += w; R += s.c[0] * w; G += s.c[1] * w; B += s.c[2] * w;
+        }
+        if (A < 1e-4) { d[i + 3] = 0; continue; }
+        const fog = 0.62 + 0.6 * this.noise(u * 4.5 - t * 0.05, v * 4.5 + t * 0.04);
+        const sx = (u - sf.cx) / sf.rx, sy = (v - sf.cy) / sf.ry;
+        const safe = 1 - 0.5 * Math.exp(-(sx * sx + sy * sy));
+        const a = Math.min(0.55, intensity * (1 - Math.exp(-A * 1.5)) * fog * vf * safe);
+        d[i] = R / A; d[i + 1] = G / A; d[i + 2] = B / A; d[i + 3] = a * 255;
+      }
+    }
+    this.fctx.putImageData(this.fimg, 0, 0);
+  }
+
+  draw() {
+    if (!this.ctx || !this.field) return;
+    this.renderField();
+    const ctx = this.ctx, W = this.canvas.width, H = this.canvas.height;
+    ctx.save();
+    ctx.globalCompositeOperation = 'copy';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(this.field, 0, 0, W, H);
+    const g = this.props.grain ?? 0.55;
+    if (g > 0 && this.grainPattern) {
+      ctx.globalCompositeOperation = 'source-atop';
+      ctx.globalAlpha = g;
+      const ox = this.reduced ? 0 : Math.floor(Math.random() * 128);
+      const oy = this.reduced ? 0 : Math.floor(Math.random() * 128);
+      ctx.translate(-ox, -oy);
+      ctx.fillStyle = this.grainPattern;
+      ctx.fillRect(0, 0, W + 128, H + 128);
+    }
+    ctx.restore();
+  }
+
+  renderVals() {
+    return {
+      sectionRef: this.sectionRef,
+      canvasRef: this.canvasRef,
+      onHeroMove: this.onHeroMove,
+      onHeroLeave: this.onHeroLeave
+    };
+  }
+}
+</script>
+</body>
+</html>
