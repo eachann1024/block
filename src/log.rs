@@ -1,4 +1,5 @@
-//! Runtime, lifecycle, and crash/panic diagnostics logging (`~/Library/Logs/ThinklyFast/thinkly-fast.log`).
+//! Crash, error, and warning diagnostics logging (`~/Library/Logs/ThinklyFast/thinkly-fast.log`).
+//! Only `WARN`, `ERROR`, and `PANIC` entries are ever written to the log file.
 use std::{
     backtrace::Backtrace,
     fs::{self, File, OpenOptions},
@@ -11,6 +12,7 @@ use std::{
 const MAX_LOG_BYTES: u64 = 2 * 1024 * 1024;
 
 struct Logger {
+    path: Option<PathBuf>,
     file: Mutex<Option<File>>,
     context: Mutex<String>,
 }
@@ -60,34 +62,26 @@ fn write_line(level: &str, msg: &str, flush_disk: bool) {
     let _ = std::io::stderr().write_all(line.as_bytes());
     if let Some(logger) = LOGGER.get()
         && let Ok(mut guard) = logger.file.lock()
-        && let Some(file) = guard.as_mut()
     {
-        let _ = file.write_all(line.as_bytes());
-        let _ = file.flush();
-        if flush_disk {
-            let _ = file.sync_all();
+        if guard.is_none() {
+            *guard = logger.path.as_ref().and_then(open_log_file);
+        }
+        if let Some(file) = guard.as_mut() {
+            let _ = file.write_all(line.as_bytes());
+            let _ = file.flush();
+            if flush_disk {
+                let _ = file.sync_all();
+            }
         }
     }
 }
 
 pub fn init() {
-    let path = resolve_log_path();
-    let file = path.as_ref().and_then(open_log_file);
     let _ = LOGGER.set(Logger {
-        file: Mutex::new(file),
+        path: resolve_log_path(),
+        file: Mutex::new(None),
         context: Mutex::new(String::from("startup")),
     });
-    let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
-    let path_str = path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "stderr-only".into());
-    info(&format!(
-        "=== Thinkly Fast v{} start (pid={}, profile={}, os={}/{}, log={}) ===",
-        env!("CARGO_PKG_VERSION"),
-        std::process::id(),
-        profile,
-        std::env::consts::OS,
-        std::env::consts::ARCH,
-        path_str
-    ));
     install_panic_hook();
 }
 
@@ -119,10 +113,6 @@ pub fn set_context(ctx: impl Into<String>) {
     {
         *guard = ctx.into();
     }
-}
-
-pub fn info(msg: &str) {
-    write_line("INFO", msg, false);
 }
 
 pub fn warn(msg: &str) {
