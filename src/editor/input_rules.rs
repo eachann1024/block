@@ -1,6 +1,6 @@
 //! Typing rules mirroring the Electron editor: block prefixes on space, dividers, arrow replacement.
 use gpui::Context;
-use super::{model::{Block, CalloutKind, Kind, MarkKind, marker_kind}, view::{Editor, selection::Position}};
+use super::{model::{Block, CalloutKind, Kind, MarkKind}, view::{Editor, selection::Position}};
 
 enum Rule { Code(String), Numbered(u64), Bullet, Todo(bool), Heading(u8), Quote, Callout(CalloutKind) }
 
@@ -14,15 +14,17 @@ fn strip_space(prefix: &str) -> &str {
     match chars.next() { Some(c) if c.is_whitespace() => chars.as_str(), _ => prefix }
 }
 fn match_todo(s: &str) -> Option<bool> {
-    for (open, close) in [('[', ']'), ('【', '】')] {
+    for (open, close) in [('[', ']'), ('【', '】'), ('［', '］')] {
         if let Some(mid) = s.strip_prefix(open).and_then(|r| r.strip_suffix(close)) {
-            if matches!(mid, "" | " " | "x" | "X") { return Some(mid.eq_ignore_ascii_case("x")); }
+            if matches!(mid, "" | " " | "\u{3000}" | "x" | "X" | "ｘ" | "Ｘ") {
+                return Some(matches!(mid, "x" | "X" | "ｘ" | "Ｘ"));
+            }
         }
     }
     None
 }
 fn match_callout(prefix: &str) -> Option<CalloutKind> {
-    let s = prefix.trim().strip_prefix('>').map(str::trim_start).unwrap_or(prefix.trim());
+    let s = prefix.trim().strip_prefix(['>', '＞']).map(str::trim_start).unwrap_or(prefix.trim());
     match s.to_ascii_lowercase().as_str() {
         "[!note]" | "!note" | "!!! note" | ":::note" | ":::info" => Some(CalloutKind::Note),
         "[!tip]" | "!tip" | "!!! tip" | ":::tip" => Some(CalloutKind::Tip),
@@ -32,23 +34,53 @@ fn match_callout(prefix: &str) -> Option<CalloutKind> {
         _ => None,
     }
 }
+fn match_code_fence(prefix: &str) -> Option<String> {
+    for fence in ["```", "~~~", "｀｀｀", "～～～", "···"] {
+        if let Some(lang) = prefix.strip_prefix(fence) {
+            return Some(lang.trim().to_owned());
+        }
+    }
+    if matches!(prefix.trim(), "$$" | "＄＄") {
+        return Some("math".to_owned());
+    }
+    None
+}
+fn parse_digits(s: &str) -> Option<u64> {
+    if s.is_empty() { return None; }
+    let mut n = 0u64;
+    for ch in s.chars() {
+        let d = match ch {
+            '0'..='9' => u64::from(ch as u32 - '0' as u32),
+            '０'..='９' => u64::from(ch as u32 - '０' as u32),
+            _ => return None,
+        };
+        n = n.checked_mul(10)?.checked_add(d)?;
+    }
+    Some(n)
+}
 fn match_rule(prefix: &str) -> Option<Rule> {
-    if let Some(lang) = prefix.strip_prefix("```").or_else(|| prefix.strip_prefix("~~~")) { return Some(Rule::Code(lang.trim().to_owned())); }
-    if prefix.trim() == "$$" { return Some(Rule::Code("math".to_owned())); }
+    if let Some(lang) = match_code_fence(prefix) { return Some(Rule::Code(lang)); }
     if let Some(callout) = match_callout(prefix) { return Some(Rule::Callout(callout)); }
     let s = strip_space(prefix);
-    if let Some(body) = s.strip_suffix(['.', '。', ')', '）']) {
-        if !body.is_empty() && body.bytes().all(|b| b.is_ascii_digit()) { return body.parse().ok().map(Rule::Numbered); }
+    if let Some(body) = s.strip_suffix(['.', '。', '、', '．', ')', '）']) {
+        if let Some(n) = parse_digits(body) { return Some(Rule::Numbered(n)); }
         if matches!(body, "a" | "i" | "A" | "I") { return Some(Rule::Numbered(1)); }
     }
-    if matches!(s, "-" | "+" | "*") { return Some(Rule::Bullet); }
+    if matches!(s, "-" | "+" | "*" | "•" | "·" | "・" | "－" | "＋" | "＊") { return Some(Rule::Bullet); }
     if let Some(done) = match_todo(s) { return Some(Rule::Todo(done)); }
-    if (4..=6).contains(&prefix.len()) && prefix.bytes().all(|b| b == b'#') { return Some(Rule::Heading(prefix.len() as u8)); }
-    if matches!(prefix, "\"" | "“" | "|" | "｜" | ">" | "＞") { return Some(Rule::Quote); }
+    let hashes = prefix.chars().count();
+    if (1..=6).contains(&hashes) && prefix.chars().all(|c| matches!(c, '#' | '＃')) {
+        return Some(Rule::Heading(hashes as u8));
+    }
+    if matches!(prefix, ">" | "＞" | "》" | "\"" | "“" | "”" | "|" | "｜") { return Some(Rule::Quote); }
     None
 }
 fn is_divider(text: &str) -> bool {
-    text.len() >= 3 && matches!(text.as_bytes()[0], b'-' | b'*' | b'_') && text.bytes().all(|b| b == text.as_bytes()[0])
+    let mut chars = text.chars();
+    let Some(first) = chars.next() else { return false };
+    let count = 1 + chars.clone().count();
+    if !chars.all(|c| c == first) { return false; }
+    (matches!(first, '-' | '*' | '_' | '－' | '＊' | '＿') && count >= 3) || (first == '—' && count >= 2)
 }
 fn raw_divider() -> Block {
     let mut block = Block::new(0, Kind::Paragraph, "***\n".to_owned());
@@ -61,8 +93,9 @@ impl Editor {
     pub(in crate::editor) fn space_rule(&mut self, id: &mut u64, offset: &mut usize) {
         let Some(block) = self.doc.get(*id) else { return };
         if *offset == 0 || !block.text.is_char_boundary(*offset) { return; }
+        let Some(raw_prefix) = block.text[..*offset].strip_suffix([' ', '\u{3000}']) else { return };
         if block.kind == Kind::Bullet {
-            let prefix = strip_space(&block.text[..*offset - 1]);
+            let prefix = strip_space(raw_prefix);
             if let Some(done) = match_todo(prefix) {
                 self.doc.replace_range(*id, 0..*offset, ""); *offset = 0;
                 self.doc.set_kind(*id, Kind::Todo); self.set_meta(*id, |b| b.checked = done);
@@ -70,22 +103,14 @@ impl Editor {
             return;
         }
         if block.kind == Kind::Quote && block.meta.callout.is_none() {
-            let prefix = &block.text[..*offset - 1];
-            if let Some(kind) = match_callout(prefix) {
+            if let Some(kind) = match_callout(raw_prefix) {
                 self.doc.replace_range(*id, 0..*offset, ""); *offset = 0;
                 self.set_meta(*id, |b| b.meta.callout = Some(kind));
             }
             return;
         }
-        if block.kind != Kind::Paragraph { return; }
-        if let Some((kind, eaten)) = marker_kind(&block.text) {
-            if *offset == eaten {
-                self.doc.replace_range(*id, 0..eaten, ""); self.doc.set_kind(*id, kind); *offset = 0;
-            }
-            return;
-        }
         if !plain(block) { return; }
-        let prefix = block.text[..*offset - 1].to_owned();
+        let prefix = raw_prefix.to_owned();
         if is_divider(&prefix) && *offset == block.text.len() {
             *id = self.insert_divider(*id); *offset = 0; return;
         }
@@ -96,6 +121,9 @@ impl Editor {
             Rule::Numbered(n) => { self.doc.set_kind(*id, Kind::Numbered); self.set_meta(*id, |b| b.meta.list_start = (n != 1).then_some(n)); }
             Rule::Bullet => self.doc.set_kind(*id, Kind::Bullet),
             Rule::Todo(done) => { self.doc.set_kind(*id, Kind::Todo); self.set_meta(*id, |b| b.checked = done); }
+            Rule::Heading(1) => self.doc.set_kind(*id, Kind::H1),
+            Rule::Heading(2) => self.doc.set_kind(*id, Kind::H2),
+            Rule::Heading(3) => self.doc.set_kind(*id, Kind::H3),
             Rule::Heading(level) => { self.doc.set_kind(*id, Kind::H3); self.set_meta(*id, |b| b.meta.heading_level = Some(level)); }
             Rule::Quote => self.doc.set_kind(*id, Kind::Quote),
             Rule::Callout(kind) => { self.doc.set_kind(*id, Kind::Quote); self.set_meta(*id, |b| b.meta.callout = Some(kind)); }
@@ -105,10 +133,12 @@ impl Editor {
         if let Some(block) = self.doc.get_mut(id) { edit(block); }
         self.doc.refresh_block(id);
     }
-    /// Convert a plain paragraph whose entire text just became `---`, `***` or `___` into a divider immediately.
+    /// Convert a plain paragraph whose entire text just became `---`, `***`, `___`, or `——` into a divider immediately.
     pub(in crate::editor) fn divider_rule(&mut self, id: &mut u64, offset: &mut usize) {
         let Some(block) = self.doc.get(*id) else { return };
-        if plain(block) && *offset == block.text.len() && matches!(block.text.as_str(), "---" | "***" | "___") {
+        if plain(block) && *offset == block.text.len()
+            && matches!(block.text.as_str(), "---" | "***" | "___" | "－－－" | "＊＊＊" | "＿＿＿" | "——")
+        {
             *id = self.insert_divider(*id); *offset = 0;
         }
     }
@@ -141,10 +171,7 @@ impl Editor {
         if !plain(block) { return false; }
         let before = self.snapshot();
         // A typed fence (```lang, ~~~lang, or $$) plus Enter turns the paragraph into a code/math block.
-        let code_lang = block.text.strip_prefix("```").or_else(|| block.text.strip_prefix("~~~"))
-            .map(|l| l.trim().to_owned())
-            .or_else(|| (block.text.trim() == "$$").then(|| "math".to_owned()));
-        if let Some(lang) = code_lang {
+        if let Some(lang) = match_code_fence(&block.text) {
             self.doc.set_text(at.block, String::new());
             self.set_meta(at.block, |b| b.meta.code_language = Some(lang));
             let to = Position { block: at.block, offset: 0 };
@@ -157,15 +184,17 @@ impl Editor {
         self.caret.anchor = to; self.caret.head = to;
         self.record(before, cx); true
     }
-    /// `->` `-》` `=>` `<-` become arrows right after the last character; never inside code.
+    /// `->` `-》` `—>` `—》` `=>` `=》` `<-` `《-` become arrows right after the last character; never inside code.
     pub(super) fn arrow_rule(&mut self, cx: &mut Context<Self>) {
         let at = self.caret.head;
         if !self.caret.is_empty() || self.caret.composing.is_some() { return; }
         let Some(block) = self.doc.get(at.block) else { return };
         if block.meta.table.is_some() || block.meta.raw_source.is_some() || block.meta.code_language.is_some() { return; }
         let Some(before_caret) = block.text.get(..at.offset) else { return };
-        let Some((pattern, arrow)) = [("->", "→"), ("-》", "→"), ("=>", "⇒"), ("<-", "←")]
-            .into_iter().find(|(p, _)| before_caret.ends_with(p)) else { return };
+        let Some((pattern, arrow)) = [
+            ("->", "→"), ("-》", "→"), ("—>", "→"), ("—》", "→"),
+            ("=>", "⇒"), ("=》", "⇒"), ("<-", "←"), ("《-", "←"),
+        ].into_iter().find(|(p, _)| before_caret.ends_with(p)) else { return };
         let start = at.offset - pattern.len();
         if block.spans.iter().any(|s| s.marks.contains(&MarkKind::Code) && s.start < at.offset && s.end > start) { return; }
         let before = self.snapshot();

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>方案 1 · 独立分键键帽（Split Keycaps）</title>
+<title>设置 · 独立分键键帽（按当前系统自适应）</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -12,17 +12,18 @@
 <style>
 body{margin:0}
 a{color:#547dd0}a:hover{color:#3d63b0}
-button{font-family:inherit}
+button,input{font-family:inherit}
 .ib{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#526071;padding:0;cursor:pointer;flex:none}
 .ib:hover{background:#eef3fc;color:#20242c}
 .tab{font:inherit;font-size:13px;line-height:18px;font-weight:460;height:28px;min-width:104px;max-width:196px;flex:0 1 176px;display:inline-flex;align-items:center;gap:6px;padding:0 6px 0 10px;border:0;border-radius:6px;background:transparent;cursor:pointer;box-sizing:border-box}
 .row{font:inherit;font-size:14px;line-height:20px;font-weight:400;width:100%;height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border:0;border-radius:6px;background:transparent;text-align:left;cursor:pointer;box-sizing:border-box}
-.btn{font:inherit;font-size:14px;font-weight:460;height:32px;padding:0 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;white-space:nowrap}
-.seg{font:inherit;font-size:14px;font-weight:460;height:34px;padding:0 14px;border:0;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;box-sizing:border-box;white-space:nowrap}
-.os-seg{font:inherit;font-size:12px;font-weight:500;height:26px;padding:0 10px;border:0;border-radius:5px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;box-sizing:border-box;white-space:nowrap}
-.tray-btn{font:inherit;display:inline-flex;align-items:center;gap:4px;padding:3px;border-radius:8px;cursor:pointer;box-sizing:border-box}
-.keycap{font-family:'JetBrains Mono',Inter,ui-monospace,monospace;font-variant-numeric:tabular-nums;height:24px;min-width:24px;padding:0 7px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:12px;line-height:16px;font-weight:500;box-sizing:border-box;white-space:nowrap}
-.keycap-sm{font-family:'JetBrains Mono',Inter,ui-monospace,monospace;height:20px;min-width:20px;padding:0 5px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;gap:3px;font-size:11px;line-height:14px;font-weight:500;box-sizing:border-box;white-space:nowrap}
+.btn{font:inherit;font-size:14px;font-weight:460;height:32px;padding:0 10px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;white-space:nowrap}
+.seg{font:inherit;font-size:14px;font-weight:460;height:34px;padding:0 14px;border:0;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;white-space:nowrap}
+.tray-btn{font:inherit;height:32px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center;gap:4px;border-radius:8px;cursor:pointer;box-sizing:border-box}
+.tray-static{font:inherit;height:32px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center;gap:4px;border-radius:8px;box-sizing:border-box}
+.keycap{font-family:'JetBrains Mono',Inter,ui-monospace,monospace;font-variant-numeric:tabular-nums;height:22px;min-width:22px;padding:0 6px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;line-height:14px;font-weight:500;box-sizing:border-box;white-space:nowrap}
+.keycap-sym{font-family:Inter,-apple-system,'SF Pro Text',system-ui,sans-serif;height:22px;min-width:22px;padding:0 5px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;line-height:14px;font-weight:500;box-sizing:border-box;white-space:nowrap}
+.keycap-sm{font-family:'JetBrains Mono',Inter,ui-monospace,monospace;height:20px;min-width:20px;padding:0 5px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;line-height:14px;font-weight:500;box-sizing:border-box;white-space:nowrap}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </helmet>
@@ -74,12 +75,8 @@ button{font-family:inherit}
 <span style="flex:1;text-align:left">搜索笔记</span>
 <span style="display:inline-flex;align-items:center;gap:3px">
 <sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
-<span class="keycap-sm" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textSecondary}}">
-<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5L2.75 8.5H6V13.5H10V8.5H13.25L8 2.5Z"></path></svg>
-</span>
-<span class="keycap-sm" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textSecondary}}">
-<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6V4.25A1.75 1.75 0 1 0 4.25 6H11.75A1.75 1.75 0 1 0 10 4.25V11.75A1.75 1.75 0 1 0 11.75 10H4.25A1.75 1.75 0 1 0 6 11.75V6Z"></path></svg>
-</span>
+<span class="keycap-sm" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textSecondary}}">⇧</span>
+<span class="keycap-sm" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textSecondary}}">⌘</span>
 <span class="keycap-sm" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textSecondary}}">K</span>
 </sc-if>
 <sc-if value="{{isNotMac}}" hint-placeholder-val="{{false}}">
@@ -114,234 +111,152 @@ button{font-family:inherit}
 </aside>
 
 <main style="flex:999 1 560px;min-width:0;background:{{settingsBg}};overflow:auto">
-<div style="box-sizing:border-box;width:100%;max-width:740px;margin:0 auto;padding:36px 28px 56px;display:flex;flex-direction:column;gap:22px">
+<div style="box-sizing:border-box;width:100%;max-width:720px;margin:0 auto;padding:40px 28px 64px;display:flex;flex-direction:column;gap:28px">
 
 <div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
-<div style="display:flex;align-items:baseline;gap:12px">
-<h1 style="margin:0;font-size:24px;line-height:32px;font-weight:560;letter-spacing:-0.01em;color:{{textPrimary}}">设置</h1>
-<span style="font-size:13px;color:{{textSecondary}}">方案 1 · 独立分键键帽（Split Keycaps）</span>
-</div>
+<h1 style="margin:0;font-size:24px;line-height:32px;font-weight:560;color:{{textPrimary}}">设置</h1>
 <button class="btn" style="background:{{paperBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">返回编辑</button>
 </div>
 
 <section aria-label="外观与字体" style="background:{{paperBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
 <h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">外观与字体</h2>
 
-<div style="display:flex;align-items:center;justify-content:space-between;min-height:38px;gap:16px">
-<div style="display:flex;flex-direction:column;gap:2px">
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="font-size:14px;color:{{textPrimary}}">界面语言</span>
+<div role="group" aria-label="界面语言" style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+<button class="seg" sc-on:click="setLangSystem" style="background:{{langSysBg}};color:{{langSysCol}};box-shadow:{{langSysRing}}">跟随系统</button>
+<button class="seg" sc-on:click="setLangZh" style="background:{{langZhBg}};color:{{langZhCol}};box-shadow:{{langZhRing}}">简体中文</button>
+<button class="seg" sc-on:click="setLangEn" style="background:{{langEnBg}};color:{{langEnCol}};box-shadow:{{langEnRing}}">English</button>
+</div>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
 <span style="font-size:14px;color:{{textPrimary}}">外观主题</span>
-<span style="font-size:12px;line-height:16px;color:{{textSecondary}}">界面与编辑画布的明暗配色模式</span>
-</div>
-<div role="group" aria-label="外观主题" style="display:inline-flex;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};gap:2px">
-<sc-for list="{{themes}}" as="t" hint-placeholder-count="3">
-<button class="seg" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button>
-</sc-for>
+<div role="group" aria-label="外观主题" style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+<button class="seg" sc-on:click="setThemeSystem" style="background:{{themeSysBg}};color:{{themeSysCol}};box-shadow:{{themeSysRing}}">跟随系统</button>
+<button class="seg" sc-on:click="setThemeLight" style="background:{{themeLightBg}};color:{{themeLightCol}};box-shadow:{{themeLightRing}}">浅色</button>
+<button class="seg" sc-on:click="setThemeDark" style="background:{{themeDarkBg}};color:{{themeDarkCol}};box-shadow:{{themeDarkRing}}">深色</button>
 </div>
 </div>
 
-<div style="height:1px;background:{{borderCol}}"></div>
-
-<div style="display:flex;align-items:center;justify-content:space-between;min-height:40px;gap:16px">
-<div style="display:flex;flex-direction:column;gap:2px">
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
 <span style="font-size:14px;color:{{textPrimary}}">正文字体</span>
-<span style="font-size:12px;line-height:16px;color:{{textSecondary}}">{{fontDesc}}</span>
-</div>
-<div role="group" aria-label="正文字体" style="display:inline-flex;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};gap:2px">
-<sc-for list="{{fonts}}" as="f" hint-placeholder-count="2">
-<button class="seg" onClick="{{f.pick}}" style="{{f.style}}">
-<span style="font-size:13px;font-weight:600;color:{{accent}};font-family:{{f.sampleFamily}}">{{f.sample}}</span>
-<span>{{f.label}}</span>
-</button>
-</sc-for>
+<div role="group" aria-label="正文字体" style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+<button class="seg" sc-on:click="setFontSans" style="background:{{fontSansBg}};color:{{fontSansCol}};box-shadow:{{fontSansRing}}">无衬线</button>
+<button class="seg" sc-on:click="setFontSerif" style="background:{{fontSerifBg}};color:{{fontSerifCol}};box-shadow:{{fontSerifRing}}">衬线</button>
 </div>
 </div>
 </section>
 
-<section aria-label="基础快捷键" style="background:{{paperBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:14px">
-<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-<div style="display:flex;align-items:center;gap:10px">
-<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">基础快捷键</h2>
-<span style="font-size:12px;color:{{textSecondary}}">点击可录制修改 · 独立键帽拉开间距</span>
-</div>
-<div role="group" aria-label="操作系统预览" style="display:inline-flex;padding:2px;border-radius:7px;background:{{shellBg}};border:1px solid {{borderCol}};gap:2px">
-<sc-for list="{{platforms}}" as="p" hint-placeholder-count="3">
-<button class="os-seg" onClick="{{p.pick}}" style="{{p.style}}">{{p.label}}</button>
-</sc-for>
-</div>
-</div>
-
-<div style="display:flex;align-items:center;justify-content:space-between;min-height:38px;gap:16px">
-<div style="display:flex;flex-direction:column;gap:2px">
-<span style="font-size:14px;color:{{textPrimary}}">搜索与全局唤起</span>
-<span style="font-size:12px;line-height:16px;color:{{textSecondary}}">全局全文检索笔记标题与正文内容</span>
-</div>
-<button class="tray-btn" onClick="{{toggleRecSearch}}" style="background:{{searchTrayBg}};border:1px solid {{searchTrayBorder}};box-shadow:{{searchTrayShadow}}">
-<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{searchCapBorder}};color:{{textPrimary}}">
-<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5L2.75 8.5H6V13.5H10V8.5H13.25L8 2.5Z"></path></svg>
-</span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{searchCapBorder}};color:{{textPrimary}}">
-<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6V4.25A1.75 1.75 0 1 0 4.25 6H11.75A1.75 1.75 0 1 0 10 4.25V11.75A1.75 1.75 0 1 0 11.75 10H4.25A1.75 1.75 0 1 0 6 11.75V6Z"></path></svg>
-</span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{searchCapBorder}};color:{{textPrimary}}">K</span>
-</sc-if>
-<sc-if value="{{isNotMac}}" hint-placeholder-val="{{false}}">
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{searchCapBorder}};color:{{textPrimary}}">Ctrl</span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{searchCapBorder}};color:{{textPrimary}}">Shift</span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{searchCapBorder}};color:{{textPrimary}}">K</span>
-</sc-if>
-</button>
-</div>
-
-<div style="display:flex;align-items:center;justify-content:space-between;min-height:38px;gap:16px">
-<div style="display:flex;flex-direction:column;gap:2px">
-<span style="font-size:14px;color:{{textPrimary}}">速记小窗</span>
-<span style="font-size:12px;line-height:16px;color:{{textSecondary}}">在任意桌面空间呼出轻量浮窗速记</span>
-</div>
-<button class="tray-btn" onClick="{{toggleRecQuick}}" style="background:{{quickTrayBg}};border:1px solid {{quickTrayBorder}};box-shadow:{{quickTrayShadow}}">
-<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">
-<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4.25H6.25L10.25 11.75H13.5"></path><path d="M9.5 4.25H13.5"></path></svg>
-</span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">N</span>
-</sc-if>
-<sc-if value="{{isNotMac}}" hint-placeholder-val="{{false}}">
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">Alt</span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">N</span>
-</sc-if>
-</button>
-</div>
-
-<div style="height:1px;background:{{borderCol}}"></div>
-
-<div style="display:flex;align-items:center;justify-content:space-between;min-height:36px;gap:16px">
-<span style="font-size:14px;color:{{textPrimary}}">当前笔记查找</span>
-<div style="display:inline-flex;align-items:center;gap:4px;padding:3px">
-<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
-<span class="keycap" style="background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}}">
-<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6V4.25A1.75 1.75 0 1 0 4.25 6H11.75A1.75 1.75 0 1 0 10 4.25V11.75A1.75 1.75 0 1 0 11.75 10H4.25A1.75 1.75 0 1 0 6 11.75V6Z"></path></svg>
-</span>
-<span class="keycap" style="background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}}">F</span>
-</sc-if>
-<sc-if value="{{isNotMac}}" hint-placeholder-val="{{false}}">
-<span class="keycap" style="background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}}">Ctrl</span>
-<span class="keycap" style="background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}}">F</span>
-</sc-if>
-</div>
-</div>
-
-<div style="display:flex;align-items:center;justify-content:space-between;min-height:36px;gap:16px">
-<span style="font-size:14px;color:{{textPrimary}}">新建笔记</span>
-<div style="display:inline-flex;align-items:center;gap:4px;padding:3px">
-<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
-<span class="keycap" style="background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}}">
-<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6V4.25A1.75 1.75 0 1 0 4.25 6H11.75A1.75 1.75 0 1 0 10 4.25V11.75A1.75 1.75 0 1 0 11.75 10H4.25A1.75 1.75 0 1 0 6 11.75V6Z"></path></svg>
-</span>
-<span class="keycap" style="background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}}">N</span>
-</sc-if>
-<sc-if value="{{isNotMac}}" hint-placeholder-val="{{false}}">
-<span class="keycap" style="background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}}">Ctrl</span>
-<span class="keycap" style="background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}}">N</span>
-</sc-if>
-</div>
-</div>
-</section>
-
-<section aria-label="三平台快捷键按钮全量对照" style="background:{{paperBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:14px">
+<section aria-label="基础快捷键" style="background:{{paperBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:12px">
 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-<h2 style="margin:0;font-size:14px;line-height:20px;font-weight:560;color:{{textPrimary}}">方案 1 · 跨平台键帽规范对照（macOS / Linux / Windows）</h2>
-<span style="font-size:12px;color:{{textSecondary}}">统一 13px 矢量修饰符图标 + 4px 键距</span>
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">基础快捷键</h2>
 </div>
 
-<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
-<div style="padding:14px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:10px">
-<div style="display:flex;align-items:center;justify-content:space-between">
-<span style="font-size:13px;font-weight:560;color:{{textPrimary}}">macOS</span>
-<span style="font-size:11px;color:{{textSecondary}}">SVG 矢量符号 + 键名</span>
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="font-size:14px;color:{{textPrimary}}">搜索与全局唤起</span>
+<button class="tray-btn" sc-on:click="toggleRecordSearch" style="background:{{recSearchTrayBg}};border:1px solid {{recSearchTrayBorder}}" aria-label="录制搜索与全局唤起快捷键">
+<sc-if value="{{isRecSearch}}" hint-placeholder-val="{{false}}">
+<span style="padding:0 6px;font-size:13px;font-weight:500;color:{{accent}}">按下快捷键…</span>
+</sc-if>
+<sc-if value="{{notRecSearch}}" hint-placeholder-val="{{true}}">
+<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
+<span class="keycap-sym" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">⇧</span>
+<span class="keycap-sym" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">⌘</span>
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">K</span>
+</sc-if>
+<sc-if value="{{isNotMac}}" hint-placeholder-val="{{false}}">
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">Ctrl</span>
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">Shift</span>
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">K</span>
+</sc-if>
+</sc-if>
+</button>
 </div>
-<div style="display:flex;align-items:center;justify-content:space-between">
-<span style="font-size:12px;color:{{textSecondary}}">全局搜索</span>
-<span style="display:inline-flex;align-items:center;gap:4px;padding:2px;border-radius:7px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}}">
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{accent}};color:{{textPrimary}}"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5L2.75 8.5H6V13.5H10V8.5H13.25L8 2.5Z"></path></svg></span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{accent}};color:{{textPrimary}}"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6V4.25A1.75 1.75 0 1 0 4.25 6H11.75A1.75 1.75 0 1 0 10 4.25V11.75A1.75 1.75 0 1 0 11.75 10H4.25A1.75 1.75 0 1 0 6 11.75V6Z"></path></svg></span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{accent}};color:{{textPrimary}}">K</span>
-</span>
-</div>
-<div style="display:flex;align-items:center;justify-content:space-between">
-<span style="font-size:12px;color:{{textSecondary}}">速记小窗</span>
-<span style="display:inline-flex;align-items:center;gap:4px">
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4.25H6.25L10.25 11.75H13.5"></path><path d="M9.5 4.25H13.5"></path></svg></span>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="font-size:14px;color:{{textPrimary}}">速记小窗</span>
+<button class="tray-btn" sc-on:click="toggleRecordQuick" style="background:{{recQuickTrayBg}};border:1px solid {{recQuickTrayBorder}}" aria-label="录制速记小窗快捷键">
+<sc-if value="{{isRecQuick}}" hint-placeholder-val="{{false}}">
+<span style="padding:0 6px;font-size:13px;font-weight:500;color:{{accent}}">按下快捷键…</span>
+</sc-if>
+<sc-if value="{{notRecQuick}}" hint-placeholder-val="{{true}}">
+<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
+<span class="keycap-sym" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">⌥</span>
 <span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">N</span>
-</span>
-</div>
-<div style="display:flex;align-items:center;justify-content:space-between">
-<span style="font-size:12px;color:{{textSecondary}}">查找 / 新建</span>
-<span style="display:inline-flex;align-items:center;gap:4px">
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textSecondary}}"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6V4.25A1.75 1.75 0 1 0 4.25 6H11.75A1.75 1.75 0 1 0 10 4.25V11.75A1.75 1.75 0 1 0 11.75 10H4.25A1.75 1.75 0 1 0 6 11.75V6Z"></path></svg></span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textSecondary}}">F</span>
-</span>
-</div>
-</div>
-
-<div style="padding:14px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:10px">
-<div style="display:flex;align-items:center;justify-content:space-between">
-<span style="font-size:13px;font-weight:560;color:{{textPrimary}}">Linux</span>
-<span style="font-size:11px;color:{{textSecondary}}">Ctrl · Shift · Alt · Super</span>
-</div>
-<div style="display:flex;align-items:center;justify-content:space-between">
-<span style="font-size:12px;color:{{textSecondary}}">全局搜索</span>
-<span style="display:inline-flex;align-items:center;gap:4px;padding:2px;border-radius:7px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}}">
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{accent}};color:{{textPrimary}}">Ctrl</span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{accent}};color:{{textPrimary}}">Shift</span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{accent}};color:{{textPrimary}}">K</span>
-</span>
-</div>
-<div style="display:flex;align-items:center;justify-content:space-between">
-<span style="font-size:12px;color:{{textSecondary}}">速记小窗</span>
-<span style="display:inline-flex;align-items:center;gap:4px">
+</sc-if>
+<sc-if value="{{isNotMac}}" hint-placeholder-val="{{false}}">
 <span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">Alt</span>
 <span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">N</span>
+</sc-if>
+</sc-if>
+</button>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="font-size:14px;color:{{textPrimary}}">当前笔记查找</span>
+<span class="tray-static" style="background:{{trayBg}};border:1px solid {{borderCol}}">
+<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
+<span class="keycap-sym" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">⌘</span>
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">F</span>
+</sc-if>
+<sc-if value="{{isNotMac}}" hint-placeholder-val="{{false}}">
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">Ctrl</span>
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">F</span>
+</sc-if>
 </span>
 </div>
-<div style="display:flex;align-items:center;justify-content:space-between">
-<span style="font-size:12px;color:{{textSecondary}}">系统修饰键</span>
-<span style="display:inline-flex;align-items:center;gap:4px">
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textSecondary}}">Super</span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textSecondary}}">F</span>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="font-size:14px;color:{{textPrimary}}">新建笔记</span>
+<span class="tray-static" style="background:{{trayBg}};border:1px solid {{borderCol}}">
+<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
+<span class="keycap-sym" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">⌘</span>
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">N</span>
+</sc-if>
+<sc-if value="{{isNotMac}}" hint-placeholder-val="{{false}}">
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">Ctrl</span>
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">N</span>
+</sc-if>
 </span>
+</div>
+</section>
+
+<section aria-label="AI 助手" style="background:{{paperBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">AI 助手</h2>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="font-size:14px;color:{{textPrimary}}">启用 AI 助手</span>
+<button sc-on:click="toggleAi" style="height:34px;padding:0 14px;border-radius:8px;border:1px solid {{aiToggleBorder}};background:{{aiToggleBg}};color:{{textPrimary}};font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:8px;cursor:pointer;box-sizing:border-box">
+<span style="width:8px;height:8px;border-radius:4px;background:{{aiDotCol}}"></span>
+<span>{{aiToggleLabel}}</span>
+</button>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<label for="ai-base-url" style="font-size:14px;color:{{textPrimary}}">Base URL</label>
+<input id="ai-base-url" type="url" value="https://api.openai.com/v1" readonly style="width:360px;max-width:100%;height:34px;padding:0 10px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textPrimary}};font-size:14px;box-sizing:border-box">
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<label for="ai-api-key" style="font-size:14px;color:{{textPrimary}}">API Key</label>
+<div style="width:360px;max-width:100%;display:flex;align-items:center;gap:8px">
+<input id="ai-api-key" type="password" value="sk-thinkly-demo-key" readonly style="flex:1;min-width:0;height:34px;padding:0 10px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textPrimary}};font-size:14px;box-sizing:border-box">
+<button class="btn" style="height:34px;background:{{shellBg}};color:{{textSecondary}};border:1px solid {{borderCol}};font-size:13px">显示</button>
 </div>
 </div>
 
-<div style="padding:14px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:10px">
-<div style="display:flex;align-items:center;justify-content:space-between">
-<span style="font-size:13px;font-weight:560;color:{{textPrimary}}">Windows</span>
-<span style="font-size:11px;color:{{textSecondary}}">Ctrl · Shift · Alt · Win</span>
-</div>
-<div style="display:flex;align-items:center;justify-content:space-between">
-<span style="font-size:12px;color:{{textSecondary}}">全局搜索</span>
-<span style="display:inline-flex;align-items:center;gap:4px;padding:2px;border-radius:7px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}}">
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{accent}};color:{{textPrimary}}">Ctrl</span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{accent}};color:{{textPrimary}}">Shift</span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{accent}};color:{{textPrimary}}">K</span>
-</span>
-</div>
-<div style="display:flex;align-items:center;justify-content:space-between">
-<span style="font-size:12px;color:{{textSecondary}}">速记小窗</span>
-<span style="display:inline-flex;align-items:center;gap:4px">
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">Alt</span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">N</span>
-</span>
-</div>
-<div style="display:flex;align-items:center;justify-content:space-between">
-<span style="font-size:12px;color:{{textSecondary}}">系统修饰键</span>
-<span style="display:inline-flex;align-items:center;gap:4px">
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textSecondary}}">
-<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2.2" y="2.2" width="5" height="5" rx="0.8"></rect><rect x="8.8" y="2.2" width="5" height="5" rx="0.8"></rect><rect x="2.2" y="8.8" width="5" height="5" rx="0.8"></rect><rect x="8.8" y="8.8" width="5" height="5" rx="0.8"></rect></svg>
-<span>Win</span>
-</span>
-<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textSecondary}}">N</span>
-</span>
-</div>
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="font-size:14px;color:{{textPrimary}}">默认模型</span>
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<button style="width:220px;height:34px;padding:0 10px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textPrimary}};font-size:14px;display:inline-flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer;box-sizing:border-box">
+<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">gpt-4.1-mini</span>
+<span style="font-size:11px;color:{{textSecondary}}">▾</span>
+</button>
+<button class="btn" style="height:34px;background:{{shellBg}};color:{{textPrimary}};border:1px solid {{btnBorder}};font-size:13px">重新获取模型</button>
+<button class="btn" style="height:34px;background:{{shellBg}};color:{{textPrimary}};border:1px solid {{btnBorder}};font-size:13px">连接测试</button>
 </div>
 </div>
 </section>
@@ -352,116 +267,115 @@ button{font-family:inherit}
 
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"light","options":["light","dark","system"]},"font":{"editor":"enum","default":"sans","options":["sans","serif"]},"platform":{"editor":"enum","default":"mac","options":["mac","linux","win"]},"$preview":{"width":1440,"height":940}}'>
+<script type="text/x-dc" data-dc-script data-props='{"platform":{"editor":"text","default":"macos"},"theme":{"editor":"text","default":"light"},"font":{"editor":"text","default":"sans"},"$preview":{"width":1440,"height":940}}'>
 class Component extends DCLogic {
-  constructor() {
-    super();
+  init() {
     this.state = {
-      theme: null,
-      font: null,
-      platform: null,
-      recSearch: true,
-      recQuick: false
+      lang: 'system',
+      theme: this.props.theme ?? 'light',
+      font: this.props.font ?? 'sans',
+      rec: '',
+      aiEnabled: true,
     };
   }
+  setLangSystem() { this.state.lang = 'system'; this.rerender(); }
+  setLangZh() { this.state.lang = 'zh'; this.rerender(); }
+  setLangEn() { this.state.lang = 'en'; this.rerender(); }
+  setThemeSystem() { this.state.theme = 'system'; this.rerender(); }
+  setThemeLight() { this.state.theme = 'light'; this.rerender(); }
+  setThemeDark() { this.state.theme = 'dark'; this.rerender(); }
+  setFontSans() { this.state.font = 'sans'; this.rerender(); }
+  setFontSerif() { this.state.font = 'serif'; this.rerender(); }
+  toggleRecordSearch() {
+    this.state.rec = this.state.rec === 'search' ? '' : 'search';
+    this.rerender();
+  }
+  toggleRecordQuick() {
+    this.state.rec = this.state.rec === 'quick' ? '' : 'quick';
+    this.rerender();
+  }
+  toggleAi() {
+    this.state.aiEnabled = !this.state.aiEnabled;
+    this.rerender();
+  }
   renderVals() {
-    const themeMode = this.state.theme ?? this.props.theme ?? 'light';
-    const isDark = themeMode === 'dark';
-    const fontMode = this.state.font ?? this.props.font ?? 'sans';
-    const platform = this.state.platform ?? this.props.platform ?? 'mac';
-    const isMac = platform === 'mac';
+    const os = this.props.platform ?? 'macos';
+    const lang = this.state.lang || 'system';
+    const theme = this.state.theme || this.props.theme || 'light';
+    const font = this.state.font || this.props.font || 'sans';
+    const dark = theme === 'dark';
 
-    const shellBg = isDark ? '#343434' : '#f1f1f1';
-    const sidebarBg = isDark ? '#222222' : '#fafafa';
-    const settingsBg = isDark ? '#181818' : '#f8f8f8';
-    const paperBg = isDark ? '#222222' : '#ffffff';
-    const keycapBg = isDark ? '#2b2b2b' : '#ffffff';
-    const keycapBorder = isDark ? '#4a4a4a' : '#d5dbe5';
-    const textPrimary = isDark ? '#ececec' : '#20242c';
-    const textSecondary = isDark ? '#b4b4b4' : '#526071';
-    const accent = isDark ? '#779de8' : '#547dd0';
-    const selectedBg = isDark ? '#343434' : '#e5edfc';
-    const borderCol = isDark ? '#383838' : '#e6e6e6';
-    const btnBorder = isDark ? '#444444' : '#dcdcdc';
+    const shellBg = dark ? '#343434' : '#f1f1f1';
+    const sidebarBg = dark ? '#222222' : '#fafafa';
+    const settingsBg = dark ? '#181818' : '#f8f8f8';
+    const paperBg = dark ? '#181818' : '#ffffff';
+    const textPrimary = dark ? '#ececec' : '#20242c';
+    const textSecondary = dark ? '#b4b4b4' : '#526071';
+    const accent = dark ? '#779de8' : '#547dd0';
+    const selectedBg = dark ? '#343434' : '#e5edfc';
+    const borderCol = dark ? '#2e2e2e' : '#e4e6ea';
+    const btnBorder = dark ? '#444444' : '#dcdcdc';
+    const trayBg = dark ? '#242424' : '#f1f1f1';
+    const keycapBg = dark ? '#343434' : '#ffffff';
+    const keycapBorder = dark ? '#444444' : '#dcdcdc';
+    const activeRing = 'inset 0 0 0 1px ' + accent;
 
-    const segStyle = (active) => active
-      ? `background:${selectedBg};color:${textPrimary};box-shadow:inset 0 0 0 1px ${accent}`
-      : `background:transparent;color:${textSecondary}`;
-
-    const themes = [
-      { id: 'light', label: '浅色' },
-      { id: 'dark', label: '深色' },
-      { id: 'system', label: '跟随系统' }
-    ].map((t) => ({
-      ...t,
-      style: segStyle(themeMode === t.id),
-      pick: () => this.setState({ theme: t.id })
-    }));
-
-    const fonts = [
-      {
-        id: 'sans',
-        sample: 'Aa',
-        sampleFamily: "Inter,-apple-system,'PingFang SC',sans-serif",
-        label: '现代无衬线 · 系统默认'
-      },
-      {
-        id: 'serif',
-        sample: '文',
-        sampleFamily: "'LXGW WenKai','Songti SC',Georgia,serif",
-        label: '人文衬线 · 霞鹜文楷'
-      }
-    ].map((f) => ({
-      ...f,
-      style: segStyle(fontMode === f.id),
-      pick: () => this.setState({ font: f.id })
-    }));
-
-    const platforms = [
-      { id: 'mac', label: 'macOS' },
-      { id: 'linux', label: 'Linux' },
-      { id: 'win', label: 'Windows' }
-    ].map((p) => ({
-      ...p,
-      style: segStyle(platform === p.id),
-      pick: () => this.setState({ platform: p.id })
-    }));
-
-    const fontDesc = fontMode === 'serif'
-      ? '当前：人文衬线（霞鹜文楷） · 温润适读，适合长文沉浸写作'
-      : '当前：现代无衬线（Inter / 苹方） · 利落清晰，适合日常结构化笔记';
-
-    const recSearch = this.state.recSearch;
-    const recQuick = this.state.recQuick;
+    const isRecSearch = this.state.rec === 'search';
+    const isRecQuick = this.state.rec === 'quick';
+    const aiOn = !!this.state.aiEnabled;
 
     return {
       shellBg,
       sidebarBg,
       settingsBg,
       paperBg,
-      keycapBg,
-      keycapBorder,
       textPrimary,
       textSecondary,
       accent,
       selectedBg,
       borderCol,
       btnBorder,
-      themes,
-      fonts,
-      platforms,
-      fontDesc,
-      isMac,
-      isNotMac: !isMac,
-      searchTrayBg: recSearch ? selectedBg : shellBg,
-      searchTrayBorder: recSearch ? accent : borderCol,
-      searchTrayShadow: recSearch ? `inset 0 0 0 1px ${accent}` : 'none',
-      searchCapBorder: recSearch ? accent : keycapBorder,
-      quickTrayBg: recQuick ? selectedBg : shellBg,
-      quickTrayBorder: recQuick ? accent : borderCol,
-      quickTrayShadow: recQuick ? `inset 0 0 0 1px ${accent}` : 'none',
-      toggleRecSearch: () => this.setState({ recSearch: !recSearch, recQuick: false }),
-      toggleRecQuick: () => this.setState({ recQuick: !recQuick, recSearch: false })
+      trayBg,
+      keycapBg,
+      keycapBorder,
+      isMac: os === 'macos',
+      isNotMac: os !== 'macos',
+      langSysBg: lang === 'system' ? selectedBg : 'transparent',
+      langSysCol: lang === 'system' ? textPrimary : textSecondary,
+      langSysRing: lang === 'system' ? activeRing : 'none',
+      langZhBg: lang === 'zh' ? selectedBg : 'transparent',
+      langZhCol: lang === 'zh' ? textPrimary : textSecondary,
+      langZhRing: lang === 'zh' ? activeRing : 'none',
+      langEnBg: lang === 'en' ? selectedBg : 'transparent',
+      langEnCol: lang === 'en' ? textPrimary : textSecondary,
+      langEnRing: lang === 'en' ? activeRing : 'none',
+      themeSysBg: theme === 'system' ? selectedBg : 'transparent',
+      themeSysCol: theme === 'system' ? textPrimary : textSecondary,
+      themeSysRing: theme === 'system' ? activeRing : 'none',
+      themeLightBg: theme === 'light' ? selectedBg : 'transparent',
+      themeLightCol: theme === 'light' ? textPrimary : textSecondary,
+      themeLightRing: theme === 'light' ? activeRing : 'none',
+      themeDarkBg: theme === 'dark' ? selectedBg : 'transparent',
+      themeDarkCol: theme === 'dark' ? textPrimary : textSecondary,
+      themeDarkRing: theme === 'dark' ? activeRing : 'none',
+      fontSansBg: font === 'sans' ? selectedBg : 'transparent',
+      fontSansCol: font === 'sans' ? textPrimary : textSecondary,
+      fontSansRing: font === 'sans' ? activeRing : 'none',
+      fontSerifBg: font === 'serif' ? selectedBg : 'transparent',
+      fontSerifCol: font === 'serif' ? textPrimary : textSecondary,
+      fontSerifRing: font === 'serif' ? activeRing : 'none',
+      isRecSearch,
+      notRecSearch: !isRecSearch,
+      recSearchTrayBg: isRecSearch ? selectedBg : trayBg,
+      recSearchTrayBorder: isRecSearch ? accent : btnBorder,
+      isRecQuick,
+      notRecQuick: !isRecQuick,
+      recQuickTrayBg: isRecQuick ? selectedBg : trayBg,
+      recQuickTrayBorder: isRecQuick ? accent : btnBorder,
+      aiToggleBg: aiOn ? selectedBg : shellBg,
+      aiToggleBorder: aiOn ? accent : btnBorder,
+      aiDotCol: aiOn ? accent : textSecondary,
+      aiToggleLabel: aiOn ? '已开启' : '已关闭',
     };
   }
 }

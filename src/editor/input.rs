@@ -169,8 +169,23 @@ impl Editor {
             }
         }
         self.replace_selection(text, !composing, cx);
-        if composing { self.commit_composition(cx); }
-        else if matches!(text, ">" | "-" | "》") { self.arrow_rule(cx); }
+        if composing {
+            self.commit_composition(cx);
+            let mut id = self.caret.head.block;
+            let mut offset = self.caret.head.offset;
+            let before = self.snapshot();
+            if text.ends_with(' ') || text.ends_with('\u{3000}') {
+                self.space_rule(&mut id, &mut offset);
+            } else if matches!(text, "-" | "*" | "_" | "－" | "＊" | "＿" | "—" | "——") {
+                self.divider_rule(&mut id, &mut offset);
+            }
+            if self.doc != before.doc {
+                let at = Position { block: id, offset };
+                self.caret.anchor = at; self.caret.head = at;
+                self.record(before, cx);
+            }
+        }
+        if matches!(text, ">" | "-" | "》" | "—") { self.arrow_rule(cx); }
         else if matches!(text, "*" | "_" | "~" | "`" | "=" | ")") { self.inline_rule(text, cx); }
         if text == "/" {
             let id = self.caret.head.block;
