@@ -25,7 +25,13 @@ pub(super) fn kind_icon(kind: Kind) -> Icon {
 }
 
 pub(super) fn is_divider(block: &Block) -> bool {
-    block.meta.raw_source.as_deref().is_some_and(|s| matches!(s.trim(), "---" | "***" | "___"))
+    block.meta.raw_source.as_deref().is_some_and(|s| {
+        let t = s.trim();
+        (t.len() >= 3 && ['-', '*', '_'].iter().any(|c| t.chars().all(|v| v == *c)))
+            || t.eq_ignore_ascii_case("<hr>")
+            || t.eq_ignore_ascii_case("<hr/>")
+            || t.eq_ignore_ascii_case("<hr />")
+    })
 }
 fn raw_block(text: &str) -> Block {
     let mut block = Block::new(0, Kind::Paragraph, text.to_owned()); block.meta.raw_source = Some(text.to_owned()); block
