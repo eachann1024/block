@@ -40,7 +40,7 @@ impl TableCell {
         let alignment = alignment.or_else(|| css.split(';').find_map(|part| {
             let (name, value) = part.split_once(':')?;
             (name.trim() == "text-align").then_some(value.trim())
-        }));
+        })).or_else(|| self.attr("align"));
         match alignment { Some("center") => CellAlignment::Center,
             Some("right") => CellAlignment::Right, _ => CellAlignment::Left }
     }
@@ -125,19 +125,28 @@ impl TableCell {
     }
 }
 impl Table {
-    /// Pipe tables require one header row and cannot retain widths, merges or cell attributes.
+    /// Pipe tables require one header row and cannot retain widths, merges or non-alignment cell attributes.
     pub fn is_simple(&self) -> bool {
-        self.columns > 0 && !self.rows.is_empty() && self.attrs.is_empty() && self.column_widths.is_empty()
+        let benign_table = self.attrs.iter().all(|(k, v)| matches!(
+            (k.as_str(), v.as_str()),
+            ("data-thinkly-table" | "data-goose-table", _) | ("data-header-rows", "1") | ("data-header-cols", "0")
+        ));
+        self.columns > 0 && !self.rows.is_empty() && benign_table && self.column_widths.iter().all(Option::is_none)
             && self.rows.iter().enumerate().all(|(index, row)| row.cells.len() == self.columns
-                && row.cells.iter().all(|cell| cell.colspan == 1 && cell.rowspan == 1
-                    && cell.attrs.is_empty() && cell.header == (index == 0)))
+                && row.cells.iter().all(|cell| cell.colspan == 1 && cell.rowspan == 1 && cell.header == (index == 0)
+                    && cell.attrs.iter().all(|(k, _)| matches!(k.as_str(),
+                        "colspan" | "rowspan" | "data-thinkly-text-alignment" | "data-goose-text-alignment" | "align"))))
     }
     /// Converts a simple HTML table into a pipe table. Returns false when that would lose data.
     pub fn to_pipe(&mut self) -> bool {
         if self.format == TableFormat::Pipe { return true; }
         if !self.is_simple() { return false; }
-        self.alignments = (0..self.columns).map(|_| CellAlignment::Left).collect();
-        self.column_widths.clear(); self.format = TableFormat::Pipe; true
+        self.alignments = (0..self.columns)
+            .map(|c| self.rows[0].cells.get(c).map_or(CellAlignment::Left, TableCell::alignment))
+            .collect();
+        self.attrs.clear(); self.column_widths.clear();
+        for row in &mut self.rows { for cell in &mut row.cells { cell.attrs.clear(); } }
+        self.format = TableFormat::Pipe; true
     }
     pub fn insert_row(&mut self, at: usize) -> usize {
         let at = at.min(self.rows.len());
