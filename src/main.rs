@@ -30,6 +30,7 @@ fn main() {
         theme::apply_state(&state);
     }
     Application::new().with_assets(Assets).run(|cx: &mut App| {
+        theme::init_fonts(&cx.text_system().all_font_names());
         gpui_component::init(cx);
         // The app is light-only; without this, inputs follow macOS dark mode (white text, black field).
         gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx);

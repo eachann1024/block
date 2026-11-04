@@ -80,7 +80,7 @@ impl Element for BlockText {
                     block.meta.raw_source.as_ref().map(|_| if text.trim_start().starts_with('<') { "html" } else { "markdown" })
                 });
                 if let Some(language) = language {
-                    let mut base = plain(text.len(), theme.text); base.font.family = "Menlo".into();
+                    let mut base = plain(text.len(), theme.text); base.font.family = crate::theme::mono_font_family().into(); base.font.fallbacks = None;
                     runs = super::view::syntax::runs(&text, language, base);
                 }
                 (text, runs, block.meta.table.clone())
@@ -210,17 +210,21 @@ pub(super) fn block_metrics(kind: Kind, fenced: bool, minimal: bool, base: f32) 
     }
 }
 thread_local! {
-    static PLACEHOLDER: RefCell<Option<gpui::ShapedLine>> = const { RefCell::new(None) };
+    static PLACEHOLDER: RefCell<Option<(u8, gpui::ShapedLine)>> = const { RefCell::new(None) };
 }
 /// Hint drawn over the zero-width placeholder glyph; never part of the text or hit testing.
 fn paint_placeholder(layout: &TextLayout, window: &mut Window, cx: &mut App) {
+    let choice = crate::theme::font_choice() as u8;
     let line = PLACEHOLDER.with(|slot| {
-        slot.borrow_mut().get_or_insert_with(|| {
+        let mut slot = slot.borrow_mut();
+        if slot.as_ref().is_none_or(|(c, _)| *c != choice) {
             let text: SharedString = "输入文字…".into();
             let mut run = plain(text.len(), rgb(0x6d7784).into());
             run.font.weight = FontWeight::NORMAL;
-            window.text_system().shape_line(text, Theme::ocean().editor_font, &[run], None)
-        }).clone()
+            let line = window.text_system().shape_line(text, Theme::ocean().editor_font, &[run], None);
+            *slot = Some((choice, line));
+        }
+        slot.as_ref().map(|(_, l)| l.clone()).unwrap()
     });
     let _ = line.paint(layout.bounds.origin, layout.line_height, window, cx);
 }
