@@ -162,9 +162,10 @@ impl Render for Editor {
                     let next = gpui::point(l.bounds.left(), l.bounds.bottom() + px(4.));
                     if menu.anchor != next { menu.anchor = next; changed = true; }
                 }
-                let anchor = this.selection_toolbar_anchor(bounds, window);
+                let exp = crate::export::active_view(cx).is_some();
+                let anchor = (!exp).then(|| this.selection_toolbar_anchor(bounds, window)).flatten();
                 if this.toolbar_anchor != anchor { this.toolbar_anchor = anchor; changed = true; }
-                let chrome = this.table_chrome_geometry(window);
+                let chrome = (!exp).then(|| this.table_chrome_geometry(window)).flatten();
                 let same = match (&this.table_chrome, &chrome) {
                     (None, None) => true,
                     (Some(a), Some(b)) => a.block == b.block && a.cell == b.cell && a.bounds == b.bounds
