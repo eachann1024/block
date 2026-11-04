@@ -14,7 +14,6 @@ pub(crate) struct Preset {
     pub id: &'static str,
     pub zh: &'static str,
     pub en: &'static str,
-    pub hint: &'static str,
     pub protocol: Protocol,
     pub base_url: &'static str,
     pub brand_rgb: u32,
@@ -50,15 +49,15 @@ pub(crate) struct ProviderProfile {
 
 pub(crate) const PRESETS: &[Preset] = &[
     Preset {
-        id: "deepseek", zh: "DeepSeek", en: "DeepSeek", hint: "api.deepseek.com",
+        id: "deepseek", zh: "DeepSeek", en: "DeepSeek",
         protocol: Protocol::Openai, base_url: "https://api.deepseek.com/v1", brand_rgb: 0x4d6bfe, key_required: true,
     },
     Preset {
-        id: "openai", zh: "OpenAI 协议", en: "OpenAI Protocol", hint: "/v1/chat/completions",
+        id: "openai", zh: "OpenAI 协议", en: "OpenAI Protocol",
         protocol: Protocol::Openai, base_url: "https://api.openai.com/v1", brand_rgb: 0x10a37f, key_required: true,
     },
     Preset {
-        id: "anthropic", zh: "Claude 协议", en: "Claude Protocol", hint: "/v1/messages",
+        id: "anthropic", zh: "Claude 协议", en: "Claude Protocol",
         protocol: Protocol::Anthropic, base_url: "https://api.anthropic.com/v1", brand_rgb: 0xd97757, key_required: true,
     },
 ];
