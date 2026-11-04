@@ -1,11 +1,9 @@
-//! Minimalist Quick-note header (centered dot pager + single icon action) and transient notice pill.
+//! Minimalist Quick-note header (centered 3-dot pager + platform window controls) and transient notice pill.
 use gpui::{FontWeight, Window, div, prelude::*, px};
 use crate::{
-    icons::Icon,
     theme::{Theme, tr},
     ui::{
         dot_pager::dot_pager,
-        icon_button::header_action_button,
         window_controls::window_controls,
     },
 };
@@ -24,20 +22,6 @@ impl QuickView {
             move |slot, window, cx| {
                 entity.update(cx, |this, cx| this.switch(slot, window, cx));
             },
-        );
-
-        let save_icon = if self.saved_flash { Icon::Check } else { Icon::NoteCheck };
-        let save_tip = if self.saved_flash {
-            tr("已存入正式笔记", "Saved to Note")
-        } else {
-            tr("存入正式笔记", "Save to Note")
-        };
-        let save = header_action_button(
-            "save-to-note",
-            save_icon,
-            self.saved_flash,
-            save_tip,
-            cx.listener(|this, _, w, cx| this.save_to_note(w, cx)),
         );
 
         let mac = cfg!(target_os = "macos");
@@ -62,7 +46,6 @@ impl QuickView {
                     .justify_center()
                     .child(pager),
             )
-            .child(save)
             .child(window_controls("quick-win", false, false))
     }
 
