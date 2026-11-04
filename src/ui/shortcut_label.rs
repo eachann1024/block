@@ -91,6 +91,8 @@ pub fn parse_segments(text: &str) -> Vec<Segment<'_>> {
 pub fn key_glyph_box(glyph: Icon, size: Pixels, color: Hsla) -> Div {
     let colors = IconColors { line: color, fill: transparent_black(), accent: color };
     div()
+        .relative()
+        .top(px(0.5))
         .size(size)
         .flex_none()
         .flex()
