@@ -1,6 +1,10 @@
 /target
 /web/target
 /dist
+/release-plan.json
+!.github/
+!.github/workflows/
+!.github/workflows/**
 .DS_Store
 .artifact-server.json
 .artifact-server.log
