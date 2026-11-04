@@ -227,12 +227,14 @@ thread_local! {
 }
 /// Hint drawn over the zero-width placeholder glyph; never part of the text or hit testing.
 fn paint_placeholder(layout: &TextLayout, window: &mut Window, cx: &mut App) {
-    let key = (crate::theme::font_choice() as u8) | ((crate::theme::is_en() as u8) << 4);
+    let dark = crate::theme::is_dark();
+    let key = (crate::theme::font_choice() as u8) | ((crate::theme::is_en() as u8) << 4) | ((dark as u8) << 5);
     let line = PLACEHOLDER.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.as_ref().is_none_or(|(c, _)| *c != key) {
-            let text = SharedString::from(crate::theme::tr("输入文字…", "Type something…"));
-            let mut run = plain(text.len(), rgb(0x6d7784).into());
+            let text = SharedString::from(crate::theme::tr("开始输入，或让 @Claude 撰写或编辑", "Start typing, or ask @Claude to write or edit"));
+            let color = if dark { rgb(0x6e6d68) } else { rgb(0x9b9a95) };
+            let mut run = plain(text.len(), color.into());
             run.font.weight = FontWeight::NORMAL;
             let line = window.text_system().shape_line(text, Theme::ocean().editor_font, &[run], None);
             *slot = Some((key, line));
