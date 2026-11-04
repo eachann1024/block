@@ -69,10 +69,13 @@ impl Block {
             return changed;
         }
         self.normalize_spans();
-        let inherited = self.spans.iter().find(|s| {
+        let mut inherited = self.spans.iter().find(|s| {
             if range.is_empty() && range.start > 0 { s.start < range.start && range.start <= s.end }
             else { s.start <= range.start && range.start < s.end }
         }).map_or_else(Vec::new, |s| s.marks.clone());
+        if range.is_empty() && !self.spans.iter().any(|s| s.marks.contains(&MarkKind::Code) && s.start < range.start && range.start < s.end) {
+            inherited.retain(|m| *m != MarkKind::Code);
+        }
         let mut out = Vec::new();
         for s in &self.spans {
             if s.start < range.start { push(&mut out,s.start,s.end.min(range.start),s.marks.clone()); }
