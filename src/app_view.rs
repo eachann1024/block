@@ -17,7 +17,6 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &OpenSettings, window, cx| this.open_settings(window, cx)))
             .on_action(cx.listener(|this, _: &crate::editor::ai::OpenAiSettings, window, cx| if this.settings.is_none() { this.open_settings(window, cx) }))
             .on_action(cx.listener(|this, _: &crate::editor::ai::ToggleAiPanel, window, cx| { crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); cx.notify(); }))
-            .on_action(cx.listener(|this, _: &crate::editor::ai::AddSelectionToChat, window, cx| { crate::editor::ai::chat::add_selection(this.editor.clone(), window, cx); cx.notify(); }))
             .on_action(cx.listener(|this, _: &NewNote, window, cx| if !this.busy() { this.new_item(false, window, cx) }))
             .on_action(cx.listener(|this, _: &NewFolder, window, cx| if !this.busy() { this.new_item(true, window, cx) }))
             .on_action(cx.listener(|this, _: &Dismiss, window, cx| if !this.dismiss(window, cx) { cx.propagate() }));
