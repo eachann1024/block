@@ -9,6 +9,9 @@ use gpui::{
 };
 use crate::icons::{Icon, IconColors, icon};
 
+const KEY_INK_RATIO: f32 = 15.6 / 24.0;
+const KEY_INK_EM: f32 = 0.9;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Segment<'a> {
     Text(&'a str),
@@ -30,7 +33,7 @@ impl ShortcutStyle {
             font: ui_font(weight),
             font_size,
             line_height,
-            icon_size: line_height,
+            icon_size: font_size * (KEY_INK_EM / KEY_INK_RATIO),
             color,
         }
     }
