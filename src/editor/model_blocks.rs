@@ -19,7 +19,8 @@ impl Block {
             inline:super::inline_ops::slice(&self.meta.inline, range.clone()),
             html_paragraph:self.meta.html_paragraph.clone(),
             unsupported_reason:self.meta.unsupported_reason.clone(),
-            heading_level:self.meta.heading_level, callout:self.meta.callout, table:None, tight:self.meta.tight };
+            heading_level:self.meta.heading_level, callout:self.meta.callout, column:self.meta.column,
+            table:None, tight:self.meta.tight };
         let mut out = Self { id:self.id,kind:self.kind,text,checked:self.checked,spans:Vec::new(),meta };
         if !valid { return out; }
         // Canonical spans are ordered: visit only intersecting runs, not the full block.
@@ -53,9 +54,10 @@ impl Block {
 }
 /// Shared nested-list counter. Indent is source columns, not an assumed nesting unit.
 #[derive(Default)]
-pub struct Numbering { levels: Vec<(usize,u64)> }
+pub struct Numbering { levels: Vec<(usize,u64)>, col: Option<(u64, usize)> }
 impl Numbering {
     pub fn next(&mut self, block: &Block) -> Option<u64> {
+        if block.meta.column != self.col { self.levels.clear(); self.col = block.meta.column; }
         if !matches!(block.kind,Kind::Numbered|Kind::Bullet|Kind::Todo) {
             self.levels.clear(); return None;
         }

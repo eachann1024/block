@@ -57,6 +57,8 @@ pub struct BlockMeta {
     /// H4–H6 keep the existing heading kind vocabulary and carry the exact level here.
     pub heading_level: Option<u8>,
     pub callout: Option<CalloutKind>,
+    /// `(group_id, column_index)` when this block lives inside a multi-column group.
+    pub column: Option<(u64, usize)>,
     pub table: Option<Table>,
     /// The source had no blank line after this block where the serializer would write one.
     pub tight: bool,
@@ -81,13 +83,16 @@ impl Doc {
     pub fn refresh_block(&mut self, id: u64) { self.blocks.refresh(id); }
     pub fn list_number(&self, id: u64) -> Option<u64> { self.blocks.list_number(id) }
     pub fn index_of(&self, id: u64) -> Option<usize> { self.blocks.index_of(id) }
+    pub fn fresh_id(&mut self) -> u64 { let id = self.next_id; self.next_id += 1; id }
     pub fn push(&mut self, kind: Kind, text: String) -> u64 {
         let id = self.next_id; self.next_id += 1;
         self.blocks.insert(self.blocks.len(), Block::new(id, kind, text)); id
     }
     pub fn insert_after(&mut self, id: u64, kind: Kind, text: String) -> Option<u64> {
-        let index = self.index_of(id)?; let new_id = self.next_id; self.next_id += 1;
-        self.blocks.insert(index + 1, Block::new(new_id, kind, text)); Some(new_id)
+        let index = self.index_of(id)?; let col = self.blocks[index].meta.column;
+        let new_id = self.next_id; self.next_id += 1;
+        let mut block = Block::new(new_id, kind, text); block.meta.column = col;
+        self.blocks.insert(index + 1, block); Some(new_id)
     }
     pub fn remove(&mut self, id: u64) -> bool {
         let Some(index) = self.index_of(id) else { return false };

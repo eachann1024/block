@@ -13,13 +13,7 @@ impl Editor {
         cx.notify();
     }
     /// Enter in a cell moves to the cell below in the same column; on the last row it appends a row.
-    /// Inside a column block (I1), Enter inserts a line break and stays in that column.
     pub(in crate::editor) fn table_enter(&mut self, cx: &mut Context<Self>) -> bool {
-        let (a, _, ai, bi) = self.ordered();
-        if ai == bi && self.doc.get(a.block).and_then(|b| b.meta.table.as_ref()).is_some_and(|t| t.is_columns()) {
-            if self.can_replace_selection() { self.replace_selection("\n", false, cx); }
-            return true;
-        }
         let Some((id, row, column)) = self.cell_of_caret() else { return false; };
         let Some(table) = self.doc.get(id).and_then(|b| b.meta.table.as_ref()) else { return false; };
         let target_column = table.rows[row].cells[column].column;
@@ -65,8 +59,10 @@ impl Editor {
         fill(&mut table, 0, 0); table.finish_structure();
         let replace = self.doc.get(id).is_some_and(|b| b.text.is_empty() && b.kind == Kind::Paragraph
             && b.meta.table.is_none() && b.meta.raw_source.is_none() && b.meta.code_language.is_none());
+        let col = self.doc.get(id).and_then(|b| b.meta.column);
         let mut blocks = vec![Block::from_table(0, table)];
-        if index + 1 >= self.doc.blocks.len() { blocks.push(Block::new(0, Kind::Paragraph, String::new())); }
+        if col.is_none() && index + 1 >= self.doc.blocks.len() { blocks.push(Block::new(0, Kind::Paragraph, String::new())); }
+        for b in &mut blocks { b.meta.column = col; }
         let before = self.snapshot();
         let (start, remove) = if replace { (index, 1) } else { (index + 1, 0) };
         let count = blocks.len();

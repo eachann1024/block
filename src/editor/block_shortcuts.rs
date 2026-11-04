@@ -62,16 +62,18 @@ impl Editor {
     }
     fn remove_whole_block(&mut self, index: usize, forward: bool, cx: &mut Context<Self>) {
         self.table_sel = None; self.table_menu = None;
-        if self.doc.blocks.len() <= 1 {
+        let col = self.doc.blocks.get(index).and_then(|b| b.meta.column);
+        if self.doc.blocks.len() <= 1 || col.is_some_and(|_| self.column_range(index).is_some_and(|r| r.len() <= 1)) {
             let before = self.snapshot();
-            self.doc.splice_blocks(0..1, vec![Block::new(0, Kind::Paragraph, String::new())]);
-            let to = Position { block: self.doc.blocks[0].id, offset: 0 };
+            let mut empty = Block::new(0, Kind::Paragraph, String::new()); empty.meta.column = col;
+            self.doc.splice_blocks(index..index + 1, vec![empty]);
+            let to = Position { block: self.doc.blocks[index].id, offset: 0 };
             self.caret.anchor = to; self.caret.head = to;
-            self.record_changes(before, vec![ListChange { start: 0, before: 1, after: 1 }], true, cx);
+            self.record_changes(before, vec![ListChange { start: index, before: 1, after: 1 }], true, cx);
             return;
         }
-        let prev = index.checked_sub(1).map(|i| self.doc.blocks[i].clone());
-        let next = self.doc.blocks.get(index + 1).cloned();
+        let prev = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()).filter(|p| col.is_none() || p.meta.column == col);
+        let next = self.doc.blocks.get(index + 1).cloned().filter(|n| col.is_none() || n.meta.column == col);
         let to = match (forward, prev, next) {
             (true, _, Some(n)) | (false, None, Some(n)) => Position { block: n.id, offset: 0 },
             (_, Some(p), _) => {
@@ -94,48 +96,37 @@ impl Editor {
             if self.caret.is_empty() && block.text.is_empty() { return false; }
             let at = self.caret.head;
             if self.caret.is_empty() && block.text.ends_with('\n') && at.offset == block.text.len() {
-                let len = block.text.len();
-                let before = self.snapshot();
+                let (len, col, before) = (block.text.len(), block.meta.column, self.snapshot());
                 self.doc.replace_range(at.block, len - 1..len, "");
-                self.doc.splice_blocks(index + 1..index + 1, vec![Block::new(0, Kind::Paragraph, String::new())]);
+                let mut next_blk = Block::new(0, Kind::Paragraph, String::new()); next_blk.meta.column = col;
+                self.doc.splice_blocks(index + 1..index + 1, vec![next_blk]);
                 let next = Position { block: self.doc.blocks[index + 1].id, offset: 0 };
                 self.caret.anchor = next; self.caret.head = next;
                 self.record_changes(before, vec![ListChange { start: index, before: 1, after: 2 }], true, cx);
                 return true;
             }
-            self.insert_in_block("\n", cx);
-            return true;
+            self.insert_in_block("\n", cx); return true;
         }
         if !self.caret.is_empty() { return false; }
         let at = self.caret.head;
         if block.text.is_empty() {
-            if is_list(block) && block.meta.indent > 0 { self.tab_outside_table(false, cx); return true; }
-            return false;
+            return if is_list(block) && block.meta.indent > 0 { self.tab_outside_table(false, cx); true } else { false };
         }
         if at.offset != 0 { return false; }
         let list = is_list(block);
         let mut fresh = Block::new(0, if list { block.kind } else { Kind::Paragraph }, String::new());
+        fresh.meta.column = block.meta.column;
         if list { fresh.meta.indent = block.meta.indent; fresh.meta.list_start = block.meta.list_start; }
-        let id = block.id;
-        let before = self.snapshot();
+        let (id, before) = (block.id, self.snapshot());
         if let Some(b) = self.doc.get_mut(id) { b.meta.list_start = None; }
-        self.doc.refresh_block(id);
-        self.doc.splice_blocks(index..index, vec![fresh]);
+        self.doc.refresh_block(id); self.doc.splice_blocks(index..index, vec![fresh]);
         self.record_changes(before, vec![ListChange { start: index, before: 1, after: 2 }], true, cx);
         true
     }
     /// Collapsed Backspace at a block start / Delete at a block end, before the generic merge.
     pub(super) fn boundary_rules(&mut self, forward: bool, cx: &mut Context<Self>) -> bool {
-        let (a, b, ai, bi) = self.ordered();
+        let (_, _, ai, bi) = self.ordered();
         if ai == bi && let Some(t) = self.doc.blocks.get(ai).and_then(|b| b.meta.table.as_ref()) {
-            if t.is_columns() {
-                if !self.caret.is_empty() && a.offset == 0 && b.offset == self.doc.blocks[ai].text.len() {
-                    self.remove_whole_block(ai, forward, cx); return true;
-                }
-                return self.caret.is_empty() && t.cell_at_range(&(a.offset..a.offset)).is_none_or(|(r, c, loc)| {
-                    if forward { loc.end >= t.rows[r].cells[c].content.text.len() } else { loc.start == 0 }
-                });
-            }
             if t.rows.iter().all(|r| r.cells.iter().all(|c| c.content.text.is_empty())) {
                 self.remove_whole_block(ai, forward, cx); return true;
             }
@@ -149,6 +140,7 @@ impl Editor {
         if forward {
             if at.offset != block.text.len() { return false; }
             let Some(next) = self.doc.blocks.get(index + 1).cloned() else { return false };
+            if next.meta.column != block.meta.column { return true; }
             if next.meta.table.is_some() { return false; }
             if structural(&block) { return true; }
             if !structural(&next) { return false; }
@@ -160,7 +152,7 @@ impl Editor {
         if at.offset != 0 { return false; }
         if block.meta.code_language.is_some() {
             if block.text.is_empty() { self.demote(block.id, cx); }
-            else if let Some(prev) = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()) {
+            else if let Some(prev) = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()).filter(|p| p.meta.column == block.meta.column) {
                 self.set_head(Position { block: prev.id, offset: prev.text.len() }, false, cx);
             }
             return true;
@@ -174,14 +166,25 @@ impl Editor {
             }
             Kind::Paragraph => {}
         }
-        let Some(prev) = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()) else { return false };
+        let prev = index.checked_sub(1).map(|i| self.doc.blocks[i].clone());
+        if block.meta.column.is_some() && prev.as_ref().is_none_or(|p| p.meta.column != block.meta.column) {
+            if block.text.is_empty() && let Some(next) = self.doc.blocks.get(index + 1).filter(|n| n.meta.column == block.meta.column) {
+                self.drop_block(index, Position { block: next.id, offset: 0 }, cx);
+            }
+            return true;
+        }
+        let Some(prev) = prev else { return false };
+        if prev.meta.column != block.meta.column {
+            let to = Position { block: prev.id, offset: prev.text.len() };
+            if block.text.is_empty() { self.drop_block(index, to, cx); } else { self.set_head(to, false, cx); }
+            return true;
+        }
         if prev.meta.table.is_some() || !structural(&prev) { return false; }
         if is_divider(&prev) {
-            if block.text.is_empty() {
-                let to = index.checked_sub(2).map(|i| &self.doc.blocks[i])
-                    .filter(|b| b.meta.table.is_none() && !is_divider(b))
-                    .map(|b| Position { block: b.id, offset: b.text.len() });
-                if let Some(to) = to { self.drop_block(index, to, cx); }
+            if block.text.is_empty() && let Some(to) = index.checked_sub(2).map(|i| &self.doc.blocks[i])
+                .filter(|b| b.meta.table.is_none() && !is_divider(b))
+                .map(|b| Position { block: b.id, offset: b.text.len() }) {
+                self.drop_block(index, to, cx);
             }
             return true;
         }
@@ -193,16 +196,10 @@ impl Editor {
     pub(super) fn exit_block(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
         let id = self.caret.head.block;
-        if self.doc.get(id).is_some_and(|b| b.meta.code_language.is_some()) {
-            self.add_below(id, window, cx);
-        } else if self.doc.get(id).is_some_and(|b| b.meta.table.is_some()) {
-            self.replace(None, "\n", window, cx);
-        } else if self.doc.get(id).is_some_and(|b|
-            matches!(b.kind, Kind::Paragraph | Kind::Quote | Kind::Bullet | Kind::Numbered | Kind::Todo)
-                && b.meta.raw_source.is_none() && super::image_source::spec_of(b).is_none()
-        ) {
-            self.insert_in_block("\n", cx);
-        } else { self.handle(&super::view::EditorAction::Enter, window, cx); }
+        if self.doc.get(id).is_some_and(|b| b.meta.code_language.is_some()) { self.add_below(id, window, cx); }
+        else if self.doc.get(id).is_some_and(|b| b.meta.table.is_some()) { self.replace(None, "\n", window, cx); }
+        else if self.doc.get(id).is_some_and(|b| matches!(b.kind, Kind::Paragraph | Kind::Quote | Kind::Bullet | Kind::Numbered | Kind::Todo) && b.meta.raw_source.is_none() && super::image_source::spec_of(b).is_none()) { self.insert_in_block("\n", cx); }
+        else { self.handle(&super::view::EditorAction::Enter, window, cx); }
     }
     /// Deleting a selection that spans blocks keeps what is left of the end blocks as
     /// separate blocks (same type and nesting) instead of merging them into one.
@@ -221,7 +218,8 @@ impl Editor {
             (None, Some(t)) => Position { block: t.id, offset: 0 },
             (None, None) => {
                 let empty = if first.meta.table.is_some() || first.meta.raw_source.is_some() {
-                    Block::new(first.id, Kind::Paragraph, String::new())
+                    let mut b = Block::new(first.id, Kind::Paragraph, String::new());
+                    b.meta.column = first.meta.column; b
                 } else { first.slice(0..0) };
                 pieces.push(empty);
                 Position { block: first.id, offset: 0 }
@@ -229,6 +227,7 @@ impl Editor {
         };
         pieces.extend(head); pieces.extend(tail);
         self.doc.splice_blocks(ai..bi + 1, pieces);
+        self.repair_column_groups();
         self.caret.anchor = at; self.caret.head = at;
         self.record(before, cx);
         true
@@ -238,8 +237,7 @@ impl Editor {
         let (_, _, ai, bi) = self.ordered();
         let whole = |i: usize| self.selected_range(self.doc.blocks[i].id).is_some_and(|r| r == (0..self.doc.blocks[i].text.len()));
         let one = &self.doc.blocks[ai];
-        let rich = ai != bi || (whole(ai) && (one.kind != Kind::Paragraph || one.meta.code_language.is_some()
-            || one.meta.table.as_ref().is_some_and(|t| t.is_columns())) && one.meta.table.as_ref().is_none_or(|t| t.is_columns()));
+        let rich = ai != bi || (whole(ai) && (one.kind != Kind::Paragraph || one.meta.code_language.is_some()) && one.meta.table.is_none());
         if !rich { self.block_clip = None; return; }
         let blocks: Vec<Block> = (ai..=bi).filter_map(|i| {
             let block = &self.doc.blocks[i];
@@ -262,7 +260,7 @@ impl Editor {
         let Some((plain, markdown)) = self.block_clip.clone() else { return false };
         if plain != text.replace("\r\n", "\n") { return false; }
         let mut blocks: Vec<Block> = super::markdown::parse(&markdown).blocks.iter().cloned().collect();
-        let blank = |b: &Block| b.text.is_empty() && b.kind == Kind::Paragraph && b.meta.raw_source.is_none() && b.meta.table.is_none() && b.meta.code_language.is_none();
+        let blank = |b: &Block| b.text.is_empty() && b.kind == Kind::Paragraph && b.meta.raw_source.is_none() && b.meta.table.is_none() && b.meta.code_language.is_none() && b.meta.column.is_none();
         while blocks.last().is_some_and(blank) { blocks.pop(); }
         while blocks.first().is_some_and(blank) { blocks.remove(0); }
         if blocks.is_empty() { return false; }
@@ -275,14 +273,13 @@ impl Editor {
         let cur = self.doc.blocks[index].clone();
         if cur.meta.table.is_some() || structural(&cur) { return false; }
         let before = self.snapshot();
-        for b in blocks.iter_mut() { b.id = 0; }
+        for b in blocks.iter_mut() {
+            b.id = 0;
+            if cur.meta.column.is_some() && b.meta.column.is_none() { b.meta.column = cur.meta.column; }
+        }
         let count = blocks.len();
         let mut pieces = Vec::new();
-        let lead = if cur.text.is_empty() { 0 } else {
-            let mut n = 0;
-            if at.offset > 0 { pieces.push(cur.slice(0..at.offset)); n = 1; }
-            n
-        };
+        let lead = if !cur.text.is_empty() && at.offset > 0 { pieces.push(cur.slice(0..at.offset)); 1 } else { 0 };
         pieces.extend(blocks);
         if !cur.text.is_empty() && at.offset < cur.text.len() {
             let mut tail = cur.slice(at.offset..cur.text.len());
