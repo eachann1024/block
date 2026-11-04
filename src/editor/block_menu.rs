@@ -23,9 +23,10 @@ pub(super) struct BlockMenu {
 pub(super) enum Sub { #[default] Root, Convert, Language }
 /// What a handle menu is about, decided from the block itself.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum BlockType { Text(Kind), Code, Table, Image, Divider, Source }
+pub(super) enum BlockType { Text(Kind), Callout, Columns, Code, Table, Image, Divider, Source }
 pub(super) fn block_type(block: &Block) -> BlockType {
-    if block.meta.table.is_some() { BlockType::Table }
+    if let Some(t) = &block.meta.table { if t.is_columns() { BlockType::Columns } else { BlockType::Table } }
+    else if block.meta.callout.is_some() { BlockType::Callout }
     else if block.meta.code_language.is_some() { BlockType::Code }
     else if is_divider(block) { BlockType::Divider }
     else if super::image_source::spec_of(block).is_some() { BlockType::Image }
@@ -114,8 +115,8 @@ impl Editor {
                 items.extend([Align::Left, Align::Center, Align::Right].map(|a| Some(Cmd::AlignImage(a, a == align))));
                 items.push(None);
             }
-            BlockType::Text(_) => items.extend([Some(Cmd::Open(Sub::Convert)), Some(Cmd::CopyText), None]),
-            BlockType::Divider | BlockType::Source => {}
+            BlockType::Text(_) | BlockType::Callout => items.extend([Some(Cmd::Open(Sub::Convert)), Some(Cmd::CopyText), None]),
+            BlockType::Divider | BlockType::Source | BlockType::Columns => {}
         }
         items.extend([Cmd::InsertAbove, Cmd::InsertBelow, Cmd::Duplicate, Cmd::Cut].map(Some));
         let index = self.doc.index_of(block.id).unwrap_or(0);
@@ -188,7 +189,7 @@ impl Editor {
             Cmd::CopyImage => { self.copy_image(id, cx); return; }
             Cmd::RevealImage => { self.reveal_image(id, cx); return; }
             Cmd::AlignImage(align, _) => { self.edit_image(id, |s| s.align = align, cx); window.focus(&self.focus); return; }
-            Cmd::TurnTo(_, true) | Cmd::TurnHeadingTo(_, true) | Cmd::CodeTo(true) | Cmd::SetLanguage(_, true) => { cx.notify(); return; }
+            Cmd::TurnTo(_, true) | Cmd::TurnHeadingTo(_, true) | Cmd::CalloutTo(true) | Cmd::CodeTo(true) | Cmd::SetLanguage(_, true) => { cx.notify(); return; }
             Cmd::CopyCode => {
                 let text = self.doc.get(id).map(|b| b.text.clone()).unwrap_or_default();
                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)); self.status = "已复制代码".into(); cx.notify(); return;
@@ -196,7 +197,7 @@ impl Editor {
             _ => {}
         }
         let cmd = match cmd { Cmd::TurnTo(kind, _) => Cmd::Turn(kind), Cmd::TurnHeadingTo(lvl, _) => Cmd::TurnHeading(lvl),
-            Cmd::CodeTo(_) => Cmd::Code(""), Cmd::SetLanguage(tag, _) => Cmd::Code(tag), other => other };
+            Cmd::CalloutTo(_) => Cmd::Callout, Cmd::CodeTo(_) => Cmd::Code(""), Cmd::SetLanguage(tag, _) => Cmd::Code(tag), other => other };
         self.commit_composition(cx);
         let Some(index) = self.doc.index_of(id) else { return };
         let Some(block) = self.doc.get(id) else { return };
@@ -213,10 +214,13 @@ impl Editor {
                 changes.push(ListChange { start: index, before: 1, after: 1 });
                 caret = Some(Position { block: id, offset: self.doc.get(id).map_or(0, |b| b.text.len()) });
             }
-            Cmd::TurnHeading(lvl) => {
+            Cmd::TurnHeading(_) | Cmd::Callout => {
                 if slash_target { self.doc.set_text(id, String::new()); }
-                self.doc.set_kind(id, Kind::H3);
-                if let Some(b) = self.doc.get_mut(id) { b.meta.heading_level = Some(lvl); }
+                self.doc.set_kind(id, if cmd == Cmd::Callout { Kind::Quote } else { Kind::H3 });
+                if let Some(b) = self.doc.get_mut(id) {
+                    if let Cmd::TurnHeading(lvl) = cmd { b.meta.heading_level = Some(lvl); }
+                    else { b.meta.callout = Some(super::model::CalloutKind::Note); }
+                }
                 self.doc.refresh_block(id);
                 changes.push(ListChange { start: index, before: 1, after: 1 });
                 caret = Some(Position { block: id, offset: self.doc.get(id).map_or(0, |b| b.text.len()) });
@@ -231,15 +235,16 @@ impl Editor {
                 changes.push(ListChange { start: index, before: 1, after: 1 });
                 if !was_code { caret = Some(Position { block: id, offset: 0 }); }
             }
-            Cmd::Table | Cmd::Divider => {
-                let new = if cmd == Cmd::Table { Block::from_table(0, Table::blank(3, 3)) } else { raw_block("***\n") };
+            Cmd::Table | Cmd::Columns | Cmd::Divider => {
+                let new = match cmd { Cmd::Table => Block::from_table(0, Table::blank(3, 3)),
+                    Cmd::Columns => Block::from_table(0, Table::columns(2)), _ => raw_block("***\n") };
                 let trailing = index + 1 >= self.doc.blocks.len() || cmd == Cmd::Divider;
                 let mut blocks = vec![new]; if trailing { blocks.push(paragraph()); }
                 let (start, remove) = if slash_target { (index, 1) } else { (index + 1, 0) };
                 let count = blocks.len();
                 self.doc.splice_blocks(start..start + remove, blocks);
                 changes.push(ListChange { start, before: remove, after: count });
-                let focus = if cmd == Cmd::Table { self.doc.blocks[start].id } else { self.doc.blocks[(start + 1).min(self.doc.blocks.len() - 1)].id };
+                let focus = if cmd != Cmd::Divider { self.doc.blocks[start].id } else { self.doc.blocks[(start + 1).min(self.doc.blocks.len() - 1)].id };
                 caret = Some(Position { block: focus, offset: 0 });
             }
             Cmd::Image => { self.pick_image(id, slash_target, window, cx); return; }
@@ -263,8 +268,8 @@ impl Editor {
                 window.focus(&self.focus); cx.notify();
                 return;
             }
-            Cmd::Header(_) | Cmd::Open(_) | Cmd::TurnTo(..) | Cmd::TurnHeadingTo(..) | Cmd::CodeTo(_) | Cmd::SetLanguage(..) | Cmd::CopyCode
-                | Cmd::TableOp(_) | Cmd::CopyImage | Cmd::RevealImage | Cmd::AlignImage(..) | Cmd::ToggleWrap(_) => return,
+            Cmd::Header(_) | Cmd::Open(_) | Cmd::TurnTo(..) | Cmd::TurnHeadingTo(..) | Cmd::CalloutTo(_) | Cmd::CodeTo(_) | Cmd::SetLanguage(..)
+                | Cmd::CopyCode | Cmd::TableOp(_) | Cmd::CopyImage | Cmd::RevealImage | Cmd::AlignImage(..) | Cmd::ToggleWrap(_) => return,
             Cmd::Cut | Cmd::Delete => {
                 if cmd == Cmd::Cut {
                     let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(vec![block.clone()]));

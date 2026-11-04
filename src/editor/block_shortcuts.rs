@@ -7,17 +7,14 @@ impl Editor {
         if self.path.is_none() { return; }
         self.commit_composition(cx);
         let last_idx = self.doc.blocks.len().saturating_sub(1);
-        let (first, last) = if let Some((a, b)) = self.block_sel {
-            (a.min(b).min(last_idx), a.max(b).min(last_idx))
-        } else {
-            let (_, _, f, l) = self.ordered();
-            (f, l)
+        let (first, last) = match self.block_sel {
+            Some((a, b)) => (a.min(b).min(last_idx), a.max(b).min(last_idx)),
+            None => { let (_, _, f, l) = self.ordered(); (f, l) }
         };
-        let toggle = matches!(kind, Kind::H1 | Kind::H2 | Kind::H3)
-            && (first..=last).all(|i| {
-                let b = &self.doc.blocks[i];
-                b.kind == kind && b.meta.heading_level.is_none() && b.meta.code_language.is_none()
-            });
+        let toggle = matches!(kind, Kind::H1 | Kind::H2 | Kind::H3) && (first..=last).all(|i| {
+            let b = &self.doc.blocks[i];
+            b.kind == kind && b.meta.heading_level.is_none() && b.meta.code_language.is_none() && b.meta.callout.is_none()
+        });
         let target = if toggle { Kind::Paragraph } else { kind };
         let before = self.snapshot();
         for index in first..=last {
@@ -129,22 +126,26 @@ impl Editor {
     }
     /// Collapsed Backspace at a block start / Delete at a block end, before the generic merge.
     pub(super) fn boundary_rules(&mut self, forward: bool, cx: &mut Context<Self>) -> bool {
-        let (_, _, ai, bi) = self.ordered();
-        if ai == bi && self.doc.blocks.get(ai).and_then(|b| b.meta.table.as_ref())
-            .is_some_and(|t| t.rows.iter().all(|r| r.cells.iter().all(|c| c.content.text.is_empty())))
-        {
-            self.remove_whole_block(ai, forward, cx);
-            return true;
+        let (a, b, ai, bi) = self.ordered();
+        if ai == bi && let Some(t) = self.doc.blocks.get(ai).and_then(|b| b.meta.table.as_ref()) {
+            if t.is_columns() {
+                if !self.caret.is_empty() && a.offset == 0 && b.offset == self.doc.blocks[ai].text.len() {
+                    self.remove_whole_block(ai, forward, cx); return true;
+                }
+                return self.caret.is_empty() && t.cell_at_range(&(a.offset..a.offset)).is_none_or(|(r, c, loc)| {
+                    if forward { loc.end >= t.rows[r].cells[c].content.text.len() } else { loc.start == 0 }
+                });
+            }
+            if t.rows.iter().all(|r| r.cells.iter().all(|c| c.content.text.is_empty())) {
+                self.remove_whole_block(ai, forward, cx); return true;
+            }
         }
         if !self.caret.is_empty() { return false; }
         let at = self.caret.head;
         let Some(index) = self.doc.index_of(at.block) else { return false };
         let block = self.doc.blocks[index].clone();
         if block.meta.table.is_some() { return false; }
-        if is_divider(&block) {
-            self.remove_whole_block(index, forward, cx);
-            return true;
-        }
+        if is_divider(&block) { self.remove_whole_block(index, forward, cx); return true; }
         if forward {
             if at.offset != block.text.len() { return false; }
             let Some(next) = self.doc.blocks.get(index + 1).cloned() else { return false };
@@ -237,11 +238,12 @@ impl Editor {
         let (_, _, ai, bi) = self.ordered();
         let whole = |i: usize| self.selected_range(self.doc.blocks[i].id).is_some_and(|r| r == (0..self.doc.blocks[i].text.len()));
         let one = &self.doc.blocks[ai];
-        let rich = ai != bi || (whole(ai) && (one.kind != Kind::Paragraph || one.meta.code_language.is_some()) && one.meta.table.is_none());
+        let rich = ai != bi || (whole(ai) && (one.kind != Kind::Paragraph || one.meta.code_language.is_some()
+            || one.meta.table.as_ref().is_some_and(|t| t.is_columns())) && one.meta.table.as_ref().is_none_or(|t| t.is_columns()));
         if !rich { self.block_clip = None; return; }
         let blocks: Vec<Block> = (ai..=bi).filter_map(|i| {
             let block = &self.doc.blocks[i];
-            self.selected_range(block.id).map(|r| if block.meta.raw_source.is_some() { block.clone() } else { block.slice(r) })
+            self.selected_range(block.id).map(|r| if block.meta.raw_source.is_some() || (block.meta.table.is_some() && r == (0..block.text.len())) { block.clone() } else { block.slice(r) })
         }).collect();
         let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(blocks));
         self.block_clip = Some((plain.to_owned(), markdown));

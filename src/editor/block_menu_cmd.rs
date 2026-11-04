@@ -17,14 +17,14 @@ pub(in crate::editor) fn language_label(tag: &str) -> &'static str {
 }
 #[derive(Clone, Copy, PartialEq)]
 pub(in crate::editor) enum Cmd {
-    Turn(Kind), TurnHeading(u8), Code(&'static str), Table, Divider, Image, Ai,
+    Turn(Kind), TurnHeading(u8), Callout, Columns, Code(&'static str), Table, Divider, Image, Ai,
     InsertAbove, InsertBelow, Duplicate, Cut, CopyText, MoveUp, MoveDown, Delete,
     /// Group title inside the handle menu; not clickable.
     Header(&'static str),
     /// Opens a cascading side submenu (`转换为 →` or `代码语言 →`).
     Open(Sub),
     /// Conversion target; `true` marks the block's current type.
-    TurnTo(Kind, bool), TurnHeadingTo(u8, bool), CodeTo(bool),
+    TurnTo(Kind, bool), TurnHeadingTo(u8, bool), CalloutTo(bool), CodeTo(bool),
     SetLanguage(&'static str, bool), CopyCode,
     TableOp(TableCmd),
     CopyImage, RevealImage, AlignImage(Align, bool),
@@ -38,6 +38,7 @@ impl Cmd {
             Cmd::Turn(Kind::H3) => "三级标题", Cmd::TurnHeading(4) => "四级标题", Cmd::TurnHeading(5) => "五级标题",
             Cmd::TurnHeading(_) => "六级标题", Cmd::Turn(Kind::Bullet) => "无序列表", Cmd::Turn(Kind::Numbered) => "有序列表",
             Cmd::Turn(Kind::Quote) => "引用", Cmd::Turn(Kind::Todo) => "待办清单",
+            Cmd::Callout | Cmd::CalloutTo(_) => "标注", Cmd::Columns => "分栏",
             Cmd::Code("mermaid") => "Mermaid 图表", Cmd::Code("math") => "数学公式", Cmd::Code(_) => "代码块",
             Cmd::Table => "表格", Cmd::Divider => "分隔线", Cmd::Image => "图片", Cmd::Ai => "AI 写作",
             Cmd::InsertAbove => "在上方插入空行", Cmd::InsertBelow => "在下方插入空行", Cmd::Duplicate => "复制这个块", Cmd::Cut => "剪切",
@@ -60,6 +61,8 @@ impl Cmd {
             Cmd::TurnHeading(4) => "h4 heading", Cmd::TurnHeading(5) => "h5 heading", Cmd::TurnHeading(_) => "h6 heading",
             Cmd::Turn(Kind::Bullet) => "bullet list ul liebiao", Cmd::Turn(Kind::Numbered) => "number ordered list ol",
             Cmd::Turn(Kind::Quote) => "quote yinyong", Cmd::Turn(Kind::Todo) => "todo task check daiban",
+            Cmd::Callout => "callout note tip warning alert biaozhu 标注 提示",
+            Cmd::Columns => "columns column fenlan 分栏 两栏",
             Cmd::Code("mermaid") => "mermaid diagram flow", Cmd::Code("math") => "math latex formula gongshi",
             Cmd::Code(_) => "code daima", Cmd::Table => "table biaoge", Cmd::Divider => "divider hr line fengexian",
             Cmd::Image => "image picture photo tupian", Cmd::Ai => "ai write polish xiezuo runse 写作 润色", _ => "",
@@ -87,12 +90,14 @@ impl Cmd {
     }
     pub(in crate::editor) fn danger(self) -> bool { matches!(self, Cmd::Delete | Cmd::TableOp(TableCmd::DeleteTable)) }
     pub(in crate::editor) fn checked(self) -> bool {
-        matches!(self, Cmd::TurnTo(_, true) | Cmd::TurnHeadingTo(_, true) | Cmd::CodeTo(true) | Cmd::SetLanguage(_, true) | Cmd::AlignImage(_, true) | Cmd::ToggleWrap(true))
+        matches!(self, Cmd::TurnTo(_, true) | Cmd::TurnHeadingTo(_, true) | Cmd::CalloutTo(true) | Cmd::CodeTo(true) | Cmd::SetLanguage(_, true) | Cmd::AlignImage(_, true) | Cmd::ToggleWrap(true))
     }
     pub(in crate::editor) fn leading(self) -> Option<Icon> {
         Some(match self {
             Cmd::Turn(kind) | Cmd::TurnTo(kind, _) => kind_icon(kind),
             Cmd::TurnHeading(_) | Cmd::TurnHeadingTo(..) => Icon::Heading,
+            Cmd::Callout | Cmd::CalloutTo(_) => Icon::Callout,
+            Cmd::Columns => Icon::Columns,
             Cmd::Code("mermaid") | Cmd::SetLanguage("mermaid", _) => Icon::Diagram,
             Cmd::Code("math") | Cmd::SetLanguage("math", _) => Icon::Math,
             Cmd::Code(_) | Cmd::CodeTo(_) | Cmd::SetLanguage(..) => Icon::Code,
@@ -113,12 +118,12 @@ impl Cmd {
         })
     }
 }
-pub(super) const SLASH: [Option<Cmd>; 17] = [
+pub(super) const SLASH: [Option<Cmd>; 19] = [
     Some(Cmd::Turn(Kind::H1)), Some(Cmd::Turn(Kind::H2)), Some(Cmd::Turn(Kind::H3)), Some(Cmd::Table),
     None,
     Some(Cmd::Turn(Kind::Paragraph)), Some(Cmd::Turn(Kind::Bullet)), Some(Cmd::Turn(Kind::Todo)),
     Some(Cmd::Code("")), Some(Cmd::Divider), Some(Cmd::Image),
-    Some(Cmd::Turn(Kind::Numbered)), Some(Cmd::Turn(Kind::Quote)),
+    Some(Cmd::Turn(Kind::Numbered)), Some(Cmd::Turn(Kind::Quote)), Some(Cmd::Callout), Some(Cmd::Columns),
     None,
     Some(Cmd::Code("mermaid")), Some(Cmd::Code("math")), Some(Cmd::Ai),
 ];
@@ -139,6 +144,7 @@ pub(in crate::editor) fn sub_entries(menu: &BlockMenu) -> Vec<Cmd> {
             ];
             items.extend([Kind::Todo, Kind::Bullet, Kind::Numbered, Kind::Quote]
                 .into_iter().map(|k| Cmd::TurnTo(k, current == Some(k))));
+            items.push(Cmd::CalloutTo(menu.kind == BlockType::Callout));
             items.push(Cmd::CodeTo(menu.kind == BlockType::Code));
             items
         }
