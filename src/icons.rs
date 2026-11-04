@@ -75,6 +75,8 @@ icons! {
     ListNumbered => "list-numbered" [Line],
     Todo => "todo" [Line],
     Quote => "quote" [Line],
+    Callout => "callout" [Line],
+    Columns => "columns" [Line],
     Table => "table" [Line],
     Divider => "divider" [Line],
     Diagram => "diagram" [Line],
