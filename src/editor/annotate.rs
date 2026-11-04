@@ -7,6 +7,7 @@ use std::{
 use gpui::{BorderStyle, Bounds, Context, Entity, Pixels, Point, Subscription, Window, point, prelude::*, px, quad, rgb, transparent_black};
 use gpui_component::input::{InputEvent, InputState};
 use serde::{Deserialize, Serialize};
+use crate::theme::tr;
 use super::{
     ai::provider::{self, Event}, input::transactions::ListChange, model::Doc,
     view::{Editor, layout::TextLayout, selection::Position},
@@ -19,16 +20,9 @@ pub(super) const HL_AI_BORDER: u32 = 0xefd77a;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(super) struct Comment {
-    pub id: u64,
-    pub block_index: usize,
-    pub start: usize,
-    pub end: usize,
-    pub quote: String,
-    pub author: String,
-    pub avatar: String,
-    pub time: String,
-    pub body: String,
-    pub sent_to_claude: bool,
+    pub id: u64, pub block_index: usize, pub start: usize, pub end: usize,
+    pub quote: String, pub author: String, pub avatar: String, pub time: String,
+    pub body: String, pub sent_to_claude: bool,
     #[serde(default)] pub reactions: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")] pub ai_rewritten: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")] pub ai_error: Option<String>,
@@ -82,7 +76,7 @@ fn next_id() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_
 
 fn now_hm() -> String {
     Command::new("date").arg("+%H:%M").output().ok().and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).unwrap_or_else(|| "刚刚".into())
+        .map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).unwrap_or_else(|| tr("刚刚", "Just now").into())
 }
 
 /// Resolves a comment's current `(block_id, byte_range, is_ai_modified)` in `doc`.
@@ -153,6 +147,10 @@ impl Editor {
     fn selected_annotation_target(&self) -> Option<(u64, usize, Range<usize>, String)> {
         let (a, _b, ai, _bi) = self.ordered();
         let block = self.doc.blocks.get(ai)?;
+        if let Some(spec) = super::image_source::spec_of(block) {
+            let label = if spec.alt.trim().is_empty() { spec.src } else { spec.alt };
+            return Some((a.block, ai, 0..0, format!("[Image: {label}]")));
+        }
         let range = self.selected_range(block.id).filter(|r| !r.is_empty()).unwrap_or(0..block.text.len());
         let quote = block.text.get(range.clone()).unwrap_or("").to_owned();
         (!quote.trim().is_empty()).then_some((a.block, ai, range, quote))
@@ -162,7 +160,8 @@ impl Editor {
     pub(super) fn start_annotation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.sync_annotations();
         let Some((block_id, block_index, range, quote)) = self.selected_annotation_target() else { return };
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder("输入批注或修改指令…"));
+        let send_to_claude = !range.is_empty();
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(tr("输入批注或修改指令…", "Add comment or edit instruction…")));
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
             InputEvent::PressEnter { secondary: false } => this.submit_annotation(window, cx),
             InputEvent::Change => cx.notify(),
@@ -171,7 +170,7 @@ impl Editor {
         let focus_input = input.clone();
         self.annotate.reactions = None;
         self.format = None;
-        self.annotate.composer = Some(AnnotateComposer { block_id, block_index, range, quote, send_to_claude: true, input, _sub: sub });
+        self.annotate.composer = Some(AnnotateComposer { block_id, block_index, range, quote, send_to_claude, input, _sub: sub });
         focus_input.update(cx, |i, cx| i.focus(window, cx));
         cx.defer_in(window, move |_, window, cx| { focus_input.update(cx, |i, cx| i.focus(window, cx)); });
         cx.notify();
@@ -181,7 +180,9 @@ impl Editor {
     pub(super) fn open_reactions(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.sync_annotations();
         let Some((block_id, block_index, range, quote)) = self.selected_annotation_target() else { return };
-        let anchor = self.toolbar_anchor.unwrap_or_else(|| point(px(360.), px(140.)));
+        let anchor = self.toolbar_anchor
+            .or_else(|| self.list.bounds_for_item(block_index).map(|b| point(b.center().x, b.top())))
+            .unwrap_or_else(|| point(px(360.), px(140.)));
         let comment_id = self.annotate.comments.iter()
             .find(|c| c.block_index == block_index && (c.quote == quote || c.ai_rewritten.as_deref() == Some(quote.as_str())))
             .map(|c| c.id);
@@ -207,7 +208,7 @@ impl Editor {
         } else {
             self.annotate.comments.push(Comment {
                 id: next_id(), block_index: picker.block_index, start: picker.range.start, end: picker.range.end,
-                quote: picker.quote, author: "安静的写作者".into(), avatar: "安".into(), time: now_hm(),
+                quote: picker.quote, author: tr("安静的写作者", "Quiet Writer").into(), avatar: tr("安", "Q").into(), time: now_hm(),
                 body: String::new(), sent_to_claude: false, reactions: vec![emoji.to_owned()],
                 ai_rewritten: None, ai_error: None, streaming: false,
             });
@@ -228,10 +229,10 @@ impl Editor {
         let body = composer.input.read(cx).value().trim().to_owned();
         if body.is_empty() { return; }
         let composer = self.annotate.composer.take().unwrap();
-        let (id, sent_to_claude, quote) = (next_id(), composer.send_to_claude, composer.quote.clone());
+        let (id, sent_to_claude, quote) = (next_id(), composer.send_to_claude && !composer.range.is_empty(), composer.quote.clone());
         self.annotate.comments.push(Comment {
             id, block_index: composer.block_index, start: composer.range.start, end: composer.range.end,
-            quote: quote.clone(), author: "安静的写作者".into(), avatar: "安".into(), time: now_hm(),
+            quote: quote.clone(), author: tr("安静的写作者", "Quiet Writer").into(), avatar: tr("安", "Q").into(), time: now_hm(),
             body: body.clone(), sent_to_claude, reactions: Vec::new(),
             ai_rewritten: None, ai_error: None, streaming: sent_to_claude,
         });

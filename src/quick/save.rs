@@ -18,9 +18,9 @@ fn sanitize(text: &str) -> String {
 /// Slot name unless it is still the default, then the first line of content.
 pub fn title_for(slot: usize, name: &str, content: &str) -> String {
     let from_name = sanitize(name);
-    if name != store::default_name(slot) && !from_name.is_empty() { return from_name; }
+    if !store::is_default_name(slot, name) && !from_name.is_empty() { return from_name; }
     let from_line = sanitize(content);
-    if !from_line.is_empty() { from_line } else if !from_name.is_empty() { from_name } else { "速记".into() }
+    if !from_line.is_empty() { from_line } else if !from_name.is_empty() { from_name } else { crate::theme::tr("速记", "Quick Note").into() }
 }
 
 fn create_unique(folder: &Path, title: &str) -> io::Result<PathBuf> {
