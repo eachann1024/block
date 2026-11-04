@@ -89,9 +89,9 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
                     .child(fold_button(folded, ("fold", id as usize), cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
                         this.toggle_fold(id, cx); cx.stop_propagation();
                     })))))
-            .when(marker_width > 0., |row| row.child(div().w(px(marker_width)).pl(px(indent)).flex_none().text_color(theme.text_secondary)
+            .when(marker_width > 0., |row| row.child(div().w(px(marker_width)).pl(px(indent)).flex_none().text_color(theme.text)
                 .text_size(px(size)).line_height(px(line))
-                .when(block.kind == Kind::Todo, |row| row.child(todo_box(checked, (line - 16.).max(0.) / 2., move |cx| {
+                .when(block.kind == Kind::Todo, |row| row.child(todo_box(checked, (line - 17.).max(0.) / 2., move |cx| {
                     checkbox_editor.update(cx, |this, cx| this.toggle_checked(id, cx));
                 })))
                 .when(!marker.is_empty(), |row| row.child(marker))))
@@ -148,11 +148,11 @@ fn hover_icon(glyph: Icon, size: f32, base: gpui::Hsla, hover: gpui::Hsla) -> im
 }
 fn todo_box(checked: bool, top: f32, toggle: impl Fn(&mut gpui::App) + 'static) -> impl IntoElement {
     let dark = is_dark();
-    let border: gpui::Hsla = if checked { rgb(0x2a78d6).into() } else if dark { rgba(0xffffff66).into() } else { rgba(0x0b0b0b80).into() };
-    let hover_border: gpui::Hsla = if checked { rgb(0x3987e5).into() } else if dark { rgba(0xffffff99).into() } else { rgba(0x0b0b0b99).into() };
-    div().mt(px(top)).size(px(16.)).flex().items_center().justify_center().rounded(px(4.)).cursor(CursorStyle::PointingHand)
-        .border_1().border_color(border).hover(move |s| s.border_color(hover_border))
-        .when(checked, |b| b.bg(rgb(0x2a78d6)).hover(|s| s.bg(rgb(0x3987e5))).child(icon(Icon::Check, px(12.),
+    let border: gpui::Hsla = if checked { rgb(0x2f6fe4).into() } else if dark { rgb(0x787772).into() } else { rgb(0x8c8b85).into() };
+    let hover_border: gpui::Hsla = if checked { rgb(0x1f57c0).into() } else if dark { rgb(0x9b9a95).into() } else { rgb(0x5e5d59).into() };
+    div().mt(px(top)).size(px(17.)).flex().items_center().justify_center().rounded(px(4.)).cursor(CursorStyle::PointingHand)
+        .border(px(1.5)).border_color(border).hover(move |s| s.border_color(hover_border))
+        .when(checked, |b| b.bg(rgb(0x2f6fe4)).hover(|s| s.bg(rgb(0x1f57c0))).child(icon(Icon::Check, px(12.),
             IconColors { line: rgb(0xffffff).into(), fill: transparent_black(), accent: transparent_black() })))
         .on_mouse_down(MouseButton::Left, move |_, _, cx| { toggle(cx); cx.stop_propagation(); })
 }
