@@ -1,16 +1,25 @@
 //! Tree-sitter highlighting through gpui-component; all ranges remain UTF-8 bytes.
+#[cfg(not(target_family = "wasm"))]
 use std::{cell::RefCell, collections::VecDeque, ops::Range, sync::{Arc, Once}};
-use gpui::{HighlightStyle, TextRun};
+#[cfg(not(target_family = "wasm"))]
+use gpui::HighlightStyle;
+use gpui::TextRun;
+#[cfg(not(target_family = "wasm"))]
 use gpui_component::highlighter::{HighlightTheme, LanguageConfig, LanguageRegistry, SyntaxHighlighter};
+#[cfg(not(target_family = "wasm"))]
 use ropey::Rope;
 
+#[cfg(not(target_family = "wasm"))]
 type StyledRanges = Arc<[(Range<usize>, HighlightStyle)]>;
+#[cfg(not(target_family = "wasm"))]
 struct CachedHighlight { language: String, source: String, styles: StyledRanges }
+#[cfg(not(target_family = "wasm"))]
 thread_local! {
     // Bound memory while retaining visible blocks across repeated layout passes.
     static CACHE: RefCell<VecDeque<CachedHighlight>> = const { RefCell::new(VecDeque::new()) };
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn init_languages() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
@@ -51,6 +60,7 @@ fn init_languages() {
 }
 
 // Grammar crates use Tree-sitter's text.* names; the component theme uses these names.
+#[cfg(not(target_family = "wasm"))]
 fn normalize_captures(query: &str) -> String {
     let mut query = query.to_owned();
     for (from, to) in [
@@ -63,6 +73,7 @@ fn normalize_captures(query: &str) -> String {
     query
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn language_name(language: &str) -> Option<&'static str> {
     match language.split_whitespace().next().unwrap_or("").to_ascii_lowercase().as_str() {
         "python" | "py" => Some("python"),
@@ -78,6 +89,7 @@ fn language_name(language: &str) -> Option<&'static str> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn styles(source: &str, language: &str) -> StyledRanges {
     CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
@@ -100,6 +112,14 @@ fn styles(source: &str, language: &str) -> StyledRanges {
     })
 }
 
+#[cfg(target_family = "wasm")]
+pub(in crate::editor) fn runs(source: &str, _language: &str, mut base: TextRun) -> Vec<TextRun> {
+    if source.is_empty() { return Vec::new(); }
+    base.len = source.len();
+    vec![base]
+}
+
+#[cfg(not(target_family = "wasm"))]
 pub(in crate::editor) fn runs(source: &str, language: &str, mut base: TextRun) -> Vec<TextRun> {
     if source.is_empty() { return Vec::new(); }
     base.len = source.len();

@@ -8,10 +8,15 @@ pub(crate) mod provider;
 pub(super) mod session;
 pub(super) mod panel;
 pub(super) mod preview;
+#[cfg(not(target_family = "wasm"))]
 pub(crate) mod settings;
+#[cfg(not(target_family = "wasm"))]
 mod chat_ui;
+#[cfg(not(target_family = "wasm"))]
 pub(crate) mod chat;
+#[cfg(not(target_family = "wasm"))]
 pub(super) mod agent;
+#[cfg(not(target_family = "wasm"))]
 pub(crate) mod md_view;
 
 gpui::actions!(ai, [OpenAiSettings, ToggleAiPanel]);
