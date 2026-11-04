@@ -40,7 +40,7 @@ struct Entry {
 }
 
 #[derive(Default)]
-pub struct TreeIndex { root: Link, serial: u64 }
+pub struct TreeIndex { root: Link, serial: u64, notes: usize }
 
 impl TreeIndex {
     pub fn new(nodes: Vec<Node>) -> Self {
@@ -49,12 +49,14 @@ impl TreeIndex {
             let root = (Arc::<str>::from(node.name.as_str()), Arc::<Path>::from(node.path.as_path()), node.dir);
             flatten(node, 0, &root, &mut rows);
         }
+        let notes = rows.iter().filter(|r| !r.dir).count();
         let serial = rows.len() as u64;
         let root = build(&mut rows.into_iter(), serial as usize, 0);
-        Self { root, serial }
+        Self { root, serial, notes }
     }
 
     pub fn len(&self) -> usize { visible(&self.root) }
+    pub fn note_count(&self) -> usize { self.notes }
 
     pub fn has_notes(&self) -> bool {
         fn walk(link: &Link) -> bool {
@@ -148,6 +150,7 @@ impl TreeIndex {
             root_dir: false, name, stem, path: Arc::from(path), dir: false, depth: 0, descendants: 0,
         };
         let entry = self.entry(row);
+        self.notes += 1;
         let (left, right) = split(self.root.take(), rank);
         self.root = merge(merge(left, Some(entry)), right);
     }

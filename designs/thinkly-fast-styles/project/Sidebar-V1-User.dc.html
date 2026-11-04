@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>侧栏底栏 · 方案 A（按你的想法：工作区下拉移至左下 + 右下小设置图标）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#2f5ec4}a:hover{color:#1f4494}
+button{font-family:inherit}
+.ib{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#3d4856;padding:0;cursor:pointer;flex:none}
+.ib:hover{background:#e8effc;color:#181c23}
+.ib-off{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#667282;padding:0;cursor:default;flex:none}
+.tab-active{font:inherit;font-size:14px;line-height:20px;font-weight:500;height:28px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;border:0;border-radius:6px;background:#dfe9fc;color:#181c23;box-shadow:inset 0 0 0 1px #476ec2;cursor:pointer;box-sizing:border-box}
+.row{font:inherit;font-size:14px;line-height:20px;font-weight:400;width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#181c23;text-align:left;cursor:pointer;box-sizing:border-box}
+.row:hover{background:#e8effc}
+.row-active{font:inherit;font-size:14px;line-height:20px;font-weight:500;width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 10px;border:0;border-radius:6px;background:#dfe9fc;color:#181c23;box-shadow:inset 0 0 0 1px #476ec2;text-align:left;cursor:pointer;box-sizing:border-box}
+.kbd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;line-height:18px;padding:1px 6px;border-radius:4px;background:#eef0f4;color:#3d4856;border:1px solid #d5dbe3}
+.vault-btn{font:inherit;font-size:14px;line-height:20px;font-weight:460;flex:1;min-width:0;height:32px;padding:0 10px;border-radius:8px;background:#ffffff;color:#181c23;border:1px solid #cfd6e2;display:inline-flex;align-items:center;gap:8px;cursor:pointer;box-sizing:border-box;text-align:left}
+.vault-btn:hover{border-color:#9fb4df;background:#f8faff}
+.settings-mini{width:32px;height:32px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:8px;background:transparent;color:#3d4856;padding:0;cursor:pointer;box-sizing:border-box}
+.settings-mini:hover{background:#e8effc;color:#181c23;border-color:#cfd6e2}
+.menu-item{font:inherit;font-size:14px;line-height:20px;width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#181c23;text-align:left;cursor:pointer;box-sizing:border-box}
+.menu-item:hover{background:#e8effc}
+.cell-th{padding:8px 14px;font-size:14px;font-weight:500;color:#3d4856;text-align:left;border-bottom:1px solid #e2e5ea;border-right:1px solid #e2e5ea;background:#f7f8fa}
+.cell-td{padding:9px 14px;font-size:14px;color:#181c23;border-bottom:1px solid #eceef2;border-right:1px solid #eceef2;font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div style="width:100%;min-height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:#f1f1f1;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#181c23;font-size:14px;line-height:20px;overflow:hidden">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;border-bottom:1px solid #e2e4e8;box-sizing:border-box;background:#f7f7f8">
+<div style="width:260px;flex:none;height:100%;box-sizing:border-box;display:flex;align-items:center;gap:4px;padding:0 10px 0 16px;border-right:1px solid #e2e4e8">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none;margin-right:auto"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<button type="button" class="ib" aria-label="收起左侧栏">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="#c9d8f3"></path>
+<rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+<path d="M15.75 9.75L13.25 12L15.75 14.25" stroke="#476ec2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+<button type="button" class="ib-off" aria-label="后退">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>
+</button>
+<button type="button" class="ib-off" aria-label="前进">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+</button>
+</div>
+
+<nav aria-label="已打开标签页" style="flex:1;min-width:0;height:100%;display:flex;align-items:center;gap:6px;padding:0 12px;overflow:hidden">
+<button type="button" class="tab-active">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#476ec2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M6 3.75h8l4 4V20.25H6z" fill="#c9d8f3" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span>Gemini</span>
+</button>
+<button type="button" class="ib" aria-label="新建标签页">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+</button>
+</nav>
+
+<div style="display:flex;align-items:center;gap:4px;padding:0 12px;height:100%">
+<button type="button" class="ib" aria-label="页面更多操作">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="18" cy="12" r="1.6"></circle></svg>
+</button>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+<aside aria-label="文件列表" style="position:relative;width:260px;flex:none;background:#fafafa;border-right:1px solid #e2e4e8;box-sizing:border-box;display:flex;flex-direction:column;min-height:0">
+
+<div style="padding:12px 12px 6px">
+<button type="button" style="font:inherit;font-size:14px;width:100%;height:34px;padding:0 10px;border-radius:8px;background:#ffffff;color:#3d4856;border:1px solid #cfd6e2;display:flex;align-items:center;gap:8px;cursor:pointer;box-sizing:border-box">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="#c9d8f3" stroke="none"></circle><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4.2 4.2"></path></svg>
+<span style="flex:1;text-align:left">搜索笔记</span>
+<span class="kbd">⇧⌘K</span>
+</button>
+</div>
+
+<div style="display:flex;align-items:center;gap:2px;padding:4px 12px 4px 18px;font-size:14px;color:#3d4856">
+<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{vaultName}}</span>
+<button type="button" class="ib" aria-label="新建笔记" style="width:26px;height:26px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3.75H6.75a1.5 1.5 0 0 0-1.5 1.5v13.5a1.5 1.5 0 0 0 1.5 1.5h10.5a1.5 1.5 0 0 0 1.5-1.5V8.5z"></path><path d="M12 10v6M9 13h6" stroke="#476ec2"></path></svg>
+</button>
+<button type="button" class="ib" aria-label="新建文件夹" style="width:26px;height:26px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path><path d="M12 11v5M9.5 13.5h5" stroke="#476ec2"></path></svg>
+</button>
+</div>
+
+<div style="flex:1;min-height:0;overflow:auto;padding:2px 8px 12px;display:flex;flex-direction:column;gap:2px">
+<button type="button" class="row">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3d4856" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#c9d8f3" stroke="none"></path><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>
+<span>assets</span>
+</button>
+<button type="button" class="row">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3d4856" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#c9d8f3" stroke="none"></path><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>
+<span>New Project</span>
+</button>
+<button type="button" class="row-active" aria-pressed="true">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#476ec2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="#c9d8f3" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span>Gemini</span>
+</button>
+<button type="button" class="row">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span>New Project</span>
+</button>
+<button type="button" class="row">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span>图片焚决</span>
+</button>
+<button type="button" class="row">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span>实际落地业务采集</span>
+</button>
+<button type="button" class="row">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span>日常常用</span>
+</button>
+<button type="button" class="row">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span>未命名</span>
+</button>
+<button type="button" class="row">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span>视频生成</span>
+</button>
+</div>
+
+<sc-if value="{{vaultMenuOpen}}" hint-placeholder-val="{{false}}">
+<div role="menu" aria-label="切换工作区文件夹" style="position:absolute;left:10px;right:10px;bottom:54px;z-index:10;padding:4px;background:#ffffff;border:1px solid #d5dbe3;border-radius:10px;box-shadow:0 12px 28px rgba(24,28,35,0.14);display:flex;flex-direction:column;gap:2px">
+<button type="button" role="menuitem" class="menu-item" onClick="{{pickPromptVault}}" style="background:#eef3fc;font-weight:500">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#476ec2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#c9d8f3" stroke="none"></path><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>
+<span style="flex:1">提示词</span>
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#476ec2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+</button>
+<button type="button" role="menuitem" class="menu-item" onClick="{{pickLocalVault}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>
+<span style="flex:1">本地笔记</span>
+</button>
+<div aria-hidden="true" style="height:1px;background:#eceef2;margin:2px 6px"></div>
+<button type="button" role="menuitem" class="menu-item" onClick="{{toggleVaultMenu}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3d4856" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+<span style="flex:1">打开其他文件夹…</span>
+</button>
+</div>
+</sc-if>
+
+<sc-if value="{{showSettingsTip}}" hint-placeholder-val="{{true}}">
+<div role="status" style="position:absolute;right:8px;bottom:52px;z-index:9;padding:4px 8px;border-radius:6px;background:#20242c;color:#ffffff;font-size:14px;line-height:18px;display:inline-flex;align-items:center;gap:6px;box-shadow:0 6px 16px rgba(24,28,35,0.18)">
+<span>设置</span>
+<span style="font-family:'JetBrains Mono',ui-monospace,monospace;color:#c9d8f3">⌘,</span>
+</div>
+</sc-if>
+
+<div style="padding:8px 10px;border-top:1px solid #e2e4e8;display:flex;align-items:center;gap:6px;background:#fafafa">
+<button type="button" class="vault-btn" onClick="{{toggleVaultMenu}}" aria-label="切换工作区文件夹">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#c9d8f3" stroke="none"></path><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>
+<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{vaultName}}</span>
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3d4856" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M6 9l6 6 6-6"></path></svg>
+</button>
+<button type="button" class="settings-mini" onClick="{{toggleTip}}" aria-label="打开设置" title="设置 ⌘,">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path><circle cx="9" cy="7" r="2" fill="#c9d8f3"></circle><circle cx="15" cy="12" r="2" fill="#c9d8f3"></circle><circle cx="10" cy="17" r="2" fill="#c9d8f3"></circle></svg>
+</button>
+</div>
+
+</aside>
+
+<main style="flex:999 1 560px;min-width:0;background:#ffffff;display:flex;flex-direction:column;justify-content:space-between;overflow:auto">
+<div style="box-sizing:border-box;width:100%;max-width:816px;margin:0 auto;padding:44px 36px 64px;display:flex;flex-direction:column;gap:14px">
+
+<p style="margin:0;font-size:16px;line-height:1.6;color:#181c23">发货格式：账号 ---- 密码 ---- 2FA密钥</p>
+
+<h2 style="margin:6px 0 2px;font-size:20px;line-height:1.4;font-weight:600;color:#181c23;display:flex;align-items:center;gap:8px">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3d4856" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-5.3 5.3a1.5 1.5 0 0 0 2.1 2.1l5.3-5.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.1-2.1 2.6-2.6z" fill="#c9d8f3"></path></svg>
+<span>登录教程</span>
+</h2>
+
+<p style="margin:0;font-size:16px;line-height:1.65;color:#181c23">获取验证码：复制发货信息中的 2FA密钥，打开网站 <a href="https://2fa.fun">2fa.fun</a>。</p>
+<p style="margin:0;font-size:16px;line-height:1.65;color:#181c23">输入密钥：将链接或密钥输入到网站中，点击获取，即可得到当前的 6 位 2FA 验证码。</p>
+<p style="margin:0;font-size:16px;line-height:1.65;color:#181c23">登录账号：使用账号密码登录，输入获取到的验证码即可。</p>
+
+<div style="margin-top:6px;border:1px solid #e2e5ea;border-radius:8px;overflow:auto">
+<table style="width:100%;border-collapse:collapse;font-size:14px">
+<thead>
+<tr>
+<th class="cell-th" style="width:56px">#</th>
+<th class="cell-th">账号</th>
+<th class="cell-th">密码</th>
+<th class="cell-th" style="border-right:0">2FA密钥</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="cell-td">1</td>
+<td class="cell-td">i.sedudip@gmail.com</td>
+<td class="cell-td">BcOisyfPkICN</td>
+<td class="cell-td" style="border-right:0">lz3bwbtlkjvswprn6ji4zr6te2</td>
+</tr>
+<tr>
+<td class="cell-td">2</td>
+<td class="cell-td"><a href="mailto:PolianaMansouri16.9@gmail.com">PolianaMansouri16.9@gmail.com</a></td>
+<td class="cell-td">ap2rkp9tc</td>
+<td class="cell-td" style="border-right:0">3ap6dpugj33mquerwbc5gs</td>
+</tr>
+<tr>
+<td class="cell-td">3</td>
+<td class="cell-td"><a href="mailto:AnshadKhata.ne@gmail.com">AnshadKhata.ne@gmail.com</a></td>
+<td class="cell-td">893169</td>
+<td class="cell-td" style="border-right:0">ipsikhmpxo7sht3b4m44pvr4</td>
+</tr>
+<tr>
+<td class="cell-td" style="border-bottom:0">4</td>
+<td class="cell-td" style="border-bottom:0"><a href="mailto:Giulia.nDarck@gmail.com">Giulia.nDarck@gmail.com</a></td>
+<td class="cell-td" style="border-bottom:0">uajt1fduydk</td>
+<td class="cell-td" style="border-bottom:0;border-right:0">46higai2hocpinm6g3dek25</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+</div>
+
+<footer style="height:32px;flex:none;padding:0 16px;display:flex;align-items:center;font-size:14px;color:#3d4856">
+<span>已保存 · 内存会话就绪</span>
+</footer>
+</main>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"vaultMenuOpen":{"editor":"boolean","default":false,"label":"展开底栏工作区菜单"},"showSettingsTip":{"editor":"boolean","default":true,"label":"显示右下设置按钮 Tooltip"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  init() {
+    this.vault = '提示词';
+    this.menuOpen = null;
+    this.tipOpen = null;
+  }
+  toggleVaultMenu() {
+    const cur = this.menuOpen === null ? !!this.props.vaultMenuOpen : this.menuOpen;
+    this.menuOpen = !cur;
+    this.rerender();
+  }
+  pickPromptVault() {
+    this.vault = '提示词';
+    this.menuOpen = false;
+    this.rerender();
+  }
+  pickLocalVault() {
+    this.vault = '本地笔记';
+    this.menuOpen = false;
+    this.rerender();
+  }
+  toggleTip() {
+    const cur = this.tipOpen === null ? (this.props.showSettingsTip !== false) : this.tipOpen;
+    this.tipOpen = !cur;
+    this.rerender();
+  }
+  renderVals() {
+    const vaultMenuOpen = this.menuOpen === null ? !!this.props.vaultMenuOpen : this.menuOpen;
+    const showSettingsTip = this.tipOpen === null ? (this.props.showSettingsTip !== false) : this.tipOpen;
+    return {
+      vaultName: this.vault,
+      vaultMenuOpen,
+      showSettingsTip
+    };
+  }
+}
+</script>
+</body>
+</html>
