@@ -15,6 +15,7 @@ use gpui_component::input::{Input, InputState};
 use crate::files::search::{Hit, search_notes};
 use crate::icons::{Icon, icon};
 use crate::theme::{Theme, format_hotkey, is_dark, is_en, search_shortcut, tr};
+use crate::ui::scrollbar;
 
 const LIMIT: usize = 50;
 const DEBOUNCE: Duration = Duration::from_millis(150);
@@ -185,12 +186,14 @@ pub fn render_body<V: 'static>(
         rows.extend(group.into_iter().map(|(ix, hit)| hit_row(ix, hit, ix == state.selected, cx, on_pick)));
     }
 
-    let list = div().id("search-results").p(px(8.)).flex().flex_col().gap(px(2.))
+    // The right padding is the scrollbar gutter, so the bar never covers or shifts the rows.
+    let list = div().id("search-results").py(px(8.)).pl(px(8.)).pr(px(scrollbar::GUTTER)).flex().flex_col().gap(px(2.))
         .overflow_y_scroll().track_scroll(&state.scroll).children(rows);
+    let bar = scrollbar::vertical("search-scrollbar", &state.scroll, px(0.));
     if fill_height {
-        list.flex_1().min_h_0().into_any_element()
+        div().relative().flex_1().min_h_0().child(list.size_full()).child(bar).into_any_element()
     } else {
-        list.max_h(px(460.)).into_any_element()
+        div().relative().child(list.max_h(px(460.))).child(bar).into_any_element()
     }
 }
 

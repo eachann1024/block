@@ -1,8 +1,11 @@
 pub mod dropdown;
+pub mod fade;
 pub mod floating_bar;
 pub mod icon_button;
 pub mod modal;
 pub mod motion;
 pub mod popover;
 pub mod reveal;
+pub mod scrollbar;
+pub mod table_controls;
 pub mod tooltip;

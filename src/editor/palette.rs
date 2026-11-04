@@ -248,8 +248,8 @@ pub(in crate::editor) fn render_palette_panel(editor: Entity<Editor>, cx: &gpui:
                 .border_1().border_color(rgb(if dark { 0x6b707b } else { 0xb5b4b0 }))
         } else {
             div().size(px(16.)).rounded(px(4.)).flex_none()
-                .bg(rgb(if dark { 0x453a1e } else { 0xf9e8c1 }))
-                .border_1().border_color(rgb(if dark { 0x6a582c } else { 0xdec896 }))
+                .bg(rgb(if dark { 0x453a1e } else { 0xfde6b3 }))
+                .border_1().border_color(rgb(if dark { 0x6a582c } else { 0xfcd88c }))
         };
         col = col.child(
             div().id(("bg-sw", idx))

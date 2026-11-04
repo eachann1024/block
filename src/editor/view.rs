@@ -3,6 +3,7 @@ use std::{collections::HashMap, path::PathBuf};
 use gpui::{App, Context, FocusHandle, Focusable, ListAlignment, ListState, MouseButton,
     Pixels, Point, Window, actions, div, list, prelude::*, px};
 use crate::theme::Theme;
+use crate::ui::scrollbar;
 use super::model::Doc;
 use super::input::transactions::{Snapshot, HistoryEntry};
 #[path = "selection.rs"] pub(super) mod selection;
@@ -16,6 +17,8 @@ use super::input::transactions::{Snapshot, HistoryEntry};
 use selection::Caret;
 use layout::TextLayout;
 use lifecycle::Persistence;
+/// Space kept between the caret line and the viewport edge when the caret scrolls into view.
+const REVEAL_MARGIN: f32 = 80.;
 
 actions!(editor, [Backspace, Delete, Left, Right, SelectLeft, SelectRight, SelectAll,
     Up, Down, SelectUp, SelectDown, Enter, Copy, Cut, Paste, Bold, Italic, Strike, Code,
@@ -103,15 +106,11 @@ impl Editor {
     }
     fn reveal(&mut self) {
         if !self.reveal_caret { return; }
+        let margin = px(REVEAL_MARGIN);
         if let Some(layout) = self.layouts.get(&self.caret.head.block) {
-            let p = layout.point(self.caret.head.offset); let viewport = self.list.viewport_bounds();
-            if p.y < viewport.top() { self.list.scroll_by(p.y - viewport.top()); }
-            else if p.y + layout.line_height > viewport.bottom() {
-                self.list.scroll_by(p.y + layout.line_height - viewport.bottom());
-            }
+            scrollbar::reveal_line(&self.list, layout.point(self.caret.head.offset).y, layout.line_height, margin);
         } else if let Some(index) = self.doc.index_of(self.caret.head.block) {
-            let row = self.column_group_range(index).map_or(index, |r| r.start);
-            self.list.scroll_to_reveal_item(row);
+            scrollbar::reveal_item(&self.list, self.column_group_range(index).map_or(index, |r| r.start), margin);
         }
     }
 }
@@ -130,6 +129,7 @@ impl Render for Editor {
             }
         }).absolute().size_full();
         let editor = cx.entity();
+        let pad = if self.minimal { (18., 12.) } else { (36., 64.) };
         let rows = list(self.list.clone(), move |index, _, cx| {
             editor.update(cx, |this, cx| {
                 if !this.minimal && this.is_index_hidden(index) {
@@ -145,7 +145,7 @@ impl Render for Editor {
                 }
                 super::chrome::render_block_row(this, index, cx)
             })
-        }).size_full().pt(px(if self.minimal { 18. } else { 36. })).pb(px(if self.minimal { 12. } else { 64. }));
+        }).size_full().pt(px(pad.0)).pb(px(pad.1));
         let rows = if self.minimal { div().flex_1().min_w_0().h_full().ml(px(-32.)).child(rows).into_any_element() } else { rows.into_any_element() };
         let anchor_editor = cx.entity();
         // Runs after all rows paint: layout retries never publish overlay geometry.
@@ -210,14 +210,18 @@ impl Render for Editor {
                 .on_mouse_move(cx.listener(|this, event, _, cx| this.pointer_move(event, cx)))
                 .on_mouse_up(MouseButton::Left, cx.listener(|this, event: &gpui::MouseUpEvent, _, cx| this.finish_drag(event.position, cx)))
                 .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.clear_pointer(); cx.notify(); }))
-                .child(div().flex_1().min_h_0().min_w_0().w_full().mx_auto()
-                    .max_w(super::chrome::standard_width(theme.content_width))
-                    .when(!self.minimal && self.annotate.has_visible_rail(), |paper| paper.pr(px(308.)))
-                    .when(self.minimal, |paper| paper.flex().pr(px(8.)))
-                    // Minimal mode pulls the (unused) handle gutter out of view: 20px text padding.
-                    .when(self.path.is_some(), |paper| paper.child(rows))
-                    .when(self.path.is_none() && !self.persistence.loading, |paper| paper.child(crate::mascot::editor_empty(cx))))
-                .when(!self.minimal, |root| root.child(div().min_h(px(26.)).flex_none().px_3().flex().items_center().gap_3().text_size(px(12.)).text_color(theme.text_secondary)
+                // Scroll area: the column is centred in what is left after the stable scrollbar gutter.
+                .child(div().flex_1().min_h_0().min_w_0().w_full().relative().flex().pr(px(scrollbar::GUTTER))
+                    .on_scroll(scrollbar::forward_wheel(&self.list))
+                    .child(div().h_full().min_w_0().w_full().mx_auto()
+                        .max_w(super::chrome::standard_width(theme.content_width))
+                        .when(!self.minimal && self.annotate.has_visible_rail(), |paper| paper.pr(px(308.)))
+                        .when(self.minimal, |paper| paper.flex())
+                        // Minimal mode pulls the (unused) handle gutter out of view: 20px text padding.
+                        .when(self.path.is_some(), |paper| paper.child(rows))
+                        .when(self.path.is_none() && !self.persistence.loading, |paper| paper.child(crate::mascot::editor_empty(cx))))
+                    .when(self.path.is_some(), |area| area.child(scrollbar::vertical("editor-scrollbar", &self.list, px(pad.0 + pad.1)))))
+                .when(!self.minimal && cfg!(not(target_family = "wasm")), |root| root.child(div().min_h(px(26.)).flex_none().px_3().flex().items_center().gap_3().text_size(px(12.)).text_color(theme.text_secondary)
                     .child(div().flex_1().child(self.status.clone()))
                     .when(self.path.is_some() && self.dirty, |bar| bar.child(div().id("keep-draft-close")
                         .px_2().py_1().rounded_md().bg(theme.hover).cursor(gpui::CursorStyle::PointingHand)
