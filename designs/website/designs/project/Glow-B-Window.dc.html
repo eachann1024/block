@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>首屏光晕 B · 窗格晨光</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:#F7F6F2;color:#141413;font-family:Inter,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;font-size:16px;line-height:26px;-webkit-font-smoothing:antialiased}
+a{color:#141413;text-decoration:none}
+a:hover{color:#3D3B36}
+.nav-item{color:#4A4842;font-size:15px;line-height:22px;font-weight:500;padding:6px 12px;border-radius:6px;transition:color 140ms ease,background-color 140ms ease}
+.nav-item:hover{color:#141413;background:#ECEAE3}
+.nav-cta:hover,.cta-main:hover{background:#C4613F !important;color:#FAF9F5 !important}
+
+/* 光晕层：只动 transform / opacity；模糊为静态 filter，配合 will-change 只栅格化一次 */
+.glow-beam-a{animation:glow-sway-a calc(16s / var(--glow-speed,1)) ease-in-out infinite alternate}
+.glow-beam-b{animation:glow-sway-b calc(21s / var(--glow-speed,1)) ease-in-out infinite alternate}
+.glow-beam-c{animation:glow-sway-c calc(13s / var(--glow-speed,1)) ease-in-out infinite alternate}
+.glow-frame{animation:glow-frame calc(18s / var(--glow-speed,1)) ease-in-out infinite alternate}
+.glow-cloud{animation:glow-cloud calc(24s / var(--glow-speed,1)) linear infinite}
+.glow-sill{animation:glow-sill calc(17s / var(--glow-speed,1)) ease-in-out infinite alternate}
+/* 必须写在 animation 简写之后，否则简写会把暂停状态重置为 running */
+.glow-anim{will-change:transform,opacity;animation-play-state:var(--glow-play,running)}
+
+@keyframes glow-sway-a{0%{transform:translate3d(-200px,0,0);opacity:.25}50%{opacity:1}100%{transform:translate3d(220px,0,0);opacity:.45}}
+@keyframes glow-sway-b{0%{transform:translate3d(180px,0,0);opacity:.9}45%{opacity:.2}100%{transform:translate3d(-240px,0,0);opacity:1}}
+@keyframes glow-sway-c{0%{transform:translate3d(-140px,0,0);opacity:.15}60%{opacity:1}100%{transform:translate3d(170px,0,0);opacity:.35}}
+@keyframes glow-frame{0%{transform:translate3d(-120px,0,0);opacity:1}100%{transform:translate3d(160px,0,0);opacity:.35}}
+@keyframes glow-cloud{0%{transform:translate3d(-60%,-14%,0);opacity:0}18%{opacity:1}72%{opacity:1}100%{transform:translate3d(90%,22%,0);opacity:0}}
+@keyframes glow-sill{0%{transform:translate3d(-160px,0,0);opacity:.3}50%{opacity:1}100%{transform:translate3d(180px,0,0);opacity:.5}}
+
+/* 静止一帧：系统减少动态效果，或调节杆关闭动效 */
+[data-glow-motion="off"] .glow-anim{animation:none !important}
+@media (prefers-reduced-motion: reduce){.glow-anim{animation:none !important}}
+
+@media (max-width: 920px){
+  .editor-stage{min-height:520px !important}
+  .glow-rays{width:160% !important;right:-70% !important}
+}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:100%;display:flex;flex-direction:column;background:#F7F6F2;color:#141413">
+
+  <header style="width:100%;background:#F7F6F2;position:relative;z-index:3">
+    <div style="max-width:1180px;margin:0 auto;min-height:80px;padding:0 32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px">
+      <a href="#top" style="display:inline-flex;align-items:center;gap:10px;color:#141413">
+        <svg width="22" height="22" viewBox="0 0 22 22" role="img" aria-label="Yu">
+          <rect x="1" y="1" width="20" height="20" rx="4" fill="#141413"></rect>
+          <rect x="5" y="6" width="4" height="3" fill="#F7F6F2"></rect>
+          <rect x="11" y="6" width="6" height="3" fill="#F7F6F2"></rect>
+          <rect x="5" y="11" width="12" height="3" fill="#F7F6F2"></rect>
+          <rect x="5" y="16" width="7" height="2" fill="#8C8A82"></rect>
+        </svg>
+        <span style="font-family:'Space Grotesk',Inter,sans-serif;font-size:18px;font-weight:600;letter-spacing:-0.02em;color:#141413">Yu</span>
+      </a>
+      <nav aria-label="主导航" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <a class="nav-item" href="#performance">性能</a>
+        <a class="nav-item" href="#blocks">块编辑器</a>
+        <a class="nav-item" href="#ai">AI</a>
+        <a class="nav-item" href="#image">生成图片</a>
+        <a class="nav-cta" href="#download" style="height:36px;padding:0 16px;border:1px solid #C4613F;border-radius:6px;background:#D97757;color:#FAF9F5;font-size:14px;font-weight:500;display:inline-flex;align-items:center;justify-content:center">下载</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- 首屏：光晕层只存在于此 section 内；data-glow-observe 标记 IntersectionObserver 观察对象，离开视口即暂停 -->
+  <section id="top" ref="{{heroRef}}" data-glow-observe="hero" data-glow-motion="{{motionAttr}}" style="position:relative;overflow:hidden;isolation:isolate;padding:64px 32px 120px;background:#F7F6F2;--glow-speed:{{speed}};--glow-play:{{playState}};--glow-light:{{light}}">
+
+    <!-- 光晕层：底部 mask 在首屏底边前完全淡出 -->
+    <div aria-hidden="true" style="position:absolute;inset:0;z-index:0;pointer-events:none;opacity:{{intensity}};-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 50%,transparent 90%);mask-image:linear-gradient(to bottom,#000 0%,#000 50%,transparent 90%)">
+
+      <!-- 斜射的窗格：竖条组整体旋转，从右上落向左下 -->
+      <div class="glow-rays" style="position:absolute;top:-38%;right:-22%;width:96%;height:170%;transform:rotate(27deg);transform-origin:70% 30%">
+        <div class="glow-anim glow-beam-a" style="position:absolute;top:0;bottom:0;left:6%;width:15%;background:linear-gradient(90deg,transparent 0%,var(--glow-light) 50%,transparent 100%);filter:blur(56px)"></div>
+        <div class="glow-anim glow-beam-b" style="position:absolute;top:0;bottom:0;left:27%;width:21%;background:linear-gradient(90deg,transparent 0%,var(--glow-light) 45%,var(--glow-light) 60%,transparent 100%);filter:blur(64px)"></div>
+        <div class="glow-anim glow-beam-c" style="position:absolute;top:0;bottom:0;left:55%;width:12%;background:linear-gradient(90deg,transparent 0%,var(--glow-light) 50%,transparent 100%);filter:blur(48px)"></div>
+        <div class="glow-anim glow-beam-a" style="position:absolute;top:0;bottom:0;left:73%;width:17%;background:linear-gradient(90deg,transparent 0%,#F6E7CF 50%,transparent 100%);filter:blur(60px)"></div>
+
+        <sc-if value="{{mullions}}" hint-placeholder-val="{{ true }}">
+          <!-- 窗框切出的柔影：窗棂竖条 + 一道横档 -->
+          <div class="glow-anim glow-frame" style="position:absolute;inset:0">
+            <div style="position:absolute;top:0;bottom:0;left:23%;width:2.6%;background:rgba(112,96,72,0.16);filter:blur(22px)"></div>
+            <div style="position:absolute;top:0;bottom:0;left:50.5%;width:3%;background:rgba(112,96,72,0.14);filter:blur(24px)"></div>
+            <div style="position:absolute;top:0;bottom:0;left:69.5%;width:2.4%;background:rgba(112,96,72,0.12);filter:blur(22px)"></div>
+            <div style="position:absolute;left:0;right:0;top:41%;height:2.2%;background:rgba(112,96,72,0.10);filter:blur(26px)"></div>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- 云影掠过：一团极淡的暖灰阴影横穿光带 -->
+      <div class="glow-anim glow-cloud" style="position:absolute;top:4%;left:10%;width:62%;height:58%;border-radius:50%;background:rgba(120,108,90,0.16);filter:blur(90px)"></div>
+    </div>
+
+    <div style="position:relative;z-index:1;max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:56px">
+      <div style="max-width:740px;display:flex;flex-direction:column;align-items:flex-start;gap:20px">
+        <h1 style="margin:0;max-width:680px;font-family:'Space Grotesk','PingFang SC','Microsoft YaHei',sans-serif;font-size:38px;line-height:1.34;font-weight:700;letter-spacing:-0.02em;color:#141413">文字之隅，落笔即成</h1>
+        <div style="display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:6px">
+          <a class="cta-main" href="/download?k=thinkly-fast-macos.dmg" style="height:46px;padding:0 24px;border:1px solid #C4613F;border-radius:8px;background:#D97757;color:#FAF9F5;font-size:15px;font-weight:600;display:inline-flex;align-items:center;justify-content:center">下载 macOS 版</a>
+          <span style="font-size:14px;line-height:22px;color:#5E5D59">适用于 Apple 芯片的 Mac · 文件就是本地 Markdown</span>
+        </div>
+      </div>
+
+      <!-- #editor-stage 占位：实机为 WebAssembly 编辑器，光照叠层在 canvas 之上，pointer-events:none -->
+      <div class="editor-stage" role="region" aria-label="Yu 实时 GPUI 块编辑器" style="position:relative;width:100%;max-width:1180px;aspect-ratio:16 / 10;min-height:700px;border:1px solid #DCD8CE;border-radius:12px;background:#FBFAF7;box-shadow:0 20px 50px rgba(20,20,19,0.07),0 1px 0 rgba(255,250,240,0.9) inset;overflow:hidden">
+        <div style="height:44px;display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid #ECE9E1">
+          <svg width="52" height="12" viewBox="0 0 52 12" aria-hidden="true">
+            <circle cx="6" cy="6" r="5" fill="none" stroke="#C9C5BA" stroke-width="1.2"></circle>
+            <circle cx="26" cy="6" r="5" fill="none" stroke="#C9C5BA" stroke-width="1.2"></circle>
+            <circle cx="46" cy="6" r="5" fill="none" stroke="#C9C5BA" stroke-width="1.2"></circle>
+          </svg>
+        </div>
+        <div style="position:absolute;inset:44px 0 0 0;display:flex;flex-direction:column;gap:18px;padding:64px 12% 0">
+          <div style="width:42%;height:22px;border-radius:4px;background:#ECE9E1"></div>
+          <div style="width:88%;height:12px;border-radius:3px;background:#F0EDE6"></div>
+          <div style="width:80%;height:12px;border-radius:3px;background:#F0EDE6"></div>
+          <div style="width:64%;height:12px;border-radius:3px;background:#F0EDE6"></div>
+          <div style="width:30%;height:16px;border-radius:4px;background:#ECE9E1;margin-top:20px"></div>
+          <div style="width:84%;height:12px;border-radius:3px;background:#F0EDE6"></div>
+          <div style="width:72%;height:12px;border-radius:3px;background:#F0EDE6"></div>
+        </div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+          <span style="font-size:14px;line-height:22px;color:#5E5D59;background:#FBFAF7;padding:6px 12px;border-radius:6px;border:1px solid #E5E2D9">#editor-stage · 实时 GPUI 编辑器占位（16:10）</span>
+        </div>
+
+        <!-- 窗口受光：同一组光带落在纸面上，multiply 叠加，右上最亮、向左下衰减 -->
+        <div aria-hidden="true" style="position:absolute;inset:0;z-index:3;pointer-events:none;mix-blend-mode:multiply;opacity:{{sillOpacity}};-webkit-mask-image:linear-gradient(225deg,#000 0%,#000 30%,transparent 78%);mask-image:linear-gradient(225deg,#000 0%,#000 30%,transparent 78%)">
+          <div style="position:absolute;top:-50%;right:-30%;width:110%;height:200%;transform:rotate(27deg);transform-origin:70% 30%">
+            <div class="glow-anim glow-sill" style="position:absolute;top:0;bottom:0;left:40%;width:20%;background:linear-gradient(90deg,transparent 0%,var(--glow-light) 50%,transparent 100%);filter:blur(44px)"></div>
+            <div class="glow-anim glow-sill" style="position:absolute;top:0;bottom:0;left:66%;width:13%;background:linear-gradient(90deg,transparent 0%,var(--glow-light) 50%,transparent 100%);filter:blur(40px)"></div>
+            <sc-if value="{{mullions}}" hint-placeholder-val="{{ true }}">
+              <div class="glow-anim glow-frame" style="position:absolute;top:0;bottom:0;left:61%;width:2.4%;background:rgba(112,96,72,0.18);filter:blur(16px)"></div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 下一节：无任何光晕 -->
+  <section id="performance" style="position:relative;overflow:hidden;padding:120px 32px 96px;border-top:1px solid #E5E2D9;background:#EFECE4">
+    <div style="position:relative;max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:48px">
+      <h2 style="margin:0;font-family:'Space Grotesk','PingFang SC',sans-serif;font-size:38px;line-height:1.22;font-weight:700;letter-spacing:-0.02em;color:#141413">大文档也是即开即写</h2>
+      <div style="padding:32px 0;border-top:1px solid #DEDAD0;display:flex;flex-wrap:wrap;gap:32px;align-items:center">
+        <div style="flex:5 1 280px;display:flex;flex-direction:column;gap:8px">
+          <strong style="font-family:'Space Grotesk','JetBrains Mono',monospace;font-size:52px;line-height:1.05;font-weight:700;letter-spacing:-0.03em;color:#C4613F">24.5 ms</strong>
+          <span style="font-size:17px;line-height:26px;font-weight:500;color:#141413">打开 10 万块文档到显示首屏</span>
+        </div>
+        <div style="flex:7 1 360px;display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:20px">
+          <div style="display:grid;grid-template-columns:110px 1fr 88px;align-items:center;gap:12px">
+            <span style="color:#141413;font-weight:600">Yu</span>
+            <div style="height:8px;border-radius:4px;background:#E2DED4;overflow:hidden"><div style="width:3%;min-width:6px;height:100%;border-radius:4px;background:#D97757"></div></div>
+            <span style="font-family:'JetBrains Mono',monospace;text-align:right;color:#B4532F;font-weight:600">24.5 ms</span>
+          </div>
+          <div style="display:grid;grid-template-columns:110px 1fr 88px;align-items:center;gap:12px">
+            <span style="color:#5E5D59">VS Code</span>
+            <div style="height:8px;border-radius:4px;background:#E2DED4;overflow:hidden"><div style="width:18%;height:100%;border-radius:4px;background:#C5C1B5"></div></div>
+            <span style="font-family:'JetBrains Mono',monospace;text-align:right;color:#5E5D59">~420 ms</span>
+          </div>
+          <div style="display:grid;grid-template-columns:110px 1fr 88px;align-items:center;gap:12px">
+            <span style="color:#5E5D59">Obsidian</span>
+            <div style="height:8px;border-radius:4px;background:#E2DED4;overflow:hidden"><div style="width:46%;height:100%;border-radius:4px;background:#C5C1B5"></div></div>
+            <span style="font-family:'JetBrains Mono',monospace;text-align:right;color:#5E5D59">~1,800 ms</span>
+          </div>
+          <div style="display:grid;grid-template-columns:110px 1fr 88px;align-items:center;gap:12px">
+            <span style="color:#5E5D59">Notion</span>
+            <div style="height:8px;border-radius:4px;background:#E2DED4;overflow:hidden"><div style="width:100%;height:100%;border-radius:4px;background:#C5C1B5"></div></div>
+            <span style="font-family:'JetBrains Mono',monospace;text-align:right;color:#5E5D59">&gt; 8,000 ms</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"intensity":{"editor":"range","default":0.8,"min":0.2,"max":1,"step":0.05,"section":"光晕"},"speed":{"editor":"range","default":1,"min":0.5,"max":2,"step":0.1,"unit":"x","section":"光晕"},"light":{"editor":"color","default":"#EDC795","options":["#EDC795","#F2D9B3","#E6B788","#F4E6CC"],"section":"光晕"},"mullions":{"editor":"boolean","default":true,"section":"光晕"},"motion":{"editor":"boolean","default":true,"section":"光晕"},"$preview":{"width":1440,"height":1600}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    var reduced = false;
+    try { reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    this.state = { inView: true, reduced: reduced };
+    this.observer = null;
+    // 首屏离开视口即暂停全部光晕动画（落地时同样逻辑）
+    this.heroRef = (el) => {
+      if (this.observer) { this.observer.disconnect(); this.observer = null; }
+      if (!el || typeof IntersectionObserver === 'undefined') return;
+      this.observer = new IntersectionObserver((entries) => {
+        var visible = entries[0] && entries[0].isIntersecting;
+        if (visible !== this.state.inView) this.setState({ inView: visible });
+      }, { threshold: 0 });
+      this.observer.observe(el);
+    };
+  }
+  componentDidMount() {
+    try {
+      this.mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      this.onMq = (e) => this.setState({ reduced: e.matches });
+      this.mq.addEventListener('change', this.onMq);
+    } catch (e) {}
+  }
+  componentWillUnmount() {
+    if (this.observer) this.observer.disconnect();
+    if (this.mq && this.onMq) this.mq.removeEventListener('change', this.onMq);
+  }
+  renderVals() {
+    var intensity = this.props.intensity ?? 0.8;
+    var motion = this.props.motion ?? true;
+    var still = !motion || this.state.reduced;
+    return {
+      heroRef: this.heroRef,
+      intensity: intensity,
+      sillOpacity: Math.round(intensity * 0.55 * 100) / 100,
+      speed: this.props.speed ?? 1,
+      light: this.props.light ?? '#EDC795',
+      mullions: this.props.mullions ?? true,
+      motionAttr: still ? 'off' : 'on',
+      playState: this.state.inView && !still ? 'running' : 'paused'
+    };
+  }
+}
+</script>
+</body>
+</html>
