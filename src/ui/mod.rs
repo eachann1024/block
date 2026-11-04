@@ -12,6 +12,7 @@ pub mod rename_row;
 pub mod reveal;
 pub mod scrollbar;
 pub mod settings_controls;
+pub mod shortcut_label;
 pub mod smoke_overlay;
 pub mod table_controls;
 pub mod tooltip;

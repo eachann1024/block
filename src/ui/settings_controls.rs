@@ -97,15 +97,18 @@ pub fn segmented<V: 'static, T: Copy + 'static, const N: usize>(
 
 fn keycap_chip(part: SharedString) -> gpui::Div {
     let theme = Theme::ocean();
-    let is_symbol = matches!(part.as_ref(), "⌘" | "⇧" | "⌥" | "⌃");
+    let key_glyph = crate::ui::shortcut_label::key_icon(part.as_ref());
+    let is_symbol = key_glyph.is_some();
     let cap_bg = if is_dark() { theme.shell } else { theme.paper };
-    div().h(px(22.)).min_w(px(22.)).px(if is_symbol { px(5.) } else { px(6.) }).rounded(px(5.))
+    let chip = div().h(px(22.)).min_w(px(22.)).px(if is_symbol { px(2.) } else { px(6.) }).rounded(px(5.))
         .bg(cap_bg).border_1().border_color(theme.btn_border)
         .flex().items_center().justify_center()
-        .when(!is_symbol, |d| d.font(mono_font()))
-        .text_size(if is_symbol { px(13.) } else { px(12.) })
-        .line_height(px(14.)).font_weight(FontWeight(500.)).text_color(theme.text)
-        .child(part)
+        .text_color(theme.text);
+    if let Some(glyph) = key_glyph {
+        chip.child(crate::ui::shortcut_label::key_glyph_box(glyph, px(16.), theme.text))
+    } else {
+        chip.font(mono_font()).text_size(px(12.)).line_height(px(14.)).font_weight(FontWeight(500.)).child(part)
+    }
 }
 
 pub fn shortcut_recorder(
