@@ -266,11 +266,8 @@ impl Workspace {
             let ix = self.tabs.iter().position(|p| p == &menu.path).unwrap_or(menu.index.min(tab_count - 1));
             let target_path = self.tabs.get(ix)?.clone();
             let (has_others, has_right) = (tab_count > 1, ix + 1 < tab_count);
-            let (exp_path, close_one, close_others) = (target_path.clone(), target_path.clone(), target_path);
+            let (close_one, close_others) = (target_path.clone(), target_path);
             let card = crate::dropdown::shell("tab-context-menu").w(px(204.))
-                .child(tab_menu_row("tab-menu-export", Some(Icon::Image), tr("生成图片…", "Export as Image…"), Some(exp_hint), true,
-                    cx.listener(move |this, _, window, cx| this.export_note(exp_path.clone(), window, cx))))
-                .child(crate::dropdown::separator())
                 .child(tab_menu_row("tab-menu-close", Some(Icon::TabClose), tr("关闭", "Close"), None, true, cx.listener(move |this, _, _, cx| this.close_tab(close_one.clone(), cx))))
                 .child(tab_menu_row("tab-menu-close-others", Some(Icon::TabCloseOthers), tr("关闭其他", "Close Others"), None, has_others, cx.listener(move |this, _, _, cx| this.close_other_tabs(close_others.clone(), cx))))
                 .child(tab_menu_row("tab-menu-close-right", Some(Icon::TabCloseRight), tr("关闭右侧", "Close to the Right"), None, has_right, cx.listener(move |this, _, _, cx| this.close_tabs_to_right(ix, cx))))
