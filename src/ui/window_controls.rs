@@ -1,10 +1,10 @@
 //! Minimise / maximise / close buttons for windows whose native frame is hidden.
 //! macOS keeps its traffic lights, so there this renders nothing.
-use gpui::{CursorStyle, Div, ElementId, MouseButton, WindowControlArea, div, prelude::*, px, rgb};
-use crate::{icons::{Icon, icon}, theme::Theme};
+use gpui::{CursorStyle, Div, ElementId, MouseButton, WindowControlArea, div, prelude::*, px, rgb, transparent_black};
+use crate::{icons::{Icon, IconColors, icon}, theme::Theme};
 
 pub const fn is_macos() -> bool {
-    cfg!(target_os = "macos")
+    cfg!(any(target_os = "macos", target_family = "wasm"))
 }
 
 fn button(id: impl Into<ElementId>, area: WindowControlArea, glyph: Icon, size: f32, close: bool) -> gpui::Stateful<Div> {
@@ -20,7 +20,7 @@ fn button(id: impl Into<ElementId>, area: WindowControlArea, glyph: Icon, size: 
         .justify_center()
         .rounded(px(6.))
         .cursor(CursorStyle::PointingHand)
-        .child(icon(glyph, px(size), theme.icon_colors(text)))
+        .child(icon(glyph, px(size), IconColors { line: text, fill: transparent_black(), accent: text }))
         .hover(move |s| if close { s.bg(rgb(0xe81123)).text_color(rgb(0xffffff)) } else { s.bg(theme.hover).text_color(fill) })
 }
 

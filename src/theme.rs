@@ -181,7 +181,7 @@ pub fn hotkey_parts(spec: &str) -> Vec<String> {
     }
     if spec.ends_with("--") { key = "-".into(); }
     let mut out = Vec::new();
-    if cfg!(target_os = "macos") {
+    if cfg!(any(target_os = "macos", target_family = "wasm")) {
         if ctrl { out.push("⌃".into()); }
         if alt { out.push("⌥".into()); }
         if shift { out.push("⇧".into()); }
@@ -200,7 +200,7 @@ pub fn hotkey_parts(spec: &str) -> Vec<String> {
 
 pub fn format_hotkey(spec: &str) -> String {
     let parts = hotkey_parts(spec);
-    if cfg!(target_os = "macos") { parts.join(" ") } else { parts.join(" + ") }
+    if cfg!(any(target_os = "macos", target_family = "wasm")) { parts.join(" ") } else { parts.join(" + ") }
 }
 
 const fn hex(value: u32) -> Hsla {

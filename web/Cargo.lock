@@ -5359,6 +5359,7 @@ dependencies = [
  "gpui-pre-web",
  "html5ever 0.40.1",
  "im",
+ "js-sys",
  "latex-rust",
  "mermaid-rs-renderer",
  "pulldown-cmark",
