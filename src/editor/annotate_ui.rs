@@ -108,8 +108,7 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
     let reactions = editor.annotate.reactions.clone().map(|picker| {
         let selected = picker.annotation_id
             .and_then(|id| editor.annotate.annotations.iter().find(|n| n.id == id))
-            .map(|n| n.reactions.clone())
-            .unwrap_or_default();
+            .and_then(|n| n.reactions.first().cloned());
         reaction_popover(picker, selected, cx)
     });
     Some(div().absolute().top_0().left_0().size_full().children(rail).children(reactions).into_any_element())
@@ -123,7 +122,7 @@ fn row_target(editor: &Editor, block_id: u64, offset: usize) -> Pixels {
         .unwrap_or(px(24.)).max(px(24.))
 }
 
-fn reaction_popover(picker: ReactionPicker, selected_reactions: Vec<String>, cx: &mut Context<Editor>) -> impl IntoElement {
+fn reaction_popover(picker: ReactionPicker, selected_reaction: Option<String>, cx: &mut Context<Editor>) -> impl IntoElement {
     let x = (picker.anchor.x - px(120.)).max(px(24.));
     let y = (picker.anchor.y + px(8.)).max(px(48.));
     let bar = REACTIONS.iter().enumerate().fold(
@@ -131,7 +130,7 @@ fn reaction_popover(picker: ReactionPicker, selected_reactions: Vec<String>, cx:
             .rounded(px(10.)).bg(Theme::ocean().menu).shadow(popover_shadows())
             .flex().items_center().gap(px(4.)).occlude(),
         |row, (index, &emoji)| {
-            let selected = selected_reactions.iter().any(|r| r == emoji);
+            let selected = selected_reaction.as_deref() == Some(emoji);
             row.child(
                 annotation_note::reaction_picker_item(SharedString::from(format!("pick-emoji-{index}")), emoji, selected)
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
