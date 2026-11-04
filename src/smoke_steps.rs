@@ -1,0 +1,171 @@
+//! The 12 scripted smoke steps: editor CRUD, in-note find, global search, tabs and settings.
+use gpui::{point, px};
+use super::{AsyncApp, Run, STEPS, sleep, smoke_overlay};
+
+impl Run {
+    /// Bold serializes as `<strong>` (inline HTML) today; accept the `**` form too.
+    fn bold_on(&self, cx: &AsyncApp) -> bool {
+        let md = self.editor(cx, |e| e.markdown_text());
+        md.contains("**TaskOne**") || md.contains("<strong>TaskOne</strong>")
+    }
+
+    pub(super) async fn all_steps(&self, cx: &mut AsyncApp) -> Result<(), String> {
+        let cx = &*cx;
+        let ready = self.wait_until(cx, 4000, |w, _| !w.loading && !w.busy() && w.folder.is_some()).await;
+        if !ready { return Err("工作区未能在 4 秒内就绪".into()); }
+        sleep(cx, 350).await;
+        self.new_note(cx).await?;
+        self.heading(cx).await?;
+        self.paragraph(cx).await?;
+        self.todo(cx).await?;
+        self.todo_toggle(cx).await?;
+        self.bold(cx).await?;
+        self.undo_redo(cx).await?;
+        self.backspace(cx).await?;
+        self.find(cx).await?;
+        self.global_search(cx).await?;
+        self.tabs_and_sidebar(cx).await?;
+        self.settings(cx).await
+    }
+
+    async fn new_note(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.click_target(cx, "new-note", "Step 1/12 · 新建笔记").await?;
+        let opened = self.wait_until(cx, 2000, |w, _| !w.busy() && w.tab_count() >= 2).await;
+        self.check(1, opened, "新建笔记并打开新标签页")?;
+        sleep(cx, 250).await;
+        Ok(())
+    }
+
+    async fn heading(&self, cx: &AsyncApp) -> Result<(), String> {
+        let bounds = smoke_overlay::target_bounds("editor").ok_or("找不到点击目标 editor")?;
+        let spot = point(bounds.center().x - px(120.), bounds.top() + px(96.));
+        self.click_at(cx, spot, "Step 2/12 · 斜杠菜单建一级标题").await?;
+        self.press(cx, "/").await?;
+        sleep(cx, 260).await;
+        self.check(2, self.editor(cx, |e| e.slash_menu_open()), "斜杠菜单已显示")?;
+        for key in ["down", "up", "enter"] { self.press(cx, key).await?; }
+        self.type_text(cx, "CRUD Title").await?;
+        self.check(2, self.editor(cx, |e| e.markdown_text()).contains("# CRUD Title"), "一级标题已写入文档")
+    }
+
+    async fn paragraph(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.hud(cx, "Step 3/12 · 回车新建段落并输入正文");
+        self.press(cx, "enter").await?;
+        self.type_text(cx, "Alpha Beta").await?;
+        let (blocks, text) = self.editor(cx, |e| (e.block_count(), e.markdown_text()));
+        self.check(3, blocks >= 2 && text.contains("Alpha Beta"), "回车新建段落并输入正文")
+    }
+
+    async fn todo(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.hud(cx, "Step 4/12 · 斜杠菜单建待办清单");
+        self.press(cx, "enter").await?;
+        self.press(cx, "/").await?;
+        sleep(cx, 220).await;
+        self.type_text(cx, "todo").await?;
+        sleep(cx, 150).await;
+        self.press(cx, "enter").await?;
+        self.type_text(cx, "TaskOne").await?;
+        self.check(4, self.editor(cx, |e| e.has_todo_checked(false)), "待办块已创建且未勾选")
+    }
+
+    async fn todo_toggle(&self, cx: &AsyncApp) -> Result<(), String> {
+        let label = "Step 5/12 · 点击待办复选框切换状态";
+        sleep(cx, 150).await;
+        self.click_target(cx, "todo-checkbox", label).await?;
+        self.check(5, self.editor(cx, |e| e.has_todo_checked(true)), "点击后待办已勾选")?;
+        self.click_target(cx, "todo-checkbox", label).await?;
+        self.check(5, self.editor(cx, |e| e.has_todo_checked(false)), "再次点击后待办取消勾选")?;
+        self.click_target(cx, "todo-checkbox", label).await?;
+        self.check(5, self.editor(cx, |e| e.has_todo_checked(true)), "最后保持勾选")
+    }
+
+    async fn bold(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.hud(cx, "Step 6/12 · 选中文本并用浮动工具栏加粗");
+        self.press(cx, "cmd-down").await?;
+        for _ in 0..7 { self.press(cx, "shift-left").await?; }
+        sleep(cx, 220).await;
+        self.check(6, self.editor(cx, |e| e.has_selection_toolbar()), "选中文本后浮动工具栏出现")?;
+        self.click_target(cx, "toolbar-bold", "Step 6/12 · 点击加粗").await?;
+        self.check(6, self.bold_on(cx), "文本已加粗")
+    }
+
+    async fn undo_redo(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.hud(cx, "Step 7/12 · 撤销与重做");
+        sleep(cx, 200).await;
+        self.press(cx, "cmd-z").await?;
+        sleep(cx, 200).await;
+        self.check(7, !self.bold_on(cx), "撤销后加粗消失")?;
+        self.press(cx, "cmd-shift-z").await?;
+        sleep(cx, 200).await;
+        self.check(7, self.bold_on(cx), "重做后加粗恢复")
+    }
+
+    async fn backspace(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.hud(cx, "Step 8/12 · 退格删字与合并删块");
+        self.press(cx, "cmd-down").await?;
+        let before = self.editor(cx, |e| e.block_count());
+        self.press(cx, "enter").await?;
+        self.type_text(cx, "TempDel").await?;
+        self.check(8, self.editor(cx, |e| e.markdown_text()).contains("TempDel"), "临时行已输入")?;
+        // 7 letters, then the empty block may first turn into a paragraph before it merges back.
+        for _ in 0..7 { self.press(cx, "backspace").await?; }
+        for _ in 0..3 {
+            if self.editor(cx, |e| e.block_count()) == before { break; }
+            self.press(cx, "backspace").await?;
+        }
+        let (blocks, text) = self.editor(cx, |e| (e.block_count(), e.markdown_text()));
+        self.check(8, blocks == before && !text.contains("TempDel"), "退格删除文字并合并回上一块")
+    }
+
+    async fn find(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.hud(cx, "Step 9/12 · 笔记内查找");
+        self.press(cx, "cmd-f").await?;
+        sleep(cx, 250).await;
+        self.check(9, self.editor(cx, |e| e.find_is_open()), "查找栏已打开")?;
+        self.type_text(cx, "a").await?;
+        sleep(cx, 200).await;
+        self.check(9, self.editor(cx, |e| e.find_match_count()) >= 2, "查找命中多处")?;
+        self.click_target(cx, "find-next", "Step 9/12 · 点击下一个").await?;
+        self.check(9, self.editor(cx, |e| e.find_current_index()) == 1, "下一个定位到第 2 处")?;
+        self.click_target(cx, "find-prev", "Step 9/12 · 点击上一个").await?;
+        self.check(9, self.editor(cx, |e| e.find_current_index()) == 0, "上一个回到第 1 处")?;
+        self.click_target(cx, "find-close", "Step 9/12 · 点击关闭查找栏").await?;
+        self.check(9, !self.editor(cx, |e| e.find_is_open()), "查找栏已关闭")
+    }
+
+    async fn global_search(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.click_target(cx, "search-button", "Step 10/12 · 点击打开全局搜索").await?;
+        self.check(10, self.query(cx, |w, _| w.search_is_open()), "搜索弹窗已打开")?;
+        sleep(cx, 250).await;
+        self.type_text(cx, "Welcome").await?;
+        let found = self.wait_until(cx, 1500, |w, _| w.search_hit_count() >= 1).await;
+        self.check(10, found, "搜索出结果")?;
+        sleep(cx, 300).await;
+        self.click_target(cx, "search-hit-0", "Step 10/12 · 点击第一条结果").await?;
+        let jumped = self.wait_until(cx, 1500, |w, cx| !w.search_is_open() && w.active_tab_name(cx) == "Welcome.md").await;
+        self.check(10, jumped, "点击结果后跳转到 Welcome.md")
+    }
+
+    async fn tabs_and_sidebar(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.click_target(cx, "sidebar-toggle", "Step 11/12 · 点击收起侧边栏").await?;
+        self.check(11, self.query(cx, |w, _| w.sidebar_collapsed), "侧边栏已收起")?;
+        self.click_target(cx, "sidebar-toggle", "Step 11/12 · 点击展开侧边栏").await?;
+        self.check(11, self.query(cx, |w, _| !w.sidebar_collapsed), "侧边栏已展开")?;
+        // Move off the first tab so the tab click below has something to switch.
+        self.press(cx, "ctrl-tab").await?;
+        sleep(cx, 300).await;
+        let moved = self.wait_until(cx, 1500, |w, cx| w.active_tab_name(cx) != w.first_tab_name()).await;
+        self.check(11, moved, "已切换到第二个标签页")?;
+        self.click_target(cx, "tab-0", "Step 11/12 · 点击第一个标签页").await?;
+        let back = self.wait_until(cx, 1500, |w, cx| w.active_tab_name(cx) == w.first_tab_name()).await;
+        self.check(11, back, "点击后回到第一个标签页")
+    }
+
+    async fn settings(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.click_target(cx, "settings-button", "Step 12/12 · 点击打开设置页").await?;
+        self.check(12, self.query(cx, |w, _| w.settings_is_open()), "设置页已打开")?;
+        sleep(cx, 300).await;
+        self.click_target(cx, "settings-back", "Step 12/12 · 点击返回编辑").await?;
+        self.check(12, self.query(cx, |w, _| !w.settings_is_open()), "返回编辑，设置页已关闭")
+    }
+}

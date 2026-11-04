@@ -243,7 +243,7 @@ impl Workspace {
         let mut pill = div().id(("tab", ix)).group(group.clone()).h(px(28.)).overflow_hidden()
             .when(multi, |t| t.w(px(TAB_MAX_W)).flex_basis(px(TAB_BASIS_W)).flex_shrink_1().min_w(px(TAB_MIN_W)).max_w(px(TAB_MAX_W)))
             .when(!multi, |t| t.min_w_0().max_w(px(SINGLE_TAB_MAX_W)).flex_shrink_1())
-            .pl(px(10.)).pr(px(6.)).rounded(px(6.)).flex().items_center()
+            .pl(px(10.)).pr(px(6.)).rounded(px(6.)).flex().items_center().relative().when(ix == 0, |t| t.children(crate::ui::smoke_overlay::probe("tab-0")))
             .cursor(CursorStyle::PointingHand).text_size(px(13.)).line_height(px(18.)).font_weight(FontWeight(460.))
             .when(multi && active, |t| t.bg(theme.selected).border_1().border_color(theme.accent).text_color(theme.text))
             .when(multi && !active, |t| t.border_1().border_color(transparent_black()).text_color(theme.text_secondary)
