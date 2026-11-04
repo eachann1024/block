@@ -117,4 +117,58 @@ pub fn header_action_button(
         .child(icon(glyph, px(16.), theme.icon_colors(fg)))
 }
 
+pub fn toolbar_icon_button(
+    id: impl Into<ElementId>,
+    glyph: Icon,
+    enabled: bool,
+    tip: impl Into<gpui::SharedString>,
+    on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    div()
+        .id(id)
+        .size(px(32.))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(8.))
+        .border_1()
+        .border_color(theme.btn_border)
+        .bg(theme.paper)
+        .when(enabled, |b| {
+            b.cursor(CursorStyle::PointingHand)
+                .hover(move |s| s.bg(theme.hover).border_color(theme.accent))
+                .tooltip(crate::ui::tooltip::tooltip(tip))
+                .on_mouse_down(MouseButton::Left, on_down)
+        })
+        .when(!enabled, |b| b.opacity(0.5))
+        .child(icon(glyph, px(15.), theme.icon_colors(theme.text)))
+}
+
+pub fn dock_icon_button(
+    id: impl Into<ElementId>,
+    glyph: Icon,
+    active: bool,
+    tip: impl Into<gpui::SharedString>,
+    on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    let fg = if active { theme.accent } else { theme.text_secondary };
+    div()
+        .id(id)
+        .size(px(30.))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(6.))
+        .cursor(CursorStyle::PointingHand)
+        .when(active, |b| b.bg(theme.selected).border_1().border_color(theme.accent))
+        .when(!active, |b| b.hover(move |s| s.bg(theme.hover)))
+        .tooltip(crate::ui::tooltip::tooltip(tip))
+        .on_mouse_down(MouseButton::Left, on_down)
+        .child(icon(glyph, px(16.), theme.icon_colors(fg)))
+}
+
 
