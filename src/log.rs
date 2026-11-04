@@ -76,7 +76,23 @@ fn write_line(level: &str, msg: &str, flush_disk: bool) {
     }
 }
 
+#[cfg(unix)]
+fn ignore_hangup_signals() {
+    const SIGHUP: i32 = 1;
+    const SIGPIPE: i32 = 13;
+    const SIG_IGN: usize = 1;
+    unsafe extern "C" {
+        fn signal(sig: i32, handler: usize) -> usize;
+    }
+    unsafe {
+        signal(SIGHUP, SIG_IGN);
+        signal(SIGPIPE, SIG_IGN);
+    }
+}
+
 pub fn init() {
+    #[cfg(unix)]
+    ignore_hangup_signals();
     let _ = LOGGER.set(Logger {
         path: resolve_log_path(),
         file: Mutex::new(None),

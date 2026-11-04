@@ -100,6 +100,7 @@ impl Doc {
         else { self.blocks.remove(index); }
         true
     }
+    #[allow(dead_code)]
     pub fn move_block(&mut self, id: u64, to: usize) -> bool {
         let Some(from) = self.index_of(id) else { return false };
         let to = to.min(self.blocks.len() - 1);
@@ -135,12 +136,14 @@ impl Doc {
         let changed = self.get_mut(id).is_some_and(|b| b.replace_range(range, text));
         self.refresh_block(id); changed
     }
+    #[allow(dead_code)]
     pub fn split_block(&mut self, id: u64, at: usize, kind: Kind) -> Option<u64> {
         let index = self.index_of(id)?; let new_id = self.next_id;
         let right = self.get_mut(id)?.split_off(at, new_id, kind)?;
         self.next_id += 1; self.refresh_block(id); self.blocks.insert(index + 1, right); Some(new_id)
     }
     /// Merge adjacent blocks, retaining left metadata; returns the join byte offset.
+    #[allow(dead_code)]
     pub fn merge_blocks(&mut self, left: u64, right: u64) -> Option<usize> {
         let i = self.index_of(left)?;
         if self.index_of(right)? != i + 1 || self.get(left)?.meta.table.is_some()

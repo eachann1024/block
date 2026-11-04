@@ -28,6 +28,7 @@ pub(super) fn inline_math_block(line: &str) -> Option<(usize, &str)> {
     None
 }
 /// A paragraph with delimiters spanning editor lines must stay opaque as a whole.
+#[allow(dead_code)]
 pub(super) fn unclosed_inline(line:&str)->bool {
     let bytes=line.as_bytes(); let mut i=0; let mut marks=[false;3]; let mut code=0; let mut brackets=0i32;
     while i<bytes.len() {

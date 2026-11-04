@@ -1,5 +1,6 @@
 //! Shared menu look delegating to `crate::dropdown` (white `#ffffff` shell, radius 12, padding 4,
 //! 3-layer shadow, 28px rows with 16px leading icon column, danger hover `#d03b3b`).
+#![allow(dead_code)]
 use gpui::{Div, ElementId, Hsla, Stateful, div, prelude::*, px};
 use crate::{dropdown::{self, RowSpec}, theme::Theme};
 

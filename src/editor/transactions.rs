@@ -92,6 +92,7 @@ impl Editor {
                 .is_some_and(|range| range == (0..block.text.len()))
         })
     }
+    #[allow(dead_code)]
     pub(in crate::editor) fn set_table_cell(&mut self, id: u64, row: usize, cell: usize,
         text: String, cx: &mut Context<Self>) {
         self.commit_composition(cx);
@@ -208,6 +209,7 @@ impl Editor {
         let before = self.snapshot(); self.doc.toggle_checked(id);
         self.record_changes(before, vec![ListChange { start: index, before: 1, after: 1 }], true, cx);
     }
+    #[allow(dead_code)]
     pub(in crate::editor) fn cycle_heading(&mut self, id: u64, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
         if self.doc.get(id).is_some_and(|block| block.meta.table.is_some()) {

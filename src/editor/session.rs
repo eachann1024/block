@@ -113,35 +113,17 @@ impl Editor {
 
     pub fn close_session(&mut self, path: &Path, cx: &mut Context<Self>) {
         if let Some(sess) = self.sessions.remove(path) {
-            if sess.dirty && path.exists() {
-                let save_path = path.to_path_buf();
-                let gate = self.persistence.gate.clone();
-                let epoch = self.persistence.write_epoch;
-                cx.background_executor().spawn(async move {
-                    let mut state = gate.lock().unwrap();
-                    if state.epoch != epoch { return; }
-                    if let Ok(hash) = storage::save(&save_path, &sess.doc, sess.base) {
-                        state.saved.insert(save_path, hash);
-                    }
-                }).detach();
+            if sess.dirty && path.exists() && !self.persistence.saving.contains(path) {
+                self.spawn_detached_save(path.to_path_buf(), sess.doc, sess.base, cx);
             }
         }
         if self.path.as_deref() == Some(path) {
             self.commit_composition(cx);
             self.persistence.timer = None;
-            if self.dirty && path.exists() {
-                let save_path = path.to_path_buf();
+            if self.dirty && path.exists() && !self.persistence.saving.contains(path) {
                 let doc = self.doc.clone();
                 let base = self.persistence.base;
-                let gate = self.persistence.gate.clone();
-                let epoch = self.persistence.write_epoch;
-                cx.background_executor().spawn(async move {
-                    let mut state = gate.lock().unwrap();
-                    if state.epoch != epoch { return; }
-                    if let Ok(hash) = storage::save(&save_path, &doc, base) {
-                        state.saved.insert(save_path, hash);
-                    }
-                }).detach();
+                self.spawn_detached_save(path.to_path_buf(), doc, base, cx);
             }
             self.reset_document(Doc::empty());
             self.path = None;
@@ -149,6 +131,36 @@ impl Editor {
             self.status.clear();
             cx.notify();
         }
+    }
+
+    fn spawn_detached_save(&mut self, path: PathBuf, doc: Doc, base: Fingerprint, cx: &mut Context<Self>) {
+        self.persistence.saving.insert(path.clone());
+        let gate = self.persistence.gate.clone();
+        let epoch = self.persistence.write_epoch;
+        let save_path = path.clone();
+        let task = cx.background_executor().spawn(async move {
+            let mut state = gate.lock().unwrap();
+            if state.epoch != epoch { return Ok(None); }
+            let result = storage::save(&save_path, &doc, base);
+            if let Ok(hash) = result {
+                state.saved.insert(save_path, hash);
+            }
+            result.map(Some)
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                if this.persistence.write_epoch != epoch { return; }
+                this.persistence.saving.remove(&path);
+                if let Err(error) = result {
+                    crate::log::error(&format!("failed to save closed session {}: {error}", path.display()));
+                }
+                if this.persistence.saving.is_empty() && this.persistence.pending.is_some() {
+                    this.advance(cx);
+                }
+                cx.notify();
+            });
+        }).detach();
     }
 
     pub fn rename_session(&mut self, from: &Path, to: &Path, cx: &mut Context<Self>) {
