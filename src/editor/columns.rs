@@ -204,13 +204,15 @@ pub(in crate::editor) fn columns_row(this: &Editor, group: Range<usize>, cx: &mu
         cols_el = cols_el.child(card);
     }
     let grip_dragging = this.dragging == Some(handle_id);
-    let handle = div().w(px(HANDLE_WIDTH)).flex_shrink_0().pt(px(6.)).flex().items_start().justify_end().pr(px(ROW_GAP))
+    let handle = div().w(px(HANDLE_WIDTH)).min_h(px(32.)).flex_shrink_0().relative()
         .on_mouse_move(cx.listener(move |this, _, _, cx| this.hover_block(handle_id, true, cx)))
-        .when(group_active, |row| row.child(grip_button(("col-grip", gid as usize), grip_dragging, cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
-            this.begin_drag(handle_id, cx); cx.stop_propagation();
-        })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
-            if this.dragging == Some(handle_id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
-        }))));
+        .when(group_active, |row| row.child(
+            div().absolute().top(px(6.)).right(px(ROW_GAP)).h(px(26.)).flex().items_center().child(
+                grip_button(("col-grip", gid as usize), grip_dragging, cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
+                    this.begin_drag(handle_id, cx); cx.stop_propagation();
+                })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
+                    if this.dragging == Some(handle_id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
+                })))));
     div().id(("columns-group", gid as usize)).w_full().flex().items_start()
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| if !*hovered { this.hover_block(handle_id, false, cx); }))
         .child(handle)
