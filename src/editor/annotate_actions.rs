@@ -40,11 +40,30 @@ impl Editor {
     }
 
     pub(crate) fn hover_annotation(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
-        let next = if hovered { Some(id) } else if self.annotate.hovered_annotation == Some(id) { None } else { return };
-        if self.annotate.hovered_annotation != next {
-            self.annotate.hovered_annotation = next;
-            cx.notify();
+        self.annotate.hover_seq = self.annotate.hover_seq.wrapping_add(1);
+        let seq = self.annotate.hover_seq;
+        if hovered {
+            if self.annotate.hovered_annotation != Some(id) {
+                self.annotate.hovered_annotation = Some(id);
+                cx.notify();
+            }
+            return;
         }
+        if self.annotate.hovered_annotation != Some(id) {
+            return;
+        }
+        let timer = cx.background_executor().timer(std::time::Duration::from_millis(150));
+        cx.spawn(async move |this, cx| {
+            timer.await;
+            this.update(cx, |editor, cx| {
+                if editor.annotate.hover_seq == seq && editor.annotate.hovered_annotation == Some(id) {
+                    editor.annotate.hovered_annotation = None;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 
     pub(in crate::editor) fn annotation_at(&self, pos: Position) -> Option<u64> {
