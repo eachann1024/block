@@ -13,11 +13,17 @@ impl Editor {
             let (_, _, f, l) = self.ordered();
             (f, l)
         };
+        let toggle = matches!(kind, Kind::H1 | Kind::H2 | Kind::H3)
+            && (first..=last).all(|i| {
+                let b = &self.doc.blocks[i];
+                b.kind == kind && b.meta.heading_level.is_none() && b.meta.code_language.is_none()
+            });
+        let target = if toggle { Kind::Paragraph } else { kind };
         let before = self.snapshot();
         for index in first..=last {
             let block = &self.doc.blocks[index];
             if block.meta.table.is_some() || block.meta.raw_source.is_some() { continue; }
-            let id = block.id; self.doc.set_kind(id, kind);
+            let id = block.id; self.doc.set_kind(id, target);
         }
         self.record(before, cx);
     }
@@ -57,14 +63,54 @@ impl Editor {
     fn demote(&mut self, id: u64, cx: &mut Context<Self>) {
         let before = self.snapshot(); self.doc.set_kind(id, Kind::Paragraph); self.record(before, cx);
     }
-    /// Enter on a nested empty list item outdents it; Enter at the start of a non-empty
-    /// block inserts an empty block above and leaves this block (kind, checked) in place.
+    fn remove_whole_block(&mut self, index: usize, forward: bool, cx: &mut Context<Self>) {
+        self.table_sel = None; self.table_menu = None;
+        if self.doc.blocks.len() <= 1 {
+            let before = self.snapshot();
+            self.doc.splice_blocks(0..1, vec![Block::new(0, Kind::Paragraph, String::new())]);
+            let to = Position { block: self.doc.blocks[0].id, offset: 0 };
+            self.caret.anchor = to; self.caret.head = to;
+            self.record_changes(before, vec![ListChange { start: 0, before: 1, after: 1 }], true, cx);
+            return;
+        }
+        let prev = index.checked_sub(1).map(|i| self.doc.blocks[i].clone());
+        let next = self.doc.blocks.get(index + 1).cloned();
+        let to = match (forward, prev, next) {
+            (true, _, Some(n)) | (false, None, Some(n)) => Position { block: n.id, offset: 0 },
+            (_, Some(p), _) => {
+                let atomic = super::image_source::spec_of(&p).is_some() || is_divider(&p) || p.meta.table.is_some();
+                Position { block: p.id, offset: if atomic { 0 } else { p.text.len() } }
+            }
+            _ => return,
+        };
+        self.drop_block(index, to, cx);
+    }
+    /// Enter on a nested empty list item outdents it; in a non-empty quote it inserts an in-block
+    /// newline (or exits on a trailing empty line); at offset 0 of other blocks it inserts above.
     pub(super) fn enter_rules(&mut self, cx: &mut Context<Self>) -> bool {
-        if !self.caret.is_empty() { return false; }
-        let at = self.caret.head;
-        let Some(index) = self.doc.index_of(at.block) else { return false };
+        let (_, _, ai, bi) = self.ordered();
+        if ai != bi { return false; }
+        let index = ai;
         let block = &self.doc.blocks[index];
         if block.meta.table.is_some() || structural(block) || block.meta.html_paragraph.is_some() { return false; }
+        if block.kind == Kind::Quote {
+            if self.caret.is_empty() && block.text.is_empty() { return false; }
+            let at = self.caret.head;
+            if self.caret.is_empty() && block.text.ends_with('\n') && at.offset == block.text.len() {
+                let len = block.text.len();
+                let before = self.snapshot();
+                self.doc.replace_range(at.block, len - 1..len, "");
+                self.doc.splice_blocks(index + 1..index + 1, vec![Block::new(0, Kind::Paragraph, String::new())]);
+                let next = Position { block: self.doc.blocks[index + 1].id, offset: 0 };
+                self.caret.anchor = next; self.caret.head = next;
+                self.record_changes(before, vec![ListChange { start: index, before: 1, after: 2 }], true, cx);
+                return true;
+            }
+            self.insert_in_block("\n", cx);
+            return true;
+        }
+        if !self.caret.is_empty() { return false; }
+        let at = self.caret.head;
         if block.text.is_empty() {
             if is_list(block) && block.meta.indent > 0 { self.tab_outside_table(false, cx); return true; }
             return false;
@@ -83,21 +129,20 @@ impl Editor {
     }
     /// Collapsed Backspace at a block start / Delete at a block end, before the generic merge.
     pub(super) fn boundary_rules(&mut self, forward: bool, cx: &mut Context<Self>) -> bool {
+        let (_, _, ai, bi) = self.ordered();
+        if ai == bi && self.doc.blocks.get(ai).and_then(|b| b.meta.table.as_ref())
+            .is_some_and(|t| t.rows.iter().all(|r| r.cells.iter().all(|c| c.content.text.is_empty())))
+        {
+            self.remove_whole_block(ai, forward, cx);
+            return true;
+        }
         if !self.caret.is_empty() { return false; }
         let at = self.caret.head;
         let Some(index) = self.doc.index_of(at.block) else { return false };
         let block = self.doc.blocks[index].clone();
         if block.meta.table.is_some() { return false; }
         if is_divider(&block) {
-            // The caret sits on a divider: Backspace/Delete removes the whole line instead of editing "***".
-            let prev = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()).filter(|b| b.meta.table.is_none());
-            let next = self.doc.blocks.get(index + 1).cloned().filter(|b| b.meta.table.is_none());
-            let to = match (forward, prev, next) {
-                (true, _, Some(n)) | (false, None, Some(n)) => Position { block: n.id, offset: 0 },
-                (_, Some(p), _) => Position { block: p.id, offset: p.text.len() },
-                _ => return true,
-            };
-            self.drop_block(index, to, cx);
+            self.remove_whole_block(index, forward, cx);
             return true;
         }
         if forward {
@@ -143,7 +188,7 @@ impl Editor {
         if block.text.is_empty() { self.drop_block(index, to, cx); } else { self.set_head(to, false, cx); }
         true
     }
-    /// Shift/Cmd+Enter: leave a code block for a new paragraph below; elsewhere act like Enter.
+    /// Shift/Cmd+Enter: leave a code block for a new paragraph below; soft break in paragraph/quote/list.
     pub(super) fn exit_block(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
         let id = self.caret.head.block;
@@ -151,6 +196,11 @@ impl Editor {
             self.add_below(id, window, cx);
         } else if self.doc.get(id).is_some_and(|b| b.meta.table.is_some()) {
             self.replace(None, "\n", window, cx);
+        } else if self.doc.get(id).is_some_and(|b|
+            matches!(b.kind, Kind::Paragraph | Kind::Quote | Kind::Bullet | Kind::Numbered | Kind::Todo)
+                && b.meta.raw_source.is_none() && super::image_source::spec_of(b).is_none()
+        ) {
+            self.insert_in_block("\n", cx);
         } else { self.handle(&super::view::EditorAction::Enter, window, cx); }
     }
     /// Deleting a selection that spans blocks keeps what is left of the end blocks as
