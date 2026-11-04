@@ -3,7 +3,7 @@ use gpui::{CursorStyle, MouseButton, Pixels, div, prelude::*, px, rgb, transpare
 use crate::{
     icons::{Icon, IconColors, icon},
     theme::{Theme, is_dark, tr},
-    ui::reveal::{fold_button, handle_button},
+    ui::reveal::{fold_button, handle_button, top_insert_slot},
 };
 pub(super) use crate::ui::reveal::grip_button;
 use super::{model::{Block, Kind}, paint::BlockText, view::Editor};
@@ -253,8 +253,15 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let folded = !this.minimal && this.is_heading_folded(block.id);
     let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
     let image_pop = this.image_menu.as_ref().filter(|(mid, _)| *mid == block.id).map(|(_, p)| p.clone());
+    let top_slot = (index == 0 && !this.minimal && this.path.is_some() && super::block_ops::needs_top_insert(block) && block.meta.column.is_none()).then(|| {
+        top_insert_slot(("top-insert", block.id as usize), HANDLE_WIDTH, ROW_GAP, RIGHT_INSET, handles, cx.listener(|this, _, window, cx| {
+            this.insert_top_paragraph(cx); window.focus(&this.focus, cx); cx.stop_propagation();
+        }))
+    });
     let row = block_row(cx.entity(), block, row_pads(this, index), handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, cx);
     div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
-        .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md())).child(row).into_any_element()
+        .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md()))
+        .when_some(top_slot, |d, s| d.child(s))
+        .child(row).into_any_element()
 }
 pub(super) use super::toolbar::selection_toolbar;

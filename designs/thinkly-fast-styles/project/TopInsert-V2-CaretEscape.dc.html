@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>首块上插 B · 块首虚拟幽灵行 + 首字符 Enter 整体下推代码块</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#ececec;background:#181818;-webkit-font-smoothing:antialiased}
+a{color:#779de8;text-decoration:none}a:hover{color:#9dbcf5;text-decoration:underline}
+button,input,textarea{font-family:inherit;font-size:14px}
+*{box-sizing:border-box}
+::selection{background:#2d426b;color:#9dbcf5}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:14px;line-height:22px}
+.tbl{width:100%;border-collapse:collapse;font-size:14px;line-height:22px}
+.tbl th,.tbl td{padding:10px 14px;text-align:left;vertical-align:top}
+.ghost-row{width:100%;border:0;background:transparent;padding:0;cursor:text;text-align:left;display:flex;align-items:center}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:960px;display:flex;flex-direction:column;background:{{pageBg}};color:{{textPrimary}};font-size:14px;line-height:20px">
+
+  <!-- 顶部控制条 -->
+  <header style="height:46px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:{{barBg}};border-bottom:1px solid {{borderCol}}">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+      </div>
+      <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">方案 B · 块首虚拟幽灵行（Ghost Lead Line）+ 首字符 Enter 整体下推</span>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
+        <button type="button" onClick="{{setStepGhost}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{ghostBg}};color:{{ghostCol}};box-shadow:{{ghostRing}};font-weight:460;cursor:pointer">1. 幽灵行常驻引导</button>
+        <button type="button" onClick="{{setStepFocus}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{focusBg}};color:{{focusCol}};box-shadow:{{focusRing}};font-weight:460;cursor:pointer">2. 按 ↑ 跳入幽灵行</button>
+        <button type="button" onClick="{{setStepCommit}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{commitBg}};color:{{commitCol}};box-shadow:{{commitRing}};font-weight:460;cursor:pointer">3. 输入固化为首段</button>
+      </div>
+
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
+        <button type="button" onClick="{{setDark}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{darkBtnBg}};color:{{darkBtnCol}};box-shadow:{{darkBtnRing}};font-weight:460;cursor:pointer">深色 Ocean Dark</button>
+        <button type="button" onClick="{{setLight}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{lightBtnBg}};color:{{lightBtnCol}};box-shadow:{{lightBtnRing}};font-weight:460;cursor:pointer">浅色 Ocean Light</button>
+      </div>
+    </div>
+  </header>
+
+  <main style="flex:1;max-width:1240px;width:100%;margin:0 auto;padding:24px 28px 40px;display:flex;flex-direction:column;gap:20px">
+
+    <!-- 仿真应用主视口 -->
+    <section style="background:{{windowBg}};border:1px solid {{borderCol}};border-radius:12px;overflow:hidden;display:flex;flex-direction:column">
+
+      <!-- 模拟窗口顶栏 -->
+      <div style="height:40px;display:flex;align-items:center;background:{{sidebarBg}};border-bottom:1px solid {{borderCol}}">
+        <div style="width:248px;height:100%;padding:0 14px;display:flex;align-items:center;justify-content:space-between;border-right:1px solid {{borderCol}};flex:none">
+          <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+            <span style="width:11px;height:11px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+            <span style="width:11px;height:11px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+            <span style="width:11px;height:11px;border-radius:6px;background:#28c840;display:inline-block"></span>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{textSecondary}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+        </div>
+        <div style="flex:1;padding:0 18px;display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:8px;color:{{textPrimary}};font-weight:500">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{accentText}}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
+            <span>健身计划</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;color:{{textSecondary}}">
+            <span>方案 B 实时交互预览（点击代码块上方的幽灵占位行即可激活）</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 窗口主体 -->
+      <div style="display:flex;min-height:560px">
+
+        <!-- 左侧文件树 -->
+        <aside style="width:248px;flex:none;background:{{sidebarBg}};border-right:1px solid {{borderCol}};padding:12px 10px;display:flex;flex-direction:column;justify-content:space-between">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+              <div style="flex:1;height:30px;padding:0 10px;border-radius:6px;background:{{shellBg}};border:1px solid {{btnBorder}};display:flex;align-items:center;justify-content:space-between;color:{{textSecondary}}">
+                <span>搜索</span>
+                <span class="mono" style="font-size:14px">⌘K</span>
+              </div>
+              <div style="width:30px;height:30px;border-radius:6px;background:{{shellBg}};border:1px solid {{btnBorder}};display:inline-flex;align-items:center;justify-content:center;color:{{textSecondary}}">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              </div>
+            </div>
+
+            <div style="height:30px;padding:0 8px;display:flex;align-items:center;gap:8px;color:{{textSecondary}}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+              <span>assets</span>
+            </div>
+            <div style="height:30px;padding:0 8px;display:flex;align-items:center;gap:8px;color:{{textSecondary}}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+              <span>IDEA</span>
+            </div>
+            <div style="height:30px;padding:0 8px;display:flex;align-items:center;gap:8px;color:{{textSecondary}}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+              <span>好文归档</span>
+            </div>
+            <div style="height:30px;padding:0 8px;display:flex;align-items:center;gap:8px;color:{{textPrimary}}">
+              <span>Agent 的经验</span>
+            </div>
+            <div style="height:30px;padding:0 8px;display:flex;align-items:center;gap:8px;color:{{textPrimary}}">
+              <span>Claude</span>
+            </div>
+            <div style="height:30px;padding:0 8px;display:flex;align-items:center;gap:8px;color:{{textPrimary}}">
+              <span>Mac</span>
+            </div>
+            <div style="height:32px;padding:0 10px;border-radius:6px;background:{{selectedSurface}};box-shadow:inset 0 0 0 1px {{accentCol}};display:flex;align-items:center;gap:8px;color:{{textPrimary}};font-weight:500">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{accentText}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+              <span>健身计划</span>
+            </div>
+            <div style="height:30px;padding:0 8px;display:flex;align-items:center;gap:8px;color:{{textPrimary}}">
+              <span>好看的风格</span>
+            </div>
+            <div style="height:30px;padding:0 8px;display:flex;align-items:center;gap:8px;color:{{textPrimary}}">
+              <span>账号归档</span>
+            </div>
+          </div>
+
+          <div style="padding-top:10px;border-top:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;color:{{textSecondary}}">
+            <span>Note</span>
+            <span>Ocean Paper</span>
+          </div>
+        </aside>
+
+        <!-- 右侧正文纸面 -->
+        <div style="flex:1;background:{{paperBg}};padding:22px 48px 36px;display:flex;flex-direction:column">
+          <div style="max-width:720px;width:100%;margin:0 auto;display:flex;flex-direction:column">
+
+            <!-- 状态 1：首块上方常驻虚拟幽灵行（未聚焦，光标在 |{） -->
+            <sc-if value="{{isGhost}}" hint-placeholder-val="{{true}}">
+              <button type="button" class="ghost-row" onClick="{{setStepFocus}}" style="margin-bottom:10px;height:34px">
+                <div style="width:56px;padding-right:10px;display:flex;justify-content:flex-end;flex:none;color:{{textSecondary}}">
+                  <span class="mono" style="font-size:14px">¶</span>
+                </div>
+                <div style="flex:1;height:34px;padding:0 12px;border-radius:6px;background:{{ghostSurface}};border:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between">
+                  <span style="color:{{textSecondary}}">在此输入文档首行，或在下方 `|{` 处按 ↑ 跳入 / 按 Enter 下推代码块…</span>
+                  <span style="color:{{accentText}};font-weight:500">点击激活 →</span>
+                </div>
+              </button>
+            </sc-if>
+
+            <!-- 状态 2：按 ↑ 或点击后，光标跳入顶部幽灵行（带 / 命令提示） -->
+            <sc-if value="{{isFocus}}" hint-placeholder-val="{{false}}">
+              <div style="display:flex;align-items:center;margin-bottom:10px;height:36px">
+                <div style="width:56px;padding-right:8px;display:flex;justify-content:flex-end;flex:none">
+                  <button type="button" onClick="{{setStepCommit}}" aria-label="插入块类型" style="width:26px;height:26px;border-radius:7px;border:1px solid {{btnBorder}};background:{{shellBg}};color:{{textPrimary}};display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                </div>
+                <div style="flex:1;height:36px;padding:0 12px;border-radius:7px;background:{{selectedSurface}};box-shadow:inset 0 0 0 1px {{accentCol}};display:flex;align-items:center;justify-content:space-between">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span style="display:inline-block;width:2px;height:20px;background:{{accentCol}}"></span>
+                    <span style="color:{{textSecondary}}">输入正文，或按 `/` 选择标题 / 待办 / 列表（未输入移开自动收起，不留空行）</span>
+                  </div>
+                  <button type="button" onClick="{{setStepCommit}}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{accentCol}};background:{{cardBg}};color:{{accentText}};font-weight:500;cursor:pointer">模拟输入文字 →</button>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- 状态 3：输入文字后，虚拟幽灵行固化为真实首段 -->
+            <sc-if value="{{isCommit}}" hint-placeholder-val="{{false}}">
+              <div style="display:flex;align-items:center;margin-bottom:10px;padding:4px 0">
+                <div style="width:56px;padding-right:8px;display:flex;justify-content:flex-end;flex:none">
+                  <span style="width:26px;height:26px;border-radius:6px;color:{{handleCol}};display:inline-flex;align-items:center;justify-content:center">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"/><circle cx="10.5" cy="3.5" r="1.2"/><circle cx="5.5" cy="8" r="1.2"/><circle cx="10.5" cy="8" r="1.2"/><circle cx="5.5" cy="12.5" r="1.2"/><circle cx="10.5" cy="12.5" r="1.2"/></svg>
+                  </span>
+                </div>
+                <div style="flex:1;padding:6px 12px;border-radius:7px;background:{{ghostSurface}};border:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between">
+                  <div style="display:flex;align-items:center;font-size:16px;line-height:26px;color:{{textPrimary}}">
+                    <span>本周训练重点：引体向上拉宽背阔肌，上斜卧推强化上胸锁骨部</span>
+                    <span style="display:inline-block;width:2px;height:20px;background:{{accentCol}};margin-left:2px"></span>
+                  </div>
+                  <button type="button" onClick="{{setStepGhost}}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{btnBorder}};background:{{cardBg}};color:{{textSecondary}};cursor:pointer">重置演示</button>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- 第 1 块：yaml 代码块（含首字符 Enter 下推内联胶囊提示） -->
+            <div style="display:flex;align-items:flex-start;margin-bottom:18px">
+              <div style="width:56px;padding-top:10px;padding-right:8px;display:flex;justify-content:flex-end;flex:none">
+                <span aria-hidden="true" style="width:26px;height:26px;border-radius:6px;color:{{handleCol}};display:inline-flex;align-items:center;justify-content:center">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"/><circle cx="10.5" cy="3.5" r="1.2"/><circle cx="5.5" cy="8" r="1.2"/><circle cx="10.5" cy="8" r="1.2"/><circle cx="5.5" cy="12.5" r="1.2"/><circle cx="10.5" cy="12.5" r="1.2"/></svg>
+                </span>
+              </div>
+
+              <div style="flex:1;position:relative;border-radius:8px;background:{{codeBg}};border:1px solid {{borderCol}};padding:14px 16px">
+                <div style="position:absolute;top:8px;right:10px;display:inline-flex;align-items:center;gap:6px">
+                  <button type="button" aria-label="复制代码" style="width:26px;height:26px;border-radius:6px;border:0;background:transparent;color:{{textSecondary}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
+                  </button>
+                  <span style="height:24px;padding:0 10px;border-radius:6px;border:1px solid {{btnBorder}};background:{{shellBg}};color:{{textSecondary}};display:inline-flex;align-items:center">yaml</span>
+                </div>
+
+                <div class="mono" style="color:{{textPrimary}};word-break:break-all">
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                    <div style="display:inline-flex;align-items:center">
+                      <sc-if value="{{isGhost}}" hint-placeholder-val="{{true}}">
+                        <span style="display:inline-block;width:2px;height:18px;background:{{accentCol}};vertical-align:middle;margin-right:1px"></span>
+                      </sc-if>
+                      <span>{</span>
+                    </div>
+
+                    <sc-if value="{{isGhost}}" hint-placeholder-val="{{true}}">
+                      <button type="button" onClick="{{setStepFocus}}" style="height:24px;padding:0 8px;border-radius:5px;border:1px solid {{accentCol}};background:{{selectedSurface}};color:{{accentText}};font-family:Inter,-apple-system,'PingFang SC',sans-serif;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+                        <span>首字符处按 Enter 整体下推代码块 · 按 ↑ 进入上方幽灵行</span>
+                      </button>
+                    </sc-if>
+                  </div>
+                  <div style="padding-left:18px">
+                    <span style="color:{{textSecondary}}">goose-id:</span>
+                    <span style="color:{{codeStrCol}}"> local-mvezjy17iwf4mlovmr-%E5%BC%95%E4%BD%93%E5%90%91%E4%B8%8A(%E5%BC%B9%E5%8A%9B%E5%B8%A6_%E8%87%AA%E9%87%8D_%E8%B4%9F%E9%87%8D%E5%BC%95%E4%BD%93).md</span>
+                  </div>
+                  <div>}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 第 2 块：表格 -->
+            <div style="display:flex;align-items:flex-start">
+              <div style="width:56px;flex:none"></div>
+              <div style="flex:1;border:1px solid {{borderCol}};border-radius:8px;overflow:hidden;background:{{cardBg}}">
+                <table class="tbl" style="color:{{textPrimary}}">
+                  <thead>
+                    <tr style="background:{{shellBg}};border-bottom:1px solid {{borderCol}}">
+                      <th style="width:32%;border-right:1px solid {{borderCol}};color:{{textSecondary}};font-weight:500">项目</th>
+                      <th style="color:{{textSecondary}};font-weight:500">作用</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style="border-bottom:1px solid {{borderCol}}">
+                      <td style="border-right:1px solid {{borderCol}};color:{{accentText}};font-weight:500">引体向上</td>
+                      <td>垂直拉，练背阔肌 + 肱二头，决定背部宽度</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid {{borderCol}}">
+                      <td style="border-right:1px solid {{borderCol}};color:{{accentText}};font-weight:500">上斜卧推</td>
+                      <td>水平推，上胸 + 前束 + 三头</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid {{borderCol}}">
+                      <td style="border-right:1px solid {{borderCol}}">
+                        <span style="color:{{accentText}};font-weight:500">侧平举</span>
+                        <span>（容易被误认为）</span>
+                      </td>
+                      <td>三角肌中束，做肩宽</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid {{borderCol}}">
+                      <td style="border-right:1px solid {{borderCol}};color:{{accentText}};font-weight:500">泽奇深蹲</td>
+                      <td>股四头 + 核心抗屈，抱起负重练稳定性</td>
+                    </tr>
+                    <tr>
+                      <td style="border-right:1px solid {{borderCol}};color:{{accentText}};font-weight:500">髋铰链 - 哑铃罗马尼亚硬拉</td>
+                      <td>防膝盖受伤，练臀腿后链、学髋驱动</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 底部 3 栏：方案 B 核心交互机制说明 -->
+    <section style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px">
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">1. 虚拟幽灵引导行（零脏数据）</span>
+          <span class="mono" style="color:{{accentText}}">layout.rs / view.rs</span>
+        </div>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:22px">
+          当文档首块是结构块时，视图层在首块上方渲染一行 34px 虚拟占位行。仅在用户点击并实际输入字符时才实例化为 Doc 中的真实 Paragraph，未输入离开绝不修改 Markdown 源码。
+        </p>
+      </div>
+
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">2. 首字符 Enter 整体下推代码块</span>
+          <span class="mono" style="color:{{accentText}}">enter_rules()</span>
+        </div>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:22px">
+          解除 enter_rules() 对首块 offset == 0 的一刀切拦截：当光标位于代码块第 0 个字符 |{ 时按 Enter，与普通标题/列表一致在上方插入新段落并将代码块整体下移（块内首行换行用 ⇧Enter）。
+        </p>
+      </div>
+
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">3. ↑ 键平滑进出虚拟行</span>
+          <span class="mono" style="color:{{accentText}}">vertical()</span>
+        </div>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:22px">
+          光标在代码块第一行或表格第一行按 ↑，直接进入上方的虚拟幽灵行；在虚拟幽灵行按 ↓ 或 Esc 则无缝回到原结构块首行，保持纯键盘流顺畅往返。
+        </p>
+      </div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { dark: true, step: 'ghost' };
+  }
+  setLight() { this.setState({ dark: false }); }
+  setDark() { this.setState({ dark: true }); }
+  setStepGhost() { this.setState({ step: 'ghost' }); }
+  setStepFocus() { this.setState({ step: 'focus' }); }
+  setStepCommit() { this.setState({ step: 'commit' }); }
+
+  renderVals() {
+    const d = this.state.dark;
+    const s = this.state.step;
+    const activeBg = d ? '#343434' : '#e5edfc';
+    const activeCol = d ? '#ececec' : '#20242c';
+    const activeRing = d ? 'inset 0 0 0 1px #779de8' : 'inset 0 0 0 1px #547dd0';
+    const idleCol = d ? '#b4b4b4' : '#526071';
+
+    return {
+      pageBg: d ? '#181818' : '#f8f8f8',
+      barBg: d ? '#222222' : '#fafafa',
+      windowBg: d ? '#181818' : '#ffffff',
+      sidebarBg: d ? '#222222' : '#fafafa',
+      shellBg: d ? '#343434' : '#f1f1f1',
+      cardBg: d ? '#222222' : '#ffffff',
+      paperBg: d ? '#181818' : '#ffffff',
+      codeBg: d ? '#242424' : '#f3f1ec',
+      ghostSurface: d ? '#1f1f1f' : '#f8f9fb',
+      selectedSurface: d ? '#26344d' : '#e5edfc',
+      borderCol: d ? '#2e2e2e' : '#e4e6ea',
+      btnBorder: d ? '#444444' : '#dcdcdc',
+      textPrimary: d ? '#ececec' : '#20242c',
+      textSecondary: d ? '#b4b4b4' : '#526071',
+      handleCol: d ? '#888888' : '#7a7974',
+      accentCol: d ? '#779de8' : '#547dd0',
+      accentText: d ? '#9dbcf5' : '#2b54a3',
+      codeStrCol: d ? '#6abf8a' : '#2e6b47',
+
+      isGhost: s === 'ghost',
+      isFocus: s === 'focus',
+      isCommit: s === 'commit',
+
+      ghostBg: s === 'ghost' ? activeBg : 'transparent',
+      ghostCol: s === 'ghost' ? activeCol : idleCol,
+      ghostRing: s === 'ghost' ? activeRing : 'none',
+
+      focusBg: s === 'focus' ? activeBg : 'transparent',
+      focusCol: s === 'focus' ? activeCol : idleCol,
+      focusRing: s === 'focus' ? activeRing : 'none',
+
+      commitBg: s === 'commit' ? activeBg : 'transparent',
+      commitCol: s === 'commit' ? activeCol : idleCol,
+      commitRing: s === 'commit' ? activeRing : 'none',
+
+      lightBtnBg: !d ? activeBg : 'transparent',
+      lightBtnCol: !d ? activeCol : idleCol,
+      lightBtnRing: !d ? activeRing : 'none',
+
+      darkBtnBg: d ? activeBg : 'transparent',
+      darkBtnCol: d ? activeCol : idleCol,
+      darkBtnRing: d ? activeRing : 'none'
+    };
+  }
+}
+</script>
+</body>
+</html>

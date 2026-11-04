@@ -213,9 +213,18 @@ pub(in crate::editor) fn columns_row(this: &Editor, group: Range<usize>, cx: &mu
                 })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
                     if this.dragging == Some(handle_id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
                 })))));
-    div().id(("columns-group", gid as usize)).w_full().flex().items_start()
+    let row = div().id(("columns-group", gid as usize)).w_full().flex().items_start()
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| if !*hovered { this.hover_block(handle_id, false, cx); }))
         .child(handle)
-        .child(div().flex_1().min_w(px(0.)).pr(px(RIGHT_INSET)).py(px(4.)).child(cols_el))
-        .into_any_element()
+        .child(div().flex_1().min_w(px(0.)).pr(px(RIGHT_INSET)).py(px(4.)).child(cols_el));
+    if group.start == 0 && !this.minimal && this.path.is_some() {
+        div().w_full().flex().flex_col()
+            .child(crate::ui::reveal::top_insert_slot(("top-insert-col", gid as usize), HANDLE_WIDTH, ROW_GAP, RIGHT_INSET, group_active, cx.listener(|this, _, window, cx| {
+                this.insert_top_paragraph(cx); window.focus(&this.focus, cx); cx.stop_propagation();
+            })))
+            .child(row)
+            .into_any_element()
+    } else {
+        row.into_any_element()
+    }
 }
