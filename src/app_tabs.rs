@@ -200,7 +200,6 @@ impl Workspace {
                 strip = strip.child(render_closing_ghost(g));
             }
             right = right.child(strip);
-            right = right.children(self.annotation_actions(cx));
             let plus = if can_create { Some({
                 let new_group: SharedString = "tab-new-btn".into();
                 div().id("tab-new").group(new_group.clone()).size(px(26.)).flex_none()
@@ -217,6 +216,7 @@ impl Workspace {
             right = right.child(div().id("titlebar-drag-spacer").flex_1().min_w(px(16.)).h_full()
                 .window_control_area(WindowControlArea::Drag)
                 .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); }));
+            right = right.children(self.annotation_actions(cx));
             right = right.children(plus_right);
         }
         div().id("titlebar").h(px(TITLEBAR_HEIGHT)).w_full().flex_none().flex().items_center()
