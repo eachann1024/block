@@ -35,6 +35,7 @@ pub struct ExportView {
     pub(super) watermark: bool,
     pub(super) zoom: Option<f32>,
     pub(super) png: Option<Arc<Image>>,
+    pub(super) preview_img: Option<Arc<gpui::RenderImage>>,
     pub(super) error: Option<String>,
     pub(super) notice: Option<String>,
     pub(super) saved_path: Option<PathBuf>,
@@ -70,6 +71,7 @@ impl ExportView {
             watermark: true,
             zoom: None,
             png: None,
+            preview_img: None,
             error: None,
             notice: None,
             saved_path: None,
@@ -168,6 +170,7 @@ impl ExportView {
             Err(message) => {
                 self.error = Some(message);
                 self.png = None;
+                self.preview_img = None;
                 self.dirty = false;
                 return;
             }
@@ -183,6 +186,8 @@ impl ExportView {
         self.dirty = false;
         self.cancel = job.cancellation.clone();
         cx.spawn(async move |this, cx| {
+            #[cfg(target_family = "wasm")]
+            cx.background_executor().timer(std::time::Duration::from_millis(1)).await;
             let result = cx
                 .background_executor()
                 .spawn(async move {
@@ -198,12 +203,15 @@ impl ExportView {
                 } else {
                     match result {
                         Ok((bytes, _)) => {
-                            this.png = Some(Arc::new(Image::from_bytes(ImageFormat::Png, bytes)));
+                            let img = Arc::new(Image::from_bytes(ImageFormat::Png, bytes));
+                            this.preview_img = img.to_image_data(cx.svg_renderer()).ok();
+                            this.png = Some(img);
                             this.error = None;
                         }
                         Err(ExportError::Cancelled) => {}
                         Err(error) => {
                             this.png = None;
+                            this.preview_img = None;
                             this.error = Some(error.to_string());
                         }
                     }
