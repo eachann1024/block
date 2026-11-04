@@ -15,7 +15,7 @@ pub(super) struct HtmlToken { pub range: Range<usize>, pub value: HtmlValue }
 struct Sink(Rc<RefCell<Option<Vec<HtmlValue>>>>);
 impl TokenSink for Sink {
     type Handle = ();
-    fn process_token(&mut self, token: Token, _: u64) -> TokenSinkResult<()> {
+    fn process_token(&self, token: Token, _: u64) -> TokenSinkResult<()> {
         let mut result = self.0.borrow_mut();
         if let Some(values) = result.as_mut() {
             match token {
@@ -36,9 +36,9 @@ impl TokenSink for Sink {
 }
 fn tokenize(input: &str) -> Option<Vec<HtmlValue>> {
     let result = Rc::new(RefCell::new(Some(Vec::new())));
-    let mut tokenizer = Tokenizer::new(Sink(result.clone()), TokenizerOpts::default());
-    let mut queue = BufferQueue::default(); queue.push_back(StrTendril::from(input));
-    let _ = tokenizer.feed(&mut queue); tokenizer.end();
+    let tokenizer = Tokenizer::new(Sink(result.clone()), TokenizerOpts::default());
+    let queue = BufferQueue::default(); queue.push_back(StrTendril::from(input));
+    let _ = tokenizer.feed(&queue); tokenizer.end();
     let value = result.borrow_mut().take(); value
 }
 /// Split only at actual tag boundaries; quoted `>` characters remain in attributes.

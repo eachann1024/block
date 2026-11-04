@@ -47,7 +47,7 @@ impl Workspace {
         if self.search.is_some() { self.close_search(window, cx); }
         self.close_overlays(cx);
         let focus = cx.focus_handle();
-        window.focus(&focus);
+        window.focus(&focus, cx);
         self.settings = Some(SettingsModal { focus, recording: None });
         crate::editor::ai::settings::ensure(window, cx);
         cx.notify();

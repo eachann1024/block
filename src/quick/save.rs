@@ -32,7 +32,10 @@ fn create_unique(folder: &Path, title: &str) -> io::Result<PathBuf> {
             Err(error) => return Err(error),
         }
     }
-    Err(io::Error::new(io::ErrorKind::AlreadyExists, "无法分配唯一笔记名称"))
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        crate::theme::tr("无法分配唯一笔记名称", "Could not allocate a unique note name"),
+    ))
 }
 
 /// Blocking; call from a background task. Returns the new note path.

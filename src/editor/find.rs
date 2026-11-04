@@ -44,12 +44,12 @@ impl Editor {
             });
             return;
         }
-        cx.bind_keys([KeyBinding::new("shift-enter", InputEnter { secondary: true }, Some("FindBar"))]);
+        cx.bind_keys([KeyBinding::new("shift-enter", InputEnter { secondary: true, shift: false }, Some("FindBar"))]);
         let input = cx.new(|cx| InputState::new(window, cx));
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
             InputEvent::Change => this.refresh_find(true, window, cx),
-            InputEvent::PressEnter { secondary: false } => this.find_step(true, window, cx),
-            InputEvent::PressEnter { secondary: true } => this.find_step(false, window, cx),
+            InputEvent::PressEnter { secondary: false, .. } => this.find_step(true, window, cx),
+            InputEvent::PressEnter { secondary: true, .. } => this.find_step(false, window, cx),
             _ => {}
         });
         self.find = Some(FindState { input: input.clone(), matches: Vec::new(), current: 0, _subs: vec![sub] });
@@ -107,7 +107,7 @@ impl Editor {
         cx.notify();
     }
     pub(super) fn close_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.find.take().is_some() { window.focus(&self.focus); cx.notify(); }
+        if self.find.take().is_some() { window.focus(&self.focus, cx); cx.notify(); }
     }
     /// All match ranges inside `block` plus the one that is current, for the paint layer.
     pub(super) fn find_ranges(&self, block: u64) -> Option<(Vec<Range<usize>>, Option<Range<usize>>)> {

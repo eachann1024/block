@@ -31,17 +31,17 @@ actions!(workspace_tabs, [
 
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("secondary-t", NewTab, Some("Workspace")), KeyBinding::new("secondary-w", CloseTab, Some("Workspace")),
-        KeyBinding::new("secondary-\\", ToggleSidebar, Some("Workspace")),
+        KeyBinding::new("cmd-t", NewTab, Some("Workspace")), KeyBinding::new("cmd-w", CloseTab, Some("Workspace")),
+        KeyBinding::new("cmd-\\", ToggleSidebar, Some("Workspace")),
         KeyBinding::new("ctrl-tab", NextTab, Some("Workspace")), KeyBinding::new("ctrl-pagedown", NextTab, Some("Workspace")),
-        KeyBinding::new("secondary-shift-]", NextTab, Some("Workspace")), KeyBinding::new("secondary-alt-right", NextTab, Some("Workspace")),
+        KeyBinding::new("cmd-shift-]", NextTab, Some("Workspace")), KeyBinding::new("cmd-alt-right", NextTab, Some("Workspace")),
         KeyBinding::new("ctrl-shift-tab", PrevTab, Some("Workspace")), KeyBinding::new("ctrl-pageup", PrevTab, Some("Workspace")),
-        KeyBinding::new("secondary-shift-[", PrevTab, Some("Workspace")), KeyBinding::new("secondary-alt-left", PrevTab, Some("Workspace")),
-        KeyBinding::new("secondary-1", SelectTab1, Some("Workspace")), KeyBinding::new("secondary-2", SelectTab2, Some("Workspace")),
-        KeyBinding::new("secondary-3", SelectTab3, Some("Workspace")), KeyBinding::new("secondary-4", SelectTab4, Some("Workspace")),
-        KeyBinding::new("secondary-5", SelectTab5, Some("Workspace")), KeyBinding::new("secondary-6", SelectTab6, Some("Workspace")),
-        KeyBinding::new("secondary-7", SelectTab7, Some("Workspace")), KeyBinding::new("secondary-8", SelectTab8, Some("Workspace")),
-        KeyBinding::new("secondary-9", SelectTab9, Some("Workspace")),
+        KeyBinding::new("cmd-shift-[", PrevTab, Some("Workspace")), KeyBinding::new("cmd-alt-left", PrevTab, Some("Workspace")),
+        KeyBinding::new("cmd-1", SelectTab1, Some("Workspace")), KeyBinding::new("cmd-2", SelectTab2, Some("Workspace")),
+        KeyBinding::new("cmd-3", SelectTab3, Some("Workspace")), KeyBinding::new("cmd-4", SelectTab4, Some("Workspace")),
+        KeyBinding::new("cmd-5", SelectTab5, Some("Workspace")), KeyBinding::new("cmd-6", SelectTab6, Some("Workspace")),
+        KeyBinding::new("cmd-7", SelectTab7, Some("Workspace")), KeyBinding::new("cmd-8", SelectTab8, Some("Workspace")),
+        KeyBinding::new("cmd-9", SelectTab9, Some("Workspace")),
     ]);
 }
 
@@ -187,7 +187,7 @@ impl Workspace {
             let items: Vec<_> = self.tabs.iter().enumerate().map(|(ix, path)| {
                 (ix, path.clone(), display_name(path, false), !multi || self.selected.as_ref() == Some(path), editor.is_path_dirty(path))
             }).collect();
-            let mut strip = div().id("titlebar-tab-strip").h_full().min_w_0().flex_shrink()
+            let mut strip = div().id("titlebar-tab-strip").h_full().min_w_0().flex_shrink_1()
                 .flex().items_center().gap(px(4.)).overflow_x_scroll();
             for (ix, path, label, active, dirty) in items {
                 if let Some(ref g) = ghost.as_ref().filter(|g| g.index == ix) {
@@ -242,8 +242,8 @@ impl Workspace {
             icon(Icon::Note, px(14.), theme.icon_colors(theme.text_secondary)).into_any_element()
         };
         let mut pill = div().id(("tab", ix)).group(group.clone()).h(px(28.)).overflow_hidden()
-            .when(multi, |t| t.w(px(TAB_MAX_W)).flex_basis(px(TAB_BASIS_W)).flex_shrink().min_w(px(TAB_MIN_W)).max_w(px(TAB_MAX_W)))
-            .when(!multi, |t| t.min_w_0().max_w(px(SINGLE_TAB_MAX_W)).flex_shrink())
+            .when(multi, |t| t.w(px(TAB_MAX_W)).flex_basis(px(TAB_BASIS_W)).flex_shrink_1().min_w(px(TAB_MIN_W)).max_w(px(TAB_MAX_W)))
+            .when(!multi, |t| t.min_w_0().max_w(px(SINGLE_TAB_MAX_W)).flex_shrink_1())
             .pl(px(10.)).pr(px(6.)).rounded(px(6.)).flex().items_center()
             .cursor(CursorStyle::PointingHand).text_size(px(13.)).line_height(px(18.)).font_weight(FontWeight(460.))
             .when(multi && active, |t| t.bg(theme.selected).border_1().border_color(theme.accent).text_color(theme.text))
@@ -273,7 +273,7 @@ impl Workspace {
             pill.child(render_inactive_tab_body(label, group, dirty, close_btn))
         } else {
             let single_fade_x = SINGLE_TAB_MAX_W - 58. - TAB_FADE_W;
-            pill.child(div().relative().flex_shrink().min_w_0().h_full().flex().items_center().overflow_hidden()
+            pill.child(div().relative().flex_shrink_1().min_w_0().h_full().flex().items_center().overflow_hidden()
                 .child(div().whitespace_nowrap().child(label))
                 .child(tab_fade(theme.shell).absolute().top_0().bottom_0().left(px(single_fade_x)).group_hover(group.clone(), |s| s.invisible()))
                 .child(tab_fade(theme.hover).absolute().top_0().bottom_0().left(px(single_fade_x)).invisible().group_hover(group.clone(), |s| s.visible())))

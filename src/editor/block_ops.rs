@@ -70,13 +70,13 @@ impl Editor {
                 self.block_sel = Some(next_sel);
                 let pos = Position { block: self.doc.blocks[next_sel.1].id, offset: 0 };
                 self.caret.anchor = pos; self.caret.head = pos;
-                window.focus(&self.focus); cx.notify();
+                window.focus(&self.focus, cx); cx.notify();
             }
             return;
         }
         let (_, _, first, last) = self.ordered();
         if self.move_block_range(first, last, up, cx).is_some() {
-            self.reveal_caret = true; window.focus(&self.focus); cx.notify();
+            self.reveal_caret = true; window.focus(&self.focus, cx); cx.notify();
         }
     }
 
@@ -106,7 +106,7 @@ impl Editor {
         self.record_changes(before, vec![ListChange { start: insert_at, before: 0, after: count }], true, cx);
         self.layouts.clear();
         self.list.scroll_to_reveal_item(new_hi_sel);
-        window.focus(&self.focus); cx.notify();
+        window.focus(&self.focus, cx); cx.notify();
     }
 
     /// Cmd+Alt+8: toggle code block on selected block(s).

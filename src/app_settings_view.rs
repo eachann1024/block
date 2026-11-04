@@ -40,6 +40,7 @@ impl Workspace {
 
         Some(div().id("settings-page").track_focus(&modal.focus).flex_1().min_w_0().h_full()
             .overflow_y_scroll().bg(theme.settings_bg).text_color(theme.text)
+            .on_scroll(|_, _, cx| crate::dropdown::dismiss_all(cx))
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                 if let Some(m) = &mut this.settings {
                     if m.recording.take().is_some() { cx.notify(); }
@@ -101,7 +102,7 @@ impl Workspace {
                                 cx.stop_propagation();
                                 if let Some(m) = &mut this.settings {
                                     m.recording = Some(ShortcutKind::Search);
-                                    window.focus(&m.focus);
+                                    window.focus(&m.focus, cx);
                                 }
                                 cx.notify();
                             }))))
@@ -111,7 +112,7 @@ impl Workspace {
                                 cx.stop_propagation();
                                 if let Some(m) = &mut this.settings {
                                     m.recording = Some(ShortcutKind::Quick);
-                                    window.focus(&m.focus);
+                                    window.focus(&m.focus, cx);
                                 }
                                 cx.notify();
                             }))))

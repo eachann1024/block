@@ -142,7 +142,7 @@ impl Editor {
         let at = Position { block: self.doc.blocks[start].id, offset: 0 };
         self.caret.anchor = at; self.caret.head = at;
         self.record_changes(before, vec![ListChange { start, before: remove, after: count }], true, cx);
-        self.layouts.clear(); window.focus(&self.focus); cx.notify();
+        self.layouts.clear(); window.focus(&self.focus, cx); cx.notify();
     }
 
     pub(in crate::editor) fn delete_single_block(&mut self, id: u64, index: usize, changes: &mut Vec<ListChange>, caret: &mut Option<Position>) {

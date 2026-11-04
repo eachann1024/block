@@ -11,7 +11,7 @@ use super::menu::{ItemId, menu_item, menu_surface, separator};
 pub(super) const MIN_WIDTH: f32 = 200.;
 pub(super) const MAX_WIDTH: f32 = 420.;
 const COLLAPSED_HEADER_WIDTH: f32 = 116.;
-const SWITCHER_TOP: f32 = 40. + 12. + 32. + 4.;
+const SWITCHER_TOP: f32 = 40. + 12. + 36. + 4.;
 
 pub(super) fn clamp_width(width: Pixels) -> Pixels { width.clamp(px(MIN_WIDTH), px(MAX_WIDTH)) }
 

@@ -57,6 +57,15 @@ impl Workspace {
         cx.notify();
     }
 
+    pub(crate) fn dismiss_dropdowns(&mut self, cx: &mut Context<Self>) -> bool {
+        let had_overlay = self.menu.is_some() || self.switcher_open;
+        if had_overlay {
+            self.close_overlays(cx);
+        }
+        let had_tab = self.dismiss_tab_menu(cx);
+        had_overlay || had_tab
+    }
+
     /// Escape: close the innermost transient surface; false when none was open.
     pub(super) fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if self.renaming.is_some() { self.cancel_rename(window, cx); return true; }
@@ -68,9 +77,10 @@ impl Workspace {
 
     pub(super) fn restore_focus(&self, window: &mut Window, cx: &mut Context<Self>) {
         if self.editor.read(cx).current_path().is_some() {
-            window.focus(&self.editor.read(cx).focus_handle(cx));
+            let focus = self.editor.read(cx).focus_handle(cx);
+            window.focus(&focus, cx);
         } else {
-            window.focus(&self.root_focus);
+            window.focus(&self.root_focus, cx);
         }
     }
 
@@ -106,7 +116,7 @@ impl Workspace {
         if self.renaming.take().is_none() { return; }
         self.tree.update(cx, |tree, cx| tree.set_renaming(None, cx));
         let focus = self.tree.read(cx).focus_handle().clone();
-        window.focus(&focus);
+        window.focus(&focus, cx);
         cx.notify();
     }
 
@@ -123,7 +133,7 @@ impl Workspace {
         self.renaming = None;
         self.tree.update(cx, |tree, cx| tree.set_renaming(None, cx));
         let focus = self.tree.read(cx).focus_handle().clone();
-        window.focus(&focus);
+        window.focus(&focus, cx);
         let reopen = self.open_under(&path, cx);
         self.start_file_op(FileOp::Rename { path, name, dir, reopen }, cx);
     }

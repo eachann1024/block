@@ -46,7 +46,7 @@ pub(super) fn build_chrome(
     let d = today();
     let theme = options.theme;
     let (right, mid) = (left + width, left + width * 0.5);
-    let title = if options.title.trim().is_empty() { "随手记录" } else { options.title.trim() };
+    let title = if options.title.trim().is_empty() { crate::theme::tr("随手记录", "Notes") } else { options.title.trim() };
     let sec = pal.secondary;
 
     let (header_h, header_items) = match theme {
@@ -85,13 +85,13 @@ pub(super) fn build_chrome(
             ]))
         }
         ExportTheme::Press => {
-            let l = format!("第 {:02}{:02} 期", d.month, d.day);
-            let r = format!("{:04} 年 {} 月 {} 日", d.year, d.month, d.day);
+            let l = if crate::theme::is_en() { format!("NO. {:02}{:02}", d.month, d.day) } else { format!("第 {:02}{:02} 期", d.month, d.day) };
+            let r = if crate::theme::is_en() { format!("{:04}.{:02}.{:02}", d.year, d.month, d.day) } else { format!("{:04} 年 {} 月 {} 日", d.year, d.month, d.day) };
             (106.0, items(fonts, &[
                 (&l, "Songti SC", 12.0, false, Anchor::L(left), 0.0, sec),
                 ("THINKLY FAST DAILY", "Songti SC", 12.0, false, Anchor::C(mid), 0.0, sec),
                 (&r, "Songti SC", 12.0, false, Anchor::R(right), 0.0, sec),
-                ("思 考 快 报", "Songti SC", 34.0, true, Anchor::C(mid), 32.0, pal.title),
+                (crate::theme::tr("思 考 快 报", "THINKLY PRESS"), "Songti SC", 34.0, true, Anchor::C(mid), 32.0, pal.title),
             ]))
         }
         ExportTheme::Neon => {
@@ -155,7 +155,7 @@ fn build_footer(
         }
         ExportTheme::Journal | ExportTheme::Kraft => {
             let is_j = theme == ExportTheme::Journal;
-            let l = if is_j { "thinkly fast · 随手记" } else { "thinkly fast · 黑卡手账" };
+            let l = if is_j { crate::theme::tr("thinkly fast · 随手记", "thinkly fast · journal") } else { crate::theme::tr("thinkly fast · 黑卡手账", "thinkly fast · kraft") };
             let sc = if is_j { Color::rgba(181, 70, 47, 215) } else { Color::rgba(224, 122, 95, 220) };
             let s1 = make_buf(fonts, "THINKLY", "SF Mono", 10.0, true);
             let s2 = make_buf(fonts, &format!("{:02}·{:02}", d.month, d.day), "SF Mono", 15.0, true);
@@ -173,7 +173,7 @@ fn build_footer(
         ExportTheme::Press => {
             let r = format!("{:04}-{:02}-{:02}", d.year, d.month, d.day);
             (52.0, items(fonts, &[
-                ("THINKLY FAST 印行", "Songti SC", 12.0, false, Anchor::L(left), 30.0, sec),
+                (crate::theme::tr("THINKLY FAST 印行", "THINKLY FAST PRESS"), "Songti SC", 12.0, false, Anchor::L(left), 30.0, sec),
                 (&r, "Songti SC", 12.0, false, Anchor::R(right), 30.0, sec),
             ]), None)
         }
@@ -248,12 +248,12 @@ pub(super) fn paint_chrome(
 
 fn make_buf(fonts: &mut FontSystem, s: &str, family: &str, size: f32, bold: bool) -> Buffer {
     let mut buf = Buffer::new(fonts, Metrics::new(size, size * 1.35));
-    buf.set_size(fonts, Some(720.0), None);
+    buf.set_size(Some(720.0), None);
     let mut attrs = Attrs::new().family(Family::Name(family));
     if bold {
         attrs = attrs.weight(Weight::BOLD);
     }
-    buf.set_text(fonts, s, &attrs, Shaping::Advanced);
+    buf.set_text(s, &attrs, Shaping::Advanced, None);
     buf.shape_until_scroll(fonts, false);
     buf
 }

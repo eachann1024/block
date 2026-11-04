@@ -34,6 +34,40 @@
         }
       ],
       "resolvedAt": "2026-11-04T04:52:10.919Z"
+    },
+    {
+      "id": "c_d64ea36555",
+      "anchor": "#dc-root > div:nth-of-type(1) > div:nth-of-type(1) > header:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(4) > dcfx0prg6uc:nth-of-type(1) > dct:nth-of-type(15) > dce92379d7318cd89183077:nth-of-type(1)",
+      "label": "代码块 · 居右控件与滚动即收起的通用下拉 › text \"更多菜单\"",
+      "detail": "C-Code-Block.dc.html: #14:1/0/2/3 text \"更多菜单\"",
+      "location": {
+        "file": "project/C-Code-Block.dc.html",
+        "board": "C-Code-Block.dc.html"
+      },
+      "status": "resolved",
+      "createdAt": "2026-11-04T06:08:38.784Z",
+      "updatedAt": "2026-11-04T06:09:29.764Z",
+      "messages": [
+        {
+          "id": "m_82029b27d6",
+          "author": {
+            "kind": "user",
+            "name": "eachann"
+          },
+          "text": "删除更多菜单的功能",
+          "at": "2026-11-04T06:08:38.784Z"
+        },
+        {
+          "id": "m_b39949803a",
+          "author": {
+            "kind": "agent",
+            "name": "agent"
+          },
+          "text": "已删除外置 ⋯ 按钮、更多菜单及其状态切换，只保留复制和语言胶囊。",
+          "at": "2026-11-04T06:09:29.764Z"
+        }
+      ],
+      "resolvedAt": "2026-11-04T06:09:29.764Z"
     }
   ]
 }
