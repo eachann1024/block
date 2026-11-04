@@ -54,7 +54,13 @@ impl ExportFormat {
 }
 
 pub fn render_markdown(blocks: &[Block], options: &RenderOptions) -> String {
-    let mut out = markdown::serialize(&Doc::from_blocks(blocks.to_vec()));
+    let mut normalized = blocks.to_vec();
+    for block in &mut normalized {
+        if let Some(table) = block.meta.table.as_mut() && table.to_pipe() {
+            markdown::rebuild_table_source(table);
+        }
+    }
+    let mut out = markdown::serialize(&Doc::from_blocks(normalized));
     let title = options.title.trim();
     if options.show_title && !title.is_empty() {
         let duplicated = blocks

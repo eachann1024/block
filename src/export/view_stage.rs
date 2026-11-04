@@ -4,7 +4,7 @@ use gpui::{
     img, prelude::*, px,
 };
 
-use super::format::{ExportFormat, render_markdown};
+use super::format::ExportFormat;
 use super::layout::SCALE;
 use super::view::ExportView;
 use super::view_widgets::{fmt_int, png_size};
@@ -46,60 +46,30 @@ impl ExportView {
             .unwrap_or_else(|| (room / 816.).clamp(MIN_SCALE, 1.));
         let scale = self.zoom.unwrap_or(fit_scale);
         let mut centered_state = false;
-        let body: AnyElement = if self.format == ExportFormat::Markdown {
-            match self.active_blocks() {
-                Ok(blocks) => {
-                    let md = render_markdown(&blocks, &self.render_options());
-                    let pal = self.style.palette();
-                    let bg = c(pal.inner_canvas.0 & 0xff_ff_ff);
-                    let fg = c(pal.text.0 & 0xff_ff_ff);
-                    let border = c(pal.code_border.0 & 0xff_ff_ff);
-                    div()
-                        .w(px((816. * scale).round()))
-                        .p(px((48. * scale).round()))
-                        .rounded(px(8.))
-                        .border_1()
-                        .border_color(border)
-                        .bg(bg)
-                        .text_color(fg)
-                        .shadow_lg()
-                        .font_family("Menlo")
-                        .text_size(px((14. * scale).clamp(12., 18.)))
-                        .line_height(px((22. * scale).clamp(18., 30.)))
-                        .child(md)
-                        .into_any_element()
-                }
-                Err(msg) => {
-                    centered_state = true;
-                    state_card(msg, true)
-                }
+        let body: AnyElement = match (&self.png, &self.error) {
+            (Some(png), _) => {
+                let src: gpui::ImageSource = self
+                    .preview_img
+                    .clone()
+                    .map_or_else(|| png.clone().into(), Into::into);
+                let picture = match dims {
+                    Some((w, h)) => img(src).w(px(w / SCALE * scale)).h(px(h / SCALE * scale)),
+                    None => img(src).w_full(),
+                };
+                div()
+                    .flex_none()
+                    .shadow_lg()
+                    .when(self.rendering, |d| d.opacity(0.55))
+                    .child(picture)
+                    .into_any_element()
             }
-        } else {
-            match (&self.png, &self.error) {
-                (Some(png), _) => {
-                    let src: gpui::ImageSource = self
-                        .preview_img
-                        .clone()
-                        .map_or_else(|| png.clone().into(), Into::into);
-                    let picture = match dims {
-                        Some((w, h)) => img(src).w(px(w / SCALE * scale)).h(px(h / SCALE * scale)),
-                        None => img(src).w_full(),
-                    };
-                    div()
-                        .flex_none()
-                        .shadow_lg()
-                        .when(self.rendering, |d| d.opacity(0.55))
-                        .child(picture)
-                        .into_any_element()
-                }
-                (None, Some(msg)) => {
-                    centered_state = true;
-                    state_card(msg.clone(), true)
-                }
-                (None, None) => {
-                    centered_state = true;
-                    state_card(tr("正在生成预览…", "Rendering preview…"), false)
-                }
+            (None, Some(msg)) => {
+                centered_state = true;
+                state_card(msg.clone(), true)
+            }
+            (None, None) => {
+                centered_state = true;
+                state_card(tr("正在生成预览…", "Rendering preview…"), false)
             }
         };
         let dim_label = match self.format {
