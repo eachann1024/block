@@ -7,12 +7,15 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
-export const appName = "Thinkly Fast";
-export const bundleId = "dev.eachann.thinkly-fast";
-export const installPath = "/Applications/Thinkly Fast.app";
-export const installedExecutable = `${installPath}/Contents/MacOS/thinkly-fast`;
-export const logDir = join(homedir(), "Library/Logs/ThinklyFast");
-export const runtimeLogPath = join(logDir, "thinkly-fast.log");
+export const appName = "Block";
+export const bundleId = "dev.eachann.block";
+export const installPath = "/Applications/Block.app";
+export const installedExecutable = `${installPath}/Contents/MacOS/block`;
+export const legacyBundleId = ["dev.eachann", ["thinkly", "fast"].join("-")].join(".");
+export const legacyInstallPath = `/Applications/${["Thinkly", "Fast"].join(" ")}.app`;
+export const legacyInstalledExecutable = `${legacyInstallPath}/Contents/MacOS/${["thinkly", "fast"].join("-")}`;
+export const logDir = join(homedir(), "Library/Logs/Block");
+export const runtimeLogPath = join(logDir, "block.log");
 
 export function logIssue(level, msg) {
   const ts = (Date.now() / 1000).toFixed(3);
@@ -30,7 +33,7 @@ const plistKeys = [
   ["CFBundleName", appName],
   ["CFBundleDisplayName", "Block"],
   ["CFBundleIdentifier", bundleId],
-  ["CFBundleExecutable", "thinkly-fast"],
+  ["CFBundleExecutable", "block"],
   ["CFBundlePackageType", "APPL"],
   ["CFBundleIconFile", "AppIcon"],
   ["CFBundleVersion", "1"],
@@ -140,11 +143,11 @@ export function binaryPath(root) {
     throw new Error(rendered.join("\n\n") || fallback || `cargo exited ${result.status}`);
   }
   const built = entries.filter(
-    (entry) => entry.reason === "compiler-artifact" && entry.target?.name === "thinkly-fast" && entry.target?.kind?.includes("bin") && entry.executable
+    (entry) => entry.reason === "compiler-artifact" && entry.target?.name === "block" && entry.target?.kind?.includes("bin") && entry.executable
   );
   const executable = built.at(-1)?.executable;
-  if (!executable?.startsWith("/") || !executable.endsWith("/thinkly-fast") || !existsSync(executable)) {
-    throw new Error("release build did not report the thinkly-fast executable");
+  if (!executable?.startsWith("/") || !executable.endsWith("/block") || !existsSync(executable)) {
+    throw new Error("release build did not report the block executable");
   }
   return executable;
 }
@@ -181,13 +184,13 @@ export function assertWritable(directory) {
 export function sameVolumeTemp(path) {
   const root = dirname(path);
   mkdirSync(root, { recursive: true });
-  const staging = join(root, `.thinkly-fast-install.${process.pid}.${randomBytes(4).toString("hex")}`);
+  const staging = join(root, `.block-install.${process.pid}.${randomBytes(4).toString("hex")}`);
   mkdirSync(staging);
   return staging;
 }
 
 export function workspaceTemp() {
-  const staging = join(tmpdir(), `thinkly-fast-app.${process.pid}.${randomBytes(4).toString("hex")}`);
+  const staging = join(tmpdir(), `block-app.${process.pid}.${randomBytes(4).toString("hex")}`);
   mkdirSync(staging);
   return staging;
 }

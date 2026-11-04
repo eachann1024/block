@@ -1,4 +1,4 @@
-//! Crash, error, and warning diagnostics logging (`~/Library/Logs/ThinklyFast/thinkly-fast.log`).
+//! Crash, error, and warning diagnostics logging (`~/Library/Logs/Block/block.log`).
 //! Only `WARN`, `ERROR`, and `PANIC` entries are ever written to the log file.
 use std::{
     backtrace::Backtrace,
@@ -20,14 +20,14 @@ struct Logger {
 static LOGGER: OnceLock<Logger> = OnceLock::new();
 
 fn resolve_log_path() -> Option<PathBuf> {
-    if let Some(custom) = std::env::var_os("THINKLY_LOG_FILE") {
+    if let Some(custom) = std::env::var_os("BLOCK_LOG_FILE") {
         return Some(PathBuf::from(custom));
     }
     #[cfg(target_os = "macos")]
     if let Some(home) = std::env::var_os("HOME") {
-        return Some(PathBuf::from(home).join("Library/Logs/ThinklyFast/thinkly-fast.log"));
+        return Some(PathBuf::from(home).join("Library/Logs/Block/block.log"));
     }
-    Some(crate::files::app_data_dir("Thinkly Fast").join("logs/thinkly-fast.log"))
+    Some(crate::files::app_data_dir("Block").join("logs/block.log"))
 }
 
 fn open_log_file(path: &PathBuf) -> Option<File> {
@@ -35,7 +35,7 @@ fn open_log_file(path: &PathBuf) -> Option<File> {
         let _ = fs::create_dir_all(parent);
     }
     if let Ok(meta) = fs::metadata(path) && meta.len() > MAX_LOG_BYTES {
-        let prev = path.with_file_name("thinkly-fast.prev.log");
+        let prev = path.with_file_name("block.prev.log");
         let _ = fs::rename(path, prev);
     }
     OpenOptions::new().create(true).append(true).open(path).ok()
