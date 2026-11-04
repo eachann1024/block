@@ -98,14 +98,6 @@ button,input{font-family:inherit}
 </svg>
 <span>基础快捷键</span>
 </button>
-
-<button type="button" class="row" onClick="{{selectStorage}}" style="background:{{navStBg}};color:{{navStCol}};box-shadow:{{navStRing}};font-weight:{{navStWeight}}">
-<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
-<path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
-<path d="M8.5 13.5H15.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path>
-</svg>
-<span>本地文件夹</span>
-</button>
 </nav>
 
 <div style="flex:none;height:44px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-top:1px solid {{sidebarBorder}}">
@@ -269,6 +261,31 @@ button,input{font-family:inherit}
 <span style="height:32px;padding:0 12px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}};display:inline-flex;align-items:center">实时写入本地文件</span>
 </div>
 </section>
+
+<section aria-label="静态资源存放" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">静态资源</h2>
+<sc-if value="{{assetsDirCustom}}" hint-placeholder-val="{{false}}">
+<button type="button" class="btn" onClick="{{resetAssetsDir}}" style="height:30px;background:{{shellBg}};color:{{textSecondary}};border:1px solid {{borderCol}}">恢复默认</button>
+</sc-if>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<label for="assets-folder-input" style="color:{{textPrimary}}">全局资源文件夹名</label>
+<div style="display:flex;align-items:center;gap:8px">
+<input id="assets-folder-input" type="text" value="{{assetsDirName}}" onInput="{{onAssetsDirInput}}" placeholder="assets" class="field-input" style="width:168px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textPrimary}};font-family:'JetBrains Mono',monospace">
+<span style="height:34px;padding:0 10px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}};font-family:'JetBrains Mono',monospace;display:inline-flex;align-items:center">{{assetsPreviewPath}}</span>
+</div>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">列表与搜索可见性</span>
+<div role="group" aria-label="列表与搜索可见性" style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+<button type="button" class="seg" onClick="{{setAssetsHidden}}" style="background:{{assetsHideBg}};color:{{assetsHideCol}};box-shadow:{{assetsHideRing}}">默认隐藏</button>
+<button type="button" class="seg" onClick="{{setAssetsVisible}}" style="background:{{assetsShowBg}};color:{{assetsShowCol}};box-shadow:{{assetsShowRing}}">始终显示</button>
+</div>
+</div>
+</section>
 </sc-if>
 
 <sc-if value="{{isTabShortcuts}}" hint-placeholder-val="{{false}}">
@@ -331,21 +348,6 @@ button,input{font-family:inherit}
 </section>
 </sc-if>
 
-<sc-if value="{{isTabStorage}}" hint-placeholder-val="{{false}}">
-<section aria-label="本地文件夹" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
-<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">工作区目录</h2>
-
-<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
-<span style="color:{{textPrimary}}">当前工作区目录</span>
-<div style="display:flex;align-items:center;gap:8px">
-<span style="font-family:'JetBrains Mono',monospace;color:{{textSecondary}}">{{workspaceDir}}</span>
-<button type="button" class="btn" onClick="{{openInFinder}}" style="background:{{shellBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">{{finderBtnLabel}}</button>
-<button type="button" class="btn" onClick="{{switchWorkspaceDir}}" style="background:{{shellBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">更换目录</button>
-</div>
-</div>
-</section>
-</sc-if>
-
 </div>
 </main>
 
@@ -369,8 +371,8 @@ class Component extends DCLogic {
       langChoice: 'system',
       recordingIdx: null,
       scResetDone: false,
-      workspaceAlt: false,
-      finderOpened: false,
+      assetsDir: 'assets',
+      hideAssets: true,
       configs: {
         deepseek: {
           baseUrl: 'https://api.deepseek.com/v1',
@@ -438,8 +440,7 @@ class Component extends DCLogic {
       ai: 'AI 助手',
       appearance: '外观与字体',
       general: '通用与编辑',
-      shortcuts: '基础快捷键',
-      storage: '本地文件夹'
+      shortcuts: '基础快捷键'
     };
 
     const navItem = (key) => {
@@ -456,7 +457,6 @@ class Component extends DCLogic {
     const nApp = navItem('appearance');
     const nGen = navItem('general');
     const nSc = navItem('shortcuts');
-    const nSt = navItem('storage');
 
     const pCard = (key) => {
       const act = p === key;
@@ -488,6 +488,12 @@ class Component extends DCLogic {
 
     const fSans = segItem(st.fontChoice === 'sans');
     const fSerif = segItem(st.fontChoice === 'serif');
+
+    const hideAssets = st.hideAssets !== false;
+    const aHide = segItem(hideAssets);
+    const aShow = segItem(!hideAssets);
+    const rawAssets = (st.assetsDir ?? 'assets').trim();
+    const cleanAssets = rawAssets || 'assets';
 
     const pickModel = (idx) => {
       const nextConfigs = {
@@ -532,13 +538,11 @@ class Component extends DCLogic {
       isTabAppearance: tab === 'appearance',
       isTabGeneral: tab === 'general',
       isTabShortcuts: tab === 'shortcuts',
-      isTabStorage: tab === 'storage',
 
       navAiBg: nAi.bg, navAiCol: nAi.col, navAiRing: nAi.ring, navAiWeight: nAi.weight,
       navAppBg: nApp.bg, navAppCol: nApp.col, navAppRing: nApp.ring, navAppWeight: nApp.weight,
       navGenBg: nGen.bg, navGenCol: nGen.col, navGenRing: nGen.ring, navGenWeight: nGen.weight,
       navScBg: nSc.bg, navScCol: nSc.col, navScRing: nSc.ring, navScWeight: nSc.weight,
-      navStBg: nSt.bg, navStCol: nSt.col, navStRing: nSt.ring, navStWeight: nSt.weight,
 
       aiToggleBg: aiOn ? selectedBg : shellBg,
       aiToggleBorder: aiOn ? accent : btnBorder,
@@ -587,14 +591,16 @@ class Component extends DCLogic {
       sc1TrayBg: st.recordingIdx === 1 ? selectedBg : shellBg,
       sc1TrayBorder: st.recordingIdx === 1 ? accent : btnBorder,
 
-      workspaceDir: st.workspaceAlt ? '~/iCloud Drive/ThinklyVault' : '~/Documents/thinkly-notes',
-      finderBtnLabel: st.finderOpened ? '已打开' : '在访达中打开',
+      assetsDirName: st.assetsDir ?? 'assets',
+      assetsPreviewPath: './' + cleanAssets + '/',
+      assetsDirCustom: cleanAssets !== 'assets' || !hideAssets,
+      assetsHideBg: aHide.bg, assetsHideCol: aHide.col, assetsHideRing: aHide.ring,
+      assetsShowBg: aShow.bg, assetsShowCol: aShow.col, assetsShowRing: aShow.ring,
 
       selectAi: () => this.setState({ activeTab: 'ai', modelMenuOpen: false }),
       selectAppearance: () => this.setState({ activeTab: 'appearance', modelMenuOpen: false }),
       selectGeneral: () => this.setState({ activeTab: 'general', modelMenuOpen: false }),
       selectShortcuts: () => this.setState({ activeTab: 'shortcuts', modelMenuOpen: false }),
-      selectStorage: () => this.setState({ activeTab: 'storage', modelMenuOpen: false }),
 
       selectDeepseek: () => this.setState({ provider: 'deepseek', modelMenuOpen: false, testConnected: false, refreshed: false }),
       selectOpenai: () => this.setState({ provider: 'openai', modelMenuOpen: false, testConnected: false, refreshed: false }),
@@ -629,8 +635,10 @@ class Component extends DCLogic {
       resetShortcuts: () => this.setState({ recordingIdx: null, scResetDone: true }),
       recordSc0: () => this.setState({ recordingIdx: st.recordingIdx === 0 ? null : 0, scResetDone: false }),
       recordSc1: () => this.setState({ recordingIdx: st.recordingIdx === 1 ? null : 1, scResetDone: false }),
-      openInFinder: () => this.setState({ finderOpened: !st.finderOpened }),
-      switchWorkspaceDir: () => this.setState({ workspaceAlt: !st.workspaceAlt })
+      onAssetsDirInput: (e) => { if (e && e.target) this.setState({ assetsDir: e.target.value }); },
+      setAssetsHidden: () => this.setState({ hideAssets: true }),
+      setAssetsVisible: () => this.setState({ hideAssets: false }),
+      resetAssetsDir: () => this.setState({ assetsDir: 'assets', hideAssets: true })
     };
   }
 }
