@@ -182,7 +182,7 @@ impl Editor {
     }
     /// Moves a row or column to where a drag ended.
     pub(in crate::editor) fn table_drop(&mut self, drag: TableDrag, position: Point<Pixels>, cx: &mut Context<Self>) {
-        if self.path.is_none() || !self.list.viewport_bounds().contains(&position) { return; }
+        if self.path.is_none() { return; }
         let Some((to, _)) = self.table_chrome.as_ref().and_then(|c| c.drop_target(drag, position)) else { return };
         match drag.sel {
             TableSel::Row(from) => {
@@ -217,7 +217,7 @@ impl Editor {
     /// Reads geometry published by the final paint, so overlays never use prepaint attempts.
     /// Shown for the hovered table; an open menu, drag or selection keeps the chrome visible.
     pub(in crate::editor) fn table_chrome_geometry(&self, window: &Window) -> Option<TableChrome> {
-        if self.path.is_none() { return None; }
+        if self.path.is_none() || self.dragging.is_some() { return None; }
         let frozen = self.table_menu.map(|m| m.block)
             .or(self.table_drag.map(|d| d.block))
             .or(self.table_sel.map(|(id, _)| id));
