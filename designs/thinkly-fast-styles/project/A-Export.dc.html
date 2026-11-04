@@ -13,21 +13,24 @@
 body{margin:0}
 a{color:#547dd0}a:hover{color:#3d63b0}
 button{font-family:inherit}
-.ib{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#526071;padding:0;cursor:pointer}
+.back-btn{height:28px;padding:0 10px;display:inline-flex;align-items:center;gap:6px;border:1px solid transparent;border-radius:6px;background:transparent;color:#20242c;font-size:14px;font-weight:500;cursor:pointer}
+.back-btn:hover{background:#e4e8f0}
+.ib{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#526071;padding:0;cursor:pointer;font-size:14px}
 .ib:hover{background:#eef3fc;color:#20242c}
-.btn{font:inherit;font-size:13px;font-weight:460;height:36px;padding:0 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;white-space:nowrap}
+.btn{font:inherit;font-size:14px;font-weight:500;height:38px;padding:0 14px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;white-space:nowrap}
 .btn:active{transform:scale(.98)}
-.btn-2{background:#ffffff;color:#20242c;border:1px solid #dcdcdc}
-.btn-2:hover{background:#f7f7f7}
-.btn-1{background:#2f3540;color:#ffffff;border:0}
-.btn-1:hover{background:#3b4250}
-.seg{font:inherit;font-size:13px;font-weight:460;flex:1;height:28px;border:0;border-radius:6px;cursor:pointer;color:#526071;background:transparent}
+.btn-2{background:#f6f7f9;color:#20242c;border:1px solid #d5d9e0}
+.btn-2:hover{background:#eceff4}
+.btn-1{background:#547dd0;color:#ffffff;border:1px solid #486fbe}
+.btn-1:hover{background:#466ec0}
+.seg{font:inherit;font-size:14px;font-weight:460;flex:1;height:32px;border:1px solid transparent;border-radius:6px;cursor:pointer;color:#526071;background:transparent}
 .seg:hover{color:#20242c}
-.sw{position:relative;width:30px;height:18px;border-radius:9px;border:0;padding:0;cursor:pointer;background:#547dd0}
-.sw span{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:7px;background:#fff;transform:translateX(12px)}
-.card-btn{font:inherit;font-size:13px;font-weight:460;height:40px;padding:0 10px;border-radius:8px;border:1px solid #dcdcdc;background:#ffffff;color:#526071;display:flex;align-items:center;gap:8px;cursor:pointer;box-sizing:border-box}
-.card-btn:hover{background:#f7f7f7;color:#20242c}
-.card-btn.on{background:#e5edfc;border-color:#547dd0;color:#20242c}
+.seg.on{background:#e5edfc;color:#20242c;border-color:#547dd0;font-weight:500}
+.sw{position:relative;width:34px;height:20px;border-radius:10px;border:0;padding:0;cursor:pointer;background:#547dd0}
+.sw span{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:8px;background:#fff;transform:translateX(14px)}
+.card-btn{font:inherit;font-size:14px;font-weight:460;height:52px;padding:0 10px;border-radius:10px;border:1px solid #dcdfe5;background:#ffffff;color:#526071;display:flex;align-items:center;gap:10px;cursor:pointer;box-sizing:border-box}
+.card-btn:hover{background:#f6f7f9;color:#20242c}
+.card-btn.on{background:#e5edfc;border-color:#547dd0;color:#20242c;font-weight:500}
 .dots{background-color:#f6f0e1;background-image:radial-gradient(circle,#d8ccb0 1px,transparent 1.2px);background-size:20px 20px;background-position:10px 10px}
 .tape-a{background:repeating-linear-gradient(45deg,rgba(226,132,104,.62) 0 7px,rgba(244,196,170,.62) 7px 14px)}
 .tape-b{background:repeating-linear-gradient(90deg,rgba(116,160,150,.58) 0 5px,rgba(186,214,204,.58) 5px 10px)}
@@ -36,26 +39,37 @@ button{font-family:inherit}
 </helmet>
 <div style="width:100%;height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:#f1f1f1;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;font-size:14px;line-height:20px;overflow:hidden">
 
-<header style="height:40px;flex:none;display:flex;align-items:center;padding:0 16px;gap:12px">
+<header style="height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px 0 16px;background:#f1f1f1;border-bottom:1px solid #e2e4e8">
+<div style="display:flex;align-items:center;gap:10px;min-width:220px">
 <div aria-hidden="true" style="display:flex;gap:8px;width:52px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
-<div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;min-width:0">
-<button class="ib" aria-label="返回笔记"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></button>
-<span style="font-size:13px;font-weight:560">导出</span>
-<span style="font-size:13px;color:#526071">周会 · 11 月 3 日</span>
+<div aria-hidden="true" style="width:1px;height:16px;background:#dcdfe5"></div>
+<button class="back-btn" aria-label="返回编辑器">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>
+<span>返回</span>
+</button>
 </div>
-<div aria-hidden="true" style="width:52px;flex:none"></div>
+
+<div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;min-width:0">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg>
+<span style="font-size:14px;font-weight:560;color:#20242c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">周会 · 11 月 3 日</span>
+<span style="font-size:14px;color:#526071">· 导出预览</span>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:220px">
+<span style="padding:2px 8px;border-radius:5px;background:#ffffff;border:1px solid #dcdfe5;font-size:12px;color:#526071">Esc</span>
+</div>
 </header>
 
 <div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
 
-<main style="flex:999 1 560px;min-width:0;background:#e9e9e9;position:relative;overflow:hidden;display:flex;flex-direction:column">
-<div style="flex:1;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:36px 32px 68px">
-<div class="dots" style="width:560px;box-sizing:border-box;color:#3a3226;font-family:'PingFang SC',-apple-system,system-ui,sans-serif;padding:58px 40px 32px 64px;display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:0 12px 32px rgba(15,23,42,.12),0 2px 6px rgba(15,23,42,.06)">
+<main style="flex:999 1 560px;min-width:0;background:#e7eaef;position:relative;overflow:hidden;display:flex;flex-direction:column">
+<div style="flex:1;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:36px 32px 76px">
+<div class="dots" style="width:560px;box-sizing:border-box;color:#3a3226;font-family:'PingFang SC',-apple-system,system-ui,sans-serif;padding:58px 40px 32px 64px;display:flex;flex-direction:column;position:relative;overflow:hidden;border-radius:4px;box-shadow:0 16px 40px rgba(15,23,42,.12),0 2px 8px rgba(15,23,42,.06)">
 <div aria-hidden="true" style="position:absolute;left:44px;top:0;bottom:0;width:2px;background:#e0a196"></div>
 <div aria-hidden="true" class="tape-a" style="position:absolute;left:-14px;top:20px;width:136px;height:26px;transform:rotate(-8deg)"></div>
 <div aria-hidden="true" class="tape-b" style="position:absolute;right:-16px;top:18px;width:120px;height:24px;transform:rotate(9deg)"></div>
-<div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8a7a5c;letter-spacing:1px">
-<span style="padding:2px 8px;border:1.5px solid #8a7a5c;border-radius:10px">MON</span>
+<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#6e5f44;letter-spacing:1px">
+<span style="padding:2px 8px;border:1.5px solid #6e5f44;border-radius:10px">MON</span>
 <span>2026 / 11 / 03</span>
 <span style="margin-left:auto">周会记录</span>
 </div>
@@ -71,9 +85,9 @@ button{font-family:inherit}
 <div aria-hidden="true" class="tape-b" style="position:absolute;left:50%;top:-9px;width:72px;height:16px;transform:translateX(-50%) rotate(2deg)"></div>
 <div style="font-size:15px;line-height:1.6;font-family:'Kaiti SC','STKaiti',serif;color:#3a3226">少讲进度，多讲偏差。</div>
 </div>
-<div style="background:rgba(255,255,255,.7);border:1.5px dashed #c9b991;border-radius:6px;padding:8px 12px;font-family:'SF Mono',Menlo,monospace;font-size:12px;color:#3a3226">$ bun run build</div>
+<div style="background:rgba(255,255,255,.7);border:1.5px dashed #c9b991;border-radius:6px;padding:8px 12px;font-family:'SF Mono',Menlo,monospace;font-size:14px;color:#3a3226">$ bun run build</div>
 <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:24px">
-<span style="font-size:11px;color:#8a7a5c;letter-spacing:1px">thinkly fast · 随手记</span>
+<span style="font-size:12px;color:#6e5f44;letter-spacing:1px">thinkly fast · 随手记</span>
 <div aria-hidden="true" style="width:62px;height:62px;border:1.8px solid #b5462f;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#b5462f;transform:rotate(-12deg);box-sizing:border-box;outline:1px solid #b5462f;outline-offset:-6px">
 <span style="font-size:8px;letter-spacing:1.5px">THINKLY</span>
 <span style="font-size:13px;font-weight:700;line-height:1.15">11·03</span>
@@ -83,92 +97,94 @@ button{font-family:inherit}
 </div>
 </div>
 
-<div style="position:absolute;left:16px;right:16px;bottom:12px;display:flex;align-items:center;justify-content:space-between;pointer-events:none">
-<span style="pointer-events:auto;background:#ffffff;border:1px solid #e2e4e8;border-radius:6px;padding:4px 10px;font-size:12px;color:#526071;font-variant-numeric:tabular-nums;box-shadow:0 1px 2px rgba(0,0,0,.04)">1,632 × 2,080 px · 2× 高清</span>
-<div style="pointer-events:auto;display:flex;align-items:center;gap:2px;background:#ffffff;border:1px solid #e2e4e8;border-radius:8px;padding:2px;box-shadow:0 1px 2px rgba(0,0,0,.04)">
-<button class="ib" style="width:24px;height:24px" aria-label="缩小">−</button>
-<button style="border:0;background:transparent;font:inherit;font-size:12px;color:#20242c;padding:0 8px;height:24px;cursor:pointer;font-variant-numeric:tabular-nums">适应</button>
-<button class="ib" style="width:24px;height:24px" aria-label="放大">+</button>
+<div style="position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:#ffffff;border:1px solid #dcdfe5;border-radius:10px;padding:4px 6px 4px 12px;box-shadow:0 8px 24px rgba(15,23,42,.08),0 1px 3px rgba(15,23,42,.04)">
+<span style="font-size:14px;color:#526071;font-variant-numeric:tabular-nums">1,632 × 2,080 px · 2×</span>
+<div aria-hidden="true" style="width:1px;height:16px;background:#e2e4e8"></div>
+<div style="display:flex;align-items:center;gap:2px">
+<button class="ib" aria-label="缩小">−</button>
+<button style="border:0;background:transparent;font:inherit;font-size:14px;font-weight:500;color:#20242c;padding:0 8px;height:28px;border-radius:6px;cursor:pointer;font-variant-numeric:tabular-nums">适应</button>
+<button class="ib" aria-label="放大">+</button>
 </div>
 </div>
 </main>
 
-<aside aria-label="导出选项" style="width:300px;flex:none;background:#ffffff;border-left:1px solid #e6e6e6;box-sizing:border-box;padding:16px;display:flex;flex-direction:column;gap:18px;min-height:0;overflow:auto">
+<aside aria-label="导出选项" style="width:320px;flex:none;background:#ffffff;border-left:1px solid #e2e4e8;box-sizing:border-box;display:flex;flex-direction:column;min-height:0">
+<div style="flex:1;min-height:0;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:18px">
+
 <section style="display:flex;flex-direction:column;gap:8px">
-<div style="font-size:12px;line-height:16px;color:#526071;font-weight:460">格式</div>
-<div style="display:flex;padding:2px;gap:2px;background:#f1f1f1;border-radius:8px">
-<button class="seg" aria-pressed="true" style="font-size:12px;font-weight:500;background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0">PNG</button>
-<button class="seg" style="font-size:12px;font-weight:500">PDF</button>
-<button class="seg" style="font-size:12px;font-weight:500">Word</button>
-<button class="seg" style="font-size:12px;font-weight:500">MD</button>
-<button class="seg" style="font-size:12px;font-weight:500">HTML</button>
+<div style="font-size:14px;line-height:20px;color:#20242c;font-weight:560">导出格式</div>
+<div style="display:flex;padding:3px;gap:2px;background:#f1f1f1;border:1px solid #e6e8ec;border-radius:8px">
+<button class="seg on" aria-pressed="true">PNG</button>
+<button class="seg">PDF</button>
+<button class="seg">Word</button>
+<button class="seg">MD</button>
+<button class="seg">HTML</button>
 </div>
 </section>
 
 <section style="display:flex;flex-direction:column;gap:8px">
-<div style="font-size:12px;line-height:16px;color:#526071;font-weight:460">范围</div>
-<div style="display:flex;padding:2px;background:#f1f1f1;border-radius:8px">
-<button class="seg" aria-pressed="true" style="background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0">整篇</button>
+<div style="font-size:14px;line-height:20px;color:#20242c;font-weight:560">导出范围</div>
+<div style="display:flex;padding:3px;gap:2px;background:#f1f1f1;border:1px solid #e6e8ec;border-radius:8px">
+<button class="seg on" aria-pressed="true">整篇笔记</button>
 <button class="seg">选中导出</button>
 </div>
 </section>
 
 <section style="display:flex;flex-direction:column;gap:8px">
-<div style="font-size:12px;line-height:16px;color:#526071;font-weight:460">主题</div>
-<div style="display:flex;padding:2px;background:#f1f1f1;border-radius:8px">
-<button class="seg" aria-pressed="true" style="background:#ffffff;color:#20242c;box-shadow:0 1px 2px rgba(0,0,0,.08)">浅色 · 4</button>
+<div style="font-size:14px;line-height:20px;color:#20242c;font-weight:560">纸面主题</div>
+<div style="display:flex;padding:3px;gap:2px;background:#f1f1f1;border:1px solid #e6e8ec;border-radius:8px">
+<button class="seg on" aria-pressed="true">浅色 · 4</button>
 <button class="seg">深色 · 4</button>
 </div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
 <button class="card-btn">
-<span style="width:24px;height:18px;border-radius:4px;background:#ffffff;border:1px solid #d8d2c5;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;flex:none"><span style="width:16px;height:12px;background:#ffffff;border-top:2px solid #111111;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></span></span>
-<span style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">黑白素纸</span>
+<span style="width:28px;height:22px;border-radius:4px;background:#ffffff;border:1px solid #d8d2c5;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;flex:none"><span style="width:18px;height:14px;background:#ffffff;border-top:2px solid #111111;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></span></span>
+<span style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">素笺</span>
 </button>
 <button class="card-btn on">
-<span style="width:24px;height:18px;border-radius:4px;background:#f6f0e1;border:1px solid #d8d2c5;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;flex:none"><span style="width:16px;height:12px;background:#fff6b8;border-top:2px solid #b5462f;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)"></span></span>
-<span style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">手账便签</span>
-<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>
+<span style="width:28px;height:22px;border-radius:4px;background:#f6f0e1;border:1px solid #d8d2c5;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;flex:none"><span style="width:18px;height:14px;background:#fff6b8;border-top:2px solid #b5462f;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)"></span></span>
+<span style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">手稿</span>
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>
 </button>
 <button class="card-btn">
-<span style="width:24px;height:18px;border-radius:4px;background:#f3eee3;border:1px solid #d8d2c5;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;flex:none"><span style="width:16px;height:12px;background:#f3eee3;border-top:2px solid #ff5aa8;box-shadow:inset 0 0 0 1px rgba(29,63,168,.25)"></span></span>
-<span style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">野性孔版</span>
+<span style="width:28px;height:22px;border-radius:4px;background:#ece4d2;border:1px solid #d8d2c5;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;flex:none"><span style="width:18px;height:14px;background:#e3d9c3;border-top:2px solid #9c2b1f;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></span></span>
+<span style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">铅印</span>
 </button>
 <button class="card-btn">
-<span style="width:24px;height:18px;border-radius:4px;background:#ece4d2;border:1px solid #d8d2c5;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;flex:none"><span style="width:16px;height:12px;background:#e3d9c3;border-top:2px solid #9c2b1f;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)"></span></span>
-<span style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">铅字号外</span>
+<span style="width:28px;height:22px;border-radius:4px;background:#f3eee3;border:1px solid #d8d2c5;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;flex:none"><span style="width:18px;height:14px;background:#f3eee3;border-top:2px solid #ff5aa8;box-shadow:inset 0 0 0 1px rgba(29,63,168,.25)"></span></span>
+<span style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">孔版</span>
 </button>
 </div>
 </section>
 
 <section style="display:flex;flex-direction:column;gap:8px">
-<div style="font-size:12px;line-height:16px;color:#526071;font-weight:460">宽度</div>
-<div style="height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;border-radius:8px;background:#fafafa;color:#526071;font-size:13px">
-<span>标准 · 720</span>
-<span style="font-size:12px;font-variant-numeric:tabular-nums">816 px 纸宽</span>
+<div style="font-size:14px;line-height:20px;color:#20242c;font-weight:560">版面元素</div>
+<div style="display:flex;flex-direction:column;background:#f6f7f9;border:1px solid #e6e8ec;border-radius:10px;padding:2px 12px">
+<div style="display:flex;align-items:center;justify-content:space-between;height:40px">
+<span style="font-size:14px;color:#20242c">显示标题</span>
+<button class="sw" role="switch" aria-checked="true" aria-label="显示标题"><span></span></button>
 </div>
-</section>
-
-<section style="display:flex;flex-direction:column;gap:4px">
-<div style="font-size:12px;line-height:16px;color:#526071;font-weight:460;margin-bottom:2px">内容</div>
-<div style="display:flex;align-items:center;justify-content:space-between;height:32px">
-<span style="font-size:13px">标题</span>
-<button class="sw" role="switch" aria-checked="true" aria-label="标题"><span></span></button>
-</div>
-<div style="display:flex;align-items:center;justify-content:space-between;height:32px">
-<span style="font-size:13px">底部水印</span>
+<div aria-hidden="true" style="height:1px;background:#e6e8ec"></div>
+<div style="display:flex;align-items:center;justify-content:space-between;height:40px">
+<span style="font-size:14px;color:#20242c">底部水印</span>
 <button class="sw" role="switch" aria-checked="true" aria-label="底部水印"><span></span></button>
 </div>
+</div>
 </section>
 
-<div style="flex:1"></div>
-
-<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:#f4f7fd;font-size:12px;color:#526071">
-<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">已保存 周会-11-03.png</span>
-<button style="border:0;background:transparent;font:inherit;font-size:12px;font-weight:500;color:#547dd0;padding:0;cursor:pointer;white-space:nowrap">在访达中显示</button>
 </div>
 
-<button class="btn btn-1" style="width:100%"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>保存 PNG</button>
-<button class="btn btn-2" style="width:100%"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>复制</button>
+<div style="flex:none;padding:14px 16px;border-top:1px solid #e6e8ec;background:#ffffff;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:8px;background:#eef3fc;border:1px solid #d4e2fa;font-size:14px;color:#20242c">
+<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">已保存 周会-11-03.png</span>
+<button style="border:0;background:transparent;font:inherit;font-size:14px;font-weight:500;color:#3d63b0;padding:0;cursor:pointer;white-space:nowrap">在访达中显示</button>
+</div>
+
+<div style="display:flex;gap:8px">
+<button class="btn btn-1" style="flex:1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>保存 PNG</button>
+<button class="btn btn-2" style="padding:0 16px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>复制</button>
+</div>
+</div>
 </aside>
 
 </div>
