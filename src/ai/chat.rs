@@ -50,7 +50,7 @@ struct Holder(Entity<AiChat>);
 impl Global for Holder {}
 
 fn store_path() -> Option<std::path::PathBuf> {
-    std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("Library/Application Support/thinkly-fast/ai-chats.json"))
+    Some(crate::files::app_data_dir("thinkly-fast").join("ai-chats.json"))
 }
 
 fn chat(window: &mut Window, cx: &mut App) -> Entity<AiChat> {

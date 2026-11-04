@@ -55,7 +55,7 @@ impl AnnotateState {
 struct AnnotationStore { notes: BTreeMap<String, Vec<Comment>> }
 
 fn store_path() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Application Support/Thinkly Fast/annotations.json"))
+    Some(crate::files::app_data_dir("Thinkly Fast").join("annotations.json"))
 }
 
 fn load_for(path: &Path) -> Vec<Comment> {

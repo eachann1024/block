@@ -43,6 +43,16 @@ pub(crate) fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-7", SelectTab7, Some("Workspace")), KeyBinding::new("cmd-8", SelectTab8, Some("Workspace")),
         KeyBinding::new("cmd-9", SelectTab9, Some("Workspace")),
     ]);
+    #[cfg(not(target_os = "macos"))]
+    cx.bind_keys([
+        KeyBinding::new("ctrl-t", NewTab, Some("Workspace")), KeyBinding::new("ctrl-w", CloseTab, Some("Workspace")),
+        KeyBinding::new("ctrl-\\", ToggleSidebar, Some("Workspace")),
+        KeyBinding::new("ctrl-1", SelectTab1, Some("Workspace")), KeyBinding::new("ctrl-2", SelectTab2, Some("Workspace")),
+        KeyBinding::new("ctrl-3", SelectTab3, Some("Workspace")), KeyBinding::new("ctrl-4", SelectTab4, Some("Workspace")),
+        KeyBinding::new("ctrl-5", SelectTab5, Some("Workspace")), KeyBinding::new("ctrl-6", SelectTab6, Some("Workspace")),
+        KeyBinding::new("ctrl-7", SelectTab7, Some("Workspace")), KeyBinding::new("ctrl-8", SelectTab8, Some("Workspace")),
+        KeyBinding::new("ctrl-9", SelectTab9, Some("Workspace")),
+    ]);
 }
 
 impl Workspace {
@@ -86,11 +96,9 @@ impl Workspace {
         let Some(idx) = self.tabs.iter().position(|p| p == &path) else { return };
         if self.tabs.len() > 1 { record_tab_close(idx, display_name(&path, false), cx); }
         self.tabs.remove(idx);
-        let was_active = self.selected.as_ref() == Some(&path)
-            || self.editor.read(cx).current_path() == Some(path.as_path());
+        let was_active = self.selected.as_ref() == Some(&path) || self.editor.read(cx).current_path() == Some(path.as_path());
         if was_active {
-            if !self.tabs.is_empty() {
-                let next_path = self.tabs[idx.min(self.tabs.len() - 1)].clone();
+            if let Some(next_path) = self.tabs.get(idx.min(self.tabs.len().saturating_sub(1))).cloned() {
                 self.selected = Some(next_path.clone());
                 self.tree.update(cx, |tree, cx| tree.select(Some(next_path.clone()), cx));
                 self.editor.update(cx, |editor, cx| { editor.open(next_path, cx); editor.close_session(&path, cx); });
@@ -121,7 +129,6 @@ impl Workspace {
         let target = if last_if_nine { self.tabs.len() - 1 } else if index < self.tabs.len() { index } else { return };
         self.open_file(self.tabs[target].clone(), cx);
     }
-
     pub(super) fn reconcile_tabs_on_rename(&mut self, from: &Path, to: &Path, cx: &mut Context<Self>) {
         let mut updated = Vec::with_capacity(self.tabs.len());
         for tab in self.tabs.drain(..) {
@@ -129,16 +136,13 @@ impl Workspace {
             if !updated.contains(&next) { updated.push(next); }
         }
         self.tabs = updated;
-        if let Some(sel) = &self.selected {
-            if let Some(rebased) = crate::files::ops::rebase(sel, from, to) {
-                self.selected = Some(rebased.clone());
-                self.tree.update(cx, |tree, cx| tree.select(Some(rebased), cx));
-            }
+        if let Some(rebased) = self.selected.as_ref().and_then(|sel| crate::files::ops::rebase(sel, from, to)) {
+            self.selected = Some(rebased.clone());
+            self.tree.update(cx, |tree, cx| tree.select(Some(rebased), cx));
         }
         self.editor.update(cx, |editor, cx| editor.rename_session(from, to, cx));
         self.save_tabs_state(cx);
     }
-
     pub(super) fn remove_tabs_under(&mut self, prefix: &Path, cx: &mut Context<Self>) -> Option<PathBuf> {
         clear_tab_menu();
         let active_idx = self.selected.as_ref().and_then(|s| self.tabs.iter().position(|p| p == s));
@@ -148,15 +152,9 @@ impl Workspace {
         self.tabs.retain(|t| !t.starts_with(prefix));
         self.editor.update(cx, |editor, cx| for tab in &removed { editor.close_session(tab, cx); });
         self.save_tabs_state(cx);
-        if !active_removed {
-            self.selected.clone()
-        } else if self.tabs.is_empty() {
-            self.selected = None;
-            self.tree.update(cx, |tree, cx| tree.select(None, cx));
-            None
-        } else {
-            Some(self.tabs[active_idx.unwrap_or(0).min(self.tabs.len() - 1)].clone())
-        }
+        if !active_removed { self.selected.clone() }
+        else if self.tabs.is_empty() { self.selected = None; self.tree.update(cx, |tree, cx| tree.select(None, cx)); None }
+        else { Some(self.tabs[active_idx.unwrap_or(0).min(self.tabs.len() - 1)].clone()) }
     }
 
     pub(super) fn dirty_mask(&self, cx: &Context<Self>) -> u64 {
@@ -221,7 +219,9 @@ impl Workspace {
         }
         div().id("titlebar").h(px(TITLEBAR_HEIGHT)).w_full().flex_none().flex().items_center()
             .bg(theme.shell).border_b_1().border_color(theme.sidebar_border)
-            .child(left).child(right).children(self.render_tab_context_menu(cx))
+            .child(left).child(right)
+            .child(self.render_titlebar_tail(tab_count > 0, cx))
+            .children(self.render_tab_context_menu(cx))
     }
 
     fn render_tab_pill(
