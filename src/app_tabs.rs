@@ -202,24 +202,22 @@ impl Workspace {
                 strip = strip.child(render_closing_ghost(g));
             }
             right = right.child(strip);
-            let plus = if can_create { Some({
+            if multi && can_create {
                 let new_group: SharedString = "tab-new-btn".into();
-                div().id("tab-new").group(new_group.clone()).size(px(26.)).flex_none()
-                    .flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).cursor(CursorStyle::PointingHand)
-                    .hover(|s| s.bg(theme.hover))
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
-                        cx.stop_propagation();
-                        this.new_item(false, window, cx);
-                    }))
-                    .child(hover_tinted_icon(new_group, Icon::Plus, 14., theme.text_secondary, theme.text, theme.icon_fill))
-            }) } else { None };
-            let (plus_left, plus_right) = if multi { (plus, None) } else { (None, plus) };
-            right = right.children(plus_left);
+                right = right.child(
+                    div().id("tab-new").group(new_group.clone()).size(px(26.)).flex_none()
+                        .flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).cursor(CursorStyle::PointingHand)
+                        .hover(|s| s.bg(theme.hover))
+                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.new_item(false, window, cx);
+                        }))
+                        .child(hover_tinted_icon(new_group, Icon::Plus, 14., theme.text_secondary, theme.text, theme.icon_fill))
+                );
+            }
             right = right.child(div().id("titlebar-drag-spacer").flex_1().min_w(px(16.)).h_full()
                 .window_control_area(WindowControlArea::Drag)
                 .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); }));
-            right = right.children(self.annotation_actions(cx));
-            right = right.children(plus_right);
         }
         div().id("titlebar").h(px(TITLEBAR_HEIGHT)).w_full().flex_none().flex().items_center()
             .bg(theme.shell).border_b_1().border_color(theme.sidebar_border)

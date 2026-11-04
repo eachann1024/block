@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>顶栏右上角按钮 C · 发送动作归位批注栏头部 + 顶栏右侧恒定仅 ⋯ 1 键</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+button:disabled{cursor:default;opacity:.5}
+.ib{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;padding:0;cursor:pointer;flex:none;box-sizing:border-box}
+.top-act{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;padding:0;cursor:pointer;flex:none;box-sizing:border-box}
+.row{font:inherit;width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 10px;border:0;border-radius:8px;background:transparent;text-align:left;cursor:pointer;box-sizing:border-box}
+.gi{width:26px;height:26px;border:0;border-radius:6px;background:transparent;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;flex:none}
+.cbtn{width:30px;height:30px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;flex:none;box-sizing:border-box}
+.mitem{font:inherit;width:100%;height:34px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 10px;border:0;border-radius:8px;background:transparent;text-align:left;cursor:pointer;box-sizing:border-box}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin .9s linear infinite}
+@keyframes shimmer{0%{opacity:.45}50%{opacity:.9}100%{opacity:.45}}
+.sk{height:12px;border-radius:4px;animation:shimmer 1.2s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</helmet>
+<div style="width:100%;min-height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:{{shellBg}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:{{textPrimary}};font-size:14px;line-height:20px;overflow:hidden;-webkit-font-smoothing:antialiased">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;border-bottom:1px solid {{sidebarBorder}};box-sizing:border-box;background:{{shellBg}}">
+<div style="width:260px;flex:none;height:100%;box-sizing:border-box;display:flex;align-items:center;gap:4px;padding:0 10px 0 16px;border-right:1px solid {{sidebarBorder}}">
+<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none;margin-right:auto"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+</sc-if>
+<button type="button" class="ib" aria-label="收起侧栏" style="color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{iconFill}}"></path>
+<rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+<path d="M15.75 9.75L13.25 12L15.75 14.25" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+
+<div style="flex:1;min-width:0;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 10px;box-sizing:border-box;gap:8px">
+<nav aria-label="已打开标签页" style="min-width:0;height:100%;display:flex;align-items:center;gap:4px;overflow:hidden">
+<sc-if value="{{isSingleTab}}" hint-placeholder-val="{{true}}">
+<div style="height:28px;padding:0 10px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;color:{{textPrimary}};font-weight:460">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{textSecondary}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span style="white-space:nowrap">第 44 周产品周报</span>
+</div>
+</sc-if>
+<sc-if value="{{isMultiTab}}" hint-placeholder-val="{{false}}">
+<button type="button" style="height:28px;padding:0 8px 0 10px;border-radius:8px;border:1px solid {{accent}};background:{{selectedBg}};color:{{textPrimary}};font-weight:460;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M6 3.75h8l4 4V20.25H6z" fill="{{iconFill}}" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span style="white-space:nowrap">第 44 周产品周报</span>
+</button>
+<button type="button" style="height:28px;padding:0 10px;border-radius:8px;border:0;background:transparent;color:{{textSecondary}};font-weight:460;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span style="white-space:nowrap">视觉规范</span>
+</button>
+</sc-if>
+</nav>
+
+<div style="display:flex;align-items:center;gap:6px;flex:none">
+<button type="button" class="ib" onClick="{{toggleMenu}}" aria-label="页面更多操作" style="background:{{moreBg}};color:{{moreCol}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<circle cx="5.75" cy="12" r="1.6" fill="currentColor"></circle>
+<circle cx="12" cy="12" r="1.6" fill="{{accent}}"></circle>
+<circle cx="18.25" cy="12" r="1.6" fill="currentColor"></circle>
+</svg>
+</button>
+</div>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;position:relative">
+<aside aria-label="文件列表" style="width:260px;flex:none;background:{{sidebarBg}};border-right:1px solid {{sidebarBorder}};box-sizing:border-box;display:flex;flex-direction:column;min-height:0">
+<div style="padding:10px 10px 8px;display:flex;align-items:center;gap:6px">
+<button type="button" style="flex:1;min-width:0;height:32px;padding:0 10px;border-radius:8px;background:{{cardBg}};color:{{textSecondary}};border:1px solid {{btnBorder}};display:flex;align-items:center;gap:6px;cursor:pointer;box-sizing:border-box">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><circle cx="10.5" cy="10.5" r="6.5" fill="{{iconFill}}"></circle><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.5"></circle><path d="M15.25 15.25L20 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+<span style="flex:1;text-align:left">搜索</span>
+<span style="font-family:'JetBrains Mono',monospace;color:{{textSecondary}}">⇧⌘K</span>
+</button>
+<button type="button" class="top-act" onClick="{{addDraft}}" aria-label="新建笔记" style="background:{{cardBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.75 3.75H13.5L18.75 9V12.5A5.5 5.5 0 0 0 12.5 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}"></path><path d="M12.25 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75H13.5L18.75 9V12.25M13.5 3.75V8A1 1 0 0 0 14.5 9H18.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M17.25 14.25V20.25M14.25 17.25H20.25" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path></svg>
+</button>
+</div>
+
+<div style="flex:1;min-height:0;overflow:auto;padding:2px 8px 12px;display:flex;flex-direction:column;gap:2px">
+<button type="button" class="row" style="background:{{selectedBg}};color:{{textPrimary}};box-shadow:inset 0 0 0 1px {{accent}};font-weight:460">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+<span>第 44 周产品周报</span>
+</button>
+<button type="button" class="row" style="color:{{textSecondary}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+<span>视觉规范</span>
+</button>
+<button type="button" class="row" style="color:{{textSecondary}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+<span>访谈记录</span>
+</button>
+</div>
+
+<div style="height:44px;flex:none;padding:0 10px;border-top:1px solid {{sidebarBorder}};display:flex;align-items:center;justify-content:space-between;box-sizing:border-box">
+<span style="color:{{textSecondary}};font-weight:460">本地笔记</span>
+<button type="button" class="ib" onClick="{{toggleTheme}}" aria-label="切换浅色或深色主题" style="color:{{textSecondary}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="{{iconFill}}"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2"></path></svg>
+</button>
+</div>
+</aside>
+
+<main style="flex:1;min-width:0;background:{{editorBg}};display:flex;justify-content:center;gap:36px;padding:48px 32px;box-sizing:border-box;overflow:auto;position:relative">
+<sc-if value="{{menuOpen}}" hint-placeholder-val="{{false}}">
+<div role="menu" aria-label="页面更多操作" style="position:absolute;top:8px;right:12px;width:216px;padding:5px;border-radius:14px;background:{{cardBg}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:2px;box-sizing:border-box;z-index:10">
+<button type="button" class="mitem" onClick="{{closeMenu}}" style="color:{{textPrimary}}">
+<span>生成图片…</span>
+<span style="font-family:'JetBrains Mono',monospace;color:{{textSecondary}}">⇧⌘E</span>
+</button>
+<button type="button" class="mitem" onClick="{{closeMenu}}" style="color:{{textPrimary}}">
+<span>复制 Markdown</span>
+<span style="font-family:'JetBrains Mono',monospace;color:{{textSecondary}}">⌥⌘C</span>
+</button>
+<div style="height:1px;background:{{borderCol}};margin:3px 6px"></div>
+<button type="button" class="mitem" onClick="{{resetDemo}}" style="color:{{textPrimary}}">
+<span>重置批注演示</span>
+<span style="font-family:'JetBrains Mono',monospace;color:{{textSecondary}}">↺</span>
+</button>
+</div>
+</sc-if>
+
+<article style="width:620px;flex:none;display:flex;flex-direction:column;gap:18px;font-size:16px;line-height:28px;color:{{textPrimary}}">
+<h1 style="margin:0 0 4px;font-size:28px;line-height:36px;font-weight:600;color:{{textPrimary}}">第 44 周产品周报</h1>
+<p style="margin:0">本周重点放在编辑器体验上。<span style="background:{{markBg}};color:{{markFg}};padding:2px 4px;border-radius:4px">{{markText}}</span>，剩余失败集中在超长表格。</p>
+<p style="margin:0">将批量发送按钮从窗口顶栏移至右侧批注栏顶部后，顶栏右上角恒定仅保留 1 个更多按钮，批注栏自身具备完整的计数与一键发送闭环。</p>
+<p style="margin:0;color:{{textSecondary}}">下周计划：保持顶栏极简安静，所有上下文操作贴近其所属内容容器。</p>
+</article>
+
+<aside aria-label="批注栏" style="width:300px;flex:none;display:flex;flex-direction:column;gap:10px">
+<sc-if value="{{hasNotes}}" hint-placeholder-val="{{true}}">
+<div style="padding:6px 10px 6px 12px;border-radius:10px;background:{{cardBg}};border:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;gap:8px;box-sizing:border-box">
+<div style="display:flex;align-items:center;gap:6px;color:{{textSecondary}}">
+<span style="color:{{textPrimary}};font-weight:500">批注</span>
+<span style="font-family:'JetBrains Mono',monospace;color:{{textSecondary}}">{{draftCount}}</span>
+</div>
+<button type="button" onClick="{{sendAll}}" disabled="{{sendDisabled}}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{accent}};background:{{selectedBg}};color:{{pillText}};font-weight:460;display:inline-flex;align-items:center;gap:5px;cursor:pointer;box-sizing:border-box">
+<sc-if value="{{notGenerating}}" hint-placeholder-val="{{true}}">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6.5 10.5L12 5l5.5 5.5"></path></svg>
+</sc-if>
+<sc-if value="{{generating}}" hint-placeholder-val="{{false}}">
+<svg class="spin" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="{{accent}}" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M7 1.5a5.5 5.5 0 1 1-5.5 5.5"></path></svg>
+</sc-if>
+<span>{{sendText}}</span>
+</button>
+</div>
+</sc-if>
+
+<div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:10px">
+<sc-if value="{{isDraft}}" hint-placeholder-val="{{true}}">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:8px;height:8px;border-radius:4px;background:#f5c84c;flex:none"></span>
+<span style="flex:1;color:{{textPrimary}}">补上导出样本量</span>
+<button type="button" class="gi" aria-label="删除批注" onClick="{{clearNotes}}" style="color:{{textSecondary}}">
+<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4h9M5.5 4V2.5h3V4M3.8 4l.6 7.5h5.2l.6-7.5"></path></svg>
+</button>
+</div>
+</sc-if>
+
+<sc-if value="{{generating}}" hint-placeholder-val="{{false}}">
+<div style="display:flex;align-items:center;gap:8px;color:{{textSecondary}}">
+<svg class="spin" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M7 1.5a5.5 5.5 0 1 1-5.5 5.5"></path></svg>
+<span style="flex:1">补上导出样本量</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:6px;background:{{shellBg}}">
+<div class="sk" style="width:100%;background:{{borderCol}}"></div>
+<div class="sk" style="width:72%;background:{{borderCol}}"></div>
+</div>
+</sc-if>
+
+<sc-if value="{{isReview}}" hint-placeholder-val="{{false}}">
+<div style="padding:10px;border-radius:6px;background:{{selectedBg}};color:{{pillText}};line-height:22px">导出 PDF 成功率提升到 98%（基于 1,240 次导出样本）</div>
+<div style="display:flex;align-items:center;gap:6px">
+<button type="button" class="cbtn" aria-label="同意替换" onClick="{{acceptNote}}" style="background:{{accent}};border:1px solid {{accent}};color:#ffffff">
+<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5l3 3 6-7"></path></svg>
+</button>
+<button type="button" class="cbtn" aria-label="重新生成" onClick="{{sendAll}}" style="background:{{cardBg}};border:1px solid {{btnBorder}};color:{{textSecondary}}">
+<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.5 7a4.5 4.5 0 1 1-1.3-3.2M11.5 2v2.5H9"></path></svg>
+</button>
+<span style="flex:1"></span>
+<button type="button" class="gi" aria-label="重置演示" onClick="{{resetDemo}}" style="color:{{textSecondary}}">
+<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4h9M5.5 4V2.5h3V4M3.8 4l.6 7.5h5.2l.6-7.5"></path></svg>
+</button>
+</div>
+</sc-if>
+</div>
+</aside>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"tabMode":{"editor":"enum","options":["single","multi"],"default":"single"},"platform":{"editor":"enum","options":["macos","windows"],"default":"macos"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      themeOverride: null,
+      status: 'draft',
+      drafts: 1,
+      menuOpen: false
+    };
+    this.timer = null;
+  }
+  componentWillUnmount() {
+    if (this.timer) clearTimeout(this.timer);
+  }
+  renderVals() {
+    const st = this.state || {};
+    const props = this.props || {};
+    const mode = st.themeOverride ?? (props.theme ?? 'dark');
+    const dark = mode === 'dark';
+    const tabMode = props.tabMode ?? 'single';
+    const status = st.status ?? 'draft';
+    const drafts = st.drafts ?? 1;
+
+    const shellBg = dark ? '#343434' : '#f1f1f1';
+    const sidebarBg = dark ? '#222222' : '#fafafa';
+    const editorBg = dark ? '#181818' : '#ffffff';
+    const cardBg = dark ? '#222222' : '#ffffff';
+    const textPrimary = dark ? '#ececec' : '#20242c';
+    const textSecondary = dark ? '#b4b4b4' : '#526071';
+    const accent = dark ? '#779de8' : '#547dd0';
+    const iconFill = dark ? '#31456a' : '#c9d8f3';
+    const selectedBg = dark ? '#26344d' : '#e5edfc';
+    const borderCol = dark ? '#2e2e2e' : '#e4e6ea';
+    const sidebarBorder = dark ? '#333333' : '#e6e6e6';
+    const btnBorder = dark ? '#444444' : '#dcdcdc';
+
+    const generating = status === 'generating';
+    const isDraft = status === 'draft';
+    const isReview = status === 'review' || status === 'accepted';
+    const hasNotes = drafts > 0 || generating || isReview;
+    const pillText = dark ? '#e6eefc' : '#184f95';
+
+    return {
+      shellBg,
+      sidebarBg,
+      editorBg,
+      cardBg,
+      textPrimary,
+      textSecondary,
+      accent,
+      iconFill,
+      selectedBg,
+      borderCol,
+      sidebarBorder,
+      btnBorder,
+      pillText,
+
+      isMac: (props.platform ?? 'macos') === 'macos',
+      isSingleTab: tabMode === 'single',
+      isMultiTab: tabMode === 'multi',
+
+      hasNotes,
+      isDraft,
+      generating,
+      notGenerating: !generating,
+      isReview,
+      sendDisabled: (!isDraft || drafts === 0) || generating,
+      sendText: generating ? '生成中…' : '统一发送',
+      draftCount: String(drafts),
+
+      menuOpen: Boolean(st.menuOpen),
+      moreBg: st.menuOpen ? selectedBg : 'transparent',
+      moreCol: st.menuOpen ? textPrimary : textSecondary,
+
+      markBg: status === 'accepted' ? selectedBg : (dark ? '#473919' : '#fef0d1'),
+      markFg: status === 'accepted' ? pillText : textPrimary,
+      markText: status === 'accepted' ? '导出 PDF 成功率提升到 98%（基于 1,240 次导出样本）' : '导出 PDF 的成功率提升到了 98%',
+
+      toggleTheme: () => this.setState({ themeOverride: dark ? 'light' : 'dark' }),
+      toggleMenu: () => this.setState({ menuOpen: !st.menuOpen }),
+      closeMenu: () => this.setState({ menuOpen: false }),
+      addDraft: () => this.setState({ status: 'draft', drafts: Math.min(9, drafts + 1) }),
+      clearNotes: () => this.setState({ status: 'draft', drafts: 0 }),
+      acceptNote: () => this.setState({ status: 'accepted', drafts: 0 }),
+      resetDemo: () => this.setState({ status: 'draft', drafts: 1, menuOpen: false }),
+      sendAll: () => {
+        if (this.timer) clearTimeout(this.timer);
+        this.setState({ status: 'generating', menuOpen: false });
+        this.timer = setTimeout(() => {
+          this.setState({ status: 'review', drafts: 0 });
+        }, 900);
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>
