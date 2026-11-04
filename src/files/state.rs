@@ -23,6 +23,15 @@ pub enum FontChoice {
     Mono,
 }
 
+#[derive(Serialize, Deserialize, Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LanguageMode {
+    #[default]
+    System,
+    Zh,
+    En,
+}
+
 fn default_color_name() -> String { "default".into() }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -50,6 +59,8 @@ pub struct State {
     pub sidebar_width: Option<f32>,
     #[serde(default)]
     pub theme: ThemeMode,
+    #[serde(default)]
+    pub language: LanguageMode,
     #[serde(default)]
     pub font_family: FontChoice,
     #[serde(default, skip_serializing_if = "Option::is_none")]

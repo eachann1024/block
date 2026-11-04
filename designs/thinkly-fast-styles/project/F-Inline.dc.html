@@ -81,20 +81,20 @@ button,input{font-family:inherit}
 
 <section aria-label="图片缩放" style="display:flex;gap:8px"><div style="width:44px;flex:none"></div>
 <div style="flex:1;min-width:0;max-width:720px">
-<p class="cap">图片 · 选中后四角拖拽缩放，浮条显示比例；⌘= / ⌘− 步进 10%</p>
-<div style="position:relative;width:62%;">
-<div role="img" aria-label="[图片：站台照片]" style="height:220px;border-radius:6px;background:#e9edf3;display:flex;align-items:center;justify-content:center;color:#526071;font-size:13px;box-shadow:0 0 0 2px #547dd0">[图片：站台照片]</div>
-<span class="h" aria-hidden="true" style="top:-5px;left:-5px"></span>
-<span class="h" aria-hidden="true" style="top:-5px;right:-5px"></span>
-<span class="h" aria-hidden="true" style="bottom:-5px;left:-5px"></span>
-<span class="h" aria-hidden="true" style="bottom:-5px;right:-5px"></span>
-<div role="toolbar" aria-label="图片尺寸" class="pill" style="position:absolute;top:10px;right:10px;padding:3px">
-<button class="ib" aria-label="缩小"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"></path></svg></button>
-<span style="min-width:40px;text-align:center;font-size:12px;color:#e8eaee;font-variant-numeric:tabular-nums">62%</span>
-<button class="ib" aria-label="放大"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+<p class="cap">图片 · 选中后顶部居中弹出 7 项胶囊工具栏（批注 / 表情 / 左中右对齐 / 裁剪 / 更多菜单）</p>
+<div style="position:relative;padding-top:46px;width:68%">
+<div role="toolbar" aria-label="图片操作工具栏" class="pill" style="position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:5;padding:4px 6px">
+<button class="tb" aria-label="添加评论"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4a8 8 0 0 1 8 8 8 8 0 0 1-8 8H5.5a1.5 1.5 0 0 1-1.5-1.5V12a8 8 0 0 1 8-8z"></path></svg></button>
+<button class="tb" aria-label="添加表情回应"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-6-7.75"></path><path d="M9 14.5c.8 1 1.8 1.5 3 1.5s2.2-.5 3-1.5"></path><circle cx="9.2" cy="10.2" r="1" fill="currentColor" stroke="none"></circle><circle cx="14.8" cy="10.2" r="1" fill="currentColor" stroke="none"></circle><path d="M19 3.5v4.5M16.75 5.75h4.5"></path></svg></button>
 <span class="sep" aria-hidden="true"></span>
-<button class="ib" aria-label="原始宽度"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5"></path></svg></button>
+<button class="tb on" aria-label="左对齐" aria-pressed="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h16"></path></svg></button>
+<button class="tb" aria-label="居中对齐"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M4 18h16"></path></svg></button>
+<button class="tb" aria-label="右对齐"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M10 12h10M4 18h16"></path></svg></button>
+<span class="sep" aria-hidden="true"></span>
+<button class="tb" aria-label="裁剪图片"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3v12.5a2 2 0 0 0 2 2H21"></path><path d="M3 6.5h12.5a2 2 0 0 1 2 2V15"></path><circle cx="19.5" cy="19.5" r=".9" fill="currentColor" stroke="none"></circle></svg></button>
+<button class="tb" aria-label="更多图片操作" style="background:#3a3e46"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6.5" cy="12" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="17.5" cy="12" r="1.5"></circle></svg></button>
 </div>
+<div role="img" aria-label="[图片：站台照片]" style="height:220px;border-radius:10px;background:#e9edf3;display:flex;align-items:center;justify-content:center;color:#526071;font-size:14px;box-shadow:0 0 0 2px #2b6be6">[图片：站台照片]</div>
 </div>
 </div></section>
 

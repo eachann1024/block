@@ -2,7 +2,7 @@
 use std::{cell::RefCell, collections::HashMap};
 use gpui::{BoxShadow, Bounds, Context, CursorStyle, Entity, MouseButton, Pixels, Point, Window,
     div, point, prelude::*, px, rgb, rgba};
-use crate::{icons::{Icon, IconColors, icon}, theme::is_dark};
+use crate::{icons::{Icon, IconColors, icon}, theme::{is_dark, tr}};
 use super::{format_cmds::{FormatPop, palette::button_preview_colors}, model::{Kind, MarkKind}, view::Editor};
 
 pub(super) const BG: u32 = 0xffffff;
@@ -109,23 +109,23 @@ impl RenderOnce for SelectionToolbar {
         let room = editor.read(cx).list.viewport_bounds().size.width - px(16.);
         gpui::anchored().position(self.anchor).snap_to_window_with_margin(px(8.)).child(
             pill().id("selection-toolbar").max_w(room).flex_wrap().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .child(button(Icon::TbComment, "添加批注", false, false, false, editor.clone(), |this, w, cx| this.start_annotation(w, cx)))
-                .child(button(Icon::TbReaction, "添加表情回应", false, false, false, editor.clone(), |this, w, cx| this.open_reactions(w, cx)))
+                .child(button(Icon::TbComment, tr("添加批注", "Add comment"), false, false, false, editor.clone(), |this, w, cx| this.start_annotation(w, cx)))
+                .child(button(Icon::TbReaction, tr("添加表情回应", "Add reaction"), false, false, false, editor.clone(), |this, w, cx| this.open_reactions(w, cx)))
                 .child(sep())
                 .when(text_blocks, |bar| bar
-                    .child(button(Icon::TbType, "文字类型", false, kinds_open, true, editor.clone(), |this, w, cx| this.toggle_menu(true, w, cx)))
+                    .child(button(Icon::TbType, tr("文字类型", "Text type"), false, kinds_open, true, editor.clone(), |this, w, cx| this.toggle_menu(true, w, cx)))
                     .child(sep()))
-                .child(mark(Icon::TbBold, "粗体", MarkKind::Bold, state.bold))
-                .child(mark(Icon::TbItalic, "斜体", MarkKind::Italic, state.italic))
-                .child(button(Icon::TbUnderline, "下划线", state.underline, false, false, editor.clone(), |this, _, cx| this.underline(cx)))
-                .child(mark(Icon::TbStrike, "删除线", MarkKind::Strike, state.strike))
-                .child(mark(Icon::TbCode, "行内代码", MarkKind::Code, state.code))
+                .child(mark(Icon::TbBold, tr("粗体", "Bold"), MarkKind::Bold, state.bold))
+                .child(mark(Icon::TbItalic, tr("斜体", "Italic"), MarkKind::Italic, state.italic))
+                .child(button(Icon::TbUnderline, tr("下划线", "Underline"), state.underline, false, false, editor.clone(), |this, _, cx| this.underline(cx)))
+                .child(mark(Icon::TbStrike, tr("删除线", "Strikethrough"), MarkKind::Strike, state.strike))
+                .child(mark(Icon::TbCode, tr("行内代码", "Inline code"), MarkKind::Code, state.code))
                 .child(palette_button(state.colored, palette_open, editor.clone()))
                 .child(sep())
-                .child(button(Icon::TbList, "列表", false, lists_open, true, editor.clone(), |this, w, cx| this.toggle_menu(false, w, cx)))
+                .child(button(Icon::TbList, tr("列表", "Lists"), false, lists_open, true, editor.clone(), |this, w, cx| this.toggle_menu(false, w, cx)))
                 .child(sep())
                 .when(!state.grid, |bar| bar
-                    .child(button(Icon::TbLink, "链接 ⌘⇧K", state.link, false, false, editor.clone(), |this, w, cx| this.open_link(w, cx))))
+                    .child(button(Icon::TbLink, tr("链接 ⌘⇧K", "Link ⌘⇧K"), state.link, false, false, editor.clone(), |this, w, cx| this.open_link(w, cx))))
                 .when(state.grid, |bar| bar.child(disabled_button(Icon::TbLink))))
     }
 }
@@ -158,13 +158,13 @@ fn button(g: Icon, tip: &'static str, on: bool, open: bool, dropdown: bool, edit
 
 /// Palette button: hover opens panel (150ms leave closes); click applies/clears last color.
 fn palette_button(on: bool, open: bool, editor: Entity<Editor>) -> gpui::Stateful<gpui::Div> {
-    const TIP: &str = "颜色；点击应用上次颜色";
+    let tip = tr("颜色；点击应用上次颜色", "Color · click to apply last color");
     let tc = ToolbarColors::current();
     let btn_ink = if on { tc.on_ink } else { tc.ink };
     let (text_tint, bar_color) = button_preview_colors();
     let icon_ink = text_tint.unwrap_or(btn_ink);
     let hover_editor = editor.clone();
-    div().id(TIP).relative().h(px(32.)).min_w(px(32.)).flex_none().flex().items_center().justify_center().gap(px(1.)).px(px(6.)).rounded(px(8.))
+    div().id(tip).relative().h(px(32.)).min_w(px(32.)).flex_none().flex().items_center().justify_center().gap(px(1.)).px(px(6.)).rounded(px(8.))
         .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(rgb(tc.hover)))
         .when(open && !on, |b| b.bg(rgb(tc.open_bg)))
         .when(on, |b| b.bg(rgb(tc.on_bg)))
@@ -173,11 +173,11 @@ fn palette_button(on: bool, open: bool, editor: Entity<Editor>) -> gpui::Statefu
             .child(div().absolute().left(px(2.)).right(px(2.)).bottom(px(-2.)).h(px(2.)).rounded(px(1.))
                 .when_some(bar_color, |d, c| d.bg(rgb(c)))))
         .child(glyph(Icon::TbChevron, 10., btn_ink))
-        .child(gpui::canvas(move |bounds, _, _| { BOUNDS.with(|m| { m.borrow_mut().insert(TIP, bounds); }); }, |_, _, _, _| {})
+        .child(gpui::canvas(move |bounds, _, _| { BOUNDS.with(|m| { m.borrow_mut().insert(tip, bounds); }); }, |_, _, _, _| {})
             .absolute().top_0().left_0().size_full())
-        .tooltip(crate::theme::tooltip(TIP))
+        .tooltip(crate::theme::tooltip(tip))
         .on_hover(move |hovered, _, cx| {
-            let anchor = drop_anchor(TIP);
+            let anchor = drop_anchor(tip);
             hover_editor.update(cx, |this, cx| this.hover_palette_zone(*hovered, anchor, cx));
         })
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -196,7 +196,7 @@ impl Editor {
         let current = self.doc.get(self.caret.head.block).map(|b| b.kind);
         self.format = None;
         if !was {
-            let anchor = drop_anchor(if kinds { "文字类型" } else { "列表" }).unwrap_or_else(|| window.mouse_position());
+            let anchor = drop_anchor(if kinds { tr("文字类型", "Text type") } else { tr("列表", "Lists") }).unwrap_or_else(|| window.mouse_position());
             self.format = Some(if kinds { FormatPop::Kinds { anchor, current } } else { FormatPop::Lists { anchor, current } });
         }
         cx.notify();
@@ -212,11 +212,18 @@ impl Editor {
 /// Dropdown body for the text-type (`kinds`) or list menu (`F-Toolbar.dc.html`).
 pub(super) fn menu(editor: Entity<Editor>, kinds: bool, current: Option<Kind>) -> gpui::AnyElement {
     let tc = ToolbarColors::current();
-    let items: &[(Kind, &'static str)] = if kinds {
-        &[(Kind::Paragraph, "Text"), (Kind::H1, "Heading 1"), (Kind::H2, "Heading 2"), (Kind::H3, "Heading 3")]
-    } else {
-        &[(Kind::Bullet, "Bulleted list"), (Kind::Numbered, "Numbered list"), (Kind::Todo, "Checklist")]
-    };
+    let kind_items = [
+        (Kind::Paragraph, tr("正文", "Text")),
+        (Kind::H1, tr("一级标题", "Heading 1")),
+        (Kind::H2, tr("二级标题", "Heading 2")),
+        (Kind::H3, tr("三级标题", "Heading 3")),
+    ];
+    let list_items = [
+        (Kind::Bullet, tr("无序列表", "Bulleted list")),
+        (Kind::Numbered, tr("有序列表", "Numbered list")),
+        (Kind::Todo, tr("待办清单", "Checklist")),
+    ];
+    let items: &[(Kind, &'static str)] = if kinds { &kind_items } else { &list_items };
     let mut column = div().w(px(206.)).flex().flex_col();
     for (i, &(kind, label)) in items.iter().enumerate() {
         let on = current == Some(kind);

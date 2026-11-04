@@ -2,7 +2,7 @@
 //! on the grid border, the bottom add-row bar, the top-right more button, drop line, and menus.
 use gpui::{AnyElement, CursorStyle, Entity, FontWeight, MouseButton, Pixels, Point, Stateful, Div, div, point, prelude::*, px, rgb};
 use super::{menu_style, table_actions::{TableChrome, TableCmd, TableDrag, TableMenu, TableSel, menu_items}, view::Editor};
-use crate::{icons::{Icon, icon}, theme::{Theme, build_tooltip, is_dark}};
+use crate::{icons::{Icon, icon}, theme::{Theme, build_tooltip, is_dark, tr}};
 
 thread_local! {
     static PILL_HOVER: std::cell::Cell<Option<(u64, TableSel)>> = const { std::cell::Cell::new(None) };
@@ -52,7 +52,7 @@ fn add_row_bar(width: Pixels) -> Stateful<Div> {
         .rounded(px(6.)).bg(bg).cursor(CursorStyle::PointingHand)
         .hover(move |s| s.bg(hover_bg))
         .child(icon(Icon::Plus, px(14.), theme.icon_colors(fg.into())))
-        .tooltip(|window, cx| build_tooltip("Add row", window, cx))
+        .tooltip(|window, cx| build_tooltip(tr("添加行", "Add row"), window, cx))
 }
 
 fn more_button(open: bool) -> Stateful<Div> {
@@ -67,7 +67,7 @@ fn more_button(open: bool) -> Stateful<Div> {
         .bg(bg).border_1().border_color(border).cursor(CursorStyle::PointingHand)
         .hover(move |s| s.bg(hover_bg))
         .child(icon(Icon::More, px(16.), theme.icon_colors(fg.into())))
-        .tooltip(|window, cx| build_tooltip("Table options", window, cx))
+        .tooltip(|window, cx| build_tooltip(tr("表格选项", "Table options"), window, cx))
 }
 
 fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool) -> Stateful<Div> {
@@ -122,7 +122,7 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
         let col_editor = editor.clone();
         let hover_editor = editor.clone();
         out.push(floating(pos,
-            capsule(("table-col", c), false, expanded, "Click for column options · drag to move")
+            capsule(("table-col", c), false, expanded, tr("点击查看列操作 · 拖动移动", "Click for column options · drag to move"))
                 .on_hover(move |hovered: &bool, _, cx| {
                     let cur = PILL_HOVER.with(|h| h.get());
                     let next = if *hovered { Some((id, col_sel)) } else if cur == Some((id, col_sel)) { None } else { cur };
@@ -146,7 +146,7 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
         let row_editor = editor.clone();
         let hover_editor = editor.clone();
         out.push(floating(pos,
-            capsule(("table-row", r), true, expanded, "Click for row options · drag to move")
+            capsule(("table-row", r), true, expanded, tr("点击查看行操作 · 拖动移动", "Click for row options · drag to move"))
                 .on_hover(move |hovered: &bool, _, cx| {
                     let cur = PILL_HOVER.with(|h| h.get());
                     let next = if *hovered { Some((id, row_sel)) } else if cur == Some((id, row_sel)) { None } else { cur };

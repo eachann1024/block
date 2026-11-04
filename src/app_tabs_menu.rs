@@ -8,7 +8,7 @@ use gpui::{
     linear_color_stop, linear_gradient, point, prelude::*, px, transparent_black,
 };
 use crate::icons::{Icon, IconColors, icon};
-use crate::theme::Theme;
+use crate::theme::{Theme, tr};
 use super::Workspace;
 
 pub(super) const TAB_ANIM_MS: u64 = 150;
@@ -226,17 +226,17 @@ impl Workspace {
             .bg(theme.menu).border_1().border_color(theme.menu_border).shadow_md().flex().flex_col().text_color(theme.text)
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-            .child(tab_menu_item("tab-menu-close", "关闭", true, cx.listener(move |this, _, _, cx| {
+            .child(tab_menu_item("tab-menu-close", tr("关闭", "Close"), true, cx.listener(move |this, _, _, cx| {
                 this.close_tab(close_one.clone(), cx);
             })))
-            .child(tab_menu_item("tab-menu-close-others", "关闭其他", has_others, cx.listener(move |this, _, _, cx| {
+            .child(tab_menu_item("tab-menu-close-others", tr("关闭其他", "Close Others"), has_others, cx.listener(move |this, _, _, cx| {
                 this.close_other_tabs(close_others.clone(), cx);
             })))
-            .child(tab_menu_item("tab-menu-close-right", "关闭右侧", has_right, cx.listener(move |this, _, _, cx| {
+            .child(tab_menu_item("tab-menu-close-right", tr("关闭右侧", "Close to the Right"), has_right, cx.listener(move |this, _, _, cx| {
                 this.close_tabs_to_right(ix, cx);
             })))
             .child(div().h(px(1.)).my(px(4.)).mx(px(6.)).bg(theme.hairline))
-            .child(tab_menu_item("tab-menu-close-all", "关闭全部", true, cx.listener(|this, _, _, cx| {
+            .child(tab_menu_item("tab-menu-close-all", tr("关闭全部", "Close All"), true, cx.listener(|this, _, _, cx| {
                 this.close_all_tabs(cx);
             })));
         let backdrop = deferred(anchored().position(point(px(0.), px(0.))).child(
