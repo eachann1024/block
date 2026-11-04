@@ -47,6 +47,11 @@ impl EntityInputHandler for Editor {
             self.caret.anchor = Position { block: id, offset: start + range.start };
             self.caret.head = Position { block: id, offset: start + range.end };
         }
+        if let Some(layout) = self.layouts.get(&id) {
+            let p = layout.point(start);
+            let line_h = layout.cells.first().map_or(layout.line_height, |c| c.text.line_height);
+            crate::sync_ime_cursor_area(f32::from(p.x), f32::from(p.y), f32::from(line_h));
+        }
         cx.notify();
     }
     fn bounds_for_range(&mut self, range: Range<usize>, _: Bounds<Pixels>, _: &mut Window, _: &mut Context<Self>) -> Option<Bounds<Pixels>> {
