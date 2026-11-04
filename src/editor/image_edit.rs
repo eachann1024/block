@@ -45,7 +45,7 @@ impl Editor {
         if let Some(at) = caret { self.caret.anchor = at; self.caret.head = at; }
         self.record_changes(before, changes, true, cx);
         self.layouts.clear();
-        window.focus(&self.focus);
+        window.focus(&self.focus, cx);
         cx.notify();
     }
     pub(super) fn open_image_alt(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
@@ -54,7 +54,7 @@ impl Editor {
             .placeholder(tr("输入替代文本…", "Enter alt text…"))
             .default_value(alt));
         cx.subscribe_in(&input, window, move |this, _, ev: &InputEvent, window, cx| {
-            if matches!(ev, InputEvent::PressEnter { secondary: false }) {
+            if matches!(ev, InputEvent::PressEnter { secondary: false, .. }) {
                 this.save_image_alt(id, window, cx);
             }
         }).detach();
@@ -67,7 +67,7 @@ impl Editor {
         let Some((_, ImagePop::AltText(input))) = self.image_menu.take() else { return };
         let val = input.read(cx).value().to_string();
         self.edit_image(id, |s| s.alt = val, cx);
-        window.focus(&self.focus);
+        window.focus(&self.focus, cx);
     }
     pub(super) fn crop_image(&mut self, id: u64, ratio: Option<(u32, u32)>, cx: &mut Context<Self>) {
         self.image_menu = None;

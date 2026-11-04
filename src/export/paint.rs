@@ -17,7 +17,7 @@ pub(super) fn rasterize(
 ) -> Result<Pixmap, ExportError> {
     cancel.check()?;
     let mut image = Pixmap::new(layout.width, layout.height)
-        .ok_or(ExportError::Rendering("像素缓冲分配失败"))?;
+        .ok_or(ExportError::Rendering(crate::theme::tr("像素缓冲分配失败", "Failed to allocate pixel buffer")))?;
     let pal = layout.options.theme.palette();
 
     super::decor_paper::paint_paper(&mut image, layout, &pal, cancel)?;

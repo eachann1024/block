@@ -3,12 +3,12 @@ use super::view::{Editor, selection::Position};
 
 impl Editor {
     pub(in crate::editor) fn table_edit_rejected(&mut self, cx: &mut Context<Self>) {
-        const MESSAGE: &str = "请在单个单元格内编辑，或选中整个表格后整体替换";
-        self.status = MESSAGE.into();
+        let message = crate::theme::tr("请在单个单元格内编辑，或选中整个表格后整体替换", "Edit within a single cell, or select the entire table to replace it");
+        self.status = message.into();
         // A hint, not a state: it clears by itself unless something newer replaced it.
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(std::time::Duration::from_millis(2500)).await;
-            this.update(cx, |this, cx| if this.status == MESSAGE { this.status.clear(); cx.notify(); }).ok();
+            this.update(cx, |this, cx| if this.status == message { this.status.clear(); cx.notify(); }).ok();
         }).detach();
         cx.notify();
     }
@@ -101,8 +101,11 @@ impl Editor {
             let block = &self.doc.blocks[index];
             self.set_head(Position { block:block.id, offset:if forward {0} else {block.text.len()} }, false, cx);
         } else {
-            self.status = if forward { "已是最后一个单元格，可用 + 在下方添加内容" }
-                else { "已是第一个单元格" }.into();
+            self.status = if forward {
+                crate::theme::tr("已是最后一个单元格，可用 + 在下方添加内容", "At the last cell; use + to add content below")
+            } else {
+                crate::theme::tr("已是第一个单元格", "At the first cell")
+            }.into();
             cx.notify();
         }
     }
