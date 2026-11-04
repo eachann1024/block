@@ -34,7 +34,7 @@ thread_local! {
 }
 
 pub(crate) fn clear_tab_menu() {
-    TAB_UI.with(|ui| { let mut s = ui.borrow_mut(); s.menu = None; s.page_menu = None; });
+    TAB_UI.with(|ui| { let mut s = ui.borrow_mut(); s.menu = None; s.page_menu = None; s.opening = None; });
 }
 
 pub(crate) fn record_tab_open(path: PathBuf) {

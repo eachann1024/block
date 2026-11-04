@@ -13,7 +13,6 @@ use crate::{
 use super::{Workspace, file_ops::display_name};
 
 const MENU_WIDTH: f32 = 188.;
-const ITEM_GAP: f32 = 0.;
 
 pub(super) enum ItemId { Path(PathBuf), Name(&'static str) }
 
@@ -88,11 +87,22 @@ impl Workspace {
             cx.listener(move |this, _, window, cx| this.start_rename(p.clone(), dir, window, cx)))
             .child(shortcut_hint(if cfg!(target_os = "macos") { "↵" } else { "F2" }))
             .into_any_element());
-        items.push(menu_item(ItemId::Name("move"), Icon::ArrowRight, tr("移动到…", "Move to…").into(), moving, false,
-            cx.listener(|this, _, _, cx| {
-                if let Some(menu) = &mut this.menu { menu.moving = !menu.moving; }
-                cx.notify();
-            })).into_any_element());
+        items.push(dropdown::row_with(
+            "move",
+            RowSpec {
+                icon: Some(Icon::ArrowRight),
+                label: tr("移动到…", "Move to…").into(),
+                highlighted: moving,
+                chevron: true,
+                ..Default::default()
+            },
+        )
+        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+            cx.stop_propagation();
+            if let Some(menu) = &mut this.menu { menu.moving = !menu.moving; }
+            cx.notify();
+        }))
+        .into_any_element());
         items.push(separator());
         let p = path.clone();
         items.push(menu_item(ItemId::Name("trash"), Icon::Trash, crate::files::ops::trash_label().into(), false, true,
@@ -103,8 +113,8 @@ impl Workspace {
             .child(menu_surface(px(MENU_WIDTH)).children(items))).with_priority(2).into_any_element()];
         if moving {
             let move_row = if dir { 2. } else { 4. };
-            let sep_offset = if dir { 0. } else { 9. };
-            let at = point(position.x + px(MENU_WIDTH + 4.), position.y + px(4. + sep_offset + move_row * (32. + ITEM_GAP)));
+            let sep_offset = if dir { 0. } else { 13. };
+            let at = point(position.x + px(MENU_WIDTH + 4.), position.y + px(4. + sep_offset + move_row * 30.));
             out.push(deferred(anchored().position(at).snap_to_window_with_margin(px(8.))
                 .child(self.move_list(&path, dir, cx))).with_priority(3).into_any_element());
         }
