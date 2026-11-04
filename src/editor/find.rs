@@ -38,10 +38,10 @@ impl Editor {
         let seed = self.single_block_selection();
         if let Some(find) = &self.find {
             let input = find.input.clone();
-            input.update(cx, |input, cx| {
-                if let Some(seed) = seed { input.set_value(seed, window, cx); }
-                input.focus(window, cx);
-            });
+            if let Some(seed) = seed {
+                input.update(cx, |input, cx| input.set_value(seed, window, cx));
+            }
+            cx.defer_in(window, move |_, window, cx| input.update(cx, |input, cx| input.focus(window, cx)));
             return;
         }
         cx.bind_keys([KeyBinding::new("shift-enter", InputEnter { secondary: true, shift: false }, Some("FindBar"))]);
@@ -53,10 +53,9 @@ impl Editor {
             _ => {}
         });
         self.find = Some(FindState { input: input.clone(), matches: Vec::new(), current: 0, _subs: vec![sub] });
-        input.update(cx, |input, cx| {
-            if let Some(seed) = seed { input.set_value(seed, window, cx); }
-            input.focus(window, cx);
-        });
+        if let Some(seed) = seed {
+            input.update(cx, |input, cx| input.set_value(seed, window, cx));
+        }
         cx.defer_in(window, move |_, window, cx| {
             input.update(cx, |input, cx| input.focus(window, cx));
         });

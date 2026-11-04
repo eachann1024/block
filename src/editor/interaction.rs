@@ -62,7 +62,8 @@ impl Editor {
         window.focus(&self.focus, cx); cx.notify();
     }
     fn extent(&self, at: Position, clicks: usize) -> (Position, Position) {
-        let text = &self.doc.get(at.block).unwrap().text;
+        let Some(block) = self.doc.get(at.block) else { return (at, at); };
+        let text = &block.text;
         let range = if clicks >= 3 { 0..text.len() }
             else if clicks == 2 {
                 let probe = at.offset.min(text.len().saturating_sub(1));

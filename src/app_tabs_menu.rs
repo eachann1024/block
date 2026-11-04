@@ -165,7 +165,14 @@ impl Workspace {
         if self.editor.read(cx).current_path() != Some(path.as_path()) {
             self.open_file(path, cx);
         }
-        self.editor.update(cx, |editor, cx| crate::editor::export_document(editor, window, cx));
+        let editor = self.editor.clone();
+        cx.spawn_in(window, async move |_, cx| {
+            for _ in 0..50 {
+                if !editor.read_with(cx, |e, _| e.is_loading()) { break; }
+                cx.background_executor().timer(Duration::from_millis(10)).await;
+            }
+            let _ = cx.update(|window, cx| editor.update(cx, |e, cx| crate::editor::export_document(e, window, cx)));
+        }).detach();
     }
 
     pub(super) fn render_titlebar_tail(&self, has_note: bool, cx: &mut Context<Self>) -> gpui::Div {

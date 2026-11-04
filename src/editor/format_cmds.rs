@@ -112,7 +112,6 @@ impl Editor {
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| {
             if let InputEvent::PressEnter { secondary: false, .. } = event { this.link_save(window, cx); }
         });
-        input.update(cx, |s, cx| s.focus(window, cx));
         let focus_input = input.clone();
         cx.defer_in(window, move |_, window, cx| {
             focus_input.update(cx, |s, cx| s.focus(window, cx));
