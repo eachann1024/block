@@ -16,7 +16,7 @@ pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("enter", RenameSelected, Some("FileTree")),
         KeyBinding::new("f2", RenameSelected, Some("FileTree")),
-        KeyBinding::new("secondary-backspace", TrashSelected, Some("FileTree")),
+        KeyBinding::new("cmd-backspace", TrashSelected, Some("FileTree")),
         KeyBinding::new("delete", TrashSelected, Some("FileTree")),
     ]);
 }
@@ -145,6 +145,7 @@ impl Render for FileTree {
             .id("file-tree-root")
             .size_full()
             .track_focus(&self.focus)
+            .on_scroll(|_, _, cx| crate::dropdown::dismiss_all(cx))
             .when(self.renaming.is_none(), |d| d.key_context("FileTree"))
             .on_action(cx.listener(|this, _: &RenameSelected, window, cx| {
                 if !this.enabled || this.renaming.is_some() { return; }
@@ -169,7 +170,7 @@ impl Render for FileTree {
                             .when(focused, |row| row.bg(Theme::ocean().selected))
                     }).collect::<Vec<_>>()
                 }))
-                .track_scroll(self.scroll.clone())
+                .track_scroll(&self.scroll)
                 .on_mouse_down(MouseButton::Right, cx.listener(|this, event: &gpui::MouseDownEvent, window, cx| {
                     if !this.enabled { return; }
                     if let Some(handler) = this.on_context.clone() { handler(None, event.position, window, cx); }
@@ -242,7 +243,7 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
             move |this, event: &gpui::MouseDownEvent, window, cx| {
                 cx.stop_propagation();
                 if !this.enabled { return; }
-                window.focus(&this.focus);
+                window.focus(&this.focus, cx);
                 if let Some(handler) = this.on_context.clone() {
                     handler(Some((path.to_path_buf(), dir)), event.position, window, cx);
                 }
@@ -251,7 +252,7 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
             if !this.enabled { return; }
             if this.renaming.is_some() { return; }
-            window.focus(&this.focus);
+            window.focus(&this.focus, cx);
             if dir {
                 this.index.toggle(index, &path);
                 this.focus_dir = Some(path.to_path_buf());

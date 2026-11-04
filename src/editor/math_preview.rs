@@ -11,10 +11,10 @@ use latex_rust::{
     parse,
     render::svg::render_svg,
 };
-use crate::theme::{Theme, is_dark};
+use crate::theme::{Theme, is_dark, tr};
 use super::{
     diagram_preview::{
-        PreviewState, error_banner, hash_source, placeholder, render_image, swap_svg_rb,
+        PreviewState, hash_source, placeholder, render_image, swap_svg_rb,
     },
     view::Editor,
 };
@@ -49,9 +49,8 @@ fn parse_math(source: &str) -> Result<latex_rust::MathNode, String> {
 }
 
 fn concise_error(raw: &str) -> String {
-    let line = raw.lines().find(|l| !l.trim().is_empty()).unwrap_or("语法错误").trim();
-    let clipped: String = line.chars().take(120).collect();
-    format!("公式语法错误：{clipped}")
+    let line = raw.lines().find(|l| !l.trim().is_empty()).unwrap_or(tr("语法错误", "Syntax error")).trim();
+    line.chars().take(120).collect()
 }
 
 fn dim_f32(d: &Dim) -> f32 {
@@ -92,15 +91,15 @@ fn render_math_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32, f32), Stri
     Ok((swap_svg_rb(&patched).into_bytes(), logical_w, logical_h))
 }
 
-pub(super) fn view(
+pub(super) fn render_state(
     editor: Entity<Editor>,
     block_id: u64,
     source: &str,
     cx: &mut Context<Editor>,
-) -> AnyElement {
+) -> (Option<AnyElement>, Option<String>) {
     let theme = Theme::ocean();
     if source.trim().is_empty() {
-        return placeholder("输入 LaTeX 公式以预览", &theme);
+        return (Some(placeholder(tr("输入 LaTeX 公式以预览", "Enter LaTeX formula to preview"), &theme)), None);
     }
     let dark = is_dark();
     let key = hash_source(source, dark);
@@ -108,10 +107,10 @@ pub(super) fn view(
     match state {
         Some(PreviewState::Ready { image, width, height }) => {
             LAST_READY.with(|lr| { lr.borrow_mut().insert(block_id, (image.clone(), width, height)); });
-            render_image(image, width, height)
+            (Some(render_image(image, width, height)), None)
         }
-        Some(PreviewState::Error(msg)) => error_banner(&msg),
-        Some(PreviewState::Pending) => fallback_or_loading(block_id, &theme),
+        Some(PreviewState::Error(msg)) => (None, Some(msg)),
+        Some(PreviewState::Pending) => (Some(fallback_or_loading(block_id, &theme)), None),
         None => {
             CACHE.with(|c| { c.borrow_mut().insert(key, PreviewState::Pending); });
             let src = source.to_owned();
@@ -133,7 +132,7 @@ pub(super) fn view(
                 });
                 let _ = entity.update(cx, |_, cx| cx.notify());
             }).detach();
-            fallback_or_loading(block_id, &theme)
+            (Some(fallback_or_loading(block_id, &theme)), None)
         }
     }
 }
@@ -142,6 +141,6 @@ fn fallback_or_loading(block_id: u64, theme: &Theme) -> AnyElement {
     if let Some((image, w, h)) = LAST_READY.with(|lr| lr.borrow().get(&block_id).cloned()) {
         render_image(image, w, h)
     } else {
-        placeholder("正在渲染公式…", theme)
+        placeholder(tr("正在渲染公式…", "Rendering formula…"), theme)
     }
 }

@@ -56,6 +56,7 @@ pub struct Editor {
     pub(super) link_ui: super::link_pop::LinkUi,
     pub(super) layouts: HashMap<u64, TextLayout>,
     pub(super) list: ListState,
+    pub(super) scroll_top: (usize, Pixels),
     pub(super) preferred_x: Option<Pixels>,
     pub(super) pending_vertical: Option<(u64, Pixels, bool, bool)>,
     pub(super) reveal_caret: bool,
@@ -79,11 +80,12 @@ pub struct Editor {
 }
 impl Editor {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        crate::dropdown::register_editor(&cx.entity());
         cx.on_app_quit(|editor, _| { editor.prepare_to_quit(); async {} }).detach();
         let doc = Doc::empty(); let caret = Caret::new(doc.blocks[0].id);
         Self { doc, caret, focus: cx.focus_handle(), hover: None, hover_gen: 0, dragging: None,
             drag_over: None, selecting: false, block_menu: None, nowrap: Default::default(), folded: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, image_menu: None, link_ui: Default::default(), layouts: HashMap::new(),
-            list: ListState::new(1, ListAlignment::Top, px(120.)), preferred_x: None, pending_vertical: None,
+            list: ListState::new(1, ListAlignment::Top, px(120.)), scroll_top: (0, px(0.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
             persistence: Persistence::default(), pointer_subscriptions: Vec::new(), block_clip: None, block_sel: None, minimal: false, find: None, annotate: Default::default(), sessions: HashMap::new() }
@@ -92,6 +94,13 @@ impl Editor {
     pub fn reset_layouts(&mut self) { self.layouts.clear(); }
     pub fn status_text(&self) -> &str { &self.status }
     pub fn is_dirty(&self) -> bool { self.dirty }
+    pub(crate) fn dismiss_dropdowns(&mut self) -> bool {
+        self.block_menu.take().is_some()
+            | self.table_menu.take().is_some()
+            | self.format.take().is_some()
+            | self.image_menu.take().is_some()
+            | super::code_block::close_menus()
+    }
     fn reveal(&mut self) {
         if !self.reveal_caret { return; }
         if let Some(layout) = self.layouts.get(&self.caret.head.block) {
@@ -145,6 +154,12 @@ impl Render for Editor {
                 // `cx.notify()` is dropped while the window is painting, so changes here are
                 // published by a deferred notify that runs once this frame has finished.
                 let mut changed = false;
+                let top = this.list.logical_scroll_top();
+                let cur_scroll = (top.item_ix, top.offset_in_item);
+                if this.scroll_top != cur_scroll {
+                    this.scroll_top = cur_scroll;
+                    crate::dropdown::dismiss_all(cx);
+                }
                 if this.annotate.editor_top != bounds.top() { this.annotate.editor_top = bounds.top(); changed = true; }
                 let anchor = this.selection_toolbar_anchor(bounds, window);
                 if this.toolbar_anchor != anchor { this.toolbar_anchor = anchor; changed = true; }
@@ -191,6 +206,7 @@ impl Render for Editor {
                 .on_action(cx.listener(|this, _: &Cancel, w, cx| this.handle(&EditorAction::Cancel, w, cx)))
                 .on_action(cx.listener(|this, _: &Save, w, cx| this.handle(&EditorAction::Save, w, cx)))
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, event, window, cx| this.pointer_down(event, window, cx)))
+                .on_scroll(|_, _, cx| crate::dropdown::dismiss_all(cx))
                 .on_mouse_move(cx.listener(|this, event, _, cx| this.pointer_move(event, cx)))
                 .on_mouse_up(MouseButton::Left, cx.listener(|this, event: &gpui::MouseUpEvent, _, cx| this.finish_drag(event.position, cx)))
                 .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.clear_pointer(); cx.notify(); }))

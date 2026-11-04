@@ -1,0 +1,264 @@
+use std::cell::RefCell;
+use gpui::{
+    App, Bounds, BoxShadow, CursorStyle, Div, ElementId, Entity, FontWeight, Hsla, IntoElement,
+    MouseButton, Pixels, Point, SharedString, Size, Stateful, Window, anchored, deferred, div,
+    point, prelude::*, px, rgb, rgba, transparent_black,
+};
+use crate::{
+    app::Workspace,
+    editor::Editor,
+    icons::{Icon, IconColors, icon},
+    theme::is_dark,
+};
+
+pub const MIN_WIDTH: f32 = 160.;
+pub const MAX_WIDTH: f32 = 320.;
+pub const MAX_HEIGHT: f32 = 304.;
+pub const MAX_H: f32 = MAX_HEIGHT;
+pub const WINDOW_MARGIN: f32 = 8.;
+pub const TRIGGER_GAP: f32 = 4.;
+pub const ROW_HEIGHT: f32 = 28.;
+
+#[derive(Clone, Copy)]
+pub struct DropdownPalette {
+    pub bg: Hsla,
+    pub text: Hsla,
+    pub icon: Hsla,
+    pub muted: Hsla,
+    pub hover_bg: Hsla,
+    pub checked_bg: Hsla,
+    pub sep: Hsla,
+    pub danger_fg: Hsla,
+    pub danger_hover_bg: Hsla,
+    pub danger_hover_fg: Hsla,
+}
+
+pub fn palette() -> DropdownPalette {
+    if is_dark() {
+        DropdownPalette {
+            bg: rgb(0x222222).into(), text: rgb(0xececec).into(), icon: rgb(0xb4b4b4).into(),
+            muted: rgb(0x8e8d88).into(), hover_bg: rgba(0xffffff12).into(), checked_bg: rgba(0xffffff12).into(),
+            sep: rgba(0xffffff1a).into(), danger_fg: rgb(0xf28b82).into(),
+            danger_hover_bg: rgb(0xd03b3b).into(), danger_hover_fg: rgb(0xffffff).into(),
+        }
+    } else {
+        DropdownPalette {
+            bg: rgb(0xffffff).into(), text: rgb(0x1f1e1d).into(), icon: rgb(0x52514e).into(),
+            muted: rgb(0x898781).into(), hover_bg: rgba(0x0b0b0b0d).into(), checked_bg: rgba(0x0000000d).into(),
+            sep: rgba(0x0b0b0b1a).into(), danger_fg: rgb(0x8e2626).into(),
+            danger_hover_bg: rgb(0xd03b3b).into(), danger_hover_fg: rgb(0xffffff).into(),
+        }
+    }
+}
+
+pub fn row_hover_bg() -> Hsla {
+    palette().hover_bg
+}
+
+pub fn shadows() -> Vec<BoxShadow> {
+    if is_dark() {
+        vec![
+            BoxShadow { color: rgba(0xffffff18).into(), offset: point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(1.), inset: false },
+            BoxShadow { color: rgba(0x00000066).into(), offset: point(px(0.), px(8.)), blur_radius: px(24.), spread_radius: px(0.), inset: false },
+            BoxShadow { color: rgba(0x00000040).into(), offset: point(px(0.), px(2.)), blur_radius: px(6.), spread_radius: px(0.), inset: false },
+        ]
+    } else {
+        vec![
+            BoxShadow { color: rgba(0x00000014).into(), offset: point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(1.), inset: false },
+            BoxShadow { color: rgba(0x0000001f).into(), offset: point(px(0.), px(8.)), blur_radius: px(24.), spread_radius: px(0.), inset: false },
+            BoxShadow { color: rgba(0x00000014).into(), offset: point(px(0.), px(2.)), blur_radius: px(6.), spread_radius: px(0.), inset: false },
+        ]
+    }
+}
+
+pub fn max_height_for(window: &Window) -> Pixels {
+    let avail = f32::from(window.viewport_size().height) - 16.;
+    px(avail.clamp(80., MAX_HEIGHT))
+}
+
+pub fn shell_unbounded(id: impl Into<ElementId>) -> Stateful<Div> {
+    let p = palette();
+    div().id(id).max_h(px(MAX_HEIGHT)).overflow_y_scroll().p(px(4.)).rounded(px(12.)).bg(p.bg).shadow(shadows()).occlude()
+        .flex().flex_col().text_size(px(14.)).line_height(px(20.)).text_color(p.text)
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+        .on_scroll(|_, _, cx| cx.stop_propagation())
+}
+
+pub fn shell(id: impl Into<ElementId>) -> Stateful<Div> {
+    shell_unbounded(id).min_w(px(MIN_WIDTH)).max_w(px(MAX_WIDTH))
+}
+
+pub fn pill_trigger(id: impl Into<ElementId>, label: impl Into<SharedString>, open: bool) -> Stateful<Div> {
+    let dark = is_dark();
+    let bg: Hsla = if dark { rgb(0x262626).into() } else { rgb(0xfcfcfb).into() };
+    let border: Hsla = if dark { rgba(0xffffff1a).into() } else { rgba(0x0b0b0b1a).into() };
+    let hover_border: Hsla = if dark { rgba(0xffffff38).into() } else { rgba(0x0b0b0b40).into() };
+    let fg: Hsla = if dark { rgb(0x8e8d88).into() } else { rgb(0x898781).into() };
+    let hover_fg: Hsla = if dark { rgb(0xececec).into() } else { rgb(0x1f1e1d).into() };
+    div().id(id).h(px(22.)).px(px(8.)).rounded(px(8.)).border_1()
+        .border_color(if open { hover_border } else { border }).bg(bg).flex().items_center()
+        .cursor(CursorStyle::PointingHand).text_size(px(12.)).line_height(px(16.))
+        .text_color(if open { hover_fg } else { fg })
+        .hover(move |s| s.border_color(hover_border).text_color(hover_fg))
+        .child(label.into())
+}
+
+pub fn line_icon(glyph: Icon, size: f32, color: Hsla) -> impl IntoElement {
+    icon(glyph, px(size), IconColors { line: color, fill: transparent_black(), accent: color })
+}
+
+#[derive(Default)]
+pub struct RowSpec {
+    pub icon: Option<Icon>,
+    pub label: SharedString,
+    pub checked: bool,
+    pub highlighted: bool,
+    pub danger: bool,
+    pub disabled: bool,
+    pub hint: Option<SharedString>,
+    pub chevron: bool,
+}
+
+pub fn row_with(id: impl Into<ElementId>, spec: RowSpec) -> Stateful<Div> {
+    let p = palette();
+    let row = div().id(id).h(px(ROW_HEIGHT)).w_full().flex_none().px(px(10.)).gap(px(8.)).rounded(px(8.))
+        .flex().items_center().text_size(px(14.)).line_height(px(20.)).when(spec.disabled, |s| s.opacity(0.4));
+    let row = if spec.danger {
+        let fg = if spec.highlighted && !spec.disabled { p.danger_hover_fg } else { p.danger_fg };
+        let lead = div().relative().size(px(16.)).flex_none().flex().items_center().justify_center()
+            .when_some(spec.icon, |slot, g| {
+                if spec.disabled || spec.highlighted {
+                    slot.child(line_icon(g, 16., fg))
+                } else {
+                    slot.child(div().group_hover("dd-danger-row", |s| s.invisible()).child(line_icon(g, 16., p.danger_fg)))
+                        .child(div().absolute().top_0().left_0().invisible().group_hover("dd-danger-row", |s| s.visible()).child(line_icon(g, 16., p.danger_hover_fg)))
+                }
+            });
+        row.group("dd-danger-row").text_color(fg)
+            .when(spec.highlighted && !spec.disabled, move |s| s.bg(p.danger_hover_bg))
+            .when(!spec.disabled, move |s| s.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(p.danger_hover_bg).text_color(p.danger_hover_fg)))
+            .child(lead)
+    } else {
+        let lead = div().size(px(16.)).flex_none().flex().items_center().justify_center()
+            .when_some(spec.icon, |slot, g| slot.child(line_icon(g, 16., p.icon)));
+        row.text_color(p.text)
+            .when(spec.checked, move |s| s.bg(p.checked_bg))
+            .when(spec.highlighted && !spec.disabled, move |s| s.bg(p.hover_bg))
+            .when(!spec.disabled, move |s| s.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(p.hover_bg)))
+            .child(lead)
+    };
+    row.child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(spec.label))
+        .when_some(spec.hint, |r, h| r.child(div().ml_auto().pl(px(8.)).flex_none().text_size(px(12.)).text_color(p.muted).child(h)))
+        .when(spec.chevron, |r| r.child(div().ml_auto().pl(px(8.)).flex_none().flex().items_center().child(line_icon(Icon::TbChevronRight, 12., p.muted))))
+        .when(spec.checked, |r| r.child(div().ml_auto().pl(px(12.)).flex_none().flex().items_center()
+            .child(div().size(px(16.)).flex().items_center().justify_center().child(line_icon(Icon::Check, 16., p.text)))))
+}
+
+pub fn row(id: impl Into<ElementId>, icon: Option<Icon>, label: impl Into<SharedString>, checked: bool) -> Stateful<Div> {
+    row_with(id, RowSpec { icon, label: label.into(), checked, ..Default::default() })
+}
+
+pub fn danger_row(id: impl Into<ElementId>, icon: Option<Icon>, label: impl Into<SharedString>) -> Stateful<Div> {
+    row_with(id, RowSpec { icon, label: label.into(), danger: true, ..Default::default() })
+}
+
+pub fn separator() -> Div {
+    div().h(px(1.)).my(px(4.)).flex_none().bg(palette().sep)
+}
+
+pub fn group_label(label: impl Into<SharedString>) -> Div {
+    div().px(px(10.)).py(px(4.)).flex_none().text_size(px(13.)).line_height(px(17.))
+        .font_weight(FontWeight::MEDIUM).text_color(palette().muted).child(label.into())
+}
+
+pub fn anchor_below_right(trigger: Bounds<Pixels>, menu_width: f32, est_height: f32, viewport: Option<Size<Pixels>>) -> Point<Pixels> {
+    let x = (trigger.right() - px(menu_width)).max(px(WINDOW_MARGIN));
+    let below = trigger.bottom() + px(TRIGGER_GAP);
+    let h = est_height.min(MAX_HEIGHT);
+    let y = match viewport {
+        Some(vp) if below + px(h) > vp.height - px(WINDOW_MARGIN) && trigger.top() - px(TRIGGER_GAP) - px(h) >= px(WINDOW_MARGIN) => {
+            trigger.top() - px(TRIGGER_GAP) - px(h)
+        }
+        _ => below,
+    };
+    point(x, y)
+}
+
+pub fn deferred_popover(anchor: Point<Pixels>, child: impl IntoElement, priority: usize) -> gpui::Deferred {
+    deferred(
+        anchored()
+            .position(anchor)
+            .snap_to_window_with_margin(px(WINDOW_MARGIN))
+            .child(crate::ui::motion::popup_enter(div().child(child), "dropdown-popup")),
+    )
+    .with_priority(priority)
+}
+
+thread_local! {
+    static EDITORS: RefCell<Vec<gpui::WeakEntity<Editor>>> = const { RefCell::new(Vec::new()) };
+    static WORKSPACES: RefCell<Vec<gpui::WeakEntity<Workspace>>> = const { RefCell::new(Vec::new()) };
+    static CLOSERS: RefCell<Vec<fn() -> bool>> = const { RefCell::new(Vec::new()) };
+}
+
+pub fn register_editor(editor: &Entity<Editor>) {
+    let weak = editor.downgrade();
+    EDITORS.with(|slot| {
+        let mut list = slot.borrow_mut();
+        list.retain(|w| w.upgrade().is_some());
+        if !list.iter().any(|w| w.entity_id() == weak.entity_id()) {
+            list.push(weak);
+        }
+    });
+}
+
+pub fn register_workspace(ws: &Entity<Workspace>) {
+    let weak = ws.downgrade();
+    WORKSPACES.with(|slot| {
+        let mut list = slot.borrow_mut();
+        list.retain(|w| w.upgrade().is_some());
+        if !list.iter().any(|w| w.entity_id() == weak.entity_id()) {
+            list.push(weak);
+        }
+    });
+}
+
+pub fn register_closer(closer: fn() -> bool) {
+    CLOSERS.with(|slot| {
+        let mut list = slot.borrow_mut();
+        if !list.iter().any(|f| std::ptr::fn_addr_eq(*f, closer)) {
+            list.push(closer);
+        }
+    });
+}
+
+pub fn dismiss_all(cx: &mut App) {
+    let mut stateless_closed = false;
+    CLOSERS.with(|slot| {
+        for closer in slot.borrow().iter() {
+            if closer() {
+                stateless_closed = true;
+            }
+        }
+    });
+    let editors = EDITORS.with(|slot| slot.borrow().clone());
+    for weak in editors {
+        if let Some(entity) = weak.upgrade() {
+            entity.update(cx, |ed, cx| {
+                if ed.dismiss_dropdowns() || stateless_closed {
+                    cx.notify();
+                }
+            });
+        }
+    }
+    let workspaces = WORKSPACES.with(|slot| slot.borrow().clone());
+    for weak in workspaces {
+        if let Some(entity) = weak.upgrade() {
+            entity.update(cx, |ws, cx| {
+                if ws.dismiss_dropdowns(cx) || stateless_closed {
+                    cx.notify();
+                }
+            });
+        }
+    }
+}
