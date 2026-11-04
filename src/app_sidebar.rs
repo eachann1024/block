@@ -10,7 +10,7 @@ use super::menu::{ItemId, menu_item, menu_surface, separator};
 
 pub(super) const MIN_WIDTH: f32 = 200.;
 pub(super) const MAX_WIDTH: f32 = 420.;
-const COLLAPSED_HEADER_WIDTH: f32 = if cfg!(target_os = "macos") { 116. } else { 46. };
+const COLLAPSED_HEADER_WIDTH: f32 = if cfg!(target_os = "macos") { 168. } else { 98. };
 const TITLEBAR_LEFT_PAD: f32 = if cfg!(target_os = "macos") { 76. } else { 10. };
 const SWITCHER_TOP: f32 = 40. + 12. + 36. + 4.;
 
@@ -43,6 +43,7 @@ impl Workspace {
                     this.toggle_sidebar(cx);
                 }))
                 .child(hover_tinted_icon(btn_group, glyph, 16., theme.text_secondary, theme.text, theme.icon_fill)))
+            .child(self.render_nav_buttons(cx))
     }
 
     /// Invisible 8px strip over the sidebar's right border.

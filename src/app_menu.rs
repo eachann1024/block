@@ -65,6 +65,15 @@ impl Workspace {
         let mut items: Vec<AnyElement> = Vec::new();
         if !dir {
             let p = path.clone();
+            items.push(menu_item(ItemId::Name("open-new-tab"), Icon::NotePlus, tr("在新标签页打开", "Open in New Tab").into(), false, false,
+                cx.listener(move |this, _, window, cx| {
+                    this.close_overlays(cx);
+                    this.close_settings(window, cx);
+                    this.open_file_in_new_tab(p.clone(), cx);
+                }))
+                .child(shortcut_hint(if cfg!(target_os = "macos") { "⌘Click" } else { "Ctrl+Click" }))
+                .into_any_element());
+            let p = path.clone();
             items.push(menu_item(ItemId::Name("export-image"), Icon::Image, tr("生成图片…", "Export as Image…").into(), false, false,
                 cx.listener(move |this, _, window, cx| this.export_note(p.clone(), window, cx)))
                 .into_any_element());
@@ -93,7 +102,7 @@ impl Workspace {
         let mut out = vec![deferred(anchored().position(position).snap_to_window_with_margin(px(8.))
             .child(menu_surface(px(MENU_WIDTH)).children(items))).with_priority(2).into_any_element()];
         if moving {
-            let move_row = if dir { 2. } else { 3. };
+            let move_row = if dir { 2. } else { 4. };
             let sep_offset = if dir { 0. } else { 9. };
             let at = point(position.x + px(MENU_WIDTH + 4.), position.y + px(4. + sep_offset + move_row * (32. + ITEM_GAP)));
             out.push(deferred(anchored().position(at).snap_to_window_with_margin(px(8.))

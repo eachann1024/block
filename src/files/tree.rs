@@ -27,7 +27,7 @@ pub struct FileTree {
     enabled: bool,
     scroll: UniformListScrollHandle,
     focus: FocusHandle,
-    on_open: Option<Box<dyn Fn(PathBuf, &mut gpui::Window, &mut gpui::App) + 'static>>,
+    on_open: Option<Box<dyn Fn(PathBuf, bool, &mut gpui::Window, &mut gpui::App) + 'static>>,
     on_rename: Option<Box<dyn Fn((PathBuf, bool), &mut gpui::Window, &mut gpui::App) + 'static>>,
     on_trash: Option<Box<dyn Fn(PathBuf, &mut gpui::Window, &mut gpui::App) + 'static>>,
     on_context: Option<std::rc::Rc<ContextHandler>>,
@@ -127,7 +127,7 @@ impl FileTree {
         cx.notify();
     }
 
-    pub fn on_open(&mut self, handler: impl Fn(PathBuf, &mut gpui::Window, &mut gpui::App) + 'static) {
+    pub fn on_open(&mut self, handler: impl Fn(PathBuf, bool, &mut gpui::Window, &mut gpui::App) + 'static) {
         self.on_open = Some(Box::new(handler));
     }
 
@@ -259,7 +259,19 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
                 }
             }
         }))
-        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
+        .on_mouse_down(MouseButton::Middle, cx.listener({
+            let path = path.clone();
+            move |this, _, window, cx| {
+                cx.stop_propagation();
+                if !this.enabled || this.renaming.is_some() || dir { return; }
+                window.focus(&this.focus, cx);
+                if this.focus_dir.take().is_some() { cx.notify(); }
+                if let Some(handler) = &this.on_open {
+                    handler(path.to_path_buf(), true, window, cx);
+                }
+            }
+        }))
+        .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
             if !this.enabled { return; }
             if this.renaming.is_some() { return; }
             window.focus(&this.focus, cx);
@@ -270,9 +282,8 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
             } else {
                 if this.focus_dir.take().is_some() { cx.notify(); }
                 if let Some(handler) = &this.on_open {
-                    // The editor treats the current path as a no-op and cancels a
-                    // pending different open, so A → B → A keeps A selected.
-                    handler(path.to_path_buf(), window, cx);
+                    let in_new_tab = event.modifiers.platform || event.modifiers.control;
+                    handler(path.to_path_buf(), in_new_tab, window, cx);
                 }
             }
         }))
