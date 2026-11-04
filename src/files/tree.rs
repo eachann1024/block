@@ -224,7 +224,7 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
         .when(is_target && !highlighted && !focused, |row| row.bg(theme.hover))
         .when(!highlighted && !focused && enabled, |row| row.hover(|style| style.bg(theme.hover)))
         .when_some(arrow, |row, a| row.child(
-            div().size(px(14.)).flex_none().flex().items_center().justify_center().child(icon(a, px(14.), chevron_colors))))
+            div().size(px(18.)).flex_none().flex().items_center().justify_center().child(icon(a, px(18.), chevron_colors))))
         .child(div().size(px(16.)).flex_none().flex().items_center().justify_center().child(icon(kind, px(16.), icon_colors)))
         .when_some(editing.clone(), |row, _| row.border_color(theme.accent).bg(theme.paper))
         .child(match editing {
@@ -233,10 +233,11 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
             None => div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(label),
         })
         // Hover "⋯": opens the same menu as a right-click, anchored under the button.
-        .when(enabled && !is_editing, |row| row.child(
+        .when(!is_editing, |row| row.child(
             div().id("row-more").size(px(22.)).flex_none().flex().items_center().justify_center().rounded(px(5.))
-                .invisible().group_hover("tree-row", |style| style.visible())
-                .when(is_target, |b| b.visible().bg(theme.btn_hover))
+                .invisible()
+                .when(enabled, |b| b.group_hover("tree-row", |style| style.visible()))
+                .when(enabled && is_target, |b| b.visible().bg(theme.btn_hover))
                 .hover(|style| style.bg(theme.btn_hover))
                 .on_mouse_down(MouseButton::Left, cx.listener({
                     let path = path.clone();
