@@ -1,347 +1,267 @@
 {
   "v": 3,
-  "attachments": {},
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-04T06:00:00Z"
+  },
+  "title": "Thinkly Fast 视觉系统",
+  "launch": {
+    "view": "canvas",
+    "page": "workspace"
+  },
+  "pages": [
+    {
+      "id": "workspace",
+      "name": "工作区与文件"
+    },
+    {
+      "id": "editor",
+      "name": "编辑器与排版"
+    },
+    {
+      "id": "search",
+      "name": "搜索与查找"
+    },
+    {
+      "id": "settings",
+      "name": "设置与快捷键"
+    },
+    {
+      "id": "export",
+      "name": "生成图片"
+    },
+    {
+      "id": "visual",
+      "name": "图标与吉祥物"
+    }
+  ],
   "boards": {
-    "A-Export.dc.html": {
-      "expand": "fill",
-      "h": 900,
-      "title": "A 纸面 · 生成图片",
-      "w": 1440,
-      "x": 1520,
-      "y": 0
-    },
-    "Duo-Set.dc.html": {
-      "h": 1200,
-      "title": "双色 · 精修全套",
-      "w": 1600,
+    "Main.dc.html": {
+      "page": "workspace",
       "x": 0,
-      "y": 3800
-    },
-    "Duo-Tree.dc.html": {
-      "h": 1200,
-      "title": "双色 · 文件夹与文件（方案 3 · 前后层）",
-      "w": 800,
-      "x": 1680,
-      "y": 3800
-    },
-    "F-Annotate.dc.html": {
-      "expand": "fill",
-      "h": 900,
-      "title": "浅色 · AI 标注模式 · 评论卡片",
+      "y": 0,
       "w": 1440,
-      "x": 1520,
-      "y": 14700
+      "h": 900,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "工作区 · 多标签页与可折叠侧栏"
     },
     "F-Files.dc.html": {
-      "expand": "fill",
+      "page": "workspace",
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
       "h": 900,
-      "title": "文件 · 新建与右键菜单 · 代码块",
-      "w": 1440,
-      "x": 3040,
-      "y": 6760
-    },
-    "F-Find.dc.html": {
       "expand": "fill",
-      "h": 900,
-      "title": "搜索 · 当前笔记查找 ⌘F",
-      "w": 1440,
-      "x": 0,
-      "y": 6760
-    },
-    "F-Image-Toolbar.dc.html": {
-      "expand": "fill",
-      "h": 980,
-      "is_interactive": true,
-      "title": "图片工具栏功能对齐 · 7 项胶囊浮条与更多菜单（深/浅双模）",
-      "w": 1440,
-      "x": 3040,
-      "y": 14700
-    },
-    "F-Inline.dc.html": {
-      "expand": "fill",
-      "h": 900,
-      "title": "选区工具栏 · 链接浮层 · 图片缩放",
-      "w": 1440,
-      "x": 0,
-      "y": 7780
+      "title": "文件树 · 新建与右键菜单"
     },
     "F-QuickNote.dc.html": {
-      "h": 620,
-      "title": "速记小窗 ⌥N",
+      "page": "workspace",
+      "x": 3040,
+      "y": 0,
       "w": 480,
-      "x": 4560,
-      "y": 6760
-    },
-    "F-Search.dc.html": {
-      "expand": "fill",
-      "h": 900,
-      "title": "搜索 · 全局搜索 ⌘⇧K",
-      "w": 1440,
-      "x": 1520,
-      "y": 6760
-    },
-    "F-Shortcuts.dc.html": {
-      "h": 800,
-      "title": "快捷键与快捷输入",
-      "w": 1280,
-      "x": 5120,
-      "y": 6760
+      "h": 620,
+      "title": "速记小窗 ⌥N"
     },
     "F-Toolbar.dc.html": {
-      "expand": "fill",
+      "page": "editor",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
       "h": 900,
-      "title": "浅色 · 选区工具栏与下拉 · 调色盘",
-      "w": 1440,
-      "x": 0,
-      "y": 14700
-    },
-    "Icons-4.dc.html": {
-      "h": 800,
-      "title": "图标 · 双色规范",
-      "w": 1280,
-      "x": 0,
-      "y": 2600
-    },
-    "Layout-1.dc.html": {
       "expand": "fill",
-      "h": 900,
-      "title": "库名切换下拉 + 新建笔记",
-      "w": 1440,
-      "x": 0,
-      "y": 1300
+      "title": "选区工具栏与调色盘"
     },
-    "Main.dc.html": {
-      "expand": "fill",
-      "h": 900,
-      "title": "A 纸面 · 工作区",
-      "w": 1440,
-      "x": 0,
-      "y": 0
-    },
-    "Mascot-Folio.dc.html": {
-      "h": 860,
-      "title": "原创形象 · 页隼 · 四状态",
-      "w": 1600,
-      "x": 0,
-      "y": 5400
-    },
-    "S-Settings-3.dc.html": {
-      "expand": "fill",
-      "h": 940,
-      "is_interactive": true,
-      "title": "设置 · 方案 1 独立分键键帽（macOS / Linux / Win）",
-      "w": 1440,
-      "x": 0,
-      "y": 11900
-    },
-    "S-Settings-3B.dc.html": {
-      "expand": "fill",
-      "h": 940,
-      "is_interactive": true,
-      "title": "设置 · 方案 2 内部分隔胶囊（macOS / Linux / Win）",
-      "w": 1440,
+    "F-Annotate.dc.html": {
+      "page": "editor",
       "x": 1520,
-      "y": 11900
-    },
-    "S-Settings-3C.dc.html": {
-      "expand": "fill",
-      "h": 940,
-      "is_interactive": true,
-      "title": "设置 · 方案 3 阶梯键帽与连字符（macOS / Linux / Win）",
+      "y": 0,
       "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "AI 标注模式与评论卡片"
+    },
+    "F-Image-Toolbar.dc.html": {
+      "page": "editor",
       "x": 3040,
-      "y": 11900
-    },
-    "Sidebar-Collapse-2.dc.html": {
-      "expand": "fill",
-      "h": 920,
-      "is_interactive": true,
-      "title": "侧栏折叠 · 方向箭头窗格",
+      "y": 0,
       "w": 1440,
-      "x": 0,
-      "y": 17500
-    },
-    "T-Heading-Collapse.dc.html": {
-      "expand": "fill",
       "h": 980,
+      "expand": "fill",
       "is_interactive": true,
-      "title": "标题折叠 · 普通块禁用把手 · 锚点与交互",
-      "w": 1440,
-      "x": 1520,
-      "y": 16100
+      "title": "图片工具栏 · 胶囊浮条与更多菜单"
     },
     "T-Table-Handles.dc.html": {
-      "expand": "fill",
-      "h": 980,
-      "is_interactive": true,
-      "title": "表格 · 行列胶囊选中前/后 · 整表选中与工具栏",
-      "w": 1440,
+      "page": "editor",
       "x": 0,
-      "y": 16100
+      "y": 1100,
+      "w": 1440,
+      "h": 980,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "表格 · 行列胶囊与整表选中工具栏"
+    },
+    "T-Heading-Collapse.dc.html": {
+      "page": "editor",
+      "x": 1520,
+      "y": 1100,
+      "w": 1440,
+      "h": 980,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "标题折叠与块把手规范"
     },
     "T-Tooltip-System.dc.html": {
-      "expand": "fill",
-      "h": 980,
-      "is_interactive": true,
-      "title": "全局 Tooltip 规范 · 浅色 / 深色统一令牌与全场景对照",
-      "w": 1440,
+      "page": "editor",
       "x": 3040,
-      "y": 16100
-    },
-    "Tabs-1-Titlebar.dc.html": {
-      "expand": "fill",
-      "h": 900,
-      "title": "多标签页 · 顶栏内嵌",
+      "y": 1100,
       "w": 1440,
+      "h": 980,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "全局 Tooltip 规范（浅色 / 深色）"
+    },
+    "F-Find.dc.html": {
+      "page": "search",
       "x": 0,
-      "y": 13300
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "当前笔记查找 ⌘F"
     },
-    "X-D1-Ink.dc.html": {
-      "h": 1040,
-      "title": "深 1 · 墨黑（默认）",
-      "w": 816,
+    "F-Search.dc.html": {
+      "page": "search",
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "全局搜索 ⌘⇧K"
+    },
+    "S-Settings-3.dc.html": {
+      "page": "settings",
       "x": 0,
-      "y": 10440
+      "y": 0,
+      "w": 1440,
+      "h": 940,
+      "expand": "fill",
+      "is_interactive": true,
+      "title": "设置 · 独立分键键帽（按系统自适应）"
     },
-    "X-D2-Kraft.dc.html": {
-      "h": 1040,
-      "title": "深 2 · 黑卡手账",
-      "w": 816,
-      "x": 896,
-      "y": 10440
+    "F-Shortcuts.dc.html": {
+      "page": "settings",
+      "x": 1520,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "title": "快捷键与快捷输入速查"
     },
-    "X-D3-Neon.dc.html": {
-      "h": 1040,
-      "title": "深 3 · 霓虹丝印",
-      "w": 816,
-      "x": 1792,
-      "y": 10440
-    },
-    "X-D4-Film.dc.html": {
-      "h": 1040,
-      "title": "深 4 · 暗房胶片",
-      "w": 816,
-      "x": 2688,
-      "y": 10440
+    "A-Export.dc.html": {
+      "page": "export",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "expand": "fill",
+      "title": "生成图片 · 预览与导出弹窗"
     },
     "X-L1-Mono.dc.html": {
-      "h": 1040,
-      "title": "浅 1 · 黑白素纸（默认）",
-      "w": 816,
+      "page": "export",
       "x": 0,
-      "y": 9100
+      "y": 1020,
+      "w": 816,
+      "h": 1040,
+      "title": "浅 1 · 黑白素纸（默认）"
     },
     "X-L2-Journal.dc.html": {
-      "h": 1040,
-      "title": "浅 2 · 手账便签",
-      "w": 816,
+      "page": "export",
       "x": 896,
-      "y": 9100
+      "y": 1020,
+      "w": 816,
+      "h": 1040,
+      "title": "浅 2 · 手账便签"
     },
     "X-L3-Riso.dc.html": {
-      "h": 1040,
-      "title": "浅 3 · 野性孔版",
-      "w": 816,
+      "page": "export",
       "x": 1792,
-      "y": 9100
+      "y": 1020,
+      "w": 816,
+      "h": 1040,
+      "title": "浅 3 · 野性孔版"
     },
     "X-L4-Press.dc.html": {
-      "h": 1040,
-      "title": "浅 4 · 铅字号外",
-      "w": 816,
+      "page": "export",
       "x": 2688,
-      "y": 9100
-    }
-  },
-  "createdOnFiles": {
-    "at": "2026-11-03T09:25:24Z",
-    "v": 1
-  },
-  "designSystems": [],
-  "launch": {
-    "view": "canvas"
-  },
-  "noteOrder": [
-    "tA",
-    "tT",
-    "tF",
-    "tX",
-    "tXD",
-    "tLight",
-    "tHandles"
-  ],
-  "notes": {
-    "tA": {
-      "kind": "title1",
-      "maxW": 2960,
-      "text": "A 纸面 Ocean",
-      "w": 240,
-      "x": 0,
-      "y": -280
+      "y": 1020,
+      "w": 816,
+      "h": 1040,
+      "title": "浅 4 · 铅字号外"
     },
-    "tF": {
-      "kind": "title1",
-      "maxW": 6400,
-      "text": "小窗 · 搜索 · 文件操作",
-      "w": 240,
+    "X-D1-Ink.dc.html": {
+      "page": "export",
       "x": 0,
-      "y": 6480
+      "y": 2180,
+      "w": 816,
+      "h": 1040,
+      "title": "深 1 · 墨黑（默认）"
     },
-    "tHandles": {
-      "kind": "title1",
-      "maxW": 4480,
-      "text": "把手重构 · 表格专属把手与菜单 · 标题折叠 · 全局 Tooltip",
-      "w": 240,
-      "x": 0,
-      "y": 15820
+    "X-D2-Kraft.dc.html": {
+      "page": "export",
+      "x": 896,
+      "y": 2180,
+      "w": 816,
+      "h": 1040,
+      "title": "深 2 · 黑卡手账"
     },
-    "tLight": {
-      "kind": "title1",
-      "maxW": 4480,
-      "text": "浅色模式 · 选区工具栏 · AI 标注 · 图片工具栏对齐",
-      "w": 240,
-      "x": 0,
-      "y": 14420
+    "X-D3-Neon.dc.html": {
+      "page": "export",
+      "x": 1792,
+      "y": 2180,
+      "w": 816,
+      "h": 1040,
+      "title": "深 3 · 霓虹丝印"
     },
-    "tT": {
-      "kind": "title1",
-      "maxW": 2480,
-      "text": "双色 · 精修",
-      "w": 240,
-      "x": 0,
-      "y": 3520
+    "X-D4-Film.dc.html": {
+      "page": "export",
+      "x": 2688,
+      "y": 2180,
+      "w": 816,
+      "h": 1040,
+      "title": "深 4 · 暗房胶片"
     },
-    "tX": {
-      "kind": "title1",
-      "maxW": 3504,
-      "text": "生成图片 · 浅色四版",
-      "w": 240,
+    "Duo-Set.dc.html": {
+      "page": "visual",
       "x": 0,
-      "y": 8840
+      "y": 0,
+      "w": 1600,
+      "h": 1200,
+      "title": "双色图标 · 精修全套"
     },
-    "tXD": {
-      "kind": "title1",
-      "maxW": 3504,
-      "text": "生成图片 · 深色四版",
-      "w": 240,
-      "x": 0,
-      "y": 10180
+    "Mascot-Folio.dc.html": {
+      "page": "visual",
+      "x": 1680,
+      "y": 0,
+      "w": 1600,
+      "h": 860,
+      "title": "原创形象 · 页隼 · 四状态"
     }
   },
   "order": [
     "Main.dc.html",
-    "A-Export.dc.html",
-    "Layout-1.dc.html",
-    "Icons-4.dc.html",
-    "Duo-Set.dc.html",
-    "Duo-Tree.dc.html",
-    "Mascot-Folio.dc.html",
-    "F-Find.dc.html",
-    "F-Search.dc.html",
     "F-Files.dc.html",
     "F-QuickNote.dc.html",
+    "F-Toolbar.dc.html",
+    "F-Annotate.dc.html",
+    "F-Image-Toolbar.dc.html",
+    "T-Table-Handles.dc.html",
+    "T-Heading-Collapse.dc.html",
+    "T-Tooltip-System.dc.html",
+    "F-Find.dc.html",
+    "F-Search.dc.html",
+    "S-Settings-3.dc.html",
     "F-Shortcuts.dc.html",
-    "F-Inline.dc.html",
+    "A-Export.dc.html",
     "X-L1-Mono.dc.html",
     "X-L2-Journal.dc.html",
     "X-L3-Riso.dc.html",
@@ -350,18 +270,9 @@
     "X-D2-Kraft.dc.html",
     "X-D3-Neon.dc.html",
     "X-D4-Film.dc.html",
-    "S-Settings-3.dc.html",
-    "S-Settings-3B.dc.html",
-    "S-Settings-3C.dc.html",
-    "Tabs-1-Titlebar.dc.html",
-    "F-Toolbar.dc.html",
-    "F-Annotate.dc.html",
-    "F-Image-Toolbar.dc.html",
-    "T-Table-Handles.dc.html",
-    "T-Heading-Collapse.dc.html",
-    "T-Tooltip-System.dc.html",
-    "Sidebar-Collapse-2.dc.html"
+    "Duo-Set.dc.html",
+    "Mascot-Folio.dc.html"
   ],
-  "pages": [],
-  "title": "Thinkly Fast 视觉系统"
+  "notes": {},
+  "designSystems": []
 }
