@@ -2,10 +2,10 @@
 //! plus the titlebar batch send button (`统一发送（n）`).
 use std::{rc::Rc, time::Duration};
 use gpui::{
-    Animation, AnimationExt, App, CursorStyle, Div, ElementId, Entity, FontWeight, Hsla,
+    Animation, AnimationExt, App, BoxShadow, CursorStyle, Div, ElementId, Entity, FontWeight, Hsla,
     IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString, Stateful, Styled,
-    Transformation, Window, div, linear_color_stop, linear_gradient, percentage, prelude::*, px,
-    relative, rgb, svg,
+    Transformation, Window, div, linear_color_stop, linear_gradient, percentage, point, prelude::*,
+    px, relative, rgb, rgba, svg,
 };
 use gpui_component::input::{Input, InputState};
 use crate::{
@@ -52,6 +52,14 @@ pub fn send_all_button(
             btn.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(accent_hover())).on_mouse_down(MouseButton::Left, on_click)
         })
         .when(!enabled, |btn| btn.cursor(CursorStyle::Arrow).opacity(0.5))
+}
+
+/// Subtle 2-layer tight shadow for floating annotation popovers (inline cards stay flat).
+pub fn floating_shadows() -> Vec<BoxShadow> {
+    let shadow = |color, y, blur| BoxShadow {
+        color, offset: point(px(0.), px(y)), blur_radius: px(blur), spread_radius: px(0.), inset: false,
+    };
+    vec![shadow(rgba(0x0000001f).into(), 1., 2.), shadow(rgba(0x00000014).into(), 2., 8.)]
 }
 
 /// Outer shell for an annotation card (`border-radius: 10px`, `padding: 10px 12px`, `gap: 10px`).
