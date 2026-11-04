@@ -15,12 +15,12 @@ pub(super) fn standard_width(body_width: Pixels) -> Pixels {
     body_width + px(HANDLE_WIDTH + ROW_GAP + RIGHT_INSET)
 }
 
-pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
+pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
     let checked = block.checked;
     let checkbox_editor = editor.clone();
     let marker = match block.kind { Kind::Bullet => "•".into(), Kind::Numbered => format!("{}.", number.unwrap_or(1)), _ => String::new() };
-    let (size, factor) = super::paint::metrics(block.kind, f32::from(theme.editor_font)); let line = size * factor;
+    let (size, factor) = super::paint::block_metrics(block.kind, block.meta.code_language.is_some(), minimal, f32::from(theme.editor_font)); let line = size * factor;
     let indent = block.meta.indent.min(12) as f32 * 12.;
     let marker_width = if matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) { MARKER_WIDTH + indent } else { indent };
     let image = super::image_source::spec_of(block)
@@ -31,7 +31,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, handles: bo
     let blank = block.text.is_empty() && block.meta.table.is_none() && block.meta.raw_source.is_none();
     // Images never expose their Markdown/HTML line, as in the reference; dividers show source only while focused.
     let static_view = image.is_some() || (!active && rule);
-    div().id(("block", id as usize)).relative().w_full().min_w_0().py(px(BLOCK_PAD))
+    div().id(("block", id as usize)).relative().w_full().min_w_0().py(px(if minimal { 5. } else { BLOCK_PAD }))
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
             if this.minimal { return; }
             let next = if *hovered { Some(id) } else if this.hover == Some(id) { None } else { this.hover };
