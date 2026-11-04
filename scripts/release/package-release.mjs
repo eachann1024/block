@@ -8,8 +8,8 @@ import { buildApp } from "../build-app.mjs";
 import { readCargoVersion, ROOT, syncVersionFiles } from "./select-release.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
-const DMG_NAME = "thinkly-fast-macos.dmg";
-const ZIP_NAME = "thinkly-fast-macos.zip";
+const DMG_NAME = "block-macos.dmg";
+const ZIP_NAME = "block-macos.zip";
 
 function createDmgWithRetry(stageDir, outDmg) {
   let lastError;
@@ -57,7 +57,7 @@ export async function packageRelease() {
   rmSync(RELEASE_DIR, { recursive: true, force: true });
   mkdirSync(RELEASE_DIR, { recursive: true });
 
-  const stageDir = mkdtempSync(join(tmpdir(), "thinkly-fast-dmg-"));
+  const stageDir = mkdtempSync(join(tmpdir(), "block-dmg-"));
   try {
     const stagedApp = join(stageDir, `${appName}.app`);
     cpSync(appBundle, stagedApp, { recursive: true });

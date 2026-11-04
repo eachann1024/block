@@ -1,16 +1,16 @@
 import { spawnSync } from "node:child_process";
-import { bundleId, installedExecutable } from "./app-bundle.mjs";
+import { bundleId, installedExecutable, legacyBundleId, legacyInstalledExecutable } from "./app-bundle.mjs";
 
-const executable = "thinkly-fast";
+const executable = "block";
 const quitWaitMs = 8000;
 const quitRequestMs = 4000;
 
 export function appPids() {
-  return pidsFor(new Set([installedExecutable]));
+  return pidsFor(new Set([installedExecutable, legacyInstalledExecutable]));
 }
 
 export function matchingPids(releaseBinary) {
-  return pidsFor(new Set([installedExecutable, releaseBinary]));
+  return pidsFor(new Set([installedExecutable, legacyInstalledExecutable, releaseBinary]));
 }
 
 function pidsFor(binaries) {
@@ -26,11 +26,15 @@ function pidsFor(binaries) {
 
 export function requestQuit() {
   if (!appPids().length) return false;
-  const result = spawnSync("osascript", ["-e", `tell application id "${bundleId}" to quit`], {
-    encoding: "utf8",
-    timeout: quitRequestMs,
-  });
-  return result.status === 0;
+  let ok = false;
+  for (const id of [bundleId, legacyBundleId]) {
+    const result = spawnSync("osascript", ["-e", `tell application id "${id}" to quit`], {
+      encoding: "utf8",
+      timeout: quitRequestMs,
+    });
+    if (result.status === 0) ok = true;
+  }
+  return ok;
 }
 
 export async function stopRunningApp(releaseBinary) {
