@@ -5,7 +5,7 @@ use super::{table_actions::{TableChrome, TableCmd, TableDrag, TableMenu, TableSe
 use crate::{
     dropdown::{self, RowSpec},
     theme::{Theme, tr},
-    ui::reveal::{table_add_bar as add_bar, table_capsule as capsule, table_more_button as more_button},
+    ui::{reveal::table_add_bar as add_bar, table_controls::{GRIP_LONG, GRIP_SHORT, grip, thandle}},
 };
 
 thread_local! {
@@ -50,7 +50,10 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
     let dragging = drag.filter(|d| d.moved && d.block == id);
     let follow = dragging.and_then(|d| d.position.map(|p| (d.sel, d.start, p)));
     let view = chrome.viewport;
-    let show_column = dragging.is_none_or(|d| matches!(d.sel, TableSel::Column(_))) && table.top() - px(8.) >= view.top();
+    // The part of the active column inside the horizontal scroll window; a column scrolled away has no grip.
+    let (seen_left, seen_right) = (left.max(table.left()), right.min(table.right()));
+    let show_column = dragging.is_none_or(|d| matches!(d.sel, TableSel::Column(_)))
+        && seen_left < seen_right && table.top() - px(GRIP_SHORT / 2.) >= view.top();
     let row_mid = match follow {
         Some((TableSel::Row(_), s, p)) => ((top + bottom) / 2. + p.y - s.y).clamp(table.top() + px(12.), (table.bottom() - px(12.)).max(table.top() + px(12.))),
         _ => (top + bottom) / 2.,
@@ -60,15 +63,16 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
     if show_column {
         let x = match follow {
             Some((TableSel::Column(_), s, p)) => ((left + right) / 2. + p.x - s.x).clamp(table.left() + px(12.), (table.right() - px(12.)).max(table.left() + px(12.))),
-            _ => (left + right) / 2.,
+            _ => (seen_left + seen_right) / 2.,
         };
         let col_sel = TableSel::Column(c);
         let expanded = is_active(col_sel) || is_hovered(col_sel);
-        let pos = point(x - px(12.), if expanded { table.top() - px(7.) } else { table.top() - px(4.) });
+        // The grip is centred on the top border in both states.
+        let pos = point(x - px(GRIP_LONG / 2.), table.top() - px(GRIP_SHORT / 2.));
         let col_editor = editor.clone();
         let hover_editor = editor.clone();
         out.push(floating(pos,
-            capsule(("table-col", c), false, expanded, drag.is_some(), tr("点击查看列操作 · 拖动移动", "Click for column options · drag to move"))
+            grip(("table-col", c), false, expanded, drag.is_some(), tr("点击查看列操作 · 拖动移动", "Click for column options · drag to move"))
                 .on_hover(move |hovered: &bool, _, cx| {
                     if drag.is_some() || hover_editor.read(cx).dragging.is_some() { return; }
                     let cur = PILL_HOVER.with(|h| h.get());
@@ -89,11 +93,11 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
         let y = row_mid;
         let row_sel = TableSel::Row(r);
         let expanded = is_active(row_sel) || is_hovered(row_sel);
-        let pos = point(if expanded { table.left() - px(7.) } else { table.left() - px(4.) }, y - px(12.));
+        let pos = point(table.left() - px(GRIP_SHORT / 2.), y - px(GRIP_LONG / 2.));
         let row_editor = editor.clone();
         let hover_editor = editor.clone();
         out.push(floating(pos,
-            capsule(("table-row", r), true, expanded, drag.is_some(), tr("点击查看行操作 · 拖动移动", "Click for row options · drag to move"))
+            grip(("table-row", r), true, expanded, drag.is_some(), tr("点击查看行操作 · 拖动移动", "Click for row options · drag to move"))
                 .on_hover(move |hovered: &bool, _, cx| {
                     if drag.is_some() || hover_editor.read(cx).dragging.is_some() { return; }
                     let cur = PILL_HOVER.with(|h| h.get());
@@ -112,10 +116,10 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
     }
     if dragging.is_none() {
         let whole_selected = sel == Some((id, TableSel::Whole));
-        if !whole_selected && table.bottom() + px(18.) <= view.bottom() {
+        if !whole_selected && table.bottom() + px(20.) <= view.bottom() {
             let add_row = editor.clone();
             out.push(floating(point(table.left(), table.bottom() + px(2.)),
-                add_bar("table-add-row", table.size.width, px(16.), tr("添加行", "Add row"))
+                add_bar("table-add-row", table.size.width, px(18.), tr("添加行", "Add row"))
                     .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                         add_row.update(cx, |this, cx| { this.table_command(id, TableSel::Whole, TableCmd::AppendRow, cx); window.focus(&this.focus, cx); });
                         cx.stop_propagation();
@@ -124,19 +128,19 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
         if !whole_selected && table.top() >= view.top() && table.bottom() <= view.bottom() {
             let add_col = editor.clone();
             out.push(floating(point(table.right() + px(2.), table.top()),
-                add_bar("table-add-col", px(16.), table.size.height, tr("添加列", "Add column"))
+                add_bar("table-add-col", px(18.), table.size.height, tr("添加列", "Add column"))
                     .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                         add_col.update(cx, |this, cx| { this.table_command(id, TableSel::Whole, TableCmd::AppendColumn, cx); window.focus(&this.focus, cx); });
                         cx.stop_propagation();
                     })));
         }
-        if table.top() >= view.top() && table.top() + px(28.) <= view.bottom() {
+        if table.top() >= view.top() && table.top() + px(26.) <= view.bottom() {
             let more_editor = editor.clone();
             let cell_open = menu.is_some_and(|m| m.block == id && matches!(m.sel, TableSel::Cell(..) | TableSel::Whole));
             let btn_pos = point(table.right() + px(22.), table.top());
-            let menu_anchor = point((table.right() + px(50.) - px(224.)).max(table.left()), table.top() + px(32.));
+            let menu_anchor = point((table.right() + px(48.) - px(224.)).max(table.left()), table.top() + px(32.));
             out.push(floating(btn_pos,
-                more_button(cell_open).on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                thandle(cell_open).on_mouse_down(MouseButton::Left, move |_, _, cx| {
                     more_editor.update(cx, |this, cx| {
                         let (mr, mc) = this.cell_of_caret().filter(|x| x.0 == id).map(|x| (x.1, x.2)).unwrap_or((r, c));
                         this.open_table_menu(id, TableSel::Cell(mr, mc), menu_anchor, cx);

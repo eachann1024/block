@@ -214,7 +214,7 @@ const OCEAN_LIGHT: Theme = Theme {
     code_bg: hex(0xf3f1ec), quote_bar: hex(0xdbd9d4), primary: hex(0x2f3540),
     primary_hover: hex(0x3b4250), btn_border: hex(0xdcdcdc), btn_hover: hex(0xf7f7f7),
     menu_border: hex(0xe4e4e4), sidebar_border: hex(0xe6e6e6), preview_bg: hex(0xe9e9e9),
-    selection: hex(0xcfe0fb), selection_text: hex(0x1f57c0), menu_item_height: px(32.),
+    selection: hex(0xcde2fb), selection_text: hex(0x184f95), menu_item_height: px(32.),
     sidebar_width: px(260.), content_width: px(672.), editor_font: px(16.), ui_font: px(14.),
 };
 
