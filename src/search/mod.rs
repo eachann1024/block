@@ -210,7 +210,7 @@ fn hit_row<V: 'static>(
     } else {
         hit.folder.clone()
     };
-    div().id(("hit", ix)).px(px(12.)).py(px(8.)).flex().flex_col().gap(px(2.)).rounded(px(6.))
+    div().id(("hit", ix)).relative().when(ix == 0, |r| r.children(crate::ui::smoke_overlay::probe("search-hit-0"))).px(px(12.)).py(px(8.)).flex().flex_col().gap(px(2.)).rounded(px(6.))
         .border_1().border_color(if selected { theme.accent } else { gpui::transparent_black() })
         .when(selected, |row| row.bg(theme.selected))
         .when(!selected, |row| row.hover(|style| style.bg(theme.hover)))
