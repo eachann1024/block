@@ -13,8 +13,7 @@
 body{margin:0}
 a{color:#3559a8}a:hover{color:#233f7d}
 button{font-family:inherit}
-.ib{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;padding:0;cursor:pointer;flex:none;transition:background-color .14s ease,color .14s ease}
-.ib:hover{background:#eef3fc}
+.ib-close{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;padding:0;cursor:pointer;flex:none;transition:background-color .14s ease,color .14s ease}
 .ib-close:hover{background:#e81123;color:#ffffff}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -30,40 +29,18 @@ button{font-family:inherit}
 </div>
 </sc-if>
 <sc-if value="{{isWin}}" hint-placeholder-val="{{false}}">
-<div aria-hidden="true" style="width:1px;height:1px"></div>
-</sc-if>
-
-<div style="display:flex;align-items:center;gap:4px;margin-left:auto">
-<button type="button" class="ib" onClick="{{toggleSaved}}" aria-label="存入正式笔记" title="存入正式笔记" style="color:{{iconCol}};background:{{saveBtnBg}}">
-<sc-if value="{{notSaved}}" hint-placeholder-val="{{true}}">
-<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-<path d="M6.5 3.75h7.5l4.5 4.5v12H6.5z" fill="{{duoFill}}"></path>
-<path d="M6.5 3.75h7.5l4.5 4.5v12H6.5z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
-<path d="M14 3.75v4.5h4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
-<path d="M9.75 14.25l1.75 1.75 3.5-3.5" stroke="{{accent}}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"></path>
-</svg>
-</sc-if>
-<sc-if value="{{isSaved}}" hint-placeholder-val="{{false}}">
-<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-<circle cx="12" cy="12" r="8.25" fill="{{duoFill}}" stroke="{{accent}}" stroke-width="1.6"></circle>
-<path d="M8.75 12.25l2.25 2.25 4.5-4.5" stroke="{{accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-</svg>
-</sc-if>
-</button>
-<sc-if value="{{isWin}}" hint-placeholder-val="{{false}}">
-<button type="button" class="ib ib-close" aria-label="隐藏速记" style="color:{{iconCol}}">
+<button type="button" class="ib-close" aria-label="隐藏速记" style="margin-left:auto;color:{{iconCol}}">
 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"></path></svg>
 </button>
 </sc-if>
-</div>
 </header>
 
 <main style="flex:1;min-height:0;overflow:auto;padding:12px 28px 28px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
 <p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">周五回看只记录偏差，不复述进度。</p>
-<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">导出图片时默认带日期，标题可按需关闭。</p>
+<p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">小窗与主窗口独立运行，随手记完自动保存，Esc 隐藏。</p>
 <ul style="margin:0;padding-left:20px;font-size:16px;line-height:26px;color:{{textPrimary}};display:flex;flex-direction:column;gap:4px">
 <li>小窗呼出即写，不放多余状态栏与按钮</li>
-<li>需要归档时点右上角一键转存为正式笔记</li>
+<li>独立悬浮面板，不唤醒或干扰已隐藏的主窗口</li>
 </ul>
 <p style="margin:0;font-size:16px;line-height:26px;color:{{textPrimary}}">明天确认一下签名证书的续期时间<span aria-hidden="true" style="display:inline-block;width:2px;height:19px;background:{{accent}};vertical-align:-4px;margin-left:2px;border-radius:1px"></span></p>
 </main>
@@ -72,29 +49,19 @@ button{font-family:inherit}
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"platform":{"editor":"enum","default":"macOS","options":["macOS","Windows / Linux"],"label":"系统平台"},"theme":{"editor":"enum","default":"浅色","options":["浅色","深色"],"label":"外观主题"},"$preview":{"width":440,"height":520}}'>
 class Component extends DCLogic {
-constructor() {
-super();
-this.state = { saved: false };
-}
 renderVals() {
 const isWin = this.props.platform === 'Windows / Linux';
 const isMac = !isWin;
 const dark = this.props.theme === '深色';
-const isSaved = Boolean(this.state.saved);
 return {
 isMac,
 isWin,
-isSaved,
-notSaved: !isSaved,
 paperBg: dark ? '#161920' : '#ffffff',
 borderCol: dark ? '#2a303c' : '#dcdcdc',
 textPrimary: dark ? '#eef2f8' : '#181c23',
 iconCol: dark ? '#98a4b8' : '#475467',
 dotMuted: dark ? '#343b48' : '#dcdcdc',
-accent: dark ? '#6f96ec' : '#3559a8',
-duoFill: dark ? '#243558' : '#c9d8f3',
-saveBtnBg: isSaved ? (dark ? '#1f2d4a' : '#eef3fc') : 'transparent',
-toggleSaved: () => this.setState({ saved: !this.state.saved })
+accent: dark ? '#6f96ec' : '#3559a8'
 };
 }
 }

@@ -1,16 +1,20 @@
-//! 速记小窗: a separate 480x620 window with five Markdown slots, toggled by a global ⌥N hotkey.
+//! 速记小窗: a standalone 440x520 non-activating panel with three Markdown slots, toggled by a global ⌥N hotkey.
 mod header;
-mod save;
+mod panel;
 mod store;
 mod view;
 
-use std::{path::PathBuf, sync::atomic::{AtomicU32, Ordering}, time::Duration};
+use std::{sync::atomic::{AtomicU32, Ordering}, time::Duration};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::{Code, HotKey, Modifiers}};
-use gpui::{App, AppContext, Bounds, Entity, Global, KeyBinding, TitlebarOptions, WindowBounds, WindowHandle, WindowOptions, actions, point, px, size};
-use crate::{app::Workspace, editor::view::Editor};
+use gpui::{
+    App, AppContext, Bounds, Entity, Global, KeyBinding, TitlebarOptions, WindowBounds,
+    WindowHandle, WindowKind, WindowOptions, actions, point, px, size,
+};
+use crate::editor::view::Editor;
+use panel::{configure_quick_panel, order_out_quick_panel, prepare_quick_summon};
 use view::QuickView;
 
-actions!(quick_note, [ToggleQuickNote, HideQuickNote, SaveToNote, SlotOne, SlotTwo, SlotThree, SlotFour, SlotFive]);
+actions!(quick_note, [ToggleQuickNote, HideQuickNote, SlotOne, SlotTwo, SlotThree]);
 
 static QUICK_HK_ID: AtomicU32 = AtomicU32::new(0);
 static SEARCH_HK_ID: AtomicU32 = AtomicU32::new(0);
@@ -20,30 +24,16 @@ struct QuickState {
     view: Option<Entity<QuickView>>,
     window: Option<(WindowHandle<gpui_component::Root>, Entity<QuickView>)>,
     editor: Option<Entity<Editor>>,
-    main: Option<(Option<WindowHandle<gpui_component::Root>>, Entity<Workspace>)>,
     /// Kept alive for as long as the app runs, otherwise the hotkey is unregistered.
     hotkey: Option<GlobalHotKeyManager>,
     registered: Vec<HotKey>,
 }
 impl Global for QuickState {}
 
-pub fn set_main_window(handle: Option<WindowHandle<gpui_component::Root>>, workspace: Entity<Workspace>, cx: &mut App) {
-    cx.global_mut::<QuickState>().main = Some((handle, workspace));
-}
-
-pub(crate) fn main_window(cx: &App) -> Option<(Option<WindowHandle<gpui_component::Root>>, Entity<Workspace>)> {
-    cx.try_global::<QuickState>().and_then(|s| s.main.clone())
-}
-
-pub(crate) fn main_folder(cx: &App) -> Option<PathBuf> {
-    cx.try_global::<QuickState>()
-        .and_then(|s| s.main.as_ref())
-        .and_then(|(_, workspace)| workspace.read(cx).folder.clone())
-}
-
-pub(super) fn notify_saved_note(path: PathBuf, cx: &mut App) {
-    if let Some((_, workspace)) = main_window(cx) {
-        workspace.update(cx, |w, cx| w.insert_external_note(path, cx));
+pub(super) fn clear_window_state(cx: &mut App) {
+    order_out_quick_panel();
+    if cx.has_global::<QuickState>() {
+        cx.global_mut::<QuickState>().window = None;
     }
 }
 
@@ -59,18 +49,6 @@ pub fn refresh_style(cx: &mut App) {
     }
 }
 
-fn summon_search(cx: &mut App) {
-    if let Some((Some(handle), workspace)) = main_window(cx) {
-        if handle.update(cx, |_, window, _| window.is_window_active()).unwrap_or(false) {
-            let _ = handle.update(cx, |_, window, cx| {
-                workspace.update(cx, |w, cx| w.summon_search(window, cx));
-            });
-            return;
-        }
-    }
-    crate::search::window::toggle(cx);
-}
-
 /// Binds keys, the toggle action and the global hotkeys. Call once at startup.
 pub fn init(cx: &mut App) {
     cx.set_global(QuickState::default());
@@ -80,8 +58,6 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-1", SlotOne, Some("QuickNote")),
         KeyBinding::new("cmd-2", SlotTwo, Some("QuickNote")),
         KeyBinding::new("cmd-3", SlotThree, Some("QuickNote")),
-        KeyBinding::new("cmd-4", SlotFour, Some("QuickNote")),
-        KeyBinding::new("cmd-5", SlotFive, Some("QuickNote")),
     ]);
     #[cfg(not(target_os = "macos"))]
     cx.bind_keys([
@@ -89,8 +65,6 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("ctrl-1", SlotOne, Some("QuickNote")),
         KeyBinding::new("ctrl-2", SlotTwo, Some("QuickNote")),
         KeyBinding::new("ctrl-3", SlotThree, Some("QuickNote")),
-        KeyBinding::new("ctrl-4", SlotFour, Some("QuickNote")),
-        KeyBinding::new("ctrl-5", SlotFive, Some("QuickNote")),
     ]);
     cx.on_action(|_: &ToggleQuickNote, cx: &mut App| toggle(cx));
     start_hotkey(cx);
@@ -111,24 +85,37 @@ pub fn toggle(cx: &mut App) {
     if let Some((handle, view)) = live {
         let active = handle.update(cx, |_, window, _| window.is_window_active());
         match active {
-            Ok(true) => { let _ = handle.update(cx, |_, window, cx| view.update(cx, |view, cx| view.close(window, cx))); return; }
-            Ok(false) => {
-                let _ = handle.update(cx, |_, window, _| window.activate_window());
-                cx.activate(true);
+            Ok(true) => {
+                let _ = handle.update(cx, |_, window, cx| view.update(cx, |view, cx| view.close(window, cx)));
                 return;
             }
-            Err(_) => {} // window was closed: open a new one
+            Ok(false) => {
+                prepare_quick_summon();
+                let _ = handle.update(cx, |_, window, _| window.activate_window());
+                configure_quick_panel();
+                return;
+            }
+            Err(_) => {
+                if cx.has_global::<QuickState>() {
+                    cx.global_mut::<QuickState>().window = None;
+                }
+            }
         }
     }
     open(cx);
 }
 
 fn open(cx: &mut App) {
+    prepare_quick_summon();
     let bounds = Bounds::centered(None, size(px(440.), px(520.)), cx);
     let opened = cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             window_min_size: Some(size(px(380.), px(320.))),
+            kind: WindowKind::PopUp,
+            focus: true,
+            show: true,
+            is_movable: true,
             is_minimizable: false,
             is_resizable: false,
             titlebar: Some(TitlebarOptions {
@@ -143,15 +130,18 @@ fn open(cx: &mut App) {
             let view = cx.new(|cx| QuickView::new(window, cx));
             let editor = view.read(cx).editor.clone();
             cx.global_mut::<QuickState>().editor = Some(editor.clone());
-            // Traffic-light close: write a recovery checkpoint synchronously, like the main window.
+            // Traffic-light close: write a recovery checkpoint synchronously and order out the panel.
             window.on_window_should_close(cx, move |_, cx| {
-                editor.update(cx, |editor, cx| {
+                let ready = editor.update(cx, |editor, cx| {
                     let ready = editor.prepare_to_quit();
                     if !ready { cx.notify(); }
                     ready
-                })
+                });
+                if ready {
+                    clear_window_state(cx);
+                }
+                ready
             });
-            // gpui-component inputs (slot rename) require Root as the window's first layer.
             cx.global_mut::<QuickState>().view = Some(view.clone());
             cx.new(|cx| gpui_component::Root::new(view, window, cx))
         },
@@ -159,7 +149,9 @@ fn open(cx: &mut App) {
     match opened {
         Ok(handle) => {
             let state = cx.global_mut::<QuickState>();
-            state.window = state.view.take().map(|view| (handle, view)); cx.activate(true); }
+            state.window = state.view.take().map(|view| (handle, view));
+            configure_quick_panel();
+        }
         Err(error) => eprintln!("无法打开速记小窗: {error}"),
     }
 }
@@ -260,7 +252,7 @@ fn start_hotkey(cx: &mut App) {
                 }
             }
             if quick_pressed { cx.update(|cx| toggle(cx)); }
-            if search_pressed { cx.update(|cx| summon_search(cx)); }
+            if search_pressed { cx.update(|cx| crate::search::window::summon_from_hotkey(cx)); }
         }
     }).detach();
 }
