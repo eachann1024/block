@@ -159,12 +159,8 @@ pub(super) fn append(
         for cell in &row.cells {
             cancel.check()?;
             let width = xs[cell.column + cell.colspan] - xs[cell.column];
-            if width <= PAD * 2. + 1. {
-                return Err(ExportError::ResourceLimit(crate::theme::tr(
-                    "表格列过多，文字宽度不足",
-                    "Too many table columns; insufficient text width",
-                )));
-            }
+            let pad = PAD.min((width * 0.15).max(2.0));
+            let inner_w = (width - pad * 2.).max(16.0);
             let mut attrs = layout::attributes(theme, Kind::Paragraph, &[], false);
             if cell.header || style::bold(&table.attrs) || style::bold(&cell.attrs) {
                 attrs = attrs.weight(Weight::BOLD);
@@ -195,7 +191,7 @@ pub(super) fn append(
                 &cell.content,
                 fonts,
                 FONT,
-                width - PAD * 2.,
+                inner_w,
                 Some(align),
                 attrs,
             )?;
@@ -204,14 +200,14 @@ pub(super) fn append(
                 .layout_runs()
                 .map(|r| r.line_top + r.line_height)
                 .fold(LINE, f32::max)
-                + PAD * 2.;
+                + pad * 2.;
             if cell.rowspan == 1 {
                 heights[r] = heights[r].max(required);
             }
-            cells.push((r, cell, width, shaped, required));
+            cells.push((r, cell, width, pad, inner_w, shaped, required));
         }
     }
-    for (r, cell, _, _, required) in &cells {
+    for (r, cell, _, _, _, _, required) in &cells {
         let used: f32 = heights[*r..*r + cell.rowspan].iter().sum();
         if *required > used {
             heights[*r + cell.rowspan - 1] += required - used;
@@ -223,7 +219,7 @@ pub(super) fn append(
     }
     let end = *ys.last().unwrap();
     budget::canvas(PAGE_WIDTH * SCALE, (end + 48.0) * SCALE)?;
-    for (r, cell, width, shaped, _) in cells {
+    for (r, cell, width, pad, inner_w, shaped, _) in cells {
         let x = margin_left + xs[cell.column];
         let top = ys[r];
         let height = ys[r + cell.rowspan] - top;
@@ -245,12 +241,12 @@ pub(super) fn append(
             kind: Kind::Paragraph,
             checked: false,
             code: false,
-            x: x + PAD,
+            x: x + pad,
             marker_x: x,
             y: top,
-            text_y: top + PAD,
+            text_y: top + pad,
             height,
-            width: width - PAD * 2.,
+            width: inner_w,
             line_height: LINE,
         });
     }
