@@ -52,6 +52,7 @@ pub struct Editor {
     pub(super) selection_origin: Option<(selection::Position, selection::Position, usize)>,
     pub(super) toolbar_anchor: Option<Point<Pixels>>,
     pub(super) format: Option<super::format_cmds::FormatPop>,
+    pub(super) image_menu: Option<(u64, super::image_edit::ImagePop)>,
     pub(super) link_ui: super::link_pop::LinkUi,
     pub(super) layouts: HashMap<u64, TextLayout>,
     pub(super) list: ListState,
@@ -81,7 +82,7 @@ impl Editor {
         cx.on_app_quit(|editor, _| { editor.prepare_to_quit(); async {} }).detach();
         let doc = Doc::empty(); let caret = Caret::new(doc.blocks[0].id);
         Self { doc, caret, focus: cx.focus_handle(), hover: None, hover_gen: 0, dragging: None,
-            drag_over: None, selecting: false, block_menu: None, nowrap: Default::default(), folded: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, link_ui: Default::default(), layouts: HashMap::new(),
+            drag_over: None, selecting: false, block_menu: None, nowrap: Default::default(), folded: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, image_menu: None, link_ui: Default::default(), layouts: HashMap::new(),
             list: ListState::new(1, ListAlignment::Top, px(120.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
@@ -204,7 +205,7 @@ impl Render for Editor {
                     .child(div().flex_1().child(self.status.clone()))
                     .when(self.path.is_some() && self.dirty, |bar| bar.child(div().id("keep-draft-close")
                         .px_2().py_1().rounded_md().bg(theme.hover).cursor(gpui::CursorStyle::PointingHand)
-                        .child("保留草稿并关闭")
+                        .child(crate::theme::tr("保留草稿并关闭", "Keep draft & close"))
                         .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.keep_draft_and_close(cx); }))))))
                 .when_some(self.table_chrome.clone(), |root, chrome| {
                     let dims = self.table_dimensions(chrome.block).unwrap_or((1, 1));

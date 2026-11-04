@@ -18,15 +18,19 @@ impl Workspace {
         let startup_tabs = self.startup_tabs.take();
         let failed_folder = folder.clone();
         self.loading = true;
-        self.notice = format!("正在扫描 {}…", folder.display());
+        self.notice = format!("{} {}…", tr("正在扫描", "Scanning"), folder.display());
         self.refresh(cx);
         // Only one request is admitted; switching/creating stays disabled until it settles.
         cx.spawn(async move |this, cx| {
             let result = cx.background_executor().spawn(async move {
                 let scan = scan(&folder)?;
                 let notice = if scan.warning_count > 0 {
-                    format!("部分目录未能读取（{} 项）：{}", scan.warning_count, scan.warnings.join("；"))
-                } else if scan.nodes.is_empty() { "此文件夹没有 Markdown 笔记或可浏览的子目录".into() }
+                    if crate::theme::is_en() {
+                        format!("Some directories could not be read ({} items): {}", scan.warning_count, scan.warnings.join("; "))
+                    } else {
+                        format!("部分目录未能读取（{} 项）：{}", scan.warning_count, scan.warnings.join("；"))
+                    }
+                } else if scan.nodes.is_empty() { tr("此文件夹没有 Markdown 笔记或可浏览的子目录", "No Markdown notes or folders found").into() }
                 else { String::new() };
                 let mut tabs = Vec::new();
                 let mut active_tab = None;
@@ -51,7 +55,7 @@ impl Workspace {
                 match result {
                     Err(error) => {
                         this.folder_error = Some(failed_folder);
-                        this.notice = format!("无法打开文件夹：{error}");
+                        this.notice = format!("{}: {error}", tr("无法打开文件夹", "Failed to open folder"));
                         this.refresh(cx);
                     }
                     Ok(prepared) => {
@@ -61,10 +65,10 @@ impl Workspace {
                         if closed { this.commit_folder(cx); }
                         else if !this.editor.read(cx).is_busy() {
                             this.discard_pending(cx);
-                            this.notice = "目录未切换：当前笔记未能保存，请处理编辑器中的错误后重试".into();
+                            this.notice = tr("目录未切换：当前笔记未能保存，请处理编辑器中的错误后重试", "Folder switch canceled: could not save current note").into();
                             this.refresh(cx);
                         } else {
-                            this.notice = "正在保存当前笔记，完成后切换文件夹…".into();
+                            this.notice = tr("正在保存当前笔记，完成后切换文件夹…", "Saving current note before switching folder…").into();
                             this.refresh(cx);
                         }
                     }
@@ -76,7 +80,7 @@ impl Workspace {
     fn restore_superseded(&mut self, startup_epoch: Option<u64>, cx: &mut Context<Self>) -> bool {
         let superseded = startup_epoch.is_some_and(|epoch| self.editor.read(cx).interaction_epoch() != epoch);
         if superseded {
-            self.notice = "已保留当前编辑操作；需要时可重新选择文件夹".into();
+            self.notice = tr("已保留当前编辑操作；需要时可重新选择文件夹", "Kept current editing state; choose a folder again if needed").into();
             self.refresh(cx);
         }
         superseded
@@ -109,7 +113,7 @@ impl Workspace {
                 this.persisting = false;
                 match saved {
                     Ok(state) => this.notebooks = state.notebooks,
-                    Err(error) => this.notice = format!("{}；文件夹已打开，但偏好未能保存：{error}", this.notice),
+                    Err(error) => this.notice = format!("{}; {}: {error}", this.notice, tr("文件夹已打开，但偏好未能保存", "Folder opened, but preferences could not be saved")),
                 }
                 this.refresh(cx);
             });
@@ -121,7 +125,7 @@ impl Workspace {
         self.choosing = true;
         self.refresh(cx);
         let prompt = cx.prompt_for_paths(PathPromptOptions {
-            files: false, directories: true, multiple: false, prompt: Some("选择文件夹".into()),
+            files: false, directories: true, multiple: false, prompt: Some(tr("选择文件夹", "Choose Folder").into()),
         });
         cx.spawn_in(window, async move |this, cx| {
             let result = prompt.await;
@@ -132,8 +136,8 @@ impl Workspace {
                         if let Some(folder) = paths.into_iter().next() { this.use_folder(folder, cx); }
                     }
                     Ok(Ok(None)) => {},
-                    Ok(Err(error)) => this.notice = format!("无法选择文件夹：{error}"),
-                    Err(error) => this.notice = format!("选择文件夹已中断：{error}"),
+                    Ok(Err(error)) => this.notice = format!("{}: {error}", tr("无法选择文件夹", "Failed to choose folder")),
+                    Err(error) => this.notice = format!("{}: {error}", tr("选择文件夹已中断", "Folder selection canceled")),
                 }
                 this.refresh(cx);
             });

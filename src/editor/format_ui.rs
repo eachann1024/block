@@ -37,6 +37,6 @@ fn link_field(editor: Entity<Editor>, input: &Entity<InputState>, _existing: boo
         .on_action({ let e = editor.clone(); move |_: &Cancel, w, cx| { e.update(cx, |this, cx| this.close_format(w, cx)); cx.stop_propagation(); } })
         .child(div().w(px(260.)).h(px(28.)).px(px(8.)).rounded(px(6.)).bg(rgb(tc.input_bg)).text_size(px(13.)).text_color(rgb(tc.ink)).flex().items_center().overflow_hidden()
             .child(div().flex_1().min_w_0().child(Input::new(input).appearance(false).bordered(false).focus_bordered(false).text_size(px(13.)))))
-        .child(action_button("确定", "link-save", |this, w, cx| this.link_save(w, cx), editor, true))
+        .child(action_button(crate::theme::tr("确定", "OK"), "link-save", |this, w, cx| this.link_save(w, cx), editor, true))
         .into_any_element()
 }

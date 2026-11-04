@@ -5,7 +5,7 @@ use gpui::{
     Pixels, SharedString, Styled, Window, div, prelude::*, px, rgb, transparent_black,
 };
 use gpui_component::input::{Escape, Input};
-use crate::icons::{Icon, IconColors, icon};
+use crate::{icons::{Icon, IconColors, icon}, theme::tr};
 use super::{
     annotate::{Comment, HL_AI_BG, HL_AI_BORDER, ReactionPicker, resolve_comment_span},
     view::{Editor, selection::Position},
@@ -64,6 +64,7 @@ thread_local! { static CARD_HEIGHTS: RefCell<HashMap<u64, Pixels>> = RefCell::ne
 
 fn card_target(editor: &Editor, block_id: u64, offset: usize) -> Pixels {
     editor.layouts.get(&block_id).map(|layout| layout.point(offset).y - editor.annotate.editor_top)
+        .or_else(|| editor.doc.index_of(block_id).and_then(|ix| editor.list.bounds_for_item(ix)).map(|b| b.top() - editor.annotate.editor_top))
         .unwrap_or(px(24.)).max(px(24.))
 }
 
@@ -93,13 +94,13 @@ fn comment_card(comment: Comment, active_id: Option<u64>, cx: &mut Context<Edito
     });
 
     let status = if comment.streaming {
-        Some(div().mt(px(6.)).ml(px(32.)).text_size(px(12.)).text_color(rgb(0x2f6fe4)).child("Claude 正在改写选中内容…"))
+        Some(div().mt(px(6.)).ml(px(32.)).text_size(px(12.)).text_color(rgb(0x2f6fe4)).child(tr("Claude 正在改写选中内容…", "Claude is rewriting the selection…")))
     } else if let Some(err) = &comment.ai_error {
         Some(div().mt(px(6.)).ml(px(32.)).text_size(px(12.)).text_color(rgb(0xb42318)).child(err.clone()))
     } else if comment.ai_rewritten.is_some() {
         Some(div().mt(px(6.)).ml(px(32.)).flex().items_center().gap(px(6.)).text_size(px(12.)).text_color(rgb(0x787774))
             .child(div().size(px(8.)).rounded(px(2.)).bg(rgb(HL_AI_BG)).border_1().border_color(rgb(HL_AI_BORDER)))
-            .child("Claude 已更新原文"))
+            .child(tr("Claude 已更新原文", "Claude updated the text")))
     } else {
         None
     };
@@ -181,7 +182,7 @@ fn composer_card(
                 cx.notify();
             }))
             .child(checkbox)
-            .child(div().text_size(px(13.)).text_color(rgb(0x37352f)).child("Send to Claude")))
+            .child(div().text_size(px(13.)).text_color(rgb(0x37352f)).child(tr("发送给 Claude", "Send to Claude"))))
         .child(div().id("annotate-submit").size(px(28.)).rounded(px(14.)).flex_none().flex().items_center().justify_center()
             .bg(rgb(if has_text { 0x2f6fe4 } else { 0xe6e6e3 }))
             .when(has_text, |d| d.cursor(CursorStyle::PointingHand))

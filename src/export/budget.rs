@@ -25,24 +25,26 @@ pub enum ExportError {
 
 impl fmt::Display for ExportError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use crate::theme::tr;
         match self {
-            Self::Cancelled => write!(f, "已取消生成"),
-            Self::Dialog(error) => write!(f, "保存对话框出错：{error}"),
-            Self::Empty => write!(f, "没有可生成的内容"),
-            Self::Busy => write!(f, "已有生成任务在进行，请稍后再试"),
-            Self::ResourceLimit(reason) => {
-                write!(f, "内容超出图片限制（{reason}），请缩小范围；未生成图片")
-            }
-            Self::InvalidInput(reason) => write!(f, "内容格式无效：{reason}"),
-            Self::UnsupportedTable(reason) => {
-                write!(
-                    f,
-                    "表格无法完整生成图片（{reason}）；仅支持基础结构化的 Markdown / HTML 表格"
-                )
-            }
-            Self::Rendering(reason) => write!(f, "图片渲染失败：{reason}"),
-            Self::Encoding(error) => write!(f, "PNG 编码失败：{error}"),
-            Self::Write(error) => write!(f, "无法保存图片：{error}"),
+            Self::Cancelled => write!(f, "{}", tr("已取消生成", "Export canceled")),
+            Self::Dialog(error) => write!(f, "{}: {error}", tr("保存对话框出错", "Save dialog error")),
+            Self::Empty => write!(f, "{}", tr("没有可生成的内容", "Nothing to export")),
+            Self::Busy => write!(f, "{}", tr("已有生成任务在进行，请稍后再试", "An export is already in progress")),
+            Self::ResourceLimit(reason) => write!(
+                f,
+                "{} ({reason})",
+                tr("内容超出图片限制，请缩小范围", "Content exceeds image limit; narrow the scope")
+            ),
+            Self::InvalidInput(reason) => write!(f, "{}: {reason}", tr("内容格式无效", "Invalid content format")),
+            Self::UnsupportedTable(reason) => write!(
+                f,
+                "{} ({reason})",
+                tr("表格无法完整生成图片；仅支持基础结构化的 Markdown / HTML 表格", "Table cannot be exported; only basic Markdown/HTML tables are supported")
+            ),
+            Self::Rendering(reason) => write!(f, "{}: {reason}", tr("图片渲染失败", "Image rendering failed")),
+            Self::Encoding(error) => write!(f, "{}: {error}", tr("PNG 编码失败", "PNG encoding failed")),
+            Self::Write(error) => write!(f, "{}: {error}", tr("无法保存图片", "Failed to save image")),
         }
     }
 }

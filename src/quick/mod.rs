@@ -109,7 +109,7 @@ fn open(cx: &mut App) {
             is_minimizable: false,
             is_resizable: false,
             titlebar: Some(TitlebarOptions {
-                title: Some("速记".into()),
+                title: Some(crate::theme::tr("速记", "Quick Note").into()),
                 appears_transparent: true,
                 traffic_light_position: Some(point(px(16.), px(14.))),
                 ..Default::default()

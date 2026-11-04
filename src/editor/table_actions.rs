@@ -1,7 +1,7 @@
 //! Table structure commands, row/column selection, and the geometry the table chrome needs.
 use gpui::{Bounds, ClipboardItem, Context, Entity, Pixels, Point, Window, point, px};
-use super::{input::transactions::ListChange, model::{CellAlignment, Table}, table_layout,
-    view::{Editor, layout::TextLayout, selection::Position}};
+use crate::theme::tr;
+use super::{input::transactions::ListChange, model::{CellAlignment, Table}, table_layout, view::{Editor, layout::TextLayout, selection::Position}};
 
 thread_local! {
     /// (table block, row, column) under the pointer; the chrome follows hover, not the caret.
@@ -87,18 +87,20 @@ pub(super) enum TableCmd {
 impl TableCmd {
     pub fn label(self) -> &'static str {
         match self {
-            TableCmd::InsertRowAbove => "Insert row above", TableCmd::InsertRowBelow => "Insert row below",
-            TableCmd::InsertColLeft => "Insert column left", TableCmd::InsertColRight => "Insert column right",
-            TableCmd::MoveRowUp => "Move row up", TableCmd::MoveRowDown => "Move row down",
-            TableCmd::MoveColLeft => "Move column left", TableCmd::MoveColRight => "Move column right",
-            TableCmd::Align(CellAlignment::Left) => "Align left", TableCmd::Align(CellAlignment::Center) => "Align center",
-            TableCmd::Align(CellAlignment::Right) => "Align right",
-            TableCmd::ClearRow | TableCmd::ClearColumn => "Clear contents",
-            TableCmd::DeleteRow => "Delete row", TableCmd::DeleteColumn => "Delete column",
-            TableCmd::DeleteTable => "Delete table", TableCmd::SelectTable => "Select table",
-            TableCmd::CopyTable => "Copy table",
-            TableCmd::DuplicateRow => "Duplicate row", TableCmd::DuplicateColumn => "Duplicate column",
-            TableCmd::AppendRow => "Insert row below", TableCmd::AppendColumn => "Insert column right",
+            TableCmd::InsertRowAbove => tr("上方插入行", "Insert row above"),
+            TableCmd::InsertRowBelow | TableCmd::AppendRow => tr("下方插入行", "Insert row below"),
+            TableCmd::InsertColLeft => tr("左侧插入列", "Insert column left"),
+            TableCmd::InsertColRight | TableCmd::AppendColumn => tr("右侧插入列", "Insert column right"),
+            TableCmd::MoveRowUp => tr("上移行", "Move row up"), TableCmd::MoveRowDown => tr("下移行", "Move row down"),
+            TableCmd::MoveColLeft => tr("左移列", "Move column left"), TableCmd::MoveColRight => tr("右移列", "Move column right"),
+            TableCmd::Align(CellAlignment::Left) => tr("左对齐", "Align left"),
+            TableCmd::Align(CellAlignment::Center) => tr("居中对齐", "Align center"),
+            TableCmd::Align(CellAlignment::Right) => tr("右对齐", "Align right"),
+            TableCmd::ClearRow | TableCmd::ClearColumn => tr("清空内容", "Clear contents"),
+            TableCmd::DeleteRow => tr("删除行", "Delete row"), TableCmd::DeleteColumn => tr("删除列", "Delete column"),
+            TableCmd::DeleteTable => tr("删除表格", "Delete table"), TableCmd::SelectTable => tr("选中表格", "Select table"),
+            TableCmd::CopyTable => tr("复制表格", "Copy table"),
+            TableCmd::DuplicateRow => tr("复制行", "Duplicate row"), TableCmd::DuplicateColumn => tr("复制列", "Duplicate column"),
         }
     }
     pub fn icon(self) -> crate::icons::Icon {
@@ -157,7 +159,7 @@ impl Editor {
         let Some(table) = self.doc.get(id).and_then(|b| b.meta.table.clone()) else { return };
         let mut next = table;
         if !next.to_pipe() {
-            self.status = "这个 HTML 表格含有合并单元格、样式、列宽或特殊表头，暂不支持直接增删行列".into(); cx.notify(); return;
+            self.status = tr("这个 HTML 表格含有合并单元格、样式、列宽或特殊表头，暂不支持直接增删行列", "This HTML table has merged cells or custom styles and cannot be edited structurally").into(); cx.notify(); return;
         }
         let Some((row, column)) = edit(&mut next) else { return };
         next.finish_structure();
@@ -184,16 +186,14 @@ impl Editor {
                     let mut text = String::new();
                     super::markdown::serialize_table(table, &mut text);
                     cx.write_to_clipboard(ClipboardItem::new_string(text));
-                    self.status = "已复制表格".into();
+                    self.status = tr("已复制表格", "Table copied").into();
                 }
                 cx.notify();
             }
             TableCmd::DeleteTable => {
                 let Some(index) = self.doc.index_of(id) else { return };
                 self.commit_composition(cx); let before = self.snapshot();
-                if let Some(block) = self.doc.get_mut(id) {
-                    block.meta.table = None; block.text.clear(); block.spans.clear();
-                }
+                if let Some(block) = self.doc.get_mut(id) { block.meta.table = None; block.text.clear(); block.spans.clear(); }
                 self.doc.refresh_block(id);
                 let at = Position { block: id, offset: 0 };
                 self.caret.anchor = at; self.caret.head = at; self.caret.composing = None;

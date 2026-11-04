@@ -1,5 +1,5 @@
 //! The block command vocabulary: `Cmd` plus its labels, search keywords, icons and the language / slash tables.
-use crate::{editor::model::Kind, icons::Icon};
+use crate::{editor::model::Kind, icons::Icon, theme::tr};
 use super::kind_icon;
 
 /// Code languages offered by the code block picker: (fence tag, label).
@@ -13,7 +13,12 @@ pub(in crate::editor) fn language_label(tag: &str) -> &'static str {
     let tag = tag.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
     let tag = match tag.as_str() { "js" => "javascript", "ts" => "typescript", "py" => "python", "sh" | "shell" | "zsh" => "bash",
         "md" => "markdown", "c++" => "cpp", "yml" => "yaml", "latex" | "tex" => "math", other => other }.to_owned();
-    LANGUAGES.iter().find(|(t, _)| *t == tag).map_or("其他", |(_, l)| *l)
+    match tag.as_str() {
+        "" => tr("纯文本", "Plain Text"),
+        "mermaid" => tr("Mermaid 图表", "Mermaid Diagram"),
+        "math" => tr("数学公式", "Math Formula"),
+        other => LANGUAGES.iter().find(|(t, _)| *t == other).map_or_else(|| tr("其他", "Other"), |(_, l)| *l),
+    }
 }
 #[derive(Clone, Copy, PartialEq)]
 pub(in crate::editor) enum Cmd {
@@ -23,13 +28,24 @@ pub(in crate::editor) enum Cmd {
 impl Cmd {
     pub(in crate::editor) fn label(self) -> &'static str {
         match self {
-            Cmd::Turn(Kind::Paragraph) => "正文", Cmd::Turn(Kind::H1) => "一级标题", Cmd::Turn(Kind::H2) => "二级标题",
-            Cmd::Turn(Kind::H3) => "三级标题", Cmd::Turn(Kind::Bullet) => "无序列表", Cmd::Turn(Kind::Numbered) => "有序列表",
-            Cmd::Turn(Kind::Quote) => "引用", Cmd::Turn(Kind::Todo) => "待办清单",
-            Cmd::Callout => "标注", Cmd::Columns => "分栏",
-            Cmd::Code("mermaid") => "Mermaid 图表", Cmd::Code("math") => "数学公式", Cmd::Code(_) => "代码块",
-            Cmd::Table => "表格", Cmd::Divider => "分隔线", Cmd::Image => "图片", Cmd::Ai => "AI 写作",
-            Cmd::Delete => "删除",
+            Cmd::Turn(Kind::Paragraph) => tr("正文", "Text"),
+            Cmd::Turn(Kind::H1) => tr("一级标题", "Heading 1"),
+            Cmd::Turn(Kind::H2) => tr("二级标题", "Heading 2"),
+            Cmd::Turn(Kind::H3) => tr("三级标题", "Heading 3"),
+            Cmd::Turn(Kind::Bullet) => tr("无序列表", "Bulleted list"),
+            Cmd::Turn(Kind::Numbered) => tr("有序列表", "Numbered list"),
+            Cmd::Turn(Kind::Quote) => tr("引用", "Quote"),
+            Cmd::Turn(Kind::Todo) => tr("待办清单", "Checklist"),
+            Cmd::Callout => tr("标注", "Callout"),
+            Cmd::Columns => tr("分栏", "Columns"),
+            Cmd::Code("mermaid") => tr("Mermaid 图表", "Mermaid Diagram"),
+            Cmd::Code("math") => tr("数学公式", "Math Formula"),
+            Cmd::Code(_) => tr("代码块", "Code Block"),
+            Cmd::Table => tr("表格", "Table"),
+            Cmd::Divider => tr("分隔线", "Divider"),
+            Cmd::Image => tr("图片", "Image"),
+            Cmd::Ai => tr("AI 写作", "AI Write"),
+            Cmd::Delete => tr("删除", "Delete"),
             Cmd::SetLanguage(tag, _) => language_label(tag),
         }
     }

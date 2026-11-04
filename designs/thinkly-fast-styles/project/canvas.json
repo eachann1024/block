@@ -19,8 +19,8 @@
     },
     "Duo-Tree.dc.html": {
       "h": 1200,
-      "title": "双色 · 文件夹与文件 三版",
-      "w": 1600,
+      "title": "双色 · 文件夹与文件（方案 3 · 前后层）",
+      "w": 800,
       "x": 1680,
       "y": 3800
     },
@@ -47,6 +47,15 @@
       "w": 1440,
       "x": 0,
       "y": 6760
+    },
+    "F-Image-Toolbar.dc.html": {
+      "expand": "fill",
+      "h": 980,
+      "is_interactive": true,
+      "title": "图片工具栏功能对齐 · 7 项胶囊浮条与更多菜单（深/浅双模）",
+      "w": 1440,
+      "x": 3040,
+      "y": 14700
     },
     "F-Inline.dc.html": {
       "expand": "fill",
@@ -86,64 +95,19 @@
       "x": 0,
       "y": 14700
     },
-    "Icons-1.dc.html": {
-      "h": 800,
-      "title": "图标 1 · 细线圆端",
-      "w": 1280,
-      "x": 0,
-      "y": 2600
-    },
-    "Icons-2.dc.html": {
-      "h": 800,
-      "title": "图标 2 · 空心/实心成对",
-      "w": 1280,
-      "x": 1360,
-      "y": 2600
-    },
-    "Icons-3.dc.html": {
-      "h": 800,
-      "title": "图标 3 · 几何直角",
-      "w": 1280,
-      "x": 2720,
-      "y": 2600
-    },
     "Icons-4.dc.html": {
       "h": 800,
-      "title": "图标 4 · 双色",
+      "title": "图标 · 双色规范",
       "w": 1280,
-      "x": 4080,
+      "x": 0,
       "y": 2600
     },
     "Layout-1.dc.html": {
       "expand": "fill",
       "h": 900,
-      "title": "位置 1 · 库名切换 + 加号",
+      "title": "库名切换下拉 + 新建笔记",
       "w": 1440,
       "x": 0,
-      "y": 1300
-    },
-    "Layout-2.dc.html": {
-      "expand": "fill",
-      "h": 900,
-      "title": "位置 2 · 标题栏",
-      "w": 1440,
-      "x": 1520,
-      "y": 1300
-    },
-    "Layout-3.dc.html": {
-      "expand": "fill",
-      "h": 900,
-      "title": "位置 3 · 侧栏底部",
-      "w": 1440,
-      "x": 3040,
-      "y": 1300
-    },
-    "Layout-4.dc.html": {
-      "expand": "fill",
-      "h": 900,
-      "title": "位置 4 · 树内行",
-      "w": 1440,
-      "x": 4560,
       "y": 1300
     },
     "Main.dc.html": {
@@ -154,79 +118,47 @@
       "x": 0,
       "y": 0
     },
-    "Mascot-Fold.dc.html": {
-      "h": 860,
-      "title": "形象 C · 折角 · 四状态",
-      "w": 1600,
-      "x": 3360,
-      "y": 5400
-    },
     "Mascot-Folio.dc.html": {
       "h": 860,
-      "title": "形象 A · 页隼 · 四状态",
+      "title": "原创形象 · 页隼 · 四状态",
       "w": 1600,
       "x": 0,
       "y": 5400
     },
-    "Mascot-Ink.dc.html": {
-      "h": 860,
-      "title": "形象 B · 墨团 · 四状态",
-      "w": 1600,
-      "x": 1680,
-      "y": 5400
-    },
-    "S-Settings-1.dc.html": {
+    "S-Settings-3.dc.html": {
       "expand": "fill",
-      "h": 900,
+      "h": 940,
       "is_interactive": true,
-      "title": "设置 1 · 居中设置弹窗（浅色）",
+      "title": "设置 · 方案 1 独立分键键帽（macOS / Linux / Win）",
       "w": 1440,
       "x": 0,
       "y": 11900
     },
-    "S-Settings-2.dc.html": {
+    "S-Settings-3B.dc.html": {
       "expand": "fill",
-      "h": 900,
+      "h": 940,
       "is_interactive": true,
-      "title": "设置 2 · 侧栏弹出式面板（深色）",
+      "title": "设置 · 方案 2 内部分隔胶囊（macOS / Linux / Win）",
       "w": 1440,
       "x": 1520,
       "y": 11900
     },
-    "S-Settings-3.dc.html": {
+    "S-Settings-3C.dc.html": {
       "expand": "fill",
-      "h": 900,
+      "h": 940,
       "is_interactive": true,
-      "title": "设置 3 · 画布内页与实时字体预览",
+      "title": "设置 · 方案 3 阶梯键帽与连字符（macOS / Linux / Win）",
       "w": 1440,
       "x": 3040,
       "y": 11900
-    },
-    "Sidebar-Collapse-1.dc.html": {
-      "expand": "fill",
-      "h": 920,
-      "is_interactive": true,
-      "title": "侧栏折叠 A · 双色窗格带（推荐）",
-      "w": 1440,
-      "x": 0,
-      "y": 17500
     },
     "Sidebar-Collapse-2.dc.html": {
       "expand": "fill",
       "h": 920,
       "is_interactive": true,
-      "title": "侧栏折叠 B · 方向箭头窗格",
+      "title": "侧栏折叠 · 方向箭头窗格",
       "w": 1440,
-      "x": 1520,
-      "y": 17500
-    },
-    "Sidebar-Collapse-3.dc.html": {
-      "expand": "fill",
-      "h": 920,
-      "is_interactive": true,
-      "title": "侧栏折叠 C · 边柱双箭",
-      "w": 1440,
-      "x": 3040,
+      "x": 0,
       "y": 17500
     },
     "T-Heading-Collapse.dc.html": {
@@ -259,25 +191,9 @@
     "Tabs-1-Titlebar.dc.html": {
       "expand": "fill",
       "h": 900,
-      "title": "标签 1 · 顶栏内嵌（推荐）",
+      "title": "多标签页 · 顶栏内嵌",
       "w": 1440,
       "x": 0,
-      "y": 13300
-    },
-    "Tabs-2-PaperStrip.dc.html": {
-      "expand": "fill",
-      "h": 900,
-      "title": "标签 2 · 纸面书签条",
-      "w": 1440,
-      "x": 1520,
-      "y": 13300
-    },
-    "Tabs-3-Capsule.dc.html": {
-      "expand": "fill",
-      "h": 900,
-      "title": "标签 3 · 居中胶囊切换",
-      "w": 1440,
-      "x": 3040,
       "y": 13300
     },
     "X-D1-Ink.dc.html": {
@@ -347,18 +263,12 @@
   },
   "noteOrder": [
     "tA",
-    "tL",
-    "tI",
     "tT",
-    "tM",
     "tF",
     "tX",
     "tXD",
-    "tS",
-    "tTabs",
     "tLight",
-    "tHandles",
-    "tSidebarCollapse"
+    "tHandles"
   ],
   "notes": {
     "tA": {
@@ -379,75 +289,27 @@
     },
     "tHandles": {
       "kind": "title1",
-      "maxW": 2960,
-      "text": "把手重构 · 表格专属把手与菜单 · 标题折叠",
+      "maxW": 4480,
+      "text": "把手重构 · 表格专属把手与菜单 · 标题折叠 · 全局 Tooltip",
       "w": 240,
       "x": 0,
       "y": 15820
     },
-    "tI": {
-      "kind": "title1",
-      "maxW": 5360,
-      "text": "图标库",
-      "w": 240,
-      "x": 0,
-      "y": 2320
-    },
-    "tL": {
-      "kind": "title1",
-      "maxW": 6000,
-      "text": "选择文件夹与新建笔记的位置",
-      "w": 240,
-      "x": 0,
-      "y": 1020
-    },
     "tLight": {
       "kind": "title1",
-      "maxW": 2960,
-      "text": "浅色模式 · 选区工具栏 · AI 标注",
+      "maxW": 4480,
+      "text": "浅色模式 · 选区工具栏 · AI 标注 · 图片工具栏对齐",
       "w": 240,
       "x": 0,
       "y": 14420
     },
-    "tM": {
-      "kind": "title1",
-      "maxW": 4960,
-      "text": "Ocean · 原创形象与空状态",
-      "w": 240,
-      "x": 0,
-      "y": 5120
-    },
-    "tS": {
-      "kind": "title1",
-      "maxW": 4480,
-      "text": "最小化设置 · 主题 / 字体 / 平滑 / 快捷键 三版",
-      "w": 240,
-      "x": 0,
-      "y": 11620
-    },
-    "tSidebarCollapse": {
-      "kind": "title1",
-      "maxW": 4480,
-      "text": "顶栏侧栏折叠图标 · 替换「N 篇已打开」三版",
-      "w": 240,
-      "x": 0,
-      "y": 17220
-    },
     "tT": {
       "kind": "title1",
-      "maxW": 3280,
+      "maxW": 2480,
       "text": "双色 · 精修",
       "w": 240,
       "x": 0,
       "y": 3520
-    },
-    "tTabs": {
-      "kind": "title1",
-      "maxW": 4480,
-      "text": "多标签页 · 三版风格",
-      "w": 240,
-      "x": 0,
-      "y": 13020
     },
     "tX": {
       "kind": "title1",
@@ -470,18 +332,10 @@
     "Main.dc.html",
     "A-Export.dc.html",
     "Layout-1.dc.html",
-    "Layout-2.dc.html",
-    "Layout-3.dc.html",
-    "Layout-4.dc.html",
-    "Icons-1.dc.html",
-    "Icons-2.dc.html",
-    "Icons-3.dc.html",
     "Icons-4.dc.html",
     "Duo-Set.dc.html",
     "Duo-Tree.dc.html",
     "Mascot-Folio.dc.html",
-    "Mascot-Ink.dc.html",
-    "Mascot-Fold.dc.html",
     "F-Find.dc.html",
     "F-Search.dc.html",
     "F-Files.dc.html",
@@ -496,21 +350,18 @@
     "X-D2-Kraft.dc.html",
     "X-D3-Neon.dc.html",
     "X-D4-Film.dc.html",
-    "S-Settings-1.dc.html",
-    "S-Settings-2.dc.html",
     "S-Settings-3.dc.html",
+    "S-Settings-3B.dc.html",
+    "S-Settings-3C.dc.html",
     "Tabs-1-Titlebar.dc.html",
-    "Tabs-2-PaperStrip.dc.html",
-    "Tabs-3-Capsule.dc.html",
     "F-Toolbar.dc.html",
     "F-Annotate.dc.html",
+    "F-Image-Toolbar.dc.html",
     "T-Table-Handles.dc.html",
     "T-Heading-Collapse.dc.html",
     "T-Tooltip-System.dc.html",
-    "Sidebar-Collapse-1.dc.html",
-    "Sidebar-Collapse-2.dc.html",
-    "Sidebar-Collapse-3.dc.html"
+    "Sidebar-Collapse-2.dc.html"
   ],
   "pages": [],
-  "title": "Thinkly Fast 四版风格"
+  "title": "Thinkly Fast 视觉系统"
 }

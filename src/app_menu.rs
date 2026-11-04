@@ -6,7 +6,7 @@ use gpui::{
     prelude::*, px,
 };
 use crate::icons::{Icon, icon};
-use crate::theme::Theme;
+use crate::theme::{Theme, tr};
 use super::{Workspace, file_ops::display_name};
 
 const MENU_WIDTH: f32 = 188.;
@@ -61,22 +61,22 @@ impl Workspace {
         let (path, dir) = target.clone();
         let mut items: Vec<AnyElement> = Vec::new();
         let p = path.clone();
-        items.push(menu_item(ItemId::Name("reveal"), Icon::FolderReveal, "在访达中显示".into(), false, false,
+        items.push(menu_item(ItemId::Name("reveal"), Icon::FolderReveal, tr("在访达中显示", "Reveal in Finder").into(), false, false,
             cx.listener(move |this, _, _, cx| { this.close_overlays(cx); crate::files::ops::reveal_in_finder(&p); }))
             .into_any_element());
         let p = path.clone();
-        items.push(menu_item(ItemId::Name("rename"), Icon::Pencil, "重命名".into(), false, false,
+        items.push(menu_item(ItemId::Name("rename"), Icon::Pencil, tr("重命名", "Rename").into(), false, false,
             cx.listener(move |this, _, window, cx| this.start_rename(p.clone(), dir, window, cx)))
             .child(shortcut_hint("↵"))
             .into_any_element());
-        items.push(menu_item(ItemId::Name("move"), Icon::ArrowRight, "移动到…".into(), moving, false,
+        items.push(menu_item(ItemId::Name("move"), Icon::ArrowRight, tr("移动到…", "Move to…").into(), moving, false,
             cx.listener(|this, _, _, cx| {
                 if let Some(menu) = &mut this.menu { menu.moving = !menu.moving; }
                 cx.notify();
             })).into_any_element());
         items.push(separator());
         let p = path.clone();
-        items.push(menu_item(ItemId::Name("trash"), Icon::Trash, "移到废纸篓".into(), false, true,
+        items.push(menu_item(ItemId::Name("trash"), Icon::Trash, tr("移到废纸篓", "Move to Trash").into(), false, true,
             cx.listener(move |this, _, _, cx| this.trash(p.clone(), cx)))
             .child(shortcut_hint("⌘⌫"))
             .into_any_element());
@@ -112,7 +112,7 @@ impl Workspace {
         menu_surface(px(MENU_WIDTH)).id("move-list").max_h(px(300.)).overflow_y_scroll()
             .children(items)
             .when(empty, |s| s.child(div().h(px(32.)).px(px(10.)).flex().items_center()
-                .text_color(Theme::ocean().text_secondary).child("没有可移动到的位置")))
+                .text_color(Theme::ocean().text_secondary).child(tr("没有可移动到的位置", "No destination available"))))
             .into_any_element()
     }
 }

@@ -11,7 +11,7 @@ use super::view::ExportView;
 use super::view_stage::{MIN_SCALE, PREVIEW_PAD_X};
 use super::view_widgets::{button, section, segmented, style_grid, switch_row};
 use crate::icons::{Icon, IconColors, icon};
-use crate::theme::Theme;
+use crate::theme::{Theme, tr};
 
 const OPTIONS_WIDTH: f32 = 300.;
 
@@ -89,7 +89,7 @@ impl ExportView {
             .justify_center()
             .gap(px(8.))
             .child(back)
-            .child(div().text_size(px(13.)).font_weight(FontWeight(560.)).child("生成图片"))
+            .child(div().text_size(px(13.)).font_weight(FontWeight(560.)).child(tr("生成图片", "Export Image")))
             .child(
                 div()
                     .min_w_0()
@@ -116,13 +116,13 @@ impl ExportView {
         let is_dark = self.style.is_dark();
         let scope = segmented(
             "scope",
-            [("整篇", !self.use_selection, true), ("选中生成", self.use_selection, has_sel)],
+            [(tr("整篇", "Full Note"), !self.use_selection, true), (tr("选中生成", "Selection"), self.use_selection, has_sel)],
             true,
             Rc::new(cx.listener(|this, idx: &usize, _, cx| this.set_scope(*idx == 1, cx))),
         );
         let appearance = segmented(
             "theme",
-            [("浅色 · 4", !is_dark, true), ("深色 · 4", is_dark, true)],
+            [(tr("浅色 · 4", "Light · 4"), !is_dark, true), (tr("深色 · 4", "Dark · 4"), is_dark, true)],
             false,
             Rc::new(cx.listener(|this, idx: &usize, _, cx| this.set_dark(*idx == 1, cx))),
         );
@@ -141,21 +141,21 @@ impl ExportView {
             .bg(theme.sidebar)
             .text_size(px(13.))
             .text_color(theme.text_secondary)
-            .child("标准 · 720")
-            .child(div().text_size(px(12.)).child("816 px 纸宽"));
+            .child(tr("标准 · 720", "Standard · 720"))
+            .child(div().text_size(px(12.)).child(tr("816 px 纸宽", "816 px page")));
         let content_sec = div()
             .flex()
             .flex_col()
             .gap(px(4.))
             .child(switch_row(
                 "export-title-toggle",
-                "标题",
+                tr("标题", "Title"),
                 self.show_title,
                 Rc::new(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_title(cx))),
             ))
             .child(switch_row(
                 "export-watermark",
-                "底部水印",
+                tr("底部水印", "Watermark"),
                 self.watermark,
                 Rc::new(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_watermark(cx))),
             ));
@@ -174,10 +174,10 @@ impl ExportView {
             .flex()
             .flex_col()
             .gap(px(18.))
-            .child(section("范围", scope))
-            .child(section("主题", theme_sec))
-            .child(section("宽度", width_box))
-            .child(section("内容", content_sec))
+            .child(section(tr("范围", "Scope"), scope))
+            .child(section(tr("主题", "Theme"), theme_sec))
+            .child(section(tr("宽度", "Width"), width_box))
+            .child(section(tr("内容", "Content"), content_sec))
             .child(div().flex_1())
             .when_some(self.notice.clone(), |d, text| {
                 d.child(
@@ -202,7 +202,7 @@ impl ExportView {
                                     .font_weight(FontWeight(500.))
                                     .text_color(theme.accent)
                                     .on_click(cx.listener(|this, _: &ClickEvent, _, _| this.reveal_saved()))
-                                    .child("在访达中显示"),
+                                    .child(tr("在访达中显示", "Show in Finder")),
                             )
                         }),
                 )
@@ -216,7 +216,7 @@ impl ExportView {
         fill.a = 0.35;
         let colors = IconColors { line: c(0xffffff), fill, accent: c(0xffffff) };
         let glyph = icon(Icon::Download, px(14.), colors);
-        button("export-save", "保存 PNG", glyph, true, ready)
+        button("export-save", tr("保存 PNG", "Save PNG"), glyph, true, ready)
             .when(ready, |b| b.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.save(cx))))
     }
 
@@ -227,7 +227,7 @@ impl ExportView {
             px(14.),
             theme.icon_colors(theme.text),
         );
-        let label = if self.copied { "已复制" } else { "复制" };
+        let label = if self.copied { tr("已复制", "Copied") } else { tr("复制", "Copy") };
         button("export-copy", label, glyph, false, ready)
             .when(ready, |b| b.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.copy(cx))))
     }

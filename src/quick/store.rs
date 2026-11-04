@@ -15,7 +15,18 @@ pub struct Meta {
 }
 
 pub fn default_name(slot: usize) -> String {
-    if slot == 0 { "灵感".into() } else { format!("速记 {}", slot + 1) }
+    if slot == 0 { crate::theme::tr("灵感", "Ideas").into() }
+    else if crate::theme::is_en() { format!("Quick {}", slot + 1) }
+    else { format!("速记 {}", slot + 1) }
+}
+
+pub fn is_default_name(slot: usize, name: &str) -> bool {
+    if slot == 0 { matches!(name, "灵感" | "Ideas" | "速记 1" | "Quick 1") }
+    else { name == format!("速记 {}", slot + 1) || name == format!("Quick {}", slot + 1) }
+}
+
+pub fn display_name(slot: usize, name: &str) -> String {
+    if is_default_name(slot, name) { default_name(slot) } else { name.to_owned() }
 }
 
 /// `~/Library/Application Support/Thinkly Fast/quick` on macOS.
