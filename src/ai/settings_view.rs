@@ -1,6 +1,6 @@
 //! Rendering for 设置 › AI 助手: provider cards, connection fields and model picker.
 use gpui::{
-    Context, CursorStyle, Entity, FontWeight, IntoElement, MouseButton, ParentElement, Pixels, Render,
+    Context, CursorStyle, Entity, FontWeight, IntoElement, MouseButton, ParentElement, Render,
     SharedString, Styled, Window, div, prelude::*, px,
 };
 use gpui_component::input::{Input, InputState};
@@ -22,10 +22,6 @@ fn field_shell() -> gpui::Div {
         .bg(theme.shell).text_size(px(14.))
 }
 
-fn field(input: &Entity<InputState>, width: Pixels) -> gpui::Div {
-    field_shell().w(width).child(input_box(input))
-}
-
 fn field_flex(input: &Entity<InputState>) -> gpui::Div {
     field_shell().flex_1().min_w_0().child(input_box(input))
 }
@@ -36,19 +32,16 @@ impl AiSettings {
         let p = &PRESETS[ix];
         let id = p.id;
         let active = self.provider == id;
-        div().id(("ai-pcard", ix)).flex_1().min_w_0().py(px(12.)).px(px(14.)).rounded(px(8.))
-            .flex().items_center().gap(px(10.)).cursor(CursorStyle::PointingHand)
+        div().id(("ai-pcard", ix)).flex_1().min_w_0().py(px(10.)).px(px(12.)).rounded(px(8.))
+            .flex().items_center().gap(px(8.)).cursor(CursorStyle::PointingHand)
             .when(active, |d| d.bg(theme.selected).border_1().border_color(theme.accent))
             .when(!active, |d| d.bg(theme.shell).border_1().border_color(theme.hairline).hover(move |s| s.bg(theme.hover)))
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| this.select_provider(id, w, cx)))
-            .child(div().size(px(32.)).rounded(px(7.)).bg(card_bg()).border_1().border_color(theme.hairline)
+            .child(div().size(px(28.)).rounded(px(6.)).bg(card_bg()).border_1().border_color(theme.hairline)
                 .flex().items_center().justify_center().flex_none()
-                .child(crate::icons::brand_icon(p.icon(), px(18.), gpui::rgb(p.brand_rgb).into())))
-            .child(div().flex_1().min_w_0().flex().flex_col().gap(px(2.))
-                .child(div().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(500.)).text_color(theme.text)
-                    .overflow_hidden().whitespace_nowrap().text_ellipsis().child(p.label()))
-                .child(div().text_size(px(12.)).line_height(px(16.)).font(mono_font()).text_color(theme.text_secondary)
-                    .overflow_hidden().whitespace_nowrap().text_ellipsis().child(p.hint)))
+                .child(crate::icons::brand_icon(p.icon(), px(16.), gpui::rgb(p.brand_rgb).into())))
+            .child(div().flex_1().min_w_0().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(500.)).text_color(theme.text)
+                .overflow_hidden().whitespace_nowrap().text_ellipsis().child(p.label()))
     }
 
     fn connection_card(&self, cx: &mut Context<Self>) -> gpui::Div {
@@ -66,8 +59,8 @@ impl AiSettings {
             .child(div().flex().items_center().justify_between().gap(px(16.))
                 .child(card_title(tr("服务商与连接", "Provider & Connection"))).child(toggle))
             .child(div().flex().gap(px(10.)).children((0..PRESETS.len()).map(|ix| self.provider_card(ix, cx))))
-            .child(setting_row("Base URL", field(&self.base_url, px(380.))))
-            .child(setting_row("API Key", div().w(px(380.)).flex().items_center().gap(px(8.))
+            .child(setting_row(tr("接口地址", "Base URL"), div().flex_1().min_w_0().max_w(px(380.)).child(field_flex(&self.base_url))))
+            .child(setting_row(tr("API 密钥", "API Key"), div().flex_1().min_w_0().max_w(px(380.)).flex().items_center().gap(px(8.))
                 .child(field_flex(&self.api_key)).child(key_toggle)))
     }
 
@@ -99,8 +92,8 @@ impl AiSettings {
         });
         settings_card(16.)
             .child(card_title(tr("模型与连接", "Model & Connection")))
-            .child(setting_row(tr("默认模型", "Default Model"), div().flex().items_center().gap(px(8.))
-                .child(field(&self.model, px(220.)))
+            .child(setting_row(tr("默认模型", "Default Model"), div().flex_1().min_w_0().max_w(px(380.)).flex().items_center().gap(px(8.))
+                .child(field_flex(&self.model))
                 .child(action_button("ai-fetch-models", fetch_label, false, !self.fetching)
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.fetch_models(cx))))
                 .child(action_button("ai-test", test_label, test_ok, !self.testing)
