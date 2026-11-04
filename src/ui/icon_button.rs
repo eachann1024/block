@@ -66,3 +66,29 @@ pub fn copy_button(
         )
         .on_mouse_down(MouseButton::Left, on_down)
 }
+
+pub fn back_button(
+    id: impl Into<ElementId>,
+    label: &'static str,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    div()
+        .id(id)
+        .h(px(28.))
+        .px(px(10.))
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(6.))
+        .rounded(px(6.))
+        .cursor(CursorStyle::PointingHand)
+        .text_size(px(14.))
+        .font_weight(gpui::FontWeight(500.))
+        .text_color(theme.text)
+        .hover(move |s| s.bg(theme.hover))
+        .on_click(on_click)
+        .child(icon(Icon::ArrowLeft, px(15.), theme.icon_colors(theme.text)))
+        .child(label)
+}
+

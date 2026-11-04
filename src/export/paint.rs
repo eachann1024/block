@@ -152,6 +152,9 @@ pub(super) fn text(
     for run in buffer.layout_runs() {
         cancel.check()?;
         for glyph in run.glyphs {
+            if glyph.glyph_id == 0 {
+                continue;
+            }
             let physical = glyph.physical((x * SCALE, (y + run.line_y) * SCALE), SCALE);
             cache.with_pixels(
                 fonts,
