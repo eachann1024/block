@@ -16,16 +16,13 @@ impl Element for BlockText {
     fn source_location(&self) -> Option<&'static core::panic::Location<'static>> { None }
     fn request_layout(&mut self, _: Option<&GlobalElementId>, _: Option<&gpui::InspectorElementId>, window: &mut Window, cx: &mut App) -> (LayoutId, Measured) {
         let theme = Theme::ocean();
-        let (kind, fenced, nowrap, composing, content) = {
+        let (kind, level, fenced, nowrap, composing, content) = {
             let editor = self.editor.read(cx);
             let block = editor.doc.get(self.block).expect("visible block exists");
             let nowrap = block.meta.code_language.is_some() && editor.nowrap.contains(&self.block);
             let composing = editor.caret.composing.is_some() && editor.caret.head.block == self.block;
-            (block.kind, block.meta.code_language.clone(), nowrap, composing, super::view::layout::block_hash(block) ^ editor.ai_preview_key(self.block))
+            (block.kind, block.meta.heading_level, block.meta.code_language.clone(), nowrap, composing, super::view::layout::block_hash(block) ^ editor.ai_preview_key(self.block))
         };
-        let (size_px, factor) = metrics(kind, f32::from(theme.editor_font));
-        let font_size = px(size_px);
-        let line_height = font_size * factor;
         let measured: Measured = Rc::new(RefCell::new(None));
         let output = measured.clone();
         // The row owns the gutters; measure text only in its remaining flex space.
@@ -34,12 +31,7 @@ impl Element for BlockText {
         style.flex_basis = relative(0.).into();
         if let Some(language) = &fenced { style.margin = super::code_block::margin(language); }
         style.min_size.width = if nowrap { gpui::Length::Auto } else { px(0.).into() };
-        let _ = line_height;
-        let (mut size_px, factor) = block_metrics(kind, fenced.is_some(), self.editor.read(cx).minimal, f32::from(theme.editor_font));
-        if kind == Kind::H3 && fenced.is_none() {
-            let level = self.editor.read(cx).doc.get(self.block).and_then(|b| b.meta.heading_level);
-            size_px = match level { Some(4) => 17., Some(5) => 16., Some(6) => 15., _ => size_px };
-        }
+        let (size_px, factor) = heading_metrics(kind, level, fenced.is_some(), self.editor.read(cx).minimal, f32::from(theme.editor_font));
         let (font_size, line_height) = (px(size_px), px(size_px) * factor);
         let editor_entity = self.editor.clone();
         let block_id = self.block;
@@ -75,7 +67,12 @@ impl Element for BlockText {
                 let text: SharedString = if block.text.is_empty() { "\u{200b}".into() } else { block.text.clone().into() };
                 let mut runs = runs(block, &text, theme.text);
                 if matches!(block.kind, Kind::H1 | Kind::H2 | Kind::H3) {
-                    for run in &mut runs { run.font.weight = FontWeight(560.); }
+                    let is_h6 = block.kind == Kind::H3 && block.meta.heading_level == Some(6);
+                    let weight = FontWeight(if is_h6 { 500. } else { 600. });
+                    for run in &mut runs {
+                        run.font.weight = weight;
+                        if is_h6 { run.color = theme.text_secondary; }
+                    }
                 }
                 let language = block.meta.code_language.as_deref().or_else(|| {
                     block.meta.raw_source.as_ref().map(|_| if text.trim_start().starts_with('<') { "html" } else { "markdown" })
@@ -172,8 +169,9 @@ impl Element for BlockText {
             let dark = crate::theme::is_dark();
             let (head_color, body_color): (gpui::Hsla, gpui::Hsla) = match (dark, sel) {
                 (true, _) => (gpui::rgba(0x4c8bf533).into(), gpui::rgba(0x4c8bf522).into()),
-                (false, TableSel::Whole) => (gpui::rgb(0xdee4ed).into(), gpui::rgb(0xeef3fb).into()),
-                (false, _) => (gpui::rgb(0xdde3ec).into(), gpui::rgb(0xecf2fa).into()),
+                (false, TableSel::Whole) => (gpui::rgba(0x2a78d61a).into(), gpui::rgba(0x2a78d61a).into()),
+                (false, TableSel::Column(_)) => (gpui::rgb(0xf0eee6).into(), gpui::rgba(0x73726c0e).into()),
+                (false, _) => (gpui::rgb(0xf0eee6).into(), gpui::rgba(0x73726c0a).into()),
             };
             for (i, cell) in layout.cells.iter().enumerate() {
                 let (r, c) = (i / columns, i % columns);
@@ -212,13 +210,15 @@ impl Element for BlockText {
 }
 /// (font size px, line-height factor) per block kind; shared with the handle gutter.
 pub(super) fn metrics(kind: Kind, base: f32) -> (f32, f32) {
-    match kind { Kind::H1 => (28., 1.35), Kind::H2 => (22., 1.4), Kind::H3 => (19., 1.5), _ => (base, 1.5) }
+    match kind { Kind::H1 => (32., 1.2), Kind::H2 => (22., 1.3), Kind::H3 => (18., 1.35), _ => (base, 1.5) }
 }
-pub(super) fn block_metrics(kind: Kind, fenced: bool, minimal: bool, base: f32) -> (f32, f32) {
-    if fenced { return (14., 1.6); }
-    match kind {
-        Kind::H1 | Kind::H2 | Kind::H3 => metrics(kind, base),
-        _ if minimal => (16., 1.55),
+pub(super) fn heading_metrics(kind: Kind, level: Option<u8>, fenced: bool, minimal: bool, base: f32) -> (f32, f32) {
+    if fenced { return (14., 1.5); }
+    match (kind, level) {
+        (Kind::H3, Some(4)) => (16., 1.4),
+        (Kind::H3, Some(5 | 6)) => (14., 1.45),
+        (Kind::H1 | Kind::H2 | Kind::H3, _) => metrics(kind, base),
+        _ if minimal => (16., 1.5),
         _ => (base, 1.5),
     }
 }

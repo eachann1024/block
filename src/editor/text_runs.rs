@@ -16,18 +16,19 @@ pub(super) fn named_color_hex(value: &str, background: bool, dark: bool) -> Opti
     let name = match (key, background) {
         ("gray" | "#5e5d59" | "#c3c2b7" | "#6e6e73", false) => "gray",
         ("brown" | "#64473a" | "#e7c1ad" | "#9f6b53", false) => "brown",
-        ("red" | "#b42318" | "#ffb4ab" | "#d93025", false) => "red",
+        ("red" | "#93342c" | "#b42318" | "#ffb4ab" | "#d93025", false) => "red",
         ("orange" | "#974e08" | "#ffc38f" | "#d9730d", false) => "orange",
-        ("yellow" | "#855600" | "#f3d17c" | "#b06000", false) => "yellow",
-        ("green" | "#086b42" | "#8ce0b1" | "#188038", false) => "green",
+        ("yellow" | "#714f17" | "#855600" | "#f3d17c" | "#b06000", false) => "yellow",
+        ("green" | "#326a23" | "#086b42" | "#8ce0b1" | "#188038", false) => "green",
+        ("teal" | "#2f6259" | "#7fd8c8", false) => "teal",
         ("blue" | "#245bb2" | "#a8c8ff" | "#1a73e8", false) => "blue",
-        ("purple" | "#6940a5" | "#d0baf8" | "#7627bb", false) => "purple",
+        ("purple" | "#5036b1" | "#6940a5" | "#d0baf8" | "#7627bb", false) => "purple",
         ("pink" | "#ad1a72" | "#f1b6d7" | "#c14c8a", false) => "pink",
         ("gray" | "#ebeced" | "#3d3d3a", true) => "gray",
         ("brown" | "#e9e5e3" | "#49352c", true) => "brown",
         ("red" | "#fbe4e4" | "#512b31", true) => "red",
         ("orange" | "#f6e9d9" | "#50351f", true) => "orange",
-        ("yellow" | "#fbf3db" | "#453a1e", true) => "yellow",
+        ("yellow" | "#f9e8c1" | "#fbf3db" | "#453a1e", true) => "yellow",
         ("green" | "#ddedea" | "#253f34", true) => "green",
         ("blue" | "#ddebf1" | "#223f52", true) => "blue",
         ("purple" | "#eae4f2" | "#3b3055", true) => "purple",
@@ -37,18 +38,19 @@ pub(super) fn named_color_hex(value: &str, background: bool, dark: bool) -> Opti
     Some(match (name, background, dark) {
         ("gray", false, false) => "#5e5d59", ("gray", false, true) => "#c3c2b7",
         ("brown", false, false) => "#64473a", ("brown", false, true) => "#e7c1ad",
-        ("red", false, false) => "#b42318", ("red", false, true) => "#ffb4ab",
+        ("red", false, false) => "#93342c", ("red", false, true) => "#ffb4ab",
         ("orange", false, false) => "#974e08", ("orange", false, true) => "#ffc38f",
-        ("yellow", false, false) => "#855600", ("yellow", false, true) => "#f3d17c",
-        ("green", false, false) => "#086b42", ("green", false, true) => "#8ce0b1",
+        ("yellow", false, false) => "#714f17", ("yellow", false, true) => "#f3d17c",
+        ("green", false, false) => "#326a23", ("green", false, true) => "#8ce0b1",
+        ("teal", false, false) => "#2f6259", ("teal", false, true) => "#7fd8c8",
         ("blue", false, false) => "#245bb2", ("blue", false, true) => "#a8c8ff",
-        ("purple", false, false) => "#6940a5", ("purple", false, true) => "#d0baf8",
+        ("purple", false, false) => "#5036b1", ("purple", false, true) => "#d0baf8",
         ("pink", false, false) => "#ad1a72", ("pink", false, true) => "#f1b6d7",
         ("gray", true, false) => "#ebeced", ("gray", true, true) => "#3d3d3a",
         ("brown", true, false) => "#e9e5e3", ("brown", true, true) => "#49352c",
         ("red", true, false) => "#fbe4e4", ("red", true, true) => "#512b31",
         ("orange", true, false) => "#f6e9d9", ("orange", true, true) => "#50351f",
-        ("yellow", true, false) => "#fbf3db", ("yellow", true, true) => "#453a1e",
+        ("yellow", true, false) => "#f9e8c1", ("yellow", true, true) => "#453a1e",
         ("green", true, false) => "#ddedea", ("green", true, true) => "#253f34",
         ("blue", true, false) => "#ddebf1", ("blue", true, true) => "#223f52",
         ("purple", true, false) => "#eae4f2", ("purple", true, true) => "#3b3055",
@@ -112,7 +114,7 @@ pub(super) fn runs(block: &Block, text: &str, color: Hsla) -> Vec<TextRun> {
         if marks.contains(&MarkKind::Strike) { run.strikethrough = Some(StrikethroughStyle { color:Some(color), thickness:px(1.) }); }
         for tag in block.meta.inline.iter().filter(|tag| tag.start <= start && end <= tag.end) {
             if tag.name == "a" {
-                run.color = gpui::rgb(0x3d6fd6).into();
+                run.color = gpui::rgb(0x256abf).into();
                 run.underline = Some(UnderlineStyle { color:Some(gpui::rgb(0x9dbcf5).into()), thickness:px(1.), wavy:false });
             }
             if tag.name == "u" || css(&tag.attrs,"text-decoration").is_some_and(|value| value.contains("underline")) {

@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap};
 use gpui::{BoxShadow, Bounds, Context, CursorStyle, Entity, MouseButton, Pixels, Point, Window,
     div, point, prelude::*, px, rgb, rgba};
 use crate::{icons::{Icon, IconColors, icon}, theme::{is_dark, tr}};
-use super::{format_cmds::{FormatPop, palette::button_preview_colors}, model::{Kind, MarkKind}, view::Editor};
+use super::{format_cmds::FormatPop, model::{Kind, MarkKind}, view::Editor};
 
 pub(super) const BG: u32 = 0xffffff;
 pub(super) const BORDER: u32 = 0xececea;
@@ -156,37 +156,10 @@ fn button(g: Icon, tip: &'static str, on: bool, open: bool, dropdown: bool, edit
         })
 }
 
-/// Palette button: hover opens panel (150ms leave closes); click applies/clears last color.
+/// Palette button (`Text and highlight color` / `文本与高亮颜色`): toggles the color & highlight dropdown.
 fn palette_button(on: bool, open: bool, editor: Entity<Editor>) -> gpui::Stateful<gpui::Div> {
-    let tip = tr("颜色；点击应用上次颜色", "Color · click to apply last color");
-    let tc = ToolbarColors::current();
-    let btn_ink = if on { tc.on_ink } else { tc.ink };
-    let (text_tint, bar_color) = button_preview_colors();
-    let icon_ink = text_tint.unwrap_or(btn_ink);
-    let hover_editor = editor.clone();
-    div().id(tip).relative().h(px(32.)).min_w(px(32.)).flex_none().flex().items_center().justify_center().gap(px(1.)).px(px(6.)).rounded(px(8.))
-        .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(rgb(tc.hover)))
-        .when(open && !on, |b| b.bg(rgb(tc.open_bg)))
-        .when(on, |b| b.bg(rgb(tc.on_bg)))
-        .child(div().relative().flex().items_center().justify_center()
-            .child(glyph(Icon::TbPalette, 18., icon_ink))
-            .child(div().absolute().left(px(2.)).right(px(2.)).bottom(px(-2.)).h(px(2.)).rounded(px(1.))
-                .when_some(bar_color, |d, c| d.bg(rgb(c)))))
-        .child(glyph(Icon::TbChevron, 10., btn_ink))
-        .child(gpui::canvas(move |bounds, _, _| { BOUNDS.with(|m| { m.borrow_mut().insert(tip, bounds); }); }, |_, _, _, _| {})
-            .absolute().top_0().left_0().size_full())
-        .tooltip(crate::theme::tooltip(tip))
-        .on_hover(move |hovered, _, cx| {
-            let anchor = drop_anchor(tip);
-            hover_editor.update(cx, |this, cx| this.hover_palette_zone(*hovered, anchor, cx));
-        })
-        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-            editor.update(cx, |this, cx| {
-                this.click_palette_button(window, cx);
-                if this.format.is_none() { window.focus(&this.focus); }
-            });
-            cx.stop_propagation();
-        })
+    let tip = tr("文本与高亮颜色", "Text and highlight color");
+    button(Icon::TbPalette, tip, on, open, true, editor, move |this, w, cx| this.toggle_palette(drop_anchor(tip), w, cx))
 }
 
 impl Editor {

@@ -9,7 +9,7 @@ pub(super) fn popover(editor: Entity<Editor>, pop: &FormatPop) -> AnyElement {
     let (anchor, body, pad) = match pop {
         FormatPop::Ai(session) => return super::ai::panel::render(editor, session),
         FormatPop::Link { input, existing, anchor, .. } => (*anchor, link_field(editor, input, *existing), 4.),
-        FormatPop::Palette { anchor } => (*anchor, PalettePopover { editor }.into_any_element(), 0.),
+        FormatPop::Palette { anchor } => (*anchor, PalettePopover { editor }.into_any_element(), 6.),
         FormatPop::Kinds { anchor, current } => (*anchor, super::toolbar::menu(editor, true, *current), 6.),
         FormatPop::Lists { anchor, current } => (*anchor, super::toolbar::menu(editor, false, *current), 6.),
     };

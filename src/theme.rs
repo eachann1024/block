@@ -8,7 +8,10 @@ use gpui::{AnyView, App, Context, FontWeight, Hsla, IntoElement, Pixels, Render,
 pub use crate::files::state::{FontChoice, LanguageMode, ThemeMode};
 use crate::icons::IconColors;
 
+#[cfg(target_os = "macos")]
 pub const DEFAULT_SEARCH_SHORTCUT: &str = "cmd-shift-k";
+#[cfg(not(target_os = "macos"))]
+pub const DEFAULT_SEARCH_SHORTCUT: &str = "ctrl-shift-k";
 pub const DEFAULT_QUICK_SHORTCUT: &str = "alt-n";
 
 static THEME_MODE: AtomicU8 = AtomicU8::new(0);
@@ -70,37 +73,24 @@ pub fn apply_state(state: &crate::files::state::State) {
 }
 
 pub fn theme_mode() -> ThemeMode {
-    match THEME_MODE.load(Ordering::Relaxed) {
-        1 => ThemeMode::Dark,
-        2 => ThemeMode::System,
-        _ => ThemeMode::Light,
-    }
+    match THEME_MODE.load(Ordering::Relaxed) { 1 => ThemeMode::Dark, 2 => ThemeMode::System, _ => ThemeMode::Light }
 }
 
 pub fn set_theme_mode(mode: ThemeMode) {
     let code = match mode { ThemeMode::Light => 0, ThemeMode::Dark => 1, ThemeMode::System => 2 };
     THEME_MODE.store(code, Ordering::Relaxed);
-    let dark = match mode {
-        ThemeMode::Light => false,
-        ThemeMode::Dark => true,
-        ThemeMode::System => system_is_dark(),
-    };
+    let dark = match mode { ThemeMode::Light => false, ThemeMode::Dark => true, ThemeMode::System => system_is_dark() };
     IS_DARK.store(dark, Ordering::Relaxed);
 }
 
 pub fn is_dark() -> bool { IS_DARK.load(Ordering::Relaxed) }
 
 pub fn font_choice() -> FontChoice {
-    match FONT_CHOICE.load(Ordering::Relaxed) {
-        1 => FontChoice::Serif,
-        2 => FontChoice::Mono,
-        _ => FontChoice::Sans,
-    }
+    match FONT_CHOICE.load(Ordering::Relaxed) { 1 => FontChoice::Serif, _ => FontChoice::Sans }
 }
 
 pub fn set_font_choice(font: FontChoice) {
-    let code = match font { FontChoice::Sans => 0, FontChoice::Serif => 1, FontChoice::Mono => 2 };
-    FONT_CHOICE.store(code, Ordering::Relaxed);
+    FONT_CHOICE.store(match font { FontChoice::Sans => 0, FontChoice::Serif => 1 }, Ordering::Relaxed);
 }
 
 /// Resolved (serif, mono) primary families, picked from the installed font names.
@@ -127,17 +117,13 @@ fn resolved() -> (&'static str, &'static str) {
 pub fn mono_font_family() -> &'static str { resolved().1 }
 
 pub fn editor_font() -> (&'static str, &'static [&'static str]) {
-    let (serif, mono) = resolved();
+    let (serif, _) = resolved();
     match font_choice() {
         FontChoice::Sans => (".SystemUIFont", &[]),
         FontChoice::Serif if serif == "Songti SC" => (serif, &[]),
         FontChoice::Serif => (serif, &["Songti SC"]),
-        FontChoice::Mono if mono == "Menlo" => (mono, &[]),
-        FontChoice::Mono => (mono, &["Menlo"]),
     }
 }
-
-pub fn font_smoothing() -> bool { SMOOTHING.load(Ordering::Relaxed) }
 
 pub fn set_font_smoothing(on: bool) {
     SMOOTHING.store(on, Ordering::Relaxed);
@@ -163,14 +149,16 @@ pub fn set_shortcuts(search: String, quick: String) {
     *SHORTCUTS.lock().unwrap_or_else(|e| e.into_inner()) = Some((search, quick));
 }
 
-pub fn format_hotkey(spec: &str) -> String {
-    let (mut ctrl, mut alt, mut shift, mut cmd, mut key) = (false, false, false, false, String::new());
+pub fn hotkey_parts(spec: &str) -> Vec<String> {
+    let (mut ctrl, mut alt, mut shift, mut cmd, mut secondary, mut key) =
+        (false, false, false, false, false, String::new());
     for part in spec.split('-').filter(|s| !s.is_empty()) {
         match part.to_ascii_lowercase().as_str() {
             "ctrl" | "control" => ctrl = true,
             "alt" | "opt" | "option" => alt = true,
             "shift" => shift = true,
-            "cmd" | "super" | "meta" => cmd = true,
+            "cmd" | "super" | "meta" | "win" => cmd = true,
+            "secondary" => secondary = true,
             "space" => key = "Space".into(),
             "comma" => key = ",".into(),
             "period" => key = ".".into(),
@@ -181,13 +169,27 @@ pub fn format_hotkey(spec: &str) -> String {
         }
     }
     if spec.ends_with("--") { key = "-".into(); }
-    let mut out = String::new();
-    if ctrl { out.push('⌃'); }
-    if alt { out.push('⌥'); }
-    if shift { out.push('⇧'); }
-    if cmd { out.push('⌘'); }
-    out.push_str(&key);
+    let mut out = Vec::new();
+    if cfg!(target_os = "macos") {
+        if ctrl { out.push("⌃".into()); }
+        if alt { out.push("⌥".into()); }
+        if shift { out.push("⇧".into()); }
+        if cmd || secondary { out.push("⌘".into()); }
+    } else {
+        if ctrl || secondary { out.push("Ctrl".into()); }
+        if shift { out.push("Shift".into()); }
+        if alt { out.push("Alt".into()); }
+        if cmd {
+            out.push(if cfg!(target_os = "windows") { "Win".into() } else { "Super".into() });
+        }
+    }
+    if !key.is_empty() { out.push(key); }
     out
+}
+
+pub fn format_hotkey(spec: &str) -> String {
+    let parts = hotkey_parts(spec);
+    if cfg!(target_os = "macos") { parts.join(" ") } else { parts.join(" + ") }
 }
 
 const fn hex(value: u32) -> Hsla {
@@ -196,37 +198,23 @@ const fn hex(value: u32) -> Hsla {
     let b = (value & 0xff) as f32 / 255.0;
     let max = if r >= g && r >= b { r } else if g >= b { g } else { b };
     let min = if r <= g && r <= b { r } else if g <= b { g } else { b };
-    let l = (max + min) / 2.0;
-    let d = max - min;
-    let s = if d == 0.0 {
-        0.0
-    } else if l > 0.5 {
-        d / (2.0 - max - min)
-    } else {
-        d / (max + min)
-    };
-    let h = if d == 0.0 {
-        0.0
-    } else if max == r {
-        ((g - b) / d + if g < b { 6.0 } else { 0.0 }) / 6.0
-    } else if max == g {
-        ((b - r) / d + 2.0) / 6.0
-    } else {
-        ((r - g) / d + 4.0) / 6.0
-    };
+    let (l, d) = ((max + min) / 2.0, max - min);
+    let s = if d == 0.0 { 0.0 } else if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
+    let h = if d == 0.0 { 0.0 } else if max == r { ((g - b) / d + if g < b { 6.0 } else { 0.0 }) / 6.0 }
+        else if max == g { ((b - r) / d + 2.0) / 6.0 } else { ((r - g) / d + 4.0) / 6.0 };
     Hsla { h, s, l, a: 1.0 }
 }
 
 const OCEAN_LIGHT: Theme = Theme {
     shell: hex(0xf1f1f1), sidebar: hex(0xfafafa), settings_bg: hex(0xf8f8f8),
-    paper: hex(0xffffff), menu: hex(0xffffff), text: hex(0x20242c),
-    text_secondary: hex(0x526071), accent: hex(0x547dd0), icon_fill: hex(0xc9d8f3),
+    paper: hex(0xffffff), menu: hex(0xffffff), text: hex(0x1f1e1d),
+    text_secondary: hex(0x52514e), accent: hex(0x547dd0), icon_fill: hex(0xc9d8f3),
     hover: hex(0xeef3fc), selected: hex(0xe5edfc), hairline: hex(0xe4e6ea),
-    code_bg: hex(0xf2f4f8), quote_bar: hex(0xd5dbe3), primary: hex(0x2f3540),
+    code_bg: hex(0xf3f1ec), quote_bar: hex(0xdbd9d4), primary: hex(0x2f3540),
     primary_hover: hex(0x3b4250), btn_border: hex(0xdcdcdc), btn_hover: hex(0xf7f7f7),
     menu_border: hex(0xe4e4e4), sidebar_border: hex(0xe6e6e6), preview_bg: hex(0xe9e9e9),
     selection: hex(0xcfe0fb), selection_text: hex(0x1f57c0), menu_item_height: px(32.),
-    sidebar_width: px(260.), content_width: px(720.), editor_font: px(17.), ui_font: px(14.),
+    sidebar_width: px(260.), content_width: px(672.), editor_font: px(16.), ui_font: px(14.),
 };
 
 const OCEAN_DARK: Theme = Theme {
@@ -238,7 +226,7 @@ const OCEAN_DARK: Theme = Theme {
     primary_hover: hex(0x52607a), btn_border: hex(0x444444), btn_hover: hex(0x2c2c2c),
     menu_border: hex(0x383838), sidebar_border: hex(0x333333), preview_bg: hex(0x262626),
     selection: hex(0x2d426b), selection_text: hex(0x9dbcf5), menu_item_height: px(32.),
-    sidebar_width: px(260.), content_width: px(720.), editor_font: px(17.), ui_font: px(14.),
+    sidebar_width: px(260.), content_width: px(672.), editor_font: px(16.), ui_font: px(14.),
 };
 
 #[derive(Clone, Copy)]
