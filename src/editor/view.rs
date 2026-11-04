@@ -115,6 +115,7 @@ impl Focusable for Editor { fn focus_handle(&self, _: &App) -> FocusHandle { sel
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_annotations(); self.track_pointer_lifecycle(window, cx);
+        self.track_extend_pointer(window, cx);
         let theme = Theme::ocean(); self.reveal();
         let input_editor = cx.entity();
         let input = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
