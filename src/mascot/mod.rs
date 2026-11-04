@@ -3,39 +3,19 @@ mod art;
 pub use art::{MascotState, illustration, load_asset};
 
 use gpui::{
-    AnyElement, App, Context, CursorStyle, Div, FontWeight, Focusable, Hsla, IntoElement,
+    AnyElement, App, Context, CursorStyle, Div, FontWeight, Hsla, IntoElement,
     MouseButton, MouseDownEvent, ParentElement, Stateful, Styled, Window, div, prelude::*, px, rgb,
 };
-use crate::app::{NewNote, Workspace};
+use crate::app::Workspace;
 use crate::editor::view::Editor;
 use crate::theme::{Theme, is_dark, tr};
 
-pub fn editor_empty(cx: &mut Context<Editor>) -> Div {
-    let new_note = outlined_button(
-        "mascot-new-note",
-        tr("新建笔记", "New Note"),
-        true,
-        cx.listener(|this, _, window, cx| {
-            cx.stop_propagation();
-            let focus = this.focus_handle(cx);
-            window.focus(&focus, cx);
-            window.dispatch_action(Box::new(NewNote), cx);
-        }),
-    );
-    let recover = secondary_button(
-        "recover-draft",
-        tr("恢复最近草稿", "Recover Recent Draft"),
-        true,
-        cx.listener(|this, _, _, cx| {
-            cx.stop_propagation();
-            this.recover_latest_draft(cx);
-        }),
-    );
+pub fn editor_empty(_cx: &mut Context<Editor>) -> Div {
     card(
         MascotState::NoNote,
         tr("打开一篇，继续想", "Open a Note to Continue"),
         &[tr("从左侧选择笔记开始编辑，", "Select a note from the sidebar,"), tr("也可以写下新的想法。", "or start a new thought.")],
-        div().child(new_note).child(recover),
+        None,
     )
 }
 
@@ -64,7 +44,7 @@ impl Workspace {
                 MascotState::ReadError,
                 tr("暂时无法读取文件夹", "Cannot Read Folder"),
                 &[tr("检查文件夹是否仍可访问，", "Check if the folder is still accessible,"), tr("然后重试，或选择其他文件夹。", "then retry or choose another folder.")],
-                div().child(retry).child(choose),
+                Some(div().child(retry).child(choose)),
             )
         } else if self.loading {
             return Some(div().flex_1().min_w_0().h_full().bg(theme.paper).into_any_element());
@@ -79,7 +59,7 @@ impl Workspace {
                 MascotState::NoFolder,
                 tr("先选一个笔记文件夹", "Choose a Notes Folder"),
                 &[tr("打开本地文件夹，", "Open a local folder"), tr("让想法有个落脚的地方。", "to keep your notes in one place.")],
-                div().child(choose),
+                Some(div().child(choose)),
             )
         } else if !self.tree.read(cx).has_notes() {
             let create = primary_button(
@@ -98,7 +78,7 @@ impl Workspace {
                 MascotState::EmptyFolder,
                 tr("从第一篇笔记开始", "Start with Your First Note"),
                 &[tr("这个文件夹里还没有笔记。", "This folder has no notes yet."), tr("写下一点，慢慢展开。", "Jot something down and let it grow.")],
-                div().child(create).child(switch),
+                Some(div().child(create).child(switch)),
             )
         } else {
             return None;
@@ -115,7 +95,7 @@ impl Workspace {
     }
 }
 
-fn card(state: MascotState, title: &'static str, body: &[&'static str], actions: Div) -> Div {
+fn card(state: MascotState, title: &'static str, body: &[&'static str], actions: Option<Div>) -> Div {
     let theme = Theme::ocean();
     div()
         .size_full()
@@ -147,7 +127,9 @@ fn card(state: MascotState, title: &'static str, body: &[&'static str], actions:
                 .text_color(theme.text_secondary)
                 .children(body.iter().copied().map(|line| div().child(line))),
         )
-        .child(actions.mt(px(24.)).flex().items_center().gap(px(10.)))
+        .when_some(actions, |el, actions| {
+            el.child(actions.mt(px(24.)).flex().items_center().gap(px(10.)))
+        })
 }
 
 fn primary_button(
@@ -175,37 +157,6 @@ fn primary_button(
         .when(enabled, |b| {
             b.cursor(CursorStyle::PointingHand)
                 .hover(move |s| s.bg(hover_bg))
-                .on_mouse_down(MouseButton::Left, on_down)
-        })
-        .when(!enabled, |b| b.opacity(0.5))
-        .child(label)
-}
-
-fn outlined_button(
-    id: &'static str,
-    label: &'static str,
-    enabled: bool,
-    on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<Div> {
-    let theme = Theme::ocean();
-    let border: Hsla = if is_dark() { theme.btn_border } else { rgb(0xd5dce7).into() };
-    div()
-        .id(id)
-        .h(px(44.))
-        .px(px(22.))
-        .rounded(px(7.))
-        .border_1()
-        .border_color(border)
-        .bg(theme.paper)
-        .text_color(theme.text_secondary)
-        .text_size(px(13.))
-        .font_weight(FontWeight::MEDIUM)
-        .flex()
-        .items_center()
-        .justify_center()
-        .when(enabled, |b| {
-            b.cursor(CursorStyle::PointingHand)
-                .hover(move |s| s.bg(theme.btn_hover).text_color(theme.text))
                 .on_mouse_down(MouseButton::Left, on_down)
         })
         .when(!enabled, |b| b.opacity(0.5))
