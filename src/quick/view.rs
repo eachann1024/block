@@ -37,6 +37,11 @@ impl QuickView {
             editor
         });
         let observe = cx.observe(&editor, |_, _, cx| cx.notify());
+        cx.observe_window_appearance(window, |_, window, cx| {
+            if crate::theme::sync_system_appearance(window.appearance(), cx) {
+                crate::quick::refresh_style(cx);
+            }
+        }).detach();
         cx.observe_window_bounds(window, |this, window, cx| {
             let bounds = crate::window_bounds::capture_window_bounds(window, cx);
             super::remember_bounds(bounds, cx);
@@ -247,21 +252,11 @@ impl Render for QuickView {
         let theme = Theme::ocean();
         let entity = cx.entity().clone();
         window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
-            if phase != DispatchPhase::Capture || !event.modifiers.shift {
-                return;
-            }
-            if event.modifiers.control || event.modifiers.alt || event.modifiers.platform {
-                return;
-            }
+            if phase != DispatchPhase::Capture || !event.modifiers.shift { return; }
+            if event.modifiers.control || event.modifiers.alt || event.modifiers.platform { return; }
             let delta = event.delta.pixel_delta(px(20.));
-            let axis = if delta.y.abs() >= delta.x.abs() {
-                f32::from(delta.y)
-            } else {
-                f32::from(delta.x)
-            };
-            if axis.abs() < 0.5 {
-                return;
-            }
+            let axis = if delta.y.abs() >= delta.x.abs() { f32::from(delta.y) } else { f32::from(delta.x) };
+            if axis.abs() < 0.5 { return; }
             cx.stop_propagation();
             entity.update(cx, |this, cx| this.on_shift_scroll(axis, window, cx));
         });
