@@ -125,7 +125,12 @@ pub fn rename(path: &Path, name: &str, dir: bool) -> io::Result<PathBuf> {
         #[cfg(target_family = "wasm")]
         super::vfs::rename_tree(path, &target)?;
         #[cfg(not(target_family = "wasm"))]
-        std::fs::rename(path, &target)?;
+        {
+            std::fs::rename(path, &target)?;
+            if let Err(error) = crate::page_history::on_path_moved(path, &target, dir) {
+                return Err(error);
+            }
+        }
     }
     Ok(target)
 }
@@ -137,10 +142,14 @@ pub fn move_to(path: &Path, dest: &Path) -> io::Result<PathBuf> {
     let target = dest.join(name);
     if target == path { return Ok(target); }
     if exists(&target) { return Err(io::Error::new(io::ErrorKind::AlreadyExists, tr("目标位置已存在同名项目", "Destination already has an item with this name"))); }
+    let dir = is_dir(path);
     #[cfg(target_family = "wasm")]
     super::vfs::rename_tree(path, &target)?;
     #[cfg(not(target_family = "wasm"))]
-    std::fs::rename(path, &target)?;
+    {
+        std::fs::rename(path, &target)?;
+        crate::page_history::on_path_moved(path, &target, dir)?;
+    }
     Ok(target)
 }
 
