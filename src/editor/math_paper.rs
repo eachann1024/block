@@ -4,14 +4,14 @@
 
 use std::{cell::RefCell, collections::HashSet, time::Duration};
 use gpui::{
-    AnyElement, ClipboardItem, Context, Entity, Hsla, IntoElement, MouseButton,
+    AnyElement, ClipboardItem, Context, Entity, Hsla, IntoElement,
     div, prelude::*, px, rgb, rgba,
 };
 use crate::{
     editor::view::Editor,
     icons::Icon,
     theme::{Theme, is_dark, tr},
-    ui::icon_button::{copy_button, icon_button},
+    ui::icon_button::{copy_button, icon_button_zoomed},
 };
 
 thread_local! {
@@ -56,11 +56,12 @@ pub(super) fn preview_math_block(
     let edit_icon = if open { Icon::TbChevron } else { Icon::Pencil };
     let edit_editor = editor.clone();
 
-    let edit_btn = icon_button(
+    let edit_btn = icon_button_zoomed(
         ("math-edit-btn", block_id as usize),
         edit_icon,
         true,
-        move |event, window, cx| {
+        zoom,
+        move |_, window, cx| {
             cx.stop_propagation();
             let _ = edit_editor.update(cx, |this, cx| {
                 let next = !open;
@@ -74,13 +75,13 @@ pub(super) fn preview_math_block(
         },
     )
     .w_auto()
-    .h(px(28.))
-    .px(px(6.))
-    .gap(px(4.))
+    .h(px(28. * zoom))
+    .px(px(6. * zoom))
+    .gap(px(4. * zoom))
     .child(
         div()
-            .text_size(px(14.))
-            .line_height(px(18.))
+            .text_size(px(14. * zoom))
+            .line_height(px(18. * zoom))
             .text_color(theme.text_secondary)
             .child(edit_label),
     );
@@ -92,7 +93,8 @@ pub(super) fn preview_math_block(
     let copy_btn = copy_button(
         ("math-copy-btn", block_id as usize),
         copied,
-        move |event, _, cx| {
+        zoom,
+        move |_, _, cx| {
             cx.stop_propagation();
             let _ = copy_editor.update(cx, |this, cx| {
                 let text = this.doc.get(block_id).map(|b| b.text.clone()).unwrap_or_default();
@@ -111,30 +113,30 @@ pub(super) fn preview_math_block(
         },
     )
     .w_auto()
-    .h(px(28.))
-    .px(px(6.))
-    .gap(px(4.))
+    .h(px(28. * zoom))
+    .px(px(6. * zoom))
+    .gap(px(4. * zoom))
     .child(
         div()
-            .text_size(px(14.))
-            .line_height(px(18.))
+            .text_size(px(14. * zoom))
+            .line_height(px(18. * zoom))
             .text_color(theme.text_secondary)
             .child(copy_label),
     );
 
     // Contextual action row: constant reserved height (30px), invisible when idle to prevent reflow
     let action_row = div()
-        .h(px(30.))
+        .h(px(30. * zoom))
         .w_full()
         .flex()
         .items_center()
         .justify_between()
-        .px(px(8.))
+        .px(px(8. * zoom))
         .when(!show_actions, |d| d.invisible())
         .child(
             div()
-                .text_size(px(14.))
-                .line_height(px(18.))
+                .text_size(px(14. * zoom))
+                .line_height(px(18. * zoom))
                 .text_color(theme.text_secondary)
                 .child("LaTeX"),
         )
@@ -142,7 +144,7 @@ pub(super) fn preview_math_block(
             div()
                 .flex()
                 .items_center()
-                .gap(px(4.))
+                .gap(px(4. * zoom))
                 .child(edit_btn)
                 .child(copy_btn),
         );
@@ -155,7 +157,7 @@ pub(super) fn preview_math_block(
         .min_w_0()
         .border_1()
         .border_color(outline_col)
-        .rounded(px(8.));
+        .rounded(px(8. * zoom));
 
     // Rendered formula preview body
     if let Some(body) = rendered_el {
@@ -163,14 +165,14 @@ pub(super) fn preview_math_block(
             div()
                 .w_full()
                 .min_w_0()
-                .py(px(12.))
-                .px(px(12.))
+                .py(px(12. * zoom))
+                .px(px(12. * zoom))
                 .flex()
                 .justify_center()
                 .child(body),
         );
     } else {
-        container = container.child(div().w_full().h(px(28.)));
+        container = container.child(div().w_full().h(px(28. * zoom)));
     }
 
     // Design B: action row BETWEEN preview and source drawer
@@ -197,10 +199,10 @@ pub(super) fn preview_math_block(
                 .min_w_0()
                 .border_t_1()
                 .border_color(source_divider)
-                .px(px(8.))
-                .py(px(4.))
-                .text_size(px(14.))
-                .line_height(px(20.))
+                .px(px(8. * zoom))
+                .py(px(4. * zoom))
+                .text_size(px(14. * zoom))
+                .line_height(px(20. * zoom))
                 .text_color(rgb(0xc65949))
                 .child(msg),
         );
