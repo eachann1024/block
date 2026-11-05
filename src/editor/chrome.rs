@@ -199,7 +199,7 @@ fn todo_box(checked: bool, top: f32, toggle: impl Fn(&mut gpui::App) + 'static) 
     div().mt(px(top)).ml(px(4.8)).size(px(16.)).relative().children(crate::ui::smoke_overlay::probe("todo-checkbox")).flex().items_center().justify_center().rounded(crate::ui::radius::MICRO_SM).cursor(CursorStyle::PointingHand)
         .when(!checked, |b| b.border_1().border_color(border)).hover(move |s| if checked { s.bg(rgb(0x3a62b8)) } else { s.border_color(hover_border) })
         .when(checked, |b| b.bg(rgb(0x4774cf)).child(icon(Icon::Check, px(12.),
-            IconColors { line: rgb(0xffffff).into(), fill: transparent_black(), accent: transparent_black() })))
+            IconColors { line: rgb(0xffffff).into(), fill: transparent_black(), accent: rgb(0xffffff).into() })))
         .on_mouse_down(MouseButton::Left, move |_, _, cx| { toggle(cx); cx.stop_propagation(); })
 }
 fn unsupported_reason_label(reason: &str) -> &str {
