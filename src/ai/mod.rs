@@ -3,6 +3,8 @@
 //! review (应用修改 / 放弃 / 重新生成). Included under `crate::editor` so the
 //! session can reach the editor's selection and transactions.
 pub(crate) mod presets;
+#[cfg(not(target_family = "wasm"))]
+pub(crate) mod backend;
 mod anthropic;
 pub(crate) mod provider;
 pub(super) mod session;
@@ -12,6 +14,10 @@ pub(crate) mod settings;
 mod settings_view;
 #[cfg(not(target_family = "wasm"))]
 mod chat_ui;
+#[cfg(not(target_family = "wasm"))]
+mod backend_ui;
+#[cfg(not(target_family = "wasm"))]
+mod dsh_ui;
 #[cfg(not(target_family = "wasm"))]
 mod chat_composer;
 #[cfg(not(target_family = "wasm"))]
