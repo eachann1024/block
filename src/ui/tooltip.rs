@@ -54,7 +54,7 @@ pub fn tooltip_pill_with_icon(
     let pill = div()
         .h(px(TOOLTIP_HEIGHT))
         .px(px(TOOLTIP_PAD_X))
-        .rounded(px(8.))
+        .rounded(crate::ui::radius::CONTROL)
         .bg(bg)
         .text_color(fg)
         .border_1()

@@ -35,7 +35,7 @@ pub fn dot_pager(
                 .group(group_name.clone())
                 .w(px(22.))
                 .h(px(24.))
-                .rounded(px(6.))
+                .rounded(crate::ui::radius::CONTROL)
                 .flex()
                 .items_center()
                 .justify_center()
@@ -48,7 +48,7 @@ pub fn dot_pager(
                     div()
                         .w(px(if is_on { 18. } else { 6. }))
                         .h(px(6.))
-                        .rounded(px(999.))
+                        .rounded(crate::ui::radius::PILL)
                         .bg(if is_on { theme.accent } else { idle_col })
                         .when(!is_on, |dot| {
                             dot.group_hover(group_name, move |s| s.bg(hover_col))
