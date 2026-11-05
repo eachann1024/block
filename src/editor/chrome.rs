@@ -150,7 +150,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                 .when(block.kind == Kind::Quote && callout.is_none(), |body| body.pl(px(16. * zoom)).py(px(1.6 * zoom)).child(
                     div().absolute().left_0().top_0().bottom_0().w(px(3. * zoom)).bg(theme.quote_bar)))
                 .when_some(callout, |body, kind| {
-                    crate::ui::callout_controls::decorate_callout(body, editor.clone(), id, kind, line, zoom, !minimal && code_visible, cx)
+                    crate::ui::callout_controls::style_card(body, kind, zoom)
                 })
                 .when_some(block.meta.unsupported_reason.clone().filter(|_| image.is_none() && !rule), |body, reason| body.child(
                     div().text_size(px(11. * zoom)).text_color(theme.text_secondary).pb(px(4. * zoom))
@@ -177,7 +177,10 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                     body.child(super::code_block_preview::preview_block(editor.clone(), id, lang, &block.text, active, code_visible, source_el, minimal, cx))
                 })
                 .when(!static_view && !preview_lang && code_lang.is_some(), |body| {
-                    body.child(super::code_block::copy_button(editor, id, code_lang.unwrap_or_default(), code_visible, minimal, cx))
+                    body.child(super::code_block::copy_button(editor.clone(), id, code_lang.unwrap_or_default(), code_visible, minimal, cx))
+                })
+                .when_some(callout.filter(|_| !minimal), |body, kind| {
+                    body.child(crate::ui::callout_controls::controls(editor, id, kind, code_visible, zoom, cx))
                 })))
         .when_some(drop_edge, |row, after| row.child(div().absolute().left(px(handle_w + ROW_GAP)).right(px(right_inset))
             .h(px(2. * zoom)).bg(theme.accent)

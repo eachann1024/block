@@ -159,6 +159,7 @@ pub(super) fn paint_tinted_lines(layout: &super::view::layout::TextLayout, color
             let mut wraps = line.wrap_boundaries.iter().peekable();
             let (mut visual, mut start_x, mut row_x, mut row_y) = (0, px(0.), layout.bounds.left() + layout.aligned_x(line, 0), y);
             for (run_ix, run) in raw.runs.iter().enumerate() {
+                let col = if run.color == super::inline_code::code_text_color() { run.color } else { color };
                 for (glyph_ix, g) in run.glyphs.iter().enumerate() {
                     if wraps.peek() == Some(&&gpui::WrapBoundary { run_ix, glyph_ix }) {
                         wraps.next(); visual += 1; start_x = g.position.x;
@@ -167,7 +168,7 @@ pub(super) fn paint_tinted_lines(layout: &super::view::layout::TextLayout, color
                     }
                     if !g.is_emoji && row_y + layout.line_height > mask.top() && row_y < mask.bottom() {
                         let pos = gpui::point(row_x + g.position.x - start_x, row_y + baseline + g.position.y);
-                        let _ = window.paint_glyph(pos, run.font_id, g.id, raw.font_size, color);
+                        let _ = window.paint_glyph(pos, run.font_id, g.id, raw.font_size, col);
                     }
                 }
             }

@@ -25,10 +25,10 @@ static VFS: LazyLock<Mutex<Vfs>> = LazyLock::new(|| Mutex::new(seed()));
 fn seed() -> Vfs {
     let en = crate::theme::is_en();
     let root = PathBuf::from("/Block");
-    let sub = root.join(if en { "Design Notes" } else { "设计笔记" });
-    let welcome = root.join(if en { "Welcome to Block.md" } else { "欢迎使用 Block.md" });
-    let arch = root.join(if en { "Sub-Millisecond Block Editor.md" } else { "毫秒级块级编辑器.md" });
-    let guide = sub.join(if en { "Typography & Share Cards.md" } else { "排版与导出卡片指南.md" });
+    let sub = root.join(if en { "Life Notes" } else { "生活手记" });
+    let welcome = root.join(if en { "Weekend Getaway Plan.md" } else { "潮州周末漫游计划.md" });
+    let arch = root.join(if en { "Luggage & Errands.md" } else { "出行行李与待办.md" });
+    let guide = sub.join(if en { "Home Cafe & Recipes.md" } else { "周末家庭咖啡馆.md" });
 
     let mut dirs = BTreeSet::new();
     dirs.insert(PathBuf::from("/"));
