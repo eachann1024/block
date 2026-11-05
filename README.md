@@ -2,6 +2,10 @@
 
 文字之隅，落笔即成。
 
+官网：https://block.cooool.top
+
+Website: https://block.cooool.top
+
 **Block**（仓库名 `block`）是一款使用 Rust 与 GPUI 构建的原生 macOS 块级 Markdown 笔记应用，同时提供基于 WebAssembly + WebGPU/WebGL2 的浏览器端编辑器。它直接读写本地文件夹中的 `.md` 文件，不绑定私有格式，兼顾即时排版的阅读感与纯文本的可迁移性。
 
 > **Block** is a native macOS block-based Markdown notebook built in Rust on top of GPUI, with a companion WebAssembly editor. It works directly over plain local `.md` folders with zero lock-in.
