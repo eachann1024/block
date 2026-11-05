@@ -88,7 +88,7 @@ function writeAppDir(binary, appDir) {
   for (const name of collectLibraries(binary).values()) {
     run("patchelf", ["--set-rpath", "$ORIGIN", join(libDir, name)]);
   }
-  copyFileSync(resolve(ROOT, "assets/app-icon/icon-light-1024.png"), join(appDir, "block.png"));
+  copyFileSync(resolve(ROOT, "assets/app-icon/icon-1024.png"), join(appDir, "block.png"));
   writeFileSync(join(appDir, "block.desktop"), [
     "[Desktop Entry]",
     "Type=Application",
