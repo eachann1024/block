@@ -23,14 +23,14 @@ pub(in crate::editor) const LANGUAGES: [(&str, &str); 17] = [
     ("yaml", "YAML"),
 ];
 
-pub(in crate::editor) fn canonical_lang_tag(tag: &str) -> &'static str {
+pub(crate) fn canonical_lang_tag(tag: &str) -> &'static str {
     let token = tag.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
     match token.as_str() {
         "" | "auto" | "plaintext" | "text" | "plain" | "txt" => "plaintext",
         "csv" => "csv",
         "latex" | "math" | "tex" | "katex" => "latex",
         "markdown" | "md" => "markdown",
-        "mermaid" => "mermaid",
+        "mermaid" | "mmd" => "mermaid",
         "bash" | "sh" | "shell" | "zsh" => "bash",
         "css" => "css",
         "html" | "htm" => "html",
@@ -82,7 +82,7 @@ pub(in crate::editor) fn language_icon(tag: &str) -> Option<Icon> {
 }
 #[derive(Clone, Copy, PartialEq)]
 pub(in crate::editor) enum Cmd {
-    Turn(Kind), Callout, Columns, Code(&'static str), Table, Divider, Image, Ai,
+    Turn(Kind), Code(&'static str), Table, Divider, Image, Ai,
     Delete, SetLanguage(&'static str, bool),
 }
 impl Cmd {
@@ -96,8 +96,6 @@ impl Cmd {
             Cmd::Turn(Kind::Numbered) => tr("有序列表", "Numbered list"),
             Cmd::Turn(Kind::Quote) => tr("引用", "Quote"),
             Cmd::Turn(Kind::Todo) => tr("待办清单", "Checklist"),
-            Cmd::Callout => tr("标注", "Callout"),
-            Cmd::Columns => tr("分栏", "Columns"),
             Cmd::Code("mermaid") => tr("Mermaid 图表", "Mermaid Diagram"),
             Cmd::Code("math") => tr("数学公式", "Math Formula"),
             Cmd::Code(_) => tr("代码块", "Code Block"),
@@ -115,8 +113,6 @@ impl Cmd {
             Cmd::Turn(Kind::H2) => "h2 heading", Cmd::Turn(Kind::H3) => "h3 heading",
             Cmd::Turn(Kind::Bullet) => "bullet list ul liebiao", Cmd::Turn(Kind::Numbered) => "number ordered list ol",
             Cmd::Turn(Kind::Quote) => "quote yinyong", Cmd::Turn(Kind::Todo) => "todo task check daiban",
-            Cmd::Callout => "callout note tip warning alert biaozhu 标注 提示",
-            Cmd::Columns => "columns column fenlan 分栏 两栏",
             Cmd::Code("mermaid") => "mermaid diagram flow", Cmd::Code("math") => "math latex formula gongshi",
             Cmd::Code(_) => "code daima", Cmd::Table => "table biaoge", Cmd::Divider => "divider hr line fengexian",
             Cmd::Image => "image picture photo tupian", Cmd::Ai => "ai write polish xiezuo runse 写作 润色", _ => "",
@@ -145,8 +141,6 @@ impl Cmd {
     pub(in crate::editor) fn leading(self) -> Option<Icon> {
         Some(match self {
             Cmd::Turn(kind) => kind_icon(kind),
-            Cmd::Callout => Icon::Callout,
-            Cmd::Columns => Icon::Columns,
             Cmd::Code("mermaid") => Icon::Diagram,
             Cmd::Code("math") => Icon::Math,
             Cmd::SetLanguage(tag, _) => return language_icon(tag),
@@ -156,12 +150,19 @@ impl Cmd {
         })
     }
 }
-pub(super) const SLASH: [Option<Cmd>; 18] = [
+pub(super) const SLASH: [Option<Cmd>; 16] = [
     Some(Cmd::Turn(Kind::H1)), Some(Cmd::Turn(Kind::H2)), Some(Cmd::Turn(Kind::H3)), Some(Cmd::Table),
     None,
     Some(Cmd::Turn(Kind::Bullet)), Some(Cmd::Turn(Kind::Todo)),
     Some(Cmd::Code("")), Some(Cmd::Divider), Some(Cmd::Image),
-    Some(Cmd::Turn(Kind::Numbered)), Some(Cmd::Turn(Kind::Quote)), Some(Cmd::Callout), Some(Cmd::Columns),
+    Some(Cmd::Turn(Kind::Numbered)), Some(Cmd::Turn(Kind::Quote)),
     None,
     Some(Cmd::Code("mermaid")), Some(Cmd::Code("math")), Some(Cmd::Ai),
+];
+pub(super) const SLASH_MINIMAL: [Option<Cmd>; 12] = [
+    Some(Cmd::Turn(Kind::H1)), Some(Cmd::Turn(Kind::H2)), Some(Cmd::Turn(Kind::H3)), Some(Cmd::Table),
+    None,
+    Some(Cmd::Turn(Kind::Bullet)), Some(Cmd::Turn(Kind::Todo)),
+    Some(Cmd::Code("")), Some(Cmd::Divider), Some(Cmd::Image),
+    Some(Cmd::Turn(Kind::Numbered)), Some(Cmd::Turn(Kind::Quote)),
 ];
