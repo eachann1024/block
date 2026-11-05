@@ -32,6 +32,7 @@ dirs = "7.0.0"
 flate2 = "1"
 mermaid-rs-renderer = { version = "0.3.1", default-features = false }
 latex-rust = "3.0.1"
+regex = "1.13"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gpui_platform = { package = "gpui-pre-platform", version = "0.3.11", default-features = false, features = ["wayland", "x11"] }
