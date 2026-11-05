@@ -126,7 +126,7 @@ pub(in crate::editor) fn shaped_to_doc(shaped_offset: usize, code_spans: &[Range
 }
 
 pub(in crate::editor) fn code_text_color() -> Hsla {
-    if is_dark() { rgb(0xd6e0f0).into() } else { rgb(0x2c3a52).into() }
+    if is_dark() { rgb(0xff7369).into() } else { rgb(0xeb5757).into() }
 }
 
 /// Chip span under the pointer in `block` of editor `id`, for the hover fill.
