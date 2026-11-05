@@ -1,5 +1,5 @@
 //! `--smoke`: queued scripted checks in a background resident worker.
-//! `--smoke-once` retains the legacy visible, single-run window.
+//! `--smoke-once` joins the same queue on Unix; other platforms use a single-run window.
 //! This file is the runner; the scripted steps live in `smoke_steps.rs`.
 use std::{path::PathBuf, time::Duration};
 use gpui::{
