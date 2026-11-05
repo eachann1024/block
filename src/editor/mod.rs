@@ -2,6 +2,8 @@ mod chrome;
 #[path = "../export/driver.rs"]
 mod export_driver;
 mod input;
+mod paste;
+mod paste_clipboard;
 mod nav;
 mod word_select;
 mod input_rules;
