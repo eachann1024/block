@@ -35,6 +35,16 @@ Website: https://block.cooool.top
 cargo run
 ```
 
+### 冒烟自检
+
+`cargo run -- --smoke` 会自动启动常驻后台 worker，并将标准自检加入串行队列。每次自检使用重置后的独立沙箱，笔记和偏好与日常使用隔离；任务结束后 worker 保持运行。
+
+- `cargo run -- --smoke-status`：查看 worker 状态及队列。
+- `cargo run -- --smoke-stop`：显式请求停止 worker。
+- `cargo run -- --smoke-once`：使用旧版单次运行方式。
+
+worker 使用独立可执行副本，正常重新安装应用不会终止它；二进制更新后旧 worker 会拒绝新任务，需要先执行 `--smoke-stop` 并等待旧 worker 退出，再重新运行 `--smoke`。
+
 ### 构建并安装 macOS Release 应用
 
 ```sh
