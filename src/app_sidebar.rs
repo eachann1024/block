@@ -26,6 +26,7 @@ pub(super) fn clamp_width(width: Pixels) -> Pixels { width.clamp(px(MIN_WIDTH), 
 
 impl Workspace {
     pub(crate) fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
+        if self.is_history_open() || self.history_restore_busy { return; }
         self.switcher_open = false;
         self.menu = None;
         self.resizing = None;
@@ -140,6 +141,7 @@ impl Workspace {
         if let Some(menu) = &self.menu { out.extend(self.tree_menu(&menu.target, menu.position, menu.moving, cx)); }
         out.extend(self.search_view(cx));
         out.extend(crate::about::view(cx));
+        out.extend(self.render_history_confirm_modal(cx));
         out
     }
 
