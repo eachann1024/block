@@ -33,6 +33,7 @@ impl Workspace {
                 let Some(kind) = this.settings.as_ref().and_then(|m| m.recording) else {
                     if event.keystroke.key == "escape" {
                         cx.stop_propagation();
+                        if this.close_font_picker(cx) { return; }
                         this.close_settings(window, cx);
                     }
                     return;
