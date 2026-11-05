@@ -43,13 +43,28 @@ pub enum FontChoice {
     Serif,
 }
 
-#[derive(Serialize, Deserialize, Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum LanguageMode {
-    #[default]
-    System,
     Zh,
     En,
+}
+
+impl Default for LanguageMode {
+    fn default() -> Self {
+        crate::theme::system_language()
+    }
+}
+
+impl<'de> Deserialize<'de> for LanguageMode {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = Option::<String>::deserialize(deserializer)?;
+        Ok(match raw.as_deref().map(str::to_ascii_lowercase).as_deref() {
+            Some("en") => LanguageMode::En,
+            Some("zh") => LanguageMode::Zh,
+            _ => crate::theme::system_language(),
+        })
+    }
 }
 
 fn default_color_name() -> String { "default".into() }
