@@ -128,10 +128,21 @@ impl AiSettings {
             };
             div().id("ai-model-list").text_size(px(14.)).text_color(theme.text_secondary).child(hint)
         } else {
-            let filtered: Vec<String> = self.models.iter()
+            let mut filtered: Vec<String> = self.models.iter()
                 .filter(|m| filter_query.is_empty() || m.to_lowercase().contains(&filter_query))
                 .cloned()
                 .collect();
+            if !filter_query.is_empty() {
+                filtered.sort_by(|a, b| {
+                    let (la, lb) = (a.to_lowercase(), b.to_lowercase());
+                    let key = |s: &str| {
+                        let pos = s.find(&filter_query).unwrap_or(usize::MAX);
+                        let tier: u8 = if s == filter_query { 0 } else if pos == 0 { 1 } else { 2 };
+                        (tier, pos)
+                    };
+                    key(&la).cmp(&key(&lb)).then_with(|| la.cmp(&lb))
+                });
+            }
             if filtered.is_empty() {
                 div().id("ai-model-list").text_size(px(14.)).text_color(theme.text_secondary)
                     .child(tr("无匹配的模型", "No matching models"))
