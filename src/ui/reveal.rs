@@ -35,7 +35,7 @@ pub fn table_add_bar(id: &'static str, w: Pixels, h: Pixels, tip: &'static str) 
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(4.))
+        .rounded(crate::ui::radius::MICRO_SM)
         .bg(bg)
         .cursor(CursorStyle::PointingHand)
         .hover(move |s| s.bg(hover_bg))
@@ -60,7 +60,7 @@ pub fn grip_button(
         .group("hover-icon")
         .size(px(26.))
         .flex_none()
-        .rounded(px(8.))
+        .rounded(crate::ui::radius::CONTROL)
         .flex()
         .items_center()
         .justify_center()
@@ -99,7 +99,7 @@ pub fn handle_button(
         .group("hover-icon")
         .size(px(24.))
         .flex_none()
-        .rounded(px(6.))
+        .rounded(crate::ui::radius::CONTROL)
         .flex()
         .items_center()
         .justify_center()
@@ -126,7 +126,7 @@ pub fn fold_button(
         .group("hover-icon")
         .size(px(24.))
         .flex_none()
-        .rounded(px(6.))
+        .rounded(crate::ui::radius::CONTROL)
         .flex()
         .items_center()
         .justify_center()
@@ -147,7 +147,6 @@ pub fn top_insert_slot(
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
     let dark = is_dark();
-    let pill_bg: Hsla = if dark { rgba(0x2d426b80).into() } else { rgba(0xdbeafecc).into() };
     let pill_border: Hsla = theme.accent.opacity(if dark { 0.55 } else { 0.45 });
     let bar_bg: Hsla = if dark { rgba(0x2d426b38).into() } else { rgba(0xdbeafe66).into() };
     let bar_hover_bg: Hsla = if dark { rgba(0x2d426b66).into() } else { rgba(0xdbeafeb3).into() };
@@ -156,6 +155,7 @@ pub fn top_insert_slot(
         .group("top-slot")
         .w_full()
         .min_w_0()
+        .pl(px(handle_w + row_gap))
         .pr(px(right_inset))
         .pb(px(6.))
         .flex()
@@ -165,20 +165,11 @@ pub fn top_insert_slot(
         .group_hover("top-slot", |s| s.opacity(1.))
         .on_mouse_down(MouseButton::Left, listener)
         .child(
-            div().w(px(handle_w)).mr(px(row_gap)).flex_none().flex().justify_end().items_center().child(
-                div().size(px(24.)).rounded(px(6.)).bg(pill_bg).border_1().border_color(pill_border)
-                    .flex().items_center().justify_center()
-                    .child(icon(Icon::Plus, px(13.), IconColors { line: theme.accent, fill: transparent_black(), accent: theme.accent })),
-            ),
-        )
-        .child(
-            div().flex_1().min_w_0().max_w(theme.content_width).h(px(28.)).px(px(12.)).rounded(px(7.))
+            div().flex_1().min_w_0().max_w(theme.content_width).h(px(28.)).px(px(12.)).rounded(crate::ui::radius::CONTROL)
                 .bg(bar_bg).border_1().border_color(pill_border)
                 .group_hover("top-slot", move |s| s.bg(bar_hover_bg).border_color(theme.accent))
-                .flex().items_center().justify_between()
+                .flex().items_center()
                 .child(div().flex().items_center().gap(px(6.)).text_size(px(13.)).text_color(theme.accent)
-                    .child(tr("点击在文档最上方插入新行", "Click to insert a new line at the top")))
-                .child(div().flex().items_center().gap(px(4.)).text_size(px(12.)).text_color(theme.text_secondary)
-                    .child(tr("首字符 ↑ / ⌫", "↑ / ⌫ at start"))),
+                    .child(tr("点击在文档最上方插入新行", "Click to insert a new line at the top"))),
         )
 }
