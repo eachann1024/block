@@ -33,7 +33,7 @@ impl Render for Workspace {
                 .children(crate::editor::ai::chat::panel(cx)))
             // The export view has its own title row and back button, so it covers the window.
             .children(export.map(|view| {
-                div().absolute().top_0().left_0().size_full().occlude().bg(theme.shell).child(view)
+                gpui::deferred(div().absolute().top_0().left_0().size_full().occlude().bg(theme.shell).child(view)).with_priority(4)
             }))
             .children(self.overlays(window, cx))
             .children(self.resize_capture(cx))

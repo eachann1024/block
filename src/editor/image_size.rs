@@ -67,11 +67,9 @@ pub(super) fn image_toolbar(
         ImagePop::Crop => crop_popover(editor, id).into_any_element(),
     });
 
-    deferred(
-        div().relative().flex().flex_col().items_center()
-            .child(floating_bar::animate(bar, ("img-toolbar-enter", id as usize)))
-            .when_some(sub, |d, s| d.child(popover::animate(div().mt(px(8.)).child(s), ("img-pop-enter", id as usize)))),
-    ).with_priority(3)
+    div().relative().flex().flex_col().items_center()
+        .child(floating_bar::animate(bar, ("img-toolbar-enter", id as usize)))
+        .when_some(sub, |d, s| d.child(deferred(popover::animate(div().mt(px(8.)).child(s), ("img-pop-enter", id as usize))).with_priority(2)))
 }
 
 fn menu_card(id: (&'static str, usize), width: f32) -> gpui::Stateful<gpui::Div> {
