@@ -181,6 +181,11 @@ impl Render for AiChat {
 
         div().id("ai-chat-panel").w(px(380.)).flex_none().h_full().flex().flex_col().relative().bg(theme.paper).border_l_1().border_color(theme.hairline)
             .text_color(theme.text)
+            .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, _, cx| {
+                cx.stop_propagation();
+                if this.history { this.history = false; } else { this.open = false; }
+                cx.notify();
+            }))
             .child(header)
             .child(div().id("ai-chat-scroll").flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.scroll)
                 .on_scroll(|_, _, cx| crate::dropdown::dismiss_all(cx)).child(body))
