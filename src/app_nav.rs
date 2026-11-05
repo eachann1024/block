@@ -144,6 +144,14 @@ impl Workspace {
     pub(crate) fn open_file_with_mode(&mut self, path: PathBuf, in_new_tab: bool, record_nav: bool, cx: &mut Context<Self>) {
         clear_tab_menu();
         self.settings = None;
+        if self.history_restore_busy { return; }
+        let return_focus = self.history.is_some();
+        if return_focus || self.history_opening { self.close_page_history(cx); }
+        if return_focus { self.history_return_focus = true; }
+        if self.undo_restore.as_ref().is_some_and(|undo| undo.path != path) {
+            self.undo_restore = None;
+            self.history_toast = None;
+        }
         if record_nav {
             self.nav.push(path.clone());
         }

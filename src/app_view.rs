@@ -9,6 +9,7 @@ use super::search::{Dismiss, NewFolder, NewNote, OpenSearch, OpenSettings, kbd};
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_history_focus(window, cx);
         let theme = Theme::ocean();
         let export = crate::export::active_view(cx);
         let root = div().size_full().relative().flex().flex_col().overflow_hidden().bg(theme.shell).text_color(theme.text)
@@ -28,7 +29,15 @@ impl Render for Workspace {
             .child(div().flex_1().min_h_0().flex()
                 .when(!self.sidebar_collapsed, |d| d.child(if self.settings.is_some() { self.settings_sidebar(cx) } else { self.sidebar(cx) }))
                 .child(self.settings_view(cx).or_else(|| self.mascot_view(cx)).unwrap_or_else(|| {
-                    div().flex_1().min_w_0().h_full().child(self.editor.clone()).into_any_element()
+                    if self.is_history_open() {
+                        self.render_history_main(window, cx)
+                    } else {
+                        div().flex_1().min_w_0().h_full().flex().flex_col().relative()
+                            .children(self.render_history_toast(cx))
+                            .child(self.editor.clone())
+                            .when(self.history_restore_busy, |col| col.child(div().absolute().top_0().left_0().size_full().occlude()))
+                            .into_any_element()
+                    }
                 }))
                 .children(crate::editor::ai::chat::panel(cx)))
             // The export view has its own title row and back button, so it covers the window.

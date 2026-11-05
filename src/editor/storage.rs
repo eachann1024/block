@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use crate::{editor::{markdown, model::Doc}, theme::tr};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct Fingerprint(pub u64);
-fn fingerprint(bytes: &[u8]) -> Fingerprint {
+pub(in crate::editor) struct Fingerprint(pub u64);
+pub(in crate::editor) fn fingerprint(bytes: &[u8]) -> Fingerprint {
     let mut hash = std::collections::hash_map::DefaultHasher::new(); bytes.hash(&mut hash);
     Fingerprint(hash.finish())
 }
@@ -58,6 +58,9 @@ pub(super) fn load(path: &Path) -> Result<Loaded, String> {
         let bytes = fs::read(path).map_err(|e| format!("{} {}: {e}", tr("无法读取", "Cannot read"), path.display()))?;
         let source = String::from_utf8(bytes).map_err(|e| format!("{}: {e}", tr("文件不是有效的 UTF-8", "Not UTF-8")))?;
         let base = fingerprint(source.as_bytes());
+        if let Err(error) = crate::page_history::record_baseline_if_empty(path, &source) {
+            crate::log::warn(&format!("history baseline was not recorded for {}: {error}", path.display()));
+        }
         if let Ok(bytes) = fs::read(draft_path(path)) {
             if let Ok(draft) = serde_json::from_slice::<Draft>(&bytes) {
                 if draft.path == path {
@@ -142,6 +145,9 @@ pub(super) fn save(path: &Path, doc: &Doc, base: Fingerprint) -> Result<Fingerpr
         }
         let draft = draft_path(path);
         if draft.exists() { let _ = fs::remove_file(draft); }
+        if let Err(error) = crate::page_history::on_file_saved(path, &source) {
+            crate::log::warn(&format!("history was not recorded for {}: {error}", path.display()));
+        }
         Ok(fingerprint(source.as_bytes()))
     }
 }
