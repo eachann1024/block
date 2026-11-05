@@ -38,6 +38,9 @@ pub(crate) struct AiChat {
     pub(super) streaming: Option<(u64, Arc<AtomicBool>)>,
     pub(super) serial: u64,
     pub(super) error: Option<String>,
+    pub(super) error_settings: bool,
+    pub(super) pick_index: usize,
+    pub(super) picker_dismissed: bool,
     pub(super) history: bool,
     pub(super) open: bool,
     pub(super) last_en: bool,
@@ -92,12 +95,12 @@ impl AiChat {
         let input = cx.new(|cx| InputState::new(window, cx).placeholder(first_placeholder()));
         let sub = cx.subscribe_in(&input, window, |this, _, e: &InputEvent, window, cx| match e {
             InputEvent::PressEnter { secondary: false, .. } => this.send(window, cx),
-            InputEvent::Change => cx.notify(),
+            InputEvent::Change => { this.pick_index = 0; this.picker_dismissed = false; cx.notify(); },
             _ => {}
         });
         let convs: Vec<Conv> = store_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         AiChat { convs, current: None, input, refs: Vec::new(), skills: Vec::new(), partial: String::new(), streaming: None, serial: 0, error: None,
-            history: false, open: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), _sub: sub }
+            error_settings: false, pick_index: 0, picker_dismissed: false, history: false, open: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), _sub: sub }
     }
     pub(super) fn persist(&self) {
         let Some(p) = store_path() else { return };
@@ -114,12 +117,13 @@ impl AiChat {
     }
     pub(super) fn new_conv(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.stop();
-        self.current = None; self.error = None; self.history = false; self.refs.clear(); self.skills.clear();
+        self.current = None; self.error = None; self.error_settings = false; self.history = false; self.refs.clear(); self.skills.clear();
+        self.pick_index = 0; self.picker_dismissed = false;
         self.input.update(cx, |i, cx| { i.set_value("", window, cx); i.set_placeholder(first_placeholder(), window, cx); i.focus(window, cx); });
         cx.notify();
     }
     fn push(&mut self, role: &str, content: String) { self.push_msg(Msg { role: role.into(), content, ..Default::default() }); }
-    fn push_msg(&mut self, msg: Msg) {
+    pub(super) fn push_msg(&mut self, msg: Msg) {
         let content = msg.content.clone();
         let id = self.current.unwrap_or_else(|| {
             let id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
@@ -131,28 +135,6 @@ impl AiChat {
         if let Some(c) = self.convs.iter_mut().find(|c| c.id == id) { c.messages.push(msg); }
         self.persist();
     }
-    pub(super) fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.streaming.is_some() { return; }
-        let question = self.input.read(cx).value().trim().to_owned();
-        if question.is_empty() { return; }
-        let ctx = self.agent_ctx(cx);
-        let (mut context, mut shown) = (String::new(), String::new());
-        for r in self.refs.drain(..) {
-            shown.push_str(&format!("@{r} "));
-            let md = ctx.read(&r).unwrap_or_default();
-            context.push_str(&format!("\n\n# 引用笔记：{r}（pageId: {r}）\n\n{}", md.chars().take(12000).collect::<String>()));
-        }
-        let local = ctx.local_skills();
-        for name in self.skills.drain(..) {
-            shown.push_str(&format!("/{name} "));
-            if let Some((_, _, body)) = local.iter().find(|s| s.0 == name) { context.push_str(&format!("\n\n# 用户调用的 Skill：{name}\n\n{body}")); }
-        }
-        let content = if shown.is_empty() { question } else { format!("{shown}{question}") };
-        self.push_msg(Msg { role: "user".into(), content, context: (!context.is_empty()).then_some(context), ..Default::default() });
-        self.error = None;
-        self.input.update(cx, |i, cx| { i.set_value("", window, cx); i.set_placeholder(follow_placeholder(), window, cx); });
-        self.run_turn(0, cx);
-    }
 
     pub(super) fn agent_ctx(&self, cx: &App) -> agent::Ctx {
         let editor = self.editor.as_ref().and_then(|e| e.upgrade());
@@ -163,7 +145,7 @@ impl AiChat {
         agent::Ctx { root, current, current_md }
     }
 
-    fn run_turn(&mut self, step: usize, cx: &mut Context<Self>) {
+    pub(super) fn run_turn(&mut self, step: usize, cx: &mut Context<Self>) {
         let ctx = self.agent_ctx(cx);
         let notebook = ctx.root.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let system = format!("{}\n\n# 当前上下文\n\n- 当前笔记本：{}\n- 当前打开页面：{}", agent::AGENTS,
@@ -198,7 +180,7 @@ impl AiChat {
                             Ok(Event::Delta(t)) => this.partial.push_str(&t),
                             Ok(Event::ToolCalls(c)) => calls = c,
                             Ok(Event::Done) => { finished = true; break; }
-                            Ok(Event::Failed { message, .. }) => { this.error = Some(provider::format_error(&message)); finished = true; break; }
+                            Ok(Event::Failed { message, settings }) => { this.error = Some(provider::format_error(&message)); this.error_settings = settings; finished = true; break; }
                             Err(mpsc::TryRecvError::Empty) => break,
                             Err(mpsc::TryRecvError::Disconnected) => { finished = true; break; }
                         }
