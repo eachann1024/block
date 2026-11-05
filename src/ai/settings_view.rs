@@ -91,14 +91,14 @@ impl AiSettings {
             .child(input_box(&self.model_filter))
             .when(!filter_query.is_empty(), |d| {
                 d.child(
-                    div().id("ai-filter-clear").size(px(20.)).rounded(px(4.)).flex().items_center().justify_center()
+                    div().id("ai-filter-clear").group("ai-filter-clear").size(px(20.)).rounded(px(4.)).flex().items_center().justify_center()
                         .cursor(CursorStyle::PointingHand)
                         .hover(move |s| s.bg(theme.hover))
                         .on_mouse_down(MouseButton::Left, cx.listener(|this, _, w, cx| {
                             this.model_filter.update(cx, |i, cx| i.set_value(String::new(), w, cx));
                             cx.notify();
                         }))
-                        .child(crate::icons::icon(crate::icons::Icon::Close, px(12.), theme.mono_icon_colors(theme.text_secondary))),
+                        .child(crate::icons::stateful_icon("ai-filter-clear", crate::icons::Icon::Close, px(12.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text))),
                 )
             });
         let toolbar = div().w_full().min_w_0().flex().items_center().gap(px(8.))
