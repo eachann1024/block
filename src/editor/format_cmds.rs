@@ -7,18 +7,17 @@ use gpui::{AppContext as _, Context, Entity, Pixels, Point, Subscription, Window
 use gpui_component::input::{InputEvent, InputState};
 use super::{model::{Doc, MarkKind}, view::Editor};
 
-/// Popovers opened from the selection toolbar. `anchor` is fixed at open time
-/// because the toolbar hides while the link field owns focus.
+/// Popovers opened from the selection toolbar or inline link actions.
 #[derive(Clone)]
 pub(super) enum FormatPop {
-    Link { input: Entity<InputState>, existing: bool, anchor: Point<Pixels>, _sub: Rc<Subscription> },
-    Palette { anchor: Point<Pixels> },
+    Link { input: Entity<InputState>, existing: bool, spec: crate::dropdown::PlacementSpec, _sub: Rc<Subscription> },
+    Palette { spec: crate::dropdown::PlacementSpec },
     /// Text-type and list dropdowns of the selection toolbar.
-    Kinds { anchor: Point<Pixels>, current: Option<super::model::Kind> },
-    Lists { anchor: Point<Pixels>, current: Option<super::model::Kind> },
+    Kinds { spec: crate::dropdown::PlacementSpec, current: Option<super::model::Kind> },
+    Lists { spec: crate::dropdown::PlacementSpec, current: Option<super::model::Kind> },
     Ai(Box<crate::editor::ai::session::AiSession>),
     /// Right-click menu over a non-empty selection; keeps the selection alive.
-    SelectionMenu { anchor: Point<Pixels> },
+    SelectionMenu { spec: crate::dropdown::PlacementSpec },
 }
 
 /// Bare domains get `https://`, bare emails get `mailto:`; anything with a scheme, path or fragment is kept.
@@ -133,36 +132,60 @@ impl Editor {
         self.record(before, cx);
     }
     pub(super) fn underline(&mut self, cx: &mut Context<Self>) {
+        if !self.is_markdown_note() { return; }
         let on = !self.selection_ranges().iter().all(|(id, r)| self.doc.is_underlined(*id, r.clone()));
         self.edit_selection(cx, |doc, id, range| doc.toggle_underline(id, range, on));
     }
     pub(super) fn clear_formatting(&mut self, cx: &mut Context<Self>) {
+        if !self.is_markdown_note() { return; }
         self.edit_selection(cx, |doc, id, range| doc.clear_format(id, range));
     }
     /// Toggles the yellow highlight on the selection (⌘⇧H).
     pub(super) fn toggle_highlight(&mut self, cx: &mut Context<Self>) {
-        if self.selection_ranges().is_empty() { return; }
+        if !self.is_markdown_note() || self.selection_ranges().is_empty() { return; }
         let on = matches!(self.selection_colors().1, palette::SelectionColor::Single("yellow"));
         self.apply_style("background-color", (!on).then_some("yellow"), cx);
     }
     /// Pastes the clipboard text verbatim, skipping link, block and table conversion (⌘⇧V).
     pub(super) fn paste_plain(&mut self, cx: &mut Context<Self>) {
+        if self.editing_source() { self.source_paste(None, cx); return; }
+        if !self.is_markdown_note() { return; }
         if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) { self.replace_selection(&text, false, cx); }
     }
     /// `prop` is `color` or `background-color`; `None` resets to the default.
     pub(super) fn apply_style(&mut self, prop: &str, value: Option<&str>, cx: &mut Context<Self>) {
         self.edit_selection(cx, |doc, id, range| doc.set_style(id, range, prop, value));
     }
-    fn pop_anchor(&self, window: &Window) -> Point<Pixels> {
-        self.toolbar_anchor.unwrap_or_else(|| window.mouse_position() + point(px(0.), px(12.)))
+    fn pop_spec(&self, window: &Window) -> crate::dropdown::PlacementSpec {
+        let vp = self.list.viewport_bounds();
+        let sel_rect = self
+            .selection_ranges()
+            .into_iter()
+            .filter_map(|(id, r)| {
+                self.layouts
+                    .get(&id)?
+                    .rects(r)
+                    .into_iter()
+                    .reduce(|a, b| a.union(&b))
+            })
+            .reduce(|a, b| a.union(&b));
+        if let Some(rect) = sel_rect {
+            crate::dropdown::PlacementSpec::below(rect).viewport(vp).gap(px(6.))
+        } else if let Some(anchor) = self.toolbar_anchor {
+            crate::dropdown::PlacementSpec::below(gpui::Bounds::new(anchor, gpui::size(px(240.), px(40.))))
+                .viewport(vp)
+                .gap(px(4.))
+        } else {
+            crate::dropdown::PlacementSpec::point(window.mouse_position() + point(px(0.), px(12.))).viewport(vp)
+        }
     }
     #[allow(dead_code)]
     pub(super) fn open_palette(&mut self, window: &Window, cx: &mut Context<Self>) {
         if self.selection_ranges().is_empty() { return; }
-        self.format = Some(FormatPop::Palette { anchor: self.pop_anchor(window) + point(px(0.), px(40.)) });
+        self.format = Some(FormatPop::Palette { spec: self.pop_spec(window) });
         cx.notify();
     }
-    pub(super) fn show_link_popover(&mut self, initial: String, existing: bool, anchor: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn show_link_popover(&mut self, initial: String, existing: bool, spec: crate::dropdown::PlacementSpec, window: &mut Window, cx: &mut Context<Self>) {
         let input = cx.new(|cx| {
             let mut state = InputState::new(window, cx).placeholder(crate::theme::tr("粘贴或输入链接", "Paste or enter a link"));
             if !initial.is_empty() { state.set_value(initial, window, cx); }
@@ -175,36 +198,42 @@ impl Editor {
         cx.defer_in(window, move |_, window, cx| {
             focus_input.update(cx, |s, cx| s.focus(window, cx));
         });
-        self.format = Some(FormatPop::Link { input, existing, anchor, _sub: Rc::new(sub) });
+        self.format = Some(FormatPop::Link { input, existing, spec, _sub: Rc::new(sub) });
         cx.notify();
     }
     pub(super) fn open_link(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some((id, range)) = self.selection_ranges().first().cloned() {
             let current = self.doc.get(id).and_then(|b| b.link_at(range.start)).map(|(_, url)| url);
             let existing = current.is_some();
-            let anchor = self.pop_anchor(window);
-            self.show_link_popover(current.unwrap_or_default(), existing, anchor, window, cx);
+            let spec = self.pop_spec(window);
+            self.show_link_popover(current.unwrap_or_default(), existing, spec, window, cx);
             return;
         }
         let at = self.caret.head;
         if let Some((range, url)) = self.doc.get(at.block).and_then(|b| b.link_at(at.offset)) {
             self.caret.anchor = super::view::selection::Position { block: at.block, offset: range.start };
             self.caret.head = super::view::selection::Position { block: at.block, offset: range.end };
-            let anchor = self.layouts.get(&at.block).and_then(|l| l.rects(range).first().copied())
-                .map(|r| point(r.left(), r.bottom())).unwrap_or_else(|| self.pop_anchor(window));
-            self.show_link_popover(url, true, anchor, window, cx);
+            let spec = self
+                .layouts
+                .get(&at.block)
+                .and_then(|l| l.rects(range).first().copied())
+                .map(|r| crate::dropdown::PlacementSpec::below(r).viewport(self.list.viewport_bounds()).gap(px(4.)))
+                .unwrap_or_else(|| self.pop_spec(window));
+            self.show_link_popover(url, true, spec, window, cx);
             return;
         }
         cx.propagate();
     }
     /// Copies the whole note as Markdown (the page menu's 「复制 Markdown」).
     pub(crate) fn copy_markdown(&mut self, cx: &mut Context<Self>) {
+        if !self.is_markdown_note() { return; }
         cx.write_to_clipboard(gpui::ClipboardItem::new_string(super::markdown::serialize(&self.doc)));
         self.status = crate::theme::tr("已复制 Markdown", "Copied Markdown").into();
         cx.notify();
     }
     /// Opens the 「生成图片」 view for the selection, or the whole note when nothing is selected.
     pub(crate) fn export_image(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.is_markdown_note() { return; }
         self.format = None;
         if self.selection_ranges().is_empty() { super::export_document(self, window, cx) } else { super::export_selected(self, window, cx) }
     }
@@ -213,7 +242,8 @@ impl Editor {
     pub(super) fn right_click(&mut self, event: &gpui::MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if !self.selection_ranges().is_empty() {
             self.table_menu = None; self.block_menu = None;
-            self.format = Some(FormatPop::SelectionMenu { anchor: event.position });
+            let spec = crate::dropdown::PlacementSpec::point(event.position).viewport(self.list.viewport_bounds());
+            self.format = Some(FormatPop::SelectionMenu { spec });
             cx.notify();
             return;
         }

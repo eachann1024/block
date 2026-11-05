@@ -17,7 +17,7 @@ pub fn popup_enter<E: IntoElement + Styled + AnimationExt + 'static>(
     el.with_animation(
         id,
         Animation::new(Duration::from_millis(160)).with_easing(ease_out_expo()),
-        |el, delta| el.opacity(delta).mt(px(-4.0 * (1.0 - delta))),
+        |el, delta| el.opacity(delta).relative().top(px(-4.0 * (1.0 - delta))),
     )
 }
 
@@ -28,7 +28,7 @@ pub fn bar_enter<E: IntoElement + Styled + AnimationExt + 'static>(
     el.with_animation(
         id,
         Animation::new(Duration::from_millis(180)).with_easing(ease_out_expo()),
-        |el, delta| el.opacity(delta).mt(px(6.0 * (1.0 - delta))),
+        |el, delta| el.opacity(delta).relative().top(px(6.0 * (1.0 - delta))),
     )
 }
 

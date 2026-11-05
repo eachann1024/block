@@ -70,7 +70,7 @@ pub struct Editor {
     pub(super) history: Vec<HistoryEntry>,
     pub(super) redo: Vec<HistoryEntry>,
     pub(super) composition_before: Option<Snapshot>,
-    persistence: Persistence,
+    pub(super) persistence: Persistence,
     pointer_subscriptions: Vec<gpui::Subscription>,
     /// Last in-app block copy: (plain text put on the clipboard, Markdown of the copied blocks).
     pub(super) block_clip: Option<(String, String)>,
@@ -80,7 +80,10 @@ pub struct Editor {
     pub(super) minimal: bool,
     pub(super) find: Option<super::find::FindState>,
     pub(super) annotate: super::annotate::AnnotateState,
-    sessions: HashMap<PathBuf, session::TabSession>,
+    pub(super) sessions: HashMap<PathBuf, session::TabSession>,
+    pub(super) surface: super::surface::Surface,
+    pub(super) source_layouts: HashMap<usize, TextLayout>,
+    pub(super) source_drag: bool,
 }
 impl Editor {
     pub fn new(cx: &mut Context<Self>) -> Self {
@@ -92,7 +95,8 @@ impl Editor {
             list: ListState::new(1, ListAlignment::Top, px(120.)), scroll_top: (0, px(0.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
-            persistence: Persistence::default(), pointer_subscriptions: Vec::new(), block_clip: None, block_sel: None, minimal: false, find: None, annotate: Default::default(), sessions: HashMap::new() }
+            persistence: Persistence::default(), pointer_subscriptions: Vec::new(), block_clip: None, block_sel: None, minimal: false, find: None, annotate: Default::default(), sessions: HashMap::new(),
+            surface: super::surface::Surface::Note, source_layouts: HashMap::new(), source_drag: false }
     }
     pub fn set_minimal(&mut self, minimal: bool) { self.minimal = minimal; }
     pub fn reset_layouts(&mut self) { self.layouts.clear(); }
@@ -108,7 +112,7 @@ impl Editor {
         if let Some(layout) = self.layouts.get(&self.caret.head.block) {
             scrollbar::reveal_line(&self.list, layout.point(self.caret.head.offset).y, layout.line_height, margin);
         } else if let Some(index) = self.doc.index_of(self.caret.head.block) {
-            scrollbar::reveal_item(&self.list, self.column_group_range(index).map_or(index, |r| r.start), margin);
+            scrollbar::reveal_item(&self.list, index, margin);
         }
     }
 }
@@ -120,7 +124,7 @@ impl Render for Editor {
         let theme = Theme::ocean(); self.reveal();
         let input_editor = cx.entity();
         let input = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
-            input_editor.update(cx, |this, _| { this.layouts.clear(); });
+            input_editor.update(cx, |this, _| { this.layouts.clear(); this.source_layouts.clear(); });
             let editor = input_editor.read(cx);
             if editor.path.is_some() { window.handle_input(&editor.focus, gpui::ElementInputHandler::new(bounds, input_editor.clone()), cx); }
         }).absolute().size_full();
@@ -140,10 +144,6 @@ impl Render for Editor {
                     let id = this.doc.blocks[index].id; this.layouts.remove(&id);
                     return div().id(("folded-row", id as usize)).into_any_element();
                 }
-                if let Some(range) = this.column_group_range(index) {
-                    if index == range.start { return super::columns::columns_row(this, range, cx); }
-                    return div().id(("col-member", this.doc.blocks[index].id as usize)).into_any_element();
-                }
                 super::chrome::render_block_row(this, index, cx)
             })
         }).size_full().pt(px(pad.0)).pb(px(pad.1));
@@ -160,7 +160,7 @@ impl Render for Editor {
                     && let Some(l) = this.layouts.get(&menu.block)
                 {
                     let next = gpui::point(l.bounds.left(), l.bounds.bottom() + px(4.));
-                    if menu.anchor != next { menu.anchor = next; changed = true; }
+                    if menu.anchor != next || menu.trigger != l.bounds { menu.anchor = next; menu.trigger = l.bounds; changed = true; }
                 }
                 let exp = crate::export::active_view(cx).is_some();
                 let anchor = (!exp).then(|| this.selection_toolbar_anchor(bounds, window)).flatten();
@@ -219,16 +219,7 @@ impl Render for Editor {
                 .on_mouse_move(cx.listener(|this, event, _, cx| this.pointer_move(event, cx)))
                 .on_mouse_up(MouseButton::Left, cx.listener(|this, event: &gpui::MouseUpEvent, _, cx| this.finish_drag(event.position, cx)))
                 .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.finish_extend(cx); this.clear_pointer(); cx.notify(); }))
-                // The column is centred alongside the 224px annotation rail when the editor pane has room.
-                .child(div().flex_1().min_h_0().min_w_0().w_full().relative().flex().pr(px(if self.minimal { 6. } else { scrollbar::GUTTER }))
-                    .on_scroll(scrollbar::forward_wheel(&self.list))
-                    .child(div().h_full().min_w_0().w_full().mx_auto().max_w(std_w + rail_slot).flex().justify_start()
-                        .child(div().h_full().min_w_0().w_full().max_w(std_w)
-                            .when(self.minimal, |paper| paper.flex())
-                            // Minimal mode pulls the (unused) handle gutter out of view: 20px text padding.
-                            .when(self.path.is_some(), |paper| paper.child(rows))
-                            .when(self.path.is_none() && !self.persistence.loading, |paper| paper.child(crate::mascot::editor_empty(cx)))))
-                    .when(self.path.is_some(), |area| area.child(scrollbar::vertical("editor-scrollbar", &self.list, px(pad.0 + pad.1)))))
+                .child(super::source_view::editor_column(self, rows, std_w, rail_slot, pad, cx))
                 .when_some(self.table_chrome.clone(), |root, chrome| {
                     let dims = self.table_dimensions(chrome.block).unwrap_or((1, 1));
                     root.children(super::table_chrome::overlay(cx.entity(), &chrome, self.table_sel, self.table_menu, self.table_drag, dims, window))
@@ -240,7 +231,7 @@ impl Render for Editor {
                 }))
                 .when_some(self.block_menu, |root, menu| {
                     let entries = self.block_menu_entries();
-                    if entries.is_empty() { root } else { root.child(super::block_menu::overlay(cx.entity(), menu, entries)) }
+                    if entries.is_empty() { root } else { root.child(super::block_menu::overlay(self, cx.entity(), menu, entries, window)) }
                 })
                 .on_action(cx.listener(|this, _: &SetParagraph, _, cx| this.set_kind_shortcut(super::model::Kind::Paragraph, cx)))
                 .on_action(cx.listener(|this, _: &SetH1, _, cx| this.set_kind_shortcut(super::model::Kind::H1, cx)))

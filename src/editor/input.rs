@@ -8,7 +8,8 @@ use super::{model::{Kind, MarkKind}, view::{Editor, EditorAction, selection::{Po
 impl Editor {
     pub(super) fn handle(&mut self, action: &EditorAction, window: &mut Window, cx: &mut Context<Self>) {
         use EditorAction::*;
-        if self.path.is_none() { return; }
+        if self.path.is_none() || (!self.is_markdown_note() && !self.editing_source()) { return; }
+        if self.editing_source() { self.handle_source(action, window, cx); return; }
         self.pending_vertical = None;
         if !matches!(action, Cancel) { self.commit_composition(cx); }
         match action {
@@ -117,19 +118,23 @@ impl Editor {
                     self.list.reset(self.doc.blocks.len()); self.changed(cx);
                 }
                 self.caret.composing = None;
-                let idle = self.block_menu.is_none() && self.format.is_none() && self.table_menu.is_none() && self.table_sel.is_none();
+                let idle = self.block_menu.is_none() && self.format.is_none() && self.table_menu.is_none() && self.table_sel.is_none() && self.image_menu.is_none() && self.find.is_none();
                 if idle {
                     let (_, _, ai, bi) = self.ordered();
                     self.block_sel = Some((ai, bi));
                     self.caret.anchor = self.caret.head;
                 }
-                self.clear_pointer(); self.toolbar_anchor = None; self.block_menu = None; cx.notify();
+                self.clear_pointer(); self.toolbar_anchor = None; self.block_menu = None;
+                self.table_menu = None; self.image_menu = None; self.format = None; self.link_ui = Default::default(); self.find = None;
+                cx.notify();
             }
         }
         let _ = window;
     }
     /// Smart paste shared by `Cmd+V` and the web `paste` event: images, plain text, tables, blocks, links.
     pub(super) fn paste_clipboard_item(&mut self, item: Option<ClipboardItem>, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editing_source() { self.source_paste(item, cx); return; }
+        if !self.is_markdown_note() { return; }
         let image = item.as_ref().and_then(|item| item.entries().iter().find_map(|entry| match entry {
             gpui::ClipboardEntry::Image(image) => Some((image.bytes.clone(), match image.format {
                 gpui::ImageFormat::Jpeg => "jpg", gpui::ImageFormat::Gif => "gif", gpui::ImageFormat::Webp => "webp", _ => "png" })),
@@ -170,6 +175,8 @@ impl Editor {
         (self.caret.is_empty() && self.doc.get(id).is_some_and(|b| super::image_source::spec_of(b).is_some() || super::block_menu::is_divider(b))).then_some(id)
     }
     pub(super) fn replace(&mut self, range: Option<Range<usize>>, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editing_source() { self.source_replace_utf16(range, text, cx); return; }
+        if !self.is_markdown_note() { return; }
         if self.path.is_none() { return; }
         let range = match self.focused_atomic() { Some(id) if !text.is_empty() => { self.add_below(id, window, cx); None } _ => range };
         let caret_before = self.caret.clone();
@@ -181,7 +188,7 @@ impl Editor {
         let composing = self.composition_before.is_some();
         if !composing && self.wrap_selection(text, cx) { return; }
         // thinkly `emptyParagraphAiShortcut`: space in an empty paragraph opens inline AI.
-        if text == " " && !composing && self.caret.is_empty() {
+        if !self.minimal && text == " " && !composing && self.caret.is_empty() {
             let id = self.caret.head.block;
             if self.doc.get(id).is_some_and(|b| b.text.is_empty() && b.kind == Kind::Paragraph && b.meta.table.is_none() && b.meta.raw_source.is_none() && b.meta.code_language.is_none()) {
                 let anchor = self.layouts.get(&id).map(|l| gpui::point(l.bounds.left(), l.bounds.bottom() + gpui::px(4.)));
@@ -189,10 +196,10 @@ impl Editor {
                 return;
             }
         }
-        let pre_anchor = self
+        let pre_bounds = self
             .layouts
             .get(&self.caret.head.block)
-            .map(|l| gpui::point(l.bounds.left(), l.bounds.bottom() + gpui::px(4.)));
+            .map(|l| l.bounds);
         self.replace_selection(text, !composing, cx);
         if composing {
             self.commit_composition(cx);
@@ -215,10 +222,10 @@ impl Editor {
         if text == "/" {
             let id = self.caret.head.block;
             if self.doc.get(id).is_some_and(|b| b.text == "/" && b.kind == Kind::Paragraph && b.meta.table.is_none() && b.meta.raw_source.is_none() && b.meta.code_language.is_none()) {
-                let anchor = pre_anchor
-                    .or_else(|| self.layouts.get(&id).map(|l| gpui::point(l.bounds.left(), l.bounds.bottom() + gpui::px(4.))))
-                    .unwrap_or_else(|| gpui::point(gpui::px(300.), gpui::px(200.)));
-                self.open_block_menu(id, anchor, super::block_menu::Mode::Slash, cx);
+                let trigger = pre_bounds
+                    .or_else(|| self.block_trigger_bounds(cx.entity_id(), id))
+                    .unwrap_or_else(|| gpui::Bounds::new(gpui::point(gpui::px(300.), gpui::px(176.)), gpui::size(gpui::px(224.), gpui::px(24.))));
+                self.open_block_menu_at(id, trigger, super::block_menu::Mode::Slash, cx);
             }
         }
     }

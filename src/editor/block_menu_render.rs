@@ -1,19 +1,36 @@
 //! Block menu rendering: the floating slash/handle dropdown list and separators.
-use gpui::{AnyElement, Entity, MouseButton, prelude::*, px};
+use gpui::{AnyElement, Entity, MouseButton, Window, prelude::*, px};
 use crate::{
     dropdown::{self, RowSpec},
     editor::view::Editor,
 };
-use super::{BlockMenu, Cmd, SLASH_MENU_WIDTH};
+use super::{BlockMenu, Cmd, SLASH_MENU_WIDTH, live_block_bounds};
 
-pub(in crate::editor) fn overlay(editor: Entity<Editor>, menu: BlockMenu, entries: Vec<Option<Cmd>>) -> AnyElement {
+pub(in crate::editor) fn overlay(
+    editor_ref: &Editor,
+    editor: Entity<Editor>,
+    menu: BlockMenu,
+    entries: Vec<Option<Cmd>>,
+    window: &Window,
+) -> AnyElement {
     let id = menu.block;
     let mode = menu.mode;
+    let editor_id = editor.entity_id();
+    let init_trigger = live_block_bounds(editor_id, id)
+        .or_else(|| editor_ref.layouts.get(&id).map(|l| l.bounds))
+        .unwrap_or(menu.trigger);
+    let init_spec = dropdown::PlacementSpec::below(init_trigger)
+        .viewport(editor_ref.list.viewport_bounds())
+        .gap(px(4.))
+        .reserve_height(px(dropdown::MAX_HEIGHT));
+    let max_h = dropdown::max_height_for_spec(&init_spec, window.viewport_size(), px(dropdown::MAX_HEIGHT));
+
     let selectable_count = entries.iter().flatten().count();
     let active_idx = menu.index.min(selectable_count.saturating_sub(1));
     let mut list = dropdown::shell("block-menu")
         .min_w(px(SLASH_MENU_WIDTH))
-        .w(px(SLASH_MENU_WIDTH));
+        .w(px(SLASH_MENU_WIDTH))
+        .max_h(max_h);
     let mut position = 0;
     for (index, entry) in entries.iter().copied().enumerate() {
         match entry {
@@ -43,5 +60,20 @@ pub(in crate::editor) fn overlay(editor: Entity<Editor>, menu: BlockMenu, entrie
             }
         }
     }
-    dropdown::deferred_popover(menu.anchor, list, 2).into_any_element()
+    let pos_editor = editor.clone();
+    dropdown::deferred_popover_with(
+        move |_, cx| {
+            let ed = pos_editor.read(cx);
+            let trigger = live_block_bounds(editor_id, id)
+                .or_else(|| ed.layouts.get(&id).map(|l| l.bounds))
+                .unwrap_or(init_trigger);
+            dropdown::PlacementSpec::below(trigger)
+                .viewport(ed.list.viewport_bounds())
+                .gap(px(4.))
+                .reserve_height(px(dropdown::MAX_HEIGHT))
+        },
+        list,
+        2,
+    )
+    .into_any_element()
 }
