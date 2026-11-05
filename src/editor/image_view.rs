@@ -45,10 +45,7 @@ fn probe_dims(path: &Path) -> Option<(f32, f32)> {
     let mut buf = vec![0u8; 65536];
     let mut n = 0;
     while n < buf.len() {
-        match f.read(&mut buf[n..]) {
-            Ok(0) | Err(_) => break,
-            Ok(k) => n += k,
-        }
+        match f.read(&mut buf[n..]) { Ok(0) | Err(_) => break, Ok(k) => n += k }
     }
     let b = &buf[..n];
     let (w, h) = if b.len() >= 24 && &b[..8] == b"\x89PNG\r\n\x1a\n" {
@@ -56,24 +53,16 @@ fn probe_dims(path: &Path) -> Option<(f32, f32)> {
     } else if b.len() >= 10 && (&b[..6] == b"GIF87a" || &b[..6] == b"GIF89a") {
         (u16::from_le_bytes([b[6], b[7]]) as u32, u16::from_le_bytes([b[8], b[9]]) as u32)
     } else if b.len() >= 26 && &b[..2] == b"BM" {
-        (
-            i32::from_le_bytes([b[18], b[19], b[20], b[21]]).unsigned_abs(),
-            i32::from_le_bytes([b[22], b[23], b[24], b[25]]).unsigned_abs(),
-        )
+        (i32::from_le_bytes([b[18], b[19], b[20], b[21]]).unsigned_abs(), i32::from_le_bytes([b[22], b[23], b[24], b[25]]).unsigned_abs())
     } else if b.len() >= 30 && &b[..4] == b"RIFF" && &b[8..12] == b"WEBP" {
         match &b[12..16] {
-            b"VP8 " if &b[23..26] == &[0x9d, 0x01, 0x2a] => (
-                (u16::from_le_bytes([b[26], b[27]]) & 0x3fff) as u32,
-                (u16::from_le_bytes([b[28], b[29]]) & 0x3fff) as u32,
-            ),
+            b"VP8 " if &b[23..26] == &[0x9d, 0x01, 0x2a] =>
+                ((u16::from_le_bytes([b[26], b[27]]) & 0x3fff) as u32, (u16::from_le_bytes([b[28], b[29]]) & 0x3fff) as u32),
             b"VP8L" if b[20] == 0x2f => {
                 let bits = u32::from_le_bytes([b[21], b[22], b[23], b[24]]);
                 ((bits & 0x3fff) + 1, ((bits >> 14) & 0x3fff) + 1)
             }
-            b"VP8X" => (
-                u32::from_le_bytes([b[24], b[25], b[26], 0]) + 1,
-                u32::from_le_bytes([b[27], b[28], b[29], 0]) + 1,
-            ),
+            b"VP8X" => (u32::from_le_bytes([b[24], b[25], b[26], 0]) + 1, u32::from_le_bytes([b[27], b[28], b[29], 0]) + 1),
             _ => return None,
         }
     } else if b.len() >= 4 && b[0] == 0xFF && b[1] == 0xD8 {
@@ -204,7 +193,14 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
     let limit = if base > 0. { base } else { DEFAULT_MAX };
     let width = if dragging { draft.map(|d| d.width) } else { spec.width.map(|w| w as f32) }
         .map(|w| w.min(limit).max(limit * MIN_SHARE));
+    let has_overlay = {
+        let ed = editor.read(cx);
+        ed.block_menu.is_some() || ed.table_menu.is_some() || ed.format.is_some()
+            || ed.annotate.active_annotation.is_some() || ed.annotate.hovered_annotation.is_some()
+            || ed.annotate.composer.is_some() || ed.annotate.reactions.is_some()
+    };
     let show = active || dragging;
+    let show_bar = show && !has_overlay;
     let group: SharedString = format!("image-{id}").into();
     let scale = if spec.align == Align::Center { 2. } else { 1. };
     let focus = editor.clone();
@@ -222,8 +218,6 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
             .when(spec.align == Align::Center, |s| s.items_center()).when(spec.align == Align::Right, |s| s.items_end())
             .child(gpui::canvas(|bounds, _, cx| { cx.default_global::<ImageUi>().avail = f32::from(bounds.size.width); }, |_, _, _, _| {})
                 .absolute().size_full())
-            .when(show, |s| s.child(div().absolute().top(px(-44.)).left_0().right_0().flex().justify_center()
-                .child(super::image_size::image_toolbar(&editor, id, spec.align, pct, pop))))
             .child(div().id(("image", id as usize)).relative().w(px(card_w)).h(px(120.)).rounded(px(6.))
                 .bg(theme.hover).border_1().border_color(if active { gpui::rgb(ring).into() } else { theme.hairline })
                 .flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
@@ -237,7 +231,9 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
                         cx.notify();
                     });
                     cx.stop_propagation();
-                }));
+                }))
+            .when(show_bar, |s| s.child(div().absolute().top(px(-44.)).left_0().right_0().flex().justify_center()
+                .child(super::image_size::image_toolbar(&editor, id, spec.align, pct, pop))));
     }
     let path = ready_path.unwrap_or_default();
     let target_size = raw_dims.filter(|&(rw, rh)| rw > 0. && rh > 0.).map(|(rw, rh)| {
@@ -256,8 +252,6 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
         .when(spec.align == Align::Center, |s| s.items_center()).when(spec.align == Align::Right, |s| s.items_end())
         .child(gpui::canvas(|bounds, _, cx| { cx.default_global::<ImageUi>().avail = f32::from(bounds.size.width); }, |_, _, _, _| {})
             .absolute().size_full())
-        .when(show, |s| s.child(div().absolute().top(px(-44.)).left_0().right_0().flex().justify_center()
-            .child(super::image_size::image_toolbar(&editor, id, spec.align, pct, pop))))
         .child(div().id(("image", id as usize)).relative().flex_none().group(group.clone())
             .when_some(target_size, |s, (tw, th)| s.w(px(tw)).h(px(th)))
             .child(picture)
@@ -286,6 +280,8 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
                 focus.update(cx, |this, cx| { this.image_menu = None; this.focus_block(id, window, cx); });
                 cx.stop_propagation();
             }))
+        .when(show_bar, |s| s.child(div().absolute().top(px(-44.)).left_0().right_0().flex().justify_center()
+            .child(super::image_size::image_toolbar(&editor, id, spec.align, pct, pop))))
 }
 
 /// (original width, rendered width) of an image from the last paint; 0 until it has been laid out.

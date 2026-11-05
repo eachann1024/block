@@ -65,6 +65,7 @@ impl Workspace {
         if self.renaming.is_some() { self.cancel_rename(window, cx); }
         if self.settings.is_some() { self.close_settings(window, cx); }
         self.close_overlays(cx);
+        crate::dropdown::dismiss_all(cx);
         let input = cx.new(|cx| InputState::new(window, cx).placeholder(tr("搜索标题与正文", "Search titles and content")));
         let sub = cx.subscribe_in(&input, window, |this, input, event: &InputEvent, window, cx| match event {
             InputEvent::Change => {
@@ -125,8 +126,9 @@ impl Workspace {
                 this.open_hit(window, cx);
             }))
             .child(render_footer());
-        Some(crate::ui::modal::backdrop("search-overlay", dialog)
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.close_search(window, cx)))
+        Some(gpui::deferred(crate::ui::modal::backdrop("search-overlay", dialog)
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.close_search(window, cx))))
+            .with_priority(5)
             .into_any_element())
     }
 }

@@ -43,6 +43,7 @@ impl Editor {
         self.annotate.hover_seq = self.annotate.hover_seq.wrapping_add(1);
         let seq = self.annotate.hover_seq;
         if hovered {
+            self.link_ui.reset_hover();
             if self.annotate.hovered_annotation != Some(id) {
                 self.annotate.hovered_annotation = Some(id);
                 cx.notify();

@@ -54,6 +54,9 @@ impl Editor {
     fn caret_link(&self, window: &Window) -> Option<(u64, Range<usize>, String)> {
         if self.format.is_some() || self.path.is_none() || !self.caret.is_empty()
             || self.selecting || self.dragging.is_some() || self.table_drag.is_some()
+            || self.block_menu.is_some() || self.table_menu.is_some()
+            || self.annotate.active_annotation.is_some() || self.annotate.hovered_annotation.is_some()
+            || self.annotate.composer.is_some() || self.annotate.reactions.is_some()
             || self.caret.composing.is_some() || !self.focus.is_focused(window) { return None; }
         let head = self.caret.head;
         if self.link_ui.quiet == Some(head) { return None; }
@@ -101,7 +104,9 @@ impl Editor {
     }
     fn link_hover_tooltip(&self, window: &Window) -> Option<AnyElement> {
         if self.path.is_none() || self.selecting || self.dragging.is_some() || self.table_drag.is_some()
-            || self.caret.composing.is_some() || self.format.is_some() || self.block_menu.is_some() || self.table_menu.is_some() { return None; }
+            || self.caret.composing.is_some() || self.format.is_some() || self.block_menu.is_some() || self.table_menu.is_some()
+            || self.annotate.active_annotation.is_some() || self.annotate.hovered_annotation.is_some()
+            || self.annotate.composer.is_some() || self.annotate.reactions.is_some() { return None; }
         let (block, range) = self.link_ui.hover.as_ref()?;
         if self.caret_link(window).is_some_and(|(cb, cr, _)| cb == *block && cr == *range) { return None; }
         self.doc.get(*block)?.link_at(range.start)?;
@@ -152,9 +157,9 @@ impl Editor {
             .child(button("link-unlink", Icon::LinkOff, tr("移除链接", "Remove link"), Box::new(move |window, cx| {
                 e_unlink.update(cx, |this, cx| this.unlink_at(block, &unlink_range, window, cx));
             })));
-        Some(gpui::deferred(gpui::anchored().position(anchor).snap_to_window_with_margin(px(8.)).child(
+        Some(gpui::anchored().position(anchor).snap_to_window_with_margin(px(8.)).child(
             div().pt(px(4.)).on_mouse_move(|_, _, cx| cx.stop_propagation()).on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .child(crate::ui::floating_bar::animate(bar, "link-pill-enter")))).into_any_element())
+                .child(crate::ui::floating_bar::animate(bar, "link-pill-enter"))).into_any_element())
     }
     pub(super) fn link_overlays(&self, editor: Entity<Editor>, window: &Window) -> Vec<AnyElement> {
         self.link_pill(editor, window).into_iter()

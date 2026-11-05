@@ -240,12 +240,12 @@ fn lang_dropdown(
         .map(|(b, vp)| dropdown::anchor_below_right(b, LANG_MENU_W, max_h, Some(vp)))
         .unwrap_or(picker.fallback);
     let backdrop = deferred(anchored().position(point(px(0.), px(0.))).child(
-        div().id("code-lang-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black())
+        div().id("code-lang-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black()).occlude()
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
-                close_menus(); window.focus(&this.focus, cx); cx.notify();
+                cx.stop_propagation(); close_menus(); window.focus(&this.focus, cx); cx.notify();
             }))
             .on_mouse_down(MouseButton::Right, cx.listener(|this, _, window, cx| {
-                close_menus(); window.focus(&this.focus, cx); cx.notify();
+                cx.stop_propagation(); close_menus(); window.focus(&this.focus, cx); cx.notify();
             })),
     )).with_priority(2);
     let popup = dropdown::deferred_popover(anchor, menu, 3);
