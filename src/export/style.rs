@@ -6,60 +6,40 @@ use cosmic_text::Color;
 use super::palette::{ExportTheme, Palette};
 use crate::editor::model::Kind;
 
-pub(super) fn row_text_color(theme: ExportTheme, kind: Kind, code: bool, pal: &Palette) -> Color {
+pub(super) fn row_text_color(kind: Kind, code: bool, pal: &Palette) -> Color {
     if code {
-        return if theme == ExportTheme::Neon {
-            pal.accent
-        } else {
-            pal.text
-        };
+        return pal.text;
     }
     match kind {
         Kind::Quote => pal.quote_fg,
-        Kind::H1 | Kind::H3 => pal.title,
-        Kind::H2 => match theme {
-            ExportTheme::Riso => pal.text,
-            ExportTheme::Neon | ExportTheme::Journal => pal.accent,
-            ExportTheme::Kraft
-            | ExportTheme::Mono
-            | ExportTheme::Ink
-            | ExportTheme::Press
-            | ExportTheme::Film => pal.title,
-        },
+        Kind::H1 | Kind::H2 | Kind::H3 => pal.title,
         _ => pal.text,
     }
 }
 
 pub(super) fn block_font_size(theme: ExportTheme, kind: Kind, code: bool) -> f32 {
+    let spec = theme.spec();
     if code {
-        return 14.0;
+        return 14.5;
     }
     match kind {
-        Kind::H1 if matches!(theme, ExportTheme::Journal | ExportTheme::Kraft) => 36.0,
-        Kind::H1 => 38.0,
-        Kind::H2
-            if matches!(
-                theme,
-                ExportTheme::Mono | ExportTheme::Ink | ExportTheme::Riso | ExportTheme::Neon
-            ) =>
-        {
-            19.0
-        }
-        Kind::H2 => 21.0,
-        Kind::H3 => 18.0,
-        Kind::Quote
-            if matches!(
-                theme,
-                ExportTheme::Mono | ExportTheme::Ink | ExportTheme::Press | ExportTheme::Film
-            ) =>
-        {
-            20.0
-        }
-        Kind::Quote => 17.5,
-        _ => 17.0,
+        Kind::H1 => spec.heads[0],
+        Kind::H2 => spec.heads[1],
+        Kind::H3 => spec.heads[2],
+        _ => spec.body,
     }
 }
 
+/// Line height multiple: headings run tight, body text uses the style's leading.
+pub(super) fn line_factor(theme: ExportTheme, kind: Kind, code: bool) -> f32 {
+    match kind {
+        _ if code => 1.6,
+        Kind::H1 | Kind::H2 | Kind::H3 => 1.35,
+        _ => theme.spec().leading,
+    }
+}
+
+/// `(gutter, pad_x, pad_top, pad_bottom)` around a block's text.
 pub(super) fn block_box_metrics(
     theme: ExportTheme,
     kind: Kind,
@@ -69,24 +49,16 @@ pub(super) fn block_box_metrics(
     gutters: &BTreeMap<usize, f32>,
 ) -> (f32, f32, f32, f32) {
     if code {
-        return (0.0, 16.0, 12.0, 12.0);
+        return (0.0, 18.0, 14.0, 14.0);
     }
+    let boxed_quote = theme.palette().quote_bg.a() > 0;
     match kind {
-        Kind::Quote
-            if matches!(
-                theme,
-                ExportTheme::Mono | ExportTheme::Ink | ExportTheme::Film
-            ) =>
-        {
-            (20.0, 0.0, 4.0, 4.0)
-        }
-        Kind::Quote if theme == ExportTheme::Press => (0.0, 24.0, 14.0, 14.0),
-        Kind::Quote => (0.0, 20.0, 14.0, 14.0),
-        Kind::H1 if theme == ExportTheme::Riso => (0.0, 18.0, 14.0, 14.0),
-        Kind::H1 if theme == ExportTheme::Press => (0.0, 0.0, 4.0, 22.0),
-        Kind::H2 if matches!(theme, ExportTheme::Riso | ExportTheme::Neon) => (0.0, 0.0, 2.0, 4.0),
-        Kind::H2 if theme == ExportTheme::Press => (0.0, 0.0, 0.0, 6.0),
-        Kind::H2 => (0.0, 0.0, 0.0, 2.0),
+        Kind::Quote if theme == ExportTheme::Press => (0.0, 4.0, 12.0, 12.0),
+        Kind::Quote if boxed_quote => (0.0, 20.0, 12.0, 12.0),
+        Kind::Quote => (0.0, 20.0, 2.0, 2.0),
+        Kind::H1 => (0.0, 0.0, 18.0, 0.0),
+        Kind::H2 => (0.0, 0.0, 12.0, if theme == ExportTheme::Press { 6.0 } else { 0.0 }),
+        Kind::H3 => (0.0, 0.0, 8.0, 0.0),
         Kind::Bullet | Kind::Todo | Kind::Numbered => (
             if has_marker { gutters[&indent] } else { 26.0 },
             0.0,
@@ -99,11 +71,12 @@ pub(super) fn block_box_metrics(
 
 pub(super) fn block_gap_after(kind: Kind, code: bool) -> f32 {
     match kind {
-        _ if code => 16.0,
-        Kind::H1 => 18.0,
-        Kind::H2 | Kind::H3 => 12.0,
+        _ if code => 18.0,
+        Kind::H1 => 10.0,
+        Kind::H2 | Kind::H3 => 8.0,
         Kind::Quote => 18.0,
-        _ => 8.0,
+        Kind::Bullet | Kind::Todo | Kind::Numbered => 4.0,
+        _ => 10.0,
     }
 }
 

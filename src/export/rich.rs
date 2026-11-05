@@ -20,6 +20,7 @@ pub(super) fn shape(
     block: &Block,
     fonts: &mut FontSystem,
     size: f32,
+    line: f32,
     width: f32,
     alignment: Option<Align>,
     base: Attrs<'static>,
@@ -56,7 +57,10 @@ pub(super) fn shape(
         let mut background = None;
         if marks.contains(&MarkKind::Code) {
             flags |= CODE;
-            attrs = attrs.family(Family::Monospace);
+            // Monospace fallback has no CJK glyphs; keep the body face for non-ASCII code.
+            if block.text[start..end].is_ascii() {
+                attrs = attrs.family(Family::Monospace);
+            }
             background = Some(Color::rgb(237, 240, 245));
         }
         for tag in block
@@ -103,7 +107,7 @@ pub(super) fn shape(
     if spans.is_empty() {
         spans.push(("", base.clone()));
     }
-    let mut buffer = Buffer::new(fonts, Metrics::new(size, size * 1.5));
+    let mut buffer = Buffer::new(fonts, Metrics::new(size, line));
     buffer.set_size(Some(width), None);
     buffer.set_wrap(Wrap::WordOrGlyph);
     buffer.set_rich_text(spans, &base, Shaping::Advanced, alignment);
