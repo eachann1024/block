@@ -104,6 +104,8 @@ pub struct State {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hide_assets_folder: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden_folder_regex: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcut_search: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcut_quick: Option<String>,

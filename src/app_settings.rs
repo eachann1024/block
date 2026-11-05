@@ -57,6 +57,8 @@ pub(crate) struct SettingsModal {
     pub tab: SettingsTab,
     pub assets_input: gpui::Entity<gpui_component::input::InputState>,
     pub _assets_sub: gpui::Subscription,
+    pub hidden_folder_input: gpui::Entity<gpui_component::input::InputState>,
+    pub _hidden_folder_sub: gpui::Subscription,
     pub font_picker: Option<FontPickerModal>,
 }
 
@@ -106,42 +108,37 @@ impl Workspace {
                 .default_value(crate::theme::assets_folder())
         });
         let _assets_sub = cx.subscribe_in(&assets_input, window, |this, input, event: &gpui_component::input::InputEvent, window, cx| {
-            match event {
-                gpui_component::input::InputEvent::Change => {
-                    let val = input.read(cx).value().to_string();
-                    let sanitized = crate::theme::sanitize_assets_folder(&val);
-                    if sanitized != crate::theme::assets_folder() {
-                        crate::theme::set_assets_folder(sanitized.clone());
-                        cx.background_executor().spawn(async move {
-                            let _ = update_state(|s| {
-                                s.assets_folder = (sanitized != crate::theme::DEFAULT_ASSETS_FOLDER).then_some(sanitized);
-                            });
-                        }).detach();
-                        this.rescan_current_folder(cx);
-                    }
-                    cx.notify();
+            if !matches!(event, gpui_component::input::InputEvent::Change | gpui_component::input::InputEvent::Blur) { return; }
+            let val = input.read(cx).value().to_string();
+            let sanitized = crate::theme::sanitize_assets_folder(&val);
+            if matches!(event, gpui_component::input::InputEvent::Blur) && val != sanitized {
+                input.update(cx, |i, cx| i.set_value(sanitized.clone(), window, cx));
+            }
+            if sanitized != crate::theme::assets_folder() {
+                crate::theme::set_assets_folder(sanitized.clone());
+                cx.background_executor().spawn(async move {
+                    let _ = update_state(|s| {
+                        s.assets_folder = (sanitized != crate::theme::DEFAULT_ASSETS_FOLDER).then_some(sanitized);
+                    });
+                }).detach();
+                this.rescan_current_folder(cx);
+            }
+            cx.notify();
+        });
+        let hidden_folder_input = cx.new(|cx| {
+            gpui_component::input::InputState::new(window, cx)
+                .placeholder(crate::theme::hidden_folder_placeholder())
+                .default_value(crate::theme::hidden_folder_regex())
+        });
+        let _hidden_folder_sub = cx.subscribe_in(&hidden_folder_input, window, |this, input, event: &gpui_component::input::InputEvent, _, cx| {
+            if matches!(event, gpui_component::input::InputEvent::Change) {
+                let val = input.read(cx).value().to_string();
+                if val != crate::theme::hidden_folder_regex() {
+                    this.apply_hidden_folder_regex(val, cx);
                 }
-                gpui_component::input::InputEvent::Blur => {
-                    let val = input.read(cx).value().to_string();
-                    let sanitized = crate::theme::sanitize_assets_folder(&val);
-                    if val != sanitized {
-                        input.update(cx, |i, cx| i.set_value(sanitized.clone(), window, cx));
-                    }
-                    if sanitized != crate::theme::assets_folder() {
-                        crate::theme::set_assets_folder(sanitized.clone());
-                        cx.background_executor().spawn(async move {
-                            let _ = update_state(|s| {
-                                s.assets_folder = (sanitized != crate::theme::DEFAULT_ASSETS_FOLDER).then_some(sanitized);
-                            });
-                        }).detach();
-                        this.rescan_current_folder(cx);
-                    }
-                    cx.notify();
-                }
-                _ => {}
             }
         });
-        self.settings = Some(SettingsModal { focus, recording: None, tab, assets_input, _assets_sub, font_picker: None });
+        self.settings = Some(SettingsModal { focus, recording: None, tab, assets_input, _assets_sub, hidden_folder_input, _hidden_folder_sub, font_picker: None });
         crate::editor::ai::settings::ensure(window, cx);
         cx.notify();
     }
@@ -173,8 +170,13 @@ impl Workspace {
         cx.notify();
     }
 
-    pub(crate) fn select_language(&mut self, mode: LanguageMode, cx: &mut Context<Self>) {
+    pub(crate) fn select_language(&mut self, mode: LanguageMode, window: &mut Window, cx: &mut Context<Self>) {
         set_language_mode(mode);
+        if let Some(modal) = &self.settings {
+            modal.hidden_folder_input.update(cx, |i, cx| {
+                i.set_placeholder(crate::theme::hidden_folder_placeholder(), window, cx);
+            });
+        }
         cx.background_executor().spawn(async move {
             let _ = update_state(|s| s.language = mode);
         }).detach();
@@ -240,6 +242,33 @@ impl Workspace {
             let _ = update_state(|s| {
                 s.assets_folder = None;
                 s.hide_assets_folder = None;
+            });
+        }).detach();
+        self.rescan_current_folder(cx);
+        cx.notify();
+    }
+
+    pub(super) fn apply_hidden_folder_regex(&mut self, val: String, cx: &mut Context<Self>) {
+        crate::theme::set_hidden_folder_regex(val);
+        cx.background_executor().spawn(async move {
+            let _ = update_state(|s| {
+                let cur = crate::theme::hidden_folder_regex();
+                s.hidden_folder_regex = (!cur.trim().is_empty()).then_some(cur);
+            });
+        }).detach();
+        self.rescan_current_folder(cx);
+        cx.notify();
+    }
+
+    pub(super) fn reset_hidden_folder_regex(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        crate::theme::set_hidden_folder_regex(String::new());
+        if let Some(modal) = &self.settings {
+            modal.hidden_folder_input.update(cx, |input, cx| input.set_value(String::new(), window, cx));
+        }
+        cx.background_executor().spawn(async move {
+            let _ = update_state(|s| {
+                let cur = crate::theme::hidden_folder_regex();
+                s.hidden_folder_regex = (!cur.trim().is_empty()).then_some(cur);
             });
         }).detach();
         self.rescan_current_folder(cx);
