@@ -108,8 +108,11 @@ pub fn rename_target(path: &Path, name: &str, dir: bool) -> io::Result<PathBuf> 
     }
     if is_reserved_name(name) { return Err(io::Error::other(tr("该名称是系统保留名称", "This name is reserved by the system"))); }
     let file_name = if dir { name.to_owned() } else {
-        let ext = path.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_else(|| "md".into());
-        format!("{name}.{ext}")
+        let full = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if crate::files::scan::is_markdown(&full) {
+            let ext = path.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_else(|| "md".into());
+            format!("{name}.{ext}")
+        } else { name.to_owned() }
     };
     let target = path.with_file_name(file_name);
     if target == path { return Ok(target); }

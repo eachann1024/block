@@ -7,20 +7,8 @@ use crate::files::{create_note, ops, scan, index::TreeIndex};
 use crate::theme::tr;
 use super::Workspace;
 
-pub(crate) struct TreeMenu {
-    pub target: (PathBuf, bool),
-    pub position: Point<Pixels>,
-    /// Showing the destination list of "移动到…".
-    pub moving: bool,
-}
-
-pub(crate) struct Renaming {
-    pub path: PathBuf,
-    pub dir: bool,
-    pub input: gpui::Entity<InputState>,
-    _sub: gpui::Subscription,
-}
-
+pub(crate) struct TreeMenu { pub target: (PathBuf, bool), pub position: Point<Pixels>, pub moving: bool }
+pub(crate) struct Renaming { pub path: PathBuf, pub dir: bool, pub input: gpui::Entity<InputState>, _sub: gpui::Subscription }
 pub(crate) enum FileOp {
     Trash { path: PathBuf },
     Rename { path: PathBuf, name: String, dir: bool, reopen: Option<PathBuf> },
@@ -29,15 +17,14 @@ pub(crate) enum FileOp {
 
 impl FileOp {
     pub(crate) fn source_path(&self) -> &Path {
-        match self {
-            Self::Trash { path, .. } | Self::Rename { path, .. } | Self::Move { path, .. } => path,
-        }
+        match self { Self::Trash { path, .. } | Self::Rename { path, .. } | Self::Move { path, .. } => path }
     }
 }
 
 pub(crate) fn display_name(path: &Path, dir: bool) -> String {
-    let os = if dir { path.file_name() } else { path.file_stem() };
-    os.unwrap_or(path.as_os_str()).to_string_lossy().into_owned()
+    let full = path.file_name().unwrap_or(path.as_os_str()).to_string_lossy().into_owned();
+    if dir || !crate::files::scan::is_markdown(&full) { return full; }
+    path.file_stem().unwrap_or(path.as_os_str()).to_string_lossy().into_owned()
 }
 
 impl Workspace {

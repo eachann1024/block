@@ -15,10 +15,11 @@ pub fn match_bracket_at(
     include_delimiters: bool,
 ) -> Option<Range<usize>> {
     let pairs = collect_bracket_pairs(tokens);
-    let matched = pairs.into_iter().filter(|pair| {
-        let at_open_inner = offset == pair.open_range.end;
-        let at_close_inner = offset == pair.close_range.start;
-        at_open_inner || at_close_inner
+    // Normal double-click uses the inner edge only (opening.end / closing.start).
+    // The outer sides stay ordinary word/punctuation selection. Alt still includes
+    // the delimiters, but only from that same inner trigger.
+    let matched = pairs.iter().filter(|pair| {
+        offset == pair.open_range.end || offset == pair.close_range.start
     }).min_by_key(|pair| pair.close_range.end.saturating_sub(pair.open_range.start))?;
 
     if include_delimiters {
@@ -35,7 +36,12 @@ pub fn match_comma_item_at(
     include_delimiters: bool,
 ) -> Option<Range<usize>> {
     let comma_idx = tokens.iter().position(|t| {
-        t.kind == TokenKind::Comma && (offset == t.range.start || offset == t.range.end)
+        // A quote or bracket ending on this caret is that delimiter's edge,
+        // not the comma glued to it (`"ab",`).
+        let owned = tokens.iter().any(|other| !std::ptr::eq(other, t)
+            && matches!(other.kind, TokenKind::StringLit { .. } | TokenKind::OpenBracket(_) | TokenKind::CloseBracket(_))
+            && (other.range.start == offset || other.range.end == offset));
+        t.kind == TokenKind::Comma && !owned && (offset == t.range.start || offset == t.range.end)
     })?;
     let comma_token = &tokens[comma_idx];
 
@@ -44,13 +50,14 @@ pub fn match_comma_item_at(
         p.open_range.end <= comma_token.range.start && comma_token.range.end <= p.close_range.start
     }).min_by_key(|p| p.close_range.start.saturating_sub(p.open_range.end));
 
-    let (content_start, content_end) = if let Some(p) = enclosing {
+    let (span_start, span_end) = if let Some(p) = enclosing {
         (p.open_range.end, p.close_range.start)
     } else {
         let line_start = text[..comma_token.range.start].rfind('\n').map_or(0, |p| p + 1);
         let line_end = text[comma_token.range.end..].find('\n').map_or(text.len(), |p| comma_token.range.end + p);
         (line_start, line_end)
     };
+    let (content_start, content_end) = semicolon_window(tokens, span_start, span_end, comma_token.range.start);
 
     let mut level = 0isize;
     let mut comma_positions = Vec::new();
@@ -96,6 +103,25 @@ pub fn match_comma_item_at(
     }
 }
 
+fn semicolon_window(tokens: &[CodeToken], span_start: usize, span_end: usize, comma_at: usize) -> (usize, usize) {
+    let mut start = span_start;
+    let mut end = span_end;
+    let mut level = 0isize;
+    for t in tokens {
+        if t.range.start < span_start || t.range.end > span_end { continue; }
+        match &t.kind {
+            TokenKind::OpenBracket(_) => level += 1,
+            TokenKind::CloseBracket(_) => level -= 1,
+            TokenKind::Semicolon if level == 0 => {
+                if t.range.end <= comma_at { start = t.range.end; }
+                else if t.range.start >= comma_at && t.range.start < end { end = t.range.start; }
+            }
+            _ => {}
+        }
+    }
+    (start, end)
+}
+
 pub fn collect_bracket_pairs(tokens: &[CodeToken]) -> Vec<BracketPair> {
     let mut stack: Vec<(BracketKind, Range<usize>)> = Vec::new();
     let mut pairs = Vec::new();
@@ -104,7 +130,11 @@ pub fn collect_bracket_pairs(tokens: &[CodeToken]) -> Vec<BracketPair> {
         match &token.kind {
             TokenKind::OpenBracket(k) => stack.push((*k, token.range.clone())),
             TokenKind::CloseBracket(k) => {
-                if stack.last().map(|(open_k, _)| open_k == k) == Some(true) {
+                // Only the top of the open chain can pair. A different kind,
+                // or a closer that would reach under a still-open bracket,
+                // drops the whole chain. Pairs already closed stay, and a
+                // well-formed pair that starts afterward can still match.
+                if stack.last().is_some_and(|(open_k, _)| open_k == k) {
                     let (_, open_range) = stack.pop().unwrap();
                     pairs.push(BracketPair {
                         open_range,

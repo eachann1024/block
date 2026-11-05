@@ -111,6 +111,9 @@ impl Editor {
             };
             return HistoryCapturePoll::Failed(message);
         }
+        if !self.is_markdown_note() {
+            return HistoryCapturePoll::Failed(crate::theme::tr("只有 Markdown 笔记有页面历史", "Page history is only available for Markdown notes").into());
+        }
         HistoryCapturePoll::Ready { content: markdown::serialize(&self.doc), base: self.persistence.base.0 }
     }
 
@@ -157,10 +160,12 @@ impl Editor {
             return Ok(HistoryCommit::Conflict);
         }
         if active {
+            if !self.is_markdown_note() { return Ok(HistoryCommit::Idle); }
             self.apply_clean_doc(&write.content, base, cx);
             return Ok(HistoryCommit::Applied);
         }
         let Some(session) = self.sessions.get_mut(&write.path) else { return Ok(HistoryCommit::Idle); };
+        if !matches!(session.surface, crate::editor::surface::Surface::Note) { return Ok(HistoryCommit::Idle); }
         session.doc = markdown::parse(&write.content);
         session.base = base;
         session.dirty = false;
@@ -176,12 +181,14 @@ impl Editor {
         let base = storage::fingerprint(content.as_bytes());
         if self.path.as_deref() == Some(path) {
             if self.persistence.generation != generation { return Err("SUPERSEDED".into()); }
+            if !self.is_markdown_note() { return Err("NOT_MARKDOWN".into()); }
             self.persistence.timer = None;
             if !same_document(&markdown::serialize(&self.doc), content) { self.apply_clean_doc(content, base, cx); }
             else { let _ = self.mark_clean_base(path, base); cx.notify(); }
             return Ok(base.0);
         }
         let Some(session) = self.sessions.get_mut(path) else { return Err("SUPERSEDED".into()); };
+        if !matches!(session.surface, crate::editor::surface::Surface::Note) { return Err("NOT_MARKDOWN".into()); }
         if !same_document(&markdown::serialize(&session.doc), content) { session.doc = markdown::parse(content); }
         session.base = base;
         session.dirty = false;
