@@ -35,6 +35,8 @@ pub(super) fn render_preview_body(
 
     div()
         .id("history-preview-scroll")
+        .relative()
+        .children(crate::ui::smoke_overlay::probe("history-preview-scroll"))
         .flex_1()
         .min_h_0()
         .overflow_y_scroll()
