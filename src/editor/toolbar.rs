@@ -35,13 +35,16 @@ pub(super) struct SelectionToolbar { editor: Entity<Editor>, anchor: Point<Pixel
 impl RenderOnce for SelectionToolbar {
     fn render(self, _: &mut Window, cx: &mut gpui::App) -> impl IntoElement {
         let editor = self.editor;
-        let (state, kinds_open, lists_open, palette_open) = {
+        let (state, kinds_open, lists_open, palette_open, link_open, comment_open, reaction_open) = {
             let ed = editor.read(cx);
             (
                 ed.toolbar_state(),
                 matches!(ed.format, Some(FormatPop::Kinds { .. })),
                 matches!(ed.format, Some(FormatPop::Lists { .. })),
                 matches!(ed.format, Some(FormatPop::Palette { .. })),
+                matches!(ed.format, Some(FormatPop::Link { .. })),
+                ed.annotate.composer.is_some(),
+                ed.annotate.reactions.is_some(),
             )
         };
         let mark = |g, tip, kind: MarkKind, on| button(g, tip, on, false, false, editor.clone(), move |this, _, cx| this.mark(kind, cx));
@@ -51,8 +54,8 @@ impl RenderOnce for SelectionToolbar {
         // instead of running under the chat panel.
         let room = editor.read(cx).list.viewport_bounds().size.width - px(16.);
         let bar = pill().px(px(4.)).py(px(6.)).gap(px(4.)).id("selection-toolbar").max_w(room).flex_wrap().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(button(Icon::TbComment, tr("添加批注", "Add annotation"), false, false, false, editor.clone(), |this, w, cx| this.start_annotation(w, cx)))
-            .child(button(Icon::TbReaction, tr("添加表情回应", "Add reaction"), false, false, false, editor.clone(), |this, w, cx| this.open_reactions(w, cx)))
+            .child(button(Icon::TbComment, tr("添加批注", "Add annotation"), false, comment_open, false, editor.clone(), |this, w, cx| this.start_annotation(w, cx)))
+            .child(button(Icon::TbReaction, tr("添加表情回应", "Add reaction"), false, reaction_open, false, editor.clone(), |this, w, cx| this.open_reactions(w, cx)))
             .child(sep())
             .when(text_blocks, |bar| bar
                 .child(button(Icon::TbType, tr("文字类型", "Text type"), false, kinds_open, true, editor.clone(), |this, w, cx| this.toggle_menu(true, w, cx)))
@@ -69,7 +72,7 @@ impl RenderOnce for SelectionToolbar {
                 .child(button(Icon::TbList, tr("列表", "Lists"), false, lists_open, true, editor.clone(), |this, w, cx| this.toggle_menu(false, w, cx)))
                 .child(sep()))
             .when(rich && !state.grid, |bar| bar
-                .child(button(Icon::TbLink, tr("链接 ⌘⇧K", "Link ⌘⇧K"), state.link, false, false, editor.clone(), |this, w, cx| this.open_link(w, cx))))
+                .child(button(Icon::TbLink, tr("链接 ⌘⇧K", "Link ⌘⇧K"), state.link, link_open, false, editor.clone(), |this, w, cx| this.open_link(w, cx))))
             .when(rich && state.grid, |bar| bar.child(disabled_icon_button(Icon::TbLink)));
         gpui::anchored().position(self.anchor).snap_to_window_with_margin(px(8.)).child(animate_bar(bar, "selection-toolbar-enter"))
     }
