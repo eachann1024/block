@@ -55,6 +55,8 @@ bun run build:web
 
 ## 开源许可与第三方致谢
 
-本项目采用 [Apache License 2.0](LICENSE) 开源许可（Copyright 2026 eachann1024）。
+本项目采用 [Apache License 2.0](LICENSE) 开源许可（Copyright 2026 eachann1024）。使用或修改本项目时请保留 NOTICE，并标明来自 Block / eachann1024。
+
+When using or modifying this project, keep NOTICE and credit Block / eachann1024.
 
 仓库中包含的第三方组件与字体许可说明详见 [NOTICE](NOTICE) 及 `web/vendor/gpui-pre-wgpu/LICENSE-APACHE`。
