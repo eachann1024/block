@@ -31,7 +31,7 @@ mod web_cjk;
 mod web_save;
 
 pub(crate) use budget::validate_snapshot;
-pub use view::{ExportSlot, ExportView, Snapshot, active_view};
+pub(crate) use view::{ExportSlot, ExportView, Snapshot, active_view, close_active};
 
 pub use budget::{ExportError, preflight};
 pub use format::ExportFormat;
