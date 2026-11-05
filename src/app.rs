@@ -36,8 +36,7 @@ mod settings_tabs;
 use file_ops::{FileOp, Renaming, TreeMenu};
 pub use search::{Dismiss, NewFolder, NewNote, OpenSearch, OpenSettings, SearchDown, SearchUp};
 pub use tabs::{CloseTab, NewTab, NextTab, PrevTab, ToggleSidebar}; pub use nav::{NavigateBack, NavigateForward};
-use search::Search;
-use settings::SettingsModal;
+use search::Search; use settings::SettingsModal;
 
 struct PreparedFolder { path: PathBuf, index: TreeIndex, notice: String, tabs: Vec<PathBuf>, active_tab: Option<PathBuf> }
 
@@ -48,6 +47,7 @@ pub struct Workspace {
     pub(crate) editor: gpui::Entity<Editor>,
     selected: Option<PathBuf>,
     tabs: Vec<PathBuf>,
+    pub(super) closed_tabs: tabs::ClosedTabs,
     pub(super) nav: nav::NavHistory,
     startup_tabs: Option<(Vec<PathBuf>, Option<PathBuf>)>,
     pub(super) external_open: Vec<PathBuf>,
@@ -196,7 +196,7 @@ impl Workspace {
         tabs::bind_keys(cx);
         nav::bind_keys(cx);
         crate::files::tree::bind_keys(cx);
-        let this = Self { folder: None, folder_error: None, tree, editor, selected: None, tabs: Vec::new(), nav: nav::NavHistory::default(), startup_tabs: None, external_open: Vec::new(), dirty_bits: 0, loading: true,
+        let this = Self { folder: None, folder_error: None, tree, editor, selected: None, tabs: Vec::new(), closed_tabs: tabs::ClosedTabs::default(), nav: nav::NavHistory::default(), startup_tabs: None, external_open: Vec::new(), dirty_bits: 0, loading: true,
             choosing: false, creating: false, persisting: false, pending: None,
             notice: tr("正在读取工作区偏好…", "Loading workspace preferences…").into(), sidebar_width: Theme::ocean().sidebar_width,
             sidebar_collapsed: false, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
