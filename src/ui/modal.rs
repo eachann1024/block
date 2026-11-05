@@ -7,7 +7,7 @@ use gpui::{
 use gpui_component::animation::cubic_bezier;
 use crate::{
     icons::{Icon, icon, stateful_icon},
-    theme::{Theme, is_dark},
+    theme::Theme,
     ui::{dropdown::shadows, motion::modal_enter, radius},
 };
 
@@ -57,9 +57,8 @@ pub fn card(id: impl Into<ElementId>, width: Pixels) -> Stateful<Div> {
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 }
 
-/// Interactive capsule link button modeled after `note.cooool.top`:
-/// crisp offset 3D shadow (`5px 7px -> 2px 3px`), spring press-glide (`translate(3px, 4px)`),
-/// and a radial 7-particle `.puff` burst (`scale 0.2 -> 1.0`, `opacity 0.95 -> 0`) on hover/click.
+/// Interactive link row with clean Ocean Paper idle surface (`theme.paper` + `theme.btn_border`),
+/// spring hover lift, accent border/glow, and radial 7-particle `.puff` burst from `note.cooool.top`.
 pub fn bubble_link_pill(
     id: &'static str,
     glyph: Icon,
@@ -73,11 +72,6 @@ pub fn bubble_link_pill(
     let theme = Theme::ocean();
     let group = SharedString::from(format!("pill-{id}"));
     let probe = crate::ui::smoke_overlay::probe(id);
-    let shadow_color = if is_dark() {
-        rgba(0x182e60c8)
-    } else {
-        rgba(0x3559a861)
-    };
     let lead = stateful_icon(
         group.clone(),
         glyph,
@@ -97,35 +91,37 @@ pub fn bubble_link_pill(
         .relative()
         .children(probe)
         .w_full()
-        .h(px(46.))
-        .px(px(18.))
-        .rounded(radius::PILL)
+        .h(px(42.))
+        .px(px(16.))
+        .rounded(radius::CONTROL)
         .flex()
         .items_center()
         .gap(px(10.))
         .cursor(CursorStyle::PointingHand)
-        .bg(if hovered { theme.selected } else { theme.shell.opacity(0.65) })
+        .bg(if hovered { theme.selected } else { theme.paper })
         .border_1()
-        .border_color(if hovered { theme.accent } else { theme.accent.opacity(0.38) })
-        .shadow(vec![BoxShadow {
-            color: shadow_color.into(),
-            offset: if hovered { point(px(2.), px(3.)) } else { point(px(5.), px(7.)) },
-            blur_radius: px(0.),
-            spread_radius: px(0.),
-            inset: false,
-        }])
+        .border_color(if hovered { theme.accent } else { theme.btn_border })
+        .when(hovered, |d| {
+            d.shadow(vec![BoxShadow {
+                color: theme.accent.opacity(0.16).into(),
+                offset: point(px(0.), px(6.)),
+                blur_radius: px(16.),
+                spread_radius: px(0.),
+                inset: false,
+            }])
+        })
         .hover(|s| s.bg(theme.selected).border_color(theme.accent))
         .on_hover(on_hover)
         .on_mouse_down(MouseButton::Left, move |_, _, cx| {
             cx.stop_propagation();
             cx.open_url(url);
         })
-        .when(burst_seq > 0, |d| d.child(puff_burst_cluster(id, burst_seq, 320., 23.)))
+        .when(burst_seq > 0, |d| d.child(puff_burst_cluster(id, burst_seq, 320., 21.)))
         .child(lead)
         .child(
             div()
                 .flex_1()
-                .font_weight(FontWeight(500.))
+                .font_weight(FontWeight(460.))
                 .text_color(theme.text)
                 .child(label),
         )
@@ -139,14 +135,14 @@ pub fn bubble_link_pill(
         .child(
             div()
                 .relative()
-                .when(hovered, |d| d.left(px(3.)).top(px(-2.)))
+                .when(hovered, |d| d.left(px(2.)).top(px(-2.)))
                 .child(icon(Icon::LinkOpen, px(14.), trail_colors)),
         );
     if hovered {
         pill.with_animation(
-            SharedString::from(format!("{id}-glide-{burst_seq}")),
-            Animation::new(Duration::from_millis(280)).with_easing(ease_note_spring()),
-            |el, delta| el.left(px(3.0 * delta)).top(px(4.0 * delta)),
+            SharedString::from(format!("{id}-lift-{burst_seq}")),
+            Animation::new(Duration::from_millis(260)).with_easing(ease_note_spring()),
+            |el, delta| el.top(px(-1.5 * delta)),
         )
         .into_any_element()
     } else {
@@ -202,10 +198,9 @@ pub fn author_puff_link(
 
 /// Radial 7-puff particle burst ported from `https://note.cooool.top/`:
 /// spawns across the button width at vertical center, expands from `scale 0.2 -> 1.0`,
-/// travels along `(dx, dy)` (biased upward by `-20px`), and fades `opacity -> 0` over ~1s.
+/// travels along `(dx, dy)`, and fades `opacity -> 0` over ~1s.
 fn puff_burst_cluster(id: &'static str, seq: u64, width: f32, cy: f32) -> impl IntoElement {
     let theme = Theme::ocean();
-    // (x_ratio, diameter_px, dx_px, dy_px, duration_ms, use_icon_fill)
     const PUFFS: [(f32, f32, f32, f32, u64, bool); 7] = [
         (0.18, 16., -54., -38., 950, false),
         (0.30, 26., -26., -52., 1080, true),
