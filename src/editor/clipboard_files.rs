@@ -8,7 +8,9 @@ pub(super) fn is_image(path: &std::path::Path) -> bool {
         .is_some_and(|e| IMAGE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
 }
 
-/// Image files currently copied to the system clipboard (empty off macOS or when none).
+/// Image files copied as file paths on the system clipboard.
+/// macOS reads Finder `NSFilenamesPboardType`. Windows and Linux return an empty list:
+/// text and bitmap paste still go through gpui; pasting a copied file path does not.
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
 pub(super) fn image_paths() -> Vec<PathBuf> {

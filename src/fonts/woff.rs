@@ -2,41 +2,16 @@
 //! (`\0\1\0\0` / `OTTO`) font files so CoreText, `cosmic-text` (`ttf-parser`), and `latex-rust`
 //! (`skrifa`) can all load them directly.
 
+use std::io::Read;
+
+use flate2::read::ZlibDecoder;
+
 use super::{is_valid_font_header, is_valid_sfnt};
 
-#[cfg(unix)]
-#[link(name = "z")]
-unsafe extern "C" {
-    fn uncompress(
-        dest: *mut u8,
-        dest_len: *mut std::os::raw::c_ulong,
-        source: *const u8,
-        source_len: std::os::raw::c_ulong,
-    ) -> std::os::raw::c_int;
-}
-
-#[cfg(unix)]
 fn zlib_decompress(src: &[u8], orig_len: usize) -> Option<Vec<u8>> {
-    let mut out = vec![0u8; orig_len];
-    let mut dst_len = orig_len as std::os::raw::c_ulong;
-    let rc = unsafe {
-        uncompress(
-            out.as_mut_ptr(),
-            &mut dst_len,
-            src.as_ptr(),
-            src.len() as std::os::raw::c_ulong,
-        )
-    };
-    if rc == 0 && dst_len as usize == orig_len {
-        Some(out)
-    } else {
-        None
-    }
-}
-
-#[cfg(not(unix))]
-fn zlib_decompress(_src: &[u8], _orig_len: usize) -> Option<Vec<u8>> {
-    None
+    let mut out = Vec::with_capacity(orig_len);
+    ZlibDecoder::new(src).read_to_end(&mut out).ok()?;
+    (out.len() == orig_len).then_some(out)
 }
 
 fn read_u16(buf: &[u8], off: usize) -> Option<u16> {
