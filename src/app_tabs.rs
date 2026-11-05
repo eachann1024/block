@@ -6,7 +6,7 @@ use gpui::{
     MouseButton, SharedString, WindowControlArea, actions, div, ease_out_quint,
     prelude::*, px, transparent_black,
 };
-use crate::icons::{Icon, icon};
+use crate::icons::Icon;
 use crate::theme::Theme;
 use super::{Workspace, file_ops::display_name, search::Dismiss};
 
@@ -241,9 +241,6 @@ impl Workspace {
                 this.close_tab(close_path.clone(), cx);
             }))
             .child(hover_tinted_icon(close_group, Icon::Close, 12., theme.text_secondary, theme.text, theme.icon_fill));
-        let note_icon = if multi && active { icon(Icon::Note, px(14.), theme.icon_colors(theme.accent)).into_any_element() }
-            else if multi { hover_tinted_icon(group.clone(), Icon::Note, 14., theme.text_secondary, theme.text, theme.icon_fill).into_any_element() }
-            else { icon(Icon::Note, px(14.), theme.mono_icon_colors(theme.text_secondary)).into_any_element() };
         let mut pill = div().id(("tab", ix)).group(group.clone()).h(px(28.)).overflow_hidden()
             .when(multi, |t| t.w(px(TAB_MAX_W)).flex_basis(px(TAB_BASIS_W)).flex_shrink_1().min_w(px(TAB_MIN_W)).max_w(px(TAB_MAX_W)).cursor(CursorStyle::PointingHand))
             .when(!multi, |t| t.min_w_0().max_w(px(SINGLE_TAB_MAX_W)).flex_shrink_1().text_color(theme.text)
@@ -265,8 +262,7 @@ impl Workspace {
                 .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
                     cx.stop_propagation();
                     this.open_tab_menu(ix, menu_path.clone(), event.position, cx);
-                })))
-            .child(div().mr(px(6.)).flex_none().flex().items_center().child(note_icon));
+                })));
         pill = if multi && active {
             pill.child(div().relative().flex_1().min_w_0().h_full().flex().items_center().overflow_hidden()
                 .child(div().whitespace_nowrap().child(label))
@@ -276,7 +272,7 @@ impl Workspace {
         } else if multi {
             pill.child(render_inactive_tab_body(label, group, dirty, close_btn))
         } else {
-            let single_fade_x = SINGLE_TAB_MAX_W - 40. - TAB_FADE_W;
+            let single_fade_x = SINGLE_TAB_MAX_W - 20. - TAB_FADE_W;
             pill.child(div().relative().flex_shrink_1().min_w_0().h_full().flex().items_center().overflow_hidden()
                 .child(div().whitespace_nowrap().child(label))
                 .child(tab_fade(theme.shell).absolute().top_0().bottom_0().left(px(single_fade_x))))
