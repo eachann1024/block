@@ -81,21 +81,23 @@ impl Editor {
 
     /// Up/down target block index: moves within the current column, then exits the group above or below.
     pub(in crate::editor) fn vertical_target(&self, index: usize, down: bool) -> Option<usize> {
-        if let Some((gid, col)) = self.doc.blocks.get(index).and_then(|b| b.meta.column) {
+        let next = if let Some((gid, col)) = self.doc.blocks.get(index).and_then(|b| b.meta.column) {
             if down {
                 if index + 1 < self.doc.blocks.len() && self.doc.blocks[index + 1].meta.column == Some((gid, col)) {
                     return Some(index + 1);
                 }
                 let ge = self.column_group_range(index)?.end;
-                return self.next_visible_index(ge.saturating_sub(1), true);
+                self.next_visible_index(ge.saturating_sub(1), true)?
+            } else {
+                if index > 0 && self.doc.blocks[index - 1].meta.column == Some((gid, col)) {
+                    return Some(index - 1);
+                }
+                let gs = self.column_group_range(index)?.start;
+                self.next_visible_index(gs, false)?
             }
-            if index > 0 && self.doc.blocks[index - 1].meta.column == Some((gid, col)) {
-                return Some(index - 1);
-            }
-            let gs = self.column_group_range(index)?.start;
-            return self.next_visible_index(gs, false);
-        }
-        let next = self.next_visible_index(index, down)?;
+        } else {
+            self.next_visible_index(index, down)?
+        };
         let Some(r) = self.column_group_range(next) else { return Some(next) };
         let Some((gid, _)) = self.doc.blocks.get(r.start).and_then(|b| b.meta.column) else { return Some(next) };
         let max_col = (r.clone()).filter_map(|k| self.doc.blocks[k].meta.column.map(|(_, c)| c)).max().unwrap_or(0);
@@ -116,17 +118,6 @@ impl Editor {
         } else {
             (r.clone()).rev().find(|&k| self.doc.blocks[k].meta.column == Some((gid, chosen_col))).or(Some(r.end - 1))
         }
-    }
-
-    pub(in crate::editor) fn exit_columns_at_end(&mut self, index: usize, cx: &mut Context<Self>) -> bool {
-        let Some(r) = self.column_group_range(index).filter(|r| r.end >= self.doc.blocks.len()) else { return false };
-        let before = self.snapshot();
-        self.doc.splice_blocks(r.end..r.end, vec![Block::new(0, Kind::Paragraph, String::new())]);
-        let id = self.doc.blocks[r.end].id;
-        self.preferred_x = None;
-        self.set_head(Position { block: id, offset: 0 }, false, cx);
-        self.record_changes(before, vec![ListChange { start: r.end, before: 0, after: 1 }], true, cx);
-        true
     }
 
     pub(in crate::editor) fn insert_columns(&mut self, index: usize, slash_target: bool, window: &mut Window, cx: &mut Context<Self>) {

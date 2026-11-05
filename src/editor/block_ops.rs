@@ -213,7 +213,8 @@ impl Editor {
             Up | Down | SelectUp | SelectDown => {
                 let up = matches!(action, Up | SelectUp);
                 let extend = matches!(action, SelectUp | SelectDown);
-                let next = if up { head.saturating_sub(1) } else { (head + 1).min(last) };
+                let head = head.min(last);
+                let next = self.next_visible_index(head, !up).unwrap_or(head);
                 self.block_sel = Some((if extend { anchor.min(last) } else { next }, next));
                 let pos = Position { block: self.doc.blocks[next].id, offset: 0 };
                 self.caret.anchor = pos; self.caret.head = pos;

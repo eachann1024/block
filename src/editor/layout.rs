@@ -200,18 +200,28 @@ impl Editor {
             (f32::from(dy), f32::from(dx))
         };
         // Nearest area wins (vertical first, then horizontal); ties break by document order,
-        // never by HashMap iteration order.
-        let (id, layout) = self.layouts.iter().min_by(|(ia, a), (ib, b)| {
+        // never by HashMap iteration order. Stale geometry for removed or hidden blocks is ignored.
+        let (id, index, layout) = self.layouts.iter().filter_map(|(id, layout)| {
+            let index = self.doc.index_of(*id)?;
+            if !self.minimal && self.is_index_hidden(index) { return None; }
+            Some((*id, index, layout))
+        }).min_by(|(_, ia, a), (_, ib, b)| {
             let (da, db) = (distance(a), distance(b));
             da.0.partial_cmp(&db.0).unwrap_or(std::cmp::Ordering::Equal)
                 .then(da.1.partial_cmp(&db.1).unwrap_or(std::cmp::Ordering::Equal))
-                .then(self.doc.index_of(**ia).cmp(&self.doc.index_of(**ib)))
+                .then(ia.cmp(ib))
         })?;
-        let text = &self.doc.get(*id)?.text;
-        Some(Position { block: *id, offset: boundary(text, layout.hit(point)) })
+        let text = &self.doc.blocks[index].text;
+        Some(Position { block: id, offset: boundary(text, layout.hit(point)) })
     }
     pub(in crate::editor) fn vertical(&mut self, down: bool, extend: bool, cx: &mut Context<Self>) {
-        let at = self.caret.head;
+        let at = if !extend && !self.caret.is_empty() {
+            self.preferred_x = None;
+            let (a, b, _, _) = self.ordered();
+            if down { b } else { a }
+        } else {
+            self.caret.head
+        };
         let Some(index) = self.doc.index_of(at.block) else { return; };
         let mut target = None;
         if let Some(layout) = self.layouts.get(&at.block) {
@@ -223,19 +233,32 @@ impl Editor {
                 // Tables: move inside the cell while it has more lines, else to the adjacent row's cell under x.
                 if let Some(cell) = layout.cells.iter().find(|c| c.range.start <= at.offset && at.offset <= c.range.end) {
                     let inner = &cell.text.bounds;
-                    if y >= inner.top() && y < inner.bottom() {
-                        target = Some(Position { block: at.block, offset: cell.range.start + cell.text.hit(gpui::point(x, y + px(1.))).min(cell.range.len()) });
-                    } else {
+                    let text_bottom = inner.top() + cell.text.height();
+                    if y >= inner.top() && y < text_bottom {
+                        let off = cell.range.start + cell.text.hit(gpui::point(x, y + px(1.))).min(cell.range.len());
+                        let p = cell.text.point(off.saturating_sub(cell.range.start));
+                        if (down && p.y > point.y + px(1.)) || (!down && p.y < point.y - px(1.)) {
+                            target = Some(Position { block: at.block, offset: off });
+                        }
+                    }
+                    if target.is_none() {
                         let probe_y = if down { cell.frame.bottom() + px(1.) } else { cell.frame.top() - px(1.) };
                         let probe_x = x.max(cell.frame.left()).min(cell.frame.right() - px(1.));
                         if let Some(next) = layout.cells.iter().find(|c| c.frame.contains(&gpui::point(probe_x, probe_y))) {
-                            let ty = if down { next.text.bounds.top() } else { next.text.bounds.bottom() - px(1.) };
+                            let ty = if down { next.text.bounds.top() } else { (next.text.bounds.top() + next.text.height() - px(1.)).max(next.text.bounds.top()) };
                             target = Some(Position { block: at.block, offset: next.range.start + next.text.hit(gpui::point(x, ty)).min(next.range.len()) });
                         }
                     }
                 }
-            } else if y >= layout.bounds.top() && y < layout.bounds.bottom() {
-                target = Some(Position { block: at.block, offset: layout.hit(gpui::point(x, y + px(1.))) });
+            } else {
+                let text_bottom = layout.bounds.top() + layout.height();
+                if y >= layout.bounds.top() && y < text_bottom {
+                    let off = layout.hit(gpui::point(x, y + px(1.)));
+                    let p = layout.point(off);
+                    if (down && p.y > point.y + px(1.)) || (!down && p.y < point.y - px(1.)) {
+                        target = Some(Position { block: at.block, offset: off });
+                    }
+                }
             }
         }
         if target.is_none() {
@@ -245,48 +268,31 @@ impl Editor {
                 let offset = if crate::editor::image_source::spec_of(b).is_some() || crate::editor::block_menu::is_divider(b) {
                     0
                 } else if let Some(layout) = self.layouts.get(&b.id) {
-                    let y = if down { layout.bounds.top() } else { layout.bounds.bottom()-px(1.) };
+                    let y = if down { layout.bounds.top() } else { (layout.bounds.top() + layout.height() - px(1.)).max(layout.bounds.top()) };
                     layout.hit(point(self.preferred_x.unwrap_or(layout.bounds.left()), y))
                 } else {
                     // Resolve the exact visual column after this previously unseen block is shaped.
                     if let Some(x) = self.preferred_x { self.pending_vertical = Some((b.id, x, down, extend)); }
-                    let column = self.block_text()[..boundary(self.block_text(), at.offset)].chars().count();
+                    let cur_text = &self.doc.blocks[index].text;
+                    let column = cur_text[..boundary(cur_text, at.offset)].chars().count();
                     b.text.char_indices().nth(column).map(|(i,_)| i).unwrap_or(b.text.len())
                 };
                 target = Some(Position { block: b.id, offset });
-            } else if down && !extend && self.vertical_target(index, true).is_none() {
-                if self.exit_columns_at_end(index, cx) { return; }
+            } else if down {
                 let cur = &self.doc.blocks[index];
-                let exit = if let Some(t) = &cur.meta.table {
-                    t.cell_at_range(&(at.offset..at.offset)).is_some_and(|(r, c, _)| r + t.rows[r].cells[c].rowspan >= t.rows.len())
-                } else if cur.meta.code_language.is_some() {
-                    !cur.text[at.offset.min(cur.text.len())..].contains('\n')
-                } else { false };
-                if exit {
-                    let before = self.snapshot();
-                    if let Some(id) = self.doc.insert_after(at.block, crate::editor::model::Kind::Paragraph, String::new()) {
-                        self.preferred_x = None;
-                        self.set_head(Position { block: id, offset: 0 }, false, cx);
-                        self.record_changes(before, vec![crate::editor::input::transactions::ListChange { start: index + 1, before: 0, after: 1 }], true, cx);
-                        return;
-                    }
-                }
-            } else if !down && !extend && self.vertical_target(index, false).is_none() {
+                let offset = if crate::editor::image_source::spec_of(cur).is_some() || crate::editor::block_menu::is_divider(cur) {
+                    0
+                } else if let Some((_, _, r)) = cur.meta.table.as_ref().and_then(|t| t.cell_ranges().into_iter().find(|(_, _, r)| r.start <= at.offset && at.offset <= r.end)) {
+                    r.end
+                } else {
+                    cur.text.len()
+                };
+                target = Some(Position { block: at.block, offset });
+            } else {
                 let cur = &self.doc.blocks[index];
-                let at_top_edge = cur.meta.table.is_some()
-                    || at.offset == 0
-                    || crate::editor::image_source::spec_of(cur).is_some()
-                    || crate::editor::block_menu::is_divider(cur);
-                let col_top = cur.meta.column.is_some() && (index == 0 || self.doc.blocks[index - 1].meta.column != cur.meta.column);
-                if at_top_edge && col_top && crate::editor::block_ops::needs_top_insert(cur) {
-                    self.insert_above(cur.id, cx);
-                    return;
-                }
-                if at_top_edge && self.doc.blocks.first().is_some_and(crate::editor::block_ops::needs_top_insert) {
-                    self.insert_top_paragraph(cx);
-                    return;
-                }
-                target = Some(Position { block: at.block, offset: 0 });
+                let offset = cur.meta.table.as_ref().and_then(|t| t.cell_ranges().into_iter().find(|(_, _, r)| r.start <= at.offset && at.offset <= r.end))
+                    .map_or(0, |(_, _, r)| r.start);
+                target = Some(Position { block: at.block, offset });
             }
         }
         if let Some(at) = target { self.set_head(at, extend, cx); }
