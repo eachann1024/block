@@ -7,7 +7,7 @@ fn is_list(block: &Block) -> bool {
 }
 fn is_paragraph(block: &Block) -> bool {
     block.kind == Kind::Paragraph && block.meta.table.is_none() && block.meta.raw_source.is_none()
-        && block.meta.code_language.is_none()
+        && block.meta.code_language.is_none() && block.meta.callout.is_none()
 }
 
 impl Editor {
