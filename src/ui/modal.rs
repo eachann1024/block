@@ -207,7 +207,7 @@ pub fn author_puff_link(
 /// Radial 7-puff particle burst ported from `https://note.cooool.top/`:
 /// spawns across the button width at vertical center, expands from `scale 0.2 -> 1.0`,
 /// travels along `(dx, dy)`, and fades `opacity -> 0` over ~1s.
-fn puff_burst_cluster(id: &'static str, seq: u64, width: f32, cy: f32) -> impl IntoElement {
+pub(super) fn puff_burst_cluster(id: &'static str, seq: u64, width: f32, cy: f32) -> impl IntoElement {
     let theme = Theme::ocean();
     const PUFFS: [(f32, f32, f32, f32, u64, bool); 7] = [
         (0.18, 16., -54., -38., 950, false),
@@ -252,6 +252,22 @@ fn puff_burst_cluster(id: &'static str, seq: u64, width: f32, cy: f32) -> impl I
                     )
             },
         ))
+}
+
+pub fn modal_close_button(
+    id: &'static str,
+    tip: impl Into<gpui::SharedString>,
+    on_down: impl Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    crate::ui::icon_button::header_action_button(id, Icon::Close, false, tip, on_down)
+}
+
+pub fn modal_secondary_button(
+    id: &'static str,
+    label: &'static str,
+    on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    action_button(id, label, on_down)
 }
 
 pub fn action_button(

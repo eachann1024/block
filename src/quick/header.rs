@@ -75,7 +75,7 @@ impl QuickView {
             .max_w(px(360.))
             .h(px(30.))
             .px(px(12.))
-            .rounded(px(999.))
+            .rounded(crate::ui::radius::PILL)
             .bg(theme.menu)
             .border_1()
             .border_color(theme.menu_border)
