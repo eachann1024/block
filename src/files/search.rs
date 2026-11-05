@@ -86,9 +86,24 @@ fn inspect(root: &Path, path: &Path, query: &str, include_root_name: bool) -> Op
 }
 
 fn finish(mut titles: Vec<Hit>, mut bodies: Vec<Hit>, limit: usize) -> Vec<Hit> {
-    let key = |hit: &Hit| (hit.title.to_lowercase(), hit.path.clone());
-    titles.sort_by_key(key);
-    bodies.sort_by_key(key);
+    titles.sort_by(|a, b| {
+        let rank = |hit: &Hit| {
+            let start = hit.title_marks.first().map_or(usize::MAX, |r| r.start);
+            let exact = start == 0 && hit.title_marks.first().is_some_and(|r| r.end == hit.title.len());
+            let tier: u8 = if exact { 0 } else if start == 0 { 1 } else { 2 };
+            (tier, start)
+        };
+        rank(a)
+            .cmp(&rank(b))
+            .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
+            .then_with(|| a.path.cmp(&b.path))
+    });
+    bodies.sort_by(|a, b| {
+        a.title
+            .to_lowercase()
+            .cmp(&b.title.to_lowercase())
+            .then_with(|| a.path.cmp(&b.path))
+    });
     titles.extend(bodies);
     titles.truncate(limit);
     titles

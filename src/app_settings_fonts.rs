@@ -108,10 +108,10 @@ impl Workspace {
             if let Some(ix) = picker.filtered.iter().position(|item| item.selected) {
                 picker.scroll_handle.scroll_to_item_strict(ix, gpui::ScrollStrategy::Center);
             } else {
-                picker.scroll_handle.scroll_to_item(0, gpui::ScrollStrategy::Top);
+                picker.scroll_handle.scroll_to_item_strict(0, gpui::ScrollStrategy::Top);
             }
         } else {
-            picker.scroll_handle.scroll_to_item(0, gpui::ScrollStrategy::Top);
+            picker.scroll_handle.scroll_to_item_strict(0, gpui::ScrollStrategy::Top);
         }
         cx.notify();
     }
