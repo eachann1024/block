@@ -84,6 +84,7 @@ pub fn hide_main_window_on_close() -> bool {
     }
 }
 
+/// Without Cocoa window ordering, closing the main window quits instead of hiding it.
 #[cfg(not(target_os = "macos"))]
 pub fn hide_main_window_on_close() -> bool { false }
 
