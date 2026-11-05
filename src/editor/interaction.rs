@@ -63,12 +63,16 @@ impl Editor {
         self.set_head(at, false, cx); self.selecting = false; self.block_menu = None;
         window.focus(&self.focus, cx);
     }
-    fn extent(&self, at: Position, clicks: usize) -> (Position, Position) {
+    fn extent(&self, at: Position, clicks: usize, alt: bool) -> (Position, Position) {
         let Some(block) = self.doc.get(at.block) else { return (at, at); };
         let text = &block.text;
-        let range = if clicks >= 3 { 0..text.len() }
-            else if clicks == 2 { self.word_range_at(at) }
-            else { at.offset..at.offset };
+        let range = if clicks >= 3 { 0..text.len() } else if clicks == 2 {
+            if let Some(lang) = block.meta.code_language.as_deref() {
+                crate::editor::code_selection::code_select(text, at.offset, lang, alt)
+                    .or_else(|| crate::editor::code_selection::match_identifier_at(text, at.offset))
+                    .unwrap_or_else(|| self.word_range_at(at))
+            } else { self.word_range_at(at) }
+        } else { at.offset..at.offset };
         (Position { offset: range.start, ..at }, Position { offset: range.end, ..at })
     }
     pub(in crate::editor) fn pointer_down(&mut self, event: &gpui::MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -82,9 +86,15 @@ impl Editor {
             && (self.open_link_at(event.position, cx) || self.copy_code_at(event.position, cx)) { return; }
         self.commit_composition(cx); self.clear_pointer(); self.pending_vertical = None;
         let clicks = event.click_count.max(1);
-        let hit = if clicks == 2 { self.hit_glyph(event.position) } else { self.hit(event.position) };
+        let at_caret = self.hit(event.position);
+        let is_code = at_caret.and_then(|p| self.doc.get(p.block)).map_or(false, |b| b.meta.code_language.is_some());
+        let hit = if clicks == 2 {
+            if is_code { at_caret } else { self.hit_glyph(event.position) }
+        } else {
+            at_caret
+        };
         if let Some(at) = hit {
-            let (start, end) = self.extent(at, clicks);
+            let (start, end) = self.extent(at, clicks, event.modifiers.alt);
             self.set_head(end, event.modifiers.shift, cx);
             if !event.modifiers.shift { self.caret.anchor = start; }
             self.selection_origin = Some((self.caret.anchor, end, clicks));
@@ -164,13 +174,46 @@ impl Editor {
             return;
         }
         if let Some((start, end, clicks)) = self.selection_origin {
-            let hit = if clicks == 2 { self.hit_glyph(event.position) } else { self.hit(event.position) };
-            if let Some(at) = hit {
+            let at_caret = self.hit(event.position);
+            let is_code = at_caret.and_then(|p| self.doc.get(p.block)).map_or(false, |b| b.meta.code_language.is_some());
+            let hit = if clicks == 2 {
+                if is_code { at_caret } else { self.hit_glyph(event.position) }
+            } else {
+                at_caret
+            };
+            if let Some(mut at) = hit {
+                if clicks == 2 {
+                    if let Some(start_block) = self.doc.get(start.block) {
+                        if start_block.meta.code_language.is_some() && at.block != start.block {
+                            let start_idx = self.doc.index_of(start.block).unwrap_or(0);
+                            let at_idx = self.doc.index_of(at.block).unwrap_or(0);
+                            at = Position {
+                                block: start.block,
+                                offset: if at_idx < start_idx { 0 } else { start_block.text.len() },
+                            };
+                        }
+                    }
+                }
                 if clicks > 1 {
-                    let (a, b) = self.extent(at, clicks);
-                    let before = (self.doc.index_of(at.block), at.offset) < (self.doc.index_of(start.block), start.offset);
-                    self.caret.anchor = if before { end } else { start };
-                    self.set_head(if before { a } else { b }, true, cx);
+                    let (a, b) = self.extent(at, clicks, event.modifiers.alt);
+                    let at_pos = (self.doc.index_of(at.block), at.offset);
+                    let start_pos = (self.doc.index_of(start.block), start.offset);
+                    let end_pos = (self.doc.index_of(end.block), end.offset);
+
+                    if at_pos < start_pos {
+                        self.caret.anchor = end;
+                        let a_pos = (self.doc.index_of(a.block), a.offset);
+                        let head = if a_pos <= start_pos { a } else { start };
+                        self.set_head(head, true, cx);
+                    } else if at_pos > end_pos {
+                        self.caret.anchor = start;
+                        let b_pos = (self.doc.index_of(b.block), b.offset);
+                        let head = if b_pos >= end_pos { b } else { end };
+                        self.set_head(head, true, cx);
+                    } else {
+                        self.caret.anchor = start;
+                        self.set_head(end, true, cx);
+                    }
                 } else { self.set_head(at, true, cx); }
                 if !self.caret.is_empty() {
                     self.annotate.active_annotation = None;
