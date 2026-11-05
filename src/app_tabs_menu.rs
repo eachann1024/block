@@ -278,9 +278,9 @@ impl Workspace {
             (menu.position, card)
         };
         let backdrop = deferred(anchored().position(point(px(0.), px(0.))).child(
-            div().id("tab-menu-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black())
-                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.dismiss_tab_menu(cx); }))
-                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { this.dismiss_tab_menu(cx); })),
+            div().id("tab-menu-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black()).occlude()
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.dismiss_tab_menu(cx); }))
+                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.dismiss_tab_menu(cx); })),
         )).with_priority(1);
         let popup = deferred(anchored().position(position).snap_to_window_with_margin(px(8.)).child(card)).with_priority(2);
         Some(div().child(backdrop).child(popup).into_any_element())
