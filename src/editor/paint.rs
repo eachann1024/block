@@ -17,12 +17,13 @@ impl Element for BlockText {
     fn request_layout(&mut self, _: Option<&GlobalElementId>, _: Option<&gpui::InspectorElementId>, window: &mut Window, cx: &mut App) -> (LayoutId, Measured) {
         let theme = Theme::ocean();
         let measured: Measured = Rc::new(RefCell::new(None));
-        let Some((kind, level, fenced, nowrap, composing, content)) = ({
+        let Some((kind, level, fenced, nowrap, composing, content, minimal)) = ({
             let editor = self.editor.read(cx);
+            let minimal = editor.minimal;
             editor.doc.get(self.block).map(|block| {
                 let nowrap = block.meta.code_language.is_some() && editor.nowrap.contains(&self.block);
                 let composing = editor.caret.composing.is_some() && editor.caret.head.block == self.block;
-                (block.kind, block.meta.heading_level, block.meta.code_language.clone(), nowrap, composing, super::view::layout::block_hash(block) ^ editor.ai_preview_key(self.block) ^ table_layout::widths_signature(self.editor.entity_id(), self.block))
+                (block.kind, block.meta.heading_level, block.meta.code_language.clone(), nowrap, composing, super::view::layout::block_hash(block, minimal) ^ editor.ai_preview_key(self.block) ^ table_layout::widths_signature(self.editor.entity_id(), self.block), minimal)
             })
         }) else {
             return (window.request_layout(Style::default(), [], cx), measured);
@@ -32,9 +33,10 @@ impl Element for BlockText {
         let mut style = Style::default();
         style.flex_grow = 1.; style.flex_shrink = 1.;
         style.flex_basis = relative(0.).into();
-        if let Some(language) = &fenced { style.margin = super::code_block::margin(language); }
+        let zoom = super::zoom::zoom_factor(minimal);
+        if let Some(language) = &fenced { style.margin = super::code_block::margin(language, zoom); }
         style.min_size.width = if nowrap { gpui::Length::Auto } else { px(0.).into() };
-        let (size_px, factor) = heading_metrics(kind, level, fenced.is_some(), self.editor.read(cx).minimal, f32::from(theme.editor_font));
+        let (size_px, factor) = heading_metrics(kind, level, fenced.is_some(), minimal, f32::from(theme.editor_font), zoom);
         let (font_size, line_height) = (px(size_px), px(size_px) * factor);
         let editor_entity = self.editor.clone();
         let block_id = self.block;
@@ -89,7 +91,7 @@ impl Element for BlockText {
                 return size(widest.max(room).max(px(1.)), height);
             }
             if let Some(table) = &table {
-                let mut layout = table_layout::measure(table, width, &table_layout::widths_of(editor_id, block_id), window);
+                let mut layout = table_layout::measure(table, width, &table_layout::widths_of(editor_id, block_id), window, zoom);
                 let height = layout.height() + px(table_layout::EXTEND_ROOM);
                 layout.bounds.size = size(width, height);
                 *output.borrow_mut() = Some(layout); super::view::layout::set_key(editor_id, block_id, key);
@@ -152,8 +154,12 @@ impl Element for BlockText {
         let chip = super::inline_code_chip::ChipState { caret: (focused && empty && head.block == self.block
                 && super::code_escape::side(self.editor.entity_id(), head).is_none()).then_some(head.offset),
             selection: if focused { selected.clone() } else { None }, hover: super::inline_code::hovered(self.editor.entity_id(), self.block) };
-        let fenced = self.editor.read(cx).doc.get(self.block).and_then(|b| b.meta.code_language.clone());
-        if let Some(language) = &fenced { super::code_block::paint_card(layout.bounds, language, window, cx); }
+        let (fenced, minimal) = {
+            let ed = self.editor.read(cx);
+            (ed.doc.get(self.block).and_then(|b| b.meta.code_language.clone()), ed.minimal)
+        };
+        let zoom = super::zoom::zoom_factor(minimal);
+        if let Some(language) = &fenced { super::code_block::paint_card(layout.bounds, language, window, cx, zoom); }
         // A table scrolls inside the block minus the extend-button room; everything it draws is clipped to that.
         let is_table = !layout.cells.is_empty();
         let clip = is_table.then(|| gpui::ContentMask { bounds: table_layout::visible(layout.bounds) });
@@ -238,8 +244,7 @@ impl Element for BlockText {
     }
 }
 /// (font size px, line-height factor) per block kind; shared with the handle gutter.
-pub(super) fn metrics(kind: Kind, base: f32) -> (f32, f32) {
-    let zoom = super::zoom::zoom_factor();
+pub(super) fn metrics(kind: Kind, base: f32, zoom: f32) -> (f32, f32) {
     match kind {
         Kind::H1 => (32. * zoom, 1.2),
         Kind::H2 => (22. * zoom, 1.3),
@@ -247,13 +252,12 @@ pub(super) fn metrics(kind: Kind, base: f32) -> (f32, f32) {
         _ => (base * zoom, 1.5),
     }
 }
-pub(super) fn heading_metrics(kind: Kind, level: Option<u8>, fenced: bool, minimal: bool, base: f32) -> (f32, f32) {
-    let zoom = super::zoom::zoom_factor();
+pub(super) fn heading_metrics(kind: Kind, level: Option<u8>, fenced: bool, minimal: bool, base: f32, zoom: f32) -> (f32, f32) {
     if fenced { return (14. * zoom, 1.5); }
     match (kind, level) {
         (Kind::H3, Some(4)) => (16. * zoom, 1.4),
         (Kind::H3, Some(5 | 6)) => (14. * zoom, 1.45),
-        (Kind::H1 | Kind::H2 | Kind::H3, _) => metrics(kind, base),
+        (Kind::H1 | Kind::H2 | Kind::H3, _) => metrics(kind, base, zoom),
         _ if minimal => (16. * zoom, 1.5),
         _ => (base * zoom, 1.5),
     }
