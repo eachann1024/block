@@ -183,7 +183,7 @@ impl Render for Editor {
             && self.block_menu.is_none() && self.table_menu.is_none()
             && self.annotate.active_annotation.is_none() && self.annotate.hovered_annotation.is_none()
             && self.annotate.composer.is_none() && self.annotate.reactions.is_none()
-            && window.is_window_active() && self.focus.is_focused(window));
+            && (window.is_window_active() || crate::ui::smoke_overlay::is_smoke_active()) && self.focus.is_focused(window));
         let std_w = super::chrome::standard_width(theme.content_width);
         let rail_slot = if !self.minimal && self.annotate.has_visible_rail() && super::annotate_ui::can_fit_wide_rail(self, std_w) { px(super::annotate_ui::RAIL_SLOT) } else { px(0.) };
         div().size_full().min_w_0().relative()
