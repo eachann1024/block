@@ -1,5 +1,4 @@
 mod chrome;
-mod columns;
 #[path = "../export/driver.rs"]
 mod export_driver;
 mod input;
@@ -24,7 +23,7 @@ mod table_actions;
 mod table_extend;
 mod table_drag_scroll;
 mod table_resize;
-mod block_menu;
+pub(crate) mod block_menu;
 mod menu_style;
 mod format_cmds;
 mod format_ui;
@@ -60,6 +59,12 @@ mod math_preview;
 mod find;
 mod find_bar;
 mod fold;
+mod source_text;
+mod source_edit;
+mod source_paint;
+mod source_view;
+mod surface;
+mod file_open;
 mod smoke_api;
 pub mod zoom;
 pub mod view;
