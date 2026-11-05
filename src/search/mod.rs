@@ -1,82 +1,136 @@
-//! Shared search state, debounced query runner, and result list rendering
-//! used by both the in-app search overlay (`app_search.rs`) and the standalone
-//! floating search window (`search/window.rs`).
+//! Shared search state and debounced query runner used by the in-app search
+//! overlay (`app_search.rs`) and the floating search window (`search/window.rs`).
 #[cfg(not(target_family = "wasm"))]
 pub mod window;
+mod view;
 
-use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
-use gpui::{
-    AnyElement, App, Context, CursorStyle, Div, Entity, FontWeight, HighlightStyle,
-    MouseButton, MouseDownEvent, ScrollHandle, SharedString, StyledText, Window, div, prelude::*,
-    px,
-};
-use gpui_component::input::{Input, InputState};
-use crate::files::search::{Hit, search_notes};
-use crate::icons::{Icon, icon, stateful_icon};
-use crate::theme::{Theme, format_hotkey, is_dark, is_en, search_shortcut, tr};
-use crate::ui::scrollbar;
+use gpui::{Context, Entity, ScrollHandle};
+use gpui_component::input::InputState;
+use crate::files::search::{search_notes, search_notes_in_folders};
+
+pub use view::*;
 
 const LIMIT: usize = 50;
 const DEBOUNCE: Duration = Duration::from_millis(150);
 
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub enum SearchScope {
+    #[default]
+    All,
+    Folder(PathBuf),
+}
+
 pub struct SearchState {
     pub input: Entity<InputState>,
-    pub hits: Vec<Hit>,
+    pub hits: Vec<crate::files::search::Hit>,
     pub selected: usize,
     pub epoch: u64,
     pub searching: bool,
     pub asked: bool,
     pub scroll: ScrollHandle,
+    pub scope: SearchScope,
+    pub folders: Vec<PathBuf>,
+    pub scope_menu_open: bool,
 }
 
 impl SearchState {
-    pub fn new(input: Entity<InputState>) -> Self {
+    pub fn new(input: Entity<InputState>, folders: Vec<PathBuf>) -> Self {
         Self {
-            input,
-            hits: Vec::new(),
-            selected: 0,
-            epoch: 0,
-            searching: false,
-            asked: false,
-            scroll: ScrollHandle::new(),
+            input, hits: Vec::new(), selected: 0, epoch: 0, searching: false, asked: false,
+            scroll: ScrollHandle::new(), scope: SearchScope::All, folders, scope_menu_open: false,
         }
     }
 
     pub fn selected_path(&self) -> Option<PathBuf> {
-        self.hits.get(self.selected).map(|h| h.path.clone())
+        self.hits.get(self.selected).map(|hit| hit.path.clone())
+    }
+
+    pub fn scope_label(&self) -> String {
+        match &self.scope {
+            SearchScope::All => crate::theme::tr("全部文件夹", "All Folders").to_string(),
+            SearchScope::Folder(path) => folder_name(path),
+        }
+    }
+
+    pub fn effective_roots(&self) -> Vec<PathBuf> {
+        match &self.scope {
+            SearchScope::All => self.folders.clone(),
+            SearchScope::Folder(path) => vec![path.clone()],
+        }
+    }
+
+    pub fn sync_folders(&mut self, folders: Vec<PathBuf>) -> bool {
+        let scope_lost = matches!(&self.scope, SearchScope::Folder(path) if !folders.iter().any(|folder| folder == path));
+        if self.folders == folders && !scope_lost { return false; }
+        self.folders = folders;
+        if scope_lost { self.scope = SearchScope::All; }
+        true
+    }
+
+    pub fn toggle_scope_menu(&mut self) { self.scope_menu_open = !self.scope_menu_open; }
+
+    pub fn cycle_scope(&mut self, delta: isize) -> bool {
+        self.scope_menu_open = false;
+        let mut options = vec![SearchScope::All];
+        options.extend(self.folders.iter().cloned().map(SearchScope::Folder));
+        let len = options.len() as isize;
+        if len == 0 || delta == 0 { return false; }
+        let current = options.iter().position(|scope| scope == &self.scope).unwrap_or(0) as isize;
+        let next = options[(current + delta).rem_euclid(len) as usize].clone();
+        let changed = self.scope != next;
+        self.scope = next;
+        changed
+    }
+
+    pub fn reset_scope_all(&mut self) -> bool {
+        self.scope_menu_open = false;
+        let changed = self.scope != SearchScope::All;
+        self.scope = SearchScope::All;
+        changed
+    }
+
+    /// `0` is every folder; later indexes are `folders`.
+    pub fn select_scope_index(&mut self, index: usize) -> bool {
+        let next = if index == 0 {
+            SearchScope::All
+        } else {
+            match self.folders.get(index - 1) {
+                Some(path) => SearchScope::Folder(path.clone()),
+                None => return false,
+            }
+        };
+        let changed = self.scope != next;
+        self.scope = next;
+        self.scope_menu_open = false;
+        changed
     }
 
     pub fn move_selection(&mut self, delta: isize) {
         if self.hits.is_empty() { return; }
         let last = self.hits.len() - 1;
         self.selected = (self.selected as isize + delta).clamp(0, last as isize) as usize;
-        let titles = self.hits.iter().filter(|h| h.title_match).count();
-        // Group labels are children of the scroll area too.
-        let child = if self.selected < titles {
-            self.selected + 1
-        } else {
-            self.selected + 1 + (titles > 0) as usize
-        };
+        let titles = self.hits.iter().filter(|hit| hit.title_match).count();
+        let child = if self.selected < titles { self.selected + 1 } else { self.selected + 1 + (titles > 0) as usize };
         self.scroll.scroll_to_item(child);
     }
 
-    pub fn run_search<V: 'static>(
-        &mut self,
-        root: Option<PathBuf>,
-        query: String,
-        cx: &mut Context<V>,
-        get: fn(&mut V) -> Option<&mut SearchState>,
-    ) {
-        let Some(root) = root else {
+    pub fn research<V: 'static>(&mut self, cx: &mut Context<V>, get: fn(&mut V) -> Option<&mut SearchState>) {
+        let query = self.input.read(cx).value().to_string();
+        self.run_search(query, cx, get);
+    }
+
+    pub fn run_search<V: 'static>(&mut self, query: String, cx: &mut Context<V>, get: fn(&mut V) -> Option<&mut SearchState>) {
+        let roots = self.effective_roots();
+        if roots.is_empty() {
             self.hits.clear();
             self.searching = false;
             self.selected = 0;
             self.asked = false;
             cx.notify();
             return;
-        };
+        }
         self.epoch += 1;
         let epoch = self.epoch;
         self.asked = !query.trim().is_empty();
@@ -87,14 +141,17 @@ impl SearchState {
             cx.notify();
             return;
         }
+        let single = matches!(self.scope, SearchScope::Folder(_)) && roots.len() == 1;
         self.searching = true;
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(DEBOUNCE).await;
-            let alive = this.update(cx, |this, _| get(this).is_some_and(|s| s.epoch == epoch)).unwrap_or(false);
+            let alive = this.update(cx, |this, _| get(this).is_some_and(|state| state.epoch == epoch)).unwrap_or(false);
             if !alive { return; }
-            let hits = cx.background_executor().spawn(async move { search_notes(&root, &query, LIMIT) }).await;
+            let hits = cx.background_executor().spawn(async move {
+                if single { search_notes(&roots[0], &query, LIMIT) } else { search_notes_in_folders(&roots, &query, LIMIT) }
+            }).await;
             let _ = this.update(cx, |this, cx| {
-                let Some(search) = get(this).filter(|s| s.epoch == epoch) else { return };
+                let Some(search) = get(this).filter(|state| state.epoch == epoch) else { return };
                 search.hits = hits;
                 search.selected = 0;
                 search.searching = false;
@@ -105,128 +162,24 @@ impl SearchState {
     }
 }
 
+pub(crate) fn notebook_folders(current: Option<PathBuf>, notebooks: &[PathBuf]) -> Vec<PathBuf> {
+    let mut folders = Vec::new();
+    for folder in notebooks {
+        if !folder.as_os_str().is_empty() && !folders.iter().any(|known| known == folder) {
+            folders.push(folder.clone());
+        }
+    }
+    if let Some(folder) = current {
+        if !folder.as_os_str().is_empty() && !folders.iter().any(|known| known == &folder) {
+            folders.insert(0, folder);
+        }
+    }
+    folders
+}
+
+pub(crate) fn folder_name(path: &Path) -> String {
+    path.file_name().map(|name| name.to_string_lossy().into_owned()).filter(|name| !name.is_empty())
+        .unwrap_or_else(|| path.display().to_string())
+}
+
 pub(crate) use crate::ui::shortcut_label::kbd;
-
-pub fn highlighted(text: String, marks: &[Range<usize>]) -> StyledText {
-    let bg = if is_dark() { gpui::rgb(0x5c4813) } else { gpui::rgb(0xfbe7a6) };
-    let style = HighlightStyle { background_color: Some(bg.into()), ..Default::default() };
-    let marks = marks.iter().filter(|r| r.end <= text.len()).map(|r| (r.clone(), style)).collect::<Vec<_>>();
-    StyledText::new(text).with_highlights(marks)
-}
-
-pub fn render_header(
-    input: &Entity<InputState>,
-    on_close: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> Div {
-    let theme = Theme::ocean();
-    div().h(px(52.)).flex_none().px(px(16.)).flex().items_center().gap(px(10.))
-        .border_b_1().border_color(theme.hairline)
-        .child(icon(Icon::FindSearch, px(18.), theme.mono_icon_colors(theme.text_secondary)))
-        .child(div().flex_1().min_w_0().text_size(px(16.))
-            .child(Input::new(input).appearance(false).bordered(false).focus_bordered(false)))
-        .child(div().id("search-esc").cursor(CursorStyle::PointingHand)
-            .on_mouse_down(MouseButton::Left, on_close)
-            .child(kbd("esc")))
-}
-
-pub fn render_footer() -> Div {
-    let theme = Theme::ocean();
-    let hotkey_label = format_hotkey(&search_shortcut());
-    div().h(px(36.)).flex_none().px(px(16.)).flex().items_center().gap(px(16.))
-        .rounded_b(px(11.)).border_t_1().border_color(theme.hairline).bg(theme.sidebar)
-        .text_size(px(12.)).text_color(theme.text_secondary)
-        .child(div().flex().items_center().gap(px(6.)).child(kbd("↑")).child(kbd("↓")).child(tr("选择", "Select")))
-        .child(div().flex().items_center().gap(px(6.)).child(kbd("↵")).child(tr("打开", "Open")))
-        .child(div().flex().items_center().gap(px(6.)).child(kbd("esc")).child(tr("关闭", "Close")))
-        .child(
-            div().ml_auto().child(crate::ui::shortcut_label::shortcut_label(
-                format!("{hotkey_label} {}", tr("全局唤出", "Global Summon")),
-                crate::ui::shortcut_label::ShortcutStyle::ui(px(11.), px(16.), gpui::FontWeight::NORMAL, theme.text_secondary),
-            )),
-        )
-}
-
-pub fn render_body<V: 'static>(
-    state: &SearchState,
-    has_folder: bool,
-    fill_height: bool,
-    cx: &mut Context<V>,
-    on_pick: fn(&mut V, usize, &mut Window, &mut Context<V>),
-) -> AnyElement {
-    let theme = Theme::ocean();
-    if !has_folder || state.hits.is_empty() {
-        let hint = if !has_folder {
-            tr("请先在主窗口打开文件夹", "Open a folder in the main window first")
-        } else if !state.asked {
-            tr("输入关键词搜索标题与正文", "Type keywords to search titles and content")
-        } else if state.searching {
-            tr("正在搜索…", "Searching…")
-        } else {
-            tr("没有找到匹配的笔记", "No matching notes found")
-        };
-        let empty = if fill_height { div().flex_1().min_h_0() } else { div().h(px(96.)) };
-        return empty.flex().items_center().justify_center().text_size(px(13.))
-            .text_color(theme.text_secondary).child(hint).into_any_element();
-    }
-
-    let mut rows: Vec<AnyElement> = Vec::new();
-    for (title_group, label) in [(true, tr("标题匹配", "Title Matches")), (false, tr("正文匹配", "Content Matches"))] {
-        let group = state.hits.iter().enumerate().filter(|(_, h)| h.title_match == title_group).collect::<Vec<_>>();
-        if group.is_empty() { continue; }
-        let total: usize = group.iter().map(|(_, h)| h.count.max(1)).sum();
-        let header = if title_group {
-            label.to_owned()
-        } else if is_en() {
-            format!("{label} · {total} matches")
-        } else {
-            format!("{label} · {total} 处")
-        };
-        let pt = if rows.is_empty() { px(6.) } else { px(10.) };
-        rows.push(div().px(px(12.)).pt(pt).pb(px(2.)).text_size(px(12.)).line_height(px(16.))
-            .text_color(theme.text_secondary).child(header).into_any_element());
-        rows.extend(group.into_iter().map(|(ix, hit)| hit_row(ix, hit, ix == state.selected, cx, on_pick)));
-    }
-
-    // The right padding is the scrollbar gutter, so the bar never covers or shifts the rows.
-    let list = div().id("search-results").py(px(8.)).pl(px(8.)).pr(px(scrollbar::GUTTER)).flex().flex_col().gap(px(2.))
-        .overflow_y_scroll().track_scroll(&state.scroll).children(rows);
-    let bar = scrollbar::vertical("search-scrollbar", &state.scroll, px(0.));
-    if fill_height {
-        div().relative().flex_1().min_h_0().child(list.size_full()).child(bar).into_any_element()
-    } else {
-        div().relative().child(list.max_h(px(460.))).child(bar).into_any_element()
-    }
-}
-
-fn hit_row<V: 'static>(
-    ix: usize,
-    hit: &Hit,
-    selected: bool,
-    cx: &mut Context<V>,
-    on_pick: fn(&mut V, usize, &mut Window, &mut Context<V>),
-) -> AnyElement {
-    let theme = Theme::ocean();
-    let right = if !hit.title_match && hit.count > 1 {
-        if is_en() { format!("{} matches", hit.count) } else { format!("{} 处", hit.count) }
-    } else {
-        hit.folder.clone()
-    };
-    let hit_group = SharedString::from(format!("search-hit-{ix}"));
-    div().id(("hit", ix)).group(hit_group.clone()).relative().when(ix == 0, |r| r.children(crate::ui::smoke_overlay::probe("search-hit-0"))).px(px(12.)).py(px(8.)).flex().flex_col().gap(px(2.)).rounded(px(6.))
-        .border_1().border_color(if selected { theme.accent } else { gpui::transparent_black() })
-        .when(selected, |row| row.bg(theme.selected))
-        .when(!selected, |row| row.hover(|style| style.bg(theme.hover)))
-        .cursor(CursorStyle::PointingHand)
-        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| on_pick(this, ix, window, cx)))
-        .child(div().flex().items_center().gap(px(8.))
-            .child(div().flex_none().child(stateful_icon(hit_group, Icon::Note, px(14.), selected, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if selected { theme.accent } else { theme.text }))))
-            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-                .text_size(px(14.)).font_weight(FontWeight(500.))
-                .child(highlighted(hit.title.clone(), &hit.title_marks)))
-            .child(div().flex_none().max_w(px(220.)).overflow_hidden().whitespace_nowrap().text_ellipsis()
-                .text_size(px(12.)).text_color(theme.text_secondary).child(right)))
-        .when(!hit.snippet.is_empty(), |row| row.child(div().pl(px(22.)).overflow_hidden().whitespace_nowrap().text_ellipsis()
-            .text_size(px(13.)).text_color(theme.text_secondary)
-            .child(highlighted(hit.snippet.clone(), &hit.marks))))
-        .into_any_element()
-}
