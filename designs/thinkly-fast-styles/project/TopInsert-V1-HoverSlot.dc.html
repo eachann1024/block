@@ -144,23 +144,11 @@ button,input,textarea{font-family:inherit;font-size:14px}
 
             <!-- 状态 2：顶缘感应插入槽（方案 A 核心） -->
             <sc-if value="{{isHover}}" hint-placeholder-val="{{true}}">
-              <div style="display:flex;align-items:center;margin-bottom:8px;padding-top:2px">
-                <!-- 左侧 56px 把手列：对齐显示 + 号胶囊 -->
-                <div style="width:56px;padding-right:8px;display:flex;justify-content:flex-end;flex:none">
-                  <button type="button" onClick="{{setStepInserted}}" aria-label="在文档顶部插入段落" style="width:26px;height:26px;border-radius:7px;border:1px solid {{accentCol}};background:{{selectedSurface}};color:{{accentText}};display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                  </button>
-                </div>
+              <div style="display:flex;align-items:center;margin-bottom:8px;padding-top:2px;padding-left:56px">
                 <!-- 正文净宽顶缘感应条（整条可点击） -->
-                <button type="button" class="slot-btn" onClick="{{setStepInserted}}" style="flex:1;height:30px;padding:0 12px;border-radius:7px;background:{{slotSurface}};border:1px dashed {{accentCol}};display:flex;align-items:center;justify-content:space-between">
+                <button type="button" class="slot-btn" onClick="{{setStepInserted}}" style="flex:1;height:30px;padding:0 12px;border-radius:7px;background:{{slotSurface}};border:1px solid {{accentCol}};display:flex;align-items:center">
                   <div style="display:flex;align-items:center;gap:8px;color:{{accentText}};font-weight:500">
                     <span>点击在文档最上方插入新行</span>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:6px;color:{{textSecondary}}">
-                    <span>或在首字符 `|{` 按</span>
-                    <span class="mono" style="padding:1px 6px;border-radius:4px;background:{{shellBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">↑</span>
-                    <span>/</span>
-                    <span class="mono" style="padding:1px 6px;border-radius:4px;background:{{shellBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">Backspace</span>
                   </div>
                 </button>
               </div>

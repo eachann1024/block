@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>行内代码 B · 结构微芯片（1px 瓷白内高光 + 悬停一键复制 + 光标进入显式源码反引号）</title>
+<title>行内代码 B · 结构微芯片（1px 瓷白内高光 + 悬停一键复制 + 光标进入描边点亮）</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -34,7 +34,7 @@ button,input,textarea{font-family:inherit;font-size:14px}
         <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
         <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
       </div>
-      <span style="font-weight:560;color:{{textPrimary}}">行内代码 B · 结构微芯片（Token 级清晰边界 + 悬停复制 + 光标进入还原反引号）</span>
+      <span style="font-weight:560;color:{{textPrimary}}">行内代码 B · 结构微芯片（Token 级清晰边界 + 悬停复制 + 光标进入描边点亮）</span>
       <span style="color:{{textSecondary}}">适合高频记录字段名、配置 Key、环境变量与命令参数的技术笔记</span>
     </div>
 
@@ -42,7 +42,7 @@ button,input,textarea{font-family:inherit;font-size:14px}
       <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
         <button type="button" onClick="{{setStateRead}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{readBg}};color:{{readCol}};box-shadow:{{readRing}};font-weight:460;cursor:pointer">常规阅读</button>
         <button type="button" onClick="{{setStateHover}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{hoverBg}};color:{{hoverCol}};box-shadow:{{hoverRing}};font-weight:460;cursor:pointer">⌘+悬停一键复制</button>
-        <button type="button" onClick="{{setStateRaw}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{rawBg}};color:{{rawCol}};box-shadow:{{rawRing}};font-weight:460;cursor:pointer">光标步入展开 `反引号`</button>
+        <button type="button" onClick="{{setStateRaw}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{rawBg}};color:{{rawCol}};box-shadow:{{rawRing}};font-weight:460;cursor:pointer">光标在胶囊内</button>
       </div>
 
       <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
@@ -98,7 +98,7 @@ button,input,textarea{font-family:inherit;font-size:14px}
     <section style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:28px 32px;display:flex;flex-direction:column;gap:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid {{borderCol}};padding-bottom:14px">
         <span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">编辑器标准版心（700px）· 悬停复制与光标步入源码编辑逻辑</span>
-        <span style="font-size:14px;color:{{textSecondary}}">点击右上方按钮切换「⌘+悬停复制」与「光标步入展开反引号」</span>
+        <span style="font-size:14px;color:{{textSecondary}}">点击右上方按钮切换「⌘+悬停复制」与「光标在胶囊内」</span>
       </div>
 
       <div style="max-width:700px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px;font-size:16px;line-height:26px;color:{{editorText}}">
@@ -122,22 +122,20 @@ button,input,textarea{font-family:inherit;font-size:14px}
               </span>
               <span>----邮箱</span>
               <code class="{{v2CodeCls}}">refresh_token</code>
-              <span style="margin-left:8px;padding:2px 8px;border-radius:6px;background:#20242c;color:#ffffff;font-size:13px;line-height:18px">⌘+点击直接复制 `client_id`</span>
+              <span style="margin-left:8px;padding:2px 8px;border-radius:6px;background:#20242c;color:#ffffff;font-size:13px;line-height:18px">⌘+点击直接复制 client_id</span>
             </div>
           </sc-if>
 
           <sc-if value="{{isRaw}}" hint-placeholder-val="{{false}}">
             <div style="display:flex;align-items:center;flex-wrap:wrap">
               <span>格式：邮箱----密码----邮箱</span>
-              <span style="display:inline-flex;align-items:center;font-family:'JetBrains Mono',Menlo,monospace;font-size:13.5px;padding:1px 6px;margin:0 4px;border-radius:6px;background:{{selectedSurface}};border:1px dashed {{accentCol}};color:{{accentCol}}">
-                <span style="opacity:0.65">`</span>
+              <span style="display:inline-flex;align-items:center;font-family:'JetBrains Mono',Menlo,monospace;font-size:13.5px;padding:1px 6px;margin:0 4px;border-radius:6px;background:{{selectedSurface}};border:1px solid {{accentCol}};color:{{accentCol}}">
                 <span style="color:{{textPrimary}}">client_id</span>
                 <span style="display:inline-block;width:1.5px;height:16px;background:{{accentCol}};margin:0 1px"></span>
-                <span style="opacity:0.65">`</span>
               </span>
               <span>----邮箱</span>
               <code class="{{v2CodeCls}}">refresh_token</code>
-              <span style="margin-left:6px;font-size:14px;color:{{accentCol}}">← 光标移入时显式露出两侧反引号，删掉右侧 ` 即还原普通文本</span>
+              <span style="margin-left:6px;font-size:14px;color:{{accentCol}}">← 光标在胶囊内：描边点亮，不显示任何源码符号</span>
             </div>
           </sc-if>
         </div>
@@ -158,9 +156,9 @@ button,input,textarea{font-family:inherit;font-size:14px}
       </div>
 
       <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
-        <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">2. 光标步入自动还原反引号</span>
+        <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">2. 光标步入描边点亮</span>
         <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
-          借鉴 Typora / Obsidian 的焦点展开逻辑：平时隐藏反引号呈现精致胶囊；当光标进入胶囊内部时，两端浮现半透明 <code class="{{v2CodeCls}}">`</code> 符号，用户一眼看清自己正在代码内还是代码外。
+          块笔记不暴露 Markdown 源码：光标进入胶囊内部时，胶囊描边换成强调色，用户一眼看清自己正在代码内还是代码外。
         </p>
       </div>
 
