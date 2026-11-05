@@ -95,11 +95,9 @@ impl Editor {
             return;
         }
         let index = self.doc.index_of(at.block).unwrap_or(0);
-        let adjacent = if forward { index.checked_add(1).filter(|index| *index < self.doc.blocks.len()) }
-            else { index.checked_sub(1) };
-        if let Some(index) = adjacent {
+        if let Some(index) = self.next_visible_index(index, forward) {
             let block = &self.doc.blocks[index];
-            self.set_head(Position { block:block.id, offset:if forward {0} else {block.text.len()} }, false, cx);
+            self.set_head(Position { block: block.id, offset: if forward { 0 } else { block.text.len() } }, false, cx);
         } else {
             self.status = if forward {
                 crate::theme::tr("已是最后一个单元格，可用 + 在下方添加内容", "At the last cell; use + to add content below")
