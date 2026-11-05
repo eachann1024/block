@@ -45,7 +45,9 @@ p{{margin:.75em 0}}a{{color:{accent}}}mark{{background:{quote_bg};color:inherit;
 ul,ol{{margin:.75em 0;padding-left:1.6em}}li{{margin:.25em 0}}
 ul.todo-list{{list-style:none;padding-left:.2em}}li.todo input{{margin-right:.5em;accent-color:{accent}}}
 blockquote{{margin:1em 0;padding:.5em 1em;background:{quote_bg};color:{quote_fg};border-left:4px solid {quote_bar};border-radius:0 6px 6px 0}}
-blockquote p{{margin:.25em 0}}
+blockquote p,.callout p{{margin:.25em 0}}
+.callout{{margin:1em 0;padding:.75em 1em;background:{quote_bg};border-left:4px solid {accent};border-radius:0 6px 6px 0}}
+.callout-title{{font-weight:600;color:{accent};font-size:.875em;letter-spacing:.04em}}
 pre{{margin:1em 0;padding:1em;background:{code_bg};border:1px solid {code_border};border-radius:8px;overflow:auto;font:14px/1.6 Menlo,Consolas,monospace}}
 code{{font-family:Menlo,Consolas,monospace;font-size:.9em;padding:.1em .35em;background:{code_bg};border-radius:4px}}
 pre code{{padding:0;background:none;font-size:inherit}}

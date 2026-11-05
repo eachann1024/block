@@ -13,7 +13,7 @@ impl Editor {
         };
         let toggle = matches!(kind, Kind::H1 | Kind::H2 | Kind::H3) && (first..=last).all(|i| {
             let b = &self.doc.blocks[i];
-            b.kind == kind && b.meta.heading_level.is_none() && b.meta.code_language.is_none()
+            b.kind == kind && b.meta.heading_level.is_none() && b.meta.code_language.is_none() && b.meta.callout.is_none()
         });
         let target = if toggle { Kind::Paragraph } else { kind };
         let before = self.snapshot();

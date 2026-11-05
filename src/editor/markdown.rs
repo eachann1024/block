@@ -5,6 +5,7 @@ use super::model::{Block, Doc, Kind, Numbering};
 #[path = "markdown_table.rs"] mod table;
 #[path = "markdown_table_html.rs"] mod table_html;
 #[path = "markdown_paragraph.rs"] mod paragraph;
+#[path = "markdown_containers.rs"] mod containers;
 #[path = "markdown_raw_guard.rs"] mod raw_guard;
 
 pub fn strip_frontmatter(source: &str) -> &str { blocks::strip_frontmatter(source) }
@@ -30,6 +31,9 @@ pub fn parse(source: &str) -> Doc {
         if super::image_source::parse(line).is_some() {
             offset += raw_line.len(); index += 1;
             result.push(raw(id, raw_line.to_owned(), "Image")); continue;
+        }
+        if let Some((block, count, bytes)) = containers::parse_callout(id, &lines[index..]) {
+            offset += bytes; index += count; result.push(block); continue;
         }
         if paragraph::starts(line) {
             let end = index + paragraph::line_count(&lines[index..]);
@@ -139,6 +143,7 @@ pub fn serialize(doc: &Doc) -> String {
         at += 1;
         if let Some(table) = &block.meta.table { table::serialize(table, &mut out); continue; }
         if block.meta.raw_source.is_some() { out.push_str(&block.text); continue; }
+        if let Some(callout) = block.meta.callout { containers::serialize_callout(block, callout, &mut out); continue; }
         if block.meta.html_paragraph.is_some() || (block.kind == Kind::Paragraph && block.meta.indent > 0) {
             paragraph::serialize(block, &mut out); continue;
         }
@@ -203,6 +208,9 @@ fn needs_separator(this: &Block, next: Option<&Block>) -> bool {
     required_separator(this, next) || (optional_separator(this, next) && !this.meta.tight)
 }
 fn required_separator(this: &Block, next: Option<&Block>) -> bool {
+    if this.meta.callout.is_some() && next.is_some_and(|n| (n.kind == Kind::Quote && n.meta.callout.is_none()) || is_text(n)) {
+        return true;
+    }
     let pipe = is_pipe(this);
     // Text glued under an HTML image block would be re-read as part of that HTML block.
     let image = is_image(this);
