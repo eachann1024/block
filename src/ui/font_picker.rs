@@ -9,7 +9,7 @@ use gpui::{
 };
 use gpui_component::input::Input;
 use crate::app::Workspace;
-use crate::icons::{Icon, IconColors, icon};
+use crate::icons::{Icon, IconColors, icon, stateful_icon};
 use crate::theme::{Theme, tr};
 use crate::ui::dropdown::{self, palette};
 use crate::ui::font_picker_cache::FlatFontItem;
@@ -41,14 +41,15 @@ pub fn font_picker_trigger(
     role: FontPickerRole,
     open: bool,
     display_name: SharedString,
-    display_family: SharedString,
     cx: &mut gpui::Context<Workspace>,
 ) -> Stateful<gpui::Div> {
     let theme = Theme::ocean();
     let border_color = if open { theme.accent } else { theme.btn_border };
     let chevron_icon = if open { Icon::ChevronUp } else { Icon::ChevronDown };
+    let id: ElementId = id.into();
+    let group = SharedString::from(format!("font-trig-{id:?}"));
     div()
-        .id(id).w(px(248.)).h(px(36.)).px(px(10.)).pl(px(12.))
+        .id(id).group(group.clone()).w(px(248.)).h(px(36.)).px(px(10.)).pl(px(12.))
         .rounded(crate::ui::radius::CONTROL).bg(theme.shell)
         .border_1().border_color(border_color)
         .flex().items_center().justify_between().cursor(CursorStyle::PointingHand)
@@ -59,9 +60,9 @@ pub fn font_picker_trigger(
         }))
         .child(
             div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-                .text_size(px(15.)).font_family(display_family).text_color(theme.text).child(display_name),
+                .text_size(px(15.)).text_color(theme.text).child(display_name),
         )
-        .child(div().flex_none().ml(px(8.)).child(icon(chevron_icon, px(14.), theme.mono_icon_colors(theme.text_secondary))))
+        .child(div().flex_none().ml(px(8.)).child(stateful_icon(group, chevron_icon, px(14.), open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text))))
         .child(
             gpui::canvas(
                 move |bounds, window, _| record_trigger_bounds(role, bounds, window.viewport_size()),

@@ -9,7 +9,7 @@ use gpui::{
 };
 use gpui_component::input::{Input, InputState};
 use crate::{
-    icons::{Icon, icon},
+    icons::{Icon, icon, stateful_icon},
     theme::{Theme, is_dark, tooltip, tr},
     ui::{annotation_actions::{BatchTone, batch_button}, fade, motion},
 };
@@ -139,23 +139,32 @@ fn icon_box_button(
     let theme = Theme::ocean();
     let white: Hsla = rgb(0xffffff).into();
     let fg = if filled_accent { white } else { theme.text_secondary };
-    div().id(id).size(px(30.)).flex_none().rounded(px(6.)).border_1()
+    let id: ElementId = id.into();
+    let group = SharedString::from(format!("ann-ib-{id:?}"));
+    let glyph_el = if filled_accent {
+        icon(glyph, px(14.), theme.mono_icon_colors(fg))
+    } else {
+        stateful_icon(group.clone(), glyph, px(14.), false, theme.mono_icon_colors(fg), theme.icon_colors(theme.text))
+    };
+    div().id(id).group(group).size(px(30.)).flex_none().rounded(px(6.)).border_1()
         .border_color(if filled_accent { theme.accent } else { theme.btn_border })
         .bg(if filled_accent { theme.accent } else { theme.paper })
         .flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
         .hover(move |s| s.bg(if filled_accent { accent_hover() } else { theme.hover }))
         .tooltip(tooltip(tip))
         .on_mouse_down(MouseButton::Left, move |ev, window, cx| handler(ev, window, cx))
-        .child(icon(glyph, px(14.), theme.mono_icon_colors(fg)))
+        .child(glyph_el)
 }
 
 /// 26×26 borderless ghost icon button (`.gi` in `AnnotateFlow.dc.html`).
 fn ghost_icon_button(id: impl Into<ElementId>, glyph: Icon, tip: &'static str, handler: PressFn) -> Stateful<Div> {
     let theme = Theme::ocean();
-    div().id(id).size(px(26.)).flex_none().rounded(px(6.)).flex().items_center().justify_center()
+    let id: ElementId = id.into();
+    let group = SharedString::from(format!("ann-gi-{id:?}"));
+    div().id(id).group(group.clone()).size(px(26.)).flex_none().rounded(px(6.)).flex().items_center().justify_center()
         .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover)).tooltip(tooltip(tip))
         .on_mouse_down(MouseButton::Left, move |ev, window, cx| handler(ev, window, cx))
-        .child(icon(glyph, px(14.), theme.mono_icon_colors(theme.text_secondary)))
+        .child(stateful_icon(group, glyph, px(14.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
 }
 
 fn skeleton_bar(id: impl Into<ElementId>, width_ratio: f32) -> impl IntoElement {
