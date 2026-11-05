@@ -157,12 +157,14 @@ pub fn toggle(cx: &mut App) {
 }
 
 pub fn refresh_style(cx: &mut App) {
-    let Some((handle, view)) = cx
-        .try_global::<SearchWindowGlobal>()
-        .and_then(|state| state.window.clone())
-    else {
-        return;
-    };
+    if let Some((_, workspace)) = main_window(cx) {
+        workspace.update(cx, |w, cx| {
+            w.editor.update(cx, |e, cx| { e.reset_layouts(); cx.notify(); });
+            w.tree.update(cx, |_, cx| cx.notify());
+            cx.notify();
+        });
+    }
+    let Some((handle, view)) = cx.try_global::<SearchWindowGlobal>().and_then(|s| s.window.clone()) else { return };
     let _ = handle.update(cx, |_, window, cx| view.update(cx, |this, cx| {
         this.state.input.update(cx, |i, cx| i.set_placeholder(tr("搜索标题与正文", "Search titles and content"), window, cx));
         cx.notify();
@@ -221,6 +223,11 @@ impl SearchWindow {
                 this.close(window, cx);
             }
         });
+        cx.observe_window_appearance(window, |_, window, cx| {
+            if crate::theme::sync_system_appearance(window.appearance(), cx) {
+                crate::quick::refresh_style(cx);
+            }
+        }).detach();
         input.update(cx, |input, cx| input.focus(window, cx));
         let focus_input = input.clone();
         cx.defer_in(window, move |_, window, cx| {

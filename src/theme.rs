@@ -16,7 +16,7 @@ pub const DEFAULT_SEARCH_SHORTCUT: &str = "ctrl-shift-k";
 pub const DEFAULT_QUICK_SHORTCUT: &str = "alt-n";
 pub const DEFAULT_ASSETS_FOLDER: &str = "assets";
 
-static THEME_MODE: AtomicU8 = AtomicU8::new(0);
+static THEME_MODE: AtomicU8 = AtomicU8::new(2);
 static IS_DARK: AtomicBool = AtomicBool::new(false);
 static FONT_CHOICE: AtomicU8 = AtomicU8::new(0);
 static SMOOTHING: AtomicBool = AtomicBool::new(true);
@@ -66,11 +66,7 @@ pub fn language_mode() -> LanguageMode {
 }
 
 pub fn set_language_mode(mode: LanguageMode) {
-    let (code, en) = match mode {
-        LanguageMode::System => (0, system_is_en()),
-        LanguageMode::Zh => (1, false),
-        LanguageMode::En => (2, true),
-    };
+    let (code, en) = match mode { LanguageMode::System => (0, system_is_en()), LanguageMode::Zh => (1, false), LanguageMode::En => (2, true) };
     LANGUAGE_MODE.store(code, Ordering::Relaxed);
     IS_EN.store(en, Ordering::Relaxed);
     gpui_component::set_locale(if en { "en" } else { "zh-CN" });
@@ -92,10 +88,7 @@ pub fn apply_state(state: &crate::files::state::State) {
     if let Some(folder) = &state.assets_folder { set_assets_folder(folder.clone()); }
     else { set_assets_folder(DEFAULT_ASSETS_FOLDER.into()); }
     set_hide_assets_folder(state.hide_assets_folder.unwrap_or(true));
-    let search = state.shortcut_search.as_deref()
-        .filter(|s| !s.eq_ignore_ascii_case("cmd-k"))
-        .unwrap_or(DEFAULT_SEARCH_SHORTCUT)
-        .to_owned();
+    let search = state.shortcut_search.as_deref().filter(|s| !s.eq_ignore_ascii_case("cmd-k")).unwrap_or(DEFAULT_SEARCH_SHORTCUT).to_owned();
     let quick = state.shortcut_quick.clone().unwrap_or_else(|| DEFAULT_QUICK_SHORTCUT.into());
     set_shortcuts(search, quick);
 }
@@ -124,9 +117,6 @@ pub fn set_font_choice(font: FontChoice) {
 /// Resolved (serif, mono) primary families, picked from the installed font names.
 static RESOLVED_FONTS: RwLock<(&'static str, &'static str)> = RwLock::new(("Songti SC", "Menlo"));
 
-/// Picks the first installed candidate. gpui drops fallbacks and weight when the primary
-/// family is missing, and naming "PingFang SC" as a fallback makes CoreText resolve the
-/// duplicate PingFangUI.ttc (same PostScript names, different glyph IDs) and garble CJK.
 pub fn init_fonts(installed: &[String]) {
     let pick = |candidates: &[&'static str], last: &'static str| {
         candidates.iter().copied().find(|c| installed.iter().any(|n| n == c)).unwrap_or(last)
@@ -139,9 +129,7 @@ pub fn init_fonts(installed: &[String]) {
         &["JetBrains Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono"],
         if cfg!(target_os = "windows") { "Consolas" } else if cfg!(target_os = "linux") { "DejaVu Sans Mono" } else { "Menlo" },
     );
-    if let Ok(mut guard) = RESOLVED_FONTS.write() {
-        *guard = (serif, mono);
-    }
+    if let Ok(mut guard) = RESOLVED_FONTS.write() { *guard = (serif, mono); }
 }
 
 fn resolved() -> (&'static str, &'static str) {
@@ -267,12 +255,10 @@ pub struct Theme {
 }
 
 impl Theme {
-    /// Icon tints: `line` is the stroke color the caller wants.
     pub fn icon_colors(&self, line: Hsla) -> IconColors {
         IconColors { line, fill: self.icon_fill, accent: self.accent }
     }
 
-    /// Mono-tone icon colors for default/idle state: transparent fill, accent matches line stroke.
     pub fn mono_icon_colors(&self, line: Hsla) -> IconColors {
         IconColors { line, fill: gpui::transparent_black(), accent: line }
     }
@@ -282,14 +268,33 @@ impl Theme {
     }
 }
 
-pub fn sync_gpui_theme(cx: &mut gpui::App) {
+fn apply_gpui_component_theme(cx: &mut gpui::App) {
     let mode = if is_dark() { gpui_component::ThemeMode::Dark } else { gpui_component::ThemeMode::Light };
     gpui_component::Theme::change(mode, None, cx);
     let ocean = Theme::ocean();
     let t = gpui_component::Theme::global_mut(cx);
-    t.foreground = ocean.text;
-    t.muted_foreground = ocean.text_secondary;
-    t.selection = ocean.selection;
-    t.caret = ocean.accent;
-    t.ring = ocean.accent;
+    (t.foreground, t.muted_foreground, t.selection) = (ocean.text, ocean.text_secondary, ocean.selection);
+    (t.caret, t.ring) = (ocean.accent, ocean.accent);
+}
+
+pub fn sync_gpui_theme(cx: &mut gpui::App) {
+    let win_appearance = match theme_mode() {
+        ThemeMode::Light => Some(gpui::WindowAppearance::Light),
+        ThemeMode::Dark => Some(gpui::WindowAppearance::Dark),
+        ThemeMode::System => None,
+    };
+    cx.set_window_appearance(win_appearance);
+    if theme_mode() == ThemeMode::System {
+        let dark = matches!(cx.window_appearance(), gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark);
+        IS_DARK.store(dark, Ordering::Relaxed);
+    }
+    apply_gpui_component_theme(cx);
+}
+
+pub fn sync_system_appearance(appearance: gpui::WindowAppearance, cx: &mut gpui::App) -> bool {
+    if theme_mode() != ThemeMode::System { return false; }
+    let dark = matches!(appearance, gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark);
+    if IS_DARK.swap(dark, Ordering::Relaxed) == dark { return false; }
+    apply_gpui_component_theme(cx);
+    true
 }
