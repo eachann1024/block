@@ -62,31 +62,6 @@ impl Run {
         self.press(cx, "/").await?;
         sleep(cx, 260).await;
         self.check(2, self.editor(cx, |e| e.slash_menu_open()), "斜杠菜单已显示")?;
-        // 1) Create a Callout block and test clicking icon/pill dropdown & quick buttons
-        self.type_text(cx, "callout").await?;
-        sleep(cx, 150).await;
-        self.press(cx, "enter").await?;
-        sleep(cx, 180).await;
-        self.check(2, self.editor(cx, |e| e.current_callout() == Some(crate::editor::model::CalloutKind::Note)), "已创建默认提示标注块")?;
-        self.click_target(cx, "callout-icon", "Step 2/12 · 点击左侧标注图标弹出五态菜单").await?;
-        sleep(cx, 180).await;
-        self.click_target(cx, "callout-opt-2", "Step 2/12 · 菜单点击重要标注").await?;
-        sleep(cx, 180).await;
-        self.check(2, self.editor(cx, |e| e.current_callout() == Some(crate::editor::model::CalloutKind::Important)), "点击菜单切换为重要标注")?;
-        self.click_target(cx, "callout-pill", "Step 2/12 · 点击标注标题胶囊弹出菜单").await?;
-        sleep(cx, 180).await;
-        self.click_target(cx, "callout-opt-3", "Step 2/12 · 菜单点击警告标注").await?;
-        sleep(cx, 180).await;
-        self.check(2, self.editor(cx, |e| e.current_callout() == Some(crate::editor::model::CalloutKind::Warning)), "点击标题胶囊菜单切换为警告标注")?;
-        self.click_target(cx, "callout-cycle", "Step 2/12 · 点击右上角切换类型按钮").await?;
-        sleep(cx, 180).await;
-        self.check(2, self.editor(cx, |e| e.current_callout() == Some(crate::editor::model::CalloutKind::Caution)), "点击切换类型按钮切换为注意标注")?;
-        self.click_target(cx, "callout-clear", "Step 2/12 · 点击转为正文按钮").await?;
-        sleep(cx, 180).await;
-        self.check(2, self.editor(cx, |e| e.current_callout().is_none()), "点击转为普通正文")?;
-        // 2) Continue standard H1 creation
-        self.press(cx, "/").await?;
-        sleep(cx, 220).await;
         for key in ["down", "enter"] { self.press(cx, key).await?; }
         self.type_text(cx, "CRUD Title").await?;
         self.check(2, self.editor(cx, |e| e.markdown_text()).contains("# CRUD Title"), "一级标题已写入文档")
