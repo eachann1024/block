@@ -1,17 +1,22 @@
-//! Universal font picker dropdown: trigger + search + grouped fonts list + import button.
+//! Universal font picker dropdown: trigger + search + virtualized fonts list.
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::rc::Rc;
 use gpui::{
-    Bounds, CursorStyle, ElementId, MouseButton, Pixels, SharedString, Size,
-    Stateful, anchored, deferred, div, point, prelude::*, px,
+    Bounds, CursorStyle, ElementId, IntoElement, MouseButton, Pixels,
+    SharedString, Size, Stateful, anchored, deferred, div, point, prelude::*, px,
+    uniform_list,
 };
 use gpui_component::input::Input;
 use crate::app::Workspace;
 use crate::icons::{Icon, IconColors, icon};
 use crate::theme::{Theme, tr};
-use crate::ui::dropdown::{self, group_label, palette};
+use crate::ui::dropdown::{self, palette};
+use crate::ui::font_picker_cache::FlatFontItem;
 
 pub const FONT_MENU_WIDTH: f32 = 300.;
+const ITEM_HEIGHT: f32 = 34.;
+const MAX_VISIBLE_ROWS: usize = 7;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FontPickerRole {
@@ -21,7 +26,6 @@ pub enum FontPickerRole {
 
 thread_local! {
     static TRIGGER_BOUNDS: RefCell<HashMap<FontPickerRole, (Bounds<Pixels>, Size<Pixels>)>> = RefCell::new(HashMap::new());
-    static PICKER_ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 pub fn record_trigger_bounds(role: FontPickerRole, bounds: Bounds<Pixels>, vp: Size<Pixels>) {
@@ -30,14 +34,6 @@ pub fn record_trigger_bounds(role: FontPickerRole, bounds: Bounds<Pixels>, vp: S
 
 pub fn get_trigger_bounds(role: FontPickerRole) -> Option<(Bounds<Pixels>, Size<Pixels>)> {
     TRIGGER_BOUNDS.with(|slot| slot.borrow().get(&role).copied())
-}
-
-pub fn set_font_picker_error(err: Option<String>) {
-    PICKER_ERROR.with(|slot| *slot.borrow_mut() = err);
-}
-
-pub fn font_picker_error() -> Option<String> {
-    PICKER_ERROR.with(|slot| slot.borrow().clone())
 }
 
 pub fn font_picker_trigger(
@@ -75,77 +71,11 @@ pub fn font_picker_trigger(
         )
 }
 
-struct ItemSpec {
-    id: Option<String>,
-    name: SharedString,
-    family: SharedString,
-    selected: bool,
-}
-
-struct GroupSpec {
-    title: SharedString,
-    items: Vec<ItemSpec>,
-}
-
-fn collect_groups(role: FontPickerRole, query: &str) -> Vec<GroupSpec> {
-    let q = query.trim().to_lowercase();
-    let imported = crate::theme::imported_fonts();
-    let installed = crate::theme::installed_fonts();
-    let imported_set: HashSet<String> = imported.iter().map(|f| f.to_lowercase()).collect();
-    let installed_deduped: Vec<String> = installed.into_iter().filter(|f| !imported_set.contains(&f.to_lowercase())).collect();
-
-    let make_items = |list: Vec<String>, cur: Option<&str>| -> Vec<ItemSpec> {
-        list.into_iter().map(|f| ItemSpec {
-            id: Some(f.clone()),
-            name: f.clone().into(),
-            family: f.clone().into(),
-            selected: cur == Some(&f),
-        }).filter(|it| q.is_empty() || it.name.to_lowercase().contains(&q)).collect()
-    };
-
-    let mut groups = Vec::new();
-    match role {
-        FontPickerRole::Body => {
-            let cur = crate::theme::custom_editor_font();
-            let mut sys = vec![
-                ItemSpec { id: None, name: tr("系统无衬线", "System Sans").into(), family: ".SystemUIFont".into(), selected: cur.is_none() },
-                ItemSpec { id: Some("system-serif".into()), name: tr("系统衬线", "System Serif").into(), family: crate::theme::resolved_serif_font().into(), selected: cur.as_deref() == Some("system-serif") },
-            ];
-            sys.retain(|it| q.is_empty() || it.name.to_lowercase().contains(&q));
-            if !sys.is_empty() { groups.push(GroupSpec { title: tr("系统", "System").into(), items: sys }); }
-
-            let imp = make_items(imported, cur.as_deref());
-            if !imp.is_empty() { groups.push(GroupSpec { title: tr("已导入", "Imported").into(), items: imp }); }
-
-            let inst = make_items(installed_deduped, cur.as_deref());
-            if !inst.is_empty() { groups.push(GroupSpec { title: tr("已安装", "Installed").into(), items: inst }); }
-        }
-        FontPickerRole::Code => {
-            let cur = crate::theme::custom_code_font();
-            let mut sys = vec![ItemSpec {
-                id: None,
-                name: format!("{} ({})", tr("自动", "Auto"), crate::theme::resolved_mono_font()).into(),
-                family: crate::theme::resolved_mono_font().into(),
-                selected: cur.is_none(),
-            }];
-            sys.retain(|it| q.is_empty() || it.name.to_lowercase().contains(&q));
-            if !sys.is_empty() { groups.push(GroupSpec { title: tr("系统", "System").into(), items: sys }); }
-
-            let imp = make_items(imported, cur.as_deref());
-            if !imp.is_empty() { groups.push(GroupSpec { title: tr("已导入", "Imported").into(), items: imp }); }
-
-            let mono_src: Vec<String> = installed_deduped.into_iter().filter(|f| crate::theme::is_monospace_name(f)).collect();
-            let mono = make_items(mono_src, cur.as_deref());
-            if !mono.is_empty() { groups.push(GroupSpec { title: tr("等宽", "Monospace").into(), items: mono }); }
-        }
-    }
-    groups
-}
-
 pub fn font_picker_popover(
     role: FontPickerRole,
     search_input: &gpui::Entity<gpui_component::input::InputState>,
-    query: &str,
+    scroll_handle: &gpui::UniformListScrollHandle,
+    items: Rc<[FlatFontItem]>,
     cx: &mut gpui::Context<Workspace>,
 ) -> gpui::Div {
     let theme = Theme::ocean();
@@ -153,7 +83,6 @@ pub fn font_picker_popover(
     let measured = get_trigger_bounds(role);
     let max_h = measured.map(|(_, vp)| (f32::from(vp.height) - 16.).clamp(80., dropdown::MAX_HEIGHT)).unwrap_or(dropdown::MAX_HEIGHT);
     let anchor = measured.map(|(b, vp)| dropdown::anchor_below_right(b, FONT_MENU_WIDTH, max_h, Some(vp))).unwrap_or(point(px(100.), px(100.)));
-    let groups = collect_groups(role, query);
 
     let search_bar = div()
         .flex_none().flex().items_center().gap(px(8.)).px(px(8.)).pb(px(4.)).mb(px(4.))
@@ -161,57 +90,75 @@ pub fn font_picker_popover(
         .child(icon(Icon::FindSearch, px(14.), theme.mono_icon_colors(theme.text_secondary)))
         .child(div().flex_1().min_w_0().child(Input::new(search_input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)).text_size(px(14.))));
 
-    let error_banner = font_picker_error().map(|msg| {
-        div().flex_none().mx(px(4.)).mb(px(4.)).px(px(8.)).py(px(4.))
-            .rounded(crate::ui::radius::CONTROL).bg(pal.danger_fill)
-            .text_size(px(14.)).line_height(px(20.)).text_color(pal.danger_fg).child(msg)
-    });
-
-    let mut list = div().id("font-picker-list").flex_1().min_h_0().overflow_y_scroll().flex().flex_col().gap(px(2.));
-    let has_any = groups.iter().any(|g| !g.items.is_empty());
-    if !has_any {
-        list = list.child(div().flex_none().px(px(10.)).py(px(16.)).text_color(pal.muted).child(tr("没有匹配的字体", "No matching fonts")));
+    let list_h = if items.is_empty() {
+        px(48.)
     } else {
-        for group in groups {
-            list = list.child(group_label(group.title));
-            for item in group.items {
-                let id = item.id;
-                let active = item.selected;
-                let check_colors = IconColors { line: theme.accent, fill: gpui::transparent_black(), accent: theme.accent };
-                let row = div()
-                    .flex_none().w_full().h(px(34.)).px(px(10.)).rounded(crate::ui::radius::CONTROL)
-                    .flex().items_center().justify_between().cursor(CursorStyle::PointingHand)
-                    .hover(move |s| s.bg(pal.hover_bg))
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
-                        cx.stop_propagation();
-                        match role {
-                            FontPickerRole::Body => this.select_editor_font(id.clone(), window, cx),
-                            FontPickerRole::Code => this.select_code_font(id.clone(), window, cx),
+        px((items.len().min(MAX_VISIBLE_ROWS) as f32) * ITEM_HEIGHT)
+    };
+
+    let list_element = if items.is_empty() {
+        div().w_full().h(list_h).flex().items_center().px(px(10.))
+            .text_size(px(14.)).text_color(pal.muted)
+            .child(tr("没有匹配的字体", "No matching fonts"))
+            .into_any_element()
+    } else {
+        let items_clone = items.clone();
+        uniform_list(
+            ("font-picker-uniform-list", role as usize),
+            items.len(),
+            cx.processor(move |_this, range: std::ops::Range<usize>, _window, cx| {
+                let theme = Theme::ocean();
+                let pal = palette();
+                range.map(|ix| {
+                    match &items_clone[ix] {
+                        FlatFontItem::Header(title) => {
+                            let title = title.clone();
+                            div()
+                                .id(ElementId::NamedInteger("font-hdr".into(), ix as u64))
+                                .w_full().h(px(ITEM_HEIGHT)).px(px(10.))
+                                .flex().items_center()
+                                .text_size(px(13.)).font_weight(gpui::FontWeight::MEDIUM)
+                                .text_color(pal.muted)
+                                .child(title)
+                                .into_any_element()
                         }
-                    }))
-                    .child(
-                        div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-                            .text_size(px(15.)).font_family(item.family).text_color(pal.text).child(item.name),
-                    )
-                    .when(active, |r| r.child(div().ml(px(8.)).flex_none().child(icon(Icon::Check, px(16.), check_colors))));
-                list = list.child(row);
-            }
-        }
-    }
-
-    let import_btn = div()
-        .flex_none().w_full().h(px(34.)).px(px(10.)).rounded(crate::ui::radius::CONTROL)
-        .flex().items_center().gap(px(8.)).cursor(CursorStyle::PointingHand)
-        .text_color(theme.accent)
-        .hover(move |s| s.bg(pal.hover_bg))
-        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
-            cx.stop_propagation();
-            this.import_font_dialog(role, window, cx);
-        }))
-        .child(icon(Icon::Plus, px(16.), IconColors { line: theme.accent, fill: gpui::transparent_black(), accent: theme.accent }))
-        .child(tr("导入字体文件…", "Import Font File…"));
-
-    let bottom_bar = div().flex_none().pt(px(4.)).mt(px(4.)).border_t_1().border_color(pal.sep).child(import_btn);
+                        FlatFontItem::Font { id, name, selected } => {
+                            let active = *selected;
+                            let id = id.clone();
+                            let name = name.clone();
+                            let check_colors = IconColors {
+                                line: theme.accent,
+                                fill: gpui::transparent_black(),
+                                accent: theme.accent,
+                            };
+                            div()
+                                .id(ElementId::NamedInteger("font-row".into(), ix as u64))
+                                .w_full().h(px(ITEM_HEIGHT)).px(px(10.)).rounded(crate::ui::radius::CONTROL)
+                                .flex().items_center().justify_between().cursor(CursorStyle::PointingHand)
+                                .hover(move |s| s.bg(pal.hover_bg))
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
+                                    cx.stop_propagation();
+                                    match role {
+                                        FontPickerRole::Body => this.select_editor_font(id.clone(), window, cx),
+                                        FontPickerRole::Code => this.select_code_font(id.clone(), window, cx),
+                                    }
+                                }))
+                                .child(
+                                    div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
+                                        .text_size(px(15.)).text_color(pal.text).child(name),
+                                )
+                                .when(active, |r| r.child(div().ml(px(8.)).flex_none().child(icon(Icon::Check, px(16.), check_colors))))
+                                .into_any_element()
+                        }
+                    }
+                }).collect::<Vec<_>>()
+            }),
+        )
+        .track_scroll(scroll_handle)
+        .w_full()
+        .h(list_h)
+        .into_any_element()
+    };
 
     let menu = div()
         .id(("font-picker-menu", role as usize))
@@ -221,7 +168,13 @@ pub fn font_picker_popover(
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
         .on_scroll(|_, _, cx| cx.stop_propagation())
-        .child(search_bar).children(error_banner).child(list).child(bottom_bar);
+        .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
+            if event.keystroke.key == "escape" {
+                cx.stop_propagation();
+                this.close_font_picker(cx);
+            }
+        }))
+        .child(search_bar).child(list_element);
 
     let backdrop = deferred(
         anchored().position(point(px(0.), px(0.))).child(
