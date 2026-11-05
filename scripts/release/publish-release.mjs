@@ -12,7 +12,12 @@ import {
 } from "./select-release.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
-const ASSETS = ["block-macos.dmg", "SHA256SUMS.txt"];
+const ASSETS = [
+  "block-macos.dmg",
+  "block-windows-x64-setup.exe",
+  "block-linux-x64.AppImage",
+  "SHA256SUMS.txt",
+];
 
 function readRemoteFile(ref, path) {
   const data = JSON.parse(gh(["api", `repos/${REPO}/contents/${path}?ref=${encodeURIComponent(ref)}`]));
