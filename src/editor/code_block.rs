@@ -84,8 +84,7 @@ pub(super) fn take_picked_lang(doc: &Doc) -> Option<(u64, &'static str, bool)> {
 }
 
 /// Space around the text that the card or source editor occupies.
-pub(super) fn margin(language: &str) -> Edges<Length> {
-    let zoom = super::zoom::zoom_factor();
+pub(super) fn margin(language: &str, zoom: f32) -> Edges<Length> {
     if is_preview_lang(language) {
         Edges { top: px(SOURCE_PAD_Y * zoom).into(), right: px(SOURCE_PAD_X * zoom).into(), bottom: px(SOURCE_PAD_Y * zoom).into(), left: px(SOURCE_PAD_X * zoom).into() }
     } else {
@@ -94,9 +93,8 @@ pub(super) fn margin(language: &str) -> Edges<Length> {
 }
 
 /// Paint the borderless `#f8f8f6` card (`radius 6`) behind normal code blocks.
-pub(super) fn paint_card(bounds: Bounds<Pixels>, language: &str, window: &mut Window, _cx: &mut App) {
+pub(super) fn paint_card(bounds: Bounds<Pixels>, language: &str, window: &mut Window, _cx: &mut App, zoom: f32) {
     if is_preview_lang(language) { return; }
-    let zoom = super::zoom::zoom_factor();
     let bg = if is_dark() { rgb(0x1d2026) } else { rgb(0xf8f8f6) };
     let (pad_x, pad_top, pad_bottom) = (px(PAD_X * zoom), px(PAD_TOP * zoom), px(PAD_BOTTOM * zoom));
     let card = Bounds::new(
