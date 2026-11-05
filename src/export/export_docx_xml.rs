@@ -235,9 +235,6 @@ pub(super) fn body(
         } else if is_rule(block) {
             let line = format!("<w:pBdr><w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"1\" w:color=\"{}\"/></w:pBdr>", hex(pal.divider));
             out.push_str(&para(None, &line, ""));
-        } else if let Some(callout) = block.meta.callout {
-            let tag = marker_run(&format!("[!{}] ", callout.tag()));
-            out.push_str(&para(Some("Quote"), "", &(tag + &runs(block, pal, Base::default()))));
         } else if block.kind == Kind::Quote {
             out.push_str(&para(Some("Quote"), "", &runs(block, pal, Base::default())));
         } else if let Some(level) = heading_level(block) {

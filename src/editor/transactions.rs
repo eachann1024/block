@@ -35,7 +35,6 @@ impl Editor {
             crate::log::warn(&format!("list splice diverged (list={}, doc={}); resetting", self.list.item_count(), self.doc.blocks.len()));
             self.list.reset(self.doc.blocks.len());
         }
-        self.invalidate_column_groups();
         self.layouts.clear();
     }
     pub(in crate::editor) fn record_changes(&mut self, before: Snapshot, changes: Vec<ListChange>, apply: bool, cx: &mut Context<Self>) {
@@ -114,12 +113,6 @@ impl Editor {
             ).into();
             cx.notify(); return;
         }
-        if ai != bi && (ai..=bi).any(|i| self.doc.blocks[i].meta.column.is_some())
-            && self.doc.blocks[ai].meta.column != self.doc.blocks[bi].meta.column {
-            self.delete_across(cx);
-            if !text.is_empty() { self.replace_selection(text, marker, cx); }
-            return;
-        }
         let before = self.snapshot();
         let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
         if ai == bi && self.doc.get(a.block).is_some_and(|blk| blk.meta.code_language.is_some()
@@ -140,8 +133,7 @@ impl Editor {
         } else {
             let starts_table = self.doc.blocks[ai].meta.table.is_some();
             let mut combined = if starts_table {
-                let mut b = crate::editor::model::Block::new(a.block, Kind::Paragraph, String::new());
-                b.meta.column = self.doc.blocks[ai].meta.column; b
+                crate::editor::model::Block::new(a.block, Kind::Paragraph, String::new())
             } else { self.doc.blocks[ai].clone() };
             if ai == bi {
                 if starts_table { combined.replace_range(0..0, &normalized); offset = normalized.len(); }

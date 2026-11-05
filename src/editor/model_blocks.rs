@@ -19,7 +19,7 @@ impl Block {
             inline:super::inline_ops::slice(&self.meta.inline, range.clone()),
             html_paragraph:self.meta.html_paragraph.clone(),
             unsupported_reason:self.meta.unsupported_reason.clone(),
-            heading_level:self.meta.heading_level, callout:self.meta.callout, column:self.meta.column,
+            heading_level:self.meta.heading_level,
             table:None, tight:self.meta.tight };
         let mut out = Self { id:self.id,kind:self.kind,text,checked:self.checked,spans:Vec::new(),meta };
         if !valid { return out; }
@@ -35,7 +35,6 @@ impl Block {
         if self.meta.table.is_some() || !self.text.is_char_boundary(at) { return None; }
         let mut right = self.slice(at..self.text.len()); right.id = new_id; right.kind = kind;
         right.checked = false; right.meta.list_start = None;
-        if kind != Kind::Quote { right.meta.callout = None; }
         // A split must not duplicate the imported blank-body sentinel.
         right.meta.code_empty_line = false;
         *self = self.slice(0..at); Some(right)
@@ -54,10 +53,9 @@ impl Block {
 }
 /// Shared nested-list counter. Indent is source columns, not an assumed nesting unit.
 #[derive(Default)]
-pub struct Numbering { levels: Vec<(usize,u64)>, col: Option<(u64, usize)> }
+pub struct Numbering { levels: Vec<(usize,u64)> }
 impl Numbering {
     pub fn next(&mut self, block: &Block) -> Option<u64> {
-        if block.meta.column != self.col { self.levels.clear(); self.col = block.meta.column; }
         if !matches!(block.kind,Kind::Numbered|Kind::Bullet|Kind::Todo) {
             self.levels.clear(); return None;
         }

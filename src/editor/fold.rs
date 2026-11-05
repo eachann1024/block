@@ -45,7 +45,7 @@ fn save_store(store: &FoldStore) {
 }
 
 pub(super) fn heading_level(block: &Block) -> Option<u8> {
-    if block.meta.column.is_some() || block.meta.code_language.is_some() || block.meta.raw_source.is_some() || block.meta.table.is_some() {
+    if block.meta.code_language.is_some() || block.meta.raw_source.is_some() || block.meta.table.is_some() {
         return None;
     }
     match block.kind {
@@ -193,6 +193,7 @@ impl Editor {
 
     /// Folds or unfolds the heading at the caret, or the nearest heading that governs it (⌘⌥T).
     pub(super) fn toggle_fold_at_caret(&mut self, cx: &mut Context<Self>) {
+        if !self.is_markdown_note() { return; }
         let id = self.caret.head.block;
         let Some(index) = self.doc.index_of(id) else { return };
         if heading_level(&self.doc.blocks[index]).is_some() {

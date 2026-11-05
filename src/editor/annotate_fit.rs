@@ -152,14 +152,6 @@ fn build_snapshot(editor: &Editor, editor_left: Pixels, editor_top: Pixels, edit
             });
             continue;
         }
-        if block.is_some_and(|b| b.meta.callout.is_some()) {
-            lines.push(LineBand {
-                top: layout.bounds.top() - px(12.) - editor_top,
-                bottom: layout.bounds.bottom() + px(12.) - editor_top,
-                right: layout.bounds.right() + px(16.) - editor_left,
-            });
-            continue;
-        }
         if !layout.cells.is_empty() || block.is_some_and(|b| b.meta.table.is_some()) {
             let grid = super::table_layout::grid_rect(layout).unwrap_or(layout.bounds);
             lines.push(LineBand { top: grid.top() - editor_top, bottom: grid.bottom() - editor_top, right: grid.right() - editor_left });
