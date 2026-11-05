@@ -6,6 +6,8 @@ use gpui::{
 };
 use crate::theme::{Theme, hotkey_parts, is_dark};
 
+pub use crate::ui::toggle_pill::{TogglePillState, toggle_pill};
+
 /// Card surface: `#222222` in dark mode and `#ffffff` in light mode, so it lifts off `settings_bg`.
 pub fn card_bg() -> Hsla {
     if is_dark() { Theme::ocean().menu } else { Theme::ocean().paper }
@@ -105,27 +107,29 @@ pub fn status_action_button(
     } else {
         (theme.shell, theme.btn_border, theme.text, theme.text_secondary, theme.hover)
     };
-    div().id(id).h(px(34.)).px(px(12.)).flex().flex_none().items_center().justify_center().gap(px(6.))
+    div().id(id).group(id).h(px(34.)).px(px(12.)).flex().flex_none().items_center().justify_center().gap(px(6.))
         .rounded(crate::ui::radius::CONTROL)
         .bg(bg_color).border_1().border_color(border_color)
         .text_size(px(14.)).font_weight(FontWeight(460.)).text_color(text_color)
         .when(enabled, |b| b.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(hover_bg)))
         .when(!enabled, |b| b.opacity(0.5))
-        .children(icon.map(|ic| crate::icons::icon(ic, px(14.), theme.mono_icon_colors(icon_color))))
-        .child(label.into())
-}
-
-pub fn toggle_pill(id: &'static str, on: bool, label: impl Into<SharedString>) -> gpui::Stateful<gpui::Div> {
-    let theme = Theme::ocean();
-    let sel_bg = selected_bg();
-    div().id(id).h(px(32.)).px(px(12.)).rounded(crate::ui::radius::CONTROL)
-        .bg(if on { sel_bg } else { theme.shell })
-        .border_1().border_color(if on { theme.accent } else { theme.btn_border })
-        .flex().items_center().gap(px(8.))
-        .text_size(px(14.)).font_weight(FontWeight(460.)).text_color(theme.text)
-        .cursor(CursorStyle::PointingHand)
-        .hover(move |s| s.bg(if on { sel_bg } else { theme.hover }))
-        .child(div().size(px(8.)).rounded(px(4.)).bg(if on { theme.accent } else { theme.text_secondary }))
+        .children(icon.map(|ic| {
+            if ic == crate::icons::Icon::Spinner {
+                crate::ui::annotation_card::spinner(id, icon_color).into_any_element()
+            } else if enabled {
+                crate::icons::stateful_icon(
+                    id,
+                    ic,
+                    px(14.),
+                    false,
+                    theme.mono_icon_colors(icon_color),
+                    theme.icon_colors(if success { icon_color } else { theme.text }),
+                )
+                .into_any_element()
+            } else {
+                crate::icons::icon(ic, px(14.), theme.mono_icon_colors(icon_color)).into_any_element()
+            }
+        }))
         .child(label.into())
 }
 
@@ -140,7 +144,7 @@ pub fn segmented<V: 'static, T: Copy + 'static, const N: usize>(
         let sel_bg = selected_bg();
         div().id(id.clone()).p(px(3.)).flex().items_center().gap(px(2.)).rounded(crate::ui::radius::CONTROL).bg(theme.shell)
             .border_1().border_color(theme.hairline)
-            .children(options.into_iter().enumerate().map(|(ix, (label, active, val))| {
+            .children(options.into_iter().enumerate().map(|(_ix, (label, active, val))| {
                 let handler = make_handler(val, cx);
                 div().id((id.clone(), label)).h(px(32.)).px(px(12.)).flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
                     .text_size(px(14.)).font_weight(FontWeight(460.)).cursor(CursorStyle::PointingHand)
