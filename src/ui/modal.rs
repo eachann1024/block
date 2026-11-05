@@ -57,8 +57,9 @@ pub fn card(id: impl Into<ElementId>, width: Pixels) -> Stateful<Div> {
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 }
 
-/// Interactive link row with clean Ocean Paper idle surface (`theme.paper` + `theme.btn_border`),
-/// spring hover lift, accent border/glow, and radial 7-particle `.puff` burst from `note.cooool.top`.
+/// Interactive link row with stationary outer hitbox (preventing bottom-edge hover oscillation),
+/// clean Ocean Paper idle surface (`theme.paper` + `theme.btn_border`), spring hover lift,
+/// and radial 7-particle `.puff` burst from `note.cooool.top`.
 pub fn bubble_link_pill(
     id: &'static str,
     glyph: Icon,
@@ -85,19 +86,14 @@ pub fn bubble_link_pill(
     } else {
         theme.mono_icon_colors(theme.text_secondary)
     };
-    let pill = div()
-        .id(id)
-        .group(group)
+    let surface = div()
         .relative()
-        .children(probe)
-        .w_full()
-        .h(px(42.))
+        .size_full()
         .px(px(16.))
         .rounded(radius::CONTROL)
         .flex()
         .items_center()
         .gap(px(10.))
-        .cursor(CursorStyle::PointingHand)
         .bg(if hovered { theme.selected } else { theme.paper })
         .border_1()
         .border_color(if hovered { theme.accent } else { theme.btn_border })
@@ -110,13 +106,6 @@ pub fn bubble_link_pill(
                 inset: false,
             }])
         })
-        .hover(|s| s.bg(theme.selected).border_color(theme.accent))
-        .on_hover(on_hover)
-        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-            cx.stop_propagation();
-            cx.open_url(url);
-        })
-        .when(burst_seq > 0, |d| d.child(puff_burst_cluster(id, burst_seq, 320., 21.)))
         .child(lead)
         .child(
             div()
@@ -138,19 +127,35 @@ pub fn bubble_link_pill(
                 .when(hovered, |d| d.left(px(2.)).top(px(-2.)))
                 .child(icon(Icon::LinkOpen, px(14.), trail_colors)),
         );
-    if hovered {
-        pill.with_animation(
-            SharedString::from(format!("{id}-lift-{burst_seq}")),
-            Animation::new(Duration::from_millis(260)).with_easing(ease_note_spring()),
-            |el, delta| el.top(px(-1.5 * delta)),
-        )
-        .into_any_element()
+    let animated_surface = if hovered {
+        surface
+            .with_animation(
+                SharedString::from(format!("{id}-lift-{burst_seq}")),
+                Animation::new(Duration::from_millis(260)).with_easing(ease_note_spring()),
+                |el, delta| el.top(px(-1.5 * delta)),
+            )
+            .into_any_element()
     } else {
-        pill.into_any_element()
-    }
+        surface.into_any_element()
+    };
+    div()
+        .id(id)
+        .group(group)
+        .relative()
+        .children(probe)
+        .w_full()
+        .h(px(42.))
+        .cursor(CursorStyle::PointingHand)
+        .on_hover(on_hover)
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            cx.stop_propagation();
+            cx.open_url(url);
+        })
+        .when(burst_seq > 0, |d| d.child(puff_burst_cluster(id, burst_seq, 320., 21.)))
+        .child(animated_surface)
 }
 
-/// Compact author/profile link pill with pointer cursor and radial `.puff` burst on hover.
+/// Compact author/profile link pill with stationary outer hitbox and radial `.puff` burst on hover.
 pub fn author_puff_link(
     id: &'static str,
     label: &'static str,
@@ -161,39 +166,42 @@ pub fn author_puff_link(
 ) -> impl IntoElement {
     let theme = Theme::ocean();
     let probe = crate::ui::smoke_overlay::probe(id);
-    let el = div()
-        .id(id)
+    let surface = div()
         .relative()
-        .children(probe)
         .px(px(12.))
         .py(px(3.))
         .rounded(radius::PILL)
         .flex()
         .items_center()
         .gap(px(6.))
-        .cursor(CursorStyle::PointingHand)
         .bg(if hovered { theme.hover } else { gpui::transparent_black() })
         .text_size(px(14.))
         .line_height(px(20.))
         .text_color(if hovered { theme.accent } else { theme.text_secondary })
-        .hover(|s| s.bg(theme.hover).text_color(theme.accent))
+        .child(label);
+    let animated_surface = if hovered {
+        surface
+            .with_animation(
+                SharedString::from(format!("{id}-lift-{burst_seq}")),
+                Animation::new(Duration::from_millis(260)).with_easing(ease_note_spring()),
+                |d, delta| d.top(px(-1.5 * delta)),
+            )
+            .into_any_element()
+    } else {
+        surface.into_any_element()
+    };
+    div()
+        .id(id)
+        .relative()
+        .children(probe)
+        .cursor(CursorStyle::PointingHand)
         .on_hover(on_hover)
         .on_mouse_down(MouseButton::Left, move |_, _, cx| {
             cx.stop_propagation();
             cx.open_url(url);
         })
         .when(burst_seq > 0, |d| d.child(puff_burst_cluster(id, burst_seq, 136., 13.)))
-        .child(label);
-    if hovered {
-        el.with_animation(
-            SharedString::from(format!("{id}-lift-{burst_seq}")),
-            Animation::new(Duration::from_millis(260)).with_easing(ease_note_spring()),
-            |d, delta| d.top(px(-1.5 * delta)),
-        )
-        .into_any_element()
-    } else {
-        el.into_any_element()
-    }
+        .child(animated_surface)
 }
 
 /// Radial 7-puff particle burst ported from `https://note.cooool.top/`:
