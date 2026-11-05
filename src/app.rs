@@ -87,12 +87,10 @@ impl Workspace {
         let rename_target = cx.entity();
         let trash_target = cx.entity();
         tree.update(cx, |tree, _| tree.on_context(move |target, position, _, cx| {
-            // The tree is mid-update while dispatching; defer so the menu may mark its row.
             let context_target = context_target.clone();
             cx.defer(move |cx| context_target.update(cx, |this, cx| this.open_tree_menu(target, position, cx)));
         }));
         tree.update(cx, |tree, _| tree.on_open(move |path, in_new_tab, window, cx| {
-            // Defer so FileTree releases its EntityMap lease before Workspace updates self.tree.
             let workspace = workspace.clone();
             window.defer(cx, move |window, cx| {
                 workspace.update(cx, |this, cx| {
@@ -171,7 +169,6 @@ impl Workspace {
                 }
             }
         });
-        // The export view lives in a global slot (opened from the editor); re-render on open/close.
         cx.observe_global::<crate::export::ExportSlot>(|_, cx| cx.notify()).detach();
         crate::dropdown::register_workspace(&cx.entity());
         cx.observe_window_activation(window, |this, window, cx| {
@@ -179,6 +176,9 @@ impl Workspace {
                 this.dismiss_dropdowns(cx);
                 crate::dropdown::dismiss_all(cx);
             }
+        }).detach();
+        cx.observe_window_appearance(window, |_, window, cx| {
+            if crate::theme::sync_system_appearance(window.appearance(), cx) { crate::quick::refresh_style(cx); }
         }).detach();
         cx.observe_window_bounds(window, |this, window, cx| {
             let bounds = crate::window_bounds::capture_window_bounds(window, cx);
