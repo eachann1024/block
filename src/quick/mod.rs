@@ -52,8 +52,8 @@ pub fn refresh_style(cx: &mut App) {
     if let Some(editor) = editor {
         editor.update(cx, |e, cx| { e.reset_layouts(); cx.notify(); });
     }
-    if let Some((handle, view)) = window {
-        let _ = handle.update(cx, |_, _, cx| view.update(cx, |_, cx| cx.notify()));
+    if let Some((_, view)) = window {
+        view.update(cx, |_, cx| cx.notify());
     }
 }
 

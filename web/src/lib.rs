@@ -111,9 +111,7 @@ pub mod quick {
         (!spec.trim().is_empty()).then_some(())
     }
     pub fn rebind_hotkeys(_cx: &mut gpui::App) {}
-    pub fn refresh_style(cx: &mut gpui::App) {
-        super::search::window::refresh_style(cx);
-    }
+    pub fn refresh_style(_cx: &mut gpui::App) {}
 }
 
 pub mod log {
