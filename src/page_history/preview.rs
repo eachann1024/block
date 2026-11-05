@@ -1,7 +1,7 @@
 //! Center reading surface for Page History. Diff blocks are supplied by the caller.
 use std::{path::Path, rc::Rc};
 use gpui::{
-    App, FontWeight, IntoElement, MouseDownEvent, ParentElement, Styled,
+    App, IntoElement, MouseDownEvent, ParentElement, Styled,
     Window, div, prelude::*, px,
 };
 use crate::{
@@ -24,13 +24,11 @@ pub fn render_preview_surface(
     error: Option<&HistoryError>,
     diff_blocks: Option<&[DiffBlock]>,
     preview_key: &str,
-    on_mode_change: impl Fn(PreviewMode, &mut Window, &mut App) + 'static,
     on_re_diff: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     on_retry_restore: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let _ = current_content;
     let theme = Theme::ocean();
-    let title = selected_version.map(|version| version.display_time.as_str()).unwrap_or("");
     let same_as_current = selected_version.map(|version| version.same_as_current).unwrap_or(false);
 
     div()
@@ -40,7 +38,6 @@ pub fn render_preview_surface(
         .bg(theme.paper)
         .flex()
         .flex_col()
-        .child(render_preview_header(title, mode, on_mode_change))
         .children(render_error_banner(error, on_re_diff, on_retry_restore))
         .child(body::render_preview_body(
             note_path, selected_content, mode, same_as_current, diff_blocks, preview_key,
@@ -79,45 +76,24 @@ pub fn restore_availability(
     (false, restore)
 }
 
-fn render_preview_header(
-    title: &str,
+pub fn render_mode_switch(
     mode: PreviewMode,
     on_mode: impl Fn(PreviewMode, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    let theme = Theme::ocean();
     let on_mode = Rc::new(on_mode);
     let on_clean = on_mode.clone();
-    div()
-        .h(px(44.))
-        .px(px(28.))
-        .border_b_1()
-        .border_color(theme.hairline)
-        .bg(theme.sidebar)
-        .flex()
-        .items_center()
-        .justify_between()
-        .gap(px(12.))
-        .child(
-            div()
-                .min_w_0()
-                .text_size(px(14.))
-                .line_height(px(20.))
-                .font_weight(FontWeight(560.))
-                .text_color(theme.text)
-                .child(title.to_string()),
-        )
-        .child(segmented_control("history-preview-mode", vec![
-            SegmentSpec {
-                label: tr("原文", "Original").into(),
-                selected: mode == PreviewMode::Clean,
-                on_select: Box::new(move |_, window, cx| on_clean(PreviewMode::Clean, window, cx)),
-            },
-            SegmentSpec {
-                label: tr("对比", "Diff").into(),
-                selected: mode == PreviewMode::Diff,
-                on_select: Box::new(move |_, window, cx| on_mode(PreviewMode::Diff, window, cx)),
-            },
-        ]))
+    segmented_control("history-preview-mode", vec![
+        SegmentSpec {
+            label: tr("原文", "Original").into(),
+            selected: mode == PreviewMode::Clean,
+            on_select: Box::new(move |_, window, cx| on_clean(PreviewMode::Clean, window, cx)),
+        },
+        SegmentSpec {
+            label: tr("对比", "Diff").into(),
+            selected: mode == PreviewMode::Diff,
+            on_select: Box::new(move |_, window, cx| on_mode(PreviewMode::Diff, window, cx)),
+        },
+    ])
 }
 
 pub fn render_restore_button(
