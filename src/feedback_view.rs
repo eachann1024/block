@@ -15,6 +15,7 @@ use crate::ui::radius;
 
 impl Render for FeedbackModal {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.last_en != is_en() { self.sync_placeholders(window, cx); }
         let theme = Theme::ocean();
         let close_btn = modal_close_button("feedback-close", tr("关闭", "Close"), |_, window, cx| {
             let _ = close(window, cx);
@@ -25,13 +26,13 @@ impl Render for FeedbackModal {
             self.render_form(&theme, window, cx).into_any_element()
         };
         let header = div().flex().items_start().justify_between().gap(px(12.)).child(
-            div().flex_1().flex().flex_col().gap(px(4.))
+            div().flex_1().min_w_0().flex().flex_col().gap(px(4.))
                 .child(div().text_size(px(20.)).line_height(px(26.)).font_weight(FontWeight(650.)).text_color(theme.text).child(tr("给我们带句话", "Send us a note")))
-                .child(div().text_size(px(14.)).line_height(px(21.)).text_color(theme.text_secondary).child(tr(
+                .child(div().w_full().whitespace_normal().text_size(px(14.)).line_height(px(21.)).text_color(theme.text_secondary).child(tr(
                     "好用的、别扭的、坏掉的，或者一时兴起的念头，都想听。",
                     "What works, what feels off, what broke, or a passing idea — we read every note.",
                 ))),
-        ).child(close_btn);
+        ).child(close_btn.flex_shrink_0());
 
         let card = div().id("feedback-dialog").key_context("Workspace").track_focus(&self.focus)
             .w(px(500.)).max_w(px(500.)).rounded(radius::SURFACE).bg(theme.paper)

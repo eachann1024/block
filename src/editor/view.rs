@@ -13,6 +13,7 @@ use super::input::transactions::{Snapshot, HistoryEntry};
 #[path = "protocol.rs"] mod protocol;
 #[path = "storage.rs"] pub(super) mod storage;
 #[path = "lifecycle.rs"] mod lifecycle;
+#[path = "language_sync.rs"] mod language_sync;
 #[path = "history_bridge.rs"] pub(crate) mod history_bridge;
 #[path = "session.rs"] mod session;
 use {selection::Caret, layout::TextLayout, lifecycle::Persistence};

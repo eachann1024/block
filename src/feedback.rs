@@ -44,6 +44,8 @@ impl FeedbackCategory {
     }
 }
 
+pub fn contact_placeholder() -> &'static str { tr("留了邮箱，回复会发到这里", "We reply here if you leave one") }
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FeedbackPlatform { Macos, Windows, Linux }
 
@@ -76,6 +78,7 @@ pub struct FeedbackModal {
     pub chip_seq: u64,
     pub done_seq: u64,
     pub syncing: bool,
+    pub last_en: bool,
     _subs: Vec<Subscription>,
 }
 
@@ -86,14 +89,28 @@ impl FeedbackModal {
         let platform = if saved.platform.is_empty() { FeedbackPlatform::current() } else { FeedbackPlatform::from_label(&saved.platform) };
         HAS_DRAFT.store(!saved.message.trim().is_empty() || !saved.contact.trim().is_empty(), Ordering::Relaxed);
         let message = cx.new(|cx| TextareaState::new(window, cx).auto_grow(4, 8).placeholder(category.placeholder()).default_value(saved.message));
-        let contact = cx.new(|cx| InputState::new(window, cx).placeholder(tr("留了邮箱，回复会发到这里", "We reply here if you leave one")).default_value(saved.contact));
+        let contact = cx.new(|cx| InputState::new(window, cx).placeholder(contact_placeholder()).default_value(saved.contact));
         let sub_msg = cx.subscribe(&message, |this, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change) && !this.syncing { this.error = None; this.persist_draft(cx); cx.notify(); }
         });
         let sub_contact = cx.subscribe(&contact, |this, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change) && !this.syncing { this.error = None; this.persist_draft(cx); cx.notify(); }
         });
-        Self { focus: cx.focus_handle(), category, platform, message, contact, sending: false, done: false, sent_contact: String::new(), error: None, chip_seq: 0, done_seq: 0, syncing: false, _subs: vec![sub_msg, sub_contact] }
+        Self { focus: cx.focus_handle(), category, platform, message, contact, sending: false, done: false, sent_contact: String::new(), error: None, chip_seq: 0, done_seq: 0, syncing: false, last_en: crate::theme::is_en(), _subs: vec![sub_msg, sub_contact] }
+    }
+
+    pub fn sync_placeholders(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.last_en = crate::theme::is_en();
+        let ph = self.category.placeholder();
+        self.message.update(cx, |m, cx| m.set_placeholder(ph, window, cx));
+        self.contact.update(cx, |c, cx| c.set_placeholder(contact_placeholder(), window, cx));
+        let words = tr("写几个字再发送吧。", "Write a few words first.");
+        let email = tr("邮箱格式不太对，检查一下？", "That email doesn't look right.");
+        self.error = match self.error.take() {
+            Some(err) if err == "写几个字再发送吧。" || err == "Write a few words first." => Some(words.into()),
+            Some(err) if err == "邮箱格式不太对，检查一下？" || err == "That email doesn't look right." => Some(email.into()),
+            other => other,
+        };
     }
 
     pub fn select_category(&mut self, cat: FeedbackCategory, window: &mut Window, cx: &mut Context<Self>) {
@@ -233,10 +250,17 @@ pub fn open(window: &mut Window, cx: &mut App) {
     SEQ.fetch_add(1, Ordering::Relaxed);
     entity.update(cx, |m, cx| {
         if m.done { m.done = false; m.error = None; }
+        m.sync_placeholders(window, cx);
         m.message.update(cx, |input, cx| input.focus(window, cx));
         cx.notify();
     });
     window.refresh();
+}
+
+pub fn sync_language(window: &mut Window, cx: &mut App) {
+    let Some(slot) = MODAL.get() else { return };
+    let Some(entity) = slot.lock().unwrap_or_else(|e| e.into_inner()).as_ref().cloned() else { return };
+    entity.update(cx, |m, cx| { m.sync_placeholders(window, cx); cx.notify(); });
 }
 
 pub fn toggle(window: &mut Window, cx: &mut App) {
