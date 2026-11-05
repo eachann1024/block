@@ -23,7 +23,7 @@ pub fn menu_popover(id: impl Into<ElementId>, rows: Vec<AnyElement>) -> impl gpu
     let menu = crate::ui::dropdown::shell_unbounded(id).w(px(236.)).children(rows);
     gpui::deferred(
         crate::ui::motion::popup_enter(
-            div().absolute().top(px(48.)).right(px(52.)).w(px(236.)).child(menu),
+            div().absolute().top(px(48.)).right(px(16.)).w(px(236.)).child(menu),
             "search-scope-popover",
         ),
     )
