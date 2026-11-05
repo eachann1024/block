@@ -9,7 +9,6 @@ import { readCargoVersion, ROOT, syncVersionFiles } from "./select-release.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 const DMG_NAME = "block-macos.dmg";
-const ZIP_NAME = "block-macos.zip";
 
 function createDmgWithRetry(stageDir, outDmg) {
   let lastError;
@@ -68,17 +67,12 @@ export async function packageRelease() {
     createDmgWithRetry(stageDir, dmgPath);
     assert.ok(existsSync(dmgPath), `Failed to create ${DMG_NAME}`);
 
-    const zipPath = join(RELEASE_DIR, ZIP_NAME);
-    run("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", appBundle, zipPath]);
-    assert.ok(existsSync(zipPath), `Failed to create ${ZIP_NAME}`);
-
-    const files = [DMG_NAME, ZIP_NAME];
+    const files = [DMG_NAME];
     const sums = files.map((name) => `${sha256File(join(RELEASE_DIR, name))}  ${name}\n`).join("");
     writeFileSync(join(RELEASE_DIR, "SHA256SUMS.txt"), sums, "utf8");
 
     console.log(`Packaged Block v${version}:`);
     console.log(`  ${dmgPath}`);
-    console.log(`  ${zipPath}`);
   } finally {
     rmSync(stageDir, { recursive: true, force: true });
   }
