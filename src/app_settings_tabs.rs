@@ -29,11 +29,11 @@ impl Workspace {
 
         let body_font = active_editor_font();
         let body_open = self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).is_some_and(|p| p.role == FontPickerRole::Body);
-        let body_trigger = font_picker_trigger("body-font-trigger", FontPickerRole::Body, body_open, body_font.clone().into(), body_font.into(), cx);
+        let body_trigger = font_picker_trigger("body-font-trigger", FontPickerRole::Body, body_open, body_font.into(), cx);
 
         let code_font = active_code_font();
         let code_open = self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).is_some_and(|p| p.role == FontPickerRole::Code);
-        let code_trigger = font_picker_trigger("code-font-trigger", FontPickerRole::Code, code_open, code_font.clone().into(), code_font.into(), cx);
+        let code_trigger = font_picker_trigger("code-font-trigger", FontPickerRole::Code, code_open, code_font.into(), cx);
 
         let lh_seg = segmented("lh-seg", [
             (tr("紧凑", "Compact"), cur_lh == LineHeight::Tight, LineHeight::Tight),
