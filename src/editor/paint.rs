@@ -92,7 +92,7 @@ impl Element for BlockText {
             }
             if let Some(table) = &table {
                 let mut layout = table_layout::measure(table, width, &table_layout::widths_of(editor_id, block_id), window, zoom);
-                let height = layout.height() + px(table_layout::EXTEND_ROOM);
+                let height = layout.height() + px(table_layout::EXTEND_ROOM * zoom);
                 layout.bounds.size = size(width, height);
                 *output.borrow_mut() = Some(layout); super::view::layout::set_key(editor_id, block_id, key);
                 return size(width, height);
@@ -115,7 +115,7 @@ impl Element for BlockText {
             .unwrap_or_else(|| TextLayout::empty(px(21.)));
         let delta = bounds.origin - layout.bounds.origin;
         if delta.x != px(0.) || delta.y != px(0.) { layout.translate(delta); }
-        layout.bounds = bounds;
+        layout.bounds = bounds; super::block_menu::record_live_block_bounds(self.editor.entity_id(), self.block, bounds);
         let editor = self.editor.read(cx);
         if !layout.cells.is_empty() {
             // Wide tables scroll sideways; keep the caret's cell in view when it moves.
@@ -162,7 +162,7 @@ impl Element for BlockText {
         if let Some(language) = &fenced { super::code_block::paint_card(layout.bounds, language, window, cx, zoom); }
         // A table scrolls inside the block minus the extend-button room; everything it draws is clipped to that.
         let is_table = !layout.cells.is_empty();
-        let clip = is_table.then(|| gpui::ContentMask { bounds: table_layout::visible(layout.bounds) });
+        let clip = is_table.then(|| gpui::ContentMask { bounds: table_layout::visible(layout) });
         if is_table { table_layout::track_wheel(self.editor.clone(), self.block, layout, hitbox.clone(), window); }
         window.with_content_mask(clip, |window| {
             table_layout::paint_background(layout, window);

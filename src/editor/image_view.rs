@@ -75,8 +75,7 @@ fn resize_move(editor: &Entity<Editor>, id: u64, x: f32, cx: &mut App) {
     drag.width = (drag.start_w + (x - drag.start_x) * drag.dir).clamp(drag.max * MIN_SHARE, drag.max);
     editor.update(cx, |this, cx| {
         if let Some(idx) = this.doc.index_of(id) {
-            let row = this.column_group_range(idx).map_or(idx, |r| r.start);
-            this.list.splice(row..row + 1, 1);
+            this.list.splice(idx..idx + 1, 1);
         }
         cx.notify();
     });
@@ -95,21 +94,21 @@ fn resize_end(editor: &Entity<Editor>, id: u64, cx: &mut App) {
 /// Centered side pill handle with a 12px hit area; dragging it resizes the width in proportion (the height follows).
 fn handle(editor_id: EntityId, id: u64, left: bool, dir: f32, zoom: f32, img_h: Option<f32>, group: &SharedString, show: bool) -> impl IntoElement {
     let bar_h = match img_h {
-        Some(h) if h < 64. => (h * 0.6).round().max(16.),
-        _ => 48.,
+        Some(h) if h < 64. * zoom => (h * 0.6).round().max(16. * zoom),
+        _ => 48. * zoom,
     };
     let bar_color = if crate::theme::is_dark() { 0x707070 } else { 0x9a9a9a };
     div().absolute().top_0().bottom_0()
-        .when(left, |s| s.left(px(-12.5))).when(!left, |s| s.right(px(-12.5)))
+        .when(left, |s| s.left(px(-12.5 * zoom))).when(!left, |s| s.right(px(-12.5 * zoom)))
         .flex().items_center()
         .child(div().id(("image-resize", id as usize * 2 + usize::from(left)))
-            .w(px(12.)).h(px(bar_h + 16.)).flex().items_center().justify_center()
+            .w(px(12. * zoom)).h(px(bar_h + 16. * zoom)).flex().items_center().justify_center()
             .cursor(CursorStyle::ResizeLeftRight)
             .invisible().when(show, |s| s.visible()).group_hover(group.clone(), |s| s.visible())
             .on_drag(Resize { editor_id, id, dir, zoom }, |resize, _, window, cx| {
                 begin(resize, f32::from(window.mouse_position().x), cx); cx.new(|_| Ghost)
             })
-            .child(div().w(px(3.)).h(px(bar_h)).rounded(px(3.)).bg(gpui::rgb(bar_color))))
+            .child(div().w(px((3. * zoom).max(2.))).h(px(bar_h)).rounded(px(3. * zoom)).bg(gpui::rgb(bar_color))))
 }
 
 /// The block under `position`, preferring rendered list geometry so static images are found too.
@@ -181,10 +180,10 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
             .child(gpui::canvas(move |bounds, _, cx| {
                 cx.default_global::<ImageUi>().avail.insert(editor_id, f32::from(bounds.size.width) / zoom);
             }, |_, _, _, _| {}).absolute().size_full())
-            .child(div().id(("image", id as usize)).relative().w(px(card_w)).h(px(120. * zoom)).rounded(px(6.))
+            .child(div().id(("image", id as usize)).relative().w(px(card_w)).h(px(120. * zoom)).rounded(px(6. * zoom))
                 .bg(theme.hover).border_1().border_color(if active { gpui::rgb(ring).into() } else { theme.hairline })
                 .flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
-                .text_size(px(14.)).text_color(theme.text_secondary)
+                .text_size(px(14. * zoom)).text_color(theme.text_secondary)
                 .child(label)
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     if failed { super::image_remote::retry(&url); }
@@ -204,7 +203,7 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
         let th = (tw * rh / rw).round().max(1.);
         (tw, th)
     });
-    let picture = gpui::img(path).rounded(px(4.));
+    let picture = gpui::img(path).rounded(px(4. * zoom));
     let picture = match target_size {
         Some((tw, th)) => picture.w(px(tw)).h(px(th)).object_fit(ObjectFit::Fill),
         None => match width { Some(w) => picture.w(px(w * zoom)), None => picture.max_w(px(DEFAULT_MAX * zoom)).max_h(px(DEFAULT_MAX_H * zoom)) },
@@ -225,16 +224,15 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
                 if (prev_w - w).abs() > 0.5 && w > 0. {
                     canvas_editor.update(cx, |this, cx| {
                         if let Some(idx) = this.doc.index_of(id) {
-                            let row = this.column_group_range(idx).map_or(idx, |r| r.start);
-                            if row < this.list.item_count() {
-                                this.list.splice(row..row + 1, 1);
+                            if idx < this.list.item_count() {
+                                this.list.splice(idx..idx + 1, 1);
                                 cx.notify();
                             }
                         }
                     });
                 }
             }).absolute().size_full())
-            .when(active, |s| s.child(div().absolute().top(px(-6.)).left(px(-6.)).right(px(-6.)).bottom(px(-6.)).rounded(px(8.)).border(px(2.)).border_color(gpui::rgb(ring))))
+            .when(active, |s| s.child(div().absolute().top(px(-6. * zoom)).left(px(-6. * zoom)).right(px(-6. * zoom)).bottom(px(-6. * zoom)).rounded(px(8. * zoom)).border(px(2.)).border_color(gpui::rgb(ring))))
             .child(handle(editor_id, id, true, -scale, zoom, img_h, &group, show))
             .child(handle(editor_id, id, false, scale, zoom, img_h, &group, show))
             .on_drag_move::<Resize>(move |event, _, cx| resize_move(&move_editor, id, f32::from(event.event.position.x), cx))

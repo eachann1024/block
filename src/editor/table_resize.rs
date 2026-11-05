@@ -45,7 +45,7 @@ impl Editor {
         if table_layout::widths_of(id, drag.block).fit && columns > 1 {
             // Fitted tables keep the other columns on the page: leave each at least its minimum.
             if let Some(layout) = self.layouts.get(&drag.block) {
-                let page = f32::from(table_layout::visible(layout.bounds).size.width);
+                let page = f32::from(table_layout::visible(layout).size.width);
                 width = width.min((page - MIN_COL * zoom * (columns - 1) as f32).max(MIN_COL * zoom));
             }
         }

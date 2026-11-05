@@ -38,7 +38,7 @@ pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &m
     let line_height = px(LINE_HEIGHT * zoom);
     let (pad_x, pad_y) = (PAD_X * zoom, PAD_Y * zoom);
     let (min_col, max_col, min_row) = (MIN_COL * zoom, MAX_COL * zoom, px(MIN_ROW * zoom));
-    let width = (width - px(EXTEND_ROOM)).max(px(1.));
+    let width = (width - px(EXTEND_ROOM * zoom)).max(px(1.));
     let count = table.columns.max(1);
     let mut pending = Vec::new();
     for (row, index, range) in table.cell_ranges() {
@@ -173,3 +173,4 @@ pub(super) fn span_index(spans: &[(Pixels, Pixels)], at: Pixels) -> Option<usize
     if spans.is_empty() { return None; }
     Some(spans.iter().position(|s| at < s.1).unwrap_or(spans.len() - 1))
 }
+pub(super) fn zoom_of(layout: &TextLayout) -> f32 { (f32::from(layout.line_height) / LINE_HEIGHT).clamp(0.5, 3.) }

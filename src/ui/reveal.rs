@@ -21,7 +21,7 @@ pub fn hover_icon(glyph: Icon, size: f32, base: Hsla, hover: Hsla) -> Div {
         )
 }
 
-pub fn table_add_bar(id: &'static str, w: Pixels, h: Pixels, tip: &'static str) -> Stateful<Div> {
+pub fn table_add_bar(id: &'static str, w: Pixels, h: Pixels, zoom: f32, tip: &'static str) -> Stateful<Div> {
     let theme = Theme::ocean();
     let dark = is_dark();
     let bg: Hsla = if dark { rgb(0x262626).into() } else { rgba(0x1f1e1d0d).into() };
@@ -36,18 +36,19 @@ pub fn table_add_bar(id: &'static str, w: Pixels, h: Pixels, tip: &'static str) 
         .flex()
         .items_center()
         .justify_center()
-        .rounded(crate::ui::radius::MICRO_SM)
+        .rounded(px(4. * zoom))
         .bg(bg)
         .cursor(CursorStyle::PointingHand)
         .hover(move |s| s.bg(hover_bg))
         .active(move |s| s.bg(active_bg))
-        .child(stateful_icon(id, Icon::Plus, px(12.), false, theme.mono_icon_colors(fg), theme.icon_colors(theme.text)))
+        .child(stateful_icon(id, Icon::Plus, px(12. * zoom), false, theme.mono_icon_colors(fg), theme.icon_colors(theme.text)))
         .tooltip(move |window, cx| build_tooltip(tip, window, cx))
 }
 
 pub fn grip_button(
     id: (&'static str, usize),
     active: bool,
+    zoom: f32,
     listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
@@ -59,9 +60,9 @@ pub fn grip_button(
     div()
         .id(id)
         .group("hover-icon")
-        .size(px(26.))
+        .size(px(26. * zoom))
         .flex_none()
-        .rounded(crate::ui::radius::CONTROL)
+        .rounded(px(6. * zoom))
         .flex()
         .items_center()
         .justify_center()
@@ -72,9 +73,9 @@ pub fn grip_button(
             div()
                 .relative()
                 .flex_none()
-                .w(px(8.))
-                .h(px(12.))
-                .child(div().group_hover("hover-icon", |s| s.invisible()).child(super::table_controls::dots(true, idle_fg)))
+                .w(px(8. * zoom))
+                .h(px(12. * zoom))
+                .child(div().group_hover("hover-icon", |s| s.invisible()).child(super::table_controls::dots(true, idle_fg, zoom)))
                 .child(
                     div()
                         .absolute()
@@ -82,7 +83,7 @@ pub fn grip_button(
                         .left_0()
                         .invisible()
                         .group_hover("hover-icon", |s| s.visible())
-                        .child(super::table_controls::dots(true, hover_fg)),
+                        .child(super::table_controls::dots(true, hover_fg, zoom)),
                 ),
         )
         .on_mouse_down(MouseButton::Left, listener)
@@ -91,6 +92,7 @@ pub fn grip_button(
 pub fn handle_button(
     glyph: Icon,
     id: (&'static str, usize),
+    zoom: f32,
     listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
@@ -98,21 +100,22 @@ pub fn handle_button(
     div()
         .id(id)
         .group("hover-icon")
-        .size(px(24.))
+        .size(px(24. * zoom))
         .flex_none()
-        .rounded(crate::ui::radius::CONTROL)
+        .rounded(px(6. * zoom))
         .flex()
         .items_center()
         .justify_center()
         .hover(move |s| s.bg(bg_hover))
         .cursor(CursorStyle::PointingHand)
-        .child(hover_icon(glyph, 14., theme.text_secondary, theme.text))
+        .child(hover_icon(glyph, 14. * zoom, theme.text_secondary, theme.text))
         .on_mouse_down(MouseButton::Left, listener)
 }
 
 pub fn fold_button(
     folded: bool,
     id: (&'static str, usize),
+    zoom: f32,
     listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
@@ -125,16 +128,16 @@ pub fn fold_button(
     div()
         .id(id)
         .group("hover-icon")
-        .size(px(24.))
+        .size(px(24. * zoom))
         .flex_none()
-        .rounded(crate::ui::radius::CONTROL)
+        .rounded(px(6. * zoom))
         .flex()
         .items_center()
         .justify_center()
         .hover(move |s| s.bg(bg_hover))
         .cursor(CursorStyle::PointingHand)
         .tooltip(move |window, cx| build_tooltip(tip, window, cx))
-        .child(hover_icon(glyph, 14., base_fg, hover_fg))
+        .child(hover_icon(glyph, 14. * zoom, base_fg, hover_fg))
         .on_mouse_down(MouseButton::Left, listener)
 }
 
@@ -143,6 +146,7 @@ pub fn top_insert_slot(
     handle_w: f32,
     row_gap: f32,
     right_inset: f32,
+    zoom: f32,
     listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
@@ -157,7 +161,7 @@ pub fn top_insert_slot(
         .min_w_0()
         .pl(px(handle_w + row_gap))
         .pr(px(right_inset))
-        .pb(px(6.))
+        .pb(px(6. * zoom))
         .flex()
         .items_center()
         .cursor(CursorStyle::PointingHand)
@@ -165,11 +169,11 @@ pub fn top_insert_slot(
         .group_hover("top-slot", |s| s.opacity(1.))
         .on_mouse_down(MouseButton::Left, listener)
         .child(
-            div().flex_1().min_w_0().max_w(theme.content_width).h(px(28.)).px(px(12.)).rounded(crate::ui::radius::CONTROL)
+            div().flex_1().min_w_0().max_w(theme.content_width).h(px(28. * zoom)).px(px(12. * zoom)).rounded(px(6. * zoom))
                 .bg(bar_bg).border_1().border_color(pill_border)
                 .group_hover("top-slot", move |s| s.bg(bar_hover_bg).border_color(theme.accent))
                 .flex().items_center()
-                .child(div().flex().items_center().gap(px(6.)).text_size(px(13.)).text_color(theme.accent)
+                .child(div().flex().items_center().gap(px(6. * zoom)).text_size(px(13. * zoom)).text_color(theme.accent)
                     .child(tr("点击在文档最上方插入新行", "Click to insert a new line at the top"))),
         )
 }
