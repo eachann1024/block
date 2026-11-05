@@ -191,8 +191,9 @@ pub(super) fn render_state(
 }
 
 pub(super) fn render_image(image: Arc<Image>, width: f32, height: f32) -> AnyElement {
+    let zoom = super::zoom::zoom_factor();
     div().w_full().flex().items_center().justify_center().py(px(6.))
-        .child(img(image).w(px(width)).h(px(height)).flex_none())
+        .child(img(image).w(px(width * zoom)).h(px(height * zoom)).flex_none())
         .into_any_element()
 }
 

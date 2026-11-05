@@ -45,22 +45,33 @@ pub(super) fn clear_window_state(cx: &mut App) {
     }
 }
 
+pub fn is_open(cx: &App) -> bool {
+    cx.try_global::<QuickState>().map_or(false, |s| s.window.is_some())
+}
+
+pub fn flush_editor(cx: &mut App) {
+    if let Some(editor) = cx.try_global::<QuickState>().and_then(|s| s.editor.clone()) {
+        editor.update(cx, |editor, cx| editor.save(cx));
+    }
+}
+
 pub fn refresh_style(cx: &mut App) {
     crate::search::window::refresh_style(cx);
-    let Some(state) = cx.try_global::<QuickState>() else { return };
-    let (editor, window) = (state.editor.clone(), state.window.clone());
-    if let Some(editor) = editor {
-        editor.update(cx, |e, cx| { e.reset_layouts(); cx.notify(); });
-    }
-    if let Some((_, view)) = window {
-        view.update(cx, |_, cx| cx.notify());
-    }
+    let (editor, window) = match cx.try_global::<QuickState>() {
+        Some(s) => (s.editor.clone(), s.window.clone()),
+        None => return,
+    };
+    if let Some(editor) = editor { editor.update(cx, |e, cx| { e.reset_layouts(); cx.notify(); }); }
+    if let Some((_, view)) = window { view.update(cx, |_, cx| cx.notify()); }
 }
 
 /// Binds keys, the toggle action and the global hotkeys. Call once at startup.
 pub fn init(saved_bounds: Option<SavedWindowBounds>, cx: &mut App) {
     cx.set_global(QuickState { bounds: saved_bounds, ..Default::default() });
     cx.bind_keys([
+        KeyBinding::new("cmd-shift-k", crate::app::OpenSearch, Some("QuickNote > Editor")),
+        KeyBinding::new("cmd-shift-k", crate::app::OpenSearch, Some("QuickNote")),
+        KeyBinding::new("cmd-shift-k", crate::app::OpenSearch, None),
         KeyBinding::new("escape", HideQuickNote, Some("QuickNote")),
         KeyBinding::new("cmd-w", HideQuickNote, Some("QuickNote")),
         KeyBinding::new("cmd-shift-s", SaveToNote, Some("QuickNote")),
@@ -70,6 +81,9 @@ pub fn init(saved_bounds: Option<SavedWindowBounds>, cx: &mut App) {
     ]);
     #[cfg(not(target_os = "macos"))]
     cx.bind_keys([
+        KeyBinding::new("ctrl-shift-k", crate::app::OpenSearch, Some("QuickNote > Editor")),
+        KeyBinding::new("ctrl-shift-k", crate::app::OpenSearch, Some("QuickNote")),
+        KeyBinding::new("ctrl-shift-k", crate::app::OpenSearch, None),
         KeyBinding::new("ctrl-w", HideQuickNote, Some("QuickNote")),
         KeyBinding::new("ctrl-shift-s", SaveToNote, Some("QuickNote")),
         KeyBinding::new("ctrl-1", SlotOne, Some("QuickNote")),
@@ -77,6 +91,7 @@ pub fn init(saved_bounds: Option<SavedWindowBounds>, cx: &mut App) {
         KeyBinding::new("ctrl-3", SlotThree, Some("QuickNote")),
     ]);
     cx.on_action(|_: &ToggleQuickNote, cx: &mut App| toggle(cx));
+    cx.on_action(|_: &crate::app::OpenSearch, cx: &mut App| crate::search::window::summon_main(cx));
     start_hotkey(cx);
 }
 
@@ -123,22 +138,13 @@ fn open(cx: &mut App) {
         .or_else(|| crate::files::load_state().ok().and_then(|s| s.quick_window_bounds));
     let min_size = size(px(380.), px(320.));
     let (window_bounds, display_id) = crate::window_bounds::resolve_window_bounds(
-        saved_bounds,
-        size(px(440.), px(520.)),
-        min_size,
-        cx,
+        saved_bounds, size(px(440.), px(520.)), min_size, cx,
     );
     let opened = cx.open_window(
         WindowOptions {
-            window_bounds: Some(window_bounds),
-            display_id,
-            window_min_size: Some(min_size),
-            kind: WindowKind::PopUp,
-            focus: true,
-            show: true,
-            is_movable: true,
-            is_minimizable: false,
-            is_resizable: true,
+            window_bounds: Some(window_bounds), display_id,
+            window_min_size: Some(min_size), kind: WindowKind::PopUp,
+            focus: true, show: true, is_movable: true, is_minimizable: false, is_resizable: true,
             titlebar: Some(TitlebarOptions {
                 title: Some(crate::theme::tr("速记", "Quick Note").into()),
                 appears_transparent: true,
@@ -199,20 +205,22 @@ pub fn parse_hotkey(spec: &str) -> Option<HotKey> {
             "equal" | "=" => code = Some(Code::Equal),
             "backquote" | "`" => code = Some(Code::Backquote),
             s if s.len() == 1 => {
-                code = match s.as_bytes()[0] {
-                    b'a' => Some(Code::KeyA), b'b' => Some(Code::KeyB), b'c' => Some(Code::KeyC),
-                    b'd' => Some(Code::KeyD), b'e' => Some(Code::KeyE), b'f' => Some(Code::KeyF),
-                    b'g' => Some(Code::KeyG), b'h' => Some(Code::KeyH), b'i' => Some(Code::KeyI),
-                    b'j' => Some(Code::KeyJ), b'k' => Some(Code::KeyK), b'l' => Some(Code::KeyL),
-                    b'm' => Some(Code::KeyM), b'n' => Some(Code::KeyN), b'o' => Some(Code::KeyO),
-                    b'p' => Some(Code::KeyP), b'q' => Some(Code::KeyQ), b'r' => Some(Code::KeyR),
-                    b's' => Some(Code::KeyS), b't' => Some(Code::KeyT), b'u' => Some(Code::KeyU),
-                    b'v' => Some(Code::KeyV), b'w' => Some(Code::KeyW), b'x' => Some(Code::KeyX),
-                    b'y' => Some(Code::KeyY), b'z' => Some(Code::KeyZ),
-                    b'0' => Some(Code::Digit0), b'1' => Some(Code::Digit1), b'2' => Some(Code::Digit2),
-                    b'3' => Some(Code::Digit3), b'4' => Some(Code::Digit4), b'5' => Some(Code::Digit5),
-                    b'6' => Some(Code::Digit6), b'7' => Some(Code::Digit7), b'8' => Some(Code::Digit8),
-                    b'9' => Some(Code::Digit9),
+                let b = s.as_bytes()[0];
+                code = match b {
+                    b'a'..=b'z' => Some(match b {
+                        b'a' => Code::KeyA, b'b' => Code::KeyB, b'c' => Code::KeyC, b'd' => Code::KeyD,
+                        b'e' => Code::KeyE, b'f' => Code::KeyF, b'g' => Code::KeyG, b'h' => Code::KeyH,
+                        b'i' => Code::KeyI, b'j' => Code::KeyJ, b'k' => Code::KeyK, b'l' => Code::KeyL,
+                        b'm' => Code::KeyM, b'n' => Code::KeyN, b'o' => Code::KeyO, b'p' => Code::KeyP,
+                        b'q' => Code::KeyQ, b'r' => Code::KeyR, b's' => Code::KeyS, b't' => Code::KeyT,
+                        b'u' => Code::KeyU, b'v' => Code::KeyV, b'w' => Code::KeyW, b'x' => Code::KeyX,
+                        b'y' => Code::KeyY, _ => Code::KeyZ,
+                    }),
+                    b'0'..=b'9' => Some(match b {
+                        b'0' => Code::Digit0, b'1' => Code::Digit1, b'2' => Code::Digit2, b'3' => Code::Digit3,
+                        b'4' => Code::Digit4, b'5' => Code::Digit5, b'6' => Code::Digit6, b'7' => Code::Digit7,
+                        b'8' => Code::Digit8, _ => Code::Digit9,
+                    }),
                     _ => None,
                 };
             }
@@ -228,13 +236,19 @@ pub fn rebind_hotkeys(cx: &mut App) {
     let quick_spec = crate::theme::quick_shortcut();
     let search_spec = crate::theme::search_shortcut();
     if parse_hotkey(&quick_spec).is_some() {
-        if let Ok(binding) = KeyBinding::load(&quick_spec, Box::new(ToggleQuickNote), None, false, None, cx) {
-            cx.bind_keys([binding]);
+        if let Ok(b) = KeyBinding::load(&quick_spec, Box::new(ToggleQuickNote), None, false, None, cx) {
+            cx.bind_keys([b]);
         }
     }
     if parse_hotkey(&search_spec).is_some() {
-        if let Ok(binding) = KeyBinding::load(&search_spec, Box::new(crate::app::OpenSearch), None, false, None, cx) {
-            cx.bind_keys([binding]);
+        if let Ok(b) = KeyBinding::load(&search_spec, Box::new(crate::app::OpenSearch), None, false, None, cx) {
+            cx.bind_keys([b]);
+        }
+        for ctx in ["QuickNote", "QuickNote > Editor"] {
+            let pred = gpui::KeyBindingContextPredicate::parse(ctx).ok().map(std::rc::Rc::new);
+            if let Ok(b) = KeyBinding::load(&search_spec, Box::new(crate::app::OpenSearch), pred, false, None, cx) {
+                cx.bind_keys([b]);
+            }
         }
     }
     if !cx.has_global::<QuickState>() { return; }

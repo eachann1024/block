@@ -27,7 +27,7 @@ actions!(editor, [Backspace, Delete, Left, Right, SelectLeft, SelectRight, Selec
     LineStart, LineEnd, SelectLineStart, SelectLineEnd, LogicalLineStart, LogicalLineEnd,
     WordLeft, WordRight, SelectWordLeft, SelectWordRight,
     DeleteWordLeft, DeleteWordRight, DeleteLineLeft, DeleteLineRight, ExportImage, CopyMarkdown, Annotate,
-    ToggleHighlight, ClearFormat, ToggleFold, PastePlain]);
+    ToggleHighlight, ClearFormat, ToggleFold, PastePlain, ZoomIn, ZoomOut, ZoomReset]);
 pub(super) enum EditorAction {
     Backspace, Delete, Left, Right, SelectLeft, SelectRight, SelectAll, Up, Down,
     SelectUp, SelectDown, Enter, Copy, Cut, Paste, Bold, Italic, Strike, Code, Undo, Redo, Cancel, Save,
@@ -83,7 +83,7 @@ pub struct Editor {
 }
 impl Editor {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        crate::dropdown::register_editor(&cx.entity());
+        crate::dropdown::register_editor(&cx.entity()); super::zoom::register_editor(&cx.entity());
         cx.on_app_quit(|editor, _| { editor.prepare_to_quit(); async {} }).detach();
         let doc = Doc::empty(); let caret = Caret::new(doc.blocks[0].id);
         Self { doc, caret, focus: cx.focus_handle(), hover: None, hover_gen: 0, dragging: None,
@@ -124,7 +124,7 @@ impl Render for Editor {
             if editor.path.is_some() { window.handle_input(&editor.focus, gpui::ElementInputHandler::new(bounds, input_editor.clone()), cx); }
         }).absolute().size_full();
         let editor = cx.entity();
-        let pad = if self.minimal { (18., 12.) } else { (64., 160.) };
+        let pad = if self.minimal { (12., 8.) } else { (64., 160.) };
         if self.list.item_count() != self.doc.blocks.len() {
             crate::log::warn(&format!("editor list item_count ({}) != doc.blocks.len() ({}); resetting", self.list.item_count(), self.doc.blocks.len()));
             self.list.reset(self.doc.blocks.len());
@@ -146,7 +146,7 @@ impl Render for Editor {
                 super::chrome::render_block_row(this, index, cx)
             })
         }).size_full().pt(px(pad.0)).pb(px(pad.1));
-        let rows = if self.minimal { div().flex_1().min_w_0().h_full().ml(px(-32.)).child(rows).into_any_element() } else { rows.into_any_element() };
+        let rows = if self.minimal { div().flex_1().min_w_0().h_full().ml(px(-44.)).child(rows).into_any_element() } else { rows.into_any_element() };
         let anchor_editor = cx.entity();
         // Runs after all rows paint: layout retries never publish overlay geometry.
         let anchor_sync = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
@@ -219,7 +219,7 @@ impl Render for Editor {
                 .on_mouse_up(MouseButton::Left, cx.listener(|this, event: &gpui::MouseUpEvent, _, cx| this.finish_drag(event.position, cx)))
                 .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.finish_extend(cx); this.clear_pointer(); cx.notify(); }))
                 // The column is centred alongside the 224px annotation rail when the editor pane has room.
-                .child(div().flex_1().min_h_0().min_w_0().w_full().relative().flex().pr(px(scrollbar::GUTTER))
+                .child(div().flex_1().min_h_0().min_w_0().w_full().relative().flex().pr(px(if self.minimal { 6. } else { scrollbar::GUTTER }))
                     .on_scroll(scrollbar::forward_wheel(&self.list))
                     .child(div().h_full().min_w_0().w_full().mx_auto().max_w(std_w + rail_slot).flex().justify_start()
                         .child(div().h_full().min_w_0().w_full().max_w(std_w)
@@ -276,8 +276,9 @@ impl Render for Editor {
                 .on_action(cx.listener(|this, _: &Underline, _, cx| this.underline(cx)))
                 .on_action(cx.listener(|this, _: &EditLink, w, cx| this.open_link(w, cx)))
                 .on_action(cx.listener(|this, _: &OpenLinkAtCaret, w, cx| this.open_link_at_caret(w, cx)))
-                .on_action(cx.listener(|this, _: &ImageGrow, _, cx| this.step_selected_image(10, cx)))
-                .on_action(cx.listener(|this, _: &ImageShrink, _, cx| this.step_selected_image(-10, cx)))
+                .on_action(cx.listener(|this, _: &ZoomIn, _, cx| super::zoom::zoom_in(this, cx)))
+                .on_action(cx.listener(|this, _: &ZoomOut, _, cx| super::zoom::zoom_out(this, cx)))
+                .on_action(cx.listener(|this, _: &ZoomReset, _, cx| super::zoom::zoom_reset(this, cx)))
                 .on_action(cx.listener(|this, _: &ExitBlock, w, cx| this.exit_block(w, cx)))
                 .on_action(cx.listener(|this, _: &ExportImage, w, cx| this.export_image(w, cx)))
                 .on_action(cx.listener(|this, _: &CopyMarkdown, _, cx| this.copy_markdown(cx)))

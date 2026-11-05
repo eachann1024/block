@@ -33,9 +33,12 @@ struct Pending {
 }
 
 pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &mut Window) -> TextLayout {
+    let zoom = super::zoom::zoom_factor();
     let theme = Theme::ocean();
-    let font_size = px(FONT_SIZE);
-    let line_height = px(LINE_HEIGHT);
+    let font_size = px(FONT_SIZE * zoom);
+    let line_height = px(LINE_HEIGHT * zoom);
+    let (pad_x, pad_y) = (PAD_X * zoom, PAD_Y * zoom);
+    let (min_col, max_col, min_row) = (MIN_COL * zoom, MAX_COL * zoom, px(MIN_ROW * zoom));
     let width = (width - px(EXTEND_ROOM)).max(px(1.));
     let count = table.columns.max(1);
     let mut pending = Vec::new();
@@ -61,15 +64,15 @@ pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &m
     }
     // Columns are as wide as their content (like `table-layout: auto`), never stretched to the page,
     // unless the session fits them to the page; a width dragged by the user beats the document's own.
-    let explicit: Vec<Option<f32>> = (0..count).map(|index| session.manual_at(index, count).or_else(|| table.column_widths.get(index)
+    let explicit: Vec<Option<f32>> = (0..count).map(|index| session.manual_at(index, count).map(|w| w * zoom).or_else(|| table.column_widths.get(index)
         .and_then(|value| value.as_deref()).and_then(|value| value.strip_suffix("px"))
-        .and_then(|value| value.parse::<f32>().ok()).filter(|value| value.is_finite() && *value > 0.))).collect();
-    let mut widths: Vec<f32> = explicit.iter().map(|value| value.unwrap_or(MIN_COL)).collect();
+        .and_then(|value| value.parse::<f32>().ok()).filter(|value| value.is_finite() && *value > 0.).map(|w| w * zoom))).collect();
+    let mut widths: Vec<f32> = explicit.iter().map(|value| value.unwrap_or(min_col)).collect();
     let mut order: Vec<&Pending> = pending.iter().collect();
     order.sort_by_key(|p| table.rows[p.row].cells[p.index].colspan);
     for p in order {
         let cell = &table.rows[p.row].cells[p.index];
-        let need = (f32::from(p.natural) + PAD_X * 2. + BORDER).min(if session.fit { MAX_COL * 4. } else { MAX_COL });
+        let need = (f32::from(p.natural) + pad_x * 2. + BORDER).min(if session.fit { max_col * 4. } else { max_col });
         let first = cell.column.min(count - 1);
         let last = (cell.column + cell.colspan).saturating_sub(1).min(count - 1);
         let free: Vec<usize> = (first..=last).filter(|c| explicit[*c].is_none()).collect();
@@ -81,21 +84,21 @@ pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &m
     }
     if session.fit {
         let fixed: Vec<bool> = explicit.iter().map(Option::is_some).collect();
-        widths = width::fit(&widths, &fixed, f32::from(width));
+        widths = width::fit(&widths, &fixed, f32::from(width), min_col);
     }
     let col_spans: Vec<(Pixels, Pixels)> = {
         let mut xs = vec![px(0.)];
         for value in widths { xs.push(*xs.last().unwrap() + px(value)); }
         (0..count).map(|c| (xs[c], xs[c + 1])).collect()
     };
-    let mut heights = vec![px(MIN_ROW); table.rows.len()];
+    let mut heights = vec![min_row; table.rows.len()];
     let mut cells = Vec::new();
     for Pending { row, index, range, text, runs, lines, natural, code_spans } in pending {
         let cell = &table.rows[row].cells[index];
         let start_col = cell.column.min(count - 1);
         let end_col = (cell.column + cell.colspan).saturating_sub(1).min(count - 1).max(start_col);
         let cell_width = col_spans[end_col].1 - col_spans[start_col].0;
-        let inner = (cell_width - px(PAD_X * 2. + BORDER)).max(px(1.));
+        let inner = (cell_width - px(pad_x * 2. + BORDER)).max(px(1.));
         let lines: Vec<WrappedLine> = if natural <= inner + px(0.5) { lines } else {
             window.text_system().shape_text(text, font_size, &runs, Some(inner), None)
                 .map(|lines| lines.into_iter().collect()).unwrap_or_default()
@@ -108,7 +111,7 @@ pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &m
         let alignment = match alignment { CellAlignment::Left => TextAlign::Left,
             CellAlignment::Center => TextAlign::Center, CellAlignment::Right => TextAlign::Right };
         let text = TextLayout { bounds:Bounds::default(), lines, line_height, cells:Vec::new(), alignment, code_spans };
-        let required = (text.height().max(line_height) + px(PAD_Y * 2. + BORDER)).max(px(MIN_ROW));
+        let required = (text.height().max(line_height) + px(pad_y * 2. + BORDER)).max(min_row);
         if cell.rowspan <= 1 { heights[row] = heights[row].max(required); }
         cells.push((row, index, range, text, required));
     }
@@ -131,8 +134,8 @@ pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &m
             size(right - left, ys[end_row]-ys[row]));
         // `vertical-align: top`: padding plus half of the collapsed border.
         let text_height = text.height().max(line_height);
-        text.bounds = Bounds::new(frame.origin+point(px(PAD_X + BORDER / 2.), px(PAD_Y + BORDER / 2.)),
-            size((frame.size.width-px(PAD_X*2.+BORDER)).max(px(1.)), text_height));
+        text.bounds = Bounds::new(frame.origin+point(px(pad_x + BORDER / 2.), px(pad_y + BORDER / 2.)),
+            size((frame.size.width-px(pad_x*2.+BORDER)).max(px(1.)), text_height));
         // `td` is transparent; only `th` carries a fill.
         let default_bg: Option<gpui::Hsla> = match (crate::theme::is_dark(), cell.header) {
             (false, true) => Some(gpui::rgb(0xf5f3ed).into()),
