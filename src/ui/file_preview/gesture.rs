@@ -92,19 +92,19 @@ impl FilePreview {
         self.zoom_at(event.position, nat_w, nat_h, (1.0 + event.delta).clamp(0.5, 2.0), cx);
     }
 
-    pub(super) fn zoom_button(&mut self, factor: f32, cx: &mut Context<Self>) {
+    pub fn zoom_button(&mut self, factor: f32, cx: &mut Context<Self>) {
         let Some((nat_w, nat_h)) = self.natural() else { return; };
         let scale = view::effective_scale(self.view, nat_w, nat_h, self.stage.w, self.stage.h);
         self.view = view::zoom_at(ViewTransform { scale, ..self.view }, 0.0, 0.0, scale * factor);
         cx.notify();
     }
 
-    pub(super) fn zoom_actual(&mut self, cx: &mut Context<Self>) {
+    pub fn zoom_actual(&mut self, cx: &mut Context<Self>) {
         self.view = ViewTransform::actual();
         cx.notify();
     }
 
-    pub(super) fn zoom_fit(&mut self, cx: &mut Context<Self>) {
+    pub fn zoom_fit(&mut self, cx: &mut Context<Self>) {
         self.view = ViewTransform::fit();
         cx.notify();
     }
