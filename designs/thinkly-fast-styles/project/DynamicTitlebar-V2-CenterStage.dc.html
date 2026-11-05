@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>全局动态标题栏 B · 居中舞台模式栏 + 右侧极简动作</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+button:disabled{cursor:default;opacity:.48}
+button:focus-visible{outline:2px solid #547dd0;outline-offset:1px}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.ib{width:28px;height:28px;border:0;border-radius:8px;background:transparent;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;flex:none;box-sizing:border-box}
+.ib:hover{background:#eef3fc}
+.tbtn{height:28px;padding:0 10px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;box-sizing:border-box;font-weight:460}
+.row{font:inherit;width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 10px;border:0;border-radius:8px;background:transparent;text-align:left;cursor:pointer;box-sizing:border-box}
+.seg{font:inherit;height:24px;padding:0 10px;border:0;border-radius:6px;background:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-weight:460;white-space:nowrap}
+.vitem{font:inherit;width:100%;height:36px;padding:0 12px;border:0;border-radius:8px;background:transparent;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;box-sizing:border-box}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:920px;box-sizing:border-box;display:flex;flex-direction:column;background:{{shellBg}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:{{textPrimary}};font-size:14px;line-height:20px;overflow:hidden;-webkit-font-smoothing:antialiased">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;border-bottom:1px solid {{sidebarBorder}};background:{{shellBg}};box-sizing:border-box">
+<div style="width:{{leftHeaderWidth}};flex:none;height:100%;box-sizing:border-box;display:flex;align-items:center;gap:4px;padding:0 10px 0 16px;border-right:1px solid {{sidebarBorder}}">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none;margin-right:auto">
+<span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+<span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+<span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+</div>
+
+<sc-if value="{{showNavArrows}}" hint-placeholder-val="{{true}}">
+<button type="button" class="ib" aria-label="后退" style="width:24px;height:24px;color:{{textSecondary}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>
+</button>
+</sc-if>
+
+<sc-if value="{{showSidebarToggle}}" hint-placeholder-val="{{true}}">
+<button type="button" class="ib" onClick="{{toggleSidebar}}" aria-label="切换侧栏" style="width:26px;height:26px;color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{iconFill}}"></path>
+<rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+</svg>
+</button>
+</sc-if>
+
+<sc-if value="{{showBackInLeft}}" hint-placeholder-val="{{false}}">
+<button type="button" class="tbtn" onClick="{{goNoteScene}}" style="height:26px;padding:0 9px;background:{{cardBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 6.25L4.75 12L10.5 17.75"></path><path d="M5.25 12H19.25"></path></svg>
+<span>返回</span>
+</button>
+</sc-if>
+</div>
+
+<div style="flex:1;min-width:0;height:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;padding:0 12px;gap:8px;box-sizing:border-box">
+
+<div style="min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden">
+<span class="{{activeTabMono}}" style="font-weight:560;color:{{textPrimary}};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{leftTitleText}}</span>
+<sc-if value="{{showSubTag}}" hint-placeholder-val="{{false}}">
+<span style="color:{{textSecondary}};white-space:nowrap">{{subTagText}}</span>
+</sc-if>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:center;gap:6px;min-width:0">
+<sc-if value="{{showSvgModeSwitch}}" hint-placeholder-val="{{false}}">
+<div role="group" aria-label="SVG 视图切换" style="display:inline-flex;padding:2px;border-radius:8px;background:{{segWellBg}};border:1px solid {{borderCol}};gap:2px">
+<button type="button" class="seg" onClick="{{setSvgPreview}}" style="background:{{svgPrevBg}};color:{{svgPrevCol}};box-shadow:{{svgPrevRing}}">预览</button>
+<button type="button" class="seg" onClick="{{setSvgSource}}" style="background:{{svgSrcBg}};color:{{svgSrcCol}};box-shadow:{{svgSrcRing}}">源码</button>
+</div>
+</sc-if>
+
+<sc-if value="{{showZoomCluster}}" hint-placeholder-val="{{true}}">
+<div role="group" aria-label="居中舞台缩放舱" style="display:inline-flex;align-items:center;gap:2px;padding:2px 4px;border-radius:8px;background:{{cardBg}};border:1px solid {{btnBorder}}">
+<button type="button" class="ib" onClick="{{zoomOut}}" aria-label="缩小" style="width:24px;height:24px;color:{{textSecondary}}">−</button>
+<button type="button" class="ib mono" onClick="{{zoomReset}}" aria-label="重置为 100%" style="width:auto;min-width:52px;height:24px;padding:0 6px;color:{{textPrimary}};font-weight:500">{{zoomPctText}}</button>
+<button type="button" class="ib" onClick="{{zoomIn}}" aria-label="放大" style="width:24px;height:24px;color:{{textSecondary}}">+</button>
+<div style="width:1px;height:14px;background:{{btnBorder}};margin:0 2px"></div>
+<button type="button" class="ib" onClick="{{zoomFit}}" aria-label="适应窗口" style="width:24px;height:24px;background:{{fitBtnBg}};box-shadow:{{fitBtnRing}};color:{{fitBtnCol}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4H18.5A1.5 1.5 0 0 1 20 5.5V9M20 15V18.5A1.5 1.5 0 0 1 18.5 20H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"></path></svg>
+</button>
+</div>
+</sc-if>
+
+<sc-if value="{{isHistoryScene}}" hint-placeholder-val="{{false}}">
+<div role="group" aria-label="历史对比切换" style="display:inline-flex;align-items:center;padding:2px;border-radius:8px;background:{{cardBg}};border:1px solid {{btnBorder}};gap:2px">
+<button type="button" class="seg" onClick="{{setHistClean}}" style="background:{{histCleanBg}};color:{{histCleanCol}};box-shadow:{{histCleanRing}}">原文</button>
+<button type="button" class="seg" onClick="{{setHistDiff}}" style="background:{{histDiffBg}};color:{{histDiffCol}};box-shadow:{{histDiffRing}}">对比</button>
+</div>
+</sc-if>
+
+<sc-if value="{{isExportScene}}" hint-placeholder-val="{{false}}">
+<div role="group" aria-label="导出居中缩放栏" style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:8px;background:{{cardBg}};border:1px solid {{btnBorder}}">
+<span class="mono" style="color:{{textSecondary}}">1632×2004 · 2×</span>
+<div style="width:1px;height:14px;background:{{btnBorder}}"></div>
+<button type="button" class="ib" onClick="{{zoomOut}}" aria-label="缩小导出预览" style="width:22px;height:22px;color:{{textSecondary}}">−</button>
+<button type="button" class="ib mono" onClick="{{zoomFit}}" aria-label="自适应导出预览" style="width:auto;min-width:44px;height:22px;padding:0 4px;color:{{textPrimary}}">{{exportZoomText}}</button>
+<button type="button" class="ib" onClick="{{zoomIn}}" aria-label="放大导出预览" style="width:22px;height:22px;color:{{textSecondary}}">+</button>
+</div>
+</sc-if>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0">
+<sc-if value="{{showOpenBrowserBtn}}" hint-placeholder-val="{{false}}">
+<button type="button" class="tbtn" onClick="{{triggerBrowserToast}}" style="background:{{cardBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">
+<span>浏览器打开</span>
+</button>
+</sc-if>
+
+<sc-if value="{{showRevealOnlyBtn}}" hint-placeholder-val="{{true}}">
+<button type="button" class="tbtn" onClick="{{triggerRevealToast}}" style="background:{{cardBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">
+<span>在访达中显示</span>
+</button>
+</sc-if>
+
+<sc-if value="{{isHistoryScene}}" hint-placeholder-val="{{false}}">
+<button type="button" class="tbtn" disabled="{{histRestoreDisabled}}" onClick="{{triggerRestoreToast}}" style="background:#547dd0;border:1px solid #547dd0;color:#ffffff">恢复此版本</button>
+</sc-if>
+
+<sc-if value="{{isNoteScene}}" hint-placeholder-val="{{false}}">
+<div role="group" aria-label="页面与批注操作" style="padding:2px;border-radius:8px;border:1px solid {{btnBorder}};background:{{cardBg}};display:inline-flex;align-items:center;gap:2px">
+<button type="button" style="height:24px;padding:0 10px;border:0;border-radius:6px;background:{{selectedBg}};color:{{textPrimary}};font-weight:460;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+<span style="width:7px;height:7px;border-radius:4px;background:#f5c84c;flex:none"></span>
+<span>统一发送</span>
+<span class="mono" style="color:{{accent}};font-weight:600">2</span>
+</button>
+<div style="width:1px;height:14px;background:{{btnBorder}};flex:none"></div>
+<button type="button" class="ib" onClick="{{toggleMoreMenu}}" aria-label="页面更多操作" style="width:24px;height:24px;border-radius:6px;color:{{textSecondary}}">⋯</button>
+</div>
+</sc-if>
+
+<button type="button" class="ib" onClick="{{toggleTheme}}" aria-label="切换浅色或深色主题" style="color:{{textSecondary}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="{{iconFill}}"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2"></path></svg>
+</button>
+</div>
+
+</div>
+</header>
+
+<div style="height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:{{sidebarBg}};border-bottom:1px solid {{sidebarBorder}};gap:8px;overflow-x:auto">
+<div style="display:flex;align-items:center;gap:6px;flex:none">
+<span style="color:{{textSecondary}};font-weight:560">方案 B 场景切换：</span>
+<sc-for list="{{sceneTabs}}" as="st" hint-placeholder-count="8">
+<button type="button" onClick="{{st.pick}}" style="height:28px;padding:0 10px;border-radius:8px;border:1px solid {{st.border}};background:{{st.bg}};color:{{st.col}};font-weight:{{st.weight}};cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap">
+<span>{{st.label}}</span>
+</button>
+</sc-for>
+</div>
+<span style="color:{{accent}};font-weight:460;white-space:nowrap">{{dynamicRuleSummary}}</span>
+</div>
+
+<div style="flex:1;min-height:0;display:flex;position:relative">
+<sc-if value="{{showFileSidebar}}" hint-placeholder-val="{{true}}">
+<aside aria-label="文件树侧栏" style="width:260px;flex:none;background:{{sidebarBg}};border-right:1px solid {{sidebarBorder}};display:flex;flex-direction:column;min-height:0;box-sizing:border-box">
+<div style="padding:10px 10px 8px;display:flex;align-items:center;gap:6px">
+<button type="button" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;background:{{cardBg}};color:{{textSecondary}};border:1px solid {{btnBorder}};display:flex;align-items:center;gap:6px;cursor:pointer">
+<span style="flex:1;text-align:left">搜索</span>
+<span class="mono" style="font-size:12px;color:{{textSecondary}}">⌘K</span>
+</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;padding:2px 8px 12px;display:flex;flex-direction:column;gap:2px">
+<div style="padding:4px 8px;color:{{textSecondary}}">▽ assets</div>
+<button type="button" class="row" onClick="{{goImageScene}}" style="padding-left:22px;background:{{rowImgBg}};box-shadow:{{rowImgRing}};color:{{textPrimary}}">
+<span class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">img_d3z9q6t_1788010402198.png</span>
+</button>
+<button type="button" class="row" onClick="{{goSvgScene}}" style="padding-left:22px;background:{{rowSvgBg}};box-shadow:{{rowSvgRing}};color:{{textPrimary}}">
+<span class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">diagram.svg</span>
+</button>
+<button type="button" class="row" onClick="{{goHtmlScene}}" style="padding-left:22px;background:{{rowHtmlBg}};box-shadow:{{rowHtmlRing}};color:{{textPrimary}}">
+<span class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">index.html</span>
+</button>
+<button type="button" class="row" onClick="{{goJsonScene}}" style="padding-left:22px;background:{{rowJsonBg}};box-shadow:{{rowJsonRing}};color:{{textPrimary}}">
+<span class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">settings.json</span>
+</button>
+<button type="button" class="row" onClick="{{goBlockedScene}}" style="padding-left:22px;background:{{rowPdfBg}};box-shadow:{{rowPdfRing}};color:{{textPrimary}}">
+<span class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">manual.pdf</span>
+</button>
+<div style="height:1px;background:{{sidebarBorder}};margin:6px 8px"></div>
+<button type="button" class="row" onClick="{{goNoteScene}}" style="background:{{rowNoteBg}};box-shadow:{{rowNoteRing}};color:{{textPrimary}}">
+<span>周会 11-03</span>
+</button>
+</div>
+</aside>
+</sc-if>
+
+<main style="flex:1;min-width:0;background:{{editorBg}};display:flex;flex-direction:column;position:relative;overflow:hidden">
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{false}}">
+<div role="status" style="margin:12px 24px 0;padding:8px 14px;border-radius:8px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};display:flex;align-items:center;justify-content:space-between">
+<span>{{toastMsg}}</span>
+<button type="button" onClick="{{clearToast}}" style="border:0;background:transparent;color:{{accent}};cursor:pointer;font-weight:500">知道了</button>
+</div>
+</sc-if>
+
+<sc-if value="{{isImageScene}}" hint-placeholder-val="{{true}}">
+<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:32px;background:{{editorBg}}">
+<img src="/_blob/66c6955d7ad40d92535cdcb2e5ba7c69" alt="img_d3z9q6t_1788010402198.png 预览" style="max-width:88%;max-height:700px;border-radius:10px;border:1px solid {{borderCol}};transform:scale({{zoomScale}});transition:transform 140ms ease-out" />
+</div>
+</sc-if>
+
+<sc-if value="{{isSvgPreviewStage}}" hint-placeholder-val="{{false}}">
+<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:32px;background:{{editorBg}}">
+<svg width="480" height="300" viewBox="0 0 420 260" role="img" aria-label="diagram.svg 矢量预览" style="transform:scale({{zoomScale}});transition:transform 140ms ease-out">
+<rect x="24" y="24" width="372" height="212" rx="12" fill="{{cardBg}}" stroke="#547dd0" stroke-width="2"></rect>
+<circle cx="115" cy="130" r="38" fill="#c9d8f3" stroke="#547dd0" stroke-width="2"></circle>
+<rect x="236" y="92" width="110" height="76" rx="8" fill="#e5edfc" stroke="#547dd0" stroke-width="2"></rect>
+<line x1="153" y1="130" x2="236" y2="130" stroke="#547dd0" stroke-width="2"></line>
+<text x="115" y="135" fill="#20242c" font-size="14" text-anchor="middle" font-family="Inter,sans-serif">Center</text>
+<text x="291" y="135" fill="#20242c" font-size="14" text-anchor="middle" font-family="Inter,sans-serif">HUD</text>
+</svg>
+</div>
+</sc-if>
+
+<sc-if value="{{isCodeStage}}" hint-placeholder-val="{{false}}">
+<div style="flex:1;overflow:auto;padding:36px 28px 64px;background:{{editorBg}}">
+<div style="max-width:720px;margin:0 auto;display:flex;align-items:flex-start;gap:16px">
+<div aria-hidden="true" class="mono" style="color:{{textSecondary}};text-align:right;user-select:none;line-height:26px">
+<div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div>
+</div>
+<pre class="mono" style="margin:0;flex:1;line-height:26px;color:{{textPrimary}};white-space:pre-wrap">{{codeContent}}</pre>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isBlockedScene}}" hint-placeholder-val="{{false}}">
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;gap:8px;text-align:center">
+<div style="font-size:16px;line-height:24px;font-weight:560;color:{{textPrimary}}">无法预览此文件</div>
+<p style="margin:0 0 8px;color:{{textSecondary}}">此文件类型暂不支持内嵌预览</p>
+<button type="button" class="tbtn" onClick="{{triggerBrowserToast}}" style="height:32px;padding:0 14px;background:{{cardBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">使用默认应用打开</button>
+</div>
+</sc-if>
+
+<sc-if value="{{isHistoryScene}}" hint-placeholder-val="{{false}}">
+<div style="flex:1;min-height:0;display:flex">
+<div style="flex:1;overflow:auto;padding:44px 32px 64px;background:{{editorBg}}">
+<div style="max-width:700px;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+<h1 style="margin:0;font-size:28px;line-height:36px;font-weight:600;color:{{textPrimary}}">把周会改成异步</h1>
+<p style="margin:0;font-size:16px;line-height:28px;color:{{textPrimary}}">方案 B 将「原文 / 对比」居中锚定在 40px 顶栏正中央，左区展示「周会 11-03 · 今天 11:08」，右区放置「恢复此版本」，正文区同样零副顶栏。</p>
+<sc-if value="{{isHistDiff}}" hint-placeholder-val="{{true}}">
+<div style="padding:12px 14px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}};text-decoration:line-through">旧版：固定每周三下午三点全员视频例会</div>
+<div style="padding:12px 14px;border-radius:8px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{textPrimary}}">新版：改为周一书面同步目标，阻塞项直接点名负责人</div>
+</sc-if>
+</div>
+</div>
+<aside aria-label="版本列表" style="width:300px;flex:none;background:{{sidebarBg}};border-left:1px solid {{sidebarBorder}};padding:12px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box">
+<div style="padding:2px 6px 4px;font-weight:560;color:{{textSecondary}}">版本记录</div>
+<button type="button" class="vitem" onClick="{{pickHist0}}" style="background:{{h0Bg}};box-shadow:{{h0Ring}};color:{{textPrimary}}">
+<span class="mono" style="font-weight:560">今天 14:32</span><span style="color:{{textSecondary}}">当前</span>
+</button>
+<button type="button" class="vitem" onClick="{{pickHist1}}" style="background:{{h1Bg}};box-shadow:{{h1Ring}};color:{{textPrimary}}">
+<span class="mono" style="font-weight:560">今天 11:08</span><span style="color:{{accent}}">已选</span>
+</button>
+<button type="button" class="vitem" onClick="{{pickHist2}}" style="background:{{h2Bg}};box-shadow:{{h2Ring}};color:{{textPrimary}}">
+<span class="mono" style="font-weight:560">昨天 18:40</span><span></span>
+</button>
+</aside>
+</div>
+</sc-if>
+
+<sc-if value="{{isExportScene}}" hint-placeholder-val="{{false}}">
+<div style="flex:1;min-height:0;display:flex">
+<div style="flex:1;background:{{settingsBg}};display:flex;align-items:center;justify-content:center;padding:32px">
+<div style="width:460px;padding:36px;border-radius:14px;background:{{cardBg}};border:1px solid {{borderCol}};transform:scale({{zoomScale}});transition:transform 140ms ease-out">
+<h2 style="margin:0 0 12px;font-size:22px;color:{{textPrimary}}">把周会改成异步</h2>
+<p style="margin:0;color:{{textSecondary}};line-height:24px">方案 B 将导出尺寸与缩放控制台居中嵌在 40px 顶栏中央，舞台底部完全留白不遮挡长图预览。</p>
+</div>
+</div>
+<aside aria-label="导出选项" style="width:300px;flex:none;background:{{cardBg}};border-left:1px solid {{sidebarBorder}};padding:16px;display:flex;flex-direction:column;justify-content:space-between">
+<div style="font-weight:560">导出格式：PNG 高清长图</div>
+<button type="button" class="tbtn" onClick="{{triggerBrowserToast}}" style="height:34px;justify-content:center;background:#547dd0;border:1px solid #547dd0;color:#ffffff">保存图片</button>
+</aside>
+</div>
+</sc-if>
+
+<sc-if value="{{isSettingsScene}}" hint-placeholder-val="{{false}}">
+<div style="flex:1;overflow:auto;padding:40px 28px 64px;background:{{settingsBg}}">
+<div style="max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:20px">
+<h1 style="margin:0;font-size:24px;line-height:32px;font-weight:560;color:{{textPrimary}}">AI 助手</h1>
+<div style="padding:18px 20px;border-radius:14px;background:{{cardBg}};border:1px solid {{borderCol}};color:{{textSecondary}}">设置态顶栏隐藏笔记前进/后退按钮与笔记更多菜单，保持专注。</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isNoteScene}}" hint-placeholder-val="{{false}}">
+<div style="flex:1;overflow:auto;padding:48px 32px;background:{{editorBg}}">
+<div style="max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+<h1 style="margin:0;font-size:28px;line-height:36px;font-weight:600;color:{{textPrimary}}">周会 11-03</h1>
+<p style="margin:0;font-size:16px;line-height:28px;color:{{textPrimary}}">笔记编辑态下顶栏中央留空供拖拽窗口，右侧展示「统一发送 ∣ ⋯」双段胶囊。</p>
+</div>
+</div>
+</sc-if>
+
+</main>
+</div>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"scene":{"editor":"enum","default":"image","options":["image","history","svg","html","json","blocked","export","settings","note"],"label":"页面场景"},"theme":{"editor":"enum","default":"light","options":["light","dark"],"label":"外观主题"},"$preview":{"width":1440,"height":920}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      scene: null,
+      theme: null,
+      sidebarOpen: true,
+      svgMode: 'preview',
+      histMode: 'diff',
+      histIdx: 1,
+      zoom: 0.44,
+      fitMode: true,
+      toast: ''
+    };
+    this.toggleSidebar = () => this.setState({ sidebarOpen: !this.state.sidebarOpen });
+    this.toggleTheme = () => {
+      const cur = this.state.theme ?? this.props.theme ?? 'light';
+      this.setState({ theme: cur === 'dark' ? 'light' : 'dark' });
+    };
+    this.goImageScene = () => this.setState({ scene: 'image', zoom: 0.44, fitMode: true, toast: '' });
+    this.goHistoryScene = () => this.setState({ scene: 'history', toast: '' });
+    this.goSvgScene = () => this.setState({ scene: 'svg', svgMode: 'preview', zoom: 1.0, fitMode: true, toast: '' });
+    this.goHtmlScene = () => this.setState({ scene: 'html', toast: '' });
+    this.goJsonScene = () => this.setState({ scene: 'json', toast: '' });
+    this.goBlockedScene = () => this.setState({ scene: 'blocked', toast: '' });
+    this.goExportScene = () => this.setState({ scene: 'export', zoom: 1.0, fitMode: true, toast: '' });
+    this.goSettingsScene = () => this.setState({ scene: 'settings', toast: '' });
+    this.goNoteScene = () => this.setState({ scene: 'note', toast: '' });
+    this.setSvgPreview = () => this.setState({ svgMode: 'preview' });
+    this.setSvgSource = () => this.setState({ svgMode: 'source' });
+    this.setHistClean = () => this.setState({ histMode: 'clean' });
+    this.setHistDiff = () => this.setState({ histMode: 'diff' });
+    this.pickHist0 = () => this.setState({ histIdx: 0 });
+    this.pickHist1 = () => this.setState({ histIdx: 1 });
+    this.pickHist2 = () => this.setState({ histIdx: 2 });
+    this.zoomIn = () => this.setState({ zoom: Math.min(2.0, +(this.state.zoom + 0.15).toFixed(2)), fitMode: false });
+    this.zoomOut = () => this.setState({ zoom: Math.max(0.2, +(this.state.zoom - 0.15).toFixed(2)), fitMode: false });
+    this.zoomReset = () => this.setState({ zoom: 1.0, fitMode: false });
+    this.zoomFit = () => this.setState({ zoom: (this.state.scene ?? this.props.scene) === 'image' ? 0.44 : 1.0, fitMode: true });
+    this.triggerBrowserToast = () => this.setState({ toast: '已调用系统默认应用打开当前文件' });
+    this.triggerRevealToast = () => this.setState({ toast: '已在访达中定位该文件' });
+    this.triggerRestoreToast = () => this.setState({ toast: '已恢复到所选历史版本', scene: 'note' });
+    this.clearToast = () => this.setState({ toast: '' });
+    this.toggleMoreMenu = () => this.setState({ toast: '笔记菜单：页面历史 / 生成图片 / 复制 Markdown / 在访达中显示' });
+  }
+
+  renderVals() {
+    const scene = this.state.scene ?? this.props.scene ?? 'image';
+    const dark = (this.state.theme ?? this.props.theme ?? 'light') === 'dark';
+    const shellBg = dark ? '#343434' : '#f1f1f1';
+    const sidebarBg = dark ? '#222222' : '#fafafa';
+    const settingsBg = dark ? '#181818' : '#f8f8f8';
+    const editorBg = dark ? '#181818' : '#ffffff';
+    const cardBg = dark ? '#222222' : '#ffffff';
+    const textPrimary = dark ? '#ececec' : '#20242c';
+    const textSecondary = dark ? '#b4b4b4' : '#526071';
+    const accent = dark ? '#779de8' : '#547dd0';
+    const iconFill = dark ? '#31456a' : '#c9d8f3';
+    const selectedBg = dark ? '#343434' : '#e5edfc';
+    const borderCol = dark ? '#2e2e2e' : '#e4e6ea';
+    const sidebarBorder = dark ? '#333333' : '#e6e6e6';
+    const btnBorder = dark ? '#444444' : '#dcdcdc';
+    const segWellBg = dark ? '#262626' : '#f1f1f1';
+
+    const isFileScene = ['image', 'svg', 'html', 'json', 'blocked', 'note'].includes(scene);
+    const showFileSidebar = isFileScene && this.state.sidebarOpen;
+    const showSidebarToggle = isFileScene || scene === 'settings';
+    const showNavArrows = isFileScene;
+    const showBackInLeft = scene === 'history' || scene === 'export';
+    const leftHeaderWidth = showFileSidebar ? '260px' : '180px';
+
+    const histTimes = ['今天 14:32', '今天 11:08', '昨天 18:40'];
+    const labels = {
+      image: 'img_d3z9q6t_1788010402198.png',
+      svg: 'diagram.svg',
+      html: 'index.html',
+      json: 'settings.json',
+      blocked: 'manual.pdf',
+      history: '周会 11-03',
+      'export': '周会 11-03',
+      settings: '设置 / AI 助手',
+      note: '周会 11-03'
+    };
+
+    const sceneList = [
+      { id: 'image', label: '1. 图片预览', pick: this.goImageScene },
+      { id: 'history', label: '2. 页面历史', pick: this.goHistoryScene },
+      { id: 'svg', label: '3. SVG 预览/源码', pick: this.goSvgScene },
+      { id: 'html', label: '4. HTML 源码', pick: this.goHtmlScene },
+      { id: 'json', label: '5. JSON/文本', pick: this.goJsonScene },
+      { id: 'blocked', label: '6. 不支持文件', pick: this.goBlockedScene },
+      { id: 'export', label: '7. 导出预览', pick: this.goExportScene },
+      { id: 'settings', label: '8. 设置页', pick: this.goSettingsScene },
+      { id: 'note', label: '9. 笔记基线', pick: this.goNoteScene }
+    ].map((it) => ({
+      label: it.label,
+      pick: it.pick,
+      bg: scene === it.id ? selectedBg : cardBg,
+      border: scene === it.id ? accent : btnBorder,
+      col: scene === it.id ? textPrimary : textSecondary,
+      weight: scene === it.id ? '560' : '460'
+    }));
+
+    const isSvgPreview = scene === 'svg' && this.state.svgMode === 'preview';
+    const isSvgSource = scene === 'svg' && this.state.svgMode === 'source';
+    const showZoomCluster = scene === 'image' || isSvgPreview;
+    const pct = Math.round(this.state.zoom * 100) + '%';
+
+    const codeText = scene === 'html'
+      ? '<!doctype html>\n<html lang="zh-CN">\n<body>\n  <main>方案 B：左标题、中模式、右动作三段式顶栏</main>\n</body>\n</html>'
+      : isSvgSource
+      ? '<svg width="420" height="260" viewBox="0 0 420 260">\n  <rect x="24" y="24" width="372" height="212" rx="12"/>\n</svg>'
+      : '{\n  "layout": "center-stage-hud",\n  "singleHeader": true\n}';
+
+    return {
+      shellBg, sidebarBg, settingsBg, editorBg, cardBg,
+      textPrimary, textSecondary, accent, iconFill, selectedBg,
+      borderCol, sidebarBorder, btnBorder, segWellBg,
+      leftHeaderWidth,
+      showNavArrows,
+      showSidebarToggle,
+      showBackInLeft,
+      leftTitleText: labels[scene] || '周会 11-03',
+      activeTabMono: ['image', 'svg', 'html', 'json', 'blocked'].includes(scene) ? 'mono' : '',
+      showSubTag: scene === 'history' || scene === 'export' || scene === 'html' || scene === 'json',
+      subTagText: scene === 'history' ? `· ${histTimes[this.state.histIdx]}` : scene === 'export' ? '· 导出预览' : '· 已自动保存',
+      isHistoryScene: scene === 'history',
+      isSettingsScene: scene === 'settings',
+      isExportScene: scene === 'export',
+      isNoteScene: scene === 'note',
+      isImageScene: scene === 'image',
+      isSvgPreviewStage: isSvgPreview,
+      isCodeStage: scene === 'html' || scene === 'json' || isSvgSource,
+      isBlockedScene: scene === 'blocked',
+      showSvgModeSwitch: scene === 'svg',
+      svgPrevBg: isSvgPreview ? selectedBg : 'transparent',
+      svgPrevCol: isSvgPreview ? textPrimary : textSecondary,
+      svgPrevRing: isSvgPreview ? `inset 0 0 0 1px ${accent}` : 'none',
+      svgSrcBg: isSvgSource ? selectedBg : 'transparent',
+      svgSrcCol: isSvgSource ? textPrimary : textSecondary,
+      svgSrcRing: isSvgSource ? `inset 0 0 0 1px ${accent}` : 'none',
+      showZoomCluster,
+      zoomPctText: pct,
+      zoomScale: this.state.zoom === 0.44 && scene === 'image' ? 1 : this.state.zoom,
+      fitBtnBg: this.state.fitMode ? selectedBg : 'transparent',
+      fitBtnRing: this.state.fitMode ? `inset 0 0 0 1px ${accent}` : 'none',
+      fitBtnCol: this.state.fitMode ? accent : textSecondary,
+      showOpenBrowserBtn: scene === 'html',
+      showRevealOnlyBtn: ['image', 'svg', 'json'].includes(scene),
+      isHistDiff: this.state.histMode === 'diff',
+      histCleanBg: this.state.histMode === 'clean' ? selectedBg : 'transparent',
+      histCleanCol: this.state.histMode === 'clean' ? textPrimary : textSecondary,
+      histCleanRing: this.state.histMode === 'clean' ? `inset 0 0 0 1px ${accent}` : 'none',
+      histDiffBg: this.state.histMode === 'diff' ? selectedBg : 'transparent',
+      histDiffCol: this.state.histMode === 'diff' ? textPrimary : textSecondary,
+      histDiffRing: this.state.histMode === 'diff' ? `inset 0 0 0 1px ${accent}` : 'none',
+      histRestoreDisabled: this.state.histIdx === 0,
+      h0Bg: this.state.histIdx === 0 ? selectedBg : 'transparent',
+      h0Ring: this.state.histIdx === 0 ? `inset 0 0 0 1px ${accent}` : 'none',
+      h1Bg: this.state.histIdx === 1 ? selectedBg : 'transparent',
+      h1Ring: this.state.histIdx === 1 ? `inset 0 0 0 1px ${accent}` : 'none',
+      h2Bg: this.state.histIdx === 2 ? selectedBg : 'transparent',
+      h2Ring: this.state.histIdx === 2 ? `inset 0 0 0 1px ${accent}` : 'none',
+      exportZoomText: this.state.fitMode ? '适应' : pct,
+      showFileSidebar,
+      rowImgBg: scene === 'image' ? selectedBg : 'transparent',
+      rowImgRing: scene === 'image' ? `inset 0 0 0 1px ${accent}` : 'none',
+      rowSvgBg: scene === 'svg' ? selectedBg : 'transparent',
+      rowSvgRing: scene === 'svg' ? `inset 0 0 0 1px ${accent}` : 'none',
+      rowHtmlBg: scene === 'html' ? selectedBg : 'transparent',
+      rowHtmlRing: scene === 'html' ? `inset 0 0 0 1px ${accent}` : 'none',
+      rowJsonBg: scene === 'json' ? selectedBg : 'transparent',
+      rowJsonRing: scene === 'json' ? `inset 0 0 0 1px ${accent}` : 'none',
+      rowPdfBg: scene === 'blocked' ? selectedBg : 'transparent',
+      rowPdfRing: scene === 'blocked' ? `inset 0 0 0 1px ${accent}` : 'none',
+      rowNoteBg: scene === 'note' ? selectedBg : 'transparent',
+      rowNoteRing: scene === 'note' ? `inset 0 0 0 1px ${accent}` : 'none',
+      codeContent: codeText,
+      sceneTabs: sceneList,
+      dynamicRuleSummary: '左标题 · 中舞台控制台（缩放 / 预览源码 / 原文对比）· 右出口动作',
+      hasToast: Boolean(this.state.toast),
+      toastMsg: this.state.toast,
+      toggleSidebar: this.toggleSidebar,
+      toggleTheme: this.toggleTheme,
+      goImageScene: this.goImageScene,
+      goHistoryScene: this.goHistoryScene,
+      goSvgScene: this.goSvgScene,
+      goHtmlScene: this.goHtmlScene,
+      goJsonScene: this.goJsonScene,
+      goBlockedScene: this.goBlockedScene,
+      goExportScene: this.goExportScene,
+      goSettingsScene: this.goSettingsScene,
+      goNoteScene: this.goNoteScene,
+      setSvgPreview: this.setSvgPreview,
+      setSvgSource: this.setSvgSource,
+      setHistClean: this.setHistClean,
+      setHistDiff: this.setHistDiff,
+      pickHist0: this.pickHist0,
+      pickHist1: this.pickHist1,
+      pickHist2: this.pickHist2,
+      zoomIn: this.zoomIn,
+      zoomOut: this.zoomOut,
+      zoomReset: this.zoomReset,
+      zoomFit: this.zoomFit,
+      triggerBrowserToast: this.triggerBrowserToast,
+      triggerRevealToast: this.triggerRevealToast,
+      triggerRestoreToast: this.triggerRestoreToast,
+      clearToast: this.clearToast,
+      toggleMoreMenu: this.toggleMoreMenu
+    };
+  }
+}
+</script>
+</body>
+</html>

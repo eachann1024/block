@@ -57,10 +57,10 @@ fn render_panel_header(
         .justify_between()
         .child(
             div()
-                .text_size(px(15.))
-                .font_weight(FontWeight(560.))
-                .text_color(theme.text)
-                .child(tr("页面历史", "Page History")),
+                .text_size(px(14.))
+                .font_weight(FontWeight(500.))
+                .text_color(theme.text_secondary)
+                .child(tr("版本记录", "Versions")),
         )
         .child(
             div()

@@ -292,3 +292,5 @@ impl Render for Editor {
             .children(super::annotate_ui::overlay(self, window, cx))
     }
 }
+
+pub use super::surface::TitlebarSurface;

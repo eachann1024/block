@@ -1,8 +1,7 @@
-//! Plain source column: standard width, no block chrome, optional HTML/SVG header.
-use gpui::{AnyElement, Context, FontWeight, Pixels, SharedString, div, list, prelude::*, px};
-use crate::theme::{Theme, tr};
-use crate::ui::file_fallback::{open_button, unsupported_file};
-use crate::ui::segmented_control::{SegmentSpec, segmented_control};
+//! Plain source column: standard width, no block chrome.
+use gpui::{AnyElement, Context, Pixels, div, list, prelude::*, px};
+use crate::theme::Theme;
+use crate::ui::file_fallback::unsupported_file;
 use super::source_paint::{self, SourceLine};
 use super::source_text::word_range;
 use super::surface::Surface;
@@ -139,7 +138,6 @@ fn source_pane(editor: &mut Editor, std_w: Pixels, cx: &mut Context<Editor>) -> 
             .into_any_element()
     }).size_full();
     div().flex_1().min_h_0().w_full().flex().flex_col().bg(theme.paper)
-        .child(source_header(editor, cx))
         .child(div().flex_1().min_h_0().flex().pr(px(crate::ui::scrollbar::GUTTER))
             .on_scroll(crate::ui::scrollbar::forward_wheel(&list_state))
             .child(div().h_full().min_w_0().w_full().mx_auto().max_w(std_w)
@@ -148,60 +146,15 @@ fn source_pane(editor: &mut Editor, std_w: Pixels, cx: &mut Context<Editor>) -> 
         .into_any_element()
 }
 
-fn preview_pane(editor: &mut Editor, cx: &mut Context<Editor>) -> AnyElement {
+fn preview_pane(editor: &Editor, _cx: &mut Context<Editor>) -> AnyElement {
     let theme = Theme::ocean();
-    let svg = matches!(&editor.surface, Surface::Preview { source: Some(_), .. });
     let preview = match &editor.surface {
         Surface::Preview { preview, .. } => Some(preview.clone()),
         _ => None,
     };
     div().flex_1().min_h_0().size_full().flex().flex_col().bg(theme.paper)
-        .when(svg, |col| col.child(source_header(editor, cx)))
         .children(preview)
         .into_any_element()
-}
-
-fn source_header(editor: &Editor, cx: &mut Context<Editor>) -> gpui::Div {
-    let theme = Theme::ocean();
-    let name = editor.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let html = editor.source_doc().is_some_and(|doc| doc.html);
-    let svg = editor.source_doc().is_some_and(|doc| doc.svg) || matches!(&editor.surface, Surface::Preview { source: Some(_), .. });
-    let show_source = editor.editing_source();
-    let path = editor.path.clone();
-    let entity = cx.entity();
-    div().h(px(40.)).px(px(16.)).flex_none().flex().items_center().justify_between().gap(px(12.))
-        .border_b_1().border_color(theme.sidebar_border).bg(theme.paper)
-        .child(div().min_w_0().flex().items_center().gap(px(10.))
-            .child(div().min_w_0().overflow_hidden().text_ellipsis().whitespace_nowrap()
-                .font_family(crate::theme::mono_font_family()).text_size(px(14.)).font_weight(FontWeight(560.)).child(name))
-            .when(!editor.status.is_empty(), |row| row.child(div().flex_none().text_size(px(14.)).text_color(theme.text_secondary).child(editor.status.clone()))))
-        .child(div().flex_none().flex().items_center().gap(px(8.))
-            .when(svg, |row| {
-                let to_preview = entity.clone();
-                let to_source = entity.clone();
-                row.child(segmented_control("svg-mode", vec![
-                    SegmentSpec { label: SharedString::from(tr("预览", "Preview")), selected: !show_source, on_select: Box::new(move |_, _, cx| {
-                        to_preview.update(cx, |this, cx| this.show_svg_source(false, cx));
-                    }) },
-                    SegmentSpec { label: SharedString::from(tr("源码", "Source")), selected: show_source, on_select: Box::new(move |_, _, cx| {
-                        to_source.update(cx, |this, cx| this.show_svg_source(true, cx));
-                    }) },
-                ]))
-            })
-            .when(html, |row| row.child(open_button("html-browser", tr("浏览器打开", "Open in Browser"), move |_, _, cx| {
-                let Some(path) = path.clone() else { return };
-                let entity = entity.clone();
-                cx.spawn(async move |cx| {
-                    let opened = path.clone();
-                    let result = cx.background_executor().spawn(async move {
-                        crate::files::open_with::open_in_browser(&opened)
-                    }).await;
-                    if let Err(error) = result {
-                        crate::log::error(&format!("failed to open {} in the browser: {error}", path.display()));
-                        let _ = entity.update(cx, |this, cx| { this.status = error.to_string(); cx.notify(); });
-                    }
-                }).detach();
-            }))))
 }
 
 fn gutter_width(editor: &Editor, zoom: f32) -> Pixels {

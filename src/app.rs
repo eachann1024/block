@@ -12,7 +12,6 @@ use crate::files::{create_note_at, note_candidates, load_state, save_folder, sca
 #[path = "app_sidebar.rs"] mod sidebar;
 #[path = "app_files.rs"] mod file_ops;
 #[path = "app_smoke.rs"] mod smoke_probe;
-
 #[path = "app_menu.rs"] mod menu;
 #[path = "app_search.rs"] mod search;
 #[path = "app_settings.rs"] mod settings;
@@ -20,13 +19,13 @@ use crate::files::{create_note_at, note_candidates, load_state, save_folder, sca
 #[path = "app_settings_sidebar.rs"] mod settings_sidebar;
 #[path = "app_settings_tabs.rs"] mod settings_tabs;
 #[path = "app_settings_fonts.rs"] mod settings_fonts;
-#[path = "app_settings_folders_view.rs"] mod settings_folders_view;
 #[path = "app_settings_folders.rs"] mod settings_folders;
+#[path = "app_settings_folders_view.rs"] mod settings_folders_view;
 #[path = "app_history.rs"] mod history;
 #[path = "app_history_view.rs"] mod history_view;
 
 use file_ops::{FileOp, Renaming, TreeMenu}; use search::Search; use settings::SettingsModal; use history::{HistoryToast, PageHistoryState, UndoRestoreState};
-pub use search::{Dismiss, NewFolder, NewNote, OpenSearch, OpenSettings, SearchDown, SearchUp};
+pub use search::{Dismiss, NewFolder, NewNote, OpenSearch, OpenSettings, SearchDown, SearchNextScope, SearchPrevScope, SearchResetScopeAll, SearchUp};
 pub use tabs::{CloseTab, NewTab, NextTab, PrevTab, ToggleSidebar}; pub use nav::{NavigateBack, NavigateForward};
 
 struct PreparedFolder { path: PathBuf, index: TreeIndex, notice: String, tabs: Vec<PathBuf>, active_tab: Option<PathBuf> }
@@ -167,6 +166,7 @@ impl Workspace {
                     this.refresh(cx);
                 }
             }
+            cx.notify();
         });
         cx.observe_global::<crate::export::ExportSlot>(|_, cx| cx.notify()).detach();
         crate::dropdown::register_workspace(&cx.entity());
