@@ -47,8 +47,21 @@ impl AiSettings {
 
     fn connection_card(&self, cx: &mut Context<Self>) -> gpui::Div {
         let on = self.enabled;
-        let toggle = toggle_pill("ai-enabled-switch", on, if on { tr("已开启", "Enabled") } else { tr("已关闭", "Disabled") })
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.enabled = !this.enabled; this.save(cx); }));
+        let toggle = toggle_pill(
+            "ai-enabled-switch",
+            crate::icons::Icon::Sparkles,
+            on,
+            if on { tr("已开启", "Enabled") } else { tr("已关闭", "Disabled") },
+            self.toggle_anim,
+            cx.listener(|this, active, _, cx| {
+                if this.toggle_anim.set_hovered(*active) { cx.notify(); }
+            }),
+            cx.listener(|this, _, _, cx| {
+                this.enabled = !this.enabled;
+                this.toggle_anim.record_toggle();
+                this.save(cx);
+            }),
+        );
         let key_toggle = action_button("ai-toggle-key", if self.show_key { tr("隐藏", "Hide") } else { tr("显示", "Show") }, false, true)
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
                 this.show_key = !this.show_key;
