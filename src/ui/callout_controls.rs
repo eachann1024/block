@@ -5,7 +5,7 @@
 //! - Top-right quick actions (`切换类型`, `转为正文`) mounted after `BlockText` for reliable hit-testing.
 use std::{cell::{Cell, RefCell}, collections::HashMap};
 use gpui::{
-    Bounds, Context, CursorStyle, Div, ElementId, Entity, FontWeight, Hsla, MouseButton,
+    Bounds, Context, CursorStyle, Div, ElementId, Entity, Focusable, FontWeight, Hsla, MouseButton,
     MouseDownEvent, Pixels, Point, Size, Stateful, Window, anchored, deferred, div, point,
     prelude::*, px, rgb, size, transparent_black,
 };
@@ -196,7 +196,7 @@ pub fn controls(
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, window, cx| {
             cx.stop_propagation();
             toggle_menu(id, event.position);
-            this.focus(window, cx);
+            this.focus_handle(cx).focus(window, cx);
             cx.notify();
         }));
 
@@ -213,7 +213,7 @@ pub fn controls(
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, window, cx| {
             cx.stop_propagation();
             toggle_menu(id, event.position);
-            this.focus(window, cx);
+            this.focus_handle(cx).focus(window, cx);
             cx.notify();
         }));
 
@@ -232,7 +232,7 @@ pub fn controls(
                 cx.stop_propagation();
                 close_menu();
                 this.set_callout_kind(id, Some(next_kind(kind)), cx);
-                this.focus(window, cx);
+                this.focus_handle(cx).focus(window, cx);
             })))
         .child(div().id(clear_id).relative()
             .children(crate::ui::smoke_overlay::probe("callout-clear"))
@@ -247,7 +247,7 @@ pub fn controls(
                 cx.stop_propagation();
                 close_menu();
                 this.set_callout_kind(id, None, cx);
-                this.focus(window, cx);
+                this.focus_handle(cx).focus(window, cx);
             })));
 
     let popover = open.then(|| {
@@ -265,7 +265,7 @@ pub fn controls(
                 close_menu();
                 ed.update(cx, |this, cx| {
                     this.set_callout_kind(id, Some(k), cx);
-                    this.focus(window, cx);
+                    this.focus_handle(cx).focus(window, cx);
                 });
             }));
         }
@@ -278,17 +278,17 @@ pub fn controls(
                     close_menu();
                     ed.update(cx, |this, cx| {
                         this.set_callout_kind(id, None, cx);
-                        this.focus(window, cx);
+                        this.focus_handle(cx).focus(window, cx);
                     });
                 }),
         );
         let backdrop = deferred(anchored().position(point(px(0.), px(0.))).child(
             div().id("callout-menu-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black()).occlude()
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
-                    cx.stop_propagation(); close_menu(); this.focus(window, cx); cx.notify();
+                    cx.stop_propagation(); close_menu(); this.focus_handle(cx).focus(window, cx); cx.notify();
                 }))
                 .on_mouse_down(MouseButton::Right, cx.listener(|this, _, window, cx| {
-                    cx.stop_propagation(); close_menu(); this.focus(window, cx); cx.notify();
+                    cx.stop_propagation(); close_menu(); this.focus_handle(cx).focus(window, cx); cx.notify();
                 })),
         )).with_priority(2);
         let popup = dropdown::deferred_popover_for(spec, menu, 3);
