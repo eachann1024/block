@@ -1,7 +1,7 @@
 //! Minimise / maximise / close buttons for windows whose native frame is hidden.
 //! macOS keeps its traffic lights, so there this renders nothing.
-use gpui::{CursorStyle, Div, ElementId, MouseButton, WindowControlArea, div, prelude::*, px, rgb, transparent_black};
-use crate::{icons::{Icon, IconColors, icon}, theme::Theme};
+use gpui::{CursorStyle, Div, ElementId, MouseButton, SharedString, WindowControlArea, div, prelude::*, px, rgb, transparent_black};
+use crate::{icons::{Icon, IconColors, icon, stateful_icon}, theme::Theme};
 
 pub const fn is_macos() -> bool {
     cfg!(any(target_os = "macos", target_family = "wasm"))
@@ -10,17 +10,25 @@ pub const fn is_macos() -> bool {
 fn button(id: impl Into<ElementId>, area: WindowControlArea, glyph: Icon, size: f32, close: bool) -> gpui::Stateful<Div> {
     let theme = Theme::ocean();
     let (text, fill) = (theme.text_secondary, theme.text);
+    let id: ElementId = id.into();
+    let group = SharedString::from(format!("winctrl-{id:?}"));
+    let glyph_el = if close {
+        icon(glyph, px(size), IconColors { line: text, fill: transparent_black(), accent: text })
+    } else {
+        stateful_icon(group.clone(), glyph, px(size), false, theme.mono_icon_colors(text), theme.icon_colors(fill))
+    };
     div()
         .id(id)
+        .group(group)
         .window_control_area(area)
         .size(px(28.))
         .flex_none()
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(6.))
+        .rounded(crate::ui::radius::CONTROL)
         .cursor(CursorStyle::PointingHand)
-        .child(icon(glyph, px(size), IconColors { line: text, fill: transparent_black(), accent: text }))
+        .child(glyph_el)
         .hover(move |s| if close { s.bg(rgb(0xe81123)).text_color(rgb(0xffffff)) } else { s.bg(theme.hover).text_color(fill) })
 }
 

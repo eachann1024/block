@@ -1,10 +1,10 @@
 //! Floating selection toolbar (F-Toolbar): light pill of 28px icon buttons split by hairline separators.
 use std::{cell::RefCell, collections::HashMap};
-use gpui::{BoxShadow, Bounds, Context, Entity, MouseButton, Pixels, Point, Window,
-    point, prelude::*, px, rgba};
-use crate::{icons::Icon, theme::tr};
+use gpui::{BoxShadow, Bounds, Context, Entity, MouseButton, Pixels, Point, SharedString, Window,
+    point, prelude::*, px, rgb, rgba};
+use crate::{icons::{Icon, stateful_icon}, theme::{Theme, tr}};
 pub(super) use crate::ui::floating_bar::{
-    ToolbarColors, animate as animate_bar, disabled_icon_button, glyph, icon_toggle_button, sep, shell as pill,
+    ToolbarColors, animate as animate_bar, disabled_icon_button, duo_icon_colors, icon_toggle_button, sep, shell as pill,
 };
 use super::{format_cmds::FormatPop, model::{Kind, MarkKind}, view::Editor};
 
@@ -82,8 +82,9 @@ fn button(g: Icon, tip: &'static str, on: bool, open: bool, dropdown: bool, edit
     run: impl Fn(&mut Editor, &mut Window, &mut Context<Editor>) + 'static) -> gpui::Stateful<gpui::Div> {
     let tc = ToolbarColors::current();
     let ink = if on { tc.on_ink } else { tc.ink };
+    let group = SharedString::from(format!("fb-btn-{:?}", gpui::ElementId::from(tip)));
     icon_toggle_button(tip, g, tip, on, open).h(px(28.)).min_w(px(28.))
-        .when(dropdown, |b| b.child(glyph(Icon::TbChevron, 10., ink))
+        .when(dropdown, |b| b.child(stateful_icon(group, Icon::TbChevron, px(10.), on || open, Theme::ocean().mono_icon_colors(rgb(ink).into()), duo_icon_colors(tc, on)))
             .child(gpui::canvas(move |bounds, _, _| { BOUNDS.with(|m| { m.borrow_mut().insert(tip, bounds); }); }, |_, _, _, _| {})
                 .absolute().top_0().left_0().size_full()))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {

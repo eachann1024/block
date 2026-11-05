@@ -4,7 +4,7 @@ use gpui::{
 };
 use gpui_component::input::Input;
 use crate::icons::{Icon, icon, stateful_icon};
-use crate::theme::{DEFAULT_ASSETS_FOLDER, Theme, assets_folder, hide_assets_folder, tr};
+use crate::theme::{Theme, assets_folder, hide_assets_folder, tr};
 use crate::ui::folder_controls::{
     folder_table_row, folder_visibility_segmented, slash_affix_input,
 };
@@ -22,18 +22,6 @@ impl Workspace {
         let hide_assets = hide_assets_folder();
         let current_assets = assets_folder();
         let rules = crate::theme::folder_rules();
-        let assets_customized = current_assets != DEFAULT_ASSETS_FOLDER || !hide_assets;
-        let rules_customized = !rules.is_empty();
-        let is_customized = assets_customized || rules_customized;
-
-        let reset_btn = div().id("reset-folder-rules")
-            .px(px(8.)).py(px(4.)).rounded(crate::ui::radius::CONTROL).text_size(px(14.)).text_color(theme.accent)
-            .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
-                cx.stop_propagation();
-                this.reset_folder_settings(window, cx);
-            }))
-            .child(tr("恢复默认", "Reset"));
 
         let assets_seg = folder_visibility_segmented(
             "assets-visibility-seg",
@@ -50,14 +38,14 @@ impl Workspace {
                     .child(Input::new(&modal.assets_input).appearance(false).bordered(false).focus_bordered(false))
             )
             .child(
-                div().px(px(8.)).py(px(2.)).rounded(crate::ui::radius::CONTROL)
+                div().flex_none().whitespace_nowrap().px(px(8.)).py(px(2.)).rounded(crate::ui::radius::CONTROL)
                     .bg(selected_bg()).text_color(theme.accent).text_size(px(14.)).font_weight(FontWeight(500.))
                     .child(tr("图片保存目录", "Image Save Folder"))
             );
 
         let assets_right = div().flex().items_center().gap(px(10.)).flex_none()
             .child(assets_seg)
-            .child(div().w(px(36.)).text_align(TextAlign::Right).text_size(px(14.)).text_color(theme.text_secondary).child(tr("系统", "System")));
+            .child(div().min_w(px(28.)).whitespace_nowrap().text_align(TextAlign::Right).text_size(px(14.)).text_color(theme.text_secondary).child(tr("系统", "System")));
 
         let assets_row = folder_table_row("folder-row-assets", hide_assets, assets_left, assets_right);
 
@@ -67,9 +55,9 @@ impl Workspace {
             } else {
                 theme.icon_colors(theme.text)
             };
-            let left = div().flex().items_center().gap(px(10.)).min_w_0()
+            let left = div().flex().items_center().gap(px(10.)).flex_1().min_w_0()
                 .child(icon(Icon::Folder, px(16.), folder_colors))
-                .child(div().font(mono_font()).text_size(px(14.)).text_color(theme.text).child(rule.pattern.clone()));
+                .child(div().min_w_0().truncate().font(mono_font()).text_size(px(14.)).text_color(theme.text).child(rule.pattern.clone()));
             let seg = folder_visibility_segmented(
                 ("folder-seg-exact", ix),
                 rule.hidden,
@@ -99,12 +87,10 @@ impl Workspace {
 
         div().flex().flex_col().gap(px(24.))
             .child(settings_card(16.)
-                .child(div().flex().items_center().justify_between().gap(px(12.))
-                    .child(div().flex().flex_col().gap(px(2.))
-                        .child(card_title(tr("工作区文件夹清单", "Workspace Folder Rules")))
-                        .child(div().text_size(px(14.)).text_color(theme.text_secondary)
-                            .child(tr("隐藏影响侧栏与搜索，不删除文件", "Hiding affects sidebar & search; files are not deleted"))))
-                    .when(is_customized, |row| row.child(reset_btn)))
+                .child(div().flex().flex_col().gap(px(2.))
+                    .child(card_title(tr("工作区文件夹清单", "Workspace Folder Rules")))
+                    .child(div().text_size(px(14.)).text_color(theme.text_secondary)
+                        .child(tr("隐藏影响侧栏与搜索，不删除文件", "Hiding affects sidebar & search; files are not deleted"))))
                 .child(div().flex().flex_col().gap(px(8.))
                     .child(assets_row)
                     .children(exact_rows))
@@ -151,9 +137,9 @@ impl Workspace {
                                         } else {
                                             theme.icon_colors(theme.text)
                                         };
-                                        let left = div().flex().items_center().gap(px(10.)).min_w_0()
+                                        let left = div().flex().items_center().gap(px(10.)).flex_1().min_w_0()
                                             .child(icon(Icon::Code, px(15.), code_colors))
-                                            .child(div().font(mono_font()).text_size(px(14.)).text_color(theme.text).child(format!("/{}/", rule.pattern)));
+                                            .child(div().min_w_0().truncate().font(mono_font()).text_size(px(14.)).text_color(theme.text).child(format!("/{}/", rule.pattern)));
                                         let seg = folder_visibility_segmented(
                                             ("folder-seg-regex", ix),
                                             rule.hidden,
