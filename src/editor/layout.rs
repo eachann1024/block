@@ -16,6 +16,9 @@ pub(in crate::editor) fn get_key(editor: gpui::EntityId, block: u64) -> Option<L
 pub(in crate::editor) fn set_key(editor: gpui::EntityId, block: u64, key: LayoutKey) {
     KEYS.with(|keys| { keys.borrow_mut().insert((editor, block), key); });
 }
+pub(in crate::editor) fn clear_keys() {
+    KEYS.with(|keys| keys.borrow_mut().clear());
+}
 pub(in crate::editor) fn block_hash(block: &crate::editor::model::Block) -> u64 {
     use std::hash::{Hash, Hasher};
     fn hash_inline(b: &crate::editor::model::Block, h: &mut impl Hasher) {
@@ -29,7 +32,7 @@ pub(in crate::editor) fn block_hash(block: &crate::editor::model::Block) -> u64 
     }
     let mut h = std::collections::hash_map::DefaultHasher::new();
     (block.kind as u8, block.meta.heading_level, block.meta.callout.map(|c| c as u8), &block.meta.code_language, block.meta.raw_source.is_some()).hash(&mut h);
-    (crate::theme::font_choice() as u8, crate::theme::is_dark()).hash(&mut h);
+    (crate::theme::font_choice() as u8, crate::theme::is_dark(), crate::editor::zoom::zoom_percent()).hash(&mut h);
     hash_inline(block, &mut h);
     if let Some(table) = &block.meta.table {
         (table.format as u8, table.columns, &table.column_widths, &table.attrs, table.rows.len()).hash(&mut h);

@@ -85,12 +85,12 @@ pub fn apply_state(state: &crate::files::state::State) {
     set_theme_mode(state.theme);
     set_font_choice(state.font_family);
     set_font_smoothing(state.font_smoothing.unwrap_or(true));
-    if let Some(folder) = &state.assets_folder { set_assets_folder(folder.clone()); }
-    else { set_assets_folder(DEFAULT_ASSETS_FOLDER.into()); }
+    set_assets_folder(state.assets_folder.clone().unwrap_or_else(|| DEFAULT_ASSETS_FOLDER.into()));
     set_hide_assets_folder(state.hide_assets_folder.unwrap_or(true));
     let search = state.shortcut_search.as_deref().filter(|s| !s.eq_ignore_ascii_case("cmd-k")).unwrap_or(DEFAULT_SEARCH_SHORTCUT).to_owned();
     let quick = state.shortcut_quick.clone().unwrap_or_else(|| DEFAULT_QUICK_SHORTCUT.into());
     set_shortcuts(search, quick);
+    crate::editor::init_zoom(state.editor_zoom);
 }
 
 pub fn theme_mode() -> ThemeMode {
