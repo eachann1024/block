@@ -64,12 +64,21 @@ impl Workspace {
 
     /// Escape: close the innermost transient surface; false when none was open.
     pub(super) fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if self.history_escape(window, cx) { return true; }
-        if self.close_font_picker(cx) { return true; }
-        if self.renaming.is_some() { self.cancel_rename(window, cx); return true; }
-        if self.search.is_some() { self.close_search(window, cx); return true; }
-        if self.settings.is_some() { self.close_settings(window, cx); return true; }
+        if crate::feedback::close(window, cx) || crate::about::close() {
+            self.restore_focus(window, cx); cx.notify(); return true;
+        }
+        if crate::export::close_active(window, cx) || self.history_escape(window, cx) || self.close_font_picker(cx) { return true; }
+        if self.dismiss_tab_menu(cx) { self.restore_focus(window, cx); return true; }
         if self.menu.is_some() || self.switcher_open { self.close_overlays(cx); self.restore_focus(window, cx); return true; }
+        if self.renaming.is_some() { self.cancel_rename(window, cx); return true; }
+        if let Some(s) = &mut self.search {
+            if s.state.scope_menu_open { s.state.scope_menu_open = false; cx.notify(); } else { self.close_search(window, cx); }
+            return true;
+        }
+        if let Some(s) = &mut self.settings {
+            if s.recording.take().is_some() { cx.notify(); } else { self.close_settings(window, cx); }
+            return true;
+        }
         false
     }
 

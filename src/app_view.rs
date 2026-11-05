@@ -21,7 +21,9 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &crate::editor::ai::ToggleAiPanel, window, cx| { crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); cx.notify(); }))
             .on_action(cx.listener(|this, _: &NewNote, window, cx| if !this.busy() { this.new_item(false, window, cx) }))
             .on_action(cx.listener(|this, _: &NewFolder, window, cx| if !this.busy() { this.new_item(true, window, cx) }))
-            .on_action(cx.listener(|this, _: &Dismiss, window, cx| if crate::about::close() { this.restore_focus(window, cx); cx.notify(); } else if !this.dismiss(window, cx) { cx.propagate() }))
+            .capture_action(cx.listener(|this, _: &Dismiss, window, cx| if this.dismiss(window, cx) { cx.stop_propagation(); }))
+            .capture_action(cx.listener(|this, _: &crate::editor::view::Cancel, window, cx| if this.dismiss(window, cx) { cx.stop_propagation(); }))
+            .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| if this.dismiss(window, cx) { cx.stop_propagation(); }))
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Back), cx.listener(|this, _, _, cx| this.navigate_back(cx)))
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Forward), cx.listener(|this, _, _, cx| this.navigate_forward(cx)));
         self.bind_tab_actions(root, cx)
@@ -52,8 +54,19 @@ impl Render for Workspace {
 }
 
 fn sync_focused_input_ime(window: &mut Window, cx: &mut gpui::App) {
-    let Some(focused_input) = gpui_component::WindowExt::focused_input(window, cx).and_then(|s| s.as_input().cloned()) else { return };
-    focused_input.update(cx, |state, cx| {
+    let Some(any) = gpui_component::WindowExt::focused_input(window, cx) else { return };
+    if let Some(focused_input) = any.as_input().cloned() {
+        focused_input.update(cx, |state, cx| sync_input_base_ime(state, window, cx));
+    } else if let Some(focused_textarea) = any.as_textarea().cloned() {
+        focused_textarea.update(cx, |state, cx| sync_input_base_ime(state, window, cx));
+    }
+}
+
+fn sync_input_base_ime<M: gpui_component::input::InputModeKind>(
+    state: &mut gpui_component::input::InputBaseState<M>,
+    window: &mut Window,
+    cx: &mut Context<gpui_component::input::InputBaseState<M>>,
+) {
         if let Some(g) = state.prepaint_caret_geometry() {
             let cb = g.cursor_bounds();
             crate::sync_ime_cursor_area(f32::from(cb.origin.x), f32::from(cb.origin.y + g.scroll_offset().y), f32::from(cb.size.height.max(g.line_height())));
@@ -68,7 +81,6 @@ fn sync_focused_input_ime(window: &mut Window, cx: &mut gpui::App) {
         } else if ib.size.height > px(0.) {
             crate::sync_ime_cursor_area(f32::from(ib.origin.x), f32::from(ib.origin.y), f32::from(ib.size.height));
         }
-    });
 }
 
 impl Workspace {
