@@ -46,7 +46,7 @@ pub fn match_indent_block(
         while scan_pos < text.len() {
             let next_nl = text[scan_pos..].find('\n').map_or(text.len(), |p| scan_pos + p);
             let next_line = &text[scan_pos..next_nl];
-            if next_line.trim().is_empty() {
+            if next_line.trim().is_empty() || inside_multiline_string(tokens, scan_pos, next_nl) {
                 block_end = next_nl;
                 scan_pos = if next_nl < text.len() { next_nl + 1 } else { next_nl };
                 continue;
@@ -92,7 +92,7 @@ pub fn match_indent_block(
         while scan_pos < text.len() {
             let next_nl = text[scan_pos..].find('\n').map_or(text.len(), |p| scan_pos + p);
             let next_line = &text[scan_pos..next_nl];
-            if next_line.trim().is_empty() {
+            if next_line.trim().is_empty() || inside_multiline_string(tokens, scan_pos, next_nl) {
                 block_end = next_nl;
                 scan_pos = if next_nl < text.len() { next_nl + 1 } else { next_nl };
                 continue;
@@ -108,6 +108,14 @@ pub fn match_indent_block(
 
         Some(block_start..block_end)
     }
+}
+
+fn inside_multiline_string(tokens: &[CodeToken], line_start: usize, _line_end: usize) -> bool {
+    tokens.iter().any(|t| {
+        matches!(t.kind, TokenKind::StringLit { .. })
+            && t.range.start < line_start
+            && t.range.end > line_start
+    })
 }
 
 fn is_block_keyword(word: &str, lang: &str) -> bool {

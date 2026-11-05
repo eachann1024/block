@@ -1,7 +1,8 @@
 //! In-memory tab sessions for zero-reload tab switching and per-tab state retention.
 use std::{collections::HashSet, path::{Path, PathBuf}};
 use gpui::{Context, ListAlignment, ListState, Pixels, px};
-use super::{Doc, Editor, HistoryEntry, lifecycle::Pending, selection::Caret, storage::{self, Fingerprint}};
+use super::{Doc, Editor, HistoryEntry, lifecycle::Pending, selection::Caret, storage::{self, Fingerprint, SaveDoc}};
+use crate::editor::surface::Surface;
 
 pub(super) struct TabSession {
     pub doc: Doc,
@@ -16,6 +17,17 @@ pub(super) struct TabSession {
     pub status: String,
     pub revision: u64,
     pub base: Fingerprint,
+    pub surface: Surface,
+}
+
+pub(super) fn session_doc(sess: &TabSession) -> Option<SaveDoc> {
+    match &sess.surface {
+        Surface::Note => Some(SaveDoc::Note(sess.doc.clone())),
+        Surface::Source(doc) | Surface::Preview { source: Some(doc), .. } => {
+            Some(SaveDoc::Raw { text: doc.text.body().to_owned(), bom: doc.bom })
+        }
+        _ => None,
+    }
 }
 
 impl Editor {
@@ -34,17 +46,21 @@ impl Editor {
         self.composition_before = None;
     }
 
-    pub(super) fn refresh_find_matches(&mut self, cx: &Context<Self>) {
+    pub(in crate::editor) fn refresh_find_matches(&mut self, cx: &Context<Self>) {
         let Some(find) = &self.find else { return };
         let query = find.input.read(cx).value().to_string();
         let mut matches = Vec::new();
-        for block in &self.doc.blocks {
-            for range in crate::editor::find::find_all(&block.text, &query) {
-                matches.push((block.id, range));
+        if let Some(doc) = self.source_doc() {
+            for range in crate::editor::find::find_all(doc.text.body(), &query) { matches.push((0, range)); }
+        } else {
+            for block in &self.doc.blocks {
+                for range in crate::editor::find::find_all(&block.text, &query) { matches.push((block.id, range)); }
             }
         }
-        let caret = self.caret.head;
-        let at = (self.doc.index_of(caret.block).unwrap_or(0), caret.offset);
+        let at = if let Some(doc) = self.source_doc() { (0usize, doc.head) } else {
+            let caret = self.caret.head;
+            (self.doc.index_of(caret.block).unwrap_or(0), caret.offset)
+        };
         let current = matches.iter().position(|(id, r)| (self.doc.index_of(*id).unwrap_or(0), r.start) >= at).unwrap_or(0);
         if let Some(find) = &mut self.find {
             find.matches = matches;
@@ -69,8 +85,11 @@ impl Editor {
         let status = std::mem::take(&mut self.status);
         let revision = self.persistence.revision;
         let base = self.persistence.base;
+        let surface = std::mem::replace(&mut self.surface, Surface::Note);
+        self.source_layouts.clear();
+        self.source_drag = false;
         self.sessions.insert(path.clone(), TabSession {
-            doc, caret, list, history, redo, nowrap, folded, preferred_x, dirty, status, revision, base,
+            doc, caret, list, history, redo, nowrap, folded, preferred_x, dirty, status, revision, base, surface,
         });
         if dirty {
             self.spawn_save(path.clone(), cx);
@@ -78,7 +97,7 @@ impl Editor {
         Some(path)
     }
 
-    pub(super) fn restore_session(&mut self, path: PathBuf, session: TabSession, cx: &mut Context<Self>) {
+    pub(in crate::editor) fn restore_session(&mut self, path: PathBuf, session: TabSession, cx: &mut Context<Self>) {
         self.clear_transient_overlays();
         self.doc = session.doc;
         self.caret = session.caret;
@@ -90,6 +109,9 @@ impl Editor {
         self.preferred_x = session.preferred_x;
         self.dirty = session.dirty;
         self.status = session.status;
+        self.surface = session.surface;
+        self.source_layouts.clear();
+        self.source_drag = false;
         self.persistence.revision = session.revision;
         self.persistence.base = session.base;
         self.persistence.timer = None;
@@ -111,17 +133,21 @@ impl Editor {
     pub fn close_session(&mut self, path: &Path, cx: &mut Context<Self>) {
         if let Some(sess) = self.sessions.remove(path) {
             if sess.dirty && crate::files::ops::exists(path) && !self.persistence.saving.contains(path) {
-                self.spawn_detached_save(path.to_path_buf(), sess.doc, sess.base, cx);
+                if let Some(doc) = session_doc(&sess) { self.spawn_detached_save(path.to_path_buf(), doc, sess.base, cx); }
             }
         }
         if self.path.as_deref() == Some(path) {
+            self.finish_source_composition(cx);
             self.commit_composition(cx);
             self.persistence.timer = None;
             if self.dirty && crate::files::ops::exists(path) && !self.persistence.saving.contains(path) {
-                let doc = self.doc.clone();
-                let base = self.persistence.base;
-                self.spawn_detached_save(path.to_path_buf(), doc, base, cx);
+                if let Some(doc) = self.current_save_doc() {
+                    let base = self.persistence.base;
+                    self.spawn_detached_save(path.to_path_buf(), doc, base, cx);
+                }
             }
+            self.surface = Surface::Note;
+            self.source_layouts.clear();
             self.reset_document(Doc::empty());
             self.path = None;
             self.dirty = false;
@@ -130,7 +156,13 @@ impl Editor {
         }
     }
 
-    fn spawn_detached_save(&mut self, path: PathBuf, doc: Doc, base: Fingerprint, cx: &mut Context<Self>) {
+    pub(in crate::editor) fn parked_save_payload(&self, path: &Path) -> Option<(SaveDoc, Fingerprint, u64)> {
+        let sess = self.sessions.get(path)?;
+        if !sess.dirty { return None; }
+        Some((session_doc(sess)?, sess.base, sess.revision))
+    }
+
+    fn spawn_detached_save(&mut self, path: PathBuf, doc: SaveDoc, base: Fingerprint, cx: &mut Context<Self>) {
         self.persistence.saving.insert(path.clone());
         let gate = self.persistence.gate.clone();
         let epoch = self.persistence.write_epoch;

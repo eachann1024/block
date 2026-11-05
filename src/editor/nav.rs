@@ -55,7 +55,8 @@ impl Editor {
 
     /// Cmd+Left / Cmd+Right / Ctrl+A / Ctrl+E (with optional Shift selection extension).
     pub(super) fn line_edge(&mut self, to_end: bool, extend: bool, logical: bool, cx: &mut Context<Self>) {
-        if self.path.is_none() { return; }
+        if self.editing_source() { self.finish_source_composition(cx); self.source_line_edge(to_end, extend, cx); return; }
+        if !self.is_markdown_note() { return; }
         self.commit_composition(cx);
         self.pending_vertical = None;
         self.preferred_x = None;
@@ -112,7 +113,8 @@ impl Editor {
 
     /// Option+Left / Option+Right (with optional Shift selection extension).
     pub(super) fn move_word(&mut self, forward: bool, extend: bool, cx: &mut Context<Self>) {
-        if self.path.is_none() { return; }
+        if self.editing_source() { self.finish_source_composition(cx); self.source_word(forward, extend, cx); return; }
+        if !self.is_markdown_note() { return; }
         self.commit_composition(cx);
         self.pending_vertical = None;
         self.preferred_x = None;
@@ -134,7 +136,8 @@ impl Editor {
 
     /// Option+Backspace / Option+Delete: delete one word backward or forward.
     pub(super) fn delete_word(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if self.path.is_none() { return; }
+        if self.editing_source() { self.finish_source_composition(cx); self.source_delete_word(forward, cx); return; }
+        if !self.is_markdown_note() { return; }
         self.commit_composition(cx);
         let fallback = if forward { EditorAction::Delete } else { EditorAction::Backspace };
         if self.block_sel.is_some() || !self.caret.is_empty() || self.focused_image().is_some() {
@@ -167,7 +170,8 @@ impl Editor {
 
     /// Cmd+Backspace / Cmd+Delete / Ctrl+K: delete to visual/logical line start or end.
     pub(super) fn delete_line(&mut self, to_end: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if self.path.is_none() { return; }
+        if self.editing_source() { self.finish_source_composition(cx); self.source_delete_line(to_end, cx); return; }
+        if !self.is_markdown_note() { return; }
         self.commit_composition(cx);
         let fallback = if to_end { EditorAction::Delete } else { EditorAction::Backspace };
         if self.block_sel.is_some() || !self.caret.is_empty() || self.focused_image().is_some() {

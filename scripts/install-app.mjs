@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { cpSync, lstatSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { assertInstallTarget, assertWritable, bundleId, installPath, installedExecutable, legacyInstallPath, remove, sameVolumeTemp, verifySignature } from "./app-bundle.mjs";
@@ -83,22 +83,90 @@ function detachedLaunchEnv() {
   return env;
 }
 
+function backgroundLaunch() {
+  return process.env.BLOCK_BACKGROUND_LAUNCH === "1";
+}
+
+// Detached launch of the installed binary. An immediate exit is not success; the caller
+// still has to observe that pid via the same installed-executable check as `open`.
+function spawnInstalledBackground() {
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(installedExecutable, [], {
+        detached: true,
+        stdio: "ignore",
+        env: detachedLaunchEnv(),
+      });
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error(String(error)));
+      return;
+    }
+    const launch = { pid: child.pid, exited: false, error: null };
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      if (typeof child.pid === "number") child.unref();
+      if (error) reject(error);
+      else resolve(launch);
+    };
+    child.once("error", (error) => {
+      launch.exited = true;
+      launch.error = error instanceof Error ? error : new Error(String(error));
+      finish(launch.error);
+    });
+    child.once("exit", (code, signal) => {
+      launch.exited = true;
+      launch.error ??= new Error(`installed executable exited before it was ready (${signal ?? code})`);
+      if (!settled) finish(launch.error);
+    });
+    const started = () => {
+      if (launch.exited) {
+        finish(launch.error ?? new Error("installed executable exited before it was ready"));
+        return;
+      }
+      launch.pid = child.pid;
+      if (typeof launch.pid !== "number") {
+        finish(new Error("installed executable did not start"));
+        return;
+      }
+      finish(null);
+    };
+    if (typeof child.pid === "number") queueMicrotask(started);
+    else child.once("spawn", () => queueMicrotask(started));
+  });
+}
+
 export async function openInstalled(previous) {
-  const opened = spawnSync("open", [installPath], { encoding: "utf8", env: detachedLaunchEnv() });
-  if (opened.status !== 0) throw new Error((opened.stderr || opened.stdout || "open failed").trim());
+  const background = backgroundLaunch();
+  let launch = null;
+  if (background) {
+    launch = await spawnInstalledBackground();
+  } else {
+    const opened = spawnSync("open", [installPath], { encoding: "utf8", env: detachedLaunchEnv() });
+    if (opened.status !== 0) throw new Error((opened.stderr || opened.stdout || "open failed").trim());
+  }
   const deadline = Date.now() + readyWaitMs;
   let running = [];
   while (Date.now() < deadline) {
+    if (launch?.exited) throw launch.error ?? new Error("installed executable exited before it was ready");
     running = appPids().filter((pid) => !previous.includes(pid));
-    if (running.length) break;
+    if (launch) {
+      if (running.includes(launch.pid)) break;
+      running = [];
+    } else if (running.length) break;
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
+  if (launch?.exited) throw launch.error ?? new Error("installed executable exited before it was ready");
   if (!running.length) throw new Error(`open returned but no new process has executable ${installedExecutable}`);
-  // `open` from a background build leaves the app hidden; activate unhides its windows.
-  const activated = spawnSync("osascript", ["-e", `tell application id "${bundleId}" to activate`], {
-    encoding: "utf8",
-    timeout: 4000,
-  });
-  if (activated.status !== 0) throw new Error((activated.stderr || activated.stdout || "activate failed").trim());
+  if (!background) {
+    // `open` from a background build leaves the app hidden; activate unhides its windows.
+    const activated = spawnSync("osascript", ["-e", `tell application id "${bundleId}" to activate`], {
+      encoding: "utf8",
+      timeout: 4000,
+    });
+    if (activated.status !== 0) throw new Error((activated.stderr || activated.stdout || "activate failed").trim());
+  }
   return running;
 }
