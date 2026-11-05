@@ -11,21 +11,6 @@ pub use block_ops::{Numbering, list_numbers};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Kind { Paragraph, H1, H2, H3, Bullet, Numbered, Quote, Todo }
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum CalloutKind { #[default] Note, Tip, Important, Warning, Caution }
-impl CalloutKind {
-    pub fn from_alert(line: &str) -> Option<Self> {
-        let tag = line.trim().strip_prefix("[!")?.strip_suffix(']')?;
-        match tag.to_ascii_uppercase().as_str() {
-            "NOTE" => Some(Self::Note), "TIP" => Some(Self::Tip), "IMPORTANT" => Some(Self::Important),
-            "WARNING" => Some(Self::Warning), "CAUTION" => Some(Self::Caution), _ => None,
-        }
-    }
-    pub fn tag(self) -> &'static str {
-        match self { Self::Note => "NOTE", Self::Tip => "TIP", Self::Important => "IMPORTANT",
-            Self::Warning => "WARNING", Self::Caution => "CAUTION" }
-    }
-}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum MarkKind { Bold, Italic, Strike, Code }
 /// Ordered, disjoint UTF-8 byte ranges. Adjacent equal mark sets are coalesced.
@@ -56,9 +41,6 @@ pub struct BlockMeta {
     pub html_paragraph: Option<HtmlParagraph>,
     /// H4–H6 keep the existing heading kind vocabulary and carry the exact level here.
     pub heading_level: Option<u8>,
-    pub callout: Option<CalloutKind>,
-    /// `(group_id, column_index)` when this block lives inside a multi-column group.
-    pub column: Option<(u64, usize)>,
     pub table: Option<Table>,
     /// The source had no blank line after this block where the serializer would write one.
     pub tight: bool,
@@ -83,15 +65,14 @@ impl Doc {
     pub fn refresh_block(&mut self, id: u64) { self.blocks.refresh(id); }
     pub fn list_number(&self, id: u64) -> Option<u64> { self.blocks.list_number(id) }
     pub fn index_of(&self, id: u64) -> Option<usize> { self.blocks.index_of(id) }
-    pub fn fresh_id(&mut self) -> u64 { let id = self.next_id; self.next_id += 1; id }
     pub fn push(&mut self, kind: Kind, text: String) -> u64 {
         let id = self.next_id; self.next_id += 1;
         self.blocks.insert(self.blocks.len(), Block::new(id, kind, text)); id
     }
     pub fn insert_after(&mut self, id: u64, kind: Kind, text: String) -> Option<u64> {
-        let index = self.index_of(id)?; let col = self.blocks[index].meta.column;
+        let index = self.index_of(id)?;
         let new_id = self.next_id; self.next_id += 1;
-        let mut block = Block::new(new_id, kind, text); block.meta.column = col;
+        let block = Block::new(new_id, kind, text);
         self.blocks.insert(index + 1, block); Some(new_id)
     }
     pub fn remove(&mut self, id: u64) -> bool {
@@ -119,7 +100,7 @@ impl Doc {
     }
     pub fn set_kind(&mut self, id: u64, kind: Kind) {
         if self.get(id).is_some_and(|block| block.meta.table.is_some()) { return; }
-        if let Some(block) = self.get_mut(id) { block.kind = kind; block.meta.heading_level = None; block.meta.callout = None; block.meta.raw_source = None; block.meta.unsupported_reason = None; block.meta.code_language = None; block.meta.code_empty_line = false; block.meta.html_paragraph = None;
+        if let Some(block) = self.get_mut(id) { block.kind = kind; block.meta.heading_level = None; block.meta.raw_source = None; block.meta.unsupported_reason = None; block.meta.code_language = None; block.meta.code_empty_line = false; block.meta.html_paragraph = None;
             if !matches!(kind, Kind::Bullet | Kind::Numbered | Kind::Todo) { block.meta.indent = 0; block.meta.list_start = None; }
         }
         self.refresh_block(id);

@@ -4,7 +4,7 @@ use super::{model::Kind, view::Editor};
 
 impl Editor {
     pub(super) fn set_kind_shortcut(&mut self, kind: Kind, cx: &mut Context<Self>) {
-        if self.path.is_none() { return; }
+        if !self.is_markdown_note() { return; }
         self.commit_composition(cx);
         let last_idx = self.doc.blocks.len().saturating_sub(1);
         let (first, last) = match self.block_sel {
@@ -13,7 +13,7 @@ impl Editor {
         };
         let toggle = matches!(kind, Kind::H1 | Kind::H2 | Kind::H3) && (first..=last).all(|i| {
             let b = &self.doc.blocks[i];
-            b.kind == kind && b.meta.heading_level.is_none() && b.meta.code_language.is_none() && b.meta.callout.is_none()
+            b.kind == kind && b.meta.heading_level.is_none() && b.meta.code_language.is_none()
         });
         let target = if toggle { Kind::Paragraph } else { kind };
         let before = self.snapshot();
@@ -26,6 +26,8 @@ impl Editor {
     }
     /// Cmd+Up / Cmd+Down: caret to the start of the first block or the end of the last one.
     pub(super) fn doc_edge(&mut self, end: bool, extend: bool, cx: &mut Context<Self>) {
+        if self.editing_source() { self.finish_source_composition(cx); self.source_doc_edge(end, extend, cx); return; }
+        if !self.is_markdown_note() { return; }
         let block = if end { self.last_visible_index().and_then(|i| self.doc.blocks.get(i)) } else { self.doc.blocks.first() };
         let Some(at) = block.map(|b| super::view::selection::Position { block: b.id, offset: if end { b.text.len() } else { 0 } }) else { return };
         self.table_sel = None; self.preferred_x = None; self.block_sel = None;
@@ -61,18 +63,17 @@ impl Editor {
     }
     fn remove_whole_block(&mut self, index: usize, forward: bool, cx: &mut Context<Self>) {
         self.table_sel = None; self.table_menu = None;
-        let col = self.doc.blocks.get(index).and_then(|b| b.meta.column);
-        if self.doc.blocks.len() <= 1 || col.is_some_and(|_| self.column_range(index).is_some_and(|r| r.len() <= 1)) {
+        if self.doc.blocks.len() <= 1 {
             let before = self.snapshot();
-            let mut empty = Block::new(0, Kind::Paragraph, String::new()); empty.meta.column = col;
+            let empty = Block::new(0, Kind::Paragraph, String::new());
             self.doc.splice_blocks(index..index + 1, vec![empty]);
             let to = Position { block: self.doc.blocks[index].id, offset: 0 };
             self.caret.anchor = to; self.caret.head = to;
             self.record_changes(before, vec![ListChange { start: index, before: 1, after: 1 }], true, cx);
             return;
         }
-        let prev = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()).filter(|p| col.is_none() || p.meta.column == col);
-        let next = self.doc.blocks.get(index + 1).cloned().filter(|n| col.is_none() || n.meta.column == col);
+        let prev = index.checked_sub(1).map(|i| self.doc.blocks[i].clone());
+        let next = self.doc.blocks.get(index + 1).cloned();
         let to = match (forward, prev, next) {
             (true, _, Some(n)) | (false, None, Some(n)) => Position { block: n.id, offset: 0 },
             (_, Some(p), _) => {
@@ -95,9 +96,9 @@ impl Editor {
             if self.caret.is_empty() && block.text.is_empty() { return false; }
             let at = self.caret.head;
             if self.caret.is_empty() && block.text.ends_with('\n') && at.offset == block.text.len() {
-                let (len, col, before) = (block.text.len(), block.meta.column, self.snapshot());
+                let (len, before) = (block.text.len(), self.snapshot());
                 self.doc.replace_range(at.block, len - 1..len, "");
-                let mut next_blk = Block::new(0, Kind::Paragraph, String::new()); next_blk.meta.column = col;
+                let next_blk = Block::new(0, Kind::Paragraph, String::new());
                 self.doc.splice_blocks(index + 1..index + 1, vec![next_blk]);
                 let next = Position { block: self.doc.blocks[index + 1].id, offset: 0 };
                 self.caret.anchor = next; self.caret.head = next;
@@ -114,7 +115,6 @@ impl Editor {
         if at.offset != 0 { return false; }
         let list = is_list(block);
         let mut fresh = Block::new(0, if list { block.kind } else { Kind::Paragraph }, String::new());
-        fresh.meta.column = block.meta.column;
         if list || block.kind == Kind::Paragraph { fresh.meta.indent = block.meta.indent; }
         if list { fresh.meta.list_start = block.meta.list_start; }
         let (id, before) = (block.id, self.snapshot());
@@ -135,13 +135,12 @@ impl Editor {
         let at = self.caret.head;
         let Some(index) = self.doc.index_of(at.block) else { return false };
         let block = self.doc.blocks[index].clone();
-        let top_of_flow = index == 0 || self.doc.blocks[index - 1].meta.column != block.meta.column;
+        let top_of_flow = index == 0;
         if block.meta.table.is_some() { return !forward && top_of_flow && at.offset == 0 && self.insert_above(block.id, cx); }
         if is_divider(&block) { self.remove_whole_block(index, forward, cx); return true; }
         if forward {
             if at.offset != block.text.len() { return false; }
             let Some(next) = self.doc.blocks.get(index + 1).cloned() else { return false };
-            if next.meta.column != block.meta.column { return true; }
             if next.meta.table.is_some() { return false; }
             if structural(&block) { return true; }
             if !structural(&next) {
@@ -157,7 +156,7 @@ impl Editor {
         if block.meta.code_language.is_some() {
             if block.text.is_empty() { self.demote(block.id, cx); }
             else if top_of_flow { self.insert_above(block.id, cx); }
-            else if let Some(prev) = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()).filter(|p| p.meta.column == block.meta.column) {
+            else if let Some(prev) = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()) {
                 self.set_head(Position { block: prev.id, offset: prev.text.len() }, false, cx);
             }
             return true;
@@ -172,19 +171,7 @@ impl Editor {
             Kind::Paragraph if block.meta.indent > 0 => { self.tab_outside_table(false, cx); return true; }
             Kind::Paragraph => {}
         }
-        let prev = index.checked_sub(1).map(|i| self.doc.blocks[i].clone());
-        if block.meta.column.is_some() && prev.as_ref().is_none_or(|p| p.meta.column != block.meta.column) {
-            if block.text.is_empty() && let Some(next) = self.doc.blocks.get(index + 1).filter(|n| n.meta.column == block.meta.column) {
-                self.drop_block(index, Position { block: next.id, offset: 0 }, cx);
-            }
-            return true;
-        }
-        let Some(prev) = prev else { return false };
-        if prev.meta.column != block.meta.column {
-            let to = Position { block: prev.id, offset: prev.text.len() };
-            if block.text.is_empty() { self.drop_block(index, to, cx); } else { self.set_head(to, false, cx); }
-            return true;
-        }
+        let Some(prev) = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()) else { return false };
         if prev.meta.table.is_some() || !structural(&prev) { return false; }
         if is_divider(&prev) {
             if block.text.is_empty() && let Some(to) = index.checked_sub(2).map(|i| &self.doc.blocks[i])
@@ -224,8 +211,7 @@ impl Editor {
             (None, Some(t)) => Position { block: t.id, offset: 0 },
             (None, None) => {
                 let empty = if first.meta.table.is_some() || first.meta.raw_source.is_some() {
-                    let mut b = Block::new(first.id, Kind::Paragraph, String::new());
-                    b.meta.column = first.meta.column; b
+                    Block::new(first.id, Kind::Paragraph, String::new())
                 } else { first.slice(0..0) };
                 pieces.push(empty);
                 Position { block: first.id, offset: 0 }
@@ -233,7 +219,6 @@ impl Editor {
         };
         pieces.extend(head); pieces.extend(tail);
         self.doc.splice_blocks(ai..bi + 1, pieces);
-        self.repair_column_groups();
         self.caret.anchor = at; self.caret.head = at;
         self.record(before, cx);
         true
@@ -266,7 +251,7 @@ impl Editor {
         let Some((plain, markdown)) = self.block_clip.clone() else { return false };
         if plain != text.replace("\r\n", "\n") { return false; }
         let mut blocks: Vec<Block> = super::markdown::parse(&markdown).blocks.iter().cloned().collect();
-        let blank = |b: &Block| b.text.is_empty() && b.kind == Kind::Paragraph && b.meta.indent == 0 && b.meta.raw_source.is_none() && b.meta.table.is_none() && b.meta.code_language.is_none() && b.meta.column.is_none();
+        let blank = |b: &Block| b.text.is_empty() && b.kind == Kind::Paragraph && b.meta.indent == 0 && b.meta.raw_source.is_none() && b.meta.table.is_none() && b.meta.code_language.is_none();
         while blocks.last().is_some_and(blank) { blocks.pop(); }
         while blocks.first().is_some_and(blank) { blocks.remove(0); }
         if blocks.is_empty() { return false; }
@@ -279,7 +264,7 @@ impl Editor {
         let cur = self.doc.blocks[index].clone();
         if cur.meta.table.is_some() || structural(&cur) { return false; }
         let before = self.snapshot();
-        for b in blocks.iter_mut() { b.id = 0; if cur.meta.column.is_some() && b.meta.column.is_none() { b.meta.column = cur.meta.column; } }
+        for b in blocks.iter_mut() { b.id = 0; }
         let count = blocks.len();
         let mut pieces = Vec::new();
         let lead = if !cur.text.is_empty() && at.offset > 0 { pieces.push(cur.slice(0..at.offset)); 1 } else { 0 };

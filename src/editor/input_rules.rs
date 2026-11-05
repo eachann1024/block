@@ -1,8 +1,8 @@
 //! Typing rules mirroring the Electron editor: block prefixes on space, dividers, arrow replacement.
 use gpui::Context;
-use super::{model::{Block, CalloutKind, Kind, MarkKind}, view::{Editor, selection::Position}};
+use super::{model::{Block, Kind, MarkKind}, view::{Editor, selection::Position}};
 
-enum Rule { Code(String), Numbered(u64), Bullet, Todo(bool), Heading(u8), Quote, Callout(CalloutKind) }
+enum Rule { Code(String), Numbered(u64), Bullet, Todo(bool), Heading(u8), Quote }
 
 /// Paragraph that holds ordinary rich text (no code, table, raw source or imported HTML shell).
 pub(super) fn plain(block: &Block) -> bool {
@@ -22,17 +22,6 @@ fn match_todo(s: &str) -> Option<bool> {
         }
     }
     None
-}
-fn match_callout(prefix: &str) -> Option<CalloutKind> {
-    let s = prefix.trim().strip_prefix(['>', '＞']).map(str::trim_start).unwrap_or(prefix.trim());
-    match s.to_ascii_lowercase().as_str() {
-        "[!note]" | "!note" | "!!! note" | ":::note" | ":::info" => Some(CalloutKind::Note),
-        "[!tip]" | "!tip" | "!!! tip" | ":::tip" => Some(CalloutKind::Tip),
-        "[!important]" | "!important" => Some(CalloutKind::Important),
-        "[!warning]" | "!warning" | "!!! warning" | ":::warning" => Some(CalloutKind::Warning),
-        "[!caution]" | "!caution" => Some(CalloutKind::Caution),
-        _ => None,
-    }
 }
 fn match_code_fence(prefix: &str) -> Option<String> {
     for fence in ["```", "~~~", "｀｀｀", "～～～", "···"] {
@@ -60,7 +49,6 @@ fn parse_digits(s: &str) -> Option<u64> {
 }
 fn match_rule(prefix: &str) -> Option<Rule> {
     if let Some(lang) = match_code_fence(prefix) { return Some(Rule::Code(lang)); }
-    if let Some(callout) = match_callout(prefix) { return Some(Rule::Callout(callout)); }
     let s = strip_space(prefix);
     if let Some(body) = s.strip_suffix(['.', '。', '、', '．', ')', '）']) {
         if let Some(n) = parse_digits(body) { return Some(Rule::Numbered(n)); }
@@ -102,13 +90,6 @@ impl Editor {
             }
             return;
         }
-        if block.kind == Kind::Quote && block.meta.callout.is_none() {
-            if let Some(kind) = match_callout(raw_prefix) {
-                self.doc.replace_range(*id, 0..*offset, ""); *offset = 0;
-                self.set_meta(*id, |b| b.meta.callout = Some(kind));
-            }
-            return;
-        }
         if !plain(block) { return; }
         let prefix = raw_prefix.to_owned();
         if is_divider(&prefix) && *offset == block.text.len() {
@@ -126,7 +107,6 @@ impl Editor {
             Rule::Heading(3) => self.doc.set_kind(*id, Kind::H3),
             Rule::Heading(level) => { self.doc.set_kind(*id, Kind::H3); self.set_meta(*id, |b| b.meta.heading_level = Some(level)); }
             Rule::Quote => self.doc.set_kind(*id, Kind::Quote),
-            Rule::Callout(kind) => { self.doc.set_kind(*id, Kind::Quote); self.set_meta(*id, |b| b.meta.callout = Some(kind)); }
         }
     }
     fn set_meta(&mut self, id: u64, edit: impl FnOnce(&mut Block)) {
@@ -145,30 +125,17 @@ impl Editor {
     /// Replace the paragraph with a divider plus a fresh paragraph; returns the new paragraph id.
     fn insert_divider(&mut self, id: u64) -> u64 {
         let index = self.doc.index_of(id).unwrap_or(0);
-        let col = self.doc.blocks.get(index).and_then(|b| b.meta.column);
-        let mut div = raw_divider(); div.meta.column = col;
-        let mut next = Block::new(0, Kind::Paragraph, String::new()); next.meta.column = col;
+        let div = raw_divider();
+        let next = Block::new(0, Kind::Paragraph, String::new());
         self.doc.splice_blocks(index..index + 1, vec![div, next]);
         self.doc.blocks[index + 1].id
     }
-    /// Enter on `---`, `$$`, fence, or callout marker (caret at end) converts the block; returns whether it handled the key.
+    /// Enter on `---`, `$$`, or fence (caret at end) converts the block; returns whether it handled the key.
     pub(super) fn divider_on_enter(&mut self, cx: &mut Context<Self>) -> bool {
         let at = self.caret.head;
         if !self.caret.is_empty() || self.caret.composing.is_some() { return false; }
         let Some(block) = self.doc.get(at.block) else { return false };
-        if at.offset != block.text.len() { return false; }
-        if (plain(block) || (block.kind == Kind::Quote && block.meta.callout.is_none()))
-            && let Some(kind) = match_callout(&block.text)
-        {
-            let before = self.snapshot();
-            self.doc.set_text(at.block, String::new());
-            self.doc.set_kind(at.block, Kind::Quote);
-            self.set_meta(at.block, |b| b.meta.callout = Some(kind));
-            let to = Position { block: at.block, offset: 0 };
-            self.caret.anchor = to; self.caret.head = to;
-            self.record(before, cx); return true;
-        }
-        if !plain(block) { return false; }
+        if at.offset != block.text.len() || !plain(block) { return false; }
         let before = self.snapshot();
         // A typed fence (```lang, ~~~lang, or $$) plus Enter turns the paragraph into a code/math block.
         if let Some(lang) = match_code_fence(&block.text) {

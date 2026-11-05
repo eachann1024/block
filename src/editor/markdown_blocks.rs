@@ -159,7 +159,7 @@ pub(super) fn parse_frontmatter(id: u64, lines: &[&str]) -> Option<(Block, usize
 }
 /// False when the block must stay a fenced code block so the document reloads unchanged.
 pub(super) fn serialize_frontmatter(block: &Block, at_top: bool, out: &mut String) -> bool {
-    if !(at_top && block.meta.column.is_none() && block.meta.indent == 0
+    if !(at_top && block.meta.indent == 0
         && block.meta.code_language.as_deref() == Some("yaml-frontmatter")) { return false; }
     let inner: Vec<&str> = block.text.split('\n').collect();
     if inner.iter().any(|l| is_frontmatter_close(l)) || !looks_like_frontmatter(&inner) { return false; }
