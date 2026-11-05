@@ -67,14 +67,30 @@ impl Workspace {
             (title, hist.mode, disabled || hist.confirm_open, hint)
         }).unwrap_or_else(|| (String::new(), PreviewMode::Diff, true, String::new()));
         let entity_mode = cx.entity();
+        let back_entity = entity_mode.clone();
+        let note_name = self.history.as_ref().map(|h| super::file_ops::display_name(&h.path, false)).unwrap_or_default();
+        let left_pad = if cfg!(any(target_os = "macos", target_family = "wasm")) { 82. } else { 12. };
+        let left = div().id("titlebar-left").h_full().flex_none().pl(px(left_pad)).pr(px(12.)).border_r_1().border_color(theme.sidebar_border)
+            .flex().items_center().gap(px(8.))
+            .window_control_area(WindowControlArea::Drag)
+            .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
+            .child(crate::ui::icon_button::back_button(
+                "history-back",
+                tr("返回", "Back"),
+                move |_, window, cx| back_entity.update(cx, |this, cx| this.close_page_history_focused(window, cx)),
+            ));
         div().id("titlebar").h(px(super::tabs::TITLEBAR_HEIGHT)).w_full().flex_none().flex().items_center()
             .bg(theme.shell).border_b_1().border_color(theme.sidebar_border)
-            .child(self.titlebar_left(cx))
-            .child(div().id("history-titlebar-drag").relative().children(crate::ui::smoke_overlay::probe("history-titlebar-drag")).flex_1().min_w(px(16.)).h_full().px(px(16.)).flex().items_center()
+            .child(left)
+            .child(div().id("history-titlebar-drag").relative().children(crate::ui::smoke_overlay::probe("history-titlebar-drag")).flex_1().min_w(px(16.)).h_full().px(px(16.)).flex().items_center().justify_between().gap(px(12.))
                 .window_control_area(WindowControlArea::Drag)
                 .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
+                .child(div().h(px(28.)).px(px(10.)).flex_none().max_w(px(360.)).overflow_hidden().rounded(radius::CONTROL)
+                    .bg(theme.selected).border_1().border_color(theme.accent).flex().items_center()
+                    .text_size(px(13.)).font_weight(FontWeight(460.)).text_color(theme.text).whitespace_nowrap().text_ellipsis()
+                    .child(format!("{note_name} · {}", tr("页面历史", "Page History"))))
                 .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-                    .text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(560.)).text_color(theme.text)
+                    .text_size(px(13.)).font_weight(FontWeight(500.)).text_color(theme.text_secondary)
                     .child(title)))
             .child(div().flex_none().mr(px(10.)).flex().items_center().gap(px(8.))
                 .child(render_mode_switch(mode, move |mode, _, cx| {

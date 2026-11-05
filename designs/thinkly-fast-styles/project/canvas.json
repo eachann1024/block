@@ -1,512 +1,896 @@
 {
   "v": 3,
-  "createdOnFiles": {
-    "v": 1,
-    "at": "2026-11-04T06:00:00Z"
-  },
-  "title": "Thinkly Fast 视觉系统",
-  "launch": {
-    "view": "canvas",
-    "page": "workspace"
-  },
-  "pages": [
-    {
-      "id": "workspace",
-      "name": "工作区与文件"
-    },
-    {
-      "id": "editor",
-      "name": "编辑器与排版"
-    },
-    {
-      "id": "search",
-      "name": "搜索与查找"
-    },
-    {
-      "id": "settings",
-      "name": "设置与快捷键"
-    },
-    {
-      "id": "export",
-      "name": "生成图片"
-    },
-    {
-      "id": "visual",
-      "name": "图标与吉祥物"
-    },
-    {
-      "id": "code",
-      "name": "代码块与下拉"
-    },
-    {
-      "id": "motion",
-      "name": "交互与动效"
-    },
-    {
-      "id": "about",
-      "name": "关于"
-    }
-  ],
+  "attachments": {},
   "boards": {
-    "Main.dc.html": {
-      "page": "workspace",
-      "x": 0,
-      "y": 0,
-      "w": 1440,
-      "h": 900,
+    "Formula-V1-Unified.dc.html": {
       "expand": "fill",
+      "h": 1000,
       "is_interactive": true,
-      "title": "工作区 · 多标签页与可折叠侧栏"
-    },
-    "F-Files.dc.html": {
-      "page": "workspace",
-      "x": 1520,
-      "y": 0,
+      "page": "formula",
+      "title": "公式 A · 一体面板",
       "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "title": "文件树 · 新建与右键菜单"
+      "x": 0,
+      "y": 0
     },
-    "QuickNote-V2-Dots.dc.html": {
-      "page": "workspace",
+    "Formula-V2-Paper.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "page": "formula",
+      "title": "公式 B · 纸面融入",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Formula-V3-Modes.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "page": "formula",
+      "title": "公式 C · 模式切换",
+      "w": 1440,
       "x": 3040,
-      "y": 0,
-      "w": 440,
-      "h": 520,
-      "is_interactive": true,
-      "title": "速记小窗 · 3 槽圆点 + Shift 上下滚动切换（独立面板）"
-    },
-    "Sidebar-V2-Clean.dc.html": {
-      "page": "workspace",
-      "x": 0,
-      "y": 1020,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "侧栏底栏 · 顶部「搜索+新建」单行去重 + 底栏无框胶囊与迷你设置"
-    },
-    "Rename-V2-RowCapsule.dc.html": {
-      "page": "workspace",
-      "x": 1520,
-      "y": 1020,
-      "w": 1440,
-      "h": 920,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "重命名 · 整行合一焦点舱（32px 整行白底蓝框 + 内部无框透明输入 + 图标联动点亮）"
-    },
-    "TitlebarActions-V1-OutlineCapsule.dc.html": {
-      "page": "workspace",
-      "x": 0,
-      "y": 2060,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "顶栏右上角按钮 A（推荐）· 移除冗余 + 号保留 2 键（轻量描边胶囊 + ⋯）"
-    },
-    "TitlebarActions-V2-SplitPill.dc.html": {
-      "page": "workspace",
-      "x": 1520,
-      "y": 2060,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "顶栏右上角按钮 B · 一体式双段胶囊收敛为 1 组控件（统一发送 1 ∣ ⋯）"
-    },
-    "TitlebarActions-V3-RailHeader.dc.html": {
-      "page": "workspace",
-      "x": 3040,
-      "y": 2060,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "顶栏右上角按钮 C · 发送动作归位批注栏头部 + 顶栏右侧恒定仅 ⋯ 1 键"
-    },
-    "F-Toolbar.dc.html": {
-      "page": "editor",
-      "x": 0,
-      "y": 0,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "title": "选区工具栏与调色盘"
-    },
-    "F-Image-Toolbar.dc.html": {
-      "page": "editor",
-      "x": 1520,
-      "y": 0,
-      "w": 1440,
-      "h": 980,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "图片工具栏 · 胶囊浮条与更多菜单"
-    },
-    "F-Annotate.dc.html": {
-      "page": "editor",
-      "x": 3040,
-      "y": 0,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "title": "AI 标注模式与评论卡片"
-    },
-    "T-Table-Handles.dc.html": {
-      "page": "editor",
-      "x": 0,
-      "y": 1100,
-      "w": 1440,
-      "h": 980,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "表格 · 行列胶囊与整表选中工具栏"
-    },
-    "T-Heading-Collapse.dc.html": {
-      "page": "editor",
-      "x": 1520,
-      "y": 1100,
-      "w": 1440,
-      "h": 980,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "标题折叠与块把手规范"
-    },
-    "T-Tooltip-System.dc.html": {
-      "page": "editor",
-      "x": 3040,
-      "y": 1100,
-      "w": 1440,
-      "h": 980,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "全局 Tooltip 规范（浅色 / 深色）"
-    },
-    "Annotate-V1-TopBar.dc.html": {
-      "page": "editor",
-      "x": 0,
-      "y": 2200,
-      "w": 1440,
-      "h": 920,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "紧凑批注 A（推荐）· 宽屏单行微字条 + 窄窗页边数字微章与点击原位浮层 Popover"
-    },
-    "Annotate-V2-BottomDock.dc.html": {
-      "page": "editor",
-      "x": 1520,
-      "y": 2200,
-      "w": 1440,
-      "h": 920,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "紧凑批注 B · 宽屏行尾圆角小胶囊 + 窄窗段落内联紧贴微条 Inline Strip"
-    },
-    "Annotate-V3-RailHeader.dc.html": {
-      "page": "editor",
-      "x": 3040,
-      "y": 2200,
-      "w": 1440,
-      "h": 920,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "紧凑批注 C · 宽屏页边无框眉批 + 窄窗顶栏汇总胶囊与底部悬浮抽屉 Sheet"
-    },
-    "InlineCode-V1-WarmPill.dc.html": {
-      "page": "editor",
-      "x": 0,
-      "y": 3240,
-      "w": 1440,
-      "h": 940,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "行内代码 A（推荐）· 暖纸微胶囊 + 中英智能微呼吸与边界双击选词"
-    },
-    "InlineCode-V2-TokenChip.dc.html": {
-      "page": "editor",
-      "x": 1520,
-      "y": 3240,
-      "w": 1440,
-      "h": 940,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "行内代码 B · 结构微芯片（1px 瓷白内高光 + 悬停一键复制 + 光标进入显式源码反引号）"
-    },
-    "InlineCode-V3-InkRuler.dc.html": {
-      "page": "editor",
-      "x": 3040,
-      "y": 3240,
-      "w": 1440,
-      "h": 940,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "行内代码 C · 墨迹微底刊印风（无框纯柔底 + 1.5px 底边基线标尺 + 连续分隔符自动避让）"
-    },
-    "TopInsert-V1-HoverSlot.dc.html": {
-      "page": "editor",
-      "x": 0,
-      "y": 4300,
-      "w": 1440,
-      "h": 960,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "首块上插 A（推荐）· 顶缘感应插入槽 + 首字符 ↑ / Backspace 破壁上插"
-    },
-    "TopInsert-V2-CaretEscape.dc.html": {
-      "page": "editor",
-      "x": 1520,
-      "y": 4300,
-      "w": 1440,
-      "h": 960,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "首块上插 B · 块首虚拟幽灵行 + 首字符 Enter 整体下推代码块"
-    },
-    "TopInsert-V3-HandleMenu.dc.html": {
-      "page": "editor",
-      "x": 3040,
-      "y": 4300,
-      "w": 1440,
-      "h": 960,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "首块上插 C · 左侧双联把手胶囊 (+↑ / ⋮⋮) + 代码块顶栏上插按钮"
-    },
-    "F-Find.dc.html": {
-      "page": "search",
-      "x": 0,
-      "y": 0,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "title": "当前笔记查找 ⌘F"
-    },
-    "F-Search.dc.html": {
-      "page": "search",
-      "x": 1520,
-      "y": 0,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "title": "全局搜索 ⌘⇧K"
-    },
-    "S-Settings-3.dc.html": {
-      "page": "settings",
-      "x": 0,
-      "y": 0,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "设置 · 独立页面（左侧分类导航单页切换 + 方案 C 三联 AI 服务商直选）"
-    },
-    "F-Shortcuts.dc.html": {
-      "page": "settings",
-      "x": 1520,
-      "y": 0,
-      "w": 1280,
-      "h": 800,
-      "title": "快捷键与快捷输入速查"
-    },
-    "S-Storage-Assets.dc.html": {
-      "page": "settings",
-      "x": 0,
-      "y": 1020,
-      "w": 1440,
-      "h": 920,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "通用与编辑 · 全局静态资源文件夹（默认 assets + 列表与搜索默认隐藏）"
-    },
-    "E-Trigger-2-Menu.dc.html": {
-      "page": "export",
-      "x": 0,
-      "y": 0,
-      "w": 1440,
-      "h": 900,
-      "expand": "fill",
-      "title": "生成图片 · 触发入口（顶栏更多菜单与右键上下文）"
+      "y": 0
     },
     "A-Export.dc.html": {
-      "page": "export",
-      "x": 1520,
-      "y": 0,
-      "w": 1440,
+      "expand": "fill",
       "h": 900,
-      "expand": "fill",
-      "title": "生成图片 · 预览与导出弹窗"
-    },
-    "X-L1-Mono.dc.html": {
       "page": "export",
-      "x": 0,
-      "y": 1020,
-      "w": 816,
-      "h": 1040,
-      "title": "浅 1 · 黑白素纸（默认）"
-    },
-    "X-L2-Journal.dc.html": {
-      "page": "export",
-      "x": 896,
-      "y": 1020,
-      "w": 816,
-      "h": 1040,
-      "title": "浅 2 · 手账便签"
-    },
-    "X-L3-Riso.dc.html": {
-      "page": "export",
-      "x": 1792,
-      "y": 1020,
-      "w": 816,
-      "h": 1040,
-      "title": "浅 3 · 野性孔版"
-    },
-    "X-L4-Press.dc.html": {
-      "page": "export",
-      "x": 2688,
-      "y": 1020,
-      "w": 816,
-      "h": 1040,
-      "title": "浅 4 · 铅字号外"
-    },
-    "X-D1-Ink.dc.html": {
-      "page": "export",
-      "x": 0,
-      "y": 2180,
-      "w": 816,
-      "h": 1040,
-      "title": "深 1 · 墨黑（默认）"
-    },
-    "X-D2-Kraft.dc.html": {
-      "page": "export",
-      "x": 896,
-      "y": 2180,
-      "w": 816,
-      "h": 1040,
-      "title": "深 2 · 黑卡手账"
-    },
-    "X-D3-Neon.dc.html": {
-      "page": "export",
-      "x": 1792,
-      "y": 2180,
-      "w": 816,
-      "h": 1040,
-      "title": "深 3 · 霓虹丝印"
-    },
-    "X-D4-Film.dc.html": {
-      "page": "export",
-      "x": 2688,
-      "y": 2180,
-      "w": 816,
-      "h": 1040,
-      "title": "深 4 · 暗房胶片"
-    },
-    "Duo-Set.dc.html": {
-      "page": "visual",
-      "x": 0,
-      "y": 0,
-      "w": 1600,
-      "h": 1200,
-      "title": "双色图标 · 精修全套"
-    },
-    "Mascot-Folio.dc.html": {
-      "page": "visual",
-      "x": 1680,
-      "y": 0,
-      "w": 1600,
-      "h": 860,
-      "title": "原创形象 · 页隼 · 四状态"
-    },
-    "C-Code-Block.dc.html": {
-      "x": 0,
-      "y": 0,
+      "title": "生成图片 · 预览与导出弹窗",
       "w": 1440,
-      "h": 980,
-      "page": "code",
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "代码块 · 居右控件与滚动即收起的通用下拉"
-    },
-    "Menu-Icons-V1-Duo.dc.html": {
       "x": 1520,
-      "y": 0,
-      "w": 1440,
-      "h": 1320,
-      "page": "code",
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "菜单与下拉图标 · 双色语义线稿（1.5px 圆端线稿 + 浅蓝语义面 + 强调蓝点睛）"
-    },
-    "CodeBlock-V1-GraphiteCard.dc.html": {
-      "x": 0,
-      "y": 1440,
-      "w": 1440,
-      "h": 1020,
-      "page": "code",
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "深色代码配色 A（推荐）· Ocean Mist 海洋雾灰（冷润海雾蓝键名 + 鼠尾草绿字符串）"
-    },
-    "CodeBlock-V2-HeaderBar.dc.html": {
-      "x": 1520,
-      "y": 1440,
-      "w": 1440,
-      "h": 1020,
-      "page": "code",
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "深色代码配色 B · Warm Espresso 暖墨琥珀（纯暖炭灰底 + 琥珀金键名 + 青瓷绿字符串）"
-    },
-    "CodeBlock-V3-InsetGutter.dc.html": {
-      "x": 3040,
-      "y": 1440,
-      "w": 1440,
-      "h": 1020,
-      "page": "code",
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "深色代码配色 C · GitHub Ice 极夜冰晶（翡翠绿键名 + 冰晶浅蓝字符串）"
-    },
-    "M-Motion-System.dc.html": {
-      "page": "motion",
-      "x": 0,
-      "y": 0,
-      "w": 1440,
-      "h": 1360,
-      "expand": "fill",
-      "is_interactive": true,
-      "title": "全局交互显现动效规范 · gpui_transitions 驱动"
+      "y": 0
     },
     "About-V1-Card.dc.html": {
-      "x": 0,
-      "y": 0,
-      "w": 640,
       "h": 560,
-      "title": "关于 · 方案 A · 居中名片",
+      "is_interactive": true,
       "page": "about",
-      "is_interactive": true
+      "title": "关于 · 方案 A · 居中名片",
+      "w": 640,
+      "x": 0,
+      "y": 0
     },
     "About-V2-Split.dc.html": {
-      "x": 720,
-      "y": 0,
-      "w": 640,
       "h": 560,
-      "title": "关于 · 方案 B · 左图右文",
+      "is_interactive": true,
       "page": "about",
-      "is_interactive": true
+      "title": "关于 · 方案 B · 左图右文",
+      "w": 640,
+      "x": 720,
+      "y": 0
     },
     "About-V3-List.dc.html": {
-      "x": 1440,
-      "y": 0,
-      "w": 640,
       "h": 560,
-      "title": "关于 · 方案 C · 信息清单",
+      "is_interactive": true,
       "page": "about",
-      "is_interactive": true
+      "title": "关于 · 方案 C · 信息清单",
+      "w": 640,
+      "x": 1440,
+      "y": 0
+    },
+    "Annotate-V1-TopBar.dc.html": {
+      "expand": "fill",
+      "h": 920,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "紧凑批注 A（推荐）· 宽屏单行微字条 + 窄窗页边数字微章与点击原位浮层 Popover",
+      "w": 1440,
+      "x": 0,
+      "y": 2200
+    },
+    "Annotate-V2-BottomDock.dc.html": {
+      "expand": "fill",
+      "h": 920,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "紧凑批注 B · 宽屏行尾圆角小胶囊 + 窄窗段落内联紧贴微条 Inline Strip",
+      "w": 1440,
+      "x": 1520,
+      "y": 2200
+    },
+    "Annotate-V3-RailHeader.dc.html": {
+      "expand": "fill",
+      "h": 920,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "紧凑批注 C · 宽屏页边无框眉批 + 窄窗顶栏汇总胶囊与底部悬浮抽屉 Sheet",
+      "w": 1440,
+      "x": 3040,
+      "y": 2200
+    },
+    "C-Code-Block.dc.html": {
+      "expand": "fill",
+      "h": 980,
+      "is_interactive": true,
+      "page": "code",
+      "title": "代码块 · 居右控件与滚动即收起的通用下拉",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "CodeBlock-V1-GraphiteCard.dc.html": {
+      "expand": "fill",
+      "h": 1020,
+      "is_interactive": true,
+      "page": "code",
+      "title": "深色代码配色 A（推荐）· Ocean Mist 海洋雾灰（冷润海雾蓝键名 + 鼠尾草绿字符串）",
+      "w": 1440,
+      "x": 0,
+      "y": 1440
+    },
+    "CodeBlock-V2-HeaderBar.dc.html": {
+      "expand": "fill",
+      "h": 1020,
+      "is_interactive": true,
+      "page": "code",
+      "title": "深色代码配色 B · Warm Espresso 暖墨琥珀（纯暖炭灰底 + 琥珀金键名 + 青瓷绿字符串）",
+      "w": 1440,
+      "x": 1520,
+      "y": 1440
+    },
+    "CodeBlock-V3-InsetGutter.dc.html": {
+      "expand": "fill",
+      "h": 1020,
+      "is_interactive": true,
+      "page": "code",
+      "title": "深色代码配色 C · GitHub Ice 极夜冰晶（翡翠绿键名 + 冰晶浅蓝字符串）",
+      "w": 1440,
+      "x": 3040,
+      "y": 1440
+    },
+    "Duo-Set.dc.html": {
+      "h": 1200,
+      "page": "visual",
+      "title": "双色图标 · 精修全套",
+      "w": 1600,
+      "x": 0,
+      "y": 0
+    },
+    "E-Trigger-2-Menu.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "page": "export",
+      "title": "生成图片 · 触发入口（顶栏更多菜单与右键上下文）",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "F-Annotate.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "page": "editor",
+      "title": "AI 标注模式与评论卡片",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "F-Files.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "page": "workspace",
+      "title": "文件树 · 新建与右键菜单",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "F-Find.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "page": "search",
+      "title": "当前笔记查找 ⌘F",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "F-Image-Toolbar.dc.html": {
+      "expand": "fill",
+      "h": 980,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "图片工具栏 · 胶囊浮条与更多菜单",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "F-Search.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "page": "search",
+      "title": "全局搜索 ⌘⇧K",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "F-Shortcuts.dc.html": {
+      "h": 800,
+      "page": "settings",
+      "title": "快捷键与快捷输入速查",
+      "w": 1280,
+      "x": 1520,
+      "y": 0
+    },
+    "F-Toolbar.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "page": "editor",
+      "title": "选区工具栏与调色盘",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Fonts-V1-Picker.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "fonts",
+      "title": "自定义字体 A · 外观与字体（主题/语言保留 + 正文/代码字体下拉 + 行高）",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Fonts-V2-Gallery.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "fonts",
+      "title": "自定义字体 B · 字样卡片画廊（拖入导入）",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Fonts-V3-LivePreview.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "fonts",
+      "title": "自定义字体 C · 分栏实时预览（悬停即试）",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "History-A-Sidebar.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "page": "page-history",
+      "title": "页面历史 · 右侧版本栏（已选定）",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "History-B-Compare.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "page": "page-history-alternatives",
+      "title": "页面历史 B · 独立对照视图",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "History-C-Timeline.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "page": "page-history-alternatives",
+      "title": "页面历史 C · 底部时间轴",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "History-Flow.dc.html": {
+      "h": 1000,
+      "page": "page-history",
+      "title": "页面历史 · 入口与恢复流程",
+      "w": 1440,
+      "x": 0,
+      "y": 1080
+    },
+    "History-States.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "page": "page-history",
+      "title": "页面历史 · 空状态、失败与冲突",
+      "w": 1440,
+      "x": 1520,
+      "y": 1080
+    },
+    "InlineCode-V1-WarmPill.dc.html": {
+      "expand": "fill",
+      "h": 940,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "行内代码 A（推荐）· 暖纸微胶囊 + 中英智能微呼吸与边界双击选词",
+      "w": 1440,
+      "x": 0,
+      "y": 3240
+    },
+    "InlineCode-V2-TokenChip.dc.html": {
+      "expand": "fill",
+      "h": 940,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "行内代码 B · 结构微芯片（1px 瓷白内高光 + 悬停一键复制 + 光标进入显式源码反引号）",
+      "w": 1440,
+      "x": 1520,
+      "y": 3240
+    },
+    "InlineCode-V3-InkRuler.dc.html": {
+      "expand": "fill",
+      "h": 940,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "行内代码 C · 墨迹微底刊印风（无框纯柔底 + 1.5px 底边基线标尺 + 连续分隔符自动避让）",
+      "w": 1440,
+      "x": 3040,
+      "y": 3240
+    },
+    "InlineCode-V4-PaperTag.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "行内代码 D · 纸签（暖纸底 + 暖灰描边，编辑点亮描边）",
+      "w": 1440,
+      "x": 0,
+      "y": 5620
+    },
+    "InlineCode-V5-InkWash.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "行内代码 E · 墨洗（无框冷蓝底，编辑显影反引号）",
+      "w": 1440,
+      "x": 1520,
+      "y": 5620
+    },
+    "InlineCode-V6-Outline.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "行内代码 F · 线框（透明底细描边，选中时描边浮于选区之上）",
+      "w": 1440,
+      "x": 3040,
+      "y": 5620
+    },
+    "M-Motion-System.dc.html": {
+      "expand": "fill",
+      "h": 1360,
+      "is_interactive": true,
+      "page": "motion",
+      "title": "全局交互显现动效规范 · gpui_transitions 驱动",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "workspace",
+      "title": "工作区 · 多标签页与可折叠侧栏",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Mascot-Folio.dc.html": {
+      "h": 860,
+      "page": "visual",
+      "title": "原创形象 · 页隼 · 四状态",
+      "w": 1600,
+      "x": 1680,
+      "y": 0
+    },
+    "Menu-Icons-V1-Duo.dc.html": {
+      "expand": "fill",
+      "h": 1320,
+      "is_interactive": true,
+      "page": "code",
+      "title": "菜单与下拉图标 · 双色语义线稿（1.5px 圆端线稿 + 浅蓝语义面 + 强调蓝点睛）",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "QuickNote-V2-Dots.dc.html": {
+      "h": 520,
+      "is_interactive": true,
+      "page": "workspace",
+      "title": "速记小窗 · 3 槽圆点 + Shift 上下滚动切换（独立面板）",
+      "w": 440,
+      "x": 3040,
+      "y": 0
+    },
+    "Rename-V2-RowCapsule.dc.html": {
+      "expand": "fill",
+      "h": 920,
+      "is_interactive": true,
+      "page": "workspace",
+      "title": "重命名 · 整行合一焦点舱（32px 整行白底蓝框 + 内部无框透明输入 + 图标联动点亮）",
+      "w": 1440,
+      "x": 1520,
+      "y": 1020
+    },
+    "S-Settings-3.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "settings",
+      "title": "设置 · 独立页面（左侧分类导航单页切换 + 方案 C 三联 AI 服务商直选）",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "S-Storage-Assets.dc.html": {
+      "expand": "fill",
+      "h": 920,
+      "is_interactive": true,
+      "page": "settings",
+      "title": "通用与编辑 · 全局静态资源文件夹（默认 assets + 列表与搜索默认隐藏）",
+      "w": 1440,
+      "x": 0,
+      "y": 1020
+    },
+    "Sidebar-V2-Clean.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "workspace",
+      "title": "侧栏底栏 · 顶部「搜索+新建」单行去重 + 底栏无框胶囊与迷你设置",
+      "w": 1440,
+      "x": 0,
+      "y": 1020
+    },
+    "T-Heading-Collapse.dc.html": {
+      "expand": "fill",
+      "h": 980,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "标题折叠与块把手规范",
+      "w": 1440,
+      "x": 1520,
+      "y": 1100
+    },
+    "T-Table-Handles.dc.html": {
+      "expand": "fill",
+      "h": 980,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "表格 · 行列胶囊与整表选中工具栏",
+      "w": 1440,
+      "x": 0,
+      "y": 1100
+    },
+    "T-Tooltip-System.dc.html": {
+      "expand": "fill",
+      "h": 980,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "全局 Tooltip 规范（浅色 / 深色）",
+      "w": 1440,
+      "x": 3040,
+      "y": 1100
+    },
+    "TitlebarActions-V1-OutlineCapsule.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "workspace",
+      "title": "顶栏右上角按钮 A（推荐）· 移除冗余 + 号保留 2 键（轻量描边胶囊 + ⋯）",
+      "w": 1440,
+      "x": 0,
+      "y": 2060
+    },
+    "TitlebarActions-V2-SplitPill.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "workspace",
+      "title": "顶栏右上角按钮 B · 一体式双段胶囊收敛为 1 组控件（统一发送 1 ∣ ⋯）",
+      "w": 1440,
+      "x": 1520,
+      "y": 2060
+    },
+    "TitlebarActions-V3-RailHeader.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "workspace",
+      "title": "顶栏右上角按钮 C · 发送动作归位批注栏头部 + 顶栏右侧恒定仅 ⋯ 1 键",
+      "w": 1440,
+      "x": 3040,
+      "y": 2060
+    },
+    "TopInsert-V1-HoverSlot.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "首块上插 A（推荐）· 顶缘感应插入槽 + 首字符 ↑ / Backspace 破壁上插",
+      "w": 1440,
+      "x": 0,
+      "y": 4300
+    },
+    "TopInsert-V2-CaretEscape.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "首块上插 B · 块首虚拟幽灵行 + 首字符 Enter 整体下推代码块",
+      "w": 1440,
+      "x": 1520,
+      "y": 4300
+    },
+    "TopInsert-V3-HandleMenu.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "首块上插 C · 左侧双联把手胶囊 (+↑ / ⋮⋮) + 代码块顶栏上插按钮",
+      "w": 1440,
+      "x": 3040,
+      "y": 4300
+    },
+    "Update-V1-SidebarDock.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "update",
+      "title": "版本更新 A · 侧栏底栏更新图标 + 点击弹出更新日志确认框（推荐）",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Update-V2-TitlebarPill.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "update",
+      "title": "版本更新 B · 顶栏右上角更新图标 + 锚定式下拉更新面板",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Update-V3-AboutSheet.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "update",
+      "title": "版本更新 C · 侧栏底栏图标 + 极简抽屉式更新卡片（含国内通道回退）",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "X-D1-Ink.dc.html": {
+      "h": 1002,
+      "page": "export",
+      "title": "深 1 · 墨黑（默认）",
+      "w": 816,
+      "x": 0,
+      "y": 2262
+    },
+    "X-D2-Kraft.dc.html": {
+      "h": 1122,
+      "page": "export",
+      "title": "深 2 · 黑卡手账",
+      "w": 816,
+      "x": 896,
+      "y": 2262
+    },
+    "X-D3-Neon.dc.html": {
+      "h": 1023,
+      "page": "export",
+      "title": "深 3 · 霓虹夜色",
+      "w": 816,
+      "x": 1792,
+      "y": 2262
+    },
+    "X-D4-Film.dc.html": {
+      "h": 1064,
+      "page": "export",
+      "title": "深 4 · 暗房胶片",
+      "w": 816,
+      "x": 2688,
+      "y": 2262
+    },
+    "X-D5-Night.dc.html": {
+      "h": 1081,
+      "page": "export",
+      "title": "深 5 · 夜读卡片（新）",
+      "w": 816,
+      "x": 3584,
+      "y": 2262
+    },
+    "X-D6-Terminal.dc.html": {
+      "h": 973,
+      "page": "export",
+      "title": "深 6 · 终端绿屏（新）",
+      "w": 816,
+      "x": 4480,
+      "y": 2262
+    },
+    "X-L1-Mono.dc.html": {
+      "h": 1002,
+      "page": "export",
+      "title": "浅 1 · 黑白素纸（默认）",
+      "w": 816,
+      "x": 0,
+      "y": 1020
+    },
+    "X-L2-Journal.dc.html": {
+      "h": 1122,
+      "page": "export",
+      "title": "浅 2 · 手账便签（照搬 Thinkly）",
+      "w": 816,
+      "x": 896,
+      "y": 1020
+    },
+    "X-L3-Riso.dc.html": {
+      "h": 1003,
+      "page": "export",
+      "title": "浅 3 · 孔版双色",
+      "w": 816,
+      "x": 1792,
+      "y": 1020
+    },
+    "X-L4-Press.dc.html": {
+      "h": 1047,
+      "page": "export",
+      "title": "浅 4 · 铅字报刊",
+      "w": 816,
+      "x": 2688,
+      "y": 1020
+    },
+    "X-L5-Poster.dc.html": {
+      "h": 1055,
+      "page": "export",
+      "title": "浅 5 · 大字海报（新）",
+      "w": 816,
+      "x": 3584,
+      "y": 1020
+    },
+    "X-L6-Mist.dc.html": {
+      "h": 1081,
+      "page": "export",
+      "title": "浅 6 · 雾面卡片（新）",
+      "w": 816,
+      "x": 4480,
+      "y": 1020
+    },
+    "FolderFlow-A-List.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "folder-flow",
+      "title": "文件夹设置 A（推荐）· 统一文件夹清单与独立用途分配",
+      "w": 1280,
+      "x": 0,
+      "y": 0
+    },
+    "FolderFlow-B-Compact.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "folder-flow",
+      "title": "文件夹设置 B · 紧凑单卡与纯名称排除标签",
+      "w": 1280,
+      "x": 1360,
+      "y": 0
+    },
+    "FolderFlow-C-Rules.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "folder-flow",
+      "title": "文件夹设置 C · 可视化条件规则构建器",
+      "w": 1280,
+      "x": 2720,
+      "y": 0
+    },
+    "UpdateAnim-V1-ScribbleLoop.dc.html": {
+      "h": 680,
+      "is_interactive": true,
+      "page": "update",
+      "title": "更新图标动效 A · 气泡簇拥 + 图标弹入 + 手绘狂草绕圈线",
+      "w": 840,
+      "x": 0,
+      "y": 1020
+    },
+    "UpdateAnim-V2-TangleSpark.dc.html": {
+      "h": 680,
+      "is_interactive": true,
+      "page": "update",
+      "title": "更新图标动效 B · 气泡涌出 + 图标落位 + 涂鸦折返乱线团",
+      "w": 840,
+      "x": 920,
+      "y": 1020
+    },
+    "UpdateAnim-V3-InkScratch.dc.html": {
+      "h": 680,
+      "is_interactive": true,
+      "page": "update",
+      "title": "更新图标动效 C · 双层气泡 + 图标显影 + 交叉波浪涂鸦线",
+      "w": 840,
+      "x": 1840,
+      "y": 1020
+    },
+    "FileSupport-A-Toolbar.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "file-support",
+      "title": "文件查看与编辑 · 精简版",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "SearchScope-V1-HeaderDropdown.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "search",
+      "title": "全局唤出搜索 A（推荐）· 顶栏内嵌文件夹下拉胶囊 + 右下角移除快捷键提示",
+      "w": 1440,
+      "x": 0,
+      "y": 1020
+    },
+    "SearchScope-V2-FilterBar.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "search",
+      "title": "全局唤出搜索 B · 搜索框下方单行文件夹胶囊直选栏 + 右下角留白",
+      "w": 1440,
+      "x": 1520,
+      "y": 1020
+    },
+    "SearchScope-V3-FooterSwitch.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "search",
+      "title": "全局唤出搜索 C · 底栏右下角原位替换为文件夹切换器（上浮菜单）",
+      "w": 1440,
+      "x": 3040,
+      "y": 1020
+    },
+    "CalloutAi-V1-IconPopover.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "标注与斜杠 AI 方案 A（推荐）· 左侧语义图标弹层切换 + 360px 无头紧凑双层 AI 浮条",
+      "w": 1440,
+      "x": 0,
+      "y": 6860
+    },
+    "CalloutAi-V2-HeaderPills.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "标注与斜杠 AI 方案 B · 顶栏五态语义胶囊直切与折叠 + 340px 单行命令舱",
+      "w": 1440,
+      "x": 1520,
+      "y": 6860
+    },
+    "CalloutAi-V3-OutlineChip.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "标注与斜杠 AI 方案 C · 纸面 1px 语义细框配左上角类型胶囊轮换 + 版心同宽内嵌 AI 写作条",
+      "w": 1440,
+      "x": 3040,
+      "y": 6860
+    },
+    "DynamicTitlebar-V1-ContextTail.dc.html": {
+      "expand": "fill",
+      "h": 920,
+      "is_interactive": true,
+      "page": "workspace",
+      "title": "全局动态标题栏 A（推荐）· 标签栏连续 + 右侧上下文工具舱按需变形（去重全页面副顶栏）",
+      "w": 1440,
+      "x": 0,
+      "y": 3320
+    },
+    "DynamicTitlebar-V2-CenterStage.dc.html": {
+      "expand": "fill",
+      "h": 920,
+      "is_interactive": true,
+      "page": "workspace",
+      "title": "全局动态标题栏 B · 居中舞台模式栏 + 右侧极简出口动作",
+      "w": 1440,
+      "x": 1520,
+      "y": 3320
+    },
+    "DynamicTitlebar-V3-UnifiedPill.dc.html": {
+      "expand": "fill",
+      "h": 920,
+      "is_interactive": true,
+      "page": "workspace",
+      "title": "全局动态标题栏 C · 右上角一体式变形胶囊坞 + 顶栏版本下拉无侧栏历史",
+      "w": 1440,
+      "x": 3040,
+      "y": 3320
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-11-04T06:00:00Z",
+    "v": 1
+  },
+  "designSystems": [
+    {
+      "artifact": "designs/thinkly-fast-styles/project/ds/ocean-paper",
+      "copiedAt": "2026-11-04T08:00:00Z",
+      "namespace": "ocean-paper",
+      "title": "Ocean Paper",
+      "version": null
+    }
+  ],
+  "launch": {
+    "page": "workspace",
+    "view": "canvas"
+  },
+  "notes": {
+    "dynamic-titlebar-row": {
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "workspace",
+      "text": "全局动态标题栏（40px）· 消除图片 / 历史 / SVG / 源码次级副顶栏与无效菜单 · 三套方案",
+      "w": 240,
+      "x": 0,
+      "y": 3080
+    },
+    "callout-ai-row": {
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "editor",
+      "text": "标注块交互与斜杠 AI 紧凑面板 · 三套视觉与交互方案",
+      "w": 240,
+      "x": 0,
+      "y": 6620
+    },
+    "inline-code-v2": {
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "editor",
+      "text": "行内代码全状态 · 选区带与胶囊等高",
+      "w": 240,
+      "x": 0,
+      "y": 5380
+    },
+    "page-history-bottom": {
+      "fill": "gray",
+      "page": "page-history",
+      "text": "策略与边界说明：产品全量自动保存，无手动保存；历史版本为后台自动归档（停顿聚合与指纹去重属内部规则，不展示在界面）。按页面稳定 ID 关联，与 ⌘Z 独立；恢复前自动保留当前内容在历史中，仅追加新版本不删旧记录；图片附件不随文本回滚。",
+      "w": 520,
+      "x": 0,
+      "y": 2140
+    },
+    "page-history-top": {
+      "fill": "blue",
+      "page": "page-history",
+      "text": "方案 A（右侧版本栏）已选定，方案 B / C 已归档至「页面历史备选」页。进入历史直接读取已自动保存内容，常态仅显示版本时间、「当前」标识、「原文 / 对比」与「恢复此版本」，默认展示原文。",
+      "w": 520,
+      "x": 0,
+      "y": -260
+    },
+    "file-support-rationale": {
+      "fill": "blue",
+      "page": "file-support",
+      "text": "原型说明（仅内存状态演示，不写入磁盘）：1. 源码与文本（index.html、settings.json、notes.txt、diagram.svg 源码）直接在白底页面编辑并保留跨文件修改，编辑后显示短暂自动保存提示；HTML 顶栏提供浏览器打开入口。2. 图片（cover.png）与 SVG 预览默认按画布实测尺寸自适应居中，支持滚轮光标锚定缩放、触控板捏合、双指触控缩放、拖拽平移、Shift+滚轮平移及双击适应/100% 切换。3. SVG 采用 DOMParser 安全白名单子集解析（支持基础几何与文本标签，拒绝脚本/外部资源/不安全属性），修改源码切回预览可实时生效。4. 不支持预览格式（PDF/MP4/ZIP）居中展示极简提示并提供默认应用打开模拟反馈。",
+      "w": 680,
+      "x": 0,
+      "y": 1060
     }
   },
   "order": [
+    "Formula-V1-Unified.dc.html",
+    "Formula-V2-Paper.dc.html",
+    "Formula-V3-Modes.dc.html",
     "Main.dc.html",
     "F-Files.dc.html",
     "QuickNote-V2-Dots.dc.html",
@@ -541,10 +925,14 @@
     "X-L2-Journal.dc.html",
     "X-L3-Riso.dc.html",
     "X-L4-Press.dc.html",
+    "X-L5-Poster.dc.html",
+    "X-L6-Mist.dc.html",
     "X-D1-Ink.dc.html",
     "X-D2-Kraft.dc.html",
     "X-D3-Neon.dc.html",
     "X-D4-Film.dc.html",
+    "X-D5-Night.dc.html",
+    "X-D6-Terminal.dc.html",
     "Duo-Set.dc.html",
     "Mascot-Folio.dc.html",
     "C-Code-Block.dc.html",
@@ -553,18 +941,105 @@
     "CodeBlock-V2-HeaderBar.dc.html",
     "CodeBlock-V3-InsetGutter.dc.html",
     "M-Motion-System.dc.html",
+    "InlineCode-V4-PaperTag.dc.html",
+    "InlineCode-V5-InkWash.dc.html",
+    "InlineCode-V6-Outline.dc.html",
     "About-V1-Card.dc.html",
     "About-V2-Split.dc.html",
-    "About-V3-List.dc.html"
+    "About-V3-List.dc.html",
+    "Fonts-V1-Picker.dc.html",
+    "Fonts-V2-Gallery.dc.html",
+    "Fonts-V3-LivePreview.dc.html",
+    "Update-V1-SidebarDock.dc.html",
+    "Update-V2-TitlebarPill.dc.html",
+    "Update-V3-AboutSheet.dc.html",
+    "History-A-Sidebar.dc.html",
+    "History-B-Compare.dc.html",
+    "History-C-Timeline.dc.html",
+    "History-Flow.dc.html",
+    "History-States.dc.html",
+    "FolderFlow-A-List.dc.html",
+    "FolderFlow-B-Compact.dc.html",
+    "FolderFlow-C-Rules.dc.html",
+    "UpdateAnim-V1-ScribbleLoop.dc.html",
+    "UpdateAnim-V2-TangleSpark.dc.html",
+    "UpdateAnim-V3-InkScratch.dc.html",
+    "FileSupport-A-Toolbar.dc.html",
+    "SearchScope-V1-HeaderDropdown.dc.html",
+    "SearchScope-V2-FilterBar.dc.html",
+    "SearchScope-V3-FooterSwitch.dc.html",
+    "CalloutAi-V1-IconPopover.dc.html",
+    "CalloutAi-V2-HeaderPills.dc.html",
+    "CalloutAi-V3-OutlineChip.dc.html",
+    "DynamicTitlebar-V1-ContextTail.dc.html",
+    "DynamicTitlebar-V2-CenterStage.dc.html",
+    "DynamicTitlebar-V3-UnifiedPill.dc.html"
   ],
-  "notes": {},
-  "designSystems": [
+  "pages": [
     {
-      "title": "Ocean Paper",
-      "namespace": "ocean-paper",
-      "artifact": "designs/thinkly-fast-styles/project/ds/ocean-paper",
-      "version": null,
-      "copiedAt": "2026-11-04T08:00:00Z"
+      "id": "workspace",
+      "name": "工作区与文件"
+    },
+    {
+      "id": "editor",
+      "name": "编辑器与排版"
+    },
+    {
+      "id": "search",
+      "name": "搜索与查找"
+    },
+    {
+      "id": "settings",
+      "name": "设置与快捷键"
+    },
+    {
+      "id": "folder-flow",
+      "name": "文件夹设置"
+    },
+    {
+      "id": "export",
+      "name": "生成图片"
+    },
+    {
+      "id": "visual",
+      "name": "图标与吉祥物"
+    },
+    {
+      "id": "code",
+      "name": "代码块与下拉"
+    },
+    {
+      "id": "motion",
+      "name": "交互与动效"
+    },
+    {
+      "id": "about",
+      "name": "关于"
+    },
+    {
+      "id": "fonts",
+      "name": "自定义字体"
+    },
+    {
+      "id": "update",
+      "name": "版本更新"
+    },
+    {
+      "id": "page-history",
+      "name": "页面历史"
+    },
+    {
+      "id": "page-history-alternatives",
+      "name": "页面历史备选"
+    },
+    {
+      "id": "formula",
+      "name": "公式块与源码"
+    },
+    {
+      "id": "file-support",
+      "name": "文件查看与编辑"
     }
-  ]
+  ],
+  "title": "Thinkly Fast 视觉系统"
 }

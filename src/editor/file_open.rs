@@ -38,6 +38,7 @@ impl Editor {
                 let text = svg.as_ref().map(|file| file.text.clone());
                 let source = svg.map(SourceDoc::open);
                 let preview = cx.new(|cx| crate::ui::file_preview::FilePreview::new(path.clone(), cx));
+                cx.observe(&preview, |_, _, cx| cx.notify()).detach();
                 // Editable SVG already shows filename + mode in the source header.
                 if source.is_some() {
                     preview.update(cx, |preview, cx| {

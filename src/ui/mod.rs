@@ -28,6 +28,7 @@ pub mod shortcut_label;
 pub mod smoke_overlay;
 pub mod table_controls;
 pub mod text_action;
+pub mod titlebar_context;
 pub mod toggle_pill;
 pub mod tooltip;
 pub mod window_controls;
