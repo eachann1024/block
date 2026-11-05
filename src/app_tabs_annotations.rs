@@ -55,8 +55,15 @@ impl Workspace {
             move |window, cx| { ent.update(cx, |this, cx| this.close_overlays(cx)); clear_tab_menu(); crate::feedback::toggle(window, cx); },
         );
         let mr = if cfg!(any(target_os = "macos", target_family = "wasm")) { 10. } else { 4. };
+        let tools = div().h_full().flex().items_center().gap(px(4.)).mr(px(mr));
+        // Notes show only the more menu beside feedback; those two swap so feedback sits on the left.
+        let tools = if matches!(surface, crate::editor::view::TitlebarSurface::Note) {
+            tools.child(feedback_btn).children(context_tools)
+        } else {
+            tools.children(context_tools).child(feedback_btn)
+        };
         div().h(px(40.)).h_full().flex_none().flex().items_center()
-            .child(div().h_full().flex().items_center().gap(px(4.)).mr(px(mr)).children(context_tools).child(feedback_btn))
+            .child(tools)
             .child(crate::ui::window_controls::window_controls("main-win", true, true))
     }
 
