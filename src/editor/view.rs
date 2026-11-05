@@ -103,6 +103,9 @@ impl Editor {
     pub fn reset_layouts(&mut self) { self.layouts.clear(); }
     pub fn status_text(&self) -> &str { &self.status }
     pub fn is_dirty(&self) -> bool { self.dirty }
+    pub(crate) fn block_plain_text(&self, id: u64) -> String {
+        self.doc.get(id).map(|block| block.text.clone()).unwrap_or_default()
+    }
     pub(crate) fn dismiss_dropdowns(&mut self) -> bool {
         self.block_menu.take().is_some() | self.table_menu.take().is_some()
             | self.format.take().is_some() | self.image_menu.take().is_some()
