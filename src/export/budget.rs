@@ -2,13 +2,6 @@ use std::fmt;
 
 use crate::editor::model::Block;
 
-// Bound input before cloning/shaping; bound the actual canvas again before allocation.
-// Pixel storage is <=64 MiB. Encoding may temporarily require another full image.
-pub const MAX_BLOCKS: usize = 256;
-pub const MAX_TEXT_BYTES: usize = 128 * 1024;
-pub const MAX_SPANS: usize = 8192;
-pub const MAX_PIXELS: u64 = 16 * 1024 * 1024;
-
 #[derive(Debug)]
 pub enum ExportError {
     Cancelled,
@@ -50,19 +43,9 @@ impl fmt::Display for ExportError {
 }
 impl std::error::Error for ExportError {}
 
-pub fn preflight(count: usize, text_bytes: usize, spans: usize) -> Result<(), ExportError> {
-    use crate::theme::tr;
+pub fn preflight(count: usize, _text_bytes: usize, _spans: usize) -> Result<(), ExportError> {
     if count == 0 {
         return Err(ExportError::Empty);
-    }
-    if count > MAX_BLOCKS {
-        return Err(ExportError::ResourceLimit(tr("最多 256 个块", "Max 256 blocks")));
-    }
-    if text_bytes > MAX_TEXT_BYTES {
-        return Err(ExportError::ResourceLimit(tr("最多 128 KiB 文本", "Max 128 KiB text")));
-    }
-    if spans > MAX_SPANS {
-        return Err(ExportError::ResourceLimit(tr("最多 8192 个格式范围", "Max 8192 format spans")));
     }
     Ok(())
 }
@@ -160,7 +143,6 @@ impl Tally {
                 || span.end > block.text.len()
                 || !block.text.is_char_boundary(span.start)
                 || !block.text.is_char_boundary(span.end)
-                || span.marks.len() > 4
             {
                 return Err(ExportError::InvalidInput(crate::theme::tr(
                     "格式范围必须有序、不重叠且位于 UTF-8 边界",
@@ -197,13 +179,7 @@ impl Tally {
             }
             for row in &table.rows {
                 for cell in &row.cells {
-                    self.cells += 1;
-                    if self.cells > 2048 {
-                        return Err(ExportError::ResourceLimit(crate::theme::tr(
-                            "最多 2048 个表格单元格",
-                            "Max 2048 table cells",
-                        )));
-                    }
+                    self.cells = self.cells.saturating_add(1);
                     if cell.content.meta.table.is_some() || cell.original.meta.table.is_some() {
                         return Err(ExportError::UnsupportedTable(crate::theme::tr(
                             "嵌套表格",
@@ -233,18 +209,23 @@ impl Tally {
 }
 
 pub(super) fn canvas(width: f32, height: f32) -> Result<(u32, u32), ExportError> {
-    if !width.is_finite()
-        || !height.is_finite()
-        || width <= 0.0
-        || height <= 0.0
-        || (width.ceil() as u64)
-            .checked_mul(height.ceil() as u64)
-            .is_none_or(|pixels| pixels > MAX_PIXELS)
+    let w = width.ceil();
+    let h = height.ceil();
+    if !w.is_finite()
+        || !h.is_finite()
+        || w <= 0.0
+        || h <= 0.0
+        || w > i32::MAX as f32
+        || h > i32::MAX as f32
+        || (w as usize)
+            .checked_mul(h as usize)
+            .and_then(|pixels| pixels.checked_mul(4))
+            .is_none()
     {
-        return Err(ExportError::ResourceLimit(crate::theme::tr(
-            "最多 1600 万像素 / 64 MiB 像素缓冲",
-            "Max 16 MP / 64 MiB pixel buffer",
+        return Err(ExportError::Rendering(crate::theme::tr(
+            "画布尺寸无效",
+            "Invalid canvas dimensions",
         )));
     }
-    Ok((width.ceil() as u32, height.ceil() as u32))
+    Ok((w as u32, h as u32))
 }
