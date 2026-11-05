@@ -80,11 +80,9 @@ impl FilePreview {
         preview
     }
 
-    /// When false, the header keeps the zoom cluster on the right and omits the path name.
-    pub fn set_show_filename(&mut self, show: bool, cx: &mut Context<Self>) {
-        if self.show_filename == show { return; }
+    /// Filename now lives in the window title bar, so this only stores the flag.
+    pub fn set_show_filename(&mut self, show: bool, _cx: &mut Context<Self>) {
         self.show_filename = show;
-        cx.notify();
     }
 
     /// Debounced preview of unsaved SVG text. Does not read the path again.
@@ -141,6 +139,12 @@ impl FilePreview {
     fn placed(&self) -> view::Placed {
         let (nat_w, nat_h) = self.natural().unwrap_or((1.0, 1.0));
         view::place(self.view, nat_w, nat_h, self.stage.w, self.stage.h)
+    }
+
+    /// Percent label and whether the image is in fit-to-window mode.
+    pub fn zoom_state(&self) -> Option<(String, bool)> {
+        if self.natural().is_none() { return None; }
+        Some((view::percent_label(self.placed().scale), self.view.mode == ZoomMode::Fit))
     }
 
     fn image(&self) -> Option<&std::sync::Arc<RenderImage>> {
