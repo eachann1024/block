@@ -25,7 +25,7 @@ use tab_menu::{
     render_inactive_tab_body, tab_fade,
 };
 
-const TITLEBAR_HEIGHT: f32 = 40.;
+pub(super) const TITLEBAR_HEIGHT: f32 = 40.;
 const SINGLE_TAB_MAX_W: f32 = 240.;
 
 actions!(workspace_tabs, [
@@ -177,6 +177,7 @@ impl Workspace {
     }
 
     pub(super) fn titlebar(&self, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
+        if self.is_history_open() { return self.render_history_titlebar(cx); }
         let theme = Theme::ocean();
         let tab_count = self.tabs.len();
         let can_create = self.ui_enabled();
