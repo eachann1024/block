@@ -154,6 +154,7 @@ impl Editor {
                 let inner = &before_caret[open + 1..close_pos];
                 if inner.is_empty() || inner.contains('\n') || inner.contains('`') { return; }
                 self.apply_inline_mark(at.block, open, 1, close_pos, at.offset, MarkKind::Code, cx);
+                self.code_escape_after_close(cx);
             }
             "*" | "_" => {
                 let ch = typed.as_bytes()[0];

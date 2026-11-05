@@ -292,6 +292,7 @@ impl Render for Editor {
                     super::chrome::selection_toolbar(cx.entity(), self.caret.head.block, anchor)))
                 .when_some(self.format.clone(), |root, pop| root.child(super::format_ui::popover(cx.entity(), &pop)))
                 .children(self.link_overlays(cx.entity(), window))
+                .children(self.code_hover_tooltip(cx, window))
                 .child(anchor_sync))
             .children(super::find_bar::find_bar(self, cx))
             .children(super::annotate_ui::overlay(self, window, cx))
