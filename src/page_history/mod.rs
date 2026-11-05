@@ -10,7 +10,7 @@ pub mod time;
 pub mod types;
 
 pub use panel::render_history_panel;
-pub use preview::{render_preview_surface, render_restore_button, restore_availability};
+pub use preview::{render_mode_switch, render_preview_surface, render_restore_button, restore_availability};
 pub use modal::render_restore_modal;
 pub use storage::{
     is_file_readonly, load_version_content, load_versions, on_file_saved, on_path_moved,

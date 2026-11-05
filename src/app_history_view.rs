@@ -4,7 +4,7 @@ use gpui::{
 };
 use crate::{
     icons::Icon,
-    page_history::{HistoryError, render_history_panel, render_preview_surface, render_restore_button, render_restore_modal, restore_availability},
+    page_history::{HistoryError, PreviewMode, render_history_panel, render_mode_switch, render_preview_surface, render_restore_button, render_restore_modal, restore_availability},
     theme::{Theme, tr},
     ui::{icon_button::icon_button, radius, text_action::plain_action},
 };
@@ -23,12 +23,10 @@ impl Workspace {
             HistoryError::LoadFailed(_) => Some(err.message()),
             _ => None,
         });
-        let entity_mode = cx.entity();
         let entity_select = cx.entity();
         let preview = render_preview_surface(
             note_path, selected_version, selected_content, &hist.current_content, hist.mode,
             hist.error.as_ref(), diff_blocks, preview_key,
-            move |mode, _, cx| { entity_mode.update(cx, |this, cx| this.toggle_history_mode(mode, cx)); },
             cx.listener(|this, _, _, cx| this.recompare_history(cx)),
             cx.listener(|this, _, window, cx| this.confirm_restore(window, cx)),
         );
@@ -57,26 +55,34 @@ impl Workspace {
 
     pub(super) fn render_history_titlebar(&self, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         let theme = Theme::ocean();
-        let (disabled, hint) = self.history.as_ref().map(|hist| {
+        let (title, mode, disabled, hint) = self.history.as_ref().map(|hist| {
+            let selected = hist.selected_id.as_ref().and_then(|id| hist.versions.iter().find(|v| &v.id == id));
+            let title = selected.map(|v| v.display_time.clone()).unwrap_or_default();
             let pending = hist.loading || hist.content_loading;
-            let version = if pending { None } else {
-                hist.selected_id.as_ref().and_then(|id| hist.versions.iter().find(|v| &v.id == id))
-            };
+            let version = if pending { None } else { selected };
             let content = if pending { None } else { hist.selected_content.as_deref() };
             let (disabled, hint) = restore_availability(
                 version, content, hist.is_readonly, hist.restoring || self.history_restore_busy, hist.error.as_ref(),
             );
-            (disabled || hist.confirm_open, hint)
-        }).unwrap_or((true, String::new()));
+            (title, hist.mode, disabled || hist.confirm_open, hint)
+        }).unwrap_or_else(|| (String::new(), PreviewMode::Diff, true, String::new()));
+        let entity_mode = cx.entity();
         div().id("titlebar").h(px(super::tabs::TITLEBAR_HEIGHT)).w_full().flex_none().flex().items_center()
             .bg(theme.shell).border_b_1().border_color(theme.sidebar_border)
             .child(self.titlebar_left(cx))
-            .child(div().id("history-titlebar-drag").flex_1().min_w(px(16.)).h_full()
+            .child(div().id("history-titlebar-drag").relative().children(crate::ui::smoke_overlay::probe("history-titlebar-drag")).flex_1().min_w(px(16.)).h_full().px(px(16.)).flex().items_center()
                 .window_control_area(WindowControlArea::Drag)
-                .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); }))
-            .child(div().flex_none().mr(px(10.)).child(render_restore_button(
-                disabled, hint, cx.listener(|this, _, window, cx| this.open_restore_confirm(window, cx)),
-            )))
+                .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
+                .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
+                    .text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(560.)).text_color(theme.text)
+                    .child(title)))
+            .child(div().flex_none().mr(px(10.)).flex().items_center().gap(px(8.))
+                .child(render_mode_switch(mode, move |mode, _, cx| {
+                    entity_mode.update(cx, |this, cx| this.toggle_history_mode(mode, cx));
+                }))
+                .child(render_restore_button(
+                    disabled, hint, cx.listener(|this, _, window, cx| this.open_restore_confirm(window, cx)),
+                )))
             .child(crate::ui::window_controls::window_controls("main-win", true, true))
     }
 
