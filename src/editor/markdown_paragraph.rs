@@ -82,8 +82,7 @@ pub(super) fn parse(id: u64, source: &str) -> Result<Block, &'static str> {
     let leading = source.len() - source.trim_start().len();
     let content = leading + first.range.end..leading + last.range.start;
     let inner = &source[content.clone()];
-    let (text, spans, mut annotations) = inline::parse(inner)
-        .or_else(|| inline::parse_html(inner))
+    let (text, spans, mut annotations) = inline::parse(inner).or_else(|| inline::parse_html(inner))
         .ok_or("Block contains unsupported HTML; the original HTML is retained")?;
     if indent.is_none() && !open_attrs.is_empty() && !text.is_empty() {
         annotations.insert(0, InlineTag { start: 0, end: text.len(), name: "span".into(), attrs: open_attrs });
@@ -102,20 +101,20 @@ pub(super) fn serialize(block: &Block, out: &mut String) {
     if block.meta.indent > 0 {
         use std::fmt::Write;
         let _ = write!(out, "<p data-indent=\"{}\">", block.meta.indent.min(12));
-        inline::serialize(block, out);
+        inline::serialize_html(block, out);
         out.push_str("</p>\n");
         return;
     }
     let paragraph = block.meta.html_paragraph.as_ref().expect("HTML paragraph metadata");
     let original = paragraph.source.get(paragraph.content.clone());
-    if let Some(content) = original {
-        let unchanged = inline::parse_html(content).is_some_and(|(text, spans, annotations)|
-            text == block.text && spans == block.spans && annotations == block.meta.inline);
+    if original.is_some() {
+        let unchanged = parse(block.id, &paragraph.source).is_ok_and(|original|
+            original.text == block.text && original.spans == block.spans && original.meta.inline == block.meta.inline);
         if unchanged { out.push_str(&paragraph.source); return; }
         out.push_str(&paragraph.source[..paragraph.content.start]);
-        inline::serialize(block, out);
+        inline::serialize_html(block, out);
         out.push_str(&paragraph.source[paragraph.content.end..]);
     } else {
-        out.push_str("<p>"); inline::serialize(block, out); out.push_str("</p>\n");
+        out.push_str("<p>"); inline::serialize_html(block, out); out.push_str("</p>\n");
     }
 }
