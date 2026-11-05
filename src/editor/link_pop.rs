@@ -1,7 +1,7 @@
 //! Link popover and hover tooltip (F-Inline): hover underlines the link and shows the shortcut
 //! tooltip above it; placing the caret inside a link opens the action pill below it.
 use std::ops::Range;
-use gpui::{AnyElement, ClipboardItem, Context, CursorStyle, Entity, MouseButton, Pixels, Point, Window, div, point, prelude::*, px, rgb};
+use gpui::{AnyElement, Bounds, ClipboardItem, Context, CursorStyle, Entity, MouseButton, Pixels, Point, Window, div, prelude::*, px, rgb};
 use crate::{icons::{Icon, stateful_icon}, theme::{Theme, tr}, ui::tooltip::anchored_tooltip_above};
 use super::{format_cmds::open_external_url, toolbar::{ToolbarColors, pill, sep}, view::{Editor, selection::Position}};
 
@@ -92,9 +92,10 @@ impl Editor {
         self.caret.head = Position { block, offset: range.end };
         self.table_sel = None; self.link_ui.hover = None;
     }
-    fn edit_link_at(&mut self, block: u64, range: &Range<usize>, url: String, anchor: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
+    fn edit_link_at(&mut self, block: u64, range: &Range<usize>, url: String, rect: Bounds<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
         self.select_link(block, range);
-        self.show_link_popover(url, true, anchor, window, cx);
+        let spec = crate::dropdown::PlacementSpec::below(rect).viewport(self.list.viewport_bounds()).gap(px(4.));
+        self.show_link_popover(url, true, spec, window, cx);
     }
     fn unlink_at(&mut self, block: u64, range: &Range<usize>, window: &mut Window, cx: &mut Context<Self>) {
         self.select_link(block, range);
@@ -125,7 +126,6 @@ impl Editor {
         let rect = *self.layouts.get(&block)?.rects(range.clone()).first()?;
         let viewport = self.list.viewport_bounds();
         if rect.bottom() <= viewport.top() || rect.top() >= viewport.bottom() { return None; }
-        let anchor = point(rect.left(), rect.bottom());
         let tc = ToolbarColors::current();
         let display = middle_ellipsis(&url);
         let (origin, tail) = split_origin(&display);
@@ -135,7 +135,7 @@ impl Editor {
         let (e_edit, e_unlink, e_copy) = (editor.clone(), editor.clone(), editor);
         let theme = Theme::ocean();
         let button = |id: &'static str, g: Icon, tip: &'static str, run: Box<dyn Fn(&mut Window, &mut gpui::App)>| div().id(id).group(id)
-            .size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.)).cursor(CursorStyle::PointingHand)
+            .size(px(28.)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).cursor(CursorStyle::PointingHand)
             .hover(move |s| s.bg(rgb(tc.hover)))
             .child(stateful_icon(id, g, px(16.), false, theme.mono_icon_colors(rgb(tc.ink).into()), theme.icon_colors(rgb(tc.ink).into())))
             .tooltip(crate::theme::tooltip(tip))
@@ -152,13 +152,14 @@ impl Editor {
                 e_copy.update(cx, |this, cx| { this.status = tr("已复制链接", "Link copied").into(); cx.notify(); });
             })))
             .child(button("link-edit", Icon::LinkEdit, tr("编辑链接", "Edit link"), Box::new(move |window, cx| {
-                e_edit.update(cx, |this, cx| this.edit_link_at(block, &edit_range, edit_url.clone(), anchor, window, cx));
+                e_edit.update(cx, |this, cx| this.edit_link_at(block, &edit_range, edit_url.clone(), rect, window, cx));
             })))
             .child(button("link-unlink", Icon::LinkOff, tr("移除链接", "Remove link"), Box::new(move |window, cx| {
                 e_unlink.update(cx, |this, cx| this.unlink_at(block, &unlink_range, window, cx));
             })));
-        Some(gpui::anchored().position(anchor).snap_to_window_with_margin(px(8.)).child(
-            div().pt(px(4.)).on_mouse_move(|_, _, cx| cx.stop_propagation()).on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        let spec = crate::dropdown::PlacementSpec::below(rect).viewport(viewport).gap(px(4.));
+        Some(crate::ui::placement::smart_anchored(spec).child(
+            div().on_mouse_move(|_, _, cx| cx.stop_propagation()).on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .child(crate::ui::floating_bar::animate(bar, "link-pill-enter"))).into_any_element())
     }
     pub(super) fn link_overlays(&self, editor: Entity<Editor>, window: &Window) -> Vec<AnyElement> {

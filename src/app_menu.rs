@@ -2,7 +2,7 @@
 //! shared surface/item/separator used by the notebook switcher.
 use std::path::{Path, PathBuf};
 use gpui::{
-    AnyElement, App, Context, MouseButton, Pixels, Stateful, Div, Window, anchored, deferred, div, point,
+    AnyElement, App, Context, MouseButton, Pixels, Stateful, Div, Window, div, point,
     prelude::*, px,
 };
 use crate::{
@@ -127,14 +127,23 @@ impl Workspace {
                 if *hovered { if let Some(menu) = &mut this.menu { if menu.moving { menu.moving = false; cx.notify(); } } }
             }))
             .into_any_element());
-        let mut out = vec![deferred(anchored().position(position).snap_to_window_with_margin(px(8.))
-            .child(menu_surface(px(MENU_WIDTH)).children(items))).with_priority(2).into_any_element()];
+        let main_spec = crate::dropdown::PlacementSpec::point(position);
+        let mut out = vec![crate::dropdown::deferred_popover_for(
+            main_spec,
+            menu_surface(px(MENU_WIDTH)).children(items),
+            2,
+        )
+        .into_any_element()];
         if moving {
             let move_row = if dir { 2. } else { 3. };
             let sep_offset = if dir { 0. } else { 13. };
-            let at = point(position.x + px(MENU_WIDTH + 4.), position.y + px(4. + sep_offset + move_row * 30.));
-            out.push(deferred(anchored().position(at).snap_to_window_with_margin(px(8.))
-                .child(self.move_list(&path, dir, cx))).with_priority(3).into_any_element());
+            let row_rect = gpui::Bounds::new(
+                point(position.x, position.y + px(4. + sep_offset + move_row * 30.)),
+                gpui::size(px(MENU_WIDTH), px(30.)),
+            );
+            let sub_spec = crate::dropdown::PlacementSpec::below(row_rect)
+                .align_x(crate::dropdown::AlignX::CascadeRight { gap: px(4.) });
+            out.push(crate::dropdown::deferred_popover_for(sub_spec, self.move_list(&path, dir, cx), 3).into_any_element());
         }
         out
     }
