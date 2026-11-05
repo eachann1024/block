@@ -3,7 +3,7 @@ use gpui::{CursorStyle, MouseButton, Pixels, div, prelude::*, px, rgb, transpare
 use crate::{
     icons::{Icon, IconColors, icon},
     theme::{Theme, is_dark, tr},
-    ui::reveal::{fold_button, handle_button, top_insert_slot},
+    ui::reveal::{fold_button, handle_button},
 };
 pub(super) use crate::ui::reveal::grip_button;
 use super::{model::{Block, Kind}, paint::BlockText, view::Editor};
@@ -231,7 +231,6 @@ fn table_grip_button(id: (&'static str, usize), active: bool, zoom: f32, listene
 }
 pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Context<Editor>) -> gpui::AnyElement {
     let block = &this.doc.blocks[index];
-    let zoom = super::zoom::zoom_factor(this.minimal);
     let number = (block.kind == Kind::Numbered).then(|| this.doc.list_number(block.id)).flatten();
     let edge = this.drag_over.filter(|target| target.index == index).map(|target| target.after);
     let whole_table = block.meta.table.is_some() && this.table_sel == Some((block.id, super::table_actions::TableSel::Whole));
@@ -240,20 +239,12 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let folded = !this.minimal && this.is_heading_folded(block.id);
     let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
     let image_pop = this.image_menu.as_ref().filter(|(mid, _)| *mid == block.id).map(|(_, p)| p.clone());
-    let show_top_slot = !this.minimal && this.path.is_some() && index == 0 && super::block_ops::needs_top_insert(block);
-    let bid = block.id;
-    let top_slot = show_top_slot.then(|| {
-        top_insert_slot(("top-insert", bid as usize), HANDLE_WIDTH, ROW_GAP, RIGHT_INSET, zoom, cx.listener(move |this, _, window, cx| {
-            this.insert_above(bid, cx); window.focus(&this.focus, cx); cx.stop_propagation();
-        }))
-    });
     let has_overlay = this.block_menu.is_some() || this.table_menu.is_some() || this.format.is_some()
         || this.annotate.active_annotation.is_some() || this.annotate.hovered_annotation.is_some()
         || this.annotate.composer.is_some() || this.annotate.reactions.is_some();
     let row = block_row(cx.entity(), block, row_pads(this, index), handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, cx);
     div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
         .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md()))
-        .when_some(top_slot, |d, s| d.child(s))
         .child(row).into_any_element()
 }
 pub(super) use super::toolbar::selection_toolbar;
