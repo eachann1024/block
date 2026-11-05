@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { gzipSync } from "node:zlib";
 import { appName, run, verifySignature } from "../app-bundle.mjs";
 import { buildApp } from "../build-app.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
@@ -55,8 +56,17 @@ export async function packageRelease() {
     createDmgWithRetry(stageDir, dmgPath);
     assert.ok(existsSync(dmgPath), `Failed to create ${DMG_NAME}`);
 
+    const deltaArch = process.arch === "arm64" ? "arm64" : "x64";
+    const deltaName = `block-macos-${deltaArch}.bin.gz`;
+    const binaryPath = join(appBundle, "Contents/MacOS", appName);
+    assert.ok(existsSync(binaryPath), `Binary missing at ${binaryPath}`);
+    const deltaPath = join(RELEASE_DIR, deltaName);
+    writeFileSync(deltaPath, gzipSync(readFileSync(binaryPath), { level: 9 }));
+    assert.ok(existsSync(deltaPath), `Failed to create ${deltaName}`);
+
     console.log(`Packaged Block v${version}:`);
     console.log(`  ${dmgPath}`);
+    console.log(`  ${deltaPath}`);
   } finally {
     rmSync(stageDir, { recursive: true, force: true });
   }
