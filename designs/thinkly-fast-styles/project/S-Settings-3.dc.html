@@ -24,7 +24,31 @@ button,input{font-family:inherit}
 .keycap{font-family:'JetBrains Mono',Inter,ui-monospace,monospace;font-variant-numeric:tabular-nums;height:22px;min-width:22px;padding:0 6px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;line-height:14px;font-weight:500;box-sizing:border-box;white-space:nowrap}
 .keycap-sym{font-family:Inter,-apple-system,'SF Pro Text',system-ui,sans-serif;height:22px;min-width:22px;padding:0 5px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;line-height:14px;font-weight:500;box-sizing:border-box;white-space:nowrap}
 .menu-opt{font:inherit;font-size:14px;line-height:20px;width:100%;height:32px;padding:0 8px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;text-align:left;box-sizing:border-box}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.ai-toggle{position:relative;border:1px solid var(--border);background:var(--bg);transition:transform 240ms cubic-bezier(.22,1,.36,1),box-shadow 240ms cubic-bezier(.22,1,.36,1),background 160ms linear,border-color 160ms linear}
+.ai-toggle:hover{transform:translateY(-1.5px);box-shadow:0 5px 14px color-mix(in srgb, var(--accent) 16%, transparent);border-color:var(--accent);background:var(--idle-hover, var(--on-bg))}
+.ai-toggle.is-on:hover,.ai-toggle.is-on-rest:hover{background:var(--on-bg)}
+.ai-spark{position:relative;width:15px;height:15px;display:inline-flex;flex:none}
+.ai-toggle:hover .ai-spark{animation:ai-float 340ms linear}
+.ai-toggle.is-on{animation:ai-pop 340ms linear}
+.ai-toggle.is-on .ai-spark{animation:ai-leap 340ms linear}
+.ai-toggle.is-off{animation:ai-settle 180ms cubic-bezier(.22,1,.36,1)}
+.twinkle{position:absolute;border-radius:99px;background:var(--accent);opacity:0;pointer-events:none}
+.ai-toggle:hover .twinkle{animation:ai-twinkle 460ms linear both}
+.tw1{left:-2px;top:-1px;width:3.6px;height:3.6px}
+.tw2{left:11px;top:2px;width:4.8px;height:4.8px}
+.tw3{left:3px;top:11px;width:4.2px;height:4.2px}
+.halo{position:absolute;inset:0;border-radius:8px;border:1px solid transparent;pointer-events:none}
+.ai-toggle.is-on .halo{animation:ai-halo 480ms cubic-bezier(.16,1,.3,1)}
+.puff{position:absolute;top:16px;border-radius:99px;opacity:0;pointer-events:none}
+.ai-toggle.is-on .puff{animation:ai-puff var(--dur) cubic-bezier(.215,.61,.355,1) both}
+@keyframes ai-float{0%{transform:none}50%{transform:translate(0.8px,-1.4px)}100%{transform:none}}
+@keyframes ai-leap{0%{transform:none}50%{transform:translateY(-2.6px)}100%{transform:none}}
+@keyframes ai-pop{0%{transform:none}28%{transform:translateY(1.4px)}60%{transform:translateY(-2.2px)}100%{transform:none}}
+@keyframes ai-settle{0%{transform:none}50%{transform:translateY(1.2px)}100%{transform:none}}
+@keyframes ai-twinkle{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(1)}}
+@keyframes ai-halo{0%{inset:0;border-color:color-mix(in srgb, var(--accent) 62%, transparent)}100%{inset:-6px;border-color:transparent}}
+@keyframes ai-puff{0%{opacity:.9;transform:translate(-50%,-50%) scale(.2)}100%{opacity:0;transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(1)}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}.ai-toggle,.ai-toggle *{animation:none!important}}
 </style>
 </helmet>
 <div style="width:100%;min-height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:{{shellBg}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:{{textPrimary}};font-size:14px;line-height:20px;overflow:hidden;-webkit-font-smoothing:antialiased">
@@ -121,9 +145,26 @@ button,input{font-family:inherit}
 <section aria-label="AI 服务商与连接" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
 <h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">服务商与连接</h2>
-<button type="button" onClick="{{toggleAiEnabled}}" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid {{aiToggleBorder}};background:{{aiToggleBg}};color:{{textPrimary}};font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:8px;cursor:pointer;box-sizing:border-box">
-<span style="width:8px;height:8px;border-radius:4px;background:{{aiDotCol}}"></span>
+<button type="button" class="ai-toggle {{aiToggleState}}" onClick="{{toggleAiEnabled}}" style="--accent:{{accent}};--on-bg:{{selectedBg}};--idle-hover:{{aiIdleHover}};--border:{{aiToggleBorder}};--bg:{{aiToggleBg}};height:32px;padding:0 12px;border-radius:8px;color:{{textPrimary}};font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:7px;cursor:pointer;box-sizing:border-box">
+<span class="ai-spark" aria-hidden="true">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+<path d="M10 3.5L11.75 8.25L16.5 10L11.75 11.75L10 16.5L8.25 11.75L3.5 10L8.25 8.25Z" fill="{{aiSparkFill}}" stroke="{{aiIconCol}}" stroke-width="1.5" stroke-linejoin="round"></path>
+<path d="M18 14L18.9 16.6L21.5 17.5L18.9 18.4L18 21L17.1 18.4L14.5 17.5L17.1 16.6Z" fill="{{aiIconCol}}"></path>
+<path d="M18 4.25V7.75M16.25 6H19.75" stroke="{{aiIconCol}}" stroke-width="1.5" stroke-linecap="round"></path>
+</svg>
+<i class="twinkle tw1"></i><i class="twinkle tw2"></i><i class="twinkle tw3"></i>
+</span>
 <span>{{aiToggleLabel}}</span>
+<span class="halo" aria-hidden="true"></span>
+<i class="puff" style="left:10%;--dx:-42px;--dy:-30px;--dur:880ms;width:12px;height:12px;background:{{iconFill}}"></i>
+<i class="puff" style="left:22%;--dx:-24px;--dy:-46px;--dur:1040ms;width:16px;height:16px;background:{{accent}}"></i>
+<i class="puff" style="left:34%;--dx:2px;--dy:-50px;--dur:920ms;width:11px;height:11px;background:{{iconFill}}"></i>
+<i class="puff" style="left:48%;--dx:22px;--dy:-44px;--dur:1120ms;width:18px;height:18px;background:{{accent}}"></i>
+<i class="puff" style="left:62%;--dx:46px;--dy:-28px;--dur:980ms;width:13px;height:13px;background:{{iconFill}}"></i>
+<i class="puff" style="left:78%;--dx:58px;--dy:-8px;--dur:1080ms;width:15px;height:15px;background:{{accent}}"></i>
+<i class="puff" style="left:18%;--dx:-52px;--dy:16px;--dur:1000ms;width:14px;height:14px;background:{{iconFill}}"></i>
+<i class="puff" style="left:55%;--dx:28px;--dy:18px;--dur:900ms;width:12px;height:12px;background:{{accent}}"></i>
+<i class="puff" style="left:84%;--dx:40px;--dy:10px;--dur:1100ms;width:10px;height:10px;background:{{iconFill}}"></i>
 </button>
 </div>
 
@@ -546,7 +587,10 @@ class Component extends DCLogic {
 
       aiToggleBg: aiOn ? selectedBg : shellBg,
       aiToggleBorder: aiOn ? accent : btnBorder,
-      aiDotCol: aiOn ? accent : textSecondary,
+      aiIconCol: aiOn ? accent : textSecondary,
+      aiSparkFill: aiOn ? iconFill : 'transparent',
+      aiIdleHover: aiOn ? selectedBg : (dark ? '#2c2c2c' : '#eef3fc'),
+      aiToggleState: st.aiToggleSeen ? (aiOn ? 'is-on' : 'is-off') : (aiOn ? 'is-on-rest' : ''),
       aiToggleLabel: aiOn ? '已开启' : '已关闭',
 
       cardDsBg: cDs.bg, cardDsBorder: cDs.border, cardDsRing: cDs.ring,
@@ -616,7 +660,7 @@ class Component extends DCLogic {
       setLangZh: () => this.setState({ langChoice: 'zh' }),
       setLangEn: () => this.setState({ langChoice: 'en' }),
 
-      toggleAiEnabled: () => this.setState({ aiEnabled: !st.aiEnabled }),
+      toggleAiEnabled: () => this.setState({ aiEnabled: !st.aiEnabled, aiToggleSeen: true }),
       toggleShowKey: () => this.setState({ showKey: !st.showKey }),
       toggleModelMenu: () => this.setState({ modelMenuOpen: !st.modelMenuOpen }),
 
