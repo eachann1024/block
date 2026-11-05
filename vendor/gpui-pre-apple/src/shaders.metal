@@ -1141,8 +1141,11 @@ float4 distance_from_clip_rect_transformed(float2 unit_vertex, Bounds_ScaledPixe
 }
 
 float4 over(float4 below, float4 above) {
-  float4 result;
   float alpha = above.a + below.a * (1.0 - above.a);
+  if (alpha == 0.0) {
+    return float4(0.0);
+  }
+  float4 result;
   result.rgb =
       (above.rgb * above.a + below.rgb * below.a * (1.0 - above.a)) / alpha;
   result.a = alpha;
