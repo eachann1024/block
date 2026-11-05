@@ -118,7 +118,8 @@ impl Editor {
                     self.list.reset(self.doc.blocks.len()); self.changed(cx);
                 }
                 self.caret.composing = None;
-                let idle = self.block_menu.is_none() && self.format.is_none() && self.table_menu.is_none() && self.table_sel.is_none() && self.image_menu.is_none() && self.find.is_none();
+                let callout_closed = crate::ui::callout_controls::close_menu();
+                let idle = !callout_closed && self.block_menu.is_none() && self.format.is_none() && self.table_menu.is_none() && self.table_sel.is_none() && self.image_menu.is_none() && self.find.is_none();
                 if idle {
                     let (_, _, ai, bi) = self.ordered();
                     self.block_sel = Some((ai, bi));
