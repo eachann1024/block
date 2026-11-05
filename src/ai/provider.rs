@@ -9,6 +9,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 
 use super::anthropic;
+#[path = "provider_validation.rs"] mod validation;
+use validation::resolve_model;
+pub(crate) use validation::validate_request;
 use super::presets::{self, Protocol, ProviderProfile};
 use crate::theme::{is_en, tr};
 
@@ -182,14 +185,6 @@ pub(crate) fn list_models(config: &Config) -> Result<Vec<String>, String> {
     Ok(ids)
 }
 
-/// Validates that provider, API key (when required), and model are explicitly configured.
-fn resolve_model(config: &Config) -> Result<String, (String, bool)> {
-    if config.base_url.trim().is_empty() { return Err((missing_url_msg().into(), true)); }
-    if config.key_required() && config.api_key.trim().is_empty() { return Err((missing_key_msg().into(), true)); }
-    if config.model.trim().is_empty() { return Err((missing_model_msg().into(), true)); }
-    Ok(config.model.trim().to_owned())
-}
-
 /// Connection test: one tiny completion (`max_tokens: 8`), no notes or local context.
 pub(crate) fn test_connection(config: &Config) -> Result<(), String> {
     if cfg!(target_family = "wasm") { return Err(tr("网页演示版暂不连接在线 AI 服务", "Online AI is disabled in web demo").into()); }
@@ -238,10 +233,7 @@ pub(crate) fn stream_agent(msgs: Vec<serde_json::Value>, tools: Option<serde_jso
     std::thread::spawn(move || {
         let config = config();
         let fail = |message: String, settings: bool| { let _ = tx.send(Event::Failed { message, settings }); };
-        if !config.enabled {
-            return fail(tr("当前页面不可编辑或 AI 未开启。", "Current page is not editable or AI is disabled.").into(), true);
-        }
-        let model = match resolve_model(&config) { Ok(m) => m, Err((m, s)) => return fail(m, s) };
+        let model = match validate_request(&config) { Ok(m) => m, Err((m, s)) => return fail(m, s) };
         if cancel.load(Ordering::Relaxed) { return; }
         if config.effective_protocol() == Protocol::Anthropic {
             return anthropic::stream_turn(config, model, msgs, tools, cancel, tx);

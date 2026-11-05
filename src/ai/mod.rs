@@ -13,6 +13,8 @@ mod settings_view;
 #[cfg(not(target_family = "wasm"))]
 mod chat_ui;
 #[cfg(not(target_family = "wasm"))]
+mod chat_composer;
+#[cfg(not(target_family = "wasm"))]
 pub(crate) mod chat;
 #[cfg(target_family = "wasm")]
 pub(crate) mod chat {

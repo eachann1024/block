@@ -3,7 +3,7 @@ use gpui::{CursorStyle, FontWeight, IntoElement, MouseButton, ParentElement, Ren
 use gpui_component::input::Input;
 
 use super::agent;
-use super::chat::{AiChat, Msg, Pick, first_placeholder, follow_placeholder};
+use super::chat::{AiChat, Msg, first_placeholder, follow_placeholder};
 use super::provider;
 use crate::icons::{Icon, icon, stateful_icon};
 use crate::theme::{Theme, is_en, tr};
@@ -99,10 +99,13 @@ impl Render for AiChat {
             .child(glyph(Icon::Sparkles, 28., theme.accent)).child(div().text_size(px(14.)).child(tr("有什么可以帮你？", "How can I help?")))) } else { body };
 
         let error = self.error.clone().map(|e| div().mx(px(12.)).mb(px(8.)).p(px(10.)).flex().items_start().gap(px(8.)).rounded(crate::ui::radius::CONTROL)
-            .bg(gpui::hsla(0., 0.75, 0.5, 0.08)).text_size(px(12.))
+            .bg(gpui::hsla(0., 0.75, 0.5, 0.08)).text_size(px(14.))
             .child(div().flex_1().flex().flex_col().gap(px(2.))
                 .child(div().font_weight(FontWeight(600.)).text_color(gpui::rgb(0xb42318)).child(tr("本轮失败原因", "Request failed")))
-                .child(div().text_color(theme.text).child(e)))
+                .child(div().text_color(theme.text).child(e))
+                .when(self.error_settings, |d| d.child(crate::ui::ai_controls::action_chip(
+                    "ai-chat-settings", None, tr("打开 AI 设置", "Open AI settings"), false, false,
+                    |_, window, cx| window.dispatch_action(Box::new(super::OpenAiSettings), cx)))))
             .child(icon_btn("ai-chat-error-close", Icon::Close, tr("关闭错误提示", "Dismiss error"), false).on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.error = None; cx.notify(); }))));
 
         let chip_list: Vec<(bool, String)> = self.refs.iter().map(|r| (true, r.clone())).chain(self.skills.iter().map(|s| (false, s.clone()))).collect();
@@ -119,44 +122,24 @@ impl Render for AiChat {
                     }))
                     .child(stateful_icon(x_id, Icon::Close, px(10.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
         });
-        let value = self.input.read(cx).value().to_string();
-        let token = value.rsplit(char::is_whitespace).next().unwrap_or("").to_owned();
-        let picks: Vec<(Pick, String, String)> = if let Some(q) = token.strip_prefix('@') {
-            let q = q.to_lowercase();
-            self.agent_ctx(cx).pages().into_iter().filter(|p| p.to_lowercase().contains(&q) && !self.refs.contains(p))
-                .take(8).map(|p| (Pick::Page(p.clone()), p, tr("笔记", "Note").into())).collect()
-        } else if let Some(q) = token.strip_prefix('/').filter(|_| value.trim_start().starts_with('/') || value.contains(" /")) {
-            let q = q.to_lowercase();
-            let new_cmd = tr("/新会话", "/new");
-            let mut v: Vec<(Pick, String, String)> = vec![(Pick::NewConv, new_cmd.into(), tr("开启空白对话，当前会话会留在历史里", "Start a new chat; current chat stays in history").into())];
-            v.extend(self.agent_ctx(cx).local_skills().into_iter().map(|(n, d, _)| (Pick::Skill(n.clone()), format!("/{n}"), d)));
-            v.into_iter().filter(|(_, n, d)| q.is_empty() || n.to_lowercase().contains(&q) || d.to_lowercase().contains(&q) || (q == "new" && n == new_cmd)).collect()
-        } else { Vec::new() };
-        let picker_open = token.starts_with('@') || (token.starts_with('/') && (value.trim_start().starts_with('/') || value.contains(" /")));
+        let token = self.picker_token(cx);
+        let picks = token.as_deref().map(|token| self.picker_items(token, cx)).unwrap_or_default();
+        let selected = self.pick_index.min(picks.len().saturating_sub(1));
+        let picker_open = token.is_some();
+        let token = token.unwrap_or_default();
         let picker = picker_open.then(|| {
             let list = if picks.is_empty() {
-                div().p(px(10.)).text_size(px(12.)).text_color(theme.text_secondary)
+                div().p(px(10.)).text_size(px(14.)).text_color(theme.text_secondary)
                     .child(if token.starts_with('@') { tr("没有匹配的笔记", "No matching notes") } else { tr("没有匹配的指令或技能", "No matching commands or skills") })
             } else {
-                picks.into_iter().enumerate().fold(div().flex().flex_col().p(px(4.)), |d, (i, (pick, name, desc))| {
-                    let tlen = token.len();
-                    d.child(div().id(SharedString::from(format!("pick-{i}"))).px(px(8.)).py(px(6.)).flex().items_center().gap(px(8.)).rounded(crate::ui::radius::CONTROL)
-                        .hover(move |s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
-                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| {
-                            let v = this.input.read(cx).value().to_string();
-                            let rest = v[..v.len().saturating_sub(tlen)].to_owned();
-                            this.input.update(cx, |i, cx| { i.set_value(rest, w, cx); i.focus(w, cx); });
-                            match &pick {
-                                Pick::Page(p) => this.refs.push(p.clone()),
-                                Pick::Skill(s) => this.skills.push(s.clone()),
-                                Pick::NewConv => this.new_conv(w, cx),
-                            }
-                            cx.notify();
-                        }))
-                        .child(glyph(if name.starts_with('/') { Icon::Sparkles } else { Icon::Note }, 14., theme.accent))
-                        .child(div().text_size(px(13.)).child(name))
-                        .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(12.)).text_color(theme.text_secondary).child(desc)))
-                })
+                picks.into_iter().enumerate().map(|(i, (pick, name, desc))| {
+                    crate::ui::dropdown::row_with(SharedString::from(format!("pick-{i}")), crate::ui::dropdown::RowSpec {
+                        icon: Some(if name.starts_with('/') { Icon::Sparkles } else { Icon::Note }),
+                        label: name.into(), hint: Some(desc.into()), highlighted: i == selected, ..Default::default()
+                    }).on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| {
+                        cx.stop_propagation(); this.accept_pick(pick.clone(), w, cx);
+                    })).into_any_element()
+                }).fold(div().flex().flex_col().p(px(4.)), |d, row| d.child(row))
             };
             div().mx(px(12.)).max_h(px(240.)).rounded(crate::ui::radius::SURFACE).border_1().border_color(theme.menu_border).bg(theme.menu).shadow_md()
                 .child(div().px(px(10.)).pt(px(6.)).text_size(px(11.)).text_color(theme.text_secondary).child(if token.starts_with('@') { tr("引用笔记", "Reference Note") } else { tr("指令与技能", "Commands & Skills") }))
@@ -166,10 +149,7 @@ impl Render for AiChat {
         let action = if busy {
             icon_btn("ai-chat-stop", Icon::Stop, tr("停止生成", "Stop generating"), false).on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.stop(); cx.notify(); }))
         } else {
-            div().id("ai-chat-send").size(px(28.)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).bg(theme.primary)
-                .cursor(CursorStyle::PointingHand).tooltip(crate::theme::tooltip(tr("发送消息", "Send message")))
-                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, w, cx| this.send(w, cx)))
-                .child(glyph(Icon::ArrowUp, 16., gpui::white()))
+            crate::ui::ai_controls::send_button("ai-chat-send", cx.listener(|this, _, w, cx| { cx.stop_propagation(); this.send(w, cx); }))
         };
         let composer = div().flex_none().m(px(12.)).p(px(10.)).flex().flex_col().gap(px(8.)).rounded(crate::ui::radius::SURFACE).border_1().border_color(theme.btn_border).bg(theme.paper)
             .when(!self.refs.is_empty() || !self.skills.is_empty(), |d| d.child(chips))
@@ -181,9 +161,21 @@ impl Render for AiChat {
 
         div().id("ai-chat-panel").w(px(380.)).flex_none().h_full().flex().flex_col().relative().bg(theme.paper).border_l_1().border_color(theme.hairline)
             .text_color(theme.text)
+            .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
+                if event.keystroke.key == "escape" && this.picker_token(cx).is_some() {
+                    this.picker_dismissed = true; cx.stop_propagation(); cx.notify();
+                }
+            }))
+            .capture_action(cx.listener(|this, _: &gpui_component::input::MoveUp, _, cx| {
+                if this.move_pick(-1, cx) { cx.stop_propagation(); }
+            }))
+            .capture_action(cx.listener(|this, _: &gpui_component::input::MoveDown, _, cx| {
+                if this.move_pick(1, cx) { cx.stop_propagation(); }
+            }))
             .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, _, cx| {
                 cx.stop_propagation();
-                if this.history { this.history = false; } else { this.open = false; }
+                if this.picker_token(cx).is_some() { this.picker_dismissed = true; }
+                else if this.history { this.history = false; } else { this.open = false; }
                 cx.notify();
             }))
             .child(header)
