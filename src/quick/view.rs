@@ -37,9 +37,18 @@ impl QuickView {
             editor
         });
         let observe = cx.observe(&editor, |_, _, cx| cx.notify());
-        cx.observe_window_appearance(window, |_, window, cx| {
+        window.observe_window_appearance(|window, cx| {
             if crate::theme::sync_system_appearance(window.appearance(), cx) {
-                crate::quick::refresh_style(cx);
+                cx.defer(|cx| {
+                    if let Some((_, ws)) = crate::search::window::main_window(cx) {
+                        ws.update(cx, |w, cx| {
+                            w.editor.update(cx, |e, cx| { e.reset_layouts(); cx.notify(); });
+                            w.tree.update(cx, |_, cx| cx.notify());
+                            cx.notify();
+                        });
+                    }
+                    crate::quick::refresh_style(cx);
+                });
             }
         }).detach();
         cx.observe_window_bounds(window, |this, window, cx| {
