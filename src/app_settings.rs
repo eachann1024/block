@@ -209,19 +209,24 @@ impl Workspace {
     pub(crate) fn select_language(&mut self, mode: LanguageMode, window: &mut Window, cx: &mut Context<Self>) {
         set_language_mode(mode);
         if let Some(modal) = &self.settings {
-            modal.folder_draft_input.update(cx, |i, cx| {
-                i.set_placeholder(super::settings_folders::folder_draft_placeholder(), window, cx);
-            });
-            modal.regex_draft_input.update(cx, |i, cx| {
-                i.set_placeholder(super::settings_folders::regex_draft_placeholder(), window, cx);
-            });
+            modal.folder_draft_input.update(cx, |i, cx| i.set_placeholder(super::settings_folders::folder_draft_placeholder(), window, cx));
+            modal.regex_draft_input.update(cx, |i, cx| i.set_placeholder(super::settings_folders::regex_draft_placeholder(), window, cx));
+            if let Some(picker) = &modal.font_picker {
+                picker.search_input.update(cx, |i, cx| i.set_placeholder(tr("搜索字体", "Search fonts"), window, cx));
+            }
         }
-        cx.background_executor().spawn(async move {
-            let _ = update_state(|s| s.language = mode);
-        }).detach();
+        if let Some(search) = &self.search {
+            search.state.input.update(cx, |i, cx| i.set_placeholder(tr("搜索标题与正文", "Search titles and content"), window, cx));
+        }
+        cx.background_executor().spawn(async move { let _ = update_state(|s| s.language = mode); }).detach();
         crate::apply_app_menus(cx);
-        self.editor.update(cx, |editor, cx| { editor.reset_layouts(); cx.notify(); });
+        crate::search::window::refresh_style(cx);
+        crate::feedback::sync_language(window, cx);
         crate::quick::refresh_style(cx);
+        if self.notice == "选择文件夹以浏览 Markdown 笔记" || self.notice == "Select a folder to browse Markdown notes" {
+            self.notice = tr("选择文件夹以浏览 Markdown 笔记", "Select a folder to browse Markdown notes").into();
+        }
+        self.editor.update(cx, |editor, cx| { editor.sync_language(window, cx); editor.reset_layouts(); cx.notify(); });
         cx.notify();
     }
 
