@@ -17,13 +17,17 @@ pub(super) fn menu_shadows() -> Vec<BoxShadow> {
 }
 
 thread_local! { static BOUNDS: RefCell<HashMap<&'static str, Bounds<Pixels>>> = Default::default(); }
-/// Where a dropdown button was last painted: right edge aligned to trigger's right edge, top = trigger bottom + 4.
-#[allow(dead_code)]
-pub(super) fn drop_anchor(key: &'static str) -> Option<Point<Pixels>> {
-    BOUNDS.with(|b| b.borrow().get(key).map(|r| crate::dropdown::anchor_below_right(*r, 206., 160., None)))
-}
-pub(super) fn drop_anchor_for(key: &'static str, width: f32, est_h: f32, window: &Window) -> Option<Point<Pixels>> {
-    BOUNDS.with(|b| b.borrow().get(key).map(|r| crate::dropdown::anchor_below_right(*r, width, est_h, Some(window.viewport_size()))))
+/// Placement spec for a toolbar dropdown button: right-aligned to the button, flipping above if needed.
+pub(super) fn drop_spec_for(key: &'static str, viewport: Bounds<Pixels>, window: &Window) -> crate::dropdown::PlacementSpec {
+    BOUNDS
+        .with(|b| b.borrow().get(key).copied())
+        .map(|r| {
+            crate::dropdown::PlacementSpec::below(r)
+                .align_x(crate::dropdown::AlignX::Right)
+                .viewport(viewport)
+                .gap(px(4.))
+        })
+        .unwrap_or_else(|| crate::dropdown::PlacementSpec::point(window.mouse_position()).viewport(viewport))
 }
 
 pub(super) fn selection_toolbar(editor: Entity<Editor>, _id: u64, anchor: Point<Pixels>) -> SelectionToolbar { SelectionToolbar { editor, anchor } }
@@ -97,7 +101,8 @@ fn button(g: Icon, tip: &'static str, on: bool, open: bool, dropdown: bool, edit
 fn palette_button(on: bool, open: bool, editor: Entity<Editor>) -> gpui::Stateful<gpui::Div> {
     let tip = tr("文本与高亮颜色", "Text and highlight color");
     button(Icon::TbPalette, tip, on, open, true, editor, move |this, w, cx| {
-        this.toggle_palette(drop_anchor_for(tip, 196., 296., w), w, cx);
+        let spec = drop_spec_for(tip, this.list.viewport_bounds(), w);
+        this.toggle_palette(spec, cx);
     })
 }
 
@@ -109,8 +114,8 @@ impl Editor {
         self.format = None;
         if !was {
             let key = if kinds { tr("文字类型", "Text type") } else { tr("列表", "Lists") };
-            let anchor = drop_anchor_for(key, 206., 132., window).unwrap_or_else(|| window.mouse_position());
-            self.format = Some(if kinds { FormatPop::Kinds { anchor, current } } else { FormatPop::Lists { anchor, current } });
+            let spec = drop_spec_for(key, self.list.viewport_bounds(), window);
+            self.format = Some(if kinds { FormatPop::Kinds { spec, current } } else { FormatPop::Lists { spec, current } });
         }
         cx.notify();
     }

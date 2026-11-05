@@ -125,8 +125,13 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
                 } else {
                     let below_y = (row_bottom(editor, composer.block_id, y) + px(8.)).max(px(16.));
                     let ed_h = editor.annotate.editor_height;
-                    let max_top = if ed_h > comp_h + px(24.) { (ed_h - comp_h - px(16.)).max(px(16.)) } else { below_y };
-                    let pop_top = below_y.min(max_top);
+                    let pop_top = if below_y + comp_h > ed_h - px(16.) && y > comp_h + px(16.) {
+                        (y - comp_h - px(8.)).max(px(16.))
+                    } else if ed_h > comp_h + px(24.) {
+                        below_y.min((ed_h - comp_h - px(16.)).max(px(16.)))
+                    } else {
+                        below_y
+                    };
                     let ed_w = editor.annotate.editor_width;
                     let pop_w = if ed_w > px(80.) { (ed_w - px(48.)).min(px(280.)).max(px(180.)) } else { px(RAIL_W) };
                     layer = layer.child(
