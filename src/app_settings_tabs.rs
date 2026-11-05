@@ -52,8 +52,13 @@ impl Workspace {
         ], |lh, cx: &mut Context<Self>| Box::new(cx.listener(move |this, _, _, cx| this.select_line_height(lh, cx))));
 
         let popover = self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).map(|picker| {
-            let q = picker.search_input.read(cx).value().to_string();
-            font_picker_popover(picker.role, &picker.search_input, &q, cx)
+            font_picker_popover(
+                picker.role,
+                &picker.search_input,
+                &picker.scroll_handle,
+                picker.filtered.clone(),
+                cx,
+            )
         });
 
         div().flex().flex_col().gap(px(24.))

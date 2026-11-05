@@ -1,6 +1,6 @@
 //! Font settings, installed/imported font lists, and fallback resolution.
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::RwLock;
 use gpui::SharedString;
 pub use crate::files::state::{FontChoice, LineHeight};
@@ -12,6 +12,7 @@ static CUSTOM_CODE_FONT: RwLock<Option<String>> = RwLock::new(None);
 static LINE_HEIGHT: AtomicU8 = AtomicU8::new(1);
 static INSTALLED_FONTS: RwLock<Vec<String>> = RwLock::new(Vec::new());
 static IMPORTED_FONTS: RwLock<Vec<String>> = RwLock::new(Vec::new());
+static FONT_CATALOG_VERSION: AtomicU64 = AtomicU64::new(1);
 
 const SERIF_FALLBACKS: &[&str] = &["Songti SC", "Noto Serif CJK SC", "SimSun"];
 const CJK_FALLBACKS: &[&str] = &["PingFang SC", "Songti SC", "Noto Sans SC", "Microsoft YaHei"];
@@ -56,6 +57,7 @@ pub fn is_monospace_name(name: &str) -> bool {
 
 pub fn installed_fonts() -> Vec<String> { INSTALLED_FONTS.read().map(|g| g.clone()).unwrap_or_default() }
 pub fn imported_fonts() -> Vec<String> { IMPORTED_FONTS.read().map(|g| g.clone()).unwrap_or_default() }
+pub fn font_catalog_version() -> u64 { FONT_CATALOG_VERSION.load(Ordering::Relaxed) }
 pub fn add_imported_fonts(fonts: &[String]) {
     if let Ok(mut guard) = IMPORTED_FONTS.write() {
         for f in fonts {
@@ -66,6 +68,7 @@ pub fn add_imported_fonts(fonts: &[String]) {
         }
         guard.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
         guard.dedup();
+        FONT_CATALOG_VERSION.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -76,7 +79,10 @@ pub fn init_fonts(installed: &[String]) {
     let mut valid: Vec<String> = installed.iter().filter(|s| !s.starts_with('.')).cloned().collect();
     valid.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
     valid.dedup();
-    if let Ok(mut guard) = INSTALLED_FONTS.write() { *guard = valid; }
+    if let Ok(mut guard) = INSTALLED_FONTS.write() {
+        *guard = valid;
+        FONT_CATALOG_VERSION.fetch_add(1, Ordering::Relaxed);
+    }
     let pick = |candidates: &[&'static str], last: &'static str| {
         candidates.iter().copied().find(|c| installed.iter().any(|n| n == c)).unwrap_or(last)
     };
