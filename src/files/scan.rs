@@ -73,6 +73,14 @@ pub fn scan(dir: &Path) -> io::Result<Scan> {
     }
 }
 
+/// Regular files, and symlinks that resolve to regular files. Symlink directories
+/// are not entered (no cycle or escape) and are not shown as files. Sockets, fifos,
+/// and other non-files are omitted. Does not read file contents.
+fn listed_file(kind: &std::fs::FileType, path: &Path) -> bool {
+    if kind.is_file() { return true; }
+    kind.is_symlink() && std::fs::metadata(path).is_ok_and(|meta| meta.is_file())
+}
+
 fn warn(result: &mut Scan, path: &Path, error: impl std::fmt::Display) {
     result.warning_count += 1;
     if result.warnings.len() < 8 {
@@ -106,7 +114,7 @@ fn read_level(dir: &Path, result: &mut Scan, depth: usize) -> io::Result<Vec<Nod
                 Vec::new()
             });
             nodes.push(Node { name, path, dir: true, children });
-        } else if (kind.is_file() || kind.is_symlink()) && is_markdown(&name) {
+        } else if listed_file(&kind, &path) {
             nodes.push(Node { name, path, dir: false, children: Vec::new() });
         }
     }

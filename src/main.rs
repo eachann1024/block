@@ -15,6 +15,7 @@ pub mod page_history;
 mod quick;
 mod search;
 mod smoke;
+mod startup;
 mod theme;
 pub mod ui;
 mod version;
@@ -104,6 +105,7 @@ fn main() {
         search::window::activate_main_window(cx);
     });
     app.run(move |cx: &mut App| {
+    let background_launch = startup::background_launch();
         let smoke_sandbox = smoke_sandbox.clone();
         #[cfg(not(target_family = "wasm"))]
         fonts::load_custom_fonts(cx);
@@ -137,6 +139,9 @@ fn main() {
                     ..Default::default()
                 }),
                 ..Default::default()
+                // Initial launch only. A real native window is still created; reopen shows it.
+                show: !background_launch,
+                focus: !background_launch,
             },
             |window, cx| {
                 let workspace = cx.new(|cx| app::Workspace::new(window, cx));
@@ -246,6 +251,9 @@ fn main() {
         }
         // After the window: Workspace binds its keys on creation, and menus read them now.
         apply_app_menus(cx);
-        cx.activate(true);
+        // Skip the initial app activation when the window was opened hidden. Reopen still activates.
+        if !background_launch {
+            cx.activate(true);
+        }
     });
 }

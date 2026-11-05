@@ -74,13 +74,14 @@ fn collect_word_pairs(text: &str, tokens: &[CodeToken], lang: &str) -> Vec<WordP
                 }
                 _ => {}
             },
-            "lean" => match word {
-                "namespace" | "section" => stack.push(WordFrame { expected_close: ExpectedClose::Exact("end"), open_range: t.range.clone() }),
-                "end" => {
-                    pop_matching_word(&mut stack, &mut pairs, word, t.range.clone());
+            "lean" => {
+                if !at_line_start(text, t.range.start) { continue; }
+                match word {
+                    "namespace" | "section" => stack.push(WordFrame { expected_close: ExpectedClose::Exact("end"), open_range: t.range.clone() }),
+                    "end" => pop_matching_word(&mut stack, &mut pairs, word, t.range.clone()),
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
             "sql" => {
                 if word.eq_ignore_ascii_case("begin") || word.eq_ignore_ascii_case("case") {
                     stack.push(WordFrame { expected_close: ExpectedClose::CaseInsensitive("end"), open_range: t.range.clone() });
@@ -88,17 +89,23 @@ fn collect_word_pairs(text: &str, tokens: &[CodeToken], lang: &str) -> Vec<WordP
                     pop_matching_word(&mut stack, &mut pairs, word, t.range.clone());
                 }
             },
-            "mermaid" => match word {
-                "subgraph" => stack.push(WordFrame { expected_close: ExpectedClose::Exact("end"), open_range: t.range.clone() }),
-                "end" => {
-                    pop_matching_word(&mut stack, &mut pairs, word, t.range.clone());
+            "mermaid" => {
+                if !at_line_start(text, t.range.start) { continue; }
+                match word {
+                    "subgraph" => stack.push(WordFrame { expected_close: ExpectedClose::Exact("end"), open_range: t.range.clone() }),
+                    "end" => pop_matching_word(&mut stack, &mut pairs, word, t.range.clone()),
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
             _ => {}
         }
     }
     pairs
+}
+
+fn at_line_start(text: &str, pos: usize) -> bool {
+    let line_start = text[..pos].rfind('\n').map_or(0, |p| p + 1);
+    text[line_start..pos].bytes().all(|b| b == b' ' || b == b'\t')
 }
 
 fn pop_matching_word(
@@ -107,13 +114,9 @@ fn pop_matching_word(
     close_word: &str,
     close_range: Range<usize>,
 ) {
-    if let Some(pos) = stack.iter().rposition(|frame| frame.expected_close.matches(close_word)) {
-        let frame = stack.remove(pos);
-        stack.truncate(pos);
-        pairs.push(WordPair {
-            open_range: frame.open_range,
-            close_range,
-        });
+    if stack.last().is_some_and(|frame| frame.expected_close.matches(close_word)) {
+        let frame = stack.pop().unwrap();
+        pairs.push(WordPair { open_range: frame.open_range, close_range });
     }
 }
 
@@ -151,14 +154,18 @@ fn collect_latex_pairs(text: &str, tokens: &[CodeToken]) -> Vec<WordPair> {
     let bytes = text.as_bytes();
     let n = bytes.len();
     let mut i = 0;
+    let mut ti = 0;
 
     while i < n {
-        if let Some(t) = tokens.iter().find(|t| {
-            matches!(t.kind, TokenKind::Comment | TokenKind::StringLit { .. })
-                && t.range.contains(&i)
-        }) {
-            i = t.range.end;
-            continue;
+        while ti < tokens.len() && tokens[ti].range.end <= i { ti += 1; }
+        if ti < tokens.len() {
+            let t = &tokens[ti];
+            if t.range.start <= i && i < t.range.end
+                && matches!(t.kind, TokenKind::Comment | TokenKind::StringLit { .. })
+            {
+                i = t.range.end;
+                continue;
+            }
         }
 
         if bytes[i..].starts_with(b"\\begin{") {
@@ -181,9 +188,8 @@ fn collect_latex_pairs(text: &str, tokens: &[CodeToken]) -> Vec<WordPair> {
             if let Some(close_brace) = bytes[name_start..].iter().position(|&b| b == b'}') {
                 if let Ok(name) = std::str::from_utf8(&bytes[name_start..name_start + close_brace]) {
                     let close_end = name_start + close_brace + 1;
-                    if let Some(pos) = stack.iter().rposition(|f| f.env_name == name) {
-                        let frame = stack.remove(pos);
-                        stack.truncate(pos);
+                    if stack.last().is_some_and(|f| f.env_name == name) {
+                        let frame = stack.pop().unwrap();
                         pairs.push(WordPair {
                             open_range: frame.open_range,
                             close_range: start..close_end,

@@ -13,6 +13,10 @@ pub fn scan_rust_token(text: &str, i: usize) -> Option<(usize, Vec<CodeToken>)> 
         }]));
     }
 
+    if let Some(len) = scan_rust_raw_ident(rem) {
+        return Some((len, vec![CodeToken { range: i..i + len, kind: TokenKind::Word }]));
+    }
+
     if let Some((len, open_len, close_len, closed)) = scan_rust_byte_or_c_str(rem) {
         return Some((len, vec![CodeToken {
             range: i..i + len,
@@ -59,6 +63,14 @@ fn scan_rust_raw_str(rem: &[u8]) -> Option<(usize, usize, usize, bool)> {
     } else {
         Some((rem.len(), open_len, 0, false))
     }
+}
+
+fn scan_rust_raw_ident(rem: &[u8]) -> Option<usize> {
+    if !rem.starts_with(b"r#") { return None; }
+    if rem.len() < 3 || !super::code_selection_lex_common::is_ident_start(rem[2]) { return None; }
+    let mut p = 3;
+    while p < rem.len() && is_ident_continue(rem[p]) { p += 1; }
+    Some(p)
 }
 
 fn scan_rust_byte_or_c_str(rem: &[u8]) -> Option<(usize, usize, usize, bool)> {

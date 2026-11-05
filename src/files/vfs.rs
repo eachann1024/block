@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
-use super::scan::{Node, Scan, is_markdown, sort_nodes};
+use super::scan::{Node, Scan, sort_nodes};
 use super::search::{Hit, find_all};
 use super::state::State;
 use crate::theme::tr;
@@ -185,14 +185,13 @@ fn build_level(vfs: &Vfs, dir: &Path) -> Vec<Node> {
     for path in vfs.files.keys() {
         if path.parent() == Some(dir) {
             if let Some(name) = path.file_name().map(|n| n.to_string_lossy().into_owned()) {
-                if is_markdown(&name) {
-                    nodes.push(Node {
-                        name,
-                        path: path.clone(),
-                        dir: false,
-                        children: Vec::new(),
-                    });
-                }
+                if super::scan::ignored(&name) { continue; }
+                nodes.push(Node {
+                    name,
+                    path: path.clone(),
+                    dir: false,
+                    children: Vec::new(),
+                });
             }
         }
     }
