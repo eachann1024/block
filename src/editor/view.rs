@@ -13,6 +13,7 @@ use super::input::transactions::{Snapshot, HistoryEntry};
 #[path = "protocol.rs"] mod protocol;
 #[path = "storage.rs"] pub(super) mod storage;
 #[path = "lifecycle.rs"] mod lifecycle;
+#[path = "history_bridge.rs"] pub(crate) mod history_bridge;
 #[path = "session.rs"] mod session;
 use {selection::Caret, layout::TextLayout, lifecycle::Persistence};
 /// Space kept between the caret line and the viewport edge when the caret scrolls into view.

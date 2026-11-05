@@ -222,7 +222,7 @@ impl Workspace {
             || self.editor.read(cx).current_path().is_some_and(|p| removed.iter().any(|r| r == p));
         let fallback = self.tabs.get(index).cloned();
         self.editor.update(cx, |editor, cx| {
-            if active_removed { if let Some(ref next) = fallback { editor.open(next.clone(), cx); } }
+            if active_removed && let Some(ref next) = fallback { editor.open(next.clone(), cx); }
             for tab in &removed { editor.close_session(tab, cx); }
         });
         if active_removed { self.selected = fallback.clone(); self.tree.update(cx, |tree, cx| tree.select(fallback, cx)); }
@@ -238,9 +238,7 @@ impl Workspace {
         let current = self.editor.read(cx).current_path().map(Path::to_path_buf);
         self.editor.update(cx, |editor, cx| {
             for tab in &removed { editor.close_session(tab, cx); }
-            if let Some(cur) = current.filter(|c| !removed.contains(c)) {
-                editor.close_session(&cur, cx);
-            }
+            if let Some(cur) = current.filter(|c| !removed.contains(c)) { editor.close_session(&cur, cx); }
         });
         self.selected = None;
         self.tree.update(cx, |tree, cx| tree.select(None, cx));
@@ -256,6 +254,8 @@ impl Workspace {
             let path = self.selected.clone().or_else(|| self.editor.read(cx).current_path().map(Path::to_path_buf))?;
             let (exp_path, rev_path) = (path.clone(), path);
             let card = crate::dropdown::shell("page-more-menu").w(px(216.))
+                .child(tab_menu_row("page-history", Some(Icon::History), tr("页面历史…", "Page History…"), None, true,
+                    cx.listener(|this, _, window, cx| { clear_tab_menu(); this.open_page_history(window, cx); })))
                 .child(tab_menu_row("page-export-image", Some(Icon::Image), tr("生成图片…", "Export as Image…"), Some(exp_hint), true,
                     cx.listener(move |this, _, window, cx| this.export_note(exp_path.clone(), window, cx))))
                 .child(tab_menu_row("page-copy-md", Some(Icon::Copy), tr("复制 Markdown", "Copy Markdown"), Some(if mac { "⌥⌘C" } else { "Ctrl+Alt+C" }), true,
@@ -283,8 +283,7 @@ impl Workspace {
         let backdrop = deferred(anchored().position(point(px(0.), px(0.))).child(
             div().id("tab-menu-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black()).occlude()
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.dismiss_tab_menu(cx); }))
-                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.dismiss_tab_menu(cx); })),
-        )).with_priority(1);
+                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.dismiss_tab_menu(cx); })))).with_priority(1);
         let popup = deferred(anchored().position(position).snap_to_window_with_margin(px(8.)).child(card)).with_priority(2);
         Some(div().child(backdrop).child(popup).into_any_element())
     }
