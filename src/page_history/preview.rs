@@ -21,21 +21,16 @@ pub fn render_preview_surface(
     selected_content: Option<&str>,
     current_content: &str,
     mode: PreviewMode,
-    is_readonly: bool,
     error: Option<&HistoryError>,
     diff_blocks: Option<&[DiffBlock]>,
     preview_key: &str,
     on_mode_change: impl Fn(PreviewMode, &mut Window, &mut App) + 'static,
-    on_restore_click: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     on_re_diff: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     on_retry_restore: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let _ = current_content;
     let theme = Theme::ocean();
     let title = selected_version.map(|version| version.display_time.as_str()).unwrap_or("");
-    let (restore_disabled, restore_hint) = restore_availability(
-        selected_version, selected_content, is_readonly, error,
-    );
     let same_as_current = selected_version.map(|version| version.same_as_current).unwrap_or(false);
 
     div()
@@ -45,21 +40,23 @@ pub fn render_preview_surface(
         .bg(theme.paper)
         .flex()
         .flex_col()
-        .child(render_preview_header(
-            title, mode, restore_disabled, restore_hint, on_mode_change, on_restore_click,
-        ))
+        .child(render_preview_header(title, mode, on_mode_change))
         .children(render_error_banner(error, on_re_diff, on_retry_restore))
         .child(body::render_preview_body(
             note_path, selected_content, mode, same_as_current, diff_blocks, preview_key,
         ))
 }
 
-fn restore_availability(
+pub fn restore_availability(
     selected_version: Option<&HistoryVersion>,
     selected_content: Option<&str>,
     is_readonly: bool,
+    restoring: bool,
     error: Option<&HistoryError>,
 ) -> (bool, String) {
+    if restoring {
+        return (true, tr("正在恢复…", "Restoring…").to_string());
+    }
     let restore = tr("恢复此版本", "Restore this version").to_string();
     if is_readonly || matches!(error, Some(HistoryError::ReadOnly)) {
         return (true, tr("此页面只读，无法恢复。", "This page is read-only; cannot restore.").to_string());
@@ -85,10 +82,7 @@ fn restore_availability(
 fn render_preview_header(
     title: &str,
     mode: PreviewMode,
-    disabled: bool,
-    hint: String,
     on_mode: impl Fn(PreviewMode, &mut Window, &mut App) + 'static,
-    on_restore: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let theme = Theme::ocean();
     let on_mode = Rc::new(on_mode);
@@ -112,30 +106,23 @@ fn render_preview_header(
                 .text_color(theme.text)
                 .child(title.to_string()),
         )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .child(segmented_control("history-preview-mode", vec![
-                    SegmentSpec {
-                        label: tr("原文", "Original").into(),
-                        selected: mode == PreviewMode::Clean,
-                        on_select: Box::new(move |_, window, cx| on_clean(PreviewMode::Clean, window, cx)),
-                    },
-                    SegmentSpec {
-                        label: tr("对比", "Diff").into(),
-                        selected: mode == PreviewMode::Diff,
-                        on_select: Box::new(move |_, window, cx| on_mode(PreviewMode::Diff, window, cx)),
-                    },
-                ]))
-                .child(render_restore_button(disabled, hint, on_restore)),
-        )
+        .child(segmented_control("history-preview-mode", vec![
+            SegmentSpec {
+                label: tr("原文", "Original").into(),
+                selected: mode == PreviewMode::Clean,
+                on_select: Box::new(move |_, window, cx| on_clean(PreviewMode::Clean, window, cx)),
+            },
+            SegmentSpec {
+                label: tr("对比", "Diff").into(),
+                selected: mode == PreviewMode::Diff,
+                on_select: Box::new(move |_, window, cx| on_mode(PreviewMode::Diff, window, cx)),
+            },
+        ]))
 }
 
-fn render_restore_button(
+pub fn render_restore_button(
     disabled: bool,
-    hint: String,
+    hint: impl Into<gpui::SharedString>,
     on_restore: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> gpui::Stateful<gpui::Div> {
     accent_action("history-restore-action", tr("恢复此版本", "Restore this version"), !disabled, hint, on_restore)
