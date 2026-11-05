@@ -34,7 +34,7 @@ pub(super) fn find_all(text: &str, query: &str) -> Vec<Range<usize>> {
 
 impl Editor {
     pub(crate) fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.path.is_none() { return; }
+        if !self.is_markdown_note() && !self.editing_source() { return; }
         let seed = self.single_block_selection();
         if let Some(find) = &self.find {
             let input = find.input.clone();
@@ -64,6 +64,11 @@ impl Editor {
     }
     /// Text of a short selection inside one block, used to prefill the query.
     fn single_block_selection(&self) -> Option<String> {
+        if let Some(doc) = self.source_doc() {
+            let range = doc.selection();
+            let part = doc.text.body().get(range)?;
+            return (!part.is_empty() && part.len() <= 80 && !part.contains('\n')).then(|| part.to_owned());
+        }
         if self.caret.is_empty() || self.caret.anchor.block != self.caret.head.block { return None; }
         let (a, b, ..) = self.ordered();
         let text = &self.doc.get(a.block)?.text;
@@ -75,11 +80,16 @@ impl Editor {
         let Some(find) = &self.find else { return };
         let query = find.input.read(cx).value().to_string();
         let mut matches = Vec::new();
-        for block in &self.doc.blocks {
-            for range in find_all(&block.text, &query) { matches.push((block.id, range)); }
-        }
-        let caret = self.caret.head;
-        let at = (self.doc.index_of(caret.block).unwrap_or(0), caret.offset);
+        let at = if let Some(doc) = self.source_doc() {
+            for range in find_all(doc.text.body(), &query) { matches.push((0, range)); }
+            (0usize, doc.head)
+        } else {
+            for block in &self.doc.blocks {
+                for range in find_all(&block.text, &query) { matches.push((block.id, range)); }
+            }
+            let caret = self.caret.head;
+            (self.doc.index_of(caret.block).unwrap_or(0), caret.offset)
+        };
         let current = matches.iter().position(|(id, r)| (self.doc.index_of(*id).unwrap_or(0), r.start) >= at).unwrap_or(0);
         if let Some(find) = &mut self.find { find.matches = matches; find.current = current; }
         if jump { self.goto_match(window, cx); }
@@ -98,6 +108,15 @@ impl Editor {
     /// Put the selection on the current match and scroll it into view.
     fn goto_match(&mut self, _: &mut Window, cx: &mut Context<Self>) {
         let Some((id, range)) = self.find.as_ref().and_then(|f| f.matches.get(f.current).cloned()) else { return };
+        if self.editing_source() {
+            if let Some(doc) = self.source_doc_mut() {
+                doc.anchor = range.start;
+                doc.head = range.end;
+                doc.reveal = true;
+            }
+            cx.notify();
+            return;
+        }
         self.caret.anchor = Position { block: id, offset: range.start };
         self.caret.head = Position { block: id, offset: range.end };
         self.caret.composing = None;
@@ -107,6 +126,7 @@ impl Editor {
     }
     pub(super) fn close_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.find.take().is_some() {
+            if let Some(doc) = self.source_doc_mut() { doc.anchor = doc.head; }
             self.caret.anchor = self.caret.head; // drop the match selection so the floating toolbar does not appear
             self.toolbar_anchor = None;
             window.focus(&self.focus, cx); cx.notify();

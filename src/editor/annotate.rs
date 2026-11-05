@@ -255,6 +255,7 @@ impl Editor {
 
     /// Toolbar 「添加批注」: highlight the selection and open the composer.
     pub(super) fn start_annotation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.is_markdown_note() { return; }
         self.sync_annotations();
         let Some((block_id, block_index, range, quote)) = self.selected_annotation_target() else { return };
         let input = cx.new(|cx| InputState::new(window, cx).placeholder(tr("输入批注或修改指令…", "Add an annotation or edit instruction…")));
