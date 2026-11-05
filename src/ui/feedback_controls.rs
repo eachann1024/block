@@ -112,9 +112,8 @@ pub fn titlebar_feedback_button(
             .when(!open, |d| d.hover(move |s| s.bg(theme.hover)))
             .on_hover(move |&enter, _, cx| {
                 let (was_hovered, cur_seq) = *state_hover.read(cx);
-                let next_seq = if enter && !was_hovered { cur_seq.wrapping_add(1) } else { cur_seq };
-                if was_hovered != enter || next_seq != cur_seq {
-                    state_hover.write(cx, (enter, next_seq));
+                if was_hovered != enter {
+                    state_hover.write(cx, (enter, cur_seq));
                 }
             })
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -223,7 +222,6 @@ pub fn feedback_send_button(
     div().child(gpui::canvas(move |bounds, window, cx| {
         let seq_state = window.use_keyed_state(ElementId::Name(state_key.clone()), cx, |_, _| 0u64);
         let seq = *seq_state.read(cx);
-        let hover_state = seq_state.clone();
         let click_state = seq_state.clone();
         let on_send = on_send.clone();
         if super::smoke_overlay::is_smoke_active() {
@@ -243,16 +241,7 @@ pub fn feedback_send_button(
             .items_center()
             .justify_center()
             .when(busy, |d| d.opacity(0.6).cursor(CursorStyle::Arrow))
-            .when(!busy, |d| {
-                d.cursor(CursorStyle::PointingHand)
-                    .hover(move |s| s.bg(theme.primary))
-                    .on_hover(move |&enter, _, cx| {
-                        if enter {
-                            let next = hover_state.read(cx).wrapping_add(1);
-                            hover_state.write(cx, next);
-                        }
-                    })
-            })
+            .when(!busy, |d| d.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.primary)))
             .when(seq > 0, |d| d.child(puff_burst_cluster("feedback-send-puff", seq, 84., 36.)))
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                 cx.stop_propagation();
