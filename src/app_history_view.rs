@@ -1,10 +1,10 @@
 //! View rendering helpers for Page History in the Workspace.
 use gpui::{
-    Context, FontWeight, IntoElement, ParentElement, Styled, Window, div, prelude::*, px,
+    Context, FontWeight, IntoElement, ParentElement, Styled, Window, WindowControlArea, div, prelude::*, px,
 };
 use crate::{
     icons::Icon,
-    page_history::{HistoryError, render_history_panel, render_preview_surface, render_restore_modal},
+    page_history::{HistoryError, render_history_panel, render_preview_surface, render_restore_button, render_restore_modal, restore_availability},
     theme::{Theme, tr},
     ui::{icon_button::icon_button, radius, text_action::plain_action},
 };
@@ -26,10 +26,9 @@ impl Workspace {
         let entity_mode = cx.entity();
         let entity_select = cx.entity();
         let preview = render_preview_surface(
-            note_path, selected_version, selected_content, &hist.current_content, hist.mode, hist.is_readonly,
+            note_path, selected_version, selected_content, &hist.current_content, hist.mode,
             hist.error.as_ref(), diff_blocks, preview_key,
             move |mode, _, cx| { entity_mode.update(cx, |this, cx| this.toggle_history_mode(mode, cx)); },
-            cx.listener(|this, _, window, cx| this.open_restore_confirm(window, cx)),
             cx.listener(|this, _, _, cx| this.recompare_history(cx)),
             cx.listener(|this, _, window, cx| this.confirm_restore(window, cx)),
         );
@@ -56,6 +55,31 @@ impl Workspace {
             .into_any_element()
     }
 
+    pub(super) fn render_history_titlebar(&self, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let theme = Theme::ocean();
+        let (disabled, hint) = self.history.as_ref().map(|hist| {
+            let pending = hist.loading || hist.content_loading;
+            let version = if pending { None } else {
+                hist.selected_id.as_ref().and_then(|id| hist.versions.iter().find(|v| &v.id == id))
+            };
+            let content = if pending { None } else { hist.selected_content.as_deref() };
+            let (disabled, hint) = restore_availability(
+                version, content, hist.is_readonly, hist.restoring || self.history_restore_busy, hist.error.as_ref(),
+            );
+            (disabled || hist.confirm_open, hint)
+        }).unwrap_or((true, String::new()));
+        div().id("titlebar").h(px(super::tabs::TITLEBAR_HEIGHT)).w_full().flex_none().flex().items_center()
+            .bg(theme.shell).border_b_1().border_color(theme.sidebar_border)
+            .child(self.titlebar_left(cx))
+            .child(div().id("history-titlebar-drag").flex_1().min_w(px(16.)).h_full()
+                .window_control_area(WindowControlArea::Drag)
+                .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); }))
+            .child(div().flex_none().mr(px(10.)).child(render_restore_button(
+                disabled, hint, cx.listener(|this, _, window, cx| this.open_restore_confirm(window, cx)),
+            )))
+            .child(crate::ui::window_controls::window_controls("main-win", true, true))
+    }
+
     pub(super) fn render_history_toast(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
         let toast = self.history_toast.as_ref()?;
         let theme = Theme::ocean();
@@ -78,7 +102,7 @@ impl Workspace {
         if !hist.confirm_open { return None; }
         let modal_focus = hist.modal_focus.clone();
         let target_time = hist.selected_id.as_ref().and_then(|id| hist.versions.iter().find(|v| &v.id == id)).map(|v| v.display_time.as_str()).unwrap_or("");
-        Some(div().key_context("Workspace").track_focus(&modal_focus)
+        Some(div().absolute().top_0().left_0().size_full().key_context("Workspace").track_focus(&modal_focus)
             .on_key_down(cx.listener(|_, event: &gpui::KeyDownEvent, _, cx| {
                 if event.keystroke.key == "up" || event.keystroke.key == "down" { cx.stop_propagation(); }
             }))
