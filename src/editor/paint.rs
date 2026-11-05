@@ -234,14 +234,23 @@ impl Element for BlockText {
 }
 /// (font size px, line-height factor) per block kind; shared with the handle gutter.
 pub(super) fn metrics(kind: Kind, base: f32) -> (f32, f32) {
-    match kind { Kind::H1 => (32., 1.2), Kind::H2 => (22., 1.3), Kind::H3 => (18., 1.35), _ => (base, 1.5) }
+    let zoom = super::zoom::zoom_factor();
+    match kind {
+        Kind::H1 => (32. * zoom, 1.2),
+        Kind::H2 => (22. * zoom, 1.3),
+        Kind::H3 => (18. * zoom, 1.35),
+        _ => (base * zoom, 1.5),
+    }
 }
 pub(super) fn heading_metrics(kind: Kind, level: Option<u8>, fenced: bool, minimal: bool, base: f32) -> (f32, f32) {
-    if fenced { return (14., 1.5); }
+    let zoom = super::zoom::zoom_factor();
+    if fenced { return (14. * zoom, 1.5); }
     match (kind, level) {
-        (Kind::H3, Some(4)) => (16., 1.4), (Kind::H3, Some(5 | 6)) => (14., 1.45),
+        (Kind::H3, Some(4)) => (16. * zoom, 1.4),
+        (Kind::H3, Some(5 | 6)) => (14. * zoom, 1.45),
         (Kind::H1 | Kind::H2 | Kind::H3, _) => metrics(kind, base),
-        _ if minimal => (16., 1.5), _ => (base, 1.5),
+        _ if minimal => (16. * zoom, 1.5),
+        _ => (base * zoom, 1.5),
     }
 }
 thread_local! { static PLACEHOLDER: RefCell<Option<(u16, gpui::ShapedLine)>> = const { RefCell::new(None) }; }

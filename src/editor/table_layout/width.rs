@@ -59,19 +59,19 @@ pub(in crate::editor) fn reset_manual(editor: EntityId, block: u64) {
 }
 
 /// Spreads `target` over the columns that are not `fixed`, in proportion to their content widths,
-/// never going below `MIN_COL`; fixed columns keep their width.
-pub(super) fn fit(content: &[f32], fixed: &[bool], target: f32) -> Vec<f32> {
+/// never going below `min_col`; fixed columns keep their width.
+pub(super) fn fit(content: &[f32], fixed: &[bool], target: f32, min_col: f32) -> Vec<f32> {
     let mut out = content.to_vec();
     let mut pool: Vec<usize> = (0..content.len()).filter(|i| !fixed[*i]).collect();
     let mut room = target - (0..content.len()).filter(|i| fixed[*i]).map(|i| content[i]).sum::<f32>();
     while !pool.is_empty() {
         let scale = room / pool.iter().map(|i| content[*i]).sum::<f32>();
-        let (small, rest): (Vec<usize>, Vec<usize>) = pool.iter().partition(|i| content[**i] * scale < MIN_COL);
+        let (small, rest): (Vec<usize>, Vec<usize>) = pool.iter().partition(|i| content[**i] * scale < min_col);
         if small.is_empty() {
             for i in pool { out[i] = content[i] * scale; }
             break;
         }
-        for i in small { out[i] = MIN_COL; room -= MIN_COL; }
+        for i in small { out[i] = min_col; room -= min_col; }
         pool = rest;
     }
     out
