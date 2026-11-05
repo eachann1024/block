@@ -76,11 +76,9 @@ impl Editor {
     fn insert_blocks(&mut self, id: u64, place: Place, mut blocks: Vec<Block>, window: &mut Window, cx: &mut Context<Self>) {
         if blocks.is_empty() { self.status = crate::theme::tr("没有可导入的图片", "No images to import").into(); cx.notify(); return; }
         let index = self.doc.index_of(id).unwrap_or(self.doc.blocks.len().saturating_sub(1));
-        let col = self.doc.blocks.get(index).and_then(|b| b.meta.column);
         let replace = place == Place::Replace && self.doc.index_of(id).is_some();
         let (start, remove) = match place { Place::Before => (index, 0), _ if replace => (index, 1), _ => (index + 1, 0) };
         if place != Place::Before { blocks.push(Block::new(0, Kind::Paragraph, String::new())); }
-        for b in &mut blocks { b.meta.column = col; }
         let before = self.snapshot(); let count = blocks.len();
         self.doc.splice_blocks(start..start + remove, blocks);
         let caret_index = if place == Place::Before { start + count } else { start + count - 1 };

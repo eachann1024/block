@@ -114,7 +114,6 @@ fn is_list(block: &Block) -> bool {
         && block.meta.table.is_none()
         && block.meta.code_language.is_none()
         && block.meta.raw_source.is_none()
-        && block.meta.callout.is_none()
 }
 
 fn list(items: &[Block]) -> String {
@@ -167,13 +166,6 @@ pub(super) fn render_blocks(blocks: &[Block]) -> String {
             } else {
                 out.push_str(&format!("<pre>{}</pre>\n", esc(&block.text)));
             }
-        } else if let Some(callout) = block.meta.callout {
-            out.push_str(&format!(
-                "<div class=\"callout callout-{}\"><div class=\"callout-title\">{}</div><p>{}</p></div>\n",
-                callout.tag().to_ascii_lowercase(),
-                callout.tag(),
-                inline(block)
-            ));
         } else if is_list(block) {
             let start = at - 1;
             while at < blocks.len() && is_list(&blocks[at]) && blocks[at].kind == block.kind {

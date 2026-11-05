@@ -5,7 +5,6 @@ use super::model::{Block, Doc, Kind, Numbering};
 #[path = "markdown_table.rs"] mod table;
 #[path = "markdown_table_html.rs"] mod table_html;
 #[path = "markdown_paragraph.rs"] mod paragraph;
-#[path = "markdown_containers.rs"] mod containers;
 #[path = "markdown_raw_guard.rs"] mod raw_guard;
 
 pub fn strip_frontmatter(source: &str) -> &str { blocks::strip_frontmatter(source) }
@@ -31,21 +30,6 @@ pub fn parse(source: &str) -> Doc {
         if super::image_source::parse(line).is_some() {
             offset += raw_line.len(); index += 1;
             result.push(raw(id, raw_line.to_owned(), "Image")); continue;
-        }
-        if containers::starts_columns(line) {
-            let end = index + containers::columns_line_count(&lines[index..]);
-            let original = lines[index..end].concat();
-            let group_id = result.iter().filter_map(|b: &Block| b.meta.column.map(|(g, _)| g)).max().unwrap_or(0) + 1;
-            match containers::parse_columns(group_id, &original) {
-                Ok(col_blocks) => for mut b in col_blocks {
-                    b.id = result.len() as u64 + 1; result.push(b);
-                },
-                Err(reason) => result.push(raw(id, original.clone(), reason)),
-            }
-            offset += original.len(); index = end; continue;
-        }
-        if let Some((block, count, bytes)) = containers::parse_callout(id, &lines[index..]) {
-            offset += bytes; index += count; result.push(block); continue;
         }
         if paragraph::starts(line) {
             let end = index + paragraph::line_count(&lines[index..]);
@@ -151,21 +135,10 @@ pub fn serialize(doc: &Doc) -> String {
         if !out.is_empty() && !out.ends_with('\n') { out.push('\n'); }
         // Standard Markdown needs a blank line here (see `needs_separator`).
         if at > 0 && needs_separator(blocks[at - 1], nexts[at - 1]) && !out.ends_with("\n\n") { out.push('\n'); }
-        if let Some((group_id, _)) = block.meta.column {
-            let start = at;
-            at += 1;
-            while at < blocks.len() && blocks[at].meta.column.map(|(g, _)| g) == Some(group_id) {
-                let _ = numbering.next(blocks[at]);
-                at += 1;
-            }
-            containers::serialize_columns(&blocks[start..at], &mut out);
-            continue;
-        }
         let is_first = at == 0;
         at += 1;
         if let Some(table) = &block.meta.table { table::serialize(table, &mut out); continue; }
         if block.meta.raw_source.is_some() { out.push_str(&block.text); continue; }
-        if let Some(callout) = block.meta.callout { containers::serialize_callout(block, callout, &mut out); continue; }
         if block.meta.html_paragraph.is_some() || (block.kind == Kind::Paragraph && block.meta.indent > 0) {
             paragraph::serialize(block, &mut out); continue;
         }
@@ -206,7 +179,7 @@ pub fn serialize(doc: &Doc) -> String {
 // standard Markdown (paragraph/paragraph, paragraph/pipe table, pipe table/anything) must not
 // become a block: serialize adds exactly one blank line and parse swallows exactly one.
 fn is_plain(block: &Block) -> bool {
-    block.meta.column.is_none() && block.meta.table.is_none() && block.meta.raw_source.is_none()
+    block.meta.table.is_none() && block.meta.raw_source.is_none()
         && block.meta.html_paragraph.is_none() && block.meta.code_language.is_none()
 }
 fn is_blank(block: &Block) -> bool { is_plain(block) && block.kind == Kind::Paragraph && block.meta.indent == 0 && block.text.is_empty() }
@@ -230,9 +203,6 @@ fn needs_separator(this: &Block, next: Option<&Block>) -> bool {
     required_separator(this, next) || (optional_separator(this, next) && !this.meta.tight)
 }
 fn required_separator(this: &Block, next: Option<&Block>) -> bool {
-    if this.meta.callout.is_some() && next.is_some_and(|n| (n.kind == Kind::Quote && n.meta.callout.is_none()) || is_text(n)) {
-        return true;
-    }
     let pipe = is_pipe(this);
     // Text glued under an HTML image block would be re-read as part of that HTML block.
     let image = is_image(this);
@@ -245,10 +215,9 @@ fn is_list(block: &Block) -> bool { is_plain(block) && matches!(block.kind, Kind
 /// so it is not read back as an empty paragraph; `meta.tight` keeps sources that omitted it.
 fn optional_separator(this: &Block, next: Option<&Block>) -> bool {
     if is_blank(this) { return false; }
-    let col_end = this.meta.column.is_some_and(|(g, _)| next.and_then(|n| n.meta.column).map(|(ng, _)| ng) != Some(g));
-    let source = col_end || (this.meta.column.is_none() && this.meta.table.is_none()
+    let source = this.meta.table.is_none()
         && (this.meta.code_language.is_some()
-            || this.meta.raw_source.as_ref().is_some_and(|raw| raw.ends_with('\n'))));
+            || this.meta.raw_source.as_ref().is_some_and(|raw| raw.ends_with('\n')));
     if !(is_plain(this) || source) { return false; }
     next.is_some_and(|next| !(is_list(this) && is_list(next)))
 }

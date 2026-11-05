@@ -20,54 +20,39 @@ pub(in crate::editor) fn needs_top_insert(block: &Block) -> bool {
         && block.meta.table.is_none()
         && block.meta.raw_source.is_none()
         && super::image_source::spec_of(block).is_none()
-        && block.meta.callout.is_none()
-        && block.meta.column.is_none()
         && block.meta.html_paragraph.is_none())
 }
 
 impl Editor {
-    /// Insert a new plain paragraph directly above `id` (or at index 0 inside its column) and focus it.
+    /// Insert a new plain paragraph directly above `id` and focus it.
     pub(in crate::editor) fn insert_above(&mut self, id: u64, cx: &mut Context<Self>) -> bool {
         if self.path.is_none() { return false; }
         let Some(index) = self.doc.index_of(id) else { return false };
-        let col = self.doc.blocks[index].meta.column;
         self.commit_composition(cx);
         let before = self.snapshot();
-        let mut p = Block::new(0, Kind::Paragraph, String::new());
-        p.meta.column = col;
+        let p = Block::new(0, Kind::Paragraph, String::new());
         self.doc.splice_blocks(index..index, vec![p]);
         let new_id = self.doc.blocks[index].id;
         self.table_sel = None; self.table_menu = None; self.block_sel = None; self.preferred_x = None;
         self.set_head(Position { block: new_id, offset: 0 }, false, cx);
         self.record_changes(before, vec![ListChange { start: index, before: 0, after: 1 }], true, cx);
         self.layouts.clear();
-        self.list.scroll_to_reveal_item(self.column_group_range(index).map_or(index, |r| r.start));
+        self.list.scroll_to_reveal_item(index);
         true
     }
     /// Insert a new plain paragraph at the very top of the document (index 0) and focus it.
+    #[allow(dead_code)]
     pub(in crate::editor) fn insert_top_paragraph(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(first_id) = self.doc.blocks.first().map(|b| b.id) else { return false };
-        if self.doc.blocks[0].meta.column.is_some() {
-            self.commit_composition(cx);
-            let before = self.snapshot();
-            self.doc.splice_blocks(0..0, vec![Block::new(0, Kind::Paragraph, String::new())]);
-            let id = self.doc.blocks[0].id;
-            self.table_sel = None; self.table_menu = None; self.block_sel = None; self.preferred_x = None;
-            self.set_head(Position { block: id, offset: 0 }, false, cx);
-            self.record_changes(before, vec![ListChange { start: 0, before: 0, after: 1 }], true, cx);
-            self.layouts.clear();
-            self.list.scroll_to_reveal_item(0);
-            return true;
-        }
         self.insert_above(first_id, cx)
     }
     /// End index (inclusive) of `start`'s nested list subtree.
     pub(super) fn list_subtree_end(&self, start: usize) -> usize {
         let Some(head) = self.doc.blocks.get(start).filter(|b| is_list(b)) else { return start };
-        let (base, col) = (head.meta.indent, head.meta.column);
+        let base = head.meta.indent;
         let mut end = start;
         while end + 1 < self.doc.blocks.len() && is_list(&self.doc.blocks[end + 1])
-            && self.doc.blocks[end + 1].meta.column == col && self.doc.blocks[end + 1].meta.indent > base {
+            && self.doc.blocks[end + 1].meta.indent > base {
             end += 1;
         }
         end
@@ -78,21 +63,18 @@ impl Editor {
         let last_idx = self.doc.blocks.len().saturating_sub(1);
         let (lo, hi_sel) = (lo.min(last_idx), hi.min(last_idx));
         let hi_ext = self.list_subtree_end(hi_sel);
-        let col = self.doc.blocks[lo].meta.column;
         let n = hi_ext - lo + 1;
         let to = if up {
-            if lo == 0 || (col.is_some() && self.doc.blocks[lo - 1].meta.column != col) { return None; }
+            if lo == 0 { return None; }
             let first = &self.doc.blocks[lo];
-            if col.is_none() && let Some(r) = self.column_group_range(lo - 1) { r.start }
-            else if is_list(first) && is_list(&self.doc.blocks[lo - 1]) && self.doc.blocks[lo - 1].meta.indent > first.meta.indent {
+            if is_list(first) && is_list(&self.doc.blocks[lo - 1]) && self.doc.blocks[lo - 1].meta.indent > first.meta.indent {
                 let mut p = lo - 1;
-                while p > 0 && is_list(&self.doc.blocks[p]) && self.doc.blocks[p].meta.column == col && self.doc.blocks[p].meta.indent > first.meta.indent { p -= 1; }
+                while p > 0 && is_list(&self.doc.blocks[p]) && self.doc.blocks[p].meta.indent > first.meta.indent { p -= 1; }
                 p
             } else { lo - 1 }
         } else {
-            if hi_ext + 1 >= self.doc.blocks.len() || (col.is_some() && self.doc.blocks[hi_ext + 1].meta.column != col) { return None; }
-            if col.is_none() && let Some(r) = self.column_group_range(hi_ext + 1) { r.end - n }
-            else { self.list_subtree_end(hi_ext + 1) + 1 - n }
+            if hi_ext + 1 >= self.doc.blocks.len() { return None; }
+            self.list_subtree_end(hi_ext + 1) + 1 - n
         };
         if to == lo { return None; }
         self.commit_composition(cx);
@@ -108,7 +90,7 @@ impl Editor {
     }
 
     pub(super) fn move_block_shortcut(&mut self, up: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if self.path.is_none() { return; }
+        if !self.is_markdown_note() { return; }
         if let Some((anchor, head)) = self.block_sel {
             if let Some((new_lo, new_hi)) = self.move_block_range(anchor.min(head), anchor.max(head), up, cx) {
                 let next_sel = if anchor <= head { (new_lo, new_hi) } else { (new_hi, new_lo) };
@@ -127,7 +109,7 @@ impl Editor {
 
     /// Cmd+D: duplicate the active block(s) (and any nested list children) directly below.
     pub(super) fn duplicate_blocks(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.path.is_none() { return; }
+        if !self.is_markdown_note() { return; }
         self.commit_composition(cx);
         let last_idx = self.doc.blocks.len().saturating_sub(1);
         let (lo, hi_sel, had_block_sel) = if let Some((a, b)) = self.block_sel {
@@ -156,7 +138,7 @@ impl Editor {
 
     /// Cmd+Alt+8: toggle code block on selected block(s).
     pub(super) fn set_code_shortcut(&mut self, cx: &mut Context<Self>) {
-        if self.path.is_none() { return; }
+        if !self.is_markdown_note() { return; }
         self.commit_composition(cx);
         let last_idx = self.doc.blocks.len().saturating_sub(1);
         let (first, last) = if let Some((a, b)) = self.block_sel {
@@ -179,7 +161,7 @@ impl Editor {
 
     /// Cmd+Enter: toggle `checked` when on a Todo block (or Todo blocks in `block_sel`), else `exit_block`.
     pub(super) fn cmd_enter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.path.is_none() { return; }
+        if !self.is_markdown_note() { return; }
         if let Some((a, b)) = self.block_sel {
             let last_idx = self.doc.blocks.len().saturating_sub(1);
             let (lo, hi) = (a.min(b).min(last_idx), a.max(b).min(last_idx));
@@ -254,10 +236,9 @@ impl Editor {
                     let before = self.snapshot();
                     let n = hi - lo + 1;
                     self.doc.splice_blocks(lo..hi + 1, Vec::new());
-                    let repaired = self.repair_column_groups();
                     let added = if self.doc.blocks.is_empty() {
                         self.doc.splice_blocks(0..0, vec![Block::new(0, Kind::Paragraph, String::new())]); 1
-                    } else { repaired };
+                    } else { 0 };
                     let at = lo.min(self.doc.blocks.len() - 1);
                     let pos = Position { block: self.doc.blocks[at].id, offset: 0 };
                     self.caret.anchor = pos; self.caret.head = pos;

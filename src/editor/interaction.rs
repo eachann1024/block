@@ -29,7 +29,7 @@ impl Editor {
         }));
     }
     pub(in crate::editor) fn clear_pointer(&mut self) {
-        self.dragging = None; self.drag_over = None; self.selecting = false;
+        self.dragging = None; self.drag_over = None; self.selecting = false; self.source_drag = false;
         self.selection_origin = None; self.table_drag = None; self.cancel_extend(); crate::editor::table_resize::end();
     }
     pub(in crate::editor) fn hover_block(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
@@ -76,6 +76,8 @@ impl Editor {
         (Position { offset: range.start, ..at }, Position { offset: range.end, ..at })
     }
     pub(in crate::editor) fn pointer_down(&mut self, event: &gpui::MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editing_source() { self.source_pointer_down(event, window, cx); return; }
+        if self.path.is_some() && !self.is_markdown_note() { return; }
         self.table_menu = None; self.table_sel = None; self.block_menu = None; self.block_sel = None;
         let prev_active = self.annotate.active_annotation.take();
         self.annotate.followup = None;
@@ -109,35 +111,38 @@ impl Editor {
             }
         }
     }
-    fn drag_span(&self, id: u64) -> Option<(usize, usize, Option<(u64, usize)>)> {
+    fn drag_span(&self, id: u64) -> Option<(usize, usize)> {
         let from = self.doc.index_of(id)?;
         let list = |b: &crate::editor::model::Block| matches!(b.kind, crate::editor::model::Kind::Bullet | crate::editor::model::Kind::Numbered | crate::editor::model::Kind::Todo);
         let head = &self.doc.blocks[from];
-        let col = head.meta.column;
         let n = if list(head) {
             1 + (from + 1..self.doc.blocks.len()).take_while(|&i| {
                 let b = &self.doc.blocks[i];
-                list(b) && b.meta.column == col && b.meta.indent > head.meta.indent
+                list(b) && b.meta.indent > head.meta.indent
             }).count()
         } else { 1 };
-        Some((from, n, col))
+        Some((from, n))
     }
     fn update_drop(&mut self, position: Point<Pixels>) {
         self.drag_over = self.hit(position).and_then(|at| {
             let layout = self.layouts.get(&at.block)?;
             let index = self.doc.index_of(at.block)?;
             let after = position.y >= layout.bounds.top() + layout.bounds.size.height / 2.;
-            if let Some(id) = self.dragging.filter(|&id| crate::editor::columns::group_from_handle(id).is_none()) {
-                if let Some((from, n, col)) = self.drag_span(id) {
-                    let dst_col = self.doc.blocks.get(index).and_then(|b| b.meta.column);
+            if let Some(id) = self.dragging {
+                if let Some((from, n)) = self.drag_span(id) {
                     let slot = index + usize::from(after);
-                    if col == dst_col && slot >= from && slot <= from + n { return None; }
+                    if slot >= from && slot <= from + n { return None; }
                 }
             }
             Some(DropTarget { index, after })
         });
     }
     pub(in crate::editor) fn pointer_move(&mut self, event: &gpui::MouseMoveEvent, cx: &mut Context<Self>) {
+        if self.source_drag {
+            if !event.dragging() { self.source_drag = false; cx.notify(); return; }
+            self.source_drag_to(event.position, cx);
+            return;
+        }
         if crate::editor::table_resize::active().is_some() {
             if !event.dragging() { self.clear_pointer(); cx.notify(); } else { self.resize_move(event.position.x, cx); }
             return;
@@ -238,20 +243,16 @@ impl Editor {
         self.clear_pointer();
         if let (Some(id), Some(target)) = (dragging, target) {
             if self.path.is_some() && self.list.viewport_bounds().contains(&position) {
-                if let Some(gid) = crate::editor::columns::group_from_handle(id) {
-                    self.finish_group_drag(gid, target, cx);
-                } else if let Some((from, n, col)) = self.drag_span(id) {
-                    let dst_col = self.doc.blocks.get(target.index).and_then(|b| b.meta.column);
+                if let Some((from, n)) = self.drag_span(id) {
                     let slot = target.index + usize::from(target.after);
                     let to = if slot > from { slot.saturating_sub(n) } else { slot }.min(self.doc.blocks.len() - n);
-                    if (from != to || col != dst_col) && !(slot > from && slot < from + n) {
+                    if from != to && !(slot > from && slot < from + n) {
                         let keep_table_sel = self.table_sel == Some((id, crate::editor::table_actions::TableSel::Whole));
                         self.commit_composition(cx);
                         let before = self.snapshot();
-                        let moved: Vec<_> = (from..from + n).map(|i| { let mut b = self.doc.blocks[i].clone(); b.meta.column = dst_col; b }).collect();
+                        let moved: Vec<_> = (from..from + n).map(|i| self.doc.blocks[i].clone()).collect();
                         self.doc.splice_blocks(from..from + n, Vec::new());
                         self.doc.splice_blocks(to..to, moved);
-                        self.repair_column_groups();
                         self.record(before, cx);
                         self.hover = Some(id);
                         if keep_table_sel { self.select_whole_table(id, cx); }
@@ -264,7 +265,7 @@ impl Editor {
     /// Read only the geometry published by final paint, never prepaint attempts.
     pub(in crate::editor) fn selection_toolbar_anchor(&self, bounds: gpui::Bounds<Pixels>, window: &Window) -> Option<Point<Pixels>> {
         if self.path.is_none() || self.caret.is_empty() || self.selecting || self.dragging.is_some()
-            || self.caret.composing.is_some() || !window.is_window_active() || !self.focus.is_focused(window) { return None; }
+            || self.caret.composing.is_some() || (!window.is_window_active() && !crate::ui::smoke_overlay::is_smoke_active()) || !self.focus.is_focused(window) { return None; }
         let viewport = self.list.viewport_bounds();
         use crate::editor::chrome::{TOOLBAR_HEIGHT, TOOLBAR_WIDTH};
         let height = if viewport.size.width - px(16.) < TOOLBAR_WIDTH { TOOLBAR_HEIGHT * 2. - px(8.) } else { TOOLBAR_HEIGHT };
