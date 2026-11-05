@@ -99,7 +99,7 @@ pub fn glyph(glyph: Icon, size: f32, color: u32) -> Div {
 pub fn duo_icon_colors(tc: ToolbarColors, on: bool) -> IconColors {
     let theme = Theme::ocean();
     if on {
-        IconColors { line: rgb(tc.on_ink).into(), fill: theme.icon_fill, accent: rgb(tc.on_ink).into() }
+        IconColors { line: rgb(tc.ink).into(), fill: theme.icon_fill, accent: rgb(tc.on_ink).into() }
     } else {
         theme.icon_colors(rgb(tc.ink).into())
     }
@@ -116,18 +116,14 @@ pub fn icon_toggle_button(
     let ink = if on { tc.on_ink } else { tc.ink };
     let id: ElementId = id.into();
     let group = SharedString::from(format!("fb-btn-{id:?}"));
-    let lead = if matches!(g, Icon::TbChevron | Icon::TbChevronRight) {
-        glyph(g, 16., ink)
-    } else {
-        stateful_icon(
-            group.clone(),
-            g,
-            px(16.),
-            on || open,
-            Theme::ocean().mono_icon_colors(rgb(ink).into()),
-            duo_icon_colors(tc, on),
-        )
-    };
+    let lead = stateful_icon(
+        group.clone(),
+        g,
+        px(16.),
+        on || open,
+        Theme::ocean().mono_icon_colors(rgb(ink).into()),
+        duo_icon_colors(tc, on),
+    );
     div()
         .id(id)
         .group(group)
