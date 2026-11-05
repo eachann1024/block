@@ -109,23 +109,21 @@ pub(super) fn segmented(
     track
 }
 
-/// 2×2 grid of paper style swatch buttons for the active light or dark group.
+/// Two-column grid of paper style swatch buttons for the active light or dark group.
 pub(super) fn style_grid(
     current: ExportTheme,
     on_pick: Rc<dyn Fn(&ExportTheme, &mut Window, &mut App)>,
 ) -> impl IntoElement {
     let items = ExportTheme::group(current.is_dark());
-    let row0 = div()
-        .flex()
-        .gap(px(8.))
-        .child(swatch_card(0, items[0], current == items[0], on_pick.clone()))
-        .child(swatch_card(1, items[1], current == items[1], on_pick.clone()));
-    let row1 = div()
-        .flex()
-        .gap(px(8.))
-        .child(swatch_card(2, items[2], current == items[2], on_pick.clone()))
-        .child(swatch_card(3, items[3], current == items[3], on_pick));
-    div().flex().flex_col().gap(px(8.)).child(row0).child(row1)
+    let mut grid = div().flex().flex_col().gap(px(8.));
+    for (row, pair) in items.chunks(2).enumerate() {
+        let mut line = div().flex().gap(px(8.));
+        for (col, &style) in pair.iter().enumerate() {
+            line = line.child(swatch_card(row * 2 + col, style, current == style, on_pick.clone()));
+        }
+        grid = grid.child(line);
+    }
+    grid
 }
 
 fn swatch_card(
