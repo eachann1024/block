@@ -18,6 +18,7 @@ pub(crate) struct AiSettings {
     pub(super) model_filter: Entity<InputState>, pub(super) model: String,
     pub(super) models: Vec<String>, pub(super) models_err: Option<String>,
     pub(super) fetching: bool, pub(super) testing: bool, pub(super) test_note: Option<TestNote>,
+    pub(super) toggle_anim: crate::ui::toggle_pill::TogglePillState,
     _subs: Vec<Subscription>,
 }
 
@@ -64,7 +65,8 @@ impl AiSettings {
         let mut this = AiSettings {
             enabled: c.enabled, provider: c.provider, protocol: c.protocol, providers: c.providers,
             show_key: false, last_en: is_en(), base_url, api_key, model_filter, model,
-            models, models_err: None, fetching: false, testing: false, test_note: None, _subs: subs,
+            models, models_err: None, fetching: false, testing: false, test_note: None,
+            toggle_anim: Default::default(), _subs: subs,
         };
         if should_fetch { this.fetch_models(cx); }
         this
