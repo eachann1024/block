@@ -150,8 +150,9 @@ pub(super) fn paint_tinted_lines(layout: &super::view::layout::TextLayout, color
     for cell in &layout.cells { paint_tinted_lines(&cell.text, color, window); }
     let mask = window.content_mask().bounds;
     if !layout.bounds.intersects(&mask) { return; }
+    let code_col = super::inline_code::code_text_color();
     let mut y = layout.bounds.top();
-    for (_, line) in &layout.lines {
+    for (line_start, line) in &layout.lines {
         let h = line.size(layout.line_height).height;
         if y + h > mask.top() && y < mask.bottom() {
             let raw = &line.unwrapped_layout;
@@ -159,7 +160,6 @@ pub(super) fn paint_tinted_lines(layout: &super::view::layout::TextLayout, color
             let mut wraps = line.wrap_boundaries.iter().peekable();
             let (mut visual, mut start_x, mut row_x, mut row_y) = (0, px(0.), layout.bounds.left() + layout.aligned_x(line, 0), y);
             for (run_ix, run) in raw.runs.iter().enumerate() {
-                let col = if run.color == super::inline_code::code_text_color() { run.color } else { color };
                 for (glyph_ix, g) in run.glyphs.iter().enumerate() {
                     if wraps.peek() == Some(&&gpui::WrapBoundary { run_ix, glyph_ix }) {
                         wraps.next(); visual += 1; start_x = g.position.x;
@@ -167,8 +167,10 @@ pub(super) fn paint_tinted_lines(layout: &super::view::layout::TextLayout, color
                         row_y += layout.line_height;
                     }
                     if !g.is_emoji && row_y + layout.line_height > mask.top() && row_y < mask.bottom() {
+                        let doc_off = super::inline_code::shaped_to_doc(*line_start + g.index, &layout.code_spans);
+                        let in_code = layout.code_spans.iter().any(|s| s.start <= doc_off && doc_off < s.end);
                         let pos = gpui::point(row_x + g.position.x - start_x, row_y + baseline + g.position.y);
-                        let _ = window.paint_glyph(pos, run.font_id, g.id, raw.font_size, col);
+                        let _ = window.paint_glyph(pos, run.font_id, g.id, raw.font_size, if in_code { code_col } else { color });
                     }
                 }
             }
