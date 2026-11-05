@@ -1,9 +1,9 @@
 use gpui::{
     App, CursorStyle, Div, Hsla, MouseButton, MouseDownEvent, Pixels, Stateful,
-    Window, div, prelude::*, px, rgb, rgba, transparent_black,
+    Window, div, prelude::*, px, rgb, rgba,
 };
 use crate::{
-    icons::{Icon, IconColors, icon},
+    icons::{Icon, icon, stateful_icon},
     theme::{Theme, build_tooltip, is_dark, tr},
 };
 
@@ -30,6 +30,7 @@ pub fn table_add_bar(id: &'static str, w: Pixels, h: Pixels, tip: &'static str) 
     let fg: Hsla = if dark { theme.text_secondary } else { rgb(0x73726c).into() };
     div()
         .id(id)
+        .group(id)
         .w(w)
         .h(h)
         .flex()
@@ -40,7 +41,7 @@ pub fn table_add_bar(id: &'static str, w: Pixels, h: Pixels, tip: &'static str) 
         .cursor(CursorStyle::PointingHand)
         .hover(move |s| s.bg(hover_bg))
         .active(move |s| s.bg(active_bg))
-        .child(icon(Icon::Plus, px(12.), IconColors { line: fg, fill: transparent_black(), accent: fg }))
+        .child(stateful_icon(id, Icon::Plus, px(12.), false, theme.mono_icon_colors(fg), theme.icon_colors(theme.text)))
         .tooltip(move |window, cx| build_tooltip(tip, window, cx))
 }
 
