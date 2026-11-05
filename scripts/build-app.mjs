@@ -23,7 +23,7 @@ if (import.meta.main) {
   }
 }
 
-export async function buildApp({ install = true } = {}) {
+export async function buildApp({ install = true, profile = process.env.BLOCK_PROFILE || (install ? "fast" : "release") } = {}) {
   if (process.platform !== "darwin") throw new Error("macOS is required");
   const job = { staging: "", plan: null, release: null };
   const onSignal = () => {
@@ -36,7 +36,7 @@ export async function buildApp({ install = true } = {}) {
   try {
     job.release = acquireLock();
     job.staging = workspaceTemp();
-    const executable = binaryPath(root);
+    const executable = binaryPath(root, profile);
     assertSystemLibraries(executable);
     const bundle = join(job.staging, `${appName}.app`);
     const macos = join(bundle, "Contents/MacOS");
