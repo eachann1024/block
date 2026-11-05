@@ -268,6 +268,11 @@ impl Render for SearchWindow {
                 if this.state.reset_scope_all() { this.state.research(cx, |this| Some(&mut this.state)); }
                 cx.notify();
             }))
+            .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| {
+                cx.stop_propagation();
+                if this.state.scope_menu_open { this.state.scope_menu_open = false; cx.notify(); return; }
+                this.close(window, cx);
+            }))
             .on_action(cx.listener(|this, _: &Dismiss, window, cx| {
                 if this.state.scope_menu_open { this.state.scope_menu_open = false; cx.notify(); return; }
                 this.close(window, cx);

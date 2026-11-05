@@ -3,6 +3,8 @@ mod app;
 mod dropdown;
 mod editor;
 mod export;
+pub mod feedback;
+pub mod feedback_view;
 mod files;
 pub mod fonts;
 mod icons;
