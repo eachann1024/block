@@ -170,12 +170,15 @@ impl Editor {
         self.persistence.timer = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_millis(400)).await;
             let _ = this.update(cx, |this, cx| {
-                if this.persistence.revision == revision && this.caret.composing.is_none() { this.flush(cx); }
+                if this.persistence.revision != revision { return; }
+                this.persistence.timer = None;
+                if this.caret.composing.is_none() { this.flush(cx); }
             });
         }));
         cx.notify();
     }
     pub fn save(&mut self, cx: &mut Context<Self>) {
+        self.persistence.timer = None;
         self.commit_composition(cx); self.flush(cx);
     }
     fn flush(&mut self, cx: &mut Context<Self>) {
@@ -209,8 +212,8 @@ impl Editor {
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
-                if this.persistence.write_epoch != epoch { return; }
                 this.persistence.saving.remove(&path);
+                if this.persistence.write_epoch != epoch { return; }
                 match result {
                     Ok(Some(base)) => {
                         if this.path.as_ref() == Some(&path) {
