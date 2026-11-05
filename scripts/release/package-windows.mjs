@@ -18,7 +18,12 @@ export async function packageWindows() {
   const outfile = join(RELEASE_DIR, SETUP_NAME);
   const script = resolve(ROOT, "scripts/release/block.nsi");
   const nsisPath = (value) => value.replaceAll("\\", "/");
-  run("makensis", [
+  const makensis = [
+    process.env.MAKENSIS,
+    "C:\\Program Files (x86)\\NSIS\\makensis.exe",
+    "C:\\Program Files\\NSIS\\makensis.exe",
+  ].find((path) => path && existsSync(path)) || "makensis";
+  run(makensis, [
     `/DVERSION=${version}`,
     `/DOUTFILE=${nsisPath(outfile)}`,
     `/DBINARY=${nsisPath(binary)}`,
