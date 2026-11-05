@@ -39,16 +39,17 @@ impl Editor {
         ACTIVE.with(|a| a.set(Some(drag)));
         if !drag.moved { return; }
         let Some((_, columns)) = self.table_dimensions(drag.block) else { return };
-        let mut width = (drag.start_width + f32::from(x - drag.start_x)).clamp(MIN_COL, MAX_MANUAL);
+        let zoom = super::zoom::zoom_factor();
+        let mut width = (drag.start_width + f32::from(x - drag.start_x)).clamp(MIN_COL * zoom, MAX_MANUAL * zoom);
         let id = cx.entity_id();
         if table_layout::widths_of(id, drag.block).fit && columns > 1 {
             // Fitted tables keep the other columns on the page: leave each at least its minimum.
             if let Some(layout) = self.layouts.get(&drag.block) {
                 let page = f32::from(table_layout::visible(layout.bounds).size.width);
-                width = width.min((page - MIN_COL * (columns - 1) as f32).max(MIN_COL));
+                width = width.min((page - MIN_COL * zoom * (columns - 1) as f32).max(MIN_COL * zoom));
             }
         }
-        table_layout::set_manual(id, drag.block, drag.col, columns, Some(width));
+        table_layout::set_manual(id, drag.block, drag.col, columns, Some(width / zoom));
         self.relayout_table(drag.block, cx);
     }
     /// Mouse release: the widths were applied while dragging, so only the drag state ends. True if one was running.

@@ -209,6 +209,7 @@ impl Editor {
         self.edit_image(id, |s| s.width = Some(width), cx);
     }
     /// Cmd+= / Cmd+-: resize the image holding the caret, if the caret block is one.
+    #[allow(dead_code)]
     pub(super) fn step_selected_image(&mut self, delta: i32, cx: &mut Context<Self>) {
         let id = self.caret.head.block;
         if self.doc.get(id).and_then(spec_of).is_some() { self.step_image(id, delta, cx); }
