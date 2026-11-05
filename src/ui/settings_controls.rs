@@ -70,7 +70,7 @@ pub fn tag_chip(
 }
 
 pub fn action_button(
-    id: &'static str, label: impl Into<SharedString>, active: bool, enabled: bool,
+    id: impl Into<gpui::ElementId>, label: impl Into<SharedString>, active: bool, enabled: bool,
 ) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
     let sel_bg = selected_bg();
@@ -130,18 +130,19 @@ pub fn toggle_pill(id: &'static str, on: bool, label: impl Into<SharedString>) -
 }
 
 pub fn segmented<V: 'static, T: Copy + 'static, const N: usize>(
-    id: &'static str,
+    id: impl Into<gpui::ElementId>,
     options: [(&'static str, bool, T); N],
     make_handler: impl Fn(T, &mut Context<V>) -> Box<dyn Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static>,
 ) -> impl FnOnce(&mut Context<V>) -> gpui::Stateful<gpui::Div> {
+    let id: gpui::ElementId = id.into();
     move |cx| {
         let theme = Theme::ocean();
         let sel_bg = selected_bg();
-        div().id(id).p(px(3.)).flex().items_center().gap(px(2.)).rounded(crate::ui::radius::CONTROL).bg(theme.shell)
+        div().id(id.clone()).p(px(3.)).flex().items_center().gap(px(2.)).rounded(crate::ui::radius::CONTROL).bg(theme.shell)
             .border_1().border_color(theme.hairline)
             .children(options.into_iter().enumerate().map(|(ix, (label, active, val))| {
                 let handler = make_handler(val, cx);
-                div().id((id, ix)).h(px(32.)).px(px(12.)).flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
+                div().id((id.clone(), label)).h(px(32.)).px(px(12.)).flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
                     .text_size(px(14.)).font_weight(FontWeight(460.)).cursor(CursorStyle::PointingHand)
                     .when(active, |b| b.bg(sel_bg).text_color(theme.text).border_1().border_color(theme.accent))
                     .when(!active, |b| b.text_color(theme.text_secondary).hover(move |s| s.text_color(theme.text)))
