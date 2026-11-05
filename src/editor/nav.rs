@@ -10,13 +10,13 @@ fn is_word(seg: &str) -> bool {
 impl Editor {
     /// Bounds of the current cell if `block` is a table, else the whole block text range.
     fn active_slice_bounds(&self, block: u64, offset: usize) -> (usize, usize) {
-        if let Some(layout) = self.layouts.get(&block).filter(|l| !l.cells.is_empty()) {
-            if let Some(cell) = layout.cells.iter().find(|c| c.range.start <= offset && offset <= c.range.end) {
-                return (cell.range.start, cell.range.end);
+        let Some(b) = self.doc.get(block) else { return (0, 0); };
+        if let Some(table) = &b.meta.table {
+            if let Some((_, _, body)) = table.cell_ranges().into_iter().find(|(_, _, body)| body.start <= offset && offset <= body.end) {
+                return (body.start, body.end);
             }
         }
-        let len = self.doc.get(block).map_or(0, |b| b.text.len());
-        (0, len)
+        (0, b.text.len())
     }
 
     fn logical_line_bounds(&self, block: u64, offset: usize) -> (usize, usize) {
@@ -66,12 +66,9 @@ impl Editor {
             self.set_head(Position { block: blk.id, offset: off }, false, cx);
             return;
         }
-        if !extend && !self.caret.is_empty() && self.caret.anchor.block == self.caret.head.block {
+        if !extend && !self.caret.is_empty() {
             let (a, b, _, _) = self.ordered();
-            let (log_a, log_b) = self.logical_line_bounds(a.block, a.offset);
-            if b.offset <= log_b && a.offset >= log_a {
-                self.caret.head = if to_end { b } else { a };
-            }
+            self.caret.head = if to_end { b } else { a };
         }
         let target = self.line_target(to_end, logical);
         self.set_head(target, extend, cx);
