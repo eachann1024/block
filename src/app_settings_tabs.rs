@@ -4,8 +4,8 @@ use gpui_component::input::Input;
 use crate::files::state::{LanguageMode, LineHeight, ThemeMode};
 use crate::theme::{
     DEFAULT_ASSETS_FOLDER, DEFAULT_QUICK_SHORTCUT, DEFAULT_SEARCH_SHORTCUT, Theme, assets_folder,
-    custom_code_font, custom_editor_font, hide_assets_folder, language_mode, line_height,
-    quick_shortcut, resolved_mono_font, resolved_serif_font, search_shortcut, theme_mode, tr,
+    active_code_font, active_editor_font, hide_assets_folder, language_mode, line_height,
+    quick_shortcut, search_shortcut, theme_mode, tr,
 };
 use crate::ui::font_picker::{FontPickerRole, font_picker_popover, font_picker_trigger};
 use crate::ui::settings_controls::{
@@ -28,22 +28,13 @@ impl Workspace {
             ("English", cur_lang == LanguageMode::En, LanguageMode::En),
         ], |mode, cx: &mut Context<Self>| Box::new(cx.listener(move |this, _, window, cx| this.select_language(mode, window, cx))));
 
-        let cur_editor_font = custom_editor_font();
-        let (body_name, body_fam) = match cur_editor_font.as_deref() {
-            None => (tr("系统无衬线", "System Sans").into(), ".SystemUIFont".into()),
-            Some("system-serif") => (tr("系统衬线", "System Serif").into(), resolved_serif_font().into()),
-            Some(name) => (name.to_owned().into(), name.to_owned().into()),
-        };
+        let body_font = active_editor_font();
         let body_open = self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).is_some_and(|p| p.role == FontPickerRole::Body);
-        let body_trigger = font_picker_trigger("body-font-trigger", FontPickerRole::Body, body_open, body_name, body_fam, cx);
+        let body_trigger = font_picker_trigger("body-font-trigger", FontPickerRole::Body, body_open, body_font.clone().into(), body_font.into(), cx);
 
-        let cur_code_font = custom_code_font();
-        let (code_name, code_fam) = match cur_code_font.as_deref() {
-            None => (format!("{} ({})", tr("自动", "Auto"), resolved_mono_font()).into(), resolved_mono_font().into()),
-            Some(name) => (name.to_owned().into(), name.to_owned().into()),
-        };
+        let code_font = active_code_font();
         let code_open = self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).is_some_and(|p| p.role == FontPickerRole::Code);
-        let code_trigger = font_picker_trigger("code-font-trigger", FontPickerRole::Code, code_open, code_name, code_fam, cx);
+        let code_trigger = font_picker_trigger("code-font-trigger", FontPickerRole::Code, code_open, code_font.clone().into(), code_font.into(), cx);
 
         let lh_seg = segmented("lh-seg", [
             (tr("紧凑", "Compact"), cur_lh == LineHeight::Tight, LineHeight::Tight),
