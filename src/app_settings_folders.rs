@@ -166,32 +166,4 @@ impl Workspace {
         self.rescan_current_folder(cx);
         cx.notify();
     }
-
-    pub(super) fn reset_folder_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        crate::theme::set_assets_folder(DEFAULT_ASSETS_FOLDER.into());
-        crate::theme::set_hide_assets_folder(true);
-        crate::theme::set_folder_rules(Vec::new());
-
-        if let Some(modal) = &mut self.settings {
-            modal.assets_input.update(cx, |input, cx| input.set_value(DEFAULT_ASSETS_FOLDER, window, cx));
-            modal.folder_draft_input.update(cx, |input, cx| input.set_value(String::new(), window, cx));
-            modal.regex_draft_input.update(cx, |input, cx| input.set_value(String::new(), window, cx));
-            modal.folder_error = None;
-            modal.regex_error = None;
-        }
-
-        cx.background_executor().spawn(async move {
-            let _ = update_state(|s| {
-                let cur_assets = crate::theme::assets_folder();
-                s.assets_folder = (cur_assets != DEFAULT_ASSETS_FOLDER).then_some(cur_assets);
-                let cur_hide = crate::theme::hide_assets_folder();
-                s.hide_assets_folder = (!cur_hide).then_some(false);
-                let latest = crate::theme::folder_rules();
-                s.folder_rules = Some(latest);
-                s.hidden_folder_regex = None;
-            });
-        }).detach();
-        self.rescan_current_folder(cx);
-        cx.notify();
-    }
 }
