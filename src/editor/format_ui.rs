@@ -7,18 +7,18 @@ use super::{format_cmds::{FormatPop, palette::PalettePopover}, view::{Cancel, Ed
 pub(super) fn popover(editor: Entity<Editor>, pop: &FormatPop) -> AnyElement {
     match pop {
         FormatPop::Ai(session) => super::ai::panel::render(editor, session),
-        FormatPop::Link { input, existing, anchor, .. } => {
-            dropdown::deferred_popover(
-                *anchor,
+        FormatPop::Link { input, existing, spec, .. } => {
+            dropdown::deferred_popover_for(
+                *spec,
                 crate::ui::popover::card("format-link-card", None).child(link_field(editor, input, *existing)),
                 2,
             )
             .into_any_element()
         }
-        FormatPop::SelectionMenu { anchor } => dropdown::deferred_popover(*anchor, selection_menu(editor), 2).into_any_element(),
-        FormatPop::Palette { anchor } => dropdown::deferred_popover(*anchor, PalettePopover { editor }, 2).into_any_element(),
-        FormatPop::Kinds { anchor, current } => dropdown::deferred_popover(*anchor, super::toolbar::menu(editor, true, *current), 2).into_any_element(),
-        FormatPop::Lists { anchor, current } => dropdown::deferred_popover(*anchor, super::toolbar::menu(editor, false, *current), 2).into_any_element(),
+        FormatPop::SelectionMenu { spec } => dropdown::deferred_popover_for(*spec, selection_menu(editor), 2).into_any_element(),
+        FormatPop::Palette { spec } => dropdown::deferred_popover_for(*spec, PalettePopover { editor }, 2).into_any_element(),
+        FormatPop::Kinds { spec, current } => dropdown::deferred_popover_for(*spec, super::toolbar::menu(editor, true, *current), 2).into_any_element(),
+        FormatPop::Lists { spec, current } => dropdown::deferred_popover_for(*spec, super::toolbar::menu(editor, false, *current), 2).into_any_element(),
     }
 }
 

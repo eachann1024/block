@@ -141,10 +141,7 @@ impl Workspace {
     }
 
     pub(crate) fn dismiss_tab_menu(&mut self, cx: &mut Context<Self>) -> bool {
-        let had = TAB_UI.with(|ui| {
-            let mut s = ui.borrow_mut();
-            s.menu.take().is_some() || s.page_menu.take().is_some()
-        });
+        let had = TAB_UI.with(|ui| { let mut s = ui.borrow_mut(); s.menu.take().is_some() || s.page_menu.take().is_some() });
         if had { cx.notify(); }
         had
     }
@@ -152,9 +149,7 @@ impl Workspace {
     pub(crate) fn export_note(&mut self, path: PathBuf, window: &mut gpui::Window, cx: &mut Context<Self>) {
         clear_tab_menu();
         self.close_overlays(cx);
-        if self.editor.read(cx).current_path() != Some(path.as_path()) {
-            self.open_file(path, cx);
-        }
+        if self.editor.read(cx).current_path() != Some(path.as_path()) { self.open_file(path, cx); }
         if !self.editor.read(cx).is_loading() {
             self.editor.update(cx, |e, cx| crate::editor::export_document(e, window, cx));
             cx.notify();
@@ -174,7 +169,12 @@ impl Workspace {
         let theme = Theme::ocean();
         let page_open = TAB_UI.with(|ui| ui.borrow().page_menu.is_some());
         let more_group: SharedString = "titlebar-more-btn".into();
-        let tail_actions = if has_note {
+        let ent = cx.entity();
+        let feedback_btn = crate::ui::feedback_controls::titlebar_feedback_button(
+            crate::feedback::is_open(), crate::feedback::has_draft(),
+            move |window, cx| { ent.update(cx, |this, cx| this.close_overlays(cx)); clear_tab_menu(); crate::feedback::toggle(window, cx); },
+        );
+        let tail_actions = has_note.then(|| {
             let send_seg = self.annotation_actions(cx);
             let (sz, rd) = if send_seg.is_some() { (px(24.), px(6.)) } else { (px(26.), crate::ui::radius::CONTROL) };
             let more = div().id("titlebar-more").group(more_group.clone()).size(sz).rounded(rd)
@@ -188,12 +188,12 @@ impl Workspace {
                     cx.notify();
                 }))
                 .child(if page_open { icon(Icon::More, px(16.), theme.icon_colors(theme.accent)) } else { hover_tinted_icon(more_group, Icon::More, 16., theme.text_secondary, theme.text, theme.icon_fill) });
-            let mr = if cfg!(any(target_os = "macos", target_family = "wasm")) { 10. } else { 4. };
-            Some(crate::ui::annotation_card::titlebar_split_pill(send_seg, more).mr(px(mr)))
-        } else {
-            None
-        };
-        div().h_full().flex_none().flex().items_center().children(tail_actions).child(crate::ui::window_controls::window_controls("main-win", true, true))
+            crate::ui::annotation_card::titlebar_split_pill(send_seg, more)
+        });
+        let mr = if cfg!(any(target_os = "macos", target_family = "wasm")) { 10. } else { 4. };
+        div().h_full().flex_none().flex().items_center()
+            .child(div().flex().items_center().gap(px(4.)).mr(px(mr)).child(feedback_btn).children(tail_actions))
+            .child(crate::ui::window_controls::window_controls("main-win", true, true))
     }
 
     pub(crate) fn close_other_tabs(&mut self, keep_path: PathBuf, cx: &mut Context<Self>) {
@@ -284,7 +284,7 @@ impl Workspace {
             div().id("tab-menu-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black()).occlude()
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.dismiss_tab_menu(cx); }))
                 .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.dismiss_tab_menu(cx); })))).with_priority(1);
-        let popup = deferred(anchored().position(position).snap_to_window_with_margin(px(8.)).child(card)).with_priority(2);
+        let popup = crate::dropdown::deferred_popover(position, card, 2);
         Some(div().child(backdrop).child(popup).into_any_element())
     }
 }
