@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::{Arc, atomic::AtomicBool, mpsc}};
 use serde::{Deserialize, Serialize};
 use crate::editor::ai::provider;
+use crate::theme::tr;
 
 #[derive(Serialize)]
 pub(super) struct RewriteTask {
@@ -25,15 +26,15 @@ pub(super) fn stream(document: String, tasks: Vec<RewriteTask>) -> mpsc::Receive
 }
 
 pub(super) fn parse_response(raw: &str) -> Result<HashMap<u64, String>, String> {
-    let start = raw.find('[').ok_or_else(|| "模型未返回批注结果".to_owned())?;
+    let start = raw.find('[').ok_or_else(|| tr("模型未返回批注结果", "Model returned no annotation results").to_owned())?;
     let end = raw.rfind(']').filter(|end| *end >= start)
-        .ok_or_else(|| "模型返回的批注结果格式异常".to_owned())?;
+        .ok_or_else(|| tr("模型返回的批注结果格式异常", "Malformed annotation response from model").to_owned())?;
     let results: Vec<RewriteResult> = serde_json::from_str(&raw[start..=end])
-        .map_err(|_| "模型返回的批注结果格式异常".to_owned())?;
+        .map_err(|_| tr("模型返回的批注结果格式异常", "Malformed annotation response from model").to_owned())?;
     let mut rewrites = HashMap::new();
     for result in results {
         let replacement = result.replacement.trim().to_owned();
         if !replacement.is_empty() { rewrites.insert(result.id, replacement); }
     }
-    if rewrites.is_empty() { Err("模型没有生成可用的批注结果".to_owned()) } else { Ok(rewrites) }
+    if rewrites.is_empty() { Err(tr("模型没有生成可用的批注结果", "Model produced no usable annotation results").to_owned()) } else { Ok(rewrites) }
 }
