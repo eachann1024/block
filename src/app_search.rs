@@ -191,7 +191,6 @@ impl Workspace {
             .child(render_header(
                 &search.state,
                 cx.listener(|this, _, _, cx| this.toggle_scope_menu(cx)),
-                cx.listener(|this, _, window, cx| this.close_search(window, cx)),
             ))
             .when(menu_open, |card| card.child(render_scope_menu(&search.state, cx, |this, index, _, cx| {
                 let changed = this.search.as_mut().is_some_and(|search| search.state.select_scope_index(index));
