@@ -4,6 +4,7 @@ mod columns;
 mod export_driver;
 mod input;
 mod nav;
+mod word_select;
 mod input_rules;
 mod inline_rules;
 mod inline_code;
