@@ -1,6 +1,7 @@
 /target
 /web/target
 /dist
+scripts/release/block.exe
 /release-plan.json
 !.github/
 !.github/workflows/
