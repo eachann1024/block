@@ -83,13 +83,6 @@ impl Workspace {
                 if *hovered { if let Some(menu) = &mut this.menu { if menu.moving { menu.moving = false; cx.notify(); } } }
             }))
             .into_any_element());
-            let p = path.clone();
-            items.push(menu_item(ItemId::Name("export-image"), Icon::Image, tr("生成图片…", "Export as Image…").into(), false, false,
-                cx.listener(move |this, _, window, cx| this.export_note(p.clone(), window, cx)))
-                .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
-                if *hovered { if let Some(menu) = &mut this.menu { if menu.moving { menu.moving = false; cx.notify(); } } }
-            }))
-            .into_any_element());
             items.push(separator());
         }
         let p = path.clone();
@@ -137,7 +130,7 @@ impl Workspace {
         let mut out = vec![deferred(anchored().position(position).snap_to_window_with_margin(px(8.))
             .child(menu_surface(px(MENU_WIDTH)).children(items))).with_priority(2).into_any_element()];
         if moving {
-            let move_row = if dir { 2. } else { 4. };
+            let move_row = if dir { 2. } else { 3. };
             let sep_offset = if dir { 0. } else { 13. };
             let at = point(position.x + px(MENU_WIDTH + 4.), position.y + px(4. + sep_offset + move_row * 30.));
             out.push(deferred(anchored().position(at).snap_to_window_with_margin(px(8.))
