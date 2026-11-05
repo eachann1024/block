@@ -40,6 +40,7 @@ pub(super) fn prepare_quick_summon() {
     }
 }
 
+/// Windows and Linux have no non-activating panel: the quick note stays a normal GPUI popup.
 #[cfg(not(target_os = "macos"))]
 pub(super) fn prepare_quick_summon() {}
 

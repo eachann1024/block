@@ -3,14 +3,16 @@ use gpui::{App, KeyBinding};
 use super::view::{
     Annotate, CopyMarkdown, ExportImage, Backspace, Bold, Cancel, CmdEnter, Code, Copy, Cut, Delete, DeleteLineLeft, DeleteLineRight,
     DeleteWordLeft, DeleteWordRight, DocEnd, DocStart, Down, DuplicateBlock, EditLink, Enter,
-    ExitBlock, Find, ImageGrow, ImageShrink, Italic, Left, LineEnd, LineStart, LogicalLineEnd,
-    LogicalLineStart, MoveBlockDown, MoveBlockUp, NextCell, OpenLinkAtCaret, Paste, PreviousCell,
+    ExitBlock, Find, ImageGrow, ImageShrink, Italic, Left, LineEnd, LineStart, MoveBlockDown, MoveBlockUp,
+    NextCell, OpenLinkAtCaret, Paste, PreviousCell,
     Redo, Right, Save, SelectAll, SelectDocEnd, SelectDocStart, SelectDown, SelectLeft,
     SelectLineEnd, SelectLineStart, SelectRight, SelectUp, SelectWordLeft, SelectWordRight,
     SetBullet, SetCode, SetH1, SetH2, SetH3, SetNumbered, SetParagraph, SetQuote, SetTodo, Strike,
     TableMenuKey, Underline, Undo, Up, WordLeft, WordRight, ToggleHighlight, ClearFormat, ToggleFold,
     PastePlain,
 };
+#[cfg(any(target_os = "macos", target_family = "wasm"))]
+use super::view::{LogicalLineEnd, LogicalLineStart};
 
 pub fn bind_keys(cx: &mut App) {
     super::ai::bind_keys(cx);
