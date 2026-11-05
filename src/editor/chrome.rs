@@ -263,7 +263,7 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let slot_ri = if in_col { 4. } else { RIGHT_INSET };
     let bid = block.id;
     let top_slot = show_top_slot.then(|| {
-        top_insert_slot(("top-insert", bid as usize), slot_hw, ROW_GAP, slot_ri, handles, cx.listener(move |this, _, window, cx| {
+        top_insert_slot(("top-insert", bid as usize), slot_hw, ROW_GAP, slot_ri, cx.listener(move |this, _, window, cx| {
             this.insert_above(bid, cx); window.focus(&this.focus, cx); cx.stop_propagation();
         }))
     });
