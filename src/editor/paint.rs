@@ -184,7 +184,8 @@ impl Element for BlockText {
                         }
                     }
                 }
-                if head.block == self.block {
+                // Hide the caret and IME composition chrome when the window is inactive while keeping selection visible.
+                if head.block == self.block && window.is_window_active() {
                     let p = layout.point(head.offset);
                     let line_h = layout.cells.first().map_or(layout.line_height, |c| c.text.line_height);
                     let font_px = layout.cells.first()
