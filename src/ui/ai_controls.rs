@@ -16,7 +16,7 @@ pub fn panel_shell(id: impl Into<SharedString>) -> Stateful<Div> {
     let eid = ElementId::from(id);
     let probe = crate::ui::smoke_overlay::probe_for(&eid);
     let shadows: Vec<BoxShadow> = dropdown::shadows();
-    div().id(eid).relative().children(probe).w(px(PANEL_WIDTH)).p(px(8.)).flex().flex_col().gap(px(6.))
+    div().id(eid).relative().children(probe).w(px(PANEL_WIDTH)).p(px(10.)).flex().flex_col().gap(px(8.))
         .rounded(px(10.)).border_1().border_color(theme.menu_border).bg(theme.menu)
         .text_color(theme.text).text_size(px(14.)).line_height(px(20.)).shadow(shadows).occlude()
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -24,10 +24,10 @@ pub fn panel_shell(id: impl Into<SharedString>) -> Stateful<Div> {
 
 pub fn input_capsule(busy: bool) -> Div {
     let theme = Theme::ocean();
-    div().min_h(px(34.)).pl(px(10.)).pr(px(5.)).flex().items_center().gap(px(8.))
-        .rounded(crate::ui::radius::CONTROL).border_1()
-        .border_color(if busy { theme.hairline } else { theme.accent })
-        .bg(theme.shell)
+    div().min_h(px(36.)).pl(px(10.)).pr(px(6.)).flex().items_center().gap(px(8.))
+        .rounded(px(8.)).border_1()
+        .border_color(if busy { theme.hairline } else { theme.btn_border })
+        .bg(theme.code_bg)
 }
 
 pub fn send_button(
@@ -39,11 +39,11 @@ pub fn send_button(
     let eid = ElementId::from(id);
     let probe = crate::ui::smoke_overlay::probe_for(&eid);
     div().id(eid).relative().children(probe).size(px(24.)).flex_none().flex().items_center().justify_center()
-        .rounded(px(6.)).bg(theme.selected).border_1().border_color(theme.accent)
+        .rounded(px(6.)).bg(theme.primary)
         .cursor(CursorStyle::PointingHand)
-        .hover(move |s| s.bg(theme.hover))
+        .hover(move |s| s.bg(theme.accent))
         .tooltip(tooltip(tr("发送（回车）", "Send (Enter)")))
-        .child(icon(Icon::ArrowUp, px(13.), theme.mono_icon_colors(theme.accent)))
+        .child(icon(Icon::ArrowUp, px(13.), theme.mono_icon_colors(rgb(0xffffff).into())))
         .on_mouse_down(MouseButton::Left, on_click)
 }
 
