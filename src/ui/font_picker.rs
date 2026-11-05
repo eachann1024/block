@@ -110,47 +110,33 @@ pub fn font_picker_popover(
                 let theme = Theme::ocean();
                 let pal = palette();
                 range.map(|ix| {
-                    match &items_clone[ix] {
-                        FlatFontItem::Header(title) => {
-                            let title = title.clone();
-                            div()
-                                .id(ElementId::NamedInteger("font-hdr".into(), ix as u64))
-                                .w_full().h(px(ITEM_HEIGHT)).px(px(10.))
-                                .flex().items_center()
-                                .text_size(px(13.)).font_weight(gpui::FontWeight::MEDIUM)
-                                .text_color(pal.muted)
-                                .child(title)
-                                .into_any_element()
-                        }
-                        FlatFontItem::Font { id, name, selected } => {
-                            let active = *selected;
-                            let id = id.clone();
-                            let name = name.clone();
-                            let check_colors = IconColors {
-                                line: theme.accent,
-                                fill: gpui::transparent_black(),
-                                accent: theme.accent,
-                            };
-                            div()
-                                .id(ElementId::NamedInteger("font-row".into(), ix as u64))
-                                .w_full().h(px(ITEM_HEIGHT)).px(px(10.)).rounded(crate::ui::radius::CONTROL)
-                                .flex().items_center().justify_between().cursor(CursorStyle::PointingHand)
-                                .hover(move |s| s.bg(pal.hover_bg))
-                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
-                                    cx.stop_propagation();
-                                    match role {
-                                        FontPickerRole::Body => this.select_editor_font(id.clone(), window, cx),
-                                        FontPickerRole::Code => this.select_code_font(id.clone(), window, cx),
-                                    }
-                                }))
-                                .child(
-                                    div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-                                        .text_size(px(15.)).text_color(pal.text).child(name),
-                                )
-                                .when(active, |r| r.child(div().ml(px(8.)).flex_none().child(icon(Icon::Check, px(16.), check_colors))))
-                                .into_any_element()
-                        }
-                    }
+                    let item = &items_clone[ix];
+                    let active = item.selected;
+                    let name = item.name.clone();
+                    let picked = name.to_string();
+                    let check_colors = IconColors {
+                        line: theme.accent,
+                        fill: gpui::transparent_black(),
+                        accent: theme.accent,
+                    };
+                    div()
+                        .id(ElementId::NamedInteger("font-row".into(), ix as u64))
+                        .w_full().h(px(ITEM_HEIGHT)).px(px(10.)).rounded(crate::ui::radius::CONTROL)
+                        .flex().items_center().justify_between().cursor(CursorStyle::PointingHand)
+                        .hover(move |s| s.bg(pal.hover_bg))
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            match role {
+                                FontPickerRole::Body => this.select_editor_font(picked.clone(), window, cx),
+                                FontPickerRole::Code => this.select_code_font(picked.clone(), window, cx),
+                            }
+                        }))
+                        .child(
+                            div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
+                                .text_size(px(15.)).text_color(pal.text).child(name),
+                        )
+                        .when(active, |r| r.child(div().ml(px(8.)).flex_none().child(icon(Icon::Check, px(16.), check_colors))))
+                        .into_any_element()
                 }).collect::<Vec<_>>()
             }),
         )
