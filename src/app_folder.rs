@@ -14,6 +14,9 @@ impl Workspace {
 
     pub(super) fn use_folder_guarded(&mut self, folder: PathBuf, startup_epoch: Option<u64>, cx: &mut Context<Self>) {
         if self.busy() { return; }
+        if self.history.is_some() || self.history_opening { self.close_page_history(cx); }
+        self.undo_restore = None;
+        self.history_toast = None;
         if self.restore_superseded(startup_epoch, cx) { return; }
         self.scan_generation = self.scan_generation.wrapping_add(1);
         let startup_tabs = self.startup_tabs.take();

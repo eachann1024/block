@@ -59,13 +59,12 @@ impl Workspace {
     pub(crate) fn dismiss_dropdowns(&mut self, cx: &mut Context<Self>) -> bool {
         let had_overlay = self.menu.is_some() || self.switcher_open;
         if had_overlay { self.close_overlays(cx); }
-        let had_tab = self.dismiss_tab_menu(cx);
-        let had_font = self.close_font_picker(cx);
-        had_overlay || had_tab || had_font
+        let closed_tabs = self.dismiss_tab_menu(cx); let closed_font = self.close_font_picker(cx); had_overlay || closed_tabs || closed_font
     }
 
     /// Escape: close the innermost transient surface; false when none was open.
     pub(super) fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.history_escape(window, cx) { return true; }
         if self.close_font_picker(cx) { return true; }
         if self.renaming.is_some() { self.cancel_rename(window, cx); return true; }
         if self.search.is_some() { self.close_search(window, cx); return true; }

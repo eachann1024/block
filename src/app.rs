@@ -22,8 +22,10 @@ use crate::files::{create_note_at, note_candidates, load_state, save_folder, sca
 #[path = "app_settings_fonts.rs"] mod settings_fonts;
 #[path = "app_settings_folders_view.rs"] mod settings_folders_view;
 #[path = "app_settings_folders.rs"] mod settings_folders;
+#[path = "app_history.rs"] mod history;
+#[path = "app_history_view.rs"] mod history_view;
 
-use file_ops::{FileOp, Renaming, TreeMenu}; use search::Search; use settings::SettingsModal;
+use file_ops::{FileOp, Renaming, TreeMenu}; use search::Search; use settings::SettingsModal; use history::{HistoryToast, PageHistoryState, UndoRestoreState};
 pub use search::{Dismiss, NewFolder, NewNote, OpenSearch, OpenSettings, SearchDown, SearchUp};
 pub use tabs::{CloseTab, NewTab, NextTab, PrevTab, ToggleSidebar}; pub use nav::{NavigateBack, NavigateForward};
 
@@ -57,6 +59,13 @@ pub struct Workspace {
     renaming: Option<Renaming>,
     search: Option<Search>,
     settings: Option<SettingsModal>,
+    pub(super) history: Option<PageHistoryState>,
+    pub(super) undo_restore: Option<UndoRestoreState>,
+    pub(super) history_toast: Option<HistoryToast>,
+    history_token: u64,
+    history_opening: bool,
+    history_restore_busy: bool,
+    history_return_focus: bool,
     /// A disk change that waits for the editor to release the affected note.
     file_op: Option<FileOp>,
     working: bool,
@@ -190,7 +199,7 @@ impl Workspace {
             choosing: false, creating: false, persisting: false, pending: None,
             notice: tr("正在读取工作区偏好…", "Loading workspace preferences…").into(), sidebar_width: Theme::ocean().sidebar_width,
             sidebar_collapsed: false, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
-            settings: None, file_op: None, working: false, scan_generation: 0, root_focus: cx.focus_handle(),
+            settings: None, history: None, undo_restore: None, history_toast: None, history_token: 0, history_opening: false, history_restore_busy: false, history_return_focus: false, file_op: None, working: false, scan_generation: 0, root_focus: cx.focus_handle(),
             bounds_task: None, _editor_subscription: subscription };
         window.focus(&this.root_focus, cx);
         cx.spawn(async move |this, cx| {
@@ -222,7 +231,7 @@ impl Workspace {
 
     pub(crate) fn busy(&self) -> bool {
         self.loading || self.choosing || self.creating || self.persisting || self.pending.is_some()
-            || self.file_op.is_some() || self.working
+            || self.file_op.is_some() || self.working || self.history_restore_busy
     }
 
     pub(crate) fn ui_enabled(&self) -> bool {

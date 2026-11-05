@@ -90,6 +90,7 @@ impl Workspace {
     }
     pub(crate) fn close_tab(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         clear_tab_menu();
+        if !self.prepare_close_tab(&path, cx) { return; }
         if self.busy() { return; }
         let Some(idx) = self.tabs.iter().position(|p| p == &path) else { return };
         if self.tabs.len() > 1 { record_tab_close(idx, display_name(&path, false), cx); }
