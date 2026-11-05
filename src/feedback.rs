@@ -52,6 +52,9 @@ impl FeedbackPlatform {
     pub fn current() -> Self {
         if cfg!(target_os = "windows") { Self::Windows } else if cfg!(target_os = "linux") { Self::Linux } else { Self::Macos }
     }
+    pub fn api_value(self) -> &'static str {
+        match self { Self::Macos => "mac", Self::Windows => "win", Self::Linux => "linux" }
+    }
     pub fn label(self) -> &'static str {
         match self { Self::Macos => "macOS", Self::Windows => "Windows", Self::Linux => "Linux" }
     }
@@ -147,7 +150,7 @@ impl FeedbackModal {
         self.error = None;
         cx.notify();
         let category = self.category.code().to_string();
-        let platform = (self.category == FeedbackCategory::Install).then(|| self.platform.label().to_string());
+        let platform = (self.category == FeedbackCategory::Install).then(|| self.platform.api_value().to_string());
         let sent_email = email.clone();
         let rx = cx.background_executor().spawn(async move { send_feedback_http(&category, platform.as_deref(), &msg, &email) });
         cx.spawn_in(window, async move |this, cx| {
