@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import { gzipSync } from "node:zlib";
 import { cargoRelease } from "./cargo-release.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
@@ -130,8 +131,13 @@ export async function packageLinux() {
   chmodSync(outfile, 0o755);
   rmSync(`${outfile}.zsync`, { force: true });
   assert.ok(existsSync(outfile), `Failed to create ${APPIMAGE_NAME}`);
+  const deltaName = `block-linux-${ARCH}.bin.gz`;
+  const deltaPath = join(RELEASE_DIR, deltaName);
+  writeFileSync(deltaPath, gzipSync(readFileSync(binary), { level: 9 }));
+  assert.ok(existsSync(deltaPath), `Failed to create ${deltaName}`);
   console.log(`Packaged Block v${version}:`);
   console.log(`  ${outfile}`);
+  console.log(`  ${deltaPath}`);
 }
 
 if (import.meta.main) {
