@@ -19,13 +19,15 @@ a{color:#3d63b0}a:hover{color:#2f4f92}
 @keyframes puff5{0%{transform:translate(0,0) scale(.2);opacity:.95}100%{transform:translate(64px,-18px) scale(1);opacity:0}}
 @keyframes puff6{0%{transform:translate(0,0) scale(.2);opacity:.95}100%{transform:translate(-62px,14px) scale(1);opacity:0}}
 @keyframes puff7{0%{transform:translate(0,0) scale(.2);opacity:.95}100%{transform:translate(38px,22px) scale(1);opacity:0}}
-.lk{position:relative;display:flex;align-items:center;gap:10px;height:42px;padding:0 16px;border-radius:10px;text-decoration:none;cursor:pointer;isolation:isolate;background:var(--pill-bg);border:1px solid var(--pill-bd);transition:transform .26s cubic-bezier(.22,1,.36,1),box-shadow .26s cubic-bezier(.22,1,.36,1),background-color .18s ease,border-color .18s ease;will-change:transform}
-.lk:hover{transform:translateY(-1.5px);background:var(--hover);border-color:var(--accent);box-shadow:0 6px 16px var(--glow)}
-.lk:active{transform:translateY(0);box-shadow:none}
+.lk{position:relative;display:block;height:42px;text-decoration:none;cursor:pointer;isolation:isolate}
+.lk-inner{position:relative;z-index:1;box-sizing:border-box;display:flex;align-items:center;gap:10px;height:42px;padding:0 16px;border-radius:10px;background:var(--pill-bg);border:1px solid var(--pill-bd);transition:transform .26s cubic-bezier(.22,1,.36,1),box-shadow .26s cubic-bezier(.22,1,.36,1),background-color .18s ease,border-color .18s ease;will-change:transform}
+.lk:hover .lk-inner{transform:translateY(-1.5px);background:var(--hover);border-color:var(--accent);box-shadow:0 6px 16px var(--glow)}
+.lk:active .lk-inner{transform:translateY(0);box-shadow:none}
 .lk-arrow{transition:transform .26s cubic-bezier(.22,1,.36,1),color .18s ease}
 .lk:hover .lk-arrow{transform:translate(2px,-2px);color:var(--accent)}
-.author-lk{position:relative;display:inline-flex;align-items:center;gap:6px;padding:3px 12px;border-radius:999px;text-decoration:none;cursor:pointer;isolation:isolate;transition:transform .26s cubic-bezier(.22,1,.36,1),background-color .18s ease,color .18s ease}
-.author-lk:hover{transform:translateY(-1.5px);background:var(--hover);color:var(--accent)}
+.author-lk{position:relative;display:inline-flex;text-decoration:none;cursor:pointer;isolation:isolate}
+.author-inner{position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;padding:3px 12px;border-radius:999px;transition:transform .26s cubic-bezier(.22,1,.36,1),background-color .18s ease,color .18s ease}
+.author-lk:hover .author-inner{transform:translateY(-1.5px);background:var(--hover);color:var(--accent)}
 .puffs{position:absolute;inset:0;pointer-events:none;z-index:0}
 .puff{position:absolute;top:50%;border-radius:50%;background:var(--puff-bg);box-shadow:inset 0 0 0 1px var(--puff-bd);opacity:0;pointer-events:none}
 .p1{width:16px;height:16px;left:18%;margin-top:-8px}
@@ -54,16 +56,18 @@ a{color:#3d63b0}a:hover{color:#2f4f92}
 <p style="margin:0;color:{{t.sub}};font-family:'JetBrains Mono',Menlo,monospace">{{s.version}}</p>
 <a class="author-lk" href="https://github.com/eachann1024" target="_blank" rel="noopener noreferrer" style="color:{{t.sub}}">
 <span class="puffs" aria-hidden="true"><span class="puff p1"></span><span class="puff p2"></span><span class="puff p3"></span><span class="puff p4"></span><span class="puff p5"></span></span>
-<span style="position:relative;z-index:1">{{s.author}}</span>
+<span class="author-inner">{{s.author}}</span>
 </a>
 </div>
 <nav aria-label="{{s.links}}" style="width:100%;display:flex;flex-direction:column;gap:12px;border-top:1px solid {{t.border}};padding-top:16px">
 <a class="lk" href="https://github.com/eachann1024/block" target="_blank" rel="noopener noreferrer" style="color:{{t.text}}">
 <span class="puffs" aria-hidden="true"><span class="puff p1"></span><span class="puff p2"></span><span class="puff p3"></span><span class="puff p4"></span><span class="puff p5"></span><span class="puff p6"></span><span class="puff p7"></span></span>
-<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position:relative;z-index:1"><path d="M8 9l-4 3 4 3"></path><path d="M16 9l4 3-4 3"></path><path d="M13.5 7l-3 10"></path></svg>
-<span style="flex:1;font-weight:460;position:relative;z-index:1">{{s.repo}}</span>
-<span style="color:{{t.sub}};font-family:'JetBrains Mono',Menlo,monospace;position:relative;z-index:1">eachann1024/block</span>
-<svg class="lk-arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{t.sub}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position:relative;z-index:1"><path d="M7 17L17 7"></path><path d="M9 7h8v8"></path></svg>
+<span class="lk-inner">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l-4 3 4 3"></path><path d="M16 9l4 3-4 3"></path><path d="M13.5 7l-3 10"></path></svg>
+<span style="flex:1;font-weight:460">{{s.repo}}</span>
+<span style="color:{{t.sub}};font-family:'JetBrains Mono',Menlo,monospace">eachann1024/block</span>
+<svg class="lk-arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{t.sub}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"></path><path d="M9 7h8v8"></path></svg>
+</span>
 </a>
 </nav>
 <button type="button" class="btn" style="align-self:stretch;background:{{t.paper}};color:{{t.text}};border:1px solid {{t.btn}}">{{s.close}}</button>
@@ -77,7 +81,7 @@ const dark = this.props.dark ?? false;
 const en = (this.props.lang ?? 'zh') === 'en';
 const t = dark
 ? { backdrop:'#111111', menu:'#222222', paper:'#2a2a2a', pillBg:'#282828', text:'#ececec', sub:'#b4b4b4', border:'#383838', btn:'#444444', hover:'#2c3548', accent:'#779de8', glow:'rgba(119,157,232,0.18)', puffBg:'rgba(119,157,232,0.34)', puffBd:'rgba(119,157,232,0.55)' }
-: { backdrop:'#d9dadc', menu:'#ffffff', paper:'#ffffff', pillBg:'#f8f8f8', text:'#1f1e1d', sub:'#52514e', border:'#e4e4e4', btn:'#dcdcdc', hover:'#e5edfc', accent:'#547dd0', glow:'rgba(84,125,208,0.16)', puffBg:'rgba(84,125,208,0.26)', puffBd:'rgba(84,125,208,0.45)' };
+: { backdrop:'#d9dadc', menu:'#ffffff', paper:'#ffffff', pillBg:'#ffffff', text:'#1f1e1d', sub:'#52514e', border:'#e4e4e4', btn:'#dcdcdc', hover:'#e5edfc', accent:'#547dd0', glow:'rgba(84,125,208,0.16)', puffBg:'rgba(84,125,208,0.26)', puffBd:'rgba(84,125,208,0.45)' };
 const s = en
 ? { version:'Version 1.0.225', author:'Made by eachann', links:'Links', repo:'Project Source', close:'Close' }
 : { version:'版本 1.0.225', author:'作者 eachann', links:'链接', repo:'项目源码', close:'关闭' };
