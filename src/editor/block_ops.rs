@@ -1,5 +1,5 @@
 //! Notion-parity block operations: subtree-aware move, duplicate, code/menu shortcuts, and Esc block selection keys.
-use gpui::{ClipboardItem, Context, Pixels, Point, Window, px};
+use gpui::{Context, Pixels, Point, Window, px};
 use super::{
     block_menu::is_divider,
     input::transactions::ListChange,
@@ -262,8 +262,8 @@ impl Editor {
                     let blocks: Vec<Block> = (lo..=hi).map(|i| self.doc.blocks[i].clone()).collect();
                     let markdown = super::markdown::serialize(&Doc::from_blocks(blocks));
                     let plain = markdown.trim_end().to_owned();
-                    self.block_clip = Some((plain.clone(), markdown));
-                    cx.write_to_clipboard(ClipboardItem::new_string(plain));
+                    cx.write_to_clipboard(super::paste_clipboard::block_item(plain.clone(), &markdown));
+                    self.block_clip = Some((plain, markdown));
                 }
                 if !matches!(action, Copy) {
                     self.block_sel = None;
@@ -281,19 +281,11 @@ impl Editor {
                 }
                 cx.notify(); true
             }
-            Paste => {
-                self.block_sel = None;
-                let before = self.snapshot();
-                let n = hi - lo + 1;
-                self.doc.splice_blocks(lo..hi + 1, vec![Block::new(0, Kind::Paragraph, String::new())]);
-                let pos = Position { block: self.doc.blocks[lo].id, offset: 0 };
-                self.caret.anchor = pos; self.caret.head = pos;
-                self.record_changes(before, vec![ListChange { start: lo, before: n, after: 1 }], true, cx);
-                false
-            }
+            Paste => false,
             SelectAll => { self.block_sel = Some((0, last)); cx.notify(); true }
             Cancel => { self.block_sel = None; cx.notify(); true }
-            Undo | Redo | Save => { self.block_sel = None; false }
+            Undo | Redo => false,
+            Save => { self.block_sel = None; false }
             _ => { self.block_sel = None; cx.notify(); false }
         }
     }

@@ -7,6 +7,7 @@ use super::model::{Block, Doc, Kind, Numbering};
 #[path = "markdown_paragraph.rs"] mod paragraph;
 #[path = "markdown_containers.rs"] mod containers;
 #[path = "markdown_raw_guard.rs"] mod raw_guard;
+#[path = "markdown_boundaries.rs"] mod boundaries;
 
 pub fn strip_frontmatter(source: &str) -> &str { blocks::strip_frontmatter(source) }
 pub fn rebuild_table_source(table: &mut super::model::Table) { table::rebuild(table) }
@@ -19,7 +20,8 @@ fn raw(id: u64, source: String, reason: &str) -> Block {
 }
 /// Line-oriented blocks retain stable identities; tables are semantic blocks with rich cells.
 pub fn parse(source: &str) -> Doc {
-    let decoded = raw_guard::decode(source); let source: &str = &decoded;
+    let decoded = raw_guard::decode(source);
+    let source: &str = decoded.strip_prefix('\u{feff}').unwrap_or(&decoded);
     let lines: Vec<_> = source.split_inclusive('\n').collect();
     let mut result = Vec::new(); let mut index = 0; let mut offset = 0;
     while index < lines.len() {
@@ -35,6 +37,11 @@ pub fn parse(source: &str) -> Doc {
         if let Some((block, count, bytes)) = containers::parse_callout(id, &lines[index..]) {
             offset += bytes; index += count; result.push(block); continue;
         }
+        if let Some(count) = boundaries::unsupported(&lines[index..]) {
+            let original = lines[index..index + count].concat();
+            offset += original.len(); index += count;
+            result.push(raw(id, original, "Unsupported construct is retained as original Markdown")); continue;
+        }
         if paragraph::starts(line) {
             let end = index + paragraph::line_count(&lines[index..]);
             let original = lines[index..end].concat();
@@ -44,11 +51,7 @@ pub fn parse(source: &str) -> Doc {
             offset += original.len(); index = end; result.push(block); continue;
         }
         if line.trim_start().to_ascii_lowercase().starts_with("<table") {
-            let mut end = index;
-            while end < lines.len() {
-                let closing = lines[end].to_ascii_lowercase().contains("</table>"); end += 1;
-                if closing { break; }
-            }
+            let end = index + boundaries::table_lines(&lines[index..]);
             let original = lines[index..end].concat();
             let block = match table_html::parse(&original) {
                 Ok(table) => Block::from_table(id, table), Err(reason) => raw(id, original.clone(), reason),
