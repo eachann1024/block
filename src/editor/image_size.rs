@@ -1,6 +1,6 @@
 //! Floating image toolbar (7 actions), `⋯` 4-item menu, and AltText / Size / Crop popovers.
 use gpui::{Context, CursorStyle, Entity, FontWeight, MouseButton, Window, deferred, div, prelude::*, px, rgb};
-use gpui_component::input::{Escape, Input, InputState};
+use gpui_component::input::{Escape, InputState};
 use crate::{dropdown::{self, RowSpec}, icons::Icon, theme::tr, ui::{floating_bar, popover}};
 use super::{
     image_edit::ImagePop,
@@ -107,33 +107,22 @@ fn more_menu(editor: &Entity<Editor>, id: u64) -> impl IntoElement {
 }
 
 fn alt_popover(editor: &Entity<Editor>, id: u64, input: &Entity<InputState>) -> impl IntoElement {
-    let tc = ToolbarColors::current();
     let (e_save, e_cancel, e_esc) = (editor.clone(), editor.clone(), editor.clone());
-    menu_card(("img-alt-pop", id as usize), 320.).p(px(8.))
+    popover::card(("img-alt-pop", id as usize), Some(px(340.)))
         .on_action(move |_: &Escape, w, cx| {
             e_esc.update(cx, |this, cx| { this.image_menu = None; w.focus(&this.focus, cx); cx.notify(); });
             cx.stop_propagation();
         })
         .child(div().flex().items_center().gap(px(6.))
-            .child(div().flex_1().min_w_0().h(px(30.)).px(px(8.)).rounded(crate::ui::radius::CONTROL).bg(rgb(tc.input_bg))
-                .text_size(px(13.)).text_color(rgb(tc.ink)).flex().items_center().overflow_hidden()
-                .child(Input::new(input).appearance(false).bordered(false).focus_bordered(false).text_size(px(13.))))
-            .child(div().id(("img-alt-save", id as usize)).h(px(30.)).px(px(10.)).rounded(crate::ui::radius::CONTROL)
-                .bg(rgb(tc.accent)).text_color(rgb(0xffffff)).text_size(px(13.)).font_weight(FontWeight(500.))
-                .flex().items_center().cursor(CursorStyle::PointingHand)
-                .child(tr("保存", "Save"))
-                .on_mouse_down(MouseButton::Left, move |_, w, cx| {
-                    e_save.update(cx, |this, cx| this.save_image_alt(id, w, cx));
-                    cx.stop_propagation();
-                }))
-            .child(div().id(("img-alt-cancel", id as usize)).h(px(30.)).px(px(8.)).rounded(crate::ui::radius::CONTROL)
-                .hover(move |s| s.bg(rgb(tc.hover))).text_color(rgb(tc.ink)).text_size(px(13.))
-                .flex().items_center().cursor(CursorStyle::PointingHand)
-                .child(tr("取消", "Cancel"))
-                .on_mouse_down(MouseButton::Left, move |_, w, cx| {
-                    e_cancel.update(cx, |this, cx| { this.image_menu = None; w.focus(&this.focus, cx); cx.notify(); });
-                    cx.stop_propagation();
-                })))
+            .child(popover::inline_input_slot(input, None))
+            .child(popover::inline_action_button(("img-alt-save", id as usize), tr("保存", "Save"), true, move |_, w, cx| {
+                e_save.update(cx, |this, cx| this.save_image_alt(id, w, cx));
+                cx.stop_propagation();
+            }))
+            .child(popover::inline_action_button(("img-alt-cancel", id as usize), tr("取消", "Cancel"), false, move |_, w, cx| {
+                e_cancel.update(cx, |this, cx| { this.image_menu = None; w.focus(&this.focus, cx); cx.notify(); });
+                cx.stop_propagation();
+            })))
 }
 
 fn size_popover(editor: &Entity<Editor>, id: u64, percent: u32) -> impl IntoElement {
