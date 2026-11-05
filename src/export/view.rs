@@ -21,6 +21,12 @@ pub fn active_view(cx: &App) -> Option<Entity<ExportView>> {
     cx.try_global::<ExportSlot>().and_then(|slot| slot.0.clone())
 }
 
+pub fn close_active(window: &mut Window, cx: &mut App) -> bool {
+    let Some(view) = active_view(cx) else { return false };
+    view.update(cx, |v, cx| v.back(window, cx));
+    true
+}
+
 pub struct ExportView {
     pub(super) title: String,
     pub(super) whole: Snapshot,
