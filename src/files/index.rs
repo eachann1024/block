@@ -18,11 +18,8 @@ pub struct Row {
 }
 
 fn row_stem(name: &str, dir: bool) -> gpui::SharedString {
-    if dir {
-        name.to_owned().into()
-    } else {
-        Path::new(name).file_stem().unwrap_or_default().to_string_lossy().into_owned().into()
-    }
+    if dir || !crate::files::scan::is_markdown(name) { name.to_owned().into() }
+    else { Path::new(name).file_stem().unwrap_or_default().to_string_lossy().into_owned().into() }
 }
 
 type Link = Option<Box<Entry>>;

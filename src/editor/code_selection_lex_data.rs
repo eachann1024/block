@@ -9,8 +9,8 @@ pub fn scan_sql_token(rem: &[u8], i: usize) -> Option<(usize, Vec<CodeToken>)> {
             return Some((len, vec![CodeToken { range: i..i + len, kind }]));
         }
     }
-    if rem[0] == b'\'' {
-        if let Some((len, kind)) = scan_sql_string(rem) {
+    if rem[0] == b'\'' || rem[0] == b'"' {
+        if let Some((len, kind)) = scan_sql_quoted(rem, rem[0]) {
             return Some((len, vec![CodeToken { range: i..i + len, kind }]));
         }
     }
@@ -37,19 +37,26 @@ fn scan_sql_dollar_str(rem: &[u8]) -> Option<(usize, TokenKind)> {
     }
 }
 
-fn scan_sql_string(rem: &[u8]) -> Option<(usize, TokenKind)> {
-    if rem.is_empty() || rem[0] != b'\'' { return None; }
+fn scan_sql_quoted(rem: &[u8], q: u8) -> Option<(usize, TokenKind)> {
+    if rem.is_empty() || rem[0] != q { return None; }
     let mut pos = 1;
     while pos < rem.len() {
-        if rem[pos] == b'\'' {
-            if pos + 1 < rem.len() && rem[pos + 1] == b'\'' {
-                pos += 2;
-            } else {
-                return Some((pos + 1, TokenKind::StringLit { open_len: 1, close_len: 1, closed: true }));
-            }
-        } else {
-            pos += 1;
-        }
+        if rem[pos] == q {
+            if pos + 1 < rem.len() && rem[pos + 1] == q { pos += 2; }
+            else { return Some((pos + 1, TokenKind::StringLit { open_len: 1, close_len: 1, closed: true })); }
+        } else { pos += 1; }
+    }
+    Some((rem.len(), TokenKind::StringLit { open_len: 1, close_len: 0, closed: false }))
+}
+
+fn scan_yaml_double(rem: &[u8]) -> Option<(usize, TokenKind)> {
+    if rem.is_empty() || rem[0] != b'"' { return None; }
+    let mut pos = 1;
+    while pos < rem.len() {
+        if rem[pos] == b'\\' { pos += 2; }
+        else if rem[pos] == b'"' {
+            return Some((pos + 1, TokenKind::StringLit { open_len: 1, close_len: 1, closed: true }));
+        } else { pos += 1; }
     }
     Some((rem.len(), TokenKind::StringLit { open_len: 1, close_len: 0, closed: false }))
 }
@@ -59,7 +66,12 @@ pub fn scan_yaml_token(text: &str, i: usize) -> Option<(usize, Vec<CodeToken>)> 
     if rem.is_empty() { return None; }
 
     if rem[0] == b'\'' {
-        if let Some((len, kind)) = scan_sql_string(rem) {
+        if let Some((len, kind)) = scan_sql_quoted(rem, b'\'') {
+            return Some((len, vec![CodeToken { range: i..i + len, kind }]));
+        }
+    }
+    if rem[0] == b'"' {
+        if let Some((len, kind)) = scan_yaml_double(rem) {
             return Some((len, vec![CodeToken { range: i..i + len, kind }]));
         }
     }
@@ -76,8 +88,13 @@ pub fn scan_yaml_token(text: &str, i: usize) -> Option<(usize, Vec<CodeToken>)> 
 fn scan_yaml_block_scalar(text: &str, i: usize) -> Option<(usize, TokenKind)> {
     let rem = text[i..].as_bytes();
     let mut p = 1;
-    if p < rem.len() && (rem[p] == b'+' || rem[p] == b'-') { p += 1; }
-    if p < rem.len() && rem[p].is_ascii_digit() { p += 1; }
+    let mut saw_chomp = false;
+    let mut saw_indent = false;
+    while p < rem.len() {
+        if !saw_chomp && (rem[p] == b'+' || rem[p] == b'-') { saw_chomp = true; p += 1; }
+        else if !saw_indent && rem[p].is_ascii_digit() { saw_indent = true; p += 1; }
+        else { break; }
+    }
     while p < rem.len() && (rem[p] == b' ' || rem[p] == b'\t') { p += 1; }
     if p < rem.len() && rem[p] == b'#' {
         while p < rem.len() && rem[p] != b'\n' { p += 1; }

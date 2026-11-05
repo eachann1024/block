@@ -163,7 +163,7 @@ impl Workspace {
     pub(crate) fn open_external_paths(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
         for raw in paths {
             let path = std::fs::canonicalize(&raw).unwrap_or(raw);
-            if (crate::files::ops::is_dir(&path) || (crate::files::ops::is_file(&path) && crate::files::scan::is_markdown(&path.to_string_lossy())))
+            if (crate::files::ops::is_dir(&path) || crate::files::ops::is_file(&path))
                 && !self.external_open.contains(&path)
             {
                 self.external_open.push(path);
@@ -193,7 +193,7 @@ impl Workspace {
         for path in queued {
             if crate::files::ops::is_dir(&path) {
                 self.use_folder(path, cx);
-            } else if crate::files::ops::is_file(&path) && crate::files::scan::is_markdown(&path.to_string_lossy()) {
+            } else if crate::files::ops::is_file(&path) {
                 self.insert_external_note(path.clone(), cx);
                 self.open_file_in_new_tab(path, cx);
             }

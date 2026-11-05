@@ -6,8 +6,8 @@ use super::{Editor, Doc, storage::{self, Fingerprint}};
 #[derive(Clone)]
 pub(super) enum Pending { Open(PathBuf), Close, ReleaseUnder }
 #[derive(Default)]
-pub(super) struct DiskGate { pub epoch: u64, pub saved: HashMap<PathBuf, Fingerprint> }
-pub(super) struct Persistence {
+pub(in crate::editor) struct DiskGate { pub epoch: u64, pub saved: HashMap<PathBuf, Fingerprint> }
+pub(in crate::editor) struct Persistence {
     pub revision: u64,
     pub generation: u64,
     pub base: Fingerprint,
@@ -44,13 +44,8 @@ impl Editor {
                 this.persistence.loading = false;
                 match result {
                     Ok((path, loaded)) => {
-                        this.persistence.base = loaded.base;
-                        this.persistence.gate.lock().unwrap().saved.insert(path.clone(), loaded.base);
-                        this.reset_document(loaded.doc);
-                        this.folded = crate::editor::fold::restore_folds(&path, &this.doc);
-                        this.path = Some(path); this.dirty = true;
+                        this.show_loaded(path, loaded, cx);
                         this.status = tr("已恢复草稿。原文件若已删除或被外部修改仍受保护，可复制或导出备份", "Draft recovered. Copy or export a backup if the original file changed").into();
-                        this.refresh_find_matches(cx);
                     }
                     Err(error) => this.status = error,
                 }
@@ -108,6 +103,8 @@ impl Editor {
             Pending::Close => {
                 self.persistence.loading = false;
                 self.sessions.clear();
+                self.surface = crate::editor::surface::Surface::Note;
+                self.source_layouts.clear();
                 self.reset_document(Doc::empty()); self.path = None; self.dirty = false;
                 self.status.clear(); cx.notify();
             }
@@ -138,28 +135,28 @@ impl Editor {
                 this.persistence.loading = false;
                 match loaded {
                     Ok(loaded) => {
-                        this.persistence.base = loaded.base;
-                        this.persistence.gate.lock().unwrap().saved.insert(path.clone(), loaded.base);
-                        this.reset_document(loaded.doc);
-                        this.folded = crate::editor::fold::restore_folds(&path, &this.doc);
-                        this.path = Some(path);
-                        this.dirty = loaded.recovered;
-                        this.status = if loaded.recovered { tr("已恢复未保存草稿，请确认后保存", "Recovered unsaved draft; please review and save").into() } else { String::new() };
-                        this.refresh_find_matches(cx);
+                        this.show_loaded(path, loaded, cx);
                     }
-                    Err(error) => {
-                        crate::log::error(&format!("failed to load note {}: {error}", path.display()));
-                        if let Some(prev) = prev {
-                            if let Some(sess) = this.sessions.remove(&prev) {
-                                this.restore_session(prev, sess, cx);
-                            }
-                        }
-                        this.status = error;
-                    }
+                    Err(error) => this.fail_open(path, prev, error, cx),
                 }
                 cx.notify();
             });
         }).detach();
+    }
+    /// Missing or unreadable files stay on the selected path instead of the previous note.
+    fn fail_open(&mut self, path: PathBuf, prev: Option<PathBuf>, error: String, cx: &mut Context<Self>) {
+        crate::log::error(&format!("failed to load {}: {error}", path.display()));
+        let missing = error.contains("No such file") || error.contains("找不到")
+            || error.contains("Permission denied") || error.contains("权限") || error.contains("Operation not permitted");
+        if missing {
+            self.show_loaded(path, storage::Loaded {
+                kind: crate::files::classify::OpenKind::Blocked { reason: error.clone() },
+                base: storage::Fingerprint(0), recovered: false,
+            }, cx);
+        } else if let Some(prev) = prev && let Some(sess) = self.sessions.remove(&prev) {
+            self.restore_session(prev, sess, cx);
+        }
+        self.status = error;
     }
     pub(in crate::editor) fn touch(&mut self, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
@@ -172,13 +169,14 @@ impl Editor {
             let _ = this.update(cx, |this, cx| {
                 if this.persistence.revision != revision { return; }
                 this.persistence.timer = None;
-                if this.caret.composing.is_none() { this.flush(cx); }
+                if this.caret.composing.is_none() && !this.source_composing() { this.flush(cx); }
             });
         }));
         cx.notify();
     }
     pub fn save(&mut self, cx: &mut Context<Self>) {
         self.persistence.timer = None;
+        self.finish_source_composition(cx);
         self.commit_composition(cx); self.flush(cx);
     }
     fn flush(&mut self, cx: &mut Context<Self>) {
@@ -188,15 +186,13 @@ impl Editor {
     }
     pub(super) fn spawn_save(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if self.persistence.saving.contains(&path) { return; }
-        let (doc, base, revision) = if self.path.as_ref() == Some(&path) {
-            if !self.dirty { return; }
-            self.status = tr("正在保存…", "Saving…").into();
-            (self.doc.clone(), self.persistence.base, self.persistence.revision)
-        } else if let Some(sess) = self.sessions.get_mut(&path) {
-            if !sess.dirty { return; }
-            sess.status = tr("正在保存…", "Saving…").into();
-            (sess.doc.clone(), sess.base, sess.revision)
-        } else { return; };
+        let Some((doc, base, revision)) = self.save_payload(&path) else {
+            if self.path.as_ref() == Some(&path) { self.dirty = false; }
+            else if let Some(sess) = self.sessions.get_mut(&path) { sess.dirty = false; }
+            return;
+        };
+        if self.path.as_ref() == Some(&path) { self.status = tr("正在保存…", "Saving…").into(); }
+        else if let Some(sess) = self.sessions.get_mut(&path) { sess.status = tr("正在保存…", "Saving…").into(); }
         self.persistence.saving.insert(path.clone());
         let gate = self.persistence.gate.clone();
         let epoch = self.persistence.write_epoch;
@@ -234,10 +230,7 @@ impl Editor {
                         this.persistence.pending = None;
                         if this.path.as_ref() == Some(&path) { this.status = error; }
                         else if was_closing && this.path.is_none() {
-                            if let Some(mut sess) = this.sessions.remove(&path) {
-                                sess.status = error;
-                                this.restore_session(path, sess, cx);
-                            }
+                            if let Some(mut sess) = this.sessions.remove(&path) { sess.status = error; this.restore_session(path, sess, cx); }
                         } else if let Some(sess) = this.sessions.get_mut(&path) { sess.status = error; }
                     }
                 }
@@ -245,9 +238,9 @@ impl Editor {
             });
         }).detach();
     }
-    /// Synchronous final recovery checkpoint: GPUI quit futures have a 100ms budget.
-    /// Invalidates queued workers under the same lock used for writes and draft deletion.
+    /// Final recovery checkpoint under the write lock. GPUI quit futures only have a 100ms budget.
     pub fn prepare_to_quit(&mut self) -> bool {
+        let active_doc = self.current_save_doc();
         let mut gate = self.persistence.gate.lock().unwrap();
         gate.epoch += 1;
         self.persistence.write_epoch = gate.epoch;
@@ -260,29 +253,37 @@ impl Editor {
             if !sess.dirty { continue; }
             let base = gate.saved.get(path).copied().unwrap_or(sess.base);
             sess.base = base;
-            if let Err(error) = storage::save_draft(path, &sess.doc, base) {
-                self.status = error;
-                return false;
-            }
+            let Some(doc) = super::session::session_doc(sess) else { continue; };
+            if let Err(error) = storage::save_draft(path, &doc, base) { self.status = error; return false; }
         }
         if !self.dirty { return true; }
         let Some(path) = self.path.as_ref() else { return true; };
         let base = gate.saved.get(path).copied().unwrap_or(self.persistence.base);
         self.persistence.base = base;
-        match storage::save_draft(path, &self.doc, base) {
+        let Some(doc) = active_doc else { return true; };
+        match storage::save_draft(path, &doc, base) {
             Ok(()) => true,
             Err(error) => { self.status = error; false }
         }
     }
     pub fn keep_draft_and_close(&mut self, cx: &mut Context<Self>) -> bool {
+        self.finish_source_composition(cx);
         self.commit_composition(cx);
         self.persistence.timer = None;
         if let Some(path) = self.path.clone() {
             self.persistence.saving.remove(&path);
             if self.dirty {
+                let doc = self.current_save_doc();
                 let base = self.persistence.gate.lock().unwrap().saved.get(&path).copied().unwrap_or(self.persistence.base);
                 self.persistence.base = base;
-                if let Err(error) = storage::save_draft(&path, &self.doc, base) {
+                let Some(doc) = doc else {
+                    self.sessions.remove(&path);
+                    self.surface = crate::editor::surface::Surface::Note;
+                    self.reset_document(Doc::empty());
+                    self.path = None; self.dirty = false;
+                    cx.notify(); return true;
+                };
+                if let Err(error) = storage::save_draft(&path, &doc, base) {
                     self.status = error;
                     cx.notify();
                     return false;
