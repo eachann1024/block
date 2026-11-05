@@ -99,7 +99,11 @@ impl Editor {
                         if let Some(range) = self.selected_range(block.id) { text.push_str(&block.text[range]); }
                     }
                     self.remember_blocks(&text);
-                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+                    let item = match &self.block_clip {
+                        Some((_, markdown)) => super::paste_clipboard::block_item(text, markdown),
+                        None => ClipboardItem::new_string(text),
+                    };
+                    cx.write_to_clipboard(item);
                     if matches!(action, Cut) && !self.boundary_rules(false, cx) && !self.delete_across(cx) { self.replace_selection("", false, cx); }
                 } else if self.copy_whole_block(cx) && matches!(action, Cut) { self.handle(&EditorAction::Backspace, window, cx); }
             }
@@ -145,8 +149,10 @@ impl Editor {
             let id = self.caret.head.block; self.import_images(id, super::image_import::Place::After, files, window, cx);
         } else if let Some((bytes, ext)) = image.filter(|_| item.as_ref().and_then(|i| i.text()).is_none()) {
             let id = self.caret.head.block; self.import_image_bytes(id, bytes, ext, window, cx);
-        } else if let Some(text) = item.and_then(|item| item.text()) {
-            if !self.paste_url_over_selection(&text, cx) && !self.paste_blocks(&text, cx) && !self.paste_tsv(&text, cx) { self.replace_selection(&text, false, cx); }
+        } else if let Some(item) = item && let Some(text) = item.text() {
+            let markdown = item.metadata().is_some_and(|metadata| metadata == super::paste::MARKDOWN_CLIPBOARD_V1);
+            let blocks = super::paste_clipboard::block_markdown(&item, &text);
+            self.paste_text(&text, false, markdown, blocks.as_deref(), cx);
         }
     }
     pub(super) fn step(&self, forward: bool) -> Position {

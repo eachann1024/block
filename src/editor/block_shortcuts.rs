@@ -228,7 +228,9 @@ impl Editor {
         let (_, _, ai, bi) = self.ordered();
         let whole = |i: usize| self.selected_range(self.doc.blocks[i].id).is_some_and(|r| r == (0..self.doc.blocks[i].text.len()));
         let one = &self.doc.blocks[ai];
-        let rich = ai != bi || (whole(ai) && (one.kind != Kind::Paragraph || one.meta.indent > 0 || one.meta.code_language.is_some()) && one.meta.table.is_none());
+        let rich = ai != bi || (whole(ai) && (one.kind != Kind::Paragraph || one.meta.indent > 0
+            || one.meta.code_language.is_some() || one.meta.raw_source.is_some() || one.meta.table.is_some()
+            || one.meta.html_paragraph.is_some() || !one.spans.is_empty() || !one.meta.inline.is_empty()));
         if !rich { self.block_clip = None; return; }
         let blocks: Vec<Block> = (ai..=bi).filter_map(|i| {
             let block = &self.doc.blocks[i];
@@ -242,44 +244,8 @@ impl Editor {
         let Some(block) = self.doc.get(self.caret.head.block).filter(|b| structural(b) && b.meta.code_language.is_none()).cloned() else { return false };
         let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(vec![block]));
         let plain = markdown.trim_end().to_owned();
-        self.block_clip = Some((plain.clone(), markdown));
-        cx.write_to_clipboard(gpui::ClipboardItem::new_string(plain));
-        true
-    }
-    /// Paste an in-app block copy back as blocks, splitting the caret's block when needed.
-    pub(super) fn paste_blocks(&mut self, text: &str, cx: &mut Context<Self>) -> bool {
-        let Some((plain, markdown)) = self.block_clip.clone() else { return false };
-        if plain != text.replace("\r\n", "\n") { return false; }
-        let mut blocks: Vec<Block> = super::markdown::parse(&markdown).blocks.iter().cloned().collect();
-        let blank = |b: &Block| b.text.is_empty() && b.kind == Kind::Paragraph && b.meta.indent == 0 && b.meta.raw_source.is_none() && b.meta.table.is_none() && b.meta.code_language.is_none();
-        while blocks.last().is_some_and(blank) { blocks.pop(); }
-        while blocks.first().is_some_and(blank) { blocks.remove(0); }
-        if blocks.is_empty() { return false; }
-        if !self.caret.is_empty() {
-            if !self.can_replace_selection() { return false; }
-            if !self.delete_across(cx) { self.replace_selection("", false, cx); }
-        }
-        let at = self.caret.head;
-        let Some(index) = self.doc.index_of(at.block) else { return false };
-        let cur = self.doc.blocks[index].clone();
-        if cur.meta.table.is_some() || structural(&cur) { return false; }
-        let before = self.snapshot();
-        for b in blocks.iter_mut() { b.id = 0; }
-        let count = blocks.len();
-        let mut pieces = Vec::new();
-        let lead = if !cur.text.is_empty() && at.offset > 0 { pieces.push(cur.slice(0..at.offset)); 1 } else { 0 };
-        pieces.extend(blocks);
-        if !cur.text.is_empty() && at.offset < cur.text.len() {
-            let mut tail = cur.slice(at.offset..cur.text.len());
-            if at.offset > 0 { tail.id = 0; tail.meta.list_start = None; }
-            pieces.push(tail);
-        }
-        let total = pieces.len();
-        self.doc.splice_blocks(index..index + 1, pieces);
-        let last = &self.doc.blocks[index + lead + count - 1];
-        let to = Position { block: last.id, offset: last.text.len() };
-        self.caret.anchor = to; self.caret.head = to;
-        self.record_changes(before, vec![ListChange { start: index, before: 1, after: total }], true, cx);
+        cx.write_to_clipboard(super::paste_clipboard::block_item(plain.clone(), &markdown));
+        self.block_clip = Some((plain, markdown));
         true
     }
 }

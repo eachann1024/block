@@ -124,6 +124,14 @@ pub(super) fn parse_html(input: &str) -> Option<RichText> {
 /// Split at all semantic boundaries so overlapping marks and HTML attributes survive.
 /// Close/reopen wrappers at crossing ranges to produce valid nested HTML.
 pub(super) fn serialize(block: &Block, out: &mut String) {
+    serialize_with_links(block, out, true);
+}
+
+pub(super) fn serialize_html(block: &Block, out: &mut String) {
+    serialize_with_links(block, out, false);
+}
+
+fn serialize_with_links(block: &Block, out: &mut String, markdown_links: bool) {
     let mut block = block.clone(); block.normalize_spans();
     let mut boundaries = vec![0, block.text.len()];
     for span in &block.spans { boundaries.extend([span.start, span.end]); }
@@ -132,7 +140,7 @@ pub(super) fn serialize(block: &Block, out: &mut String) {
         && block.text.is_char_boundary(tag.start) && block.text.is_char_boundary(tag.end)).collect();
     // Plain `[text](url)` links match what thinkly writes; other anchors stay HTML.
     let mut bracket: Vec<&InlineTag> = Vec::new();
-    let mut candidates: Vec<_> = valid.iter().copied().filter(|t| t.name == "a"
+    let mut candidates: Vec<_> = valid.iter().copied().filter(|t| markdown_links && t.name == "a"
         && t.attrs.len() == 1 && t.attrs[0].0 == "href").collect();
     candidates.sort_by_key(|t| t.start);
     for link in candidates { if bracket.last().is_none_or(|last| last.end <= link.start) { bracket.push(link); } }
