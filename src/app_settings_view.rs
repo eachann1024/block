@@ -60,7 +60,7 @@ impl Workspace {
         match tab {
             SettingsTab::Ai => div().children(crate::editor::ai::settings::section(cx)).into_any_element(),
             SettingsTab::Appearance => self.appearance_tab(cx).into_any_element(),
-            SettingsTab::General => self.general_tab(cx).into_any_element(),
+            SettingsTab::Folders => self.folders_tab(cx).into_any_element(),
             SettingsTab::Shortcuts => self.shortcuts_tab(cx).into_any_element(),
         }
     }
