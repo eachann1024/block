@@ -144,7 +144,10 @@ impl Editor {
             if next.meta.column != block.meta.column { return true; }
             if next.meta.table.is_some() { return false; }
             if structural(&block) { return true; }
-            if !structural(&next) { return false; }
+            if !structural(&next) {
+                if !(block.text.is_empty() && block.kind == Kind::Paragraph && block.meta.html_paragraph.is_none()) { return false; }
+                self.drop_block(index, Position { block: next.id, offset: 0 }, cx); return true;
+            }
             if block.text.is_empty() && !is_divider(&next) && block.meta.html_paragraph.is_none() {
                 self.drop_block(index, Position { block: next.id, offset: 0 }, cx);
             }
