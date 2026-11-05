@@ -26,7 +26,7 @@ impl Render for Workspace {
         self.bind_tab_actions(root, cx)
             .child(self.titlebar(cx))
             .child(div().flex_1().min_h_0().flex()
-                .when(!self.sidebar_collapsed, |d| d.child(if self.settings.is_some() { self.settings_sidebar(cx) } else { self.sidebar(cx) }))
+                .when(!self.sidebar_collapsed, |d| d.child(if self.settings.is_some() { self.settings_sidebar(cx) } else { self.sidebar(window, cx) }))
                 .child(self.settings_view(cx).or_else(|| self.mascot_view(cx)).unwrap_or_else(|| {
                     div().flex_1().min_w_0().h_full().child(self.editor.clone()).into_any_element()
                 }))
@@ -63,14 +63,14 @@ fn sync_focused_input_ime(window: &mut Window, cx: &mut gpui::App) {
 }
 
 impl Workspace {
-    fn sidebar(&self, cx: &mut Context<Self>) -> gpui::Div {
+    fn sidebar(&self, window: &Window, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
         let enabled = self.ui_enabled();
         let new_note_tip = if cfg!(target_os = "macos") { tr("新建笔记 ⌘N", "New Note ⌘N") } else { tr("新建笔记 Ctrl+N", "New Note Ctrl+N") };
         div().w(self.sidebar_width).flex_none().h_full().relative().flex().flex_col()
             .bg(theme.sidebar).border_r_1().border_color(theme.sidebar_border)
             .child(div().flex_none().pt(px(10.)).px(px(10.)).pb(px(8.)).flex().items_center().gap(px(6.))
-                .child(self.search_button(enabled, cx))
+                .child(self.search_button(enabled, window, cx))
                 .child(toolbar_icon_button("new-folder", Icon::FolderPlus, enabled, tr("新建文件夹", "New Folder"), cx.listener(|this, _, window, cx| {
                     this.new_item(true, window, cx);
                 })))
@@ -88,10 +88,17 @@ impl Workspace {
             .child(self.resize_handle(cx))
     }
 
-    fn search_button(&self, enabled: bool, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
+    fn search_button(&self, enabled: bool, window: &Window, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         let theme = Theme::ocean();
+        let label = tr("搜索", "Search");
         let shortcut = format_hotkey("secondary-k");
         let search_open = self.search.is_some();
+        let label_style = crate::ui::shortcut_label::ShortcutStyle::ui(px(14.), px(20.), gpui::FontWeight::NORMAL, theme.text_secondary);
+        let kbd_style = crate::ui::shortcut_label::ShortcutStyle::ui(px(11.), px(16.), gpui::FontWeight::NORMAL, theme.text_secondary);
+        let needed_width = px(152.)
+            + crate::ui::shortcut_label::measure_width(label, &label_style, window)
+            + crate::ui::shortcut_label::measure_width(&shortcut, &kbd_style, window);
+        let show_shortcut = self.sidebar_width >= needed_width;
         div().id("search-button").group("sidebar-search-btn").relative().children(crate::ui::smoke_overlay::probe("search-button")).flex_1().min_w_0().h(px(32.)).px(px(9.)).flex().items_center().gap(px(6.))
             .rounded(px(8.)).bg(theme.paper).border_1().border_color(if search_open { theme.accent } else { theme.btn_border })
             .text_size(px(14.)).text_color(theme.text_secondary)
@@ -99,8 +106,8 @@ impl Workspace {
                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| this.open_search(window, cx))))
             .when(!enabled, |b| b.opacity(0.5))
             .child(stateful_icon("sidebar-search-btn", Icon::FindSearch, px(14.), search_open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
-            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(tr("搜索", "Search")))
-            .child(kbd(shortcut))
+            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(label))
+            .when(show_shortcut, |b| b.child(kbd(shortcut)))
     }
 
     fn settings_footer(&self, cx: &mut Context<Self>) -> gpui::Div {
