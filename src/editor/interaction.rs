@@ -87,6 +87,7 @@ impl Editor {
         if (event.modifiers.platform || (!cfg!(target_os = "macos") && event.modifiers.control))
             && (self.open_link_at(event.position, cx) || self.copy_code_at(event.position, cx)) { return; }
         self.commit_composition(cx); self.clear_pointer(); self.pending_vertical = None;
+        if !event.modifiers.shift && !event.modifiers.alt && self.try_blank_margin_insert(event.position, window, cx) { return; }
         let clicks = event.click_count.max(1);
         let at_caret = self.hit(event.position);
         let is_code = at_caret.and_then(|p| self.doc.get(p.block)).map_or(false, |b| b.meta.code_language.is_some());
