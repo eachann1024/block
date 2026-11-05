@@ -15,6 +15,9 @@ thread_local! {
     static SOURCE_OPEN: RefCell<HashMap<u64, bool>> = Default::default();
 }
 
+#[path = "math_paper.rs"]
+mod math_paper;
+
 pub(super) fn is_source_open(block_id: u64, source: &str) -> bool {
     SOURCE_OPEN.with(|map| {
         map.borrow().get(&block_id).copied().unwrap_or_else(|| source.trim().is_empty())
@@ -40,6 +43,12 @@ pub(super) fn preview_block(
     minimal: bool,
     cx: &mut Context<Editor>,
 ) -> AnyElement {
+    if code_block::is_math(language) {
+        return math_paper::preview_math_block(
+            editor, block_id, source, active, hovered, source_el, minimal, cx,
+        );
+    }
+
     let dark = is_dark();
     let open = is_source_open(block_id, source);
     let menu_open = code_block::is_menu_open_for(block_id);
