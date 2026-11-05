@@ -3,6 +3,8 @@ use gpui::{App, Context, Window};
 use super::{chat::{AiChat, Msg, Pick, follow_placeholder}, provider};
 use crate::theme::tr;
 
+thread_local! { pub(super) static PICKER_SCROLL: gpui::ScrollHandle = gpui::ScrollHandle::new(); }
+
 impl AiChat {
     pub(super) fn picker_token(&self, cx: &App) -> Option<String> {
         if self.picker_dismissed { return None; }
@@ -17,8 +19,15 @@ impl AiChat {
         let value = self.input.read(cx).value();
         if let Some(q) = token.strip_prefix('@') {
             let q = q.to_lowercase();
-            self.agent_ctx(cx).pages().into_iter().filter(|p| p.to_lowercase().contains(&q) && !self.refs.contains(p))
-                .take(8).map(|p| (Pick::Page(p.clone()), p, tr("笔记", "Note").into())).collect()
+            let ctx = self.agent_ctx(cx);
+            let current = ctx.current.clone();
+            let pages = current.iter().cloned().chain(ctx.pages().into_iter().filter(|p| Some(p) != current.as_ref()));
+            let mut seen = std::collections::HashSet::new();
+            pages.filter(|p| p.to_lowercase().contains(&q) && !self.refs.contains(p) && seen.insert(p.clone()))
+                .map(|p| {
+                    let label = if Some(&p) == current.as_ref() { tr("当前笔记", "Current note") } else { tr("笔记", "Note") };
+                    (Pick::Page(p.clone()), p, label.into())
+                }).collect()
         } else if let Some(q) = token.strip_prefix('/').filter(|_| value.trim_start().starts_with('/') || value.contains(" /")) {
             let q = q.to_lowercase();
             let new_cmd = tr("/新会话", "/new");
@@ -33,6 +42,7 @@ impl AiChat {
         let count = self.picker_items(&token, cx).len();
         if count > 0 {
             self.pick_index = (self.pick_index.min(count - 1) as isize + direction).rem_euclid(count as isize) as usize;
+            PICKER_SCROLL.with(|scroll| scroll.scroll_to_item(self.pick_index));
             cx.notify();
         }
         true
@@ -49,6 +59,7 @@ impl AiChat {
         }
         self.pick_index = 0;
         self.input.update(cx, |i, cx| { i.set_value(rest, window, cx); i.focus(window, cx); });
+        self.persist_active_draft(cx);
         cx.notify();
     }
 
@@ -63,12 +74,16 @@ impl AiChat {
             }
             return;
         }
-        let question = self.input.read(cx).value().trim().to_owned();
+        let original = self.input.read(cx).value().to_string();
+        let question = original.trim().to_owned();
         if question.is_empty() || matches!(question.as_str(), "@" | "/") { return; }
-        if let Err((message, settings)) = provider::validate_request(&provider::config()) {
+        self.set_context_scope(super::backend::ContextScope::CurrentNote, cx);
+        if self.selected_backend() == super::backend::BackendKind::Builtin && let Err((message, settings)) = provider::validate_request(&provider::config()) {
             self.error = Some(message); self.error_settings = settings; cx.notify(); return;
         }
         let ctx = self.agent_ctx(cx);
+        let refs = self.refs.clone();
+        let skills = self.skills.clone();
         let (mut context, mut shown) = (String::new(), String::new());
         for r in self.refs.drain(..) {
             shown.push_str(&format!("@{r} "));
@@ -81,10 +96,19 @@ impl AiChat {
             if let Some((_, _, body)) = local.iter().find(|s| s.0 == name) { context.push_str(&format!("\n\n# 用户调用的 Skill：{name}\n\n{body}")); }
         }
         let content = if shown.is_empty() { question } else { format!("{shown}{question}") };
-        self.push_msg(Msg { role: "user".into(), content, context: (!context.is_empty()).then_some(context), ..Default::default() });
+        let retry = self.retry_draft.take().filter(|draft| Some(draft.conversation) == self.current && draft.text == original && draft.refs == refs && draft.skills == skills);
+        if let Some(draft) = retry { self.sent_draft = Some(draft); }
+        else {
+            self.push_msg(Msg { role: "user".into(), content, context: (!context.is_empty()).then_some(context), ..Default::default() });
+            if let Some(conversation) = self.conv() {
+            self.sent_draft = Some(super::chat::SentDraft { text: original, refs, skills, conversation: conversation.id, message_index: conversation.messages.len() - 1 });
+            }
+        }
         self.error = None; self.error_settings = false;
         self.input.update(cx, |i, cx| { i.set_value("", window, cx); i.set_placeholder(follow_placeholder(), window, cx); });
-        self.run_turn(0, cx);
+        self.persist_active_draft(cx);
+        if self.selected_backend() == super::backend::BackendKind::Builtin { self.run_turn(0, window, cx); }
+        else { self.run_external(window, cx); }
     }
 
 }
