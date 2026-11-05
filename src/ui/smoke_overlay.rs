@@ -83,7 +83,7 @@ pub fn render() -> Option<AnyElement> {
         (state.seq, state.point, state.step_text.clone())
     });
     let ripple = point.map(|pt| {
-        let ring = div().absolute().border_2().rounded(px(999.))
+        let ring = div().absolute().border_2().rounded(crate::ui::radius::PILL)
             .with_animation(
                 ("smoke-pulse", seq as usize),
                 Animation::new(Duration::from_millis(320)).with_easing(crate::ui::motion::ease_out_expo()),
@@ -95,15 +95,15 @@ pub fn render() -> Option<AnyElement> {
                 },
             );
         let dot = div().absolute().left(pt.x - px(4.)).top(pt.y - px(4.)).size(px(8.))
-            .rounded(px(999.)).bg(theme.accent);
+            .rounded(crate::ui::radius::PILL).bg(theme.accent);
         div().absolute().top_0().left_0().size_full().child(ring).child(dot)
     });
     let hud = (!text.is_empty()).then(|| {
         div().absolute().bottom(px(20.)).left_0().w_full().flex().justify_center().child(
-            div().h(px(36.)).px(px(14.)).rounded(px(8.)).bg(theme.paper).border_1().border_color(theme.accent)
+            div().h(px(36.)).px(px(14.)).rounded(crate::ui::radius::CONTROL).bg(theme.paper).border_1().border_color(theme.accent)
                 .flex().items_center().gap(px(8.)).text_size(px(14.)).font_weight(FontWeight(500.))
                 .text_color(theme.text)
-                .child(div().size(px(8.)).flex_none().rounded(px(999.)).bg(theme.accent))
+                .child(div().size(px(8.)).flex_none().rounded(crate::ui::radius::PILL).bg(theme.accent))
                 .child(text),
         )
     });

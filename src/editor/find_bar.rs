@@ -10,7 +10,7 @@ const RING: u32 = 0xc9971c;
 
 fn button(glyph: Icon, id: &'static str, on: impl Fn(&mut Editor, &mut Window, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean();
-    div().id(id).group(id).relative().children(crate::ui::smoke_overlay::probe(id)).size(px(32.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
+    div().id(id).group(id).relative().children(crate::ui::smoke_overlay::probe(id)).size(px(32.)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
         .cursor(CursorStyle::PointingHand).hover(|s| s.bg(theme.hover))
         .child(stateful_icon(id, glyph, px(14.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| { on(this, window, cx); cx.stop_propagation(); }))
