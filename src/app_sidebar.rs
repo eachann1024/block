@@ -132,9 +132,10 @@ impl Workspace {
     pub(super) fn overlays(&self, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut out = Vec::new();
         if self.switcher_open || self.menu.is_some() {
-            out.push(div().id("overlay-dismiss").absolute().top_0().left_0().size_full().occlude()
-                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.close_overlays(cx)))
-                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| this.close_overlays(cx)))
+            out.push(gpui::deferred(div().id("overlay-dismiss").absolute().top_0().left_0().size_full().occlude()
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.close_overlays(cx); }))
+                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.close_overlays(cx); })))
+                .with_priority(1)
                 .into_any_element());
         }
         if self.switcher_open { out.push(self.switcher_menu(window, cx)); }
