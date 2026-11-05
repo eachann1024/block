@@ -2,7 +2,7 @@
 //! typography, font-smoothing and shortcut settings backed by `state.json`.
 
 use std::process::Command;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, RwLock};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use gpui::{Hsla, Pixels, px};
 pub use crate::files::state::{FontChoice, LanguageMode, ThemeMode};
@@ -122,7 +122,7 @@ pub fn set_font_choice(font: FontChoice) {
 }
 
 /// Resolved (serif, mono) primary families, picked from the installed font names.
-static RESOLVED_FONTS: OnceLock<(&'static str, &'static str)> = OnceLock::new();
+static RESOLVED_FONTS: RwLock<(&'static str, &'static str)> = RwLock::new(("Songti SC", "Menlo"));
 
 /// Picks the first installed candidate. gpui drops fallbacks and weight when the primary
 /// family is missing, and naming "PingFang SC" as a fallback makes CoreText resolve the
@@ -139,11 +139,13 @@ pub fn init_fonts(installed: &[String]) {
         &["JetBrains Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono"],
         if cfg!(target_os = "windows") { "Consolas" } else if cfg!(target_os = "linux") { "DejaVu Sans Mono" } else { "Menlo" },
     );
-    let _ = RESOLVED_FONTS.set((serif, mono));
+    if let Ok(mut guard) = RESOLVED_FONTS.write() {
+        *guard = (serif, mono);
+    }
 }
 
 fn resolved() -> (&'static str, &'static str) {
-    RESOLVED_FONTS.get().copied().unwrap_or(("Songti SC", "Menlo"))
+    RESOLVED_FONTS.read().map(|g| *g).unwrap_or(("Songti SC", "Menlo"))
 }
 
 pub fn mono_font_family() -> &'static str { resolved().1 }

@@ -3,6 +3,7 @@ mod dropdown;
 mod editor;
 mod export;
 mod files;
+pub mod fonts;
 mod icons;
 pub mod log;
 mod mascot;
@@ -140,6 +141,7 @@ fn main() {
             },
             |window, cx| {
                 let workspace = cx.new(|cx| app::Workspace::new(window, cx));
+                fonts::spawn(workspace.clone(), cx);
                 let close_editor = workspace.read(cx).editor.clone();
                 let quit_editor = close_editor.clone();
                 window.on_window_should_close(cx, move |window, cx| {
