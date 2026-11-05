@@ -48,6 +48,22 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 
+# Local install profile: no LTO, parallel codegen and incremental builds.
+# `bun run build` uses it; CI and release packaging keep the full release profile.
+[profile.fast]
+inherits = "release"
+lto = false
+codegen-units = 256
+incremental = true
+debug = false
+split-debuginfo = "unpacked"
+strip = "none"
+
+[profile.fast.package."*"]
+opt-level = 3
+incremental = false
+codegen-units = 16
+
 [patch.crates-io]
 gpui-pre-apple = { path = "vendor/gpui-pre-apple" }
 
