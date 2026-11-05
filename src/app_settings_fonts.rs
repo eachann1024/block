@@ -1,5 +1,4 @@
-//! Editor font settings actions: custom body/code fonts, line height, picker toggle and file import.
-use std::path::PathBuf;
+//! Editor font settings actions: custom body/code fonts, line height, picker toggle and search.
 use gpui::{AppContext, Context, Window};
 use gpui_component::input::InputState;
 use crate::files::state::{FontChoice, LineHeight, update_state};
@@ -62,64 +61,58 @@ impl Workspace {
 
     pub(super) fn open_font_picker(&mut self, role: FontPickerRole, window: &mut Window, cx: &mut Context<Self>) {
         let Some(modal) = &mut self.settings else { return };
-        crate::ui::font_picker::set_font_picker_error(None);
+        let cur_font = match role {
+            FontPickerRole::Body => crate::theme::custom_editor_font(),
+            FontPickerRole::Code => crate::theme::custom_code_font(),
+        };
+        let catalog = crate::ui::font_picker_cache::get_or_build_catalog(role);
+        let filtered = crate::ui::font_picker_cache::filter_candidates(&catalog, "", cur_font.as_deref());
+        let scroll_handle = gpui::UniformListScrollHandle::new();
         let search_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder(crate::theme::tr("搜索字体", "Search fonts"))
         });
-        let _search_sub = cx.subscribe_in(&search_input, window, |_, _, event: &gpui_component::input::InputEvent, _, cx| {
+        let _search_sub = cx.subscribe_in(&search_input, window, |this, input, event: &gpui_component::input::InputEvent, _, cx| {
             if matches!(event, gpui_component::input::InputEvent::Change) {
-                crate::ui::font_picker::set_font_picker_error(None);
-                cx.notify();
+                let q = input.read(cx).value().to_string();
+                this.update_font_picker_query(q, cx);
             }
         });
         search_input.update(cx, |i, cx| i.focus(window, cx));
-        modal.font_picker = Some(FontPickerModal { role, search_input, _search_sub });
+        modal.font_picker = Some(FontPickerModal {
+            role,
+            search_input,
+            scroll_handle,
+            catalog,
+            filtered,
+            last_query: String::new(),
+            _search_sub,
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn update_font_picker_query(&mut self, q: String, cx: &mut Context<Self>) {
+        let Some(modal) = &mut self.settings else { return };
+        let Some(picker) = &mut modal.font_picker else { return };
+        if picker.last_query == q {
+            return;
+        }
+        picker.last_query = q.clone();
+        let cur_font = match picker.role {
+            FontPickerRole::Body => crate::theme::custom_editor_font(),
+            FontPickerRole::Code => crate::theme::custom_code_font(),
+        };
+        picker.filtered = crate::ui::font_picker_cache::filter_candidates(&picker.catalog, &q, cur_font.as_deref());
+        picker.scroll_handle.scroll_to_item(0, gpui::ScrollStrategy::Top);
         cx.notify();
     }
 
     pub(crate) fn close_font_picker(&mut self, cx: &mut Context<Self>) -> bool {
-        crate::ui::font_picker::set_font_picker_error(None);
         let Some(modal) = &mut self.settings else { return false };
         if modal.font_picker.take().is_some() {
             cx.notify();
             true
         } else {
             false
-        }
-    }
-
-    pub(crate) fn import_font_dialog(&mut self, role: FontPickerRole, window: &mut Window, cx: &mut Context<Self>) {
-        let prompt = cx.prompt_for_paths(gpui::PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: false,
-            prompt: Some(crate::theme::tr("导入字体文件", "Import Font File").into()),
-        });
-        cx.spawn_in(window, async move |this, cx| {
-            let Ok(Ok(Some(paths))) = prompt.await else { return };
-            let Some(path) = paths.into_iter().next() else { return };
-            let _ = this.update_in(cx, |this, window, cx| {
-                this.handle_imported_font(role, path, window, cx);
-            });
-        }).detach();
-    }
-
-    fn handle_imported_font(&mut self, role: FontPickerRole, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        match crate::fonts::import_custom_font(&path, cx) {
-            Ok(family) => {
-                crate::ui::font_picker::set_font_picker_error(None);
-                crate::theme::init_fonts(&cx.text_system().all_font_names());
-                match role {
-                    FontPickerRole::Body => self.select_editor_font(Some(family), window, cx),
-                    FontPickerRole::Code => self.select_code_font(Some(family), window, cx),
-                }
-            }
-            Err(err) => {
-                crate::log::warn(&format!("Failed to import font from {:?}: {err}", path));
-                crate::ui::font_picker::set_font_picker_error(Some(err.clone()));
-                self.flash(format!("{}: {err}", crate::theme::tr("字体导入失败", "Failed to import font")), cx);
-                cx.notify();
-            }
         }
     }
 }

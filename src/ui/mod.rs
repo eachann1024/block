@@ -6,6 +6,7 @@ pub mod dropdown;
 pub mod fade;
 pub mod floating_bar;
 pub mod font_picker;
+pub mod font_picker_cache;
 pub mod icon_button;
 pub mod modal;
 pub mod motion;

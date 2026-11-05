@@ -48,6 +48,10 @@ impl SettingsTab {
 pub(crate) struct FontPickerModal {
     pub role: crate::ui::font_picker::FontPickerRole,
     pub search_input: gpui::Entity<gpui_component::input::InputState>,
+    pub scroll_handle: gpui::UniformListScrollHandle,
+    pub catalog: std::rc::Rc<Vec<crate::ui::font_picker_cache::CandidateGroup>>,
+    pub filtered: std::rc::Rc<[crate::ui::font_picker_cache::FlatFontItem]>,
+    pub last_query: String,
     pub _search_sub: gpui::Subscription,
 }
 
