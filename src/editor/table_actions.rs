@@ -13,8 +13,9 @@ thread_local! {
 }
 pub(super) fn hovered() -> Option<(u64, usize, usize)> { HOVER.with(|h| h.get()) }
 pub(super) fn reach_rect(layout: &TextLayout) -> Option<Bounds<Pixels>> {
-    let grid = table_layout::grid_rect(layout)?.intersect(&table_layout::visible(layout.bounds));
-    Some(Bounds::from_corners(grid.origin - point(px(16.), px(14.)), grid.bottom_right() + point(px(50.), px(24.))))
+    let zoom = table_layout::zoom_of(layout);
+    let grid = table_layout::grid_rect(layout)?.intersect(&table_layout::visible(layout));
+    Some(Bounds::from_corners(grid.origin - point(px(16. * zoom), px(14. * zoom)), grid.bottom_right() + point(px(50. * zoom), px(24. * zoom))))
 }
 pub(super) fn unoccluded(editor: gpui::EntityId, block: u64, rect: Bounds<Pixels>, window: &Window) -> bool {
     HITBOXES.with(|h| {
@@ -30,7 +31,7 @@ pub(super) fn unoccluded(editor: gpui::EntityId, block: u64, rect: Bounds<Pixels
 /// so moving from a cell onto its handle keeps the chrome. Off-grid axes keep the last index.
 pub(super) fn track_hover(editor: Entity<Editor>, block: u64, layout: &TextLayout, hitbox: Option<gpui::Hitbox>, window: &mut Window) {
     // Only the part inside the horizontal scroll window counts as the table.
-    let Some(grid) = table_layout::grid_rect(layout).map(|g| g.intersect(&table_layout::visible(layout.bounds))) else { return };
+    let Some(grid) = table_layout::grid_rect(layout).map(|g| g.intersect(&table_layout::visible(layout))) else { return };
     let Some(reach) = reach_rect(layout) else { return };
     let (rows, columns) = table_layout::spans(layout);
     if let Some(hb) = &hitbox {
@@ -71,7 +72,7 @@ impl TableSel {
     }
 }
 #[derive(Clone, Copy)]
-pub(super) struct TableMenu { pub block: u64, pub sel: TableSel, pub anchor: Point<Pixels> }
+pub(super) struct TableMenu { pub block: u64, pub sel: TableSel, pub spec: crate::dropdown::PlacementSpec }
 #[derive(Clone, Copy)]
 pub(super) struct TableDrag {
     pub block: u64, pub sel: TableSel, pub start: Point<Pixels>, pub moved: bool,
@@ -233,30 +234,39 @@ impl Editor {
             _ => {}
         }
     }
+    pub(in crate::editor) fn open_table_menu_spec(&mut self, id: u64, sel: TableSel, spec: crate::dropdown::PlacementSpec, cx: &mut Context<Self>) {
+        self.table_menu = Some(TableMenu { block: id, sel, spec }); cx.notify();
+    }
     pub(in crate::editor) fn open_table_menu(&mut self, id: u64, sel: TableSel, anchor: Point<Pixels>, cx: &mut Context<Self>) {
-        // Row and column menus open 4px below and left-aligned with their capsule handle.
+        let zoom = super::zoom::zoom_factor(self.minimal);
+        let vp = self.list.viewport_bounds();
         let chrome = self.table_chrome.as_ref().filter(|c| c.block == id);
-        let anchor = match (sel, chrome) {
-            (TableSel::Row(r), Some(c)) => c.rows.get(r).map_or(anchor, |s| {
-                let adj = if r + 1 < c.rows.len() { px(1.) } else { px(0.) };
-                point(c.bounds.left() - px(6.5), (s.0 + s.1 + adj) / 2. + px(16.))
+        let fallback = crate::dropdown::PlacementSpec::point(anchor).viewport(vp);
+        let spec = match (sel, chrome) {
+            (TableSel::Row(r), Some(c)) => c.rows.get(r).map_or(fallback, |s| {
+                let mid_y = (s.0 + s.1 + if r + 1 < c.rows.len() { px(1.) } else { px(0.) }) / 2.;
+                let rect = Bounds::new(point(c.bounds.left() - px(6.5 * zoom), mid_y - px(12. * zoom)), gpui::size(px(13. * zoom), px(24. * zoom)));
+                crate::dropdown::PlacementSpec::below(rect).viewport(vp).gap(px(4.))
             }),
-            (TableSel::Column(i), Some(c)) => c.columns.get(i).map_or(anchor, |s| {
+            (TableSel::Column(i), Some(c)) => c.columns.get(i).map_or(fallback, |s| {
                 let (seen_l, seen_r) = (s.0.max(c.bounds.left()), s.1.min(c.bounds.right()));
-                let adj = if i + 1 < c.columns.len() && seen_r == s.1 { px(1.) } else { px(0.) };
-                point(((seen_l + seen_r + adj) / 2. - px(12.)).max(c.bounds.left()), c.bounds.top() + px(11.5))
+                let x = ((seen_l + seen_r + if i + 1 < c.columns.len() && seen_r == s.1 { px(1.) } else { px(0.) }) / 2. - px(12. * zoom)).max(c.bounds.left());
+                let rect = Bounds::new(point(x, c.bounds.top() - px(6.5 * zoom)), gpui::size(px(24. * zoom), px(14. * zoom)));
+                crate::dropdown::PlacementSpec::below(rect).viewport(vp).gap(px(4.))
             }),
-            _ => anchor,
+            _ => fallback,
         };
-        self.table_menu = Some(TableMenu { block: id, sel, anchor }); cx.notify();
+        self.open_table_menu_spec(id, sel, spec, cx);
     }
     /// Shift+F10: the row and column options for the cell holding the caret.
     pub(in crate::editor) fn open_cell_menu(&mut self, cx: &mut Context<Self>) {
         let Some((id, r, c)) = self.cell_of_caret() else { return };
         let Some(layout) = self.layouts.get(&id) else { return };
         let (rows, columns) = table_layout::spans(layout);
-        let (Some(x), Some(y)) = (columns.get(c).map(|s| s.0), rows.get(r).map(|s| s.1)) else { return };
-        self.open_table_menu(id, TableSel::Cell(r, c), point(x, y), cx);
+        let (Some(cs), Some(rs)) = (columns.get(c), rows.get(r)) else { return };
+        let rect = Bounds::from_corners(point(cs.0, rs.0), point(cs.1, rs.1));
+        let spec = crate::dropdown::PlacementSpec::below(rect).viewport(self.list.viewport_bounds()).gap(px(4.));
+        self.open_table_menu_spec(id, TableSel::Cell(r, c), spec, cx);
     }
     /// Reads geometry published by the final paint, so overlays never use prepaint attempts.
     /// Shown for the hovered table; an open menu, drag or selection keeps the chrome visible.
@@ -275,7 +285,7 @@ impl Editor {
         };
         self.doc.get(id)?.meta.table.as_ref()?;
         let layout = self.layouts.get(&id)?;
-        let bounds = table_layout::grid_rect(layout)?.intersect(&table_layout::visible(layout.bounds));
+        let bounds = table_layout::grid_rect(layout)?.intersect(&table_layout::visible(layout));
         // Hover is only refreshed on mouse move; after a scroll (Cmd+Up, caret jumps) re-check the pointer.
         let reach = reach_rect(layout)?;
         let pointer_ok = HITBOXES.with(|h| h.borrow().get(&(editor_id, id)).map(|hb| hb.should_handle_scroll(window))).unwrap_or(true);

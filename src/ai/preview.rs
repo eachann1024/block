@@ -96,7 +96,8 @@ impl Editor {
 pub(in crate::editor) fn paint_outline(editor: &Editor, block: u64, layout: &TextLayout, window: &mut Window) {
     let Some(s) = editor.ai_session() else { return };
     if !s.parts.iter().any(|(id, _)| *id == block) { return; }
+    let zoom = crate::editor::zoom::zoom_factor(editor.minimal);
     let b = layout.bounds;
-    let ring = Bounds::new(b.origin - gpui::point(px(6.), px(3.)), b.size + gpui::size(px(12.), px(6.)));
-    window.paint_quad(gpui::quad(ring, px(10.), gpui::transparent_black(), px(1.), hsla(214. / 360., 0.7, 0.55, 0.7), gpui::BorderStyle::Dashed));
+    let ring = Bounds::new(b.origin - gpui::point(px(6. * zoom), px(3. * zoom)), b.size + gpui::size(px(12. * zoom), px(6. * zoom)));
+    window.paint_quad(gpui::quad(ring, px(10. * zoom), gpui::transparent_black(), px(1.), hsla(214. / 360., 0.7, 0.55, 0.7), gpui::BorderStyle::Dashed));
 }
