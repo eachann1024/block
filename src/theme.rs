@@ -2,7 +2,7 @@
 //! typography, font-smoothing and shortcut settings backed by `state.json`.
 
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Mutex, RwLock};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use gpui::{Hsla, Pixels, px};
 pub use crate::files::state::{FontChoice, LanguageMode, ThemeMode};
@@ -26,6 +26,8 @@ static LANGUAGE_MODE: AtomicU8 = AtomicU8::new(0);
 static IS_EN: AtomicBool = AtomicBool::new(false);
 static ASSETS_FOLDER: Mutex<Option<String>> = Mutex::new(None);
 static HIDE_ASSETS_FOLDER: AtomicBool = AtomicBool::new(true);
+static HIDDEN_FOLDER_PATTERN: RwLock<String> = RwLock::new(String::new());
+static HIDDEN_FOLDER_REGEX: RwLock<Option<regex::Regex>> = RwLock::new(None);
 
 pub fn sanitize_assets_folder(raw: &str) -> String {
     let mut s = raw.trim();
@@ -48,6 +50,26 @@ pub fn set_assets_folder(name: String) {
 
 pub fn hide_assets_folder() -> bool { HIDE_ASSETS_FOLDER.load(Ordering::Relaxed) }
 pub fn set_hide_assets_folder(hide: bool) { HIDE_ASSETS_FOLDER.store(hide, Ordering::Relaxed); }
+
+pub fn hidden_folder_regex() -> String {
+    HIDDEN_FOLDER_PATTERN.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+pub fn set_hidden_folder_regex(pattern: String) {
+    let trimmed = pattern.trim();
+    let compiled = if trimmed.is_empty() { None } else { regex::Regex::new(trimmed).ok() };
+    *HIDDEN_FOLDER_PATTERN.write().unwrap_or_else(|e| e.into_inner()) = pattern;
+    *HIDDEN_FOLDER_REGEX.write().unwrap_or_else(|e| e.into_inner()) = compiled;
+}
+
+pub fn matches_hidden_folder(name: &str) -> bool {
+    let guard = HIDDEN_FOLDER_REGEX.read().unwrap_or_else(|e| e.into_inner());
+    guard.as_ref().map_or(false, |re| re.is_match(name))
+}
+
+pub fn hidden_folder_placeholder() -> &'static str {
+    tr("正则表达式，如 ^(temp|archive)$", "Regex, e.g. ^(temp|archive)$")
+}
 
 fn system_is_en() -> bool {
     if cfg!(target_os = "macos") {
@@ -96,6 +118,7 @@ pub fn apply_state(state: &crate::files::state::State) {
     set_font_smoothing(state.font_smoothing.unwrap_or(true));
     set_assets_folder(state.assets_folder.clone().unwrap_or_else(|| DEFAULT_ASSETS_FOLDER.into()));
     set_hide_assets_folder(state.hide_assets_folder.unwrap_or(true));
+    set_hidden_folder_regex(state.hidden_folder_regex.clone().unwrap_or_default());
     let search = state.shortcut_search.as_deref().filter(|s| !s.eq_ignore_ascii_case("cmd-k")).unwrap_or(DEFAULT_SEARCH_SHORTCUT).to_owned();
     let quick = state.shortcut_quick.clone().unwrap_or_else(|| DEFAULT_QUICK_SHORTCUT.into());
     set_shortcuts(search, quick);

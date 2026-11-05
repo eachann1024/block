@@ -26,7 +26,7 @@ impl Workspace {
             (tr("跟随系统", "System"), cur_lang == LanguageMode::System, LanguageMode::System),
             ("简体中文", cur_lang == LanguageMode::Zh, LanguageMode::Zh),
             ("English", cur_lang == LanguageMode::En, LanguageMode::En),
-        ], |mode, cx: &mut Context<Self>| Box::new(cx.listener(move |this, _, _, cx| this.select_language(mode, cx))));
+        ], |mode, cx: &mut Context<Self>| Box::new(cx.listener(move |this, _, window, cx| this.select_language(mode, window, cx))));
 
         let cur_editor_font = custom_editor_font();
         let (body_name, body_fam) = match cur_editor_font.as_deref() {
@@ -83,6 +83,15 @@ impl Workspace {
                 this.reset_assets_settings(window, cx);
             }))
             .child(tr("恢复默认", "Reset"));
+        let regex_customized = !crate::theme::hidden_folder_regex().is_empty();
+        let reset_regex_btn = div().id("reset-hidden-folder-regex")
+            .px(px(8.)).py(px(4.)).rounded(crate::ui::radius::CONTROL).text_size(px(14.)).text_color(theme.accent)
+            .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                cx.stop_propagation();
+                this.reset_hidden_folder_regex(window, cx);
+            }))
+            .child(tr("恢复默认", "Reset"));
 
         div().flex().flex_col().gap(px(24.))
             .child(settings_card(16.)
@@ -103,6 +112,19 @@ impl Workspace {
                     ))
                 })
                 .child(setting_row(tr("列表与搜索可见性", "List & Search Visibility"), hide_seg(cx))))
+            .child(settings_card(16.)
+                .child(div().flex().items_center().justify_between()
+                    .child(card_title(tr("隐藏文件夹", "Hidden Folders")))
+                    .when(regex_customized, |row| row.child(reset_regex_btn)))
+                .when_some(self.settings.as_ref(), |card, modal| {
+                    card.child(setting_row(
+                        tr("排除文件夹", "Exclude Folders"),
+                        div().w(px(280.)).h(px(32.)).px(px(8.)).rounded(crate::ui::radius::CONTROL)
+                            .bg(theme.shell).border_1().border_color(theme.btn_border)
+                            .flex().items_center()
+                            .child(Input::new(&modal.hidden_folder_input).appearance(false).bordered(false).focus_bordered(false)),
+                    ))
+                }))
     }
 
     pub(super) fn shortcuts_tab(&self, cx: &mut Context<Self>) -> gpui::Div {

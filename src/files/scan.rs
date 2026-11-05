@@ -28,7 +28,9 @@ pub fn ignored(name: &str) -> bool {
 }
 
 pub fn ignored_dir(name: &str) -> bool {
-    ignored(name) || (crate::theme::hide_assets_folder() && name.eq_ignore_ascii_case(&crate::theme::assets_folder()))
+    ignored(name)
+        || (crate::theme::hide_assets_folder() && name.eq_ignore_ascii_case(&crate::theme::assets_folder()))
+        || crate::theme::matches_hidden_folder(name)
 }
 
 pub fn is_markdown(name: &str) -> bool {
