@@ -1,4 +1,4 @@
-//! Render options and the 8 paper styles (4 light, 4 dark) the exporter paints with.
+//! Render options and the 12 paper styles (6 light, 6 dark) the exporter paints with.
 use cosmic_text::Color;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -8,10 +8,14 @@ pub enum ExportTheme {
     Journal,
     Riso,
     Press,
+    Poster,
+    Mist,
     Ink,
     Kraft,
     Neon,
     Film,
+    Night,
+    Terminal,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,12 +41,15 @@ impl Default for RenderOptions {
 
 pub(super) struct Palette {
     pub dark: bool,
+    /// The page around the paper (card styles) or the paper itself.
     pub canvas: Color,
+    /// The paper the text sits on: the card for card styles, else the canvas.
     pub inner_canvas: Color,
     pub text: Color,
     pub title: Color,
     pub secondary: Color,
     pub accent: Color,
+    /// Text on the accent (Poster's title band) or the tape color for journal styles.
     pub accent2: Color,
     pub code_bg: Color,
     pub code_border: Color,
@@ -53,9 +60,26 @@ pub(super) struct Palette {
     pub divider: Color,
 }
 
+const LIGHT: [ExportTheme; 6] = [
+    ExportTheme::Mono,
+    ExportTheme::Journal,
+    ExportTheme::Riso,
+    ExportTheme::Press,
+    ExportTheme::Poster,
+    ExportTheme::Mist,
+];
+const DARK: [ExportTheme; 6] = [
+    ExportTheme::Ink,
+    ExportTheme::Kraft,
+    ExportTheme::Neon,
+    ExportTheme::Film,
+    ExportTheme::Night,
+    ExportTheme::Terminal,
+];
+
 impl ExportTheme {
     pub fn is_dark(self) -> bool {
-        matches!(self, Self::Ink | Self::Kraft | Self::Neon | Self::Film)
+        DARK.contains(&self)
     }
 
     pub fn label(self) -> &'static str {
@@ -63,21 +87,21 @@ impl ExportTheme {
         match self {
             Self::Mono => tr("黑白素纸", "Mono"),
             Self::Journal => tr("手账便签", "Journal"),
-            Self::Riso => tr("野性孔版", "Risograph"),
-            Self::Press => tr("铅字号外", "Press"),
+            Self::Riso => tr("孔版双色", "Risograph"),
+            Self::Press => tr("铅字报刊", "Press"),
+            Self::Poster => tr("大字海报", "Poster"),
+            Self::Mist => tr("雾面卡片", "Mist"),
             Self::Ink => tr("墨黑", "Ink"),
             Self::Kraft => tr("黑卡手账", "Kraft"),
-            Self::Neon => tr("霓虹丝印", "Neon"),
+            Self::Neon => tr("霓虹夜色", "Neon"),
             Self::Film => tr("暗房胶片", "Film"),
+            Self::Night => tr("夜读卡片", "Night"),
+            Self::Terminal => tr("终端绿屏", "Terminal"),
         }
     }
 
-    pub fn group(dark: bool) -> [Self; 4] {
-        if dark {
-            [Self::Ink, Self::Kraft, Self::Neon, Self::Film]
-        } else {
-            [Self::Mono, Self::Journal, Self::Riso, Self::Press]
-        }
+    pub fn group(dark: bool) -> &'static [Self] {
+        if dark { &DARK } else { &LIGHT }
     }
 
     pub fn default_for(dark: bool) -> Self {
@@ -88,181 +112,39 @@ impl ExportTheme {
     pub fn swatch(self) -> (u32, u32, u32) {
         match self {
             Self::Mono => (0xffffff, 0x111111, 0xffffff),
-            Self::Journal => (0xf6f0e1, 0xb5462f, 0xfff6b8),
-            Self::Riso => (0xf3eee3, 0xff5aa8, 0xf3eee3),
-            Self::Press => (0xece4d2, 0x9c2b1f, 0xe3d9c3),
-            Self::Ink => (0x0e0e0e, 0xededed, 0x1c1c1c),
-            Self::Kraft => (0x1d1b18, 0xf0c35a, 0x2c2a24),
-            Self::Neon => (0x14152b, 0x3fe0d0, 0x1e2040),
-            Self::Film => (0x141210, 0xf2a33a, 0x0a0908),
+            Self::Journal => (0xfef9e7, 0xd97706, 0xfffef5),
+            Self::Riso => (0xf4efe4, 0xff5aa8, 0xf4efe4),
+            Self::Press => (0xf1ead9, 0x9c2b1f, 0xf1ead9),
+            Self::Poster => (0xffffff, 0xe2471b, 0xffffff),
+            Self::Mist => (0xe9edf2, 0x3b6cf6, 0xffffff),
+            Self::Ink => (0x121212, 0xededed, 0x121212),
+            Self::Kraft => (0x1c1a17, 0xf0c35a, 0x27241f),
+            Self::Neon => (0x14152b, 0x3fe0d0, 0x14152b),
+            Self::Film => (0x141210, 0xf2a33a, 0x0b0a09),
+            Self::Night => (0x0d1117, 0x7aa2f7, 0x161b22),
+            Self::Terminal => (0x0c0f0c, 0x7ee787, 0x0c0f0c),
         }
     }
 
-    /// Logical `(top, right, bottom, left)` padding around the content flow on an 816px page.
+    /// Logical `(top, right, bottom, left)` distance from the page edge to the text column
+    /// on an 816px page (card inset plus card padding for card styles).
     pub(super) fn margins(self) -> (f32, f32, f32, f32) {
-        match self {
-            Self::Mono | Self::Ink => (64.0, 48.0, 44.0, 48.0),
-            Self::Journal | Self::Kraft => (78.0, 56.0, 48.0, 92.0),
-            Self::Riso | Self::Neon => (56.0, 48.0, 44.0, 48.0),
-            Self::Press => (44.0, 48.0, 42.0, 48.0),
-            Self::Film => (92.0, 60.0, 84.0, 60.0),
-        }
+        let spec = self.spec();
+        let inset = spec.card.map_or(0.0, |c| c.inset);
+        let (t, r, b, l) = spec.pad;
+        (t + inset, r + inset, b + inset, l + inset)
     }
 
     pub(super) fn heading_family(self) -> &'static str {
-        match self {
-            Self::Journal | Self::Kraft => "Kaiti SC",
-            Self::Press | Self::Film => "Songti SC",
-            Self::Mono | Self::Riso | Self::Ink | Self::Neon => "PingFang SC",
-        }
+        self.spec().heading_family
     }
 
     pub(super) fn body_family(self) -> &'static str {
-        match self {
-            Self::Press => "Songti SC",
-            _ => "PingFang SC",
-        }
+        self.spec().body_family
     }
 
     pub(super) fn palette(self) -> Palette {
-        match self {
-            Self::Mono => Palette {
-                dark: false,
-                canvas: Color::rgb(255, 255, 255),
-                inner_canvas: Color::rgb(255, 255, 255),
-                text: Color::rgb(17, 17, 17),
-                title: Color::rgb(17, 17, 17),
-                secondary: Color::rgb(68, 68, 68),
-                accent: Color::rgb(17, 17, 17),
-                accent2: Color::rgb(17, 17, 17),
-                code_bg: Color::rgb(242, 242, 242),
-                code_border: Color::rgb(242, 242, 242),
-                quote_bg: Color::rgba(0, 0, 0, 0),
-                quote_fg: Color::rgb(17, 17, 17),
-                quote_bar: Color::rgb(17, 17, 17),
-                table_border: Color::rgb(180, 180, 180),
-                divider: Color::rgb(17, 17, 17),
-            },
-            Self::Journal => Palette {
-                dark: false,
-                canvas: Color::rgb(246, 240, 225),
-                inner_canvas: Color::rgb(246, 240, 225),
-                text: Color::rgb(58, 50, 38),
-                title: Color::rgb(47, 42, 32),
-                secondary: Color::rgb(138, 122, 92),
-                accent: Color::rgb(181, 70, 47),
-                accent2: Color::rgb(245, 215, 122),
-                code_bg: Color::rgb(251, 248, 239),
-                code_border: Color::rgb(201, 185, 145),
-                quote_bg: Color::rgb(255, 246, 184),
-                quote_fg: Color::rgb(58, 50, 38),
-                quote_bar: Color::rgb(181, 70, 47),
-                table_border: Color::rgb(208, 195, 165),
-                divider: Color::rgb(224, 161, 150),
-            },
-            Self::Riso => Palette {
-                dark: false,
-                canvas: Color::rgb(243, 238, 227),
-                inner_canvas: Color::rgb(243, 238, 227),
-                text: Color::rgb(29, 63, 168),
-                title: Color::rgb(29, 63, 168),
-                secondary: Color::rgb(47, 95, 208),
-                accent: Color::rgb(255, 90, 168),
-                accent2: Color::rgb(29, 63, 168),
-                code_bg: Color::rgb(243, 238, 227),
-                code_border: Color::rgb(29, 63, 168),
-                quote_bg: Color::rgb(29, 63, 168),
-                quote_fg: Color::rgb(243, 238, 227),
-                quote_bar: Color::rgb(255, 90, 168),
-                table_border: Color::rgb(29, 63, 168),
-                divider: Color::rgb(29, 63, 168),
-            },
-            Self::Press => Palette {
-                dark: false,
-                canvas: Color::rgb(236, 228, 210),
-                inner_canvas: Color::rgb(236, 228, 210),
-                text: Color::rgb(34, 32, 27),
-                title: Color::rgb(34, 32, 27),
-                secondary: Color::rgb(90, 82, 68),
-                accent: Color::rgb(156, 43, 31),
-                accent2: Color::rgb(34, 32, 27),
-                code_bg: Color::rgb(227, 217, 195),
-                code_border: Color::rgb(34, 32, 27),
-                quote_bg: Color::rgba(0, 0, 0, 0),
-                quote_fg: Color::rgb(34, 32, 27),
-                quote_bar: Color::rgb(34, 32, 27),
-                table_border: Color::rgb(34, 32, 27),
-                divider: Color::rgb(34, 32, 27),
-            },
-            Self::Ink => Palette {
-                dark: true,
-                canvas: Color::rgb(14, 14, 14),
-                inner_canvas: Color::rgb(14, 14, 14),
-                text: Color::rgb(237, 237, 237),
-                title: Color::rgb(255, 255, 255),
-                secondary: Color::rgb(168, 168, 168),
-                accent: Color::rgb(237, 237, 237),
-                accent2: Color::rgb(58, 58, 58),
-                code_bg: Color::rgb(28, 28, 28),
-                code_border: Color::rgb(58, 58, 58),
-                quote_bg: Color::rgba(0, 0, 0, 0),
-                quote_fg: Color::rgb(255, 255, 255),
-                quote_bar: Color::rgb(237, 237, 237),
-                table_border: Color::rgb(58, 58, 58),
-                divider: Color::rgb(58, 58, 58),
-            },
-            Self::Kraft => Palette {
-                dark: true,
-                canvas: Color::rgb(29, 27, 24),
-                inner_canvas: Color::rgb(29, 27, 24),
-                text: Color::rgb(236, 227, 207),
-                title: Color::rgb(251, 243, 223),
-                secondary: Color::rgb(179, 167, 140),
-                accent: Color::rgb(240, 195, 90),
-                accent2: Color::rgb(224, 122, 95),
-                code_bg: Color::rgb(19, 18, 16),
-                code_border: Color::rgb(92, 85, 70),
-                quote_bg: Color::rgb(44, 42, 36),
-                quote_fg: Color::rgb(251, 243, 223),
-                quote_bar: Color::rgb(74, 69, 56),
-                table_border: Color::rgb(74, 69, 56),
-                divider: Color::rgb(140, 74, 62),
-            },
-            Self::Neon => Palette {
-                dark: true,
-                canvas: Color::rgb(20, 21, 43),
-                inner_canvas: Color::rgb(20, 21, 43),
-                text: Color::rgb(241, 236, 255),
-                title: Color::rgb(255, 255, 255),
-                secondary: Color::rgb(63, 224, 208),
-                accent: Color::rgb(63, 224, 208),
-                accent2: Color::rgb(255, 106, 61),
-                code_bg: Color::rgb(20, 21, 43),
-                code_border: Color::rgb(63, 224, 208),
-                quote_bg: Color::rgb(63, 224, 208),
-                quote_fg: Color::rgb(20, 21, 43),
-                quote_bar: Color::rgb(255, 106, 61),
-                table_border: Color::rgb(63, 224, 208),
-                divider: Color::rgb(63, 224, 208),
-            },
-            Self::Film => Palette {
-                dark: true,
-                canvas: Color::rgb(20, 18, 16),
-                inner_canvas: Color::rgb(10, 9, 8),
-                text: Color::rgb(232, 224, 208),
-                title: Color::rgb(251, 245, 232),
-                secondary: Color::rgb(168, 156, 134),
-                accent: Color::rgb(242, 163, 58),
-                accent2: Color::rgb(242, 163, 58),
-                code_bg: Color::rgb(31, 28, 24),
-                code_border: Color::rgb(48, 43, 36),
-                quote_bg: Color::rgba(0, 0, 0, 0),
-                quote_fg: Color::rgb(251, 245, 232),
-                quote_bar: Color::rgb(242, 163, 58),
-                table_border: Color::rgb(64, 58, 48),
-                divider: Color::rgb(168, 156, 134),
-            },
-        }
+        super::palette_colors::palette(self)
     }
 }
 
