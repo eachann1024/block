@@ -25,7 +25,26 @@ impl Run {
         self.find(cx).await?;
         self.global_search(cx).await?;
         self.tabs_and_sidebar(cx).await?;
-        self.settings(cx).await
+        self.settings(cx).await?;
+        self.code_block_open(cx).await
+    }
+
+    /// Opening a note whose first paint includes a code block used to re-enter Editor and abort.
+    async fn code_block_open(&self, cx: &AsyncApp) -> Result<(), String> {
+        let bounds = smoke_overlay::target_bounds("editor").ok_or("找不到点击目标 editor")?;
+        let spot = point(bounds.center().x - px(120.), bounds.top() + px(220.));
+        self.click_at(cx, spot, "Step 13/13 · 打开带代码块的笔记").await?;
+        self.press(cx, "enter").await?;
+        self.press(cx, "/").await?;
+        sleep(cx, 260).await;
+        self.check(13, self.editor(cx, |e| e.slash_menu_open()), "代码块斜杠菜单已显示")?;
+        self.type_text(cx, "code").await?;
+        sleep(cx, 150).await;
+        self.press(cx, "enter").await?;
+        sleep(cx, 250).await;
+        let md = self.editor(cx, |e| e.markdown_text());
+        println!("[SMOKE13] {md:?}");
+        self.check(13, md.contains("```"), "代码块笔记渲染后仍可读取")
     }
 
     async fn new_note(&self, cx: &AsyncApp) -> Result<(), String> {
@@ -43,7 +62,7 @@ impl Run {
         self.press(cx, "/").await?;
         sleep(cx, 260).await;
         self.check(2, self.editor(cx, |e| e.slash_menu_open()), "斜杠菜单已显示")?;
-        for key in ["down", "up", "enter"] { self.press(cx, key).await?; }
+        for key in ["down", "enter"] { self.press(cx, key).await?; }
         self.type_text(cx, "CRUD Title").await?;
         self.check(2, self.editor(cx, |e| e.markdown_text()).contains("# CRUD Title"), "一级标题已写入文档")
     }
