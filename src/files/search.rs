@@ -1,5 +1,6 @@
 //! Workspace-wide note search. Runs on a worker: walks every Markdown file,
 //! matches case-insensitively in titles first and bodies second.
+use std::collections::HashSet;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use super::scan::{ignored, is_markdown};
@@ -52,7 +53,17 @@ fn first_line(text: &str) -> String {
     line.trim_start_matches('#').trim().chars().take(70).collect()
 }
 
-fn inspect(root: &Path, path: &Path, query: &str) -> Option<Hit> {
+fn folder_label(root: &Path, path: &Path, stem: &str, include_root_name: bool) -> String {
+    let rel_folder = path.parent().and_then(|p| p.strip_prefix(root).ok()).map(|p| {
+        p.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join(" / ")
+    }).unwrap_or_default();
+    let folder = if rel_folder.is_empty() { String::new() } else { format!("{rel_folder} / {stem}") };
+    if !include_root_name { return folder; }
+    let root_name = root.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    if root_name.is_empty() { folder } else if folder.is_empty() { root_name } else { format!("{root_name} / {folder}") }
+}
+
+fn inspect(root: &Path, path: &Path, query: &str, include_root_name: bool) -> Option<Hit> {
     let stem = path.file_stem()?.to_string_lossy().into_owned();
     let title_marks = find_all(&stem, query);
     let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
@@ -69,25 +80,25 @@ fn inspect(root: &Path, path: &Path, query: &str) -> Option<Hit> {
         }
         None => (first_line(&body), Vec::new()),
     };
-    let rel_folder = path.parent().and_then(|p| p.strip_prefix(root).ok()).map(|p| {
-        p.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join(" / ")
-    }).unwrap_or_default();
-    let folder = if rel_folder.is_empty() { String::new() } else { format!("{rel_folder} / {stem}") };
+    let folder = folder_label(root, path, &stem, include_root_name);
     Some(Hit { path: path.to_owned(), title: stem, folder, title_match: !title_marks.is_empty(),
         title_marks, snippet, marks, count })
 }
 
-/// Title matches first, then body matches; at most `limit` hits in total.
-pub fn search_notes(root: &Path, query: &str, limit: usize) -> Vec<Hit> {
-    #[cfg(target_family = "wasm")]
-    { return super::vfs::search_all(root, query, limit); }
-    #[cfg(not(target_family = "wasm"))]
-    {
-    let query = query.trim();
-    if query.is_empty() { return Vec::new(); }
-    let (mut titles, mut bodies) = (Vec::new(), Vec::new());
+fn finish(mut titles: Vec<Hit>, mut bodies: Vec<Hit>, limit: usize) -> Vec<Hit> {
+    let key = |hit: &Hit| (hit.title.to_lowercase(), hit.path.clone());
+    titles.sort_by_key(key);
+    bodies.sort_by_key(key);
+    titles.extend(bodies);
+    titles.truncate(limit);
+    titles
+}
+
+fn walk_root(root: &Path, query: &str, limit: usize, include_root_name: bool, seen: &mut HashSet<PathBuf>, titles: &mut Vec<Hit>, bodies: &mut Vec<Hit>) {
     let mut stack = vec![root.to_owned()];
+    let mut found = 0usize;
     while let Some(dir) = stack.pop() {
+        if found >= limit.saturating_mul(4) { break; }
         let Ok(entries) = std::fs::read_dir(&dir) else { continue };
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
@@ -97,19 +108,54 @@ pub fn search_notes(root: &Path, query: &str, limit: usize) -> Vec<Hit> {
             if kind.is_dir() {
                 if super::scan::ignored_dir(&name) { continue; }
                 stack.push(path);
-            } else if (kind.is_file() || kind.is_symlink()) && is_markdown(&name) {
-                if let Some(hit) = inspect(root, &path, query) {
+            } else if (kind.is_file() || kind.is_symlink()) && is_markdown(&name) && seen.insert(path.clone()) {
+                if let Some(hit) = inspect(root, &path, query, include_root_name) {
+                    found += 1;
                     if hit.title_match { titles.push(hit) } else { bodies.push(hit) }
                 }
             }
         }
-        if titles.len() + bodies.len() >= limit * 4 { break; }
     }
-    let key = |h: &Hit| (h.title.to_lowercase(), h.path.clone());
-    titles.sort_by_key(key);
-    bodies.sort_by_key(key);
-    titles.extend(bodies);
-    titles.truncate(limit);
-    titles
+}
+
+fn gather(roots: &[PathBuf], query: &str, limit: usize, include_root_name: bool) -> Vec<Hit> {
+    let query = query.trim();
+    if query.is_empty() || limit == 0 { return Vec::new(); }
+    #[cfg(target_family = "wasm")]
+    {
+        let mut seen = HashSet::new();
+        let (mut titles, mut bodies) = (Vec::new(), Vec::new());
+        for root in roots {
+            for mut hit in super::vfs::search_all(root, query, limit) {
+                if !seen.insert(hit.path.clone()) { continue; }
+                if include_root_name {
+                    hit.folder = folder_label(root, &hit.path, &hit.title, true);
+                }
+                if hit.title_match { titles.push(hit); } else { bodies.push(hit); }
+            }
+        }
+        return finish(titles, bodies, limit);
     }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let mut seen_roots = HashSet::new();
+        let mut seen = HashSet::new();
+        let (mut titles, mut bodies) = (Vec::new(), Vec::new());
+        for root in roots {
+            if !seen_roots.insert(root.clone()) { continue; }
+            walk_root(root, query, limit, include_root_name, &mut seen, &mut titles, &mut bodies);
+        }
+        finish(titles, bodies, limit)
+    }
+}
+
+/// Title matches first, then body matches; at most `limit` hits in total.
+pub fn search_notes(root: &Path, query: &str, limit: usize) -> Vec<Hit> {
+    let roots = [root.to_path_buf()];
+    gather(&roots, query, limit, false)
+}
+
+/// Search every root. Duplicate note paths are skipped. Root names are prefixed only when more than one root is searched.
+pub fn search_notes_in_folders(roots: &[PathBuf], query: &str, limit: usize) -> Vec<Hit> {
+    gather(roots, query, limit, roots.len() > 1)
 }
