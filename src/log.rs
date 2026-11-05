@@ -101,6 +101,19 @@ pub fn init() {
     install_panic_hook();
 }
 
+#[cfg(target_os = "macos")]
+fn main_image_base() -> String {
+    unsafe extern "C" {
+        static _mh_execute_header: u8;
+    }
+    format!("0x{:x}", (&raw const _mh_execute_header) as usize)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn main_image_base() -> String {
+    String::from("<unavailable>")
+}
+
 fn install_panic_hook() {
     std::panic::set_hook(Box::new(|info| {
         let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
@@ -115,9 +128,10 @@ fn install_panic_hook() {
             .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
             .unwrap_or_else(|| String::from("<unknown location>"));
         let thread = std::thread::current().name().unwrap_or("unnamed").to_owned();
+        let image_base = main_image_base();
         let bt = Backtrace::force_capture();
         let report = format!(
-            "=== CRASH / PANIC REPORT ===\nthread: {thread}\nlocation: {location}\nmessage: {payload}\nbacktrace:\n{bt}\n=== END CRASH REPORT ==="
+            "=== CRASH / PANIC REPORT ===\nthread: {thread}\nlocation: {location}\nimage_base: {image_base}\nmessage: {payload}\nbacktrace:\n{bt}\n=== END CRASH REPORT ==="
         );
         write_line("PANIC", &report, true);
     }));
