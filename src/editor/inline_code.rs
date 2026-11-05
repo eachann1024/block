@@ -1,20 +1,15 @@
 //! Inline code spacing, hover tracking and ⌘+Click copy (chip painting: `inline_code_chip`).
 use std::ops::Range;
-use std::cell::{Cell, RefCell};
-use std::time::Duration;
-use gpui::{AnyElement, Bounds, ClipboardItem, Context, Hsla, Pixels, Point, SharedString, TextRun, Window, px, rgb};
-use crate::icons::Icon;
+use std::cell::RefCell;
+use gpui::{ClipboardItem, Context, Hsla, Pixels, Point, SharedString, TextRun, px, rgb};
 use crate::theme::{Theme, is_dark, tr};
-use super::{model::{Block, MarkKind}, view::{Editor, layout::TextLayout}};
+use super::{model::{Block, MarkKind}, view::Editor};
 
 type HoverTarget = (gpui::EntityId, u64, Range<usize>);
 
 thread_local! {
     /// Code chip under the pointer: (editor entity, block, span) — view state only.
     static HOVER: RefCell<Option<HoverTarget>> = const { RefCell::new(None) };
-    /// Recently copied code chip and its monotonic timer token.
-    static COPIED: RefCell<Option<(HoverTarget, u64)>> = const { RefCell::new(None) };
-    static COPY_GEN: Cell<u64> = const { Cell::new(0) };
 }
 
 pub(in crate::editor) const PAD_BYTES: usize = 2;
@@ -141,17 +136,6 @@ pub(in crate::editor) fn hovered(id: gpui::EntityId, block: u64) -> Option<Range
 
 pub(in crate::editor) fn clear_hover() {
     HOVER.with(|h| *h.borrow_mut() = None);
-    COPIED.with(|c| *c.borrow_mut() = None);
-}
-
-fn span_rect(layout: &TextLayout, range: &Range<usize>) -> Option<Bounds<Pixels>> {
-    if !layout.cells.is_empty() {
-        let cell = layout.cells.iter().find(|c| c.range.start <= range.start && range.end <= c.range.end)?;
-        let local = (range.start - cell.range.start)..(range.end - cell.range.start);
-        cell.text.code_spans.iter().any(|s| s == &local).then(|| cell.text.rects(local).into_iter().next())?
-    } else {
-        layout.code_spans.iter().any(|s| s == range).then(|| layout.rects(range.clone()).into_iter().next())?
-    }
 }
 
 impl Editor {
@@ -182,29 +166,8 @@ impl Editor {
         cx.write_to_clipboard(ClipboardItem::new_string(token.clone()));
         self.status = format!("{}: {}", tr("已复制代码", "Copied code"), token);
         let target: HoverTarget = (cx.entity_id(), block_id, range);
-        HOVER.with(|h| *h.borrow_mut() = Some(target.clone()));
-        let generation = COPY_GEN.with(|g| {
-            let next = g.get().wrapping_add(1);
-            g.set(next);
-            next
-        });
-        COPIED.with(|c| *c.borrow_mut() = Some((target.clone(), generation)));
+        HOVER.with(|h| *h.borrow_mut() = Some(target));
         cx.notify();
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(1500)).await;
-            let _ = this.update(cx, |_, cx| {
-                let cleared = COPIED.with(|c| {
-                    let mut c = c.borrow_mut();
-                    if c.as_ref().is_some_and(|(t, g)| *t == target && *g == generation) {
-                        *c = None;
-                        true
-                    } else {
-                        false
-                    }
-                });
-                if cleared { cx.notify(); }
-            });
-        }).detach();
         true
     }
 
@@ -213,46 +176,9 @@ impl Editor {
         let hover_changed = HOVER.with(|h| {
             let mut h = h.borrow_mut();
             let c = *h != found;
-            if c { *h = found.clone(); }
+            if c { *h = found; }
             c
         });
-        let copied_cleared = COPIED.with(|c| {
-            let mut c = c.borrow_mut();
-            if c.as_ref().is_some_and(|(t, _)| Some(t) != found.as_ref()) {
-                *c = None;
-                true
-            } else {
-                false
-            }
-        });
-        if hover_changed || copied_cleared { cx.notify(); }
-    }
-
-    /// "⌘+click to copy" above the hovered chip, switching to "✓ Copied" briefly after copying.
-    pub(super) fn code_hover_tooltip(&self, cx: &Context<Self>, window: &Window) -> Option<AnyElement> {
-        if self.selecting || self.dragging.is_some() || self.caret.composing.is_some() || self.format.is_some()
-            || self.block_menu.is_some() || self.table_menu.is_some() { return None; }
-        let target = HOVER.with(|h| h.borrow().clone())?;
-    let (entity, block, ref range) = target;
-        if entity != cx.entity_id() { return None; }
-        let rect = span_rect(self.layouts.get(&block)?, range)?;
-        let viewport = self.list.viewport_bounds();
-        if rect.bottom() <= viewport.top() || rect.top() >= viewport.bottom() { return None; }
-        let copied = COPIED.with(|c| c.borrow().as_ref().is_some_and(|(t, _)| *t == target));
-        let (lead_icon, label) = if copied {
-            (Some(Icon::Check), tr("已复制", "Copied"))
-        } else {
-            let hint = if cfg!(target_os = "macos") { tr("⌘+点击复制", "⌘+click to copy") } else { tr("Ctrl+点击复制", "Ctrl+click to copy") };
-            (None, hint)
-        };
-        let rect = rect.dilate(px(6.));
-        Some(crate::ui::tooltip::anchored_tooltip_above_with_icon(
-            rect,
-            viewport.top(),
-            lead_icon,
-            label,
-            ("code-hover-tip", (block as usize) ^ (range.start << 16)),
-            window,
-        ))
+        if hover_changed { cx.notify(); }
     }
 }
