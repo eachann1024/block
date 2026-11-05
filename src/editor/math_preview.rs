@@ -92,6 +92,7 @@ pub(super) fn render_state(
     editor: Entity<Editor>,
     block_id: u64,
     source: &str,
+    zoom: f32,
     cx: &mut Context<Editor>,
 ) -> (Option<AnyElement>, Option<String>) {
     let theme = Theme::ocean();
@@ -99,7 +100,7 @@ pub(super) fn render_state(
         return (Some(placeholder(tr("输入 LaTeX 公式以预览", "Enter LaTeX formula to preview"), &theme)), None);
     }
     if crate::fonts::math_font().is_none() && !crate::fonts::math_font_failed() {
-        return (Some(fallback_or_loading(block_id, &theme)), None);
+        return (Some(fallback_or_loading(block_id, &theme, zoom)), None);
     }
     let dark = is_dark();
     let key = hash_source(source, dark);
@@ -107,10 +108,10 @@ pub(super) fn render_state(
     match state {
         Some(PreviewState::Ready { image, width, height }) => {
             LAST_READY.with(|lr| { lr.borrow_mut().insert(block_id, (image.clone(), width, height)); });
-            (Some(render_image(image, width, height)), None)
+            (Some(render_image(image, width, height, zoom)), None)
         }
         Some(PreviewState::Error(msg)) => (None, Some(msg)),
-        Some(PreviewState::Pending) => (Some(fallback_or_loading(block_id, &theme)), None),
+        Some(PreviewState::Pending) => (Some(fallback_or_loading(block_id, &theme, zoom)), None),
         None => {
             CACHE.with(|c| { c.borrow_mut().insert(key, PreviewState::Pending); });
             let src = source.to_owned();
@@ -132,14 +133,14 @@ pub(super) fn render_state(
                 });
                 let _ = entity.update(cx, |_, cx| cx.notify());
             }).detach();
-            (Some(fallback_or_loading(block_id, &theme)), None)
+            (Some(fallback_or_loading(block_id, &theme, zoom)), None)
         }
     }
 }
 
-fn fallback_or_loading(block_id: u64, theme: &Theme) -> AnyElement {
+fn fallback_or_loading(block_id: u64, theme: &Theme, zoom: f32) -> AnyElement {
     if let Some((image, w, h)) = LAST_READY.with(|lr| lr.borrow().get(&block_id).cloned()) {
-        render_image(image, w, h)
+        render_image(image, w, h, zoom)
     } else {
         placeholder(tr("正在渲染公式…", "Rendering formula…"), theme)
     }

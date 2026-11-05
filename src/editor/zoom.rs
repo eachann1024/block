@@ -1,4 +1,4 @@
-//! Shared editor content zoom (70% - 200%, 10% steps), persisted in state.json.
+//! Independent editor content zoom (70% - 200%, 10% steps), persisted in state.json.
 use std::{
     cell::RefCell,
     sync::atomic::{AtomicU32, Ordering},
@@ -11,7 +11,8 @@ pub const MAX_ZOOM: u32 = 200;
 pub const STEP_ZOOM: u32 = 10;
 pub const DEFAULT_ZOOM: u32 = 100;
 
-static ZOOM_PERCENT: AtomicU32 = AtomicU32::new(DEFAULT_ZOOM);
+static MAIN_ZOOM_PERCENT: AtomicU32 = AtomicU32::new(DEFAULT_ZOOM);
+static QUICK_ZOOM_PERCENT: AtomicU32 = AtomicU32::new(DEFAULT_ZOOM);
 
 thread_local! {
     static EDITORS: RefCell<Vec<WeakEntity<Editor>>> = const { RefCell::new(Vec::new()) };
@@ -28,22 +29,36 @@ pub fn register_editor(editor: &Entity<Editor>) {
     });
 }
 
-pub fn zoom_percent() -> u32 {
-    ZOOM_PERCENT.load(Ordering::Relaxed)
-}
-
-pub fn zoom_factor() -> f32 {
-    zoom_percent() as f32 / 100.0
-}
-
-pub fn init_zoom(persisted: Option<f32>) {
-    if let Some(val) = persisted {
-        if val.is_finite() && val > 0. {
-            let pct = ((val * 100.0).round() as u32).clamp(MIN_ZOOM, MAX_ZOOM);
-            let snapped = ((pct + 5) / 10) * 10;
-            ZOOM_PERCENT.store(snapped.clamp(MIN_ZOOM, MAX_ZOOM), Ordering::Relaxed);
-        }
+pub fn zoom_percent(minimal: bool) -> u32 {
+    if minimal {
+        QUICK_ZOOM_PERCENT.load(Ordering::Relaxed)
+    } else {
+        MAIN_ZOOM_PERCENT.load(Ordering::Relaxed)
     }
+}
+
+pub fn zoom_factor(minimal: bool) -> f32 {
+    zoom_percent(minimal) as f32 / 100.0
+}
+
+fn snap_zoom(val: f32) -> u32 {
+    let pct = ((val * 100.0).round() as u32).clamp(MIN_ZOOM, MAX_ZOOM);
+    let snapped = ((pct + 5) / 10) * 10;
+    snapped.clamp(MIN_ZOOM, MAX_ZOOM)
+}
+
+pub fn init_zoom(main_persisted: Option<f32>, quick_persisted: Option<f32>) {
+    let main_val = main_persisted
+        .filter(|v| v.is_finite() && *v > 0.)
+        .map(snap_zoom)
+        .unwrap_or(DEFAULT_ZOOM);
+    MAIN_ZOOM_PERCENT.store(main_val, Ordering::Relaxed);
+
+    let quick_val = quick_persisted
+        .filter(|v| v.is_finite() && *v > 0.)
+        .map(snap_zoom)
+        .unwrap_or(DEFAULT_ZOOM);
+    QUICK_ZOOM_PERCENT.store(quick_val, Ordering::Relaxed);
 }
 
 pub fn zoom_in(editor: &mut Editor, cx: &mut Context<Editor>) {
@@ -59,31 +74,41 @@ pub fn zoom_reset(editor: &mut Editor, cx: &mut Context<Editor>) {
 }
 
 fn step_zoom(editor: &mut Editor, delta: i32, cx: &mut Context<Editor>) {
-    let cur = zoom_percent() as i32;
+    let cur = zoom_percent(editor.minimal) as i32;
     let next = (cur + delta).clamp(MIN_ZOOM as i32, MAX_ZOOM as i32) as u32;
     set_zoom(editor, next, cx);
 }
 
 fn set_zoom(editor: &mut Editor, target: u32, cx: &mut Context<Editor>) {
     let target = target.clamp(MIN_ZOOM, MAX_ZOOM);
-    let old_pct = zoom_percent();
+    let minimal = editor.minimal;
+    let old_pct = zoom_percent(minimal);
     if target == old_pct {
         return;
     }
-    ZOOM_PERCENT.store(target, Ordering::Relaxed);
-    if let Err(err) = crate::files::update_state(move |s| {
-        s.editor_zoom = (target != DEFAULT_ZOOM).then_some(target as f32 / 100.0);
-    }) {
-        crate::log::warn(&format!("failed to persist editor zoom: {err}"));
+    if minimal {
+        QUICK_ZOOM_PERCENT.store(target, Ordering::Relaxed);
+        if let Err(err) = crate::files::update_state(move |s| {
+            s.quick_editor_zoom = (target != DEFAULT_ZOOM).then_some(target as f32 / 100.0);
+        }) {
+            crate::log::warn(&format!("failed to persist quick editor zoom: {err}"));
+        }
+    } else {
+        MAIN_ZOOM_PERCENT.store(target, Ordering::Relaxed);
+        if let Err(err) = crate::files::update_state(move |s| {
+            s.editor_zoom = (target != DEFAULT_ZOOM).then_some(target as f32 / 100.0);
+        }) {
+            crate::log::warn(&format!("failed to persist editor zoom: {err}"));
+        }
     }
 
-    super::view::layout::clear_keys();
-    super::image_view::clear_measured(cx);
+    let caller_id = cx.entity_id();
+    super::view::layout::clear_editor_keys(caller_id);
+    super::image_view::clear_editor_measured(caller_id, cx);
 
     let (old_zoom, new_zoom) = (old_pct, target);
     on_zoom_changed(editor, old_zoom, new_zoom, cx);
 
-    let caller_id = cx.entity_id();
     cx.defer(move |cx| {
         let editors = EDITORS.with(|slot| {
             let mut list = slot.borrow_mut();
@@ -91,12 +116,17 @@ fn set_zoom(editor: &mut Editor, target: u32, cx: &mut Context<Editor>) {
             list.clone()
         });
         for weak in editors {
-            if weak.entity_id() == caller_id {
+            let other_id = weak.entity_id();
+            if other_id == caller_id {
                 continue;
             }
             if let Some(entity) = weak.upgrade() {
                 entity.update(cx, |this, cx| {
-                    on_zoom_changed(this, old_zoom, new_zoom, cx);
+                    if this.minimal == minimal {
+                        super::view::layout::clear_editor_keys(other_id);
+                        super::image_view::clear_editor_measured(other_id, cx);
+                        on_zoom_changed(this, old_zoom, new_zoom, cx);
+                    }
                 });
             }
         }
@@ -129,7 +159,5 @@ pub fn on_zoom_changed(editor: &mut Editor, old_zoom: u32, new_zoom: u32, cx: &m
     editor.preferred_x = None;
     editor.pending_vertical = None;
     super::table_resize::end();
-    super::image_view::cancel_resize(cx);
-    crate::dropdown::dismiss_all(cx);
     cx.notify();
 }

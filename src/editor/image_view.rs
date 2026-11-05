@@ -1,6 +1,6 @@
 //! Image block rendering: aligned picture, side resize handles and floating top-centered toolbar.
 use std::{collections::HashMap, path::PathBuf};
-use gpui::{App, Context, CursorStyle, Entity, Global, MouseButton, ObjectFit, Resource, SharedString, Window, div, prelude::*, px};
+use gpui::{App, Context, CursorStyle, Entity, EntityId, Global, MouseButton, ObjectFit, Resource, SharedString, Window, div, prelude::*, px};
 use super::{
     image_edit::ImagePop,
     image_probe::probe_dims,
@@ -16,53 +16,62 @@ const DEFAULT_MAX_H: f32 = 420.;
 
 #[derive(Default)]
 struct ImageUi {
-    measured: HashMap<u64, f32>,
+    measured: HashMap<(EntityId, u64), f32>,
     dims: HashMap<PathBuf, (f32, f32)>,
-    paths: HashMap<u64, PathBuf>,
-    avail: f32,
+    paths: HashMap<(EntityId, u64), PathBuf>,
+    avail: HashMap<EntityId, f32>,
     drag: Option<Drag>,
 }
 impl Global for ImageUi {}
 #[derive(Clone, Copy)]
-struct Drag { id: u64, start_x: f32, start_w: f32, dir: f32, max: f32, width: f32 }
+struct Drag { editor_id: EntityId, id: u64, start_x: f32, start_w: f32, dir: f32, max: f32, width: f32, zoom: f32 }
 #[derive(Clone)]
-struct Resize { id: u64, dir: f32 }
+struct Resize { editor_id: EntityId, id: u64, dir: f32, zoom: f32 }
 struct Ghost;
 impl Render for Ghost { fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement { gpui::Empty } }
 
-fn base_of(ui: &ImageUi, id: u64) -> f32 {
-    let avail = ui.avail;
-    if let Some(&(raw_w, raw_h)) = ui.paths.get(&id).and_then(|p| ui.dims.get(p)).filter(|&&(w, h)| w > 0. && h > 0.) {
+fn base_of(ui: &ImageUi, editor_id: EntityId, id: u64) -> f32 {
+    let avail = ui.avail.get(&editor_id).copied().unwrap_or(0.);
+    if let Some(&(raw_w, raw_h)) = ui.paths.get(&(editor_id, id)).and_then(|p| ui.dims.get(p)).filter(|&&(w, h)| w > 0. && h > 0.) {
         let nat_w = raw_w.min(DEFAULT_MAX).min(raw_w * (DEFAULT_MAX_H / raw_h));
         return if avail > 0. { nat_w.min(avail) } else { nat_w };
     }
     if avail > 0. { avail.min(DEFAULT_MAX) } else { DEFAULT_MAX }
 }
 
-pub(super) fn clear_measured(cx: &mut App) {
+pub(super) fn clear_editor_measured(editor_id: EntityId, cx: &mut App) {
     let ui = cx.default_global::<ImageUi>();
-    ui.measured.clear();
-    ui.drag = None;
+    ui.measured.retain(|(ed, _), _| *ed != editor_id);
+    if ui.drag.as_ref().is_some_and(|d| d.editor_id == editor_id) {
+        ui.drag = None;
+    }
 }
-pub(super) fn cancel_resize(cx: &mut App) {
-    cx.default_global::<ImageUi>().drag = None;
-}
-pub(super) fn rekey(cx: &mut App, old_id: u64, new_id: u64) {
+pub(super) fn rekey(cx: &mut App, editor_id: EntityId, old_id: u64, new_id: u64) {
     let ui = cx.default_global::<ImageUi>();
-    if let Some(p) = ui.paths.get(&old_id).cloned() { ui.paths.insert(new_id, p); }
-    if let Some(w) = ui.measured.get(&old_id).copied() { ui.measured.insert(new_id, w); }
+    if let Some(p) = ui.paths.get(&(editor_id, old_id)).cloned() { ui.paths.insert((editor_id, new_id), p); }
+    if let Some(w) = ui.measured.get(&(editor_id, old_id)).copied() { ui.measured.insert((editor_id, new_id), w); }
 }
 
 fn begin(resize: &Resize, x: f32, cx: &mut App) {
-    let zoom = super::zoom::zoom_factor();
+    let zoom = resize.zoom;
     let ui = cx.default_global::<ImageUi>();
-    let base = base_of(ui, resize.id) * zoom;
+    let base = base_of(ui, resize.editor_id, resize.id) * zoom;
     let max = if base > 0. { base } else { DEFAULT_MAX * zoom };
-    let width = ui.measured.get(&resize.id).copied().filter(|&w| w > 0.).unwrap_or(max);
-    ui.drag = Some(Drag { id: resize.id, start_x: x, start_w: width, dir: resize.dir, max, width });
+    let width = ui.measured.get(&(resize.editor_id, resize.id)).copied().filter(|&w| w > 0.).unwrap_or(max);
+    ui.drag = Some(Drag {
+        editor_id: resize.editor_id,
+        id: resize.id,
+        start_x: x,
+        start_w: width,
+        dir: resize.dir,
+        max,
+        width,
+        zoom,
+    });
 }
 fn resize_move(editor: &Entity<Editor>, id: u64, x: f32, cx: &mut App) {
-    let Some(drag) = cx.default_global::<ImageUi>().drag.as_mut().filter(|d| d.id == id) else { return };
+    let editor_id = editor.entity_id();
+    let Some(drag) = cx.default_global::<ImageUi>().drag.as_mut().filter(|d| d.editor_id == editor_id && d.id == id) else { return };
     drag.width = (drag.start_w + (x - drag.start_x) * drag.dir).clamp(drag.max * MIN_SHARE, drag.max);
     editor.update(cx, |this, cx| {
         if let Some(idx) = this.doc.index_of(id) {
@@ -73,8 +82,9 @@ fn resize_move(editor: &Entity<Editor>, id: u64, x: f32, cx: &mut App) {
     });
 }
 fn resize_end(editor: &Entity<Editor>, id: u64, cx: &mut App) {
-    let Some(drag) = cx.default_global::<ImageUi>().drag.take().filter(|d| d.id == id) else { return };
-    let zoom = super::zoom::zoom_factor();
+    let editor_id = editor.entity_id();
+    let Some(drag) = cx.default_global::<ImageUi>().drag.take().filter(|d| d.editor_id == editor_id && d.id == id) else { return };
+    let zoom = drag.zoom.max(0.01);
     editor.update(cx, |this, cx| {
         if (drag.width - drag.start_w).abs() >= 1. {
             this.edit_image(id, |s| s.width = Some((drag.width / zoom).round().max(1.) as u32), cx);
@@ -83,7 +93,7 @@ fn resize_end(editor: &Entity<Editor>, id: u64, cx: &mut App) {
 }
 
 /// Centered side pill handle with a 12px hit area; dragging it resizes the width in proportion (the height follows).
-fn handle(id: u64, left: bool, dir: f32, img_h: Option<f32>, group: &SharedString, show: bool) -> impl IntoElement {
+fn handle(editor_id: EntityId, id: u64, left: bool, dir: f32, zoom: f32, img_h: Option<f32>, group: &SharedString, show: bool) -> impl IntoElement {
     let bar_h = match img_h {
         Some(h) if h < 64. => (h * 0.6).round().max(16.),
         _ => 48.,
@@ -96,7 +106,7 @@ fn handle(id: u64, left: bool, dir: f32, img_h: Option<f32>, group: &SharedStrin
             .w(px(12.)).h(px(bar_h + 16.)).flex().items_center().justify_center()
             .cursor(CursorStyle::ResizeLeftRight)
             .invisible().when(show, |s| s.visible()).group_hover(group.clone(), |s| s.visible())
-            .on_drag(Resize { id, dir }, |resize, _, window, cx| {
+            .on_drag(Resize { editor_id, id, dir, zoom }, |resize, _, window, cx| {
                 begin(resize, f32::from(window.mouse_position().x), cx); cx.new(|_| Ghost)
             })
             .child(div().w(px(3.)).h(px(bar_h)).rounded(px(3.)).bg(gpui::rgb(bar_color))))
@@ -115,7 +125,7 @@ impl Editor {
     }
 }
 
-pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, spec: ImageSpec, active: bool, pop: Option<ImagePop>, cx: &mut App) -> impl IntoElement {
+pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, spec: ImageSpec, active: bool, pop: Option<ImagePop>, zoom: f32, has_overlay: bool, cx: &mut App) -> impl IntoElement {
     let (ready_path, remote_pending) = match target {
         ImageTarget::Local(path) => (Some(path), None),
         ImageTarget::Remote(url) => match super::image_remote::request(editor.clone(), id, &url, cx) {
@@ -131,10 +141,12 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
             (i32::from(sz.width) as f32, i32::from(sz.height) as f32)
         }).filter(|&(w, h)| w > 0. && h > 0.)
     });
+    let editor_id = editor.entity_id();
+    let zoom = zoom.max(0.01);
     let (base, draft, raw_dims) = {
         let ui = cx.default_global::<ImageUi>();
         if let Some(p) = &ready_path {
-            ui.paths.insert(id, p.clone());
+            ui.paths.insert((editor_id, id), p.clone());
             if let Some(d) = fetched_dims {
                 ui.dims.insert(p.clone(), d);
             } else if !ui.dims.contains_key(p) && let Some(d) = probe_dims(p) {
@@ -142,20 +154,13 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
             }
         }
         let dims = ready_path.as_ref().and_then(|p| ui.dims.get(p).copied());
-        (base_of(ui, id), ui.drag.filter(|d| d.id == id), dims)
+        (base_of(ui, editor_id, id), ui.drag.filter(|d| d.editor_id == editor_id && d.id == id), dims)
     };
-    let zoom = super::zoom::zoom_factor().max(0.01);
     let drag_logical = draft.map(|d| d.width / zoom);
     let dragging = draft.is_some() && cx.has_active_drag();
     let limit = if base > 0. { base } else { DEFAULT_MAX };
     let width = if dragging { drag_logical } else { spec.width.map(|w| w as f32) }
         .map(|w| w.min(limit).max(limit * MIN_SHARE));
-    let has_overlay = {
-        let ed = editor.read(cx);
-        ed.block_menu.is_some() || ed.table_menu.is_some() || ed.format.is_some()
-            || ed.annotate.active_annotation.is_some() || ed.annotate.hovered_annotation.is_some()
-            || ed.annotate.composer.is_some() || ed.annotate.reactions.is_some()
-    };
     let show = active || dragging;
     let show_bar = show && !has_overlay;
     let group: SharedString = format!("image-{id}").into();
@@ -174,7 +179,7 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
         return div().relative().w_full().flex().flex_col().items_start()
             .when(spec.align == Align::Center, |s| s.items_center()).when(spec.align == Align::Right, |s| s.items_end())
             .child(gpui::canvas(move |bounds, _, cx| {
-                cx.default_global::<ImageUi>().avail = f32::from(bounds.size.width) / zoom;
+                cx.default_global::<ImageUi>().avail.insert(editor_id, f32::from(bounds.size.width) / zoom);
             }, |_, _, _, _| {}).absolute().size_full())
             .child(div().id(("image", id as usize)).relative().w(px(card_w)).h(px(120. * zoom)).rounded(px(6.))
                 .bg(theme.hover).border_1().border_color(if active { gpui::rgb(ring).into() } else { theme.hairline })
@@ -209,14 +214,14 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
     div().relative().w_full().flex().flex_col().items_start()
         .when(spec.align == Align::Center, |s| s.items_center()).when(spec.align == Align::Right, |s| s.items_end())
         .child(gpui::canvas(move |bounds, _, cx| {
-            cx.default_global::<ImageUi>().avail = f32::from(bounds.size.width) / zoom;
+            cx.default_global::<ImageUi>().avail.insert(editor_id, f32::from(bounds.size.width) / zoom);
         }, |_, _, _, _| {}).absolute().size_full())
         .child(div().id(("image", id as usize)).relative().flex_none().group(group.clone())
             .when_some(target_size, |s, (tw, th)| s.w(px(tw)).h(px(th)))
             .child(picture)
             .child(gpui::canvas(|_, _, _| {}, move |bounds, _, _, cx| {
                 let w = f32::from(bounds.size.width);
-                let prev_w = cx.default_global::<ImageUi>().measured.insert(id, w).unwrap_or(0.);
+                let prev_w = cx.default_global::<ImageUi>().measured.insert((editor_id, id), w).unwrap_or(0.);
                 if (prev_w - w).abs() > 0.5 && w > 0. {
                     canvas_editor.update(cx, |this, cx| {
                         if let Some(idx) = this.doc.index_of(id) {
@@ -230,8 +235,8 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
                 }
             }).absolute().size_full())
             .when(active, |s| s.child(div().absolute().top(px(-6.)).left(px(-6.)).right(px(-6.)).bottom(px(-6.)).rounded(px(8.)).border(px(2.)).border_color(gpui::rgb(ring))))
-            .child(handle(id, true, -scale, img_h, &group, show))
-            .child(handle(id, false, scale, img_h, &group, show))
+            .child(handle(editor_id, id, true, -scale, zoom, img_h, &group, show))
+            .child(handle(editor_id, id, false, scale, zoom, img_h, &group, show))
             .on_drag_move::<Resize>(move |event, _, cx| resize_move(&move_editor, id, f32::from(event.event.position.x), cx))
             .on_mouse_up(MouseButton::Left, move |_, _, cx| resize_end(&up_editor, id, cx))
             .on_mouse_up_out(MouseButton::Left, move |_, _, cx| resize_end(&out_editor, id, cx))
@@ -244,9 +249,9 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
 }
 
 /// (original width, rendered width) of an image from the last paint; 0 until it has been laid out.
-pub(super) fn sizes(cx: &App, id: u64) -> (f32, f32) {
-    let zoom = super::zoom::zoom_factor().max(0.01);
-    cx.try_global::<ImageUi>().map_or((0., 0.), |ui| (base_of(ui, id), ui.measured.get(&id).copied().map(|m| m / zoom).unwrap_or(0.)))
+pub(super) fn sizes(cx: &App, editor_id: EntityId, id: u64, minimal: bool) -> (f32, f32) {
+    let zoom = super::zoom::zoom_factor(minimal).max(0.01);
+    cx.try_global::<ImageUi>().map_or((0., 0.), |ui| (base_of(ui, editor_id, id), ui.measured.get(&(editor_id, id)).copied().map(|m| m / zoom).unwrap_or(0.)))
 }
 fn size_percent(draft: Option<f32>, width: Option<u32>, base: f32) -> u32 {
     let base = if base > 0. { base } else { DEFAULT_MAX };
