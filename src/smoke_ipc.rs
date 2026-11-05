@@ -10,7 +10,6 @@ static QUEUED: AtomicUsize = AtomicUsize::new(0);
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 
 pub(super) fn endpoint() -> io::Result<PathBuf> {
-    use std::hash::{Hash, Hasher};
     let home = std::env::var_os("HOME").ok_or_else(|| io::Error::other("HOME is unavailable"))?;
     let uid = fs::metadata(home)?.uid();
     let dir = PathBuf::from(format!("/tmp/block-smoke-worker-{uid}"));
@@ -21,13 +20,8 @@ pub(super) fn endpoint() -> io::Result<PathBuf> {
     if !meta.is_dir() || meta.uid() != uid || meta.permissions().mode() & 0o077 != 0 {
         return Err(io::Error::other("smoke IPC directory must be owned by the user with mode 0700"));
     }
-    let mut hash = std::collections::hash_map::DefaultHasher::new();
-    let source = if super::is_worker() {
-        std::env::var_os("BLOCK_SMOKE_SOURCE_EXE").map(PathBuf::from)
-            .map(Ok).unwrap_or_else(std::env::current_exe)?
-    } else { std::env::current_exe()? };
-    fs::canonicalize(source)?.hash(&mut hash);
-    Ok(dir.join(format!("{:016x}.sock", hash.finish())))
+    // All launch paths and build profiles share one worker and admission queue.
+    Ok(dir.join("resident.sock"))
 }
 
 pub(super) fn fingerprint() -> io::Result<String> {
@@ -35,9 +29,16 @@ pub(super) fn fingerprint() -> io::Result<String> {
 }
 
 pub(super) fn fingerprint_at(path: &std::path::Path) -> io::Result<String> {
-    let m = fs::metadata(path)?;
-    let t = m.modified()?.duration_since(std::time::UNIX_EPOCH).map_err(io::Error::other)?;
-    Ok(format!("{}:{}:{}", m.len(), t.as_secs(), t.subsec_nanos()))
+    use std::hash::Hasher;
+    let mut file = File::open(path)?;
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    let mut buffer = [0u8; 65536];
+    loop {
+        let size = file.read(&mut buffer)?;
+        if size == 0 { break; }
+        hash.write(&buffer[..size]);
+    }
+    Ok(format!("{:016x}", hash.finish()))
 }
 
 pub(super) fn line(stream: &mut UnixStream) -> io::Result<String> {
@@ -67,6 +68,7 @@ pub(super) fn start() -> io::Result<bool> {
     QUEUE.set(Mutex::new(Some(rx))).map_err(|_| io::Error::other("worker already started"))?;
     std::thread::spawn(move || {
         let _lock = lock;
+        let mut stopping = false;
         for connection in listener.incoming() {
             let Ok(mut stream) = connection else { continue };
             let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
@@ -76,7 +78,11 @@ pub(super) fn start() -> io::Result<bool> {
             match parts.as_slice() {
                 ["STATUS"] => { let _ = writeln!(stream, "OK pid={} active={} queued={} executable={version}",
                     std::process::id(), ACTIVE.load(Ordering::SeqCst), QUEUED.load(Ordering::SeqCst)); }
-                ["STOP"] => { let _ = tx.send(Request::Stop); let _ = writeln!(stream, "OK stopping after current job"); }
+                ["STOP"] => {
+                    if !stopping { let _ = tx.send(Request::Stop); stopping = true; }
+                    let _ = writeln!(stream, "OK stopping after queued jobs");
+                }
+                ["RUN", ..] if stopping => { let _ = writeln!(stream, "ERR worker is stopping"); }
                 ["RUN", client_version] if *client_version == version => {
                     QUEUED.fetch_add(1, Ordering::SeqCst);
                     if tx.send(Request::Run(Job { stream })).is_err() {

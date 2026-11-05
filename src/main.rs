@@ -108,6 +108,7 @@ fn main() {
     });
     let background_launch = smoke::is_worker() || startup::background_launch();
     app.run(move |cx: &mut App| {
+        if smoke::is_worker() { cx.set_activation_policy(gpui::ActivationPolicy::Accessory); }
         let smoke_sandbox = smoke_sandbox.clone();
         #[cfg(not(target_family = "wasm"))]
         fonts::load_custom_fonts(cx);

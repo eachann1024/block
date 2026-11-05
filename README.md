@@ -41,9 +41,9 @@ cargo run
 
 - `cargo run -- --smoke-status`：查看 worker 状态及队列。
 - `cargo run -- --smoke-stop`：显式请求停止 worker。
-- `cargo run -- --smoke-once`：使用旧版单次运行方式。
+- `cargo run -- --smoke-once`：兼容旧命令，同样进入常驻队列，不单独开窗口。
 
-worker 使用独立可执行副本，正常重新安装应用不会终止它；二进制更新后旧 worker 会拒绝新任务，需要先执行 `--smoke-stop` 并等待旧 worker 退出，再重新运行 `--smoke`。
+开发版、安装版及临时副本共用一个入口，按请求登记顺序执行；`--smoke-status` 的 `pending` 包含当前及等待中的客户端。相同二进制内容复用同一个 worker；版本变化时自动等待旧任务完成再替换。worker 使用独立可执行副本，正常重新安装应用不会终止它，且不占用 macOS Dock。旧版留下的多个 worker 会在下次自检时等待任务完成后自动退出。
 
 ### 构建并安装 macOS Release 应用
 
