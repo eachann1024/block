@@ -2,12 +2,15 @@
 //! typography, font-smoothing and shortcut settings backed by `state.json`.
 
 use std::process::Command;
-use std::sync::{Mutex, RwLock};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use gpui::{Hsla, Pixels, px};
 pub use crate::files::state::{FontChoice, LanguageMode, ThemeMode};
 use crate::icons::IconColors;
 pub use crate::ui::tooltip::{build_tooltip, tooltip};
+#[path = "theme_fonts.rs"]
+mod fonts;
+pub use fonts::*;
 
 #[cfg(target_os = "macos")]
 pub const DEFAULT_SEARCH_SHORTCUT: &str = "cmd-shift-k";
@@ -18,8 +21,6 @@ pub const DEFAULT_ASSETS_FOLDER: &str = "assets";
 
 static THEME_MODE: AtomicU8 = AtomicU8::new(2);
 static IS_DARK: AtomicBool = AtomicBool::new(false);
-static FONT_CHOICE: AtomicU8 = AtomicU8::new(0);
-static SMOOTHING: AtomicBool = AtomicBool::new(true);
 static SHORTCUTS: Mutex<Option<(String, String)>> = Mutex::new(None);
 static LANGUAGE_MODE: AtomicU8 = AtomicU8::new(0);
 static IS_EN: AtomicBool = AtomicBool::new(false);
@@ -84,6 +85,14 @@ pub fn apply_state(state: &crate::files::state::State) {
     set_language_mode(state.language);
     set_theme_mode(state.theme);
     set_font_choice(state.font_family);
+    let editor_font = match &state.editor_font {
+        Some(f) => Some(f.clone()),
+        None if state.font_family == FontChoice::Serif => Some("system-serif".to_string()),
+        None => None,
+    };
+    set_custom_editor_font(editor_font);
+    set_custom_code_font(state.code_font.clone());
+    set_line_height(state.line_height.unwrap_or_default());
     set_font_smoothing(state.font_smoothing.unwrap_or(true));
     set_assets_folder(state.assets_folder.clone().unwrap_or_else(|| DEFAULT_ASSETS_FOLDER.into()));
     set_hide_assets_folder(state.hide_assets_folder.unwrap_or(true));
@@ -105,56 +114,6 @@ pub fn set_theme_mode(mode: ThemeMode) {
 }
 
 pub fn is_dark() -> bool { IS_DARK.load(Ordering::Relaxed) }
-
-pub fn font_choice() -> FontChoice {
-    match FONT_CHOICE.load(Ordering::Relaxed) { 1 => FontChoice::Serif, _ => FontChoice::Sans }
-}
-
-pub fn set_font_choice(font: FontChoice) {
-    FONT_CHOICE.store(match font { FontChoice::Sans => 0, FontChoice::Serif => 1 }, Ordering::Relaxed);
-}
-
-/// Resolved (serif, mono) primary families, picked from the installed font names.
-static RESOLVED_FONTS: RwLock<(&'static str, &'static str)> = RwLock::new(("Songti SC", "Menlo"));
-
-pub fn init_fonts(installed: &[String]) {
-    let pick = |candidates: &[&'static str], last: &'static str| {
-        candidates.iter().copied().find(|c| installed.iter().any(|n| n == c)).unwrap_or(last)
-    };
-    let serif = pick(
-        &["LXGW WenKai", "LXGW WenKai Screen", "Kaiti SC", "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", "SimSun"],
-        if cfg!(target_os = "windows") { "SimSun" } else if cfg!(target_os = "linux") { "Noto Serif CJK SC" } else { "Songti SC" },
-    );
-    let mono = pick(
-        &["JetBrains Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono"],
-        if cfg!(target_os = "windows") { "Consolas" } else if cfg!(target_os = "linux") { "DejaVu Sans Mono" } else { "Menlo" },
-    );
-    if let Ok(mut guard) = RESOLVED_FONTS.write() { *guard = (serif, mono); }
-}
-
-fn resolved() -> (&'static str, &'static str) {
-    RESOLVED_FONTS.read().map(|g| *g).unwrap_or(("Songti SC", "Menlo"))
-}
-
-pub fn mono_font_family() -> &'static str { resolved().1 }
-
-pub fn editor_font() -> (&'static str, &'static [&'static str]) {
-    let (serif, _) = resolved();
-    match font_choice() {
-        FontChoice::Sans => (".SystemUIFont", &[]),
-        FontChoice::Serif if serif == "Songti SC" => (serif, &[]),
-        FontChoice::Serif => (serif, &["Songti SC", "Noto Serif CJK SC", "SimSun"]),
-    }
-}
-
-pub fn set_font_smoothing(on: bool) {
-    SMOOTHING.store(on, Ordering::Relaxed);
-    if !cfg!(target_os = "macos") { return; }
-    let val = if on { "2" } else { "0" };
-    std::thread::spawn(move || {
-        let _ = Command::new("defaults").args(["write", "dev.eachann.block", "AppleFontSmoothing", "-int", val]).status();
-    });
-}
 
 pub fn search_shortcut() -> String {
     SHORTCUTS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|(s, _)| s.clone()).unwrap_or_else(|| DEFAULT_SEARCH_SHORTCUT.into())
@@ -227,7 +186,7 @@ const OCEAN_LIGHT: Theme = Theme {
     primary_hover: hex(0x3b4250), btn_border: hex(0xdcdcdc), btn_hover: hex(0xf7f7f7),
     menu_border: hex(0xe4e4e4), sidebar_border: hex(0xe6e6e6), preview_bg: hex(0xe9e9e9),
     selection: hex(0xcde2fb), selection_text: hex(0x184f95), menu_item_height: px(32.),
-    sidebar_width: px(260.), content_width: px(672.), editor_font: px(16.), ui_font: px(14.),
+    sidebar_width: px(240.), content_width: px(672.), editor_font: px(16.), ui_font: px(14.),
 };
 
 const OCEAN_DARK: Theme = Theme {
@@ -239,7 +198,7 @@ const OCEAN_DARK: Theme = Theme {
     primary_hover: hex(0x52607a), btn_border: hex(0x444444), btn_hover: hex(0x2c2c2c),
     menu_border: hex(0x383838), sidebar_border: hex(0x333333), preview_bg: hex(0x262626),
     selection: hex(0x2d426b), selection_text: hex(0x9dbcf5), menu_item_height: px(32.),
-    sidebar_width: px(260.), content_width: px(672.), editor_font: px(16.), ui_font: px(14.),
+    sidebar_width: px(240.), content_width: px(672.), editor_font: px(16.), ui_font: px(14.),
 };
 
 #[derive(Clone, Copy)]

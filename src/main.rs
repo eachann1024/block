@@ -100,6 +100,8 @@ fn main() {
     });
     app.run(move |cx: &mut App| {
         let smoke_sandbox = smoke_sandbox.clone();
+        #[cfg(not(target_family = "wasm"))]
+        fonts::load_custom_fonts(cx);
         theme::init_fonts(&cx.text_system().all_font_names());
         gpui_component::init(cx);
         theme::sync_gpui_theme(cx);

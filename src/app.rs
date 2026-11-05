@@ -32,11 +32,12 @@ mod settings_view;
 mod settings_sidebar;
 #[path = "app_settings_tabs.rs"]
 mod settings_tabs;
+#[path = "app_settings_fonts.rs"]
+mod settings_fonts;
 
-use file_ops::{FileOp, Renaming, TreeMenu};
+use file_ops::{FileOp, Renaming, TreeMenu}; use search::Search; use settings::SettingsModal;
 pub use search::{Dismiss, NewFolder, NewNote, OpenSearch, OpenSettings, SearchDown, SearchUp};
 pub use tabs::{CloseTab, NewTab, NextTab, PrevTab, ToggleSidebar}; pub use nav::{NavigateBack, NavigateForward};
-use search::Search; use settings::SettingsModal;
 
 struct PreparedFolder { path: PathBuf, index: TreeIndex, notice: String, tabs: Vec<PathBuf>, active_tab: Option<PathBuf> }
 
@@ -294,7 +295,5 @@ impl Workspace {
 
 /// Width persistence is fire-and-forget; a failure only loses the preference.
 fn update_state_width(width: Option<f32>, cx: &mut Context<Workspace>) {
-    cx.background_executor().spawn(async move {
-        let _ = crate::files::update_state(|state| state.sidebar_width = width);
-    }).detach();
+    cx.background_executor().spawn(async move { let _ = crate::files::update_state(|state| state.sidebar_width = width); }).detach();
 }

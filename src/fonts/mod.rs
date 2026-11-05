@@ -4,10 +4,14 @@
 
 pub mod woff;
 #[cfg(not(target_family = "wasm"))]
+pub mod custom;
+#[cfg(not(target_family = "wasm"))]
 mod cache;
 #[cfg(target_family = "wasm")]
 mod web;
 
+#[cfg(not(target_family = "wasm"))]
+pub use custom::{custom_fonts_dir, import_custom_font, load_custom_fonts, load_custom_fonts_data};
 #[cfg(not(target_family = "wasm"))]
 pub use cache::{load_disk_export_fonts, spawn};
 #[cfg(target_family = "wasm")]
