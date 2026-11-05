@@ -124,6 +124,7 @@ pub(super) fn preview_block(
         show_controls,
         false,
         true,
+        minimal,
         cx,
     );
 
