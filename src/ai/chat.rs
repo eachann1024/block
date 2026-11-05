@@ -8,6 +8,12 @@ use gpui::{App, AppContext, Context, Entity, Global, ScrollHandle, Subscription,
 use gpui_component::input::{InputEvent, InputState};
 use super::{agent, provider::{self, Event}};
 use crate::editor::view::Editor;
+#[path = "chat_plan.rs"] mod chat_plan;
+#[path = "chat_backend.rs"] mod chat_backend;
+#[path = "chat_drafts.rs"] mod chat_drafts;
+#[path = "chat_roots.rs"] pub(super) mod chat_roots;
+#[path = "chat_skills.rs"] pub(super) mod chat_skills;
+#[path = "chat_models.rs"] pub(super) mod chat_models;
 
 pub(super) fn first_placeholder() -> &'static str { crate::theme::tr("向 AI 提问，/ 调用指令或技能，@ 引用笔记或本地文件…", "Ask AI, / for commands or Skills, @ to reference notes…") }
 pub(super) fn follow_placeholder() -> &'static str { crate::theme::tr("继续追问…", "Ask a follow-up…") }
@@ -26,7 +32,13 @@ pub(super) struct Msg {
 #[derive(Clone)]
 pub(super) enum Pick { Page(String), Skill(String), NewConv }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub(super) struct Conv { pub id: u64, pub title: String, pub messages: Vec<Msg> }
+pub(super) struct SentDraft { pub text: String, pub refs: Vec<String>, pub skills: Vec<String>, pub conversation: u64, pub message_index: usize }
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct Conv {
+    pub id: u64, pub title: String, pub messages: Vec<Msg>,
+    #[serde(default)] pub backend: super::backend::BackendKind,
+    #[serde(default)] pub native_session_id: Option<String>,
+}
 
 pub(crate) struct AiChat {
     pub(super) convs: Vec<Conv>,
@@ -36,6 +48,17 @@ pub(crate) struct AiChat {
     pub(super) skills: Vec<String>,
     pub(super) partial: String,
     pub(super) streaming: Option<(u64, Arc<AtomicBool>)>,
+    pub(super) backend_config: super::backend::BackendConfig,
+    pub(super) backend_runtime: super::backend::BackendRuntime,
+    pub(super) active_external: Option<(String, String)>,
+    pub(super) external_tools: Option<super::backend::ToolBridge>,
+    pub(super) sent_draft: Option<SentDraft>,
+    pub(super) deferred_drafts: Vec<SentDraft>,
+    pub(super) retry_draft: Option<SentDraft>,
+    pub(super) selection_scope: bool,
+    pub(super) pending_approval: Option<(String, String, String)>,
+    pub(super) backend_statuses: Vec<(super::backend::BackendKind, super::backend::BackendStatus)>,
+    pub(super) model_cache: Vec<(super::backend::BackendKind, chat_models::ModelStatus, Vec<super::backend::ModelOption>)>,
     pub(super) serial: u64,
     pub(super) error: Option<String>,
     pub(super) error_settings: bool,
@@ -92,14 +115,18 @@ impl Editor {
 
 impl AiChat {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder(first_placeholder()));
+        let active = chat_drafts::load_active();
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(first_placeholder()).default_value(active.text.clone()));
         let sub = cx.subscribe_in(&input, window, |this, _, e: &InputEvent, window, cx| match e {
             InputEvent::PressEnter { secondary: false, .. } => this.send(window, cx),
-            InputEvent::Change => { this.pick_index = 0; this.picker_dismissed = false; cx.notify(); },
+            InputEvent::Change => { this.pick_index = 0; this.picker_dismissed = false; this.persist_active_draft(cx); cx.notify(); },
             _ => {}
         });
         let convs: Vec<Conv> = store_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-        AiChat { convs, current: None, input, refs: Vec::new(), skills: Vec::new(), partial: String::new(), streaming: None, serial: 0, error: None,
+        let current = active.conversation.filter(|id| convs.iter().any(|conversation| conversation.id == *id));
+        AiChat { convs, current, input, refs: active.refs, skills: active.skills, partial: String::new(), streaming: None,
+            backend_config: super::backend::BackendConfig::load(), backend_runtime: Default::default(), active_external: None, external_tools: None,
+            sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: active.retry.filter(|draft| Some(draft.conversation) == current), selection_scope: false, pending_approval: None, backend_statuses: Vec::new(), model_cache: Vec::new(), serial: 0, error: None,
             error_settings: false, pick_index: 0, picker_dismissed: false, history: false, open: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), _sub: sub }
     }
     pub(super) fn persist(&self) {
@@ -110,6 +137,13 @@ impl AiChat {
     }
     pub(super) fn conv(&self) -> Option<&Conv> { self.current.and_then(|id| self.convs.iter().find(|c| c.id == id)) }
     pub(super) fn stop(&mut self) {
+        self.sent_draft = None;
+        if let Some(tools) = self.external_tools.take() { tools.cancel(); }
+        if let Some((conversation, turn)) = self.active_external.take() {
+            if let Err(error) = self.backend_runtime.cancel(&conversation, &turn) { self.error = Some(error.message); }
+            let _ = self.backend_runtime.finish(&conversation, &turn);
+        }
+        self.pending_approval = None;
         if let Some((_, cancel)) = self.streaming.take() { cancel.store(true, Ordering::Relaxed); }
         self.serial += 1;
         let partial = std::mem::take(&mut self.partial);
@@ -120,15 +154,18 @@ impl AiChat {
         self.current = None; self.error = None; self.error_settings = false; self.history = false; self.refs.clear(); self.skills.clear();
         self.pick_index = 0; self.picker_dismissed = false;
         self.input.update(cx, |i, cx| { i.set_value("", window, cx); i.set_placeholder(first_placeholder(), window, cx); i.focus(window, cx); });
+        self.retry_draft = None;
+        self.persist_active_draft(cx);
         cx.notify();
     }
     fn push(&mut self, role: &str, content: String) { self.push_msg(Msg { role: role.into(), content, ..Default::default() }); }
     pub(super) fn push_msg(&mut self, msg: Msg) {
         let content = msg.content.clone();
         let id = self.current.unwrap_or_else(|| {
-            let id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+            let mut id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+            while self.convs.iter().any(|conversation| conversation.id == id) { id = id.wrapping_add(1); }
             let title: String = content.lines().find(|l| !l.trim().is_empty() && !l.starts_with('>')).unwrap_or(crate::theme::tr("新会话", "New Chat")).chars().take(24).collect();
-            self.convs.insert(0, Conv { id, title, messages: Vec::new() });
+            self.convs.insert(0, Conv { id, title, messages: Vec::new(), backend: self.backend_config.selected, native_session_id: None });
             self.current = Some(id);
             id
         });
@@ -145,12 +182,14 @@ impl AiChat {
         agent::Ctx { root, current, current_md }
     }
 
-    pub(super) fn run_turn(&mut self, step: usize, cx: &mut Context<Self>) {
+    pub(super) fn run_turn(&mut self, step: usize, window: &mut Window, cx: &mut Context<Self>) {
         let ctx = self.agent_ctx(cx);
         let notebook = ctx.root.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        let system = format!("{}\n\n# 当前上下文\n\n- 当前笔记本：{}\n- 当前打开页面：{}", agent::AGENTS,
+        let live = self.note_context(cx);
+        let system = format!("{}\n\n# 当前上下文\n\n- 当前笔记本：{}\n- 当前打开页面：{}\n- 当前内容范围：{}\n\n{}\n\n# 当前选区\n\n{}", agent::AGENTS,
             if notebook.is_empty() { "（无）" } else { &notebook },
-            ctx.current.as_ref().map(|p| format!("[{p}] {p}（pageId: {p}）")).unwrap_or("（无当前打开页面）".into()));
+            ctx.current.as_ref().map(|p| format!("[{p}] {p}（pageId: {p}）")).unwrap_or("（无当前打开页面）".into()),
+            if self.selection_scope { "选区" } else { "当前笔记" }, live.markdown.unwrap_or_default(), live.selection.unwrap_or_default());
         let mut messages = vec![serde_json::json!({ "role": "system", "content": system })];
         if let Some(c) = self.conv() {
             for m in &c.messages {
@@ -167,26 +206,28 @@ impl AiChat {
         self.streaming = Some((serial, cancel.clone()));
         self.partial.clear();
         let rx = provider::stream_agent(messages, Some(agent::tools()), cancel);
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let mut calls = Vec::new();
             loop {
                 cx.background_executor().timer(Duration::from_millis(40)).await;
                 let mut finished = false;
-                let alive = this.update(cx, |this, cx| {
+                let alive = this.update_in(cx, |this, window, cx| {
                     if this.serial != serial { finished = true; return; }
+                    let mut failed = false;
                     loop {
                         match rx.try_recv() {
                             Ok(Event::Thinking(_)) => {}
                             Ok(Event::Delta(t)) => this.partial.push_str(&t),
                             Ok(Event::ToolCalls(c)) => calls = c,
                             Ok(Event::Done) => { finished = true; break; }
-                            Ok(Event::Failed { message, settings }) => { this.error = Some(provider::format_error(&message)); this.error_settings = settings; finished = true; break; }
+                            Ok(Event::Failed { message, settings }) => { this.error = Some(provider::format_error(&message)); this.error_settings = settings; finished = true; failed = true; break; }
                             Err(mpsc::TryRecvError::Empty) => break,
-                            Err(mpsc::TryRecvError::Disconnected) => { finished = true; break; }
+                            Err(mpsc::TryRecvError::Disconnected) => { this.error = Some("AI backend disconnected".into()); finished = true; failed = true; break; }
                         }
                     }
                     if finished {
                         this.streaming = None;
+                        if failed { calls.clear(); }
                         let text = std::mem::take(&mut this.partial);
                         if calls.is_empty() {
                             if !text.trim().is_empty() { this.push("assistant", text); }
@@ -195,8 +236,12 @@ impl AiChat {
                                 "id": id, "type": "function", "function": { "name": name, "arguments": args } })).collect();
                             this.push_msg(Msg { role: "assistant".into(), content: text, tool_calls: Some(tc.into()), ..Default::default() });
                             for (id, name, args) in std::mem::take(&mut calls) {
-                                let ctx = this.agent_ctx(cx);
-                                let (mut result, plan) = agent::exec(&name, &args, &ctx);
+                                let root = serde_json::from_str::<serde_json::Value>(&args).ok().and_then(|value| value.get("notebookRoot").and_then(|root| root.as_str()).map(str::to_owned));
+                                let ctx = root.as_ref().map(|root| this.context_for_root(std::path::Path::new(root), cx)).unwrap_or_else(|| Ok(this.agent_ctx(cx)));
+                                let (mut result, plan) = match ctx {
+                                    Ok(ctx) => agent::exec(&name, &args, &ctx),
+                                    Err(error) => (serde_json::json!({"error":error}), None),
+                                };
                                 let auto = plan.as_ref().is_some_and(|p| p.ops.iter().all(|o| matches!(o.kind, agent::OpKind::Create { .. })));
                                 this.push_msg(Msg { role: "tool".into(), content: String::new(), tool_call_id: Some(id), plan, ..Default::default() });
                                 if auto {
@@ -204,15 +249,17 @@ impl AiChat {
                                     this.apply_plan(at, cx);
                                     result = if this.plan_at(at).map(|p| p.state.clone()) == Some(agent::PlanState::Applied) {
                                         serde_json::json!({ "status": "applied", "message": "已新建页面。" })
-                                    } else { serde_json::json!({ "error": "新建失败：目标页面已存在。" }) };
+                                    } else { serde_json::json!({ "error": this.error.clone().unwrap_or_else(|| "新建失败：目标页面已变化或不可写。".into()) }) };
                                 }
                                 if let Some(m) = this.current.and_then(|cid| this.convs.iter_mut().find(|c| c.id == cid)).and_then(|c| c.messages.last_mut()) {
                                     m.content = result.to_string();
                                 }
                             }
                             this.persist();
-                            if step + 1 < MAX_STEPS { this.run_turn(step + 1, cx); }
+                            if step + 1 < MAX_STEPS { this.run_turn(step + 1, window, cx); }
                         }
+                        if failed { this.restore_failed_draft(window, cx); }
+                        if !failed && calls.is_empty() && this.streaming.is_none() { this.sent_draft = None; }
                     }
                     this.scroll.scroll_to_bottom();
                     cx.notify();
@@ -224,58 +271,4 @@ impl AiChat {
         cx.notify();
     }
 
-    fn plan_at(&self, at: usize) -> Option<&agent::Plan> { self.conv().and_then(|c| c.messages.get(at)).and_then(|m| m.plan.as_ref()) }
-    fn set_plan(&mut self, at: usize, plan: agent::Plan) {
-        if let Some(m) = self.current.and_then(|cid| self.convs.iter_mut().find(|c| c.id == cid)).and_then(|c| c.messages.get_mut(at)) { m.plan = Some(plan); }
-        self.persist();
-    }
-    fn write_page(&self, ctx: &agent::Ctx, page: &str, text: &str, cx: &mut Context<Self>) -> String {
-        if ctx.current.as_deref() == Some(page) {
-            if let Some(e) = self.editor.as_ref().and_then(|e| e.upgrade()) { return e.update(cx, |e, cx| e.ai_write_markdown(text, cx)); }
-        }
-        let path = ctx.path(page);
-        if let Some(d) = path.parent() { let _ = std::fs::create_dir_all(d); }
-        let fresh = !path.exists();
-        let _ = std::fs::write(&path, text);
-        if fresh { crate::search::window::notify_saved_note(path, cx); }
-        text.to_owned()
-    }
-    pub(super) fn apply_plan(&mut self, at: usize, cx: &mut Context<Self>) {
-        let Some(mut plan) = self.plan_at(at).cloned() else { return };
-        let ctx = self.agent_ctx(cx);
-        let mut work: Vec<(String, Option<String>, String)> = Vec::new();
-        for op in &plan.ops {
-            let cur = match work.iter().find(|w| w.0 == op.page) { Some(w) => Some(w.2.clone()), None => ctx.read(&op.page) };
-            let Some(next) = agent::apply_op(op, cur.as_deref()) else {
-                plan.state = agent::PlanState::Stale; self.set_plan(at, plan); cx.notify(); return;
-            };
-            match work.iter_mut().find(|w| w.0 == op.page) { Some(w) => w.2 = next, None => work.push((op.page.clone(), cur, next)) }
-        }
-        plan.receipts = work.into_iter().map(|(page, before, after)| {
-            let after = self.write_page(&ctx, &page, &after, cx);
-            agent::Receipt { created: before.is_none(), before: before.unwrap_or_default(), after, page }
-        }).collect();
-        plan.state = agent::PlanState::Applied;
-        self.set_plan(at, plan);
-        cx.notify();
-    }
-    pub(super) fn undo_plan(&mut self, at: usize, cx: &mut Context<Self>) {
-        let Some(mut plan) = self.plan_at(at).cloned() else { return };
-        let ctx = self.agent_ctx(cx);
-        if plan.receipts.iter().any(|r| ctx.read(&r.page).as_deref() != Some(r.after.as_str())) {
-            plan.state = agent::PlanState::UndoConflict;
-        } else {
-            for r in &plan.receipts {
-                if r.created && ctx.current.as_deref() != Some(r.page.as_str()) { let _ = std::fs::remove_file(ctx.path(&r.page)); }
-                else { self.write_page(&ctx, &r.page, &r.before, cx); }
-            }
-            plan.state = agent::PlanState::Undone;
-        }
-        self.set_plan(at, plan);
-        cx.notify();
-    }
-    pub(super) fn set_plan_state(&mut self, at: usize, state: agent::PlanState, cx: &mut Context<Self>) {
-        if let Some(mut p) = self.plan_at(at).cloned() { p.state = state; self.set_plan(at, p); }
-        cx.notify();
-    }
 }
