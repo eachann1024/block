@@ -25,7 +25,6 @@ pub const DEFAULT_ASSETS_FOLDER: &str = "assets";
 static THEME_MODE: AtomicU8 = AtomicU8::new(2);
 static IS_DARK: AtomicBool = AtomicBool::new(false);
 static SHORTCUTS: Mutex<Option<(String, String)>> = Mutex::new(None);
-static LANGUAGE_MODE: AtomicU8 = AtomicU8::new(0);
 static IS_EN: AtomicBool = AtomicBool::new(false);
 static ASSETS_FOLDER: Mutex<Option<String>> = Mutex::new(None);
 static HIDE_ASSETS_FOLDER: AtomicBool = AtomicBool::new(true);
@@ -65,13 +64,16 @@ fn system_is_en() -> bool {
     std::env::var("LC_ALL").or_else(|_| std::env::var("LANG")).map(|v| v.to_ascii_lowercase().starts_with("en")).unwrap_or(false)
 }
 
+pub fn system_language() -> LanguageMode {
+    if system_is_en() { LanguageMode::En } else { LanguageMode::Zh }
+}
+
 pub fn language_mode() -> LanguageMode {
-    match LANGUAGE_MODE.load(Ordering::Relaxed) { 1 => LanguageMode::Zh, 2 => LanguageMode::En, _ => LanguageMode::System }
+    if is_en() { LanguageMode::En } else { LanguageMode::Zh }
 }
 
 pub fn set_language_mode(mode: LanguageMode) {
-    let (code, en) = match mode { LanguageMode::System => (0, system_is_en()), LanguageMode::Zh => (1, false), LanguageMode::En => (2, true) };
-    LANGUAGE_MODE.store(code, Ordering::Relaxed);
+    let en = mode == LanguageMode::En;
     IS_EN.store(en, Ordering::Relaxed);
     gpui_component::set_locale(if en { "en" } else { "zh-CN" });
 }
