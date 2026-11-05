@@ -4,10 +4,9 @@ use tiny_skia::Pixmap;
 
 use super::decor_shapes::fill_rect;
 use super::layout::{Layout, SCALE, STRIKE};
-use super::palette::{ExportTheme, Palette};
+use super::palette::Palette;
 use super::rich::{BACKGROUND_SHIFT, UNDERLINE};
 use super::{Cancellation, ExportError};
-use crate::editor::model::Kind;
 
 pub(super) fn rasterize(
     layout: &Layout,
@@ -81,19 +80,7 @@ pub(super) fn rasterize(
             }
         }
 
-        let fg = super::style::row_text_color(layout.options.theme, row.kind, row.code, &pal);
-        if layout.options.theme == ExportTheme::Neon && row.kind == Kind::H1 {
-            text(
-                &mut image,
-                &row.buffer,
-                row.x + 3.0,
-                row.text_y + 3.0,
-                (&pal, pal.accent2),
-                fonts,
-                cache,
-                cancel,
-            )?;
-        }
+        let fg = super::style::row_text_color(row.kind, row.code, &pal);
         text(
             &mut image,
             &row.buffer,
@@ -130,8 +117,6 @@ pub(super) fn rasterize(
             }
         }
     }
-
-    super::decor_marks::paint_top_tapes(&mut image, layout);
     Ok(image)
 }
 
