@@ -111,7 +111,9 @@ pub mod quick {
         (!spec.trim().is_empty()).then_some(())
     }
     pub fn rebind_hotkeys(_cx: &mut gpui::App) {}
-    pub fn refresh_style(_cx: &mut gpui::App) {}
+    pub fn refresh_style(cx: &mut gpui::App) {
+        super::search::window::refresh_style(cx);
+    }
 }
 
 pub mod log {
@@ -193,6 +195,7 @@ pub fn start() {
                     let _ = cx.open_window(WindowOptions::default(), |window, cx| {
                         mount_canvas_into_stage();
                         let workspace = cx.new(|cx| app::Workspace::new(window, cx));
+                        search::window::set_main_window(window.window_handle().downcast::<gpui_component::Root>(), workspace.clone(), cx);
                         fonts::spawn(workspace.clone(), cx);
                         let tab_target = workspace.clone();
                         let settings_target = workspace.clone();

@@ -98,6 +98,7 @@ fn main() {
         theme::apply_state(state);
     } else {
         theme::set_language_mode(files::state::LanguageMode::System);
+        theme::set_theme_mode(files::state::ThemeMode::System);
     }
     let saved_main_bounds = initial_state.as_ref().and_then(|s| s.main_window_bounds);
     let saved_quick_bounds = initial_state.as_ref().and_then(|s| s.quick_window_bounds);
