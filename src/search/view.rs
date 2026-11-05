@@ -20,7 +20,6 @@ pub fn highlighted(text: String, marks: &[Range<usize>]) -> StyledText {
 pub fn render_header(
     state: &SearchState,
     on_toggle_scope: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-    on_close: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Div {
     let theme = Theme::ocean();
     div().h(px(52.)).flex_none().px(px(16.)).flex().items_center().gap(px(10.))
@@ -33,9 +32,6 @@ pub fn render_header(
                 cx.stop_propagation();
                 on_toggle_scope(event, window, cx);
             }))
-        .child(div().id("search-esc").cursor(CursorStyle::PointingHand)
-            .on_mouse_down(MouseButton::Left, on_close)
-            .child(kbd("esc")))
 }
 
 pub fn render_scope_menu<V: 'static>(
