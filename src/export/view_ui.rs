@@ -55,7 +55,7 @@ impl Render for ExportView {
             .bg(theme.shell)
             .text_color(theme.text)
             .text_size(px(14.))
-            .child(self.header(cx))
+            .child(self.header(room, cx))
             .child(
                 div()
                     .flex_1()
@@ -68,7 +68,7 @@ impl Render for ExportView {
 }
 
 impl ExportView {
-    fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn header(&self, room: f32, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::ocean();
         let back = back_button(
             "export-back",
@@ -117,13 +117,15 @@ impl ExportView {
                     .text_color(theme.text_secondary)
                     .child(tr("· 导出预览", "· Export Preview")),
             );
-        let esc_badge = div().h(px(22.)).px(px(7.)).flex_none().flex().items_center()
-            .rounded(px(5.)).bg(theme.paper).border_1().border_color(theme.btn_border)
-            .text_size(px(12.)).text_color(theme.text_secondary).child("Esc");
+        let (dim_label, zoom_label, fit) = self.stage_labels(room);
+        let zoom = crate::ui::titlebar_context::export_zoom_cluster(dim_label, zoom_label,
+            cx.listener(move |this, _: &ClickEvent, _, cx| this.zoom_out(fit, cx)),
+            cx.listener(|this, _: &ClickEvent, _, cx| this.zoom_reset(cx)),
+            cx.listener(move |this, _: &ClickEvent, _, cx| this.zoom_in(fit, cx)));
         let right = div().flex_none().flex().items_center().justify_end().gap(px(8.))
             .min_w(px(if cfg!(target_os = "macos") { 200. } else { 140. }))
             .pr(px(if cfg!(target_os = "macos") { 16. } else { 0. }))
-            .child(esc_badge)
+            .child(zoom)
             .child(crate::ui::window_controls::window_controls("export-win", true, true));
         div().h(px(40.)).flex_none().flex().items_center().bg(theme.shell)
             .border_b_1().border_color(theme.sidebar_border)
@@ -165,7 +167,7 @@ impl ExportView {
             .flex_col()
             .px(px(12.))
             .py(px(2.))
-            .rounded(px(10.))
+            .rounded(crate::ui::radius::SURFACE)
             .bg(theme.shell)
             .border_1()
             .border_color(theme.hairline)
@@ -212,7 +214,7 @@ impl ExportView {
                     div()
                         .px(px(12.))
                         .py(px(8.))
-                        .rounded(px(8.))
+                        .rounded(crate::ui::radius::CONTROL)
                         .bg(theme.selected)
                         .border_1()
                         .border_color(theme.accent)

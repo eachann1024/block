@@ -1,24 +1,19 @@
-//! Flat preview chrome: filename, zoom cluster, and a borderless stage.
+//! Borderless preview stage. Zoom controls live in the window title bar.
 
 use gpui::{
     ClickEvent, Context, CursorStyle, FontWeight, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
     MouseUpEvent, ObjectFit, ParentElement, PinchEvent, RenderImage, ScrollEvent, SharedString, Styled,
     Window, canvas, div, img, prelude::*, px,
 };
-use crate::{
-    icons::Icon,
-    theme::{Theme, tr},
-    ui::icon_button::dock_icon_button,
-};
+use crate::theme::{Theme, tr};
 
-use super::view::{self, ZoomMode};
+use super::view;
 use super::FilePreview;
 
 impl FilePreview {
     pub(super) fn paint(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.track_drag(window, cx);
         let theme = Theme::ocean();
-        let ready = self.natural().is_some();
         div()
             .id(self.eid("root"))
             .track_focus(&self.focus)
@@ -29,76 +24,7 @@ impl FilePreview {
             .bg(theme.paper)
             .text_color(theme.text)
             .occlude()
-            .child(self.header(&theme, ready, cx))
             .child(self.stage(&theme, window, cx))
-    }
-
-    fn header(&self, theme: &Theme, ready: bool, cx: &mut Context<Self>) -> impl IntoElement {
-        let name = file_label(&self.path);
-        div()
-            .h(px(40.))
-            .w_full()
-            .flex_none()
-            .px(px(16.))
-            .flex()
-            .items_center()
-            .justify_end()
-            .gap(px(12.))
-            .border_b_1()
-            .border_color(theme.hairline)
-            .bg(theme.paper)
-            .when(self.show_filename, |row| {
-                row.child(
-                    div()
-                        .min_w_0()
-                        .flex_1()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .font(crate::ui::settings_controls::mono_font())
-                        .text_size(px(14.))
-                        .line_height(px(20.))
-                        .font_weight(FontWeight(560.))
-                        .child(name),
-                )
-            })
-            .when(ready, |row| {
-                let placed = self.placed();
-                let fit = self.view.mode == ZoomMode::Fit;
-                row.child(
-                    div()
-                        .flex_none()
-                        .flex()
-                        .items_center()
-                        .gap(px(2.))
-                        .child(dock_icon_button(self.eid("out"), Icon::Minus, false, tr("缩小", "Zoom out"), cx.listener(|this, _, _, cx| this.zoom_button(1.0 / 1.2, cx))))
-                        .child(self.percent_button(theme, &view::percent_label(placed.scale), cx))
-                        .child(dock_icon_button(self.eid("in"), Icon::Plus, false, tr("放大", "Zoom in"), cx.listener(|this, _, _, cx| this.zoom_button(1.2, cx))))
-                        .child(dock_icon_button(self.eid("fit"), Icon::WindowMax, fit, tr("适应窗口", "Fit"), cx.listener(|this, _, _, cx| this.zoom_fit(cx)))),
-                )
-            })
-    }
-
-    fn percent_button(&self, theme: &Theme, label: &str, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .id(self.eid("pct"))
-            .h(px(30.))
-            .min_w(px(52.))
-            .px(px(8.))
-            .flex_none()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded(crate::ui::radius::CONTROL)
-            .cursor(CursorStyle::PointingHand)
-            .font(crate::ui::settings_controls::mono_font())
-            .text_size(px(14.))
-            .line_height(px(20.))
-            .text_color(theme.text)
-            .hover(|style| style.bg(theme.hover))
-            .tooltip(crate::ui::tooltip::tooltip(tr("重置为 100%", "Reset to 100%")))
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.zoom_actual(cx)))
-            .child(label.to_string())
     }
 
     fn stage(&mut self, theme: &Theme, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -210,8 +136,4 @@ fn fallback(theme: &Theme, path: &std::path::Path, reason: String, note: &str, i
 
 fn center_copy(theme: &Theme, text: &'static str) -> impl IntoElement {
     div().size_full().flex().items_center().justify_center().text_size(px(14.)).line_height(px(20.)).text_color(theme.text_secondary).child(text)
-}
-
-fn file_label(path: &std::path::Path) -> String {
-    path.file_name().map(|name| name.to_string_lossy().into_owned()).filter(|name| !name.is_empty()).unwrap_or_else(|| tr("图片", "Image").to_string())
 }
