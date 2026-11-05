@@ -127,17 +127,40 @@ pub(super) fn render_pixmap(
     Ok((image, timings))
 }
 
-pub fn render_with_cancel(
+/// Encode full PNG plus vertical strips (`<= 4096` px tall) so GPU texture atlases never overflow.
+pub(super) fn render_preview_with_cancel(
     blocks: &[Block],
     options: RenderOptions,
     cancel: &Cancellation,
-) -> Result<(Vec<u8>, Timings), ExportError> {
+) -> Result<(Vec<u8>, Vec<(Vec<u8>, u32, u32)>, Timings), ExportError> {
+    const TILE_H: u32 = 4096;
     let (image, mut timings) = render_pixmap(blocks, options, cancel)?;
     let start = Stopwatch::start();
     let bytes = image
         .encode_png()
         .map_err(|error| ExportError::Encoding(error.to_string()))?;
+    let (w, h) = (image.width(), image.height());
+    let mut tiles = Vec::new();
+    if h <= TILE_H {
+        tiles.push((bytes.clone(), w, h));
+    } else {
+        let row_bytes = (w as usize) * 4;
+        let data = image.data();
+        let mut y = 0;
+        while y < h {
+            cancel.check()?;
+            let th = (h - y).min(TILE_H);
+            let start_byte = (y as usize) * row_bytes;
+            let end_byte = start_byte + (th as usize) * row_bytes;
+            if let Some(sub) = tiny_skia::PixmapRef::from_bytes(&data[start_byte..end_byte], w, th)
+                && let Ok(tile_png) = sub.to_owned().encode_png()
+            {
+                tiles.push((tile_png, w, th));
+            }
+            y += th;
+        }
+    }
     timings.encoding = start.elapsed();
     cancel.check()?;
-    Ok((bytes, timings))
+    Ok((bytes, tiles, timings))
 }
