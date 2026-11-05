@@ -177,16 +177,19 @@ impl Workspace {
                 crate::dropdown::dismiss_all(cx);
             }
         }).detach();
-        cx.observe_window_appearance(window, |_, window, cx| {
-            if crate::theme::sync_system_appearance(window.appearance(), cx) { crate::quick::refresh_style(cx); }
+        cx.observe_window_appearance(window, |this, window, cx| {
+            if crate::theme::sync_system_appearance(window.appearance(), cx) {
+                this.editor.update(cx, |e, cx| { e.reset_layouts(); cx.notify(); });
+                this.tree.update(cx, |_, cx| cx.notify());
+                crate::quick::refresh_style(cx);
+                cx.notify();
+            }
         }).detach();
         cx.observe_window_bounds(window, |this, window, cx| {
             let bounds = crate::window_bounds::capture_window_bounds(window, cx);
             this.bounds_task = Some(cx.spawn(async move |_, cx| {
                 cx.background_executor().timer(std::time::Duration::from_millis(250)).await;
-                cx.background_executor().spawn(async move {
-                    let _ = crate::files::update_state(move |s| s.main_window_bounds = Some(bounds));
-                }).await;
+                cx.background_executor().spawn(async move { let _ = crate::files::update_state(move |s| s.main_window_bounds = Some(bounds)); }).await;
             }));
         }).detach();
         search::bind_keys(cx);
