@@ -5,7 +5,7 @@ use std::{path::PathBuf, sync::Arc};
 use gpui::{App, Context, Entity, FocusHandle, Focusable, Global, Image, ImageFormat, Window};
 
 use super::{
-    Cancellation, ExportError, ExportFormat, ExportJob, ExportTheme, render_with_cancel,
+    Cancellation, ExportError, ExportFormat, ExportJob, ExportTheme, render_preview_with_cancel,
 };
 use crate::editor::model::Block;
 
@@ -41,7 +41,7 @@ pub struct ExportView {
     pub(super) watermark: bool,
     pub(super) zoom: Option<f32>,
     pub(super) png: Option<Arc<Image>>,
-    pub(super) preview_img: Option<Arc<gpui::RenderImage>>,
+    pub(super) preview_tiles: Vec<(gpui::ImageSource, u32, u32)>,
     pub(super) error: Option<String>,
     pub(super) notice: Option<String>,
     pub(super) saved_path: Option<PathBuf>,
@@ -77,7 +77,7 @@ impl ExportView {
             watermark: true,
             zoom: None,
             png: None,
-            preview_img: None,
+            preview_tiles: Vec::new(),
             error: None,
             notice: None,
             saved_path: None,
@@ -176,7 +176,7 @@ impl ExportView {
             Err(message) => {
                 self.error = Some(message);
                 self.png = None;
-                self.preview_img = None;
+                self.preview_tiles.clear();
                 self.dirty = false;
                 return;
             }
@@ -197,7 +197,7 @@ impl ExportView {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    let res = render_with_cancel(&blocks, options, &job.cancellation);
+                    let res = render_preview_with_cancel(&blocks, options, &job.cancellation);
                     drop(job);
                     res
                 })
@@ -208,16 +208,27 @@ impl ExportView {
                     this.start(cx);
                 } else {
                     match result {
-                        Ok((bytes, _)) => {
-                            let img = Arc::new(Image::from_bytes(ImageFormat::Png, bytes));
-                            this.preview_img = img.to_image_data(cx.svg_renderer()).ok();
-                            this.png = Some(img);
+                        Ok((bytes, tiles, _)) => {
+                            let svg = cx.svg_renderer();
+                            this.preview_tiles = tiles
+                                .into_iter()
+                                .map(|(tile_bytes, tw, th)| {
+                                    let tile_img =
+                                        Arc::new(Image::from_bytes(ImageFormat::Png, tile_bytes));
+                                    let src: gpui::ImageSource = tile_img
+                                        .to_image_data(svg.clone())
+                                        .map(Into::into)
+                                        .unwrap_or_else(|_| tile_img.into());
+                                    (src, tw, th)
+                                })
+                                .collect();
+                            this.png = Some(Arc::new(Image::from_bytes(ImageFormat::Png, bytes)));
                             this.error = None;
                         }
                         Err(ExportError::Cancelled) => {}
                         Err(error) => {
                             this.png = None;
-                            this.preview_img = None;
+                            this.preview_tiles.clear();
                             this.error = Some(error.to_string());
                         }
                     }
