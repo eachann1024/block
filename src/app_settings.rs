@@ -159,6 +159,8 @@ impl Workspace {
         cx.background_executor().spawn(async move {
             let _ = update_state(|s| s.theme = mode);
         }).detach();
+        self.editor.update(cx, |editor, cx| { editor.reset_layouts(); cx.notify(); });
+        self.tree.update(cx, |_, cx| cx.notify());
         crate::quick::refresh_style(cx);
         cx.notify();
     }
