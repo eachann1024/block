@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>关于 Block · 方案 A · 居中名片</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#3d63b0}a:hover{color:#2f4f92}
+.lk{display:flex;align-items:center;gap:10px;height:44px;padding:0 12px;border-radius:8px;text-decoration:none;transition:background-color .14s ease}
+.lk:hover{background:var(--hover)}
+.btn{height:36px;padding:0 16px;border-radius:8px;font:inherit;font-size:14px;cursor:pointer}
+</style>
+</helmet>
+<div style="width:640px;height:560px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;background:{{t.backdrop}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;color:{{t.text}};--hover:{{t.hover}}">
+<section aria-labelledby="about-title" style="width:360px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:20px;padding:32px 24px 20px;background:{{t.menu}};border:1px solid {{t.border}};border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,0.12)">
+<img src="/_blob/6768a211187044ad08d09ce47a61554d" alt="" style="width:88px;height:88px">
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+<h1 id="about-title" style="margin:0;font-size:22px;line-height:30px;font-weight:560">Block</h1>
+<p style="margin:0;color:{{t.sub}}">{{s.version}}</p>
+<p style="margin:0;color:{{t.sub}}">{{s.author}}</p>
+</div>
+<nav aria-label="{{s.links}}" style="width:100%;display:flex;flex-direction:column;gap:2px;border-top:1px solid {{t.border}};padding-top:12px">
+<a class="lk" href="https://github.com/eachann1024" style="color:{{t.text}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"></path></svg>
+<span style="flex:1">{{s.profile}}</span>
+<span style="color:{{t.sub}}">eachann1024</span>
+</a>
+<a class="lk" href="https://github.com/eachann1024/block" style="color:{{t.text}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"></path><path d="M9 12h6M9 16h4"></path></svg>
+<span style="flex:1">{{s.repo}}</span>
+<span style="color:{{t.sub}}">block</span>
+</a>
+</nav>
+<button type="button" class="btn" style="align-self:stretch;background:{{t.paper}};color:{{t.text}};border:1px solid {{t.btn}}">{{s.close}}</button>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["zh","en"],"default":"zh"},"dark":{"editor":"boolean","default":false},"$preview":{"width":640,"height":560}}'>
+class Component extends DCLogic {
+renderVals() {
+const dark = this.props.dark ?? false;
+const en = (this.props.lang ?? 'zh') === 'en';
+const t = dark
+? { backdrop:'#111111', menu:'#222222', paper:'#2a2a2a', text:'#ececec', sub:'#b4b4b4', border:'#383838', btn:'#444444', hover:'#2c2c2c', accent:'#779de8' }
+: { backdrop:'#d9dadc', menu:'#ffffff', paper:'#ffffff', text:'#1f1e1d', sub:'#52514e', border:'#e4e4e4', btn:'#dcdcdc', hover:'#eef3fc', accent:'#547dd0' };
+const s = en
+? { version:'Version 0.1.0', author:'Made by eachann', links:'Links', profile:'GitHub profile', repo:'Source code', close:'Close' }
+: { version:'版本 0.1.0', author:'作者 eachann', links:'链接', profile:'GitHub 主页', repo:'项目源码', close:'关闭' };
+return { t, s };
+}
+}
+</script>
+</body>
+</html>
