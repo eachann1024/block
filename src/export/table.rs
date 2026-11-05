@@ -191,6 +191,7 @@ pub(super) fn append(
                 &cell.content,
                 fonts,
                 FONT,
+                LINE,
                 inner_w,
                 Some(align),
                 attrs,
