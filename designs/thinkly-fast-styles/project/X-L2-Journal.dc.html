@@ -10,13 +10,50 @@
 <helmet>
 <style>
 body{margin:0}
+a{color:#b5462f}a:hover{color:#8f3422}
+.dots{background-color:#f6f0e1;background-image:radial-gradient(circle,#d8ccb0 1.2px,transparent 1.4px);background-size:24px 24px;background-position:12px 12px}
+.tape-a{background:repeating-linear-gradient(45deg,rgba(226,132,104,.62) 0 9px,rgba(244,196,170,.62) 9px 18px)}
+.tape-b{background:repeating-linear-gradient(90deg,rgba(116,160,150,.58) 0 6px,rgba(186,214,204,.58) 6px 12px)}
 </style>
 </helmet>
-<img src="/_blob/81605b345cdd32fc33e4f14c31ab7a28" alt="手账便签导出实图" style="display:block;width:816px;height:1122px">
+<div class="dots" style="width:816px;height:1040px;box-sizing:border-box;color:#3a3226;font-family:'PingFang SC',-apple-system,system-ui,sans-serif;padding:84px 56px 44px 92px;display:flex;flex-direction:column;position:relative;overflow:hidden">
+<div aria-hidden="true" style="position:absolute;left:64px;top:0;bottom:0;width:2px;background:#e0a196"></div>
+<div aria-hidden="true" class="tape-a" style="position:absolute;left:-18px;top:30px;width:190px;height:38px;transform:rotate(-8deg)"></div>
+<div aria-hidden="true" class="tape-b" style="position:absolute;right:-22px;top:26px;width:170px;height:34px;transform:rotate(9deg)"></div>
+<div style="display:flex;align-items:center;gap:10px;font-size:13px;color:#8a7a5c;letter-spacing:1px">
+<span style="padding:3px 10px;border:1.5px solid #8a7a5c;border-radius:12px">MON</span>
+<span>2026 / 11 / 03</span>
+<span style="margin-left:auto">周会记录</span>
+</div>
+<h1 style="margin:26px 0 16px;font-size:38px;line-height:1.25;font-weight:700;font-family:'Kaiti SC','STKaiti','PingFang SC',serif;color:#2f2a20"><span style="background:linear-gradient(transparent 58%,#f5d77a 58%,#f5d77a 90%,transparent 90%)">周会 · 11 月 3 日</span></h1>
+<p style="margin:0 0 22px;font-size:17px;line-height:1.75">试点两周。周五回看时只记录偏差，不把进度再讲一遍。</p>
+<h2 style="margin:6px 0 12px;font-size:21px;line-height:1.4;font-weight:700;font-family:'Kaiti SC','STKaiti','PingFang SC',serif">本周决定</h2>
+<ul style="margin:0 0 24px;padding:0;list-style:none;font-size:17px;line-height:1.75;display:flex;flex-direction:column;gap:6px">
+<li style="display:flex;gap:12px;align-items:center"><span aria-hidden="true" style="width:16px;height:16px;border:1.5px solid #b5462f;border-radius:4px;flex:none;box-sizing:border-box"></span>统一周报模板，只留三栏</li>
+<li style="display:flex;gap:12px;align-items:center"><span aria-hidden="true" style="width:16px;height:16px;border:1.5px solid #b5462f;border-radius:4px;flex:none;box-sizing:border-box"></span>导出图片改为八种纸面</li>
+<li style="display:flex;gap:12px;align-items:center"><span aria-hidden="true" style="width:16px;height:16px;border:1.5px solid #b5462f;border-radius:4px;flex:none;box-sizing:border-box"></span>下周三前合并到主干</li>
+</ul>
+<div style="position:relative;margin:8px 0 26px;padding:22px 24px 20px;background:#fff6b8;box-shadow:0 2px 0 rgba(90,70,30,.12);width:440px">
+<div aria-hidden="true" class="tape-b" style="position:absolute;left:170px;top:-12px;width:96px;height:24px;transform:rotate(3deg)"></div>
+<div style="font-size:19px;line-height:1.6;font-family:'Kaiti SC','STKaiti','PingFang SC',serif;color:#3a3226">少讲进度，多讲偏差。</div>
+</div>
+<div style="background:rgba(255,255,255,.7);border:1.5px dashed #c9b991;border-radius:6px;padding:12px 16px;font-family:'SF Mono',Menlo,monospace;font-size:14px;line-height:1.6;color:#3a3226;width:fit-content">$ bun run build</div>
+<div style="flex:1"></div>
+<div style="display:flex;justify-content:space-between;align-items:flex-end">
+<span style="font-size:13px;color:#8a7a5c;letter-spacing:1px">Block · 随手记</span>
+<div aria-hidden="true" style="width:86px;height:86px;border:2px solid #b5462f;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#b5462f;transform:rotate(-12deg);box-sizing:border-box;outline:1px solid #b5462f;outline-offset:-8px">
+<span style="font-size:11px;letter-spacing:2px">THINKLY</span>
+<span style="font-size:18px;font-weight:700;line-height:1.2">11·03</span>
+<span style="font-size:11px;letter-spacing:2px">2026</span>
+</div>
+</div>
+</div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":816,"height":1122}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":816,"height":1040}}'>
 class Component extends DCLogic {
-renderVals() { return {}; }
+renderVals() {
+return {};
+}
 }
 </script>
 </body>
