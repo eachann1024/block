@@ -187,10 +187,12 @@ impl Workspace {
 
     /// Back/forward buttons shown only when the matching history direction exists.
     pub(super) fn nav_button_count(&self) -> usize {
+        if self.settings.is_some() || self.is_history_open() { return 0; }
         usize::from(self.nav.can_go_back()) + usize::from(self.nav.can_go_forward())
     }
 
     pub(super) fn render_nav_buttons(&self, cx: &mut Context<Self>) -> Option<gpui::Div> {
+        if self.settings.is_some() || self.is_history_open() { return None; }
         let show_back = self.nav.can_go_back();
         let show_fwd = self.nav.can_go_forward();
         if !show_back && !show_fwd { return None; }
