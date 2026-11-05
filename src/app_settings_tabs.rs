@@ -22,7 +22,6 @@ impl Workspace {
             (tr("深色", "Dark"), cur_theme == ThemeMode::Dark, ThemeMode::Dark),
         ], |mode, cx: &mut Context<Self>| Box::new(cx.listener(move |this, _, _, cx| this.select_theme(mode, cx))));
         let lang_seg = segmented("lang-seg", [
-            (tr("跟随系统", "System"), cur_lang == LanguageMode::System, LanguageMode::System),
             ("简体中文", cur_lang == LanguageMode::Zh, LanguageMode::Zh),
             ("English", cur_lang == LanguageMode::En, LanguageMode::En),
         ], |mode, cx: &mut Context<Self>| Box::new(cx.listener(move |this, _, window, cx| this.select_language(mode, window, cx))));
