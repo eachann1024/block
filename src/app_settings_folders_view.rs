@@ -1,6 +1,6 @@
 //! Unified Folder Settings tab view (Design A).
 use gpui::{
-    Context, CursorStyle, FontWeight, MouseButton, TextAlign, div, prelude::*, px,
+    Context, CursorStyle, MouseButton, TextAlign, div, prelude::*, px,
 };
 use gpui_component::input::Input;
 use crate::icons::{Icon, icon, stateful_icon};
@@ -10,7 +10,7 @@ use crate::ui::folder_controls::{
 };
 use crate::ui::icon_button::icon_button;
 use crate::ui::settings_controls::{
-    action_button, card_title, mono_font, selected_bg, settings_card,
+    action_button, card_title, mono_font, settings_card,
 };
 use super::Workspace;
 
@@ -36,16 +36,11 @@ impl Workspace {
                     .bg(theme.shell).border_1().border_color(theme.btn_border)
                     .flex().items_center().font(mono_font()).text_size(px(14.))
                     .child(Input::new(&modal.assets_input).appearance(false).bordered(false).focus_bordered(false))
-            )
-            .child(
-                div().flex_none().whitespace_nowrap().px(px(8.)).py(px(2.)).rounded(crate::ui::radius::CONTROL)
-                    .bg(selected_bg()).text_color(theme.accent).text_size(px(14.)).font_weight(FontWeight(500.))
-                    .child(tr("图片保存目录", "Image Save Folder"))
             );
 
         let assets_right = div().flex().items_center().gap(px(10.)).flex_none()
             .child(assets_seg)
-            .child(div().min_w(px(28.)).whitespace_nowrap().text_align(TextAlign::Right).text_size(px(14.)).text_color(theme.text_secondary).child(tr("系统", "System")));
+            .child(div().flex_none().min_w(px(28.)).whitespace_nowrap().text_align(TextAlign::Right).text_size(px(14.)).text_color(theme.text_secondary).child(tr("系统", "System")));
 
         let assets_row = folder_table_row("folder-row-assets", hide_assets, assets_left, assets_right);
 
