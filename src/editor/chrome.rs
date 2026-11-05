@@ -149,11 +149,8 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                 .when(marker_width == 0., |body| body.max_w(theme.content_width))
                 .when(block.kind == Kind::Quote && callout.is_none(), |body| body.pl(px(16. * zoom)).py(px(1.6 * zoom)).child(
                     div().absolute().left_0().top_0().bottom_0().w(px(3. * zoom)).bg(theme.quote_bar)))
-                .when_some(callout, |body, _| {
-                    body.rounded(px(8. * zoom)).bg(theme.hover).border_1().border_color(theme.hairline)
-                        .py(px(12. * zoom)).pr(px(16. * zoom)).pl(px(44. * zoom))
-                        .child(div().absolute().left(px(16. * zoom)).top(px(12. * zoom + (line - 18. * zoom).max(0.) / 2.))
-                            .child(icon(Icon::Callout, px(18. * zoom), theme.icon_colors(theme.accent))))
+                .when_some(callout, |body, kind| {
+                    crate::ui::callout_controls::decorate_callout(body, editor.clone(), id, kind, line, zoom, !minimal && code_visible, cx)
                 })
                 .when_some(block.meta.unsupported_reason.clone().filter(|_| image.is_none() && !rule), |body, reason| body.child(
                     div().text_size(px(11. * zoom)).text_color(theme.text_secondary).pb(px(4. * zoom))
