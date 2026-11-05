@@ -76,7 +76,6 @@ icons! {
     ListNumbered => "list-numbered" [Fill, Line, Accent],
     Todo => "todo" [Fill, Line, Accent],
     Quote => "quote" [Fill, Line, Accent],
-    Callout => "callout" [Fill, Line, Accent],
     Columns => "columns" [Fill, Line, Accent],
     Table => "table" [Fill, Line, Accent],
     Divider => "divider" [Fill, Line, Accent],

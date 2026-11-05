@@ -81,7 +81,7 @@ impl Editor {
     /// Selection toolbar entry (AI 润色).
     #[allow(dead_code)]
     pub(in crate::editor) fn open_ai(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.path.is_none() { self.status = tr("当前页面不可编辑或 AI 未开启。", "Page is not editable or AI is disabled.").into(); cx.notify(); return; }
+        if !self.is_markdown_note() { self.status = tr("当前页面不可编辑或 AI 未开启。", "Page is not editable or AI is disabled.").into(); cx.notify(); return; }
         let parts = self.selection_ranges();
         let original = parts.iter().filter_map(|(id, r)| self.doc.get(*id).map(|b| {
             // Paragraphs go to the model as inline Markdown so links / bold / code survive 应用修改.
@@ -101,6 +101,7 @@ impl Editor {
     }
     /// Slash / block-handle / space-on-empty-paragraph entry (AI 写作).
     pub(in crate::editor) fn open_ai_block(&mut self, id: u64, slash: bool, anchor: Option<Point<Pixels>>, window: &mut Window, cx: &mut Context<Self>) {
+        if self.minimal || !self.is_markdown_note() { return; }
         let Some(block) = self.doc.get(id) else { return };
         if block.meta.table.is_some() { self.status = tr("请重新选择正文。", "Please select text first.").into(); cx.notify(); return; }
         let mut text = block.text.clone();
