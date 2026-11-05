@@ -82,8 +82,17 @@ pub fn font_picker_popover(
     let theme = Theme::ocean();
     let pal = palette();
     let measured = get_trigger_bounds(role);
-    let max_h = measured.map(|(_, vp)| (f32::from(vp.height) - 16.).clamp(80., dropdown::MAX_HEIGHT)).unwrap_or(dropdown::MAX_HEIGHT);
-    let anchor = measured.map(|(b, vp)| dropdown::anchor_below_right(b, FONT_MENU_WIDTH, max_h, Some(vp))).unwrap_or(point(px(100.), px(100.)));
+    let spec = measured
+        .map(|(b, _)| {
+            dropdown::PlacementSpec::below(b)
+                .align_x(dropdown::AlignX::Right)
+                .gap(px(6.))
+                .reserve_height(px(dropdown::MAX_HEIGHT))
+        })
+        .unwrap_or_else(|| dropdown::PlacementSpec::point(point(px(100.), px(100.))));
+    let max_h = measured
+        .map(|(_, vp)| dropdown::max_height_for_spec(&spec, vp, px(dropdown::MAX_HEIGHT)))
+        .unwrap_or(px(dropdown::MAX_HEIGHT));
 
     let search_bar = div()
         .flex_none().flex().items_center().gap(px(8.)).px(px(8.)).pb(px(4.)).mb(px(4.))
@@ -149,7 +158,7 @@ pub fn font_picker_popover(
 
     let menu = div()
         .id(("font-picker-menu", role as usize))
-        .w(px(FONT_MENU_WIDTH)).max_h(px(max_h)).p(px(6.))
+        .w(px(FONT_MENU_WIDTH)).max_h(max_h).p(px(6.))
         .rounded(crate::ui::radius::SURFACE).bg(pal.bg).shadow(dropdown::shadows())
         .occlude().flex().flex_col()
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -171,5 +180,5 @@ pub fn font_picker_popover(
         )
     ).with_priority(2);
 
-    div().child(backdrop).child(dropdown::deferred_popover(anchor, menu, 3))
+    div().child(backdrop).child(dropdown::deferred_popover_for(spec, menu, 3))
 }

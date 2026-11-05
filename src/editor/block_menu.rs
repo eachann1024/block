@@ -1,20 +1,34 @@
 //! Block-level commands shared by the "+" menu, the slash menu, and code block actions.
-use gpui::{Context, Pixels, Point, Window};
+use std::{cell::RefCell, collections::HashMap};
+use gpui::{Bounds, Context, EntityId, Pixels, Point, Window, point, px, size};
 use super::{input::transactions::ListChange, model::{Block, Kind, Table},
     view::{Editor, selection::Position}};
 use crate::icons::Icon;
 
 #[path = "block_menu_cmd.rs"] mod cmd;
 #[path = "block_menu_render.rs"] mod render;
-pub(super) use cmd::{Cmd, LANGUAGES, canonical_lang_tag, language_icon, language_label};
+pub(super) use cmd::{Cmd, LANGUAGES, language_icon, language_label};
+pub(crate) use cmd::canonical_lang_tag;
 pub(super) use render::overlay;
-use cmd::SLASH;
+use cmd::{SLASH, SLASH_MINIMAL};
+
+thread_local! {
+    static LIVE_BLOCK_BOUNDS: RefCell<HashMap<(EntityId, u64), Bounds<Pixels>>> = Default::default();
+}
+
+pub(super) fn record_live_block_bounds(editor: EntityId, block: u64, bounds: Bounds<Pixels>) {
+    LIVE_BLOCK_BOUNDS.with(|m| { m.borrow_mut().insert((editor, block), bounds); });
+}
+
+pub(super) fn live_block_bounds(editor: EntityId, block: u64) -> Option<Bounds<Pixels>> {
+    LIVE_BLOCK_BOUNDS.with(|m| m.borrow().get(&(editor, block)).copied())
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Mode { Handle, Slash }
 #[derive(Clone, Copy)]
 pub(super) struct BlockMenu {
-    pub block: u64, pub anchor: Point<Pixels>, pub mode: Mode, pub index: usize,
+    pub block: u64, pub anchor: Point<Pixels>, pub trigger: Bounds<Pixels>, pub mode: Mode, pub index: usize,
 }
 /// The line icon for a text block type, shared by slash/block menus.
 pub(super) fn kind_icon(kind: Kind) -> Icon {
@@ -39,10 +53,25 @@ fn raw_block(text: &str) -> Block {
 fn paragraph() -> Block { Block::new(0, Kind::Paragraph, String::new()) }
 
 impl Editor {
-    pub(super) fn open_block_menu(&mut self, id: u64, anchor: Point<Pixels>, mode: Mode, cx: &mut Context<Self>) {
+    pub(crate) fn block_trigger_bounds(&self, editor_id: EntityId, id: u64) -> Option<Bounds<Pixels>> {
+        self.layouts
+            .get(&id)
+            .map(|l| l.bounds)
+            .or_else(|| live_block_bounds(editor_id, id))
+            .or_else(|| self.doc.index_of(id).and_then(|ix| self.list.bounds_for_item(ix)))
+    }
+    pub(super) fn open_block_menu_at(&mut self, id: u64, trigger: Bounds<Pixels>, mode: Mode, cx: &mut Context<Self>) {
         self.table_menu = None;
-        self.block_menu = Some(BlockMenu { block: id, anchor, mode, index: 0 });
+        let anchor = point(trigger.left(), trigger.bottom() + px(4.));
+        self.block_menu = Some(BlockMenu { block: id, anchor, trigger, mode, index: 0 });
         cx.notify();
+    }
+    #[allow(dead_code)]
+    pub(super) fn open_block_menu(&mut self, id: u64, anchor: Point<Pixels>, mode: Mode, cx: &mut Context<Self>) {
+        let trigger = self
+            .block_trigger_bounds(cx.entity_id(), id)
+            .unwrap_or_else(|| Bounds::new(point(anchor.x, (anchor.y - px(28.)).max(px(0.))), size(px(SLASH_MENU_WIDTH), px(24.))));
+        self.open_block_menu_at(id, trigger, mode, cx);
     }
     /// Entries currently shown; the slash menu filters by what follows the slash.
     pub(super) fn block_menu_entries(&self) -> Vec<Option<Cmd>> {
@@ -51,9 +80,10 @@ impl Editor {
             Mode::Slash => {
                 let Some(block) = self.doc.get(menu.block) else { return Vec::new() };
                 if !block.text.is_empty() && !block.text.starts_with('/') { return Vec::new(); }
+                let slash: &[Option<Cmd>] = if self.minimal { &SLASH_MINIMAL } else { &SLASH };
                 let query = block.text.trim_start_matches('/').to_lowercase();
-                if query.is_empty() { return SLASH.to_vec(); }
-                let mut hits: Vec<Cmd> = SLASH.into_iter().flatten()
+                if query.is_empty() { return slash.to_vec(); }
+                let mut hits: Vec<Cmd> = slash.iter().copied().flatten()
                     .filter(|c| c.label().to_lowercase().contains(&query) || c.keywords().contains(&query)).collect();
                 hits.sort_by_key(|c| !c.label().to_lowercase().starts_with(&query));
                 hits.into_iter().map(Some).collect()
@@ -81,6 +111,10 @@ impl Editor {
     pub(super) fn run_block_cmd(&mut self, id: u64, mode: Mode, cmd: Cmd, window: &mut Window, cx: &mut Context<Self>) {
         let menu_anchor = self.block_menu.as_ref().map(|m| m.anchor);
         self.block_menu = None;
+        if self.minimal && matches!(cmd, Cmd::Ai | Cmd::Code("mermaid" | "math")) {
+            cx.notify();
+            return;
+        }
         match cmd {
             Cmd::Ai => { self.open_ai_block(id, mode == Mode::Slash, menu_anchor, window, cx); return; }
             Cmd::SetLanguage(_, true) => { cx.notify(); return; }
@@ -103,16 +137,6 @@ impl Editor {
                 changes.push(ListChange { start: index, before: 1, after: 1 });
                 caret = Some(Position { block: id, offset: self.doc.get(id).map_or(0, |b| b.text.len()) });
             }
-            Cmd::Callout => {
-                if slash_target { self.doc.set_text(id, String::new()); }
-                self.doc.set_kind(id, Kind::Quote);
-                if let Some(b) = self.doc.get_mut(id) {
-                    b.meta.callout = Some(super::model::CalloutKind::Note);
-                }
-                self.doc.refresh_block(id);
-                changes.push(ListChange { start: index, before: 1, after: 1 });
-                caret = Some(Position { block: id, offset: self.doc.get(id).map_or(0, |b| b.text.len()) });
-            }
             Cmd::Code(language) => {
                 // F6: switching an existing code block's language changes only the fence tag; text and caret stay.
                 let was_code = self.doc.get(id).is_some_and(|b| b.meta.code_language.is_some());
@@ -123,15 +147,11 @@ impl Editor {
                 changes.push(ListChange { start: index, before: 1, after: 1 });
                 if !was_code { caret = Some(Position { block: id, offset: 0 }); }
             }
-            Cmd::Columns => { self.insert_columns(index, slash_target, window, cx); return; }
             Cmd::Table | Cmd::Divider => {
-                let col = block.meta.column;
-                let mut new = if cmd == Cmd::Table { Block::from_table(0, Table::blank(3, 3)) } else { raw_block("***\n") };
-                new.meta.column = col;
-                let trailing = index + 1 >= self.doc.blocks.len() || cmd == Cmd::Divider
-                    || self.doc.blocks.get(index + 1).is_some_and(|n| n.meta.column != col);
+                let new = if cmd == Cmd::Table { Block::from_table(0, Table::blank(3, 3)) } else { raw_block("***\n") };
+                let trailing = index + 1 >= self.doc.blocks.len() || cmd == Cmd::Divider;
                 let mut blocks = vec![new];
-                if trailing { let mut p = paragraph(); p.meta.column = col; blocks.push(p); }
+                if trailing { blocks.push(paragraph()); }
                 let (start, remove) = if slash_target { (index, 1) } else { (index + 1, 0) };
                 let count = blocks.len();
                 self.doc.splice_blocks(start..start + remove, blocks);
@@ -149,6 +169,14 @@ impl Editor {
         self.record_changes(before, changes, true, cx);
         self.layouts.clear();
         window.focus(&self.focus, cx); cx.notify();
+    }
+
+    pub(in crate::editor) fn delete_single_block(&mut self, id: u64, index: usize, changes: &mut Vec<ListChange>, caret: &mut Option<Position>) {
+        let only = self.doc.blocks.len() == 1;
+        self.doc.remove(id);
+        changes.push(ListChange { start: if only { 0 } else { index }, before: 1, after: usize::from(only) });
+        let at = index.min(self.doc.blocks.len() - 1);
+        *caret = Some(Position { block: self.doc.blocks[at].id, offset: 0 });
     }
 }
 
