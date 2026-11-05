@@ -72,13 +72,14 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
         && (is_active(row_sel) || unoccluded(editor.entity_id(), id, row_rect, window));
     if show_column {
         let x = col_x;
-        let expanded = is_active(col_sel) || is_hovered(col_sel);
+        let active = is_active(col_sel);
+        let expanded = active || is_hovered(col_sel);
         // The grip is centred on the 1px top border (`table.top() + 0.5px`) in both states.
         let pos = point(x - px(GRIP_LONG / 2. + GRIP_PAD), table.top() + px(0.5 - GRIP_SHORT / 2. - GRIP_PAD));
         let col_editor = editor.clone();
         let hover_editor = editor.clone();
         out.push(floating(pos,
-            grip(("table-col", c), false, expanded, drag.is_some(), tr("点击查看列操作 · 拖动移动", "Click for column options · drag to move"))
+            grip(("table-col", c), false, expanded, active || menu.is_some(), drag.is_some(), tr("点击查看列操作 · 拖动移动", "Click for column options · drag to move"))
                 .on_hover(move |hovered: &bool, _, cx| {
                     if drag.is_some() || hover_editor.read(cx).dragging.is_some() { return; }
                     let cur = PILL_HOVER.with(|h| h.get());
@@ -97,13 +98,14 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
     }
     if show_row {
         let y = row_center;
-        let expanded = is_active(row_sel) || is_hovered(row_sel);
+        let active = is_active(row_sel);
+        let expanded = active || is_hovered(row_sel);
         // The grip is centred on the 1px left border (`table.left() + 0.5px`) in both states.
         let pos = point(table.left() + px(0.5 - GRIP_SHORT / 2. - GRIP_PAD), y - px(GRIP_LONG / 2. + GRIP_PAD));
         let row_editor = editor.clone();
         let hover_editor = editor.clone();
         out.push(floating(pos,
-            grip(("table-row", r), true, expanded, drag.is_some(), tr("点击查看行操作 · 拖动移动", "Click for row options · drag to move"))
+            grip(("table-row", r), true, expanded, active || menu.is_some(), drag.is_some(), tr("点击查看行操作 · 拖动移动", "Click for row options · drag to move"))
                 .on_hover(move |hovered: &bool, _, cx| {
                     if drag.is_some() || hover_editor.read(cx).dragging.is_some() { return; }
                     let cur = PILL_HOVER.with(|h| h.get());

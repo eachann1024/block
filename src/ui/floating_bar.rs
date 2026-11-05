@@ -66,7 +66,7 @@ pub fn shell() -> Div {
         .gap(px(2.))
         .py(px(4.))
         .px(px(6.))
-        .rounded(px(14.))
+        .rounded(crate::ui::radius::SURFACE)
         .border_1()
         .border_color(rgb(tc.border))
         .bg(rgb(tc.bg))
@@ -140,14 +140,14 @@ pub fn icon_toggle_button(
         .justify_center()
         .gap(px(1.))
         .px(px(6.))
-        .rounded(px(8.))
+        .rounded(crate::ui::radius::CONTROL)
         .cursor(CursorStyle::PointingHand)
         .hover(move |s| s.bg(rgb(tc.hover)))
         .when(open && !on, |b| b.bg(rgb(tc.open_bg)))
         .when(on, |b| b.bg(rgb(tc.on_bg)))
         .children(crate::ui::smoke_overlay::probe(match g { Icon::TbBold => "toolbar-bold", Icon::TbItalic => "toolbar-italic", Icon::TbCode => "toolbar-code", _ => tip }))
         .child(lead)
-        .tooltip(tooltip(tip))
+        .when(!open, |b| b.tooltip(tooltip(tip)))
 }
 
 pub fn disabled_icon_button(g: Icon) -> Div {
@@ -160,7 +160,7 @@ pub fn disabled_icon_button(g: Icon) -> Div {
         .items_center()
         .justify_center()
         .px(px(6.))
-        .rounded(px(8.))
+        .rounded(crate::ui::radius::CONTROL)
         .cursor(CursorStyle::Arrow)
         .child(glyph(g, 16., dim))
 }

@@ -19,9 +19,9 @@ fn duo_glyph(i: Icon, size: f32, color: gpui::Hsla) -> impl IntoElement {
 fn icon_btn(id: impl Into<SharedString>, glyph_icon: Icon, tip: &'static str, active: bool) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
     let id: SharedString = id.into();
-    div().id(id.clone()).group(id.clone()).size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
+    div().id(id.clone()).group(id.clone()).size(px(28.)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
         .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
-        .tooltip(crate::theme::tooltip(tip))
+        .when(!active, |b| b.tooltip(crate::theme::tooltip(tip)))
         .child(stateful_icon(id, glyph_icon, px(15.), active, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if active { theme.accent } else { theme.text })))
 }
 
@@ -48,7 +48,7 @@ impl Render for AiChat {
                 self.convs.iter().filter(|c| !c.messages.is_empty()).fold(div().flex().flex_col().p(px(4.)), |d, c| {
                     let (id, active) = (c.id, Some(c.id) == self.current);
                     let del_id = SharedString::from(format!("conv-del-{id}"));
-                    d.child(div().id(SharedString::from(format!("conv-{id}"))).h(px(32.)).px(px(8.)).flex().items_center().gap(px(6.)).rounded(px(6.))
+                    d.child(div().id(SharedString::from(format!("conv-{id}"))).h(px(32.)).px(px(8.)).flex().items_center().gap(px(6.)).rounded(crate::ui::radius::CONTROL)
                         .when(active, |r| r.bg(theme.hover)).hover(move |s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
                         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| {
                             this.stop(); this.current = Some(id); this.history = false; this.error = None;
@@ -56,7 +56,7 @@ impl Render for AiChat {
                             cx.notify();
                         }))
                         .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(13.)).child(c.title.clone()))
-                        .child(div().id(del_id.clone()).group(del_id.clone()).size(px(22.)).flex().items_center().justify_center().rounded(px(4.))
+                        .child(div().id(del_id.clone()).group(del_id.clone()).size(px(22.)).flex().items_center().justify_center().rounded(crate::ui::radius::MICRO_SM)
                             .hover(move |s| s.bg(theme.shell))
                             .tooltip(crate::theme::tooltip(tr("删除会话", "Delete chat")))
                             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
@@ -67,7 +67,7 @@ impl Render for AiChat {
                             .child(stateful_icon(del_id, Icon::Trash, px(13.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
                 })
             };
-            div().id("ai-chat-history-list").mx(px(8.)).mt(px(6.)).max_h(px(260.)).overflow_y_scroll().rounded(px(8.)).border_1()
+            div().id("ai-chat-history-list").mx(px(8.)).mt(px(6.)).max_h(px(260.)).overflow_y_scroll().rounded(crate::ui::radius::SURFACE).border_1()
                 .border_color(theme.menu_border).bg(theme.menu).shadow_md().child(list)
         });
 
@@ -77,7 +77,7 @@ impl Render for AiChat {
         let body = msgs.into_iter().enumerate().fold(div().flex().flex_col().gap(px(14.)).p(px(14.)), |d, (i, m)| {
             let text = m.content.clone();
             if m.role == "user" {
-                d.child(div().flex().justify_end().child(div().max_w(px(300.)).px(px(12.)).py(px(8.)).rounded(px(12.)).bg(theme.hover)
+                d.child(div().flex().justify_end().child(div().max_w(px(300.)).px(px(12.)).py(px(8.)).rounded(crate::ui::radius::SURFACE).bg(theme.hover)
                     .text_size(px(14.)).line_height(px(22.)).child(text)))
             } else if m.role == "tool" {
                 match m.plan { Some(plan) => d.child(plan_card(i, plan, cx)), None => d }
@@ -98,7 +98,7 @@ impl Render for AiChat {
         let body = if empty { body.child(div().pt(px(40.)).flex().flex_col().items_center().gap(px(8.)).text_color(theme.text_secondary)
             .child(glyph(Icon::Sparkles, 28., theme.accent)).child(div().text_size(px(14.)).child(tr("有什么可以帮你？", "How can I help?")))) } else { body };
 
-        let error = self.error.clone().map(|e| div().mx(px(12.)).mb(px(8.)).p(px(10.)).flex().items_start().gap(px(8.)).rounded(px(8.))
+        let error = self.error.clone().map(|e| div().mx(px(12.)).mb(px(8.)).p(px(10.)).flex().items_start().gap(px(8.)).rounded(crate::ui::radius::CONTROL)
             .bg(gpui::hsla(0., 0.75, 0.5, 0.08)).text_size(px(12.))
             .child(div().flex_1().flex().flex_col().gap(px(2.))
                 .child(div().font_weight(FontWeight(600.)).text_color(gpui::rgb(0xb42318)).child(tr("本轮失败原因", "Request failed")))
@@ -108,7 +108,7 @@ impl Render for AiChat {
         let chip_list: Vec<(bool, String)> = self.refs.iter().map(|r| (true, r.clone())).chain(self.skills.iter().map(|s| (false, s.clone()))).collect();
         let chips = chip_list.into_iter().enumerate().fold(div().flex().flex_wrap().gap(px(4.)), |d, (i, (is_ref, name))| {
             let x_id = SharedString::from(format!("chip-x-{i}"));
-            d.child(div().id(SharedString::from(format!("chip-{i}"))).flex().items_center().gap(px(4.)).px(px(6.)).py(px(2.)).rounded(px(6.))
+            d.child(div().id(SharedString::from(format!("chip-{i}"))).flex().items_center().gap(px(4.)).px(px(6.)).py(px(2.)).rounded(crate::ui::radius::CONTROL)
                 .bg(theme.hover).text_size(px(12.))
                 .child(duo_glyph(if is_ref { Icon::Note } else { Icon::Sparkles }, 12., theme.accent))
                 .child(if is_ref { name.clone() } else { format!("/{name}") })
@@ -140,7 +140,7 @@ impl Render for AiChat {
             } else {
                 picks.into_iter().enumerate().fold(div().flex().flex_col().p(px(4.)), |d, (i, (pick, name, desc))| {
                     let tlen = token.len();
-                    d.child(div().id(SharedString::from(format!("pick-{i}"))).px(px(8.)).py(px(6.)).flex().items_center().gap(px(8.)).rounded(px(6.))
+                    d.child(div().id(SharedString::from(format!("pick-{i}"))).px(px(8.)).py(px(6.)).flex().items_center().gap(px(8.)).rounded(crate::ui::radius::CONTROL)
                         .hover(move |s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
                         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| {
                             let v = this.input.read(cx).value().to_string();
@@ -158,7 +158,7 @@ impl Render for AiChat {
                         .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(12.)).text_color(theme.text_secondary).child(desc)))
                 })
             };
-            div().mx(px(12.)).max_h(px(240.)).rounded(px(8.)).border_1().border_color(theme.menu_border).bg(theme.menu).shadow_md()
+            div().mx(px(12.)).max_h(px(240.)).rounded(crate::ui::radius::SURFACE).border_1().border_color(theme.menu_border).bg(theme.menu).shadow_md()
                 .child(div().px(px(10.)).pt(px(6.)).text_size(px(11.)).text_color(theme.text_secondary).child(if token.starts_with('@') { tr("引用笔记", "Reference Note") } else { tr("指令与技能", "Commands & Skills") }))
                 .child(list)
         });
@@ -166,12 +166,12 @@ impl Render for AiChat {
         let action = if busy {
             icon_btn("ai-chat-stop", Icon::Stop, tr("停止生成", "Stop generating"), false).on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { this.stop(); cx.notify(); }))
         } else {
-            div().id("ai-chat-send").size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(8.)).bg(theme.primary)
+            div().id("ai-chat-send").size(px(28.)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).bg(theme.primary)
                 .cursor(CursorStyle::PointingHand).tooltip(crate::theme::tooltip(tr("发送消息", "Send message")))
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, w, cx| this.send(w, cx)))
                 .child(glyph(Icon::ArrowUp, 16., gpui::white()))
         };
-        let composer = div().flex_none().m(px(12.)).p(px(10.)).flex().flex_col().gap(px(8.)).rounded(px(12.)).border_1().border_color(theme.btn_border).bg(theme.paper)
+        let composer = div().flex_none().m(px(12.)).p(px(10.)).flex().flex_col().gap(px(8.)).rounded(crate::ui::radius::SURFACE).border_1().border_color(theme.btn_border).bg(theme.paper)
             .when(!self.refs.is_empty() || !self.skills.is_empty(), |d| d.child(chips))
             .child(div().h(px(28.)).text_size(px(14.)).child(Input::new(&self.input).appearance(false).bordered(false).focus_bordered(false).h(px(28.))))
             .child(div().flex().items_center().gap(px(6.))
@@ -217,7 +217,7 @@ fn plan_card(at: usize, plan: agent::Plan, cx: &mut gpui::Context<AiChat>) -> im
     };
     let snippet = |label: &'static str, text: String, del: bool| div().flex().flex_col().gap(px(2.))
         .child(div().text_size(px(11.)).text_color(theme.text_secondary).child(label))
-        .child(div().px(px(8.)).py(px(4.)).rounded(px(6.)).text_size(px(12.)).line_height(px(18.))
+        .child(div().px(px(8.)).py(px(4.)).rounded(crate::ui::radius::CONTROL).text_size(px(12.)).line_height(px(18.))
             .bg(if del { gpui::hsla(0., 0.75, 0.5, 0.08) } else { gpui::hsla(0.38, 0.6, 0.4, 0.10) })
             .when(del, |d| d.line_through())
             .child(if text.is_empty() { tr("（空）", "(Empty)").to_owned() } else { text.chars().take(400).collect() }));
@@ -234,7 +234,7 @@ fn plan_card(at: usize, plan: agent::Plan, cx: &mut gpui::Context<AiChat>) -> im
                 .child(div().text_color(theme.text_secondary).child(op.page.clone())))
             .child(body))
     });
-    let btn = |id: String, _label: String, primary: bool| div().id(SharedString::from(id)).h(px(28.)).px(px(12.)).flex().items_center().rounded(px(6.))
+    let btn = |id: String, _label: String, primary: bool| div().id(SharedString::from(id)).h(px(28.)).px(px(12.)).flex().items_center().rounded(crate::ui::radius::CONTROL)
         .text_size(px(12.)).cursor(CursorStyle::PointingHand)
         .when(primary, |d| d.bg(theme.primary).text_color(gpui::white()))
         .when(!primary, |d| d.border_1().border_color(theme.btn_border).hover(move |s| s.bg(theme.hover)));
@@ -256,11 +256,11 @@ fn plan_card(at: usize, plan: agent::Plan, cx: &mut gpui::Context<AiChat>) -> im
         _ => None,
     };
     let head = if plan.title.is_empty() { tr("笔记变更计划", "Note Change Plan").to_owned() } else if is_en() { format!("Note Change Plan · {}", plan.title) } else { format!("笔记变更计划 · {}", plan.title) };
-    div().flex().flex_col().gap(px(8.)).p(px(12.)).rounded(px(10.)).border_1().border_color(theme.btn_border).bg(theme.paper)
+    div().flex().flex_col().gap(px(8.)).p(px(12.)).rounded(crate::ui::radius::SURFACE).border_1().border_color(theme.btn_border).bg(theme.paper)
         .child(div().flex().items_center().gap(px(8.))
             .child(glyph(Icon::Sparkles, 14., theme.accent))
             .child(div().flex_1().text_size(px(13.)).font_weight(FontWeight(600.)).child(head))
-            .child(div().px(px(6.)).py(px(1.)).rounded(px(4.)).bg(theme.hover).text_size(px(11.)).text_color(theme.text_secondary).child(badge)))
+            .child(div().px(px(6.)).py(px(1.)).rounded(crate::ui::radius::MICRO_SM).bg(theme.hover).text_size(px(11.)).text_color(theme.text_secondary).child(badge)))
         .when(!plan.summary.is_empty(), |d| d.child(div().text_size(px(12.)).text_color(theme.text_secondary).child(plan.summary.clone())))
         .child(ops)
         .child(div().text_size(px(12.)).text_color(theme.text_secondary).child(note))

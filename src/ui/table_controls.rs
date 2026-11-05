@@ -34,7 +34,7 @@ pub fn dots(vertical: bool, color: Hsla) -> Div {
 /// At rest a 24x8 / 8x24 pill shows; hovered, pressed or with its menu open the grip grows into the
 /// 24x14 / 14x24 capsule with a 6-dot grid. The hit area is the same size in both states and reaches
 /// `GRIP_PAD` past the painted capsule on every side, so the handle is easy to hit and hold.
-pub fn grip(id: (&'static str, usize), vertical: bool, expanded: bool, dragging: bool, tip: &'static str) -> Stateful<Div> {
+pub fn grip(id: (&'static str, usize), vertical: bool, expanded: bool, open: bool, dragging: bool, tip: &'static str) -> Stateful<Div> {
     let dark = is_dark();
     let (w, h) = if vertical { (GRIP_SHORT, GRIP_LONG) } else { (GRIP_LONG, GRIP_SHORT) };
     let bg: Hsla = if dark {
@@ -62,7 +62,7 @@ pub fn grip(id: (&'static str, usize), vertical: bool, expanded: bool, dragging:
     div().id(id).w(px(w + GRIP_PAD * 2.)).h(px(h + GRIP_PAD * 2.)).flex_none().flex().items_center().justify_center()
         .cursor(if dragging { CursorStyle::ClosedHand } else { CursorStyle::OpenHand })
         .child(shell)
-        .when(!dragging, |el| el.tooltip(move |window, cx| build_tooltip(tip, window, cx)))
+        .when(!dragging && !open, |el| el.tooltip(move |window, cx| build_tooltip(tip, window, cx)))
 }
 
 /// Grab zone over a column boundary, as tall as the table: a col-resize cursor everywhere in it and a
@@ -94,5 +94,5 @@ pub fn thandle(open: bool) -> Stateful<Div> {
         } else {
             hover_icon(Icon::More, 16., base, hover)
         })
-        .tooltip(|window, cx| build_tooltip(tr("表格选项", "Table options"), window, cx))
+        .when(!open, |el| el.tooltip(|window, cx| build_tooltip(tr("表格选项", "Table options"), window, cx)))
 }
