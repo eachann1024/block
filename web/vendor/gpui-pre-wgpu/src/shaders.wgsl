@@ -882,11 +882,10 @@ fn fs_quad(input: QuadVarying) -> @location(0) vec4<f32> {
             }
         }
 
-        // Blend the border on top of the background and then linearly interpolate
-        // between the two as we slide inside the background.
-        let blended_border = over(background_color, border_color);
-        color = mix(background_color, blended_border,
-                    saturate(antialias_threshold - inner_sdf));
+        // Fade the border by alpha. Mixing toward a transparent background
+        // pulls RGB toward black and leaves a dark fringe.
+        color = over(background_color, vec4<f32>(border_color.rgb,
+                     border_color.a * saturate(antialias_threshold - inner_sdf)));
     }
 
     return blend_color(color, saturate(antialias_threshold - outer_sdf));
