@@ -1,5 +1,8 @@
-//! Crash, error, and warning diagnostics logging (`~/Library/Logs/Block/block.log`).
-//! Only `WARN`, `ERROR`, and `PANIC` entries are ever written to the log file.
+//! Crash, error, and warning diagnostics.
+//! The log file is `{state_dir}/Block/logs/block.log`, where `state_dir` comes from
+//! `dirs` (`$XDG_STATE_HOME` or `~/.local/state` on Linux). macOS and Windows have no
+//! `state_dir`, so those fall back to `data_local_dir` (`~/Library/Application Support`
+//! and `%LOCALAPPDATA%`). Only `WARN`, `ERROR`, and `PANIC` entries are written.
 use std::{
     backtrace::Backtrace,
     fs::{self, File, OpenOptions},
@@ -23,11 +26,8 @@ fn resolve_log_path() -> Option<PathBuf> {
     if let Some(custom) = std::env::var_os("BLOCK_LOG_FILE") {
         return Some(PathBuf::from(custom));
     }
-    #[cfg(target_os = "macos")]
-    if let Some(home) = std::env::var_os("HOME") {
-        return Some(PathBuf::from(home).join("Library/Logs/Block/block.log"));
-    }
-    Some(crate::files::app_data_dir("Block").join("logs/block.log"))
+    let base = dirs::state_dir().or_else(dirs::data_local_dir)?;
+    Some(base.join("Block").join("logs").join("block.log"))
 }
 
 fn open_log_file(path: &PathBuf) -> Option<File> {
