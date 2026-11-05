@@ -193,14 +193,14 @@ impl Editor {
             self.edit_image(id, |s| s.width = None, cx);
             return;
         }
-        let (base, _) = sizes(cx, id);
+        let (base, _) = sizes(cx, cx.entity_id(), id, self.minimal);
         let base = if base > 0. { base } else { 560. };
         let width = (base * pct as f32 / 100.).round() as u32;
         self.edit_image(id, |s| s.width = Some(width), cx);
     }
     /// Moves the width to the next multiple of 10% of the original width, within 10%..=100%.
     pub(super) fn step_image(&mut self, id: u64, delta: i32, cx: &mut Context<Self>) {
-        let (base, _) = sizes(cx, id);
+        let (base, _) = sizes(cx, cx.entity_id(), id, self.minimal);
         if base <= 0. { return; }
         let Some(spec) = self.doc.get(id).and_then(spec_of) else { return };
         let current_pct = spec.width.map_or(100., |w| (w as f32 / base * 10.).round() * 10.);

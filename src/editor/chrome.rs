@@ -64,7 +64,7 @@ fn collapsed_gap(prev: &Block, block: &Block) -> f32 {
 /// (top, bottom) padding of a row; the gap between rows is carried by the lower row's top.
 fn row_pads(this: &Editor, index: usize) -> (f32, f32) {
     let block = &this.doc.blocks[index];
-    let zoom = super::zoom::zoom_factor();
+    let zoom = super::zoom::zoom_factor(this.minimal);
     if this.minimal || block.meta.column.is_some() { return (2. * zoom, 2. * zoom); }
     let top = this.next_visible_index(index, false)
         .map_or(0., |prev| collapsed_gap(&this.doc.blocks[prev], block) * zoom);
@@ -72,9 +72,9 @@ fn row_pads(this: &Editor, index: usize) -> (f32, f32) {
     (top, bottom)
 }
 
-pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
+pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, has_overlay: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
-    let zoom = super::zoom::zoom_factor();
+    let zoom = super::zoom::zoom_factor(minimal);
     let in_col = block.meta.column.is_some();
     let handle_w = if in_col { 42. } else { HANDLE_WIDTH };
     let right_inset = if in_col { 4. } else if minimal { 8. } else { RIGHT_INSET };
@@ -84,7 +84,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
     let checked = block.checked;
     let checkbox_editor = editor.clone();
     let marker = match block.kind { Kind::Bullet => "•".into(), Kind::Numbered => format!("{}.", number.unwrap_or(1)), _ => String::new() };
-    let (size, factor) = super::paint::heading_metrics(block.kind, block.meta.heading_level, block.meta.code_language.is_some(), minimal, f32::from(theme.editor_font));
+    let (size, factor) = super::paint::heading_metrics(block.kind, block.meta.heading_level, block.meta.code_language.is_some(), minimal, f32::from(theme.editor_font), zoom);
     let line = size * factor;
     let indent = block.meta.indent.min(12) as f32 * INDENT_PER_CHAR * zoom;
     let marker_width = if matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) { MARKER_WIDTH * zoom + indent } else { indent };
@@ -164,7 +164,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                 .when_some(block.meta.unsupported_reason.clone().filter(|_| image.is_none() && !rule), |body, reason| body.child(
                     div().text_size(px(11.)).text_color(theme.text_secondary).pb_1()
                         .child(format!("{} · {}", tr("已保留源码", "Source preserved"), unsupported_reason_label(&reason)))))
-                .when_some(image, |body, (path, spec)| body.child(super::image_view::image_block(focus_editor.clone(), id, path, spec, active, image_pop, cx)))
+                .when_some(image, |body, (path, spec)| body.child(super::image_view::image_block(focus_editor.clone(), id, path, spec, active, image_pop, zoom, has_overlay, cx)))
                 .when(static_view && rule, |body| body.child(
                     div().id(("rule", id as usize)).h(px(16.)).flex().items_center().cursor(CursorStyle::PointingHand)
                         .child(div().h(px(if active { 2. } else { 1. })).w_full().bg(if active { theme.accent } else if is_dark() { theme.hairline } else { gpui::rgba(0x0b0b0b33).into() }))
@@ -183,7 +183,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                         BlockText { editor: editor.clone(), block: id }.into_any_element()
                     };
                     let lang = code_lang.as_deref().unwrap_or_default();
-                    body.child(super::code_block_preview::preview_block(editor.clone(), id, lang, &block.text, active, code_visible, source_el, cx))
+                    body.child(super::code_block_preview::preview_block(editor.clone(), id, lang, &block.text, active, code_visible, source_el, minimal, cx))
                 })
                 .when(!static_view && !preview_lang && code_lang.is_some(), |body| {
                     body.child(super::code_block::copy_button(editor, id, code_lang.unwrap_or_default(), code_visible, cx))
@@ -267,7 +267,10 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
             this.insert_above(bid, cx); window.focus(&this.focus, cx); cx.stop_propagation();
         }))
     });
-    let row = block_row(cx.entity(), block, row_pads(this, index), handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, cx);
+    let has_overlay = this.block_menu.is_some() || this.table_menu.is_some() || this.format.is_some()
+        || this.annotate.active_annotation.is_some() || this.annotate.hovered_annotation.is_some()
+        || this.annotate.composer.is_some() || this.annotate.reactions.is_some();
+    let row = block_row(cx.entity(), block, row_pads(this, index), handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, cx);
     div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
         .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md()))
         .when_some(top_slot, |d, s| d.child(s))
