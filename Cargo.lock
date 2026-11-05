@@ -620,6 +620,7 @@ dependencies = [
  "latex-rust",
  "mermaid-rs-renderer",
  "pulldown-cmark",
+ "regex",
  "ropey",
  "serde",
  "serde_json",
