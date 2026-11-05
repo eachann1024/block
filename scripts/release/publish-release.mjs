@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { INSTALLERS } from "./checksum.mjs";
 import {
   getReleases,
   gh,
@@ -12,12 +13,7 @@ import {
 } from "./select-release.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
-const ASSETS = [
-  "block-macos.dmg",
-  "block-windows-x64-setup.exe",
-  "block-linux-x64.AppImage",
-  "SHA256SUMS.txt",
-];
+const ASSETS = [...INSTALLERS, "SHA256SUMS.txt"];
 
 function readRemoteFile(ref, path) {
   const data = JSON.parse(gh(["api", `repos/${REPO}/contents/${path}?ref=${encodeURIComponent(ref)}`]));
