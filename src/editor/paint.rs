@@ -258,17 +258,16 @@ pub(super) fn heading_metrics(kind: Kind, level: Option<u8>, fenced: bool, minim
         (Kind::H3, Some(4)) => (16. * zoom, 1.4),
         (Kind::H3, Some(5 | 6)) => (14. * zoom, 1.45),
         (Kind::H1 | Kind::H2 | Kind::H3, _) => metrics(kind, base, zoom),
-        _ if minimal => (16. * zoom, 1.5),
-        _ => (base * zoom, 1.5),
+        _ => ((if minimal { 16. } else { base }) * zoom, crate::theme::body_line_factor()),
     }
 }
-thread_local! { static PLACEHOLDER: RefCell<Option<(u16, gpui::ShapedLine)>> = const { RefCell::new(None) }; }
+thread_local! { static PLACEHOLDER: RefCell<Option<(u64, gpui::ShapedLine)>> = const { RefCell::new(None) }; }
 /// Hint drawn over the zero-width placeholder glyph; never part of the text or hit testing.
 fn paint_placeholder(layout: &TextLayout, window: &mut Window, cx: &mut App) {
     let dark = crate::theme::is_dark();
     let font_size = layout.lines.first().map_or(Theme::ocean().editor_font, |(_, l)| l.font_size());
-    let key = (crate::theme::font_choice() as u16) | ((crate::theme::is_en() as u16) << 4)
-        | ((dark as u16) << 5) | ((f32::from(font_size) as u16) << 8);
+    let key = crate::theme::font_settings_hash() ^ ((crate::theme::is_en() as u64) << 32)
+        ^ ((dark as u64) << 33) ^ (((f32::from(font_size) as u64) & 0xff) << 34);
     let line = PLACEHOLDER.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.as_ref().is_none_or(|(c, _)| *c != key) {
