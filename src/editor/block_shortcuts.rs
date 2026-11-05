@@ -90,7 +90,7 @@ impl Editor {
         if ai != bi { return false; }
         let index = ai;
         let block = &self.doc.blocks[index];
-        if block.meta.table.is_some() || structural(block) || block.meta.html_paragraph.is_some() { return false; }
+        if block.meta.table.is_some() || structural(block) { return false; }
         if block.kind == Kind::Quote {
             if self.caret.is_empty() && block.text.is_empty() { return false; }
             let at = self.caret.head;
@@ -135,7 +135,8 @@ impl Editor {
         let at = self.caret.head;
         let Some(index) = self.doc.index_of(at.block) else { return false };
         let block = self.doc.blocks[index].clone();
-        if block.meta.table.is_some() { return !forward && index == 0 && at.offset == 0 && self.insert_top_paragraph(cx); }
+        let top_of_flow = index == 0 || self.doc.blocks[index - 1].meta.column != block.meta.column;
+        if block.meta.table.is_some() { return !forward && top_of_flow && at.offset == 0 && self.insert_above(block.id, cx); }
         if is_divider(&block) { self.remove_whole_block(index, forward, cx); return true; }
         if forward {
             if at.offset != block.text.len() { return false; }
@@ -152,13 +153,13 @@ impl Editor {
         if at.offset != 0 { return false; }
         if block.meta.code_language.is_some() {
             if block.text.is_empty() { self.demote(block.id, cx); }
-            else if index == 0 { self.insert_top_paragraph(cx); }
+            else if top_of_flow { self.insert_above(block.id, cx); }
             else if let Some(prev) = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()).filter(|p| p.meta.column == block.meta.column) {
                 self.set_head(Position { block: prev.id, offset: prev.text.len() }, false, cx);
             }
             return true;
         }
-        if block.meta.raw_source.is_some() || block.meta.html_paragraph.is_some() { return false; }
+        if block.meta.raw_source.is_some() || block.meta.html_paragraph.is_some() { return top_of_flow && self.insert_above(block.id, cx); }
         match block.kind {
             Kind::H1 | Kind::H2 | Kind::H3 | Kind::Quote => { self.demote(block.id, cx); return true; }
             Kind::Bullet | Kind::Numbered | Kind::Todo => {
@@ -275,10 +276,7 @@ impl Editor {
         let cur = self.doc.blocks[index].clone();
         if cur.meta.table.is_some() || structural(&cur) { return false; }
         let before = self.snapshot();
-        for b in blocks.iter_mut() {
-            b.id = 0;
-            if cur.meta.column.is_some() && b.meta.column.is_none() { b.meta.column = cur.meta.column; }
-        }
+        for b in blocks.iter_mut() { b.id = 0; if cur.meta.column.is_some() && b.meta.column.is_none() { b.meta.column = cur.meta.column; } }
         let count = blocks.len();
         let mut pieces = Vec::new();
         let lead = if !cur.text.is_empty() && at.offset > 0 { pieces.push(cur.slice(0..at.offset)); 1 } else { 0 };
