@@ -118,9 +118,10 @@ pub(super) fn copy_button(
     block_id: u64,
     raw_lang: String,
     visible: bool,
+    minimal: bool,
     cx: &mut Context<Editor>,
 ) -> impl IntoElement {
-    top_controls(editor, block_id, raw_lang, visible, true, false, cx)
+    top_controls(editor, block_id, raw_lang, visible, true, false, minimal, cx)
 }
 
 /// Top-right controls shared by normal code blocks and renderable blocks.
@@ -131,6 +132,7 @@ pub(super) fn top_controls(
     visible: bool,
     show_copy: bool,
     in_preview: bool,
+    minimal: bool,
     cx: &mut Context<Editor>,
 ) -> impl IntoElement {
     dropdown::register_closer(close_menus);
@@ -148,7 +150,7 @@ pub(super) fn top_controls(
     let picker = LANG_PICKER.with(|slot| slot.borrow().filter(|p| p.block_id == block_id));
     let show_bar = visible || picker.is_some();
 
-    let zoom = super::zoom::zoom_factor(editor.read(cx).minimal);
+    let zoom = super::zoom::zoom_factor(minimal);
     let copy_editor = editor.clone();
     let copy_btn = ui_copy_button(("code-copy", block_id as usize), copied, zoom, cx.listener(move |this, _, _, cx| {
         cx.stop_propagation();
