@@ -15,6 +15,15 @@ export const INSTALLERS = [
   "block-linux-arm64.rpm",
 ];
 
+export const DELTA_ASSETS = [
+  "block-macos-arm64.bin.gz",
+  "block-macos-x64.bin.gz",
+  "block-windows-x64.exe.gz",
+  "block-windows-arm64.exe.gz",
+  "block-linux-x64.bin.gz",
+  "block-linux-arm64.bin.gz",
+];
+
 export function sha256File(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
