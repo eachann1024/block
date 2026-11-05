@@ -4,9 +4,6 @@ on:
   schedule:
     # 每天 00:00 UTC（北京时间 08:00）检查；仅当自上一版 Release 后有面向用户的新提交且当日未发版时构建发布。
     - cron: '0 0 * * *'
-  # One-shot dry run so the Windows installer fix is verified. Removed once queued.
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       publish:
@@ -55,7 +52,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish == true }}
-          FORCE: ${{ github.event_name == 'push' || inputs.force == true }}
+          FORCE: ${{ inputs.force == true }}
           MAGPIE_BASE_URL: ${{ github.ref == 'refs/heads/main' && vars.MAGPIE_BASE_URL || '' }}
           MAGPIE_API_KEY: ${{ github.ref == 'refs/heads/main' && secrets.MAGPIE_API_KEY || '' }}
           MAGPIE_CA_CERT: scripts/release/pubgw-cert.pem
