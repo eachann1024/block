@@ -83,6 +83,7 @@ impl gpui::AssetSource for Assets {
 pub fn apply_app_menus(cx: &mut gpui::App) { menu_bar::apply(cx); }
 
 fn main() {
+    if smoke::handle_cli() { return; }
     log::init();
     #[cfg(target_os = "macos")]
     menu_bar::suppress_system_full_screen_item();
@@ -102,10 +103,10 @@ fn main() {
     let app = gpui_platform::application().with_assets(Assets);
     app.on_open_urls(|urls| enqueue_open_inputs(urls));
     app.on_reopen(|cx| {
-        search::window::activate_main_window(cx);
+        if !smoke::is_worker() { search::window::activate_main_window(cx); }
     });
+    let background_launch = smoke::is_worker() || startup::background_launch();
     app.run(move |cx: &mut App| {
-    let background_launch = startup::background_launch();
         let smoke_sandbox = smoke_sandbox.clone();
         #[cfg(not(target_family = "wasm"))]
         fonts::load_custom_fonts(cx);
@@ -118,7 +119,7 @@ fn main() {
             KeyBinding::new("ctrl-q", Quit, None),
         ]);
         editor::bind_keys(cx);
-        quick::init(saved_quick_bounds, cx);
+        if !smoke::is_worker() { quick::init(saved_quick_bounds, cx); }
         menu_bar::init(cx);
         let min_size = size(px(760.), px(480.));
         let (window_bounds, display_id) = window_bounds::resolve_window_bounds(
@@ -138,14 +139,15 @@ fn main() {
                     traffic_light_position: cfg!(target_os = "macos").then_some(point(px(16.), px(13.))),
                     ..Default::default()
                 }),
-                ..Default::default()
                 // Initial launch only. A real native window is still created; reopen shows it.
                 show: !background_launch,
                 focus: !background_launch,
+                ..Default::default()
             },
             |window, cx| {
                 let workspace = cx.new(|cx| app::Workspace::new(window, cx));
                 fonts::spawn(workspace.clone(), cx);
+                if !smoke::is_worker() {
                 let close_editor = workspace.read(cx).editor.clone();
                 let quit_editor = close_editor.clone();
                 window.on_window_should_close(cx, move |window, cx| {
@@ -171,6 +173,7 @@ fn main() {
                     let quick_ready = quick::prepare_to_quit(cx);
                     if ready && quick_ready { cx.quit(); }
                 });
+                }
                 let menu_target = workspace.clone();
                 let settings_target = workspace.clone();
                 let tab_target = workspace.clone();

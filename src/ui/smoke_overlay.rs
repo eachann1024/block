@@ -51,6 +51,11 @@ pub fn probe_for(id: &gpui::ElementId) -> Option<gpui::Canvas<()>> {
     probe(id.to_string())
 }
 
+pub fn reset() {
+    TARGET_BOUNDS.with(|map| map.borrow_mut().clear());
+    PULSE.with(|state| *state.borrow_mut() = PulseState::default());
+}
+
 pub fn set_step(point: Option<Point<Pixels>>, step_text: impl Into<SharedString>) {
     PULSE.with(|state| {
         let mut state = state.borrow_mut();
