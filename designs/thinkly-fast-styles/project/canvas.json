@@ -41,6 +41,10 @@
     {
       "id": "motion",
       "name": "交互与动效"
+    },
+    {
+      "id": "about",
+      "name": "关于"
     }
   ],
   "boards": {
@@ -288,7 +292,7 @@
       "expand": "fill",
       "title": "全局搜索 ⌘⇧K"
     },
-      "S-Settings-3.dc.html": {
+    "S-Settings-3.dc.html": {
       "page": "settings",
       "x": 0,
       "y": 0,
@@ -473,6 +477,33 @@
       "expand": "fill",
       "is_interactive": true,
       "title": "全局交互显现动效规范 · gpui_transitions 驱动"
+    },
+    "About-V1-Card.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 640,
+      "h": 560,
+      "title": "关于 · 方案 A · 居中名片",
+      "page": "about",
+      "is_interactive": true
+    },
+    "About-V2-Split.dc.html": {
+      "x": 720,
+      "y": 0,
+      "w": 640,
+      "h": 560,
+      "title": "关于 · 方案 B · 左图右文",
+      "page": "about",
+      "is_interactive": true
+    },
+    "About-V3-List.dc.html": {
+      "x": 1440,
+      "y": 0,
+      "w": 640,
+      "h": 560,
+      "title": "关于 · 方案 C · 信息清单",
+      "page": "about",
+      "is_interactive": true
     }
   },
   "order": [
@@ -521,7 +552,10 @@
     "CodeBlock-V1-GraphiteCard.dc.html",
     "CodeBlock-V2-HeaderBar.dc.html",
     "CodeBlock-V3-InsetGutter.dc.html",
-    "M-Motion-System.dc.html"
+    "M-Motion-System.dc.html",
+    "About-V1-Card.dc.html",
+    "About-V2-Split.dc.html",
+    "About-V3-List.dc.html"
   ],
   "notes": {},
   "designSystems": [

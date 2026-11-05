@@ -75,7 +75,7 @@ impl Workspace {
         false
     }
 
-    pub(super) fn restore_focus(&self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn restore_focus(&self, window: &mut Window, cx: &mut Context<Self>) {
         if self.editor.read(cx).current_path().is_some() {
             let focus = self.editor.read(cx).focus_handle(cx);
             window.focus(&focus, cx);

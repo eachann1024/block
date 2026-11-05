@@ -20,7 +20,7 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &crate::editor::ai::ToggleAiPanel, window, cx| { crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); cx.notify(); }))
             .on_action(cx.listener(|this, _: &NewNote, window, cx| if !this.busy() { this.new_item(false, window, cx) }))
             .on_action(cx.listener(|this, _: &NewFolder, window, cx| if !this.busy() { this.new_item(true, window, cx) }))
-            .on_action(cx.listener(|this, _: &Dismiss, window, cx| if !this.dismiss(window, cx) { cx.propagate() }))
+            .on_action(cx.listener(|this, _: &Dismiss, window, cx| if crate::about::close() { this.restore_focus(window, cx); cx.notify(); } else if !this.dismiss(window, cx) { cx.propagate() }))
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Back), cx.listener(|this, _, _, cx| this.navigate_back(cx)))
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Forward), cx.listener(|this, _, _, cx| this.navigate_forward(cx)));
         self.bind_tab_actions(root, cx)

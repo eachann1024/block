@@ -44,6 +44,7 @@ impl Editor {
         if let Some(block) = self.doc.get(at.block) { at.offset = boundary(&block.text, at.offset); }
         else { return; }
         self.ensure_block_visible(at.block);
+        if self.caret.head != at { crate::editor::code_escape::clear(); }
         self.caret.head = at;
         if !extend { self.caret.anchor = at; }
         self.caret.composing = None;
