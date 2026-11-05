@@ -1,5 +1,5 @@
-//! `--smoke`: a visible, scripted click and keyboard pass over the real window.
-//! It runs against a throw-away sandbox, never the user's notes or `state.json`.
+//! `--smoke`: queued scripted checks in a background resident worker.
+//! `--smoke-once` retains the legacy visible, single-run window.
 //! This file is the runner; the scripted steps live in `smoke_steps.rs`.
 use std::{path::PathBuf, time::Duration};
 use gpui::{
@@ -10,36 +10,55 @@ use crate::{app::Workspace, editor::Editor, ui::smoke_overlay};
 
 #[path = "smoke_steps.rs"]
 mod steps;
+#[cfg(unix)]
+#[path = "smoke_ipc.rs"] mod ipc;
+#[path = "smoke_client.rs"] mod client;
+#[path = "smoke_worker.rs"] mod worker;
+
+pub fn handle_cli() -> bool { client::handle() }
+pub fn is_worker() -> bool { std::env::args().any(|a| a == "--smoke-worker") }
 
 const STEPS: usize = 12;
 
-pub fn is_requested() -> bool { std::env::args().any(|a| a == "--smoke" || a == "--smoke-test") }
+pub fn is_requested() -> bool { std::env::args().any(|a| matches!(a.as_str(), "--smoke" | "--smoke-test" | "--smoke-worker" | "--smoke-once")) }
 pub fn keep_open() -> bool { std::env::args().any(|a| a == "--keep-open") }
 
 /// Creates the sandbox notebook and redirects all preferences into it.
 pub fn init_sandbox() -> Option<PathBuf> {
     if !is_requested() { return None; }
     smoke_overlay::enable_smoke_mode();
-    let sandbox = PathBuf::from("/tmp").join(format!("block-smoke-{}", std::process::id()));
-    let notebook = sandbox.join("notebook");
-    let setup = || -> std::io::Result<()> {
-        std::fs::create_dir_all(&notebook)?;
-        let welcome = notebook.join("Welcome.md");
-        std::fs::write(&welcome, "# Block\n\n点击验证初始段落。\n")?;
-        crate::files::state::set_state_path_override(sandbox.join("state.json"));
-        crate::files::save_folder(&notebook)?;
-        crate::files::update_state(|s| { s.open_tabs = vec![welcome.clone()]; s.active_tab = Some(welcome); })?;
-        Ok(())
-    };
-    if let Err(error) = setup() {
+    if let Err(error) = reset_sandbox() {
         eprintln!("[FAIL] 无法创建冒烟沙箱: {error}");
         std::process::exit(1);
     }
-    Some(sandbox)
+    Some(sandbox_path())
+}
+
+fn sandbox_path() -> PathBuf { PathBuf::from("/tmp").join(format!("block-smoke-{}", std::process::id())) }
+fn reset_sandbox() -> std::io::Result<()> {
+    let sandbox = sandbox_path();
+    let notebook = sandbox.join("notebook");
+    // Detached history writers may still use sandbox/data after the editor closes.
+    match std::fs::remove_dir_all(&notebook) {
+        Ok(()) => (), Err(e) if e.kind() == std::io::ErrorKind::NotFound => (), Err(e) => return Err(e),
+    }
+    std::fs::create_dir_all(&notebook)?;
+    let welcome = notebook.join("Welcome.md");
+    std::fs::write(&welcome, "# Block\n\n点击验证初始段落。\n")?;
+    crate::files::state::set_state_path_override(sandbox.join("state.json"));
+    crate::files::update_state(|s| {
+        *s = crate::files::state::State::default();
+        s.folder = Some(notebook.clone());
+        s.notebooks = vec![notebook];
+        s.open_tabs = vec![welcome.clone()];
+        s.active_tab = Some(welcome);
+    }).map(|_| ())
 }
 
 pub fn spawn(window: AnyWindowHandle, workspace: Entity<Workspace>, sandbox: Option<PathBuf>, cx: &mut App) {
     let run = Run { window, workspace };
+    #[cfg(unix)]
+    if is_worker() { worker::spawn(run, cx); return; }
     cx.spawn(async move |cx| {
         let outcome = run.all_steps(cx).await;
         run.finish(outcome, sandbox, cx).await;
@@ -66,6 +85,7 @@ impl Run {
 
     fn redraw(&self, cx: &AsyncApp) {
         cx.update(|cx| self.workspace.update(cx, |_, cx| cx.notify()));
+        if is_worker() { worker::draw(self, cx); }
     }
 
     /// Shows `label` in the HUD without a click ripple.
@@ -104,6 +124,7 @@ impl Run {
     }
 
     async fn click_target(&self, cx: &AsyncApp, id: &str, label: &str) -> Result<(), String> {
+        if is_worker() { worker::draw(self, cx); }
         let center = smoke_overlay::target_center(id).ok_or_else(|| format!("找不到点击目标 {id}"))?;
         self.click_at(cx, center, label).await
     }
@@ -132,7 +153,6 @@ impl Run {
         println!("[PASS] Step {n}/{STEPS}: {title}");
         Ok(())
     }
-
     async fn finish(&self, outcome: Result<(), String>, sandbox: Option<PathBuf>, cx: &mut AsyncApp) {
         let cx = &*cx;
         let cleanup = |sandbox: &Option<PathBuf>| if let Some(dir) = sandbox { let _ = std::fs::remove_dir_all(dir); };
