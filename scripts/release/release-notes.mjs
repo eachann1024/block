@@ -246,6 +246,7 @@ if (import.meta.main) {
     ? `${process.argv[sinceIdx + 1]}..HEAD`
     : `-n ${limitIdx >= 0 && process.argv[limitIdx + 1] ? process.argv[limitIdx + 1] : "12"}`;
   const commits = listCommits(ROOT, range);
-  const result = await buildReleaseNotes({ version: "0.1.0", commits });
+  const count = execFileSync("git", ["rev-list", "--count", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
+  const result = await buildReleaseNotes({ version: `1.0.${count}`, commits });
   console.log(result.markdown || `跳过：${result.reason}`);
 }

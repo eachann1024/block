@@ -58,7 +58,7 @@ fn download_url(url: &str) -> Result<Vec<u8>, String> {
             "--max-time",
             "25",
             "-A",
-            "Block/0.1",
+            concat!("Block/", env!("CARGO_PKG_VERSION")),
             url,
         ])
         .output()

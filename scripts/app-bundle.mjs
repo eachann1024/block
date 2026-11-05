@@ -36,8 +36,8 @@ const plistKeys = [
   ["CFBundleExecutable", "block"],
   ["CFBundlePackageType", "APPL"],
   ["CFBundleIconFile", "AppIcon"],
-  ["CFBundleVersion", "1"],
-  ["CFBundleShortVersionString", "0.1.0"],
+  ["CFBundleVersion", "1.0.0"],
+  ["CFBundleShortVersionString", "1.0.0"],
   ["LSMinimumSystemVersion", "12.0"],
   ["NSHighResolutionCapable", true],
   [
@@ -79,12 +79,12 @@ export function readAppVersion(root = repoRoot) {
     const match = /^version\s*=\s*"(\d+\.\d+\.\d+)"/m.exec(cargo);
     if (match) return match[1];
   } catch {}
-  return "0.1.0";
+  return "1.0.0";
 }
 
 export function plist(version = readAppVersion()) {
   const body = plistKeys
-    .map(([key, value]) => [key, key === "CFBundleShortVersionString" ? version : value])
+    .map(([key, value]) => [key, key === "CFBundleShortVersionString" || key === "CFBundleVersion" ? version : value])
     .map(([key, value]) => `  <key>${key}</key>\n${tag(value, "  ")}`)
     .join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n${body}\n</dict>\n</plist>\n`;
