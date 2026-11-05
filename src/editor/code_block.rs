@@ -85,22 +85,25 @@ pub(super) fn take_picked_lang(doc: &Doc) -> Option<(u64, &'static str, bool)> {
 
 /// Space around the text that the card or source editor occupies.
 pub(super) fn margin(language: &str) -> Edges<Length> {
+    let zoom = super::zoom::zoom_factor();
     if is_preview_lang(language) {
-        Edges { top: px(SOURCE_PAD_Y).into(), right: px(SOURCE_PAD_X).into(), bottom: px(SOURCE_PAD_Y).into(), left: px(SOURCE_PAD_X).into() }
+        Edges { top: px(SOURCE_PAD_Y * zoom).into(), right: px(SOURCE_PAD_X * zoom).into(), bottom: px(SOURCE_PAD_Y * zoom).into(), left: px(SOURCE_PAD_X * zoom).into() }
     } else {
-        Edges { top: px(PAD_TOP).into(), right: px(PAD_X).into(), bottom: px(PAD_BOTTOM).into(), left: px(PAD_X).into() }
+        Edges { top: px(PAD_TOP * zoom).into(), right: px(PAD_X * zoom).into(), bottom: px(PAD_BOTTOM * zoom).into(), left: px(PAD_X * zoom).into() }
     }
 }
 
 /// Paint the borderless `#f8f8f6` card (`radius 6`) behind normal code blocks.
 pub(super) fn paint_card(bounds: Bounds<Pixels>, language: &str, window: &mut Window, _cx: &mut App) {
     if is_preview_lang(language) { return; }
+    let zoom = super::zoom::zoom_factor();
     let bg = if is_dark() { rgb(0x1d2026) } else { rgb(0xf8f8f6) };
+    let (pad_x, pad_top, pad_bottom) = (px(PAD_X * zoom), px(PAD_TOP * zoom), px(PAD_BOTTOM * zoom));
     let card = Bounds::new(
-        bounds.origin - point(px(PAD_X), px(PAD_TOP)),
-        size(bounds.size.width + px(PAD_X * 2.), bounds.size.height + px(PAD_TOP + PAD_BOTTOM)),
+        bounds.origin - point(pad_x, pad_top),
+        size(bounds.size.width + pad_x * 2., bounds.size.height + pad_top + pad_bottom),
     );
-    window.paint_quad(quad(card, Corners::all(px(6.)), bg, px(0.), transparent_black(), BorderStyle::Solid));
+    window.paint_quad(quad(card, Corners::all(px(6. * zoom)), bg, px(0.), transparent_black(), BorderStyle::Solid));
 }
 
 fn pill_text(raw_lang: &str) -> String {
