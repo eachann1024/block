@@ -26,9 +26,6 @@ pub(super) fn validate(table: &Table) -> Result<(), ExportError> {
     if rows == 0 || table.columns == 0 {
         return Err(ExportError::InvalidInput(tr("表格必须包含行和列", "Table must have rows and columns")));
     }
-    if rows > 256 || table.columns > 32 {
-        return Err(ExportError::ResourceLimit(tr("表格最多 256 行 / 32 列", "Max 256 rows / 32 columns in table")));
-    }
     if (!table.column_widths.is_empty() && table.column_widths.len() != table.columns)
         || table.alignments.len() > table.columns
     {
@@ -61,7 +58,7 @@ pub(super) fn validate(table: &Table) -> Result<(), ExportError> {
     Ok(())
 }
 
-fn width(value: &str, content_width: f32) -> Result<f32, ExportError> {
+fn width(value: &str, content_width: f32) -> Option<f32> {
     let value = value.trim();
     let (number, factor) = if let Some(number) = value.strip_suffix('%') {
         (number, content_width / 100.)
@@ -73,26 +70,21 @@ fn width(value: &str, content_width: f32) -> Result<f32, ExportError> {
         .ok()
         .filter(|n| n.is_finite() && *n > 0.)
         .map(|n| n * factor)
-        .filter(|n| n.is_finite())
-        .ok_or(ExportError::UnsupportedTable(crate::theme::tr(
-            "正像素或百分比以外的宽度",
-            "Table width must be positive pixels or percentage",
-        )))
+        .filter(|n| n.is_finite() && *n > 0.)
 }
 
 fn columns(table: &Table, content_width: f32) -> Result<Vec<f32>, ExportError> {
     let mut widths = vec![None; table.columns];
     for (slot, value) in widths.iter_mut().zip(&table.column_widths) {
-        *slot = value
-            .as_deref()
-            .map(|v| width(v, content_width))
-            .transpose()?;
+        *slot = value.as_deref().and_then(|v| width(v, content_width));
     }
     for row in &table.rows {
         for cell in &row.cells {
             let explicit = style::css(&cell.attrs, "width").or_else(|| cell.attr("width"));
-            if let Some(value) = explicit {
-                let each = width(value, content_width)? / cell.colspan as f32;
+            if let Some(each) = explicit
+                .and_then(|v| width(v, content_width))
+                .map(|w| w / cell.colspan as f32)
+            {
                 for slot in &mut widths[cell.column..cell.column + cell.colspan] {
                     if slot.is_none() {
                         *slot = Some(each);
