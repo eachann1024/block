@@ -91,6 +91,9 @@ pub(in crate::editor) fn paint_fills(layout: &TextLayout, st: &ChipState, window
 }
 
 /// Chip outlines; runs after the selection band so the border floats above it.
+/// `Hsla::is_transparent` is `a == 0`, and GPUI then splits the quad into four
+/// strips that redraw the joins. A 1/10000 border tint stays one quad and does
+/// not move an 8-bit pixel, while the shader fades the border by alpha.
 pub(in crate::editor) fn paint_borders(layout: &TextLayout, st: &ChipState, window: &mut Window) {
     let p = palette();
     each_layout(layout, st, |l, st| {
@@ -98,7 +101,7 @@ pub(in crate::editor) fn paint_borders(layout: &TextLayout, st: &ChipState, wind
         for span in &l.code_spans {
             let border = match look(span, st) { Look::Edit => p.edit_border, Look::Selected => p.sel_border, _ => p.border };
             for (b, c) in boxes(l, span, &m) {
-                window.paint_quad(quad(b, c, gpui::transparent_black(), px(1.), border, BorderStyle::Solid));
+                window.paint_quad(quad(b, c, border.opacity(0.0001), px(1.), border, BorderStyle::Solid));
             }
         }
     });
