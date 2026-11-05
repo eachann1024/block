@@ -31,10 +31,14 @@ export function compareVersions(left, right) {
   return 0;
 }
 
-export function bumpPatch(version) {
-  assert.match(version, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
-  const [major, minor, patch] = version.split(".").map(Number);
-  return `${major}.${minor}.${patch + 1}`;
+export function releaseVersion(root = ROOT, sha = "HEAD") {
+  const count = execFileSync("git", ["rev-list", "--count", sha], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+  assert.match(count, /^[1-9]\d*$/, `git rev-list --count returned ${count}`);
+  return `1.0.${count}`;
 }
 
 export function readCargoVersion(root = ROOT) {
@@ -151,12 +155,12 @@ async function main() {
   const onMain = !process.env.GITHUB_REF || process.env.GITHUB_REF === "refs/heads/main";
 
   const cargoVersion = readCargoVersion(ROOT);
+  const version = releaseVersion(ROOT, headSha);
   const releases = getReleases();
   const stable = releases
     .filter((r) => !r.draft && !r.prerelease && versionFromTag(r.tag_name))
     .sort((a, b) => compareVersions(versionFromTag(a.tag_name), versionFromTag(b.tag_name)));
   const previous = stable.at(-1) || null;
-  const publishedVersion = previous ? versionFromTag(previous.tag_name) : null;
 
   if (scheduled && !force && previous?.published_at) {
     const today = shanghaiDay(new Date().toISOString());
@@ -170,12 +174,7 @@ async function main() {
     }
   }
 
-  let version = cargoVersion;
-  let autoBump = false;
-  if (publishedVersion && compareVersions(version, publishedVersion) <= 0) {
-    version = bumpPatch(publishedVersion);
-    autoBump = true;
-  }
+  const autoBump = version !== cargoVersion;
 
   const previousSha = resolveTagCommit(previous);
   if (previousSha && previousSha === headSha && !force) {

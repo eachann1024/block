@@ -12,6 +12,7 @@ mod search;
 mod smoke;
 mod theme;
 pub mod ui;
+mod version;
 pub mod window_bounds;
 
 use std::{path::PathBuf, sync::Mutex, time::Duration};
