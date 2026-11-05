@@ -1,5 +1,5 @@
 //! Notion-parity block operations: subtree-aware move, duplicate, code/menu shortcuts, and Esc block selection keys.
-use gpui::{ClipboardItem, Context, Window};
+use gpui::{ClipboardItem, Context, Pixels, Point, Window, px};
 use super::{
     block_menu::is_divider,
     input::transactions::ListChange,
@@ -14,38 +14,65 @@ pub(super) fn is_list(block: &Block) -> bool {
 fn is_atomic(block: &Block) -> bool {
     super::image_source::spec_of(block).is_some() || is_divider(block)
 }
-pub(in crate::editor) fn needs_top_insert(block: &Block) -> bool {
-    !(block.kind == Kind::Paragraph
-        && block.meta.code_language.is_none()
-        && block.meta.table.is_none()
-        && block.meta.raw_source.is_none()
-        && super::image_source::spec_of(block).is_none()
-        && block.meta.callout.is_none()
-        && block.meta.html_paragraph.is_none())
-}
 
 impl Editor {
-    /// Insert a new plain paragraph directly above `id` and focus it.
-    pub(in crate::editor) fn insert_above(&mut self, id: u64, cx: &mut Context<Self>) -> bool {
-        if self.path.is_none() { return false; }
-        let Some(index) = self.doc.index_of(id) else { return false };
+    fn insert_paragraph_at(&mut self, index: usize, cx: &mut Context<Self>) -> bool {
+        if self.path.is_none() || index > self.doc.blocks.len() { return false; }
         self.commit_composition(cx);
         let before = self.snapshot();
-        let p = Block::new(0, Kind::Paragraph, String::new());
-        self.doc.splice_blocks(index..index, vec![p]);
+        self.doc.splice_blocks(index..index, vec![Block::new(0, Kind::Paragraph, String::new())]);
         let new_id = self.doc.blocks[index].id;
         self.table_sel = None; self.table_menu = None; self.block_sel = None; self.preferred_x = None;
-        self.set_head(Position { block: new_id, offset: 0 }, false, cx);
         self.record_changes(before, vec![ListChange { start: index, before: 0, after: 1 }], true, cx);
-        self.layouts.clear();
-        self.list.scroll_to_reveal_item(index);
+        self.ensure_block_visible(new_id);
+        self.set_head(Position { block: new_id, offset: 0 }, false, cx);
+        self.layouts.clear(); self.list.scroll_to_reveal_item(index);
         true
     }
-    /// Insert a new plain paragraph at the very top of the document (index 0) and focus it.
-    #[allow(dead_code)]
+    /// Insert a new plain paragraph directly above `id` and focus it.
+    pub(in crate::editor) fn insert_above(&mut self, id: u64, cx: &mut Context<Self>) -> bool {
+        let Some(index) = self.doc.index_of(id) else { return false };
+        self.insert_paragraph_at(index, cx)
+    }
+    /// 在文档最顶部（索引 0）插入独立空段落并聚焦。
     pub(in crate::editor) fn insert_top_paragraph(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(first_id) = self.doc.blocks.first().map(|b| b.id) else { return false };
-        self.insert_above(first_id, cx)
+        !self.doc.blocks.is_empty() && self.insert_paragraph_at(0, cx)
+    }
+    /// 在文档末尾块之后插入独立空段落并聚焦。
+    pub(in crate::editor) fn insert_bottom_paragraph(&mut self, cx: &mut Context<Self>) -> bool {
+        !self.doc.blocks.is_empty() && self.insert_paragraph_at(self.doc.blocks.len(), cx)
+    }
+    /// 在 `hit()` 吸附前处理文档顶部（64px）与底部（>=160px）留白点击插入。
+    pub(in crate::editor) fn try_blank_margin_insert(&mut self, pos: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.minimal || self.path.is_none() || !self.is_markdown_note() || self.editing_source() || self.doc.blocks.is_empty() { return false; }
+        // GPUI `List::bounds_for_item` 相对 viewport 顶部计算，不含列表自身的 `pt(px(64.))`。
+        let (top_pad, first_id) = (px(64.), self.doc.blocks[0].id);
+        let first_top = self.list.bounds_for_item(0).map(|b| b.top() + top_pad)
+            .or_else(|| (self.list.logical_scroll_top().item_ix == 0).then(|| self.layouts.get(&first_id).map(|l| l.bounds.top())).flatten());
+        if first_top.is_some_and(|top_y| pos.y < top_y) && self.insert_top_paragraph(cx) {
+            self.selecting = false; self.toolbar_anchor = None; window.focus(&self.focus, cx); return true;
+        }
+        let Some(last_idx) = self.last_visible_index() else { return false };
+        let last_id = self.doc.blocks[last_idx].id;
+        let row_b = self.list.bounds_for_item(last_idx).map(|b| b.bottom() + top_pad);
+        let lay_b = self.layouts.get(&last_id).map(|l| l.bounds.bottom());
+        let last_bottom = row_b.zip(lay_b).map(|(a, b)| a.max(b)).or(row_b).or(lay_b);
+        if last_bottom.is_some_and(|bottom_y| pos.y > bottom_y) && self.insert_bottom_paragraph(cx) {
+            self.selecting = false; self.toolbar_anchor = None; window.focus(&self.focus, cx); return true;
+        }
+        false
+    }
+    pub(super) fn sync_reveal_after_paint(&mut self, pad: (f32, f32)) {
+        if !self.reveal_caret { return; }
+        self.reveal_caret = false;
+        if self.minimal { return; }
+        if self.doc.index_of(self.caret.head.block) == Some(0) && self.caret.head.offset == 0 {
+            self.list.scroll_to_reveal_item(0);
+        } else if let Some(last_idx) = self.last_visible_index().filter(|&i| self.doc.blocks[i].id == self.caret.head.block)
+            && self.list.bounds_for_item(last_idx).is_some_and(|b| b.size.height <= self.list.viewport_bounds().size.height - px(pad.0 + pad.1))
+        {
+            self.list.scroll_to_reveal_item(last_idx);
+        }
     }
     /// End index (inclusive) of `start`'s nested list subtree.
     pub(super) fn list_subtree_end(&self, start: usize) -> usize {
