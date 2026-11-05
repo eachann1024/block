@@ -4,7 +4,7 @@ use cosmic_text::Color;
 use tiny_skia::Pixmap;
 
 use super::decor_marks::paint_washi;
-use super::decor_shapes::{fill_circle, fill_rounded_rect, stroke_rounded_rect};
+use super::decor_shapes::{fill_rounded_rect, stroke_rounded_rect};
 use super::layout::{Layout, SCALE};
 use super::palette::{ExportTheme, Palette};
 use super::{Cancellation, ExportError};
@@ -63,7 +63,7 @@ pub(super) fn paint_paper(
             while y < cy + ch - inner * 0.5 {
                 let mut x = cx + gap * 0.5;
                 while x < cx + cw - inner * 0.5 {
-                    fill_circle(image, x, y, 1.3, dot);
+                    fill_dot(image, x, y, 1.3, dot);
                     x += gap;
                 }
                 y += gap;
@@ -82,6 +82,33 @@ pub(super) fn paint_paper(
         _ => {}
     }
     Ok(())
+}
+
+/// Direct antialiased dot stamp to avoid per-dot path tessellation across tall canvases.
+fn fill_dot(image: &mut Pixmap, cx: f32, cy: f32, r: f32, color: Color) {
+    let (w, h) = (image.width() as i32, image.height() as i32);
+    let (cx, cy, r) = (cx * SCALE, cy * SCALE, r * SCALE);
+    let x0 = (cx - r - 1.0).floor().max(0.0) as i32;
+    let x1 = (cx + r + 1.0).ceil().min((w - 1) as f32) as i32;
+    let y0 = (cy - r - 1.0).floor().max(0.0) as i32;
+    let y1 = (cy + r + 1.0).ceil().min((h - 1) as f32) as i32;
+    let data = image.data_mut();
+    let (sr, sg, sb, sa) = (color.r() as u32, color.g() as u32, color.b() as u32, color.a() as f32);
+    for py in y0..=y1 {
+        let dy = py as f32 + 0.5 - cy;
+        for px in x0..=x1 {
+            let dx = px as f32 + 0.5 - cx;
+            let cov = (r + 0.5 - (dx * dx + dy * dy).sqrt()).clamp(0.0, 1.0);
+            let a = (sa * cov).round() as u32;
+            if a == 0 {
+                continue;
+            }
+            let idx = ((py * w + px) * 4) as usize;
+            data[idx] = ((sr * a + data[idx] as u32 * (255 - a) + 127) / 255) as u8;
+            data[idx + 1] = ((sg * a + data[idx + 1] as u32 * (255 - a) + 127) / 255) as u8;
+            data[idx + 2] = ((sb * a + data[idx + 2] as u32 * (255 - a) + 127) / 255) as u8;
+        }
+    }
 }
 
 /// Sparse deterministic speckle, sampled every 3 device pixels.
