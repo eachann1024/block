@@ -17,7 +17,7 @@ const CJK_RANGES: &[(u32, u32)] = &[
 /// with 1.0em (`1000` units for `upem = 1000`) advance width and empty `glyf` outlines.
 /// `cosmic-text` shapes and wraps CJK runs accurately, while `paint_glyph` rasterizes
 /// the actual glyph pixels via the browser's native 2D canvas text engine.
-pub(super) fn metric_font(family: &str) -> Vec<u8> {
+pub(crate) fn metric_font(family: &str) -> Vec<u8> {
     let mut cmap4 = Vec::new();
     let seg_count = (CJK_RANGES.len() + 1) as u16;
     let search_range = (1u16 << (15 - seg_count.leading_zeros())) * 2;

@@ -18,6 +18,8 @@ pub mod editor;
 pub mod export;
 #[path = "../../src/files/mod.rs"]
 pub mod files;
+#[path = "../../src/fonts/mod.rs"]
+pub mod fonts;
 #[path = "../../src/icons.rs"]
 pub mod icons;
 #[path = "../../src/mascot/mod.rs"]
@@ -118,12 +120,6 @@ pub mod log {
     pub fn error(msg: &str) { web_sys::console::error_1(&msg.into()); }
 }
 
-const FONT_PLEX_REGULAR: &[u8] = include_bytes!("../fonts/IBMPlexSans-Regular.ttf");
-const FONT_PLEX_SEMIBOLD: &[u8] = include_bytes!("../fonts/IBMPlexSans-SemiBold.ttf");
-const FONT_JETBRAINS_MONO: &[u8] = include_bytes!("../fonts/JetBrainsMono-Regular.ttf");
-/// Fonts bundled into the build; also the font database of the 生成图片 export renderer.
-pub(crate) const WEB_FONTS: &[&[u8]] = &[FONT_PLEX_REGULAR, FONT_PLEX_SEMIBOLD, FONT_JETBRAINS_MONO];
-
 struct WebAssets;
 impl gpui::AssetSource for WebAssets {
     fn load(&self, path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {
@@ -177,56 +173,66 @@ pub fn start() {
     Application::with_platform(Rc::new(platform))
         .with_assets(WebAssets)
         .run(|cx: &mut App| {
-            // Must register Latin UI & mono fonts before resolving `.SystemUIFont` (upstream #3101).
-            let _ = cx.text_system().add_fonts(vec![
-                Cow::Borrowed(FONT_PLEX_REGULAR),
-                Cow::Borrowed(FONT_PLEX_SEMIBOLD),
-                Cow::Borrowed(FONT_JETBRAINS_MONO),
-            ]);
-            theme::init_fonts(&cx.text_system().all_font_names());
-            gpui_component::init(cx);
-            gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx);
-            editor::bind_keys(cx);
+            cx.spawn(async move |cx| {
+                let fetched = fonts::load_ui_fonts().await;
+                cx.update(|cx| {
+                    let cows: Vec<Cow<'static, [u8]>> = if fetched.is_empty() {
+                        vec![
+                            Cow::Owned(export::metric_font("IBM Plex Sans")),
+                            Cow::Owned(export::metric_font("JetBrains Mono")),
+                        ]
+                    } else {
+                        fetched.into_iter().map(Cow::Borrowed).collect()
+                    };
+                    let _ = cx.text_system().add_fonts(cows);
+                    theme::init_fonts(&cx.text_system().all_font_names());
+                    gpui_component::init(cx);
+                    gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx);
+                    editor::bind_keys(cx);
 
-            let _ = cx.open_window(WindowOptions::default(), |window, cx| {
-                mount_canvas_into_stage();
-                let workspace = cx.new(|cx| app::Workspace::new(window, cx));
-                let tab_target = workspace.clone();
-                let settings_target = workspace.clone();
-                cx.on_action({
-                    let target = tab_target.clone();
-                    move |_: &app::NewTab, cx: &mut App| {
-                        let Some(handle) = cx.active_window() else { return };
-                        let target = target.clone();
-                        let _ = cx.update_window(handle, move |_, window, cx| {
-                            target.update(cx, |this, cx| this.new_tab(window, cx));
+                    let _ = cx.open_window(WindowOptions::default(), |window, cx| {
+                        mount_canvas_into_stage();
+                        let workspace = cx.new(|cx| app::Workspace::new(window, cx));
+                        fonts::spawn(workspace.clone(), cx);
+                        let tab_target = workspace.clone();
+                        let settings_target = workspace.clone();
+                        cx.on_action({
+                            let target = tab_target.clone();
+                            move |_: &app::NewTab, cx: &mut App| {
+                                let Some(handle) = cx.active_window() else { return };
+                                let target = target.clone();
+                                let _ = cx.update_window(handle, move |_, window, cx| {
+                                    target.update(cx, |this, cx| this.new_tab(window, cx));
+                                });
+                            }
                         });
-                    }
-                });
-                cx.on_action({
-                    let target = tab_target.clone();
-                    move |_: &app::CloseTab, cx: &mut App| {
-                        target.update(cx, |this, cx| this.close_active_tab(cx));
-                    }
-                });
-                cx.on_action({
-                    let target = tab_target.clone();
-                    move |_: &app::NextTab, cx: &mut App| {
-                        target.update(cx, |this, cx| this.step_tab(1, cx));
-                    }
-                });
-                cx.on_action(move |_: &app::PrevTab, cx: &mut App| {
-                    tab_target.update(cx, |this, cx| this.step_tab(-1, cx));
-                });
-                cx.on_action(move |_: &app::OpenSettings, cx: &mut App| {
-                    let Some(handle) = cx.active_window() else { return };
-                    let settings_target = settings_target.clone();
-                    let _ = cx.update_window(handle, move |_, window, cx| {
-                        settings_target.update(cx, |this, cx| this.open_settings(window, cx));
+                        cx.on_action({
+                            let target = tab_target.clone();
+                            move |_: &app::CloseTab, cx: &mut App| {
+                                target.update(cx, |this, cx| this.close_active_tab(cx));
+                            }
+                        });
+                        cx.on_action({
+                            let target = tab_target.clone();
+                            move |_: &app::NextTab, cx: &mut App| {
+                                target.update(cx, |this, cx| this.step_tab(1, cx));
+                            }
+                        });
+                        cx.on_action(move |_: &app::PrevTab, cx: &mut App| {
+                            tab_target.update(cx, |this, cx| this.step_tab(-1, cx));
+                        });
+                        cx.on_action(move |_: &app::OpenSettings, cx: &mut App| {
+                            let Some(handle) = cx.active_window() else { return };
+                            let settings_target = settings_target.clone();
+                            let _ = cx.update_window(handle, move |_, window, cx| {
+                                settings_target.update(cx, |this, cx| this.open_settings(window, cx));
+                            });
+                        });
+                        cx.new(|cx| gpui_component::Root::new(workspace, window, cx))
                     });
+                    cx.activate(true);
                 });
-                cx.new(|cx| gpui_component::Root::new(workspace, window, cx))
-            });
-            cx.activate(true);
+            })
+            .detach();
         });
 }

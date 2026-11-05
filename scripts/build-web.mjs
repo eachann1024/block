@@ -7,7 +7,7 @@ import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:z
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const webDir = join(root, "web");
 const outDir = resolve(root, "../public/fast/editor");
-const fontsOut = join(outDir, "fonts");
+const FONTSOURCE_VER = "5.3.0";
 
 function run(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, { stdio: "inherit", ...opts });
@@ -32,22 +32,37 @@ const INDEX_HTML = `<!doctype html>
   <style>
     @font-face {
       font-family: "IBM Plex Sans";
-      src: url("./fonts/IBMPlexSans-Regular.ttf?v=4") format("truetype");
+      src:
+        url("https://cdn.jsdelivr.net/fontsource/fonts/ibm-plex-sans@${FONTSOURCE_VER}/latin-400-normal.ttf") format("truetype"),
+        url("https://registry.npmmirror.com/@fontsource/ibm-plex-sans/${FONTSOURCE_VER}/files/files/ibm-plex-sans-latin-400-normal.woff2") format("woff2");
       font-weight: 400;
       font-style: normal;
       font-display: swap;
     }
     @font-face {
       font-family: "IBM Plex Sans";
-      src: url("./fonts/IBMPlexSans-SemiBold.ttf?v=4") format("truetype");
+      src:
+        url("https://cdn.jsdelivr.net/fontsource/fonts/ibm-plex-sans@${FONTSOURCE_VER}/latin-600-normal.ttf") format("truetype"),
+        url("https://registry.npmmirror.com/@fontsource/ibm-plex-sans/${FONTSOURCE_VER}/files/files/ibm-plex-sans-latin-600-normal.woff2") format("woff2");
       font-weight: 600;
       font-style: normal;
       font-display: swap;
     }
     @font-face {
       font-family: "JetBrains Mono";
-      src: url("./fonts/JetBrainsMono-Regular.ttf?v=4") format("truetype");
+      src:
+        url("https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono@${FONTSOURCE_VER}/latin-400-normal.ttf") format("truetype"),
+        url("https://registry.npmmirror.com/@fontsource/jetbrains-mono/${FONTSOURCE_VER}/files/files/jetbrains-mono-latin-400-normal.woff2") format("woff2");
       font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "JetBrains Mono";
+      src:
+        url("https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono@${FONTSOURCE_VER}/latin-500-normal.ttf") format("truetype"),
+        url("https://registry.npmmirror.com/@fontsource/jetbrains-mono/${FONTSOURCE_VER}/files/files/jetbrains-mono-latin-500-normal.woff2") format("woff2");
+      font-weight: 500;
       font-style: normal;
       font-display: swap;
     }
@@ -110,7 +125,7 @@ const INDEX_HTML = `<!doctype html>
 `;
 
 export function buildWeb() {
-  mkdirSync(fontsOut, { recursive: true });
+  mkdirSync(outDir, { recursive: true });
 
   run(
     "cargo",
@@ -150,7 +165,6 @@ export function buildWeb() {
     bgWasm,
   ]);
 
-  cpSync(join(webDir, "fonts"), fontsOut, { recursive: true });
   for (const name of ["favicon-light-32.png", "favicon-dark-32.png", "apple-touch-icon-light.png"]) {
     cpSync(join(root, "assets/app-icon", name), join(outDir, name));
   }
