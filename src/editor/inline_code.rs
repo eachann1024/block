@@ -1,9 +1,14 @@
-//! Scheme B (TokenChip) inline code spacing, chip painting and ⌘+Click copy.
+//! Inline code spacing, hover tracking and ⌘+Click copy (chip painting: `inline_code_chip`).
 use std::ops::Range;
-use gpui::{BorderStyle, Bounds, ClipboardItem, Context, Corners, Hsla, Pixels, Point,
-    SharedString, TextRun, Window, fill, point, px, quad, rgb, rgba, size};
+use std::cell::RefCell;
+use gpui::{AnyElement, ClipboardItem, Context, Hsla, Pixels, Point, SharedString, TextRun, Window, px, rgb};
 use crate::theme::{Theme, is_dark, tr};
-use super::{model::{Block, MarkKind}, view::{Editor, layout::TextLayout}};
+use super::{model::{Block, MarkKind}, view::Editor};
+
+thread_local! {
+    /// Code chip under the pointer: (editor entity, block, span) — view state only.
+    static HOVER: RefCell<Option<(gpui::EntityId, u64, Range<usize>)>> = const { RefCell::new(None) };
+}
 
 pub(in crate::editor) const PAD_BYTES: usize = 2;
 
@@ -119,120 +124,15 @@ pub(in crate::editor) fn shaped_to_doc(shaped_offset: usize, code_spans: &[Range
 }
 
 pub(in crate::editor) fn code_text_color() -> Hsla {
-    if is_dark() { rgb(0xadc6ff).into() } else { rgb(0x1e3a6e).into() }
+    if is_dark() { rgb(0xd6e0f0).into() } else { rgb(0x2c3a52).into() }
 }
 
-fn paint_layout_chips(layout: &TextLayout, window: &mut Window) {
-    if layout.code_spans.is_empty() { return; }
-    let (bg, border, top_hi): (Hsla, Hsla, Hsla) = if is_dark() {
-        (rgb(0x252a34).into(), rgb(0x3a4354).into(), rgba(0xffffff0d).into())
-    } else {
-        (rgb(0xf1f3f7).into(), rgb(0xd5dce6).into(), rgba(0xffffffe0).into())
-    };
-    let chip_h = band_height(layout);
-    let pad_x = px(5.5);
-    for span in &layout.code_spans {
-        for r in layout.rects(span.clone()) {
-            let top = r.top() + ((r.size.height - chip_h) * 0.5).round();
-            let box_bounds = Bounds::new(point(r.left() - pad_x, top), size(r.size.width + pad_x * 2., chip_h));
-            window.paint_quad(quad(box_bounds, Corners::all(px(5.5)), bg, px(1.), border, BorderStyle::Solid));
-            let hi_bounds = Bounds::new(point(box_bounds.left() + px(3.), box_bounds.top() + px(1.)), size((box_bounds.size.width - px(6.)).max(px(0.)), px(1.)));
-            window.paint_quad(fill(hi_bounds, top_hi));
-        }
-    }
+/// Chip span under the pointer in `block` of editor `id`, for the hover fill.
+pub(in crate::editor) fn hovered(id: gpui::EntityId, block: u64) -> Option<Range<usize>> {
+    HOVER.with(|h| h.borrow().as_ref().filter(|(e, b, _)| *e == id && *b == block).map(|(_, _, r)| r.clone()))
 }
 
-pub(in crate::editor) fn paint_chips(layout: &TextLayout, window: &mut Window) {
-    if !layout.cells.is_empty() {
-        for cell in &layout.cells {
-            if !cell.text.code_spans.is_empty() {
-                paint_layout_chips(&cell.text, window);
-            }
-        }
-        return;
-    }
-    paint_layout_chips(layout, window);
-}
-
-/// Selection band height: equal to the chip height, so a selection never pokes above or below a chip.
-fn band_height(layout: &TextLayout) -> Pixels {
-    let font_px = layout.lines.first().map(|(_, l)| l.font_size()).unwrap_or(px(16.));
-    (font_px + px(5.)).round().min(layout.line_height - px(2.)).max(px(18.).min(layout.line_height))
-}
-
-struct Piece { b: Bounds<Pixels>, l: Pixels, r: Pixels }
-
-fn band(r: Bounds<Pixels>, h: Pixels, left: Pixels, right: Pixels, l: Pixels, rr: Pixels) -> Piece {
-    let top = r.top() + ((r.size.height - h) * 0.5).round();
-    Piece { b: Bounds::new(point(left, top), size((right - left).max(px(2.)), h)), l, r: rr }
-}
-
-/// Pieces of one text layout's selection: plain runs and chip parts share one band height.
-fn pieces(layout: &TextLayout, range: Range<usize>) -> Vec<Piece> {
-    let h = band_height(layout);
-    let plain = |out: &mut Vec<Piece>, a: usize, b: usize| for r in layout.rects(a..b) {
-        out.push(band(r, h, r.left(), r.right(), px(2.), px(2.)));
-    };
-    let (pad_x, chip_r) = (px(5.5), px(5.5));
-    let mut out = Vec::new();
-    let mut cursor = range.start;
-    for span in &layout.code_spans {
-        if span.end <= cursor { continue; }
-        if span.start >= range.end { break; }
-        if cursor < span.start {
-            let plain_end = span.start.min(range.end);
-            plain(&mut out, cursor, plain_end);
-            cursor = plain_end;
-        }
-        let (s, e) = (cursor.max(span.start), range.end.min(span.end));
-        if s < e {
-            let rects = layout.rects(s..e);
-            for (idx, r) in rects.iter().enumerate() {
-                let ext_l = s == span.start || idx > 0;
-                let ext_r = e == span.end || idx + 1 < rects.len();
-                let left = r.left() - if ext_l { pad_x } else { px(0.) };
-                let right = r.right() + if ext_r { pad_x } else { px(0.) };
-                out.push(band(*r, h, left, right, if ext_l { chip_r } else { px(2.) }, if ext_r { chip_r } else { px(2.) }));
-            }
-            cursor = e;
-        }
-    }
-    if cursor < range.end { plain(&mut out, cursor, range.end); }
-    // Bridge the breathing gap beside a chip so a selection crossing its edge reads as one band.
-    for i in 1..out.len() {
-        let (prev, next) = (out[i - 1].b, out[i].b);
-        let gap = next.left() - prev.right();
-        if (prev.top() - next.top()).abs() < px(1.) && gap >= px(0.) && gap < px(12.) {
-            out[i - 1].b.size.width = next.left() - prev.left();
-            out[i - 1].r = px(0.);
-            out[i].l = px(0.);
-        }
-    }
-    out
-}
-
-pub(in crate::editor) fn paint_selection(layout: &TextLayout, range: Range<usize>, window: &mut Window) -> Vec<Bounds<Pixels>> {
-    let sel_color = Theme::ocean().selection;
-    if range.is_empty() {
-        let rects = layout.rects(range);
-        for r in &rects {
-            window.paint_quad(quad(*r, px(2.), sel_color, 0., gpui::transparent_black(), BorderStyle::default()));
-        }
-        return rects;
-    }
-    let all: Vec<Piece> = if layout.cells.is_empty() { pieces(layout, range) } else {
-        layout.cells.iter().filter(|c| c.range.start < range.end && range.start < c.range.end).flat_map(|c| {
-            let a = range.start.max(c.range.start) - c.range.start;
-            let b = range.end.min(c.range.end) - c.range.start;
-            pieces(&c.text, a..b)
-        }).collect()
-    };
-    for p in &all {
-        let corners = Corners { top_left: p.l, bottom_left: p.l, top_right: p.r, bottom_right: p.r };
-        window.paint_quad(quad(p.b, corners, sel_color, 0., gpui::transparent_black(), BorderStyle::default()));
-    }
-    all.into_iter().map(|p| p.b).collect()
-}
+pub(in crate::editor) fn clear_hover() { HOVER.with(|h| *h.borrow_mut() = None); }
 
 impl Editor {
     pub(super) fn code_under(&self, position: Point<Pixels>) -> Option<(u64, Range<usize>)> {
@@ -263,5 +163,24 @@ impl Editor {
         self.status = format!("{}: {}", tr("已复制代码", "Copied code"), token);
         cx.notify();
         true
+    }
+
+    pub(super) fn update_code_hover(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let found = self.code_under(position).map(|(b, r)| (cx.entity_id(), b, r));
+        let changed = HOVER.with(|h| { let mut h = h.borrow_mut(); let c = *h != found; if c { *h = found; } c });
+        if changed { cx.notify(); }
+    }
+
+    /// "⌘+click to copy" above the hovered chip.
+    pub(super) fn code_hover_tooltip(&self, cx: &Context<Self>, window: &Window) -> Option<AnyElement> {
+        if self.selecting || self.dragging.is_some() || self.caret.composing.is_some() || self.format.is_some()
+            || self.block_menu.is_some() || self.table_menu.is_some() { return None; }
+        let (_, block, range) = HOVER.with(|h| h.borrow().clone()).filter(|(e, _, _)| *e == cx.entity_id())?;
+        let rect = *self.layouts.get(&block)?.rects(range.clone()).first()?;
+        let viewport = self.list.viewport_bounds();
+        if rect.bottom() <= viewport.top() || rect.top() >= viewport.bottom() { return None; }
+        let label = if cfg!(target_os = "macos") { tr("⌘+点击复制", "⌘+click to copy") } else { tr("Ctrl+点击复制", "Ctrl+click to copy") };
+        let rect = rect.dilate(px(6.));
+        Some(crate::ui::tooltip::anchored_tooltip_above(rect, viewport.top(), label, ("code-hover-tip", (block as usize) ^ (range.start << 16)), window))
     }
 }
