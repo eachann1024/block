@@ -148,6 +148,7 @@ pub(super) fn render_state(
     editor: Entity<Editor>,
     block_id: u64,
     source: &str,
+    zoom: f32,
     cx: &mut Context<Editor>,
 ) -> (Option<AnyElement>, Option<String>) {
     let theme = Theme::ocean();
@@ -160,10 +161,10 @@ pub(super) fn render_state(
     match state {
         Some(PreviewState::Ready { image, width, height }) => {
             LAST_READY.with(|lr| { lr.borrow_mut().insert(block_id, (image.clone(), width, height)); });
-            (Some(render_image(image, width, height)), None)
+            (Some(render_image(image, width, height, zoom)), None)
         }
         Some(PreviewState::Error(msg)) => (None, Some(msg)),
-        Some(PreviewState::Pending) => (Some(fallback_or_loading(block_id, &theme)), None),
+        Some(PreviewState::Pending) => (Some(fallback_or_loading(block_id, &theme, zoom)), None),
         None => {
             CACHE.with(|c| { c.borrow_mut().insert(key, PreviewState::Pending); });
             let src = source.to_owned();
@@ -185,13 +186,12 @@ pub(super) fn render_state(
                 });
                 let _ = entity.update(cx, |_, cx| cx.notify());
             }).detach();
-            (Some(fallback_or_loading(block_id, &theme)), None)
+            (Some(fallback_or_loading(block_id, &theme, zoom)), None)
         }
     }
 }
 
-pub(super) fn render_image(image: Arc<Image>, width: f32, height: f32) -> AnyElement {
-    let zoom = super::zoom::zoom_factor();
+pub(super) fn render_image(image: Arc<Image>, width: f32, height: f32, zoom: f32) -> AnyElement {
     div().w_full().flex().items_center().justify_center().py(px(6.))
         .child(img(image).w(px(width * zoom)).h(px(height * zoom)).flex_none())
         .into_any_element()
@@ -204,9 +204,9 @@ pub(super) fn placeholder(text: &'static str, theme: &Theme) -> AnyElement {
         .into_any_element()
 }
 
-fn fallback_or_loading(block_id: u64, theme: &Theme) -> AnyElement {
+fn fallback_or_loading(block_id: u64, theme: &Theme, zoom: f32) -> AnyElement {
     if let Some((image, w, h)) = LAST_READY.with(|lr| lr.borrow().get(&block_id).cloned()) {
-        render_image(image, w, h)
+        render_image(image, w, h, zoom)
     } else {
         placeholder(tr("正在渲染图表…", "Rendering diagram…"), theme)
     }

@@ -32,8 +32,7 @@ struct Pending {
     code_spans: Vec<Range<usize>>,
 }
 
-pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &mut Window) -> TextLayout {
-    let zoom = super::zoom::zoom_factor();
+pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &mut Window, zoom: f32) -> TextLayout {
     let theme = Theme::ocean();
     let font_size = px(FONT_SIZE * zoom);
     let line_height = px(LINE_HEIGHT * zoom);
