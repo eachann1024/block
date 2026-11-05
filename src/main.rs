@@ -18,6 +18,7 @@ mod smoke;
 mod startup;
 mod theme;
 pub mod ui;
+pub mod updater;
 mod version;
 pub mod window_bounds;
 

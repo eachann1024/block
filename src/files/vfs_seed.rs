@@ -1,141 +1,161 @@
 //! Seed Markdown note templates for the in-memory VFS.
 
-pub(super) const NOTE_WELCOME: &str = r#"# 欢迎使用 Block —— 毫秒级原生 Markdown 笔记
+pub(super) const NOTE_WELCOME: &str = r#"# 潮州周末漫游计划
 
-这是一份直接运行在浏览器 **WebAssembly + WebGPU/Canvas** 中的真实 **Block** 工作区。左侧文件树、多标签页、全局搜索（⌘K）、设置面板（⌘,）与生成长图（⇧⌘E）均由同一套 Rust + GPUI 代码直接驱动。
-
-> [!TIP]
-> 试着在左侧文件树切换笔记、新建笔记（⌘N）、按 / 呼出块菜单，或点击右上角 ··· → **生成图片…** 体验完整功能。
-
-## 核心工作区体验
-
-- [x] **左侧文件树与多标签页** — 支持新建笔记、新建文件夹、内联重命名、右键菜单与标签页切换
-- [x] **所见即所得块级编辑** — 标题、待办清单、多列分栏、代码高亮、数学公式、表格交互全部实时响应
-- [ ] 在下方任意段落直接输入文字，或选中文本体验浮动格式工具栏
-
-## 性能与架构对比
-
-| 维度 | Block (Rust + GPUI) | 传统 Electron 笔记 |
-| :--- | :--- | :--- |
-| 冷启动耗时 | **< 40 ms** | 1,200 – 2,800 ms |
-| 空闲内存占用 | **~28 MB** | 350 – 800 MB |
-| 本地存储格式 | **纯正 `.md` 文件** | 私有数据库 / 锁定云端 |
-
-## 代码块与数学公式
-
-```rust
-pub fn render_workspace(note: &MarkdownDoc, gpu: &mut GpuCanvas) {
-    for block in note.visible_blocks() {
-        gpu.paint_block(block);
-    }
-}
-```
-
-$$
-\mathcal{L}(\theta) = \mathbb{E}_{x \sim p_{\text{data}}}\bigl[-\log p_{\theta}(x)\bigr] + \lambda \|\theta\|_2^2
-$$
-"#;
-
-pub(super) const NOTE_ARCH: &str = r#"# 毫秒级块级编辑器架构
-
-Block 将每一篇 Markdown 文档拆分为独立的块级节点，配合虚拟列表与增量排版缓存，即使面对十万字长文也能保持 120fps 的丝滑滚动与输入。
-
-## 快捷键速查
-
-| 功能 | macOS 快捷键 | 说明 |
-| :--- | :--- | :--- |
-| 全局搜索 | `⌘K` | 按标题与正文毫秒级检索工作区全部笔记 |
-| 新建笔记 | `⌘N` | 在当前目录立即创建新 Markdown 笔记并打开标签页 |
-| 页内查找 | `⌘F` | 当前笔记内高亮匹配与替换 |
-| 生成图片 | `⇧⌘E` | 导出 6 款精选纸张主题的高清 2× 视网膜长图 |
-
-## 块级交互清单
-
-1. 将鼠标悬停在任意段落左侧，点击 `+` 或拖拽 `⋮⋮` 把手调整顺序
-2. 输入 `/` 即可过滤并插入标题、表格、代码块、标注框或数学公式
-3. 点击右上角 `···` 菜单可一键复制 Markdown 源码或生成分享长图
-"#;
-
-pub(super) const NOTE_GUIDE: &str = r#"# 排版与导出卡片指南
-
-Block 内置了由 `tiny-skia` 与 `cosmic-text` 驱动的离线排版渲染引擎，可将当前笔记或选中片段一键渲染为 2× 高清 PNG 长图、可交互 HTML、矢量 PDF 或标准 `.docx` 文档。
-
-> [!NOTE]
-> 点击窗口右上角的 `···` 按钮并选择 **生成图片…（⇧⌘E）**，即可实时切换「留白、暖纸、墨夜、赛博、手账、极光」六款主题。
-
-## 支持导出的格式
-
-- **PNG 长图（2×）** — 适合直接分享至社交媒体与即时通讯工具
-- **HTML 网页** — 单文件内联样式，完美保留代码高亮、表格与排版细节
-- **PDF / Word 文档** — 适合正式归档、打印与跨团队协作交付
-"#;
-
-pub(super) const NOTE_WELCOME_EN: &str = r#"# Welcome to Block — Instant Native Markdown Notes
-
-You are using the live **Block** workspace compiled directly to **WebAssembly + WebGPU/Canvas**. The file tree, multi-tab bar, global search (`⌘K`), preferences (`⌘,`), and share-card export (`⇧⌘E`) all run on the exact same Rust + GPUI codebase as the macOS desktop app.
+周五傍晚出发的两天两夜老城慢游，住在牌坊街附近的小院民宿，把节奏放慢，专心喝茶、散步与寻味街头小吃。
 
 > [!TIP]
-> Switch notes in the sidebar, create a new note (`⌘N`), type `/` on an empty line to open the block menu, or click `···` → **Export Image…** in the top-right corner to try it out.
+> 提前在周三锁好周五傍晚往返潮汕站的高铁票；韩江边入夜微凉，记得在随身包里塞一件薄外套。
 
-## Workspace Highlights
+## 周五至周日行程
 
-- [x] **Sidebar file tree & multi-tab bar** — create notes or folders, rename inline, open context menus, and switch tabs effortlessly
-- [x] **Live block-level editing** — headings, checklists, multi-column layouts, syntax-highlighted code, LaTeX math, and interactive tables respond on every keystroke
-- [ ] Click into any paragraph below to start typing, or select text to bring up the floating formatting toolbar
+- [x] **周五傍晚抵达潮汕站** — 搭乘接驳专线进古城，办理入住后夜游牌坊街与广济楼夜景
+- [x] **周六上午广济桥与工夫茶** — 早起看湘子桥启闭浮桥，转进载阳茶馆听弦诗乐、喝一泡鸭屎香单丛
+- [ ] **周日上午西马路早市与返程** — 逛老街早市买腐乳饼与手锤牛肉丸，午后慢悠悠喝杯甘草水果再返程
 
-## Architecture at a Glance
+## 行程与预算表
 
-| Metric | Block (Rust + GPUI) | Typical Electron Note App |
-| :--- | :--- | :--- |
-| Cold launch | **< 40 ms** | 1,200 – 2,800 ms |
-| Idle memory | **~28 MB** | 350 – 800 MB |
-| On-disk format | **Plain `.md` files** | Proprietary DB / cloud lock-in |
+| 时间 | 安排 | 地点 / 备注 | 预算 |
+| :--- | :--- | :--- | :--- |
+| 周五 20:30 | 官塘鲜牛肉火锅晚餐 | 牌坊街南门老店，必点吊龙与胸口朥 | ¥180 |
+| 周六 09:30 | 广济桥登桥 + 老茶馆早茶 | 备好身份证检票，上午光线最适合拍照 | ¥120 |
+| 周六 15:00 | 甲第巷古民居与手作陶艺 | 巷口老铺尝一碗热腾腾的鸭母捻 | ¥90 |
+| 周日 10:00 | 西马路早市采购手信 | 腐乳饼、凤凰单丛茶叶、老药桔 | ¥260 |
 
-## Code Blocks & Math
+## 街头风味记录
 
-```rust
-pub fn render_workspace(note: &MarkdownDoc, gpu: &mut GpuCanvas) {
-    for block in note.visible_blocks() {
-        gpu.paint_block(block);
-    }
-}
-```
+- **官塘牛肉火锅** — 清汤锅底只放萝卜与玉米，现切匙柄涮八秒蘸沙茶酱最鲜甜
+- **胡荣泉腐乳饼与鸭母捻** — 百年老字号甜汤配刚出炉的腐乳饼，蒜香与南乳脂香刚刚好
+- **凤凰单丛茶** — 在茶铺试了蜜兰香与桂花香，回甘绵长，适合带两罐回家周末慢慢冲泡
 
-$$
-\mathcal{L}(\theta) = \mathbb{E}_{x \sim p_{\text{data}}}\bigl[-\log p_{\theta}(x)\bigr] + \lambda \|\theta\|_2^2
-$$
+> 老城的迷人之处不在赶景点，而在巷弄深处随时飘出的一缕炭火茶香。
 "#;
 
-pub(super) const NOTE_ARCH_EN: &str = r#"# Sub-Millisecond Block Editor
+pub(super) const NOTE_ARCH: &str = r#"# 出行行李与待办
 
-Block parses every Markdown document into discrete structural nodes backed by a virtualized list and incremental layout cache, sustaining 120 fps scrolling and typing even on 100,000-word documents.
+两天两夜的短途周末游尽量轻装简行，一只登机双肩包加一只帆布托特袋就能装下全部随身物品。
 
-## Keyboard Shortcuts
+## 随身包清单
 
-| Action | macOS Shortcut | Description |
+- [x] 身份证、高铁车票信息确认、小额零钱
+- [x] 手机充电器、磁吸充电宝与耳机
+- [ ] 晴雨两用折叠伞与薄针织开衫
+- [ ] 胶片相机（装好两卷 400 度彩色负片）与便携旅行主人杯
+
+## 出发前家里待办
+
+1. 给阳台迷迭香、龟背竹和客厅琴叶榕浇透水，移到散射光处
+2. 拔掉烧水壶、咖啡机与书桌排插电源，关好纱窗
+3. 加满自动喂猫器干粮与流动饮水机，清理猫砂盆
+4. 出门前顺手带走厨房与玄关垃圾袋
+
+## 伴手礼备忘
+
+| 亲友 | 想带的特产 | 店铺位置 |
 | :--- | :--- | :--- |
-| Global Search | `⌘K` | Search note titles and full text across your workspace |
-| New Note | `⌘N` | Create a new Markdown note in the current folder and open it |
-| Find in Note | `⌘F` | Highlight and step through matches inside the active note |
-| Export Image | `⇧⌘E` | Render a crisp 2× Retina share card across six paper themes |
-
-## Working with Blocks
-
-1. Hover to the left of any block to click `+` or drag the `⋮⋮` handle to reorder
-2. Type `/` on an empty line to insert headings, tables, code blocks, callouts, or math
-3. Open the top-right `···` menu to copy clean Markdown or export a shareable card
+| 爸妈 | 蜜兰香凤凰单丛茶（春茶两罐） | 牌坊街中段老茶行 |
+| 工作室同事 | 现烤腐乳饼与手打牛肉丸 | 西马路老字号饼铺 |
+| 邻居晓林 | 老香黄佛手果与甘草话梅 | 开元寺街口凉果店 |
 "#;
 
-pub(super) const NOTE_GUIDE_EN: &str = r#"# Typography & Share Cards
+pub(super) const NOTE_GUIDE: &str = r#"# 周末家庭咖啡馆
 
-Block includes an offline typesetting pipeline powered by `tiny-skia` and `cosmic-text` that turns any note—or selected passage—into a 2× Retina PNG card, self-contained HTML page, vector PDF, or standard `.docx` document.
+不赶时间的周日早晨，拉开亚麻窗帘让阳光洒进餐桌，磨一杯果香明亮的手冲咖啡，再烤两片外脆内软的酸种欧包。
 
 > [!NOTE]
-> Click `···` in the top-right corner and choose **Export Image… (`⇧⌘E`)** to preview all six curated paper themes: Minimal, Warm Paper, Ink Night, Cyber, Journal, and Aurora.
+> 这周开封的浅中烘埃塞俄比亚豆子已经养豆满 10 天，风味正值巅峰；手冲水温控制在 **92°C**，分三段注水最能突出柑橘与白花香气。
 
-## Export Formats
+## 手冲配方记录
 
-- **PNG Card (2×)** — crisp long-form cards ready to share in chat or social feeds
-- **HTML Document** — single-file inline styles preserving code highlighting, tables, and layout
-- **PDF / Word (`.docx`)** — clean deliverables for archiving, printing, and team handoff
+| 豆子 | 粉水比 | 水温 | 风味记录 |
+| :--- | :--- | :--- | :--- |
+| 埃塞俄比亚 耶加雪菲 水洗 | 1 : 15（16g 粉 / 240ml 水） | 92°C | 佛手柑、茉莉花香，尾韵像冰糖柠檬茶 |
+| 哥伦比亚 粉红波旁 日晒 | 1 : 16（15g 粉 / 240ml 水） | 91°C | 熟桃子与草莓果酱甜感，油脂感圆润 |
+| 云南保山 小粒铁皮卡 | 1 : 15（18g 粉 / 270ml 水） | 89°C | 烤坚果、红糖甜香，适合加冰牛奶做拿铁 |
+
+## 周日早午餐菜单
+
+- **牛油果水波蛋酸种吐司** — 酸种切片平底锅黄油煎脆，铺满黑胡椒牛油果泥与流心水波蛋
+- **迷迭香烤小番茄与口蘑** — 橄榄油、海盐与新鲜百里香拌匀，烤箱 200°C 烘烤十二分钟
+- **冰博克 Dirty 咖啡** — 冰镇厚牛乳垫底，直接萃取双份浓缩缓慢淋在表面，大口喝下冷热交融的层次
+"#;
+
+pub(super) const NOTE_WELCOME_EN: &str = r#"# Weekend Getaway Plan
+
+A slow two-night trip to Kyoto from Friday evening to Sunday night—staying in a quiet wooden machiya near Higashiyama, waking up early for riverside walks, morning coffee, and neighborhood pottery shops.
+
+> [!TIP]
+> Reserve window seats on the Friday evening train by Wednesday, and pack a light cardigan for the cool evening breeze along the Kamo River.
+
+## Weekend Itinerary
+
+- [x] **Friday evening arrival** — Check into the guesthouse, stroll down Pontocho alley, and grab late-night yuzu ramen
+- [x] **Saturday morning riverside & tea house** — Early walk along the Kamo River stepping stones, followed by roasted green tea sweets in Gion
+- [ ] **Sunday morning market & return trip** — Browse Nishiki Market for pickled vegetables and ceramic mugs before the afternoon train home
+
+## Schedule & Budget
+
+| Time | Activity | Spot / Notes | Budget |
+| :--- | :--- | :--- | :--- |
+| Fri 20:00 | Late Dinner & Alley Walk | Yuzu shio ramen near Sanjo station | $28 |
+| Sat 08:30 | Morning Coffee & Pastry | Independent roaster by the canal, outdoor bench | $18 |
+| Sat 14:30 | Kiyomizu Pottery Lane | Hand-thrown stoneware cups and Uji matcha | $65 |
+| Sun 09:30 | Morning Market & Souvenirs | Sesame snacks, roasted tea leaves, linen coasters | $45 |
+
+## Local Favorites
+
+- **Morning Market Coffee** — Freshly roasted pour-over enjoyed by the open window while the street stalls set up
+- **Kamo River Walk** — Watching herons by the stepping stones with a warm red-bean pastry in hand
+- **Pottery Street Finds** — Small family kilns tucked into quiet side lanes with speckled glaze teacups
+
+> The best part of a weekend trip is leaving half the afternoon unplanned so you can follow whatever quiet lane catches your eye.
+"#;
+
+pub(super) const NOTE_ARCH_EN: &str = r#"# Luggage & Errands
+
+Packing light for a two-night weekend trip: everything fits neatly into one carry-on backpack and a canvas tote bag so walking from the station to the inn feels effortless.
+
+## Carry-On Checklist
+
+- [x] Train tickets, transit card, and a small coin pouch
+- [x] Phone charger, portable power bank, and sunglasses
+- [ ] Compact folding umbrella and a breathable linen shirt
+- [ ] Film camera with two rolls of 400-speed color film
+
+## Before Leaving Home
+
+1. Water the Boston fern and monstera on the balcony and move them out of direct midday sun
+2. Refill the automatic cat feeder, refresh the water fountain, and tidy the litter box
+3. Unplug the espresso machine, toaster, and desk lamp
+4. Take out the kitchen compost and recycling bins on the way to the station
+
+## Souvenir Ideas
+
+| For | Gift Idea | Where to Find |
+| :--- | :--- | :--- |
+| Mom & Dad | First-harvest roasted green tea tin | Historic tea shop on Teramachi Street |
+| Studio Friends | Matcha butter cookies & sesame brittle | Nishiki Market confectionery stall |
+| Maya | Speckled ceramic espresso cup | Small pottery studio along Gojozaka |
+"#;
+
+pub(super) const NOTE_GUIDE_EN: &str = r#"# Home Cafe & Recipes
+
+Slow Sunday mornings at home: open the kitchen window, grind fresh beans for a bright pour-over, and toast thick slices of country sourdough while the kettle comes up to temperature.
+
+> [!NOTE]
+> Use filtered water at **92°C** and a **1:15 brew ratio** for medium-light roasts; letting the beans rest 10 days after roast date brings out the clearest floral and stone-fruit sweetness.
+
+## Pour-Over Log
+
+| Beans | Ratio | Water Temp | Tasting Notes |
+| :--- | :--- | :--- | :--- |
+| Ethiopia Yirgacheffe Washed | 1 : 15 (16g / 240ml) | 92°C | Bergamot, jasmine blossom, crisp Meyer lemon finish |
+| Colombia Pink Bourbon Natural | 1 : 16 (15g / 240ml) | 91°C | Ripe white peach, strawberry jam, silky honey body |
+| Guatemala Huehuetenango | 1 : 15 (18g / 270ml) | 90°C | Toasted hazelnut, milk chocolate, sweet caramel aftertaste |
+
+## Sunday Brunch Menu
+
+- **Toasted Sourdough with Whipped Ricotta & Figs** — Thick-cut sourdough brushed with olive oil, topped with lemon-zest ricotta, fresh figs, and wildflower honey
+- **Soft-Scrambled Eggs with Chives** — Cooked low and slow with salted butter until glossy and spooned over warm toast
+- **Iced Oat Latte** — Double shot of espresso poured over ice and creamy barista oat milk with a pinch of cinnamon
 "#;

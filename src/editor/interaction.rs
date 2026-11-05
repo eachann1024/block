@@ -82,6 +82,7 @@ impl Editor {
         let prev_active = self.annotate.active_annotation.take();
         self.annotate.followup = None;
         crate::editor::code_block::close_menus();
+        crate::ui::callout_controls::close_menu();
         self.close_format(window, cx);
         if self.path.is_none() || !self.list.viewport_bounds().contains(&event.position) { return; }
         if (event.modifiers.platform || (!cfg!(target_os = "macos") && event.modifiers.control))
