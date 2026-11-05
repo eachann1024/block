@@ -1,77 +1,190 @@
-//! "About Block" dialog: an in-window modal opened from the app menu.
-//! Native About panels cannot hold clickable links, so this one is drawn here.
-use std::sync::{Arc, LazyLock, atomic::{AtomicBool, Ordering}};
+//! "About Block" dialog (Scheme A · Centered Card): an in-window modal opened from
+//! the app menu. Reads `crate::version::VERSION` (shared with Settings) so the
+//! displayed version is never hardcoded in UI code.
+use std::sync::{
+    Arc, LazyLock,
+    atomic::{AtomicBool, AtomicU8, Ordering},
+};
 use gpui::{
-    AnyElement, App, Context, CursorStyle, Image, ImageFormat, MouseButton, SharedString, div, img,
+    AnyElement, App, Context, FontWeight, Image, ImageFormat, MouseButton, SharedString, div, img,
     prelude::*, px,
 };
-use crate::{app::Workspace, icons::Icon, theme::{Theme, tr}, ui::{icon_button::icon_button, modal}};
+use crate::{
+    app::Workspace,
+    icons::Icon,
+    theme::{Theme, tr},
+    ui::{icon_button::icon_button, modal},
+    version::VERSION,
+};
 
 const PROFILE_URL: &str = "https://github.com/eachann1024";
 const REPO_URL: &str = "https://github.com/eachann1024/block";
 
+const HOVER_NONE: u8 = 0;
+const HOVER_PROFILE: u8 = 1;
+const HOVER_REPO: u8 = 2;
+
 static OPEN: AtomicBool = AtomicBool::new(false);
+static HOVERED: AtomicU8 = AtomicU8::new(HOVER_NONE);
 static ICON: LazyLock<Arc<Image>> = LazyLock::new(|| {
-    Arc::new(Image::from_bytes(ImageFormat::Png, include_bytes!("../assets/app-icon/apple-touch-icon.png").to_vec()))
+    Arc::new(Image::from_bytes(
+        ImageFormat::Png,
+        include_bytes!("../assets/app-icon/apple-touch-icon.png").to_vec(),
+    ))
 });
 
 pub fn open(cx: &mut App) {
     crate::search::window::activate_main_window(cx);
+    HOVERED.store(HOVER_NONE, Ordering::Relaxed);
     OPEN.store(true, Ordering::Relaxed);
     if let Some((Some(handle), workspace)) = crate::search::window::main_window(cx) {
         let _ = handle.update(cx, |_, window, cx| {
-            workspace.update(cx, |w, cx| { w.focus_root(window, cx); cx.notify(); });
+            workspace.update(cx, |w, cx| {
+                w.focus_root(window, cx);
+                cx.notify();
+            });
         });
     }
 }
 
 /// Closes the dialog; returns whether it was open.
-pub fn close() -> bool { OPEN.swap(false, Ordering::Relaxed) }
-
-fn row(label: &'static str, value: impl IntoElement) -> impl IntoElement {
-    let theme = Theme::ocean();
-    div().min_h(px(40.)).px(px(4.)).flex().items_center()
-        .child(div().w(px(96.)).flex_none().text_color(theme.text_secondary).child(label))
-        .child(div().flex_1().min_w_0().child(value))
+pub fn close() -> bool {
+    HOVERED.store(HOVER_NONE, Ordering::Relaxed);
+    OPEN.swap(false, Ordering::Relaxed)
 }
 
-fn link(id: &'static str, text: &'static str, url: &'static str) -> impl IntoElement {
-    let theme = Theme::ocean();
-    div().id(id).text_color(theme.accent).cursor(CursorStyle::PointingHand)
-        .hover(|s| s.underline())
-        .on_mouse_down(MouseButton::Left, move |_, _, cx| { cx.stop_propagation(); cx.open_url(url); })
-        .child(text)
+fn set_hover(slot: u8, active: bool, cx: &mut Context<Workspace>) {
+    let prev = HOVERED.load(Ordering::Relaxed);
+    let next = if active {
+        slot
+    } else if prev == slot {
+        HOVER_NONE
+    } else {
+        prev
+    };
+    if prev != next {
+        HOVERED.store(next, Ordering::Relaxed);
+        cx.notify();
+    }
 }
 
 pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
-    if !OPEN.load(Ordering::Relaxed) { return None; }
+    if !OPEN.load(Ordering::Relaxed) {
+        return None;
+    }
     let theme = Theme::ocean();
-    let close_btn = icon_button("about-close", Icon::Close, true, cx.listener(|this, _, window, cx| {
-        close();
-        this.restore_focus(window, cx);
-        cx.notify();
-    }));
-    let header = div().flex().items_center().gap(px(12.))
-        .child(img(ICON.clone()).size(px(40.)).flex_none())
-        .child(div().flex_1().text_size(px(18.)).line_height(px(26.)).font_weight(gpui::FontWeight(560.)).child("Block"))
-        .child(close_btn);
-    let version: SharedString = env!("CARGO_PKG_VERSION").into();
-    let list = div().flex().flex_col().pt(px(8.)).border_t_1().border_color(theme.hairline)
-        .child(row(tr("版本", "Version"), div().font_family("JetBrains Mono").child(version)))
-        .child(row(tr("作者", "Author"), "eachann"))
-        .child(row("GitHub", link("about-profile", "github.com/eachann1024", PROFILE_URL)))
-        .child(row(tr("源码", "Source"), link("about-repo", "eachann1024/block", REPO_URL)))
-        .child(row(tr("许可证", "License"), "Apache-2.0"));
-    let card = modal::card("about-dialog", px(400.))
-        .p(px(24.)).gap(px(16.)).text_size(px(14.)).line_height(px(20.))
-        .child(header)
-        .child(list);
-    Some(gpui::deferred(modal::backdrop("about-overlay", card)
-        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+    let hovered = HOVERED.load(Ordering::Relaxed);
+    let version_label: SharedString = format!("{} {VERSION}", tr("版本", "Version")).into();
+
+    let close_top = div()
+        .absolute()
+        .top(px(14.))
+        .right(px(14.))
+        .child(icon_button(
+            "about-close",
+            Icon::Close,
+            true,
+            cx.listener(|this, _, window, cx| {
+                close();
+                this.restore_focus(window, cx);
+                cx.notify();
+            }),
+        ));
+
+    let hero = div()
+        .w_full()
+        .flex()
+        .flex_col()
+        .items_center()
+        .gap(px(4.))
+        .child(img(ICON.clone()).size(px(84.)).mb(px(6.)).flex_none())
+        .child(
+            div()
+                .text_size(px(22.))
+                .line_height(px(30.))
+                .font_weight(FontWeight(560.))
+                .text_color(theme.text)
+                .child("Block"),
+        )
+        .child(
+            div()
+                .font_family("JetBrains Mono")
+                .text_size(px(14.))
+                .line_height(px(20.))
+                .text_color(theme.text_secondary)
+                .child(version_label),
+        )
+        .child(
+            div()
+                .text_size(px(14.))
+                .line_height(px(20.))
+                .text_color(theme.text_secondary)
+                .child(tr("作者 eachann", "Made by eachann")),
+        );
+
+    let links = div()
+        .w_full()
+        .flex()
+        .flex_col()
+        .gap(px(12.))
+        .pt(px(18.))
+        .border_t_1()
+        .border_color(theme.hairline)
+        .child(modal::bubble_link_pill(
+            "about-profile",
+            Icon::Sparkles,
+            tr("我的主页", "My Profile"),
+            "eachann1024",
+            PROFILE_URL,
+            hovered == HOVER_PROFILE,
+            cx.listener(|_, active: &bool, _, cx| set_hover(HOVER_PROFILE, *active, cx)),
+        ))
+        .child(modal::bubble_link_pill(
+            "about-repo",
+            Icon::Code,
+            tr("项目源码", "Project Source"),
+            "eachann1024/block",
+            REPO_URL,
+            hovered == HOVER_REPO,
+            cx.listener(|_, active: &bool, _, cx| set_hover(HOVER_REPO, *active, cx)),
+        ));
+
+    let close_btn = modal::action_button(
+        "about-done",
+        tr("关闭", "Close"),
+        cx.listener(|this, _, window, cx| {
             close();
             this.restore_focus(window, cx);
             cx.notify();
-        })))
+        }),
+    );
+
+    let card = modal::card("about-dialog", px(368.))
+        .relative()
+        .pt(px(28.))
+        .px(px(24.))
+        .pb(px(22.))
+        .gap(px(18.))
+        .items_center()
+        .text_size(px(14.))
+        .line_height(px(20.))
+        .child(close_top)
+        .child(hero)
+        .child(links)
+        .child(close_btn);
+
+    Some(
+        gpui::deferred(
+            modal::backdrop("about-overlay", card).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    close();
+                    this.restore_focus(window, cx);
+                    cx.notify();
+                }),
+            ),
+        )
         .with_priority(6)
-        .into_any_element())
+        .into_any_element(),
+    )
 }
