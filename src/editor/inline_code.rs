@@ -129,8 +129,7 @@ fn paint_layout_chips(layout: &TextLayout, window: &mut Window) {
     } else {
         (rgb(0xf1f3f7).into(), rgb(0xd5dce6).into(), rgba(0xffffffe0).into())
     };
-    let font_px = layout.lines.first().map(|(_, l)| l.font_size()).unwrap_or(px(16.));
-    let chip_h = (font_px + px(5.)).round().min(layout.line_height - px(2.)).max(px(18.));
+    let chip_h = band_height(layout);
     let pad_x = px(5.5);
     for span in &layout.code_spans {
         for r in layout.rects(span.clone()) {
@@ -155,18 +154,26 @@ pub(in crate::editor) fn paint_chips(layout: &TextLayout, window: &mut Window) {
     paint_layout_chips(layout, window);
 }
 
-pub(in crate::editor) fn paint_selection(layout: &TextLayout, range: Range<usize>, window: &mut Window) -> Vec<Bounds<Pixels>> {
-    let sel_color = Theme::ocean().selection;
-    if !layout.cells.is_empty() || layout.code_spans.is_empty() || range.is_empty() {
-        let rects = layout.rects(range);
-        for r in &rects {
-            window.paint_quad(quad(*r, px(2.), sel_color, 0., gpui::transparent_black(), BorderStyle::default()));
-        }
-        return rects;
-    }
+/// Selection band height: equal to the chip height, so a selection never pokes above or below a chip.
+fn band_height(layout: &TextLayout) -> Pixels {
     let font_px = layout.lines.first().map(|(_, l)| l.font_size()).unwrap_or(px(16.));
-    let chip_h = (font_px + px(5.)).round().min(layout.line_height - px(2.)).max(px(18.));
-    let pad_x = px(5.5);
+    (font_px + px(5.)).round().min(layout.line_height - px(2.)).max(px(18.).min(layout.line_height))
+}
+
+struct Piece { b: Bounds<Pixels>, l: Pixels, r: Pixels }
+
+fn band(r: Bounds<Pixels>, h: Pixels, left: Pixels, right: Pixels, l: Pixels, rr: Pixels) -> Piece {
+    let top = r.top() + ((r.size.height - h) * 0.5).round();
+    Piece { b: Bounds::new(point(left, top), size((right - left).max(px(2.)), h)), l, r: rr }
+}
+
+/// Pieces of one text layout's selection: plain runs and chip parts share one band height.
+fn pieces(layout: &TextLayout, range: Range<usize>) -> Vec<Piece> {
+    let h = band_height(layout);
+    let plain = |out: &mut Vec<Piece>, a: usize, b: usize| for r in layout.rects(a..b) {
+        out.push(band(r, h, r.left(), r.right(), px(2.), px(2.)));
+    };
+    let (pad_x, chip_r) = (px(5.5), px(5.5));
     let mut out = Vec::new();
     let mut cursor = range.start;
     for span in &layout.code_spans {
@@ -174,39 +181,57 @@ pub(in crate::editor) fn paint_selection(layout: &TextLayout, range: Range<usize
         if span.start >= range.end { break; }
         if cursor < span.start {
             let plain_end = span.start.min(range.end);
-            for r in layout.rects(cursor..plain_end) {
-                window.paint_quad(quad(r, px(2.), sel_color, 0., gpui::transparent_black(), BorderStyle::default()));
-                out.push(r);
-            }
+            plain(&mut out, cursor, plain_end);
             cursor = plain_end;
         }
-        let s = cursor.max(span.start);
-        let e = range.end.min(span.end);
+        let (s, e) = (cursor.max(span.start), range.end.min(span.end));
         if s < e {
             let rects = layout.rects(s..e);
             for (idx, r) in rects.iter().enumerate() {
-                let top = r.top() + ((r.size.height - chip_h) * 0.5).round();
-                let extend_left = s == span.start || idx > 0;
-                let extend_right = e == span.end || idx + 1 < rects.len();
-                let left = r.left() - if extend_left { pad_x } else { px(0.) };
-                let right = r.right() + if extend_right { pad_x } else { px(0.) };
-                let l_rad = if extend_left { px(5.5) } else { px(2.) };
-                let r_rad = if extend_right { px(5.5) } else { px(2.) };
-                let corners = Corners { top_left: l_rad, bottom_left: l_rad, top_right: r_rad, bottom_right: r_rad };
-                let box_bounds = Bounds::new(point(left, top), size((right - left).max(px(2.)), chip_h));
-                window.paint_quad(quad(box_bounds, corners, sel_color, 0., gpui::transparent_black(), BorderStyle::default()));
-                out.push(box_bounds);
+                let ext_l = s == span.start || idx > 0;
+                let ext_r = e == span.end || idx + 1 < rects.len();
+                let left = r.left() - if ext_l { pad_x } else { px(0.) };
+                let right = r.right() + if ext_r { pad_x } else { px(0.) };
+                out.push(band(*r, h, left, right, if ext_l { chip_r } else { px(2.) }, if ext_r { chip_r } else { px(2.) }));
             }
             cursor = e;
         }
     }
-    if cursor < range.end {
-        for r in layout.rects(cursor..range.end) {
-            window.paint_quad(quad(r, px(2.), sel_color, 0., gpui::transparent_black(), BorderStyle::default()));
-            out.push(r);
+    if cursor < range.end { plain(&mut out, cursor, range.end); }
+    // Bridge the breathing gap beside a chip so a selection crossing its edge reads as one band.
+    for i in 1..out.len() {
+        let (prev, next) = (out[i - 1].b, out[i].b);
+        let gap = next.left() - prev.right();
+        if (prev.top() - next.top()).abs() < px(1.) && gap >= px(0.) && gap < px(12.) {
+            out[i - 1].b.size.width = next.left() - prev.left();
+            out[i - 1].r = px(0.);
+            out[i].l = px(0.);
         }
     }
     out
+}
+
+pub(in crate::editor) fn paint_selection(layout: &TextLayout, range: Range<usize>, window: &mut Window) -> Vec<Bounds<Pixels>> {
+    let sel_color = Theme::ocean().selection;
+    if range.is_empty() {
+        let rects = layout.rects(range);
+        for r in &rects {
+            window.paint_quad(quad(*r, px(2.), sel_color, 0., gpui::transparent_black(), BorderStyle::default()));
+        }
+        return rects;
+    }
+    let all: Vec<Piece> = if layout.cells.is_empty() { pieces(layout, range) } else {
+        layout.cells.iter().filter(|c| c.range.start < range.end && range.start < c.range.end).flat_map(|c| {
+            let a = range.start.max(c.range.start) - c.range.start;
+            let b = range.end.min(c.range.end) - c.range.start;
+            pieces(&c.text, a..b)
+        }).collect()
+    };
+    for p in &all {
+        let corners = Corners { top_left: p.l, bottom_left: p.l, top_right: p.r, bottom_right: p.r };
+        window.paint_quad(quad(p.b, corners, sel_color, 0., gpui::transparent_black(), BorderStyle::default()));
+    }
+    all.into_iter().map(|p| p.b).collect()
 }
 
 impl Editor {
