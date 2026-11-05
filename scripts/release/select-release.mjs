@@ -197,7 +197,14 @@ async function main() {
     return;
   }
 
-  const markdown = notes.markdown || "🌈 本次更新重点：例行构建与稳定性维护更新。";
+  if (!notes.markdown) {
+    summary(`自 ${previous?.tag_name || "初始版本"} 以来没有可写给用户的更新说明，停止发布。`);
+    const plan = { shouldBuild: false, publish: false, version, tag: `v${version}`, commit: headSha };
+    writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
+    writeOutputs({ should_build: false, publish: false, version, release_tag: `v${version}` });
+    return;
+  }
+  const markdown = notes.markdown;
   const tag = `v${version}`;
   const shouldPublish = onMain && publishInput;
   const plan = {
