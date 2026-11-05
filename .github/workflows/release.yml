@@ -19,7 +19,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: block-release-${{ github.ref }}
+  # Separate from older runs so a cancelled build cannot block or publish this one.
+  group: block-packages-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -66,11 +67,19 @@ jobs:
           retention-days: 5
 
   release-macos:
-    name: Build macOS DMG
+    name: macOS ${{ matrix.arch }} DMG
     needs: [prepare]
     if: needs.prepare.outputs.should_build == 'true' && github.ref == 'refs/heads/main'
     runs-on: macos-15
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            target: aarch64-apple-darwin
+          - arch: x64
+            target: x86_64-apple-darwin
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -86,26 +95,43 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: macos-${{ matrix.arch }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-plan-${{ env.SOURCE_SHA }}
           path: .
-      - name: Build release .app, ad-hoc sign, and package DMG
-        run: bun scripts/release/package-release.mjs
+      - name: Build release .app and DMG
+        env:
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+          BLOCK_DMG_NAME: block-macos-${{ matrix.arch }}.dmg
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
+        run: |
+          export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+          bun scripts/release/package-release.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: block-installer-macos
-          path: dist/release/block-macos.dmg
+          name: block-installer-macos-${{ matrix.arch }}
+          path: dist/release/block-macos-${{ matrix.arch }}.dmg
           if-no-files-found: error
           retention-days: 14
 
   release-windows:
-    name: Build Windows NSIS installer
+    name: Windows ${{ matrix.arch }} NSIS
     needs: [prepare]
     if: needs.prepare.outputs.should_build == 'true' && github.ref == 'refs/heads/main'
-    runs-on: windows-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+          - arch: arm64
+            runner: windows-11-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -119,6 +145,8 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: windows-${{ matrix.arch }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-plan-${{ env.SOURCE_SHA }}
@@ -128,21 +156,33 @@ jobs:
         run: |
           choco install nsis --version=3.13.0 -y --no-progress
           Add-Content -Path $env:GITHUB_PATH -Value "${env:ProgramFiles(x86)}\NSIS"
-      - name: Build block-windows-x64-setup.exe
+      - name: Build NSIS installer
         run: node scripts/release/package-windows.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: block-installer-windows
-          path: dist/release/block-windows-x64-setup.exe
+          name: block-installer-windows-${{ matrix.arch }}
+          path: dist/release/block-windows-${{ matrix.arch }}-setup.exe
           if-no-files-found: error
           retention-days: 14
 
   release-linux:
-    name: Build Linux AppImage
+    name: Linux ${{ matrix.arch }} packages
     needs: [prepare]
     if: needs.prepare.outputs.should_build == 'true' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+            appimage_arch: x86_64
+            appimage_asset: appimagetool-x86_64.AppImage
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            appimage_arch: aarch64
+            appimage_asset: appimagetool-aarch64.AppImage
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -156,30 +196,38 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: linux-${{ matrix.arch }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-plan-${{ env.SOURCE_SHA }}
           path: .
-      - name: Install GUI libraries and appimagetool 1.9.1
+      - name: Install packaging tools
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            pkg-config patchelf ca-certificates curl \
+            pkg-config patchelf rpm ca-certificates curl \
             libxkbcommon-dev libxkbcommon-x11-dev libxcb-xkb-dev libwayland-dev libvulkan-dev \
             libx11-dev libxrandr-dev libxi-dev libxcursor-dev \
             libxext-dev libxfixes-dev \
             libxcb1-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-render0-dev \
             libssl-dev libfontconfig1-dev libasound2-dev
           curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
-            https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+            "https://github.com/AppImage/appimagetool/releases/download/1.9.1/${{ matrix.appimage_asset }}"
           chmod +x "$RUNNER_TEMP/appimagetool"
           echo "APPIMAGETOOL=$RUNNER_TEMP/appimagetool" >> "$GITHUB_ENV"
-      - name: Build block-linux-x64.AppImage
-        run: node scripts/release/package-linux.mjs
+          echo "APPIMAGE_ARCH=${{ matrix.appimage_arch }}" >> "$GITHUB_ENV"
+      - name: Build AppImage, deb, and rpm
+        run: |
+          node scripts/release/package-linux.mjs
+          node scripts/release/package-native.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: block-installer-linux
-          path: dist/release/block-linux-x64.AppImage
+          name: block-installer-linux-${{ matrix.arch }}
+          path: |
+            dist/release/block-linux-${{ matrix.arch }}.AppImage
+            dist/release/block-linux-${{ matrix.arch }}.deb
+            dist/release/block-linux-${{ matrix.arch }}.rpm
           if-no-files-found: error
           retention-days: 14
 
@@ -214,11 +262,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: block-release-${{ env.SOURCE_SHA }}
-          path: |
-            dist/release/block-macos.dmg
-            dist/release/block-windows-x64-setup.exe
-            dist/release/block-linux-x64.AppImage
-            dist/release/SHA256SUMS.txt
+          path: dist/release/
           if-no-files-found: error
           retention-days: 14
       - name: Publish GitHub Release
