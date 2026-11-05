@@ -34,9 +34,15 @@ impl Editor {
         let Some(index) = self.doc.index_of(id) else { return false };
         self.insert_paragraph_at(index, cx)
     }
-    /// 在文档最顶部（索引 0）插入独立空段落并聚焦。
+    /// 聚焦顶部已有的普通空段落，否则在索引 0 插入空段落。
     pub(in crate::editor) fn insert_top_paragraph(&mut self, cx: &mut Context<Self>) -> bool {
-        !self.doc.blocks.is_empty() && self.insert_paragraph_at(0, cx)
+        let Some(first) = self.doc.blocks.first().filter(|_| self.path.is_some()) else { return false };
+        if first.kind == Kind::Paragraph && first.text.is_empty() && first.meta.table.is_none()
+            && first.meta.code_language.is_none() && first.meta.raw_source.is_none() && first.meta.html_paragraph.is_none() && !is_atomic(first) {
+            let id = first.id; self.table_sel = None; self.table_menu = None; self.block_sel = None; self.preferred_x = None;
+            self.set_head(Position { block: id, offset: 0 }, false, cx); self.list.scroll_to_reveal_item(0); return true;
+        }
+        self.insert_paragraph_at(0, cx)
     }
     /// 在文档末尾块之后插入独立空段落并聚焦。
     pub(in crate::editor) fn insert_bottom_paragraph(&mut self, cx: &mut Context<Self>) -> bool {
