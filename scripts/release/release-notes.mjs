@@ -174,6 +174,23 @@ const SUBJECT_RULES = [
   [/Fit to page width toggle/i, "表格菜单新增「适应页面宽度」开关"],
   [/auto-scroll while dragging rows\/columns/i, "拖拽表格行列到边缘时支持自动滚动，落点更稳定"],
   [/drag the add-column bar to grow or shrink columns/i, "支持按住表格右侧加号条连续增减列数"],
+  [/persistent editor content zoom|quick-note main window/i, "笔记正文可以按比例缩放并记住，从速记回到主窗口时窗口会到前台"],
+  [/document icons from title bar tabs/i, "标签页不再显示文档小图标，顶栏更干净"],
+  [/theme appearance switch/i, "切换浅色或深色时不再突然退出"],
+  [/inline code chip height/i, "行内代码里划选文字时，选中范围不再高出文字"],
+  [/system appearance changes/i, "系统切换浅色或深色时，笔记外观会跟着变"],
+  [/caret remaining visible in inactive windows/i, "窗口不在前台时，文字光标不再一直留在笔记上"],
+  [/V4 app icon|light\/dark icon variants/i, "换上新的应用图标"],
+  [/top insert slot|non-paragraph blocks/i, "表格、代码块等块的上方也可以插入新段落"],
+  [/Latin and math fonts/i, "西文和公式换用更清楚的字体"],
+  [/app and release version/i, "设置页会显示当前版本号"],
+  [/minimum sidebar width/i, "侧栏加宽后，搜索框可以完整显示"],
+  [/search label truncation/i, "窄侧栏里的搜索文字不再被截断"],
+  [/quick note modifier events/i, "速记里按下修饰键时，不再打断中文输入"],
+  [/inline code hover tooltips/i, "行内代码不再弹出悬停提示"],
+  [/inline code copy confirmation/i, "复制行内代码后会立刻出现已复制的提示"],
+  [/reopening closed tabs/i, "可以用原来的快捷键重新打开刚关掉的标签页"],
+  [/outline chip style|caret escape at chip edges/i, "行内代码改成描边样式，光标走到边缘后可以继续移出"],
 ];
 
 function translateSubject(subject, releaseNote, kind) {
@@ -186,31 +203,24 @@ function translateSubject(subject, releaseNote, kind) {
     const cleaned = body.replace(TECH_WORDS, "").replace(/\s+/g, " ").trim();
     if (cleaned.length >= 4) return /[。！？]$/.test(cleaned) ? cleaned : `${cleaned}。`;
   }
-  const scope = /^[a-z]+\(([^)]+)\)/i.exec(source)?.[1]?.toLowerCase() || "";
-  const area = {
-    editor: "编辑器", table: "表格", annotate: "批注", settings: "设置页",
-    "ai-settings": "AI 设置", ai: "AI 助手", web: "网页端", tabs: "标签页",
-    search: "搜索", export: "导出图片", quick: "速记窗口", ui: "界面",
-  }[scope] || "笔记编辑";
-  if (kind === "feat") return `新增${area}相关实用功能，日常记录更顺手。`;
-  if (kind === "fix") return `修复${area}的一处交互细节问题，使用更稳定。`;
-  return `优化${area}的显示与操作体验。`;
+  return null;
 }
 
 export function fallbackReleaseNotes(commits) {
   const userCommits = commits.filter((c) => !isExcludedCommit(c));
   const buckets = { feat: [], opt: [], fix: [] };
-  for (const commit of userCommits) {
+  for (const commit of userCommits.slice().reverse()) {
     const m = /^([a-z]+)(?:\([^)]*\))?!?:\s*/i.exec(commit.subject);
-    const prefix = m ? m[1].toLowerCase() : "opt";
-    const kind = prefix === "feat" ? "feat" : prefix === "fix" ? "fix" : "opt";
+    const prefix = m ? m[1].toLowerCase() : "";
+    const kind = prefix === "fix" || /^fix\b/i.test(commit.subject) || /^keep\b/i.test(commit.subject)
+      ? "fix"
+      : prefix === "feat" || /^add\b/i.test(commit.subject) ? "feat" : "opt";
     const line = translateSubject(commit.subject, commit.releaseNote, kind);
-    if (!buckets[kind].includes(line) && buckets[kind].length < MAX_PER_SECTION) {
-      buckets[kind].push(line);
-    }
+    if (!line || buckets[kind].includes(line) || buckets[kind].length >= MAX_PER_SECTION) continue;
+    buckets[kind].push(line);
   }
   const all = [...buckets.feat, ...buckets.opt, ...buckets.fix];
-  if (all.length === 0) return "🌈 本次更新重点：本次无面向用户的可见更新。";
+  if (all.length === 0) return "";
   const highlights = all.slice(0, 2).map((s) => s.replace(/[。！？]$/, ""));
   const out = [`🌈 本次更新重点：${highlights.join("；")}。`];
   for (const [key, header] of [["feat", "✨ 新功能"], ["opt", "🪐 优化"], ["fix", "🐛 修复"]]) {
@@ -231,12 +241,9 @@ export async function buildReleaseNotes({ version, commits, env = process.env })
   if (polished.status === "empty") {
     return { skip: true, reason: `${polished.model} 判断无用户可感知改动`, markdown: "" };
   }
-  return {
-    skip: false,
-    source: "fallback",
-    reason: polished.reason,
-    markdown: fallbackReleaseNotes(userCommits),
-  };
+  const markdown = fallbackReleaseNotes(userCommits);
+  if (!markdown) return { skip: true, reason: polished.reason || "没有可写给用户的更新", markdown: "" };
+  return { skip: false, source: "fallback", reason: polished.reason, markdown };
 }
 
 if (import.meta.main) {
