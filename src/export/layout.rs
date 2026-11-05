@@ -1,10 +1,10 @@
 //! Single-column document layout parameterized by paper style margins and typography.
 use cosmic_text::{
-    Align, Attrs, Buffer, CacheKeyFlags, Color, Family, FontSystem, Metrics, Shaping, Weight,
+    Attrs, Buffer, CacheKeyFlags, Color, Family, FontSystem, Metrics, Shaping, Weight,
 };
 
 use super::palette::{ExportTheme, RenderOptions};
-use super::style::{block_box_metrics, block_font_size, block_gap_after};
+use super::style::{block_box_metrics, block_font_size, block_gap_after, line_factor};
 use super::{Cancellation, ExportError, budget};
 use crate::editor::model::{Block, Kind, MarkKind};
 
@@ -59,20 +59,12 @@ pub(super) fn attributes(
     });
     let family = if code_block || flags & CODE != 0 {
         Family::Monospace
-    } else if matches!(kind, Kind::H1 | Kind::H2 | Kind::H3)
-        || (kind == Kind::Quote && matches!(theme, ExportTheme::Press | ExportTheme::Film))
-    {
-        Family::Name(theme.heading_family())
+    } else if matches!(kind, Kind::H1 | Kind::H2 | Kind::H3) {
+        family_of(theme.heading_family())
     } else {
-        Family::Name(theme.body_family())
+        family_of(theme.body_family())
     };
-    let weight = if flags & 1 != 0 {
-        Weight::BOLD
-    } else if kind == Kind::H1 && theme == ExportTheme::Film {
-        Weight::LIGHT
-    } else if matches!(kind, Kind::H1 | Kind::H2 | Kind::H3)
-        || (kind == Kind::Quote && matches!(theme, ExportTheme::Riso | ExportTheme::Neon))
-    {
+    let weight = if flags & 1 != 0 || matches!(kind, Kind::H1 | Kind::H2 | Kind::H3) {
         Weight::BOLD
     } else {
         Weight::NORMAL
@@ -87,6 +79,10 @@ pub(super) fn attributes(
         .weight(weight)
         .cache_key_flags(italic)
         .metadata(flags)
+}
+
+pub(super) fn family_of(name: &'static str) -> Family<'static> {
+    if name == super::spec::MONO { Family::Monospace } else { Family::Name(name) }
 }
 
 pub(super) fn require_glyphs(buffer: &Buffer) -> Result<(), ExportError> {
@@ -104,11 +100,7 @@ pub(super) fn plain(
     let mut buffer = Buffer::new(fonts, Metrics::new(size, size * 1.4));
     buffer.set_size(Some(width), None);
     buffer.set_wrap(cosmic_text::Wrap::WordOrGlyph);
-    let attrs = if matches!(theme, ExportTheme::Riso | ExportTheme::Neon) && size <= 13.0 {
-        Attrs::new().family(Family::Monospace).weight(Weight::BOLD)
-    } else {
-        attributes(theme, Kind::Paragraph, &[], false)
-    };
+    let attrs = attributes(theme, Kind::Paragraph, &[], false);
     buffer.set_text(text, &attrs, Shaping::Advanced, None);
     buffer.shape_until_scroll(fonts, false);
     require_glyphs(&buffer)?;
@@ -123,20 +115,28 @@ pub(super) fn build(
 ) -> Result<Layout, ExportError> {
     budget::validate(blocks)?;
     let theme = options.theme;
-    let pal = theme.palette();
     let (margin_top, margin_right, margin_bottom, margin_left) = theme.margins();
     let content_width = PAGE_WIDTH - margin_left - margin_right;
-    let chrome = super::chrome::build_chrome(fonts, &options, &pal, margin_left, content_width);
+    let chrome = super::chrome::build_chrome(fonts, &options, margin_left, content_width);
     let mut rows = Vec::with_capacity(blocks.len());
     let mut y = margin_top + chrome.header_h;
 
+    // The big title already shows the file name; drop a leading H1 that repeats it.
+    let title = options.title.trim();
+    let blocks = match blocks.first() {
+        Some(first)
+            if options.show_title
+                && !title.is_empty()
+                && first.kind == Kind::H1
+                && first.text.split_whitespace().eq(title.split_whitespace()) =>
+        {
+            &blocks[1..]
+        }
+        _ => blocks,
+    };
     let markers = build_markers(blocks, fonts, theme, content_width)?;
     let mut gutters = std::collections::BTreeMap::<usize, f32>::new();
-    let default_g = if matches!(theme, ExportTheme::Riso | ExportTheme::Neon) {
-        34.0
-    } else {
-        28.0
-    };
+    let default_g = 28.0;
     for (block, marker) in blocks.iter().zip(&markers) {
         if let Some(marker) = marker {
             let w = marker.layout_runs().map(|r| r.line_w).fold(0.0, f32::max);
@@ -162,7 +162,7 @@ pub(super) fn build(
         }
         let code = block.meta.code_language.is_some();
         let size = block_font_size(theme, block.kind, code);
-        let line_height = size * if block.kind == Kind::H1 { 1.25 } else { 1.55 };
+        let line_height = size * line_factor(theme, block.kind, code);
         let indent = block.meta.indent as f32 * 8.5;
         if indent > content_width - 80.0 {
             return Err(ExportError::ResourceLimit(crate::theme::tr(
@@ -191,7 +191,7 @@ pub(super) fn build(
             .as_deref()
             .filter(|s| !s.is_empty())
             .map(|s| if matches!(s.to_ascii_lowercase().as_str(), "yaml-frontmatter" | "frontmatter") { "yaml" } else { s })
-            .map(|s| plain(fonts, theme, s, 11.0, width))
+            .map(|s| plain(fonts, theme, s, 13.0, width))
             .transpose()?;
         let label_h = label
             .as_ref()
@@ -202,14 +202,13 @@ pub(super) fn build(
                     + 4.0
             })
             .unwrap_or(0.0);
-        let align = (theme == ExportTheme::Press && matches!(block.kind, Kind::H1 | Kind::Quote))
-            .then_some(Align::Center);
         let shaped = super::rich::shape(
             block,
             fonts,
             size,
+            line_height,
             width,
-            align,
+            None,
             attributes(theme, block.kind, &[], code),
         )?;
         let text_h = shaped
@@ -239,7 +238,7 @@ pub(super) fn build(
         y += height + block_gap_after(block.kind, code);
     }
 
-    let footer_y = y + 12.0;
+    let footer_y = y + 28.0;
     let end = footer_y + chrome.footer_h + margin_bottom;
     let (width, height) = budget::canvas(PAGE_WIDTH * SCALE, end * SCALE)?;
     Ok(Layout {
@@ -262,25 +261,13 @@ fn build_markers(
     content_width: f32,
 ) -> Result<Vec<Option<Buffer>>, ExportError> {
     let numbers = crate::editor::model::list_numbers(blocks.iter());
-    let circle_nums = matches!(theme, ExportTheme::Riso | ExportTheme::Neon);
-    let mut bullet_seq = 0u64;
+    let size = theme.spec().body;
     blocks
         .iter()
         .zip(numbers)
-        .map(|(b, ord)| {
-            bullet_seq = if b.kind == Kind::Bullet {
-                bullet_seq + 1
-            } else {
-                0
-            };
-            if circle_nums {
-                let n = ord.or_else(|| (b.kind == Kind::Bullet).then_some(bullet_seq));
-                n.map(|v| plain(fonts, theme, &format!("{v}"), 12.0, content_width))
-                    .transpose()
-            } else {
-                ord.map(|v| plain(fonts, theme, &format!("{v}."), 17.0, content_width))
-                    .transpose()
-            }
+        .map(|(_, ord)| {
+            ord.map(|v| plain(fonts, theme, &format!("{v}."), size, content_width))
+                .transpose()
         })
         .collect()
 }
