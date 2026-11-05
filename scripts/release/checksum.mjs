@@ -3,9 +3,16 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const INSTALLERS = [
-  "block-macos.dmg",
+  "block-macos-arm64.dmg",
+  "block-macos-x64.dmg",
   "block-windows-x64-setup.exe",
+  "block-windows-arm64-setup.exe",
   "block-linux-x64.AppImage",
+  "block-linux-arm64.AppImage",
+  "block-linux-x64.deb",
+  "block-linux-arm64.deb",
+  "block-linux-x64.rpm",
+  "block-linux-arm64.rpm",
 ];
 
 export function sha256File(filePath) {
