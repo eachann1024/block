@@ -152,8 +152,8 @@ impl ExportView {
         let appearance = segmented(
             "theme",
             [
-                (tr("浅色 · 4", "Light · 4"), !is_dark, true),
-                (tr("深色 · 4", "Dark · 4"), is_dark, true),
+                (tr("浅色 · 6", "Light · 6"), !is_dark, true),
+                (tr("深色 · 6", "Dark · 6"), is_dark, true),
             ],
             Rc::new(cx.listener(|this, idx: &usize, _, cx| this.set_dark(*idx == 1, cx))),
         );

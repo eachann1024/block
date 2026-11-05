@@ -163,13 +163,7 @@ pub(super) fn build(
         let code = block.meta.code_language.is_some();
         let size = block_font_size(theme, block.kind, code);
         let line_height = size * line_factor(theme, block.kind, code);
-        let indent = block.meta.indent as f32 * 8.5;
-        if indent > content_width - 80.0 {
-            return Err(ExportError::ResourceLimit(crate::theme::tr(
-                "缩进过深，文字宽度不足",
-                "Indentation is too deep; insufficient text width",
-            )));
-        }
+        let indent = (block.meta.indent as f32 * 8.5).min((content_width - 80.0).max(0.0));
         let (gutter, pad_x, pad_top, pad_bottom) = block_box_metrics(
             theme,
             block.kind,
@@ -178,13 +172,7 @@ pub(super) fn build(
             block.meta.indent,
             &gutters,
         );
-        let width = content_width - indent - gutter - pad_x * 2.0;
-        if width < 32.0 {
-            return Err(ExportError::ResourceLimit(crate::theme::tr(
-                "列表标记占用过宽，文字宽度不足",
-                "List marker is too wide; insufficient text width",
-            )));
-        }
+        let width = (content_width - indent - gutter - pad_x * 2.0).max(32.0);
         let label = block
             .meta
             .code_language

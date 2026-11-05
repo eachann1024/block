@@ -44,20 +44,31 @@ impl ExportView {
         let mut centered_state = false;
         let body: AnyElement = match (&self.png, &self.error) {
             (Some(png), _) => {
-                let src: gpui::ImageSource = self
-                    .preview_img
-                    .clone()
-                    .map_or_else(|| png.clone().into(), Into::into);
-                let picture = match dims {
-                    Some((w, h)) => img(src).w(px(w / SCALE * scale)).h(px(h / SCALE * scale)),
-                    None => img(src).w_full(),
-                };
-                div()
+                let mut stack = div()
                     .flex_none()
+                    .flex()
+                    .flex_col()
                     .shadow_lg()
-                    .when(self.rendering, |d| d.opacity(0.55))
-                    .child(picture)
-                    .into_any_element()
+                    .when(self.rendering, |d| d.opacity(0.55));
+                if self.preview_tiles.is_empty() {
+                    let src: gpui::ImageSource = png.clone().into();
+                    let picture = match dims {
+                        Some((w, h)) => img(src).w(px(w / SCALE * scale)).h(px(h / SCALE * scale)),
+                        None => img(src).w_full(),
+                    };
+                    stack = stack.child(picture);
+                } else {
+                    let mut y_px = 0u32;
+                    for (src, tw, th) in &self.preview_tiles {
+                        let w_log = (*tw as f32 / SCALE * scale).round().max(1.0);
+                        let top_log = (y_px as f32 / SCALE * scale).round();
+                        y_px += *th;
+                        let bot_log = (y_px as f32 / SCALE * scale).round();
+                        let h_log = (bot_log - top_log).max(1.0);
+                        stack = stack.child(img(src.clone()).w(px(w_log)).h(px(h_log)));
+                    }
+                }
+                stack.into_any_element()
             }
             (None, Some(msg)) => {
                 centered_state = true;
