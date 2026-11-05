@@ -72,8 +72,10 @@ fn render_math_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32, f32), Stri
     let logical_w = (vb_w * scale).ceil().max(16.0);
     let logical_h = (vb_h * scale).ceil().max(20.0);
 
-    let patched = match raw_svg.find('>') {
-        Some(end) => format!(
+    let inner_start = raw_svg.find("<svg")
+        .and_then(|i| raw_svg[i..].find('>').map(|end| i + end + 1));
+    let patched = match inner_start {
+        Some(start) => format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.0}\" height=\"{:.0}\" viewBox=\"{:.2} {:.2} {:.2} {:.2}\">{}",
             (logical_w * 2.0).round(),
             (logical_h * 2.0).round(),
@@ -81,7 +83,7 @@ fn render_math_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32, f32), Stri
             -VIEWBOX_PAD,
             vb_w,
             vb_h,
-            &raw_svg[end + 1..]
+            &raw_svg[start..]
         ),
         None => raw_svg,
     };
