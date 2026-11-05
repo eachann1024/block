@@ -194,7 +194,7 @@ fn todo_box(checked: bool, top: f32, toggle: impl Fn(&mut gpui::App) + 'static) 
     let dark = is_dark();
     let border: gpui::Hsla = if checked { rgb(0x4774cf).into() } else if dark { rgb(0x858585).into() } else { gpui::rgba(0x0b0b0b80).into() };
     let hover_border: gpui::Hsla = if checked { rgb(0x3a62b8).into() } else if dark { rgb(0xa3a3a3).into() } else { gpui::rgba(0x0b0b0bcc).into() };
-    div().mt(px(top)).ml(px(4.8)).size(px(16.)).relative().children(crate::ui::smoke_overlay::probe("todo-checkbox")).flex().items_center().justify_center().rounded(px(4.)).cursor(CursorStyle::PointingHand)
+    div().mt(px(top)).ml(px(4.8)).size(px(16.)).relative().children(crate::ui::smoke_overlay::probe("todo-checkbox")).flex().items_center().justify_center().rounded(crate::ui::radius::MICRO_SM).cursor(CursorStyle::PointingHand)
         .when(!checked, |b| b.border_1().border_color(border)).hover(move |s| if checked { s.bg(rgb(0x3a62b8)) } else { s.border_color(hover_border) })
         .when(checked, |b| b.bg(rgb(0x4774cf)).child(icon(Icon::Check, px(12.),
             IconColors { line: rgb(0xffffff).into(), fill: transparent_black(), accent: transparent_black() })))
@@ -253,9 +253,16 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let folded = !this.minimal && this.is_heading_folded(block.id);
     let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
     let image_pop = this.image_menu.as_ref().filter(|(mid, _)| *mid == block.id).map(|(_, p)| p.clone());
-    let top_slot = (index == 0 && !this.minimal && this.path.is_some() && super::block_ops::needs_top_insert(block) && block.meta.column.is_none()).then(|| {
-        top_insert_slot(("top-insert", block.id as usize), HANDLE_WIDTH, ROW_GAP, RIGHT_INSET, handles, cx.listener(|this, _, window, cx| {
-            this.insert_top_paragraph(cx); window.focus(&this.focus, cx); cx.stop_propagation();
+    let in_col = block.meta.column.is_some();
+    let is_col_head = in_col && (index == 0 || this.doc.blocks[index - 1].meta.column != block.meta.column);
+    let show_top_slot = !this.minimal && this.path.is_some() && super::block_ops::needs_top_insert(block)
+        && ((index == 0 && !in_col) || is_col_head);
+    let slot_hw = if in_col { 42. } else { HANDLE_WIDTH };
+    let slot_ri = if in_col { 4. } else { RIGHT_INSET };
+    let bid = block.id;
+    let top_slot = show_top_slot.then(|| {
+        top_insert_slot(("top-insert", bid as usize), slot_hw, ROW_GAP, slot_ri, handles, cx.listener(move |this, _, window, cx| {
+            this.insert_above(bid, cx); window.focus(&this.focus, cx); cx.stop_propagation();
         }))
     });
     let row = block_row(cx.entity(), block, row_pads(this, index), handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, cx);
