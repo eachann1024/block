@@ -276,7 +276,6 @@ impl Render for SearchWindow {
             .child(render_header(
                 &self.state,
                 cx.listener(|this, _, _, cx| { this.state.toggle_scope_menu(); cx.notify(); }),
-                cx.listener(|this, _, window, cx| this.close(window, cx)),
             ))
             .when(menu_open, |view| view.child(render_scope_menu(&self.state, cx, |this, index, _, cx| {
                 if this.state.select_scope_index(index) { this.state.research(cx, |this| Some(&mut this.state)); }
