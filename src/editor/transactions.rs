@@ -3,13 +3,16 @@ use crate::editor::{model::{Doc, Kind, MarkKind}, view::{Editor, selection::{Car
 
 // Doc is a persistent tree: snapshots share unaffected nodes and text. A mutation
 // copies only its edited blocks/tree paths, never the entire document.
-pub(in crate::editor) struct Snapshot { pub doc: Doc, pub caret: Caret }
+pub(in crate::editor) struct Snapshot {
+    pub doc: Doc, pub caret: Caret,
+    block_sel: Option<(usize, usize)>, table_sel: Option<(u64, super::super::table_actions::TableSel)>,
+}
 #[derive(Clone)]
 pub(in crate::editor) struct ListChange { pub start: usize, pub before: usize, pub after: usize }
 pub(in crate::editor) struct HistoryEntry { state: Snapshot, changes: Vec<ListChange> }
 impl Editor {
     pub(in crate::editor) fn snapshot(&self) -> Snapshot {
-        Snapshot { doc: self.doc.clone(), caret: self.caret.clone() }
+        Snapshot { doc: self.doc.clone(), caret: self.caret.clone(), block_sel: self.block_sel, table_sel: self.table_sel }
     }
     fn selection_change(&self, before: &Snapshot) -> ListChange {
         let a = before.doc.index_of(before.caret.anchor.block).unwrap_or(0);
@@ -66,6 +69,7 @@ impl Editor {
             let same = item.state.doc == self.doc;
             let target = std::mem::replace(&mut item.state, self.snapshot());
             self.doc = target.doc; self.caret = target.caret; self.caret.composing = None;
+            self.block_sel = target.block_sel; self.table_sel = target.table_sel;
             self.apply_changes(&item.changes, redo);
             if redo { self.history.push(item); } else { self.redo.push(item); }
             self.changed(cx);

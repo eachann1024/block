@@ -105,7 +105,7 @@ pub(super) fn serialize(table: &Table, out: &mut String) {
                 || !table.source.is_char_boundary(range.start) || !table.source.is_char_boundary(range.end) {
                 out.push_str(&table.source[cursor..]); return;
             }
-            out.push_str(&table.source[cursor..range.start]); inline::serialize(&cell.content, out);
+            out.push_str(&table.source[cursor..range.start]); inline::serialize_html(&cell.content, out);
             cursor = range.end;
         }
     }
