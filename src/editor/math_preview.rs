@@ -2,11 +2,11 @@
 use std::{
     cell::RefCell,
     collections::HashMap,
-    sync::{Arc, LazyLock},
+    sync::Arc,
 };
 use gpui::{AnyElement, Context, Entity, Image, ImageFormat};
 use latex_rust::{
-    Color, Dim, MathFont, MathStyle, SvgOptions,
+    Color, Dim, MathStyle, SvgOptions,
     layout::layout_with_em_size_pt,
     parse,
     render::svg::render_svg,
@@ -22,10 +22,6 @@ use super::{
 const EM_PT: i64 = 18;
 const VIEWBOX_PAD: f32 = 4.0;
 const MAX_MATH_W: f32 = 650.0;
-
-static MATH_FONT: LazyLock<MathFont> = LazyLock::new(|| {
-    MathFont::stix_two_math().expect("embedded STIX Two Math font must load")
-});
 
 thread_local! {
     static CACHE: RefCell<HashMap<u64, PreviewState>> = Default::default();
@@ -58,9 +54,10 @@ fn dim_f32(d: &Dim) -> f32 {
 }
 
 fn render_math_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32, f32), String> {
+    let font = crate::fonts::math_font()
+        .ok_or_else(|| String::from(tr("数学字体加载失败", "Math font unavailable")))?;
     let ast = parse_math(source)?;
     let em = Dim::from_i64(EM_PT);
-    let font = &*MATH_FONT;
     let tree = layout_with_em_size_pt(&ast, font, MathStyle::Display, &em)
         .map_err(|e| concise_error(&e.to_string()))?;
     let w_pt = dim_f32(&(tree.width.clone() * em.clone())).max(8.0);
@@ -100,6 +97,9 @@ pub(super) fn render_state(
     let theme = Theme::ocean();
     if source.trim().is_empty() {
         return (Some(placeholder(tr("输入 LaTeX 公式以预览", "Enter LaTeX formula to preview"), &theme)), None);
+    }
+    if crate::fonts::math_font().is_none() && !crate::fonts::math_font_failed() {
+        return (Some(fallback_or_loading(block_id, &theme)), None);
     }
     let dark = is_dark();
     let key = hash_source(source, dark);
