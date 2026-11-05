@@ -5,7 +5,9 @@ import { basename, join, resolve } from "node:path";
 import { cargoRelease } from "./cargo-release.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
-const APPIMAGE_NAME = "block-linux-x64.AppImage";
+const ARCH = process.arch === "arm64" ? "arm64" : "x64";
+const APPIMAGE_NAME = `block-linux-${ARCH}.AppImage`;
+const SQUASH_ARCH = process.env.APPIMAGE_ARCH || (ARCH === "arm64" ? "aarch64" : "x86_64");
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 const HOST_LIB = /^(ld-linux|linux-vdso\.|libc\.|libm\.|libdl\.|libpthread\.|librt\.|libresolv\.|libutil\.|libvulkan\.|libGL\.|libGLX\.|libGLdispatch\.|libEGL\.|libOpenGL\.|librenderdoc\.)/;
 
@@ -111,6 +113,7 @@ function writeAppDir(binary, appDir) {
 
 export async function packageLinux() {
   assert.equal(process.platform, "linux", "Linux is required to build the AppImage");
+  assert.ok(process.arch === "x64" || process.arch === "arm64", `unsupported arch ${process.arch}`);
   const version = applyReleasePlanVersion();
   cargoRelease();
   const binary = resolve(ROOT, "target/release/block");
@@ -122,9 +125,10 @@ export async function packageLinux() {
   rmSync(outfile, { force: true });
   const tool = process.env.APPIMAGETOOL || "appimagetool";
   run(tool, [appDir, outfile], {
-    env: { ...process.env, ARCH: "x86_64", APPIMAGE_EXTRACT_AND_RUN: "1" },
+    env: { ...process.env, ARCH: SQUASH_ARCH, APPIMAGE_EXTRACT_AND_RUN: "1" },
   });
   chmodSync(outfile, 0o755);
+  rmSync(`${outfile}.zsync`, { force: true });
   assert.ok(existsSync(outfile), `Failed to create ${APPIMAGE_NAME}`);
   console.log(`Packaged Block v${version}:`);
   console.log(`  ${outfile}`);
