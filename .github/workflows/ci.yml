@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: block-compile-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   check-linux:
@@ -29,6 +29,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             pkg-config \
             libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libxcb-xkb-dev \
             libwayland-dev \
             libvulkan-dev \
             libx11-dev \

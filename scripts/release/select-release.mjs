@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildReleaseNotes, listCommits } from "./release-notes.mjs";
@@ -59,6 +59,19 @@ export function setPackageJsonVersion(text, version) {
   const pkg = JSON.parse(text);
   pkg.version = version;
   return `${JSON.stringify(pkg, null, 2)}\n`;
+}
+
+export function applyReleasePlanVersion() {
+  const planPath = resolve(ROOT, "release-plan.json");
+  let version = readCargoVersion(ROOT);
+  if (existsSync(planPath)) {
+    const plan = JSON.parse(readFileSync(planPath, "utf8"));
+    if (typeof plan.version === "string" && plan.version) {
+      version = plan.version;
+      syncVersionFiles(ROOT, version);
+    }
+  }
+  return version;
 }
 
 export function syncVersionFiles(root, version) {
