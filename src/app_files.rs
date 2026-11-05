@@ -51,23 +51,22 @@ impl Workspace {
     }
 
     pub(super) fn close_overlays(&mut self, cx: &mut Context<Self>) {
-        self.menu = None;
-        self.switcher_open = false;
+        self.menu = None; self.switcher_open = false;
         self.tree.update(cx, |tree, cx| tree.set_menu_target(None, cx));
         cx.notify();
     }
 
     pub(crate) fn dismiss_dropdowns(&mut self, cx: &mut Context<Self>) -> bool {
         let had_overlay = self.menu.is_some() || self.switcher_open;
-        if had_overlay {
-            self.close_overlays(cx);
-        }
+        if had_overlay { self.close_overlays(cx); }
         let had_tab = self.dismiss_tab_menu(cx);
-        had_overlay || had_tab
+        let had_font = self.close_font_picker(cx);
+        had_overlay || had_tab || had_font
     }
 
     /// Escape: close the innermost transient surface; false when none was open.
     pub(super) fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.close_font_picker(cx) { return true; }
         if self.renaming.is_some() { self.cancel_rename(window, cx); return true; }
         if self.search.is_some() { self.close_search(window, cx); return true; }
         if self.settings.is_some() { self.close_settings(window, cx); return true; }

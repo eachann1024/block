@@ -5,6 +5,7 @@ pub mod dot_pager;
 pub mod dropdown;
 pub mod fade;
 pub mod floating_bar;
+pub mod font_picker;
 pub mod icon_button;
 pub mod modal;
 pub mod motion;
