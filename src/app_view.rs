@@ -1,5 +1,5 @@
 use gpui::{
-    Context, IntoElement, MouseButton, NavigationDirection, ParentElement, Render, Window, div, prelude::*, px,
+    AnimationExt, Context, IntoElement, MouseButton, NavigationDirection, ParentElement, Render, Window, div, prelude::*, px,
 };
 use crate::icons::{Icon, stateful_icon};
 use crate::theme::{Theme, format_hotkey, tr};
@@ -21,15 +21,24 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &crate::editor::ai::ToggleAiPanel, window, cx| { crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); cx.notify(); }))
             .on_action(cx.listener(|this, _: &NewNote, window, cx| if !this.busy() { this.new_item(false, window, cx) }))
             .on_action(cx.listener(|this, _: &NewFolder, window, cx| if !this.busy() { this.new_item(true, window, cx) }))
-            .capture_action(cx.listener(|this, _: &Dismiss, window, cx| if this.dismiss(window, cx) { cx.stop_propagation(); }))
-            .capture_action(cx.listener(|this, _: &crate::editor::view::Cancel, window, cx| if this.dismiss(window, cx) { cx.stop_propagation(); }))
-            .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| if this.dismiss(window, cx) { cx.stop_propagation(); }))
+            .capture_action(cx.listener(|this, _: &Dismiss, window, cx| {
+                if crate::updater::close_modal() { this.restore_focus(window, cx); cx.notify(); cx.stop_propagation(); }
+                else if this.dismiss(window, cx) { cx.stop_propagation(); }
+            }))
+            .capture_action(cx.listener(|this, _: &crate::editor::view::Cancel, window, cx| {
+                if crate::updater::close_modal() { this.restore_focus(window, cx); cx.notify(); cx.stop_propagation(); }
+                else if this.dismiss(window, cx) { cx.stop_propagation(); }
+            }))
+            .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| {
+                if crate::updater::close_modal() { this.restore_focus(window, cx); cx.notify(); cx.stop_propagation(); }
+                else if this.dismiss(window, cx) { cx.stop_propagation(); }
+            }))
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Back), cx.listener(|this, _, _, cx| this.navigate_back(cx)))
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Forward), cx.listener(|this, _, _, cx| this.navigate_forward(cx)));
         self.bind_tab_actions(root, cx)
             .child(self.titlebar(cx))
             .child(div().flex_1().min_h_0().flex()
-                .when(!self.sidebar_collapsed, |d| d.child(if self.settings.is_some() { self.settings_sidebar(cx) } else { self.sidebar(cx) }))
+                .when(!self.sidebar_collapsed && !self.is_history_open(), |d| d.child(if self.settings.is_some() { self.settings_sidebar(cx) } else { self.sidebar(cx) }))
                 .child(self.settings_view(cx).or_else(|| self.mascot_view(cx)).unwrap_or_else(|| {
                     if self.is_history_open() {
                         self.render_history_main(window, cx)
@@ -56,31 +65,40 @@ impl Render for Workspace {
 fn sync_focused_input_ime(window: &mut Window, cx: &mut gpui::App) {
     let Some(any) = gpui_component::WindowExt::focused_input(window, cx) else { return };
     if let Some(focused_input) = any.as_input().cloned() {
-        focused_input.update(cx, |state, cx| sync_input_base_ime(state, window, cx));
+        focused_input.update(cx, |state, cx| {
+            if let Some(g) = state.prepaint_caret_geometry() {
+                let cb = g.cursor_bounds();
+                crate::sync_ime_cursor_area(f32::from(cb.origin.x), f32::from(cb.origin.y + g.scroll_offset().y), f32::from(cb.size.height.max(g.line_height())));
+                return;
+            }
+            let ib = state.input_bounds();
+            let range = gpui::EntityInputHandler::marked_text_range(state, window, cx)
+                .or_else(|| gpui::EntityInputHandler::selected_text_range(state, false, window, cx).map(|s| s.range))
+                .unwrap_or(0..0);
+            if let Some(b) = gpui::EntityInputHandler::bounds_for_range(state, range, ib, window, cx) {
+                crate::sync_ime_cursor_area(f32::from(b.origin.x), f32::from(b.origin.y), f32::from(b.size.height));
+            } else if ib.size.height > px(0.) {
+                crate::sync_ime_cursor_area(f32::from(ib.origin.x), f32::from(ib.origin.y), f32::from(ib.size.height));
+            }
+        });
     } else if let Some(focused_textarea) = any.as_textarea().cloned() {
-        focused_textarea.update(cx, |state, cx| sync_input_base_ime(state, window, cx));
+        focused_textarea.update(cx, |state, cx| {
+            if let Some(g) = state.prepaint_caret_geometry() {
+                let cb = g.cursor_bounds();
+                crate::sync_ime_cursor_area(f32::from(cb.origin.x), f32::from(cb.origin.y + g.scroll_offset().y), f32::from(cb.size.height.max(g.line_height())));
+                return;
+            }
+            let ib = state.input_bounds();
+            let range = gpui::EntityInputHandler::marked_text_range(state, window, cx)
+                .or_else(|| gpui::EntityInputHandler::selected_text_range(state, false, window, cx).map(|s| s.range))
+                .unwrap_or(0..0);
+            if let Some(b) = gpui::EntityInputHandler::bounds_for_range(state, range, ib, window, cx) {
+                crate::sync_ime_cursor_area(f32::from(b.origin.x), f32::from(b.origin.y), f32::from(b.size.height));
+            } else if ib.size.height > px(0.) {
+                crate::sync_ime_cursor_area(f32::from(ib.origin.x), f32::from(ib.origin.y), f32::from(ib.size.height));
+            }
+        });
     }
-}
-
-fn sync_input_base_ime<M: gpui_component::input::InputModeKind>(
-    state: &mut gpui_component::input::InputBaseState<M>,
-    window: &mut Window,
-    cx: &mut Context<gpui_component::input::InputBaseState<M>>,
-) {
-        if let Some(g) = state.prepaint_caret_geometry() {
-            let cb = g.cursor_bounds();
-            crate::sync_ime_cursor_area(f32::from(cb.origin.x), f32::from(cb.origin.y + g.scroll_offset().y), f32::from(cb.size.height.max(g.line_height())));
-            return;
-        }
-        let ib = state.input_bounds();
-        let range = gpui::EntityInputHandler::marked_text_range(state, window, cx)
-            .or_else(|| gpui::EntityInputHandler::selected_text_range(state, false, window, cx).map(|s| s.range))
-            .unwrap_or(0..0);
-        if let Some(b) = gpui::EntityInputHandler::bounds_for_range(state, range, ib, window, cx) {
-            crate::sync_ime_cursor_area(f32::from(b.origin.x), f32::from(b.origin.y), f32::from(b.size.height));
-        } else if ib.size.height > px(0.) {
-            crate::sync_ime_cursor_area(f32::from(ib.origin.x), f32::from(ib.origin.y), f32::from(ib.size.height));
-        }
 }
 
 impl Workspace {
@@ -114,7 +132,7 @@ impl Workspace {
         let shortcut = format_hotkey("secondary-k");
         let search_open = self.search.is_some();
         div().id("search-button").group("sidebar-search-btn").relative().children(crate::ui::smoke_overlay::probe("search-button")).flex_1().min_w_0().h(px(32.)).px(px(9.)).flex().items_center().gap(px(6.))
-            .rounded(px(8.)).bg(theme.paper).border_1().border_color(if search_open { theme.accent } else { theme.btn_border })
+            .rounded(crate::ui::radius::CONTROL).bg(theme.paper).border_1().border_color(if search_open { theme.accent } else { theme.btn_border })
             .text_size(px(14.)).text_color(theme.text_secondary)
             .when(enabled, |b| b.cursor(gpui::CursorStyle::PointingHand).hover(|style| style.bg(theme.btn_hover))
                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| this.open_search(window, cx))))
@@ -130,6 +148,117 @@ impl Workspace {
         div().flex_none().px(px(8.)).py(px(6.)).border_t_1().border_color(theme.hairline)
             .flex().items_center().gap(px(4.)).bg(theme.sidebar)
             .child(self.notebook_switcher(cx))
+            .when(crate::updater::has_update(), |f| {
+                let open_updater = std::rc::Rc::new(cx.listener(|_, _, _, cx| crate::updater::open(cx)));
+                let badge = {
+                    let open_updater = open_updater.clone();
+                    move |y_offset: f32, btn_opacity: f32| {
+                        let on_down = open_updater.clone();
+                        div()
+                            .id("updater-badge-button")
+                            .group("updater-badge-btn")
+                            .relative()
+                            .size(px(30.))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(crate::ui::radius::CONTROL)
+                            .cursor(gpui::CursorStyle::PointingHand)
+                            .bg(theme.paper)
+                            .border_1()
+                            .border_color(theme.btn_border)
+                            .hover(|s| s.bg(theme.hover).border_color(theme.accent))
+                            .tooltip(crate::ui::tooltip::tooltip(tr("有可用更新", "Update available")))
+                            .on_mouse_down(gpui::MouseButton::Left, move |e, w, cx| on_down(e, w, cx))
+                            .child(stateful_icon(
+                                "updater-badge-btn",
+                                Icon::Download,
+                                px(16.),
+                                false,
+                                theme.mono_icon_colors(theme.text_secondary),
+                                theme.icon_colors(theme.text),
+                            ))
+                            .child(div().absolute().top(px(3.)).right(px(3.)).size(px(5.)).rounded_full().bg(theme.accent))
+                            .opacity(btn_opacity)
+                            .top(px(y_offset))
+                    }
+                };
+                if crate::updater::entrance_done() {
+                    f.child(badge(0.0, 1.0))
+                } else {
+                f.child(
+                    div()
+                        .relative()
+                        .size(px(30.))
+                        .flex_none()
+                        .with_animation(
+                            "updater-badge-entrance",
+                            gpui::Animation::new(std::time::Duration::from_millis(1750)),
+                            move |container, delta| {
+                                let frame = crate::updater::drive_entrance(delta);
+                                let mut root = container;
+
+                                // 1. 7 dual-tone bubbles spray up from the badge, then leave.
+                                if frame.bubbles {
+                                    const PUFFS: [(f32, f32, f32, bool); 7] = [
+                                        (-18., -20., 10., true),
+                                        (-7., -28., 14., false),
+                                        (9., -27., 10., true),
+                                        (21., -16., 13., false),
+                                        (-23., -4., 9., true),
+                                        (24., 2., 11., false),
+                                        (0., -32., 10., true),
+                                    ];
+                                    let t = frame.bubble_t;
+                                    let fade = frame.bubble_fade;
+                                    for (dx, dy, full_sz, alt) in PUFFS {
+                                        let scale = 0.2 + 0.8 * t;
+                                        let sz = full_sz * scale;
+                                        let x = 15. + dx * t - sz * 0.5;
+                                        let y = 18. + dy * t - sz * 0.5;
+                                        let fill = if alt { theme.icon_fill } else { theme.accent };
+                                        let base_alpha = if alt { 0.68 } else { 0.34 };
+                                        root = root.child(
+                                            div()
+                                                .absolute()
+                                                .rounded_full()
+                                                .border_1()
+                                                .left(px(x))
+                                                .top(px(y))
+                                                .size(px(sz))
+                                                .bg(fill.opacity(base_alpha * fade))
+                                                .border_color(theme.accent.opacity(0.52 * fade))
+                                                .opacity(fade),
+                                        );
+                                    }
+                                }
+
+                                // 2. Badge and its accent dot leap, bounce, then stay.
+                                root = root.child(badge(frame.y_offset, frame.btn_opacity));
+
+                                // 3. Three-layer doodle jitters in, fades out, and never returns.
+                                if frame.tangle {
+                                    root = root.child(
+                                        div()
+                                            .absolute()
+                                            .size(px(56.))
+                                            .left(px(-13. + frame.jx))
+                                            .top(px(-13. + frame.jy))
+                                            .opacity(frame.tangle_opacity)
+                                            .child(crate::icons::icon(
+                                                Icon::UpdateTangle,
+                                                px(56.),
+                                                theme.icon_colors(theme.text),
+                                            )),
+                                    );
+                                }
+                                root
+                            },
+                        ),
+                )
+                }
+            })
             .child(div().w(px(1.)).h(px(16.)).flex_none().bg(theme.sidebar_border))
             .child(dock_icon_button("settings-button", Icon::Sliders, self.settings.is_some(), tip,
                 cx.listener(|this, _, window, cx| this.open_settings(window, cx))))
