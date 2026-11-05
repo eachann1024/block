@@ -30,7 +30,7 @@ fn margins(block: &Block) -> (f32, f32) {
         (Kind::H3, Some(4)) => (20.8, 4.8),
         (Kind::H3, Some(5 | 6)) => (16.8, 3.5),
         (Kind::H3, _) => (25.2, 7.2),
-        (Kind::Quote, _) => (12.8, 12.8),
+        (Kind::Quote, _) if block.meta.callout.is_none() => (12.8, 12.8),
         _ if super::block_menu::is_divider(block) => (16.5, 16.5),
         _ => (9.6, 9.6),
     }
@@ -92,14 +92,15 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
     let rule = super::block_menu::is_divider(block);
     let nowrap = nowrap && block.meta.code_language.is_some();
     let focus_editor = editor.clone();
-    let blank = block.kind == Kind::Paragraph && block.meta.code_language.is_none() && block.text.is_empty() && !is_table && block.meta.raw_source.is_none();
+    let callout = block.meta.callout;
+    let blank = block.kind == Kind::Paragraph && block.meta.code_language.is_none() && block.text.is_empty() && !is_table && block.meta.raw_source.is_none() && callout.is_none();
     // Images and dividers are atomic blocks and never expose their Markdown/HTML source line.
     let static_view = image.is_some() || rule;
     let code_lang = block.meta.code_language.clone();
     let preview_lang = code_lang.as_deref().is_some_and(super::code_block::is_preview_lang);
     let code_visible = handles || active;
     let first_line_h = if rule { 16. * zoom } else if code_lang.is_some() { 30. * zoom } else { line };
-    let handle_top = if is_table { 4.9 * zoom } else if image.is_some() { 4. * zoom } else { ((first_line_h - 26. * zoom) / 2.).max(-pt) };
+    let handle_top = if is_table { 4.9 * zoom } else if image.is_some() { 4. * zoom } else { ((first_line_h - 26. * zoom) / 2. + if callout.is_some() { 12. * zoom } else { 0. }).max(-pt) };
     let regular_handles = !minimal && !is_table && handles;
     div().id(("block", id as usize)).relative().w_full().min_w_0().pt(px(pt)).pb(px(pb))
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
@@ -146,8 +147,14 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                 .when(!marker.is_empty(), |row| row.flex().justify_end().pr(px(8. * zoom)).child(marker))))
             .child(div().flex_1().min_w_0().flex().flex_col().relative()
                 .when(marker_width == 0., |body| body.max_w(theme.content_width))
-                .when(block.kind == Kind::Quote, |body| body.pl(px(16. * zoom)).py(px(1.6 * zoom)).child(
+                .when(block.kind == Kind::Quote && callout.is_none(), |body| body.pl(px(16. * zoom)).py(px(1.6 * zoom)).child(
                     div().absolute().left_0().top_0().bottom_0().w(px(3. * zoom)).bg(theme.quote_bar)))
+                .when_some(callout, |body, _| {
+                    body.rounded(px(8. * zoom)).bg(theme.hover).border_1().border_color(theme.hairline)
+                        .py(px(12. * zoom)).pr(px(16. * zoom)).pl(px(44. * zoom))
+                        .child(div().absolute().left(px(16. * zoom)).top(px(12. * zoom + (line - 18. * zoom).max(0.) / 2.))
+                            .child(icon(Icon::Callout, px(18. * zoom), theme.icon_colors(theme.accent))))
+                })
                 .when_some(block.meta.unsupported_reason.clone().filter(|_| image.is_none() && !rule), |body, reason| body.child(
                     div().text_size(px(11. * zoom)).text_color(theme.text_secondary).pb(px(4. * zoom))
                         .child(format!("{} · {}", tr("已保留源码", "Source preserved"), unsupported_reason_label(&reason)))))
@@ -173,7 +180,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                     body.child(super::code_block_preview::preview_block(editor.clone(), id, lang, &block.text, active, code_visible, source_el, minimal, cx))
                 })
                 .when(!static_view && !preview_lang && code_lang.is_some(), |body| {
-                    body.child(super::code_block::copy_button(editor, id, code_lang.unwrap_or_default(), code_visible, cx))
+                    body.child(super::code_block::copy_button(editor, id, code_lang.unwrap_or_default(), code_visible, minimal, cx))
                 })))
         .when_some(drop_edge, |row, after| row.child(div().absolute().left(px(handle_w + ROW_GAP)).right(px(right_inset))
             .h(px(2. * zoom)).bg(theme.accent)
