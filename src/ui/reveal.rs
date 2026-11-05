@@ -142,7 +142,6 @@ pub fn top_insert_slot(
     handle_w: f32,
     row_gap: f32,
     right_inset: f32,
-    visible: bool,
     listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
@@ -161,7 +160,7 @@ pub fn top_insert_slot(
         .flex()
         .items_center()
         .cursor(CursorStyle::PointingHand)
-        .opacity(if visible { 1. } else { 0. })
+        .opacity(0.)
         .group_hover("top-slot", |s| s.opacity(1.))
         .on_mouse_down(MouseButton::Left, listener)
         .child(
