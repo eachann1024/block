@@ -1,6 +1,5 @@
 //! Pointer gestures keep word/block selection and insertion-slot dragging separate.
 use gpui::{Context, Point, Pixels, Window, point, px};
-use unicode_segmentation::UnicodeSegmentation;
 use super::{Editor, selection::Position};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -68,16 +67,8 @@ impl Editor {
         let Some(block) = self.doc.get(at.block) else { return (at, at); };
         let text = &block.text;
         let range = if clicks >= 3 { 0..text.len() }
-            else if clicks == 2 {
-                if let Some(s) = block.spans.iter().find(|s| s.marks.contains(&crate::editor::model::MarkKind::Code) && s.start < s.end && s.start <= at.offset && at.offset <= s.end) {
-                    s.start..s.end
-                } else {
-                    let probe = at.offset.min(text.len().saturating_sub(1));
-                    text.split_word_bound_indices().find(|(start, word)| {
-                        *start <= probe && probe < start + word.len()
-                    }).map(|(start, word)| start..start + word.len()).unwrap_or(0..0)
-                }
-            } else { at.offset..at.offset };
+            else if clicks == 2 { self.word_range_at(at) }
+            else { at.offset..at.offset };
         (Position { offset: range.start, ..at }, Position { offset: range.end, ..at })
     }
     pub(in crate::editor) fn pointer_down(&mut self, event: &gpui::MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -90,8 +81,9 @@ impl Editor {
         if (event.modifiers.platform || (!cfg!(target_os = "macos") && event.modifiers.control))
             && (self.open_link_at(event.position, cx) || self.copy_code_at(event.position, cx)) { return; }
         self.commit_composition(cx); self.clear_pointer(); self.pending_vertical = None;
-        if let Some(at) = self.hit(event.position) {
-            let clicks = event.click_count.max(1);
+        let clicks = event.click_count.max(1);
+        let hit = if clicks == 2 { self.hit_glyph(event.position) } else { self.hit(event.position) };
+        if let Some(at) = hit {
             let (start, end) = self.extent(at, clicks);
             self.set_head(end, event.modifiers.shift, cx);
             if !event.modifiers.shift { self.caret.anchor = start; }
@@ -171,20 +163,21 @@ impl Editor {
             if self.drag_over != prev || scrolled { cx.notify(); }
             return;
         }
-        if let Some(at) = self.hit(event.position) {
-            if let Some((start, end, clicks)) = self.selection_origin {
+        if let Some((start, end, clicks)) = self.selection_origin {
+            let hit = if clicks == 2 { self.hit_glyph(event.position) } else { self.hit(event.position) };
+            if let Some(at) = hit {
                 if clicks > 1 {
                     let (a, b) = self.extent(at, clicks);
                     let before = (self.doc.index_of(at.block), at.offset) < (self.doc.index_of(start.block), start.offset);
                     self.caret.anchor = if before { end } else { start };
                     self.set_head(if before { a } else { b }, true, cx);
                 } else { self.set_head(at, true, cx); }
+                if !self.caret.is_empty() {
+                    self.annotate.active_annotation = None;
+                    self.annotate.followup = None;
+                }
+                self.reveal_caret = false;
             }
-            if !self.caret.is_empty() {
-                self.annotate.active_annotation = None;
-                self.annotate.followup = None;
-            }
-            self.reveal_caret = false;
         }
         cx.notify();
     }
