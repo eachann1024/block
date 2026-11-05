@@ -90,7 +90,7 @@ pub fn apply_state(state: &crate::files::state::State) {
     let search = state.shortcut_search.as_deref().filter(|s| !s.eq_ignore_ascii_case("cmd-k")).unwrap_or(DEFAULT_SEARCH_SHORTCUT).to_owned();
     let quick = state.shortcut_quick.clone().unwrap_or_else(|| DEFAULT_QUICK_SHORTCUT.into());
     set_shortcuts(search, quick);
-    crate::editor::init_zoom(state.editor_zoom);
+    crate::editor::init_zoom(state.editor_zoom, state.quick_editor_zoom);
 }
 
 pub fn theme_mode() -> ThemeMode {

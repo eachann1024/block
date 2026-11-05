@@ -27,7 +27,8 @@ impl Editor {
         let before = self.snapshot();
         self.doc.splice_blocks(index..index + 1, vec![block]);
         let new_id = self.doc.blocks[index].id;
-        super::image_view::rekey(cx, id, new_id);
+        let editor_id = cx.entity_id();
+        super::image_view::rekey(cx, editor_id, id, new_id);
         if let Some((mid, _)) = &mut self.image_menu { if *mid == id { *mid = new_id; } }
         let at = Position { block: new_id, offset: 0 };
         self.caret.anchor = at; self.caret.head = at;
