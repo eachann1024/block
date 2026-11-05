@@ -62,6 +62,8 @@ export async function publishRelease() {
 
   const { version, tag, commit, releaseNotes, autoBump } = plan;
   assert.ok(version && tag && commit && releaseNotes, "Incomplete release-plan.json");
+  assert.equal(tag, `v${version}`);
+  assert.notEqual(tag, "v0.1.0");
 
   const assetPaths = ASSETS.map((name) => {
     const p = join(RELEASE_DIR, name);
