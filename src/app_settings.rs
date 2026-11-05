@@ -1,10 +1,10 @@
 //! Preferences state and actions (⌘,): theme, editor font, and global hotkeys.
 use gpui::{AppContext, Context, FocusHandle, Keystroke, Window};
-use crate::files::state::{FontChoice, LanguageMode, ThemeMode, update_state};
+use crate::files::state::{LanguageMode, ThemeMode, update_state};
 use crate::icons::Icon;
 use crate::theme::{
     DEFAULT_QUICK_SHORTCUT, DEFAULT_SEARCH_SHORTCUT, quick_shortcut,
-    search_shortcut, set_font_choice, set_language_mode, set_shortcuts, set_theme_mode, tr,
+    search_shortcut, set_language_mode, set_shortcuts, set_theme_mode, tr,
 };
 use super::Workspace;
 
@@ -45,12 +45,19 @@ impl SettingsTab {
     }
 }
 
+pub(crate) struct FontPickerModal {
+    pub role: crate::ui::font_picker::FontPickerRole,
+    pub search_input: gpui::Entity<gpui_component::input::InputState>,
+    pub _search_sub: gpui::Subscription,
+}
+
 pub(crate) struct SettingsModal {
     pub focus: FocusHandle,
     pub recording: Option<ShortcutKind>,
     pub tab: SettingsTab,
     pub assets_input: gpui::Entity<gpui_component::input::InputState>,
     pub _assets_sub: gpui::Subscription,
+    pub font_picker: Option<FontPickerModal>,
 }
 
 pub(super) fn keystroke_to_spec(ks: &Keystroke) -> Option<String> {
@@ -134,7 +141,7 @@ impl Workspace {
                 _ => {}
             }
         });
-        self.settings = Some(SettingsModal { focus, recording: None, tab, assets_input, _assets_sub });
+        self.settings = Some(SettingsModal { focus, recording: None, tab, assets_input, _assets_sub, font_picker: None });
         crate::editor::ai::settings::ensure(window, cx);
         cx.notify();
     }
@@ -143,6 +150,7 @@ impl Workspace {
         if let Some(m) = &mut self.settings {
             m.tab = tab;
             m.recording = None;
+            m.font_picker = None;
             cx.notify();
         }
     }
@@ -171,16 +179,6 @@ impl Workspace {
             let _ = update_state(|s| s.language = mode);
         }).detach();
         crate::apply_app_menus(cx);
-        self.editor.update(cx, |editor, cx| { editor.reset_layouts(); cx.notify(); });
-        crate::quick::refresh_style(cx);
-        cx.notify();
-    }
-
-    pub(super) fn select_font(&mut self, font: FontChoice, cx: &mut Context<Self>) {
-        set_font_choice(font);
-        cx.background_executor().spawn(async move {
-            let _ = update_state(|s| s.font_family = font);
-        }).detach();
         self.editor.update(cx, |editor, cx| { editor.reset_layouts(); cx.notify(); });
         crate::quick::refresh_style(cx);
         cx.notify();

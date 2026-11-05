@@ -1,11 +1,13 @@
 //! Bodies of the non-AI Settings tabs: appearance, general, shortcuts and local folder.
 use gpui::{Context, CursorStyle, MouseButton, div, prelude::*, px};
 use gpui_component::input::Input;
-use crate::files::state::{FontChoice, LanguageMode, ThemeMode};
+use crate::files::state::{LanguageMode, LineHeight, ThemeMode};
 use crate::theme::{
     DEFAULT_ASSETS_FOLDER, DEFAULT_QUICK_SHORTCUT, DEFAULT_SEARCH_SHORTCUT, Theme, assets_folder,
-    font_choice, hide_assets_folder, language_mode, quick_shortcut, search_shortcut, theme_mode, tr,
+    custom_code_font, custom_editor_font, hide_assets_folder, language_mode, line_height,
+    quick_shortcut, resolved_mono_font, resolved_serif_font, search_shortcut, theme_mode, tr,
 };
+use crate::ui::font_picker::{FontPickerRole, font_picker_popover, font_picker_trigger};
 use crate::ui::settings_controls::{
     card_title, segmented, setting_row, settings_card, shortcut_recorder, static_badge, static_keycap,
 };
@@ -14,7 +16,7 @@ use super::settings::ShortcutKind;
 
 impl Workspace {
     pub(super) fn appearance_tab(&self, cx: &mut Context<Self>) -> gpui::Div {
-        let (cur_lang, cur_theme, cur_font) = (language_mode(), theme_mode(), font_choice());
+        let (cur_lang, cur_theme, cur_lh) = (language_mode(), theme_mode(), line_height());
         let theme_seg = segmented("theme-seg", [
             (tr("跟随系统", "System"), cur_theme == ThemeMode::System, ThemeMode::System),
             (tr("浅色", "Light"), cur_theme == ThemeMode::Light, ThemeMode::Light),
@@ -25,16 +27,44 @@ impl Workspace {
             ("简体中文", cur_lang == LanguageMode::Zh, LanguageMode::Zh),
             ("English", cur_lang == LanguageMode::En, LanguageMode::En),
         ], |mode, cx: &mut Context<Self>| Box::new(cx.listener(move |this, _, _, cx| this.select_language(mode, cx))));
-        let font_seg = segmented("font-seg", [
-            (tr("无衬线", "Sans-serif"), cur_font == FontChoice::Sans, FontChoice::Sans),
-            (tr("衬线", "Serif"), cur_font == FontChoice::Serif, FontChoice::Serif),
-        ], |font, cx: &mut Context<Self>| Box::new(cx.listener(move |this, _, _, cx| this.select_font(font, cx))));
+
+        let cur_editor_font = custom_editor_font();
+        let (body_name, body_fam) = match cur_editor_font.as_deref() {
+            None => (tr("系统无衬线", "System Sans").into(), ".SystemUIFont".into()),
+            Some("system-serif") => (tr("系统衬线", "System Serif").into(), resolved_serif_font().into()),
+            Some(name) => (name.to_owned().into(), name.to_owned().into()),
+        };
+        let body_open = self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).is_some_and(|p| p.role == FontPickerRole::Body);
+        let body_trigger = font_picker_trigger("body-font-trigger", FontPickerRole::Body, body_open, body_name, body_fam, cx);
+
+        let cur_code_font = custom_code_font();
+        let (code_name, code_fam) = match cur_code_font.as_deref() {
+            None => (format!("{} ({})", tr("自动", "Auto"), resolved_mono_font()).into(), resolved_mono_font().into()),
+            Some(name) => (name.to_owned().into(), name.to_owned().into()),
+        };
+        let code_open = self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).is_some_and(|p| p.role == FontPickerRole::Code);
+        let code_trigger = font_picker_trigger("code-font-trigger", FontPickerRole::Code, code_open, code_name, code_fam, cx);
+
+        let lh_seg = segmented("lh-seg", [
+            (tr("紧凑", "Compact"), cur_lh == LineHeight::Tight, LineHeight::Tight),
+            (tr("标准", "Standard"), cur_lh == LineHeight::Normal, LineHeight::Normal),
+            (tr("宽松", "Relaxed"), cur_lh == LineHeight::Loose, LineHeight::Loose),
+        ], |lh, cx: &mut Context<Self>| Box::new(cx.listener(move |this, _, _, cx| this.select_line_height(lh, cx))));
+
+        let popover = self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).map(|picker| {
+            let q = picker.search_input.read(cx).value().to_string();
+            font_picker_popover(picker.role, &picker.search_input, &q, cx)
+        });
+
         div().flex().flex_col().gap(px(24.))
             .child(settings_card(16.).child(card_title(tr("主题与语言", "Theme & Language")))
                 .child(setting_row(tr("外观主题", "Theme"), theme_seg(cx)))
                 .child(setting_row(tr("界面语言", "Language"), lang_seg(cx))))
-            .child(settings_card(16.).child(card_title(tr("正文字体", "Editor Font")))
-                .child(setting_row(tr("正文字体", "Editor Font"), font_seg(cx))))
+            .child(settings_card(16.).child(card_title(tr("编辑器", "Editor")))
+                .child(setting_row(tr("正文字体", "Body Font"), body_trigger))
+                .child(setting_row(tr("代码字体", "Code Font"), code_trigger))
+                .child(setting_row(tr("行高", "Line Height"), lh_seg(cx))))
+            .when_some(popover, |d, p| d.child(p))
     }
 
     pub(super) fn general_tab(&self, cx: &mut Context<Self>) -> gpui::Div {
