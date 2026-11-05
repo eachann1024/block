@@ -97,9 +97,22 @@ impl Workspace {
     pub(super) fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.folder.is_none() || self.history_restore_busy { return; }
         if self.is_history_open() || self.history_opening { self.close_page_history_focused(window, cx); }
-        if let Some(search) = &self.search {
-            let focus_input = search.state.input.clone();
-            cx.defer_in(window, move |_, window, cx| focus_input.update(cx, |input, cx| input.focus(window, cx)));
+        if self.search.is_some() {
+            let folders = self.search_folders();
+            let requery = self.search.as_mut().is_some_and(|search| {
+                let before = search.state.scope.clone();
+                search.state.sync_folders(folders);
+                search.state.reset_scope_all();
+                search.state.asked && search.state.scope != before
+            });
+            if requery && let Some(search) = &mut self.search {
+                search.state.research(cx, |this| this.search.as_mut().map(|search| &mut search.state));
+            }
+            if let Some(search) = &self.search {
+                let focus_input = search.state.input.clone();
+                cx.defer_in(window, move |_, window, cx| focus_input.update(cx, |input, cx| input.focus(window, cx)));
+            }
+            cx.notify();
             return;
         }
         if self.renaming.is_some() { self.cancel_rename(window, cx); }
@@ -179,6 +192,15 @@ impl Workspace {
             .on_action(cx.listener(|this, _: &SearchResetScopeAll, _, cx| {
                 let changed = this.search.as_mut().is_some_and(|search| search.state.reset_scope_all());
                 this.finish_scope(changed, cx);
+            }))
+            .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| {
+                cx.stop_propagation();
+                if this.search.as_ref().is_some_and(|search| search.state.scope_menu_open) {
+                    if let Some(search) = &mut this.search { search.state.scope_menu_open = false; }
+                    cx.notify();
+                    return;
+                }
+                this.close_search(window, cx);
             }))
             .on_action(cx.listener(|this, _: &Dismiss, window, cx| {
                 if this.search.as_ref().is_some_and(|search| search.state.scope_menu_open) {
