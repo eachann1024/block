@@ -4,11 +4,13 @@ import { dirname, join, resolve } from "node:path";
 import { cargoRelease, run } from "./cargo-release.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
-const SETUP_NAME = "block-windows-x64-setup.exe";
+const ARCH = process.arch === "arm64" ? "arm64" : "x64";
+const SETUP_NAME = `block-windows-${ARCH}-setup.exe`;
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 
 export async function packageWindows() {
   assert.equal(process.platform, "win32", "Windows is required to build the NSIS installer");
+  assert.ok(process.arch === "x64" || process.arch === "arm64", `unsupported arch ${process.arch}`);
   const version = applyReleasePlanVersion();
   assert.match(version, /^\d+\.\d+\.\d+$/);
   cargoRelease();
