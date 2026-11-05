@@ -288,7 +288,7 @@
       "expand": "fill",
       "title": "全局搜索 ⌘⇧K"
     },
-    "S-Settings-3.dc.html": {
+      "S-Settings-3.dc.html": {
       "page": "settings",
       "x": 0,
       "y": 0,
@@ -333,6 +333,70 @@
       "h": 900,
       "expand": "fill",
       "title": "生成图片 · 预览与导出弹窗"
+    },
+    "X-L1-Mono.dc.html": {
+      "page": "export",
+      "x": 0,
+      "y": 1020,
+      "w": 816,
+      "h": 1040,
+      "title": "浅 1 · 黑白素纸（默认）"
+    },
+    "X-L2-Journal.dc.html": {
+      "page": "export",
+      "x": 896,
+      "y": 1020,
+      "w": 816,
+      "h": 1040,
+      "title": "浅 2 · 手账便签"
+    },
+    "X-L3-Riso.dc.html": {
+      "page": "export",
+      "x": 1792,
+      "y": 1020,
+      "w": 816,
+      "h": 1040,
+      "title": "浅 3 · 野性孔版"
+    },
+    "X-L4-Press.dc.html": {
+      "page": "export",
+      "x": 2688,
+      "y": 1020,
+      "w": 816,
+      "h": 1040,
+      "title": "浅 4 · 铅字号外"
+    },
+    "X-D1-Ink.dc.html": {
+      "page": "export",
+      "x": 0,
+      "y": 2180,
+      "w": 816,
+      "h": 1040,
+      "title": "深 1 · 墨黑（默认）"
+    },
+    "X-D2-Kraft.dc.html": {
+      "page": "export",
+      "x": 896,
+      "y": 2180,
+      "w": 816,
+      "h": 1040,
+      "title": "深 2 · 黑卡手账"
+    },
+    "X-D3-Neon.dc.html": {
+      "page": "export",
+      "x": 1792,
+      "y": 2180,
+      "w": 816,
+      "h": 1040,
+      "title": "深 3 · 霓虹丝印"
+    },
+    "X-D4-Film.dc.html": {
+      "page": "export",
+      "x": 2688,
+      "y": 2180,
+      "w": 816,
+      "h": 1040,
+      "title": "深 4 · 暗房胶片"
     },
     "Duo-Set.dc.html": {
       "page": "visual",
@@ -409,102 +473,6 @@
       "expand": "fill",
       "is_interactive": true,
       "title": "全局交互显现动效规范 · gpui_transitions 驱动"
-    },
-    "X-L1-Mono.dc.html": {
-      "page": "export",
-      "x": 0,
-      "y": 1020,
-      "w": 816,
-      "h": 1002,
-      "title": "浅 1 · 黑白素纸（默认）"
-    },
-    "X-L2-Journal.dc.html": {
-      "page": "export",
-      "x": 896,
-      "y": 1020,
-      "w": 816,
-      "h": 1122,
-      "title": "浅 2 · 手账便签（照搬 Thinkly）"
-    },
-    "X-L3-Riso.dc.html": {
-      "page": "export",
-      "x": 1792,
-      "y": 1020,
-      "w": 816,
-      "h": 1003,
-      "title": "浅 3 · 孔版双色"
-    },
-    "X-L4-Press.dc.html": {
-      "page": "export",
-      "x": 2688,
-      "y": 1020,
-      "w": 816,
-      "h": 1047,
-      "title": "浅 4 · 铅字报刊"
-    },
-    "X-L5-Poster.dc.html": {
-      "page": "export",
-      "x": 3584,
-      "y": 1020,
-      "w": 816,
-      "h": 1055,
-      "title": "浅 5 · 大字海报（新）"
-    },
-    "X-L6-Mist.dc.html": {
-      "page": "export",
-      "x": 4480,
-      "y": 1020,
-      "w": 816,
-      "h": 1081,
-      "title": "浅 6 · 雾面卡片（新）"
-    },
-    "X-D1-Ink.dc.html": {
-      "page": "export",
-      "x": 0,
-      "y": 2262,
-      "w": 816,
-      "h": 1002,
-      "title": "深 1 · 墨黑（默认）"
-    },
-    "X-D2-Kraft.dc.html": {
-      "page": "export",
-      "x": 896,
-      "y": 2262,
-      "w": 816,
-      "h": 1122,
-      "title": "深 2 · 黑卡手账"
-    },
-    "X-D3-Neon.dc.html": {
-      "page": "export",
-      "x": 1792,
-      "y": 2262,
-      "w": 816,
-      "h": 1023,
-      "title": "深 3 · 霓虹夜色"
-    },
-    "X-D4-Film.dc.html": {
-      "page": "export",
-      "x": 2688,
-      "y": 2262,
-      "w": 816,
-      "h": 1064,
-      "title": "深 4 · 暗房胶片"
-    },
-    "X-D5-Night.dc.html": {
-      "page": "export",
-      "x": 3584,
-      "y": 2262,
-      "w": 816,
-      "h": 1081,
-      "title": "深 5 · 夜读卡片（新）"
-    },
-    "X-D6-Terminal.dc.html": {
-      "page": "export",
-      "x": 4480,
-      "y": 2262,
-      "w": 816,
-      "h": 973,
-      "title": "深 6 · 终端绿屏（新）"
     }
   },
   "order": [
@@ -542,14 +510,10 @@
     "X-L2-Journal.dc.html",
     "X-L3-Riso.dc.html",
     "X-L4-Press.dc.html",
-    "X-L5-Poster.dc.html",
-    "X-L6-Mist.dc.html",
     "X-D1-Ink.dc.html",
     "X-D2-Kraft.dc.html",
     "X-D3-Neon.dc.html",
     "X-D4-Film.dc.html",
-    "X-D5-Night.dc.html",
-    "X-D6-Terminal.dc.html",
     "Duo-Set.dc.html",
     "Mascot-Folio.dc.html",
     "C-Code-Block.dc.html",
