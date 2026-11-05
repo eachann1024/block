@@ -1,4 +1,4 @@
-//! Preferences state and actions (⌘,): theme, editor font, and global hotkeys.
+//! Preferences state and actions (⌘,): theme, editor font, folders, and global hotkeys.
 use gpui::{AppContext, Context, FocusHandle, Keystroke, Window};
 use crate::files::state::{LanguageMode, ThemeMode, update_state};
 use crate::icons::Icon;
@@ -19,18 +19,20 @@ pub(crate) enum SettingsTab {
     #[default]
     Ai,
     Appearance,
-    General,
+    Folders,
     Shortcuts,
 }
 
 impl SettingsTab {
-    pub(crate) const ALL: [Self; 4] = [Self::Ai, Self::Appearance, Self::General, Self::Shortcuts];
+    pub(crate) const ALL: [Self; 4] = [Self::Ai, Self::Appearance, Self::Folders, Self::Shortcuts];
+    #[doc(hidden)]
+    pub(crate) const General: Self = Self::Folders;
 
     pub(crate) fn title(self) -> &'static str {
         match self {
             Self::Ai => tr("AI 助手", "AI Assistant"),
             Self::Appearance => tr("外观与字体", "Appearance & Fonts"),
-            Self::General => tr("通用与编辑", "General & Editing"),
+            Self::Folders => tr("文件夹", "Folders"),
             Self::Shortcuts => tr("基础快捷键", "Shortcuts"),
         }
     }
@@ -39,7 +41,7 @@ impl SettingsTab {
         match self {
             Self::Ai => Icon::Sparkles,
             Self::Appearance => Icon::Sliders,
-            Self::General => Icon::NoteCheck,
+            Self::Folders => Icon::Folder,
             Self::Shortcuts => Icon::Code,
         }
     }
@@ -61,8 +63,13 @@ pub(crate) struct SettingsModal {
     pub tab: SettingsTab,
     pub assets_input: gpui::Entity<gpui_component::input::InputState>,
     pub _assets_sub: gpui::Subscription,
-    pub hidden_folder_input: gpui::Entity<gpui_component::input::InputState>,
-    pub _hidden_folder_sub: gpui::Subscription,
+    pub folder_draft_input: gpui::Entity<gpui_component::input::InputState>,
+    pub _folder_draft_sub: gpui::Subscription,
+    pub regex_draft_input: gpui::Entity<gpui_component::input::InputState>,
+    pub _regex_draft_sub: gpui::Subscription,
+    pub advanced_open: bool,
+    pub folder_error: Option<String>,
+    pub regex_error: Option<String>,
     pub font_picker: Option<FontPickerModal>,
 }
 
@@ -106,6 +113,7 @@ impl Workspace {
         self.close_overlays(cx);
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
+
         let assets_input = cx.new(|cx| {
             gpui_component::input::InputState::new(window, cx)
                 .placeholder(crate::theme::DEFAULT_ASSETS_FOLDER)
@@ -119,30 +127,52 @@ impl Workspace {
                 input.update(cx, |i, cx| i.set_value(sanitized.clone(), window, cx));
             }
             if sanitized != crate::theme::assets_folder() {
-                crate::theme::set_assets_folder(sanitized.clone());
-                cx.background_executor().spawn(async move {
-                    let _ = update_state(|s| {
-                        s.assets_folder = (sanitized != crate::theme::DEFAULT_ASSETS_FOLDER).then_some(sanitized);
-                    });
-                }).detach();
-                this.rescan_current_folder(cx);
+                this.set_assets_folder(sanitized, cx);
             }
             cx.notify();
         });
-        let hidden_folder_input = cx.new(|cx| {
+
+        let folder_draft_input = cx.new(|cx| {
             gpui_component::input::InputState::new(window, cx)
-                .placeholder(crate::theme::hidden_folder_placeholder())
-                .default_value(crate::theme::hidden_folder_regex())
+                .placeholder(super::settings_folders::folder_draft_placeholder())
+                .default_value("")
         });
-        let _hidden_folder_sub = cx.subscribe_in(&hidden_folder_input, window, |this, input, event: &gpui_component::input::InputEvent, _, cx| {
-            if matches!(event, gpui_component::input::InputEvent::Change) {
-                let val = input.read(cx).value().to_string();
-                if val != crate::theme::hidden_folder_regex() {
-                    this.apply_hidden_folder_regex(val, cx);
+        let _folder_draft_sub = cx.subscribe_in(&folder_draft_input, window, |this, _, event: &gpui_component::input::InputEvent, window, cx| {
+            match event {
+                gpui_component::input::InputEvent::PressEnter { .. } => {
+                    this.add_exact_folder_rule(window, cx);
                 }
+                gpui_component::input::InputEvent::Change => {
+                    if let Some(m) = &mut this.settings {
+                        if m.folder_error.take().is_some() { cx.notify(); }
+                    }
+                }
+                _ => {}
             }
         });
-        self.settings = Some(SettingsModal { focus, recording: None, tab, assets_input, _assets_sub, hidden_folder_input, _hidden_folder_sub, font_picker: None });
+
+        let regex_draft_input = cx.new(|cx| {
+            gpui_component::input::InputState::new(window, cx)
+                .placeholder(super::settings_folders::regex_draft_placeholder())
+                .default_value("")
+        });
+        let _regex_draft_sub = cx.subscribe_in(&regex_draft_input, window, |this, input, event: &gpui_component::input::InputEvent, window, cx| {
+            match event {
+                gpui_component::input::InputEvent::PressEnter { .. } => {
+                    this.add_regex_folder_rule(window, cx);
+                }
+                gpui_component::input::InputEvent::Change => {
+                    this.handle_regex_draft_change(input, window, cx);
+                }
+                _ => {}
+            }
+        });
+
+        self.settings = Some(SettingsModal {
+            focus, recording: None, tab, assets_input, _assets_sub,
+            folder_draft_input, _folder_draft_sub, regex_draft_input, _regex_draft_sub,
+            advanced_open: false, folder_error: None, regex_error: None, font_picker: None,
+        });
         crate::editor::ai::settings::ensure(window, cx);
         cx.notify();
     }
@@ -177,8 +207,11 @@ impl Workspace {
     pub(crate) fn select_language(&mut self, mode: LanguageMode, window: &mut Window, cx: &mut Context<Self>) {
         set_language_mode(mode);
         if let Some(modal) = &self.settings {
-            modal.hidden_folder_input.update(cx, |i, cx| {
-                i.set_placeholder(crate::theme::hidden_folder_placeholder(), window, cx);
+            modal.folder_draft_input.update(cx, |i, cx| {
+                i.set_placeholder(super::settings_folders::folder_draft_placeholder(), window, cx);
+            });
+            modal.regex_draft_input.update(cx, |i, cx| {
+                i.set_placeholder(super::settings_folders::regex_draft_placeholder(), window, cx);
             });
         }
         cx.background_executor().spawn(async move {
@@ -223,75 +256,24 @@ impl Workspace {
         cx.notify();
     }
 
-    pub(super) fn set_hide_assets(&mut self, hide: bool, cx: &mut Context<Self>) {
-        crate::theme::set_hide_assets_folder(hide);
-        cx.background_executor().spawn(async move {
-            let _ = update_state(|s| {
-                s.hide_assets_folder = (!hide).then_some(false);
-            });
-        }).detach();
-        self.rescan_current_folder(cx);
-        cx.notify();
-    }
-
-    pub(super) fn reset_assets_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        crate::theme::set_assets_folder(crate::theme::DEFAULT_ASSETS_FOLDER.into());
-        crate::theme::set_hide_assets_folder(true);
-        if let Some(modal) = &self.settings {
-            modal.assets_input.update(cx, |input, cx| {
-                input.set_value(crate::theme::DEFAULT_ASSETS_FOLDER, window, cx);
-            });
-        }
-        cx.background_executor().spawn(async move {
-            let _ = update_state(|s| {
-                s.assets_folder = None;
-                s.hide_assets_folder = None;
-            });
-        }).detach();
-        self.rescan_current_folder(cx);
-        cx.notify();
-    }
-
-    pub(super) fn apply_hidden_folder_regex(&mut self, val: String, cx: &mut Context<Self>) {
-        crate::theme::set_hidden_folder_regex(val);
-        cx.background_executor().spawn(async move {
-            let _ = update_state(|s| {
-                let cur = crate::theme::hidden_folder_regex();
-                s.hidden_folder_regex = (!cur.trim().is_empty()).then_some(cur);
-            });
-        }).detach();
-        self.rescan_current_folder(cx);
-        cx.notify();
-    }
-
-    pub(super) fn reset_hidden_folder_regex(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        crate::theme::set_hidden_folder_regex(String::new());
-        if let Some(modal) = &self.settings {
-            modal.hidden_folder_input.update(cx, |input, cx| input.set_value(String::new(), window, cx));
-        }
-        cx.background_executor().spawn(async move {
-            let _ = update_state(|s| {
-                let cur = crate::theme::hidden_folder_regex();
-                s.hidden_folder_regex = (!cur.trim().is_empty()).then_some(cur);
-            });
-        }).detach();
-        self.rescan_current_folder(cx);
-        cx.notify();
-    }
-
     pub(super) fn rescan_current_folder(&mut self, cx: &mut Context<Self>) {
         if self.busy() { return; }
         let Some(root) = self.folder.clone() else { return };
+        self.scan_generation = self.scan_generation.wrapping_add(1);
+        let generation = self.scan_generation;
+        let scan_root = root.clone();
         cx.spawn(async move |this, cx| {
             let result = cx.background_executor().spawn(async move {
-                let scan_res = crate::files::scan::scan(&root)?;
+                let scan_res = crate::files::scan::scan(&scan_root)?;
                 let index = crate::files::index::TreeIndex::new(scan_res.nodes);
                 Ok::<_, std::io::Error>(index)
             }).await;
             let _ = this.update(cx, |this, cx| {
-                if let Ok(index) = result {
-                    this.tree.update(cx, |tree, cx| tree.replace_index(index, None, None, cx));
-                    this.refresh(cx);
+                if this.scan_generation == generation && this.folder.as_ref() == Some(&root) {
+                    if let Ok(index) = result {
+                        this.tree.update(cx, |tree, cx| tree.replace_index(index, None, None, cx));
+                        this.refresh(cx);
+                    }
                 }
             });
         }).detach();
