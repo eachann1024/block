@@ -1,3 +1,4 @@
+mod about;
 mod app;
 mod dropdown;
 mod editor;
@@ -7,6 +8,7 @@ pub mod fonts;
 mod icons;
 pub mod log;
 mod mascot;
+mod menu_bar;
 mod quick;
 mod search;
 mod smoke;
@@ -17,7 +19,7 @@ pub mod window_bounds;
 
 use std::{path::PathBuf, sync::Mutex, time::Duration};
 use gpui::{
-    App, AppContext, KeyBinding, Menu, MenuItem, TitlebarOptions,
+    App, AppContext, KeyBinding, TitlebarOptions,
     WindowOptions, actions, point, px, size,
 };
 
@@ -74,24 +76,12 @@ impl gpui::AssetSource for Assets {
     fn list(&self, path: &str) -> gpui::Result<Vec<gpui::SharedString>> { icons::Icons.list(path) }
 }
 
-pub fn apply_app_menus(cx: &mut gpui::App) {
-    cx.set_menus(vec![Menu {
-        name: "Block".into(),
-        items: vec![
-            MenuItem::action(theme::tr("新建标签页 ⌘T", "New Tab ⌘T"), app::NewTab),
-            MenuItem::action(theme::tr("关闭标签页 ⌘W", "Close Tab ⌘W"), app::CloseTab),
-            MenuItem::action(theme::tr("下一个标签页 ⌃Tab", "Next Tab ⌃Tab"), app::NextTab),
-            MenuItem::action(theme::tr("上一个标签页 ⌃⇧Tab", "Previous Tab ⌃⇧Tab"), app::PrevTab),
-            MenuItem::action(theme::tr("偏好设置… ⌘,", "Settings… ⌘,"), app::OpenSettings),
-            MenuItem::action(theme::tr("速记小窗 ⌥N", "Quick Note ⌥N"), quick::ToggleQuickNote),
-            MenuItem::action(theme::tr("导出…", "Export…"), ExportImage),
-        ],
-        disabled: false,
-    }]);
-}
+pub fn apply_app_menus(cx: &mut gpui::App) { menu_bar::apply(cx); }
 
 fn main() {
     log::init();
+    #[cfg(target_os = "macos")]
+    menu_bar::suppress_system_full_screen_item();
     let smoke_sandbox = smoke::init_sandbox();
     enqueue_open_inputs(std::env::args().skip(1));
     let initial_state = files::load_state().ok();
@@ -120,7 +110,7 @@ fn main() {
         ]);
         editor::bind_keys(cx);
         quick::init(saved_quick_bounds, cx);
-        apply_app_menus(cx);
+        menu_bar::init(cx);
         let min_size = size(px(760.), px(480.));
         let (window_bounds, display_id) = window_bounds::resolve_window_bounds(
             saved_main_bounds,
@@ -247,6 +237,8 @@ fn main() {
             cx.quit();
             return;
         }
+        // After the window: Workspace binds its keys on creation, and menus read them now.
+        apply_app_menus(cx);
         cx.activate(true);
     });
 }

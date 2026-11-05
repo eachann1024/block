@@ -136,6 +136,7 @@ impl Editor {
         let mut offset = a.offset + normalized.len();
         if ai == bi && !normalized.contains('\n') && self.doc.blocks[ai].meta.table.is_none() {
             self.doc.replace_range(a.block, a.offset..b.offset, &normalized);
+            if a == b { self.code_escape_strip(a, normalized.len(), cx); }
         } else {
             let starts_table = self.doc.blocks[ai].meta.table.is_some();
             let mut combined = if starts_table {

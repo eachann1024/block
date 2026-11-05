@@ -39,10 +39,12 @@ impl Editor {
                 self.preferred_x = None;
                 let forward = matches!(action, Right | SelectRight);
                 let extend = matches!(action, SelectLeft | SelectRight);
+                if !extend && self.code_escape_key(forward, cx) { return; }
                 let at = if !extend && !self.caret.is_empty() {
                     let (a,b,_,_) = self.ordered(); if forward { b } else { a }
                 } else { self.step(forward) };
                 self.set_head(at, extend, cx);
+                if !extend { self.code_escape_arrive(forward, cx); }
             }
             // First press selects the caret's block, the next one the whole document.
             SelectAll if { let (a, b, ai, bi) = self.ordered(); let block = &self.doc.blocks[ai];

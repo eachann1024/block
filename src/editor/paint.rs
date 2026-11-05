@@ -149,6 +149,9 @@ impl Element for BlockText {
                 blank && editor.path.is_some() && editor.caret.head.block == self.block && editor.caret.composing.is_none(),
                 editor.active_link_ranges(self.block, window))
         };
+        let chip = super::inline_code_chip::ChipState { caret: (focused && empty && head.block == self.block
+                && super::code_escape::side(self.editor.entity_id(), head).is_none()).then_some(head.offset),
+            selection: if focused { selected.clone() } else { None }, hover: super::inline_code::hovered(self.editor.entity_id(), self.block) };
         let fenced = self.editor.read(cx).doc.get(self.block).and_then(|b| b.meta.code_language.clone());
         if let Some(language) = &fenced { super::code_block::paint_card(layout.bounds, language, window, cx); }
         // A table scrolls inside the block minus the extend-button room; everything it draws is clipped to that.
@@ -172,7 +175,7 @@ impl Element for BlockText {
         };
         window.with_content_mask(clip, |window| {
             if let Some((sel, columns)) = tint { table_layout::paint_selection(layout, sel, columns, window); }
-            super::inline_code::paint_chips(layout, window);
+            super::inline_code_chip::paint_fills(layout, &chip, window);
             paint_lines(layout, true, window, cx);
             let mut sel_rects = Vec::new();
             if focused {
@@ -180,13 +183,14 @@ impl Element for BlockText {
                     if let Some(range) = selected {
                         // Crossing cells selects whole cells with the accent tint; otherwise highlight the text.
                         if !table_layout::paint_cell_selection(layout, &range, window) {
-                            sel_rects = super::inline_code::paint_selection(layout, range, window);
+                            sel_rects = super::inline_code_chip::paint_selection(layout, range, window);
                         }
                     }
                 }
                 // Hide the caret and IME composition chrome when the window is inactive while keeping selection visible.
                 if head.block == self.block && window.is_window_active() {
                     let p = layout.point(head.offset);
+                    let p = super::code_escape::side(self.editor.entity_id(), head).map_or(p, |end| super::code_escape::caret_point(layout, p, end));
                     let line_h = layout.cells.first().map_or(layout.line_height, |c| c.text.line_height);
                     let font_px = layout.cells.first()
                         .and_then(|c| c.text.lines.first().map(|(_, l)| l.font_size()))
@@ -213,6 +217,7 @@ impl Element for BlockText {
                     }
                 }
             }
+            super::inline_code_chip::paint_borders(layout, &chip, window);
             paint_lines(layout, false, window, cx);
             for rect in &sel_rects {
                 window.with_content_mask(Some(gpui::ContentMask { bounds: *rect }), |window| super::text_runs::paint_tinted_lines(layout, Theme::ocean().selection_text, window));
