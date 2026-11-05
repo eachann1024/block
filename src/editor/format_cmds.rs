@@ -150,7 +150,7 @@ impl Editor {
     pub(super) fn paste_plain(&mut self, cx: &mut Context<Self>) {
         if self.editing_source() { self.source_paste(None, cx); return; }
         if !self.is_markdown_note() { return; }
-        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) { self.replace_selection(&text, false, cx); }
+        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) { self.paste_text(&text, true, false, None, cx); }
     }
     /// `prop` is `color` or `background-color`; `None` resets to the default.
     pub(super) fn apply_style(&mut self, prop: &str, value: Option<&str>, cx: &mut Context<Self>) {
@@ -227,7 +227,8 @@ impl Editor {
     /// Copies the whole note as Markdown (the page menu's 「复制 Markdown」).
     pub(crate) fn copy_markdown(&mut self, cx: &mut Context<Self>) {
         if !self.is_markdown_note() { return; }
-        cx.write_to_clipboard(gpui::ClipboardItem::new_string(super::markdown::serialize(&self.doc)));
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string_with_metadata(
+            super::markdown::serialize(&self.doc), super::paste::MARKDOWN_CLIPBOARD_V1.to_owned()));
         self.status = crate::theme::tr("已复制 Markdown", "Copied Markdown").into();
         cx.notify();
     }
