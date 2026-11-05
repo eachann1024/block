@@ -97,6 +97,7 @@ impl Workspace {
         self.folder = Some(folder.clone());
         self.folder_error = None;
         self.tabs = prepared.tabs;
+        self.closed_tabs.clear();
         self.nav.clear();
         self.selected = None;
         self.notice = prepared.notice;
