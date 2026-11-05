@@ -140,7 +140,6 @@ impl Element for BlockText {
                 this.caret.head.offset = offset;
                 if !extend { this.caret.anchor = this.caret.head; }
             }
-            if this.caret.head.block == self.block { this.reveal_caret = false; }
         });
         let (focused, selected, head, empty, composing, placeholder, link_ranges) = {
             let editor = self.editor.read(cx);

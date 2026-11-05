@@ -155,6 +155,7 @@ impl Render for Editor {
         let anchor_sync = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
             anchor_editor.update(cx, |this, cx| {
                 let mut changed = super::annotate_fit::sync_after_paint(this, bounds);
+                this.sync_reveal_after_paint(pad);
                 let top = this.list.logical_scroll_top();
                 let cur_scroll = (top.item_ix, top.offset_in_item);
                 if this.scroll_top != cur_scroll { this.scroll_top = cur_scroll; crate::dropdown::dismiss_all(cx); changed = true; }
