@@ -84,6 +84,19 @@ impl Default for LastFormatColors {
     }
 }
 
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedbackDraft {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub category: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub platform: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub message: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub contact: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedWindowBounds {
@@ -147,6 +160,8 @@ pub struct State {
     pub line_height: Option<LineHeight>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quick_window_bounds: Option<SavedWindowBounds>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feedback_draft: Option<FeedbackDraft>,
 }
 static NEXT: AtomicU64 = AtomicU64::new(0);
 static WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
