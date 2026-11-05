@@ -37,7 +37,10 @@ latex-rust = "3.0.1"
 cocoa = "0.27.0"
 
 [profile.release]
-debug = 1
-split-debuginfo = "off"
-strip = "none"
+debug = "line-tables-only"
+split-debuginfo = "packed"
+strip = "symbols"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
 
