@@ -265,15 +265,18 @@ impl Editor {
                         return;
                     }
                 }
-            } else if !down && !extend && self.vertical_target(index, false).is_none()
-                && self.doc.blocks.first().is_some_and(crate::editor::block_ops::needs_top_insert)
-            {
+            } else if !down && !extend && self.vertical_target(index, false).is_none() {
                 let cur = &self.doc.blocks[index];
                 let at_top_edge = cur.meta.table.is_some()
                     || at.offset == 0
                     || crate::editor::image_source::spec_of(cur).is_some()
                     || crate::editor::block_menu::is_divider(cur);
-                if at_top_edge {
+                let col_top = cur.meta.column.is_some() && (index == 0 || self.doc.blocks[index - 1].meta.column != cur.meta.column);
+                if at_top_edge && col_top && crate::editor::block_ops::needs_top_insert(cur) {
+                    self.insert_above(cur.id, cx);
+                    return;
+                }
+                if at_top_edge && self.doc.blocks.first().is_some_and(crate::editor::block_ops::needs_top_insert) {
                     self.insert_top_paragraph(cx);
                     return;
                 }
