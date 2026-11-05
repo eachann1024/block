@@ -7,10 +7,9 @@ use gpui::{
     WindowHandle, WindowKind, WindowOptions, div, prelude::*, px, size,
 };
 use gpui_component::input::{InputEvent, InputState};
-use crate::app::{Dismiss, OpenSearch, SearchDown, SearchUp, Workspace};
+use crate::app::{Dismiss, OpenSearch, SearchDown, SearchNextScope, SearchPrevScope, SearchResetScopeAll, SearchUp, Workspace};
 use crate::theme::{Theme, tr};
-use super::{SearchState, render_body, render_footer, render_header};
-
+use super::{SearchState, render_body, render_footer, render_header, render_scope_menu};
 #[derive(Default)]
 struct SearchWindowGlobal {
     view: Option<Entity<SearchWindow>>,
@@ -18,34 +17,27 @@ struct SearchWindowGlobal {
     main: Option<(Option<WindowHandle<gpui_component::Root>>, Entity<Workspace>)>,
 }
 impl Global for SearchWindowGlobal {}
-
 pub struct SearchWindow {
     state: SearchState,
     _input_sub: Subscription,
     _blur_sub: Subscription,
 }
-
 pub fn set_main_window(handle: Option<WindowHandle<gpui_component::Root>>, workspace: Entity<Workspace>, cx: &mut App) {
     if !cx.has_global::<SearchWindowGlobal>() { cx.set_global(SearchWindowGlobal::default()); }
     cx.global_mut::<SearchWindowGlobal>().main = Some((handle, workspace));
 }
-
 pub(crate) fn main_window(cx: &App) -> Option<(Option<WindowHandle<gpui_component::Root>>, Entity<Workspace>)> {
     cx.try_global::<SearchWindowGlobal>().and_then(|s| s.main.clone())
 }
-
-pub(crate) fn main_folder(cx: &App) -> Option<PathBuf> {
-    cx.try_global::<SearchWindowGlobal>()
-        .and_then(|s| s.main.as_ref())
-        .and_then(|(_, workspace)| workspace.read(cx).folder.clone())
+pub(crate) fn main_folders(cx: &App) -> Vec<PathBuf> {
+    if let Some((_, workspace)) = main_window(cx) { return workspace.read(cx).search_folders(); }
+    crate::files::load_state().ok().map(|state| super::notebook_folders(state.folder, &state.notebooks)).unwrap_or_default()
 }
-
 pub(crate) fn notify_saved_note(path: PathBuf, cx: &mut App) {
     if let Some((_, workspace)) = main_window(cx) {
         workspace.update(cx, |w, cx| w.insert_external_note(path, cx));
     }
 }
-
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
 fn app_windows() -> cocoa::base::id {
@@ -57,7 +49,6 @@ fn app_windows() -> cocoa::base::id {
         send(app, selector("windows"))
     }
 }
-
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
 pub fn hide_main_window_on_close() -> bool {
@@ -75,11 +66,9 @@ pub fn hide_main_window_on_close() -> bool {
         hidden
     }
 }
-
 /// Without Cocoa window ordering, closing the main window quits instead of hiding it.
 #[cfg(not(target_os = "macos"))]
 pub fn hide_main_window_on_close() -> bool { false }
-
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
 fn show_native_main_window() {
@@ -107,10 +96,8 @@ fn show_native_main_window() {
         }
     }
 }
-
 #[cfg(not(target_os = "macos"))]
 fn show_native_main_window() {}
-
 pub fn activate_main_window(cx: &mut App) {
     show_native_main_window();
     cx.activate(true);
@@ -118,7 +105,6 @@ pub fn activate_main_window(cx: &mut App) {
         let _ = main_handle.update(cx, |_, main_win, _| main_win.activate_window());
     }
 }
-
 pub fn summon_main(cx: &mut App) {
     crate::quick::flush_editor(cx);
     activate_main_window(cx);
@@ -128,7 +114,6 @@ pub fn summon_main(cx: &mut App) {
         });
     }
 }
-
 pub fn summon_from_hotkey(cx: &mut App) {
     if let Some((Some(handle), workspace)) = main_window(cx) {
         if handle.update(cx, |_, window, _| window.is_window_active()).unwrap_or(false) {
@@ -144,7 +129,6 @@ pub fn summon_from_hotkey(cx: &mut App) {
     }
     toggle(cx);
 }
-
 pub fn toggle(cx: &mut App) {
     if !cx.has_global::<SearchWindowGlobal>() {
         cx.set_global(SearchWindowGlobal::default());
@@ -165,7 +149,6 @@ pub fn toggle(cx: &mut App) {
     }
     open(cx);
 }
-
 pub fn refresh_style(cx: &mut App) {
     let Some((handle, view)) = cx.try_global::<SearchWindowGlobal>().and_then(|s| s.window.clone()) else { return };
     if handle.update(cx, |_, window, cx| view.update(cx, |this, cx| {
@@ -175,7 +158,6 @@ pub fn refresh_style(cx: &mut App) {
         view.update(cx, |_, cx| cx.notify());
     }
 }
-
 fn open(cx: &mut App) {
     let bounds = Bounds::centered(None, size(px(680.), px(460.)), cx);
     let opened = cx.open_window(
@@ -200,7 +182,6 @@ fn open(cx: &mut App) {
         Err(error) => eprintln!("无法打开全局搜索窗口: {error}"),
     }
 }
-
 impl SearchWindow {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input = cx.new(|cx| {
@@ -211,8 +192,8 @@ impl SearchWindow {
             match event {
                 InputEvent::Change => {
                     let query = input.read(cx).value().to_string();
-                    let root = main_folder(cx);
-                    this.state.run_search(root, query, cx, |this| Some(&mut this.state));
+                    this.state.sync_folders(main_folders(cx));
+                    this.state.run_search(query, cx, |this| Some(&mut this.state));
                 }
                 InputEvent::PressEnter { .. } => this.open_hit(window, cx),
                 _ => {}
@@ -240,16 +221,14 @@ impl SearchWindow {
         cx.defer_in(window, move |_, window, cx| {
             focus_input.update(cx, |input, cx| input.focus(window, cx));
         });
-        Self { state: SearchState::new(input), _input_sub: input_sub, _blur_sub: blur_sub }
+        Self { state: SearchState::new(input, main_folders(cx)), _input_sub: input_sub, _blur_sub: blur_sub }
     }
-
     pub(crate) fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if cx.has_global::<SearchWindowGlobal>() {
             cx.global_mut::<SearchWindowGlobal>().window = None;
         }
         window.remove_window();
     }
-
     fn open_hit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(path) = self.state.selected_path() else { return };
         self.close(window, cx);
@@ -259,22 +238,51 @@ impl SearchWindow {
             workspace.update(cx, |w, cx| w.open_from_search(path, main_win, cx));
         });
     }
+    fn step_scope(&mut self, delta: isize, cx: &mut Context<Self>) {
+        let list = self.state.sync_folders(main_folders(cx));
+        if self.state.cycle_scope(delta) || (list && self.state.asked) { self.state.research(cx, |this| Some(&mut this.state)); }
+        cx.notify();
+    }
 }
-
 impl Render for SearchWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::ocean();
-        let has_folder = main_folder(cx).is_some();
+        let folders = main_folders(cx);
+        if self.state.sync_folders(folders) && self.state.asked {
+            let task = cx.entity().downgrade();
+            cx.defer(move |cx| { task.update(cx, |this, cx| this.state.research(cx, |this| Some(&mut this.state))).ok(); });
+        }
+        let menu_open = self.state.scope_menu_open;
         div()
-            .id("search-window").key_context("SearchPalette").size_full()
+            .id("search-window").key_context("SearchPalette").size_full().relative()
             .flex().flex_col().overflow_hidden().rounded(px(12.))
             .bg(theme.menu).border_1().border_color(theme.menu_border).text_color(theme.text)
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
+                if this.state.scope_menu_open { this.state.scope_menu_open = false; cx.notify(); }
+            }))
             .on_action(cx.listener(|this, _: &SearchUp, _, cx| { this.state.move_selection(-1); cx.notify(); }))
             .on_action(cx.listener(|this, _: &SearchDown, _, cx| { this.state.move_selection(1); cx.notify(); }))
-            .on_action(cx.listener(|this, _: &Dismiss, window, cx| this.close(window, cx)))
+            .on_action(cx.listener(|this, _: &SearchNextScope, _, cx| this.step_scope(1, cx)))
+            .on_action(cx.listener(|this, _: &SearchPrevScope, _, cx| this.step_scope(-1, cx)))
+            .on_action(cx.listener(|this, _: &SearchResetScopeAll, _, cx| {
+                if this.state.reset_scope_all() { this.state.research(cx, |this| Some(&mut this.state)); }
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &Dismiss, window, cx| {
+                if this.state.scope_menu_open { this.state.scope_menu_open = false; cx.notify(); return; }
+                this.close(window, cx);
+            }))
             .on_action(cx.listener(|this, _: &OpenSearch, window, cx| this.close(window, cx)))
-            .child(render_header(&self.state.input, cx.listener(|this, _, window, cx| this.close(window, cx))))
-            .child(render_body(&self.state, has_folder, true, cx, |this, ix, window, cx| {
+            .child(render_header(
+                &self.state,
+                cx.listener(|this, _, _, cx| { this.state.toggle_scope_menu(); cx.notify(); }),
+                cx.listener(|this, _, window, cx| this.close(window, cx)),
+            ))
+            .when(menu_open, |view| view.child(render_scope_menu(&self.state, cx, |this, index, _, cx| {
+                if this.state.select_scope_index(index) { this.state.research(cx, |this| Some(&mut this.state)); }
+                cx.notify();
+            })))
+            .child(render_body(&self.state, true, cx, |this, ix, window, cx| {
                 this.state.selected = ix;
                 this.open_hit(window, cx);
             }))
