@@ -43,9 +43,18 @@ use cosmic_text::{FontSystem, SwashCache};
 use tiny_skia::Pixmap;
 use std::{sync::Mutex, time::Duration};
 
+#[cfg(target_family = "wasm")]
+pub(crate) use web_cjk::metric_font;
+
 // One font database for all jobs; all glyphs in a job share one raster cache.
 // The glyph cache is dropped between jobs so arbitrary documents cannot grow it forever.
 static FONTS: Mutex<Option<FontSystem>> = Mutex::new(None);
+
+pub fn reset_font_system() {
+    if let Ok(mut guard) = FONTS.lock() {
+        *guard = None;
+    }
+}
 
 /// `Stopwatch::start()` panics on wasm32, so timings are only measured natively.
 struct Stopwatch(#[cfg(not(target_family = "wasm"))] std::time::Instant);
@@ -65,12 +74,18 @@ impl Stopwatch {
 }
 
 #[cfg(not(target_family = "wasm"))]
-fn new_font_system() -> FontSystem { FontSystem::new() }
-/// The browser has no system fonts for cosmic-text; use the fonts bundled with the web build.
+fn new_font_system() -> FontSystem {
+    let mut fs = FontSystem::new();
+    for data in crate::fonts::load_disk_export_fonts() {
+        fs.db_mut().load_font_data(data);
+    }
+    fs
+}
+/// The browser has no system fonts for cosmic-text; use the CDN fonts fetched at runtime.
 #[cfg(target_family = "wasm")]
 fn new_font_system() -> FontSystem {
     let mut db = cosmic_text::fontdb::Database::new();
-    for data in crate::WEB_FONTS {
+    for data in crate::fonts::cached_export_fonts() {
         db.load_font_data(data.to_vec());
     }
     for fam in ["PingFang SC", "Songti SC", "Kaiti SC"] {
