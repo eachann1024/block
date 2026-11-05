@@ -17,7 +17,8 @@ static FONT_CATALOG_VERSION: AtomicU64 = AtomicU64::new(1);
 const SERIF_FALLBACKS: &[&str] = &["Songti SC", "Noto Serif CJK SC", "SimSun"];
 const CJK_FALLBACKS: &[&str] = &["PingFang SC", "Songti SC", "Noto Sans SC", "Microsoft YaHei"];
 
-static RESOLVED_FONTS: RwLock<(&'static str, &'static str)> = RwLock::new(("Songti SC", "Menlo"));
+static RESOLVED_FONTS: RwLock<(&'static str, &'static str, &'static str)> =
+    RwLock::new(("PingFang SC", "Songti SC", "Menlo"));
 
 #[allow(dead_code)]
 pub fn font_choice() -> FontChoice {
@@ -72,8 +73,24 @@ pub fn add_imported_fonts(fonts: &[String]) {
     }
 }
 
-pub fn resolved_serif_font() -> &'static str { resolved().0 }
-pub fn resolved_mono_font() -> &'static str { resolved().1 }
+pub fn resolved_body_font() -> &'static str { resolved().0 }
+pub fn resolved_serif_font() -> &'static str { resolved().1 }
+pub fn resolved_mono_font() -> &'static str { resolved().2 }
+
+pub fn active_editor_font() -> String {
+    match custom_editor_font().as_deref() {
+        None | Some("") | Some("system-sans") => resolved_body_font().to_string(),
+        Some("system-serif") => resolved_serif_font().to_string(),
+        Some(name) => name.to_string(),
+    }
+}
+
+pub fn active_code_font() -> String {
+    match custom_code_font().as_deref() {
+        None | Some("") | Some("auto") => resolved_mono_font().to_string(),
+        Some(name) => name.to_string(),
+    }
+}
 
 pub fn init_fonts(installed: &[String]) {
     let mut valid: Vec<String> = installed.iter().filter(|s| !s.starts_with('.')).cloned().collect();
@@ -86,6 +103,10 @@ pub fn init_fonts(installed: &[String]) {
     let pick = |candidates: &[&'static str], last: &'static str| {
         candidates.iter().copied().find(|c| installed.iter().any(|n| n == c)).unwrap_or(last)
     };
+    let body = pick(
+        &["PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "Hiragino Sans GB", "Helvetica Neue", "Segoe UI", "DejaVu Sans"],
+        if cfg!(target_os = "windows") { "Microsoft YaHei" } else if cfg!(target_os = "linux") { "Noto Sans CJK SC" } else { "PingFang SC" },
+    );
     let serif = pick(
         &["LXGW WenKai", "LXGW WenKai Screen", "Kaiti SC", "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", "SimSun"],
         if cfg!(target_os = "windows") { "SimSun" } else if cfg!(target_os = "linux") { "Noto Serif CJK SC" } else { "Songti SC" },
@@ -94,25 +115,22 @@ pub fn init_fonts(installed: &[String]) {
         &["JetBrains Mono", "Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Liberation Mono"],
         if cfg!(target_os = "windows") { "Consolas" } else if cfg!(target_os = "linux") { "DejaVu Sans Mono" } else { "Menlo" },
     );
-    if let Ok(mut guard) = RESOLVED_FONTS.write() { *guard = (serif, mono); }
+    if let Ok(mut guard) = RESOLVED_FONTS.write() { *guard = (body, serif, mono); }
 }
 
-fn resolved() -> (&'static str, &'static str) {
-    RESOLVED_FONTS.read().map(|g| *g).unwrap_or(("Songti SC", "Menlo"))
+fn resolved() -> (&'static str, &'static str, &'static str) {
+    RESOLVED_FONTS.read().map(|g| *g).unwrap_or(("PingFang SC", "Songti SC", "Menlo"))
 }
 
 pub fn mono_font_family() -> SharedString {
-    if let Some(custom) = CUSTOM_CODE_FONT.read().ok().and_then(|g| g.clone()) {
-        return SharedString::from(custom);
-    }
-    SharedString::from(resolved().1)
+    SharedString::from(active_code_font())
 }
 
 pub fn editor_font() -> (SharedString, &'static [&'static str]) {
-    let (serif, _) = resolved();
+    let (_, serif, _) = resolved();
     let custom = CUSTOM_EDITOR_FONT.read().ok().and_then(|g| g.clone());
     match custom.as_deref() {
-        None => (".SystemUIFont".into(), &[]),
+        None | Some("") | Some("system-sans") => (".SystemUIFont".into(), &[]),
         Some("system-serif") if serif == "Songti SC" => (serif.into(), &[]),
         Some("system-serif") => (serif.into(), SERIF_FALLBACKS),
         Some(name) => (SharedString::from(name.to_owned()), CJK_FALLBACKS),
