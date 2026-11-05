@@ -16,6 +16,25 @@ pub enum ThemeMode {
 
 #[derive(Serialize, Deserialize, Default, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+pub enum LineHeight {
+    Tight,
+    #[default]
+    Normal,
+    Loose,
+}
+
+impl LineHeight {
+    pub fn factor(self) -> f32 {
+        match self {
+            LineHeight::Tight => 1.35,
+            LineHeight::Normal => 1.5,
+            LineHeight::Loose => 1.75,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum FontChoice {
     #[default]
     #[serde(alias = "mono")]
@@ -100,6 +119,12 @@ pub struct State {
     pub editor_zoom: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quick_editor_zoom: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editor_font: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_font: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_height: Option<LineHeight>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quick_window_bounds: Option<SavedWindowBounds>,
 }

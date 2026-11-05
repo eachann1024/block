@@ -8,7 +8,7 @@ use crate::theme::{Theme, tr};
 use super::{Workspace, file_ops::display_name, tabs::hover_tinted_icon, update_state_width};
 use super::menu::{ItemId, menu_item, menu_surface, separator};
 
-pub(super) const MIN_WIDTH: f32 = 260.;
+pub(super) const MIN_WIDTH: f32 = 240.;
 pub(super) const MAX_WIDTH: f32 = 420.;
 const TITLEBAR_LEFT_PAD: f32 = if cfg!(any(target_os = "macos", target_family = "wasm")) { 82. } else { 10. };
 const TITLEBAR_RIGHT_PAD: f32 = 10.;
@@ -72,7 +72,7 @@ impl Workspace {
                 if event.click_count >= 2 {
                     this.resizing = None;
                     this.sidebar_width = Theme::ocean().sidebar_width;
-                    update_state_width(None, cx);
+                    update_state_width(Some(f32::from(this.sidebar_width)), cx);
                 } else {
                     this.resizing = Some((event.position.x, this.sidebar_width));
                 }
@@ -100,9 +100,7 @@ impl Workspace {
 
     fn finish_resize(&mut self, cx: &mut Context<Self>) {
         if self.resizing.take().is_none() { return; }
-        let width = self.sidebar_width;
-        let default = Theme::ocean().sidebar_width;
-        update_state_width(if width == default { None } else { Some(f32::from(width)) }, cx);
+        update_state_width(Some(f32::from(self.sidebar_width)), cx);
         cx.notify();
     }
 

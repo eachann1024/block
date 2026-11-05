@@ -79,6 +79,9 @@ fn new_font_system() -> FontSystem {
     for data in crate::fonts::load_disk_export_fonts() {
         fs.db_mut().load_font_data(data);
     }
+    for data in crate::fonts::load_custom_fonts_data() {
+        fs.db_mut().load_font_data(data);
+    }
     fs
 }
 /// The browser has no system fonts for cosmic-text; use the CDN fonts fetched at runtime.
