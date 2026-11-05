@@ -15,10 +15,13 @@ pub fn accent_action(
 ) -> Stateful<gpui::Div> {
     let theme = Theme::ocean();
     let hint = hint.into();
+    let id = id.into();
     div()
-        .id(id)
-        .h(px(32.))
-        .px(px(14.))
+        .id(id.clone())
+        .relative()
+        .children(super::smoke_overlay::probe_for(&id))
+        .h(px(30.))
+        .px(px(12.))
         .rounded(radius::CONTROL)
         .flex()
         .items_center()
