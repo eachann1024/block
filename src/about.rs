@@ -3,7 +3,7 @@
 //! displayed version is never hardcoded in UI code.
 use std::sync::{
     Arc, LazyLock,
-    atomic::{AtomicBool, AtomicU8, Ordering},
+    atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
 };
 use gpui::{
     AnyElement, App, Context, FontWeight, Image, ImageFormat, MouseButton, SharedString, div, img,
@@ -26,6 +26,8 @@ const HOVER_REPO: u8 = 2;
 
 static OPEN: AtomicBool = AtomicBool::new(false);
 static HOVERED: AtomicU8 = AtomicU8::new(HOVER_NONE);
+static PROFILE_BURST: AtomicU64 = AtomicU64::new(0);
+static REPO_BURST: AtomicU64 = AtomicU64::new(0);
 static ICON: LazyLock<Arc<Image>> = LazyLock::new(|| {
     Arc::new(Image::from_bytes(
         ImageFormat::Png,
@@ -36,6 +38,8 @@ static ICON: LazyLock<Arc<Image>> = LazyLock::new(|| {
 pub fn open(cx: &mut App) {
     crate::search::window::activate_main_window(cx);
     HOVERED.store(HOVER_NONE, Ordering::Relaxed);
+    PROFILE_BURST.store(0, Ordering::Relaxed);
+    REPO_BURST.store(0, Ordering::Relaxed);
     OPEN.store(true, Ordering::Relaxed);
     if let Some((Some(handle), workspace)) = crate::search::window::main_window(cx) {
         let _ = handle.update(cx, |_, window, cx| {
@@ -63,6 +67,17 @@ fn set_hover(slot: u8, active: bool, cx: &mut Context<Workspace>) {
         prev
     };
     if prev != next {
+        if active {
+            match slot {
+                HOVER_PROFILE => {
+                    PROFILE_BURST.fetch_add(1, Ordering::Relaxed);
+                }
+                HOVER_REPO => {
+                    REPO_BURST.fetch_add(1, Ordering::Relaxed);
+                }
+                _ => {}
+            }
+        }
         HOVERED.store(next, Ordering::Relaxed);
         cx.notify();
     }
@@ -74,6 +89,8 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
     }
     let theme = Theme::ocean();
     let hovered = HOVERED.load(Ordering::Relaxed);
+    let profile_seq = PROFILE_BURST.load(Ordering::Relaxed);
+    let repo_seq = REPO_BURST.load(Ordering::Relaxed);
     let version_label: SharedString = format!("{} {VERSION}", tr("版本", "Version")).into();
 
     let close_top = div()
@@ -114,31 +131,24 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
                 .text_color(theme.text_secondary)
                 .child(version_label),
         )
-        .child(
-            div()
-                .text_size(px(14.))
-                .line_height(px(20.))
-                .text_color(theme.text_secondary)
-                .child(tr("作者 eachann", "Made by eachann")),
-        );
+        .child(modal::author_puff_link(
+            "about-profile",
+            tr("作者 eachann", "Made by eachann"),
+            PROFILE_URL,
+            hovered == HOVER_PROFILE,
+            profile_seq,
+            cx.listener(|_, active: &bool, _, cx| set_hover(HOVER_PROFILE, *active, cx)),
+        ));
 
     let links = div()
         .w_full()
         .flex()
         .flex_col()
         .gap(px(12.))
-        .pt(px(18.))
+        .pt(px(16.))
+        .pb(px(4.))
         .border_t_1()
         .border_color(theme.hairline)
-        .child(modal::bubble_link_pill(
-            "about-profile",
-            Icon::Sparkles,
-            tr("我的主页", "My Profile"),
-            "eachann1024",
-            PROFILE_URL,
-            hovered == HOVER_PROFILE,
-            cx.listener(|_, active: &bool, _, cx| set_hover(HOVER_PROFILE, *active, cx)),
-        ))
         .child(modal::bubble_link_pill(
             "about-repo",
             Icon::Code,
@@ -146,6 +156,7 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
             "eachann1024/block",
             REPO_URL,
             hovered == HOVER_REPO,
+            repo_seq,
             cx.listener(|_, active: &bool, _, cx| set_hover(HOVER_REPO, *active, cx)),
         ));
 
