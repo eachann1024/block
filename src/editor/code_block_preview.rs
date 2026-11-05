@@ -37,6 +37,7 @@ pub(super) fn preview_block(
     active: bool,
     hovered: bool,
     source_el: AnyElement,
+    minimal: bool,
     cx: &mut Context<Editor>,
 ) -> AnyElement {
     let dark = is_dark();
@@ -44,7 +45,7 @@ pub(super) fn preview_block(
     let menu_open = code_block::is_menu_open_for(block_id);
     let show_controls = hovered || active || open || menu_open;
 
-    let (rendered_el, err_msg) = render_preview_body(editor.clone(), block_id, language, source, open, cx);
+    let (rendered_el, err_msg) = render_preview_body(editor.clone(), block_id, language, source, open, minimal, cx);
     let has_err = err_msg.is_some();
     let show_frame = open || has_err;
 
@@ -165,17 +166,19 @@ fn render_preview_body(
     language: &str,
     source: &str,
     source_open: bool,
+    minimal: bool,
     cx: &mut Context<Editor>,
 ) -> (Option<AnyElement>, Option<String>) {
     let dark = is_dark();
+    let zoom = super::zoom::zoom_factor(minimal);
     if code_block::is_mermaid(language) {
-        let (el, err) = super::diagram_preview::render_state(editor, block_id, source, cx);
+        let (el, err) = super::diagram_preview::render_state(editor, block_id, source, zoom, cx);
         let body = el.map(|inner| {
             div().w_full().min_w_0().py(px(16.)).px(px(12.)).child(inner).into_any_element()
         });
         (body, err)
     } else {
-        let (el, err) = super::math_preview::render_state(editor, block_id, source, cx);
+        let (el, err) = super::math_preview::render_state(editor, block_id, source, zoom, cx);
         let bg = if dark { rgb(0x16191e) } else { rgb(0xf8f8f6) };
         let body = el.map(|inner| {
             div()
