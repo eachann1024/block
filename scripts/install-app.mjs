@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { cpSync, lstatSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { assertInstallTarget, assertWritable, installPath, installedExecutable, legacyInstallPath, remove, sameVolumeTemp, verifySignature } from "./app-bundle.mjs";
+import { assertInstallTarget, assertWritable, bundleId, installPath, installedExecutable, legacyInstallPath, remove, sameVolumeTemp, verifySignature } from "./app-bundle.mjs";
 import { appPids } from "./stop-app.mjs";
 
 const readyWaitMs = 8000;
@@ -87,10 +87,18 @@ export async function openInstalled(previous) {
   const opened = spawnSync("open", [installPath], { encoding: "utf8", env: detachedLaunchEnv() });
   if (opened.status !== 0) throw new Error((opened.stderr || opened.stdout || "open failed").trim());
   const deadline = Date.now() + readyWaitMs;
+  let running = [];
   while (Date.now() < deadline) {
-    const running = appPids().filter((pid) => !previous.includes(pid));
-    if (running.length) return running;
+    running = appPids().filter((pid) => !previous.includes(pid));
+    if (running.length) break;
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error(`open returned but no new process has executable ${installedExecutable}`);
+  if (!running.length) throw new Error(`open returned but no new process has executable ${installedExecutable}`);
+  // `open` from a background build leaves the app hidden; activate unhides its windows.
+  const activated = spawnSync("osascript", ["-e", `tell application id "${bundleId}" to activate`], {
+    encoding: "utf8",
+    timeout: 4000,
+  });
+  if (activated.status !== 0) throw new Error((activated.stderr || activated.stdout || "activate failed").trim());
+  return running;
 }
