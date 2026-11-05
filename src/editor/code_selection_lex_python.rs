@@ -170,45 +170,9 @@ fn scan_fstring_expr(text: &str, start_offset: usize, tokens: &mut Vec<CodeToken
         let cur = start_offset + pos;
         let sub = &bytes[pos..];
 
-        if sub.starts_with(b"\"\"\"") || sub.starts_with(b"'''") {
-            let q = sub[0];
-            let q3 = [q; 3];
-            let mut end = 3;
-            let mut str_closed = false;
-            while end + 2 < sub.len() {
-                if sub[end..].starts_with(&q3) {
-                    let mut bs = 0;
-                    while bs < end && sub[end - 1 - bs] == b'\\' { bs += 1; }
-                    if bs % 2 == 0 { end += 3; str_closed = true; break; }
-                }
-                end += 1;
-            }
-            tokens.push(CodeToken {
-                range: cur..cur + end,
-                kind: TokenKind::StringLit { open_len: 3, close_len: if str_closed { 3 } else { 0 }, closed: str_closed },
-            });
-            pos += end;
-            continue;
-        }
-
-        if sub[0] == b'"' || sub[0] == b'\'' {
-            let q = sub[0];
-            let mut end = 1;
-            let mut escaped = false;
-            let mut str_closed = false;
-            while end < sub.len() {
-                let c = sub[end];
-                if escaped { escaped = false; end += 1; }
-                else if c == b'\\' { escaped = true; end += 1; }
-                else if c == q { end += 1; str_closed = true; break; }
-                else if c == b'\n' { break; }
-                else { end += 1; }
-            }
-            tokens.push(CodeToken {
-                range: cur..cur + end,
-                kind: TokenKind::StringLit { open_len: 1, close_len: if str_closed { 1 } else { 0 }, closed: str_closed },
-            });
-            pos += end;
+        if let Some((len, ts)) = scan_python_token(text, cur) {
+            tokens.extend(ts);
+            pos += len;
             continue;
         }
 

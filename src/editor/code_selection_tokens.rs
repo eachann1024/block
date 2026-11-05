@@ -49,8 +49,26 @@ pub fn scan_tokens(text: &str, lang: &str) -> Vec<CodeToken> {
     let bytes = text.as_bytes();
     let n = bytes.len();
     let mut i = 0;
+    let mut html_raw: Option<std::ops::Range<usize>> = None;
 
     while i < n {
+        if lang == "html" {
+            if let Some(body) = &html_raw {
+                if i >= body.start && i < body.end {
+                    tokens.push(CodeToken {
+                        range: body.clone(),
+                        kind: TokenKind::StringLit { open_len: 0, close_len: 0, closed: true },
+                    });
+                    i = body.end;
+                    html_raw = None;
+                    continue;
+                }
+            }
+            if bytes[i] == b'<' && html_raw.is_none() {
+                html_raw = code_selection_lex_markup::html_raw_body_at(text, i);
+            }
+        }
+
         if let Some((len, kind)) = code_selection_lex_common::scan_comment(text, bytes, i, lang) {
             tokens.push(CodeToken { range: i..i + len, kind });
             i += len;

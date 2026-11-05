@@ -37,11 +37,11 @@ pub fn scan_comment(_text: &str, b: &[u8], i: usize, lang: &str) -> Option<(usiz
         if depth > 0 { pos = rem.len(); }
         return Some((pos, TokenKind::Comment));
     }
-    if matches!(lang, "javascript" | "typescript" | "css" | "sql") && rem.starts_with(b"/*") {
+    if matches!(lang, "javascript" | "typescript" | "css" | "sql" | "json") && rem.starts_with(b"/*") {
         let end = rem.windows(2).position(|w| w == b"*/").map_or(rem.len(), |p| p + 2);
         return Some((end, TokenKind::Comment));
     }
-    let is_line_cmt = (matches!(lang, "javascript" | "typescript" | "rust") && rem.starts_with(b"//"))
+    let is_line_cmt = (matches!(lang, "javascript" | "typescript" | "rust" | "json") && rem.starts_with(b"//"))
         || (matches!(lang, "python" | "bash" | "yaml") && rem.starts_with(b"#"))
         || (matches!(lang, "sql" | "lean") && rem.starts_with(b"--"))
         || (lang == "mermaid" && rem.starts_with(b"%%"));
@@ -49,11 +49,25 @@ pub fn scan_comment(_text: &str, b: &[u8], i: usize, lang: &str) -> Option<(usiz
         let len = rem.iter().position(|&c| c == b'\n').map_or(rem.len(), |p| p + 1);
         return Some((len, TokenKind::Comment));
     }
-    if lang == "latex" && rem.starts_with(b"%") && !(i > 0 && b[i - 1] == b'\\') {
+    if lang == "latex" && rem.starts_with(b"%") && !odd_backslash(b, i) {
         let len = rem.iter().position(|&c| c == b'\n').map_or(rem.len(), |p| p + 1);
         return Some((len, TokenKind::Comment));
     }
     None
+}
+
+pub fn odd_backslash(bytes: &[u8], i: usize) -> bool {
+    let mut n = 0usize;
+    let mut k = i;
+    while k > 0 && bytes[k - 1] == b'\\' {
+        n += 1;
+        k -= 1;
+    }
+    n % 2 == 1
+}
+
+fn single_quote_lang(lang: &str) -> bool {
+    matches!(lang, "javascript" | "typescript" | "css" | "html" | "xml" | "lean" | "mermaid")
 }
 
 pub fn scan_simple_string(rem: &[u8], lang: &str) -> Option<(usize, TokenKind)> {
@@ -62,6 +76,7 @@ pub fn scan_simple_string(rem: &[u8], lang: &str) -> Option<(usize, TokenKind)> 
     }
     if rem.is_empty() { return None; }
     let q = rem[0];
+    if q == b'\'' && !single_quote_lang(lang) { return None; }
     if q != b'"' && q != b'\'' { return None; }
     let mut pos = 1;
     let mut escaped = false;

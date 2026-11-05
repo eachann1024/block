@@ -24,7 +24,7 @@ pub fn match_tag_at(
     text: &str,
     offset: usize,
     lang: &str,
-    _include_delimiters: bool,
+    include_delimiters: bool,
 ) -> Option<Range<usize>> {
     if !matches!(lang, "html" | "xml" | "javascript" | "typescript" | "markdown") {
         return None;
@@ -35,7 +35,7 @@ pub fn match_tag_at(
 
     for (idx, el) in elements.iter().enumerate() {
         let at_open = offset >= el.open_range.start && offset <= el.open_range.end;
-        let at_close = el.close_range.as_ref().map_or(false, |c| offset >= c.start && offset <= c.end);
+        let at_close = el.close_range.as_ref().is_some_and(|c| offset >= c.start && offset <= c.end);
         if at_open || at_close {
             let len = el.full_range().len();
             if len < min_len {
@@ -45,9 +45,14 @@ pub fn match_tag_at(
         }
     }
 
-    let target_idx = hit_idx?;
-    let target = &elements[target_idx];
-    Some(target.full_range())
+    let target = &elements[hit_idx?];
+    let Some(close) = &target.close_range else { return Some(target.open_range.clone()); };
+    let inner_edge = offset == target.open_range.end || offset == close.start;
+    if include_delimiters || !inner_edge {
+        Some(target.open_range.start..close.end)
+    } else {
+        Some(target.open_range.end..close.start)
+    }
 }
 
 pub fn parse_tags(text: &str, lang: &str) -> Vec<TagElement> {
@@ -141,7 +146,7 @@ fn scan_raw_tags(text: &str, lang: &str) -> Vec<RawTag> {
         }
 
         if bytes[i] == b'<' {
-            if let Some(tag) = scan_single_tag(text, bytes, i, is_html) {
+            if let Some(tag) = scan_single_tag(text, bytes, i, is_html, lang) {
                 let end = tag.range.end;
                 let name_lower = tag.name.to_ascii_lowercase();
                 let should_skip_raw_block = is_html && !tag.is_closing && !tag.self_closing
@@ -170,11 +175,25 @@ fn scan_raw_tags(text: &str, lang: &str) -> Vec<RawTag> {
     tags
 }
 
-fn scan_single_tag(text: &str, bytes: &[u8], start: usize, is_html: bool) -> Option<RawTag> {
+fn jsx_open_plausible(text: &str, start: usize) -> bool {
+    let bytes = text.as_bytes();
+    let mut i = start;
+    while i > 0 && bytes[i - 1].is_ascii_whitespace() { i -= 1; }
+    if i == 0 { return true; }
+    let prev = bytes[i - 1];
+    if !(prev.is_ascii_alphanumeric() || prev == b'_' || prev == b'$') { return true; }
+    let end = i;
+    while i > 0 && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_' || bytes[i - 1] == b'$') { i -= 1; }
+    let word = &text[i..end];
+    matches!(word, "return" | "yield" | "throw" | "case" | "else" | "do" | "await" | "typeof" | "void" | "of" | "in")
+}
+
+fn scan_single_tag(text: &str, bytes: &[u8], start: usize, is_html: bool, lang: &str) -> Option<RawTag> {
     let n = bytes.len();
     if start + 1 >= n { return None; }
 
     if bytes[start..].starts_with(b"<>") {
+        if matches!(lang, "javascript" | "typescript") && !jsx_open_plausible(text, start) { return None; }
         return Some(RawTag { name: String::new(), range: start..start + 2, is_closing: false, self_closing: false });
     }
     if bytes[start..].starts_with(b"</>") {
@@ -184,6 +203,9 @@ fn scan_single_tag(text: &str, bytes: &[u8], start: usize, is_html: bool) -> Opt
     let mut p = start + 1;
     let is_closing = bytes[p] == b'/';
     if is_closing { p += 1; }
+    if !is_closing && matches!(lang, "javascript" | "typescript") && !jsx_open_plausible(text, start) {
+        return None;
+    }
     if p >= n { return None; }
 
     let b = bytes[p];
@@ -204,7 +226,7 @@ fn scan_single_tag(text: &str, bytes: &[u8], start: usize, is_html: bool) -> Opt
     let mut brace_depth = 0usize;
     let mut self_closing = false;
 
-    while p < n {
+    while p < n && p - start < 8192 {
         let c = bytes[p];
         if let Some(q) = in_quote {
             if c == b'\\' { p += 1; }
@@ -216,6 +238,7 @@ fn scan_single_tag(text: &str, bytes: &[u8], start: usize, is_html: bool) -> Opt
         } else if !is_html && c == b'}' {
             brace_depth = brace_depth.saturating_sub(1);
         } else if brace_depth == 0 {
+            if matches!(c, b'&' | b'|' | b';' | b'+' | b'%' | b'^' | b'~') { return None; }
             if c == b'/' && p + 1 < n && bytes[p + 1] == b'>' {
                 self_closing = true;
                 p += 2;
