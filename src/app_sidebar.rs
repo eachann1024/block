@@ -141,8 +141,11 @@ impl Workspace {
         if self.switcher_open { out.push(self.switcher_menu(window, cx)); }
         if let Some(menu) = &self.menu { out.extend(self.tree_menu(&menu.target, menu.position, menu.moving, cx)); }
         out.extend(self.search_view(cx));
+        out.extend(crate::about::view(cx));
         out
     }
+
+    pub(crate) fn focus_root(&self, window: &mut Window, cx: &mut Context<Self>) { window.focus(&self.root_focus, cx); }
 
     fn switcher_menu(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let current = self.folder.clone();

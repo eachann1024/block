@@ -12,7 +12,7 @@ impl Editor {
         self.pointer_subscriptions.push(cx.observe_window_activation(window, |this, window, cx| {
             if !window.is_window_active() {
                 this.clear_pointer();
-                this.link_ui.reset_hover();
+                this.link_ui.reset_hover(); crate::editor::inline_code::clear_hover();
                 this.toolbar_anchor = None;
             } else {
                 // Active state settles after the activation callback; paint again shortly so the
@@ -96,6 +96,7 @@ impl Editor {
             self.set_head(end, event.modifiers.shift, cx);
             if !event.modifiers.shift { self.caret.anchor = start; }
             self.selection_origin = Some((self.caret.anchor, end, clicks));
+            if clicks == 1 && !event.modifiers.shift { self.code_escape_click(event.position, cx); }
             self.selecting = true; self.preferred_x = None; self.toolbar_anchor = None;
             self.reveal_caret = false; window.focus(&self.focus, cx);
             if clicks == 1 && !event.modifiers.shift
@@ -155,6 +156,7 @@ impl Editor {
         }
         if !event.dragging() {
             self.update_link_hover(event.position, cx);
+            self.update_code_hover(event.position, cx);
             if self.selecting || self.dragging.is_some() { self.clear_pointer(); cx.notify(); }
             return;
         }

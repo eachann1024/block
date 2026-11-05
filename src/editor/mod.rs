@@ -7,6 +7,8 @@ mod nav;
 mod input_rules;
 mod inline_rules;
 mod inline_code;
+mod inline_code_chip;
+mod code_escape;
 mod indent;
 mod block_shortcuts;
 mod block_ops;
