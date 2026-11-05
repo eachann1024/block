@@ -4,6 +4,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use serde::{Deserialize, Serialize};
+pub use crate::theme::FolderRule;
 
 #[derive(Serialize, Deserialize, Default, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -105,6 +106,8 @@ pub struct State {
     pub hide_assets_folder: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hidden_folder_regex: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder_rules: Option<Vec<FolderRule>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcut_search: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
