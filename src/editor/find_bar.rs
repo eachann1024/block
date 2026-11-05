@@ -4,9 +4,14 @@ use gpui_component::input::{Escape, Input};
 use crate::{icons::{Icon, icon, stateful_icon}, theme::Theme};
 use super::view::{Editor, ExitBlock, layout::TextLayout};
 
-const MATCH: u32 = 0xfbe7a6;
-const CURRENT: u32 = 0xf4c84f;
-const RING: u32 = 0xc9971c;
+// Highlights sit beneath existing text, so dark mode needs dark amber fills.
+fn match_colors() -> (u32, u32, u32) {
+    if crate::theme::is_dark() {
+        (0x40361e, 0x59451c, 0xc9971c)
+    } else {
+        (0xfbe7a6, 0xf4c84f, 0xc9971c)
+    }
+}
 
 fn button(glyph: Icon, id: &'static str, on: impl Fn(&mut Editor, &mut Window, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean();
@@ -41,13 +46,14 @@ pub(super) fn find_bar(editor: &Editor, cx: &mut Context<Editor>) -> Option<impl
 /// Paint all matches of `block` under the text; the current match is stronger.
 pub(super) fn paint_matches(editor: &Editor, block: u64, layout: &TextLayout, window: &mut Window) {
     let Some((all, current)) = editor.find_ranges(block) else { return };
+    let (matched, active, ring) = match_colors();
     for range in all {
         let is_cur = current.as_ref() == Some(&range);
-        let color = if is_cur { CURRENT } else { MATCH };
+        let color = if is_cur { active } else { matched };
         for rect in layout.rects(range) {
             let rect: Bounds<Pixels> = rect;
             if is_cur {
-                window.paint_quad(quad(rect, px(2.), rgb(color), px(1.), rgb(RING), BorderStyle::Solid));
+                window.paint_quad(quad(rect, px(2.), rgb(color), px(1.), rgb(ring), BorderStyle::Solid));
             } else {
                 window.paint_quad(quad(rect, px(2.), rgb(color), px(0.), transparent_black(), BorderStyle::default()));
             }
