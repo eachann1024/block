@@ -72,16 +72,7 @@ impl SearchState {
     pub fn toggle_scope_menu(&mut self) { self.scope_menu_open = !self.scope_menu_open; }
 
     pub fn cycle_scope(&mut self, delta: isize) -> bool {
-        self.scope_menu_open = false;
-        let mut options = vec![SearchScope::All];
-        options.extend(self.folders.iter().cloned().map(SearchScope::Folder));
-        let len = options.len() as isize;
-        if len == 0 || delta == 0 { return false; }
-        let current = options.iter().position(|scope| scope == &self.scope).unwrap_or(0) as isize;
-        let next = options[(current + delta).rem_euclid(len) as usize].clone();
-        let changed = self.scope != next;
-        self.scope = next;
-        changed
+        cycle_scope(&mut self.scope, &self.folders, &mut self.scope_menu_open, delta)
     }
 
     pub fn reset_scope_all(&mut self) -> bool {
@@ -164,17 +155,30 @@ impl SearchState {
 
 pub(crate) fn notebook_folders(current: Option<PathBuf>, notebooks: &[PathBuf]) -> Vec<PathBuf> {
     let mut folders = Vec::new();
+    if let Some(folder) = current {
+        if !folder.as_os_str().is_empty() {
+            folders.push(folder);
+        }
+    }
     for folder in notebooks {
         if !folder.as_os_str().is_empty() && !folders.iter().any(|known| known == folder) {
             folders.push(folder.clone());
         }
     }
-    if let Some(folder) = current {
-        if !folder.as_os_str().is_empty() && !folders.iter().any(|known| known == &folder) {
-            folders.insert(0, folder);
-        }
-    }
     folders
+}
+
+fn cycle_scope(scope: &mut SearchScope, folders: &[PathBuf], menu_open: &mut bool, delta: isize) -> bool {
+    *menu_open = false;
+    let mut options = vec![SearchScope::All];
+    options.extend(folders.iter().cloned().map(SearchScope::Folder));
+    let len = options.len() as isize;
+    if len == 0 || delta == 0 { return false; }
+    let current = options.iter().position(|item| item == scope).unwrap_or(0) as isize;
+    let next = options[(current + delta).rem_euclid(len) as usize].clone();
+    let changed = *scope != next;
+    *scope = next;
+    changed
 }
 
 pub(crate) fn folder_name(path: &Path) -> String {
