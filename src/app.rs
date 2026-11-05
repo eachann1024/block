@@ -5,35 +5,23 @@ use crate::editor::view::Editor;
 use crate::theme::{Theme, tr};
 use crate::files::{create_note_at, note_candidates, load_state, save_folder, scan, index::TreeIndex, tree::FileTree};
 
-#[path = "app_view.rs"]
-mod view;
-#[path = "app_tabs.rs"]
-mod tabs;
-#[path = "app_nav.rs"]
-mod nav;
-#[path = "app_folder.rs"]
-mod folder;
-#[path = "app_sidebar.rs"]
-mod sidebar;
-#[path = "app_files.rs"]
-mod file_ops;
-#[path = "app_smoke.rs"]
-mod smoke_probe;
+#[path = "app_view.rs"] mod view;
+#[path = "app_tabs.rs"] mod tabs;
+#[path = "app_nav.rs"] mod nav;
+#[path = "app_folder.rs"] mod folder;
+#[path = "app_sidebar.rs"] mod sidebar;
+#[path = "app_files.rs"] mod file_ops;
+#[path = "app_smoke.rs"] mod smoke_probe;
 
-#[path = "app_menu.rs"]
-mod menu;
-#[path = "app_search.rs"]
-mod search;
-#[path = "app_settings.rs"]
-mod settings;
-#[path = "app_settings_view.rs"]
-mod settings_view;
-#[path = "app_settings_sidebar.rs"]
-mod settings_sidebar;
-#[path = "app_settings_tabs.rs"]
-mod settings_tabs;
-#[path = "app_settings_fonts.rs"]
-mod settings_fonts;
+#[path = "app_menu.rs"] mod menu;
+#[path = "app_search.rs"] mod search;
+#[path = "app_settings.rs"] mod settings;
+#[path = "app_settings_view.rs"] mod settings_view;
+#[path = "app_settings_sidebar.rs"] mod settings_sidebar;
+#[path = "app_settings_tabs.rs"] mod settings_tabs;
+#[path = "app_settings_fonts.rs"] mod settings_fonts;
+#[path = "app_settings_folders_view.rs"] mod settings_folders_view;
+#[path = "app_settings_folders.rs"] mod settings_folders;
 
 use file_ops::{FileOp, Renaming, TreeMenu}; use search::Search; use settings::SettingsModal;
 pub use search::{Dismiss, NewFolder, NewNote, OpenSearch, OpenSettings, SearchDown, SearchUp};
@@ -72,6 +60,7 @@ pub struct Workspace {
     /// A disk change that waits for the editor to release the affected note.
     file_op: Option<FileOp>,
     working: bool,
+    pub(crate) scan_generation: u64,
     /// Keeps the Workspace key context alive when nothing else has focus.
     root_focus: gpui::FocusHandle,
     bounds_task: Option<gpui::Task<()>>,
@@ -201,7 +190,7 @@ impl Workspace {
             choosing: false, creating: false, persisting: false, pending: None,
             notice: tr("正在读取工作区偏好…", "Loading workspace preferences…").into(), sidebar_width: Theme::ocean().sidebar_width,
             sidebar_collapsed: false, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
-            settings: None, file_op: None, working: false, root_focus: cx.focus_handle(),
+            settings: None, file_op: None, working: false, scan_generation: 0, root_focus: cx.focus_handle(),
             bounds_task: None, _editor_subscription: subscription };
         window.focus(&this.root_focus, cx);
         cx.spawn(async move |this, cx| {
