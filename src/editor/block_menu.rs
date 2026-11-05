@@ -181,6 +181,24 @@ impl Editor {
         window.focus(&self.focus, cx); cx.notify();
     }
 
+    pub(crate) fn set_callout_kind(&mut self, id: u64, kind: Option<super::model::CalloutKind>, cx: &mut Context<Self>) {
+        self.commit_composition(cx);
+        let Some(index) = self.doc.index_of(id) else { return };
+        let Some(block) = self.doc.get(id) else { return };
+        if block.meta.callout == kind && (kind.is_some() || block.kind == Kind::Paragraph) { return; }
+        let before = self.snapshot();
+        if let Some(k) = kind {
+            self.doc.set_kind(id, Kind::Quote);
+            if let Some(b) = self.doc.get_mut(id) { b.meta.callout = Some(k); }
+            self.doc.refresh_block(id);
+        } else {
+            self.doc.set_kind(id, Kind::Paragraph);
+        }
+        self.record_changes(before, vec![ListChange { start: index, before: 1, after: 1 }], true, cx);
+        self.layouts.clear();
+        cx.notify();
+    }
+
     pub(in crate::editor) fn delete_single_block(&mut self, id: u64, index: usize, changes: &mut Vec<ListChange>, caret: &mut Option<Position>) {
         let only = self.doc.blocks.len() == 1;
         self.doc.remove(id);

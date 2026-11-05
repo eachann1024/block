@@ -104,7 +104,8 @@ impl Editor {
     pub fn is_dirty(&self) -> bool { self.dirty }
     pub(crate) fn dismiss_dropdowns(&mut self) -> bool {
         self.block_menu.take().is_some() | self.table_menu.take().is_some()
-            | self.format.take().is_some() | self.image_menu.take().is_some() | super::code_block::close_menus()
+            | self.format.take().is_some() | self.image_menu.take().is_some()
+            | super::code_block::close_menus() | crate::ui::callout_controls::close_menu()
     }
     fn reveal(&mut self) {
         if !self.reveal_caret { return; }
