@@ -124,7 +124,7 @@ impl Render for Editor {
             if editor.path.is_some() { window.handle_input(&editor.focus, gpui::ElementInputHandler::new(bounds, input_editor.clone()), cx); }
         }).absolute().size_full();
         let editor = cx.entity();
-        let pad = if self.minimal { (12., 8.) } else { (64., 160.) };
+        let pad = if self.minimal { (4., 8.) } else { (64., 160.) };
         if self.list.item_count() != self.doc.blocks.len() {
             crate::log::warn(&format!("editor list item_count ({}) != doc.blocks.len() ({}); resetting", self.list.item_count(), self.doc.blocks.len()));
             self.list.reset(self.doc.blocks.len());
