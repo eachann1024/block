@@ -20,6 +20,7 @@ pub(in crate::editor) fn needs_top_insert(block: &Block) -> bool {
         && block.meta.table.is_none()
         && block.meta.raw_source.is_none()
         && super::image_source::spec_of(block).is_none()
+        && block.meta.callout.is_none()
         && block.meta.html_paragraph.is_none())
 }
 

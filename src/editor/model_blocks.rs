@@ -19,7 +19,7 @@ impl Block {
             inline:super::inline_ops::slice(&self.meta.inline, range.clone()),
             html_paragraph:self.meta.html_paragraph.clone(),
             unsupported_reason:self.meta.unsupported_reason.clone(),
-            heading_level:self.meta.heading_level,
+            heading_level:self.meta.heading_level, callout:self.meta.callout,
             table:None, tight:self.meta.tight };
         let mut out = Self { id:self.id,kind:self.kind,text,checked:self.checked,spans:Vec::new(),meta };
         if !valid { return out; }
@@ -35,6 +35,7 @@ impl Block {
         if self.meta.table.is_some() || !self.text.is_char_boundary(at) { return None; }
         let mut right = self.slice(at..self.text.len()); right.id = new_id; right.kind = kind;
         right.checked = false; right.meta.list_start = None;
+        if kind != Kind::Quote { right.meta.callout = None; }
         // A split must not duplicate the imported blank-body sentinel.
         right.meta.code_empty_line = false;
         *self = self.slice(0..at); Some(right)

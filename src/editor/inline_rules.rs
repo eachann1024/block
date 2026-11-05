@@ -211,6 +211,7 @@ impl Editor {
                     && block.meta.table.is_none()
                     && block.meta.code_language.is_none()
                     && block.meta.raw_source.is_none()
+                    && block.meta.callout.is_none()
                     && block.spans.is_empty()
                     && super::image_source::parse(&block.text).is_some()
                 {
@@ -267,6 +268,7 @@ impl Editor {
             && block.meta.table.is_none()
             && block.meta.code_language.is_none()
             && block.meta.raw_source.is_none()
+            && block.meta.callout.is_none()
             && block.spans.is_empty();
         if !is_plain || super::image_source::parse(&block.text).is_none() {
             return false;
