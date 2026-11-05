@@ -18,12 +18,14 @@ thread_local! {
 }
 
 /// The window the grid scrolls inside: the block minus the room kept for the extend buttons.
-pub(in crate::editor) fn visible(bounds: Bounds<Pixels>) -> Bounds<Pixels> {
-    Bounds::new(bounds.origin, size((bounds.size.width - px(EXTEND_ROOM)).max(px(1.)), bounds.size.height))
+pub(in crate::editor) fn visible(layout: &TextLayout) -> Bounds<Pixels> {
+    let room = EXTEND_ROOM * super::zoom_of(layout);
+    let bounds = layout.bounds;
+    Bounds::new(bounds.origin, size((bounds.size.width - px(room)).max(px(1.)), bounds.size.height))
 }
 fn max_offset(layout: &TextLayout) -> f32 {
     let Some(grid) = grid_rect(layout) else { return 0. };
-    (f32::from(grid.size.width) - f32::from(visible(layout.bounds).size.width)).max(0.)
+    (f32::from(grid.size.width) - f32::from(visible(layout).size.width)).max(0.)
 }
 fn apply(layout: &mut TextLayout, state: &mut Scroll) {
     let delta = state.applied - state.offset;
@@ -44,7 +46,7 @@ pub(in crate::editor) fn settle(editor: EntityId, block: u64, layout: &mut TextL
     state.offset = state.offset.clamp(0., max);
     apply(layout, &mut state);
     if let Some(offset) = caret {
-        let (view, x, pad) = (visible(layout.bounds), layout.point(offset).x, px(12.));
+        let (view, x, pad) = (visible(layout), layout.point(offset).x, px(12.));
         let want = if x < view.left() + pad { state.offset - f32::from(view.left() + pad - x) }
             else if x > view.right() - pad { state.offset + f32::from(x - (view.right() - pad)) }
             else { state.offset };
@@ -71,7 +73,7 @@ pub(in crate::editor) fn scroll_by(editor: EntityId, block: u64, layout: &TextLa
 pub(in crate::editor) fn track_wheel(editor: Entity<Editor>, block: u64, layout: &TextLayout, hitbox: Option<gpui::Hitbox>, window: &mut Window) {
     let max = max_offset(layout);
     if max <= 0. { return; }
-    let (area, key) = (visible(layout.bounds), (editor.entity_id(), block));
+    let (area, key) = (visible(layout), (editor.entity_id(), block));
     window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
         let unoccluded = hitbox.as_ref().is_none_or(|hb| hb.should_handle_scroll(window));
         if phase != DispatchPhase::Bubble || !unoccluded || !area.contains(&event.position) { return; }
@@ -93,7 +95,7 @@ pub(in crate::editor) fn track_wheel(editor: Entity<Editor>, block: u64, layout:
 /// When the grid runs past the right edge: a fade into the page and the 1px cut rule, as in the reference.
 pub(in crate::editor) fn paint_edge(layout: &TextLayout, window: &mut Window) {
     let Some(grid) = grid_rect(layout) else { return };
-    let view = visible(layout.bounds);
+    let view = visible(layout);
     if grid.right() <= view.right() + px(0.5) { return; }
     let theme = Theme::ocean();
     let rule = if crate::theme::is_dark() { theme.menu_border } else { gpui::rgb(0xe8e5dc).into() };

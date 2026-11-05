@@ -43,9 +43,10 @@ pub(in crate::editor) struct Metrics { pub h: Pixels, pub pad: Pixels, pub radiu
 
 pub(in crate::editor) fn metrics(layout: &TextLayout) -> Metrics {
     let font = layout.lines.first().map(|(_, l)| l.font_size()).unwrap_or(px(16.));
-    let h = (font + px(5.)).round().min(layout.line_height - px(2.)).max(px(18.).min(layout.line_height));
     let f = f32::from(font);
-    Metrics { h, pad: px((f * 0.25 + 1.5).min(9.)), radius: px((f / 6. + 3.3).round().min(8.)) }
+    let s = (f / 16.).min(1.);
+    let h = (font + px(5. * s)).round().min(layout.line_height - px(2. * s)).max(px(18. * s).min(layout.line_height));
+    Metrics { h, pad: px((f * 0.25 + 1.5 * s).min(9.)), radius: px((f / 6. + 3.3 * s).round().min(8.)) }
 }
 
 fn look(span: &Range<usize>, st: &ChipState) -> Look {
