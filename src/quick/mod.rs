@@ -1,5 +1,7 @@
 //! 速记小窗: a standalone 440x520 non-activating panel with three Markdown slots, toggled by a global ⌥N hotkey.
 mod header;
+#[cfg(target_os = "macos")]
+mod ime_bridge;
 mod panel;
 mod save;
 mod store;

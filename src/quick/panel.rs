@@ -60,6 +60,7 @@ pub(super) fn configure_quick_panel() {
                 NSWindow::setCanHide_(win, NO);
                 NSPanel::setFloatingPanel(win, YES);
                 NSPanel::setBecomesKeyOnlyIfNeeded(win, NO);
+                super::ime_bridge::install_ime_bridge(win as *mut std::ffi::c_void);
                 NSWindow::makeKeyAndOrderFront_(win, nil);
             }
         }
