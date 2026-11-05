@@ -13,27 +13,37 @@ pub fn icon_button(
     enabled: bool,
     on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
+    icon_button_zoomed(id, glyph, enabled, 1., on_down)
+}
+
+pub fn icon_button_zoomed(
+    id: impl Into<ElementId>,
+    glyph: Icon,
+    enabled: bool,
+    zoom: f32,
+    on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
     let theme = Theme::ocean();
     let id: ElementId = id.into();
     let group = SharedString::from(format!("ib-{id:?}"));
     let probe = crate::ui::smoke_overlay::probe_for(&id);
     let fg = theme.text_secondary;
     let lead = if enabled {
-        stateful_icon(group.clone(), glyph, px(14.), false, theme.mono_icon_colors(fg), theme.icon_colors(theme.text))
+        stateful_icon(group.clone(), glyph, px(14. * zoom), false, theme.mono_icon_colors(fg), theme.icon_colors(theme.text))
     } else {
-        icon(glyph, px(14.), theme.mono_icon_colors(fg))
+        icon(glyph, px(14. * zoom), theme.mono_icon_colors(fg))
     };
     div()
         .id(id)
         .group(group)
         .relative()
         .children(probe)
-        .size(px(24.))
+        .size(px(24. * zoom))
         .flex_none()
         .flex()
         .items_center()
         .justify_center()
-        .rounded(crate::ui::radius::CONTROL)
+        .rounded(px(6. * zoom))
         .when(enabled, |b| {
             b.cursor(CursorStyle::PointingHand)
                 .hover(|style| style.bg(theme.hover))
@@ -46,6 +56,7 @@ pub fn icon_button(
 pub fn copy_button(
     id: impl Into<ElementId>,
     copied: bool,
+    zoom: f32,
     on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let dark = is_dark();
@@ -60,8 +71,8 @@ pub fn copy_button(
     div()
         .id(id)
         .group(group.clone())
-        .size(px(24.))
-        .rounded(crate::ui::radius::CONTROL)
+        .size(px(24. * zoom))
+        .rounded(px(6. * zoom))
         .flex()
         .items_center()
         .justify_center()
@@ -70,7 +81,7 @@ pub fn copy_button(
         .child(stateful_icon(
             group,
             glyph,
-            px(13.),
+            px(13. * zoom),
             copied,
             theme.mono_icon_colors(icon_fg),
             theme.icon_colors(hover_fg),

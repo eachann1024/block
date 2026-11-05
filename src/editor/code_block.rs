@@ -148,8 +148,9 @@ pub(super) fn top_controls(
     let picker = LANG_PICKER.with(|slot| slot.borrow().filter(|p| p.block_id == block_id));
     let show_bar = visible || picker.is_some();
 
+    let zoom = super::zoom::zoom_factor(editor.read(cx).minimal);
     let copy_editor = editor.clone();
-    let copy_btn = ui_copy_button(("code-copy", block_id as usize), copied, cx.listener(move |this, _, _, cx| {
+    let copy_btn = ui_copy_button(("code-copy", block_id as usize), copied, zoom, cx.listener(move |this, _, _, cx| {
         cx.stop_propagation();
         let text = this.doc.get(block_id).map(|b| b.text.clone()).unwrap_or_default();
         cx.write_to_clipboard(ClipboardItem::new_string(text));
@@ -166,9 +167,9 @@ pub(super) fn top_controls(
     }));
 
     let lang_btn = div().id(("code-lang", block_id as usize))
-        .h(px(22.)).px(px(8.)).rounded(px(8.)).border_1().border_color(pill_border).bg(pill_bg)
+        .h(px(22. * zoom)).px(px(8. * zoom)).rounded(px(6. * zoom)).border_1().border_color(pill_border).bg(pill_bg)
         .flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
-        .text_size(px(12.)).line_height(px(18.)).font_weight(FontWeight(400.)).text_color(icon_fg)
+        .text_size(px(12. * zoom)).line_height(px(18. * zoom)).font_weight(FontWeight(400.)).text_color(icon_fg)
         .hover(move |s| s.bg(pill_hover_bg).text_color(hover_fg))
         .when(picker.is_some(), move |s| s.bg(pill_hover_bg).text_color(hover_fg))
         .child(display_lang)
@@ -196,8 +197,8 @@ pub(super) fn top_controls(
             cx.notify();
         }));
 
-    let inset = if in_preview { px(4.) } else { px(6.) };
-    div().absolute().top(inset).right(inset).h(px(22.)).flex().items_center().gap(px(4.))
+    let inset = if in_preview { px(4. * zoom) } else { px(6. * zoom) };
+    div().absolute().top(inset).right(inset).h(px(22. * zoom)).flex().items_center().gap(px(4. * zoom))
         .when(!show_bar, |d| d.invisible())
         .when(show_copy, |d| d.child(copy_btn))
         .child(lang_btn)
@@ -212,12 +213,20 @@ fn lang_dropdown(
     cx: &mut Context<Editor>,
 ) -> impl IntoElement {
     let measured = LANG_BOUNDS.with(|b| b.borrow().get(&block_id).copied());
+    let spec = measured
+        .map(|(b, _)| {
+            dropdown::PlacementSpec::below(b)
+                .align_x(dropdown::AlignX::Right)
+                .gap(px(6.))
+                .reserve_height(px(dropdown::MAX_HEIGHT))
+        })
+        .unwrap_or_else(|| dropdown::PlacementSpec::point(picker.fallback));
     let max_h = measured
-        .map(|(_, vp)| (f32::from(vp.height) - 16.).clamp(80., dropdown::MAX_HEIGHT))
-        .unwrap_or(dropdown::MAX_HEIGHT);
+        .map(|(_, vp)| dropdown::max_height_for_spec(&spec, vp, px(dropdown::MAX_HEIGHT)))
+        .unwrap_or(px(dropdown::MAX_HEIGHT));
     let mut menu = dropdown::shell(("code-lang-menu", block_id as usize))
         .w(px(LANG_MENU_W))
-        .max_h(px(max_h));
+        .max_h(max_h);
     for (idx, (tag, _)) in LANGUAGES.iter().copied().enumerate() {
         let label = language_label(tag);
         let checked = cur_canon == tag;
@@ -237,9 +246,6 @@ fn lang_dropdown(
             }),
         );
     }
-    let anchor = measured
-        .map(|(b, vp)| dropdown::anchor_below_right(b, LANG_MENU_W, max_h, Some(vp)))
-        .unwrap_or(picker.fallback);
     let backdrop = deferred(anchored().position(point(px(0.), px(0.))).child(
         div().id("code-lang-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black()).occlude()
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
@@ -249,6 +255,6 @@ fn lang_dropdown(
                 cx.stop_propagation(); close_menus(); window.focus(&this.focus, cx); cx.notify();
             })),
     )).with_priority(2);
-    let popup = dropdown::deferred_popover(anchor, menu, 3);
+    let popup = dropdown::deferred_popover_for(spec, menu, 3);
     div().child(backdrop).child(popup)
 }
