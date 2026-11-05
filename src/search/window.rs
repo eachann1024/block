@@ -25,20 +25,12 @@ pub struct SearchWindow {
     _blur_sub: Subscription,
 }
 
-pub fn set_main_window(
-    handle: Option<WindowHandle<gpui_component::Root>>,
-    workspace: Entity<Workspace>,
-    cx: &mut App,
-) {
-    if !cx.has_global::<SearchWindowGlobal>() {
-        cx.set_global(SearchWindowGlobal::default());
-    }
+pub fn set_main_window(handle: Option<WindowHandle<gpui_component::Root>>, workspace: Entity<Workspace>, cx: &mut App) {
+    if !cx.has_global::<SearchWindowGlobal>() { cx.set_global(SearchWindowGlobal::default()); }
     cx.global_mut::<SearchWindowGlobal>().main = Some((handle, workspace));
 }
 
-pub(crate) fn main_window(
-    cx: &App,
-) -> Option<(Option<WindowHandle<gpui_component::Root>>, Entity<Workspace>)> {
+pub(crate) fn main_window(cx: &App) -> Option<(Option<WindowHandle<gpui_component::Root>>, Entity<Workspace>)> {
     cx.try_global::<SearchWindowGlobal>().and_then(|s| s.main.clone())
 }
 
@@ -91,9 +83,17 @@ pub fn hide_main_window_on_close() -> bool { false }
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
 fn show_native_main_window() {
-    use cocoa::{appkit::NSWindow, base::{BOOL, SEL, YES, id, nil, selector}, foundation::NSArray};
+    use cocoa::{appkit::{NSApplication, NSWindow}, base::{BOOL, SEL, YES, id, nil, selector}, foundation::NSArray};
     unsafe extern "C" { fn objc_msgSend(); }
     unsafe {
+        let app = NSApplication::sharedApplication(nil);
+        let is_hidden: unsafe extern "C" fn(id, SEL) -> BOOL = std::mem::transmute(objc_msgSend as *const ());
+        if is_hidden(app, selector("isHidden")) == YES {
+            let unhide: unsafe extern "C" fn(id, SEL, id) = std::mem::transmute(objc_msgSend as *const ());
+            unhide(app, selector("unhide:"), nil);
+        }
+        let activate: unsafe extern "C" fn(id, SEL, BOOL) = std::mem::transmute(objc_msgSend as *const ());
+        activate(app, selector("activateIgnoringOtherApps:"), YES);
         let windows = app_windows();
         let is_mini: unsafe extern "C" fn(id, SEL) -> BOOL = std::mem::transmute(objc_msgSend as *const ());
         for i in 0..NSArray::count(windows) {
@@ -119,6 +119,16 @@ pub fn activate_main_window(cx: &mut App) {
     }
 }
 
+pub fn summon_main(cx: &mut App) {
+    crate::quick::flush_editor(cx);
+    activate_main_window(cx);
+    if let Some((Some(handle), workspace)) = main_window(cx) {
+        let _ = handle.update(cx, |_, window, cx| {
+            workspace.update(cx, |w, cx| w.summon_search(window, cx));
+        });
+    }
+}
+
 pub fn summon_from_hotkey(cx: &mut App) {
     if let Some((Some(handle), workspace)) = main_window(cx) {
         if handle.update(cx, |_, window, _| window.is_window_active()).unwrap_or(false) {
@@ -127,6 +137,10 @@ pub fn summon_from_hotkey(cx: &mut App) {
             });
             return;
         }
+    }
+    if crate::quick::is_open(cx) {
+        summon_main(cx);
+        return;
     }
     toggle(cx);
 }
@@ -139,18 +153,14 @@ pub fn toggle(cx: &mut App) {
     if let Some((handle, view)) = live {
         match handle.update(cx, |_, window, _| window.is_window_active()) {
             Ok(true) => {
-                let _ = handle.update(cx, |_, window, cx| {
-                    view.update(cx, |view, cx| view.close(window, cx));
-                });
+                let _ = handle.update(cx, |_, window, cx| view.update(cx, |v, cx| v.close(window, cx)));
                 return;
             }
             Ok(false) => {
                 let _ = handle.update(cx, |_, window, _| window.remove_window());
                 cx.global_mut::<SearchWindowGlobal>().window = None;
             }
-            Err(_) => {
-                cx.global_mut::<SearchWindowGlobal>().window = None;
-            }
+            Err(_) => cx.global_mut::<SearchWindowGlobal>().window = None,
         }
     }
     open(cx);
@@ -171,13 +181,8 @@ fn open(cx: &mut App) {
     let opened = cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: None,
-            focus: true,
-            show: true,
-            kind: WindowKind::PopUp,
-            is_movable: true,
-            is_resizable: false,
-            is_minimizable: false,
+            titlebar: None, focus: true, show: true,
+            kind: WindowKind::PopUp, is_movable: true, is_resizable: false, is_minimizable: false,
             window_background: WindowBackgroundAppearance::Transparent,
             ..Default::default()
         },
@@ -214,9 +219,7 @@ impl SearchWindow {
             }
         });
         let blur_sub = cx.observe_window_activation(window, |this, window, cx| {
-            if !window.is_window_active() {
-                this.close(window, cx);
-            }
+            if !window.is_window_active() { this.close(window, cx); }
         });
         window.observe_window_appearance(|window, cx| {
             if crate::theme::sync_system_appearance(window.appearance(), cx) {
@@ -263,31 +266,14 @@ impl Render for SearchWindow {
         let theme = Theme::ocean();
         let has_folder = main_folder(cx).is_some();
         div()
-            .id("search-window")
-            .key_context("SearchPalette")
-            .size_full()
-            .flex()
-            .flex_col()
-            .overflow_hidden()
-            .rounded(px(12.))
-            .bg(theme.menu)
-            .border_1()
-            .border_color(theme.menu_border)
-            .text_color(theme.text)
-            .on_action(cx.listener(|this, _: &SearchUp, _, cx| {
-                this.state.move_selection(-1);
-                cx.notify();
-            }))
-            .on_action(cx.listener(|this, _: &SearchDown, _, cx| {
-                this.state.move_selection(1);
-                cx.notify();
-            }))
+            .id("search-window").key_context("SearchPalette").size_full()
+            .flex().flex_col().overflow_hidden().rounded(px(12.))
+            .bg(theme.menu).border_1().border_color(theme.menu_border).text_color(theme.text)
+            .on_action(cx.listener(|this, _: &SearchUp, _, cx| { this.state.move_selection(-1); cx.notify(); }))
+            .on_action(cx.listener(|this, _: &SearchDown, _, cx| { this.state.move_selection(1); cx.notify(); }))
             .on_action(cx.listener(|this, _: &Dismiss, window, cx| this.close(window, cx)))
             .on_action(cx.listener(|this, _: &OpenSearch, window, cx| this.close(window, cx)))
-            .child(render_header(
-                &self.state.input,
-                cx.listener(|this, _, window, cx| this.close(window, cx)),
-            ))
+            .child(render_header(&self.state.input, cx.listener(|this, _, window, cx| this.close(window, cx))))
             .child(render_body(&self.state, has_folder, true, cx, |this, ix, window, cx| {
                 this.state.selected = ix;
                 this.open_hit(window, cx);

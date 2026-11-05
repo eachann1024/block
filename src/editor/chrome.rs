@@ -64,18 +64,20 @@ fn collapsed_gap(prev: &Block, block: &Block) -> f32 {
 /// (top, bottom) padding of a row; the gap between rows is carried by the lower row's top.
 fn row_pads(this: &Editor, index: usize) -> (f32, f32) {
     let block = &this.doc.blocks[index];
-    if this.minimal || block.meta.column.is_some() { return (2., 2.); }
+    let zoom = super::zoom::zoom_factor();
+    if this.minimal || block.meta.column.is_some() { return (2. * zoom, 2. * zoom); }
     let top = this.next_visible_index(index, false)
-        .map_or(0., |prev| collapsed_gap(&this.doc.blocks[prev], block));
-    let bottom = if this.next_visible_index(index, true).is_none() { margins(block).1 } else { 0. };
+        .map_or(0., |prev| collapsed_gap(&this.doc.blocks[prev], block) * zoom);
+    let bottom = if this.next_visible_index(index, true).is_none() { margins(block).1 * zoom } else { 0. };
     (top, bottom)
 }
 
 pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
+    let zoom = super::zoom::zoom_factor();
     let in_col = block.meta.column.is_some();
     let handle_w = if in_col { 42. } else { HANDLE_WIDTH };
-    let right_inset = if in_col { 4. } else { RIGHT_INSET };
+    let right_inset = if in_col { 4. } else if minimal { 8. } else { RIGHT_INSET };
     let (pt, pb) = pads;
     let is_heading = super::fold::heading_level(block).is_some();
     let is_table = block.meta.table.is_some();
@@ -84,8 +86,8 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
     let marker = match block.kind { Kind::Bullet => "•".into(), Kind::Numbered => format!("{}.", number.unwrap_or(1)), _ => String::new() };
     let (size, factor) = super::paint::heading_metrics(block.kind, block.meta.heading_level, block.meta.code_language.is_some(), minimal, f32::from(theme.editor_font));
     let line = size * factor;
-    let indent = block.meta.indent.min(12) as f32 * INDENT_PER_CHAR;
-    let marker_width = if matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) { MARKER_WIDTH + indent } else { indent };
+    let indent = block.meta.indent.min(12) as f32 * INDENT_PER_CHAR * zoom;
+    let marker_width = if matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) { MARKER_WIDTH * zoom + indent } else { indent };
     let image = super::image_source::spec_of(block)
         .and_then(|spec| super::image_source::resolve_target(&spec, note.as_deref()).map(|target| (target, spec)));
     let rule = super::block_menu::is_divider(block);
@@ -98,13 +100,13 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
     let code_lang = block.meta.code_language.clone();
     let preview_lang = code_lang.as_deref().is_some_and(super::code_block::is_preview_lang);
     let code_visible = handles || active;
-    let first_line_h = if rule { 16. } else if code_lang.is_some() { 30. } else { line };
+    let first_line_h = if rule { 16. } else if code_lang.is_some() { 30. * zoom } else { line };
     let handle_top = if is_table {
-        4.9
+        4.9 * zoom
     } else if image.is_some() {
-        4.
+        4. * zoom
     } else {
-        ((first_line_h - 26.) / 2. + if callout.is_some() { 12. } else { 0. }).max(-pt)
+        ((first_line_h - 26.) / 2. + if callout.is_some() { 12. * zoom } else { 0. }).max(-pt)
     };
     let regular_handles = !minimal && !is_table && handles;
     div().id(("block", id as usize)).relative().w_full().min_w_0().pt(px(pt)).pb(px(pb))
@@ -151,8 +153,8 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                 .when(!marker.is_empty(), |row| row.flex().justify_end().pr(px(8.)).child(marker))))
             .child(div().flex_1().min_w_0().flex().flex_col().relative()
                 .when(marker_width == 0. && !in_col, |body| body.max_w(theme.content_width))
-                .when(block.kind == Kind::Quote && callout.is_none(), |body| body.pl(px(16.)).py(px(1.6)).child(
-                    div().absolute().left_0().top_0().bottom_0().w(px(3.)).bg(theme.quote_bar)))
+                .when(block.kind == Kind::Quote && callout.is_none(), |body| body.pl(px(16. * zoom)).py(px(1.6 * zoom)).child(
+                    div().absolute().left_0().top_0().bottom_0().w(px(3. * zoom)).bg(theme.quote_bar)))
                 .when_some(callout, |body, _| {
                     body.rounded(px(8.)).bg(theme.hover).border_1().border_color(theme.hairline)
                         .py(px(12.)).pr(px(16.)).pl(px(44.))

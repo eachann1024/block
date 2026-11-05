@@ -97,6 +97,8 @@ pub struct State {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub main_window_bounds: Option<SavedWindowBounds>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editor_zoom: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quick_window_bounds: Option<SavedWindowBounds>,
 }
 static NEXT: AtomicU64 = AtomicU64::new(0);
