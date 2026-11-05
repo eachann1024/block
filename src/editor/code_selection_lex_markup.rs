@@ -1,5 +1,7 @@
 //! Markup, XML, Markdown, LaTeX, and Lean lexical scanners.
+use std::ops::Range;
 use super::{BracketKind, CodeToken, TokenKind};
+use super::code_selection_lex_common::odd_backslash;
 
 pub fn scan_markdown_token(text: &str, i: usize) -> Option<(usize, Vec<CodeToken>)> {
     let rem = text[i..].as_bytes();
@@ -163,12 +165,12 @@ pub fn scan_latex_token(text: &str, i: usize) -> Option<(usize, Vec<CodeToken>)>
         }]));
     }
 
-    if rem.starts_with(b"$") && !(i > 0 && text.as_bytes()[i - 1] == b'\\') {
+    if rem.starts_with(b"$") && !odd_backslash(text.as_bytes(), i) {
         let open_len = 1;
         let mut pos = 1;
         let mut closed = false;
         while pos < rem.len() {
-            if rem[pos] == b'$' && rem[pos - 1] != b'\\' {
+            if rem[pos] == b'$' && !odd_backslash(rem, pos) {
                 closed = true;
                 pos += 1;
                 break;
@@ -182,6 +184,50 @@ pub fn scan_latex_token(text: &str, i: usize) -> Option<(usize, Vec<CodeToken>)>
     }
 
     None
+}
+
+pub fn html_raw_body_at(text: &str, i: usize) -> Option<Range<usize>> {
+    let bytes = text.as_bytes();
+    if i >= bytes.len() || bytes[i] != b'<' { return None; }
+    let rem = &bytes[i..];
+    let name: &[u8] = if rem.len() >= 7 && rem[..7].eq_ignore_ascii_case(b"<script") {
+        b"script"
+    } else if rem.len() >= 6 && rem[..6].eq_ignore_ascii_case(b"<style") {
+        b"style"
+    } else {
+        return None;
+    };
+    let after = i + 1 + name.len();
+    if after < bytes.len() {
+        let nch = bytes[after];
+        if nch.is_ascii_alphanumeric() || nch == b'-' || nch == b'_' || nch == b':' { return None; }
+    }
+    let mut p = after;
+    let mut in_quote = None;
+    while p < bytes.len() && p - i < 8192 {
+        let c = bytes[p];
+        if let Some(q) = in_quote {
+            if c == b'\\' { p += 1; }
+            else if c == q { in_quote = None; }
+        } else if c == b'"' || c == b'\'' {
+            in_quote = Some(c);
+        } else if c == b'/' && p + 1 < bytes.len() && bytes[p + 1] == b'>' {
+            return None;
+        } else if c == b'>' {
+            p += 1;
+            break;
+        }
+        p += 1;
+        if p > bytes.len() { return None; }
+    }
+    if p == 0 || p > bytes.len() || bytes[p - 1] != b'>' { return None; }
+    let body_start = p;
+    let mut close = Vec::with_capacity(2 + name.len());
+    close.extend_from_slice(b"</");
+    close.extend_from_slice(name);
+    let rest = &bytes[body_start..];
+    let found = rest.windows(close.len()).position(|w| w.eq_ignore_ascii_case(&close))?;
+    Some(body_start..body_start + found)
 }
 
 pub fn scan_lean_bracket(text: &str, i: usize) -> Option<(usize, CodeToken)> {

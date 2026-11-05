@@ -5,6 +5,9 @@ use super::block_menu::canonical_lang_tag;
 use super::code_selection_tokens::{CodeToken, TokenKind, scan_tokens};
 use super::view::selection::boundary;
 
+#[path = "code_selection_markdown.rs"]
+mod markdown_span;
+
 const MAX_SCAN_BYTES: usize = 128 * 1024;
 
 struct TokenCacheEntry {
@@ -45,17 +48,16 @@ pub fn code_select(
     let lang = canonical_lang_tag(lang_tag);
     let offset = boundary(text, raw_offset);
     let tokens = get_or_scan_tokens(text, lang);
-    let has_unclosed_str = tokens.iter().any(|t| matches!(t.kind, TokenKind::StringLit { closed: false, .. }));
 
-    if !has_unclosed_str {
-        if let Some(r) = super::code_selection_brackets::match_bracket_at(text, &tokens, offset, include_delimiters) {
-            if let Some(valid) = validate_selection(text, r) { return Some(valid); }
-        }
-        if let Some(r) = match_string_at(text, &tokens, offset, include_delimiters) {
-            if let Some(valid) = validate_selection(text, r) { return Some(valid); }
-        }
+    if unclosed_covers(&tokens, offset) {
+        return ident_or_none(text, offset);
     }
-
+    if let Some(valid) = checked(text, super::code_selection_brackets::match_bracket_at(text, &tokens, offset, include_delimiters)) {
+        return Some(valid);
+    }
+    if let Some(valid) = checked(text, match_string_at(text, &tokens, offset, include_delimiters)) {
+        return Some(valid);
+    }
     if let Some(comment_token) = tokens.iter().find(|t| {
         t.kind == TokenKind::Comment && offset >= t.range.start && offset <= t.range.end
     }) {
@@ -66,45 +68,89 @@ pub fn code_select(
             let r = comment_token.range.start..comment_token.range.start + trimmed_len;
             if let Some(valid) = validate_selection(text, r) { return Some(valid); }
         }
-        if let Some(r) = match_identifier_at(text, offset) {
-            if let Some(valid) = validate_selection(text, r) { return Some(valid); }
+        return ident_or_none(text, offset);
+    }
+    if offset_in_string_text(&tokens, offset) {
+        return ident_or_none(text, offset);
+    }
+    if let Some(valid) = checked(text, super::code_selection_tags::match_tag_at(text, offset, lang, include_delimiters)) {
+        return Some(valid);
+    }
+    if let Some(valid) = checked(text, super::code_selection_brackets::match_comma_item_at(text, &tokens, offset, include_delimiters)) {
+        return Some(valid);
+    }
+    if let Some(valid) = checked(text, super::code_selection_blocks::match_semicolon_at(text, &tokens, offset, include_delimiters)) {
+        return Some(valid);
+    }
+    if !on_delim_edge(&tokens, offset) {
+        if let Some(valid) = checked(text, super::code_selection_blocks::match_block_or_line_at(text, &tokens, offset, lang, include_delimiters)) {
+            return Some(valid);
         }
-        return None;
     }
-
-    let in_str = tokens.iter().any(|t| {
-        matches!(t.kind, TokenKind::StringLit { .. }) && offset >= t.range.start && offset <= t.range.end
-    });
-    if in_str {
-        if let Some(r) = match_identifier_at(text, offset) {
-            if let Some(valid) = validate_selection(text, r) { return Some(valid); }
+    if lang == "markdown" {
+        if let Some(valid) = checked(text, markdown_span::match_markdown_span(text, offset, include_delimiters)) {
+            return Some(valid);
         }
-        return None;
     }
+    if let Some(valid) = checked(text, match_lifetime_token(text, &tokens, offset)) {
+        return Some(valid);
+    }
+    ident_or_none(text, offset)
+}
 
-    if has_unclosed_str {
-        if let Some(r) = match_identifier_at(text, offset) {
-            if let Some(valid) = validate_selection(text, r) { return Some(valid); }
+fn on_delim_edge(tokens: &[CodeToken], offset: usize) -> bool {
+    tokens.iter().any(|t| {
+        // Comma and semicolon stay selectable. A bracket, quote, or other
+        // one-byte mark that did not match must not fall through to the line.
+        let structural = matches!(t.kind, TokenKind::OpenBracket(_) | TokenKind::CloseBracket(_)
+            | TokenKind::StringLit { .. })
+            || (t.kind == TokenKind::Other && t.range.len() == 1);
+        structural && (offset == t.range.start || offset == t.range.end)
+    })
+}
+
+fn checked(text: &str, range: Option<Range<usize>>) -> Option<Range<usize>> {
+    validate_selection(text, range?)
+}
+
+fn ident_or_none(text: &str, offset: usize) -> Option<Range<usize>> {
+    checked(text, match_identifier_at(text, offset))
+}
+
+fn unclosed_covers(tokens: &[CodeToken], offset: usize) -> bool {
+    tokens.iter().any(|t| {
+        matches!(t.kind, TokenKind::StringLit { closed: false, .. })
+            && offset >= t.range.start
+            && offset <= t.range.end
+    })
+}
+
+fn offset_in_string_text(tokens: &[CodeToken], offset: usize) -> bool {
+    let pairs = super::code_selection_brackets::collect_bracket_pairs(tokens);
+    let mut best: Option<&CodeToken> = None;
+    for token in tokens {
+        let TokenKind::StringLit { closed: true, .. } = token.kind else { continue };
+        if offset <= token.range.start || offset >= token.range.end { continue; }
+        if best.is_none_or(|b| token.range.len() < b.range.len()) {
+            best = Some(token);
         }
-        return None;
     }
+    let Some(string) = best else { return false };
+    !pairs.iter().any(|pair| {
+        pair.open_range.start >= string.range.start
+            && pair.close_range.end <= string.range.end
+            && offset > pair.open_range.start
+            && offset < pair.close_range.end
+    })
+}
 
-    if let Some(r) = super::code_selection_tags::match_tag_at(text, offset, lang, include_delimiters) {
-        if let Some(valid) = validate_selection(text, r) { return Some(valid); }
-    }
-    if let Some(r) = super::code_selection_brackets::match_comma_item_at(text, &tokens, offset, include_delimiters) {
-        if let Some(valid) = validate_selection(text, r) { return Some(valid); }
-    }
-    if let Some(r) = super::code_selection_blocks::match_semicolon_at(text, &tokens, offset, include_delimiters) {
-        if let Some(valid) = validate_selection(text, r) { return Some(valid); }
-    }
-    if let Some(r) = super::code_selection_blocks::match_block_or_line_at(text, &tokens, offset, lang, include_delimiters) {
-        if let Some(valid) = validate_selection(text, r) { return Some(valid); }
-    }
-    if let Some(r) = match_identifier_at(text, offset) {
-        if let Some(valid) = validate_selection(text, r) { return Some(valid); }
-    }
-    None
+fn match_lifetime_token(text: &str, tokens: &[CodeToken], offset: usize) -> Option<Range<usize>> {
+    tokens.iter().find(|t| {
+        t.kind == TokenKind::Word
+            && offset >= t.range.start
+            && offset <= t.range.end
+            && text.get(t.range.clone()).is_some_and(|s| s.starts_with('\'') || s.contains('#'))
+    }).map(|t| t.range.clone())
 }
 
 fn comment_opening_len(comment_text: &str) -> usize {
@@ -129,31 +175,39 @@ fn match_string_at(
     offset: usize,
     include_delimiters: bool,
 ) -> Option<Range<usize>> {
+    let mut best: Option<(usize, Range<usize>)> = None;
     for token in tokens {
-        if let TokenKind::StringLit { open_len, close_len, closed } = &token.kind {
-            if !*closed {
-                continue;
-            }
-            let start = token.range.start;
-            let end = token.range.end;
-            let open_inner = start + open_len;
-            let close_inner = if end >= *close_len { end - close_len } else { end };
-
-            let at_open = offset >= start && offset <= open_inner;
-            let at_close = offset >= close_inner && offset <= end;
-
-            if at_open || at_close {
-                if include_delimiters {
-                    return Some(start..end);
-                }
-                if open_inner <= close_inner {
-                    return Some(open_inner..close_inner);
-                }
-                return Some(start..start);
-            }
+        let TokenKind::StringLit { open_len, close_len, closed } = token.kind else { continue };
+        if !closed || (open_len == 0 && close_len == 0) { continue; }
+        let start = token.range.start;
+        let end = token.range.end;
+        let open_inner = start + open_len;
+        let close_inner = end.saturating_sub(close_len);
+        // Inner delimiter edges only. opening.start and closing.end stay with
+        // the neighboring comma, operator, or word. Empty quotes still match:
+        // both inners are the same offset.
+        if offset != open_inner && offset != close_inner { continue; }
+        if offset == end && offset != close_inner && delim_boundary(tokens, offset) { continue; }
+        if offset == start && offset != open_inner && delim_boundary(tokens, offset) { continue; }
+        let chosen = if include_delimiters {
+            start..end
+        } else if open_inner <= close_inner {
+            open_inner..close_inner
+        } else {
+            start..start
+        };
+        if best.as_ref().is_none_or(|pair| token.range.len() < pair.0) {
+            best = Some((token.range.len(), chosen));
         }
     }
-    None
+    best.map(|(_, range)| range)
+}
+
+fn delim_boundary(tokens: &[CodeToken], offset: usize) -> bool {
+    tokens.iter().any(|t| {
+        matches!(t.kind, TokenKind::Comma | TokenKind::Semicolon)
+            && (t.range.start == offset || t.range.end == offset)
+    })
 }
 
 pub fn validate_selection(text: &str, range: Range<usize>) -> Option<Range<usize>> {
@@ -169,6 +223,10 @@ pub fn validate_selection(text: &str, range: Range<usize>) -> Option<Range<usize
 pub fn match_identifier_at(text: &str, raw_offset: usize) -> Option<Range<usize>> {
     if text.is_empty() { return None; }
     let offset = boundary(text, raw_offset);
+    if offset < text.len() {
+        let ch = text[offset..].chars().next()?;
+        if !ch.is_ascii() { return None; }
+    }
     let probe = if offset < text.len() && is_code_ident_char(text[offset..].chars().next()?) {
         offset
     } else if offset > 0 {
