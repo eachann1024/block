@@ -201,6 +201,7 @@ impl Workspace {
         if self.busy() || !self.tabs.contains(&keep_path) { return; }
         let removed: Vec<PathBuf> = self.tabs.iter().filter(|p| *p != &keep_path).cloned().collect();
         if removed.is_empty() { return; }
+        self.closed_tabs.record_others(&self.tabs, &keep_path);
         self.tabs = vec![keep_path.clone()];
         let need_open = self.selected.as_ref() != Some(&keep_path) || self.editor.read(cx).current_path() != Some(keep_path.as_path());
         self.editor.update(cx, |editor, cx| {
@@ -216,6 +217,7 @@ impl Workspace {
         clear_tab_menu();
         if self.busy() || index + 1 >= self.tabs.len() { return; }
         let removed = self.tabs.split_off(index + 1);
+        self.closed_tabs.record_from(index + 1, &removed);
         let active_removed = self.selected.as_ref().is_some_and(|s| removed.contains(s))
             || self.editor.read(cx).current_path().is_some_and(|p| removed.iter().any(|r| r == p));
         let fallback = self.tabs.get(index).cloned();
@@ -232,6 +234,7 @@ impl Workspace {
         clear_tab_menu();
         if self.busy() || self.tabs.is_empty() { return; }
         let removed = std::mem::take(&mut self.tabs);
+        self.closed_tabs.record_from(0, &removed);
         let current = self.editor.read(cx).current_path().map(Path::to_path_buf);
         self.editor.update(cx, |editor, cx| {
             for tab in &removed { editor.close_session(tab, cx); }

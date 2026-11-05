@@ -12,9 +12,12 @@ use super::{Workspace, file_ops::display_name, search::Dismiss};
 
 #[path = "app_tabs_menu.rs"]
 mod tab_menu;
+#[path = "app_tabs_reopen.rs"]
+mod reopen;
 #[path = "app_tabs_annotations.rs"]
 mod annotations;
 
+pub(super) use reopen::ClosedTabs;
 pub(super) use tab_menu::{clear_tab_menu, hover_tinted_icon, record_tab_open};
 use tab_menu::{
     TAB_ANIM_MS, TAB_BASIS_W, TAB_FADE_W, TAB_MAX_W, TAB_MIN_W, closing_ghost,
@@ -26,7 +29,7 @@ const TITLEBAR_HEIGHT: f32 = 40.;
 const SINGLE_TAB_MAX_W: f32 = 240.;
 
 actions!(workspace_tabs, [
-    NewTab, CloseTab, NextTab, PrevTab, ToggleSidebar,
+    NewTab, CloseTab, ReopenClosedTab, NextTab, PrevTab, ToggleSidebar,
     SelectTab1, SelectTab2, SelectTab3, SelectTab4, SelectTab5,
     SelectTab6, SelectTab7, SelectTab8, SelectTab9
 ]);
@@ -34,7 +37,7 @@ actions!(workspace_tabs, [
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-t", NewTab, Some("Workspace")), KeyBinding::new("cmd-w", CloseTab, Some("Workspace")),
-        KeyBinding::new("cmd-\\", ToggleSidebar, Some("Workspace")),
+        KeyBinding::new("cmd-shift-t", ReopenClosedTab, Some("Workspace")), KeyBinding::new("cmd-\\", ToggleSidebar, Some("Workspace")),
         KeyBinding::new("ctrl-tab", NextTab, Some("Workspace")), KeyBinding::new("ctrl-pagedown", NextTab, Some("Workspace")),
         KeyBinding::new("cmd-shift-]", NextTab, Some("Workspace")), KeyBinding::new("cmd-alt-right", NextTab, Some("Workspace")),
         KeyBinding::new("ctrl-shift-tab", PrevTab, Some("Workspace")), KeyBinding::new("ctrl-pageup", PrevTab, Some("Workspace")),
@@ -48,7 +51,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
     #[cfg(not(target_os = "macos"))]
     cx.bind_keys([
         KeyBinding::new("ctrl-t", NewTab, Some("Workspace")), KeyBinding::new("ctrl-w", CloseTab, Some("Workspace")),
-        KeyBinding::new("ctrl-\\", ToggleSidebar, Some("Workspace")),
+        KeyBinding::new("ctrl-shift-t", ReopenClosedTab, Some("Workspace")), KeyBinding::new("ctrl-\\", ToggleSidebar, Some("Workspace")),
         KeyBinding::new("ctrl-1", SelectTab1, Some("Workspace")), KeyBinding::new("ctrl-2", SelectTab2, Some("Workspace")),
         KeyBinding::new("ctrl-3", SelectTab3, Some("Workspace")), KeyBinding::new("ctrl-4", SelectTab4, Some("Workspace")),
         KeyBinding::new("ctrl-5", SelectTab5, Some("Workspace")), KeyBinding::new("ctrl-6", SelectTab6, Some("Workspace")),
@@ -67,6 +70,7 @@ impl Workspace {
             .on_action(cx.listener(|this, _: &ToggleSidebar, _, cx| this.toggle_sidebar(cx)))
             .on_action(cx.listener(|this, _: &NewTab, window, cx| this.new_tab(window, cx)))
             .on_action(cx.listener(|this, _: &CloseTab, _, cx| this.close_active_tab(cx)))
+            .on_action(cx.listener(|this, _: &ReopenClosedTab, _, cx| this.reopen_closed_tab(cx)))
             .on_action(cx.listener(|this, _: &NextTab, _, cx| this.step_tab(1, cx)))
             .on_action(cx.listener(|this, _: &PrevTab, _, cx| this.step_tab(-1, cx)))
             .on_action(cx.listener(|this, _: &super::nav::NavigateBack, _, cx| this.navigate_back(cx)))
@@ -90,6 +94,7 @@ impl Workspace {
         let Some(idx) = self.tabs.iter().position(|p| p == &path) else { return };
         if self.tabs.len() > 1 { record_tab_close(idx, display_name(&path, false), cx); }
         self.tabs.remove(idx);
+        self.closed_tabs.push(path.clone(), idx);
         let was_active = self.selected.as_ref() == Some(&path) || self.editor.read(cx).current_path() == Some(path.as_path());
         if was_active {
             if let Some(next_path) = self.tabs.get(idx.min(self.tabs.len().saturating_sub(1))).cloned() {
@@ -132,6 +137,7 @@ impl Workspace {
             if !updated.contains(&next) { updated.push(next); }
         }
         self.tabs = updated;
+        self.closed_tabs.rebase(from, to);
         self.nav.rebase(from, to);
         if let Some(rebased) = self.selected.as_ref().and_then(|sel| crate::files::ops::rebase(sel, from, to)) {
             self.selected = Some(rebased.clone());
@@ -142,6 +148,7 @@ impl Workspace {
     }
     pub(super) fn remove_tabs_under(&mut self, prefix: &Path, cx: &mut Context<Self>) -> Option<PathBuf> {
         clear_tab_menu();
+        self.closed_tabs.remove_under(prefix);
         self.nav.remove_under(prefix);
         let active_idx = self.selected.as_ref().and_then(|s| self.tabs.iter().position(|p| p == s));
         let active_removed = self.selected.as_ref().is_some_and(|s| s.starts_with(prefix))
