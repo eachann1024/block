@@ -34,7 +34,7 @@ pub(in crate::editor) fn block_hash(block: &crate::editor::model::Block, minimal
         for t in &b.meta.inline { (&t.start, &t.end, &t.name, &t.attrs).hash(h); }
     }
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    (block.kind as u8, block.meta.heading_level, &block.meta.code_language, block.meta.raw_source.is_some()).hash(&mut h);
+    (block.kind as u8, block.meta.heading_level, block.meta.callout.map(|c| c as u8), &block.meta.code_language, block.meta.raw_source.is_some()).hash(&mut h);
     (crate::theme::font_settings_hash(), crate::theme::is_dark(), crate::editor::zoom::zoom_percent(minimal)).hash(&mut h);
     hash_inline(block, &mut h);
     if let Some(table) = &block.meta.table {

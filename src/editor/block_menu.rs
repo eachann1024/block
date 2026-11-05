@@ -111,7 +111,7 @@ impl Editor {
     pub(super) fn run_block_cmd(&mut self, id: u64, mode: Mode, cmd: Cmd, window: &mut Window, cx: &mut Context<Self>) {
         let menu_anchor = self.block_menu.as_ref().map(|m| m.anchor);
         self.block_menu = None;
-        if self.minimal && matches!(cmd, Cmd::Ai | Cmd::Code("mermaid" | "math")) {
+        if self.minimal && matches!(cmd, Cmd::Ai | Cmd::Callout | Cmd::Code("mermaid" | "math")) {
             cx.notify();
             return;
         }
@@ -134,6 +134,16 @@ impl Editor {
             Cmd::Turn(kind) => {
                 if slash_target { self.doc.set_text(id, String::new()); }
                 self.doc.set_kind(id, kind);
+                changes.push(ListChange { start: index, before: 1, after: 1 });
+                caret = Some(Position { block: id, offset: self.doc.get(id).map_or(0, |b| b.text.len()) });
+            }
+            Cmd::Callout => {
+                if slash_target { self.doc.set_text(id, String::new()); }
+                self.doc.set_kind(id, Kind::Quote);
+                if let Some(b) = self.doc.get_mut(id) {
+                    b.meta.callout = Some(super::model::CalloutKind::Note);
+                }
+                self.doc.refresh_block(id);
                 changes.push(ListChange { start: index, before: 1, after: 1 });
                 caret = Some(Position { block: id, offset: self.doc.get(id).map_or(0, |b| b.text.len()) });
             }
