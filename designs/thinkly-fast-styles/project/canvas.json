@@ -815,6 +815,36 @@
       "w": 1440,
       "x": 3040,
       "y": 3320
+    },
+    "InlineCode-Notion-V1-Classic.dc.html": {
+      "expand": "fill",
+      "h": 1020,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "行内代码 Notion A（推荐）· 经典原版（无描边暖灰微透底 + #EB5757 朱砂红字 + 4px 圆角）",
+      "w": 1440,
+      "x": 0,
+      "y": 8100
+    },
+    "InlineCode-Notion-V2-FocusRing.dc.html": {
+      "expand": "fill",
+      "h": 1020,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "行内代码 Notion B · 焦点显影微框（常态无框红字 + 光标步入显影 1px 朱砂微描边）",
+      "w": 1440,
+      "x": 1520,
+      "y": 8100
+    },
+    "InlineCode-Notion-V3-SoftCrimson.dc.html": {
+      "expand": "fill",
+      "h": 1020,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "行内代码 Notion C · Ocean Paper 融合版（实色暖纸底 #f3f1ec + 温润暗朱砂 #D44C47）",
+      "w": 1440,
+      "x": 3040,
+      "y": 8100
     }
   },
   "createdOnFiles": {
@@ -861,6 +891,15 @@
       "w": 240,
       "x": 0,
       "y": 5380
+    },
+    "inline-code-notion-row": {
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "editor",
+      "text": "行内代码 · Notion 风格（暖灰柔底 + 朱砂红字 + 4px 圆角 + 全状态选区）· 三套方案",
+      "w": 240,
+      "x": 0,
+      "y": 7860
     },
     "page-history-bottom": {
       "fill": "gray",
@@ -973,7 +1012,10 @@
     "CalloutAi-V3-OutlineChip.dc.html",
     "DynamicTitlebar-V1-ContextTail.dc.html",
     "DynamicTitlebar-V2-CenterStage.dc.html",
-    "DynamicTitlebar-V3-UnifiedPill.dc.html"
+    "DynamicTitlebar-V3-UnifiedPill.dc.html",
+    "InlineCode-Notion-V1-Classic.dc.html",
+    "InlineCode-Notion-V2-FocusRing.dc.html",
+    "InlineCode-Notion-V3-SoftCrimson.dc.html"
   ],
   "pages": [
     {
