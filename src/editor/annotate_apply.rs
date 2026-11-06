@@ -25,7 +25,11 @@ impl Editor {
     }
 
     pub(crate) fn apply_annotation(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
-        self.apply_annotations(&[id], window, cx);
+        if self.annotate.annotations.iter().any(|n| n.id == id && n.anchors.len() > 1) {
+            self.apply_multiblock_annotation(id, window, cx);
+        } else {
+            self.apply_annotations(&[id], window, cx);
+        }
     }
 
     pub(super) fn start_annotation_request(&mut self, tasks: Vec<ai::RewriteTask>, cx: &mut Context<Self>) {
