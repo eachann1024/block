@@ -15,7 +15,7 @@ use crate::editor::view::Editor;
 #[path = "chat_skills.rs"] pub(super) mod chat_skills;
 #[path = "chat_models.rs"] pub(super) mod chat_models;
 
-pub(super) fn first_placeholder() -> &'static str { crate::theme::tr("向 AI 提问，/ 调用指令或技能，@ 引用笔记或本地文件…", "Ask AI, / for commands or Skills, @ to reference notes…") }
+pub(super) fn first_placeholder() -> &'static str { crate::theme::tr("向 AI 提问，/ 调用技能，@ 引用笔记…", "Ask AI, / for skills, @ to reference notes…") }
 pub(super) fn follow_placeholder() -> &'static str { crate::theme::tr("继续追问…", "Ask a follow-up…") }
 const MAX_STEPS: usize = 8;
 
@@ -70,6 +70,7 @@ pub(crate) struct AiChat {
     pub(super) last_en: bool,
     pub(super) editor: Option<WeakEntity<Editor>>,
     pub(super) scroll: ScrollHandle,
+    pub(super) deck_scroll: ScrollHandle,
     _sub: Subscription,
 }
 
@@ -130,10 +131,17 @@ impl AiChat {
         });
         let convs: Vec<Conv> = store_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         let current = active.conversation.filter(|id| convs.iter().any(|conversation| conversation.id == *id));
-        AiChat { convs, current, input, refs: active.refs, skills: active.skills, partial: String::new(), streaming: None,
+        let mut chat = AiChat { convs, current, input, refs: active.refs, skills: active.skills, partial: String::new(), streaming: None,
             backend_config: super::backend::BackendConfig::load(), backend_runtime: Default::default(), active_external: None, external_tools: None,
-            sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: active.retry.filter(|draft| Some(draft.conversation) == current), selection_scope: false, pending_approval: None, backend_statuses: Vec::new(), model_cache: Vec::new(), serial: 0, error: None,
-            error_settings: false, pick_index: 0, picker_dismissed: false, history: false, open: false, fullscreen: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), _sub: sub }
+            sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: active.retry.filter(|draft| Some(draft.conversation) == current), selection_scope: false, pending_approval: None,
+            backend_statuses: vec![(super::backend::BackendKind::Builtin, super::backend::BackendStatus::Ready { version: "Block".into() })],
+            model_cache: Vec::new(), serial: 0, error: None,
+            error_settings: false, pick_index: 0, picker_dismissed: false, history: false, open: false, fullscreen: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), deck_scroll: ScrollHandle::new(), _sub: sub };
+        for kind in [super::backend::BackendKind::Builtin, super::backend::BackendKind::Codex, super::backend::BackendKind::Claude, super::backend::BackendKind::Dsh] {
+            chat.probe_backend(kind, cx);
+            chat.refresh_models_for(kind, cx);
+        }
+        chat
     }
     pub(super) fn persist(&self) {
         let Some(p) = store_path() else { return };
