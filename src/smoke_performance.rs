@@ -7,6 +7,12 @@ const CATEGORIES: [(&str, u64); 7] = [
     ("history", 4096), ("ai_sessions", 5120), ("data_other", 6144), ("cache", 7168),
 ];
 
+struct SparseFile(fs::File, u64);
+
+impl Drop for SparseFile {
+    fn drop(&mut self) { let _ = self.0.set_len(self.1); }
+}
+
 fn fixture() -> Result<PathBuf, String> {
     let root = super::sandbox_path().join("performance-fixture");
     match fs::remove_dir_all(&root) {
@@ -55,7 +61,9 @@ impl Run {
                     return Ok(());
                 }
             }
-            self.performance_scroll(cx, -100.).await?;
+            let delta = smoke_overlay::target_bounds(target)
+                .filter(|bounds| bounds.top() < scroll.top()).map_or(-80., |_| 80.);
+            self.performance_scroll(cx, delta).await?;
         }
         Err(format!("滚动后明细仍未完整显示：{target}；视口={:?}，面板={:?}，明细={:?}",
             smoke_overlay::target_bounds("performance-scroll"),
@@ -95,18 +103,22 @@ impl Run {
         self.check(14, state.disk_error.is_none() && CATEGORIES.iter().all(|(id, bytes)|
             state.disk_categories.iter().any(|(actual, value)| actual == id && value == bytes)), "七类磁盘字节与隔离夹具一致")?;
         self.redraw(cx);
-        let map = smoke_overlay::target_bounds("performance-map").ok_or("找不到性能矩阵")?;
-        let map_area = f32::from(map.size.width) * f32::from(map.size.height);
-        let total: u64 = CATEGORIES.iter().map(|(_, bytes)| bytes).sum();
-        for (id, bytes) in CATEGORIES {
-            let tile = format!("performance-map-tile-{id}");
-            let bounds = smoke_overlay::target_bounds(&tile).ok_or_else(|| format!("找不到矩阵色块 {id}"))?;
-            let area = f32::from(bounds.size.width) * f32::from(bounds.size.height);
-            let actual = area / map_area;
-            let expected = bytes as f32 / total as f32;
-            self.check(14, (actual - expected).abs() < 0.02, &format!("{id} 色块面积与字节比例一致"))?;
-            self.performance_hover(cx, &tile).await?;
-            self.check(14, crate::performance::smoke_state().selected.as_deref() == Some(id), &format!("悬停 {id} 选中对应明细"))?;
+        self.performance_compact(cx)?;
+        for (map_id, notebook) in [("performance-map", false), ("performance-notebook-map", true)] {
+            self.performance_reveal_row(cx, map_id).await?;
+            let map = smoke_overlay::target_bounds(map_id).ok_or("找不到性能分段条")?;
+            self.check(14, f32::from(map.size.height) <= 17., "分段条保持紧凑高度")?;
+            let group: Vec<_> = CATEGORIES.iter().filter(|(id, _)| id.starts_with("notebook_") == notebook).collect();
+            let total: u64 = group.iter().map(|(_, bytes)| bytes).sum();
+            for (id, bytes) in group {
+                let tile = format!("{map_id}-tile-{id}");
+                let bounds = smoke_overlay::target_bounds(&tile).ok_or_else(|| format!("找不到分段色块 {id}"))?;
+                let actual = f32::from(bounds.size.width) / f32::from(map.size.width);
+                let expected = *bytes as f32 / total as f32;
+                self.check(14, (actual - expected).abs() < 0.005, &format!("{id} 分段宽度与本组字节比例一致"))?;
+                self.performance_hover(cx, &tile).await?;
+                self.check(14, crate::performance::smoke_state().selected.as_deref() == Some(id), &format!("悬停 {id} 选中对应明细"))?;
+            }
         }
         for (id, _) in CATEGORIES {
             let row = format!("performance-map-row-{id}");
@@ -126,6 +138,7 @@ impl Run {
             !state.disk_loading && state.disk_categories.iter().any(|(id, bytes)| id == "notebook_markdown" && *bytes == 10240)
         }).await;
         self.check(14, refreshed, "重新统计反映新增文件真实字节")?;
+        self.performance_skewed(cx, &root).await?;
         self.click_target(cx, "performance-close", "性能 · 关闭监控").await?;
         let closed = crate::performance::smoke_state();
         self.check(14, !closed.open, "关闭监控")?;
@@ -145,5 +158,54 @@ impl Run {
         cx.update(|cx| { crate::about::close(); self.workspace.update(cx, |_, cx| cx.notify()); });
         self.redraw(cx);
         Ok(())
+    }
+
+    fn performance_compact(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.redraw(cx);
+        let card = smoke_overlay::target_bounds("performance-card").ok_or("找不到性能面板")?;
+        let metrics = smoke_overlay::target_bounds("performance-metrics").ok_or("找不到性能指标")?;
+        let viewport = self.win(cx, |window, _| window.viewport_size())?;
+        self.check(14, f32::from(card.size.height) <= 501. && card.top() >= px(0.)
+            && card.bottom() <= viewport.height, "面板不超过500px且不溢出窗口")?;
+        if crate::performance::smoke_state().tab == "storage" {
+            let refresh = smoke_overlay::target_bounds("performance-refresh").ok_or("找不到重新统计按钮")?;
+            self.check(14, refresh.top() >= card.top() && refresh.bottom() <= card.bottom(), "重新统计按钮完整可见")?;
+        }
+        self.check(14, metrics.top() >= card.top() && metrics.bottom() <= card.bottom()
+            && metrics.size.height >= px(18.), "运行指标保持可见")
+    }
+
+    async fn performance_skewed(&self, cx: &AsyncApp, root: &std::path::Path) -> Result<(), String> {
+        let large_bytes = 60 * 1024 * 1024 * 1024u64;
+        let file = fs::OpenOptions::new().write(true).open(root.join("notebook/image.bin"))
+            .map_err(|error| error.to_string())?;
+        let fixture = SparseFile(file, 3072);
+        fixture.0.set_len(large_bytes).map_err(|error| error.to_string())?;
+        self.click_target(cx, "performance-refresh", "性能 · 统计极端比例文件").await?;
+        let refreshed = self.wait_until(cx, 15000, |_, _| {
+            let state = crate::performance::smoke_state();
+            !state.disk_loading && state.disk_categories.iter().any(|(id, bytes)| id == "notebook_other" && *bytes == large_bytes)
+        }).await;
+        self.check(14, refreshed, "稀疏大文件按实际逻辑字节统计")?;
+        self.performance_compact(cx)?;
+        let before = smoke_overlay::target_bounds("performance-metrics").ok_or("找不到运行指标")?;
+        self.performance_reveal_row(cx, "performance-map").await?;
+        let map = smoke_overlay::target_bounds("performance-map").ok_or("找不到应用分段条")?;
+        let tile = smoke_overlay::target_bounds("performance-map-tile-app").ok_or("找不到应用分段")?;
+        let own_total: u64 = CATEGORIES.iter().filter(|(id, _)| !id.starts_with("notebook_")).map(|(_, bytes)| bytes).sum();
+        self.check(14, (f32::from(tile.size.width) / f32::from(map.size.width) - 1024. / own_total as f32).abs() < 0.005,
+            "笔记本大文件不会挤压应用自身分段")?;
+        for (id, _) in CATEGORIES {
+            let row = format!("performance-map-row-{id}");
+            self.performance_reveal_row(cx, &row).await?;
+            let bounds = smoke_overlay::target_bounds(&row).ok_or("找不到分类明细")?;
+            self.check(14, bounds.size.height >= px(28.), "极小分类仍有可操作的明细行")?;
+            self.performance_hover(cx, &row).await?;
+            self.check(14, crate::performance::smoke_state().selected.as_deref() == Some(id), "极端比例下分类说明仍可悬停")?;
+            self.click_target(cx, &row, "性能 · 极端比例分类点击").await?;
+        }
+        let after = smoke_overlay::target_bounds("performance-metrics").ok_or("运行指标消失")?;
+        self.check(14, (f32::from(before.top()) - f32::from(after.top())).abs() < 1., "滚动明细不会隐藏运行指标")?;
+        self.performance_compact(cx)
     }
 }
