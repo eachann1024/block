@@ -98,10 +98,24 @@ pub(crate) fn panel(cx: &App) -> Option<Entity<AiChat>> {
 pub(crate) fn is_open(cx: &App) -> bool { panel(cx).is_some() }
 pub(crate) fn is_fullscreen(cx: &App) -> bool { panel(cx).is_some_and(|chat| chat.read(cx).fullscreen) }
 
+pub(crate) fn recognized_backends(cx: &App) -> Vec<super::backend::BackendKind> {
+    if let Some(entity) = cx.try_global::<Holder>().map(|h| h.0.clone()) {
+        entity.read(cx).recognized_backends()
+    } else {
+        super::backend::BackendKind::ALL
+            .into_iter()
+            .filter(|&kind| super::backend::is_recognized(kind, None))
+            .collect()
+    }
+}
+
 pub(crate) fn sync_settings(cx: &mut App) {
     let Some(entity) = cx.try_global::<Holder>().map(|h| h.0.clone()) else { return };
     entity.update(cx, |this, cx| {
         if this.error_settings { this.error = None; this.error_settings = false; }
+        this.backend_config = super::backend::BackendConfig::load();
+        let recognized = this.recognized_backends();
+        this.backend_config.ensure_valid_selection(&recognized);
         this.probe_backend(super::backend::BackendKind::Builtin, cx);
         this.refresh_models_for(super::backend::BackendKind::Builtin, cx);
         cx.notify();
@@ -150,7 +164,7 @@ impl AiChat {
             backend_statuses: vec![(super::backend::BackendKind::Builtin, super::backend::BackendStatus::Ready { version: "Block".into() })],
             model_cache: Vec::new(), serial: 0, error: None,
             error_settings: false, picker_cache: Default::default(), pick_index: 0, picker_dismissed: false, history: false, open: false, fullscreen: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), deck_scroll: ScrollHandle::new(), _sub: sub };
-        for kind in [super::backend::BackendKind::Builtin, super::backend::BackendKind::Codex, super::backend::BackendKind::Claude, super::backend::BackendKind::Dsh] {
+        for kind in super::backend::BackendKind::ALL {
             chat.probe_backend(kind, cx);
             chat.refresh_models_for(kind, cx);
         }
@@ -193,7 +207,7 @@ impl AiChat {
             let mut id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
             while self.convs.iter().any(|conversation| conversation.id == id) { id = id.wrapping_add(1); }
             let title: String = content.lines().find(|l| !l.trim().is_empty() && !l.starts_with('>')).unwrap_or(crate::theme::tr("新会话", "New Chat")).chars().take(24).collect();
-            self.convs.insert(0, Conv { id, title, messages: Vec::new(), backend: self.backend_config.selected, native_session_id: None });
+            self.convs.insert(0, Conv { id, title, messages: Vec::new(), backend: self.selected_backend(), native_session_id: None });
             self.current = Some(id);
             id
         });
@@ -262,6 +276,11 @@ pub(crate) fn enable_smoke_builtin(window: &mut Window, cx: &mut App) -> Result<
     let config = super::provider::Config { enabled: true, provider: "openai".into(), base_url: "http://127.0.0.1:1/v1".into(),
         api_key: "smoke-fixture".into(), model: "smoke-fixture".into(), ..Default::default() };
     super::provider::save(&config)?;
+    let mut backend_config = super::backend::BackendConfig::load();
+    let recognized = recognized_backends(cx);
+    let _ = backend_config.set_enabled(super::backend::BackendKind::Builtin, true, &recognized);
+    super::settings::reload(window, cx);
+    sync_settings(cx);
     chat(window, cx).update(cx, |_, cx| cx.notify());
     window.refresh();
     Ok(())
