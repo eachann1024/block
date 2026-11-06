@@ -1,4 +1,5 @@
 pub mod ai_controls;
+pub mod ai_process_card;
 pub mod annotation_actions;
 pub mod annotation_card;
 pub mod annotation_note;

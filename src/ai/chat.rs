@@ -228,6 +228,32 @@ pub(crate) fn prepare_selection_smoke(window: &mut Window, cx: &mut App) -> Resu
     Ok(())
 }
 
+pub(crate) fn prepare_process_card_smoke(window: &mut Window, cx: &mut App) -> Result<(), String> {
+    if !crate::smoke::is_requested() { return Err("Process fixture requires smoke mode".into()); }
+    chat(window, cx).update(cx, |this, cx| {
+        this.new_conv(window, cx); this.open = true;
+        this.push("user", "那你看查找一下我有多少篇笔记".into());
+        let notes = ["linux", "Claude", "Mac", "健身计划", "好文归档", "Gemini"];
+        let mut add = |name: &str, args: serde_json::Value, result: serde_json::Value| {
+            let id = format!("smoke-{}", this.conv().map_or(0, |c| c.messages.len()));
+            this.push_msg(Msg { role: "assistant".into(), tool_calls: Some(serde_json::json!([{ "id": id, "type": "function", "function": { "name": name, "arguments": args.to_string() } }])), ..Default::default() });
+            this.push_msg(Msg { role: "tool".into(), tool_call_id: Some(id), content: result.to_string(), ..Default::default() });
+        };
+        add("loadSkill", serde_json::json!({"name":"searchNotes"}), serde_json::json!({}));
+        add("listNotebooks", serde_json::json!({}), serde_json::json!({"notebooks":["Note"]}));
+        for _ in 0..5 { add("listPages", serde_json::json!({}), serde_json::json!(notes.iter().map(|title| serde_json::json!({"title":title})).collect::<Vec<_>>())); }
+        add("readPage", serde_json::json!({"pageId":"linux"}), serde_json::json!({"title":"linux"}));
+        add("searchNotes", serde_json::json!({}), serde_json::json!({"results":[]}));
+        add("listNotebooks", serde_json::json!({}), serde_json::json!({"notebooks":["Note"]}));
+        add("readPage", serde_json::json!({"pageId":"Claude"}), serde_json::json!({"title":"Claude"}));
+        this.push("assistant", "帮你统计好了：\n- **Note** (当前所在笔记本) ： **18 篇**\n- **提示词**: **11 篇**\n\n---\n\n共计 **29 篇** 笔记。".into());
+        this.scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(0.))); cx.notify();
+    });
+    window.refresh(); Ok(())
+}
+
+pub(crate) fn process_card_smoke_data() -> (Vec<crate::ui::ai_process_card::ProcessStep>, Vec<String>) { super::chat_process::smoke_process_data() }
+
 pub(crate) fn enable_smoke_builtin(window: &mut Window, cx: &mut App) -> Result<(), String> {
     if !crate::smoke::is_requested() { return Err("AI fixture requires smoke mode".into()); }
     let config = super::provider::Config { enabled: true, provider: "openai".into(), base_url: "http://127.0.0.1:1/v1".into(),
