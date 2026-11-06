@@ -263,6 +263,7 @@ impl AiChat {
             super::super::chat_process::record_tool(self, &request, &result, false);
             let auto = plan.ops.iter().all(|op| matches!(op.kind, agent::OpKind::Create { .. }));
             self.push_msg(Msg { role: "tool".into(), content: result.to_string(), tool_call_id: Some(request.request_id.clone()), plan: Some(plan), ..Default::default() });
+            if !auto { let at = self.conv().map_or(0, |c| c.messages.len() - 1); self.link_plan(at, 0, false, cx); }
             if auto {
                 let at = self.conv().map(|conversation| conversation.messages.len() - 1).unwrap_or(0);
                 if self.drain_external_events(events, conversation, turn, cx) {

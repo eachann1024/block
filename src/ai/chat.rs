@@ -82,7 +82,7 @@ fn store_path() -> Option<std::path::PathBuf> {
     Some(crate::files::app_data_dir("Block").join("ai-chats.json"))
 }
 
-fn chat(window: &mut Window, cx: &mut App) -> Entity<AiChat> {
+pub(super) fn chat(window: &mut Window, cx: &mut App) -> Entity<AiChat> {
     if let Some(h) = cx.try_global::<Holder>() { return h.0.clone(); }
     let entity = cx.new(|cx| AiChat::new(window, cx));
     cx.set_global(Holder(entity.clone()));
@@ -175,6 +175,7 @@ impl AiChat {
         if !partial.trim().is_empty() { self.push("assistant", partial); }
     }
     pub(super) fn new_conv(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        super::plan_link::clear(cx);
         self.stop();
         self.current = None; self.error = None; self.error_settings = false; self.history = false; self.refs.clear(); self.skills.clear();
         self.pick_index = 0; self.picker_dismissed = false;

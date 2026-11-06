@@ -49,7 +49,7 @@ impl Render for AiChat {
                     d.child(div().id(SharedString::from(format!("conv-{id}"))).h(px(32.)).px(px(8.)).flex().items_center().gap(px(6.)).rounded(crate::ui::radius::CONTROL)
                         .when(active, |r| r.bg(theme.hover)).hover(move |s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
                         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| {
-                            this.stop(); this.current = Some(id); this.history = false; this.error = None; this.persist_active_draft(cx);
+                            super::plan_link::clear(cx); this.stop(); this.current = Some(id); this.history = false; this.error = None; this.persist_active_draft(cx);
                             this.input.update(cx, |i, cx| i.set_placeholder(follow_placeholder(), w, cx));
                             cx.notify();
                         }))
@@ -60,7 +60,7 @@ impl Render for AiChat {
                             .tooltip(crate::theme::tooltip(tr("删除会话", "Delete chat")))
                             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                                 cx.stop_propagation();
-                                if this.current == Some(id) { this.stop(); this.current = None; }
+                                if this.current == Some(id) { super::plan_link::clear(cx); this.stop(); this.current = None; }
                                 this.convs.retain(|c| c.id != id); this.persist(); this.persist_active_draft(cx); cx.notify();
                             }))
                             .child(stateful_icon(del_id, Icon::Trash, px(13.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
