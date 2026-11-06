@@ -2,7 +2,7 @@ use gpui::Context;
 use super::{AiChat, agent};
 
 impl AiChat {
-    pub(super) fn plan_at(&self, at: usize) -> Option<&agent::Plan> {
+    pub(in crate::editor::ai) fn plan_at(&self, at: usize) -> Option<&agent::Plan> {
         self.conv().and_then(|conversation| conversation.messages.get(at)).and_then(|message| message.plan.as_ref())
     }
 
@@ -41,26 +41,26 @@ impl AiChat {
         let Some(mut plan) = self.plan_at(at).cloned() else { return };
         if plan.state != agent::PlanState::Pending { return; }
         let ctx = match plan.root.as_ref().and_then(|root| self.context_for_root(root, cx).ok()) {
-            Some(ctx) => ctx, None => { plan.state = agent::PlanState::Stale; self.set_plan(at, plan); cx.notify(); return; }
+            Some(ctx) => ctx, None => { plan.state = agent::PlanState::Stale; self.set_plan(at, plan); super::super::plan_link::clear_plan(self.current, at, cx); cx.notify(); return; }
         };
         let stale_content = plan.expected.as_ref().is_none_or(|expected| {
             plan.ops.iter().any(|op| !expected.iter().any(|(page, _)| page == &op.page)) ||
-            expected.iter().any(|(page, original)| ctx.read_checked(page).map_or(true, |current| current != *original))
+            expected.iter().any(|(page, original)| super::super::plan_link::plan_source(&ctx, page, original.as_deref()).is_err())
         });
         if stale_content {
-            plan.state = agent::PlanState::Stale; self.set_plan(at, plan); cx.notify(); return;
+            plan.state = agent::PlanState::Stale; self.set_plan(at, plan); super::super::plan_link::clear_plan(self.current, at, cx); cx.notify(); return;
         }
         let mut work: Vec<(String, Option<String>, String)> = Vec::new();
         for op in &plan.ops {
             let current = match work.iter().find(|entry| entry.0 == op.page) {
                 Some(entry) => Some(entry.2.clone()),
-                None => match ctx.read_checked(&op.page) {
+                None => match super::super::plan_link::plan_source(&ctx, &op.page, plan.expected.as_ref().and_then(|items| items.iter().find(|(page, _)| page == &op.page)).and_then(|(_, original)| original.as_deref())) {
                     Ok(content) => content,
                     Err(error) => { self.error = Some(error); cx.notify(); return; }
                 },
             };
             let Some(next) = agent::apply_op(op, current.as_deref()) else {
-                plan.state = agent::PlanState::Stale; self.set_plan(at, plan); cx.notify(); return;
+                plan.state = agent::PlanState::Stale; self.set_plan(at, plan); super::super::plan_link::clear_plan(self.current, at, cx); cx.notify(); return;
             };
             match work.iter_mut().find(|entry| entry.0 == op.page) {
                 Some(entry) => entry.2 = next, None => work.push((op.page.clone(), current, next)),
@@ -73,11 +73,12 @@ impl AiChat {
                 Err(error) => {
                     self.error = Some(format!("{}: {error}", crate::theme::tr("笔记写入失败", "Failed to write note")));
                     plan.state = if plan.receipts.is_empty() { agent::PlanState::Pending } else { agent::PlanState::Partial };
-                    self.set_plan(at, plan); cx.notify(); return;
+                    let partial = plan.state == agent::PlanState::Partial;
+                    self.set_plan(at, plan); if partial { super::super::plan_link::clear_plan(self.current, at, cx); } cx.notify(); return;
                 }
             }
         }
-        plan.state = agent::PlanState::Applied; self.set_plan(at, plan); cx.notify();
+        plan.state = agent::PlanState::Applied; self.set_plan(at, plan); super::super::plan_link::clear_plan(self.current, at, cx); cx.notify();
     }
 
     pub(in crate::editor::ai) fn undo_plan(&mut self, at: usize, cx: &mut Context<Self>) {
@@ -109,12 +110,21 @@ impl AiChat {
             }
             plan.state = agent::PlanState::Undone;
         }
-        self.set_plan(at, plan); cx.notify();
+        self.set_plan(at, plan); super::super::plan_link::clear_plan(self.current, at, cx); cx.notify();
     }
 
     pub(in crate::editor::ai) fn set_plan_state(&mut self, at: usize, state: agent::PlanState, cx: &mut Context<Self>) {
         if let Some(mut plan) = self.plan_at(at).cloned() { plan.state = state; self.set_plan(at, plan); }
-        cx.notify();
+        super::super::plan_link::clear_plan(self.current, at, cx); cx.notify();
+    }
+
+    pub(in crate::editor::ai) fn reject_plan_op(&mut self, at: usize, index: usize, cx: &mut Context<Self>) {
+        let Some(mut plan) = self.plan_at(at).cloned().filter(|plan| plan.state == agent::PlanState::Pending) else { return };
+        if index >= plan.ops.len() { return; }
+        plan.ops.remove(index);
+        if let Some(expected) = &mut plan.expected { expected.retain(|(page, _)| plan.ops.iter().any(|op| &op.page == page)); }
+        if plan.ops.is_empty() { plan.state = agent::PlanState::Canceled; }
+        self.set_plan(at, plan); super::super::plan_link::clear_plan(self.current, at, cx); cx.notify();
     }
 }
 
