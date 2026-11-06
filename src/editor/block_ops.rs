@@ -282,7 +282,13 @@ impl Editor {
                 cx.notify(); true
             }
             Paste => false,
-            SelectAll => { self.block_sel = Some((0, last)); cx.notify(); true }
+            SelectAll => {
+                self.block_sel = Some((0, last));
+                self.caret.anchor = Position { block: self.doc.blocks[0].id, offset: 0 };
+                let end = &self.doc.blocks[last];
+                self.caret.head = Position { block: end.id, offset: end.text.len() };
+                cx.notify(); true
+            }
             Cancel => { self.block_sel = None; cx.notify(); true }
             Undo | Redo => false,
             Save => { self.block_sel = None; false }

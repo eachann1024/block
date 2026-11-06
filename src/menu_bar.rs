@@ -14,7 +14,7 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("ctrl-cmd-f", ToggleFullScreen, None),
     ]);
     cx.on_action(|_: &ShowAbout, cx: &mut App| crate::about::open(cx));
-    cx.on_action(|_: &HideApp, cx: &mut App| cx.hide());
+    cx.on_action(|_: &HideApp, cx: &mut App| { quick::close_if_open(cx); cx.hide(); });
     cx.on_action(|_: &HideOthers, cx: &mut App| cx.hide_other_apps());
     cx.on_action(|_: &ShowAll, cx: &mut App| cx.unhide_other_apps());
     cx.on_action(|_: &Minimize, cx: &mut App| with_window(cx, |w| w.minimize_window()));
