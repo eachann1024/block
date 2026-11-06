@@ -1,5 +1,6 @@
 //! Folder rules settings for hiding/showing folders in sidebar and search.
 
+use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +35,35 @@ struct CompiledRule {
 }
 
 static RULES: RwLock<Vec<CompiledRule>> = RwLock::new(Vec::new());
+static IGNORED_SEARCH_FOLDERS: RwLock<Vec<PathBuf>> = RwLock::new(Vec::new());
+
+pub fn ignored_search_folders() -> Vec<PathBuf> {
+    IGNORED_SEARCH_FOLDERS.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+pub fn set_ignored_search_folders(folders: Vec<PathBuf>) {
+    let mut deduped = Vec::new();
+    for folder in folders {
+        if !folder.as_os_str().is_empty() && !deduped.iter().any(|p| p == &folder) {
+            deduped.push(folder);
+        }
+    }
+    *IGNORED_SEARCH_FOLDERS.write().unwrap_or_else(|e| e.into_inner()) = deduped;
+}
+
+pub fn is_search_folder_ignored(path: &Path) -> bool {
+    IGNORED_SEARCH_FOLDERS.read().unwrap_or_else(|e| e.into_inner()).iter().any(|p| p == path)
+}
+
+pub fn display_folder_path(path: &Path) -> String {
+    #[cfg(not(target_family = "wasm"))]
+    if let Some(home) = dirs::home_dir() {
+        if let Ok(rel) = path.strip_prefix(&home) {
+            return if rel.as_os_str().is_empty() { "~".to_string() } else { format!("~/{}", rel.display()) };
+        }
+    }
+    path.display().to_string()
+}
 
 pub fn folder_rules() -> Vec<FolderRule> {
     RULES

@@ -37,6 +37,7 @@ impl Workspace {
     }
 
     pub(crate) fn smoke_open_notebook(&mut self, notebook: PathBuf, cx: &mut Context<Self>) {
+        crate::theme::set_ignored_search_folders(Vec::new());
         let welcome = notebook.join("Welcome.md");
         self.notebooks = vec![notebook.clone()];
         self.startup_tabs = Some((vec![welcome.clone()], Some(welcome)));

@@ -4,9 +4,9 @@ use gpui::{
 };
 use gpui_component::input::Input;
 use crate::icons::{Icon, icon, stateful_icon};
-use crate::theme::{Theme, assets_folder, hide_assets_folder, tr};
+use crate::theme::{Theme, assets_folder, display_folder_path, hide_assets_folder, is_search_folder_ignored, tr};
 use crate::ui::folder_controls::{
-    folder_table_row, folder_visibility_segmented, slash_affix_input,
+    folder_search_ignore_pill, folder_table_row, folder_visibility_segmented, slash_affix_input,
 };
 use crate::ui::icon_button::icon_button;
 use crate::ui::settings_controls::{
@@ -22,6 +22,35 @@ impl Workspace {
         let hide_assets = hide_assets_folder();
         let current_assets = assets_folder();
         let rules = crate::theme::folder_rules();
+        let notebooks = crate::search::all_notebook_folders(self.folder.clone(), &self.notebooks);
+        let notebook_rows = notebooks.into_iter().enumerate().map(|(ix, folder_path)| {
+            let is_ignored = is_search_folder_ignored(&folder_path);
+            let is_current = self.folder.as_ref() == Some(&folder_path);
+            let folder_colors = if is_ignored { theme.mono_icon_colors(theme.text_secondary) } else { theme.icon_colors(theme.text) };
+            let name = crate::search::folder_name(&folder_path);
+            let short_path = display_folder_path(&folder_path);
+            let left = div().flex().items_center().gap(px(10.)).flex_1().min_w_0()
+                .child(icon(Icon::Folder, px(16.), folder_colors))
+                .child(div().flex_none().font(mono_font()).text_size(px(14.)).text_color(theme.text).child(name))
+                .child(div().min_w_0().truncate().font(mono_font()).text_size(px(14.)).text_color(theme.text_secondary).child(short_path));
+            let toggle_path = folder_path.clone();
+            let probe = if ix == 0 { Some("folder-search-ignore-0") } else { None };
+            let pill = folder_search_ignore_pill(
+                ("folder-search-ignore", ix), probe, is_ignored,
+                cx.listener(move |this, _, _, cx| this.toggle_search_folder_ignored(toggle_path.clone(), cx)),
+            );
+            let trailing = if is_current {
+                div().flex_none().min_w(px(28.)).whitespace_nowrap().text_align(TextAlign::Right).text_size(px(14.)).text_color(theme.text_secondary).child(tr("当前", "Current")).into_any_element()
+            } else {
+                let remove_path = folder_path.clone();
+                div().flex_none().min_w(px(28.)).flex().justify_end()
+                    .child(icon_button(("folder-remove-notebook", ix), Icon::Close, true,
+                        cx.listener(move |this, _, _, cx| this.remove_notebook_folder(remove_path.clone(), cx))))
+                    .into_any_element()
+            };
+            let right = div().flex().items_center().gap(px(10.)).flex_none().child(pill).child(trailing);
+            folder_table_row(("folder-row-notebook", ix), is_ignored, left, right)
+        }).collect::<Vec<_>>();
 
         let assets_seg = folder_visibility_segmented(
             "assets-visibility-seg",
@@ -151,5 +180,8 @@ impl Workspace {
                                     })))
                             }))
                     })))
+            .child(settings_card(16.)
+                .child(card_title(tr("全局搜索忽略列表", "Global Search Ignore List")))
+                .child(div().flex().flex_col().gap(px(8.)).children(notebook_rows)))
     }
 }
