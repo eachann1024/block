@@ -7,10 +7,18 @@ use gpui::{
 use crate::theme::{Theme, tr};
 use super::settings_controls::{card_bg, mono_font, segmented, selected_bg};
 
-pub fn folder_search_ignore_pill(
+pub fn folder_check_box(checked: bool) -> gpui::Div {
+    let theme = Theme::ocean();
+    div().size(px(15.)).rounded(px(4.)).flex_none().flex().items_center().justify_center()
+        .bg(card_bg()).border_1().border_color(if checked { theme.accent } else { theme.btn_border })
+        .when(checked, |b| b.child(crate::icons::icon(crate::icons::Icon::Check, px(11.), theme.icon_colors(theme.accent))))
+}
+
+pub fn folder_check_pill(
     id: impl Into<gpui::ElementId>,
     probe_id: Option<&'static str>,
-    ignored: bool,
+    checked: bool,
+    label: &'static str,
     on_toggle: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
@@ -18,18 +26,50 @@ pub fn folder_search_ignore_pill(
         .rounded(crate::ui::radius::CONTROL).flex().items_center().gap(px(8.))
         .cursor(gpui::CursorStyle::PointingHand)
         .when_some(probe_id, |d, pid| d.children(crate::ui::smoke_overlay::probe(pid)))
-        .bg(if ignored { selected_bg() } else { theme.shell })
-        .border_1().border_color(if ignored { theme.accent } else { theme.hairline })
+        .bg(if checked { selected_bg() } else { theme.shell })
+        .border_1().border_color(if checked { theme.accent } else { theme.hairline })
         .text_size(px(14.)).font_weight(FontWeight(460.))
-        .text_color(if ignored { theme.text } else { theme.text_secondary })
+        .text_color(if checked { theme.text } else { theme.text_secondary })
         .hover(move |s| s.border_color(theme.accent).text_color(theme.text))
         .on_mouse_down(gpui::MouseButton::Left, on_toggle)
+        .child(folder_check_box(checked))
+        .child(div().child(label))
+}
+
+pub fn folder_check_row(
+    id: impl Into<gpui::ElementId>,
+    probe_id: Option<&'static str>,
+    checked: bool,
+    glyph: crate::icons::Icon,
+    label: &'static str,
+    on_toggle: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> gpui::Stateful<gpui::Div> {
+    let theme = Theme::ocean();
+    let icon_colors = if checked { theme.icon_colors(theme.accent) } else { theme.icon_colors(theme.text) };
+    let row_bg = if checked { selected_bg() } else { theme.shell };
+    div().id(id).relative().w_full().min_h(px(46.)).px(px(14.)).py(px(8.))
+        .rounded(crate::ui::radius::SURFACE)
+        .bg(row_bg).border_1().border_color(if checked { theme.accent } else { theme.hairline })
+        .flex().items_center().justify_between().gap(px(12.))
+        .cursor(gpui::CursorStyle::PointingHand)
+        .when_some(probe_id, |d, pid| d.children(crate::ui::smoke_overlay::probe(pid)))
+        .hover(move |s| s.border_color(theme.accent))
+        .on_mouse_down(gpui::MouseButton::Left, on_toggle)
         .child(
-            div().size(px(15.)).rounded(px(4.)).flex_none().flex().items_center().justify_center()
-                .bg(card_bg()).border_1().border_color(if ignored { theme.accent } else { theme.btn_border })
-                .when(ignored, |b| b.child(crate::icons::icon(crate::icons::Icon::Check, px(11.), theme.icon_colors(theme.accent)))),
+            div().flex().items_center().gap(px(10.)).flex_1().min_w_0()
+                .child(crate::icons::icon(glyph, px(16.), icon_colors))
+                .child(div().text_size(px(14.)).font_weight(FontWeight(460.)).text_color(theme.text).child(label)),
         )
-        .child(div().child(tr("不参与全局搜索", "Exclude from Global Search")))
+        .child(folder_check_box(checked))
+}
+
+pub fn folder_search_ignore_pill(
+    id: impl Into<gpui::ElementId>,
+    probe_id: Option<&'static str>,
+    ignored: bool,
+    on_toggle: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> gpui::Stateful<gpui::Div> {
+    folder_check_pill(id, probe_id, ignored, tr("不参与全局搜索", "Exclude from Global Search"), on_toggle)
 }
 
 /// Text input container with fixed non-editable `/` prefix and `/` suffix affixes.

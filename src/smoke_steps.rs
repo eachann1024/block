@@ -230,6 +230,22 @@ impl Run {
         sleep(cx, 200).await;
         self.click_target(cx, "folder-search-ignore-0", "Step 12/12 · 勾选当前文件夹不参与全局搜索").await?;
         self.check(12, self.query(cx, |w, _| w.search_folders().is_empty()), "勾选后当前文件夹已从全局搜索排除")?;
+        self.check(12, !crate::theme::hide_non_markdown_files(), "默认不勾选『不显示 MD 格式以外的文件』")?;
+        let has_txt_before = self.query(cx, |w, cx| {
+            w.folder.as_ref().is_some_and(|f| w.tree.read(cx).contains_root_path(&f.join("notes.txt")))
+        });
+        self.check(12, has_txt_before, "未勾选时侧栏包含非 MD 文件")?;
+        self.click_target(cx, "folder-hide-non-md", "Step 12/12 · 勾选不显示 MD 格式以外的文件").await?;
+        self.check(12, crate::theme::hide_non_markdown_files(), "勾选后已开启仅显示 MD 文件")?;
+        let txt_hidden = self.wait_until(cx, 1500, |w, cx| {
+            w.folder.as_ref().is_some_and(|f| !w.tree.read(cx).contains_root_path(&f.join("notes.txt")) && w.tree.read(cx).contains_root_path(&f.join("Welcome.md")))
+        }).await;
+        self.check(12, txt_hidden, "勾选后侧栏隐藏非 MD 文件并保留 MD 文件")?;
+        self.click_target(cx, "folder-hide-non-md", "Step 12/12 · 取消勾选恢复显示所有文件").await?;
+        let txt_restored = self.wait_until(cx, 1500, |w, cx| {
+            !crate::theme::hide_non_markdown_files() && w.folder.as_ref().is_some_and(|f| w.tree.read(cx).contains_root_path(&f.join("notes.txt")))
+        }).await;
+        self.check(12, txt_restored, "取消勾选后侧栏恢复显示非 MD 文件")?;
         self.click_target(cx, "folder-search-ignore-0", "Step 12/12 · 取消勾选恢复参与全局搜索").await?;
         self.check(12, self.query(cx, |w, _| !w.search_folders().is_empty()), "取消勾选后当前文件夹恢复参与全局搜索")?;
         self.click_target(cx, "settings-back", "Step 12/12 · 点击返回编辑").await?;

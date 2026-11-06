@@ -185,7 +185,7 @@ fn build_level(vfs: &Vfs, dir: &Path) -> Vec<Node> {
     for path in vfs.files.keys() {
         if path.parent() == Some(dir) {
             if let Some(name) = path.file_name().map(|n| n.to_string_lossy().into_owned()) {
-                if super::scan::ignored(&name) { continue; }
+                if super::scan::ignored_file(&name) { continue; }
                 nodes.push(Node {
                     name,
                     path: path.clone(),

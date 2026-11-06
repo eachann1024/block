@@ -203,4 +203,16 @@ impl Workspace {
         self.rescan_current_folder(cx);
         cx.notify();
     }
+
+    pub(super) fn toggle_hide_non_markdown_files(&mut self, cx: &mut Context<Self>) {
+        let next = !crate::theme::hide_non_markdown_files();
+        crate::theme::set_hide_non_markdown_files(next);
+        cx.background_executor().spawn(async move {
+            let _ = update_state(move |s| {
+                s.hide_non_markdown_files = next.then_some(true);
+            });
+        }).detach();
+        self.rescan_current_folder(cx);
+        cx.notify();
+    }
 }
