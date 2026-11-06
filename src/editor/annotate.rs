@@ -1,16 +1,17 @@
 //! Annotation mode (F-Annotate): selection comments, emoji reactions, inline
 //! highlights (`#fef0d1` anchor / `#fdda8c` active / `#fdf3c4` AI-modified), and AI rewrites.
 use std::{collections::BTreeMap, fs, ops::Range, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
-use gpui::{BorderStyle, Context, Entity, Pixels, Point, Subscription, Window, prelude::*, px, quad, rgb, transparent_black};
-use gpui_component::input::{InputEvent, InputState};
+use gpui::{BorderStyle, Entity, Pixels, Point, Subscription, Window, px, quad, rgb, transparent_black};
+use gpui_component::input::InputState;
 use serde::{Deserialize, Serialize};
-use crate::theme::tr;
 use super::{model::Doc, view::{Editor, layout::TextLayout}};
 #[path = "annotate_ai.rs"] mod ai;
 #[path = "annotate_actions.rs"] mod actions;
 #[path = "annotate_apply.rs"] mod apply;
 #[path = "annotate_reactions.rs"] mod reactions;
 #[path = "annotate_revert.rs"] mod revert;
+#[path = "annotate_selection.rs"] mod selection;
+use selection::AnnotationTarget;
 
 pub(super) const HL_SELECT_BG: u32 = 0xfef0d1;
 pub(super) const HL_ACTIVE_BG: u32 = 0xfdda8c;
@@ -49,7 +50,7 @@ impl Annotation {
 }
 
 pub(super) struct AnnotateComposer {
-    pub block_id: u64, pub block_index: usize, pub range: Range<usize>, pub quote: String,
+    pub block_id: u64, pub range: Range<usize>, pub targets: Vec<AnnotationTarget>,
     pub input: Entity<InputState>, _sub: Subscription,
 }
 
@@ -63,8 +64,8 @@ pub(super) struct AnnotationEdit {
 
 #[derive(Clone)]
 pub(super) struct ReactionPicker {
-    pub block_id: u64, pub block_index: usize, pub range: Range<usize>,
-    pub quote: String, pub annotation_id: Option<u64>, pub anchor: Point<Pixels>,
+    pub targets: Vec<AnnotationTarget>,
+    pub annotation_id: Option<u64>, pub anchor: Point<Pixels>,
 }
 
 #[derive(Default)]
@@ -105,7 +106,13 @@ fn save_for(path: &Path, comments: &[Annotation]) {
 }
 
 #[cfg(not(target_family = "wasm"))]
-fn next_id() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(1) }
+fn next_id() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static LAST: AtomicU64 = AtomicU64::new(0);
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(1);
+    let previous = LAST.try_update(Ordering::Relaxed, Ordering::Relaxed, |last| Some(now.max(last + 1))).unwrap();
+    now.max(previous + 1)
+}
 #[cfg(target_family = "wasm")]
 fn next_id() -> u64 { let _ = (SystemTime::UNIX_EPOCH, UNIX_EPOCH); static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
 /// Resolves an annotation's current `(block_id, byte_range, is_ai_modified)` in `doc`.
@@ -182,8 +189,8 @@ pub(super) fn paint_highlights(editor: &Editor, block: u64, layout: &TextLayout,
             window.paint_quad(quad(rect, px(2.), color, px(0.), transparent_black(), BorderStyle::default()));
         }
     }
-    let composing = editor.annotate.composer.as_ref().filter(|c| c.block_id == block && !c.range.is_empty() && !is_whole_table_span(&editor.doc, block, &c.range)).map(|c| c.range.clone());
-    let reacting = editor.annotate.reactions.as_ref().filter(|p| p.block_id == block && !p.range.is_empty() && !is_whole_table_span(&editor.doc, block, &p.range)).map(|p| p.range.clone());
+    let composing = editor.annotate.composer.iter().flat_map(|c| &c.targets).filter(|t| t.block_id == block && !t.range.is_empty() && !is_whole_table_span(&editor.doc, block, &t.range)).map(|t| t.range.clone());
+    let reacting = editor.annotate.reactions.iter().flat_map(|p| &p.targets).filter(|t| t.block_id == block && !t.range.is_empty() && !is_whole_table_span(&editor.doc, block, &t.range)).map(|t| t.range.clone());
     for range in composing.into_iter().chain(reacting) {
         for rect in layout.rects(range) {
             window.paint_quad(quad(rect, px(2.), rgb(base), px(0.), transparent_black(), BorderStyle::default()));
@@ -211,8 +218,8 @@ pub(super) fn paint_table_highlights(editor: &Editor, block: u64, layout: &TextL
         if engaged || annotation.streaming { break; }
     }
     if border_color.is_none() {
-        let composing = editor.annotate.composer.as_ref().is_some_and(|c| c.block_id == block && is_whole_table_span(&editor.doc, block, &c.range));
-        let reacting = editor.annotate.reactions.as_ref().is_some_and(|p| p.block_id == block && is_whole_table_span(&editor.doc, block, &p.range));
+        let composing = editor.annotate.composer.as_ref().is_some_and(|c| c.targets.iter().any(|t| t.block_id == block && is_whole_table_span(&editor.doc, block, &t.range)));
+        let reacting = editor.annotate.reactions.as_ref().is_some_and(|p| p.targets.iter().any(|t| t.block_id == block && is_whole_table_span(&editor.doc, block, &t.range)));
         if composing || reacting { border_color = Some(rgb(base).into()); }
     }
     if let Some(color) = border_color {
@@ -239,60 +246,5 @@ impl Editor {
 
     pub(super) fn persist_annotations(&self) {
         if let Some(path) = self.path.as_deref() { save_for(path, &self.annotate.annotations); }
-    }
-
-    pub(super) fn selected_annotation_target(&self) -> Option<(u64, usize, Range<usize>, String)> {
-        let (a, _b, ai, _bi) = self.ordered();
-        let block = self.doc.blocks.get(ai)?;
-        if let Some(spec) = super::image_source::spec_of(block) {
-            let label = if spec.alt.trim().is_empty() { spec.src } else { spec.alt };
-            return Some((a.block, ai, 0..0, format!("[Image: {label}]")));
-        }
-        let range = self.selected_range(block.id).filter(|r| !r.is_empty()).unwrap_or(0..block.text.len());
-        let quote = block.text.get(range.clone()).unwrap_or("").to_owned();
-        (!quote.trim().is_empty()).then_some((a.block, ai, range, quote))
-    }
-
-    /// Toolbar 「添加批注」: highlight the selection and open the composer.
-    pub(super) fn start_annotation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.is_markdown_note() { return; }
-        self.sync_annotations();
-        let Some((block_id, block_index, range, quote)) = self.selected_annotation_target() else { return };
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder(tr("输入批注或修改指令…", "Add an annotation or edit instruction…")));
-        let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
-            InputEvent::PressEnter { secondary: false, .. } => this.submit_annotation(window, cx),
-            InputEvent::Change => cx.notify(),
-            _ => {}
-        });
-        let focus_input = input.clone();
-        self.annotate.reactions = None;
-        self.format = None;
-        self.annotate.composer = Some(AnnotateComposer { block_id, block_index, range, quote, input, _sub: sub });
-        cx.defer_in(window, move |_, window, cx| { focus_input.update(cx, |i, cx| i.focus(window, cx)); });
-        cx.notify();
-    }
-
-    pub(super) fn close_annotation_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.annotate.composer = None;
-        window.focus(&self.focus, cx);
-        cx.notify();
-    }
-
-    pub(super) fn submit_annotation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(composer) = &self.annotate.composer else { return };
-        let body = composer.input.read(cx).value().trim().to_owned();
-        if body.is_empty() { return; }
-        let Some(composer) = self.annotate.composer.take() else { return };
-        self.annotate.annotations.push(Annotation {
-            id: next_id(), block_index: composer.block_index, start: composer.range.start, end: composer.range.end,
-            quote: composer.quote, body, reactions: Vec::new(), ai_rewritten: None, ai_error: None,
-            applied: Some(false), streaming: false, request_id: None,
-        });
-        self.persist_annotations();
-        self.caret.anchor = self.caret.head; // collapse selection so the floating toolbar doesn't reappear
-        self.table_sel = None;
-        self.toolbar_anchor = None;
-        window.focus(&self.focus, cx);
-        cx.notify();
     }
 }

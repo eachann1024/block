@@ -179,7 +179,10 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
     let reactions = editor.annotate.reactions.clone().map(|picker| {
         let selected = picker.annotation_id
             .and_then(|id| editor.annotate.annotations.iter().find(|n| n.id == id))
-            .and_then(|n| n.reactions.first().cloned());
+            .and_then(|n| n.reactions.first().cloned())
+            .filter(|emoji| picker.targets.iter().all(|target| editor.annotate.annotations.iter().any(|note|
+                resolve_annotation_span(&editor.doc, note).is_some_and(|(id, range, _)| id == target.block_id && range == target.range)
+                    && note.reactions.first() == Some(emoji))));
         reaction_popover(picker, selected, cx)
     });
     Some(div().absolute().top_0().left_0().size_full().children(rail).children(reactions).into_any_element())
@@ -196,6 +199,7 @@ fn reaction_popover(picker: ReactionPicker, selected_reaction: Option<String>, c
             let selected = selected_reaction.as_deref() == Some(emoji);
             row.child(
                 annotation_note::reaction_picker_item(SharedString::from(format!("pick-emoji-{index}")), emoji, selected)
+                    .children(crate::ui::smoke_overlay::probe(format!("pick-emoji-{index}")))
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.pick_reaction(emoji, cx);
