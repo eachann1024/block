@@ -5,7 +5,32 @@ use gpui::{
     Window, div, prelude::*, px,
 };
 use crate::theme::{Theme, tr};
-use super::settings_controls::{card_bg, mono_font, segmented};
+use super::settings_controls::{card_bg, mono_font, segmented, selected_bg};
+
+pub fn folder_search_ignore_pill(
+    id: impl Into<gpui::ElementId>,
+    probe_id: Option<&'static str>,
+    ignored: bool,
+    on_toggle: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> gpui::Stateful<gpui::Div> {
+    let theme = Theme::ocean();
+    div().id(id).relative().h(px(32.)).px(px(10.))
+        .rounded(crate::ui::radius::CONTROL).flex().items_center().gap(px(8.))
+        .cursor(gpui::CursorStyle::PointingHand)
+        .when_some(probe_id, |d, pid| d.children(crate::ui::smoke_overlay::probe(pid)))
+        .bg(if ignored { selected_bg() } else { theme.shell })
+        .border_1().border_color(if ignored { theme.accent } else { theme.hairline })
+        .text_size(px(14.)).font_weight(FontWeight(460.))
+        .text_color(if ignored { theme.text } else { theme.text_secondary })
+        .hover(move |s| s.border_color(theme.accent).text_color(theme.text))
+        .on_mouse_down(gpui::MouseButton::Left, on_toggle)
+        .child(
+            div().size(px(15.)).rounded(px(4.)).flex_none().flex().items_center().justify_center()
+                .bg(card_bg()).border_1().border_color(if ignored { theme.accent } else { theme.btn_border })
+                .when(ignored, |b| b.child(crate::icons::icon(crate::icons::Icon::Check, px(11.), theme.icon_colors(theme.accent)))),
+        )
+        .child(div().child(tr("不参与全局搜索", "Exclude from Global Search")))
+}
 
 /// Text input container with fixed non-editable `/` prefix and `/` suffix affixes.
 pub fn slash_affix_input(
