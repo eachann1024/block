@@ -155,6 +155,7 @@ impl Workspace {
         if record_nav {
             self.nav.push(path.clone());
         }
+        let tabs_state_changed = self.selected.as_ref() != Some(&path) || !self.tabs.contains(&path);
         let mut evicted: Option<PathBuf> = None;
         if self.tabs.contains(&path) {
             // Target note is already open in a tab: activate that tab without duplicating.
@@ -181,7 +182,7 @@ impl Workspace {
                 editor.close_session(&old, cx);
             }
         });
-        self.save_tabs_state(cx);
+        if tabs_state_changed { self.save_tabs_state(cx); }
         cx.notify();
     }
 

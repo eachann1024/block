@@ -181,6 +181,7 @@ impl Workspace {
 
     pub(super) fn select_settings_tab(&mut self, tab: SettingsTab, cx: &mut Context<Self>) {
         if let Some(m) = &mut self.settings {
+            if m.tab == tab && m.recording.is_none() && m.font_picker.is_none() { return; }
             m.tab = tab;
             m.recording = None;
             m.font_picker = None;
