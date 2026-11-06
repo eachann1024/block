@@ -175,7 +175,7 @@ pub fn feedback_chip(
         .when(active, |d| {
             d.border_color(theme.accent)
                 .bg(theme.selected)
-                .text_color(theme.primary)
+                .text_color(theme.text)
                 .font_weight(FontWeight(600.))
         })
         .when(!active, |d| {
