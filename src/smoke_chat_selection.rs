@@ -10,7 +10,7 @@ impl Run {
         // Preserve the user's clipboard even if an assertion fails.
         let clipboard = cx.update(|cx| cx.read_from_clipboard());
         let result = match self.check_chat_selection(cx).await {
-            Ok(()) => self.check_process_card(cx).await,
+            Ok(()) => match self.check_process_card(cx).await { Ok(()) => self.check_plan_link(cx).await, Err(error) => Err(error) },
             Err(error) => Err(error),
         };
         cx.update(|cx| {
