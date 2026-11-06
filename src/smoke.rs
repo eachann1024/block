@@ -47,6 +47,7 @@ fn reset_sandbox() -> std::io::Result<()> {
     let welcome = notebook.join("Welcome.md");
     std::fs::write(&welcome, "# Block\n\n点击验证初始段落。\n")?;
     crate::files::state::set_state_path_override(sandbox.join("state.json"));
+    std::fs::write(notebook.join("notes.txt"), "plain text\n")?;
     crate::files::update_state(|s| {
         *s = crate::files::state::State::default();
         s.folder = Some(notebook.clone());
