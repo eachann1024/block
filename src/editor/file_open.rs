@@ -7,6 +7,31 @@ use super::surface::Surface;
 use super::view::{storage::{self, SaveDoc}, Editor};
 
 impl Editor {
+    pub fn recover_latest_draft(&mut self, cx: &mut Context<Self>) {
+        self.persistence.generation += 1;
+        self.persistence.loading = false;
+        self.persistence.pending = None;
+        if self.path.is_some() || !self.persistence.saving.is_empty() { cx.notify(); return; }
+        let generation = self.persistence.generation;
+        self.persistence.loading = true;
+        self.report_status(crate::theme::tr("正在读取恢复草稿…", "Recovering draft…").into(), cx);
+        let task = cx.background_executor().spawn(async { storage::latest_draft() });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                if this.persistence.generation != generation { return; }
+                this.persistence.loading = false;
+                match result {
+                    Ok((path, loaded)) => {
+                        this.show_loaded(path, loaded, cx);
+                        this.status = crate::theme::tr("已恢复草稿。原文件若已删除或被外部修改仍受保护，可复制或导出备份", "Draft recovered. Copy or export a backup if the original file changed").into();
+                    }
+                    Err(error) => this.status = error,
+                }
+                cx.notify();
+            });
+        }).detach();
+    }
     pub(super) fn show_loaded(&mut self, path: PathBuf, loaded: storage::Loaded, cx: &mut Context<Self>) {
         use crate::files::classify::OpenKind;
         self.clear_transient_overlays();
