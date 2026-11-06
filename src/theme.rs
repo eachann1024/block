@@ -28,7 +28,7 @@ static SHORTCUTS: Mutex<Option<(String, String)>> = Mutex::new(None);
 static IS_EN: AtomicBool = AtomicBool::new(false);
 static ASSETS_FOLDER: Mutex<Option<String>> = Mutex::new(None);
 static HIDE_ASSETS_FOLDER: AtomicBool = AtomicBool::new(true);
-static HIDE_NON_MARKDOWN_FILES: AtomicBool = AtomicBool::new(false);
+static HIDE_NON_MARKDOWN_FILES: AtomicBool = AtomicBool::new(true);
 
 pub fn sanitize_assets_folder(raw: &str) -> String {
     let mut s = raw.trim();
@@ -104,7 +104,7 @@ pub fn apply_state(state: &crate::files::state::State) {
     set_font_smoothing(state.font_smoothing.unwrap_or(true));
     set_assets_folder(state.assets_folder.clone().unwrap_or_else(|| DEFAULT_ASSETS_FOLDER.into()));
     set_hide_assets_folder(state.hide_assets_folder.unwrap_or(true));
-    set_hide_non_markdown_files(state.hide_non_markdown_files.unwrap_or(false));
+    set_hide_non_markdown_files(state.hide_non_markdown_files.unwrap_or(true));
     apply_folder_rules_state(state.folder_rules.as_deref(), state.hidden_folder_regex.as_deref());
     set_ignored_search_folders(state.ignored_search_folders.clone());
     let search = state.shortcut_search.as_deref().filter(|s| !s.eq_ignore_ascii_case("cmd-k")).unwrap_or(DEFAULT_SEARCH_SHORTCUT).to_owned();
