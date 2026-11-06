@@ -15,8 +15,6 @@ fn glyph(i: Icon, size: f32, color: gpui::Hsla) -> impl IntoElement {
 fn duo_glyph(i: Icon, size: f32, color: gpui::Hsla) -> impl IntoElement {
     icon(i, px(size), Theme::ocean().icon_colors(color))
 }
-
-
 impl Render for AiChat {
     fn render(&mut self, window: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
         if self.last_en != is_en() {
@@ -25,16 +23,18 @@ impl Render for AiChat {
             self.input.update(cx, |i, cx| i.set_placeholder(ph, window, cx));
         }
         let theme = Theme::ocean();
-        let backend = self.selected_backend();
-        let header = div().h(px(56.)).flex_none().px(px(16.)).flex().items_center().gap(px(8.)).border_b_1().border_color(theme.hairline)
-            .child(div().flex_1().text_size(px(16.)).font_weight(FontWeight(600.)).child(tr("AI 助手", "AI Assistant")))
-            .child(backend_ui::chat_selector(self, cx))
+        let note = self.agent_ctx(cx).current;
+        let title = self.conv().map(|conversation| conversation.title.clone()).unwrap_or_else(|| note.as_ref().map(|note| format!("{} · {note}", tr("新会话", "New chat"))).unwrap_or_else(|| tr("新会话", "New chat").to_owned()));
+        let header = div().h(px(52.)).flex_none().px(px(16.)).flex().items_center().gap(px(8.)).border_b_1().border_color(theme.hairline)
+            .child(div().flex_1().min_w_0().child(crate::ui::ai_controls::action_chip("ai-session-switcher", None, title, false, self.history, cx.listener(|this, _, _, cx| {
+                cx.stop_propagation(); backend_ui::close_menu(); this.history = !this.history; cx.notify();
+            })).h(px(30.)).max_w(px(240.)).child(glyph(Icon::ChevronDown, 13., theme.text_secondary))))
+            .child(crate::ui::ai_controls::action_chip("ai-layout-toggle", Some(if self.fullscreen { Icon::WindowRestore } else { Icon::WindowMax }), if self.fullscreen { tr("侧栏", "Sidebar") } else { tr("全屏", "Full screen") }, false, false,
+                cx.listener(|this, _, window, cx| { cx.stop_propagation(); this.fullscreen = !this.fullscreen; window.refresh(); cx.notify(); })).h(px(28.)).px(px(10.)).bg(theme.shell).rounded(crate::ui::radius::CONTROL))
             .child(crate::ui::icon_button::header_action_button("ai-chat-new", Icon::AiPlus, false, tr("新建会话", "New chat"), cx.listener(|this, _, w, cx| {
                 let backend = this.selected_backend(); this.new_conv(w, cx); this.select_backend(backend, w, cx);
             })))
-            .child(crate::ui::icon_button::header_action_button("ai-chat-history", Icon::History, self.history, tr("历史会话", "Chat history"), cx.listener(|this, _, _, cx| { this.history = !this.history; cx.notify(); })))
-            .child(crate::ui::icon_button::header_action_button("ai-chat-close", Icon::Close, false, tr("关闭 AI", "Close AI"), cx.listener(|this, _, _, cx| { this.open = false; cx.notify(); })));
-
+            .child(crate::ui::icon_button::header_action_button("ai-chat-close", Icon::Close, false, tr("关闭 AI", "Close AI"), cx.listener(|this, _, window, cx| { this.open = false; this.fullscreen = false; backend_ui::close_menu(); window.refresh(); cx.notify(); })));
         let history = self.history.then(|| {
             let list = if self.convs.iter().all(|c| c.messages.is_empty()) {
                 div().p(px(12.)).text_size(px(14.)).text_color(theme.text_secondary).child(tr("暂无历史会话", "No chat history"))
@@ -65,7 +65,6 @@ impl Render for AiChat {
             div().id("ai-chat-history-list").mx(px(8.)).mt(px(6.)).max_h(px(260.)).overflow_y_scroll().rounded(crate::ui::radius::SURFACE).border_1()
                 .border_color(theme.menu_border).bg(theme.menu).shadow_md().child(list)
         });
-
         let mut msgs: Vec<Msg> = self.conv().map(|c| c.messages.clone()).unwrap_or_default();
         if self.streaming.is_some() { msgs.push(Msg { role: "assistant".into(), content: if self.partial.is_empty() { tr("思考中…", "Thinking…").into() } else { self.partial.clone() }, ..Default::default() }); }
         let empty = msgs.is_empty();
@@ -90,7 +89,7 @@ impl Render for AiChat {
                         .child(tr("复制", "Copy")))))
             }
         });
-        let body = if empty { body.child(div().text_size(px(14.)).text_color(theme.text_secondary).child(tr("新会话，暂无消息。", "New conversation, no messages yet."))) } else { body };
+        let body = body.when(empty, |body| body.child(super::chat_empty::view(self, cx)));
 
         let error = self.error.clone().map(|e| div().mx(px(12.)).mb(px(8.)).p(px(10.)).flex().items_start().gap(px(8.)).rounded(crate::ui::radius::CONTROL)
             .bg(gpui::hsla(0., 0.75, 0.5, 0.08)).text_size(px(14.))
@@ -175,8 +174,8 @@ impl Render for AiChat {
             .child(div().h(px(54.)).text_size(px(14.)).child(Input::new(&self.input).appearance(false).bordered(false).focus_bordered(false).h(px(54.))))
             .child(div().flex().items_center().gap(px(6.))
                 .child(div().flex_1().min_w_0().flex().items_center().gap(px(6.))
-                    .child(backend_ui::chat_model(self, cx))
-                    .child(crate::ui::ai_controls::action_chip("ai-reference-trigger", None, "@", false, false, cx.listener(|this, _, window, cx| {
+                    .child(super::chat_deck::trigger(self, cx))
+                    .child(crate::ui::ai_controls::action_chip("ai-reference-trigger", None, note.map(|note| format!("@{note}")).unwrap_or_else(|| "@".into()), false, false, cx.listener(|this, _, window, cx| {
                         backend_ui::close_menu();
                         let mut text = this.input.read(cx).value().to_string();
                         if !text.rsplit(char::is_whitespace).next().unwrap_or("").starts_with('@') {
@@ -186,10 +185,10 @@ impl Render for AiChat {
                         this.picker_dismissed = false; this.pick_index = 0;
                         this.input.update(cx, |input, cx| { input.set_value(text, window, cx); input.focus(window, cx); });
                         cx.notify();
-                    })).h(px(30.)).tooltip(crate::theme::tooltip(tr("引用笔记", "Reference note")))))
+                    })).h(px(30.)).max_w(px(100.)).overflow_hidden().border_1().border_color(theme.btn_border).tooltip(crate::theme::tooltip(tr("引用笔记", "Reference note")))))
                 .child(action));
 
-        div().id("ai-chat-panel").w(px(380.)).flex_none().h_full().flex().flex_col().relative().bg(theme.paper).border_l_1().border_color(theme.hairline)
+        div().id("ai-chat-panel").when(self.fullscreen, |panel| panel.flex_1().w_full().min_w_0()).when(!self.fullscreen, |panel| panel.w(px(396.)).flex_none().border_l_1().border_color(theme.hairline)).h_full().flex().flex_col().relative().bg(theme.paper)
             .text_color(theme.text)
             .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| { if backend_ui::close_menu() { cx.notify(); } }))
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
@@ -203,25 +202,23 @@ impl Render for AiChat {
             .capture_action(cx.listener(|this, _: &gpui_component::input::MoveDown, _, cx| {
                 if this.move_pick(1, cx) { cx.stop_propagation(); }
             }))
-            .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, _, cx| {
+            .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| {
                 cx.stop_propagation();
                 if this.picker_token(cx).is_some() { this.picker_dismissed = true; }
-                else if backend_ui::close_menu() || super::dsh_ui::close() {} else if this.history { this.history = false; } else { this.open = false; }
+                else if backend_ui::close_menu() || super::dsh_ui::close() {} else if this.history { this.history = false; } else { this.open = false; this.fullscreen = false; window.refresh(); }
                 cx.notify();
             }))
             .child(header)
             .child(div().id("ai-chat-scroll").flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.scroll)
                 .on_scroll(|_, _, cx| crate::dropdown::dismiss_all(cx))
-                .child(div().flex().flex_col().px(px(16.)).pt(px(20.)).gap(px(16.))
-                    .child(backend_ui::session_status(backend, self.backend_status(backend))))
-                .child(body)
-                .child(div().px(px(16.)).pb(px(16.)).children(approval))
-                .children(error))
+                .child(div().w_full().when(self.fullscreen, |inner| inner.max_w(px(720.)).mx_auto()).child(body)
+                    .child(div().px(px(16.)).pb(px(16.)).children(approval)).children(error)))
             .children(draft_recovery)
             .children(picker)
-            .child(div().flex_none().px(px(16.)).pt(px(if picker_open { 0. } else { 12. })).pb(px(16.)).border_t_1().border_color(theme.hairline).child(composer))
-            .children(super::dsh_ui::view(cx.entity().downgrade()).map(|card| gpui::deferred(div().absolute().top(px(64.)).left(px(16.)).right(px(16.)).child(card)).with_priority(20)))
-            .children(history.map(|h| div().absolute().top(px(56.)).left_0().right_0().child(h)))
+            .child(div().flex_none().relative().px(px(16.)).pt(px(if picker_open { 0. } else { 12. })).pb(px(16.)).border_t_1().border_color(theme.hairline)
+                .child(div().w_full().when(self.fullscreen, |inner| inner.max_w(px(720.)).mx_auto()).relative().child(composer)
+                    .children(super::chat_deck::view(self, cx).map(|deck| gpui::deferred(div().absolute().bottom(px(112.)).left_0().child(deck)).with_priority(20)))))
+            .children(history.map(|h| div().absolute().top(px(52.)).left_0().right_0().child(h)))
     }
 }
 

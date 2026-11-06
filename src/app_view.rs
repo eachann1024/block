@@ -12,6 +12,7 @@ impl Render for Workspace {
         self.sync_history_focus(window, cx);
         let theme = Theme::ocean();
         let export = crate::export::active_view(cx);
+        let ai_fullscreen = crate::editor::ai::chat::is_fullscreen(cx) && self.settings.is_none() && !self.is_history_open();
         let root = div().size_full().relative().flex().flex_col().overflow_hidden().bg(theme.shell).text_color(theme.text)
             .key_context("Workspace").track_focus(&self.root_focus)
             .on_action(cx.listener(|this, _: &OpenSearch, window, cx| this.open_search(window, cx)))
@@ -38,8 +39,8 @@ impl Render for Workspace {
         self.bind_tab_actions(root, cx)
             .child(self.titlebar(cx))
             .child(div().flex_1().min_h_0().flex()
-                .when(!self.sidebar_collapsed && !self.is_history_open(), |d| d.child(if self.settings.is_some() { self.settings_sidebar(cx) } else { self.sidebar(cx) }))
-                .child(self.settings_view(cx).or_else(|| self.mascot_view(cx)).unwrap_or_else(|| {
+                .when(!ai_fullscreen && !self.sidebar_collapsed && !self.is_history_open(), |d| d.child(if self.settings.is_some() { self.settings_sidebar(cx) } else { self.sidebar(cx) }))
+                .when(!ai_fullscreen, |d| d.child(self.settings_view(cx).or_else(|| self.mascot_view(cx)).unwrap_or_else(|| {
                     if self.is_history_open() {
                         self.render_history_main(window, cx)
                     } else {
@@ -49,7 +50,7 @@ impl Render for Workspace {
                             .when(self.history_restore_busy, |col| col.child(div().absolute().top_0().left_0().size_full().occlude()))
                             .into_any_element()
                     }
-                }))
+                })))
                 .children(crate::editor::ai::chat::panel(cx)))
             // The export view has its own title row and back button, so it covers the window.
             .children(export.map(|view| {
