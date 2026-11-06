@@ -58,6 +58,13 @@ pub(super) fn bind_keys(cx: &mut App) {
 }
 
 impl Workspace {
+    pub(crate) fn performance_folders(&self) -> Vec<std::path::PathBuf> {
+        let mut folders = self.notebooks.clone();
+        if let Some(folder) = &self.folder {
+            if !folders.contains(folder) { folders.push(folder.clone()); }
+        }
+        folders
+    }
     pub(crate) fn search_folders(&self) -> Vec<PathBuf> {
         notebook_folders(self.folder.clone(), &self.notebooks)
     }
