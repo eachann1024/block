@@ -66,6 +66,7 @@ pub(crate) struct AiChat {
     pub(super) picker_dismissed: bool,
     pub(super) history: bool,
     pub(super) open: bool,
+    pub(super) fullscreen: bool,
     pub(super) last_en: bool,
     pub(super) editor: Option<WeakEntity<Editor>>,
     pub(super) scroll: ScrollHandle,
@@ -90,14 +91,19 @@ pub(crate) fn panel(cx: &App) -> Option<Entity<AiChat>> {
     cx.try_global::<Holder>().map(|h| h.0.clone()).filter(|c| c.read(cx).open)
 }
 
+pub(crate) fn is_open(cx: &App) -> bool { panel(cx).is_some() }
+pub(crate) fn is_fullscreen(cx: &App) -> bool { panel(cx).is_some_and(|chat| chat.read(cx).fullscreen) }
+
 pub(crate) fn toggle(editor: WeakEntity<Editor>, window: &mut Window, cx: &mut App) {
     let c = chat(window, cx);
     c.update(cx, |this, cx| {
         this.open = !this.open;
+        if !this.open { this.fullscreen = false; }
         this.editor = Some(editor);
         if this.open { this.input.update(cx, |i, cx| i.focus(window, cx)); }
         cx.notify();
     });
+    window.refresh();
 }
 
 impl Editor {
@@ -127,7 +133,7 @@ impl AiChat {
         AiChat { convs, current, input, refs: active.refs, skills: active.skills, partial: String::new(), streaming: None,
             backend_config: super::backend::BackendConfig::load(), backend_runtime: Default::default(), active_external: None, external_tools: None,
             sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: active.retry.filter(|draft| Some(draft.conversation) == current), selection_scope: false, pending_approval: None, backend_statuses: Vec::new(), model_cache: Vec::new(), serial: 0, error: None,
-            error_settings: false, pick_index: 0, picker_dismissed: false, history: false, open: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), _sub: sub }
+            error_settings: false, pick_index: 0, picker_dismissed: false, history: false, open: false, fullscreen: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), _sub: sub }
     }
     pub(super) fn persist(&self) {
         let Some(p) = store_path() else { return };
