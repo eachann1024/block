@@ -23,20 +23,8 @@ impl Workspace {
 
     pub(super) fn render_titlebar_tail(&self, show_active_tools: bool, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
-        let mr = if cfg!(any(target_os = "macos", target_family = "wasm")) { 10. } else { 4. };
         if self.settings.is_some() {
-            let close_btn = crate::ui::icon_button::header_action_button(
-                "settings-back",
-                Icon::Close,
-                false,
-                tr("关闭设置", "Close Settings"),
-                cx.listener(|this, _, window, cx| {
-                    cx.stop_propagation();
-                    this.close_settings(window, cx);
-                }),
-            );
             return div().h(px(40.)).h_full().flex_none().flex().items_center()
-                .child(div().h_full().flex().items_center().gap(px(4.)).mr(px(mr)).child(close_btn))
                 .child(crate::ui::window_controls::window_controls("main-win", true, true));
         }
         let surface = if show_active_tools { self.editor.read(cx).titlebar_surface() } else { crate::editor::view::TitlebarSurface::Empty };
@@ -74,6 +62,7 @@ impl Workspace {
         let ai_btn = crate::ui::ai_controls::titlebar_ai_button(crate::editor::ai::chat::is_open(cx), move |window, cx| {
             ent.update(cx, |this, cx| { this.close_overlays(cx); clear_tab_menu(); crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); cx.notify(); });
         });
+        let mr = if cfg!(any(target_os = "macos", target_family = "wasm")) { 10. } else { 4. };
         let tools = div().h_full().flex().items_center().gap(px(4.)).mr(px(mr));
         // Notes show only the more menu beside feedback; those two swap so feedback sits on the left.
         let tools = if matches!(surface, crate::editor::view::TitlebarSurface::Note) {
