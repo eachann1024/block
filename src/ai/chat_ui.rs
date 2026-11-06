@@ -72,8 +72,8 @@ impl Render for AiChat {
         let body = if blocked { div().child(super::chat_empty::enable_cover(cx)) } else { msgs.into_iter().enumerate().fold(div().flex().flex_col().gap(px(16.)).px(px(16.)).py(px(20.)), |d, (i, m)| {
             let text = m.content.clone();
             if m.role == "user" {
-                d.child(div().flex().justify_end().child(div().max_w(px(300.)).px(px(12.)).py(px(8.)).rounded(crate::ui::radius::SURFACE).bg(theme.hover)
-                    .text_size(px(14.)).line_height(px(22.)).child(text)))
+                d.child(div().flex().justify_end().child(div().relative().children(crate::ui::smoke_overlay::probe("ai-user-message")).max_w(px(300.)).px(px(12.)).py(px(8.)).rounded(crate::ui::radius::SURFACE).bg(theme.hover)
+                    .text_size(px(14.)).line_height(px(22.)).child(crate::ui::selectable_message::message(format!("ai-user-{}-{i}", self.current.unwrap_or(0)), &text, false))))
             } else if m.role == "tool" {
                 match m.plan { Some(plan) => d.child(plan_card(i, plan, cx)), None => d }
             } else {
@@ -81,10 +81,10 @@ impl Render for AiChat {
                     .filter_map(|c| c.pointer("/function/name").and_then(|n| n.as_str()).map(tool_label)).collect::<Vec<_>>().join(" · "));
                 let copy = text.clone();
                 d.child(div().flex().flex_col().gap(px(4.))
-                    .when(!text.trim().is_empty(), |d| d.child(super::md_view::render(&text, &format!("{i}"))))
+                    .when(!text.trim().is_empty(), |d| d.child(div().relative().children(crate::ui::smoke_overlay::probe("ai-assistant-message")).child(super::md_view::render(&text, &format!("{}-{i}", self.current.unwrap_or(0))))))
                     .when_some(tools, |d, t| d.child(div().flex().items_center().gap(px(6.)).text_size(px(14.)).text_color(theme.text_secondary)
                         .child(glyph(Icon::Sparkles, 12., theme.text_secondary)).child(t)))
-                    .when(m.tool_calls.is_none(), |d| d.child(div().id(SharedString::from(format!("copy-{i}"))).w_auto().text_size(px(14.)).text_color(theme.text_secondary)
+                    .when(m.tool_calls.is_none() && !text.trim().is_empty() && !(self.streaming.is_some() && i == self.conv().map_or(0, |c| c.messages.len())), |d| d.child(div().id(SharedString::from(format!("copy-{i}"))).w_auto().text_size(px(14.)).text_color(theme.text_secondary)
                         .cursor(CursorStyle::PointingHand).hover(move |s| s.text_color(theme.text))
                         .on_mouse_down(MouseButton::Left, move |_, _, cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(copy.clone())))
                         .child(tr("复制", "Copy")))))
@@ -216,6 +216,8 @@ impl Render for AiChat {
 fn tool_label(name: &str) -> &'static str {
     match name {
         "loadSkill" => tr("加载技能", "Load skill"),
+        "listNotebooks" => tr("列出笔记本", "List notebooks"),
+        "readSkillResource" => tr("读取技能资源", "Read skill resource"),
         "listPages" => tr("列出页面", "List pages"),
         "searchNotes" => tr("搜索笔记", "Search notes"),
         "readPage" => tr("读取页面", "Read page"),
