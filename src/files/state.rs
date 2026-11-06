@@ -14,7 +14,6 @@ pub enum ThemeMode {
     #[default]
     System,
 }
-
 #[derive(Serialize, Deserialize, Default, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum LineHeight {
@@ -118,6 +117,8 @@ pub struct State {
     pub folder: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notebooks: Vec<PathBuf>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ignored_search_folders: Vec<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sidebar_width: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

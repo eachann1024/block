@@ -22,6 +22,43 @@ pub(crate) fn normalize_pasted_regex_affixes(val: &str) -> Option<String> {
 }
 
 impl Workspace {
+    pub(super) fn toggle_search_folder_ignored(&mut self, folder: std::path::PathBuf, cx: &mut Context<Self>) {
+        let mut list = crate::theme::ignored_search_folders();
+        if list.iter().any(|p| p == &folder) {
+            list.retain(|p| p != &folder);
+        } else {
+            list.push(folder);
+        }
+        crate::theme::set_ignored_search_folders(list.clone());
+        cx.background_executor().spawn(async move {
+            let _ = update_state(move |s| s.ignored_search_folders = list);
+        }).detach();
+        let folders = self.search_folders();
+        if let Some(search) = &mut self.search {
+            search.state.sync_folders(folders);
+        }
+        cx.notify();
+    }
+
+    pub(super) fn remove_notebook_folder(&mut self, folder: std::path::PathBuf, cx: &mut Context<Self>) {
+        if self.folder.as_ref() == Some(&folder) { return; }
+        self.notebooks.retain(|known| known != &folder);
+        let mut ignored = crate::theme::ignored_search_folders();
+        ignored.retain(|p| p != &folder);
+        crate::theme::set_ignored_search_folders(ignored.clone());
+        cx.background_executor().spawn(async move {
+            let _ = update_state(move |s| {
+                s.notebooks.retain(|known| known != &folder);
+                s.ignored_search_folders = ignored;
+            });
+        }).detach();
+        let folders = self.search_folders();
+        if let Some(search) = &mut self.search {
+            search.state.sync_folders(folders);
+        }
+        cx.notify();
+    }
+
     pub(super) fn handle_regex_draft_change(
         &mut self,
         input: &gpui::Entity<gpui_component::input::InputState>,

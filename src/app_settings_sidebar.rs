@@ -19,7 +19,8 @@ impl Workspace {
                 .children(SettingsTab::ALL.into_iter().enumerate().map(|(ix, tab)| {
                     let active = current == Some(tab);
                     let cat_group = SharedString::from(format!("settings-cat-{ix}"));
-                    div().id(("settings-tab", ix)).group(cat_group.clone()).w_full().h(px(34.)).flex_none().px(px(10.)).rounded(crate::ui::radius::CONTROL).flex().items_center().gap(px(8.))
+                    div().id(("settings-tab", ix)).group(cat_group.clone()).relative().w_full().h(px(34.)).flex_none().px(px(10.)).rounded(crate::ui::radius::CONTROL).flex().items_center().gap(px(8.))
+                        .when(tab == SettingsTab::Folders, |d| d.children(crate::ui::smoke_overlay::probe("settings-tab-folders")))
                         .border_1().border_color(gpui::transparent_black())
                         .text_size(px(14.)).line_height(px(20.)).cursor(CursorStyle::PointingHand)
                         .when(active, |d| d.bg(theme.selected).border_color(theme.accent)
