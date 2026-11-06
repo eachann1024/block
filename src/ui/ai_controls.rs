@@ -27,12 +27,29 @@ pub fn backend_card(id: impl Into<SharedString>, name: &'static str, status: Str
     let theme = Theme::ocean();
     let id: SharedString = id.into();
     div().id(id.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&ElementId::from(id)))
-        .flex_1().min_w_0().p(px(10.)).rounded(px(10.)).border_1().cursor(CursorStyle::PointingHand)
+        .flex_1().min_w_0().h(px(58.)).p(px(10.)).flex().flex_col().justify_between().rounded(px(10.)).border_1().cursor(CursorStyle::PointingHand)
         .bg(if selected { theme.selected } else { theme.shell }).border_color(if selected { theme.accent } else { theme.hairline })
         .hover(|style| style.bg(theme.hover))
         .child(div().flex().items_center().justify_between().font_weight(FontWeight(560.)).child(name)
             .child(div().size(px(7.)).rounded_full().bg(if ready { theme.accent } else { theme.text_secondary })))
-        .child(div().text_size(px(14.)).text_color(theme.text_secondary).child(status))
+        .child(div().text_size(px(14.)).text_color(theme.text_secondary).overflow_hidden().whitespace_nowrap().text_ellipsis().child(status))
+        .on_mouse_down(MouseButton::Left, on_click)
+}
+
+pub fn model_row(id: impl Into<SharedString>, label: impl Into<SharedString>, active: bool,
+    on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    let id: SharedString = id.into();
+    let eid = ElementId::from(id);
+    div().id(eid.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&eid))
+        .h(px(32.)).w_full().flex_none().px(px(10.)).gap(px(8.)).rounded(crate::ui::radius::CONTROL)
+        .flex().items_center().text_size(px(14.)).line_height(px(20.)).text_color(theme.text)
+        .cursor(CursorStyle::PointingHand)
+        .when(active, |row| row.bg(theme.selected))
+        .hover(move |style| style.bg(theme.hover))
+        .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(label.into()))
+        .child(div().size(px(16.)).flex_none().flex().items_center().justify_center()
+            .when(active, |slot| slot.child(dropdown::line_icon(Icon::Check, 16., theme.text))))
         .on_mouse_down(MouseButton::Left, on_click)
 }
 
