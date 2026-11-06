@@ -116,6 +116,9 @@ pub fn delete_arm_caret_color() -> Hsla {
     if is_dark() { rgb(0xff857d).into() } else { rgb(0xb92d29).into() }
 }
 
+pub fn delete_arm_placeholder_text() -> &'static str { tr("再次按删除键删除此行", "Press Backspace again to delete this line") }
+pub fn delete_arm_placeholder_color() -> Hsla { if is_dark() { rgba(0xff857db8).into() } else { rgba(0xb92d29b8).into() } }
+
 pub fn delete_arm_button(id: (&'static str, usize), zoom: f32, listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static) -> Stateful<Div> {
     let theme = Theme::ocean();
     let dark = is_dark();
@@ -127,7 +130,7 @@ pub fn delete_arm_button(id: (&'static str, usize), zoom: f32, listener: impl Fn
         .bg(bg).border_1().border_color(border).hover(move |s| s.bg(hover_bg)).cursor(CursorStyle::PointingHand)
         .children(crate::ui::smoke_overlay::probe("first-line-delete-badge"))
         .child(icon(Icon::KeyBackspace, px(15. * zoom), theme.mono_icon_colors(fg)))
-        .tooltip(move |window, cx| build_tooltip(tr("再次按删除键删除此行", "Press Backspace again to delete this line"), window, cx))
+        .tooltip(move |window, cx| build_tooltip(delete_arm_placeholder_text(), window, cx))
         .on_mouse_down(MouseButton::Left, listener)
 }
 
