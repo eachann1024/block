@@ -76,10 +76,38 @@ impl Editor {
 }
 
 impl Editor {
+    pub(crate) fn annotation_smoke_spans(&self) -> Vec<(usize, usize, usize, String)> {
+        self.annotate.annotations.first().map(|note| super::annotate::resolve_annotation_spans(&self.doc, note)
+            .into_iter().filter_map(|(id, range, _)| {
+                let index = self.doc.index_of(id)?;
+                Some((index, range.start, range.end, self.doc.blocks[index].text.get(range)?.to_owned()))
+            }).collect()).unwrap_or_default()
+    }
+
+    pub(crate) fn annotation_smoke_hit_ids(&self) -> Vec<Option<u64>> {
+        self.doc.blocks.iter().map(|b| self.annotation_at(super::view::selection::Position { block: b.id, offset: 3 })).collect()
+    }
+
+    pub(crate) fn reload_annotation_smoke(&mut self) {
+        assert!(crate::ui::smoke_overlay::is_smoke_active());
+        self.annotate.loaded_path = None;
+        self.sync_annotations();
+    }
+}
+
+impl Editor {
     pub(crate) fn prepare_menu_edge_smoke(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
         assert!(crate::ui::smoke_overlay::is_smoke_active());
         self.reset_document(markdown::parse(&"M".repeat(40)));
         self.focus_block(self.doc.blocks[0].id, window, cx);
+        cx.notify();
+    }
+}
+
+impl Editor {
+    pub(crate) fn prepare_annotation_result_smoke(&mut self, cx: &mut gpui::Context<Self>) {
+        assert!(crate::ui::smoke_overlay::is_smoke_active());
+        if let Some(note) = self.annotate.annotations.first_mut() { note.ai_rewritten = Some("Alpha\nBeta".into()); }
         cx.notify();
     }
 }
