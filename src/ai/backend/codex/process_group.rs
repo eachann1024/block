@@ -1,8 +1,8 @@
 use std::{process::{Child, Command}, sync::{Arc, Mutex}, thread, time::{Duration, Instant}};
 
-pub(super) type SharedChild = Arc<Mutex<Process>>;
+pub(crate) type SharedChild = Arc<Mutex<Process>>;
 
-pub(super) struct Process {
+pub(crate) struct Process {
     child: Child,
     stopped: bool,
 }

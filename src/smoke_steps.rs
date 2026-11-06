@@ -49,6 +49,7 @@ impl Run {
         self.check(14, self.query(cx, |_, cx| crate::editor::ai::chat::is_fullscreen(cx)), "已切换至 AI 全屏沉浸模式")?;
         self.click_target(cx, "ai-layout-toggle", "Step 14/14 · 切回 AI 侧栏模式").await?;
         self.check(14, self.query(cx, |_, cx| !crate::editor::ai::chat::is_fullscreen(cx)), "已切回 AI 侧栏模式")?;
+        self.verify_backends_and_settings(cx).await?;
         self.click_target(cx, "ai-deck-trigger", "Step 14/14 · 打开底部合一 Agent 命令舱").await?;
         self.click_target(cx, "ai-backend-Dsh", "Step 14/14 · 切换 dsh 并展开原位配置").await?;
         self.click_target(cx, "dsh-auth-block", "Step 14/14 · 选择复用 Block 配置").await?;
