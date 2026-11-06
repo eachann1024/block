@@ -118,7 +118,10 @@ impl Ctx {
     }
     /// Workspace Skills (`SKILL.md` files in the notebook), thinkly `localContext.ts`.
     pub fn local_skills(&self) -> Vec<(String, String, String)> {
-        self.pages().into_iter().filter(|p| p.ends_with("SKILL")).filter_map(|p| {
+        self.skills_from_pages(self.pages())
+    }
+    pub fn skills_from_pages(&self, pages: impl IntoIterator<Item = String>) -> Vec<(String, String, String)> {
+        pages.into_iter().filter(|p| p.ends_with("SKILL")).filter_map(|p| {
             let body = self.read(&p)?;
             let field = |k: &str| body.lines().find_map(|l| l.strip_prefix(k).map(|v| v.trim().trim_matches('"').to_owned()));
             let name = field("name:").unwrap_or_else(|| Path::new(&p).parent().and_then(|d| d.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or(p.clone()));
