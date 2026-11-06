@@ -1,7 +1,10 @@
 ## 验收标准
 
 - 改完后执行&#32;<code>bun run build</code>：构建 release macOS&#32;<code>&#46;app</code>，安装替换&#32;<code>&#47;Applications&#47;Block&#46;app</code>&#32;并启动。失败如实报告，不把构建成功当成功能通过。
-- 每次改完代码默认按影响面做窗口内自动点击自检：但是自做改动部分的自检 全量运行自检&#46;
+- 每次改完代码后，全量运行项目内置的窗口内自动点击自检：`/Applications/Block.app/Contents/MacOS/block --smoke-once`。按本次改动的影响面补齐验收覆盖，不能只跑原有步骤就宣称新增交互通过。
+- 验收通过 `src/smoke.rs`、`src/smoke_steps.rs` 和后台 smoke worker 向隔离窗口投递 GPUI 鼠标、键盘事件；拖拽使用 MouseDown → MouseMove → MouseUp，断言实际选区、文本或业务状态。复用现有测试沙箱，不使用用户真实笔记和会话做写入验证。
+- **开发验收不接管用户电脑。** 不使用 Codex 电脑工具、`agent-desktop`、LCU、AppleScript 或系统鼠标键盘注入来替代内置自检，不抢焦点、不拖动用户鼠标、不操作用户当前窗口。新增点击、拖拽或选区功能不构成实际桌面操作授权。
+- 内置自检缺少覆盖时，优先补齐现有自动化入口；确有阻碍则说明缺失项，不擅自改用桌面操作。只有用户另行明确要求操作电脑时，才使用 Codex 当前会话内置的电脑使用工具。
 - 崩溃与错误排查查看&#32;<code>Block&#47;logs&#47;block&#46;log</code>：Linux 在&#32;<code>dirs&#58;&#58;state&#95;dir</code>（<code>&#36;XDG&#95;STATE&#95;HOME</code>&#32;或&#32;<code>&#126;&#47;&#46;local&#47;state</code>），macOS 在&#32;<code>&#126;&#47;Library&#47;Application Support</code>，Windows 在&#32;<code>&#37;LOCALAPPDATA&#37;</code>（后两者是&#32;<code>dirs&#58;&#58;data&#95;local&#95;dir</code>，因为&#32;<code>state&#95;dir</code>&#32;为空）。macOS 崩溃报告仍看&#32;<code>&#126;&#47;Library&#47;Logs&#47;DiagnosticReports&#47;block&#45;&#42;&#46;ips</code>。日志文件只允许写入警告、错误与崩溃记录（<code>WARN</code>&#32;&#47;&#32;<code>ERROR</code>&#32;&#47;&#32;<code>PANIC</code>），不写入普通&#32;<code>INFO</code>&#32;日志。
 
 ## 版本与代码组织
