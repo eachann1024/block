@@ -35,7 +35,7 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
     for kinds in [[BackendKind::Builtin, BackendKind::Codex], [BackendKind::Claude, BackendKind::Dsh]] {
         let mut row = div().flex().gap(px(8.));
         for kind in kinds {
-            let ready = kind == BackendKind::Builtin || matches!(chat.backend_status(kind), Some(BackendStatus::Ready { .. }));
+            let ready = if kind == BackendKind::Builtin { backend_ui::builtin_ready() } else { matches!(chat.backend_status(kind), Some(BackendStatus::Ready { .. })) };
             row = row.child(ai_controls::backend_card(format!("ai-backend-{kind:?}"), backend_ui::backend_name(kind), backend_ui::status_label(kind, chat.backend_status(kind)), kind == selected, ready,
                 cx.listener(move |chat, _, window, cx| {
                     cx.stop_propagation();
@@ -77,9 +77,9 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
         .children((selected == BackendKind::Dsh).then(|| dsh_ui::inline_view(cx.entity().downgrade())).flatten())
         .child(div().border_t_1().border_color(theme.hairline).pt(px(8.)).flex().items_center().justify_between()
             .child(div().text_color(theme.text_secondary).child(tr("当前后端模型", "Current Backend Models")))
-            .child(ai_controls::action_chip("ai-deck-settings", None, tr("AI 设置", "AI settings"), false, false, |_, window, cx| {
-                cx.stop_propagation(); backend_ui::close_menu(); window.dispatch_action(Box::new(super::OpenAiSettings), cx);
-            })))
+            .child(ai_controls::action_chip("ai-deck-settings", None, tr("AI 设置", "AI settings"), false, false, cx.listener(|chat, _, window, cx| {
+                cx.stop_propagation(); backend_ui::close_menu(); chat.input.update(cx, |i, cx| i.focus(window, cx)); window.dispatch_action(Box::new(super::OpenAiSettings), cx);
+            }))))
         .child(list);
     Some(crate::ui::placement::smart_popover_with(move |_, _| {
         crate::ui::placement::PlacementSpec::above(bounds.get().unwrap_or(trigger))

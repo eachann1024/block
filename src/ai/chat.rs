@@ -95,6 +95,16 @@ pub(crate) fn panel(cx: &App) -> Option<Entity<AiChat>> {
 pub(crate) fn is_open(cx: &App) -> bool { panel(cx).is_some() }
 pub(crate) fn is_fullscreen(cx: &App) -> bool { panel(cx).is_some_and(|chat| chat.read(cx).fullscreen) }
 
+pub(crate) fn sync_settings(cx: &mut App) {
+    let Some(entity) = cx.try_global::<Holder>().map(|h| h.0.clone()) else { return };
+    entity.update(cx, |this, cx| {
+        if this.error_settings { this.error = None; this.error_settings = false; }
+        this.probe_backend(super::backend::BackendKind::Builtin, cx);
+        this.refresh_models_for(super::backend::BackendKind::Builtin, cx);
+        cx.notify();
+    });
+}
+
 pub(crate) fn toggle(editor: WeakEntity<Editor>, window: &mut Window, cx: &mut App) {
     let c = chat(window, cx);
     c.update(cx, |this, cx| {
