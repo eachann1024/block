@@ -34,12 +34,15 @@ impl Run {
         self.click_target(cx, "titlebar-ai", "Step 14/14 · 点击顶栏 AI 图标打开面板").await?;
         self.check(14, self.query(cx, |_, cx| crate::editor::ai::chat::is_open(cx)), "顶栏 AI 图标已打开 AI 侧栏")?;
         if smoke_overlay::target_center("ai-enable-cover").is_some() {
+            self.check(14, smoke_overlay::target_center("ai-layout-toggle").is_none() && smoke_overlay::target_center("ai-deck-trigger").is_none(), "未启用 AI 时顶栏与底栏控件已隐藏")?;
             self.click_target(cx, "ai-enable-cover", "Step 14/14 · 点击未启用 AI 封面跳转设置").await?;
             self.check(14, self.query(cx, |w, _| w.settings_is_open()), "点击封面已跳转到 AI 设置页")?;
             self.click_target(cx, "settings-back", "Step 14/14 · 从 AI 设置返回编辑").await?;
-        } else {
-            self.click_target(cx, "ai-empty-polish", "Step 14/14 · 点击页隼空状态快捷指令").await?;
+            self.win(cx, crate::editor::ai::chat::enable_smoke_builtin)??;
+            sleep(cx, 250).await;
+            self.redraw(cx);
         }
+        self.click_target(cx, "ai-empty-polish", "Step 14/14 · 点击页隼空状态快捷指令").await?;
         self.click_target(cx, "ai-layout-toggle", "Step 14/14 · 切换 AI 全屏沉浸模式").await?;
         self.check(14, self.query(cx, |_, cx| crate::editor::ai::chat::is_fullscreen(cx)), "已切换至 AI 全屏沉浸模式")?;
         self.click_target(cx, "ai-layout-toggle", "Step 14/14 · 切回 AI 侧栏模式").await?;
@@ -160,7 +163,21 @@ impl Run {
             self.press(cx, "backspace").await?;
         }
         let (blocks, text) = self.editor(cx, |e| (e.block_count(), e.markdown_text()));
-        self.check(8, blocks == before && !text.contains("TempDel"), "退格删除文字并合并回上一块")
+        self.check(8, blocks == before && !text.contains("TempDel"), "退格删除文字并合并回上一块")?;
+        self.press(cx, "cmd-up").await?;
+        sleep(cx, 120).await;
+        let blocks_before_insert = self.editor(cx, |e| e.block_count());
+        self.press(cx, "enter").await?;
+        sleep(cx, 120).await;
+        self.press(cx, "up").await?;
+        sleep(cx, 150).await;
+        self.check(8, self.editor(cx, |e| e.block_count() == blocks_before_insert + 1 && e.first_block_text().is_empty() && !e.first_line_delete_armed()), "首行已插入空段落且初始未进入待删状态")?;
+        self.press(cx, "backspace").await?;
+        sleep(cx, 180).await;
+        self.check(8, self.editor(cx, |e| e.block_count() == blocks_before_insert + 1 && e.first_block_text().is_empty() && e.first_line_delete_armed()) && smoke_overlay::target_center("first-line-delete-badge").is_some(), "首行首次按删除键不删内容并在加号位置显示删除标识")?;
+        self.press(cx, "backspace").await?;
+        sleep(cx, 180).await;
+        self.check(8, self.editor(cx, |e| e.block_count() == blocks_before_insert && e.first_block_text() == "CRUD Title" && !e.first_line_delete_armed()), "首行再次按删除键删除空行并将下方内容顶上来")
     }
 
     async fn find(&self, cx: &AsyncApp) -> Result<(), String> {
