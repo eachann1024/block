@@ -3,6 +3,7 @@
 //! Ensures floating surfaces never occlude their trigger / active input line:
 //! - Places below (or above when `prefer_above` is set) when sufficient vertical room exists.
 //! - Automatically flips to the opposite vertical side of the trigger bounds when overflowing.
+//! - Tries the opposite horizontal trigger edge before clamping an overflowing aligned popup.
 //! - Caps scrollable menu height (`max_height_for_spec`) to the available side in short windows
 //!   so the surface scrolls internally instead of sliding over the input line.
 //! - Resolves geometry during `prepaint` after normal elements have published current-frame bounds.
@@ -18,9 +19,9 @@ pub const MIN_SCROLL_HEIGHT: f32 = 80.;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AlignX {
-    /// Aligns the popup's left edge with `trigger.left()`.
+    /// Prefers the trigger's left edge, flipping to its right edge before viewport clamping.
     Left,
-    /// Aligns the popup's right edge with `trigger.right()`.
+    /// Prefers the trigger's right edge, flipping to its left edge before viewport clamping.
     Right,
     /// Centers the popup horizontally over `trigger.center().x`.
     Center,
@@ -123,9 +124,15 @@ pub fn track_bounds(
 /// Computes the top-left window coordinate for a surface of `menu_size` placed according to `spec`.
 pub fn resolve_origin(spec: &PlacementSpec, menu_size: Size<Pixels>, window_size: Size<Pixels>) -> Point<Pixels> {
     let (min_x, max_x, min_y, max_y) = safe_limits(spec, window_size);
+    let left = spec.trigger.left();
+    let right = spec.trigger.right() - menu_size.width;
+    let fits = |x: Pixels| x >= min_x && x + menu_size.width <= max_x;
+    // Point anchors have no button edge; preserve their cursor-relative clamping.
     let raw_x = match spec.align_x {
-        AlignX::Left => spec.trigger.left(),
-        AlignX::Right => spec.trigger.right() - menu_size.width,
+        AlignX::Left if !fits(left) && fits(right) && spec.trigger.size.width > px(0.) => right,
+        AlignX::Right if !fits(right) && fits(left) && spec.trigger.size.width > px(0.) => left,
+        AlignX::Left => left,
+        AlignX::Right => right,
         AlignX::Center => spec.trigger.center().x - menu_size.width * 0.5,
         AlignX::CascadeRight { gap } => {
             let right_x = spec.trigger.right() + gap;
