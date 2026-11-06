@@ -154,13 +154,13 @@ pub(super) fn stream_turn(
         if !converted.is_empty() { body["tools"] = serde_json::Value::Array(converted); }
     }
     let body = body.to_string();
-    let mut child = match curl(&config, "/messages", true, "180").spawn() {
+    let mut child = match curl(&config, "/messages", true, "180").args(["--speed-time", "60", "--speed-limit", "1"]).spawn() {
         Ok(c) => c,
         Err(e) => return fail(if is_en() { format!("Failed to launch curl: {e}") } else { format!("无法启动 curl：{e}") }, false),
     };
     if let Some(mut stdin) = child.stdin.take() { let _ = stdin.write_all(body.as_bytes()); }
     let mut calls: Vec<(u64, String, String, String)> = Vec::new();
-    let mut other = String::new(); let mut code = 0u16; let mut got = false;
+    let mut other = String::new(); let mut code = 0u16; let mut got = false; let mut completed = false;
     let stdout = child.stdout.take().expect("piped stdout");
     for line in BufReader::new(stdout).lines() {
         if cancel.load(Ordering::Relaxed) { let _ = child.kill(); let _ = child.wait(); return; }
@@ -171,6 +171,7 @@ pub(super) fn stream_turn(
             if data.is_empty() || data == "[DONE]" { continue; }
             let Ok(v) = serde_json::from_str::<serde_json::Value>(data) else { continue };
             match v.get("type").and_then(|t| t.as_str()).unwrap_or("") {
+                "message_stop" => completed = true,
                 "error" => {
                     let err = v.pointer("/error/message").or_else(|| v.get("message")).and_then(|m| m.as_str())
                         .unwrap_or_else(|| tr("Anthropic 服务返回错误", "Anthropic service error"));
@@ -212,13 +213,21 @@ pub(super) fn stream_turn(
     }
     let mut stderr = String::new();
     if let Some(mut e) = child.stderr.take() { let _ = e.read_to_string(&mut stderr); }
-    let _ = child.wait();
+    let status = child.wait();
     if cancel.load(Ordering::Relaxed) { return; }
+    if status.as_ref().is_ok_and(|s| s.code() == Some(28)) {
+        crate::log::warn("AI stream timed out (Anthropic)");
+        return fail(tr("AI 响应超时，请重试或切换模型。", "AI response timed out. Retry or switch models.").into(), false);
+    }
     if code == 0 {
         return fail(tr("网络请求失败，请检查网络或接口地址", "Network request failed. Check your connection or Base URL").into(), true);
     }
     if !(200..300).contains(&code) {
         return fail(provider::keyed(&config, provider::service_error(other.trim(), code)), code == 401 || code == 403 || code == 404);
+    }
+    if !status.is_ok_and(|s| s.success()) || !completed {
+        crate::log::warn("AI stream interrupted before completion (Anthropic)");
+        return fail(tr("AI 响应中断，请重试。", "AI response interrupted. Please retry.").into(), false);
     }
     if !got { return fail(tr("AI 未返回可写入的内容。", "AI returned an empty response.").into(), false); }
     if !calls.is_empty() {

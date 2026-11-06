@@ -10,6 +10,7 @@ use crate::{app::Workspace, editor::Editor, ui::smoke_overlay};
 
 #[path = "smoke_steps.rs"]
 mod steps;
+#[path = "smoke_chat_selection.rs"] mod chat_selection;
 #[cfg(unix)]
 #[path = "smoke_ipc.rs"] mod ipc;
 #[path = "smoke_client.rs"] mod client;
