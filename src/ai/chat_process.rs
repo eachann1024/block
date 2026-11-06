@@ -1,10 +1,8 @@
 use std::{cell::RefCell, collections::HashMap};
-use gpui::{div, px, CursorStyle, FontWeight, IntoElement, MouseButton, ParentElement, ScrollHandle, SharedString, Styled, prelude::*};
+use gpui::{div, px, CursorStyle, IntoElement, MouseButton, ParentElement, ScrollHandle, SharedString, Styled, prelude::*};
 use serde_json::Value;
 use super::{agent, chat::{AiChat, Msg}};
-use crate::{icons::{icon, Icon}, theme::{is_en, tr, Theme}, ui::ai_process_card::{process_card, ProcessCardSpec, ProcessStage, ProcessStep}};
-
-fn glyph(i: Icon, size: f32, color: gpui::Hsla) -> impl IntoElement { icon(i, px(size), Theme::ocean().mono_icon_colors(color)) }
+use crate::{theme::{is_en, tr, Theme}, ui::ai_process_card::{process_card, ProcessCardSpec, ProcessStage, ProcessStep}};
 
 struct TurnUiState { steps_expanded: bool, notes_expanded: bool, steps_scroll: ScrollHandle, last_step_count: usize }
 impl Default for TurnUiState {
@@ -128,65 +126,41 @@ fn reply(text: &str, conv_id: u64, index: usize, copyable: bool) -> impl IntoEle
             .child(tr("复制", "Copy"))))
 }
 
-/// thinkly's NotebookBatchPlanCard: 笔记变更计划 with 原文 / 新片段, 应用 and 撤回.
 fn plan_card(at: usize, plan: agent::Plan, cx: &mut gpui::Context<AiChat>) -> impl IntoElement {
     use agent::{OpKind, PlanState};
-    let theme = Theme::ocean();
-    let n = plan.ops.len();
-    let (badge, note) = match plan.state {
-        PlanState::Pending => (tr("等待确认", "Pending"), tr("方案已生成，尚未修改笔记。", "Plan generated; notes not modified yet.").to_owned()),
-        PlanState::Applied => (tr("已应用", "Applied"), if is_en() { format!("Applied {n} operations.") } else { format!("已应用 {} 项操作。", n) }),
-        PlanState::Partial => (tr("部分写入失败", "Partially failed"), tr("部分修改已写入，其余修改失败；可撤回已写入内容。", "Some changes were written, but others failed. You can undo the written changes.").to_owned()),
-        PlanState::Canceled => (tr("已取消", "Canceled"), tr("未修改笔记。", "Notes not modified.").to_owned()),
-        PlanState::Undone => (tr("已撤回", "Undone"), tr("本次变更已撤回。", "Changes have been undone.").to_owned()),
-        PlanState::UndoConflict => (tr("撤回冲突", "Undo conflict"), tr("笔记在应用后发生变化，未覆盖后续编辑。", "Note changed after applying; later edits preserved.").to_owned()),
-        PlanState::Stale => (tr("已取消", "Canceled"), tr("原文或目标位置已变化，请基于当前笔记重新生成方案。", "Source text changed; regenerate plan from current note.").to_owned()),
-    };
-    let snippet = |label: &'static str, text: String, del: bool| div().flex().flex_col().gap(px(2.))
-        .child(div().text_size(px(14.)).text_color(theme.text_secondary).child(label))
-        .child(div().px(px(8.)).py(px(8.)).rounded(crate::ui::radius::CONTROL).text_size(px(14.)).line_height(px(20.))
-            .bg(if del { gpui::hsla(0., 0.75, 0.5, 0.08) } else { gpui::hsla(0.38, 0.6, 0.4, 0.10) })
-            .when(del, |d| d.line_through())
-            .child(if text.is_empty() { tr("（空）", "(Empty)").to_owned() } else { text.chars().take(400).collect() }));
-    let ops = plan.ops.iter().fold(div().flex().flex_col().gap(px(8.)), |d, op| {
-        let (label, body) = match &op.kind {
-            OpKind::Replace { old, new, all } => (if *all { tr("替换全部匹配", "Replace all matches") } else { tr("替换首处匹配", "Replace first match") },
-                div().flex().flex_col().gap(px(4.)).child(snippet(tr("原文", "Original"), old.clone(), true)).child(snippet(tr("新片段", "Replacement"), new.clone(), false))),
-            OpKind::Edit { markdown } => (tr("替换整篇正文", "Replace full note"), div().child(snippet(tr("新正文", "New content"), markdown.clone(), false))),
-            OpKind::Create { markdown } => (tr("新建页面", "Create page"), div().child(snippet(tr("正文", "Content"), markdown.clone(), false))),
-        };
-        d.child(div().flex().flex_col().gap(px(4.))
-            .child(div().flex().items_center().gap(px(6.)).text_size(px(14.))
-                .child(div().font_weight(FontWeight(600.)).child(label))
-                .child(div().text_color(theme.text_secondary).child(op.page.clone())))
-            .child(body))
-    });
-    let actions = match plan.state {
-        PlanState::Pending => Some(div().flex().gap(px(8.))
-            .child(crate::ui::ai_controls::action_chip(format!("plan-apply-{at}"), None, tr("接受", "Accept"), true, false,
-                cx.listener(move |this, _, _, cx| this.apply_plan(at, cx))).h(px(32.)).rounded(crate::ui::radius::CONTROL))
-            .child(crate::ui::ai_controls::action_chip(format!("plan-cancel-{at}"), None, tr("拒绝", "Reject"), false, false,
-                cx.listener(move |this, _, _, cx| this.set_plan_state(at, PlanState::Canceled, cx))).h(px(32.)).rounded(crate::ui::radius::CONTROL).border_1().border_color(theme.btn_border))),
-        state @ (PlanState::Applied | PlanState::Partial) => Some(div().flex().justify_end()
-            .child(crate::ui::ai_controls::action_chip(format!("plan-undo-{at}"), None,
-                if state == PlanState::Partial { tr("撤回已写入的修改", "Undo written changes") } else { tr("撤销", "Undo") }, false, false,
-                cx.listener(move |this, _, _, cx| this.undo_plan(at, cx))).h(px(32.)).rounded(crate::ui::radius::CONTROL).border_1().border_color(theme.btn_border))),
-        PlanState::Stale => Some(div().flex().justify_end()
-            .child(crate::ui::ai_controls::action_chip(format!("plan-regen-{at}"), None, tr("重新生成方案", "Regenerate plan"), false, false,
-                cx.listener(move |this, _, w, cx| {
-                    this.input.update(cx, |i, cx| i.set_value(tr("请基于当前笔记重新生成方案", "Please regenerate the plan based on the current note"), w, cx));
-                    this.send(w, cx);
-                })).h(px(32.)).rounded(crate::ui::radius::CONTROL).border_1().border_color(theme.btn_border))),
-        _ => None,
-    };
-    let head = if plan.title.is_empty() { tr("笔记变更计划", "Note Change Plan").to_owned() } else if is_en() { format!("Note Change Plan · {}", plan.title) } else { format!("笔记变更计划 · {}", plan.title) };
-    div().flex().flex_col().gap(px(8.)).p(px(12.)).rounded(crate::ui::radius::SURFACE).border_1().border_color(theme.btn_border).bg(theme.paper)
-        .child(div().flex().items_center().gap(px(8.))
-            .child(glyph(Icon::Sparkles, 14., theme.accent))
-            .child(div().flex_1().text_size(px(14.)).font_weight(FontWeight(600.)).child(head))
-            .child(div().px(px(6.)).py(px(1.)).rounded(crate::ui::radius::MICRO_SM).bg(theme.hover).text_size(px(14.)).text_color(theme.text_secondary).child(badge)))
-        .when(!plan.summary.is_empty(), |d| d.child(div().text_size(px(14.)).text_color(theme.text_secondary).child(plan.summary.clone())))
-        .child(ops)
-        .child(div().text_size(px(14.)).text_color(theme.text_secondary).child(note))
-        .children(actions)
+    use crate::ui::ai_plan_card::{chat_plan_card, pill};
+    let pending = plan.state == PlanState::Pending;
+    let badge = match plan.state { PlanState::Pending => tr("编辑器待审阅", "Review in Editor"), PlanState::Applied => tr("已应用", "Applied"),
+        PlanState::Partial => tr("部分写入失败", "Partially failed"), PlanState::Canceled => tr("已取消", "Canceled"), PlanState::Undone => tr("已撤回", "Undone"),
+        PlanState::UndoConflict => tr("撤回冲突", "Undo conflict"), PlanState::Stale => tr("已失效", "Stale") };
+    let active = super::plan_link::current();
+    let mut ops = Vec::new();
+    for (index, op) in plan.ops.iter().enumerate() {
+        let source = match &op.kind { OpKind::Replace { new, old, .. } => if new.is_empty() { old } else { new }, OpKind::Edit { markdown } | OpKind::Create { markdown } => markdown };
+        let label = source.lines().find(|line| line.trim_start().starts_with('#')).or_else(|| source.lines().find(|line| !line.trim().is_empty())).unwrap_or(&op.page).trim().trim_start_matches('#').trim();
+        let label: String = label.chars().take(30).collect();
+        let number = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"].get(index).map_or_else(|| (index + 1).to_string(), |number| (*number).to_owned());
+        let label = format!("{number} {label} {}", tr("（在编辑器审阅）", "(Review in editor)"));
+        let selected = active.as_ref().is_some_and(|link| link.msg_at == at && link.op_idx == index);
+        if pending { ops.push(pill(format!("plan-op-{at}-{index}"), label, selected, cx.listener(move |this, _, _, cx| this.link_plan(at, index, false, cx))).into_any_element()); }
+    }
+    if pending && !plan.ops.is_empty() {
+        let index = active.as_ref().filter(|link| link.msg_at == at).map_or(0, |link| link.op_idx);
+        let diff = !active.as_ref().is_some_and(|link| link.msg_at == at && link.diff_mode);
+        ops.push(pill(format!("plan-toggle-diff-{at}"), tr("② 切换对比明细", "② Toggle comparison").into(), false,
+            cx.listener(move |this, _, _, cx| this.link_plan(at, index, diff, cx))).into_any_element());
+    }
+    let mut actions = Vec::new();
+    if pending {
+        actions.push(pill(format!("plan-apply-{at}"), tr("接受", "Accept").into(), true, cx.listener(move |this, _, _, cx| this.apply_plan(at, cx))).into_any_element());
+        actions.push(pill(format!("plan-cancel-{at}"), tr("拒绝", "Reject").into(), false, cx.listener(move |this, _, _, cx| this.set_plan_state(at, PlanState::Canceled, cx))).into_any_element());
+    } else if matches!(plan.state, PlanState::Applied | PlanState::Partial) {
+        actions.push(pill(format!("plan-undo-{at}"), tr("撤销", "Undo").into(), false, cx.listener(move |this, _, _, cx| this.undo_plan(at, cx))).into_any_element());
+    } else if plan.state == PlanState::Stale {
+        actions.push(pill(format!("plan-regen-{at}"), tr("重新生成方案", "Regenerate plan").into(), false, cx.listener(move |this, _, window, cx| {
+            this.input.update(cx, |input, cx| input.set_value(tr("请基于当前笔记重新生成方案", "Please regenerate the plan based on the current note"), window, cx)); this.send(window, cx);
+        })).into_any_element());
+    }
+    let title = plan.ops.first().map(|op| format!("{}.md", op.page)).unwrap_or(plan.title);
+    chat_plan_card(title, badge, plan.summary, pending, ops, actions)
 }
