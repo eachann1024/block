@@ -10,6 +10,18 @@ use crate::{
 
 pub const PANEL_WIDTH: f32 = 360.;
 
+pub fn enable_action_button(id: impl Into<SharedString>, label: impl Into<SharedString>,
+    on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    let eid = ElementId::from(id.into());
+    div().id(eid.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&eid))
+        .h(px(38.)).px(px(18.)).flex_none().flex().items_center().justify_center().gap(px(6.)).rounded(crate::ui::radius::CONTROL)
+        .bg(theme.selected).border_1().border_color(theme.accent).text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(560.)).text_color(theme.text)
+        .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
+        .child(label.into()).child(icon(Icon::ArrowRight, px(14.), theme.mono_icon_colors(theme.accent)))
+        .on_mouse_down(MouseButton::Left, on_click)
+}
+
 pub fn titlebar_ai_button(open: bool, on_click: impl Fn(&mut gpui::Window, &mut gpui::App) + 'static) -> Stateful<Div> {
     let theme = Theme::ocean();
     div().id("titlebar-ai").group("titlebar-ai").relative().children(crate::ui::smoke_overlay::probe("titlebar-ai"))
