@@ -1,5 +1,5 @@
 //! Floating image toolbar (7 actions), `⋯` 4-item menu, and AltText / Size / Crop popovers.
-use gpui::{Context, CursorStyle, Entity, FontWeight, MouseButton, Window, deferred, div, prelude::*, px, rgb};
+use gpui::{Context, CursorStyle, Entity, FontWeight, MouseButton, Window, div, prelude::*, px, rgb};
 use gpui_component::input::{Escape, InputState};
 use crate::{dropdown::{self, RowSpec}, icons::Icon, theme::tr, ui::{floating_bar, popover}};
 use super::{
@@ -13,7 +13,7 @@ use super::{
 fn tb_btn(
     editor: &Entity<Editor>, id: u64, slot: usize, g: Icon, tip: &'static str, on: bool, open: bool,
     run: impl Fn(&mut Editor, &mut Window, &mut Context<Editor>) + 'static,
-) -> impl IntoElement {
+) -> gpui::Stateful<gpui::Div> {
     let editor = editor.clone();
     floating_bar::icon_toggle_button(("img-tb", id as usize * 16 + slot), g, tip, on, open)
         .size(px(32.))
@@ -27,6 +27,8 @@ fn tb_btn(
 pub(super) fn image_toolbar(
     editor: &Entity<Editor>, id: u64, align: Align, percent: u32, pop: Option<ImagePop>,
 ) -> impl IntoElement {
+    let crop_bounds = std::rc::Rc::new(std::cell::Cell::new(None));
+    let more_bounds = std::rc::Rc::new(std::cell::Cell::new(None));
     let crop_open = matches!(pop, Some(ImagePop::Crop));
     let more_open = matches!(pop, Some(ImagePop::More | ImagePop::AltText(_) | ImagePop::Size));
     let bar = pill().id(("img-toolbar", id as usize)).py(px(5.)).px(px(7.)).gap(px(3.)).rounded(crate::ui::radius::SURFACE)
@@ -54,12 +56,14 @@ pub(super) fn image_toolbar(
         .child(tb_btn(editor, id, 5, Icon::Crop, tr("裁剪图片", "Crop image"), false, crop_open, move |this, _, cx| {
             this.image_menu = if crop_open { None } else { Some((id, ImagePop::Crop)) };
             cx.notify();
-        }))
+        }).child(crate::ui::placement::track_bounds(crop_bounds.clone(), false)))
         .child(tb_btn(editor, id, 6, Icon::More, tr("更多图片操作", "More image options"), false, more_open, move |this, _, cx| {
             this.image_menu = if more_open { None } else { Some((id, ImagePop::More)) };
             cx.notify();
-        }));
+        }).child(crate::ui::placement::track_bounds(more_bounds.clone(), false)));
 
+    let trigger_bounds = if crop_open { crop_bounds } else { more_bounds };
+    let pos_editor = editor.clone();
     let sub = pop.map(|p| match p {
         ImagePop::More => more_menu(editor, id).into_any_element(),
         ImagePop::AltText(input) => alt_popover(editor, id, &input).into_any_element(),
@@ -69,7 +73,10 @@ pub(super) fn image_toolbar(
 
     div().relative().flex().flex_col().items_center()
         .child(floating_bar::animate(bar, ("img-toolbar-enter", id as usize)))
-        .when_some(sub, |d, s| d.child(deferred(popover::animate(div().mt(px(8.)).child(s), ("img-pop-enter", id as usize))).with_priority(2)))
+        .when_some(sub, |d, s| d.child(dropdown::deferred_popover_with(move |_, cx| {
+            dropdown::PlacementSpec::below(trigger_bounds.get().unwrap_or_default())
+                .viewport(pos_editor.read(cx).list.viewport_bounds())
+        }, s, 2)))
 }
 
 fn menu_card(id: (&'static str, usize), width: f32) -> gpui::Stateful<gpui::Div> {
@@ -160,7 +167,7 @@ fn crop_popover(editor: &Entity<Editor>, id: u64) -> impl IntoElement {
         ("1:1", Some((1, 1))),
         (tr("裁边 15%", "Trim 15%"), None),
     ];
-    let mut row = pill().id(("img-crop-pop", id as usize)).p(px(5.)).gap(px(4.))
+    let mut row = pill().id(("img-crop-pop", id as usize)).relative().children(crate::ui::smoke_overlay::probe("image-crop-popover")).p(px(5.)).gap(px(4.))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
     for (idx, (label, ratio)) in presets.into_iter().enumerate() {
         let ed = editor.clone();
