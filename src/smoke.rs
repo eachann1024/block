@@ -8,6 +8,7 @@ use gpui::{
 };
 use crate::{app::Workspace, editor::Editor, ui::smoke_overlay};
 
+#[path = "smoke_annotations.rs"] mod annotations;
 #[path = "smoke_steps.rs"]
 mod steps;
 #[path = "smoke_chat_selection.rs"] mod chat_selection;
@@ -47,6 +48,7 @@ fn reset_sandbox() -> std::io::Result<()> {
     let welcome = notebook.join("Welcome.md");
     std::fs::write(&welcome, "# Block\n\n点击验证初始段落。\n")?;
     crate::files::state::set_state_path_override(sandbox.join("state.json"));
+    crate::editor::ai::provider::save(&Default::default()).map_err(std::io::Error::other)?;
     std::fs::write(notebook.join("notes.txt"), "plain text\n")?;
     crate::files::update_state(|s| {
         *s = crate::files::state::State::default();
