@@ -3,7 +3,7 @@ use std::ops::Range;
 use gpui::{Context, Window, prelude::*};
 use gpui_component::input::{InputEvent, InputState};
 use crate::theme::tr;
-use super::{AnnotateComposer, Annotation, next_id};
+use super::{AnnotateComposer, Annotation};
 use crate::editor::view::Editor;
 
 #[derive(Clone)]
@@ -62,12 +62,8 @@ impl Editor {
         let body = composer.input.read(cx).value().trim().to_owned();
         if body.is_empty() { return; }
         let Some(composer) = self.annotate.composer.take() else { return };
-        for target in composer.targets {
-            self.annotate.annotations.push(Annotation {
-                id: next_id(), block_index: target.block_index, start: target.range.start, end: target.range.end,
-                quote: target.quote, body: body.clone(), reactions: Vec::new(), ai_rewritten: None, ai_error: None,
-                applied: Some(false), streaming: false, request_id: None,
-            });
+        if let Some(note) = Annotation::for_targets(&composer.targets, body) {
+            self.annotate.annotations.push(note);
         }
         self.persist_annotations();
         self.caret.anchor = self.caret.head; // collapse selection so the floating toolbar doesn't reappear

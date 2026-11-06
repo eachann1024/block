@@ -1,26 +1,22 @@
 //! Single-reaction-per-selection semantics, legacy deduplication, and picker/pill actions.
 use std::{collections::HashMap, ops::Range};
 use gpui::{Context, Window, point, px};
-use super::{Annotation, ReactionPicker, next_id, resolve_annotation_span};
+use super::{Annotation, AnnotationTarget, ReactionPicker, resolve_annotation_spans, spans::matches_targets};
 use super::super::{model::Doc, view::Editor};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum SpanKey {
-    Resolved(u64, Range<usize>),
-    Fallback(usize, Range<usize>, String),
+    Resolved(Vec<(u64, Range<usize>)>),
+    Fallback(String),
 }
 
 fn span_key(doc: &Doc, note: &Annotation) -> SpanKey {
-    if let Some((block_id, range, _)) = resolve_annotation_span(doc, note) {
-        SpanKey::Resolved(block_id, range)
+    let spans = resolve_annotation_spans(doc, note);
+    if spans.len() == note.anchors.len().max(1) {
+        SpanKey::Resolved(spans.into_iter().map(|(id, range, _)| (id, range)).collect())
     } else {
-        SpanKey::Fallback(note.block_index, note.start..note.end, note.quote.clone())
+        SpanKey::Fallback(serde_json::to_string(&(note.block_index, note.start, note.end, &note.quote, &note.anchors)).unwrap_or_default())
     }
-}
-
-pub(super) fn matches_span(doc: &Doc, note: &Annotation, block_id: u64, range: &Range<usize>) -> bool {
-    resolve_annotation_span(doc, note)
-        .is_some_and(|(id, resolved, _)| id == block_id && &resolved == range)
 }
 
 impl Annotation {
@@ -104,9 +100,9 @@ impl Editor {
         }
     }
 
-    fn find_span_reaction_owner(&self, block_id: u64, range: &Range<usize>) -> Option<u64> {
+    fn find_span_reaction_owner(&self, targets: &[AnnotationTarget]) -> Option<u64> {
         let mut matching = self.annotate.annotations.iter()
-            .filter(|note| matches_span(&self.doc, note, block_id, range));
+            .filter(|note| matches_targets(&self.doc, note, targets));
         let first = matching.next()?;
         if !first.reactions.is_empty() {
             return Some(first.id);
@@ -122,11 +118,11 @@ impl Editor {
         }
         let targets = self.selected_annotation_targets();
         let Some(first) = targets.first() else { return };
-        let (block_id, block_index, range) = (first.block_id, first.block_index, &first.range);
+        let block_index = first.block_index;
         let anchor = self.toolbar_anchor
             .or_else(|| self.list.bounds_for_item(block_index).map(|b| point(b.center().x, b.top())))
             .unwrap_or_else(|| point(px(360.), px(140.)));
-        let annotation_id = self.find_span_reaction_owner(block_id, range);
+        let annotation_id = self.find_span_reaction_owner(&targets);
         self.format = None;
         self.annotate.reactions = Some(ReactionPicker { targets, annotation_id, anchor });
         cx.notify();
@@ -134,18 +130,7 @@ impl Editor {
 
     pub(crate) fn pick_reaction(&mut self, emoji: &str, cx: &mut Context<Self>) {
         let Some(picker) = self.annotate.reactions.take() else { return };
-        // Mixed selections converge to one emoji; only an entirely matching selection toggles off.
-        let remove = picker.targets.iter().all(|target| self.annotate.annotations.iter().any(|note|
-            matches_span(&self.doc, note, target.block_id, &target.range) && note.reactions.iter().any(|r| r == emoji)));
-        for target in picker.targets {
-            let owner = self.find_span_reaction_owner(target.block_id, &target.range);
-            let already = self.annotate.annotations.iter().any(|note|
-                matches_span(&self.doc, note, target.block_id, &target.range) && note.reactions.iter().any(|r| r == emoji));
-            if remove || !already {
-                let index = self.doc.index_of(target.block_id).unwrap_or(target.block_index);
-                self.apply_single_reaction(owner, Some((target.block_id, index, target.range, target.quote)), emoji);
-            }
-        }
+        self.apply_single_reaction(picker.annotation_id, Some(&picker.targets), emoji);
         self.normalize_annotations();
         self.persist_annotations();
         self.caret.anchor = self.caret.head;
@@ -155,12 +140,7 @@ impl Editor {
     }
 
     pub(crate) fn toggle_reaction_on_note(&mut self, id: u64, emoji: &str, cx: &mut Context<Self>) {
-        let span = self.annotate.annotations.iter().find(|n| n.id == id).and_then(|note| {
-            let (block_id, range, _) = resolve_annotation_span(&self.doc, note)?;
-            let block_index = self.doc.index_of(block_id).unwrap_or(note.block_index);
-            Some((block_id, block_index, range, note.quote.clone()))
-        });
-        self.apply_single_reaction(Some(id), span, emoji);
+        self.apply_single_reaction(Some(id), None, emoji);
         self.normalize_annotations();
         self.persist_annotations();
         cx.notify();
@@ -169,13 +149,13 @@ impl Editor {
     fn apply_single_reaction(
         &mut self,
         target_id: Option<u64>,
-        span: Option<(u64, usize, Range<usize>, String)>,
+        targets: Option<&[AnnotationTarget]>,
         emoji: &str,
     ) {
         let matching_ids: Vec<u64> = self.annotate.annotations.iter()
             .filter(|note| {
                 Some(note.id) == target_id
-                    || span.as_ref().is_some_and(|(block_id, _, range, _)| matches_span(&self.doc, note, *block_id, range))
+                    || targets.is_some_and(|targets| matches_targets(&self.doc, note, targets))
             })
             .map(|note| note.id)
             .collect();
@@ -201,30 +181,15 @@ impl Editor {
                         if !note.has_rewrite() {
                             note.applied = Some(false);
                         }
-                        if let Some((_, block_index, ref range, _)) = span {
-                            note.block_index = block_index;
-                            note.start = range.start;
-                            note.end = range.end;
-                        }
                     } else if matching_ids.contains(&note.id) {
                         note.reactions.clear();
                     }
                 }
-            } else if let Some((_, block_index, range, quote)) = span {
-                self.annotate.annotations.push(Annotation {
-                    id: next_id(),
-                    block_index,
-                    start: range.start,
-                    end: range.end,
-                    quote,
-                    body: String::new(),
-                    reactions: vec![emoji.to_owned()],
-                    ai_rewritten: None,
-                    ai_error: None,
-                    applied: Some(false),
-                    streaming: false,
-                    request_id: None,
-                });
+            } else if let Some(targets) = targets
+                && let Some(mut note) = Annotation::for_targets(targets, String::new())
+            {
+                note.reactions.push(emoji.to_owned());
+                self.annotate.annotations.push(note);
             }
         }
     }
