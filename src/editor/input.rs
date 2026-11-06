@@ -7,6 +7,7 @@ use super::{model::{Kind, MarkKind}, view::{Editor, EditorAction, selection::{Po
 
 impl Editor {
     pub(super) fn handle(&mut self, action: &EditorAction, window: &mut Window, cx: &mut Context<Self>) {
+        if !matches!(action, EditorAction::Backspace) { super::block_shortcuts::clear_first_line_delete(); }
         use EditorAction::*;
         if self.path.is_none() || (!self.is_markdown_note() && !self.editing_source()) { return; }
         if self.editing_source() { self.handle_source(action, window, cx); return; }
@@ -182,6 +183,7 @@ impl Editor {
         (self.caret.is_empty() && self.doc.get(id).is_some_and(|b| super::image_source::spec_of(b).is_some() || super::block_menu::is_divider(b))).then_some(id)
     }
     pub(super) fn replace(&mut self, range: Option<Range<usize>>, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        super::block_shortcuts::clear_first_line_delete();
         if self.editing_source() { self.source_replace_utf16(range, text, cx); return; }
         if !self.is_markdown_note() { return; }
         if self.path.is_none() { return; }

@@ -204,7 +204,7 @@ impl Element for BlockText {
                     let caret_h = (font_px * 1.125).round().min(line_h);
                     let origin = point(p.x, p.y + ((line_h - caret_h) * 0.5).round());
                     if empty {
-                        window.paint_quad(fill(Bounds::new(origin, size(px(1.5), caret_h)), Theme::ocean().accent));
+                        window.paint_quad(fill(Bounds::new(origin, size(px(1.5), caret_h)), if self.editor.read(cx).is_first_line_delete_armed(self.block) { crate::ui::reveal::delete_arm_caret_color() } else { Theme::ocean().accent }));
                         crate::sync_ime_cursor_area(f32::from(origin.x), f32::from(origin.y), f32::from(caret_h));
                     }
                     if let Some(range) = composing {

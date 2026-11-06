@@ -76,6 +76,7 @@ impl Editor {
         (Position { offset: range.start, ..at }, Position { offset: range.end, ..at })
     }
     pub(in crate::editor) fn pointer_down(&mut self, event: &gpui::MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        crate::editor::block_shortcuts::clear_first_line_delete();
         if self.editing_source() { self.source_pointer_down(event, window, cx); return; }
         if self.path.is_some() && !self.is_markdown_note() { return; }
         self.table_menu = None; self.table_sel = None; self.block_menu = None; self.block_sel = None;
