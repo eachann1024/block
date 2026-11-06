@@ -67,8 +67,9 @@ impl Render for AiChat {
         });
         let mut msgs: Vec<Msg> = self.conv().map(|c| c.messages.clone()).unwrap_or_default();
         if self.streaming.is_some() { msgs.push(Msg { role: "assistant".into(), content: if self.partial.is_empty() { tr("思考中…", "Thinking…").into() } else { self.partial.clone() }, ..Default::default() }); }
+        let blocked = super::chat_empty::builtin_blocked(self);
         let empty = msgs.is_empty();
-        let body = msgs.into_iter().enumerate().fold(div().flex().flex_col().gap(px(16.)).px(px(16.)).py(px(20.)), |d, (i, m)| {
+        let body = if blocked { div().child(super::chat_empty::enable_cover(cx)) } else { msgs.into_iter().enumerate().fold(div().flex().flex_col().gap(px(16.)).px(px(16.)).py(px(20.)), |d, (i, m)| {
             let text = m.content.clone();
             if m.role == "user" {
                 d.child(div().flex().justify_end().child(div().max_w(px(300.)).px(px(12.)).py(px(8.)).rounded(crate::ui::radius::SURFACE).bg(theme.hover)
@@ -88,10 +89,9 @@ impl Render for AiChat {
                         .on_mouse_down(MouseButton::Left, move |_, _, cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(copy.clone())))
                         .child(tr("复制", "Copy")))))
             }
-        });
-        let body = body.when(empty, |body| body.child(super::chat_empty::view(self, cx)));
+        }).when(empty, |body| body.child(super::chat_empty::view(self, cx))) };
 
-        let error = self.error.clone().map(|e| div().mx(px(12.)).mb(px(8.)).p(px(10.)).flex().items_start().gap(px(8.)).rounded(crate::ui::radius::CONTROL)
+        let error = self.error.clone().filter(|_| !(blocked && self.error_settings)).map(|e| div().mx(px(12.)).mb(px(8.)).p(px(10.)).flex().items_start().gap(px(8.)).rounded(crate::ui::radius::CONTROL)
             .bg(gpui::hsla(0., 0.75, 0.5, 0.08)).text_size(px(14.))
             .child(div().flex_1().flex().flex_col().gap(px(2.))
                 .child(div().font_weight(FontWeight(600.)).text_color(gpui::rgb(0xb42318)).child(tr("本轮失败原因", "Request failed")))
@@ -170,14 +170,15 @@ impl Render for AiChat {
                     })))
         });
         let composer = div().p(px(10.)).flex().flex_col().gap(px(10.)).rounded(crate::ui::radius::SURFACE).border_1().border_color(if self.input.read(cx).focus_handle(cx).is_focused(window) { theme.accent } else { theme.btn_border }).bg(theme.paper)
-            .when(!self.refs.is_empty() || !self.skills.is_empty(), |d| d.child(chips))
-            .child(div().h(px(54.)).text_size(px(14.)).child(Input::new(&self.input).appearance(false).bordered(false).focus_bordered(false).h(px(54.)).px(px(2.))))
+            .when(!blocked && (!self.refs.is_empty() || !self.skills.is_empty()), |d| d.child(chips))
+            .when(!blocked, |d| d.child(div().h(px(54.)).text_size(px(14.)).child(Input::new(&self.input).appearance(false).bordered(false).focus_bordered(false).h(px(54.)).px(px(2.)))))
             .child(div().flex().items_center().gap(px(6.))
                 .child(div().flex_1().min_w_0().flex().items_center().gap(px(6.))
                     .child(super::chat_deck::trigger(self, cx)))
-                .child(action));
+                .when(!blocked, |d| d.child(action)));
 
-        div().id("ai-chat-panel").when(self.fullscreen, |panel| panel.flex_1().w_full().min_w_0()).when(!self.fullscreen, |panel| panel.w(px(396.)).flex_none().border_l_1().border_color(theme.hairline)).h_full().flex().flex_col().relative().bg(theme.paper)
+        let focus = self.input.read(cx).focus_handle(cx);
+        div().id("ai-chat-panel").when(blocked, |panel| panel.track_focus(&focus)).when(self.fullscreen, |panel| panel.flex_1().w_full().min_w_0()).when(!self.fullscreen, |panel| panel.w(px(396.)).flex_none().border_l_1().border_color(theme.hairline)).h_full().flex().flex_col().relative().bg(theme.paper)
             .text_color(theme.text)
             .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| { if backend_ui::close_menu() { cx.notify(); } }))
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
