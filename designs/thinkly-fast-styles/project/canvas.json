@@ -845,6 +845,36 @@
       "w": 1440,
       "x": 3040,
       "y": 8100
+    },
+    "AiWorkspace-V1-ComposerUnified.dc.html": {
+      "expand": "fill",
+      "h": 940,
+      "is_interactive": true,
+      "page": "ai-assistant",
+      "title": "AI 助手 A（推荐）· 顶栏 AI 入口 + 底部「后端·模型」双联输入舱 + 结构化状态下拉 + 侧栏/全屏双模切换",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "AiWorkspace-V2-SplitStudio.dc.html": {
+      "expand": "fill",
+      "h": 940,
+      "is_interactive": true,
+      "page": "ai-assistant",
+      "title": "AI 助手 B · 顶栏「侧栏 | 全屏」分段控制器 + 二级后端直选环境条 + 全屏三栏原文对照工作台",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "AiWorkspace-V3-ActionDeck.dc.html": {
+      "expand": "fill",
+      "h": 940,
+      "is_interactive": true,
+      "page": "ai-assistant",
+      "title": "AI 助手 C · 合一 Agent 命令弹出舱（2×2 后端网格 + 模型直选）+ 页隼徽章空状态 + 全屏沉浸画布",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
     }
   },
   "createdOnFiles": {
@@ -861,10 +891,19 @@
     }
   ],
   "launch": {
-    "page": "workspace",
+    "page": "ai-assistant",
     "view": "canvas"
   },
   "notes": {
+    "ai-assistant-row": {
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "ai-assistant",
+      "text": "AI 助手全流程重构 · 顶栏右上角 AI 图标 + 侧栏/全屏模式切换 + 空状态与下拉排布 · 三套方案",
+      "w": 240,
+      "x": 0,
+      "y": -240
+    },
     "dynamic-titlebar-row": {
       "kind": "title1",
       "maxW": 4480,
@@ -1015,9 +1054,16 @@
     "DynamicTitlebar-V3-UnifiedPill.dc.html",
     "InlineCode-Notion-V1-Classic.dc.html",
     "InlineCode-Notion-V2-FocusRing.dc.html",
-    "InlineCode-Notion-V3-SoftCrimson.dc.html"
+    "InlineCode-Notion-V3-SoftCrimson.dc.html",
+    "AiWorkspace-V1-ComposerUnified.dc.html",
+    "AiWorkspace-V2-SplitStudio.dc.html",
+    "AiWorkspace-V3-ActionDeck.dc.html"
   ],
   "pages": [
+    {
+      "id": "ai-assistant",
+      "name": "AI 助手与全屏模式"
+    },
     {
       "id": "workspace",
       "name": "工作区与文件"
