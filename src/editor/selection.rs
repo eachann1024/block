@@ -41,6 +41,7 @@ impl Editor {
         Some(if i == ai { a.offset } else { 0 }..if i == bi { b.offset } else { len })
     }
     pub(in crate::editor) fn set_head(&mut self, mut at: Position, extend: bool, cx: &mut Context<Self>) {
+        crate::editor::block_shortcuts::clear_first_line_delete();
         if let Some(block) = self.doc.get(at.block) { at.offset = boundary(&block.text, at.offset); }
         else { return; }
         self.ensure_block_visible(at.block);

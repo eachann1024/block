@@ -112,6 +112,25 @@ pub fn handle_button(
         .on_mouse_down(MouseButton::Left, listener)
 }
 
+pub fn delete_arm_caret_color() -> Hsla {
+    if is_dark() { rgb(0xff857d).into() } else { rgb(0xb92d29).into() }
+}
+
+pub fn delete_arm_button(id: (&'static str, usize), zoom: f32, listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    let dark = is_dark();
+    let bg: Hsla = if dark { rgba(0xff73692e).into() } else { rgba(0xd44c471f).into() };
+    let hover_bg: Hsla = if dark { rgba(0xff736942).into() } else { rgba(0xd44c4733).into() };
+    let border: Hsla = if dark { rgba(0xff73697a).into() } else { rgba(0xb92d2961).into() };
+    let fg = delete_arm_caret_color();
+    div().id(id).size(px(24. * zoom)).flex_none().rounded(px(6. * zoom)).flex().items_center().justify_center()
+        .bg(bg).border_1().border_color(border).hover(move |s| s.bg(hover_bg)).cursor(CursorStyle::PointingHand)
+        .children(crate::ui::smoke_overlay::probe("first-line-delete-badge"))
+        .child(icon(Icon::KeyBackspace, px(15. * zoom), theme.mono_icon_colors(fg)))
+        .tooltip(move |window, cx| build_tooltip(tr("再次按删除键删除此行", "Press Backspace again to delete this line"), window, cx))
+        .on_mouse_down(MouseButton::Left, listener)
+}
+
 pub fn fold_button(
     folded: bool,
     id: (&'static str, usize),

@@ -33,6 +33,7 @@ pub(super) fn session_doc(sess: &TabSession) -> Option<SaveDoc> {
 impl Editor {
     pub(crate) fn has_parked_session(&self, path: &Path) -> bool { self.sessions.contains_key(path) }
     pub(crate) fn clear_transient_overlays(&mut self) {
+        crate::editor::block_shortcuts::clear_first_line_delete();
         self.clear_pointer();
         self.toolbar_anchor = None;
         self.hover = None;

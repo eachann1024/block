@@ -44,6 +44,9 @@ impl Editor {
 
 use super::{input::transactions::ListChange, model::Block, view::selection::Position};
 
+thread_local! { static FIRST_LINE_ARMED: std::cell::RefCell<Option<u64>> = const { std::cell::RefCell::new(None) }; }
+pub(in crate::editor) fn clear_first_line_delete() { FIRST_LINE_ARMED.with(|slot| *slot.borrow_mut() = None); }
+
 fn is_list(block: &Block) -> bool { matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) }
 fn is_divider(block: &Block) -> bool {
     super::image_source::spec_of(block).is_none() && super::block_menu::is_divider(block)
@@ -52,6 +55,24 @@ fn is_divider(block: &Block) -> bool {
 fn structural(block: &Block) -> bool { block.meta.raw_source.is_some() || block.meta.code_language.is_some() }
 
 impl Editor {
+    pub(in crate::editor) fn can_arm_first_line_delete(&self, id: u64) -> bool {
+        !self.minimal && self.path.is_some() && self.is_markdown_note() && !self.editing_source()
+            && self.doc.blocks.len() > 1 && self.caret.is_empty() && self.caret.composing.is_none()
+            && self.block_sel.is_none() && self.table_sel.is_none() && self.caret.head == (Position { block: id, offset: 0 })
+            && self.doc.blocks.first().is_some_and(|b| b.id == id && b.kind == Kind::Paragraph && b.text.is_empty()
+                && b.meta.indent == 0 && b.meta.code_language.is_none() && b.meta.table.is_none()
+                && b.meta.raw_source.is_none() && b.meta.callout.is_none() && b.meta.html_paragraph.is_none())
+    }
+    pub(in crate::editor) fn is_first_line_delete_armed(&self, id: u64) -> bool {
+        FIRST_LINE_ARMED.with(|slot| *slot.borrow() == Some(id)) && self.can_arm_first_line_delete(id)
+    }
+    pub(in crate::editor) fn confirm_first_line_delete(&mut self, id: u64, cx: &mut Context<Self>) -> bool {
+        clear_first_line_delete();
+        if !self.can_arm_first_line_delete(id) { return false; }
+        let Some(next) = self.doc.blocks.get(1).cloned() else { return false };
+        self.drop_block(0, Position { block: next.id, offset: 0 }, cx);
+        true
+    }
     fn drop_block(&mut self, index: usize, to: Position, cx: &mut Context<Self>) {
         let before = self.snapshot();
         self.doc.splice_blocks(index..index + 1, Vec::new());
@@ -170,6 +191,11 @@ impl Editor {
             }
             Kind::Paragraph if block.meta.indent > 0 => { self.tab_outside_table(false, cx); return true; }
             Kind::Paragraph => {}
+        }
+        if top_of_flow && self.can_arm_first_line_delete(block.id) {
+            if self.is_first_line_delete_armed(block.id) { return self.confirm_first_line_delete(block.id, cx); }
+            FIRST_LINE_ARMED.with(|slot| *slot.borrow_mut() = Some(block.id));
+            cx.notify(); return true;
         }
         let Some(prev) = index.checked_sub(1).map(|i| self.doc.blocks[i].clone()) else { return false };
         if prev.meta.table.is_some() || !structural(&prev) { return false; }
