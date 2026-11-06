@@ -19,8 +19,10 @@ pub fn shadows() -> Vec<BoxShadow> {
 
 pub fn card(id: impl Into<ElementId>, width: Option<Pixels>) -> Stateful<Div> {
     let p = palette();
+    let id = id.into();
+    let probe = crate::ui::smoke_overlay::probe_for(&id);
     div()
-        .id(id)
+        .id(id).relative().children(probe)
         .when_some(width, |d, w| d.w(w))
         .p(px(6.))
         .rounded(crate::ui::radius::SURFACE)

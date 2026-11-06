@@ -51,6 +51,10 @@ pub fn probe_for(id: &gpui::ElementId) -> Option<gpui::Canvas<()>> {
     probe(id.to_string())
 }
 
+pub fn clear_targets() {
+    TARGET_BOUNDS.with(|map| map.borrow_mut().clear());
+}
+
 pub fn reset() {
     TARGET_BOUNDS.with(|map| map.borrow_mut().clear());
     PULSE.with(|state| *state.borrow_mut() = PulseState::default());

@@ -2,7 +2,7 @@
 //! shared surface/item/separator used by the notebook switcher.
 use std::path::{Path, PathBuf};
 use gpui::{
-    AnyElement, App, Context, MouseButton, Pixels, Stateful, Div, Window, div, point,
+    AnyElement, App, Context, MouseButton, Pixels, Stateful, Div, Window, div,
     prelude::*, px,
 };
 use crate::{
@@ -69,6 +69,7 @@ impl Workspace {
     pub(super) fn tree_menu(&self, target: &(PathBuf, bool), position: gpui::Point<Pixels>, moving: bool,
         cx: &mut Context<Self>) -> Vec<AnyElement> {
         let (path, dir) = target.clone();
+        let move_bounds = std::rc::Rc::new(std::cell::Cell::new(None));
         let mut items: Vec<AnyElement> = Vec::new();
         if !dir {
             let p = path.clone();
@@ -109,6 +110,7 @@ impl Workspace {
                 ..Default::default()
             },
         )
+        .relative().children(crate::ui::smoke_overlay::probe("tree-move-row")).child(crate::ui::placement::track_bounds(move_bounds.clone(), false))
         .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
             if *hovered { if let Some(menu) = &mut this.menu { if !menu.moving { menu.moving = true; cx.notify(); } } }
         }))
@@ -135,15 +137,11 @@ impl Workspace {
         )
         .into_any_element()];
         if moving {
-            let move_row = if dir { 2. } else { 3. };
-            let sep_offset = if dir { 0. } else { 13. };
-            let row_rect = gpui::Bounds::new(
-                point(position.x, position.y + px(4. + sep_offset + move_row * 30.)),
-                gpui::size(px(MENU_WIDTH), px(30.)),
-            );
-            let sub_spec = crate::dropdown::PlacementSpec::below(row_rect)
-                .align_x(crate::dropdown::AlignX::CascadeRight { gap: px(4.) });
-            out.push(crate::dropdown::deferred_popover_for(sub_spec, self.move_list(&path, dir, cx), 3).into_any_element());
+            out.push(crate::dropdown::deferred_popover_with(move |_, _| {
+                let row = move_bounds.get().unwrap_or(gpui::Bounds::new(position, gpui::size(px(MENU_WIDTH), px(28.))));
+                crate::dropdown::PlacementSpec::below(row)
+                    .align_x(crate::dropdown::AlignX::CascadeRight { gap: px(8.) })
+            }, self.move_list(&path, dir, cx), 3).into_any_element());
         }
         out
     }
@@ -172,7 +170,7 @@ impl Workspace {
                     .pl(px(10. + depth.min(6) as f32 * 12.)).into_any_element()
             }).collect::<Vec<_>>();
         let empty = items.is_empty();
-        menu_surface(px(MENU_WIDTH)).id("move-list").max_h(px(300.)).overflow_y_scroll()
+        dropdown::shell("move-list").w(px(MENU_WIDTH)).max_h(px(300.)).overflow_y_scroll()
             .children(items)
             .when(empty, |s| s.child(div().h(px(32.)).px(px(10.)).flex().items_center()
                 .text_color(Theme::ocean().text_secondary).child(tr("没有可移动到的位置", "No destination available"))))
