@@ -53,6 +53,7 @@ impl Run {
         self.click_target(cx, "ai-chat-history", "Step 14/14 · 展开顶栏历史会话列表").await?;
         self.click_target(cx, "ai-chat-history", "Step 14/14 · 收起顶栏历史会话列表").await?;
         self.chat_selection(cx).await?;
+        self.chat_composer(cx).await?;
         self.click_target(cx, "ai-chat-close", "Step 14/14 · 关闭 AI 面板").await?;
         self.check(14, self.query(cx, |_, cx| !crate::editor::ai::chat::is_open(cx)), "AI 面板已关闭")
     }

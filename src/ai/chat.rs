@@ -2,7 +2,7 @@
 //! ⌘J toggles the panel; @ references notes and / picks commands and Skills.
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use gpui::{App, AppContext, Context, Entity, Global, ScrollHandle, Subscription, WeakEntity, Window};
-use gpui_component::input::{InputEvent, InputState};
+use gpui_component::input::{InputEvent, TextareaState};
 use super::agent;
 use crate::editor::view::Editor;
 #[path = "chat_resize.rs"] mod chat_resize;
@@ -42,7 +42,7 @@ pub(super) struct Conv {
 pub(crate) struct AiChat {
     pub(super) convs: Vec<Conv>,
     pub(super) current: Option<u64>,
-    pub(super) input: Entity<InputState>,
+    pub(super) input: Entity<TextareaState>,
     pub(super) refs: Vec<String>,
     pub(super) skills: Vec<String>,
     pub(super) partial: String,
@@ -134,9 +134,9 @@ impl Editor {
 impl AiChat {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let active = chat_drafts::load_active();
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder(first_placeholder()).default_value(active.text.clone()));
+        let input = cx.new(|cx| TextareaState::new(window, cx).auto_grow(2, 6).soft_wrap(true).submit_on_enter(true).placeholder(first_placeholder()).default_value(active.text.clone()));
         let sub = cx.subscribe_in(&input, window, |this, _, e: &InputEvent, window, cx| match e {
-            InputEvent::PressEnter { secondary: false, .. } => this.send(window, cx),
+            InputEvent::PressEnter { secondary: false, shift: false } => this.send(window, cx),
             InputEvent::Change => { this.pick_index = 0; this.picker_dismissed = false; this.persist_active_draft(cx); cx.notify(); },
             _ => {}
         });
@@ -237,3 +237,6 @@ pub(crate) fn enable_smoke_builtin(window: &mut Window, cx: &mut App) -> Result<
     window.refresh();
     Ok(())
 }
+
+#[path = "chat_input_smoke.rs"]
+pub(crate) mod input_smoke;
