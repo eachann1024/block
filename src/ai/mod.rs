@@ -15,6 +15,10 @@ mod settings_view;
 #[cfg(not(target_family = "wasm"))]
 mod chat_ui;
 #[cfg(not(target_family = "wasm"))]
+mod chat_deck;
+#[cfg(not(target_family = "wasm"))]
+mod chat_empty;
+#[cfg(not(target_family = "wasm"))]
 mod backend_ui;
 #[cfg(not(target_family = "wasm"))]
 mod dsh_ui;
@@ -26,6 +30,8 @@ pub(crate) mod chat;
 pub(crate) mod chat {
     pub fn toggle(_: gpui::WeakEntity<crate::editor::Editor>, _: &mut gpui::Window, _: &mut gpui::App) {}
     pub fn panel(_: &gpui::App) -> Option<gpui::Empty> { None }
+    pub fn is_open(_: &gpui::App) -> bool { false }
+    pub fn is_fullscreen(_: &gpui::App) -> bool { false }
 }
 #[cfg(not(target_family = "wasm"))]
 pub(super) mod agent;

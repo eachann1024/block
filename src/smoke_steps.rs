@@ -26,7 +26,27 @@ impl Run {
         self.global_search(cx).await?;
         self.tabs_and_sidebar(cx).await?;
         self.settings(cx).await?;
-        self.code_block_open(cx).await
+        self.code_block_open(cx).await?;
+        self.ai_panel_and_deck(cx).await
+    }
+
+    async fn ai_panel_and_deck(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.click_target(cx, "titlebar-ai", "Step 14/14 · 点击顶栏 AI 图标打开面板").await?;
+        self.check(14, self.query(cx, |_, cx| crate::editor::ai::chat::is_open(cx)), "顶栏 AI 图标已打开 AI 侧栏")?;
+        self.click_target(cx, "ai-empty-polish", "Step 14/14 · 点击页隼空状态快捷指令").await?;
+        self.click_target(cx, "ai-layout-toggle", "Step 14/14 · 切换 AI 全屏沉浸模式").await?;
+        self.check(14, self.query(cx, |_, cx| crate::editor::ai::chat::is_fullscreen(cx)), "已切换至 AI 全屏沉浸模式")?;
+        self.click_target(cx, "ai-layout-toggle", "Step 14/14 · 切回 AI 侧栏模式").await?;
+        self.check(14, self.query(cx, |_, cx| !crate::editor::ai::chat::is_fullscreen(cx)), "已切回 AI 侧栏模式")?;
+        self.click_target(cx, "ai-deck-trigger", "Step 14/14 · 打开底部合一 Agent 命令舱").await?;
+        self.click_target(cx, "ai-backend-Dsh", "Step 14/14 · 切换 dsh 并展开原位配置").await?;
+        self.click_target(cx, "dsh-auth-block", "Step 14/14 · 选择复用 Block 配置").await?;
+        self.click_target(cx, "ai-backend-Builtin", "Step 14/14 · 切回内置 AI 后端").await?;
+        self.click_target(cx, "ai-deck-trigger", "Step 14/14 · 收起合一 Agent 命令舱").await?;
+        self.click_target(cx, "ai-session-switcher", "Step 14/14 · 展开顶栏会话历史切换器").await?;
+        self.click_target(cx, "ai-session-switcher", "Step 14/14 · 收起顶栏会话历史切换器").await?;
+        self.click_target(cx, "ai-chat-close", "Step 14/14 · 关闭 AI 面板").await?;
+        self.check(14, self.query(cx, |_, cx| !crate::editor::ai::chat::is_open(cx)), "AI 面板已关闭")
     }
 
     /// Opening a note whose first paint includes a code block used to re-enter Editor and abort.
