@@ -27,6 +27,10 @@ pub fn ignored(name: &str) -> bool {
         || name.eq_ignore_ascii_case("thumbs.db") || name.eq_ignore_ascii_case("desktop.ini")
 }
 
+pub fn ignored_file(name: &str) -> bool {
+    ignored(name) || (crate::theme::hide_non_markdown_files() && !is_markdown(name))
+}
+
 pub fn ignored_dir(name: &str) -> bool {
     if ignored(name) {
         return true;
@@ -101,7 +105,6 @@ fn read_level(dir: &Path, result: &mut Scan, depth: usize) -> io::Result<Vec<Nod
             Err(error) => { warn(result, dir, error); continue; }
         };
         let name = entry.file_name().to_string_lossy().into_owned();
-        if ignored(&name) { continue; }
         let path = entry.path();
         let kind = match entry.file_type() {
             Ok(kind) => kind,
@@ -115,6 +118,7 @@ fn read_level(dir: &Path, result: &mut Scan, depth: usize) -> io::Result<Vec<Nod
             });
             nodes.push(Node { name, path, dir: true, children });
         } else if listed_file(&kind, &path) {
+            if ignored_file(&name) { continue; }
             nodes.push(Node { name, path, dir: false, children: Vec::new() });
         }
     }
