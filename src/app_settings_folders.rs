@@ -209,7 +209,7 @@ impl Workspace {
         crate::theme::set_hide_non_markdown_files(next);
         cx.background_executor().spawn(async move {
             let _ = update_state(move |s| {
-                s.hide_non_markdown_files = next.then_some(true);
+                s.hide_non_markdown_files = (!next).then_some(false);
             });
         }).detach();
         self.rescan_current_folder(cx);
