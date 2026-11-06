@@ -11,6 +11,7 @@ mod icons;
 pub mod log;
 mod mascot;
 mod menu_bar;
+mod performance;
 pub mod page_history;
 mod quick;
 mod search;

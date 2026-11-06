@@ -37,10 +37,7 @@ static ICON: LazyLock<Arc<Image>> = LazyLock::new(|| {
 
 pub fn open(cx: &mut App) {
     crate::search::window::activate_main_window(cx);
-    HOVERED.store(HOVER_NONE, Ordering::Relaxed);
-    PROFILE_BURST.store(0, Ordering::Relaxed);
-    REPO_BURST.store(0, Ordering::Relaxed);
-    OPEN.store(true, Ordering::Relaxed);
+    open_state();
     if let Some((Some(handle), workspace)) = crate::search::window::main_window(cx) {
         let _ = handle.update(cx, |_, window, cx| {
             workspace.update(cx, |w, cx| {
@@ -51,8 +48,16 @@ pub fn open(cx: &mut App) {
     }
 }
 
+pub(crate) fn open_state() {
+    HOVERED.store(HOVER_NONE, Ordering::Relaxed);
+    PROFILE_BURST.store(0, Ordering::Relaxed);
+    REPO_BURST.store(0, Ordering::Relaxed);
+    OPEN.store(true, Ordering::Relaxed);
+}
+
 /// Closes the dialog; returns whether it was open.
 pub fn close() -> bool {
+    crate::performance::close();
     HOVERED.store(HOVER_NONE, Ordering::Relaxed);
     OPEN.swap(false, Ordering::Relaxed)
 }
@@ -158,6 +163,13 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
             hovered == HOVER_REPO,
             repo_seq,
             cx.listener(|_, active: &bool, _, cx| set_hover(HOVER_REPO, *active, cx)),
+        ))
+        .child(modal::action_button(
+            "about-performance",
+            tr("性能与占用", "Performance & Usage"),
+            cx.listener(|this, _, _, cx| {
+                crate::performance::open(this.performance_folders(), cx);
+            }),
         ));
 
     let close_btn = modal::action_button(
