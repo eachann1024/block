@@ -1,9 +1,9 @@
 //! AI side panel with streamed conversations, notebook tools and reversible plans.
 //! ⌘J toggles the panel; @ references notes and / picks commands and Skills.
-use std::{sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc}, time::Duration};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use gpui::{App, AppContext, Context, Entity, Global, ScrollHandle, Subscription, WeakEntity, Window};
 use gpui_component::input::{InputEvent, InputState};
-use super::{agent, provider::{self, Event}};
+use super::agent;
 use crate::editor::view::Editor;
 #[path = "chat_resize.rs"] mod chat_resize;
 pub(crate) use chat_resize::resize_capture;
@@ -16,7 +16,7 @@ pub(crate) use chat_resize::resize_capture;
 
 pub(super) fn first_placeholder() -> &'static str { crate::theme::tr("向 AI 提问，/ 调用技能，@ 引用笔记…", "Ask AI, / for skills, @ to reference notes…") }
 pub(super) fn follow_placeholder() -> &'static str { crate::theme::tr("继续追问…", "Ask a follow-up…") }
-const MAX_STEPS: usize = 8;
+#[path = "chat_turn.rs"] mod chat_turn;
 
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct Msg {
@@ -207,93 +207,23 @@ impl AiChat {
         agent::Ctx { root, current, current_md }
     }
 
-    pub(super) fn run_turn(&mut self, step: usize, window: &mut Window, cx: &mut Context<Self>) {
-        let ctx = self.agent_ctx(cx);
-        let notebook = ctx.root.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        let live = self.note_context(cx);
-        let system = format!("{}\n\n# 当前上下文\n\n- 当前笔记本：{}\n- 当前打开页面：{}\n- 当前内容范围：{}\n\n{}\n\n# 当前选区\n\n{}", agent::AGENTS,
-            if notebook.is_empty() { "（无）" } else { &notebook },
-            ctx.current.as_ref().map(|p| format!("[{p}] {p}（pageId: {p}）")).unwrap_or("（无当前打开页面）".into()),
-            if self.selection_scope { "选区" } else { "当前笔记" }, live.markdown.unwrap_or_default(), live.selection.unwrap_or_default());
-        let mut messages = vec![serde_json::json!({ "role": "system", "content": system })];
-        if let Some(c) = self.conv() {
-            for m in &c.messages {
-                messages.push(match m.role.as_str() {
-                    "tool" => serde_json::json!({ "role": "tool", "tool_call_id": m.tool_call_id, "content": m.content }),
-                    "assistant" if m.tool_calls.is_some() => serde_json::json!({ "role": "assistant", "content": m.content, "tool_calls": m.tool_calls }),
-                    role => serde_json::json!({ "role": role, "content": format!("{}{}", m.content, m.context.as_deref().unwrap_or("")) }),
-                });
-            }
-        }
-        let cancel = Arc::new(AtomicBool::new(false));
-        self.serial += 1;
-        let serial = self.serial;
-        self.streaming = Some((serial, cancel.clone()));
-        self.partial.clear();
-        let rx = provider::stream_agent(messages, Some(agent::tools()), cancel);
-        cx.spawn_in(window, async move |this, cx| {
-            let mut calls = Vec::new();
-            loop {
-                cx.background_executor().timer(Duration::from_millis(40)).await;
-                let mut finished = false;
-                let alive = this.update_in(cx, |this, window, cx| {
-                    if this.serial != serial { finished = true; return; }
-                    let mut failed = false;
-                    loop {
-                        match rx.try_recv() {
-                            Ok(Event::Thinking(_)) => {}
-                            Ok(Event::Delta(t)) => this.partial.push_str(&t),
-                            Ok(Event::ToolCalls(c)) => calls = c,
-                            Ok(Event::Done) => { finished = true; break; }
-                            Ok(Event::Failed { message, settings }) => { this.error = Some(provider::format_error(&message)); this.error_settings = settings; finished = true; failed = true; break; }
-                            Err(mpsc::TryRecvError::Empty) => break,
-                            Err(mpsc::TryRecvError::Disconnected) => { this.error = Some("AI backend disconnected".into()); finished = true; failed = true; break; }
-                        }
-                    }
-                    if finished {
-                        this.streaming = None;
-                        if failed { calls.clear(); }
-                        let text = std::mem::take(&mut this.partial);
-                        if calls.is_empty() {
-                            if !text.trim().is_empty() { this.push("assistant", text); }
-                        } else {
-                            let tc: Vec<serde_json::Value> = calls.iter().map(|(id, name, args)| serde_json::json!({
-                                "id": id, "type": "function", "function": { "name": name, "arguments": args } })).collect();
-                            this.push_msg(Msg { role: "assistant".into(), content: text, tool_calls: Some(tc.into()), ..Default::default() });
-                            for (id, name, args) in std::mem::take(&mut calls) {
-                                let root = serde_json::from_str::<serde_json::Value>(&args).ok().and_then(|value| value.get("notebookRoot").and_then(|root| root.as_str()).map(str::to_owned));
-                                let ctx = root.as_ref().map(|root| this.context_for_root(std::path::Path::new(root), cx)).unwrap_or_else(|| Ok(this.agent_ctx(cx)));
-                                let (mut result, plan) = match ctx {
-                                    Ok(ctx) => agent::exec(&name, &args, &ctx),
-                                    Err(error) => (serde_json::json!({"error":error}), None),
-                                };
-                                let auto = plan.as_ref().is_some_and(|p| p.ops.iter().all(|o| matches!(o.kind, agent::OpKind::Create { .. })));
-                                this.push_msg(Msg { role: "tool".into(), content: String::new(), tool_call_id: Some(id), plan, ..Default::default() });
-                                if auto {
-                                    let at = this.conv().map(|c| c.messages.len() - 1).unwrap_or(0);
-                                    this.apply_plan(at, cx);
-                                    result = if this.plan_at(at).map(|p| p.state.clone()) == Some(agent::PlanState::Applied) {
-                                        serde_json::json!({ "status": "applied", "message": "已新建页面。" })
-                                    } else { serde_json::json!({ "error": this.error.clone().unwrap_or_else(|| "新建失败：目标页面已变化或不可写。".into()) }) };
-                                }
-                                if let Some(m) = this.current.and_then(|cid| this.convs.iter_mut().find(|c| c.id == cid)).and_then(|c| c.messages.last_mut()) {
-                                    m.content = result.to_string();
-                                }
-                            }
-                            this.persist();
-                            if step + 1 < MAX_STEPS { this.run_turn(step + 1, window, cx); }
-                        }
-                        if failed { this.restore_failed_draft(window, cx); }
-                        if !failed && calls.is_empty() && this.streaming.is_none() { this.sent_draft = None; }
-                    }
-                    this.scroll.scroll_to_bottom();
-                    cx.notify();
-                });
-                if alive.is_err() || finished { break; }
-            }
-        }).detach();
-        self.scroll.scroll_to_bottom();
-        cx.notify();
-    }
+}
 
+/// Seeds only the isolated smoke worker; never touches the user's conversations.
+pub(crate) fn prepare_selection_smoke(window: &mut Window, cx: &mut App) -> Result<(), String> {
+    if !crate::smoke::is_requested() { return Err("Selection fixture requires smoke mode".into()); }
+    let config = super::provider::Config { provider: "openai".into(), base_url: "http://127.0.0.1:1/v1".into(),
+        api_key: "smoke-fixture".into(), model: "smoke-fixture".into(), ..Default::default() };
+    super::provider::save(&config)?;
+    chat(window, cx).update(cx, |this, cx| {
+        this.new_conv(window, cx);
+        this.open = true;
+        this.backend_config.selected = super::backend::BackendKind::Builtin;
+        this.push("user", "用户拖选 Alpha Beta".into());
+        this.push("assistant", "回复 **加粗** 中文 Alpha\n\n第二段 Beta 结束".into());
+        this.scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(0.)));
+        cx.notify();
+    });
+    window.refresh();
+    Ok(())
 }
