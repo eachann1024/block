@@ -99,6 +99,7 @@ impl AiSettings {
             let msg = if is_en() { format!("Failed to save: {e}") } else { format!("保存失败：{e}") };
             self.test_note = Some(TestNote::Err(msg));
         }
+        super::chat::sync_settings(cx);
         cx.notify();
     }
 
