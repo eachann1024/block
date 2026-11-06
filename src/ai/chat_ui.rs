@@ -23,16 +23,16 @@ impl Render for AiChat {
             self.input.update(cx, |i, cx| i.set_placeholder(ph, window, cx));
         }
         let theme = Theme::ocean();
-        let note = self.agent_ctx(cx).current;
-        let title = self.conv().map(|conversation| conversation.title.clone()).unwrap_or_else(|| note.as_ref().map(|note| format!("{} · {note}", tr("新会话", "New chat"))).unwrap_or_else(|| tr("新会话", "New chat").to_owned()));
-        let header = div().h(px(52.)).flex_none().px(px(16.)).flex().items_center().gap(px(8.)).border_b_1().border_color(theme.hairline)
-            .child(div().flex_1().min_w_0().child(crate::ui::ai_controls::action_chip("ai-session-switcher", None, title, false, self.history, cx.listener(|this, _, _, cx| {
-                cx.stop_propagation(); backend_ui::close_menu(); this.history = !this.history; cx.notify();
-            })).h(px(30.)).max_w(px(240.)).child(glyph(Icon::ChevronDown, 13., theme.text_secondary))))
-            .child(crate::ui::ai_controls::action_chip("ai-layout-toggle", Some(if self.fullscreen { Icon::WindowRestore } else { Icon::WindowMax }), if self.fullscreen { tr("侧栏", "Sidebar") } else { tr("全屏", "Full screen") }, false, false,
-                cx.listener(|this, _, window, cx| { cx.stop_propagation(); this.fullscreen = !this.fullscreen; window.refresh(); cx.notify(); })).h(px(28.)).px(px(10.)).bg(theme.shell).rounded(crate::ui::radius::CONTROL))
+        let title = self.conv().map(|conversation| conversation.title.clone()).unwrap_or_else(|| tr("新会话", "New chat").to_owned());
+        let header = div().h(px(52.)).flex_none().px(px(16.)).flex().items_center().gap(px(4.)).border_b_1().border_color(theme.hairline)
+            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(15.)).font_weight(FontWeight(600.)).child(title))
+            .child(crate::ui::icon_button::header_action_button("ai-layout-toggle", if self.fullscreen { Icon::WindowRestore } else { Icon::WindowMax }, self.fullscreen, if self.fullscreen { tr("切回侧栏", "Switch to sidebar") } else { tr("全屏", "Full screen") },
+                cx.listener(|this, _, window, cx| { this.fullscreen = !this.fullscreen; window.refresh(); cx.notify(); })))
             .child(crate::ui::icon_button::header_action_button("ai-chat-new", Icon::AiPlus, false, tr("新建会话", "New chat"), cx.listener(|this, _, w, cx| {
                 let backend = this.selected_backend(); this.new_conv(w, cx); this.select_backend(backend, w, cx);
+            })))
+            .child(crate::ui::icon_button::header_action_button("ai-chat-history", Icon::History, self.history, tr("历史会话", "Chat history"), cx.listener(|this, _, _, cx| {
+                backend_ui::close_menu(); this.history = !this.history; cx.notify();
             })))
             .child(crate::ui::icon_button::header_action_button("ai-chat-close", Icon::Close, false, tr("关闭 AI", "Close AI"), cx.listener(|this, _, window, cx| { this.open = false; this.fullscreen = false; backend_ui::close_menu(); window.refresh(); cx.notify(); })));
         let history = self.history.then(|| {
@@ -174,18 +174,7 @@ impl Render for AiChat {
             .child(div().h(px(54.)).text_size(px(14.)).child(Input::new(&self.input).appearance(false).bordered(false).focus_bordered(false).h(px(54.))))
             .child(div().flex().items_center().gap(px(6.))
                 .child(div().flex_1().min_w_0().flex().items_center().gap(px(6.))
-                    .child(super::chat_deck::trigger(self, cx))
-                    .child(crate::ui::ai_controls::action_chip("ai-reference-trigger", None, note.map(|note| format!("@{note}")).unwrap_or_else(|| "@".into()), false, false, cx.listener(|this, _, window, cx| {
-                        backend_ui::close_menu();
-                        let mut text = this.input.read(cx).value().to_string();
-                        if !text.rsplit(char::is_whitespace).next().unwrap_or("").starts_with('@') {
-                            if !text.is_empty() && !text.ends_with(char::is_whitespace) { text.push(' '); }
-                            text.push('@');
-                        }
-                        this.picker_dismissed = false; this.pick_index = 0;
-                        this.input.update(cx, |input, cx| { input.set_value(text, window, cx); input.focus(window, cx); });
-                        cx.notify();
-                    })).h(px(30.)).max_w(px(100.)).overflow_hidden().border_1().border_color(theme.btn_border).tooltip(crate::theme::tooltip(tr("引用笔记", "Reference note")))))
+                    .child(super::chat_deck::trigger(self, cx)))
                 .child(action));
 
         div().id("ai-chat-panel").when(self.fullscreen, |panel| panel.flex_1().w_full().min_w_0()).when(!self.fullscreen, |panel| panel.w(px(396.)).flex_none().border_l_1().border_color(theme.hairline)).h_full().flex().flex_col().relative().bg(theme.paper)
