@@ -64,10 +64,7 @@ impl Workspace {
 
     /// Invisible 8px strip over the sidebar's right border.
     pub(super) fn resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = Theme::ocean();
-        let active = self.resizing.is_some();
-        div().id("sidebar-resize").absolute().top_0().right(px(-4.)).w(px(8.)).h_full()
-            .cursor(CursorStyle::ResizeLeftRight).group("sidebar-resize")
+        crate::ui::resize_handle::resize_handle("sidebar-resize", crate::ui::resize_handle::Edge::Right, self.resizing.is_some())
             .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
                 cx.stop_propagation();
                 if event.click_count >= 2 {
@@ -79,9 +76,6 @@ impl Workspace {
                 }
                 cx.notify();
             }))
-            .child(div().absolute().top_0().left(px(3.)).w(px(2.)).h_full()
-                .when(active, |line| line.bg(theme.accent))
-                .when(!active, |line| line.group_hover("sidebar-resize", |style| style.bg(theme.menu_border))))
     }
 
     /// Full-window capture while dragging, so the cursor and moves never get lost.
