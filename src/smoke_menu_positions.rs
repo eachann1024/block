@@ -6,9 +6,30 @@ fn bounds(id: &str) -> Result<Bounds<Pixels>, String> {
     smoke_overlay::target_bounds(id).ok_or_else(|| format!("菜单定位缺少实际布局：{id}"))
 }
 
+fn aligned_left(button: Bounds<Pixels>, popup: Bounds<Pixels>, viewport: Bounds<Pixels>) -> Pixels {
+    let min = viewport.left() + px(8.);
+    let max = viewport.right() - px(8.);
+    if button.left() >= min && button.left() + popup.size.width <= max { button.left() }
+    else if button.right() - popup.size.width >= min && button.right() <= max { button.right() - popup.size.width }
+    else { button.left().min(max - popup.size.width).max(min) }
+}
+
 impl Run {
     pub(super) async fn menu_positions(&self, cx: &AsyncApp) -> Result<(), String> {
         use crate::theme::tr;
+        use crate::ui::placement::{AlignX, PlacementSpec, resolve_origin};
+        use gpui::{point, size};
+        let viewport = Bounds::new(point(px(100.), px(40.)), size(px(600.), px(500.)));
+        for (x, width, align, expected) in [
+            (620., 206., AlignX::Left, 446.),
+            (120., 206., AlignX::Right, 120.),
+            (380., 500., AlignX::Left, 192.),
+            (200., 206., AlignX::Left, 200.),
+        ] {
+            let trigger = Bounds::new(point(px(x), px(500.)), size(px(32.), px(28.)));
+            let origin = resolve_origin(&PlacementSpec::below(trigger).viewport(viewport).align_x(align), size(px(width), px(126.)), size(px(800.), px(600.)));
+            self.check(6, origin == point(px(expected), px(370.)), "菜单左右翻转、双侧不足贴边及底部向上展开")?;
+        }
         for (trigger, menu) in [
             (tr("文字类型", "Text type"), "toolbar-kind-menu"),
             (tr("列表", "Lists"), "toolbar-kind-menu"),
@@ -20,8 +41,8 @@ impl Run {
             let button = bounds(trigger)?;
             let popup = bounds(menu)?;
             let viewport = bounds("editor")?;
-            let expected_left = button.left().min(viewport.right() - px(8.) - popup.size.width).max(viewport.left() + px(8.));
-            self.check(6, (popup.left() - expected_left).abs() <= px(2.), "选区菜单左侧对齐触发按钮，右侧空间不足时避让")?;
+            let expected_left = aligned_left(button, popup, viewport);
+            self.check(6, (popup.left() - expected_left).abs() <= px(2.), "选区菜单空间不足时切换按钮边缘对齐")?;
             self.check(6, popup.top() >= button.bottom() + px(3.) || popup.bottom() <= button.top() - px(3.), "选区菜单不遮挡触发按钮")?;
             self.click_target(cx, trigger, "菜单定位 · 收起选区菜单").await?;
         }
@@ -75,10 +96,22 @@ impl Run {
             let name = if menu == "img-more-menu" { gpui::ElementId::from((menu, id as usize)).to_string() } else { menu.to_owned() };
             let popup = bounds(&name)?;
             let viewport = bounds("editor")?;
-            let expected_left = button.left().min(viewport.right() - px(8.) - popup.size.width).max(viewport.left() + px(8.));
+            let expected_left = aligned_left(button, popup, viewport);
             self.check(13, (popup.left() - expected_left).abs() <= px(2.) && (popup.top() >= button.bottom() + px(3.) || popup.bottom() <= button.top() - px(3.)), "图片菜单对齐按钮且不挤动工具栏")?;
             self.click_target(cx, trigger, "菜单定位 · 关闭图片子菜单").await?;
         }
+        self.win(cx, |w, cx| editor.update(cx, |e, cx| e.prepare_menu_edge_smoke(w, cx)))?;
+        self.press(cx, "cmd-down").await?;
+        self.press(cx, "shift-left").await?;
+        self.press(cx, "shift-left").await?;
+        self.click_target(cx, crate::theme::tr("列表", "Lists"), "菜单定位 · 右侧空间不足时打开列表菜单").await?;
+        self.redraw(cx);
+        let button = bounds(crate::theme::tr("列表", "Lists"))?;
+        let popup = bounds("toolbar-kind-menu")?;
+        let viewport = bounds("editor")?;
+        self.check(13, self.editor(cx, |e| e.menu_format_open()) && button.left() + popup.size.width > viewport.right() - px(8.), "真实选区复现右侧空间不足")?;
+        self.check(13, (popup.right() - button.right()).abs() <= px(2.) && popup.left() >= viewport.left() + px(7.), "空间不足的列表菜单改为与按钮右边缘对齐")?;
+        self.click_target(cx, crate::theme::tr("列表", "Lists"), "菜单定位 · 关闭边缘列表菜单").await?;
         Ok(())
     }
 }
