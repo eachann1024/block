@@ -33,7 +33,10 @@ impl Render for AiChat {
             .child(crate::ui::icon_button::header_action_button("ai-layout-toggle", if self.fullscreen { Icon::WindowRestore } else { Icon::WindowMax }, self.fullscreen, if self.fullscreen { tr("切回侧栏", "Switch to sidebar") } else { tr("全屏", "Full screen") },
                 cx.listener(|this, _, window, cx| { this.fullscreen = !this.fullscreen; window.refresh(); cx.notify(); })))
             .child(crate::ui::icon_button::header_action_button("ai-chat-new", Icon::AiPlus, false, tr("新建会话", "New chat"), cx.listener(|this, _, w, cx| {
+                cx.stop_propagation();
                 let backend = this.selected_backend(); this.new_conv(w, cx); this.select_backend(backend, w, cx);
+                // Restore focus after mouse-down blur handlers have finished.
+                cx.defer_in(w, |this, window, cx| this.input.update(cx, |input, cx| input.focus(window, cx)));
             })))
             .child(crate::ui::icon_button::header_action_button("ai-chat-history", Icon::History, self.history, tr("历史会话", "Chat history"), cx.listener(|this, _, _, cx| {
                 backend_ui::close_menu(); this.history = !this.history; cx.notify();
