@@ -77,6 +77,21 @@ impl Run {
             let normalize = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
             self.check(14, normalize(&copied) == normalize(expected), &format!("{id} 拖选复制：{copied:?}"))?;
         }
+        self.redraw(cx);
+        let message = smoke_overlay::target_bounds("ai-assistant-message").ok_or("Missing reply")?;
+        let button = smoke_overlay::target_bounds("ai-reply-copy").ok_or("Missing reply copy")?;
+        self.check(14, (button.right() - message.right()).abs() < px(1.) && button.top() >= message.bottom(), "复制按钮在回复右下角")?;
+        for (position, visible) in [(point(px(1.), px(1.)), false), (message.center(), true), (point(px(1.), px(1.)), false)] {
+            self.win(cx, |window, cx| {
+                window.dispatch_event(PlatformInput::MouseMove(MouseMoveEvent { position, modifiers: Modifiers::default(), pressed_button: None }), cx);
+            })?;
+            cx.update(|_| smoke_overlay::clear_targets());
+            self.redraw(cx);
+            self.check(14, smoke_overlay::target_bounds("ai-reply-copy-visible").is_some() == visible, "复制按钮仅在悬停回复时绘制，移出后隐藏")?;
+        }
+        self.click_target(cx, "ai-reply-copy", "悬停回复并点击复制图标").await?;
+        let copied = cx.update(|cx| cx.read_from_clipboard().and_then(|item| item.text()).unwrap_or_default());
+        self.check(14, copied == "回复 **加粗** 中文 Alpha\n\n第二段 Beta 结束", "复制按钮保留完整 Markdown")?;
         Ok(())
     }
 }
