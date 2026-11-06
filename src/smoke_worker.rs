@@ -66,6 +66,7 @@ async fn reset(run: &Run, cx: &AsyncApp) -> Result<(), String> {
     smoke_overlay::reset();
     run.win(cx, |_, cx| {
         crate::theme::sync_gpui_theme(cx);
+        crate::editor::ai::chat::sync_settings(cx);
         run.workspace.update(cx, |workspace, cx| {
             workspace.smoke_open_notebook(sandbox_path().join("notebook"), cx);
         });

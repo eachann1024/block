@@ -1,5 +1,59 @@
 //! Composer observations restricted to the isolated smoke sandbox.
 use super::*;
+use super::super::backend::{BackendConfig, BackendKind, BackendStatus};
+
+thread_local! {
+    static STATUS_OVERRIDES: std::cell::RefCell<Vec<(BackendKind, BackendStatus)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+pub(super) fn status_override(kind: BackendKind) -> Option<BackendStatus> {
+    if !crate::smoke::is_requested() { return None; }
+    STATUS_OVERRIDES.with(|cell| cell.borrow().iter().find(|(k, _)| *k == kind).map(|(_, s)| s.clone()))
+}
+
+pub(crate) fn seed_all_backends_ready(window: &mut Window, cx: &mut App) {
+    assert!(crate::smoke::is_requested());
+    let statuses: Vec<(BackendKind, BackendStatus)> = BackendKind::ALL
+        .into_iter()
+        .map(|kind| (kind, BackendStatus::Ready { version: "smoke".into() }))
+        .collect();
+    STATUS_OVERRIDES.with(|cell| *cell.borrow_mut() = statuses.clone());
+    chat(window, cx).update(cx, |this, cx| {
+        this.backend_statuses = statuses;
+        let recognized = this.recognized_backends();
+        this.backend_config.ensure_valid_selection(&recognized);
+        cx.notify();
+    });
+    window.refresh();
+}
+
+pub(crate) fn set_backend_missing(kind: BackendKind, window: &mut Window, cx: &mut App) {
+    assert!(crate::smoke::is_requested());
+    STATUS_OVERRIDES.with(|cell| {
+        let mut list = cell.borrow_mut();
+        list.retain(|(k, _)| *k != kind);
+        list.push((kind, BackendStatus::Missing));
+    });
+    chat(window, cx).update(cx, |this, cx| {
+        this.backend_statuses.retain(|(k, _)| *k != kind);
+        this.backend_statuses.push((kind, BackendStatus::Missing));
+        let recognized = this.recognized_backends();
+        this.backend_config.ensure_valid_selection(&recognized);
+        let _ = this.backend_config.save();
+        cx.notify();
+    });
+    window.refresh();
+}
+
+pub(crate) fn selected_backend(window: &mut Window, cx: &mut App) -> BackendKind {
+    assert!(crate::smoke::is_requested());
+    chat(window, cx).read(cx).selected_backend()
+}
+
+pub(crate) fn is_backend_enabled(kind: BackendKind) -> bool {
+    assert!(crate::smoke::is_requested());
+    BackendConfig::load().is_enabled(kind)
+}
 
 pub(crate) fn snapshot(window: &mut Window, cx: &mut App) -> (String, gpui::Point<gpui::Pixels>) {
     assert!(crate::smoke::is_requested());

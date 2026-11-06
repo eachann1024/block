@@ -36,6 +36,24 @@ pub(crate) fn section(cx: &App) -> Option<Entity<AiSettings>> {
     cx.try_global::<Holder>().map(|h| h.0.clone())
 }
 
+pub(crate) fn reload(window: &mut Window, cx: &mut App) {
+    let Some(entity) = section(cx) else { return };
+    entity.update(cx, |this, cx| {
+        let c = provider::stored();
+        this.enabled = c.enabled;
+        this.provider = c.provider;
+        this.protocol = c.protocol;
+        this.providers = c.providers;
+        this.model = c.model.trim().to_owned();
+        this.models = if this.model.is_empty() { Vec::new() } else { vec![this.model.clone()] };
+        this.sync_placeholders(window, cx);
+        let (url, key) = (c.base_url, c.api_key);
+        this.base_url.update(cx, |i, cx| i.set_value(url, window, cx));
+        this.api_key.update(cx, |i, cx| i.set_value(key, window, cx));
+        cx.notify();
+    });
+}
+
 fn placeholders(provider: &str, protocol: Protocol) -> (&'static str, &'static str) {
     let preset = presets::find(provider);
     let url_ph = preset.map_or("https://api.example.com/v1", |p| p.base_url);
@@ -131,6 +149,24 @@ impl AiSettings {
         self.model = id;
         self.test_note = None;
         self.save(cx);
+    }
+
+    pub(super) fn toggle_backend(&mut self, kind: super::backend::BackendKind, cx: &mut Context<Self>) {
+        let recognized = super::chat::recognized_backends(cx);
+        let mut backend_config = super::backend::BackendConfig::load();
+        let next = !backend_config.is_enabled(kind);
+        if let Err(err) = backend_config.set_enabled(kind, next, &recognized) {
+            self.test_note = Some(TestNote::Err(err));
+            cx.notify();
+            return;
+        }
+        self.test_note = None;
+        if kind == super::backend::BackendKind::Builtin {
+            self.enabled = next;
+            self.toggle_anim.record_toggle();
+        }
+        super::chat::sync_settings(cx);
+        cx.notify();
     }
 
     pub(super) fn fetch_models(&mut self, cx: &mut Context<Self>) {

@@ -46,6 +46,8 @@ impl AiSettings {
     }
 
     fn connection_card(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let recognized = super::chat::recognized_backends(cx);
+        let backend_config = super::backend::BackendConfig::load();
         let on = self.enabled;
         let toggle = toggle_pill(
             "ai-enabled-switch",
@@ -57,10 +59,27 @@ impl AiSettings {
                 if this.toggle_anim.set_hovered(*active) { cx.notify(); }
             }),
             cx.listener(|this, _, _, cx| {
-                this.enabled = !this.enabled;
-                this.toggle_anim.record_toggle();
-                this.save(cx);
+                this.toggle_backend(super::backend::BackendKind::Builtin, cx);
             }),
+        );
+        let backend_chips = recognized.iter().copied().fold(
+            div().id("ai-enabled-backends").flex().flex_wrap().gap(px(8.)),
+            |row, kind| {
+                let active = backend_config.is_enabled(kind);
+                let can_toggle = !active || backend_config.can_disable(kind, &recognized);
+                row.child(
+                    tag_chip(
+                        SharedString::from(format!("ai-backend-toggle-{kind:?}")),
+                        super::backend_ui::backend_name(kind),
+                        active,
+                        false,
+                    )
+                    .when(!can_toggle, |chip| chip.cursor(CursorStyle::Arrow))
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                        this.toggle_backend(kind, cx);
+                    })),
+                )
+            },
         );
         let key_toggle = action_button("ai-toggle-key", if self.show_key { tr("隐藏", "Hide") } else { tr("显示", "Show") }, false, true)
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
@@ -72,6 +91,7 @@ impl AiSettings {
         settings_card(16.)
             .child(div().flex().items_center().justify_between().gap(px(16.))
                 .child(card_title(tr("服务商与连接", "Provider & Connection"))).child(toggle))
+            .child(setting_row(tr("启用后端", "Enabled Backends"), backend_chips))
             .child(div().flex().gap(px(10.)).children((0..PRESETS.len()).map(|ix| self.provider_card(ix, cx))))
             .child(setting_row(tr("接口地址", "Base URL"), div().flex_1().min_w_0().max_w(px(380.)).child(field_flex(&self.base_url))))
             .child(setting_row(tr("API 密钥", "API Key"), div().flex_1().min_w_0().max_w(px(380.)).flex().items_center().gap(px(8.))
@@ -178,6 +198,8 @@ impl AiSettings {
 impl Render for AiSettings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.last_en != is_en() { self.last_en = is_en(); self.sync_placeholders(window, cx); }
+        let builtin_enabled = super::backend::BackendConfig::load().is_enabled(super::backend::BackendKind::Builtin);
+        if self.enabled != builtin_enabled { self.enabled = builtin_enabled; }
         div().id("ai-settings-section").flex().flex_col().gap(px(24.))
             .child(self.connection_card(cx))
             .child(self.model_card(cx))

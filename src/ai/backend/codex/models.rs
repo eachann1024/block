@@ -8,7 +8,7 @@ pub(crate) fn list() -> Result<Vec<String>, String> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let result = (|| {
-            let mut server = Server::spawn(&[], &state).map_err(|e| e.message)?;
+            let mut server = Server::spawn(&state).map_err(|e| e.message)?;
             let mut ids = Vec::new();
             let mut cursor: Option<String> = None;
             for _ in 0..20 {
