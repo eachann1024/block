@@ -33,15 +33,13 @@ impl Run {
     async fn ai_panel_and_deck(&self, cx: &AsyncApp) -> Result<(), String> {
         self.click_target(cx, "titlebar-ai", "Step 14/14 · 点击顶栏 AI 图标打开面板").await?;
         self.check(14, self.query(cx, |_, cx| crate::editor::ai::chat::is_open(cx)), "顶栏 AI 图标已打开 AI 侧栏")?;
-        if smoke_overlay::target_center("ai-enable-cover").is_some() {
-            self.check(14, smoke_overlay::target_center("ai-layout-toggle").is_none() && smoke_overlay::target_center("ai-deck-trigger").is_none(), "未启用 AI 时顶栏与底栏控件已隐藏")?;
-            self.click_target(cx, "ai-enable-cover", "Step 14/14 · 点击未启用 AI 封面跳转设置").await?;
-            self.check(14, self.query(cx, |w, _| w.settings_is_open()), "点击封面已跳转到 AI 设置页")?;
-            self.click_target(cx, "settings-back", "Step 14/14 · 从 AI 设置返回编辑").await?;
-            self.win(cx, crate::editor::ai::chat::enable_smoke_builtin)??;
-            sleep(cx, 250).await;
-            self.redraw(cx);
-        }
+        self.check(14, smoke_overlay::target_center("ai-enable-cover").is_some() && smoke_overlay::target_center("ai-layout-toggle").is_none() && smoke_overlay::target_center("ai-deck-trigger").is_none(), "未启用 AI 时居中显示封面且顶栏与底栏控件已隐藏")?;
+        self.click_target(cx, "ai-enable-cover", "Step 14/14 · 点击未启用 AI 封面跳转设置").await?;
+        self.check(14, self.query(cx, |w, _| w.settings_is_open()), "点击封面已跳转到 AI 设置页")?;
+        self.click_target(cx, "settings-back", "Step 14/14 · 从 AI 设置返回编辑").await?;
+        self.win(cx, crate::editor::ai::chat::enable_smoke_builtin)??;
+        sleep(cx, 250).await;
+        self.redraw(cx);
         self.click_target(cx, "ai-empty-polish", "Step 14/14 · 点击页隼空状态快捷指令").await?;
         self.click_target(cx, "ai-layout-toggle", "Step 14/14 · 切换 AI 全屏沉浸模式").await?;
         self.check(14, self.query(cx, |_, cx| crate::editor::ai::chat::is_fullscreen(cx)), "已切换至 AI 全屏沉浸模式")?;

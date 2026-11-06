@@ -875,6 +875,86 @@
       "w": 1440,
       "x": 3040,
       "y": 0
+    },
+    "AiDisabled-V1-FolioSleep.dc.html": {
+      "expand": "fill",
+      "h": 860,
+      "is_interactive": true,
+      "page": "ai-assistant",
+      "title": "AI 未启用 A · 页隼休眠缺省图 + 无顶栏无底栏垂直居中",
+      "w": 1440,
+      "x": 0,
+      "y": 1300
+    },
+    "AiDisabled-V2-NoteSpark.dc.html": {
+      "expand": "fill",
+      "h": 860,
+      "is_interactive": true,
+      "page": "ai-assistant",
+      "title": "AI 未启用 B · 笔记星枢双色静物图 + 无顶栏无底栏垂直居中",
+      "w": 1440,
+      "x": 1520,
+      "y": 1300
+    },
+    "FirstLineDelete-V1-CrimsonBadge.dc.html": {
+      "expand": "fill",
+      "h": 760,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "首行删除 A（推荐）· 原位朱砂退格徽标",
+      "w": 1440,
+      "x": 0,
+      "y": 9400
+    },
+    "FirstLineDelete-V2-RowHighlight.dc.html": {
+      "expand": "fill",
+      "h": 760,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "首行删除 B · 原位垃圾桶标与整行待删柔底",
+      "w": 1440,
+      "x": 1520,
+      "y": 9400
+    },
+    "FirstLineDelete-V3-ActionPill.dc.html": {
+      "expand": "fill",
+      "h": 760,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "首行删除 C · 左侧展开「⌫ 删行」胶囊",
+      "w": 1440,
+      "x": 3040,
+      "y": 9400
+    },
+    "ExistingFolders-V1-ListCheck.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "page": "folder-flow",
+      "title": "已有文件夹 A（推荐）· 同构列表行 + 行首勾选框",
+      "w": 1280,
+      "x": 0,
+      "y": 1320
+    },
+    "ExistingFolders-V2-RightCheck.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "page": "folder-flow",
+      "title": "已有文件夹 B · 行尾勾选胶囊（与上方分段控制器对齐）",
+      "w": 1280,
+      "x": 1360,
+      "y": 1320
+    },
+    "ExistingFolders-V3-CompactGrid.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "page": "folder-flow",
+      "title": "已有文件夹 C · 双列紧凑勾选网格",
+      "w": 1280,
+      "x": 2720,
+      "y": 1320
     }
   },
   "createdOnFiles": {
@@ -891,10 +971,19 @@
     }
   ],
   "launch": {
-    "page": "ai-assistant",
+    "page": "folder-flow",
     "view": "canvas"
   },
   "notes": {
+    "existing-folders-row": {
+      "kind": "title1",
+      "maxW": 4000,
+      "page": "folder-flow",
+      "text": "已有文件夹管理分组 · 勾选后从全局搜索排除 · 三套方案",
+      "w": 240,
+      "x": 0,
+      "y": 1060
+    },
     "ai-assistant-row": {
       "kind": "title1",
       "maxW": 4480,
@@ -903,6 +992,15 @@
       "w": 240,
       "x": 0,
       "y": -240
+    },
+    "ai-disabled-row": {
+      "kind": "title1",
+      "maxW": 2960,
+      "page": "ai-assistant",
+      "text": "AI 未启用缺省态 · 移除侧栏顶栏与底部模型栏 + 垂直居中 + 原创缺省图 · 两个版本",
+      "w": 240,
+      "x": 0,
+      "y": 1060
     },
     "dynamic-titlebar-row": {
       "kind": "title1",
@@ -939,6 +1037,15 @@
       "w": 240,
       "x": 0,
       "y": 7860
+    },
+    "first-line-delete-row": {
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "editor",
+      "text": "首行两段式删除 · 首次按 ⌫ 显示删除标识 + 再次按 ⌫ 删行顶上 · 三套方案",
+      "w": 240,
+      "x": 0,
+      "y": 9160
     },
     "page-history-bottom": {
       "fill": "gray",
@@ -1057,7 +1164,15 @@
     "InlineCode-Notion-V3-SoftCrimson.dc.html",
     "AiWorkspace-V1-ComposerUnified.dc.html",
     "AiWorkspace-V2-SplitStudio.dc.html",
-    "AiWorkspace-V3-ActionDeck.dc.html"
+    "AiWorkspace-V3-ActionDeck.dc.html",
+    "FirstLineDelete-V1-CrimsonBadge.dc.html",
+    "FirstLineDelete-V2-RowHighlight.dc.html",
+    "FirstLineDelete-V3-ActionPill.dc.html",
+    "AiDisabled-V1-FolioSleep.dc.html",
+    "AiDisabled-V2-NoteSpark.dc.html",
+    "ExistingFolders-V1-ListCheck.dc.html",
+    "ExistingFolders-V2-RightCheck.dc.html",
+    "ExistingFolders-V3-CompactGrid.dc.html"
   ],
   "pages": [
     {
