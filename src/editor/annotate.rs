@@ -12,6 +12,9 @@ use super::{model::Doc, view::{Editor, layout::TextLayout}};
 #[path = "annotate_revert.rs"] mod revert;
 #[path = "annotate_selection.rs"] mod selection;
 use selection::AnnotationTarget;
+#[path = "annotate_spans.rs"] mod spans;
+pub(super) use spans::{AnnotationAnchor, resolve_annotation_spans};
+#[path = "annotate_multiblock.rs"] mod multiblock;
 
 pub(super) const HL_SELECT_BG: u32 = 0xfef0d1;
 pub(super) const HL_ACTIVE_BG: u32 = 0xfdda8c;
@@ -30,6 +33,7 @@ pub(super) const ANNOTATION_PENDING: u32 = 0xf5c84c;
 pub(super) struct Annotation {
     pub id: u64, pub block_index: usize, pub start: usize, pub end: usize,
     pub quote: String, pub body: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")] pub anchors: Vec<AnnotationAnchor>,
     #[serde(default)] pub reactions: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")] pub ai_rewritten: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")] pub ai_error: Option<String>,
@@ -117,6 +121,7 @@ fn next_id() -> u64 {
 fn next_id() -> u64 { let _ = (SystemTime::UNIX_EPOCH, UNIX_EPOCH); static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1); SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
 /// Resolves an annotation's current `(block_id, byte_range, is_ai_modified)` in `doc`.
 pub(super) fn resolve_annotation_span(doc: &Doc, annotation: &Annotation) -> Option<(u64, Range<usize>, bool)> {
+    if let Some(first) = annotation.anchors.first() { return spans::resolve_anchor(doc, first); }
     if annotation.is_applied()
         && let Some(rewritten) = annotation.ai_rewritten.as_deref().filter(|s| !s.is_empty())
     {
@@ -171,7 +176,7 @@ pub(super) fn paint_highlights(editor: &Editor, block: u64, layout: &TextLayout,
     let (base, active_bg) = if dark { (HL_SELECT_BG_DARK, HL_ACTIVE_BG_DARK) } else { (HL_SELECT_BG, HL_ACTIVE_BG) };
     let (done_bg, done_flash) = if dark { (HL_DONE_BG_DARK, HL_DONE_FLASH_DARK) } else { (HL_DONE_BG, HL_DONE_FLASH) };
     for annotation in &editor.annotate.annotations {
-        let Some((id, range, is_ai)) = resolve_annotation_span(&editor.doc, annotation) else { continue };
+        let Some((id, range, is_ai)) = resolve_annotation_spans(&editor.doc, annotation).into_iter().find(|(id, _, _)| *id == block) else { continue };
         if id != block || range.is_empty() || is_whole_table_span(&editor.doc, block, &range) { continue; }
         let active = editor.annotate.active_annotation == Some(annotation.id) || editor.annotate.hovered_annotation == Some(annotation.id);
         let color = if annotation.streaming {
@@ -206,7 +211,7 @@ pub(super) fn paint_table_highlights(editor: &Editor, block: u64, layout: &TextL
     let (base, active) = if dark { (HL_TABLE_BORDER_DARK, HL_TABLE_BORDER_ACTIVE_DARK) } else { (HL_TABLE_BORDER, HL_TABLE_BORDER_ACTIVE) };
     let mut border_color = None;
     for annotation in &editor.annotate.annotations {
-        let Some((id, range, _)) = resolve_annotation_span(&editor.doc, annotation) else { continue };
+        let Some((id, range, _)) = resolve_annotation_spans(&editor.doc, annotation).into_iter().find(|(id, _, _)| *id == block) else { continue };
         if id != block || !is_whole_table_span(&editor.doc, block, &range) { continue; }
         let engaged = editor.annotate.active_annotation == Some(annotation.id) || editor.annotate.hovered_annotation == Some(annotation.id);
         let level = if annotation.streaming {
