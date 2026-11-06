@@ -1,15 +1,15 @@
-mod bridge;
+pub(super) mod bridge;
 mod process;
 
 use std::{sync::{mpsc::Sender, Arc, Mutex, atomic::{AtomicBool, Ordering}}, process::{Child, Command, Stdio}, thread, time::{Duration, Instant}};
-use super::{ApprovalResponse, BackendAdapter, BackendError, BackendEvent, BackendEventKind, BackendStatus, RunningTurn, ToolBridge, TurnRequest};
+use super::{ApprovalResponse, BackendAdapter, BackendError, BackendEvent, BackendEventKind, BackendStatus, RunningTurn, ToolBridge, TurnRequest, cli_env};
 
 #[derive(Default)]
 pub(crate) struct DshAdapter;
 
 impl BackendAdapter for DshAdapter {
     fn probe(&self) -> BackendStatus {
-        let mut child = match Command::new("dsh").arg("--version").stdin(Stdio::null())
+        let mut child = match cli_env::command("dsh").arg("--version").stdin(Stdio::null())
             .stdout(Stdio::piped()).stderr(Stdio::null()).spawn() {
             Ok(child) => child,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return BackendStatus::Missing,
@@ -26,7 +26,7 @@ impl BackendAdapter for DshAdapter {
                             return BackendStatus::Error { message: error.to_string() };
                         }
                     }
-                    return BackendStatus::Installed { version: version.trim().to_owned() };
+                    return BackendStatus::Ready { version: version.trim().to_owned() };
                 }
                 Ok(Some(status)) => return BackendStatus::Error { message: format!("dsh --version exited with {status}") },
                 Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(25)),

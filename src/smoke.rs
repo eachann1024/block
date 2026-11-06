@@ -51,6 +51,7 @@ fn reset_sandbox() -> std::io::Result<()> {
     std::fs::write(notebook.join("notes.txt"), "plain text\n")?;
     crate::files::state::set_state_path_override(sandbox.join("state.json"));
     crate::editor::ai::provider::save(&Default::default()).map_err(std::io::Error::other)?;
+    crate::editor::ai::backend::BackendConfig::default().save().map_err(std::io::Error::other)?;
     crate::files::update_state(|s| {
         *s = crate::files::state::State::default();
         s.folder = Some(notebook.clone());

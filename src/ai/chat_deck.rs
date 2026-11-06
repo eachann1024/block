@@ -32,11 +32,16 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
     let theme = Theme::ocean();
     let selected = chat.selected_backend();
     let mut grid = div().flex().flex_col().gap(px(8.));
-    for kinds in [[BackendKind::Builtin, BackendKind::Codex], [BackendKind::Claude, BackendKind::Dsh]] {
+    let visible = chat.visible_backends();
+    for kinds in visible.chunks(2) {
         let mut row = div().flex().gap(px(8.));
-        for kind in kinds {
-            let ready = if kind == BackendKind::Builtin { backend_ui::builtin_ready() } else { matches!(chat.backend_status(kind), Some(BackendStatus::Ready { .. })) };
-            row = row.child(ai_controls::backend_card(format!("ai-backend-{kind:?}"), backend_ui::backend_name(kind), backend_ui::status_label(kind, chat.backend_status(kind)), kind == selected, ready,
+        for &kind in kinds {
+            let ready = if kind == BackendKind::Builtin {
+                backend_ui::builtin_ready()
+            } else {
+                matches!(chat.backend_status(kind), Some(BackendStatus::Ready { .. } | BackendStatus::Installed { .. }))
+            };
+            row = row.child(ai_controls::backend_card(format!("ai-backend-{kind:?}"), backend_ui::backend_name(kind), kind == selected, ready,
                 cx.listener(move |chat, _, window, cx| {
                     cx.stop_propagation();
                     let changed = chat.selected_backend() != kind;
@@ -50,7 +55,7 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
     }
     let selected_model = chat.selected_model();
     let mut models = chat.model_choices();
-    if matches!(selected, BackendKind::Codex | BackendKind::Claude) { models.insert(0, String::new()); }
+    if matches!(selected, BackendKind::Codex | BackendKind::Claude | BackendKind::Pi) { models.insert(0, String::new()); }
     let list_h = if selected == BackendKind::Dsh { 64. } else { 176. };
     let mut list = div().id("ai-deck-models").h(px(list_h)).flex_none().overflow_y_scroll().track_scroll(&chat.deck_scroll).flex().flex_col();
     if models.is_empty() {

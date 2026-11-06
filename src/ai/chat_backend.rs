@@ -10,9 +10,7 @@ impl AiChat {
     pub(in crate::editor::ai) fn context_scope(&self) -> backend::ContextScope {
         if self.selection_scope { backend::ContextScope::Selection } else { backend::ContextScope::CurrentNote }
     }
-
     pub(in crate::editor::ai) fn selection_available(&self, cx: &App) -> bool { self.note_context(cx).selection.is_some() }
-
     pub(in crate::editor::ai) fn set_context_scope(&mut self, scope: backend::ContextScope, cx: &mut Context<Self>) {
         self.selection_scope = scope == backend::ContextScope::Selection && self.selection_available(cx);
         cx.notify();
@@ -20,12 +18,20 @@ impl AiChat {
     pub(in crate::editor::ai) fn dsh_options(&self) -> backend::DshOptions { self.backend_config.dsh_options() }
 
     pub(in crate::editor::ai) fn set_dsh_options(&mut self, options: backend::DshOptions, cx: &mut Context<Self>) -> Result<(), String> {
-        self.backend_config.set_dsh_options(options)?;
-        cx.notify();
-        Ok(())
+        self.backend_config.set_dsh_options(options)?; cx.notify(); Ok(())
+    }
+    pub(in crate::editor::ai) fn recognized_backends(&self) -> Vec<BackendKind> {
+        BackendKind::ALL.into_iter().filter(|&kind| backend::is_recognized(kind, self.backend_status(kind))).collect()
+    }
+    pub(in crate::editor::ai) fn visible_backends(&self) -> Vec<BackendKind> {
+        let recognized = self.recognized_backends();
+        let enabled: Vec<BackendKind> = recognized.iter().copied().filter(|&k| self.backend_config.is_enabled(k)).collect();
+        if enabled.is_empty() { recognized.into_iter().take(1).collect() } else { enabled }
     }
     pub(in crate::editor::ai) fn selected_backend(&self) -> BackendKind {
-        self.conv().map_or(self.backend_config.selected, |conversation| conversation.backend)
+        let visible = self.visible_backends();
+        let candidate = self.conv().map_or(self.backend_config.selected, |conversation| conversation.backend);
+        if visible.contains(&candidate) { candidate } else { visible.first().copied().unwrap_or(BackendKind::Builtin) }
     }
 
     pub(in crate::editor::ai) fn select_backend(&mut self, kind: BackendKind, window: &mut Window, cx: &mut Context<Self>) {
@@ -50,6 +56,12 @@ impl AiChat {
     }
 
     pub(in crate::editor::ai) fn probe_backend(&mut self, kind: BackendKind, cx: &mut Context<Self>) {
+        if let Some(status) = super::input_smoke::status_override(kind) {
+            self.backend_statuses.retain(|(backend, _)| *backend != kind);
+            self.backend_statuses.push((kind, status));
+            let recognized = self.recognized_backends();
+            self.backend_config.ensure_valid_selection(&recognized); cx.notify(); return;
+        }
         let (sender, receiver) = mpsc::channel();
         std::thread::spawn(move || {
             let status = match backend::adapter(kind) {
@@ -64,9 +76,12 @@ impl AiChat {
             match receiver.try_recv() {
                 Ok(status) => {
                     let _ = this.update(cx, |this, cx| {
+                        let status = super::input_smoke::status_override(kind).unwrap_or(status);
                         if this.backend_statuses.iter().any(|(backend, old)| *backend == kind && *old == status) { return; }
                         this.backend_statuses.retain(|(backend, _)| *backend != kind);
-                        this.backend_statuses.push((kind, status)); cx.notify();
+                        this.backend_statuses.push((kind, status));
+                        let recognized = this.recognized_backends();
+                        this.backend_config.ensure_valid_selection(&recognized); cx.notify();
                     });
                     break;
                 }
@@ -103,8 +118,8 @@ impl AiChat {
     }
 
     pub(in crate::editor::ai) fn run_external(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let kind = self.selected_backend();
         let Some(conversation) = self.conv() else { return };
-        let kind = conversation.backend;
         let conversation_id = conversation.id.to_string();
         let native_session_id = conversation.native_session_id.clone();
         let mut message = self.sent_draft.as_ref().and_then(|draft| conversation.messages.get(draft.message_index))

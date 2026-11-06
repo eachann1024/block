@@ -1,6 +1,7 @@
-use std::{fs, io::{BufRead, BufReader, Write}, path::PathBuf, process::{Child, Command, Stdio}, sync::{Arc, Mutex, mpsc::Sender, atomic::{AtomicBool, Ordering}}};
+use std::{fs, io::{BufRead, BufReader, Write}, path::PathBuf, process::{Child, Stdio}, sync::{Arc, Mutex, mpsc::Sender, atomic::{AtomicBool, Ordering}}};
 use serde_json::{json, Value};
 use super::{bridge, BackendError, BackendEvent, BackendEventKind, ToolBridge, TurnRequest};
+use super::super::cli_env;
 
 struct TempDir(PathBuf);
 impl Drop for TempDir { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); } }
@@ -59,11 +60,9 @@ pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: T
         let project = root.ancestors().find(|path| path.join(".git").exists()).unwrap_or(root);
         vec![project.join(".dsh/skills"), project.join(".agents/skills")]
     }).unwrap_or_default();
+    let node_bin = cli_env::resolve("node").unwrap_or_else(|| PathBuf::from("node"));
     let patch = json!([
-        {"id":"tool-fs", "disabled":true},
-        {"id":"tool-working-directory", "disabled":true},
-        {"id":"persistent-bash", "disabled":true},
-        {"id":"persistent-pwsh", "disabled":true},
+        {"id":"tool-fs", "config":{"read":true, "readImage":true, "write":true, "edit":true}},
         {"id":"sessions", "config":{"root":storage,"compression":"none"}},
         {"insert":[{"id":"credentials", "name":"@deepseek-ai/dsh-credentials-local", "config":{"dshHome":credentials_home,"watch":false}},
         {"id":"skills", "name":"@deepseek-ai/dsh-skill"},
@@ -71,32 +70,19 @@ pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: T
             "dshHome":native_home,"customSkillDirs":project_skills,"watch":false}},
         {"id":"tool-skill", "name":"@deepseek-ai/dsh-tool-skill"},
         {"id":"block-mcp", "name":"@deepseek-ai/dsh-mcp-client", "config":{
-            "serverName":"block", "transport":"stdio", "command":"node", "args":[tool_file],
+            "serverName":"block", "transport":"stdio", "command":node_bin, "args":[tool_file],
             "failOnStartupError":true, "env":{"BLOCK_MCP_PORT":port.to_string(),"BLOCK_MCP_TOKEN":token,
                 "BLOCK_MCP_TOOLS":serde_json::to_string(&tool_specs).map_err(io_error)?}
         }}]}
     ]);
     let patch_path = dir.0.join("patch.json");
     fs::write(&patch_path, serde_json::to_vec(&patch).map_err(io_error)?).map_err(io_error)?;
-    #[cfg(target_os = "macos")]
-    let mut command = if block_key.is_none() {
-        let (ancestor, canonical) = native_home.ancestors().find_map(|path| fs::canonicalize(path).ok().map(|resolved| (path, resolved)))
-            .ok_or_else(|| BackendError::new("dsh_home", "Cannot protect native dsh home"))?;
-        let protected_home = canonical.join(native_home.strip_prefix(ancestor).map_err(io_error)?);
-        let escaped = protected_home.to_str().ok_or_else(|| BackendError::new("dsh_home", "Cannot protect non-UTF-8 dsh home"))?
-            .replace('\\', "\\\\").replace('"', "\\\"");
-        let mut command = Command::new("/usr/bin/sandbox-exec");
-        command.args(["-p", &format!("(version 1)(allow default)(deny file-write* (subpath \"{escaped}\"))"), "dsh"]);
-        command
-    } else { Command::new("dsh") };
-    #[cfg(not(target_os = "macos"))]
-    let mut command = {
-        if block_key.is_none() { return Err(BackendError::new("dsh_native_credentials", "Native dsh credentials require read-only protection on this platform")); }
-        Command::new("dsh")
-    };
+    let cwd = request.context.notebook_root.clone().filter(|p| p.is_dir()).unwrap_or_else(|| workspace.clone());
+    let mut command = cli_env::command("dsh");
     command.args(["--profile", "sdk-minimal", "--patch"]).arg(&patch_path)
         .env("DSH_HOME", dir.0.join("home")).env("DSH_TELEMETRY_DISABLED", "1")
-        .current_dir(&workspace).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+        .env("DSH_PERMISSION_MODE", "danger-full-access")
+        .current_dir(&cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     if let Some(key) = block_key { command.env("DEEPSEEK_API_KEY", key); }
     #[cfg(unix)] {
         use std::os::unix::process::CommandExt;
@@ -115,7 +101,7 @@ pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: T
         }
     });
     let worker: Worker = Box::new(move || {
-        let result = run(&request, &events, stdin, stdout, &cancelled, &token, &workspace, &bridge_ready, initialized, &tools);
+        let result = run(&request, &events, stdin, stdout, &cancelled, &token, &cwd, &bridge_ready, initialized, &tools);
         tools.cancel();
         drop(guard);
         if let Ok(mut child) = worker_child.lock() {
