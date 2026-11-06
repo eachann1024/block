@@ -236,7 +236,7 @@ impl Element for BlockText {
                 super::annotate::paint_table_highlights(self.editor.read(cx), self.block, layout, window);
             }
         });
-        if placeholder { paint_placeholder(layout, window, cx); }
+        if placeholder { paint_placeholder(layout, self.editor.read(cx).is_first_line_delete_armed(self.block), window, cx); }
         let saved = std::mem::replace(layout, TextLayout::empty(px(0.)));
         self.editor.update(cx, |this, _| { this.layouts.insert(self.block, saved); });
         let _ = bounds;
@@ -262,17 +262,17 @@ pub(super) fn heading_metrics(kind: Kind, level: Option<u8>, fenced: bool, minim
 }
 thread_local! { static PLACEHOLDER: RefCell<Option<(u64, gpui::ShapedLine)>> = const { RefCell::new(None) }; }
 /// Hint drawn over the zero-width placeholder glyph; never part of the text or hit testing.
-fn paint_placeholder(layout: &TextLayout, window: &mut Window, cx: &mut App) {
+fn paint_placeholder(layout: &TextLayout, delete_armed: bool, window: &mut Window, cx: &mut App) {
     let dark = crate::theme::is_dark();
     let font_size = layout.lines.first().map_or(Theme::ocean().editor_font, |(_, l)| l.font_size());
     let key = crate::theme::font_settings_hash() ^ ((crate::theme::is_en() as u64) << 32)
-        ^ ((dark as u64) << 33) ^ (((f32::from(font_size) as u64) & 0xff) << 34);
+        ^ ((dark as u64) << 33) ^ (((f32::from(font_size) as u64) & 0xff) << 34) ^ ((delete_armed as u64) << 42);
     let line = PLACEHOLDER.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.as_ref().is_none_or(|(c, _)| *c != key) {
-            let text = SharedString::from(crate::theme::tr("输入 / 或 、 唤出菜单，或开始输入…", "Type / to open menu, or start typing…"));
-            let color = if dark { rgb(0x6e6d68) } else { rgb(0x9b9a95) };
-            let mut run = plain(text.len(), color.into()); run.font.weight = FontWeight::NORMAL;
+            let text = SharedString::from(if delete_armed { crate::ui::reveal::delete_arm_placeholder_text() } else { crate::theme::tr("输入 / 或 、 唤出菜单，或开始输入…", "Type / to open menu, or start typing…") });
+            let color = if delete_armed { crate::ui::reveal::delete_arm_placeholder_color() } else if dark { rgb(0x6e6d68).into() } else { rgb(0x9b9a95).into() };
+            let mut run = plain(text.len(), color); run.font.weight = FontWeight::NORMAL;
             *slot = Some((key, window.text_system().shape_line(text, font_size, &[run], None)));
         }
         slot.as_ref().map(|(_, l)| l.clone()).unwrap()

@@ -8,6 +8,10 @@ impl Editor {
     pub(crate) fn first_line_delete_armed(&self) -> bool {
         self.doc.blocks.first().is_some_and(|b| self.is_first_line_delete_armed(b.id))
     }
+    pub fn first_line_placeholder(&self) -> &'static str {
+        if self.first_line_delete_armed() { crate::ui::reveal::delete_arm_placeholder_text() }
+        else { crate::theme::tr("输入 / 或 、 唤出菜单，或开始输入…", "Type / to open menu, or start typing…") }
+    }
     pub(crate) fn first_block_text(&self) -> String {
         self.doc.blocks.first().map(|b| b.text.clone()).unwrap_or_default()
     }
