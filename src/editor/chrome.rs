@@ -3,7 +3,7 @@ use gpui::{CursorStyle, MouseButton, Pixels, div, prelude::*, px, rgb, transpare
 use crate::{
     icons::{Icon, IconColors, icon},
     theme::{Theme, is_dark, tr},
-    ui::reveal::{fold_button, handle_button},
+    ui::reveal::{delete_arm_button, fold_button, handle_button},
 };
 pub(super) use crate::ui::reveal::grip_button;
 use super::{model::{Block, Kind}, paint::BlockText, view::Editor};
@@ -72,7 +72,7 @@ fn row_pads(this: &Editor, index: usize) -> (f32, f32) {
     (top, bottom)
 }
 
-pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, has_overlay: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
+pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, has_overlay: bool, delete_armed: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
     let zoom = super::zoom::zoom_factor(minimal);
     let handle_w = HANDLE_WIDTH;
@@ -115,7 +115,11 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                         })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
                             if this.dragging == Some(id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
                         }))))
-                    .when(regular_handles && blank, |row| row
+                    .when(regular_handles && blank && delete_armed, |row| row
+                        .child(delete_arm_button(("del-arm", id as usize), zoom, cx.listener(move |this, _: &gpui::MouseDownEvent, window, cx| {
+                            window.focus(&this.focus, cx); this.confirm_first_line_delete(id, cx); cx.stop_propagation();
+                        }))))
+                    .when(regular_handles && blank && !delete_armed, |row| row
                         .child(handle_button(Icon::Plus, ("add", id as usize), zoom, cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
                             this.focus_block(id, window, cx);
                             let trigger = this.block_trigger_bounds(cx.entity_id(), id)
@@ -245,7 +249,7 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let has_overlay = this.block_menu.is_some() || this.table_menu.is_some() || this.format.is_some()
         || this.annotate.active_annotation.is_some() || this.annotate.hovered_annotation.is_some()
         || this.annotate.composer.is_some() || this.annotate.reactions.is_some();
-    let row = block_row(cx.entity(), block, row_pads(this, index), handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, cx);
+    let row = block_row(cx.entity(), block, row_pads(this, index), handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, this.is_first_line_delete_armed(block.id), cx);
     div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
         .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md()))
         .child(row).into_any_element()
