@@ -1,6 +1,6 @@
-use gpui::{Div, MouseButton, SharedString, div, prelude::*, px};
+use gpui::{Div, SharedString, div, prelude::*, px};
 use super::{backend::{BackendKind, BackendStatus}, backend_ui, chat::AiChat, dsh_ui};
-use crate::{theme::{Theme, tr}, ui::{ai_controls, dropdown}};
+use crate::{theme::{Theme, tr}, ui::ai_controls};
 
 pub(super) fn trigger(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> gpui::Stateful<Div> {
     let kind = chat.selected_backend();
@@ -30,9 +30,11 @@ pub(super) fn view(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> Option<gpui
             row = row.child(ai_controls::backend_card(format!("ai-backend-{kind:?}"), backend_ui::backend_name(kind), backend_ui::status_label(kind, chat.backend_status(kind)), kind == selected, ready,
                 cx.listener(move |chat, _, window, cx| {
                     cx.stop_propagation();
+                    let changed = chat.selected_backend() != kind;
                     chat.select_backend(kind, window, cx);
                     if kind == BackendKind::Dsh { dsh_ui::open(chat, window, cx); } else { dsh_ui::close(); }
-                    chat.refresh_models(cx); cx.notify();
+                    if changed { chat.refresh_models_for(kind, cx); }
+                    cx.notify();
                 })));
         }
         grid = grid.child(row);
@@ -40,13 +42,20 @@ pub(super) fn view(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> Option<gpui
     let selected_model = chat.selected_model();
     let mut models = chat.model_choices();
     if matches!(selected, BackendKind::Codex | BackendKind::Claude) { models.insert(0, String::new()); }
-    let mut list = div().id("ai-deck-models").max_h(px(160.)).overflow_y_scroll().flex().flex_col();
+    let list_h = if selected == BackendKind::Dsh { 64. } else { 176. };
+    let mut list = div().id("ai-deck-models").h(px(list_h)).overflow_y_scroll().track_scroll(&chat.deck_scroll).flex().flex_col();
+    if models.is_empty() {
+        let status = match chat.model_status() {
+            super::chat::chat_models::ModelStatus::Loading => tr("正在获取模型…", "Loading models…"),
+            super::chat::chat_models::ModelStatus::Error(_) => tr("无法获取模型", "Models unavailable"),
+            _ => tr("暂无可选模型", "No models available"),
+        };
+        list = list.child(div().h(px(32.)).px(px(10.)).flex().items_center().text_color(theme.text_secondary).child(status));
+    }
     for (index, model) in models.into_iter().enumerate() {
         let label = chat.model_label(&model);
         let active = model == selected_model;
-        list = list.child(dropdown::row_with(SharedString::from(format!("ai-model-{index}")), dropdown::RowSpec {
-            label: label.into(), checked: active, ..Default::default()
-        }).h(px(32.)).when(active, |row| row.bg(theme.selected)).on_mouse_down(MouseButton::Left, cx.listener(move |chat, _, _, cx| {
+        list = list.child(ai_controls::model_row(SharedString::from(format!("ai-model-{index}")), label, active, cx.listener(move |chat, _, _, cx| {
             cx.stop_propagation();
             match chat.select_model(&model, cx) { Ok(()) => { backend_ui::close_menu(); }, Err(error) => chat.error = Some(error) }
             cx.notify();
@@ -62,10 +71,5 @@ pub(super) fn view(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> Option<gpui
             .child(ai_controls::action_chip("ai-deck-settings", None, tr("AI 设置", "AI settings"), false, false, |_, window, cx| {
                 cx.stop_propagation(); backend_ui::close_menu(); window.dispatch_action(Box::new(super::OpenAiSettings), cx);
             })))
-        .child(list)
-        .children(match chat.model_status() {
-            super::chat::chat_models::ModelStatus::Loading => Some(tr("正在获取模型…", "Loading models…")),
-            super::chat::chat_models::ModelStatus::Error(_) => Some(tr("无法获取模型", "Models unavailable")),
-            _ => None,
-        }.map(|status| div().text_color(theme.text_secondary).child(status))))
+        .child(list))
 }
