@@ -172,7 +172,7 @@ impl Run {
         self.check(8, self.editor(cx, |e| e.block_count() == blocks_before_insert + 1 && e.first_block_text().is_empty() && !e.first_line_delete_armed()), "首行已插入空段落且初始未进入待删状态")?;
         self.press(cx, "backspace").await?;
         sleep(cx, 180).await;
-        self.check(8, self.editor(cx, |e| e.block_count() == blocks_before_insert + 1 && e.first_block_text().is_empty() && e.first_line_delete_armed()) && smoke_overlay::target_center("first-line-delete-badge").is_some(), "首行首次按删除键不删内容并在加号位置显示删除标识")?;
+        self.check(8, self.editor(cx, |e| e.block_count() == blocks_before_insert + 1 && e.first_block_text().is_empty() && e.first_line_delete_armed() && e.first_line_placeholder() == crate::ui::reveal::delete_arm_placeholder_text()) && smoke_overlay::target_center("first-line-delete-badge").is_some(), "首行首次按删除键不删内容并显示删除标识及提示")?;
         self.press(cx, "backspace").await?;
         sleep(cx, 180).await;
         self.check(8, self.editor(cx, |e| e.block_count() == blocks_before_insert && e.first_block_text() == "CRUD Title" && !e.first_line_delete_armed()), "首行再次按删除键删除空行并将下方内容顶上来")
