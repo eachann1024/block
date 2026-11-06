@@ -169,7 +169,7 @@ impl Editor {
                     if table.to_pipe() { super::markdown::rebuild_table_source(&mut table); }
                     let mut text = String::new();
                     super::markdown::serialize_table(&table, &mut text);
-                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+                    cx.write_to_clipboard(ClipboardItem::new_string_with_metadata(text, super::paste::MARKDOWN_CLIPBOARD_V1.into()));
                     self.status = tr("已复制表格", "Table copied").into();
                 }
                 cx.notify();

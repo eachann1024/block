@@ -31,7 +31,7 @@ actions!(editor, [Backspace, Delete, Left, Right, SelectLeft, SelectRight, Selec
     WordLeft, WordRight, SelectWordLeft, SelectWordRight,
     DeleteWordLeft, DeleteWordRight, DeleteLineLeft, DeleteLineRight, ExportImage, CopyMarkdown, Annotate,
     ToggleHighlight, ClearFormat, ToggleFold, PastePlain, ZoomIn, ZoomOut, ZoomReset]);
-pub(super) enum EditorAction {
+pub(crate) enum EditorAction {
     Backspace, Delete, Left, Right, SelectLeft, SelectRight, SelectAll, Up, Down,
     SelectUp, SelectDown, Enter, Copy, Cut, Paste, Bold, Italic, Strike, Code, Undo, Redo, Cancel, Save,
     NextCell, PreviousCell,
