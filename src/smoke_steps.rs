@@ -226,7 +226,12 @@ impl Run {
     async fn settings(&self, cx: &AsyncApp) -> Result<(), String> {
         self.click_target(cx, "settings-button", "Step 12/12 · 点击打开设置页").await?;
         self.check(12, self.query(cx, |w, _| w.settings_is_open()), "设置页已打开")?;
-        sleep(cx, 300).await;
+        self.click_target(cx, "settings-tab-folders", "Step 12/12 · 切换到文件夹设置").await?;
+        sleep(cx, 200).await;
+        self.click_target(cx, "folder-search-ignore-0", "Step 12/12 · 勾选当前文件夹不参与全局搜索").await?;
+        self.check(12, self.query(cx, |w, _| w.search_folders().is_empty()), "勾选后当前文件夹已从全局搜索排除")?;
+        self.click_target(cx, "folder-search-ignore-0", "Step 12/12 · 取消勾选恢复参与全局搜索").await?;
+        self.check(12, self.query(cx, |w, _| !w.search_folders().is_empty()), "取消勾选后当前文件夹恢复参与全局搜索")?;
         self.click_target(cx, "settings-back", "Step 12/12 · 点击返回编辑").await?;
         self.check(12, self.query(cx, |w, _| !w.settings_is_open()), "返回编辑，设置页已关闭")
     }
