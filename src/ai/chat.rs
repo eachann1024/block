@@ -1,13 +1,12 @@
-//! The AI 助手 side panel, after thinkly's `AIChatPanel`: conversations with history,
-//! streamed replies with 停止生成, and ⌘J to toggle. Replies run thinkly's notebook
-//! agent (`agent.rs`): Skills, note tools and 笔记变更计划 cards that write back into
-//! the open note and can be 撤回. `@` picks notes as references and `/` picks commands
-//! and workspace Skills.
+//! AI side panel with streamed conversations, notebook tools and reversible plans.
+//! ⌘J toggles the panel; @ references notes and / picks commands and Skills.
 use std::{sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc}, time::Duration};
 use gpui::{App, AppContext, Context, Entity, Global, ScrollHandle, Subscription, WeakEntity, Window};
 use gpui_component::input::{InputEvent, InputState};
 use super::{agent, provider::{self, Event}};
 use crate::editor::view::Editor;
+#[path = "chat_resize.rs"] mod chat_resize;
+pub(crate) use chat_resize::resize_capture;
 #[path = "chat_plan.rs"] mod chat_plan;
 #[path = "chat_backend.rs"] mod chat_backend;
 #[path = "chat_drafts.rs"] mod chat_drafts;
@@ -67,6 +66,8 @@ pub(crate) struct AiChat {
     pub(super) history: bool,
     pub(super) open: bool,
     pub(super) fullscreen: bool,
+    pub(super) panel_width: gpui::Pixels,
+    pub(super) resizing: Option<(gpui::Pixels, gpui::Pixels)>,
     pub(super) last_en: bool,
     pub(super) editor: Option<WeakEntity<Editor>>,
     pub(super) scroll: ScrollHandle,
@@ -141,7 +142,7 @@ impl AiChat {
         });
         let convs: Vec<Conv> = store_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         let current = active.conversation.filter(|id| convs.iter().any(|conversation| conversation.id == *id));
-        let mut chat = AiChat { convs, current, input, refs: active.refs, skills: active.skills, partial: String::new(), streaming: None,
+        let mut chat = AiChat { panel_width: chat_resize::load_width(), resizing: None, convs, current, input, refs: active.refs, skills: active.skills, partial: String::new(), streaming: None,
             backend_config: super::backend::BackendConfig::load(), backend_runtime: Default::default(), active_external: None, external_tools: None,
             sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: active.retry.filter(|draft| Some(draft.conversation) == current), selection_scope: false, pending_approval: None,
             backend_statuses: vec![(super::backend::BackendKind::Builtin, super::backend::BackendStatus::Ready { version: "Block".into() })],

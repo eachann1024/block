@@ -58,6 +58,7 @@ impl Render for Workspace {
             }))
             .children(self.overlays(window, cx))
             .children(self.resize_capture(cx))
+            .children(crate::editor::ai::chat::resize_capture(cx))
             .children(crate::ui::smoke_overlay::render())
             .child(gpui::deferred(div().on_children_prepainted(|_, window, cx| sync_focused_input_ime(window, cx))).with_priority(10))
     }
