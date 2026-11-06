@@ -16,12 +16,6 @@ pub(super) fn open_deck(chat: &mut AiChat, window: &mut Window, cx: &mut gpui::C
     cx.notify();
 }
 
-pub(super) fn open_dsh_in_deck(chat: &mut AiChat, window: &mut Window, cx: &mut gpui::Context<AiChat>) {
-    chat.select_backend(BackendKind::Dsh, window, cx);
-    super::dsh_ui::open(chat, window, cx);
-    open_deck(chat, window, cx);
-}
-
 pub(super) fn backend_name(backend: BackendKind) -> &'static str {
     match backend {
         BackendKind::Builtin => tr("内置 AI", "Built-in AI"),

@@ -5,11 +5,13 @@ use crate::{theme::{Theme, tr}, ui::{ai_controls, dropdown}};
 pub(super) fn trigger(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> gpui::Stateful<Div> {
     let kind = chat.selected_backend();
     let model = chat.selected_model();
-    let model_text = if model.is_empty() { tr("默认模型", "Default model").to_owned() } else { chat.model_label(&model) };
-    let label = format!("{} · {}", backend_ui::backend_name(kind), model_text);
-    let ready = kind == BackendKind::Builtin || matches!(chat.backend_status(kind), Some(BackendStatus::Ready { .. }));
+    let label = if model.is_empty() {
+        backend_ui::backend_name(kind).to_owned()
+    } else {
+        chat.model_label(&model)
+    };
     let open = backend_ui::DECK_OPEN.with(std::cell::Cell::get);
-    ai_controls::deck_trigger_capsule("ai-deck-trigger", label, ready, open, cx.listener(|chat, _, window, cx| {
+    ai_controls::deck_trigger_capsule("ai-deck-trigger", label, open, cx.listener(|chat, _, window, cx| {
         cx.stop_propagation();
         if !backend_ui::close_menu() { backend_ui::open_deck(chat, window, cx); }
         cx.notify();
