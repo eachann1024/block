@@ -23,6 +23,15 @@ impl Render for AiChat {
             self.input.update(cx, |i, cx| i.set_placeholder(ph, window, cx));
         }
         let theme = Theme::ocean();
+        if super::chat_empty::builtin_blocked(self) {
+            let focus = self.input.read(cx).focus_handle(cx);
+            return div().id("ai-chat-panel").track_focus(&focus).when(self.fullscreen, |p| p.flex_1().w_full().min_w_0())
+                .when(!self.fullscreen, |p| p.w(self.panel_width).flex_none().border_l_1().border_color(theme.hairline))
+                .h_full().flex().flex_col().relative().bg(theme.paper).text_color(theme.text)
+                .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| { cx.stop_propagation(); this.open = false; this.fullscreen = false; window.refresh(); cx.notify(); }))
+                .when(!self.fullscreen, |p| p.child(self.resize_handle(cx)))
+                .child(div().id("ai-chat-scroll").flex_1().min_h_0().size_full().flex().flex_col().items_center().justify_center().child(super::chat_empty::enable_cover(cx)));
+        }
         let title = self.conv().map(|conversation| conversation.title.clone()).unwrap_or_else(|| tr("新会话", "New chat").to_owned());
         let header = div().h(px(52.)).flex_none().px(px(16.)).flex().items_center().gap(px(4.)).border_b_1().border_color(theme.hairline)
             .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(15.)).font_weight(FontWeight(600.)).child(title))

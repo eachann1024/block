@@ -7,6 +7,7 @@ pub enum MascotState {
     EmptyFolder,
     NoNote,
     ReadError,
+    AiDisabled,
 }
 
 impl MascotState {
@@ -16,6 +17,7 @@ impl MascotState {
             Self::EmptyFolder => "empty-folder",
             Self::NoNote => "no-note",
             Self::ReadError => "read-error",
+            Self::AiDisabled => "ai-disabled",
         }
     }
 
@@ -42,6 +44,10 @@ pub fn load_asset(path: &str) -> Option<&'static [u8]> {
         "mascot/read-error.fill.svg" => include_bytes!("../../assets/mascot/read-error.fill.svg"),
         "mascot/read-error.accent.svg" => include_bytes!("../../assets/mascot/read-error.accent.svg"),
         "mascot/read-error.line.svg" => include_bytes!("../../assets/mascot/read-error.line.svg"),
+        "mascot/ai-disabled.body.svg" => include_bytes!("../../assets/mascot/ai-disabled.body.svg"),
+        "mascot/ai-disabled.fill.svg" => include_bytes!("../../assets/mascot/ai-disabled.fill.svg"),
+        "mascot/ai-disabled.accent.svg" => include_bytes!("../../assets/mascot/ai-disabled.accent.svg"),
+        "mascot/ai-disabled.line.svg" => include_bytes!("../../assets/mascot/ai-disabled.line.svg"),
         _ => return None,
     })
 }
