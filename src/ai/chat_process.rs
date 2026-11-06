@@ -1,5 +1,5 @@
 use std::{cell::RefCell, collections::HashMap};
-use gpui::{div, px, CursorStyle, IntoElement, MouseButton, ParentElement, ScrollHandle, SharedString, Styled, prelude::*};
+use gpui::{div, px, IntoElement, ParentElement, ScrollHandle, SharedString, Styled, prelude::*};
 use serde_json::Value;
 use super::{agent, chat::{AiChat, Msg}};
 use crate::{theme::{is_en, tr, Theme}, ui::ai_process_card::{process_card, ProcessCardSpec, ProcessStage, ProcessStep}};
@@ -117,13 +117,27 @@ pub(super) fn render_messages(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> 
 }
 
 fn reply(text: &str, conv_id: u64, index: usize, copyable: bool) -> impl IntoElement {
-    let theme = Theme::ocean(); let copy = text.to_owned();
-    div().flex().flex_col().gap(px(4.))
+    let copy = text.to_owned();
+    let group = SharedString::from(format!("reply-{conv_id}-{index}"));
+    div().group(group.clone()).w_full().flex().flex_col().gap(px(4.))
         .child(div().relative().children(crate::ui::smoke_overlay::probe("ai-assistant-message")).child(super::md_view::render(text, &format!("{conv_id}-{index}"))))
-        .when(copyable, |d| d.child(div().id(SharedString::from(format!("copy-{index}"))).w_auto().text_size(px(14.)).text_color(theme.text_secondary)
-            .cursor(CursorStyle::PointingHand).hover(move |s| s.text_color(theme.text))
-            .on_mouse_down(MouseButton::Left, move |_, _, cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(copy.clone())))
-            .child(tr("复制", "Copy"))))
+        .when(copyable, |d| d.child(div().w_full().flex().justify_end().child(
+            crate::ui::icon_button::copy_button(
+                SharedString::from(format!("copy-{conv_id}-{index}")), false, 1.,
+                move |_, _, cx| {
+                    cx.stop_propagation();
+                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(copy.clone()));
+                },
+            )
+            .relative().children(crate::ui::smoke_overlay::probe("ai-reply-copy"))
+            .when(crate::ui::smoke_overlay::is_smoke_active(), |b| b.child(
+                gpui::canvas(|_, _, _| (), |bounds, _, _, _| {
+                    crate::ui::smoke_overlay::record_bounds("ai-reply-copy-visible", bounds);
+                }).absolute().size_full(),
+            ))
+            .invisible().group_hover(group, |s| s.visible())
+            .tooltip(crate::ui::tooltip::tooltip(tr("复制", "Copy"))),
+        )))
 }
 
 fn plan_card(at: usize, plan: agent::Plan, cx: &mut gpui::Context<AiChat>) -> impl IntoElement {
