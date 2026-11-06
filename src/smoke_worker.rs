@@ -4,7 +4,7 @@ use super::*;
 use super::ipc::{self, Request};
 
 pub(super) fn draw(run: &Run, cx: &AsyncApp) {
-    let _ = run.win(cx, |window, cx| { window.refresh(); window.draw(cx).clear(cx); });
+    let _ = run.win(cx, |window, cx| { smoke_overlay::clear_targets(); window.refresh(); window.draw(cx).clear(cx); });
 }
 
 #[cfg(unix)]

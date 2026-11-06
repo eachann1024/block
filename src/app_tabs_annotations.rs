@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use gpui::{AnyElement, Context, MouseButton, SharedString, div, point, prelude::*, px};
+use gpui::{AnyElement, Context, MouseButton, SharedString, div, prelude::*, px};
 use crate::{
     icons::{Icon, icon},
     theme::{Theme, tr},
@@ -77,13 +77,13 @@ impl Workspace {
         let more_group: SharedString = "titlebar-more-btn".into();
         let send_seg = self.annotation_actions(cx);
         let (sz, rd) = if send_seg.is_some() { (px(24.), px(6.)) } else { (px(26.), crate::ui::radius::CONTROL) };
-        let more = div().id("titlebar-more").group(more_group.clone()).size(sz).rounded(rd)
+        let more = div().id("titlebar-more").relative().children(crate::ui::smoke_overlay::probe("titlebar-more")).child(crate::ui::placement::track_bounds(super::tab_menu::PAGE_TRIGGER.with(Clone::clone), page_open)).group(more_group.clone()).size(sz).rounded(rd)
             .flex_none().flex().items_center().justify_center().cursor(gpui::CursorStyle::PointingHand)
             .when(page_open, |b| b.bg(theme.selected)).when(!page_open, |b| b.hover(|s| s.bg(theme.hover)))
             .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
                 cx.stop_propagation();
                 this.close_overlays(cx);
-                toggle_page_menu(point(event.position.x - px(188.), px(38.)));
+                toggle_page_menu(event.position);
                 cx.notify();
             }))
             .child(if page_open { icon(Icon::More, px(16.), theme.icon_colors(theme.accent)) } else { hover_tinted_icon(more_group, Icon::More, 16., theme.text_secondary, theme.text, theme.icon_fill) });
