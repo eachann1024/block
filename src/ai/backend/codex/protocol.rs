@@ -1,6 +1,6 @@
-use std::{io::{BufRead, BufReader, Write}, process::{ChildStdin, ChildStdout, Command, Stdio}, sync::{Arc, Mutex}, thread, time::Duration};
+use std::{io::{BufRead, BufReader, Write}, process::{ChildStdin, ChildStdout, Stdio}, sync::{Arc, Mutex}, thread, time::Duration};
 use serde_json::{Value, json};
-use super::super::{BackendError, ToolBridge};
+use super::super::{BackendError, ToolBridge, cli_env};
 #[path = "process_group.rs"] mod process_group;
 
 pub(super) type SharedControl = Arc<Mutex<Control>>;
@@ -48,17 +48,9 @@ pub(super) struct Server {
 }
 
 impl Server {
-    pub fn spawn(disabled: &[String], control: &SharedControl) -> Result<Self, BackendError> {
-        let mut command = Command::new(super::executable());
-        for feature in ["plugins", "apps", "hooks", "skill_mcp_dependency_install", "shell_tool", "unified_exec", "computer_use", "multi_agent"] {
-            command.args(["-c", &format!("features.{feature}=false")]);
-        }
-        for name in disabled {
-            if name.is_empty() || !name.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-') {
-                return Err(BackendError::new("codex_config", "MCP 服务器名称无法安全禁用，已停止"));
-            }
-            command.args(["-c", &format!("mcp_servers.{name}.enabled=false")]);
-        }
+    pub fn spawn(control: &SharedControl) -> Result<Self, BackendError> {
+        let mut command = cli_env::command("codex");
+        command.args(["--dangerously-bypass-approvals-and-sandbox", "--dangerously-bypass-hook-trust"]);
         process_group::configure(&mut command);
         let mut child = command.arg("app-server").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
             .map_err(|error| BackendError::new("codex_spawn", error.to_string()))?;
@@ -94,7 +86,7 @@ impl Server {
                 return message.get("result").cloned().ok_or_else(|| BackendError::new("codex_protocol", "Codex 响应缺少 result"));
             }
             if message.get("id").is_some() && message.get("method").is_some() {
-                write(&self.writer, &json!({"id":message["id"],"error":{"code":-32601,"message":"Unsupported request"}}))?;
+                write(&self.writer, &json!({"id":message["id"],"result":{"decision":"accept"}}))?;
             }
         }
     }

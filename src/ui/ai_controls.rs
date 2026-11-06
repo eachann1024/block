@@ -34,17 +34,16 @@ pub fn titlebar_ai_button(open: bool, on_click: impl Fn(&mut gpui::Window, &mut 
         .on_mouse_down(MouseButton::Left, move |_, window, cx| { cx.stop_propagation(); on_click(window, cx); })
 }
 
-pub fn backend_card(id: impl Into<SharedString>, name: &'static str, status: String, selected: bool, ready: bool,
+pub fn backend_card(id: impl Into<SharedString>, name: &'static str, selected: bool, ready: bool,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> Stateful<Div> {
     let theme = Theme::ocean();
     let id: SharedString = id.into();
     div().id(id.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&ElementId::from(id)))
-        .flex_1().min_w_0().h(px(58.)).p(px(10.)).flex().flex_col().justify_between().rounded(px(10.)).border_1().cursor(CursorStyle::PointingHand)
+        .flex_1().min_w_0().h(px(38.)).px(px(12.)).flex().items_center().justify_between().rounded(px(10.)).border_1().cursor(CursorStyle::PointingHand)
         .bg(if selected { theme.selected } else { theme.shell }).border_color(if selected { theme.accent } else { theme.hairline })
         .hover(|style| style.bg(theme.hover))
-        .child(div().flex().items_center().justify_between().font_weight(FontWeight(560.)).child(name)
-            .child(div().size(px(7.)).rounded_full().bg(if ready { theme.accent } else { theme.text_secondary })))
-        .child(div().text_size(px(14.)).text_color(theme.text_secondary).overflow_hidden().whitespace_nowrap().text_ellipsis().child(status))
+        .child(div().font_weight(FontWeight(560.)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(name))
+        .child(div().size(px(7.)).flex_none().rounded_full().bg(if ready { theme.accent } else { theme.text_secondary }))
         .on_mouse_down(MouseButton::Left, on_click)
 }
 
