@@ -4,9 +4,13 @@ use gpui::{
 };
 use gpui_component::input::Input;
 use crate::icons::{Icon, icon, stateful_icon};
-use crate::theme::{Theme, assets_folder, display_folder_path, hide_assets_folder, is_search_folder_ignored, tr};
+use crate::theme::{
+    Theme, assets_folder, display_folder_path, hide_assets_folder,
+    hide_non_markdown_files, is_search_folder_ignored, tr,
+};
 use crate::ui::folder_controls::{
-    folder_search_ignore_pill, folder_table_row, folder_visibility_segmented, slash_affix_input,
+    folder_check_row, folder_search_ignore_pill, folder_table_row,
+    folder_visibility_segmented, slash_affix_input,
 };
 use crate::ui::icon_button::icon_button;
 use crate::ui::settings_controls::{
@@ -20,6 +24,7 @@ impl Workspace {
         let Some(modal) = self.settings.as_ref() else { return div(); };
 
         let hide_assets = hide_assets_folder();
+        let hide_non_md = hide_non_markdown_files();
         let current_assets = assets_folder();
         let rules = crate::theme::folder_rules();
         let notebooks = crate::search::all_notebook_folders(self.folder.clone(), &self.notebooks);
@@ -95,7 +100,7 @@ impl Workspace {
             );
             let right = div().flex().items_center().gap(px(10.)).flex_none().child(seg).child(remove_btn);
             folder_table_row(("folder-row-exact", ix), rule.hidden, left, right)
-        });
+        }).collect::<Vec<_>>();
 
         let regex_rules: Vec<_> = rules.iter().enumerate().filter(|(_, r)| r.regex).collect();
         let regex_count = regex_rules.len();
@@ -109,7 +114,18 @@ impl Workspace {
             div().px(px(2.)).text_size(px(14.)).text_color(theme.accent).child(err.clone())
         });
 
+        let non_md_row = folder_check_row(
+            "folder-row-non-md",
+            Some("folder-hide-non-md"),
+            hide_non_md,
+            Icon::Note,
+            tr("不显示 MD 格式以外的文件", "Hide Non-Markdown Files"),
+            cx.listener(|this, _, _, cx| this.toggle_hide_non_markdown_files(cx)),
+        );
+
         div().flex().flex_col().gap(px(24.))
+            .child(settings_card(16.)
+                .child(non_md_row))
             .child(settings_card(16.)
                 .child(div().flex().flex_col().gap(px(2.))
                     .child(card_title(tr("工作区文件夹清单", "Workspace Folder Rules")))
