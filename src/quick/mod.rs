@@ -8,13 +8,19 @@ mod store;
 mod view;
 
 use std::{sync::atomic::{AtomicU32, Ordering}, time::Duration};
-use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::{Code, HotKey, Modifiers}};
+use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::HotKey};
 use gpui::{
-    App, AppContext, Entity, Global, KeyBinding, TitlebarOptions,
+    App, AppContext, Entity, Focusable, Global, KeyBinding, TitlebarOptions,
     WindowHandle, WindowKind, WindowOptions, actions, point, px, size,
 };
-use crate::{editor::view::Editor, files::state::SavedWindowBounds};
-use panel::{configure_quick_panel, order_out_quick_panel, prepare_quick_summon};
+use crate::{editor::view::{Editor, EditorAction}, files::state::SavedWindowBounds};
+use panel::{configure_quick_panel, prepare_quick_summon};
+pub(crate) use panel::{
+    is_main_window, is_main_window_visible, is_quick_panel_active, is_quick_panel_visible,
+    mark_quick_triggered, mark_search_triggered, order_out_quick_panel,
+    record_search_triggered, show_native_main_window,
+};
+pub use panel::parse_hotkey;
 use view::QuickView;
 
 actions!(quick_note, [ToggleQuickNote, HideQuickNote, SaveToNote, SlotOne, SlotTwo, SlotThree]);
@@ -35,20 +41,43 @@ struct QuickState {
 impl Global for QuickState {}
 
 pub(super) fn remember_bounds(bounds: SavedWindowBounds, cx: &mut App) {
-    if cx.has_global::<QuickState>() {
-        cx.global_mut::<QuickState>().bounds = Some(bounds);
-    }
+    if cx.has_global::<QuickState>() { cx.global_mut::<QuickState>().bounds = Some(bounds); }
 }
 
 pub(super) fn clear_window_state(cx: &mut App) {
     order_out_quick_panel();
-    if cx.has_global::<QuickState>() {
-        cx.global_mut::<QuickState>().window = None;
-    }
+    if cx.has_global::<QuickState>() { cx.global_mut::<QuickState>().window = None; }
 }
 
 pub fn is_open(cx: &App) -> bool {
     cx.try_global::<QuickState>().map_or(false, |s| s.window.is_some())
+}
+
+pub fn close_if_open(cx: &mut App) {
+    flush_editor(cx);
+    let live = cx.try_global::<QuickState>().and_then(|s| s.window.clone());
+    clear_window_state(cx);
+    if let Some((handle, _)) = live {
+        if handle.update(cx, |_, window, _| window.remove_window()).is_err() {
+            cx.defer(move |cx| { let _ = handle.update(cx, |_, window, _| window.remove_window()); });
+        }
+    }
+}
+
+pub fn dispatch_editor_action(action: &EditorAction, cx: &mut App) -> bool {
+    if !is_quick_panel_active() && !crate::smoke::is_worker() {
+        if let Some(active) = cx.active_window() {
+            let _ = active.update(cx, |_, w, cx| { let _ = crate::editor::paste_clipboard::forward_focused_input_action(action, w, cx); });
+        }
+        return false;
+    }
+    let Some((handle, view)) = cx.try_global::<QuickState>().and_then(|s| s.window.clone()) else { return false };
+    handle.update(cx, |_, window, cx| {
+        if crate::editor::paste_clipboard::forward_focused_input_action(action, window, cx) { return; }
+        let editor = view.read(cx).editor.clone();
+        window.focus(&editor.focus_handle(cx), cx);
+        editor.update(cx, |e, cx| e.handle(action, window, cx));
+    }).is_ok()
 }
 
 pub fn flush_editor(cx: &mut App) {
@@ -69,11 +98,16 @@ pub fn refresh_style(cx: &mut App) {
 
 /// Binds keys, the toggle action and the global hotkeys. Call once at startup.
 pub fn init(saved_bounds: Option<SavedWindowBounds>, cx: &mut App) {
+    use crate::editor::view as ev;
     cx.set_global(QuickState { bounds: saved_bounds, ..Default::default() });
+    for key in ["cmd-shift-k", "cmd-k", "cmd-p", "alt-cmd-k"] {
+        cx.bind_keys([
+            KeyBinding::new(key, crate::app::OpenSearch, Some("QuickNote > Editor")),
+            KeyBinding::new(key, crate::app::OpenSearch, Some("QuickNote")),
+            KeyBinding::new(key, crate::app::OpenSearch, None),
+        ]);
+    }
     cx.bind_keys([
-        KeyBinding::new("cmd-shift-k", crate::app::OpenSearch, Some("QuickNote > Editor")),
-        KeyBinding::new("cmd-shift-k", crate::app::OpenSearch, Some("QuickNote")),
-        KeyBinding::new("cmd-shift-k", crate::app::OpenSearch, None),
         KeyBinding::new("escape", HideQuickNote, Some("QuickNote")),
         KeyBinding::new("cmd-w", HideQuickNote, Some("QuickNote")),
         KeyBinding::new("cmd-shift-s", SaveToNote, Some("QuickNote")),
@@ -84,8 +118,8 @@ pub fn init(saved_bounds: Option<SavedWindowBounds>, cx: &mut App) {
     #[cfg(not(target_os = "macos"))]
     cx.bind_keys([
         KeyBinding::new("ctrl-shift-k", crate::app::OpenSearch, Some("QuickNote > Editor")),
-        KeyBinding::new("ctrl-shift-k", crate::app::OpenSearch, Some("QuickNote")),
-        KeyBinding::new("ctrl-shift-k", crate::app::OpenSearch, None),
+        KeyBinding::new("ctrl-k", crate::app::OpenSearch, Some("QuickNote > Editor")),
+        KeyBinding::new("ctrl-p", crate::app::OpenSearch, Some("QuickNote > Editor")),
         KeyBinding::new("ctrl-w", HideQuickNote, Some("QuickNote")),
         KeyBinding::new("ctrl-shift-s", SaveToNote, Some("QuickNote")),
         KeyBinding::new("ctrl-1", SlotOne, Some("QuickNote")),
@@ -94,6 +128,12 @@ pub fn init(saved_bounds: Option<SavedWindowBounds>, cx: &mut App) {
     ]);
     cx.on_action(|_: &ToggleQuickNote, cx: &mut App| toggle(cx));
     cx.on_action(|_: &crate::app::OpenSearch, cx: &mut App| crate::search::window::summon_main(cx));
+    cx.on_action(|_: &ev::Paste, cx: &mut App| { let _ = dispatch_editor_action(&EditorAction::Paste, cx); });
+    cx.on_action(|_: &ev::Copy, cx: &mut App| { let _ = dispatch_editor_action(&EditorAction::Copy, cx); });
+    cx.on_action(|_: &ev::Cut, cx: &mut App| { let _ = dispatch_editor_action(&EditorAction::Cut, cx); });
+    cx.on_action(|_: &ev::SelectAll, cx: &mut App| { let _ = dispatch_editor_action(&EditorAction::SelectAll, cx); });
+    cx.on_action(|_: &ev::Undo, cx: &mut App| { let _ = dispatch_editor_action(&EditorAction::Undo, cx); });
+    cx.on_action(|_: &ev::Redo, cx: &mut App| { let _ = dispatch_editor_action(&EditorAction::Redo, cx); });
     start_hotkey(cx);
 }
 
@@ -108,18 +148,22 @@ pub fn prepare_to_quit(cx: &mut App) -> bool {
 }
 
 pub fn toggle(cx: &mut App) {
+    if !mark_quick_triggered() { return; }
     let live = cx.try_global::<QuickState>().and_then(|state| state.window.clone());
     if let Some((handle, view)) = live {
         let active = handle.update(cx, |_, window, _| window.is_window_active());
         match active {
-            Ok(true) => {
+            Ok(is_active) if is_active && is_quick_panel_visible() => {
                 let _ = handle.update(cx, |_, window, cx| view.update(cx, |view, cx| view.close(window, cx)));
                 return;
             }
-            Ok(false) => {
+            Ok(_) => {
                 prepare_quick_summon();
-                let _ = handle.update(cx, |_, window, _| window.activate_window());
                 configure_quick_panel();
+                let _ = handle.update(cx, |_, window, cx| {
+                    window.activate_window();
+                    view.update(cx, |v, cx| v.switch(v.meta.active, window, cx));
+                });
                 return;
             }
             Err(_) => {
@@ -186,52 +230,6 @@ fn open(cx: &mut App) {
         }
         Err(error) => eprintln!("无法打开速记小窗: {error}"),
     }
-}
-
-pub fn parse_hotkey(spec: &str) -> Option<HotKey> {
-    let mut mods = Modifiers::empty();
-    let mut code = None;
-    for part in spec.split('-').filter(|s| !s.is_empty()) {
-        match part.to_ascii_lowercase().as_str() {
-            "ctrl" | "control" => mods |= Modifiers::CONTROL,
-            "alt" | "opt" | "option" => mods |= Modifiers::ALT,
-            "shift" => mods |= Modifiers::SHIFT,
-            "cmd" | "super" | "meta" => mods |= Modifiers::META,
-            "space" => code = Some(Code::Space),
-            "comma" | "," => code = Some(Code::Comma),
-            "period" | "." => code = Some(Code::Period),
-            "slash" | "/" => code = Some(Code::Slash),
-            "semicolon" | ";" => code = Some(Code::Semicolon),
-            "quote" | "'" => code = Some(Code::Quote),
-            "minus" => code = Some(Code::Minus),
-            "equal" | "=" => code = Some(Code::Equal),
-            "backquote" | "`" => code = Some(Code::Backquote),
-            s if s.len() == 1 => {
-                let b = s.as_bytes()[0];
-                code = match b {
-                    b'a'..=b'z' => Some(match b {
-                        b'a' => Code::KeyA, b'b' => Code::KeyB, b'c' => Code::KeyC, b'd' => Code::KeyD,
-                        b'e' => Code::KeyE, b'f' => Code::KeyF, b'g' => Code::KeyG, b'h' => Code::KeyH,
-                        b'i' => Code::KeyI, b'j' => Code::KeyJ, b'k' => Code::KeyK, b'l' => Code::KeyL,
-                        b'm' => Code::KeyM, b'n' => Code::KeyN, b'o' => Code::KeyO, b'p' => Code::KeyP,
-                        b'q' => Code::KeyQ, b'r' => Code::KeyR, b's' => Code::KeyS, b't' => Code::KeyT,
-                        b'u' => Code::KeyU, b'v' => Code::KeyV, b'w' => Code::KeyW, b'x' => Code::KeyX,
-                        b'y' => Code::KeyY, _ => Code::KeyZ,
-                    }),
-                    b'0'..=b'9' => Some(match b {
-                        b'0' => Code::Digit0, b'1' => Code::Digit1, b'2' => Code::Digit2, b'3' => Code::Digit3,
-                        b'4' => Code::Digit4, b'5' => Code::Digit5, b'6' => Code::Digit6, b'7' => Code::Digit7,
-                        b'8' => Code::Digit8, _ => Code::Digit9,
-                    }),
-                    _ => None,
-                };
-            }
-            _ => return None,
-        }
-    }
-    if spec.ends_with("--") { code = Some(Code::Minus); }
-    if mods.is_empty() { return None; }
-    Some(HotKey::new(Some(mods), code?))
 }
 
 pub fn rebind_hotkeys(cx: &mut App) {

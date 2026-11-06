@@ -145,26 +145,9 @@ impl QuickView {
         cx.background_executor().spawn(async move {
             let _ = crate::files::update_state(move |s| s.quick_window_bounds = Some(bounds));
         }).detach();
-        self.editor.update(cx, |editor, cx| editor.save(cx));
-        cx.spawn_in(window, async move |this, cx| {
-            for _ in 0..40 {
-                let busy = this
-                    .update(cx, |this, cx| {
-                        let e = this.editor.read(cx);
-                        e.is_dirty() || e.is_busy()
-                    })
-                    .unwrap_or(false);
-                if !busy {
-                    break;
-                }
-                cx.background_executor().timer(Duration::from_millis(50)).await;
-            }
-            let _ = this.update_in(cx, |_, window, cx| {
-                super::clear_window_state(cx);
-                window.remove_window();
-            });
-        })
-        .detach();
+        self.editor.update(cx, |editor, cx| { let _ = editor.prepare_to_quit(); editor.save(cx); });
+        super::clear_window_state(cx);
+        window.remove_window();
     }
 
     pub(super) fn save_to_note(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -287,6 +270,7 @@ impl Render for QuickView {
             .on_action(cx.listener(|this, _: &SlotThree, w, cx| this.switch(2, w, cx)))
             .on_action(cx.listener(|this, _: &SaveToNote, w, cx| this.save_to_note(w, cx)))
             .on_action(cx.listener(|this, _: &HideQuickNote, w, cx| this.close(w, cx)))
+            .on_action(cx.listener(|this, _: &super::ToggleQuickNote, w, cx| if super::mark_quick_triggered() { this.close(w, cx); }))
             // Esc is an editor action (block selection) when the editor has focus; the window hides instead.
             .capture_action(cx.listener(|this, _: &crate::editor::view::Cancel, w, cx| {
                 this.close(w, cx);

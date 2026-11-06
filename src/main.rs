@@ -195,8 +195,28 @@ fn main() {
                 search::window::set_main_window(window.window_handle().downcast::<gpui_component::Root>(), workspace.clone(), cx);
                 cx.on_action({
                     let target = tab_target.clone();
+                    move |_: &app::NewNote, cx: &mut App| {
+                        let Some(handle) = search::window::ensure_main_window(cx) else { return };
+                        let target = target.clone();
+                        let _ = cx.update_window(handle, move |_, window, cx| {
+                            target.update(cx, |this, cx| if !this.busy() { this.new_item(false, window, cx); });
+                        });
+                    }
+                });
+                cx.on_action({
+                    let target = tab_target.clone();
+                    move |_: &app::NewFolder, cx: &mut App| {
+                        let Some(handle) = search::window::ensure_main_window(cx) else { return };
+                        let target = target.clone();
+                        let _ = cx.update_window(handle, move |_, window, cx| {
+                            target.update(cx, |this, cx| if !this.busy() { this.new_item(true, window, cx); });
+                        });
+                    }
+                });
+                cx.on_action({
+                    let target = tab_target.clone();
                     move |_: &app::NewTab, cx: &mut App| {
-                        let Some(handle) = cx.active_window() else { return };
+                        let Some(handle) = search::window::ensure_main_window(cx) else { return };
                         let target = target.clone();
                         let _ = cx.update_window(handle, move |_, window, cx| {
                             target.update(cx, |this, cx| this.new_tab(window, cx));
@@ -206,6 +226,7 @@ fn main() {
                 cx.on_action({
                     let target = tab_target.clone();
                     move |_: &app::CloseTab, cx: &mut App| {
+                        if quick::is_quick_panel_active() { quick::close_if_open(cx); return; }
                         let Some(handle) = cx.active_window() else { return };
                         let _ = cx.update_window(handle, |_, window, cx| {
                             target.update(cx, |this, cx| this.close_active_tab(window, cx));
@@ -222,7 +243,7 @@ fn main() {
                     tab_target.update(cx, |this, cx| this.step_tab(-1, cx));
                 });
                 cx.on_action(move |_: &app::OpenSettings, cx: &mut App| {
-                    let Some(handle) = cx.active_window() else { return };
+                    let Some(handle) = search::window::ensure_main_window(cx) else { return };
                     let settings_target = settings_target.clone();
                     let _ = cx.update_window(handle, move |_, window, cx| {
                         settings_target.update(cx, |this, cx| {
@@ -231,7 +252,7 @@ fn main() {
                     });
                 });
                 cx.on_action(move |_: &ExportImage, cx: &mut App| {
-                    let Some(handle) = cx.active_window() else { return };
+                    let Some(handle) = search::window::ensure_main_window(cx) else { return };
                     let editor = menu_target.read(cx).editor.clone();
                     let _ = cx.update_window(handle, move |_, window, cx| {
                         editor.update(cx, |editor, cx| {
