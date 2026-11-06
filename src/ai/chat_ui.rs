@@ -1,6 +1,6 @@
 //! Rendering and batch-plan card UI for `AiChat`.
 use gpui::{CursorStyle, Focusable, FontWeight, IntoElement, MouseButton, ParentElement, Render, SharedString, Styled, Window, div, prelude::*, px};
-use gpui_component::input::Input;
+
 
 use super::agent;
 use super::chat::{AiChat, Msg, first_placeholder, follow_placeholder};
@@ -179,8 +179,8 @@ impl Render for AiChat {
         });
         let composer = div().p(px(10.)).flex().flex_col().gap(px(10.)).rounded(crate::ui::radius::SURFACE).border_1().border_color(if self.input.read(cx).focus_handle(cx).is_focused(window) { theme.accent } else { theme.btn_border }).bg(theme.paper)
             .when(!self.refs.is_empty() || !self.skills.is_empty(), |d| d.child(chips))
-            .child(div().h(px(54.)).text_size(px(14.)).child(Input::new(&self.input).appearance(false).bordered(false).focus_bordered(false).h(px(54.)).px(px(2.))))
-            .child(div().flex().items_center().gap(px(6.))
+            .child(crate::ui::chat_input::field(&self.input))
+            .child(div().relative().children(crate::ui::smoke_overlay::probe("ai-composer-actions")).flex_none().flex().items_center().gap(px(6.))
                 .child(div().flex_1().min_w_0().flex().items_center().gap(px(6.))
                     .child(super::chat_deck::trigger(self, cx)))
                 .child(action));

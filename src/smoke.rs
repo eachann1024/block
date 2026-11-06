@@ -181,3 +181,5 @@ impl Run {
         }
     }
 }
+
+#[path = "smoke_chat_composer.rs"] mod chat_composer;
