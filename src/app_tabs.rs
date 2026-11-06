@@ -69,7 +69,7 @@ impl Workspace {
         root.on_action(cx.listener(|this, _: &Dismiss, _, cx| if !this.dismiss_tab_menu(cx) { cx.propagate(); }))
             .on_action(cx.listener(|this, _: &ToggleSidebar, _, cx| this.toggle_sidebar(cx)))
             .on_action(cx.listener(|this, _: &NewTab, window, cx| this.new_tab(window, cx)))
-            .on_action(cx.listener(|this, _: &CloseTab, _, cx| this.close_active_tab(cx)))
+            .on_action(cx.listener(|this, _: &CloseTab, window, cx| this.close_active_tab(window, cx)))
             .on_action(cx.listener(|this, _: &ReopenClosedTab, _, cx| this.reopen_closed_tab(cx)))
             .on_action(cx.listener(|this, _: &NextTab, _, cx| this.step_tab(1, cx)))
             .on_action(cx.listener(|this, _: &PrevTab, _, cx| this.step_tab(-1, cx)))
@@ -113,11 +113,13 @@ impl Workspace {
         self.save_tabs_state(cx);
         cx.notify();
     }
-    pub(crate) fn close_active_tab(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn close_active_tab(&mut self, window: &mut gpui::Window, cx: &mut Context<Self>) {
         if self.tabs.len() > 1 {
             if let Some(active) = self.selected.clone().or_else(|| self.editor.read(cx).current_path().map(Path::to_path_buf)) {
                 self.close_tab(active, cx);
             }
+        } else {
+            crate::window_close::close(window, &self.editor, cx);
         }
     }
     pub(crate) fn step_tab(&mut self, delta: isize, cx: &mut Context<Self>) {
