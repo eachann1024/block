@@ -58,7 +58,7 @@ pub fn hide_main_window_on_close() -> bool {
         let mut hidden = false;
         for i in 0..NSArray::count(windows) {
             let win = NSArray::objectAtIndex(windows, i);
-            if NSWindow::level(win) == 0 {
+            if crate::quick::is_main_window(win) {
                 NSWindow::orderOut_(win, nil);
                 hidden = true;
             }
@@ -69,44 +69,40 @@ pub fn hide_main_window_on_close() -> bool {
 /// Without Cocoa window ordering, closing the main window quits instead of hiding it.
 #[cfg(not(target_os = "macos"))]
 pub fn hide_main_window_on_close() -> bool { false }
-#[cfg(target_os = "macos")]
-#[allow(deprecated)]
-fn show_native_main_window() {
-    use cocoa::{appkit::{NSApplication, NSWindow}, base::{BOOL, SEL, YES, id, nil, selector}, foundation::NSArray};
-    unsafe extern "C" { fn objc_msgSend(); }
-    unsafe {
-        let app = NSApplication::sharedApplication(nil);
-        let is_hidden: unsafe extern "C" fn(id, SEL) -> BOOL = std::mem::transmute(objc_msgSend as *const ());
-        if is_hidden(app, selector("isHidden")) == YES {
-            let unhide: unsafe extern "C" fn(id, SEL, id) = std::mem::transmute(objc_msgSend as *const ());
-            unhide(app, selector("unhide:"), nil);
-        }
-        let activate: unsafe extern "C" fn(id, SEL, BOOL) = std::mem::transmute(objc_msgSend as *const ());
-        activate(app, selector("activateIgnoringOtherApps:"), YES);
-        let windows = app_windows();
-        let is_mini: unsafe extern "C" fn(id, SEL) -> BOOL = std::mem::transmute(objc_msgSend as *const ());
-        for i in 0..NSArray::count(windows) {
-            let win = NSArray::objectAtIndex(windows, i);
-            if NSWindow::level(win) == 0 {
-                if is_mini(win, selector("isMiniaturized")) == YES {
-                    NSWindow::deminiaturize_(win, nil);
-                }
-                NSWindow::makeKeyAndOrderFront_(win, nil);
-            }
-        }
-    }
-}
-#[cfg(not(target_os = "macos"))]
-fn show_native_main_window() {}
 pub fn activate_main_window(cx: &mut App) {
-    show_native_main_window();
+    if crate::smoke::is_worker() { return; }
+    crate::quick::close_if_open(cx);
+    crate::quick::show_native_main_window();
     cx.activate(true);
     if let Some((Some(main_handle), _)) = main_window(cx) {
         let _ = main_handle.update(cx, |_, main_win, _| main_win.activate_window());
+        cx.spawn(async move |cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(20)).await;
+            let _ = cx.update(|cx| {
+                crate::quick::show_native_main_window();
+                cx.activate(true);
+                let _ = main_handle.update(cx, |_, main_win, _| main_win.activate_window());
+            });
+        }).detach();
     }
 }
+pub fn reveal_main_window(window: &mut Window, cx: &mut App) {
+    if crate::smoke::is_worker() { return; }
+    if crate::quick::is_open(cx) || !crate::quick::is_main_window_visible() {
+        crate::quick::close_if_open(cx);
+        crate::quick::show_native_main_window();
+        cx.activate(true);
+        window.activate_window();
+    }
+}
+pub fn ensure_main_window(cx: &mut App) -> Option<gpui::AnyWindowHandle> {
+    if crate::quick::is_open(cx) || !crate::quick::is_main_window_visible() || cx.active_window().is_none() {
+        activate_main_window(cx);
+    }
+    main_window(cx).and_then(|(h, _)| h.map(Into::into)).or_else(|| cx.active_window())
+}
 pub fn summon_main(cx: &mut App) {
-    crate::quick::flush_editor(cx);
+    if !crate::quick::mark_search_triggered() { return; }
     activate_main_window(cx);
     if let Some((Some(handle), workspace)) = main_window(cx) {
         let _ = handle.update(cx, |_, window, cx| {
@@ -115,6 +111,16 @@ pub fn summon_main(cx: &mut App) {
     }
 }
 pub fn summon_from_hotkey(cx: &mut App) {
+    if !crate::quick::mark_search_triggered() { return; }
+    if crate::quick::is_open(cx) || !crate::quick::is_main_window_visible() {
+        activate_main_window(cx);
+        if let Some((Some(handle), workspace)) = main_window(cx) {
+            let _ = handle.update(cx, |_, window, cx| {
+                workspace.update(cx, |w, cx| w.summon_search(window, cx));
+            });
+        }
+        return;
+    }
     if let Some((Some(handle), workspace)) = main_window(cx) {
         if handle.update(cx, |_, window, _| window.is_window_active()).unwrap_or(false) {
             let _ = handle.update(cx, |_, window, cx| {
@@ -122,10 +128,6 @@ pub fn summon_from_hotkey(cx: &mut App) {
             });
             return;
         }
-    }
-    if crate::quick::is_open(cx) {
-        summon_main(cx);
-        return;
     }
     toggle(cx);
 }

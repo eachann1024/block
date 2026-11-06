@@ -32,8 +32,8 @@ pub(super) fn bind_keys(cx: &mut App) {
         KeyBinding::new("alt-cmd-k", OpenSearch, None),
         KeyBinding::new("cmd-p", OpenSearch, None),
         KeyBinding::new("cmd-,", OpenSettings, None),
-        KeyBinding::new("cmd-n", NewNote, Some("Workspace")),
-        KeyBinding::new("cmd-shift-n", NewFolder, Some("Workspace")),
+        KeyBinding::new("cmd-n", NewNote, None),
+        KeyBinding::new("cmd-shift-n", NewFolder, None),
         KeyBinding::new("escape", Dismiss, Some("Workspace")),
         KeyBinding::new("escape", Dismiss, Some("SearchPalette")),
         KeyBinding::new("cmd-w", Dismiss, Some("SearchPalette")),
@@ -102,6 +102,8 @@ impl Workspace {
     }
 
     pub(super) fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        crate::quick::record_search_triggered();
+        crate::search::window::reveal_main_window(window, cx);
         if self.folder.is_none() || self.history_restore_busy { return; }
         if self.is_history_open() || self.history_opening { self.close_page_history_focused(window, cx); }
         if self.search.is_some() {

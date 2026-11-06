@@ -110,4 +110,67 @@ impl Editor {
         if let Some(note) = self.annotate.annotations.first_mut() { note.ai_rewritten = Some("Alpha\nBeta".into()); }
         cx.notify();
     }
+
+    pub(crate) fn verify_chaoshan_paste_smoke(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> Result<(), String> {
+        use crate::editor::model::MarkKind;
+        assert!(crate::ui::smoke_overlay::is_smoke_active());
+        let icloud_path = "/Users/eachann/Library/Mobile Documents/com~apple~CloudDocs/0Markdown/生活/潮汕之旅.md";
+        let source = std::fs::read_to_string(icloud_path).unwrap_or_else(|_| {
+            "# 潮汕五日行程攻略（11月11日至15日）\n\n## 一、行前准备清单\n\n- [ ] 身份证\n\n### 2. 住宿分布\n\n- **11/11：**汕头龙湖区。\n\n| 餐别 | 推荐店 |\n| --- | --- |\n| 午餐 | 杏花吴记 |\n".into()
+        });
+        let saved_clip = cx.read_from_clipboard();
+        let check_doc = |ed: &Self, label: &str| -> Result<(), String> {
+            let has_h1 = ed.doc.blocks.iter().any(|b| b.kind == Kind::H1 && b.text.contains("潮汕"));
+            let has_h2 = ed.doc.blocks.iter().any(|b| b.kind == Kind::H2);
+            let has_h3 = ed.doc.blocks.iter().any(|b| b.kind == Kind::H3);
+            let has_todo = ed.doc.blocks.iter().any(|b| b.kind == Kind::Todo);
+            let has_bullet = ed.doc.blocks.iter().any(|b| b.kind == Kind::Bullet);
+            let tables = ed.doc.blocks.iter().filter(|b| b.meta.table.is_some()).count();
+            let has_cjk_bold = ed.doc.blocks.iter().any(|b| {
+                b.text.contains("11/11：") && b.spans.iter().any(|s| s.marks.contains(&MarkKind::Bold))
+            });
+            if !(has_h1 && has_h2 && has_h3 && has_todo && has_bullet && tables >= 1 && has_cjk_bold) {
+                return Err(format!("{label} Markdown 识别不完整: h1={has_h1} h2={has_h2} h3={has_h3} todo={has_todo} bullet={has_bullet} tables={tables} cjk_bold={has_cjk_bold}"));
+            }
+            Ok(())
+        };
+        // 1. Editor mode raw paste of 潮汕之旅.md
+        self.reset_document(markdown::parse(""));
+        self.paste_text(&source, false, false, None, cx);
+        check_doc(self, "编辑器直接粘贴潮汕之旅.md")?;
+        // 2. Single Cmd+A (SelectAll) -> Cmd+C (Copy) -> paste plain text & clipboard item into Editor and QuickNote (minimal=true)
+        self.caret = super::view::selection::Caret::new(self.doc.blocks[0].id);
+        self.handle(&super::view::EditorAction::SelectAll, window, cx);
+        let (_, _, ai, bi) = self.ordered();
+        if !(ai == 0 && bi + 1 == self.doc.blocks.len()) {
+            return Err(format!("单次全选未覆盖全文: ai={ai} bi={bi} len={}", self.doc.blocks.len()));
+        }
+        self.handle(&super::view::EditorAction::Copy, window, cx);
+        let (clip_plain, clip_md) = self.block_clip.clone().ok_or("全选复制后 block_clip 为空")?;
+        if !clip_plain.contains("# 潮汕") {
+            return Err("全选复制后的纯文本未保留 Markdown 语法".into());
+        }
+        // 3. QuickNote (小窗 minimal=true) paste from clipboard plain text & full source
+        let prev_minimal = self.minimal;
+        self.minimal = true;
+        self.reset_document(markdown::parse(""));
+        self.block_clip = None;
+        self.handle(&super::view::EditorAction::Paste, window, cx);
+        check_doc(self, "小窗粘贴复制出的潮汕之旅.md")?;
+        self.reset_document(markdown::parse(""));
+        self.paste_text(&source, false, false, Some(&clip_md), cx);
+        check_doc(self, "小窗粘贴完整潮汕之旅.md")?;
+        self.minimal = prev_minimal;
+        // 4. Entity-escaped Markdown paste recovery
+        self.reset_document(markdown::parse(""));
+        let escaped = "&#35; 潮汕之旅\n\n&#45; &#42;&#42;11&#47;11：&#42;&#42;汕头龙湖区。\n\n&#124; 餐别 &#124; 店名 &#124;\n&#124; &#45;&#45;&#45; &#124; &#45;&#45;&#45; &#124;\n&#124; 午餐 &#124; 杏花吴记 &#124;";
+        self.paste_text(escaped, false, false, None, cx);
+        let esc_ok = self.doc.blocks.iter().any(|b| b.kind == Kind::H1)
+            && self.doc.blocks.iter().any(|b| b.kind == Kind::Bullet && !b.spans.is_empty())
+            && self.doc.blocks.iter().any(|b| b.meta.table.is_some());
+        if !esc_ok { return Err("实体转义 Markdown 粘贴未恢复结构".into()); }
+        self.reset_document(markdown::parse("# Smoke\n\n```rust\nfn main() {}\n```\n"));
+        if let Some(prev) = saved_clip { cx.write_to_clipboard(prev); }
+        Ok(())
+    }
 }

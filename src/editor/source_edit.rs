@@ -154,7 +154,8 @@ impl Editor {
         let range = doc.selection();
         if range.is_empty() { return; }
         let text = doc.text.body()[range.clone()].to_owned();
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        let item = if self.is_markdown_note() { ClipboardItem::new_string_with_metadata(text, super::paste::MARKDOWN_CLIPBOARD_V1.into()) } else { ClipboardItem::new_string(text) };
+        cx.write_to_clipboard(item);
         if cut { self.source_apply(range, "", true, cx); } else { cx.notify(); }
     }
     pub(super) fn source_paste(&mut self, item: Option<ClipboardItem>, cx: &mut Context<Self>) {

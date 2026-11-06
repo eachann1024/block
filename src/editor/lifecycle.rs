@@ -106,6 +106,15 @@ impl Editor {
     pub(super) fn load_path(&mut self, path: PathBuf, prev: Option<PathBuf>, cx: &mut Context<Self>) {
         self.persistence.generation += 1;
         let generation = self.persistence.generation;
+        if self.minimal {
+            self.persistence.loading = false;
+            self.persistence.loading_path = None;
+            match storage::load(&path) {
+                Ok(loaded) => self.show_loaded(path, loaded, cx),
+                Err(error) => self.fail_open(path, prev, error, cx),
+            }
+            return;
+        }
         self.persistence.loading = true;
         self.persistence.loading_path = Some((path.clone(), generation));
         self.status = tr("正在打开…", "Opening…").into(); cx.notify();

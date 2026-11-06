@@ -6,9 +6,13 @@ use super::{model::{Kind, MarkKind}, view::{Editor, EditorAction, selection::{Po
 #[path = "transactions.rs"] pub(super) mod transactions;
 
 impl Editor {
-    pub(super) fn handle(&mut self, action: &EditorAction, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn handle(&mut self, action: &EditorAction, window: &mut Window, cx: &mut Context<Self>) {
         if !matches!(action, EditorAction::Backspace) { super::block_shortcuts::clear_first_line_delete(); }
         use EditorAction::*;
+        if !self.minimal && crate::quick::is_quick_panel_active()
+            && matches!(action, Paste | Copy | Cut | SelectAll | Undo | Redo)
+            && crate::quick::dispatch_editor_action(action, cx) { return; }
+        if super::paste_clipboard::forward_focused_input_action(action, window, cx) { return; }
         if self.path.is_none() || (!self.is_markdown_note() && !self.editing_source()) { return; }
         if self.editing_source() { self.handle_source(action, window, cx); return; }
         self.pending_vertical = None;
@@ -50,7 +54,7 @@ impl Editor {
             }
             // First press selects the caret's block, the next one the whole document.
             SelectAll if { let (a, b, ai, bi) = self.ordered(); let block = &self.doc.blocks[ai];
-                ai == bi && block.meta.table.is_none() && !(a.offset == 0 && b.offset == block.text.len()) } => {
+                ai == bi && block.meta.code_language.is_some() && !(a.offset == 0 && b.offset == block.text.len()) } => {
                 let id = self.caret.head.block; let len = self.block_text().len();
                 self.caret.anchor = Position { block: id, offset: 0 };
                 self.set_head(Position { block: id, offset: len }, true, cx);
@@ -58,6 +62,7 @@ impl Editor {
             SelectAll => {
                 self.caret.anchor = Position { block: self.doc.blocks[0].id, offset: 0 };
                 let last = &self.doc.blocks[self.doc.blocks.len()-1];
+                if self.doc.blocks.len() == 1 && last.text.is_empty() { self.block_sel = Some((0, 0)); }
                 self.set_head(Position { block: last.id, offset: last.text.len() }, true, cx);
             }
             Up | Down if self.block_menu_step(matches!(action, Down), cx) => {}
@@ -99,10 +104,20 @@ impl Editor {
                         let block = &self.doc.blocks[i];
                         if let Some(range) = self.selected_range(block.id) { text.push_str(&block.text[range]); }
                     }
-                    self.remember_blocks(&text);
+                    self.remember_blocks();
                     let item = match &self.block_clip {
-                        Some((_, markdown)) => super::paste_clipboard::block_item(text, markdown),
-                        None => ClipboardItem::new_string(text),
+                        Some((clip_text, markdown)) => super::paste_clipboard::block_item(clip_text.clone(), markdown),
+                        None => {
+                            let b = &self.doc.blocks[first];
+                            if first == last && (!b.spans.is_empty() || !b.meta.inline.is_empty())
+                                && let Some(r) = self.selected_range(b.id) {
+                                let s = b.slice(r);
+                                let md = super::markdown::serialize(&super::model::Doc::from_blocks(vec![s])).trim_end_matches('\n').to_owned();
+                                ClipboardItem::new_string_with_metadata(md, super::paste::MARKDOWN_CLIPBOARD_V1.into())
+                            } else {
+                                ClipboardItem::new_string(text)
+                            }
+                        }
                     };
                     cx.write_to_clipboard(item);
                     if matches!(action, Cut) && !self.boundary_rules(false, cx) && !self.delete_across(cx) { self.replace_selection("", false, cx); }
@@ -141,6 +156,9 @@ impl Editor {
     pub(super) fn paste_clipboard_item(&mut self, item: Option<ClipboardItem>, window: &mut Window, cx: &mut Context<Self>) {
         if self.editing_source() { self.source_paste(item, cx); return; }
         if !self.is_markdown_note() { return; }
+        if let Some(md) = super::clipboard_files::markdown_file_text(item.as_ref()) {
+            self.paste_text(&md, false, true, None, cx); return;
+        }
         let image = item.as_ref().and_then(|item| item.entries().iter().find_map(|entry| match entry {
             gpui::ClipboardEntry::Image(image) => Some((image.bytes.clone(), match image.format {
                 gpui::ImageFormat::Jpeg => "jpg", gpui::ImageFormat::Gif => "gif", gpui::ImageFormat::Webp => "webp", _ => "png" })),
