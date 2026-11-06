@@ -186,3 +186,5 @@ impl Run {
 }
 
 #[path = "smoke_chat_composer.rs"] mod chat_composer;
+
+#[path = "smoke_menu_positions.rs"] mod menu_positions;

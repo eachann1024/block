@@ -24,6 +24,8 @@ fn collapsed_header_width(nav_buttons: usize) -> f32 {
 
 pub(super) fn clamp_width(width: Pixels) -> Pixels { width.clamp(px(MIN_WIDTH), px(MAX_WIDTH)) }
 
+thread_local! { static SWITCHER_BOUNDS: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<Pixels>>>> = Default::default(); }
+
 impl Workspace {
     pub(crate) fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
         if self.is_history_open() || self.history_restore_busy { return; }
@@ -104,7 +106,7 @@ impl Workspace {
         let name = self.folder.as_ref().map(|path| display_name(path, true)).unwrap_or_else(|| tr("选择笔记本", "Select Notebook").into());
         let enabled = self.ui_enabled();
         let open = self.switcher_open;
-        div().id("notebook-switcher").group("notebook-switcher").relative().children(crate::ui::smoke_overlay::probe("notebook-switcher")).flex_1().min_w_0().h(px(30.)).px(px(8.)).flex().items_center().gap(px(7.))
+        div().id("notebook-switcher").group("notebook-switcher").relative().child(crate::ui::placement::track_bounds(SWITCHER_BOUNDS.with(Clone::clone), open)).children(crate::ui::smoke_overlay::probe("notebook-switcher")).flex_1().min_w_0().h(px(30.)).px(px(8.)).flex().items_center().gap(px(7.))
             .rounded(crate::ui::radius::CONTROL).text_size(px(14.)).font_weight(FontWeight(500.)).text_color(theme.text)
             .when(open, |b| b.bg(theme.hover))
             .when(enabled, |b| b.cursor(CursorStyle::PointingHand).hover(|style| style.bg(theme.hover))
@@ -161,12 +163,11 @@ impl Workspace {
         if !items.is_empty() { items.push(separator()); }
         items.push(menu_item(ItemId::Name("add-notebook"), Icon::FolderPlus, tr("选择文件夹…", "Choose Folder…").into(), false, false,
             cx.listener(|this, _, window, cx| { this.close_overlays(cx); this.choose_folder(window, cx); })).into_any_element());
-        let row_count = self.notebooks.len() + 1;
-        let sep_h = if self.notebooks.is_empty() { 0. } else { 11. };
-        let est_h = (8. + row_count as f32 * 30. - 2. + sep_h).min(crate::ui::dropdown::MAX_HEIGHT);
-        let y = (window.viewport_size().height - px(48. + est_h)).max(px(8.));
         let width = self.sidebar_width - px(16.);
-        crate::ui::dropdown::deferred_popover(point(px(8.), y), menu_surface(width).children(items), 2).into_any_element()
+        let fallback = gpui::Bounds::new(point(px(8.), window.viewport_size().height - px(38.)), gpui::size(width, px(30.)));
+        crate::ui::dropdown::deferred_popover_with(move |_, _| {
+            crate::ui::dropdown::PlacementSpec::above(SWITCHER_BOUNDS.with(|b| b.get()).unwrap_or(fallback))
+        }, menu_surface(width).children(items), 2).into_any_element()
     }
 }
 

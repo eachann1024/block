@@ -17,13 +17,13 @@ pub(super) fn menu_shadows() -> Vec<BoxShadow> {
 }
 
 thread_local! { static BOUNDS: RefCell<HashMap<&'static str, Bounds<Pixels>>> = Default::default(); }
-/// Placement spec for a toolbar dropdown button: right-aligned to the button, flipping above if needed.
+/// Placement spec for a toolbar dropdown button: left-aligned to the button, flipping above if needed.
 pub(super) fn drop_spec_for(key: &'static str, viewport: Bounds<Pixels>, window: &Window) -> crate::dropdown::PlacementSpec {
     BOUNDS
         .with(|b| b.borrow().get(key).copied())
         .map(|r| {
             crate::dropdown::PlacementSpec::below(r)
-                .align_x(crate::dropdown::AlignX::Right)
+                .align_x(crate::dropdown::AlignX::Left)
                 .viewport(viewport)
                 .gap(px(4.))
         })
@@ -76,7 +76,7 @@ impl RenderOnce for SelectionToolbar {
                 .child(button(Icon::TbList, tr("列表", "Lists"), false, lists_open, true, editor.clone(), |this, w, cx| this.toggle_menu(false, w, cx)))
                 .child(sep()))
             .when(rich && !state.grid, |bar| bar
-                .child(button(Icon::TbLink, tr("链接 ⌘⇧K", "Link ⌘⇧K"), state.link, link_open, false, editor.clone(), |this, w, cx| this.open_link(w, cx))))
+                .child(button(Icon::TbLink, tr("链接 ⌘⇧K", "Link ⌘⇧K"), state.link, link_open, false, editor.clone(), |this, w, cx| this.open_toolbar_link(w, cx))))
             .when(rich && state.grid, |bar| bar.child(disabled_icon_button(Icon::TbLink)));
         gpui::anchored().position(self.anchor).snap_to_window_with_margin(px(8.)).child(animate_bar(bar, "selection-toolbar-enter"))
     }
@@ -88,9 +88,9 @@ fn button(g: Icon, tip: &'static str, on: bool, open: bool, dropdown: bool, edit
     let ink = if on { tc.on_ink } else { tc.ink };
     let group = SharedString::from(format!("fb-btn-{:?}", gpui::ElementId::from(tip)));
     icon_toggle_button(tip, g, tip, on, open).h(px(28.)).min_w(px(28.))
-        .when(dropdown, |b| b.child(stateful_icon(group, Icon::TbChevron, px(10.), on || open, Theme::ocean().mono_icon_colors(rgb(ink).into()), duo_icon_colors(tc, on)))
-            .child(gpui::canvas(move |bounds, _, _| { BOUNDS.with(|m| { m.borrow_mut().insert(tip, bounds); }); }, |_, _, _, _| {})
-                .absolute().top_0().left_0().size_full()))
+        .when(dropdown, |b| b.child(stateful_icon(group, Icon::TbChevron, px(10.), on || open, Theme::ocean().mono_icon_colors(rgb(ink).into()), duo_icon_colors(tc, on))))
+        .child(gpui::canvas(move |bounds, _, _| { BOUNDS.with(|m| { m.borrow_mut().insert(tip, bounds); }); }, |_, _, _, _| {})
+            .absolute().top_0().left_0().size_full())
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             editor.update(cx, |this, cx| { run(this, window, cx); if this.format.is_none() { window.focus(&this.focus, cx); } });
             cx.stop_propagation();
@@ -107,6 +107,12 @@ fn palette_button(on: bool, open: bool, editor: Entity<Editor>) -> gpui::Statefu
 }
 
 impl Editor {
+    fn open_toolbar_link(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let trigger = drop_spec_for(tr("链接 ⌘⇧K", "Link ⌘⇧K"), self.list.viewport_bounds(), window);
+        self.open_link(window, cx);
+        if let Some(FormatPop::Link { spec, .. }) = &mut self.format { *spec = trigger; }
+    }
+
     /// Opens (or closes) the text-type or list dropdown under its toolbar button.
     fn toggle_menu(&mut self, kinds: bool, window: &Window, cx: &mut Context<Self>) {
         let was = matches!((&self.format, kinds), (Some(FormatPop::Kinds { .. }), true) | (Some(FormatPop::Lists { .. }), false));
