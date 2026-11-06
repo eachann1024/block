@@ -3,7 +3,7 @@ use gpui::{App, Context, Window};
 use super::{chat::{AiChat, Msg, Pick, follow_placeholder}, provider};
 use crate::theme::tr;
 
-thread_local! { pub(super) static PICKER_SCROLL: gpui::ScrollHandle = gpui::ScrollHandle::new(); }
+thread_local! { pub(super) static PICKER_SCROLL: gpui::UniformListScrollHandle = gpui::UniformListScrollHandle::new(); }
 
 impl AiChat {
     pub(super) fn picker_token(&self, cx: &App) -> Option<String> {
@@ -19,9 +19,8 @@ impl AiChat {
         let value = self.input.read(cx).value();
         if let Some(q) = token.strip_prefix('@') {
             let q = q.to_lowercase();
-            let ctx = self.agent_ctx(cx);
-            let current = ctx.current.clone();
-            let pages = current.iter().cloned().chain(ctx.pages().into_iter().filter(|p| Some(p) != current.as_ref()));
+            let (_, current) = self.picker_location(cx);
+            let pages = current.iter().cloned().chain(self.picker_cache.pages.iter().filter(|p| Some(*p) != current.as_ref()).cloned());
             let mut seen = std::collections::HashSet::new();
             pages.filter(|p| p.to_lowercase().contains(&q) && !self.refs.contains(p) && seen.insert(p.clone()))
                 .map(|p| {
@@ -32,7 +31,7 @@ impl AiChat {
             let q = q.to_lowercase();
             let new_cmd = tr("/新会话", "/new");
             let mut v: Vec<(Pick, String, String)> = vec![(Pick::NewConv, new_cmd.into(), tr("开启空白对话，当前会话会留在历史里", "Start a new chat; current chat stays in history").into())];
-            v.extend(self.agent_ctx(cx).local_skills().into_iter().map(|(n, d, _)| (Pick::Skill(n.clone()), format!("/{n}"), d)));
+            v.extend(self.picker_cache.skills.iter().cloned().map(|(n, d)| (Pick::Skill(n.clone()), format!("/{n}"), d)));
             v.into_iter().filter(|(_, n, d)| q.is_empty() || n.to_lowercase().contains(&q) || d.to_lowercase().contains(&q) || (q == "new" && n == new_cmd)).collect()
         } else { Vec::new() }
     }
@@ -42,7 +41,7 @@ impl AiChat {
         let count = self.picker_items(&token, cx).len();
         if count > 0 {
             self.pick_index = (self.pick_index.min(count - 1) as isize + direction).rem_euclid(count as isize) as usize;
-            PICKER_SCROLL.with(|scroll| scroll.scroll_to_item(self.pick_index));
+            PICKER_SCROLL.with(|scroll| scroll.scroll_to_item(self.pick_index, gpui::ScrollStrategy::Top));
             cx.notify();
         }
         true

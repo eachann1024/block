@@ -22,6 +22,7 @@ impl Run {
             self.click_target(cx, "ai-chat-new", "重复点击新会话清空并保持焦点").await?;
             self.check(14, self.win(cx, crate::editor::ai::chat::input_smoke::is_focused)? && self.win(cx, crate::editor::ai::chat::input_smoke::snapshot)?.0.is_empty(), "重复新建后为空且聚焦")?;
         }
+        self.check_picker(cx).await?;
         self.click_target(cx, "ai-layout-toggle", "返回侧栏").await?;
         self.redraw(cx);
         let bounds = || smoke_overlay::target_bounds("ai-composer-input").ok_or("Missing composer");
@@ -51,4 +52,40 @@ impl Run {
         self.check(14, snapshot.0.is_empty() && bounds()?.size.height == initial, "发送清空并恢复默认两行")?;
         Ok(())
     }
+    async fn check_picker(&self, cx: &AsyncApp) -> Result<(), String> {
+        use crate::editor::ai::chat::input_smoke;
+        self.win(cx, input_smoke::prepare_picker)??;
+        let result = self.exercise_picker(cx).await;
+        self.win(cx, input_smoke::cleanup_picker)?;
+        result
+    }
+
+    async fn exercise_picker(&self, cx: &AsyncApp) -> Result<(), String> {
+        use crate::editor::ai::chat::input_smoke;
+        self.type_text(cx, "@").await?;
+        for _ in 0..100 {
+            self.redraw(cx);
+            let state = self.win(cx, input_smoke::picker_state)?;
+            if !state.0 && state.1 >= 1200 { break; }
+            sleep(cx, 50).await;
+        }
+        let state = self.win(cx, input_smoke::picker_state)?;
+        self.check(14, !state.0 && state.1 >= 1200 && state.4 < 100, "1200 篇笔记后台加载，候选过滤小于 100ms")?;
+        self.type_text(cx, "picker-smoke/note-1199").await?;
+        self.check(14, self.win(cx, input_smoke::picker_state)?.1 == 1, "虚拟列表仍可搜索末尾笔记")?;
+        self.press(cx, "enter").await?;
+        let state = self.win(cx, input_smoke::picker_state)?;
+        let input = self.win(cx, input_smoke::snapshot)?.0;
+        self.check(14, state.2.contains(&"picker-smoke/note-1199".to_string()), &format!("回车选中引用: {state:?}, input={input:?}"))?;
+        self.type_text(cx, "/picker-fixture").await?;
+        self.check(14, self.win(cx, input_smoke::picker_state)?.1 == 1, "斜杠筛选后台加载的技能")?;
+        self.press(cx, "down").await?;
+        self.press(cx, "enter").await?;
+        self.check(14, self.win(cx, input_smoke::picker_state)?.3.contains(&"picker-fixture".to_string()), "方向键与回车选中技能")?;
+        self.type_text(cx, "@").await?;
+        self.press(cx, "escape").await?;
+        self.check(14, self.win(cx, input_smoke::snapshot)?.0 == "@" && self.win(cx, input_smoke::picker_state)?.1 == 0, "Escape 关闭候选并保留输入")?;
+        Ok(())
+    }
+
 }
