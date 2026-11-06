@@ -29,9 +29,24 @@ impl Run {
         self.tabs_and_sidebar(cx).await?;
         self.settings(cx).await?;
         self.code_block_open(cx).await?;
+        self.chaoshan_paste_and_hotkey(cx).await?;
         self.image_menu_positions(cx).await?;
         self.performance(cx).await?;
         self.ai_panel_and_deck(cx).await
+    }
+
+    async fn chaoshan_paste_and_hotkey(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.hud(cx, "Step 13 · 验证潮汕之旅.md 在编辑器与小窗完整粘贴及快捷键防抖");
+        let editor = self.query(cx, |w, _| w.editor.clone());
+        self.win(cx, move |window, cx| {
+            editor.update(cx, |e, cx| e.verify_chaoshan_paste_smoke(window, cx))
+        })??;
+        // Restore code block note state for subsequent steps if needed
+        let _ = crate::quick::mark_quick_triggered();
+        let debounced_quick = !crate::quick::mark_quick_triggered();
+        let _ = crate::quick::mark_search_triggered();
+        let debounced_search = !crate::quick::mark_search_triggered();
+        self.check(13, debounced_quick && debounced_search, "小窗与搜索快捷键在主窗口隐藏/激活态下防重复触发")
     }
 
     async fn ai_panel_and_deck(&self, cx: &AsyncApp) -> Result<(), String> {
