@@ -231,7 +231,7 @@ impl Run {
         self.click_target(cx, "settings-button", "Step 12/12 · 点击打开设置页").await?;
         self.check(12, self.query(cx, |w, _| w.settings_is_open()), "设置页已打开")?;
         self.check(12, smoke_overlay::target_center("titlebar-feedback").is_none() && smoke_overlay::target_center("titlebar-ai").is_none(), "设置页顶栏已移除反馈与 AI 按钮")?;
-        self.check(12, smoke_overlay::target_center("sidebar-toggle").is_some() && smoke_overlay::target_center("settings-back").is_some_and(|p| f32::from(p.y) < 40.), "设置页顶栏保留侧栏折叠按钮并在右上角显示关闭按钮")?;
+        self.check(12, smoke_overlay::target_center("sidebar-toggle").is_some() && smoke_overlay::target_center("settings-back").is_some_and(|p| f32::from(p.y) >= 40.), "设置页顶栏保留侧栏折叠按钮且内容区右上角显示关闭按钮")?;
         self.click_target(cx, "settings-tab-folders", "Step 12/12 · 切换到文件夹设置").await?;
         sleep(cx, 200).await;
         self.check(12, crate::theme::hide_non_markdown_files(), "新用户默认勾选『不显示 MD 格式以外的文件』")?;
