@@ -54,13 +54,17 @@ impl Workspace {
             crate::feedback::is_open(), crate::feedback::has_draft(),
             move |window, cx| { ent.update(cx, |this, cx| this.close_overlays(cx)); clear_tab_menu(); crate::feedback::toggle(window, cx); },
         );
+        let ent = cx.entity();
+        let ai_btn = crate::ui::ai_controls::titlebar_ai_button(crate::editor::ai::chat::is_open(cx), move |window, cx| {
+            ent.update(cx, |this, cx| { this.close_overlays(cx); clear_tab_menu(); crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); cx.notify(); });
+        });
         let mr = if cfg!(any(target_os = "macos", target_family = "wasm")) { 10. } else { 4. };
         let tools = div().h_full().flex().items_center().gap(px(4.)).mr(px(mr));
         // Notes show only the more menu beside feedback; those two swap so feedback sits on the left.
         let tools = if matches!(surface, crate::editor::view::TitlebarSurface::Note) {
-            tools.child(feedback_btn).children(context_tools)
+            tools.child(feedback_btn).child(ai_btn).children(context_tools)
         } else {
-            tools.children(context_tools).child(feedback_btn)
+            tools.children(context_tools).child(feedback_btn).child(ai_btn)
         };
         div().h(px(40.)).h_full().flex_none().flex().items_center()
             .child(tools)
