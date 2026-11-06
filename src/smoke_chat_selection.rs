@@ -9,13 +9,41 @@ impl Run {
         sleep(cx, 300).await;
         // Preserve the user's clipboard even if an assertion fails.
         let clipboard = cx.update(|cx| cx.read_from_clipboard());
-        let result = self.check_chat_selection(cx).await;
+        let result = match self.check_chat_selection(cx).await {
+            Ok(()) => self.check_process_card(cx).await,
+            Err(error) => Err(error),
+        };
         cx.update(|cx| {
             if let Some(item) = clipboard { cx.write_to_clipboard(item); }
             else { cx.write_to_clipboard(gpui::ClipboardItem::new_string(String::new())); }
         });
         crate::editor::ai::provider::save(&config)?;
         result
+    }
+
+    async fn check_process_card(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.win(cx, crate::editor::ai::chat::prepare_process_card_smoke)??;
+        sleep(cx, 300).await; self.redraw(cx);
+        let (steps, notes) = cx.update(|_| crate::editor::ai::chat::process_card_smoke_data());
+        self.check(14, steps.len() == 7 && steps[2].merged_count == 5 && steps[1].label == steps[5].label, "Process step order or merge incorrect")?;
+        self.check(14, notes.len() == 6 && notes.iter().any(|note| note == "Claude"), "Used notes missing")?;
+        let markdown = crate::editor::ai::md_view::normalize_markdown("- **提示词**: **11 篇**\n\n---\n\n共计 **29 篇** 笔记。");
+        self.check(14, markdown.contains("<strong>提示词</strong>") && markdown.contains("<strong>11 篇</strong>") && markdown.contains("<strong>29 篇</strong>") && markdown.contains("---"), "CJK Markdown formatting missing")?;
+        for id in ["ai-process-card", "ai-process-stage-badge", "ai-process-toggle", "ai-process-steps", "ai-process-notes-more"] {
+            self.check(14, smoke_overlay::target_bounds(id).is_some(), &format!("Missing {id}"))?;
+        }
+        let bounds = smoke_overlay::target_bounds("ai-process-steps").ok_or("Missing process steps")?;
+        self.check(14, bounds.size.height <= px(185.), "Process viewport exceeds four steps")?;
+        self.click_target(cx, "ai-process-notes-more", "展开全部笔记").await?;
+        self.redraw(cx); self.check(14, smoke_overlay::target_bounds("ai-process-notes-less").is_some(), "Missing collapse notes")?;
+        self.click_target(cx, "ai-process-notes-less", "收起笔记").await?;
+        self.redraw(cx); self.check(14, smoke_overlay::target_bounds("ai-process-notes-more").is_some(), "Missing expand notes")?;
+        self.click_target(cx, "ai-process-toggle", "收起过程").await?;
+        cx.update(|_| smoke_overlay::reset()); self.redraw(cx);
+        self.check(14, smoke_overlay::target_bounds("ai-process-steps").is_none() && smoke_overlay::target_bounds("ai-process-stage-badge").is_some(), "Process did not collapse")?;
+        self.click_target(cx, "ai-process-toggle", "展开过程").await?;
+        self.redraw(cx); self.check(14, smoke_overlay::target_bounds("ai-process-steps").is_some(), "Process did not expand")?;
+        Ok(())
     }
 
     async fn check_chat_selection(&self, cx: &AsyncApp) -> Result<(), String> {
