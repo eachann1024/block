@@ -4,7 +4,7 @@ use crate::theme::tr;
 use super::{Editor, Doc, storage::{self, Fingerprint}};
 
 #[derive(Clone)]
-pub(super) enum Pending { Open(PathBuf), Close, ReleaseUnder }
+pub(in crate::editor) enum Pending { Open(PathBuf), Close, ReleaseUnder }
 #[derive(Default)]
 pub(in crate::editor) struct DiskGate { pub epoch: u64, pub saved: HashMap<PathBuf, Fingerprint> }
 pub(in crate::editor) struct Persistence {
@@ -14,6 +14,7 @@ pub(in crate::editor) struct Persistence {
     pub pending: Option<Pending>,
     pub saving: HashSet<PathBuf>,
     pub loading: bool,
+    pub loading_path: Option<(PathBuf, u64)>,
     pub timer: Option<Task<()>>,
     pub gate: Arc<Mutex<DiskGate>>,
     pub write_epoch: u64,
@@ -21,51 +22,32 @@ pub(in crate::editor) struct Persistence {
 impl Default for Persistence {
     fn default() -> Self {
         Self { revision: 0, generation: 0, base: Fingerprint(0), pending: None,
-            saving: HashSet::new(), loading: false, timer: None, gate: Arc::new(Mutex::new(DiskGate::default())), write_epoch: 0 }
+            saving: HashSet::new(), loading: false, loading_path: None, timer: None, gate: Arc::new(Mutex::new(DiskGate::default())), write_epoch: 0 }
     }
 }
 impl Editor {
     pub fn current_path(&self) -> Option<&Path> { self.path.as_deref() }
     pub fn is_loading(&self) -> bool { self.persistence.loading }
     pub fn interaction_epoch(&self) -> u64 { self.persistence.generation }
-    pub fn recover_latest_draft(&mut self, cx: &mut Context<Self>) {
-        self.persistence.generation += 1;
-        self.persistence.loading = false;
-        self.persistence.pending = None;
-        if self.path.is_some() || !self.persistence.saving.is_empty() { cx.notify(); return; }
-        let generation = self.persistence.generation;
-        self.persistence.loading = true;
-        self.report_status(tr("正在读取恢复草稿…", "Recovering draft…").into(), cx);
-        let task = cx.background_executor().spawn(async { storage::latest_draft() });
-        cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| {
-                if this.persistence.generation != generation { return; }
-                this.persistence.loading = false;
-                match result {
-                    Ok((path, loaded)) => {
-                        this.show_loaded(path, loaded, cx);
-                        this.status = tr("已恢复草稿。原文件若已删除或被外部修改仍受保护，可复制或导出备份", "Draft recovered. Copy or export a backup if the original file changed").into();
-                    }
-                    Err(error) => this.status = error,
-                }
-                cx.notify();
-            });
-        }).detach();
-    }
     pub fn is_busy(&self) -> bool { !self.persistence.saving.is_empty() || self.persistence.loading || self.persistence.pending.is_some() }
     pub fn report_status(&mut self, message: String, cx: &mut Context<Self>) {
         self.status = message; cx.notify();
     }
     pub fn open(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         crate::log::set_context(format!("note={}", path.display()));
+        let pending_open = match &self.persistence.pending { Some(Pending::Open(pending)) => Some(pending.as_path()), _ => None };
+        if super::open_dedup::duplicate_open(
+            &path, pending_open, self.persistence.pending.is_none(), self.persistence.loading,
+            self.persistence.loading_path.as_ref(), self.persistence.generation,
+        ) { return; }
         if self.path.as_ref() == Some(&path) && self.persistence.pending.is_none() {
             if self.status == "正在打开…" || self.status == "Opening…" {
                 self.status = if self.persistence.saving.contains(&path) { tr("正在保存…", "Saving…").into() }
                     else if self.dirty { tr("未保存更改", "Unsaved changes").into() }
                     else { String::new() };
+                cx.notify();
             }
-            cx.notify(); return;
+            return;
         }
         self.persistence.generation += 1;
         self.persistence.loading = false;
@@ -125,6 +107,7 @@ impl Editor {
         self.persistence.generation += 1;
         let generation = self.persistence.generation;
         self.persistence.loading = true;
+        self.persistence.loading_path = Some((path.clone(), generation));
         self.status = tr("正在打开…", "Opening…").into(); cx.notify();
         let request_path = path.clone();
         let task = cx.background_executor().spawn(async move { storage::load(&request_path) });
@@ -133,6 +116,7 @@ impl Editor {
             let _ = this.update(cx, |this, cx| {
                 if this.persistence.generation != generation { return; }
                 this.persistence.loading = false;
+                this.persistence.loading_path = None;
                 match loaded {
                     Ok(loaded) => {
                         this.show_loaded(path, loaded, cx);
