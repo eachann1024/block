@@ -114,20 +114,19 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     <!-- 方案 C AI 面板（侧栏 396px / 全屏沉浸单栏画布） -->
     <section aria-label="AI 助手" style="width:{{aiPanelWidth}};flex:{{aiPanelFlex}};min-width:0;background:{{cardBg}};border-left:{{aiBorderLeft}};display:flex;flex-direction:column">
 
-      <!-- 极简顶栏：左「会话切换器」，右「全屏/侧栏图标 + 新建 + 关闭」 -->
+      <!-- 极简顶栏：左「新会话」，右「全屏/侧栏、新建、历史、关闭」四个普通图标按钮 -->
       <div style="min-height:52px;padding:10px 16px;border-bottom:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;flex:none">
-        <button type="button" style="height:30px;padding:0 8px;border:0;border-radius:8px;background:transparent;display:inline-flex;align-items:center;gap:6px;font-weight:560">
-          <span>新会话 · Claude</span>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{textSecondary}}" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
-        </button>
+        <span style="font-size:15px;font-weight:600">新会话</span>
 
         <div style="display:flex;align-items:center;gap:4px">
-          <button type="button" onClick="{{toggleLayoutMode}}" aria-label="切换全屏或侧栏" style="height:28px;padding:4px 10px;border:0;border-radius:8px;background:{{shellBg}};display:inline-flex;align-items:center;gap:5px">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M15 4h5v5M9 20H4v-5M20 4l-6 6M4 20l6-6"></path></svg>
-            <span>{{layoutToggleLabel}}</span>
+          <button type="button" class="ib" onClick="{{toggleLayoutMode}}" aria-label="切换全屏或侧栏" style="color:{{textSecondary}}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M15 4h5v5M9 20H4v-5M20 4l-6 6M4 20l6-6"></path></svg>
           </button>
           <button type="button" class="ib" onClick="{{pickEmpty}}" aria-label="新建会话" style="color:{{textSecondary}}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          </button>
+          <button type="button" class="ib" aria-label="历史会话" style="color:{{textSecondary}}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l2.5 2"></path></svg>
           </button>
           <button type="button" class="ib" aria-label="关闭" style="color:{{textSecondary}}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
@@ -145,16 +144,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
               <path d="M5 18L19 6L15 19L11 14L5 18Z" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.6" stroke-linejoin="round"></path>
             </svg>
           </div>
-          <div style="text-align:center;display:flex;flex-direction:column;gap:4px">
-            <strong style="font-size:16px;font-weight:560">有什么可以帮你处理？</strong>
-            <span style="color:{{textSecondary}}">已关联 @Claude · 当前使用 {{activeBackend}} ({{activeModel}})</span>
-          </div>
+          <strong style="font-size:16px;font-weight:560;text-align:center">有什么可以帮你处理？</strong>
 
           <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:560px">
-            <button type="button" onClick="{{pickPlan}}" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid {{borderCol}};background:{{shellBg}}">整理账号为对齐表格</button>
-            <button type="button" onClick="{{pickPlan}}" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid {{borderCol}};background:{{shellBg}}">批量掩码密码与 Token</button>
-            <button type="button" onClick="{{pickDeck}}" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid {{borderCol}};background:{{shellBg}}">切换 Codex / Claude 后端</button>
-            <button type="button" onClick="{{pickDsh}}" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid {{borderCol}};background:{{shellBg}}">配置 dsh 认证来源</button>
+            <button type="button" onClick="{{pickPlan}}" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid {{borderCol}};background:{{shellBg}}">润色并精简当前笔记</button>
+            <button type="button" onClick="{{pickPlan}}" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid {{borderCol}};background:{{shellBg}}">整理内容为对齐表格</button>
+            <button type="button" onClick="{{pickPlan}}" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid {{borderCol}};background:{{shellBg}}">提炼核心要点与待办</button>
+            <button type="button" onClick="{{pickPlan}}" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid {{borderCol}};background:{{shellBg}}">检查错别字与语病</button>
           </div>
 
           <sc-if value="{{isPlanFlow}}" hint-placeholder-val="{{false}}">
@@ -231,13 +227,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
               <div style="display:flex;align-items:center;gap:6px">
-                <!-- 合一胶囊触发器：内置 AI · gemini-3.8-flash ▾ -->
+                <!-- 合一胶囊触发器：gemini-3.8-flash ▾ -->
                 <button type="button" onClick="{{pickDeck}}" style="height:30px;padding:4px 10px;border-radius:8px;border:0;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};display:inline-flex;align-items:center;gap:6px;font-weight:500">
-                  <span style="width:7px;height:7px;border-radius:4px;background:{{accent}}"></span>
-                  <span>{{activeBackend}} · {{activeModel}}</span>
+                  <span>{{activeModel}}</span>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
                 </button>
-                <button type="button" style="height:30px;padding:4px 8px;border-radius:8px;border:0;background:{{cardBg}};color:{{textSecondary}}">@Claude</button>
               </div>
               <button type="button" onClick="{{pickPlan}}" style="height:32px;padding:4px 14px;border-radius:8px;border:0;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};font-weight:560">发送</button>
             </div>
