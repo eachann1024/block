@@ -209,8 +209,8 @@ pub fn render_card_state(id: u64, state: CardState) -> Div {
                 // Text row is padded to the 26px ghost-button height so a single line sits centered.
                 .child(div().size(px(8.)).mt(px(9.)).flex_none().rounded_full().bg(rgb(0xf5c84c)))
                 .child(div().flex_1().min_w_0().py(px(3.)).text_size(px(14.)).line_height(px(20.)).text_color(theme.text).child(body))
-                .child(ghost_icon_button(("ann-edit", id), Icon::Pencil, tr("编辑批注", "Edit annotation"), on_edit))
-                .child(ghost_icon_button(("ann-del", id), Icon::Trash, tr("删除批注", "Delete annotation"), on_delete)),
+                .child(ghost_icon_button(("ann-edit", id), Icon::Pencil, tr("编辑批注", "Edit annotation"), on_edit).children(crate::ui::smoke_overlay::probe(format!("annotation-edit-{id}"))))
+                .child(ghost_icon_button(("ann-del", id), Icon::Trash, tr("删除批注", "Delete annotation"), on_delete).children(crate::ui::smoke_overlay::probe(format!("annotation-delete-{id}")))),
         ),
         CardState::Editing { input, on_cancel, on_save } => root
             .child(
@@ -240,7 +240,7 @@ pub fn render_card_state(id: u64, state: CardState) -> Div {
             .child(result_box(id, rewritten))
             .child(
                 div().w_full().flex().items_center().gap(px(6.))
-                    .child(icon_box_button(("ann-accept", id), Icon::Check, true, tr("同意，替换原文", "Accept and replace"), on_accept))
+                    .child(icon_box_button(("ann-accept", id), Icon::Check, true, tr("同意，替换原文", "Accept and replace"), on_accept).children(crate::ui::smoke_overlay::probe(format!("annotation-accept-{id}"))))
                     .child(icon_box_button(("ann-reject", id), Icon::Close, false, tr("不满意", "Not satisfied"), on_reject))
                     .child(icon_box_button(("ann-regen", id), Icon::Refresh, false, tr("重新生成", "Regenerate"), on_regen))
                     .child(div().flex_1())
@@ -278,7 +278,7 @@ pub fn render_card_state(id: u64, state: CardState) -> Div {
                 div().w_full().flex().items_center().gap(px(6.))
                     .child(div().flex_1().min_w_0().text_size(px(14.)).line_height(px(20.)).text_color(err_fg).child(message))
                     .child(icon_box_button(("ann-retry", id), Icon::Refresh, false, tr("重试", "Retry"), on_retry))
-                    .child(ghost_icon_button(("ann-err-del", id), Icon::Trash, tr("删除批注", "Delete annotation"), on_delete)),
+                    .child(ghost_icon_button(("ann-err-del", id), Icon::Trash, tr("删除批注", "Delete annotation"), on_delete).children(crate::ui::smoke_overlay::probe(format!("annotation-delete-{id}")))),
             )
         }
     }
