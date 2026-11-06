@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>AI 未启用 A · 页隼休眠缺省图</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input{font-family:inherit;font-size:14px;line-height:20px;color:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid #547dd0;outline-offset:2px}
+*{box-sizing:border-box}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.ib{width:28px;height:28px;border:0;border-radius:8px;background:transparent;display:inline-flex;align-items:center;justify-content:center;padding:0;flex:none}
+.row{width:100%;height:32px;padding:0 10px;border:0;border-radius:8px;background:transparent;display:flex;align-items:center;gap:8px;text-align:left}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:860px;display:flex;flex-direction:column;background:{{shellBg}};color:{{textPrimary}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased">
+
+  <header style="height:40px;display:flex;align-items:center;background:{{shellBg}};border-bottom:1px solid {{shellBorder}};flex:none">
+    <div style="width:260px;height:100%;padding:0 10px 0 16px;display:flex;align-items:center;justify-content:space-between;border-right:1px solid {{shellBorder}};flex:none">
+      <div aria-hidden="true" style="display:flex;gap:8px;align-items:center">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      </div>
+      <button type="button" class="ib" aria-label="收起侧栏" style="color:{{textSecondary}}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{iconFill}}"></path>
+          <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
+          <path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div style="flex:1;min-width:0;height:100%;padding:0 12px;display:flex;align-items:center;justify-content:space-between">
+      <span style="font-weight:500">读书笔记</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button type="button" class="ib" aria-label="批注" style="color:{{textSecondary}}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H9l-4.5 3v-3H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5Z" stroke="currentColor" stroke-width="1.5"></path>
+          </svg>
+        </button>
+        <button type="button" class="ib" aria-label="AI 助手" style="background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{accent}}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M11 4.5L13 9.5L18 11.5L13 13.5L11 18.5L9 13.5L4 11.5L9 9.5L11 4.5Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path>
+            <path d="M18.5 4.5V7.5M17 6H20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+          </svg>
+        </button>
+        <button type="button" class="ib" aria-label="更多操作" style="color:{{textSecondary}}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="5.75" cy="12" r="1.5" fill="currentColor"></circle>
+            <circle cx="12" cy="12" r="1.5" fill="{{accent}}"></circle>
+            <circle cx="18.25" cy="12" r="1.5" fill="currentColor"></circle>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div style="flex:1;min-height:0;display:flex;background:{{paperBg}}">
+
+    <aside style="width:260px;flex:none;background:{{sidebarBg}};border-right:1px solid {{shellBorder}};padding:12px 10px;display:flex;flex-direction:column;gap:4px">
+      <div style="height:32px;padding:6px 10px;margin-bottom:8px;border-radius:8px;background:{{shellBg}};display:flex;align-items:center;justify-content:space-between;color:{{textSecondary}}">
+        <span>搜索</span>
+        <span class="mono" style="font-size:12px">⌘K</span>
+      </div>
+      <button type="button" class="row" style="background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};font-weight:500"><span>读书笔记</span></button>
+      <button type="button" class="row" style="color:{{textSecondary}}"><span>项目周报</span></button>
+      <button type="button" class="row" style="color:{{textSecondary}}"><span>写作大纲</span></button>
+      <button type="button" class="row" style="color:{{textSecondary}}"><span>会议纪要</span></button>
+    </aside>
+
+    <main style="flex:1;min-width:0;padding:56px 64px;overflow:auto;background:{{paperBg}}">
+      <article style="max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:20px;font-size:16px;line-height:28px">
+        <h1 style="margin:0;font-size:28px;line-height:38px;font-weight:600;letter-spacing:-0.02em">读书笔记</h1>
+        <p style="margin:0">好的工具应当像一张干净的纸面，在需要记录时立刻退后，不制造视觉噪音；当需要整理结构或润色段落时，再安静地提供恰到好处的协助。</p>
+        <p style="margin:0;color:{{textSecondary}}">章节摘录与批注已归档在本地目录中，支持直接通过 Markdown 语法进行结构化排版。</p>
+      </article>
+    </main>
+
+    <!-- AI 侧栏：未启用时移除顶栏与底栏输入框，整栏垂直居中展示页隼休眠插画与强调轮廓按钮 -->
+    <section aria-label="AI 助手" style="width:396px;flex:none;background:{{cardBg}};border-left:1px solid {{shellBorder}};display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px">
+      <div style="display:flex;flex-direction:column;align-items:center;text-align:center">
+        <svg width="220" height="176" viewBox="0 0 200 160" aria-hidden="true" style="display:block;flex:none">
+          <g fill="none" stroke="{{lineCol}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- 底部叠放的笔记纸垫 -->
+            <rect x="44" y="114" width="112" height="18" rx="5" fill="{{iconFill}}"></rect>
+            <rect x="36" y="106" width="112" height="20" rx="6" fill="{{bodyFill}}"></rect>
+            <path d="M50 116h34M92 116h18" stroke="{{accent}}" stroke-width="1.8"></path>
+
+            <!-- 页隼身体与浅蓝腹部填充（05 / 休眠待唤醒） -->
+            <path d="M58 50Q92 28 126 50L132 106Q92 122 52 106Z" fill="{{bodyFill}}" stroke="none"></path>
+            <path d="M54 88Q92 106 130 88L132 106Q92 122 52 106Z" fill="{{iconFill}}" stroke="none"></path>
+            <path d="M111 42l15 7-8 15Z" fill="{{accent}}"></path>
+            <path d="M58 50Q92 28 126 50L132 106Q92 122 52 106Z"></path>
+
+            <!-- 轻拢的双翼与爪部 -->
+            <path d="M58 80q-12 14 8 22M126 80q12 14-8 22" fill="{{bodyFill}}"></path>
+            <path d="M74 106l-2 6m36-6 2 6" stroke="{{accent}}"></path>
+
+            <!-- 闭眼安睡弧线与鸟喙 -->
+            <path d="M72 68q4 4 8 0M99 68q4 4 8 0" stroke-width="2.4"></path>
+            <path d="M88 76l4 3 4-3" stroke-width="1.8"></path>
+
+            <!-- 待接通的虚线星轨与右上角 AI 星芒徽章 -->
+            <path d="M128 38Q136 26 144 28" stroke="{{accent}}" stroke-width="1.8" stroke-dasharray="3 4"></path>
+            <rect x="140" y="18" width="36" height="36" rx="10" fill="{{bodyFill}}" stroke-width="2"></rect>
+            <path d="M141 42h34v3a8 8 0 0 1-8 8h-18a8 8 0 0 1-8-8v-3Z" fill="{{iconFill}}" stroke="none"></path>
+            <rect x="140" y="18" width="36" height="36" rx="10" fill="none" stroke-width="2"></rect>
+            <path d="M158 25l2.4 6.1 6.1 2.4-6.1 2.4-2.4 6.1-2.4-6.1-6.1-2.4 6.1-2.4L158 25Z" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.7"></path>
+
+            <!-- 左上方静置微星点 -->
+            <path d="M42 38v6M39 41h6" stroke="{{accent}}" stroke-width="1.8"></path>
+          </g>
+        </svg>
+
+        <h2 style="margin:22px 0 0;font-size:18px;line-height:26px;font-weight:600;color:{{textPrimary}}">{{titleText}}</h2>
+
+        <button type="button" onClick="{{toggleState}}" style="margin-top:22px;height:38px;padding:0 18px;border:0;border-radius:8px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{textPrimary}};font-size:14px;font-weight:560;display:inline-flex;align-items:center;gap:6px">
+          <span>{{ctaText}}</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14M13 6l6 6-6 6"></path>
+          </svg>
+        </button>
+      </div>
+    </section>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["dark","light"]},"aiState":{"editor":"enum","default":"disabled","options":["disabled","unconfigured"]},"$preview":{"width":1440,"height":860}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { aiState: null };
+  }
+  renderVals() {
+    const theme = this.props.theme ?? 'dark';
+    const isDark = theme === 'dark';
+    const aiState = this.state.aiState ?? this.props.aiState ?? 'disabled';
+    const isUnconfigured = aiState === 'unconfigured';
+
+    return {
+      shellBg: isDark ? '#343434' : '#f1f1f1',
+      sidebarBg: isDark ? '#222222' : '#fafafa',
+      paperBg: isDark ? '#181818' : '#ffffff',
+      cardBg: isDark ? '#222222' : '#fafafa',
+      bodyFill: isDark ? '#242933' : '#ffffff',
+      textPrimary: isDark ? '#ececec' : '#20242c',
+      textSecondary: isDark ? '#b4b4b4' : '#526071',
+      lineCol: isDark ? '#ececec' : '#20242c',
+      accent: isDark ? '#779de8' : '#547dd0',
+      iconFill: isDark ? '#31456a' : '#c9d8f3',
+      selectedBg: isDark ? '#343434' : '#e5edfc',
+      shellBorder: isDark ? '#333333' : '#e6e6e6',
+      titleText: isUnconfigured ? '先完成 AI 配置' : '先启用 AI 助手',
+      ctaText: isUnconfigured ? '前往配置 AI' : '前往启用 AI',
+      toggleState: () => this.setState({ aiState: isUnconfigured ? 'disabled' : 'unconfigured' })
+    };
+  }
+}
+</script>
+</body>
+</html>
