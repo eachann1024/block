@@ -25,7 +25,17 @@ pub(super) fn backend_name(backend: BackendKind) -> &'static str {
     }
 }
 
-pub(super) fn status_label(_kind: BackendKind, status: Option<&BackendStatus>) -> String {
+pub(super) fn builtin_ready() -> bool {
+    super::provider::validate_request(&super::provider::config()).is_ok()
+}
+
+pub(super) fn status_label(kind: BackendKind, status: Option<&BackendStatus>) -> String {
+    if kind == BackendKind::Builtin {
+        let cfg = super::provider::config();
+        return if !cfg.enabled { tr("未启用", "Disabled").into() }
+            else if super::provider::validate_request(&cfg).is_err() { tr("未配置", "Not configured").into() }
+            else { tr("可用", "Available").into() };
+    }
     match status {
         None => tr("未检测", "Not checked").into(),
         Some(BackendStatus::Ready { .. }) => tr("可用", "Available").into(),
