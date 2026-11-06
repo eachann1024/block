@@ -30,6 +30,7 @@ impl Run {
         self.settings(cx).await?;
         self.code_block_open(cx).await?;
         self.image_menu_positions(cx).await?;
+        self.performance(cx).await?;
         self.ai_panel_and_deck(cx).await
     }
 
