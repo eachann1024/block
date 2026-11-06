@@ -236,7 +236,7 @@ function classify(subject) {
   return /^(fix|resolve|correct|prevent|avoid|keep)\b/i.test(subject) ? "fix" : "feat";
 }
 
-// 返回 { zh, en, kind } 或 null（无法生成有意义条目时丢弃，不再编造套话）
+// 返回 { zh, en, kind }。规则与中文正文优先；其余真实提交用原文兜底，仅空白正文返回 null。
 function translateSubject(commit) {
   const { source, body } = stripSubject(commit.subject, commit.releaseNote);
   const kind = classify(commit.subject);
@@ -248,7 +248,9 @@ function translateSubject(commit) {
     const cleaned = body.replace(TECH_WORDS, "").replace(/\s+/g, " ").trim();
     if (cleaned.length >= 4) return { kind, zh: dot(cleaned, "。！？"), en: dot(cleaned, ".!?") };
   }
-  return null;
+  const text = body.trim();
+  if (!text) return null;
+  return { kind, zh: dot(text, "。！？"), en: dot(text, ".!?") };
 }
 
 export function groupCommitsByDay(commits) {
@@ -344,7 +346,7 @@ export async function buildReleaseNotes({ version, commits, lang = "bilingual", 
     return { skip: false, source: "polished", model: polished.model, ...base, markdownZh: zh, markdownEn: en || composed.en, markdown: polished.markdown };
   }
   if (polished.status === "empty") {
-    return { skip: true, reason: `${polished.model} 判断无用户可感知改动`, markdown: "", markdownZh: "", markdownEn: "", days: [] };
+    return { skip: false, source: "fallback", ...base, markdown: composed.text };
   }
   return { skip: false, source: "fallback", reason: polished.reason, ...base, markdown: composed.text };
 }
