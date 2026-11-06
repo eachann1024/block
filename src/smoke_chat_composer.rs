@@ -12,6 +12,17 @@ impl Run {
     }
 
     async fn check_composer(&self, cx: &AsyncApp) -> Result<(), String> {
+        for fullscreen in [false, true] {
+            if fullscreen { self.click_target(cx, "ai-layout-toggle", "切换全屏验证新会话焦点").await?; }
+            self.click_target(cx, "ai-chat-history", "将焦点移出输入框").await?;
+            self.click_target(cx, "ai-chat-new", "点击新会话后直接输入").await?;
+            self.check(14, self.win(cx, crate::editor::ai::chat::input_smoke::is_focused)?, "新会话自动聚焦输入框")?;
+            self.type_text(cx, "New chat focus").await?;
+            self.check(14, self.win(cx, crate::editor::ai::chat::input_smoke::snapshot)?.0 == "New chat focus", "无需再次点击即可输入")?;
+            self.click_target(cx, "ai-chat-new", "重复点击新会话清空并保持焦点").await?;
+            self.check(14, self.win(cx, crate::editor::ai::chat::input_smoke::is_focused)? && self.win(cx, crate::editor::ai::chat::input_smoke::snapshot)?.0.is_empty(), "重复新建后为空且聚焦")?;
+        }
+        self.click_target(cx, "ai-layout-toggle", "返回侧栏").await?;
         self.redraw(cx);
         let bounds = || smoke_overlay::target_bounds("ai-composer-input").ok_or("Missing composer");
         let initial = bounds()?.size.height;
