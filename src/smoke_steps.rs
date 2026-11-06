@@ -21,6 +21,7 @@ impl Run {
         self.todo_toggle(cx).await?;
         self.bold(cx).await?;
         self.undo_redo(cx).await?;
+        self.menu_positions(cx).await?;
         self.backspace(cx).await?;
         self.find(cx).await?;
         self.annotations(cx).await?;
@@ -28,6 +29,7 @@ impl Run {
         self.tabs_and_sidebar(cx).await?;
         self.settings(cx).await?;
         self.code_block_open(cx).await?;
+        self.image_menu_positions(cx).await?;
         self.ai_panel_and_deck(cx).await
     }
 

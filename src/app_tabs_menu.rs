@@ -41,6 +41,8 @@ pub(super) fn is_page_menu_open() -> bool {
     TAB_UI.with(|ui| ui.borrow().page_menu.is_some())
 }
 
+thread_local! { pub(super) static PAGE_TRIGGER: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<Pixels>>>> = Default::default(); }
+
 pub(super) fn toggle_page_menu(anchor: Point<Pixels>) {
     TAB_UI.with(|ui| {
         let mut s = ui.borrow_mut();
@@ -265,7 +267,14 @@ impl Workspace {
             div().id("tab-menu-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black()).occlude()
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.dismiss_tab_menu(cx); }))
                 .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.dismiss_tab_menu(cx); })))).with_priority(1);
-        let popup = crate::dropdown::deferred_popover(position, card, 2);
+        let popup = crate::dropdown::deferred_popover_with(move |_, _| {
+            if page_pos.is_some() {
+                if let Some(bounds) = PAGE_TRIGGER.with(|b| b.get()) {
+                    return crate::dropdown::PlacementSpec::below(bounds).align_x(crate::dropdown::AlignX::Right);
+                }
+            }
+            crate::dropdown::PlacementSpec::point(position)
+        }, card, 2);
         Some(div().child(backdrop).child(popup).into_any_element())
     }
 }

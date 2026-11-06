@@ -55,3 +55,13 @@ impl Workspace {
         self.editor.read(cx).current_path().map(file_name).unwrap_or_default()
     }
 }
+
+impl Workspace {
+    pub(crate) fn prepare_menu_position_smoke(&mut self, right: bool, window: &Window, cx: &mut Context<Self>) {
+        assert!(crate::ui::smoke_overlay::is_smoke_active());
+        let target = self.folder.as_ref().map(|f| (f.join("Welcome.md"), false));
+        let size = window.viewport_size();
+        let at = gpui::point(if right { size.width - gpui::px(12.) } else { gpui::px(12.) }, size.height - gpui::px(16.));
+        self.open_tree_menu(target, at, cx);
+    }
+}
