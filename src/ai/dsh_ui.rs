@@ -39,7 +39,7 @@ pub(super) fn inline_view(chat: WeakEntity<AiChat>) -> Option<Div> {
             }));
     }
     let save_model = model.clone();
-    Some(div().p(px(10.)).rounded(px(10.)).bg(theme.shell).border_1().border_color(theme.accent).flex().flex_col().gap(px(8.))
+    Some(div().h(px(104.)).p(px(8.)).rounded(px(10.)).bg(theme.shell).border_1().border_color(theme.accent).flex().flex_col().justify_between()
         .child(div().flex().justify_between().child(tr("dsh 认证来源", "dsh Auth Source")).child(div().text_color(theme.accent).child("DeepSeek")))
         .child(row)
         .child(div().flex().items_center().gap(px(6.))
