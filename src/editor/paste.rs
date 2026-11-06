@@ -1,7 +1,7 @@
 use gpui::Context;
 use super::{input::transactions::ListChange, model::{Block, Kind, MarkKind}, view::{Editor, selection::Position}};
 
-pub(super) const MARKDOWN_CLIPBOARD_V1: &str = "com.block.editor.markdown.v1";
+pub(crate) const MARKDOWN_CLIPBOARD_V1: &str = "com.block.editor.markdown.v1";
 
 fn structured(block: &Block) -> bool {
     block.kind != Kind::Paragraph || block.meta.table.is_some() || block.meta.raw_source.is_some()
@@ -18,6 +18,9 @@ impl Editor {
         block_markdown: Option<&str>, cx: &mut Context<Self>) {
         if self.path.is_none() || text.is_empty() { return; }
         let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        let clip_fallback = self.block_clip.as_ref()
+            .and_then(|(clip_plain, md)| (clip_plain == &text).then(|| md.clone()));
+        let block_markdown = block_markdown.or(clip_fallback.as_deref());
         self.commit_composition(cx);
         if self.block_sel.is_some() {
             if plain || (!force_markdown && block_markdown.is_none() && text.trim().is_empty()) {

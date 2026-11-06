@@ -236,7 +236,7 @@ impl Workspace {
         (parent != root.as_path()).then(|| parent.to_path_buf())
     }
 
-    pub(super) fn new_item(&mut self, folder_kind: bool, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn new_item(&mut self, folder_kind: bool, window: &mut Window, cx: &mut Context<Self>) {
         let parent = self.target_dir(cx);
         self.create_in(parent, folder_kind, window, cx);
     }

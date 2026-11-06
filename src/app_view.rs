@@ -1,5 +1,5 @@
 use gpui::{
-    AnimationExt, Context, IntoElement, MouseButton, NavigationDirection, ParentElement, Render, Window, div, prelude::*, px,
+    AnimationExt, Context, Focusable, IntoElement, MouseButton, NavigationDirection, ParentElement, Render, Window, div, prelude::*, px,
 };
 use crate::icons::{Icon, stateful_icon};
 use crate::theme::{Theme, format_hotkey, tr};
@@ -16,12 +16,18 @@ impl Render for Workspace {
         let root = div().size_full().relative().flex().flex_col().overflow_hidden().bg(theme.shell).text_color(theme.text)
             .key_context("Workspace").track_focus(&self.root_focus)
             .on_action(cx.listener(|this, _: &OpenSearch, window, cx| this.open_search(window, cx)))
-            .on_action(cx.listener(|this, _: &crate::editor::view::Find, window, cx| this.editor.update(cx, |e, cx| e.open_find(window, cx))))
-            .on_action(cx.listener(|this, _: &OpenSettings, window, cx| this.open_settings(window, cx)))
-            .on_action(cx.listener(|this, _: &crate::editor::ai::OpenAiSettings, window, cx| this.open_settings_tab(super::settings::SettingsTab::Ai, window, cx)))
-            .on_action(cx.listener(|this, _: &crate::editor::ai::ToggleAiPanel, window, cx| { crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); cx.notify(); }))
-            .on_action(cx.listener(|this, _: &NewNote, window, cx| if !this.busy() { this.new_item(false, window, cx) }))
-            .on_action(cx.listener(|this, _: &NewFolder, window, cx| if !this.busy() { this.new_item(true, window, cx) }))
+            .on_action(cx.listener(|this, _: &crate::editor::view::Find, window, cx| { crate::search::window::reveal_main_window(window, cx); this.editor.update(cx, |e, cx| e.open_find(window, cx)); }))
+            .on_action(cx.listener(|this, _: &OpenSettings, window, cx| { crate::search::window::reveal_main_window(window, cx); this.open_settings(window, cx); }))
+            .on_action(cx.listener(|this, _: &crate::editor::ai::OpenAiSettings, window, cx| { crate::search::window::reveal_main_window(window, cx); this.open_settings_tab(super::settings::SettingsTab::Ai, window, cx); }))
+            .on_action(cx.listener(|this, _: &crate::editor::ai::ToggleAiPanel, window, cx| { crate::search::window::reveal_main_window(window, cx); crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); cx.notify(); }))
+            .on_action(cx.listener(|this, _: &NewNote, window, cx| { crate::search::window::reveal_main_window(window, cx); if !this.busy() { this.new_item(false, window, cx); } }))
+            .on_action(cx.listener(|this, _: &NewFolder, window, cx| { crate::search::window::reveal_main_window(window, cx); if !this.busy() { this.new_item(true, window, cx); } }))
+            .on_action(cx.listener(|this, _: &crate::editor::view::Paste, w, cx| this.route_edit_action(crate::editor::view::EditorAction::Paste, w, cx)))
+            .on_action(cx.listener(|this, _: &crate::editor::view::Copy, w, cx| this.route_edit_action(crate::editor::view::EditorAction::Copy, w, cx)))
+            .on_action(cx.listener(|this, _: &crate::editor::view::Cut, w, cx| this.route_edit_action(crate::editor::view::EditorAction::Cut, w, cx)))
+            .on_action(cx.listener(|this, _: &crate::editor::view::SelectAll, w, cx| this.route_edit_action(crate::editor::view::EditorAction::SelectAll, w, cx)))
+            .on_action(cx.listener(|this, _: &crate::editor::view::Undo, w, cx| this.route_edit_action(crate::editor::view::EditorAction::Undo, w, cx)))
+            .on_action(cx.listener(|this, _: &crate::editor::view::Redo, w, cx| this.route_edit_action(crate::editor::view::EditorAction::Redo, w, cx)))
             .capture_action(cx.listener(|this, _: &Dismiss, window, cx| {
                 if crate::updater::close_modal() { this.restore_focus(window, cx); cx.notify(); cx.stop_propagation(); }
                 else if this.dismiss(window, cx) { cx.stop_propagation(); }
@@ -104,6 +110,15 @@ fn sync_focused_input_ime(window: &mut Window, cx: &mut gpui::App) {
 }
 
 impl Workspace {
+    fn route_edit_action(&mut self, action: crate::editor::view::EditorAction, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::quick::is_quick_panel_active() && crate::quick::dispatch_editor_action(&action, cx) { return; }
+        if crate::editor::paste_clipboard::forward_focused_input_action(&action, window, cx) { return; }
+        if self.settings.is_none() && !self.is_history_open() && !crate::editor::ai::chat::is_fullscreen(cx) && crate::export::active_view(cx).is_none() {
+            window.focus(&self.editor.focus_handle(cx), cx);
+            self.editor.update(cx, |e, cx| e.handle(&action, window, cx));
+        }
+    }
+
     fn sidebar(&self, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
         let enabled = self.ui_enabled();
