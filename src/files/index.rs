@@ -56,12 +56,7 @@ impl TreeIndex {
     #[allow(dead_code)]
     pub fn note_count(&self) -> usize { self.notes }
 
-    pub fn has_notes(&self) -> bool {
-        fn walk(link: &Link) -> bool {
-            link.as_ref().is_some_and(|n| !n.row.dir || walk(&n.left) || walk(&n.right))
-        }
-        walk(&self.root)
-    }
+    pub fn has_notes(&self) -> bool { self.notes > 0 }
 
     pub fn row(&mut self, rank: usize) -> Option<(usize, Arc<Row>, bool)> {
         locate(&mut self.root, rank, 0)
