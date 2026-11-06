@@ -40,3 +40,5 @@ pub mod resize_handle;
 pub mod selectable_message;
 
 pub mod chat_input;
+#[cfg(not(target_family = "wasm"))]
+pub mod ai_plan_card;
