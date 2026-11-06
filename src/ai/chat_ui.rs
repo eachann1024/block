@@ -206,7 +206,7 @@ impl Render for AiChat {
             .children(picker)
             .child(div().flex_none().relative().px(px(16.)).pt(px(if picker_open { 0. } else { 12. })).pb(px(16.)).border_t_1().border_color(theme.hairline)
                 .child(div().w_full().when(self.fullscreen, |inner| inner.max_w(px(720.)).mx_auto()).relative().child(composer)
-                    .children(super::chat_deck::view(self, cx).map(|deck| gpui::deferred(div().absolute().bottom(px(112.)).left_0().child(deck)).with_priority(20)))))
+                    .children(super::chat_deck::view(self, window, cx))))
             .children(history.map(|h| div().absolute().top(px(52.)).left_0().right_0().child(h)))
     }
 }

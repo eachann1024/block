@@ -2,6 +2,10 @@ use gpui::{Div, SharedString, div, prelude::*, px};
 use super::{backend::{BackendKind, BackendStatus}, backend_ui, chat::AiChat, dsh_ui};
 use crate::{theme::{Theme, tr}, ui::ai_controls};
 
+thread_local! {
+    static TRIGGER_BOUNDS: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>> = Default::default();
+}
+
 pub(super) fn trigger(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> gpui::Stateful<Div> {
     let kind = chat.selected_backend();
     let model = chat.selected_model();
@@ -15,11 +19,16 @@ pub(super) fn trigger(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> gpui::St
         cx.stop_propagation();
         if !backend_ui::close_menu() { backend_ui::open_deck(chat, window, cx); }
         cx.notify();
-    }))
+    })).child(crate::ui::placement::track_bounds(TRIGGER_BOUNDS.with(Clone::clone), open))
 }
 
-pub(super) fn view(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> Option<gpui::Stateful<Div>> {
+pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<AiChat>) -> Option<gpui::Deferred> {
     if !backend_ui::DECK_OPEN.with(std::cell::Cell::get) { return None; }
+    let bounds = TRIGGER_BOUNDS.with(Clone::clone);
+    let trigger = bounds.get()?;
+    let spec = crate::ui::placement::PlacementSpec::above(trigger);
+    let max_height = crate::ui::placement::available_height_for_spec(&spec, window.viewport_size(), window.viewport_size().height);
+    let width = px(ai_controls::PANEL_WIDTH).min((window.viewport_size().width - px(16.)).max(px(0.)));
     let theme = Theme::ocean();
     let selected = chat.selected_backend();
     let mut grid = div().flex().flex_col().gap(px(8.));
@@ -43,7 +52,7 @@ pub(super) fn view(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> Option<gpui
     let mut models = chat.model_choices();
     if matches!(selected, BackendKind::Codex | BackendKind::Claude) { models.insert(0, String::new()); }
     let list_h = if selected == BackendKind::Dsh { 64. } else { 176. };
-    let mut list = div().id("ai-deck-models").h(px(list_h)).overflow_y_scroll().track_scroll(&chat.deck_scroll).flex().flex_col();
+    let mut list = div().id("ai-deck-models").h(px(list_h)).flex_none().overflow_y_scroll().track_scroll(&chat.deck_scroll).flex().flex_col();
     if models.is_empty() {
         let status = match chat.model_status() {
             super::chat::chat_models::ModelStatus::Loading => tr("正在获取模型…", "Loading models…"),
@@ -61,15 +70,18 @@ pub(super) fn view(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> Option<gpui
             cx.notify();
         })));
     }
-    Some(ai_controls::panel_shell("ai-agent-deck").p(px(12.)).rounded(px(14.))
+    let deck = ai_controls::panel_shell("ai-agent-deck").w(width).max_h(max_height).overflow_y_scroll().p(px(12.)).rounded(px(14.))
         .child(div().flex().items_center().justify_between().child(div().font_weight(gpui::FontWeight(560.)).child(tr("选择执行后端", "Choose backend")))
             .child(div().text_color(theme.text_secondary).child(tr("点击卡片即切换", "Select a card"))))
-        .child(grid)
+        .child(grid.flex_none())
         .children((selected == BackendKind::Dsh).then(|| dsh_ui::inline_view(cx.entity().downgrade())).flatten())
         .child(div().border_t_1().border_color(theme.hairline).pt(px(8.)).flex().items_center().justify_between()
             .child(div().text_color(theme.text_secondary).child(tr("当前后端模型", "Current Backend Models")))
             .child(ai_controls::action_chip("ai-deck-settings", None, tr("AI 设置", "AI settings"), false, false, |_, window, cx| {
                 cx.stop_propagation(); backend_ui::close_menu(); window.dispatch_action(Box::new(super::OpenAiSettings), cx);
             })))
-        .child(list))
+        .child(list);
+    Some(crate::ui::placement::smart_popover_with(move |_, _| {
+        crate::ui::placement::PlacementSpec::above(bounds.get().unwrap_or(trigger))
+    }, deck, 20))
 }
