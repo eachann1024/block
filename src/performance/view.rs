@@ -44,44 +44,61 @@ pub fn view(window: &mut Window, cx: &mut Context<Workspace>) -> Option<AnyEleme
                 state.tab = value; state.selected = None; drop(state); cx.notify();
             })),
         }).collect();
-    let total = items.iter().fold(0u64, |sum, item| sum.saturating_add(item.bytes));
-    let detail = selected.as_deref().and_then(|id| items.iter().find(|item| item.id == id))
-        .map(|item| format!("{} · {}", item.label, item.detail)).unwrap_or_default();
-    let max_h = (window.viewport_size().height - px(40.)).max(px(100.));
-    let body = div().id("performance-scroll-content").size_full().overflow_y_scroll()
-        .px(px(20.)).pb(px(20.)).flex().flex_col().gap(px(14.))
-        .child(div().flex().flex_wrap().gap(px(16.)).children(stats))
-        .child(segmented_control("performance-tabs", segments))
-        .child(div().font_weight(FontWeight(560.)).child(format!("{} · {}{}",
-            match tab { Tab::Storage => tr("文件体积", "File size"), Tab::Memory => tr("进程驻留内存", "Process resident memory") },
-            if partial { tr("已统计 ", "Counted ") } else { "" },
-            if ready { format_bytes(total) } else { "—".into() })))
-        .child(div().text_size(px(14.)).text_color(theme.text_secondary).child(match tab {
-            Tab::Storage => tr("文件逻辑大小，不代表物理占盘", "Logical file sizes, not physical disk usage"),
-            Tab::Memory => tr("主进程及可识别的后代进程 RSS；共享内存可能重复计算", "RSS of main and identifiable descendant processes; shared memory may be counted twice"),
-        }))
-        .when(tab == Tab::Storage, |body| body.child(div().flex().items_center().gap(px(12.))
+    let own: Vec<_> = items.iter().filter(|item| !item.id.starts_with("notebook_")).cloned().collect();
+    let linked: Vec<_> = items.iter().filter(|item| item.id.starts_with("notebook_")).cloned().collect();
+    let max_h = (window.viewport_size().height - px(48.)).max(px(1.)).min(px(500.));
+    let group_count = if tab == Tab::Storage { 2 } else { 1 };
+    let content_h = px((group_count * 40 + items.len() * 32 + if message.is_empty() { 0 } else { 24 }) as f32);
+    let fixed_h = if tab == Tab::Storage { px(172.) } else { px(132.) };
+    let scroll_h = content_h.min((max_h - fixed_h).max(px(0.)));
+    let scope = match tab {
+        Tab::Storage => tr("应用及其数据、缓存的文件逻辑大小；占比以本组为准，不代表物理占盘", "Logical sizes of the application, its data and caches; percentages are within this group, not physical disk usage"),
+        Tab::Memory => tr("主进程及可识别的后代进程 RSS；共享内存可能重复计算", "RSS of main and identifiable descendant processes; shared memory may be counted twice"),
+    };
+    let body = div().id("performance-scroll-content").w_full().h(scroll_h).overflow_y_scroll()
+        .flex().flex_col().gap(px(4.))
+        .when(!message.is_empty(), |body| body.child(div().id("performance-error").h(px(20.)).flex_none()
+            .overflow_hidden().text_color(theme.text_secondary).tooltip(tooltip::tooltip(error_detail)).child(message)))
+        .child(group("performance-map", if tab == Tab::Storage { tr("应用自身", "Application") } else { tr("进程驻留内存", "Process resident memory") },
+            if tab == Tab::Storage { &own } else { &items }, ready, partial, selected.as_deref(), scope, select.clone()))
+        .when(tab == Tab::Storage, |body| body.child(group("performance-notebook-map", tr("关联笔记本", "Linked notebooks"),
+            &linked, ready, partial, selected.as_deref(),
+            tr("已添加笔记本的文件，不计入应用自身；占比以本组为准，大小为文件逻辑大小", "Files in added notebooks, separate from the application; percentages are within this group and sizes are logical file sizes"), select.clone())));
+    let card = modal::card("performance-card", px(680.)).relative().max_h(max_h)
+        .children(smoke_overlay::probe("performance-card"))
+        .child(div().h(px(44.)).flex_none().flex().items_center().px(px(20.))
+            .child(div().flex_1().text_size(px(16.)).font_weight(FontWeight(560.)).child(tr("性能与占用", "Performance & Usage")))
+            .child(icon_button("performance-close", Icon::Close, true, cx.listener(|_, _, _, cx| { super::close(); cx.notify(); }))))
+        .child(div().id("performance-metrics").relative().flex_none().px(px(20.)).min_h(px(40.))
+            .children(smoke_overlay::probe("performance-metrics"))
+            .child(div().flex().flex_wrap().gap_x(px(16.)).gap_y(px(4.)).children(stats)))
+        .child(div().px(px(20.)).pb(px(4.)).flex_none().child(segmented_control("performance-tabs", segments)))
+        .child(div().relative().w_full().px(px(20.))
+            .children(smoke_overlay::probe("performance-scroll"))
+            .child(body))
+        .when(tab == Tab::Storage, |card| card.child(div().h(px(40.)).flex_none().px(px(20.)).flex().items_center().gap(px(12.))
             .child(div().flex_1().text_color(theme.text_secondary).child(disk_time.map(|time|
                 format!("{} {time}", tr("统计时间", "Scanned"))).unwrap_or_else(|| tr("正在统计…", "Scanning…").into())))
             .child(modal::action_button("performance-refresh", if loading { tr("统计中…", "Scanning…") } else { tr("重新统计", "Rescan") },
-                cx.listener(|_, _, _, cx| { super::refresh_disk(); cx.notify(); })).w(px(110.)))))
-        .when(!message.is_empty(), |body| body.child(div().id("performance-error").text_color(theme.text_secondary)
-            .tooltip(tooltip::tooltip(error_detail)).child(message)))
-        .child(treemap("performance-map", &items, selected.as_deref(), select.clone()))
-        .child(div().h(px(20.)).flex_none().overflow_hidden().text_color(theme.text_secondary).child(detail))
-        .children(items.iter().map(|item| detail_row("performance-map", item, total,
-            selected.as_deref() == Some(item.id.as_str()), select.clone())));
-    let card = modal::card("performance-card", px(680.)).relative().max_h(max_h)
-        .children(smoke_overlay::probe("performance-card"))
-        .child(div().flex().items_center().px(px(20.)).py(px(16.))
-            .child(div().flex_1().text_size(px(16.)).font_weight(FontWeight(560.)).child(tr("性能与占用", "Performance & Usage")))
-            .child(icon_button("performance-close", Icon::Close, true, cx.listener(|_, _, _, cx| { super::close(); cx.notify(); }))))
-        .child(div().relative().flex_1().min_h_0().w_full()
-            .children(smoke_overlay::probe("performance-scroll"))
-            .child(body));
+                cx.listener(|_, _, _, cx| { super::refresh_disk(); cx.notify(); })).w(px(110.)).h(px(28.)))));
     Some(gpui::deferred(modal::backdrop("performance-overlay", card).pt(px(20.))
         .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| { super::close(); cx.notify(); })))
         .with_priority(7).into_any_element())
+}
+
+fn group(id: &str, title: &str, items: &[TreemapItem], ready: bool, partial: bool,
+    selected: Option<&str>, scope: &str, select: PerformanceSelect) -> AnyElement {
+    let total = items.iter().fold(0u64, |sum, item| sum.saturating_add(item.bytes));
+    let value = if ready { format_bytes(total) } else { "—".into() };
+    div().w_full().flex_none().flex().flex_col()
+        .child(div().id(gpui::SharedString::from(format!("{id}-scope"))).h(px(20.)).flex_none().flex().items_center().font_weight(FontWeight(560.))
+            .tooltip(tooltip::tooltip(scope.to_owned()))
+            .child(div().flex_1().child(title.to_owned()))
+            .child(format!("{}{value}", if partial { tr("已统计 ", "Counted ") } else { "" })))
+        .child(treemap(id, items, selected, select.clone()))
+        .children(items.iter().map(|item| detail_row("performance-map", item, total,
+            selected == Some(item.id.as_str()), select.clone())))
+        .into_any_element()
 }
 
 fn metrics(state: &State) -> Vec<AnyElement> {
@@ -106,7 +123,7 @@ fn metrics(state: &State) -> Vec<AnyElement> {
 fn items(state: &State) -> (Vec<TreemapItem>, String) {
     if state.tab == Tab::Storage {
         let Some(result) = &state.disk else { return (Vec::new(), String::new()) };
-        let snapshot = match result { Ok(snapshot) => snapshot, Err(error) => return (Vec::new(), error.clone()) };
+        let snapshot = match result { Ok(snapshot) => snapshot, Err(_) => return (Vec::new(), tr("统计失败", "Scan failed").into()) };
         let items = snapshot.categories.iter().enumerate().map(|(index, category)| {
             let (label, detail) = category_text(category.id);
             TreemapItem { id: category.id.into(), label: label.into(), bytes: category.bytes,
@@ -116,7 +133,7 @@ fn items(state: &State) -> (Vec<TreemapItem>, String) {
         (items, message)
     } else {
         let Some(result) = &state.process else { return (Vec::new(), String::new()) };
-        let snapshot = match result { Ok(snapshot) => snapshot, Err(error) => return (Vec::new(), error.clone()) };
+        let snapshot = match result { Ok(snapshot) => snapshot, Err(_) => return (Vec::new(), tr("采样失败", "Sampling failed").into()) };
         let items = snapshot.processes.iter().enumerate().filter_map(|(index, row)| row.rss_bytes.map(|bytes| TreemapItem {
             id: row.pid.to_string(), label: if row.is_main { tr("主进程", "Main process").into() } else { row.name.clone() },
             bytes, color: super::colors::category(index), detail: format!("{} · PID {}", row.name, row.pid),
@@ -131,8 +148,8 @@ fn items(state: &State) -> (Vec<TreemapItem>, String) {
 fn category_text(id: &str) -> (&'static str, &'static str) {
     match id {
         "app" => (tr("应用", "Application"), tr("应用程序文件", "Application files")),
-        "notebook_markdown" => (tr("笔记", "Notes"), "Markdown"),
-        "notebook_other" => (tr("附件及其他", "Attachments & other"), tr("笔记本中的其他文件", "Other notebook files")),
+        "notebook_markdown" => (tr("笔记", "Notes"), tr("所有已添加笔记本中的 Markdown 文件", "Markdown files in all added notebooks")),
+        "notebook_other" => (tr("其他目录文件", "Other directory files"), tr("笔记本目录中的非 Markdown 文件，可能包含工程依赖或构建产物，不等于 Block 生成的附件", "Non-Markdown files in notebook directories, potentially including project dependencies or build artifacts; not necessarily attachments generated by Block")),
         "history" => (tr("历史版本", "History"), tr("用于恢复笔记的历史文件", "Files used to restore note history")),
         "ai_sessions" => (tr("AI 会话", "AI sessions"), tr("本地会话与草稿文件", "Local sessions and draft files")),
         "data_other" => (tr("配置及其他", "Settings & other"), tr("应用数据中的其他文件", "Other application data")),
