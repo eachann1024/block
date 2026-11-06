@@ -11,6 +11,7 @@ pub(crate) use chat_resize::resize_capture;
 #[path = "chat_backend.rs"] mod chat_backend;
 #[path = "chat_drafts.rs"] mod chat_drafts;
 #[path = "chat_roots.rs"] pub(super) mod chat_roots;
+#[path = "chat_picker.rs"] pub(super) mod chat_picker;
 #[path = "chat_skills.rs"] pub(super) mod chat_skills;
 #[path = "chat_models.rs"] pub(super) mod chat_models;
 
@@ -61,6 +62,7 @@ pub(crate) struct AiChat {
     pub(super) serial: u64,
     pub(super) error: Option<String>,
     pub(super) error_settings: bool,
+    pub(super) picker_cache: chat_picker::PickerCache,
     pub(super) pick_index: usize,
     pub(super) picker_dismissed: bool,
     pub(super) history: bool,
@@ -147,7 +149,7 @@ impl AiChat {
             sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: active.retry.filter(|draft| Some(draft.conversation) == current), selection_scope: false, pending_approval: None,
             backend_statuses: vec![(super::backend::BackendKind::Builtin, super::backend::BackendStatus::Ready { version: "Block".into() })],
             model_cache: Vec::new(), serial: 0, error: None,
-            error_settings: false, pick_index: 0, picker_dismissed: false, history: false, open: false, fullscreen: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), deck_scroll: ScrollHandle::new(), _sub: sub };
+            error_settings: false, picker_cache: Default::default(), pick_index: 0, picker_dismissed: false, history: false, open: false, fullscreen: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), deck_scroll: ScrollHandle::new(), _sub: sub };
         for kind in [super::backend::BackendKind::Builtin, super::backend::BackendKind::Codex, super::backend::BackendKind::Claude, super::backend::BackendKind::Dsh] {
             chat.probe_backend(kind, cx);
             chat.refresh_models_for(kind, cx);
