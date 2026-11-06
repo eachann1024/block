@@ -137,6 +137,7 @@ impl Workspace {
         if let Some(menu) = &self.menu { out.extend(self.tree_menu(&menu.target, menu.position, menu.moving, cx)); }
         out.extend(self.search_view(cx));
         out.extend(crate::about::view(cx));
+        out.extend(crate::performance::view(window, cx));
         out.extend(crate::updater::view(cx));
         out.extend(crate::feedback_view::modal_overlay(window, cx));
         out.extend(self.render_history_confirm_modal(cx));
