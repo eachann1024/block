@@ -120,24 +120,34 @@ impl Editor {
         if self.normalize_annotations() {
             self.persist_annotations();
         }
-        let Some((block_id, block_index, range, quote)) = self.selected_annotation_target() else { return };
+        let targets = self.selected_annotation_targets();
+        let Some(first) = targets.first() else { return };
+        let (block_id, block_index, range) = (first.block_id, first.block_index, &first.range);
         let anchor = self.toolbar_anchor
             .or_else(|| self.list.bounds_for_item(block_index).map(|b| point(b.center().x, b.top())))
             .unwrap_or_else(|| point(px(360.), px(140.)));
-        let annotation_id = self.find_span_reaction_owner(block_id, &range);
+        let annotation_id = self.find_span_reaction_owner(block_id, range);
         self.format = None;
-        self.annotate.reactions = Some(ReactionPicker { block_id, block_index, range, quote, annotation_id, anchor });
+        self.annotate.reactions = Some(ReactionPicker { targets, annotation_id, anchor });
         cx.notify();
     }
 
     pub(crate) fn pick_reaction(&mut self, emoji: &str, cx: &mut Context<Self>) {
         let Some(picker) = self.annotate.reactions.take() else { return };
-        let block_index = self.doc.index_of(picker.block_id).unwrap_or(picker.block_index);
-        self.apply_single_reaction(
-            picker.annotation_id,
-            Some((picker.block_id, block_index, picker.range, picker.quote)),
-            emoji,
-        );
+        // Mixed selections converge to one emoji; only an entirely matching selection toggles off.
+        let remove = picker.targets.iter().all(|target| self.annotate.annotations.iter().any(|note|
+            matches_span(&self.doc, note, target.block_id, &target.range) && note.reactions.iter().any(|r| r == emoji)));
+        for target in picker.targets {
+            let owner = self.find_span_reaction_owner(target.block_id, &target.range);
+            let already = self.annotate.annotations.iter().any(|note|
+                matches_span(&self.doc, note, target.block_id, &target.range) && note.reactions.iter().any(|r| r == emoji));
+            if remove || !already {
+                let index = self.doc.index_of(target.block_id).unwrap_or(target.block_index);
+                self.apply_single_reaction(owner, Some((target.block_id, index, target.range, target.quote)), emoji);
+            }
+        }
+        self.normalize_annotations();
+        self.persist_annotations();
         self.caret.anchor = self.caret.head;
         self.table_sel = None;
         self.toolbar_anchor = None;
@@ -151,6 +161,8 @@ impl Editor {
             Some((block_id, block_index, range, note.quote.clone()))
         });
         self.apply_single_reaction(Some(id), span, emoji);
+        self.normalize_annotations();
+        self.persist_annotations();
         cx.notify();
     }
 
@@ -215,7 +227,5 @@ impl Editor {
                 });
             }
         }
-        self.normalize_annotations();
-        self.persist_annotations();
     }
 }
