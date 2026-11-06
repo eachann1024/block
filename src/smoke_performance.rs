@@ -1,5 +1,5 @@
 use std::{fs, path::PathBuf};
-use gpui::{ElementId, Modifiers, MouseMoveEvent, PlatformInput, ScrollDelta, ScrollEvent, TouchPhase, point, px};
+use gpui::{ElementId, Focusable, Modifiers, MouseMoveEvent, PlatformInput, ScrollDelta, ScrollEvent, TouchPhase, point, px};
 use super::{AsyncApp, Run, sleep, smoke_overlay};
 
 const CATEGORIES: [(&str, u64); 7] = [
@@ -83,10 +83,25 @@ impl Run {
 
     pub(super) async fn performance(&self, cx: &AsyncApp) -> Result<(), String> {
         let root = fixture()?;
-        cx.update(|cx| {
-            crate::about::open_state();
-            self.workspace.update(cx, |_, cx| cx.notify());
-        });
+        // Exercise the menu action while its window is borrowed, as native menus do.
+        // Setting OPEN directly misses re-entrant window updates in the entry point.
+        self.win(cx, |window, cx| {
+            let focus = self.workspace.read(cx).editor.focus_handle(cx);
+            window.focus(&focus, cx);
+            window.dispatch_action(Box::new(crate::menu_bar::ShowAbout), cx);
+        })?;
+        sleep(cx, 180).await;
+        let editor_focused = self.win(cx, |window, cx| {
+            self.workspace.read(cx).editor.focus_handle(cx).is_focused(window)
+        })?;
+        self.check(14, !editor_focused, "关于菜单正确移交焦点，不在当前窗口更新中重入")?;
+        self.redraw(cx);
+        self.check(14, smoke_overlay::target_bounds("about-performance").is_some(), "关于菜单入口正常打开")?;
+        self.click_target(cx, "about-done", "关于 · 关闭").await?;
+        self.win(cx, |window, cx| {
+            window.dispatch_action(Box::new(crate::menu_bar::ShowAbout), cx);
+        })?;
+        sleep(cx, 180).await;
         self.redraw(cx);
         self.click_target(cx, "about-performance", "性能 · 打开监控").await?;
         self.performance_checks(cx, root).await
