@@ -154,6 +154,12 @@ impl SearchState {
 }
 
 pub(crate) fn notebook_folders(current: Option<PathBuf>, notebooks: &[PathBuf]) -> Vec<PathBuf> {
+    all_notebook_folders(current, notebooks).into_iter()
+        .filter(|folder| !crate::theme::is_search_folder_ignored(folder))
+        .collect()
+}
+
+pub(crate) fn all_notebook_folders(current: Option<PathBuf>, notebooks: &[PathBuf]) -> Vec<PathBuf> {
     let mut folders = Vec::new();
     if let Some(folder) = current {
         if !folder.as_os_str().is_empty() {
