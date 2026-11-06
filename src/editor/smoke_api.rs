@@ -58,3 +58,19 @@ impl Editor {
             .or_else(|| self.annotate.reactions.as_ref().map(|p| p.targets.len())).unwrap_or(0)
     }
 }
+
+impl Editor {
+    pub(crate) fn menu_format_open(&self) -> bool { self.format.is_some() }
+    pub(crate) fn menu_image_open(&self) -> bool { self.image_menu.is_some() }
+
+    pub(crate) fn prepare_menu_image_smoke(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> u64 {
+        assert!(crate::ui::smoke_overlay::is_smoke_active());
+        let path = self.current_path().unwrap().parent().unwrap().join("menu-fixture.svg");
+        std::fs::write(&path, "<svg xmlns='http://www.w3.org/2000/svg' width='400' height='200'><rect width='400' height='200' fill='#547dd0'/></svg>").unwrap();
+        self.reset_document(markdown::parse(&format!("# Menu fixture\n\n![fixture]({})\n", path.display())));
+        let id = self.doc.blocks.iter().find(|block| super::image_source::spec_of(block).is_some()).unwrap().id;
+        self.focus_block(id, window, cx);
+        cx.notify();
+        id
+    }
+}
