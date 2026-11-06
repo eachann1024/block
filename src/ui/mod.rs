@@ -33,3 +33,4 @@ pub mod toggle_pill;
 pub mod tooltip;
 pub mod window_controls;
 pub mod file_preview;
+pub mod resize_handle;
