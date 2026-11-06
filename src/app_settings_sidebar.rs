@@ -1,8 +1,7 @@
 //! Left category navigation shown in place of the file tree while Settings is open.
 use gpui::{Context, CursorStyle, FontWeight, MouseButton, SharedString, div, prelude::*, px};
-use crate::icons::{Icon, stateful_icon};
+use crate::icons::stateful_icon;
 use crate::theme::{Theme, tr};
-use crate::ui::settings_controls::card_bg;
 use super::Workspace;
 use super::settings::SettingsTab;
 
@@ -31,18 +30,6 @@ impl Workspace {
                         .child(stateful_icon(cat_group, tab.icon(), px(15.), active, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if active { theme.accent } else { theme.text })))
                         .child(tab.title())
                 })))
-            .child(div().h(px(44.)).flex_none().px(px(12.)).border_t_1().border_color(theme.sidebar_border)
-                .flex().items_center().justify_between().gap(px(8.))
-                .child(div().flex_none().text_size(px(12.)).line_height(px(16.)).text_color(theme.text_secondary)
-                    .child(crate::version::VERSION))
-                .child(div().id("settings-sidebar-back").group("settings-back").relative().children(crate::ui::smoke_overlay::probe("settings-back"))
-                    .flex_none().h(px(28.)).px(px(10.)).rounded(crate::ui::radius::CONTROL).bg(card_bg())
-                    .border_1().border_color(theme.btn_border).flex().items_center().gap(px(6.))
-                    .text_size(px(14.)).font_weight(FontWeight(460.)).text_color(theme.text)
-                    .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.close_settings(window, cx)))
-                    .child(stateful_icon("settings-back", Icon::ArrowLeft, px(13.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.accent)))
-                    .child(tr("返回笔记", "Back to Notes"))))
             .child(self.resize_handle(cx))
     }
 }
