@@ -178,7 +178,7 @@ impl Render for AiChat {
                 .when(!blocked, |d| d.child(action)));
 
         let focus = self.input.read(cx).focus_handle(cx);
-        div().id("ai-chat-panel").when(blocked, |panel| panel.track_focus(&focus)).when(self.fullscreen, |panel| panel.flex_1().w_full().min_w_0()).when(!self.fullscreen, |panel| panel.w(px(396.)).flex_none().border_l_1().border_color(theme.hairline)).h_full().flex().flex_col().relative().bg(theme.paper)
+        div().id("ai-chat-panel").when(blocked, |panel| panel.track_focus(&focus)).when(self.fullscreen, |panel| panel.flex_1().w_full().min_w_0()).when(!self.fullscreen, |panel| panel.w(self.panel_width).flex_none().border_l_1().border_color(theme.hairline)).h_full().flex().flex_col().relative().bg(theme.paper)
             .text_color(theme.text)
             .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| { if backend_ui::close_menu() { cx.notify(); } }))
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
@@ -198,6 +198,7 @@ impl Render for AiChat {
                 else if backend_ui::close_menu() || super::dsh_ui::close() {} else if this.history { this.history = false; } else { this.open = false; this.fullscreen = false; window.refresh(); }
                 cx.notify();
             }))
+            .when(!self.fullscreen, |panel| panel.child(self.resize_handle(cx)))
             .child(header)
             .child(div().id("ai-chat-scroll").flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.scroll)
                 .on_scroll(|_, _, cx| crate::dropdown::dismiss_all(cx))

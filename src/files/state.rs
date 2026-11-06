@@ -120,6 +120,8 @@ pub struct State {
     pub notebooks: Vec<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sidebar_width: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ai_panel_width: Option<f32>,
     #[serde(default)]
     pub theme: ThemeMode,
     #[serde(default)]
