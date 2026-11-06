@@ -231,11 +231,15 @@ impl AiChat {
             let path = request.arguments.get("path").and_then(Value::as_str).unwrap_or("");
             let result = backend::skill_resources::read(grants, id, path)
                 .map(|text| json!({"text":text})).map_err(|error| BackendError::new("skill_resource", error.to_string()));
+            let display = result.as_ref().cloned().unwrap_or_else(|error| json!({"error":error.message}));
+            super::super::chat_process::record_tool(self, &request, &display, true);
             let _ = request.responder.respond(result); return false;
         }
         if request.name == "listNotebooks" {
             let roots = super::chat_roots::registered_roots();
-            let _ = request.responder.respond(Ok(json!({"notebooks": roots})));
+            let result = json!({"notebooks": roots});
+            super::super::chat_process::record_tool(self, &request, &result, true);
+            let _ = request.responder.respond(Ok(result));
             return false;
         }
         let ctx = if let Some(root) = request.arguments.get("notebookRoot").and_then(Value::as_str) {
@@ -256,6 +260,7 @@ impl AiChat {
         }
         if let Some(plan) = plan {
             if !request.begin_side_effect() { return false; }
+            super::super::chat_process::record_tool(self, &request, &result, false);
             let auto = plan.ops.iter().all(|op| matches!(op.kind, agent::OpKind::Create { .. }));
             self.push_msg(Msg { role: "tool".into(), content: result.to_string(), tool_call_id: Some(request.request_id.clone()), plan: Some(plan), ..Default::default() });
             if auto {
@@ -271,7 +276,7 @@ impl AiChat {
                     json!({"status":"applied"})
                 } else { json!({"error":self.error.clone().unwrap_or_else(|| "Create failed".into())}) };
             }
-        }
+        } else { super::super::chat_process::record_tool(self, &request, &result, true); }
         let _ = request.responder.respond(Ok(result));
         false
     }

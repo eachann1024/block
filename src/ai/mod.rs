@@ -15,6 +15,8 @@ mod settings_view;
 #[cfg(not(target_family = "wasm"))]
 mod chat_ui;
 #[cfg(not(target_family = "wasm"))]
+mod chat_process;
+#[cfg(not(target_family = "wasm"))]
 mod chat_deck;
 #[cfg(not(target_family = "wasm"))]
 mod chat_empty;
