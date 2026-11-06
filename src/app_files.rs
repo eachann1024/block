@@ -51,6 +51,7 @@ impl Workspace {
 
     /// Escape: close the innermost transient surface; false when none was open.
     pub(super) fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if crate::performance::close() { cx.notify(); return true; }
         if crate::feedback::close(window, cx) || crate::about::close() {
             self.restore_focus(window, cx); cx.notify(); return true;
         }
