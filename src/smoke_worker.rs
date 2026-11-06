@@ -55,6 +55,7 @@ async fn reset(run: &Run, cx: &AsyncApp) -> Result<(), String> {
     if !run.wait_until(cx, 10000, |w, cx| {
         let editor = w.editor.read(cx);
         !w.busy() && !editor.is_busy() && !editor.is_loading() && editor.current_path().is_none()
+            && !crate::editor::ai::chat::is_open(cx) && !crate::editor::ai::chat::is_fullscreen(cx)
     }).await {
         return Err("previous editor did not close".into());
     }

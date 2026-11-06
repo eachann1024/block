@@ -10,6 +10,9 @@ fn file_name(path: &std::path::Path) -> String {
 impl Workspace {
     /// Keep the registered entities and observers; release all notes before deleting the sandbox.
     pub(crate) fn smoke_close_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::editor::ai::chat::is_open(cx) {
+            crate::editor::ai::chat::toggle(self.editor.downgrade(), window, cx);
+        }
         self.close_search(window, cx);
         self.dismiss_dropdowns(cx);
         self.close_settings(window, cx);
