@@ -23,6 +23,7 @@ impl Run {
         self.undo_redo(cx).await?;
         self.backspace(cx).await?;
         self.find(cx).await?;
+        self.annotations(cx).await?;
         self.global_search(cx).await?;
         self.tabs_and_sidebar(cx).await?;
         self.settings(cx).await?;
