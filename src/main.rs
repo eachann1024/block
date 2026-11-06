@@ -28,6 +28,7 @@ use gpui::{
     WindowOptions, actions, point, px, size,
 };
 
+mod window_close;
 actions!(block, [Quit, ExportImage]);
 
 pub fn sync_ime_cursor_area(_x: f32, _y: f32, _h: f32) {}
@@ -153,17 +154,7 @@ fn main() {
                 let close_editor = workspace.read(cx).editor.clone();
                 let quit_editor = close_editor.clone();
                 window.on_window_should_close(cx, move |window, cx| {
-                    let bounds = window_bounds::capture_window_bounds(window, cx);
-                    let _ = files::update_state(|s| s.main_window_bounds = Some(bounds));
-                    let ready = close_editor.update(cx, |editor, cx| {
-                        let ready = editor.prepare_to_quit();
-                        if !ready { cx.notify(); }
-                        ready
-                    });
-                    if ready && search::window::hide_main_window_on_close() {
-                        return false;
-                    }
-                    ready
+                    window_close::should_close(window, &close_editor, cx)
                 });
                 cx.on_action(move |_: &Quit, cx: &mut App| {
                     let ready = quit_editor.update(cx, |editor, cx| {
@@ -214,7 +205,10 @@ fn main() {
                 cx.on_action({
                     let target = tab_target.clone();
                     move |_: &app::CloseTab, cx: &mut App| {
-                        target.update(cx, |this, cx| this.close_active_tab(cx));
+                        let Some(handle) = cx.active_window() else { return };
+                        let _ = cx.update_window(handle, |_, window, cx| {
+                            target.update(cx, |this, cx| this.close_active_tab(window, cx));
+                        });
                     }
                 });
                 cx.on_action({
