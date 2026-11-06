@@ -33,7 +33,7 @@ fn draft_path(path: &Path) -> PathBuf {
     let key = fingerprint(path.as_os_str().as_encoded_bytes()).0;
     crate::files::app_data_dir("Block").join("Recovery").join(format!("{key:016x}.json"))
 }
-pub(super) fn latest_draft() -> Result<(PathBuf, Loaded), String> {
+pub(in crate::editor) fn latest_draft() -> Result<(PathBuf, Loaded), String> {
     let root = draft_path(Path::new("unused")).parent().unwrap().to_path_buf();
     let mut entries = fs::read_dir(root).map_err(|_| tr("未找到可恢复的草稿", "No recovery drafts found").to_string())?
         .filter_map(Result::ok).filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
