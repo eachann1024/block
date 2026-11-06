@@ -39,7 +39,6 @@ pub fn backend_card(id: impl Into<SharedString>, name: &'static str, status: Str
 pub fn deck_trigger_capsule(
     id: impl Into<SharedString>,
     label: impl Into<SharedString>,
-    ready: bool,
     open: bool,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> Stateful<Div> {
@@ -48,12 +47,11 @@ pub fn deck_trigger_capsule(
     let eid = ElementId::from(id);
     let probe = crate::ui::smoke_overlay::probe_for(&eid);
     div().id(eid).relative().children(probe)
-        .h(px(30.)).px(px(10.)).max_w(px(240.)).flex_none().flex().items_center().gap(px(6.))
-        .rounded(crate::ui::radius::CONTROL).bg(theme.selected).border_1()
+        .h(px(30.)).px(px(10.)).max_w(px(220.)).flex_none().flex().items_center().gap(px(6.))
+        .rounded(crate::ui::radius::CONTROL).bg(if open { theme.selected } else { theme.shell }).border_1()
         .border_color(if open { theme.accent } else { theme.btn_border })
         .text_size(px(14.)).line_height(px(20.)).text_color(theme.text).font_weight(FontWeight(500.))
         .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover).border_color(theme.accent))
-        .child(div().size(px(7.)).flex_none().rounded_full().bg(if ready { theme.accent } else { theme.text_secondary }))
         .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(label.into()))
         .child(dropdown::line_icon(Icon::ChevronDown, 12., theme.text_secondary))
         .on_mouse_down(MouseButton::Left, on_click)
