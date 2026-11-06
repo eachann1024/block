@@ -30,12 +30,16 @@ impl AiChat {
 
     pub(in crate::editor::ai) fn select_backend(&mut self, kind: BackendKind, window: &mut Window, cx: &mut Context<Self>) {
         if self.selected_backend() == kind { return; }
-        let draft = self.input.read(cx).value().to_owned();
-        let refs = self.refs.clone();
-        let skills = self.skills.clone();
-        self.new_conv(window, cx);
-        self.refs = refs; self.skills = skills;
-        self.input.update(cx, |input, cx| input.set_value(draft, window, cx));
+        if self.current.is_some() {
+            let draft = self.input.read(cx).value().to_owned();
+            let refs = self.refs.clone();
+            let skills = self.skills.clone();
+            self.new_conv(window, cx);
+            self.refs = refs; self.skills = skills;
+            self.input.update(cx, |input, cx| input.set_value(draft, window, cx));
+        } else {
+            self.error = None; self.error_settings = false; self.retry_draft = None;
+        }
         self.backend_config.selected = kind;
         if let Err(error) = self.backend_config.save() { self.error = Some(error); }
         cx.notify();
@@ -60,6 +64,7 @@ impl AiChat {
             match receiver.try_recv() {
                 Ok(status) => {
                     let _ = this.update(cx, |this, cx| {
+                        if this.backend_statuses.iter().any(|(backend, old)| *backend == kind && *old == status) { return; }
                         this.backend_statuses.retain(|(backend, _)| *backend != kind);
                         this.backend_statuses.push((kind, status)); cx.notify();
                     });

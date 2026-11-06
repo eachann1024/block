@@ -34,10 +34,17 @@ impl AiChat {
         cx.notify(); Ok(())
     }
     pub(in crate::editor::ai) fn refresh_models(&mut self, cx: &mut Context<Self>) {
-        let kind = self.selected_backend();
+        self.refresh_models_for(self.selected_backend(), cx);
+    }
+    pub(in crate::editor::ai) fn refresh_models_for(&mut self, kind: backend::BackendKind, cx: &mut Context<Self>) {
         if self.model_cache.iter().any(|(backend, status, _)| *backend == kind && *status == ModelStatus::Loading) { return; }
-        self.model_cache.retain(|(backend, _, _)| *backend != kind);
-        self.model_cache.push((kind, ModelStatus::Loading, Vec::new()));
+        let had_entry = if let Some((_, status, choices)) = self.model_cache.iter_mut().find(|(backend, _, _)| *backend == kind) {
+            if choices.is_empty() { *status = ModelStatus::Loading; }
+            true
+        } else {
+            self.model_cache.push((kind, ModelStatus::Loading, Vec::new()));
+            false
+        };
         let (sender, receiver) = mpsc::channel();
         std::thread::spawn(move || { let _ = sender.send(backend::list_models(kind)); });
         cx.spawn(async move |this, cx| loop {
@@ -47,18 +54,31 @@ impl AiChat {
                     let _ = this.update(cx, |this, cx| {
                         let (status, mut choices) = match result { Ok(choices) => (ModelStatus::Ready, choices), Err(error) => (ModelStatus::Error(format!("{}: {error}", crate::theme::tr("获取模型列表失败", "Could not load models"))), Vec::new()) };
                         choices.sort_by(|a, b| a.value.cmp(&b.value)); choices.dedup_by(|a, b| a.value == b.value);
+                        let unchanged = this.model_cache.iter().any(|(backend, old_status, old_choices)| {
+                            *backend == kind && *old_status == status && old_choices.len() == choices.len()
+                                && old_choices.iter().zip(&choices).all(|(a, b)| a.value == b.value && a.label == b.label)
+                        });
+                        if unchanged { return; }
+                        let fallback = if choices.is_empty() {
+                            this.model_cache.iter().find(|(backend, _, _)| *backend == kind).map(|(_, _, old)| old.clone()).unwrap_or_default()
+                        } else { choices };
                         this.model_cache.retain(|(backend, _, _)| *backend != kind);
-                        this.model_cache.push((kind, status, choices)); cx.notify();
+                        this.model_cache.push((kind, status, fallback)); cx.notify();
                     });
                     break;
                 }
                 Err(mpsc::TryRecvError::Empty) => {},
                 Err(mpsc::TryRecvError::Disconnected) => {
-                    let _ = this.update(cx, |this, cx| { this.model_cache.retain(|(backend, _, _)| *backend != kind); this.model_cache.push((kind, ModelStatus::Error(crate::theme::tr("获取模型列表中断", "Model discovery stopped").into()), Vec::new())); cx.notify(); });
+                    let _ = this.update(cx, |this, cx| {
+                        let fallback = this.model_cache.iter().find(|(backend, _, _)| *backend == kind).map(|(_, _, old)| old.clone()).unwrap_or_default();
+                        this.model_cache.retain(|(backend, _, _)| *backend != kind);
+                        this.model_cache.push((kind, ModelStatus::Error(crate::theme::tr("获取模型列表中断", "Model discovery stopped").into()), fallback));
+                        cx.notify();
+                    });
                     break;
                 }
             }
         }).detach();
-        cx.notify();
+        if !had_entry { cx.notify(); }
     }
 }
