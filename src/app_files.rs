@@ -277,12 +277,12 @@ impl Workspace {
     }
 
     pub(crate) fn insert_external_note(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        if self.folder.as_deref().is_some_and(|root| path.starts_with(root)) {
         if crate::theme::hide_non_markdown_files()
             && !path.file_name().is_some_and(|n| crate::files::scan::is_markdown(&n.to_string_lossy()))
         {
             return;
         }
+        if self.folder.as_deref().is_some_and(|root| path.starts_with(root)) {
             self.tree.update(cx, |tree, cx| tree.insert_note(path, cx));
         }
     }
