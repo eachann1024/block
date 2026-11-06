@@ -250,20 +250,28 @@ impl Editor {
         true
     }
     /// Remember a copy that should paste back as blocks: several blocks, or one whole non-paragraph block.
-    pub(super) fn remember_blocks(&mut self, plain: &str) {
+    pub(super) fn remember_blocks(&mut self) {
         let (_, _, ai, bi) = self.ordered();
         let whole = |i: usize| self.selected_range(self.doc.blocks[i].id).is_some_and(|r| r == (0..self.doc.blocks[i].text.len()));
         let one = &self.doc.blocks[ai];
         let rich = ai != bi || (whole(ai) && (one.kind != Kind::Paragraph || one.meta.indent > 0
             || one.meta.code_language.is_some() || one.meta.raw_source.is_some() || one.meta.table.is_some()
+            || one.meta.callout.is_some() || one.meta.list_start.is_some()
             || one.meta.html_paragraph.is_some() || !one.spans.is_empty() || !one.meta.inline.is_empty()));
         if !rich { self.block_clip = None; return; }
         let blocks: Vec<Block> = (ai..=bi).filter_map(|i| {
             let block = &self.doc.blocks[i];
-            self.selected_range(block.id).map(|r| if block.meta.raw_source.is_some() || (block.meta.table.is_some() && r == (0..block.text.len())) { block.clone() } else { block.slice(r) })
+            self.selected_range(block.id).map(|r| {
+                if block.meta.raw_source.is_some() || r == (0..block.text.len()) {
+                    block.clone()
+                } else {
+                    block.slice(r)
+                }
+            })
         }).collect();
         let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(blocks));
-        self.block_clip = Some((plain.to_owned(), markdown));
+        let plain = markdown.trim_end_matches('\n').to_owned();
+        self.block_clip = Some((plain, markdown));
     }
     /// A selected image or HTML block has no text range: copy it whole so paste recreates the same block.
     pub(super) fn copy_whole_block(&mut self, cx: &mut Context<Self>) -> bool {

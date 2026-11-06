@@ -33,3 +33,45 @@ pub(super) fn image_paths() -> Vec<PathBuf> {
 }
 #[cfg(not(target_os = "macos"))]
 pub(super) fn image_paths() -> Vec<PathBuf> { Vec::new() }
+
+fn is_markdown(path: &std::path::Path) -> bool {
+    path.extension().and_then(|e| e.to_str())
+        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "md" | "markdown" | "mdown" | "mkd"))
+}
+
+/// If the user copied `.md` file(s) in Finder, read their UTF-8 Markdown content.
+pub(super) fn markdown_file_text(item: Option<&gpui::ClipboardItem>) -> Option<String> {
+    let mut paths: Vec<PathBuf> = item.into_iter().flat_map(|item| item.entries().iter())
+        .filter_map(|entry| match entry {
+            gpui::ClipboardEntry::ExternalPaths(ext) => Some(ext.paths().iter().cloned().collect::<Vec<_>>()),
+            _ => None,
+        }).flatten().filter(|p| is_markdown(p)).collect();
+    #[cfg(target_os = "macos")]
+    if paths.is_empty() {
+        #[allow(deprecated)]
+        unsafe {
+            use cocoa::{appkit::NSPasteboard, base::nil, foundation::{NSArray, NSString}};
+            let kind = NSString::alloc(nil).init_str("NSFilenamesPboardType");
+            let list = NSPasteboard::generalPasteboard(nil).propertyListForType(kind);
+            if list != nil {
+                paths.extend((0..NSArray::count(list)).filter_map(|i| {
+                    let item = NSArray::objectAtIndex(list, i);
+                    if item == nil { return None; }
+                    let raw = NSString::UTF8String(item);
+                    if raw.is_null() { return None; }
+                    let path = PathBuf::from(std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned());
+                    is_markdown(&path).then_some(path)
+                }));
+            }
+        }
+    }
+    if paths.is_empty() { return None; }
+    let mut combined = String::new();
+    for path in paths {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            if !combined.is_empty() && !combined.ends_with('\n') { combined.push('\n'); }
+            combined.push_str(&content);
+        }
+    }
+    (!combined.is_empty()).then_some(combined)
+}

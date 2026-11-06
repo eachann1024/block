@@ -67,7 +67,7 @@ impl ExportView {
             ExportFormat::Markdown => {
                 let Ok(blocks) = self.active_blocks() else { return };
                 let md = render_markdown(&blocks, &self.render_options());
-                cx.write_to_clipboard(ClipboardItem::new_string(md));
+                cx.write_to_clipboard(ClipboardItem::new_string_with_metadata(md, crate::editor::MARKDOWN_CLIPBOARD_V1.into()));
             }
             ExportFormat::Html => {
                 let Ok(blocks) = self.active_blocks() else { return };

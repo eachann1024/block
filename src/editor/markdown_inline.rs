@@ -77,10 +77,55 @@ impl Builder {
     }
 }
 
+/// CommonMark does not treat `**` after fullwidth CJK punctuation (`**11/11：**汕头`) as
+/// right-flanking when followed by non-punctuation text. Normalize such pairs outside backticks.
+fn normalize_cjk_strong(input: &str) -> std::borrow::Cow<'_, str> {
+    if !input.contains("**") { return std::borrow::Cow::Borrowed(input); }
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len() + 16);
+    let (mut i, mut changed) = (0, false);
+    while i < bytes.len() {
+        if bytes[i] == b'`' {
+            let ticks = bytes[i..].iter().take_while(|&&b| b == b'`').count();
+            out.push_str(&input[i..i + ticks]); i += ticks;
+            while i < bytes.len() {
+                if bytes[i] == b'`' {
+                    let run = bytes[i..].iter().take_while(|&&b| b == b'`').count();
+                    out.push_str(&input[i..i + run]); i += run;
+                    if run == ticks { break; }
+                } else {
+                    let ch = input[i..].chars().next().unwrap();
+                    out.push(ch); i += ch.len_utf8();
+                }
+            }
+            continue;
+        }
+        if i + 4 <= bytes.len() && &bytes[i..i + 2] == b"**" && bytes.get(i + 2) != Some(&b'*') {
+            let inner_start = i + 2;
+            if let Some(rel_end) = input[inner_start..].find("**") {
+                let inner = &input[inner_start..inner_start + rel_end];
+                let valid = !inner.is_empty() && !inner.starts_with(char::is_whitespace)
+                    && !inner.ends_with(char::is_whitespace) && !inner.contains('`') && !inner.contains('\n');
+                let cjk_punct = inner.chars().last().is_some_and(|ch| matches!(
+                    ch, '：' | '）' | '”' | '’' | '》' | '】' | '！' | '？' | '，' | '。' | '、' | '；' | '—' | '…'
+                ));
+                if valid && cjk_punct {
+                    out.push_str("<strong>"); out.push_str(inner); out.push_str("</strong>");
+                    i = inner_start + rel_end + 2; changed = true; continue;
+                }
+            }
+        }
+        let ch = input[i..].chars().next().unwrap();
+        out.push(ch); i += ch.len_utf8();
+    }
+    if changed { std::borrow::Cow::Owned(out) } else { std::borrow::Cow::Borrowed(input) }
+}
+
 pub(super) fn parse(input: &str) -> Option<RichText> {
     if !input.bytes().any(|b| b.is_ascii_punctuation()) {
         return Some((input.to_owned(), Vec::new(), Vec::new()));
     }
+    let input = normalize_cjk_strong(input);
     // The sentinel prevents an inline fragment from being interpreted as a block.
     let source = format!("x {input}"); let mut skip = 2;
     let mut b = Builder::default();
