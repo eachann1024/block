@@ -81,6 +81,9 @@ impl AiChat {
                                 };
                                 let auto = plan.as_ref().is_some_and(|p| p.ops.iter().all(|o| matches!(o.kind, agent::OpKind::Create { .. })));
                                 this.push_msg(Msg { role: "tool".into(), content: String::new(), tool_call_id: Some(id), plan, ..Default::default() });
+                                if !auto && this.plan_at(this.conv().map_or(0, |c| c.messages.len() - 1)).is_some() {
+                                    let at = this.conv().map_or(0, |c| c.messages.len() - 1); this.link_plan(at, 0, false, cx);
+                                }
                                 if auto {
                                     let at = this.conv().map(|c| c.messages.len() - 1).unwrap_or(0);
                                     this.apply_plan(at, cx);

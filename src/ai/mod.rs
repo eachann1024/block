@@ -17,6 +17,8 @@ mod chat_ui;
 #[cfg(not(target_family = "wasm"))]
 mod chat_process;
 #[cfg(not(target_family = "wasm"))]
+pub(crate) mod plan_link;
+#[cfg(not(target_family = "wasm"))]
 mod chat_deck;
 #[cfg(not(target_family = "wasm"))]
 mod chat_empty;

@@ -8,7 +8,7 @@ pub(in crate::editor::ai) fn registered_roots() -> Vec<PathBuf> {
 }
 impl AiChat {
     /// Cross-notebook roots must resolve exactly to a registered notebook.
-    pub(super) fn context_for_root(&self, root: &Path, cx: &App) -> Result<agent::Ctx, String> {
+    pub(in crate::editor::ai) fn context_for_root(&self, root: &Path, cx: &App) -> Result<agent::Ctx, String> {
         if !root.is_absolute() || root.components().any(|part| matches!(part, std::path::Component::ParentDir | std::path::Component::CurDir)) {
             return Err("Invalid notebook root".into());
         }
