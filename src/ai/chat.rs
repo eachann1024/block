@@ -212,7 +212,7 @@ impl AiChat {
 /// Seeds only the isolated smoke worker; never touches the user's conversations.
 pub(crate) fn prepare_selection_smoke(window: &mut Window, cx: &mut App) -> Result<(), String> {
     if !crate::smoke::is_requested() { return Err("Selection fixture requires smoke mode".into()); }
-    let config = super::provider::Config { provider: "openai".into(), base_url: "http://127.0.0.1:1/v1".into(),
+    let config = super::provider::Config { enabled: true, provider: "openai".into(), base_url: "http://127.0.0.1:1/v1".into(),
         api_key: "smoke-fixture".into(), model: "smoke-fixture".into(), ..Default::default() };
     super::provider::save(&config)?;
     chat(window, cx).update(cx, |this, cx| {
@@ -224,6 +224,16 @@ pub(crate) fn prepare_selection_smoke(window: &mut Window, cx: &mut App) -> Resu
         this.scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(0.)));
         cx.notify();
     });
+    window.refresh();
+    Ok(())
+}
+
+pub(crate) fn enable_smoke_builtin(window: &mut Window, cx: &mut App) -> Result<(), String> {
+    if !crate::smoke::is_requested() { return Err("AI fixture requires smoke mode".into()); }
+    let config = super::provider::Config { enabled: true, provider: "openai".into(), base_url: "http://127.0.0.1:1/v1".into(),
+        api_key: "smoke-fixture".into(), model: "smoke-fixture".into(), ..Default::default() };
+    super::provider::save(&config)?;
+    chat(window, cx).update(cx, |_, cx| cx.notify());
     window.refresh();
     Ok(())
 }
