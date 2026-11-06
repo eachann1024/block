@@ -36,16 +36,19 @@ static ICON: LazyLock<Arc<Image>> = LazyLock::new(|| {
 });
 
 pub fn open(cx: &mut App) {
-    crate::search::window::activate_main_window(cx);
-    open_state();
-    if let Some((Some(handle), workspace)) = crate::search::window::main_window(cx) {
-        let _ = handle.update(cx, |_, window, cx| {
-            workspace.update(cx, |w, cx| {
-                w.focus_root(window, cx);
-                cx.notify();
+    // Menu dispatch borrows the window; defer until it is available again.
+    cx.defer(|cx| {
+        crate::search::window::activate_main_window(cx);
+        open_state();
+        if let Some((Some(handle), workspace)) = crate::search::window::main_window(cx) {
+            let _ = handle.update(cx, |_, window, cx| {
+                workspace.update(cx, |w, cx| {
+                    w.focus_root(window, cx);
+                    cx.notify();
+                });
             });
-        });
-    }
+        }
+    });
 }
 
 pub(crate) fn open_state() {
