@@ -955,6 +955,73 @@
       "w": 1280,
       "x": 2720,
       "y": 1320
+    },
+    "PerfMonitor-V1-SegmentedBar.dc.html": {
+      "x": 0,
+      "y": 920,
+      "w": 1120,
+      "h": 760,
+      "title": "性能监控 A（推荐）· 极简分段长条单卡（关于弹窗入口 + 悬停色段直读用途 + 四维白话指标）",
+      "page": "about",
+      "is_interactive": true
+    },
+    "PerfMonitor-V2-TreemapMatrix.dc.html": {
+      "x": 1200,
+      "y": 920,
+      "w": 1120,
+      "h": 760,
+      "title": "性能监控 B · 比例色块矩阵看板（二维面积占比块 + 悬停色块联动解析 + 分类过滤明细）",
+      "page": "about",
+      "is_interactive": true
+    },
+    "PerfMonitor-V3-SplitInspector.dc.html": {
+      "x": 2400,
+      "y": 920,
+      "w": 1120,
+      "h": 760,
+      "title": "性能监控 C · 双栏紧凑检视器（左栏实时健康度直方条 + 右栏内存与磁盘双轨分段条）",
+      "page": "about",
+      "is_interactive": true
+    },
+    "SettingsTitlebar-V1-LeftBack.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "settings",
+      "title": "设置顶栏 A（推荐）· 左列「← 返回笔记」+ 顶栏面包屑与右侧静默版本号 1.0.301",
+      "w": 1440,
+      "x": 0,
+      "y": 2300
+    },
+    "SettingsTitlebar-V2-UnifiedBar.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "page": "settings",
+      "title": "设置顶栏 B · 左列「设置 · 1.0.301」铭牌 + 顶栏内联「← 返回笔记」面包屑导航",
+      "w": 1440,
+      "x": 1520,
+      "y": 2300
+    },
+    "AiPlanLink-V1-EditorDiffBar.dc.html": {
+      "expand": "fill",
+      "h": 920,
+      "is_interactive": true,
+      "page": "ai-assistant",
+      "title": "AI 修改联动 A（推荐）· 侧栏紧凑定位卡 + 编辑器顶栏审阅条与所见即所得表格对比",
+      "w": 1440,
+      "x": 0,
+      "y": 2560
+    },
+    "AiPlanLink-V2-BlockReviewCard.dc.html": {
+      "expand": "fill",
+      "h": 920,
+      "is_interactive": true,
+      "page": "ai-assistant",
+      "title": "AI 修改联动 B · 侧栏单行定位胶囊 + 编辑器改动块虚线聚焦框与块下原位悬浮审阅舱",
+      "w": 1440,
+      "x": 1520,
+      "y": 2560
     }
   },
   "createdOnFiles": {
@@ -971,10 +1038,28 @@
     }
   ],
   "launch": {
-    "page": "folder-flow",
+    "page": "ai-assistant",
     "view": "canvas"
   },
   "notes": {
+    "ai-plan-link-row": {
+      "kind": "title1",
+      "maxW": 2960,
+      "page": "ai-assistant",
+      "text": "AI 修改方案联动编辑器 · 侧栏不直接展开原文/新片段，联动中间编辑器审阅 · 两个版本",
+      "w": 240,
+      "x": 0,
+      "y": 2300
+    },
+    "settings-titlebar-row": {
+      "kind": "title1",
+      "maxW": 2960,
+      "page": "settings",
+      "text": "设置顶栏融合 · 删除右上角反馈/AI 按钮 + 底栏版本号与返回笔记融入 40px 标题栏 · 两套方案",
+      "w": 240,
+      "x": 0,
+      "y": 2060
+    },
     "existing-folders-row": {
       "kind": "title1",
       "maxW": 4000,
@@ -1070,6 +1155,15 @@
       "w": 680,
       "x": 0,
       "y": 1060
+    },
+    "perf-monitor-row": {
+      "kind": "title1",
+      "maxW": 3520,
+      "page": "about",
+      "text": "关于弹窗 · 性能与体积监控入口及面板 · 三个简洁克制版本",
+      "w": 240,
+      "x": 0,
+      "y": 660
     }
   },
   "order": [
@@ -1172,7 +1266,14 @@
     "AiDisabled-V2-NoteSpark.dc.html",
     "ExistingFolders-V1-ListCheck.dc.html",
     "ExistingFolders-V2-RightCheck.dc.html",
-    "ExistingFolders-V3-CompactGrid.dc.html"
+    "ExistingFolders-V3-CompactGrid.dc.html",
+    "PerfMonitor-V1-SegmentedBar.dc.html",
+    "PerfMonitor-V2-TreemapMatrix.dc.html",
+    "PerfMonitor-V3-SplitInspector.dc.html",
+    "SettingsTitlebar-V1-LeftBack.dc.html",
+    "SettingsTitlebar-V2-UnifiedBar.dc.html",
+    "AiPlanLink-V1-EditorDiffBar.dc.html",
+    "AiPlanLink-V2-BlockReviewCard.dc.html"
   ],
   "pages": [
     {
