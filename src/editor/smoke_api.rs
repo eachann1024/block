@@ -74,3 +74,12 @@ impl Editor {
         id
     }
 }
+
+impl Editor {
+    pub(crate) fn prepare_menu_edge_smoke(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
+        assert!(crate::ui::smoke_overlay::is_smoke_active());
+        self.reset_document(markdown::parse(&"M".repeat(40)));
+        self.focus_block(self.doc.blocks[0].id, window, cx);
+        cx.notify();
+    }
+}
