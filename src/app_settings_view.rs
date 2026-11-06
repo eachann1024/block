@@ -2,7 +2,7 @@
 use gpui::{
     AnyElement, Context, FontWeight, KeyDownEvent, MouseButton, WindowControlArea, div, prelude::*, px,
 };
-use crate::theme::{Theme, tr};
+use crate::{icons::Icon, theme::{Theme, tr}, ui::icon_button::header_action_button};
 use super::Workspace;
 use super::settings::{SettingsTab, keystroke_to_spec};
 
@@ -50,8 +50,19 @@ impl Workspace {
             }))
             .child(div().w_full().max_w(px(720.)).mx_auto().pt(px(40.)).px(px(28.)).pb(px(64.))
                 .flex().flex_col().gap(px(28.))
-                .child(div().text_size(px(24.)).line_height(px(32.)).font_weight(FontWeight(560.))
-                    .text_color(theme.text).child(tab.title()))
+                .child(div().flex().items_center().justify_between().gap(px(12.))
+                    .child(div().text_size(px(24.)).line_height(px(32.)).font_weight(FontWeight(560.))
+                        .text_color(theme.text).child(tab.title()))
+                    .child(header_action_button(
+                        "settings-back",
+                        Icon::Close,
+                        false,
+                        tr("关闭设置", "Close Settings"),
+                        cx.listener(|this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.close_settings(window, cx);
+                        }),
+                    )))
                 .child(self.settings_body(tab, cx)))
             .into_any_element())
     }
