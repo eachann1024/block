@@ -16,6 +16,8 @@ pub mod icon_button;
 pub mod modal;
 pub mod motion;
 pub mod placement;
+pub mod performance_rows;
+pub mod performance_treemap;
 pub mod popover;
 pub mod radius;
 pub mod rename_row;
