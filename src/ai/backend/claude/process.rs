@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::{BufRead, BufReader, Write}, process::{ChildStdin, Command, Stdio},
+use std::{collections::HashMap, io::{BufRead, BufReader, Write}, process::{ChildStdin, Stdio},
     sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}, mpsc::Sender}, thread};
 
 use serde_json::{Value, json};
@@ -57,15 +57,18 @@ impl Drop for Turn {
 
 pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: ToolBridge)
     -> Result<Box<dyn RunningTurn>, BackendError> {
-    let mut command = Command::new("claude");
-    command.args(["-p", "--verbose", "--input-format", "stream-json", "--output-format", "stream-json",
-        "--include-partial-messages", "--strict-mcp-config", "--tools", "Skill",
-        "--setting-sources", "user,project", "--settings",
-        r#"{"disableAllHooks":true,"disableSkillShellExecution":true,"disableClaudeAiConnectors":true}"#,
-        "--disallowedTools", "Bash,PowerShell,Write,Edit,NotebookEdit,WebFetch,Agent",
-        "--allowedTools", "mcp__block__*", "--permission-mode", "manual", "--permission-prompts", "host",
+    let mut command = super::super::cli_env::command("claude");
+    command.args([
+        "-p", "--verbose",
+        "--dangerously-skip-permissions",
+        "--permission-mode", "bypassPermissions",
+        "--input-format", "stream-json",
+        "--output-format", "stream-json",
+        "--include-partial-messages",
         "--mcp-config", r#"{"mcpServers":{"block":{"type":"sdk","name":"block"}}}"#,
-        "--append-system-prompt", "Use Block MCP for notes. Never edit note files directly. Block write operations create a plan requiring user approval. Read the current note using Block tools. External MCP servers are unavailable."])
+        "--append-system-prompt",
+        "Use Block MCP tools (listNotebooks, listPages, searchNotes, readPage, executeBatchPlan, loadSkill, readSkillResource) when reading or batch-editing Block notes.",
+    ])
         .env_remove("CLAUDECODE").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(root) = request.context.notebook_root.as_ref() { command.current_dir(root); }
     if let Some(session) = request.native_session_id.as_deref().filter(|id| !id.is_empty()) { command.args(["--resume", session]); }
@@ -138,20 +141,13 @@ fn emit(events: &Sender<BackendEvent>, request: &TurnRequest, kind: BackendEvent
 }
 
 fn control(frame: &Value, request: &TurnRequest, tools: &ToolBridge, input: &Arc<Mutex<Input>>,
-    pending: &Arc<Mutex<Pending>>, events: &Sender<BackendEvent>) {
+    _pending: &Arc<Mutex<Pending>>, events: &Sender<BackendEvent>) {
     let id = frame["request_id"].as_str().unwrap_or("");
     let data = &frame["request"];
     match data["subtype"].as_str() {
         Some("mcp_message") => mcp::handle(frame, request, tools, input, events),
         Some("can_use_tool") if !id.is_empty() => {
-            let name = data["tool_name"].as_str().unwrap_or("");
-            if name != "Skill" && !name.starts_with("mcp__block__") {
-                let _ = write_frame(input, &json!({"type":"control_response","response":{"subtype":"success","request_id":id,"response":{"behavior":"deny","message":"Tool unavailable in Block note mode"}}}));
-                return;
-            }
-            if let Ok(mut pending) = pending.lock() { pending.insert(id.to_owned(), data["input"].clone()); }
-            emit(events, request, BackendEventKind::Approval { request_id: id.to_owned(),
-                title: format!("Claude: {}", data["tool_name"].as_str().unwrap_or("tool")), detail: data["input"].to_string() });
+            let _ = write_frame(input, &json!({"type":"control_response","response":{"subtype":"success","request_id":id,"response":{"behavior":"allow","updatedInput":data["input"]}}}));
         }
         _ => { let _ = write_frame(input, &json!({"type":"control_response","response":{"subtype":"error","request_id":id,"error":"Unsupported control request"}})); }
     }

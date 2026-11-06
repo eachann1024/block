@@ -31,10 +31,7 @@ impl BackendConfig {
     }
 
     pub(crate) fn options(&self, backend: BackendKind) -> Value {
-        let key = match backend {
-            BackendKind::Builtin => "builtin", BackendKind::Codex => "codex",
-            BackendKind::Claude => "claude", BackendKind::Dsh => "dsh",
-        };
+        let key = backend.key();
         let mut options = self.adapters.get(key).cloned().unwrap_or_else(|| serde_json::json!({}));
         if backend == BackendKind::Dsh {
             let resolved = self.dsh_options();
@@ -50,10 +47,13 @@ impl BackendConfig {
         match kind {
             BackendKind::Builtin => super::super::provider::config().model,
             BackendKind::Dsh => self.dsh_options().model,
-            BackendKind::Codex | BackendKind::Claude => {
-                let key = if kind == BackendKind::Codex { "codex" } else { "claude" };
-                self.adapters.get(key).and_then(|v| v.get("model")).and_then(Value::as_str).unwrap_or("").to_owned()
-            }
+            BackendKind::Codex | BackendKind::Claude | BackendKind::Pi => self
+                .adapters
+                .get(kind.key())
+                .and_then(|v| v.get("model"))
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_owned(),
         }
     }
 
@@ -69,12 +69,77 @@ impl BackendConfig {
         if kind == BackendKind::Dsh {
             let mut options = self.dsh_options(); options.model = model.into(); return self.set_dsh_options(options);
         }
-        let key = if kind == BackendKind::Codex { "codex" } else { "claude" };
+        let key = kind.key();
         let previous = self.adapters.clone();
         let entry = self.adapters.entry(key.into()).or_insert_with(|| serde_json::json!({}));
         if !entry.is_object() { *entry = serde_json::json!({}); }
         entry["model"] = model.into();
         if let Err(error) = self.save() { self.adapters = previous; return Err(error); }
+        Ok(())
+    }
+
+    pub(crate) fn is_enabled(&self, kind: BackendKind) -> bool {
+        if let Some(enabled) = self
+            .adapters
+            .get(kind.key())
+            .and_then(|v| v.get("enabled"))
+            .and_then(Value::as_bool)
+        {
+            return enabled;
+        }
+        if kind == BackendKind::Builtin {
+            return super::super::provider::stored().enabled;
+        }
+        true
+    }
+
+    pub(crate) fn can_disable(&self, kind: BackendKind, recognized: &[BackendKind]) -> bool {
+        if !self.is_enabled(kind) {
+            return false;
+        }
+        let enabled_count = recognized.iter().filter(|&&b| self.is_enabled(b)).count();
+        enabled_count > 1
+    }
+
+    pub(crate) fn ensure_valid_selection(&mut self, recognized: &[BackendKind]) -> BackendKind {
+        if recognized.contains(&self.selected) && self.is_enabled(self.selected) {
+            return self.selected;
+        }
+        if let Some(&first) = recognized.iter().find(|&&b| self.is_enabled(b)).or_else(|| recognized.first()) {
+            self.selected = first;
+        }
+        self.selected
+    }
+
+    pub(crate) fn set_enabled(
+        &mut self,
+        kind: BackendKind,
+        enabled: bool,
+        recognized: &[BackendKind],
+    ) -> Result<(), String> {
+        if !enabled && !self.can_disable(kind, recognized) {
+            return Err(crate::theme::tr("至少需要保留一个启用的 AI 后端", "At least one AI backend must remain enabled").into());
+        }
+        let previous = self.adapters.clone();
+        let prev_selected = self.selected;
+        let entry = self.adapters.entry(kind.key().into()).or_insert_with(|| serde_json::json!({}));
+        if !entry.is_object() {
+            *entry = serde_json::json!({});
+        }
+        entry["enabled"] = Value::Bool(enabled);
+        self.ensure_valid_selection(recognized);
+        if let Err(error) = self.save() {
+            self.adapters = previous;
+            self.selected = prev_selected;
+            return Err(error);
+        }
+        if kind == BackendKind::Builtin {
+            let mut cfg = super::super::provider::stored();
+            if cfg.enabled != enabled {
+                cfg.enabled = enabled;
+                let _ = super::super::provider::save(&cfg);
+            }
+        }
         Ok(())
     }
 
@@ -99,6 +164,7 @@ impl BackendConfig {
         if options.model.trim().is_empty() { return Err("Select a dsh model".into()); }
         let previous = self.adapters.insert("dsh".into(), serde_json::json!({
             "provider": options.provider, "model": options.model.trim(), "authSource": options.auth_source,
+            "enabled": self.is_enabled(BackendKind::Dsh),
         }));
         if let Err(error) = self.save() {
             if let Some(previous) = previous { self.adapters.insert("dsh".into(), previous); }

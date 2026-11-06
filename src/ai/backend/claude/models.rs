@@ -1,9 +1,9 @@
-use std::{io::{BufRead, BufReader, Write}, process::{Command, Stdio}, sync::mpsc, time::Duration};
+use std::{io::{BufRead, BufReader, Write}, process::Stdio, sync::mpsc, time::Duration};
 use serde_json::{json, Value};
 
 pub(crate) fn list() -> Result<Vec<super::super::ModelOption>, String> {
-    let mut child = Command::new("claude").args(["-p", "--verbose", "--input-format", "stream-json", "--output-format", "stream-json", "--tools", "", "--strict-mcp-config",
-        "--settings", r#"{"disableAllHooks":true,"disableSkillShellExecution":true,"disableClaudeAiConnectors":true}"#])
+    let mut child = super::super::cli_env::command("claude")
+        .args(["-p", "--verbose", "--dangerously-skip-permissions", "--permission-mode", "bypassPermissions", "--input-format", "stream-json", "--output-format", "stream-json"])
         .env_remove("CLAUDECODE").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|e| e.to_string())?;
     let mut input = child.stdin.take().ok_or("Claude stdin unavailable")?;
     let output = child.stdout.take().ok_or("Claude stdout unavailable")?;

@@ -60,7 +60,9 @@ pub fn tag_chip(
     let theme = Theme::ocean();
     let sel_bg = selected_bg();
     let idle_bg = if is_dark() { gpui::rgb(0x2a2a2a).into() } else { theme.shell };
-    div().id(id).h(px(30.)).px(px(10.)).flex().items_center().gap(px(6.)).rounded(crate::ui::radius::CONTROL).text_size(px(13.))
+    let id: gpui::ElementId = id.into();
+    let probe = crate::ui::smoke_overlay::probe_for(&id);
+    div().id(id).relative().children(probe).h(px(30.)).px(px(10.)).flex().items_center().gap(px(6.)).rounded(crate::ui::radius::CONTROL).text_size(px(13.))
         .when(mono, |d| d.font(mono_font()))
         .bg(if active { sel_bg } else { idle_bg })
         .border_1().border_color(if active { theme.accent } else { theme.btn_border })

@@ -2,6 +2,45 @@ use gpui::{ClipboardItem, px};
 use super::{AsyncApp, Run, sleep, smoke_overlay};
 
 impl Run {
+    pub(super) async fn verify_backends_and_settings(&self, cx: &AsyncApp) -> Result<(), String> {
+        use crate::editor::ai::{backend::BackendKind, chat::input_smoke};
+        self.win(cx, input_smoke::seed_all_backends_ready)?;
+        sleep(cx, 120).await;
+        self.redraw(cx);
+        self.click_target(cx, "ai-deck-trigger", "Step 14/14 · 打开后端选择舱验证单行卡片与 Pi").await?;
+        let card = smoke_overlay::target_bounds("ai-backend-Builtin").ok_or("找不到 ai-backend-Builtin")?;
+        self.check(14, card.size.height <= px(42.), "后端卡片已移除可用副标题并压缩为单行")?;
+        self.check(14, smoke_overlay::target_center("ai-backend-Pi").is_some(), "默认展示已识别的 Pi 后端")?;
+        self.click_target(cx, "ai-backend-Pi", "Step 14/14 · 切换到 Pi 后端").await?;
+        self.check(14, self.win(cx, input_smoke::selected_backend)? == BackendKind::Pi, "已切换到 Pi 后端")?;
+        self.win(cx, |w, cx| input_smoke::set_backend_missing(BackendKind::Pi, w, cx))?;
+        sleep(cx, 120).await;
+        self.redraw(cx);
+        self.check(14, smoke_overlay::target_center("ai-backend-Pi").is_none() && self.win(cx, input_smoke::selected_backend)? != BackendKind::Pi, "未识别后端在命令舱中隐藏并自动回退选中项")?;
+        self.click_target(cx, "ai-deck-settings", "Step 14/14 · 从命令舱进入 AI 设置").await?;
+        self.check(14, self.query(cx, |w, _| w.settings_is_open()) && smoke_overlay::target_center("ai-backend-toggle-Pi").is_none(), "未识别后端在 AI 设置中也隐藏")?;
+        self.win(cx, input_smoke::seed_all_backends_ready)?;
+        sleep(cx, 120).await;
+        self.redraw(cx);
+        self.check(14, smoke_overlay::target_center("ai-backend-toggle-Pi").is_some(), "识别后的 Pi 后端在 AI 设置中显示")?;
+        for (id, kind) in [
+            ("ai-backend-toggle-Builtin", BackendKind::Builtin),
+            ("ai-backend-toggle-Codex", BackendKind::Codex),
+            ("ai-backend-toggle-Claude", BackendKind::Claude),
+            ("ai-backend-toggle-Dsh", BackendKind::Dsh),
+        ] {
+            self.click_target(cx, id, "Step 14/14 · 禁用后端验证内置与外部后端均可关闭").await?;
+            self.check(14, !input_smoke::is_backend_enabled(kind), "已在 AI 设置中禁用该后端")?;
+        }
+        self.click_target(cx, "ai-backend-toggle-Pi", "Step 14/14 · 尝试禁用仅剩的最后一个启用后端").await?;
+        self.check(14, input_smoke::is_backend_enabled(BackendKind::Pi), "仅剩一个启用后端时禁止关闭")?;
+        for id in ["ai-backend-toggle-Builtin", "ai-backend-toggle-Codex", "ai-backend-toggle-Claude", "ai-backend-toggle-Dsh"] {
+            self.click_target(cx, id, "Step 14/14 · 重新启用全部已识别后端").await?;
+        }
+        self.click_target(cx, "settings-back", "Step 14/14 · 从 AI 设置返回编辑").await?;
+        Ok(())
+    }
+
     pub(super) async fn chat_composer(&self, cx: &AsyncApp) -> Result<(), String> {
         self.win(cx, crate::editor::ai::chat::prepare_selection_smoke)??;
         sleep(cx, 250).await;
