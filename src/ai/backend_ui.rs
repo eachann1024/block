@@ -1,6 +1,6 @@
 use std::{cell::Cell, rc::Rc};
 use gpui::{App, IntoElement, Window, div, prelude::*, px};
-use super::{backend::{ApprovalResponse, BackendKind, BackendStatus}, chat::AiChat};
+use super::{backend::{ApprovalResponse, BackendKind}, chat::AiChat};
 use crate::{theme::{Theme, tr}, ui::ai_controls};
 
 thread_local! { pub(super) static DECK_OPEN: Cell<bool> = const { Cell::new(false) }; }
@@ -11,7 +11,7 @@ pub(super) fn open_deck(chat: &mut AiChat, window: &mut Window, cx: &mut gpui::C
     chat.history = false;
     chat.picker_dismissed = true;
     if chat.selected_backend() == BackendKind::Dsh && !super::dsh_ui::is_open() { super::dsh_ui::open(chat, window, cx); }
-    for kind in [BackendKind::Builtin, BackendKind::Codex, BackendKind::Claude, BackendKind::Dsh] { chat.probe_backend(kind, cx); }
+    for kind in BackendKind::ALL { chat.probe_backend(kind, cx); }
     chat.refresh_models(cx);
     cx.notify();
 }
@@ -22,29 +22,12 @@ pub(super) fn backend_name(backend: BackendKind) -> &'static str {
         BackendKind::Codex => "Codex",
         BackendKind::Claude => "Claude",
         BackendKind::Dsh => "dsh",
+        BackendKind::Pi => "Pi",
     }
 }
 
 pub(super) fn builtin_ready() -> bool {
     super::provider::validate_request(&super::provider::config()).is_ok()
-}
-
-pub(super) fn status_label(kind: BackendKind, status: Option<&BackendStatus>) -> String {
-    if kind == BackendKind::Builtin {
-        let cfg = super::provider::config();
-        return if !cfg.enabled { tr("未启用", "Disabled").into() }
-            else if super::provider::validate_request(&cfg).is_err() { tr("未配置", "Not configured").into() }
-            else { tr("可用", "Available").into() };
-    }
-    match status {
-        None => tr("未检测", "Not checked").into(),
-        Some(BackendStatus::Ready { .. }) => tr("可用", "Available").into(),
-        Some(BackendStatus::Installed { .. }) => tr("已安装 · 认证未知", "Installed · authentication unknown").into(),
-        Some(BackendStatus::Missing) => tr("未安装", "Not installed").into(),
-        Some(BackendStatus::NotAuthenticated { .. }) => tr("未登录", "Not signed in").into(),
-        Some(BackendStatus::Unsupported { .. }) => tr("不支持", "Unsupported").into(),
-        Some(BackendStatus::Error { .. }) => tr("不可用", "Unavailable").into(),
-    }
 }
 
 pub(super) fn approval_card(title: String, detail: String, on_response: impl Fn(ApprovalResponse, &mut Window, &mut App) + 'static) -> impl IntoElement {
