@@ -10,6 +10,55 @@ use crate::{
 
 pub const PANEL_WIDTH: f32 = 360.;
 
+pub fn titlebar_ai_button(open: bool, on_click: impl Fn(&mut gpui::Window, &mut gpui::App) + 'static) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    div().id("titlebar-ai").group("titlebar-ai").relative().children(crate::ui::smoke_overlay::probe("titlebar-ai"))
+        .size(px(26.)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
+        .cursor(CursorStyle::PointingHand)
+        .when(open, |button| button.bg(theme.selected).border_1().border_color(theme.accent))
+        .when(!open, |button| button.hover(|style| style.bg(theme.hover)))
+        .tooltip(tooltip(if cfg!(target_os = "macos") { tr("AI 助手 ⌘J", "AI Assistant ⌘J") } else { tr("AI 助手 Ctrl+J", "AI Assistant Ctrl+J") }))
+        .child(stateful_icon("titlebar-ai", Icon::Sparkles, px(16.), open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if open { theme.accent } else { theme.text })))
+        .on_mouse_down(MouseButton::Left, move |_, window, cx| { cx.stop_propagation(); on_click(window, cx); })
+}
+
+pub fn backend_card(id: impl Into<SharedString>, name: &'static str, status: String, selected: bool, ready: bool,
+    on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    let id: SharedString = id.into();
+    div().id(id.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&ElementId::from(id)))
+        .flex_1().min_w_0().p(px(10.)).rounded(px(10.)).border_1().cursor(CursorStyle::PointingHand)
+        .bg(if selected { theme.selected } else { theme.shell }).border_color(if selected { theme.accent } else { theme.hairline })
+        .hover(|style| style.bg(theme.hover))
+        .child(div().flex().items_center().justify_between().font_weight(FontWeight(560.)).child(name)
+            .child(div().size(px(7.)).rounded_full().bg(if ready { theme.accent } else { theme.text_secondary })))
+        .child(div().text_size(px(14.)).text_color(theme.text_secondary).child(status))
+        .on_mouse_down(MouseButton::Left, on_click)
+}
+
+pub fn deck_trigger_capsule(
+    id: impl Into<SharedString>,
+    label: impl Into<SharedString>,
+    ready: bool,
+    open: bool,
+    on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
+) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    let id: SharedString = id.into();
+    let eid = ElementId::from(id);
+    let probe = crate::ui::smoke_overlay::probe_for(&eid);
+    div().id(eid).relative().children(probe)
+        .h(px(30.)).px(px(10.)).max_w(px(240.)).flex_none().flex().items_center().gap(px(6.))
+        .rounded(crate::ui::radius::CONTROL).bg(theme.selected).border_1()
+        .border_color(if open { theme.accent } else { theme.btn_border })
+        .text_size(px(14.)).line_height(px(20.)).text_color(theme.text).font_weight(FontWeight(500.))
+        .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover).border_color(theme.accent))
+        .child(div().size(px(7.)).flex_none().rounded_full().bg(if ready { theme.accent } else { theme.text_secondary }))
+        .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(label.into()))
+        .child(dropdown::line_icon(Icon::ChevronDown, 12., theme.text_secondary))
+        .on_mouse_down(MouseButton::Left, on_click)
+}
+
 pub fn panel_shell(id: impl Into<SharedString>) -> Stateful<Div> {
     let theme = Theme::ocean();
     let id: SharedString = id.into();

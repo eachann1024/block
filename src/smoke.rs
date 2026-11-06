@@ -18,7 +18,7 @@ mod steps;
 pub fn handle_cli() -> bool { client::handle() }
 pub fn is_worker() -> bool { std::env::args().any(|a| a == "--smoke-worker") }
 
-const STEPS: usize = 12;
+const STEPS: usize = 14;
 
 pub fn is_requested() -> bool { std::env::args().any(|a| matches!(a.as_str(), "--smoke" | "--smoke-test" | "--smoke-worker" | "--smoke-once")) }
 pub fn keep_open() -> bool { std::env::args().any(|a| a == "--keep-open") }
