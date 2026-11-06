@@ -99,6 +99,7 @@ impl Render for AiChat {
                     }))
                     .child(stateful_icon(x_id, Icon::Close, px(10.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
         });
+        self.refresh_picker(cx);
         let token = self.picker_token(cx);
         let picks = token.as_deref().map(|token| self.picker_items(token, cx)).unwrap_or_default();
         let selected = self.pick_index.min(picks.len().saturating_sub(1));
@@ -109,11 +110,14 @@ impl Render for AiChat {
         let picker = picker_open.then(|| {
             let list = if picks.is_empty() {
                 div().p(px(10.)).text_size(px(14.)).text_color(theme.text_secondary)
-                    .child(if token.starts_with('@') { tr("没有匹配的笔记", "No matching notes") } else { tr("没有匹配的指令或技能", "No matching commands or skills") })
+                    .child(if self.picker_cache.loading { tr("正在加载…", "Loading…") } else if token.starts_with('@') { tr("没有匹配的笔记", "No matching notes") } else { tr("没有匹配的指令或技能", "No matching commands or skills") })
                     .into_any_element()
             } else {
                 let scroll = super::chat_composer::PICKER_SCROLL.with(Clone::clone);
-                picks.into_iter().enumerate().fold(div().id("ai-reference-list").max_h(px(picker_height - 32.)).overflow_y_scroll().track_scroll(&scroll).p(px(4.)).flex().flex_col(), |list, (i, (pick, name, desc))| {
+                let height = (picks.len() as f32 * 36.).min(picker_height - 32.);
+                gpui::uniform_list("ai-reference-list", picks.len(), cx.processor(move |_, range: std::ops::Range<usize>, _, cx| {
+                    range.map(|i| {
+                    let (pick, name, desc) = picks[i].clone();
                     let row = crate::ui::dropdown::row_with(SharedString::from(format!("pick-{i}")), crate::ui::dropdown::RowSpec {
                         icon: Some(if name.starts_with('/') { Icon::Sparkles } else { Icon::Note }),
                         label: name.into(), hint: Some(desc.into()), ..Default::default()
@@ -121,8 +125,9 @@ impl Render for AiChat {
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| {
                         cx.stop_propagation(); this.accept_pick(pick.clone(), w, cx);
                     }));
-                    list.child(row)
-                }).into_any_element()
+                    row
+                    }).collect::<Vec<_>>()
+                })).track_scroll(&scroll).h(px(height)).w_full().into_any_element()
             };
             div().mx(px(16.)).mb(px(4.)).flex_none().max_h(px(picker_height)).rounded(crate::ui::radius::SURFACE).border_1().border_color(theme.menu_border).bg(theme.menu)
                 .child(div().px(px(10.)).pt(px(6.)).text_size(px(14.)).text_color(theme.text_secondary).child(if token.starts_with('@') { tr("引用笔记", "Reference Note") } else { tr("指令与技能", "Commands & Skills") }))
@@ -167,6 +172,11 @@ impl Render for AiChat {
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
                 if event.keystroke.key == "escape" && this.picker_token(cx).is_some() {
                     this.picker_dismissed = true; cx.stop_propagation(); cx.notify();
+                }
+            }))
+            .capture_action(cx.listener(|this, action: &gpui_component::input::Enter, window, cx| {
+                if !action.shift && !action.secondary && this.picker_token(cx).is_some() {
+                    cx.stop_propagation(); this.send(window, cx);
                 }
             }))
             .capture_action(cx.listener(|this, _: &gpui_component::input::MoveUp, _, cx| {
