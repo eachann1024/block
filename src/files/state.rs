@@ -136,6 +136,8 @@ pub struct State {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hide_assets_folder: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hide_non_markdown_files: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hidden_folder_regex: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folder_rules: Option<Vec<FolderRule>>,
