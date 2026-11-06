@@ -8,7 +8,7 @@
 //! - Resolves geometry during `prepaint` after normal elements have published current-frame bounds.
 use gpui::{
     AnyElement, App, Bounds, Deferred, Display, Element, GlobalElementId, InspectorElementId,
-    IntoElement, LayoutId, ParentElement, Pixels, Point, Position, Size, Style, Window, deferred,
+    IntoElement, LayoutId, ParentElement, Pixels, Point, Position, Size, Style, Styled, Window, deferred,
     div, point, px, size,
 };
 
@@ -92,6 +92,10 @@ fn safe_limits(spec: &PlacementSpec, window_size: Size<Pixels>) -> (Pixels, Pixe
 /// Computes the maximum height a scrollable menu may take on its chosen side of `spec.trigger`
 /// so that even in a short window it scrolls internally instead of overlapping `spec.trigger`.
 pub fn max_height_for_spec(spec: &PlacementSpec, window_size: Size<Pixels>, cap: Pixels) -> Pixels {
+    available_height_for_spec(spec, window_size, cap).max(px(MIN_SCROLL_HEIGHT))
+}
+
+pub fn available_height_for_spec(spec: &PlacementSpec, window_size: Size<Pixels>, cap: Pixels) -> Pixels {
     let (_, _, min_y, max_y) = safe_limits(spec, window_size);
     let below_top = spec.trigger.bottom().max(min_y) + spec.gap;
     let above_bottom = spec.trigger.top().min(max_y) - spec.gap;
@@ -104,7 +108,16 @@ pub fn max_height_for_spec(spec: &PlacementSpec, window_size: Size<Pixels>, cap:
         space_below < need_h && space_above > space_below
     };
     let avail = if place_above { space_above } else { space_below };
-    avail.min(cap).max(px(MIN_SCROLL_HEIGHT))
+    avail.min(cap)
+}
+
+pub fn track_bounds(
+    bounds: std::rc::Rc<std::cell::Cell<Option<Bounds<Pixels>>>>,
+    refresh_on_change: bool,
+) -> impl IntoElement {
+    gpui::canvas(move |current, window, _| {
+        if bounds.replace(Some(current)) != Some(current) && refresh_on_change { window.refresh(); }
+    }, |_, _, _, _| {}).absolute().top_0().left_0().size_full()
 }
 
 /// Computes the top-left window coordinate for a surface of `menu_size` placed according to `spec`.
