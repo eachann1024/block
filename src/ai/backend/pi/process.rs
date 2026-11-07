@@ -103,7 +103,7 @@ pub(super) fn start(
         .arg(&ext_file)
         .args([
             "--append-system-prompt",
-            "Use Block tools (listNotebooks, listPages, searchNotes, readPage, executeBatchPlan, loadSkill, readSkillResource) when reading or batch-editing Block notes.",
+            "Use Block tools (listNotebooks, listPages, searchNotes, readPage, executeBatchPlan, loadSkill, readSkillResource, askUserQuestion) when reading, batch-editing Block notes, or asking user confirmation.",
         ]);
     if let Some(session_id) = request.native_session_id.as_deref().filter(|id| !id.is_empty()) {
         command.args(["--session-id", session_id]);

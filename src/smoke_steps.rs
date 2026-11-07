@@ -33,8 +33,8 @@ impl Run {
         self.code_block_open(cx).await?;
         self.chaoshan_paste_and_hotkey(cx).await?;
         self.image_menu_positions(cx).await?;
-        self.performance(cx).await?;
         self.ai_panel_and_deck(cx).await?;
+        self.performance(cx).await?;
         crate::quick::window_smoke::verify(cx).await
     }
 
@@ -58,15 +58,30 @@ impl Run {
         self.check(14, smoke_overlay::target_center("ai-enable-cover").is_some() && smoke_overlay::target_center("ai-layout-toggle").is_none() && smoke_overlay::target_center("ai-deck-trigger").is_none(), "未启用 AI 时居中显示封面且顶栏与底栏控件已隐藏")?;
         self.click_target(cx, "ai-enable-cover", "Step 14/14 · 点击未启用 AI 封面跳转设置").await?;
         self.check(14, self.query(cx, |w, _| w.settings_is_open()), "点击封面已跳转到 AI 设置页")?;
+        self.check(14, self.query(cx, |_, cx| !crate::editor::ai::chat::is_open(cx)), "进入设置自动关闭 AI")?;
+        self.press(cx, if cfg!(target_os = "macos") { "cmd-j" } else { "ctrl-j" }).await?;
+        self.check(14, self.query(cx, |w, cx| w.settings_is_open() && !crate::editor::ai::chat::is_open(cx)), "设置内 AI 快捷键不打开面板")?;
         self.click_target(cx, "settings-back", "Step 14/14 · 从 AI 设置返回编辑").await?;
+        self.check(14, self.query(cx, |_, cx| !crate::editor::ai::chat::is_open(cx)), "退出设置不自动恢复 AI")?;
+        self.press(cx, if cfg!(target_os = "macos") { "cmd-j" } else { "ctrl-j" }).await?;
+        self.check(14, self.query(cx, |_, cx| crate::editor::ai::chat::is_open(cx)), "退出设置后可主动打开 AI")?;
         self.win(cx, crate::editor::ai::chat::enable_smoke_builtin)??;
         sleep(cx, 250).await;
         self.redraw(cx);
         self.click_target(cx, "ai-empty-polish", "Step 14/14 · 点击页隼空状态快捷指令").await?;
+        for expected in [false, true, false, true] {
+            self.press(cx, if cfg!(target_os = "macos") { "cmd-j" } else { "ctrl-j" }).await?;
+            self.check(14, self.query(cx, |_, cx| crate::editor::ai::chat::is_open(cx)) == expected, "AI 快捷键连续开关后仍可打开")?;
+        }
         self.click_target(cx, "ai-layout-toggle", "Step 14/14 · 切换 AI 全屏沉浸模式").await?;
         self.check(14, self.query(cx, |_, cx| crate::editor::ai::chat::is_fullscreen(cx)), "已切换至 AI 全屏沉浸模式")?;
-        self.click_target(cx, "ai-layout-toggle", "Step 14/14 · 切回 AI 侧栏模式").await?;
+        self.press(cx, if cfg!(target_os = "macos") { "cmd-," } else { "ctrl-," }).await?;
+        self.check(14, self.query(cx, |w, cx| w.settings_is_open() && !crate::editor::ai::chat::is_open(cx)), "全屏 AI 进入设置也自动关闭")?;
+        self.check(14, smoke_overlay::target_center("titlebar-ai").is_none() && self.query(cx, |_, cx| !crate::editor::ai::chat::is_open(cx)), "设置内隐藏 AI 入口且面板保持关闭")?;
+        self.click_target(cx, "settings-back", "从设置返回编辑").await?;
+        self.click_target(cx, "titlebar-ai", "主动重新打开 AI 侧栏").await?;
         self.check(14, self.query(cx, |_, cx| !crate::editor::ai::chat::is_fullscreen(cx)), "已切回 AI 侧栏模式")?;
+        self.app_shortcuts_from_input(cx).await?;
         self.verify_backends_and_settings(cx).await?;
         self.click_target(cx, "ai-deck-trigger", "Step 14/14 · 打开底部合一 Agent 命令舱").await?;
         self.click_target(cx, "ai-backend-Dsh", "Step 14/14 · 切换 dsh 后端").await?;
@@ -81,7 +96,6 @@ impl Run {
         self.check(14, self.query(cx, |_, cx| !crate::editor::ai::chat::is_open(cx)), "AI 面板已关闭")?;
         self.beautiful_voice(cx).await
     }
-
     /// Opening a note whose first paint includes a code block used to re-enter Editor and abort.
     async fn code_block_open(&self, cx: &AsyncApp) -> Result<(), String> {
         let bounds = smoke_overlay::target_bounds("editor").ok_or("找不到点击目标 editor")?;

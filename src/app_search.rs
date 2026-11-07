@@ -24,9 +24,9 @@ pub(crate) struct Search {
 pub(super) fn bind_keys(cx: &mut App) {
     let search_key = search_shortcut();
     if let Ok(binding) = KeyBinding::load(&search_key, Box::new(OpenSearch), None, false, None, cx) {
-        cx.bind_keys([binding]);
+        crate::ui::app_shortcuts::bind(cx, [binding]);
     }
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind(cx, [
         KeyBinding::new("cmd-k", OpenSearch, None),
         KeyBinding::new("cmd-shift-k", OpenSearch, None),
         KeyBinding::new("alt-cmd-k", OpenSearch, None),
@@ -44,7 +44,7 @@ pub(super) fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-0", SearchResetScopeAll, Some("SearchPalette")),
     ]);
     #[cfg(not(target_os = "macos"))]
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind(cx, [
         KeyBinding::new("ctrl-k", OpenSearch, None),
         KeyBinding::new("ctrl-shift-k", OpenSearch, None),
         KeyBinding::new("ctrl-alt-k", OpenSearch, None),

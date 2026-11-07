@@ -92,6 +92,33 @@ impl AiChat {
         cx.notify();
     }
 
+    pub(in crate::editor::ai) fn respond_question(&mut self, value: Value, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(pending) = self.pending_question.take() else { return false };
+        match pending.source {
+            super::PendingQuestionSource::Builtin { call_id, step } => {
+                self.push_msg(Msg { role: "tool".into(), content: value.to_string(), tool_call_id: Some(call_id), ..Default::default() });
+                self.persist();
+                self.run_turn(step + 1, window, cx);
+                true
+            }
+            super::PendingQuestionSource::ExternalTool { responder } => {
+                self.push_msg(Msg { role: "tool".into(), content: value.to_string(), tool_call_id: Some(pending.request_id), ..Default::default() });
+                self.persist();
+                let _ = responder.respond(Ok(value));
+                cx.notify();
+                true
+            }
+            super::PendingQuestionSource::ExternalControl => {
+                if let Some((conversation, turn)) = &self.active_external {
+                    match self.backend_runtime.respond(conversation, turn, &pending.request_id, ApprovalResponse::QuestionResponse(value)) {
+                        Ok(()) => { cx.notify(); true }
+                        Err(error) => { self.error = Some(error.message); cx.notify(); false }
+                    }
+                } else { false }
+            }
+        }
+    }
+
     pub(super) fn note_context(&self, cx: &App) -> NoteContext {
         use std::hash::{Hash, Hasher};
         let ctx = self.agent_ctx(cx);
@@ -118,7 +145,7 @@ impl AiChat {
         let mut message = self.sent_draft.as_ref().and_then(|draft| conversation.messages.get(draft.message_index))
             .map(|message| format!("{}{}", message.content, message.context.as_deref().unwrap_or(""))).unwrap_or_default();
         message.push_str("\n\n"); message.push_str(agent::MARKDOWN_SKILL);
-        message.push_str("\n\nWhen creating or editing notes, put note content only in the plan tool; reply briefly without reproducing the note or diff. For ordinary questions and code examples, answer normally.");
+        message.push_str("\n\nWhen creating or editing notes, put note content only in the plan tool; reply briefly without reproducing the note or diff. When you need the user to clarify requirements, choose options, or confirm scope/naming before acting, call the askUserQuestion tool instead of writing numbered questions in prose. For ordinary questions and code examples, answer normally.");
         self.serial += 1;
         let serial = self.serial;
         let turn_id = format!("{}-{serial}", conversation_id);
@@ -166,7 +193,7 @@ impl AiChat {
                 if finished {
                     let _ = this.backend_runtime.finish(&conversation_id, &turn_id);
                     if let Some(tools) = this.external_tools.take() { tools.cancel(); }
-                    this.active_external = None; this.pending_approval = None; this.streaming = None;
+                    this.active_external = None; this.pending_approval = None; this.pending_question = None; this.streaming = None;
                     let text = std::mem::take(&mut this.partial);
                     if !text.trim().is_empty() { this.push("assistant", text); }
                     if this.error.is_some() { this.restore_failed_draft(window, cx); } else { this.sent_draft = None; super::super::chat_process::open_created_plan(this, cx); }
@@ -195,13 +222,24 @@ impl AiChat {
             BackendEventKind::Delta(text) => self.partial.push_str(&text),
             BackendEventKind::Thinking(_) => {}, BackendEventKind::PublicSummary(text) => super::super::chat_process::record_summary(self, text), BackendEventKind::ToolActivity { name, .. } => super::super::chat_process::record_activity(self, name),
             BackendEventKind::Approval { request_id, title, detail } => {
-                if self.pending_approval.is_some() {
+                if self.pending_approval.is_some() || self.pending_question.is_some() {
                     if let Some((conversation, turn)) = &self.active_external {
                         if let Err(error) = self.backend_runtime.respond(conversation, turn, &request_id, ApprovalResponse::Deny) {
                             self.error = Some(error.message);
                         } else { self.error = Some("Concurrent approval rejected; resolve the pending request first".into()); }
                     }
                 } else { self.approval_state = None; self.pending_approval = Some((request_id, title, detail)); }
+            }
+            BackendEventKind::Questions { request_id, questions } => {
+                if self.pending_approval.is_some() || self.pending_question.is_some() {
+                    if let Some((conversation, turn)) = &self.active_external {
+                        let _ = self.backend_runtime.respond(conversation, turn, &request_id, ApprovalResponse::Deny);
+                    }
+                } else {
+                    self.pending_question = Some(super::PendingQuestion {
+                        request_id, questions, state: Default::default(), source: super::PendingQuestionSource::ExternalControl,
+                    });
+                }
             }
             BackendEventKind::Session { native_session_id } => {
                 if let Some(conversation) = self.current.and_then(|id| self.convs.iter_mut().find(|conversation| conversation.id == id)) {
@@ -236,12 +274,25 @@ impl AiChat {
         if request.conversation_id != conversation || request.turn_id != turn {
             let _ = request.responder.respond(Err(BackendError::new("stale_turn", "Tool request belongs to another turn"))); return false;
         }
-        if !matches!(request.name.as_str(), "loadSkill" | "readSkillResource" | "listNotebooks" | "listPages" | "searchNotes" | "readPage" | "executeBatchPlan") {
+        if !matches!(request.name.as_str(), "loadSkill" | "readSkillResource" | "listNotebooks" | "listPages" | "searchNotes" | "readPage" | "executeBatchPlan" | "askUserQuestion") {
             let _ = request.responder.respond(Err(BackendError::new("unsupported_tool", "Unknown Block tool"))); return false;
         }
         let current = self.note_context(cx);
         if current.notebook_root != expected.notebook_root || current.page_id != expected.page_id {
             let _ = request.responder.respond(Err(BackendError::new("context_changed", "The active note changed; start a new turn"))); return false;
+        }
+        if request.name == "askUserQuestion" {
+            let questions = crate::ui::ai_approval::parse_questions(&request.arguments);
+            if questions.is_empty() || self.pending_question.is_some() || self.pending_approval.is_some() {
+                let _ = request.responder.respond(Err(BackendError::new("invalid_question", "Invalid or concurrent question request")));
+                return false;
+            }
+            super::super::chat_process::record_tool(self, &request, &Value::Null, false, cx);
+            self.pending_question = Some(super::PendingQuestion {
+                request_id: request.request_id, questions, state: Default::default(),
+                source: super::PendingQuestionSource::ExternalTool { responder: request.responder },
+            });
+            return false;
         }
         if request.name == "readSkillResource" {
             let id = request.arguments.get("skillId").and_then(Value::as_str).unwrap_or("");

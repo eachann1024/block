@@ -118,9 +118,14 @@ impl Run {
         self.win(cx, |window, cx| crate::editor::ai::chat::set_stream_smoke(code, false, window, cx))??;
         self.redraw(cx);
         self.check(14, cx.update(|_| crate::editor::ai::chat::smoke_visible_replies()).iter().any(|reply| reply == code), "普通代码完成后仍完整显示")?;
-        self.click_target(cx, "ai-follow-up-0", "点击追问建议").await?;
-        let draft = self.win(cx, crate::editor::ai::chat::input_smoke::snapshot)?.0;
-        self.check(14, !draft.is_empty(), "追问建议填入输入框")
+        let confirm = "请确认：\n1. 是否将 **Claude 账号** 也一并合并到这个 AI 账号总文件中？\n2. 新文件名是否使用 `AI 账号汇总`？";
+        self.win(cx, |window, cx| crate::editor::ai::chat::set_stream_smoke(confirm, false, window, cx))??;
+        self.redraw(cx);
+        self.check(14, smoke_overlay::target_bounds("ai-question-card").is_some()
+            && smoke_overlay::target_bounds("ai-question-opt-0-0").is_some(), "确认问题显示交互式问题卡片")?;
+        self.click_target(cx, "ai-question-skip", "跳过交互问题卡片").await?;
+        self.redraw(cx);
+        Ok(())
     }
 
     async fn check_chat_selection(&self, cx: &AsyncApp) -> Result<(), String> {

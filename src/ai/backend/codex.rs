@@ -49,7 +49,7 @@ impl RunningTurn for CodexTurn {
             .ok_or_else(|| BackendError::new("codex_io", "Codex 输入已关闭"))?.clone();
         drop(state);
         let decision = match response {
-            ApprovalResponse::AllowOnce | ApprovalResponse::AllowSession => "accept",
+            ApprovalResponse::AllowOnce | ApprovalResponse::AllowSession | ApprovalResponse::QuestionResponse(_) => "accept",
             ApprovalResponse::Deny => "decline",
             ApprovalResponse::Cancel => "cancel",
         };

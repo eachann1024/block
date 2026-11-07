@@ -15,14 +15,14 @@ struct DiffColors {
 fn palette() -> DiffColors {
     if is_dark() {
         DiffColors {
-            del_bg: rgb(0x2a1c1e).into(), del_border: rgb(0xd95858).into(), del_text: rgb(0xf5a3a3).into(), del_badge: rgb(0x3a2022).into(),
-            add_bg: rgb(0x182a21).into(), add_border: rgb(0x38a169).into(), add_text: rgb(0x9be4b8).into(), add_badge: rgb(0x1d3528).into(),
+            del_bg: rgb(0x262223).into(), del_border: rgb(0x936569).into(), del_text: rgb(0xd5a5a7).into(), del_badge: rgb(0x302729).into(),
+            add_bg: rgb(0x202723).into(), add_border: rgb(0x648972).into(), add_text: rgb(0xa6cbb3).into(), add_badge: rgb(0x27322b).into(),
             code_bg: rgb(0x202022).into(),
         }
     } else {
         DiffColors {
-            del_bg: rgb(0xfdf2f2).into(), del_border: rgb(0xd94848).into(), del_text: rgb(0xb42318).into(), del_badge: rgb(0xfbe9e7).into(),
-            add_bg: rgb(0xeffaf3).into(), add_border: rgb(0x288655).into(), add_text: rgb(0x087443).into(), add_badge: rgb(0xe3f6ec).into(),
+            del_bg: rgb(0xfcf8f8).into(), del_border: rgb(0xb47777).into(), del_text: rgb(0x965353).into(), del_badge: rgb(0xf5eaea).into(),
+            add_bg: rgb(0xf5faf6).into(), add_border: rgb(0x709b80).into(), add_text: rgb(0x376d4d).into(), add_badge: rgb(0xeaf3ed).into(),
             code_bg: rgb(0xf6f5f2).into(),
         }
     }
@@ -53,27 +53,31 @@ fn text(block: &Block) -> StyledText {
     StyledText::new(block.text.clone()).with_highlights(highlights)
 }
 
-fn table_row(row: &TableRow, change: i8, header: Option<bool>) -> impl IntoElement {
-    let (theme, pal) = (crate::ui::ai_theme::theme(), palette());
+fn table_row(row: &TableRow, change: i8, header: Option<bool>, bottom_border: bool) -> impl IntoElement {
+    let (theme, pal, dark) = (crate::theme::Theme::ocean(), palette(), is_dark());
     let (is_header, count) = (header.unwrap_or_else(|| row.cells.iter().any(|c| c.header)), row.cells.len());
+    let header_bg: Hsla = if dark { gpui::rgba(0xffffff08).into() } else { rgb(0xf5f3ed).into() };
     div().relative().when(change < 0, |el| el.children(smoke_overlay::probe("ai-plan-diff-del-row")))
-        .flex().w_full().min_w_0().overflow_hidden().border_b_1().border_color(theme.hairline)
-        .when(is_header && change == 0, |el| el.bg(theme.shell))
-        .when(change < 0, |el| el.bg(pal.del_bg).text_color(pal.del_text).line_through())
+        .flex().w_full().min_w_0().overflow_hidden()
+        .when(bottom_border, |el| el.border_b_1().border_color(theme.hairline))
+        .when(change == 0 && is_header, |el| el.bg(header_bg))
+        .when(change < 0, |el| el.bg(pal.del_bg).text_color(theme.text_secondary))
         .when(change > 0, |el| el.bg(pal.add_bg))
         .children(row.cells.iter().enumerate().map(|(idx, cell)| {
+            let cell_header = header.unwrap_or(cell.header);
             div().flex_1().min_w_0().overflow_hidden().px(px(8.)).py(px(6.)).text_size(px(13.5)).line_height(px(20.))
                 .when(idx + 1 < count, |el| el.border_r_1().border_color(theme.hairline))
-                .when(header.unwrap_or(cell.header), |el| el.font_weight(FontWeight(600.)))
+                .when(cell_header, |el| el.font_weight(FontWeight(600.)).text_color(theme.text_secondary))
                 .child(text(&cell.content))
         }))
 }
 
 fn block_view(block: &Block, change: i8) -> AnyElement {
-    let (theme, pal) = (crate::ui::ai_theme::theme(), palette());
+    let (theme, pal) = (crate::theme::Theme::ocean(), palette());
     if let Some(table) = &block.meta.table {
+        let len = table.rows.len();
         return div().w_full().min_w_0().rounded(px(8.)).border_1().border_color(theme.hairline).overflow_hidden()
-            .children(table.rows.iter().map(|row| table_row(row, change, None))).into_any_element();
+            .children(table.rows.iter().enumerate().map(|(idx, row)| table_row(row, change, None, idx + 1 < len))).into_any_element();
     }
     let is_heading = matches!(block.kind, Kind::H1 | Kind::H2 | Kind::H3);
     let (font_size, line_h) = match block.kind {
@@ -112,7 +116,7 @@ fn block_view(block: &Block, change: i8) -> AnyElement {
         .when(change < 0 && !block.text.is_empty(), |row| row.children(smoke_overlay::probe("ai-plan-diff-del-row")))
         .py(px(2.)).text_size(px(font_size)).line_height(px(line_h))
         .when(is_heading, |row| row.font_weight(FontWeight(600.)))
-        .when(change < 0, |row| row.text_color(pal.del_text).line_through())
+        .when(change < 0, |row| row.text_color(theme.text_secondary))
         .child(content).into_any_element()
 }
 
@@ -132,7 +136,7 @@ fn line_view(source: &str, header: bool, change: i8) -> AnyElement {
         let separator = format!("|{}|", vec![" --- "; count].join("|"));
         let doc = crate::editor::markdown::parse(&format!("{trimmed}\n{separator}\n"));
         if let Some(row) = doc.blocks.iter().find_map(|block| block.meta.table.as_ref()).and_then(|table| table.rows.first()) {
-            return table_row(row, 0, Some(header)).into_any_element();
+            return table_row(row, 0, Some(header), false).into_any_element();
         }
     }
     let doc = crate::editor::markdown::parse(source.trim_end_matches(['\r', '\n']));
@@ -141,11 +145,11 @@ fn line_view(source: &str, header: bool, change: i8) -> AnyElement {
 }
 
 fn mode_segment(id: &'static str, label: &'static str, selected: bool, click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> impl IntoElement {
-    let (theme, elem_id) = (crate::ui::ai_theme::theme(), ElementId::from(id));
+    let (theme, elem_id) = (crate::theme::Theme::ocean(), ElementId::from(id));
     div().id(elem_id.clone()).relative().children(smoke_overlay::probe_for(&elem_id))
         .h(px(26.)).px(px(10.)).rounded(px(6.)).flex().items_center().justify_center()
         .cursor(CursorStyle::PointingHand).text_size(px(13.)).font_weight(FontWeight(500.))
-        .when(selected, |el| el.bg(theme.selected).border_1().border_color(theme.accent).text_color(theme.text))
+        .when(selected, |el| el.bg(theme.selected).text_color(theme.text))
         .when(!selected, |el| el.text_color(theme.text_secondary).hover(|s| s.bg(theme.hover).text_color(theme.text)))
         .on_mouse_down(MouseButton::Left, click).child(label)
 }
@@ -158,7 +162,7 @@ fn diff_counts(link: &ActivePlanLink) -> Option<(usize, usize)> {
 }
 
 fn contents(link: &ActivePlanLink) -> impl IntoElement {
-    let (theme, pal) = (crate::ui::ai_theme::theme(), palette());
+    let (theme, pal) = (crate::theme::Theme::ocean(), palette());
     let mut body = div().w_full().min_w_0().overflow_hidden().flex().flex_col().gap(px(8.));
     if !link.diff_mode {
         let selected = plan_link::selection::selected(link.conv_id, link.msg_at, &link.page, &link.before_text, &link.after_text).unwrap_or_else(|_| link.after_text.clone());
@@ -189,17 +193,20 @@ fn contents(link: &ActivePlanLink) -> impl IntoElement {
         ((line.index >= first && line.index <= last) || Some(line.index) == table_header) && is_meaningful_line(&line.text)
     }).collect();
     let total_visible = visible.len();
+    let header_bg: Hsla = if is_dark() { gpui::rgba(0xffffff08).into() } else { rgb(0xf5f3ed).into() };
     let mut list = div().w_full().min_w_0().rounded(px(10.)).border_1().border_color(theme.hairline).bg(theme.paper).overflow_hidden().flex().flex_col();
-    for (pos, line) in visible.into_iter().enumerate() {
+    for (pos, line) in visible.iter().enumerate() {
         let (trimmed, index, selection_index) = (line.text.trim(), line.index, line.selection_index);
         let is_table = trimmed.starts_with('|');
+        let next_is_table = visible.get(pos + 1).is_some_and(|next| next.text.trim().starts_with('|'));
         let is_header = lines.get(index + 1).is_some_and(|next| {
             let v = next.text.trim(); v.starts_with('|') && v.chars().all(|ch| matches!(ch, '|' | ' ' | '-' | ':'))
         });
-        let row_bg = if !line.included { theme.paper } else if line.change < 0 { pal.del_bg } else if line.change > 0 { pal.add_bg } else if is_header { theme.shell } else { theme.paper };
+        let row_bg = if !line.included { theme.paper } else if line.change < 0 { pal.del_bg } else if line.change > 0 { pal.add_bg } else if is_header { header_bg } else { theme.paper };
         let left_bar = if !line.included && line.change != 0 { theme.btn_border } else if line.change < 0 { pal.del_border } else if line.change > 0 { pal.add_border } else { gpui::transparent_black() };
         let gutter_symbol = if line.change < 0 { "−" } else if line.change > 0 { "+" } else { "" };
         let gutter_color = if !line.included { theme.text_secondary } else if line.change < 0 { pal.del_text } else { pal.add_text };
+        let show_bottom_border = pos + 1 < total_visible && (is_table || next_is_table || visible.get(pos + 1).is_some_and(|next| next.change != line.change));
         let row = div().id(SharedString::from(format!("ai-plan-diff-row-{index}"))).relative()
             .when(line.change < 0, |row| row.children(smoke_overlay::probe("ai-plan-diff-del-row")))
             .when(line.change < 0 && !seen_removed, |row| row.children(smoke_overlay::probe("ai-plan-diff-first-remove")))
@@ -207,8 +214,8 @@ fn contents(link: &ActivePlanLink) -> impl IntoElement {
             .when(is_table && line.change < 0 && !seen_table_removed, |row| row.children(smoke_overlay::probe("ai-plan-diff-first-table-remove")))
             .when(is_table && line.change > 0 && !seen_table_added, |row| row.children(smoke_overlay::probe("ai-plan-diff-first-table-add")))
             .when(line.change != 0, |row| row.children(smoke_overlay::probe(format!("ai-plan-diff-{}-{index}", if line.change < 0 { "remove" } else { "add" }))))
-            .flex().items_center().w_full().min_w_0().overflow_hidden().bg(row_bg).border_l(px(3.)).border_color(left_bar)
-            .when(pos + 1 < total_visible, |row| row.border_b_1().border_color(theme.hairline))
+            .flex().items_center().w_full().min_w_0().overflow_hidden().bg(row_bg).border_l(px(1.)).border_color(left_bar)
+            .when(show_bottom_border, |row| row.border_b_1().border_color(theme.hairline))
             .when(line.change != 0, |row| row.cursor(CursorStyle::PointingHand).on_mouse_down(MouseButton::Left, move |_, _, cx| {
                 cx.stop_propagation(); plan_link::toggle_diff(selection_index, cx);
             }))
@@ -222,9 +229,9 @@ fn contents(link: &ActivePlanLink) -> impl IntoElement {
                 .when(!line.included, |el| el.child(div().px(px(5.)).py(px(1.)).rounded(px(4.)).bg(theme.shell).text_size(px(11.5)).text_color(theme.text_secondary)
                     .child(if line.change < 0 { tr("保留", "Kept") } else { tr("跳过", "Skipped") })))
                 .child(div().size(px(16.)).flex_none().rounded(px(4.)).border_1()
-                    .border_color(if line.included { theme.accent } else { theme.btn_border })
-                    .bg(if line.included { theme.accent } else { theme.paper }).flex().items_center().justify_center()
-                    .when(line.included, |mark| mark.child(icon(Icon::Check, px(11.), theme.mono_icon_colors(rgb(0xffffff).into())))))));
+                    .border_color(theme.btn_border)
+                    .bg(if line.included { theme.selected } else { theme.paper }).flex().items_center().justify_center()
+                    .when(line.included, |mark| mark.child(icon(Icon::Check, px(11.), theme.mono_icon_colors(theme.text_secondary)))))));
         list = list.child(row);
         seen_removed |= line.change < 0; seen_added |= line.change > 0;
         seen_table_removed |= is_table && line.change < 0; seen_table_added |= is_table && line.change > 0;
@@ -233,18 +240,18 @@ fn contents(link: &ActivePlanLink) -> impl IntoElement {
 }
 
 pub(crate) fn editor_plan_review_card(link: ActivePlanLink) -> impl IntoElement {
-    let (theme, pal) = (crate::ui::ai_theme::theme(), palette());
+    let (theme, pal) = (crate::theme::Theme::ocean(), palette());
     let title = if link.is_create { format!("{} · {}", tr("新建笔记", "New note"), link.page_label) } else {
         link.after_blocks.iter().chain(&link.before_blocks).find(|b| matches!(b.kind, Kind::H1 | Kind::H2 | Kind::H3) && !b.text.is_empty())
             .map(|b| b.text.clone()).unwrap_or_else(|| link.page_label.clone())
     };
     let (counts, accept, reject) = (diff_counts(&link), link.clone(), link.clone());
     div().relative().children(smoke_overlay::probe("ai-editor-plan-card"))
-        .w_full().min_w_0().flex().flex_col().rounded(px(12.)).border_1().border_color(theme.accent).bg(theme.paper).overflow_hidden()
+        .w_full().min_w_0().flex().flex_col().rounded(px(12.)).border_1().border_color(theme.hairline).bg(theme.paper).overflow_hidden()
         .child(div().w_full().min_w_0().overflow_hidden().px(px(14.)).py(px(10.)).bg(theme.shell).border_b_1().border_color(theme.hairline)
             .flex().items_center().justify_between().gap(px(10.))
             .child(div().flex_1().min_w_0().overflow_hidden().flex().items_center().gap(px(8.))
-                .child(div().flex_none().px(px(7.)).py(px(2.)).rounded(px(5.)).bg(theme.selected).border_1().border_color(theme.accent)
+                .child(div().flex_none().px(px(7.)).py(px(2.)).rounded(px(5.))
                     .flex().items_center().gap(px(4.)).text_size(px(12.)).font_weight(FontWeight(500.)).text_color(theme.accent)
                     .child(icon(Icon::Sparkles, px(12.), theme.mono_icon_colors(theme.accent))).child(tr("AI 审阅", "AI Review")))
                 .child(div().min_w_0().overflow_hidden().text_size(px(14.5)).font_weight(FontWeight(600.)).text_color(theme.text).child(title))
@@ -261,7 +268,7 @@ pub(crate) fn editor_plan_review_card(link: ActivePlanLink) -> impl IntoElement 
             .flex().items_center().justify_between().gap(px(12.))
             .child(div().flex_1().min_w_0().overflow_hidden().flex().items_center().gap(px(8.))
                 .child(div().relative().children(smoke_overlay::probe("ai-plan-inline-step"))
-                    .flex_none().px(px(7.)).py(px(2.)).rounded(radius::CONTROL).bg(theme.selected).text_color(theme.accent).text_size(px(12.5)).font_weight(FontWeight(500.))
+                    .flex_none().px(px(7.)).py(px(2.)).rounded(radius::CONTROL).text_color(theme.text_secondary).text_size(px(12.5)).font_weight(FontWeight(500.))
                     .child(if link.page_ops > 1 {
                         if crate::theme::is_en() { format!("{} changes on this page", link.page_ops) } else { format!("本页 {} 项修改", link.page_ops) }
                     } else if crate::theme::is_en() { format!("Change {} / {}", link.op_idx + 1, link.total_ops) }

@@ -20,7 +20,7 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &crate::editor::view::Find, window, cx| { crate::search::window::reveal_main_window(window, cx); this.editor.update(cx, |e, cx| e.open_find(window, cx)); }))
             .on_action(cx.listener(|this, _: &OpenSettings, window, cx| { crate::search::window::reveal_main_window(window, cx); this.open_settings(window, cx); }))
             .on_action(cx.listener(|this, _: &crate::editor::ai::OpenAiSettings, window, cx| { crate::search::window::reveal_main_window(window, cx); this.open_settings_tab(super::settings::SettingsTab::Ai, window, cx); }))
-            .on_action(cx.listener(|this, _: &crate::editor::ai::ToggleAiPanel, window, cx| { crate::search::window::reveal_main_window(window, cx); crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); cx.notify(); }))
+            .on_action(cx.listener(|this, _: &crate::editor::ai::ToggleAiPanel, window, cx| { if this.settings.is_some() { return; } crate::search::window::reveal_main_window(window, cx); crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); if !crate::editor::ai::chat::is_open(cx) { this.restore_focus(window, cx); } cx.notify(); }))
             .on_action(cx.listener(|this, _: &NewNote, window, cx| { crate::search::window::reveal_main_window(window, cx); if !this.busy() { this.new_item(false, window, cx); } }))
             .on_action(cx.listener(|this, _: &NewFolder, window, cx| { crate::search::window::reveal_main_window(window, cx); if !this.busy() { this.new_item(true, window, cx); } }))
             .on_action(cx.listener(|this, _: &crate::editor::view::Paste, w, cx| this.route_edit_action(crate::editor::view::EditorAction::Paste, w, cx)))
@@ -58,7 +58,7 @@ impl Render for Workspace {
                             .into_any_element()
                     }
                 })))
-                .children(crate::editor::ai::chat::panel(cx)))
+                .when(self.settings.is_none(), |d| d.children(crate::editor::ai::chat::panel(cx))))
             // The export view has its own title row and back button, so it covers the window.
             .children(export.map(|view| {
                 gpui::deferred(div().absolute().top_0().left_0().size_full().occlude().bg(theme.shell).child(view)).with_priority(4)

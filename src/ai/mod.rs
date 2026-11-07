@@ -47,7 +47,7 @@ pub(crate) mod md_view;
 gpui::actions!(ai, [OpenAiSettings, ToggleAiPanel]);
 
 pub fn bind_keys(cx: &mut gpui::App) {
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind(cx, [
         gpui::KeyBinding::new("cmd-j", ToggleAiPanel, None),
         #[cfg(not(target_os = "macos"))]
         gpui::KeyBinding::new("ctrl-j", ToggleAiPanel, None),
