@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 
 export const EN_TITLE = "## English";
 export const ZH_TITLE = "## 中文";
-export const EN_SECTIONS = ["### New", "### Improvements", "### Fixes"];
-export const ZH_SECTIONS = ["### 新功能", "### 改进", "### 修复"];
+export const EN_SECTIONS = ["### New", "### Improvements", "### Fixes", "### Other"];
+export const ZH_SECTIONS = ["### 新功能", "### 改进", "### 修复", "### 其他"];
 export const WEBSITE = "https://block.cooool.top";
-export const MAX_PER_SECTION = 8;
+export const MAX_PER_SECTION = 200;
 
 const CJK = /[\u3400-\u9fff]/;
 const EN_CLAUSE = /[A-Za-z]{2,}(?:['’][A-Za-z]+)?(?:\s+[A-Za-z]{2,}(?:['’][A-Za-z]+)?){1,}/;
