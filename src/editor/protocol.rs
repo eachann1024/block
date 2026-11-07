@@ -31,21 +31,25 @@ impl EntityInputHandler for Editor {
         self.caret.composing.as_ref().map(|range| to_utf16(self.block_text(), range))
     }
     fn unmark_text(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(not(target_family = "wasm"))] if crate::editor::ai::plan_link::create_preview_active(cx.entity_id()) { return; }
         if self.editing_source() { self.finish_source_composition(cx); return; }
         self.commit_composition(cx);
     }
     fn paste(&mut self, item: gpui::ClipboardItem, window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(not(target_family = "wasm"))] if crate::editor::ai::plan_link::create_preview_active(cx.entity_id()) { return; }
         if self.editing_source() { self.source_paste(Some(item), cx); return; }
         if !self.is_markdown_note() { return; }
         self.commit_composition(cx);
         self.paste_clipboard_item(Some(item), window, cx);
     }
     fn replace_text_in_range(&mut self, range: Option<Range<usize>>, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(not(target_family = "wasm"))] if crate::editor::ai::plan_link::create_preview_active(cx.entity_id()) { return; }
         if self.editing_source() { self.source_replace_utf16(range, text, cx); return; }
         if !self.is_markdown_note() { return; }
         self.replace(range, text, window, cx);
     }
     fn replace_and_mark_text_in_range(&mut self, range: Option<Range<usize>>, text: &str, selected: Option<Range<usize>>, window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(not(target_family = "wasm"))] if crate::editor::ai::plan_link::create_preview_active(cx.entity_id()) { return; }
         if self.editing_source() { self.source_mark(range, text, selected, cx); return; }
         if !self.is_markdown_note() { return; }
         let range = match self.focused_image() { Some(id) if !text.is_empty() => { self.add_below(id, window, cx); None } _ => range };

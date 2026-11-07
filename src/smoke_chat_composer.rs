@@ -51,6 +51,7 @@ impl Run {
     }
 
     async fn check_composer(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.check_beautiful_tabs(cx).await?;
         for fullscreen in [false, true] {
             if fullscreen { self.click_target(cx, "ai-layout-toggle", "切换全屏验证新会话焦点").await?; }
             self.click_target(cx, "ai-chat-history", "将焦点移出输入框").await?;
@@ -75,6 +76,7 @@ impl Run {
         let expanded = bounds()?;
         let snapshot = self.win(cx, crate::editor::ai::chat::input_smoke::snapshot)?;
         self.check(14, snapshot.0 == text && snapshot.1.x == px(0.), "长中文保留完整且无横向滚动")?;
+        self.capture_ai(cx, "composer-long")?;
         self.check(14, expanded.size.height > initial && expanded.size.height <= initial + px(88.), "输入区最多六行")?;
         let actions = smoke_overlay::target_bounds("ai-composer-actions").ok_or("Missing actions")?;
         self.check(14, expanded.bottom() <= actions.top(), "文字区域不与模型和发送按钮重叠")?;
@@ -89,6 +91,28 @@ impl Run {
         self.redraw(cx);
         let snapshot = self.win(cx, crate::editor::ai::chat::input_smoke::snapshot)?;
         self.check(14, snapshot.0.is_empty() && bounds()?.size.height == initial, "发送清空并恢复默认两行")?;
+        Ok(())
+    }
+    async fn check_beautiful_tabs(&self, cx: &AsyncApp) -> Result<(), String> {
+        use crate::editor::ai::chat::input_smoke;
+        let (first, second) = self.win(cx, input_smoke::seed_tab_conversations)?;
+        self.redraw(cx);
+        self.click_target(cx, "ai-composer-input", "输入第一个会话草稿").await?;
+        self.type_text(cx, "draft alpha").await?;
+        self.click_target(cx, "ai-chat-history", "打开历史会话").await?;
+        self.click_target(cx, &format!("conv-{second}"), "切换第二个会话").await?;
+        let state = cx.update(|cx| input_smoke::tab_observation(cx)).ok_or("Missing chat state")?;
+        self.check(14, state.0 == Some(second) && state.1.is_empty(), "第二个会话拥有独立草稿")?;
+        self.click_target(cx, "ai-composer-input", "输入第二个会话草稿").await?;
+        self.type_text(cx, "draft beta").await?;
+        self.click_target(cx, "ai-chat-history", "打开历史会话").await?;
+        self.click_target(cx, &format!("conv-{first}"), "切回第一个会话").await?;
+        let state = cx.update(|cx| input_smoke::tab_observation(cx)).ok_or("Missing chat state")?;
+        self.check(14, state.0 == Some(first) && state.1 == "draft alpha", "第一个会话草稿恢复")?;
+        self.click_target(cx, "ai-chat-history", "打开历史会话").await?;
+        self.click_target(cx, &format!("conv-{second}"), "再次切回第二个会话").await?;
+        let state = cx.update(|cx| input_smoke::tab_observation(cx)).ok_or("Missing chat state")?;
+        self.check(14, state.0 == Some(second) && state.1 == "draft beta", "第二个会话草稿恢复")?;
         Ok(())
     }
     async fn check_picker(&self, cx: &AsyncApp) -> Result<(), String> {
@@ -117,12 +141,22 @@ impl Run {
         self.check(14, self.win(cx, input_smoke::picker_state)?.1 >= 1202, "文件夹显示文件及返回上级")?;
         self.click_target(cx, "ai-pick-0", "返回上级文件夹").await?;
         self.check(14, self.win(cx, input_smoke::picker_folder_state)?.0.is_empty(), "返回上级成功")?;
-        self.type_text(cx, "picker-smoke/note-1199").await?;
+        self.check(14, self.win(cx, input_smoke::is_focused)?, "文件夹导航后输入框保持焦点")?;
+        self.win(cx, |window, cx| input_smoke::set_composition(window, cx, "picker-smoke/note-1199"))?;
+        self.check(14, self.win(cx, input_smoke::is_composing)?, "输入法组合状态已建立")?;
         self.check(14, self.win(cx, input_smoke::picker_state)?.1 == 1, "虚拟列表仍可搜索末尾笔记")?;
+        let before = self.win(cx, input_smoke::snapshot)?.0;
+        let refs = self.win(cx, input_smoke::picker_state)?.2;
         self.press(cx, "enter").await?;
+        self.check(14, self.win(cx, input_smoke::is_composing)? && self.win(cx, input_smoke::snapshot)?.0 == before
+            && self.win(cx, input_smoke::picker_state)?.2 == refs, "组合期间回车不选候选或发送")?;
+        self.win(cx, input_smoke::clear_composition)?;
+        self.check(14, !self.win(cx, input_smoke::is_composing)?, "输入法组合已结束")?;
+        self.check(14, self.win(cx, input_smoke::is_focused)?, "Tab 前输入框保持焦点")?;
+        self.press(cx, "tab").await?;
         let state = self.win(cx, input_smoke::picker_state)?;
         let input = self.win(cx, input_smoke::snapshot)?.0;
-        self.check(14, state.2.contains(&"picker-smoke/note-1199".to_string()), &format!("回车选中引用: {state:?}, input={input:?}"))?;
+        self.check(14, state.2.contains(&"picker-smoke/note-1199".to_string()), &format!("Tab 选中引用: {state:?}, input={input:?}"))?;
         self.type_text(cx, "/picker-fixture").await?;
         self.check(14, self.win(cx, input_smoke::picker_state)?.1 == 1, "斜杠筛选后台加载的技能")?;
         self.press(cx, "down").await?;

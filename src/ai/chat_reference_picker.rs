@@ -40,6 +40,7 @@ impl AiChat {
             let value = format!("{rest}@"); let end = value.len();
             i.set_value(value, window, cx); i.set_selected_range(end..end, cx); i.focus(window, cx);
         });
+        cx.defer_in(window, |this, window, cx| this.input.update(cx, |input, cx| input.focus(window, cx)));
         self.persist_active_draft(cx);
         cx.notify();
     }
