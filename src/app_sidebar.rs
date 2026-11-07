@@ -4,7 +4,7 @@ use gpui::{
     Window, WindowControlArea, div, point, prelude::*, px,
 };
 use crate::icons::{Icon, stateful_icon};
-use crate::theme::{Theme, tr};
+use crate::theme::{Theme, format_hotkey, tr};
 use super::{Workspace, file_ops::display_name, tabs::hover_tinted_icon, update_state_width};
 use super::menu::{ItemId, menu_item, menu_surface, separator};
 
@@ -42,6 +42,7 @@ impl Workspace {
         let width = if self.sidebar_collapsed { px(collapsed_header_width(self.nav_button_count())) } else { self.sidebar_width };
         let glyph = if self.sidebar_collapsed { Icon::SidebarExpand } else { Icon::SidebarCollapse };
         let btn_group: SharedString = "sidebar-toggle-btn".into();
+        let tip = format!("{} {}", tr("侧边栏", "Sidebar"), format_hotkey("alt-b"));
         div().id("titlebar-left").w(width).h_full().flex_none().relative().flex().items_center()
             .pl(px(TITLEBAR_LEFT_PAD)).pr(px(TITLEBAR_RIGHT_PAD)).border_r_1().border_color(theme.sidebar_border)
             .window_control_area(WindowControlArea::Drag)
@@ -57,6 +58,7 @@ impl Workspace {
                 .child(div().id("sidebar-toggle").relative().children(crate::ui::smoke_overlay::probe("sidebar-toggle")).group(btn_group.clone()).size(px(TOGGLE_SIZE)).flex_none()
                     .flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).cursor(CursorStyle::PointingHand)
                     .hover(|s| s.bg(theme.hover))
+                    .tooltip(crate::theme::tooltip(tip))
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                         cx.stop_propagation();
                         this.toggle_sidebar(cx);
