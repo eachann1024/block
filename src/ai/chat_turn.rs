@@ -77,7 +77,25 @@ impl AiChat {
                             }).collect();
                             let tc: Vec<serde_json::Value> = calls.iter().map(|(id, name, args)| serde_json::json!({ "id": id, "type": "function", "function": { "name": name, "arguments": args } })).collect();
                             this.push_msg(Msg { role: "assistant".into(), content: text, source_roots: Some(roots), tool_calls: Some(tc.into()), ..Default::default() });
+                            let mut waiting_question = false;
                             for (id, name, args) in std::mem::take(&mut calls) {
+                                if name == "askUserQuestion" {
+                                    let parsed = serde_json::from_str::<serde_json::Value>(&args).unwrap_or_default();
+                                    let questions = crate::ui::ai_approval::parse_questions(&parsed);
+                                    if !questions.is_empty() && !waiting_question {
+                                        this.pending_question = Some(super::PendingQuestion {
+                                            request_id: id, questions, state: Default::default(),
+                                            source: super::PendingQuestionSource::Builtin { call_id: String::new(), step },
+                                        });
+                                        if let Some(pq) = &mut this.pending_question && let super::PendingQuestionSource::Builtin { call_id, .. } = &mut pq.source {
+                                            *call_id = pq.request_id.clone();
+                                        }
+                                        waiting_question = true;
+                                        continue;
+                                    }
+                                    this.push_msg(Msg { role: "tool".into(), content: serde_json::json!({"error":"Invalid questions"}).to_string(), tool_call_id: Some(id), ..Default::default() });
+                                    continue;
+                                }
                                 let root = serde_json::from_str::<serde_json::Value>(&args).ok().and_then(|value| value.get("notebookRoot").and_then(|root| root.as_str()).map(str::to_owned));
                                 let ctx = root.as_ref().map(|root| this.context_for_root(std::path::Path::new(root), cx)).unwrap_or_else(|| Ok(this.agent_ctx(cx)));
                                 let (result, plan) = match ctx {
@@ -94,13 +112,13 @@ impl AiChat {
                                 }
                             }
                             this.persist();
-                            if step < MAX_STEPS { this.run_turn(step + 1, window, cx); }
+                            if !waiting_question && step < MAX_STEPS { this.run_turn(step + 1, window, cx); }
 
                         }
                         if failed { crate::log::warn("AI chat turn failed; see the in-app error for details"); this.restore_failed_draft(window, cx); }
                         if failed { super::super::chat_process::record_outcome(this, "failed"); }
-                        else if this.streaming.is_none() { super::super::chat_process::record_outcome(this, "completed"); }
-                        if !failed && calls.is_empty() && this.streaming.is_none() { this.sent_draft = None; }
+                        else if this.streaming.is_none() && this.pending_question.is_none() { super::super::chat_process::record_outcome(this, "completed"); }
+                        if !failed && calls.is_empty() && this.streaming.is_none() && this.pending_question.is_none() { this.sent_draft = None; }
                     }
                     if changed { this.scroll.scroll_to_bottom(); cx.notify(); }
                 });

@@ -177,3 +177,17 @@ impl Run {
     }
 
 }
+
+impl Run {
+    pub(super) async fn app_shortcuts_from_input(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.press(cx, if cfg!(target_os = "macos") { "cmd-k" } else { "ctrl-k" }).await?;
+        self.check(14, self.query(cx, |w, _| w.search_is_open()), "AI 输入框内搜索快捷键生效")?;
+        self.press(cx, if cfg!(target_os = "macos") { "cmd-," } else { "ctrl-," }).await?;
+        self.check(14, self.query(cx, |w, _| w.settings_is_open() && !w.search_is_open()), "搜索输入框内设置快捷键生效")?;
+        self.press(cx, if cfg!(target_os = "macos") { "cmd-j" } else { "ctrl-j" }).await?;
+        self.check(14, self.query(cx, |_, cx| !crate::editor::ai::chat::is_open(cx)), "统一路由保留设置页 AI 禁用限制")?;
+        self.click_target(cx, "settings-back", "快捷键检查后返回编辑").await?;
+        self.press(cx, if cfg!(target_os = "macos") { "cmd-j" } else { "ctrl-j" }).await?;
+        self.check(14, self.query(cx, |_, cx| crate::editor::ai::chat::is_open(cx)), "返回编辑后 AI 快捷键恢复")
+    }
+}
