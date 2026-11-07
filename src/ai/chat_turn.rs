@@ -80,22 +80,14 @@ impl AiChat {
                             for (id, name, args) in std::mem::take(&mut calls) {
                                 let root = serde_json::from_str::<serde_json::Value>(&args).ok().and_then(|value| value.get("notebookRoot").and_then(|root| root.as_str()).map(str::to_owned));
                                 let ctx = root.as_ref().map(|root| this.context_for_root(std::path::Path::new(root), cx)).unwrap_or_else(|| Ok(this.agent_ctx(cx)));
-                                let (mut result, plan) = match ctx {
+                                let (result, plan) = match ctx {
                                     Ok(ctx) => agent::exec(&name, &args, &ctx),
                                     Err(error) => (serde_json::json!({"error":error}), None),
                                 };
-                                let auto = plan.as_ref().is_some_and(|p| p.ops.iter().all(|o| matches!(o.kind, agent::OpKind::Create { .. })));
                                 this.push_msg(Msg { role: "tool".into(), content: String::new(), tool_call_id: Some(id), plan, ..Default::default() });
-                                if !auto && this.plan_at(this.conv().map_or(0, |c| c.messages.len() - 1)).is_some() {
-                                    let at = this.conv().map_or(0, |c| c.messages.len() - 1); this.link_plan(at, 0, false, cx);
-                                }
-                                if auto {
-                                    let at = this.conv().map(|c| c.messages.len() - 1).unwrap_or(0);
-                                    this.apply_plan(at, cx);
-                                    result = if this.plan_at(at).map(|p| p.state.clone()) == Some(agent::PlanState::Applied) {
-                                        this.open_plan_page(at, 0, cx);
-                                        serde_json::json!({ "status": "applied", "message": "已新建页面。" })
-                                    } else { serde_json::json!({ "error": this.error.clone().unwrap_or_else(|| "新建失败：目标页面已变化或不可写。".into()) }) };
+                                let at = this.conv().map_or(0, |c| c.messages.len() - 1);
+                                if this.plan_at(at).is_some() {
+                                    this.link_plan(at, 0, false, cx);
                                 }
                                 if let Some(m) = this.current.and_then(|cid| this.convs.iter_mut().find(|c| c.id == cid)).and_then(|c| c.messages.last_mut()) {
                                     m.content = result.to_string();

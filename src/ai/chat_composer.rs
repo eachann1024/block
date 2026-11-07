@@ -16,7 +16,7 @@ impl AiChat {
     }
 
     pub(super) fn switch_tab(&mut self, target: Option<u64>, window: &mut Window, cx: &mut Context<Self>) {
-        if self.current == target { self.history = false; cx.notify(); return; }
+        if self.current == target { self.history = false; self.link_latest_pending_plan(cx); cx.notify(); return; }
         self.save_tab_draft(cx);
         super::plan_link::clear(cx);
         self.stop();
@@ -34,6 +34,7 @@ impl AiChat {
             input.focus(window, cx);
         });
         self.persist_active_draft(cx);
+        self.link_latest_pending_plan(cx);
         cx.notify();
     }
 

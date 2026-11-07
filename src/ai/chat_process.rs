@@ -226,16 +226,13 @@ fn plan_card(at: usize, plan: agent::Plan, cx: &mut gpui::Context<AiChat>) -> im
     let badge = match plan.state { PlanState::Pending => tr("编辑器待审阅", "Review in Editor"), PlanState::Applied => tr("已应用", "Applied"),
         PlanState::Partial => tr("部分写入失败", "Partially failed"), PlanState::Canceled => tr("已取消", "Canceled"), PlanState::Undone => tr("已撤回", "Undone"),
         PlanState::UndoConflict => tr("撤回冲突", "Undo conflict"), PlanState::Stale => tr("已失效", "Stale") };
-    let active = super::plan_link::current();
-    let mut ops = Vec::new();
-    for (index, op) in plan.ops.iter().enumerate() {
-        let label: String = op.page.chars().take(30).collect();
-        let number = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"].get(index).map_or_else(|| (index + 1).to_string(), |number| (*number).to_owned());
-        let label = format!("{number} {label} {}", tr("（在编辑器审阅）", "(Review in editor)"));
-        let selected = active.as_ref().is_some_and(|link| link.msg_at == at && link.op_idx == index);
-        if pending { ops.push(pill(format!("plan-op-{at}-{index}"), label, selected, cx.listener(move |this, _, _, cx| this.link_plan(at, index, false, cx))).into_any_element()); }
-        else if matches!(plan.state, PlanState::Applied | PlanState::Partial) { ops.push(pill(format!("plan-op-{at}-{index}"), label, false, cx.listener(move |this, _, _, cx| this.open_plan_page(at, index, cx))).into_any_element()); }
-    }
+    let open: Option<Box<dyn Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App)>> = if pending {
+        let listener = cx.listener(move |this, event, window, cx| { let _ = (event, window); this.link_plan(at, 0, false, cx); });
+        Some(Box::new(move |event, window, cx| listener(event, window, cx)))
+    } else if matches!(plan.state, PlanState::Applied | PlanState::Partial) {
+        let listener = cx.listener(move |this, event, window, cx| { let _ = (event, window); this.open_plan_page(at, 0, cx); });
+        Some(Box::new(move |event, window, cx| listener(event, window, cx)))
+    } else { None };
     let mut actions = Vec::new();
     if pending {
         actions.push(pill(format!("plan-apply-{at}"), tr("接受", "Accept").into(), true, cx.listener(move |this, _, _, cx| this.apply_plan(at, cx))).into_any_element());
@@ -249,5 +246,5 @@ fn plan_card(at: usize, plan: agent::Plan, cx: &mut gpui::Context<AiChat>) -> im
     }
     let title = plan.ops.first().map(|op| format!("{}.md", op.page)).unwrap_or(plan.title);
     let note: String = plan.summary.lines().next().unwrap_or("").chars().take(120).collect();
-    chat_plan_card(title, badge, note, pending, ops, actions)
+    chat_plan_card(format!("plan-op-{at}-0"), title, badge, note, pending, open, actions)
 }
