@@ -7,6 +7,7 @@ use super::{model::{Kind, MarkKind}, view::{Editor, EditorAction, selection::{Po
 
 impl Editor {
     pub(crate) fn handle(&mut self, action: &EditorAction, window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(not(target_family = "wasm"))] if crate::editor::ai::plan_link::create_preview_active(cx.entity_id()) { return; }
         if !matches!(action, EditorAction::Backspace) { super::block_shortcuts::clear_first_line_delete(); }
         use EditorAction::*;
         if !self.minimal && crate::quick::is_quick_panel_active()

@@ -5,10 +5,10 @@ use gpui::{CursorStyle, Focusable, FontWeight, IntoElement, MouseButton, ParentE
 use super::chat::{AiChat, first_placeholder, follow_placeholder};
 use super::backend_ui;
 use crate::icons::{Icon, icon, stateful_icon};
-use crate::theme::{Theme, is_en, tr};
+use crate::theme::{is_en, tr};
 
 fn duo_glyph(i: Icon, size: f32, color: gpui::Hsla) -> impl IntoElement {
-    icon(i, px(size), Theme::ocean().icon_colors(color))
+    icon(i, px(size), crate::ui::ai_theme::theme().icon_colors(color))
 }
 impl Render for AiChat {
     fn render(&mut self, window: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
@@ -17,13 +17,13 @@ impl Render for AiChat {
             let ph = if self.conv().is_some() { follow_placeholder() } else { first_placeholder() };
             self.input.update(cx, |i, cx| i.set_placeholder(ph, window, cx));
         }
-        let theme = Theme::ocean();
+        let theme = crate::ui::ai_theme::theme();
         if super::chat_empty::builtin_blocked(self) {
             let focus = self.input.read(cx).focus_handle(cx);
             return div().id("ai-chat-panel").track_focus(&focus).when(self.fullscreen, |p| p.flex_1().w_full().min_w_0())
                 .when(!self.fullscreen, |p| p.w(self.panel_width).flex_none().border_l_1().border_color(theme.hairline))
                 .h_full().flex().flex_col().relative().bg(theme.paper).text_color(theme.text)
-                .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| { cx.stop_propagation(); this.open = false; this.fullscreen = false; window.refresh(); cx.notify(); }))
+                .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| { cx.stop_propagation(); super::chat::chat_dictation::stop_for_input(&this.input); this.open = false; this.fullscreen = false; window.refresh(); cx.notify(); }))
                 .when(!self.fullscreen, |p| p.child(self.resize_handle(cx)))
                 .child(div().id("ai-chat-scroll").flex_1().min_h_0().size_full().flex().flex_col().items_center().justify_center().child(super::chat_empty::enable_cover(cx)));
         }
@@ -34,14 +34,14 @@ impl Render for AiChat {
                 cx.listener(|this, _, window, cx| { this.fullscreen = !this.fullscreen; window.refresh(); cx.notify(); })))
             .child(crate::ui::icon_button::header_action_button("ai-chat-new", Icon::AiPlus, false, tr("新建会话", "New chat"), cx.listener(|this, _, w, cx| {
                 cx.stop_propagation();
-                let backend = this.selected_backend(); this.new_conv(w, cx); this.select_backend(backend, w, cx);
+                let backend = this.selected_backend(); this.save_tab_draft(cx); this.tab_drafts.remove(&None); this.new_conv(w, cx); this.select_backend(backend, w, cx);
                 // Restore focus after mouse-down blur handlers have finished.
                 cx.defer_in(w, |this, window, cx| this.input.update(cx, |input, cx| input.focus(window, cx)));
             })))
             .child(crate::ui::icon_button::header_action_button("ai-chat-history", Icon::History, self.history, tr("历史会话", "Chat history"), cx.listener(|this, _, _, cx| {
                 backend_ui::close_menu(); this.history = !this.history; cx.notify();
             })))
-            .child(crate::ui::icon_button::header_action_button("ai-chat-close", Icon::Close, false, tr("关闭 AI", "Close AI"), cx.listener(|this, _, window, cx| { this.open = false; this.fullscreen = false; backend_ui::close_menu(); window.refresh(); cx.notify(); })));
+            .child(crate::ui::icon_button::header_action_button("ai-chat-close", Icon::Close, false, tr("关闭 AI", "Close AI"), cx.listener(|this, _, window, cx| { super::chat::chat_dictation::stop_for_input(&this.input); this.open = false; this.fullscreen = false; backend_ui::close_menu(); window.refresh(); cx.notify(); })));
         let history = self.history.then(|| {
             let list = if self.convs.iter().all(|c| c.messages.is_empty()) {
                 div().p(px(12.)).text_size(px(14.)).text_color(theme.text_secondary).child(tr("暂无历史会话", "No chat history"))
@@ -49,12 +49,10 @@ impl Render for AiChat {
                 self.convs.iter().filter(|c| !c.messages.is_empty()).fold(div().flex().flex_col().p(px(4.)), |d, c| {
                     let (id, active) = (c.id, Some(c.id) == self.current);
                     let del_id = SharedString::from(format!("conv-del-{id}"));
-                    d.child(div().id(SharedString::from(format!("conv-{id}"))).h(px(32.)).px(px(8.)).flex().items_center().gap(px(6.)).rounded(crate::ui::radius::CONTROL)
+                    d.child(div().id(SharedString::from(format!("conv-{id}"))).relative().children(crate::ui::smoke_overlay::probe(format!("conv-{id}"))).h(px(32.)).px(px(8.)).flex().items_center().gap(px(6.)).rounded(crate::ui::radius::CONTROL)
                         .when(active, |r| r.bg(theme.hover)).hover(move |s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
                         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| {
-                            super::plan_link::clear(cx); this.stop(); this.current = Some(id); this.history = false; this.error = None; this.persist_active_draft(cx);
-                            this.input.update(cx, |i, cx| i.set_placeholder(follow_placeholder(), w, cx));
-                            cx.notify();
+                            this.switch_tab(Some(id), w, cx);
                         }))
                         .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(14.)).child(c.title.clone()))
                         .child(div().text_size(px(14.)).text_color(theme.text_secondary).child(backend_ui::backend_name(c.backend)))
@@ -64,7 +62,7 @@ impl Render for AiChat {
                             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                                 cx.stop_propagation();
                                 if this.current == Some(id) { super::plan_link::clear(cx); this.stop(); this.current = None; }
-                                this.convs.retain(|c| c.id != id); this.persist(); this.persist_active_draft(cx); cx.notify();
+                                this.tab_drafts.remove(&Some(id)); this.convs.retain(|c| c.id != id); this.persist(); this.persist_active_draft(cx); cx.notify();
                             }))
                             .child(stateful_icon(del_id, Icon::Trash, px(13.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
                 })
@@ -137,14 +135,25 @@ impl Render for AiChat {
         });
         let busy = self.streaming.is_some();
         let action = if busy {
-            crate::ui::ai_controls::action_chip("ai-chat-stop", None, tr("停止", "Stop"), false, false, cx.listener(|this, _, _, cx| { this.stop(); cx.notify(); })).h(px(32.)).border_1().border_color(theme.btn_border)
+            crate::ui::ai_controls::action_chip("ai-chat-stop", None, tr("停止", "Stop"), false, false, cx.listener(|this, _, _, cx| { this.stop(); cx.notify(); })).h(px(28.)).bg(theme.text).text_color(theme.paper)
         } else {
-            crate::ui::ai_controls::action_chip("ai-chat-send", None, tr("发送", "Send"), true, false, cx.listener(move |this, _, w, cx| { cx.stop_propagation(); this.send(w, cx); })).h(px(32.))
+            crate::ui::ai_controls::send_button_enabled("ai-chat-send", !self.input.read(cx).value().trim().is_empty(), cx.listener(move |this, _, w, cx| { cx.stop_propagation(); this.send(w, cx); })).size(px(28.))
         };
-        let approval = self.pending_approval.as_ref().map(|(_, title, detail)| {
+        if let Some((id, _, _)) = &self.pending_approval {
+            if self.approval_state.as_ref().is_none_or(|(current, _)| current != id) {
+                self.approval_state = Some((id.clone(), Default::default()));
+            }
+        } else { self.approval_state = None; }
+        let approval = self.pending_approval.clone().map(|(request_id, title, detail)| {
             let entity = cx.entity().downgrade();
-            backend_ui::approval_card(title.clone(), detail.clone(), move |response, _, cx| {
-                let _ = entity.update(cx, |this, cx| this.respond_approval(response, cx));
+            let expected = request_id.clone();
+            let state = self.approval_state.as_ref().unwrap().1.clone();
+            backend_ui::approval_card(state, title, detail, move |response, _, cx| {
+                entity.update(cx, |this, cx| {
+                    if this.pending_approval.as_ref().is_none_or(|(id, _, _)| id != &expected) { return false; }
+                    this.respond_approval(response, cx);
+                    this.pending_approval.is_none()
+                }).unwrap_or(false)
             })
         });
         let draft_recovery = self.has_deferred_draft().then(|| {
@@ -157,27 +166,42 @@ impl Render for AiChat {
                 }))
                 .child(crate::ui::settings_controls::action_button("ai-restore-draft", if has_current_draft { tr("切换到失败草稿", "Switch to failed draft") } else { tr("恢复草稿", "Restore draft") }, false, true)
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                        super::chat::chat_dictation::stop_for_input(&this.input);
                         this.restore_deferred_draft(window, cx); cx.notify();
                     })))
         });
-        let composer = div().p(px(10.)).flex().flex_col().gap(px(10.)).rounded(crate::ui::radius::SURFACE).border_1().border_color(if self.input.read(cx).focus_handle(cx).is_focused(window) { theme.accent } else { theme.btn_border }).bg(theme.paper)
+        let composer = div().p(px(10.)).flex().flex_col().gap(px(8.)).rounded(px(8.)).border_1().border_color(if self.input.read(cx).focus_handle(cx).is_focused(window) { theme.btn_border } else { theme.hairline }).bg(theme.hover)
             .when(!self.refs.is_empty() || !self.skills.is_empty(), |d| d.child(chips))
             .child(crate::ui::chat_input::field(&self.input))
             .child(div().relative().children(crate::ui::smoke_overlay::probe("ai-composer-actions")).flex_none().flex().items_center().gap(px(6.))
                 .child(div().flex_1().min_w_0().flex().items_center().gap(px(6.))
                     .child(super::chat_deck::trigger(self, cx)))
+                .child(crate::ui::ai_controls::dictation_button(
+                    super::chat::chat_dictation::is_recording(self.input.entity_id()),
+                    cx.listener(|this, _, window, cx| { cx.stop_propagation(); super::chat::chat_dictation::toggle(this, window, cx); })))
                 .child(action));
 
-        div().id("ai-chat-panel").when(self.fullscreen, |panel| panel.flex_1().w_full().min_w_0()).when(!self.fullscreen, |panel| panel.w(self.panel_width).flex_none().border_l_1().border_color(theme.hairline)).h_full().flex().flex_col().relative().bg(theme.paper)
+        div().id("ai-chat-panel").when(self.fullscreen, |panel| panel.flex_1().w_full().min_w_0()).when(!self.fullscreen, |panel| panel.w(self.panel_width).flex_none().border_l_1().border_color(theme.hairline)).h_full().flex().flex_col().relative().bg(theme.paper).font_family("Inter")
             .text_color(theme.text)
             .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| { if backend_ui::close_menu() { cx.notify(); } }))
-            .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
+            .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                 if event.keystroke.key == "escape" && this.picker_token(cx).is_some() {
                     this.picker_dismissed = true; cx.stop_propagation(); cx.notify();
+                } else if event.keystroke.key == "tab" && !event.keystroke.modifiers.modified()
+                    && this.input.read(cx).focus_handle(cx).is_focused(window) && !this.composing(window, cx)
+                    && this.picker_token(cx).is_some_and(|token| !this.picker_items(&token, cx).is_empty()) {
+                    cx.stop_propagation(); this.send(window, cx);
                 }
             }))
             .capture_action(cx.listener(|this, action: &gpui_component::input::Enter, window, cx| {
+                if this.composing(window, cx) { cx.stop_propagation(); return; }
                 if !action.shift && !action.secondary && this.picker_token(cx).is_some() {
+                    cx.stop_propagation(); this.send(window, cx);
+                }
+            }))
+            .capture_action(cx.listener(|this, _: &gpui_component::input::IndentInline, window, cx| {
+                if !this.composing(window, cx)
+                    && this.picker_token(cx).is_some_and(|token| !this.picker_items(&token, cx).is_empty()) {
                     cx.stop_propagation(); this.send(window, cx);
                 }
             }))
@@ -190,7 +214,7 @@ impl Render for AiChat {
             .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| {
                 cx.stop_propagation();
                 if this.picker_token(cx).is_some() { this.picker_dismissed = true; }
-                else if backend_ui::close_menu() || super::dsh_ui::close() {} else if this.history { this.history = false; } else { this.open = false; this.fullscreen = false; window.refresh(); }
+                else if backend_ui::close_menu() || super::dsh_ui::close() {} else if this.history { this.history = false; } else { super::chat::chat_dictation::stop_for_input(&this.input); this.open = false; this.fullscreen = false; window.refresh(); }
                 cx.notify();
             }))
             .when(!self.fullscreen, |panel| panel.child(self.resize_handle(cx)))

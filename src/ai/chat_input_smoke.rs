@@ -1,6 +1,66 @@
 //! Composer observations restricted to the isolated smoke sandbox.
 use super::*;
+use gpui::EntityInputHandler;
 use super::super::backend::{BackendConfig, BackendKind, BackendStatus};
+
+pub(crate) fn set_composition(window: &mut Window, cx: &mut App, text: &str) {
+    assert!(crate::smoke::is_requested());
+    let entity = chat(window, cx);
+    entity.update(cx, |chat, cx| chat.input.update(cx, |input, cx| {
+        input.replace_and_mark_text_in_range(None, text, None, window, cx);
+    }));
+}
+
+pub(crate) fn clear_composition(window: &mut Window, cx: &mut App) {
+    assert!(crate::smoke::is_requested());
+    let entity = chat(window, cx);
+    entity.update(cx, |chat, cx| chat.input.update(cx, |input, cx| input.unmark_text(window, cx)));
+}
+
+pub(crate) fn is_composing(window: &mut Window, cx: &mut App) -> bool {
+    assert!(crate::smoke::is_requested());
+    let entity = chat(window, cx);
+    entity.update(cx, |chat, cx| chat.composing(window, cx))
+}
+
+pub(crate) fn seed_tab_conversations(window: &mut Window, cx: &mut App) -> (u64, u64) {
+    assert!(crate::smoke::is_requested());
+    let ids = (9_000_001, 9_000_002);
+    chat(window, cx).update(cx, |this, cx| {
+        this.convs.retain(|conversation| conversation.id != ids.0 && conversation.id != ids.1);
+        for (id, title) in [(ids.1, "Smoke B"), (ids.0, "Smoke A")] {
+            this.convs.insert(0, Conv { id, title: title.into(), messages: vec![Msg { role: "user".into(), content: title.into(), ..Default::default() }], backend: BackendKind::Builtin, native_session_id: None });
+        }
+        this.tab_drafts.clear();
+        this.current = Some(ids.0);
+        this.refs.clear(); this.skills.clear(); this.retry_draft = None;
+        this.input.update(cx, |input, cx| input.set_value("", window, cx));
+        cx.notify();
+    });
+    window.refresh();
+    ids
+}
+
+pub(crate) fn tab_observation(cx: &App) -> Option<(Option<u64>, String, Vec<String>, Vec<String>)> {
+    assert!(crate::smoke::is_requested());
+    cx.try_global::<Holder>().map(|holder| {
+        let chat = holder.0.read(cx);
+        (chat.current, chat.input.read(cx).value().to_string(), chat.refs.clone(), chat.skills.clone())
+    })
+}
+
+pub(crate) fn dictation_generation(cx: &App) -> Option<u64> {
+    assert!(crate::smoke::is_requested());
+    cx.try_global::<Holder>().and_then(|holder| super::chat_dictation::smoke_generation(holder.0.read(cx).input.entity_id()))
+}
+
+pub(crate) fn dictation_recording(cx: &App) -> bool {
+    assert!(crate::smoke::is_requested());
+    cx.try_global::<Holder>().is_some_and(|holder| super::chat_dictation::is_recording(holder.0.read(cx).input.entity_id()))
+}
+
+pub(crate) fn dictation_text(generation: u64, text: &str) -> bool { super::chat_dictation::smoke_text(generation, text) }
+pub(crate) fn dictation_done(generation: u64) -> bool { super::chat_dictation::smoke_done(generation) }
 
 thread_local! {
     static STATUS_OVERRIDES: std::cell::RefCell<Vec<(BackendKind, BackendStatus)>> = const { std::cell::RefCell::new(Vec::new()) };
