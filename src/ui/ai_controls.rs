@@ -10,6 +10,34 @@ use crate::{
 
 pub const PANEL_WIDTH: f32 = 360.;
 
+pub fn dictation_button(recording: bool,
+    on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> Stateful<Div> {
+    use gpui::{Animation, AnimationExt};
+    let theme = super::ai_theme::theme();
+    let glyph = if recording {
+        let mut bars = div().flex().items_center().gap(px(2.)).h(px(16.));
+        for index in 0..3 {
+            bars = bars.child(div().w(px(2.)).rounded_full().bg(theme.text)
+                .with_animation(format!("ai-dictation-wave-{index}"), Animation::new(std::time::Duration::from_millis(900)).repeat(), move |bar, delta| {
+                    let phase = delta * std::f32::consts::TAU - index as f32 * std::f32::consts::PI / 3.;
+                    bar.h(px(4. + (phase.sin() + 1.) * 4.))
+                }));
+        }
+        bars
+    } else {
+        div().relative().size(px(16.)).flex().justify_center()
+            .child(div().absolute().top(px(1.)).w(px(6.)).h(px(9.)).rounded_full().border_1().border_color(theme.text_secondary))
+            .child(div().absolute().top(px(5.)).w(px(10.)).h(px(7.)).rounded_b_full().border_b_1().border_l_1().border_r_1().border_color(theme.text_secondary))
+            .child(div().absolute().bottom(px(1.)).w(px(6.)).h(px(1.)).bg(theme.text_secondary))
+            .child(div().absolute().bottom(px(2.)).w(px(1.)).h(px(3.)).bg(theme.text_secondary))
+    };
+    div().id("ai-dictation").relative().children(super::smoke_overlay::probe("ai-dictation"))
+        .size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
+        .cursor(CursorStyle::PointingHand).hover(move |style| style.bg(theme.hover))
+        .tooltip(tooltip(if recording { tr("停止听写", "Stop dictation") } else { tr("语音输入", "Dictate") }))
+        .child(glyph).on_mouse_down(MouseButton::Left, on_click)
+}
+
 pub fn enable_action_button(id: impl Into<SharedString>, label: impl Into<SharedString>,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> Stateful<Div> {
     let theme = Theme::ocean();
@@ -109,17 +137,24 @@ pub fn send_button(
     id: impl Into<SharedString>,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> Stateful<Div> {
-    let theme = Theme::ocean();
+    send_button_enabled(id, true, on_click)
+}
+
+pub fn send_button_enabled(
+    id: impl Into<SharedString>, enabled: bool,
+    on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
+) -> Stateful<Div> {
+    let theme = super::ai_theme::theme();
     let id: SharedString = id.into();
     let eid = ElementId::from(id);
     let probe = crate::ui::smoke_overlay::probe_for(&eid);
     div().id(eid).relative().children(probe).size(px(24.)).flex_none().flex().items_center().justify_center()
-        .rounded(px(6.)).bg(theme.primary)
-        .cursor(CursorStyle::PointingHand)
-        .hover(move |s| s.bg(theme.accent))
+        .rounded(px(6.)).bg(theme.text)
+        .when(!enabled, |button| button.opacity(0.35))
+        .when(enabled, |button| button.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.text_secondary)))
         .tooltip(tooltip(tr("发送（回车）", "Send (Enter)")))
-        .child(icon(Icon::ArrowUp, px(13.), theme.mono_icon_colors(rgb(0xffffff).into())))
-        .on_mouse_down(MouseButton::Left, on_click)
+        .child(icon(Icon::ArrowUp, px(13.), theme.mono_icon_colors(theme.paper)))
+        .on_mouse_down(MouseButton::Left, move |event, window, cx| { if enabled { on_click(event, window, cx); } })
 }
 
 pub fn action_chip(

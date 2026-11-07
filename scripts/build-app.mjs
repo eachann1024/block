@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { appName, assertSystemLibraries, binaryPath, installPath, logIssue, plist, remove, sign, workspaceTemp } from "./app-bundle.mjs";
 import { commitInstall, openInstalled, prepareInstall } from "./install-app.mjs";
 import { matchingPids, stopRunningApp } from "./stop-app.mjs";
+import { buildDictation } from "./build-dictation.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const lockPath = join(root, "dist/.build.lock");
@@ -45,10 +46,12 @@ export async function buildApp({ install = true, profile = process.env.BLOCK_PRO
     const resources = join(bundle, "Contents/Resources");
     mkdirSync(resources, { recursive: true });
     cpSync(join(root, "assets/app-icon/AppIcon.icns"), join(resources, "AppIcon.icns"));
+    cpSync(join(root, "THIRD_PARTY_NOTICES.md"), join(resources, "THIRD_PARTY_NOTICES.md"));
     const packaged = join(macos, "block");
     const copied = spawnSync("cp", [executable, packaged]);
     if (copied.status !== 0) throw new Error("failed to copy the release binary");
     chmodSync(packaged, 0o755);
+    buildDictation(join(macos, "block-dictation"));
     assertSystemLibraries(packaged);
     sign(bundle);
     if (install) job.plan = prepareInstall(bundle);

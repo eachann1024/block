@@ -14,6 +14,8 @@ use crate::{app::Workspace, editor::Editor, ui::smoke_overlay};
 mod steps;
 #[path = "smoke_chat_selection.rs"] mod chat_selection;
 #[path = "smoke_plan_link.rs"] mod plan_link;
+#[path = "smoke_ai_beautiful.rs"] mod ai_beautiful;
+#[path = "smoke_ai_voice.rs"] mod ai_voice;
 #[cfg(unix)]
 #[path = "smoke_ipc.rs"] mod ipc;
 #[path = "smoke_client.rs"] mod client;

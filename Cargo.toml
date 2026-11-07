@@ -5,6 +5,9 @@ edition = "2024"
 license = "Apache-2.0"
 publish = false
 
+[features]
+smoke-capture = ["gpui/test-support", "gpui_platform/test-support"]
+
 [dependencies]
 gpui = { package = "gpui-pre", version = "0.3.11", default-features = false, features = ["font-kit"] }
 gpui_platform = { package = "gpui-pre-platform", version = "0.3.11", default-features = false, features = ["runtime_shaders", "font-kit"] }

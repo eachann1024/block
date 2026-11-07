@@ -16,11 +16,10 @@ use super::input::transactions::{Snapshot, HistoryEntry};
 #[path = "open_dedup.rs"] mod open_dedup;
 #[path = "language_sync.rs"] mod language_sync;
 #[path = "history_bridge.rs"] pub(crate) mod history_bridge;
-#[path = "session.rs"] mod session;
+#[path = "session.rs"] mod session; #[cfg(not(target_family = "wasm"))] #[path = "create_preview.rs"] mod create_preview;
 use {selection::Caret, layout::TextLayout, lifecycle::Persistence};
 /// Space kept between the caret line and the viewport edge when the caret scrolls into view.
 const REVEAL_MARGIN: f32 = 80.;
-
 actions!(editor, [Backspace, Delete, Left, Right, SelectLeft, SelectRight, SelectAll,
     Up, Down, SelectUp, SelectDown, Enter, Copy, Cut, Paste, Bold, Italic, Strike, Code,
     Undo, Redo, Cancel, Save, NextCell, PreviousCell, TableMenuKey,
@@ -39,6 +38,7 @@ pub(crate) enum EditorAction {
 pub struct Editor {
     pub(super) doc: Doc,
     pub(super) focus: FocusHandle,
+    preview_focus: FocusHandle, preview_was_open: bool,
     pub(super) caret: Caret,
     pub(super) hover: Option<u64>,
     pub(super) hover_gen: u64,
@@ -93,7 +93,7 @@ impl Editor {
         crate::dropdown::register_editor(&cx.entity()); super::zoom::register_editor(&cx.entity());
         cx.on_app_quit(|editor, _| { editor.prepare_to_quit(); async {} }).detach();
         let doc = Doc::empty(); let caret = Caret::new(doc.blocks[0].id);
-        Self { doc, caret, focus: cx.focus_handle(), hover: None, hover_gen: 0, dragging: None,
+        Self { doc, caret, focus: cx.focus_handle(), preview_focus: cx.focus_handle(), preview_was_open: false, hover: None, hover_gen: 0, dragging: None,
             drag_over: None, selecting: false, block_menu: None, block_menu_scroll: Default::default(), nowrap: Default::default(), folded: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_extend: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, image_menu: None, link_ui: Default::default(), layouts: HashMap::new(),
             list: ListState::new(1, ListAlignment::Top, px(120.)), scroll_top: (0, px(0.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
@@ -126,6 +126,7 @@ impl Editor {
 impl Focusable for Editor { fn focus_handle(&self, _: &App) -> FocusHandle { self.focus.clone() } }
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        #[cfg(not(target_family = "wasm"))] if let Some(preview) = self.create_plan_preview(window, cx) { return preview; }
         self.sync_annotations(); self.track_pointer_lifecycle(window, cx);
         self.track_extend_pointer(window, cx); let theme = Theme::ocean(); self.reveal();
         let input_editor = cx.entity();
@@ -293,8 +294,7 @@ impl Render for Editor {
                 .child(anchor_sync))
             .children(super::find_bar::find_bar(self, cx))
             .children(super::outline::overlay(self, window, cx))
-            .children(super::annotate_ui::overlay(self, window, cx))
+            .children(super::annotate_ui::overlay(self, window, cx)).into_any_element()
     }
 }
-
 pub use super::surface::TitlebarSurface;

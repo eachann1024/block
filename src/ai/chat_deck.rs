@@ -1,6 +1,6 @@
 use gpui::{Div, SharedString, div, prelude::*, px};
 use super::{backend::{BackendKind, BackendStatus}, backend_ui, chat::AiChat, dsh_ui};
-use crate::{theme::{Theme, tr}, ui::ai_controls};
+use crate::{theme::tr, ui::ai_controls};
 
 thread_local! {
     static TRIGGER_BOUNDS: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>> = Default::default();
@@ -29,7 +29,7 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
     let spec = crate::ui::placement::PlacementSpec::above(trigger);
     let max_height = crate::ui::placement::available_height_for_spec(&spec, window.viewport_size(), window.viewport_size().height);
     let width = px(ai_controls::PANEL_WIDTH).min((window.viewport_size().width - px(16.)).max(px(0.)));
-    let theme = Theme::ocean();
+    let theme = crate::ui::ai_theme::theme();
     let selected = chat.selected_backend();
     let mut grid = div().flex().flex_col().gap(px(8.));
     let visible = chat.visible_backends();

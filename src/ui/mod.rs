@@ -39,7 +39,13 @@ pub mod window_controls;
 pub mod file_preview;
 pub mod resize_handle;
 pub mod selectable_message;
+pub mod ai_process_status;
+pub mod ai_theme;
+#[cfg(not(target_family = "wasm"))]
+pub mod ai_approval;
 
 pub mod chat_input;
 #[cfg(not(target_family = "wasm"))]
 pub mod ai_plan_card;
+#[cfg(not(target_family = "wasm"))]
+pub mod ai_editor_diff;

@@ -78,6 +78,7 @@ pub(crate) enum ApprovalResponse { AllowOnce, AllowSession, Deny, Cancel }
 pub(crate) enum BackendEventKind {
     Delta(String),
     Thinking(String),
+    PublicSummary(String),
     ToolActivity { name: String, detail: String },
     Approval { request_id: String, title: String, detail: String },
     Session { native_session_id: String },
