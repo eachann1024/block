@@ -148,12 +148,16 @@ pub fn send_button_enabled(
     let id: SharedString = id.into();
     let eid = ElementId::from(id);
     let probe = crate::ui::smoke_overlay::probe_for(&eid);
+    let (bg, fg) = if enabled {
+        (theme.text, theme.paper)
+    } else {
+        (theme.btn_border, theme.text)
+    };
     div().id(eid).relative().children(probe).size(px(24.)).flex_none().flex().items_center().justify_center()
-        .rounded(px(6.)).bg(theme.text)
-        .when(!enabled, |button| button.opacity(0.35))
+        .rounded(px(6.)).bg(bg)
         .when(enabled, |button| button.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.text_secondary)))
         .tooltip(tooltip(tr("发送（回车）", "Send (Enter)")))
-        .child(icon(Icon::ArrowUp, px(13.), theme.mono_icon_colors(theme.paper)))
+        .child(icon(Icon::ArrowUp, px(16.), theme.mono_icon_colors(fg)))
         .on_mouse_down(MouseButton::Left, move |event, window, cx| { if enabled { on_click(event, window, cx); } })
 }
 
