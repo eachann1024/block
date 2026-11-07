@@ -215,7 +215,9 @@ pub(crate) fn render_linked_row(editor: &Editor, index: usize, _cx: &mut Context
     if link.block_range.end > editor.doc.blocks.len() || !link.before_blocks.iter().zip(link.block_range.clone())
         .all(|(before, at)| equal(before, &editor.doc.blocks[at])) { return None; }
     if index != link.block_range.start { return Some(div().id(("plan-merged-row", index)).into_any_element()); }
-    Some(div().pl(px(crate::editor::chrome::HANDLE_WIDTH + crate::editor::chrome::ROW_GAP)).pr(px(crate::editor::chrome::RIGHT_INSET))
+    Some(div().w_full().min_w_0().overflow_hidden()
+        .pl(px(crate::editor::chrome::HANDLE_WIDTH + crate::editor::chrome::ROW_GAP))
+        .pr(px(crate::editor::chrome::RIGHT_INSET))
         .child(crate::ui::ai_plan_card::editor_plan_review_card(link)).into_any_element())
 }
 
