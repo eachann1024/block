@@ -1,5 +1,5 @@
-//! The 12 scripted smoke steps: editor CRUD, in-note find, global search, tabs and settings.
-use gpui::{point, px};
+//! Scripted smoke steps: editor CRUD, in-note find, global search, tabs and settings.
+use gpui::{Focusable, point, px};
 use super::{AsyncApp, Run, sleep, smoke_overlay};
 
 impl Run {
@@ -232,6 +232,16 @@ impl Run {
     }
 
     async fn tabs_and_sidebar(&self, cx: &AsyncApp) -> Result<(), String> {
+        self.win(cx, |window, cx| {
+            let focus = self.workspace.read(cx).editor.focus_handle(cx);
+            window.focus(&focus, cx);
+        })?;
+        let editor_focused = self.win(cx, |window, cx| self.workspace.read(cx).editor.focus_handle(cx).is_focused(window))?;
+        self.check(11, editor_focused, "侧栏快捷键前编辑器已聚焦")?;
+        self.press(cx, "alt-b").await?;
+        self.check(11, self.query(cx, |w, _| w.sidebar_collapsed), "Option+B 收起侧栏")?;
+        self.press(cx, "alt-b").await?;
+        self.check(11, self.query(cx, |w, _| !w.sidebar_collapsed), "Option+B 展开侧栏")?;
         self.click_target(cx, "sidebar-toggle", "Step 11/12 · 点击收起侧边栏").await?;
         self.check(11, self.query(cx, |w, _| w.sidebar_collapsed), "侧边栏已收起")?;
         self.click_target(cx, "sidebar-toggle", "Step 11/12 · 点击展开侧边栏").await?;
