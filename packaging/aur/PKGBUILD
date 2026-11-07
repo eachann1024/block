@@ -1,0 +1,36 @@
+# Maintainer: eachann1024
+
+pkgname=block-bin
+pkgver=1.0.355
+pkgrel=1
+pkgdesc='A block-based notes editor'
+arch=('x86_64')
+url='https://block.cooool.top'
+license=('Apache-2.0')
+depends=(
+  'gcc-libs'
+  'glibc'
+  'hicolor-icon-theme'
+  'libbsd'
+  'libglvnd'
+  'libxcb'
+  'libxkbcommon'
+  'libxkbcommon-x11'
+  'vulkan-icd-loader'
+  'wayland'
+)
+provides=('block')
+conflicts=('block')
+options=('!strip' '!debug')
+noextract=('block-linux-x64.deb')
+source=("block-linux-x64.deb::https://github.com/eachann1024/block/releases/download/v${pkgver}/block-linux-x64.deb")
+sha256sums=('4422c8a68f25b4559b984176ac2b978c3aba8477ccb6c38757ea6b3b30b06a01')
+
+package() {
+  local data
+  data=$(bsdtar -tf "${srcdir}/block-linux-x64.deb" | grep -m1 '^data.tar')
+  bsdtar -xOf "${srcdir}/block-linux-x64.deb" "${data}" | bsdtar -xf - -C "${srcdir}"
+  install -Dm755 "${srcdir}/usr/bin/block" "${pkgdir}/usr/bin/block"
+  install -Dm644 "${srcdir}/usr/share/applications/block.desktop" "${pkgdir}/usr/share/applications/block.desktop"
+  install -Dm644 "${srcdir}/usr/share/icons/hicolor/1024x1024/apps/block.png" "${pkgdir}/usr/share/icons/hicolor/1024x1024/apps/block.png"
+}
