@@ -217,13 +217,25 @@ fn platform_asset_candidates() -> (&'static str, &'static str) {
     { ("", "") }
 }
 
+fn looks_chinese(text: &str) -> bool {
+    text.contains("## 中文") || text.contains("本次更新重点") || text.contains("### 新功能") || text.contains("✨ 新功能")
+}
+
 fn split_zh_en(body: &str) -> (&str, &str) {
-    if let Some((zh, en)) = body.split_once("\n---\n") {
-        (zh.trim(), en.trim())
-    } else if let Some((zh, en)) = body.split_once("\n---") {
-        (zh.trim(), en.trim())
+    let (first, second) = if let Some((left, right)) = body.split_once("\n---\n") {
+        (left.trim(), right.trim())
+    } else if let Some((left, right)) = body.split_once("\n---") {
+        (left.trim(), right.trim())
     } else {
-        (body.trim(), body.trim())
+        return (body.trim(), body.trim());
+    };
+    if second.is_empty() {
+        return (first, first);
+    }
+    if looks_chinese(second) && !looks_chinese(first) {
+        (second, first)
+    } else {
+        (first, second)
     }
 }
 
@@ -262,21 +274,45 @@ fn parse_section(text: &str) -> ReleaseSection {
             continue;
         }
 
-        if trimmed.contains("新功能") || trimmed.eq_ignore_ascii_case("✨ New")
-            || (trimmed.starts_with("✨") && (trimmed.contains("New") || trimmed.contains("新")))
-        {
-            mode = Mode::Features;
-            continue;
-        }
-        if trimmed.contains("修复") || trimmed.eq_ignore_ascii_case("🐛 Fixes")
-            || (trimmed.starts_with("🐛") && (trimmed.contains("Fix") || trimmed.contains("修")))
-        {
-            mode = Mode::Fixes;
-            continue;
-        }
-        if trimmed.contains("优化") || trimmed.contains("Improvements") || trimmed.starts_with("🪐") {
-            mode = Mode::None;
-            continue;
+        let heading_line = trimmed.starts_with('#')
+            || trimmed.starts_with('✨')
+            || trimmed.starts_with('🪐')
+            || trimmed.starts_with('🐛');
+        if heading_line {
+            let heading = trimmed.trim_start_matches('#').trim();
+            if heading.eq_ignore_ascii_case("Download")
+                || heading.eq_ignore_ascii_case("Install")
+                || heading.contains("下载")
+                || heading.contains("安装")
+                || heading.contains("官网")
+                || heading.to_ascii_lowercase().starts_with("website:")
+            {
+                mode = Mode::None;
+                continue;
+            }
+            if heading.contains("新功能")
+                || heading.eq_ignore_ascii_case("New")
+                || heading.eq_ignore_ascii_case("✨ New")
+                || heading.contains("改进")
+                || heading.contains("优化")
+                || heading.eq_ignore_ascii_case("Improvements")
+                || heading.eq_ignore_ascii_case("Improved")
+                || (trimmed.starts_with("✨") && (trimmed.contains("New") || trimmed.contains("新")))
+                || trimmed.starts_with("🪐")
+            {
+                mode = Mode::Features;
+                continue;
+            }
+            if heading.contains("修复")
+                || heading.eq_ignore_ascii_case("Fixes")
+                || heading.eq_ignore_ascii_case("Fixed")
+                || heading.eq_ignore_ascii_case("🐛 Fixes")
+                || heading.eq_ignore_ascii_case("🐛 Fixed")
+                || (trimmed.starts_with("🐛") && (trimmed.contains("Fix") || trimmed.contains("修")))
+            {
+                mode = Mode::Fixes;
+                continue;
+            }
         }
 
         if let Some(item) = trimmed
