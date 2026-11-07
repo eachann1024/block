@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { installerFor } from "./allowed-assets.mjs";
 import { cargoRelease, run } from "./cargo-release.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
-const ARCH = process.arch === "arm64" ? "arm64" : "x64";
-const SETUP_NAME = `block-windows-${ARCH}-setup.exe`;
+const SETUP_NAME = installerFor({ platform: "windows", arch: process.env.BLOCK_ARCH || process.arch, kind: "exe" });
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 
 export async function packageWindows() {

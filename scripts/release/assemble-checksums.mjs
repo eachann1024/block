@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { INSTALLERS, RELEASE_ASSETS, writeChecksums } from "./checksum.mjs";
+import { INSTALLERS, RELEASE_ASSETS } from "./allowed-assets.mjs";
+import { writeChecksums } from "./checksum.mjs";
 import { ROOT } from "./select-release.mjs";
 
 const dir = resolve(ROOT, "dist/release");

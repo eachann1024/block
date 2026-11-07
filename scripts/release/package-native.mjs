@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { installerFor } from "./allowed-assets.mjs";
 import { run } from "./cargo-release.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
@@ -67,7 +68,7 @@ function buildDeb(binary, version, names) {
       " A block-based notes editor.",
       "",
     ].join("\n"));
-    const outfile = join(RELEASE_DIR, `block-linux-${names.label}.deb`);
+    const outfile = join(RELEASE_DIR, installerFor({ platform: "linux", arch: names.label, kind: "deb" }));
     run("dpkg-deb", ["--root-owner-group", "--build", root, outfile]);
     console.log(`  ${outfile}`);
   } finally {
@@ -127,7 +128,7 @@ function buildRpm(binary, version, names) {
     run("rpmbuild", ["-bb", spec, "--define", `_topdir ${top}`]);
     const built = readdirSync(join(top, "RPMS", names.rpm)).find((name) => name.endsWith(".rpm"));
     assert.ok(built, "rpmbuild did not produce an rpm");
-    const outfile = join(RELEASE_DIR, `block-linux-${names.label}.rpm`);
+    const outfile = join(RELEASE_DIR, installerFor({ platform: "linux", arch: names.label, kind: "rpm" }));
     copyFileSync(join(top, "RPMS", names.rpm, built), outfile);
     console.log(`  ${outfile}`);
   } finally {

@@ -1,0 +1,41 @@
+# 发布后或手工上传附件时，按 scripts/release/allowed-assets.mjs 删掉多余文件并核对正好 11 个。
+# After a release is published or edited, delete assets outside the allowlist and require exactly those 11.
+
+name: Prune release assets
+
+on:
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to prune
+        required: true
+        default: v1.0.355
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: block-prune-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: Prune and verify assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Prune and verify release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.release.tag_name }}
+        run: node scripts/release/prune-release-assets.mjs
