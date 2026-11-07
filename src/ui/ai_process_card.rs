@@ -21,6 +21,7 @@ pub struct ProcessCardSpec {
     pub steps: Vec<ProcessStep>,
     pub notes: Vec<String>,
     pub steps_expanded: bool,
+    pub steps_toggle_seq: usize,
     pub notes_expanded: bool,
     pub steps_scroll: ScrollHandle,
 }
@@ -71,11 +72,14 @@ pub fn process_card(
         }).child(badge).child(headline);
     let mut card = div().id(SharedString::from(format!("ai-process-card-{key}"))).relative()
         .children(smoke_overlay::probe("ai-process-card")).w_full().flex().flex_col().gap(px(4.)).child(header);
-    if spec.steps_expanded {
+    if spec.steps_expanded || spec.steps_toggle_seq > 0 {
+        let steps_h = (spec.steps.len().min(4) as f32) * 28.0;
+        let notes_h = if spec.notes.is_empty() { 0.0 } else { 28.0 };
+        let full_h = steps_h + notes_h;
         let mut details = div().ml(px(22.)).flex().flex_col().gap(px(4.));
         if !spec.steps.is_empty() {
             let mut list = div().id(SharedString::from(format!("ai-process-steps-{key}"))).relative()
-                .children(smoke_overlay::probe("ai-process-steps")).flex().flex_col()
+                .when(spec.steps_expanded, |d| d.children(smoke_overlay::probe("ai-process-steps"))).flex().flex_col()
                 .when(spec.steps.len() > 4, |d| d.h(px(112.)).overflow_y_scroll().track_scroll(&spec.steps_scroll));
             for step in &spec.steps {
                 let label = if step.merged_count > 1 {
@@ -96,14 +100,25 @@ pub fn process_card(
             let notes = if spec.notes.len() > 3 {
                 let expanded = spec.notes_expanded;
                 notes.id(SharedString::from(format!("ai-process-notes-{}-{key}", if expanded { "less" } else { "more" })))
-                    .relative().children(smoke_overlay::probe(if expanded { "ai-process-notes-less" } else { "ai-process-notes-more" }))
+                    .relative().when(spec.steps_expanded, |d| d.children(smoke_overlay::probe(if expanded { "ai-process-notes-less" } else { "ai-process-notes-more" })))
                     .cursor(CursorStyle::PointingHand).on_mouse_down(MouseButton::Left, move |ev, window, cx| {
                         cx.stop_propagation(); on_toggle_notes(ev, window, cx);
                     }).into_any_element()
             } else { notes.into_any_element() };
-            details = details.child(notes);
+            details = details.child(div().child(notes).with_animation(
+                SharedString::from(format!("{key}-notes-{}", spec.notes_expanded)),
+                Animation::new(Duration::from_millis(150)).with_easing(crate::ui::motion::ease_out_expo()),
+                |el, delta| el.opacity(delta).relative().top(px(-3.0 * (1.0 - delta)))));
         }
-        card = card.child(details);
+        let expanded = spec.steps_expanded;
+        card = card.child(details.overflow_hidden().with_animation(
+            SharedString::from(format!("{key}-steps-{}", spec.steps_toggle_seq)),
+            Animation::new(Duration::from_millis(180)).with_easing(crate::ui::motion::ease_out_expo()),
+            move |el, delta| if expanded {
+                el.h(px(full_h * delta)).opacity(delta).relative().top(px(-6.0 * (1.0 - delta)))
+            } else {
+                el.h(px(full_h * (1.0 - delta))).opacity(1.0 - delta).relative().top(px(-6.0 * delta))
+            }));
     }
     card.into_any_element()
 }

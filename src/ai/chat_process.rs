@@ -4,9 +4,9 @@ use serde_json::Value;
 use super::{agent, chat::{AiChat, Msg}};
 use crate::{theme::{is_en, tr, Theme}, ui::ai_process_card::{process_card, ProcessCardSpec, ProcessStage, ProcessStep}};
 
-struct TurnUiState { steps_expanded: bool, notes_expanded: bool, steps_scroll: ScrollHandle, last_step_count: usize }
+struct TurnUiState { steps_expanded: bool, steps_toggle_seq: usize, notes_expanded: bool, steps_scroll: ScrollHandle, last_step_count: usize }
 impl Default for TurnUiState {
-    fn default() -> Self { Self { steps_expanded: true, notes_expanded: false, steps_scroll: ScrollHandle::new(), last_step_count: 0 } }
+    fn default() -> Self { Self { steps_expanded: false, steps_toggle_seq: 0, notes_expanded: false, steps_scroll: ScrollHandle::new(), last_step_count: 0 } }
 }
 thread_local! {
     static TURNS: RefCell<HashMap<String, TurnUiState>> = RefCell::new(HashMap::new());
@@ -94,14 +94,14 @@ pub(super) fn render_messages(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> 
                 ProcessStage::Skill => tr("正在加载工作区技能…", "Loading workspace skill…"), ProcessStage::Scan => tr("正在扫描笔记本目录…", "Scanning notebook pages…"), ProcessStage::Read => tr("正在读取笔记内容…", "Reading notes…"), ProcessStage::Write => tr("正在生成笔记变更计划…", "Creating note change plan…"), _ => tr("正在汇总并生成回答…", "Preparing answer…"),
             }.to_owned() } else { stage = ProcessStage::Done; if is_en() { format!("Completed {} steps", steps.len()) } else { format!("已完成 {} 步执行", steps.len()) } };
             let key = format!("{}-{start}", conv.id);
-            let (steps_expanded, notes_expanded, steps_scroll) = TURNS.with(|states| {
+            let (steps_expanded, steps_toggle_seq, notes_expanded, steps_scroll) = TURNS.with(|states| {
                 let mut states = states.borrow_mut(); let state = states.entry(key.clone()).or_default();
                 if steps.len() > 4 && steps.len() != state.last_step_count { state.steps_scroll.scroll_to_bottom(); }
-                state.last_step_count = steps.len(); (state.steps_expanded, state.notes_expanded, state.steps_scroll.clone())
+                state.last_step_count = steps.len(); (state.steps_expanded, state.steps_toggle_seq, state.notes_expanded, state.steps_scroll.clone())
             });
             let step_key = key.clone(); let notes_key = key.clone();
-            body = body.child(process_card(ProcessCardSpec { key, stage, headline, steps, notes, steps_expanded, notes_expanded, steps_scroll },
-                cx.listener(move |_, _, _, cx| { TURNS.with(|states| { let mut states = states.borrow_mut(); let state = states.entry(step_key.clone()).or_default(); state.steps_expanded = !state.steps_expanded; }); cx.notify(); }),
+            body = body.child(process_card(ProcessCardSpec { key, stage, headline, steps, notes, steps_expanded, steps_toggle_seq, notes_expanded, steps_scroll },
+                cx.listener(move |_, _, _, cx| { TURNS.with(|states| { let mut states = states.borrow_mut(); let state = states.entry(step_key.clone()).or_default(); state.steps_expanded = !state.steps_expanded; state.steps_toggle_seq += 1; }); cx.notify(); }),
                 cx.listener(move |_, _, _, cx| { TURNS.with(|states| { let mut states = states.borrow_mut(); let state = states.entry(notes_key.clone()).or_default(); state.notes_expanded = !state.notes_expanded; }); cx.notify(); })));
         }
         for (offset, message) in turn.iter().enumerate() {
