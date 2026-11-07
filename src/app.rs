@@ -81,36 +81,34 @@ impl Workspace {
         let editor = cx.new(|cx| Editor::new(cx));
         let startup_epoch = editor.read(cx).interaction_epoch();
         let workspace = cx.entity();
-        let context_target = cx.entity();
-        let rename_target = cx.entity();
-        let trash_target = cx.entity();
-        tree.update(cx, |tree, _| tree.on_context(move |target, position, _, cx| {
-            let context_target = context_target.clone();
-            cx.defer(move |cx| context_target.update(cx, |this, cx| this.open_tree_menu(target, position, cx)));
-        }));
-        tree.update(cx, |tree, _| tree.on_open(move |path, in_new_tab, window, cx| {
-            let workspace = workspace.clone();
-            window.defer(cx, move |window, cx| {
-                workspace.update(cx, |this, cx| {
-                    if !this.busy() {
+        let (context_target, rename_target, trash_target, move_target) = (workspace.clone(), workspace.clone(), workspace.clone(), workspace.clone());
+        tree.update(cx, |tree, _| {
+            tree.on_context(move |target, position, _, cx| {
+                let context_target = context_target.clone();
+                cx.defer(move |cx| context_target.update(cx, |this, cx| this.open_tree_menu(target, position, cx)));
+            });
+            tree.on_open(move |path, in_new_tab, window, cx| {
+                let workspace = workspace.clone();
+                window.defer(cx, move |window, cx| {
+                    workspace.update(cx, |this, cx| if !this.busy() {
                         this.close_settings(window, cx);
                         if in_new_tab { this.open_file_in_new_tab(path, cx); } else { this.open_file(path, cx); }
-                    }
+                    });
                 });
             });
-        }));
-        tree.update(cx, |tree, _| tree.on_rename(move |(path, dir), window, cx| {
-            let rename_target = rename_target.clone();
-            window.defer(cx, move |window, cx| {
-                rename_target.update(cx, |this, cx| if !this.busy() { this.start_rename(path, dir, window, cx); });
+            tree.on_rename(move |(path, dir), window, cx| {
+                let rename_target = rename_target.clone();
+                window.defer(cx, move |window, cx| rename_target.update(cx, |this, cx| if !this.busy() { this.start_rename(path, dir, window, cx); }));
             });
-        }));
-        tree.update(cx, |tree, _| tree.on_trash(move |path, _, cx| {
-            let trash_target = trash_target.clone();
-            cx.defer(move |cx| {
-                trash_target.update(cx, |this, cx| if !this.busy() { this.trash(path, cx); });
+            tree.on_trash(move |path, _, cx| {
+                let trash_target = trash_target.clone();
+                cx.defer(move |cx| trash_target.update(cx, |this, cx| if !this.busy() { this.trash(path, cx); }));
             });
-        }));
+            tree.on_move(move |from, dest, _, cx| {
+                let move_target = move_target.clone();
+                cx.defer(move |cx| move_target.update(cx, |this, cx| if !this.busy() { this.move_item(from, dest, cx); }));
+            });
+        });
         let subscription = cx.observe_in(&editor, window, |this, editor, window, cx| {
             let path = editor.read(cx).current_path().map(|path| path.to_owned());
             let loading = editor.read(cx).is_loading();
