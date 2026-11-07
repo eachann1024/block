@@ -257,32 +257,27 @@ impl Run {
     }
 
     async fn settings(&self, cx: &AsyncApp) -> Result<(), String> {
-        self.click_target(cx, "settings-button", "Step 12/12 · 点击打开设置页").await?;
-        self.check(12, self.query(cx, |w, _| w.settings_is_open()), "设置页已打开")?;
-        self.check(12, smoke_overlay::target_center("titlebar-feedback").is_none() && smoke_overlay::target_center("titlebar-ai").is_none(), "设置页顶栏已移除反馈与 AI 按钮")?;
+        self.click_target(cx, "titlebar-feedback", "Step 12/12 · 打开反馈弹窗").await?;
+        let cats_ok = ["feedback-header", "feedback-cat-bug", "feedback-cat-idea", "feedback-cat-other"].iter().all(|id| smoke_overlay::target_center(id).is_some()) && ["feedback-cat-install", "feedback-cat-ask"].iter().all(|id| smoke_overlay::target_center(id).is_none());
+        self.check(12, cats_ok, "反馈弹窗精简为 3 个种类且打开时显示标题块")?;
+        for id in ["feedback-cat-idea", "feedback-message-box"] { self.click_target(cx, id, "Step 12/12 · 选择反馈分类并聚焦输入框").await?; }
+        self.type_text(cx, "Great app").await?; cx.update(|_| smoke_overlay::reset());
+        self.click_target(cx, "feedback-send", "Step 12/12 · 发送反馈").await?;
+        let done_ok = self.wait_until(cx, 1500, |_, _| smoke_overlay::target_center("feedback-done").is_some()).await && smoke_overlay::target_center("feedback-header").is_none() && smoke_overlay::target_center("feedback-close").is_none();
+        self.check(12, done_ok, "发送成功后隐藏顶部标题块与关闭按钮并显示完成态")?; self.click_target(cx, "feedback-done-close", "Step 12/12 · 点击好的关闭反馈").await?;
+        self.check(12, !crate::feedback::is_open(), "反馈弹窗已关闭")?; self.click_target(cx, "settings-button", "Step 12/12 · 点击打开设置页").await?;
+        self.check(12, self.query(cx, |w, _| w.settings_is_open()) && smoke_overlay::target_center("titlebar-feedback").is_none() && smoke_overlay::target_center("titlebar-ai").is_none(), "设置页已打开且顶栏已移除反馈与 AI 按钮")?;
         self.check(12, smoke_overlay::target_center("sidebar-toggle").is_some() && smoke_overlay::target_center("settings-back").is_some_and(|p| f32::from(p.y) >= 40.), "设置页顶栏保留侧栏折叠按钮且内容区右上角显示关闭按钮")?;
-        self.click_target(cx, "settings-tab-folders", "Step 12/12 · 切换到文件夹设置").await?;
-        sleep(cx, 200).await;
-        self.check(12, crate::theme::hide_non_markdown_files(), "新用户默认勾选『不显示 MD 格式以外的文件』")?;
-        let txt_hidden_by_default = self.query(cx, |w, cx| {
-            w.folder.as_ref().is_some_and(|f| !w.tree.read(cx).contains_root_path(&f.join("notes.txt")) && w.tree.read(cx).contains_root_path(&f.join("Welcome.md")))
-        });
-        self.check(12, txt_hidden_by_default, "默认勾选时侧栏隐藏非 MD 文件并保留 MD 文件")?;
+        self.click_target(cx, "settings-tab-folders", "Step 12/12 · 切换到文件夹设置").await?; sleep(cx, 200).await;
+        let txt_hidden_by_default = self.query(cx, |w, cx| w.folder.as_ref().is_some_and(|f| !w.tree.read(cx).contains_root_path(&f.join("notes.txt")) && w.tree.read(cx).contains_root_path(&f.join("Welcome.md"))));
+        self.check(12, crate::theme::hide_non_markdown_files() && txt_hidden_by_default, "默认勾选时侧栏隐藏非 MD 文件并保留 MD 文件")?;
         self.click_target(cx, "folder-hide-non-md", "Step 12/12 · 取消勾选恢复显示所有文件").await?;
-        let txt_shown = self.wait_until(cx, 1500, |w, cx| {
-            !crate::theme::hide_non_markdown_files() && w.folder.as_ref().is_some_and(|f| w.tree.read(cx).contains_root_path(&f.join("notes.txt")))
-        }).await;
-        self.check(12, txt_shown, "取消勾选后侧栏显示非 MD 文件")?;
-        self.click_target(cx, "folder-hide-non-md", "Step 12/12 · 重新勾选不显示 MD 格式以外的文件").await?;
-        let txt_hidden_again = self.wait_until(cx, 1500, |w, cx| {
-            crate::theme::hide_non_markdown_files() && w.folder.as_ref().is_some_and(|f| !w.tree.read(cx).contains_root_path(&f.join("notes.txt")))
-        }).await;
-        self.check(12, txt_hidden_again, "重新勾选后侧栏隐藏非 MD 文件")?;
-        self.click_target(cx, "folder-search-ignore-0", "Step 12/12 · 勾选当前文件夹不参与全局搜索").await?;
-        self.check(12, self.query(cx, |w, _| w.search_folders().is_empty()), "勾选后当前文件夹已从全局搜索排除")?;
-        self.click_target(cx, "folder-search-ignore-0", "Step 12/12 · 取消勾选恢复参与全局搜索").await?;
-        self.check(12, self.query(cx, |w, _| !w.search_folders().is_empty()), "取消勾选后当前文件夹恢复参与全局搜索")?;
-        self.click_target(cx, "settings-back", "Step 12/12 · 点击返回编辑").await?;
+        let txt_shown = self.wait_until(cx, 1500, |w, cx| !crate::theme::hide_non_markdown_files() && w.folder.as_ref().is_some_and(|f| w.tree.read(cx).contains_root_path(&f.join("notes.txt")))).await;
+        self.check(12, txt_shown, "取消勾选后侧栏显示非 MD 文件")?; self.click_target(cx, "folder-hide-non-md", "Step 12/12 · 重新勾选不显示 MD 格式以外的文件").await?;
+        let txt_hidden_again = self.wait_until(cx, 1500, |w, cx| crate::theme::hide_non_markdown_files() && w.folder.as_ref().is_some_and(|f| !w.tree.read(cx).contains_root_path(&f.join("notes.txt")))).await;
+        self.check(12, txt_hidden_again, "重新勾选后侧栏隐藏非 MD 文件")?; self.click_target(cx, "folder-search-ignore-0", "Step 12/12 · 勾选当前文件夹不参与全局搜索").await?;
+        self.check(12, self.query(cx, |w, _| w.search_folders().is_empty()), "勾选后当前文件夹已从全局搜索排除")?; self.click_target(cx, "folder-search-ignore-0", "Step 12/12 · 取消勾选恢复参与全局搜索").await?;
+        self.check(12, self.query(cx, |w, _| !w.search_folders().is_empty()), "取消勾选后当前文件夹恢复参与全局搜索")?; self.click_target(cx, "settings-back", "Step 12/12 · 点击返回编辑").await?;
         self.check(12, self.query(cx, |w, _| !w.settings_is_open()), "返回编辑，设置页已关闭")
     }
 }
