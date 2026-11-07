@@ -1,7 +1,9 @@
 use std::rc::Rc;
-use gpui::{AnyElement, App, CursorStyle, Hsla, IntoElement, MouseButton, ParentElement,
-    SharedString, Styled, Window, div, prelude::*, px, relative};
-use crate::{theme::Theme, ui::{radius, smoke_overlay, tooltip}};
+use gpui::{
+    AnyElement, App, CursorStyle, FontWeight, Hsla, IntoElement, MouseButton, ParentElement,
+    SharedString, Styled, Window, div, prelude::*, px, relative,
+};
+use crate::{theme::Theme, ui::{radius, smoke_overlay}};
 
 #[derive(Clone)]
 pub struct TreemapItem {
@@ -57,20 +59,27 @@ fn tile(item: &TreemapItem, share: f32, total: u128, prefix: &str, selected: Opt
     let on_hover = on_select.clone();
     let on_click = on_select.clone();
     let percent = format_percent(item.bytes, total);
-    let tip = format!("{} · {} B · {} · {}", item.label, item.bytes, percent, item.detail);
+    let ratio = if total == 0 || item.bytes == 0 {
+        0.
+    } else {
+        (item.bytes as f64 / total as f64).clamp(0.03, 1.0) as f32
+    };
     div().id(target.clone()).relative().children(smoke_overlay::probe(target))
-        .w(relative(share)).flex_1().min_w_0().h(px(58.)).px(px(9.)).py(px(5.)).rounded(radius::CONTROL)
-        .border_1().border_color(if active { theme.accent } else { item.color.opacity(0.42) })
-        .bg(item.color.opacity(if active { 0.28 } else { 0.18 }))
-        .flex().flex_col().justify_center().gap(px(2.)).cursor(CursorStyle::PointingHand)
-        .tooltip(tooltip::tooltip(tip))
+        .w(relative(share)).flex_1().min_w_0().h(px(62.)).px(px(11.)).py(px(7.)).rounded(radius::CONTROL)
+        .border_1().border_color(if active { theme.accent } else { theme.hairline })
+        .bg(if active { theme.selected } else { theme.paper })
+        .hover(|s| s.bg(if active { theme.selected } else { theme.hover }).border_color(theme.accent))
+        .flex().flex_col().justify_between().cursor(CursorStyle::PointingHand)
         .on_hover(move |hovered, window, cx| { if *hovered { on_hover(&hover_id, window, cx); } })
         .on_mouse_down(MouseButton::Left, move |_, window, cx| on_click(&click_id, window, cx))
         .child(div().w_full().flex().items_center().gap(px(5.)).text_size(px(13.)).text_color(theme.text)
             .child(div().size(px(7.)).flex_none().rounded_full().bg(item.color))
-            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(item.label.clone()))
-            .child(div().flex_none().child(format_bytes(item.bytes))))
-        .child(div().w_full().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-            .text_size(px(12.)).text_color(theme.text_secondary).child(format!("{percent} · {}", item.detail)))
+            .child(div().flex_1().min_w_0().font_weight(FontWeight(500.)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(item.label.clone()))
+            .child(div().flex_none().font_weight(FontWeight(560.)).child(format_bytes(item.bytes))))
+        .child(div().w_full().flex().items_center().gap(px(8.)).text_size(px(12.)).text_color(theme.text_secondary)
+            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(item.detail.clone()))
+            .child(div().flex_none().child(percent)))
+        .child(div().w_full().h(px(3.)).rounded(radius::PILL).bg(theme.shell).overflow_hidden()
+            .when(ratio > 0., |bar| bar.child(div().h_full().w(relative(ratio)).rounded(radius::PILL).bg(item.color))))
         .into_any_element()
 }

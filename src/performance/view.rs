@@ -1,7 +1,11 @@
 use std::{rc::Rc, time::UNIX_EPOCH};
-use gpui::{AnyElement, Context, FontWeight, MouseButton, Window, div, prelude::*, px};
+use gpui::{
+    AnyElement, Context, CursorStyle, FontWeight, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, Window, div, prelude::*, px, rgba,
+};
 use crate::{app::Workspace, icons::Icon, theme::{Theme, tr}, ui::{
-    icon_button::icon_button, modal, performance_rows::{metric, selection_detail},
+    icon_button::icon_button, modal, motion::modal_enter,
+    performance_rows::{loading_screen, metric, refresh_button},
     performance_treemap::{PerformanceSelect, TreemapItem, format_bytes, treemap}, smoke_overlay, tooltip,
 }};
 use super::{STATE, State};
@@ -10,10 +14,12 @@ pub fn view(window: &mut Window, cx: &mut Context<Workspace>) -> Option<AnyEleme
     let state = STATE.lock().unwrap_or_else(|error| error.into_inner());
     if !state.open { return None; }
     let selected = state.selected.clone();
+    let offset = state.offset;
+    let dragging = state.drag_anchor.is_some();
     let disk = disk_items(&state);
     let processes = process_items(&state);
-    let stats = metrics(&state, &disk);
-    let loading = state.disk_loading;
+    let (stats, scanned_at) = metrics(&state, &disk);
+    let loading = state.disk_loading || state.process.is_none();
     let error = match &state.disk {
         Some(Ok(snapshot)) if snapshot.partial => snapshot.errors.join("\n"),
         Some(Err(error)) => error.clone(), _ => String::new(),
@@ -39,33 +45,77 @@ pub fn view(window: &mut Window, cx: &mut Context<Workspace>) -> Option<AnyEleme
             let _ = owner.update(cx, |_, cx| cx.notify());
         }
     });
-    let (selected_items, total) = if processes.iter().any(|item| Some(item.id.as_str()) == selected.as_deref()) {
-        (&processes, processes.iter().map(|item| item.bytes as u128).sum())
-    } else { (&disk, disk.iter().map(|item| item.bytes as u128).sum()) };
-    let max_h = (window.viewport_size().height - px(40.)).max(px(1.)).min(px(440.));
+    let viewport = window.viewport_size();
+    let max_h = (viewport.height - px(40.)).max(px(1.)).min(px(440.));
+    let drag_limit = (
+        ((f32::from(viewport.width) - 720.).max(0.) * 0.5 + 120.).max(40.),
+        ((f32::from(viewport.height) - 380.).max(0.) * 0.5).max(20.),
+    );
     let card = modal::card("performance-card", px(720.)).relative().max_h(max_h)
+        .left(px(offset.0)).top(px(offset.1))
         .children(smoke_overlay::probe("performance-card"))
-        .child(div().h(px(44.)).flex_none().flex().items_center().px(px(20.)).gap(px(8.))
-            .child(div().flex_1().text_size(px(16.)).font_weight(FontWeight(560.)).child(tr("性能与占用", "Performance & Usage")))
-            .child(modal::action_button("performance-refresh", if loading { tr("统计中…", "Scanning…") } else { tr("重新统计", "Rescan") },
-                cx.listener(|_, _, _, cx| { super::refresh_disk(); cx.notify(); })).w(px(100.)).h(px(28.)))
-            .child(icon_button("performance-close", Icon::Close, true, cx.listener(|_, _, _, cx| { super::close(); cx.notify(); }))))
-        .child(div().id("performance-metrics").relative().h(px(32.)).flex_none().px(px(20.)).flex().items_center().gap(px(14.))
-            .children(smoke_overlay::probe("performance-metrics")).children(stats))
-        .child(div().w_full().px(px(20.)).pb(px(12.)).flex().flex_col().gap(px(6.))
+        .child(div().id("performance-header").h(px(46.)).flex_none().flex().items_center().px(px(20.)).gap(px(8.))
+            .border_b_1().border_color(theme.hairline)
+            .cursor(if dragging { CursorStyle::ClosedHand } else { CursorStyle::OpenHand })
+            .on_mouse_down(MouseButton::Left, cx.listener(|_, event: &MouseDownEvent, _, cx| {
+                super::begin_drag((f32::from(event.position.x), f32::from(event.position.y)));
+                cx.notify();
+            }))
+            .child(div().flex_1().text_size(px(15.)).font_weight(FontWeight(560.)).child(tr("性能与占用", "Performance & Usage")))
+            .child(refresh_button(loading, cx.listener(|_, _, _, cx| { super::refresh_disk(); cx.notify(); })))
+            .child(icon_button("performance-close", Icon::Close, true, cx.listener(|_, _, _, cx| {
+                cx.stop_propagation();
+                super::close();
+                cx.notify();
+            }))))
+        .child(div().id("performance-metrics").relative().h(px(38.)).flex_none().px(px(20.))
+            .bg(theme.sidebar).border_b_1().border_color(theme.hairline)
+            .flex().items_center().justify_between().gap(px(12.))
+            .children(smoke_overlay::probe("performance-metrics"))
+            .child(div().flex().items_center().gap(px(16.)).children(stats))
+            .child(scanned_at))
+        .when(loading, |card| card.child(loading_screen()))
+        .when(!loading, |card| card.child(div().w_full().px(px(20.)).py(px(12.)).flex().flex_col().gap(px(8.))
             .when(!error.is_empty(), |body| body.child(div().id("performance-disk-error").text_size(px(12.)).text_color(theme.text_secondary)
-                .tooltip(tooltip::tooltip(error)).child(tr("文件统计不完整", "File scan incomplete"))))
+                .tooltip(tooltip::tooltip(error)).child(tr("部分文件未能读取", "Some files could not be read"))))
             .when(!process_error.is_empty(), |body| body.child(div().id("performance-process-error").text_size(px(12.)).text_color(theme.text_secondary)
-                .tooltip(tooltip::tooltip(process_error)).child(tr("进程采样不完整", "Process sampling incomplete"))))
+                .tooltip(tooltip::tooltip(process_error)).child(tr("部分进程采样受限", "Some process metrics unavailable"))))
             .child(treemap("performance-map", &disk, 3, selected.as_deref(), select.clone()))
-            .child(treemap("performance-process-map", &processes, 2, selected.as_deref(), select))
-            .child(selection_detail(selected_items, selected.as_deref(), total)));
-    Some(gpui::deferred(modal::backdrop("performance-overlay", card).pt(px(20.))
-        .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| { super::close(); cx.notify(); })))
+            .child(treemap("performance-process-map", &processes, 2, selected.as_deref(), select))));
+    let overlay = div()
+        .id("performance-overlay")
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .occlude()
+        .bg(rgba(0x20242c2e))
+        .flex()
+        .items_center()
+        .justify_center()
+        .p(px(20.))
+        .on_mouse_move(cx.listener(move |_, event: &MouseMoveEvent, _, cx| {
+            if event.pressed_button == Some(MouseButton::Left) {
+                if super::update_drag((f32::from(event.position.x), f32::from(event.position.y)), drag_limit) {
+                    cx.notify();
+                }
+            } else if super::end_drag() {
+                cx.notify();
+            }
+        }))
+        .on_mouse_up(MouseButton::Left, cx.listener(|_, _: &MouseUpEvent, _, cx| {
+            if super::end_drag() { cx.notify(); }
+        }))
+        .on_mouse_up_out(MouseButton::Left, cx.listener(|_, _: &MouseUpEvent, _, cx| {
+            if super::end_drag() { cx.notify(); }
+        }))
+        .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| { super::close(); cx.notify(); }))
+        .child(modal_enter(card, "modal-card-enter"));
+    Some(gpui::deferred(overlay)
         .with_priority(7).into_any_element())
 }
 
-fn metrics(state: &State, disk: &[TreemapItem]) -> Vec<AnyElement> {
+fn metrics(state: &State, disk: &[TreemapItem]) -> (Vec<AnyElement>, AnyElement) {
     let file_size = if matches!(state.disk, Some(Ok(_))) {
         format_bytes(disk.iter().fold(0u64, |sum, item| sum.saturating_add(item.bytes)))
     } else { "—".into() };
@@ -74,12 +124,15 @@ fn metrics(state: &State, disk: &[TreemapItem]) -> Vec<AnyElement> {
     let rss = snapshot.and_then(|snapshot| snapshot.processes.iter().try_fold(0u64, |sum, row| row.rss_bytes.and_then(|value| sum.checked_add(value))));
     let threads = snapshot.and_then(|snapshot| snapshot.processes.iter().try_fold(0u32, |sum, row| row.thread_count.and_then(|value| sum.checked_add(value))));
     let time = state.disk_at.and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-        .map(|duration| crate::page_history::time::format_version_time(duration.as_secs()))
-        .and_then(|value| value.split_whitespace().last().map(str::to_owned)).unwrap_or_else(|| "—".into());
-    vec![metric(tr("文件体积", "Files"), file_size), metric(tr("运行内存", "Memory"), rss.map(format_bytes).unwrap_or_else(|| "—".into())),
+        .map(|duration| crate::page_history::time::format_datetime_ymdhms(duration.as_secs()))
+        .unwrap_or_else(|| "—".into());
+    let left = vec![
+        metric(tr("文件体积", "Storage"), file_size),
+        metric(tr("运行内存", "Memory"), rss.map(format_bytes).unwrap_or_else(|| "—".into())),
         metric("CPU", cpu.map(|value| format!("{value:.1}%")).unwrap_or_else(|| "—".into())),
         metric(tr("线程", "Threads"), threads.map(|value| value.to_string()).unwrap_or_else(|| "—".into())),
-        metric(tr("统计时间", "Scanned"), time)]
+    ];
+    (left, metric(tr("统计时间", "Scanned"), time))
 }
 
 fn disk_items(state: &State) -> Vec<TreemapItem> {
@@ -100,25 +153,41 @@ fn process_items(state: &State) -> Vec<TreemapItem> {
         let cpu = rows.iter().try_fold(0., |sum, row| row.cpu_percent.map(|value| sum + value));
         let threads = rows.iter().try_fold(0u32, |sum, row| row.thread_count.and_then(|value| sum.checked_add(value)));
         let first = rows[0];
-        let uptime = first.uptime.or_else(|| first.started_at.and_then(|t| t.elapsed().ok())).map(|d| format!(" · {}s", d.as_secs())).unwrap_or_default();
-        let detail = format!("{} ({}->{}) · CPU {} · {} {}{}", first.name, first.parent_pid, first.pid,
+        let uptime = first.uptime.or_else(|| first.started_at.and_then(|t| t.elapsed().ok()))
+            .map(|d| format!(" · {}", format_uptime(d.as_secs()))).unwrap_or_default();
+        let who = if main || rows.len() == 1 {
+            format!("PID {}", first.pid)
+        } else {
+            format!("{} {}", rows.len(), tr("个子进程", "processes"))
+        };
+        let detail = format!("{who} · CPU {} · {} {}{}",
             cpu.map(|value| format!("{value:.1}%")).unwrap_or_else(|| "—".into()),
             tr("线程", "Threads"), threads.map(|value| value.to_string()).unwrap_or_else(|| "—".into()), uptime);
         Some(TreemapItem { id: if main { "process-main" } else { "process-children" }.into(),
-            label: if main { tr("主进程", "Main process") } else { tr("子进程", "Child processes") }.into(),
+            label: if main { tr("主进程", "Main Process") } else { tr("子进程", "Child Processes") }.into(),
             bytes, color: super::colors::category(index), detail })
     }).collect()
 }
 
+fn format_uptime(secs: u64) -> String {
+    if secs < 60 {
+        format!("{secs}s")
+    } else if secs < 3600 {
+        format!("{}m {:02}s", secs / 60, secs % 60)
+    } else {
+        format!("{}h {:02}m", secs / 3600, (secs % 3600) / 60)
+    }
+}
+
 fn category_text(id: &str) -> (&'static str, &'static str) {
     match id {
-        "app" => (tr("应用", "Application"), tr("应用程序文件", "Application files")),
-        "notebook_markdown" => (tr("笔记", "Notes"), tr("笔记本中的 Markdown 文件", "Markdown files in notebooks")),
-        "notebook_other" => (tr("附件及其他", "Attachments & other"), tr("笔记本中的其他文件，可能包含工程依赖或构建产物", "Other notebook files, potentially including dependencies or build artifacts")),
-        "history" => (tr("历史版本", "History"), tr("用于恢复笔记的历史文件", "Files used to restore note history")),
-        "ai_sessions" => (tr("AI 会话", "AI sessions"), tr("本地会话与草稿文件", "Local sessions and draft files")),
-        "data_other" => (tr("配置及其他", "Settings & other"), tr("应用数据中的其他文件", "Other application data")),
-        "cache" => (tr("缓存", "Cache"), tr("字体与远程图片等缓存", "Font, remote image, and other caches")),
+        "app" => (tr("应用", "App"), tr("程序本体", "Application bundle")),
+        "notebook_markdown" => (tr("笔记", "Notes"), tr("Markdown 文档", "Markdown documents")),
+        "notebook_other" => (tr("附件", "Attachments"), tr("图片与资源文件", "Images & assets")),
+        "history" => (tr("历史版本", "History"), tr("本地历史快照", "Version snapshots")),
+        "ai_sessions" => (tr("AI 会话", "AI Sessions"), tr("对话记录与草稿", "Chats & drafts")),
+        "data_other" => (tr("配置与数据", "App Data"), tr("设置与运行日志", "Settings & logs")),
+        "cache" => (tr("缓存", "Cache"), tr("字体与图片缓存", "Fonts & images")),
         _ => (tr("其他", "Other"), ""),
     }
 }
