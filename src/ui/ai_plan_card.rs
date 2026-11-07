@@ -21,17 +21,19 @@ pub(crate) fn followup_action(id: impl Into<SharedString>, label: String,
         .child(label).on_mouse_down(MouseButton::Left, click)
 }
 
-pub(crate) fn chat_plan_card(title: String, badge: &'static str, note: String, pending: bool,
-    operations: Vec<AnyElement>, actions: Vec<AnyElement>) -> impl IntoElement {
+pub(crate) fn chat_plan_card(id: impl Into<SharedString>, title: String, badge: &'static str, note: String, pending: bool,
+    open: Option<Box<dyn Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App)>>, actions: Vec<AnyElement>) -> impl IntoElement {
     let theme = crate::ui::ai_theme::theme();
+    let id = ElementId::from(id.into());
     div().relative().children(smoke_overlay::probe("ai-plan-card")).flex().flex_col()
         .rounded(px(10.)).border_1().border_color(theme.btn_border).bg(theme.shell)
-        .child(div().flex().flex_col().gap(px(8.)).p(px(12.))
+        .child(div().id(id.clone()).relative().children(smoke_overlay::probe_for(&id)).flex().flex_col().gap(px(8.)).p(px(12.))
+          .when(open.is_some(), |header| header.cursor(CursorStyle::PointingHand))
+          .when_some(open, |header, click| header.on_mouse_down(MouseButton::Left, move |event, window, cx| click(event, window, cx)))
           .child(div().flex().items_center().gap(px(8.))
             .child(icon(Icon::Sparkles, px(14.), theme.mono_icon_colors(theme.accent)))
             .child(div().flex_1().min_w_0().text_size(px(14.)).font_weight(FontWeight(500.)).child(title)))
-          .when(!note.is_empty(), |card| card.child(div().text_size(px(13.)).line_height(px(20.)).text_color(theme.text_secondary).child(note)))
-          .child(div().flex().flex_wrap().gap(px(6.)).children(operations)))
+          .when(!note.is_empty(), |card| card.child(div().text_size(px(13.)).line_height(px(20.)).text_color(theme.text_secondary).child(note))))
         .child(div().flex().flex_wrap().items_center().justify_between().gap(px(8.)).p(px(10.)).border_t_1().border_color(theme.hairline)
             .child(div().text_size(px(12.5)).text_color(if pending { theme.accent } else { theme.text_secondary }).child(badge))
             .child(div().flex().flex_wrap().gap(px(8.)).children(actions)))

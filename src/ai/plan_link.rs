@@ -96,7 +96,10 @@ impl AiChat {
         let Some(plan) = self.plan_at(at).cloned().filter(|plan| plan.state == agent::PlanState::Pending) else { return };
         let Some(op) = plan.ops.get(op_idx) else { return };
         let Some(conv_id) = self.current else { return };
-        let Some(editor) = self.editor.as_ref().and_then(|editor| editor.upgrade()) else { return };
+        let editor = self.editor.as_ref().and_then(|editor| editor.upgrade())
+            .or_else(|| crate::search::window::main_window(cx).map(|(_, workspace)| workspace.read(cx).editor.clone()));
+        let Some(editor) = editor else { return };
+        self.editor = Some(editor.downgrade());
         let result = (|| -> Result<_, String> {
             let root = plan.root.as_ref().ok_or("Plan has no notebook root")?;
             let context = self.context_for_root(root, cx)?;
@@ -131,9 +134,10 @@ impl AiChat {
                 diff_mode: diff, chat: cx.entity().downgrade(), editor: editor.downgrade() })
         })();
         let link = match result { Ok(link) => link, Err(error) => { self.error = Some(error); cx.notify(); return; } };
-        let path = link.path.clone(); let index = link.block_range.start; let is_create = link.is_create;
+        let path = link.path.clone(); let range = link.block_range.clone(); let is_create = link.is_create;
         clear_active(cx, true);
         ACTIVE.with(|active| *active.borrow_mut() = Some(link));
+        if self.fullscreen { self.fullscreen = false; }
         if is_create {
             editor.update(cx, |_, cx| cx.notify());
             cx.notify();
@@ -144,27 +148,37 @@ impl AiChat {
                 workspace.update(cx, |workspace, cx| workspace.open_file_with_mode(path.clone(), false, true, cx));
             } else { editor.update(cx, |editor, cx| editor.open(path.clone(), cx)); }
         }
-        reveal_when_ready(editor, path, index, cx);
+        reveal_when_ready(editor, path, range, cx);
         cx.notify();
+    }
+
+    pub(in crate::editor::ai) fn link_latest_pending_plan(&mut self, cx: &mut Context<Self>) {
+        let at = self.conv().and_then(|conv| {
+            conv.messages.iter().enumerate().rev()
+                .find(|(_, msg)| msg.plan.as_ref().is_some_and(|plan| plan.state == agent::PlanState::Pending && !plan.ops.is_empty()))
+                .map(|(idx, _)| idx)
+        });
+        if let Some(at) = at { self.link_plan(at, 0, false, cx); }
     }
 }
 
-fn reveal_when_ready(editor: Entity<Editor>, path: PathBuf, index: usize, cx: &mut App) {
+fn reveal_when_ready(editor: Entity<Editor>, path: PathBuf, range: Range<usize>, cx: &mut App) {
     cx.spawn(async move |cx| {
         for _ in 0..40 {
-            cx.background_executor().timer(Duration::from_millis(50)).await;
             let ready = cx.update(|cx| editor.update(cx, |editor, cx| {
                 if editor.current_path() != Some(path.as_path()) || editor.is_loading() { return false; }
-                let index = index.min(editor.doc.blocks.len().saturating_sub(1));
+                let index = range.start.min(editor.doc.blocks.len().saturating_sub(1));
                 while let Some(heading) = editor.enclosing_folded_heading(index) {
                     let id = editor.doc.blocks[heading].id; editor.folded.remove(&id);
                 }
                 if editor.list.item_count() != editor.doc.blocks.len() { editor.list.reset(editor.doc.blocks.len()); }
-                editor.list.remeasure_items(index..index + 1);
+                let end = range.end.min(editor.doc.blocks.len()).max(index + 1);
+                editor.list.remeasure_items(index..end);
                 crate::ui::scrollbar::reveal_item(&editor.list, index, px(80.));
                 cx.notify(); true
             }));
             if ready { break; }
+            cx.background_executor().timer(Duration::from_millis(50)).await;
         }
     }).detach();
 }
