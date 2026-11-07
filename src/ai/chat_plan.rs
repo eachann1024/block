@@ -73,6 +73,10 @@ impl AiChat {
                 }
             }
         }
+        if work.iter().any(|(_, before, after)| !agent::markdown_preflight::check(before.as_deref(), after)) {
+            self.error = Some(crate::theme::tr("所选修改包含新增的不支持 Markdown 结构，请调整后重试。", "The selected changes introduce unsupported Markdown. Please revise them.").into());
+            cx.notify(); return;
+        }
         plan.receipts.clear();
         for (page, before, after) in work {
             if before.as_deref() == Some(after.as_str()) || (before.is_none() && after.is_empty()) { continue; }

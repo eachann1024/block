@@ -8,6 +8,7 @@ use super::model::{Block, Doc, Kind, Numbering};
 #[path = "markdown_containers.rs"] mod containers;
 #[path = "markdown_raw_guard.rs"] mod raw_guard;
 #[path = "markdown_boundaries.rs"] mod boundaries;
+#[path = "markdown_list.rs"] mod list;
 
 pub fn strip_frontmatter(source: &str) -> &str { blocks::strip_frontmatter(source) }
 pub fn rebuild_table_source(table: &mut super::model::Table) { table::rebuild(table) }
@@ -36,6 +37,10 @@ pub fn parse(source: &str) -> Doc {
         }
         if let Some((block, count, bytes)) = containers::parse_callout(id, &lines[index..]) {
             offset += bytes; index += count; result.push(block); continue;
+        }
+        if let Some((items, count)) = list::parse(id, &lines[index..]) {
+            offset += lines[index..index + count].iter().map(|line| line.len()).sum::<usize>();
+            index += count; result.extend(items); continue;
         }
         if let Some(count) = boundaries::unsupported(&lines[index..]) {
             let original = lines[index..index + count].concat();
@@ -135,21 +140,22 @@ pub fn serialize(doc: &Doc) -> String {
     let mut out = String::new(); let mut numbering = Numbering::default();
     let blocks: Vec<&Block> = doc.blocks.iter().collect();
     let nexts = next_non_blank(&blocks);
+    let mut list_padding = None;
     let mut at = 0;
     while at < blocks.len() {
         let block = blocks[at];
         let number = numbering.next(block);
-        if !out.is_empty() && !out.ends_with('\n') { out.push('\n'); }
+        let same_line = at > 0 && same_line_list_code(blocks[at - 1], block);
+        if !same_line && !out.is_empty() && !out.ends_with('\n') { out.push('\n'); }
         // Standard Markdown needs a blank line here (see `needs_separator`).
-        if at > 0 && needs_separator(blocks[at - 1], nexts[at - 1]) && !out.ends_with("\n\n") { out.push('\n'); }
+        if at > 0 && (if let Some(code) = &block.meta.list_code { code.blank_before }
+            else if blocks[at - 1].meta.list_code.is_some() && is_list(block) { false }
+            else { needs_separator(blocks[at - 1], nexts[at - 1]) }) && !out.ends_with("\n\n") { out.push('\n'); }
         let is_first = at == 0;
         at += 1;
         if let Some(table) = &block.meta.table { table::serialize(table, &mut out); continue; }
         if block.meta.raw_source.is_some() { out.push_str(&block.text); continue; }
         if let Some(callout) = block.meta.callout { containers::serialize_callout(block, callout, &mut out); continue; }
-        if block.meta.html_paragraph.is_some() || (block.kind == Kind::Paragraph && block.meta.indent > 0) {
-            paragraph::serialize(block, &mut out); continue;
-        }
         if let Some(language) = &block.meta.code_language {
             if blocks::serialize_frontmatter(block, is_first, &mut out) { continue; }
             let language = if language == "yaml-frontmatter" { "yaml" } else { language.as_str() };
@@ -159,13 +165,25 @@ pub fn serialize(doc: &Doc) -> String {
                 if ch == marker { run += 1; longest = longest.max(run); } else { run = 0; }
             }
             let fence = marker.to_string().repeat(3.max(longest+1));
-            let padding = " ".repeat(block.meta.indent.min(3));
-            out.push_str(&padding); out.push_str(&fence); out.push_str(language); out.push('\n');
+            let padding = if let Some(code) = &block.meta.list_code {
+                " ".repeat(list_padding.filter(|(indent, _)| *indent == code.parent_indent)
+                    .map_or(code.parent_indent + 2, |(_, width)| width) + code.extra_indent)
+            } else { " ".repeat(block.meta.indent.min(3)) };
+            if !same_line { out.push_str(&padding); }
+            out.push_str(&fence); out.push_str(language); out.push('\n');
             if !block.text.is_empty() {
                 for line in block.text.split('\n') { out.push_str(&padding); out.push_str(line); out.push('\n'); }
             } else if block.meta.code_empty_line { out.push_str(&padding); out.push('\n'); }
             out.push_str(&padding); out.push_str(&fence); out.push('\n'); continue;
         }
+        if block.meta.html_paragraph.is_some() || (block.kind == Kind::Paragraph && block.meta.indent > 0) {
+            paragraph::serialize(block, &mut out); continue;
+        }
+        list_padding = match block.kind {
+            Kind::Bullet | Kind::Todo => Some((block.meta.indent, block.meta.indent + 2)),
+            Kind::Numbered => Some((block.meta.indent, block.meta.indent + number.unwrap_or(1).to_string().len() + 2)),
+            _ => None,
+        };
         out.push_str(&" ".repeat(block.meta.indent));
         if let Some(level) = block.meta.heading_level.filter(|level| (4..=6).contains(level)) {
             out.push_str(&"#".repeat(level as usize)); out.push(' ');
@@ -178,7 +196,10 @@ pub fn serialize(doc: &Doc) -> String {
                 Kind::Todo => out.push_str(if block.checked { "- [x] " } else { "- [ ] " }),
             }
         }
-        inline::serialize(block, &mut out); out.push('\n');
+        inline::serialize(block, &mut out);
+        if !blocks.get(at).is_some_and(|next| same_line_list_code(block, next)) {
+            out.push('\n');
+        }
     }
     out
 }
@@ -222,6 +243,10 @@ fn required_separator(this: &Block, next: Option<&Block>) -> bool {
     next.is_some_and(|next| pipe || is_text(next) || is_pipe(next) || (image && !is_image(next)))
 }
 fn is_list(block: &Block) -> bool { is_plain(block) && matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) }
+fn same_line_list_code(parent: &Block, child: &Block) -> bool {
+    is_list(parent) && parent.text.is_empty() && child.meta.code_language.is_some()
+        && child.meta.list_code.as_ref().is_some_and(|code| code.same_line && code.parent_indent == parent.meta.indent)
+}
 /// Conventional (not required) blank line after text, headings, quotes, code, dividers/source and a list's last item,
 /// so it is not read back as an empty paragraph; `meta.tight` keeps sources that omitted it.
 fn optional_separator(this: &Block, next: Option<&Block>) -> bool {

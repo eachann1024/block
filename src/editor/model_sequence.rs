@@ -6,6 +6,9 @@ type Link = Option<Arc<Node>>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Run { indent: usize, count: u64, start: u64 }
 fn single_run(b: &Block) -> Option<Run> {
+    if let Some(code) = &b.meta.list_code {
+        return Some(Run { indent: code.parent_indent.saturating_add(1), count: 0, start: 0 });
+    }
     matches!(b.kind, Kind::Numbered | Kind::Bullet | Kind::Todo).then_some(Run {
         indent: b.meta.indent, count: u64::from(b.kind == Kind::Numbered), start: b.meta.list_start.unwrap_or(1),
     })
@@ -141,6 +144,10 @@ impl Blocks {
             if !full && n.key>=key {return scan(&n.left,key,false,indent,state);}
             if scan(&n.right,key,full,indent,state) {return true;}
             let b=&n.block;
+            if let Some(code)=&b.meta.list_code {
+                if code.parent_indent>=indent {return scan(&n.left,key,true,indent,state);}
+                return true;
+            }
             if !matches!(b.kind,Kind::Numbered|Kind::Bullet|Kind::Todo) || b.meta.indent<indent {return true;}
             if b.meta.indent==indent {
                 if b.kind!=Kind::Numbered {return true;}

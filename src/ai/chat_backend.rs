@@ -121,6 +121,7 @@ impl AiChat {
         let native_session_id = conversation.native_session_id.clone();
         let mut message = self.sent_draft.as_ref().and_then(|draft| conversation.messages.get(draft.message_index))
             .map(|message| format!("{}{}", message.content, message.context.as_deref().unwrap_or(""))).unwrap_or_default();
+        message.push_str("\n\n"); message.push_str(agent::MARKDOWN_SKILL);
         message.push_str("\n\nWhen creating or editing notes, put note content only in the plan tool; reply briefly without reproducing the note or diff. For ordinary questions and code examples, answer normally.");
         self.serial += 1;
         let serial = self.serial;

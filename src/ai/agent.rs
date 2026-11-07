@@ -4,17 +4,20 @@
 //! 笔记变更计划 card that the user applies (and can 撤回) from the chat panel.
 use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
+#[path = "markdown_preflight.rs"] pub(super) mod markdown_preflight;
 
 pub(super) const AGENTS: &str = include_str!("skills/AGENTS.md");
+pub(super) const MARKDOWN_SKILL: &str = include_str!("skills/markdown.md");
 /// (id, description, SKILL.md, tools the skill unlocks) — thinkly `skills.ts`.
 pub(super) const SKILLS: &[(&str, &str, &str, &[&str])] = &[
     ("createNoote", "在本轮确定的笔记本和目录新建页面", include_str!("skills/createNoote.md"), &["listPages", "readPage", "executeBatchPlan"]),
     ("updateNote", "改写、追加、补充或重命名当前页", include_str!("skills/updateNote.md"), &["readPage", "executeBatchPlan"]),
     ("searchNotes", "跨笔记本和目录搜索并读取页面", include_str!("skills/searchNotes.md"), &["listPages", "searchNotes", "readPage"]),
     ("chat", "仅解释或建议，不改笔记", include_str!("skills/chat.md"), &["readPage"]),
+    ("markdown", "创建或修改笔记时的 Markdown 指引", MARKDOWN_SKILL, &["executeBatchPlan"]),
 ];
 
-const BATCH_DESC: &str = "准备并处理笔记变更计划。修改已有页面会生成审批卡片，用户确认后才写入；纯新建自动写入。局部修改必须用 search_replace（oldString 须为 readPage 返回的精确片段，newString 可为空表示删除该片段，replaceAll 可选），整页重写才用 edit，新建用 create。参数格式：{title:\"整理笔记\",summary:\"更新账号页\",operations:[{type:\"search_replace\",pageId:\"page-1\",oldString:\"旧片段\",newString:\"新片段\"}]}。返回后停止，不要重复提交。";
+const BATCH_DESC: &str = "准备并处理笔记变更计划。修改已有页面会生成审批卡片，用户确认后才写入；纯新建自动写入。局部修改必须用 search_replace（oldString 须为 readPage 返回的精确片段，newString 可为空表示删除该片段，replaceAll 可选），整页重写才用 edit，新建用 create。参数格式：{title:\"整理笔记\",summary:\"更新账号页\",operations:[{type:\"search_replace\",pageId:\"page-1\",oldString:\"旧片段\",newString:\"新片段\"}]}。计划生成后停止，不要重复提交；结构预检失败可修正并重试一次。同页操作按顺序模拟。";
 
 fn tool(name: &str, desc: &str, params: Value) -> Value {
     json!({ "type": "function", "function": { "name": name, "description": desc, "parameters": params } })
@@ -184,12 +187,6 @@ fn plan(a: &Value, ctx: &Ctx) -> (Value, Option<Plan>) {
         let kind = match arg(o, "type") {
             "search_replace" => {
                 let old = arg(o, "oldString").to_owned();
-                match ctx.read(&page) {
-                    None => return (json!({ "error": format!("找不到页面：{page}") }), None),
-                    Some(md) if old.is_empty() || !md.contains(&old) =>
-                        return (json!({ "error": "oldString 不是页面中的精确片段，请先 readPage 再提交。" }), None),
-                    _ => {}
-                }
                 OpKind::Replace { old, new: arg(o, "newString").to_owned(), all: o.get("replaceAll").and_then(|b| b.as_bool()).unwrap_or(false) }
             }
             "edit" => OpKind::Edit { markdown: arg(o, "markdown").to_owned() },
@@ -213,6 +210,7 @@ fn plan(a: &Value, ctx: &Ctx) -> (Value, Option<Plan>) {
             }
         }
     }
+    if let Err(error) = markdown_preflight::simulate(&ops, &expected) { return (error, None); }
     let p = Plan { title: arg(a, "title").to_owned(), summary: arg(a, "summary").to_owned(), ops,
         state: PlanState::Pending, receipts: Vec::new(), expected: Some(expected), root: Some(ctx.root.clone()) };
     (json!({ "status": "awaiting_approval", "message": "方案已生成，尚未修改笔记。等待用户在卡片中确认，不要重复提交。" }), Some(p))
@@ -223,7 +221,7 @@ pub(super) fn apply_op(op: &Op, current: Option<&str>) -> Option<String> {
     match &op.kind {
         OpKind::Replace { old, new, all } => {
             let md = current?;
-            if !md.contains(old.as_str()) { return None; }
+            if old.is_empty() || !md.contains(old.as_str()) { return None; }
             Some(if *all { md.replace(old.as_str(), new) } else { md.replacen(old.as_str(), new, 1) })
         }
         OpKind::Edit { markdown } => current.map(|_| markdown.clone()),
