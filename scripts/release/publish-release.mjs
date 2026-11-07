@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { assertReleaseAsset, RELEASE_ASSETS } from "./checksum.mjs";
+import { assertReleaseAsset, RELEASE_ASSETS } from "./allowed-assets.mjs";
 import {
   getReleases,
   gh,
