@@ -163,7 +163,7 @@ impl Workspace {
         if ready { self.run_file_op(cx); }
         else if !self.editor.read(cx).is_busy() {
             self.file_op = None;
-            self.notice = tr("操作已取消：当前笔记未能保存，请处理编辑器中的错误后重试", "Operation canceled: could not save current note").into();
+            self.flash(tr("操作已取消：当前笔记未能保存，请处理编辑器中的错误后重试", "Operation canceled: could not save current note").into(), cx);
         } else {
             self.notice = tr("正在保存当前笔记…", "Saving current note…").into();
         }
@@ -220,7 +220,7 @@ impl Workspace {
                         }
                         this.flash(notice.into(), cx);
                     }
-                    Err(error) => { crate::log::error(&format!("file operation failed: {error}")); this.notice = format!("{}: {error}", tr("操作失败", "Operation failed")); }
+                    Err(error) => { crate::log::error(&format!("file operation failed: {error}")); this.flash(format!("{}: {error}", tr("操作失败", "Operation failed")), cx); }
                 }
                 this.refresh(cx);
             });
@@ -270,7 +270,7 @@ impl Workspace {
                             this.flash(tr("笔记已创建", "Note created").into(), cx);
                         }
                     }
-                    Err(error) => { crate::log::error(&format!("failed to create item: {error}")); this.notice = format!("{}: {error}", tr("新建失败", "Failed to create")); this.refresh(cx); }
+                    Err(error) => { crate::log::error(&format!("failed to create item: {error}")); this.flash(format!("{}: {error}", tr("新建失败", "Failed to create")), cx); this.refresh(cx); }
                 }
             });
         }).detach();
