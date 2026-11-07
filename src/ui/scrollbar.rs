@@ -71,6 +71,19 @@ pub fn scroll_clamped(list: &ListState, delta: Pixels) {
     list.set_offset_from_scrollbar(point(px(0.), list.scroll_px_offset_for_scrollbar().y - delta));
 }
 
+/// GPUI's div wheel listener applies the delta before `on_scroll` callbacks and
+/// normally clamps it in the next prepaint. Contain it in the same event instead,
+/// so continued trackpad motion at a menu edge never leaves an overscrolled state.
+pub fn contain_wheel(handle: &gpui::ScrollHandle) -> impl Fn(&ScrollEvent, &mut Window, &mut App) + 'static {
+    let handle = handle.clone();
+    move |_, _, cx| {
+        let offset = handle.offset();
+        let max = handle.max_offset();
+        handle.set_offset(point(offset.x.clamp(-max.x, px(0.)), offset.y.clamp(-max.y, px(0.))));
+        cx.stop_propagation();
+    }
+}
+
 /// Wheel handler for the empty strips beside a centred list. The list scrolls itself while the
 /// pointer is over it, so only events outside its bounds are forwarded.
 pub fn forward_wheel(list: &ListState) -> impl Fn(&ScrollEvent, &mut Window, &mut App) + 'static {

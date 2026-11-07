@@ -78,3 +78,5 @@ pub(crate) use format_cmds::open_external_url;
 pub use keys::bind_keys;
 pub use view::Editor;
 pub use zoom::init_zoom;
+
+mod scroll_smoke;
