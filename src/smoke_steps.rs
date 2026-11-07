@@ -69,8 +69,7 @@ impl Run {
         self.check(14, self.query(cx, |_, cx| !crate::editor::ai::chat::is_fullscreen(cx)), "已切回 AI 侧栏模式")?;
         self.verify_backends_and_settings(cx).await?;
         self.click_target(cx, "ai-deck-trigger", "Step 14/14 · 打开底部合一 Agent 命令舱").await?;
-        self.click_target(cx, "ai-backend-Dsh", "Step 14/14 · 切换 dsh 并展开原位配置").await?;
-        self.click_target(cx, "dsh-auth-block", "Step 14/14 · 选择复用 Block 配置").await?;
+        self.click_target(cx, "ai-backend-Dsh", "Step 14/14 · 切换 dsh 后端").await?;
         self.click_target(cx, "ai-backend-Builtin", "Step 14/14 · 切回内置 AI 后端").await?;
         self.click_target(cx, "ai-deck-trigger", "Step 14/14 · 收起合一 Agent 命令舱").await?;
         self.click_target(cx, "ai-chat-history", "Step 14/14 · 展开顶栏历史会话列表").await?;

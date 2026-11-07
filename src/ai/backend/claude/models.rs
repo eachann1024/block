@@ -17,7 +17,7 @@ pub(crate) fn list() -> Result<Vec<super::super::ModelOption>, String> {
                 let models = frame.pointer("/response/response/models").and_then(Value::as_array).map(|models| models.iter().filter_map(|model| {
                     let value = model.get("value").and_then(Value::as_str)?;
                     let label = model.get("displayName").and_then(Value::as_str).unwrap_or(value);
-                    Some(super::super::ModelOption { value: if value == "default" { String::new() } else { value.to_owned() }, label: label.to_owned() })
+                    Some(super::super::ModelOption { value: value.to_owned(), label: label.to_owned() })
                 }).collect());
                 let _ = tx.send(models.ok_or_else(|| "Claude did not return a model list".to_owned())); return;
             }

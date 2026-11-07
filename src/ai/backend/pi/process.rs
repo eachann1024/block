@@ -92,9 +92,12 @@ pub(super) fn start(
     let context = serde_json::to_string(&request.context).map_err(io_error)?;
     let prompt = format!("{}\n\nBlock context: {}", request.message, context);
     let mut command = cli_env::command("pi");
-    let args = request.config.get("launchArgs").and_then(Value::as_str).unwrap_or(super::super::BackendKind::Pi.default_launch_args());
+    command.args(["--mode", "json"]);
+    if request.config.get("fullPermissions").and_then(Value::as_bool) == Some(true) {
+        command.arg("--approve");
+    }
     command
-        .args(args.split_whitespace()).arg("--session-dir")
+        .arg("--session-dir")
         .arg(&storage)
         .arg("-e")
         .arg(&ext_file)
