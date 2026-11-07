@@ -44,7 +44,23 @@ pub fn close() -> bool {
     true
 }
 
+pub fn open_from_app(cx: &mut gpui::App) {
+    cx.defer(|cx| {
+        crate::about::close();
+        crate::search::window::activate_main_window(cx);
+        if let Some((Some(handle), workspace)) = crate::search::window::main_window(cx) {
+            let _ = handle.update(cx, |_, window, cx| {
+                workspace.update(cx, |workspace, cx| {
+                    workspace.focus_root(window, cx);
+                    open(workspace.performance_folders(), cx);
+                });
+            });
+        }
+    });
+}
+
 pub fn open(notebooks: Vec<PathBuf>, cx: &mut Context<Workspace>) {
+    crate::about::close();
     if STATE.lock().unwrap_or_else(|e| e.into_inner()).open { return; }
     let generation = GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
     let cancel = Arc::new(AtomicBool::new(false));

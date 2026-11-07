@@ -3,7 +3,7 @@
 use gpui::{App, KeyBinding, Menu, MenuItem, OsAction, SystemMenuType, actions};
 use crate::{app, editor, quick, theme::tr};
 
-actions!(menu_bar, [ShowAbout, HideApp, HideOthers, ShowAll, Minimize, Zoom, ToggleFullScreen]);
+actions!(menu_bar, [ShowAbout, ShowPerformance, HideApp, HideOthers, ShowAll, Minimize, Zoom, ToggleFullScreen]);
 
 pub fn init(cx: &mut App) {
     #[cfg(target_os = "macos")]
@@ -12,8 +12,12 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("alt-cmd-h", HideOthers, None),
         KeyBinding::new("cmd-m", Minimize, None),
         KeyBinding::new("ctrl-cmd-f", ToggleFullScreen, None),
+        KeyBinding::new("cmd-shift-m", ShowPerformance, None),
     ]);
+    #[cfg(not(target_os = "macos"))]
+    cx.bind_keys([KeyBinding::new("ctrl-shift-m", ShowPerformance, None)]);
     cx.on_action(|_: &ShowAbout, cx: &mut App| crate::about::open(cx));
+    cx.on_action(|_: &ShowPerformance, cx: &mut App| crate::performance::open_from_app(cx));
     cx.on_action(|_: &HideApp, cx: &mut App| cx.hide());
     cx.on_action(|_: &HideOthers, cx: &mut App| cx.hide_other_apps());
     cx.on_action(|_: &ShowAll, cx: &mut App| cx.unhide_other_apps());
@@ -54,6 +58,7 @@ pub fn apply(cx: &mut App) {
             name: "Block".into(),
             items: vec![
                 MenuItem::action(tr("关于 Block", "About Block"), ShowAbout),
+                MenuItem::action(tr("性能与占用", "Performance & Usage"), ShowPerformance),
                 sep(),
                 MenuItem::action(tr("偏好设置…", "Settings…"), app::OpenSettings),
                 sep(),
