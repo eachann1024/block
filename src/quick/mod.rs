@@ -6,6 +6,7 @@ mod panel;
 mod save;
 mod store;
 mod view;
+pub(crate) mod window_smoke;
 
 use std::{sync::atomic::{AtomicU32, Ordering}, time::Duration};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::HotKey};
@@ -14,11 +15,11 @@ use gpui::{
     WindowHandle, WindowKind, WindowOptions, actions, point, px, size,
 };
 use crate::{editor::view::{Editor, EditorAction}, files::state::SavedWindowBounds};
-use panel::{configure_quick_panel, prepare_quick_summon};
+use panel::configure_quick_panel;
 pub(crate) use panel::{
-    is_main_window, is_main_window_visible, is_quick_panel_active, is_quick_panel_visible,
+    is_quick_panel_active, is_quick_panel_visible,
     mark_quick_triggered, mark_search_triggered, order_out_quick_panel,
-    record_search_triggered, show_native_main_window,
+    record_search_triggered,
 };
 pub use panel::parse_hotkey;
 use view::QuickView;
@@ -134,7 +135,7 @@ pub fn init(saved_bounds: Option<SavedWindowBounds>, cx: &mut App) {
     cx.on_action(|_: &ev::SelectAll, cx: &mut App| { let _ = dispatch_editor_action(&EditorAction::SelectAll, cx); });
     cx.on_action(|_: &ev::Undo, cx: &mut App| { let _ = dispatch_editor_action(&EditorAction::Undo, cx); });
     cx.on_action(|_: &ev::Redo, cx: &mut App| { let _ = dispatch_editor_action(&EditorAction::Redo, cx); });
-    start_hotkey(cx);
+    if !crate::smoke::is_worker() { start_hotkey(cx); }
 }
 
 /// Flush the quick-note editor on quit; false when the final checkpoint could not be written.
@@ -158,10 +159,9 @@ pub fn toggle(cx: &mut App) {
                 return;
             }
             Ok(_) => {
-                prepare_quick_summon();
                 configure_quick_panel();
                 let _ = handle.update(cx, |_, window, cx| {
-                    window.activate_window();
+                    if !crate::smoke::is_worker() { window.activate_window(); }
                     view.update(cx, |v, cx| v.switch(v.meta.active, window, cx));
                 });
                 return;
@@ -177,7 +177,6 @@ pub fn toggle(cx: &mut App) {
 }
 
 fn open(cx: &mut App) {
-    prepare_quick_summon();
     let saved_bounds = cx
         .try_global::<QuickState>()
         .and_then(|s| s.bounds)
@@ -190,7 +189,7 @@ fn open(cx: &mut App) {
         WindowOptions {
             window_bounds: Some(window_bounds), display_id,
             window_min_size: Some(min_size), kind: WindowKind::PopUp,
-            focus: true, show: true, is_movable: true, is_minimizable: false, is_resizable: true,
+            focus: !crate::smoke::is_worker(), show: !crate::smoke::is_worker(), is_movable: true, is_minimizable: false, is_resizable: true,
             titlebar: Some(TitlebarOptions {
                 title: Some(crate::theme::tr("速记", "Quick Note").into()),
                 appears_transparent: true,

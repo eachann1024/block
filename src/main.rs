@@ -30,6 +30,7 @@ use gpui::{
 };
 
 mod window_close;
+mod window_visibility;
 actions!(block, [Quit, ExportImage]);
 
 pub fn sync_ime_cursor_area(_x: f32, _y: f32, _h: f32) {}
@@ -123,7 +124,7 @@ fn main() {
             KeyBinding::new("ctrl-q", Quit, None),
         ]);
         editor::bind_keys(cx);
-        if !smoke::is_worker() { quick::init(saved_quick_bounds, cx); }
+        quick::init(saved_quick_bounds, cx);
         menu_bar::init(cx);
         let min_size = size(px(760.), px(480.));
         let (window_bounds, display_id) = window_bounds::resolve_window_bounds(
