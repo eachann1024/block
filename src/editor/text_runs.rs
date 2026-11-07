@@ -1,6 +1,6 @@
 //! Shared rich-text runs for ordinary blocks and table cell shaping.
-use gpui::{Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, Hsla, Rgba,
-    StrikethroughStyle, TextRun, UnderlineStyle, px};
+use gpui::{Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, HighlightStyle, Hsla, Rgba,
+    StrikethroughStyle, StyledText, TextRun, UnderlineStyle, px, rgb};
 use super::model::{Block, MarkKind};
 
 pub(crate) fn css<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
@@ -178,3 +178,38 @@ pub(super) fn paint_tinted_lines(layout: &super::view::layout::TextLayout, color
         y += h;
     }
 }
+
+pub(crate) fn styled_text(block: &Block) -> StyledText {
+    let mut points = vec![0, block.text.len()];
+    for span in &block.spans { points.extend([span.start, span.end]); }
+    for tag in &block.meta.inline { points.extend([tag.start, tag.end]); }
+    points.retain(|at| *at <= block.text.len() && block.text.is_char_boundary(*at));
+    points.sort_unstable(); points.dedup();
+    let (mut highlights, dark) = (Vec::new(), crate::theme::is_dark());
+    for range in points.windows(2).map(|pair| pair[0]..pair[1]).filter(|r| !r.is_empty()) {
+        let (mut style, mut changed) = (HighlightStyle::default(), false);
+        for span in block.spans.iter().filter(|s| s.start <= range.start && range.end <= s.end) {
+            if span.marks.contains(&MarkKind::Bold) { style.font_weight = Some(FontWeight(650.)); changed = true; }
+            if span.marks.contains(&MarkKind::Italic) { style.font_style = Some(FontStyle::Italic); changed = true; }
+            if span.marks.contains(&MarkKind::Strike) { style.strikethrough = Some(StrikethroughStyle { color: None, thickness: px(1.) }); changed = true; }
+            if span.marks.contains(&MarkKind::Code) { style.background_color = Some(rgb(if dark { 0x2c2c2e } else { 0xf1efe9 }).into()); changed = true; }
+        }
+        for tag in block.meta.inline.iter().filter(|t| t.start <= range.start && range.end <= t.end) {
+            if tag.name == "a" { style.color = Some(rgb(0x256abf).into()); changed = true; }
+            if matches!(tag.name.as_str(), "u" | "ins") || css(&tag.attrs, "text-decoration").is_some_and(|v| v.contains("underline")) {
+                style.underline = Some(UnderlineStyle { color: None, thickness: px(1.), wavy: false }); changed = true;
+            }
+            if css(&tag.attrs, "text-decoration").is_some_and(|v| v.contains("line-through")) {
+                style.strikethrough = Some(StrikethroughStyle { color: style.color, thickness: px(1.) }); changed = true;
+            }
+            if tag.name == "mark" && style.background_color.is_none() { style.background_color = color("yellow", true); changed = true; }
+            if let Some(fg) = attribute_color(&tag.attrs, false) { style.color = Some(fg); changed = true; }
+            if let Some(bg) = attribute_color(&tag.attrs, true) { style.background_color = Some(bg); changed = true; }
+            if matches!(css(&tag.attrs, "font-weight"), Some("bold" | "600" | "700" | "800" | "900")) { style.font_weight = Some(FontWeight(650.)); changed = true; }
+            if css(&tag.attrs, "font-style") == Some("italic") { style.font_style = Some(FontStyle::Italic); changed = true; }
+        }
+        if changed { highlights.push((range, style)); }
+    }
+    StyledText::new(block.text.clone()).with_highlights(highlights)
+}
+
