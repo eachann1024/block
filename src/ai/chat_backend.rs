@@ -276,22 +276,9 @@ impl AiChat {
         if let Some(plan) = plan {
             if !request.begin_side_effect() { return false; }
             super::super::chat_process::record_tool(self, &request, &result, false, cx);
-            let auto = plan.ops.iter().all(|op| matches!(op.kind, agent::OpKind::Create { .. }));
             self.push_msg(Msg { role: "tool".into(), content: result.to_string(), tool_call_id: Some(request.request_id.clone()), plan: Some(plan), ..Default::default() });
-            if !auto { let at = self.conv().map_or(0, |c| c.messages.len() - 1); self.link_plan(at, 0, false, cx); }
-            if auto {
-                let at = self.conv().map(|conversation| conversation.messages.len() - 1).unwrap_or(0);
-                if self.drain_external_events(events, conversation, turn, cx) {
-                    self.set_plan_state(at, agent::PlanState::Stale, cx); return true;
-                }
-                if request.is_cancelled() || self.active_external.as_ref().is_none_or(|(c, t)| c != conversation || t != turn) {
-                    self.set_plan_state(at, agent::PlanState::Stale, cx); return false;
-                }
-                self.apply_plan(at, cx);
-                result = if self.plan_at(at).is_some_and(|plan| plan.state == agent::PlanState::Applied) {
-                    json!({"status":"applied"})
-                } else { json!({"error":self.error.clone().unwrap_or_else(|| "Create failed".into())}) };
-            }
+            let at = self.conv().map_or(0, |c| c.messages.len() - 1);
+            self.link_plan(at, 0, false, cx);
         } else { super::super::chat_process::record_tool(self, &request, &result, true, cx); }
         let _ = request.responder.respond(Ok(result));
         false

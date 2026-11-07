@@ -87,7 +87,10 @@ impl AiChat {
             }
         }
         if plan.receipts.is_empty() { self.error = Some("未选择任何修改".into()); cx.notify(); return; }
-        plan.state = agent::PlanState::Applied; self.set_plan(at, plan); super::super::plan_link::clear_plan(self.current, at, cx); cx.notify();
+        let created = plan.receipts.iter().any(|receipt| receipt.created);
+        plan.state = agent::PlanState::Applied; self.set_plan(at, plan); super::super::plan_link::clear_plan(self.current, at, cx);
+        if created { self.open_plan_page(at, 0, cx); }
+        cx.notify();
     }
 
     pub(in crate::editor::ai) fn undo_plan(&mut self, at: usize, cx: &mut Context<Self>) {
@@ -140,7 +143,7 @@ impl AiChat {
         let canceled = plan.state == agent::PlanState::Canceled;
         self.set_plan(at, plan);
         if canceled { super::super::plan_link::clear_plan(self.current, at, cx); }
-        else { super::super::plan_link::clear_plan_page(self.current, at, &page, cx); }
+        else { super::super::plan_link::clear_plan_page(self.current, at, &page, cx); self.link_plan(at, 0, false, cx); }
         cx.notify();
     }
 
