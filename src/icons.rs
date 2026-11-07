@@ -197,6 +197,14 @@ pub struct Icons;
 
 impl AssetSource for Icons {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
+        let brand: Option<&'static [u8]> = match path {
+            "agents/codex.svg" => Some(include_bytes!("../assets/agents/codex.svg")),
+            "agents/claude.svg" => Some(include_bytes!("../assets/agents/claude.svg")),
+            "agents/dsh.svg" => Some(include_bytes!("../assets/agents/dsh.svg")),
+            "agents/pi.svg" => Some(include_bytes!("../assets/agents/pi.svg")),
+            _ => None,
+        };
+        if let Some(bytes) = brand { return Ok(Some(Cow::Borrowed(bytes))); }
         Ok(ASSETS.iter().find(|(name, _)| *name == path).map(|(_, bytes)| Cow::Borrowed(*bytes)))
     }
 

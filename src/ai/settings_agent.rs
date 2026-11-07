@@ -1,9 +1,9 @@
-use gpui::{Context, CursorStyle, FontWeight, MouseButton, ParentElement, SharedString, Styled, Window, div, prelude::*, px};
+use gpui::{Context, FontWeight, MouseButton, ParentElement, SharedString, Styled, Window, div, prelude::*, px};
 use gpui_component::input::Input;
 
 use super::{AiSettings, TestNote};
 use super::super::{backend::{self, BackendConfig, BackendKind}, backend_ui, chat};
-use crate::{icons::{Icon, icon}, theme::{Theme, tr}, ui::settings_controls::{action_button, card_title, mono_font, selected_bg, setting_row, settings_card, static_badge, status_action_button, tag_chip, toggle_pill}};
+use crate::{icons::Icon, theme::{Theme, tr}, ui::settings_controls::{action_button, card_title, mono_font, agent_card, setting_row, settings_card, static_badge, status_action_button, tag_chip, toggle_pill}};
 
 impl AiSettings {
     pub(in crate::editor::ai) fn select_focused_backend(&mut self, kind: BackendKind, window: &mut Window, cx: &mut Context<Self>) {
@@ -44,7 +44,6 @@ impl AiSettings {
     }
 
     pub(in crate::editor::ai) fn agent_overview(&self, cx: &mut Context<Self>) -> gpui::Div {
-        let theme = Theme::ocean();
         let config = BackendConfig::load();
         let recognized = chat::recognized_backends(cx);
 
@@ -52,28 +51,29 @@ impl AiSettings {
             if self.enabled { tr("已开启", "Enabled") } else { tr("已关闭", "Disabled") }, self.toggle_anim,
             cx.listener(|this, active, _, cx| { if this.toggle_anim.set_hovered(*active) { cx.notify(); } }),
             cx.listener(|this, _, _, cx| { this.enabled = !this.enabled; this.toggle_anim.record_toggle(); this.save(cx); }));
-        let mut cards = div().flex().flex_wrap().gap(px(8.));
+        let mut cards = div().flex().flex_wrap().gap(px(12.));
         for kind in recognized.iter().copied() {
             let active = self.pending_backends.iter().find(|(item, _)| *item == kind).map_or(config.is_enabled(kind), |(_, enabled)| *enabled);
             let card_id: gpui::ElementId = SharedString::from(format!("ai-backend-card-{kind:?}")).into();
             let toggle_id: gpui::ElementId = SharedString::from(format!("ai-backend-toggle-{kind:?}")).into();
-            cards = cards.child(div().id(card_id.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&card_id))
-                .flex_1().min_w(px(105.)).p(px(10.)).rounded(crate::ui::radius::CONTROL).border_1()
-                .border_color(if self.focused_backend == kind { theme.accent } else { theme.btn_border })
-                .bg(if self.focused_backend == kind { selected_bg() } else { theme.shell }).cursor(CursorStyle::PointingHand)
-                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
-                    if this.focused_backend == kind { this.toggle_backend(kind, cx); }
-                    else { this.select_focused_backend(kind, window, cx); }
-                }))
-                .child(div().flex().justify_between().items_center()
-                    .child(div().text_size(px(14.)).font_weight(FontWeight(600.)).text_color(theme.accent).child(backend_ui::backend_name(kind)))
-                    .child(div().id(toggle_id.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&toggle_id))
-                        .size(px(20.)).rounded(px(6.)).border_1().border_color(if active { theme.accent } else { theme.btn_border })
-                        .when(active, |d| d.bg(theme.accent).child(icon(Icon::Check, px(16.), theme.mono_icon_colors(gpui::rgb(0xffffff).into()))))
-                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
-                            cx.stop_propagation(); this.select_focused_backend(kind, window, cx); this.toggle_backend(kind, cx);
-                        }))))
-            );
+            let logo = match kind {
+                BackendKind::Builtin => None,
+                BackendKind::Codex => Some("agents/codex.svg"),
+                BackendKind::Claude => Some("agents/claude.svg"),
+                BackendKind::Dsh => Some("agents/dsh.svg"),
+                BackendKind::Pi => Some("agents/pi.svg"),
+            };
+            cards = cards.child(agent_card(card_id, toggle_id, backend_ui::backend_name(kind), logo,
+                self.focused_backend == kind, active,
+                cx.listener(move |this, _, window, cx| {
+                    if this.focused_backend != kind { this.select_focused_backend(kind, window, cx); }
+                }),
+                cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    if this.focused_backend != kind { this.select_focused_backend(kind, window, cx); }
+                    this.toggle_backend(kind, cx);
+                })));
+
         }
         settings_card(16.).child(div().flex().items_center().justify_between().child(card_title(tr("AI 与本机 Agent", "AI & Local Agents"))).child(toggle))
             .when(self.enabled, |d| d.child(cards).child(action_button("ai-save-backends", tr("保存", "Save"), true, !self.pending_backends.is_empty()).on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.save_backends(cx)))))
