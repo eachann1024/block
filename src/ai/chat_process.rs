@@ -1,3 +1,4 @@
+use crate::ui::tooltip::TooltipExt;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use gpui::{div, px, IntoElement, ParentElement, ScrollHandle, SharedString, Styled, prelude::*};
 use serde_json::Value;
@@ -215,7 +216,7 @@ fn reply(text: &str, conv_id: u64, index: usize, copyable: bool, streaming: bool
                 }).absolute().size_full(),
             ))
             .invisible().group_hover(group, |s| s.visible())
-            .tooltip(crate::ui::tooltip::tooltip(tr("复制", "Copy"))),
+            .tooltip_above(crate::ui::tooltip::tooltip(tr("复制", "Copy"))),
         )))
 }
 

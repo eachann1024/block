@@ -1,4 +1,5 @@
 //! Sidebar chrome: resizable edge, notebook switcher and window-level overlays.
+use crate::ui::tooltip::TooltipExt;
 use gpui::{
     AnyElement, Context, CursorStyle, FontWeight, MouseButton, Pixels, SharedString,
     Window, WindowControlArea, div, point, prelude::*, px,
@@ -58,7 +59,7 @@ impl Workspace {
                 .child(div().id("sidebar-toggle").relative().children(crate::ui::smoke_overlay::probe("sidebar-toggle")).group(btn_group.clone()).size(px(TOGGLE_SIZE)).flex_none()
                     .flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).cursor(CursorStyle::PointingHand)
                     .hover(|s| s.bg(theme.hover))
-                    .tooltip(crate::theme::tooltip(tip))
+                    .tooltip_above(crate::theme::tooltip(tip))
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                         cx.stop_propagation();
                         this.toggle_sidebar(cx);

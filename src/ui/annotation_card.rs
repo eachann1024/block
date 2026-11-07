@@ -1,5 +1,6 @@
 //! Unified annotation card component shared by the wide right rail and the narrow-window popover,
 //! plus the titlebar batch send button (`统一发送（n）`).
+use crate::ui::tooltip::TooltipExt;
 use std::{rc::Rc, time::Duration};
 use gpui::{
     Animation, AnimationExt, App, BoxShadow, CursorStyle, Div, ElementId, Entity, FontWeight, Hsla,
@@ -151,7 +152,7 @@ fn icon_box_button(
         .bg(if filled_accent { theme.accent } else { theme.paper })
         .flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
         .hover(move |s| s.bg(if filled_accent { accent_hover() } else { theme.hover }))
-        .tooltip(tooltip(tip))
+        .tooltip_above(tooltip(tip))
         .on_mouse_down(MouseButton::Left, move |ev, window, cx| handler(ev, window, cx))
         .child(glyph_el)
 }
@@ -162,7 +163,7 @@ fn ghost_icon_button(id: impl Into<ElementId>, glyph: Icon, tip: &'static str, h
     let id: ElementId = id.into();
     let group = SharedString::from(format!("ann-gi-{id:?}"));
     div().id(id).group(group.clone()).size(px(26.)).flex_none().rounded(px(6.)).flex().items_center().justify_center()
-        .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover)).tooltip(tooltip(tip))
+        .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover)).tooltip_above(tooltip(tip))
         .on_mouse_down(MouseButton::Left, move |ev, window, cx| handler(ev, window, cx))
         .child(stateful_icon(group, glyph, px(14.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
 }

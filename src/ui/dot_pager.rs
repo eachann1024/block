@@ -1,4 +1,5 @@
 //! Minimal dot/pill pager indicator for switching between a small fixed set of slots or pages.
+use crate::ui::tooltip::TooltipExt;
 use std::rc::Rc;
 use gpui::{
     App, CursorStyle, Div, ElementId, Hsla, MouseButton, SharedString, Window, div, prelude::*, px,
@@ -40,7 +41,7 @@ pub fn dot_pager(
                 .items_center()
                 .justify_center()
                 .cursor(CursorStyle::PointingHand)
-                .tooltip(crate::ui::tooltip::tooltip(tip))
+                .tooltip_above(crate::ui::tooltip::tooltip(tip))
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     pick(ix, window, cx);
                 })

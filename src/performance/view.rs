@@ -1,3 +1,4 @@
+use crate::ui::tooltip::TooltipExt;
 use std::{rc::Rc, time::UNIX_EPOCH};
 use gpui::{
     AnyElement, Context, CursorStyle, FontWeight, MouseButton, MouseDownEvent, MouseMoveEvent,
@@ -77,9 +78,9 @@ pub fn view(window: &mut Window, cx: &mut Context<Workspace>) -> Option<AnyEleme
         .when(loading, |card| card.child(loading_screen()))
         .when(!loading, |card| card.child(div().w_full().px(px(20.)).py(px(12.)).flex().flex_col().gap(px(8.))
             .when(!error.is_empty(), |body| body.child(div().id("performance-disk-error").text_size(px(12.)).text_color(theme.text_secondary)
-                .tooltip(tooltip::tooltip(error)).child(tr("部分文件未能读取", "Some files could not be read"))))
+                .tooltip_above(tooltip::tooltip(error)).child(tr("部分文件未能读取", "Some files could not be read"))))
             .when(!process_error.is_empty(), |body| body.child(div().id("performance-process-error").text_size(px(12.)).text_color(theme.text_secondary)
-                .tooltip(tooltip::tooltip(process_error)).child(tr("部分进程采样受限", "Some process metrics unavailable"))))
+                .tooltip_above(tooltip::tooltip(process_error)).child(tr("部分进程采样受限", "Some process metrics unavailable"))))
             .child(treemap("performance-map", &disk, 3, selected.as_deref(), select.clone()))
             .child(treemap("performance-process-map", &processes, 2, selected.as_deref(), select))));
     let overlay = div()
