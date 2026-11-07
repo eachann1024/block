@@ -73,18 +73,42 @@ pub(super) fn status_override(kind: BackendKind) -> Option<BackendStatus> {
 
 pub(crate) fn seed_all_backends_ready(window: &mut Window, cx: &mut App) {
     assert!(crate::smoke::is_requested());
+    let mut config = BackendConfig::load();
+    for kind in BackendKind::ALL { config.set_enabled(kind, true, &BackendKind::ALL).expect("enable smoke backend"); }
     let statuses: Vec<(BackendKind, BackendStatus)> = BackendKind::ALL
         .into_iter()
         .map(|kind| (kind, BackendStatus::Ready { version: "smoke".into() }))
         .collect();
     STATUS_OVERRIDES.with(|cell| *cell.borrow_mut() = statuses.clone());
     chat(window, cx).update(cx, |this, cx| {
-        this.backend_statuses = statuses;
+        this.backend_statuses = statuses; this.backend_config = config;
         let recognized = this.recognized_backends();
         this.backend_config.ensure_valid_selection(&recognized);
         cx.notify();
     });
     window.refresh();
+}
+
+pub(crate) fn reset_external_backends_unchecked(window: &mut Window, cx: &mut App) {
+    assert!(crate::smoke::is_requested());
+    let mut config = BackendConfig::load();
+    config.priority.clear(); config.selected = BackendKind::Builtin;
+    for kind in BackendKind::ALL {
+        config.set_enabled(kind, kind == BackendKind::Builtin, &BackendKind::ALL).expect("reset smoke backend");
+        config.set_launch_args(kind, kind.default_launch_args()).expect("reset smoke arguments");
+    }
+    crate::editor::ai::settings::reload(window, cx);
+    super::sync_settings(cx);
+    window.refresh();
+}
+
+pub(crate) fn focused_settings_backend(cx: &App) -> BackendKind {
+    assert!(crate::smoke::is_requested());
+    crate::editor::ai::settings::section(cx).expect("settings").read(cx).focused_backend
+}
+
+pub(crate) fn agent_launch_args(kind: BackendKind) -> String {
+    assert!(crate::smoke::is_requested()); BackendConfig::load().launch_args(kind)
 }
 
 pub(crate) fn set_backend_missing(kind: BackendKind, window: &mut Window, cx: &mut App) {

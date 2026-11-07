@@ -8,6 +8,8 @@ use gpui_component::input::{InputEvent, InputState};
 use super::presets::{self, Protocol, ProviderProfile};
 use super::provider::{self, Config};
 use crate::theme::{is_en, tr};
+#[path = "settings_agent.rs"]
+mod settings_agent;
 
 pub(super) enum TestNote { Ok, Err(String) }
 
@@ -19,6 +21,10 @@ pub(crate) struct AiSettings {
     pub(super) models: Vec<String>, pub(super) models_err: Option<String>,
     pub(super) fetching: bool, pub(super) testing: bool, pub(super) test_note: Option<TestNote>,
     pub(super) toggle_anim: crate::ui::toggle_pill::TogglePillState,
+    pub(super) focused_backend: super::backend::BackendKind,
+    pub(super) launch_args_input: Entity<InputState>,
+    pub(super) agent_models: Vec<String>, pub(super) agent_fetching: bool,
+    pub(super) syncing_launch_args: bool,
     _subs: Vec<Subscription>,
 }
 
@@ -50,6 +56,7 @@ pub(crate) fn reload(window: &mut Window, cx: &mut App) {
         let (url, key) = (c.base_url, c.api_key);
         this.base_url.update(cx, |i, cx| i.set_value(url, window, cx));
         this.api_key.update(cx, |i, cx| i.set_value(key, window, cx));
+        this.select_focused_backend(super::backend::BackendKind::Builtin, window, cx);
         cx.notify();
     });
 }
@@ -68,6 +75,7 @@ impl AiSettings {
         let base_url = cx.new(|cx| InputState::new(window, cx).placeholder(url_ph).default_value(c.base_url.clone()));
         let api_key = cx.new(|cx| InputState::new(window, cx).placeholder(key_ph).masked(true).default_value(c.api_key.clone()));
         let model_filter = cx.new(|cx| InputState::new(window, cx).placeholder(tr("筛选模型…", "Filter models…")));
+        let launch_args_input = cx.new(|cx| InputState::new(window, cx));
         let model = c.model.trim().to_owned();
         let models = if model.is_empty() { Vec::new() } else { vec![model.clone()] };
         let mut subs = Vec::new();
@@ -79,12 +87,23 @@ impl AiSettings {
         subs.push(cx.subscribe(&model_filter, |_: &mut Self, _, e: &InputEvent, cx| {
             if matches!(e, InputEvent::Change) { cx.notify(); }
         }));
+        subs.push(cx.subscribe(&launch_args_input, |this: &mut Self, _, e: &InputEvent, cx| {
+            if matches!(e, InputEvent::Change) && !this.syncing_launch_args && this.focused_backend != super::backend::BackendKind::Builtin {
+                let mut config = super::backend::BackendConfig::load();
+                if config.is_enabled(this.focused_backend) {
+                    if let Err(error) = config.set_launch_args(this.focused_backend, &this.launch_args_input.read(cx).value()) {
+                        this.test_note = Some(TestNote::Err(error));
+                    }
+                }
+            }
+        }));
         let should_fetch = c.is_complete();
         let mut this = AiSettings {
             enabled: c.enabled, provider: c.provider, protocol: c.protocol, providers: c.providers,
             show_key: false, last_en: is_en(), base_url, api_key, model_filter, model,
             models, models_err: None, fetching: false, testing: false, test_note: None,
-            toggle_anim: Default::default(), _subs: subs,
+            toggle_anim: Default::default(), focused_backend: super::backend::BackendKind::Builtin,
+            launch_args_input, agent_models: Vec::new(), agent_fetching: false, syncing_launch_args: false, _subs: subs,
         };
         if should_fetch { this.fetch_models(cx); }
         this
@@ -161,9 +180,8 @@ impl AiSettings {
             return;
         }
         self.test_note = None;
-        if kind == super::backend::BackendKind::Builtin {
-            self.enabled = next;
-            self.toggle_anim.record_toggle();
+        if next && self.focused_backend == kind && kind != super::backend::BackendKind::Builtin {
+            self.refresh_agent_models(cx);
         }
         super::chat::sync_settings(cx);
         cx.notify();

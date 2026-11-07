@@ -79,7 +79,8 @@ pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: T
     fs::write(&patch_path, serde_json::to_vec(&patch).map_err(io_error)?).map_err(io_error)?;
     let cwd = request.context.notebook_root.clone().filter(|p| p.is_dir()).unwrap_or_else(|| workspace.clone());
     let mut command = cli_env::command("dsh");
-    command.args(["--profile", "sdk-minimal", "--patch"]).arg(&patch_path)
+    let args = request.config.get("launchArgs").and_then(serde_json::Value::as_str).unwrap_or(super::super::BackendKind::Dsh.default_launch_args());
+    command.args(args.split_whitespace()).arg("--patch").arg(&patch_path)
         .env("DSH_HOME", dir.0.join("home")).env("DSH_TELEMETRY_DISABLED", "1")
         .env("DSH_PERMISSION_MODE", "danger-full-access")
         .current_dir(&cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());

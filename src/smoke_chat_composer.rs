@@ -18,26 +18,34 @@ impl Run {
         self.redraw(cx);
         self.check(14, smoke_overlay::target_center("ai-backend-Pi").is_none() && self.win(cx, input_smoke::selected_backend)? != BackendKind::Pi, "未识别后端在命令舱中隐藏并自动回退选中项")?;
         self.click_target(cx, "ai-deck-settings", "Step 14/14 · 从命令舱进入 AI 设置").await?;
-        self.check(14, self.query(cx, |w, _| w.settings_is_open()) && smoke_overlay::target_center("ai-backend-toggle-Pi").is_none(), "未识别后端在 AI 设置中也隐藏")?;
+        self.check(14, self.query(cx, |w, _| w.settings_is_open()) && smoke_overlay::target_center("ai-backend-card-Pi").is_none(), "未识别后端在 AI 设置中也隐藏")?;
         self.win(cx, input_smoke::seed_all_backends_ready)?;
+        self.win(cx, input_smoke::reset_external_backends_unchecked)?;
         sleep(cx, 120).await;
         self.redraw(cx);
-        self.check(14, smoke_overlay::target_center("ai-backend-toggle-Pi").is_some(), "识别后的 Pi 后端在 AI 设置中显示")?;
-        for (id, kind) in [
-            ("ai-backend-toggle-Builtin", BackendKind::Builtin),
-            ("ai-backend-toggle-Codex", BackendKind::Codex),
-            ("ai-backend-toggle-Claude", BackendKind::Claude),
-            ("ai-backend-toggle-Dsh", BackendKind::Dsh),
-        ] {
-            self.click_target(cx, id, "Step 14/14 · 禁用后端验证内置与外部后端均可关闭").await?;
-            self.check(14, !input_smoke::is_backend_enabled(kind), "已在 AI 设置中禁用该后端")?;
-        }
+        self.check(14, !input_smoke::is_backend_enabled(BackendKind::Codex), "外部后端默认未启用")?;
+        self.click_target(cx, "ai-backend-card-Codex", "切换到未启用的 Codex 配置").await?;
+        self.check(14, cx.update(|cx| input_smoke::focused_settings_backend(cx)) == BackendKind::Codex
+            && smoke_overlay::target_center("ai-focused-locked").is_some()
+            && input_smoke::agent_launch_args(BackendKind::Codex) == BackendKind::Codex.default_launch_args(), "未启用配置锁定并预填启动参数")?;
+        self.click_target(cx, "ai-backend-toggle-Codex", "启用 Codex").await?;
+        self.check(14, input_smoke::is_backend_enabled(BackendKind::Codex) && smoke_overlay::target_center("ai-focused-locked").is_none(), "启用后解锁配置")?;
+        self.click_target(cx, "ai-agent-launch-args", "编辑启动参数").await?;
+        self.type_text(cx, " --fast").await?;
+        self.check(14, input_smoke::agent_launch_args(BackendKind::Codex).contains("--fast"), "启动参数输入框可自由修改并持久化")?;
+        self.click_target(cx, "ai-backend-toggle-Pi", "启用 Pi").await?;
+        self.click_target(cx, "ai-backend-toggle-Builtin", "禁用内置后端").await?;
+        self.check(14, !input_smoke::is_backend_enabled(BackendKind::Builtin) && crate::editor::ai::provider::config().enabled, "禁用内置后全局 AI 保持开启")?;
+        self.click_target(cx, "ai-priority-pill-Pi", "将 Pi 提升为首选").await?;
+        self.check(14, self.win(cx, input_smoke::selected_backend)? == BackendKind::Pi, "Pi 已成为首选后端")?;
+        self.click_target(cx, "ai-backend-toggle-Codex", "禁用 Codex").await?;
         self.click_target(cx, "ai-backend-toggle-Pi", "Step 14/14 · 尝试禁用仅剩的最后一个启用后端").await?;
         self.check(14, input_smoke::is_backend_enabled(BackendKind::Pi), "仅剩一个启用后端时禁止关闭")?;
         for id in ["ai-backend-toggle-Builtin", "ai-backend-toggle-Codex", "ai-backend-toggle-Claude", "ai-backend-toggle-Dsh"] {
             self.click_target(cx, id, "Step 14/14 · 重新启用全部已识别后端").await?;
         }
         self.click_target(cx, "settings-back", "Step 14/14 · 从 AI 设置返回编辑").await?;
+        self.click_target(cx, "titlebar-ai", "Step 14/14 · 返回编辑后主动打开 AI").await?;
         Ok(())
     }
 
