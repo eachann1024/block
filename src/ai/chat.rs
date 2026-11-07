@@ -15,7 +15,7 @@ pub(crate) use chat_resize::resize_capture;
 #[path = "chat_skills.rs"] pub(super) mod chat_skills;
 #[path = "chat_models.rs"] pub(super) mod chat_models;
 
-pub(super) fn first_placeholder() -> &'static str { crate::theme::tr("向 AI 提问，/ 调用技能，@ 引用笔记…", "Ask AI, / for skills, @ to reference notes…") }
+pub(super) fn first_placeholder() -> &'static str { crate::theme::tr("向 AI 提问，/ 调用技能，@ 引用文件…", "Ask AI, / for skills, @ to reference files…") }
 pub(super) fn follow_placeholder() -> &'static str { crate::theme::tr("继续追问…", "Ask a follow-up…") }
 #[path = "chat_turn.rs"] mod chat_turn;
 
@@ -30,7 +30,7 @@ pub(super) struct Msg {
 }
 
 #[derive(Clone)]
-pub(super) enum Pick { Page(String), Skill(String), NewConv }
+pub(super) enum Pick { Folder(String), Page(String), Skill(String), NewConv }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct SentDraft { pub text: String, pub refs: Vec<String>, pub skills: Vec<String>, pub conversation: u64, pub message_index: usize }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
