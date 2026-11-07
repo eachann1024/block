@@ -192,3 +192,5 @@ impl Run {
 
 #[path = "smoke_menu_positions.rs"] mod menu_positions;
 #[path = "smoke_performance.rs"] mod performance;
+
+#[path = "smoke_scroll.rs"] mod scroll;

@@ -62,6 +62,7 @@ impl Editor {
     }
     pub(super) fn open_block_menu_at(&mut self, id: u64, trigger: Bounds<Pixels>, mode: Mode, cx: &mut Context<Self>) {
         self.table_menu = None;
+        self.block_menu_scroll.set_offset(Point::default());
         let anchor = point(trigger.left(), trigger.bottom() + px(4.));
         self.block_menu = Some(BlockMenu { block: id, anchor, trigger, mode, index: 0 });
         cx.notify();
