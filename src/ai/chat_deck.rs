@@ -1,10 +1,13 @@
-use gpui::{Div, SharedString, div, prelude::*, px};
+use gpui::{CursorStyle, Div, FontWeight, MouseButton, SharedString, div, prelude::*, px};
+use gpui_component::input::Input;
 use super::{backend::{BackendKind, BackendStatus}, backend_ui, chat::AiChat};
-use crate::{theme::tr, ui::ai_controls};
+use crate::{icons::{Icon, icon}, theme::tr, ui::ai_controls};
 
 thread_local! {
     static TRIGGER_BOUNDS: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>> = Default::default();
 }
+
+const THINKING_LEVELS: [(&str, &str); 3] = [("low", "Low"), ("medium", "Medium"), ("high", "High")];
 
 pub(super) fn trigger(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> gpui::Stateful<Div> {
     let kind = chat.selected_backend();
@@ -14,12 +17,16 @@ pub(super) fn trigger(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> gpui::St
     } else {
         chat.model_label(&model)
     };
+    let thinking = backend_ui::thinking_label(chat.backend_config.thinking_level(kind));
     let open = backend_ui::DECK_OPEN.with(std::cell::Cell::get);
-    ai_controls::deck_trigger_capsule("ai-deck-trigger", label, open, cx.listener(|chat, _, window, cx| {
-        cx.stop_propagation();
-        if !backend_ui::close_menu() { backend_ui::open_deck(chat, window, cx); }
-        cx.notify();
-    })).child(crate::ui::placement::track_bounds(TRIGGER_BOUNDS.with(Clone::clone), open))
+    ai_controls::deck_trigger_capsule(
+        "ai-deck-trigger", backend_ui::backend_logo(kind), label, Some(thinking), chat.fullscreen, open,
+        cx.listener(|chat, _, window, cx| {
+            cx.stop_propagation();
+            if !backend_ui::close_menu() { backend_ui::open_deck(chat, window, cx); }
+            cx.notify();
+        }),
+    ).child(crate::ui::placement::track_bounds(TRIGGER_BOUNDS.with(Clone::clone), open))
 }
 
 pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<AiChat>) -> Option<gpui::Deferred> {
@@ -28,60 +35,145 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
     let trigger = bounds.get()?;
     let spec = crate::ui::placement::PlacementSpec::above(trigger);
     let max_height = crate::ui::placement::available_height_for_spec(&spec, window.viewport_size(), window.viewport_size().height);
-    let width = px(ai_controls::PANEL_WIDTH).min((window.viewport_size().width - px(16.)).max(px(0.)));
+    let wide = chat.fullscreen || chat.panel_width >= px(500.);
+    let target_w = if wide { px(ai_controls::FULLSCREEN_DECK_WIDTH) } else { (chat.panel_width - px(24.)).clamp(px(308.), px(420.)) };
+    let width = target_w.min((window.viewport_size().width - px(16.)).max(px(0.)));
     let theme = crate::ui::ai_theme::theme();
     let selected = chat.selected_backend();
-    let mut grid = div().flex().flex_col().gap(px(8.));
-    let visible = chat.visible_backends();
-    for kinds in visible.chunks(2) {
-        let mut row = div().flex().gap(px(8.));
-        for &kind in kinds {
-            let ready = if kind == BackendKind::Builtin {
-                backend_ui::builtin_ready()
-            } else {
-                matches!(chat.backend_status(kind), Some(BackendStatus::Ready { .. } | BackendStatus::Installed { .. }))
-            };
-            row = row.child(ai_controls::backend_card(format!("ai-backend-{kind:?}"), backend_ui::backend_name(kind), kind == selected, ready,
-                cx.listener(move |chat, _, window, cx| {
-                    cx.stop_propagation();
-                    let changed = chat.selected_backend() != kind;
-                    chat.select_backend(kind, window, cx);
-                    if changed { chat.refresh_models_for(kind, cx); }
-                    cx.notify();
-                })));
-        }
-        grid = grid.child(row);
+    let selected_logo = backend_ui::backend_logo(selected);
+
+    let mut rail = div().w(px(if wide { 46. } else { 42. })).flex_none().py(px(8.)).px(px(4.))
+        .border_r_1().border_color(theme.hairline).bg(theme.shell).flex().flex_col().items_center().gap(px(6.));
+    for kind in chat.visible_backends() {
+        let ready = if kind == BackendKind::Builtin {
+            backend_ui::builtin_ready()
+        } else {
+            matches!(chat.backend_status(kind), Some(BackendStatus::Ready { .. } | BackendStatus::Installed { .. }))
+        };
+        rail = rail.child(ai_controls::backend_rail_item(
+            format!("ai-backend-{kind:?}"), backend_ui::backend_name(kind), backend_ui::backend_logo(kind),
+            kind == selected, ready,
+            cx.listener(move |chat, _, window, cx| {
+                cx.stop_propagation();
+                let changed = chat.selected_backend() != kind;
+                chat.select_backend(kind, window, cx);
+                if changed { chat.refresh_models_for(kind, cx); }
+                cx.notify();
+            }),
+        ));
     }
+
+    let search_bar = div().h(px(38.)).px(px(10.)).flex_none().border_b_1().border_color(theme.hairline)
+        .flex().items_center().gap(px(6.))
+        .child(icon(Icon::FindSearch, px(14.), theme.mono_icon_colors(theme.text_secondary)))
+        .when_some(backend_ui::search_input(), |bar, input| {
+            bar.child(div().flex_1().min_w_0().child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).h(px(28.))))
+        });
+
+    let query = backend_ui::search_query(cx);
     let selected_model = chat.selected_model();
-    let models = chat.model_choices();
-    let mut list = div().id("ai-deck-models").h(px(176.)).flex_none().overflow_y_scroll().track_scroll(&chat.deck_scroll).flex().flex_col();
-    if models.is_empty() {
-        let status = match chat.model_status() {
-            super::chat::chat_models::ModelStatus::Loading => tr("正在获取模型…", "Loading models…"),
-            super::chat::chat_models::ModelStatus::Error(_) => tr("无法获取模型", "Models unavailable"),
-            _ => tr("暂无可选模型", "No models available"),
+    let all_models = chat.model_choices();
+    let filtered: Vec<(usize, String, String)> = all_models.into_iter().enumerate().filter_map(|(idx, model)| {
+        let label = chat.model_label(&model);
+        let hit = query.is_empty() || model.to_lowercase().contains(&query) || label.to_lowercase().contains(&query);
+        hit.then_some((idx, model, label))
+    }).collect();
+
+    let list_h = if wide { 196. } else { 164. };
+    let mut list = div().id("ai-deck-models").h(px(list_h)).p(px(6.)).flex_none().overflow_y_scroll().track_scroll(&chat.deck_scroll).flex().flex_col().gap(px(2.));
+    if filtered.is_empty() {
+        let status = if !query.is_empty() {
+            tr("无匹配模型", "No matching models")
+        } else {
+            match chat.model_status() {
+                super::chat::chat_models::ModelStatus::Loading => tr("正在获取模型…", "Loading models…"),
+                super::chat::chat_models::ModelStatus::Error(_) => tr("无法获取模型", "Models unavailable"),
+                _ => tr("暂无可选模型", "No models available"),
+            }
         };
         list = list.child(div().h(px(32.)).px(px(10.)).flex().items_center().text_color(theme.text_secondary).child(status));
     }
-    for (index, model) in models.into_iter().enumerate() {
-        let label = chat.model_label(&model);
+    let prefix = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl+" };
+    for (index, model, label) in filtered {
         let active = model == selected_model;
-        list = list.child(ai_controls::model_row(SharedString::from(format!("ai-model-{index}")), label, active, cx.listener(move |chat, _, _, cx| {
-            cx.stop_propagation();
-            match chat.select_model(&model, cx) { Ok(()) => { backend_ui::close_menu(); }, Err(error) => chat.error = Some(error) }
-            cx.notify();
-        })));
+        let shortcut = (index < 9).then(|| SharedString::from(format!("{prefix}{}", index + 1)));
+        list = list.child(ai_controls::model_row(
+            SharedString::from(format!("ai-model-{index}")), selected_logo, label, shortcut, active,
+            cx.listener(move |chat, _, _, cx| {
+                cx.stop_propagation();
+                match chat.select_model(&model, cx) { Ok(()) => { backend_ui::close_menu(); }, Err(error) => chat.error = Some(error) }
+                cx.notify();
+            }),
+        ));
     }
-    let deck = ai_controls::panel_shell("ai-agent-deck").w(width).max_h(max_height).overflow_y_scroll().p(px(12.)).rounded(px(14.))
-        .child(div().flex().items_center().justify_between().child(div().font_weight(gpui::FontWeight(560.)).child(tr("选择执行后端", "Choose backend")))
-            .child(div().text_color(theme.text_secondary).child(tr("点击卡片即切换", "Select a card"))))
-        .child(grid.flex_none())
-        .child(div().border_t_1().border_color(theme.hairline).pt(px(8.)).flex().items_center().justify_between()
-            .child(div().text_color(theme.text_secondary).child(tr("当前后端模型", "Current Backend Models")))
-            .child(ai_controls::action_chip("ai-deck-settings", None, tr("AI 设置", "AI settings"), false, false, cx.listener(|chat, _, window, cx| {
-                cx.stop_propagation(); backend_ui::close_menu(); chat.input.update(cx, |i, cx| i.focus(window, cx)); window.dispatch_action(Box::new(super::OpenAiSettings), cx);
-            }))))
-        .child(list);
+
+    let current_thinking = chat.backend_config.thinking_level(selected);
+    let model_col = div().flex_1().min_w_0().flex().flex_col().child(search_bar).child(list)
+        .when(!wide, |col| {
+            let mut pills = div().flex_1().flex().items_center().gap(px(4.));
+            for (level, label) in THINKING_LEVELS {
+                pills = pills.child(ai_controls::thinking_level_item(
+                    format!("ai-thinking-{level}"), label, current_thinking == level, true,
+                    cx.listener(move |chat, _, _, cx| {
+                        cx.stop_propagation();
+                        if let Err(err) = chat.backend_config.set_thinking_level(selected, level) { chat.error = Some(err); }
+                        cx.notify();
+                    }),
+                ));
+            }
+            col.child(div().px(px(10.)).py(px(6.)).border_t_1().border_color(theme.hairline).flex().items_center().justify_between().gap(px(8.))
+                .child(div().flex_none().text_size(px(12.5)).text_color(theme.text_secondary).child("Thinking Level"))
+                .child(pills))
+        });
+
+    let upper = div().flex_1().min_w_0().flex()
+        .child(model_col)
+        .when(wide, |row| {
+            let short_model = if selected_model.is_empty() { backend_ui::backend_name(selected).to_owned() } else { chat.model_label(&selected_model) };
+            let mut levels = div().p(px(6.)).flex().flex_col().gap(px(2.));
+            for (level, label) in THINKING_LEVELS {
+                levels = levels.child(ai_controls::thinking_level_item(
+                    format!("ai-thinking-{level}"), label, current_thinking == level, false,
+                    cx.listener(move |chat, _, _, cx| {
+                        cx.stop_propagation();
+                        if let Err(err) = chat.backend_config.set_thinking_level(selected, level) { chat.error = Some(err); }
+                        cx.notify();
+                    }),
+                ));
+            }
+            row.child(div().w(px(168.)).flex_none().border_l_1().border_color(theme.hairline).flex().flex_col()
+                .child(div().h(px(38.)).px(px(10.)).flex_none().border_b_1().border_color(theme.hairline).flex().items_center().justify_between().gap(px(6.))
+                    .child(div().flex_none().text_size(px(13.)).font_weight(FontWeight(500.)).text_color(theme.text_secondary).child("Thinking Level"))
+                    .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(12.)).text_color(theme.text_secondary).child(short_model)))
+                .child(levels))
+        });
+
+    let full_access = selected == BackendKind::Builtin || chat.backend_config.full_permissions(selected);
+    let perm_label = if full_access { tr("Full access", "Full access") } else { tr("标准权限", "Standard access") };
+    let footer = div().h(px(36.)).px(px(10.)).flex_none().border_t_1().border_color(theme.hairline)
+        .flex().items_center().justify_between().gap(px(8.))
+        .child(ai_controls::action_chip("ai-deck-settings", Some(Icon::Sliders), tr("AI 设置", "AI settings"), false, false, cx.listener(|chat, _, window, cx| {
+            cx.stop_propagation(); backend_ui::close_menu(); chat.input.update(cx, |i, cx| i.focus(window, cx)); window.dispatch_action(Box::new(super::OpenAiSettings), cx);
+        })))
+        .child(div().id("ai-deck-permissions").relative().children(crate::ui::smoke_overlay::probe("ai-deck-permissions"))
+            .h(px(26.)).px(px(8.)).rounded(px(6.)).flex().items_center().gap(px(5.)).cursor(CursorStyle::PointingHand)
+            .hover(move |s| s.bg(theme.hover))
+            .child(div().size(px(6.)).rounded_full().bg(if full_access { theme.accent } else { theme.text_secondary }))
+            .child(div().text_size(px(13.)).text_color(if full_access { theme.text } else { theme.text_secondary }).child(perm_label))
+            .child(crate::dropdown::line_icon(Icon::ChevronUp, 11., theme.text_secondary))
+            .on_mouse_down(MouseButton::Left, cx.listener(move |chat, _, window, cx| {
+                cx.stop_propagation();
+                if selected == BackendKind::Builtin {
+                    backend_ui::close_menu(); chat.input.update(cx, |i, cx| i.focus(window, cx)); window.dispatch_action(Box::new(super::OpenAiSettings), cx);
+                } else {
+                    let next = !chat.backend_config.full_permissions(selected);
+                    if let Err(err) = chat.backend_config.set_full_permissions(selected, next) { chat.error = Some(err); }
+                    cx.notify();
+                }
+            })));
+
+    let deck = ai_controls::panel_shell("ai-agent-deck").w(width).max_h(max_height)
+        .child(div().flex().w_full().min_w_0().child(rail).child(div().flex_1().min_w_0().flex().flex_col().child(upper).child(footer)));
     Some(crate::ui::placement::smart_popover_with(move |_, _| {
         crate::ui::placement::PlacementSpec::above(bounds.get().unwrap_or(trigger))
     }, deck, 20))
