@@ -177,6 +177,13 @@ async function main() {
   const autoBump = version !== cargoVersion;
 
   const previousSha = resolveTagCommit(previous);
+  if (previous && !previousSha) {
+    summary(`无法解析 ${previous.tag_name} 的提交，停止发布，避免把更早的改动写进这一版。`);
+    const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
+    writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
+    writeOutputs({ should_build: false, publish: false, version: cargoVersion, release_tag: previous.tag_name });
+    return;
+  }
   if (previousSha && previousSha === headSha && !force) {
     summary(`当前 HEAD (${headSha.slice(0, 7)}) 与最新 Release ${previous.tag_name} 完全一致，跳过构建。`);
     const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
@@ -184,8 +191,15 @@ async function main() {
     writeOutputs({ should_build: false, publish: false, version: cargoVersion, release_tag: previous.tag_name });
     return;
   }
+  if (previousSha && !isAncestor(previousSha, headSha)) {
+    summary(`最新 Release ${previous.tag_name} 不在当前历史上，停止发布。`);
+    const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
+    writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
+    writeOutputs({ should_build: false, publish: false, version: cargoVersion, release_tag: previous.tag_name });
+    return;
+  }
 
-  const rangeSpec = previousSha && isAncestor(previousSha, headSha) ? `${previousSha}..${headSha}` : "-n 12";
+  const rangeSpec = previousSha ? `${previousSha}..${headSha}` : "-n 30";
   const commits = listCommits(ROOT, rangeSpec);
   const notes = await buildReleaseNotes({ version, commits });
 
