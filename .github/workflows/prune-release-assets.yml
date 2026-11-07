@@ -1,5 +1,5 @@
-# 发布后或手工上传附件时，按 scripts/release/allowed-assets.mjs 删掉多余文件并核对正好 11 个。
-# After a release is published or edited, delete assets outside the allowlist and require exactly those 11.
+# 发布后或手工上传附件时，按 scripts/release/allowed-assets.mjs 删掉多余文件并核对正好 5 个。
+# After a release is published or edited, delete assets outside the allowlist and require exactly those 5.
 
 name: Prune release assets
 

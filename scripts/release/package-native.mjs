@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { installerFor } from "./allowed-assets.mjs";
@@ -24,9 +24,8 @@ const DEB_DEPENDS = [
 ].join(", ");
 
 function archNames() {
-  if (process.arch === "arm64") return { label: "arm64", deb: "arm64", rpm: "aarch64" };
-  if (process.arch === "x64") return { label: "x64", deb: "amd64", rpm: "x86_64" };
-  throw new Error(`unsupported arch ${process.arch}`);
+  if (process.arch !== "x64") throw new Error(`Linux packages are built for x64 only, got ${process.arch}`);
+  return { label: "x64", deb: "amd64" };
 }
 
 function stagePayload(root, binary) {
@@ -76,75 +75,14 @@ function buildDeb(binary, version, names) {
   }
 }
 
-function buildRpm(binary, version, names) {
-  const top = mkdtempSync(join(tmpdir(), "block-rpm-"));
-  try {
-    for (const dir of ["BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"]) {
-      mkdirSync(join(top, dir));
-    }
-    const spec = join(top, "SPECS/block.spec");
-    writeFileSync(spec, [
-      "Name: block",
-      `Version: ${version}`,
-      "Release: 1",
-      "Summary: Block notes editor",
-      "License: Apache-2.0",
-      `BuildArch: ${names.rpm}`,
-      "AutoReq: no",
-      "AutoProv: no",
-      "Requires: libxkbcommon libxkbcommon-x11 libxcb libwayland-client libwayland-egl vulkan-loader",
-      "",
-      "%description",
-      "A block-based notes editor.",
-      "",
-      "%install",
-      "mkdir -p %{buildroot}/usr/bin",
-      "mkdir -p %{buildroot}/usr/share/applications",
-      "mkdir -p %{buildroot}/usr/share/icons/hicolor/1024x1024/apps",
-      "cp %{_sourcedir}/block %{buildroot}/usr/bin/block",
-      "chmod 755 %{buildroot}/usr/bin/block",
-      "cp %{_sourcedir}/block.png %{buildroot}/usr/share/icons/hicolor/1024x1024/apps/block.png",
-      "cp %{_sourcedir}/block.desktop %{buildroot}/usr/share/applications/block.desktop",
-      "",
-      "%files",
-      "/usr/bin/block",
-      "/usr/share/applications/block.desktop",
-      "/usr/share/icons/hicolor/1024x1024/apps/block.png",
-      "",
-    ].join("\n"));
-    const source = join(top, "SOURCES");
-    copyFileSync(binary, join(source, "block"));
-    copyFileSync(resolve(ROOT, "assets/app-icon/icon-1024.png"), join(source, "block.png"));
-    writeFileSync(join(source, "block.desktop"), [
-      "[Desktop Entry]",
-      "Type=Application",
-      "Name=Block",
-      "Exec=block",
-      "Icon=block",
-      "Categories=Office;",
-      "Terminal=false",
-      "",
-    ].join("\n"));
-    run("rpmbuild", ["-bb", spec, "--define", `_topdir ${top}`]);
-    const built = readdirSync(join(top, "RPMS", names.rpm)).find((name) => name.endsWith(".rpm"));
-    assert.ok(built, "rpmbuild did not produce an rpm");
-    const outfile = join(RELEASE_DIR, installerFor({ platform: "linux", arch: names.label, kind: "rpm" }));
-    copyFileSync(join(top, "RPMS", names.rpm, built), outfile);
-    console.log(`  ${outfile}`);
-  } finally {
-    rmSync(top, { recursive: true, force: true });
-  }
-}
-
 export async function packageNative() {
-  assert.equal(process.platform, "linux", "Linux is required to build deb and rpm packages");
+  assert.equal(process.platform, "linux", "Linux is required to build the deb package");
   const version = applyReleasePlanVersion();
   const names = archNames();
   const binary = resolve(ROOT, "target/release/block");
   assert.ok(existsSync(binary), `Release binary missing at ${binary}`);
   mkdirSync(RELEASE_DIR, { recursive: true });
   buildDeb(binary, version, names);
-  buildRpm(binary, version, names);
 }
 
 if (import.meta.main) {

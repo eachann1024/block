@@ -1,5 +1,5 @@
 //! Silent background update checker, bilingual changelog modal, and installer updates.
-//! Scheme 2: GitHub official release + public accelerator fallback + SHA-256 strong verification.
+//! Installers come from the GitHub release. When the asset digest is present, the download is checked against it.
 
 use std::{
     io::Read,
@@ -59,6 +59,8 @@ pub struct UpdateInfo {
     pub asset_name: String,
     pub is_delta: bool,
     pub total_bytes: u64,
+    pub sha256: Option<String>,
+    pub manual_build: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -75,6 +77,78 @@ struct GhAsset {
     browser_download_url: String,
     #[serde(default)]
     size: u64,
+    #[serde(default)]
+    digest: Option<String>,
+}
+
+const SOURCE_URL: &str = "https://github.com/eachann1024/block";
+
+enum UpdatePackage {
+    Installer(&'static str),
+    BuildFromSource,
+}
+
+fn sha256_from_digest(digest: Option<&str>) -> Option<String> {
+    let hex = digest?.trim().strip_prefix("sha256:")?.trim();
+    if hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        Some(hex.to_ascii_lowercase())
+    } else {
+        None
+    }
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn linux_from_appimage() -> bool {
+    if std::env::var_os("APPIMAGE").is_some() || std::env::var_os("APPDIR").is_some() {
+        return true;
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.to_str().map(|text| text.contains("/tmp/.mount_")))
+        .unwrap_or(false)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn linux_from_rpm() -> bool {
+    let Ok(exe) = std::env::current_exe() else { return false };
+    let Ok(out) = Command::new("rpm").args(["-qf", exe.to_string_lossy().as_ref()]).output() else {
+        return false;
+    };
+    if !out.status.success() {
+        return false;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let line = text.lines().next().unwrap_or("").trim();
+    !line.is_empty() && !line.to_ascii_lowercase().contains("not owned")
+}
+
+fn update_package() -> UpdatePackage {
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    { return UpdatePackage::Installer("block-macos-arm64.dmg"); }
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    { return UpdatePackage::Installer("block-macos-x64.dmg"); }
+    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+    { return UpdatePackage::Installer("block-windows-x64-setup.exe"); }
+    #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
+    { return UpdatePackage::BuildFromSource; }
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        if linux_from_rpm() {
+            return UpdatePackage::BuildFromSource;
+        }
+        if linux_from_appimage() {
+            return UpdatePackage::Installer("block-linux-x64.AppImage");
+        }
+        return UpdatePackage::Installer("block-linux-x64.deb");
+    }
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    { return UpdatePackage::BuildFromSource; }
+    #[cfg(not(any(
+        all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64")),
+        all(target_os = "windows", any(target_arch = "x86_64", target_arch = "aarch64")),
+        all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")),
+    )))]
+    { return UpdatePackage::BuildFromSource; }
 }
 
 #[derive(serde::Deserialize, Clone, Debug)]
@@ -191,30 +265,6 @@ fn parse_version(s: &str) -> Option<(u64, u64, u64)> {
     let minor = parts[1].parse::<u64>().ok()?;
     let patch = parts[2].split(|c: char| !c.is_ascii_digit()).next()?.parse::<u64>().ok()?;
     Some((major, minor, patch))
-}
-
-fn platform_installer() -> &'static str {
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    { "block-macos-arm64.dmg" }
-    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    { "block-macos-x64.dmg" }
-
-    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-    { "block-windows-x64-setup.exe" }
-    #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
-    { "block-windows-arm64-setup.exe" }
-
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    { "block-linux-x64.AppImage" }
-    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-    { "block-linux-arm64.AppImage" }
-
-    #[cfg(not(any(
-        all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64")),
-        all(target_os = "windows", any(target_arch = "x86_64", target_arch = "aarch64")),
-        all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")),
-    )))]
-    { "" }
 }
 
 fn looks_chinese(text: &str) -> bool {
@@ -424,16 +474,21 @@ fn mock_update_info() -> UpdateInfo {
         },
     };
 
-    let installer = platform_installer();
+    let asset_name = match update_package() {
+        UpdatePackage::Installer(name) => name.to_string(),
+        UpdatePackage::BuildFromSource => "block-mock".to_string(),
+    };
 
     UpdateInfo {
         latest_version: "1.0.999".to_string(),
         latest_tag: "v1.0.999".to_string(),
         days: vec![day1, day2],
-        download_url: format!("https://github.com/eachann1024/block/releases/download/v1.0.999/{installer}"),
-        asset_name: installer.to_string(),
+        download_url: format!("https://github.com/eachann1024/block/releases/download/v1.0.999/{asset_name}"),
+        asset_name,
         is_delta: false,
         total_bytes: 4_404_019,
+        sha256: None,
+        manual_build: false,
     }
 }
 
@@ -534,18 +589,25 @@ pub fn check_for_updates() -> bool {
         }
     }
 
-    let installer = platform_installer();
-    let download_url;
-    let asset_name;
+    let mut download_url = String::new();
+    let mut asset_name = String::new();
     let mut total_bytes = 0;
+    let mut sha256 = None;
+    let mut manual_build = false;
 
-    if let Some(asset) = latest.assets.iter().find(|a| a.name == installer) {
-        download_url = asset.browser_download_url.clone();
-        asset_name = asset.name.clone();
-        total_bytes = asset.size;
-    } else {
-        asset_name = installer.to_string();
-        download_url = format!("https://github.com/eachann1024/block/releases/download/{latest_tag}/{installer}");
+    match update_package() {
+        UpdatePackage::BuildFromSource => manual_build = true,
+        UpdatePackage::Installer(installer) => {
+            if let Some(asset) = latest.assets.iter().find(|item| item.name == installer) {
+                download_url = asset.browser_download_url.clone();
+                asset_name = asset.name.clone();
+                total_bytes = asset.size;
+                sha256 = sha256_from_digest(asset.digest.as_deref());
+            } else {
+                asset_name = installer.to_string();
+                manual_build = true;
+            }
+        }
     }
 
     let info = UpdateInfo {
@@ -556,6 +618,8 @@ pub fn check_for_updates() -> bool {
         asset_name,
         is_delta: false,
         total_bytes,
+        sha256,
+        manual_build,
     };
 
     *UPDATE_INFO.lock().unwrap() = Some(info);
@@ -788,22 +852,6 @@ fn download_file_with_fallback(
     false
 }
 
-fn fetch_sums_content(sums_urls: &[String]) -> Option<String> {
-    for url in sums_urls {
-        let output = Command::new("curl")
-            .args(["-sSL", "--connect-timeout", "4", "--max-time", "10", url])
-            .output();
-        if let Ok(out) = output
-            && out.status.success()
-            && !out.stdout.is_empty()
-            && let Ok(text) = String::from_utf8(out.stdout)
-        {
-            return Some(text);
-        }
-    }
-    None
-}
-
 fn perform_update(
     info: UpdateInfo,
     progress_tx: std::sync::mpsc::Sender<DownloadProgress>,
@@ -841,14 +889,6 @@ fn perform_update(
         format!("https://mirror.ghproxy.com/{}", info.download_url),
     ];
 
-    let sums_base = format!("https://github.com/eachann1024/block/releases/download/{}/SHA256SUMS.txt", info.latest_tag);
-    let sums_candidates = [
-        sums_base.clone(),
-        format!("https://ghfast.top/{sums_base}"),
-        format!("https://gh-proxy.com/{sums_base}"),
-        format!("https://mirror.ghproxy.com/{sums_base}"),
-    ];
-
     let ok = download_file_with_fallback(&download_candidates, &temp_asset, info.total_bytes, &progress_tx);
     if !ok {
         let _ = std::fs::remove_file(&temp_asset);
@@ -860,32 +900,17 @@ fn perform_update(
         return Err("Cancelled".to_string());
     }
 
-    // SHA-256 verification against SHA256SUMS.txt
-    let sums_text = fetch_sums_content(&sums_candidates)
-        .ok_or_else(|| "Failed to fetch SHA256SUMS.txt".to_string())?;
-
-    let mut expected_hash = None;
-    for line in sums_text.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 2 {
-            let filename = parts[1].trim_start_matches('*');
-            if filename == info.asset_name {
-                expected_hash = Some(parts[0].to_lowercase());
-                break;
-            }
+    if let Some(expected) = info.sha256.as_deref() {
+        let downloaded_bytes = std::fs::read(&temp_asset).map_err(|e| e.to_string())?;
+        if let Some(actual_hash) = sha256_mismatch(&downloaded_bytes, expected) {
+            let _ = std::fs::remove_file(&temp_asset);
+            return Err(format!("SHA-256 mismatch: expected {expected}, got {actual_hash}"));
         }
-    }
-
-    let expected = expected_hash.ok_or_else(|| format!("Checksum for {} not found in SHA256SUMS.txt", info.asset_name))?;
-    let downloaded_bytes = std::fs::read(&temp_asset).map_err(|e| e.to_string())?;
-
-    if let Some(actual_hash) = sha256_mismatch(&downloaded_bytes, &expected) {
-        let _ = std::fs::remove_file(&temp_asset);
-        return Err(format!("SHA-256 mismatch: expected {expected}, got {actual_hash}"));
     }
 
     // Decompress and in-place replacement for delta packages
     if info.is_delta {
+        let downloaded_bytes = std::fs::read(&temp_asset).map_err(|e| e.to_string())?;
         let mut decoder = flate2::read::GzDecoder::new(&downloaded_bytes[..]);
         let mut binary = Vec::new();
         decoder.read_to_end(&mut binary).map_err(|e| format!("Gzip decode failed: {e}"))?;
@@ -985,10 +1010,20 @@ fn perform_update(
         }
         #[cfg(target_os = "linux")]
         {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&temp_asset, std::fs::Permissions::from_mode(0o755));
-            let _ = Command::new(&temp_asset).args(std::env::args().skip(1)).spawn();
-            std::process::exit(0);
+            if info.asset_name.ends_with(".deb") {
+                let status = Command::new("xdg-open")
+                    .arg(&temp_asset)
+                    .status()
+                    .map_err(|err| format!("Could not open the deb installer: {err}"))?;
+                if !status.success() {
+                    return Err("Could not open the deb installer".to_string());
+                }
+            } else {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&temp_asset, std::fs::Permissions::from_mode(0o755));
+                let _ = Command::new(&temp_asset).args(std::env::args().skip(1)).spawn();
+                std::process::exit(0);
+            }
         }
     }
 
@@ -1007,6 +1042,10 @@ pub fn start_update(cx: &mut Context<Workspace>) {
     };
 
     let Some(info) = info else {
+        DOWNLOADING.store(false, Ordering::SeqCst);
+        return;
+    };
+    if info.manual_build || info.download_url.is_empty() {
         DOWNLOADING.store(false, Ordering::SeqCst);
         return;
     };
@@ -1244,12 +1283,29 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
         None
     };
 
+    let manual_note = if info.manual_build {
+        Some(
+            div()
+                .flex_1()
+                .text_size(px(14.))
+                .text_color(theme.text)
+                .child(if is_en {
+                    format!("No installer is published for this system. Clone the source and build it yourself: {SOURCE_URL}")
+                } else {
+                    format!("请到 GitHub 拉取源码自行编译：{SOURCE_URL}")
+                }),
+        )
+    } else {
+        None
+    };
+
     let actions = div()
         .w_full()
         .flex()
         .items_center()
         .justify_end()
         .gap(px(10.))
+        .children(manual_note)
         .child(
             div()
                 .id("updater-cancel")
@@ -1273,7 +1329,7 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
                 }))
                 .child(tr("先不更新", "Not Now")),
         )
-        .child(
+        .when(!info.manual_build, |row| row.child(
             div()
                 .id("updater-submit")
                 .h(px(32.))
@@ -1293,7 +1349,7 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
                     start_update(cx);
                 }))
                 .child(if progress.active { tr("正在更新…", "Updating…") } else { tr("更新", "Update") }),
-        );
+        ));
 
     let bottom_section = div()
         .w_full()
