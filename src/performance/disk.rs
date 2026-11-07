@@ -23,10 +23,6 @@ pub struct DiskSnapshot {
     pub errors: Vec<String>,
 }
 
-pub fn scan_disk(paths: DiskPaths) -> JoinHandle<DiskSnapshot> {
-    scan_disk_with_cancel(paths, Arc::new(AtomicBool::new(false)))
-}
-
 pub fn scan_disk_with_cancel(paths: DiskPaths, cancel: Arc<AtomicBool>) -> JoinHandle<DiskSnapshot> {
     thread::spawn(move || scan(paths, &cancel))
 }

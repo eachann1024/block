@@ -25,17 +25,13 @@ struct State {
     disk_at: Option<std::time::SystemTime>,
     disk_loading: bool,
     notebooks: Vec<PathBuf>,
-    tab: Tab,
     selected: Option<String>,
 }
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Tab { Storage, Memory }
 
 impl State {
     const fn new() -> Self {
         Self { open: false, generation: 0, cancel: None, process: None, process_samples: 0, disk: None,
-            disk_at: None, disk_loading: false, notebooks: Vec::new(), tab: Tab::Storage, selected: None }
+            disk_at: None, disk_loading: false, notebooks: Vec::new(), selected: None }
     }
 }
 
@@ -140,7 +136,6 @@ fn start_disk(paths: DiskPaths, generation: u64, cancel: Arc<AtomicBool>) {
 pub(crate) struct SmokeState {
     pub open: bool,
     pub generation: u64,
-    pub tab: &'static str,
     pub selected: Option<String>,
     pub process_samples: u64,
     pub process_ok: bool,
@@ -161,7 +156,7 @@ pub(crate) fn smoke_state() -> SmokeState {
     let main = state.process.as_ref().and_then(|result| result.as_ref().ok())
         .and_then(|snapshot| snapshot.processes.iter().find(|row| row.is_main));
     SmokeState { open: state.open, generation: state.generation,
-        tab: if state.tab == Tab::Storage { "storage" } else { "memory" }, selected: state.selected.clone(),
+        selected: state.selected.clone(),
         process_samples: state.process_samples, process_ok: main.and_then(|row| row.rss_bytes).is_some_and(|rss| rss > 0),
         cpu_ready: main.and_then(|row| row.cpu_percent).is_some(), disk_loading: state.disk_loading, disk_categories, disk_error }
 }
