@@ -1,3 +1,4 @@
+use crate::ui::tooltip::TooltipExt;
 use gpui::{
     App, CursorStyle, Div, ElementId, Hsla, MouseButton, MouseDownEvent, SharedString, Stateful,
     Window, div, prelude::*, px, rgb,
@@ -153,7 +154,7 @@ pub fn header_action_button(
         .cursor(CursorStyle::PointingHand)
         .when(active, |b| b.bg(theme.hover))
         .hover(move |s| s.bg(theme.hover))
-        .when(!active, |b| b.tooltip(crate::ui::tooltip::tooltip(tip)))
+        .when(!active, |b| b.tooltip_above(crate::ui::tooltip::tooltip(tip)))
         .on_mouse_down(MouseButton::Left, on_down)
         .child(stateful_icon(
             group,
@@ -199,7 +200,7 @@ pub fn toolbar_icon_button(
         .when(enabled, |b| {
             b.cursor(CursorStyle::PointingHand)
                 .hover(move |s| s.bg(theme.hover).border_color(theme.accent))
-                .tooltip(crate::ui::tooltip::tooltip(tip))
+                .tooltip_above(crate::ui::tooltip::tooltip(tip))
                 .on_mouse_down(MouseButton::Left, on_down)
         })
         .when(!enabled, |b| b.opacity(0.5))
@@ -231,7 +232,7 @@ pub fn dock_icon_button(
         .rounded(crate::ui::radius::CONTROL)
         .cursor(CursorStyle::PointingHand)
         .when(active, |b| b.bg(theme.selected).border_1().border_color(theme.accent))
-        .when(!active, |b| b.hover(move |s| s.bg(theme.hover)).tooltip(crate::ui::tooltip::tooltip(tip)))
+        .when(!active, |b| b.hover(move |s| s.bg(theme.hover)).tooltip_above(crate::ui::tooltip::tooltip(tip)))
         .on_mouse_down(MouseButton::Left, on_down)
         .child(stateful_icon(
             group,

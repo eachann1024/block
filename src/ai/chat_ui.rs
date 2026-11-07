@@ -1,4 +1,5 @@
 //! Rendering and batch-plan card UI for `AiChat`.
+use crate::ui::tooltip::TooltipExt;
 use gpui::{CursorStyle, Focusable, FontWeight, IntoElement, MouseButton, ParentElement, Render, SharedString, Styled, Window, div, prelude::*, px};
 
 
@@ -58,7 +59,7 @@ impl Render for AiChat {
                         .child(div().text_size(px(14.)).text_color(theme.text_secondary).child(backend_ui::backend_name(c.backend)))
                         .child(div().id(del_id.clone()).group(del_id.clone()).size(px(22.)).flex().items_center().justify_center().rounded(crate::ui::radius::MICRO_SM)
                             .hover(move |s| s.bg(theme.shell))
-                            .tooltip(crate::theme::tooltip(tr("删除会话", "Delete chat")))
+                            .tooltip_above(crate::theme::tooltip(tr("删除会话", "Delete chat")))
                             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                                 cx.stop_propagation();
                                 if this.current == Some(id) { super::plan_link::clear(cx); this.stop(); this.current = None; }
