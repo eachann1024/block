@@ -5,12 +5,14 @@ import { installerFor } from "./allowed-assets.mjs";
 import { cargoRelease, run } from "./cargo-release.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
-const SETUP_NAME = installerFor({ platform: "windows", arch: process.env.BLOCK_ARCH || process.arch, kind: "exe" });
+const WINDOWS_ARCH = process.env.BLOCK_ARCH || process.arch;
+if (WINDOWS_ARCH !== "x64") throw new Error(`Windows installers are built for x64 only, got ${WINDOWS_ARCH}`);
+const SETUP_NAME = installerFor({ platform: "windows", arch: WINDOWS_ARCH, kind: "exe" });
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 
 export async function packageWindows() {
   assert.equal(process.platform, "win32", "Windows is required to build the NSIS installer");
-  assert.ok(process.arch === "x64" || process.arch === "arm64", `unsupported arch ${process.arch}`);
+  assert.equal(process.arch, "x64", `Windows installers are built for x64 only, got ${process.arch}`);
   const version = applyReleasePlanVersion();
   assert.match(version, /^\d+\.\d+\.\d+$/);
   cargoRelease();

@@ -1,18 +1,14 @@
+// 唯一名单：GitHub Release 只放这 5 个安装包。不要 Windows ARM、Linux arm64、rpm、校验和、压缩包或 blockmap。
+// The only GitHub Release assets are these 5 installers.
 export const INSTALLERS = [
   "block-macos-arm64.dmg",
   "block-macos-x64.dmg",
   "block-windows-x64-setup.exe",
-  "block-windows-arm64-setup.exe",
-  "block-linux-x64.AppImage",
-  "block-linux-arm64.AppImage",
   "block-linux-x64.deb",
-  "block-linux-arm64.deb",
-  "block-linux-x64.rpm",
-  "block-linux-arm64.rpm",
+  "block-linux-x64.AppImage",
 ];
 
-export const CHECKSUM_NAME = "SHA256SUMS.txt";
-export const RELEASE_ASSETS = [...INSTALLERS, CHECKSUM_NAME];
+export const RELEASE_ASSETS = [...INSTALLERS];
 
 export function assertReleaseAsset(name) {
   if (!RELEASE_ASSETS.includes(name)) {
@@ -31,7 +27,6 @@ const KIND = {
   exe: (name) => name.endsWith("-setup.exe"),
   AppImage: (name) => name.endsWith(".AppImage"),
   deb: (name) => name.endsWith(".deb"),
-  rpm: (name) => name.endsWith(".rpm"),
 };
 
 export function installerFor({ platform, arch, kind }) {
