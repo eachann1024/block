@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>性能监控 B · 无切换带空隙方块看板</title>
+<script src="./support.js"></script>
+</head>
+<body><x-dc><helmet><style>
+*{box-sizing:border-box}body{margin:0}
+.entry,.icon,.refresh,.tile{font:inherit;cursor:pointer}
+.entry:focus-visible,.icon:focus-visible,.refresh:focus-visible,.tile:focus-visible{outline:2px solid #779de8;outline-offset:2px}
+.tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:3px;min-width:0;padding:8px;border-radius:8px;text-align:left;transition:border-color .15s ease}
+.tile:hover,.tile:focus-visible{border-color:var(--tile-accent)!important;z-index:3}
+.tip{display:none;position:absolute;left:50%;bottom:calc(100% + 7px);transform:translateX(-50%);width:max-content;max-width:220px;padding:7px 9px;border-radius:7px;background:#343434;color:#fff;font-size:12px;line-height:17px;white-space:normal;box-shadow:0 4px 12px #0003;pointer-events:none}
+.tile:hover .tip,.tile:focus-visible .tip{display:block}
+</style></helmet>
+<div style="width:1120px;height:760px;display:flex;align-items:center;justify-content:center;gap:36px;padding:32px;background:{{t.backdrop}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;color:{{t.text}}">
+<section aria-label="关于 Block" style="width:348px;flex:none;display:flex;flex-direction:column;align-items:center;gap:18px;padding:28px 24px 22px;background:{{t.menu}};border:1px solid {{t.border}};border-radius:14px;position:relative">
+<button type="button" class="icon" aria-label="切换深浅色" onClick="{{toggleTheme}}" style="position:absolute;top:12px;right:12px;width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:{{t.sub}}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg></button>
+<img src="/_blob/6768a211187044ad08d09ce47a61554d" alt="Block 图标" style="width:80px;height:80px">
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px"><h1 style="margin:0;font-size:22px;line-height:28px;font-weight:560">Block</h1><span style="color:{{t.sub}}">版本 1.0.301</span><span style="color:{{t.sub}}">作者 eachann</span></div>
+<div style="width:100%;display:flex;flex-direction:column;gap:10px;border-top:1px solid {{t.border}};padding-top:16px">
+<a href="https://github.com/eachann1024/block" target="_blank" rel="noopener noreferrer" class="entry" style="display:flex;align-items:center;justify-content:space-between;height:42px;padding:0 16px;border-radius:8px;background:{{t.paper}};border:1px solid {{t.btn}};color:{{t.text}};text-decoration:none"><span>项目源码</span><span style="color:{{t.sub}};font-size:13px">eachann1024/block ↗</span></a>
+<button type="button" class="entry" onClick="{{openPanel}}" style="display:flex;align-items:center;justify-content:space-between;height:42px;padding:0 16px;border-radius:8px;background:{{t.selected}};border:1px solid {{t.accent}};color:{{t.text}}"><span>性能监控</span><span style="color:{{t.accent}};font-size:13px">性能与占用 ›</span></button>
+</div><button type="button" class="entry" style="width:100%;height:38px;border-radius:8px;background:{{t.paper}};border:1px solid {{t.btn}};color:{{t.text}}">关闭</button>
+</section>
+<sc-if condition="{{panelOpen}}"><section aria-label="性能与占用" style="width:500px;height:420px;flex:none;display:flex;flex-direction:column;gap:10px;padding:18px;background:{{t.menu}};border:1px solid {{t.border}};border-radius:14px">
+<header style="height:28px;flex:none;display:flex;align-items:center;justify-content:space-between"><strong style="font-size:16px;font-weight:560">性能与占用</strong><div style="display:flex;align-items:center;gap:6px"><button type="button" class="refresh" onClick="{{refresh}}" style="height:28px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:{{t.sub}};font-size:13px">重新统计</button><button type="button" class="icon" aria-label="关闭性能与占用" onClick="{{closePanel}}" style="width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:{{t.sub}};font-size:20px">×</button></div></header>
+<div aria-label="实时运行指标" style="height:66px;flex:none;display:grid;grid-template-columns:1.2fr .85fr 1.2fr .75fr;align-items:center;background:{{t.paper}};border:1px solid {{t.border}};border-radius:8px">
+<div style="min-width:0;padding:0 8px"><div style="font-size:12px;color:{{t.sub}}">运行内存</div><strong style="font-size:14px;white-space:nowrap">164.0 MiB</strong><div style="font-size:10px;white-space:nowrap;color:{{t.sub}}">主 142 · 辅助 22 MiB</div></div>
+<div style="min-width:0;padding:0 8px;border-left:1px solid {{t.border}}"><div style="font-size:12px;color:{{t.sub}}">CPU 占用</div><strong style="font-size:14px">1.8%</strong><div style="font-size:10px;color:{{t.sub}}">当前占用</div></div>
+<div style="min-width:0;padding:0 8px;border-left:1px solid {{t.border}}"><div style="font-size:12px;color:{{t.sub}}">文件总体积</div><strong style="font-size:14px;white-space:nowrap">124.2 MiB</strong><div style="font-size:10px;color:{{t.sub}}">逻辑大小</div></div>
+<div style="min-width:0;padding:0 8px;border-left:1px solid {{t.border}}"><div style="font-size:12px;color:{{t.sub}}">线程</div><strong style="font-size:14px">25</strong><div style="font-size:10px;color:{{t.sub}}">空闲</div></div>
+</div>
+<div aria-label="文件分类方块" style="height:206px;flex:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:6px">
+<sc-for list="{{items}}" as="item"><button type="button" class="tile" onMouseEnter="{{item.pick}}" onFocus="{{item.pick}}" onClick="{{item.pick}}" aria-label="{{item.label}}" style="grid-column:span {{item.span}};background:{{item.bg}};border:1px solid {{item.border}};color:{{t.text}};--tile-accent:{{item.dot}}"><span style="font-weight:560;font-size:13px;line-height:17px">{{item.name}}</span><span style="font-size:11px;line-height:15px;white-space:nowrap">{{item.size}} · {{item.pct}}</span><span style="font-size:11px;line-height:15px;color:{{t.sub}};white-space:nowrap">{{item.short}}</span><span class="tip" role="tooltip">{{item.label}}</span></button></sc-for>
+</div>
+<div aria-live="polite" style="height:32px;flex:none;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:7px;background:{{t.paper}};border:1px solid {{t.border}};font-size:11px;white-space:nowrap;overflow:hidden"><span style="width:7px;height:7px;flex:none;border-radius:2px;background:{{cur.dot}}"></span><strong style="font-weight:560">{{cur.name}}</strong><span>{{cur.size}} · {{cur.pct}}</span><span style="color:{{t.sub}};overflow:hidden;text-overflow:ellipsis">{{cur.purpose}}</span></div>
+</section></sc-if></div></x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":true},"$preview":{"width":1120,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const state = this.state || {};
+    const dark = state.dark !== undefined ? state.dark : (this.props.dark ?? true);
+    const index = state.index ?? 0;
+    const t = dark ? {backdrop:'#141414',menu:'#222222',paper:'#181818',selected:'#2b3548',text:'#ececec',sub:'#b4b4b4',border:'#343434',btn:'#444444',accent:'#779de8'} : {backdrop:'#eef0f3',menu:'#ffffff',paper:'#f8f8f8',selected:'#e5edfc',text:'#20242c',sub:'#526071',border:'#e4e6ea',btn:'#dcdcdc',accent:'#547dd0'};
+    const data = [
+      {name:'应用',size:'78.0 MiB',pct:'62.8%',short:'程序与运行资源',purpose:'程序本体与运行资源',dot:'#779de8',dark:'#263144',light:'#e7eef9',span:2},
+      {name:'笔记 Markdown',size:'14.2 MiB',pct:'11.4%',short:'笔记正文',purpose:'保存 Markdown 笔记正文',dot:'#6db998',dark:'#24372f',light:'#e7f3ed',span:1},
+      {name:'附件及其他',size:'12.0 MiB',pct:'9.7%',short:'图片与附件',purpose:'保存图片和其他附件',dot:'#bfa173',dark:'#382f23',light:'#f5eee2',span:1},
+      {name:'历史版本',size:'8.0 MiB',pct:'6.4%',short:'页面历史',purpose:'保存页面历史以便恢复',dot:'#b799d3',dark:'#322a3a',light:'#f0eaf5',span:1},
+      {name:'AI 会话',size:'5.0 MiB',pct:'4.0%',short:'对话记录',purpose:'保存 AI 对话与上下文',dot:'#89a8c8',dark:'#283441',light:'#e8eff5',span:1},
+      {name:'配置及其他',size:'4.0 MiB',pct:'3.2%',short:'设置与日志',purpose:'保存应用设置和诊断日志',dot:'#a6aeb7',dark:'#303338',light:'#eef0f2',span:1},
+      {name:'缓存',size:'3.0 MiB',pct:'2.4%',short:'临时数据',purpose:'保存可重新生成的临时数据',dot:'#aab78b',dark:'#30372a',light:'#eef2e7',span:1}
+    ];
+    const items = data.map((item, itemIndex) => ({...item,bg:dark ? item.dark : item.light,border:itemIndex === index ? item.dot : (dark ? '#41454a' : '#d8dfe5'),label:item.name + ' · ' + item.size + ' · ' + item.pct + ' · ' + item.purpose,pick:() => this.setState({index:itemIndex})}));
+    return {t,items,cur:items[index],panelOpen:state.panelOpen !== false,toggleTheme:() => this.setState({dark:!dark}),openPanel:() => this.setState({panelOpen:true}),closePanel:() => this.setState({panelOpen:false}),refresh:() => this.setState({index:0})};
+  }
+}
+</script></body></html>
