@@ -2,6 +2,29 @@
 use super::{markdown, model::Kind, view::Editor};
 
 impl Editor {
+    pub(crate) fn prepare_outline_smoke(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
+        assert!(crate::ui::smoke_overlay::is_smoke_active());
+        self.reset_document(markdown::parse("# 概览总纲\n\n第一段说明\n\n## 核心架构\n\n架构正文\n\n### 渲染管线\n\n管线细节\n\n## 验收标准\n\n验收说明\n"));
+        self.annotate.annotations.clear(); self.persist_annotations();
+        let id = self.doc.blocks.iter().find(|block| block.text == "核心架构").unwrap().id;
+        self.focus_block(id, window, cx);
+        self.outline.force_narrow = false; self.outline.hovered = false; cx.notify();
+    }
+
+    pub(crate) fn set_outline_force_narrow_smoke(&mut self, narrow: bool, cx: &mut gpui::Context<Self>) {
+        assert!(crate::ui::smoke_overlay::is_smoke_active());
+        self.outline.force_narrow = narrow; cx.notify();
+    }
+
+    pub(crate) fn outline_smoke_entries(&self) -> Vec<(u64, u8, String, bool, bool)> {
+        super::outline::entries(self).into_iter().map(|entry|
+            (entry.block_id, entry.level, entry.title, entry.active, entry.bar_lit)).collect()
+    }
+
+    pub(crate) fn caret_block_id(&self) -> u64 { self.caret.head.block }
+}
+
+impl Editor {
     pub(crate) fn slash_menu_open(&self) -> bool { self.block_menu.is_some() }
     pub(crate) fn markdown_text(&self) -> String { markdown::serialize(&self.doc) }
     pub(crate) fn block_count(&self) -> usize { self.doc.blocks.len() }

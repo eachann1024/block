@@ -25,6 +25,7 @@ impl Run {
         self.backspace(cx).await?;
         self.find(cx).await?;
         self.annotations(cx).await?;
+        self.outline_rail(cx).await?;
         self.global_search(cx).await?;
         self.tabs_and_sidebar(cx).await?;
         self.settings(cx).await?;
