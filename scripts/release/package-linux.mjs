@@ -7,6 +7,7 @@ import { cargoRelease } from "./cargo-release.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
 const ARCH = process.env.BLOCK_ARCH || (process.arch === "arm64" ? "arm64" : "x64");
+if (ARCH !== "x64") throw new Error(`Linux packages are built for x64 only, got ${ARCH}`);
 const APPIMAGE_NAME = installerFor({ platform: "linux", arch: ARCH, kind: "AppImage" });
 const SQUASH_ARCH = process.env.APPIMAGE_ARCH || (ARCH === "arm64" ? "aarch64" : "x86_64");
 const RELEASE_DIR = resolve(ROOT, "dist/release");
@@ -114,7 +115,7 @@ function writeAppDir(binary, appDir) {
 
 export async function packageLinux() {
   assert.equal(process.platform, "linux", "Linux is required to build the AppImage");
-  assert.ok(process.arch === "x64" || process.arch === "arm64", `unsupported arch ${process.arch}`);
+  assert.equal(process.arch, "x64", `Linux packages are built for x64 only, got ${process.arch}`);
   const version = applyReleasePlanVersion();
   cargoRelease();
   const binary = resolve(ROOT, "target/release/block");

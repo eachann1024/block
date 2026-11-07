@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { EN_FOOTER, ZH_FOOTER } from "./release-notes-check.mjs";
 import { buildReleaseNotes, listCommits } from "./release-notes.mjs";
 
 export const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -146,6 +147,48 @@ function writeOutputs(entries) {
   appendFileSync(process.env.GITHUB_OUTPUT, lines);
 }
 
+// GitHub Actions 会把输出值 false 当成布尔并变成空字符串，后续作业就全部被跳过。
+function outputFlag(value) {
+  return value ? "yes" : "no";
+}
+
+function bumpPatch(version) {
+  const [major, minor, patch] = version.split(".").map(Number);
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+function versionAboveExisting(computed, releases) {
+  const taken = releases.map((release) => versionFromTag(release.tag_name)).filter(Boolean);
+  let version = computed;
+  const highest = taken.reduce((best, item) => (!best || compareVersions(item, best) > 0 ? item : best), null);
+  if (highest && compareVersions(version, highest) <= 0) version = bumpPatch(highest);
+  const used = new Set(taken);
+  while (used.has(version)) version = bumpPatch(version);
+  return version;
+}
+
+function forcedReleaseNotes() {
+  return [
+    "## English",
+    "",
+    "### Improvements",
+    "",
+    "- This build was published manually.",
+    "",
+    EN_FOOTER,
+    "",
+    "---",
+    "",
+    "## 中文",
+    "",
+    "### 改进",
+    "",
+    "- 这一版由手动发布。",
+    "",
+    ZH_FOOTER,
+  ].join("\n");
+}
+
 async function main() {
   const headSha = process.env.SOURCE_SHA || process.env.GITHUB_SHA
     || execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
@@ -155,7 +198,7 @@ async function main() {
   const onMain = !process.env.GITHUB_REF || process.env.GITHUB_REF === "refs/heads/main";
 
   const cargoVersion = readCargoVersion(ROOT);
-  const version = releaseVersion(ROOT, headSha);
+  let version = releaseVersion(ROOT, headSha);
   const releases = getReleases();
   const stable = releases
     .filter((r) => !r.draft && !r.prerelease && versionFromTag(r.tag_name))
@@ -169,54 +212,65 @@ async function main() {
       summary(`今日（${today}）已发布过 ${previous.tag_name}，每日最多自动发布一次，本次跳过。`);
       const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
       writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-      writeOutputs({ should_build: false, publish: false, version: cargoVersion, release_tag: previous.tag_name });
+      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: cargoVersion, release_tag: previous.tag_name });
       return;
     }
   }
 
-  const autoBump = version !== cargoVersion;
-
   const previousSha = resolveTagCommit(previous);
   if (previous && !previousSha) {
-    summary(`无法解析 ${previous.tag_name} 的提交，停止发布，避免把更早的改动写进这一版。`);
-    const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
-    writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-    writeOutputs({ should_build: false, publish: false, version: cargoVersion, release_tag: previous.tag_name });
-    return;
+    if (!force) {
+      summary(`无法解析 ${previous.tag_name} 的提交，停止发布，避免把更早的改动写进这一版。`);
+      const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
+      writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
+      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: cargoVersion, release_tag: previous.tag_name });
+      return;
+    }
+    summary(`无法解析 ${previous.tag_name} 的提交，因 force=true 仍继续发布。`);
   }
   if (previousSha && previousSha === headSha && !force) {
     summary(`当前 HEAD (${headSha.slice(0, 7)}) 与最新 Release ${previous.tag_name} 完全一致，跳过构建。`);
     const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
     writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-    writeOutputs({ should_build: false, publish: false, version: cargoVersion, release_tag: previous.tag_name });
+    writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: cargoVersion, release_tag: previous.tag_name });
     return;
   }
   if (previousSha && !isAncestor(previousSha, headSha)) {
-    summary(`最新 Release ${previous.tag_name} 不在当前历史上，停止发布。`);
-    const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
-    writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-    writeOutputs({ should_build: false, publish: false, version: cargoVersion, release_tag: previous.tag_name });
-    return;
+    if (!force) {
+      summary(`最新 Release ${previous.tag_name} 不在当前历史上，停止发布。`);
+      const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
+      writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
+      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: cargoVersion, release_tag: previous.tag_name });
+      return;
+    }
+    summary(`最新 Release ${previous.tag_name} 不在当前历史上，因 force=true 仍继续发布。`);
   }
 
-  const rangeSpec = previousSha ? `${previousSha}..${headSha}` : "-n 30";
+  if (force) version = versionAboveExisting(version, releases);
+  const autoBump = version !== cargoVersion;
+  const onHistory = previousSha && previousSha !== headSha && isAncestor(previousSha, headSha);
+  const rangeSpec = onHistory ? `${previousSha}..${headSha}` : "-n 30";
   const commits = listCommits(ROOT, rangeSpec);
-  const notes = await buildReleaseNotes({ version, commits });
+  let notes = await buildReleaseNotes({ version, commits });
 
   if (previous && notes.skip && !force) {
     summary(`自 ${previous.tag_name} 以来${notes.reason}（共扫描 ${commits.length} 条提交），跳过自动发布。`);
     const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
     writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-    writeOutputs({ should_build: false, publish: false, version: cargoVersion, release_tag: previous.tag_name });
+    writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: cargoVersion, release_tag: previous.tag_name });
     return;
   }
 
   if (!notes.markdown) {
-    summary(`自 ${previous?.tag_name || "初始版本"} 以来没有可写给用户的更新说明，停止发布。`);
-    const plan = { shouldBuild: false, publish: false, version, tag: `v${version}`, commit: headSha };
-    writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-    writeOutputs({ should_build: false, publish: false, version, release_tag: `v${version}` });
-    return;
+    if (!force) {
+      summary(`自 ${previous?.tag_name || "初始版本"} 以来没有可写给用户的更新说明，停止发布。`);
+      const plan = { shouldBuild: false, publish: false, version, tag: `v${version}`, commit: headSha };
+      writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
+      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version, release_tag: `v${version}` });
+      return;
+    }
+    notes = { markdown: forcedReleaseNotes(), source: "forced" };
+    summary("没有可写给用户的更新说明，因 force=true 使用手动发布说明。");
   }
   const markdown = notes.markdown;
   const tag = `v${version}`;
@@ -234,8 +288,8 @@ async function main() {
   };
   writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
   writeOutputs({
-    should_build: true,
-    publish: shouldPublish,
+    should_build: outputFlag(true),
+    publish: outputFlag(shouldPublish),
     version,
     release_tag: tag,
     auto_bump: autoBump,
