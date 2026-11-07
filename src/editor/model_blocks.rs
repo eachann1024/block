@@ -14,6 +14,7 @@ impl Block {
         }
         let meta = BlockMeta { indent:self.meta.indent, list_start:self.meta.list_start,
             code_language:self.meta.code_language.clone(),
+            list_code:self.meta.list_code.clone(),
             code_empty_line:valid && self.text.is_empty() && self.meta.code_empty_line,
             raw_source:self.meta.raw_source.as_ref().map(|_| text.clone()),
             inline:super::inline_ops::slice(&self.meta.inline, range.clone()),
@@ -57,6 +58,10 @@ impl Block {
 pub struct Numbering { levels: Vec<(usize,u64)> }
 impl Numbering {
     pub fn next(&mut self, block: &Block) -> Option<u64> {
+        if let Some(code) = &block.meta.list_code {
+            while self.levels.last().is_some_and(|(depth,_)| *depth > code.parent_indent) { self.levels.pop(); }
+            return None;
+        }
         if !matches!(block.kind,Kind::Numbered|Kind::Bullet|Kind::Todo) {
             self.levels.clear(); return None;
         }
