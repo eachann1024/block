@@ -1,13 +1,13 @@
 //! 设置 › AI 助手 state: three provider cards (DeepSeek / OpenAI 协议 / Claude 协议), Base URL,
-//! API Key, 默认模型, model fetch and 连接测试. Every edit is saved straight to `ai.json`, which
-//! inline AI and the chat panel read per request. Rendering lives in `settings_view.rs`.
+//! API Key and 连接测试. Every edit is saved straight to `ai.json`, which inline AI and the
+//! chat panel read per request. Rendering lives in `settings_view.rs`.
 use std::collections::BTreeMap;
 use gpui::{App, AppContext, Context, Entity, Global, Subscription, Window};
 use gpui_component::input::{InputEvent, InputState};
 
 use super::presets::{self, Protocol, ProviderProfile};
 use super::provider::{self, Config};
-use crate::theme::{is_en, tr};
+use crate::theme::is_en;
 #[path = "settings_agent.rs"]
 mod settings_agent;
 
@@ -17,15 +17,11 @@ pub(crate) struct AiSettings {
     pub(super) enabled: bool, pub(super) provider: String, protocol: Protocol,
     providers: BTreeMap<String, ProviderProfile>, pub(super) show_key: bool, pub(super) last_en: bool,
     pub(super) base_url: Entity<InputState>, pub(super) api_key: Entity<InputState>,
-    pub(super) model_filter: Entity<InputState>, pub(super) model: String,
-    pub(super) models: Vec<String>, pub(super) models_err: Option<String>,
-    pub(super) fetching: bool, pub(super) testing: bool, pub(super) test_note: Option<TestNote>,
+    pub(super) model: String,
+    pub(super) testing: bool, pub(super) test_note: Option<TestNote>,
     pub(super) toggle_anim: crate::ui::toggle_pill::TogglePillState,
     pub(super) pending_backends: Vec<(super::backend::BackendKind, bool)>,
     pub(super) focused_backend: super::backend::BackendKind,
-    pub(super) launch_args_input: Entity<InputState>,
-    pub(super) agent_models: Vec<String>, pub(super) agent_fetching: bool,
-    pub(super) syncing_launch_args: bool,
     _subs: Vec<Subscription>,
 }
 
@@ -52,7 +48,6 @@ pub(crate) fn reload(window: &mut Window, cx: &mut App) {
         this.protocol = c.protocol;
         this.providers = c.providers;
         this.model = c.model.trim().to_owned();
-        this.models = if this.model.is_empty() { Vec::new() } else { vec![this.model.clone()] };
         this.sync_placeholders(window, cx);
         let (url, key) = (c.base_url, c.api_key);
         this.base_url.update(cx, |i, cx| i.set_value(url, window, cx));
@@ -75,46 +70,26 @@ impl AiSettings {
         let (url_ph, key_ph) = placeholders(&c.provider, c.protocol);
         let base_url = cx.new(|cx| InputState::new(window, cx).placeholder(url_ph).default_value(c.base_url.clone()));
         let api_key = cx.new(|cx| InputState::new(window, cx).placeholder(key_ph).masked(true).default_value(c.api_key.clone()));
-        let model_filter = cx.new(|cx| InputState::new(window, cx).placeholder(tr("筛选模型…", "Filter models…")));
-        let launch_args_input = cx.new(|cx| InputState::new(window, cx));
         let model = c.model.trim().to_owned();
-        let models = if model.is_empty() { Vec::new() } else { vec![model.clone()] };
         let mut subs = Vec::new();
         for input in [&base_url, &api_key] {
             subs.push(cx.subscribe(input, |this: &mut Self, _, e: &InputEvent, cx| {
                 if matches!(e, InputEvent::Change) { this.test_note = None; this.save(cx); }
             }));
         }
-        subs.push(cx.subscribe(&model_filter, |_: &mut Self, _, e: &InputEvent, cx| {
-            if matches!(e, InputEvent::Change) { cx.notify(); }
-        }));
-        subs.push(cx.subscribe(&launch_args_input, |this: &mut Self, _, e: &InputEvent, cx| {
-            if matches!(e, InputEvent::Change) && !this.syncing_launch_args && this.focused_backend != super::backend::BackendKind::Builtin {
-                let mut config = super::backend::BackendConfig::load();
-                if config.is_enabled(this.focused_backend) {
-                    if let Err(error) = config.set_launch_args(this.focused_backend, &this.launch_args_input.read(cx).value()) {
-                        this.test_note = Some(TestNote::Err(error));
-                    }
-                }
-            }
-        }));
-        let should_fetch = c.is_complete();
-        let mut this = AiSettings {
+        AiSettings {
             enabled: c.enabled, provider: c.provider, protocol: c.protocol, providers: c.providers,
-            show_key: false, last_en: is_en(), base_url, api_key, model_filter, model,
-            models, models_err: None, fetching: false, testing: false, test_note: None,
+            show_key: false, last_en: is_en(), base_url, api_key, model,
+            testing: false, test_note: None,
             pending_backends: Vec::new(), toggle_anim: Default::default(), focused_backend: super::backend::BackendKind::Builtin,
-            launch_args_input, agent_models: Vec::new(), agent_fetching: false, syncing_launch_args: false, _subs: subs,
-        };
-        if should_fetch { this.fetch_models(cx); }
-        this
+            _subs: subs,
+        }
     }
 
     pub(super) fn sync_placeholders(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let (url_ph, key_ph) = placeholders(&self.provider, self.protocol);
         self.base_url.update(cx, |i, cx| i.set_placeholder(url_ph, window, cx));
         self.api_key.update(cx, |i, cx| i.set_placeholder(key_ph, window, cx));
-        self.model_filter.update(cx, |i, cx| i.set_placeholder(tr("筛选模型…", "Filter models…"), window, cx));
     }
 
     fn current(&self, cx: &App) -> Config {
@@ -144,7 +119,7 @@ impl AiSettings {
     pub(super) fn select_provider(&mut self, id: &'static str, window: &mut Window, cx: &mut Context<Self>) {
         self.providers = self.current(cx).providers;
         self.provider = id.to_owned();
-        self.models_err = None; self.test_note = None;
+        self.test_note = None;
         let preset_url = presets::find(id).map_or("", |p| p.base_url);
         let preset_proto = presets::find(id).map_or(Protocol::Openai, |p| p.protocol);
         let (proto, url, key, mdl) = match self.providers.get(id).cloned() {
@@ -158,16 +133,7 @@ impl AiSettings {
         self.sync_placeholders(window, cx);
         self.base_url.update(cx, |i, cx| i.set_value(url, window, cx));
         self.api_key.update(cx, |i, cx| i.set_value(key, window, cx));
-        self.model_filter.update(cx, |i, cx| i.set_value(String::new(), window, cx));
         self.model = mdl.trim().to_owned();
-        self.models = if self.model.is_empty() { Vec::new() } else { vec![self.model.clone()] };
-        self.save(cx);
-        if self.current(cx).is_complete() { self.fetch_models(cx); }
-    }
-
-    pub(super) fn select_model(&mut self, id: String, cx: &mut Context<Self>) {
-        self.model = id;
-        self.test_note = None;
         self.save(cx);
     }
 
@@ -194,34 +160,6 @@ impl AiSettings {
         cx.notify();
     }
 
-    pub(super) fn fetch_models(&mut self, cx: &mut Context<Self>) {
-        if self.fetching { return; }
-        let config = provider::normalize(self.current(cx));
-        self.fetching = true; self.models_err = None;
-        let task = cx.background_spawn(async move { provider::list_models(&config) });
-        cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| {
-                this.fetching = false;
-                match result {
-                    Ok(mut ids) => {
-                        if !this.model.is_empty() && !ids.contains(&this.model) {
-                            ids.insert(0, this.model.clone());
-                        }
-                        this.models = ids;
-                        this.models_err = None;
-                    }
-                    Err(e) => {
-                        this.models = if this.model.is_empty() { Vec::new() } else { vec![this.model.clone()] };
-                        this.models_err = Some(e);
-                    }
-                }
-                cx.notify();
-            });
-        }).detach();
-        cx.notify();
-    }
-
     pub(super) fn test(&mut self, cx: &mut Context<Self>) {
         if self.testing { return; }
         let config = provider::normalize(self.current(cx));
@@ -232,6 +170,8 @@ impl AiSettings {
             let _ = this.update(cx, |this, cx| {
                 this.testing = false;
                 this.test_note = Some(match result { Ok(()) => TestNote::Ok, Err(e) => TestNote::Err(e) });
+                this.model = provider::stored().model.trim().to_owned();
+                super::chat::sync_settings(cx);
                 cx.notify();
             });
         }).detach();

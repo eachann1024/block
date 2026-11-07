@@ -1,5 +1,5 @@
 use gpui::{Div, SharedString, div, prelude::*, px};
-use super::{backend::{BackendKind, BackendStatus}, backend_ui, chat::AiChat, dsh_ui};
+use super::{backend::{BackendKind, BackendStatus}, backend_ui, chat::AiChat};
 use crate::{theme::tr, ui::ai_controls};
 
 thread_local! {
@@ -46,7 +46,6 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
                     cx.stop_propagation();
                     let changed = chat.selected_backend() != kind;
                     chat.select_backend(kind, window, cx);
-                    if kind == BackendKind::Dsh { dsh_ui::open(chat, window, cx); } else { dsh_ui::close(); }
                     if changed { chat.refresh_models_for(kind, cx); }
                     cx.notify();
                 })));
@@ -54,10 +53,8 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
         grid = grid.child(row);
     }
     let selected_model = chat.selected_model();
-    let mut models = chat.model_choices();
-    if matches!(selected, BackendKind::Codex | BackendKind::Claude | BackendKind::Pi) { models.insert(0, String::new()); }
-    let list_h = if selected == BackendKind::Dsh { 64. } else { 176. };
-    let mut list = div().id("ai-deck-models").h(px(list_h)).flex_none().overflow_y_scroll().track_scroll(&chat.deck_scroll).flex().flex_col();
+    let models = chat.model_choices();
+    let mut list = div().id("ai-deck-models").h(px(176.)).flex_none().overflow_y_scroll().track_scroll(&chat.deck_scroll).flex().flex_col();
     if models.is_empty() {
         let status = match chat.model_status() {
             super::chat::chat_models::ModelStatus::Loading => tr("正在获取模型…", "Loading models…"),
@@ -79,7 +76,6 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
         .child(div().flex().items_center().justify_between().child(div().font_weight(gpui::FontWeight(560.)).child(tr("选择执行后端", "Choose backend")))
             .child(div().text_color(theme.text_secondary).child(tr("点击卡片即切换", "Select a card"))))
         .child(grid.flex_none())
-        .children((selected == BackendKind::Dsh).then(|| dsh_ui::inline_view(cx.entity().downgrade())).flatten())
         .child(div().border_t_1().border_color(theme.hairline).pt(px(8.)).flex().items_center().justify_between()
             .child(div().text_color(theme.text_secondary).child(tr("当前后端模型", "Current Backend Models")))
             .child(ai_controls::action_chip("ai-deck-settings", None, tr("AI 设置", "AI settings"), false, false, cx.listener(|chat, _, window, cx| {

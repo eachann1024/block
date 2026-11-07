@@ -178,10 +178,9 @@ pub(crate) fn list_models(config: &Config) -> Result<Vec<String>, String> {
         return Err(tr("网络请求失败，请检查网络或接口地址", "Network request failed. Check your connection or Base URL").into());
     }
     if !(200..300).contains(&code) { return Err(service_error(&body, code)); }
-    let mut ids: Vec<String> = serde_json::from_str::<serde_json::Value>(&body).ok()
+    let ids: Vec<String> = serde_json::from_str::<serde_json::Value>(&body).ok()
         .and_then(|v| v.get("data").and_then(|d| d.as_array()).cloned()).unwrap_or_default()
         .iter().filter_map(|m| m.get("id").and_then(|i| i.as_str()).map(str::to_owned)).collect();
-    ids.sort(); ids.dedup();
     Ok(ids)
 }
 

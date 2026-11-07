@@ -12,10 +12,6 @@ impl AiChat {
         self.selection_scope = scope == backend::ContextScope::Selection && self.selection_available(cx);
         cx.notify();
     }
-    pub(in crate::editor::ai) fn dsh_options(&self) -> backend::DshOptions { self.backend_config.dsh_options() }
-    pub(in crate::editor::ai) fn set_dsh_options(&mut self, options: backend::DshOptions, cx: &mut Context<Self>) -> Result<(), String> {
-        self.backend_config.set_dsh_options(options)?; cx.notify(); Ok(())
-    }
     pub(in crate::editor::ai) fn recognized_backends(&self) -> Vec<BackendKind> {
         BackendKind::ALL.into_iter().filter(|&kind| backend::is_recognized(kind, self.backend_status(kind))).collect()
     }
@@ -135,8 +131,13 @@ impl AiChat {
         let skill_labels: Vec<_> = catalog.iter().map(|(name, grant)| json!({"name":name,"skillId":grant.stable_id})).collect();
         if !skill_labels.is_empty() { message.push_str(&format!("\n\nAvailable read-only skill resources (readSkillResource uses skillId and relative path; scripts cannot be executed): {skill_labels:?}")); }
         let grants: Vec<_> = catalog.into_iter().map(|(_, grant)| grant).collect();
+        let mut config = self.backend_config.options(kind);
+        if config.get("model").and_then(Value::as_str).unwrap_or("").is_empty() {
+            let model = self.selected_model();
+            if !model.is_empty() { config["model"] = json!(model); }
+        }
         let request = TurnRequest { backend: kind, conversation_id: conversation_id.clone(), turn_id: turn_id.clone(), native_session_id,
-            message, context: expected_context.clone(), config: self.backend_config.options(kind) };
+            message, context: expected_context.clone(), config };
         let mut adapter = match backend::adapter(kind) { Ok(adapter) => adapter, Err(error) => { self.error = Some(error.message); self.restore_failed_draft(window, cx); cx.notify(); return; } };
         let (events, receiver) = mpsc::channel();
         let (bridge, tool_receiver) = ToolBridge::channel();
