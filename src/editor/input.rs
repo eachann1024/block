@@ -84,6 +84,9 @@ impl Editor {
                 } else { self.replace_selection("\n", false, cx); }
             }
             NextCell | PreviousCell => self.table_tab(matches!(action, NextCell), cx),
+            Backspace | Delete if let Some((id, super::table_actions::TableSel::Whole)) = self.table_sel => {
+                self.table_command(id, super::table_actions::TableSel::Whole, super::table_actions::TableCmd::DeleteTable, cx);
+            }
             Backspace | Delete if self.boundary_rules(matches!(action, Delete), cx) => {}
             Backspace | Delete if self.delete_across(cx) => {}
             Backspace | Delete => {
