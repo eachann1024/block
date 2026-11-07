@@ -54,13 +54,40 @@ pub fn move_to_trash(path: &Path) -> io::Result<()> {
 
 #[cfg(target_os = "macos")]
 fn trash_platform(path: &Path) -> io::Result<()> {
-    let quoted = path.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
-    let script = format!("tell application \"Finder\" to delete POSIX file \"{quoted}\"");
-    let output = Command::new("/usr/bin/osascript").arg("-e").arg(script).output()
-        .map_err(|error| io::Error::other(format!("{}: {error}", tr("无法调用访达", "Failed to invoke Finder"))))?;
-    if output.status.success() { return Ok(()); }
-    let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-    Err(io::Error::other(if detail.is_empty() { tr("无法移到废纸篓", "Failed to move to Trash").to_owned() } else { detail }))
+    use cocoa::base::{BOOL, NO, SEL, id, nil, selector};
+    use cocoa::foundation::{NSAutoreleasePool, NSString};
+    unsafe extern "C" {
+        fn objc_msgSend();
+        fn objc_getClass(name: *const std::ffi::c_char) -> id;
+    }
+    unsafe {
+        let pool = NSAutoreleasePool::new(nil);
+        let get_id: unsafe extern "C" fn(id, SEL) -> id = std::mem::transmute(objc_msgSend as *const ());
+        let get_url: unsafe extern "C" fn(id, SEL, id) -> id = std::mem::transmute(objc_msgSend as *const ());
+        let trash_fn: unsafe extern "C" fn(id, SEL, id, *mut id, *mut id) -> BOOL =
+            std::mem::transmute(objc_msgSend as *const ());
+        let utf8_fn: unsafe extern "C" fn(id, SEL) -> *const std::ffi::c_char =
+            std::mem::transmute(objc_msgSend as *const ());
+        let ns_path = NSString::alloc(nil).init_str(&path.to_string_lossy()).autorelease();
+        let url = get_url(objc_getClass(c"NSURL".as_ptr()), selector("fileURLWithPath:"), ns_path);
+        let fm = get_id(objc_getClass(c"NSFileManager".as_ptr()), selector("defaultManager"));
+        let mut err: id = nil;
+        let ok = url != nil && fm != nil
+            && trash_fn(fm, selector("trashItemAtURL:resultingItemURL:error:"), url, std::ptr::null_mut(), &mut err) != NO;
+        let detail = if !ok && err != nil {
+            let desc = get_id(err, selector("localizedDescription"));
+            let cstr = if desc != nil { utf8_fn(desc, selector("UTF8String")) } else { std::ptr::null() };
+            if !cstr.is_null() { std::ffi::CStr::from_ptr(cstr).to_string_lossy().trim().to_owned() } else { String::new() }
+        } else {
+            String::new()
+        };
+        pool.drain();
+        if ok { return Ok(()); }
+        if let Some(home) = dirs::home_dir() && move_into_trash_dir(path, &home.join(".Trash")).is_ok() {
+            return Ok(());
+        }
+        Err(io::Error::other(if detail.is_empty() { tr("无法移到废纸篓", "Failed to move to Trash").to_owned() } else { detail }))
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -79,9 +106,12 @@ fn trash_platform(path: &Path) -> io::Result<()> {
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_family = "wasm")))]
 fn trash_platform(path: &Path) -> io::Result<()> {
     if Command::new("gio").arg("trash").arg(path).status().is_ok_and(|status| status.success()) { return Ok(()); }
-    // Freedesktop fallback: move into the user's Trash/files folder.
-    let files = crate::files::app_data_dir("Trash").join("files");
-    std::fs::create_dir_all(&files)?;
+    move_into_trash_dir(path, &crate::files::app_data_dir("Trash").join("files"))
+}
+
+#[cfg(not(any(target_os = "windows", target_family = "wasm")))]
+fn move_into_trash_dir(path: &Path, files: &Path) -> io::Result<()> {
+    std::fs::create_dir_all(files)?;
     let name = path.file_name().ok_or_else(|| io::Error::other(tr("无效路径", "Invalid path")))?;
     let mut target = files.join(name);
     for n in 2..1000 {
