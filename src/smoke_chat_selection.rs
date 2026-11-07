@@ -29,9 +29,13 @@ impl Run {
         self.check(14, notes.len() == 6 && notes.iter().any(|note| note == "Claude"), "Used notes missing")?;
         let markdown = crate::editor::ai::md_view::normalize_markdown("- **提示词**: **11 篇**\n\n---\n\n共计 **29 篇** 笔记。");
         self.check(14, markdown.contains("<strong>提示词</strong>") && markdown.contains("<strong>11 篇</strong>") && markdown.contains("<strong>29 篇</strong>") && markdown.contains("---"), "CJK Markdown formatting missing")?;
-        for id in ["ai-process-card", "ai-process-stage-badge", "ai-process-toggle", "ai-process-steps", "ai-process-notes-more"] {
+        for id in ["ai-process-card", "ai-process-stage-badge", "ai-process-toggle"] {
             self.check(14, smoke_overlay::target_bounds(id).is_some(), &format!("Missing {id}"))?;
         }
+        self.check(14, smoke_overlay::target_bounds("ai-process-steps").is_none(), "Process should start collapsed")?;
+        self.click_target(cx, "ai-process-toggle", "展开过程").await?;
+        sleep(cx, 220).await; self.redraw(cx);
+        self.check(14, smoke_overlay::target_bounds("ai-process-notes-more").is_some(), "Missing expand notes")?;
         let bounds = smoke_overlay::target_bounds("ai-process-steps").ok_or("Missing process steps")?;
         self.check(14, bounds.size.height <= px(185.), "Process viewport exceeds four steps")?;
         self.click_target(cx, "ai-process-notes-more", "展开全部笔记").await?;
@@ -39,10 +43,8 @@ impl Run {
         self.click_target(cx, "ai-process-notes-less", "收起笔记").await?;
         self.redraw(cx); self.check(14, smoke_overlay::target_bounds("ai-process-notes-more").is_some(), "Missing expand notes")?;
         self.click_target(cx, "ai-process-toggle", "收起过程").await?;
-        cx.update(|_| smoke_overlay::reset()); self.redraw(cx);
+        cx.update(|_| smoke_overlay::reset()); sleep(cx, 220).await; self.redraw(cx);
         self.check(14, smoke_overlay::target_bounds("ai-process-steps").is_none() && smoke_overlay::target_bounds("ai-process-stage-badge").is_some(), "Process did not collapse")?;
-        self.click_target(cx, "ai-process-toggle", "展开过程").await?;
-        self.redraw(cx); self.check(14, smoke_overlay::target_bounds("ai-process-steps").is_some(), "Process did not expand")?;
         Ok(())
     }
 
