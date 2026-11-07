@@ -118,7 +118,7 @@ export function run(command, args, options = {}) {
 }
 
 export function binaryPath(root, profile = "release") {
-  const args = ["build", "--locked", ...(profile === "release" ? ["--release"] : ["--profile", profile]), "--message-format", "json"];
+  const args = ["build", ...(profile === "release" ? ["--locked", "--release"] : ["--profile", profile]), "--message-format", "json"];
   if (process.env.CARGO_BUILD_TARGET) args.push("--target", process.env.CARGO_BUILD_TARGET);
   const result = spawnSync("cargo", args, {
     cwd: root,
