@@ -20,8 +20,7 @@ impl AiChat {
         BackendKind::ALL.into_iter().filter(|&kind| backend::is_recognized(kind, self.backend_status(kind))).collect()
     }
     pub(in crate::editor::ai) fn visible_backends(&self) -> Vec<BackendKind> {
-        let recognized = self.recognized_backends();
-        let enabled: Vec<BackendKind> = recognized.iter().copied().filter(|&k| self.backend_config.is_enabled(k)).collect();
+        let recognized = self.recognized_backends(); let enabled = self.backend_config.ordered_enabled(&recognized);
         if enabled.is_empty() { recognized.into_iter().take(1).collect() } else { enabled }
     }
     pub(in crate::editor::ai) fn selected_backend(&self) -> BackendKind {

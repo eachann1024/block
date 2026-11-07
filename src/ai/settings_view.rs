@@ -10,11 +10,12 @@ use super::settings::{AiSettings, TestNote};
 use crate::theme::{Theme, is_dark, is_en, tr};
 use crate::ui::settings_controls::{
     action_button, card_bg, card_title, selected_bg, setting_row, settings_card,
-    status_action_button, tag_chip, toggle_pill,
+    status_action_button, tag_chip,
 };
 
 fn input_box(input: &Entity<InputState>) -> impl IntoElement {
-    div().flex_1().min_w_0().child(Input::new(input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)))
+    let disabled = !super::backend::BackendConfig::load().is_enabled(super::backend::BackendKind::Builtin);
+    div().flex_1().min_w_0().child(Input::new(input).disabled(disabled).appearance(false).bordered(false).focus_bordered(false).h(px(28.)))
 }
 
 fn field_shell() -> gpui::Div {
@@ -46,41 +47,6 @@ impl AiSettings {
     }
 
     fn connection_card(&self, cx: &mut Context<Self>) -> gpui::Div {
-        let recognized = super::chat::recognized_backends(cx);
-        let backend_config = super::backend::BackendConfig::load();
-        let on = self.enabled;
-        let toggle = toggle_pill(
-            "ai-enabled-switch",
-            crate::icons::Icon::Sparkles,
-            on,
-            if on { tr("已开启", "Enabled") } else { tr("已关闭", "Disabled") },
-            self.toggle_anim,
-            cx.listener(|this, active, _, cx| {
-                if this.toggle_anim.set_hovered(*active) { cx.notify(); }
-            }),
-            cx.listener(|this, _, _, cx| {
-                this.toggle_backend(super::backend::BackendKind::Builtin, cx);
-            }),
-        );
-        let backend_chips = recognized.iter().copied().fold(
-            div().id("ai-enabled-backends").flex().flex_wrap().gap(px(8.)),
-            |row, kind| {
-                let active = backend_config.is_enabled(kind);
-                let can_toggle = !active || backend_config.can_disable(kind, &recognized);
-                row.child(
-                    tag_chip(
-                        SharedString::from(format!("ai-backend-toggle-{kind:?}")),
-                        super::backend_ui::backend_name(kind),
-                        active,
-                        false,
-                    )
-                    .when(!can_toggle, |chip| chip.cursor(CursorStyle::Arrow))
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                        this.toggle_backend(kind, cx);
-                    })),
-                )
-            },
-        );
         let key_toggle = action_button("ai-toggle-key", if self.show_key { tr("隐藏", "Hide") } else { tr("显示", "Show") }, false, true)
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
                 this.show_key = !this.show_key;
@@ -89,9 +55,7 @@ impl AiSettings {
                 cx.notify();
             }));
         settings_card(16.)
-            .child(div().flex().items_center().justify_between().gap(px(16.))
-                .child(card_title(tr("服务商与连接", "Provider & Connection"))).child(toggle))
-            .child(setting_row(tr("启用后端", "Enabled Backends"), backend_chips))
+            .child(card_title(tr("服务商与连接", "Provider & Connection")))
             .child(div().flex().gap(px(10.)).children((0..PRESETS.len()).map(|ix| self.provider_card(ix, cx))))
             .child(setting_row(tr("接口地址", "Base URL"), div().flex_1().min_w_0().max_w(px(380.)).child(field_flex(&self.base_url))))
             .child(setting_row(tr("API 密钥", "API Key"), div().flex_1().min_w_0().max_w(px(380.)).flex().items_center().gap(px(8.))
@@ -198,10 +162,14 @@ impl AiSettings {
 impl Render for AiSettings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.last_en != is_en() { self.last_en = is_en(); self.sync_placeholders(window, cx); }
-        let builtin_enabled = super::backend::BackendConfig::load().is_enabled(super::backend::BackendKind::Builtin);
-        if self.enabled != builtin_enabled { self.enabled = builtin_enabled; }
+        let focused_enabled = super::backend::BackendConfig::load().is_enabled(self.focused_backend);
         div().id("ai-settings-section").flex().flex_col().gap(px(24.))
-            .child(self.connection_card(cx))
-            .child(self.model_card(cx))
+            .child(self.agent_overview(cx))
+            .when(self.enabled, |d| d.children((!focused_enabled).then(|| self.agent_locked(cx)))
+                .child(div().relative().flex().flex_col().gap(px(24.)).when(!focused_enabled, |d| d.opacity(0.45))
+                    .when(self.focused_backend == super::backend::BackendKind::Builtin,
+                        |d| d.child(self.connection_card(cx)).child(self.model_card(cx)))
+                    .when(self.focused_backend != super::backend::BackendKind::Builtin, |d| d.children(self.agent_config(cx)))
+                    .when(!focused_enabled, |d| d.child(div().absolute().inset_0().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())))))
     }
 }

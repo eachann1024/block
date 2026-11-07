@@ -3,8 +3,9 @@ use super::chat::AiChat;
 use crate::{icons::{Icon, icon}, theme::{Theme, tr}, ui::ai_controls};
 
 pub(super) fn builtin_blocked(chat: &AiChat) -> bool {
-    chat.selected_backend() == super::backend::BackendKind::Builtin
-        && super::provider::validate_request(&super::provider::config()).is_err()
+    let config = super::provider::config();
+    !config.enabled || (chat.selected_backend() == super::backend::BackendKind::Builtin
+        && super::provider::validate_request(&config).is_err())
 }
 
 pub(super) fn enable_cover(cx: &mut gpui::Context<AiChat>) -> gpui::AnyElement {

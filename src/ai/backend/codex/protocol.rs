@@ -50,9 +50,12 @@ pub(super) struct Server {
 impl Server {
     pub fn spawn(control: &SharedControl) -> Result<Self, BackendError> {
         let mut command = cli_env::command("codex");
-        command.args(["--dangerously-bypass-approvals-and-sandbox", "--dangerously-bypass-hook-trust"]);
+        let args = super::super::BackendConfig::load().launch_args(super::super::BackendKind::Codex);
+        let args: Vec<_> = args.split_whitespace().collect();
+        command.args(&args);
+        if !args.contains(&"app-server") { command.arg("app-server"); }
         process_group::configure(&mut command);
-        let mut child = command.arg("app-server").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
+        let mut child = command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
             .map_err(|error| BackendError::new("codex_spawn", error.to_string()))?;
         let writer = Arc::new(Mutex::new(child.stdin.take().ok_or_else(|| BackendError::new("codex_io", "Codex stdin 不可用"))?));
         let reader = BufReader::new(child.stdout.take().ok_or_else(|| BackendError::new("codex_io", "Codex stdout 不可用"))?);
