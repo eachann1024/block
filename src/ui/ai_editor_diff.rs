@@ -1,11 +1,11 @@
-use gpui::{AnyElement, CursorStyle, ElementId, FontWeight, HighlightStyle, Hsla, IntoElement, MouseButton, SharedString, StyledText, div, prelude::*, px, rgb};
+use std::collections::HashSet;
+use gpui::{AnyElement, CursorStyle, FontStyle, FontWeight, HighlightStyle, Hsla, IntoElement, MouseButton, SharedString, StrikethroughStyle, StyledText, UnderlineStyle, div, prelude::*, px, rgb};
 use crate::{
-    editor::{ai::plan_link::{self, ActivePlanLink}, model::{Block, Kind, MarkKind, TableRow}},
-    icons::{Icon, icon},
-    theme::{is_dark, tr},
-    ui::{radius, smoke_overlay},
+    editor::{ai::plan_link::{self, ActivePlanLink}, model::{Block, Kind, MarkKind, TableRow}, text_runs::{attribute_color, color as parse_color, css}},
+    icons::{Icon, icon}, theme::{is_dark, tr}, ui::{radius, smoke_overlay},
 };
 use super::ai_plan_card::pill;
+#[path = "ai_editor_diff_parse.rs"] mod parse;
 
 struct DiffColors {
     del_bg: Hsla, del_border: Hsla, del_text: Hsla, del_badge: Hsla,
@@ -34,21 +34,30 @@ fn text(block: &Block) -> StyledText {
     for tag in &block.meta.inline { points.extend([tag.start, tag.end]); }
     points.retain(|at| *at <= block.text.len() && block.text.is_char_boundary(*at));
     points.sort_unstable(); points.dedup();
-    let mut highlights = Vec::new();
-    let dark = is_dark();
-    for range in points.windows(2).map(|pair| pair[0]..pair[1]) {
-        let bold = block.spans.iter().any(|span| span.start <= range.start && range.end <= span.end && span.marks.contains(&MarkKind::Bold));
-        let code = block.spans.iter().any(|span| span.start <= range.start && range.end <= span.end && span.marks.contains(&MarkKind::Code));
-        let yellow = block.meta.inline.iter().any(|tag| tag.start <= range.start && range.end <= tag.end && tag.attrs.iter().any(|(key, value)| key == "style" && value.contains("background-color") && value.contains("yellow")));
-        if bold || code || yellow {
-            highlights.push((range, HighlightStyle {
-                font_weight: bold.then_some(FontWeight(650.)),
-                color: yellow.then(|| rgb(if dark { 0xfff3d4 } else { 0x302511 }).into()),
-                background_color: if yellow { Some(rgb(if dark { 0x453a1e } else { 0xfde6b3 }).into()) }
-                    else if code { Some(rgb(if dark { 0x2c2c2e } else { 0xf1efe9 }).into()) } else { None },
-                ..Default::default()
-            }));
+    let (mut highlights, dark) = (Vec::new(), is_dark());
+    for range in points.windows(2).map(|pair| pair[0]..pair[1]).filter(|r| !r.is_empty()) {
+        let (mut style, mut changed) = (HighlightStyle::default(), false);
+        for span in block.spans.iter().filter(|s| s.start <= range.start && range.end <= s.end) {
+            if span.marks.contains(&MarkKind::Bold) { style.font_weight = Some(FontWeight(650.)); changed = true; }
+            if span.marks.contains(&MarkKind::Italic) { style.font_style = Some(FontStyle::Italic); changed = true; }
+            if span.marks.contains(&MarkKind::Strike) { style.strikethrough = Some(StrikethroughStyle { color: None, thickness: px(1.) }); changed = true; }
+            if span.marks.contains(&MarkKind::Code) { style.background_color = Some(rgb(if dark { 0x2c2c2e } else { 0xf1efe9 }).into()); changed = true; }
         }
+        for tag in block.meta.inline.iter().filter(|t| t.start <= range.start && range.end <= t.end) {
+            if tag.name == "a" { style.color = Some(rgb(0x256abf).into()); changed = true; }
+            if matches!(tag.name.as_str(), "u" | "ins") || css(&tag.attrs, "text-decoration").is_some_and(|v| v.contains("underline")) {
+                style.underline = Some(UnderlineStyle { color: None, thickness: px(1.), wavy: false }); changed = true;
+            }
+            if css(&tag.attrs, "text-decoration").is_some_and(|v| v.contains("line-through")) {
+                style.strikethrough = Some(StrikethroughStyle { color: style.color, thickness: px(1.) }); changed = true;
+            }
+            if tag.name == "mark" && style.background_color.is_none() { style.background_color = parse_color("yellow", true); changed = true; }
+            if let Some(fg) = attribute_color(&tag.attrs, false) { style.color = Some(fg); changed = true; }
+            if let Some(bg) = attribute_color(&tag.attrs, true) { style.background_color = Some(bg); changed = true; }
+            if matches!(css(&tag.attrs, "font-weight"), Some("bold" | "600" | "700" | "800" | "900")) { style.font_weight = Some(FontWeight(650.)); changed = true; }
+            if css(&tag.attrs, "font-style") == Some("italic") { style.font_style = Some(FontStyle::Italic); changed = true; }
+        }
+        if changed { highlights.push((range, style)); }
     }
     StyledText::new(block.text.clone()).with_highlights(highlights)
 }
@@ -74,6 +83,9 @@ fn table_row(row: &TableRow, change: i8, header: Option<bool>, bottom_border: bo
 
 fn block_view(block: &Block, change: i8) -> AnyElement {
     let (theme, pal) = (crate::theme::Theme::ocean(), palette());
+    let mut clean = block.clone();
+    parse::sanitize_block(&mut clean);
+    let block = &clean;
     if let Some(table) = &block.meta.table {
         let len = table.rows.len();
         return div().w_full().min_w_0().rounded(px(8.)).border_1().border_color(theme.hairline).overflow_hidden()
@@ -84,8 +96,7 @@ fn block_view(block: &Block, change: i8) -> AnyElement {
         Kind::H1 => (20., 28.), Kind::H2 => (17., 24.), Kind::H3 => (15.5, 22.), _ => (14.5, 22.),
     };
     let is_tsv = block.kind == Kind::Paragraph && block.text.matches('\t').count() >= 2;
-    let is_code = block.meta.code_language.is_some()
-        || (block.kind == Kind::Paragraph && (block.text.contains("----") || block.text.split_whitespace().any(|w| w.len() > 56)));
+    let is_code = block.meta.code_language.is_some();
     let content: AnyElement = if is_tsv {
         let cells: Vec<_> = block.text.split('\t').map(str::trim).filter(|s| !s.is_empty()).collect();
         div().w_full().min_w_0().overflow_hidden().flex().flex_wrap().items_center().gap(px(6.)).py(px(2.)).children(cells.into_iter().map(|cell| {
@@ -120,88 +131,76 @@ fn block_view(block: &Block, change: i8) -> AnyElement {
         .child(content).into_any_element()
 }
 
-fn is_meaningful_line(source: &str) -> bool {
-    let trimmed = source.trim();
-    if trimmed.is_empty() || trimmed.starts_with("```") || trimmed.starts_with("~~~") { return false; }
-    if trimmed.starts_with('|') { return !trimmed.chars().all(|ch| matches!(ch, '|' | ' ' | '-' | ':')); }
-    let doc = crate::editor::markdown::parse(trimmed);
-    doc.blocks.iter().next().is_some_and(|b| !b.text.trim().is_empty() || b.meta.table.is_some())
-}
-
 fn line_view(source: &str, header: bool, change: i8) -> AnyElement {
     let trimmed = source.trim_end_matches(['\r', '\n']).trim();
     if trimmed.is_empty() { return div().h(px(6.)).into_any_element(); }
-    if trimmed.starts_with('|') {
-        let count = trimmed.chars().filter(|ch| *ch == '|').count().saturating_sub(1).max(1);
-        let separator = format!("|{}|", vec![" --- "; count].join("|"));
-        let doc = crate::editor::markdown::parse(&format!("{trimmed}\n{separator}\n"));
-        if let Some(row) = doc.blocks.iter().find_map(|block| block.meta.table.as_ref()).and_then(|table| table.rows.first()) {
-            return table_row(row, 0, Some(header), false).into_any_element();
-        }
+    if let Some(row) = parse::parse_table_row(trimmed, header) {
+        return table_row(&row, 0, Some(header || row.cells.iter().any(|c| c.header)), false).into_any_element();
     }
-    let doc = crate::editor::markdown::parse(source.trim_end_matches(['\r', '\n']));
-    if let Some(block) = doc.blocks.iter().next() { return block_view(block, change); }
-    div().h(px(8.)).into_any_element()
-}
-
-fn mode_segment(id: &'static str, label: &'static str, selected: bool, click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> impl IntoElement {
-    let (theme, elem_id) = (crate::theme::Theme::ocean(), ElementId::from(id));
-    div().id(elem_id.clone()).relative().children(smoke_overlay::probe_for(&elem_id))
-        .h(px(26.)).px(px(10.)).rounded(px(6.)).flex().items_center().justify_center()
-        .cursor(CursorStyle::PointingHand).text_size(px(13.)).font_weight(FontWeight(500.))
-        .when(selected, |el| el.bg(theme.selected).text_color(theme.text))
-        .when(!selected, |el| el.text_color(theme.text_secondary).hover(|s| s.bg(theme.hover).text_color(theme.text)))
-        .on_mouse_down(MouseButton::Left, click).child(label)
+    let block = parse::parse_line_block(source);
+    block_view(&block, change)
 }
 
 fn diff_counts(link: &ActivePlanLink) -> Option<(usize, usize)> {
     let lines = plan_link::selection::diff(link.conv_id, link.msg_at, &link.page, &link.before_text, &link.after_text).ok()?;
-    let removed = lines.iter().filter(|l| l.change < 0 && l.included && is_meaningful_line(&l.text)).map(|l| l.selection_index).collect::<std::collections::HashSet<_>>().len();
-    let added = lines.iter().filter(|l| l.change > 0 && l.included && is_meaningful_line(&l.text)).map(|l| l.selection_index).collect::<std::collections::HashSet<_>>().len();
+    let removed = lines.iter().filter(|l| l.change < 0 && l.included && parse::is_meaningful_line(&l.text)).map(|l| l.selection_index).collect::<HashSet<_>>().len();
+    let added = lines.iter().filter(|l| l.change > 0 && l.included && parse::is_meaningful_line(&l.text)).map(|l| l.selection_index).collect::<HashSet<_>>().len();
     Some((removed, added))
+}
+
+fn context_indices(lines: &[plan_link::selection::DiffLine], first: usize, last: usize) -> HashSet<usize> {
+    let mut ctx = HashSet::new();
+    for (at, line) in lines.iter().enumerate().skip(first).take(last.saturating_sub(first) + 1) {
+        if line.change == 0 || !parse::is_meaningful_line(&line.text) { continue; }
+        let trimmed = line.text.trim();
+        if trimmed.starts_with('|') {
+            if let Some(hdr) = (1..at).rev().take_while(|&i| lines[i].text.trim().starts_with('|')).find(|&i| {
+                parse::is_table_scaffolding(lines[i].text.trim()) && lines[i - 1].text.trim().starts_with('|')
+            }).map(|i| i - 1) && lines[hdr].change == 0 {
+                ctx.insert(hdr);
+            }
+        } else if trimmed.to_ascii_lowercase().starts_with("<tr") {
+            if let Some(hdr) = (0..at).rev().take_while(|&i| !lines[i].text.trim().to_ascii_lowercase().starts_with("<table"))
+                .filter(|&i| lines[i].text.trim().to_ascii_lowercase().starts_with("<tr") && parse::is_meaningful_line(&lines[i].text))
+                .last() && lines[hdr].change == 0 {
+                ctx.insert(hdr);
+            }
+        }
+        if let Some(prev) = (first..at).rev().find(|&i| parse::is_meaningful_line(&lines[i].text))
+            && lines[prev].change == 0 && lines[prev].text.trim_start().starts_with('#') {
+            ctx.insert(prev);
+        }
+    }
+    ctx
 }
 
 fn contents(link: &ActivePlanLink) -> impl IntoElement {
     let (theme, pal) = (crate::theme::Theme::ocean(), palette());
-    let mut body = div().w_full().min_w_0().overflow_hidden().flex().flex_col().gap(px(8.));
-    if !link.diff_mode {
-        let selected = plan_link::selection::selected(link.conv_id, link.msg_at, &link.page, &link.before_text, &link.after_text).unwrap_or_else(|_| link.after_text.clone());
-        let (before, after) = (crate::editor::markdown::parse(&link.before_text), crate::editor::markdown::parse(&selected));
-        let (before_blocks, after_blocks): (Vec<_>, Vec<_>) = (before.blocks.iter().collect(), after.blocks.iter().collect());
-        let same = |l: &&Block, r: &&Block| l.kind == r.kind && l.text == r.text && l.spans == r.spans && l.checked == r.checked && l.meta == r.meta;
-        let prefix = before_blocks.iter().zip(&after_blocks).take_while(|(l, r)| same(l, r)).count();
-        let suffix = before_blocks[prefix..].iter().rev().zip(after_blocks[prefix..].iter().rev()).take_while(|(l, r)| same(l, r)).count();
-        if prefix == after_blocks.len() - suffix {
-            return body.child(div().py(px(6.)).text_size(px(13.)).text_color(theme.text_secondary).child(tr("未选择修改，保留原文", "No changes selected; original remains")));
-        }
-        return body.children(after_blocks[prefix..after_blocks.len() - suffix].iter().map(|block| block_view(block, 0)));
-    }
+    let body = div().w_full().min_w_0().overflow_hidden().flex().flex_col().gap(px(8.));
     let Ok(lines) = plan_link::selection::diff(link.conv_id, link.msg_at, &link.page, &link.before_text, &link.after_text) else {
         return body.child(div().text_size(px(13.)).text_color(theme.text_secondary).child(tr("改动过大，仅支持完整预览和应用", "Change too large for individual selection; preview and apply all")))
             .children(link.after_blocks.iter().map(|block| block_view(block, 0)));
     };
     let (mut seen_removed, mut seen_added, mut seen_table_removed, mut seen_table_added) = (false, false, false, false);
-    let first = lines.iter().position(|line| line.change != 0 && is_meaningful_line(&line.text)).unwrap_or(lines.len());
-    let last = lines.iter().rposition(|line| line.change != 0 && is_meaningful_line(&line.text)).unwrap_or(first);
-    let table_header = lines.iter().enumerate().skip(first).take(last.saturating_sub(first) + 1)
-        .find(|(_, line)| line.change != 0 && line.text.trim_start().starts_with('|'))
-        .and_then(|(at, _)| (1..at).rev().take_while(|&index| lines[index].text.trim_start().starts_with('|')).find(|&index| {
-            let value = lines[index].text.trim();
-            value.starts_with('|') && value.chars().all(|ch| matches!(ch, '|' | ' ' | '-' | ':')) && lines[index - 1].text.trim_start().starts_with('|')
-        }).map(|index| index - 1)).filter(|index| *index < first);
+    let first = lines.iter().position(|line| line.change != 0 && parse::is_meaningful_line(&line.text)).unwrap_or(lines.len());
+    let last = lines.iter().rposition(|line| line.change != 0 && parse::is_meaningful_line(&line.text)).unwrap_or(first);
+    let ctx_indices = context_indices(&lines, first, last);
     let visible: Vec<_> = lines.iter().filter(|line| {
-        ((line.index >= first && line.index <= last) || Some(line.index) == table_header) && is_meaningful_line(&line.text)
+        (line.change != 0 || ctx_indices.contains(&line.index)) && parse::is_meaningful_line(&line.text)
     }).collect();
+    if visible.is_empty() {
+        return body.child(div().py(px(6.)).text_size(px(13.)).text_color(theme.text_secondary).child(tr("未选择修改，保留原文", "No changes selected; original remains")));
+    }
     let total_visible = visible.len();
     let header_bg: Hsla = if is_dark() { gpui::rgba(0xffffff08).into() } else { rgb(0xf5f3ed).into() };
     let mut list = div().w_full().min_w_0().rounded(px(10.)).border_1().border_color(theme.hairline).bg(theme.paper).overflow_hidden().flex().flex_col();
     for (pos, line) in visible.iter().enumerate() {
         let (trimmed, index, selection_index) = (line.text.trim(), line.index, line.selection_index);
-        let is_table = trimmed.starts_with('|');
-        let next_is_table = visible.get(pos + 1).is_some_and(|next| next.text.trim().starts_with('|'));
+        let is_table = parse::is_table_row_line(trimmed);
+        let next_is_table = visible.get(pos + 1).is_some_and(|next| parse::is_table_row_line(next.text.trim()));
         let is_header = lines.get(index + 1).is_some_and(|next| {
-            let v = next.text.trim(); v.starts_with('|') && v.chars().all(|ch| matches!(ch, '|' | ' ' | '-' | ':'))
-        });
+            let v = next.text.trim(); v.starts_with('|') && parse::is_table_scaffolding(v)
+        }) || trimmed.to_ascii_lowercase().contains("<th");
         let row_bg = if !line.included { theme.paper } else if line.change < 0 { pal.del_bg } else if line.change > 0 { pal.add_bg } else if is_header { header_bg } else { theme.paper };
         let left_bar = if !line.included && line.change != 0 { theme.btn_border } else if line.change < 0 { pal.del_border } else if line.change > 0 { pal.add_border } else { gpui::transparent_black() };
         let gutter_symbol = if line.change < 0 { "−" } else if line.change > 0 { "+" } else { "" };
@@ -258,10 +257,7 @@ pub(crate) fn editor_plan_review_card(link: ActivePlanLink) -> impl IntoElement 
                 .when_some(counts, |el, (removed, added)| el.child(div().relative().children(smoke_overlay::probe("ai-plan-diff-counts"))
                     .flex_none().flex().items_center().gap(px(4.)).font_family("JetBrains Mono").text_size(px(12.)).font_weight(FontWeight(500.))
                     .child(div().px(px(6.)).py(px(1.)).rounded(px(4.)).bg(pal.del_badge).text_color(pal.del_text).child(format!("−{removed}")))
-                    .child(div().px(px(6.)).py(px(1.)).rounded(px(4.)).bg(pal.add_badge).text_color(pal.add_text).child(format!("+{added}"))))))
-            .child(div().flex_none().p(px(2.)).rounded(px(8.)).bg(theme.paper).border_1().border_color(theme.btn_border).flex().items_center().gap(px(2.))
-                .child(mode_segment("ai-plan-mode-clean", tr("修改后预览", "Preview"), !link.diff_mode, |_, _, cx| plan_link::set_mode(false, cx)))
-                .child(mode_segment("ai-plan-mode-diff", tr("增删对比", "Compare"), link.diff_mode, |_, _, cx| plan_link::set_mode(true, cx)))))
+                    .child(div().px(px(6.)).py(px(1.)).rounded(px(4.)).bg(pal.add_badge).text_color(pal.add_text).child(format!("+{added}")))))))
         .child(div().w_full().min_w_0().overflow_hidden().p(px(14.)).child(contents(&link)))
         .child(div().relative().children(smoke_overlay::probe("ai-plan-inline-dock"))
             .w_full().min_w_0().overflow_hidden().px(px(14.)).py(px(10.)).bg(theme.shell).border_t_1().border_color(theme.hairline)
