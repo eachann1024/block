@@ -115,9 +115,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: block-installer-macos-${{ matrix.arch }}
-          path: |
-            dist/release/block-macos-${{ matrix.arch }}.dmg
-            dist/release/block-macos-${{ matrix.arch }}.bin.gz
+          path: dist/release/block-macos-${{ matrix.arch }}.dmg
           if-no-files-found: error
           retention-days: 14
 
@@ -164,9 +162,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: block-installer-windows-${{ matrix.arch }}
-          path: |
-            dist/release/block-windows-${{ matrix.arch }}-setup.exe
-            dist/release/block-windows-${{ matrix.arch }}.exe.gz
+          path: dist/release/block-windows-${{ matrix.arch }}-setup.exe
           if-no-files-found: error
           retention-days: 14
 
@@ -233,7 +229,6 @@ jobs:
             dist/release/block-linux-${{ matrix.arch }}.AppImage
             dist/release/block-linux-${{ matrix.arch }}.deb
             dist/release/block-linux-${{ matrix.arch }}.rpm
-            dist/release/block-linux-${{ matrix.arch }}.bin.gz
           if-no-files-found: error
           retention-days: 14
 
