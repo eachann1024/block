@@ -1,3 +1,4 @@
+use crate::ui::tooltip::TooltipExt;
 use gpui::{
     AnimationExt, BoxShadow, CursorStyle, Div, ElementId, IntoElement, Pixels, SharedString,
     Stateful, Styled, div, point, prelude::*, px, rgb, rgba, transparent_black,
@@ -143,7 +144,7 @@ pub fn icon_toggle_button(
         .when(on, |b| b.bg(rgb(tc.on_bg)))
         .children(crate::ui::smoke_overlay::probe(match g { Icon::TbBold => "toolbar-bold", Icon::TbItalic => "toolbar-italic", _ => tip }))
         .child(lead)
-        .when(!open, |b| b.tooltip(tooltip(tip)))
+        .when(!open, |b| b.tooltip_above(tooltip(tip)))
 }
 
 pub fn disabled_icon_button(g: Icon) -> Div {

@@ -1,4 +1,5 @@
 //! Dynamic tools for the right side of the window title bar.
+use crate::ui::tooltip::TooltipExt;
 use gpui::{
     App, ClickEvent, MouseButton, MouseDownEvent, SharedString, Stateful, Window, div, prelude::*, px,
 };
@@ -49,7 +50,7 @@ pub fn zoom_cluster(
                 .text_size(px(13.))
                 .text_color(theme.text)
                 .hover(|s| s.bg(theme.hover))
-                .tooltip(crate::ui::tooltip::tooltip(tr("重置为 100%", "Reset to 100%")))
+                .tooltip_above(crate::ui::tooltip::tooltip(tr("重置为 100%", "Reset to 100%")))
                 .on_mouse_down(MouseButton::Left, on_reset)
                 .child(pct_label),
         )

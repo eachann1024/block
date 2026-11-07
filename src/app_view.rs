@@ -1,3 +1,4 @@
+use crate::ui::tooltip::TooltipExt;
 use gpui::{
     AnimationExt, Context, Focusable, IntoElement, MouseButton, NavigationDirection, ParentElement, Render, Window, div, prelude::*, px,
 };
@@ -186,7 +187,7 @@ impl Workspace {
                             .border_1()
                             .border_color(theme.btn_border)
                             .hover(|s| s.bg(theme.hover).border_color(theme.accent))
-                            .tooltip(crate::ui::tooltip::tooltip(tr("有可用更新", "Update available")))
+                            .tooltip_above(crate::ui::tooltip::tooltip(tr("有可用更新", "Update available")))
                             .on_mouse_down(gpui::MouseButton::Left, move |e, w, cx| on_down(e, w, cx))
                             .child(stateful_icon(
                                 "updater-badge-btn",
