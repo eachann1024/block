@@ -3,7 +3,7 @@ use gpui::{Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, Hsla, Rgba,
     StrikethroughStyle, TextRun, UnderlineStyle, px};
 use super::model::{Block, MarkKind};
 
-pub(super) fn css<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
+pub(crate) fn css<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
     attrs.iter().find(|(key,_)| key == "style").and_then(|(_,value)|
         value.split(';').find_map(|part| {
             let (key,value) = part.split_once(':')?;
@@ -57,7 +57,7 @@ pub(super) fn named_color_hex(value: &str, background: bool, dark: bool) -> Opti
         _ => return None,
     })
 }
-pub(super) fn color(value: &str, background: bool) -> Option<Hsla> {
+pub(crate) fn color(value: &str, background: bool) -> Option<Hsla> {
     let trimmed = value.trim();
     if matches!(trimmed, "default" | "transparent" | "none" | "") { return None; }
     let dark = crate::theme::is_dark();
@@ -85,7 +85,7 @@ pub(super) fn color(value: &str, background: bool) -> Option<Hsla> {
     Some(Rgba { r:component(parts[0])?, g:component(parts[1])?, b:component(parts[2])?,
         a:if alpha { parts[3].parse::<f32>().ok()?.clamp(0.,1.) } else {1.} }.into())
 }
-pub(super) fn attribute_color(attrs: &[(String,String)], background: bool) -> Option<Hsla> {
+pub(crate) fn attribute_color(attrs: &[(String,String)], background: bool) -> Option<Hsla> {
     let property = if background { "background-color" } else { "color" };
     // The serialized CSS contains the resolved color and has precedence over named data attributes.
     if let Some(value) = css(attrs, property).and_then(|value| color(value, background)) { return Some(value); }

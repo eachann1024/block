@@ -19,7 +19,7 @@ mod keys;
 pub mod markdown;
 pub mod model;
 mod paint;
-mod text_runs;
+pub(crate) mod text_runs;
 mod table_layout;
 mod table_input;
 mod table_actions;

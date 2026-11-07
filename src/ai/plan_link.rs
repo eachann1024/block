@@ -92,7 +92,7 @@ impl AiChat {
         }
     }
 
-    pub(in crate::editor::ai) fn link_plan(&mut self, at: usize, op_idx: usize, diff: bool, cx: &mut Context<Self>) {
+    pub(in crate::editor::ai) fn link_plan(&mut self, at: usize, op_idx: usize, _diff: bool, cx: &mut Context<Self>) {
         let Some(plan) = self.plan_at(at).cloned().filter(|plan| plan.state == agent::PlanState::Pending) else { return };
         let Some(op) = plan.ops.get(op_idx) else { return };
         let Some(conv_id) = self.current else { return };
@@ -131,7 +131,7 @@ impl AiChat {
                 before_blocks: before_blocks[prefix..before_end].to_vec(), after_blocks: after_blocks[prefix..after_end].to_vec(),
                 page: op.page.clone(), before_text: before, after_text: after,
                 is_create,
-                diff_mode: diff, chat: cx.entity().downgrade(), editor: editor.downgrade() })
+                diff_mode: true, chat: cx.entity().downgrade(), editor: editor.downgrade() })
         })();
         let link = match result { Ok(link) => link, Err(error) => { self.error = Some(error); cx.notify(); return; } };
         let path = link.path.clone(); let range = link.block_range.clone(); let is_create = link.is_create;
@@ -158,7 +158,7 @@ impl AiChat {
                 .find(|(_, msg)| msg.plan.as_ref().is_some_and(|plan| plan.state == agent::PlanState::Pending && !plan.ops.is_empty()))
                 .map(|(idx, _)| idx)
         });
-        if let Some(at) = at { self.link_plan(at, 0, false, cx); }
+        if let Some(at) = at { self.link_plan(at, 0, true, cx); }
     }
 }
 
@@ -181,20 +181,6 @@ fn reveal_when_ready(editor: Entity<Editor>, path: PathBuf, range: Range<usize>,
             cx.background_executor().timer(Duration::from_millis(50)).await;
         }
     }).detach();
-}
-
-pub(crate) fn set_mode(diff: bool, cx: &mut App) {
-    let link = ACTIVE.with(|active| { let mut active = active.borrow_mut(); let link = active.as_mut()?; link.diff_mode = diff; Some(link.clone()) });
-    if let Some(link) = link {
-        if let Some(chat) = link.chat.upgrade() {
-            if let Some(editor) = chat.read(cx).editor.as_ref().and_then(|editor| editor.upgrade()) { editor.update(cx, |editor, cx| {
-                let end = link.block_range.end.min(editor.list.item_count());
-                if link.block_range.start < end { editor.list.remeasure_items(link.block_range.start..end); }
-                cx.notify();
-            }); }
-            chat.update(cx, |_, cx| cx.notify());
-        }
-    }
 }
 
 pub(crate) fn toggle_diff(index: usize, cx: &mut App) {
