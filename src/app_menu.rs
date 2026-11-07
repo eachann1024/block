@@ -146,29 +146,27 @@ impl Workspace {
         out
     }
 
-    /// Destinations: the notebook root, then every workspace folder except the
-    /// item itself, its descendants and its current parent.
+    /// Destinations within the current notebook: the notebook root (when moving
+    /// out of a subfolder), plus every folder except the item itself, its
+    /// descendants and its current parent.
     fn move_list(&self, path: &Path, dir: bool, cx: &mut Context<Self>) -> AnyElement {
         let Some(root) = self.folder.clone() else { return div().into_any_element() };
         let current = path.parent().map(Path::to_path_buf);
-        let mut choices = vec![(root.clone(), 0usize, display_name(&root, true))];
+        let mut choices = Vec::new();
+        if current.as_deref() != Some(root.as_path()) {
+            choices.push((root.clone(), 0usize, display_name(&root, true), true));
+        }
         for (folder, depth, name) in self.tree.read(cx).folders() {
             if dir && folder.starts_with(path) { continue; }
-            choices.push((folder, depth + 1, name));
+            if current.as_deref() == Some(folder.as_path()) { continue; }
+            choices.push((folder, depth, name, false));
         }
-        // Other opened notebooks are valid destinations too.
-        for other in &self.notebooks {
-            if Some(other) != self.folder.as_ref() && !path.starts_with(other) {
-                choices.push((other.clone(), 0, display_name(other, true)));
-            }
-        }
-        let items = choices.into_iter().filter(|(folder, ..)| current.as_deref() != Some(folder.as_path()))
-            .map(|(folder, depth, name)| {
-                let (from, dest) = (path.to_path_buf(), folder.clone());
-                menu_item(ItemId::Path(folder), if depth == 0 { Icon::FolderOpen } else { Icon::Folder }, name, false, false,
-                    cx.listener(move |this, _, _, cx| this.move_item(from.clone(), dest.clone(), cx)))
-                    .pl(px(10. + depth.min(6) as f32 * 12.)).into_any_element()
-            }).collect::<Vec<_>>();
+        let items = choices.into_iter().map(|(folder, depth, name, is_root)| {
+            let (from, dest) = (path.to_path_buf(), folder.clone());
+            menu_item(ItemId::Path(folder), if is_root { Icon::FolderOpen } else { Icon::Folder }, name, false, false,
+                cx.listener(move |this, _, _, cx| this.move_item(from.clone(), dest.clone(), cx)))
+                .pl(px(10. + depth.min(6) as f32 * 12.)).into_any_element()
+        }).collect::<Vec<_>>();
         let empty = items.is_empty();
         dropdown::shell("move-list").w(px(MENU_WIDTH)).max_h(px(300.)).overflow_y_scroll()
             .children(items)
