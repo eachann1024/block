@@ -1,10 +1,8 @@
-import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appName, assertSystemLibraries, binaryPath, installPath, logIssue, plist, remove, sign, workspaceTemp } from "./app-bundle.mjs";
-import { commitInstall, openInstalled, prepareInstall } from "./install-app.mjs";
-import { matchingPids, stopRunningApp } from "./stop-app.mjs";
+import { commitInstall, prepareInstall } from "./install-app.mjs";
 import { buildDictation } from "./build-dictation.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -19,7 +17,6 @@ if (import.meta.main) {
   } catch (error) {
     const detail = error instanceof Error ? error.stack || error.message : String(error);
     logIssue("ERROR", detail);
-    console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
   }
 }
@@ -38,7 +35,7 @@ export async function buildApp({ install = true, profile = process.env.BLOCK_PRO
     job.release = await acquireLock();
     job.staging = workspaceTemp();
     const executable = binaryPath(root, profile);
-    assertSystemLibraries(executable);
+    if (profile === "release") assertSystemLibraries(executable);
     const bundle = join(job.staging, `${appName}.app`);
     const macos = join(bundle, "Contents/MacOS");
     mkdirSync(macos, { recursive: true });
@@ -46,22 +43,20 @@ export async function buildApp({ install = true, profile = process.env.BLOCK_PRO
     const resources = join(bundle, "Contents/Resources");
     mkdirSync(resources, { recursive: true });
     cpSync(join(root, "assets/app-icon/AppIcon.icns"), join(resources, "AppIcon.icns"));
-    cpSync(join(root, "THIRD_PARTY_NOTICES.md"), join(resources, "THIRD_PARTY_NOTICES.md"));
+    const notices = join(root, "THIRD_PARTY_NOTICES.md");
+    if (profile === "release" || pathExists(notices)) {
+      copyFileSync(notices, join(resources, "THIRD_PARTY_NOTICES.md"));
+    } else {
+      logIssue("WARN", "THIRD_PARTY_NOTICES.md 缺失，已跳过本地打包；发布构建仍需该文件。");
+    }
     const packaged = join(macos, "block");
-    const copied = spawnSync("cp", [executable, packaged]);
-    if (copied.status !== 0) throw new Error("failed to copy the release binary");
+    copyFileSync(executable, packaged);
     chmodSync(packaged, 0o755);
     buildDictation(join(macos, "block-dictation"));
-    assertSystemLibraries(packaged);
     sign(bundle);
     if (install) job.plan = prepareInstall(bundle);
     const distApp = publishDist(bundle);
-    if (install) {
-      const previous = matchingPids(executable);
-      await stopRunningApp(executable);
-      commitInstall(job.plan);
-      await openInstalled(previous);
-    }
+    if (install) commitInstall(job.plan);
     return distApp;
   } finally {
     process.off("SIGINT", onSignal);

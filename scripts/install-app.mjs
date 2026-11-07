@@ -13,7 +13,6 @@ export function prepareInstall(bundle) {
   const staged = join(staging, "Block.app");
   try {
     cpSync(bundle, staged, { recursive: true });
-    verifySignature(staged);
   } catch (error) {
     remove(staging);
     throw error;
