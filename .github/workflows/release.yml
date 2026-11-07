@@ -244,7 +244,7 @@ jobs:
       needs.release-windows.result == 'success' &&
       needs.release-linux.result == 'success'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
@@ -283,3 +283,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
         run: node scripts/release/prune-release-assets.mjs
+      # Pushes packaging/aur to the AUR repo only. It does not upload a GitHub Release asset.
+      - name: Update AUR block-bin
+        if: needs.prepare.outputs.publish == 'yes'
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: bash scripts/release/publish-aur.sh
