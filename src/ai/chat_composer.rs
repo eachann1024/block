@@ -1,11 +1,42 @@
 //! Composer reference selection and request preflight.
-use gpui::{App, Context, Window};
+use gpui::{App, Context, EntityInputHandler, Window};
 use super::{chat::{AiChat, Msg, Pick, follow_placeholder}, provider};
 use crate::theme::tr;
 
 thread_local! { pub(super) static PICKER_SCROLL: gpui::UniformListScrollHandle = gpui::UniformListScrollHandle::new(); }
 
 impl AiChat {
+    pub(super) fn composing(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        self.input.update(cx, |input, cx| input.marked_text_range(window, cx).is_some())
+    }
+
+    pub(super) fn save_tab_draft(&mut self, cx: &App) {
+        self.tab_drafts.insert(self.current, (self.input.read(cx).value().to_string(),
+            self.refs.clone(), self.skills.clone(), self.retry_draft.clone()));
+    }
+
+    pub(super) fn switch_tab(&mut self, target: Option<u64>, window: &mut Window, cx: &mut Context<Self>) {
+        if self.current == target { self.history = false; cx.notify(); return; }
+        self.save_tab_draft(cx);
+        super::plan_link::clear(cx);
+        self.stop();
+        self.current = target;
+        self.error = None;
+        self.history = false;
+        self.picker_dismissed = false;
+        let (text, refs, skills, retry) = self.tab_drafts.get(&target).cloned().unwrap_or_default();
+        self.refs = refs;
+        self.skills = skills;
+        self.retry_draft = retry;
+        self.input.update(cx, |input, cx| {
+            input.set_value(text, window, cx);
+            input.set_placeholder(if target.is_some() { follow_placeholder() } else { super::chat::first_placeholder() }, window, cx);
+            input.focus(window, cx);
+        });
+        self.persist_active_draft(cx);
+        cx.notify();
+    }
+
     pub(super) fn picker_token(&self, cx: &App) -> Option<String> {
         if self.picker_dismissed { return None; }
         let input = self.input.read(cx);
@@ -47,7 +78,7 @@ impl AiChat {
             Pick::Folder(folder) => { self.open_reference_folder(folder, rest, window, cx); return; }
             Pick::Page(page) => { if !self.refs.contains(&page) { self.refs.push(page); } }
             Pick::Skill(skill) => { if !self.skills.contains(&skill) { self.skills.push(skill); } }
-            Pick::NewConv => { self.new_conv(window, cx); return; }
+            Pick::NewConv => { self.save_tab_draft(cx); self.new_conv(window, cx); return; }
         }
         self.pick_index = 0;
         self.input.update(cx, |i, cx| { let end = rest.len(); i.set_value(rest, window, cx); i.set_selected_range(end..end, cx); i.focus(window, cx); });
@@ -56,7 +87,7 @@ impl AiChat {
     }
 
     pub(super) fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.streaming.is_some() { return; }
+        if self.streaming.is_some() || self.composing(window, cx) { return; }
         if let Some(token) = self.picker_token(cx) {
             let picks = self.picker_items(&token, cx);
             if let Some((pick, _, _)) = picks.get(self.pick_index.min(picks.len().saturating_sub(1))) {
@@ -73,6 +104,9 @@ impl AiChat {
         if self.selected_backend() == super::backend::BackendKind::Builtin && let Err((message, settings)) = provider::validate_request(&provider::config()) {
             self.error = Some(message); self.error_settings = settings; cx.notify(); return;
         }
+        super::chat::chat_dictation::stop_for_input(&self.input);
+        cx.notify();
+        if self.current.is_none() { self.tab_drafts.remove(&None); }
         let ctx = self.agent_ctx(cx);
         let refs = self.refs.clone();
         let skills = self.skills.clone();

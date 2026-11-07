@@ -1,9 +1,43 @@
 //! Selectable Markdown replies use the shared UI renderer.
 use gpui::{AnyElement, IntoElement};
 
-pub(crate) fn render(source: &str, key: &str) -> AnyElement {
-    let normalized = normalize_markdown(source);
-    crate::ui::selectable_message::message(format!("ai-reply-{key}"), &normalized, true).into_any_element()
+pub(crate) fn render(source: &str, key: &str, streaming: bool) -> AnyElement {
+    let mut normalized = normalize_markdown(source);
+    if streaming { append_stream_cursor(&mut normalized); }
+    crate::ui::selectable_message::message(format!("ai-reply-{key}"), &normalized, true)
+        .selectable(!streaming).into_any_element()
+}
+
+fn append_stream_cursor(text: &mut String) {
+    let mut fence: Option<(u8, usize, usize)> = None;
+    let mut last_close = None;
+    let mut offset = 0;
+    for segment in text.split_inclusive('\n') {
+        let line = segment.trim();
+        let bytes = line.as_bytes();
+        let count = bytes.first().filter(|byte| **byte == b'`' || **byte == b'~')
+            .map(|byte| bytes.iter().take_while(|item| *item == byte).count()).unwrap_or(0);
+        if count >= 3 {
+            match fence {
+                Some((marker, length, content)) if bytes[0] == marker && count >= length && line[count..].trim().is_empty() => {
+                    last_close = Some((offset, content)); fence = None;
+                }
+                None => fence = Some((bytes[0], count, offset + segment.len())),
+                _ => {}
+            }
+        }
+        offset += segment.len();
+    }
+    let end = text.trim_end_matches(['\r', '\n']).len();
+    if let Some((close, content)) = last_close.filter(|(close, _)| !text[*close..end].contains('\n')) {
+        if close > content {
+            let insert = text[..close].trim_end_matches(['\r', '\n']).len();
+            text.insert_str(insert, "▍");
+        } else { text.insert_str(close, "▍\n"); }
+    } else if fence.is_some_and(|(_, _, content)| content >= end) {
+        if !text.ends_with('\n') { text.push('\n'); }
+        text.push('▍');
+    } else { text.insert_str(end, "▍"); }
 }
 
 fn block_start(line: &str) -> bool {

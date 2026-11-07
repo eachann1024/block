@@ -7,6 +7,7 @@ const MAX_STEPS: usize = 8;
 
 impl AiChat {
     pub(in crate::editor::ai) fn run_turn(&mut self, step: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if step == 0 { super::super::chat_process::start_turn(self); }
         let ctx = self.agent_ctx(cx);
         let notebook = ctx.root.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let live = self.note_context(cx);
@@ -17,6 +18,7 @@ impl AiChat {
         let mut messages = vec![serde_json::json!({ "role": "system", "content": system })];
         if let Some(c) = self.conv() {
             for m in &c.messages {
+                if matches!(m.role.as_str(), "activity" | "public_summary" | "turn_outcome") { continue; }
                 messages.push(match m.role.as_str() {
                     "tool" => serde_json::json!({ "role": "tool", "tool_call_id": m.tool_call_id, "content": m.content }),
                     "assistant" if m.tool_calls.is_some() => serde_json::json!({ "role": "assistant", "content": m.content, "tool_calls": m.tool_calls }),
@@ -69,9 +71,12 @@ impl AiChat {
                         if calls.is_empty() {
                             if !text.trim().is_empty() { this.push("assistant", text); }
                         } else {
-                            let tc: Vec<serde_json::Value> = calls.iter().map(|(id, name, args)| serde_json::json!({
-                                "id": id, "type": "function", "function": { "name": name, "arguments": args } })).collect();
-                            this.push_msg(Msg { role: "assistant".into(), content: text, tool_calls: Some(tc.into()), ..Default::default() });
+                            let roots = calls.iter().filter(|(_, name, _)| name == "readPage").filter_map(|(id, _, args)| {
+                                let root = serde_json::from_str::<serde_json::Value>(args).ok().and_then(|value| value.get("notebookRoot").and_then(|root| root.as_str()).map(str::to_owned)).unwrap_or_else(|| this.agent_ctx(cx).root.to_string_lossy().into_owned());
+                                (!root.is_empty()).then(|| (id.clone(), root))
+                            }).collect();
+                            let tc: Vec<serde_json::Value> = calls.iter().map(|(id, name, args)| serde_json::json!({ "id": id, "type": "function", "function": { "name": name, "arguments": args } })).collect();
+                            this.push_msg(Msg { role: "assistant".into(), content: text, source_roots: Some(roots), tool_calls: Some(tc.into()), ..Default::default() });
                             for (id, name, args) in std::mem::take(&mut calls) {
                                 let root = serde_json::from_str::<serde_json::Value>(&args).ok().and_then(|value| value.get("notebookRoot").and_then(|root| root.as_str()).map(str::to_owned));
                                 let ctx = root.as_ref().map(|root| this.context_for_root(std::path::Path::new(root), cx)).unwrap_or_else(|| Ok(this.agent_ctx(cx)));
@@ -88,6 +93,7 @@ impl AiChat {
                                     let at = this.conv().map(|c| c.messages.len() - 1).unwrap_or(0);
                                     this.apply_plan(at, cx);
                                     result = if this.plan_at(at).map(|p| p.state.clone()) == Some(agent::PlanState::Applied) {
+                                        this.open_plan_page(at, 0, cx);
                                         serde_json::json!({ "status": "applied", "message": "已新建页面。" })
                                     } else { serde_json::json!({ "error": this.error.clone().unwrap_or_else(|| "新建失败：目标页面已变化或不可写。".into()) }) };
                                 }
@@ -100,6 +106,8 @@ impl AiChat {
 
                         }
                         if failed { crate::log::warn("AI chat turn failed; see the in-app error for details"); this.restore_failed_draft(window, cx); }
+                        if failed { super::super::chat_process::record_outcome(this, "failed"); }
+                        else if this.streaming.is_none() { super::super::chat_process::record_outcome(this, "completed"); }
                         if !failed && calls.is_empty() && this.streaming.is_none() { this.sent_draft = None; }
                     }
                     if changed { this.scroll.scroll_to_bottom(); cx.notify(); }

@@ -1,11 +1,8 @@
 use std::{sync::{atomic::AtomicBool, mpsc, Arc}, time::Duration};
-
 use gpui::{App, Context, Window};
 use serde_json::{json, Value};
-
 use super::{agent, AiChat, Msg};
 use super::super::backend::{self, ApprovalResponse, BackendError, BackendEvent, BackendEventKind, BackendKind, BackendStatus, NoteContext, ToolBridge, ToolRequest, TurnRequest};
-
 impl AiChat {
     pub(in crate::editor::ai) fn context_scope(&self) -> backend::ContextScope {
         if self.selection_scope { backend::ContextScope::Selection } else { backend::ContextScope::CurrentNote }
@@ -16,7 +13,6 @@ impl AiChat {
         cx.notify();
     }
     pub(in crate::editor::ai) fn dsh_options(&self) -> backend::DshOptions { self.backend_config.dsh_options() }
-
     pub(in crate::editor::ai) fn set_dsh_options(&mut self, options: backend::DshOptions, cx: &mut Context<Self>) -> Result<(), String> {
         self.backend_config.set_dsh_options(options)?; cx.notify(); Ok(())
     }
@@ -92,9 +88,11 @@ impl AiChat {
     }
 
     pub(in crate::editor::ai) fn respond_approval(&mut self, response: ApprovalResponse, cx: &mut Context<Self>) {
-        let Some((request_id, _, _)) = self.pending_approval.take() else { return };
+        let Some((request_id, _, _)) = self.pending_approval.as_ref() else { return };
         if let Some((conversation, turn)) = &self.active_external {
-            if let Err(error) = self.backend_runtime.respond(conversation, turn, &request_id, response) { self.error = Some(error.message); }
+            match self.backend_runtime.respond(conversation, turn, request_id, response) {
+                Ok(()) => { self.pending_approval = None; }, Err(error) => { self.error = Some(error.message); }
+            }
         }
         cx.notify();
     }
@@ -124,6 +122,7 @@ impl AiChat {
         let native_session_id = conversation.native_session_id.clone();
         let mut message = self.sent_draft.as_ref().and_then(|draft| conversation.messages.get(draft.message_index))
             .map(|message| format!("{}{}", message.content, message.context.as_deref().unwrap_or(""))).unwrap_or_default();
+        message.push_str("\n\nWhen creating or editing notes, put note content only in the plan tool; reply briefly without reproducing the note or diff. For ordinary questions and code examples, answer normally.");
         self.serial += 1;
         let serial = self.serial;
         let turn_id = format!("{}-{serial}", conversation_id);
@@ -144,7 +143,7 @@ impl AiChat {
         if let Err(error) = self.backend_runtime.start(adapter.as_mut(), request, events, bridge.clone()) {
             self.error = Some(error.message); self.restore_failed_draft(window, cx); cx.notify(); return;
         }
-        self.active_external = Some((conversation_id.clone(), turn_id.clone()));
+        super::super::chat_process::start_turn(self); self.active_external = Some((conversation_id.clone(), turn_id.clone()));
         self.external_tools = Some(bridge);
         self.streaming = Some((serial, Arc::new(AtomicBool::new(false))));
         self.partial.clear();
@@ -169,7 +168,7 @@ impl AiChat {
                     this.active_external = None; this.pending_approval = None; this.streaming = None;
                     let text = std::mem::take(&mut this.partial);
                     if !text.trim().is_empty() { this.push("assistant", text); }
-                    if this.error.is_some() { this.restore_failed_draft(window, cx); } else { this.sent_draft = None; }
+                    if this.error.is_some() { this.restore_failed_draft(window, cx); } else { this.sent_draft = None; super::super::chat_process::open_created_plan(this, cx); }
                 }
                 this.scroll.scroll_to_bottom(); cx.notify();
             }).is_err() { break; }
@@ -185,7 +184,7 @@ impl AiChat {
                 }
                 Ok(_) => {},
                 Err(mpsc::TryRecvError::Empty) => return false,
-                Err(mpsc::TryRecvError::Disconnected) => { self.error = Some("AI backend disconnected".into()); return true; }
+                Err(mpsc::TryRecvError::Disconnected) => { self.error = Some("AI backend disconnected".into()); super::super::chat_process::record_outcome(self, "failed"); return true; }
             }
         }
     }
@@ -193,7 +192,7 @@ impl AiChat {
     fn handle_external_event(&mut self, event: BackendEvent, _cx: &mut Context<Self>) -> bool {
         match event.kind {
             BackendEventKind::Delta(text) => self.partial.push_str(&text),
-            BackendEventKind::Thinking(_) | BackendEventKind::ToolActivity { .. } => {},
+            BackendEventKind::Thinking(_) => {}, BackendEventKind::PublicSummary(text) => super::super::chat_process::record_summary(self, text), BackendEventKind::ToolActivity { name, .. } => super::super::chat_process::record_activity(self, name),
             BackendEventKind::Approval { request_id, title, detail } => {
                 if self.pending_approval.is_some() {
                     if let Some((conversation, turn)) = &self.active_external {
@@ -201,7 +200,7 @@ impl AiChat {
                             self.error = Some(error.message);
                         } else { self.error = Some("Concurrent approval rejected; resolve the pending request first".into()); }
                     }
-                } else { self.pending_approval = Some((request_id, title, detail)); }
+                } else { self.approval_state = None; self.pending_approval = Some((request_id, title, detail)); }
             }
             BackendEventKind::Session { native_session_id } => {
                 if let Some(conversation) = self.current.and_then(|id| self.convs.iter_mut().find(|conversation| conversation.id == id)) {
@@ -209,14 +208,16 @@ impl AiChat {
                 }
             }
             BackendEventKind::Completed => {
+                super::super::chat_process::record_outcome(self, "completed");
                 let kind = self.selected_backend();
                 if let Some((_, status)) = self.backend_statuses.iter_mut().find(|(backend, _)| *backend == kind) {
                     if let BackendStatus::Installed { version } = status { *status = BackendStatus::Ready { version: version.clone() }; }
                 }
                 return true;
             }
-            BackendEventKind::Cancelled => return true,
+            BackendEventKind::Cancelled => { super::super::chat_process::record_outcome(self, "stopped"); return true; },
             BackendEventKind::Error(error) => {
+                super::super::chat_process::record_outcome(self, "failed");
                 if error.code == "authentication" {
                     let kind = self.selected_backend();
                     self.backend_statuses.retain(|(backend, _)| *backend != kind);
@@ -247,13 +248,13 @@ impl AiChat {
             let result = backend::skill_resources::read(grants, id, path)
                 .map(|text| json!({"text":text})).map_err(|error| BackendError::new("skill_resource", error.to_string()));
             let display = result.as_ref().cloned().unwrap_or_else(|error| json!({"error":error.message}));
-            super::super::chat_process::record_tool(self, &request, &display, true);
+            super::super::chat_process::record_tool(self, &request, &display, true, cx);
             let _ = request.responder.respond(result); return false;
         }
         if request.name == "listNotebooks" {
             let roots = super::chat_roots::registered_roots();
             let result = json!({"notebooks": roots});
-            super::super::chat_process::record_tool(self, &request, &result, true);
+            super::super::chat_process::record_tool(self, &request, &result, true, cx);
             let _ = request.responder.respond(Ok(result));
             return false;
         }
@@ -275,7 +276,7 @@ impl AiChat {
         }
         if let Some(plan) = plan {
             if !request.begin_side_effect() { return false; }
-            super::super::chat_process::record_tool(self, &request, &result, false);
+            super::super::chat_process::record_tool(self, &request, &result, false, cx);
             let auto = plan.ops.iter().all(|op| matches!(op.kind, agent::OpKind::Create { .. }));
             self.push_msg(Msg { role: "tool".into(), content: result.to_string(), tool_call_id: Some(request.request_id.clone()), plan: Some(plan), ..Default::default() });
             if !auto { let at = self.conv().map_or(0, |c| c.messages.len() - 1); self.link_plan(at, 0, false, cx); }
@@ -292,7 +293,7 @@ impl AiChat {
                     json!({"status":"applied"})
                 } else { json!({"error":self.error.clone().unwrap_or_else(|| "Create failed".into())}) };
             }
-        } else { super::super::chat_process::record_tool(self, &request, &result, true); }
+        } else { super::super::chat_process::record_tool(self, &request, &result, true, cx); }
         let _ = request.responder.respond(Ok(result));
         false
     }

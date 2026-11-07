@@ -14,6 +14,7 @@ pub(crate) use chat_resize::resize_capture;
 #[path = "chat_picker.rs"] pub(super) mod chat_picker;
 #[path = "chat_skills.rs"] pub(super) mod chat_skills;
 #[path = "chat_models.rs"] pub(super) mod chat_models;
+#[path = "chat_dictation.rs"] pub(super) mod chat_dictation;
 
 pub(super) fn first_placeholder() -> &'static str { crate::theme::tr("向 AI 提问，/ 调用技能，@ 引用文件…", "Ask AI, / for skills, @ to reference files…") }
 pub(super) fn follow_placeholder() -> &'static str { crate::theme::tr("继续追问…", "Ask a follow-up…") }
@@ -27,6 +28,7 @@ pub(super) struct Msg {
     #[serde(default, skip_serializing_if = "Option::is_none")] pub tool_calls: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")] pub tool_call_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")] pub plan: Option<agent::Plan>,
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub timing: Option<(u64, Option<u64>)>, #[serde(default, skip_serializing_if = "Option::is_none")] pub source_roots: Option<Vec<(String, String)>>,
 }
 
 #[derive(Clone)]
@@ -42,7 +44,7 @@ pub(super) struct Conv {
 
 pub(crate) struct AiChat {
     pub(super) convs: Vec<Conv>,
-    pub(super) current: Option<u64>,
+    pub(super) current: Option<u64>, pub(super) tab_drafts: std::collections::HashMap<Option<u64>, (String, Vec<String>, Vec<String>, Option<SentDraft>)>,
     pub(super) input: Entity<TextareaState>,
     pub(super) refs: Vec<String>,
     pub(super) skills: Vec<String>,
@@ -56,7 +58,7 @@ pub(crate) struct AiChat {
     pub(super) deferred_drafts: Vec<SentDraft>,
     pub(super) retry_draft: Option<SentDraft>,
     pub(super) selection_scope: bool,
-    pub(super) pending_approval: Option<(String, String, String)>,
+    pub(super) pending_approval: Option<(String, String, String)>, pub(super) approval_state: Option<(String, std::rc::Rc<std::cell::RefCell<crate::ui::ai_approval::ApprovalState>>)>,
     pub(super) backend_statuses: Vec<(super::backend::BackendKind, super::backend::BackendStatus)>,
     pub(super) model_cache: Vec<(super::backend::BackendKind, chat_models::ModelStatus, Vec<super::backend::ModelOption>)>,
     pub(super) serial: u64,
@@ -109,6 +111,11 @@ pub(crate) fn recognized_backends(cx: &App) -> Vec<super::backend::BackendKind> 
     }
 }
 
+pub(crate) fn notify(cx: &mut App) {
+    if let Some(entity) = cx.try_global::<Holder>().map(|h| h.0.clone()) {
+        entity.update(cx, |_, cx| cx.notify());
+    }
+}
 pub(crate) fn sync_settings(cx: &mut App) {
     let Some(entity) = cx.try_global::<Holder>().map(|h| h.0.clone()) else { return };
     entity.update(cx, |this, cx| {
@@ -125,6 +132,7 @@ pub(crate) fn sync_settings(cx: &mut App) {
 pub(crate) fn toggle(editor: WeakEntity<Editor>, window: &mut Window, cx: &mut App) {
     let c = chat(window, cx);
     c.update(cx, |this, cx| {
+        chat_dictation::stop_for_input(&this.input);
         this.open = !this.open;
         if !this.open { this.fullscreen = false; }
         this.editor = Some(editor);
@@ -158,9 +166,9 @@ impl AiChat {
         });
         let convs: Vec<Conv> = store_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         let current = active.conversation.filter(|id| convs.iter().any(|conversation| conversation.id == *id));
-        let mut chat = AiChat { panel_width: chat_resize::load_width(), resizing: None, convs, current, input, refs: active.refs, skills: active.skills, partial: String::new(), streaming: None,
+        let mut chat = AiChat { panel_width: chat_resize::load_width(), resizing: None, convs, current, tab_drafts: Default::default(), input, refs: active.refs, skills: active.skills, partial: String::new(), streaming: None,
             backend_config: super::backend::BackendConfig::load(), backend_runtime: Default::default(), active_external: None, external_tools: None,
-            sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: active.retry.filter(|draft| Some(draft.conversation) == current), selection_scope: false, pending_approval: None,
+            sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: active.retry.filter(|draft| Some(draft.conversation) == current), selection_scope: false, pending_approval: None, approval_state: None,
             backend_statuses: vec![(super::backend::BackendKind::Builtin, super::backend::BackendStatus::Ready { version: "Block".into() })],
             model_cache: Vec::new(), serial: 0, error: None,
             error_settings: false, picker_cache: Default::default(), pick_index: 0, picker_dismissed: false, history: false, open: false, fullscreen: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), deck_scroll: ScrollHandle::new(), _sub: sub };
@@ -178,6 +186,8 @@ impl AiChat {
     }
     pub(super) fn conv(&self) -> Option<&Conv> { self.current.and_then(|id| self.convs.iter().find(|c| c.id == id)) }
     pub(super) fn stop(&mut self) {
+        chat_dictation::stop_for_input(&self.input);
+        if self.streaming.is_some() { super::chat_process::record_outcome(self, "stopped"); }
         self.sent_draft = None;
         if let Some(tools) = self.external_tools.take() { tools.cancel(); }
         if let Some((conversation, turn)) = self.active_external.take() {
@@ -270,21 +280,12 @@ pub(crate) fn prepare_process_card_smoke(window: &mut Window, cx: &mut App) -> R
 }
 
 pub(crate) fn process_card_smoke_data() -> (Vec<crate::ui::ai_process_card::ProcessStep>, Vec<String>) { super::chat_process::smoke_process_data() }
+pub(crate) fn smoke_visible_replies() -> Vec<String> { super::chat_process::smoke_visible_replies() }
 
-pub(crate) fn enable_smoke_builtin(window: &mut Window, cx: &mut App) -> Result<(), String> {
-    if !crate::smoke::is_requested() { return Err("AI fixture requires smoke mode".into()); }
-    let config = super::provider::Config { enabled: true, provider: "openai".into(), base_url: "http://127.0.0.1:1/v1".into(),
-        api_key: "smoke-fixture".into(), model: "smoke-fixture".into(), ..Default::default() };
-    super::provider::save(&config)?;
-    let mut backend_config = super::backend::BackendConfig::load();
-    let recognized = recognized_backends(cx);
-    let _ = backend_config.set_enabled(super::backend::BackendKind::Builtin, true, &recognized);
-    super::settings::reload(window, cx);
-    sync_settings(cx);
-    chat(window, cx).update(cx, |_, cx| cx.notify());
-    window.refresh();
-    Ok(())
-}
+#[path = "chat_smoke_setup.rs"] mod smoke_setup;
+pub(crate) use smoke_setup::{enable_smoke_builtin, set_process_smoke_status, seed_source_smoke, set_stream_smoke};
 
 #[path = "chat_input_smoke.rs"]
 pub(crate) mod input_smoke;
+#[path = "chat_voice_smoke.rs"]
+pub(crate) mod voice_smoke;

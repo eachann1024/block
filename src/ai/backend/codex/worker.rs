@@ -67,7 +67,8 @@ fn run_inner(request: &TurnRequest, events: &Sender<BackendEvent>, tools: ToolBr
         match method {
             "turn/started" => if let Some(id) = params.pointer("/turn/id").and_then(Value::as_str) { set_turn(control, id)?; },
             "item/agentMessage/delta" => if let Some(delta) = params.get("delta").and_then(Value::as_str) { emit(events, request, BackendEventKind::Delta(delta.into())); },
-            "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => if let Some(delta) = params.get("delta").and_then(Value::as_str) { emit(events, request, BackendEventKind::Thinking(delta.into())); },
+            "item/reasoning/summaryTextDelta" => if let Some(delta) = params.get("delta").and_then(Value::as_str) { emit(events, request, BackendEventKind::PublicSummary(delta.into())); },
+            "item/reasoning/textDelta" => if let Some(delta) = params.get("delta").and_then(Value::as_str) { emit(events, request, BackendEventKind::Thinking(delta.into())); },
             "item/started" | "item/completed" => if let Some(kind) = params.pointer("/item/type").and_then(Value::as_str) {
                 if kind != "agentMessage" && kind != "reasoning" { emit(events, request, BackendEventKind::ToolActivity { name: kind.into(), detail: method.into() }); }
             },

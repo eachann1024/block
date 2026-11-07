@@ -66,8 +66,16 @@ impl AiChat {
                 Some(entry) => entry.2 = next, None => work.push((op.page.clone(), current, next)),
             }
         }
+        for (page, before, after) in &mut work {
+            if let Some(conv) = self.current {
+                match super::super::plan_link::selection::selected(conv, at, page, before.as_deref().unwrap_or(""), after) {
+                    Ok(selected) => *after = selected, Err(error) => { self.error = Some(error); cx.notify(); return; }
+                }
+            }
+        }
         plan.receipts.clear();
         for (page, before, after) in work {
+            if before.as_deref() == Some(after.as_str()) || (before.is_none() && after.is_empty()) { continue; }
             match self.write_page(&ctx, &page, &after, before.as_deref(), cx) {
                 Ok(after) => plan.receipts.push(agent::Receipt { created: before.is_none(), before: before.unwrap_or_default(), after, page }),
                 Err(error) => {
@@ -78,6 +86,7 @@ impl AiChat {
                 }
             }
         }
+        if plan.receipts.is_empty() { self.error = Some("未选择任何修改".into()); cx.notify(); return; }
         plan.state = agent::PlanState::Applied; self.set_plan(at, plan); super::super::plan_link::clear_plan(self.current, at, cx); cx.notify();
     }
 
@@ -87,6 +96,10 @@ impl AiChat {
         let ctx = match plan.root.as_ref().and_then(|root| self.context_for_root(root, cx).ok()) {
             Some(ctx) => ctx, None => { plan.state = agent::PlanState::UndoConflict; self.set_plan(at, plan); cx.notify(); return; }
         };
+        if plan.receipts.iter().any(|receipt| receipt.created && ctx.current.as_deref() == Some(receipt.page.as_str())) {
+            self.error = Some(crate::theme::tr("撤回前请先切换到其他笔记", "Switch to another note before undoing a creation").into());
+            cx.notify(); return;
+        }
         if plan.receipts.iter().any(|receipt| {
             ctx.read_checked(&receipt.page).map_or(true, |current| current.as_deref() != Some(&receipt.after))
         }) {
@@ -121,11 +134,16 @@ impl AiChat {
     pub(in crate::editor::ai) fn reject_plan_op(&mut self, at: usize, index: usize, cx: &mut Context<Self>) {
         let Some(mut plan) = self.plan_at(at).cloned().filter(|plan| plan.state == agent::PlanState::Pending) else { return };
         if index >= plan.ops.len() { return; }
-        plan.ops.remove(index);
+        let page = plan.ops.remove(index).page;
         if let Some(expected) = &mut plan.expected { expected.retain(|(page, _)| plan.ops.iter().any(|op| &op.page == page)); }
         if plan.ops.is_empty() { plan.state = agent::PlanState::Canceled; }
-        self.set_plan(at, plan); super::super::plan_link::clear_plan(self.current, at, cx); cx.notify();
+        let canceled = plan.state == agent::PlanState::Canceled;
+        self.set_plan(at, plan);
+        if canceled { super::super::plan_link::clear_plan(self.current, at, cx); }
+        else { super::super::plan_link::clear_plan_page(self.current, at, &page, cx); }
+        cx.notify();
     }
+
 }
 
 fn write_existing(ctx: &agent::Ctx, page: &str, path: &std::path::Path, text: &str, expected: Option<&str>) -> Result<(), String> {
