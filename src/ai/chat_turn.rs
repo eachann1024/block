@@ -11,7 +11,7 @@ impl AiChat {
         let ctx = self.agent_ctx(cx);
         let notebook = ctx.root.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let live = self.note_context(cx);
-        let system = format!("{}\n\n# 当前上下文\n\n- 当前笔记本：{}\n- 当前打开页面：{}\n- 当前内容范围：{}\n\n{}\n\n# 当前选区\n\n{}", agent::AGENTS,
+        let system = format!("{}\n\n{}\n\n# 当前上下文\n\n- 当前笔记本：{}\n- 当前打开页面：{}\n- 当前内容范围：{}\n\n{}\n\n# 当前选区\n\n{}", agent::AGENTS, agent::MARKDOWN_SKILL,
             if notebook.is_empty() { "（无）" } else { &notebook },
             ctx.current.as_ref().map(|p| format!("[{p}] {p}（pageId: {p}）")).unwrap_or("（无当前打开页面）".into()),
             if self.selection_scope { "选区" } else { "当前笔记" }, live.markdown.unwrap_or_default(), live.selection.unwrap_or_default());
