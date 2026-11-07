@@ -10,6 +10,7 @@ use super::Workspace;
 
 impl Workspace {
     pub(super) fn annotation_actions(&self, cx: &mut Context<Self>) -> Option<gpui::Stateful<gpui::Div>> {
+        if !crate::editor::ai::provider::config().enabled { return None; }
         let (drafts, generating, has_any) = self.editor.read(cx).annotation_summary();
         if !has_any { return None; }
         let label: SharedString = if generating { tr("生成中…", "Generating…").into() } else { tr("统一发送", "Send all").into() };
