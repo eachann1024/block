@@ -38,68 +38,32 @@ pub(crate) fn notify_saved_note(path: PathBuf, cx: &mut App) {
         workspace.update(cx, |w, cx| w.insert_external_note(path, cx));
     }
 }
-#[cfg(target_os = "macos")]
-#[allow(deprecated)]
-fn app_windows() -> cocoa::base::id {
-    use cocoa::{appkit::NSApplication, base::{SEL, id, nil, selector}};
-    unsafe extern "C" { fn objc_msgSend(); }
-    unsafe {
-        let app = NSApplication::sharedApplication(nil);
-        let send: unsafe extern "C" fn(id, SEL) -> id = std::mem::transmute(objc_msgSend as *const ());
-        send(app, selector("windows"))
-    }
-}
-#[cfg(target_os = "macos")]
-#[allow(deprecated)]
-pub fn hide_main_window_on_close() -> bool {
-    use cocoa::{appkit::NSWindow, base::nil, foundation::NSArray};
-    unsafe {
-        let windows = app_windows();
-        let mut hidden = false;
-        for i in 0..NSArray::count(windows) {
-            let win = NSArray::objectAtIndex(windows, i);
-            if crate::quick::is_main_window(win) {
-                NSWindow::orderOut_(win, nil);
-                hidden = true;
-            }
-        }
-        hidden
-    }
-}
-/// Without Cocoa window ordering, closing the main window quits instead of hiding it.
-#[cfg(not(target_os = "macos"))]
-pub fn hide_main_window_on_close() -> bool { false }
+pub use crate::window_visibility::hide_main_window_on_close;
+/// Reveal only the workspace; the quick-note lifetime is independent.
 pub fn activate_main_window(cx: &mut App) {
+    crate::window_visibility::show_native_main_window();
     if crate::smoke::is_worker() { return; }
-    crate::quick::close_if_open(cx);
-    crate::quick::show_native_main_window();
     cx.activate(true);
-    if let Some((Some(main_handle), _)) = main_window(cx) {
-        let _ = main_handle.update(cx, |_, main_win, _| main_win.activate_window());
-        cx.spawn(async move |cx| {
-            cx.background_executor().timer(std::time::Duration::from_millis(20)).await;
-            let _ = cx.update(|cx| {
-                crate::quick::show_native_main_window();
-                cx.activate(true);
-                let _ = main_handle.update(cx, |_, main_win, _| main_win.activate_window());
-            });
-        }).detach();
+    if let Some((Some(handle), _)) = main_window(cx) {
+        let _ = handle.update(cx, |_, window, _| window.activate_window());
     }
 }
 pub fn reveal_main_window(window: &mut Window, cx: &mut App) {
-    if crate::smoke::is_worker() { return; }
-    if crate::quick::is_open(cx) || !crate::quick::is_main_window_visible() {
-        crate::quick::close_if_open(cx);
-        crate::quick::show_native_main_window();
-        cx.activate(true);
-        window.activate_window();
+    if !crate::window_visibility::is_main_window_visible() || !window.is_window_active() {
+        crate::window_visibility::show_native_main_window();
+        if !crate::smoke::is_worker() {
+            cx.activate(true);
+            window.activate_window();
+        }
     }
 }
 pub fn ensure_main_window(cx: &mut App) -> Option<gpui::AnyWindowHandle> {
-    if crate::quick::is_open(cx) || !crate::quick::is_main_window_visible() || cx.active_window().is_none() {
+    let handle = main_window(cx)?.0?;
+    let active = handle.update(cx, |_, window, _| window.is_window_active()).unwrap_or(false);
+    if !crate::window_visibility::is_main_window_visible() || !active {
         activate_main_window(cx);
     }
-    main_window(cx).and_then(|(h, _)| h.map(Into::into)).or_else(|| cx.active_window())
+    Some(handle.into())
 }
 pub fn summon_main(cx: &mut App) {
     if !crate::quick::mark_search_triggered() { return; }
@@ -112,7 +76,7 @@ pub fn summon_main(cx: &mut App) {
 }
 pub fn summon_from_hotkey(cx: &mut App) {
     if !crate::quick::mark_search_triggered() { return; }
-    if crate::quick::is_open(cx) || !crate::quick::is_main_window_visible() {
+    if !crate::window_visibility::is_main_window_visible() {
         activate_main_window(cx);
         if let Some((Some(handle), workspace)) = main_window(cx) {
             let _ = handle.update(cx, |_, window, cx| {
