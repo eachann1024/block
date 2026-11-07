@@ -19,16 +19,6 @@ impl AiSettings {
         cx.notify();
     }
 
-    fn promote_backend(&mut self, kind: BackendKind, window: &mut Window, cx: &mut Context<Self>) {
-        let mut config = BackendConfig::load();
-        if let Err(error) = config.promote_priority(kind, &chat::recognized_backends(cx)) {
-            self.test_note = Some(TestNote::Err(error));
-        }
-        chat::sync_settings(cx);
-        chat::chat(window, cx).update(cx, |chat, cx| chat.select_backend(kind, window, cx));
-        cx.notify();
-    }
-
     pub(super) fn refresh_agent_models(&mut self, cx: &mut Context<Self>) {
         if self.agent_fetching { return; }
         let kind = self.focused_backend;
@@ -57,18 +47,16 @@ impl AiSettings {
         let theme = Theme::ocean();
         let config = BackendConfig::load();
         let recognized = chat::recognized_backends(cx);
-        let enabled = config.ordered_enabled(&recognized);
+
         let toggle = toggle_pill("ai-enabled-switch", Icon::Sparkles, self.enabled,
             if self.enabled { tr("已开启", "Enabled") } else { tr("已关闭", "Disabled") }, self.toggle_anim,
             cx.listener(|this, active, _, cx| { if this.toggle_anim.set_hovered(*active) { cx.notify(); } }),
             cx.listener(|this, _, _, cx| { this.enabled = !this.enabled; this.toggle_anim.record_toggle(); this.save(cx); }));
         let mut cards = div().flex().flex_wrap().gap(px(8.));
         for kind in recognized.iter().copied() {
-            let active = config.is_enabled(kind);
-            let label = match kind { BackendKind::Builtin => "AI", BackendKind::Codex => "Cx", BackendKind::Claude => "Cl", BackendKind::Dsh => "ds", BackendKind::Pi => "Pi" };
+            let active = self.pending_backends.iter().find(|(item, _)| *item == kind).map_or(config.is_enabled(kind), |(_, enabled)| *enabled);
             let card_id: gpui::ElementId = SharedString::from(format!("ai-backend-card-{kind:?}")).into();
             let toggle_id: gpui::ElementId = SharedString::from(format!("ai-backend-toggle-{kind:?}")).into();
-            let rank = enabled.iter().position(|&item| item == kind).map(|index| format!("#{}", index + 1)).unwrap_or_default();
             cards = cards.child(div().id(card_id.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&card_id))
                 .flex_1().min_w(px(105.)).p(px(10.)).rounded(crate::ui::radius::CONTROL).border_1()
                 .border_color(if self.focused_backend == kind { theme.accent } else { theme.btn_border })
@@ -78,32 +66,24 @@ impl AiSettings {
                     else { this.select_focused_backend(kind, window, cx); }
                 }))
                 .child(div().flex().justify_between().items_center()
-                    .child(div().text_size(px(14.)).font_weight(FontWeight(600.)).text_color(theme.accent).child(label))
+                    .child(div().text_size(px(14.)).font_weight(FontWeight(600.)).text_color(theme.accent).child(backend_ui::backend_name(kind)))
                     .child(div().id(toggle_id.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&toggle_id))
                         .size(px(20.)).rounded(px(6.)).border_1().border_color(if active { theme.accent } else { theme.btn_border })
                         .when(active, |d| d.bg(theme.accent).child(icon(Icon::Check, px(16.), theme.mono_icon_colors(gpui::rgb(0xffffff).into()))))
                         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
                             cx.stop_propagation(); this.select_focused_backend(kind, window, cx); this.toggle_backend(kind, cx);
                         }))))
-                .child(div().mt(px(12.)).flex().justify_between().gap(px(4.)).text_size(px(14.)).text_color(theme.text)
-                    .child(backend_ui::backend_name(kind)).child(rank)));
-        }
-        let mut priority = div().id("ai-priority-row").flex().flex_wrap().items_center().gap(px(8.))
-            .child(div().text_size(px(14.)).text_color(theme.text_secondary).child(tr("执行优先级", "Priority")));
-        for (index, kind) in enabled.iter().copied().enumerate() {
-            priority = priority.child(tag_chip(SharedString::from(format!("ai-priority-pill-{kind:?}")),
-                format!("P{} {}", index + 1, backend_ui::backend_name(kind)), false, false)
-                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| this.promote_backend(kind, window, cx))));
+            );
         }
         settings_card(16.).child(div().flex().items_center().justify_between().child(card_title(tr("AI 与本机 Agent", "AI & Local Agents"))).child(toggle))
-            .when(self.enabled, |d| d.child(cards).child(priority))
+            .when(self.enabled, |d| d.child(cards).child(action_button("ai-save-backends", tr("保存", "Save"), true, !self.pending_backends.is_empty()).on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.save_backends(cx)))))
     }
 
     pub(in crate::editor::ai) fn agent_locked(&self, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         let kind = self.focused_backend;
         settings_card(8.).id("ai-focused-locked").relative().children(crate::ui::smoke_overlay::probe_for(&"ai-focused-locked".into())).flex_row().items_center().justify_between()
             .child(format!("{} {}", backend_ui::backend_name(kind), tr("当前未启用，勾选卡片右上角后可修改以下配置", "is disabled. Check the top-right box to edit settings below")))
-            .child(action_button("ai-enable-focused", tr("立即启用", "Enable"), false, true)
+            .child(action_button("ai-enable-focused", tr("选中", "Select"), false, true)
                 .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.toggle_backend(kind, cx))))
     }
 
