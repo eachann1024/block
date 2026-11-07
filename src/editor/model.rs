@@ -39,6 +39,8 @@ pub struct InlineTag {
 /// Imported HTML paragraph shell; inline content remains ordinary editable rich text.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HtmlParagraph { pub source: String, pub content: Range<usize> }
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ListCode { pub parent_indent: usize, pub extra_indent: usize, pub blank_before: bool, #[serde(default)] pub same_line: bool }
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BlockMeta {
@@ -48,6 +50,7 @@ pub struct BlockMeta {
     pub code_language: Option<String>,
     /// Distinguishes a fenced block containing one empty line from an empty fence.
     pub code_empty_line: bool,
+    pub list_code: Option<ListCode>,
     /// Unsupported Markdown is literal editable source, never silently interpreted.
     pub raw_source: Option<String>,
     /// Display why a source block cannot be edited visually without data loss.
@@ -116,7 +119,7 @@ impl Doc {
     }
     pub fn set_kind(&mut self, id: u64, kind: Kind) {
         if self.get(id).is_some_and(|block| block.meta.table.is_some()) { return; }
-        if let Some(block) = self.get_mut(id) { block.kind = kind; block.meta.heading_level = None; block.meta.callout = None; block.meta.raw_source = None; block.meta.unsupported_reason = None; block.meta.code_language = None; block.meta.code_empty_line = false; block.meta.html_paragraph = None;
+        if let Some(block) = self.get_mut(id) { block.kind = kind; block.meta.heading_level = None; block.meta.callout = None; block.meta.raw_source = None; block.meta.unsupported_reason = None; block.meta.code_language = None; block.meta.code_empty_line = false; block.meta.list_code = None; block.meta.html_paragraph = None;
             if !matches!(kind, Kind::Bullet | Kind::Numbered | Kind::Todo) { block.meta.indent = 0; block.meta.list_start = None; }
         }
         self.refresh_block(id);

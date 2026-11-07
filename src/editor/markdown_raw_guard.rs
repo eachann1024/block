@@ -1,5 +1,6 @@
 use super::blocks::{closes_fence, fence};
 use std::borrow::Cow;
+use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag, TagEnd};
 
 fn is_marker(line: &str) -> bool {
     let rest = match line.trim_start().strip_prefix("<!--") { Some(rest) => rest.trim_start(), None => return false };
@@ -49,10 +50,30 @@ fn unescape_entity_line(line: &str) -> Cow<'_, str> {
 pub(super) fn decode(source: &str) -> Cow<'_, str> {
     if !source.contains("raw-block") && !source.contains("&#") { return Cow::Borrowed(source); }
     let lines: Vec<&str> = source.split_inclusive('\n').collect();
+    let mut protected = Vec::new();
+    let mut depth = 0usize;
+    for (event, range) in Parser::new(source).into_offset_iter() {
+        match event {
+            Event::Start(Tag::Item) => depth += 1,
+            Event::End(TagEnd::Item) => depth = depth.saturating_sub(1),
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(_))) if depth > 0 => {
+                let start = source[..range.start].rfind('\n').map_or(0, |at| at + 1);
+                let end = source[range.end..].find('\n').map_or(source.len(), |at| range.end + at + 1);
+                protected.push(start..end);
+            }
+            _ => {}
+        }
+    }
+    let mut offsets = Vec::with_capacity(lines.len());
+    let mut offset = 0usize;
+    for line in &lines { offsets.push(offset); offset += line.len(); }
     let mut out = String::with_capacity(source.len());
     let mut index = 0;
     while index < lines.len() {
         let line = lines[index];
+        if protected.iter().any(|range| range.contains(&offsets[index])) {
+            out.push_str(line); index += 1; continue;
+        }
         if content(line).trim() == "$$" {
             let mut end = index + 1;
             while end < lines.len() && content(lines[end]).trim() != "$$" { end += 1; }

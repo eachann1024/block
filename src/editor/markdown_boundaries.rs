@@ -1,4 +1,4 @@
-use super::{blocks, super::model::Kind};
+use super::blocks;
 
 pub(super) fn table_lines(lines: &[&str]) -> usize {
     let mut depth = 0usize;
@@ -36,19 +36,6 @@ pub(super) fn table_lines(lines: &[&str]) -> usize {
 
 pub(super) fn unsupported(lines: &[&str]) -> Option<usize> {
     let first = lines.first()?.trim_start();
-    let (kind, _, _, indent, _, _) = blocks::classify(lines[0].trim_end_matches(['\r', '\n']));
-    if matches!(kind, Kind::Bullet | Kind::Numbered | Kind::Todo) {
-        let count = 1 + lines.iter().skip(1).take_while(|line| {
-            if line.trim().is_empty() { return false; }
-            let (kind, _, _, child_indent, _, _) = blocks::classify(line.trim_end_matches(['\r', '\n']));
-            child_indent >= indent && (child_indent > indent || matches!(kind, Kind::Bullet | Kind::Numbered | Kind::Todo))
-        }).count();
-        let continuation = lines[1..count].iter().any(|line| {
-            let (kind, _, _, child_indent, _, _) = blocks::classify(line.trim_end_matches(['\r', '\n']));
-            child_indent > indent && !matches!(kind, Kind::Bullet | Kind::Numbered | Kind::Todo)
-        });
-        if continuation { return Some(count); }
-    }
     if first.starts_with(":::") && first.trim() != ":::" {
         let end = lines.iter().enumerate().skip(1).find(|(_, line)| line.trim() == ":::")
             .map(|(index, _)| index + 1)
