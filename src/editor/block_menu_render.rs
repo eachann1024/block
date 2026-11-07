@@ -28,6 +28,8 @@ pub(in crate::editor) fn overlay(
     let selectable_count = entries.iter().flatten().count();
     let active_idx = menu.index.min(selectable_count.saturating_sub(1));
     let mut list = dropdown::shell("block-menu")
+        .track_scroll(&editor_ref.block_menu_scroll)
+        .on_scroll(crate::ui::scrollbar::contain_wheel(&editor_ref.block_menu_scroll))
         .min_w(px(SLASH_MENU_WIDTH))
         .w(px(SLASH_MENU_WIDTH))
         .max_h(max_h);
