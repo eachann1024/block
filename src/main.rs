@@ -1,5 +1,6 @@
 mod about;
 mod app;
+mod app_reopen;
 mod dropdown;
 mod editor;
 mod export;
@@ -106,11 +107,10 @@ fn main() {
     let saved_quick_bounds = initial_state.as_ref().and_then(|s| s.quick_window_bounds);
     let app = gpui_platform::application().with_assets(Assets);
     app.on_open_urls(|urls| enqueue_open_inputs(urls));
-    app.on_reopen(|cx| {
-        if !smoke::is_worker() { search::window::activate_main_window(cx); }
-    });
+    app.on_reopen(search::window::activate_main_window);
     let background_launch = smoke::is_worker() || startup::background_launch();
     app.run(move |cx: &mut App| {
+        app_reopen::install();
         if smoke::is_worker() { cx.set_activation_policy(gpui::ActivationPolicy::Accessory); }
         let smoke_sandbox = smoke_sandbox.clone();
         #[cfg(not(target_family = "wasm"))]

@@ -28,10 +28,14 @@ pub(crate) async fn verify(cx: &AsyncApp) -> Result<(), String> {
     let before = cx.update(|cx| editor.read(cx).markdown_text());
     if !before.contains("independent") { return Err("小窗 GPUI 键盘输入未进入编辑器".into()); }
 
-    // Dock reopen and the explicit main-window shortcut share this production entry point.
-    cx.update(main::activate_main_window);
+    // Launchers send an app reopen with hasVisibleWindows=true while the quick panel is open.
+    // Invoke the actual delegate outside cx.update so GPUI can borrow App for its callback.
+    crate::app_reopen::smoke_reopen(true)?;
     pause(cx).await;
-    check(cx, true, true, "唤起主窗口不隐藏或销毁小窗")?;
+    check(cx, true, true, "外部打开 Block：小窗可见时仍唤起主窗口")?;
+    crate::app_reopen::smoke_reopen(true)?;
+    pause(cx).await;
+    check(cx, true, true, "重复外部打开 Block 不切回或关闭小窗")?;
     cx.update(|cx| { main::ensure_main_window(cx); });
     let main_handle = cx.update(|cx| main::main_window(cx).and_then(|(handle, _)| handle)).ok_or("主窗口不存在")?;
     cx.update(|cx| main_handle.update(cx, |_, window, cx| main::reveal_main_window(window, cx)))
@@ -49,7 +53,7 @@ pub(crate) async fn verify(cx: &AsyncApp) -> Result<(), String> {
     cx.update(super::toggle);
     pause(cx).await;
     check(cx, false, true, "再次唤起小窗不打开主窗口")?;
-    cx.update(main::activate_main_window);
+    crate::app_reopen::smoke_reopen(true)?;
     pause(cx).await;
     // Escape follows the real QuickNote action route; only this window closes.
     cx.update(|cx| handle.update(cx, |_, window, cx| {
@@ -69,11 +73,15 @@ pub(crate) async fn verify(cx: &AsyncApp) -> Result<(), String> {
     cx.update(super::toggle);
     pause(cx).await;
     check(cx, false, true, "应用隐藏时仍能打开小窗且不唤起主窗口")?;
-    cx.update(main::activate_main_window);
+    crate::app_reopen::smoke_reopen(true)?;
     pause(cx).await;
     check(cx, true, true, "应用隐藏后恢复主窗口保留小窗")?;
     cx.update(super::close_if_open);
     check(cx, true, false, "显式关闭小窗不影响主窗口")?;
+    cx.update(|_| { native::hide_main_window_on_close(); });
+    crate::app_reopen::smoke_reopen(false)?;
+    pause(cx).await;
+    check(cx, true, false, "全部窗口隐藏时外部打开 Block 只唤起主窗口")?;
     cx.update(|_| { native::hide_main_window_on_close(); });
     Ok(())
 }
