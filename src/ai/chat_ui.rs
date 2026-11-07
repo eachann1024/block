@@ -110,7 +110,7 @@ impl Render for AiChat {
         let picker = picker_open.then(|| {
             let list = if picks.is_empty() {
                 div().p(px(10.)).text_size(px(14.)).text_color(theme.text_secondary)
-                    .child(if self.picker_cache.loading { tr("正在加载…", "Loading…") } else if token.starts_with('@') { tr("没有匹配的笔记", "No matching notes") } else { tr("没有匹配的指令或技能", "No matching commands or skills") })
+                    .child(if self.picker_cache.loading { tr("正在加载…", "Loading…") } else if token.starts_with('@') { tr("没有匹配的文件", "No matching files") } else { tr("没有匹配的指令或技能", "No matching commands or skills") })
                     .into_any_element()
             } else {
                 let scroll = super::chat_composer::PICKER_SCROLL.with(Clone::clone);
@@ -118,10 +118,12 @@ impl Render for AiChat {
                 gpui::uniform_list("ai-reference-list", picks.len(), cx.processor(move |_, range: std::ops::Range<usize>, _, cx| {
                     range.map(|i| {
                     let (pick, name, desc) = picks[i].clone();
-                    let row = crate::ui::dropdown::row_with(SharedString::from(format!("pick-{i}")), crate::ui::dropdown::RowSpec {
-                        icon: Some(if name.starts_with('/') { Icon::Sparkles } else { Icon::Note }),
+                    let row = crate::ui::dropdown::row_with_colors(SharedString::from(format!("pick-{i}")), crate::ui::dropdown::RowSpec {
+                        icon: Some(match &pick { super::chat::Pick::Folder(_) => Icon::Folder, super::chat::Pick::Page(_) => Icon::Note, _ => Icon::Sparkles }),
+                        highlighted: i == selected,
+                        chevron: matches!(&pick, super::chat::Pick::Folder(_)),
                         label: name.into(), hint: Some(desc.into()), ..Default::default()
-                    }).h(px(36.)).when(i == selected, |row| row.bg(theme.selected).border_1().border_color(theme.accent))
+                    }, Some((theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if i == selected { theme.accent } else { theme.text })))).relative().children(crate::ui::smoke_overlay::probe(format!("ai-pick-{i}"))).h(px(36.)).when(i == selected, |row| row.bg(theme.selected).border_1().border_color(theme.accent))
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| {
                         cx.stop_propagation(); this.accept_pick(pick.clone(), w, cx);
                     }));
@@ -130,7 +132,7 @@ impl Render for AiChat {
                 })).track_scroll(&scroll).h(px(height)).w_full().into_any_element()
             };
             div().mx(px(16.)).mb(px(4.)).flex_none().max_h(px(picker_height)).rounded(crate::ui::radius::SURFACE).border_1().border_color(theme.menu_border).bg(theme.menu)
-                .child(div().px(px(10.)).pt(px(6.)).text_size(px(14.)).text_color(theme.text_secondary).child(if token.starts_with('@') { tr("引用笔记", "Reference Note") } else { tr("指令与技能", "Commands & Skills") }))
+                .child(div().px(px(10.)).pt(px(6.)).text_size(px(14.)).text_color(theme.text_secondary).child(if token.starts_with('@') { tr("引用文件", "Reference File") } else { tr("指令与技能", "Commands & Skills") }))
                 .child(list)
         });
         let busy = self.streaming.is_some();
