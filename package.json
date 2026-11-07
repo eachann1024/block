@@ -9,6 +9,9 @@
     "build": "bun scripts/build-app.mjs",
     "build:ci": "bun scripts/build-app.mjs --no-install",
     "build:web": "bun scripts/build-web.mjs",
+    "check": "bash scripts/fast-check.sh",
+    "ai:state": "python3 scripts/dump_ai_state.py",
+    "ai:map": "python3 scripts/gen_ai_map.py",
     "logs": "tail -n 100 -f \"$HOME/Library/Application Support/Block/logs/block.log\""
   }
 }
