@@ -21,6 +21,7 @@ pub(crate) struct AiSettings {
     pub(super) models: Vec<String>, pub(super) models_err: Option<String>,
     pub(super) fetching: bool, pub(super) testing: bool, pub(super) test_note: Option<TestNote>,
     pub(super) toggle_anim: crate::ui::toggle_pill::TogglePillState,
+    pub(super) pending_backends: Vec<(super::backend::BackendKind, bool)>,
     pub(super) focused_backend: super::backend::BackendKind,
     pub(super) launch_args_input: Entity<InputState>,
     pub(super) agent_models: Vec<String>, pub(super) agent_fetching: bool,
@@ -102,7 +103,7 @@ impl AiSettings {
             enabled: c.enabled, provider: c.provider, protocol: c.protocol, providers: c.providers,
             show_key: false, last_en: is_en(), base_url, api_key, model_filter, model,
             models, models_err: None, fetching: false, testing: false, test_note: None,
-            toggle_anim: Default::default(), focused_backend: super::backend::BackendKind::Builtin,
+            pending_backends: Vec::new(), toggle_anim: Default::default(), focused_backend: super::backend::BackendKind::Builtin,
             launch_args_input, agent_models: Vec::new(), agent_fetching: false, syncing_launch_args: false, _subs: subs,
         };
         if should_fetch { this.fetch_models(cx); }
@@ -171,18 +172,24 @@ impl AiSettings {
     }
 
     pub(super) fn toggle_backend(&mut self, kind: super::backend::BackendKind, cx: &mut Context<Self>) {
+        let current = super::backend::BackendConfig::load().is_enabled(kind);
+        let next = !self.pending_backends.iter().find(|(item, _)| *item == kind).map_or(current, |(_, enabled)| *enabled);
+        self.pending_backends.retain(|(item, _)| *item != kind);
+        if next != current { self.pending_backends.push((kind, next)); }
+        cx.notify();
+    }
+
+    pub(super) fn save_backends(&mut self, cx: &mut Context<Self>) {
         let recognized = super::chat::recognized_backends(cx);
-        let mut backend_config = super::backend::BackendConfig::load();
-        let next = !backend_config.is_enabled(kind);
-        if let Err(err) = backend_config.set_enabled(kind, next, &recognized) {
-            self.test_note = Some(TestNote::Err(err));
-            cx.notify();
-            return;
+        let mut config = super::backend::BackendConfig::load();
+        for (kind, enabled) in self.pending_backends.clone() {
+            if let Err(error) = config.set_enabled(kind, enabled, &recognized) {
+                self.test_note = Some(TestNote::Err(error));
+                cx.notify();
+                return;
+            }
         }
-        self.test_note = None;
-        if next && self.focused_backend == kind && kind != super::backend::BackendKind::Builtin {
-            self.refresh_agent_models(cx);
-        }
+        self.pending_backends.clear();
         super::chat::sync_settings(cx);
         cx.notify();
     }
