@@ -1,4 +1,4 @@
-//! Silent background update checker, bilingual changelog modal, and delta updater.
+//! Silent background update checker, bilingual changelog modal, and installer updates.
 //! Scheme 2: GitHub official release + public accelerator fallback + SHA-256 strong verification.
 
 use std::{
@@ -193,28 +193,28 @@ fn parse_version(s: &str) -> Option<(u64, u64, u64)> {
     Some((major, minor, patch))
 }
 
-fn platform_asset_candidates() -> (&'static str, &'static str) {
+fn platform_installer() -> &'static str {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    { ("block-macos-arm64.bin.gz", "block-macos-arm64.dmg") }
+    { "block-macos-arm64.dmg" }
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    { ("block-macos-x64.bin.gz", "block-macos-x64.dmg") }
+    { "block-macos-x64.dmg" }
 
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-    { ("block-windows-x64.exe.gz", "block-windows-x64-setup.exe") }
+    { "block-windows-x64-setup.exe" }
     #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
-    { ("block-windows-arm64.exe.gz", "block-windows-arm64-setup.exe") }
+    { "block-windows-arm64-setup.exe" }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    { ("block-linux-x64.bin.gz", "block-linux-x64.AppImage") }
+    { "block-linux-x64.AppImage" }
     #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-    { ("block-linux-arm64.bin.gz", "block-linux-arm64.AppImage") }
+    { "block-linux-arm64.AppImage" }
 
     #[cfg(not(any(
         all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64")),
         all(target_os = "windows", any(target_arch = "x86_64", target_arch = "aarch64")),
         all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")),
     )))]
-    { ("", "") }
+    { "" }
 }
 
 fn looks_chinese(text: &str) -> bool {
@@ -424,15 +424,15 @@ fn mock_update_info() -> UpdateInfo {
         },
     };
 
-    let (delta_candidate, _) = platform_asset_candidates();
+    let installer = platform_installer();
 
     UpdateInfo {
         latest_version: "1.0.999".to_string(),
         latest_tag: "v1.0.999".to_string(),
         days: vec![day1, day2],
-        download_url: format!("https://github.com/eachann1024/block/releases/download/v1.0.999/{delta_candidate}"),
-        asset_name: delta_candidate.to_string(),
-        is_delta: true,
+        download_url: format!("https://github.com/eachann1024/block/releases/download/v1.0.999/{installer}"),
+        asset_name: installer.to_string(),
+        is_delta: false,
         total_bytes: 4_404_019,
     }
 }
@@ -534,27 +534,18 @@ pub fn check_for_updates() -> bool {
         }
     }
 
-    // Find platform asset
-    let (delta_target, full_target) = platform_asset_candidates();
+    let installer = platform_installer();
     let download_url;
     let asset_name;
-    let is_delta;
     let mut total_bytes = 0;
 
-    if let Some(asset) = latest.assets.iter().find(|a| a.name == delta_target) {
+    if let Some(asset) = latest.assets.iter().find(|a| a.name == installer) {
         download_url = asset.browser_download_url.clone();
         asset_name = asset.name.clone();
-        is_delta = true;
-        total_bytes = asset.size;
-    } else if let Some(asset) = latest.assets.iter().find(|a| a.name == full_target) {
-        download_url = asset.browser_download_url.clone();
-        asset_name = asset.name.clone();
-        is_delta = false;
         total_bytes = asset.size;
     } else {
-        asset_name = delta_target.to_string();
-        download_url = format!("https://github.com/eachann1024/block/releases/download/{latest_tag}/{delta_target}");
-        is_delta = true;
+        asset_name = installer.to_string();
+        download_url = format!("https://github.com/eachann1024/block/releases/download/{latest_tag}/{installer}");
     }
 
     let info = UpdateInfo {
@@ -563,7 +554,7 @@ pub fn check_for_updates() -> bool {
         days,
         download_url,
         asset_name,
-        is_delta,
+        is_delta: false,
         total_bytes,
     };
 
