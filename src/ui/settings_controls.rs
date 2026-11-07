@@ -191,3 +191,7 @@ pub fn static_keycap(spec: &str) -> gpui::Div {
         .cursor(CursorStyle::Arrow)
         .children(hotkey_parts(spec).into_iter().map(|p| keycap_chip(p, false)))
 }
+
+#[path = "agent_card.rs"]
+mod agent_card;
+pub use agent_card::agent_card;
