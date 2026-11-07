@@ -50,7 +50,9 @@ impl Run {
         let editor_focused = self.win(cx, |window, cx| self.workspace.read(cx).editor.focus_handle(cx).is_focused(window))?;
         self.check(14, !editor_focused, "关于菜单正确移交焦点")?;
         self.redraw(cx);
-        self.click_target(cx, "about-performance", "性能 · 打开监控").await?;
+        self.check(14, smoke_overlay::target_bounds("about-performance").is_none(), "关于弹窗不含性能入口")?;
+        self.click_target(cx, "about-done", "关于 · 关闭").await?;
+        self.win(cx, |window, cx| window.dispatch_action(Box::new(crate::menu_bar::ShowPerformance), cx))?;
         let ready = self.wait_until(cx, 15000, |_, _| {
             let state = crate::performance::smoke_state();
             state.open && state.process_samples >= 2 && state.process_ok && state.cpu_ready
@@ -78,7 +80,7 @@ impl Run {
         self.check(14, !closed.open, "关闭监控")?;
         sleep(cx, 1300).await;
         self.check(14, crate::performance::smoke_state().process_samples == closed.process_samples, "关闭后采样停止")?;
-        self.click_target(cx, "about-performance", "性能 · 重新打开监控").await?;
+        self.press(cx, "cmd-shift-m").await?;
         let reopened = self.wait_until(cx, 5000, |_, _| {
             let state = crate::performance::smoke_state();
             state.open && state.generation != closed.generation && state.process_samples >= 1
@@ -86,12 +88,6 @@ impl Run {
         self.check(14, reopened, "重新打开后启动新的采样")?;
         self.press(cx, "escape").await?;
         self.check(14, !crate::performance::smoke_state().open, "Escape 关闭监控")?;
-        self.click_target(cx, "about-done", "关于 · 关闭").await?;
-        self.win(cx, |window, cx| window.dispatch_action(Box::new(crate::menu_bar::ShowAbout), cx))?;
-        sleep(cx, 180).await;
-        self.redraw(cx);
-        self.check(14, smoke_overlay::target_bounds("about-performance").is_some(), "再次打开关于 Block")?;
-        cx.update(|cx| { crate::about::close(); self.workspace.update(cx, |_, cx| cx.notify()); });
         Ok(())
     }
 

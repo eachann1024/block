@@ -96,7 +96,8 @@ impl Workspace {
             .child(setting_row(tr("搜索笔记", "Search Notes"), static_keycap("secondary-k")))
             .child(setting_row(tr("当前笔记查找", "Find in Note"), static_keycap("secondary-f")))
             .child(setting_row(tr("新建笔记", "New Note"), static_keycap("secondary-n")))
-            .child(setting_row(tr("AI 助手面板", "AI Assistant Panel"), static_keycap("secondary-j"))))
+            .child(setting_row(tr("AI 助手面板", "AI Assistant Panel"), static_keycap("secondary-j")))
+            .child(setting_row(tr("性能与占用", "Performance & Usage"), static_keycap("secondary-shift-m"))))
     }
 
 
