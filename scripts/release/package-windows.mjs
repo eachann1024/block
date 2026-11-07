@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { gzipSync } from "node:zlib";
 import { cargoRelease, run } from "./cargo-release.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
@@ -39,13 +38,8 @@ export async function packageWindows() {
     rmSync(staged, { force: true });
   }
   assert.ok(existsSync(outfile), `Failed to create ${SETUP_NAME}`);
-  const deltaName = `block-windows-${ARCH}.exe.gz`;
-  const deltaPath = join(RELEASE_DIR, deltaName);
-  writeFileSync(deltaPath, gzipSync(readFileSync(binary), { level: 9 }));
-  assert.ok(existsSync(deltaPath), `Failed to create ${deltaName}`);
   console.log(`Packaged Block v${version}:`);
   console.log(`  ${outfile}`);
-  console.log(`  ${deltaPath}`);
 }
 
 if (import.meta.main) {
