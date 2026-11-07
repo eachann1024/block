@@ -67,6 +67,7 @@ pub(super) fn configure_quick_panel() {
         for i in 0..NSArray::count(windows) {
             let win = NSArray::objectAtIndex(windows, i);
             if is_quick_panel(win) {
+                super::panel_class::install(win.cast());
                 NSWindow::setHidesOnDeactivate_(win, NO);
                 NSWindow::setCanHide_(win, NO);
                 NSPanel::setFloatingPanel(win, YES);
@@ -74,7 +75,7 @@ pub(super) fn configure_quick_panel() {
                 super::ime_bridge::install_ime_bridge(win as *mut std::ffi::c_void);
                 crate::window_visibility::prepare_background_window(win);
                 send_void(win, selector("orderFrontRegardless"));
-                if !crate::smoke::is_worker() { NSWindow::makeKeyAndOrderFront_(win, nil); }
+                if !crate::smoke::is_worker() { send_void(win, selector("makeKeyWindow")); }
             }
         }
     }
