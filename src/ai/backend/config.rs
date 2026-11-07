@@ -34,7 +34,30 @@ impl BackendConfig {
         let mut options = self.adapters.get(key).cloned().unwrap_or_else(|| serde_json::json!({}));
         if !options.is_object() { options = serde_json::json!({}); }
         options["fullPermissions"] = Value::Bool(self.full_permissions(backend));
+        options["thinkingLevel"] = Value::String(self.thinking_level(backend).into());
         options
+    }
+
+    pub(crate) fn thinking_level(&self, kind: BackendKind) -> &'static str {
+        match self.adapters.get(kind.key()).and_then(|v| v.get("thinkingLevel")).and_then(Value::as_str) {
+            Some("low") => "low",
+            Some("medium") => "medium",
+            _ => "high",
+        }
+    }
+
+    pub(crate) fn set_thinking_level(&mut self, kind: BackendKind, level: &str) -> Result<(), String> {
+        let normalized = match level {
+            "low" => "low",
+            "medium" => "medium",
+            _ => "high",
+        };
+        let previous = self.adapters.clone();
+        let entry = self.adapters.entry(kind.key().into()).or_insert_with(|| serde_json::json!({}));
+        if !entry.is_object() { *entry = serde_json::json!({}); }
+        entry["thinkingLevel"] = Value::String(normalized.into());
+        if let Err(error) = self.save() { self.adapters = previous; return Err(error); }
+        Ok(())
     }
 
     pub(crate) fn full_permissions(&self, kind: BackendKind) -> bool {

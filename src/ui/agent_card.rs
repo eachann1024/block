@@ -9,6 +9,12 @@ static BLOCK_ICON: LazyLock<Arc<Image>> = LazyLock::new(|| Arc::new(Image::from_
     ImageFormat::Png, include_bytes!("../../assets/app-icon/apple-touch-icon.png").to_vec(),
 )));
 
+pub fn brand_glyph(logo: Option<&'static str>, size: f32, color: gpui::Hsla) -> Div {
+    div().size(px(size)).flex_none().flex().items_center().justify_center()
+        .when_some(logo, |d, path| d.child(svg().path(path).size(px(size)).text_color(color)))
+        .when(logo.is_none(), |d| d.child(img(BLOCK_ICON.clone()).size(px(size)).rounded(px((size * 0.22).round()))))
+}
+
 pub fn agent_card(
     id: ElementId, toggle_id: ElementId, label: &'static str, logo: Option<&'static str>,
     focused: bool, enabled: bool,
@@ -16,9 +22,7 @@ pub fn agent_card(
     on_toggle: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
-    let brand = div().size(px(48.)).flex_none()
-        .when_some(logo, |d, path| d.child(svg().path(path).size(px(48.)).text_color(theme.text)))
-        .when(logo.is_none(), |d| d.child(img(BLOCK_ICON.clone()).size(px(48.))));
+    let brand = brand_glyph(logo, 48., theme.text);
     let checkbox = div().id(toggle_id.clone()).relative()
         .children(crate::ui::smoke_overlay::probe_for(&toggle_id))
         .size(px(32.)).flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
