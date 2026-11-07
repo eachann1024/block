@@ -1003,6 +1003,26 @@
       "x": 1520,
       "y": 2300
     },
+    "AiSettings-V1-CardTabs.dc.html": {
+      "expand": "fill",
+      "h": 940,
+      "is_interactive": true,
+      "page": "settings",
+      "title": "AI 助手设置 A（推荐）独立 AI 总开关 + 顶层五联卡片（右上角打勾启用）+ 优先级排序条 + 下方按需联动配置",
+      "w": 1440,
+      "x": 0,
+      "y": 3540
+    },
+    "AiSettings-V2-SplitMatrix.dc.html": {
+      "expand": "fill",
+      "h": 940,
+      "is_interactive": true,
+      "page": "settings",
+      "title": "AI 助手设置 B 「内置 AI / 已扫描 Agent」双轨分区卡（右上角打勾 + P1 优先级徽标）+ 下方一体化检视舱",
+      "w": 1440,
+      "x": 1520,
+      "y": 3540
+    },
     "AiPlanLink-V1-EditorDiffBar.dc.html": {
       "expand": "fill",
       "h": 920,
@@ -1042,6 +1062,15 @@
     "view": "canvas"
   },
   "notes": {
+    "ai-backend-settings-row": {
+      "kind": "title1",
+      "maxW": 2960,
+      "page": "settings",
+      "text": "AI 助手设置重构 · 解耦内置 AI 与总开关 + 顶层卡片切换（右上角打勾启用、未启用锁定配置）+ 优先级回退 · 两个版本",
+      "w": 240,
+      "x": 0,
+      "y": 3300
+    },
     "ai-plan-link-row": {
       "kind": "title1",
       "maxW": 2960,
@@ -1272,6 +1301,8 @@
     "PerfMonitor-V3-SplitInspector.dc.html",
     "SettingsTitlebar-V1-LeftBack.dc.html",
     "SettingsTitlebar-V2-UnifiedBar.dc.html",
+    "AiSettings-V1-CardTabs.dc.html",
+    "AiSettings-V2-SplitMatrix.dc.html",
     "AiPlanLink-V1-EditorDiffBar.dc.html",
     "AiPlanLink-V2-BlockReviewCard.dc.html"
   ],

@@ -58,10 +58,8 @@ impl Drop for Turn {
 pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: ToolBridge)
     -> Result<Box<dyn RunningTurn>, BackendError> {
     let mut command = super::super::cli_env::command("claude");
-    command.args([
-        "-p", "--verbose",
-        "--dangerously-skip-permissions",
-        "--permission-mode", "bypassPermissions",
+    let args = request.config.get("launchArgs").and_then(Value::as_str).unwrap_or(super::super::BackendKind::Claude.default_launch_args());
+    command.args(args.split_whitespace()).args([
         "--input-format", "stream-json",
         "--output-format", "stream-json",
         "--include-partial-messages",
