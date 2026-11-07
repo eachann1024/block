@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import { installerFor } from "./allowed-assets.mjs";
 import { cargoRelease } from "./cargo-release.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
-const ARCH = process.arch === "arm64" ? "arm64" : "x64";
-const APPIMAGE_NAME = `block-linux-${ARCH}.AppImage`;
+const ARCH = process.env.BLOCK_ARCH || (process.arch === "arm64" ? "arm64" : "x64");
+const APPIMAGE_NAME = installerFor({ platform: "linux", arch: ARCH, kind: "AppImage" });
 const SQUASH_ARCH = process.env.APPIMAGE_ARCH || (ARCH === "arm64" ? "aarch64" : "x86_64");
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 const HOST_LIB = /^(ld-linux|linux-vdso\.|libc\.|libm\.|libdl\.|libpthread\.|librt\.|libresolv\.|libutil\.|libvulkan\.|libGL\.|libGLX\.|libGLdispatch\.|libEGL\.|libOpenGL\.|librenderdoc\.)/;
