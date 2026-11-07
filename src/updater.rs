@@ -330,6 +330,10 @@ fn parse_section(text: &str) -> ReleaseSection {
             || trimmed.starts_with('🐛');
         if heading_line {
             let heading = trimmed.trim_start_matches('#').trim();
+            if heading.eq_ignore_ascii_case("Other") || heading.contains("其他") {
+                mode = Mode::None;
+                continue;
+            }
             if heading.eq_ignore_ascii_case("Download")
                 || heading.eq_ignore_ascii_case("Install")
                 || heading.contains("下载")
