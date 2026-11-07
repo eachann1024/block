@@ -18,15 +18,7 @@ impl AiChat {
     pub(super) fn picker_items(&self, token: &str, cx: &App) -> Vec<(Pick, String, String)> {
         let value = self.input.read(cx).value();
         if let Some(q) = token.strip_prefix('@') {
-            let q = q.to_lowercase();
-            let (_, current) = self.picker_location(cx);
-            let pages = current.iter().cloned().chain(self.picker_cache.pages.iter().filter(|p| Some(*p) != current.as_ref()).cloned());
-            let mut seen = std::collections::HashSet::new();
-            pages.filter(|p| p.to_lowercase().contains(&q) && !self.refs.contains(p) && seen.insert(p.clone()))
-                .map(|p| {
-                    let label = if Some(&p) == current.as_ref() { tr("当前笔记", "Current note") } else { tr("笔记", "Note") };
-                    (Pick::Page(p.clone()), p, label.into())
-                }).collect()
+            self.reference_items(q, cx)
         } else if let Some(q) = token.strip_prefix('/').filter(|_| value.trim_start().starts_with('/') || value.contains(" /")) {
             let q = q.to_lowercase();
             let new_cmd = tr("/新会话", "/new");
@@ -52,12 +44,13 @@ impl AiChat {
         let value = self.input.read(cx).value().to_string();
         let rest = value[..value.len() - token.len()].to_owned();
         match pick {
+            Pick::Folder(folder) => { self.open_reference_folder(folder, rest, window, cx); return; }
             Pick::Page(page) => { if !self.refs.contains(&page) { self.refs.push(page); } }
             Pick::Skill(skill) => { if !self.skills.contains(&skill) { self.skills.push(skill); } }
             Pick::NewConv => { self.new_conv(window, cx); return; }
         }
         self.pick_index = 0;
-        self.input.update(cx, |i, cx| { i.set_value(rest, window, cx); i.focus(window, cx); });
+        self.input.update(cx, |i, cx| { let end = rest.len(); i.set_value(rest, window, cx); i.set_selected_range(end..end, cx); i.focus(window, cx); });
         self.persist_active_draft(cx);
         cx.notify();
     }
@@ -87,7 +80,7 @@ impl AiChat {
         for r in self.refs.drain(..) {
             shown.push_str(&format!("@{r} "));
             let md = ctx.read(&r).unwrap_or_default();
-            context.push_str(&format!("\n\n# 引用笔记：{r}（pageId: {r}）\n\n{}", md.chars().take(12000).collect::<String>()));
+            context.push_str(&format!("\n\n# 引用文件：{r}（pageId: {r}）\n\n{}", md.chars().take(12000).collect::<String>()));
         }
         let local = ctx.local_skills();
         for name in self.skills.drain(..) {

@@ -137,6 +137,10 @@ pub struct RowSpec {
 }
 
 pub fn row_with(id: impl Into<ElementId>, spec: RowSpec) -> Stateful<Div> {
+    row_with_colors(id, spec, None)
+}
+
+pub fn row_with_colors(id: impl Into<ElementId>, spec: RowSpec, colors: Option<(IconColors, IconColors)>) -> Stateful<Div> {
     let p = palette();
     let id: ElementId = id.into();
     let group = SharedString::from(format!("dd-row-{id:?}"));
@@ -160,8 +164,10 @@ pub fn row_with(id: impl Into<ElementId>, spec: RowSpec) -> Stateful<Div> {
             .when(!spec.disabled, move |s| s.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(p.danger_hover_bg).text_color(p.danger_hover_fg)))
             .child(lead)
     } else {
-        let idle_c = IconColors { line: p.icon, fill: transparent_black(), accent: p.icon };
-        let active_c = IconColors { line: p.icon, fill: p.icon_fill, accent: p.icon_accent };
+        let (idle_c, active_c) = colors.unwrap_or((
+            IconColors { line: p.icon, fill: transparent_black(), accent: p.icon },
+            IconColors { line: p.icon, fill: p.icon_fill, accent: p.icon_accent },
+        ));
         let lead = div().size(px(16.)).flex_none().flex().items_center().justify_center()
             .when_some(spec.icon, |slot, g| {
                 if spec.disabled {
