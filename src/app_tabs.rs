@@ -35,7 +35,7 @@ actions!(workspace_tabs, [
 ]);
 
 pub(crate) fn bind_keys(cx: &mut App) {
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind(cx, [
         KeyBinding::new("cmd-t", NewTab, Some("Workspace")), KeyBinding::new("cmd-w", CloseTab, Some("Workspace")),
         KeyBinding::new("cmd-shift-t", ReopenClosedTab, Some("Workspace")), KeyBinding::new("cmd-\\", ToggleSidebar, Some("Workspace")), KeyBinding::new("alt-b", ToggleSidebar, None),
         KeyBinding::new("ctrl-tab", NextTab, Some("Workspace")), KeyBinding::new("ctrl-pagedown", NextTab, Some("Workspace")),
@@ -49,7 +49,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-9", SelectTab9, Some("Workspace")),
     ]);
     #[cfg(not(target_os = "macos"))]
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind(cx, [
         KeyBinding::new("ctrl-t", NewTab, Some("Workspace")), KeyBinding::new("ctrl-w", CloseTab, Some("Workspace")),
         KeyBinding::new("ctrl-shift-t", ReopenClosedTab, Some("Workspace")), KeyBinding::new("ctrl-\\", ToggleSidebar, Some("Workspace")),
         KeyBinding::new("ctrl-1", SelectTab1, Some("Workspace")), KeyBinding::new("ctrl-2", SelectTab2, Some("Workspace")),

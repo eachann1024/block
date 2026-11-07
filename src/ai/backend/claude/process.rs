@@ -37,10 +37,20 @@ impl RunningTurn for Turn {
         if matches!(response, ApprovalResponse::AllowSession) {
             return Err(BackendError::new("unsupported", "Claude session-wide approval is not supported"));
         }
-        let original = self.pending.lock().map_err(|_| BackendError::new("process_error", "Approval lock failed"))?
+        let mut original = self.pending.lock().map_err(|_| BackendError::new("process_error", "Approval lock failed"))?
             .remove(request_id).ok_or_else(|| BackendError::new("approval_expired", "Approval request is no longer pending"))?;
         let decision = match response {
             ApprovalResponse::AllowOnce => json!({"behavior":"allow","updatedInput":original}),
+            ApprovalResponse::QuestionResponse(value) => {
+                if value.get("status").and_then(Value::as_str) == Some("skipped") && value.get("answers").and_then(Value::as_object).is_none_or(serde_json::Map::is_empty) {
+                    json!({"behavior":"deny","message":"User skipped the question"})
+                } else {
+                    if let Some(obj) = original.as_object_mut() && let Some(answers) = value.get("answers") {
+                        obj.insert("answers".into(), answers.clone());
+                    }
+                    json!({"behavior":"allow","updatedInput":original})
+                }
+            }
             ApprovalResponse::Deny => json!({"behavior":"deny","message":"User denied this request"}),
             ApprovalResponse::Cancel => json!({"behavior":"deny","message":"User cancelled this request","interrupt":true}),
             ApprovalResponse::AllowSession => unreachable!(),
@@ -69,7 +79,7 @@ pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: T
         "--include-partial-messages",
         "--mcp-config", r#"{"mcpServers":{"block":{"type":"sdk","name":"block"}}}"#,
         "--append-system-prompt",
-        "Use Block MCP tools (listNotebooks, listPages, searchNotes, readPage, executeBatchPlan, loadSkill, readSkillResource) when reading or batch-editing Block notes.",
+        "Use Block MCP tools (listNotebooks, listPages, searchNotes, readPage, executeBatchPlan, askUserQuestion, loadSkill, readSkillResource) when reading, batch-editing Block notes, or asking the user clarifying questions.",
     ])
         .env_remove("CLAUDECODE").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(root) = request.context.notebook_root.as_ref() { command.current_dir(root); }
@@ -151,6 +161,14 @@ fn control(frame: &Value, request: &TurnRequest, tools: &ToolBridge, input: &Arc
         Some("can_use_tool") if !id.is_empty() => {
             let full_permissions = request.config.get("fullPermissions").and_then(Value::as_bool).unwrap_or(false);
             let tool_name = data["tool_name"].as_str().unwrap_or("tool");
+            if tool_name == "AskUserQuestion" {
+                let questions = crate::ui::ai_approval::parse_questions(&data["input"]);
+                if !questions.is_empty() {
+                    if let Ok(mut guard) = pending.lock() { guard.insert(id.to_owned(), data["input"].clone()); }
+                    emit(events, request, BackendEventKind::Questions { request_id: id.to_owned(), questions });
+                    return;
+                }
+            }
             if full_permissions || tool_name.starts_with("mcp__block__") {
                 let _ = write_frame(input, &json!({"type":"control_response","response":{"subtype":"success","request_id":id,"response":{"behavior":"allow","updatedInput":data["input"]}}}));
             } else {

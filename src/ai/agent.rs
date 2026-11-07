@@ -10,14 +10,15 @@ pub(super) const AGENTS: &str = include_str!("skills/AGENTS.md");
 pub(super) const MARKDOWN_SKILL: &str = include_str!("skills/markdown.md");
 /// (id, description, SKILL.md, tools the skill unlocks) — thinkly `skills.ts`.
 pub(super) const SKILLS: &[(&str, &str, &str, &[&str])] = &[
-    ("createNoote", "在本轮确定的笔记本和目录新建页面", include_str!("skills/createNoote.md"), &["listPages", "readPage", "executeBatchPlan"]),
-    ("updateNote", "改写、追加、补充或重命名当前页", include_str!("skills/updateNote.md"), &["readPage", "executeBatchPlan"]),
-    ("searchNotes", "跨笔记本和目录搜索并读取页面", include_str!("skills/searchNotes.md"), &["listPages", "searchNotes", "readPage"]),
-    ("chat", "仅解释或建议，不改笔记", include_str!("skills/chat.md"), &["readPage"]),
-    ("markdown", "创建或修改笔记时的 Markdown 指引", MARKDOWN_SKILL, &["executeBatchPlan"]),
+    ("createNoote", "在本轮确定的笔记本和目录新建页面", include_str!("skills/createNoote.md"), &["listPages", "readPage", "executeBatchPlan", "askUserQuestion"]),
+    ("updateNote", "改写、追加、补充或重命名当前页", include_str!("skills/updateNote.md"), &["readPage", "executeBatchPlan", "askUserQuestion"]),
+    ("searchNotes", "跨笔记本和目录搜索并读取页面", include_str!("skills/searchNotes.md"), &["listPages", "searchNotes", "readPage", "askUserQuestion"]),
+    ("chat", "仅解释或建议，不改笔记", include_str!("skills/chat.md"), &["readPage", "askUserQuestion"]),
+    ("markdown", "创建或修改笔记时的 Markdown 指引", MARKDOWN_SKILL, &["executeBatchPlan", "askUserQuestion"]),
 ];
 
 const BATCH_DESC: &str = "准备并处理笔记变更计划。修改已有页面会生成审批卡片，用户确认后才写入；纯新建自动写入。局部修改必须用 search_replace（oldString 须为 readPage 返回的精确片段，newString 可为空表示删除该片段，replaceAll 可选），整页重写才用 edit，新建用 create。参数格式：{title:\"整理笔记\",summary:\"更新账号页\",operations:[{type:\"search_replace\",pageId:\"page-1\",oldString:\"旧片段\",newString:\"新片段\"}]}。计划生成后停止，不要重复提交；结构预检失败可修正并重试一次。同页操作按顺序模拟。";
+const ASK_DESC: &str = "当任务需求不明确、存在多种方案或需要用户确认细节（如确认合并范围、选择文件名、勾选需要处理的项等）时，调用此工具向用户展示交互式单选/多选卡片，禁止在普通文本回复中列举问题让用户打字回答。每次最多4个问题，每个问题提供2~4个简短明确的选项（卡片自带自定义输入框与跳过按钮，无需添加“其他”选项）。";
 
 fn tool(name: &str, desc: &str, params: Value) -> Value {
     json!({ "type": "function", "function": { "name": name, "description": desc, "parameters": params } })
@@ -36,6 +37,13 @@ pub(super) fn tools() -> Value {
             json!({ "type": "object", "properties": { "query": { "type": "string" }, "notebookRoot": { "type": "string" } }, "required": ["query"] })),
         tool("readPage", "读取页面的标题和 Markdown 正文；省略 pageId 时读取当前打开页面。",
             json!({ "type": "object", "properties": { "pageId": { "type": "string" }, "notebookRoot": { "type": "string" } } })),
+        tool("askUserQuestion", ASK_DESC, json!({ "type": "object", "properties": {
+            "questions": { "type": "array", "items": { "type": "object", "properties": {
+                "q": { "type": "string", "description": "问题标题" },
+                "type": { "type": "string", "enum": ["radio", "check"], "description": "radio 为单选，check 为多选" },
+                "options": { "type": "array", "items": { "type": "string" }, "description": "2~4 个候选项文本" }
+            }, "required": ["q", "options"] } }
+        }, "required": ["questions"] })),
         tool("executeBatchPlan", BATCH_DESC, json!({ "type": "object", "properties": {
             "title": { "type": "string" }, "summary": { "type": "string" }, "notebookRoot": { "type": "string" },
             "operations": { "type": "array", "items": { "type": "object", "properties": {

@@ -49,3 +49,5 @@ pub mod chat_input;
 pub mod ai_plan_card;
 #[cfg(not(target_family = "wasm"))]
 pub mod ai_editor_diff;
+
+pub mod app_shortcuts;

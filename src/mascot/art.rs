@@ -1,5 +1,15 @@
-use gpui::{Div, Hsla, Styled, div, prelude::*, px, rgb, svg};
-use crate::theme::{Theme, is_dark};
+//! Mascot empty-state illustrations: one raster image per state.
+//!
+//! The five images are the blue-eyed white cat in the avatar's
+//! Disney/Pixar fluffy-fur style (`assets/mascot/*.webp`, 880x704,
+//! shown at 220x176). They are animated WebPs, built procedurally
+//! from the approved stills: each rests for 15s, then plays one
+//! short gentle motion. They are embedded with `include_bytes!` and
+//! served through the app's `AssetSource`, so `gpui::img` loads them
+//! by the `mascot/<slug>.webp` path.
+//! The pictures have a white background, so they are shown as a
+//! rounded white card in both light and dark mode.
+use gpui::{Div, div, prelude::*, px};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MascotState {
@@ -21,51 +31,51 @@ impl MascotState {
         }
     }
 
-    fn asset_path(self, layer: &'static str) -> String {
-        format!("mascot/{}.{layer}.svg", self.slug())
+    fn asset_path(self) -> String {
+        format!("mascot/{}.webp", self.slug())
     }
 }
 
 pub fn load_asset(path: &str) -> Option<&'static [u8]> {
     Some(match path {
-        "mascot/no-folder.body.svg" => include_bytes!("../../assets/mascot/no-folder.body.svg"),
-        "mascot/no-folder.fill.svg" => include_bytes!("../../assets/mascot/no-folder.fill.svg"),
-        "mascot/no-folder.accent.svg" => include_bytes!("../../assets/mascot/no-folder.accent.svg"),
-        "mascot/no-folder.line.svg" => include_bytes!("../../assets/mascot/no-folder.line.svg"),
-        "mascot/empty-folder.body.svg" => include_bytes!("../../assets/mascot/empty-folder.body.svg"),
-        "mascot/empty-folder.fill.svg" => include_bytes!("../../assets/mascot/empty-folder.fill.svg"),
-        "mascot/empty-folder.accent.svg" => include_bytes!("../../assets/mascot/empty-folder.accent.svg"),
-        "mascot/empty-folder.line.svg" => include_bytes!("../../assets/mascot/empty-folder.line.svg"),
-        "mascot/no-note.body.svg" => include_bytes!("../../assets/mascot/no-note.body.svg"),
-        "mascot/no-note.fill.svg" => include_bytes!("../../assets/mascot/no-note.fill.svg"),
-        "mascot/no-note.accent.svg" => include_bytes!("../../assets/mascot/no-note.accent.svg"),
-        "mascot/no-note.line.svg" => include_bytes!("../../assets/mascot/no-note.line.svg"),
-        "mascot/read-error.body.svg" => include_bytes!("../../assets/mascot/read-error.body.svg"),
-        "mascot/read-error.fill.svg" => include_bytes!("../../assets/mascot/read-error.fill.svg"),
-        "mascot/read-error.accent.svg" => include_bytes!("../../assets/mascot/read-error.accent.svg"),
-        "mascot/read-error.line.svg" => include_bytes!("../../assets/mascot/read-error.line.svg"),
-        "mascot/ai-disabled.body.svg" => include_bytes!("../../assets/mascot/ai-disabled.body.svg"),
-        "mascot/ai-disabled.fill.svg" => include_bytes!("../../assets/mascot/ai-disabled.fill.svg"),
-        "mascot/ai-disabled.accent.svg" => include_bytes!("../../assets/mascot/ai-disabled.accent.svg"),
-        "mascot/ai-disabled.line.svg" => include_bytes!("../../assets/mascot/ai-disabled.line.svg"),
+        "mascot/no-folder.webp" => include_bytes!("../../assets/mascot/no-folder.webp"),
+        "mascot/empty-folder.webp" => include_bytes!("../../assets/mascot/empty-folder.webp"),
+        "mascot/no-note.webp" => include_bytes!("../../assets/mascot/no-note.webp"),
+        "mascot/read-error.webp" => include_bytes!("../../assets/mascot/read-error.webp"),
+        "mascot/ai-disabled.webp" => include_bytes!("../../assets/mascot/ai-disabled.webp"),
+        "mascot/ai-tech-cat.webp" => include_bytes!("../../assets/mascot/ai-tech-cat.webp"),
         _ => return None,
     })
 }
 
+/// The `.id()` is required: GPUI keeps the animation frame state under
+/// the element id, so an image without one never advances past frame 0.
 pub fn illustration(state: MascotState) -> Div {
-    let theme = Theme::ocean();
-    let body_color: Hsla = if is_dark() { rgb(0x242933).into() } else { rgb(0xffffff).into() };
     div()
         .w(px(220.))
         .h(px(176.))
-        .relative()
         .flex_none()
-        .child(layer(state.asset_path("body"), body_color))
-        .child(layer(state.asset_path("fill"), theme.icon_fill))
-        .child(layer(state.asset_path("accent"), theme.accent))
-        .child(layer(state.asset_path("line"), theme.text))
+        .rounded(px(14.))
+        .overflow_hidden()
+        .child(
+            gpui::img(state.asset_path())
+                .id(format!("mascot-{}", state.slug()))
+                .size_full(),
+        )
 }
 
-fn layer(path: String, color: Hsla) -> gpui::Svg {
-    svg().path(path).size_full().absolute().top_0().left_0().text_color(color)
+/// The AI chat greeting: the tech cat (animated WebP, transparent bg).
+/// Shown at 280x200, the image's own 1.4:1 aspect, as a rounded card.
+/// It rests for 15s, blinks, rests another 15s, then raises a paw
+/// to touch the glasses edge, taps twice, lowers it, and blinks.
+/// The `.id()` is required: GPUI keeps the animation frame state under
+/// the element id, so an image without one never advances past frame 0.
+pub fn ai_greeting() -> Div {
+    div()
+        .w(px(280.))
+        .h(px(200.))
+        .flex_none()
+        .rounded(px(14.))
+        .overflow_hidden()
+        .child(gpui::img("mascot/ai-tech-cat.webp").id("ai-greeting-cat").size_full())
 }
