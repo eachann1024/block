@@ -45,11 +45,17 @@ fn scan(paths: DiskPaths, cancel: &AtomicBool) -> DiskSnapshot {
             let mut pending = vec![root.clone()];
             while let Some(path) = pending.pop() {
                 if cancelled(cancel, &mut result) { return result; }
+                if group == 3 && path != root && should_skip_notebook_entry(&path) {
+                    continue;
+                }
                 let metadata = match fs::symlink_metadata(&path) {
                     Ok(metadata) => metadata,
                     Err(error) => { record_error(&mut result, &path, &error.to_string()); continue; }
                 };
                 if metadata.file_type().is_symlink() { continue; }
+                if group == 3 && path != root && metadata.is_dir() && should_skip_notebook_dir(&path) {
+                    continue;
+                }
                 let Some(identity) = identity(&metadata) else {
                     record_error(&mut result, &path, "file identity unavailable");
                     continue;
@@ -97,9 +103,21 @@ fn category(group: usize, root: &Path, path: &Path) -> usize {
                 && matches!(path.file_name().and_then(|name| name.to_str()), Some("ai-chats.json" | "ai-active-draft.json" | "ai-failed-drafts.json")) { return 4; }
             5
         }
-        _ if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md")) => 1,
+        _ if path.file_name().and_then(|name| name.to_str()).is_some_and(crate::files::scan::is_markdown) => 1,
         _ => 2,
     }
+}
+
+fn should_skip_notebook_entry(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(crate::files::scan::ignored)
+}
+
+fn should_skip_notebook_dir(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| crate::theme::matches_folder_rule(name) == Some(true))
 }
 
 fn cancelled(cancel: &AtomicBool, result: &mut DiskSnapshot) -> bool {

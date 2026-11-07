@@ -26,13 +26,40 @@ struct State {
     disk_loading: bool,
     notebooks: Vec<PathBuf>,
     selected: Option<String>,
+    offset: (f32, f32),
+    drag_anchor: Option<((f32, f32), (f32, f32))>,
 }
 
 impl State {
     const fn new() -> Self {
         Self { open: false, generation: 0, cancel: None, process: None, process_samples: 0, disk: None,
-            disk_at: None, disk_loading: false, notebooks: Vec::new(), selected: None }
+            disk_at: None, disk_loading: false, notebooks: Vec::new(), selected: None,
+            offset: (0., 0.), drag_anchor: None }
     }
+}
+
+pub(super) fn begin_drag(mouse: (f32, f32)) {
+    let mut state = STATE.lock().unwrap_or_else(|e| e.into_inner());
+    if state.open {
+        state.drag_anchor = Some((mouse, state.offset));
+    }
+}
+
+pub(super) fn update_drag(mouse: (f32, f32), limit: (f32, f32)) -> bool {
+    let mut state = STATE.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(((sx, sy), (ox, oy))) = state.drag_anchor else { return false };
+    let nx = (ox + mouse.0 - sx).clamp(-limit.0, limit.0);
+    let ny = (oy + mouse.1 - sy).clamp(-limit.1, limit.1);
+    if (nx - state.offset.0).abs() < 0.5 && (ny - state.offset.1).abs() < 0.5 {
+        return false;
+    }
+    state.offset = (nx, ny);
+    true
+}
+
+pub(super) fn end_drag() -> bool {
+    let mut state = STATE.lock().unwrap_or_else(|e| e.into_inner());
+    state.drag_anchor.take().is_some()
 }
 
 pub fn close() -> bool {
@@ -90,7 +117,12 @@ pub fn open(notebooks: Vec<PathBuf>, cx: &mut Context<Workspace>) {
     start_disk(paths, generation, cancel.clone());
     cx.spawn(async move |this, cx| {
         while !cancel.load(Ordering::Acquire) {
-            cx.background_executor().timer(Duration::from_secs(1)).await;
+            let fast = {
+                let state = STATE.lock().unwrap_or_else(|e| e.into_inner());
+                state.disk_loading || state.process.is_none()
+            };
+            let wait = if fast { Duration::from_millis(60) } else { Duration::from_secs(1) };
+            cx.background_executor().timer(wait).await;
             let _ = this.update(cx, |_, cx| cx.notify());
         }
     }).detach();
@@ -126,9 +158,11 @@ fn disk_paths(notebooks: Vec<PathBuf>) -> DiskPaths {
 
 fn start_disk(paths: DiskPaths, generation: u64, cancel: Arc<AtomicBool>) {
     let app_missing = paths.app.is_none();
+    let min_loading = if crate::smoke::is_requested() { Duration::ZERO } else { Duration::from_millis(260) };
     std::thread::spawn(move || {
         while !cancel.load(Ordering::Acquire) {
             if DISK_BUSY.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+                let started = std::time::Instant::now();
                 let result = scan_disk_with_cancel(paths, cancel.clone()).join()
                     .map(|mut snapshot| {
                         if app_missing { snapshot.partial = true; snapshot.error_count += 1; snapshot.errors.push("无法定位应用文件 / Application path unavailable".into()); }
@@ -136,6 +170,9 @@ fn start_disk(paths: DiskPaths, generation: u64, cancel: Arc<AtomicBool>) {
                     })
                     .map_err(|_| "磁盘扫描线程异常退出 / Disk scan failed".to_owned());
                 DISK_BUSY.store(false, Ordering::Release);
+                while !cancel.load(Ordering::Acquire) && started.elapsed() < min_loading {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
                 let mut state = STATE.lock().unwrap_or_else(|e| e.into_inner());
                 if state.open && state.generation == generation && !cancel.load(Ordering::Acquire) {
                     state.disk = Some(result);

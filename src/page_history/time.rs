@@ -8,6 +8,7 @@ pub struct DateTimeParts {
     pub day: u32,   // 1..=31
     pub hour: u32,  // 0..=23
     pub min: u32,   // 0..=59
+    pub sec: u32,   // 0..=59
 }
 
 #[cfg(all(unix, target_pointer_width = "64"))]
@@ -38,6 +39,7 @@ fn local_parts(secs: i64) -> DateTimeParts {
                 day: out.tm_mday as u32,
                 hour: out.tm_hour as u32,
                 min: out.tm_min as u32,
+                sec: (out.tm_sec as u32).min(59),
             };
         }
     }
@@ -76,6 +78,7 @@ fn local_parts(secs: i64) -> DateTimeParts {
                 day: out.tm_mday as u32,
                 hour: out.tm_hour as u32,
                 min: out.tm_min as u32,
+                sec: (out.tm_sec as u32).min(59),
             };
         }
     }
@@ -92,6 +95,7 @@ fn utc_parts(secs: i64) -> DateTimeParts {
     let day_secs = secs.rem_euclid(86_400) as u32;
     let hour = day_secs / 3600;
     let min = (day_secs % 3600) / 60;
+    let sec = day_secs % 60;
 
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
@@ -103,7 +107,7 @@ fn utc_parts(secs: i64) -> DateTimeParts {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = (if m <= 2 { y + 1 } else { y }) as i32;
-    DateTimeParts { year, month: m, day: d, hour, min }
+    DateTimeParts { year, month: m, day: d, hour, min, sec }
 }
 
 fn current_timestamp() -> u64 {
@@ -129,6 +133,21 @@ pub fn now_nanos() -> u128 {
     #[cfg(target_family = "wasm")]
     {
         (js_sys::Date::now() * 1_000_000.) as u128
+    }
+}
+
+pub fn format_datetime_ymdhms(timestamp: u64) -> String {
+    let target = local_parts(timestamp as i64);
+    if crate::theme::is_en() {
+        format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            target.year, target.month, target.day, target.hour, target.min, target.sec
+        )
+    } else {
+        format!(
+            "{:04}年{:02}月{:02}日 {:02}:{:02}:{:02}",
+            target.year, target.month, target.day, target.hour, target.min, target.sec
+        )
     }
 }
 
