@@ -82,6 +82,7 @@ pub struct Editor {
     pub(super) minimal: bool,
     pub(super) find: Option<super::find::FindState>,
     pub(super) annotate: super::annotate::AnnotateState,
+    pub(super) outline: super::outline::OutlineState,
     pub(super) sessions: HashMap<PathBuf, session::TabSession>,
     pub(super) surface: super::surface::Surface,
     pub(super) source_layouts: HashMap<usize, TextLayout>,
@@ -98,7 +99,7 @@ impl Editor {
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
             persistence: Persistence::default(), pointer_subscriptions: Vec::new(), block_clip: None, block_sel: None, minimal: false, find: None, annotate: Default::default(), sessions: HashMap::new(),
-            surface: super::surface::Surface::Note, source_layouts: HashMap::new(), source_drag: false }
+            outline: Default::default(), surface: super::surface::Surface::Note, source_layouts: HashMap::new(), source_drag: false }
     }
     pub fn set_minimal(&mut self, minimal: bool) { self.minimal = minimal; }
     pub fn reset_layouts(&mut self) { self.layouts.clear(); }
@@ -126,16 +127,14 @@ impl Focusable for Editor { fn focus_handle(&self, _: &App) -> FocusHandle { sel
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_annotations(); self.track_pointer_lifecycle(window, cx);
-        self.track_extend_pointer(window, cx);
-        let theme = Theme::ocean(); self.reveal();
+        self.track_extend_pointer(window, cx); let theme = Theme::ocean(); self.reveal();
         let input_editor = cx.entity();
         let input = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
             input_editor.update(cx, |this, _| { this.layouts.clear(); this.source_layouts.clear(); });
             let editor = input_editor.read(cx);
             if editor.path.is_some() { window.handle_input(&editor.focus, gpui::ElementInputHandler::new(bounds, input_editor.clone()), cx); }
         }).absolute().size_full();
-        let editor = cx.entity();
-        let pad = if self.minimal { (4., 8.) } else { (64., 160.) };
+        let editor = cx.entity(); let pad = if self.minimal { (4., 8.) } else { (64., 160.) };
         if self.list.item_count() != self.doc.blocks.len() {
             crate::log::warn(&format!("editor list item_count ({}) != doc.blocks.len() ({}); resetting", self.list.item_count(), self.doc.blocks.len()));
             self.list.reset(self.doc.blocks.len());
@@ -293,6 +292,7 @@ impl Render for Editor {
                 .children(self.link_overlays(cx.entity(), window))
                 .child(anchor_sync))
             .children(super::find_bar::find_bar(self, cx))
+            .children(super::outline::overlay(self, window, cx))
             .children(super::annotate_ui::overlay(self, window, cx))
     }
 }

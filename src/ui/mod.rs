@@ -16,6 +16,7 @@ pub mod font_picker_cache;
 pub mod icon_button;
 pub mod modal;
 pub mod motion;
+pub mod outline_rail;
 pub mod placement;
 pub mod performance_rows;
 pub mod performance_treemap;

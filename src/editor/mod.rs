@@ -1,4 +1,5 @@
 mod chrome;
+pub(crate) mod outline;
 #[path = "../export/driver.rs"]
 mod export_driver;
 mod input;
