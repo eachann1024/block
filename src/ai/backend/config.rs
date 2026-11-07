@@ -10,6 +10,8 @@ pub(crate) struct BackendConfig {
     #[serde(default)]
     pub selected: BackendKind,
     #[serde(default)]
+    pub priority: Vec<BackendKind>,
+    #[serde(default)]
     pub adapters: BTreeMap<String, Value>,
 }
 
@@ -33,6 +35,8 @@ impl BackendConfig {
     pub(crate) fn options(&self, backend: BackendKind) -> Value {
         let key = backend.key();
         let mut options = self.adapters.get(key).cloned().unwrap_or_else(|| serde_json::json!({}));
+        if !options.is_object() { options = serde_json::json!({}); }
+        options["launchArgs"] = self.launch_args(backend).into();
         if backend == BackendKind::Dsh {
             let resolved = self.dsh_options();
             if !options.is_object() { options = serde_json::json!({}); }
@@ -41,6 +45,42 @@ impl BackendConfig {
             options["authSource"] = resolved.auth_source.into();
         }
         options
+    }
+
+    pub(crate) fn launch_args(&self, kind: BackendKind) -> String {
+        self.adapters.get(kind.key()).and_then(|v| v.get("launchArgs")).and_then(Value::as_str)
+            .unwrap_or_else(|| kind.default_launch_args()).to_owned()
+    }
+
+    pub(crate) fn set_launch_args(&mut self, kind: BackendKind, args: &str) -> Result<(), String> {
+        let previous = self.adapters.clone();
+        let entry = self.adapters.entry(kind.key().into()).or_insert_with(|| serde_json::json!({}));
+        if !entry.is_object() { *entry = serde_json::json!({}); }
+        entry["launchArgs"] = args.trim().into();
+        if let Err(error) = self.save() { self.adapters = previous; return Err(error); }
+        Ok(())
+    }
+
+    pub(crate) fn priority_order(&self, recognized: &[BackendKind]) -> Vec<BackendKind> {
+        let mut order = Vec::new();
+        for &kind in self.priority.iter().chain(recognized) {
+            if recognized.contains(&kind) && !order.contains(&kind) { order.push(kind); }
+        }
+        order
+    }
+
+    pub(crate) fn ordered_enabled(&self, recognized: &[BackendKind]) -> Vec<BackendKind> {
+        self.priority_order(recognized).into_iter().filter(|&kind| self.is_enabled(kind)).collect()
+    }
+
+    pub(crate) fn promote_priority(&mut self, kind: BackendKind, recognized: &[BackendKind]) -> Result<(), String> {
+        let previous = self.clone();
+        self.priority = self.priority_order(recognized);
+        self.priority.retain(|&item| item != kind);
+        self.priority.insert(0, kind);
+        self.selected = kind;
+        if let Err(error) = self.save() { *self = previous; return Err(error); }
+        Ok(())
     }
 
     pub(crate) fn selected_model(&self, kind: BackendKind) -> String {
@@ -87,10 +127,7 @@ impl BackendConfig {
         {
             return enabled;
         }
-        if kind == BackendKind::Builtin {
-            return super::super::provider::stored().enabled;
-        }
-        true
+        kind == BackendKind::Builtin
     }
 
     pub(crate) fn can_disable(&self, kind: BackendKind, recognized: &[BackendKind]) -> bool {
@@ -105,7 +142,7 @@ impl BackendConfig {
         if recognized.contains(&self.selected) && self.is_enabled(self.selected) {
             return self.selected;
         }
-        if let Some(&first) = recognized.iter().find(|&&b| self.is_enabled(b)).or_else(|| recognized.first()) {
+        if let Some(&first) = self.ordered_enabled(recognized).first().or_else(|| recognized.first()) {
             self.selected = first;
         }
         self.selected
@@ -133,13 +170,6 @@ impl BackendConfig {
             self.selected = prev_selected;
             return Err(error);
         }
-        if kind == BackendKind::Builtin {
-            let mut cfg = super::super::provider::stored();
-            if cfg.enabled != enabled {
-                cfg.enabled = enabled;
-                let _ = super::super::provider::save(&cfg);
-            }
-        }
         Ok(())
     }
 
@@ -162,10 +192,10 @@ impl BackendConfig {
             return Err("Unsupported dsh provider or authentication source".into());
         }
         if options.model.trim().is_empty() { return Err("Select a dsh model".into()); }
-        let previous = self.adapters.insert("dsh".into(), serde_json::json!({
-            "provider": options.provider, "model": options.model.trim(), "authSource": options.auth_source,
-            "enabled": self.is_enabled(BackendKind::Dsh),
-        }));
+        let mut value = self.adapters.get("dsh").cloned().filter(Value::is_object).unwrap_or_else(|| serde_json::json!({}));
+        value["provider"] = options.provider.into(); value["model"] = options.model.trim().into();
+        value["authSource"] = options.auth_source.into();
+        let previous = self.adapters.insert("dsh".into(), value);
         if let Err(error) = self.save() {
             if let Some(previous) = previous { self.adapters.insert("dsh".into(), previous); }
             else { self.adapters.remove("dsh"); }
