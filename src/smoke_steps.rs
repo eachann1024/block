@@ -15,6 +15,7 @@ impl Run {
         if !ready { return Err("工作区未能在 4 秒内就绪".into()); }
         sleep(cx, 350).await;
         self.new_note(cx).await?;
+        self.scroll_edges(cx).await?;
         self.heading(cx).await?;
         self.paragraph(cx).await?;
         self.todo(cx).await?;
