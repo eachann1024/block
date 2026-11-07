@@ -6,13 +6,17 @@ mod panel;
 mod save;
 mod store;
 mod view;
+mod window;
+#[cfg(target_os = "macos")]
+mod panel_class;
+pub use window::toggle;
 pub(crate) mod window_smoke;
 
 use std::{sync::atomic::{AtomicU32, Ordering}, time::Duration};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::HotKey};
 use gpui::{
-    App, AppContext, Entity, Focusable, Global, KeyBinding, TitlebarOptions,
-    WindowHandle, WindowKind, WindowOptions, actions, point, px, size,
+    App, Entity, Focusable, Global, KeyBinding,
+    WindowHandle, actions,
 };
 use crate::{editor::view::{Editor, EditorAction}, files::state::SavedWindowBounds};
 use panel::configure_quick_panel;
@@ -34,6 +38,7 @@ struct QuickState {
     view: Option<Entity<QuickView>>,
     window: Option<(WindowHandle<gpui_component::Root>, Entity<QuickView>)>,
     editor: Option<Entity<Editor>>,
+    visible: bool,
     bounds: Option<SavedWindowBounds>,
     /// Kept alive for as long as the app runs, otherwise the hotkey is unregistered.
     hotkey: Option<GlobalHotKeyManager>,
@@ -45,19 +50,27 @@ pub(super) fn remember_bounds(bounds: SavedWindowBounds, cx: &mut App) {
     if cx.has_global::<QuickState>() { cx.global_mut::<QuickState>().bounds = Some(bounds); }
 }
 
-pub(super) fn clear_window_state(cx: &mut App) {
+pub(super) fn hide_window(cx: &mut App) {
     order_out_quick_panel();
-    if cx.has_global::<QuickState>() { cx.global_mut::<QuickState>().window = None; }
+    if cx.has_global::<QuickState>() {
+        let state = cx.global_mut::<QuickState>();
+        state.visible = false;
+        // macOS retains the panel, editor, selection and undo history across toggles.
+        #[cfg(not(target_os = "macos"))]
+        { state.window = None; }
+    }
 }
 
 pub fn is_open(cx: &App) -> bool {
-    cx.try_global::<QuickState>().map_or(false, |s| s.window.is_some())
+    cx.try_global::<QuickState>().is_some_and(|s| s.visible && s.window.is_some())
 }
 
 pub fn close_if_open(cx: &mut App) {
     flush_editor(cx);
+    #[cfg(not(target_os = "macos"))]
     let live = cx.try_global::<QuickState>().and_then(|s| s.window.clone());
-    clear_window_state(cx);
+    hide_window(cx);
+    #[cfg(not(target_os = "macos"))]
     if let Some((handle, _)) = live {
         if handle.update(cx, |_, window, _| window.remove_window()).is_err() {
             cx.defer(move |cx| { let _ = handle.update(cx, |_, window, _| window.remove_window()); });
@@ -72,6 +85,7 @@ pub fn dispatch_editor_action(action: &EditorAction, cx: &mut App) -> bool {
         }
         return false;
     }
+    if !is_open(cx) { return false; }
     let Some((handle, view)) = cx.try_global::<QuickState>().and_then(|s| s.window.clone()) else { return false };
     handle.update(cx, |_, window, cx| {
         if crate::editor::paste_clipboard::forward_focused_input_action(action, window, cx) { return; }
@@ -135,7 +149,7 @@ pub fn init(saved_bounds: Option<SavedWindowBounds>, cx: &mut App) {
     cx.on_action(|_: &ev::SelectAll, cx: &mut App| { let _ = dispatch_editor_action(&EditorAction::SelectAll, cx); });
     cx.on_action(|_: &ev::Undo, cx: &mut App| { let _ = dispatch_editor_action(&EditorAction::Undo, cx); });
     cx.on_action(|_: &ev::Redo, cx: &mut App| { let _ = dispatch_editor_action(&EditorAction::Redo, cx); });
-    if !crate::smoke::is_worker() { start_hotkey(cx); }
+    if crate::smoke::is_worker() { rebind_hotkeys(cx); } else { start_hotkey(cx); }
 }
 
 /// Flush the quick-note editor on quit; false when the final checkpoint could not be written.
@@ -146,89 +160,6 @@ pub fn prepare_to_quit(cx: &mut App) -> bool {
         if !ready { cx.notify(); }
         ready
     })
-}
-
-pub fn toggle(cx: &mut App) {
-    if !mark_quick_triggered() { return; }
-    let live = cx.try_global::<QuickState>().and_then(|state| state.window.clone());
-    if let Some((handle, view)) = live {
-        let active = handle.update(cx, |_, window, _| window.is_window_active());
-        match active {
-            Ok(is_active) if is_active && is_quick_panel_visible() => {
-                let _ = handle.update(cx, |_, window, cx| view.update(cx, |view, cx| view.close(window, cx)));
-                return;
-            }
-            Ok(_) => {
-                configure_quick_panel();
-                let _ = handle.update(cx, |_, window, cx| {
-                    if !crate::smoke::is_worker() { window.activate_window(); }
-                    view.update(cx, |v, cx| v.switch(v.meta.active, window, cx));
-                });
-                return;
-            }
-            Err(_) => {
-                if cx.has_global::<QuickState>() {
-                    cx.global_mut::<QuickState>().window = None;
-                }
-            }
-        }
-    }
-    open(cx);
-}
-
-fn open(cx: &mut App) {
-    let saved_bounds = cx
-        .try_global::<QuickState>()
-        .and_then(|s| s.bounds)
-        .or_else(|| crate::files::load_state().ok().and_then(|s| s.quick_window_bounds));
-    let min_size = size(px(380.), px(320.));
-    let (window_bounds, display_id) = crate::window_bounds::resolve_window_bounds(
-        saved_bounds, size(px(440.), px(520.)), min_size, cx,
-    );
-    let opened = cx.open_window(
-        WindowOptions {
-            window_bounds: Some(window_bounds), display_id,
-            window_min_size: Some(min_size), kind: WindowKind::PopUp,
-            focus: !crate::smoke::is_worker(), show: !crate::smoke::is_worker(), is_movable: true, is_minimizable: false, is_resizable: true,
-            titlebar: Some(TitlebarOptions {
-                title: Some(crate::theme::tr("速记", "Quick Note").into()),
-                appears_transparent: true,
-                traffic_light_position: cfg!(target_os = "macos").then_some(point(px(16.), px(16.))),
-                ..Default::default()
-            }),
-            ..Default::default()
-        },
-        |window, cx| {
-            let view = cx.new(|cx| QuickView::new(window, cx));
-            let editor = view.read(cx).editor.clone();
-            cx.global_mut::<QuickState>().editor = Some(editor.clone());
-            // Traffic-light close: write a recovery checkpoint synchronously and order out the panel.
-            window.on_window_should_close(cx, move |window, cx| {
-                let bounds = crate::window_bounds::capture_window_bounds(window, cx);
-                remember_bounds(bounds, cx);
-                let _ = crate::files::update_state(move |s| s.quick_window_bounds = Some(bounds));
-                let ready = editor.update(cx, |editor, cx| {
-                    let ready = editor.prepare_to_quit();
-                    if !ready { cx.notify(); }
-                    ready
-                });
-                if ready {
-                    clear_window_state(cx);
-                }
-                ready
-            });
-            cx.global_mut::<QuickState>().view = Some(view.clone());
-            cx.new(|cx| gpui_component::Root::new(view, window, cx))
-        },
-    );
-    match opened {
-        Ok(handle) => {
-            let state = cx.global_mut::<QuickState>();
-            state.window = state.view.take().map(|view| (handle, view));
-            configure_quick_panel();
-        }
-        Err(error) => eprintln!("无法打开速记小窗: {error}"),
-    }
 }
 
 pub fn rebind_hotkeys(cx: &mut App) {

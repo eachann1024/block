@@ -138,15 +138,20 @@ impl QuickView {
         cx.notify();
     }
 
-    /// Flush the slot, then close the window once the file is on disk (or after a short wait).
+    /// Checkpoint the slot and hide the retained macOS panel.
     pub fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let bounds = crate::window_bounds::capture_window_bounds(window, cx);
         super::remember_bounds(bounds, cx);
         cx.background_executor().spawn(async move {
             let _ = crate::files::update_state(move |s| s.quick_window_bounds = Some(bounds));
         }).detach();
-        self.editor.update(cx, |editor, cx| { let _ = editor.prepare_to_quit(); editor.save(cx); });
-        super::clear_window_state(cx);
+        self.editor.update(cx, |editor, cx| {
+            // A retained panel can finish loading while hidden; do not cancel that load.
+            if !editor.is_loading() { let _ = editor.prepare_to_quit(); }
+            editor.save(cx);
+        });
+        super::hide_window(cx);
+        #[cfg(not(target_os = "macos"))]
         window.remove_window();
     }
 

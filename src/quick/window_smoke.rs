@@ -27,6 +27,7 @@ pub(crate) async fn verify(cx: &AsyncApp) -> Result<(), String> {
     })).map_err(|e| e.to_string())?;
     let before = cx.update(|cx| editor.read(cx).markdown_text());
     if !before.contains("independent") { return Err("小窗 GPUI 键盘输入未进入编辑器".into()); }
+    repeat_toggles(cx, handle, false).await?;
 
     // Launchers send an app reopen with hasVisibleWindows=true while the quick panel is open.
     // Invoke the actual delegate outside cx.update so GPUI can borrow App for its callback.
@@ -65,9 +66,11 @@ pub(crate) async fn verify(cx: &AsyncApp) -> Result<(), String> {
     cx.update(super::toggle);
     pause(cx).await;
     check(cx, true, true, "主窗口可见时打开小窗，两窗同时保留")?;
+    repeat_toggles(cx, handle, true).await?;
     cx.update(|cx| cx.hide());
     pause(cx).await;
     check(cx, false, true, "隐藏应用不关闭独立小窗")?;
+    repeat_toggles(cx, handle, false).await?;
     cx.update(super::close_if_open);
     pause(cx).await;
     cx.update(super::toggle);
@@ -84,6 +87,55 @@ pub(crate) async fn verify(cx: &AsyncApp) -> Result<(), String> {
     check(cx, true, false, "全部窗口隐藏时外部打开 Block 只唤起主窗口")?;
     cx.update(|_| { native::hide_main_window_on_close(); });
     Ok(())
+}
+
+async fn repeat_toggles(cx: &AsyncApp, handle: gpui::AnyWindowHandle, main_visible: bool) -> Result<(), String> {
+    let quick_key = crate::theme::quick_shortcut();
+    // Exercise the focused-panel key binding, then the global-hotkey entry point.
+    for key in [&quick_key, &quick_key, &quick_key, "escape", "cmd-w"] {
+        cx.update(|cx| handle.update(cx, |_, window, cx| {
+            window.draw(cx).clear(cx);
+            window.dispatch_keystroke(Keystroke::parse_with_os(key, gpui::OperatingSystem::Mac).unwrap(), cx);
+        })).map_err(|e| e.to_string())?;
+        check(cx, main_visible, false, "快捷键隐藏小窗不改变主窗口")?;
+        if key == &quick_key {
+            cx.update(super::toggle);
+            check(cx, main_visible, false, "同一次按键的全局回调不会再次打开小窗")?;
+        }
+        pause(cx).await;
+        cx.update(super::toggle);
+        pause(cx).await;
+        check(cx, main_visible, true, "连续隐藏再显示小窗不唤起主窗口")?;
+        let retained = cx.update(|cx| cx.global::<QuickState>().window.as_ref()
+            .is_some_and(|(current, view)| gpui::AnyWindowHandle::from(*current) == handle
+                && view.read(cx).editor.read(cx).markdown_text().contains("independent")));
+        if !retained { return Err("连续切换销毁了小窗或丢失编辑内容".into()); }
+    }
+    // Native red close button must also hide, rather than destroy, the retained panel.
+    #[cfg(target_os = "macos")]
+    close_native_panel();
+    pause(cx).await;
+    check(cx, main_visible, false, "原生关闭按钮只隐藏小窗")?;
+    cx.update(super::toggle);
+    pause(cx).await;
+    check(cx, main_visible, true, "原生关闭后仍可独立打开小窗")?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+#[allow(deprecated)]
+fn close_native_panel() {
+    use cocoa::{appkit::NSApplication, base::{SEL, id, nil, selector}, foundation::NSArray};
+    unsafe extern "C" { fn objc_msgSend(); }
+    unsafe {
+        let get: unsafe extern "C" fn(id, SEL) -> id = std::mem::transmute(objc_msgSend as *const ());
+        let close: unsafe extern "C" fn(id, SEL, id) = std::mem::transmute(objc_msgSend as *const ());
+        let windows = get(NSApplication::sharedApplication(nil), selector("windows"));
+        for i in 0..NSArray::count(windows) {
+            let win = NSArray::objectAtIndex(windows, i);
+            if super::panel::is_quick_panel(win) { close(win, selector("performClose:"), nil); }
+        }
+    }
 }
 
 async fn pause(cx: &AsyncApp) {
@@ -114,7 +166,8 @@ fn remains_in_background() -> bool {
         let windows = get(app, selector("windows"));
         (0..NSArray::count(windows)).all(|i| {
             let win = NSArray::objectAtIndex(windows, i);
-            flag(win, selector("isKeyWindow")) != YES &&
+            (!super::panel::is_quick_panel(win) || flag(win, selector("canBecomeMainWindow")) != YES) &&
+                flag(win, selector("isKeyWindow")) != YES &&
                 (flag(win, selector("isVisible")) != YES ||
                     (NSWindow::alphaValue(win) == 0. && flag(win, selector("ignoresMouseEvents")) == YES))
         })
