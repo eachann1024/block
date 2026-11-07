@@ -99,3 +99,11 @@ pub(crate) fn cleanup_picker(window: &mut Window, cx: &mut App) {
     if !root.as_os_str().is_empty() { let _ = std::fs::remove_dir_all(root.join("picker-smoke")); }
     chat.update(cx, |this, cx| { this.picker_cache = Default::default(); this.new_conv(window, cx); });
 }
+
+pub(crate) fn picker_folder_state(window: &mut Window, cx: &mut App) -> (String, usize, Option<usize>) {
+    assert!(crate::smoke::is_requested());
+    let chat = chat(window, cx);
+    let this = chat.read(cx);
+    let index = this.picker_items("@", cx).iter().position(|(pick, _, _)| matches!(pick, Pick::Folder(path) if path == "picker-smoke"));
+    (this.picker_cache.folder.clone(), this.picker_cache.pages.len(), index)
+}
