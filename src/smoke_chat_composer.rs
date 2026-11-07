@@ -105,11 +105,18 @@ impl Run {
         for _ in 0..100 {
             self.redraw(cx);
             let state = self.win(cx, input_smoke::picker_state)?;
-            if !state.0 && state.1 >= 1200 { break; }
+            if !state.0 && self.win(cx, input_smoke::picker_folder_state)?.1 >= 1200 { break; }
             sleep(cx, 50).await;
         }
         let state = self.win(cx, input_smoke::picker_state)?;
-        self.check(14, !state.0 && state.1 >= 1200 && state.4 < 100, "1200 篇笔记后台加载，候选过滤小于 100ms")?;
+        let folder = self.win(cx, input_smoke::picker_folder_state)?;
+        self.check(14, !state.0 && folder.1 >= 1200 && state.4 < 100, "1200 篇文件后台加载，候选过滤小于 100ms")?;
+        let index = folder.2.ok_or("Missing reference folder")?;
+        self.click_target(cx, &format!("ai-pick-{index}"), "点击文件夹浏览引用文件").await?;
+        self.check(14, self.win(cx, input_smoke::picker_folder_state)?.0 == "picker-smoke" && self.win(cx, input_smoke::picker_state)?.2.is_empty(), "文件夹只导航，不添加引用")?;
+        self.check(14, self.win(cx, input_smoke::picker_state)?.1 >= 1202, "文件夹显示文件及返回上级")?;
+        self.click_target(cx, "ai-pick-0", "返回上级文件夹").await?;
+        self.check(14, self.win(cx, input_smoke::picker_folder_state)?.0.is_empty(), "返回上级成功")?;
         self.type_text(cx, "picker-smoke/note-1199").await?;
         self.check(14, self.win(cx, input_smoke::picker_state)?.1 == 1, "虚拟列表仍可搜索末尾笔记")?;
         self.press(cx, "enter").await?;
