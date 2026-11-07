@@ -41,8 +41,19 @@ impl RunningTurn for CodexTurn {
         self.control.lock().map_err(|_| BackendError::new("codex_control", "Codex 控制锁已失效"))?.cancel()
     }
 
-    fn respond(&mut self, _request_id: &str, _response: ApprovalResponse) -> Result<(), BackendError> {
-        Err(BackendError::new("codex_approval_denied", "Codex 沙箱权限不可提升；笔记变更请通过 Block 计划审批"))
+    fn respond(&mut self, request_id: &str, response: ApprovalResponse) -> Result<(), BackendError> {
+        let mut state = self.control.lock().map_err(|_| BackendError::new("codex_control", "Codex 控制锁已失效"))?;
+        let rpc_id = state.pending_approvals.remove(request_id)
+            .ok_or_else(|| BackendError::new("approval_expired", "审批请求已过期"))?;
+        let writer = state.writer.as_ref()
+            .ok_or_else(|| BackendError::new("codex_io", "Codex 输入已关闭"))?.clone();
+        drop(state);
+        let decision = match response {
+            ApprovalResponse::AllowOnce | ApprovalResponse::AllowSession => "accept",
+            ApprovalResponse::Deny => "decline",
+            ApprovalResponse::Cancel => "cancel",
+        };
+        protocol::write(&writer, &serde_json::json!({"id": rpc_id, "result": {"decision": decision}}))
     }
 }
 

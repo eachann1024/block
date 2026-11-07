@@ -46,6 +46,23 @@ pub fn setting_row(title: &'static str, control: impl IntoElement) -> gpui::Div 
         .child(control)
 }
 
+pub fn checkbox_switch(
+    id: impl Into<gpui::ElementId>, checked: bool, enabled: bool,
+) -> gpui::Stateful<gpui::Div> {
+    let theme = Theme::ocean();
+    let id: gpui::ElementId = id.into();
+    let probe = crate::ui::smoke_overlay::probe_for(&id);
+    div().id(id).relative().children(probe).size(px(28.)).flex().items_center().justify_center()
+        .when(enabled, |d| d.cursor(CursorStyle::PointingHand))
+        .when(!enabled, |d| d.opacity(0.5))
+        .child(div().size(px(20.)).flex().items_center().justify_center().rounded(px(6.))
+            .border_1().border_color(if checked { theme.accent } else { theme.btn_border })
+            .bg(if checked { theme.accent } else { card_bg() })
+            .when(checked, |d| d.child(crate::icons::icon(
+                crate::icons::Icon::Check, px(14.), theme.mono_icon_colors(gpui::rgb(0xffffff).into()),
+            ))))
+}
+
 pub fn static_badge(label: impl Into<SharedString>, mono: bool) -> gpui::Div {
     let theme = Theme::ocean();
     div().h(px(32.)).px(px(12.)).rounded(crate::ui::radius::CONTROL).bg(theme.shell).border_1().border_color(theme.hairline)

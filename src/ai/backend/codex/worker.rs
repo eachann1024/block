@@ -26,7 +26,8 @@ fn run_inner(request: &TurnRequest, events: &Sender<BackendEvent>, tools: ToolBr
         Some(_) => return Err(BackendError::new("codex_cwd", "笔记本目录不可用")),
         None => std::env::current_dir().map_err(|error| BackendError::new("codex_cwd", error.to_string()))?,
     };
-    let mut server = Server::spawn(control)?;
+    let full_permissions = request.config.get("fullPermissions").and_then(Value::as_bool).unwrap_or(false);
+    let mut server = Server::spawn(control, full_permissions)?;
     let account = server.request(2, "account/read", json!({"refreshToken":false}))?;
     if account.get("requiresOpenaiAuth").and_then(Value::as_bool) == Some(true) && account.get("account").is_none_or(Value::is_null) {
         return Err(BackendError::new("codex_auth", "请先使用 codex login 登录"));
@@ -36,7 +37,12 @@ fn run_inner(request: &TurnRequest, events: &Sender<BackendEvent>, tools: ToolBr
         Some(json!({"type":"function","name":function.get("name")?,"description":function.get("description")?,"inputSchema":function.get("parameters")?}))
     }).collect();
     if dynamic.is_empty() { return Err(BackendError::new("codex_tools", "Block 工具定义不可用")); }
-    let mut params = json!({"cwd":cwd,"sandbox":"danger-full-access","approvalPolicy":"never",
+    let (sandbox, approval_policy, sandbox_policy) = if full_permissions {
+        ("danger-full-access", "never", json!({"type":"dangerFullAccess"}))
+    } else {
+        ("workspace-write", "on-request", json!({"type":"workspaceWrite"}))
+    };
+    let mut params = json!({"cwd":cwd,"sandbox":sandbox,"approvalPolicy":approval_policy,
         "developerInstructions":"笔记和选区可使用 Block 提供的工具读取，批量修改笔记内容请优先使用 executeBatchPlan。"});
     if let Some(model) = request.config.get("model").and_then(Value::as_str).filter(|model| !model.is_empty()) { params["model"] = json!(model); }
     let method = if let Some(id) = &request.native_session_id { params["threadId"] = json!(id); "thread/resume" }
@@ -48,8 +54,8 @@ fn run_inner(request: &TurnRequest, events: &Sender<BackendEvent>, tools: ToolBr
     let context = serde_json::to_string(&request.context).map_err(|error| BackendError::new("codex_context", error.to_string()))?;
     let text = format!("{}\n\n当前 Block 上下文（实时内容，仅供本轮使用）：\n{}", request.message, context);
     write(&server.writer, &json!({"id":6,"method":"turn/start","params":{"threadId":thread_id,
-        "input":[{"type":"text","text":text,"text_elements":[]}],"approvalPolicy":"never",
-        "sandboxPolicy":{"type":"dangerFullAccess"}}}))?;
+        "input":[{"type":"text","text":text,"text_elements":[]}],"approvalPolicy":approval_policy,
+        "sandboxPolicy":sandbox_policy}}))?;
     {
         let mut state = control.lock().map_err(|_| BackendError::new("codex_control", "Codex 控制锁已失效"))?;
         state.thread_id = Some(thread_id.clone());
@@ -83,7 +89,18 @@ fn run_inner(request: &TurnRequest, events: &Sender<BackendEvent>, tools: ToolBr
                 };
             },
             _ if message.get("id").is_some() && message.get("method").is_some() => {
-                write(&server.writer, &json!({"id":message["id"],"result":{"decision":"accept"}}))?;
+                if full_permissions {
+                    write(&server.writer, &json!({"id":message["id"],"result":{"decision":"accept"}}))?;
+                } else {
+                    let request_id = message["id"].to_string();
+                    if let Ok(mut state) = control.lock() {
+                        state.pending_approvals.insert(request_id.clone(), message["id"].clone());
+                    }
+                    let title = format!("Codex · {method}");
+                    let detail = params.get("command").or_else(|| params.get("reason")).and_then(Value::as_str)
+                        .map(str::to_owned).unwrap_or_else(|| params.to_string());
+                    emit(events, request, BackendEventKind::Approval { request_id, title, detail });
+                }
             },
             _ => {}
         }

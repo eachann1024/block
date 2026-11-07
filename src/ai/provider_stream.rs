@@ -15,7 +15,8 @@ pub(crate) fn stream_agent(msgs: Vec<serde_json::Value>, tools: Option<serde_jso
     std::thread::spawn(move || {
         let config = config();
         let fail = |message: String, settings: bool| { let _ = tx.send(Event::Failed { message, settings }); };
-        let model = match validate_request(&config) { Ok(m) => m, Err((m, s)) => return fail(m, s) };
+        if let Err((m, s)) = validate_request(&config) { return fail(m, s); }
+        let model = match resolve_model(&config) { Ok(m) => m, Err((m, s)) => return fail(m, s) };
         if cancel.load(Ordering::Relaxed) { return; }
         if config.effective_protocol() == Protocol::Anthropic {
             return anthropic::stream_turn(config, model, msgs, tools, cancel, tx);

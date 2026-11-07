@@ -58,8 +58,12 @@ impl Drop for Turn {
 pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: ToolBridge)
     -> Result<Box<dyn RunningTurn>, BackendError> {
     let mut command = super::super::cli_env::command("claude");
-    let args = request.config.get("launchArgs").and_then(Value::as_str).unwrap_or(super::super::BackendKind::Claude.default_launch_args());
-    command.args(args.split_whitespace()).args([
+    let full_permissions = request.config.get("fullPermissions").and_then(Value::as_bool).unwrap_or(false);
+    command.args(["-p", "--verbose", "--permission-prompt-tool", "stdio"]);
+    if full_permissions {
+        command.args(["--dangerously-skip-permissions", "--permission-mode", "bypassPermissions"]);
+    }
+    command.args([
         "--input-format", "stream-json",
         "--output-format", "stream-json",
         "--include-partial-messages",
@@ -70,7 +74,7 @@ pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: T
         .env_remove("CLAUDECODE").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(root) = request.context.notebook_root.as_ref() { command.current_dir(root); }
     if let Some(session) = request.native_session_id.as_deref().filter(|id| !id.is_empty()) { command.args(["--resume", session]); }
-    if let Some(model) = request.config.get("model").and_then(Value::as_str).filter(|value| !value.is_empty()) { command.args(["--model", model]); }
+    if let Some(model) = request.config.get("model").and_then(Value::as_str).filter(|value| !value.is_empty() && *value != "default") { command.args(["--model", model]); }
     process_group::configure(&mut command);
     let mut child = command.spawn().map_err(|error| BackendError::new(if error.kind() == std::io::ErrorKind::NotFound { "missing" } else { "process_error" }, error.to_string()))?;
     let stdin = child.stdin.take().ok_or_else(|| BackendError::new("process_error", "Claude stdin unavailable"))?;
@@ -139,13 +143,25 @@ fn emit(events: &Sender<BackendEvent>, request: &TurnRequest, kind: BackendEvent
 }
 
 fn control(frame: &Value, request: &TurnRequest, tools: &ToolBridge, input: &Arc<Mutex<Input>>,
-    _pending: &Arc<Mutex<Pending>>, events: &Sender<BackendEvent>) {
+    pending: &Arc<Mutex<Pending>>, events: &Sender<BackendEvent>) {
     let id = frame["request_id"].as_str().unwrap_or("");
     let data = &frame["request"];
     match data["subtype"].as_str() {
         Some("mcp_message") => mcp::handle(frame, request, tools, input, events),
         Some("can_use_tool") if !id.is_empty() => {
-            let _ = write_frame(input, &json!({"type":"control_response","response":{"subtype":"success","request_id":id,"response":{"behavior":"allow","updatedInput":data["input"]}}}));
+            let full_permissions = request.config.get("fullPermissions").and_then(Value::as_bool).unwrap_or(false);
+            let tool_name = data["tool_name"].as_str().unwrap_or("tool");
+            if full_permissions || tool_name.starts_with("mcp__block__") {
+                let _ = write_frame(input, &json!({"type":"control_response","response":{"subtype":"success","request_id":id,"response":{"behavior":"allow","updatedInput":data["input"]}}}));
+            } else {
+                if let Ok(mut guard) = pending.lock() {
+                    guard.insert(id.to_owned(), data["input"].clone());
+                }
+                let title = format!("Claude · {tool_name}");
+                let detail = data["decision_reason"].as_str().or_else(|| data["reason"].as_str())
+                    .map(str::to_owned).unwrap_or_else(|| data["input"].to_string());
+                emit(events, request, BackendEventKind::Approval { request_id: id.to_owned(), title, detail });
+            }
         }
         _ => { let _ = write_frame(input, &json!({"type":"control_response","response":{"subtype":"error","request_id":id,"error":"Unsupported control request"}})); }
     }

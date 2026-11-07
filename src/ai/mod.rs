@@ -25,8 +25,6 @@ mod chat_empty;
 #[cfg(not(target_family = "wasm"))]
 mod backend_ui;
 #[cfg(not(target_family = "wasm"))]
-mod dsh_ui;
-#[cfg(not(target_family = "wasm"))]
 mod chat_composer;
 #[cfg(not(target_family = "wasm"))]
 mod dictation;
