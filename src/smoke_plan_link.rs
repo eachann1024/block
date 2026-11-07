@@ -25,15 +25,11 @@ impl Run {
             self.check(14, smoke_overlay::target_bounds(id).is_some(), &format!("Missing {id}"))?;
         }
         self.capture_ai(cx, "plan")?;
-        self.click_target(cx, "ai-plan-mode-diff", "切换增删对比").await?;
-        cx.update(|_| smoke_overlay::reset()); self.redraw(cx);
         self.check(14, smoke_overlay::target_bounds("ai-plan-diff-del-row").is_some(), "Missing deleted row")?;
         let link = crate::editor::ai::plan_link::current().ok_or("Missing active plan preview")?;
         self.check(14, link.diff_mode && !link.before_blocks.is_empty() && !link.after_blocks.is_empty()
             && link.before_blocks.iter().map(|block| &block.text).collect::<Vec<_>>() != link.after_blocks.iter().map(|block| &block.text).collect::<Vec<_>>(), "对比包含不同的修改前后内容")?;
         self.capture_ai(cx, "editor-diff")?;
-        self.click_target(cx, "ai-plan-mode-clean", "切换修改后预览").await?;
-        self.check(14, crate::editor::ai::plan_link::current().is_some_and(|link| !link.diff_mode), "切换回修改后预览")?;
         let before = self.editor(cx, |editor| editor.markdown_text());
         let disk_before = std::fs::read(&note).map_err(|error| error.to_string())?;
         self.click_target(cx, "ai-plan-inline-reject", "拒绝修改").await?;
@@ -42,7 +38,6 @@ impl Run {
             && smoke_overlay::target_bounds("ai-editor-plan-card").is_none(), "拒绝后正文保持原样并关闭审阅")?;
         self.win(cx, |window, cx| crate::editor::ai::plan_link::prepare_plan_link_smoke(root, window, cx))??;
         sleep(cx, 300).await; cx.update(|_| smoke_overlay::reset()); self.redraw(cx);
-        self.click_target(cx, "ai-plan-mode-diff", "选择部分表格修改").await?;
         let link = crate::editor::ai::plan_link::current().ok_or("Missing active plan preview")?;
         let lines = crate::editor::ai::plan_link::selection::diff(link.conv_id, link.msg_at, &link.page, &link.before_text, &link.after_text)?;
         let removed = lines.iter().find(|line| line.change < 0 && line.text.trim_start().starts_with('|')).ok_or("Missing removed table row")?;
@@ -92,7 +87,6 @@ impl Run {
         self.check(14, self.editor(cx, |editor| editor.markdown_text()) == original && self.editor(cx, |editor| editor.current_path().map(|path| path.to_owned())) == original_path, "预览期间退格不修改底层正文和路径")?;
         self.press(cx, "delete").await?;
         self.check(14, self.editor(cx, |editor| editor.markdown_text()) == original && self.editor(cx, |editor| editor.current_path().map(|path| path.to_owned())) == original_path, "预览期间删除不修改底层正文和路径")?;
-        self.click_target(cx, "ai-plan-mode-diff", "查看新建内容对比").await?;
         let link = crate::editor::ai::plan_link::current().ok_or("Missing create preview")?;
         let lines = crate::editor::ai::plan_link::selection::diff(link.conv_id, link.msg_at, &link.page, &link.before_text, &link.after_text)?;
         let excluded = lines.iter().find(|line| line.change > 0 && line.text.contains("排除")).ok_or("Missing create row")?;

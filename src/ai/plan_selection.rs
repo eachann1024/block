@@ -32,6 +32,23 @@ fn lines(before: &str, after: &str) -> Result<Vec<(i8, String)>, String> {
     Ok(result)
 }
 
+fn is_table_row_line(trimmed: &str) -> bool {
+    trimmed.starts_with('|') || trimmed.to_ascii_lowercase().starts_with("<tr")
+}
+
+fn is_html_table_scaffolding(trimmed: &str) -> bool {
+    let lower = trimmed.to_ascii_lowercase();
+    lower.starts_with("<table") || lower.starts_with("</table") || lower.starts_with("<colgroup")
+        || lower.starts_with("</colgroup") || lower.starts_with("<col ") || lower.starts_with("<col>")
+        || lower.starts_with("<thead") || lower.starts_with("</thead") || lower.starts_with("<tbody")
+        || lower.starts_with("</tbody") || lower.starts_with("<tfoot") || lower.starts_with("</tfoot")
+        || lower == "<tr>" || lower == "</tr>"
+}
+
+fn is_pipe_separator(trimmed: &str) -> bool {
+    trimmed.starts_with('|') && trimmed.chars().all(|ch| matches!(ch, '|' | ' ' | '-' | ':'))
+}
+
 pub(crate) fn diff(conv: u64, at: usize, page: &str, before: &str, after: &str) -> Result<Vec<DiffLine>, String> {
     SELECTIONS.with(|selections| {
         let mut selections = selections.borrow_mut();
@@ -50,7 +67,7 @@ pub(crate) fn diff(conv: u64, at: usize, page: &str, before: &str, after: &str) 
             } else if trimmed.is_empty() {
                 groups[index] = previous.filter(|(last_change, _, _)| *last_change == *change).map_or(index, |(_, _, group)| group);
             } else {
-                let ordinary = !trimmed.starts_with('|');
+                let ordinary = !is_table_row_line(trimmed);
                 let group = previous.filter(|(last_change, last_ordinary, _)| *last_change == *change && *last_ordinary && ordinary)
                     .map_or(index, |(_, _, group)| group);
                 groups[index] = group;
@@ -88,9 +105,39 @@ pub(crate) fn selected(conv: u64, at: usize, page: &str, before: &str, after: &s
     let has_selection = SELECTIONS.with(|selections| selections.borrow().get(&(conv, at, page.to_owned()))
         .is_some_and(|selection| !selection.excluded.is_empty()));
     if !has_selection { return Ok(after.to_owned()); }
+    let lines = diff(conv, at, page, before, after)?;
+    let mut keep: Vec<bool> = lines.iter().map(|line| {
+        line.change == 0 || (line.change < 0 && !line.included) || (line.change > 0 && line.included)
+    }).collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let lower = lines[i].text.trim().to_ascii_lowercase();
+        if lower.starts_with("<table") {
+            let start = i;
+            while i < lines.len() && !lines[i].text.trim().to_ascii_lowercase().starts_with("</table") { i += 1; }
+            let end = (i + 1).min(lines.len());
+            let any_row = (start..end).any(|idx| {
+                let t = lines[idx].text.trim();
+                t.to_ascii_lowercase().starts_with("<tr") && !is_html_table_scaffolding(t) && keep[idx]
+            });
+            for idx in start..end {
+                if is_html_table_scaffolding(lines[idx].text.trim()) { keep[idx] = any_row; }
+            }
+        } else if lines[i].text.trim().starts_with('|') {
+            let start = i;
+            while i < lines.len() && lines[i].text.trim().starts_with('|') && lines[i].change == lines[start].change { i += 1; }
+            let end = i;
+            let any_row = (start..end).any(|idx| !is_pipe_separator(lines[idx].text.trim()) && keep[idx]);
+            for idx in start..end {
+                if is_pipe_separator(lines[idx].text.trim()) { keep[idx] = any_row; }
+            }
+            continue;
+        }
+        i += 1;
+    }
     let mut output = String::new();
-    for line in diff(conv, at, page, before, after)?.into_iter().filter(|line|
-        line.change == 0 || (line.change < 0 && !line.included) || (line.change > 0 && line.included)) {
+    for (idx, line) in lines.into_iter().enumerate() {
+        if !keep[idx] { continue; }
         if !output.is_empty() && !output.ends_with('\n') { output.push('\n'); }
         output.push_str(&line.text);
     }
