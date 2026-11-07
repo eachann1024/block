@@ -95,7 +95,7 @@ pub(crate) fn reset_external_backends_unchecked(window: &mut Window, cx: &mut Ap
     config.priority.clear(); config.selected = BackendKind::Builtin;
     for kind in BackendKind::ALL {
         config.set_enabled(kind, kind == BackendKind::Builtin, &BackendKind::ALL).expect("reset smoke backend");
-        config.set_launch_args(kind, kind.default_launch_args()).expect("reset smoke arguments");
+        config.set_full_permissions(kind, false).expect("reset smoke permissions");
     }
     crate::editor::ai::settings::reload(window, cx);
     super::sync_settings(cx);
@@ -107,8 +107,8 @@ pub(crate) fn focused_settings_backend(cx: &App) -> BackendKind {
     crate::editor::ai::settings::section(cx).expect("settings").read(cx).focused_backend
 }
 
-pub(crate) fn agent_launch_args(kind: BackendKind) -> String {
-    assert!(crate::smoke::is_requested()); BackendConfig::load().launch_args(kind)
+pub(crate) fn agent_full_permissions(kind: BackendKind) -> bool {
+    assert!(crate::smoke::is_requested()); BackendConfig::load().full_permissions(kind)
 }
 
 pub(crate) fn set_backend_missing(kind: BackendKind, window: &mut Window, cx: &mut App) {

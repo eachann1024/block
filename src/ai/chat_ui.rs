@@ -215,7 +215,7 @@ impl Render for AiChat {
             .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| {
                 cx.stop_propagation();
                 if this.picker_token(cx).is_some() { this.picker_dismissed = true; }
-                else if backend_ui::close_menu() || super::dsh_ui::close() {} else if this.history { this.history = false; } else { super::chat::chat_dictation::stop_for_input(&this.input); this.open = false; this.fullscreen = false; window.refresh(); }
+                else if backend_ui::close_menu() {} else if this.history { this.history = false; } else { super::chat::chat_dictation::stop_for_input(&this.input); this.open = false; this.fullscreen = false; window.refresh(); }
                 cx.notify();
             }))
             .when(!self.fullscreen, |panel| panel.child(self.resize_handle(cx)))

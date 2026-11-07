@@ -6,11 +6,10 @@ use crate::theme::tr;
 thread_local! { pub(super) static DECK_OPEN: Cell<bool> = const { Cell::new(false) }; }
 pub(super) fn close_menu() -> bool { DECK_OPEN.with(|open| open.replace(false)) }
 
-pub(super) fn open_deck(chat: &mut AiChat, window: &mut Window, cx: &mut gpui::Context<AiChat>) {
+pub(super) fn open_deck(chat: &mut AiChat, _window: &mut Window, cx: &mut gpui::Context<AiChat>) {
     DECK_OPEN.with(|open| open.set(true));
     chat.history = false;
     chat.picker_dismissed = true;
-    if chat.selected_backend() == BackendKind::Dsh && !super::dsh_ui::is_open() { super::dsh_ui::open(chat, window, cx); }
     for kind in BackendKind::ALL { chat.probe_backend(kind, cx); }
     chat.refresh_models(cx);
     cx.notify();

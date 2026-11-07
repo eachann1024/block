@@ -11,6 +11,7 @@ pub(super) struct Control {
     pub child: Option<process_group::SharedChild>,
     pub thread_id: Option<String>,
     pub turn_id: Option<String>,
+    pub pending_approvals: std::collections::HashMap<String, Value>,
     pub cancelled: bool,
     pub finished: bool,
     pub tools: Option<ToolBridge>,
@@ -48,12 +49,12 @@ pub(super) struct Server {
 }
 
 impl Server {
-    pub fn spawn(control: &SharedControl) -> Result<Self, BackendError> {
+    pub fn spawn(control: &SharedControl, full_permissions: bool) -> Result<Self, BackendError> {
         let mut command = cli_env::command("codex");
-        let args = super::super::BackendConfig::load().launch_args(super::super::BackendKind::Codex);
-        let args: Vec<_> = args.split_whitespace().collect();
-        command.args(&args);
-        if !args.contains(&"app-server") { command.arg("app-server"); }
+        command.arg("app-server");
+        if full_permissions {
+            command.args(["--dangerously-bypass-approvals-and-sandbox", "--dangerously-bypass-hook-trust"]);
+        }
         process_group::configure(&mut command);
         let mut child = command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
             .map_err(|error| BackendError::new("codex_spawn", error.to_string()))?;

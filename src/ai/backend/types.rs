@@ -12,16 +12,6 @@ pub(crate) enum BackendKind { #[default] Builtin, Codex, Claude, Dsh, Pi }
 impl BackendKind {
     pub(crate) const ALL: [Self; 5] = [Self::Builtin, Self::Codex, Self::Claude, Self::Dsh, Self::Pi];
 
-    pub(crate) fn default_launch_args(self) -> &'static str {
-        match self {
-            Self::Builtin => "",
-            Self::Codex => "app-server --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust",
-            Self::Claude => "-p --verbose --dangerously-skip-permissions --permission-mode bypassPermissions",
-            Self::Dsh => "--profile sdk-minimal",
-            Self::Pi => "--mode json --approve",
-        }
-    }
-
     pub(crate) fn key(self) -> &'static str {
         match self {
             Self::Builtin => "builtin",
