@@ -6,6 +6,7 @@ use crate::theme::{Theme, tr};
 use crate::files::{create_note_at, note_candidates, load_state, save_folder, scan, index::TreeIndex, tree::FileTree};
 
 #[path = "app_view.rs"] mod view;
+#[path = "app_shortcuts.rs"] mod shortcuts;
 #[path = "app_tabs.rs"] mod tabs;
 #[path = "app_nav.rs"] mod nav;
 #[path = "app_folder.rs"] mod folder;
@@ -199,6 +200,7 @@ impl Workspace {
             sidebar_collapsed: false, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
             settings: None, history: None, undo_restore: None, history_toast: None, history_token: 0, history_opening: false, history_restore_busy: false, history_return_focus: false, file_op: None, working: false, scan_generation: 0, root_focus: cx.focus_handle(),
             bounds_task: None, _editor_subscription: subscription };
+        Self::install_shortcut_router(window, cx);
         window.focus(&this.root_focus, cx);
         cx.spawn(async move |this, cx| {
             let saved = cx.background_executor().spawn(async { load_state() }).await;

@@ -1,6 +1,6 @@
 mod art;
 
-pub use art::{MascotState, illustration, load_asset};
+pub use art::{MascotState, ai_greeting, illustration, load_asset};
 
 use gpui::{
     AnyElement, App, Context, CursorStyle, Div, FontWeight, Hsla, IntoElement,

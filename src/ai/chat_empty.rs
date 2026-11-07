@@ -1,6 +1,6 @@
 use gpui::{FontWeight, div, prelude::*, px};
 use super::chat::AiChat;
-use crate::{icons::{Icon, icon}, theme::{Theme, tr}, ui::ai_controls};
+use crate::{theme::{Theme, tr}, ui::ai_controls};
 
 pub(super) fn builtin_blocked(chat: &AiChat) -> bool {
     let config = super::provider::config();
@@ -44,8 +44,7 @@ pub(super) fn view(_chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> impl IntoE
         })).border_1().border_color(theme.btn_border));
     }
     div().id("ai-empty-state").py(px(36.)).px(px(16.)).flex().flex_col().items_center().gap(px(14.))
-        .child(div().size(px(48.)).rounded(px(14.)).bg(theme.shell).border_1().border_color(theme.hairline).flex().items_center().justify_center()
-            .child(icon(Icon::Sparkles, px(24.), theme.icon_colors(theme.accent))))
+        .child(crate::mascot::ai_greeting())
         .child(div().text_size(px(16.)).font_weight(FontWeight(560.)).text_color(theme.text).child(tr("有什么可以帮你处理？", "How can I help with this note?")))
         .child(actions)
 }

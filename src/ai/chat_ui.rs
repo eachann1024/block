@@ -134,7 +134,7 @@ impl Render for AiChat {
                 .child(div().px(px(10.)).pt(px(6.)).text_size(px(14.)).text_color(theme.text_secondary).child(if token.starts_with('@') { tr("引用文件", "Reference File") } else { tr("指令与技能", "Commands & Skills") }))
                 .child(list)
         });
-        let busy = self.streaming.is_some();
+        let busy = self.streaming.is_some() || self.pending_question.is_some();
         let action = if busy {
             crate::ui::ai_controls::action_chip("ai-chat-stop", None, tr("停止", "Stop"), false, false, cx.listener(|this, _, _, cx| { this.stop(); cx.notify(); })).h(px(28.)).bg(theme.text).text_color(theme.paper)
         } else {
@@ -155,8 +155,50 @@ impl Render for AiChat {
                     this.respond_approval(response, cx);
                     this.pending_approval.is_none()
                 }).unwrap_or(false)
-            })
+            }).into_any_element()
         });
+        let question = self.pending_question.as_ref().map(|pq| (pq.request_id.clone(), pq.questions.clone(), pq.state.clone())).map(|(expected, questions, state)| {
+            let entity = cx.entity().downgrade();
+            backend_ui::question_card(state, questions, window, cx, move |value, window, cx| {
+                entity.update(cx, |this, cx| {
+                    if this.pending_question.as_ref().is_none_or(|pq| pq.request_id != expected) { return false; }
+                    this.respond_question(value, window, cx)
+                }).unwrap_or(false)
+            })
+        }).or_else(|| {
+            if self.streaming.is_some() || self.pending_approval.is_some() { return None; }
+            let conv = self.conv()?;
+            let (idx, last) = conv.messages.iter().enumerate().rev().find(|(_, m)| m.role == "assistant" || m.role == "user")?;
+            if last.role != "assistant" { return None; }
+            let questions = crate::ui::ai_approval::extract_markdown_questions(&last.content);
+            if questions.is_empty() { return None; }
+            let key = format!("md-q-{}-{idx}", conv.id);
+            if self.approval_state.as_ref().is_none_or(|(id, _)| id != &key) {
+                self.approval_state = Some((key.clone(), Default::default()));
+            }
+            let state = self.approval_state.as_ref().unwrap().1.clone();
+            let entity = cx.entity().downgrade();
+            Some(backend_ui::question_card(state, questions, window, cx, move |value, window, cx| {
+                entity.update(cx, |this, cx| {
+                    if value.get("status").and_then(|v| v.as_str()) == Some("skipped") {
+                        if let Some((_, st)) = &this.approval_state { st.borrow_mut().dismissed = true; }
+                        cx.notify();
+                        return true;
+                    }
+                    this.approval_state = None;
+                    let summary = value.get("items").and_then(|v| v.as_array()).into_iter().flatten().enumerate().filter_map(|(i, item)| {
+                        let ans = item.get("answer").and_then(|v| v.as_str()).unwrap_or("").trim();
+                        (!ans.is_empty()).then(|| format!("{}. {ans}", i + 1))
+                    }).collect::<Vec<_>>().join("\n");
+                    if !summary.is_empty() {
+                        this.input.update(cx, |input, cx| input.set_value(&summary, window, cx));
+                        this.send(window, cx);
+                    }
+                    true
+                }).unwrap_or(false)
+            }))
+        });
+        let interactive_card = question.or(approval);
         let draft_recovery = self.has_deferred_draft().then(|| {
             let has_current_draft = !self.input.read(cx).value().is_empty() || !self.refs.is_empty() || !self.skills.is_empty();
             div().px(px(16.)).pb(px(8.)).flex().flex_col().items_start().gap(px(6.)).text_size(px(14.))
@@ -223,7 +265,9 @@ impl Render for AiChat {
             .child(div().id("ai-chat-scroll").flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.scroll)
                 .on_scroll(|_, _, cx| crate::dropdown::dismiss_all(cx))
                 .child(div().w_full().when(self.fullscreen, |inner| inner.max_w(px(720.)).mx_auto()).child(body)
-                    .child(div().px(px(16.)).pb(px(16.)).children(approval)).children(error)))
+                    .children(error)))
+            .children(interactive_card.map(|card| div().flex_none().px(px(16.)).pt(px(8.)).pb(px(4.))
+                .child(div().w_full().when(self.fullscreen, |inner| inner.max_w(px(720.)).mx_auto()).child(card))))
             .children(draft_recovery)
             .children(picker)
             .child(div().flex_none().relative().px(px(16.)).pt(px(if picker_open { 0. } else { 12. })).pb(px(16.)).border_t_1().border_color(theme.hairline)
