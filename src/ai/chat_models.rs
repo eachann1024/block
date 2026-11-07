@@ -8,21 +8,23 @@ pub(in crate::editor::ai) enum ModelStatus { Idle, Loading, Ready, Error(String)
 
 impl AiChat {
     pub(in crate::editor::ai) fn selected_model(&self) -> String {
-        self.backend_config.selected_model(self.selected_backend())
+        let stored = self.backend_config.selected_model(self.selected_backend());
+        let choices = self.model_choices();
+        if !stored.is_empty() && (choices.is_empty() || choices.contains(&stored)) {
+            return stored;
+        }
+        choices.into_iter().next().unwrap_or(stored)
     }
     pub(in crate::editor::ai) fn model_choices(&self) -> Vec<String> {
         let kind = self.selected_backend();
-        let mut choices: Vec<String> = self.model_cache.iter().find(|(backend, _, _)| *backend == kind).map(|(_, _, choices)| choices.iter().map(|item| item.value.clone()).filter(|value| !value.is_empty()).collect()).unwrap_or_default();
-        let selected = self.selected_model();
-        if !selected.is_empty() && !choices.contains(&selected) { choices.insert(0, selected); }
-        choices
+        self.model_cache.iter().find(|(backend, _, _)| *backend == kind)
+            .map(|(_, _, choices)| choices.iter().map(|item| item.value.clone()).filter(|value| !value.is_empty()).collect())
+            .unwrap_or_default()
     }
     pub(in crate::editor::ai) fn model_label(&self, value: &str) -> String {
         self.model_cache.iter().find(|(backend, _, _)| *backend == self.selected_backend())
             .and_then(|(_, _, choices)| choices.iter().find(|item| item.value == value))
-            .map(|item| item.label.clone()).unwrap_or_else(|| if value.is_empty() {
-                crate::theme::tr("默认模型", "Default model").to_owned()
-            } else { value.to_owned() })
+            .map(|item| item.label.clone()).unwrap_or_else(|| value.to_owned())
     }
     pub(in crate::editor::ai) fn model_status(&self) -> ModelStatus {
         self.model_cache.iter().find(|(backend, _, _)| *backend == self.selected_backend())
@@ -52,8 +54,7 @@ impl AiChat {
             match receiver.try_recv() {
                 Ok(result) => {
                     let _ = this.update(cx, |this, cx| {
-                        let (status, mut choices) = match result { Ok(choices) => (ModelStatus::Ready, choices), Err(error) => (ModelStatus::Error(format!("{}: {error}", crate::theme::tr("获取模型列表失败", "Could not load models"))), Vec::new()) };
-                        choices.sort_by(|a, b| a.value.cmp(&b.value)); choices.dedup_by(|a, b| a.value == b.value);
+                        let (status, choices) = match result { Ok(choices) => (ModelStatus::Ready, choices), Err(error) => (ModelStatus::Error(format!("{}: {error}", crate::theme::tr("获取模型列表失败", "Could not load models"))), Vec::new()) };
                         let unchanged = this.model_cache.iter().any(|(backend, old_status, old_choices)| {
                             *backend == kind && *old_status == status && old_choices.len() == choices.len()
                                 && old_choices.iter().zip(&choices).all(|(a, b)| a.value == b.value && a.label == b.label)

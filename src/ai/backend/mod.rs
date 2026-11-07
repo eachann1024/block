@@ -12,7 +12,7 @@ pub(crate) mod priority;
 mod types;
 
 pub(crate) use bridge::{ToolBridge, ToolRequest};
-pub(crate) use config::{BackendConfig, DshOptions};
+pub(crate) use config::BackendConfig;
 pub(crate) use runtime::BackendRuntime;
 pub(crate) use types::*;
 

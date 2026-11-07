@@ -13,12 +13,9 @@ type Worker = Box<dyn FnOnce() + Send>;
 pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: ToolBridge,
     cancelled: Arc<AtomicBool>) -> Result<(Arc<Mutex<Child>>, Arc<AtomicBool>, Worker), BackendError> {
     let provider = request.config.get("provider").and_then(Value::as_str).filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| BackendError::new("dsh_provider_required", "Select the configured dsh provider before starting"))?;
+        .unwrap_or("deepseek-official");
     if provider != "deepseek-official" {
         return Err(BackendError::new("dsh_provider_unsupported", format!("The isolated dsh profile does not support provider {provider}")));
-    }
-    if request.config.get("model").and_then(Value::as_str).is_none_or(|value| value.trim().is_empty()) {
-        return Err(BackendError::new("dsh_model_required", "Select the configured dsh model before starting"));
     }
     let native_home = std::env::var_os("DSH_HOME").filter(|value| !value.is_empty()).map(PathBuf::from)
         .or_else(|| dirs::home_dir().map(|home| home.join(".dsh")))
@@ -79,11 +76,12 @@ pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: T
     fs::write(&patch_path, serde_json::to_vec(&patch).map_err(io_error)?).map_err(io_error)?;
     let cwd = request.context.notebook_root.clone().filter(|p| p.is_dir()).unwrap_or_else(|| workspace.clone());
     let mut command = cli_env::command("dsh");
-    let args = request.config.get("launchArgs").and_then(serde_json::Value::as_str).unwrap_or(super::super::BackendKind::Dsh.default_launch_args());
-    command.args(args.split_whitespace()).arg("--patch").arg(&patch_path)
+    command.args(["--profile", "sdk-minimal"]).arg("--patch").arg(&patch_path)
         .env("DSH_HOME", dir.0.join("home")).env("DSH_TELEMETRY_DISABLED", "1")
-        .env("DSH_PERMISSION_MODE", "danger-full-access")
         .current_dir(&cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+    if request.config.get("fullPermissions").and_then(Value::as_bool) == Some(true) {
+        command.env("DSH_PERMISSION_MODE", "danger-full-access");
+    }
     if let Some(key) = block_key { command.env("DEEPSEEK_API_KEY", key); }
     #[cfg(unix)] {
         use std::os::unix::process::CommandExt;
@@ -138,8 +136,8 @@ fn run(request: &TurnRequest, events: &Sender<BackendEvent>, mut stdin: impl Wri
     stdout: impl std::io::Read, cancelled: &AtomicBool, token: &str, cwd: &PathBuf,
     bridge_ready: &AtomicBool, initialized: Sender<()>, tools: &ToolBridge) -> Result<(), BackendError> {
     let session = request.native_session_id.clone().unwrap_or_else(|| token[..32].to_owned());
-    let provider = request.config["provider"].as_str().unwrap_or_default();
-    let model = request.config["model"].as_str().unwrap_or_default();
+    let provider = request.config["provider"].as_str().filter(|s| !s.trim().is_empty()).unwrap_or("deepseek-official");
+    let model = request.config["model"].as_str().filter(|s| !s.trim().is_empty()).unwrap_or("deepseek-flash");
     send(&mut stdin, 1, "initialize", json!({"cwd":cwd,"provider":provider,"model":model}))?;
     let mut terminal: Option<Value> = None;
     for line in BufReader::new(stdout).lines() {
