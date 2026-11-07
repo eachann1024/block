@@ -166,6 +166,7 @@ impl Editor {
                 let (start, remove) = if slash_target { (index, 1) } else { (index + 1, 0) };
                 let count = blocks.len();
                 self.doc.splice_blocks(start..start + remove, blocks);
+                if cmd == Cmd::Table { super::table_layout::toggle_fit(cx.entity_id(), self.doc.blocks[start].id); }
                 changes.push(ListChange { start, before: remove, after: count });
                 let focus = if cmd != Cmd::Divider { self.doc.blocks[start].id } else { self.doc.blocks[(start + 1).min(self.doc.blocks.len() - 1)].id };
                 caret = Some(Position { block: focus, offset: 0 });
