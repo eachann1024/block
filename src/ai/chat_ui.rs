@@ -170,10 +170,10 @@ impl Render for AiChat {
                         this.restore_deferred_draft(window, cx); cx.notify();
                     })))
         });
-        let composer = div().p(px(10.)).flex().flex_col().gap(px(8.)).rounded(px(8.)).border_1().border_color(if self.input.read(cx).focus_handle(cx).is_focused(window) { theme.btn_border } else { theme.hairline }).bg(theme.hover)
-            .when(!self.refs.is_empty() || !self.skills.is_empty(), |d| d.child(chips))
+        let composer = div().pt(px(2.)).pb(px(10.)).flex().flex_col().gap(px(4.)).rounded(px(8.)).border_1().border_color(if self.input.read(cx).focus_handle(cx).is_focused(window) { theme.btn_border } else { theme.hairline }).bg(theme.hover)
+            .when(!self.refs.is_empty() || !self.skills.is_empty(), |d| d.child(chips.px(px(10.)).pt(px(8.))))
             .child(crate::ui::chat_input::field(&self.input))
-            .child(div().relative().children(crate::ui::smoke_overlay::probe("ai-composer-actions")).flex_none().flex().items_center().gap(px(6.))
+            .child(div().relative().children(crate::ui::smoke_overlay::probe("ai-composer-actions")).px(px(10.)).flex_none().flex().items_center().gap(px(6.))
                 .child(div().flex_1().min_w_0().flex().items_center().gap(px(6.))
                     .child(super::chat_deck::trigger(self, cx)))
                 .child(crate::ui::ai_controls::dictation_button(

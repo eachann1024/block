@@ -7,5 +7,5 @@ pub fn field(state: &Entity<TextareaState>) -> impl IntoElement {
         .text_size(px(13.)).line_height(px(18.))
         .children(super::smoke_overlay::probe("ai-composer-input"))
         .child(Textarea::new(state).appearance(false).bordered(false)
-            .w_full().line_height(px(18.)).px(px(2.)).py(px(0.)))
+            .w_full().line_height(px(18.)).px(px(0.)).py(px(0.)))
 }
