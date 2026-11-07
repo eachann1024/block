@@ -4,10 +4,9 @@ import { readFileSync } from "node:fs";
 import { request } from "node:https";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bilingualFromCommit } from "./release-note-rules.mjs";
+import { describeCommit } from "./commit-blurb.mjs";
 import {
   EN_SECTIONS,
-  MAX_PER_SECTION,
   ZH_SECTIONS,
   lineMixesLanguages,
   validateReleaseNotes,
@@ -22,19 +21,12 @@ const PROMPT_PATH = resolve(DIR, "changelog-prompt.md");
 const MAX_ATTEMPTS = 2;
 const TIMEOUT_MS = 90_000;
 const BOT_AUTHORS = new Set(["github-actions[bot]", "github-actions"]);
-const SKIP_PREFIX = /^(ci|docs|build|test|chore|design|release)(\([^)]*\))?:/i;
-const RELEASE_SUBJECT = /^(chore\(release\):|release:)/i;
+const VERSION_BUMP = /^chore\(release\):\s*v\d+\.\d+\.\d+\s*$/i;
 
-export function isMetaPath(path) {
-  return /^(\.github\/|scripts\/|designs\/|docs\/|tests?\/|benches\/|web\/vendor\/)/.test(path)
-    || [" README.md", "README.md", "LICENSE", "NOTICE", "DESIGN.md", ".gitignore", "Cargo.toml", "Cargo.lock", "package.json"].includes(path);
-}
-
-export function isExcludedCommit({ author = "", subject = "", paths = [], releaseNote = "" }) {
+export function isExcludedCommit({ author = "", subject = "", releaseNote = "" }) {
   if (BOT_AUTHORS.has(author)) return true;
   if (/^none$/i.test(releaseNote.trim())) return true;
-  if (SKIP_PREFIX.test(subject) || RELEASE_SUBJECT.test(subject)) return true;
-  if (paths.length > 0 && paths.every((p) => isMetaPath(p))) return true;
+  if (VERSION_BUMP.test(subject)) return true;
   return false;
 }
 
@@ -141,12 +133,19 @@ export async function polishReleaseNotes({ version, commits, env = process.env }
       lastRaw = raw;
       const markdown = validateReleaseNotes(raw);
       if (!markdown) return { status: "empty", model: used };
+      const listed = listedItems(markdown);
+      if (listed < commits.length) throw new Error(`notes list ${listed} items for ${commits.length} commits`);
       return { status: "polished", markdown, model: used };
     } catch (err) {
       lastError = err?.message || String(err);
     }
   }
   return { status: "fallback", reason: lastError };
+}
+
+function listedItems(markdown) {
+  const english = markdown.split(/\n\s*---\s*\n/)[0] || "";
+  return english.split("\n").filter((line) => /^[-*•]\s+\S/.test(line)).length;
 }
 
 function renderHalf(title, sections, buckets, lang) {
@@ -163,13 +162,12 @@ function renderHalf(title, sections, buckets, lang) {
 }
 
 export function fallbackReleaseNotes(commits) {
-  const buckets = [{ zh: [], en: [] }, { zh: [], en: [] }, { zh: [], en: [] }];
-  const kindIndex = { feat: 0, improve: 1, fix: 2 };
+  const buckets = [{ zh: [], en: [] }, { zh: [], en: [] }, { zh: [], en: [] }, { zh: [], en: [] }];
+  const kindIndex = { feat: 0, improve: 1, fix: 2, other: 3 };
   for (const commit of commits.filter((item) => !isExcludedCommit(item))) {
-    const pair = bilingualFromCommit(commit);
-    if (!pair) continue;
-    const bucket = buckets[kindIndex[pair.kind] ?? 0];
-    if (bucket.zh.includes(pair.zh) || bucket.zh.length >= MAX_PER_SECTION) continue;
+    const pair = describeCommit(commit);
+    const bucket = buckets[kindIndex[pair.kind] ?? 3];
+    if (bucket.zh.includes(pair.zh)) continue;
     if (lineMixesLanguages(`- ${pair.zh}`) || lineMixesLanguages(`- ${pair.en}`)) continue;
     bucket.zh.push(pair.zh);
     bucket.en.push(pair.en);
@@ -191,11 +189,14 @@ export async function buildReleaseNotes({ version, commits, env = process.env })
   }
   try {
     const markdown = fallbackReleaseNotes(userCommits);
-    if (markdown) return { skip: false, source: "fallback", reason: polished.reason, markdown };
+    const listed = markdown ? listedItems(markdown) : 0;
+    if (markdown && listed >= userCommits.length) {
+      return { skip: false, source: "fallback", reason: polished.reason, markdown };
+    }
+    return { skip: true, reason: `更新说明只写了 ${listed}/${userCommits.length} 条提交`, markdown: "" };
   } catch (err) {
     return { skip: true, reason: err?.message || polished.reason, markdown: "" };
   }
-  return { skip: true, reason: polished.reason || "无法生成双语更新说明", markdown: "" };
 }
 
 if (import.meta.main) {

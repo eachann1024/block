@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EN_FOOTER, ZH_FOOTER } from "./release-notes-check.mjs";
 import { buildReleaseNotes, listCommits } from "./release-notes.mjs";
+import { resolveReleaseRange } from "./release-range.mjs";
 
 export const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 export const REPO = process.env.GH_REPO || process.env.GITHUB_REPOSITORY || "eachann1024/block";
@@ -127,15 +128,6 @@ function resolveTagCommit(release) {
   return null;
 }
 
-function isAncestor(sha, head = "HEAD") {
-  try {
-    execFileSync("git", ["merge-base", "--is-ancestor", sha, head], { cwd: ROOT, stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function summary(line) {
   console.log(line);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${line}\n`);
@@ -218,16 +210,6 @@ async function main() {
   }
 
   const previousSha = resolveTagCommit(previous);
-  if (previous && !previousSha) {
-    if (!force) {
-      summary(`无法解析 ${previous.tag_name} 的提交，停止发布，避免把更早的改动写进这一版。`);
-      const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
-      writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: cargoVersion, release_tag: previous.tag_name });
-      return;
-    }
-    summary(`无法解析 ${previous.tag_name} 的提交，因 force=true 仍继续发布。`);
-  }
   if (previousSha && previousSha === headSha && !force) {
     summary(`当前 HEAD (${headSha.slice(0, 7)}) 与最新 Release ${previous.tag_name} 完全一致，跳过构建。`);
     const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
@@ -235,22 +217,26 @@ async function main() {
     writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: cargoVersion, release_tag: previous.tag_name });
     return;
   }
-  if (previousSha && !isAncestor(previousSha, headSha)) {
-    if (!force) {
-      summary(`最新 Release ${previous.tag_name} 不在当前历史上，停止发布。`);
-      const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
+
+  let rangeSpec = null;
+  if (!(previousSha && previousSha === headSha)) {
+    try {
+      const resolved = resolveReleaseRange({ previous, previousSha, headSha });
+      rangeSpec = resolved.range;
+      if (resolved.note) summary(resolved.note);
+    } catch (error) {
+      summary(error?.message || String(error));
+      const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous?.tag_name || "", commit: headSha };
       writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: cargoVersion, release_tag: previous.tag_name });
+      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: cargoVersion, release_tag: previous?.tag_name || "" });
       return;
     }
-    summary(`最新 Release ${previous.tag_name} 不在当前历史上，因 force=true 仍继续发布。`);
   }
 
   if (force) version = versionAboveExisting(version, releases);
   const autoBump = version !== cargoVersion;
-  const onHistory = previousSha && previousSha !== headSha && isAncestor(previousSha, headSha);
-  const rangeSpec = onHistory ? `${previousSha}..${headSha}` : "-n 30";
-  const commits = listCommits(ROOT, rangeSpec);
+  const commits = rangeSpec ? listCommits(ROOT, rangeSpec) : [];
+  if (rangeSpec) summary(`更新说明区间 ${rangeSpec}，共 ${commits.length} 条提交。`);
   let notes = await buildReleaseNotes({ version, commits });
 
   if (previous && notes.skip && !force) {
@@ -262,15 +248,16 @@ async function main() {
   }
 
   if (!notes.markdown) {
-    if (!force) {
-      summary(`自 ${previous?.tag_name || "初始版本"} 以来没有可写给用户的更新说明，停止发布。`);
+    if (commits.length === 0 && force) {
+      notes = { markdown: forcedReleaseNotes(), source: "forced" };
+      summary("没有新提交，因 force=true 使用手动发布说明。");
+    } else {
+      summary(`更新说明没有覆盖区间里的 ${commits.length} 条提交（${notes.reason || "空"}），停止发布。`);
       const plan = { shouldBuild: false, publish: false, version, tag: `v${version}`, commit: headSha };
       writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
       writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version, release_tag: `v${version}` });
       return;
     }
-    notes = { markdown: forcedReleaseNotes(), source: "forced" };
-    summary("没有可写给用户的更新说明，因 force=true 使用手动发布说明。");
   }
   const markdown = notes.markdown;
   const tag = `v${version}`;
