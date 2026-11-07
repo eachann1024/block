@@ -14,22 +14,20 @@ static DRAFT_INIT: OnceLock<()> = OnceLock::new();
 static MODAL: OnceLock<Mutex<Option<Entity<FeedbackModal>>>> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum FeedbackCategory { #[default] Bug, Idea, Install, Ask, Other }
+pub enum FeedbackCategory { #[default] Bug, Idea, Other }
 
 impl FeedbackCategory {
-    pub const ALL: [Self; 5] = [Self::Bug, Self::Idea, Self::Install, Self::Ask, Self::Other];
+    pub const ALL: [Self; 3] = [Self::Bug, Self::Idea, Self::Other];
     pub fn code(self) -> &'static str {
-        match self { Self::Bug => "bug", Self::Idea => "idea", Self::Install => "install", Self::Ask => "ask", Self::Other => "other" }
+        match self { Self::Bug => "bug", Self::Idea => "idea", Self::Other => "other" }
     }
     pub fn from_code(raw: &str) -> Self {
-        match raw { "idea" => Self::Idea, "install" => Self::Install, "ask" => Self::Ask, "other" => Self::Other, _ => Self::Bug }
+        match raw { "idea" => Self::Idea, "other" | "ask" => Self::Other, _ => Self::Bug }
     }
     pub fn label(self) -> &'static str {
         match self {
             Self::Bug => tr("问题反馈", "Bug"),
             Self::Idea => tr("功能建议", "Feature idea"),
-            Self::Install => tr("下载或安装", "Download or install"),
-            Self::Ask => tr("使用咨询", "Question"),
             Self::Other => tr("其他", "Other"),
         }
     }
@@ -37,38 +35,16 @@ impl FeedbackCategory {
         match self {
             Self::Bug => tr("哪里出了问题？怎么操作会出现？", "What went wrong, and how can we make it happen again?"),
             Self::Idea => tr("希望加什么功能，或者哪里可以更好用？", "What would you like added, or made easier?"),
-            Self::Install => tr("卡在下载还是安装？看到了什么提示？", "Stuck downloading or installing? What did you see?"),
-            Self::Ask => tr("想了解什么，直接问。", "Ask us anything."),
-            Self::Other => tr("随便说说。", "Anything on your mind."),
+            Self::Other => tr("有什么想法或疑问，随便聊聊。", "Anything on your mind — questions, thoughts, or notes."),
         }
     }
 }
 
 pub fn contact_placeholder() -> &'static str { tr("留了邮箱，回复会发到这里", "We reply here if you leave one") }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FeedbackPlatform { Macos, Windows, Linux }
-
-impl FeedbackPlatform {
-    pub const ALL: [Self; 3] = [Self::Macos, Self::Windows, Self::Linux];
-    pub fn current() -> Self {
-        if cfg!(target_os = "windows") { Self::Windows } else if cfg!(target_os = "linux") { Self::Linux } else { Self::Macos }
-    }
-    pub fn api_value(self) -> &'static str {
-        match self { Self::Macos => "mac", Self::Windows => "win", Self::Linux => "linux" }
-    }
-    pub fn label(self) -> &'static str {
-        match self { Self::Macos => "macOS", Self::Windows => "Windows", Self::Linux => "Linux" }
-    }
-    pub fn from_label(raw: &str) -> Self {
-        match raw { "Windows" => Self::Windows, "Linux" => Self::Linux, _ => Self::Macos }
-    }
-}
-
 pub struct FeedbackModal {
     pub focus: FocusHandle,
     pub category: FeedbackCategory,
-    pub platform: FeedbackPlatform,
     pub message: Entity<TextareaState>,
     pub contact: Entity<InputState>,
     pub sending: bool,
@@ -86,7 +62,6 @@ impl FeedbackModal {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let saved = load_state().ok().and_then(|s| s.feedback_draft).unwrap_or_default();
         let category = FeedbackCategory::from_code(&saved.category);
-        let platform = if saved.platform.is_empty() { FeedbackPlatform::current() } else { FeedbackPlatform::from_label(&saved.platform) };
         HAS_DRAFT.store(!saved.message.trim().is_empty() || !saved.contact.trim().is_empty(), Ordering::Relaxed);
         let message = cx.new(|cx| TextareaState::new(window, cx).auto_grow(4, 8).placeholder(category.placeholder()).default_value(saved.message));
         let contact = cx.new(|cx| InputState::new(window, cx).placeholder(contact_placeholder()).default_value(saved.contact));
@@ -96,7 +71,7 @@ impl FeedbackModal {
         let sub_contact = cx.subscribe(&contact, |this, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change) && !this.syncing { this.error = None; this.persist_draft(cx); cx.notify(); }
         });
-        Self { focus: cx.focus_handle(), category, platform, message, contact, sending: false, done: false, sent_contact: String::new(), error: None, chip_seq: 0, done_seq: 0, syncing: false, last_en: crate::theme::is_en(), _subs: vec![sub_msg, sub_contact] }
+        Self { focus: cx.focus_handle(), category, message, contact, sending: false, done: false, sent_contact: String::new(), error: None, chip_seq: 0, done_seq: 0, syncing: false, last_en: crate::theme::is_en(), _subs: vec![sub_msg, sub_contact] }
     }
 
     pub fn sync_placeholders(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -124,15 +99,6 @@ impl FeedbackModal {
         }
     }
 
-    pub fn select_platform(&mut self, plat: FeedbackPlatform, cx: &mut Context<Self>) {
-        if self.platform != plat {
-            self.platform = plat;
-            self.chip_seq = self.chip_seq.wrapping_add(1);
-            self.persist_draft(cx);
-            cx.notify();
-        }
-    }
-
     pub fn persist_draft(&self, cx: &App) {
         let msg = self.message.read(cx).value().to_string();
         let contact = self.contact.read(cx).value().to_string();
@@ -140,7 +106,7 @@ impl FeedbackModal {
         HAS_DRAFT.store(non_empty, Ordering::Relaxed);
         let draft = (non_empty || self.category != FeedbackCategory::Bug).then(|| FeedbackDraft {
             category: self.category.code().into(),
-            platform: self.platform.label().into(),
+            platform: String::new(),
             message: msg,
             contact,
         });
@@ -167,9 +133,8 @@ impl FeedbackModal {
         self.error = None;
         cx.notify();
         let category = self.category.code().to_string();
-        let platform = (self.category == FeedbackCategory::Install).then(|| self.platform.api_value().to_string());
         let sent_email = email.clone();
-        let rx = cx.background_executor().spawn(async move { send_feedback_http(&category, platform.as_deref(), &msg, &email) });
+        let rx = cx.background_executor().spawn(async move { send_feedback_http(&category, &msg, &email) });
         cx.spawn_in(window, async move |this, cx| {
             let res = rx.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -203,8 +168,8 @@ fn valid_email(s: &str) -> bool {
     !local.is_empty() && !domain.is_empty() && !tld.is_empty() && !s.chars().any(char::is_whitespace)
 }
 
-fn send_feedback_http(category: &str, platform: Option<&str>, message: &str, contact: &str) -> Result<(), String> {
-    if std::env::var("BLOCK_MOCK_FEEDBACK").ok().as_deref() == Some("1") { return Ok(()); }
+fn send_feedback_http(category: &str, message: &str, contact: &str) -> Result<(), String> {
+    if crate::smoke::is_requested() || std::env::var("BLOCK_MOCK_FEEDBACK").ok().as_deref() == Some("1") { return Ok(()); }
     let fallback = || tr("没发出去。过一会儿再试一次。", "That didn't send. Please try again in a moment.").to_string();
     let mut cmd = std::process::Command::new("curl");
     cmd.args([
@@ -215,7 +180,6 @@ fn send_feedback_http(category: &str, platform: Option<&str>, message: &str, con
         "--form-string", &format!("contact={contact}"),
         "--form-string", "leave_blank=",
     ]);
-    if let Some(plat) = platform { cmd.args(["--form-string", &format!("platform={plat}")]); }
     let out = cmd.output().map_err(|_| fallback())?;
     let raw = String::from_utf8_lossy(&out.stdout);
     let (body, code_str) = raw.rsplit_once('\n').unwrap_or(("", raw.trim()));
