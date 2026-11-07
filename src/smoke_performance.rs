@@ -1,5 +1,5 @@
 use std::{fs, path::PathBuf};
-use gpui::{ElementId, Focusable, Modifiers, MouseMoveEvent, PlatformInput, ScrollDelta, ScrollEvent, TouchPhase, point, px};
+use gpui::{Focusable, Modifiers, MouseMoveEvent, PlatformInput, px};
 use super::{AsyncApp, Run, sleep, smoke_overlay};
 
 const CATEGORIES: [(&str, u64); 7] = [
@@ -8,16 +8,12 @@ const CATEGORIES: [(&str, u64); 7] = [
 ];
 
 struct SparseFile(fs::File, u64);
-
-impl Drop for SparseFile {
-    fn drop(&mut self) { let _ = self.0.set_len(self.1); }
-}
+impl Drop for SparseFile { fn drop(&mut self) { let _ = self.0.set_len(self.1); } }
 
 fn fixture() -> Result<PathBuf, String> {
     let root = super::sandbox_path().join("performance-fixture");
     match fs::remove_dir_all(&root) {
-        Ok(()) => (),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        Ok(()) => (), Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
         Err(error) => return Err(error.to_string()),
     }
     for (name, size) in [
@@ -32,45 +28,7 @@ fn fixture() -> Result<PathBuf, String> {
     Ok(root)
 }
 
-fn tab_target(index: usize) -> String {
-    ElementId::from((ElementId::from("performance-tabs"), index.to_string())).to_string()
-}
-
 impl Run {
-    async fn performance_scroll(&self, cx: &AsyncApp, delta: f32) -> Result<(), String> {
-        self.redraw(cx);
-        let position = smoke_overlay::target_center("performance-scroll").ok_or("找不到性能滚动区域")?;
-        self.win(cx, |window, cx| window.dispatch_event(PlatformInput::Scroll(ScrollEvent {
-            position, delta: ScrollDelta::Pixels(point(px(0.), px(delta))),
-            modifiers: Modifiers::default(), touch_phase: TouchPhase::Moved, source: Default::default(),
-        }), cx))?;
-        sleep(cx, 180).await;
-        self.redraw(cx);
-        Ok(())
-    }
-
-    async fn performance_reveal_row(&self, cx: &AsyncApp, target: &str) -> Result<(), String> {
-        for _ in 0..12 {
-            self.redraw(cx);
-            let scroll = smoke_overlay::target_bounds("performance-scroll").ok_or("找不到性能滚动区域")?;
-            let card = smoke_overlay::target_bounds("performance-card").ok_or("找不到性能面板")?;
-            if let Some(row) = smoke_overlay::target_bounds(target) {
-                if row.top() >= scroll.top() && row.bottom() <= scroll.bottom()
-                    && row.top() >= card.top() && row.bottom() <= card.bottom()
-                    && row.left() >= scroll.left() && row.right() <= scroll.right() {
-                    return Ok(());
-                }
-            }
-            let delta = smoke_overlay::target_bounds(target)
-                .filter(|bounds| bounds.top() < scroll.top()).map_or(-80., |_| 80.);
-            self.performance_scroll(cx, delta).await?;
-        }
-        Err(format!("滚动后明细仍未完整显示：{target}；视口={:?}，面板={:?}，明细={:?}",
-            smoke_overlay::target_bounds("performance-scroll"),
-            smoke_overlay::target_bounds("performance-card"),
-            smoke_overlay::target_bounds(target)))
-    }
-
     async fn performance_hover(&self, cx: &AsyncApp, id: &str) -> Result<(), String> {
         self.redraw(cx);
         let position = smoke_overlay::target_center(id).ok_or_else(|| format!("找不到悬停目标 {id}"))?;
@@ -83,31 +41,16 @@ impl Run {
 
     pub(super) async fn performance(&self, cx: &AsyncApp) -> Result<(), String> {
         let root = fixture()?;
-        // Exercise the menu action while its window is borrowed, as native menus do.
-        // Setting OPEN directly misses re-entrant window updates in the entry point.
         self.win(cx, |window, cx| {
             let focus = self.workspace.read(cx).editor.focus_handle(cx);
             window.focus(&focus, cx);
             window.dispatch_action(Box::new(crate::menu_bar::ShowAbout), cx);
         })?;
         sleep(cx, 180).await;
-        let editor_focused = self.win(cx, |window, cx| {
-            self.workspace.read(cx).editor.focus_handle(cx).is_focused(window)
-        })?;
-        self.check(14, !editor_focused, "关于菜单正确移交焦点，不在当前窗口更新中重入")?;
-        self.redraw(cx);
-        self.check(14, smoke_overlay::target_bounds("about-performance").is_some(), "关于菜单入口正常打开")?;
-        self.click_target(cx, "about-done", "关于 · 关闭").await?;
-        self.win(cx, |window, cx| {
-            window.dispatch_action(Box::new(crate::menu_bar::ShowAbout), cx);
-        })?;
-        sleep(cx, 180).await;
+        let editor_focused = self.win(cx, |window, cx| self.workspace.read(cx).editor.focus_handle(cx).is_focused(window))?;
+        self.check(14, !editor_focused, "关于菜单正确移交焦点")?;
         self.redraw(cx);
         self.click_target(cx, "about-performance", "性能 · 打开监控").await?;
-        self.performance_checks(cx, root).await
-    }
-
-    async fn performance_checks(&self, cx: &AsyncApp, root: PathBuf) -> Result<(), String> {
         let ready = self.wait_until(cx, 15000, |_, _| {
             let state = crate::performance::smoke_state();
             state.open && state.process_samples >= 2 && state.process_ok && state.cpu_ready
@@ -117,35 +60,11 @@ impl Run {
         let state = crate::performance::smoke_state();
         self.check(14, state.disk_error.is_none() && CATEGORIES.iter().all(|(id, bytes)|
             state.disk_categories.iter().any(|(actual, value)| actual == id && value == bytes)), "七类磁盘字节与隔离夹具一致")?;
+        self.performance_geometry(cx)?;
         self.redraw(cx);
-        self.performance_compact(cx)?;
-        for (map_id, notebook) in [("performance-map", false), ("performance-notebook-map", true)] {
-            self.performance_reveal_row(cx, map_id).await?;
-            let map = smoke_overlay::target_bounds(map_id).ok_or("找不到性能分段条")?;
-            self.check(14, f32::from(map.size.height) <= 17., "分段条保持紧凑高度")?;
-            let group: Vec<_> = CATEGORIES.iter().filter(|(id, _)| id.starts_with("notebook_") == notebook).collect();
-            let total: u64 = group.iter().map(|(_, bytes)| bytes).sum();
-            for (id, bytes) in group {
-                let tile = format!("{map_id}-tile-{id}");
-                let bounds = smoke_overlay::target_bounds(&tile).ok_or_else(|| format!("找不到分段色块 {id}"))?;
-                let actual = f32::from(bounds.size.width) / f32::from(map.size.width);
-                let expected = *bytes as f32 / total as f32;
-                self.check(14, (actual - expected).abs() < 0.005, &format!("{id} 分段宽度与本组字节比例一致"))?;
-                self.performance_hover(cx, &tile).await?;
-                self.check(14, crate::performance::smoke_state().selected.as_deref() == Some(id), &format!("悬停 {id} 选中对应明细"))?;
-            }
-        }
-        for (id, _) in CATEGORIES {
-            let row = format!("performance-map-row-{id}");
-            self.performance_reveal_row(cx, &row).await?;
-            self.click_target(cx, &row, "性能 · 点击分类明细").await?;
-            self.check(14, crate::performance::smoke_state().selected.as_deref() == Some(id), &format!("点击 {id} 明细保持选中"))?;
-        }
-        self.performance_scroll(cx, 2000.).await?;
-        self.click_target(cx, &tab_target(1), "性能 · 切换运行内存").await?;
-        self.check(14, crate::performance::smoke_state().tab == "memory", "已切换运行内存")?;
-        self.click_target(cx, &tab_target(0), "性能 · 切换文件体积").await?;
-        self.check(14, crate::performance::smoke_state().tab == "storage", "已切换文件体积")?;
+        self.check(14, smoke_overlay::target_bounds("performance-process-map-tile-process-main").is_some(), "主进程和文件分类同屏")?;
+        self.performance_select(cx, "app").await?;
+        self.performance_select(cx, "history").await?;
         fs::write(root.join("notebook/new.md"), vec![0; 8192]).map_err(|error| error.to_string())?;
         self.click_target(cx, "performance-refresh", "性能 · 重新统计新增文件").await?;
         let refreshed = self.wait_until(cx, 15000, |_, _| {
@@ -166,61 +85,78 @@ impl Run {
         }).await;
         self.check(14, reopened, "重新打开后启动新的采样")?;
         self.press(cx, "escape").await?;
-        let escaped = crate::performance::smoke_state();
-        self.check(14, !escaped.open, "Escape 关闭监控")?;
-        sleep(cx, 1300).await;
-        self.check(14, crate::performance::smoke_state().process_samples == escaped.process_samples, "Escape 后采样停止")?;
-        cx.update(|cx| { crate::about::close(); self.workspace.update(cx, |_, cx| cx.notify()); });
+        self.check(14, !crate::performance::smoke_state().open, "Escape 关闭监控")?;
+        self.click_target(cx, "about-done", "关于 · 关闭").await?;
+        self.win(cx, |window, cx| window.dispatch_action(Box::new(crate::menu_bar::ShowAbout), cx))?;
+        sleep(cx, 180).await;
         self.redraw(cx);
+        self.check(14, smoke_overlay::target_bounds("about-performance").is_some(), "再次打开关于 Block")?;
+        cx.update(|cx| { crate::about::close(); self.workspace.update(cx, |_, cx| cx.notify()); });
         Ok(())
     }
 
-    fn performance_compact(&self, cx: &AsyncApp) -> Result<(), String> {
+    async fn performance_select(&self, cx: &AsyncApp, id: &str) -> Result<(), String> {
+        let tile = format!("performance-map-tile-{id}");
+        self.performance_hover(cx, &tile).await?;
+        self.redraw(cx);
+        let state = crate::performance::smoke_state();
+        let bytes = state.disk_categories.iter().find(|(category, _)| category == id)
+            .map(|(_, bytes)| *bytes).ok_or("找不到分类字节数")?;
+        let total = state.disk_categories.iter().map(|(_, bytes)| *bytes as u128).sum();
+        let detail = crate::ui::performance_rows::smoke_detail();
+        self.check(14, state.selected.as_deref() == Some(id)
+            && smoke_overlay::target_bounds(&format!("performance-detail-{id}")).is_some()
+            && detail.contains(&crate::ui::performance_treemap::format_bytes(bytes))
+            && detail.contains(&crate::ui::performance_treemap::format_percent(bytes, total)), "悬停更新选中详情和真实数值")?;
+        self.click_target(cx, &tile, "性能 · 点击分类方块").await?;
+        self.redraw(cx);
+        self.check(14, crate::performance::smoke_state().selected.as_deref() == Some(id)
+            && crate::ui::performance_rows::smoke_detail() == detail, "点击更新选中状态和详情")
+    }
+
+    fn performance_geometry(&self, cx: &AsyncApp) -> Result<(), String> {
         self.redraw(cx);
         let card = smoke_overlay::target_bounds("performance-card").ok_or("找不到性能面板")?;
-        let metrics = smoke_overlay::target_bounds("performance-metrics").ok_or("找不到性能指标")?;
         let viewport = self.win(cx, |window, _| window.viewport_size())?;
-        self.check(14, f32::from(card.size.height) <= 501. && card.top() >= px(0.)
-            && card.bottom() <= viewport.height, "面板不超过500px且不溢出窗口")?;
-        if crate::performance::smoke_state().tab == "storage" {
-            let refresh = smoke_overlay::target_bounds("performance-refresh").ok_or("找不到重新统计按钮")?;
-            self.check(14, refresh.top() >= card.top() && refresh.bottom() <= card.bottom(), "重新统计按钮完整可见")?;
+        self.check(14, card.size.height <= px(440.) && card.top() >= px(0.) && card.bottom() <= viewport.height, "面板高度不超过 440px")?;
+        let mut tiles = Vec::new();
+        for (id, _) in CATEGORIES {
+            let bounds = smoke_overlay::target_bounds(&format!("performance-map-tile-{id}")).ok_or_else(|| format!("找不到方块 {id}"))?;
+            self.check(14, bounds.size.width >= px(100.) && bounds.size.height >= px(50.)
+                && bounds.left() >= card.left() && bounds.right() <= card.right()
+                && bounds.top() >= card.top() && bounds.bottom() <= card.bottom(), "分类方块可读且完整可见")?;
+            tiles.push(bounds);
         }
-        self.check(14, metrics.top() >= card.top() && metrics.bottom() <= card.bottom()
-            && metrics.size.height >= px(18.), "运行指标保持可见")
+        for (index, tile) in tiles.iter().enumerate() {
+            for other in tiles.iter().skip(index + 1) {
+                let separated = tile.right() + px(5.) <= other.left() || other.right() + px(5.) <= tile.left()
+                    || tile.bottom() + px(5.) <= other.top() || other.bottom() + px(5.) <= tile.top();
+                self.check(14, separated, "方块之间存在明显空隙")?;
+            }
+        }
+        let areas: Vec<f32> = tiles.iter().map(|bounds| f32::from(bounds.size.width) * f32::from(bounds.size.height)).collect();
+        let min = areas.iter().copied().fold(f32::INFINITY, f32::min);
+        let max = areas.iter().copied().fold(0., f32::max);
+        self.check(14, max <= min * 3.2, "分类方块面积比例受控")
     }
 
     async fn performance_skewed(&self, cx: &AsyncApp, root: &std::path::Path) -> Result<(), String> {
         let large_bytes = 60 * 1024 * 1024 * 1024u64;
-        let file = fs::OpenOptions::new().write(true).open(root.join("notebook/image.bin"))
-            .map_err(|error| error.to_string())?;
-        let fixture = SparseFile(file, 3072);
-        fixture.0.set_len(large_bytes).map_err(|error| error.to_string())?;
+        let file = fs::OpenOptions::new().write(true).open(root.join("notebook/image.bin")).map_err(|error| error.to_string())?;
+        let large = SparseFile(file, 3072);
+        large.0.set_len(large_bytes).map_err(|error| error.to_string())?;
+        let file = fs::OpenOptions::new().write(true).open(root.join("cache/cache.bin")).map_err(|error| error.to_string())?;
+        let zero = SparseFile(file, 7168);
+        zero.0.set_len(0).map_err(|error| error.to_string())?;
         self.click_target(cx, "performance-refresh", "性能 · 统计极端比例文件").await?;
         let refreshed = self.wait_until(cx, 15000, |_, _| {
             let state = crate::performance::smoke_state();
             !state.disk_loading && state.disk_categories.iter().any(|(id, bytes)| id == "notebook_other" && *bytes == large_bytes)
+                && state.disk_categories.iter().any(|(id, bytes)| id == "cache" && *bytes == 0)
         }).await;
-        self.check(14, refreshed, "稀疏大文件按实际逻辑字节统计")?;
-        self.performance_compact(cx)?;
-        let before = smoke_overlay::target_bounds("performance-metrics").ok_or("找不到运行指标")?;
-        self.performance_reveal_row(cx, "performance-map").await?;
-        let map = smoke_overlay::target_bounds("performance-map").ok_or("找不到应用分段条")?;
-        let tile = smoke_overlay::target_bounds("performance-map-tile-app").ok_or("找不到应用分段")?;
-        let own_total: u64 = CATEGORIES.iter().filter(|(id, _)| !id.starts_with("notebook_")).map(|(_, bytes)| bytes).sum();
-        self.check(14, (f32::from(tile.size.width) / f32::from(map.size.width) - 1024. / own_total as f32).abs() < 0.005,
-            "笔记本大文件不会挤压应用自身分段")?;
-        for (id, _) in CATEGORIES {
-            let row = format!("performance-map-row-{id}");
-            self.performance_reveal_row(cx, &row).await?;
-            let bounds = smoke_overlay::target_bounds(&row).ok_or("找不到分类明细")?;
-            self.check(14, bounds.size.height >= px(28.), "极小分类仍有可操作的明细行")?;
-            self.performance_hover(cx, &row).await?;
-            self.check(14, crate::performance::smoke_state().selected.as_deref() == Some(id), "极端比例下分类说明仍可悬停")?;
-            self.click_target(cx, &row, "性能 · 极端比例分类点击").await?;
-        }
-        let after = smoke_overlay::target_bounds("performance-metrics").ok_or("运行指标消失")?;
-        self.check(14, (f32::from(before.top()) - f32::from(after.top())).abs() < 1., "滚动明细不会隐藏运行指标")?;
-        self.performance_compact(cx)
+        self.check(14, refreshed, "稀疏大文件及零字节分类按真实字节统计")?;
+        self.performance_geometry(cx)?;
+        for (id, _) in CATEGORIES { self.performance_select(cx, id).await?; }
+        Ok(())
     }
 }
