@@ -1,6 +1,7 @@
 /target
 /web/target
 /dist
+/AGENTS.md
 scripts/release/block.exe
 /release-plan.json
 !.github/

@@ -134,17 +134,26 @@ export function binaryPath(root, profile = "release") {
       try { return [JSON.parse(line)]; } catch { return []; }
     });
   const rendered = [];
+  const errors = [];
+  const errorLocations = [];
   for (const entry of entries) {
     if (entry.reason === "compiler-message" && entry.message?.rendered) {
       const msg = entry.message.rendered.trim();
       rendered.push(msg);
-      const level = entry.message.level === "error" ? "ERROR" : entry.message.level === "warning" ? "WARN" : null;
-      if (level) logIssue(level, msg);
+      if (entry.message.level === "error") {
+        logIssue("ERROR", msg);
+        errors.push(msg);
+        const span = entry.message.spans?.find((s) => s.is_primary) || entry.message.spans?.[0];
+        const loc = span?.file_name ? `${span.file_name}:${span.line_start}` : "cargo";
+        errorLocations.push(`${loc} (${entry.message.message})`);
+      }
     }
   }
   if (result.status !== 0) {
     const fallback = (result.stderr ?? "").trim();
-    throw new Error(rendered.join("\n\n") || fallback || `cargo exited ${result.status}`);
+    const detail = (errors.length ? errors : rendered).join("\n\n") || fallback || `cargo exited ${result.status}`;
+    const summary = errorLocations.length ? `\n\n[BUILD FAILED] 失败位置与原因: ${errorLocations.slice(0, 5).join(" | ")}` : "";
+    throw new Error(`${detail}${summary}`);
   }
   const built = entries.filter(
     (entry) => entry.reason === "compiler-artifact" && entry.target?.name === "block" && entry.target?.kind?.includes("bin") && entry.executable

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, lstatSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appName, assertSystemLibraries, binaryPath, installPath, logIssue, plist, remove, sign, workspaceTemp } from "./app-bundle.mjs";
@@ -35,7 +35,7 @@ export async function buildApp({ install = true, profile = process.env.BLOCK_PRO
   process.once("SIGINT", onSignal);
   process.once("SIGTERM", onSignal);
   try {
-    job.release = acquireLock();
+    job.release = await acquireLock();
     job.staging = workspaceTemp();
     const executable = binaryPath(root, profile);
     assertSystemLibraries(executable);
@@ -103,15 +103,37 @@ function pathExists(path) {
   }
 }
 
-function acquireLock() {
-  mkdirSync(join(root, "dist"), { recursive: true });
+function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
-    writeFileSync(lockPath, `${process.pid}\n`, { flag: "wx" });
+    process.kill(pid, 0);
+    return true;
   } catch (error) {
-    if (error?.code === "EEXIST") throw new Error(`another build holds ${lockPath}`);
-    throw error;
+    return error?.code === "EPERM";
   }
-  return () => remove(lockPath);
+}
+
+async function acquireLock() {
+  mkdirSync(join(root, "dist"), { recursive: true });
+  const deadline = Date.now() + 90_000;
+  while (true) {
+    try {
+      writeFileSync(lockPath, `${process.pid}\n`, { flag: "wx" });
+      return () => remove(lockPath);
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      let holder = 0;
+      try { holder = Number.parseInt(readFileSync(lockPath, "utf8").trim(), 10); } catch {}
+      if (!isProcessAlive(holder)) {
+        remove(lockPath);
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`[BUILD FAILED] 等待其他并行构建锁 (${lockPath}, PID ${holder}) 超时`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
 }
 
 function cleanup(job) {
