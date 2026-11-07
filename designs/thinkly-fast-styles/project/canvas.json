@@ -1042,6 +1042,36 @@
       "w": 1440,
       "x": 1520,
       "y": 2560
+    },
+    "Outline-V1-TopLeftPopover.dc.html": {
+      "expand": "fill",
+      "h": 880,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "侧边大纲 A（推荐）· 左上角极简横杠轨 + 悬停浮现紧凑大纲卡 + 位置不够自动隐藏",
+      "w": 1440,
+      "x": 0,
+      "y": 10680
+    },
+    "Outline-V2-InlineScrubber.dc.html": {
+      "expand": "fill",
+      "h": 880,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "侧边大纲 B · 左上角极简横杠轨 + 悬停同行无框显影文字 + 位置不够自动隐藏",
+      "w": 1440,
+      "x": 1520,
+      "y": 10680
+    },
+    "Outline-V3-PinnableTree.dc.html": {
+      "expand": "fill",
+      "h": 880,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "侧边大纲 C · 左上角极简横杠轨 + 点击钉住侧边大纲树 + 位置不够自动隐藏",
+      "w": 1440,
+      "x": 3040,
+      "y": 10680
     }
   },
   "createdOnFiles": {
@@ -1058,7 +1088,7 @@
     }
   ],
   "launch": {
-    "page": "ai-assistant",
+    "page": "settings",
     "view": "canvas"
   },
   "notes": {
@@ -1070,6 +1100,15 @@
       "w": 240,
       "x": 0,
       "y": 3300
+    },
+    "outline-rail-row": {
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "editor",
+      "text": "编辑器左上角极简横杠大纲 · 1:1 复刻左对齐短横线 + 悬停展开 + 窄窗位置不够自动隐藏 · 三套方案",
+      "w": 240,
+      "x": 0,
+      "y": 10440
     },
     "ai-plan-link-row": {
       "kind": "title1",
@@ -1304,7 +1343,10 @@
     "AiSettings-V1-CardTabs.dc.html",
     "AiSettings-V2-SplitMatrix.dc.html",
     "AiPlanLink-V1-EditorDiffBar.dc.html",
-    "AiPlanLink-V2-BlockReviewCard.dc.html"
+    "AiPlanLink-V2-BlockReviewCard.dc.html",
+    "Outline-V1-TopLeftPopover.dc.html",
+    "Outline-V2-InlineScrubber.dc.html",
+    "Outline-V3-PinnableTree.dc.html"
   ],
   "pages": [
     {
