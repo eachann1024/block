@@ -32,7 +32,8 @@ impl Run {
         self.chaoshan_paste_and_hotkey(cx).await?;
         self.image_menu_positions(cx).await?;
         self.performance(cx).await?;
-        self.ai_panel_and_deck(cx).await
+        self.ai_panel_and_deck(cx).await?;
+        crate::quick::window_smoke::verify(cx).await
     }
 
     async fn chaoshan_paste_and_hotkey(&self, cx: &AsyncApp) -> Result<(), String> {
