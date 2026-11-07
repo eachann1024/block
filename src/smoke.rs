@@ -9,6 +9,7 @@ use gpui::{
 use crate::{app::Workspace, editor::Editor, ui::smoke_overlay};
 
 #[path = "smoke_annotations.rs"] mod annotations;
+#[path = "smoke_outline.rs"] mod outline;
 #[path = "smoke_steps.rs"]
 mod steps;
 #[path = "smoke_chat_selection.rs"] mod chat_selection;
