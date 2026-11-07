@@ -1,3 +1,4 @@
+use crate::ui::tooltip::TooltipExt;
 use gpui::{
     BoxShadow, CursorStyle, Div, ElementId, FontWeight, Hsla, MouseButton, SharedString,
     Stateful, div, hsla, prelude::*, px, rgb,
@@ -34,7 +35,7 @@ pub fn dictation_button(recording: bool,
     div().id("ai-dictation").relative().children(super::smoke_overlay::probe("ai-dictation"))
         .size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
         .cursor(CursorStyle::PointingHand).hover(move |style| style.bg(theme.hover))
-        .tooltip(tooltip(if recording { tr("停止听写", "Stop dictation") } else { tr("语音输入", "Dictate") }))
+        .tooltip_above(tooltip(if recording { tr("停止听写", "Stop dictation") } else { tr("语音输入", "Dictate") }))
         .child(glyph).on_mouse_down(MouseButton::Left, on_click)
 }
 
@@ -57,7 +58,7 @@ pub fn titlebar_ai_button(open: bool, on_click: impl Fn(&mut gpui::Window, &mut 
         .cursor(CursorStyle::PointingHand)
         .when(open, |button| button.bg(theme.selected).border_1().border_color(theme.accent))
         .when(!open, |button| button.hover(|style| style.bg(theme.hover)))
-        .tooltip(tooltip(if cfg!(target_os = "macos") { tr("AI 助手 ⌘J", "AI Assistant ⌘J") } else { tr("AI 助手 Ctrl+J", "AI Assistant Ctrl+J") }))
+        .tooltip_above(tooltip(if cfg!(target_os = "macos") { tr("AI 助手 ⌘J", "AI Assistant ⌘J") } else { tr("AI 助手 Ctrl+J", "AI Assistant Ctrl+J") }))
         .child(stateful_icon("titlebar-ai", Icon::Sparkles, px(16.), open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if open { theme.accent } else { theme.text })))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| { cx.stop_propagation(); on_click(window, cx); })
 }
@@ -156,7 +157,7 @@ pub fn send_button_enabled(
     div().id(eid).relative().children(probe).size(px(24.)).flex_none().flex().items_center().justify_center()
         .rounded(px(6.)).bg(bg)
         .when(enabled, |button| button.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.text_secondary)))
-        .tooltip(tooltip(tr("发送（回车）", "Send (Enter)")))
+        .tooltip_above(tooltip(tr("发送（回车）", "Send (Enter)")))
         .child(icon(Icon::ArrowUp, px(16.), theme.mono_icon_colors(fg)))
         .on_mouse_down(MouseButton::Left, move |event, window, cx| { if enabled { on_click(event, window, cx); } })
 }
@@ -207,7 +208,7 @@ pub fn icon_chip(
     div().id(eid).group(id.clone()).relative().children(probe)
         .size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
         .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
-        .tooltip(tooltip(tip))
+        .tooltip_above(tooltip(tip))
         .child(stateful_icon(id, ic, px(14.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
         .on_mouse_down(MouseButton::Left, on_click)
 }

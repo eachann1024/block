@@ -1,3 +1,4 @@
+use crate::ui::tooltip::TooltipExt;
 use gpui::{
     App, CursorStyle, Div, Hsla, MouseButton, MouseDownEvent, Pixels, Stateful,
     Window, div, prelude::*, px, rgb, rgba,
@@ -42,7 +43,7 @@ pub fn table_add_bar(id: &'static str, w: Pixels, h: Pixels, zoom: f32, tip: &'s
         .hover(move |s| s.bg(hover_bg))
         .active(move |s| s.bg(active_bg))
         .child(stateful_icon(id, Icon::Plus, px(12. * zoom), false, theme.mono_icon_colors(fg), theme.icon_colors(theme.text)))
-        .tooltip(move |window, cx| build_tooltip(tip, window, cx))
+        .tooltip_above(move |window, cx| build_tooltip(tip, window, cx))
 }
 
 pub fn grip_button(
@@ -130,7 +131,7 @@ pub fn delete_arm_button(id: (&'static str, usize), zoom: f32, listener: impl Fn
         .bg(bg).border_1().border_color(border).hover(move |s| s.bg(hover_bg)).cursor(CursorStyle::PointingHand)
         .children(crate::ui::smoke_overlay::probe("first-line-delete-badge"))
         .child(icon(Icon::KeyBackspace, px(15. * zoom), theme.mono_icon_colors(fg)))
-        .tooltip(move |window, cx| build_tooltip(delete_arm_placeholder_text(), window, cx))
+        .tooltip_above(move |window, cx| build_tooltip(delete_arm_placeholder_text(), window, cx))
         .on_mouse_down(MouseButton::Left, listener)
 }
 
@@ -158,7 +159,7 @@ pub fn fold_button(
         .justify_center()
         .hover(move |s| s.bg(bg_hover))
         .cursor(CursorStyle::PointingHand)
-        .tooltip(move |window, cx| build_tooltip(tip, window, cx))
+        .tooltip_above(move |window, cx| build_tooltip(tip, window, cx))
         .child(hover_icon(glyph, 14. * zoom, base_fg, hover_fg))
         .on_mouse_down(MouseButton::Left, listener)
 }
