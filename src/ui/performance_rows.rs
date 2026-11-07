@@ -1,41 +1,25 @@
-use gpui::{AnyElement, CursorStyle, FontWeight, IntoElement, MouseButton, ParentElement,
-    SharedString, Styled, div, prelude::*, px};
+use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px};
+use crate::{theme::{Theme, tr}, ui::{performance_treemap::{TreemapItem, format_bytes, format_percent}, smoke_overlay}};
 
-use crate::{theme::Theme, ui::{performance_treemap::{PerformanceSelect, TreemapItem, format_bytes, format_percent},
-    radius, smoke_overlay, tooltip}};
+thread_local! { static DETAIL: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) }; }
+
+pub(crate) fn smoke_detail() -> String { DETAIL.with(|detail| detail.borrow().clone()) }
 
 pub fn metric(label: impl Into<SharedString>, value: impl Into<SharedString>) -> AnyElement {
     let theme = Theme::ocean();
-    div().flex().items_center().gap(px(5.)).text_size(px(14.))
+    div().flex().items_center().gap(px(4.)).text_size(px(13.))
         .child(div().text_color(theme.text_secondary).child(label.into()))
         .child(div().text_color(theme.text).child(value.into())).into_any_element()
 }
 
-pub fn detail_row(id: &str, item: &TreemapItem, total_bytes: u64, selected: bool,
-    on_select: PerformanceSelect) -> AnyElement {
+pub fn selection_detail(items: &[TreemapItem], selected: Option<&str>, total: u128) -> AnyElement {
     let theme = Theme::ocean();
-    let target = SharedString::from(format!("{id}-row-{}", item.id));
-    let hover_id = item.id.clone();
-    let click_id = item.id.clone();
-    let on_hover = on_select.clone();
-    let percent = format_percent(item.bytes, total_bytes as u128);
-    let tip = format!("{} · {} B · {} · {}", item.label, item.bytes, percent, item.detail);
-    div().id(target.clone()).relative().children(smoke_overlay::probe(target))
-        .w_full().h(px(32.)).flex_none().px(px(8.)).rounded(radius::CONTROL)
-        .flex().items_center().gap(px(10.)).text_size(px(14.)).text_color(theme.text)
-        .bg(if selected { theme.selected } else { gpui::transparent_black() })
-        .cursor(CursorStyle::PointingHand).hover(move |row| row.bg(theme.hover))
-        .tooltip(tooltip::tooltip(tip))
-        .on_hover(move |hovered, window, cx| {
-            if *hovered { on_hover(&hover_id, window, cx); }
-        })
-        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-            on_select(&click_id, window, cx);
-        })
-        .child(div().size(px(8.)).flex_none().rounded(px(2.)).bg(item.color))
-        .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-            .font_weight(FontWeight(460.)).child(item.label.clone()))
-        .child(div().w(px(76.)).flex_none().text_right().child(format_bytes(item.bytes)))
-        .child(div().w(px(64.)).flex_none().text_right().text_color(theme.text_secondary).child(percent))
-        .into_any_element()
+    let text = items.iter().find(|item| selected == Some(item.id.as_str())).map(|item| {
+        format!("{} · {} · {} · {}", item.label, format_bytes(item.bytes), format_percent(item.bytes, total), item.detail)
+    }).unwrap_or_else(|| tr("悬停或点击方块查看详情", "Hover or click a tile for details").to_owned());
+    if smoke_overlay::is_smoke_active() { DETAIL.with(|detail| *detail.borrow_mut() = text.clone()); }
+    div().id("performance-selection-detail").relative().children(smoke_overlay::probe("performance-selection-detail"))
+        .children(selected.and_then(|id| smoke_overlay::probe(format!("performance-detail-{id}"))))
+        .h(px(24.)).w_full().overflow_hidden().whitespace_nowrap().text_ellipsis()
+        .text_size(px(12.)).text_color(theme.text_secondary).child(text).into_any_element()
 }
