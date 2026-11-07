@@ -39,12 +39,40 @@ pub(crate) fn diff(conv: u64, at: usize, page: &str, before: &str, after: &str) 
         if selection.lines.is_none() || selection.before != before || selection.after != after {
             *selection = Selection { before: before.to_owned(), after: after.to_owned(), excluded: HashSet::new(), lines: Some(lines(before, after)) };
         }
+        let raw = selection.lines.as_ref().expect("initialized").as_ref().map_err(Clone::clone)?;
+        let mut groups = vec![0usize; raw.len()];
         let mut previous: Option<(i8, bool, usize)> = None;
-        Ok(selection.lines.as_ref().expect("initialized").as_ref().map_err(Clone::clone)?.iter().enumerate().map(|(index, (change, text))| {
-            let ordinary = !text.trim().is_empty() && !text.trim_start().starts_with('|');
-            let selection_index = previous.filter(|(last_change, last_ordinary, _)| *change != 0 && *last_change == *change && *last_ordinary && ordinary)
-                .map_or(index, |(_, _, group)| group);
-            previous = Some((*change, ordinary, selection_index));
+        for (index, (change, text)) in raw.iter().enumerate() {
+            let trimmed = text.trim();
+            if *change == 0 {
+                previous = None;
+                groups[index] = index;
+            } else if trimmed.is_empty() {
+                groups[index] = previous.filter(|(last_change, _, _)| *last_change == *change).map_or(index, |(_, _, group)| group);
+            } else {
+                let ordinary = !trimmed.starts_with('|');
+                let group = previous.filter(|(last_change, last_ordinary, _)| *last_change == *change && *last_ordinary && ordinary)
+                    .map_or(index, |(_, _, group)| group);
+                groups[index] = group;
+                previous = Some((*change, ordinary, group));
+            }
+        }
+        let mut next_group: Option<(i8, usize)> = None;
+        for index in (0..raw.len()).rev() {
+            let (change, text) = &raw[index];
+            if *change == 0 {
+                next_group = None;
+            } else if text.trim().is_empty() {
+                if groups[index] == index && let Some((next_change, group)) = next_group.filter(|(c, _)| *c == *change) {
+                    let _ = next_change;
+                    groups[index] = group;
+                }
+            } else {
+                next_group = Some((*change, groups[index]));
+            }
+        }
+        Ok(raw.iter().enumerate().map(|(index, (change, text))| {
+            let selection_index = groups[index];
             DiffLine { text: text.clone(), change: *change, index, selection_index, included: !selection.excluded.contains(&selection_index) }
         }).collect())
     })
