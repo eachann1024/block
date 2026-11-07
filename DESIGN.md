@@ -1,3 +1,4 @@
+
 # Block 设计语言与配色规范（Ocean Paper）
 
 > 内容优先、紧凑克制、严格对齐、精准轮廓、全局一致。本文是 Block（<code>thinkly&#45;fast</code>&#32;桌面端 GPUI 实现与&#32;<code>designs&#47;thinkly&#45;fast&#45;styles</code>&#32;画板）的强制视觉与交互基线，与&#32;<code>src&#47;theme&#46;rs</code>&#32;完全对齐。
@@ -68,4 +69,4 @@
 - <strong>强调点睛笔触</strong>：<code>&#35;547dd0</code>（深色&#32;<code>&#35;779de8</code>），用于指示箭头、加号、光标或状态焦点。
 
 
-&#47;
+
