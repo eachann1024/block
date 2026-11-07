@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { DELTA_ASSETS, INSTALLERS } from "./checksum.mjs";
+import { assertReleaseAsset, RELEASE_ASSETS } from "./checksum.mjs";
 import {
   getReleases,
   gh,
@@ -64,8 +64,16 @@ export async function publishRelease() {
   assert.equal(tag, `v${version}`);
   assert.notEqual(tag, "v0.1.0");
 
-  const presentDelta = DELTA_ASSETS.filter((name) => existsSync(join(RELEASE_DIR, name)));
-  const assets = [...INSTALLERS, ...presentDelta, "SHA256SUMS.txt"];
+  for (const name of readdirSync(RELEASE_DIR)) {
+    if (!RELEASE_ASSETS.includes(name)) {
+      console.log(`Skipping ${name}`);
+      rmSync(join(RELEASE_DIR, name), { force: true });
+    }
+  }
+  const assets = RELEASE_ASSETS.filter((name) => {
+    assertReleaseAsset(name);
+    return true;
+  });
   const assetPaths = assets.map((name) => {
     const p = join(RELEASE_DIR, name);
     assert.ok(existsSync(p), `Missing release asset: ${p}`);

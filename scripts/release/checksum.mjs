@@ -15,14 +15,13 @@ export const INSTALLERS = [
   "block-linux-arm64.rpm",
 ];
 
-export const DELTA_ASSETS = [
-  "block-macos-arm64.bin.gz",
-  "block-macos-x64.bin.gz",
-  "block-windows-x64.exe.gz",
-  "block-windows-arm64.exe.gz",
-  "block-linux-x64.bin.gz",
-  "block-linux-arm64.bin.gz",
-];
+export const RELEASE_ASSETS = [...INSTALLERS, "SHA256SUMS.txt"];
+
+export function assertReleaseAsset(name) {
+  if (!RELEASE_ASSETS.includes(name)) {
+    throw new Error(`Refusing to upload ${name}; it is not on the release allowlist`);
+  }
+}
 
 export function sha256File(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
