@@ -293,5 +293,18 @@ fn write_state_at(path: &Path, state: &State) -> io::Result<()> {
         fs::File::open(parent)?.sync_all()
     })();
     if result.is_err() { let _ = fs::remove_file(&temp); }
+    if let Ok(entries) = fs::read_dir(parent) {
+        let now = std::time::SystemTime::now();
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let s = name.to_string_lossy();
+            if s.starts_with(".state-") && s.ends_with(".tmp") {
+                let stale = entry.metadata().ok().and_then(|m| m.modified().ok())
+                    .and_then(|t| now.duration_since(t).ok())
+                    .is_some_and(|age| age.as_secs() > 60);
+                if stale { let _ = fs::remove_file(entry.path()); }
+            }
+        }
+    }
     result
 }
