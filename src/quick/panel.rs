@@ -43,17 +43,6 @@ fn app_windows(app: cocoa::base::id) -> cocoa::base::id {
 
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
-pub(crate) unsafe fn is_main_window(win: cocoa::base::id) -> bool {
-    use cocoa::base::{BOOL, SEL, YES, id, selector};
-    unsafe extern "C" { fn objc_msgSend(); fn objc_getClass(name: *const std::ffi::c_char) -> id; }
-    unsafe {
-        let kind: unsafe extern "C" fn(id, SEL, id) -> BOOL = std::mem::transmute(objc_msgSend as *const ());
-        kind(win, selector("isKindOfClass:"), objc_getClass(c"GPUIWindow".as_ptr())) == YES
-    }
-}
-
-#[cfg(target_os = "macos")]
-#[allow(deprecated)]
 pub(crate) unsafe fn is_quick_panel(win: cocoa::base::id) -> bool {
     use cocoa::base::{BOOL, SEL, YES, id, selector};
     unsafe extern "C" { fn objc_msgSend(); fn objc_getClass(name: *const std::ffi::c_char) -> id; }
@@ -66,39 +55,7 @@ pub(crate) unsafe fn is_quick_panel(win: cocoa::base::id) -> bool {
 
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
-pub(super) fn prepare_quick_summon() {
-    if crate::smoke::is_worker() { return; }
-    use cocoa::appkit::{NSApplication, NSWindow};
-    use cocoa::base::{BOOL, SEL, YES, id, nil, selector};
-    use cocoa::foundation::NSArray;
-    unsafe extern "C" {
-        fn objc_msgSend();
-    }
-    unsafe {
-        let app = NSApplication::sharedApplication(nil);
-        let is_hidden: unsafe extern "C" fn(id, SEL) -> BOOL = std::mem::transmute(objc_msgSend as *const ());
-        if is_hidden(app, selector("isHidden")) == YES {
-            let windows = app_windows(app);
-            for i in 0..NSArray::count(windows) {
-                let win = NSArray::objectAtIndex(windows, i);
-                if is_main_window(win) {
-                    NSWindow::orderOut_(win, nil);
-                }
-            }
-            let unhide: unsafe extern "C" fn(id, SEL) = std::mem::transmute(objc_msgSend as *const ());
-            unhide(app, selector("unhideWithoutActivation"));
-        }
-    }
-}
-
-/// Windows and Linux have no non-activating panel: the quick note stays a normal GPUI popup.
-#[cfg(not(target_os = "macos"))]
-pub(super) fn prepare_quick_summon() {}
-
-#[cfg(target_os = "macos")]
-#[allow(deprecated)]
 pub(super) fn configure_quick_panel() {
-    if crate::smoke::is_worker() { return; }
     use cocoa::appkit::{NSApplication, NSPanel, NSWindow};
     use cocoa::base::{NO, SEL, YES, id, nil, selector};
     use cocoa::foundation::NSArray;
@@ -115,8 +72,9 @@ pub(super) fn configure_quick_panel() {
                 NSPanel::setFloatingPanel(win, YES);
                 NSPanel::setBecomesKeyOnlyIfNeeded(win, NO);
                 super::ime_bridge::install_ime_bridge(win as *mut std::ffi::c_void);
+                crate::window_visibility::prepare_background_window(win);
                 send_void(win, selector("orderFrontRegardless"));
-                NSWindow::makeKeyAndOrderFront_(win, nil);
+                if !crate::smoke::is_worker() { NSWindow::makeKeyAndOrderFront_(win, nil); }
             }
         }
     }
@@ -128,7 +86,6 @@ pub(super) fn configure_quick_panel() {}
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
 pub(crate) fn order_out_quick_panel() {
-    if crate::smoke::is_worker() { return; }
     use cocoa::appkit::{NSApplication, NSWindow};
     use cocoa::base::{SEL, id, nil, selector};
     use cocoa::foundation::NSArray;
@@ -153,7 +110,6 @@ pub(crate) fn order_out_quick_panel() {}
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
 pub(crate) fn is_quick_panel_active() -> bool {
-    if crate::smoke::is_worker() { return false; }
     use cocoa::{appkit::NSApplication, base::{BOOL, SEL, YES, id, nil, selector}, foundation::NSArray};
     unsafe extern "C" { fn objc_msgSend(); }
     unsafe {
@@ -172,7 +128,6 @@ pub(crate) fn is_quick_panel_active() -> bool { false }
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
 pub(crate) fn is_quick_panel_visible() -> bool {
-    if crate::smoke::is_worker() { return false; }
     use cocoa::{appkit::NSApplication, base::{BOOL, SEL, YES, id, nil, selector}, foundation::NSArray};
     unsafe extern "C" { fn objc_msgSend(); }
     unsafe {
@@ -187,63 +142,6 @@ pub(crate) fn is_quick_panel_visible() -> bool {
 
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn is_quick_panel_visible() -> bool { false }
-
-#[cfg(target_os = "macos")]
-#[allow(deprecated)]
-pub(crate) fn is_main_window_visible() -> bool {
-    if crate::smoke::is_worker() { return true; }
-    use cocoa::{appkit::NSApplication, base::{BOOL, SEL, YES, id, nil, selector}, foundation::NSArray};
-    unsafe extern "C" { fn objc_msgSend(); }
-    unsafe {
-        let app = NSApplication::sharedApplication(nil);
-        let flag: unsafe extern "C" fn(id, SEL) -> BOOL = std::mem::transmute(objc_msgSend as *const ());
-        if flag(app, selector("isHidden")) == YES { return false; }
-        let windows = app_windows(app);
-        (0..NSArray::count(windows)).any(|i| {
-            let win = NSArray::objectAtIndex(windows, i);
-            is_main_window(win) && (flag(win, selector("isVisible")) == YES || flag(win, selector("isMiniaturized")) == YES)
-        })
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub(crate) fn is_main_window_visible() -> bool { true }
-
-#[cfg(target_os = "macos")]
-#[allow(deprecated)]
-pub(crate) fn show_native_main_window() {
-    if crate::smoke::is_worker() { return; }
-    order_out_quick_panel();
-    use cocoa::{appkit::{NSApplication, NSWindow}, base::{BOOL, SEL, YES, id, nil, selector}, foundation::NSArray};
-    unsafe extern "C" { fn objc_msgSend(); }
-    unsafe {
-        let app = NSApplication::sharedApplication(nil);
-        let flag: unsafe extern "C" fn(id, SEL) -> BOOL = std::mem::transmute(objc_msgSend as *const ());
-        if flag(app, selector("isHidden")) == YES {
-            let unhide: unsafe extern "C" fn(id, SEL, id) = std::mem::transmute(objc_msgSend as *const ());
-            unhide(app, selector("unhide:"), nil);
-        }
-        let set_bool: unsafe extern "C" fn(id, SEL, BOOL) = std::mem::transmute(objc_msgSend as *const ());
-        set_bool(app, selector("activateIgnoringOtherApps:"), YES);
-        let send_void: unsafe extern "C" fn(id, SEL) = std::mem::transmute(objc_msgSend as *const ());
-        let send_id: unsafe extern "C" fn(id, SEL) -> id = std::mem::transmute(objc_msgSend as *const ());
-        let windows = app_windows(app);
-        for i in 0..NSArray::count(windows) {
-            let win = NSArray::objectAtIndex(windows, i);
-            if is_main_window(win) {
-                if flag(win, selector("isMiniaturized")) == YES { NSWindow::deminiaturize_(win, nil); }
-                let content = send_id(win, selector("contentView"));
-                if content != nil { set_bool(content, selector("setNeedsDisplay:"), YES); }
-                send_void(win, selector("orderFrontRegardless"));
-                send_void(win, selector("makeMainWindow"));
-                NSWindow::makeKeyAndOrderFront_(win, nil);
-            }
-        }
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub(crate) fn show_native_main_window() {}
 
 pub fn parse_hotkey(spec: &str) -> Option<HotKey> {
     let mut mods = Modifiers::empty();
