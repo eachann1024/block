@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { appName, run, verifySignature } from "../app-bundle.mjs";
 import { buildApp } from "../build-app.mjs";
+import { installerFor } from "./allowed-assets.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
-const DMG_NAME = process.env.BLOCK_DMG_NAME
-  || (process.arch === "arm64" ? "block-macos-arm64.dmg" : "block-macos-x64.dmg");
+const DMG_NAME = installerFor({ platform: "macos", arch: process.env.BLOCK_ARCH || process.arch, kind: "dmg" });
 
 function createDmgWithRetry(stageDir, outDmg) {
   let lastError;

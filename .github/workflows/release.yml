@@ -1,3 +1,6 @@
+# 不要往 GitHub Release 添加允许名单以外的附件。唯一名单是 scripts/release/allowed-assets.mjs。
+# Do not add GitHub Release assets beyond the allowlist. The only list is scripts/release/allowed-assets.mjs.
+
 name: Daily Release
 
 on:
@@ -107,15 +110,19 @@ jobs:
       - name: Build release .app and DMG
         env:
           CARGO_BUILD_TARGET: ${{ matrix.target }}
-          BLOCK_DMG_NAME: block-macos-${{ matrix.arch }}.dmg
+          BLOCK_ARCH: ${{ matrix.arch }}
           MACOSX_DEPLOYMENT_TARGET: "12.0"
         run: |
           export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
           bun scripts/release/package-release.mjs
+      - name: Resolve allowlisted macOS installer
+        id: installer
+        shell: bash
+        run: echo "name=$(node scripts/release/allowed-assets.mjs macos ${{ matrix.arch }} dmg)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: block-installer-macos-${{ matrix.arch }}
-          path: dist/release/block-macos-${{ matrix.arch }}.dmg
+          path: dist/release/${{ steps.installer.outputs.name }}
           if-no-files-found: error
           retention-days: 14
 
@@ -158,11 +165,17 @@ jobs:
           choco install nsis --version=3.13.0 -y --no-progress
           Add-Content -Path $env:GITHUB_PATH -Value "${env:ProgramFiles(x86)}\NSIS"
       - name: Build NSIS installer
+        env:
+          BLOCK_ARCH: ${{ matrix.arch }}
         run: node scripts/release/package-windows.mjs
+      - name: Resolve allowlisted Windows installer
+        id: installer
+        shell: bash
+        run: echo "name=$(node scripts/release/allowed-assets.mjs windows ${{ matrix.arch }} exe)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: block-installer-windows-${{ matrix.arch }}
-          path: dist/release/block-windows-${{ matrix.arch }}-setup.exe
+          path: dist/release/${{ steps.installer.outputs.name }}
           if-no-files-found: error
           retention-days: 14
 
@@ -219,16 +232,27 @@ jobs:
           echo "APPIMAGETOOL=$RUNNER_TEMP/appimagetool" >> "$GITHUB_ENV"
           echo "APPIMAGE_ARCH=${{ matrix.appimage_arch }}" >> "$GITHUB_ENV"
       - name: Build AppImage, deb, and rpm
+        env:
+          BLOCK_ARCH: ${{ matrix.arch }}
         run: |
           node scripts/release/package-linux.mjs
           node scripts/release/package-native.mjs
+      - name: Resolve allowlisted Linux installers
+        id: installer
+        shell: bash
+        run: |
+          {
+            echo "app=$(node scripts/release/allowed-assets.mjs linux ${{ matrix.arch }} AppImage)"
+            echo "deb=$(node scripts/release/allowed-assets.mjs linux ${{ matrix.arch }} deb)"
+            echo "rpm=$(node scripts/release/allowed-assets.mjs linux ${{ matrix.arch }} rpm)"
+          } >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: block-installer-linux-${{ matrix.arch }}
           path: |
-            dist/release/block-linux-${{ matrix.arch }}.AppImage
-            dist/release/block-linux-${{ matrix.arch }}.deb
-            dist/release/block-linux-${{ matrix.arch }}.rpm
+            dist/release/${{ steps.installer.outputs.app }}
+            dist/release/${{ steps.installer.outputs.deb }}
+            dist/release/${{ steps.installer.outputs.rpm }}
           if-no-files-found: error
           retention-days: 14
 
@@ -276,3 +300,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: node scripts/release/publish-release.mjs
+      - name: Prune and verify release assets
+        if: needs.prepare.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: node scripts/release/prune-release-assets.mjs
