@@ -42,6 +42,19 @@ pub(super) struct Conv {
     #[serde(default)] pub native_session_id: Option<String>,
 }
 
+pub(super) enum PendingQuestionSource {
+    Builtin { call_id: String, step: usize },
+    ExternalTool { responder: super::backend::ToolResponder },
+    ExternalControl,
+}
+
+pub(super) struct PendingQuestion {
+    pub request_id: String,
+    pub questions: Vec<crate::ui::ai_approval::ApprovalQuestion>,
+    pub state: std::rc::Rc<std::cell::RefCell<crate::ui::ai_approval::ApprovalState>>,
+    pub source: PendingQuestionSource,
+}
+
 pub(crate) struct AiChat {
     pub(super) convs: Vec<Conv>,
     pub(super) current: Option<u64>, pub(super) tab_drafts: std::collections::HashMap<Option<u64>, (String, Vec<String>, Vec<String>, Option<SentDraft>)>,
@@ -59,6 +72,7 @@ pub(crate) struct AiChat {
     pub(super) retry_draft: Option<SentDraft>,
     pub(super) selection_scope: bool,
     pub(super) pending_approval: Option<(String, String, String)>, pub(super) approval_state: Option<(String, std::rc::Rc<std::cell::RefCell<crate::ui::ai_approval::ApprovalState>>)>,
+    pub(super) pending_question: Option<PendingQuestion>,
     pub(super) backend_statuses: Vec<(super::backend::BackendKind, super::backend::BackendStatus)>,
     pub(super) model_cache: Vec<(super::backend::BackendKind, chat_models::ModelStatus, Vec<super::backend::ModelOption>)>,
     pub(super) serial: u64,
@@ -129,6 +143,15 @@ pub(crate) fn sync_settings(cx: &mut App) {
     });
 }
 
+pub(crate) fn hide(cx: &mut App) {
+    let Some(entity) = panel(cx) else { return };
+    entity.update(cx, |this, cx| {
+        chat_dictation::stop_for_input(&this.input);
+        this.open = false; this.fullscreen = false; this.resizing = None;
+        cx.notify();
+    });
+}
+
 pub(crate) fn toggle(editor: WeakEntity<Editor>, window: &mut Window, cx: &mut App) {
     let c = chat(window, cx);
     c.update(cx, |this, cx| {
@@ -168,7 +191,7 @@ impl AiChat {
         let current = active.conversation.filter(|id| convs.iter().any(|conversation| conversation.id == *id));
         let mut chat = AiChat { panel_width: chat_resize::load_width(), resizing: None, convs, current, tab_drafts: Default::default(), input, refs: active.refs, skills: active.skills, partial: String::new(), streaming: None,
             backend_config: super::backend::BackendConfig::load(), backend_runtime: Default::default(), active_external: None, external_tools: None,
-            sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: active.retry.filter(|draft| Some(draft.conversation) == current), selection_scope: false, pending_approval: None, approval_state: None,
+            sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: active.retry.filter(|draft| Some(draft.conversation) == current), selection_scope: false, pending_approval: None, approval_state: None, pending_question: None,
             backend_statuses: vec![(super::backend::BackendKind::Builtin, super::backend::BackendStatus::Ready { version: "Block".into() })],
             model_cache: Vec::new(), serial: 0, error: None,
             error_settings: false, picker_cache: Default::default(), pick_index: 0, picker_dismissed: false, history: false, open: false, fullscreen: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), deck_scroll: ScrollHandle::new(), _sub: sub };
@@ -187,7 +210,7 @@ impl AiChat {
     pub(super) fn conv(&self) -> Option<&Conv> { self.current.and_then(|id| self.convs.iter().find(|c| c.id == id)) }
     pub(super) fn stop(&mut self) {
         chat_dictation::stop_for_input(&self.input);
-        if self.streaming.is_some() { super::chat_process::record_outcome(self, "stopped"); }
+        if self.streaming.is_some() || self.pending_question.is_some() { super::chat_process::record_outcome(self, "stopped"); }
         self.sent_draft = None;
         if let Some(tools) = self.external_tools.take() { tools.cancel(); }
         if let Some((conversation, turn)) = self.active_external.take() {
@@ -195,6 +218,7 @@ impl AiChat {
             let _ = self.backend_runtime.finish(&conversation, &turn);
         }
         self.pending_approval = None;
+        self.pending_question = None;
         if let Some((_, cancel)) = self.streaming.take() { cancel.store(true, Ordering::Relaxed); }
         self.serial += 1;
         let partial = std::mem::take(&mut self.partial);

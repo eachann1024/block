@@ -16,7 +16,7 @@ use super::view::{LogicalLineEnd, LogicalLineStart};
 
 pub fn bind_keys(cx: &mut App) {
     super::ai::bind_keys(cx);
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind_editor(cx, [
         KeyBinding::new("left", Left, Some("Editor")),
         KeyBinding::new("right", Right, Some("Editor")),
         KeyBinding::new("shift-left", SelectLeft, Some("Editor")),
@@ -97,7 +97,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("alt-cmd-m", Annotate, Some("Editor")),
     ]);
     #[cfg(any(target_os = "macos", target_family = "wasm"))]
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind_editor(cx, [
         KeyBinding::new("cmd-left", LineStart, Some("Editor")),
         KeyBinding::new("cmd-right", LineEnd, Some("Editor")),
         KeyBinding::new("cmd-shift-left", SelectLineStart, Some("Editor")),
@@ -115,7 +115,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-k", DeleteLineRight, Some("Editor")),
     ]);
     #[cfg(not(target_os = "macos"))]
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind_editor(cx, [
         KeyBinding::new("ctrl-left", WordLeft, Some("Editor")),
         KeyBinding::new("ctrl-right", WordRight, Some("Editor")),
         KeyBinding::new("ctrl-shift-left", SelectWordLeft, Some("Editor")),
@@ -157,7 +157,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-alt-t", ToggleFold, Some("Editor")),
     ]);
     #[cfg(not(any(target_os = "macos", target_family = "wasm")))]
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind_editor(cx, [
         KeyBinding::new("ctrl-a", SelectAll, Some("Editor")),
         KeyBinding::new("ctrl-e", Code, Some("Editor")),
         KeyBinding::new("ctrl-u", Underline, Some("Editor")),
@@ -166,7 +166,7 @@ pub fn bind_keys(cx: &mut App) {
     // macOS browsers report the Option-composed character as `event.key`, so the
     // Option shortcuts are bound to those glyphs too.
     #[cfg(target_family = "wasm")]
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind_editor(cx, [
         KeyBinding::new("cmd-alt-º", SetParagraph, Some("Editor")),
         KeyBinding::new("cmd-alt-¡", SetH1, Some("Editor")),
         KeyBinding::new("cmd-alt-™", SetH2, Some("Editor")),

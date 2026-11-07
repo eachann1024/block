@@ -1,8 +1,9 @@
 use std::time::{Duration, Instant};
-
-use gpui::{Animation, AnimationExt, AnyElement, FontWeight, IntoElement, SharedString, div, prelude::*, px};
-
-use crate::icons::{Icon, icon};
+use gpui::{
+    Animation, AnimationExt, AnyElement, FontWeight, Hsla, IntoElement, SharedString, div,
+    prelude::*, px, rgb, rgba, svg,
+};
+use crate::{icons::{Icon, IconColors, icon}, theme::is_dark};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TaskStatus { Running, Completed, Failed, Stopped, Unknown }
@@ -13,11 +14,46 @@ pub enum LoaderPattern { #[default] Drive, Orbit }
 #[derive(Clone, Copy, Debug)]
 pub enum ProcessElapsed { Running(Instant), Finished(Duration) }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ProcessStepIcon { #[default] Think, Write, Run, Read }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum DetailTone { #[default] Neutral, Add, Del }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProcessDetailLine { pub text: String, pub tone: DetailTone }
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ProcessStepMeta {
+    pub icon: ProcessStepIcon,
+    pub mono: bool,
+    pub detail_mono: bool,
+    pub lines: Vec<ProcessDetailLine>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ProcessDiffChip {
+    pub file: String,
+    pub add: usize,
+    pub del: usize,
+    pub lines: Vec<ProcessDetailLine>,
+}
+
 impl ProcessElapsed {
     fn duration(self) -> Duration {
         match self { Self::Running(start) => start.elapsed(), Self::Finished(duration) => duration }
     }
 }
+
+pub fn ink_3() -> Hsla {
+    let mut color = super::ai_theme::theme().text_secondary;
+    color.a = 0.78;
+    color
+}
+pub fn diff_green() -> Hsla { if is_dark() { rgb(0x4ade80).into() } else { rgb(0x16a34a).into() } }
+pub fn diff_red() -> Hsla { if is_dark() { rgb(0xf87171).into() } else { rgb(0xdc2626).into() } }
+pub fn green_tint() -> Hsla { if is_dark() { rgba(0x4ade8022).into() } else { rgba(0x16a34a16).into() } }
+pub fn red_tint() -> Hsla { if is_dark() { rgba(0xf8717122).into() } else { rgba(0xdc262616).into() } }
 
 fn elapsed_label(duration: Duration) -> String {
     let tenths = duration.as_millis() / 100;
@@ -82,10 +118,74 @@ pub fn status_icon_with_pattern(key: &str, status: TaskStatus, pattern: LoaderPa
     grid.into_any_element()
 }
 
-pub fn tool_chip(detail: &str) -> AnyElement {
+fn step_glyph(kind: ProcessStepIcon, color: Hsla) -> AnyElement {
     let theme = super::ai_theme::theme();
-    div().min_w_0().px(px(6.)).h(px(22.)).rounded(px(5.))
-        .border_1().border_color(theme.hairline).bg(theme.hover).flex().items_center()
+    match kind {
+        ProcessStepIcon::Think => svg().path("icons/sparkles.fill.svg").size(px(14.)).text_color(color).into_any_element(),
+        ProcessStepIcon::Write => icon(Icon::Pencil, px(13.5), theme.mono_icon_colors(color)).into_any_element(),
+        ProcessStepIcon::Run => icon(Icon::LangBash, px(13.5), theme.mono_icon_colors(color)).into_any_element(),
+        ProcessStepIcon::Read => icon(Icon::Note, px(13.5), IconColors { line: color, fill: gpui::transparent_black(), accent: color }).into_any_element(),
+    }
+}
+
+pub fn row_icon_slot(
+    key: &str, row_group: &SharedString, kind: ProcessStepIcon,
+    status: TaskStatus, is_open: bool, expandable: bool,
+) -> AnyElement {
+    let theme = super::ai_theme::theme();
+    let color = ink_3();
+    if status == TaskStatus::Running {
+        return div().size(px(16.)).flex_none().flex().items_center().justify_center()
+            .child(status_icon(key, TaskStatus::Running)).into_any_element();
+    }
+    if is_open {
+        return div().size(px(16.)).flex_none().flex().items_center().justify_center()
+            .child(icon(Icon::TbChevron, px(12.), theme.mono_icon_colors(color))).into_any_element();
+    }
+    let base = div().size(px(16.)).flex().items_center().justify_center()
+        .when(expandable, |el| el.group_hover(row_group.clone(), |s| s.invisible()))
+        .child(step_glyph(kind, color));
+    if !expandable { return base.flex_none().into_any_element(); }
+    div().relative().size(px(16.)).flex_none().flex().items_center().justify_center()
+        .child(base)
+        .child(div().absolute().top_0().left_0().size(px(16.)).flex().items_center().justify_center()
+            .invisible().group_hover(row_group.clone(), |s| s.visible())
+            .child(icon(Icon::TbChevronRight, px(12.), theme.mono_icon_colors(color))))
+        .into_any_element()
+}
+
+pub fn tool_chip(detail: &str) -> AnyElement { inline_tool_chip(detail, true) }
+
+pub fn inline_tool_chip(detail: &str, mono: bool) -> AnyElement {
+    let theme = super::ai_theme::theme();
+    div().w_full().min_w_0().px(px(6.)).h(px(22.)).rounded(px(6.))
+        .border_1().border_color(theme.hairline).bg(theme.shell).hover(|s| s.bg(theme.hover))
+        .flex().items_center().overflow_hidden()
+        .when(mono, |el| el.font_family(crate::theme::mono_font_family()))
         .text_size(px(11.5)).font_weight(FontWeight(400.)).text_color(theme.text_secondary)
-        .child(detail.to_owned()).into_any_element()
+        .child(div().w_full().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(detail.to_owned()))
+        .into_any_element()
+}
+
+pub fn diff_preview_popover(chip: &ProcessDiffChip) -> AnyElement {
+    let (theme, green, red) = (super::ai_theme::theme(), diff_green(), diff_red());
+    div().w(px(288.)).overflow_hidden().rounded(px(10.)).border_1().border_color(theme.btn_border).bg(theme.paper).shadow_lg().flex().flex_col()
+        .child(div().flex().items_center().justify_between().gap(px(8.)).border_b_1().border_color(theme.hairline).px(px(10.)).py(px(6.))
+            .font_family(crate::theme::mono_font_family()).text_size(px(11.))
+            .child(div().min_w_0().flex_1().overflow_hidden().whitespace_nowrap().text_ellipsis().text_color(theme.text_secondary).child(chip.file.clone()))
+            .child(div().flex_none().flex().items_center().gap(px(4.))
+                .when(chip.add > 0, |el| el.child(div().text_color(green).child(format!("+{}", chip.add))))
+                .when(chip.del > 0, |el| el.child(div().text_color(red).child(format!("−{}", chip.del))))))
+        .child(div().py(px(4.)).font_family(crate::theme::mono_font_family()).text_size(px(11.)).line_height(px(19.8)).flex().flex_col()
+            .children(chip.lines.iter().map(|line| {
+                let (bg, fg, sign) = match line.tone {
+                    DetailTone::Add => (green_tint(), green, "+"),
+                    DetailTone::Del => (red_tint(), red, "−"),
+                    DetailTone::Neutral => (gpui::transparent_black(), theme.text_secondary, " "),
+                };
+                div().flex().items_center().gap(px(8.)).px(px(10.)).bg(bg).text_color(fg)
+                    .child(div().w(px(12.)).flex_none().child(sign))
+                    .child(div().min_w_0().flex_1().overflow_hidden().whitespace_nowrap().text_ellipsis().child(line.text.clone()))
+            })))
+        .into_any_element()
 }

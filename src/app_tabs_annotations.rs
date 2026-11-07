@@ -60,7 +60,7 @@ impl Workspace {
         );
         let ent = cx.entity();
         let ai_btn = crate::ui::ai_controls::titlebar_ai_button(crate::editor::ai::chat::is_open(cx), move |window, cx| {
-            ent.update(cx, |this, cx| { this.close_overlays(cx); clear_tab_menu(); crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); cx.notify(); });
+            ent.update(cx, |this, cx| { if this.settings.is_some() { return; } this.close_overlays(cx); clear_tab_menu(); crate::editor::ai::chat::toggle(this.editor.downgrade(), window, cx); if !crate::editor::ai::chat::is_open(cx) { this.restore_focus(window, cx); } cx.notify(); });
         });
         let mr = if cfg!(any(target_os = "macos", target_family = "wasm")) { 10. } else { 4. };
         let tools = div().h_full().flex().items_center().gap(px(4.)).mr(px(mr));

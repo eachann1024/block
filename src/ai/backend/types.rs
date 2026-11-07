@@ -72,7 +72,7 @@ impl BackendError {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum ApprovalResponse { AllowOnce, AllowSession, Deny, Cancel }
+pub(crate) enum ApprovalResponse { AllowOnce, AllowSession, Deny, Cancel, QuestionResponse(Value) }
 
 #[derive(Clone, Debug)]
 pub(crate) enum BackendEventKind {
@@ -81,6 +81,7 @@ pub(crate) enum BackendEventKind {
     PublicSummary(String),
     ToolActivity { name: String, detail: String },
     Approval { request_id: String, title: String, detail: String },
+    Questions { request_id: String, questions: Vec<crate::ui::ai_approval::ApprovalQuestion> },
     Session { native_session_id: String },
     Completed,
     Cancelled,

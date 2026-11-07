@@ -10,17 +10,6 @@ pub(crate) fn pill(id: impl Into<SharedString>, label: String, selected: bool,
         .text_size(px(14.)).child(label).on_mouse_down(MouseButton::Left, click)
 }
 
-pub(crate) fn followup_action(id: impl Into<SharedString>, label: String,
-    click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
-    let theme = crate::ui::ai_theme::theme(); let id = ElementId::from(id.into());
-    div().id(id.clone()).relative().children(smoke_overlay::probe_for(&id))
-        .flex().items_center().gap(px(8.)).px(px(6.)).py(px(6.)).rounded(px(7.))
-        .border_b_1().border_color(theme.hairline).hover(|style| style.bg(theme.hover))
-        .cursor(CursorStyle::PointingHand).text_size(px(12.5)).text_color(theme.text)
-        .child(icon(Icon::KeyReturn, px(11.), theme.mono_icon_colors(theme.text_secondary)))
-        .child(label).on_mouse_down(MouseButton::Left, click)
-}
-
 pub(crate) fn chat_plan_card(id: impl Into<SharedString>, title: String, badge: &'static str, note: String, pending: bool,
     open: Option<Box<dyn Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App)>>, actions: Vec<AnyElement>) -> impl IntoElement {
     let theme = crate::ui::ai_theme::theme();

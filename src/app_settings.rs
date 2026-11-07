@@ -104,6 +104,7 @@ impl Workspace {
 
     pub(crate) fn open_settings_tab(&mut self, tab: SettingsTab, window: &mut Window, cx: &mut Context<Self>) {
         if self.history_restore_busy { return; }
+        crate::editor::ai::chat::hide(cx);
         if self.is_history_open() || self.history_opening { self.close_page_history_focused(window, cx); }
         if let Some(m) = &mut self.settings {
             m.tab = tab;

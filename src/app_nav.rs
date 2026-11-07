@@ -105,12 +105,12 @@ impl NavHistory {
 }
 
 pub(crate) fn bind_keys(cx: &mut App) {
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind(cx, [
         KeyBinding::new("cmd-[", NavigateBack, Some("Workspace")),
         KeyBinding::new("cmd-]", NavigateForward, Some("Workspace")),
     ]);
     #[cfg(not(target_os = "macos"))]
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind(cx, [
         KeyBinding::new("alt-left", NavigateBack, Some("Workspace")),
         KeyBinding::new("alt-right", NavigateForward, Some("Workspace")),
     ]);
