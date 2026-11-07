@@ -1,5 +1,6 @@
 //! Table chrome controls: the row/column grip (tgrip) and the table options button (thandle).
 //! The add bars live in `reveal::table_add_bar`, which already carries the shared values.
+use crate::ui::tooltip::TooltipExt;
 use std::time::Duration;
 use gpui::{
     Animation, AnimationExt, CursorStyle, Div, Hsla, Pixels, SharedString, Stateful, div, prelude::*, px, rgb, rgba,
@@ -62,7 +63,7 @@ pub fn grip(id: (&'static str, usize), vertical: bool, expanded: bool, open: boo
     div().id(id).w(px(w + GRIP_PAD * 2. * zoom)).h(px(h + GRIP_PAD * 2. * zoom)).flex_none().flex().items_center().justify_center()
         .cursor(if dragging { CursorStyle::ClosedHand } else { CursorStyle::OpenHand })
         .child(shell)
-        .when(!dragging && !open, |el| el.tooltip(move |window, cx| build_tooltip(tip, window, cx)))
+        .when(!dragging && !open, |el| el.tooltip_above(move |window, cx| build_tooltip(tip, window, cx)))
 }
 
 /// Grab zone over a column boundary, as tall as the table: a col-resize cursor everywhere in it and a
@@ -94,5 +95,5 @@ pub fn thandle(open: bool, zoom: f32) -> Stateful<Div> {
         } else {
             hover_icon(Icon::More, 16. * zoom, base, hover)
         })
-        .when(!open, |el| el.tooltip(|window, cx| build_tooltip(tr("表格选项", "Table options"), window, cx)))
+        .when(!open, |el| el.tooltip_above(|window, cx| build_tooltip(tr("表格选项", "Table options"), window, cx)))
 }

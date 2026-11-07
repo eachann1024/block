@@ -1,23 +1,19 @@
 use gpui::{
     AnyElement, AnyView, App, Bounds, Context, ElementId, FontWeight, Hsla, IntoElement, Pixels,
-    Render, SharedString, Window, anchored, deferred, div, point, prelude::*, px, rgb, rgba,
+    Render, SharedString, Window, deferred, div, point, prelude::*, px, rgb, rgba,
     transparent_black,
 };
 use crate::icons::{Icon, IconColors, icon};
 use crate::theme::is_dark;
-use crate::ui::shortcut_label::{ShortcutStyle, measure_width, shortcut_label};
+use crate::ui::shortcut_label::{ShortcutStyle, shortcut_label};
 
 const TOOLTIP_HEIGHT: f32 = 30.;
 const TOOLTIP_PAD_X: f32 = 12.;
-const TOOLTIP_BORDER: f32 = 1.;
-const TOOLTIP_CHROME_W: f32 = TOOLTIP_PAD_X * 2. + TOOLTIP_BORDER * 2.;
 const TOOLTIP_FONT_SIZE: f32 = 13.;
 const TOOLTIP_LINE_HEIGHT: f32 = 18.;
 const TOOLTIP_ICON_SIZE: f32 = 14.;
 const TOOLTIP_ICON_GAP: f32 = 5.;
-const TOOLTIP_OFFSET_ABOVE: f32 = 36.;
 const TOOLTIP_OFFSET_BELOW: f32 = 6.;
-const TOOLTIP_WINDOW_MARGIN: f32 = 8.;
 
 fn tooltip_style(color: Hsla) -> ShortcutStyle {
     ShortcutStyle::ui(
@@ -97,25 +93,19 @@ pub fn anchored_tooltip_above_with_icon(
     id: impl Into<ElementId>,
     window: &Window,
 ) -> AnyElement {
-    let text: SharedString = text.into();
-    let style = tooltip_style(transparent_black());
-    let content_w = measure_width(text.as_ref(), &style, window)
-        + if lead_icon.is_some() {
-            px(TOOLTIP_ICON_SIZE + TOOLTIP_ICON_GAP)
-        } else {
-            px(0.)
-        };
-    let pill_w = content_w + px(TOOLTIP_CHROME_W);
-    let x = target.center().x - pill_w / 2.;
-    let above = target.top() - px(TOOLTIP_OFFSET_ABOVE);
-    let y = if above >= viewport_top { above } else { target.bottom() + px(TOOLTIP_OFFSET_BELOW) };
+    use crate::ui::placement::{AlignX, PlacementSpec, smart_anchored};
+    let viewport = Bounds::new(
+        point(px(0.), viewport_top.max(px(0.))),
+        gpui::size(window.viewport_size().width,
+            (window.viewport_size().height - viewport_top.max(px(0.))).max(px(0.))),
+    );
     deferred(
-        anchored()
-            .position(point(x, y))
-            .snap_to_window_with_margin(px(TOOLTIP_WINDOW_MARGIN))
+        smart_anchored(PlacementSpec::above(target)
+            .viewport(viewport)
+            .align_x(AlignX::Center)
+            .gap(px(TOOLTIP_OFFSET_BELOW)))
             .child(tooltip_pill_with_icon(lead_icon, text, id)),
-    )
-    .into_any_element()
+    ).into_any_element()
 }
 
 pub struct GlobalTooltip {
@@ -136,4 +126,38 @@ pub fn build_tooltip(text: impl Into<SharedString>, _window: &mut Window, cx: &m
 pub fn tooltip(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
     let text = text.into();
     move |window, cx| build_tooltip(text.clone(), window, cx)
+}
+
+/// Keeps GPUI's hover delay/dismissal while anchoring to the entire control.
+pub trait TooltipExt: StatefulInteractiveElement + ParentElement + Styled + Sized {
+    fn tooltip_above(self, build: impl Fn(&mut Window, &mut App) -> AnyView + 'static) -> Self {
+        let bounds = std::rc::Rc::new(std::cell::Cell::new(None));
+        let tracked = bounds.clone();
+        self.child(crate::ui::placement::track_bounds(tracked, false))
+            .tooltip(move |window, cx| {
+                let content = build(window, cx);
+                let bounds = bounds.clone();
+                cx.new(|_| PositionedTooltip { content, bounds }).into()
+            })
+    }
+}
+
+impl<T: StatefulInteractiveElement + ParentElement + Styled> TooltipExt for T {}
+
+struct PositionedTooltip {
+    content: AnyView,
+    bounds: std::rc::Rc<std::cell::Cell<Option<Bounds<Pixels>>>>,
+}
+
+impl Render for PositionedTooltip {
+    fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        use crate::ui::placement::{AlignX, PlacementSpec, smart_anchored};
+        let target = self.bounds.get().unwrap_or_else(|| {
+            Bounds::new(window.mouse_position(), gpui::size(px(0.), px(0.)))
+        });
+        smart_anchored(PlacementSpec::above(target)
+            .align_x(AlignX::Center)
+            .gap(px(TOOLTIP_OFFSET_BELOW)))
+            .child(self.content.clone())
+    }
 }

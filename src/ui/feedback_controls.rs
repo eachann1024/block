@@ -1,4 +1,5 @@
 //! Shared feedback titlebar trigger and feedback dialog control primitives.
+use crate::ui::tooltip::TooltipExt;
 use std::time::Duration;
 use gpui::{
     Animation, AnimationExt as _, App, AvailableSpace, CursorStyle, ElementId, FontWeight,
@@ -138,7 +139,7 @@ pub fn titlebar_feedback_button(
                 )
             });
         if !open {
-            btn = btn.tooltip(tooltip(tr("反馈", "Feedback")));
+            btn = btn.tooltip_above(tooltip(tr("反馈", "Feedback")));
         }
         if super::smoke_overlay::is_smoke_active() {
             super::smoke_overlay::record_bounds("titlebar-feedback", bounds);

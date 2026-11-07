@@ -1,4 +1,5 @@
 //! Compact text actions shared by banners, toasts, and confirm rows.
+use crate::ui::tooltip::TooltipExt;
 use gpui::{
     App, CursorStyle, ElementId, FontWeight, MouseButton, MouseDownEvent, SharedString, Stateful,
     Window, div, prelude::*, px,
@@ -28,7 +29,7 @@ pub fn accent_action(
         .justify_center()
         .text_size(px(14.))
         .font_weight(FontWeight(460.))
-        .tooltip(crate::theme::tooltip(hint))
+        .tooltip_above(crate::theme::tooltip(hint))
         .when(!enabled, |button| {
             button.bg(theme.accent.opacity(0.48)).text_color(gpui::white()).cursor(CursorStyle::Arrow)
         })

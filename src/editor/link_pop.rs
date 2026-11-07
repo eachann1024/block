@@ -1,5 +1,6 @@
 //! Link popover and hover tooltip (F-Inline): hover underlines the link and shows the shortcut
 //! tooltip above it; placing the caret inside a link opens the action pill below it.
+use crate::ui::tooltip::TooltipExt;
 use std::ops::Range;
 use gpui::{AnyElement, Bounds, ClipboardItem, Context, CursorStyle, Entity, MouseButton, Pixels, Point, Window, div, prelude::*, px, rgb};
 use crate::{icons::{Icon, stateful_icon}, theme::{Theme, tr}, ui::tooltip::anchored_tooltip_above};
@@ -138,7 +139,7 @@ impl Editor {
             .size(px(28.)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).cursor(CursorStyle::PointingHand)
             .hover(move |s| s.bg(rgb(tc.hover)))
             .child(stateful_icon(id, g, px(16.), false, theme.mono_icon_colors(rgb(tc.ink).into()), theme.icon_colors(rgb(tc.ink).into())))
-            .tooltip(crate::theme::tooltip(tip))
+            .tooltip_above(crate::theme::tooltip(tip))
             .on_mouse_down(MouseButton::Left, move |_, window, cx| { run(window, cx); cx.stop_propagation(); });
         let url_label = div().flex().items_center().text_size(px(13.)).whitespace_nowrap()
             .child(div().text_color(rgb(tc.ink)).child(origin.to_owned()))

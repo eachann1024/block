@@ -3,6 +3,7 @@
 //! - Dedicated top header bar above block text so controls never overlap text.
 //! - Clickable left icon & type badge (`提示 ▾`) opening a 5-state dropdown popover with backdrop.
 //! - Top-right quick actions (`切换类型`, `转为正文`) mounted after `BlockText` for reliable hit-testing.
+use crate::ui::tooltip::TooltipExt;
 use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, time::Duration};
 use gpui::{
     Bounds, ClipboardItem, Context, CursorStyle, Div, ElementId, Entity, Focusable, FontWeight, Hsla,
@@ -131,7 +132,7 @@ fn chip(id: ElementId, probe: &'static str, zoom: f32, st: CalloutStyle, label: 
         .flex().items_center().cursor(CursorStyle::PointingHand)
         .text_size(px(14. * zoom)).text_color(theme.text_secondary)
         .hover(move |s| s.bg(theme.hover).text_color(theme.text).border_color(st.accent))
-        .tooltip(tooltip(tip)).child(label)
+        .tooltip_above(tooltip(tip)).child(label)
 }
 
 /// Interactive header controls and 5-state type picker, mounted AFTER `BlockText`.
@@ -166,7 +167,7 @@ pub fn controls(
         .size(px(26. * zoom)).rounded(px(6. * zoom)).flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
         .when(open, |d| d.bg(theme.paper).border_1().border_color(st.accent))
         .hover(move |s| s.bg(theme.paper).border_1().border_color(st.border))
-        .tooltip(tooltip(tr("点击切换标注类型", "Click to switch callout type")))
+        .tooltip_above(tooltip(tr("点击切换标注类型", "Click to switch callout type")))
         .child(icon(Icon::Callout, px(17. * zoom), IconColors { line: st.accent, fill: st.icon_fill, accent: st.accent }))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, window, cx| {
             cx.stop_propagation(); toggle_menu(id, event.position); this.focus_handle(cx).focus(window, cx); cx.notify();
