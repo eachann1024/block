@@ -32,7 +32,7 @@ fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool, checked: 
 }
 
 pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<(u64, TableSel)>,
-    menu: Option<TableMenu>, drag: Option<TableDrag>, dims: (usize, usize), window: &Window) -> Vec<AnyElement> {
+    menu: Option<TableMenu>, drag: Option<TableDrag>, window: &Window) -> Vec<AnyElement> {
     let theme = Theme::ocean();
     let zoom = super::zoom::zoom_factor(false);
     let (gl, gs, gp) = (GRIP_LONG * zoom, GRIP_SHORT * zoom, GRIP_PAD * zoom);
@@ -178,33 +178,35 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
             out.push(floating(origin, div().w(size.width).h(size.height).rounded(px(2.)).bg(theme.accent)));
         }
     }
-    if let Some(menu) = menu.filter(|m| m.block == id) {
-        let items = menu_items(menu.sel, dims.0, dims.1);
-        let sel = menu.sel;
-        let fitted = table_layout::widths_of(editor.entity_id(), id).fit;
-        let width = if matches!(sel, TableSel::Row(_) | TableSel::Column(_)) { px(188.) } else { px(224.) };
-        let mut list = dropdown::shell("table-menu").w(width);
-        for (index, item) in items.into_iter().enumerate() {
-            match item {
-                None => list = list.child(dropdown::separator()),
-                Some(cmd) => {
-                    let disabled = cmd.disabled(dims.0, dims.1);
-                    let checked = cmd == TableCmd::FitWidth && fitted;
-                    let row = menu_item(("table-menu-item", index), cmd, disabled, checked);
-                    let row = if disabled {
-                        row
-                    } else {
-                        let menu_editor = editor.clone();
-                        row.on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                            menu_editor.update(cx, |this, cx| { this.table_command(id, sel, cmd, cx); window.focus(&this.focus, cx); });
-                            cx.stop_propagation();
-                        })
-                    };
-                    list = list.child(row);
-                }
+    out
+}
+
+pub(super) fn menu_popup(editor: Entity<Editor>, menu: TableMenu, phase: crate::ui::motion::PopupMotion, pop_gen: u64, dims: (usize, usize)) -> AnyElement {
+    let id = menu.block;
+    let items = menu_items(menu.sel, dims.0, dims.1);
+    let sel = menu.sel;
+    let fitted = table_layout::widths_of(editor.entity_id(), id).fit;
+    let width = if matches!(sel, TableSel::Row(_) | TableSel::Column(_)) { px(188.) } else { px(224.) };
+    let mut list = dropdown::shell("table-menu").w(width);
+    for (index, item) in items.into_iter().enumerate() {
+        match item {
+            None => list = list.child(dropdown::separator()),
+            Some(cmd) => {
+                let disabled = cmd.disabled(dims.0, dims.1);
+                let checked = cmd == TableCmd::FitWidth && fitted;
+                let row = menu_item(("table-menu-item", index), cmd, disabled, checked);
+                let row = if disabled {
+                    row
+                } else {
+                    let menu_editor = editor.clone();
+                    row.on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                        menu_editor.update(cx, |this, cx| { this.table_command(id, sel, cmd, cx); window.focus(&this.focus, cx); });
+                        cx.stop_propagation();
+                    })
+                };
+                list = list.child(row);
             }
         }
-        out.push(dropdown::deferred_popover_for(menu.spec, list, 2).into_any_element());
     }
-    out
+    dropdown::anchored_motion(("table-menu-pop", pop_gen), menu.spec, list, phase, 2)
 }

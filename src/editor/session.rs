@@ -4,7 +4,7 @@ use gpui::{Context, ListAlignment, ListState, Pixels, px};
 use super::{Doc, Editor, HistoryEntry, lifecycle::Pending, selection::Caret, storage::{self, Fingerprint, SaveDoc}};
 use crate::editor::surface::Surface;
 
-pub(super) struct TabSession {
+pub(in crate::editor) struct TabSession {
     pub doc: Doc,
     pub caret: Caret,
     pub list: ListState,

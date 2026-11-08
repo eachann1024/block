@@ -131,7 +131,7 @@ fn main() {
         editor::bind_keys(cx);
         quick::init(saved_quick_bounds, cx);
         menu_bar::init(cx);
-        let min_size = size(px(760.), px(480.));
+        let min_size = size(px(crate::ui::shell_layout::window_min_width()), px(480.));
         let (window_bounds, display_id) = window_bounds::resolve_window_bounds(
             saved_main_bounds,
             size(px(1100.), px(760.)),
@@ -146,7 +146,7 @@ fn main() {
                 titlebar: Some(TitlebarOptions {
                     title: Some("Block".into()),
                     appears_transparent: true,
-                    traffic_light_position: cfg!(target_os = "macos").then_some(point(px(16.), px(13.))),
+                    traffic_light_position: cfg!(target_os = "macos").then_some(point(px(crate::ui::window_controls::TRAFFIC_X), px(crate::ui::window_controls::TRAFFIC_Y))),
                     ..Default::default()
                 }),
                 // Initial launch only. A real native window is still created; reopen shows it.

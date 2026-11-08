@@ -1,21 +1,24 @@
 use std::time::{Duration, Instant};
 use gpui::{
     Animation, AnimationExt, AnyElement, FontWeight, Hsla, IntoElement, SharedString, div,
-    prelude::*, px, rgb, rgba, svg,
+    prelude::*, px, rgb, rgba,
 };
-use crate::{icons::{Icon, IconColors, icon}, theme::is_dark};
+use crate::{icons::{Icon, icon}, theme::is_dark};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TaskStatus { Running, Completed, Failed, Stopped, Unknown }
 
-#[derive(Clone, Copy, Debug, Default)]
-pub enum LoaderPattern { #[default] Drive, Orbit }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LoaderPattern { Drive, #[default] Orbit }
 
 #[derive(Clone, Copy, Debug)]
 pub enum ProcessElapsed { Running(Instant), Finished(Duration) }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ProcessStepIcon { #[default] Think, Write, Run, Read }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ThinkingVariant { #[default] Steps, Reasoning, Search, Coding }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum DetailTone { #[default] Neutral, Add, Del }
@@ -26,8 +29,11 @@ pub struct ProcessDetailLine { pub text: String, pub tone: DetailTone }
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ProcessStepMeta {
     pub icon: ProcessStepIcon,
+    pub variant: ThinkingVariant,
     pub mono: bool,
     pub detail_mono: bool,
+    pub add: usize,
+    pub del: usize,
     pub lines: Vec<ProcessDetailLine>,
 }
 
@@ -54,6 +60,9 @@ pub fn diff_green() -> Hsla { if is_dark() { rgb(0x4ade80).into() } else { rgb(0
 pub fn diff_red() -> Hsla { if is_dark() { rgb(0xf87171).into() } else { rgb(0xdc2626).into() } }
 pub fn green_tint() -> Hsla { if is_dark() { rgba(0x4ade8022).into() } else { rgba(0x16a34a16).into() } }
 pub fn red_tint() -> Hsla { if is_dark() { rgba(0xf8717122).into() } else { rgba(0xdc262616).into() } }
+pub fn field_bg() -> Hsla { if is_dark() { rgba(0xffffff09).into() } else { rgba(0x00000007).into() } }
+pub fn field_border() -> Hsla { if is_dark() { rgba(0xffffff12).into() } else { rgba(0x0000000c).into() } }
+pub fn row_hover_bg() -> Hsla { if is_dark() { rgba(0xffffff0d).into() } else { rgba(0x0000000a).into() } }
 
 fn elapsed_label(duration: Duration) -> String {
     let tenths = duration.as_millis() / 100;
@@ -62,8 +71,7 @@ fn elapsed_label(duration: Duration) -> String {
 }
 
 pub fn elapsed(key: &str, value: ProcessElapsed) -> AnyElement {
-    let theme = super::ai_theme::theme();
-    let text = div().font_family(crate::theme::mono_font_family()).text_size(px(12.)).text_color(theme.text_secondary);
+    let text = div().font_family(crate::theme::mono_font_family()).text_size(px(12.)).text_color(ink_3());
     match value {
         ProcessElapsed::Finished(_) => text.child(elapsed_label(value.duration())).into_any_element(),
         ProcessElapsed::Running(_) => text.with_animation(
@@ -74,7 +82,7 @@ pub fn elapsed(key: &str, value: ProcessElapsed) -> AnyElement {
 }
 
 pub fn status_icon(key: &str, status: TaskStatus) -> AnyElement {
-    status_icon_with_pattern(key, status, LoaderPattern::Drive)
+    status_icon_with_pattern(key, status, LoaderPattern::Orbit)
 }
 
 pub fn status_icon_with_pattern(key: &str, status: TaskStatus, pattern: LoaderPattern) -> AnyElement {
@@ -84,9 +92,14 @@ pub fn status_icon_with_pattern(key: &str, status: TaskStatus, pattern: LoaderPa
             .child(div().size(px(4.)).rounded_full().bg(theme.text_secondary)).into_any_element();
     }
     if status != TaskStatus::Running {
-        let glyph = match status { TaskStatus::Completed => Icon::Sparkles, TaskStatus::Failed => Icon::Close,
-            TaskStatus::Stopped => Icon::Stop, TaskStatus::Running | TaskStatus::Unknown => unreachable!() };
-        return icon(glyph, px(14.), theme.mono_icon_colors(theme.text_secondary)).into_any_element();
+        let color = match status { TaskStatus::Failed => diff_red(), _ => ink_3() };
+        let glyph = match status {
+            TaskStatus::Completed => Icon::TbChevron,
+            TaskStatus::Failed => Icon::Close,
+            TaskStatus::Stopped => Icon::Stop,
+            _ => unreachable!(),
+        };
+        return icon(glyph, px(12.), theme.mono_icon_colors(color)).into_any_element();
     }
     let mut grid = div().w(px(15.)).h(px(15.)).flex().flex_col().gap(px(1.5));
     for row in 0..3 {
@@ -120,24 +133,21 @@ pub fn status_icon_with_pattern(key: &str, status: TaskStatus, pattern: LoaderPa
 
 fn step_glyph(kind: ProcessStepIcon, color: Hsla) -> AnyElement {
     let theme = super::ai_theme::theme();
-    match kind {
-        ProcessStepIcon::Think => svg().path("icons/sparkles.fill.svg").size(px(14.)).text_color(color).into_any_element(),
-        ProcessStepIcon::Write => icon(Icon::Pencil, px(13.5), theme.mono_icon_colors(color)).into_any_element(),
-        ProcessStepIcon::Run => icon(Icon::LangBash, px(13.5), theme.mono_icon_colors(color)).into_any_element(),
-        ProcessStepIcon::Read => icon(Icon::Note, px(13.5), IconColors { line: color, fill: gpui::transparent_black(), accent: color }).into_any_element(),
-    }
+    let glyph = match kind {
+        ProcessStepIcon::Think => Icon::ToolThink,
+        ProcessStepIcon::Write => Icon::ToolWrite,
+        ProcessStepIcon::Run => Icon::ToolRun,
+        ProcessStepIcon::Read => Icon::ToolRead,
+    };
+    icon(glyph, px(13.), theme.mono_icon_colors(color)).into_any_element()
 }
 
 pub fn row_icon_slot(
-    key: &str, row_group: &SharedString, kind: ProcessStepIcon,
-    status: TaskStatus, is_open: bool, expandable: bool,
+    _key: &str, row_group: &SharedString, kind: ProcessStepIcon,
+    _status: TaskStatus, is_open: bool, expandable: bool,
 ) -> AnyElement {
     let theme = super::ai_theme::theme();
     let color = ink_3();
-    if status == TaskStatus::Running {
-        return div().size(px(16.)).flex_none().flex().items_center().justify_center()
-            .child(status_icon(key, TaskStatus::Running)).into_any_element();
-    }
     if is_open {
         return div().size(px(16.)).flex_none().flex().items_center().justify_center()
             .child(icon(Icon::TbChevron, px(12.), theme.mono_icon_colors(color))).into_any_element();
@@ -159,7 +169,7 @@ pub fn tool_chip(detail: &str) -> AnyElement { inline_tool_chip(detail, true) }
 pub fn inline_tool_chip(detail: &str, mono: bool) -> AnyElement {
     let theme = super::ai_theme::theme();
     div().w_full().min_w_0().px(px(6.)).h(px(22.)).rounded(px(6.))
-        .border_1().border_color(theme.hairline).bg(theme.shell).hover(|s| s.bg(theme.hover))
+        .border_1().border_color(field_border()).bg(field_bg()).hover(|s| s.bg(row_hover_bg()))
         .flex().items_center().overflow_hidden()
         .when(mono, |el| el.font_family(crate::theme::mono_font_family()))
         .text_size(px(11.5)).font_weight(FontWeight(400.)).text_color(theme.text_secondary)

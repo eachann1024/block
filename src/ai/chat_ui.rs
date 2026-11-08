@@ -1,6 +1,6 @@
 //! Rendering and batch-plan card UI for `AiChat`.
 use crate::ui::tooltip::TooltipExt;
-use gpui::{CursorStyle, Focusable, FontWeight, IntoElement, MouseButton, ParentElement, Render, SharedString, Styled, Window, div, prelude::*, px};
+use gpui::{CursorStyle, Focusable, FontWeight, IntoElement, MouseButton, ParentElement, Render, SharedString, Styled, Window, WindowControlArea, div, prelude::*, px};
 
 
 use super::chat::{AiChat, first_placeholder, follow_placeholder};
@@ -11,8 +11,34 @@ use crate::theme::{is_en, tr};
 fn duo_glyph(i: Icon, size: f32, color: gpui::Hsla) -> impl IntoElement {
     icon(i, px(size), crate::ui::ai_theme::theme().icon_colors(color))
 }
+
+fn title_drag(id: &'static str, drag: bool) -> gpui::Stateful<gpui::Div> {
+    div().id(id).when(drag, |row| row
+        .window_control_area(WindowControlArea::Drag)
+        .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); }))
+}
+
+#[cfg(target_family = "wasm")]
+fn wasm_traffic_lights() -> gpui::Div {
+    div().absolute().left(px(14.)).top_0().bottom_0().flex().items_center().gap(px(8.))
+        .child(div().size(px(12.)).rounded_full().bg(gpui::rgb(0xff5f57)))
+        .child(div().size(px(12.)).rounded_full().bg(gpui::rgb(0xfebc2e)))
+        .child(div().size(px(12.)).rounded_full().bg(gpui::rgb(0x28c840)))
+}
+fn size_panel(panel: gpui::Stateful<gpui::Div>, fullscreen: bool, split: crate::ui::shell_layout::ShellSplit) -> gpui::Stateful<gpui::Div> {
+    let theme = crate::ui::ai_theme::theme();
+    let width = px(split.chat_width);
+    let overlay = !fullscreen && split.chat_overlay;
+    panel
+        .when(fullscreen, |p| p.flex_1().w_full().min_w_0())
+        .when(overlay, |p| p.size_full())
+        .when(!fullscreen && !overlay, |p| p.w(width).flex_none())
+        .when(!fullscreen, |p| p.border_l_1().border_color(theme.hairline))
+}
+
 impl Render for AiChat {
     fn render(&mut self, window: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
+        let split = self.displayed_split(window);
         if self.last_en != is_en() {
             self.last_en = is_en();
             let ph = if self.conv().is_some() { follow_placeholder() } else { first_placeholder() };
@@ -21,43 +47,80 @@ impl Render for AiChat {
         let theme = crate::ui::ai_theme::theme();
         if super::chat_empty::builtin_blocked(self) {
             let focus = self.input.read(cx).focus_handle(cx);
-            return div().id("ai-chat-panel").track_focus(&focus).when(self.fullscreen, |p| p.flex_1().w_full().min_w_0())
-                .when(!self.fullscreen, |p| p.w(self.panel_width).flex_none().border_l_1().border_color(theme.hairline))
+            let macos_chrome = crate::ui::window_controls::is_macos();
+            return size_panel(div().id("ai-chat-panel").track_focus(&focus), self.fullscreen, split)
                 .h_full().flex().flex_col().relative().bg(theme.paper).text_color(theme.text)
-                .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| { cx.stop_propagation(); super::chat::chat_dictation::stop_for_input(&this.input); this.open = false; this.fullscreen = false; window.refresh(); cx.notify(); }))
+                .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| { cx.stop_propagation(); super::chat::chat_dictation::stop_for_input(&this.input); this.open = false; this.history = false; crate::ui::motion::popup_reset("ai-chat-history"); crate::ui::motion::popup_reset("ai-agent-deck"); window.refresh(); cx.notify(); }))
                 .when(!self.fullscreen, |p| p.child(self.resize_handle(cx)))
-                .child(div().id("ai-chat-scroll").flex_1().min_h_0().size_full().flex().flex_col().items_center().justify_center().child(super::chat_empty::enable_cover(cx)));
+                .when(self.fullscreen, |panel| {
+                    let gutter = title_drag("ai-blocked-traffic-drag", true).w(px(crate::ui::window_controls::TRAFFIC_LEADING)).h_full().flex_none();
+                    #[cfg(target_family = "wasm")]
+                    let gutter = gutter.relative().child(wasm_traffic_lights());
+                    panel.child(div().h(px(52.)).flex_none().flex().items_center().gap(px(4.)).border_b_1().border_color(theme.hairline).bg(theme.paper)
+                        .pr(px(if macos_chrome { 16. } else { 4. }))
+                        .child(gutter)
+                        .child(title_drag("ai-blocked-title-drag", true).flex_1().h_full())
+                        .child(crate::ui::icon_button::header_action_button("ai-layout-toggle", Icon::WindowRestore, true, Some(tr("切回侧栏", "Switch to sidebar")),
+                            cx.listener(|this, _, window, cx| { this.set_fullscreen(false, cx); window.refresh(); cx.notify(); })))
+                        .child(crate::ui::icon_button::header_action_button("ai-chat-close", Icon::Close, false, None, cx.listener(|this, _, window, cx| {
+                            super::chat::chat_dictation::stop_for_input(&this.input); this.open = false; this.history = false;
+                            crate::ui::motion::popup_reset("ai-chat-history"); crate::ui::motion::popup_reset("ai-agent-deck");
+                            backend_ui::close_menu(); window.refresh(); cx.notify();
+                        })))
+                        .when(!macos_chrome, |bar| bar.child(crate::ui::window_controls::window_controls("main-win", true, true))))
+                })
+                .child(div().id("ai-chat-scroll").flex_1().min_h_0().size_full().flex().flex_col().items_center().justify_center().child(super::chat_empty::enable_cover(self.fullscreen, cx)));
         }
         let title = self.conv().map(|conversation| conversation.title.clone()).unwrap_or_else(|| tr("新会话", "New chat").to_owned());
-        let header = div().h(px(52.)).flex_none().px(px(16.)).flex().items_center().gap(px(4.)).border_b_1().border_color(theme.hairline)
-            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(15.)).font_weight(FontWeight(600.)).child(title))
-            .child(crate::ui::icon_button::header_action_button("ai-layout-toggle", if self.fullscreen { Icon::WindowRestore } else { Icon::WindowMax }, self.fullscreen, if self.fullscreen { tr("切回侧栏", "Switch to sidebar") } else { tr("全屏", "Full screen") },
-                cx.listener(|this, _, window, cx| { this.fullscreen = !this.fullscreen; window.refresh(); cx.notify(); })))
-            .child(crate::ui::icon_button::header_action_button("ai-chat-new", Icon::AiPlus, false, tr("新建会话", "New chat"), cx.listener(|this, _, w, cx| {
+        let macos_chrome = crate::ui::window_controls::is_macos();
+        let header = div().h(px(52.)).flex_none().flex().items_center().gap(px(4.)).border_b_1().border_color(theme.hairline)
+            .when(self.fullscreen, |bar| bar.bg(theme.paper).pr(px(if macos_chrome { 16. } else { 4. })))
+            .when(!self.fullscreen, |bar| bar.px(px(16.)))
+            .when(self.fullscreen, |bar| {
+                let gutter = title_drag("ai-chat-traffic-drag", true).w(px(crate::ui::window_controls::TRAFFIC_LEADING)).h_full().flex_none();
+                #[cfg(target_family = "wasm")]
+                let gutter = gutter.relative().child(wasm_traffic_lights());
+                bar.child(gutter)
+            })
+            .child(title_drag("ai-chat-title-drag", self.fullscreen).flex_1().min_w_0().h_full().flex().items_center().overflow_hidden()
+                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(15.)).font_weight(FontWeight(600.)).child(title)))
+            .child(crate::ui::icon_button::header_action_button("ai-chat-new", Icon::AiPlus, false, Some(tr("新建会话", "New chat")), cx.listener(|this, _, w, cx| {
                 cx.stop_propagation();
                 let backend = this.selected_backend(); this.save_tab_draft(cx); this.tab_drafts.remove(&None); this.new_conv(w, cx); this.select_backend(backend, w, cx);
                 // Restore focus after mouse-down blur handlers have finished.
                 cx.defer_in(w, |this, window, cx| this.input.update(cx, |input, cx| input.focus(window, cx)));
             })))
-            .child(crate::ui::icon_button::header_action_button("ai-chat-history", Icon::History, self.history, tr("历史会话", "Chat history"), cx.listener(|this, _, _, cx| {
+            .child(crate::ui::icon_button::header_action_button("ai-layout-toggle", if self.fullscreen { Icon::WindowRestore } else { Icon::WindowMax }, self.fullscreen, Some(if self.fullscreen { tr("切回侧栏", "Switch to sidebar") } else { tr("全屏", "Full screen") }),
+                cx.listener(|this, _, window, cx| { this.set_fullscreen(!this.fullscreen, cx); window.refresh(); cx.notify(); })))
+            .child(crate::ui::icon_button::header_action_button("ai-chat-history", Icon::History, self.history, Some(tr("历史会话", "Chat history")), cx.listener(|this, _, _, cx| {
                 backend_ui::close_menu(); this.history = !this.history; cx.notify();
             })))
-            .child(crate::ui::icon_button::header_action_button("ai-chat-close", Icon::Close, false, tr("关闭 AI", "Close AI"), cx.listener(|this, _, window, cx| { super::chat::chat_dictation::stop_for_input(&this.input); this.open = false; this.fullscreen = false; backend_ui::close_menu(); window.refresh(); cx.notify(); })));
-        let history = self.history.then(|| {
+            .child(crate::ui::icon_button::header_action_button("ai-chat-close", Icon::Close, false, None, cx.listener(|this, _, window, cx| { super::chat::chat_dictation::stop_for_input(&this.input); this.open = false; this.history = false; crate::ui::motion::popup_reset("ai-chat-history"); crate::ui::motion::popup_reset("ai-agent-deck"); backend_ui::close_menu(); window.refresh(); cx.notify(); })))
+            .when(self.fullscreen && !macos_chrome, |bar| bar.child(crate::ui::window_controls::window_controls("main-win", true, true)));
+        let fullscreen = self.fullscreen;
+        let menu_room = if fullscreen { f32::from(window.viewport_size().width) } else { split.chat_width };
+        let menu_w = (menu_room - 32.).clamp(220., 320.);
+        let history_max_h = (f32::from(window.viewport_size().height) - 140.).clamp(160., if fullscreen { 420. } else { 304. });
+        let history_motion = crate::ui::motion::popup_motion("ai-chat-history", self.history);
+        if let Some((_, pop_gen)) = history_motion {
+            crate::ui::motion::schedule_popup_finish("ai-chat-history", pop_gen, cx);
+        }
+        let history = history_motion.is_some().then(|| {
             let list = if self.convs.iter().all(|c| c.messages.is_empty()) {
                 div().p(px(12.)).text_size(px(14.)).text_color(theme.text_secondary).child(tr("暂无历史会话", "No chat history"))
             } else {
                 self.convs.iter().filter(|c| !c.messages.is_empty()).fold(div().flex().flex_col().p(px(4.)), |d, c| {
                     let (id, active) = (c.id, Some(c.id) == self.current);
                     let del_id = SharedString::from(format!("conv-del-{id}"));
-                    d.child(div().id(SharedString::from(format!("conv-{id}"))).relative().children(crate::ui::smoke_overlay::probe(format!("conv-{id}"))).h(px(32.)).px(px(8.)).flex().items_center().gap(px(6.)).rounded(crate::ui::radius::CONTROL)
+                    d.child(div().id(SharedString::from(format!("conv-{id}"))).relative().children(crate::ui::smoke_overlay::probe(format!("conv-{id}"))).h(px(32.)).px(px(8.)).flex().items_center().gap(px(8.)).rounded(crate::ui::radius::CONTROL)
                         .when(active, |r| r.bg(theme.hover)).hover(move |s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand)
                         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| {
+                            cx.stop_propagation();
                             this.switch_tab(Some(id), w, cx);
                         }))
                         .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(14.)).child(c.title.clone()))
-                        .child(div().text_size(px(14.)).text_color(theme.text_secondary).child(backend_ui::backend_name(c.backend)))
-                        .child(div().id(del_id.clone()).group(del_id.clone()).size(px(22.)).flex().items_center().justify_center().rounded(crate::ui::radius::MICRO_SM)
+                        .child(div().flex_none().text_size(px(13.)).text_color(theme.text_secondary).child(backend_ui::backend_name(c.backend)))
+                        .child(div().id(del_id.clone()).group(del_id.clone()).size(px(22.)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::MICRO_SM)
                             .hover(move |s| s.bg(theme.shell))
                             .tooltip_above(crate::theme::tooltip(tr("删除会话", "Delete chat")))
                             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
@@ -68,8 +131,11 @@ impl Render for AiChat {
                             .child(stateful_icon(del_id, Icon::Trash, px(13.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
                 })
             };
-            div().id("ai-chat-history-list").mx(px(8.)).mt(px(6.)).max_h(px(260.)).overflow_y_scroll().rounded(crate::ui::radius::SURFACE).border_1()
-                .border_color(theme.menu_border).bg(theme.menu).shadow_md().child(list)
+            // Same right inset as the header buttons, so the menu hangs from that cluster.
+            div().id("ai-chat-history-list").w(px(menu_w)).max_h(px(history_max_h)).overflow_y_scroll().rounded(crate::ui::radius::SURFACE).border_1()
+                .border_color(theme.menu_border).bg(theme.menu).shadow_md().occlude()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .child(list)
         });
         let empty = self.conv().is_none_or(|c| c.messages.is_empty()) && self.streaming.is_none();
         let body = super::chat_process::render_messages(self, cx)
@@ -82,7 +148,7 @@ impl Render for AiChat {
                 .when(self.error_settings, |d| d.child(crate::ui::ai_controls::action_chip(
                     "ai-chat-settings", None, tr("打开 AI 设置", "Open AI settings"), false, false,
                     |_, window, cx| window.dispatch_action(Box::new(super::OpenAiSettings), cx)))))
-            .child(crate::ui::icon_button::header_action_button("ai-chat-error-close", Icon::Close, false, tr("关闭错误提示", "Dismiss error"), cx.listener(|this, _, _, cx| { this.error = None; cx.notify(); }))));
+            .child(crate::ui::icon_button::header_action_button("ai-chat-error-close", Icon::Close, false, Some(tr("关闭错误提示", "Dismiss error")), cx.listener(|this, _, _, cx| { this.error = None; cx.notify(); }))));
 
         let chip_list: Vec<(bool, String)> = self.refs.iter().map(|r| (true, r.clone())).chain(self.skills.iter().map(|s| (false, s.clone()))).collect();
         let chips = chip_list.into_iter().enumerate().fold(div().flex().flex_wrap().gap(px(4.)), |d, (i, (is_ref, name))| {
@@ -136,7 +202,8 @@ impl Render for AiChat {
         });
         let busy = self.streaming.is_some() || self.pending_question.is_some();
         let action = if busy {
-            crate::ui::ai_controls::action_chip("ai-chat-stop", None, tr("停止", "Stop"), false, false, cx.listener(|this, _, _, cx| { this.stop(); cx.notify(); })).h(px(28.)).bg(theme.text).text_color(theme.paper)
+            crate::ui::ai_controls::action_chip("ai-chat-stop", None, tr("停止", "Stop"), false, false, cx.listener(|this, _, _, cx| { this.stop(); cx.notify(); }))
+                .h(px(28.)).bg(theme.text).text_color(theme.paper).font_weight(FontWeight(500.)).hover(move |s| s.bg(theme.text_secondary))
         } else {
             crate::ui::ai_controls::send_button_enabled("ai-chat-send", !self.input.read(cx).value().trim().is_empty(), cx.listener(move |this, _, w, cx| { cx.stop_propagation(); this.send(w, cx); })).size(px(28.))
         };
@@ -215,7 +282,10 @@ impl Render for AiChat {
         });
         let composer = div().pt(px(2.)).pb(px(10.)).flex().flex_col().gap(px(4.)).rounded(px(8.)).border_1().border_color(if self.input.read(cx).focus_handle(cx).is_focused(window) { theme.btn_border } else { theme.hairline }).bg(theme.hover)
             .when(!self.refs.is_empty() || !self.skills.is_empty(), |d| d.child(chips.px(px(10.)).pt(px(8.))))
-            .child(crate::ui::chat_input::field(&self.input))
+            .child(div().on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| {
+                if backend_ui::close_menu() { cx.notify(); }
+                cx.stop_propagation();
+            })).child(crate::ui::chat_input::field(&self.input)))
             .child(div().relative().children(crate::ui::smoke_overlay::probe("ai-composer-actions")).px(px(10.)).flex_none().flex().items_center().gap(px(6.))
                 .child(div().flex_1().min_w_0().flex().items_center().gap(px(6.))
                     .child(super::chat_deck::trigger(self, cx)))
@@ -224,9 +294,31 @@ impl Render for AiChat {
                     cx.listener(|this, _, window, cx| { cx.stop_propagation(); super::chat::chat_dictation::toggle(this, window, cx); })))
                 .child(action));
 
-        div().id("ai-chat-panel").when(self.fullscreen, |panel| panel.flex_1().w_full().min_w_0()).when(!self.fullscreen, |panel| panel.w(self.panel_width).flex_none().border_l_1().border_color(theme.hairline)).h_full().flex().flex_col().relative().bg(theme.paper).font_family(crate::theme::ui_font_family())
+        size_panel(div().id("ai-chat-panel").key_context("AiChat").track_focus(&self.panel_focus), self.fullscreen, split).h_full().flex().flex_col().relative().bg(theme.paper).font_family(crate::theme::ui_font_family())
             .text_color(theme.text)
-            .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| { if backend_ui::close_menu() { cx.notify(); } }))
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                if backend_ui::close_menu() { cx.notify(); }
+                window.focus(&this.panel_focus, cx);
+            }))
+            .on_action(cx.listener(|this, _: &super::CloseAiPanel, window, cx| {
+                cx.stop_propagation();
+                if this.picker_token(cx).is_some() { this.picker_dismissed = true; }
+                else if backend_ui::close_menu() {}
+                else if this.history { this.history = false; }
+                else {
+                    super::chat::chat_dictation::stop_for_input(&this.input);
+                    this.open = false;
+                    this.history = false;
+                    crate::ui::motion::popup_reset("ai-chat-history");
+                    crate::ui::motion::popup_reset("ai-agent-deck");
+                    if let Some(editor) = this.editor.as_ref().and_then(|editor| editor.upgrade()) {
+                        let focus = editor.read(cx).focus_handle(cx);
+                        window.focus(&focus, cx);
+                    }
+                    window.refresh();
+                }
+                cx.notify();
+            }))
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                 if event.keystroke.key == "escape" && this.picker_token(cx).is_some() {
                     this.picker_dismissed = true; cx.stop_propagation(); cx.notify();
@@ -254,10 +346,11 @@ impl Render for AiChat {
             .capture_action(cx.listener(|this, _: &gpui_component::input::MoveDown, _, cx| {
                 if this.move_pick(1, cx) { cx.stop_propagation(); }
             }))
-            .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| {
-                cx.stop_propagation();
+            .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, _, cx| {
                 if this.picker_token(cx).is_some() { this.picker_dismissed = true; }
-                else if backend_ui::close_menu() {} else if this.history { this.history = false; } else { super::chat::chat_dictation::stop_for_input(&this.input); this.open = false; this.fullscreen = false; window.refresh(); }
+                else if backend_ui::close_menu() {} else if this.history { this.history = false; }
+                else { return; }
+                cx.stop_propagation();
                 cx.notify();
             }))
             .when(!self.fullscreen, |panel| panel.child(self.resize_handle(cx)))
@@ -273,6 +366,24 @@ impl Render for AiChat {
             .child(div().flex_none().relative().px(px(16.)).pt(px(if picker_open { 0. } else { 12. })).pb(px(16.)).border_t_1().border_color(theme.hairline)
                 .child(div().w_full().when(self.fullscreen, |inner| inner.max_w(px(720.)).mx_auto()).relative().child(composer)
                     .children(super::chat_deck::view(self, window, cx))))
-            .children(history.map(|h| div().absolute().top(px(52.)).left_0().right_0().child(h)))
+            .when(history_motion.is_some(), |panel| {
+                let entering = history_motion.is_some_and(|(phase, _)| phase == crate::ui::motion::PopupMotion::Enter);
+                let pop_gen = history_motion.map(|(_, pop_gen)| pop_gen).unwrap_or(0);
+                let scrim = div().id("ai-chat-history-dismiss").absolute().top(px(52.)).left_0().right_0().bottom_0().occlude()
+                    .bg(gpui::hsla(0., 0., 0., if fullscreen { if crate::theme::is_dark() { 0.46 } else { 0.28 } } else if crate::theme::is_dark() { 0.28 } else { 0.08 }))
+                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.history = false;
+                        cx.notify();
+                    }));
+                panel.child(crate::ui::motion::layer_fade(scrim, ("ai-chat-history-scrim", pop_gen), entering))
+            })
+            .children(history_motion.zip(history).map(|((phase, pop_gen), card)| {
+                let animated = match phase {
+                    crate::ui::motion::PopupMotion::Enter => crate::ui::motion::popup_enter(card, ("ai-chat-history-pop", pop_gen)).into_any_element(),
+                    crate::ui::motion::PopupMotion::Exit => crate::ui::motion::popup_exit(card, ("ai-chat-history-pop", pop_gen)).into_any_element(),
+                };
+                div().absolute().top(px(58.)).right(px(if fullscreen && !crate::ui::window_controls::is_macos() { 100. } else { 16. })).child(animated)
+            }))
     }
 }

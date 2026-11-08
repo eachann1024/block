@@ -48,6 +48,7 @@ impl Config {
         presets::find(&self.provider).map_or(self.protocol, |p| p.protocol)
     }
     pub(crate) fn key_required(&self) -> bool { presets::find(&self.provider).map_or(true, |p| p.key_required) }
+    #[allow(dead_code)]
     pub(crate) fn is_complete(&self) -> bool {
         !self.provider.trim().is_empty() && !self.base_url.trim().is_empty()
             && (!self.key_required() || !self.api_key.trim().is_empty())

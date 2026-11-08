@@ -50,7 +50,7 @@ pub fn titlebar_feedback_button(
         let icon_node = stateful_icon(
             "titlebar-feedback",
             Icon::MessageSquare,
-            px(16.),
+            px(18.),
             open || hovered,
             idle,
             duo_hover,

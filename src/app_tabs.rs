@@ -67,7 +67,7 @@ impl Workspace {
     }
     pub(super) fn bind_tab_actions(&self, root: gpui::Div, cx: &mut Context<Self>) -> gpui::Div {
         root.on_action(cx.listener(|this, _: &Dismiss, _, cx| if !this.dismiss_tab_menu(cx) { cx.propagate(); }))
-            .on_action(cx.listener(|this, _: &ToggleSidebar, _, cx| this.toggle_sidebar(cx)))
+            .on_action(cx.listener(|this, _: &ToggleSidebar, window, cx| this.toggle_sidebar(window, cx)))
             .on_action(cx.listener(|this, _: &NewTab, window, cx| this.new_tab(window, cx)))
             .on_action(cx.listener(|this, _: &CloseTab, window, cx| this.close_active_tab(window, cx)))
             .on_action(cx.listener(|this, _: &ReopenClosedTab, _, cx| this.reopen_closed_tab(cx)))
@@ -178,12 +178,12 @@ impl Workspace {
         }).detach();
     }
 
-    pub(super) fn titlebar(&self, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
+    pub(super) fn titlebar(&self, sidebar_wide: bool, sidebar_auto_hidden: bool, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         if self.is_history_open() { return self.render_history_titlebar(cx); }
         let theme = Theme::ocean();
         let tab_count = self.tabs.len();
         let can_create = self.ui_enabled();
-        let left = self.titlebar_left(cx);
+        let left = self.titlebar_left(sidebar_wide, sidebar_auto_hidden, cx);
         let mut right = div().id("titlebar-tabs").flex_1().min_w_0().h_full().flex().items_center()
             .gap(px(4.)).px(px(10.)).overflow_hidden();
         if let Some(modal) = &self.settings {
@@ -193,7 +193,7 @@ impl Workspace {
             right = right.window_control_area(WindowControlArea::Drag)
                 .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
                 .child(div().overflow_hidden().whitespace_nowrap()
-                    .text_size(px(13.)).line_height(px(18.)).text_color(theme.text_secondary).child(title));
+                    .text_size(px(14.)).line_height(px(20.)).text_color(theme.text_secondary).child(title));
         } else {
             let multi = tab_count > 1;
             let ghost = closing_ghost();
@@ -223,7 +223,7 @@ impl Workspace {
                             cx.stop_propagation();
                             this.new_item(false, window, cx);
                         }))
-                        .child(hover_tinted_icon(new_group, Icon::Plus, 14., theme.text_secondary, theme.text, theme.icon_fill))
+                        .child(hover_tinted_icon(new_group, Icon::Plus, 16., theme.text_secondary, theme.text, theme.icon_fill))
                 );
             }
             right = right.child(div().id("titlebar-drag-spacer").flex_1().min_w(px(16.)).h_full()
@@ -251,13 +251,13 @@ impl Workspace {
                 cx.stop_propagation();
                 this.close_tab(close_path.clone(), cx);
             }))
-            .child(hover_tinted_icon(close_group, Icon::Close, 12., theme.text_secondary, theme.text, theme.icon_fill));
+            .child(hover_tinted_icon(close_group, Icon::Close, 14., theme.text_secondary, theme.text, theme.icon_fill));
         let mut pill = div().id(("tab", ix)).group(group.clone()).h(px(28.)).overflow_hidden()
             .when(multi, |t| t.w(px(TAB_MAX_W)).flex_basis(px(TAB_BASIS_W)).flex_shrink_1().min_w(px(TAB_MIN_W)).max_w(px(TAB_MAX_W)).cursor(CursorStyle::PointingHand))
             .when(!multi, |t| t.min_w_0().max_w(px(SINGLE_TAB_MAX_W)).flex_shrink_1().text_color(theme.text)
                 .window_control_area(WindowControlArea::Drag).on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); }))
             .pl(px(10.)).pr(px(if multi { 6. } else { 10. })).rounded(crate::ui::radius::CONTROL).flex().items_center().relative().when(ix == 0, |t| t.children(crate::ui::smoke_overlay::probe("tab-0")))
-            .text_size(px(13.)).line_height(px(18.)).font_weight(FontWeight(460.))
+            .text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(460.))
             .when(multi && active, |t| t.bg(theme.selected).border_1().border_color(theme.accent).text_color(theme.text))
             .when(multi && !active, |t| t.border_1().border_color(transparent_black()).text_color(theme.text_secondary)
                 .hover(|s| s.bg(theme.hover).text_color(theme.text)))

@@ -4,21 +4,18 @@ use gpui_component::input::{Escape, InputState};
 use crate::{dropdown::{self, RowSpec}, icons::Icon, theme::tr, ui::popover as ui_popover};
 use super::{format_cmds::{FormatPop, palette::PalettePopover}, view::{Cancel, Editor}};
 
-pub(super) fn popover(editor: Entity<Editor>, pop: &FormatPop) -> AnyElement {
+pub(super) fn popover(editor: Entity<Editor>, pop: &FormatPop, phase: crate::ui::motion::PopupMotion, pop_gen: u64) -> AnyElement {
     match pop {
-        FormatPop::Ai(session) => super::ai::panel::render(editor, session),
-        FormatPop::Link { input, existing, spec, .. } => {
-            dropdown::deferred_popover_for(
-                *spec,
-                crate::ui::popover::card("format-link-card", None).child(link_field(editor, input, *existing)),
-                2,
-            )
-            .into_any_element()
-        }
-        FormatPop::SelectionMenu { spec } => dropdown::deferred_popover_for(*spec, selection_menu(editor), 2).into_any_element(),
-        FormatPop::Palette { spec } => dropdown::deferred_popover_for(*spec, PalettePopover { editor }, 2).into_any_element(),
-        FormatPop::Kinds { spec, current } => dropdown::deferred_popover_for(*spec, super::toolbar::menu(editor, true, *current), 2).into_any_element(),
-        FormatPop::Lists { spec, current } => dropdown::deferred_popover_for(*spec, super::toolbar::menu(editor, false, *current), 2).into_any_element(),
+        FormatPop::Ai(session) => super::ai::panel::render(editor, session, phase, pop_gen),
+        FormatPop::Link { input, existing, spec, .. } => dropdown::anchored_motion(
+            ("format-pop", pop_gen), *spec,
+            crate::ui::popover::card("format-link-card", None).child(link_field(editor, input, *existing)),
+            phase, 2,
+        ),
+        FormatPop::SelectionMenu { spec } => dropdown::anchored_motion(("format-pop", pop_gen), *spec, selection_menu(editor), phase, 2),
+        FormatPop::Palette { spec } => dropdown::anchored_motion(("format-pop", pop_gen), *spec, PalettePopover { editor }, phase, 2),
+        FormatPop::Kinds { spec, current } => dropdown::anchored_motion(("format-pop", pop_gen), *spec, super::toolbar::menu(editor, true, *current), phase, 2),
+        FormatPop::Lists { spec, current } => dropdown::anchored_motion(("format-pop", pop_gen), *spec, super::toolbar::menu(editor, false, *current), phase, 2),
     }
 }
 

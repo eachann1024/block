@@ -35,17 +35,20 @@ pub fn render_header(
 }
 
 pub fn render_scope_menu<V: 'static>(
+    key: &'static str,
     state: &SearchState,
     cx: &mut Context<V>,
     on_pick: fn(&mut V, usize, &mut Window, &mut Context<V>),
-) -> AnyElement {
+) -> Option<AnyElement> {
+    let (phase, pop_gen) = crate::ui::motion::popup_motion(key, state.scope_menu_open)?;
+    crate::ui::motion::schedule_popup_finish(key, pop_gen, cx);
     let mut rows = vec![scope_row(0, tr("全部文件夹", "All Folders"), matches!(state.scope, SearchScope::All), cx, on_pick)];
     if !state.folders.is_empty() { rows.push(dropdown::separator().into_any_element()); }
     for (index, path) in state.folders.iter().enumerate() {
         let checked = matches!(&state.scope, SearchScope::Folder(folder) if folder == path);
         rows.push(scope_row(index + 1, folder_name(path), checked, cx, on_pick));
     }
-    crate::ui::scope_dropdown::menu_popover("search-scope-menu", rows).into_any_element()
+    Some(crate::ui::scope_dropdown::menu_popover("search-scope-menu", rows, phase, pop_gen))
 }
 
 fn scope_row<V: 'static>(

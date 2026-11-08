@@ -118,7 +118,7 @@ fn tool_call(server: &Server, message: &Value, request: &TurnRequest, events: &S
     let params = &message["params"];
     let name = params.get("tool").and_then(Value::as_str).unwrap_or("");
     let id = message.get("id").cloned().ok_or_else(|| BackendError::new("codex_protocol", "工具请求缺少 ID"))?;
-    if params.get("threadId").and_then(Value::as_str) != Some(thread_id) || !["loadSkill", "readSkillResource", "listNotebooks", "listPages", "searchNotes", "readPage", "executeBatchPlan", "askUserQuestion"].contains(&name) || !params.get("namespace").is_none_or(Value::is_null) {
+    if params.get("threadId").and_then(Value::as_str) != Some(thread_id) || !crate::editor::ai::agent::is_authorized_tool(name) || !params.get("namespace").is_none_or(Value::is_null) {
         return write(&server.writer, &json!({"id":id,"result":{"success":false,"contentItems":[{"type":"inputText","text":"此工具未获 Block 授权"}]}}));
     }
     emit(events, request, BackendEventKind::ToolActivity { name: name.into(), detail: "调用 Block 工具".into() });

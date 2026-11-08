@@ -43,7 +43,7 @@ pub fn setting_row(title: &'static str, control: impl IntoElement) -> gpui::Div 
     let theme = Theme::ocean();
     div().w_full().min_w_0().min_h(px(36.)).flex().items_center().justify_between().gap(px(16.))
         .child(div().flex_none().whitespace_nowrap().text_size(px(14.)).text_color(theme.text).child(title))
-        .child(control)
+        .child(div().min_w_0().flex_1().flex().justify_end().overflow_hidden().child(control))
 }
 
 pub fn checkbox_switch(
@@ -65,10 +65,11 @@ pub fn checkbox_switch(
 
 pub fn static_badge(label: impl Into<SharedString>, mono: bool) -> gpui::Div {
     let theme = Theme::ocean();
-    div().h(px(32.)).px(px(12.)).rounded(crate::ui::radius::CONTROL).bg(theme.shell).border_1().border_color(theme.hairline)
-        .flex().items_center().text_size(px(14.)).text_color(theme.text_secondary)
-        .when(mono, |d| d.font(mono_font()))
-        .child(label.into())
+    div().max_w_full().min_w_0().h(px(32.)).px(px(12.)).rounded(crate::ui::radius::CONTROL).bg(theme.shell).border_1().border_color(theme.hairline)
+        .flex().items_center().overflow_hidden()
+        .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(14.)).text_color(theme.text_secondary)
+            .when(mono, |d| d.font(mono_font()))
+            .child(label.into()))
 }
 
 pub fn tag_chip(
