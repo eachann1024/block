@@ -3,9 +3,9 @@
 - `codex.svg`：OpenAI 品牌标志；`claude.svg`：Claude；`dsh.svg`：DeepSeek。
   来源：https://github.com/lobehub/lobe-icons/tree/master/packages/static-svg/icons
   分别对应 `openai.svg`、`claude.svg`、`deepseek.svg`，MIT，见 LICENSE-lobe-icons。
-- `pi.svg`：Pi 官方图标。
+- `pi.svg`：Pi 官方图标轮廓。
   来源：https://github.com/badlogic/pi-mono/blob/main/apps/p2/public/icons/favicon.svg
   MIT，见 LICENSE-pi。
-- 内置 AI 使用项目现有 Block 应用图标。
+- `builtin.svg`：内置 AI 图标。从应用图标抠出猫侧脸，闪电和眼睛镂空，透明底 `currentColor`。
 
-SVG 保留原始文件，界面按当前主题绘制单色品牌轮廓，仅用于标识对应服务。
+所有 Agent 图标统一采用透明底 `currentColor` 单色品牌轮廓，界面按当前主题着色。
