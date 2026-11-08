@@ -42,6 +42,7 @@ impl ShortcutStyle {
 
 pub fn ui_font(weight: FontWeight) -> Font {
     Font {
+        // Same face as `theme::ui_font_family`: SF Pro on macOS.
         family: ".SystemUIFont".into(),
         weight,
         style: FontStyle::Normal,

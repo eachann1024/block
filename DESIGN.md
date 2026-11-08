@@ -44,7 +44,7 @@
 
 | 角色 | 字体栈 | 尺寸与行高 | 字重 |
 | --- | --- | --- | --- |
-| UI 界面与控件 | `Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif` | `14px / 20px`（基线） | 常规 `400`、控件/导航 `460`、分组标题 `560` |
+| UI 界面与控件 | macOS `SF Pro`（`.SystemUIFont`），中文回退 `PingFang SC`；Windows `Segoe UI` | `14px / 20px`（基线） | 常规 `400`、控件/导航 `460`、分组标题 `560` |
 | 设置页大标题 | 同 UI 字体栈 | `24px / 32px` | `560` |
 | 设置卡片标题 | 同 UI 字体栈 | `15px / 22px` | `560` |
 | 编辑器正文 | 无衬线 `.SystemUIFont`；衬线 `LXGW WenKai` / `Songti SC` | `16px`（标准版心净宽 `672px`–`720px`） | `400` |

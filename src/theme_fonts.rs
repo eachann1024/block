@@ -122,6 +122,13 @@ fn resolved() -> (&'static str, &'static str, &'static str) {
     RESOLVED_FONTS.read().map(|g| *g).unwrap_or(("PingFang SC", "Songti SC", "Menlo"))
 }
 
+/// Interface face. On macOS `.SystemUIFont` is SF Pro (`.AppleSystemUIFont`);
+/// CJK falls back through the system cascade (`PingFang SC`). Apple's license
+/// does not allow embedding the SF Pro files, so the app uses the OS copy.
+pub fn ui_font_family() -> SharedString {
+    ".SystemUIFont".into()
+}
+
 pub fn mono_font_family() -> SharedString {
     SharedString::from(active_code_font())
 }
