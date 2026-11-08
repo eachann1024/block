@@ -29,7 +29,6 @@ impl Run {
             && smoke_overlay::target_center("ai-focused-locked").is_some()
             && !input_smoke::agent_full_permissions(BackendKind::Codex), "未启用配置锁定且默认不勾选最大权限")?;
         self.click_target(cx, "ai-backend-toggle-Codex", "启用 Codex").await?;
-        self.click_target(cx, "ai-save-backends", "保存启用的 Codex").await?;
         self.check(14, input_smoke::is_backend_enabled(BackendKind::Codex) && smoke_overlay::target_center("ai-focused-locked").is_none(), "启用后解锁配置")?;
         self.click_target(cx, "ai-agent-full-permissions", "切换最大权限").await?;
         self.check(14, input_smoke::agent_full_permissions(BackendKind::Codex), "最大权限选项可切换并持久化")?;
