@@ -111,6 +111,7 @@ pub mod quick {
         (!spec.trim().is_empty()).then_some(())
     }
     pub fn rebind_hotkeys(_cx: &mut gpui::App) {}
+    pub fn suspend_global_hotkeys(_cx: &mut gpui::App) {}
     pub fn refresh_style(_cx: &mut gpui::App) {}
 }
 
