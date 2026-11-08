@@ -25,30 +25,31 @@ impl Workspace {
             .overflow_y_scroll().bg(theme.settings_bg).text_color(theme.text)
             .on_scroll(|_, _, cx| crate::dropdown::dismiss_all(cx))
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                if let Some(m) = &mut this.settings {
-                    if m.recording.take().is_some() { cx.notify(); }
-                }
+                let _ = this.end_shortcut_recording(cx);
             }))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 let Some(kind) = this.settings.as_ref().and_then(|m| m.recording) else {
                     if event.keystroke.key == "escape" {
                         cx.stop_propagation();
                         if this.close_font_picker(cx) { return; }
+                        if this.shell_split(window, cx).sidebar_drawer {
+                            this.toggle_sidebar(window, cx);
+                            return;
+                        }
                         this.close_settings(window, cx);
                     }
                     return;
                 };
                 cx.stop_propagation();
                 if event.keystroke.key == "escape" && !event.keystroke.modifiers.modified() {
-                    if let Some(m) = &mut this.settings { m.recording = None; }
-                    cx.notify();
+                    let _ = this.end_shortcut_recording(cx);
                     return;
                 }
                 if let Some(spec) = keystroke_to_spec(&event.keystroke) {
                     this.apply_shortcut(kind, spec, cx);
                 }
             }))
-            .child(div().w_full().max_w(px(720.)).mx_auto().pt(px(40.)).px(px(28.)).pb(px(64.))
+            .child(div().w_full().min_w_0().pt(px(40.)).px(px(28.)).pb(px(64.))
                 .flex().flex_col().gap(px(28.))
                 .child(div().flex().items_center().justify_between().gap(px(12.))
                     .child(div().text_size(px(24.)).line_height(px(32.)).font_weight(FontWeight(560.))
@@ -57,7 +58,7 @@ impl Workspace {
                         "settings-back",
                         Icon::Close,
                         false,
-                        tr("关闭设置", "Close Settings"),
+                        Some(tr("关闭设置", "Close Settings")),
                         cx.listener(|this, _, window, cx| {
                             cx.stop_propagation();
                             this.close_settings(window, cx);

@@ -87,10 +87,10 @@ impl Workspace {
                 .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
                 .child(div().h(px(28.)).px(px(10.)).flex_none().max_w(px(360.)).overflow_hidden().rounded(radius::CONTROL)
                     .bg(theme.selected).border_1().border_color(theme.accent).flex().items_center()
-                    .text_size(px(13.)).font_weight(FontWeight(460.)).text_color(theme.text).whitespace_nowrap().text_ellipsis()
+                    .text_size(px(14.)).font_weight(FontWeight(460.)).text_color(theme.text).whitespace_nowrap().text_ellipsis()
                     .child(format!("{note_name} · {}", tr("页面历史", "Page History"))))
                 .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-                    .text_size(px(13.)).font_weight(FontWeight(500.)).text_color(theme.text_secondary)
+                    .text_size(px(14.)).font_weight(FontWeight(500.)).text_color(theme.text_secondary)
                     .child(title)))
             .child(div().flex_none().mr(px(10.)).flex().items_center().gap(px(8.))
                 .child(render_mode_switch(mode, move |mode, _, cx| {

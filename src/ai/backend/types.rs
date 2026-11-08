@@ -29,6 +29,7 @@ pub(crate) enum ContextScope { #[default] CurrentNote, Selection }
 #[derive(Clone, Debug)]
 pub(crate) struct ModelOption { pub value: String, pub label: String }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum BackendStatus {
     Ready { version: String },
@@ -71,9 +72,11 @@ impl BackendError {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub(crate) enum ApprovalResponse { AllowOnce, AllowSession, Deny, Cancel, QuestionResponse(Value) }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub(crate) enum BackendEventKind {
     Delta(String),

@@ -36,7 +36,7 @@ impl QuickView {
             "save-to-note",
             save_icon,
             self.saved_flash,
-            save_tip,
+            Some(save_tip),
             cx.listener(|this, _, w, cx| this.save_to_note(w, cx)),
         );
 

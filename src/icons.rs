@@ -182,6 +182,10 @@ icons! {
     Refresh => "refresh" [Fill, Line, Accent],
     Spinner => "spinner" [Line],
     UpdateTangle => "update-tangle" [Fill, Line, Accent],
+    ToolThink => "tool-think" [Line],
+    ToolWrite => "tool-write" [Line],
+    ToolRun => "tool-run" [Line],
+    ToolRead => "tool-read" [Line],
 }
 
 /// The three tints of one icon.
@@ -198,6 +202,7 @@ pub struct Icons;
 impl AssetSource for Icons {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
         let brand: Option<&'static [u8]> = match path {
+            "agents/builtin.svg" => Some(include_bytes!("../assets/agents/builtin.svg")),
             "agents/codex.svg" => Some(include_bytes!("../assets/agents/codex.svg")),
             "agents/claude.svg" => Some(include_bytes!("../assets/agents/claude.svg")),
             "agents/dsh.svg" => Some(include_bytes!("../assets/agents/dsh.svg")),

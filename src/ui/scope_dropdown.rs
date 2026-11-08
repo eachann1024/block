@@ -19,13 +19,12 @@ pub fn trigger_capsule(id: impl Into<ElementId>, label: impl Into<SharedString>,
         .when_some(crate::ui::smoke_overlay::probe("search-scope-trigger"), |row, probe| row.child(probe))
 }
 
-pub fn menu_popover(id: impl Into<ElementId>, rows: Vec<AnyElement>) -> impl gpui::IntoElement {
+pub fn menu_popover(id: impl Into<ElementId>, rows: Vec<AnyElement>, phase: crate::ui::motion::PopupMotion, pop_gen: u64) -> gpui::AnyElement {
     let menu = crate::ui::dropdown::shell_unbounded(id).w(px(236.)).children(rows);
-    gpui::deferred(
-        crate::ui::motion::popup_enter(
-            div().absolute().top(px(48.)).right(px(16.)).w(px(236.)).child(menu),
-            "search-scope-popover",
-        ),
-    )
-    .with_priority(10)
+    let placed = div().absolute().top(px(48.)).right(px(16.)).w(px(236.)).child(menu);
+    let animated = match phase {
+        crate::ui::motion::PopupMotion::Enter => crate::ui::motion::popup_enter(placed, ("search-scope-popover", pop_gen)).into_any_element(),
+        crate::ui::motion::PopupMotion::Exit => crate::ui::motion::popup_exit(placed, ("search-scope-popover", pop_gen)).into_any_element(),
+    };
+    gpui::deferred(animated).with_priority(10).into_any_element()
 }

@@ -7,7 +7,7 @@ use gpui::{
 use crate::{icons::{Icon, icon}, theme::{is_en, tr}, ui::smoke_overlay};
 pub use super::ai_process_status::{
     DetailTone, LoaderPattern, ProcessDetailLine, ProcessDiffChip, ProcessElapsed,
-    ProcessStepIcon, ProcessStepMeta, TaskStatus,
+    ProcessStepIcon, ProcessStepMeta, TaskStatus, ThinkingVariant,
 };
 use super::ai_process_status;
 
@@ -39,6 +39,7 @@ pub struct ProcessCardOptions {
     pub status: Option<TaskStatus>,
     pub elapsed: Option<ProcessElapsed>,
     pub loader: LoaderPattern,
+    pub search_query: Option<String>,
     pub step_statuses: Vec<TaskStatus>,
     pub step_details: Vec<String>,
     pub step_metas: Vec<ProcessStepMeta>,
@@ -126,12 +127,12 @@ pub fn process_card_with_options(
         let total = chars.len().max(1);
         let mut text = div().flex().items_center().text_size(px(12.5)).font_weight(FontWeight(500.));
         for (idx, ch) in chars.into_iter().enumerate() {
-            let (base, peak) = (theme.text_secondary, theme.text);
+            let (base, peak) = (ai_process_status::ink_3(), theme.text);
             text = text.child(div().child(ch.to_string()).with_animation(
                 SharedString::from(format!("{key}-shimmer-{idx}")),
                 Animation::new(Duration::from_millis(1400)).repeat(), move |el, delta| {
-                    let glow = (1.0 - ((idx as f32 / total as f32) - (delta * 1.4 - 0.2)).abs() * 4.5).clamp(0.0, 1.0);
-                    el.text_color(gpui::Hsla { h: base.h, s: base.s * (1.0 - glow), l: base.l + (peak.l - base.l) * glow + 0.18 * glow, a: 0.72 + 0.28 * glow })
+                    let glow = (1.0 - ((idx as f32 / total as f32) - (delta * 1.4 - 0.2)).abs() * 4.2).clamp(0.0, 1.0);
+                    el.text_color(gpui::Hsla { h: base.h, s: base.s * (1.0 - glow), l: base.l + (peak.l - base.l) * glow + 0.16 * glow, a: 0.72 + 0.28 * glow })
                 }));
         }
         text.into_any_element()
@@ -139,7 +140,7 @@ pub fn process_card_with_options(
     let header = div().id(SharedString::from(format!("ai-process-toggle-{key}"))).relative()
         .children(smoke_overlay::probe("ai-process-toggle"))
         .mx(px(-6.)).px(px(6.)).py(px(4.)).rounded(crate::ui::radius::CONTROL)
-        .flex().items_center().gap(px(6.)).cursor(CursorStyle::PointingHand).hover(|s| s.bg(theme.hover))
+        .flex().items_center().gap(px(6.)).cursor(CursorStyle::PointingHand).hover(|s| s.bg(ai_process_status::row_hover_bg()))
         .on_mouse_down(MouseButton::Left, move |ev, window, cx| { cx.stop_propagation(); on_toggle_steps(ev, window, cx); })
         .child(badge).child(headline)
         .when_some(options.elapsed, |header, elapsed| header.child(div().relative().children(smoke_overlay::probe("ai-process-elapsed")).child(ai_process_status::elapsed(key, elapsed))));
@@ -167,25 +168,28 @@ pub fn process_card_with_options(
                 let mut chip = div().id(SharedString::from(format!("ai-process-tool-{key}-{index}"))).relative()
                     .children(smoke_overlay::probe("ai-process-tool-chip")).children(smoke_overlay::probe(format!("ai-process-tool-chip-{index}")))
                     .flex_1().min_w_0().child(ai_process_status::inline_tool_chip(chip_label, mono));
+                let (total_steps, scroll_handle) = (spec.steps.len(), spec.steps_scroll.clone());
                 if has_detail {
-                    let (row_key, on_details_changed) = (key.clone(), options.on_details_changed.clone());
+                    let (row_key, on_details_changed, scroll) = (key.clone(), options.on_details_changed.clone(), scroll_handle.clone());
                     chip = chip.cursor(CursorStyle::PointingHand).on_mouse_down(MouseButton::Left, move |_, window, cx| {
                         cx.stop_propagation();
-                        EXPANDED_DETAILS.with(|open| { let mut open = open.borrow_mut(); let entry = (row_key.clone(), index); if !open.remove(&entry) { open.insert(entry); } });
+                        let opened = EXPANDED_DETAILS.with(|open| { let mut open = open.borrow_mut(); let entry = (row_key.clone(), index); if open.remove(&entry) { false } else { open.insert(entry); true } });
+                        if opened && index + 1 == total_steps { scroll.scroll_to_bottom(); }
                         if let Some(notify) = &on_details_changed { notify(cx); }
                         window.refresh();
                     });
                 }
                 let mut row = div().id(SharedString::from(format!("ai-process-row-{key}-{index}"))).group(row_group.clone())
-                    .mx(px(-3.)).px(px(3.)).h(px(28.)).flex_none().flex().items_center().gap(px(8.)).rounded(crate::ui::radius::CONTROL).hover(|s| s.bg(theme.hover))
+                    .mx(px(-3.)).px(px(3.)).h(px(28.)).flex_none().flex().items_center().gap(px(8.)).rounded(crate::ui::radius::CONTROL).hover(|s| s.bg(ai_process_status::row_hover_bg()))
                     .child(ai_process_status::row_icon_slot(&format!("{key}-step-{index}"), &row_group, icon_kind, step_status, is_open, has_detail))
                     .child(div().flex_none().text_size(px(12.5)).font_weight(FontWeight(500.)).text_color(theme.text).child(label))
                     .child(chip);
                 if has_detail {
-                    let (row_key, on_details_changed) = (key.clone(), options.on_details_changed.clone());
+                    let (row_key, on_details_changed, scroll) = (key.clone(), options.on_details_changed.clone(), scroll_handle);
                     row = row.cursor(CursorStyle::PointingHand).on_mouse_down(MouseButton::Left, move |_, window, cx| {
                         cx.stop_propagation();
-                        EXPANDED_DETAILS.with(|open| { let mut open = open.borrow_mut(); let entry = (row_key.clone(), index); if !open.remove(&entry) { open.insert(entry); } });
+                        let opened = EXPANDED_DETAILS.with(|open| { let mut open = open.borrow_mut(); let entry = (row_key.clone(), index); if open.remove(&entry) { false } else { open.insert(entry); true } });
+                        if opened && index + 1 == total_steps { scroll.scroll_to_bottom(); }
                         if let Some(notify) = &on_details_changed { notify(cx); }
                         window.refresh();
                     });
@@ -200,8 +204,8 @@ pub fn process_card_with_options(
                                 DetailTone::Del => ai_process_status::diff_red(),
                                 DetailTone::Neutral => theme.text_secondary,
                             };
-                            div().w_full().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-                                .when(detail_mono, |el| el.font_family(crate::theme::mono_font_family()))
+                            div().w_full().min_w_0()
+                                .when(detail_mono, |el| el.font_family(crate::theme::mono_font_family()).overflow_hidden().whitespace_nowrap().text_ellipsis())
                                 .text_size(px(11.5)).line_height(px(18.4)).text_color(color).child(line.text)
                         }))
                         .with_animation(SharedString::from(format!("{key}-detail-open-{index}")),

@@ -53,6 +53,7 @@ pub fn move_to_trash(path: &Path) -> io::Result<()> {
 }
 
 #[cfg(target_os = "macos")]
+#[allow(deprecated)]
 fn trash_platform(path: &Path) -> io::Result<()> {
     use cocoa::base::{BOOL, NO, SEL, id, nil, selector};
     use cocoa::foundation::{NSAutoreleasePool, NSString};

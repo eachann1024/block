@@ -137,7 +137,7 @@ impl AiChat {
         let path = link.path.clone(); let range = link.block_range.clone(); let is_create = link.is_create;
         clear_active(cx, true);
         ACTIVE.with(|active| *active.borrow_mut() = Some(link));
-        if self.fullscreen { self.fullscreen = false; }
+        self.set_fullscreen(false, cx);
         if is_create {
             editor.update(cx, |_, cx| cx.notify());
             cx.notify();

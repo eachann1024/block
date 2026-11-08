@@ -5,8 +5,9 @@ use gpui::{
     point, prelude::*, px, rgb, rgba, transparent_black,
 };
 pub use crate::ui::placement::{
-    AlignX, PlacementSpec, max_height_for_spec, smart_anchored, smart_anchored_with,
-    smart_popover as deferred_popover_for, smart_popover_with as deferred_popover_with,
+    AlignX, PlacementSpec, anchored_motion, anchored_motion_with, max_height_for_spec,
+    smart_anchored, smart_anchored_with, smart_popover as deferred_popover_for,
+    smart_popover_with as deferred_popover_with,
 };
 use crate::{
     app::Workspace,

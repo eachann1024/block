@@ -79,7 +79,7 @@ pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: T
         "--include-partial-messages",
         "--mcp-config", r#"{"mcpServers":{"block":{"type":"sdk","name":"block"}}}"#,
         "--append-system-prompt",
-        "Use Block MCP tools (listNotebooks, listPages, searchNotes, readPage, executeBatchPlan, askUserQuestion, loadSkill, readSkillResource) when reading, batch-editing Block notes, or asking the user clarifying questions.",
+        crate::editor::ai::agent::SYSTEM_PROMPT_HINT,
     ])
         .env_remove("CLAUDECODE").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(root) = request.context.notebook_root.as_ref() { command.current_dir(root); }

@@ -1,5 +1,6 @@
 use std::time::{Duration, SystemTime};
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct ProcessRow {
     pub pid: u32,

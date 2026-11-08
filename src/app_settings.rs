@@ -26,6 +26,7 @@ pub(crate) enum SettingsTab {
 impl SettingsTab {
     pub(crate) const ALL: [Self; 4] = [Self::Ai, Self::Appearance, Self::Folders, Self::Shortcuts];
     #[doc(hidden)]
+    #[allow(dead_code, non_upper_case_globals)]
     pub(crate) const General: Self = Self::Folders;
 
     pub(crate) fn title(self) -> &'static str {
@@ -33,7 +34,7 @@ impl SettingsTab {
             Self::Ai => tr("AI 助手", "AI Assistant"),
             Self::Appearance => tr("外观与字体", "Appearance & Fonts"),
             Self::Folders => tr("文件夹", "Folders"),
-            Self::Shortcuts => tr("基础快捷键", "Shortcuts"),
+            Self::Shortcuts => tr("快捷键", "Shortcuts"),
         }
     }
 
@@ -71,6 +72,7 @@ pub(crate) struct SettingsModal {
     pub folder_error: Option<String>,
     pub regex_error: Option<String>,
     pub font_picker: Option<FontPickerModal>,
+    pub font_picker_leaving: bool,
 }
 
 pub(super) fn keystroke_to_spec(ks: &Keystroke) -> Option<String> {
@@ -111,6 +113,7 @@ impl Workspace {
             cx.notify();
             return;
         }
+        self.present_sidebar();
         if self.renaming.is_some() { self.cancel_rename(window, cx); }
         if self.search.is_some() { self.close_search(window, cx); }
         self.close_overlays(cx);
@@ -174,24 +177,31 @@ impl Workspace {
         self.settings = Some(SettingsModal {
             focus, recording: None, tab, assets_input, _assets_sub,
             folder_draft_input, _folder_draft_sub, regex_draft_input, _regex_draft_sub,
-            advanced_open: false, folder_error: None, regex_error: None, font_picker: None,
+            advanced_open: false, folder_error: None, regex_error: None, font_picker: None, font_picker_leaving: false,
         });
         crate::editor::ai::settings::ensure(window, cx);
         cx.notify();
     }
 
     pub(super) fn select_settings_tab(&mut self, tab: SettingsTab, cx: &mut Context<Self>) {
+        let ended = self.end_shortcut_recording(cx);
         if let Some(m) = &mut self.settings {
-            if m.tab == tab && m.recording.is_none() && m.font_picker.is_none() { return; }
+            if m.tab == tab && !ended && m.font_picker.is_none() { return; }
             m.tab = tab;
-            m.recording = None;
             m.font_picker = None;
+            m.font_picker_leaving = false;
+            crate::ui::motion::popup_reset("font-picker-body");
+            crate::ui::motion::popup_reset("font-picker-code");
             cx.notify();
         }
     }
 
     pub(super) fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.settings.is_none() { return; }
+        let _ = self.end_shortcut_recording(cx);
         if self.settings.take().is_none() { return; }
+        crate::ui::motion::popup_reset("font-picker-body");
+        crate::ui::motion::popup_reset("font-picker-code");
         self.restore_focus(window, cx);
         cx.notify();
     }
@@ -230,6 +240,34 @@ impl Workspace {
         }
         self.editor.update(cx, |editor, cx| { editor.sync_language(window, cx); editor.reset_layouts(); cx.notify(); });
         cx.notify();
+    }
+
+    pub(super) fn begin_shortcut_recording(&mut self, kind: ShortcutKind, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(focus) = self.settings.as_mut().map(|modal| {
+            modal.recording = Some(kind);
+            modal.focus.clone()
+        }) else { return; };
+        window.focus(&focus, cx);
+        crate::quick::suspend_global_hotkeys(cx);
+        cx.notify();
+    }
+
+    /// Restores system hotkeys after a cancelled recording. False when nothing was recording.
+    pub(super) fn end_shortcut_recording(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.settings.as_mut().and_then(|modal| modal.recording.take()).is_none() { return false; }
+        crate::quick::rebind_hotkeys(cx);
+        cx.notify();
+        true
+    }
+
+    /// Saves a recorded chord. Escape stays unhandled so the page can cancel recording.
+    pub(super) fn capture_recorded_shortcut(&mut self, keystroke: &Keystroke, cx: &mut Context<Self>) -> bool {
+        let Some(kind) = self.settings.as_ref().and_then(|m| m.recording) else { return false; };
+        if keystroke.key == "escape" && !keystroke.modifiers.modified() { return false; }
+        if let Some(spec) = keystroke_to_spec(keystroke) {
+            self.apply_shortcut(kind, spec, cx);
+        }
+        true
     }
 
     pub(super) fn apply_shortcut(&mut self, kind: ShortcutKind, spec: String, cx: &mut Context<Self>) {

@@ -25,6 +25,7 @@ impl Run {
         self.check(9, smoke_overlay::target_bounds("outline-popover").is_some()
             && smoke_overlay::target_bounds("outline-item-3").is_some(), "悬停展开完整大纲")?;
         self.click_target(cx, "outline-item-3", "Step 9 · 点击大纲跳转到章节").await?;
+        sleep(cx, 220).await;
         cx.update(|_| smoke_overlay::reset()); self.redraw(cx);
         self.check(9, self.editor(cx, |editor| editor.caret_block_id()) == entries[3].0
             && smoke_overlay::target_bounds("outline-popover").is_none(), "点击标题跳转并关闭浮层")?;

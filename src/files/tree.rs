@@ -29,7 +29,7 @@ impl Render for DragGhost {
             .rounded(crate::ui::radius::CONTROL).bg(theme.paper).border_1().border_color(theme.accent).opacity(0.94)
             .text_size(theme.ui_font).font_weight(FontWeight(460.)).text_color(theme.text)
             .child(icon(kind, px(16.), theme.icon_colors(theme.accent)))
-            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(self.label.clone()))
+            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().relative().top(LABEL_OPTICAL_NUDGE).child(self.label.clone()))
     }
 }
 
@@ -176,6 +176,11 @@ impl Render for FileTree {
     }
 }
 
+/// GPUI centers labels on the font em box, which sits a little below the row icons.
+/// 1.5px lifts Latin lowercase onto the icon but pushes CJK above it. Half a pixel
+/// lines the character body up with the icon and keeps every row on one baseline.
+const LABEL_OPTICAL_NUDGE: gpui::Pixels = px(-0.5);
+
 fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>, enabled: bool,
     editing: Option<Entity<InputState>>, target: bool, focused: bool, cx: &mut Context<FileTree>) -> gpui::Stateful<gpui::Div> {
     let theme = Theme::ocean();
@@ -225,8 +230,8 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
         .child(div().size(px(16.)).flex_none().flex().items_center().justify_center().child(kind_icon))
         .when_some(rename_vis.as_ref(), |row, vis| crate::ui::rename_row::style_capsule(row, vis))
         .child(match &editing {
-            Some(input) => crate::ui::rename_row::input_slot(input),
-            None => div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(label),
+            Some(input) => crate::ui::rename_row::input_slot(input).relative().top(LABEL_OPTICAL_NUDGE),
+            None => div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().relative().top(LABEL_OPTICAL_NUDGE).child(label),
         })
         .when_some(editing.as_ref().zip(rename_vis.as_ref()), |row, (input, vis)| row.child(crate::ui::rename_row::trailing_slot(input, vis)))
         // Hover "⋯": opens the same menu as a right-click, anchored under the button.
