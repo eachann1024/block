@@ -20,7 +20,6 @@ pub(crate) struct AiSettings {
     pub(super) model: String,
     pub(super) testing: bool, pub(super) test_note: Option<TestNote>,
     pub(super) toggle_anim: crate::ui::toggle_pill::TogglePillState,
-    pub(super) pending_backends: Vec<(super::backend::BackendKind, bool)>,
     pub(super) focused_backend: super::backend::BackendKind,
     _subs: Vec<Subscription>,
 }
@@ -30,6 +29,14 @@ impl Global for Holder {}
 
 /// Creates the form the first time 偏好设置 opens (inputs need a window).
 pub(crate) fn ensure(window: &mut Window, cx: &mut App) {
+    let chat_entity = super::chat::chat(window, cx);
+    chat_entity.update(cx, |chat, cx| {
+        for kind in super::backend::BackendKind::ALL {
+            if kind != super::backend::BackendKind::Builtin && chat.backend_status(kind).is_none() {
+                chat.probe_backend(kind, cx);
+            }
+        }
+    });
     if cx.has_global::<Holder>() { return; }
     let form = cx.new(|cx| AiSettings::new(window, cx));
     cx.set_global(Holder(form));
@@ -81,7 +88,7 @@ impl AiSettings {
             enabled: c.enabled, provider: c.provider, protocol: c.protocol, providers: c.providers,
             show_key: false, last_en: is_en(), base_url, api_key, model,
             testing: false, test_note: None,
-            pending_backends: Vec::new(), toggle_anim: Default::default(), focused_backend: super::backend::BackendKind::Builtin,
+            toggle_anim: Default::default(), focused_backend: super::backend::BackendKind::Builtin,
             _subs: subs,
         }
     }
@@ -138,24 +145,14 @@ impl AiSettings {
     }
 
     pub(super) fn toggle_backend(&mut self, kind: super::backend::BackendKind, cx: &mut Context<Self>) {
-        let current = super::backend::BackendConfig::load().is_enabled(kind);
-        let next = !self.pending_backends.iter().find(|(item, _)| *item == kind).map_or(current, |(_, enabled)| *enabled);
-        self.pending_backends.retain(|(item, _)| *item != kind);
-        if next != current { self.pending_backends.push((kind, next)); }
-        cx.notify();
-    }
-
-    pub(super) fn save_backends(&mut self, cx: &mut Context<Self>) {
         let recognized = super::chat::recognized_backends(cx);
         let mut config = super::backend::BackendConfig::load();
-        for (kind, enabled) in self.pending_backends.clone() {
-            if let Err(error) = config.set_enabled(kind, enabled, &recognized) {
-                self.test_note = Some(TestNote::Err(error));
-                cx.notify();
-                return;
-            }
+        let next = !config.is_enabled(kind);
+        if let Err(error) = config.set_enabled(kind, next, &recognized) {
+            self.test_note = Some(TestNote::Err(error));
+            cx.notify();
+            return;
         }
-        self.pending_backends.clear();
         super::chat::sync_settings(cx);
         cx.notify();
     }
