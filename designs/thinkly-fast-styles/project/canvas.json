@@ -1072,6 +1072,36 @@
       "w": 1440,
       "x": 3040,
       "y": 10680
+    },
+    "AiAgentCards-V1-FiveUpRow.dc.html": {
+      "expand": "fill",
+      "h": 920,
+      "is_interactive": true,
+      "page": "settings",
+      "title": "Agent 卡片布局 A（推荐）· 单行五联紧凑方卡（96px 高 · 24px 图标 · 消除 Pi 换行拉伸 + 右下紧凑保存）",
+      "w": 1440,
+      "x": 0,
+      "y": 4840
+    },
+    "AiAgentCards-V2-CompactPills.dc.html": {
+      "expand": "fill",
+      "h": 920,
+      "is_interactive": true,
+      "page": "settings",
+      "title": "Agent 卡片布局 B · 单行横向紧凑条（48px 高 · 左图标中名称右勾选 + 顶栏同行保存）",
+      "w": 1440,
+      "x": 1520,
+      "y": 4840
+    },
+    "AiAgentCards-V3-ListRows.dc.html": {
+      "expand": "fill",
+      "h": 920,
+      "is_interactive": true,
+      "page": "settings",
+      "title": "Agent 卡片布局 C · 3+2 精致双排等高条卡（54px 高 · 20px 图标井 + 右下角紧凑保存）",
+      "w": 1440,
+      "x": 3040,
+      "y": 4840
     }
   },
   "createdOnFiles": {
@@ -1092,6 +1122,15 @@
     "view": "canvas"
   },
   "notes": {
+    "ai-agent-cards-compact-row": {
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "settings",
+      "text": "AI 与本机 Agent 卡片收敛重构 · 缩小 144px 巨卡与 48px 图标、消除第 5 项单行撑满与全宽保存条 · 三个布局版本（功能不变）",
+      "w": 240,
+      "x": 0,
+      "y": 4600
+    },
     "ai-backend-settings-row": {
       "kind": "title1",
       "maxW": 2960,
@@ -1346,7 +1385,10 @@
     "AiPlanLink-V2-BlockReviewCard.dc.html",
     "Outline-V1-TopLeftPopover.dc.html",
     "Outline-V2-InlineScrubber.dc.html",
-    "Outline-V3-PinnableTree.dc.html"
+    "Outline-V3-PinnableTree.dc.html",
+    "AiAgentCards-V1-FiveUpRow.dc.html",
+    "AiAgentCards-V2-CompactPills.dc.html",
+    "AiAgentCards-V3-ListRows.dc.html"
   ],
   "pages": [
     {
