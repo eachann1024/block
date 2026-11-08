@@ -1,43 +1,56 @@
 //! Agent configuration navigation and explicit opt-in are separate hit targets.
-use std::sync::{Arc, LazyLock};
-use gpui::{App, CursorStyle, ElementId, FontWeight, Image, ImageFormat, MouseButton,
-    MouseDownEvent, Stateful, Div, Window, div, img, svg, prelude::*, px};
-use crate::{icons::{Icon, icon}, theme::Theme};
-use super::{card_bg, selected_bg};
+use gpui::{App, CursorStyle, Div, ElementId, FontWeight, MouseButton,
+    MouseDownEvent, SharedString, Stateful, Window, div, prelude::*, px, svg};
+use crate::theme::{Theme, is_dark};
+use super::{card_bg, mono_font, selected_bg};
 
-static BLOCK_ICON: LazyLock<Arc<Image>> = LazyLock::new(|| Arc::new(Image::from_bytes(
-    ImageFormat::Png, include_bytes!("../../assets/app-icon/apple-touch-icon.png").to_vec(),
-)));
-
-pub fn brand_glyph(logo: Option<&'static str>, size: f32, color: gpui::Hsla) -> Div {
+pub fn brand_glyph(logo: &'static str, size: f32, color: gpui::Hsla) -> Div {
     div().size(px(size)).flex_none().flex().items_center().justify_center()
-        .when_some(logo, |d, path| d.child(svg().path(path).size(px(size)).text_color(color)))
-        .when(logo.is_none(), |d| d.child(img(BLOCK_ICON.clone()).size(px(size)).rounded(px((size * 0.22).round()))))
+        .child(svg().path(logo).size(px(size)).text_color(color))
+}
+
+pub fn pill_switch(id: impl Into<ElementId>, checked: bool, enabled: bool) -> Stateful<Div> {
+    let theme = Theme::ocean();
+    let id: ElementId = id.into();
+    let probe = crate::ui::smoke_overlay::probe_for(&id);
+    let track_off = if is_dark() { gpui::rgb(0x3a3a3a) } else { gpui::rgb(0xd4d7dd) };
+    div().id(id).relative().children(probe)
+        .w(px(34.)).h(px(20.)).p(px(2.)).rounded(px(999.)).flex_none()
+        .flex().items_center()
+        .when(checked, |d| d.justify_end().bg(theme.accent))
+        .when(!checked, |d| d.justify_start().bg(track_off))
+        .when(enabled, |d| d.cursor(CursorStyle::PointingHand))
+        .when(!enabled, |d| d.opacity(0.5))
+        .child(div().size(px(16.)).rounded(px(999.)).bg(gpui::rgb(0xffffff)))
 }
 
 pub fn agent_card(
-    id: ElementId, toggle_id: ElementId, label: &'static str, logo: Option<&'static str>,
-    focused: bool, enabled: bool,
+    id: ElementId, toggle_id: ElementId, label: &'static str, subtitle: impl Into<SharedString>,
+    logo: &'static str, focused: bool, enabled: bool, is_last: bool,
     on_select: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     on_toggle: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
-    let brand = brand_glyph(logo, 48., theme.text);
-    let checkbox = div().id(toggle_id.clone()).relative()
-        .children(crate::ui::smoke_overlay::probe_for(&toggle_id))
-        .size(px(32.)).flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
-        .on_mouse_down(MouseButton::Left, on_toggle)
-        .child(div().size(px(22.)).flex().items_center().justify_center().rounded(px(6.))
-            .border_1().border_color(if enabled { theme.accent } else { theme.btn_border })
-            .bg(if enabled { theme.accent } else { card_bg() })
-            .when(enabled, |d| d.child(icon(Icon::Check, px(16.), theme.mono_icon_colors(gpui::rgb(0xffffff).into())))));
+    let sub: SharedString = subtitle.into();
+    let well = div().size(px(26.)).rounded(px(6.)).bg(card_bg()).border_1().border_color(theme.hairline)
+        .flex().items_center().justify_center().flex_none()
+        .child(brand_glyph(logo, 16., theme.text));
+    let toggle = pill_switch(toggle_id, enabled, true)
+        .on_mouse_down(MouseButton::Left, on_toggle);
     div().id(id.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&id))
-        .flex_1().min_w(px(136.)).h(px(144.)).p(px(16.)).flex().flex_col().justify_between()
-        .rounded(crate::ui::radius::CONTROL).border_1()
-        .border_color(if focused { theme.accent } else { theme.btn_border })
-        .bg(if focused { selected_bg() } else { theme.shell })
-        .cursor(CursorStyle::PointingHand).hover(|s| s.border_color(theme.accent))
+        .w_full().min_w_0().py(px(11.)).px(px(14.)).flex().items_center().justify_between().gap(px(10.))
+        .when(!is_last, |d| d.border_b_1().border_color(theme.hairline))
+        .when(focused, |d| d.bg(selected_bg()))
+        .when(!focused, |d| d.hover(move |s| s.bg(theme.hover)))
+        .cursor(CursorStyle::PointingHand)
         .on_mouse_down(MouseButton::Left, on_select)
-        .child(div().flex().items_start().justify_between().child(brand).child(checkbox))
-        .child(div().text_size(px(16.)).font_weight(FontWeight(600.)).text_color(theme.text).child(label))
+        .child(div().flex().items_center().gap(px(9.)).min_w_0().flex_1()
+            .child(well)
+            .child(div().flex(). items_baseline().gap(px(6.)).min_w_0().flex_1()
+                .child(div().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(560.)).text_color(theme.text)
+                    .whitespace_nowrap().child(label))
+                .when(!sub.is_empty(), |d| d.child(div().text_size(px(12.)).line_height(px(16.)).font(mono_font())
+                    .text_color(theme.text_secondary).overflow_hidden().whitespace_nowrap().text_ellipsis().child(sub)))))
+        .child(toggle)
 }
+

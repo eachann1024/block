@@ -211,4 +211,4 @@ pub fn static_keycap(spec: &str) -> gpui::Div {
 
 #[path = "agent_card.rs"]
 mod agent_card;
-pub use agent_card::{agent_card, brand_glyph};
+pub use agent_card::{agent_card, brand_glyph, pill_switch};

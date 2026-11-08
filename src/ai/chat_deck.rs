@@ -33,7 +33,10 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
     if !backend_ui::DECK_OPEN.with(std::cell::Cell::get) { return None; }
     let bounds = TRIGGER_BOUNDS.with(Clone::clone);
     let trigger = bounds.get()?;
-    let spec = crate::ui::placement::PlacementSpec::above(trigger);
+    // Keep the menu on the trigger's left edge so a provider switch cannot
+    // slide it when the capsule width changes.
+    let spec = crate::ui::placement::PlacementSpec::above(trigger)
+        .align_x(crate::ui::placement::AlignX::PinLeft);
     let max_height = crate::ui::placement::available_height_for_spec(&spec, window.viewport_size(), window.viewport_size().height);
     let wide = chat.fullscreen || chat.panel_width >= px(500.);
     let target_w = if chat.fullscreen {
@@ -88,7 +91,7 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
     }).collect();
 
     let list_h = if chat.fullscreen { 276. } else if wide { 220. } else { 172. };
-    let mut list = div().id("ai-deck-models").h(px(list_h)).p(px(if wide { 8. } else { 6. })).flex_none().overflow_y_scroll().track_scroll(&chat.deck_scroll).flex().flex_col().gap(px(if wide { 3. } else { 2. }));
+    let mut list = div().id("ai-deck-models").h(px(list_h)).min_h(px(list_h)).max_h(px(list_h)).p(px(if wide { 8. } else { 6. })).flex_none().overflow_y_scroll().track_scroll(&chat.deck_scroll).flex().flex_col().gap(px(if wide { 3. } else { 2. }));
     if filtered.is_empty() {
         let status = if !query.is_empty() {
             tr("无匹配模型", "No matching models")
@@ -178,9 +181,10 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
                 }
             })));
 
-    let deck = ai_controls::panel_shell("ai-agent-deck").w(width).max_h(max_height)
+    let deck = ai_controls::panel_shell("ai-agent-deck").w(width).min_w(width).max_w(width).max_h(max_height)
         .child(div().flex().w_full().min_w_0().child(rail).child(div().flex_1().min_w_0().flex().flex_col().child(upper).child(footer)));
     Some(crate::ui::placement::smart_popover_with(move |_, _| {
         crate::ui::placement::PlacementSpec::above(bounds.get().unwrap_or(trigger))
+            .align_x(crate::ui::placement::AlignX::PinLeft)
     }, deck, 20))
 }
