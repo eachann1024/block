@@ -21,6 +21,8 @@ pub const MIN_SCROLL_HEIGHT: f32 = 80.;
 pub enum AlignX {
     /// Prefers the trigger's left edge, flipping to its right edge before viewport clamping.
     Left,
+    /// Left edge of the trigger, clamped into the viewport. Trigger width is ignored.
+    PinLeft,
     /// Prefers the trigger's right edge, flipping to its left edge before viewport clamping.
     Right,
     /// Centers the popup horizontally over `trigger.center().x`.
@@ -131,7 +133,7 @@ pub fn resolve_origin(spec: &PlacementSpec, menu_size: Size<Pixels>, window_size
     let raw_x = match spec.align_x {
         AlignX::Left if !fits(left) && fits(right) && spec.trigger.size.width > px(0.) => right,
         AlignX::Right if !fits(right) && fits(left) && spec.trigger.size.width > px(0.) => left,
-        AlignX::Left => left,
+        AlignX::Left | AlignX::PinLeft => left,
         AlignX::Right => right,
         AlignX::Center => spec.trigger.center().x - menu_size.width * 0.5,
         AlignX::CascadeRight { gap } => {

@@ -50,13 +50,13 @@ pub(super) fn backend_name(backend: BackendKind) -> &'static str {
     }
 }
 
-pub(super) fn backend_logo(backend: BackendKind) -> Option<&'static str> {
+pub(super) fn backend_logo(backend: BackendKind) -> &'static str {
     match backend {
-        BackendKind::Builtin => None,
-        BackendKind::Codex => Some("agents/codex.svg"),
-        BackendKind::Claude => Some("agents/claude.svg"),
-        BackendKind::Dsh => Some("agents/dsh.svg"),
-        BackendKind::Pi => Some("agents/pi.svg"),
+        BackendKind::Builtin => "agents/builtin.svg",
+        BackendKind::Codex => "agents/codex.svg",
+        BackendKind::Claude => "agents/claude.svg",
+        BackendKind::Dsh => "agents/dsh.svg",
+        BackendKind::Pi => "agents/pi.svg",
     }
 }
 
