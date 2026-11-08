@@ -1,29 +1,85 @@
-use std::time::Duration;
+use std::{sync::OnceLock, time::Duration};
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, CursorStyle, Div, FontWeight, IntoElement,
-    MouseButton, MouseDownEvent, ParentElement, SharedString, Stateful, Styled, Window, div,
-    linear_color_stop, linear_gradient, prelude::*, px, relative,
+    Animation, AnimationExt, AnyElement, App, CursorStyle, Div, Font, FontFeatures, FontStyle,
+    FontWeight, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, SharedString,
+    Stateful, Styled, TextRun, Window, div, linear_color_stop, linear_gradient, prelude::*, px,
+    relative,
 };
 use crate::{
-    theme::{Theme, is_dark, tr},
+    theme::{Theme, is_dark, is_en, tr},
     ui::{annotation_card::spinner, fade, radius, smoke_overlay},
 };
 
-pub fn metric(label: impl Into<SharedString>, value: impl Into<SharedString>) -> AnyElement {
+/// OpenType `tnum`: every digit has the same advance, so 142.3 and 188.8 occupy the same width.
+pub fn tabular_nums() -> FontFeatures {
+    static FEATURES: OnceLock<FontFeatures> = OnceLock::new();
+    FEATURES.get_or_init(|| FontFeatures(std::sync::Arc::new(vec![("tnum".into(), 1)]))).clone()
+}
+
+/// Widest live readouts. Slots stay this wide so a longer sample cannot push its neighbors.
+#[derive(Clone, Copy)]
+pub struct ReadoutWidth {
+    pub bytes: Pixels,
+    pub cpu: Pixels,
+    pub threads: Pixels,
+    pub time: Pixels,
+    pub percent: Pixels,
+}
+
+pub fn readout_widths(window: &Window) -> ReadoutWidth {
+    let strong = FontWeight(560.);
+    let time = if is_en() { "2026-11-08 20:42:15" } else { "2026年11月08日 20:42:15" };
+    ReadoutWidth {
+        bytes: readout_width(window, &["999.9 KiB", "999.9 MiB", "999.9 GiB", "999.9 TiB", "999 B"], px(13.), strong),
+        cpu: readout_width(window, &["999.9%"], px(13.), strong),
+        threads: readout_width(window, &["9999"], px(13.), strong),
+        time: readout_width(window, &[time], px(13.), strong),
+        percent: readout_width(window, &[">99.99%", "100.00%", "<0.01%"], px(12.), FontWeight::NORMAL),
+    }
+}
+
+fn readout_width(window: &Window, samples: &[&str], size: Pixels, weight: FontWeight) -> Pixels {
+    let font = Font {
+        family: crate::theme::ui_font_family(),
+        features: tabular_nums(),
+        fallbacks: None,
+        weight,
+        style: FontStyle::Normal,
+    };
+    let measured = samples.iter().fold(px(0.), |width, sample| {
+        let run = TextRun { len: sample.len(), font: font.clone(), ..TextRun::default() };
+        width.max(window.text_system().shape_line(SharedString::from(*sample), size, &[run], None).width())
+    });
+    // Whole pixels plus slack, so a subpixel shaping difference cannot resize the slot.
+    measured.ceil() + px(2.)
+}
+
+/// Right-aligned tabular number in a fixed slot. Shorter values leave space on the left; the right edge stays put.
+pub fn numeric_slot(value: impl Into<SharedString>, slot: Pixels, size: Pixels, weight: FontWeight) -> Div {
+    div()
+        .w(slot)
+        .min_w(slot)
+        .max_w(slot)
+        .flex_none()
+        .text_right()
+        .whitespace_nowrap()
+        .overflow_hidden()
+        .text_size(size)
+        .font_weight(weight)
+        .font_features(tabular_nums())
+        .child(value.into())
+}
+
+pub fn metric(label: impl Into<SharedString>, value: impl Into<SharedString>, slot: Pixels) -> AnyElement {
     let theme = Theme::ocean();
     div()
         .flex()
+        .flex_none()
         .items_center()
         .gap(px(5.))
         .text_size(px(12.))
-        .child(div().text_color(theme.text_secondary).child(label.into()))
-        .child(
-            div()
-                .text_size(px(13.))
-                .font_weight(FontWeight(560.))
-                .text_color(theme.text)
-                .child(value.into()),
-        )
+        .child(div().flex_none().whitespace_nowrap().text_color(theme.text_secondary).child(label.into()))
+        .child(numeric_slot(value, slot, px(13.), FontWeight(560.)).text_color(theme.text))
         .into_any_element()
 }
 
