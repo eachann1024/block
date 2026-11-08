@@ -223,6 +223,7 @@ impl Render for SearchWindow {
             .id("search-window").key_context("SearchPalette").size_full().relative()
             .flex().flex_col().overflow_hidden().rounded(px(12.))
             .bg(theme.menu).border_1().border_color(theme.menu_border).text_color(theme.text)
+            .font_family(crate::theme::ui_font_family())
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
                 if this.state.scope_menu_open { this.state.scope_menu_open = false; cx.notify(); }
             }))
