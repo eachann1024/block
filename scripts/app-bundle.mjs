@@ -117,9 +117,16 @@ export function run(command, args, options = {}) {
   return result.stdout ?? "";
 }
 
-export function binaryPath(root, profile = "release") {
+export function cargoArgs(profile = "release", options = {}) {
   const args = ["build", ...(profile === "release" ? ["--locked", "--release"] : ["--profile", profile]), "--message-format", "json"];
-  if (process.env.CARGO_BUILD_TARGET) args.push("--target", process.env.CARGO_BUILD_TARGET);
+  const target = options.target === undefined ? process.env.CARGO_BUILD_TARGET : options.target;
+  if (target) args.push("--target", target);
+  if (options.timings === true) args.push("--timings");
+  return args;
+}
+
+export function binaryPath(root, profile = "release", options = {}) {
+  const args = cargoArgs(profile, options);
   const result = spawnSync("cargo", args, {
     cwd: root,
     encoding: "utf8",

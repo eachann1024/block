@@ -1,4 +1,5 @@
 use gpui::{App, Context, Window};
+use super::chat_draft_state::{self, ComposerDraft, DraftBox};
 use super::{AiChat, SentDraft};
 
 fn path() -> std::path::PathBuf { crate::files::app_data_dir("Block").join("ai-failed-drafts.json") }
@@ -15,6 +16,29 @@ pub(super) fn load() -> Vec<SentDraft> {
     std::fs::read(path()).ok().and_then(|data| serde_json::from_slice(&data).ok()).unwrap_or_default()
 }
 impl AiChat {
+    fn take_box(&mut self, cx: &App) -> DraftBox {
+        DraftBox {
+            current: self.current,
+            composer: ComposerDraft {
+                text: self.input.read(cx).value().to_string(),
+                refs: std::mem::take(&mut self.refs),
+                skills: std::mem::take(&mut self.skills),
+            },
+            sent: self.sent_draft.take(),
+            deferred: std::mem::take(&mut self.deferred_drafts),
+            retry: self.retry_draft.take(),
+        }
+    }
+
+    fn install_box(&mut self, state: DraftBox) {
+        self.current = state.current;
+        self.refs = state.composer.refs;
+        self.skills = state.composer.skills;
+        self.sent_draft = state.sent;
+        self.deferred_drafts = state.deferred;
+        self.retry_draft = state.retry;
+    }
+
     pub(in crate::editor::ai) fn persist_active_draft(&mut self, cx: &App) {
         let draft = ActiveDraft { conversation: self.current, text: self.input.read(cx).value().to_string(),
             refs: self.refs.clone(), skills: self.skills.clone(), retry: self.retry_draft.clone() };
@@ -37,42 +61,47 @@ impl AiChat {
     }
 
     pub(super) fn restore_failed_draft(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(draft) = self.sent_draft.take() else { return };
-        if self.current == Some(draft.conversation) && self.input.read(cx).value().is_empty()
-            && self.refs.is_empty() && self.skills.is_empty() {
-            let mut removed = false;
-            if let Some(conversation) = self.convs.iter_mut().find(|conversation| conversation.id == draft.conversation) {
-                if draft.message_index != usize::MAX && conversation.messages.len() == draft.message_index + 1 {
-                    conversation.messages.pop(); removed = true;
-                }
+        if self.sent_draft.is_none() { return; }
+        let message_len = self.sent_draft.as_ref().and_then(|draft| {
+            self.convs.iter().find(|conversation| conversation.id == draft.conversation).map(|conversation| conversation.messages.len())
+        });
+        let outcome = match chat_draft_state::restore_failed(self.take_box(cx), message_len) {
+            Ok(outcome) => outcome,
+            Err(state) => { self.install_box(state); return; }
+        };
+        if let Some(id) = outcome.pop_conversation {
+            if let Some(conversation) = self.convs.iter_mut().find(|conversation| conversation.id == id) {
+                conversation.messages.pop();
             }
-            self.retry_draft = (!removed && draft.message_index != usize::MAX).then_some(draft.clone());
-            self.refs = draft.refs; self.skills = draft.skills;
-            self.input.update(cx, |input, cx| input.set_value(draft.text, window, cx));
-            self.persist();
-            self.persist_active_draft(cx);
-        } else {
-            self.deferred_drafts.push(draft);
-            self.persist_failed_drafts();
         }
+        self.current = outcome.current;
+        self.refs = outcome.refs;
+        self.skills = outcome.skills;
+        self.retry_draft = outcome.retry;
+        self.deferred_drafts = outcome.deferred;
+        self.sent_draft = None;
+        if outcome.replace_text {
+            let text = outcome.text;
+            self.input.update(cx, |input, cx| input.set_value(text, window, cx));
+        }
+        if outcome.write_conversations { self.persist(); }
+        if outcome.write_active { self.persist_active_draft(cx); }
+        if outcome.write_failed { self.persist_failed_drafts(); }
     }
 
     pub(in crate::editor::ai) fn restore_deferred_draft(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(index) = self.deferred_drafts.iter().position(|draft| self.current.is_none() || Some(draft.conversation) == self.current) else { return };
-        let draft = self.deferred_drafts.remove(index);
-        let text = self.input.read(cx).value().to_string();
-        if !text.is_empty() || !self.refs.is_empty() || !self.skills.is_empty() {
-            let message_index = self.retry_draft.take().filter(|retry| retry.conversation == draft.conversation
-                && retry.text == text && retry.refs == self.refs && retry.skills == self.skills)
-                .map_or(usize::MAX, |retry| retry.message_index);
-            self.deferred_drafts.push(SentDraft { text, refs: std::mem::take(&mut self.refs), skills: std::mem::take(&mut self.skills),
-                conversation: draft.conversation, message_index });
+        if !chat_draft_state::has_deferred(&self.deferred_drafts, self.current) { return; }
+        let known: Vec<u64> = self.convs.iter().map(|conversation| conversation.id).collect();
+        let parked = chat_draft_state::park_deferred(self.take_box(cx), |id| known.contains(&id));
+        if !parked.applied {
+            self.install_box(parked.state);
+            return;
+        }
+        let clear_text = parked.clear_text;
+        self.install_box(parked.state);
+        if clear_text {
             self.input.update(cx, |input, cx| input.set_value("", window, cx));
         }
-        if self.current.is_none() && self.convs.iter().any(|conversation| conversation.id == draft.conversation) {
-            self.current = Some(draft.conversation);
-        }
-        self.sent_draft = Some(draft);
         self.restore_failed_draft(window, cx);
         self.persist_failed_drafts();
         self.persist_active_draft(cx);
@@ -80,6 +109,6 @@ impl AiChat {
     }
 
     pub(in crate::editor::ai) fn has_deferred_draft(&self) -> bool {
-        self.deferred_drafts.iter().any(|draft| self.current.is_none() || Some(draft.conversation) == self.current)
+        chat_draft_state::has_deferred(&self.deferred_drafts, self.current)
     }
 }

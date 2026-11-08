@@ -12,6 +12,7 @@
     "check": "bash scripts/fast-check.sh",
     "ai:state": "python3 scripts/dump_ai_state.py",
     "ai:map": "python3 scripts/gen_ai_map.py",
+    "dev:assets": "bash scripts/dev-assets.sh",
     "logs": "tail -n 100 -f \"$HOME/Library/Application Support/Block/logs/block.log\""
   }
 }

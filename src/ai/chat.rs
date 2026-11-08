@@ -9,6 +9,7 @@ use crate::editor::view::Editor;
 pub(crate) use chat_resize::resize_capture;
 #[path = "chat_plan.rs"] mod chat_plan;
 #[path = "chat_backend.rs"] mod chat_backend;
+#[path = "chat_draft_state.rs"] mod chat_draft_state;
 #[path = "chat_drafts.rs"] mod chat_drafts;
 #[path = "chat_roots.rs"] pub(super) mod chat_roots;
 #[path = "chat_picker.rs"] pub(super) mod chat_picker;
@@ -188,10 +189,10 @@ impl AiChat {
             _ => {}
         });
         let convs: Vec<Conv> = store_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-        let current = active.conversation.filter(|id| convs.iter().any(|conversation| conversation.id == *id));
+        let current = chat_draft_state::known_conversation(active.conversation, convs.iter().map(|conversation| conversation.id));
         let mut chat = AiChat { panel_width: chat_resize::load_width(), resizing: None, convs, current, tab_drafts: Default::default(), input, refs: active.refs, skills: active.skills, partial: String::new(), streaming: None,
             backend_config: super::backend::BackendConfig::load(), backend_runtime: Default::default(), active_external: None, external_tools: None,
-            sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: active.retry.filter(|draft| Some(draft.conversation) == current), selection_scope: false, pending_approval: None, approval_state: None, pending_question: None,
+            sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: chat_draft_state::retry_for_conversation(active.retry, current), selection_scope: false, pending_approval: None, approval_state: None, pending_question: None,
             backend_statuses: vec![(super::backend::BackendKind::Builtin, super::backend::BackendStatus::Ready { version: "Block".into() })],
             model_cache: Vec::new(), serial: 0, error: None,
             error_settings: false, picker_cache: Default::default(), pick_index: 0, picker_dismissed: false, history: false, open: false, fullscreen: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), deck_scroll: ScrollHandle::new(), _sub: sub };
