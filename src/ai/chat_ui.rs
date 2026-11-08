@@ -224,7 +224,7 @@ impl Render for AiChat {
                     cx.listener(|this, _, window, cx| { cx.stop_propagation(); super::chat::chat_dictation::toggle(this, window, cx); })))
                 .child(action));
 
-        div().id("ai-chat-panel").when(self.fullscreen, |panel| panel.flex_1().w_full().min_w_0()).when(!self.fullscreen, |panel| panel.w(self.panel_width).flex_none().border_l_1().border_color(theme.hairline)).h_full().flex().flex_col().relative().bg(theme.paper).font_family("Inter")
+        div().id("ai-chat-panel").when(self.fullscreen, |panel| panel.flex_1().w_full().min_w_0()).when(!self.fullscreen, |panel| panel.w(self.panel_width).flex_none().border_l_1().border_color(theme.hairline)).h_full().flex().flex_col().relative().bg(theme.paper).font_family(crate::theme::ui_font_family())
             .text_color(theme.text)
             .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| { if backend_ui::close_menu() { cx.notify(); } }))
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {

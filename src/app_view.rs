@@ -15,6 +15,7 @@ impl Render for Workspace {
         let export = crate::export::active_view(cx);
         let ai_fullscreen = crate::editor::ai::chat::is_fullscreen(cx) && self.settings.is_none() && !self.is_history_open();
         let root = div().size_full().relative().flex().flex_col().overflow_hidden().bg(theme.shell).text_color(theme.text)
+            .font_family(crate::theme::ui_font_family())
             .key_context("Workspace").track_focus(&self.root_focus)
             .on_action(cx.listener(|this, _: &OpenSearch, window, cx| this.open_search(window, cx)))
             .on_action(cx.listener(|this, _: &crate::editor::view::Find, window, cx| { crate::search::window::reveal_main_window(window, cx); this.editor.update(cx, |e, cx| e.open_find(window, cx)); }))
