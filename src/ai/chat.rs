@@ -126,6 +126,13 @@ pub(crate) fn recognized_backends(cx: &App) -> Vec<super::backend::BackendKind> 
     }
 }
 
+/// Cached probe result for a backend. Settings reads this without holding the chat entity.
+/// `None` means the panel has not probed that kind yet.
+pub(crate) fn backend_status(kind: super::backend::BackendKind, cx: &App) -> Option<super::backend::BackendStatus> {
+    let entity = cx.try_global::<Holder>().map(|h| h.0.clone())?;
+    entity.read(cx).backend_status(kind).cloned()
+}
+
 pub(crate) fn notify(cx: &mut App) {
     if let Some(entity) = cx.try_global::<Holder>().map(|h| h.0.clone()) {
         entity.update(cx, |_, cx| cx.notify());
