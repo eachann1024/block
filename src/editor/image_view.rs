@@ -162,6 +162,7 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
         .map(|w| w.min(limit).max(limit * MIN_SHARE));
     let show = active || dragging;
     let show_bar = show && !has_overlay;
+    if !show_bar { crate::ui::motion::popup_reset(&format!("image-pop-{id}")); }
     let group: SharedString = format!("image-{id}").into();
     let scale = if spec.align == Align::Center { 2. } else { 1. };
     let focus = editor.clone();
@@ -195,7 +196,7 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
                     cx.stop_propagation();
                 }))
             .when(show_bar, |s| s.child(div().absolute().top(px(-44.)).left_0().right_0().flex().justify_center()
-                .child(super::image_size::image_toolbar(&editor, id, spec.align, pct, pop))));
+                .child(super::image_size::image_toolbar(&editor, id, spec.align, pct, pop, cx))));
     }
     let path = ready_path.unwrap_or_default();
     let target_size = raw_dims.filter(|&(rw, rh)| rw > 0. && rh > 0.).map(|(rw, rh)| {
@@ -243,7 +244,7 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
                 cx.stop_propagation();
             }))
         .when(show_bar, |s| s.child(div().absolute().top(px(-44.)).left_0().right_0().flex().justify_center()
-            .child(super::image_size::image_toolbar(&editor, id, spec.align, pct, pop))))
+            .child(super::image_size::image_toolbar(&editor, id, spec.align, pct, pop, cx))))
 }
 
 /// (original width, rendered width) of an image from the last paint; 0 until it has been laid out.

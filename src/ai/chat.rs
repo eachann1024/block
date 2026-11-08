@@ -89,6 +89,7 @@ pub(crate) struct AiChat {
     pub(super) resizing: Option<(gpui::Pixels, gpui::Pixels)>,
     pub(super) last_en: bool,
     pub(super) editor: Option<WeakEntity<Editor>>,
+    pub(super) panel_focus: gpui::FocusHandle,
     pub(super) scroll: ScrollHandle,
     pub(super) deck_scroll: ScrollHandle,
     _sub: Subscription,
@@ -101,15 +102,23 @@ fn store_path() -> Option<std::path::PathBuf> {
     Some(crate::files::app_data_dir("Block").join("ai-chats.json"))
 }
 
-pub(super) fn chat(window: &mut Window, cx: &mut App) -> Entity<AiChat> {
+pub(crate) fn chat(window: &mut Window, cx: &mut App) -> Entity<AiChat> {
     if let Some(h) = cx.try_global::<Holder>() { return h.0.clone(); }
     let entity = cx.new(|cx| AiChat::new(window, cx));
     cx.set_global(Holder(entity.clone()));
     entity
 }
 
+pub(crate) fn entity(cx: &App) -> Option<Entity<AiChat>> {
+    cx.try_global::<Holder>().map(|h| h.0.clone())
+}
+
 pub(crate) fn panel(cx: &App) -> Option<Entity<AiChat>> {
-    cx.try_global::<Holder>().map(|h| h.0.clone()).filter(|c| c.read(cx).open)
+    entity(cx).filter(|c| c.read(cx).open)
+}
+
+pub(crate) fn saved_panel_width(cx: &App) -> f32 {
+    entity(cx).map(|chat| f32::from(chat.read(cx).panel_width)).unwrap_or(chat_resize::DEFAULT_WIDTH)
 }
 
 pub(crate) fn is_open(cx: &App) -> bool { panel(cx).is_some() }
@@ -155,7 +164,9 @@ pub(crate) fn hide(cx: &mut App) {
     let Some(entity) = panel(cx) else { return };
     entity.update(cx, |this, cx| {
         chat_dictation::stop_for_input(&this.input);
-        this.open = false; this.fullscreen = false; this.resizing = None;
+        this.open = false; this.history = false; this.resizing = None;
+        crate::ui::motion::popup_reset("ai-chat-history");
+        crate::ui::motion::popup_reset("ai-agent-deck");
         cx.notify();
     });
 }
@@ -165,7 +176,12 @@ pub(crate) fn toggle(editor: WeakEntity<Editor>, window: &mut Window, cx: &mut A
     c.update(cx, |this, cx| {
         chat_dictation::stop_for_input(&this.input);
         this.open = !this.open;
-        if !this.open { this.fullscreen = false; }
+        if !this.open {
+            this.history = false;
+            this.resizing = None;
+            crate::ui::motion::popup_reset("ai-chat-history");
+            crate::ui::motion::popup_reset("ai-agent-deck");
+        }
         this.editor = Some(editor);
         if this.open { this.input.update(cx, |i, cx| i.focus(window, cx)); }
         cx.notify();
@@ -202,7 +218,7 @@ impl AiChat {
             sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: chat_draft_state::retry_for_conversation(active.retry, current), selection_scope: false, pending_approval: None, approval_state: None, pending_question: None,
             backend_statuses: vec![(super::backend::BackendKind::Builtin, super::backend::BackendStatus::Ready { version: "Block".into() })],
             model_cache: Vec::new(), serial: 0, error: None,
-            error_settings: false, picker_cache: Default::default(), pick_index: 0, picker_dismissed: false, history: false, open: false, fullscreen: false, last_en: crate::theme::is_en(), editor: None, scroll: ScrollHandle::new(), deck_scroll: ScrollHandle::new(), _sub: sub };
+            error_settings: false, picker_cache: Default::default(), pick_index: 0, picker_dismissed: false, history: false, open: false, fullscreen: chat_resize::load_fullscreen(), last_en: crate::theme::is_en(), editor: None, panel_focus: cx.focus_handle(), scroll: ScrollHandle::new(), deck_scroll: ScrollHandle::new(), _sub: sub };
         for kind in super::backend::BackendKind::ALL {
             chat.probe_backend(kind, cx);
             chat.refresh_models_for(kind, cx);

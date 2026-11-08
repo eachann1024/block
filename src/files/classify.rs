@@ -72,7 +72,7 @@ pub fn read_file(path: &Path) -> Result<Classified, String> {
 
 /// Read at most `cap + 1` bytes. `None` means the file grew past the text cap.
 fn read_bounded(path: &Path, cap: u64) -> io::Result<Option<Vec<u8>>> {
-    let mut file = File::open(path)?;
+    let file = File::open(path)?;
     let mut bytes = Vec::new();
     file.take(cap.saturating_add(1)).read_to_end(&mut bytes)?;
     Ok(if bytes.len() as u64 > cap { None } else { Some(bytes) })

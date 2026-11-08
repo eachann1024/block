@@ -59,7 +59,7 @@ pub fn titlebar_ai_button(open: bool, on_click: impl Fn(&mut gpui::Window, &mut 
         .when(open, |button| button.bg(theme.selected).border_1().border_color(theme.accent))
         .when(!open, |button| button.hover(|style| style.bg(theme.hover)))
         .tooltip_above(tooltip(if cfg!(target_os = "macos") { tr("AI 助手 ⌘J", "AI Assistant ⌘J") } else { tr("AI 助手 Ctrl+J", "AI Assistant Ctrl+J") }))
-        .child(stateful_icon("titlebar-ai", Icon::Sparkles, px(16.), open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if open { theme.accent } else { theme.text })))
+        .child(stateful_icon("titlebar-ai", Icon::Sparkles, px(18.), open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if open { theme.accent } else { theme.text })))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| { cx.stop_propagation(); on_click(window, cx); })
 }
 

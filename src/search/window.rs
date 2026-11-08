@@ -193,6 +193,7 @@ impl SearchWindow {
         if cx.has_global::<SearchWindowGlobal>() {
             cx.global_mut::<SearchWindowGlobal>().window = None;
         }
+        crate::ui::motion::popup_reset("quick-search-scope");
         window.remove_window();
     }
     fn open_hit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -218,7 +219,6 @@ impl Render for SearchWindow {
             let task = cx.entity().downgrade();
             cx.defer(move |cx| { task.update(cx, |this, cx| this.state.research(cx, |this| Some(&mut this.state))).ok(); });
         }
-        let menu_open = self.state.scope_menu_open;
         div()
             .id("search-window").key_context("SearchPalette").size_full().relative()
             .flex().flex_col().overflow_hidden().rounded(px(12.))
@@ -249,10 +249,10 @@ impl Render for SearchWindow {
                 &self.state,
                 cx.listener(|this, _, _, cx| { this.state.toggle_scope_menu(); cx.notify(); }),
             ))
-            .when(menu_open, |view| view.child(render_scope_menu(&self.state, cx, |this, index, _, cx| {
+            .children(render_scope_menu("quick-search-scope", &self.state, cx, |this, index, _, cx| {
                 if this.state.select_scope_index(index) { this.state.research(cx, |this| Some(&mut this.state)); }
                 cx.notify();
-            })))
+            }))
             .child(render_body(&self.state, true, cx, |this, ix, window, cx| {
                 this.state.selected = ix;
                 this.open_hit(window, cx);

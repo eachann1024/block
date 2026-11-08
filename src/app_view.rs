@@ -11,9 +11,18 @@ use super::search::{Dismiss, NewFolder, NewNote, OpenSearch, OpenSettings, kbd};
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_history_focus(window, cx);
+        self.watch_chat(window, cx);
+        let split = self.publish_shell(window, cx);
+        let sidebar_wide = !self.sidebar_collapsed && (!split.sidebar_yielded || split.sidebar_drawer);
+        let sidebar_auto_hidden = !self.sidebar_collapsed && split.sidebar_yielded && !split.sidebar_drawer;
+        let show_sidebar = !self.sidebar_collapsed && !split.sidebar_yielded;
+        let note_pad = crate::ui::shell_layout::note_padding(split, f32::from(window.viewport_size().width), f32::from(self.sidebar_width));
+        let column_floor = if self.settings.is_some() { crate::ui::shell_layout::settings_floor() } else { crate::ui::shell_layout::floor() };
         let theme = Theme::ocean();
         let export = crate::export::active_view(cx);
-        let ai_fullscreen = crate::editor::ai::chat::is_fullscreen(cx) && self.settings.is_none() && !self.is_history_open();
+        let ai_fullscreen = self.ai_immersive(cx);
+        let drawer_open = split.sidebar_drawer && !ai_fullscreen && !self.is_history_open();
+        sync_fullscreen_traffic_lights(self, ai_fullscreen, window);
         let root = div().size_full().relative().flex().flex_col().overflow_hidden().bg(theme.shell).text_color(theme.text)
             .font_family(crate::theme::ui_font_family())
             .key_context("Workspace").track_focus(&self.root_focus)
@@ -45,21 +54,49 @@ impl Render for Workspace {
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Back), cx.listener(|this, _, _, cx| this.navigate_back(cx)))
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Forward), cx.listener(|this, _, _, cx| this.navigate_forward(cx)));
         self.bind_tab_actions(root, cx)
-            .child(self.titlebar(cx))
-            .child(div().flex_1().min_h_0().flex()
-                .when(!ai_fullscreen && !self.sidebar_collapsed && !self.is_history_open(), |d| d.child(if self.settings.is_some() { self.settings_sidebar(cx) } else { self.sidebar(cx) }))
-                .when(!ai_fullscreen, |d| d.child(self.settings_view(cx).or_else(|| self.mascot_view(cx)).unwrap_or_else(|| {
-                    if self.is_history_open() {
-                        self.render_history_main(window, cx)
+            .when(!ai_fullscreen, |d| d.child(self.titlebar(sidebar_wide, sidebar_auto_hidden, cx)))
+            .child(div().flex_1().min_h_0().flex().relative()
+                .when(!ai_fullscreen && !self.is_history_open() && show_sidebar, |d| d.child(if self.settings.is_some() { self.settings_sidebar(cx) } else { self.sidebar(cx) }))
+                .when(!ai_fullscreen, |d| {
+                    let body = self.settings_view(cx).or_else(|| self.mascot_view(cx)).unwrap_or_else(|| {
+                        if self.is_history_open() {
+                            self.render_history_main(window, cx)
+                        } else {
+                            div().flex_1().min_w_0().h_full().flex().flex_col().relative()
+                                .children(self.render_history_toast(cx))
+                                .child(self.editor.clone())
+                                .when(self.history_restore_busy, |col| col.child(div().absolute().top_0().left_0().size_full().occlude()))
+                                .into_any_element()
+                        }
+                    });
+                    d.child(div().flex_1().min_w_0().h_full().flex().flex_col().relative()
+                        .when(!split.chat_overlay, |col| col.min_w(column_floor))
+                        .when(split.chat_overlay, |col| col.min_w_0().pr(px(note_pad)).bg(theme.paper))
+                        .child(body))
+                })
+                .when(drawer_open, |d| d.child(
+                    div().id("sidebar-drawer-scrim").absolute().top_0().left_0().right_0().bottom_0().occlude()
+                        .bg(theme.text.opacity(0.16))
+                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.toggle_sidebar(window, cx);
+                        }))
+                ))
+                .when(self.settings.is_none(), |d| {
+                    let Some(panel) = crate::editor::ai::chat::panel(cx) else { return d; };
+                    // The chat view is laid out as its own root, so `absolute` on that root
+                    // still takes a column. The shell has to be the out-of-flow layer, or the
+                    // note inset shows the window gray beside a docked panel.
+                    if split.chat_overlay && !ai_fullscreen {
+                        d.child(div().absolute().top_0().right_0().bottom_0().w(px(split.chat_width)).occlude().shadow_lg().child(panel))
                     } else {
-                        div().flex_1().min_w_0().h_full().flex().flex_col().relative()
-                            .children(self.render_history_toast(cx))
-                            .child(self.editor.clone())
-                            .when(self.history_restore_busy, |col| col.child(div().absolute().top_0().left_0().size_full().occlude()))
-                            .into_any_element()
+                        d.child(panel)
                     }
-                })))
-                .when(self.settings.is_none(), |d| d.children(crate::editor::ai::chat::panel(cx))))
+                })
+                .when(drawer_open, |d| d.child(
+                    div().absolute().top_0().left_0().bottom_0().w(self.sidebar_width).occlude().shadow_lg()
+                        .child(if self.settings.is_some() { self.settings_sidebar(cx).into_any_element() } else { self.sidebar(cx).into_any_element() })
+                )))
             // The export view has its own title row and back button, so it covers the window.
             .children(export.map(|view| {
                 gpui::deferred(div().absolute().top_0().left_0().size_full().occlude().bg(theme.shell).child(view)).with_priority(4)
@@ -111,7 +148,73 @@ fn sync_focused_input_ime(window: &mut Window, cx: &mut gpui::App) {
     }
 }
 
+fn sync_fullscreen_traffic_lights(workspace: &mut Workspace, tall: bool, window: &mut Window) {
+    if workspace.traffic_lights_tall == Some(tall) { return; }
+    workspace.traffic_lights_tall = Some(tall);
+    #[cfg(target_os = "macos")]
+    window.set_traffic_light_position(gpui::point(
+        px(crate::ui::window_controls::TRAFFIC_X),
+        px(if tall { crate::ui::window_controls::TRAFFIC_Y_TALL } else { crate::ui::window_controls::TRAFFIC_Y }),
+    ));
+    #[cfg(not(target_os = "macos"))]
+    let _ = window;
+}
+
 impl Workspace {
+    pub(super) fn ai_immersive(&self, cx: &gpui::App) -> bool {
+        self.settings.is_none() && !self.is_history_open() && crate::editor::ai::chat::is_fullscreen(cx)
+    }
+
+    fn watch_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.chat_watched { return; }
+        #[cfg(not(target_family = "wasm"))]
+        if let Some(chat) = crate::editor::ai::chat::entity(cx) {
+            self.chat_watched = true;
+            cx.observe_in(&chat, window, |_, _, _, cx| cx.notify()).detach();
+        }
+        #[cfg(target_family = "wasm")]
+        { let _ = (window, cx); }
+    }
+
+    pub(super) fn shell_split(&self, window: &Window, cx: &gpui::App) -> crate::ui::shell_layout::ShellSplit {
+        crate::ui::shell_layout::resolve(self.shell_input(window, cx))
+    }
+
+    fn publish_shell(&mut self, window: &Window, cx: &gpui::App) -> crate::ui::shell_layout::ShellSplit {
+        if self.sidebar_pinned && crate::ui::shell_layout::fits_saved(&self.shell_input(window, cx)) {
+            self.sidebar_pinned = false;
+        }
+        let input = self.shell_input(window, cx);
+        crate::ui::shell_layout::publish(crate::ui::shell_layout::ShellFrame {
+            sidebar_width: input.sidebar_width,
+            sidebar_collapsed: input.sidebar_collapsed,
+            sidebar_pinned: input.sidebar_pinned,
+        });
+        let split = crate::ui::shell_layout::resolve(input);
+        crate::ui::shell_layout::publish_split(split);
+        split
+    }
+
+    fn shell_input(&self, window: &Window, cx: &gpui::App) -> crate::ui::shell_layout::Input {
+        let chat_open = self.settings.is_none() && crate::editor::ai::chat::is_open(cx);
+        crate::ui::shell_layout::Input {
+            window_width: f32::from(window.viewport_size().width),
+            sidebar_width: f32::from(self.sidebar_width),
+            sidebar_collapsed: self.sidebar_collapsed,
+            sidebar_pinned: self.sidebar_pinned,
+            chat_open,
+            chat_fullscreen: chat_open && crate::editor::ai::chat::is_fullscreen(cx),
+            chat_width: crate::editor::ai::chat::saved_panel_width(cx),
+            chat_min: crate::ui::shell_layout::CHAT_MIN,
+            chat_max: crate::ui::shell_layout::CHAT_MAX,
+            content_floor: if self.settings.is_some() {
+                crate::ui::shell_layout::SETTINGS_FLOOR
+            } else {
+                crate::ui::shell_layout::NOTE_FLOOR
+            },
+        }
+    }
+
     fn route_edit_action(&mut self, action: crate::editor::view::EditorAction, window: &mut Window, cx: &mut Context<Self>) {
         if crate::quick::is_quick_panel_active() && crate::quick::dispatch_editor_action(&action, cx) { return; }
         if crate::editor::paste_clipboard::forward_focused_input_action(&action, window, cx) { return; }

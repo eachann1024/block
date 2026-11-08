@@ -28,24 +28,57 @@ pub(super) fn clamp_width(width: Pixels) -> Pixels { width.clamp(px(MIN_WIDTH), 
 thread_local! { static SWITCHER_BOUNDS: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<Pixels>>>> = Default::default(); }
 
 impl Workspace {
-    pub(crate) fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
+    /// Open the sidebar even when the window has no column for it.
+    pub(crate) fn present_sidebar(&mut self) {
+        self.sidebar_collapsed = false;
+        self.sidebar_pinned = true;
+    }
+
+    pub(crate) fn toggle_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.is_history_open() || self.history_restore_busy { return; }
         self.switcher_open = false;
         self.menu = None;
         self.resizing = None;
-        self.sidebar_collapsed = !self.sidebar_collapsed;
+        let split = self.shell_split(window, cx);
+        let showing = !self.sidebar_collapsed && (!split.sidebar_yielded || split.sidebar_drawer);
+        if showing {
+            self.sidebar_collapsed = true;
+            self.sidebar_pinned = false;
+        } else {
+            self.sidebar_collapsed = false;
+            self.sidebar_pinned = true;
+        }
+        let collapsed = self.sidebar_collapsed;
+        cx.background_executor().spawn(async move {
+            let _ = crate::files::update_state(|state| state.sidebar_collapsed = collapsed);
+        }).detach();
         cx.notify();
     }
 
     /// Top-left titlebar cell housing traffic lights and the Version B sidebar toggle button.
-    pub(super) fn titlebar_left(&self, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
+    pub(super) fn titlebar_left(&self, wide: bool, auto_hidden: bool, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         let theme = Theme::ocean();
-        let width = if self.sidebar_collapsed { px(collapsed_header_width(self.nav_button_count())) } else { self.sidebar_width };
-        let glyph = if self.sidebar_collapsed { Icon::SidebarExpand } else { Icon::SidebarCollapse };
+        let immersive = self.ai_immersive(cx);
+        let width = if immersive {
+            px(TITLEBAR_LEFT_PAD)
+        } else if wide {
+            self.sidebar_width
+        } else {
+            px(collapsed_header_width(self.nav_button_count()))
+        };
+        let glyph = if wide { Icon::SidebarCollapse } else { Icon::SidebarExpand };
         let btn_group: SharedString = "sidebar-toggle-btn".into();
-        let tip = format!("{} {}", tr("侧边栏", "Sidebar"), format_hotkey("alt-b"));
+        let tip = if auto_hidden {
+            if self.settings.is_some() {
+                tr("窗口较窄，设置导航已让出。点击以浮层打开", "Settings navigation stepped aside. Click to open it over the page").to_string()
+            } else {
+                tr("窗口较窄，侧栏已让出。点击打开，笔记保持可读宽度", "The sidebar stepped aside so the note stays readable. Click to open it").to_string()
+            }
+        } else {
+            format!("{} {}", tr("侧边栏", "Sidebar"), format_hotkey("alt-b"))
+        };
         div().id("titlebar-left").w(width).h_full().flex_none().relative().flex().items_center()
-            .pl(px(TITLEBAR_LEFT_PAD)).pr(px(TITLEBAR_RIGHT_PAD)).border_r_1().border_color(theme.sidebar_border)
+            .when(!immersive, |cell| cell.pl(px(TITLEBAR_LEFT_PAD)).pr(px(TITLEBAR_RIGHT_PAD)).border_r_1().border_color(theme.sidebar_border))
             .window_control_area(WindowControlArea::Drag)
             .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
             .when(cfg!(target_family = "wasm"), |d| d.child(
@@ -54,17 +87,17 @@ impl Workspace {
                     .child(div().size(px(12.)).rounded_full().bg(gpui::rgb(0xfebc2e)))
                     .child(div().size(px(12.)).rounded_full().bg(gpui::rgb(0x28c840)))
             ))
-            .child(div().ml_auto().flex_none().flex().items_center().gap(px(TITLEBAR_GAP))
+            .when(!immersive, |cell| cell.child(div().ml_auto().flex_none().flex().items_center().gap(px(TITLEBAR_GAP))
                 .children(self.render_nav_buttons(cx))
                 .child(div().id("sidebar-toggle").relative().children(crate::ui::smoke_overlay::probe("sidebar-toggle")).group(btn_group.clone()).size(px(TOGGLE_SIZE)).flex_none()
                     .flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL).cursor(CursorStyle::PointingHand)
                     .hover(|s| s.bg(theme.hover))
                     .tooltip_above(crate::theme::tooltip(tip))
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
                         cx.stop_propagation();
-                        this.toggle_sidebar(cx);
+                        this.toggle_sidebar(window, cx);
                     }))
-                    .child(hover_tinted_icon(btn_group, glyph, 16., theme.text_secondary, theme.text, theme.icon_fill))))
+                    .child(hover_tinted_icon(btn_group, glyph, 18., theme.text_secondary, theme.text, theme.icon_fill)))))
     }
 
     /// Invisible 8px strip over the sidebar's right border.
@@ -129,15 +162,23 @@ impl Workspace {
     /// Window-level overlays: outside-click catcher, switcher list, tree menu, search.
     pub(super) fn overlays(&self, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut out = Vec::new();
-        if self.switcher_open || self.menu.is_some() {
-            out.push(gpui::deferred(div().id("overlay-dismiss").absolute().top_0().left_0().size_full().occlude()
+        if let Some((phase, pop_gen)) = crate::ui::motion::popup_motion("workspace-menus", self.switcher_open || self.menu.is_some()) {
+            crate::ui::motion::schedule_popup_finish("workspace-menus", pop_gen, cx);
+            let scrim = div().id("overlay-dismiss").absolute().top_0().left_0().size_full().occlude()
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.close_overlays(cx); }))
-                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.close_overlays(cx); })))
+                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.close_overlays(cx); }));
+            out.push(gpui::deferred(crate::ui::motion::layer_fade(scrim, ("workspace-menus-scrim", pop_gen), phase == crate::ui::motion::PopupMotion::Enter))
                 .with_priority(1)
                 .into_any_element());
         }
-        if self.switcher_open { out.push(self.switcher_menu(window, cx)); }
-        if let Some(menu) = &self.menu { out.extend(self.tree_menu(&menu.target, menu.position, menu.moving, cx)); }
+        if let Some((phase, pop_gen)) = crate::ui::motion::popup_motion("notebook-switcher", self.switcher_open) {
+            crate::ui::motion::schedule_popup_finish("notebook-switcher", pop_gen, cx);
+            out.push(self.switcher_menu(window, phase, pop_gen, cx));
+        }
+        if let Some((phase, pop_gen, menu)) = crate::ui::motion::popup_hold("tree-menu", self.menu.clone()) {
+            crate::ui::motion::schedule_popup_finish("tree-menu", pop_gen, cx);
+            out.extend(self.tree_menu(&menu.target, menu.position, menu.moving, phase, pop_gen, cx));
+        }
         out.extend(self.search_view(cx));
         out.extend(crate::about::view(cx));
         out.extend(crate::performance::view(window, cx));
@@ -149,7 +190,7 @@ impl Workspace {
 
     pub(crate) fn focus_root(&self, window: &mut Window, cx: &mut Context<Self>) { window.focus(&self.root_focus, cx); }
 
-    fn switcher_menu(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+    fn switcher_menu(&self, window: &Window, phase: crate::ui::motion::PopupMotion, pop_gen: u64, cx: &mut Context<Self>) -> AnyElement {
         let current = self.folder.clone();
         let mut items: Vec<AnyElement> = self.notebooks.iter().map(|path| {
             let checked = current.as_ref() == Some(path);
@@ -169,9 +210,9 @@ impl Workspace {
             cx.listener(|this, _, window, cx| { this.close_overlays(cx); this.choose_folder(window, cx); })).into_any_element());
         let width = self.sidebar_width - px(16.);
         let fallback = gpui::Bounds::new(point(px(8.), window.viewport_size().height - px(38.)), gpui::size(width, px(30.)));
-        crate::ui::dropdown::deferred_popover_with(move |_, _| {
+        crate::ui::dropdown::anchored_motion_with(("notebook-switcher-pop", pop_gen), move |_, _| {
             crate::ui::dropdown::PlacementSpec::above(SWITCHER_BOUNDS.with(|b| b.get()).unwrap_or(fallback))
-        }, menu_surface(width).children(items), 2).into_any_element()
+        }, menu_surface(width).children(items), phase, 2)
     }
 }
 

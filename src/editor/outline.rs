@@ -5,6 +5,9 @@ use crate::ui::outline_rail::OutlineEntry;
 #[derive(Default)]
 pub(crate) struct OutlineState {
     pub hovered: bool,
+    /// Clicking a heading closes the card while the pointer is still inside it.
+    /// Ignore hover-open until the pointer actually leaves.
+    pub pinned_closed: bool,
     pub force_narrow: bool,
 }
 
@@ -56,14 +59,23 @@ pub(super) fn select_heading(editor: &mut Editor, block_id: u64, window: &mut Wi
     }
     editor.focus_block(block_id, window, cx);
     editor.outline.hovered = false;
+    editor.outline.pinned_closed = true;
     cx.notify();
 }
 
 pub(super) fn overlay(editor: &mut Editor, window: &Window, cx: &mut Context<Editor>) -> Option<AnyElement> {
-    if !can_fit(editor, window) { editor.outline.hovered = false; return None; }
+    if !can_fit(editor, window) || entries(editor).is_empty() {
+        editor.outline.hovered = false;
+        editor.outline.pinned_closed = false;
+        crate::ui::motion::popup_reset("outline-popover");
+        return None;
+    }
     let items = entries(editor);
-    if items.is_empty() { editor.outline.hovered = false; return None; }
     Some(crate::ui::outline_rail::outline_rail(items, editor.outline.hovered, |this: &mut Editor, hovered, _, cx| {
+        if this.outline.pinned_closed {
+            if !hovered { this.outline.pinned_closed = false; }
+            return;
+        }
         if this.outline.hovered != hovered { this.outline.hovered = hovered; cx.notify(); }
     }, select_heading, cx))
 }

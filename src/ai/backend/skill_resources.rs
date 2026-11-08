@@ -16,6 +16,7 @@ pub(crate) struct SkillResourceGrant {
 /// Maximum UTF-8 resource size in bytes.
 pub(crate) const MAX_RESOURCE_BYTES: usize = 1024 * 1024;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) enum SkillResourceError {
     Unauthorized,

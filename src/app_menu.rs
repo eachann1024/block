@@ -67,7 +67,7 @@ fn menu_item_hint(
 
 impl Workspace {
     pub(super) fn tree_menu(&self, target: &(PathBuf, bool), position: gpui::Point<Pixels>, moving: bool,
-        cx: &mut Context<Self>) -> Vec<AnyElement> {
+        phase: crate::ui::motion::PopupMotion, pop_gen: u64, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let (path, dir) = target.clone();
         let move_bounds = std::rc::Rc::new(std::cell::Cell::new(None));
         let mut items: Vec<AnyElement> = Vec::new();
@@ -130,18 +130,21 @@ impl Workspace {
             }))
             .into_any_element());
         let main_spec = crate::dropdown::PlacementSpec::point(position);
-        let mut out = vec![crate::dropdown::deferred_popover_for(
+        let mut out = vec![crate::dropdown::anchored_motion(
+            ("tree-menu-pop", pop_gen),
             main_spec,
             menu_surface(px(MENU_WIDTH)).children(items),
+            phase,
             2,
-        )
-        .into_any_element()];
-        if moving {
-            out.push(crate::dropdown::deferred_popover_with(move |_, _| {
+        )];
+        let move_open = moving && phase == crate::ui::motion::PopupMotion::Enter;
+        if let Some((move_phase, move_gen)) = crate::ui::motion::popup_motion("tree-move-menu", move_open) {
+            crate::ui::motion::schedule_popup_finish("tree-move-menu", move_gen, cx);
+            out.push(crate::dropdown::anchored_motion_with(("tree-move-pop", move_gen), move |_, _| {
                 let row = move_bounds.get().unwrap_or(gpui::Bounds::new(position, gpui::size(px(MENU_WIDTH), px(28.))));
                 crate::dropdown::PlacementSpec::below(row)
                     .align_x(crate::dropdown::AlignX::CascadeRight { gap: px(8.) })
-            }, self.move_list(&path, dir, cx), 3).into_any_element());
+            }, self.move_list(&path, dir, cx), move_phase, 3));
         }
         out
     }

@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use super::{agent, AiChat, Msg};
 use super::super::backend::{self, ApprovalResponse, BackendError, BackendEvent, BackendEventKind, BackendKind, BackendStatus, NoteContext, ToolBridge, ToolRequest, TurnRequest};
 impl AiChat {
+    #[allow(dead_code)]
     pub(in crate::editor::ai) fn context_scope(&self) -> backend::ContextScope {
         if self.selection_scope { backend::ContextScope::Selection } else { backend::ContextScope::CurrentNote }
     }
@@ -72,7 +73,11 @@ impl AiChat {
                         this.backend_statuses.retain(|(backend, _)| *backend != kind);
                         this.backend_statuses.push((kind, status));
                         let recognized = this.recognized_backends();
-                        this.backend_config.ensure_valid_selection(&recognized); cx.notify();
+                        this.backend_config.ensure_valid_selection(&recognized);
+                        if let Some(settings) = super::super::settings::section(cx) {
+                            settings.update(cx, |_, cx| cx.notify());
+                        }
+                        cx.notify();
                     });
                     break;
                 }

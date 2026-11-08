@@ -83,6 +83,7 @@ struct GhAsset {
 
 const SOURCE_URL: &str = "https://github.com/eachann1024/block";
 
+#[allow(dead_code)]
 enum UpdatePackage {
     Installer(&'static str),
     BuildFromSource,

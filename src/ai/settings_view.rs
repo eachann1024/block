@@ -86,8 +86,8 @@ impl AiSettings {
             .children((!enabled).then(|| self.inline_disabled_banner(BackendKind::Builtin, cx)))
             .child(div().flex().gap(px(8.)).children((0..PRESETS.len()).map(|ix| self.provider_card(ix, cx))))
             .child(div().w_full().pb(px(10.)).border_b_1().border_color(theme.hairline)
-                .child(setting_row(tr("接口地址", "Base URL"), div().flex_1().min_w_0().max_w(px(340.)).child(field_flex(&self.base_url)))))
-            .child(setting_row(tr("API 密钥", "API Key"), div().flex_1().min_w_0().max_w(px(340.)).flex().items_center().gap(px(8.))
+                .child(setting_row(tr("接口地址", "Base URL"), div().flex_1().min_w_0().child(field_flex(&self.base_url)))))
+            .child(setting_row(tr("API 密钥", "API Key"), div().flex_1().min_w_0().flex().items_center().gap(px(8.))
                 .child(field_flex(&self.api_key)).child(key_toggle)))
             .children(error.map(|e| {
                 div().px(px(12.)).py(px(8.)).rounded(crate::ui::radius::CONTROL).border_1()
