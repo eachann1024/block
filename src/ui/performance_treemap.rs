@@ -1,9 +1,9 @@
 use std::rc::Rc;
 use gpui::{
     AnyElement, App, CursorStyle, FontWeight, Hsla, IntoElement, MouseButton, ParentElement,
-    SharedString, Styled, Window, div, prelude::*, px, relative,
+    Pixels, SharedString, Styled, Window, div, prelude::*, px, relative,
 };
-use crate::{theme::Theme, ui::{radius, smoke_overlay}};
+use crate::{theme::Theme, ui::{performance_rows::{numeric_slot, tabular_nums}, radius, smoke_overlay}};
 
 #[derive(Clone)]
 pub struct TreemapItem {
@@ -20,7 +20,9 @@ pub fn format_bytes(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
     let mut value = bytes as f64;
     let mut unit = 0;
-    while value >= 1024. && unit < UNITS.len() - 1 { value /= 1024.; unit += 1; }
+    // Roll over at 999.95 so `{value:.1}` never prints "1000.0" and the readout
+    // stays within the "999.9 MiB" slot.
+    while value >= 999.95 && unit < UNITS.len() - 1 { value /= 1024.; unit += 1; }
     if unit == 0 { format!("{bytes} B") } else { format!("{value:.1} {}", UNITS[unit]) }
 }
 
@@ -32,7 +34,51 @@ pub fn format_percent(bytes: u64, total: u128) -> String {
     else { format!("{percent:.2}%") }
 }
 
-pub fn treemap(id: &str, items: &[TreemapItem], columns: usize, selected: Option<&str>, on_select: PerformanceSelect) -> AnyElement {
+fn pad_figures(text: &str, width: usize) -> String {
+    let extra = width.saturating_sub(text.chars().count());
+    let mut out = String::with_capacity(text.len() + extra * 3);
+    out.extend(std::iter::repeat('\u{2007}').take(extra));
+    out.push_str(text);
+    out
+}
+
+fn cpu_body(value: f64) -> String {
+    if !value.is_finite() || value < 0. {
+        "0.0".into()
+    } else if value >= 999.95 {
+        format!("{:.0}", value.min(9999.))
+    } else {
+        format!("{value:.1}")
+    }
+}
+
+pub fn format_cpu(value: f64) -> String {
+    format!("{}%", cpu_body(value))
+}
+
+/// CPU text padded to `999.9%`, so 5.2% and 100.0% take the same width inside one line.
+pub fn format_cpu_field(value: Option<f64>) -> String {
+    let body = value.filter(|value| value.is_finite()).map(|value| cpu_body(value)).unwrap_or_else(|| "—".into());
+    format!("{}%", pad_figures(&body, 5))
+}
+
+/// Thread count padded to four digits.
+pub fn format_count_field(value: Option<u32>) -> String {
+    match value {
+        Some(value) => pad_figures(&value.min(9_999).to_string(), 4),
+        None => pad_figures("—", 4),
+    }
+}
+
+pub fn treemap(
+    id: &str,
+    items: &[TreemapItem],
+    columns: usize,
+    selected: Option<&str>,
+    on_select: PerformanceSelect,
+    bytes_slot: Pixels,
+    percent_slot: Pixels,
+) -> AnyElement {
     let total = items.iter().map(|item| item.bytes as u128).sum();
     let target = SharedString::from(id.to_owned());
     let rows: Vec<&[TreemapItem]> = if items.len() == 7 && columns == 3 {
@@ -44,13 +90,22 @@ pub fn treemap(id: &str, items: &[TreemapItem], columns: usize, selected: Option
             let weights: Vec<f32> = row.iter().map(|item| (1. + ((item.bytes as f64 + 1.).log10() / 14.).clamp(0., 0.8)) as f32).collect();
             let sum: f32 = weights.iter().sum::<f32>().max(1.);
             div().w_full().flex().gap(px(6.)).children(row.iter().zip(weights).map(|(item, weight)| {
-                tile(item, weight / sum, total, id, selected, &on_select)
+                tile(item, weight / sum, total, id, selected, &on_select, bytes_slot, percent_slot)
             }))
         }))
         .into_any_element()
 }
 
-fn tile(item: &TreemapItem, share: f32, total: u128, prefix: &str, selected: Option<&str>, on_select: &PerformanceSelect) -> AnyElement {
+fn tile(
+    item: &TreemapItem,
+    share: f32,
+    total: u128,
+    prefix: &str,
+    selected: Option<&str>,
+    on_select: &PerformanceSelect,
+    bytes_slot: Pixels,
+    percent_slot: Pixels,
+) -> AnyElement {
     let theme = Theme::ocean();
     let active = selected == Some(item.id.as_str());
     let target = SharedString::from(format!("{prefix}-tile-{}", item.id));
@@ -75,10 +130,10 @@ fn tile(item: &TreemapItem, share: f32, total: u128, prefix: &str, selected: Opt
         .child(div().w_full().flex().items_center().gap(px(5.)).text_size(px(13.)).text_color(theme.text)
             .child(div().size(px(7.)).flex_none().rounded_full().bg(item.color))
             .child(div().flex_1().min_w_0().font_weight(FontWeight(500.)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(item.label.clone()))
-            .child(div().flex_none().font_weight(FontWeight(560.)).child(format_bytes(item.bytes))))
+            .child(numeric_slot(format_bytes(item.bytes), bytes_slot, px(13.), FontWeight(560.))))
         .child(div().w_full().flex().items_center().gap(px(8.)).text_size(px(12.)).text_color(theme.text_secondary)
-            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(item.detail.clone()))
-            .child(div().flex_none().child(percent)))
+            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().font_features(tabular_nums()).child(item.detail.clone()))
+            .child(numeric_slot(percent, percent_slot, px(12.), FontWeight::NORMAL)))
         .child(div().w_full().h(px(3.)).rounded(radius::PILL).bg(theme.shell).overflow_hidden()
             .when(ratio > 0., |bar| bar.child(div().h_full().w(relative(ratio)).rounded(radius::PILL).bg(item.color))))
         .into_any_element()
