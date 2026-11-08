@@ -1,6 +1,7 @@
 mod about;
 mod app;
 mod app_reopen;
+mod dev_assets;
 mod dropdown;
 mod editor;
 mod export;
@@ -77,6 +78,10 @@ fn take_open_queue() -> Vec<PathBuf> {
 struct Assets;
 impl gpui::AssetSource for Assets {
     fn load(&self, path: &str) -> gpui::Result<Option<std::borrow::Cow<'static, [u8]>>> {
+        // BLOCK_DEV_ASSETS=1 reads <root>/assets first. A miss keeps the embedded bytes.
+        if let Some(bytes) = dev_assets::try_load(path) {
+            return Ok(Some(std::borrow::Cow::Owned(bytes)));
+        }
         if let Some(bytes) = mascot::load_asset(path) {
             return Ok(Some(std::borrow::Cow::Borrowed(bytes)));
         }
