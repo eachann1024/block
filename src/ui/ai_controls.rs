@@ -66,7 +66,7 @@ pub fn titlebar_ai_button(open: bool, on_click: impl Fn(&mut gpui::Window, &mut 
 pub const FULLSCREEN_DECK_WIDTH: f32 = 688.;
 
 pub fn backend_rail_item(
-    id: impl Into<SharedString>, name: &'static str, logo: Option<&'static str>, selected: bool, ready: bool, wide: bool,
+    id: impl Into<SharedString>, name: &'static str, logo: &'static str, selected: bool, ready: bool, wide: bool,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
@@ -75,7 +75,8 @@ pub fn backend_rail_item(
     let btn_sz = if wide { 38. } else { 34. };
     let ico_sz = if wide { 20. } else { 18. };
     div().id(eid.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&eid))
-        .size(px(btn_sz)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
+        .size(px(btn_sz)).min_w(px(btn_sz)).max_w(px(btn_sz)).min_h(px(btn_sz)).max_h(px(btn_sz))
+        .flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
         .cursor(CursorStyle::PointingHand)
         .when(selected, |d| d.bg(theme.selected))
         .when(!selected, |d| d.hover(move |s| s.bg(theme.hover)))
@@ -87,7 +88,7 @@ pub fn backend_rail_item(
 }
 
 pub fn model_row(
-    id: impl Into<SharedString>, logo: Option<&'static str>, label: impl Into<SharedString>,
+    id: impl Into<SharedString>, logo: &'static str, label: impl Into<SharedString>,
     shortcut: Option<SharedString>, active: bool, wide: bool,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> Stateful<Div> {
@@ -137,7 +138,7 @@ pub fn thinking_level_item(
 }
 
 pub fn deck_trigger_capsule(
-    id: impl Into<SharedString>, logo: Option<&'static str>, label: impl Into<SharedString>,
+    id: impl Into<SharedString>, logo: &'static str, label: impl Into<SharedString>,
     thinking: Option<&'static str>, fullscreen: bool, open: bool,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> Stateful<Div> {
