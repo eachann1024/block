@@ -28,7 +28,7 @@ impl Run {
         ] {
             let trigger = Bounds::new(point(px(x), px(500.)), size(px(32.), px(28.)));
             let origin = resolve_origin(&PlacementSpec::below(trigger).viewport(viewport).align_x(align), size(px(width), px(126.)), size(px(800.), px(600.)));
-            self.check(6, origin == point(px(expected), px(370.)), "菜单左右翻转、双侧不足贴边及底部向上展开")?;
+            self.check(6, origin == point(px(expected), px(370.)), "菜单左右翻转、双侧不足时滑入安全区并向上展开")?;
         }
         for (trigger, menu) in [
             (tr("文字类型", "Text type"), "toolbar-kind-menu"),

@@ -7,6 +7,7 @@ use crate::files::{create_note, ops, scan, index::TreeIndex};
 use crate::theme::tr;
 use super::Workspace;
 
+#[derive(Clone)]
 pub(crate) struct TreeMenu { pub target: (PathBuf, bool), pub position: Point<Pixels>, pub moving: bool }
 pub(crate) struct Renaming { pub path: PathBuf, pub dir: bool, pub input: gpui::Entity<InputState>, _sub: gpui::Subscription }
 pub(crate) enum FileOp {
@@ -63,8 +64,12 @@ impl Workspace {
             if s.state.scope_menu_open { s.state.scope_menu_open = false; cx.notify(); } else { self.close_search(window, cx); }
             return true;
         }
-        if let Some(s) = &mut self.settings {
-            if s.recording.take().is_some() { cx.notify(); } else { self.close_settings(window, cx); }
+        if self.shell_split(window, cx).sidebar_drawer {
+            self.toggle_sidebar(window, cx);
+            return true;
+        }
+        if self.settings.is_some() {
+            if !self.end_shortcut_recording(cx) { self.close_settings(window, cx); }
             return true;
         }
         false

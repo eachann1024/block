@@ -132,7 +132,7 @@ pub fn header_action_button(
     id: impl Into<ElementId>,
     glyph: Icon,
     active: bool,
-    tip: impl Into<gpui::SharedString>,
+    tip: Option<&'static str>,
     on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
@@ -154,7 +154,7 @@ pub fn header_action_button(
         .cursor(CursorStyle::PointingHand)
         .when(active, |b| b.bg(theme.hover))
         .hover(move |s| s.bg(theme.hover))
-        .when(!active, |b| b.tooltip_above(crate::ui::tooltip::tooltip(tip)))
+        .when_some(tip.filter(|_| !active), |b, tip| b.tooltip_above(crate::ui::tooltip::tooltip(tip)))
         .on_mouse_down(MouseButton::Left, on_down)
         .child(stateful_icon(
             group,
@@ -214,6 +214,18 @@ pub fn dock_icon_button(
     tip: impl Into<gpui::SharedString>,
     on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
+    dock_icon_button_px(id, glyph, active, tip, 16., on_down)
+}
+
+/// Title-bar dock button whose glyph is one step above the 16px sidebar dock.
+pub fn dock_icon_button_px(
+    id: impl Into<ElementId>,
+    glyph: Icon,
+    active: bool,
+    tip: impl Into<gpui::SharedString>,
+    glyph_px: f32,
+    on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
     let theme = Theme::ocean();
     let fg = if active { theme.accent } else { theme.text_secondary };
     let id: ElementId = id.into();
@@ -237,7 +249,7 @@ pub fn dock_icon_button(
         .child(stateful_icon(
             group,
             glyph,
-            px(16.),
+            px(glyph_px),
             active,
             theme.mono_icon_colors(fg),
             theme.icon_colors(if active { theme.accent } else { theme.text }),

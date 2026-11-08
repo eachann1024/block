@@ -81,6 +81,7 @@ pub(super) struct SourceDoc {
     pub language: String,
     pub highlight: bool,
     pub html: bool,
+    #[allow(dead_code)]
     pub svg: bool,
     pub anchor: usize,
     pub head: usize,

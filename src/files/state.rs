@@ -121,8 +121,14 @@ pub struct State {
     pub ignored_search_folders: Vec<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sidebar_width: Option<f32>,
+    /// Last explicit collapse during a session. The next launch opens the sidebar expanded.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sidebar_collapsed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ai_panel_width: Option<f32>,
+    /// Last AI layout. Closing the panel keeps this for the next open.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ai_fullscreen: bool,
     #[serde(default)]
     pub theme: ThemeMode,
     #[serde(default)]

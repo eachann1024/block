@@ -228,18 +228,23 @@ impl Render for Editor {
                 .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.finish_extend(cx); this.clear_pointer(); cx.notify(); }))
                 .child(super::source_view::editor_column(self, rows, std_w, rail_slot, pad, cx))
                 .when_some(self.table_chrome.clone(), |root, chrome| {
-                    let dims = self.table_dimensions(chrome.block).unwrap_or((1, 1));
-                    root.children(super::table_chrome::overlay(cx.entity(), &chrome, self.table_sel, self.table_menu, self.table_drag, dims, window))
+                    root.children(super::table_chrome::overlay(cx.entity(), &chrome, self.table_sel, self.table_menu, self.table_drag, window))
                 })
                 .on_drop(cx.listener(|this, paths: &gpui::ExternalPaths, window, cx| {
                     let (id, place) = this.drop_target(window.mouse_position())
                         .unwrap_or((this.caret.head.block, super::image_import::Place::After));
                     this.import_images(id, place, paths.paths().to_vec(), window, cx);
                 }))
-                .when_some(self.block_menu, |root, menu| {
-                    let entries = self.block_menu_entries();
-                    if entries.is_empty() { root } else { root.child(super::block_menu::overlay(self, cx.entity(), menu, entries, window)) }
-                })
+                .children(crate::ui::motion::popup_hold("block-menu", self.block_menu).and_then(|(phase, pop_gen, menu)| {
+                    crate::ui::motion::schedule_popup_finish("block-menu", pop_gen, cx);
+                    let entries = self.block_menu_entries_for(menu);
+                    if entries.is_empty() { None } else { Some(super::block_menu::overlay(self, cx.entity(), menu, entries, phase, pop_gen, window)) }
+                }))
+                .children(crate::ui::motion::popup_hold("table-menu", self.table_menu).map(|(phase, pop_gen, menu)| {
+                    crate::ui::motion::schedule_popup_finish("table-menu", pop_gen, cx);
+                    let dims = self.table_dimensions(menu.block).unwrap_or((1, 1));
+                    super::table_chrome::menu_popup(cx.entity(), menu, phase, pop_gen, dims)
+                }))
                 .on_action(cx.listener(|this, _: &SetParagraph, _, cx| this.set_kind_shortcut(super::model::Kind::Paragraph, cx)))
                 .on_action(cx.listener(|this, _: &SetH1, _, cx| this.set_kind_shortcut(super::model::Kind::H1, cx)))
                 .on_action(cx.listener(|this, _: &SetH2, _, cx| this.set_kind_shortcut(super::model::Kind::H2, cx)))
@@ -289,7 +294,10 @@ impl Render for Editor {
                 .on_mouse_down(MouseButton::Right, cx.listener(|this, event: &gpui::MouseDownEvent, window, cx| this.right_click(event, window, cx)))
                 .when_some(floating, |root, anchor| root.child(
                     super::chrome::selection_toolbar(cx.entity(), self.caret.head.block, anchor)))
-                .when_some(self.format.clone(), |root, pop| root.child(super::format_ui::popover(cx.entity(), &pop)))
+                .children(crate::ui::motion::popup_hold("format-pop", self.format.clone()).map(|(phase, pop_gen, pop)| {
+                    crate::ui::motion::schedule_popup_finish("format-pop", pop_gen, cx);
+                    super::format_ui::popover(cx.entity(), &pop, phase, pop_gen)
+                }))
                 .children(self.link_overlays(cx.entity(), window))
                 .child(anchor_sync))
             .children(super::find_bar::find_bar(self, cx))

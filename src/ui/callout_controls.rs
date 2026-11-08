@@ -209,7 +209,12 @@ pub fn controls(
                 cx.stop_propagation(); close_menu(); this.set_callout_kind(id, None, cx); this.focus_handle(cx).focus(window, cx);
             })));
 
-    let popover = open.then(|| {
+    let callout_key = format!("callout-menu-{id}");
+    let motion = crate::ui::motion::popup_motion(&callout_key, open);
+    if let Some((_, pop_gen)) = motion {
+        crate::ui::motion::schedule_popup_finish(&callout_key, pop_gen, cx);
+    }
+    let popover = motion.map(|(phase, pop_gen)| {
         let measured = TRIGGER_BOUNDS.with(|b| b.borrow().get(&id).copied());
         let fallback = OPEN_MENU.with(|slot| slot.get().map(|(_, p)| p)).unwrap_or_else(|| point(px(120.), px(120.)));
         let spec = measured
@@ -244,14 +249,19 @@ pub fn controls(
         let dismiss = cx.listener(|this, _: &MouseDownEvent, window, cx| {
             cx.stop_propagation(); close_menu(); this.focus_handle(cx).focus(window, cx); cx.notify();
         });
+        let entering = phase == crate::ui::motion::PopupMotion::Enter;
         let backdrop = deferred(anchored().position(point(px(0.), px(0.))).child(
-            div().id("callout-menu-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black()).occlude()
-                .on_mouse_down(MouseButton::Left, dismiss)
-                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, window, cx| {
-                    cx.stop_propagation(); close_menu(); this.focus_handle(cx).focus(window, cx); cx.notify();
-                })),
+            crate::ui::motion::layer_fade(
+                div().id("callout-menu-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black()).occlude()
+                    .on_mouse_down(MouseButton::Left, dismiss)
+                    .on_mouse_down(MouseButton::Right, cx.listener(|this, _, window, cx| {
+                        cx.stop_propagation(); close_menu(); this.focus_handle(cx).focus(window, cx); cx.notify();
+                    })),
+                gpui::SharedString::from(format!("callout-menu-scrim-{id}-{pop_gen}")),
+                entering,
+            ),
         )).with_priority(2);
-        let popup = dropdown::deferred_popover_for(spec, menu, 3);
+        let popup = dropdown::anchored_motion(gpui::SharedString::from(format!("callout-menu-pop-{id}-{pop_gen}")), spec, menu, phase, 3);
         div().child(backdrop).child(popup)
     });
 

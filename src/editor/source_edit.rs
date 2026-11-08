@@ -210,6 +210,7 @@ impl Editor {
         doc.reveal = true;
         cx.notify();
     }
+    #[allow(dead_code)]
     pub(super) fn source_select(&mut self, range: Range<usize>, cx: &mut Context<Self>) {
         let Some(doc) = self.source_doc_mut() else { return };
         doc.anchor = doc.text.snap(range.start);

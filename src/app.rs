@@ -51,6 +51,12 @@ pub struct Workspace {
     notice: String,
     sidebar_width: gpui::Pixels,
     pub(crate) sidebar_collapsed: bool,
+    /// The sidebar was opened while the window had no column for it.
+    sidebar_pinned: bool,
+    /// Set once the chat entity exists, so a sash drag relayouts the shell.
+    chat_watched: bool,
+    /// Last macOS traffic-light row applied for the fullscreen session bar.
+    traffic_lights_tall: Option<bool>,
     /// (pointer x at press, width at press) while the edge is dragged.
     resizing: Option<(gpui::Pixels, gpui::Pixels)>,
     notebooks: Vec<PathBuf>,
@@ -197,7 +203,7 @@ impl Workspace {
         let this = Self { folder: None, folder_error: None, tree, editor, selected: None, tabs: Vec::new(), closed_tabs: tabs::ClosedTabs::default(), nav: nav::NavHistory::default(), startup_tabs: None, external_open: Vec::new(), dirty_bits: 0, loading: true,
             choosing: false, creating: false, persisting: false, pending: None,
             notice: tr("正在读取工作区偏好…", "Loading workspace preferences…").into(), sidebar_width: Theme::ocean().sidebar_width,
-            sidebar_collapsed: false, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
+            sidebar_collapsed: false, sidebar_pinned: true, chat_watched: false, traffic_lights_tall: None, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
             settings: None, history: None, undo_restore: None, history_toast: None, history_token: 0, history_opening: false, history_restore_busy: false, history_return_focus: false, file_op: None, working: false, scan_generation: 0, root_focus: cx.focus_handle(),
             bounds_task: None, _editor_subscription: subscription };
         Self::install_shortcut_router(window, cx);
@@ -210,6 +216,8 @@ impl Workspace {
                     this.notebooks = state.notebooks.clone();
                     this.startup_tabs = Some((state.open_tabs.clone(), state.active_tab.clone()));
                     if let Some(width) = state.sidebar_width { this.sidebar_width = sidebar::clamp_width(gpui::px(width)); }
+                    // Every launch opens the sidebar. A narrow window draws it over the page.
+                    this.present_sidebar();
                 }
                 match saved.map(|state| state.folder) {
                     Ok(Some(folder)) => this.use_folder_guarded(folder, Some(startup_epoch), cx),

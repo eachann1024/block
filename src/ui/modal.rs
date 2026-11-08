@@ -256,10 +256,10 @@ pub(super) fn puff_burst_cluster(id: &'static str, seq: u64, width: f32, cy: f32
 
 pub fn modal_close_button(
     id: &'static str,
-    tip: impl Into<gpui::SharedString>,
+    tip: &'static str,
     on_down: impl Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
-    crate::ui::icon_button::header_action_button(id, Icon::Close, false, tip, on_down)
+    crate::ui::icon_button::header_action_button(id, Icon::Close, false, Some(tip), on_down)
 }
 
 pub fn modal_secondary_button(

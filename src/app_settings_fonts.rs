@@ -80,6 +80,9 @@ impl Workspace {
             }
         });
         search_input.update(cx, |i, cx| i.focus(window, cx));
+        modal.font_picker_leaving = false;
+        crate::ui::motion::popup_reset("font-picker-body");
+        crate::ui::motion::popup_reset("font-picker-code");
         modal.font_picker = Some(FontPickerModal {
             role,
             search_input,
@@ -118,11 +121,20 @@ impl Workspace {
 
     pub(crate) fn close_font_picker(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(modal) = &mut self.settings else { return false };
-        if modal.font_picker.take().is_some() {
-            cx.notify();
-            true
-        } else {
-            false
-        }
+        if modal.font_picker.is_none() { return false; }
+        if modal.font_picker_leaving { return true; }
+        modal.font_picker_leaving = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(crate::ui::motion::POPUP_MS)).await;
+            let _ = this.update(cx, |this, cx| {
+                if let Some(modal) = &mut this.settings && modal.font_picker_leaving {
+                    modal.font_picker = None;
+                    modal.font_picker_leaving = false;
+                }
+                cx.notify();
+            });
+        }).detach();
+        true
     }
 }

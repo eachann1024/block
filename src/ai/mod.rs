@@ -38,18 +38,20 @@ pub(crate) mod chat {
     pub fn panel(_: &gpui::App) -> Option<gpui::Empty> { None }
     pub fn is_open(_: &gpui::App) -> bool { false }
     pub fn is_fullscreen(_: &gpui::App) -> bool { false }
+    pub fn saved_panel_width(_: &gpui::App) -> f32 { 0. }
 }
 #[cfg(not(target_family = "wasm"))]
 pub(super) mod agent;
 #[cfg(not(target_family = "wasm"))]
 pub(crate) mod md_view;
 
-gpui::actions!(ai, [OpenAiSettings, ToggleAiPanel]);
+gpui::actions!(ai, [OpenAiSettings, ToggleAiPanel, CloseAiPanel]);
 
 pub fn bind_keys(cx: &mut gpui::App) {
     crate::ui::app_shortcuts::bind(cx, [
         gpui::KeyBinding::new("cmd-j", ToggleAiPanel, None),
         #[cfg(not(target_os = "macos"))]
         gpui::KeyBinding::new("ctrl-j", ToggleAiPanel, None),
+        gpui::KeyBinding::new("escape", CloseAiPanel, Some("AiChat")),
     ]);
 }

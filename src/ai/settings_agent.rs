@@ -73,7 +73,7 @@ impl AiSettings {
                 .rounded(crate::ui::radius::SURFACE).py(px(18.)).px(px(20.)).child(header);
         }
 
-        let mut rail = div().w(px(224.)).flex_none().bg(theme.sidebar).border_r_1().border_color(theme.hairline)
+        let mut rail = div().w(px(260.)).flex_none().bg(theme.sidebar).border_r_1().border_color(theme.hairline)
             .flex().flex_col();
         let total = recognized.len();
         for (idx, kind) in recognized.iter().copied().enumerate() {

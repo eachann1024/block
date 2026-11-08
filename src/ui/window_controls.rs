@@ -7,6 +7,13 @@ pub const fn is_macos() -> bool {
     cfg!(any(target_os = "macos", target_family = "wasm"))
 }
 
+/// macOS traffic-light origin. `Y` centers a 14px button in the 40px titlebar; `Y_TALL` centers it in the 52px fullscreen session bar.
+pub const TRAFFIC_X: f32 = 16.;
+pub const TRAFFIC_Y: f32 = 13.;
+pub const TRAFFIC_Y_TALL: f32 = 19.;
+/// Left inset that keeps the session title clear of the traffic lights. Matches the titlebar's leading pad.
+pub const TRAFFIC_LEADING: f32 = if cfg!(any(target_os = "macos", target_family = "wasm")) { 82. } else { 16. };
+
 fn button(id: impl Into<ElementId>, area: WindowControlArea, glyph: Icon, size: f32, close: bool) -> gpui::Stateful<Div> {
     let theme = Theme::ocean();
     let (text, fill) = (theme.text_secondary, theme.text);
@@ -50,6 +57,6 @@ pub fn window_controls(id_prefix: &'static str, minimizable: bool, maximizable: 
             row.child(button((id_prefix, 2usize), WindowControlArea::Max, Icon::WindowMax, 12., false)
                 .on_click(|_, window, _| window.zoom_window()))
         })
-        .child(button((id_prefix, 3usize), WindowControlArea::Close, Icon::Close, 13., true)
+        .child(button((id_prefix, 3usize), WindowControlArea::Close, Icon::Close, 12., true)
             .on_click(|_, window, _| window.remove_window()))
 }

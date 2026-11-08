@@ -27,11 +27,12 @@ impl Workspace {
         ], |mode, cx: &mut Context<Self>| Box::new(cx.listener(move |this, _, window, cx| this.select_language(mode, window, cx))));
 
         let body_font = active_editor_font();
-        let body_open = self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).is_some_and(|p| p.role == FontPickerRole::Body);
+        let leaving = self.settings.as_ref().is_some_and(|m| m.font_picker_leaving);
+        let body_open = !leaving && self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).is_some_and(|p| p.role == FontPickerRole::Body);
         let body_trigger = font_picker_trigger("body-font-trigger", FontPickerRole::Body, body_open, body_font.into(), cx);
 
         let code_font = active_code_font();
-        let code_open = self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).is_some_and(|p| p.role == FontPickerRole::Code);
+        let code_open = !leaving && self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).is_some_and(|p| p.role == FontPickerRole::Code);
         let code_trigger = font_picker_trigger("code-font-trigger", FontPickerRole::Code, code_open, code_font.into(), cx);
 
         let lh_seg = segmented("lh-seg", [
@@ -40,14 +41,22 @@ impl Workspace {
             (tr("宽松", "Relaxed"), cur_lh == LineHeight::Loose, LineHeight::Loose),
         ], |lh, cx: &mut Context<Self>| Box::new(cx.listener(move |this, _, _, cx| this.select_line_height(lh, cx))));
 
-        let popover = self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).map(|picker| {
-            font_picker_popover(
+        let popover = self.settings.as_ref().and_then(|m| m.font_picker.as_ref()).and_then(|picker| {
+            let key = match picker.role {
+                FontPickerRole::Body => "font-picker-body",
+                FontPickerRole::Code => "font-picker-code",
+            };
+            let (phase, pop_gen) = crate::ui::motion::popup_motion(key, !leaving)?;
+            crate::ui::motion::schedule_popup_finish(key, pop_gen, cx);
+            Some(font_picker_popover(
                 picker.role,
                 &picker.search_input,
                 &picker.scroll_handle,
                 picker.filtered.clone(),
+                phase,
+                pop_gen,
                 cx,
-            )
+            ))
         });
 
         div().flex().flex_col().gap(px(24.))
@@ -61,6 +70,7 @@ impl Workspace {
             .when_some(popover, |d, p| d.child(p))
     }
 
+    #[allow(dead_code)]
     pub(super) fn general_tab(&self, cx: &mut Context<Self>) -> gpui::Div {
         self.folders_tab(cx)
     }
@@ -72,15 +82,11 @@ impl Workspace {
         let customized = search_spec != DEFAULT_SEARCH_SHORTCUT || quick_spec != DEFAULT_QUICK_SHORTCUT;
         let record = |kind: ShortcutKind| cx.listener(move |this, _, window, cx| {
             cx.stop_propagation();
-            if let Some(m) = &mut this.settings {
-                m.recording = Some(kind);
-                window.focus(&m.focus, cx);
-            }
-            cx.notify();
+            this.begin_shortcut_recording(kind, window, cx);
         });
         div().child(settings_card(12.)
             .child(div().flex().items_center().justify_between()
-                .child(card_title(tr("基础快捷键", "Shortcuts")))
+                .child(card_title(tr("快捷键", "Shortcuts")))
                 .when(customized, |row| row.child(div().id("reset-shortcuts")
                     .px(px(8.)).py(px(4.)).rounded(crate::ui::radius::CONTROL).text_size(px(14.)).text_color(theme.accent)
                     .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))

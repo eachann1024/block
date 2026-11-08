@@ -21,7 +21,7 @@ pub(super) fn handle(frame: &Value, request: &TurnRequest, tools: &ToolBridge,
         "tools/call" => {
             let name = message["params"]["name"].as_str().unwrap_or("").to_owned();
             let arguments = message["params"]["arguments"].clone();
-            if !matches!(name.as_str(), "loadSkill" | "readSkillResource" | "listNotebooks" | "listPages" | "searchNotes" | "readPage" | "executeBatchPlan" | "askUserQuestion") {
+            if !crate::editor::ai::agent::is_authorized_tool(&name) {
                 reply(input, &id, json!({"jsonrpc":"2.0","id":rpc_id,"error":{"code":-32601,"message":"Unknown tool"}}));
                 return;
             }

@@ -79,7 +79,9 @@ impl Run {
         self.check(14, self.query(cx, |w, cx| w.settings_is_open() && !crate::editor::ai::chat::is_open(cx)), "全屏 AI 进入设置也自动关闭")?;
         self.check(14, smoke_overlay::target_center("titlebar-ai").is_none() && self.query(cx, |_, cx| !crate::editor::ai::chat::is_open(cx)), "设置内隐藏 AI 入口且面板保持关闭")?;
         self.click_target(cx, "settings-back", "从设置返回编辑").await?;
-        self.click_target(cx, "titlebar-ai", "主动重新打开 AI 侧栏").await?;
+        self.click_target(cx, "titlebar-ai", "主动重新打开 AI").await?;
+        self.check(14, self.query(cx, |_, cx| crate::editor::ai::chat::is_fullscreen(cx)), "关闭后再打开仍保持全屏")?;
+        self.click_target(cx, "ai-layout-toggle", "切回侧栏继续后续检查").await?;
         self.check(14, self.query(cx, |_, cx| !crate::editor::ai::chat::is_fullscreen(cx)), "已切回 AI 侧栏模式")?;
         self.app_shortcuts_from_input(cx).await?;
         self.verify_backends_and_settings(cx).await?;

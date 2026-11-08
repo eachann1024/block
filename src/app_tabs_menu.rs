@@ -21,6 +21,9 @@ pub(super) const TAB_FADE_W: f32 = 20.;
 struct TabMenu { index: usize, path: PathBuf, position: Point<Pixels> }
 
 #[derive(Clone)]
+struct TabMenuSnap { menu: Option<TabMenu>, page: Option<Point<Pixels>> }
+
+#[derive(Clone)]
 pub(super) struct ClosingGhost { pub index: usize, pub label: String, pub seq: u64 }
 
 #[derive(Default)]
@@ -230,7 +233,11 @@ impl Workspace {
     }
 
     pub(super) fn render_tab_context_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let (menu, page_pos) = TAB_UI.with(|ui| { let s = ui.borrow(); (s.menu.clone(), s.page_menu) });
+        let (live_menu, live_page) = TAB_UI.with(|ui| { let s = ui.borrow(); (s.menu.clone(), s.page_menu) });
+        let snap = (live_menu.is_some() || live_page.is_some()).then(|| TabMenuSnap { menu: live_menu, page: live_page });
+        let (phase, pop_gen, snap) = crate::ui::motion::popup_hold("tab-menu", snap)?;
+        crate::ui::motion::schedule_popup_finish("tab-menu", pop_gen, cx);
+        let (menu, page_pos) = (snap.menu, snap.page);
         let mac = cfg!(any(target_os = "macos", target_family = "wasm"));
         let exp_hint = if mac { "⇧⌘E" } else { "Ctrl+Shift+E" };
         let (position, card) = if let Some(pos) = page_pos {
@@ -263,18 +270,23 @@ impl Workspace {
                 .child(tab_menu_row("tab-menu-close-all", Some(Icon::TabCloseAll), tr("关闭全部", "Close All"), None, true, cx.listener(|this, _, _, cx| this.close_all_tabs(cx))));
             (menu.position, card)
         };
+        let entering = phase == crate::ui::motion::PopupMotion::Enter;
         let backdrop = deferred(anchored().position(point(px(0.), px(0.))).child(
-            div().id("tab-menu-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black()).occlude()
-                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.dismiss_tab_menu(cx); }))
-                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.dismiss_tab_menu(cx); })))).with_priority(1);
-        let popup = crate::dropdown::deferred_popover_with(move |_, _| {
+            crate::ui::motion::layer_fade(
+                div().id("tab-menu-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black()).occlude()
+                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.dismiss_tab_menu(cx); }))
+                    .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.dismiss_tab_menu(cx); })),
+                ("tab-menu-scrim", pop_gen),
+                entering,
+            ))).with_priority(1);
+        let popup = crate::dropdown::anchored_motion_with(("tab-menu-pop", pop_gen), move |_, _| {
             if page_pos.is_some() {
                 if let Some(bounds) = PAGE_TRIGGER.with(|b| b.get()) {
                     return crate::dropdown::PlacementSpec::below(bounds).align_x(crate::dropdown::AlignX::Right);
                 }
             }
             crate::dropdown::PlacementSpec::point(position)
-        }, card, 2);
+        }, card, phase, 2);
         Some(div().child(backdrop).child(popup).into_any_element())
     }
 }

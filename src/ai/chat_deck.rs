@@ -30,7 +30,9 @@ pub(super) fn trigger(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> gpui::St
 }
 
 pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<AiChat>) -> Option<gpui::Deferred> {
-    if !backend_ui::DECK_OPEN.with(std::cell::Cell::get) { return None; }
+    let open = backend_ui::DECK_OPEN.with(std::cell::Cell::get);
+    let (phase, pop_gen) = crate::ui::motion::popup_motion("ai-agent-deck", open)?;
+    crate::ui::motion::schedule_popup_finish("ai-agent-deck", pop_gen, cx);
     let bounds = TRIGGER_BOUNDS.with(Clone::clone);
     let trigger = bounds.get()?;
     // Keep the menu on the trigger's left edge so a provider switch cannot
@@ -183,8 +185,13 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
 
     let deck = ai_controls::panel_shell("ai-agent-deck").w(width).min_w(width).max_w(width).max_h(max_height)
         .child(div().flex().w_full().min_w_0().child(rail).child(div().flex_1().min_w_0().flex().flex_col().child(upper).child(footer)));
-    Some(crate::ui::placement::smart_popover_with(move |_, _| {
+    let shell = div().child(deck);
+    let animated = match phase {
+        crate::ui::motion::PopupMotion::Enter => crate::ui::motion::popup_enter(shell, ("ai-deck-pop", pop_gen)).into_any_element(),
+        crate::ui::motion::PopupMotion::Exit => crate::ui::motion::popup_exit(shell, ("ai-deck-pop", pop_gen)).into_any_element(),
+    };
+    Some(gpui::deferred(crate::ui::placement::smart_anchored_with(move |_, _| {
         crate::ui::placement::PlacementSpec::above(bounds.get().unwrap_or(trigger))
             .align_x(crate::ui::placement::AlignX::PinLeft)
-    }, deck, 20))
+    }).child(animated)).with_priority(20))
 }

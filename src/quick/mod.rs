@@ -12,7 +12,7 @@ mod panel_class;
 pub use window::toggle;
 pub(crate) mod window_smoke;
 
-use std::{sync::atomic::{AtomicU32, Ordering}, time::Duration};
+use std::{sync::atomic::{AtomicBool, AtomicU32, Ordering}, time::Duration};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::HotKey};
 use gpui::{
     App, Entity, Focusable, Global, KeyBinding,
@@ -32,6 +32,8 @@ actions!(quick_note, [ToggleQuickNote, HideQuickNote, SaveToNote, SlotOne, SlotT
 
 static QUICK_HK_ID: AtomicU32 = AtomicU32::new(0);
 static SEARCH_HK_ID: AtomicU32 = AtomicU32::new(0);
+/// Recording must receive the chord; Carbon would otherwise swallow it and open a panel.
+static HOTKEYS_SUSPENDED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Default)]
 struct QuickState {
@@ -162,7 +164,22 @@ pub fn prepare_to_quit(cx: &mut App) -> bool {
     })
 }
 
+/// Unregisters the system hotkeys so a settings recorder can see the same chord.
+pub fn suspend_global_hotkeys(cx: &mut App) {
+    if HOTKEYS_SUSPENDED.swap(true, Ordering::Relaxed) { return; }
+    if !cx.has_global::<QuickState>() {
+        HOTKEYS_SUSPENDED.store(false, Ordering::Relaxed);
+        return;
+    }
+    let state = cx.global_mut::<QuickState>();
+    let Some(manager) = &state.hotkey else { return; };
+    for hk in state.registered.drain(..) { let _ = manager.unregister(hk); }
+    QUICK_HK_ID.store(0, Ordering::Relaxed);
+    SEARCH_HK_ID.store(0, Ordering::Relaxed);
+}
+
 pub fn rebind_hotkeys(cx: &mut App) {
+    let was_suspended = HOTKEYS_SUSPENDED.swap(false, Ordering::Relaxed);
     let quick_spec = crate::theme::quick_shortcut();
     let search_spec = crate::theme::search_shortcut();
     if parse_hotkey(&quick_spec).is_some() {
@@ -199,6 +216,11 @@ pub fn rebind_hotkeys(cx: &mut App) {
             state.registered.push(hk);
         }
     }
+    // The chord that ended recording may still be held; ignore the matching hotkey echo.
+    if was_suspended {
+        let _ = mark_quick_triggered();
+        let _ = mark_search_triggered();
+    }
 }
 
 /// Registers global hotkeys (Carbon on macOS) and polls events on the main thread.
@@ -211,9 +233,11 @@ fn start_hotkey(cx: &mut App) {
     cx.spawn(async move |cx| {
         loop {
             cx.background_executor().timer(Duration::from_millis(100)).await;
+            let suspended = HOTKEYS_SUSPENDED.load(Ordering::Relaxed);
             let (quick_id, search_id) = (QUICK_HK_ID.load(Ordering::Relaxed), SEARCH_HK_ID.load(Ordering::Relaxed));
             let (mut quick_pressed, mut search_pressed) = (false, false);
             while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
+                if suspended { continue; }
                 if event.state == HotKeyState::Pressed {
                     quick_pressed |= quick_id != 0 && event.id == quick_id;
                     search_pressed |= search_id != 0 && event.id == search_id;
