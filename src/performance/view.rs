@@ -6,8 +6,11 @@ use gpui::{
 };
 use crate::{app::Workspace, icons::Icon, theme::{Theme, tr}, ui::{
     icon_button::icon_button, modal, motion::modal_enter,
-    performance_rows::{loading_screen, metric, refresh_button},
-    performance_treemap::{PerformanceSelect, TreemapItem, format_bytes, treemap}, smoke_overlay, tooltip,
+    performance_rows::{ReadoutWidth, loading_screen, metric, readout_widths, refresh_button},
+    performance_treemap::{
+        PerformanceSelect, TreemapItem, format_bytes, format_count_field, format_cpu, format_cpu_field, treemap,
+    },
+    smoke_overlay, tooltip,
 }};
 use super::{STATE, State};
 
@@ -19,7 +22,8 @@ pub fn view(window: &mut Window, cx: &mut Context<Workspace>) -> Option<AnyEleme
     let dragging = state.drag_anchor.is_some();
     let disk = disk_items(&state);
     let processes = process_items(&state);
-    let (stats, scanned_at) = metrics(&state, &disk);
+    let slots = readout_widths(window);
+    let (stats, scanned_at) = metrics(&state, &disk, slots);
     let loading = state.disk_loading || state.process.is_none();
     let error = match &state.disk {
         Some(Ok(snapshot)) if snapshot.partial => snapshot.errors.join("\n"),
@@ -73,7 +77,7 @@ pub fn view(window: &mut Window, cx: &mut Context<Workspace>) -> Option<AnyEleme
             .bg(theme.sidebar).border_b_1().border_color(theme.hairline)
             .flex().items_center().justify_between().gap(px(12.))
             .children(smoke_overlay::probe("performance-metrics"))
-            .child(div().flex().items_center().gap(px(16.)).children(stats))
+            .child(div().flex_none().flex().items_center().gap(px(16.)).children(stats))
             .child(scanned_at))
         .when(loading, |card| card.child(loading_screen()))
         .when(!loading, |card| card.child(div().w_full().px(px(20.)).py(px(12.)).flex().flex_col().gap(px(8.))
@@ -81,8 +85,8 @@ pub fn view(window: &mut Window, cx: &mut Context<Workspace>) -> Option<AnyEleme
                 .tooltip_above(tooltip::tooltip(error)).child(tr("部分文件未能读取", "Some files could not be read"))))
             .when(!process_error.is_empty(), |body| body.child(div().id("performance-process-error").text_size(px(12.)).text_color(theme.text_secondary)
                 .tooltip_above(tooltip::tooltip(process_error)).child(tr("部分进程采样受限", "Some process metrics unavailable"))))
-            .child(treemap("performance-map", &disk, 3, selected.as_deref(), select.clone()))
-            .child(treemap("performance-process-map", &processes, 2, selected.as_deref(), select))));
+            .child(treemap("performance-map", &disk, 3, selected.as_deref(), select.clone(), slots.bytes, slots.percent))
+            .child(treemap("performance-process-map", &processes, 2, selected.as_deref(), select, slots.bytes, slots.percent))));
     let overlay = div()
         .id("performance-overlay")
         .absolute()
@@ -116,7 +120,7 @@ pub fn view(window: &mut Window, cx: &mut Context<Workspace>) -> Option<AnyEleme
         .with_priority(7).into_any_element())
 }
 
-fn metrics(state: &State, disk: &[TreemapItem]) -> (Vec<AnyElement>, AnyElement) {
+fn metrics(state: &State, disk: &[TreemapItem], slots: ReadoutWidth) -> (Vec<AnyElement>, AnyElement) {
     let file_size = if matches!(state.disk, Some(Ok(_))) {
         format_bytes(disk.iter().fold(0u64, |sum, item| sum.saturating_add(item.bytes)))
     } else { "—".into() };
@@ -128,12 +132,12 @@ fn metrics(state: &State, disk: &[TreemapItem]) -> (Vec<AnyElement>, AnyElement)
         .map(|duration| crate::page_history::time::format_datetime_ymdhms(duration.as_secs()))
         .unwrap_or_else(|| "—".into());
     let left = vec![
-        metric(tr("文件体积", "Storage"), file_size),
-        metric(tr("运行内存", "Memory"), rss.map(format_bytes).unwrap_or_else(|| "—".into())),
-        metric("CPU", cpu.map(|value| format!("{value:.1}%")).unwrap_or_else(|| "—".into())),
-        metric(tr("线程", "Threads"), threads.map(|value| value.to_string()).unwrap_or_else(|| "—".into())),
+        metric(tr("文件体积", "Storage"), file_size, slots.bytes),
+        metric(tr("运行内存", "Memory"), rss.map(format_bytes).unwrap_or_else(|| "—".into()), slots.bytes),
+        metric("CPU", cpu.map(format_cpu).unwrap_or_else(|| "—".into()), slots.cpu),
+        metric(tr("线程", "Threads"), threads.map(format_threads).unwrap_or_else(|| "—".into()), slots.threads),
     ];
-    (left, metric(tr("统计时间", "Scanned"), time))
+    (left, metric(tr("统计时间", "Scanned"), time, slots.time))
 }
 
 fn disk_items(state: &State) -> Vec<TreemapItem> {
@@ -161,18 +165,26 @@ fn process_items(state: &State) -> Vec<TreemapItem> {
         } else {
             format!("{} {}", rows.len(), tr("个子进程", "processes"))
         };
-        let detail = format!("{who} · CPU {} · {} {}{}",
-            cpu.map(|value| format!("{value:.1}%")).unwrap_or_else(|| "—".into()),
-            tr("线程", "Threads"), threads.map(|value| value.to_string()).unwrap_or_else(|| "—".into()), uptime);
+        let detail = format!(
+            "{who} · CPU {} · {} {}{}",
+            format_cpu_field(cpu),
+            tr("线程", "Threads"),
+            format_count_field(threads),
+            uptime,
+        );
         Some(TreemapItem { id: if main { "process-main" } else { "process-children" }.into(),
             label: if main { tr("主进程", "Main Process") } else { tr("子进程", "Child Processes") }.into(),
             bytes, color: super::colors::category(index), detail })
     }).collect()
 }
 
+fn format_threads(value: u32) -> String {
+    if value > 9_999 { "9999".into() } else { value.to_string() }
+}
+
 fn format_uptime(secs: u64) -> String {
     if secs < 60 {
-        format!("{secs}s")
+        format!("{secs:02}s")
     } else if secs < 3600 {
         format!("{}m {:02}s", secs / 60, secs % 60)
     } else {
