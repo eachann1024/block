@@ -51,10 +51,13 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 
-# Local install profile: no LTO, parallel codegen and incremental builds.
-# `bun run build` uses it; CI and release packaging keep the full release profile.
+# Local install profile: no LTO, parallel codegen, incremental builds.
+# Workspace package opt-level is 1. Non-workspace crates stay at opt-level 3
+# via package."*". Release is unchanged.
+# `bun run build` uses this profile. `cargo check` stays on dev; see scripts/fast-check.sh.
 [profile.fast]
 inherits = "release"
+opt-level = 1
 lto = false
 codegen-units = 256
 incremental = true
