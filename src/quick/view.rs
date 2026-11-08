@@ -269,6 +269,7 @@ impl Render for QuickView {
             .overflow_hidden()
             .bg(theme.paper)
             .text_color(theme.text)
+            .font_family(crate::theme::ui_font_family())
             .text_size(px(14.))
             .on_action(cx.listener(|this, _: &SlotOne, w, cx| this.switch(0, w, cx)))
             .on_action(cx.listener(|this, _: &SlotTwo, w, cx| this.switch(1, w, cx)))
