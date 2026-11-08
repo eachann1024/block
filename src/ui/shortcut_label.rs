@@ -11,6 +11,7 @@ use crate::icons::{Icon, IconColors, icon};
 
 const KEY_INK_RATIO: f32 = 15.6 / 24.0;
 const KEY_INK_EM: f32 = 0.9;
+const KEY_GAP: f32 = 2.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Segment<'a> {
@@ -112,12 +113,18 @@ pub fn shortcut_label(text: impl AsRef<str>, style: ShortcutStyle) -> Div {
         .text_size(style.font_size)
         .line_height(style.line_height)
         .text_color(style.color);
+    let mut prev_key = false;
     for seg in segments {
         match seg {
             Segment::Key(glyph) => {
+                if prev_key {
+                    row = row.child(div().w(px(KEY_GAP)).flex_none());
+                }
+                prev_key = true;
                 row = row.child(key_glyph_box(glyph, style.icon_size, style.color));
             }
             Segment::Text(slice) => {
+                prev_key = false;
                 let s: SharedString = slice.to_owned().into();
                 row = row.child(
                     div()
@@ -137,10 +144,18 @@ pub fn shortcut_label(text: impl AsRef<str>, style: ShortcutStyle) -> Div {
 
 pub fn measure_width(text: &str, style: &ShortcutStyle, window: &Window) -> Pixels {
     let mut width = Pixels::ZERO;
+    let mut prev_key = false;
     for seg in parse_segments(text) {
         match seg {
-            Segment::Key(_) => width += style.icon_size,
+            Segment::Key(_) => {
+                if prev_key {
+                    width += px(KEY_GAP);
+                }
+                prev_key = true;
+                width += style.icon_size;
+            }
             Segment::Text(slice) => {
+                prev_key = false;
                 if slice.is_empty() {
                     continue;
                 }
@@ -162,8 +177,38 @@ pub fn measure_width(text: &str, style: &ShortcutStyle, window: &Window) -> Pixe
 }
 
 pub fn shortcut_hint(text: impl AsRef<str>, color: Hsla) -> Div {
-    let style = ShortcutStyle::ui(px(12.), px(16.), FontWeight::NORMAL, color);
-    div().ml_auto().pl(px(8.)).flex_none().flex().items_center().child(shortcut_label(text, style))
+    hint_shell().child(hint_label(text.as_ref(), color))
+}
+
+/// Hint that stays `idle` and switches to `hover` with the menu row's group.
+/// `active` (keyboard highlight, already on the danger fill) paints `hover` immediately.
+pub fn shortcut_hint_group(text: impl AsRef<str>, group: SharedString, idle: Hsla, hover: Hsla, active: bool) -> Div {
+    let text = text.as_ref();
+    if active {
+        return shortcut_hint(text, hover);
+    }
+    hint_shell().child(
+        div()
+            .relative()
+            .child(div().group_hover(group.clone(), |s| s.invisible()).child(hint_label(text, idle)))
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .invisible()
+                    .group_hover(group, |s| s.visible())
+                    .child(hint_label(text, hover)),
+            ),
+    )
+}
+
+fn hint_label(text: &str, color: Hsla) -> Div {
+    shortcut_label(text, ShortcutStyle::ui(px(13.), px(18.), FontWeight::NORMAL, color))
+}
+
+fn hint_shell() -> Div {
+    div().ml_auto().pl(px(8.)).flex_none().flex().items_center()
 }
 
 pub fn kbd(text: impl AsRef<str>) -> Div {

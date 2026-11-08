@@ -182,8 +182,17 @@ pub fn row_with_colors(id: impl Into<ElementId>, spec: RowSpec, colors: Option<(
             .when(!spec.disabled, move |s| s.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(p.hover_bg)))
             .child(lead)
     };
+    let hint_group = group.clone();
+    let danger_hint = spec.danger && !spec.disabled;
+    let hint_active = spec.highlighted;
     row.child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(spec.label))
-        .when_some(spec.hint, |r, h| r.child(crate::ui::shortcut_label::shortcut_hint(h, p.muted)))
+        .when_some(spec.hint, move |r, h| {
+            r.child(if danger_hint {
+                crate::ui::shortcut_label::shortcut_hint_group(h, hint_group, p.muted, p.danger_hover_fg, hint_active)
+            } else {
+                crate::ui::shortcut_label::shortcut_hint(h, p.muted)
+            })
+        })
         .when(spec.chevron, |r| r.child(div().ml_auto().pl(px(8.)).flex_none().flex().items_center().child(line_icon(Icon::TbChevronRight, 12., p.muted))))
         .when(spec.checked, |r| r.child(div().ml_auto().pl(px(12.)).flex_none().flex().items_center()
             .child(div().size(px(16.)).flex().items_center().justify_center().child(line_icon(Icon::Check, 16., p.text)))))
