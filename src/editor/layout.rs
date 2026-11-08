@@ -16,6 +16,7 @@ pub(in crate::editor) fn get_key(editor: gpui::EntityId, block: u64) -> Option<L
 pub(in crate::editor) fn set_key(editor: gpui::EntityId, block: u64, key: LayoutKey) {
     KEYS.with(|keys| { keys.borrow_mut().insert((editor, block), key); });
 }
+#[allow(dead_code)]
 pub(in crate::editor) fn clear_keys() {
     KEYS.with(|keys| keys.borrow_mut().clear());
 }

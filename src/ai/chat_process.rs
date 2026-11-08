@@ -17,19 +17,8 @@ use crate::{
 #[path = "chat_process_sources.rs"] mod sources;
 pub(super) use trace::{record_activity, record_outcome, record_summary, start_turn};
 
+#[derive(Default)]
 struct TurnUiState { steps_expanded: bool, steps_toggle_seq: usize, notes_expanded: bool, sources_expanded: bool, steps_scroll: ScrollHandle, last_step_count: usize }
-impl Default for TurnUiState {
-    fn default() -> Self {
-        Self {
-            steps_expanded: !crate::smoke::is_requested(),
-            steps_toggle_seq: 0,
-            notes_expanded: false,
-            sources_expanded: false,
-            steps_scroll: ScrollHandle::new(),
-            last_step_count: 0,
-        }
-    }
-}
 thread_local! {
     static TURNS: RefCell<HashMap<String, TurnUiState>> = RefCell::new(HashMap::new());
     static SMOKE_STEPS: RefCell<(Vec<ProcessStep>, Vec<String>)> = RefCell::new((Vec::new(), Vec::new()));
@@ -38,6 +27,16 @@ thread_local! {
 
 pub(crate) fn smoke_process_data() -> (Vec<ProcessStep>, Vec<String>) { SMOKE_STEPS.with(|data| data.borrow().clone()) }
 pub(crate) fn smoke_visible_replies() -> Vec<String> { SMOKE_REPLIES.with(|data| data.borrow().clone()) }
+
+#[allow(dead_code)]
+pub(crate) fn step_for(name: &str) -> String {
+    if super::agent::is_authorized_tool(name) {
+        let (zh, en) = super::agent::tool_step_label(name);
+        crate::theme::tr(zh, en).to_owned()
+    } else {
+        name.to_owned()
+    }
+}
 
 pub(super) fn open_created_plan(chat: &mut AiChat, cx: &mut gpui::Context<AiChat>) {
     let at = chat.conv().and_then(|conversation| conversation.messages.iter().enumerate().rev().take_while(|(_, message)| message.role != "user")
@@ -102,14 +101,21 @@ pub(super) fn render_messages(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> 
         if streaming {
             if !chat.partial.is_empty() || steps.is_empty() { stage = ProcessStage::Synth; }
             let label = if !chat.partial.is_empty() { tr("正在生成回答", "Generating answer") } else { tr("思考中", "Thinking") };
-            let chip = if !chat.partial.is_empty() {
+            let chip: String = if !chat.partial.is_empty() {
                 chat.partial.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or(tr("正在输出…", "Streaming…")).chars().take(64).collect()
             } else {
                 tr("等待模型响应…", "Waiting for model response…").to_owned()
             };
-            steps.push(ProcessStep { label: label.into(), detail: chip, merged_count: 1, running: true });
-            metas.push(ProcessStepMeta { icon: ProcessStepIcon::Think, mono: false, detail_mono: false, lines: Vec::new() });
-            details.push(String::new());
+            let mut stream_lines: Vec<crate::ui::ai_process_card::ProcessDetailLine> = chat.partial.lines()
+                .map(str::trim).filter(|l| !l.is_empty()).take(4)
+                .map(|t| crate::ui::ai_process_card::ProcessDetailLine { text: t.chars().take(96).collect(), tone: crate::ui::ai_process_card::DetailTone::Neutral })
+                .collect();
+            if stream_lines.is_empty() {
+                stream_lines.push(crate::ui::ai_process_card::ProcessDetailLine { text: chip.clone(), tone: crate::ui::ai_process_card::DetailTone::Neutral });
+            }
+            steps.push(ProcessStep { label: label.into(), detail: chip.clone(), merged_count: 1, running: true });
+            metas.push(ProcessStepMeta { icon: ProcessStepIcon::Think, variant: crate::ui::ai_process_card::ThinkingVariant::Steps, mono: false, detail_mono: false, add: 0, del: 0, lines: stream_lines });
+            details.push(if chat.partial.trim().is_empty() { chip } else { chat.partial.clone() });
         }
         if steps.len() > 16 {
             let excess = steps.len() - 16;
@@ -120,6 +126,7 @@ pub(super) fn render_messages(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> 
             let headline = trace::format_headline(turn, &steps, stage, streaming);
             if !streaming { stage = ProcessStage::Done; }
             let diff_chips = trace::build_diff_chips(turn, &notes);
+            let search_query = trace::extract_search_query(turn);
             let key = format!("{}-{start}", conv.id);
             let (steps_expanded, steps_toggle_seq, notes_expanded, steps_scroll) = TURNS.with(|states| {
                 let mut states = states.borrow_mut(); let state = states.entry(key.clone()).or_default();
@@ -142,7 +149,7 @@ pub(super) fn render_messages(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> 
             }) as Rc<dyn Fn(&mut gpui::App)>);
             body = body.child(process_card_with_options(
                 ProcessCardSpec { key, stage, headline, steps, notes, steps_expanded, steps_toggle_seq, notes_expanded, steps_scroll },
-                ProcessCardOptions { status: Some(status), elapsed, step_statuses, step_details: details, step_metas: metas, diff_chips, on_details_changed, ..Default::default() },
+                ProcessCardOptions { status: Some(status), elapsed, search_query, step_statuses, step_details: details, step_metas: metas, diff_chips, on_details_changed, ..Default::default() },
                 cx.listener(move |_, _, _, cx| { TURNS.with(|states| { let mut states = states.borrow_mut(); let state = states.entry(step_key.clone()).or_default(); state.steps_expanded = !state.steps_expanded; state.steps_toggle_seq += 1; }); cx.notify(); }),
                 cx.listener(move |_, _, _, cx| { TURNS.with(|states| { let mut states = states.borrow_mut(); let state = states.entry(notes_key.clone()).or_default(); state.notes_expanded = !state.notes_expanded; }); cx.notify(); }),
             ));

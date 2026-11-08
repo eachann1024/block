@@ -11,6 +11,8 @@ pub(in crate::editor) fn overlay(
     editor: Entity<Editor>,
     menu: BlockMenu,
     entries: Vec<Option<Cmd>>,
+    phase: crate::ui::motion::PopupMotion,
+    pop_gen: u64,
     window: &Window,
 ) -> AnyElement {
     let id = menu.block;
@@ -63,7 +65,8 @@ pub(in crate::editor) fn overlay(
         }
     }
     let pos_editor = editor.clone();
-    dropdown::deferred_popover_with(
+    dropdown::anchored_motion_with(
+        ("block-menu-pop", pop_gen),
         move |_, cx| {
             let ed = pos_editor.read(cx);
             let trigger = live_block_bounds(editor_id, id)
@@ -75,7 +78,7 @@ pub(in crate::editor) fn overlay(
                 .reserve_height(px(dropdown::MAX_HEIGHT))
         },
         list,
+        phase,
         2,
     )
-    .into_any_element()
 }

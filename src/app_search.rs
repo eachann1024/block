@@ -150,6 +150,7 @@ impl Workspace {
 
     pub(super) fn close_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.search.take().is_none() { return; }
+        crate::ui::motion::popup_reset("workspace-search-scope");
         self.restore_focus(window, cx);
         cx.notify();
     }
@@ -179,7 +180,6 @@ impl Workspace {
 
     pub(super) fn search_view(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let search = self.search.as_ref()?;
-        let menu_open = search.state.scope_menu_open;
         let dialog = crate::ui::modal::card("search-dialog", px(640.))
             .relative()
             .key_context("SearchPalette")
@@ -223,10 +223,10 @@ impl Workspace {
                 &search.state,
                 cx.listener(|this, _, _, cx| this.toggle_scope_menu(cx)),
             ))
-            .when(menu_open, |card| card.child(render_scope_menu(&search.state, cx, |this, index, _, cx| {
+            .children(render_scope_menu("workspace-search-scope", &search.state, cx, |this, index, _, cx| {
                 let changed = this.search.as_mut().is_some_and(|search| search.state.select_scope_index(index));
                 this.finish_scope(changed, cx);
-            })))
+            }))
             .child(render_body(&search.state, false, cx, |this, ix, window, cx| {
                 if let Some(search) = &mut this.search { search.state.selected = ix; }
                 this.open_hit(window, cx);

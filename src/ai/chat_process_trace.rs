@@ -2,7 +2,10 @@ use serde_json::Value;
 use super::super::{agent, chat::{AiChat, Msg}};
 use crate::{
     theme::{is_en, tr},
-    ui::ai_process_card::{DetailTone, ProcessDetailLine, ProcessDiffChip, ProcessStage, ProcessStep, ProcessStepIcon, ProcessStepMeta},
+    ui::ai_process_card::{
+        DetailTone, ProcessDetailLine, ProcessDiffChip, ProcessStage, ProcessStep,
+        ProcessStepIcon, ProcessStepMeta, ThinkingVariant,
+    },
 };
 
 pub(super) fn now_ms() -> u64 {
@@ -63,14 +66,25 @@ pub(super) fn summary_step(content: &str) -> (ProcessStep, ProcessStepMeta, Stri
         .map(|text| ProcessDetailLine { text, tone: DetailTone::Neutral }).collect();
     let chip = lines.first().map(|l| l.text.clone()).unwrap_or_else(|| tr("正在规划执行步骤…", "Planning next steps…").into());
     let step = ProcessStep { label: tr("思考中", "Thinking").into(), detail: chip, merged_count: 1, running: false };
-    (step, ProcessStepMeta { icon: ProcessStepIcon::Think, mono: false, detail_mono: false, lines }, content.to_owned())
+    let meta = ProcessStepMeta { icon: ProcessStepIcon::Think, variant: ThinkingVariant::Reasoning, mono: false, detail_mono: false, add: 0, del: 0, lines };
+    (step, meta, content.to_owned())
 }
 
 pub(super) fn activity_step(name: &str) -> (ProcessStep, ProcessStepMeta, String) {
     let text = format!("✓ {}", if is_en() { format!("Executed {name}") } else { format!("已执行 {name}") });
     let step = ProcessStep { label: tr("执行工具", "Run tool").into(), detail: name.to_owned(), merged_count: 1, running: false };
-    let meta = ProcessStepMeta { icon: ProcessStepIcon::Run, mono: true, detail_mono: true, lines: vec![ProcessDetailLine { text: text.clone(), tone: DetailTone::Neutral }] };
+    let meta = ProcessStepMeta {
+        icon: ProcessStepIcon::Run, variant: ThinkingVariant::Coding, mono: true, detail_mono: true,
+        add: 0, del: 0, lines: vec![ProcessDetailLine { text: text.clone(), tone: DetailTone::Neutral }],
+    };
     (step, meta, text)
+}
+
+pub(super) fn extract_search_query(turn: &[Msg]) -> Option<String> {
+    turn.iter().flat_map(|m| m.tool_calls.as_ref().and_then(Value::as_array).into_iter().flatten())
+        .filter(|c| c.pointer("/function/name").and_then(Value::as_str) == Some("searchNotes"))
+        .find_map(|c| c.pointer("/function/arguments").and_then(Value::as_str).and_then(|s| serde_json::from_str::<Value>(s).ok())
+            .and_then(|a| a.get("query").and_then(Value::as_str).map(str::trim).filter(|q| !q.is_empty()).map(str::to_owned)))
 }
 
 pub(super) fn tool_step(call: &Value, result_opt: Option<&Value>, notes: &mut Vec<String>) -> (ProcessStage, ProcessStep, ProcessStepMeta, String) {
@@ -143,20 +157,13 @@ pub(super) fn tool_step(call: &Value, result_opt: Option<&Value>, notes: &mut Ve
             let md = result.get("markdown").and_then(Value::as_str).unwrap_or("");
             let mut lines = Vec::new();
             if !md.is_empty() {
-                let lc = md.lines().count().max(1);
-                let cc = md.chars().count();
-                lines.push(ProcessDetailLine {
-                    text: if is_en() { format!("{lc} lines · {cc} chars") } else { format!("共 {lc} 行 · {cc} 字") },
-                    tone: DetailTone::Neutral,
-                });
+                let (lc, cc) = (md.lines().count().max(1), md.chars().count());
+                lines.push(ProcessDetailLine { text: if is_en() { format!("{lc} lines · {cc} chars") } else { format!("共 {lc} 行 · {cc} 字") }, tone: DetailTone::Neutral });
                 if let Some(excerpt) = md.lines().map(clean_line).find(|l| !l.is_empty()) {
                     lines.push(ProcessDetailLine { text: excerpt, tone: DetailTone::Neutral });
                 }
             } else {
-                lines.push(ProcessDetailLine {
-                    text: if is_en() { format!("Read note {file}") } else { format!("已读取笔记 {file}") },
-                    tone: DetailTone::Neutral,
-                });
+                lines.push(ProcessDetailLine { text: if is_en() { format!("Read note {file}") } else { format!("已读取笔记 {file}") }, tone: DetailTone::Neutral });
             }
             (ProcessStage::Read, ProcessStepIcon::Read, tr("读取笔记", "Read note").to_owned(), file, true, false, lines)
         }
@@ -200,7 +207,8 @@ pub(super) fn tool_step(call: &Value, result_opt: Option<&Value>, notes: &mut Ve
     }
     let chip = if failed { tr("失败", "Failed").to_owned() } else if result_opt.is_none() { tr("状态未知", "Status unknown").to_owned() } else { chip };
     let plain = lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n");
-    (stage, ProcessStep { label, detail: chip, merged_count: 1, running: false }, ProcessStepMeta { icon, mono, detail_mono, lines }, plain)
+    let meta = ProcessStepMeta { icon, variant: ThinkingVariant::Coding, mono, detail_mono, add: 0, del: 0, lines };
+    (stage, ProcessStep { label, detail: chip, merged_count: 1, running: false }, meta, plain)
 }
 
 pub(super) fn build_diff_chips(turn: &[Msg], notes: &[String]) -> Vec<ProcessDiffChip> {
@@ -272,14 +280,8 @@ pub(super) fn format_headline(turn: &[Msg], steps: &[ProcessStep], stage: Proces
         Some("failed") => tr("执行失败", "Execution failed").into(),
         Some("stopped") => tr("已停止", "Stopped").into(),
         _ => {
-            let calls: usize = turn.iter()
-                .filter_map(|m| m.tool_calls.as_ref().and_then(Value::as_array).map(Vec::len))
-                .sum::<usize>()
-                .max(steps.len());
-            let msgs = turn.iter()
-                .filter(|m| matches!(m.role.as_str(), "user" | "assistant") && !m.content.trim().is_empty())
-                .count()
-                .max(1);
+            let calls: usize = turn.iter().filter_map(|m| m.tool_calls.as_ref().and_then(Value::as_array).map(Vec::len)).sum::<usize>().max(steps.len());
+            let msgs = turn.iter().filter(|m| matches!(m.role.as_str(), "user" | "assistant") && !m.content.trim().is_empty()).count().max(1);
             if is_en() {
                 format!("{calls} tool {}, {msgs} {}", if calls == 1 { "call" } else { "calls" }, if msgs == 1 { "message" } else { "messages" })
             } else {

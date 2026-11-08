@@ -77,6 +77,8 @@ pub fn font_picker_popover(
     search_input: &gpui::Entity<gpui_component::input::InputState>,
     scroll_handle: &gpui::UniformListScrollHandle,
     items: Rc<[FlatFontItem]>,
+    phase: crate::ui::motion::PopupMotion,
+    pop_gen: u64,
     cx: &mut gpui::Context<Workspace>,
 ) -> gpui::Div {
     let theme = Theme::ocean();
@@ -172,13 +174,18 @@ pub fn font_picker_popover(
         }))
         .child(search_bar).child(list_element);
 
+    let entering = phase == crate::ui::motion::PopupMotion::Enter;
     let backdrop = deferred(
         anchored().position(point(px(0.), px(0.))).child(
-            div().id("font-picker-backdrop").w(px(10000.)).h(px(10000.)).bg(gpui::transparent_black()).occlude()
-                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.close_font_picker(cx); }))
-                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.close_font_picker(cx); })),
+            crate::ui::motion::layer_fade(
+                div().id("font-picker-backdrop").w(px(10000.)).h(px(10000.)).bg(gpui::transparent_black()).occlude()
+                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.close_font_picker(cx); }))
+                    .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| { cx.stop_propagation(); this.close_font_picker(cx); })),
+                ("font-picker-scrim", pop_gen),
+                entering,
+            ),
         )
     ).with_priority(2);
 
-    div().child(backdrop).child(dropdown::deferred_popover_for(spec, menu, 3))
+    div().child(backdrop).child(dropdown::anchored_motion(("font-picker-pop", pop_gen), spec, menu, phase, 3))
 }

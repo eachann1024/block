@@ -148,7 +148,12 @@ pub(super) fn top_controls(
     let default_idx = LANGUAGES.iter().position(|(t, _)| *t == "plaintext").unwrap_or(0);
     let display_lang = pill_text(&raw_lang);
     let picker = LANG_PICKER.with(|slot| slot.borrow().filter(|p| p.block_id == block_id));
-    let show_bar = visible || picker.is_some();
+    let lang_key = format!("code-lang-{block_id}");
+    let lang_motion = crate::ui::motion::popup_hold(&lang_key, picker);
+    if let Some((_, pop_gen, _)) = lang_motion {
+        crate::ui::motion::schedule_popup_finish(&lang_key, pop_gen, cx);
+    }
+    let show_bar = visible || lang_motion.is_some();
 
     let zoom = super::zoom::zoom_factor(minimal);
     let copy_editor = editor.clone();
@@ -204,7 +209,7 @@ pub(super) fn top_controls(
         .when(!show_bar, |d| d.invisible())
         .when(show_copy, |d| d.child(copy_btn))
         .child(lang_btn)
-        .when_some(picker, |el, p| el.child(lang_dropdown(editor, block_id, cur_canon, p, cx)))
+        .children(lang_motion.map(|(phase, pop_gen, p)| lang_dropdown(editor, block_id, cur_canon, p, phase, pop_gen, cx)))
 }
 
 fn lang_dropdown(
@@ -212,6 +217,8 @@ fn lang_dropdown(
     block_id: u64,
     cur_canon: &'static str,
     picker: LangPicker,
+    phase: crate::ui::motion::PopupMotion,
+    pop_gen: u64,
     cx: &mut Context<Editor>,
 ) -> impl IntoElement {
     let measured = LANG_BOUNDS.with(|b| b.borrow().get(&block_id).copied());
@@ -248,15 +255,20 @@ fn lang_dropdown(
             }),
         );
     }
+    let entering = phase == crate::ui::motion::PopupMotion::Enter;
     let backdrop = deferred(anchored().position(point(px(0.), px(0.))).child(
-        div().id("code-lang-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black()).occlude()
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
-                cx.stop_propagation(); close_menus(); window.focus(&this.focus, cx); cx.notify();
-            }))
-            .on_mouse_down(MouseButton::Right, cx.listener(|this, _, window, cx| {
-                cx.stop_propagation(); close_menus(); window.focus(&this.focus, cx); cx.notify();
-            })),
+        crate::ui::motion::layer_fade(
+            div().id("code-lang-backdrop").w(px(10000.)).h(px(10000.)).bg(transparent_black()).occlude()
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                    cx.stop_propagation(); close_menus(); window.focus(&this.focus, cx); cx.notify();
+                }))
+                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, window, cx| {
+                    cx.stop_propagation(); close_menus(); window.focus(&this.focus, cx); cx.notify();
+                })),
+            gpui::SharedString::from(format!("code-lang-scrim-{block_id}-{pop_gen}")),
+            entering,
+        ),
     )).with_priority(2);
-    let popup = dropdown::deferred_popover_for(spec, menu, 3);
+    let popup = dropdown::anchored_motion(gpui::SharedString::from(format!("code-lang-pop-{block_id}-{pop_gen}")), spec, menu, phase, 3);
     div().child(backdrop).child(popup)
 }

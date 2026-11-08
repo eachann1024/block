@@ -25,6 +25,7 @@ pub mod radius;
 pub mod rename_row;
 pub mod reveal;
 pub mod scrollbar;
+pub mod shell_layout;
 pub mod scope_dropdown;
 pub mod segmented_control;
 pub mod settings_controls;

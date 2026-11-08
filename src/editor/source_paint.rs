@@ -77,7 +77,7 @@ fn line_runs(doc: &super::source_text::SourceDoc, start: usize, vis_len: usize, 
         let b = end.min(run_end);
         if a < b {
             let gap = a - start;
-            if gap > filled { out.push(mono(gap - filled, theme.text)); filled = gap; }
+            if gap > filled { out.push(mono(gap - filled, theme.text)); }
             let mut piece = run.clone();
             piece.len = b - a;
             out.push(piece);

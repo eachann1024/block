@@ -24,6 +24,10 @@ impl Workspace {
 
     pub(super) fn render_titlebar_tail(&self, show_active_tools: bool, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
+        if self.ai_immersive(cx) {
+            return div().h(px(40.)).h_full().flex_none().flex().items_center()
+                .child(crate::ui::window_controls::window_controls("main-win", true, true));
+        }
         if self.settings.is_some() {
             return div().h(px(40.)).h_full().flex_none().flex().items_center()
                 .child(crate::ui::window_controls::window_controls("main-win", true, true));
@@ -91,7 +95,7 @@ impl Workspace {
                 toggle_page_menu(event.position);
                 cx.notify();
             }))
-            .child(if page_open { icon(Icon::More, px(16.), theme.icon_colors(theme.accent)) } else { hover_tinted_icon(more_group, Icon::More, 16., theme.text_secondary, theme.text, theme.icon_fill) });
+            .child(if page_open { icon(Icon::More, px(18.), theme.icon_colors(theme.accent)) } else { hover_tinted_icon(more_group, Icon::More, 18., theme.text_secondary, theme.text, theme.icon_fill) });
         crate::ui::annotation_card::titlebar_split_pill(send_seg, more)
     }
 

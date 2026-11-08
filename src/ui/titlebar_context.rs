@@ -6,7 +6,7 @@ use gpui::{
 use crate::{
     icons::Icon,
     theme::{Theme, tr},
-    ui::{icon_button::dock_icon_button, radius},
+    ui::{icon_button::dock_icon_button_px, radius},
 };
 
 /// Compact zoom group: out, percent reset, in, and fit.
@@ -27,11 +27,12 @@ pub fn zoom_cluster(
         .flex()
         .items_center()
         .gap(px(2.))
-        .child(dock_icon_button(
+        .child(dock_icon_button_px(
             SharedString::from(format!("{prefix}-out")),
             Icon::Minus,
             false,
             tr("缩小", "Zoom out"),
+            18.,
             on_out,
         ))
         .child(
@@ -47,25 +48,27 @@ pub fn zoom_cluster(
                 .rounded(radius::CONTROL)
                 .cursor_pointer()
                 .font(crate::ui::settings_controls::mono_font())
-                .text_size(px(13.))
+                .text_size(px(14.))
                 .text_color(theme.text)
                 .hover(|s| s.bg(theme.hover))
                 .tooltip_above(crate::ui::tooltip::tooltip(tr("重置为 100%", "Reset to 100%")))
                 .on_mouse_down(MouseButton::Left, on_reset)
                 .child(pct_label),
         )
-        .child(dock_icon_button(
+        .child(dock_icon_button_px(
             SharedString::from(format!("{prefix}-in")),
             Icon::Plus,
             false,
             tr("放大", "Zoom in"),
+            18.,
             on_in,
         ))
-        .child(dock_icon_button(
+        .child(dock_icon_button_px(
             SharedString::from(format!("{prefix}-fit")),
             Icon::WindowMax,
             fit_active,
             tr("适应窗口", "Fit"),
+            18.,
             on_fit,
         ))
 }
@@ -118,7 +121,7 @@ pub fn reveal_button(
     id: impl Into<SharedString>,
     on_click: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<gpui::Div> {
-    dock_icon_button(id.into(), Icon::FolderReveal, false, crate::files::ops::reveal_label(), on_click)
+    dock_icon_button_px(id.into(), Icon::FolderReveal, false, crate::files::ops::reveal_label(), 18., on_click)
 }
 
 fn zoom_hit(

@@ -25,7 +25,7 @@ fn tb_btn(
 
 /// Top-centered floating capsule toolbar + active dropdown/popover for a selected image block.
 pub(super) fn image_toolbar(
-    editor: &Entity<Editor>, id: u64, align: Align, percent: u32, pop: Option<ImagePop>,
+    editor: &Entity<Editor>, id: u64, align: Align, percent: u32, pop: Option<ImagePop>, cx: &mut gpui::App,
 ) -> impl IntoElement {
     let crop_bounds = std::rc::Rc::new(std::cell::Cell::new(None));
     let more_bounds = std::rc::Rc::new(std::cell::Cell::new(None));
@@ -64,19 +64,33 @@ pub(super) fn image_toolbar(
 
     let trigger_bounds = if crop_open { crop_bounds } else { more_bounds };
     let pos_editor = editor.clone();
-    let sub = pop.map(|p| match p {
-        ImagePop::More => more_menu(editor, id).into_any_element(),
-        ImagePop::AltText(input) => alt_popover(editor, id, &input).into_any_element(),
-        ImagePop::Size => size_popover(editor, id, percent).into_any_element(),
-        ImagePop::Crop => crop_popover(editor, id).into_any_element(),
+    let image_key = format!("image-pop-{id}");
+    let motion = crate::ui::motion::popup_hold(&image_key, pop);
+    if let Some((_, pop_gen, _)) = motion.as_ref() {
+        crate::ui::motion::schedule_popup_finish_for(&image_key, *pop_gen, editor.clone(), cx);
+    }
+    let sub = motion.map(|(phase, pop_gen, p)| {
+        let body = match p {
+            ImagePop::More => more_menu(editor, id).into_any_element(),
+            ImagePop::AltText(input) => alt_popover(editor, id, &input).into_any_element(),
+            ImagePop::Size => size_popover(editor, id, percent).into_any_element(),
+            ImagePop::Crop => crop_popover(editor, id).into_any_element(),
+        };
+        dropdown::anchored_motion_with(
+            gpui::SharedString::from(format!("image-pop-{id}-{pop_gen}")),
+            move |_, cx| {
+                dropdown::PlacementSpec::below(trigger_bounds.get().unwrap_or_default())
+                    .viewport(pos_editor.read(cx).list.viewport_bounds())
+            },
+            body,
+            phase,
+            2,
+        )
     });
 
     div().relative().flex().flex_col().items_center()
         .child(floating_bar::animate(bar, ("img-toolbar-enter", id as usize)))
-        .when_some(sub, |d, s| d.child(dropdown::deferred_popover_with(move |_, cx| {
-            dropdown::PlacementSpec::below(trigger_bounds.get().unwrap_or_default())
-                .viewport(pos_editor.read(cx).list.viewport_bounds())
-        }, s, 2)))
+        .children(sub)
 }
 
 fn menu_card(id: (&'static str, usize), width: f32) -> gpui::Stateful<gpui::Div> {

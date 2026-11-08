@@ -57,7 +57,7 @@ fn preset_tag(p: Preset, editor: &Entity<Editor>) -> gpui::Stateful<gpui::Div> {
     tag(SharedString::from(format!("ai-preset-{p:?}")), Some(preset_icon(p)), p.label(), false, false, editor, move |this, w, cx| this.ai_preset(p, w, cx))
 }
 
-pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyElement {
+pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession, phase: crate::ui::motion::PopupMotion, pop_gen: u64) -> AnyElement {
     let theme = Theme::ocean();
     let busy = matches!(s.status, AiStatus::Thinking { .. });
     let del_fg = rgb(0xb42318);
@@ -170,7 +170,7 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyEle
                 .gap(px(6.))
                 .margin(px(12.))
         })
-        .child(
+        .child(crate::ui::motion::animate_popup(
             panel_shell("inline-ai")
                 .on_action(|_: &view::Backspace, _, _| {})
                 .on_action(|_: &view::Delete, _, _| {})
@@ -221,7 +221,9 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession) -> AnyEle
                 .child(prompt_row)
                 .when(show_footer, |d| d.child(footer))
                 .children(submenu),
-        ),
+            phase,
+            ("inline-ai-pop", pop_gen),
+        )),
     )
     .with_priority(2)
     .into_any_element()

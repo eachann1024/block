@@ -77,6 +77,9 @@ impl Editor {
     /// Entries currently shown; the slash menu filters by what follows the slash.
     pub(super) fn block_menu_entries(&self) -> Vec<Option<Cmd>> {
         let Some(menu) = self.block_menu else { return Vec::new() };
+        self.block_menu_entries_for(menu)
+    }
+    pub(super) fn block_menu_entries_for(&self, menu: BlockMenu) -> Vec<Option<Cmd>> {
         match menu.mode {
             Mode::Slash => {
                 let Some(block) = self.doc.get(menu.block) else { return Vec::new() };

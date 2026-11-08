@@ -8,7 +8,7 @@ pub(super) fn builtin_blocked(chat: &AiChat) -> bool {
         && super::provider::validate_request(&config).is_err())
 }
 
-pub(super) fn enable_cover(cx: &mut gpui::Context<AiChat>) -> gpui::AnyElement {
+pub(super) fn enable_cover(fullscreen: bool, cx: &mut gpui::Context<AiChat>) -> gpui::AnyElement {
     let theme = Theme::ocean();
     let cfg = super::provider::config();
     let title = if !cfg.enabled {
@@ -17,12 +17,12 @@ pub(super) fn enable_cover(cx: &mut gpui::Context<AiChat>) -> gpui::AnyElement {
         tr("先完成 AI 配置", "Configure AI Assistant")
     };
     let cta = if !cfg.enabled { tr("前往启用 AI", "Enable in AI Settings") } else { tr("前往配置 AI", "Open AI Settings") };
+    let max_w = if fullscreen { 160. } else { 128. };
     div().id("ai-empty-state").size_full().px(px(24.)).flex().flex_col().items_center().justify_center().text_center()
-        .child(crate::mascot::illustration(crate::mascot::MascotState::AiDisabled))
+        .child(crate::mascot::illustration_within(crate::mascot::MascotState::AiDisabled, max_w))
         .child(div().mt(px(22.)).text_size(px(18.)).line_height(px(26.)).font_weight(FontWeight(600.)).text_color(theme.text).child(title))
         .child(ai_controls::enable_action_button("ai-enable-cover", cta, cx.listener(|chat, _, window, cx| {
             cx.stop_propagation();
-            chat.fullscreen = false;
             chat.input.update(cx, |i, cx| i.focus(window, cx));
             window.dispatch_action(Box::new(super::OpenAiSettings), cx);
             cx.notify();
@@ -30,7 +30,7 @@ pub(super) fn enable_cover(cx: &mut gpui::Context<AiChat>) -> gpui::AnyElement {
         .into_any_element()
 }
 
-pub(super) fn view(_chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> impl IntoElement {
+pub(super) fn view(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> impl IntoElement {
     let theme = Theme::ocean();
     let mut actions = div().flex().flex_wrap().justify_center().gap(px(8.)).max_w(px(540.));
     for (id, label, prompt) in [
@@ -43,8 +43,9 @@ pub(super) fn view(_chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> impl IntoE
             cx.stop_propagation(); chat.input.update(cx, |input, cx| { input.set_value(prompt, window, cx); input.focus(window, cx); }); cx.notify();
         })).border_1().border_color(theme.btn_border));
     }
+    let max_w = if chat.fullscreen { 160. } else { 128. };
     div().id("ai-empty-state").py(px(36.)).px(px(16.)).flex().flex_col().items_center().gap(px(14.))
-        .child(crate::mascot::ai_greeting())
+        .child(crate::mascot::ai_greeting_within(max_w))
         .child(div().text_size(px(16.)).font_weight(FontWeight(560.)).text_color(theme.text).child(tr("有什么可以帮你处理？", "How can I help with this note?")))
         .child(actions)
 }

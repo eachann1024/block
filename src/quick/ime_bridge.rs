@@ -27,6 +27,7 @@ thread_local! {
 }
 
 #[link(name = "objc")]
+#[allow(clashing_extern_declarations)]
 unsafe extern "C" {
     fn objc_msgSend();
     fn objc_getClass(name: *const c_char) -> Id;
