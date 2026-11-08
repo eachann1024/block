@@ -204,7 +204,7 @@ pub fn shortcut_hint_group(text: impl AsRef<str>, group: SharedString, idle: Hsl
 }
 
 fn hint_label(text: &str, color: Hsla) -> Div {
-    shortcut_label(text, ShortcutStyle::ui(px(13.), px(18.), FontWeight::NORMAL, color))
+    shortcut_label(text, ShortcutStyle::ui(px(12.), px(16.), FontWeight::NORMAL, color))
 }
 
 fn hint_shell() -> Div {
