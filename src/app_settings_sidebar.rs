@@ -26,7 +26,10 @@ impl Workspace {
                             .text_color(theme.text).font_weight(FontWeight(460.)))
                         .when(!active, |d| d.text_color(theme.text_secondary)
                             .hover(move |s| s.bg(theme.hover).text_color(theme.text)))
-                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.select_settings_tab(tab, cx)))
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
+                            if this.shell_split(window, cx).sidebar_drawer { this.sidebar_pinned = false; cx.notify(); }
+                            this.select_settings_tab(tab, cx);
+                        }))
                         .child(stateful_icon(cat_group, tab.icon(), px(15.), active, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if active { theme.accent } else { theme.text })))
                         .child(tab.title())
                 })))

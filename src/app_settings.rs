@@ -113,7 +113,8 @@ impl Workspace {
             cx.notify();
             return;
         }
-        self.present_sidebar();
+        self.sidebar_collapsed = false;
+        self.sidebar_pinned = false;
         if self.renaming.is_some() { self.cancel_rename(window, cx); }
         if self.search.is_some() { self.close_search(window, cx); }
         self.close_overlays(cx);
