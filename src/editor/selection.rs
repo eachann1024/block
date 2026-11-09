@@ -95,7 +95,7 @@ impl Editor {
     pub(in crate::editor) fn reset_document(&mut self, doc: Doc) {
         self.caret = Caret::new(doc.blocks[0].id);
         self.doc = doc;
-        self.history.clear(); self.redo.clear(); self.nowrap.clear(); self.folded.clear();
+        self.history.clear(); self.redo.clear(); self.nowrap.clear(); self.folded.clear(); self.fold_tails.clear();
         self.preferred_x = None::<Pixels>;
         self.clear_transient_overlays();
         self.list.reset(self.doc.blocks.len());
