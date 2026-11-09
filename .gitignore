@@ -21,3 +21,4 @@ tmp/
 debug*
 *.debug
 *.trace
+__pycache__/
