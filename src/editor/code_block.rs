@@ -1,7 +1,7 @@
 //! Fenced code block card: layout margin, painted card, top-right controls, and language dropdown.
 use std::{cell::RefCell, collections::{HashMap, HashSet}, time::Duration};
 use gpui::{
-    App, BorderStyle, Bounds, ClipboardItem, Context, Corners, CursorStyle, Edges, Entity,
+    App, BorderStyle, Bounds, Context, Corners, CursorStyle, Edges, Entity,
     FontWeight, IntoElement, Length, MouseButton, Pixels, Point, Size, Window, anchored, deferred,
     div, point, prelude::*, px, quad, rgb, rgba, size, transparent_black,
 };
@@ -167,8 +167,7 @@ pub(super) fn top_controls(
     let copy_editor = editor.clone();
     let copy_btn = ui_copy_button(("code-copy", block_id as usize), copied, zoom, cx.listener(move |this, _, _, cx| {
         cx.stop_propagation();
-        let text = this.doc.get(block_id).map(|b| b.text.clone()).unwrap_or_default();
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        this.copy_block_text(block_id, cx);
         COPIED_BLOCKS.with(|set| { set.borrow_mut().insert(block_id); });
         cx.notify();
         let entity = copy_editor.downgrade();

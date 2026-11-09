@@ -14,6 +14,21 @@ fn plain_blocks(text: &str) -> Vec<Block> {
 }
 
 impl Editor {
+    fn literal_paste_target(&self, cx: &Context<Self>) -> bool {
+        let (a, b, first, last) = self.ordered();
+        if first != last { return false; }
+        let block = &self.doc.blocks[first];
+        if block.meta.code_language.is_some() || block.meta.raw_source.is_some() { return true; }
+        let range = a.offset..b.offset;
+        let (leaf, range) = if let Some(table) = &block.meta.table {
+            let Some((row, cell, range)) = table.cell_at_range(&range) else { return false; };
+            (&table.rows[row].cells[cell].content, range)
+        } else { (block, range) };
+        super::code_escape::side(cx.entity_id(), a).is_none()
+            && leaf.spans.iter().any(|span| span.marks.contains(&MarkKind::Code)
+                && span.start < range.start && range.end <= span.end)
+    }
+
     /// A copied text range replaces text in place, even when its source was a heading.
     pub(super) fn paste_inline_fragment(&mut self, fragment: &Block, cx: &mut Context<Self>) {
         if self.path.is_none() || fragment.text.is_empty() { return; }
@@ -22,21 +37,20 @@ impl Editor {
         if !self.can_replace_selection() { self.table_edit_rejected(cx); return; }
         let (a, b, ai, bi) = self.ordered();
         if self.crosses_hidden_fold(ai, bi) && !self.selection_covers_doc(a, b, ai, bi) { return; }
-        let first = &self.doc.blocks[ai];
-        let literal = ai == bi && (first.meta.code_language.is_some() || first.meta.raw_source.is_some()
-            || first.meta.table.is_some() || first.spans.iter().any(|span| span.marks.contains(&MarkKind::Code)
-                && span.start < a.offset && b.offset <= span.end));
-        if literal { self.paste_text(&fragment.text, true, false, None, cx); return; }
+        if self.table_sel.is_some_and(|(_, sel)| !matches!(sel, super::table_actions::TableSel::Whole)) {
+            self.table_edit_rejected(cx); return;
+        }
+        if self.table_sel.is_some() { self.insert_paste_blocks(vec![fragment.clone()], cx); return; }
+        if self.literal_paste_target(cx) { self.paste_text(&fragment.text, true, false, None, cx); return; }
+        if fragment.spans.is_empty() && fragment.meta.inline.is_empty()
+            && self.paste_url_over_selection(&fragment.text, cx) { return; }
         self.insert_paste_inline(fragment, cx);
     }
 
     pub(super) fn paste_text(&mut self, text: &str, plain: bool, force_markdown: bool,
         block_markdown: Option<&str>, cx: &mut Context<Self>) {
-        if self.path.is_none() || text.is_empty() { return; }
+        if self.path.is_none() || (text.is_empty() && block_markdown.is_none()) { return; }
         let text = text.replace("\r\n", "\n").replace('\r', "\n");
-        let clip_fallback = self.block_clip.as_ref()
-            .and_then(|(clip_plain, md)| (clip_plain == &text).then(|| md.clone()));
-        let block_markdown = block_markdown.or(clip_fallback.as_deref());
         self.commit_composition(cx);
         if self.block_sel.is_some() {
             if plain || (!force_markdown && block_markdown.is_none() && text.trim().is_empty()) {
@@ -55,9 +69,7 @@ impl Editor {
         if a.offset > first.text.len() || b.offset > last.text.len()
             || !first.text.is_char_boundary(a.offset) || !last.text.is_char_boundary(b.offset) { return; }
         let focused_atomic = super::image_source::spec_of(first).is_some() || super::block_menu::is_divider(first);
-        let literal = ai == bi && !focused_atomic && (first.meta.code_language.is_some() || first.meta.raw_source.is_some()
-            || first.spans.iter().any(|span| span.marks.contains(&MarkKind::Code)
-                && span.start < a.offset && b.offset <= span.end));
+        let literal = !focused_atomic && self.table_sel.is_none() && self.literal_paste_target(cx);
         if focused_atomic && self.caret.is_empty() && plain {
             self.insert_paste_blocks(plain_blocks(&text), cx); return;
         }
@@ -66,13 +78,12 @@ impl Editor {
         }
         let whole_table = self.table_sel.is_some();
         if plain && whole_table { self.insert_paste_blocks(plain_blocks(&text), cx); return; }
-        if plain || literal { self.replace_selection(&text, false, cx); return; }
+        if plain || literal { self.replace_plain_selection(&text, cx); return; }
         let in_cell = ai == bi && first.meta.table.as_ref().is_some_and(|table|
             !whole_table && table.cell_at_range(&(a.offset..b.offset)).is_some());
         let empty_first = first.text.is_empty();
         if in_cell {
             if block_markdown.is_none() && self.caret.is_empty() && tsv_safe(&text) && self.paste_tsv(&text, cx) { return; }
-            self.replace_selection(&text, false, cx); return;
         }
         if !force_markdown && block_markdown.is_none() && !whole_table && self.paste_url_over_selection(&text, cx) { return; }
         if !force_markdown && block_markdown.is_none() && text.trim().is_empty() { self.replace_selection(&text, false, cx); return; }
@@ -80,6 +91,12 @@ impl Editor {
         let source = block_markdown.unwrap_or(text.as_str());
         let parsed = super::markdown::parse(source.strip_prefix('\u{feff}').unwrap_or(source));
         let blocks: Vec<Block> = parsed.blocks.iter().cloned().collect();
+        if in_cell {
+            if blocks.len() == 1 && !structured(&blocks[0]) {
+                self.insert_paste_inline(&blocks[0], cx);
+            } else { self.replace_selection(&text, false, cx); }
+            return;
+        }
         let rich = blocks.iter().any(|block| !block.spans.is_empty() || !block.meta.inline.is_empty())
             || ((text.contains('&') || text.contains('\\'))
                 && blocks.iter().map(|block| block.text.as_str()).collect::<Vec<_>>().join("\n") != text.trim_end_matches('\n'));
@@ -94,8 +111,22 @@ impl Editor {
 
     pub(super) fn insert_paste_inline(&mut self, fragment: &Block, cx: &mut Context<Self>) {
         let (a, b, ai, bi) = self.ordered();
+        if !self.can_replace_selection() { self.table_edit_rejected(cx); return; }
+        if self.crosses_hidden_fold(ai, bi) && !self.selection_covers_doc(a, b, ai, bi) { return; }
         let block = &self.doc.blocks[ai];
         let end = &self.doc.blocks[bi];
+        if a.offset > block.text.len() || b.offset > end.text.len()
+            || !block.text.is_char_boundary(a.offset) || !end.text.is_char_boundary(b.offset) { return; }
+        if ai == bi && block.meta.table.as_ref().is_some_and(|table|
+            self.table_sel.is_none() && table.cell_at_range(&(a.offset..b.offset)).is_some()) {
+            let before = self.snapshot();
+            if let Some(block) = self.doc.get_mut(a.block) { block.replace_inline(a.offset..b.offset, fragment); }
+            self.doc.refresh_block(a.block);
+            let at = Position { block:a.block, offset:a.offset + fragment.text.len() };
+            self.caret.anchor = at; self.caret.head = at; self.caret.composing = None;
+            self.record_changes(before, vec![ListChange { start:ai, before:1, after:1 }], true, cx);
+            return;
+        }
         let atomic = |block: &Block| block.meta.table.is_some() || block.meta.raw_source.is_some()
             || block.meta.code_language.is_some() || super::image_source::spec_of(block).is_some()
             || super::block_menu::is_divider(block);
@@ -119,7 +150,10 @@ impl Editor {
         if let Some((anchor, head)) = selected {
             if anchor >= self.doc.blocks.len() || head >= self.doc.blocks.len() { return false; }
             first = anchor.min(head); last = anchor.max(head);
-        } else if !self.can_replace_selection() { self.table_edit_rejected(cx); return false; }
+        } else {
+            if !self.can_replace_selection() { self.table_edit_rejected(cx); return false; }
+            if self.crosses_hidden_fold(first, last) && !self.selection_covers_doc(a, b, first, last) { return false; }
+        }
         let Some(start) = self.doc.blocks.get(first) else { return false };
         let Some(end) = self.doc.blocks.get(last) else { return false };
         let (start_offset, end_offset) = if selected.is_some() { (0, end.text.len()) } else { (a.offset, b.offset) };

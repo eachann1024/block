@@ -4,6 +4,44 @@ impl Block {
     pub fn new(id: u64, kind: Kind, text: String) -> Self {
         Self { id, kind, text, checked: false, spans: Vec::new(), meta: BlockMeta::default() }
     }
+    /// A text selection has inline formatting, but no heading, list or table shell.
+    pub fn text_slice(&self, range: Range<usize>) -> Option<Self> {
+        if !spans::valid(&self.text, &range) { return None; }
+        let mut out = Self::new(0, Kind::Paragraph, self.text[range.clone()].to_owned());
+        if let Some(table) = &self.meta.table {
+            for (row, cell, body) in table.cell_ranges() {
+                let start = range.start.max(body.start);
+                let end = range.end.min(body.end);
+                if start >= end { continue; }
+                let part = table.rows[row].cells[cell].content.slice(start - body.start..end - body.start);
+                let offset = start - range.start;
+                out.spans.extend(part.spans.into_iter().map(|s| Span { start:s.start + offset, end:s.end + offset, ..s }));
+                out.meta.inline.extend(part.meta.inline.into_iter().map(|t| super::InlineTag { start:t.start + offset, end:t.end + offset, ..t }));
+            }
+        } else {
+            let part = self.slice(range);
+            out.spans = part.spans; out.meta.inline = part.meta.inline;
+        }
+        out.normalize_spans(); Some(out)
+    }
+    /// Rich-text replacement preserves the destination shell, including table-cell structure.
+    pub fn replace_inline(&mut self, range: Range<usize>, fragment: &Self) -> bool {
+        if !spans::valid(&self.text, &range) { return false; }
+        if let Some(table) = &mut self.meta.table {
+            let Some((row, cell, local)) = table.cell_at_range(&range) else { return false; };
+            let changed = table.rows[row].cells[cell].content.replace_inline(local, fragment);
+            if changed { self.sync_table_text(); }
+            return changed;
+        }
+        if self.meta.code_language.is_some() || self.meta.raw_source.is_some() {
+            return self.replace_range(range, &fragment.text);
+        }
+        let mut combined = self.slice(0..range.start);
+        combined.append(fragment);
+        combined.append(&self.slice(range.end..self.text.len()));
+        if *self == combined { return false; }
+        *self = combined; true
+    }
     pub fn slice(&self, range: Range<usize>) -> Self {
         let valid = spans::valid(&self.text,&range);
         let text = if valid { self.text[range.clone()].to_owned() } else { String::new() };
