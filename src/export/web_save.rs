@@ -62,7 +62,7 @@ impl ExportView {
                         ExportFormat::Pdf => render_pdf(&blocks, options, &cancel)?,
                         ExportFormat::Word => render_docx(&blocks, &options, &cancel)?,
                         ExportFormat::Markdown => render_markdown(&blocks, &options).into_bytes(),
-                        ExportFormat::Html => render_html(&blocks, &options).into_bytes(),
+                        ExportFormat::Html => render_html(&blocks, &options)?.into_bytes(),
                     })
                 })
                 .await;

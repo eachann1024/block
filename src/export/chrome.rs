@@ -134,7 +134,7 @@ pub(super) fn paint_chrome(
 }
 
 /// Today's `(year, month, day)` in UTC.
-fn today() -> (i64, u32, u32) {
+pub(super) fn today() -> (i64, u32, u32) {
     #[cfg(not(target_family = "wasm"))]
     let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     #[cfg(target_family = "wasm")]
