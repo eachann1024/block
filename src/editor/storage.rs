@@ -48,41 +48,60 @@ pub(in crate::editor) fn latest_draft() -> Result<(PathBuf, Loaded), String> {
     }
     Err(tr("未找到可读取的恢复草稿", "No readable recovery drafts found").into())
 }
-pub(super) fn load(path: &Path) -> Result<Loaded, String> {
+/// File bytes only. Recovery drafts stay out so a window refresh can follow an external edit.
+pub(super) fn load_disk(path: &Path) -> Result<Loaded, String> {
     #[cfg(target_family = "wasm")]
     {
         let source = crate::files::vfs::read_to_string(path).unwrap_or_default();
         let base = fingerprint(source.as_bytes());
-        return Ok(Loaded { kind: crate::files::classify::OpenKind::Markdown(source), base, recovered: false });
+        Ok(Loaded { kind: crate::files::classify::OpenKind::Markdown(source), base, recovered: false })
     }
     #[cfg(not(target_family = "wasm"))]
     {
         let class = crate::files::classify::read_file(path).map_err(|e| e.to_string())?;
-        let mut base = match &class.kind {
+        let base = match &class.kind {
             crate::files::classify::OpenKind::Markdown(text) => fingerprint(text.as_bytes()),
             crate::files::classify::OpenKind::Source(file)
             | crate::files::classify::OpenKind::Preview { svg: Some(file) } => fingerprint(&crate::files::classify::raw_bytes(&file.text, file.bom)),
             _ if class.bytes.is_empty() => Fingerprint(0),
             _ => fingerprint(&class.bytes),
         };
-        let mut kind = class.kind;
-        let mut recovered = false;
-        if let crate::files::classify::OpenKind::Markdown(text) = &kind {
+        Ok(Loaded { kind: class.kind, base, recovered: false })
+    }
+}
+pub(super) fn load(path: &Path) -> Result<Loaded, String> {
+    #[cfg(target_family = "wasm")]
+    {
+        load_disk(path)
+    }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let mut loaded = load_disk(path)?;
+        if let crate::files::classify::OpenKind::Markdown(text) = &loaded.kind {
             if let Err(error) = crate::page_history::record_baseline_if_empty(path, text) {
                 crate::log::warn(&format!("history baseline was not recorded for {}: {error}", path.display()));
             }
         }
         if let Ok(bytes) = fs::read(draft_path(path)) {
             if let Ok(draft) = serde_json::from_slice::<Draft>(&bytes) && draft.path == path {
-                if let Some(next) = apply_draft(kind.clone(), &draft) {
-                    kind = next;
-                    base = Fingerprint(draft.base);
-                    recovered = true;
+                if let Some(next) = apply_draft(loaded.kind.clone(), &draft) {
+                    loaded.kind = next;
+                    loaded.base = Fingerprint(draft.base);
+                    loaded.recovered = true;
                 }
             }
         }
-        Ok(Loaded { kind, base, recovered })
+        Ok(loaded)
     }
+}
+pub(super) fn discard_draft(path: &Path) {
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let draft = draft_path(path);
+        if draft.exists() { let _ = fs::remove_file(draft); }
+    }
+    #[cfg(target_family = "wasm")]
+    { let _ = path; }
 }
 fn atomic_write(path: &Path, bytes: &[u8], expected: Option<Fingerprint>) -> io::Result<()> {
     let parent = path.parent().ok_or_else(|| io::Error::other(tr("缺少父级目录", "Missing parent")))?;
