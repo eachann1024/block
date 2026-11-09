@@ -24,6 +24,7 @@ impl Workspace {
         if self.restore_superseded(startup_epoch, cx) { return; }
         self.scan_generation = self.scan_generation.wrapping_add(1);
         let startup_tabs = self.startup_tabs.clone();
+        let outgoing_order = self.tree.read(cx).order_snapshot();
         let failed_folder = folder.clone();
         self.loading = true;
         self.notice = format!("{} {}…", tr("正在扫描", "Scanning"), folder.display());
@@ -31,6 +32,7 @@ impl Workspace {
         // Only one request is admitted; switching/creating stays disabled until it settles.
         cx.spawn(async move |this, cx| {
             let result = cx.background_executor().spawn(async move {
+                crate::files::order::save(outgoing_order)?;
                 let scan = scan(&folder)?;
                 let mut notice = if scan.warning_count > 0 {
                     if crate::theme::is_en() {
