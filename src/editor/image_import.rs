@@ -69,7 +69,8 @@ impl Editor {
     /// Block under `position` (list geometry, so static images count; nearest text block as fallback) and the side to insert on.
     pub(super) fn drop_target(&self, position: Point<Pixels>) -> Option<(u64, Place)> {
         let target = self.block_drop_target(position)?;
-        Some((self.doc.blocks[target.index].id, Place::Nested { after: target.after, indent: target.indent }))
+        let index = if target.after { target.slot.saturating_sub(1) } else { target.slot };
+        Some((self.doc.blocks[index].id, Place::Nested { after: target.after, indent: target.indent }))
     }
 
     fn insert_blocks(&mut self, id: u64, place: Place, mut blocks: Vec<Block>, window: &mut Window, cx: &mut Context<Self>) {

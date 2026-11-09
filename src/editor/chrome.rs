@@ -110,7 +110,8 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
             .child(div().w(px(handle_w)).h(px(0.)).mr(px(ROW_GAP)).flex_none().relative()
                 .child(crate::ui::motion::reveal_fade(div().absolute().right_0().top(px(handle_top)).h(px(26. * zoom)).flex().items_center().justify_end().gap(px(2. * zoom))
                     .when(regular_handles && !blank, |row| row
-                        .child(grip_button(("drag", id as usize), grip_active, zoom, cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
+                        .child(grip_button(("drag", id as usize), grip_active, zoom, cx.listener(move |this, _: &gpui::MouseDownEvent, window, cx| {
+                            window.focus(&this.focus, cx);
                             this.begin_drag(id, cx); cx.stop_propagation();
                         })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
                             if this.dragging == Some(id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
@@ -241,7 +242,7 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     if let Some(row) = super::ai::plan_link::render_linked_row(this, index, cx) { return row; }
     let block = &this.doc.blocks[index];
     let number = (block.kind == Kind::Numbered).then(|| this.doc.list_number(block.id)).flatten();
-    let edge = this.drag_over.filter(|target| target.index == index).map(|target| (target.after, target.indent));
+    let edge = this.drag_over.filter(|target| if target.after { target.slot.saturating_sub(1) == index } else { target.slot == index }).map(|target| (target.after, target.indent));
     let whole_table = block.meta.table.is_some() && this.table_sel == Some((block.id, super::table_actions::TableSel::Whole));
     let grip_active = this.dragging == Some(block.id) || whole_table;
     let handles = !this.minimal && (this.hover == Some(block.id) || this.caret.head.block == block.id || grip_active);
