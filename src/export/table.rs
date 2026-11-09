@@ -106,7 +106,7 @@ pub(super) fn columns(table: &Table, content_width: f32) -> Result<Vec<f32>, Exp
     Ok(xs)
 }
 
-fn alignment(attrs: &[(String, String)]) -> Option<Align> {
+pub(super) fn alignment(attrs: &[(String, String)]) -> Option<Align> {
     let value = attrs
         .iter()
         .find(|(name, _)| {
@@ -145,10 +145,10 @@ pub(super) fn append(
     cancel: &Cancellation,
 ) -> Result<f32, ExportError> {
     let pal = theme.palette();
-    let xs = columns(table, content_width)?;
+    let (columns, scale) = super::document::table_columns(table, source, block_id, content_width)?;
+    let mut xs = vec![0.];
+    for width in columns { xs.push(xs.last().unwrap() + width); }
     let geometry = source.block(block_id).and_then(|block| block.table.as_ref());
-    let natural = geometry.map(|g| g.columns.iter().sum::<f32>()).unwrap_or(*xs.last().unwrap_or(&content_width));
-    let scale = (content_width / natural.max(1.)).min(1.);
     let (font, line, pad_x, pad_y) = (FONT_SIZE * scale, LINE_HEIGHT * scale, (PAD_X + BORDER / 2.) * scale, (PAD_Y + BORDER / 2.) * scale);
     let mut heights: Vec<f32> = (0..table.rows.len()).map(|r|
         geometry.and_then(|g| g.rows.get(r)).copied().unwrap_or(MIN_ROW) * scale).collect();
