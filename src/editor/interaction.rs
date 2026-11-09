@@ -3,7 +3,7 @@ use gpui::{Context, Point, Pixels, Window, point, px};
 use super::{Editor, selection::Position};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::editor) struct DropTarget { pub index: usize, pub after: bool, pub indent: usize }
+pub(in crate::editor) struct DropTarget { pub index: usize, pub after: bool, pub indent: usize, pub slot: usize }
 
 impl Editor {
     pub(in crate::editor) fn track_pointer_lifecycle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -27,6 +27,24 @@ impl Editor {
         self.pointer_subscriptions.push(cx.on_blur(&self.focus, window, |this, _, cx| {
             this.clear_pointer(); this.link_ui.reset_hover(); this.toolbar_anchor = None; cx.notify();
         }));
+    }
+    /// Capture an active block drag even over child overlays or outside the editor.
+    /// Called from the canvas paint callback, where window listeners are valid.
+    pub(in crate::editor) fn track_block_drag(&self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.dragging.is_none() { return; }
+        let editor = cx.entity();
+        window.on_mouse_event({ let editor = editor.clone(); move |event: &gpui::MouseMoveEvent, phase, _, cx| {
+            if phase != gpui::DispatchPhase::Capture { return; }
+            editor.update(cx, |this, cx| {
+                if this.dragging.is_some() { this.pointer_move(event, cx); cx.stop_propagation(); }
+            });
+        }});
+        window.on_mouse_event(move |event: &gpui::MouseUpEvent, phase, _, cx| {
+            if phase != gpui::DispatchPhase::Capture || event.button != gpui::MouseButton::Left { return; }
+            editor.update(cx, |this, cx| {
+                if this.dragging.is_some() { this.finish_drag(event.position, cx); cx.stop_propagation(); }
+            });
+        });
     }
     pub(in crate::editor) fn clear_pointer(&mut self) {
         self.dragging = None; self.drag_over = None; self.selecting = false; self.source_drag = false;
@@ -127,14 +145,18 @@ impl Editor {
     fn update_drop(&mut self, position: Point<Pixels>) {
         self.drag_over = self.block_drop_target(position).filter(|target| {
             let Some((from, n)) = self.dragging.and_then(|id| self.drag_span(id)) else { return true };
-            let slot = target.index + usize::from(target.after);
+            let slot = target.slot;
             !(slot > from && slot < from + n)
                 && !(target.index >= from && target.index < from + n)
                 && (slot != from && slot != from + n || target.indent != self.doc.blocks[from].meta.indent)
         });
     }
     pub(in crate::editor) fn block_drop_target(&self, position: Point<Pixels>) -> Option<DropTarget> {
-        let (id, bounds) = self.block_at(position).or_else(|| {
+        let start = self.list.logical_scroll_top().item_ix;
+        let row = (start..self.doc.blocks.len()).filter(|&i| self.minimal || !self.is_index_hidden(i))
+            .filter_map(|i| self.list.bounds_for_item(i).map(|bounds| (self.doc.blocks[i].id, bounds)))
+            .find(|(_, bounds)| position.y >= bounds.top() && position.y < bounds.bottom());
+        let (id, bounds) = row.or_else(|| {
             let at = self.hit(position)?;
             Some((at.block, self.layouts.get(&at.block)?.bounds))
         })?;
@@ -144,16 +166,16 @@ impl Editor {
         let zoom = crate::editor::zoom::zoom_factor(self.minimal);
         let nested = after && matches!(block.kind, crate::editor::model::Kind::Bullet | crate::editor::model::Kind::Numbered | crate::editor::model::Kind::Todo)
             && position.x >= bounds.left() + px((crate::editor::chrome::HANDLE_WIDTH + crate::editor::chrome::ROW_GAP
-                + (block.meta.indent.min(12) + 2) as f32 * crate::editor::chrome::INDENT_PER_CHAR) * zoom);
+                + (block.meta.indent.min(12) + 2) as f32 * crate::editor::chrome::INDENT_PER_CHAR * zoom));
         let indent = if nested {
             block.meta.indent + if block.kind == crate::editor::model::Kind::Numbered {
                 self.doc.list_number(id).unwrap_or(1).to_string().len() + 2
             } else { 2 }
         } else { block.meta.indent };
-        let index = if after && !nested {
-            self.drag_span(id).map_or(index, |(from, count)| from + count - 1)
-        } else { index };
-        Some(DropTarget { index, after, indent })
+        let slot = if after && !nested {
+            self.drag_span(id).map_or(index + 1, |(from, count)| from + count)
+        } else { index + usize::from(after) };
+        Some(DropTarget { index, after, indent, slot })
     }
     pub(in crate::editor) fn pointer_move(&mut self, event: &gpui::MouseMoveEvent, cx: &mut Context<Self>) {
         if self.source_drag {
@@ -262,7 +284,7 @@ impl Editor {
         if let (Some(id), Some(target)) = (dragging, target) {
             if self.path.is_some() && self.list.viewport_bounds().contains(&position) {
                 if let Some((from, n)) = self.drag_span(id) {
-                    let slot = target.index + usize::from(target.after);
+                    let slot = target.slot;
                     let to = if slot > from { slot.saturating_sub(n) } else { slot }.min(self.doc.blocks.len() - n);
                     if (from != to || target.indent != self.doc.blocks[from].meta.indent) && !(slot > from && slot < from + n) {
                         let keep_table_sel = self.table_sel == Some((id, crate::editor::table_actions::TableSel::Whole));
