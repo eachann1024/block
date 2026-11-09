@@ -12,7 +12,7 @@ use super::layout::{Layout, PAGE_WIDTH, family_of};
 use super::paint::text;
 use super::palette::{Palette, RenderOptions};
 use super::spec::TitleMark;
-use super::{Cancellation, ExportError};
+use super::{Cancellation, ExportError, WATERMARK_LABEL};
 
 /// Watermark text size: the smallest text on any export.
 const FOOT: f32 = 14.0;
@@ -63,7 +63,7 @@ pub(super) fn build_chrome(
     let footer_h = if options.footer {
         let d = today();
         let date = format!("{:04}.{:02}.{:02}", d.0, d.1, d.2);
-        for (s, anchor_right) in [("Block", false), (date.as_str(), true)] {
+        for (s, anchor_right) in [(WATERMARK_LABEL, false), (date.as_str(), true)] {
             let mut buf = Buffer::new(fonts, Metrics::new(FOOT, FOOT * 1.4));
             buf.set_size(Some(width), None);
             let attrs = Attrs::new().family(family_of(spec.body_family));

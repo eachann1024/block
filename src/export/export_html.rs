@@ -1,7 +1,7 @@
 //! Standalone HTML export: one self-contained file with the theme's colors and fonts inlined.
 use super::export_html_blocks::{esc, render_blocks};
 use super::palette::Palette;
-use super::RenderOptions;
+use super::{RenderOptions, WATERMARK_LABEL};
 use crate::editor::model::Block;
 use cosmic_text::Color;
 
@@ -55,7 +55,7 @@ table{{width:100%;border-collapse:collapse;margin:1em 0;font-size:.95em}}
 th,td{{padding:.5em .75em;border:1px solid {table_border};text-align:left;vertical-align:top}}
 th{{font-weight:600}}
 hr{{border:0;border-top:1px solid {divider};margin:2em 0}}
-.doc-footer{{display:flex;justify-content:space-between;margin-top:3em;padding-top:1em;border-top:1px solid {divider};color:{secondary};font-size:.875em}}
+.doc-footer{{margin-top:3em;padding-top:1em;border-top:1px solid {divider};color:{secondary};font-size:.875em}}
 @media (max-width:640px){{.paper{{padding:32px 20px}}}}
 ",
         pad = if options.card { 40 } else { 0 },
@@ -75,8 +75,7 @@ pub fn render_html(blocks: &[Block], options: &RenderOptions) -> String {
     out.push_str(&render_blocks(blocks));
     if options.footer {
         out.push_str(&format!(
-            "<footer class=\"doc-footer\"><span>Block</span><span>{}</span></footer>\n",
-            esc(options.theme.label())
+            "<footer class=\"doc-footer\">{WATERMARK_LABEL}</footer>\n"
         ));
     }
     out.push_str("</article>\n</body></html>\n");
