@@ -2,14 +2,13 @@
 use gpui::{
     Context, CursorStyle, MouseButton, TextAlign, div, prelude::*, px,
 };
-use gpui_component::input::Input;
 use crate::icons::{Icon, icon, stateful_icon};
 use crate::theme::{
     Theme, assets_folder, display_folder_path, hide_assets_folder,
     hide_non_markdown_files, is_search_folder_ignored, tr,
 };
 use crate::ui::folder_controls::{
-    folder_check_row, folder_search_ignore_pill, folder_table_row,
+    folder_check_row, folder_name_input, folder_search_ignore_pill, folder_table_row,
     folder_visibility_segmented, slash_affix_input,
 };
 use crate::ui::icon_button::icon_button;
@@ -63,14 +62,9 @@ impl Workspace {
             |hide, cx: &mut Context<Self>| Box::new(cx.listener(move |this, _, _, cx| this.set_hide_assets(hide, cx))),
         )(cx);
 
-        let assets_left = div().flex().items_center().gap(px(10.)).min_w_0()
+        let assets_left = div().flex().items_center().gap(px(10.)).flex_1().min_w_0()
             .child(icon(Icon::Folder, px(16.), theme.icon_colors(theme.text)))
-            .child(
-                div().w(px(150.)).h(px(30.)).px(px(8.)).rounded(crate::ui::radius::CONTROL)
-                    .bg(theme.shell).border_1().border_color(theme.btn_border)
-                    .flex().items_center().font(mono_font()).text_size(px(14.))
-                    .child(Input::new(&modal.assets_input).appearance(false).bordered(false).focus_bordered(false))
-            );
+            .child(folder_name_input("folder-assets-input", &modal.assets_input).font(mono_font()));
 
         let assets_right = div().flex().items_center().gap(px(10.)).flex_none()
             .child(assets_seg)
@@ -135,12 +129,8 @@ impl Workspace {
                     .child(assets_row)
                     .children(exact_rows))
                 .child(div().flex().flex_col().gap(px(6.))
-                    .child(div().flex().items_center().gap(px(8.)).pt(px(4.))
-                        .child(
-                            div().id("folder-draft-container").flex_1().h(px(34.)).px(px(10.)).rounded(crate::ui::radius::CONTROL)
-                                .bg(theme.shell).border_1().border_color(theme.btn_border).flex().items_center()
-                                .child(Input::new(&modal.folder_draft_input).appearance(false).bordered(false).focus_bordered(false))
-                        )
+                    .child(div().flex().items_center().gap(px(8.))
+                        .child(folder_name_input("folder-draft-container", &modal.folder_draft_input))
                         .child(
                             action_button("folder-add-btn", tr("添加文件夹", "Add Folder"), false, true)
                                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.add_exact_folder_rule(window, cx)))
