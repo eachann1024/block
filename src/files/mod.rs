@@ -4,6 +4,7 @@ pub mod classify;
 pub mod open_with;
 pub mod ops;
 pub mod index;
+pub mod order;
 pub mod scan;
 pub mod search;
 mod sort;
