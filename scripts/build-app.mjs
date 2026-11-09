@@ -70,7 +70,7 @@ export async function buildApp({
     const bundle = join(job.staging, `${appName}.app`);
     timer.measure("package", () => assembleBundle(bundle, executable, profile));
     timer.measure("helper", () => buildDictation(join(bundle, "Contents/MacOS", "block-dictation")));
-    timer.measure("sign", () => sign(bundle));
+    timer.measure("sign", () => sign(bundle, { development: profile === "fast" }));
     if (install) job.plan = timer.measure("install_prepare", () => prepareInstall(bundle));
     const distApp = timer.measure("dist_publish", () => publishDist(bundle));
     if (install) timer.measure("install_commit", () => commitInstall(job.plan));

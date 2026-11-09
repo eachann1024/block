@@ -182,10 +182,16 @@ export function assertSystemLibraries(executable) {
   if (external.length || !linked.length) throw new Error(`external dylibs must be bundled first: ${external.join(", ") || "none listed"}`);
 }
 
-export function sign(bundle) {
+export function sign(bundle, { development = false } = {}) {
   run("plutil", ["-lint", join(bundle, "Contents/Info.plist")]);
   // Preserve symbol table and DWARF line tables so release backtraces and macOS .ips crash logs resolve file:line.
-  run("codesign", ["--force", "--sign", "-", bundle]);
+  // Local ad-hoc builds otherwise use a changing cdhash as their designated
+  // requirement, invalidating macOS folder grants after every rebuild. The
+  // identifier-only requirement is for local development, never distribution.
+  const requirements = development
+    ? ["--identifier", bundleId, "--requirements", `=designated => identifier "${bundleId}"`]
+    : [];
+  run("codesign", ["--force", "--sign", "-", ...requirements, bundle]);
   verifySignature(bundle);
 }
 

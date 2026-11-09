@@ -102,6 +102,7 @@ fn main() {
     let initial_state = files::load_state().ok();
     if let Some(state) = &initial_state {
         theme::apply_state(state);
+        files::access::restore(state);
     } else {
         theme::set_language_mode(theme::system_language());
         theme::set_theme_mode(files::state::ThemeMode::System);
