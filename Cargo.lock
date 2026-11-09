@@ -658,6 +658,7 @@ dependencies = [
  "dirs 7.0.0",
  "flate2",
  "global-hotkey",
+ "gpui-base",
  "gpui-component",
  "gpui-pre",
  "gpui-pre-macos",
