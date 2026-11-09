@@ -143,11 +143,11 @@ impl Element for BlockText {
         });
         let (focused, selected, head, empty, composing, placeholder, link_ranges) = {
             let editor = self.editor.read(cx);
-            let blank = editor.doc.get(self.block).is_some_and(|b| b.text.is_empty() && b.kind == Kind::Paragraph
-                && b.meta.table.is_none() && b.meta.raw_source.is_none());
+            let placeholder = editor.doc.get(self.block).and_then(|block| placeholder_text(block,
+                editor.is_first_line_delete_armed(self.block)));
             (editor.focus.is_focused(window), editor.selected_range(self.block), editor.caret.head,
                 editor.caret.is_empty(), editor.caret.composing.clone(),
-                blank && editor.path.is_some() && editor.caret.head.block == self.block && editor.caret.composing.is_none(),
+                placeholder.filter(|_| editor.path.is_some() && editor.caret.head.block == self.block && editor.caret.composing.is_none()),
                 editor.active_link_ranges(self.block, window))
         };
         let chip = super::inline_code_chip::ChipState { caret: (focused && empty && head.block == self.block
@@ -236,29 +236,44 @@ impl Element for BlockText {
                 super::annotate::paint_table_highlights(self.editor.read(cx), self.block, layout, window);
             }
         });
-        if placeholder { paint_placeholder(layout, self.editor.read(cx).is_first_line_delete_armed(self.block), window, cx); }
+        if let Some(text) = placeholder { paint_placeholder(layout, text, self.editor.read(cx).is_first_line_delete_armed(self.block), window, cx); }
         let saved = std::mem::replace(layout, TextLayout::empty(px(0.)));
         self.editor.update(cx, |this, _| { this.layouts.insert(self.block, saved); });
         let _ = bounds;
     }
 }
 pub(super) use crate::ui::editor_content::heading_metrics;
-thread_local! { static PLACEHOLDER: RefCell<Option<(u64, gpui::ShapedLine)>> = const { RefCell::new(None) }; }
+fn placeholder_text(block: &super::model::Block, delete_armed: bool) -> Option<&'static str> {
+    if !block.text.is_empty() || block.meta.table.is_some() || block.meta.raw_source.is_some()
+        || block.meta.code_language.is_some() { return None; }
+    use crate::theme::tr;
+    Some(match (block.kind, block.meta.heading_level) {
+        (Kind::Paragraph, _) if delete_armed => crate::ui::reveal::delete_arm_placeholder_text(),
+        (Kind::Paragraph, _) => tr("输入 / 或 、 唤出菜单，或开始输入…", "Type / to open menu, or start typing…"),
+        (Kind::H1, _) => tr("标题 1", "Heading 1"),
+        (Kind::H2, _) => tr("标题 2", "Heading 2"),
+        (Kind::H3, Some(4)) => tr("标题 4", "Heading 4"),
+        (Kind::H3, Some(5)) => tr("标题 5", "Heading 5"),
+        (Kind::H3, Some(6)) => tr("标题 6", "Heading 6"),
+        (Kind::H3, _) => tr("标题 3", "Heading 3"),
+        _ => return None,
+    })
+}
+thread_local! { static PLACEHOLDER: RefCell<Option<(u64, &'static str, gpui::ShapedLine)>> = const { RefCell::new(None) }; }
 /// Hint drawn over the zero-width placeholder glyph; never part of the text or hit testing.
-fn paint_placeholder(layout: &TextLayout, delete_armed: bool, window: &mut Window, cx: &mut App) {
+fn paint_placeholder(layout: &TextLayout, text: &'static str, delete_armed: bool, window: &mut Window, cx: &mut App) {
     let dark = crate::theme::is_dark();
     let font_size = layout.lines.first().map_or(Theme::ocean().editor_font, |(_, l)| l.font_size());
     let key = crate::theme::font_settings_hash() ^ ((crate::theme::is_en() as u64) << 32)
         ^ ((dark as u64) << 33) ^ (((f32::from(font_size) as u64) & 0xff) << 34) ^ ((delete_armed as u64) << 42);
     let line = PLACEHOLDER.with(|slot| {
         let mut slot = slot.borrow_mut();
-        if slot.as_ref().is_none_or(|(c, _)| *c != key) {
-            let text = SharedString::from(if delete_armed { crate::ui::reveal::delete_arm_placeholder_text() } else { crate::theme::tr("输入 / 或 、 唤出菜单，或开始输入…", "Type / to open menu, or start typing…") });
+        if slot.as_ref().is_none_or(|(c, cached_text, _)| *c != key || *cached_text != text) {
             let color = if delete_armed { crate::ui::reveal::delete_arm_placeholder_color() } else if dark { rgb(0x6e6d68).into() } else { rgb(0x9b9a95).into() };
             let mut run = plain(text.len(), color); run.font.weight = FontWeight::NORMAL;
-            *slot = Some((key, window.text_system().shape_line(text, font_size, &[run], None)));
+            *slot = Some((key, text, window.text_system().shape_line(SharedString::from(text), font_size, &[run], None)));
         }
-        slot.as_ref().map(|(_, l)| l.clone()).unwrap()
+        slot.as_ref().map(|(_, _, l)| l.clone()).unwrap()
     });
     let _ = line.paint(layout.bounds.origin, layout.line_height, gpui::TextAlign::Left, None, window, cx);
 }
