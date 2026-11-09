@@ -58,6 +58,19 @@ impl Block {
 pub struct Numbering { levels: Vec<(usize,u64)> }
 impl Numbering {
     pub fn next(&mut self, block: &Block) -> Option<u64> {
+        self.advance(block).map(|(number, _)| number)
+    }
+    /// Source markers on continuation items are counters, not explicit list starts.
+    pub(in crate::editor) fn normalize_imported_start(&mut self, block: &mut Block, after_blank: bool) {
+        let Some((number, true)) = self.advance(block) else { return; };
+        if after_blank && let Some(start) = block.meta.list_start && start != number {
+            // A different marker after a blank explicitly starts another source run.
+            self.levels.last_mut().unwrap().1 = start;
+        } else if block.meta.raw_source.is_none() {
+            block.meta.list_start = None;
+        }
+    }
+    fn advance(&mut self, block: &Block) -> Option<(u64, bool)> {
         if let Some(code) = &block.meta.list_code {
             while self.levels.last().is_some_and(|(depth,_)| *depth > code.parent_indent) { self.levels.pop(); }
             return None;
@@ -75,7 +88,7 @@ impl Numbering {
         let n = previous.map_or_else(|| block.meta.list_start.unwrap_or(1), |n| n.saturating_add(1));
         if previous.is_some() { self.levels.last_mut().unwrap().1 = n; }
         else { self.levels.push((indent,n)); }
-        Some(n)
+        Some((n, previous.is_some()))
     }
 }
 pub fn list_numbers<'a>(blocks: impl IntoIterator<Item = &'a Block>) -> Vec<Option<u64>> {
