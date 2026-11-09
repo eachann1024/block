@@ -18,11 +18,13 @@ use crate::theme::tr;
 impl ExportView {
     pub(super) fn set_format(&mut self, format: ExportFormat, cx: &mut Context<Self>) {
         if format != self.format {
+            let watermark_changed = self.watermark
+                && format.supports_watermark() != self.format.supports_watermark();
             self.format = format;
             self.copied = false;
             self.notice = None;
             self.saved_path = None;
-            if self.png.is_none() && !self.rendering {
+            if watermark_changed || (self.png.is_none() && !self.rendering) {
                 self.request(cx);
             } else {
                 cx.notify();
@@ -43,7 +45,7 @@ impl ExportView {
             theme: self.style,
             card: self.card,
             show_title: self.show_title,
-            footer: self.watermark,
+            footer: self.watermark && self.format.supports_watermark(),
             title: self.title.clone(),
             source: self.source.clone(),
         }

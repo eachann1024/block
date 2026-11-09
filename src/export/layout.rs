@@ -175,7 +175,7 @@ pub(super) fn build(
             continue;
         }
         let source = options.source.block(block.id);
-        let preview = super::media::preview(block, theme.palette().dark, margin_left + indent, y, content_width - indent, cancel)?;
+        let preview = super::media::preview(block, theme, margin_left + indent, y, content_width - indent, cancel)?;
         if let Some(picture) = preview {
             y += picture.height + 10.;
             pictures.push(picture);

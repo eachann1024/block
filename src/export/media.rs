@@ -75,12 +75,15 @@ fn decoded_pixels(decoded: &crate::ui::file_preview::load::Decoded, cancel: &Can
     Ok(pixels)
 }
 
-pub(super) fn preview(block: &crate::editor::model::Block, dark: bool, x: f32, y: f32, available: f32, cancel: &Cancellation) -> Result<Option<Picture>, ExportError> {
+pub(super) fn preview(block: &crate::editor::model::Block, theme: super::ExportTheme, x: f32, y: f32, available: f32, cancel: &Cancellation) -> Result<Option<Picture>, ExportError> {
     let Some(language) = block.meta.code_language.as_deref() else { return Ok(None) };
     if block.text.trim().is_empty() { return Ok(None); }
     let rendered = match language.trim().to_ascii_lowercase().as_str() {
-        "mermaid" => crate::editor::diagram_preview::render_mermaid_svg(&block.text, dark),
-        "latex" | "math" | "tex" | "katex" => crate::editor::math_preview::render_math_svg(&block.text, dark),
+        "mermaid" => crate::editor::diagram_preview::render_mermaid_svg_with_theme(&block.text, &super::media_theme::mermaid(theme)),
+        "latex" | "math" | "tex" | "katex" => {
+            let text = theme.palette().text;
+            crate::editor::math_preview::render_math_svg_with_color(&block.text, latex_rust::Color::rgb(text.r(), text.g(), text.b()))
+        }
         _ => return Ok(None),
     }.map_err(ExportError::Media)?;
     cancel.check()?;
