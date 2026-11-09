@@ -179,6 +179,10 @@ impl Workspace {
             if !window.is_window_active() {
                 this.dismiss_dropdowns(cx);
                 crate::dropdown::dismiss_all(cx);
+                // Autosave is debounced. Flush before another app edits the same file.
+                this.editor.update(cx, |editor, cx| editor.save(cx));
+            } else {
+                this.editor.update(cx, |editor, cx| editor.refresh_from_disk(cx));
             }
         }).detach();
         cx.observe_window_appearance(window, |this, window, cx| {
