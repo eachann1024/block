@@ -45,7 +45,7 @@ fn run_inner(request: &TurnRequest, events: &Sender<BackendEvent>, tools: ToolBr
         ("workspace-write", "on-request", json!({"type":"workspaceWrite"}))
     };
     let instructions = if request.config.get("textOnly").and_then(Value::as_bool) == Some(true) {
-        "Return only the requested rewritten text. Do not use tools or edit files."
+        "Follow the requested output format exactly. Do not use tools or edit files."
     } else { "笔记和选区可使用 Block 提供的工具读取，批量修改笔记内容请优先使用 executeBatchPlan。" };
     let mut params = json!({"cwd":cwd,"sandbox":sandbox,"approvalPolicy":approval_policy,
         "developerInstructions":instructions});
@@ -60,7 +60,7 @@ fn run_inner(request: &TurnRequest, events: &Sender<BackendEvent>, tools: ToolBr
     let text = format!("{}\n\n当前 Block 上下文（实时内容，仅供本轮使用）：\n{}", request.message, context);
     write(&server.writer, &json!({"id":6,"method":"turn/start","params":{"threadId":thread_id,
         "input":[{"type":"text","text":text,"text_elements":[]}],"approvalPolicy":approval_policy,
-        "sandboxPolicy":sandbox_policy}}))?;
+        "sandboxPolicy":sandbox_policy, "effort":request.config.get("thinkingLevel").and_then(Value::as_str).unwrap_or("high")}}))?;
     {
         let mut state = control.lock().map_err(|_| BackendError::new("codex_control", "Codex 控制锁已失效"))?;
         state.thread_id = Some(thread_id.clone());

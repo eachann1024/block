@@ -139,13 +139,17 @@ fn convert_tools(tools: serde_json::Value) -> Vec<serde_json::Value> {
 /// Streams a single turn against Anthropic `POST /messages`.
 pub(super) fn stream_turn(
     config: Config, model: String, msgs: Vec<serde_json::Value>, tools: Option<serde_json::Value>,
-    cancel: Arc<AtomicBool>, tx: mpsc::Sender<Event>,
+    cancel: Arc<AtomicBool>, tx: mpsc::Sender<Event>, thinking: Option<String>,
 ) {
     let fail = |message: String, settings: bool| { let _ = tx.send(Event::Failed { message, settings }); };
     let (system, messages) = convert_messages(&msgs);
     let mut body = serde_json::json!({
         "model": model, "max_tokens": DEFAULT_MAX_TOKENS, "stream": true, "messages": messages,
     });
+    if let Some(level) = thinking {
+        body["thinking"] = serde_json::json!({"type":"adaptive"});
+        body["output_config"] = serde_json::json!({"effort":level});
+    }
     if let Some(sys) = system { body["system"] = serde_json::Value::String(sys); }
     if let Some(t) = tools {
         let converted = convert_tools(t);

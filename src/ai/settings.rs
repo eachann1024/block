@@ -10,6 +10,8 @@ use super::provider::{self, Config};
 use crate::theme::is_en;
 #[path = "settings_agent.rs"]
 mod settings_agent;
+#[path = "settings_general.rs"]
+mod settings_general;
 
 pub(super) enum TestNote { Ok, Err(String) }
 
@@ -21,6 +23,7 @@ pub(crate) struct AiSettings {
     pub(super) testing: bool, pub(super) test_note: Option<TestNote>,
     pub(super) toggle_anim: crate::ui::toggle_pill::TogglePillState,
     pub(super) focused_backend: super::backend::BackendKind,
+    pub(super) general: settings_general::GeneralSettings,
     _subs: Vec<Subscription>,
 }
 
@@ -84,13 +87,16 @@ impl AiSettings {
                 if matches!(e, InputEvent::Change) { this.test_note = None; this.save(cx); }
             }));
         }
-        AiSettings {
+        let general = settings_general::GeneralSettings::new(window, cx);
+        let mut settings = AiSettings {
             enabled: c.enabled, provider: c.provider, protocol: c.protocol, providers: c.providers,
             show_key: false, last_en: is_en(), base_url, api_key, model,
             testing: false, test_note: None,
             toggle_anim: Default::default(), focused_backend: super::backend::BackendKind::Builtin,
-            _subs: subs,
-        }
+            general, _subs: subs,
+        };
+        settings.initialize_general(cx);
+        settings
     }
 
     pub(super) fn sync_placeholders(&mut self, window: &mut Window, cx: &mut Context<Self>) {

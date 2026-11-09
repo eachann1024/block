@@ -5,24 +5,36 @@ use std::sync::atomic::Ordering;
 
 /// One streamed turn with optional `tools`; tool-call deltas are sent as `Event::ToolCalls` before `Done`.
 pub(crate) fn stream_agent(msgs: Vec<serde_json::Value>, tools: Option<serde_json::Value>, cancel: Arc<AtomicBool>) -> mpsc::Receiver<Event> {
+    stream_agent_with_config(config(), msgs, tools, cancel, None)
+}
+
+pub(crate) fn stream_agent_with_config(config: Config, msgs: Vec<serde_json::Value>, tools: Option<serde_json::Value>,
+    cancel: Arc<AtomicBool>, thinking: Option<String>) -> mpsc::Receiver<Event> {
     let (tx, rx) = mpsc::channel();
     #[cfg(target_family = "wasm")]
     {
-        let _ = (msgs, tools, cancel);
+        let _ = (config, msgs, tools, cancel, thinking);
         let _ = tx.send(Event::Failed { message: tr("网页演示版暂不连接在线 AI 服务", "Online AI is disabled in web demo").into(), settings: false });
     }
     #[cfg(not(target_family = "wasm"))]
     std::thread::spawn(move || {
-        let config = config();
         let fail = |message: String, settings: bool| { let _ = tx.send(Event::Failed { message, settings }); };
         if let Err((m, s)) = validate_request(&config) { return fail(m, s); }
-        let model = match resolve_model(&config) { Ok(m) => m, Err((m, s)) => return fail(m, s) };
+        let resolved = if thinking.is_some() && config.model.is_empty() {
+            list_models(&config).map_err(|error| (error, false)).and_then(|models| models.into_iter().find(|model| !model.trim().is_empty())
+                .ok_or_else(|| (missing_model_msg().into(), false)))
+        } else { resolve_model(&config) };
+        let model = match resolved { Ok(m) => m, Err((m, s)) => return fail(m, s) };
         if cancel.load(Ordering::Relaxed) { return; }
         if config.effective_protocol() == Protocol::Anthropic {
-            return anthropic::stream_turn(config, model, msgs, tools, cancel, tx);
+            return anthropic::stream_turn(config, model, msgs, tools, cancel, tx, thinking);
         }
         let mut body = serde_json::json!({ "model": model, "stream": true, "messages": msgs });
         if let Some(t) = tools { body["tools"] = t; }
+        if let Some(level) = thinking {
+            body["reasoning_effort"] = level.into();
+            if config.provider == "deepseek" { body["thinking"] = serde_json::json!({"type":"enabled"}); }
+        }
         let body = body.to_string();
         let mut calls: Vec<(String, String, String)> = Vec::new();
         let mut child = match curl(&config, "/chat/completions", true, "180").args(["--speed-time", "60", "--speed-limit", "1"]).spawn() {
