@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 gpui = { package = "gpui-pre", version = "0.3.11", default-features = false }
 gpui_web = { package = "gpui-pre-web", version = "0.3.11", default-features = false }
 gpui-component = { version = "0.9.0", default-features = false }
+gpui-base = "0.9"
 ropey = { version = "2.0.0-beta.1", default-features = false, features = ["metric_lines_lf", "metric_utf16"] }
 html5ever = "0.40.1"
 anyhow = "1"
@@ -21,11 +22,14 @@ tiny-skia = "0.12.0"
 cosmic-text = "0.19.0"
 im = "15.1"
 pulldown-cmark = { version = "0.13", default-features = false }
+pulldown-cmark-to-cmark = "23"
+flate2 = "1"
+regex = "1.13"
 mermaid-rs-renderer = { version = "0.3.1", default-features = false }
 latex-rust = "3.0.1"
 wasm-bindgen = "0.2.130"
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["AddEventListenerOptions", "Blob", "BlobPropertyBag", "CanvasRenderingContext2d", "CompositionEvent", "CssStyleDeclaration", "console", "Document", "DomRect", "Element", "Event", "EventTarget", "HtmlAnchorElement", "HtmlCanvasElement", "HtmlElement", "ImageData", "KeyboardEvent", "Node", "Performance", "Url", "Window"] }
+web-sys = { version = "0.3", features = ["AddEventListenerOptions", "Blob", "BlobPropertyBag", "CanvasRenderingContext2d", "CompositionEvent", "CssStyleDeclaration", "console", "Document", "DomRect", "Element", "Event", "EventTarget", "HtmlAnchorElement", "HtmlCanvasElement", "HtmlElement", "ImageData", "KeyboardEvent", "MediaQueryList", "Node", "Performance", "Url", "Window"] }
 console_error_panic_hook = "0.1.7"
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
