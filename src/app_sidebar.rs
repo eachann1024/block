@@ -32,11 +32,12 @@ impl Workspace {
     pub(crate) fn present_sidebar(&mut self) {
         self.sidebar_collapsed = false;
         self.sidebar_pinned = true;
+        self.sidebar_intro = super::sidebar_intro::SidebarIntro::pending();
     }
 
     pub(crate) fn toggle_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.is_history_open() || self.history_restore_busy { return; }
-        self.cancel_settings_sidebar_intro();
+        self.cancel_sidebar_intro();
         self.switcher_open = false;
         self.menu = None;
         self.resizing = None;
@@ -106,7 +107,7 @@ impl Workspace {
         crate::ui::resize_handle::resize_handle("sidebar-resize", crate::ui::resize_handle::Edge::Right, self.resizing.is_some())
             .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
                 cx.stop_propagation();
-                this.cancel_settings_sidebar_intro();
+                this.cancel_sidebar_intro();
                 if event.click_count >= 2 {
                     this.resizing = None;
                     this.sidebar_width = Theme::ocean().sidebar_width;
