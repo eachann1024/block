@@ -240,10 +240,17 @@ impl Workspace {
     fn sidebar(&self, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
         let enabled = self.ui_enabled();
+        let drag_tree = self.tree.clone();
         let new_note_tip = if cfg!(target_os = "macos") { tr("新建笔记 ⌘N", "New Note ⌘N") } else { tr("新建笔记 Ctrl+N", "New Note Ctrl+N") };
         div().w(self.sidebar_width).flex_none().h_full().relative().flex().flex_col()
             .bg(theme.sidebar).border_r_1().border_color(theme.sidebar_border)
-            .child(div().flex_none().pt(px(10.)).px(px(10.)).pb(px(8.)).flex().items_center().gap(px(6.))
+            .child(div().id("sidebar-header-drop").flex_none().pt(px(10.)).px(px(10.)).pb(px(8.)).flex().items_center().gap(px(6.))
+                .can_drop(move |value, _, cx| value.downcast_ref::<crate::files::tree::DragItem>()
+                    .is_some_and(|item| drag_tree.read(cx).can_drop_first(item)))
+                .drag_over::<crate::files::tree::DragItem>(move |style, _, _, _| style.border_b_2().border_color(theme.accent))
+                .on_drop(cx.listener(|this, item: &crate::files::tree::DragItem, _, cx| {
+                    this.tree.update(cx, |tree, cx| tree.drop_first(item, cx));
+                }))
                 .child(self.search_button(enabled, cx))
                 .child(toolbar_icon_button("new-folder", Icon::FolderPlus, enabled, tr("新建文件夹", "New Folder"), cx.listener(|this, _, window, cx| {
                     this.new_item(true, window, cx);

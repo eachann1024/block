@@ -198,6 +198,7 @@ impl Workspace {
             let checked = current.as_ref() == Some(path);
             let target = path.clone();
             let drop_target = path.clone();
+            let position = crate::ui::reorder::DropPosition::default();
             let row = menu_item(ItemId::Path(path.clone()), Icon::Folder, display_name(path, true), checked, false, index == cursor,
                 |_, _, _| {})
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -209,11 +210,11 @@ impl Workspace {
                 .when(!checked, |item| item.child(forget_button(path.clone(), cx)));
             crate::ui::reorder::row(
                 path.clone(),
-                display_name(path, true), Icon::Folder, row,
+                display_name(path, true), Icon::Folder, row, position.clone(),
             )
-                .on_drop(cx.listener(move |this, dragged: &crate::ui::reorder::DragValue<std::path::PathBuf>, _, cx| {
+                .on_drop(cx.listener(move |this, dragged: &crate::ui::reorder::DragValue<std::path::PathBuf>, window, cx| {
                     let mut reordered = this.notebooks.clone();
-                    if !crate::ui::reorder::move_to(&mut reordered, &dragged.value, &drop_target) { return; }
+                    if !crate::ui::reorder::move_to(&mut reordered, &dragged.value, &drop_target, position.after(window)) { return; }
                     match crate::files::update_state(|state| state.notebooks = reordered.clone()) {
                         Ok(_) => this.notebooks = reordered,
                         Err(_error) => {
