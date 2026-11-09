@@ -77,9 +77,20 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession, phase: cr
         _ => None,
     };
 
+    let result = match &s.status {
+        AiStatus::Review { draft } => Some((draft.as_str(), false)),
+        AiStatus::Thinking { partial, .. } if !partial.is_empty() => Some((partial.as_str(), true)),
+        _ => None,
+    }.map(|(source, streaming)| {
+        div().id("inline-ai-result-scroll").w_full().min_w_0().max_h(px(280.)).overflow_y_scroll()
+            .p(px(10.)).rounded(crate::ui::radius::CONTROL).bg(gpui::hsla(152. / 360., 0.6, 0.4, 0.08))
+            .on_scroll(|_, _, cx| cx.stop_propagation())
+            .child(crate::ui::editor_content::markdown(format!("inline-ai-result-{:?}", editor.entity_id()), source)
+                .selectable(!streaming))
+    });
     let field = input_capsule(busy);
     let prompt_row = if let AiStatus::Thinking { tick, partial, reasoning } = &s.status {
-        let line = if !reasoning.trim().is_empty() && partial.trim().is_empty() { ticker_line(reasoning) } else { ticker_line(partial) };
+        let line = if partial.trim().is_empty() { ticker_line(reasoning) } else { String::new() };
         let line = if !line.is_empty() {
             line
         } else if !reasoning.is_empty() {
@@ -234,6 +245,7 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession, phase: cr
                     }
                 })
                 .children(err_row)
+                .children(result)
                 .child(prompt_row)
                 .when(show_footer, |d| d.child(footer))
                 .children(submenu),

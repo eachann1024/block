@@ -1,4 +1,5 @@
 use super::model::{Block, Doc, Kind, Numbering};
+#[path = "markdown_render.rs"] pub(crate) mod render;
 #[path = "markdown_inline.rs"] mod inline;
 #[path = "markdown_write.rs"] mod write;
 #[path = "markdown_blocks.rs"] mod blocks;

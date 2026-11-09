@@ -186,7 +186,7 @@ fn result_box(id: u64, rewritten: SharedString) -> impl IntoElement {
     let theme = Theme::ocean();
     motion::fade_up(
         div().w_full().p(px(10.)).rounded(px(6.)).bg(theme.selected).text_color(theme.selection_text)
-            .text_size(px(14.)).line_height(px(22.)).child(rewritten),
+            .min_w_0().child(super::editor_content::markdown(format!("annotation-result-{id}"), &rewritten)),
         ("annotation-result-fade", id),
     )
 }

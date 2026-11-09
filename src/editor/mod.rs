@@ -4,6 +4,7 @@ pub(crate) mod outline;
 mod export_driver;
 mod input;
 mod paste;
+mod ai_replace;
 pub(crate) mod paste_clipboard;
 mod nav;
 mod word_select;

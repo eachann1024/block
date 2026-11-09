@@ -1,17 +1,9 @@
 //! Batch AI rewrite streaming and document text replacement for annotations.
-use std::{collections::{BTreeSet, HashMap, HashSet}, sync::mpsc, time::Duration};
+use std::{collections::HashMap, sync::mpsc, time::Duration};
 use gpui::{Context, Window};
-use crate::{editor::{ai::provider::{self, Event}, input::transactions::ListChange, markdown}, theme::tr};
-use super::{ai, resolve_annotation_span};
-use super::super::view::{Editor, selection::Position};
-
-struct ApplyTarget {
-    id: u64,
-    block_id: u64,
-    block_index: usize,
-    range: std::ops::Range<usize>,
-    replacement: String,
-}
+use crate::{editor::{ai::provider::{self, Event}, markdown}, theme::tr};
+use super::ai;
+use super::super::view::Editor;
 
 impl Editor {
     pub(crate) fn generate_pending_annotations(&mut self, cx: &mut Context<Self>) {
@@ -25,11 +17,7 @@ impl Editor {
     }
 
     pub(crate) fn apply_annotation(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
-        if self.annotate.annotations.iter().any(|n| n.id == id && n.anchors.len() > 1) {
-            self.apply_multiblock_annotation(id, window, cx);
-        } else {
-            self.apply_annotations(&[id], window, cx);
-        }
+        self.apply_annotation_rewrite(id, window, cx);
     }
 
     pub(super) fn start_annotation_request(&mut self, tasks: Vec<ai::RewriteTask>, cx: &mut Context<Self>) {
@@ -136,68 +124,4 @@ impl Editor {
         }
     }
 
-    fn apply_annotations(&mut self, ids: &[u64], window: &mut Window, cx: &mut Context<Self>) {
-        let mut invalid = Vec::new();
-        let mut targets = Vec::new();
-        for id in ids {
-            let Some(note) = self.annotate.annotations.iter().find(|note| note.id == *id && note.is_generated()) else { continue };
-            let Some(replacement) = note.ai_rewritten.clone() else { continue };
-            let Some((block_id, range, _)) = resolve_annotation_span(&self.doc, note) else { invalid.push(*id); continue };
-            let Some(block) = self.doc.get(block_id).filter(|block| block.text.get(range.clone()).is_some()) else { invalid.push(*id); continue };
-            let _ = block;
-            let Some(block_index) = self.doc.index_of(block_id) else { invalid.push(*id); continue };
-            targets.push(ApplyTarget { id: *id, block_id, block_index, range, replacement });
-        }
-        let mut conflicts = HashSet::new();
-        targets.sort_by_key(|target| (target.block_index, target.range.start, target.range.end));
-        for pair in targets.windows(2) {
-            if pair[0].block_id == pair[1].block_id && pair[0].range.end > pair[1].range.start {
-                conflicts.insert(pair[0].id);
-                conflicts.insert(pair[1].id);
-            }
-        }
-        targets.retain(|target| !conflicts.contains(&target.id));
-        for id in &invalid {
-            if let Some(note) = self.annotate.annotations.iter_mut().find(|note| note.id == *id) {
-                note.ai_error = Some(tr("原文已变化，无法应用这条批注", "The selected text changed and this annotation cannot be applied").into());
-            }
-        }
-        for id in &conflicts {
-            if let Some(note) = self.annotate.annotations.iter_mut().find(|note| note.id == *id) {
-                note.ai_error = Some(tr("批注选区重叠，请逐条应用", "Annotations overlap; apply them one at a time").into());
-            }
-        }
-        if !targets.is_empty() {
-            targets.sort_by_key(|target| (std::cmp::Reverse(target.block_index), std::cmp::Reverse(target.range.start)));
-            let before = self.snapshot();
-            let mut changed_blocks = BTreeSet::new();
-            let mut applied_ids = Vec::new();
-            let mut caret = None;
-            for target in &targets {
-                self.doc.replace_range(target.block_id, target.range.clone(), &target.replacement);
-                self.shift_annotation_offsets(target.block_index, target.id, target.range.clone(), target.replacement.len());
-                changed_blocks.insert(target.block_index);
-                applied_ids.push(target.id);
-                crate::ui::fade::record_flash(target.id);
-                caret = Some(Position { block: target.block_id, offset: target.range.start + target.replacement.len() });
-            }
-            if let Some(pos) = caret { self.caret.anchor = pos; self.caret.head = pos; }
-            let changes = changed_blocks.into_iter().map(|start| ListChange { start, before: 1, after: 1 }).collect();
-            self.record_changes(before, changes, true, cx);
-            for note in &mut self.annotate.annotations {
-                if applied_ids.contains(&note.id) {
-                    note.applied = Some(true);
-                    note.streaming = false;
-                    note.request_id = None;
-                    note.ai_error = None;
-                }
-            }
-            self.normalize_annotations();
-            if self.annotate.followup.is_none() && self.annotate.editing.is_none() {
-                window.focus(&self.focus, cx);
-            }
-        }
-        self.persist_annotations();
-        cx.notify();
-    }
 }
