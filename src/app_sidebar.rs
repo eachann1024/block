@@ -199,7 +199,7 @@ impl Workspace {
             let target = path.clone();
             let drop_target = path.clone();
             let position = crate::ui::reorder::DropPosition::default();
-            let row = menu_item(ItemId::Path(path.clone()), Icon::Folder, display_name(path, true), checked, false, index == cursor,
+            let row = menu_item(ItemId::Path(path.clone()), Icon::Folder, display_name(path, true), checked, false, cursor == Some(index),
                 |_, _, _| {})
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.close_overlays(cx);
@@ -227,7 +227,7 @@ impl Workspace {
         }).collect();
         if !items.is_empty() { items.push(separator()); }
         let choose = if notebooks == 0 { 0 } else { notebooks + 1 };
-        items.push(menu_item(ItemId::Name("add-notebook"), Icon::FolderPlus, tr("选择文件夹…", "Choose Folder…").into(), false, false, cursor == choose,
+        items.push(menu_item(ItemId::Name("add-notebook"), Icon::FolderPlus, tr("选择文件夹…", "Choose Folder…").into(), false, false, cursor == Some(choose),
             cx.listener(|this, _, window, cx| { this.close_overlays(cx); this.choose_folder(window, cx); })).into_any_element());
         let width = self.sidebar_width;
         let fallback = gpui::Bounds::new(point(px(0.), window.viewport_size().height - px(38.)), gpui::size(width, px(30.)));
