@@ -11,7 +11,7 @@ use core_graphics::{
     base::{CGFloat, CGGlyph, kCGImageAlphaPremultipliedLast},
     color_space::CGColorSpace,
     context::{CGContext, CGTextDrawingMode},
-    geometry::CGPoint,
+    geometry::{CGPoint, CGAffineTransform},
 };
 use core_text::{
     font::CTFont,
@@ -74,6 +74,9 @@ struct AppleTextSystemState {
     system_source: SystemSource,
     fonts: Vec<FontKitFont>,
     font_selections: HashMap<Font, FontId>,
+    italic_variants: HashMap<FontId, FontId>,
+    italic_requests: HashSet<FontId>,
+    synthetic_italics: HashSet<FontId>,
     font_ids_by_postscript_name: HashMap<String, FontId>,
     font_ids_by_font_key: HashMap<FontKey, SmallVec<[FontId; 4]>>,
     postscript_names_by_font_id: HashMap<FontId, String>,
@@ -87,6 +90,9 @@ impl AppleTextSystem {
             system_source: SystemSource::new(),
             fonts: Vec::new(),
             font_selections: HashMap::default(),
+            italic_variants: HashMap::default(),
+            italic_requests: HashSet::default(),
+            synthetic_italics: HashSet::default(),
             font_ids_by_postscript_name: HashMap::default(),
             font_ids_by_font_key: HashMap::default(),
             postscript_names_by_font_id: HashMap::default(),
@@ -174,6 +180,11 @@ impl PlatformTextSystem for AppleTextSystem {
             )?;
 
             let font_id = candidates[ix];
+            let font_id = if font.style != FontStyle::Normal {
+                lock.italic_variant(font_id)
+            } else {
+                font_id
+            };
             lock.font_selections.insert(font.clone(), font_id);
             Ok(font_id)
         }
@@ -418,6 +429,29 @@ impl AppleTextSystemState {
         }
     }
 
+    // Keep style intent in the FontId, including when the selected face is upright.
+    // Distinct IDs also keep upright and synthesized glyphs separate in the atlas.
+    fn italic_variant(&mut self, base: FontId) -> FontId {
+        if self.italic_requests.contains(&base) {
+            return base;
+        }
+        if let Some(id) = self.italic_variants.get(&base) {
+            return *id;
+        }
+        let id = FontId(self.fonts.len());
+        let font = self.fonts[base.0].clone();
+        if font.properties().style == FontkitStyle::Normal && !self.is_emoji(base) {
+            self.synthetic_italics.insert(id);
+        }
+        self.fonts.push(font);
+        if let Some(name) = self.postscript_names_by_font_id.get(&base).cloned() {
+            self.postscript_names_by_font_id.insert(id, name);
+        }
+        self.italic_requests.insert(id);
+        self.italic_variants.insert(base, id);
+        id
+    }
+
     fn is_emoji(&self, font_id: FontId) -> bool {
         self.postscript_names_by_font_id
             .get(&font_id)
@@ -428,7 +462,13 @@ impl AppleTextSystemState {
 
     fn raster_bounds(&self, params: &RenderGlyphParams) -> Result<Bounds<DevicePixels>> {
         let font = &self.fonts[params.font_id.0];
-        let scale = Transform2F::from_scale(params.scale_factor);
+        let scale = Transform2F::from_scale(params.scale_factor)
+            * if self.synthetic_italics.contains(&params.font_id) {
+                // font-kit bounds use downward-positive coordinates.
+                Transform2F::row_major(1.0, -0.2, 0.0, 1.0, 0.0, 0.0)
+            } else {
+                Transform2F::default()
+            };
         let bounds: Bounds<DevicePixels> = bounds_from_rect_i(font.raster_bounds(
             params.glyph_id.0,
             params.font_size.into(),
@@ -514,6 +554,11 @@ impl AppleTextSystemState {
             } else {
                 cx.set_gray_fill_color(0.0, 1.0);
             }
+            if self.synthetic_italics.contains(&params.font_id) {
+                cx.concat_ctm(CGAffineTransform {
+                    a: 1.0, b: 0.0, c: 0.2, d: 1.0, tx: 0.0, ty: 0.0,
+                });
+            }
             self.fonts[params.font_id.0]
                 .native_font()
                 .clone_with_font_size(f32::from(params.font_size) as CGFloat)
@@ -542,6 +587,7 @@ impl AppleTextSystemState {
         let mut string = CFMutableAttributedString::new();
         let mut max_ascent = 0.0f32;
         let mut max_descent = 0.0f32;
+        let mut italic_ranges = Vec::new();
 
         {
             let mut text = text;
@@ -560,6 +606,9 @@ impl AppleTextSystemState {
                 string.replace_str(&CFString::new(text_run), CFRange::init(utf16_start, 0));
                 let utf16_end = string.char_len();
 
+                if self.italic_requests.contains(&run.font_id) {
+                    italic_ranges.push(utf16_start as usize..utf16_end as usize);
+                }
                 let length = utf16_end - utf16_start;
                 let cf_range = CFRange::init(utf16_start, length);
                 let font = &self.fonts[run.font_id.0];
@@ -601,16 +650,6 @@ impl AppleTextSystemState {
             };
             let font_id = self.id_for_native_font(font);
 
-            let glyphs = match runs.last_mut() {
-                Some(run) if run.font_id == font_id => &mut run.glyphs,
-                _ => {
-                    runs.push(ShapedRun {
-                        font_id,
-                        glyphs: Vec::with_capacity(run.glyph_count().try_into().unwrap_or(0)),
-                    });
-                    &mut runs.last_mut().unwrap().glyphs
-                }
-            };
             for ((&glyph_id, position), &glyph_utf16_ix) in run
                 .glyphs()
                 .iter()
@@ -618,6 +657,22 @@ impl AppleTextSystemState {
                 .zip(run.string_indices().iter())
             {
                 let glyph_utf16_ix = usize::try_from(glyph_utf16_ix).unwrap();
+                let font_id = if italic_ranges.iter().any(|range| range.contains(&glyph_utf16_ix)) {
+                    self.italic_variant(font_id)
+                } else {
+                    font_id
+                };
+                let glyphs = match runs.last_mut() {
+                    Some(run) if run.font_id == font_id => &mut run.glyphs,
+                    _ => {
+                        runs.push(ShapedRun {
+                            font_id,
+                            glyphs: Vec::with_capacity(run.glyph_count().try_into().unwrap_or(0)),
+                        });
+                        &mut runs.last_mut().unwrap().glyphs
+                    }
+                };
+
                 if ix_converter.utf16_ix > glyph_utf16_ix {
                     // We cannot reuse current index converter, as it can only seek forward. Restart the search.
                     ix_converter = StringIndexConverter::new(text);
