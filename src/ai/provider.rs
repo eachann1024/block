@@ -222,4 +222,4 @@ pub(crate) fn stream_messages(messages: Vec<(String, String)>, cancel: Arc<Atomi
 }
 
 #[path = "provider_stream.rs"] mod streaming;
-pub(crate) use streaming::stream_agent;
+pub(crate) use streaming::{stream_agent, stream_agent_with_config};
