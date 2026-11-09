@@ -2,6 +2,32 @@ use gpui::Context;
 use super::view::{Editor, selection::Position};
 
 impl Editor {
+    /// Select cell contents first, then the table; a further press can select the document.
+    pub(in crate::editor) fn table_select_all(&mut self, cx: &mut Context<Self>) -> bool {
+        use super::table_actions::TableSel;
+        let (a, b, first, last) = self.ordered();
+        if first != last { return false; }
+        let id = a.block;
+        let Some(table) = self.doc.get(id).and_then(|block| block.meta.table.as_ref()) else { return false; };
+        if self.table_sel == Some((id, TableSel::Whole)) {
+            self.table_sel = None;
+            return false;
+        }
+        let cell = table.cell_ranges().into_iter()
+            .find(|(_, _, body)| body.start <= a.offset && b.offset <= body.end);
+        if let Some((row, column, body)) = cell {
+            let selected = a.offset == body.start && b.offset == body.end
+                && (!body.is_empty() || self.table_sel == Some((id, TableSel::Cell(row, column))));
+            if !selected {
+                self.caret.anchor = Position { block: id, offset: body.start };
+                self.set_head(Position { block: id, offset: body.end }, true, cx);
+                self.table_sel = body.is_empty().then_some((id, TableSel::Cell(row, column)));
+                return true;
+            }
+        }
+        self.select_whole_table(id, cx);
+        true
+    }
     pub(in crate::editor) fn table_edit_rejected(&mut self, cx: &mut Context<Self>) {
         let message = crate::theme::tr("请在单个单元格内编辑，或选中整个表格后整体替换", "Edit within a single cell, or select the entire table to replace it");
         self.status = message.into();

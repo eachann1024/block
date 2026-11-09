@@ -53,6 +53,7 @@ impl Editor {
                 self.set_head(at, extend, cx);
                 if !extend { self.code_escape_arrive(forward, cx); }
             }
+            SelectAll if self.table_select_all(cx) => {}
             // First press selects the caret's block, the next one the whole document.
             SelectAll if { let (a, b, ai, bi) = self.ordered(); let block = &self.doc.blocks[ai];
                 ai == bi && block.meta.code_language.is_some() && !(a.offset == 0 && b.offset == block.text.len()) } => {
