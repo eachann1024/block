@@ -18,6 +18,7 @@ mod paint;
 mod palette;
 mod palette_colors;
 mod rich;
+mod preferences;
 mod spec;
 mod source;
 mod style;
@@ -39,6 +40,7 @@ pub use budget::{ExportError, preflight};
 pub use format::ExportFormat;
 pub use job::{Cancellation, ExportJob, Timings, write_bytes, write_png};
 pub use palette::{ExportTheme, RenderOptions};
+pub use preferences::ExportPreferences;
 pub(crate) use source::{BlockLayout, SourceContext, TableGeometry};
 
 use crate::editor::model::Block;
