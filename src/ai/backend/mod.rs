@@ -1,4 +1,6 @@
 mod bridge;
+mod mcp_bridge;
+mod agy;
 pub(crate) mod cli_env;
 mod gate;
 pub(crate) mod skill_resources;
@@ -22,6 +24,7 @@ pub(crate) fn adapter(kind: BackendKind) -> Result<Box<dyn BackendAdapter>, Back
         BackendKind::Codex => Ok(Box::new(codex::CodexAdapter::default())),
         BackendKind::Claude => Ok(Box::new(claude::ClaudeAdapter::default())),
         BackendKind::Dsh => Ok(Box::new(dsh::DshAdapter::default())),
+        BackendKind::Agy => Ok(Box::new(agy::AgyAdapter)),
         BackendKind::Pi => Ok(Box::new(pi::PiAdapter::default())),
     }
 }
@@ -35,6 +38,7 @@ pub(crate) fn list_models(kind: BackendKind) -> Result<Vec<ModelOption>, String>
         BackendKind::Dsh => Ok(vec![ModelOption { value: "deepseek-flash".into(), label: "DeepSeek-V4.1-Flash".into() },
             ModelOption { value: "deepseek-v4-pro".into(), label: "DeepSeek-V4-Pro".into() }]),
         BackendKind::Pi => pi::list_models(),
+        BackendKind::Agy => agy::list_models(),
     }
 }
 
