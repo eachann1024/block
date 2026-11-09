@@ -1,11 +1,50 @@
 //! Left category navigation shown in place of the file tree while Settings is open.
-use gpui::{Context, CursorStyle, FontWeight, MouseButton, SharedString, div, prelude::*, px};
+use gpui::{Context, CursorStyle, FontWeight, MouseButton, SharedString, Window, div, prelude::*, px};
 use crate::icons::stateful_icon;
 use crate::theme::{Theme, tr};
 use super::Workspace;
 use super::settings::SettingsTab;
 
 impl Workspace {
+    /// Start only after the first Settings frame has resolved its actual layout.
+    pub(super) fn settings_sidebar_intro(&mut self, drawer_open: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(modal) = self.settings.as_mut() else { return; };
+        if !drawer_open {
+            self.cancel_settings_sidebar_intro();
+            return;
+        }
+        if !modal.sidebar_intro_pending { return; }
+        modal.sidebar_intro_pending = false;
+        modal.sidebar_intro_task = Some(cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(650)).await;
+            let leaving = this.update_in(cx, |this, window, cx| {
+                if !this.shell_split(window, cx).sidebar_drawer || !this.sidebar_pinned { return false; }
+                let Some(modal) = this.settings.as_mut() else { return false; };
+                modal.sidebar_intro_leaving = true;
+                cx.notify();
+                true
+            }).unwrap_or(false);
+            if !leaving { return; }
+            cx.background_executor().timer(std::time::Duration::from_millis(crate::ui::motion::DRAWER_EXIT_MS)).await;
+            let _ = this.update_in(cx, |this, _, cx| {
+                if let Some(modal) = this.settings.as_mut() {
+                    modal.sidebar_intro_leaving = false;
+                    this.sidebar_pinned = false;
+                    cx.notify();
+                }
+            });
+        }));
+    }
+
+    /// User input takes ownership; dropping the task also cancels any stale close.
+    pub(super) fn cancel_settings_sidebar_intro(&mut self) {
+        if let Some(modal) = self.settings.as_mut() {
+            modal.sidebar_intro_task = None;
+            modal.sidebar_intro_pending = false;
+            modal.sidebar_intro_leaving = false;
+        }
+    }
+
     pub(super) fn settings_sidebar(&self, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
         let current = self.settings.as_ref().map(|m| m.tab);
