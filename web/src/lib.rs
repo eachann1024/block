@@ -24,12 +24,16 @@ pub mod fonts;
 pub mod icons;
 #[path = "../../src/mascot/mod.rs"]
 pub mod mascot;
+#[path = "../../src/page_history/mod.rs"]
+pub mod page_history;
 #[path = "../../src/search/mod.rs"]
 pub mod search;
 #[path = "../../src/theme.rs"]
 pub mod theme;
 #[path = "../../src/ui/mod.rs"]
 pub mod ui;
+#[path = "../../src/version.rs"]
+pub mod version;
 #[path = "../../src/window_bounds.rs"]
 pub mod window_bounds;
 
@@ -113,6 +117,67 @@ pub mod quick {
     pub fn rebind_hotkeys(_cx: &mut gpui::App) {}
     pub fn suspend_global_hotkeys(_cx: &mut gpui::App) {}
     pub fn refresh_style(_cx: &mut gpui::App) {}
+    pub fn is_quick_panel_active() -> bool { false }
+    pub fn dispatch_editor_action(_: &crate::editor::view::EditorAction, _: &mut gpui::App) -> bool { false }
+    pub fn record_search_triggered() {}
+}
+
+pub mod updater {
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct EntranceFrame {
+        pub bubbles: bool,
+        pub bubble_t: f32,
+        pub bubble_fade: f32,
+        pub btn_opacity: f32,
+        pub y_offset: f32,
+        pub tangle: bool,
+        pub tangle_opacity: f32,
+        pub jx: f32,
+        pub jy: f32,
+        pub complete: bool,
+    }
+    pub fn close_modal() -> bool { false }
+    pub fn has_update() -> bool { false }
+    pub fn open(_: &mut gpui::Context<crate::app::Workspace>) {}
+    pub fn entrance_done() -> bool { true }
+    pub fn drive_entrance(_: f32) -> EntranceFrame { EntranceFrame::default() }
+    pub fn check_on_menu_click(_: &mut gpui::App) {}
+    pub fn view(_: &mut gpui::Context<crate::app::Workspace>) -> Option<gpui::AnyElement> { None }
+}
+
+pub mod about {
+    pub fn close() -> bool { false }
+    pub fn open(_: &mut gpui::App) {}
+    pub fn view(_: &mut gpui::Context<crate::app::Workspace>) -> Option<gpui::AnyElement> { None }
+}
+
+pub mod performance {
+    pub fn close() -> bool { false }
+    pub fn open(_: Vec<std::path::PathBuf>, _: &mut gpui::App) {}
+    pub fn view(_: &mut gpui::Window, _: &mut gpui::Context<crate::app::Workspace>) -> Option<gpui::AnyElement> { None }
+}
+
+pub mod feedback {
+    pub fn is_open() -> bool { false }
+    pub fn has_draft() -> bool { false }
+    pub fn has_saved_draft() -> bool { false }
+    pub fn open(_: &mut gpui::Window, _: &mut gpui::App) {}
+    pub fn toggle(_: &mut gpui::Window, _: &mut gpui::App) {}
+    pub fn close(_: &mut gpui::Window, _: &mut gpui::App) -> bool { false }
+    pub fn sync_language(_: &mut gpui::Window, _: &mut gpui::App) {}
+}
+
+pub mod feedback_view {
+    pub fn modal_overlay(_: &mut gpui::Window, _: &mut gpui::Context<crate::app::Workspace>) -> Option<gpui::AnyElement> { None }
+}
+
+pub mod window_close {
+    pub fn close(_: &mut gpui::Window, _: &gpui::Entity<crate::editor::Editor>, _: &mut gpui::App) {}
+}
+
+pub mod smoke {
+    pub fn is_requested() -> bool { false }
+    pub fn is_worker() -> bool { false }
 }
 
 pub mod log {
@@ -157,11 +222,22 @@ fn detect_page_language() -> files::state::LanguageMode {
     }
 }
 
+fn sync_browser_theme() {
+    let light = web_sys::window()
+        .and_then(|window| window.match_media("(prefers-color-scheme: light)").ok().flatten())
+        .is_some_and(|query| query.matches());
+    theme::set_theme_mode(if light {
+        files::state::ThemeMode::Light
+    } else {
+        files::state::ThemeMode::Dark
+    });
+}
+
 #[wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
     theme::set_language_mode(detect_page_language());
-    theme::set_theme_mode(files::state::ThemeMode::Light);
+    sync_browser_theme();
     theme::set_font_choice(files::state::FontChoice::Sans);
 
     install_ime_guards();
@@ -174,67 +250,99 @@ pub fn start() {
     Application::with_platform(Rc::new(platform))
         .with_assets(WebAssets)
         .run(|cx: &mut App| {
-            cx.spawn(async move |cx| {
-                let fetched = fonts::load_ui_fonts().await;
-                cx.update(|cx| {
-                    let cows: Vec<Cow<'static, [u8]>> = if fetched.is_empty() {
-                        vec![
-                            Cow::Owned(export::metric_font("IBM Plex Sans")),
-                            Cow::Owned(export::metric_font("JetBrains Mono")),
-                        ]
-                    } else {
-                        fetched.into_iter().map(Cow::Borrowed).collect()
-                    };
-                    let _ = cx.text_system().add_fonts(cows);
-                    theme::init_fonts(&cx.text_system().all_font_names());
-                    gpui_component::init(cx);
-                    gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx);
-                    editor::bind_keys(cx);
+            let _ = cx.text_system().add_fonts(vec![
+                Cow::Owned(export::metric_font("IBM Plex Sans")),
+                Cow::Owned(export::metric_font("JetBrains Mono")),
+            ]);
+            theme::init_fonts(&cx.text_system().all_font_names());
+            gpui_component::init(cx);
+            theme::sync_gpui_theme(cx);
+            editor::bind_keys(cx);
 
-                    let _ = cx.open_window(WindowOptions::default(), |window, cx| {
-                        mount_canvas_into_stage();
-                        let workspace = cx.new(|cx| app::Workspace::new(window, cx));
-                        search::window::set_main_window(window.window_handle().downcast::<gpui_component::Root>(), workspace.clone(), cx);
-                        fonts::spawn(workspace.clone(), cx);
-                        let tab_target = workspace.clone();
-                        let settings_target = workspace.clone();
-                        cx.on_action({
-                            let target = tab_target.clone();
-                            move |_: &app::NewTab, cx: &mut App| {
-                                let Some(handle) = cx.active_window() else { return };
-                                let target = target.clone();
-                                let _ = cx.update_window(handle, move |_, window, cx| {
-                                    target.update(cx, |this, cx| this.new_tab(window, cx));
+            let _ = cx.open_window(WindowOptions::default(), |window, cx| {
+                mount_canvas_into_stage();
+                let workspace = cx.new(|cx| app::Workspace::new(window, cx));
+                workspace.update(cx, |_, cx| {
+                    cx.observe_window_appearance(window, |this, window, cx| {
+                        sync_browser_theme();
+                        theme::sync_gpui_theme(cx);
+                        this.editor.update(cx, |editor, cx| {
+                            editor.reset_layouts();
+                            cx.notify();
+                        });
+                        this.tree.update(cx, |_, cx| cx.notify());
+                        window.refresh();
+                        cx.notify();
+                    }).detach();
+                });
+                let win_handle = window.window_handle();
+                search::window::set_main_window(win_handle.downcast::<gpui_component::Root>(), workspace.clone(), cx);
+                fonts::spawn(workspace.clone(), cx);
+                {
+                    let weak_ws = workspace.downgrade();
+                    cx.spawn(async move |cx| {
+                        let fetched = fonts::load_ui_fonts().await;
+                        if fetched.is_empty() { return; }
+                        cx.update(|cx| {
+                            let cows: Vec<Cow<'static, [u8]>> = fetched.into_iter().map(Cow::Borrowed).collect();
+                            let _ = cx.text_system().add_fonts(cows);
+                            theme::init_fonts(&cx.text_system().all_font_names());
+                            if let Some(ws) = weak_ws.upgrade() {
+                                ws.update(cx, |this, cx| {
+                                    this.editor.update(cx, |editor, cx| {
+                                        editor.reset_layouts();
+                                        cx.notify();
+                                    });
+                                    this.tree.update(cx, |_, cx| cx.notify());
+                                    cx.notify();
                                 });
                             }
-                        });
-                        cx.on_action({
-                            let target = tab_target.clone();
-                            move |_: &app::CloseTab, cx: &mut App| {
-                                target.update(cx, |this, cx| this.close_active_tab(cx));
-                            }
-                        });
-                        cx.on_action({
-                            let target = tab_target.clone();
-                            move |_: &app::NextTab, cx: &mut App| {
-                                target.update(cx, |this, cx| this.step_tab(1, cx));
-                            }
-                        });
-                        cx.on_action(move |_: &app::PrevTab, cx: &mut App| {
-                            tab_target.update(cx, |this, cx| this.step_tab(-1, cx));
-                        });
-                        cx.on_action(move |_: &app::OpenSettings, cx: &mut App| {
-                            let Some(handle) = cx.active_window() else { return };
-                            let settings_target = settings_target.clone();
-                            let _ = cx.update_window(handle, move |_, window, cx| {
-                                settings_target.update(cx, |this, cx| this.open_settings(window, cx));
+                            let _ = cx.update_window(win_handle, |_, window, _| {
+                                window.refresh();
                             });
                         });
-                        cx.new(|cx| gpui_component::Root::new(workspace, window, cx))
-                    });
-                    cx.activate(true);
+                    }).detach();
+                }
+                let tab_target = workspace.clone();
+                let settings_target = workspace.clone();
+                cx.on_action({
+                    let target = tab_target.clone();
+                    move |_: &app::NewTab, cx: &mut App| {
+                        let Some(handle) = cx.active_window() else { return };
+                        let target = target.clone();
+                        let _ = cx.update_window(handle, move |_, window, cx| {
+                            target.update(cx, |this, cx| this.new_tab(window, cx));
+                        });
+                    }
                 });
-            })
-            .detach();
+                cx.on_action({
+                    let target = tab_target.clone();
+                    move |_: &app::CloseTab, cx: &mut App| {
+                        let Some(handle) = cx.active_window() else { return };
+                        let target = target.clone();
+                        let _ = cx.update_window(handle, move |_, window, cx| {
+                            target.update(cx, |this, cx| this.close_active_tab(window, cx));
+                        });
+                    }
+                });
+                cx.on_action({
+                    let target = tab_target.clone();
+                    move |_: &app::NextTab, cx: &mut App| {
+                        target.update(cx, |this, cx| this.step_tab(1, cx));
+                    }
+                });
+                cx.on_action(move |_: &app::PrevTab, cx: &mut App| {
+                    tab_target.update(cx, |this, cx| this.step_tab(-1, cx));
+                });
+                cx.on_action(move |_: &app::OpenSettings, cx: &mut App| {
+                    let Some(handle) = cx.active_window() else { return };
+                    let settings_target = settings_target.clone();
+                    let _ = cx.update_window(handle, move |_, window, cx| {
+                        settings_target.update(cx, |this, cx| this.open_settings(window, cx));
+                    });
+                });
+                cx.new(|cx| gpui_component::Root::new(workspace, window, cx))
+            });
+            cx.activate(true);
         });
 }
