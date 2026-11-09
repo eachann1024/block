@@ -87,15 +87,18 @@ impl Editor {
         self.export_indices(selected_only).map(|i| {
             let b = &self.doc.blocks[i];
             if selected_only {
-                // Images are atomic: selecting any part retains the complete source and its properties.
-                let mut block = if crate::editor::image_source::spec_of(b).is_some() { b.clone() }
+                // Visual blocks are atomic: a partial source string cannot represent the selected picture or diagram.
+                let visual = crate::editor::image_source::spec_of(b).is_some()
+                    || b.meta.code_language.as_deref().is_some_and(crate::editor::code_block::is_preview_lang);
+                let mut block = if visual { b.clone() }
                     else { b.slice(self.selected_range(b.id).unwrap_or(0..0)) };
                 if let Some(number) = self.doc.list_number(b.id) { block.meta.list_start = Some(number); }
                 block
             } else { b.clone() }
         }).collect()
     }
-    pub(in crate::editor) fn reset_document(&mut self, doc: Doc) {
+    pub(in crate::editor) fn reset_document(&mut self, doc: Doc, cx: &mut Context<Self>) {
+        crate::editor::presentation::clear(cx.entity_id(), cx);
         self.caret = Caret::new(doc.blocks[0].id);
         self.doc = doc;
         self.history.clear(); self.redo.clear(); self.nowrap.clear(); self.folded.clear(); self.fold_tails.clear();

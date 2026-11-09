@@ -18,14 +18,9 @@ pub enum ExportTheme {
     Terminal,
 }
 
-/// Note-relative resources and the logical width of the source editor, independent of export paper.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct SourceContext {
-    pub note: Option<std::path::PathBuf>,
-    pub width: Option<u32>,
-}
+pub use super::source::SourceContext;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RenderOptions {
     pub theme: ExportTheme,
     pub card: bool,

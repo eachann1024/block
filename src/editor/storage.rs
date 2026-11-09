@@ -17,7 +17,7 @@ impl super::Editor {
         self.persistence.base = base;
         self.persistence.gate.lock().unwrap().saved.insert(path.clone(), base);
         self.surface = super::surface::Surface::Note;
-        self.reset_document(markdown::parse(source));
+        self.reset_document(markdown::parse(source), cx);
         self.folded.clear();
         self.path = Some(path);
         self.dirty = false;

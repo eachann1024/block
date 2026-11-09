@@ -13,7 +13,7 @@ pub fn export_selected(editor: &mut Editor, window: &mut Window, cx: &mut Contex
     open(editor, true, window, cx);
 }
 
-fn snapshot(editor: &Editor, selected_only: bool, editor_id: EntityId, window: &mut Window) -> Result<Snapshot, ExportError> {
+fn snapshot(editor: &Editor, selected_only: bool, source: &crate::export::SourceContext) -> Result<Snapshot, ExportError> {
     // Count first: a million-block document is rejected without walking or cloning it.
     let count = editor.export_block_count(selected_only);
     let (bytes, spans) = editor.export_budget(selected_only);
@@ -29,16 +29,11 @@ fn snapshot(editor: &Editor, selected_only: bool, editor_id: EntityId, window: &
     });
     crate::export::validate_snapshot(count, inputs)?;
     let mut blocks = editor.export_blocks(selected_only);
-    let zoom = super::zoom::zoom_factor(editor.minimal);
-    let body_width = source_width(editor);
     for block in &mut blocks {
-        let Some(table) = &mut block.meta.table else { continue };
-        let original = editor.doc.get(block.id).and_then(|b| b.meta.table.as_ref()).unwrap();
-        // Cached bounds can belong to an earlier viewport; re-resolve all columns with the live width.
-        let indent = block.meta.indent.min(12) as f32 * super::chrome::INDENT_PER_CHAR * zoom;
-        let widths = table_layout::export_column_widths(original, (body_width - px(indent)).max(px(1.)),
-            &table_layout::widths_of(editor_id, block.id), window, zoom);
-        table.column_widths = widths.into_iter().map(|w| Some(format!("{w}px"))).collect();
+        if let Some(table) = &mut block.meta.table
+            && let Some(geometry) = source.block(block.id).and_then(|b| b.table.as_ref()) {
+            table.column_widths = geometry.columns.iter().map(|w| Some(format!("{w}px"))).collect();
+        }
     }
     Ok(Ok(Arc::new(blocks)))
 }
@@ -52,6 +47,25 @@ fn source_width(editor: &Editor) -> gpui::Pixels {
     if editor.annotate.editor_width > px(0.) { body_width } else { theme.content_width }
 }
 
+fn capture_source(editor: &Editor, editor_id: EntityId, window: &mut Window) -> crate::export::SourceContext {
+    let zoom = super::zoom::zoom_factor(editor.minimal);
+    let base = source_width(editor);
+    let blocks = editor.doc.blocks.iter().map(|block| {
+        let width = (base - px(super::chrome::block_gutter(block, zoom) + super::chrome::body_padding(block, zoom))).max(px(1.));
+        let logical_width = f32::from(width) / zoom;
+        let table = block.meta.table.as_ref().map(|table| table_layout::export_geometry(table, width,
+            &table_layout::widths_of(editor_id, block.id), window, zoom));
+        let image_width = super::image_source::spec_of(block).map(|spec|
+            spec.width.map_or(logical_width, |w| (w as f32).clamp(logical_width * 0.1, logical_width)));
+        (block.id, crate::export::BlockLayout {
+            width: logical_width, image_width, table,
+            nowrap: editor.nowrap.contains(&block.id),
+            show_source: super::code_block_preview::is_source_open(editor_id, block.id, &block.text),
+        })
+    }).collect();
+    crate::export::SourceContext { note: editor.current_path().map(std::path::Path::to_path_buf), font_family: crate::theme::editor_font().0.to_string(), blocks }
+}
+
 fn open(
     editor: &mut Editor,
     prefer_selection: bool,
@@ -61,13 +75,14 @@ fn open(
     if crate::export::active_view(cx).is_some() {
         return;
     }
+    let source = capture_source(editor, cx.entity_id(), window);
     // A selection that is empty or over budget simply disables the "选中生成" option.
     let selection = if editor.export_block_count(true) > 0 {
-        Some(snapshot(editor, true, cx.entity_id(), window).unwrap_or_else(|error| Err(error.to_string())))
+        Some(snapshot(editor, true, &source).unwrap_or_else(|error| Err(error.to_string())))
     } else {
         None
     };
-    let whole = match snapshot(editor, false, cx.entity_id(), window) {
+    let whole = match snapshot(editor, false, &source) {
         Ok(whole) => whole,
         Err(ExportError::Empty) => {
             editor.report_status(ExportError::Empty.to_string(), cx);
@@ -82,10 +97,6 @@ fn open(
         .unwrap_or_else(|| crate::theme::tr("未命名", "Untitled").into());
     let restore = editor.focus_handle(cx);
     editor.clear_transient_overlays();
-    let source = crate::export::SourceContext {
-        note: editor.current_path().map(std::path::Path::to_path_buf),
-        width: Some((f32::from(source_width(editor)) / super::zoom::zoom_factor(editor.minimal)).round().max(1.) as u32),
-    };
     let view = cx.new(|cx| ExportView::new(title, source, whole, selection, prefer_selection, restore, cx));
     view.update(cx, |view, cx| view.request(cx));
     let focus = view.read(cx).focus_handle(cx);

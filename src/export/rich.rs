@@ -23,7 +23,20 @@ pub(super) fn shape(
     line: f32,
     width: f32,
     alignment: Option<Align>,
-    base: Attrs<'static>,
+    base: Attrs<'_>,
+) -> Result<Shaped, ExportError> {
+    shape_with_wrap(block, fonts, size, line, width, alignment, base, Wrap::WordOrGlyph)
+}
+
+pub(super) fn shape_with_wrap(
+    block: &Block,
+    fonts: &mut FontSystem,
+    size: f32,
+    line: f32,
+    width: f32,
+    alignment: Option<Align>,
+    base: Attrs<'_>,
+    wrap: Wrap,
 ) -> Result<Shaped, ExportError> {
     let mut boundaries = vec![0, block.text.len()];
     for span in &block.spans {
@@ -115,7 +128,7 @@ pub(super) fn shape(
     }
     let mut buffer = Buffer::new(fonts, Metrics::new(size, line));
     buffer.set_size(Some(width), None);
-    buffer.set_wrap(Wrap::WordOrGlyph);
+    buffer.set_wrap(wrap);
     buffer.set_rich_text(spans, &base, Shaping::Advanced, alignment);
     buffer.shape_until_scroll(fonts, false);
     require_glyphs(&buffer)?;

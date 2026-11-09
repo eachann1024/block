@@ -62,7 +62,10 @@ pub(super) fn rasterize(
                 label,
                 row.x,
                 row.y + 8.0,
-                (&pal, pal.secondary),
+                (&pal, row.callout.map_or(pal.secondary, |kind| {
+                    let (_, _, color, _, _) = crate::ui::callout_controls::tone(kind, pal.dark);
+                    Color::rgb((color >> 16) as u8, (color >> 8) as u8, color as u8)
+                })),
                 fonts,
                 cache,
                 cancel,
