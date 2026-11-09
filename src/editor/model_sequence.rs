@@ -76,6 +76,14 @@ impl PartialEq for Blocks {
 }
 impl Eq for Blocks {}
 impl Blocks {
+    /// Constant-time revision identity for caches over this copy-on-write tree.
+    pub(in crate::editor) fn shares_root(&self, other: &Self) -> bool {
+        match (&self.root, &other.root) {
+            (None, None) => true,
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
     pub fn len(&self) -> usize { size(&self.root) }
     pub fn is_empty(&self) -> bool { self.root.is_none() }
     pub fn iter(&self) -> Iter<'_> { let mut i = Iter { stack: Vec::new(), remaining: self.len() }; i.descend(self.root.as_deref()); i }
