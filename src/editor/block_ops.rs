@@ -24,6 +24,9 @@ impl Editor {
         let new_id = self.doc.blocks[index].id;
         self.table_sel = None; self.table_menu = None; self.block_sel = None; self.preferred_x = None;
         self.record_changes(before, vec![ListChange { start: index, before: 0, after: 1 }], true, cx);
+        // Appending inside a fold must focus the visible tail, never a hidden blank or the opened section.
+        if !self.show_hidden_tail(new_id) { cx.notify(); return true; }
+        let index = self.doc.index_of(new_id).unwrap_or(index);
         self.ensure_block_visible(new_id);
         self.set_head(Position { block: new_id, offset: 0 }, false, cx);
         self.layouts.clear(); self.list.scroll_to_reveal_item(index);
@@ -44,7 +47,8 @@ impl Editor {
         }
         self.insert_paragraph_at(0, cx)
     }
-    /// 在文档末尾块之后插入独立空段落并聚焦。
+    /// 在文档末尾之后插入空段落并聚焦。折叠区一直延伸到文末时，新行成为可见尾，
+    /// 原有正文和已经藏在尾部的空段落保持折叠，不会被聚焦或展开。
     pub(in crate::editor) fn insert_bottom_paragraph(&mut self, cx: &mut Context<Self>) -> bool {
         !self.doc.blocks.is_empty() && self.insert_paragraph_at(self.doc.blocks.len(), cx)
     }
