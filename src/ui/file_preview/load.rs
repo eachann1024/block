@@ -9,13 +9,13 @@ use super::svg_scan::{self, MAX_SVG_EDGE};
 /// Output cap for one SVG frame. Matches the scan's 4_000_000 logical-pixel budget.
 const MAX_DEVICE_PIXELS: u64 = 4_000_000;
 
-pub(super) struct Decoded {
+pub(crate) struct Decoded {
     pub image: Arc<RenderImage>,
     pub width: f32,
     pub height: f32,
 }
 
-pub(super) fn load_path(renderer: &SvgRenderer, path: &Path) -> Result<Decoded, String> {
+pub(crate) fn load_path(renderer: &SvgRenderer, path: &Path) -> Result<Decoded, String> {
     if super::is_svg_path(path) {
         let limit = svg_scan::MAX_SVG_BYTES as u64;
         let bytes = raster::read_capped(path, limit)?;

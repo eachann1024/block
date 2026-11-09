@@ -147,30 +147,33 @@ fn cell(width: u32, span: usize, merge: Option<&str>, fill: Option<String>, cont
 }
 
 /// Emit continuation cells for columns covered by an earlier rowspan, and blanks for gaps.
-fn fill(pending: &mut [(usize, usize)], at: &mut usize, upto: usize, each: u32, out: &mut String) {
+fn fill(pending: &mut [(usize, usize)], at: &mut usize, upto: usize, widths: &[u32], out: &mut String) {
     while *at < upto.min(pending.len()) {
         let (left, span) = pending[*at];
         if left > 0 {
             pending[*at].0 -= 1;
-            out.push_str(&cell(each * span as u32, span, Some(""), None, para(None, "", "")));
+            out.push_str(&cell(widths[*at..*at + span].iter().sum(), span, Some(""), None, para(None, "", "")));
             *at += span;
         } else {
-            out.push_str(&cell(each, 1, None, None, para(None, "", "")));
+            out.push_str(&cell(widths[*at], 1, None, None, para(None, "", "")));
             *at += 1;
         }
     }
 }
 
-fn table(table: &Table, pal: &Palette, content_width: u32) -> String {
+fn table(table: &Table, pal: &Palette, content_width: u32) -> Result<String, ExportError> {
     let columns = table.columns.max(1);
-    let each = (content_width / columns as u32).max(1);
+    // Word uses twips (15 per CSS px); share the visual export's width resolution and fitting.
+    let xs = super::table::columns(table, content_width as f32 / 15.)?;
+    let widths: Vec<u32> = xs.windows(2).map(|x| ((x[1] * 15.).round() - (x[0] * 15.).round()).max(1.) as u32).collect();
+    let table_width: u32 = widths.iter().sum();
     let line = hex(pal.table_border);
     let sides = ["top", "left", "bottom", "right", "insideH", "insideV"]
         .map(|side| format!("<w:{side} w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"{line}\"/>"))
         .concat();
     let mut out = format!(
-        "<w:tbl><w:tblPr><w:tblW w:w=\"{content_width}\" w:type=\"dxa\"/><w:tblBorders>{sides}</w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"100\" w:type=\"dxa\"/><w:right w:w=\"100\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>{}</w:tblGrid>",
-        format!("<w:gridCol w:w=\"{each}\"/>").repeat(columns)
+        "<w:tbl><w:tblPr><w:tblW w:w=\"{table_width}\" w:type=\"dxa\"/><w:tblBorders>{sides}</w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"100\" w:type=\"dxa\"/><w:right w:w=\"100\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>{}</w:tblGrid>",
+        widths.iter().map(|w| format!("<w:gridCol w:w=\"{w}\"/>")).collect::<String>()
     );
     let mut pending = vec![(0usize, 1usize); columns];
     for row in &table.rows {
@@ -179,7 +182,7 @@ fn table(table: &Table, pal: &Palette, content_width: u32) -> String {
         let mut cells: Vec<_> = row.cells.iter().collect();
         cells.sort_by_key(|c| c.column);
         for item in cells {
-            fill(&mut pending, &mut at, item.column, each, &mut out);
+            fill(&mut pending, &mut at, item.column, &widths, &mut out);
             if at != item.column || item.column >= columns {
                 continue;
             }
@@ -188,7 +191,10 @@ fn table(table: &Table, pal: &Palette, content_width: u32) -> String {
                 pending[at] = (item.rowspan - 1, span);
             }
             let merge = (item.rowspan > 1).then_some(" w:val=\"restart\"");
-            let jc = match item.alignment() {
+            let alignment = if item.attrs.is_empty() {
+                table.alignments.get(item.column).copied().unwrap_or_default()
+            } else { item.alignment() };
+            let jc = match alignment {
                 CellAlignment::Left => "",
                 CellAlignment::Center => "<w:jc w:val=\"center\"/>",
                 CellAlignment::Right => "<w:jc w:val=\"right\"/>",
@@ -196,14 +202,14 @@ fn table(table: &Table, pal: &Palette, content_width: u32) -> String {
             let base = Base { bold: item.header, size: None };
             let content = para(None, &format!("<w:spacing w:after=\"40\"/>{jc}"), &runs(&item.content, pal, base));
             let fill = item.header.then(|| hex(pal.code_bg));
-            out.push_str(&cell(each * span as u32, span, merge, fill, content));
+            out.push_str(&cell(widths[at..at + span].iter().sum(), span, merge, fill, content));
             at += span;
         }
-        fill(&mut pending, &mut at, columns, each, &mut out);
+        fill(&mut pending, &mut at, columns, &widths, &mut out);
         out.push_str("</w:tr>");
     }
     out.push_str("</w:tbl>");
-    out
+    Ok(out)
 }
 
 pub(super) fn body(
@@ -227,7 +233,7 @@ pub(super) fn body(
             counters.clear();
         }
         if let Some(t) = &block.meta.table {
-            out.push_str(&table(t, pal, content_width));
+            out.push_str(&table(t, pal, content_width)?);
             out.push_str("<w:p/>");
         } else if block.meta.code_language.is_some() || (block.meta.raw_source.is_some() && !is_rule(block)) {
             let content = format!("<w:r>{}</w:r>", text_xml(&block.text));

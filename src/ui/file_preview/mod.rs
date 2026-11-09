@@ -3,7 +3,7 @@
 //! unsaved text arrives through [`FilePreview::set_svg_source`].
 
 mod gesture;
-mod load;
+pub(crate) mod load;
 mod open_app;
 mod paint;
 mod raster;
