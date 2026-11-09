@@ -3,7 +3,7 @@ use gpui::{Context, Pixels, Point, Window, px};
 use super::{
     block_menu::is_divider,
     input::transactions::ListChange,
-    model::{Block, Doc, Kind},
+    model::{Block, Kind},
     view::{Editor, EditorAction, selection::Position},
 };
 
@@ -264,10 +264,7 @@ impl Editor {
             Backspace | Delete | Cut | Copy => {
                 if !matches!(action, Backspace | Delete) {
                     let blocks: Vec<Block> = (lo..=hi).map(|i| self.doc.blocks[i].clone()).collect();
-                    let markdown = super::markdown::serialize(&Doc::from_blocks(blocks));
-                    let plain = markdown.trim_end().to_owned();
-                    cx.write_to_clipboard(super::paste_clipboard::block_item(plain.clone(), &markdown));
-                    self.block_clip = Some((plain, markdown));
+                    cx.write_to_clipboard(super::paste_clipboard::blocks_item(blocks));
                 }
                 if !matches!(action, Copy) {
                     self.block_sel = None;

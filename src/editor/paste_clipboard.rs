@@ -1,6 +1,7 @@
 use gpui::ClipboardItem;
 use serde::{Deserialize, Serialize};
 use super::model::{Block, InlineTag, Kind, Span};
+use super::view::Editor;
 
 const BLOCKS_V1: &str = "com.block.editor.blocks.v1";
 const INLINE_V1: &str = "com.block.editor.inline.v1";
@@ -55,6 +56,50 @@ pub(super) fn block_markdown(item: &ClipboardItem, text: &str) -> Option<String>
     let payload: BlockPayload = serde_json::from_str(item.metadata()?).ok()?;
     (payload.kind == BLOCKS_V1 && payload.text == text && !payload.markdown.is_empty())
         .then_some(payload.markdown)
+}
+
+pub(super) fn blocks_item(blocks: Vec<Block>) -> ClipboardItem {
+    let text = blocks.iter().map(|block| block.text.as_str()).collect::<Vec<_>>().join("\n");
+    let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(blocks));
+    block_item(text, &markdown)
+}
+
+impl Editor {
+    pub(super) fn selection_clipboard_item(&self) -> Option<ClipboardItem> {
+        let (a, b, first, last) = self.ordered();
+        if a == b { return None; }
+        let block = &self.doc.blocks[first];
+        if first == last {
+            let whole = a.offset == 0 && b.offset == block.text.len();
+            let cell_text = block.meta.table.as_ref().is_some_and(|table|
+                self.table_sel != Some((block.id, super::table_actions::TableSel::Whole))
+                    && table.cell_at_range(&(a.offset..b.offset)).is_some());
+            let atomic = block.meta.table.is_some() || super::image_source::spec_of(block).is_some()
+                || super::block_menu::is_divider(block);
+            if cell_text || !whole || !atomic {
+                return Some(inline_item(&block.text_slice(a.offset..b.offset)?));
+            }
+        }
+        let blocks = (first..=last).filter_map(|i| {
+            // The next block's type is not selected when the range ends at its first byte.
+            if i == last && first != last && b.offset == 0 { return None; }
+            let block = &self.doc.blocks[i];
+            self.selected_range(block.id).map(|range| {
+                if range == (0..block.text.len()) { block.clone() }
+                else if block.meta.raw_source.is_some() { block.text_slice(range).unwrap_or_else(|| block.clone()) }
+                else { block.slice(range) }
+            })
+        }).collect();
+        Some(blocks_item(blocks))
+    }
+
+    /// Copy controls copy a block's text, not its surrounding code/callout container.
+    pub(crate) fn copy_block_text(&self, id: u64, cx: &mut gpui::Context<Self>) {
+        if let Some(block) = self.doc.get(id)
+            && let Some(fragment) = block.text_slice(0..block.text.len()) {
+            cx.write_to_clipboard(inline_item(&fragment));
+        }
+    }
 }
 
 pub(crate) fn forward_focused_input_action(action: &super::view::EditorAction, window: &mut gpui::Window, cx: &mut gpui::App) -> bool {
