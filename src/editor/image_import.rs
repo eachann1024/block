@@ -23,11 +23,21 @@ fn asset_name(ext: &str, assets: &Path) -> String {
 impl Editor {
     pub(super) fn pick_image(&mut self, id: u64, replace: bool, window: &mut Window, cx: &mut Context<Self>) {
         if self.note_dir().is_none() { self.status = crate::theme::tr("请先打开一篇笔记", "Open a note first").into(); cx.notify(); return; }
+        let path = self.path.clone();
+        let epoch = self.interaction_epoch();
         let prompt = cx.prompt_for_paths(gpui::PathPromptOptions { files: true, directories: false, multiple: true, prompt: Some(crate::theme::tr("导入图片", "Import Image").into()) });
         let place = if replace { Place::Replace } else { Place::After };
         cx.spawn_in(window, async move |this, cx| {
-            let Ok(Ok(Some(paths))) = prompt.await else { return };
-            let _ = this.update_in(cx, |this, window, cx| { this.import_images(id, place, paths, window, cx); });
+            let result = prompt.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.path != path || this.interaction_epoch() != epoch || this.is_loading() { return; }
+                match result {
+                    Ok(Ok(Some(paths))) if this.doc.index_of(id).is_some() => this.import_images(id, place, paths, window, cx),
+                    Ok(Ok(_)) => {},
+                    Ok(Err(error)) => this.report_status(format!("{}: {error}", crate::theme::tr("无法选择图片", "Could not choose images")), cx),
+                    Err(error) => this.report_status(format!("{}: {error}", crate::theme::tr("图片选择已中断", "Image selection interrupted")), cx),
+                }
+            });
         }).detach();
     }
     pub(super) fn note_dir(&self) -> Option<PathBuf> { self.path.as_ref()?.parent().map(Path::to_path_buf) }
@@ -46,19 +56,33 @@ impl Editor {
         if self.note_dir().is_none() { self.status = crate::theme::tr("请先打开一篇笔记", "Open a note first").into(); cx.notify(); return; }
         let Some(assets) = self.assets_dir(cx) else { return };
         let mut blocks = Vec::new();
+        let mut failed = 0;
+        let mut last_error = None;
         for file in files.into_iter().filter(|f| is_image(f)) {
             let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("png").to_lowercase();
             let stem = file.file_stem().and_then(|s| s.to_str()).unwrap_or("image").to_owned();
             let name = asset_name(&ext, &assets);
-            if std::fs::copy(&file, assets.join(&name)).is_err() { continue; }
+            if let Err(error) = std::fs::copy(&file, assets.join(&name)) {
+                failed += 1;
+                last_error = Some(error);
+                continue;
+            }
             blocks.push(raw_block(&Self::image_line(&stem, &name)));
         }
+        let imported = blocks.len();
         self.insert_blocks(id, place, blocks, window, cx);
+        if let Some(error) = last_error {
+            self.report_status(format!("{} {imported} / {} {failed}: {error}",
+                crate::theme::tr("已导入", "Imported"), crate::theme::tr("失败", "Failed")), cx);
+        }
     }
     pub(super) fn import_image_bytes(&mut self, id: u64, bytes: Vec<u8>, ext: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(assets) = self.assets_dir(cx) else { return };
         let name = asset_name(ext, &assets);
-        if std::fs::write(assets.join(&name), bytes).is_err() { return; }
+        if let Err(error) = std::fs::write(assets.join(&name), bytes) {
+            self.report_status(format!("{}: {error}", crate::theme::tr("无法保存图片", "Could not save image")), cx);
+            return;
+        }
         self.insert_blocks(id, Place::After, vec![raw_block(&Self::image_line("pasted", &name))], window, cx);
     }
     fn image_line(alt: &str, name: &str) -> String {

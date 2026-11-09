@@ -164,6 +164,8 @@ pub struct State {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub export_preferences: Option<crate::export::ExportPreferences>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export_directory: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub main_window_bounds: Option<SavedWindowBounds>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub editor_zoom: Option<f32>,
