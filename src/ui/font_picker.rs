@@ -91,7 +91,7 @@ pub fn font_picker_popover(
                 .gap(px(6.))
                 .reserve_height(px(dropdown::MAX_HEIGHT))
         })
-        .unwrap_or_else(|| dropdown::PlacementSpec::point(point(px(100.), px(100.))));
+        .unwrap_or_else(|| dropdown::PlacementSpec::point(point(px(0.), px(0.))));
     let max_h = measured
         .map(|(_, vp)| dropdown::max_height_for_spec(&spec, vp, px(dropdown::MAX_HEIGHT)))
         .unwrap_or(px(dropdown::MAX_HEIGHT));
@@ -187,5 +187,12 @@ pub fn font_picker_popover(
         )
     ).with_priority(2);
 
-    div().child(backdrop).child(dropdown::anchored_motion(("font-picker-pop", pop_gen), spec, menu, phase, 3))
+    div().child(backdrop).child(dropdown::anchored_motion_with(("font-picker-pop", pop_gen), move |window, _| {
+        get_trigger_bounds(role)
+            .map(|(trigger, _)| dropdown::PlacementSpec::below(trigger)
+                .align_x(dropdown::AlignX::Right)
+                .gap(px(6.))
+                .reserve_height(px(dropdown::MAX_HEIGHT)))
+            .unwrap_or_else(|| dropdown::PlacementSpec::point(window.mouse_position()))
+    }, menu, phase, 3))
 }

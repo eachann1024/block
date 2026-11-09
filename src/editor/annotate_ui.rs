@@ -1,7 +1,7 @@
 //! Right-rail annotations, narrow-mode inline/badge adaptive layout, and reaction picker.
 use gpui::{
-    AnyElement, BoxShadow, Context, IntoElement, MouseButton, ParentElement, Pixels,
-    SharedString, Styled, Window, div, point, prelude::*, px, rgba,
+    AnyElement, Bounds, BoxShadow, Context, IntoElement, MouseButton, ParentElement, Pixels,
+    Point, SharedString, Styled, Window, deferred, div, point, prelude::*, px, rgba, size,
 };
 use crate::{theme::Theme, ui::annotation_note};
 use super::{
@@ -185,11 +185,45 @@ pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Contex
     Some(div().absolute().top_0().left_0().size_full().children(rail).children(reactions).into_any_element())
 }
 
+/// Window-space box for the reaction control the picker should hang from.
+/// The selection toolbar's second button sits at padding 4 + 28 + gap 4, py 6.
+fn reaction_button(origin: Point<Pixels>) -> Bounds<Pixels> {
+    Bounds::new(point(origin.x + px(36.), origin.y + px(6.)), size(px(28.), px(28.)))
+}
+
+fn reaction_trigger(editor: &Editor, window: &Window, fallback: Point<Pixels>) -> Bounds<Pixels> {
+    let viewport = editor.list.viewport_bounds();
+    if let Some(origin) = editor.selection_toolbar_anchor(viewport, window) {
+        return reaction_button(origin);
+    }
+    if !editor.caret.is_empty()
+        && let Some(rect) = editor.layouts.iter().filter_map(|(id, layout)| {
+            let range = editor.selected_range(*id)?;
+            if range.is_empty() { return None; }
+            layout.rects(range).into_iter().next()
+        }).min_by(|a, b| a.top().partial_cmp(&b.top()).unwrap_or(std::cmp::Ordering::Equal))
+    {
+        use super::chrome::{TOOLBAR_HEIGHT, TOOLBAR_WIDTH};
+        let height = if viewport.size.width - px(16.) < TOOLBAR_WIDTH { TOOLBAR_HEIGHT * 2. - px(8.) } else { TOOLBAR_HEIGHT };
+        let x = rect.left().max(viewport.left() + px(8.)).min((viewport.right() - TOOLBAR_WIDTH - px(8.)).max(viewport.left()));
+        let above = rect.top() - height - px(8.);
+        let y = if above >= viewport.top() { above } else { rect.bottom() + px(8.) };
+        let y = y.min((viewport.bottom() - height).max(viewport.top())).max(viewport.top());
+        return reaction_button(point(x, y));
+    }
+    if let Some((id, bounds)) = super::image_size::reaction_bounds()
+        && id == editor.caret.head.block
+    {
+        return bounds;
+    }
+    Bounds::new(fallback, size(px(28.), px(28.)))
+}
+
 fn reaction_popover(picker: ReactionPicker, selected_reaction: Option<String>, cx: &mut Context<Editor>) -> impl IntoElement {
-    let x = (picker.anchor.x - px(120.)).max(px(24.));
-    let y = (picker.anchor.y + px(8.)).max(px(48.));
+    let editor = cx.entity();
+    let fallback = picker.anchor;
     let bar = REACTIONS.iter().enumerate().fold(
-        div().id("annotate-reactions").absolute().left(x).top(y).px(px(8.)).py(px(6.))
+        div().id("annotate-reactions").px(px(8.)).py(px(6.))
             .rounded(crate::ui::radius::SURFACE).bg(Theme::ocean().menu).shadow(popover_shadows())
             .flex().items_center().gap(px(4.)).occlude(),
         |row, (index, &emoji)| {
@@ -209,5 +243,13 @@ fn reaction_popover(picker: ReactionPicker, selected_reaction: Option<String>, c
             this.annotate.reactions = None;
             cx.notify();
         }))
-        .child(bar)
+        .child(deferred(crate::dropdown::smart_anchored_with(move |window, cx| {
+            let editor = editor.read(cx);
+            let viewport = editor.list.viewport_bounds();
+            crate::dropdown::PlacementSpec::below(reaction_trigger(&editor, window, fallback))
+                .align_x(crate::dropdown::AlignX::Center)
+                .gap(px(6.))
+                .margin(px(8.))
+                .viewport(viewport)
+        }).child(bar)).with_priority(4))
 }

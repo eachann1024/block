@@ -121,7 +121,10 @@ impl Editor {
         let block_index = first.block_index;
         let anchor = self.toolbar_anchor
             .or_else(|| self.list.bounds_for_item(block_index).map(|b| point(b.center().x, b.top())))
-            .unwrap_or_else(|| point(px(360.), px(140.)));
+            .unwrap_or_else(|| {
+                let viewport = self.list.viewport_bounds();
+                point(viewport.center().x, viewport.top() + px(48.))
+            });
         let annotation_id = self.find_span_reaction_owner(&targets);
         self.format = None;
         self.annotate.reactions = Some(ReactionPicker { targets, annotation_id, anchor });
