@@ -9,7 +9,9 @@ mod anthropic;
 pub(crate) mod provider;
 pub(super) mod session;
 #[cfg(not(target_family = "wasm"))]
-mod inline_backend;
+pub(in crate::editor) mod inline_backend;
+#[cfg(not(target_family = "wasm"))]
+mod annotation_config;
 pub(super) mod panel;
 pub(super) mod preview;
 pub(crate) mod settings;

@@ -139,7 +139,7 @@ fn run(request: &TurnRequest, events: &Sender<BackendEvent>, mut stdin: impl Wri
     let session = request.native_session_id.clone().unwrap_or_else(|| token[..32].to_owned());
     let provider = request.config["provider"].as_str().filter(|s| !s.trim().is_empty()).unwrap_or("deepseek-official");
     let model = request.config["model"].as_str().filter(|s| !s.trim().is_empty()).unwrap_or("deepseek-flash");
-    send(&mut stdin, 1, "initialize", json!({"cwd":cwd,"provider":provider,"model":model}))?;
+    send(&mut stdin, 1, "initialize", json!({"cwd":cwd,"provider":provider,"model":model,"reasoningEffort":request.config.get("thinkingLevel").and_then(Value::as_str).unwrap_or("high")}))?;
     let mut terminal: Option<Value> = None;
     for line in BufReader::new(stdout).lines() {
         let line = line.map_err(io_error)?;

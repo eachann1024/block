@@ -9,18 +9,47 @@ pub(super) fn stream(system: String, user: String, cancel: Arc<AtomicBool>, cx: 
     let recognized = super::chat::recognized_backends(cx);
     let kind = super::chat::entity(cx).map(|chat| chat.read(cx).selected_backend())
         .unwrap_or_else(|| config.ensure_valid_selection(&recognized));
-    if kind == BackendKind::Builtin || !provider::config().enabled {
+    stream_with_selection(system, user, cancel, kind, config.options(kind), None)
+}
+
+pub(in crate::editor) fn annotation_stream(system: String, user: String, cx: &App) -> mpsc::Receiver<Event> {
+    let config = match super::annotation_config::AnnotationConfig::load_or_seed(cx) {
+        Ok(config) => config,
+        Err(message) => {
+            let (sender, receiver) = mpsc::channel();
+            let _ = sender.send(Event::Failed { message, settings: true }); return receiver;
+        }
+    };
+    let mut options = BackendConfig::load().options(config.backend);
+    options["model"] = config.model.clone().into();
+    options["thinkingLevel"] = config.thinking.clone().into();
+    let builtin = (config.backend == BackendKind::Builtin).then(|| config.builtin_config());
+    stream_with_selection(system, user, Arc::new(AtomicBool::new(false)), config.backend, options, builtin)
+}
+
+fn stream_with_selection(system: String, user: String, cancel: Arc<AtomicBool>, kind: BackendKind,
+    mut options: serde_json::Value, builtin: Option<Result<provider::Config, String>>) -> mpsc::Receiver<Event> {
+    if !provider::config().enabled { return provider::stream(system, user, cancel); }
+    if kind == BackendKind::Builtin {
+        if let Some(config) = builtin {
+            let config = match config {
+                Ok(config) => config,
+                Err(message) => { let (tx, rx) = mpsc::channel(); let _ = tx.send(Event::Failed { message, settings: true }); return rx; }
+            };
+            let messages = vec![serde_json::json!({"role":"system","content":system}), serde_json::json!({"role":"user","content":user})];
+            return provider::stream_agent_with_config(config, messages, None, cancel,
+                options["thinkingLevel"].as_str().map(str::to_owned));
+        }
         return provider::stream(system, user, cancel);
     }
     let (sender, receiver) = mpsc::channel();
-    let mut options = config.options(kind);
     options["fullPermissions"] = false.into();
     options["textOnly"] = true.into();
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let id = format!("inline-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed));
     let request = TurnRequest {
         backend: kind, conversation_id: id.clone(), turn_id: id, native_session_id: None,
-        message: format!("{system}\n\nReturn only the rewritten text. Do not use tools or edit files.\n\n{user}"),
+        message: format!("{system}\n\nFollow the requested output format exactly. Do not use tools or edit files.\n\n{user}"),
         context: NoteContext::default(), config: options,
     };
     std::thread::spawn(move || {

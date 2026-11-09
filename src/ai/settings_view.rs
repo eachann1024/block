@@ -109,6 +109,8 @@ impl Render for AiSettings {
         }
         div().id("ai-settings-section").flex().flex_col().gap(px(24.))
             .child(self.agent_overview(cx))
+            .when(self.enabled, |d| d.child(self.general_settings(cx)))
+            .children(self.annotation_menu(window, cx))
     }
 }
 
