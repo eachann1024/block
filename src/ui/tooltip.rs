@@ -104,6 +104,7 @@ pub fn anchored_tooltip_above_with_icon(
             .viewport(viewport)
             .align_x(AlignX::Center)
             .gap(px(TOOLTIP_OFFSET_BELOW)))
+            .passive()
             .child(tooltip_pill_with_icon(lead_icon, text, id)),
     ).into_any_element()
 }
@@ -158,6 +159,7 @@ impl Render for PositionedTooltip {
         smart_anchored(PlacementSpec::above(target)
             .align_x(AlignX::Center)
             .gap(px(TOOLTIP_OFFSET_BELOW)))
+            .passive()
             .child(self.content.clone())
     }
 }
