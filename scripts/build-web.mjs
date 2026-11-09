@@ -26,8 +26,10 @@ const INDEX_HTML = `<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Block</title>
-  <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png?v=7" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=7" />
+  <link rel="modulepreload" href="./block_web.js?v=9" />
+  <link rel="preload" href="./block_web_bg.wasm?v=9" as="fetch" type="application/wasm" crossorigin />
   <style>
     @font-face {
       font-family: "IBM Plex Sans";
@@ -116,8 +118,8 @@ const INDEX_HTML = `<!doctype html>
     <div id="editor-loading">正在加载 Block 编辑器…</div>
   </div>
   <script type="module">
-    import init from "./block_web.js?v=4";
-    await init("./block_web_bg.wasm?v=4");
+    import init from "./block_web.js?v=9";
+    await init("./block_web_bg.wasm?v=9");
   </script>
 </body>
 </html>
