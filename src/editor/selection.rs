@@ -44,6 +44,7 @@ impl Editor {
         crate::editor::block_shortcuts::clear_first_line_delete();
         if let Some(block) = self.doc.get(at.block) { at.offset = boundary(&block.text, at.offset); }
         else { return; }
+        self.outline.clear_navigation();
         self.ensure_block_visible(at.block);
         if self.caret.head != at { crate::editor::code_escape::clear(); }
         self.caret.head = at;

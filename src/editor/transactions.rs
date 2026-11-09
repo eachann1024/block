@@ -67,6 +67,7 @@ impl Editor {
         self.apply_changes(&[self.selection_change(before)], true);
     }
     pub(in crate::editor) fn changed(&mut self, cx: &mut Context<Self>) {
+        self.outline.clear_navigation();
         self.reveal_caret = true;
         self.touch(cx);
     }
