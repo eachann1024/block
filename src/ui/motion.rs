@@ -200,6 +200,32 @@ pub fn bar_enter<E: IntoElement + Styled + AnimationExt + 'static>(
     )
 }
 
+pub fn bar_enter_delayed<E: IntoElement + Styled + AnimationExt + 'static>(
+    el: E,
+    id: impl Into<ElementId>,
+) -> impl IntoElement {
+    let (delay_ms, enter_ms) = if crate::ui::smoke_overlay::is_smoke_active() {
+        (0_u64, 180_u64)
+    } else {
+        (200_u64, 260_u64)
+    };
+    let total_ms = delay_ms + enter_ms;
+    let delay_ratio = delay_ms as f32 / total_ms as f32;
+    let ease = ease_out_quart();
+    el.with_animation(
+        id,
+        Animation::new(Duration::from_millis(total_ms)),
+        move |el, delta| {
+            let t = if delta <= delay_ratio {
+                0.0
+            } else {
+                ease(((delta - delay_ratio) / (1.0 - delay_ratio)).clamp(0.0, 1.0))
+            };
+            el.opacity(t).relative().top(px(6.0 * (1.0 - t)))
+        },
+    )
+}
+
 pub fn reveal_fade<E: IntoElement + Styled + AnimationExt + 'static>(
     el: E,
     id: impl Into<ElementId>,

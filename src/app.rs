@@ -256,13 +256,13 @@ impl Workspace {
         cx.notify();
     }
 
-    fn new_note(&mut self, cx: &mut Context<Self>) {
+    fn new_note(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.busy() { return; }
         let Some(folder) = self.folder.clone() else { return };
         self.creating = true;
         self.notice = tr("正在新建笔记…", "Creating note…").into();
         self.refresh(cx);
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let mut result = Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, tr("无法分配唯一笔记名称，请重试", "Could not allocate a unique note name, please retry")));
             for path in note_candidates(&folder) {
                 // A deleted disk file can still own a row and an open draft.
@@ -279,21 +279,17 @@ impl Workspace {
                     Err(error) => { result = Err(error); break; }
                 }
             }
-            let _ = this.update(cx, |this, cx| {
+            let _ = this.update_in(cx, |this, window, cx| {
                 this.creating = false;
                 match result {
                     Ok(path) => {
-                        this.tree.update(cx, |tree, cx| tree.insert_note(path.clone(), cx));
-                        let created_msg = tr("笔记已创建", "Note created");
-                        this.notice = created_msg.into();
-                        this.open_file_in_new_tab(path, cx);
-                        // Success is transient; errors and folder warnings stay until replaced.
-                        cx.spawn(async move |this, cx| {
-                            cx.background_executor().timer(std::time::Duration::from_secs(3)).await;
-                            let _ = this.update(cx, |this, cx| {
-                                if this.notice == created_msg { this.notice.clear(); this.refresh(cx); }
-                            });
-                        }).detach();
+                        this.notice.clear();
+                        this.tree.update(cx, |tree, cx| {
+                            tree.insert_note(path.clone(), cx);
+                            tree.scroll_to(&path);
+                        });
+                        this.open_file_in_new_tab(path.clone(), cx);
+                        this.start_blank_rename(path, window, cx);
                     }
                     Err(error) => this.notice = format!("{}: {error}", tr("新建失败", "Failed to create")),
                 }
