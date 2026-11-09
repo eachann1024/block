@@ -40,8 +40,6 @@ const plistKeys = [
   ["CFBundleShortVersionString", "1.0.0"],
   ["LSMinimumSystemVersion", "12.0"],
   ["NSHighResolutionCapable", true],
-  ["NSMicrophoneUsageDescription", "Block 使用麦克风将您的语音转换为输入的文字。"],
-  ["NSSpeechRecognitionUsageDescription", "Block 使用语音识别将您的语音转换为输入的文字。"],
   [
     "CFBundleDocumentTypes",
     [
