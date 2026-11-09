@@ -1,6 +1,6 @@
 //! Editing an existing image block: alignment, width, alt text, crop, copy, delete and reveal.
 use std::{process::Command, time::{SystemTime, UNIX_EPOCH}};
-use gpui::{ClipboardItem, Context, Entity, Window, prelude::*};
+use gpui::{Context, Entity, Window, prelude::*};
 use gpui_component::input::{InputEvent, InputState};
 use crate::theme::tr;
 use super::{image_source::{self, ImageSpec}, input::transactions::ListChange,
@@ -123,22 +123,60 @@ impl Editor {
     fn image_file(&self, id: u64) -> Option<std::path::PathBuf> {
         image_source::image_path(self.doc.get(id)?, self.path.as_deref())
     }
-    pub(super) fn copy_image(&mut self, id: u64, cx: &mut Context<Self>) {
-        let Some(path) = self.image_file(id) else { return };
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
-        let format = match ext.as_str() {
-            "png" => gpui::ImageFormat::Png, "jpg" | "jpeg" => gpui::ImageFormat::Jpeg, "gif" => gpui::ImageFormat::Gif,
-            "webp" => gpui::ImageFormat::Webp, "bmp" => gpui::ImageFormat::Bmp, "svg" => gpui::ImageFormat::Svg,
-            _ => { self.status = tr("不支持复制这种图片格式", "Unsupported image format for copy").into(); cx.notify(); return; }
-        };
-        match std::fs::read(&path) {
-            Ok(bytes) => {
-                cx.write_to_clipboard(ClipboardItem::new_image(&gpui::Image::from_bytes(format, bytes)));
-                self.status = tr("已复制图片", "Image copied").into();
-            }
-            Err(error) => self.status = format!("{}{error}", tr("无法读取图片：", "Failed to read image: ")),
+    pub(super) fn copy_image(&mut self, id: u64, cx: &mut Context<Self>) -> bool {
+        let Some(block) = self.doc.get(id).cloned() else { return false };
+        self.copy_image_blocks(&[block], cx)
+    }
+    pub(super) fn copy_image_blocks(&mut self, blocks: &[Block], cx: &mut Context<Self>) -> bool {
+        if blocks.is_empty() || !blocks.iter().all(|b| image_source::spec_of(b).is_some()) {
+            return false;
+        }
+        let note = self.path.as_deref();
+        let paths: Vec<std::path::PathBuf> = blocks.iter()
+            .filter_map(|b| image_source::image_path(b, note))
+            .filter(|p| p.exists())
+            .collect();
+        if paths.is_empty() {
+            self.status = tr("找不到图片文件", "Image file not found").into();
+            cx.notify();
+            return true;
+        }
+        if super::clipboard_files::copy_files(&paths, cx) {
+            self.status = tr("已复制图片", "Image copied").into();
+        } else {
+            self.status = tr("无法复制图片文件", "Failed to copy image file").into();
         }
         cx.notify();
+        true
+    }
+    pub(super) fn copy_selected_images(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.caret.is_empty() { return false; }
+        let (_, b, first, last) = self.ordered();
+        let mut images = Vec::new();
+        for i in first..=last {
+            let block = &self.doc.blocks[i];
+            if image_source::spec_of(block).is_some() {
+                if !(i == last && first < last && b.offset == 0 && !images.is_empty()) {
+                    images.push(block.clone());
+                }
+            } else if !self.selected_range(block.id).unwrap_or(0..0).is_empty()
+                || block.meta.table.is_some()
+                || super::block_menu::is_divider(block)
+            {
+                return false;
+            }
+        }
+        self.copy_image_blocks(&images, cx)
+    }
+    pub(super) fn copy_current_file(&mut self, path: &std::path::Path, cx: &mut Context<Self>) {
+        if super::clipboard_files::copy_files(&[path.to_path_buf()], cx) {
+            self.status = if super::clipboard_files::is_image(path) {
+                tr("已复制图片", "Image copied").into()
+            } else {
+                tr("已复制文件", "File copied").into()
+            };
+            cx.notify();
+        }
     }
     #[allow(dead_code)]
     pub(super) fn reveal_image(&mut self, id: u64, cx: &mut Context<Self>) {
