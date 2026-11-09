@@ -4,8 +4,12 @@ mod decor_blocks;
 mod decor_marks;
 mod decor_paper;
 mod decor_shapes;
+mod document;
 mod destination;
 mod export_docx;
+mod export_docx_assets;
+mod export_docx_chrome;
+mod export_docx_table;
 mod export_docx_xml;
 mod export_html;
 mod export_html_blocks;
@@ -90,6 +94,13 @@ fn new_font_system() -> FontSystem {
     }
     for data in crate::fonts::load_custom_fonts_data() {
         fs.db_mut().load_font_data(data);
+    }
+    // A single concrete monospace face for raster, HTML and editable Word runs.
+    for name in ["JetBrains Mono", "Menlo", "Consolas", "DejaVu Sans Mono", "Courier New"] {
+        if fs.db().faces().any(|face| face.families.iter().any(|(family, _)| family == name)) {
+            fs.db_mut().set_monospace_family(name);
+            break;
+        }
     }
     fs
 }

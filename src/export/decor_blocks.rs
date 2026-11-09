@@ -10,7 +10,7 @@ use super::{Cancellation, ExportError};
 use crate::editor::model::Kind;
 
 /// Corner radius for code panels and quote boxes: soft on card styles, crisp on print styles.
-fn radius(theme: ExportTheme) -> f32 {
+pub(super) fn radius(theme: ExportTheme) -> f32 {
     match theme {
         ExportTheme::Journal | ExportTheme::Kraft | ExportTheme::Mist | ExportTheme::Night => 10.0,
         ExportTheme::Press | ExportTheme::Riso | ExportTheme::Terminal => 2.0,
