@@ -3,7 +3,7 @@ use gpui::{Context, Point, Pixels, Window, point, px};
 use super::{Editor, selection::Position};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::editor) struct DropTarget { pub index: usize, pub after: bool, pub indent: usize, pub slot: usize }
+pub(in crate::editor) struct DropTarget { pub index: usize, pub after: bool, pub indent: usize, pub slot: usize, pub nested: bool }
 
 impl Editor {
     pub(in crate::editor) fn track_pointer_lifecycle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -153,20 +153,34 @@ impl Editor {
     }
     pub(in crate::editor) fn block_drop_target(&self, position: Point<Pixels>) -> Option<DropTarget> {
         let start = self.list.logical_scroll_top().item_ix;
-        let row = (start..self.doc.blocks.len()).filter(|&i| self.minimal || !self.is_index_hidden(i))
-            .filter_map(|i| self.list.bounds_for_item(i).map(|bounds| (self.doc.blocks[i].id, bounds)))
-            .find(|(_, bounds)| position.y >= bounds.top() && position.y < bounds.bottom());
+        let mut row = None;
+        let mut nearest = f32::INFINITY;
+        // Stop at the pointer/visible boundary instead of walking the entire note
+        // when dragging in the gutter or below the last rendered row.
+        let viewport = self.list.viewport_bounds();
+        for i in start..self.doc.blocks.len() {
+            if !self.minimal && self.is_index_hidden(i) { continue; }
+            let Some(bounds) = self.list.bounds_for_item(i) else { break };
+            let distance = f32::from((bounds.top() - position.y).max(position.y - bounds.bottom()).max(px(0.)));
+            if distance < nearest { nearest = distance; row = Some((self.doc.blocks[i].id, bounds)); }
+            if bounds.bottom() >= position.y || bounds.top() > viewport.bottom() { break; }
+        }
         let (id, bounds) = row.or_else(|| {
             let at = self.hit(position)?;
             Some((at.block, self.layouts.get(&at.block)?.bounds))
         })?;
         let index = self.doc.index_of(id)?;
         let block = &self.doc.blocks[index];
-        let after = position.y >= bounds.top() + bounds.size.height / 2.;
         let zoom = crate::editor::zoom::zoom_factor(self.minimal);
-        let nested = after && matches!(block.kind, crate::editor::model::Kind::Bullet | crate::editor::model::Kind::Numbered | crate::editor::model::Kind::Todo)
-            && position.x >= bounds.left() + px((crate::editor::chrome::HANDLE_WIDTH + crate::editor::chrome::ROW_GAP
-                + (block.meta.indent.min(12) + 2) as f32 * crate::editor::chrome::INDENT_PER_CHAR * zoom));
+        let can_nest = matches!(block.kind, crate::editor::model::Kind::Bullet | crate::editor::model::Kind::Numbered | crate::editor::model::Kind::Todo);
+        // The middle of a list item is a generous child target; its edges retain
+        // before/after reordering. No horizontal precision or dwell is required.
+        let edge = (bounds.size.height * 0.22).min(px(12. * zoom));
+        let retained = self.drag_over.is_some_and(|target| target.index == index && target.nested);
+        let buffer = if retained { px(3. * zoom) } else { px(0.) };
+        let nested = can_nest && position.y >= bounds.top() + edge - buffer
+            && position.y <= bounds.bottom() - edge + buffer;
+        let after = nested || position.y >= bounds.top() + bounds.size.height / 2.;
         let indent = if nested {
             block.meta.indent + if block.kind == crate::editor::model::Kind::Numbered {
                 self.doc.list_number(id).unwrap_or(1).to_string().len() + 2
@@ -175,7 +189,7 @@ impl Editor {
         let slot = if after && !nested {
             self.drag_span(id).map_or(index + 1, |(from, count)| from + count)
         } else { index + usize::from(after) };
-        Some(DropTarget { index, after, indent, slot })
+        Some(DropTarget { index, after, indent, slot, nested })
     }
     pub(in crate::editor) fn pointer_move(&mut self, event: &gpui::MouseMoveEvent, cx: &mut Context<Self>) {
         if self.source_drag {

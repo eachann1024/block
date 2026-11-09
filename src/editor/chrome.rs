@@ -72,7 +72,7 @@ fn row_pads(this: &Editor, index: usize) -> (f32, f32) {
     (top, bottom)
 }
 
-pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<(bool, usize)>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, has_overlay: bool, delete_armed: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
+pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<(bool, usize, bool)>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, has_overlay: bool, delete_armed: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
     let zoom = super::zoom::zoom_factor(minimal);
     let handle_w = HANDLE_WIDTH;
@@ -103,6 +103,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
     let handle_top = if is_table { 4.9 * zoom } else if image.is_some() { 4. * zoom } else { ((first_line_h - 26. * zoom) / 2. + if callout.is_some() { 12. * zoom } else { 0. }).max(-pt) };
     let regular_handles = !minimal && !is_table && handles;
     div().id(("block", id as usize)).relative().w_full().min_w_0().pt(px(pt)).pb(px(pb))
+        .when(drop_edge.is_some_and(|(_, _, nested)| nested), |row| row.bg(theme.accent.opacity(0.10)).rounded(px(4. * zoom)))
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
             this.hover_block(id, *hovered, cx);
         }))
@@ -187,9 +188,9 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                 .when_some(callout.filter(|_| !minimal), |body, kind| {
                     body.child(crate::ui::callout_controls::controls(editor, id, kind, code_visible, zoom, cx))
                 })))
-        .when_some(drop_edge, |row, (after, indent)| row.child(div().absolute().left(px(handle_w + ROW_GAP + indent.min(12) as f32 * INDENT_PER_CHAR * zoom)).right(px(right_inset))
-            .h(px(2. * zoom)).bg(theme.accent)
-            .when(after, |line| line.bottom_0()).when(!after, |line| line.top_0())))
+        .when_some(drop_edge, |row, (after, indent, nested)| row.child(crate::ui::reveal::block_drop_marker(
+            px(handle_w + ROW_GAP + indent.min(12) as f32 * INDENT_PER_CHAR * zoom),
+            px(right_inset), after, nested, zoom)))
 }
 fn todo_box(checked: bool, top: f32, zoom: f32, toggle: impl Fn(&mut gpui::App) + 'static) -> impl IntoElement {
     let dark = is_dark();
@@ -242,7 +243,7 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     if let Some(row) = super::ai::plan_link::render_linked_row(this, index, cx) { return row; }
     let block = &this.doc.blocks[index];
     let number = (block.kind == Kind::Numbered).then(|| this.doc.list_number(block.id)).flatten();
-    let edge = this.drag_over.filter(|target| if target.after { target.slot.saturating_sub(1) == index } else { target.slot == index }).map(|target| (target.after, target.indent));
+    let edge = this.drag_over.filter(|target| if target.after { target.slot.saturating_sub(1) == index } else { target.slot == index }).map(|target| (target.after, target.indent, target.nested));
     let whole_table = block.meta.table.is_some() && this.table_sel == Some((block.id, super::table_actions::TableSel::Whole));
     let grip_active = this.dragging == Some(block.id) || whole_table;
     let handles = !this.minimal && (this.hover == Some(block.id) || this.caret.head.block == block.id || grip_active);
@@ -253,7 +254,8 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
         || this.annotate.active_annotation.is_some() || this.annotate.hovered_annotation.is_some()
         || this.annotate.composer.is_some() || this.annotate.reactions.is_some();
     let row = block_row(cx.entity(), block, row_pads(this, index), handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, this.is_first_line_delete_armed(block.id), cx);
-    div().when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
+    div().when(this.dragging == Some(block.id), |row| row.opacity(0.55))
+        .when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
         .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md()))
         .child(row).into_any_element()
 }
