@@ -1,7 +1,7 @@
 //! Inline code spacing, hover tracking and ⌘+Click copy (chip painting: `inline_code_chip`).
 use std::ops::Range;
 use std::cell::RefCell;
-use gpui::{ClipboardItem, Context, Hsla, Pixels, Point, SharedString, TextRun, px, rgb};
+use gpui::{Context, Hsla, Pixels, Point, SharedString, TextRun, px, rgb};
 use crate::theme::{Theme, is_dark, tr};
 use super::{model::{Block, MarkKind}, view::Editor};
 
@@ -163,7 +163,7 @@ impl Editor {
             return false;
         }
         let token = block.text[range.clone()].to_owned();
-        cx.write_to_clipboard(ClipboardItem::new_string(token.clone()));
+        cx.write_to_clipboard(super::paste_clipboard::inline_item(&Block::new(0, super::model::Kind::Paragraph, token.clone())));
         self.status = format!("{}: {}", tr("已复制代码", "Copied code"), token);
         let target: HoverTarget = (cx.entity_id(), block_id, range);
         HOVER.with(|h| *h.borrow_mut() = Some(target));
