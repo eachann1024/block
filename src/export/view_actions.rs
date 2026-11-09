@@ -21,6 +21,8 @@ impl ExportView {
             let watermark_changed = self.watermark
                 && format.supports_watermark() != self.format.supports_watermark();
             self.format = format;
+            self.save_preferences();
+            self.revision = self.revision.wrapping_add(1);
             self.copied = false;
             self.notice = None;
             self.saved_path = None;
@@ -106,16 +108,15 @@ impl ExportView {
         let png = self.png.clone();
         let Ok(blocks) = self.active_blocks() else { return };
         let options = self.render_options();
-        let directory = std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_default();
-        let ext = format.extension();
-        let name = format!("{}.{ext}", self.title.replace(['/', ':'], "-"));
-        let prompt = cx.prompt_for_new_path(&directory, Some(&name));
+        let name = super::destination::suggested_name(&self.title, format);
+        let revision = self.revision;
+        let prior_notice = self.notice.clone();
         self.saving = true;
         self.notice = Some(tr("请选择保存位置", "Choose save location").into());
         cx.notify();
         cx.spawn(async move |this, cx| {
+            let directory = cx.background_executor().spawn(async { super::destination::directory() }).await;
+            let Ok(prompt) = this.update(cx, |_, cx| cx.prompt_for_new_path(&directory, Some(&name))) else { return };
             let outcome = match prompt.await {
                 Ok(Ok(Some(path))) => {
                     let written = cx
@@ -144,29 +145,48 @@ impl ExportView {
                                     write_bytes(&path, html.as_bytes(), &cancel)?;
                                 }
                             }
-                            Ok::<PathBuf, ExportError>(path)
+                            let remembered = match super::destination::remember(&path) {
+                                Ok(()) => true,
+                                Err(error) => {
+                                    crate::log::warn(&format!("failed to remember export directory: {error}"));
+                                    false
+                                }
+                            };
+                            Ok::<(PathBuf, bool), ExportError>((path, remembered))
                         })
                         .await;
                     match written {
-                        Ok(path) => {
+                        Ok((path, remembered)) => {
                             let file = path
                                 .file_name()
                                 .and_then(|s| s.to_str())
                                 .unwrap_or("export");
-                            (format!("{} {file}", tr("已保存", "Saved")), Some(path))
+                            let mut notice = format!("{} {file}", tr("已保存", "Saved"));
+                            if !remembered {
+                                notice.push_str(tr("；未能记住保存位置", "; could not remember save location"));
+                            }
+                            Some((notice, Some(path)))
                         }
-                        Err(error) => (error.to_string(), None),
+                        Err(error) => Some((error.to_string(), None)),
                     }
                 }
-                Ok(Ok(None)) => (ExportError::Cancelled.to_string(), None),
-                Ok(Err(error)) => (ExportError::Dialog(error.to_string()).to_string(), None),
-                Err(error) => (ExportError::Dialog(error.to_string()).to_string(), None),
+                Ok(Ok(None)) => None,
+                Ok(Err(error)) => Some((ExportError::Dialog(error.to_string()).to_string(), None)),
+                Err(error) => Some((ExportError::Dialog(error.to_string()).to_string(), None)),
             };
             let _ = this.update(cx, |this, cx| {
-                this.saving = false;
-                this.notice = Some(outcome.0);
-                this.saved_path = outcome.1;
-                cx.notify();
+                if this.revision == revision {
+                    if let Some((notice, path)) = outcome {
+                        this.notice = Some(notice);
+                        this.saved_path = path;
+                    } else {
+                        this.notice = prior_notice;
+                    }
+                } else if let Some((notice, None)) = outcome {
+                    // A write failure must remain visible even if options changed.
+                    this.notice = Some(notice);
+                }
+                this.finish_save(cx);
             });
         })
         .detach();
