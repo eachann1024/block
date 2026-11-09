@@ -12,6 +12,7 @@ pub(in crate::editor) struct TabSession {
     pub redo: Vec<HistoryEntry>,
     pub nowrap: HashSet<u64>,
     pub folded: HashSet<u64>,
+    pub fold_tails: Vec<(u64, u64)>,
     pub preferred_x: Option<Pixels>,
     pub dirty: bool,
     pub status: String,
@@ -82,6 +83,7 @@ impl Editor {
         let redo = std::mem::take(&mut self.redo);
         let nowrap = std::mem::take(&mut self.nowrap);
         let folded = std::mem::take(&mut self.folded);
+        let fold_tails = std::mem::take(&mut self.fold_tails);
         let preferred_x = self.preferred_x.take();
         let dirty = std::mem::replace(&mut self.dirty, false);
         let status = std::mem::take(&mut self.status);
@@ -91,7 +93,7 @@ impl Editor {
         self.source_layouts.clear();
         self.source_drag = false;
         self.sessions.insert(path.clone(), TabSession {
-            doc, caret, list, history, redo, nowrap, folded, preferred_x, dirty, status, revision, base, surface,
+            doc, caret, list, history, redo, nowrap, folded, fold_tails, preferred_x, dirty, status, revision, base, surface,
         });
         if dirty {
             self.spawn_save(path.clone(), cx);
@@ -108,6 +110,7 @@ impl Editor {
         self.redo = session.redo;
         self.nowrap = session.nowrap;
         self.folded = session.folded;
+        self.fold_tails = session.fold_tails;
         self.preferred_x = session.preferred_x;
         self.dirty = session.dirty;
         self.status = session.status;
