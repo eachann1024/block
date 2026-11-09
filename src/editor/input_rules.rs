@@ -109,12 +109,17 @@ impl Editor {
             }
             return;
         }
-        if !plain(block) { return; }
+        let heading = matches!(block.kind, Kind::H1 | Kind::H2 | Kind::H3)
+            && block.meta.table.is_none() && block.meta.raw_source.is_none()
+            && block.meta.code_language.is_none() && block.meta.html_paragraph.is_none();
+        if !plain(block) && !heading { return; }
         let prefix = raw_prefix.to_owned();
-        if is_divider(&prefix) && *offset == block.text.len() {
+        if !heading && is_divider(&prefix) && *offset == block.text.len() {
             *id = self.insert_divider(*id); *offset = 0; return;
         }
         let Some(rule) = match_rule(&prefix) else { return };
+        // Existing headings accept level changes without enabling other paragraph shortcuts.
+        if heading && !matches!(rule, Rule::Heading(_)) { return; }
         self.doc.replace_range(*id, 0..*offset, ""); *offset = 0;
         match rule {
             Rule::Code(lang) => { self.doc.set_kind(*id, Kind::Paragraph); self.set_meta(*id, |b| b.meta.code_language = Some(lang)); }
