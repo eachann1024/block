@@ -49,6 +49,7 @@ mod image_import;
 mod image_edit;
 mod image_probe;
 mod image_view;
+mod image_resize;
 mod image_size;
 mod table_chrome;
 mod code_block;
