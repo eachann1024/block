@@ -135,7 +135,7 @@ impl Render for Editor {
         self.track_extend_pointer(window, cx); let theme = Theme::ocean(); self.reveal();
         let input_editor = cx.entity();
         let input = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
-            input_editor.update(cx, |this, _| { this.layouts.clear(); this.source_layouts.clear(); });
+            input_editor.update(cx, |this, cx| { this.track_block_drag(window, cx); this.layouts.clear(); this.source_layouts.clear(); });
             let editor = input_editor.read(cx);
             if editor.path.is_some() { window.handle_input(&editor.focus, gpui::ElementInputHandler::new(bounds, input_editor.clone()), cx); }
         }).absolute().size_full();
