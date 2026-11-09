@@ -80,18 +80,4 @@ pub fn render_markdown(blocks: &[Block], options: &RenderOptions) -> String {
     out
 }
 
-/// Heading level 1..=6; H4-H6 are H3 blocks carrying the exact level.
-pub(super) fn heading_level(block: &Block) -> Option<u8> {
-    match block.kind {
-        Kind::H1 => Some(1),
-        Kind::H2 => Some(2),
-        Kind::H3 => Some(block.meta.heading_level.filter(|l| (4..=6).contains(l)).unwrap_or(3)),
-        _ => None,
-    }
-}
-
-/// An unsupported-source block that is just a thematic break.
-pub(super) fn is_rule(block: &Block) -> bool {
-    let hit = |line: &str| matches!(line.trim(), "---" | "***" | "___");
-    block.meta.raw_source.as_deref().is_some_and(|raw| hit(raw) || hit(&block.text))
-}
+pub(super) use crate::editor::markdown::render::{heading_level, is_rule};

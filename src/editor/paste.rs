@@ -76,7 +76,7 @@ impl Editor {
         self.replace_selection(&text, false, cx);
     }
 
-    fn insert_paste_inline(&mut self, fragment: &Block, cx: &mut Context<Self>) {
+    pub(super) fn insert_paste_inline(&mut self, fragment: &Block, cx: &mut Context<Self>) {
         let (a, b, ai, bi) = self.ordered();
         let block = &self.doc.blocks[ai];
         let end = &self.doc.blocks[bi];
@@ -96,14 +96,7 @@ impl Editor {
         self.record_changes(before, vec![ListChange { start: ai, before: bi - ai + 1, after: 1 }], true, cx);
     }
 
-    pub(super) fn paste_blocks(&mut self, text: &str, cx: &mut Context<Self>) -> bool {
-        let Some((plain, markdown)) = self.block_clip.as_ref() else { return false };
-        if plain != text { return false; }
-        let blocks = super::markdown::parse(markdown).blocks.iter().cloned().collect();
-        self.insert_paste_blocks(blocks, cx)
-    }
-
-    fn insert_paste_blocks(&mut self, mut blocks: Vec<Block>, cx: &mut Context<Self>) -> bool {
+    pub(super) fn insert_paste_blocks(&mut self, mut blocks: Vec<Block>, cx: &mut Context<Self>) -> bool {
         if blocks.is_empty() { return false; }
         let (a, b, mut first, mut last) = self.ordered();
         let selected = self.block_sel;
