@@ -226,6 +226,7 @@ impl Editor {
         if self.caret.is_empty() { return false; }
         let (a, b, ai, bi) = self.ordered();
         if ai == bi || !self.can_replace_selection() { return false; }
+        if self.crosses_hidden_fold(ai, bi) && !self.selection_covers_doc(a, b, ai, bi) { return false; }
         let before = self.snapshot();
         let first = self.doc.blocks[ai].clone(); let last = self.doc.blocks[bi].clone();
         // Source-backed blocks (images, dividers, HTML) are never cut in half.

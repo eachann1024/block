@@ -73,6 +73,7 @@ impl Editor {
             Enter if let Some(id) = self.focused_atomic() => self.add_below(id, window, cx),
             Backspace | Delete if let Some(id) = self.focused_image() =>
                 self.run_block_cmd(id, super::block_menu::Mode::Handle, super::block_menu::Cmd::Delete, window, cx),
+            Enter if self.enter_on_folded_heading(cx) => {}
             Enter if self.divider_on_enter(cx) => {}
             Enter if self.table_enter(cx) => {}
             Enter if self.enter_rules(cx) => {}
@@ -87,6 +88,7 @@ impl Editor {
             Backspace | Delete if let Some((id, super::table_actions::TableSel::Whole)) = self.table_sel => {
                 self.table_command(id, super::table_actions::TableSel::Whole, super::table_actions::TableCmd::DeleteTable, cx);
             }
+            Backspace | Delete if self.fold_gap_edit(matches!(action, Delete), cx) => {}
             Backspace | Delete if self.boundary_rules(matches!(action, Delete), cx) => {}
             Backspace | Delete if self.delete_across(cx) => {}
             Backspace | Delete => {

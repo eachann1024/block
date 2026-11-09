@@ -50,6 +50,9 @@ pub struct Editor {
     pub(super) nowrap: std::collections::HashSet<u64>,
     /// Folded heading block IDs for the active note (view/session state, never serialized to Markdown).
     pub(super) folded: std::collections::HashSet<u64>,
+    /// Per folded heading, the first block kept on screen through that section's end.
+    /// `(heading id, first visible block id)`. Cleared when that heading is expanded or folded again.
+    pub(super) fold_tails: Vec<(u64, u64)>,
     pub(super) table_sel: Option<(u64, super::table_actions::TableSel)>,
     pub(super) table_menu: Option<super::table_actions::TableMenu>,
     pub(super) table_drag: Option<super::table_actions::TableDrag>,
@@ -94,7 +97,7 @@ impl Editor {
         cx.on_app_quit(|editor, _| { editor.prepare_to_quit(); async {} }).detach();
         let doc = Doc::empty(); let caret = Caret::new(doc.blocks[0].id);
         Self { doc, caret, focus: cx.focus_handle(), preview_focus: cx.focus_handle(), preview_was_open: false, hover: None, hover_gen: 0, dragging: None,
-            drag_over: None, selecting: false, block_menu: None, block_menu_scroll: Default::default(), nowrap: Default::default(), folded: Default::default(), table_sel: None, table_menu: None, table_drag: None, table_extend: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, image_menu: None, link_ui: Default::default(), layouts: HashMap::new(),
+            drag_over: None, selecting: false, block_menu: None, block_menu_scroll: Default::default(), nowrap: Default::default(), folded: Default::default(), fold_tails: Vec::new(), table_sel: None, table_menu: None, table_drag: None, table_extend: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, image_menu: None, link_ui: Default::default(), layouts: HashMap::new(),
             list: ListState::new(1, ListAlignment::Top, px(120.)), scroll_top: (0, px(0.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
