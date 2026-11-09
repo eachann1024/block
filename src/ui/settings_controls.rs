@@ -35,6 +35,17 @@ pub fn settings_card(gap_px: f32) -> gpui::Div {
         .py(px(18.)).px(px(20.)).flex().flex_col().gap(px(gap_px))
 }
 
+/// Split settings surface. GPUI clips overflow to rectangles, so flush children
+/// must draw their own concentric corners rather than relying on the parent.
+pub fn settings_split_card(rail: gpui::Div, detail: gpui::Div) -> gpui::Div {
+    let theme = Theme::ocean();
+    div().w_full().min_w_0().min_h(px(320.)).overflow_hidden()
+        .bg(card_bg()).border_1().border_color(theme.hairline).rounded(crate::ui::radius::SURFACE)
+        .flex().items_stretch()
+        .child(rail.rounded_l(crate::ui::radius::SURFACE_INNER))
+        .child(detail.rounded_r(crate::ui::radius::SURFACE_INNER))
+}
+
 pub fn card_title(title: &'static str) -> gpui::Div {
     let theme = Theme::ocean();
     div().text_size(px(15.)).line_height(px(22.)).font_weight(FontWeight(560.)).text_color(theme.text).child(title)
