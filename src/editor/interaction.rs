@@ -3,7 +3,7 @@ use gpui::{Context, Point, Pixels, Window, point, px};
 use super::{Editor, selection::Position};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::editor) struct DropTarget { pub index: usize, pub after: bool }
+pub(in crate::editor) struct DropTarget { pub index: usize, pub after: bool, pub indent: usize }
 
 impl Editor {
     pub(in crate::editor) fn track_pointer_lifecycle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -116,29 +116,44 @@ impl Editor {
     }
     fn drag_span(&self, id: u64) -> Option<(usize, usize)> {
         let from = self.doc.index_of(id)?;
-        let list = |b: &crate::editor::model::Block| matches!(b.kind, crate::editor::model::Kind::Bullet | crate::editor::model::Kind::Numbered | crate::editor::model::Kind::Todo);
         let head = &self.doc.blocks[from];
-        let n = if list(head) {
-            1 + (from + 1..self.doc.blocks.len()).take_while(|&i| {
-                let b = &self.doc.blocks[i];
-                list(b) && b.meta.indent > head.meta.indent
-            }).count()
-        } else { 1 };
+        let n = 1 + (from + 1..self.doc.blocks.len()).take_while(|&i| {
+            let b = &self.doc.blocks[i];
+            b.meta.indent > head.meta.indent || b.meta.list_code.as_ref()
+                .is_some_and(|code| code.parent_indent >= head.meta.indent)
+        }).count();
         Some((from, n))
     }
     fn update_drop(&mut self, position: Point<Pixels>) {
-        self.drag_over = self.hit(position).and_then(|at| {
-            let layout = self.layouts.get(&at.block)?;
-            let index = self.doc.index_of(at.block)?;
-            let after = position.y >= layout.bounds.top() + layout.bounds.size.height / 2.;
-            if let Some(id) = self.dragging {
-                if let Some((from, n)) = self.drag_span(id) {
-                    let slot = index + usize::from(after);
-                    if slot >= from && slot <= from + n { return None; }
-                }
-            }
-            Some(DropTarget { index, after })
+        self.drag_over = self.block_drop_target(position).filter(|target| {
+            let Some((from, n)) = self.dragging.and_then(|id| self.drag_span(id)) else { return true };
+            let slot = target.index + usize::from(target.after);
+            !(slot > from && slot < from + n)
+                && !(target.index >= from && target.index < from + n)
+                && (slot != from && slot != from + n || target.indent != self.doc.blocks[from].meta.indent)
         });
+    }
+    pub(in crate::editor) fn block_drop_target(&self, position: Point<Pixels>) -> Option<DropTarget> {
+        let (id, bounds) = self.block_at(position).or_else(|| {
+            let at = self.hit(position)?;
+            Some((at.block, self.layouts.get(&at.block)?.bounds))
+        })?;
+        let index = self.doc.index_of(id)?;
+        let block = &self.doc.blocks[index];
+        let after = position.y >= bounds.top() + bounds.size.height / 2.;
+        let zoom = crate::editor::zoom::zoom_factor(self.minimal);
+        let nested = after && matches!(block.kind, crate::editor::model::Kind::Bullet | crate::editor::model::Kind::Numbered | crate::editor::model::Kind::Todo)
+            && position.x >= bounds.left() + px((crate::editor::chrome::HANDLE_WIDTH + crate::editor::chrome::ROW_GAP
+                + (block.meta.indent.min(12) + 2) as f32 * crate::editor::chrome::INDENT_PER_CHAR) * zoom);
+        let indent = if nested {
+            block.meta.indent + if block.kind == crate::editor::model::Kind::Numbered {
+                self.doc.list_number(id).unwrap_or(1).to_string().len() + 2
+            } else { 2 }
+        } else { block.meta.indent };
+        let index = if after && !nested {
+            self.drag_span(id).map_or(index, |(from, count)| from + count - 1)
+        } else { index };
+        Some(DropTarget { index, after, indent })
     }
     pub(in crate::editor) fn pointer_move(&mut self, event: &gpui::MouseMoveEvent, cx: &mut Context<Self>) {
         if self.source_drag {
@@ -241,7 +256,7 @@ impl Editor {
             cx.notify();
             return;
         }
-        if self.dragging.is_some() && self.drag_over.is_some() { self.update_drop(position); }
+        if self.dragging.is_some() { self.update_drop(position); }
         let dragging = self.dragging; let target = self.drag_over;
         self.clear_pointer();
         if let (Some(id), Some(target)) = (dragging, target) {
@@ -249,11 +264,20 @@ impl Editor {
                 if let Some((from, n)) = self.drag_span(id) {
                     let slot = target.index + usize::from(target.after);
                     let to = if slot > from { slot.saturating_sub(n) } else { slot }.min(self.doc.blocks.len() - n);
-                    if from != to && !(slot > from && slot < from + n) {
+                    if (from != to || target.indent != self.doc.blocks[from].meta.indent) && !(slot > from && slot < from + n) {
                         let keep_table_sel = self.table_sel == Some((id, crate::editor::table_actions::TableSel::Whole));
                         self.commit_composition(cx);
                         let before = self.snapshot();
-                        let moved: Vec<_> = (from..from + n).map(|i| self.doc.blocks[i].clone()).collect();
+                        let old_indent = self.doc.blocks[from].meta.indent;
+                        let moved: Vec<_> = (from..from + n).map(|i| {
+                            let mut block = self.doc.blocks[i].clone();
+                            block.meta.indent = target.indent + block.meta.indent.saturating_sub(old_indent);
+                            if let Some(code) = &mut block.meta.list_code {
+                                if i == from { block.meta.list_code = None; }
+                                else { code.parent_indent = target.indent + code.parent_indent.saturating_sub(old_indent); }
+                            }
+                            block
+                        }).collect();
                         self.doc.splice_blocks(from..from + n, Vec::new());
                         self.doc.splice_blocks(to..to, moved);
                         self.record(before, cx);
