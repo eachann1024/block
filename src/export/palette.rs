@@ -18,6 +18,13 @@ pub enum ExportTheme {
     Terminal,
 }
 
+/// Note-relative resources and the logical width of the source editor, independent of export paper.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SourceContext {
+    pub note: Option<std::path::PathBuf>,
+    pub width: Option<u32>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RenderOptions {
     pub theme: ExportTheme,
@@ -25,6 +32,7 @@ pub struct RenderOptions {
     pub show_title: bool,
     pub footer: bool,
     pub title: String,
+    pub source: SourceContext,
 }
 
 impl Default for RenderOptions {
@@ -35,6 +43,7 @@ impl Default for RenderOptions {
             show_title: true,
             footer: true,
             title: String::new(),
+            source: SourceContext::default(),
         }
     }
 }

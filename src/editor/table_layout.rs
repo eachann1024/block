@@ -32,14 +32,15 @@ struct Pending {
     code_spans: Vec<Range<usize>>,
 }
 
-pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &mut Window, zoom: f32) -> TextLayout {
+/// Resolve the same logical column widths for visible and offscreen export tables.
+pub(super) fn export_column_widths(table: &Table, width: Pixels, session: &Widths, window: &mut Window, zoom: f32) -> Vec<f32> {
+    let pending = shape_cells(table, window, zoom);
+    column_widths(table, width, session, &pending, zoom).into_iter().map(|w| w / zoom).collect()
+}
+
+fn shape_cells(table: &Table, window: &mut Window, zoom: f32) -> Vec<Pending> {
     let theme = Theme::ocean();
     let font_size = px(FONT_SIZE * zoom);
-    let line_height = px(LINE_HEIGHT * zoom);
-    let (pad_x, pad_y) = (PAD_X * zoom, PAD_Y * zoom);
-    let (min_col, max_col, min_row) = (MIN_COL * zoom, MAX_COL * zoom, px(MIN_ROW * zoom));
-    let width = (width - px(EXTEND_ROOM * zoom)).max(px(1.));
-    let count = table.columns.max(1);
     let mut pending = Vec::new();
     for (row, index, range) in table.cell_ranges() {
         let cell = &table.rows[row].cells[index];
@@ -61,6 +62,13 @@ pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &m
         let natural = lines.iter().map(|line| line.width()).fold(px(0.), |a, b| a.max(b));
         pending.push(Pending { row, index, range, text, runs, lines, natural, code_spans });
     }
+    pending
+}
+
+fn column_widths(table: &Table, width: Pixels, session: &Widths, pending: &[Pending], zoom: f32) -> Vec<f32> {
+    let count = table.columns.max(1);
+    let (min_col, max_col, pad_x) = (MIN_COL * zoom, MAX_COL * zoom, PAD_X * zoom);
+    let width = (width - px(EXTEND_ROOM * zoom)).max(px(1.));
     // Columns are as wide as their content (like `table-layout: auto`), never stretched to the page,
     // unless the session fits them to the page; a width dragged by the user beats the document's own.
     let explicit: Vec<Option<f32>> = (0..count).map(|index| session.manual_at(index, count).map(|w| w * zoom).or_else(|| table.column_widths.get(index)
@@ -85,6 +93,18 @@ pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &m
         let fixed: Vec<bool> = explicit.iter().map(Option::is_some).collect();
         widths = width::fit(&widths, &fixed, f32::from(width), min_col);
     }
+    widths
+}
+
+pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &mut Window, zoom: f32) -> TextLayout {
+    let font_size = px(FONT_SIZE * zoom);
+    let line_height = px(LINE_HEIGHT * zoom);
+    let (pad_x, pad_y) = (PAD_X * zoom, PAD_Y * zoom);
+    let min_row = px(MIN_ROW * zoom);
+    let count = table.columns.max(1);
+    let pending = shape_cells(table, window, zoom);
+    let widths = column_widths(table, width, session, &pending, zoom);
+    let width = (width - px(EXTEND_ROOM * zoom)).max(px(1.));
     let col_spans: Vec<(Pixels, Pixels)> = {
         let mut xs = vec![px(0.)];
         for value in widths { xs.push(*xs.last().unwrap() + px(value)); }

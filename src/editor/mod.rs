@@ -43,8 +43,8 @@ mod annotate_ui;
 #[path = "../ai/mod.rs"]
 pub(crate) mod ai;
 mod clipboard_files;
-mod image_source;
-mod image_remote;
+pub(crate) mod image_source;
+pub(crate) mod image_remote;
 mod image_import;
 mod image_edit;
 mod image_probe;

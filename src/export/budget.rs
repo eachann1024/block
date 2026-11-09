@@ -13,6 +13,7 @@ pub enum ExportError {
     UnsupportedTable(&'static str),
     Rendering(&'static str),
     Encoding(String),
+    Media(String),
     Write(std::io::Error),
 }
 
@@ -37,6 +38,7 @@ impl fmt::Display for ExportError {
             ),
             Self::Rendering(reason) => write!(f, "{}: {reason}", tr("图片渲染失败", "Image rendering failed")),
             Self::Encoding(error) => write!(f, "{}: {error}", tr("PNG 编码失败", "PNG encoding failed")),
+            Self::Media(error) => write!(f, "{}: {error}", tr("图片加载失败", "Image could not be loaded")),
             Self::Write(error) => write!(f, "{}: {error}", tr("无法保存图片", "Failed to save image")),
         }
     }

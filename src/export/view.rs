@@ -29,6 +29,7 @@ pub fn close_active(window: &mut Window, cx: &mut App) -> bool {
 
 pub struct ExportView {
     pub(super) title: String,
+    pub(super) source: super::SourceContext,
     pub(super) whole: Snapshot,
     pub(super) selection: Option<Snapshot>,
     pub(super) use_selection: bool,
@@ -57,6 +58,7 @@ pub struct ExportView {
 impl ExportView {
     pub fn new(
         title: String,
+        source: super::SourceContext,
         whole: Snapshot,
         selection: Option<Snapshot>,
         use_selection: bool,
@@ -65,6 +67,7 @@ impl ExportView {
     ) -> Self {
         Self {
             title,
+            source,
             whole,
             use_selection: use_selection && selection.is_some(),
             selection,
