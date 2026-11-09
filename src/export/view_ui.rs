@@ -177,13 +177,16 @@ impl ExportView {
                 self.show_title,
                 Rc::new(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_title(cx))),
             ))
-            .child(div().h(px(1.)).w_full().bg(theme.hairline))
-            .child(switch_row(
-                "export-watermark",
-                tr("底部水印", "Watermark"),
-                self.watermark,
-                Rc::new(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_watermark(cx))),
-            ));
+            .when(self.format.supports_watermark(), |section| {
+                section
+                    .child(div().h(px(1.)).w_full().bg(theme.hairline))
+                    .child(switch_row(
+                        "export-watermark",
+                        tr("底部水印", "Watermark"),
+                        self.watermark,
+                        Rc::new(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_watermark(cx))),
+                    ))
+            });
         let ready = self.ready();
         let has_saved = self.saved_path.is_some();
         let scroll_body = div()

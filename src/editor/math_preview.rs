@@ -54,6 +54,11 @@ fn dim_f32(d: &Dim) -> f32 {
 }
 
 pub(crate) fn render_math_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32, f32), String> {
+    let color = if dark { Color::rgb(0xe6, 0xe9, 0xef) } else { Color::rgb(0x20, 0x24, 0x2c) };
+    render_math_svg_with_color(source, color)
+}
+
+pub(crate) fn render_math_svg_with_color(source: &str, color: Color) -> Result<(Vec<u8>, f32, f32), String> {
     let font = crate::fonts::math_font()
         .ok_or_else(|| String::from(tr("数学字体加载失败", "Math font unavailable")))?;
     let ast = parse_math(source)?;
@@ -62,7 +67,6 @@ pub(crate) fn render_math_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32,
         .map_err(|e| concise_error(&e.to_string()))?;
     let w_pt = dim_f32(&(tree.width.clone() * em.clone())).max(8.0);
     let h_pt = dim_f32(&((tree.height.clone() + tree.depth.clone()) * em.clone())).max(12.0);
-    let color = if dark { Color::rgb(0xe6, 0xe9, 0xef) } else { Color::rgb(0x20, 0x24, 0x2c) };
     let opts = SvgOptions { font_size_pt: em, color, display: true };
     let raw_svg = render_svg(&tree, font, &opts).map_err(|e| concise_error(&e.to_string()))?;
 

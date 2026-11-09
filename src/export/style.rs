@@ -4,7 +4,20 @@ use std::collections::BTreeMap;
 use cosmic_text::Color;
 
 use super::palette::{ExportTheme, Palette};
-use crate::editor::model::{Block, Kind};
+use crate::editor::model::{Block, Kind, Table, TableCell};
+
+pub(super) fn cell_background(cell: &TableCell, table: &Table, pal: &Palette) -> Option<Color> {
+    attribute_color(&cell.attrs, true)
+        .or_else(|| attribute_color(&table.attrs, true))
+        .map(|color| pal.bg(color))
+        .or_else(|| cell.header.then(|| pal.table_header_bg()))
+}
+
+pub(super) fn cell_foreground(cell: &TableCell, table: &Table, pal: &Palette) -> Option<Color> {
+    attribute_color(&cell.attrs, false)
+        .or_else(|| attribute_color(&table.attrs, false))
+        .or_else(|| cell.header.then_some(pal.title))
+}
 
 pub(super) fn row_text_color(kind: Kind, code: bool, pal: &Palette) -> Color {
     if code {

@@ -144,6 +144,7 @@ pub(super) fn append(
     fonts: &mut FontSystem,
     cancel: &Cancellation,
 ) -> Result<f32, ExportError> {
+    let pal = theme.palette();
     let xs = columns(table, content_width)?;
     let geometry = source.block(block_id).and_then(|block| block.table.as_ref());
     let natural = geometry.map(|g| g.columns.iter().sum::<f32>()).unwrap_or(*xs.last().unwrap_or(&content_width));
@@ -165,9 +166,7 @@ pub(super) fn append(
             if style::italic(&table.attrs) || style::italic(&cell.attrs) {
                 attrs = attrs.cache_key_flags(CacheKeyFlags::FAKE_ITALIC);
             }
-            if let Some(color) = style::attribute_color(&cell.attrs, false)
-                .or_else(|| style::attribute_color(&table.attrs, false))
-            {
+            if let Some(color) = style::cell_foreground(cell, table, &pal) {
                 attrs = attrs.color(color);
             }
             let align = alignment(&cell.attrs)
@@ -221,9 +220,7 @@ pub(super) fn append(
         let x = margin_left + xs[cell.column];
         let top = ys[r];
         let height = ys[r + cell.rowspan] - top;
-        let background = style::attribute_color(&cell.attrs, true)
-            .or_else(|| style::attribute_color(&table.attrs, true))
-            .or_else(|| cell.header.then_some(Color::rgb(242, 244, 247)));
+        let background = style::cell_background(cell, table, &pal);
         rows.push(Row {
             buffer: shaped.buffer,
             backgrounds: shaped.backgrounds,
