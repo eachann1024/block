@@ -1,10 +1,11 @@
 //! Remember paper choices independently of a note's content and export scope.
 use serde::{Deserialize, Serialize};
-use super::ExportTheme;
+use super::{ExportFormat, ExportTheme};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ExportPreferences {
+    pub format: ExportFormat,
     pub style: ExportTheme,
     pub light_style: ExportTheme,
     pub dark_style: ExportTheme,
@@ -15,6 +16,7 @@ pub struct ExportPreferences {
 impl Default for ExportPreferences {
     fn default() -> Self {
         Self {
+            format: ExportFormat::default(),
             style: ExportTheme::default(),
             light_style: ExportTheme::default_for(false),
             dark_style: ExportTheme::default_for(true),

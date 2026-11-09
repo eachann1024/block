@@ -50,6 +50,7 @@ pub struct ExportView {
     pub(super) saving: bool,
     pub(super) copied: bool,
     pub(super) dirty: bool,
+    pub(super) revision: u64,
     pub(super) cancel: Cancellation,
     pub(super) focus: FocusHandle,
     restore: FocusHandle,
@@ -72,7 +73,7 @@ impl ExportView {
             whole,
             use_selection: use_selection && selection.is_some(),
             selection,
-            format: ExportFormat::default(),
+            format: preferences.format,
             style: preferences.style,
             light_style: preferences.light_style,
             dark_style: preferences.dark_style,
@@ -89,6 +90,7 @@ impl ExportView {
             saving: false,
             copied: false,
             dirty: false,
+            revision: 0,
             cancel: Cancellation::default(),
             focus: cx.focus_handle(),
             restore,
@@ -142,8 +144,9 @@ impl ExportView {
         self.request(cx);
     }
 
-    fn save_preferences(&self) {
+    pub(super) fn save_preferences(&self) {
         let preferences = super::ExportPreferences {
+            format: self.format,
             style: self.style,
             light_style: self.light_style,
             dark_style: self.dark_style,
@@ -179,16 +182,29 @@ impl ExportView {
     }
 
     pub fn request(&mut self, cx: &mut Context<Self>) {
+        self.revision = self.revision.wrapping_add(1);
         self.copied = false;
         self.notice = None;
         self.saved_path = None;
         cx.notify();
+        // Saving owns its immutable options; defer a changed preview so it cannot
+        // contend with PDF generation for the shared font system.
+        if self.saving {
+            self.dirty = true;
+            return;
+        }
         if self.rendering {
             self.dirty = true;
             self.cancel.cancel();
         } else {
             self.start(cx);
         }
+    }
+
+    pub(super) fn finish_save(&mut self, cx: &mut Context<Self>) {
+        self.saving = false;
+        if self.dirty && !self.rendering { self.start(cx); }
+        cx.notify();
     }
 
     fn start(&mut self, cx: &mut Context<Self>) {
@@ -226,7 +242,7 @@ impl ExportView {
             let _ = this.update(cx, |this, cx| {
                 this.rendering = false;
                 if this.dirty {
-                    this.start(cx);
+                    if !this.saving { this.start(cx); }
                 } else {
                     match result {
                         Ok((bytes, tiles, _)) => {
