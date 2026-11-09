@@ -51,12 +51,11 @@ pub(super) fn paint_paper(
     }
 
     match theme {
-        ExportTheme::Journal | ExportTheme::Kraft => {
-            let dot = if theme == ExportTheme::Journal {
-                Color::rgba(180, 140, 70, 46)
-            } else {
-                Color::rgba(240, 228, 200, 22)
-            };
+        ExportTheme::Journal => {
+            paint_washi(image, w * 0.5, cy, 142.0, 34.0, -2.0, pal.accent2);
+        }
+        ExportTheme::Kraft => {
+            let dot = Color::rgba(240, 228, 200, 22);
             let gap = 22.0;
             let inner = card.radius;
             let mut y = cy + gap * 0.5;
