@@ -65,6 +65,7 @@ impl ExportView {
         restore: FocusHandle,
         cx: &mut Context<Self>,
     ) -> Self {
+        let preferences = super::ExportPreferences::load();
         Self {
             title,
             source,
@@ -72,12 +73,12 @@ impl ExportView {
             use_selection: use_selection && selection.is_some(),
             selection,
             format: ExportFormat::default(),
-            style: ExportTheme::default(),
-            light_style: ExportTheme::default_for(false),
-            dark_style: ExportTheme::default_for(true),
+            style: preferences.style,
+            light_style: preferences.light_style,
+            dark_style: preferences.dark_style,
             card: false,
-            show_title: true,
-            watermark: true,
+            show_title: preferences.show_title,
+            watermark: preferences.watermark,
             zoom: None,
             png: None,
             preview_tiles: Vec::new(),
@@ -111,6 +112,7 @@ impl ExportView {
     pub(super) fn set_dark(&mut self, dark: bool, cx: &mut Context<Self>) {
         if dark != self.style.is_dark() {
             self.style = if dark { self.dark_style } else { self.light_style };
+            self.save_preferences();
             self.request(cx);
         }
     }
@@ -123,18 +125,34 @@ impl ExportView {
             } else {
                 self.light_style = style;
             }
+            self.save_preferences();
             self.request(cx);
         }
     }
 
     pub(super) fn toggle_title(&mut self, cx: &mut Context<Self>) {
         self.show_title = !self.show_title;
+        self.save_preferences();
         self.request(cx);
     }
 
     pub(super) fn toggle_watermark(&mut self, cx: &mut Context<Self>) {
         self.watermark = !self.watermark;
+        self.save_preferences();
         self.request(cx);
+    }
+
+    fn save_preferences(&self) {
+        let preferences = super::ExportPreferences {
+            style: self.style,
+            light_style: self.light_style,
+            dark_style: self.dark_style,
+            show_title: self.show_title,
+            watermark: self.watermark,
+        };
+        if let Err(error) = preferences.save() {
+            crate::log::warn(&format!("failed to save export preferences: {error}"));
+        }
     }
 
     pub(super) fn zoom_in(&mut self, base: f32, cx: &mut Context<Self>) {

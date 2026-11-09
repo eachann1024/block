@@ -1,10 +1,9 @@
 //! Render options and the 12 paper styles (6 light, 6 dark) the exporter paints with.
 use cosmic_text::Color;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ExportTheme {
-    #[default]
-    Mono,
     Journal,
     Riso,
     Press,
@@ -16,6 +15,9 @@ pub enum ExportTheme {
     Film,
     Night,
     Terminal,
+    #[default]
+    #[serde(other)]
+    Mono,
 }
 
 pub use super::source::SourceContext;
