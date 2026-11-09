@@ -118,13 +118,13 @@ pub fn init(saved_bounds: Option<SavedWindowBounds>, cx: &mut App) {
     use crate::editor::view as ev;
     cx.set_global(QuickState { bounds: saved_bounds, ..Default::default() });
     for key in ["cmd-shift-k", "cmd-k", "cmd-p", "alt-cmd-k"] {
-        cx.bind_keys([
+        crate::ui::app_shortcuts::bind(cx, [
             KeyBinding::new(key, crate::app::OpenSearch, Some("QuickNote > Editor")),
             KeyBinding::new(key, crate::app::OpenSearch, Some("QuickNote")),
             KeyBinding::new(key, crate::app::OpenSearch, None),
         ]);
     }
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind(cx, [
         KeyBinding::new("escape", HideQuickNote, Some("QuickNote")),
         KeyBinding::new("cmd-w", HideQuickNote, Some("QuickNote")),
         KeyBinding::new("cmd-shift-s", SaveToNote, Some("QuickNote")),
@@ -133,7 +133,7 @@ pub fn init(saved_bounds: Option<SavedWindowBounds>, cx: &mut App) {
         KeyBinding::new("cmd-3", SlotThree, Some("QuickNote")),
     ]);
     #[cfg(not(target_os = "macos"))]
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind(cx, [
         KeyBinding::new("ctrl-shift-k", crate::app::OpenSearch, Some("QuickNote > Editor")),
         KeyBinding::new("ctrl-k", crate::app::OpenSearch, Some("QuickNote > Editor")),
         KeyBinding::new("ctrl-p", crate::app::OpenSearch, Some("QuickNote > Editor")),
@@ -184,17 +184,17 @@ pub fn rebind_hotkeys(cx: &mut App) {
     let search_spec = crate::theme::search_shortcut();
     if parse_hotkey(&quick_spec).is_some() {
         if let Ok(b) = KeyBinding::load(&quick_spec, Box::new(ToggleQuickNote), None, false, None, cx) {
-            cx.bind_keys([b]);
+            crate::ui::app_shortcuts::bind(cx, [b]);
         }
     }
     if parse_hotkey(&search_spec).is_some() {
         if let Ok(b) = KeyBinding::load(&search_spec, Box::new(crate::app::OpenSearch), None, false, None, cx) {
-            cx.bind_keys([b]);
+            crate::ui::app_shortcuts::bind(cx, [b]);
         }
         for ctx in ["QuickNote", "QuickNote > Editor"] {
             let pred = gpui::KeyBindingContextPredicate::parse(ctx).ok().map(std::rc::Rc::new);
             if let Ok(b) = KeyBinding::load(&search_spec, Box::new(crate::app::OpenSearch), pred, false, None, cx) {
-                cx.bind_keys([b]);
+                crate::ui::app_shortcuts::bind(cx, [b]);
             }
         }
     }
