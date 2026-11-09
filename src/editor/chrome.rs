@@ -12,7 +12,7 @@ pub(super) const HANDLE_WIDTH: f32 = 56.;
 /// ul/ol padding-left in the reference page; also one marker column.
 const MARKER_WIDTH: f32 = 29.68;
 /// Nesting is stored as marker characters; two of them make one list level.
-const INDENT_PER_CHAR: f32 = MARKER_WIDTH / 2.;
+pub(super) const INDENT_PER_CHAR: f32 = MARKER_WIDTH / 2.;
 pub(super) const ROW_GAP: f32 = 4.;
 /// Estimated floating toolbar size, used to keep it inside the editor.
 pub(super) const TOOLBAR_WIDTH: Pixels = px(460.);
@@ -72,7 +72,7 @@ fn row_pads(this: &Editor, index: usize) -> (f32, f32) {
     (top, bottom)
 }
 
-pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<bool>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, has_overlay: bool, delete_armed: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
+pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<(bool, usize)>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, has_overlay: bool, delete_armed: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
     let zoom = super::zoom::zoom_factor(minimal);
     let handle_w = HANDLE_WIDTH;
@@ -186,7 +186,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                 .when_some(callout.filter(|_| !minimal), |body, kind| {
                     body.child(crate::ui::callout_controls::controls(editor, id, kind, code_visible, zoom, cx))
                 })))
-        .when_some(drop_edge, |row, after| row.child(div().absolute().left(px(handle_w + ROW_GAP)).right(px(right_inset))
+        .when_some(drop_edge, |row, (after, indent)| row.child(div().absolute().left(px(handle_w + ROW_GAP + indent.min(12) as f32 * INDENT_PER_CHAR * zoom)).right(px(right_inset))
             .h(px(2. * zoom)).bg(theme.accent)
             .when(after, |line| line.bottom_0()).when(!after, |line| line.top_0())))
 }
@@ -241,7 +241,7 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     if let Some(row) = super::ai::plan_link::render_linked_row(this, index, cx) { return row; }
     let block = &this.doc.blocks[index];
     let number = (block.kind == Kind::Numbered).then(|| this.doc.list_number(block.id)).flatten();
-    let edge = this.drag_over.filter(|target| target.index == index).map(|target| target.after);
+    let edge = this.drag_over.filter(|target| target.index == index).map(|target| (target.after, target.indent));
     let whole_table = block.meta.table.is_some() && this.table_sel == Some((block.id, super::table_actions::TableSel::Whole));
     let grip_active = this.dragging == Some(block.id) || whole_table;
     let handles = !this.minimal && (this.hover == Some(block.id) || this.caret.head.block == block.id || grip_active);

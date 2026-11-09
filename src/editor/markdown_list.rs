@@ -86,3 +86,42 @@ pub(super) fn parse(id: u64, lines: &[&str]) -> Option<(Vec<Block>, usize)> {
     block.kind = kind; block.checked = checked; block.meta.indent = indent; block.meta.list_start = start;
     Some((vec![block], count))
 }
+
+/// Parse indented child blocks independently so images/tables remain editable.
+pub(super) fn children(id: u64, lines: &[&str]) -> Option<(Vec<Block>, usize)> {
+    let line = lines.first()?.trim_end_matches(['\r', '\n']);
+    let (kind, body, checked, indent, start, opaque) = blocks::classify(line);
+    if opaque || !matches!(kind, Kind::Bullet | Kind::Numbered | Kind::Todo) || blocks::fence(body).is_some() { return None; }
+    let width = if kind == Kind::Numbered {
+        line.trim_start().bytes().take_while(u8::is_ascii_digit).count() + 2
+    } else { 2 };
+    let padding = indent + width;
+    let first = (1..lines.len()).find(|&i| !lines[i].trim().is_empty())?;
+    if lines[first].bytes().take_while(|b| *b == b' ').count() < padding { return None; }
+    let end = (first..lines.len()).find(|&i| !lines[i].trim().is_empty()
+        && lines[i].bytes().take_while(|b| *b == b' ').count() < padding).unwrap_or(lines.len());
+    // Lazy text continuations belong to the parent's paragraph, not a new child.
+    if first == 1 && !body.is_empty() {
+        let next = lines[first][padding..].trim_end();
+        let (child_kind, _, _, _, _, _) = blocks::classify(next);
+        if child_kind == Kind::Paragraph && blocks::fence(next).is_none()
+            && !next.starts_with(['!', '<', '|']) { return None; }
+    }
+    let (text, spans, annotations) = inline::parse(body)?;
+    let mut parent = Block::new(id, kind, text);
+    parent.checked = checked; parent.spans = spans; parent.meta.inline = annotations;
+    parent.meta.indent = indent; parent.meta.list_start = start;
+    let content_end = (first..end).rfind(|&i| !lines[i].trim().is_empty()).map_or(end, |i| i + 1);
+    let source: String = lines[first..content_end].iter().map(|line| {
+        if line.trim().is_empty() { "\n" } else { &line[padding..] }
+    }).collect();
+    let children = super::parse(&source);
+    let mut result = vec![parent];
+    for mut child in children.blocks.iter().cloned() {
+        child.id = id + result.len() as u64;
+        child.meta.indent += padding;
+        if let Some(code) = &mut child.meta.list_code { code.parent_indent += padding; }
+        result.push(child);
+    }
+    Some((result, end))
+}
