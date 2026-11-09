@@ -253,10 +253,15 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let has_overlay = this.block_menu.is_some() || this.table_menu.is_some() || this.format.is_some()
         || this.annotate.active_annotation.is_some() || this.annotate.hovered_annotation.is_some()
         || this.annotate.composer.is_some() || this.annotate.reactions.is_some();
+    let editor = cx.entity();
     let row = block_row(cx.entity(), block, row_pads(this, index), handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, this.is_first_line_delete_armed(block.id), cx);
-    div().when(this.dragging == Some(block.id), |row| row.opacity(0.55))
+    let id = block.id;
+    let bounds = gpui::canvas(|_, _, _| (), move |bounds, (), _, cx| {
+        editor.update(cx, |this, _| { this.painted_rows.insert(id, bounds); });
+    }).absolute().top_0().left_0().size_full();
+    div().relative().when(this.dragging == Some(block.id), |row| row.opacity(0.55))
         .when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
         .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md()))
-        .child(row).into_any_element()
+        .child(row).child(bounds).into_any_element()
 }
 pub(super) use super::toolbar::selection_toolbar;

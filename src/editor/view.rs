@@ -44,6 +44,7 @@ pub struct Editor {
     pub(super) hover_gen: u64,
     pub(super) dragging: Option<u64>,
     pub(super) drag_ranges: std::cell::RefCell<interaction::DragRanges>,
+    pub(super) painted_rows: HashMap<u64, gpui::Bounds<Pixels>>,
     pub(super) drag_over: Option<interaction::DropTarget>,
     pub(super) selecting: bool,
     pub(super) block_menu: Option<super::block_menu::BlockMenu>, pub(super) block_menu_scroll: gpui::ScrollHandle,
@@ -99,7 +100,7 @@ impl Editor {
         cx.on_app_quit(|editor, _| { editor.prepare_to_quit(); async {} }).detach();
         let doc = Doc::empty(); let caret = Caret::new(doc.blocks[0].id);
         Self { doc, caret, focus: cx.focus_handle(), preview_focus: cx.focus_handle(), preview_was_open: false, hover: None, hover_gen: 0, dragging: None, drag_ranges: Default::default(),
-            drag_over: None, selecting: false, block_menu: None, block_menu_scroll: Default::default(), nowrap: Default::default(), folded: Default::default(), fold_tails: Vec::new(), table_sel: None, table_menu: None, table_drag: None, table_extend: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, image_menu: None, link_ui: Default::default(), layouts: HashMap::new(),
+            painted_rows: HashMap::new(), drag_over: None, selecting: false, block_menu: None, block_menu_scroll: Default::default(), nowrap: Default::default(), folded: Default::default(), fold_tails: Vec::new(), table_sel: None, table_menu: None, table_drag: None, table_extend: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, image_menu: None, link_ui: Default::default(), layouts: HashMap::new(),
             list: ListState::new(1, ListAlignment::Top, px(120.)), scroll_top: (0, px(0.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
@@ -136,7 +137,7 @@ impl Render for Editor {
         self.track_extend_pointer(window, cx); let theme = Theme::ocean(); self.reveal();
         let input_editor = cx.entity();
         let input = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
-            input_editor.update(cx, |this, cx| { this.track_block_drag(window, cx); this.layouts.clear(); this.source_layouts.clear(); });
+            input_editor.update(cx, |this, cx| { this.track_block_drag(window, cx); this.painted_rows.clear(); this.layouts.clear(); this.source_layouts.clear(); });
             let editor = input_editor.read(cx);
             if editor.path.is_some() { window.handle_input(&editor.focus, gpui::ElementInputHandler::new(bounds, input_editor.clone()), cx); }
         }).absolute().size_full();
