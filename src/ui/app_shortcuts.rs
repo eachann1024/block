@@ -1,5 +1,5 @@
 //! Application shortcuts run before focused inputs; editor commands remain contextual.
-use gpui::{App, Global, KeyBinding, KeystrokeEvent, Window};
+use gpui::{App, Global, InputPreference, KeyBinding, Keystroke, Window};
 
 #[derive(Default)]
 struct Registry(Vec<KeyBinding>);
@@ -17,21 +17,29 @@ pub(crate) fn bind(cx: &mut App, bindings: impl IntoIterator<Item = KeyBinding>)
     cx.bind_keys(bindings);
 }
 
-pub(crate) fn capture(event: &KeystrokeEvent, window: &mut Window, cx: &mut App) {
-    if event.input_preference == gpui::InputPreference::CharacterInput { return; }
-    let modifiers = event.keystroke.modifiers;
-    if !modifiers.platform && !modifiers.control && !modifiers.alt { return; }
+/// Cheap preflight before refreshing a native window's rendered key contexts.
+pub(crate) fn has_binding(keystroke: &Keystroke, cx: &App) -> bool {
+    cx.try_global::<Registry>().is_some_and(|registry| registry.0.iter().any(|binding| {
+        binding.match_keystrokes(std::slice::from_ref(keystroke)) == Some(false)
+    }))
+}
+
+pub(crate) fn capture(keystroke: &Keystroke, input_preference: InputPreference, window: &mut Window, cx: &mut App) -> bool {
+    if input_preference == InputPreference::CharacterInput { return false; }
+    let modifiers = keystroke.modifiers;
+    if !modifiers.platform && !modifiers.control && !modifiers.alt { return false; }
     let contexts = window.context_stack();
     let action = cx.try_global::<Registry>().and_then(|registry| registry.0.iter().filter(|binding| {
-        binding.match_keystrokes(std::slice::from_ref(&event.keystroke)) == Some(false)
+        binding.match_keystrokes(std::slice::from_ref(keystroke)) == Some(false)
             && binding.predicate().is_none_or(|predicate| predicate.eval(&contexts))
     }).max_by_key(|binding| binding.predicate().map_or(0, |predicate| {
         (1..=contexts.len()).find(|end| predicate.eval(&contexts[..*end])).unwrap_or(0)
     }))).map(|binding| binding.action().boxed_clone());
     if let Some(action) = action {
-        cx.stop_propagation();
         window.dispatch_action(action, cx);
+        return true;
     }
+    false
 }
 
 /// Local editing bindings stay local; context-free commands join the application router.

@@ -42,6 +42,8 @@ gpui_platform = { package = "gpui-pre-platform", version = "0.3.11", default-fea
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.27.0"
+# Keep the native shortcut hook on the same GPUI snapshot as gpui_platform.
+gpui_macos = { package = "gpui-pre-macos", version = "0.3.11", default-features = false }
 
 [profile.release]
 debug = "line-tables-only"
@@ -72,4 +74,5 @@ codegen-units = 16
 
 [patch.crates-io]
 gpui-pre-apple = { path = "vendor/gpui-pre-apple" }
+gpui-pre-macos = { path = "vendor/gpui-pre-macos" }
 
