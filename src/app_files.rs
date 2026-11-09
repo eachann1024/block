@@ -9,7 +9,14 @@ use super::Workspace;
 
 #[derive(Clone)]
 pub(crate) struct TreeMenu { pub target: (PathBuf, bool), pub position: Point<Pixels>, pub moving: bool }
-pub(crate) struct Renaming { pub path: PathBuf, pub dir: bool, pub input: gpui::Entity<InputState>, _sub: gpui::Subscription }
+pub(crate) struct Renaming {
+    pub path: PathBuf,
+    pub dir: bool,
+    pub input: gpui::Entity<InputState>,
+    /// Just created: the field starts empty, and a typed name commits when focus leaves.
+    blank: bool,
+    _sub: gpui::Subscription,
+}
 pub(crate) enum FileOp {
     Trash { path: PathBuf },
     Rename { path: PathBuf, name: String, dir: bool, reopen: Option<PathBuf> },
@@ -85,28 +92,63 @@ impl Workspace {
     }
 
     pub(super) fn start_rename(&mut self, path: PathBuf, dir: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.begin_rename(path, dir, false, window, cx);
+    }
+
+    /// A new note is already on disk under a generated name. Show an empty field so the user types the real one.
+    pub(super) fn start_blank_rename(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        self.begin_rename(path, false, true, window, cx);
+    }
+
+    fn begin_rename(&mut self, path: PathBuf, dir: bool, blank: bool, window: &mut Window, cx: &mut Context<Self>) {
         self.close_overlays(cx);
         self.renaming = None;
-        let name = display_name(&path, dir);
+        let name = if blank { String::new() } else { display_name(&path, dir) };
         let input = cx.new(|cx| {
-            let mut s = InputState::new(window, cx).default_value(name);
-            s.focus(window, cx);
-            s.select_all(window, cx);
-            s
+            let mut state = InputState::new(window, cx).default_value(name);
+            if blank {
+                state = state.placeholder(tr("输入名称", "Name"));
+            }
+            state.focus(window, cx);
+            if !blank {
+                state.select_all(window, cx);
+            }
+            state
         });
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
             InputEvent::Change => this.tree.update(cx, |_, cx| cx.notify()),
-            InputEvent::PressEnter { .. } => this.commit_rename(window, cx),
-            InputEvent::Blur if this.renaming.is_some() => {
-                this.renaming = None;
-                this.tree.update(cx, |tree, cx| tree.set_renaming(None, cx));
-                cx.notify();
+            InputEvent::PressEnter { .. } => {
+                let blank = this.renaming.as_ref().is_some_and(|state| state.blank);
+                this.commit_rename(window, cx);
+                if blank && this.renaming.is_none() {
+                    this.restore_focus(window, cx);
+                }
             }
+            InputEvent::Blur if this.renaming.is_some() => this.finish_blank_rename_on_blur(window, cx),
             _ => {}
         });
         self.tree.update(cx, |tree, cx| tree.set_renaming(Some((path.clone(), input.clone())), cx));
-        self.renaming = Some(Renaming { path, dir, input, _sub: sub });
+        self.renaming = Some(Renaming { path, dir, input, blank, _sub: sub });
         cx.notify();
+    }
+
+    /// Clicking away from a new note keeps a typed name. An empty field falls back to the generated name.
+    fn finish_blank_rename_on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((blank, name)) = self.renaming.as_ref().map(|state| {
+            (state.blank, state.input.read(cx).value().trim().to_string())
+        }) else { return };
+        if !blank || name.is_empty() {
+            self.renaming = None;
+            self.tree.update(cx, |tree, cx| tree.set_renaming(None, cx));
+            cx.notify();
+            return;
+        }
+        if self.apply_rename(cx) {
+            return;
+        }
+        if let Some(input) = self.renaming.as_ref().map(|state| state.input.clone()) {
+            cx.defer_in(window, move |_, window, cx| input.update(cx, |input, cx| input.focus(window, cx)));
+        }
     }
 
     pub(super) fn cancel_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -118,21 +160,33 @@ impl Workspace {
     }
 
     pub(super) fn commit_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(state) = &self.renaming else { return };
+        if self.apply_rename(cx) {
+            let focus = self.tree.read(cx).focus_handle().clone();
+            window.focus(&focus, cx);
+        }
+    }
+
+    /// Close the field and rename on disk. False leaves the field open (empty or invalid name).
+    fn apply_rename(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(state) = &self.renaming else { return false; };
         let (path, dir) = (state.path.clone(), state.dir);
         let name = state.input.read(cx).value().trim().to_string();
-        if name == display_name(&path, dir) { self.cancel_rename(window, cx); return; }
+        if name == display_name(&path, dir) {
+            self.renaming = None;
+            self.tree.update(cx, |tree, cx| tree.set_renaming(None, cx));
+            cx.notify();
+            return true;
+        }
         // Reject empty or duplicate names here so the input stays open for a fix.
         if let Err(error) = ops::rename_target(&path, &name, dir) {
             self.flash(format!("{}: {error}", tr("无法重命名", "Cannot rename")), cx);
-            return;
+            return false;
         }
         self.renaming = None;
         self.tree.update(cx, |tree, cx| tree.finish_rename(&path, name.clone().into(), cx));
-        let focus = self.tree.read(cx).focus_handle().clone();
-        window.focus(&focus, cx);
         let reopen = self.open_under(&path, cx);
         self.start_file_op(FileOp::Rename { path, name, dir, reopen }, cx);
+        true
     }
 
     fn open_under(&self, path: &Path, cx: &Context<Self>) -> Option<PathBuf> {
@@ -251,7 +305,7 @@ impl Workspace {
         self.close_overlays(cx);
         if self.busy() { return; }
         let Some(root) = self.folder.clone() else { return };
-        if parent.is_none() && !folder_kind { self.new_note(cx); return; }
+        if parent.is_none() && !folder_kind { self.new_note(window, cx); return; }
         let dir = parent.clone().unwrap_or_else(|| root.clone());
         self.working = true;
         self.refresh(cx);
@@ -271,8 +325,9 @@ impl Workspace {
                             this.tree.update(cx, |tree, _| tree.scroll_to(&created));
                             this.start_rename(created, true, window, cx);
                         } else {
-                            this.open_file_in_new_tab(created, cx);
-                            this.flash(tr("笔记已创建", "Note created").into(), cx);
+                            this.open_file_in_new_tab(created.clone(), cx);
+                            this.tree.update(cx, |tree, _| tree.scroll_to(&created));
+                            this.start_blank_rename(created, window, cx);
                         }
                     }
                     Err(error) => { crate::log::error(&format!("failed to create item: {error}")); this.flash(format!("{}: {error}", tr("新建失败", "Failed to create")), cx); this.refresh(cx); }
