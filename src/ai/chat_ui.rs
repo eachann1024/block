@@ -1,6 +1,12 @@
 //! Rendering and batch-plan card UI for `AiChat`.
+use std::cell::Cell;
+use std::rc::Rc;
 use crate::ui::tooltip::TooltipExt;
-use gpui::{CursorStyle, Focusable, FontWeight, IntoElement, MouseButton, ParentElement, Render, SharedString, Styled, Window, WindowControlArea, div, prelude::*, px};
+use gpui::{Bounds, CursorStyle, Focusable, FontWeight, IntoElement, MouseButton, ParentElement, Pixels, Render, SharedString, Styled, Window, WindowControlArea, div, prelude::*, px};
+
+thread_local! {
+    static HISTORY_TRIGGER: Rc<Cell<Option<Bounds<Pixels>>>> = Rc::new(Cell::new(None));
+}
 
 
 use super::chat::{AiChat, first_placeholder, follow_placeholder};
@@ -94,7 +100,7 @@ impl Render for AiChat {
                 cx.listener(|this, _, window, cx| { this.set_fullscreen(!this.fullscreen, cx); window.refresh(); cx.notify(); })))
             .child(crate::ui::icon_button::header_action_button("ai-chat-history", Icon::History, self.history, Some(tr("历史会话", "Chat history")), cx.listener(|this, _, _, cx| {
                 backend_ui::close_menu(); this.history = !this.history; cx.notify();
-            })))
+            })).child(crate::ui::placement::track_bounds(HISTORY_TRIGGER.with(Clone::clone), self.history)))
             .child(crate::ui::icon_button::header_action_button("ai-chat-close", Icon::Close, false, None, cx.listener(|this, _, window, cx| { super::chat::chat_dictation::stop_for_input(&this.input); this.open = false; this.history = false; crate::ui::motion::popup_reset("ai-chat-history"); crate::ui::motion::popup_reset("ai-agent-deck"); backend_ui::close_menu(); window.refresh(); cx.notify(); })))
             .when(self.fullscreen && !macos_chrome, |bar| bar.child(crate::ui::window_controls::window_controls("main-win", true, true)));
         let fullscreen = self.fullscreen;
@@ -131,7 +137,7 @@ impl Render for AiChat {
                             .child(stateful_icon(del_id, Icon::Trash, px(13.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
                 })
             };
-            // Same right inset as the header buttons, so the menu hangs from that cluster.
+            // Hung from the history button; the panel positions it with the shared anchor.
             div().id("ai-chat-history-list").w(px(menu_w)).max_h(px(history_max_h)).overflow_y_scroll().rounded(crate::ui::radius::SURFACE).border_1()
                 .border_color(theme.menu_border).bg(theme.menu).shadow_md().occlude()
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -379,11 +385,14 @@ impl Render for AiChat {
                 panel.child(crate::ui::motion::layer_fade(scrim, ("ai-chat-history-scrim", pop_gen), entering))
             })
             .children(history_motion.zip(history).map(|((phase, pop_gen), card)| {
-                let animated = match phase {
-                    crate::ui::motion::PopupMotion::Enter => crate::ui::motion::popup_enter(card, ("ai-chat-history-pop", pop_gen)).into_any_element(),
-                    crate::ui::motion::PopupMotion::Exit => crate::ui::motion::popup_exit(card, ("ai-chat-history-pop", pop_gen)).into_any_element(),
-                };
-                div().absolute().top(px(58.)).right(px(if fullscreen && !crate::ui::window_controls::is_macos() { 100. } else { 16. })).child(animated)
+                crate::dropdown::anchored_motion_with(("ai-chat-history-pop", pop_gen), move |window, _| {
+                    HISTORY_TRIGGER.with(|cell| cell.get()).map(|trigger| {
+                        crate::dropdown::PlacementSpec::below(trigger)
+                            .align_x(crate::dropdown::AlignX::Right)
+                            .gap(px(6.))
+                            .margin(px(8.))
+                    }).unwrap_or_else(|| crate::dropdown::PlacementSpec::point(window.mouse_position()))
+                }, card, phase, 24)
             }))
     }
 }

@@ -208,5 +208,8 @@ pub(super) fn menu_popup(editor: Entity<Editor>, menu: TableMenu, phase: crate::
             }
         }
     }
-    dropdown::anchored_motion(("table-menu-pop", pop_gen), menu.spec, list, phase, 2)
+    let spec_editor = editor.clone();
+    dropdown::anchored_motion_with(("table-menu-pop", pop_gen), move |_, cx| {
+        spec_editor.read(cx).live_table_menu_spec(&menu)
+    }, list, phase, 2)
 }

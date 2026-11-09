@@ -1,5 +1,6 @@
 //! Floating image toolbar (7 actions), `⋯` 4-item menu, and AltText / Size / Crop popovers.
-use gpui::{Context, CursorStyle, Entity, FontWeight, MouseButton, Window, div, prelude::*, px, rgb};
+use std::cell::Cell;
+use gpui::{Bounds, Context, CursorStyle, Entity, FontWeight, MouseButton, Pixels, Window, div, prelude::*, px, rgb};
 use gpui_component::input::{Escape, InputState};
 use crate::{dropdown::{self, RowSpec}, icons::Icon, theme::tr, ui::{floating_bar, popover}};
 use super::{
@@ -9,6 +10,14 @@ use super::{
     toolbar::{ToolbarColors, pill, sep},
     view::{Editor, selection::Position},
 };
+
+thread_local! {
+    static REACTION_BOUNDS: Cell<Option<(u64, Bounds<Pixels>)>> = const { Cell::new(None) };
+}
+
+pub(super) fn reaction_bounds() -> Option<(u64, Bounds<Pixels>)> {
+    REACTION_BOUNDS.with(Cell::get)
+}
 
 fn tb_btn(
     editor: &Entity<Editor>, id: u64, slot: usize, g: Icon, tip: &'static str, on: bool, open: bool,
@@ -44,7 +53,9 @@ pub(super) fn image_toolbar(
             let at = Position { block: id, offset: 0 };
             this.caret.anchor = at; this.caret.head = at;
             this.open_reactions(w, cx);
-        }))
+        }).child(gpui::canvas(move |bounds, _, _| {
+            REACTION_BOUNDS.with(|cell| cell.set(Some((id, bounds))));
+        }, |_, _, _, _| {}).absolute().top_0().left_0().size_full()))
         .child(sep())
         .child(tb_btn(editor, id, 2, Icon::AlignLeft, tr("左对齐", "Align left"), align == Align::Left, false,
             move |this, _, cx| { this.image_menu = None; this.edit_image(id, |s| s.align = Align::Left, cx); }))
@@ -78,9 +89,12 @@ pub(super) fn image_toolbar(
         };
         dropdown::anchored_motion_with(
             gpui::SharedString::from(format!("image-pop-{id}-{pop_gen}")),
-            move |_, cx| {
-                dropdown::PlacementSpec::below(trigger_bounds.get().unwrap_or_default())
-                    .viewport(pos_editor.read(cx).list.viewport_bounds())
+            move |window, cx| {
+                let editor = pos_editor.read(cx);
+                let trigger = trigger_bounds.get().or_else(|| {
+                    editor.doc.index_of(id).and_then(|index| editor.list.bounds_for_item(index))
+                }).unwrap_or_else(|| gpui::Bounds::new(window.mouse_position(), gpui::size(px(32.), px(32.))));
+                dropdown::PlacementSpec::below(trigger).viewport(editor.list.viewport_bounds())
             },
             body,
             phase,
@@ -89,7 +103,7 @@ pub(super) fn image_toolbar(
     });
 
     div().relative().flex().flex_col().items_center()
-        .child(floating_bar::animate(bar, ("img-toolbar-enter", id as usize)))
+        .child(floating_bar::animate_delayed(bar, ("img-toolbar-enter", id as usize)))
         .children(sub)
 }
 
