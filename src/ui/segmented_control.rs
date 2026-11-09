@@ -1,8 +1,10 @@
 //! Stateless segmented control. Ocean Paper: shell track, selected fill, 1px accent outline.
+//! Segments are non-focusable radio buttons so a click does not take the editor's input method.
 use gpui::{
-    App, CursorStyle, ElementId, FontWeight, IntoElement, MouseButton, MouseDownEvent,
-    ParentElement, SharedString, Styled, Window, div, prelude::*, px,
+    App, Axis, CursorStyle, ElementId, FontWeight, IntoElement, MouseButton, MouseDownEvent,
+    ParentElement, Role, SharedString, Styled, Toggled, Window, prelude::*, px,
 };
+use gpui_base::{Button, RadioGroup};
 use crate::{theme::Theme, ui::radius};
 
 pub struct SegmentSpec {
@@ -14,10 +16,11 @@ pub struct SegmentSpec {
 pub fn segmented_control(id: impl Into<ElementId>, segments: Vec<SegmentSpec>) -> impl IntoElement {
     let id = id.into();
     let theme = Theme::ocean();
-    div()
-        .id(id.clone())
+    let count = segments.len();
+    let probe = super::smoke_overlay::probe_for(&id);
+    RadioGroup::new(id.clone())
+        .axis(Axis::Horizontal)
         .relative()
-        .children(super::smoke_overlay::probe_for(&id))
         .flex_none()
         .h(px(30.))
         .p(px(2.))
@@ -28,10 +31,19 @@ pub fn segmented_control(id: impl Into<ElementId>, segments: Vec<SegmentSpec>) -
         .flex()
         .items_center()
         .gap(px(2.))
+        .children(probe)
         .children(segments.into_iter().enumerate().map(|(index, segment)| {
-            let child = gpui::ElementId::from((id.clone(), index.to_string()));
-            div()
-                .id(child.clone())
+            let child = ElementId::from((id.clone(), index.to_string()));
+            let name = segment.label.clone();
+            Button::new(child.clone())
+                .focusable(false)
+                .role(Role::RadioButton)
+                .selected(segment.selected)
+                .accessibility_label(name)
+                .aria_selected(segment.selected)
+                .aria_toggled(if segment.selected { Toggled::True } else { Toggled::False })
+                .aria_position_in_set(index + 1)
+                .aria_size_of_set(count)
                 .relative()
                 .children(super::smoke_overlay::probe_for(&child))
                 .h_full()
@@ -41,6 +53,7 @@ pub fn segmented_control(id: impl Into<ElementId>, segments: Vec<SegmentSpec>) -
                 .items_center()
                 .justify_center()
                 .text_size(px(14.))
+                .line_height(px(20.))
                 .font_weight(FontWeight(460.))
                 .cursor(CursorStyle::PointingHand)
                 .when(segment.selected, |item| {

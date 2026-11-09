@@ -326,7 +326,9 @@ impl IntoElement for Measured {
     fn into_element(self) -> Self::Element { self }
 }
 
-struct AnchorState {
+/// Named only because [`Element::RequestLayoutState`] is part of the public
+/// [`SmartAnchored`] impl. The positioner token stays private.
+pub struct AnchorState {
     layout: <Positioner as Element>::RequestLayoutState,
 }
 
