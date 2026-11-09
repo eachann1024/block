@@ -5,6 +5,12 @@ use super::{Editor, selection::Position};
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::editor) struct DropTarget { pub index: usize, pub after: bool, pub indent: usize, pub slot: usize, pub nested: bool }
 
+#[derive(Default)]
+pub(in crate::editor) struct DragRanges {
+    revision: Option<crate::editor::model::Blocks>,
+    spans: std::collections::HashMap<u64, (usize, usize)>,
+}
+
 impl Editor {
     pub(in crate::editor) fn track_pointer_lifecycle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.pointer_subscriptions.is_empty() { return; }
@@ -47,7 +53,7 @@ impl Editor {
         });
     }
     pub(in crate::editor) fn clear_pointer(&mut self) {
-        self.dragging = None; self.drag_over = None; self.selecting = false; self.source_drag = false;
+        self.dragging = None; self.drag_over = None; *self.drag_ranges.borrow_mut() = DragRanges::default(); self.selecting = false; self.source_drag = false;
         self.selection_origin = None; self.table_drag = None; self.cancel_extend(); crate::editor::table_resize::end();
     }
     pub(in crate::editor) fn hover_block(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
@@ -133,6 +139,14 @@ impl Editor {
         }
     }
     fn drag_span(&self, id: u64) -> Option<(usize, usize)> {
+        let mut cache = self.drag_ranges.borrow_mut();
+        if self.dragging.is_some() {
+            if !cache.revision.as_ref().is_some_and(|blocks| blocks.shares_root(&self.doc.blocks)) {
+                cache.revision = Some(self.doc.blocks.clone());
+                cache.spans.clear();
+            }
+            if let Some(span) = cache.spans.get(&id) { return Some(*span); }
+        }
         let from = self.doc.index_of(id)?;
         let head = &self.doc.blocks[from];
         let n = 1 + (from + 1..self.doc.blocks.len()).take_while(|&i| {
@@ -140,6 +154,7 @@ impl Editor {
             b.meta.indent > head.meta.indent || b.meta.list_code.as_ref()
                 .is_some_and(|code| code.parent_indent >= head.meta.indent)
         }).count();
+        if self.dragging.is_some() { cache.spans.insert(id, (from, n)); }
         Some((from, n))
     }
     fn update_drop(&mut self, position: Point<Pixels>) {
