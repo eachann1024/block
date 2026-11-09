@@ -1,6 +1,7 @@
 //! Implicit treap of preorder rows. Lazy hidden-ancestor counts make directory
 //! toggles O(log n); rank selection renders only the viewport, with no flatten.
 use std::path::{Path, PathBuf};
+use std::collections::HashSet;
 use std::sync::Arc;
 use super::scan::{Node, compare_names};
 
@@ -37,22 +38,24 @@ struct Entry {
 }
 
 #[derive(Default)]
-pub struct TreeIndex { root: Link, serial: u64, notes: usize, manual_order: bool }
+pub struct TreeIndex { root: Link, serial: u64, notes: usize, manual_order: HashSet<PathBuf> }
 
 impl TreeIndex {
     pub fn new(mut nodes: Vec<Node>) -> Self {
         let orders = super::load_state().unwrap_or_default().file_order;
-        fn arrange(nodes: &mut [Node], orders: &std::collections::BTreeMap<PathBuf, Vec<PathBuf>>) -> bool {
-            let mut changed = false;
+        fn arrange(nodes: &mut [Node], orders: &super::order::Snapshot, manual: &mut HashSet<PathBuf>) {
             if let Some(order) = nodes.first().and_then(|n| n.path.parent()).and_then(|p| orders.get(p)) {
                 let ranks: std::collections::HashMap<_, _> = order.iter().enumerate().map(|(i, p)| (p.as_path(), i)).collect();
+                manual.insert(nodes[0].path.parent().unwrap().to_path_buf());
                 nodes.sort_by_key(|n| ranks.get(n.path.as_path()).copied().unwrap_or(usize::MAX));
-                changed = true;
             }
-            for node in nodes { changed |= arrange(&mut node.children, orders); }
-            changed
+            for node in nodes {
+                if node.dir && orders.contains_key(&node.path) { manual.insert(node.path.clone()); }
+                arrange(&mut node.children, orders, manual);
+            }
         }
-        let manual_order = arrange(&mut nodes, &orders);
+        let mut manual_order = HashSet::new();
+        arrange(&mut nodes, &orders, &mut manual_order);
         let mut rows = Vec::new();
         for node in nodes {
             let root = (Arc::<str>::from(node.name.as_str()), Arc::<Path>::from(node.path.as_path()), node.dir);
@@ -88,7 +91,7 @@ impl TreeIndex {
 
     /// Full path identity, including a stale directory at the same root path.
     pub fn contains_root_path(&self, path: &Path) -> bool {
-        if self.manual_order { return self.path_index(path).is_some(); }
+        if !self.manual_order.is_empty() { return self.path_index(path).is_some(); }
         let name = path.file_name().unwrap_or_default().to_string_lossy();
         [false, true].into_iter().any(|dir| {
             let rank = insertion_rank(&self.root, dir, &name, path);
@@ -162,7 +165,8 @@ impl TreeIndex {
     pub fn insert_note(&mut self, path: PathBuf) {
         if self.contains_root_path(&path) { return; }
         let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
-        let rank = if self.manual_order { size(&self.root) } else { insertion_rank(&self.root, false, &name, &path) };
+        let manual = path.parent().is_some_and(|parent| self.manual_order.contains(parent));
+        let rank = if manual { size(&self.root) } else { insertion_rank(&self.root, false, &name, &path) };
         let stem = row_stem(&name, false);
         let row = Row {
             root_name: Arc::from(name.as_str()), root_path: Arc::from(path.as_path()),
@@ -200,6 +204,22 @@ impl TreeIndex {
         out
     }
 
+    /// Capture only explicitly reordered directories; other levels keep default sorting.
+    pub fn order_snapshot(&self) -> super::order::Snapshot {
+        let mut snapshot: super::order::Snapshot = self.manual_order.iter().map(|p| (p.clone(), Vec::new())).collect();
+        if snapshot.is_empty() { return snapshot; }
+        fn walk(link: &Link, snapshot: &mut super::order::Snapshot) {
+            let Some(n) = link else { return };
+            walk(&n.left, snapshot);
+            if let Some(children) = n.row.path.parent().and_then(|p| snapshot.get_mut(p)) {
+                children.push(n.row.path.to_path_buf());
+            }
+            walk(&n.right, snapshot);
+        }
+        walk(&self.root, &mut snapshot);
+        snapshot
+    }
+
     pub fn reorder(&mut self, source: &Path, target: &Path, after: bool) {
         if source == target || source.parent() != target.parent() { return; }
         let (Some(from), Some(to)) = (self.path_index(source), self.path_index(target)) else { return };
@@ -211,7 +231,7 @@ impl TreeIndex {
         let slot = if from < slot { slot - count } else { slot };
         let (left, right) = split(remainder, slot);
         self.root = merge(merge(left, moving), right);
-        self.manual_order = true;
+        if let Some(parent) = source.parent() { self.manual_order.insert(parent.to_path_buf()); }
     }
 
     fn entry(&mut self, row: Row) -> Box<Entry> {
