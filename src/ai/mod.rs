@@ -31,8 +31,6 @@ mod backend_ui;
 #[cfg(not(target_family = "wasm"))]
 mod chat_composer;
 #[cfg(not(target_family = "wasm"))]
-mod dictation;
-#[cfg(not(target_family = "wasm"))]
 mod chat_reference_picker;
 #[cfg(not(target_family = "wasm"))]
 pub(crate) mod chat;

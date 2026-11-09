@@ -15,7 +15,6 @@ pub(crate) use chat_resize::resize_capture;
 #[path = "chat_picker.rs"] pub(super) mod chat_picker;
 #[path = "chat_skills.rs"] pub(super) mod chat_skills;
 #[path = "chat_models.rs"] pub(super) mod chat_models;
-#[path = "chat_dictation.rs"] pub(super) mod chat_dictation;
 
 pub(super) fn first_placeholder() -> &'static str { crate::theme::tr("向 AI 提问，/ 调用技能，@ 引用文件…", "Ask AI, / for skills, @ to reference files…") }
 pub(super) fn follow_placeholder() -> &'static str { crate::theme::tr("继续追问…", "Ask a follow-up…") }
@@ -163,7 +162,6 @@ pub(crate) fn sync_settings(cx: &mut App) {
 pub(crate) fn hide(cx: &mut App) {
     let Some(entity) = panel(cx) else { return };
     entity.update(cx, |this, cx| {
-        chat_dictation::stop_for_input(&this.input);
         this.open = false; this.history = false; this.resizing = None;
         crate::ui::motion::popup_reset("ai-chat-history");
         crate::ui::motion::popup_reset("ai-agent-deck");
@@ -174,7 +172,6 @@ pub(crate) fn hide(cx: &mut App) {
 pub(crate) fn toggle(editor: WeakEntity<Editor>, window: &mut Window, cx: &mut App) {
     let c = chat(window, cx);
     c.update(cx, |this, cx| {
-        chat_dictation::stop_for_input(&this.input);
         this.open = !this.open;
         if !this.open {
             this.history = false;
@@ -237,7 +234,6 @@ impl AiChat {
     }
     pub(super) fn conv(&self) -> Option<&Conv> { self.current.and_then(|id| self.convs.iter().find(|c| c.id == id)) }
     pub(super) fn stop(&mut self) {
-        chat_dictation::stop_for_input(&self.input);
         if self.streaming.is_some() || self.pending_question.is_some() { super::chat_process::record_outcome(self, "stopped"); }
         self.sent_draft = None;
         if let Some(tools) = self.external_tools.take() { tools.cancel(); }
@@ -339,5 +335,3 @@ pub(crate) use smoke_setup::{enable_smoke_builtin, set_process_smoke_status, see
 
 #[path = "chat_input_smoke.rs"]
 pub(crate) mod input_smoke;
-#[path = "chat_voice_smoke.rs"]
-pub(crate) mod voice_smoke;

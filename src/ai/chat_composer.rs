@@ -107,7 +107,6 @@ impl AiChat {
         if self.selected_backend() == super::backend::BackendKind::Builtin && let Err((message, settings)) = provider::validate_request(&provider::config()) {
             self.error = Some(message); self.error_settings = settings; cx.notify(); return;
         }
-        super::chat::chat_dictation::stop_for_input(&self.input);
         cx.notify();
         if self.current.is_none() { self.tab_drafts.remove(&None); }
         let ctx = self.agent_ctx(cx);
