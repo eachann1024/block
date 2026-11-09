@@ -54,3 +54,5 @@ pub mod ai_plan_card;
 pub mod ai_editor_diff;
 
 pub mod app_shortcuts;
+
+pub mod reorder;
