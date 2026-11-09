@@ -20,8 +20,9 @@ impl Editor {
         (self.block_menu_scroll.offset(), self.block_menu_scroll.max_offset())
     }
     pub(crate) fn scroll_smoke_menu(&mut self, cx: &mut Context<Self>) {
-        let id = self.doc.blocks.last().unwrap().id;
-        let bounds = self.layouts[&id].bounds;
+        let Some(last) = self.doc.blocks.last() else { return };
+        let id = last.id;
+        let bounds = self.layouts.get(&id).map(|l| l.bounds).unwrap_or_else(|| self.list.viewport_bounds());
         self.open_block_menu_at(id, bounds, super::block_menu::Mode::Slash, cx);
     }
 }

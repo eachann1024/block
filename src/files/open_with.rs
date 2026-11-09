@@ -37,21 +37,39 @@ fn spawn(command: &mut Command) -> io::Result<()> {
 }
 
 #[cfg(target_os = "macos")]
+#[allow(deprecated)]
 fn open_mac_browser(path: &Path) -> io::Result<()> {
-    const SCRIPT: &str = r#"use framework "AppKit"
-set ws to current application's NSWorkspace's sharedWorkspace()
-set u to current application's NSURL's URLWithString:"https://localhost/"
-set appURL to ws's URLForApplicationToOpenURL:u
-if appURL is missing value then error "no default https handler"
-return (appURL's path()) as text"#;
-    let output = Command::new("/usr/bin/osascript").arg("-e").arg(SCRIPT).output()
-        .map_err(|e| io::Error::other(e.to_string()))?;
-    if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr);
-        return Err(io::Error::other(if detail.trim().is_empty() { tr("找不到默认浏览器", "No default browser").into() } else { detail.trim().to_owned() }));
+    use cocoa::base::{SEL, id, nil, selector};
+    use cocoa::foundation::{NSAutoreleasePool, NSString};
+    unsafe extern "C" {
+        fn objc_msgSend();
+        fn objc_getClass(name: *const std::ffi::c_char) -> id;
     }
-    let app = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    if app.is_empty() || !app.ends_with(".app") && !std::path::Path::new(&app).exists() {
+    let app = unsafe {
+        let pool = NSAutoreleasePool::new(nil);
+        let get_id: unsafe extern "C" fn(id, SEL) -> id = std::mem::transmute(objc_msgSend as *const ());
+        let get_url: unsafe extern "C" fn(id, SEL, id) -> id = std::mem::transmute(objc_msgSend as *const ());
+        let utf8_fn: unsafe extern "C" fn(id, SEL) -> *const std::ffi::c_char =
+            std::mem::transmute(objc_msgSend as *const ());
+        let ws = get_id(objc_getClass(c"NSWorkspace".as_ptr()), selector("sharedWorkspace"));
+        let https = NSString::alloc(nil).init_str("https://localhost/").autorelease();
+        let url = get_url(objc_getClass(c"NSURL".as_ptr()), selector("URLWithString:"), https);
+        let app_url = if ws != nil && url != nil {
+            get_url(ws, selector("URLForApplicationToOpenURL:"), url)
+        } else {
+            nil
+        };
+        let app_path = if app_url != nil {
+            let ns_path = get_id(app_url, selector("path"));
+            let cstr = if ns_path != nil { utf8_fn(ns_path, selector("UTF8String")) } else { std::ptr::null() };
+            if !cstr.is_null() { std::ffi::CStr::from_ptr(cstr).to_string_lossy().trim().to_owned() } else { String::new() }
+        } else {
+            String::new()
+        };
+        pool.drain();
+        app_path
+    };
+    if app.is_empty() || (!app.ends_with(".app") && !std::path::Path::new(&app).exists()) {
         return Err(io::Error::other(tr("找不到默认浏览器", "No default browser")));
     }
     spawn(Command::new("/usr/bin/open").arg("-a").arg(app).arg(path))

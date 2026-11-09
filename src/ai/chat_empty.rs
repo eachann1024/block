@@ -24,7 +24,7 @@ pub(super) fn enable_cover(fullscreen: bool, cx: &mut gpui::Context<AiChat>) -> 
         .child(ai_controls::enable_action_button("ai-enable-cover", cta, cx.listener(|chat, _, window, cx| {
             cx.stop_propagation();
             chat.input.update(cx, |i, cx| i.focus(window, cx));
-            window.dispatch_action(Box::new(super::OpenAiSettings), cx);
+            cx.defer_in(window, |_, window, cx| window.dispatch_action(Box::new(super::OpenAiSettings), cx));
             cx.notify();
         })).mt(px(22.)))
         .into_any_element()

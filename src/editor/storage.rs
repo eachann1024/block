@@ -124,7 +124,8 @@ fn atomic_write(path: &Path, bytes: &[u8], expected: Option<Fingerprint>) -> io:
             }
         }
         fs::rename(&temp, path)?;
-        fs::File::open(parent)?.sync_all()
+        if let Ok(dir) = fs::File::open(parent) { let _ = dir.sync_all(); }
+        Ok(())
     })();
     if result.is_err() { let _ = fs::remove_file(temp); }
     result
@@ -196,7 +197,14 @@ pub(super) fn save(path: &Path, doc: &SaveDoc, base: Fingerprint) -> Result<Fing
                 return Err(format!("{}: {e}", tr("文件已移除或无法读取，已保留恢复草稿", "File removed or unreadable; recovery draft retained")));
             }
         };
-        if fingerprint(&current) != base {
+        let current_fp = fingerprint(&current);
+        let next_fp = fingerprint(&bytes);
+        if current_fp == next_fp {
+            let draft = draft_path(path);
+            if draft.exists() { let _ = fs::remove_file(draft); }
+            return Ok(next_fp);
+        }
+        if current_fp != base {
             let _ = write_draft(path, &source, base, raw, bom);
             return Err(tr("检测到外部更改与当前文档冲突，已保留恢复草稿，原文件未被修改", "External changes conflict with this document. Recovery draft retained; original file untouched.").into());
         }
