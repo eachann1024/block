@@ -97,25 +97,7 @@ impl Editor {
             }
             Copy | Cut => {
                 if !self.caret.is_empty() {
-                    let (_, _, first, last) = self.ordered();
-                    let mut text = String::new();
-                    for i in first..=last {
-                        if i > first { text.push('\n'); }
-                        let block = &self.doc.blocks[i];
-                        if let Some(range) = self.selected_range(block.id) { text.push_str(&block.text[range]); }
-                    }
-                    self.remember_blocks();
-                    let item = match &self.block_clip {
-                        Some((clip_text, markdown)) => super::paste_clipboard::block_item(clip_text.clone(), markdown),
-                        None => {
-                            let b = &self.doc.blocks[first];
-                            if first == last && let Some(r) = self.selected_range(b.id) {
-                                super::paste_clipboard::inline_item(&b.slice(r))
-                            } else {
-                                ClipboardItem::new_string(text)
-                            }
-                        }
-                    };
+                    let Some(item) = self.selection_clipboard_item() else { return; };
                     cx.write_to_clipboard(item);
                     if matches!(action, Cut) && !self.boundary_rules(false, cx) && !self.delete_across(cx) { self.replace_selection("", false, cx); }
                 } else if self.copy_whole_block(cx) && matches!(action, Cut) { self.handle(&EditorAction::Backspace, window, cx); }

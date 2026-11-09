@@ -4,7 +4,7 @@
 
 use std::{cell::RefCell, collections::HashSet, time::Duration};
 use gpui::{
-    AnyElement, ClipboardItem, Context, Entity, Hsla, IntoElement,
+    AnyElement, Context, Entity, Hsla, IntoElement,
     div, prelude::*, px, rgb, rgba,
 };
 use crate::{
@@ -97,8 +97,7 @@ pub(super) fn preview_math_block(
         move |_, _, cx| {
             cx.stop_propagation();
             let _ = copy_editor.update(cx, |this, cx| {
-                let text = this.doc.get(block_id).map(|b| b.text.clone()).unwrap_or_default();
-                cx.write_to_clipboard(ClipboardItem::new_string(text));
+                this.copy_block_text(block_id, cx);
                 COPIED_MATH.with(|set| { set.borrow_mut().insert(block_id); });
                 cx.notify();
                 let entity = cx.entity().downgrade();

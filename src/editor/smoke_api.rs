@@ -169,15 +169,16 @@ impl Editor {
             return Err(format!("单次全选未覆盖全文: ai={ai} bi={bi} len={}", self.doc.blocks.len()));
         }
         self.handle(&super::view::EditorAction::Copy, window, cx);
-        let (clip_plain, clip_md) = self.block_clip.clone().ok_or("全选复制后 block_clip 为空")?;
-        if !clip_plain.contains("# 潮汕") {
-            return Err("全选复制后的纯文本未保留 Markdown 语法".into());
+        let item = cx.read_from_clipboard().ok_or("全选复制后剪贴板为空")?;
+        let clip_plain = item.text().ok_or("全选复制后剪贴板缺少纯文本")?;
+        let clip_md = super::paste_clipboard::block_markdown(&item, &clip_plain).ok_or("全选复制后剪贴板缺少块结构")?;
+        if !clip_plain.contains("潮汕") || clip_plain.contains("# 潮汕") {
+            return Err("全选复制后的纯文本应仅包含可见文字".into());
         }
         // 3. QuickNote (小窗 minimal=true) paste from clipboard plain text & full source
         let prev_minimal = self.minimal;
         self.minimal = true;
         self.reset_document(markdown::parse(""), cx);
-        self.block_clip = None;
         self.handle(&super::view::EditorAction::Paste, window, cx);
         check_doc(self, "小窗粘贴复制出的潮汕之旅.md")?;
         self.reset_document(markdown::parse(""), cx);

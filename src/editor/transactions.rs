@@ -120,6 +120,12 @@ impl Editor {
         }
     }
     pub(in crate::editor) fn replace_selection(&mut self, text: &str, marker: bool, cx: &mut Context<Self>) {
+        self.replace_selection_impl(text, marker, true, cx);
+    }
+    pub(in crate::editor) fn replace_plain_selection(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.replace_selection_impl(text, false, false, cx);
+    }
+    fn replace_selection_impl(&mut self, text: &str, marker: bool, promote_images: bool, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
         self.pending_vertical = None;
         let (a, b, ai, bi) = self.ordered();
@@ -195,7 +201,7 @@ impl Editor {
         if marker && matches!(normalized.as_str(), "-" | "*" | "_" | "－" | "＊" | "＿" | "—" | "——") && ai == bi && a == b {
             self.divider_rule(&mut id, &mut offset);
         }
-        if !marker && self.promote_image_block(id) {
+        if !marker && promote_images && self.promote_image_block(id) {
             offset = 0;
         }
         let at = Position { block: id, offset };
