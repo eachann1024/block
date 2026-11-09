@@ -215,11 +215,6 @@ pub fn controls(
         crate::ui::motion::schedule_popup_finish(&callout_key, pop_gen, cx);
     }
     let popover = motion.map(|(phase, pop_gen)| {
-        let measured = TRIGGER_BOUNDS.with(|b| b.borrow().get(&id).copied());
-        let fallback = OPEN_MENU.with(|slot| slot.get().map(|(_, p)| p)).unwrap_or_else(|| point(px(120.), px(120.)));
-        let spec = measured
-            .map(|(b, _)| dropdown::PlacementSpec::below(b).gap(px(4.)).margin(px(8.)))
-            .unwrap_or_else(|| dropdown::PlacementSpec::below(Bounds::new(fallback, size(px(28.), px(24.)))).gap(px(4.)).margin(px(8.)));
         let probe_names = ["callout-opt-0", "callout-opt-1", "callout-opt-2", "callout-opt-3", "callout-opt-4"];
         let mut menu = dropdown::shell(("callout-menu", id as usize)).w(px(196.));
         for (ix, k) in ALL_KINDS.into_iter().enumerate() {
@@ -261,7 +256,20 @@ pub fn controls(
                 entering,
             ),
         )).with_priority(2);
-        let popup = dropdown::anchored_motion(gpui::SharedString::from(format!("callout-menu-pop-{id}-{pop_gen}")), spec, menu, phase, 3);
+        let popup = dropdown::anchored_motion_with(
+            gpui::SharedString::from(format!("callout-menu-pop-{id}-{pop_gen}")),
+            move |window, _| {
+                TRIGGER_BOUNDS.with(|bounds| bounds.borrow().get(&id).copied())
+                    .map(|(trigger, _)| dropdown::PlacementSpec::below(trigger).gap(px(4.)).margin(px(8.)))
+                    .unwrap_or_else(|| {
+                        let at = OPEN_MENU.with(|slot| slot.get().map(|(_, point)| point)).unwrap_or_else(|| window.mouse_position());
+                        dropdown::PlacementSpec::below(Bounds::new(at, size(px(28.), px(24.)))).gap(px(4.)).margin(px(8.))
+                    })
+            },
+            menu,
+            phase,
+            3,
+        );
         div().child(backdrop).child(popup)
     });
 

@@ -13,10 +13,41 @@ pub(super) fn popover(editor: Entity<Editor>, pop: &FormatPop, phase: crate::ui:
             phase, 2,
         ),
         FormatPop::SelectionMenu { spec } => dropdown::anchored_motion(("format-pop", pop_gen), *spec, selection_menu(editor), phase, 2),
-        FormatPop::Palette { spec } => dropdown::anchored_motion(("format-pop", pop_gen), *spec, PalettePopover { editor }, phase, 2),
-        FormatPop::Kinds { spec, current } => dropdown::anchored_motion(("format-pop", pop_gen), *spec, super::toolbar::menu(editor, true, *current), phase, 2),
-        FormatPop::Lists { spec, current } => dropdown::anchored_motion(("format-pop", pop_gen), *spec, super::toolbar::menu(editor, false, *current), phase, 2),
+        FormatPop::Palette { spec } => {
+            let fallback = *spec;
+            let placed = editor.clone();
+            dropdown::anchored_motion_with(("format-pop", pop_gen), move |_, cx| {
+                toolbar_drop_spec(tr("文本与高亮颜色", "Text and highlight color"), fallback, &placed, cx)
+            }, PalettePopover { editor }, phase, 2)
+        }
+        FormatPop::Kinds { spec, current } => {
+            let fallback = *spec;
+            let current = *current;
+            let placed = editor.clone();
+            dropdown::anchored_motion_with(("format-pop", pop_gen), move |_, cx| {
+                toolbar_drop_spec(tr("文字类型", "Text type"), fallback, &placed, cx)
+            }, super::toolbar::menu(editor, true, current), phase, 2)
+        }
+        FormatPop::Lists { spec, current } => {
+            let fallback = *spec;
+            let current = *current;
+            let placed = editor.clone();
+            dropdown::anchored_motion_with(("format-pop", pop_gen), move |_, cx| {
+                toolbar_drop_spec(tr("列表", "Lists"), fallback, &placed, cx)
+            }, super::toolbar::menu(editor, false, current), phase, 2)
+        }
     }
+}
+
+/// Live button bounds while the selection toolbar is painted; the frozen spec covers
+/// the frame before the button has measured, and keeps that frame's viewport current.
+fn toolbar_drop_spec(
+    key: &'static str, fallback: dropdown::PlacementSpec, editor: &Entity<Editor>, cx: &gpui::App,
+) -> dropdown::PlacementSpec {
+    let viewport = editor.read(cx).list.viewport_bounds();
+    super::toolbar::tracked_button(key)
+        .map(|trigger| dropdown::PlacementSpec::below(trigger).align_x(dropdown::AlignX::Left).viewport(viewport).gap(px(4.)))
+        .unwrap_or_else(|| fallback.viewport(viewport))
 }
 
 /// Right-click menu over a selection: export it as an image, annotate it, or copy it.
