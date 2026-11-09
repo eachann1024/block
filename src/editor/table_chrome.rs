@@ -17,7 +17,7 @@ fn floating(position: Point<Pixels>, child: impl IntoElement) -> AnyElement {
     gpui::anchored().position(position).child(child).into_any_element()
 }
 
-fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool, checked: bool, highlighted: bool) -> Stateful<Div> {
+fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool, checked: bool, highlighted: bool) -> gpui_base::Button {
     dropdown::row_with(
         id,
         RowSpec {

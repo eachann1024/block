@@ -22,6 +22,7 @@ pub mod placement;
 pub mod performance_rows;
 pub mod performance_treemap;
 pub mod popover;
+pub mod progress;
 pub mod radius;
 pub mod rename_row;
 pub mod reveal;

@@ -364,7 +364,7 @@ fn tab_slots(has_others: bool, has_right: bool) -> [crate::ui::menu_nav::Slot; 5
 fn tab_menu_row(
     id: &'static str, icon: Option<Icon>, label: &'static str, hint: Option<&'static str>, enabled: bool, highlighted: bool,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
-) -> gpui::Stateful<gpui::Div> {
+) -> gpui_base::Button {
     crate::dropdown::row_with(id, crate::dropdown::RowSpec {
         icon, label: label.into(), hint: hint.map(Into::into), danger: id == "tab-menu-close-all",
         disabled: !enabled, highlighted, ..Default::default()
