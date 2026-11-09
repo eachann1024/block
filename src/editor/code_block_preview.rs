@@ -12,21 +12,21 @@ use crate::{
 use super::{code_block, view::Editor};
 
 thread_local! {
-    static SOURCE_OPEN: RefCell<HashMap<u64, bool>> = Default::default();
+    static SOURCE_OPEN: RefCell<HashMap<gpui::EntityId, HashMap<u64, bool>>> = Default::default();
 }
 
 #[path = "math_paper.rs"]
 mod math_paper;
 
-pub(super) fn is_source_open(block_id: u64, source: &str) -> bool {
+pub(super) fn is_source_open(editor: gpui::EntityId, block_id: u64, source: &str) -> bool {
     SOURCE_OPEN.with(|map| {
-        map.borrow().get(&block_id).copied().unwrap_or_else(|| source.trim().is_empty())
+        map.borrow().get(&editor).and_then(|blocks| blocks.get(&block_id)).copied().unwrap_or_else(|| source.trim().is_empty())
     })
 }
 
-fn set_source_open(block_id: u64, open: bool) {
+fn set_source_open(editor: gpui::EntityId, block_id: u64, open: bool) {
     SOURCE_OPEN.with(|map| {
-        map.borrow_mut().insert(block_id, open);
+        map.borrow_mut().entry(editor).or_default().insert(block_id, open);
     });
 }
 
@@ -51,7 +51,7 @@ pub(super) fn preview_block(
 
     let dark = is_dark();
     let zoom = super::zoom::zoom_factor(minimal);
-    let open = is_source_open(block_id, source);
+    let open = is_source_open(editor.entity_id(), block_id, source);
     let menu_open = code_block::is_menu_open_for(block_id);
     let show_controls = hovered || active || open || menu_open;
 
@@ -89,7 +89,7 @@ pub(super) fn preview_block(
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
             cx.stop_propagation();
             let next = !open;
-            set_source_open(block_id, next);
+            set_source_open(cx.entity_id(), block_id, next);
             if next {
                 this.block_sel = None;
                 this.focus_block(block_id, window, cx);
@@ -207,4 +207,11 @@ fn render_preview_body(
         });
         (body, err)
     }
+}
+
+pub(super) fn take_sources(editor: gpui::EntityId) -> HashMap<u64, bool> {
+    SOURCE_OPEN.with(|s| s.borrow_mut().remove(&editor).unwrap_or_default())
+}
+pub(super) fn restore_sources(editor: gpui::EntityId, sources: HashMap<u64, bool>) {
+    SOURCE_OPEN.with(|s| { s.borrow_mut().insert(editor, sources); });
 }

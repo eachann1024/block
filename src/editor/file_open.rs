@@ -46,19 +46,19 @@ impl Editor {
         match loaded.kind {
             OpenKind::Markdown(text) => {
                 self.surface = Surface::Note;
-                self.reset_document(super::markdown::parse(&text));
+                self.reset_document(super::markdown::parse(&text), cx);
                 self.folded = crate::editor::fold::restore_folds(&path, &self.doc);
                 self.dirty = recovered;
                 self.status = if recovered { note.into() } else { String::new() };
             }
             OpenKind::Source(file) => {
-                self.reset_document(Doc::empty());
+                self.reset_document(Doc::empty(), cx);
                 self.surface = Surface::Source(SourceDoc::open(file));
                 self.dirty = recovered;
                 self.status = if recovered { note.into() } else { String::new() };
             }
             OpenKind::Preview { svg } => {
-                self.reset_document(Doc::empty());
+                self.reset_document(Doc::empty(), cx);
                 let editable = svg.is_some();
                 let text = svg.as_ref().map(|file| file.text.clone());
                 let source = svg.map(SourceDoc::open);
@@ -76,7 +76,7 @@ impl Editor {
                 self.status = if self.dirty { note.into() } else { String::new() };
             }
             OpenKind::Blocked { reason } => {
-                self.reset_document(Doc::empty());
+                self.reset_document(Doc::empty(), cx);
                 self.surface = Surface::Blocked { reason };
                 self.dirty = false;
                 self.status.clear();

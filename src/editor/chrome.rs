@@ -22,6 +22,16 @@ pub(super) fn standard_width(body_width: Pixels) -> Pixels {
     body_width + px(HANDLE_WIDTH + ROW_GAP + RIGHT_INSET)
 }
 
+/// The actual per-block gutter, shared by on-screen layout and export snapshots.
+pub(super) fn block_gutter(block: &Block, zoom: f32) -> f32 {
+    block.meta.indent.min(12) as f32 * INDENT_PER_CHAR * zoom
+        + if is_list_kind(block) { MARKER_WIDTH * zoom } else { 0. }
+}
+pub(super) fn body_padding(block: &Block, zoom: f32) -> f32 {
+    if block.meta.callout.is_some() { 62. * zoom }
+    else if block.kind == Kind::Quote { 16. * zoom } else { 0. }
+}
+
 /// CSS (margin-top, margin-bottom) of a block in the reference page.
 fn margins(block: &Block) -> (f32, f32) {
     match (block.kind, block.meta.heading_level) {
@@ -86,7 +96,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
     let (size, factor) = super::paint::heading_metrics(block.kind, block.meta.heading_level, block.meta.code_language.is_some(), minimal, f32::from(theme.editor_font), zoom);
     let line = size * factor;
     let indent = block.meta.indent.min(12) as f32 * INDENT_PER_CHAR * zoom;
-    let marker_width = if matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) { MARKER_WIDTH * zoom + indent } else { indent };
+    let marker_width = block_gutter(block, zoom);
     let image = super::image_source::spec_of(block)
         .and_then(|spec| super::image_source::resolve_target(&spec, note.as_deref()).map(|target| (target, spec)));
     let rule = super::block_menu::is_divider(block);

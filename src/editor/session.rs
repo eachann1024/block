@@ -6,6 +6,7 @@ use crate::editor::surface::Surface;
 
 pub(in crate::editor) struct TabSession {
     pub doc: Doc,
+    pub presentation: crate::editor::presentation::State,
     pub caret: Caret,
     pub list: ListState,
     pub history: Vec<HistoryEntry>,
@@ -76,6 +77,7 @@ impl Editor {
         self.commit_composition(cx);
         self.persistence.timer = None;
         let path = self.path.take()?;
+        let presentation = crate::editor::presentation::take(cx.entity_id(), cx);
         self.clear_transient_overlays();
         let doc = std::mem::replace(&mut self.doc, Doc::empty());
         let caret = std::mem::replace(&mut self.caret, Caret::new(self.doc.blocks[0].id));
@@ -94,7 +96,7 @@ impl Editor {
         self.source_layouts.clear();
         self.source_drag = false;
         self.sessions.insert(path.clone(), TabSession {
-            doc, caret, list, history, redo, nowrap, folded, fold_tails, preferred_x, dirty, status, revision, base, surface,
+            doc, presentation, caret, list, history, redo, nowrap, folded, fold_tails, preferred_x, dirty, status, revision, base, surface,
         });
         if dirty {
             self.spawn_save(path.clone(), cx);
@@ -104,6 +106,7 @@ impl Editor {
 
     pub(in crate::editor) fn restore_session(&mut self, path: PathBuf, session: TabSession, cx: &mut Context<Self>) {
         self.clear_transient_overlays();
+        crate::editor::presentation::restore(cx.entity_id(), session.presentation, cx);
         self.doc = session.doc;
         self.caret = session.caret;
         self.list = session.list;
@@ -155,7 +158,7 @@ impl Editor {
             }
             self.surface = Surface::Note;
             self.source_layouts.clear();
-            self.reset_document(Doc::empty());
+            self.reset_document(Doc::empty(), cx);
             self.path = None;
             self.dirty = false;
             self.status.clear();

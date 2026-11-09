@@ -23,6 +23,18 @@ pub(super) fn paint_block_bg(image: &mut Pixmap, row: &Row, layout: &Layout, pal
     let x = row.marker_x;
     let w = (layout.margin_left + layout.content_width - x).max(row.width);
     let r = radius(theme);
+    if row.rule {
+        fill_rect(image, x, row.y + row.height / 2., w, 1., pal.divider);
+        return;
+    }
+    if let Some(kind) = row.callout {
+        let (bg, border, accent, _, _) = crate::ui::callout_controls::tone(kind, pal.dark);
+        let color = |hex: u32| Color::rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8);
+        fill_rounded_rect(image, x, row.y, w, row.height, 8., color(bg));
+        stroke_rounded_rect(image, x, row.y, w, row.height, 8., 1., color(border));
+        fill_rounded_rect(image, x, row.y, 4., row.height, 2., color(accent));
+        return;
+    }
     if row.code {
         fill_rounded_rect(image, x, row.y, w, row.height, r, pal.code_bg);
         let sw = if theme == ExportTheme::Riso { 1.5 } else { 1.0 };

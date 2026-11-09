@@ -76,3 +76,16 @@ pub(super) fn fit(content: &[f32], fixed: &[bool], target: f32, min_col: f32) ->
     }
     out
 }
+
+/// Move per-block widths with their note when the editor parks or restores a tab.
+pub(in crate::editor) fn take(editor: EntityId) -> HashMap<u64, Widths> {
+    STATE.with(|s| {
+        let mut state = s.borrow_mut();
+        let keys: Vec<_> = state.keys().filter(|(ed, _)| *ed == editor).copied().collect();
+        keys.into_iter().filter_map(|key| state.remove(&key).map(|value| (key.1, value))).collect()
+    })
+}
+pub(in crate::editor) fn restore(editor: EntityId, widths: HashMap<u64, Widths>) {
+    take(editor);
+    STATE.with(|s| s.borrow_mut().extend(widths.into_iter().map(|(id, value)| ((editor, id), value))));
+}
