@@ -185,6 +185,7 @@ impl Editor {
         let was = matches!(self.format, Some(FormatPop::Palette { .. }));
         self.format = None;
         if !was {
+            super::super::menu_keys::arm_format(1);
             self.format = Some(FormatPop::Palette { spec });
         }
         cx.notify();
@@ -202,14 +203,36 @@ impl RenderOnce for PalettePopover {
     }
 }
 
+pub(in crate::editor) fn palette_slots() -> Vec<crate::ui::menu_nav::Slot> {
+    let mut slots = vec![crate::ui::menu_nav::Slot::Skip];
+    slots.extend(std::iter::repeat(crate::ui::menu_nav::Slot::Item).take(TEXT_SWATCHES.len()));
+    slots.push(crate::ui::menu_nav::Slot::Skip);
+    slots.push(crate::ui::menu_nav::Slot::Skip);
+    slots.extend(std::iter::repeat(crate::ui::menu_nav::Slot::Item).take(HIGHLIGHT_SWATCHES.len()));
+    slots
+}
+
+pub(in crate::editor) fn activate_swatch(editor: &mut Editor, index: usize, window: &mut gpui::Window, cx: &mut gpui::Context<Editor>) {
+    if (1..=TEXT_SWATCHES.len()).contains(&index) {
+        if let Some(spec) = TEXT_SWATCHES.get(index - 1) { editor.apply_text_color(spec.name, window, cx); }
+    } else {
+        let start = TEXT_SWATCHES.len() + 3;
+        if index >= start {
+            if let Some(spec) = HIGHLIGHT_SWATCHES.get(index - start) { editor.apply_bg_color(spec.name, window, cx); }
+        }
+    }
+}
+
 pub(in crate::editor) fn render_palette_panel(editor: Entity<Editor>, cx: &gpui::App) -> AnyElement {
     let (sel_text, sel_bg) = editor.read(cx).selection_colors();
     let dark = is_dark();
     let p = crate::dropdown::palette();
     let swatch_border = if dark { 0xffffff24 } else { 0x1f1e1d1f };
 
+    let active = crate::ui::menu_nav::clamp_index(super::super::menu_keys::format_index(), &palette_slots());
     let mut col = crate::dropdown::shell("palette-panel")
         .w(px(196.))
+        .track_scroll(&crate::ui::menu_nav::scroll("format"))
         .child(crate::dropdown::group_label(tr("文本", "Text")));
 
     for (idx, spec) in TEXT_SWATCHES.iter().enumerate() {
@@ -222,6 +245,7 @@ pub(in crate::editor) fn render_palette_panel(editor: Entity<Editor>, cx: &gpui:
                 .h(px(28.)).px(px(10.)).flex().items_center().gap(px(8.)).rounded(crate::ui::radius::CONTROL)
                 .cursor(CursorStyle::PointingHand)
                 .when(selected, move |s| s.bg(p.checked_bg))
+                .when(idx + 1 == active && !selected, move |s| s.bg(p.hover_bg))
                 .hover(move |s| s.bg(p.hover_bg))
                 .text_size(px(14.)).line_height(px(20.)).text_color(p.text)
                 .child(div().size(px(16.)).rounded(crate::ui::radius::MICRO_SM).flex_none().bg(rgb(swatch_hex)).border_1().border_color(rgba(swatch_border)))
@@ -255,6 +279,7 @@ pub(in crate::editor) fn render_palette_panel(editor: Entity<Editor>, cx: &gpui:
                 .h(px(28.)).px(px(10.)).flex().items_center().gap(px(8.)).rounded(crate::ui::radius::CONTROL)
                 .cursor(CursorStyle::PointingHand)
                 .when(selected, move |s| s.bg(p.checked_bg))
+                .when(idx + TEXT_SWATCHES.len() + 3 == active && !selected, move |s| s.bg(p.hover_bg))
                 .hover(move |s| s.bg(p.hover_bg))
                 .text_size(px(14.)).line_height(px(20.)).text_color(p.text)
                 .child(swatch)

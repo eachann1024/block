@@ -35,7 +35,7 @@ impl AiChat {
     pub(super) fn open_reference_folder(&mut self, folder: String, rest: String, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
         self.picker_cache.folder = folder;
         self.pick_index = 0;
-        PICKER_SCROLL.with(|scroll| scroll.scroll_to_item(0, gpui::ScrollStrategy::Top));
+        PICKER_SCROLL.with(|scroll| crate::ui::menu_nav::reveal_uniform(scroll, 0));
         self.input.update(cx, |i, cx| {
             let value = format!("{rest}@"); let end = value.len();
             i.set_value(value, window, cx); i.set_selected_range(end..end, cx); i.focus(window, cx);

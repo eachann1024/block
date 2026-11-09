@@ -192,10 +192,12 @@ impl Workspace {
 
     fn switcher_menu(&self, window: &Window, phase: crate::ui::motion::PopupMotion, pop_gen: u64, cx: &mut Context<Self>) -> AnyElement {
         let current = self.folder.clone();
-        let mut items: Vec<AnyElement> = self.notebooks.iter().map(|path| {
+        let cursor = super::menu::sync_switcher_nav(pop_gen);
+        let notebooks = self.notebooks.len();
+        let mut items: Vec<AnyElement> = self.notebooks.iter().enumerate().map(|(index, path)| {
             let checked = current.as_ref() == Some(path);
             let target = path.clone();
-            menu_item(ItemId::Path(path.clone()), Icon::Folder, display_name(path, true), checked, false,
+            menu_item(ItemId::Path(path.clone()), Icon::Folder, display_name(path, true), checked, false, index == cursor,
                 cx.listener(move |this, _, _, cx| {
                     this.close_overlays(cx);
                     if this.folder.as_ref() != Some(&target) { this.use_folder(target.clone(), cx); }
@@ -206,13 +208,14 @@ impl Workspace {
                 .into_any_element()
         }).collect();
         if !items.is_empty() { items.push(separator()); }
-        items.push(menu_item(ItemId::Name("add-notebook"), Icon::FolderPlus, tr("选择文件夹…", "Choose Folder…").into(), false, false,
+        let choose = if notebooks == 0 { 0 } else { notebooks + 1 };
+        items.push(menu_item(ItemId::Name("add-notebook"), Icon::FolderPlus, tr("选择文件夹…", "Choose Folder…").into(), false, false, cursor == choose,
             cx.listener(|this, _, window, cx| { this.close_overlays(cx); this.choose_folder(window, cx); })).into_any_element());
         let width = self.sidebar_width;
         let fallback = gpui::Bounds::new(point(px(0.), window.viewport_size().height - px(38.)), gpui::size(width, px(30.)));
         crate::ui::dropdown::anchored_motion_with(("notebook-switcher-pop", pop_gen), move |_, _| {
             crate::ui::dropdown::PlacementSpec::above(SWITCHER_BOUNDS.with(|b| b.get()).unwrap_or(fallback))
-        }, menu_surface(width).children(items), phase, 2)
+        }, menu_surface(width).track_scroll(&super::menu::switcher_scroll()).children(items), phase, 2)
     }
 }
 

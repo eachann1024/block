@@ -146,6 +146,7 @@ impl Editor {
             self.caret.anchor = at; self.caret.head = at; self.caret.composing = None;
             if self.composition_before.is_none() { self.record(before, cx); }
             else { self.invalidate_edit(&before); self.changed(cx); }
+            self.sync_block_menu_after_edit(cx);
             return;
         }
         let mut id = a.block;
@@ -200,6 +201,7 @@ impl Editor {
         self.caret.anchor = at; self.caret.head = at; self.caret.composing = None;
         if self.composition_before.is_none() { self.record(before, cx); }
         else { self.invalidate_edit(&before); self.changed(cx); }
+        self.sync_block_menu_after_edit(cx);
     }
     pub(in crate::editor) fn insert_in_block(&mut self, text: &str, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
@@ -212,6 +214,7 @@ impl Editor {
         let at = Position { block: a.block, offset: a.offset + text.len() };
         self.caret.anchor = at; self.caret.head = at; self.caret.composing = None;
         self.record(before, cx);
+        self.sync_block_menu_after_edit(cx);
     }
     pub(in crate::editor) fn mark(&mut self, mark: MarkKind, cx: &mut Context<Self>) {
         if self.path.is_none() || self.caret.is_empty() { return; }

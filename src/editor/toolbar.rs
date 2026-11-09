@@ -127,16 +127,22 @@ impl Editor {
         if !was {
             let key = if kinds { tr("文字类型", "Text type") } else { tr("列表", "Lists") };
             let spec = drop_spec_for(key, self.list.viewport_bounds(), window);
+            let index = current.and_then(|kind| menu_kinds(kinds).iter().position(|item| *item == kind)).unwrap_or(0);
+            super::menu_keys::arm_format(index);
             self.format = Some(if kinds { FormatPop::Kinds { spec, current } } else { FormatPop::Lists { spec, current } });
         }
         cx.notify();
     }
     /// A list item that is already of that kind turns back into body text.
-    fn pick_kind(&mut self, kind: Kind, list: bool, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn pick_kind(&mut self, kind: Kind, list: bool, window: &mut Window, cx: &mut Context<Self>) {
         let current = self.doc.get(self.caret.head.block).map(|b| b.kind);
         self.set_kind_shortcut(if list && current == Some(kind) { Kind::Paragraph } else { kind }, cx);
         self.close_format(window, cx);
     }
+}
+
+pub(super) fn menu_kinds(kinds: bool) -> &'static [Kind] {
+    if kinds { &[Kind::Paragraph, Kind::H1, Kind::H2, Kind::H3] } else { &[Kind::Bullet, Kind::Numbered, Kind::Todo] }
 }
 
 /// Dropdown body for the text-type (`kinds`) or list menu (`F-Toolbar.dc.html`).
@@ -153,16 +159,23 @@ pub(super) fn menu(editor: Entity<Editor>, kinds: bool, current: Option<Kind>) -
         (Kind::Todo, tr("待办清单", "Checklist")),
     ];
     let items: &[(Kind, &'static str)] = if kinds { &kind_items } else { &list_items };
-    let mut column = crate::dropdown::shell("toolbar-kind-menu").w(px(206.));
+    let slots = vec![crate::ui::menu_nav::Slot::Item; items.len()];
+    let active = crate::ui::menu_nav::clamp_index(super::menu_keys::format_index(), &slots);
+    let mut column = crate::dropdown::shell("toolbar-kind-menu").w(px(206.))
+        .track_scroll(&crate::ui::menu_nav::scroll("format"));
     for (i, &(kind, label)) in items.iter().enumerate() {
         let on = current == Some(kind);
         let editor = editor.clone();
         column = column.child(
-            crate::dropdown::row(
+            crate::dropdown::row_with(
                 ("kind-item", i + usize::from(!kinds) * 8),
-                Some(super::block_menu::kind_icon(kind)),
-                label,
-                on,
+                crate::dropdown::RowSpec {
+                    icon: Some(super::block_menu::kind_icon(kind)),
+                    label: label.into(),
+                    checked: on,
+                    highlighted: i == active,
+                    ..Default::default()
+                },
             )
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                 editor.update(cx, |this, cx| this.pick_kind(kind, !kinds, window, cx));

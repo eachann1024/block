@@ -28,6 +28,7 @@ mod table_drag_scroll;
 mod table_resize;
 pub(crate) mod block_menu;
 pub(crate) use paste::MARKDOWN_CLIPBOARD_V1;
+mod menu_keys;
 mod menu_style;
 mod format_cmds;
 mod format_ui;

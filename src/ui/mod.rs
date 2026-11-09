@@ -14,6 +14,7 @@ pub mod folder_controls;
 pub mod font_picker;
 pub mod font_picker_cache;
 pub mod icon_button;
+pub mod menu_nav;
 pub mod modal;
 pub mod motion;
 pub mod outline_rail;

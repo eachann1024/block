@@ -6,6 +6,13 @@ use super::{input::transactions::ListChange, model::Table, table_layout, view::{
 mod cmd;
 pub(super) use cmd::{TableCmd, menu_items};
 
+fn table_slots(items: &[Option<TableCmd>], dims: (usize, usize)) -> Vec<crate::ui::menu_nav::Slot> {
+    items.iter().map(|item| match item {
+        Some(cmd) if !cmd.disabled(dims.0, dims.1) => crate::ui::menu_nav::Slot::Item,
+        _ => crate::ui::menu_nav::Slot::Skip,
+    }).collect()
+}
+
 thread_local! {
     /// (table block, row, column) under the pointer; the chrome follows hover, not the caret.
     static HOVER: std::cell::Cell<Option<(u64, usize, usize)>> = const { std::cell::Cell::new(None) };
@@ -275,7 +282,38 @@ impl Editor {
         crate::dropdown::PlacementSpec::below(rect).viewport(viewport).gap(frozen.gap).margin(frozen.margin).align_x(frozen.align_x)
     }
     pub(in crate::editor) fn open_table_menu_spec(&mut self, id: u64, sel: TableSel, spec: crate::dropdown::PlacementSpec, cx: &mut Context<Self>) {
+        let dims = self.table_dimensions(id).unwrap_or((1, 1));
+        super::menu_keys::arm_table(&table_slots(&menu_items(sel, dims.0, dims.1), dims));
         self.table_menu = Some(TableMenu { block: id, sel, spec }); cx.notify();
+    }
+    pub(super) fn step_table_menu(&mut self, down: bool, cx: &mut Context<Self>) -> bool {
+        let Some(menu) = self.table_menu else { return false };
+        let dims = self.table_dimensions(menu.block).unwrap_or((1, 1));
+        let items = menu_items(menu.sel, dims.0, dims.1);
+        let slots = table_slots(&items, dims);
+        if !crate::ui::menu_nav::has_item(&slots) { return false; }
+        let cur = super::menu_keys::table_index();
+        let next = crate::ui::menu_nav::step(cur, &slots, down);
+        let changed = next != crate::ui::menu_nav::clamp_index(cur, &slots);
+        super::menu_keys::set_table_index(next);
+        if changed { crate::ui::menu_nav::reveal_or_defer(&crate::ui::menu_nav::scroll("table"), next, slots.len()); }
+        cx.notify();
+        true
+    }
+    pub(super) fn activate_table_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(menu) = self.table_menu else { return false };
+        let dims = self.table_dimensions(menu.block).unwrap_or((1, 1));
+        let items = menu_items(menu.sel, dims.0, dims.1);
+        let slots = table_slots(&items, dims);
+        if !crate::ui::menu_nav::has_item(&slots) { return false; }
+        let index = crate::ui::menu_nav::clamp_index(super::menu_keys::table_index(), &slots);
+        super::menu_keys::set_table_index(index);
+        let Some(Some(cmd)) = items.get(index).copied() else { return true; };
+        if cmd.disabled(dims.0, dims.1) { return true; }
+        let (id, sel) = (menu.block, menu.sel);
+        self.table_command(id, sel, cmd, cx);
+        window.focus(&self.focus, cx);
+        true
     }
     pub(in crate::editor) fn open_table_menu(&mut self, id: u64, sel: TableSel, anchor: Point<Pixels>, cx: &mut Context<Self>) {
         let zoom = super::zoom::zoom_factor(self.minimal);
