@@ -162,7 +162,7 @@ impl Editor {
     pub(super) fn source_paste(&mut self, item: Option<ClipboardItem>, cx: &mut Context<Self>) {
         let item = item.or_else(|| cx.read_from_clipboard());
         let Some(item) = item else { return };
-        let text = item.text().unwrap_or_default();
+        let text = super::clipboard_files::string_text(&item).unwrap_or_default();
         if text.is_empty() { return; }
         let range = self.source_doc().map(|d| d.selection()).unwrap_or(0..0);
         self.source_apply(range, &text, true, cx);

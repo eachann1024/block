@@ -14,7 +14,12 @@ impl Editor {
             && matches!(action, Paste | Copy | Cut | SelectAll | Undo | Redo)
             && crate::quick::dispatch_editor_action(action, cx) { return; }
         if super::paste_clipboard::forward_focused_input_action(action, window, cx) { return; }
-        if self.path.is_none() || (!self.is_markdown_note() && !self.editing_source()) { return; }
+        if self.path.is_none() || (!self.is_markdown_note() && !self.editing_source()) {
+            if matches!(action, Copy) && let Some(path) = self.path.clone() {
+                self.copy_current_file(&path, cx);
+            }
+            return;
+        }
         if self.editing_source() { self.handle_source(action, window, cx); return; }
         self.pending_vertical = None;
         if !matches!(action, Cancel) { self.commit_composition(cx); }
@@ -97,8 +102,10 @@ impl Editor {
             }
             Copy | Cut => {
                 if !self.caret.is_empty() {
-                    let Some(item) = self.selection_clipboard_item() else { return; };
-                    cx.write_to_clipboard(item);
+                    if !self.copy_selected_images(cx) {
+                        let Some(item) = self.selection_clipboard_item() else { return; };
+                        cx.write_to_clipboard(item);
+                    }
                     if matches!(action, Cut) && !self.boundary_rules(false, cx) && !self.delete_across(cx) { self.replace_selection("", false, cx); }
                 } else if self.copy_whole_block(cx) && matches!(action, Cut) { self.handle(&EditorAction::Backspace, window, cx); }
             }
@@ -142,12 +149,12 @@ impl Editor {
             gpui::ClipboardEntry::Image(image) => Some((image.bytes.clone(), match image.format {
                 gpui::ImageFormat::Jpeg => "jpg", gpui::ImageFormat::Gif => "gif", gpui::ImageFormat::Webp => "webp", _ => "png" })),
             _ => None }));
-        let files = super::clipboard_files::image_paths();
+        let files = super::clipboard_files::image_paths(item.as_ref());
         if !files.is_empty() {
             let id = self.caret.head.block; self.import_images(id, super::image_import::Place::After, files, window, cx);
-        } else if let Some((bytes, ext)) = image.filter(|_| item.as_ref().and_then(|i| i.text()).is_none()) {
+        } else if let Some((bytes, ext)) = image.filter(|_| item.as_ref().and_then(super::clipboard_files::string_text).is_none()) {
             let id = self.caret.head.block; self.import_image_bytes(id, bytes, ext, window, cx);
-        } else if let Some(item) = item && let Some(text) = item.text() {
+        } else if let Some(item) = item && let Some(text) = super::clipboard_files::string_text(&item) {
             if let Some(fragment) = super::paste_clipboard::inline_fragment(&item, &text) {
                 self.paste_inline_fragment(&fragment, cx); return;
             }

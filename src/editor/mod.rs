@@ -43,7 +43,7 @@ mod annotate_rail;
 mod annotate_ui;
 #[path = "../ai/mod.rs"]
 pub(crate) mod ai;
-mod clipboard_files;
+pub(crate) mod clipboard_files;
 pub(crate) mod image_source;
 pub(crate) mod image_remote;
 mod image_import;
@@ -71,7 +71,7 @@ mod source_text;
 mod source_edit;
 mod source_paint;
 mod source_view;
-mod surface;
+pub(super) mod surface;
 mod file_open;
 mod smoke_api;
 pub mod zoom;

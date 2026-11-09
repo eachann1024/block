@@ -55,6 +55,18 @@ pub(super) fn cached_path(url: &str) -> Option<PathBuf> {
     None
 }
 
+pub(crate) fn ensure_cached(url: &str) -> Option<PathBuf> {
+    if let Some(path) = cached_path(url).filter(|p| p.exists()) {
+        return Some(path);
+    }
+    let key = url.trim().to_owned();
+    let path = download_sync(&key).ok()?;
+    if let Ok(mut map) = CACHE.lock() {
+        map.insert(key, RemoteImageState::Ready(path.clone()));
+    }
+    Some(path)
+}
+
 pub(super) fn retry(url: &str) {
     if let Ok(mut map) = CACHE.lock() {
         map.remove(url.trim());
