@@ -42,23 +42,27 @@ pub fn render_scope_menu<V: 'static>(
 ) -> Option<AnyElement> {
     let (phase, pop_gen) = crate::ui::motion::popup_motion(key, state.scope_menu_open)?;
     crate::ui::motion::schedule_popup_finish(key, pop_gen, cx);
-    let mut rows = vec![scope_row(0, tr("全部文件夹", "All Folders"), matches!(state.scope, SearchScope::All), cx, on_pick)];
+    let cursor = state.scope_cursor;
+    let mut rows = vec![scope_row(0, tr("全部文件夹", "All Folders"), matches!(state.scope, SearchScope::All), cursor == 0, cx, on_pick)];
     if !state.folders.is_empty() { rows.push(dropdown::separator().into_any_element()); }
     for (index, path) in state.folders.iter().enumerate() {
         let checked = matches!(&state.scope, SearchScope::Folder(folder) if folder == path);
-        rows.push(scope_row(index + 1, folder_name(path), checked, cx, on_pick));
+        rows.push(scope_row(index + 1, folder_name(path), checked, cursor == index + 1, cx, on_pick));
     }
-    crate::ui::scope_dropdown::menu_popover("search-scope-menu", rows, phase, pop_gen)
+    crate::ui::scope_dropdown::menu_popover("search-scope-menu", rows, &state.scope_scroll, phase, pop_gen)
 }
 
 fn scope_row<V: 'static>(
     index: usize,
     label: impl Into<SharedString>,
     checked: bool,
+    highlighted: bool,
     cx: &mut Context<V>,
     on_pick: fn(&mut V, usize, &mut Window, &mut Context<V>),
 ) -> AnyElement {
-    dropdown::row(("search-scope", index), Some(Icon::Folder), label, checked)
+    dropdown::row_with(("search-scope", index), dropdown::RowSpec {
+        icon: Some(Icon::Folder), label: label.into(), checked, highlighted, ..Default::default()
+    })
         .relative()
         .children(crate::ui::smoke_overlay::probe(format!("search-scope-{index}")))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| on_pick(this, index, window, cx)))

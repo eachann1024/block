@@ -24,6 +24,7 @@ impl Render for Workspace {
         let drawer_open = split.sidebar_drawer && !ai_fullscreen && !self.is_history_open();
         sync_fullscreen_traffic_lights(self, ai_fullscreen, window);
         let root = div().size_full().relative().flex().flex_col().overflow_hidden().bg(theme.shell).text_color(theme.text)
+            .child(crate::ui::menu_nav::flush_layer(cx))
             .font_family(crate::theme::ui_font_family())
             .key_context("Workspace").track_focus(&self.root_focus)
             .on_action(cx.listener(|this, _: &OpenSearch, window, cx| this.open_search(window, cx)))
@@ -40,16 +41,28 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &crate::editor::view::Undo, w, cx| this.route_edit_action(crate::editor::view::EditorAction::Undo, w, cx)))
             .on_action(cx.listener(|this, _: &crate::editor::view::Redo, w, cx| this.route_edit_action(crate::editor::view::EditorAction::Redo, w, cx)))
             .capture_action(cx.listener(|this, _: &Dismiss, window, cx| {
+                if this.close_tree_submenu(cx) { cx.stop_propagation(); return; }
                 if crate::updater::close_modal() { this.restore_focus(window, cx); cx.notify(); cx.stop_propagation(); }
                 else if this.dismiss(window, cx) { cx.stop_propagation(); }
             }))
             .capture_action(cx.listener(|this, _: &crate::editor::view::Cancel, window, cx| {
+                if this.close_tree_submenu(cx) { cx.stop_propagation(); return; }
                 if crate::updater::close_modal() { this.restore_focus(window, cx); cx.notify(); cx.stop_propagation(); }
                 else if this.dismiss(window, cx) { cx.stop_propagation(); }
             }))
             .capture_action(cx.listener(|this, _: &gpui_component::input::Escape, window, cx| {
+                if this.close_tree_submenu(cx) { cx.stop_propagation(); return; }
                 if crate::updater::close_modal() { this.restore_focus(window, cx); cx.notify(); cx.stop_propagation(); }
                 else if this.dismiss(window, cx) { cx.stop_propagation(); }
+            }))
+            .capture_action(cx.listener(|this, _: &crate::editor::view::Up, _, cx| {
+                if this.step_surface_menu(false, cx) { cx.stop_propagation(); }
+            }))
+            .capture_action(cx.listener(|this, _: &crate::editor::view::Down, _, cx| {
+                if this.step_surface_menu(true, cx) { cx.stop_propagation(); }
+            }))
+            .capture_action(cx.listener(|this, _: &crate::editor::view::Enter, window, cx| {
+                if this.activate_surface_menu(window, cx) { cx.stop_propagation(); }
             }))
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Back), cx.listener(|this, _, _, cx| this.navigate_back(cx)))
             .on_mouse_down(MouseButton::Navigate(NavigationDirection::Forward), cx.listener(|this, _, _, cx| this.navigate_forward(cx)));

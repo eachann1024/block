@@ -24,10 +24,10 @@ pub fn trigger_capsule(id: impl Into<ElementId>, label: impl Into<SharedString>,
         .when_some(crate::ui::smoke_overlay::probe("search-scope-trigger"), |row, probe| row.child(probe))
 }
 
-pub fn menu_popover(id: impl Into<ElementId>, rows: Vec<AnyElement>, phase: crate::ui::motion::PopupMotion, pop_gen: u64) -> Option<gpui::AnyElement> {
+pub fn menu_popover(id: impl Into<ElementId>, rows: Vec<AnyElement>, scroll: &gpui::ScrollHandle, phase: crate::ui::motion::PopupMotion, pop_gen: u64) -> Option<gpui::AnyElement> {
     let tracked = TRIGGER_BOUNDS.with(Clone::clone);
     let known = tracked.get()?;
-    let menu = crate::ui::dropdown::shell_unbounded(id).w(px(236.)).children(rows);
+    let menu = crate::ui::dropdown::shell_unbounded(id).w(px(236.)).track_scroll(scroll).children(rows);
     Some(crate::ui::dropdown::anchored_motion_with(("search-scope-popover", pop_gen), move |_, _| {
         crate::ui::dropdown::PlacementSpec::below(tracked.get().unwrap_or(known))
             .align_x(crate::ui::dropdown::AlignX::Right)

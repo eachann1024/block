@@ -19,14 +19,9 @@ impl Editor {
         self.pending_vertical = None;
         if !matches!(action, Cancel) { self.commit_composition(cx); }
         match action {
-            Up | Down if super::code_block::step_lang_picker(matches!(action, Down), cx) => return,
-            Enter if let Some((id, tag, same)) = super::code_block::take_picked_lang(&self.doc) => {
-                self.run_block_cmd(id, super::block_menu::Mode::Handle, super::block_menu::Cmd::SetLanguage(tag, same), window, cx);
-                return;
-            }
+            Up | Down if self.step_open_menu(matches!(action, Down), cx) => return,
+            Enter if self.activate_open_menu(window, cx) => return,
             Cancel if super::code_block::close_lang_picker_if_open(cx) => return,
-            Up | Down if self.block_menu_step(matches!(action, Down), cx) => return,
-            Enter if self.block_menu_pick(window, cx) => return,
             Cancel if self.block_menu.is_some() => { self.block_menu = None; cx.notify(); return; }
             Cancel if self.annotate.reactions.is_some() => { self.annotate.reactions = None; cx.notify(); return; }
             Cancel if self.annotate.composer.is_some() => { self.close_annotation_composer(window, cx); return; }
@@ -37,7 +32,7 @@ impl Editor {
                 cx.notify();
                 return;
             }
-            Cancel if self.ai_session().is_some() => { self.ai_close(window, cx); return; }
+            Cancel if self.ai_session().is_some() => { self.ai_escape(window, cx); return; }
             _ => {}
         }
         if self.block_selection_key(action, window, cx) { return; }
@@ -67,9 +62,7 @@ impl Editor {
                 if self.doc.blocks.len() == 1 && last.text.is_empty() { self.block_sel = Some((0, 0)); }
                 self.set_head(Position { block: last.id, offset: last.text.len() }, true, cx);
             }
-            Up | Down if self.block_menu_step(matches!(action, Down), cx) => {}
             Up | Down | SelectUp | SelectDown => self.vertical(matches!(action, Down | SelectDown), matches!(action, SelectUp | SelectDown), cx),
-            Enter if self.block_menu_pick(window, cx) => {}
             // A focused image or divider hides its source line, so keys act on the block instead of editing it.
             Enter if let Some(id) = self.focused_atomic() => self.add_below(id, window, cx),
             Backspace | Delete if let Some(id) = self.focused_image() =>
