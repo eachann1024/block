@@ -11,6 +11,7 @@ use crate::files::{create_note_at, note_candidates, load_state, save_folder, sca
 #[path = "app_nav.rs"] mod nav;
 #[path = "app_folder.rs"] mod folder;
 #[path = "app_sidebar.rs"] mod sidebar;
+#[path = "app_sidebar_intro.rs"] mod sidebar_intro;
 #[path = "app_files.rs"] mod file_ops;
 #[path = "app_smoke.rs"] mod smoke_probe;
 #[path = "app_menu.rs"] mod menu;
@@ -53,6 +54,7 @@ pub struct Workspace {
     pub(crate) sidebar_collapsed: bool,
     /// The sidebar was opened while the window had no column for it.
     sidebar_pinned: bool,
+    sidebar_intro: sidebar_intro::SidebarIntro,
     /// Set once the chat entity exists, so a sash drag relayouts the shell.
     chat_watched: bool,
     /// Last macOS traffic-light row applied for the fullscreen session bar.
@@ -207,7 +209,7 @@ impl Workspace {
         let this = Self { folder: None, folder_error: None, tree, editor, selected: None, tabs: Vec::new(), closed_tabs: tabs::ClosedTabs::default(), nav: nav::NavHistory::default(), startup_tabs: None, external_open: Vec::new(), dirty_bits: 0, loading: true,
             choosing: false, creating: false, persisting: false, pending: None,
             notice: tr("正在读取工作区偏好…", "Loading workspace preferences…").into(), sidebar_width: Theme::ocean().sidebar_width,
-            sidebar_collapsed: false, sidebar_pinned: true, chat_watched: false, traffic_lights_tall: None, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
+            sidebar_collapsed: false, sidebar_pinned: true, sidebar_intro: sidebar_intro::SidebarIntro::pending(), chat_watched: false, traffic_lights_tall: None, resizing: None, notebooks: Vec::new(), switcher_open: false, menu: None, renaming: None, search: None,
             settings: None, history: None, undo_restore: None, history_toast: None, history_token: 0, history_opening: false, history_restore_busy: false, history_return_focus: false, file_op: None, working: false, scan_generation: 0, root_focus: cx.focus_handle(),
             bounds_task: None, _editor_subscription: subscription };
         Self::install_shortcut_router(window, cx);
