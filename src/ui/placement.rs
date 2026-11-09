@@ -11,11 +11,18 @@
 //! - Caps scrollable menu height (`max_height_for_spec`) to the available side in short windows
 //!   so those menus scroll internally instead of covering the input line.
 //! - Resolves geometry during `prepaint` after normal elements have published current-frame bounds.
+//! - `gpui_base::Positioner` is the absolute anchor: it places that origin and rounds the offset.
+//!   Side choice, editor viewports, trigger-edge flips, cascading submenus, and reserved filter
+//!   height stay here. Base's window clamp would move those origins, and its popover focuses its
+//!   content, which would take the editor's input method.
+use std::cell::RefCell;
+use std::rc::Rc;
 use gpui::{
-    AnyElement, App, Bounds, Deferred, Display, Element, GlobalElementId, InspectorElementId,
-    IntoElement, LayoutId, ParentElement, Pixels, Point, Position, Size, Style, Styled, Window, deferred,
+    Anchor, AnyElement, App, Bounds, Deferred, Element, ElementId, GlobalElementId, InspectorElementId,
+    IntoElement, LayoutId, ParentElement, Pixels, Point, Size, Styled, Window, deferred,
     div, point, px, size,
 };
+use gpui_base::{DeferredPopover, GlobalState, Positioner};
 
 pub const DEFAULT_MARGIN: f32 = 8.;
 pub const DEFAULT_GAP: f32 = 4.;
@@ -203,17 +210,52 @@ pub fn resolve_origin(spec: &PlacementSpec, menu_size: Size<Pixels>, window_size
     point(x.round(), y.round())
 }
 
+/// Base only knows the window. A second clamp would pull an origin that
+/// `PlacementSpec` pinned inside an editor viewport, or to a trigger edge.
+const POSITIONER_MARGIN_OFF: f32 = -1_000_000.;
+
 pub struct SmartAnchored {
     children: Vec<AnyElement>,
     resolver: Box<dyn Fn(&Window, &App) -> PlacementSpec>,
+    key: ElementId,
+    /// Tooltips must not block the pointer or register as a deferred popover.
+    passive: bool,
+    ids: Rc<RefCell<Vec<LayoutId>>>,
+    positioner: Option<Positioner>,
 }
 
+#[track_caller]
 pub fn smart_anchored(spec: PlacementSpec) -> SmartAnchored {
-    SmartAnchored { children: Vec::new(), resolver: Box::new(move |_, _| spec) }
+    SmartAnchored::from_resolver(Box::new(move |_, _| spec), *std::panic::Location::caller())
 }
 
+#[track_caller]
 pub fn smart_anchored_with(resolver: impl Fn(&Window, &App) -> PlacementSpec + 'static) -> SmartAnchored {
-    SmartAnchored { children: Vec::new(), resolver: Box::new(resolver) }
+    SmartAnchored::from_resolver(Box::new(resolver), *std::panic::Location::caller())
+}
+
+impl SmartAnchored {
+    fn from_resolver(resolver: Box<dyn Fn(&Window, &App) -> PlacementSpec>, caller: core::panic::Location<'static>) -> Self {
+        Self {
+            children: Vec::new(),
+            resolver,
+            key: ElementId::CodeLocation(caller),
+            passive: false,
+            ids: Rc::new(RefCell::new(Vec::new())),
+            positioner: None,
+        }
+    }
+
+    /// Hover tips keep GPUI's tooltip timing and must not swallow the pointer.
+    pub fn passive(mut self) -> Self {
+        self.passive = true;
+        self
+    }
+
+    pub fn presence_key(mut self, key: impl Into<ElementId>) -> Self {
+        self.key = key.into();
+        self
+    }
 }
 
 pub fn smart_popover(spec: PlacementSpec, child: impl IntoElement, priority: usize) -> Deferred {
@@ -225,25 +267,67 @@ pub fn smart_popover_with(resolver: impl Fn(&Window, &App) -> PlacementSpec + 's
 }
 
 pub fn anchored_motion(
-    id: impl Into<gpui::ElementId>,
+    id: impl Into<ElementId>,
     spec: PlacementSpec,
     child: impl IntoElement,
     phase: crate::ui::motion::PopupMotion,
     priority: usize,
 ) -> AnyElement {
-    let animated = crate::ui::motion::animate_popup(div().child(child), phase, id);
-    deferred(smart_anchored(spec).child(animated)).with_priority(priority).into_any_element()
+    let id = id.into();
+    // Motion stays on this inner surface. It must not be the Positioner, or a
+    // relative slide would replace the absolute anchor.
+    let animated = crate::ui::motion::animate_popup(div().child(child), phase, id.clone());
+    deferred(smart_anchored(spec).presence_key(id).child(animated)).with_priority(priority).into_any_element()
 }
 
 pub fn anchored_motion_with(
-    id: impl Into<gpui::ElementId>,
+    id: impl Into<ElementId>,
     resolver: impl Fn(&Window, &App) -> PlacementSpec + 'static,
     child: impl IntoElement,
     phase: crate::ui::motion::PopupMotion,
     priority: usize,
 ) -> AnyElement {
-    let animated = crate::ui::motion::animate_popup(div().child(child), phase, id);
-    deferred(smart_anchored_with(resolver).child(animated)).with_priority(priority).into_any_element()
+    let id = id.into();
+    let animated = crate::ui::motion::animate_popup(div().child(child), phase, id.clone());
+    deferred(smart_anchored_with(resolver).presence_key(id).child(animated)).with_priority(priority).into_any_element()
+}
+
+/// Records the content layout id Positioner assigns, so prepaint can read this
+/// frame's size before telling Positioner where to put it.
+struct Measured {
+    child: AnyElement,
+    ids: Rc<RefCell<Vec<LayoutId>>>,
+}
+
+impl Element for Measured {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> { None }
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> { None }
+
+    fn request_layout(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+        let layout_id = self.child.request_layout(window, cx);
+        self.ids.borrow_mut().push(layout_id);
+        (layout_id, ())
+    }
+
+    fn prepaint(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, _: Bounds<Pixels>, _: &mut (), window: &mut Window, cx: &mut App) {
+        self.child.prepaint(window, cx);
+    }
+
+    fn paint(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, _: Bounds<Pixels>, _: &mut (), _: &mut (), window: &mut Window, cx: &mut App) {
+        self.child.paint(window, cx);
+    }
+}
+
+impl IntoElement for Measured {
+    type Element = Self;
+    fn into_element(self) -> Self::Element { self }
+}
+
+struct AnchorState {
+    layout: <Positioner as Element>::RequestLayoutState,
 }
 
 impl ParentElement for SmartAnchored {
@@ -251,32 +335,52 @@ impl ParentElement for SmartAnchored {
 }
 
 impl Element for SmartAnchored {
-    type RequestLayoutState = Vec<LayoutId>;
+    type RequestLayoutState = AnchorState;
     type PrepaintState = ();
 
-    fn id(&self) -> Option<gpui::ElementId> { None }
+    fn id(&self) -> Option<ElementId> { None }
     fn source_location(&self) -> Option<&'static core::panic::Location<'static>> { None }
 
     fn request_layout(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, window: &mut Window, cx: &mut App) -> (LayoutId, Self::RequestLayoutState) {
-        let child_layout_ids = self.children.iter_mut().map(|child| child.request_layout(window, cx)).collect::<Vec<_>>();
-        let style = Style { position: Position::Absolute, display: Display::Flex, ..Style::default() };
-        let layout_id = window.request_layout(style, child_layout_ids.iter().copied(), cx);
-        (layout_id, child_layout_ids)
+        self.ids.borrow_mut().clear();
+        let ids = self.ids.clone();
+        let mut positioner = Positioner::corner(Anchor::TopLeft, point(px(0.), px(0.)));
+        let children = std::mem::take(&mut self.children);
+        positioner.extend(children.into_iter().map(|child| Measured { child, ids: ids.clone() }.into_any_element()));
+        let (layout_id, layout) = positioner.request_layout(None, None, window, cx);
+        self.positioner = Some(positioner);
+        (layout_id, AnchorState { layout })
     }
 
-    fn prepaint(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, bounds: Bounds<Pixels>, child_layout_ids: &mut Self::RequestLayoutState, window: &mut Window, cx: &mut App) {
-        if child_layout_ids.is_empty() { return; }
-        let children_bounds = child_layout_ids.iter().map(|id| window.layout_bounds(*id)).reduce(|acc, b| acc.union(&b)).unwrap();
-        let spec = (self.resolver)(window, cx);
-        let desired_origin = resolve_origin(&spec, children_bounds.size, window.viewport_size());
-        let offset = desired_origin - bounds.origin;
-        window.with_element_offset(point(offset.x.round(), offset.y.round()), |window| {
-            for child in &mut self.children { child.prepaint(window, cx); }
-        });
+    fn prepaint(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, bounds: Bounds<Pixels>, state: &mut Self::RequestLayoutState, window: &mut Window, cx: &mut App) {
+        if !self.passive {
+            // Tells base text inputs a drawn menu is open, so they do not raise
+            // a native context menu over it. The token dies with this element.
+            // Focus stays where it was; the editor keeps its input method.
+            GlobalState::init(cx);
+            let _held: gpui::Entity<DeferredPopover> = window.use_keyed_state(self.key.clone(), cx, |_, cx| {
+                GlobalState::register_deferred_popover(cx)
+            });
+        }
+        let Some(mut positioner) = self.positioner.take() else { return };
+        let ids = self.ids.borrow().clone();
+        if !ids.is_empty() {
+            let children_bounds = ids.iter().map(|id| window.layout_bounds(*id)).reduce(|acc, b| acc.union(&b)).unwrap();
+            let spec = (self.resolver)(window, cx);
+            let origin = resolve_origin(&spec, children_bounds.size, window.viewport_size());
+            positioner = positioner.position(origin).margin(px(POSITIONER_MARGIN_OFF));
+            if !self.passive {
+                positioner = positioner.occlude();
+            }
+        }
+        positioner.prepaint(None, None, bounds, &mut state.layout, window, cx);
+        self.positioner = Some(positioner);
     }
 
-    fn paint(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, _: Bounds<Pixels>, _: &mut Self::RequestLayoutState, _: &mut Self::PrepaintState, window: &mut Window, cx: &mut App) {
-        for child in &mut self.children { child.paint(window, cx); }
+    fn paint(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, bounds: Bounds<Pixels>, state: &mut Self::RequestLayoutState, _: &mut Self::PrepaintState, window: &mut Window, cx: &mut App) {
+        if let Some(positioner) = self.positioner.as_mut() {
+            positioner.paint(None, None, bounds, &mut state.layout, &mut (), window, cx);
+        }
     }
 }
 

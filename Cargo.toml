@@ -12,6 +12,9 @@ smoke-capture = ["gpui/test-support", "gpui_platform/test-support"]
 gpui = { package = "gpui-pre", version = "0.3.11", default-features = false, features = ["font-kit"] }
 gpui_platform = { package = "gpui-pre-platform", version = "0.3.11", default-features = false, features = ["runtime_shaders", "font-kit"] }
 gpui-component = { version = "0.9.0", default-features = false, features = ["tree-sitter"] }
+# Same crate gpui-component 0.9.0 already depends on. Direct so overlays can use
+# Positioner; gpui-component does not re-export it. Caret, not an exact pin.
+gpui-base = "0.9"
 ropey = { version = "2.0.0-beta.1", default-features = false, features = ["metric_lines_lf", "metric_utf16"] }
 html5ever = "0.40.1"
 tree-sitter-css = "0.25.0"
