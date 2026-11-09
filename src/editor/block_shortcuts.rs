@@ -250,35 +250,10 @@ impl Editor {
         self.record(before, cx);
         true
     }
-    /// Cross-block selections and whole atomic content retain their block structure.
-    /// Selecting all characters in a heading/list is still a text selection.
-    pub(super) fn remember_blocks(&mut self) {
-        let (_, _, ai, bi) = self.ordered();
-        let whole = |i: usize| self.selected_range(self.doc.blocks[i].id).is_some_and(|r| r == (0..self.doc.blocks[i].text.len()));
-        let one = &self.doc.blocks[ai];
-        let rich = ai != bi || (whole(ai) && (one.meta.raw_source.is_some() || one.meta.table.is_some()));
-        if !rich { self.block_clip = None; return; }
-        let blocks: Vec<Block> = (ai..=bi).filter_map(|i| {
-            let block = &self.doc.blocks[i];
-            self.selected_range(block.id).map(|r| {
-                if block.meta.raw_source.is_some() || r == (0..block.text.len()) {
-                    block.clone()
-                } else {
-                    block.slice(r)
-                }
-            })
-        }).collect();
-        let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(blocks));
-        let plain = markdown.trim_end_matches('\n').to_owned();
-        self.block_clip = Some((plain, markdown));
-    }
     /// A selected image or HTML block has no text range: copy it whole so paste recreates the same block.
     pub(super) fn copy_whole_block(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(block) = self.doc.get(self.caret.head.block).filter(|b| structural(b) && b.meta.code_language.is_none()).cloned() else { return false };
-        let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(vec![block]));
-        let plain = markdown.trim_end().to_owned();
-        cx.write_to_clipboard(super::paste_clipboard::block_item(plain.clone(), &markdown));
-        self.block_clip = Some((plain, markdown));
+        cx.write_to_clipboard(super::paste_clipboard::blocks_item(vec![block]));
         true
     }
 }

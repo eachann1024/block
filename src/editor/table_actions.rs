@@ -1,5 +1,5 @@
 //! Table structure commands, row/column selection, and the geometry the table chrome needs.
-use gpui::{Bounds, ClipboardItem, Context, Entity, Pixels, Point, Window, point, px};
+use gpui::{Bounds, Context, Entity, Pixels, Point, Window, point, px};
 use crate::theme::tr;
 use super::{input::transactions::ListChange, model::Table, table_layout, view::{Editor, layout::TextLayout, selection::Position}};
 
@@ -171,12 +171,8 @@ impl Editor {
         match cmd {
             TableCmd::SelectTable => self.select_whole_table(id, cx),
             TableCmd::CopyTable => {
-                if let Some(table) = self.doc.get(id).and_then(|b| b.meta.table.as_ref()) {
-                    let mut table = table.clone();
-                    if table.to_pipe() { super::markdown::rebuild_table_source(&mut table); }
-                    let mut text = String::new();
-                    super::markdown::serialize_table(&table, &mut text);
-                    cx.write_to_clipboard(ClipboardItem::new_string_with_metadata(text, super::paste::MARKDOWN_CLIPBOARD_V1.into()));
+                if let Some(block) = self.doc.get(id).filter(|b| b.meta.table.is_some()) {
+                    cx.write_to_clipboard(super::paste_clipboard::blocks_item(vec![block.clone()]));
                     self.status = tr("已复制表格", "Table copied").into();
                 }
                 cx.notify();

@@ -6,7 +6,7 @@
 use crate::ui::tooltip::TooltipExt;
 use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, time::Duration};
 use gpui::{
-    Bounds, ClipboardItem, Context, CursorStyle, Div, ElementId, Entity, Focusable, FontWeight, Hsla,
+    Bounds, Context, CursorStyle, Div, ElementId, Entity, Focusable, FontWeight, Hsla,
     MouseButton, MouseDownEvent, Pixels, Point, Size, Stateful, Window, anchored, deferred, div,
     point, prelude::*, px, rgb, size, transparent_black,
 };
@@ -225,8 +225,7 @@ pub fn controls(
         .child(chip(copy_id, "callout-copy", zoom, st, if copied { tr("已复制", "Copied") } else { tr("复制", "Copy") }, tr("复制标注文本", "Copy callout text"))
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                 cx.stop_propagation();
-                let text = this.block_plain_text(id);
-                cx.write_to_clipboard(ClipboardItem::new_string(text));
+                this.copy_block_text(id, cx);
                 COPIED.with(|set| { set.borrow_mut().insert(id); });
                 cx.notify();
                 let entity = copy_editor.downgrade();

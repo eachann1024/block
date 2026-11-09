@@ -79,8 +79,6 @@ pub struct Editor {
     pub(super) composition_before: Option<Snapshot>,
     pub(super) persistence: Persistence,
     pointer_subscriptions: Vec<gpui::Subscription>,
-    /// Last in-app block copy: (plain text put on the clipboard, Markdown of the copied blocks).
-    pub(super) block_clip: Option<(String, String)>,
     /// Esc block selection: (anchor index, head index).
     pub(super) block_sel: Option<(usize, usize)>,
     /// Quick-note mode: no floating toolbar, no block handles, narrower padding, no status bar.
@@ -104,7 +102,7 @@ impl Editor {
             list: ListState::new(1, ListAlignment::Top, px(120.)), scroll_top: (0, px(0.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
-            persistence: Persistence::default(), pointer_subscriptions: Vec::new(), block_clip: None, block_sel: None, minimal: false, find: None, search_jump: None, annotate: Default::default(), sessions: HashMap::new(),
+            persistence: Persistence::default(), pointer_subscriptions: Vec::new(), block_sel: None, minimal: false, find: None, search_jump: None, annotate: Default::default(), sessions: HashMap::new(),
             outline: Default::default(), surface: super::surface::Surface::Note, source_layouts: HashMap::new(), source_drag: false }
     }
     pub fn set_minimal(&mut self, minimal: bool) { self.minimal = minimal; }
@@ -114,9 +112,6 @@ impl Editor {
     }
     pub fn status_text(&self) -> &str { &self.status }
     pub fn is_dirty(&self) -> bool { self.dirty }
-    pub(crate) fn block_plain_text(&self, id: u64) -> String {
-        self.doc.get(id).map(|block| block.text.clone()).unwrap_or_default()
-    }
     pub(crate) fn dismiss_dropdowns(&mut self) -> bool {
         self.block_menu.take().is_some() | self.table_menu.take().is_some()
             | self.format.take().is_some() | self.image_menu.take().is_some()
