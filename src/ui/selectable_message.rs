@@ -4,10 +4,9 @@ use gpui_component::text::{SelectionFormat, TextView, TextViewStyle};
 use crate::theme::Theme;
 
 pub fn message(id: String, source: &str, markdown: bool) -> TextView {
+    if markdown { return super::editor_content::markdown(id, source); }
     let id = SharedString::from(id);
-    let view = if markdown {
-        TextView::markdown(id, source.to_owned())
-    } else {
+    let view = {
         // HTML escaping preserves literal Markdown in messages written by the user.
         let text = source.replace('&', "&amp;").replace('<', "&lt;")
             .replace('>', "&gt;").replace('\n', "<br>");
