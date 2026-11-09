@@ -6,11 +6,9 @@ use super::{
     rich, style,
 };
 use crate::editor::model::{CellAlignment, Kind, Table};
-use cosmic_text::{Align, CacheKeyFlags, Color, FontSystem, Weight};
+use cosmic_text::{Family, Align, CacheKeyFlags, Color, FontSystem, Weight};
 
-const PAD: f32 = 8.;
-const FONT: f32 = 17.;
-const LINE: f32 = FONT * 1.5;
+use crate::editor::table_layout::{FONT_SIZE, LINE_HEIGHT, PAD_X, PAD_Y, BORDER, MIN_ROW};
 
 pub(super) struct Frame {
     pub x: f32,
@@ -136,6 +134,8 @@ fn alignment(attrs: &[(String, String)]) -> Option<Align> {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn append(
     table: &Table,
+    source: &super::SourceContext,
+    block_id: u64,
     rows: &mut Vec<Row>,
     y: f32,
     margin_left: f32,
@@ -145,16 +145,21 @@ pub(super) fn append(
     cancel: &Cancellation,
 ) -> Result<f32, ExportError> {
     let xs = columns(table, content_width)?;
-    let mut heights = vec![LINE + PAD * 2.; table.rows.len()];
+    let geometry = source.block(block_id).and_then(|block| block.table.as_ref());
+    let natural = geometry.map(|g| g.columns.iter().sum::<f32>()).unwrap_or(*xs.last().unwrap_or(&content_width));
+    let scale = (content_width / natural.max(1.)).min(1.);
+    let (font, line, pad_x, pad_y) = (FONT_SIZE * scale, LINE_HEIGHT * scale, (PAD_X + BORDER / 2.) * scale, (PAD_Y + BORDER / 2.) * scale);
+    let mut heights: Vec<f32> = (0..table.rows.len()).map(|r|
+        geometry.and_then(|g| g.rows.get(r)).copied().unwrap_or(MIN_ROW) * scale).collect();
     let mut cells = Vec::new();
     for (r, row) in table.rows.iter().enumerate() {
         for cell in &row.cells {
             cancel.check()?;
             let width = xs[cell.column + cell.colspan] - xs[cell.column];
-            let pad = PAD.min((width * 0.15).max(2.0));
-            let inner_w = (width - pad * 2.).max(16.0);
+            let inner_w = (width - pad_x * 2.).max(1.);
             let mut attrs = layout::attributes(theme, Kind::Paragraph, &[], false);
-            if cell.header || style::bold(&table.attrs) || style::bold(&cell.attrs) {
+            if !source.font_family.is_empty() { attrs = attrs.family(Family::Name(&source.font_family)); }
+            if (geometry.is_none() && cell.header) || style::bold(&table.attrs) || style::bold(&cell.attrs) {
                 attrs = attrs.weight(Weight::BOLD);
             }
             if style::italic(&table.attrs) || style::italic(&cell.attrs) {
@@ -182,8 +187,8 @@ pub(super) fn append(
             let shaped = rich::shape(
                 &cell.content,
                 fonts,
-                FONT,
-                LINE,
+                font,
+                line,
                 inner_w,
                 Some(align),
                 attrs,
@@ -192,15 +197,15 @@ pub(super) fn append(
                 .buffer
                 .layout_runs()
                 .map(|r| r.line_top + r.line_height)
-                .fold(LINE, f32::max)
-                + pad * 2.;
+                .fold(line, f32::max)
+                + pad_y * 2.;
             if cell.rowspan == 1 {
                 heights[r] = heights[r].max(required);
             }
-            cells.push((r, cell, width, pad, inner_w, shaped, required));
+            cells.push((r, cell, width, inner_w, shaped, required));
         }
     }
-    for (r, cell, _, _, _, _, required) in &cells {
+    for (r, cell, _, _, _, required) in &cells {
         let used: f32 = heights[*r..*r + cell.rowspan].iter().sum();
         if *required > used {
             heights[*r + cell.rowspan - 1] += required - used;
@@ -212,7 +217,7 @@ pub(super) fn append(
     }
     let end = *ys.last().unwrap();
     budget::canvas(PAGE_WIDTH * SCALE, (end + 48.0) * SCALE)?;
-    for (r, cell, width, pad, inner_w, shaped, _) in cells {
+    for (r, cell, width, inner_w, shaped, _) in cells {
         let x = margin_left + xs[cell.column];
         let top = ys[r];
         let height = ys[r + cell.rowspan] - top;
@@ -234,13 +239,15 @@ pub(super) fn append(
             kind: Kind::Paragraph,
             checked: false,
             code: false,
-            x: x + pad,
+            callout: None,
+            rule: false,
+            x: x + pad_x,
             marker_x: x,
             y: top,
-            text_y: top + pad,
+            text_y: top + pad_y,
             height,
             width: inner_w,
-            line_height: LINE,
+            line_height: line,
         });
     }
     Ok(end)

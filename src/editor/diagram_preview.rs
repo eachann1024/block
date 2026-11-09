@@ -24,7 +24,7 @@ pub(super) enum PreviewState {
 
 thread_local! {
     static CACHE: RefCell<HashMap<u64, PreviewState>> = Default::default();
-    static LAST_READY: RefCell<HashMap<u64, (Arc<Image>, f32, f32)>> = Default::default();
+    static LAST_READY: RefCell<HashMap<(gpui::EntityId, u64), (Arc<Image>, f32, f32)>> = Default::default();
 }
 
 pub(super) fn hash_source(source: &str, dark: bool) -> u64 {
@@ -119,7 +119,7 @@ fn mermaid_theme(dark: bool) -> MermaidTheme {
     t
 }
 
-fn render_mermaid_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32, f32), String> {
+pub(crate) fn render_mermaid_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32, f32), String> {
     let parsed = parse_mermaid_strict(source).map_err(|e| concise_error(&e.to_string()))?;
     let theme = mermaid_theme(dark);
     let config = LayoutConfig::default();
@@ -136,7 +136,7 @@ fn render_mermaid_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32, f32), S
         &config,
         Some(((logical_w * 2.).round(), (logical_h * 2.).round())),
     );
-    Ok((swap_svg_rb(&svg).into_bytes(), logical_w, logical_h))
+    Ok((svg.into_bytes(), logical_w, logical_h))
 }
 
 fn concise_error(raw: &str) -> String {
@@ -160,11 +160,11 @@ pub(super) fn render_state(
     let state = CACHE.with(|c| c.borrow().get(&key).cloned());
     match state {
         Some(PreviewState::Ready { image, width, height }) => {
-            LAST_READY.with(|lr| { lr.borrow_mut().insert(block_id, (image.clone(), width, height)); });
+            LAST_READY.with(|lr| { lr.borrow_mut().insert((editor.entity_id(), block_id), (image.clone(), width, height)); });
             (Some(render_image(image, width, height, zoom)), None)
         }
         Some(PreviewState::Error(msg)) => (None, Some(msg)),
-        Some(PreviewState::Pending) => (Some(fallback_or_loading(block_id, &theme, zoom)), None),
+        Some(PreviewState::Pending) => (Some(fallback_or_loading(editor.entity_id(), block_id, &theme, zoom)), None),
         None => {
             CACHE.with(|c| { c.borrow_mut().insert(key, PreviewState::Pending); });
             let src = source.to_owned();
@@ -176,7 +176,7 @@ pub(super) fn render_state(
                 CACHE.with(|c| {
                     let next = match res {
                         Ok((bytes, width, height)) => PreviewState::Ready {
-                            image: Arc::new(Image::from_bytes(ImageFormat::Svg, bytes)),
+                            image: Arc::new(Image::from_bytes(ImageFormat::Svg, swap_svg_rb(&String::from_utf8_lossy(&bytes)).into_bytes())),
                             width,
                             height,
                         },
@@ -186,7 +186,7 @@ pub(super) fn render_state(
                 });
                 let _ = entity.update(cx, |_, cx| cx.notify());
             }).detach();
-            (Some(fallback_or_loading(block_id, &theme, zoom)), None)
+            (Some(fallback_or_loading(editor.entity_id(), block_id, &theme, zoom)), None)
         }
     }
 }
@@ -204,10 +204,14 @@ pub(super) fn placeholder(text: &'static str, theme: &Theme) -> AnyElement {
         .into_any_element()
 }
 
-fn fallback_or_loading(block_id: u64, theme: &Theme, zoom: f32) -> AnyElement {
-    if let Some((image, w, h)) = LAST_READY.with(|lr| lr.borrow().get(&block_id).cloned()) {
+fn fallback_or_loading(editor: gpui::EntityId, block_id: u64, theme: &Theme, zoom: f32) -> AnyElement {
+    if let Some((image, w, h)) = LAST_READY.with(|lr| lr.borrow().get(&(editor, block_id)).cloned()) {
         render_image(image, w, h, zoom)
     } else {
         placeholder(tr("正在渲染图表…", "Rendering diagram…"), theme)
     }
+}
+
+pub(super) fn clear_editor(editor: gpui::EntityId) {
+    LAST_READY.with(|s| s.borrow_mut().retain(|(ed, _), _| *ed != editor));
 }

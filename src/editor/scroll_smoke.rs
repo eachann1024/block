@@ -8,7 +8,7 @@ impl Editor {
         self.path = Some(path);
         let mut text = (0..60).map(|i| format!("## 标题 {i}\n\n滚动到底后持续触摸板滚动，内容应该保持稳定。\n\n")).collect::<String>();
         text.push_str("/");
-        self.reset_document(markdown::parse(&text));
+        self.reset_document(markdown::parse(&text), cx);
         let id = self.doc.blocks.last().unwrap().id;
         self.focus_block(id, window, cx);
         cx.notify();

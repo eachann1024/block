@@ -218,7 +218,7 @@ impl Editor {
     fn apply_clean_doc(&mut self, content: &str, base: Fingerprint, cx: &mut Context<Self>) {
         let path = self.path.clone();
         self.clear_transient_overlays();
-        self.reset_document(markdown::parse(content));
+        self.reset_document(markdown::parse(content), cx);
         self.persistence.base = base;
         self.persistence.revision = self.persistence.revision.wrapping_add(1);
         self.dirty = false;

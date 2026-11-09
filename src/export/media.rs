@@ -19,6 +19,7 @@ pub(super) struct Picture {
 
 pub(super) fn load(
     spec: &ImageSpec,
+    block_id: u64,
     source: &SourceContext,
     x: f32,
     y: f32,
@@ -34,6 +35,28 @@ pub(super) fn load(
     };
     cancel.check()?;
     let decoded = crate::ui::file_preview::load::load_path(&RENDERER, &path).map_err(ExportError::Media)?;
+    let pixels = decoded_pixels(&decoded, cancel)?;
+    // Image sizing follows the note's content width, including enlargements beyond natural size.
+    let settings = source.block(block_id);
+    let base = settings.map_or(available, |b| b.width).max(1.);
+    let width = settings.and_then(|b| b.image_width)
+        .unwrap_or_else(|| spec.width.map_or(base, |w| (w as f32).clamp(base * 0.1, base))).min(available);
+    let height = width * decoded.height / decoded.width;
+    let offset = match spec.align { Align::Left => 0., Align::Center => (available - width) / 2., Align::Right => available - width };
+    Ok(Picture { pixels, x: x + offset, y, width, height })
+}
+
+pub(super) fn paint(image: &mut Pixmap, picture: &Picture) {
+    let transform = Transform::from_row(
+        picture.width * SCALE / picture.pixels.width() as f32, 0., 0.,
+        picture.height * SCALE / picture.pixels.height() as f32,
+        picture.x * SCALE, picture.y * SCALE,
+    );
+    let paint = PixmapPaint { quality: FilterQuality::Bilinear, ..Default::default() };
+    image.draw_pixmap(0, 0, picture.pixels.as_ref(), &paint, transform, None);
+}
+
+fn decoded_pixels(decoded: &crate::ui::file_preview::load::Decoded, cancel: &Cancellation) -> Result<Pixmap, ExportError> {
     let size = decoded.image.size(0);
     let (w, h) = (size.width.0 as u32, size.height.0 as u32);
     let mut pixels = Pixmap::new(w, h).ok_or(ExportError::Rendering(crate::theme::tr("像素缓冲分配失败", "Failed to allocate pixel buffer")))?;
@@ -49,20 +72,22 @@ pub(super) fn load(
             rgba[3] = bgra[3];
         }
     }
-    // Image sizing follows the note's content width, including enlargements beyond natural size.
-    let base = source.width.map_or(available, |w| w as f32).max(1.);
-    let width = spec.width.map_or(base, |w| (w as f32).clamp(base * 0.1, base)).min(available);
-    let height = width * decoded.height / decoded.width;
-    let offset = match spec.align { Align::Left => 0., Align::Center => (available - width) / 2., Align::Right => available - width };
-    Ok(Picture { pixels, x: x + offset, y, width, height })
+    Ok(pixels)
 }
 
-pub(super) fn paint(image: &mut Pixmap, picture: &Picture) {
-    let transform = Transform::from_row(
-        picture.width * SCALE / picture.pixels.width() as f32, 0., 0.,
-        picture.height * SCALE / picture.pixels.height() as f32,
-        picture.x * SCALE, picture.y * SCALE,
-    );
-    let paint = PixmapPaint { quality: FilterQuality::Bilinear, ..Default::default() };
-    image.draw_pixmap(0, 0, picture.pixels.as_ref(), &paint, transform, None);
+pub(super) fn preview(block: &crate::editor::model::Block, dark: bool, x: f32, y: f32, available: f32, cancel: &Cancellation) -> Result<Option<Picture>, ExportError> {
+    let Some(language) = block.meta.code_language.as_deref() else { return Ok(None) };
+    if block.text.trim().is_empty() { return Ok(None); }
+    let rendered = match language.trim().to_ascii_lowercase().as_str() {
+        "mermaid" => crate::editor::diagram_preview::render_mermaid_svg(&block.text, dark),
+        "latex" | "math" | "tex" | "katex" => crate::editor::math_preview::render_math_svg(&block.text, dark),
+        _ => return Ok(None),
+    }.map_err(ExportError::Media)?;
+    cancel.check()?;
+    let (bytes, w, h) = rendered;
+    let svg = std::str::from_utf8(&bytes).map_err(|e| ExportError::Media(e.to_string()))?;
+    let decoded = crate::ui::file_preview::load::render_svg(&RENDERER, svg).map_err(ExportError::Media)?;
+    let pixels = decoded_pixels(&decoded, cancel)?;
+    let width = w.min(available);
+    Ok(Some(Picture { pixels, x: x + (available - width) / 2., y, width, height: h * width / w }))
 }

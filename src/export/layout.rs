@@ -22,6 +22,8 @@ pub(super) struct Row {
     pub kind: Kind,
     pub checked: bool,
     pub code: bool,
+    pub callout: Option<crate::editor::model::CalloutKind>,
+    pub rule: bool,
     pub x: f32,
     pub marker_x: f32,
     pub y: f32,
@@ -153,6 +155,8 @@ pub(super) fn build(
         if let Some(table) = &block.meta.table {
             y = super::table::append(
                 table,
+                &options.source,
+                block.id,
                 &mut rows,
                 y,
                 margin_left + indent,
@@ -164,16 +168,24 @@ pub(super) fn build(
             continue;
         }
         if let Some(spec) = crate::editor::image_source::spec_of(block) {
-            let picture = super::media::load(&spec, &options.source, margin_left + indent, y, content_width - indent, cancel)?;
+            let picture = super::media::load(&spec, block.id, &options.source, margin_left + indent, y, content_width - indent, cancel)?;
             y += picture.height + 10.;
             budget::canvas(PAGE_WIDTH * SCALE, (y + margin_bottom) * SCALE)?;
             pictures.push(picture);
             continue;
         }
+        let source = options.source.block(block.id);
+        let preview = super::media::preview(block, theme.palette().dark, margin_left + indent, y, content_width - indent, cancel)?;
+        if let Some(picture) = preview {
+            y += picture.height + 10.;
+            pictures.push(picture);
+            if !source.is_some_and(|s| s.show_source) { continue; }
+        }
+        let rule = super::format::is_rule(block);
         let code = block.meta.code_language.is_some();
-        let size = block_font_size(theme, block, code);
-        let line_height = size * line_factor(theme, block.kind, code);
-        let (gutter, pad_x, pad_top, pad_bottom) = block_box_metrics(
+        let mut size = block_font_size(theme, block, code);
+        let mut line_height = size * line_factor(theme, block.kind, code);
+        let (gutter, pad_x, mut pad_top, pad_bottom) = block_box_metrics(
             theme,
             block.kind,
             code,
@@ -181,8 +193,9 @@ pub(super) fn build(
             block.meta.indent,
             &gutters,
         );
+        if block.meta.callout.is_some() { pad_top += 26.; }
         let width = (content_width - indent - gutter - pad_x * 2.0).max(32.0);
-        let label = block
+        let mut label = block
             .meta
             .code_language
             .as_deref()
@@ -190,6 +203,9 @@ pub(super) fn build(
             .map(|s| if matches!(s.to_ascii_lowercase().as_str(), "yaml-frontmatter" | "frontmatter") { "yaml" } else { s })
             .map(|s| plain(fonts, theme, s, 13.0, width))
             .transpose()?;
+        if let Some(kind) = block.meta.callout {
+            label = Some(plain(fonts, theme, crate::ui::callout_controls::label(kind), 13., width)?);
+        }
         let label_h = label
             .as_ref()
             .map(|b| {
@@ -203,15 +219,27 @@ pub(super) fn build(
         if block.meta.heading_level == Some(6) && block.kind == Kind::H3 {
             base = base.weight(Weight::MEDIUM);
         }
-        let shaped = super::rich::shape(
-            block,
+        let empty_rule = Block::new(block.id, Kind::Paragraph, String::new());
+        let text_block = if rule { &empty_rule } else { block };
+        let wrap = if code && source.is_some_and(|s| s.nowrap) { cosmic_text::Wrap::None } else { cosmic_text::Wrap::WordOrGlyph };
+        let mut shaped = super::rich::shape_with_wrap(
+            text_block,
             fonts,
             size,
             line_height,
             width,
             None,
-            base,
+            base.clone(),
+            wrap,
         )?;
+        if wrap == cosmic_text::Wrap::None {
+            let natural = shaped.buffer.layout_runs().map(|r| r.line_w).fold(0., f32::max);
+            if natural > width {
+                let scale = width / natural;
+                size *= scale; line_height *= scale;
+                shaped = super::rich::shape_with_wrap(text_block, fonts, size, line_height, width, None, base, wrap)?;
+            }
+        }
         let text_h = shaped
             .buffer
             .layout_runs()
@@ -228,6 +256,8 @@ pub(super) fn build(
             kind: block.kind,
             checked: block.checked,
             code,
+            callout: block.meta.callout,
+            rule,
             x: margin_left + indent + gutter + pad_x,
             marker_x: margin_left + indent,
             y,

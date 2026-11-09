@@ -19,6 +19,7 @@ mod palette;
 mod palette_colors;
 mod rich;
 mod spec;
+mod source;
 mod style;
 mod table;
 mod view;
@@ -37,7 +38,8 @@ pub(crate) use view::{ExportSlot, ExportView, Snapshot, active_view, close_activ
 pub use budget::{ExportError, preflight};
 pub use format::ExportFormat;
 pub use job::{Cancellation, ExportJob, Timings, write_bytes, write_png};
-pub use palette::{ExportTheme, RenderOptions, SourceContext};
+pub use palette::{ExportTheme, RenderOptions};
+pub(crate) use source::{BlockLayout, SourceContext, TableGeometry};
 
 use crate::editor::model::Block;
 use cosmic_text::{FontSystem, SwashCache};
