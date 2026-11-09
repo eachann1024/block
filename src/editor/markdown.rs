@@ -1,5 +1,6 @@
 use super::model::{Block, Doc, Kind, Numbering};
 #[path = "markdown_inline.rs"] mod inline;
+#[path = "markdown_write.rs"] mod write;
 #[path = "markdown_blocks.rs"] mod blocks;
 #[path = "markdown_html.rs"] mod html;
 #[path = "markdown_table.rs"] mod table;
