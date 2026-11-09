@@ -13,7 +13,7 @@ use super::index::{Row, TreeIndex};
 actions!(file_tree, [RenameSelected, TrashSelected]);
 
 #[derive(Clone)]
-struct DragItem { path: PathBuf, dir: bool, label: gpui::SharedString }
+pub(crate) struct DragItem { pub(crate) path: PathBuf, dir: bool, label: gpui::SharedString }
 impl DragItem {
     fn can_move_into(&self, folder: &Path) -> bool {
         folder != self.path.as_path() && self.path.parent() != Some(folder) && !(self.dir && folder.starts_with(&self.path))
@@ -88,6 +88,27 @@ impl FileTree {
         index.restore_expanded(&expanded);
         let previous = std::mem::replace(&mut self.index, index);
         cx.background_executor().spawn(async move { drop(previous); }).detach();
+        cx.notify();
+    }
+
+    pub(crate) fn can_drop_first(&self, item: &DragItem) -> bool {
+        self.enabled && self.renaming.is_none() && self.index.is_root(&item.path) && self.index.siblings(&item.path).first()
+            .is_some_and(|first| first != &item.path)
+    }
+
+    pub(crate) fn drop_first(&mut self, item: &DragItem, cx: &mut Context<Self>) {
+        if let Some((_, first, _)) = self.index.row(0) {
+            self.reorder_item(&item.path, &first.path, false, cx);
+        }
+    }
+
+    fn reorder_item(&mut self, source: &Path, target: &Path, after: bool, cx: &mut Context<Self>) {
+        if !self.enabled || self.renaming.is_some() || source.parent() != target.parent() { return; }
+        let Some(parent) = source.parent() else { return };
+        let mut order = self.index.siblings(source);
+        if !crate::ui::reorder::move_to(&mut order, &source.to_path_buf(), &target.to_path_buf(), after) { return; }
+        if super::update_state(|state| { state.file_order.insert(parent.to_path_buf(), order); }).is_err() { return; }
+        self.index.reorder(source, target, after);
         cx.notify();
     }
 
@@ -215,14 +236,30 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
         .when(enabled && !is_editing, |row| {
             row.on_drag(drag_item, |item, _, _, cx| { crate::dropdown::dismiss_all(cx); cx.new(|_| DragGhost { dir: item.dir, label: item.label.clone() }) })
         })
-        .when(dir && enabled && !is_editing, |row| {
-            let (folder, drop_folder) = (path.clone(), path.clone());
-            row.can_drop(move |drag, _, _| drag.downcast_ref::<DragItem>().is_some_and(|item| item.can_move_into(&folder)))
-                .drag_over::<DragItem>(move |style, _, _, _| style.bg(theme.selected).border_color(theme.accent))
-                .on_drop(cx.listener(move |this, item: &DragItem, window, cx| {
-                    if !this.enabled || !item.can_move_into(&drop_folder) { return; }
-                    if let Some(handler) = &this.on_move { handler(item.path.clone(), drop_folder.to_path_buf(), window, cx); }
-                }))
+        .when(enabled && !is_editing, |row| {
+            let folder = path.clone();
+            let drop_folder = path.clone();
+            let position = crate::ui::reorder::DropPosition::default();
+            let row = crate::ui::reorder::insertion_target::<DragItem, _>(row, position.clone(), dir, move |item| {
+                item.path != folder.as_ref() && (item.path.parent() == folder.parent() || (dir && item.can_move_into(&folder)))
+            });
+            let allowed_folder = path.clone();
+            let allowed_position = position.clone();
+            row.can_drop(move |value, window, _| {
+                value.downcast_ref::<DragItem>().is_some_and(|item| {
+                    if dir && allowed_position.middle(window) { item.can_move_into(&allowed_folder) }
+                    else { item.path != allowed_folder.as_ref() && item.path.parent() == allowed_folder.parent() }
+                })
+            }).on_drop(cx.listener(move |this, item: &DragItem, window, cx| {
+                if !this.enabled || this.renaming.is_some() { return; }
+                if dir && position.middle(window) {
+                    if item.can_move_into(&drop_folder) {
+                        if let Some(handler) = &this.on_move { handler(item.path.clone(), drop_folder.to_path_buf(), window, cx); }
+                    }
+                } else {
+                    this.reorder_item(&item.path, &drop_folder, position.after(window), cx);
+                }
+            }))
         })
         .when_some(arrow, |row, a| row.child(
             div().size(px(18.)).flex_none().flex().items_center().justify_center()
