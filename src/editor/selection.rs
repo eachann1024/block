@@ -87,7 +87,9 @@ impl Editor {
         self.export_indices(selected_only).map(|i| {
             let b = &self.doc.blocks[i];
             if selected_only {
-                let mut block = b.slice(self.selected_range(b.id).unwrap_or(0..0));
+                // Images are atomic: selecting any part retains the complete source and its properties.
+                let mut block = if crate::editor::image_source::spec_of(b).is_some() { b.clone() }
+                    else { b.slice(self.selected_range(b.id).unwrap_or(0..0)) };
                 if let Some(number) = self.doc.list_number(b.id) { block.meta.list_start = Some(number); }
                 block
             } else { b.clone() }

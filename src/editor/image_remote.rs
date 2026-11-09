@@ -83,7 +83,7 @@ fn detect_ext(bytes: &[u8], url: &str) -> Option<&'static str> {
     None
 }
 
-fn download_sync(url: &str) -> Result<PathBuf, String> {
+pub(crate) fn download_sync(url: &str) -> Result<PathBuf, String> {
     let dir = cache_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let hash = hash_url(url);

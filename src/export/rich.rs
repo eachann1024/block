@@ -73,11 +73,17 @@ pub(super) fn shape(
                 attrs = attrs.color(Color::rgb(51, 126, 169));
                 flags |= UNDERLINE;
             }
-            if tag.name == "u"
+            if matches!(tag.name.as_str(), "u" | "ins")
                 || style::css(&tag.attrs, "text-decoration")
                     .is_some_and(|value| value.contains("underline"))
             {
                 flags |= UNDERLINE;
+            }
+            if style::css(&tag.attrs, "text-decoration").is_some_and(|v| v.contains("line-through")) {
+                flags |= STRIKE;
+            }
+            if tag.name == "mark" && background.is_none() {
+                background = style::color("yellow", true);
             }
             if let Some(color) = style::attribute_color(&tag.attrs, false) {
                 attrs = attrs.color(color);

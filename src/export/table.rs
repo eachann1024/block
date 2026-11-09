@@ -73,7 +73,7 @@ fn width(value: &str, content_width: f32) -> Option<f32> {
         .filter(|n| n.is_finite() && *n > 0.)
 }
 
-fn columns(table: &Table, content_width: f32) -> Result<Vec<f32>, ExportError> {
+pub(super) fn columns(table: &Table, content_width: f32) -> Result<Vec<f32>, ExportError> {
     let mut widths = vec![None; table.columns];
     for (slot, value) in widths.iter_mut().zip(&table.column_widths) {
         *slot = value.as_deref().and_then(|v| width(v, content_width));
@@ -103,7 +103,7 @@ fn columns(table: &Table, content_width: f32) -> Result<Vec<f32>, ExportError> {
     }
     let mut xs = vec![0.];
     for value in widths {
-        xs.push(xs.last().unwrap() + value / total * content_width);
+        xs.push(xs.last().unwrap() + value * (content_width / total).min(1.));
     }
     Ok(xs)
 }

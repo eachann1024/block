@@ -10,7 +10,7 @@ pub(crate) fn css<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a s
             (key.trim().eq_ignore_ascii_case(name)).then_some(value.trim())
         }))
 }
-pub(super) fn named_color_hex(value: &str, background: bool, dark: bool) -> Option<&'static str> {
+pub(crate) fn named_color_hex(value: &str, background: bool, dark: bool) -> Option<&'static str> {
     let key = value.trim();
     let name = match (key, background) {
         ("gray" | "#5e5d59" | "#c3c2b7" | "#6e6e73", false) => "gray",

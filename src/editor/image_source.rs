@@ -7,9 +7,9 @@ use std::path::{Path, PathBuf};
 use super::model::Block;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub(super) enum Align { #[default] Left, Center, Right }
+pub(crate) enum Align { #[default] Left, Center, Right }
 #[derive(Clone, PartialEq, Debug)]
-pub(super) struct ImageSpec {
+pub(crate) struct ImageSpec {
     pub alt: String, pub src: String, pub title: Option<String>, pub width: Option<u32>, pub align: Align,
 }
 
@@ -144,15 +144,15 @@ pub(super) enum ImageTarget {
     Remote(String),
 }
 
-pub(super) fn is_remote(src: &str) -> bool {
+pub(crate) fn is_remote(src: &str) -> bool {
     let s = src.trim().as_bytes();
     (s.len() > 7 && s[..7].eq_ignore_ascii_case(b"http://"))
         || (s.len() > 8 && s[..8].eq_ignore_ascii_case(b"https://"))
 }
 
-pub(super) fn spec_of(block: &Block) -> Option<ImageSpec> { parse(block.meta.raw_source.as_deref()?) }
+pub(crate) fn spec_of(block: &Block) -> Option<ImageSpec> { parse(block.meta.raw_source.as_deref()?) }
 
-pub(super) fn resolve_path(spec: &ImageSpec, note: Option<&Path>) -> Option<PathBuf> {
+pub(crate) fn resolve_path(spec: &ImageSpec, note: Option<&Path>) -> Option<PathBuf> {
     let src = spec.src.trim();
     if is_remote(src) {
         return super::image_remote::cached_path(src);

@@ -8,9 +8,10 @@ impl Block {
         let valid = spans::valid(&self.text,&range);
         let text = if valid { self.text[range.clone()].to_owned() } else { String::new() };
         if valid && let Some(table) = &self.meta.table {
-            return Block::from_table(self.id, if range == (0..self.text.len()) {
-                table.clone()
-            } else { table.slice(range) });
+            let mut block = self.clone();
+            if range != (0..self.text.len()) { block.meta.table = Some(table.slice(range)); }
+            block.sync_table_text();
+            return block;
         }
         let meta = BlockMeta { indent:self.meta.indent, list_start:self.meta.list_start,
             code_language:self.meta.code_language.clone(),
