@@ -137,17 +137,20 @@ pub struct RowSpec {
     pub chevron: bool,
 }
 
-pub fn row_with(id: impl Into<ElementId>, spec: RowSpec) -> Stateful<Div> {
+pub fn row_with(id: impl Into<ElementId>, spec: RowSpec) -> gpui_base::Button {
     row_with_colors(id, spec, None)
 }
 
-pub fn row_with_colors(id: impl Into<ElementId>, spec: RowSpec, colors: Option<(IconColors, IconColors)>) -> Stateful<Div> {
+pub fn row_with_colors(id: impl Into<ElementId>, spec: RowSpec, colors: Option<(IconColors, IconColors)>) -> gpui_base::Button {
     let p = palette();
     let id: ElementId = id.into();
     let group = SharedString::from(format!("dd-row-{id:?}"));
     let active = spec.checked || spec.highlighted;
-    let row = div().id(id).group(group.clone()).h(px(ROW_HEIGHT)).w_full().flex_none().px(px(10.)).gap(px(8.)).rounded(crate::ui::radius::CONTROL)
-        .flex().items_center().text_size(px(14.)).line_height(px(20.)).when(spec.disabled, |s| s.opacity(0.4));
+    // focusable(false): menu keys stay on menu_nav, and the editor keeps its input method.
+    let row = gpui_base::Button::new(id).focusable(false).role(gpui::Role::MenuItem).disabled(spec.disabled).selected(spec.checked)
+        .group(group.clone()).h(px(ROW_HEIGHT)).w_full().flex_none().px(px(10.)).gap(px(8.)).rounded(crate::ui::radius::CONTROL)
+        .flex().items_center().text_size(px(14.)).line_height(px(20.)).when(spec.disabled, |s| s.opacity(0.4))
+        .when(spec.checked, |s| s.aria_selected(true));
     let row = if spec.danger {
         let fg = if spec.highlighted && !spec.disabled { p.danger_hover_fg } else { p.danger_fg };
         let idle_c = IconColors { line: p.danger_fg, fill: transparent_black(), accent: p.danger_fg };
@@ -199,16 +202,22 @@ pub fn row_with_colors(id: impl Into<ElementId>, spec: RowSpec, colors: Option<(
             .child(div().size(px(16.)).flex().items_center().justify_center().child(line_icon(Icon::Check, 16., p.text)))))
 }
 
-pub fn row(id: impl Into<ElementId>, icon: Option<Icon>, label: impl Into<SharedString>, checked: bool) -> Stateful<Div> {
+pub fn row(id: impl Into<ElementId>, icon: Option<Icon>, label: impl Into<SharedString>, checked: bool) -> gpui_base::Button {
     row_with(id, RowSpec { icon, label: label.into(), checked, ..Default::default() })
 }
 
-pub fn danger_row(id: impl Into<ElementId>, icon: Option<Icon>, label: impl Into<SharedString>) -> Stateful<Div> {
+pub fn danger_row(id: impl Into<ElementId>, icon: Option<Icon>, label: impl Into<SharedString>) -> gpui_base::Button {
     row_with(id, RowSpec { icon, label: label.into(), danger: true, ..Default::default() })
 }
 
-pub fn separator() -> Div {
-    div().h(px(1.)).my(px(4.)).flex_none().bg(palette().sep)
+pub fn separator() -> impl IntoElement {
+    gpui_component::separator::Separator::horizontal()
+        .color(palette().sep)
+        .relative()
+        .h(px(1.))
+        .my(px(4.))
+        .w_full()
+        .flex_none()
 }
 
 pub fn group_label(label: impl Into<SharedString>) -> Div {

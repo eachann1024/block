@@ -27,7 +27,7 @@ pub(super) fn reaction_bounds() -> Option<(u64, Bounds<Pixels>)> {
 fn tb_btn(
     editor: &Entity<Editor>, id: u64, slot: usize, g: Icon, tip: &'static str, on: bool, open: bool, keyed: bool,
     run: impl Fn(&mut Editor, &mut Window, &mut Context<Editor>) + 'static,
-) -> gpui::Stateful<gpui::Div> {
+) -> gpui_base::Button {
     let editor = editor.clone();
     floating_bar::icon_toggle_button(("img-tb", id as usize * 16 + slot), g, tip, on, open)
         .size(px(32.))

@@ -120,7 +120,7 @@ pub fn export_zoom_cluster(
 pub fn reveal_button(
     id: impl Into<SharedString>,
     on_click: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<gpui::Div> {
+) -> gpui_base::Button {
     dock_icon_button_px(id.into(), Icon::FolderReveal, false, crate::files::ops::reveal_label(), 18., on_click)
 }
 

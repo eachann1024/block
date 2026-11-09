@@ -1,4 +1,4 @@
-use gpui::{CursorStyle, Div, FontWeight, MouseButton, SharedString, div, prelude::*, px};
+use gpui::{CursorStyle, FontWeight, MouseButton, SharedString, div, prelude::*, px};
 use gpui_component::input::Input;
 use super::{backend::{BackendKind, BackendStatus}, backend_ui, chat::AiChat};
 use crate::{icons::{Icon, icon}, theme::tr, ui::ai_controls};
@@ -9,7 +9,7 @@ thread_local! {
 
 const THINKING_LEVELS: [(&str, &str); 3] = [("low", "Low"), ("medium", "Medium"), ("high", "High")];
 
-pub(super) fn trigger(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> gpui::Stateful<Div> {
+pub(super) fn trigger(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> gpui_base::Button {
     let kind = chat.selected_backend();
     let model = chat.selected_model();
     let label = if model.is_empty() {
