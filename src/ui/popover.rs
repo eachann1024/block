@@ -75,10 +75,12 @@ pub fn inline_action_button(
     label: impl Into<SharedString>,
     accent: bool,
     on_press: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<Div> {
+) -> gpui_base::Button {
     let theme = Theme::ocean();
-    div()
-        .id(id)
+    let label = label.into();
+    gpui_base::Button::new(id)
+        .focusable(false)
+        .accessibility_label(label.clone())
         .h(px(30.))
         .px(px(12.))
         .flex_none()
@@ -99,7 +101,7 @@ pub fn inline_action_button(
             b.text_color(theme.text)
                 .hover(move |s| s.bg(theme.hover))
         })
-        .child(label.into())
+        .child(label)
         .on_mouse_down(MouseButton::Left, on_press)
 }
 

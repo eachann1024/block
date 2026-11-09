@@ -30,7 +30,7 @@ fn tag(
     open: bool,
     editor: &Entity<Editor>,
     run: impl Fn(&mut Editor, &mut gpui::Window, &mut gpui::Context<Editor>) + 'static,
-) -> gpui::Stateful<gpui::Div> {
+) -> gpui_base::Button {
     let editor = editor.clone();
     action_chip(id, lead, label, primary, open, move |_, window, cx| {
         editor.update(cx, |this, cx| run(this, window, cx));
@@ -38,13 +38,13 @@ fn tag(
     })
 }
 
-fn menu_tag(id: &'static str, label: &'static str, which: AiMenu, current: AiMenu, editor: &Entity<Editor>) -> gpui::Stateful<gpui::Div> {
+fn menu_tag(id: &'static str, label: &'static str, which: AiMenu, current: AiMenu, editor: &Entity<Editor>) -> gpui_base::Button {
     let theme = Theme::ocean();
     tag(id, None, label, false, current == which, editor, move |this, _, cx| this.ai_toggle_menu(which, cx))
         .child(div().text_color(theme.text_secondary).text_size(px(12.)).child(if current == which { "▴" } else { "▾" }))
 }
 
-fn menu_item(p: Preset, highlighted: bool, editor: &Entity<Editor>) -> gpui::Stateful<gpui::Div> {
+fn menu_item(p: Preset, highlighted: bool, editor: &Entity<Editor>) -> gpui_base::Button {
     let editor = editor.clone();
     crate::dropdown::row_with(SharedString::from(format!("ai-item-{p:?}")), crate::dropdown::RowSpec {
         icon: Some(preset_icon(p)), label: p.label().into(), highlighted, ..Default::default()
@@ -55,7 +55,7 @@ fn menu_item(p: Preset, highlighted: bool, editor: &Entity<Editor>) -> gpui::Sta
         })
 }
 
-fn preset_tag(p: Preset, editor: &Entity<Editor>) -> gpui::Stateful<gpui::Div> {
+fn preset_tag(p: Preset, editor: &Entity<Editor>) -> gpui_base::Button {
     tag(SharedString::from(format!("ai-preset-{p:?}")), Some(preset_icon(p)), p.label(), false, false, editor, move |this, w, cx| this.ai_preset(p, w, cx))
 }
 

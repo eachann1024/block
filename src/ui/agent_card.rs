@@ -1,6 +1,7 @@
 //! Agent configuration navigation and explicit opt-in are separate hit targets.
-use gpui::{App, CursorStyle, Div, ElementId, FontWeight, MouseButton,
+use gpui::{App, ClickEvent, CursorStyle, Div, ElementId, FontWeight, MouseButton,
     MouseDownEvent, SharedString, Stateful, Window, div, prelude::*, px, svg};
+use gpui_base::{Switch, SwitchThumb};
 use crate::theme::{Theme, is_dark};
 use super::{card_bg, mono_font, selected_bg};
 
@@ -9,26 +10,27 @@ pub fn brand_glyph(logo: &'static str, size: f32, color: gpui::Hsla) -> Div {
         .child(svg().path(logo).size(px(size)).text_color(color))
 }
 
-pub fn pill_switch(id: impl Into<ElementId>, checked: bool, enabled: bool) -> Stateful<Div> {
+pub fn pill_switch(id: impl Into<ElementId>, checked: bool, enabled: bool) -> Switch {
     let theme = Theme::ocean();
     let id: ElementId = id.into();
     let probe = crate::ui::smoke_overlay::probe_for(&id);
     let track_off = if is_dark() { gpui::rgb(0x3a3a3a) } else { gpui::rgb(0xd4d7dd) };
-    div().id(id).relative().children(probe)
+    Switch::new(id).checked(checked).disabled(!enabled)
+        .relative().children(probe)
         .w(px(34.)).h(px(20.)).p(px(2.)).rounded(px(999.)).flex_none()
         .flex().items_center()
         .when(checked, |d| d.justify_end().bg(theme.accent))
         .when(!checked, |d| d.justify_start().bg(track_off))
         .when(enabled, |d| d.cursor(CursorStyle::PointingHand))
         .when(!enabled, |d| d.opacity(0.5))
-        .child(div().size(px(16.)).rounded(px(999.)).bg(gpui::rgb(0xffffff)))
+        .child(SwitchThumb::new(checked).size(px(16.)).rounded(px(999.)).bg(gpui::rgb(0xffffff)))
 }
 
 pub fn agent_card(
     id: ElementId, toggle_id: ElementId, label: &'static str, subtitle: impl Into<SharedString>,
     logo: &'static str, focused: bool, enabled: bool, is_last: bool,
     on_select: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-    on_toggle: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+    on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
     let sub: SharedString = subtitle.into();
@@ -36,7 +38,8 @@ pub fn agent_card(
         .flex().items_center().justify_center().flex_none()
         .child(brand_glyph(logo, 16., theme.text));
     let toggle = pill_switch(toggle_id, enabled, true)
-        .on_mouse_down(MouseButton::Left, on_toggle);
+        .accessibility_label(label)
+        .on_change(move |_next, ev, window, cx| on_toggle(ev, window, cx));
     div().id(id.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&id))
         .w_full().min_w_0().py(px(11.)).px(px(14.)).flex().items_center().justify_between().gap(px(10.))
         .when(!is_last, |d| d.border_b_1().border_color(theme.hairline))

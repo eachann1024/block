@@ -100,7 +100,7 @@ pub fn render_restore_button(
     disabled: bool,
     hint: impl Into<gpui::SharedString>,
     on_restore: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> gpui::Stateful<gpui::Div> {
+) -> gpui_base::Button {
     accent_action("history-restore-action", tr("恢复此版本", "Restore this version"), !disabled, hint, on_restore)
 }
 

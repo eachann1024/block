@@ -54,6 +54,7 @@ pub fn card(id: impl Into<ElementId>, width: Pixels) -> Stateful<Div> {
         .border_color(theme.menu_border)
         .shadow(shadows())
         .text_color(theme.text)
+        .role(gpui::Role::Dialog)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 }
 
@@ -258,7 +259,7 @@ pub fn modal_close_button(
     id: &'static str,
     tip: &'static str,
     on_down: impl Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<Div> {
+) -> gpui_base::Button {
     crate::ui::icon_button::header_action_button(id, Icon::Close, false, Some(tip), on_down)
 }
 
@@ -266,7 +267,7 @@ pub fn modal_secondary_button(
     id: &'static str,
     label: &'static str,
     on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<Div> {
+) -> gpui_base::Button {
     action_button(id, label, on_down)
 }
 
@@ -274,11 +275,12 @@ pub fn action_button(
     id: &'static str,
     label: &'static str,
     on_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<Div> {
+) -> gpui_base::Button {
     let theme = Theme::ocean();
     let probe = crate::ui::smoke_overlay::probe(id);
-    div()
-        .id(id)
+    gpui_base::Button::new(id)
+        .focusable(false)
+        .accessibility_label(label)
         .relative()
         .children(probe)
         .w_full()
@@ -291,6 +293,8 @@ pub fn action_button(
         .flex()
         .items_center()
         .justify_center()
+        .text_size(px(14.))
+        .line_height(px(20.))
         .font_weight(FontWeight(460.))
         .text_color(theme.text)
         .cursor(CursorStyle::PointingHand)

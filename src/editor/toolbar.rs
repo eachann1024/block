@@ -89,7 +89,7 @@ impl RenderOnce for SelectionToolbar {
 }
 
 fn button(g: Icon, tip: &'static str, on: bool, open: bool, dropdown: bool, editor: Entity<Editor>,
-    run: impl Fn(&mut Editor, &mut Window, &mut Context<Editor>) + 'static) -> gpui::Stateful<gpui::Div> {
+    run: impl Fn(&mut Editor, &mut Window, &mut Context<Editor>) + 'static) -> gpui_base::Button {
     let tc = ToolbarColors::current();
     let ink = if on { tc.on_ink } else { tc.ink };
     let group = SharedString::from(format!("fb-btn-{:?}", gpui::ElementId::from(tip)));
@@ -104,7 +104,7 @@ fn button(g: Icon, tip: &'static str, on: bool, open: bool, dropdown: bool, edit
 }
 
 /// Palette button (`Text and highlight color` / `文本与高亮颜色`): toggles the color & highlight dropdown.
-fn palette_button(on: bool, open: bool, editor: Entity<Editor>) -> gpui::Stateful<gpui::Div> {
+fn palette_button(on: bool, open: bool, editor: Entity<Editor>) -> gpui_base::Button {
     let tip = tr("文本与高亮颜色", "Text and highlight color");
     button(Icon::TbPalette, tip, on, open, true, editor, move |this, w, cx| {
         let spec = drop_spec_for(tip, this.list.viewport_bounds(), w);

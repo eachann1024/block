@@ -32,7 +32,7 @@ pub(super) fn menu_item(
     destructive: bool,
     highlighted: bool,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<Div> {
+) -> gpui_base::Button {
     menu_item_hint(id, glyph, label, checked, destructive, highlighted, None, on_click)
 }
 
@@ -45,7 +45,7 @@ fn menu_item_hint(
     highlighted: bool,
     hint: Option<&'static str>,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<Div> {
+) -> gpui_base::Button {
     let id: gpui::ElementId = match id {
         ItemId::Path(path) => gpui::ElementId::Name(format!("menu:{}", path.display()).into()),
         ItemId::Name(name) => name.into(),
