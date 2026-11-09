@@ -45,7 +45,7 @@ impl Editor {
             }
         }
         let document = markdown::serialize(&self.doc);
-        let receiver = ai::stream(document, tasks);
+        let receiver = ai::stream(document, tasks, cx);
         self.persist_annotations();
         cx.notify();
         cx.spawn(async move |this, cx| {
