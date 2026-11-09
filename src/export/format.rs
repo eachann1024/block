@@ -4,14 +4,16 @@ use crate::editor::markdown;
 use crate::editor::model::{Block, Doc, Kind};
 use crate::theme::tr;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ExportFormat {
-    #[default]
-    Png,
     Pdf,
     Word,
     Markdown,
     Html,
+    #[default]
+    #[serde(other)]
+    Png,
 }
 
 impl ExportFormat {

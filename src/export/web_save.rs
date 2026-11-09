@@ -47,7 +47,8 @@ impl ExportView {
         let png = self.png.clone();
         let Ok(blocks) = self.active_blocks() else { return };
         let options = self.render_options();
-        let name = format!("{}.{}", self.title.replace(['/', ':'], "-"), format.extension());
+        let name = super::destination::suggested_name(&self.title, format);
+        let revision = self.revision;
         self.saving = true;
         self.notice = Some(tr("正在生成导出文件", "Generating export file").into());
         cx.notify();
@@ -65,17 +66,16 @@ impl ExportView {
                     })
                 })
                 .await;
-            let notice = match rendered {
+            let (notice, failed) = match rendered {
                 Ok(bytes) => match download(&name, mime(format), &bytes) {
-                    Ok(()) => format!("{} {name}", tr("已下载", "Downloaded")),
-                    Err(error) => error,
+                    Ok(()) => (format!("{} {name}", tr("已下载", "Downloaded")), false),
+                    Err(error) => (error, true),
                 },
-                Err(error) => error.to_string(),
+                Err(error) => (error.to_string(), true),
             };
             let _ = this.update(cx, |this, cx| {
-                this.saving = false;
-                this.notice = Some(notice);
-                cx.notify();
+                if this.revision == revision || failed { this.notice = Some(notice); }
+                this.finish_save(cx);
             });
         })
         .detach();

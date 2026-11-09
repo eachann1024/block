@@ -4,6 +4,7 @@ mod decor_blocks;
 mod decor_marks;
 mod decor_paper;
 mod decor_shapes;
+mod destination;
 mod export_docx;
 mod export_docx_xml;
 mod export_html;

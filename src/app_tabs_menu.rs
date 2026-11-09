@@ -224,9 +224,14 @@ impl Workspace {
     pub(crate) fn export_note(&mut self, path: PathBuf, window: &mut gpui::Window, cx: &mut Context<Self>) {
         clear_tab_menu();
         self.close_overlays(cx);
-        if self.editor.read(cx).current_path() != Some(path.as_path()) { self.open_file(path, cx); }
+        if self.editor.read(cx).current_path() != Some(path.as_path()) { self.open_file(path.clone(), cx); }
+        let epoch = self.editor.read(cx).interaction_epoch();
         if !self.editor.read(cx).is_loading() {
-            self.editor.update(cx, |e, cx| crate::editor::export_document(e, window, cx));
+            self.editor.update(cx, |e, cx| {
+                if e.current_path() == Some(path.as_path()) {
+                    crate::editor::export_document(e, window, cx);
+                }
+            });
             cx.notify();
             return;
         }
@@ -236,7 +241,14 @@ impl Workspace {
                 cx.background_executor().timer(Duration::from_millis(10)).await;
                 if !editor.read_with(cx, |e, _| e.is_loading()) { break; }
             }
-            let _ = cx.update(|window, cx| editor.update(cx, |e, cx| crate::editor::export_document(e, window, cx)));
+            let _ = cx.update(|window, cx| editor.update(cx, |e, cx| {
+                if e.interaction_epoch() != epoch { return; }
+                if e.is_loading() {
+                    e.report_status(tr("笔记仍在加载，请稍后重试导出", "Note is still loading; try exporting again shortly").into(), cx);
+                } else if e.current_path() == Some(path.as_path()) {
+                    crate::editor::export_document(e, window, cx);
+                }
+            }));
         }).detach();
     }
 
