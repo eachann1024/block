@@ -53,7 +53,6 @@ impl Editor {
                 self.set_head(at, extend, cx);
                 if !extend { self.code_escape_arrive(forward, cx); }
             }
-            SelectAll if self.table_select_all(cx) => {}
             // First press selects the caret's block, the next one the whole document.
             SelectAll if { let (a, b, ai, bi) = self.ordered(); let block = &self.doc.blocks[ai];
                 ai == bi && block.meta.code_language.is_some() && !(a.offset == 0 && b.offset == block.text.len()) } => {
@@ -276,9 +275,11 @@ impl Editor {
         let Some(index) = self.doc.index_of(id) else { return; };
         let before = self.snapshot();
         if let Some(id) = self.doc.insert_after(id, Kind::Paragraph, String::new()) {
-            self.set_head(Position { block: id, offset: 0 }, false, cx);
-            window.focus(&self.focus, cx);
             self.record_changes(before, vec![transactions::ListChange { start: index + 1, before: 0, after: 1 }], true, cx);
+            if self.show_hidden_tail(id) {
+                self.set_head(Position { block: id, offset: 0 }, false, cx);
+            }
+            window.focus(&self.focus, cx);
         }
     }
 }
