@@ -153,7 +153,7 @@ impl Render for AiChat {
                 .child(div().text_color(theme.text).child(e))
                 .when(self.error_settings, |d| d.child(crate::ui::ai_controls::action_chip(
                     "ai-chat-settings", None, tr("打开 AI 设置", "Open AI settings"), false, false,
-                    |_, window, cx| window.dispatch_action(Box::new(super::OpenAiSettings), cx)))))
+                    |_, window, cx| window.defer(cx, |window, cx| window.dispatch_action(Box::new(super::OpenAiSettings), cx))))))
             .child(crate::ui::icon_button::header_action_button("ai-chat-error-close", Icon::Close, false, Some(tr("关闭错误提示", "Dismiss error")), cx.listener(|this, _, _, cx| { this.error = None; cx.notify(); }))));
 
         let chip_list: Vec<(bool, String)> = self.refs.iter().map(|r| (true, r.clone())).chain(self.skills.iter().map(|s| (false, s.clone()))).collect();

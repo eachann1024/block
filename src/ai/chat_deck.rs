@@ -164,7 +164,8 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
     let footer = div().h(px(if wide { 40. } else { 36. })).px(px(if wide { 12. } else { 10. })).flex_none().border_t_1().border_color(theme.hairline)
         .flex().items_center().justify_between().gap(px(8.))
         .child(ai_controls::action_chip("ai-deck-settings", Some(Icon::Sliders), tr("AI 设置", "AI settings"), false, false, cx.listener(|chat, _, window, cx| {
-            cx.stop_propagation(); backend_ui::close_menu(); chat.input.update(cx, |i, cx| i.focus(window, cx)); window.dispatch_action(Box::new(super::OpenAiSettings), cx);
+            cx.stop_propagation(); backend_ui::close_menu(); chat.input.update(cx, |i, cx| i.focus(window, cx));
+            cx.defer_in(window, |_, window, cx| window.dispatch_action(Box::new(super::OpenAiSettings), cx));
         })))
         .child(div().id("ai-deck-permissions").relative().children(crate::ui::smoke_overlay::probe("ai-deck-permissions"))
             .h(px(28.)).px(px(8.)).rounded(px(6.)).flex().items_center().gap(px(6.)).cursor(CursorStyle::PointingHand)
@@ -175,7 +176,8 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
             .on_mouse_down(MouseButton::Left, cx.listener(move |chat, _, window, cx| {
                 cx.stop_propagation();
                 if selected == BackendKind::Builtin {
-                    backend_ui::close_menu(); chat.input.update(cx, |i, cx| i.focus(window, cx)); window.dispatch_action(Box::new(super::OpenAiSettings), cx);
+                    backend_ui::close_menu(); chat.input.update(cx, |i, cx| i.focus(window, cx));
+                    cx.defer_in(window, |_, window, cx| window.dispatch_action(Box::new(super::OpenAiSettings), cx));
                 } else {
                     let next = !chat.backend_config.full_permissions(selected);
                     if let Err(err) = chat.backend_config.set_full_permissions(selected, next) { chat.error = Some(err); }
