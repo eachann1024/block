@@ -75,6 +75,21 @@ pub fn folder_search_ignore_pill(
     folder_check_pill(id, probe_id, ignored, tr("不参与全局搜索", "Exclude from Global Search"), on_toggle)
 }
 
+/// Folder name field that fills the space available beside fixed-width actions.
+pub fn folder_name_input(
+    id: impl Into<gpui::ElementId>,
+    input: &gpui::Entity<gpui_component::input::InputState>,
+) -> gpui::Stateful<gpui::Div> {
+    let theme = Theme::ocean();
+    div().id(id).flex_1().min_w_0().h(px(34.)).px(px(10.))
+        .rounded(crate::ui::radius::CONTROL)
+        .bg(theme.shell).border_1().border_color(theme.btn_border)
+        .flex().items_center().text_size(px(14.))
+        .child(gpui_component::input::Input::new(input)
+            .appearance(false).bordered(false).focus_bordered(false)
+            .w_full().min_w_0().h(px(32.)).px(px(0.)))
+}
+
 /// Text input container with fixed non-editable `/` prefix and `/` suffix affixes.
 pub fn slash_affix_input(
     id: impl Into<gpui::ElementId>,
@@ -116,7 +131,11 @@ pub fn slash_affix_input(
                     gpui_component::input::Input::new(input)
                         .appearance(false)
                         .bordered(false)
-                        .focus_bordered(false),
+                        .focus_bordered(false)
+                        .w_full()
+                        .min_w_0()
+                        .h(px(32.))
+                        .px(px(0.)),
                 ),
         )
         .child(
@@ -143,9 +162,10 @@ pub fn folder_table_row(
     div()
         .id(id)
         .w_full()
+        .min_w_0()
         .min_h(px(46.))
-        .px(px(14.))
-        .py(px(8.))
+        .px(px(12.))
+        .py(px(4.))
         .rounded(crate::ui::radius::SURFACE)
         .bg(row_bg)
         .border_1()
