@@ -28,7 +28,7 @@ pub fn pill_switch(id: impl Into<ElementId>, checked: bool, enabled: bool) -> Sw
 
 pub fn agent_card(
     id: ElementId, toggle_id: ElementId, label: &'static str, subtitle: impl Into<SharedString>,
-    logo: &'static str, focused: bool, enabled: bool, is_last: bool,
+    logo: &'static str, focused: bool, enabled: bool, index: usize, total: usize,
     on_select: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
@@ -41,8 +41,10 @@ pub fn agent_card(
         .accessibility_label(label)
         .on_change(move |_next, ev, window, cx| on_toggle(ev, window, cx));
     div().id(id.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&id))
-        .w_full().min_w_0().py(px(11.)).px(px(14.)).flex().items_center().justify_between().gap(px(10.))
-        .when(!is_last, |d| d.border_b_1().border_color(theme.hairline))
+        .w_full().min_w_0().h(px(50.)).flex_none().px(px(14.)).flex().items_center().justify_between().gap(px(10.))
+        .when(index == 0, |d| d.rounded_tl(crate::ui::radius::SURFACE_INNER))
+        .when(index + 1 == total, |d| d.rounded_bl(crate::ui::radius::SURFACE_INNER))
+        .when(index + 1 < total, |d| d.border_b_1().border_color(theme.hairline))
         .when(focused, |d| d.bg(selected_bg()))
         .when(!focused, |d| d.hover(move |s| s.bg(theme.hover)))
         .cursor(CursorStyle::PointingHand)
