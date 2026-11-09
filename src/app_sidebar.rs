@@ -197,14 +197,31 @@ impl Workspace {
         let mut items: Vec<AnyElement> = self.notebooks.iter().enumerate().map(|(index, path)| {
             let checked = current.as_ref() == Some(path);
             let target = path.clone();
-            menu_item(ItemId::Path(path.clone()), Icon::Folder, display_name(path, true), checked, false, index == cursor,
-                cx.listener(move |this, _, _, cx| {
+            let drop_target = path.clone();
+            let row = menu_item(ItemId::Path(path.clone()), Icon::Folder, display_name(path, true), checked, false, index == cursor,
+                |_, _, _| {})
+                .on_click(cx.listener(move |this, _, _, cx| {
                     this.close_overlays(cx);
                     if this.folder.as_ref() != Some(&target) { this.use_folder(target.clone(), cx); }
                 }))
                 .group("notebook-item")
                 // Other notebooks can be dropped from the recent list (the folder itself is untouched).
-                .when(!checked, |item| item.child(forget_button(path.clone(), cx)))
+                .when(!checked, |item| item.child(forget_button(path.clone(), cx)));
+            crate::ui::reorder::row(
+                path.clone(),
+                display_name(path, true), Icon::Folder, row,
+            )
+                .on_drop(cx.listener(move |this, dragged: &crate::ui::reorder::DragValue<std::path::PathBuf>, _, cx| {
+                    let mut reordered = this.notebooks.clone();
+                    if !crate::ui::reorder::move_to(&mut reordered, &dragged.value, &drop_target) { return; }
+                    match crate::files::update_state(|state| state.notebooks = reordered.clone()) {
+                        Ok(_) => this.notebooks = reordered,
+                        Err(_error) => {
+                            this.notice = tr("无法保存笔记本顺序", "Could not save notebook order").into();
+                        }
+                    }
+                    cx.notify();
+                }))
                 .into_any_element()
         }).collect();
         if !items.is_empty() { items.push(separator()); }
