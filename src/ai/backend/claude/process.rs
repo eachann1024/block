@@ -70,6 +70,7 @@ pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: T
     let mut command = super::super::cli_env::command("claude");
     let full_permissions = request.config.get("fullPermissions").and_then(Value::as_bool).unwrap_or(false);
     command.args(["-p", "--verbose", "--permission-prompt-tool", "stdio"]);
+    if request.config.get("textOnly").and_then(Value::as_bool) == Some(true) { command.args(["--tools", ""]); }
     if full_permissions {
         command.args(["--dangerously-skip-permissions", "--permission-mode", "bypassPermissions"]);
     }

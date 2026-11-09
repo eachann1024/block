@@ -58,8 +58,9 @@ pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: T
         vec![project.join(".dsh/skills"), project.join(".agents/skills")]
     }).unwrap_or_default();
     let node_bin = cli_env::resolve("node").unwrap_or_else(|| PathBuf::from("node"));
+    let text_only = request.config.get("textOnly").and_then(Value::as_bool) == Some(true);
     let patch = json!([
-        {"id":"tool-fs", "config":{"read":true, "readImage":true, "write":true, "edit":true}},
+        {"id":"tool-fs", "config":{"read":true, "readImage":true, "write":!text_only, "edit":!text_only}},
         {"id":"sessions", "config":{"root":storage,"compression":"none"}},
         {"insert":[{"id":"credentials", "name":"@deepseek-ai/dsh-credentials-local", "config":{"dshHome":credentials_home,"watch":false}},
         {"id":"skills", "name":"@deepseek-ai/dsh-skill"},
