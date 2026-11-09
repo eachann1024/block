@@ -12,7 +12,7 @@ use super::menu::{ItemId, menu_item, menu_surface, separator};
 pub(super) const MIN_WIDTH: f32 = 240.;
 pub(super) const MAX_WIDTH: f32 = 420.;
 const TITLEBAR_LEFT_PAD: f32 = if cfg!(any(target_os = "macos", target_family = "wasm")) { 82. } else { 10. };
-const TITLEBAR_RIGHT_PAD: f32 = 10.;
+const TITLEBAR_RIGHT_PAD: f32 = 0.;
 const TOGGLE_SIZE: f32 = 26.;
 const NAV_BUTTON_SIZE: f32 = 24.;
 const TITLEBAR_GAP: f32 = 2.;
@@ -208,8 +208,8 @@ impl Workspace {
         if !items.is_empty() { items.push(separator()); }
         items.push(menu_item(ItemId::Name("add-notebook"), Icon::FolderPlus, tr("选择文件夹…", "Choose Folder…").into(), false, false,
             cx.listener(|this, _, window, cx| { this.close_overlays(cx); this.choose_folder(window, cx); })).into_any_element());
-        let width = self.sidebar_width - px(16.);
-        let fallback = gpui::Bounds::new(point(px(8.), window.viewport_size().height - px(38.)), gpui::size(width, px(30.)));
+        let width = self.sidebar_width;
+        let fallback = gpui::Bounds::new(point(px(0.), window.viewport_size().height - px(38.)), gpui::size(width, px(30.)));
         crate::ui::dropdown::anchored_motion_with(("notebook-switcher-pop", pop_gen), move |_, _| {
             crate::ui::dropdown::PlacementSpec::above(SWITCHER_BOUNDS.with(|b| b.get()).unwrap_or(fallback))
         }, menu_surface(width).children(items), phase, 2)
