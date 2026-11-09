@@ -180,7 +180,7 @@ impl Editor {
     pub(super) fn paste_plain(&mut self, cx: &mut Context<Self>) {
         if self.editing_source() { self.source_paste(None, cx); return; }
         if !self.is_markdown_note() { return; }
-        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) { self.paste_text(&text, true, false, None, cx); }
+        if let Some(text) = cx.read_from_clipboard().as_ref().and_then(super::clipboard_files::string_text) { self.paste_text(&text, true, false, None, cx); }
     }
     /// `prop` is `color` or `background-color`; `None` resets to the default.
     pub(super) fn apply_style(&mut self, prop: &str, value: Option<&str>, cx: &mut Context<Self>) {

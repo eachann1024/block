@@ -155,7 +155,7 @@ pub(crate) fn spec_of(block: &Block) -> Option<ImageSpec> { parse(block.meta.raw
 pub(crate) fn resolve_path(spec: &ImageSpec, note: Option<&Path>) -> Option<PathBuf> {
     let src = spec.src.trim();
     if is_remote(src) {
-        return super::image_remote::cached_path(src);
+        return super::image_remote::ensure_cached(src);
     }
     if src.as_bytes().get(..7).is_some_and(|p| p.eq_ignore_ascii_case(b"file://")) {
         let rest = &src[7..];
