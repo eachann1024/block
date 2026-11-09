@@ -53,6 +53,7 @@ impl Workspace {
                 &picker.search_input,
                 &picker.scroll_handle,
                 picker.filtered.clone(),
+                picker.cursor,
                 phase,
                 pop_gen,
                 cx,

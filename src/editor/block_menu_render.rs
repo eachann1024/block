@@ -3,6 +3,7 @@ use gpui::{AnyElement, Entity, MouseButton, Window, prelude::*, px};
 use crate::{
     dropdown::{self, RowSpec},
     editor::view::Editor,
+    ui::menu_nav::{self, Slot},
 };
 use super::{BlockMenu, Cmd, SLASH_MENU_WIDTH, live_block_bounds};
 
@@ -27,21 +28,19 @@ pub(in crate::editor) fn overlay(
         .reserve_height(px(dropdown::MAX_HEIGHT));
     let max_h = dropdown::max_height_for_spec(&init_spec, window.viewport_size(), px(dropdown::MAX_HEIGHT));
 
-    let selectable_count = entries.iter().flatten().count();
-    let active_idx = menu.index.min(selectable_count.saturating_sub(1));
+    let slots: Vec<Slot> = entries.iter().map(|entry| if entry.is_some() { Slot::Item } else { Slot::Skip }).collect();
+    let active_idx = menu_nav::clamp_index(menu.index, &slots);
     let mut list = dropdown::shell("block-menu")
         .track_scroll(&editor_ref.block_menu_scroll)
         .on_scroll(crate::ui::scrollbar::contain_wheel(&editor_ref.block_menu_scroll))
         .min_w(px(SLASH_MENU_WIDTH))
         .w(px(SLASH_MENU_WIDTH))
         .max_h(max_h);
-    let mut position = 0;
     for (index, entry) in entries.iter().copied().enumerate() {
         match entry {
             None => list = list.child(dropdown::separator()),
             Some(cmd) => {
-                let active = position == active_idx;
-                position += 1;
+                let active = index == active_idx;
                 let item_editor = editor.clone();
                 let item = dropdown::row_with(
                     ("block-menu-item", index),

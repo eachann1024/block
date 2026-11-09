@@ -67,9 +67,8 @@ impl Workspace {
         let catalog = crate::ui::font_picker_cache::get_or_build_catalog(role);
         let filtered = crate::ui::font_picker_cache::filter_candidates(&catalog, "", &cur_font);
         let scroll_handle = gpui::UniformListScrollHandle::new();
-        if let Some(ix) = filtered.iter().position(|item| item.selected) {
-            scroll_handle.scroll_to_item_strict(ix, gpui::ScrollStrategy::Center);
-        }
+        let cursor = filtered.iter().position(|item| item.selected).unwrap_or(0);
+        if !filtered.is_empty() { crate::ui::menu_nav::reveal_uniform(&scroll_handle, cursor); }
         let search_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder(crate::theme::tr("搜索字体", "Search fonts"))
         });
@@ -89,6 +88,7 @@ impl Workspace {
             scroll_handle,
             catalog,
             filtered,
+            cursor,
             last_query: String::new(),
             _search_sub,
         });
@@ -107,15 +107,15 @@ impl Workspace {
             FontPickerRole::Code => crate::theme::active_code_font(),
         };
         picker.filtered = crate::ui::font_picker_cache::filter_candidates(&picker.catalog, &q, &cur_font);
+        let len = picker.filtered.len();
         if q.trim().is_empty() {
-            if let Some(ix) = picker.filtered.iter().position(|item| item.selected) {
-                picker.scroll_handle.scroll_to_item_strict(ix, gpui::ScrollStrategy::Center);
-            } else {
-                picker.scroll_handle.scroll_to_item_strict(0, gpui::ScrollStrategy::Top);
-            }
+            picker.cursor = picker.filtered.iter().position(|item| item.selected).unwrap_or(0);
+        } else if len == 0 {
+            picker.cursor = 0;
         } else {
-            picker.scroll_handle.scroll_to_item_strict(0, gpui::ScrollStrategy::Top);
+            picker.cursor = picker.cursor.min(len - 1);
         }
+        if len > 0 { crate::ui::menu_nav::reveal_uniform(&picker.scroll_handle, picker.cursor); }
         cx.notify();
     }
 
@@ -135,6 +135,30 @@ impl Workspace {
                 cx.notify();
             });
         }).detach();
+        true
+    }
+
+    pub(crate) fn step_font_picker(&mut self, down: bool, cx: &mut Context<Self>) -> bool {
+        let Some(picker) = self.settings.as_mut().and_then(|modal| modal.font_picker.as_mut()) else { return false };
+        let len = picker.filtered.len();
+        if len == 0 { return false; }
+        let next = crate::ui::menu_nav::step_uniform(picker.cursor, len, down);
+        let changed = next != picker.cursor.min(len - 1);
+        picker.cursor = next;
+        if changed { crate::ui::menu_nav::reveal_uniform(&picker.scroll_handle, next); }
+        cx.notify();
+        true
+    }
+
+    pub(crate) fn accept_font_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(picker) = self.settings.as_ref().and_then(|modal| modal.font_picker.as_ref()) else { return false };
+        if picker.filtered.is_empty() { return false; }
+        let name = picker.filtered[picker.cursor.min(picker.filtered.len() - 1)].name.to_string();
+        let role = picker.role;
+        match role {
+            FontPickerRole::Body => self.select_editor_font(name, window, cx),
+            FontPickerRole::Code => self.select_code_font(name, window, cx),
+        }
         true
     }
 }

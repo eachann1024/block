@@ -19,6 +19,7 @@ use crate::{
 
 thread_local! {
     static OPEN_MENU: Cell<Option<(u64, Point<Pixels>)>> = const { Cell::new(None) };
+    static MENU_INDEX: Cell<usize> = const { Cell::new(0) };
     static TRIGGER_BOUNDS: RefCell<HashMap<u64, (Bounds<Pixels>, Size<Pixels>)>> = Default::default();
     static COPIED: RefCell<HashSet<u64>> = Default::default();
 }
@@ -29,6 +30,38 @@ pub fn close_menu() -> bool {
 
 pub fn is_menu_open(block_id: u64) -> bool {
     OPEN_MENU.with(|slot| slot.get().is_some_and(|(id, _)| id == block_id))
+}
+
+pub fn arm_menu(kind: CalloutKind) {
+    let index = ALL_KINDS.iter().position(|item| *item == kind).unwrap_or(0);
+    MENU_INDEX.with(|cell| cell.set(index));
+}
+
+fn menu_slots() -> [crate::ui::menu_nav::Slot; 7] {
+    use crate::ui::menu_nav::Slot::{Item, Skip};
+    [Item, Item, Item, Item, Item, Skip, Item]
+}
+
+pub fn step_menu(down: bool) -> bool {
+    if OPEN_MENU.with(|slot| slot.get()).is_none() { return false; }
+    let slots = menu_slots();
+    let next = crate::ui::menu_nav::step(MENU_INDEX.with(Cell::get), &slots, down);
+    MENU_INDEX.with(|cell| cell.set(next));
+    true
+}
+
+pub fn activate_menu(editor: &mut Editor, window: &mut Window, cx: &mut Context<Editor>) -> bool {
+    let Some((id, _)) = OPEN_MENU.with(|slot| slot.get()) else { return false };
+    let index = crate::ui::menu_nav::clamp_index(MENU_INDEX.with(Cell::get), &menu_slots());
+    close_menu();
+    match index {
+        0..=4 => editor.set_callout_kind(id, Some(ALL_KINDS[index]), cx),
+        6 => editor.set_callout_kind(id, None, cx),
+        _ => {}
+    }
+    editor.focus_handle(cx).focus(window, cx);
+    cx.notify();
+    true
 }
 
 fn toggle_menu(block_id: u64, anchor: Point<Pixels>) {
@@ -110,6 +143,7 @@ fn menu_row(
     probe_name: &'static str,
     kind: CalloutKind,
     checked: bool,
+    highlighted: bool,
     on_click: impl Fn(&MouseDownEvent, &mut Window, &mut gpui::App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
@@ -117,6 +151,7 @@ fn menu_row(
     div().id(id).relative().w_full().h(px(32.)).px(px(10.)).rounded(px(6.)).children(crate::ui::smoke_overlay::probe(probe_name))
         .flex().items_center().gap(px(8.)).cursor(CursorStyle::PointingHand).text_size(px(14.)).text_color(theme.text)
         .when(checked, move |d| d.bg(theme.selected).border_1().border_color(theme.accent).font_weight(FontWeight(500.)))
+        .when(highlighted && !checked, move |d| d.bg(theme.hover))
         .when(!checked, move |d| d.hover(|s| s.bg(theme.hover)))
         .child(div().size(px(10.)).flex_none().rounded(px(5.)).bg(st.bg).border_1().border_color(st.accent))
         .child(div().flex_1().min_w_0().child(label(kind)))
@@ -170,7 +205,7 @@ pub fn controls(
         .tooltip_above(tooltip(tr("点击切换标注类型", "Click to switch callout type")))
         .child(icon(Icon::Callout, px(17. * zoom), IconColors { line: st.accent, fill: st.icon_fill, accent: st.accent }))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, window, cx| {
-            cx.stop_propagation(); toggle_menu(id, event.position); this.focus_handle(cx).focus(window, cx); cx.notify();
+            cx.stop_propagation(); if !is_menu_open(id) { arm_menu(kind); } toggle_menu(id, event.position); this.focus_handle(cx).focus(window, cx); cx.notify();
         }));
 
     let pill_btn = div().id(pill_id).relative().children(crate::ui::smoke_overlay::probe("callout-pill"))
@@ -181,7 +216,7 @@ pub fn controls(
         .text_size(px(14. * zoom)).font_weight(FontWeight(550.)).text_color(st.text)
         .child(label(kind)).child(div().text_size(px(12. * zoom)).text_color(st.text).child("▾")).child(bounds_tracker)
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, window, cx| {
-            cx.stop_propagation(); toggle_menu(id, event.position); this.focus_handle(cx).focus(window, cx); cx.notify();
+            cx.stop_propagation(); if !is_menu_open(id) { arm_menu(kind); } toggle_menu(id, event.position); this.focus_handle(cx).focus(window, cx); cx.notify();
         }));
 
     let copy_editor = editor.clone();
@@ -217,9 +252,10 @@ pub fn controls(
     let popover = motion.map(|(phase, pop_gen)| {
         let probe_names = ["callout-opt-0", "callout-opt-1", "callout-opt-2", "callout-opt-3", "callout-opt-4"];
         let mut menu = dropdown::shell(("callout-menu", id as usize)).w(px(196.));
+        let cursor = MENU_INDEX.with(Cell::get);
         for (ix, k) in ALL_KINDS.into_iter().enumerate() {
             let ed = editor.clone();
-            menu = menu.child(menu_row(("callout-opt", ix), probe_names[ix], k, k == kind, move |_, window, cx| {
+            menu = menu.child(menu_row(("callout-opt", ix), probe_names[ix], k, k == kind, cursor == ix, move |_, window, cx| {
                 cx.stop_propagation();
                 close_menu();
                 ed.update(cx, |this, cx| {
@@ -230,7 +266,9 @@ pub fn controls(
         }
         let ed = editor.clone();
         menu = menu.child(dropdown::separator()).child(
-            dropdown::row(("callout-opt-plain", id as usize), Some(Icon::Text), tr("转为普通正文", "Convert to Text"), false)
+            dropdown::row_with(("callout-opt-plain", id as usize), dropdown::RowSpec {
+                icon: Some(Icon::Text), label: tr("转为普通正文", "Convert to Text").into(), highlighted: cursor == 6, ..Default::default()
+            })
                 .children(crate::ui::smoke_overlay::probe("callout-opt-plain"))
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     cx.stop_propagation();
