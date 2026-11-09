@@ -48,7 +48,7 @@ pub fn render_scope_menu<V: 'static>(
         let checked = matches!(&state.scope, SearchScope::Folder(folder) if folder == path);
         rows.push(scope_row(index + 1, folder_name(path), checked, cx, on_pick));
     }
-    Some(crate::ui::scope_dropdown::menu_popover("search-scope-menu", rows, phase, pop_gen))
+    crate::ui::scope_dropdown::menu_popover("search-scope-menu", rows, phase, pop_gen)
 }
 
 fn scope_row<V: 'static>(
