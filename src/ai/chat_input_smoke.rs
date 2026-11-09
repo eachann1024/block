@@ -49,19 +49,6 @@ pub(crate) fn tab_observation(cx: &App) -> Option<(Option<u64>, String, Vec<Stri
     })
 }
 
-pub(crate) fn dictation_generation(cx: &App) -> Option<u64> {
-    assert!(crate::smoke::is_requested());
-    cx.try_global::<Holder>().and_then(|holder| super::chat_dictation::smoke_generation(holder.0.read(cx).input.entity_id()))
-}
-
-pub(crate) fn dictation_recording(cx: &App) -> bool {
-    assert!(crate::smoke::is_requested());
-    cx.try_global::<Holder>().is_some_and(|holder| super::chat_dictation::is_recording(holder.0.read(cx).input.entity_id()))
-}
-
-pub(crate) fn dictation_text(generation: u64, text: &str) -> bool { super::chat_dictation::smoke_text(generation, text) }
-pub(crate) fn dictation_done(generation: u64) -> bool { super::chat_dictation::smoke_done(generation) }
-
 thread_local! {
     static STATUS_OVERRIDES: std::cell::RefCell<Vec<(BackendKind, BackendStatus)>> = const { std::cell::RefCell::new(Vec::new()) };
 }

@@ -12,35 +12,6 @@ use crate::{
 
 pub const PANEL_WIDTH: f32 = 360.;
 
-pub fn dictation_button(recording: bool,
-    on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> Button {
-    use gpui::{Animation, AnimationExt};
-    let theme = super::ai_theme::theme();
-    let glyph = if recording {
-        let mut bars = div().flex().items_center().gap(px(2.)).h(px(16.));
-        for index in 0..3 {
-            bars = bars.child(div().w(px(2.)).rounded_full().bg(theme.text)
-                .with_animation(format!("ai-dictation-wave-{index}"), Animation::new(std::time::Duration::from_millis(900)).repeat(), move |bar, delta| {
-                    let phase = delta * std::f32::consts::TAU - index as f32 * std::f32::consts::PI / 3.;
-                    bar.h(px(4. + (phase.sin() + 1.) * 4.))
-                }));
-        }
-        bars
-    } else {
-        div().relative().size(px(16.)).flex().justify_center()
-            .child(div().absolute().top(px(1.)).w(px(6.)).h(px(9.)).rounded_full().border_1().border_color(theme.text_secondary))
-            .child(div().absolute().top(px(5.)).w(px(10.)).h(px(7.)).rounded_b_full().border_b_1().border_l_1().border_r_1().border_color(theme.text_secondary))
-            .child(div().absolute().bottom(px(1.)).w(px(6.)).h(px(1.)).bg(theme.text_secondary))
-            .child(div().absolute().bottom(px(2.)).w(px(1.)).h(px(3.)).bg(theme.text_secondary))
-    };
-    let tip = if recording { tr("停止听写", "Stop dictation") } else { tr("语音输入", "Dictate") };
-    Button::new("ai-dictation").focusable(false).accessibility_label(tip).relative().children(super::smoke_overlay::probe("ai-dictation"))
-        .size(px(28.)).flex_none().flex().items_center().justify_center().rounded(px(6.))
-        .cursor(CursorStyle::PointingHand).hover(move |style| style.bg(theme.hover))
-        .tooltip_above(tooltip(tip))
-        .child(glyph).on_mouse_down(MouseButton::Left, on_click)
-}
-
 pub fn enable_action_button(id: impl Into<SharedString>, label: impl Into<SharedString>,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> Button {
     let theme = Theme::ocean();

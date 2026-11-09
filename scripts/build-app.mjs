@@ -3,7 +3,6 @@ import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appName, assertSystemLibraries, binaryPath, installPath, logIssue, plist, remove, sign, workspaceTemp } from "./app-bundle.mjs";
 import { commitInstall, prepareInstall } from "./install-app.mjs";
-import { buildDictation } from "./build-dictation.mjs";
 import { createBuildTimer, elapsedMs, resolveCargoTimings } from "./build-timing.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -69,7 +68,6 @@ export async function buildApp({
     if (profile === "release") timer.measure("system_libraries", () => assertSystemLibraries(executable));
     const bundle = join(job.staging, `${appName}.app`);
     timer.measure("package", () => assembleBundle(bundle, executable, profile));
-    timer.measure("helper", () => buildDictation(join(bundle, "Contents/MacOS", "block-dictation")));
     timer.measure("sign", () => sign(bundle, { development: profile === "fast" }));
     if (install) job.plan = timer.measure("install_prepare", () => prepareInstall(bundle));
     const distApp = timer.measure("dist_publish", () => publishDist(bundle));
