@@ -107,7 +107,10 @@ impl FileTree {
         let Some(parent) = source.parent() else { return };
         let mut order = self.index.siblings(source);
         if !crate::ui::reorder::move_to(&mut order, &source.to_path_buf(), &target.to_path_buf(), after) { return; }
-        if super::update_state(|state| { state.file_order.insert(parent.to_path_buf(), order); }).is_err() { return; }
+        if let Err(error) = super::order::save([(parent.to_path_buf(), order)].into()) {
+            crate::log::warn(&format!("could not save file order: {error}"));
+            return;
+        }
         self.index.reorder(source, target, after);
         cx.notify();
     }
@@ -127,6 +130,7 @@ impl FileTree {
     pub fn set_renaming(&mut self, renaming: Option<(PathBuf, Entity<InputState>)>, cx: &mut Context<Self>) { self.renaming = renaming; cx.notify(); }
     pub fn finish_rename(&mut self, path: &Path, stem: gpui::SharedString, cx: &mut Context<Self>) { self.renaming = None; self.index.set_stem(path, stem); cx.notify(); }
     pub fn folders(&self) -> Vec<(PathBuf, usize, String)> { self.index.folders() }
+    pub fn order_snapshot(&self) -> super::order::Snapshot { self.index.order_snapshot() }
 
     pub fn scroll_to(&mut self, path: &Path) {
         use gpui_component::scroll::ScrollbarHandle as _;
@@ -142,7 +146,13 @@ impl FileTree {
 
     pub fn contains_root_path(&self, path: &Path) -> bool { self.index.contains_root_path(path) }
     pub fn has_notes(&self) -> bool { self.index.has_notes() }
-    pub fn insert_note(&mut self, path: PathBuf, cx: &mut Context<Self>) { self.index.insert_note(path); cx.notify(); }
+    pub fn insert_note(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        self.index.insert_note(path);
+        if let Err(error) = super::order::save(self.order_snapshot()) {
+            crate::log::warn(&format!("could not save file order after adding a note: {error}"));
+        }
+        cx.notify();
+    }
     pub fn on_open(&mut self, handler: impl Fn(PathBuf, bool, &mut gpui::Window, &mut gpui::App) + 'static) { self.on_open = Some(Box::new(handler)); }
     pub fn on_rename(&mut self, handler: impl Fn((PathBuf, bool), &mut gpui::Window, &mut gpui::App) + 'static) { self.on_rename = Some(Box::new(handler)); }
     pub fn on_trash(&mut self, handler: impl Fn(PathBuf, &mut gpui::Window, &mut gpui::App) + 'static) { self.on_trash = Some(Box::new(handler)); }
