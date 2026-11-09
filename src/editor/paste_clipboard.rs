@@ -1,7 +1,40 @@
 use gpui::ClipboardItem;
 use serde::{Deserialize, Serialize};
+use super::model::{Block, InlineTag, Kind, Span};
 
 const BLOCKS_V1: &str = "com.block.editor.blocks.v1";
+const INLINE_V1: &str = "com.block.editor.inline.v1";
+
+#[derive(Deserialize, Serialize)]
+struct InlinePayload {
+    kind: String,
+    text: String,
+    spans: Vec<Span>,
+    inline: Vec<InlineTag>,
+}
+
+/// Text selections carry only inline styles; their heading/list/container is not selected.
+pub(super) fn inline_item(fragment: &Block) -> ClipboardItem {
+    let payload = InlinePayload { kind: INLINE_V1.into(), text: fragment.text.clone(),
+        spans: fragment.spans.clone(), inline: fragment.meta.inline.clone() };
+    match serde_json::to_string(&payload) {
+        Ok(metadata) => ClipboardItem::new_string_with_metadata(fragment.text.clone(), metadata),
+        Err(_) => ClipboardItem::new_string(fragment.text.clone()),
+    }
+}
+
+pub(super) fn inline_fragment(item: &ClipboardItem, text: &str) -> Option<Block> {
+    let payload: InlinePayload = serde_json::from_str(item.metadata()?).ok()?;
+    let valid = |start, end| start <= end && end <= text.len()
+        && text.is_char_boundary(start) && text.is_char_boundary(end);
+    if payload.kind != INLINE_V1 || payload.text != text
+        || !payload.spans.iter().all(|span| valid(span.start, span.end))
+        || !payload.inline.iter().all(|tag| valid(tag.start, tag.end)) { return None; }
+    let mut fragment = Block::new(0, Kind::Paragraph, payload.text);
+    fragment.spans = payload.spans; fragment.meta.inline = payload.inline;
+    fragment.normalize_spans();
+    Some(fragment)
+}
 
 #[derive(Deserialize, Serialize)]
 struct BlockPayload {

@@ -14,6 +14,22 @@ fn plain_blocks(text: &str) -> Vec<Block> {
 }
 
 impl Editor {
+    /// A copied text range replaces text in place, even when its source was a heading.
+    pub(super) fn paste_inline_fragment(&mut self, fragment: &Block, cx: &mut Context<Self>) {
+        if self.path.is_none() || fragment.text.is_empty() { return; }
+        self.commit_composition(cx);
+        if self.block_sel.is_some() { self.insert_paste_blocks(vec![fragment.clone()], cx); return; }
+        if !self.can_replace_selection() { self.table_edit_rejected(cx); return; }
+        let (a, b, ai, bi) = self.ordered();
+        if self.crosses_hidden_fold(ai, bi) && !self.selection_covers_doc(a, b, ai, bi) { return; }
+        let first = &self.doc.blocks[ai];
+        let literal = ai == bi && (first.meta.code_language.is_some() || first.meta.raw_source.is_some()
+            || first.meta.table.is_some() || first.spans.iter().any(|span| span.marks.contains(&MarkKind::Code)
+                && span.start < a.offset && b.offset <= span.end));
+        if literal { self.paste_text(&fragment.text, true, false, None, cx); return; }
+        self.insert_paste_inline(fragment, cx);
+    }
+
     pub(super) fn paste_text(&mut self, text: &str, plain: bool, force_markdown: bool,
         block_markdown: Option<&str>, cx: &mut Context<Self>) {
         if self.path.is_none() || text.is_empty() { return; }
