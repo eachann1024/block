@@ -12,7 +12,7 @@ use super::menu::{ItemId, menu_item, menu_surface, separator};
 pub(super) const MIN_WIDTH: f32 = 240.;
 pub(super) const MAX_WIDTH: f32 = 420.;
 const TITLEBAR_LEFT_PAD: f32 = if cfg!(any(target_os = "macos", target_family = "wasm")) { 82. } else { 10. };
-const TITLEBAR_RIGHT_PAD: f32 = 0.;
+const TITLEBAR_RIGHT_PAD: f32 = 8.;
 const TOGGLE_SIZE: f32 = 26.;
 const NAV_BUTTON_SIZE: f32 = 24.;
 const TITLEBAR_GAP: f32 = 2.;
