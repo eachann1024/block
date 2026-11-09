@@ -1,4 +1,5 @@
-use gpui::{AnyElement, Context, Pixels, Window, px};
+use std::time::Duration;
+use gpui::{AnyElement, Context, Pixels, Task, Window, px};
 use super::{surface::Surface, view::Editor};
 use crate::ui::outline_rail::OutlineEntry;
 
@@ -9,6 +10,18 @@ pub(crate) struct OutlineState {
     /// Ignore hover-open until the pointer actually leaves.
     pub pinned_closed: bool,
     pub force_narrow: bool,
+    /// Navigation is independent of the editor's insertion point and selection.
+    pub active: Option<u64>,
+    pub highlight: Option<u64>,
+    highlight_timer: Option<Task<()>>,
+}
+
+impl OutlineState {
+    pub(super) fn clear_navigation(&mut self) {
+        self.active = None;
+        self.highlight = None;
+        self.highlight_timer = None;
+    }
 }
 
 pub(crate) const MIN_LEFT_MARGIN: f32 = 36.0;
@@ -42,7 +55,8 @@ pub(crate) fn entries(editor: &Editor) -> Vec<OutlineEntry> {
             .map(|level| (idx, block, level))
     }).collect();
     if headings.is_empty() { return Vec::new(); }
-    let anchor_idx = editor.doc.index_of(editor.caret.head.block).unwrap_or(editor.scroll_top.0);
+    let anchor_idx = editor.outline.active.and_then(|id| editor.doc.index_of(id))
+        .or_else(|| editor.doc.index_of(editor.caret.head.block)).unwrap_or(editor.scroll_top.0);
     let active_pos = headings.iter().rposition(|(idx, _, _)| *idx <= anchor_idx).unwrap_or(0);
     let (active_block_idx, _, _) = headings[active_pos];
     let section_end = super::fold::fold_end(&editor.doc, active_block_idx);
@@ -52,12 +66,23 @@ pub(crate) fn entries(editor: &Editor) -> Vec<OutlineEntry> {
     }).collect()
 }
 
-pub(super) fn select_heading(editor: &mut Editor, block_id: u64, window: &mut Window, cx: &mut Context<Editor>) {
+pub(super) fn select_heading(editor: &mut Editor, block_id: u64, _: &mut Window, cx: &mut Context<Editor>) {
+    let Some(index) = editor.doc.index_of(block_id) else { return };
     editor.ensure_block_visible(block_id);
-    if let Some(index) = editor.doc.index_of(block_id) {
-        crate::ui::scrollbar::reveal_item(&editor.list, index, px(36.));
-    }
-    editor.focus_block(block_id, window, cx);
+    let content_top = editor.list_padding().0 + super::chrome::row_pads(editor, index).0;
+    crate::ui::scrollbar::align_item_top(&editor.list, index, px(content_top), px(36.));
+    // A pending caret reveal must not undo anchor navigation on the next frame.
+    editor.reveal_caret = false;
+    editor.pending_vertical = None;
+    editor.outline.active = Some(block_id);
+    editor.outline.highlight = Some(block_id);
+    editor.outline.highlight_timer = Some(cx.spawn(async move |this, cx| {
+        cx.background_executor().timer(Duration::from_millis(1600)).await;
+        this.update(cx, |this, cx| {
+            this.outline.highlight = None;
+            cx.notify();
+        }).ok();
+    }));
     editor.outline.hovered = false;
     editor.outline.pinned_closed = true;
     cx.notify();

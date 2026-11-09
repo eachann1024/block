@@ -24,11 +24,14 @@ impl Run {
         self.redraw(cx);
         self.check(9, smoke_overlay::target_bounds("outline-popover").is_some()
             && smoke_overlay::target_bounds("outline-item-3").is_some(), "悬停展开完整大纲")?;
+        let caret_before = self.editor(cx, |editor| editor.caret_block_id());
         self.click_target(cx, "outline-item-3", "Step 9 · 点击大纲跳转到章节").await?;
         sleep(cx, 220).await;
         cx.update(|_| smoke_overlay::reset()); self.redraw(cx);
-        self.check(9, self.editor(cx, |editor| editor.caret_block_id()) == entries[3].0
-            && smoke_overlay::target_bounds("outline-popover").is_none(), "点击标题跳转并关闭浮层")?;
+        self.check(9, self.editor(cx, |editor| editor.caret_block_id()) == caret_before
+            && self.editor(cx, |editor| editor.outline_smoke_entries())[3].3
+            && smoke_overlay::target_bounds("outline-target-highlight").is_some()
+            && smoke_overlay::target_bounds("outline-popover").is_none(), "目录定位并高亮章节，保留光标并关闭浮层")?;
         cx.update(|cx| editor.update(cx, |editor, cx| editor.set_outline_force_narrow_smoke(true, cx)));
         sleep(cx, 150).await;
         cx.update(|_| smoke_overlay::reset()); self.redraw(cx);

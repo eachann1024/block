@@ -117,6 +117,13 @@ pub fn delete_arm_caret_color() -> Hsla {
     if is_dark() { rgb(0xff857d).into() } else { rgb(0xb92d29).into() }
 }
 
+/// Background-only anchor feedback; leaves text selection and row geometry intact.
+pub fn anchor_highlight(left: Pixels, right: Pixels, top: Pixels, bottom: Pixels) -> Div {
+    div().absolute().left(left).right(right).top(top).bottom(bottom)
+        .rounded(px(4.)).bg(Theme::ocean().selected)
+        .children(crate::ui::smoke_overlay::probe("outline-target-highlight"))
+}
+
 pub fn delete_arm_placeholder_text() -> &'static str { tr("再次按删除键删除此行", "Press Backspace again to delete this line") }
 pub fn delete_arm_placeholder_color() -> Hsla { if is_dark() { rgba(0xff857db8).into() } else { rgba(0xb92d29b8).into() } }
 

@@ -109,6 +109,9 @@ impl Editor {
     }
     pub fn set_minimal(&mut self, minimal: bool) { self.minimal = minimal; }
     pub fn reset_layouts(&mut self) { self.layouts.clear(); }
+    pub(super) fn list_padding(&self) -> (f32, f32) {
+        if self.minimal { (4., 8.) } else { (64., 160.) }
+    }
     pub fn status_text(&self) -> &str { &self.status }
     pub fn is_dirty(&self) -> bool { self.dirty }
     pub(crate) fn block_plain_text(&self, id: u64) -> String {
@@ -141,7 +144,7 @@ impl Render for Editor {
             let editor = input_editor.read(cx);
             if editor.path.is_some() { window.handle_input(&editor.focus, gpui::ElementInputHandler::new(bounds, input_editor.clone()), cx); }
         }).absolute().size_full();
-        let editor = cx.entity(); let pad = if self.minimal { (4., 8.) } else { (64., 160.) };
+        let editor = cx.entity(); let pad = self.list_padding();
         if self.list.item_count() != self.doc.blocks.len() {
             crate::log::warn(&format!("editor list item_count ({}) != doc.blocks.len() ({}); resetting", self.list.item_count(), self.doc.blocks.len()));
             self.list.reset(self.doc.blocks.len());

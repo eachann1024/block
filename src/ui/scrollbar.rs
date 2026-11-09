@@ -115,3 +115,10 @@ pub fn reveal_item(list: &ListState, ix: usize, margin: Pixels) {
     list.scroll_to_reveal_item(ix);
     if above { scroll_clamped(list, -margin); } else if below { scroll_clamped(list, margin); }
 }
+
+/// Aligns an item's content near the viewport top. `content_top` includes the
+/// list's top padding and space above the content inside the item. List layout
+/// clamps the result at the document end when there is less content below it.
+pub fn align_item_top(list: &ListState, ix: usize, content_top: Pixels, inset: Pixels) {
+    list.scroll_to(gpui::ListOffset { item_ix: ix, offset_in_item: content_top - inset });
+}
