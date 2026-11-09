@@ -7,6 +7,7 @@ use std::{
 use gpui::Context;
 use serde::{Deserialize, Serialize};
 use super::{
+    input::transactions::{ListChange, Snapshot},
     model::{Block, Doc, Kind},
     view::{Editor, selection::Position},
 };
@@ -138,8 +139,36 @@ impl Editor {
         })
     }
 
+    /// A folded heading reveals `index` when it sits in that heading's temporary tail.
+    fn tail_reveals(&self, heading_index: usize, index: usize) -> bool {
+        let heading = self.doc.blocks[heading_index].id;
+        let Some(&(_, start)) = self.fold_tails.iter().find(|(id, _)| *id == heading) else { return false };
+        let Some(start) = self.doc.index_of(start) else { return false };
+        let end = fold_end(&self.doc, heading_index);
+        start > heading_index && start < end && index >= start
+    }
+
     pub(super) fn is_index_hidden(&self, index: usize) -> bool {
-        self.enclosing_folded_heading(index).is_some()
+        // Hidden when any enclosing folded heading does not reveal this block.
+        // A lower folded heading can reveal its own tail without opening its parent.
+        (0..index).any(|heading| {
+            let block = &self.doc.blocks[heading];
+            self.folded.contains(&block.id)
+                && heading_level(block).is_some()
+                && index < fold_end(&self.doc, heading)
+                && !self.tail_reveals(heading, index)
+        })
+    }
+
+    pub(super) fn crosses_hidden_fold(&self, first: usize, last: usize) -> bool {
+        first < last && (first + 1..last).any(|i| self.is_index_hidden(i))
+    }
+
+    pub(super) fn selection_covers_doc(&self, start: Position, end: Position, first: usize, last: usize) -> bool {
+        first == 0
+            && last + 1 == self.doc.blocks.len()
+            && start.offset == 0
+            && self.doc.blocks.get(last).is_some_and(|block| end.offset == block.text.len())
     }
 
     pub(super) fn next_visible_index(&self, from: usize, forward: bool) -> Option<usize> {
@@ -171,7 +200,9 @@ impl Editor {
         let end = fold_end(&self.doc, index);
         if self.folded.contains(&id) {
             self.folded.remove(&id);
+            self.discard_fold_tail(id);
         } else {
+            self.discard_fold_tail(id);
             self.folded.insert(id);
             for i in (index + 1)..end {
                 self.layouts.remove(&self.doc.blocks[i].id);
@@ -210,6 +241,7 @@ impl Editor {
         if !self.folded.remove(&id) {
             return false;
         }
+        self.discard_fold_tail(id);
         if let Some(index) = self.doc.index_of(id) {
             let end = fold_end(&self.doc, index);
             self.list.splice(index..end, end - index);
@@ -221,16 +253,162 @@ impl Editor {
 
     pub(super) fn ensure_block_visible(&mut self, block_id: u64) {
         let Some(index) = self.doc.index_of(block_id) else { return };
+        if !self.is_index_hidden(index) { return; }
         let mut changed = false;
         while let Some(h) = self.enclosing_folded_heading(index) {
             let hid = self.doc.blocks[h].id;
             let end = fold_end(&self.doc, h);
             self.folded.remove(&hid);
+            self.discard_fold_tail(hid);
             self.list.splice(h..end, end - h);
             changed = true;
         }
         if changed {
             self.persist_folds();
         }
+    }
+
+    /// Enter on a folded heading appends a paragraph after the hidden section and leaves the fold shut.
+    pub(super) fn enter_on_folded_heading(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.minimal || !self.is_markdown_note() || self.editing_source() { return false; }
+        if !self.caret.is_empty() || self.caret.composing.is_some() { return false; }
+        let heading_id = self.caret.head.block;
+        if !self.is_heading_folded(heading_id) { return false; }
+        let Some(heading_index) = self.doc.index_of(heading_id) else { return false; };
+        let end = fold_end(&self.doc, heading_index);
+        let before = self.snapshot();
+        self.doc.splice_blocks(end..end, vec![Block::new(0, Kind::Paragraph, String::new())]);
+        let id = self.doc.blocks[end].id;
+        let at = Position { block: id, offset: 0 };
+        self.caret.anchor = at;
+        self.caret.head = at;
+        self.caret.composing = None;
+        self.block_sel = None;
+        self.preferred_x = None;
+        self.note_fold_tail(heading_id, id);
+        self.record_changes(before, vec![ListChange { start: end, before: 0, after: 1 }], true, cx);
+        true
+    }
+
+    /// Backspace/Delete must not swallow hidden blocks that sit between a heading and its visible tail.
+    pub(super) fn fold_gap_edit(&mut self, forward: bool, cx: &mut Context<Self>) -> bool {
+        if self.minimal || !self.caret.is_empty() || self.caret.composing.is_some() { return false; }
+        let at = self.caret.head;
+        let Some(index) = self.doc.index_of(at.block) else { return false; };
+        let block = &self.doc.blocks[index];
+        if forward {
+            if at.offset != block.text.len() { return false; }
+            let Some(next) = self.next_visible_index(index, true) else { return false; };
+            return next > index + 1 && self.crosses_hidden_fold(index, next);
+        }
+        if at.offset != 0 { return false; }
+        let Some(prev) = self.next_visible_index(index, false) else { return false; };
+        if prev + 1 >= index || !self.crosses_hidden_fold(prev, index) { return false; }
+        if heading_level(block).is_some() { return false; }
+        let removable = block.text.is_empty()
+            && block.meta.table.is_none()
+            && block.meta.raw_source.is_none()
+            && block.meta.code_language.is_none()
+            && block.meta.html_paragraph.is_none();
+        if removable {
+            let prev_block = self.doc.blocks[prev].clone();
+            let to = Position { block: prev_block.id, offset: prev_block.text.len() };
+            let before = self.snapshot();
+            self.doc.splice_blocks(index..index + 1, Vec::new());
+            self.caret.anchor = to;
+            self.caret.head = to;
+            self.record_changes(before, vec![ListChange { start: index, before: 1, after: 0 }], true, cx);
+        } else {
+            let prev_block = &self.doc.blocks[prev];
+            let to = Position { block: prev_block.id, offset: prev_block.text.len() };
+            self.set_head(to, false, cx);
+        }
+        true
+    }
+
+    fn note_fold_tail(&mut self, heading: u64, block: u64) {
+        if let Some(pos) = self.fold_tails.iter().position(|(id, _)| *id == heading) {
+            let (_, start) = self.fold_tails[pos];
+            if self.doc.index_of(start).is_some_and(|start_index| self.doc.index_of(block).is_some_and(|block_index| block_index >= start_index)) {
+                return;
+            }
+            self.fold_tails[pos].1 = block;
+            return;
+        }
+        self.fold_tails.push((heading, block));
+    }
+
+    fn set_fold_tail(&mut self, heading: u64, block: u64) {
+        if let Some(pos) = self.fold_tails.iter().position(|(id, _)| *id == heading) {
+            self.fold_tails[pos].1 = block;
+        } else {
+            self.fold_tails.push((heading, block));
+        }
+    }
+
+    fn clear_fold_tail(&mut self, heading: u64) {
+        self.fold_tails.retain(|(id, _)| *id != heading);
+    }
+
+    /// Keep each visible tail attached to blocks inserted or retargeted inside its folded section.
+    pub(super) fn sync_fold_tail(&mut self, before: &Snapshot) {
+        if self.fold_tails.is_empty() && before.fold_tails.is_empty() { return; }
+        let mut headings: Vec<u64> = self.fold_tails.iter().map(|(id, _)| *id).collect();
+        for (id, _) in &before.fold_tails {
+            if !headings.contains(id) { headings.push(*id); }
+        }
+        for heading in headings {
+            self.sync_one_fold_tail(heading, before);
+        }
+    }
+
+    fn sync_one_fold_tail(&mut self, heading: u64, before: &Snapshot) {
+        let Some(heading_index) = self.doc.index_of(heading) else {
+            self.clear_fold_tail(heading);
+            return;
+        };
+        if !self.is_heading_folded(heading) {
+            self.clear_fold_tail(heading);
+            return;
+        }
+        let end = fold_end(&self.doc, heading_index);
+        let inside = |index: usize| index > heading_index && index < end;
+        let current = self.fold_tails.iter().find(|(id, _)| *id == heading).map(|(_, start)| *start);
+        if let Some(start) = current
+            && let Some(mut start_index) = self.doc.index_of(start).filter(|&index| inside(index))
+        {
+            while start_index > heading_index + 1
+                && inside(start_index - 1)
+                && before.doc.index_of(self.doc.blocks[start_index - 1].id).is_none()
+            {
+                start_index -= 1;
+            }
+            self.set_fold_tail(heading, self.doc.blocks[start_index].id);
+            return;
+        }
+        let previous = before.fold_tails.iter().find(|(id, _)| *id == heading).map(|(_, start)| *start);
+        if let Some(start) = previous
+            && let Some(old_index) = before.doc.index_of(start)
+            && let Some(next) = before.doc.blocks.get(old_index + 1)
+            && let Some(index) = self.doc.index_of(next.id).filter(|&index| inside(index))
+        {
+            self.set_fold_tail(heading, self.doc.blocks[index].id);
+            return;
+        }
+        if let Some(block) = self.doc.blocks.iter().enumerate().find_map(|(index, block)| {
+            (inside(index) && before.doc.index_of(block.id).is_none()).then_some(block.id)
+        }) {
+            self.set_fold_tail(heading, block);
+            return;
+        }
+        if let Some(caret) = self.doc.index_of(self.caret.head.block).filter(|&index| inside(index))
+            && let Some(start) = previous
+            && let Some(old_start) = before.doc.index_of(start)
+            && before.doc.index_of(self.caret.head.block).is_some_and(|old| old >= old_start)
+        {
+            self.set_fold_tail(heading, self.doc.blocks[caret].id);
+            return;
+        }
+        self.clear_fold_tail(heading);
     }
 }

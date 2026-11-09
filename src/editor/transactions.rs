@@ -6,13 +6,15 @@ use crate::editor::{model::{Doc, Kind, MarkKind}, view::{Editor, selection::{Car
 pub(in crate::editor) struct Snapshot {
     pub doc: Doc, pub caret: Caret,
     block_sel: Option<(usize, usize)>, table_sel: Option<(u64, super::super::table_actions::TableSel)>,
+    /// Per folded heading: `(heading id, first block id shown after its hidden body)`.
+    pub fold_tails: Vec<(u64, u64)>,
 }
 #[derive(Clone)]
 pub(in crate::editor) struct ListChange { pub start: usize, pub before: usize, pub after: usize }
 pub(in crate::editor) struct HistoryEntry { state: Snapshot, changes: Vec<ListChange> }
 impl Editor {
     pub(in crate::editor) fn snapshot(&self) -> Snapshot {
-        Snapshot { doc: self.doc.clone(), caret: self.caret.clone(), block_sel: self.block_sel, table_sel: self.table_sel }
+        Snapshot { doc: self.doc.clone(), caret: self.caret.clone(), block_sel: self.block_sel, table_sel: self.table_sel, fold_tails: self.fold_tails.clone() }
     }
     fn selection_change(&self, before: &Snapshot) -> ListChange {
         let a = before.doc.index_of(before.caret.anchor.block).unwrap_or(0);
@@ -42,10 +44,20 @@ impl Editor {
     }
     pub(in crate::editor) fn record_changes(&mut self, before: Snapshot, changes: Vec<ListChange>, apply: bool, cx: &mut Context<Self>) {
         if self.doc == before.doc { cx.notify(); return; }
+        self.sync_fold_tail(&before);
         if apply { self.apply_changes(&changes, true); }
         self.history.push(HistoryEntry { state: before, changes });
         if self.history.len() > 200 { self.history.remove(0); }
         self.redo.clear(); self.changed(cx);
+    }
+    /// Drop the temporary tail for `heading` from the live editor and from undo snapshots,
+    /// so expanding and folding again hides body text that was inserted while folded.
+    pub(in crate::editor) fn discard_fold_tail(&mut self, heading: u64) {
+        let clear = |tails: &mut Vec<(u64, u64)>| { tails.retain(|(id, _)| *id != heading); };
+        clear(&mut self.fold_tails);
+        for entry in &mut self.history { clear(&mut entry.state.fold_tails); }
+        for entry in &mut self.redo { clear(&mut entry.state.fold_tails); }
+        if let Some(pending) = &mut self.composition_before { clear(&mut pending.fold_tails); }
     }
     pub(in crate::editor) fn record(&mut self, before: Snapshot, cx: &mut Context<Self>) {
         let change = self.selection_change(&before);
@@ -70,6 +82,7 @@ impl Editor {
             let target = std::mem::replace(&mut item.state, self.snapshot());
             self.doc = target.doc; self.caret = target.caret; self.caret.composing = None;
             self.block_sel = target.block_sel; self.table_sel = target.table_sel;
+            self.fold_tails = target.fold_tails;
             self.apply_changes(&item.changes, redo);
             if redo { self.history.push(item); } else { self.redo.push(item); }
             self.changed(cx);
@@ -110,6 +123,12 @@ impl Editor {
         self.pending_vertical = None;
         let (a, b, ai, bi) = self.ordered();
         if a == b && text.is_empty() { return; }
+        // A caret jump from a folded heading to its visible tail selects the hidden body.
+        // Keep that body unless the user selected the whole note.
+        if ai != bi && self.crosses_hidden_fold(ai, bi) && !self.selection_covers_doc(a, b, ai, bi) {
+            cx.notify();
+            return;
+        }
         if !self.can_replace_selection() {
             self.status = crate::theme::tr(
                 "请在单个表格单元格内选择，或选中整个表格以替换",
