@@ -1,7 +1,7 @@
 use gpui::{App, Context, FontWeight, MouseButton, ParentElement, SharedString, Styled, Window, div, prelude::*, px};
 
 use super::{AiSettings, TestNote};
-use super::super::{backend::{self, BackendConfig, BackendKind, BackendStatus}, backend_ui, chat, presets};
+use super::super::{backend::{self, BackendConfig, BackendKind, BackendStatus}, backend_ui, chat};
 use crate::{
     icons::{Icon, icon},
     theme::{Theme, is_dark, tr},
@@ -11,10 +11,7 @@ use crate::{
     },
 };
 
-fn backend_version_tag(kind: BackendKind, settings: &AiSettings, cx: &App) -> String {
-    if kind == BackendKind::Builtin {
-        return presets::find(&settings.provider).map_or_else(|| "DeepSeek".into(), |p| p.label().into());
-    }
+fn backend_version_tag(kind: BackendKind, cx: &App) -> String {
     match chat::backend_status(kind, cx) {
         Some(BackendStatus::Ready { version } | BackendStatus::Installed { version }) => {
             let token = version.split_whitespace().find(|part| part.chars().any(|c| c.is_ascii_digit())).unwrap_or(&version);
@@ -80,10 +77,9 @@ impl AiSettings {
             let active = config.is_enabled(kind);
             let card_id: gpui::ElementId = SharedString::from(format!("ai-backend-card-{kind:?}")).into();
             let toggle_id: gpui::ElementId = SharedString::from(format!("ai-backend-toggle-{kind:?}")).into();
-            let subtitle = backend_version_tag(kind, self, cx);
             let logo = backend_ui::backend_logo(kind);
             rail = rail.child(agent_card(
-                card_id, toggle_id, backend_ui::backend_name(kind), subtitle, logo,
+                card_id, toggle_id, backend_ui::backend_name(kind), logo,
                 self.focused_backend == kind, active, idx, total,
                 cx.listener(move |this, _, window, cx| {
                     if this.focused_backend != kind { this.select_focused_backend(kind, window, cx); }
@@ -146,7 +142,7 @@ impl AiSettings {
         let enabled = config.is_enabled(kind);
         let full_permissions = config.full_permissions(kind);
         let thinking = config.thinking_level(kind);
-        let version = backend_version_tag(kind, self, cx);
+        let version = backend_version_tag(kind, cx);
         let bin_path = backend::cli_env::resolve(kind.key())
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| kind.key().to_owned());
