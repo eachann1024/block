@@ -261,37 +261,14 @@ impl Editor {
             if let Some(s) = self.ai_mut() { s.status = AiStatus::Error { message: tr("目标块已变化，原文未修改。请重新选择后再试", "Target block changed; text unchanged. Please reselect and try again").into() }; }
             cx.notify(); return;
         }
-        self.format = None;
         self.caret.anchor = a; self.caret.head = b; self.caret.composing = None;
-        let markdownish = draft.contains('\n') || draft.starts_with("- ") || draft.starts_with("* ") || draft.starts_with('#') || draft.starts_with("> ") || draft.chars().next().is_some_and(|c| c.is_ascii_digit()) && draft.contains(". ");
-        let pasted = markdownish && {
-            self.block_clip = Some((draft.clone(), draft.clone()));
-            self.paste_blocks(&draft, cx)
-        };
-        if !pasted {
-            // One-line drafts still carry inline Markdown (**粗体**, `代码`, [链接](…)): insert the
-            // rendered text, then lay the parsed marks and inline tags over the inserted range.
-            let rich = (a.block == b.block).then(|| crate::editor::markdown::parse(&draft)).and_then(|doc| {
-                let mut it = doc.blocks.iter().filter(|blk| !blk.text.is_empty());
-                let first = it.next().cloned();
-                first.filter(|blk| it.next().is_none() && blk.kind == crate::editor::model::Kind::Paragraph && blk.meta.raw_source.is_none()
-                    && (!blk.spans.is_empty() || !blk.meta.inline.is_empty()))
-            });
-            match rich {
-                Some(rich) => {
-                    self.replace_selection(&rich.text, false, cx);
-                    let at = a.offset;
-                    if let Some(blk) = self.doc.get_mut(a.block) && blk.text.get(at..at + rich.text.len()) == Some(rich.text.as_str()) {
-                        blk.spans.extend(rich.spans.iter().map(|sp| crate::editor::model::Span { start: sp.start + at, end: sp.end + at, marks: sp.marks.clone() }));
-                        blk.normalize_spans();
-                        blk.meta.inline.extend(rich.meta.inline.iter().map(|t| { let mut t = t.clone(); t.start += at; t.end += at; t }));
-                        blk.meta.inline.sort_by_key(|t| (t.start, t.end));
-                        self.layouts.clear();
-                    }
-                }
-                None => self.replace_selection(&draft, false, cx),
+        if self.replace_ai_markdown(&draft, cx).is_none() {
+            if let Some(s) = self.ai_mut() {
+                s.status = AiStatus::Error { message: tr("无法在当前选区应用此格式，请选择完整块后重试", "Select whole blocks to apply this format").into() };
             }
+            cx.notify(); return;
         }
+        self.format = None;
         window.focus(&self.focus, cx);
         cx.notify();
     }
