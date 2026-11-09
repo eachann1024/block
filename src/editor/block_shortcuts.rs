@@ -250,15 +250,13 @@ impl Editor {
         self.record(before, cx);
         true
     }
-    /// Remember a copy that should paste back as blocks: several blocks, or one whole non-paragraph block.
+    /// Cross-block selections and whole atomic content retain their block structure.
+    /// Selecting all characters in a heading/list is still a text selection.
     pub(super) fn remember_blocks(&mut self) {
         let (_, _, ai, bi) = self.ordered();
         let whole = |i: usize| self.selected_range(self.doc.blocks[i].id).is_some_and(|r| r == (0..self.doc.blocks[i].text.len()));
         let one = &self.doc.blocks[ai];
-        let rich = ai != bi || (whole(ai) && (one.kind != Kind::Paragraph || one.meta.indent > 0
-            || one.meta.code_language.is_some() || one.meta.raw_source.is_some() || one.meta.table.is_some()
-            || one.meta.callout.is_some() || one.meta.list_start.is_some()
-            || one.meta.html_paragraph.is_some() || !one.spans.is_empty() || !one.meta.inline.is_empty()));
+        let rich = ai != bi || (whole(ai) && (one.meta.raw_source.is_some() || one.meta.table.is_some()));
         if !rich { self.block_clip = None; return; }
         let blocks: Vec<Block> = (ai..=bi).filter_map(|i| {
             let block = &self.doc.blocks[i];

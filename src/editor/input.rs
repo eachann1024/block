@@ -109,11 +109,8 @@ impl Editor {
                         Some((clip_text, markdown)) => super::paste_clipboard::block_item(clip_text.clone(), markdown),
                         None => {
                             let b = &self.doc.blocks[first];
-                            if first == last && (!b.spans.is_empty() || !b.meta.inline.is_empty())
-                                && let Some(r) = self.selected_range(b.id) {
-                                let s = b.slice(r);
-                                let md = super::markdown::serialize(&super::model::Doc::from_blocks(vec![s])).trim_end_matches('\n').to_owned();
-                                ClipboardItem::new_string_with_metadata(md, super::paste::MARKDOWN_CLIPBOARD_V1.into())
+                            if first == last && let Some(r) = self.selected_range(b.id) {
+                                super::paste_clipboard::inline_item(&b.slice(r))
                             } else {
                                 ClipboardItem::new_string(text)
                             }
@@ -169,6 +166,9 @@ impl Editor {
         } else if let Some((bytes, ext)) = image.filter(|_| item.as_ref().and_then(|i| i.text()).is_none()) {
             let id = self.caret.head.block; self.import_image_bytes(id, bytes, ext, window, cx);
         } else if let Some(item) = item && let Some(text) = item.text() {
+            if let Some(fragment) = super::paste_clipboard::inline_fragment(&item, &text) {
+                self.paste_inline_fragment(&fragment, cx); return;
+            }
             let markdown = item.metadata().is_some_and(|metadata| metadata == super::paste::MARKDOWN_CLIPBOARD_V1);
             let blocks = super::paste_clipboard::block_markdown(&item, &text);
             self.paste_text(&text, false, markdown, blocks.as_deref(), cx);
