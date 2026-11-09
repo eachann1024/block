@@ -264,7 +264,9 @@ impl Editor {
             Backspace | Delete | Cut | Copy => {
                 if !matches!(action, Backspace | Delete) {
                     let blocks: Vec<Block> = (lo..=hi).map(|i| self.doc.blocks[i].clone()).collect();
-                    cx.write_to_clipboard(super::paste_clipboard::blocks_item(blocks));
+                    if !self.copy_image_blocks(&blocks, cx) {
+                        cx.write_to_clipboard(super::paste_clipboard::blocks_item(blocks));
+                    }
                 }
                 if !matches!(action, Copy) {
                     self.block_sel = None;
