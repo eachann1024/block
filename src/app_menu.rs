@@ -279,16 +279,22 @@ impl Workspace {
     fn step_switcher(&mut self, down: bool, cx: &mut Context<Self>) {
         let slots = switcher_slots(self.notebooks.len());
         if !crate::ui::menu_nav::has_item(&slots) { return; }
-        let next = crate::ui::menu_nav::step(switcher_cursor(), &slots, down);
-        let changed = next != crate::ui::menu_nav::clamp_index(switcher_cursor(), &slots);
-        set_switcher_cursor(next);
+        let cursor = switcher_cursor();
+        let next = match cursor {
+            Some(index) => crate::ui::menu_nav::step(index, &slots, down),
+            None if down => crate::ui::menu_nav::clamp_index(0, &slots),
+            None => crate::ui::menu_nav::clamp_index(slots.len() - 1, &slots),
+        };
+        let changed = cursor != Some(next);
+        set_switcher_cursor(Some(next));
         if changed { crate::ui::menu_nav::reveal_or_defer(&switcher_scroll(), next, slots.len()); }
         cx.notify();
     }
 
     fn activate_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(cursor) = switcher_cursor() else { return };
         let n = self.notebooks.len();
-        let index = crate::ui::menu_nav::clamp_index(switcher_cursor(), &switcher_slots(n));
+        let index = crate::ui::menu_nav::clamp_index(cursor, &switcher_slots(n));
         if index < n {
             let target = self.notebooks[index].clone();
             self.close_overlays(cx);
@@ -306,7 +312,7 @@ struct SurfaceNav {
     move_cursor: usize,
     move_scroll: gpui::ScrollHandle,
     switcher_gen: u64,
-    switcher_cursor: usize,
+    switcher_cursor: Option<usize>,
     switcher_scroll: gpui::ScrollHandle,
 }
 
@@ -314,7 +320,7 @@ impl Default for SurfaceNav {
     fn default() -> Self {
         Self {
             tree_gen: u64::MAX, cursor: 0, move_cursor: 0, move_scroll: gpui::ScrollHandle::new(),
-            switcher_gen: u64::MAX, switcher_cursor: 0, switcher_scroll: gpui::ScrollHandle::new(),
+            switcher_gen: u64::MAX, switcher_cursor: None, switcher_scroll: gpui::ScrollHandle::new(),
         }
     }
 }
@@ -356,18 +362,18 @@ fn move_nav_cursor() -> usize { SURFACE.with(|nav| nav.borrow().move_cursor) }
 fn set_move_cursor(index: usize) { SURFACE.with(|nav| nav.borrow_mut().move_cursor = index); }
 fn move_scroll() -> gpui::ScrollHandle { SURFACE.with(|nav| nav.borrow().move_scroll.clone()) }
 
-pub(super) fn sync_switcher_nav(pop_gen: u64) -> usize {
+pub(super) fn sync_switcher_nav(pop_gen: u64) -> Option<usize> {
     SURFACE.with(|nav| {
         let mut nav = nav.borrow_mut();
         if nav.switcher_gen != pop_gen {
             nav.switcher_gen = pop_gen;
-            nav.switcher_cursor = 0;
+            nav.switcher_cursor = None;
             nav.switcher_scroll.set_offset(Default::default());
         }
         nav.switcher_cursor
     })
 }
 
-fn switcher_cursor() -> usize { SURFACE.with(|nav| nav.borrow().switcher_cursor) }
-fn set_switcher_cursor(index: usize) { SURFACE.with(|nav| nav.borrow_mut().switcher_cursor = index); }
+fn switcher_cursor() -> Option<usize> { SURFACE.with(|nav| nav.borrow().switcher_cursor) }
+fn set_switcher_cursor(index: Option<usize>) { SURFACE.with(|nav| nav.borrow_mut().switcher_cursor = index); }
 pub(super) fn switcher_scroll() -> gpui::ScrollHandle { SURFACE.with(|nav| nav.borrow().switcher_scroll.clone()) }
