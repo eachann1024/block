@@ -7,7 +7,7 @@ actions!(menu_bar, [ShowAbout, ShowPerformance, HideApp, HideOthers, ShowAll, Mi
 
 pub fn init(cx: &mut App) {
     #[cfg(target_os = "macos")]
-    cx.bind_keys([
+    crate::ui::app_shortcuts::bind(cx, [
         KeyBinding::new("cmd-h", HideApp, None),
         KeyBinding::new("alt-cmd-h", HideOthers, None),
         KeyBinding::new("cmd-m", Minimize, None),
@@ -15,7 +15,7 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-shift-m", ShowPerformance, None),
     ]);
     #[cfg(not(target_os = "macos"))]
-    cx.bind_keys([KeyBinding::new("ctrl-shift-m", ShowPerformance, None)]);
+    crate::ui::app_shortcuts::bind(cx, [KeyBinding::new("ctrl-shift-m", ShowPerformance, None)]);
     cx.on_action(|_: &ShowAbout, cx: &mut App| crate::about::open(cx));
     cx.on_action(|_: &ShowPerformance, cx: &mut App| crate::performance::open_from_app(cx));
     cx.on_action(|_: &HideApp, cx: &mut App| cx.hide());

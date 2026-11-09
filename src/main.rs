@@ -123,7 +123,7 @@ fn main() {
         theme::init_fonts(&cx.text_system().all_font_names());
         gpui_component::init(cx);
         theme::sync_gpui_theme(cx);
-        cx.bind_keys([
+        crate::ui::app_shortcuts::bind(cx, [
             KeyBinding::new("cmd-q", Quit, None),
             #[cfg(not(target_os = "macos"))]
             KeyBinding::new("ctrl-q", Quit, None),
