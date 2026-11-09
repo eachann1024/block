@@ -99,7 +99,7 @@ impl BackendConfig {
     pub(crate) fn selected_model(&self, kind: BackendKind) -> String {
         match kind {
             BackendKind::Builtin => super::super::provider::config().model,
-            BackendKind::Codex | BackendKind::Claude | BackendKind::Dsh | BackendKind::Pi => self
+            BackendKind::Codex | BackendKind::Claude | BackendKind::Dsh | BackendKind::Pi | BackendKind::Agy => self
                 .adapters
                 .get(kind.key())
                 .and_then(|v| v.get("model"))

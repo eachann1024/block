@@ -61,5 +61,6 @@ pub(crate) fn is_installed(kind: BackendKind) -> bool {
         BackendKind::Claude => resolve("claude").is_some(),
         BackendKind::Dsh => resolve("dsh").is_some(),
         BackendKind::Pi => resolve("pi").is_some(),
+        BackendKind::Agy => resolve("agy").is_some(),
     }
 }

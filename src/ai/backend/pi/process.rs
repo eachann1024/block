@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use super::PiTurn;
 use super::super::{
     BackendError, BackendEvent, BackendEventKind, RunningTurn, ToolBridge, TurnRequest, cli_env,
-    dsh::bridge,
+    mcp_bridge as bridge,
 };
 #[path = "../codex/process_group.rs"]
 mod process_group;

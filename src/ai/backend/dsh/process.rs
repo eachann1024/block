@@ -46,7 +46,7 @@ pub(super) fn start(request: TurnRequest, events: Sender<BackendEvent>, tools: T
         Some(json!({"name": function.get("name")?, "description": function.get("description")?, "inputSchema": function.get("parameters")?}))
     }).collect::<Vec<_>>();
     let tool_file = dir.0.join("mcp.js");
-    fs::write(&tool_file, include_str!("mcp.js")).map_err(io_error)?;
+    fs::write(&tool_file, include_str!("../mcp_bridge/server.js")).map_err(io_error)?;
     let base = dirs::data_local_dir().ok_or_else(|| BackendError::new("dsh_storage", "No application data directory"))?.join("Block").join("dsh-runtime");
     let storage = base.join("sessions");
     let workspace = base.join("workspace");

@@ -7,10 +7,10 @@ use super::ToolBridge;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum BackendKind { #[default] Builtin, Codex, Claude, Dsh, Pi }
+pub(crate) enum BackendKind { #[default] Builtin, Codex, Claude, Dsh, Pi, Agy }
 
 impl BackendKind {
-    pub(crate) const ALL: [Self; 5] = [Self::Builtin, Self::Codex, Self::Claude, Self::Dsh, Self::Pi];
+    pub(crate) const ALL: [Self; 6] = [Self::Builtin, Self::Codex, Self::Claude, Self::Dsh, Self::Pi, Self::Agy];
 
     pub(crate) fn key(self) -> &'static str {
         match self {
@@ -19,6 +19,7 @@ impl BackendKind {
             Self::Claude => "claude",
             Self::Dsh => "dsh",
             Self::Pi => "pi",
+            Self::Agy => "agy",
         }
     }
 }
