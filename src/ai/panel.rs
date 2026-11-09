@@ -44,9 +44,11 @@ fn menu_tag(id: &'static str, label: &'static str, which: AiMenu, current: AiMen
         .child(div().text_color(theme.text_secondary).text_size(px(12.)).child(if current == which { "▴" } else { "▾" }))
 }
 
-fn menu_item(p: Preset, editor: &Entity<Editor>) -> gpui::Stateful<gpui::Div> {
+fn menu_item(p: Preset, highlighted: bool, editor: &Entity<Editor>) -> gpui::Stateful<gpui::Div> {
     let editor = editor.clone();
-    crate::dropdown::row(SharedString::from(format!("ai-item-{p:?}")), Some(preset_icon(p)), p.label(), false)
+    crate::dropdown::row_with(SharedString::from(format!("ai-item-{p:?}")), crate::dropdown::RowSpec {
+        icon: Some(preset_icon(p)), label: p.label().into(), highlighted, ..Default::default()
+    })
         .on_mouse_down(gpui::MouseButton::Left, move |_, window, cx| {
             editor.update(cx, |this, cx| this.ai_preset(p, window, cx));
             cx.stop_propagation();
@@ -127,7 +129,9 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession, phase: cr
             };
             if !items.is_empty() {
                 submenu = Some(
-                    items.iter().fold(crate::dropdown::shell("ai-submenu").w(px(176.)), |d, p| d.child(menu_item(*p, &editor))),
+                    items.iter().enumerate().fold(crate::dropdown::shell("ai-submenu").w(px(176.)), |d, (ix, p)| {
+                        d.child(menu_item(*p, ix == s.menu_index, &editor))
+                    }),
                 );
             }
         }
@@ -179,6 +183,18 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession, phase: cr
                 .on_action(|_: &view::SelectLeft, _, _| {})
                 .on_action(|_: &view::SelectRight, _, _| {})
                 .on_action(|_: &view::SelectAll, _, _| {})
+                .capture_action({
+                    let ed = editor.clone();
+                    move |_: &gpui_component::input::MoveUp, _, cx| {
+                        if ed.update(cx, |this, cx| this.ai_step_menu(false, cx)) { cx.stop_propagation(); }
+                    }
+                })
+                .capture_action({
+                    let ed = editor.clone();
+                    move |_: &gpui_component::input::MoveDown, _, cx| {
+                        if ed.update(cx, |this, cx| this.ai_step_menu(true, cx)) { cx.stop_propagation(); }
+                    }
+                })
                 .on_action(|_: &view::Up, _, _| {})
                 .on_action(|_: &view::Down, _, _| {})
                 .on_action(|_: &view::SelectUp, _, _| {})
@@ -213,7 +229,7 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession, phase: cr
                 .on_action(|_: &view::ImageShrink, _, _| {})
                 .on_key_down(move |e, window, cx| {
                     if e.keystroke.key == "escape" {
-                        key_editor.update(cx, |this, cx| this.ai_close(window, cx));
+                        key_editor.update(cx, |this, cx| this.ai_escape(window, cx));
                         cx.stop_propagation();
                     }
                 })

@@ -54,6 +54,7 @@ pub(crate) struct FontPickerModal {
     pub scroll_handle: gpui::UniformListScrollHandle,
     pub catalog: std::rc::Rc<[crate::ui::font_picker_cache::CandidateItem]>,
     pub filtered: std::rc::Rc<[crate::ui::font_picker_cache::FlatFontItem]>,
+    pub cursor: usize,
     pub last_query: String,
     pub _search_sub: gpui::Subscription,
 }

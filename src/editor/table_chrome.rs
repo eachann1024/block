@@ -17,7 +17,7 @@ fn floating(position: Point<Pixels>, child: impl IntoElement) -> AnyElement {
     gpui::anchored().position(position).child(child).into_any_element()
 }
 
-fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool, checked: bool) -> Stateful<Div> {
+fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool, checked: bool, highlighted: bool) -> Stateful<Div> {
     dropdown::row_with(
         id,
         RowSpec {
@@ -26,6 +26,7 @@ fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool, checked: 
             danger: cmd.danger(),
             disabled,
             checked,
+            highlighted,
             ..Default::default()
         },
     )
@@ -187,14 +188,19 @@ pub(super) fn menu_popup(editor: Entity<Editor>, menu: TableMenu, phase: crate::
     let sel = menu.sel;
     let fitted = table_layout::widths_of(editor.entity_id(), id).fit;
     let width = if matches!(sel, TableSel::Row(_) | TableSel::Column(_)) { px(188.) } else { px(224.) };
-    let mut list = dropdown::shell("table-menu").w(width);
+    let slots: Vec<crate::ui::menu_nav::Slot> = items.iter().map(|item| match item {
+        Some(cmd) if !cmd.disabled(dims.0, dims.1) => crate::ui::menu_nav::Slot::Item,
+        _ => crate::ui::menu_nav::Slot::Skip,
+    }).collect();
+    let active = crate::ui::menu_nav::clamp_index(super::menu_keys::table_index(), &slots);
+    let mut list = dropdown::shell("table-menu").w(width).track_scroll(&crate::ui::menu_nav::scroll("table"));
     for (index, item) in items.into_iter().enumerate() {
         match item {
             None => list = list.child(dropdown::separator()),
             Some(cmd) => {
                 let disabled = cmd.disabled(dims.0, dims.1);
                 let checked = cmd == TableCmd::FitWidth && fitted;
-                let row = menu_item(("table-menu-item", index), cmd, disabled, checked);
+                let row = menu_item(("table-menu-item", index), cmd, disabled, checked, index == active && !disabled);
                 let row = if disabled {
                     row
                 } else {

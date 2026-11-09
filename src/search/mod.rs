@@ -33,6 +33,8 @@ pub struct SearchState {
     pub scope: SearchScope,
     pub folders: Vec<PathBuf>,
     pub scope_menu_open: bool,
+    pub scope_cursor: usize,
+    pub scope_scroll: ScrollHandle,
 }
 
 impl SearchState {
@@ -40,6 +42,7 @@ impl SearchState {
         Self {
             input, hits: Vec::new(), selected: 0, epoch: 0, searching: false, asked: false,
             scroll: ScrollHandle::new(), scope: SearchScope::All, folders, scope_menu_open: false,
+            scope_cursor: 0, scope_scroll: ScrollHandle::new(),
         }
     }
 
@@ -75,7 +78,35 @@ impl SearchState {
         true
     }
 
-    pub fn toggle_scope_menu(&mut self) { self.scope_menu_open = !self.scope_menu_open; }
+    pub fn toggle_scope_menu(&mut self) {
+        self.scope_menu_open = !self.scope_menu_open;
+        if self.scope_menu_open {
+            self.scope_cursor = match &self.scope {
+                SearchScope::All => 0,
+                SearchScope::Folder(path) => self.folders.iter().position(|folder| folder == path).map(|index| index + 1).unwrap_or(0),
+            };
+            self.scope_scroll.set_offset(Default::default());
+        }
+    }
+
+    pub fn step_scope_menu(&mut self, down: bool) -> bool {
+        if !self.scope_menu_open { return false; }
+        let count = 1 + self.folders.len();
+        let next = crate::ui::menu_nav::step_uniform(self.scope_cursor, count, down);
+        let changed = next != self.scope_cursor.min(count - 1);
+        self.scope_cursor = next;
+        if changed {
+            let child = if next == 0 || self.folders.is_empty() { next } else { next + 1 };
+            let expected = if self.folders.is_empty() { 1 } else { self.folders.len() + 2 };
+            crate::ui::menu_nav::reveal_or_defer(&self.scope_scroll, child, expected);
+        }
+        true
+    }
+
+    pub fn accept_scope_cursor(&mut self) -> bool {
+        if !self.scope_menu_open { return false; }
+        self.select_scope_index(self.scope_cursor.min(self.folders.len()))
+    }
 
     pub fn cycle_scope(&mut self, delta: isize) -> bool {
         cycle_scope(&mut self.scope, &self.folders, &mut self.scope_menu_open, delta)
@@ -107,10 +138,14 @@ impl SearchState {
     pub fn move_selection(&mut self, delta: isize) {
         if self.hits.is_empty() { return; }
         let last = self.hits.len() - 1;
+        let prev = self.selected;
         self.selected = (self.selected as isize + delta).clamp(0, last as isize) as usize;
-        let titles = self.hits.iter().filter(|hit| hit.title_match).count();
-        let child = if self.selected < titles { self.selected + 1 } else { self.selected + 1 + (titles > 0) as usize };
-        self.scroll.scroll_to_item(child);
+        if self.selected != prev {
+            let titles = self.hits.iter().filter(|hit| hit.title_match).count();
+            let child = if self.selected < titles { self.selected + 1 } else { self.selected + 1 + usize::from(titles > 0) };
+            let groups = usize::from(titles > 0) + usize::from(self.hits.len() > titles);
+            crate::ui::menu_nav::reveal_or_defer(&self.scroll, child, self.hits.len() + groups);
+        }
     }
 
     pub fn research<V: 'static>(&mut self, cx: &mut Context<V>, get: fn(&mut V) -> Option<&mut SearchState>) {
@@ -152,7 +187,7 @@ impl SearchState {
                 search.hits = hits;
                 search.selected = 0;
                 search.searching = false;
-                search.scroll.scroll_to_item(0);
+                search.scroll.set_offset(Default::default());
                 cx.notify();
             });
         }).detach();

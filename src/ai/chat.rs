@@ -208,7 +208,11 @@ impl AiChat {
         let input = cx.new(|cx| TextareaState::new(window, cx).auto_grow(2, 6).soft_wrap(true).submit_on_enter(true).placeholder(first_placeholder()).default_value(active.text.clone()));
         let sub = cx.subscribe_in(&input, window, |this, _, e: &InputEvent, window, cx| match e {
             InputEvent::PressEnter { secondary: false, shift: false } => this.send(window, cx),
-            InputEvent::Change => { this.pick_index = 0; this.picker_dismissed = false; this.persist_active_draft(cx); cx.notify(); },
+            InputEvent::Change => {
+                this.pick_index = 0; this.picker_dismissed = false;
+                if this.picker_token(cx).is_some() { super::chat_composer::PICKER_SCROLL.with(|scroll| crate::ui::menu_nav::reveal_uniform(scroll, 0)); }
+                this.persist_active_draft(cx); cx.notify();
+            },
             _ => {}
         });
         let convs: Vec<Conv> = store_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();

@@ -36,7 +36,7 @@ pub(in crate::editor) enum AiStatus { Input, Thinking { tick: usize, partial: St
 pub(in crate::editor) struct AiSession {
     pub anchor: Point<Pixels>, pub target: (Position, Position), pub parts: Vec<(u64, Range<usize>)>,
     pub original: String, pub input: Entity<InputState>, pub status: AiStatus, pub prompt: String,
-    pub menu: AiMenu, pub cancel: Arc<AtomicBool>, pub serial: u64, _sub: Rc<(Subscription, Subscription)>,
+    pub menu: AiMenu, pub menu_index: usize, pub cancel: Arc<AtomicBool>, pub serial: u64, _sub: Rc<(Subscription, Subscription)>,
 }
 
 const SYSTEM_PROMPT: &str = "你是笔记行内改写助手。根据用户指令改写给定的 Markdown 片段。\n只输出改写后的 Markdown 正文，不要解释、不要包代码围栏（除非正文本身是代码块）。\n保持合理的 Markdown 结构：列表项用独立的 `- ` / `1. ` / `- [ ] ` 行；列表项之间不要插空行。\n若用户要求生成 N 个列表项，输出 N 行列表语法，不要挤在一个段落里。\n不要输出页面标题（# 一级标题），只改写当前片段。\n保留原有对齐、字体颜色和背景色：不要删除 HTML 注释、span style 或 text-align。";
@@ -61,20 +61,22 @@ impl Editor {
         self.cancel_ai();
         let input = cx.new(|cx| InputState::new(window, cx).placeholder(input_placeholder()));
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| {
-            if let InputEvent::PressEnter { secondary: false, .. } = event { this.ai_submit_input(window, cx); }
+            if let InputEvent::PressEnter { secondary: false, .. } = event {
+                if !this.ai_accept_menu(window, cx) { this.ai_submit_input(window, cx); }
+            }
         });
         input.update(cx, |s, cx| s.focus(window, cx));
         // Esc closes the card wherever focus is (chat input, sidebar…), not only inside the card.
         let home = window.window_handle();
         let esc = cx.observe_keystrokes(move |this, e, window, cx| {
-            if e.keystroke.key == "escape" && window.window_handle() == home && this.ai_session().is_some() { this.ai_close(window, cx); }
+            if e.keystroke.key == "escape" && window.window_handle() == home && this.ai_session().is_some() { this.ai_escape(window, cx); }
         });
         // The selection highlight would sit on top of the inline diff; the target is
         // outlined instead and the selection comes back on 放弃 / 关闭.
         self.caret.anchor = target.1; self.caret.head = target.1; self.caret.composing = None;
         self.format = Some(FormatPop::Ai(Box::new(AiSession {
             anchor, target, parts, original, input, status: AiStatus::Input, prompt: String::new(),
-            menu: AiMenu::None, cancel: Arc::new(AtomicBool::new(false)), serial: 0, _sub: Rc::new((sub, esc)),
+            menu: AiMenu::None, menu_index: 0, cancel: Arc::new(AtomicBool::new(false)), serial: 0, _sub: Rc::new((sub, esc)),
         })));
         cx.notify();
     }
@@ -121,8 +123,43 @@ impl Editor {
         if let Some(s) = self.ai_session() { s.cancel.store(true, Ordering::Relaxed); }
     }
     pub(in crate::editor) fn ai_toggle_menu(&mut self, menu: AiMenu, cx: &mut Context<Self>) {
-        if let Some(s) = self.ai_mut() { s.menu = if s.menu == menu { AiMenu::None } else { menu }; }
+        if let Some(s) = self.ai_mut() {
+            s.menu_index = 0;
+            s.menu = if s.menu == menu { AiMenu::None } else { menu };
+        }
         cx.notify();
+    }
+    pub(in crate::editor) fn ai_step_menu(&mut self, down: bool, cx: &mut Context<Self>) -> bool {
+        let Some(s) = self.ai_session() else { return false };
+        let count = match s.menu { AiMenu::Translate => 2, AiMenu::More => 4, AiMenu::None => return false };
+        let next = crate::ui::menu_nav::step_uniform(s.menu_index, count, down);
+        if let Some(s) = self.ai_mut() { s.menu_index = next; }
+        cx.notify();
+        true
+    }
+    pub(in crate::editor) fn ai_accept_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(s) = self.ai_session() else { return false };
+        let items: &[Preset] = match s.menu {
+            AiMenu::Translate => &[Preset::English, Preset::Chinese],
+            AiMenu::More => &[Preset::Jargon, Preset::Colloquial, Preset::List, Preset::Tasks],
+            AiMenu::None => return false,
+        };
+        let Some(preset) = items.get(s.menu_index.min(items.len() - 1)).copied() else { return false };
+        self.ai_preset(preset, window, cx);
+        true
+    }
+    pub(in crate::editor) fn ai_escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        thread_local! { static GUARD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
+        if GUARD.with(|cell| cell.get()) { return; }
+        let Some(s) = self.ai_session() else { return; };
+        if s.menu != AiMenu::None {
+            if let Some(s) = self.ai_mut() { s.menu = AiMenu::None; s.menu_index = 0; }
+            GUARD.with(|cell| cell.set(true));
+            cx.on_next_frame(window, |_, _, _| GUARD.with(|cell| cell.set(false)));
+            cx.notify();
+            return;
+        }
+        self.ai_close(window, cx);
     }
     pub(in crate::editor) fn ai_submit_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(s) = self.ai_session() else { return };

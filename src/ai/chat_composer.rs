@@ -64,8 +64,10 @@ impl AiChat {
         let Some(token) = self.picker_token(cx) else { return false };
         let count = self.picker_items(&token, cx).len();
         if count > 0 {
-            self.pick_index = (self.pick_index.min(count - 1) as isize + direction).rem_euclid(count as isize) as usize;
-            PICKER_SCROLL.with(|scroll| scroll.scroll_to_item(self.pick_index, gpui::ScrollStrategy::Top));
+            let next = crate::ui::menu_nav::step_uniform(self.pick_index, count, direction > 0);
+            let changed = next != self.pick_index.min(count - 1);
+            self.pick_index = next;
+            if changed { PICKER_SCROLL.with(|scroll| crate::ui::menu_nav::reveal_uniform(scroll, next)); }
             cx.notify();
         }
         true

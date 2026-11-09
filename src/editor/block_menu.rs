@@ -4,6 +4,7 @@ use gpui::{Bounds, Context, EntityId, Pixels, Point, Window, point, px, size};
 use super::{input::transactions::ListChange, model::{Block, Kind, Table},
     view::{Editor, selection::Position}};
 use crate::icons::Icon;
+use crate::ui::menu_nav::{self, Slot};
 
 #[path = "block_menu_cmd.rs"] mod cmd;
 #[path = "block_menu_render.rs"] mod render;
@@ -95,22 +96,43 @@ impl Editor {
             Mode::Handle => Vec::new(),
         }
     }
-    fn selectable_menu_cmds(&self) -> Vec<Cmd> {
-        self.block_menu_entries().into_iter().flatten().collect()
+    fn entry_slots(entries: &[Option<Cmd>]) -> Vec<Slot> {
+        entries.iter().map(|entry| if entry.is_some() { Slot::Item } else { Slot::Skip }).collect()
     }
     pub(super) fn block_menu_step(&mut self, down: bool, cx: &mut Context<Self>) -> bool {
         let Some(mut menu) = self.block_menu else { return false };
-        let count = self.selectable_menu_cmds().len();
-        if count == 0 { return false; }
-        let cur = menu.index.min(count - 1);
-        menu.index = if down { (cur + 1) % count } else { (cur + count - 1) % count };
-        self.block_menu = Some(menu); cx.notify(); true
+        let entries = self.block_menu_entries_for(menu);
+        let slots = Self::entry_slots(&entries);
+        if !menu_nav::has_item(&slots) { return false; }
+        let next = menu_nav::step(menu.index, &slots, down);
+        let changed = next != menu_nav::clamp_index(menu.index, &slots);
+        menu.index = next;
+        self.block_menu = Some(menu);
+        if changed { menu_nav::reveal_or_defer(&self.block_menu_scroll, next, entries.len()); }
+        cx.notify();
+        true
     }
     pub(super) fn block_menu_pick(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some(menu) = self.block_menu else { return false };
-        let items = self.selectable_menu_cmds();
-        let Some(cmd) = items.get(menu.index.min(items.len().saturating_sub(1))).copied() else { return false };
+        let entries = self.block_menu_entries_for(menu);
+        let slots = Self::entry_slots(&entries);
+        if !menu_nav::has_item(&slots) { return false; }
+        let index = menu_nav::clamp_index(menu.index, &slots);
+        let Some(Some(cmd)) = entries.get(index).copied() else { return false };
         self.run_block_cmd(menu.block, menu.mode, cmd, window, cx); true
+    }
+    /// Keeps the slash highlight on a real row after the query changes, and
+    /// recenters that row once the filtered list has been laid out.
+    pub(super) fn sync_block_menu_after_edit(&mut self, cx: &mut Context<Self>) {
+        let Some(menu) = self.block_menu else { return };
+        if menu.mode != Mode::Slash { return; }
+        let entries = self.block_menu_entries_for(menu);
+        let slots = Self::entry_slots(&entries);
+        if !menu_nav::has_item(&slots) { return; }
+        let next = menu_nav::clamp_index(menu.index, &slots);
+        if let Some(menu) = &mut self.block_menu { menu.index = next; }
+        menu_nav::reveal_or_defer(&self.block_menu_scroll, next, entries.len());
+        cx.notify();
     }
     pub(super) fn run_block_cmd(&mut self, id: u64, mode: Mode, cmd: Cmd, window: &mut Window, cx: &mut Context<Self>) {
         let menu_anchor = self.block_menu.as_ref().map(|m| m.anchor);
