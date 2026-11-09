@@ -74,6 +74,9 @@ struct AppleTextSystemState {
     system_source: SystemSource,
     fonts: Vec<FontKitFont>,
     font_selections: HashMap<Font, FontId>,
+    bold_variants: HashMap<FontId, FontId>,
+    bold_requests: HashSet<FontId>,
+    synthetic_bold: HashSet<FontId>,
     italic_variants: HashMap<FontId, FontId>,
     italic_requests: HashSet<FontId>,
     synthetic_italics: HashSet<FontId>,
@@ -90,6 +93,9 @@ impl AppleTextSystem {
             system_source: SystemSource::new(),
             fonts: Vec::new(),
             font_selections: HashMap::default(),
+            bold_variants: HashMap::default(),
+            bold_requests: HashSet::default(),
+            synthetic_bold: HashSet::default(),
             italic_variants: HashMap::default(),
             italic_requests: HashSet::default(),
             synthetic_italics: HashSet::default(),
@@ -180,6 +186,11 @@ impl PlatformTextSystem for AppleTextSystem {
             )?;
 
             let font_id = candidates[ix];
+            let font_id = if font.weight >= FontWeight::SEMIBOLD {
+                lock.bold_variant(font_id)
+            } else {
+                font_id
+            };
             let font_id = if font.style != FontStyle::Normal {
                 lock.italic_variant(font_id)
             } else {
@@ -429,6 +440,29 @@ impl AppleTextSystemState {
         }
     }
 
+    // Keep weight intent even when a family has only a regular face. The distinct
+    // ID prevents synthesized glyphs from sharing the regular face's atlas entry.
+    fn bold_variant(&mut self, base: FontId) -> FontId {
+        if self.bold_requests.contains(&base) {
+            return base;
+        }
+        if let Some(id) = self.bold_variants.get(&base) {
+            return *id;
+        }
+        let id = FontId(self.fonts.len());
+        let font = self.fonts[base.0].clone();
+        if font.properties().weight < FontkitWeight::SEMIBOLD && !self.is_emoji(base) {
+            self.synthetic_bold.insert(id);
+        }
+        self.fonts.push(font);
+        if let Some(name) = self.postscript_names_by_font_id.get(&base).cloned() {
+            self.postscript_names_by_font_id.insert(id, name);
+        }
+        self.bold_requests.insert(id);
+        self.bold_variants.insert(base, id);
+        id
+    }
+
     // Keep style intent in the FontId, including when the selected face is upright.
     // Distinct IDs also keep upright and synthesized glyphs separate in the atlas.
     fn italic_variant(&mut self, base: FontId) -> FontId {
@@ -442,6 +476,12 @@ impl AppleTextSystemState {
         let font = self.fonts[base.0].clone();
         if font.properties().style == FontkitStyle::Normal && !self.is_emoji(base) {
             self.synthetic_italics.insert(id);
+        }
+        if self.bold_requests.contains(&base) {
+            self.bold_requests.insert(id);
+        }
+        if self.synthetic_bold.contains(&base) {
+            self.synthetic_bold.insert(id);
         }
         self.fonts.push(font);
         if let Some(name) = self.postscript_names_by_font_id.get(&base).cloned() {
@@ -477,8 +517,17 @@ impl AppleTextSystemState {
             font_kit::canvas::RasterizationOptions::GrayscaleAa,
         )?);
 
-        // Expand the bounds by 1 pixel on each side to give CG room for anti-aliasing.
-        Ok(bounds.dilate(DevicePixels(1)))
+        // Include the synthetic stroke as well as room for anti-aliasing.
+        let stroke_radius = (self.bold_stroke_width(params) * params.scale_factor / 2.0).ceil();
+        Ok(bounds.dilate(DevicePixels(1 + stroke_radius as i32)))
+    }
+
+    fn bold_stroke_width(&self, params: &RenderGlyphParams) -> f32 {
+        if self.synthetic_bold.contains(&params.font_id) && !params.is_emoji {
+            f32::from(params.font_size) * 0.04
+        } else {
+            0.0
+        }
     }
 
     fn rasterize_glyph(
@@ -547,12 +596,18 @@ impl AppleTextSystemState {
             cx.set_allows_font_subpixel_quantization(false);
             cx.set_should_subpixel_quantize_fonts(false);
 
-            if cfg!(target_os = "macos") && params.dilation > 0 {
-                let luminance = params.dilation as f64 * 0.25;
+            let luminance = if cfg!(target_os = "macos") && params.dilation > 0 {
                 cx.set_should_smooth_fonts(true);
-                cx.set_gray_fill_color(luminance, 1.0);
+                params.dilation as f64 * 0.25
             } else {
-                cx.set_gray_fill_color(0.0, 1.0);
+                0.0
+            };
+            cx.set_gray_fill_color(luminance, 1.0);
+            let stroke_width = self.bold_stroke_width(params);
+            if stroke_width > 0.0 {
+                cx.set_rgb_stroke_color(luminance, luminance, luminance, 1.0);
+                cx.set_line_width(stroke_width as CGFloat);
+                cx.set_text_drawing_mode(CGTextDrawingMode::CGTextFillStroke);
             }
             if self.synthetic_italics.contains(&params.font_id) {
                 cx.concat_ctm(CGAffineTransform {
@@ -587,6 +642,7 @@ impl AppleTextSystemState {
         let mut string = CFMutableAttributedString::new();
         let mut max_ascent = 0.0f32;
         let mut max_descent = 0.0f32;
+        let mut bold_ranges = Vec::new();
         let mut italic_ranges = Vec::new();
 
         {
@@ -606,6 +662,9 @@ impl AppleTextSystemState {
                 string.replace_str(&CFString::new(text_run), CFRange::init(utf16_start, 0));
                 let utf16_end = string.char_len();
 
+                if self.bold_requests.contains(&run.font_id) {
+                    bold_ranges.push(utf16_start as usize..utf16_end as usize);
+                }
                 if self.italic_requests.contains(&run.font_id) {
                     italic_ranges.push(utf16_start as usize..utf16_end as usize);
                 }
@@ -657,6 +716,11 @@ impl AppleTextSystemState {
                 .zip(run.string_indices().iter())
             {
                 let glyph_utf16_ix = usize::try_from(glyph_utf16_ix).unwrap();
+                let font_id = if bold_ranges.iter().any(|range| range.contains(&glyph_utf16_ix)) {
+                    self.bold_variant(font_id)
+                } else {
+                    font_id
+                };
                 let font_id = if italic_ranges.iter().any(|range| range.contains(&glyph_utf16_ix)) {
                     self.italic_variant(font_id)
                 } else {
