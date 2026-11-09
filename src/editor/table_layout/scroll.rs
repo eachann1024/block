@@ -7,7 +7,7 @@ use crate::{editor::view::{Editor, layout::TextLayout}, theme::Theme};
 use super::{EXTEND_ROOM, draw::snapped, grid_rect};
 
 #[derive(Clone, Copy, Default)]
-struct Scroll {
+pub(in crate::editor) struct Scroll {
     /// Pixels the grid is scrolled to the left.
     offset: f32,
     /// Offset already baked into the stored layout's geometry.
@@ -112,4 +112,22 @@ pub(in crate::editor) fn paint_edge(layout: &TextLayout, window: &mut Window) {
     window.paint_quad(fill(snapped(mid, scale), rule));
     window.paint_quad(fill(snapped(bottom, scale), linear_gradient(180.,
         linear_color_stop(rule, 0.), linear_color_stop(rule.opacity(0.), 1.))));
+}
+
+pub(in crate::editor) fn clear_editor(editor: EntityId) {
+    STATE.with(|s| s.borrow_mut().retain(|(ed, _), _| *ed != editor));
+}
+
+pub(in crate::editor) fn take(editor: EntityId) -> HashMap<u64, Scroll> {
+    STATE.with(|s| {
+        let mut state = s.borrow_mut();
+        let keys: Vec<_> = state.keys().filter(|(ed, _)| *ed == editor).copied().collect();
+        keys.into_iter().filter_map(|key| state.remove(&key).map(|mut value| {
+            value.applied = 0.; (key.1, value)
+        })).collect()
+    })
+}
+pub(in crate::editor) fn restore(editor: EntityId, offsets: HashMap<u64, Scroll>) {
+    clear_editor(editor);
+    STATE.with(|s| s.borrow_mut().extend(offsets.into_iter().map(|(id, value)| ((editor, id), value))));
 }

@@ -26,7 +26,7 @@ pub(crate) fn load_path(renderer: &SvgRenderer, path: &Path) -> Result<Decoded, 
 }
 
 /// Logical size comes from the scanner. `SvgSize::ScaleFactor` would double it (`SMOOTH_SVG_SCALE_FACTOR`).
-pub(super) fn render_svg(renderer: &SvgRenderer, source: &str) -> Result<Decoded, String> {
+pub(crate) fn render_svg(renderer: &SvgRenderer, source: &str) -> Result<Decoded, String> {
     let size = svg_scan::sanitize_svg(source)?;
     let edge = size.width.max(size.height);
     if !(edge.is_finite() && edge > 0.0) || edge > MAX_SVG_EDGE || size.width * size.height > MAX_DEVICE_PIXELS as f32 {

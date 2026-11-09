@@ -30,7 +30,7 @@ pub(super) fn preview_math_block(
 ) -> AnyElement {
     let dark = is_dark();
     let theme = Theme::ocean();
-    let open = super::is_source_open(block_id, source);
+    let open = super::is_source_open(editor.entity_id(), block_id, source);
     let zoom = crate::editor::zoom::zoom_factor(minimal);
     let (rendered_el, err_msg) = crate::editor::math_preview::render_state(editor.clone(), block_id, source, zoom, cx);
     let has_err = err_msg.is_some();
@@ -65,7 +65,7 @@ pub(super) fn preview_math_block(
             cx.stop_propagation();
             let _ = edit_editor.update(cx, |this, cx| {
                 let next = !open;
-                super::set_source_open(block_id, next);
+                super::set_source_open(cx.entity_id(), block_id, next);
                 if next {
                     this.block_sel = None;
                     this.focus_block(block_id, window, cx);
