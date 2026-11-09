@@ -2,9 +2,10 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, ClickEvent, FontWeight, Hsla, IntoElement, ParentElement, Styled, Window, div, prelude::*,
-    px,
+    App, Axis, ClickEvent, FontWeight, Hsla, IntoElement, ParentElement, Role, Styled, Toggled,
+    Window, div, prelude::*, px,
 };
+use gpui_base::{Button, RadioGroup, Switch, SwitchThumb};
 
 use super::format::ExportFormat;
 use super::palette::ExportTheme;
@@ -27,12 +28,21 @@ pub(super) fn format_bar(
     on_pick: Rc<dyn Fn(&ExportFormat, &mut Window, &mut App)>,
 ) -> impl IntoElement {
     let theme = Theme::ocean();
-    let mut track = div().flex().p(px(3.)).bg(theme.shell).border_1().border_color(theme.hairline).rounded(crate::ui::radius::CONTROL).gap(px(2.));
+    let count = ExportFormat::ALL.len();
+    let mut track = RadioGroup::new("export-format").axis(Axis::Horizontal)
+        .flex().p(px(3.)).bg(theme.shell).border_1().border_color(theme.hairline).rounded(crate::ui::radius::CONTROL).gap(px(2.));
     for (index, fmt) in ExportFormat::ALL.into_iter().enumerate() {
         let on_pick = on_pick.clone();
         let selected = fmt == current;
-        let mut seg = div()
-            .id(("export-format", index))
+        let mut seg = Button::new(("export-format", index))
+            .focusable(false)
+            .role(Role::RadioButton)
+            .selected(selected)
+            .accessibility_label(fmt.label())
+            .aria_selected(selected)
+            .aria_toggled(if selected { Toggled::True } else { Toggled::False })
+            .aria_position_in_set(index + 1)
+            .aria_size_of_set(count)
             .flex_1()
             .h(px(32.))
             .flex()
@@ -42,6 +52,7 @@ pub(super) fn format_bar(
             .border_1()
             .border_color(gpui::transparent_black())
             .text_size(px(14.))
+            .line_height(px(20.))
             .font_weight(FontWeight(if selected { 500. } else { 460. }))
             .text_color(theme.text_secondary)
             .cursor_pointer()
@@ -67,7 +78,8 @@ pub(super) fn segmented(
     on_pick: Rc<dyn Fn(&usize, &mut Window, &mut App)>,
 ) -> impl IntoElement {
     let theme = Theme::ocean();
-    let mut track = div()
+    let count = items.len();
+    let mut track = RadioGroup::new(id).axis(Axis::Horizontal)
         .flex()
         .p(px(3.))
         .bg(theme.shell)
@@ -77,8 +89,16 @@ pub(super) fn segmented(
         .gap(px(2.));
     for (index, (label, selected, enabled)) in items.into_iter().enumerate() {
         let on_pick = on_pick.clone();
-        let mut seg = div()
-            .id((id, index))
+        let mut seg = Button::new((id, index))
+            .focusable(false)
+            .role(Role::RadioButton)
+            .selected(selected)
+            .disabled(!enabled)
+            .accessibility_label(label)
+            .aria_selected(selected)
+            .aria_toggled(if selected { Toggled::True } else { Toggled::False })
+            .aria_position_in_set(index + 1)
+            .aria_size_of_set(count)
             .flex_1()
             .h(px(32.))
             .flex()
@@ -88,6 +108,7 @@ pub(super) fn segmented(
             .border_1()
             .border_color(gpui::transparent_black())
             .text_size(px(14.))
+            .line_height(px(20.))
             .font_weight(FontWeight(if selected { 500. } else { 460. }))
             .text_color(theme.text_secondary)
             .child(label);
@@ -115,7 +136,7 @@ pub(super) fn style_grid(
     on_pick: Rc<dyn Fn(&ExportTheme, &mut Window, &mut App)>,
 ) -> impl IntoElement {
     let items = ExportTheme::group(current.is_dark());
-    let mut grid = div().flex().flex_col().gap(px(8.));
+    let mut grid = RadioGroup::new("export-paper-theme").axis(Axis::Horizontal).flex().flex_col().gap(px(8.));
     for (row, pair) in items.chunks(2).enumerate() {
         let mut line = div().flex().gap(px(8.));
         for (col, &style) in pair.iter().enumerate() {
@@ -154,8 +175,12 @@ fn swatch_card(
         .justify_center()
         .child(inner);
     let label = div().flex_1().min_w_0().truncate().child(style.label());
-    let base = div()
-        .id(("export-style", index))
+    let base = Button::new(("export-style", index))
+        .focusable(false)
+        .role(Role::RadioButton)
+        .selected(selected)
+        .accessibility_label(style.label())
+        .aria_selected(selected)
         .flex_1()
         .min_w_0()
         .h(px(52.))
@@ -197,7 +222,7 @@ pub(super) fn switch_row(
     on_toggle: Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>,
 ) -> impl IntoElement {
     let theme = Theme::ocean();
-    let knob = div()
+    let knob = SwitchThumb::new(on)
         .absolute()
         .top(px(2.))
         .left(px(if on { 16. } else { 2. }))
@@ -211,15 +236,16 @@ pub(super) fn switch_row(
         .justify_between()
         .child(div().text_size(px(14.)).text_color(theme.text).child(label))
         .child(
-            div()
-                .id(id)
+            Switch::new(id)
+                .checked(on)
+                .accessibility_label(label)
                 .relative()
                 .w(px(34.))
                 .h(px(20.))
                 .rounded(px(10.))
                 .cursor_pointer()
                 .bg(if on { theme.accent } else { theme.btn_border })
-                .on_click(move |ev, window, cx| on_toggle(ev, window, cx))
+                .on_change(move |_next, ev, window, cx| on_toggle(ev, window, cx))
                 .child(knob),
         )
 }
@@ -242,10 +268,11 @@ pub(super) fn button(
     glyph: impl IntoElement,
     primary: bool,
     enabled: bool,
-) -> gpui::Stateful<gpui::Div> {
+) -> Button {
     let theme = Theme::ocean();
-    let base = div()
-        .id(id)
+    let base = Button::new(id)
+        .focusable(false)
+        .disabled(!enabled)
         .group(id)
         .h(px(38.))
         .px(px(16.))

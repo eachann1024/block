@@ -1240,8 +1240,7 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
             format!("正在增量更新 v{}（{:.1} MB / {:.1} MB）", info.latest_version, downloaded_mb, total_mb)
         };
         let right_text = format!("{}%", progress.pct);
-
-        let pct_ratio = (progress.pct as f32 / 100.0).clamp(0.0, 1.0);
+        let progress_label = left_text.clone();
 
         Some(
             div()
@@ -1268,21 +1267,11 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
                                 .child(right_text),
                         ),
                 )
-                .child(
-                    div()
-                        .w_full()
-                        .h(px(6.))
-                        .rounded(crate::ui::radius::PILL)
-                        .bg(theme.sidebar_border)
-                        .overflow_hidden()
-                        .child(
-                            div()
-                                .h_full()
-                                .rounded(crate::ui::radius::PILL)
-                                .bg(theme.accent)
-                                .w(gpui::relative(pct_ratio)),
-                        ),
-                ),
+                .child(crate::ui::progress::linear(
+                    "updater-progress",
+                    progress.pct as f32,
+                    progress_label,
+                )),
         )
     } else {
         None
@@ -1312,8 +1301,8 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
         .gap(px(10.))
         .children(manual_note)
         .child(
-            div()
-                .id("updater-cancel")
+            gpui_base::Button::new("updater-cancel")
+                .focusable(false)
                 .h(px(32.))
                 .px(px(14.))
                 .rounded(crate::ui::radius::CONTROL)
@@ -1322,6 +1311,7 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
                 .border_color(theme.btn_border)
                 .text_color(theme.text)
                 .text_size(px(14.))
+                .line_height(px(20.))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -1335,14 +1325,16 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
                 .child(tr("先不更新", "Not Now")),
         )
         .when(!info.manual_build, |row| row.child(
-            div()
-                .id("updater-submit")
+            gpui_base::Button::new("updater-submit")
+                .focusable(false)
+                .disabled(progress.active)
                 .h(px(32.))
                 .px(px(16.))
                 .rounded(crate::ui::radius::CONTROL)
                 .bg(theme.accent)
                 .text_color(gpui::white())
                 .text_size(px(14.))
+                .line_height(px(20.))
                 .font_weight(FontWeight(500.))
                 .flex()
                 .items_center()

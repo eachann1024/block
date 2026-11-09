@@ -180,16 +180,18 @@ impl AiSettings {
             },
         )(cx);
 
+        let perm_listener = cx.listener(move |this, _: &gpui::ClickEvent, _, cx| {
+            let mut cfg = BackendConfig::load();
+            let next = !cfg.full_permissions(kind);
+            if let Err(error) = cfg.set_full_permissions(kind, next) {
+                this.test_note = Some(TestNote::Err(error));
+            }
+            chat::sync_settings(cx);
+            cx.notify();
+        });
         let perm_toggle = pill_switch("ai-agent-full-permissions", full_permissions, true)
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                let mut cfg = BackendConfig::load();
-                let next = !cfg.full_permissions(kind);
-                if let Err(error) = cfg.set_full_permissions(kind, next) {
-                    this.test_note = Some(TestNote::Err(error));
-                }
-                chat::sync_settings(cx);
-                cx.notify();
-            }));
+            .accessibility_label(tr("最大权限", "Full Permissions"))
+            .on_change(move |_next, ev, window, cx| perm_listener(ev, window, cx));
 
         div().w_full().min_w_0().flex().flex_col().gap(px(12.))
             .child(head)

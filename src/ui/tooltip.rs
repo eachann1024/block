@@ -3,6 +3,7 @@ use gpui::{
     Render, SharedString, Window, deferred, div, point, prelude::*, px, rgb, rgba,
     transparent_black,
 };
+use gpui_base::Tooltip;
 use crate::icons::{Icon, IconColors, icon};
 use crate::theme::is_dark;
 use crate::ui::shortcut_label::{ShortcutStyle, shortcut_label};
@@ -34,6 +35,7 @@ pub fn tooltip_pill_with_icon(
     id: impl Into<ElementId>,
 ) -> impl IntoElement {
     let text: SharedString = text.into();
+    let id = id.into();
     let dark = is_dark();
     let (bg, fg, border) = if dark {
         (rgb(0x202020), rgb(0xececec), rgba(0xffffff12))
@@ -47,7 +49,7 @@ pub fn tooltip_pill_with_icon(
         fill: transparent_black(),
         accent: fg_hsla,
     };
-    let pill = div()
+    let pill = Tooltip::new(id.clone())
         .h(px(TOOLTIP_HEIGHT))
         .px(px(TOOLTIP_PAD_X))
         .rounded(crate::ui::radius::CONTROL)

@@ -86,9 +86,22 @@ pub fn animate<E: IntoElement + Styled + AnimationExt + 'static>(
     crate::ui::motion::bar_enter(el, id)
 }
 
-pub fn sep() -> Div {
+pub fn animate_delayed<E: IntoElement + Styled + AnimationExt + 'static>(
+    el: E,
+    id: impl Into<ElementId>,
+) -> impl IntoElement {
+    crate::ui::motion::bar_enter_delayed(el, id)
+}
+
+pub fn sep() -> impl IntoElement {
     let tc = ToolbarColors::current();
-    div().w(px(1.)).h(px(20.)).mx(px(4.)).flex_none().bg(rgb(tc.sep))
+    gpui_component::separator::Separator::vertical()
+        .color(rgb(tc.sep))
+        .relative()
+        .w(px(1.))
+        .h(px(20.))
+        .mx(px(4.))
+        .flex_none()
 }
 
 pub fn glyph(glyph: Icon, size: f32, color: u32) -> Div {
@@ -112,7 +125,7 @@ pub fn icon_toggle_button(
     tip: &'static str,
     on: bool,
     open: bool,
-) -> Stateful<Div> {
+) -> gpui_base::Button {
     let tc = ToolbarColors::current();
     let ink = if on { tc.on_ink } else { tc.ink };
     let id: ElementId = id.into();
@@ -125,8 +138,12 @@ pub fn icon_toggle_button(
         Theme::ocean().mono_icon_colors(rgb(ink).into()),
         duo_icon_colors(tc, on),
     );
-    div()
-        .id(id)
+    gpui_base::Button::new(id)
+        .focusable(false)
+        .role(gpui::Role::Button)
+        .selected(on)
+        .aria_toggled(if on { gpui::Toggled::True } else { gpui::Toggled::False })
+        .accessibility_label(tip)
         .group(group)
         .relative()
         .h(px(32.))
@@ -147,9 +164,11 @@ pub fn icon_toggle_button(
         .when(!open, |b| b.tooltip_above(tooltip(tip)))
 }
 
-pub fn disabled_icon_button(g: Icon) -> Div {
+pub fn disabled_icon_button(g: Icon) -> gpui_base::Button {
     let dim = if is_dark() { 0x5a5a5a } else { 0x9a9994 };
-    div()
+    gpui_base::Button::new("toolbar-disabled")
+        .focusable(false)
+        .disabled(true)
         .h(px(28.))
         .min_w(px(28.))
         .flex_none()

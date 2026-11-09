@@ -16,7 +16,7 @@ pub(super) fn shell(id: impl Into<ElementId>, _theme: &Theme) -> Stateful<Div> {
 pub(super) fn group_gap() -> Div { div().h(px(2.)).flex_none() }
 
 /// 1px `rgba(11,11,11,.1)` divider with `my 4`.
-pub(super) fn separator(_theme: &Theme) -> Div {
+pub(super) fn separator(_theme: &Theme) -> impl gpui::IntoElement {
     dropdown::separator()
 }
 
@@ -28,7 +28,7 @@ pub(super) fn item(
     active: bool,
     disabled: bool,
     _theme: &Theme,
-) -> Stateful<Div> {
+) -> gpui_base::Button {
     dropdown::row_with(
         id,
         RowSpec {

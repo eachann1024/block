@@ -1,9 +1,10 @@
 //! Shared controls for the full-window Settings page: cards, rows, buttons,
 //! segmented switches and shortcut keycaps, all in the Ocean Paper palette.
 use gpui::{
-    App, Context, CursorStyle, Font, FontFeatures, FontStyle, FontWeight, Hsla, IntoElement,
-    SharedString, Window, div, prelude::*, px,
+    App, Axis, Context, CursorStyle, Font, FontFeatures, FontStyle, FontWeight, Hsla, IntoElement,
+    Role, SharedString, Toggled, Window, div, prelude::*, px,
 };
+use gpui_base::{Button, RadioGroup};
 use crate::theme::{Theme, hotkey_parts, is_dark};
 
 pub use crate::ui::toggle_pill::{TogglePillState, toggle_pill};
@@ -93,17 +94,20 @@ pub fn tag_chip(
 
 pub fn action_button(
     id: impl Into<gpui::ElementId>, label: impl Into<SharedString>, active: bool, enabled: bool,
-) -> gpui::Stateful<gpui::Div> {
+) -> Button {
     let theme = Theme::ocean();
     let sel_bg = selected_bg();
-    div().id(id).h(px(34.)).px(px(12.)).flex().flex_none().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
+    let label = label.into();
+    Button::new(id).focusable(false).disabled(!enabled).selected(active)
+        .accessibility_label(label.clone())
+        .h(px(34.)).px(px(12.)).flex().flex_none().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
         .bg(if active { sel_bg } else { theme.shell })
         .border_1().border_color(if active { theme.accent } else { theme.btn_border })
-        .text_size(px(14.)).font_weight(FontWeight(460.)).text_color(theme.text)
+        .text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(460.)).text_color(theme.text)
         .when(enabled, |b| b.cursor(CursorStyle::PointingHand)
             .hover(move |s| s.bg(if active { sel_bg } else { theme.hover })))
         .when(!enabled, |b| b.opacity(0.5))
-        .child(label.into())
+        .child(label)
 }
 
 pub fn status_action_button(
@@ -112,7 +116,7 @@ pub fn status_action_button(
     label: impl Into<SharedString>,
     success: bool,
     enabled: bool,
-) -> gpui::Stateful<gpui::Div> {
+) -> Button {
     let theme = Theme::ocean();
     let dark = is_dark();
     let (bg_color, border_color, text_color, icon_color, hover_bg): (Hsla, Hsla, Hsla, Hsla, Hsla) = if success {
@@ -127,7 +131,7 @@ pub fn status_action_button(
     } else {
         (theme.shell, theme.btn_border, theme.text, theme.text_secondary, theme.hover)
     };
-    div().id(id).group(id).h(px(34.)).px(px(12.)).flex().flex_none().items_center().justify_center().gap(px(6.))
+    Button::new(id).focusable(false).disabled(!enabled).group(id).h(px(34.)).px(px(12.)).flex().flex_none().items_center().justify_center().gap(px(6.))
         .rounded(crate::ui::radius::CONTROL)
         .bg(bg_color).border_1().border_color(border_color)
         .text_size(px(14.)).font_weight(FontWeight(460.)).text_color(text_color)
@@ -157,22 +161,31 @@ pub fn segmented<V: 'static, T: Copy + 'static, const N: usize>(
     id: impl Into<gpui::ElementId>,
     options: [(&'static str, bool, T); N],
     make_handler: impl Fn(T, &mut Context<V>) -> Box<dyn Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static>,
-) -> impl FnOnce(&mut Context<V>) -> gpui::Stateful<gpui::Div> {
+) -> impl FnOnce(&mut Context<V>) -> gpui::AnyElement {
     let id: gpui::ElementId = id.into();
     move |cx| {
         let theme = Theme::ocean();
         let sel_bg = selected_bg();
-        div().id(id.clone()).p(px(3.)).flex().items_center().gap(px(2.)).rounded(crate::ui::radius::CONTROL).bg(theme.shell)
+        let count = options.len();
+        RadioGroup::new(id.clone()).axis(Axis::Horizontal)
+            .p(px(3.)).flex().items_center().gap(px(2.)).rounded(crate::ui::radius::CONTROL).bg(theme.shell)
             .border_1().border_color(theme.hairline)
-            .children(options.into_iter().enumerate().map(|(_ix, (label, active, val))| {
+            .children(options.into_iter().enumerate().map(|(ix, (label, active, val))| {
                 let handler = make_handler(val, cx);
-                div().id((id.clone(), label)).h(px(32.)).px(px(12.)).flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
-                    .text_size(px(14.)).font_weight(FontWeight(460.)).cursor(CursorStyle::PointingHand)
+                Button::new((id.clone(), label)).focusable(false).role(Role::RadioButton).selected(active)
+                    .accessibility_label(label)
+                    .aria_selected(active)
+                    .aria_toggled(if active { Toggled::True } else { Toggled::False })
+                    .aria_position_in_set(ix + 1)
+                    .aria_size_of_set(count)
+                    .h(px(32.)).px(px(12.)).flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
+                    .text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(460.)).cursor(CursorStyle::PointingHand)
                     .when(active, |b| b.bg(sel_bg).text_color(theme.text).border_1().border_color(theme.accent))
                     .when(!active, |b| b.text_color(theme.text_secondary).hover(move |s| s.text_color(theme.text)))
                     .on_mouse_down(gpui::MouseButton::Left, move |e, w, cx| handler(e, w, cx))
                     .child(label)
             }))
+            .into_any_element()
     }
 }
 

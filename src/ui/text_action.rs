@@ -1,9 +1,10 @@
 //! Compact text actions shared by banners, toasts, and confirm rows.
 use crate::ui::tooltip::TooltipExt;
 use gpui::{
-    App, CursorStyle, ElementId, FontWeight, MouseButton, MouseDownEvent, SharedString, Stateful,
-    Window, div, prelude::*, px,
+    App, CursorStyle, ElementId, FontWeight, MouseButton, MouseDownEvent, SharedString, Window,
+    prelude::*, px,
 };
+use gpui_base::Button;
 use crate::theme::Theme;
 use super::radius;
 
@@ -13,12 +14,15 @@ pub fn accent_action(
     enabled: bool,
     hint: impl Into<SharedString>,
     on_press: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<gpui::Div> {
+) -> Button {
     let theme = Theme::ocean();
     let hint = hint.into();
     let id = id.into();
-    div()
-        .id(id.clone())
+    let label = label.into();
+    Button::new(id.clone())
+        .focusable(false)
+        .disabled(!enabled)
+        .accessibility_label(label.clone())
         .relative()
         .children(super::smoke_overlay::probe_for(&id))
         .h(px(30.))
@@ -28,6 +32,7 @@ pub fn accent_action(
         .items_center()
         .justify_center()
         .text_size(px(14.))
+        .line_height(px(20.))
         .font_weight(FontWeight(460.))
         .tooltip_above(crate::theme::tooltip(hint))
         .when(!enabled, |button| {
@@ -38,7 +43,7 @@ pub fn accent_action(
                 .hover(|button| button.opacity(0.9))
                 .on_mouse_down(MouseButton::Left, on_press)
         })
-        .child(label.into())
+        .child(label)
 }
 
 pub fn plain_action(
@@ -48,10 +53,12 @@ pub fn plain_action(
     pad_x: f32,
     text: f32,
     on_press: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> Stateful<gpui::Div> {
+) -> Button {
     let theme = Theme::ocean();
-    div()
-        .id(id)
+    let label = label.into();
+    Button::new(id)
+        .focusable(false)
+        .accessibility_label(label.clone())
         .h(px(height))
         .px(px(pad_x))
         .rounded(radius::CONTROL)
@@ -59,6 +66,7 @@ pub fn plain_action(
         .border_1()
         .border_color(theme.btn_border)
         .text_size(px(text))
+        .line_height(px(20.))
         .text_color(theme.text)
         .flex()
         .items_center()
@@ -66,5 +74,5 @@ pub fn plain_action(
         .cursor(CursorStyle::PointingHand)
         .hover(|action| action.bg(theme.hover))
         .on_mouse_down(MouseButton::Left, on_press)
-        .child(label.into())
+        .child(label)
 }
