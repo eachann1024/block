@@ -16,7 +16,7 @@ impl super::Editor {
         let _ = crate::files::vfs::write_string(&path, source.to_owned());
         self.persistence.base = base;
         self.persistence.gate.lock().unwrap().saved.insert(path.clone(), base);
-        self.surface = super::surface::Surface::Note;
+        self.surface = crate::editor::surface::Surface::Note;
         self.reset_document(markdown::parse(source), cx);
         self.folded.clear();
         self.path = Some(path);

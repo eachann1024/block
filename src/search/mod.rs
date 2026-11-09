@@ -2,6 +2,13 @@
 //! overlay (`app_search.rs`) and the floating search window (`search/window.rs`).
 #[cfg(not(target_family = "wasm"))]
 pub mod window;
+#[cfg(target_family = "wasm")]
+pub mod window {
+    pub fn set_main_window(_: Option<gpui::WindowHandle<gpui_component::Root>>, _: gpui::Entity<crate::app::Workspace>, _: &mut gpui::App) {}
+    pub fn reveal_main_window(_: &mut gpui::Window, _: &mut gpui::App) {}
+    pub fn close_search(_: &mut gpui::App) {}
+    pub fn refresh_style(_: &mut gpui::App) {}
+}
 mod view;
 
 use std::path::{Path, PathBuf};
