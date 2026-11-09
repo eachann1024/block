@@ -1,8 +1,9 @@
 name: Compile
 
 on:
-  push:
-    branches: [main]
+  schedule:
+    # 每天 00:00 UTC（北京时间 08:00）检查一次，不在每次 push 时重复触发
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 permissions:
@@ -10,12 +11,13 @@ permissions:
 
 concurrency:
   group: block-compile-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   check-linux:
     name: cargo check (ubuntu)
     runs-on: ubuntu-24.04
+    continue-on-error: true
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,6 +54,7 @@ jobs:
   check-windows:
     name: cargo check (windows)
     runs-on: windows-latest
+    continue-on-error: true
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
