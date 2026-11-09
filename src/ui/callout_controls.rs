@@ -83,7 +83,7 @@ pub struct CalloutStyle {
     pub text: Hsla,
 }
 
-fn tone(kind: CalloutKind, dark: bool) -> (u32, u32, u32, u32, u32) {
+pub(crate) fn tone(kind: CalloutKind, dark: bool) -> (u32, u32, u32, u32, u32) {
     match (kind, dark) {
         (CalloutKind::Note, false) => (0xeef3fc, 0xc9d8f3, 0x547dd0, 0xdce7fa, 0x2c4c8c),
         (CalloutKind::Tip, false) => (0xedf7f2, 0xbce3cf, 0x1f8a5b, 0xd3efe1, 0x166541),

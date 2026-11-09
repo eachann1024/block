@@ -5,19 +5,19 @@ use super::{model::{Table, CellAlignment}, text_runs, view::layout::{TextLayout,
 use crate::theme::Theme;
 
 mod draw;
-mod scroll;
-mod width;
+pub(super) mod scroll;
+pub(super) mod width;
 pub(super) use draw::{paint_background, paint_cell_selection, paint_selection};
 pub(super) use scroll::{paint_edge, scroll_by, settle, track_wheel, visible};
 pub(super) use width::{MAX_MANUAL, Widths, get as widths_of, reset_manual, set_manual, signature as widths_signature, toggle_fit};
 
 // Reference cells: 15.04px text on a 21.808px line, 6px/10px padding and a collapsed 1px border.
-const FONT_SIZE: f32 = 15.04;
-const LINE_HEIGHT: f32 = 21.808;
-const PAD_Y: f32 = 6.;
-const PAD_X: f32 = 10.;
-const BORDER: f32 = 1.;
-const MIN_ROW: f32 = 34.8;
+pub(crate) const FONT_SIZE: f32 = 15.04;
+pub(crate) const LINE_HEIGHT: f32 = 21.808;
+pub(crate) const PAD_Y: f32 = 6.;
+pub(crate) const PAD_X: f32 = 10.;
+pub(crate) const BORDER: f32 = 1.;
+pub(crate) const MIN_ROW: f32 = 34.8;
 /// Auto-sized columns follow their widest cell, within these bounds.
 pub(super) const MIN_COL: f32 = 80.;
 const MAX_COL: f32 = 381.5;
@@ -32,10 +32,9 @@ struct Pending {
     code_spans: Vec<Range<usize>>,
 }
 
-/// Resolve the same logical column widths for visible and offscreen export tables.
-pub(super) fn export_column_widths(table: &Table, width: Pixels, session: &Widths, window: &mut Window, zoom: f32) -> Vec<f32> {
-    let pending = shape_cells(table, window, zoom);
-    column_widths(table, width, session, &pending, zoom).into_iter().map(|w| w / zoom).collect()
+/// Capture this table's complete geometry with the same measurement used on screen.
+pub(super) fn export_geometry(table: &Table, width: Pixels, session: &Widths, window: &mut Window, zoom: f32) -> crate::export::TableGeometry {
+    measure_inner(table, width, session, window, zoom).1
 }
 
 fn shape_cells(table: &Table, window: &mut Window, zoom: f32) -> Vec<Pending> {
@@ -97,6 +96,10 @@ fn column_widths(table: &Table, width: Pixels, session: &Widths, pending: &[Pend
 }
 
 pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &mut Window, zoom: f32) -> TextLayout {
+    measure_inner(table, width, session, window, zoom).0
+}
+
+fn measure_inner(table: &Table, width: Pixels, session: &Widths, window: &mut Window, zoom: f32) -> (TextLayout, crate::export::TableGeometry) {
     let font_size = px(FONT_SIZE * zoom);
     let line_height = px(LINE_HEIGHT * zoom);
     let (pad_x, pad_y) = (PAD_X * zoom, PAD_Y * zoom);
@@ -105,6 +108,7 @@ pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &m
     let pending = shape_cells(table, window, zoom);
     let widths = column_widths(table, width, session, &pending, zoom);
     let width = (width - px(EXTEND_ROOM * zoom)).max(px(1.));
+    let columns = widths.iter().map(|w| *w / zoom).collect();
     let col_spans: Vec<(Pixels, Pixels)> = {
         let mut xs = vec![px(0.)];
         for value in widths { xs.push(*xs.last().unwrap() + px(value)); }
@@ -141,6 +145,7 @@ pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &m
         let used = heights[*row..end_row].iter().copied().fold(px(0.), |a,b| a+b);
         if *required > used { heights[end_row - 1] += *required-used; }
     }
+    let geometry = crate::export::TableGeometry { columns, rows: heights.iter().map(|h| f32::from(*h) / zoom).collect() };
     let mut ys = vec![px(0.)];
     for height in heights { ys.push(*ys.last().unwrap() + height); }
     let cells = cells.into_iter().map(|(row,index,range,mut text,_)| {
@@ -167,8 +172,8 @@ pub(super) fn measure(table: &Table, width: Pixels, session: &Widths, window: &m
         CellLayout { range, frame, text:Box::new(text), background }
     }).collect();
     // Bounds span the visible column so wide grids scroll instead of squeezing.
-    TextLayout { bounds:Bounds::new(point(px(0.),px(0.)), size(width,*ys.last().unwrap_or(&line_height))),
-        lines:Vec::new(), line_height, cells, alignment:TextAlign::Left, code_spans:Vec::new() }
+    (TextLayout { bounds:Bounds::new(point(px(0.),px(0.)), size(width,*ys.last().unwrap_or(&line_height))),
+        lines:Vec::new(), line_height, cells, alignment:TextAlign::Left, code_spans:Vec::new() }, geometry)
 }
 
 /// The painted grid, excluding the extend-button room the block reserves.

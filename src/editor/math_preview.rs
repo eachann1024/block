@@ -25,7 +25,7 @@ const MAX_MATH_W: f32 = 650.0;
 
 thread_local! {
     static CACHE: RefCell<HashMap<u64, PreviewState>> = Default::default();
-    static LAST_READY: RefCell<HashMap<u64, (Arc<Image>, f32, f32)>> = Default::default();
+    static LAST_READY: RefCell<HashMap<(gpui::EntityId, u64), (Arc<Image>, f32, f32)>> = Default::default();
 }
 
 fn parse_math(source: &str) -> Result<latex_rust::MathNode, String> {
@@ -53,7 +53,7 @@ fn dim_f32(d: &Dim) -> f32 {
     d.as_ratio().map(|(n, den)| (n as f64 / den as f64) as f32).unwrap_or(16.0)
 }
 
-fn render_math_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32, f32), String> {
+pub(crate) fn render_math_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32, f32), String> {
     let font = crate::fonts::math_font()
         .ok_or_else(|| String::from(tr("数学字体加载失败", "Math font unavailable")))?;
     let ast = parse_math(source)?;
@@ -87,7 +87,7 @@ fn render_math_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32, f32), Stri
         ),
         None => raw_svg,
     };
-    Ok((swap_svg_rb(&patched).into_bytes(), logical_w, logical_h))
+    Ok((patched.into_bytes(), logical_w, logical_h))
 }
 
 pub(super) fn render_state(
@@ -102,18 +102,18 @@ pub(super) fn render_state(
         return (Some(placeholder(tr("输入 LaTeX 公式以预览", "Enter LaTeX formula to preview"), &theme)), None);
     }
     if crate::fonts::math_font().is_none() && !crate::fonts::math_font_failed() {
-        return (Some(fallback_or_loading(block_id, &theme, zoom)), None);
+        return (Some(fallback_or_loading(editor.entity_id(), block_id, &theme, zoom)), None);
     }
     let dark = is_dark();
     let key = hash_source(source, dark);
     let state = CACHE.with(|c| c.borrow().get(&key).cloned());
     match state {
         Some(PreviewState::Ready { image, width, height }) => {
-            LAST_READY.with(|lr| { lr.borrow_mut().insert(block_id, (image.clone(), width, height)); });
+            LAST_READY.with(|lr| { lr.borrow_mut().insert((editor.entity_id(), block_id), (image.clone(), width, height)); });
             (Some(render_image(image, width, height, zoom)), None)
         }
         Some(PreviewState::Error(msg)) => (None, Some(msg)),
-        Some(PreviewState::Pending) => (Some(fallback_or_loading(block_id, &theme, zoom)), None),
+        Some(PreviewState::Pending) => (Some(fallback_or_loading(editor.entity_id(), block_id, &theme, zoom)), None),
         None => {
             CACHE.with(|c| { c.borrow_mut().insert(key, PreviewState::Pending); });
             let src = source.to_owned();
@@ -125,7 +125,7 @@ pub(super) fn render_state(
                 CACHE.with(|c| {
                     let next = match res {
                         Ok((bytes, width, height)) => PreviewState::Ready {
-                            image: Arc::new(Image::from_bytes(ImageFormat::Svg, bytes)),
+                            image: Arc::new(Image::from_bytes(ImageFormat::Svg, swap_svg_rb(&String::from_utf8_lossy(&bytes)).into_bytes())),
                             width,
                             height,
                         },
@@ -135,15 +135,19 @@ pub(super) fn render_state(
                 });
                 let _ = entity.update(cx, |_, cx| cx.notify());
             }).detach();
-            (Some(fallback_or_loading(block_id, &theme, zoom)), None)
+            (Some(fallback_or_loading(editor.entity_id(), block_id, &theme, zoom)), None)
         }
     }
 }
 
-fn fallback_or_loading(block_id: u64, theme: &Theme, zoom: f32) -> AnyElement {
-    if let Some((image, w, h)) = LAST_READY.with(|lr| lr.borrow().get(&block_id).cloned()) {
+fn fallback_or_loading(editor: gpui::EntityId, block_id: u64, theme: &Theme, zoom: f32) -> AnyElement {
+    if let Some((image, w, h)) = LAST_READY.with(|lr| lr.borrow().get(&(editor, block_id)).cloned()) {
         render_image(image, w, h, zoom)
     } else {
         placeholder(tr("正在渲染公式…", "Rendering formula…"), theme)
     }
+}
+
+pub(super) fn clear_editor(editor: gpui::EntityId) {
+    LAST_READY.with(|s| s.borrow_mut().retain(|(ed, _), _| *ed != editor));
 }

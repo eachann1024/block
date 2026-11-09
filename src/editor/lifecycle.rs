@@ -99,7 +99,7 @@ impl Editor {
                 self.sessions.clear();
                 self.surface = crate::editor::surface::Surface::Note;
                 self.source_layouts.clear();
-                self.reset_document(Doc::empty()); self.path = None; self.dirty = false;
+                self.reset_document(Doc::empty(), cx); self.path = None; self.dirty = false;
                 self.status.clear(); cx.notify();
             }
             Pending::ReleaseUnder => {
@@ -420,7 +420,7 @@ impl Editor {
                 let Some(doc) = doc else {
                     self.sessions.remove(&path);
                     self.surface = crate::editor::surface::Surface::Note;
-                    self.reset_document(Doc::empty());
+                    self.reset_document(Doc::empty(), cx);
                     self.path = None; self.dirty = false;
                     cx.notify(); return true;
                 };
@@ -432,7 +432,7 @@ impl Editor {
             }
             self.sessions.remove(&path);
         }
-        self.reset_document(Doc::empty());
+        self.reset_document(Doc::empty(), cx);
         self.path = None; self.dirty = false;
         self.status = tr("草稿已保留，可通过「恢复最近草稿」重新打开", "Draft kept; reopen via 'Recover Latest Draft'").into();
         cx.notify(); true

@@ -4,7 +4,7 @@ use super::{markdown, model::Kind, view::Editor};
 impl Editor {
     pub(crate) fn prepare_outline_smoke(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
         assert!(crate::ui::smoke_overlay::is_smoke_active());
-        self.reset_document(markdown::parse("# 概览总纲\n\n第一段说明\n\n## 核心架构\n\n架构正文\n\n### 渲染管线\n\n管线细节\n\n## 验收标准\n\n验收说明\n"));
+        self.reset_document(markdown::parse("# 概览总纲\n\n第一段说明\n\n## 核心架构\n\n架构正文\n\n### 渲染管线\n\n管线细节\n\n## 验收标准\n\n验收说明\n"), cx);
         self.annotate.annotations.clear(); self.persist_annotations();
         let id = self.doc.blocks.iter().find(|block| block.text == "核心架构").unwrap().id;
         self.focus_block(id, window, cx);
@@ -54,7 +54,7 @@ impl Editor {
 - 古人怎么刷牙
 - 没有冰箱怎么办
 - 古人晚上做什么
-"));
+"), cx);
         self.sync_annotations();
         self.annotate.annotations.clear();
         self.persist_annotations();
@@ -90,7 +90,7 @@ impl Editor {
         assert!(crate::ui::smoke_overlay::is_smoke_active());
         let path = self.current_path().unwrap().parent().unwrap().join("menu-fixture.svg");
         std::fs::write(&path, "<svg xmlns='http://www.w3.org/2000/svg' width='400' height='200'><rect width='400' height='200' fill='#547dd0'/></svg>").unwrap();
-        self.reset_document(markdown::parse(&format!("# Menu fixture\n\n![fixture]({})\n", path.display())));
+        self.reset_document(markdown::parse(&format!("# Menu fixture\n\n![fixture]({})\n", path.display())), cx);
         let id = self.doc.blocks.iter().find(|block| super::image_source::spec_of(block).is_some()).unwrap().id;
         self.focus_block(id, window, cx);
         cx.notify();
@@ -121,7 +121,7 @@ impl Editor {
 impl Editor {
     pub(crate) fn prepare_menu_edge_smoke(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
         assert!(crate::ui::smoke_overlay::is_smoke_active());
-        self.reset_document(markdown::parse(&"M".repeat(40)));
+        self.reset_document(markdown::parse(&"M".repeat(40)), cx);
         self.focus_block(self.doc.blocks[0].id, window, cx);
         cx.notify();
     }
@@ -158,7 +158,7 @@ impl Editor {
             Ok(())
         };
         // 1. Editor mode raw paste of 潮汕之旅.md
-        self.reset_document(markdown::parse(""));
+        self.reset_document(markdown::parse(""), cx);
         self.paste_text(&source, false, false, None, cx);
         check_doc(self, "编辑器直接粘贴潮汕之旅.md")?;
         // 2. Single Cmd+A (SelectAll) -> Cmd+C (Copy) -> paste plain text & clipboard item into Editor and QuickNote (minimal=true)
@@ -176,23 +176,23 @@ impl Editor {
         // 3. QuickNote (小窗 minimal=true) paste from clipboard plain text & full source
         let prev_minimal = self.minimal;
         self.minimal = true;
-        self.reset_document(markdown::parse(""));
+        self.reset_document(markdown::parse(""), cx);
         self.block_clip = None;
         self.handle(&super::view::EditorAction::Paste, window, cx);
         check_doc(self, "小窗粘贴复制出的潮汕之旅.md")?;
-        self.reset_document(markdown::parse(""));
+        self.reset_document(markdown::parse(""), cx);
         self.paste_text(&source, false, false, Some(&clip_md), cx);
         check_doc(self, "小窗粘贴完整潮汕之旅.md")?;
         self.minimal = prev_minimal;
         // 4. Entity-escaped Markdown paste recovery
-        self.reset_document(markdown::parse(""));
+        self.reset_document(markdown::parse(""), cx);
         let escaped = "&#35; 潮汕之旅\n\n&#45; &#42;&#42;11&#47;11：&#42;&#42;汕头龙湖区。\n\n&#124; 餐别 &#124; 店名 &#124;\n&#124; &#45;&#45;&#45; &#124; &#45;&#45;&#45; &#124;\n&#124; 午餐 &#124; 杏花吴记 &#124;";
         self.paste_text(escaped, false, false, None, cx);
         let esc_ok = self.doc.blocks.iter().any(|b| b.kind == Kind::H1)
             && self.doc.blocks.iter().any(|b| b.kind == Kind::Bullet && !b.spans.is_empty())
             && self.doc.blocks.iter().any(|b| b.meta.table.is_some());
         if !esc_ok { return Err("实体转义 Markdown 粘贴未恢复结构".into()); }
-        self.reset_document(markdown::parse("# Smoke\n\n```rust\nfn main() {}\n```\n"));
+        self.reset_document(markdown::parse("# Smoke\n\n```rust\nfn main() {}\n```\n"), cx);
         if let Some(prev) = saved_clip { cx.write_to_clipboard(prev); }
         Ok(())
     }
