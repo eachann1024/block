@@ -269,6 +269,20 @@ fn lang_dropdown(
             entering,
         ),
     )).with_priority(2);
-    let popup = dropdown::anchored_motion(gpui::SharedString::from(format!("code-lang-pop-{block_id}-{pop_gen}")), spec, menu, phase, 3);
+    let fallback = picker.fallback;
+    let popup = dropdown::anchored_motion_with(
+        gpui::SharedString::from(format!("code-lang-pop-{block_id}-{pop_gen}")),
+        move |_, _| {
+            LANG_BOUNDS.with(|bounds| bounds.borrow().get(&block_id).copied())
+                .map(|(trigger, _)| dropdown::PlacementSpec::below(trigger)
+                    .align_x(dropdown::AlignX::Right)
+                    .gap(px(6.))
+                    .reserve_height(px(dropdown::MAX_HEIGHT)))
+                .unwrap_or_else(|| dropdown::PlacementSpec::point(fallback))
+        },
+        menu,
+        phase,
+        3,
+    );
     div().child(backdrop).child(popup)
 }

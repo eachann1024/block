@@ -30,6 +30,12 @@ pub(super) fn drop_spec_for(key: &'static str, viewport: Bounds<Pixels>, window:
         .unwrap_or_else(|| crate::dropdown::PlacementSpec::point(window.mouse_position()).viewport(viewport))
 }
 
+/// Last painted bounds of a toolbar button. Menus read this while open so a resize
+/// does not leave them on the click-time rectangle.
+pub(super) fn tracked_button(key: &'static str) -> Option<Bounds<Pixels>> {
+    BOUNDS.with(|bounds| bounds.borrow().get(key).copied())
+}
+
 pub(super) fn selection_toolbar(editor: Entity<Editor>, _id: u64, anchor: Point<Pixels>) -> SelectionToolbar { SelectionToolbar { editor, anchor } }
 
 /// 添加批注 添加表情回应 | 文字类型▾ | B I U S {} 调色盘▾ | 列表▾ | 链接.
