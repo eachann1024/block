@@ -203,7 +203,7 @@ impl Workspace {
     pub fn navigate_history(&mut self, step: isize, cx: &mut Context<Self>) {
         let Some(hist) = self.history.as_ref() else { return };
         if hist.confirm_open || hist.restoring || hist.versions.is_empty() { return; }
-        let cur = hist.selected_id.as_ref().and_then(|id| hist.versions.iter().position(|v| &v.id == id)).unwrap_or(0);
+        let cur: usize = hist.selected_id.as_ref().and_then(|id| hist.versions.iter().position(|v| &v.id == id)).unwrap_or(0);
         let next = if step < 0 { cur.saturating_sub(1) } else { (cur + 1).min(hist.versions.len() - 1) };
         let id = hist.versions[next].id.clone();
         self.select_history_version(&id, cx);
