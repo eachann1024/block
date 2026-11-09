@@ -58,7 +58,7 @@ pub fn parse(source: &str) -> Doc {
         if let Some((block, count, bytes)) = containers::parse_callout(id, &lines[index..]) {
             offset += bytes; index += count; result.push(block); continue;
         }
-        if let Some((items, count)) = list::parse(id, &lines[index..]) {
+        if let Some((items, count)) = list::children(id, &lines[index..]).or_else(|| list::parse(id, &lines[index..])) {
             offset += lines[index..index + count].iter().map(|line| line.len()).sum::<usize>();
             index += count; result.extend(items); continue;
         }
@@ -164,6 +164,30 @@ pub fn serialize(doc: &Doc) -> String {
     let mut at = 0;
     while at < blocks.len() {
         let block = blocks[at];
+        // Serialize descendants at local depth, then indent every line, including
+        // opaque images, tables and fences. This keeps standard Markdown nesting.
+        if at > 0 && is_list(blocks[at - 1]) && block.meta.indent > blocks[at - 1].meta.indent {
+            let parent = blocks[at - 1];
+            let padding = parent.meta.indent + if parent.kind == Kind::Numbered {
+                doc.list_number(parent.id).unwrap_or(1).to_string().len() + 2
+            } else { 2 };
+            let end = (at..blocks.len()).find(|&i| blocks[i].meta.indent < padding).unwrap_or(blocks.len());
+            if end > at {
+                let children = blocks[at..end].iter().map(|block| {
+                    let mut child = (*block).clone();
+                    child.meta.indent -= padding;
+                    if let Some(code) = &mut child.meta.list_code { code.parent_indent = code.parent_indent.saturating_sub(padding); }
+                    child
+                }).collect();
+                if !out.ends_with("\n\n") { out.push('\n'); }
+                let source = serialize(&Doc::from_blocks(children));
+                for line in source.split_inclusive('\n') {
+                    out.push_str(&" ".repeat(padding)); out.push_str(line);
+                }
+                at = end;
+                continue;
+            }
+        }
         let number = numbering.next(block);
         let same_line = at > 0 && same_line_list_code(blocks[at - 1], block);
         if !same_line && !out.is_empty() && !out.ends_with('\n') { out.push('\n'); }
