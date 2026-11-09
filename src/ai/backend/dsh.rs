@@ -1,8 +1,7 @@
-pub(super) mod bridge;
 mod process;
 
 use std::{sync::{mpsc::Sender, Arc, Mutex, atomic::{AtomicBool, Ordering}}, process::{Child, Command, Stdio}, thread, time::{Duration, Instant}};
-use super::{ApprovalResponse, BackendAdapter, BackendError, BackendEvent, BackendEventKind, BackendStatus, RunningTurn, ToolBridge, TurnRequest, cli_env};
+use super::{mcp_bridge as bridge, ApprovalResponse, BackendAdapter, BackendError, BackendEvent, BackendEventKind, BackendStatus, RunningTurn, ToolBridge, TurnRequest, cli_env};
 
 #[derive(Default)]
 pub(crate) struct DshAdapter;

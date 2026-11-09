@@ -207,6 +207,7 @@ impl AssetSource for Icons {
             "agents/claude.svg" => Some(include_bytes!("../assets/agents/claude.svg")),
             "agents/dsh.svg" => Some(include_bytes!("../assets/agents/dsh.svg")),
             "agents/pi.svg" => Some(include_bytes!("../assets/agents/pi.svg")),
+            "agents/agy.svg" => Some(include_bytes!("../assets/agents/agy.svg")),
             _ => None,
         };
         if let Some(bytes) = brand { return Ok(Some(Cow::Borrowed(bytes))); }
