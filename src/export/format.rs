@@ -1,5 +1,5 @@
 //! Output formats offered by the export view, and the Markdown renderer.
-use super::RenderOptions;
+use super::{RenderOptions, WATERMARK_LABEL};
 use crate::editor::markdown;
 use crate::editor::model::{Block, Doc, Kind};
 use crate::theme::tr;
@@ -75,7 +75,7 @@ pub fn render_markdown(blocks: &[Block], options: &RenderOptions) -> String {
         if !out.ends_with('\n') {
             out.push('\n');
         }
-        out.push_str("\n---\n*Block*\n");
+        out.push_str(&format!("\n---\n*{WATERMARK_LABEL}*\n"));
     }
     out
 }
