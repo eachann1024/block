@@ -74,6 +74,9 @@ pub(crate) struct SettingsModal {
     pub regex_error: Option<String>,
     pub font_picker: Option<FontPickerModal>,
     pub font_picker_leaving: bool,
+    pub sidebar_intro_pending: bool,
+    pub sidebar_intro_leaving: bool,
+    pub sidebar_intro_task: Option<gpui::Task<()>>,
 }
 
 pub(super) fn keystroke_to_spec(ks: &Keystroke) -> Option<String> {
@@ -114,8 +117,7 @@ impl Workspace {
             cx.notify();
             return;
         }
-        self.sidebar_collapsed = false;
-        self.sidebar_pinned = false;
+        self.present_sidebar();
         if self.renaming.is_some() { self.cancel_rename(window, cx); }
         if self.search.is_some() { self.close_search(window, cx); }
         self.close_overlays(cx);
@@ -179,6 +181,7 @@ impl Workspace {
         self.settings = Some(SettingsModal {
             focus, recording: None, tab, assets_input, _assets_sub,
             folder_draft_input, _folder_draft_sub, regex_draft_input, _regex_draft_sub,
+            sidebar_intro_pending: true, sidebar_intro_leaving: false, sidebar_intro_task: None,
             advanced_open: false, folder_error: None, regex_error: None, font_picker: None, font_picker_leaving: false,
         });
         crate::editor::ai::settings::ensure(window, cx);
@@ -186,6 +189,7 @@ impl Workspace {
     }
 
     pub(super) fn select_settings_tab(&mut self, tab: SettingsTab, cx: &mut Context<Self>) {
+        self.cancel_settings_sidebar_intro();
         let ended = self.end_shortcut_recording(cx);
         if let Some(m) = &mut self.settings {
             if m.tab == tab && !ended && m.font_picker.is_none() { return; }

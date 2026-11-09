@@ -281,3 +281,18 @@ pub fn fade_up<E: IntoElement + Styled + AnimationExt + 'static>(
     )
 }
 
+
+/// A drawer retreats toward its titlebar toggle without squeezing the page.
+pub const DRAWER_EXIT_MS: u64 = 240;
+
+pub fn drawer_exit<E: IntoElement + Styled + AnimationExt + 'static>(
+    el: E,
+    id: impl Into<ElementId>,
+    width: gpui::Pixels,
+) -> impl IntoElement {
+    el.with_animation(
+        id,
+        Animation::new(Duration::from_millis(DRAWER_EXIT_MS)).with_easing(ease_out_quart()),
+        move |el, delta| el.left(-width * delta),
+    )
+}
