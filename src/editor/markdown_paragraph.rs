@@ -82,7 +82,7 @@ pub(super) fn parse(id: u64, source: &str) -> Result<Block, &'static str> {
     let leading = source.len() - source.trim_start().len();
     let content = leading + first.range.end..leading + last.range.start;
     let inner = &source[content.clone()];
-    let (text, spans, mut annotations) = inline::parse(inner).or_else(|| inline::parse_html(inner))
+    let (text, spans, mut annotations) = inline::parse_html(inner)
         .ok_or("Block contains unsupported HTML; the original HTML is retained")?;
     if indent.is_none() && !open_attrs.is_empty() && !text.is_empty() {
         annotations.insert(0, InlineTag { start: 0, end: text.len(), name: "span".into(), attrs: open_attrs });

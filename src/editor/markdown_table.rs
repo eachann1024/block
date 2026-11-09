@@ -1,4 +1,4 @@
-use super::{inline, table_html};
+use super::{inline, table_html, write};
 use super::super::model::{Block, Kind, Table, TableCell, TableFormat, TableRow, CellAlignment};
 use pulldown_cmark::{Alignment, Event, Options, Parser, Tag, TagEnd};
 
@@ -6,6 +6,7 @@ pub(super) fn parse_pipe(source: &str) -> Option<(Table, usize)> {
     let mut table = Table { format:TableFormat::Pipe, rows:Vec::new(), columns:0,
         alignments:Vec::new(), column_widths:Vec::new(), attrs:Vec::new(), source:String::new() };
     let mut started = false; let mut header = false;
+    let mut cell_events = None;
     for (event, range) in Parser::new_ext(source, Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH).into_offset_iter() {
         match event {
             Event::Start(Tag::Table(alignments)) if !started && range.start == 0 => {
@@ -20,8 +21,11 @@ pub(super) fn parse_pipe(source: &str) -> Option<(Table, usize)> {
             Event::End(TagEnd::TableHead) => header = false,
             Event::Start(Tag::TableRow) if started => table.rows.push(TableRow { cells:Vec::new() }),
             Event::Start(Tag::TableCell) if started => {
-                let raw = source[range.clone()].trim();
-                let (text, spans, annotations) = inline::parse(raw)?;
+                cell_events = Some((range, Vec::new()));
+            },
+            Event::End(TagEnd::TableCell) if started => {
+                let (range, events) = cell_events.take()?;
+                let (text, spans, annotations) = inline::parse_events(events)?;
                 let mut content = Block::new(0, Kind::Paragraph, text);
                 content.spans = spans; content.meta.inline = annotations;
                 let row = table.rows.len().checked_sub(1)?; let column = table.rows[row].cells.len();
@@ -35,7 +39,7 @@ pub(super) fn parse_pipe(source: &str) -> Option<(Table, usize)> {
                 return Some((table, range.end));
             },
             _ if !started => return None,
-            _ => {},
+            event => if let Some((_, events)) = &mut cell_events { events.push(event); },
         }
     }
     None
@@ -63,10 +67,37 @@ pub(super) fn serialize(table: &Table, out: &mut String) {
 }
 
 fn write_pipe(table: &Table, out: &mut String) {
+    let alignments = table.alignments.iter().map(|alignment| match alignment {
+        CellAlignment::Left => Alignment::None, CellAlignment::Center => Alignment::Center,
+        CellAlignment::Right => Alignment::Right,
+    }).collect();
+    let mut events = vec![Event::Start(Tag::Table(alignments))];
+    for (index, row) in table.rows.iter().enumerate() {
+        let tag = if index == 0 { Tag::TableHead } else { Tag::TableRow };
+        events.push(Event::Start(tag.clone()));
+        for cell in &row.cells {
+            events.push(Event::Start(Tag::TableCell)); events.extend(write::events(&cell.content));
+            events.push(Event::End(TagEnd::TableCell));
+        }
+        events.push(Event::End(tag.to_end()));
+    }
+    events.push(Event::End(TagEnd::Table));
+    if let Some(source) = write::render(events) {
+        if parse_pipe(&source).is_some_and(|(parsed, _)| parsed.columns == table.columns
+            && parsed.rows.len() == table.rows.len()
+            && parsed.rows.iter().zip(&table.rows).all(|(a, b)| a.cells.len() == b.cells.len())
+            && parsed.rows.iter().flat_map(|row| &row.cells)
+            .zip(table.rows.iter().flat_map(|row| &row.cells)).all(|(a, b)|
+                a.content.text == b.content.text && a.content.spans == b.content.spans
+                    && a.content.meta.inline == b.content.meta.inline)) {
+            out.push_str(&source); return;
+        }
+    }
+    // GFM permits inline HTML for content that native delimiters cannot express.
     for (index, row) in table.rows.iter().enumerate() {
         out.push('|');
         for cell in &row.cells {
-            out.push(' '); let mut value = String::new(); inline::serialize(&cell.content, &mut value);
+            out.push(' '); let mut value = String::new(); write::markdown_html(&cell.content, &mut value);
             // Attribute pipes also need escaping at the Markdown table layer.
             out.push_str(&value.replace('|', "&#124;")); out.push_str(" |");
         }
