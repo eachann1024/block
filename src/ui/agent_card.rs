@@ -1,9 +1,9 @@
 //! Agent configuration navigation and explicit opt-in are separate hit targets.
 use gpui::{App, ClickEvent, CursorStyle, Div, ElementId, FontWeight, MouseButton,
-    MouseDownEvent, SharedString, Stateful, Window, div, prelude::*, px, svg};
+    MouseDownEvent, Stateful, Window, div, prelude::*, px, svg};
 use gpui_base::{Switch, SwitchThumb};
 use crate::theme::{Theme, is_dark};
-use super::{card_bg, mono_font, selected_bg};
+use super::{card_bg, selected_bg};
 
 pub fn brand_glyph(logo: &'static str, size: f32, color: gpui::Hsla) -> Div {
     div().size(px(size)).flex_none().flex().items_center().justify_center()
@@ -27,13 +27,12 @@ pub fn pill_switch(id: impl Into<ElementId>, checked: bool, enabled: bool) -> Sw
 }
 
 pub fn agent_card(
-    id: ElementId, toggle_id: ElementId, label: &'static str, subtitle: impl Into<SharedString>,
+    id: ElementId, toggle_id: ElementId, label: &'static str,
     logo: &'static str, focused: bool, enabled: bool, index: usize, total: usize,
     on_select: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let theme = Theme::ocean();
-    let sub: SharedString = subtitle.into();
     let well = div().size(px(26.)).rounded(px(6.)).bg(card_bg()).border_1().border_color(theme.hairline)
         .flex().items_center().justify_center().flex_none()
         .child(brand_glyph(logo, 16., theme.text));
@@ -51,11 +50,8 @@ pub fn agent_card(
         .on_mouse_down(MouseButton::Left, on_select)
         .child(div().flex().items_center().gap(px(9.)).min_w_0().flex_1()
             .child(well)
-            .child(div().flex(). items_baseline().gap(px(6.)).min_w_0().flex_1()
-                .child(div().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(560.)).text_color(theme.text)
-                    .whitespace_nowrap().child(label))
-                .when(!sub.is_empty(), |d| d.child(div().text_size(px(12.)).line_height(px(16.)).font(mono_font())
-                    .text_color(theme.text_secondary).overflow_hidden().whitespace_nowrap().text_ellipsis().child(sub)))))
+            .child(div().min_w_0().flex_1().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(560.)).text_color(theme.text)
+                .overflow_hidden().whitespace_nowrap().text_ellipsis().child(label)))
         .child(toggle)
 }
 
