@@ -75,15 +75,45 @@ impl ExportView {
                 cx.write_to_clipboard(ClipboardItem::new_string_with_metadata(md, crate::editor::MARKDOWN_CLIPBOARD_V1.into()));
             }
             ExportFormat::Html => {
-                let Ok(blocks) = self.active_blocks() else { return };
-                let html = render_html(&blocks, &self.render_options());
-                cx.write_to_clipboard(ClipboardItem::new_string(html));
+                self.copy_html(cx);
+                return;
             }
             ExportFormat::Png | ExportFormat::Pdf | ExportFormat::Word => {
                 let Some(png) = self.png.clone() else { return };
                 cx.write_to_clipboard(ClipboardItem::new_image(&png));
             }
         }
+        self.did_copy(cx);
+    }
+
+    fn copy_html(&mut self, cx: &mut Context<Self>) {
+        let Ok(blocks) = self.active_blocks() else { return };
+        let options = self.render_options();
+        self.saving = true;
+        self.notice = Some(tr("正在生成 HTML…", "Generating HTML…").into());
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let expected = options.clone();
+            let expected_blocks = blocks.clone();
+            let result = cx.background_executor().spawn(async move {
+                render_html(&blocks, &options)
+            }).await;
+            let _ = this.update(cx, |this, cx| {
+                match result {
+                    Ok(html) if this.format == ExportFormat::Html && this.render_options() == expected
+                        && this.active_blocks().is_ok_and(|blocks| Arc::ptr_eq(&blocks, &expected_blocks)) => {
+                        cx.write_to_clipboard(ClipboardItem::new_string(html));
+                        this.did_copy(cx);
+                    }
+                    Ok(_) => { this.notice = None; cx.notify(); }
+                    Err(error) => { this.notice = Some(error.to_string()); cx.notify(); }
+                }
+                this.finish_save(cx);
+            });
+        }).detach();
+    }
+
+    fn did_copy(&mut self, cx: &mut Context<Self>) {
         self.copied = true;
         self.notice = Some(tr("已复制到剪贴板", "Copied to clipboard").into());
         cx.notify();
@@ -141,7 +171,7 @@ impl ExportView {
                                     write_bytes(&path, md.as_bytes(), &cancel)?;
                                 }
                                 ExportFormat::Html => {
-                                    let html = render_html(&blocks, &options);
+                                    let html = render_html(&blocks, &options)?;
                                     write_bytes(&path, html.as_bytes(), &cancel)?;
                                 }
                             }

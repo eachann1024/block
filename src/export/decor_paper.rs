@@ -15,12 +15,22 @@ pub(super) fn paint_paper(
     pal: &Palette,
     cancel: &Cancellation,
 ) -> Result<(), ExportError> {
+    paint_surface(image, &layout.options, pal, cancel)
+}
+
+/// Shared paper artwork for the raster export and Word page backgrounds.
+pub(super) fn paint_surface(
+    image: &mut Pixmap,
+    options: &super::RenderOptions,
+    pal: &Palette,
+    cancel: &Cancellation,
+) -> Result<(), ExportError> {
     cancel.check()?;
     let c = pal.canvas;
     image.fill(tiny_skia::Color::from_rgba8(c.r(), c.g(), c.b(), 255));
-    let w = layout.width as f32 / SCALE;
-    let h = layout.height as f32 / SCALE;
-    let theme = layout.options.theme;
+    let w = image.width() as f32 / SCALE;
+    let h = image.height() as f32 / SCALE;
+    let theme = options.theme;
 
     match theme {
         ExportTheme::Riso => paint_grain(image, Color::rgba(40, 30, 20, 14), 0x517c_c1b7),
