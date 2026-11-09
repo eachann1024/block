@@ -84,6 +84,8 @@ pub(super) fn shape_with_wrap(
             .filter(|tag| tag.start <= start && end <= tag.end)
         {
             if tag.name == "a" {
+                // A cell's inherited foreground must not mask the link's theme color.
+                attrs.color_opt = None;
                 flags |= UNDERLINE | LINK;
             }
             if matches!(tag.name.as_str(), "u" | "ins")
