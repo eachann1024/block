@@ -1,114 +1,64 @@
 //! Image block rendering: aligned picture, side resize handles and floating top-centered toolbar.
 use std::{collections::HashMap, path::PathBuf};
-use gpui::{App, Context, CursorStyle, Entity, EntityId, Global, MouseButton, ObjectFit, Resource, SharedString, Window, div, prelude::*, px};
+use gpui::{App, CursorStyle, Entity, EntityId, Global, MouseButton, ObjectFit, Resource, SharedString, div, prelude::*, px};
 use super::{
     image_edit::ImagePop,
     image_probe::probe_dims,
     image_remote::RemoteImageState,
+    image_resize::{self, MIN_SHARE},
     image_source::{Align, ImageSpec, ImageTarget},
     view::Editor,
 };
-
-/// Smallest width an image can be dragged or stepped to, as a share of the content width.
-const MIN_SHARE: f32 = 0.1;
-const DEFAULT_MAX: f32 = 560.;
-const DEFAULT_MAX_H: f32 = 420.;
 
 #[derive(Default)]
 struct ImageUi {
     measured: HashMap<(EntityId, u64), f32>,
     dims: HashMap<PathBuf, (f32, f32)>,
-    paths: HashMap<(EntityId, u64), PathBuf>,
-    avail: HashMap<EntityId, f32>,
-    drag: Option<Drag>,
+    avail: HashMap<(EntityId, u64), f32>,
 }
 impl Global for ImageUi {}
-#[derive(Clone, Copy)]
-struct Drag { editor_id: EntityId, id: u64, start_x: f32, start_w: f32, dir: f32, max: f32, width: f32, zoom: f32 }
-#[derive(Clone)]
-struct Resize { editor_id: EntityId, id: u64, dir: f32, zoom: f32 }
-struct Ghost;
-impl Render for Ghost { fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement { gpui::Empty } }
 
 fn base_of(ui: &ImageUi, editor_id: EntityId, id: u64) -> f32 {
-    let avail = ui.avail.get(&editor_id).copied().unwrap_or(0.);
-    if let Some(&(raw_w, raw_h)) = ui.paths.get(&(editor_id, id)).and_then(|p| ui.dims.get(p)).filter(|&&(w, h)| w > 0. && h > 0.) {
-        let nat_w = raw_w.min(DEFAULT_MAX).min(raw_w * (DEFAULT_MAX_H / raw_h));
-        return if avail > 0. { nat_w.min(avail) } else { nat_w };
-    }
-    if avail > 0. { avail.min(DEFAULT_MAX) } else { DEFAULT_MAX }
+    ui.avail.get(&(editor_id, id)).copied().filter(|&w| w > 0.)
+        .unwrap_or_else(|| f32::from(crate::theme::Theme::ocean().content_width))
 }
 
 pub(super) fn clear_editor_measured(editor_id: EntityId, cx: &mut App) {
     let ui = cx.default_global::<ImageUi>();
     ui.measured.retain(|(ed, _), _| *ed != editor_id);
-    if ui.drag.as_ref().is_some_and(|d| d.editor_id == editor_id) {
-        ui.drag = None;
-    }
+    ui.avail.retain(|(ed, _), _| *ed != editor_id);
+    image_resize::clear(editor_id, cx);
 }
 pub(super) fn rekey(cx: &mut App, editor_id: EntityId, old_id: u64, new_id: u64) {
     let ui = cx.default_global::<ImageUi>();
-    if let Some(p) = ui.paths.get(&(editor_id, old_id)).cloned() { ui.paths.insert((editor_id, new_id), p); }
     if let Some(w) = ui.measured.get(&(editor_id, old_id)).copied() { ui.measured.insert((editor_id, new_id), w); }
+    if let Some(w) = ui.avail.get(&(editor_id, old_id)).copied() { ui.avail.insert((editor_id, new_id), w); }
 }
 
-fn begin(resize: &Resize, x: f32, cx: &mut App) {
-    let zoom = resize.zoom;
-    let ui = cx.default_global::<ImageUi>();
-    let base = base_of(ui, resize.editor_id, resize.id) * zoom;
-    let max = if base > 0. { base } else { DEFAULT_MAX * zoom };
-    let width = ui.measured.get(&(resize.editor_id, resize.id)).copied().filter(|&w| w > 0.).unwrap_or(max);
-    ui.drag = Some(Drag {
-        editor_id: resize.editor_id,
-        id: resize.id,
-        start_x: x,
-        start_w: width,
-        dir: resize.dir,
-        max,
-        width,
-        zoom,
-    });
-}
-fn resize_move(editor: &Entity<Editor>, id: u64, x: f32, cx: &mut App) {
-    let editor_id = editor.entity_id();
-    let Some(drag) = cx.default_global::<ImageUi>().drag.as_mut().filter(|d| d.editor_id == editor_id && d.id == id) else { return };
-    drag.width = (drag.start_w + (x - drag.start_x) * drag.dir).clamp(drag.max * MIN_SHARE, drag.max);
+pub(super) fn relayout(editor: &Entity<Editor>, id: u64, cx: &mut App) {
     editor.update(cx, |this, cx| {
-        if let Some(idx) = this.doc.index_of(id) {
+        if let Some(idx) = this.doc.index_of(id).filter(|&i| i < this.list.item_count()) {
             this.list.splice(idx..idx + 1, 1);
         }
         cx.notify();
     });
 }
-fn resize_end(editor: &Entity<Editor>, id: u64, cx: &mut App) {
+fn measure_available(editor: Entity<Editor>, id: u64, zoom: f32) -> impl IntoElement {
     let editor_id = editor.entity_id();
-    let Some(drag) = cx.default_global::<ImageUi>().drag.take().filter(|d| d.editor_id == editor_id && d.id == id) else { return };
-    let zoom = drag.zoom.max(0.01);
-    editor.update(cx, |this, cx| {
-        if (drag.width - drag.start_w).abs() >= 1. {
-            this.edit_image(id, |s| s.width = Some((drag.width / zoom).round().max(1.) as u32), cx);
-        } else { cx.notify(); }
-    });
+    gpui::canvas(|_, _, _| {}, move |bounds, _, _, cx| {
+        let width = f32::from(bounds.size.width) / zoom;
+        if width <= 0. { return; }
+        let previous = cx.default_global::<ImageUi>().avail.insert((editor_id, id), width).unwrap_or(0.);
+        if (previous - width).abs() > 0.5 { relayout(&editor, id, cx); }
+    }).absolute().size_full()
 }
 
-/// Centered side pill handle with a 12px hit area; dragging it resizes the width in proportion (the height follows).
-fn handle(editor_id: EntityId, id: u64, left: bool, dir: f32, zoom: f32, img_h: Option<f32>, group: &SharedString, show: bool) -> impl IntoElement {
-    let bar_h = match img_h {
-        Some(h) if h < 64. * zoom => (h * 0.6).round().max(16. * zoom),
-        _ => 48. * zoom,
-    };
-    let bar_color = if crate::theme::is_dark() { 0x707070 } else { 0x9a9a9a };
-    div().absolute().top_0().bottom_0()
-        .when(left, |s| s.left(px(-12.5 * zoom))).when(!left, |s| s.right(px(-12.5 * zoom)))
-        .flex().items_center()
-        .child(div().id(("image-resize", id as usize * 2 + usize::from(left)))
-            .w(px(12. * zoom)).h(px(bar_h + 16. * zoom)).flex().items_center().justify_center()
-            .cursor(CursorStyle::ResizeLeftRight)
-            .invisible().when(show, |s| s.visible()).group_hover(group.clone(), |s| s.visible())
-            .on_drag(Resize { editor_id, id, dir, zoom }, |resize, _, window, cx| {
-                begin(resize, f32::from(window.mouse_position().x), cx); cx.new(|_| Ghost)
-            })
-            .child(div().w(px((3. * zoom).max(2.))).h(px(bar_h)).rounded(px(3. * zoom)).bg(gpui::rgb(bar_color))))
+fn handle(editor: Entity<Editor>, id: u64, left: bool, dir: f32, zoom: f32, img_h: Option<f32>, group: &SharedString, show: bool) -> impl IntoElement {
+    crate::ui::resize_handle::side_pill(("image-resize", id as usize * 2 + usize::from(left)), left, img_h, zoom, group.clone(), show)
+        .on_mouse_down(MouseButton::Left, move |event, window, cx| {
+            image_resize::begin(&editor, id, dir, zoom, event.position.x, window, cx);
+            cx.stop_propagation();
+        })
 }
 
 /// The block under `position`, preferring rendered list geometry so static images are found too.
@@ -142,10 +92,9 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
     });
     let editor_id = editor.entity_id();
     let zoom = zoom.max(0.01);
-    let (base, draft, raw_dims) = {
+    let (base, raw_dims) = {
         let ui = cx.default_global::<ImageUi>();
         if let Some(p) = &ready_path {
-            ui.paths.insert((editor_id, id), p.clone());
             if let Some(d) = fetched_dims {
                 ui.dims.insert(p.clone(), d);
             } else if !ui.dims.contains_key(p) && let Some(d) = probe_dims(p) {
@@ -153,13 +102,11 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
             }
         }
         let dims = ready_path.as_ref().and_then(|p| ui.dims.get(p).copied());
-        (base_of(ui, editor_id, id), ui.drag.filter(|d| d.editor_id == editor_id && d.id == id), dims)
+        (base_of(ui, editor_id, id), dims)
     };
-    let drag_logical = draft.map(|d| d.width / zoom);
-    let dragging = draft.is_some() && cx.has_active_drag();
-    let limit = if base > 0. { base } else { DEFAULT_MAX };
-    let width = if dragging { drag_logical } else { spec.width.map(|w| w as f32) }
-        .map(|w| w.min(limit).max(limit * MIN_SHARE));
+    let draft = image_resize::width(editor_id, id, cx);
+    let dragging = draft.is_some();
+    let width = draft.or(spec.width.map(|w| w as f32)).unwrap_or(base).clamp(base * MIN_SHARE, base);
     let show = active || dragging;
     let show_bar = active && !dragging && !has_overlay;
     if !show_bar { crate::ui::motion::popup_reset(&format!("image-pop-{id}")); }
@@ -167,10 +114,10 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
     let scale = if spec.align == Align::Center { 2. } else { 1. };
     let focus = editor.clone();
     let ring = 0x547dd0;
-    let pct = size_percent(drag_logical, spec.width, base);
+    let pct = (width / base * 100.).round() as u32;
     if let Some((url, failed)) = remote_pending {
         let theme = crate::theme::Theme::ocean();
-        let card_w = width.unwrap_or(limit) * zoom;
+        let card_w = width * zoom;
         let label = if failed {
             crate::theme::tr("图片加载失败，点击重试", "Failed to load image, click to retry")
         } else {
@@ -178,9 +125,7 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
         };
         return div().relative().w_full().flex().flex_col().items_start()
             .when(spec.align == Align::Center, |s| s.items_center()).when(spec.align == Align::Right, |s| s.items_end())
-            .child(gpui::canvas(move |bounds, _, cx| {
-                cx.default_global::<ImageUi>().avail.insert(editor_id, f32::from(bounds.size.width) / zoom);
-            }, |_, _, _, _| {}).absolute().size_full())
+            .child(measure_available(editor.clone(), id, zoom))
             .child(div().id(("image", id as usize)).relative().w(px(card_w)).h(px(120. * zoom)).rounded(px(6. * zoom))
                 .bg(theme.hover).border_1().border_color(if active { gpui::rgb(ring).into() } else { theme.hairline })
                 .flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
@@ -200,22 +145,20 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
     }
     let path = ready_path.unwrap_or_default();
     let target_size = raw_dims.filter(|&(rw, rh)| rw > 0. && rh > 0.).map(|(rw, rh)| {
-        let tw = (width.unwrap_or(limit) * zoom).round().max(1.);
+        let tw = (width * zoom).round().max(1.);
         let th = (tw * rh / rw).round().max(1.);
         (tw, th)
     });
     let picture = gpui::img(path).rounded(px(4. * zoom));
     let picture = match target_size {
         Some((tw, th)) => picture.w(px(tw)).h(px(th)).object_fit(ObjectFit::Fill),
-        None => match width { Some(w) => picture.w(px(w * zoom)), None => picture.max_w(px(DEFAULT_MAX * zoom)).max_h(px(DEFAULT_MAX_H * zoom)) },
+        None => picture.w(px(width * zoom)),
     };
     let img_h = target_size.map(|(_, th)| th);
-    let (move_editor, up_editor, out_editor, canvas_editor) = (editor.clone(), editor.clone(), editor.clone(), editor.clone());
+    let canvas_editor = editor.clone();
     div().relative().w_full().flex().flex_col().items_start()
         .when(spec.align == Align::Center, |s| s.items_center()).when(spec.align == Align::Right, |s| s.items_end())
-        .child(gpui::canvas(move |bounds, _, cx| {
-            cx.default_global::<ImageUi>().avail.insert(editor_id, f32::from(bounds.size.width) / zoom);
-        }, |_, _, _, _| {}).absolute().size_full())
+        .child(measure_available(editor.clone(), id, zoom))
         .child(div().id(("image", id as usize)).relative().flex_none().group(group.clone())
             .when_some(target_size, |s, (tw, th)| s.w(px(tw)).h(px(th)))
             .child(picture)
@@ -223,22 +166,12 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
                 let w = f32::from(bounds.size.width);
                 let prev_w = cx.default_global::<ImageUi>().measured.insert((editor_id, id), w).unwrap_or(0.);
                 if (prev_w - w).abs() > 0.5 && w > 0. {
-                    canvas_editor.update(cx, |this, cx| {
-                        if let Some(idx) = this.doc.index_of(id) {
-                            if idx < this.list.item_count() {
-                                this.list.splice(idx..idx + 1, 1);
-                                cx.notify();
-                            }
-                        }
-                    });
+                    relayout(&canvas_editor, id, cx);
                 }
             }).absolute().size_full())
             .when(active, |s| s.child(div().absolute().inset_0().rounded(px(4. * zoom)).border(px(2.)).border_color(gpui::rgb(ring))))
-            .child(handle(editor_id, id, true, -scale, zoom, img_h, &group, show))
-            .child(handle(editor_id, id, false, scale, zoom, img_h, &group, show))
-            .on_drag_move::<Resize>(move |event, _, cx| resize_move(&move_editor, id, f32::from(event.event.position.x), cx))
-            .on_mouse_up(MouseButton::Left, move |_, _, cx| resize_end(&up_editor, id, cx))
-            .on_mouse_up_out(MouseButton::Left, move |_, _, cx| resize_end(&out_editor, id, cx))
+            .child(handle(editor.clone(), id, true, -scale, zoom, img_h, &group, show))
+            .child(handle(editor.clone(), id, false, scale, zoom, img_h, &group, show))
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                 focus.update(cx, |this, cx| { this.image_menu = None; this.focus_block(id, window, cx); });
                 cx.stop_propagation();
@@ -247,13 +180,9 @@ pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, 
             .child(super::image_size::image_toolbar(&editor, id, spec.align, pct, pop, cx))))
 }
 
-/// (original width, rendered width) of an image from the last paint; 0 until it has been laid out.
+/// (maximum content width, rendered width) of an image from the last paint.
 pub(super) fn sizes(cx: &App, editor_id: EntityId, id: u64, minimal: bool) -> (f32, f32) {
     let zoom = super::zoom::zoom_factor(minimal).max(0.01);
-    cx.try_global::<ImageUi>().map_or((0., 0.), |ui| (base_of(ui, editor_id, id), ui.measured.get(&(editor_id, id)).copied().map(|m| m / zoom).unwrap_or(0.)))
-}
-fn size_percent(draft: Option<f32>, width: Option<u32>, base: f32) -> u32 {
-    let base = if base > 0. { base } else { DEFAULT_MAX };
-    let Some(shown) = draft.or(width.map(|w| w as f32)) else { return 100 };
-    ((shown / base * 100.).round() as u32).clamp(1, 100)
+    let fallback = f32::from(crate::theme::Theme::ocean().content_width);
+    cx.try_global::<ImageUi>().map_or((fallback, 0.), |ui| (base_of(ui, editor_id, id), ui.measured.get(&(editor_id, id)).copied().map(|m| m / zoom).unwrap_or(0.)))
 }
