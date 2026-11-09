@@ -194,7 +194,7 @@ fn size_popover(editor: &Entity<Editor>, id: u64, percent: u32) -> impl IntoElem
         .child(div().min_w(px(38.)).flex().justify_center().text_size(px(12.)).text_color(rgb(tc.ink)).child(format!("{percent}%")))
         .child(tb_btn(editor, id, 9, Icon::TbPlus, tr("放大", "Zoom in"), false, false, image_cursor() == 5,
             move |this, _, cx| this.step_image(id, 10, cx)))
-        .child(tb_btn(editor, id, 10, Icon::TbReset, tr("原始宽度", "Original size"), false, false, image_cursor() == 6,
+        .child(tb_btn(editor, id, 10, Icon::TbReset, tr("最大宽度", "Maximum width"), false, false, image_cursor() == 6,
             move |this, _, cx| { this.image_menu = None; this.edit_image(id, |s| s.width = None, cx); }))
 }
 
@@ -272,19 +272,17 @@ impl Editor {
             return;
         }
         let (base, _) = sizes(cx, cx.entity_id(), id, self.minimal);
-        let base = if base > 0. { base } else { 560. };
         let width = (base * pct as f32 / 100.).round() as u32;
         self.edit_image(id, |s| s.width = Some(width), cx);
     }
-    /// Moves the width to the next multiple of 10% of the original width, within 10%..=100%.
+    /// Moves the width to the next multiple of 10% of the content width, within 10%..=100%.
     pub(super) fn step_image(&mut self, id: u64, delta: i32, cx: &mut Context<Self>) {
         let (base, _) = sizes(cx, cx.entity_id(), id, self.minimal);
         if base <= 0. { return; }
         let Some(spec) = self.doc.get(id).and_then(spec_of) else { return };
-        let current_pct = spec.width.map_or(100., |w| (w as f32 / base * 10.).round() * 10.);
-        let percent = (current_pct + delta as f32).clamp(10., 100.);
-        let width = (base * percent / 100.).round() as u32;
-        self.edit_image(id, |s| s.width = Some(width), cx);
+        let current_pct = spec.width.map_or(100., |w| (w as f32 / base * 10.).round() * 10.).clamp(10., 100.);
+        let percent = (current_pct + delta as f32).clamp(10., 100.) as u32;
+        self.set_image_percent(id, percent, cx);
     }
     /// Cmd+= / Cmd+-: resize the image holding the caret, if the caret block is one.
     #[allow(dead_code)]
