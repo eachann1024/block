@@ -56,3 +56,5 @@ pub mod ai_editor_diff;
 pub mod app_shortcuts;
 
 pub mod reorder;
+
+pub mod editor_content;
