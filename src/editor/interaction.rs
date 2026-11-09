@@ -167,20 +167,14 @@ impl Editor {
         });
     }
     pub(in crate::editor) fn block_drop_target(&self, position: Point<Pixels>) -> Option<DropTarget> {
-        let start = self.list.logical_scroll_top().item_ix;
-        let mut row = None;
-        let mut nearest = f32::INFINITY;
-        // Stop at the pointer/visible boundary instead of walking the entire note
-        // when dragging in the gutter or below the last rendered row.
-        let viewport = self.list.viewport_bounds();
-        for i in start..self.doc.blocks.len() {
-            if !self.minimal && self.is_index_hidden(i) { continue; }
-            let Some(bounds) = self.list.bounds_for_item(i) else { break };
+        // ListState::bounds_for_item omits list padding. Use final painted row
+        // geometry so blank lines, images and text all share the visible coordinates.
+        let row = self.painted_rows.iter().filter_map(|(&id, &bounds)| {
+            let index = self.doc.index_of(id)?;
             let distance = f32::from((bounds.top() - position.y).max(position.y - bounds.bottom()).max(px(0.)));
-            if distance < nearest { nearest = distance; row = Some((self.doc.blocks[i].id, bounds)); }
-            if bounds.bottom() >= position.y || bounds.top() > viewport.bottom() { break; }
-        }
-        let (id, bounds) = row.or_else(|| {
+            Some((id, bounds, index, distance))
+        }).min_by(|a, b| a.3.total_cmp(&b.3).then(a.2.cmp(&b.2)));
+        let (id, bounds) = row.map(|(id, bounds, _, _)| (id, bounds)).or_else(|| {
             let at = self.hit(position)?;
             Some((at.block, self.layouts.get(&at.block)?.bounds))
         })?;
@@ -195,7 +189,13 @@ impl Editor {
         let buffer = if retained { px(3. * zoom) } else { px(0.) };
         let nested = can_nest && position.y >= bounds.top() + edge - buffer
             && position.y <= bounds.bottom() - edge + buffer;
-        let after = nested || position.y >= bounds.top() + bounds.size.height / 2.;
+        let after = nested || self.dragging.and_then(|id| self.drag_span(id))
+            .map_or_else(|| position.y >= bounds.top() + bounds.size.height / 2., |(from, count)| {
+                // Reordering follows travel direction: entering the previous row
+                // moves before it, entering the next row moves after it.
+                if index < from { false } else if index >= from + count { true }
+                else { position.y >= bounds.top() + bounds.size.height / 2. }
+            });
         let indent = if nested {
             block.meta.indent + if block.kind == crate::editor::model::Kind::Numbered {
                 self.doc.list_number(id).unwrap_or(1).to_string().len() + 2
