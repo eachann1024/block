@@ -1,19 +1,19 @@
 use std::{io::{BufRead, BufReader, Read, Write}, net::{TcpListener, TcpStream}, sync::{Arc, atomic::{AtomicBool, Ordering}}, thread, time::Duration};
 use serde_json::{json, Value};
-use super::super::{BackendError, ToolBridge, TurnRequest};
+use super::{BackendError, ToolBridge, TurnRequest};
 
 pub(crate) fn secret() -> Result<String, BackendError> {
     let mut bytes = [0u8; 32];
     std::fs::File::open("/dev/urandom").and_then(|mut file| file.read_exact(&mut bytes))
-        .map_err(|error| BackendError::new("dsh_random", error.to_string()))?;
+        .map_err(|error| BackendError::new("mcp_random", error.to_string()))?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 pub(crate) fn listen(request: &TurnRequest, tools: ToolBridge, token: String)
     -> Result<(u16, Arc<AtomicBool>, Arc<AtomicBool>), BackendError> {
-    let listener = TcpListener::bind("127.0.0.1:0").map_err(|error| BackendError::new("dsh_bridge", error.to_string()))?;
-    let port = listener.local_addr().map_err(|error| BackendError::new("dsh_bridge", error.to_string()))?.port();
-    listener.set_nonblocking(true).map_err(|error| BackendError::new("dsh_bridge", error.to_string()))?;
+    let listener = TcpListener::bind("127.0.0.1:0").map_err(|error| BackendError::new("mcp_bridge", error.to_string()))?;
+    let port = listener.local_addr().map_err(|error| BackendError::new("mcp_bridge", error.to_string()))?.port();
+    listener.set_nonblocking(true).map_err(|error| BackendError::new("mcp_bridge", error.to_string()))?;
     let running = Arc::new(AtomicBool::new(true));
     let active = running.clone();
     let ready = Arc::new(AtomicBool::new(false));
@@ -46,7 +46,7 @@ fn serve(mut stream: TcpStream, request: &TurnRequest, tools: ToolBridge, token:
     if value["token"].as_str() != Some(token) || !active.load(Ordering::Acquire) { return; }
     if value["ready"] == true { ready.store(true, Ordering::Release); return; }
     let Some(name) = value["name"].as_str() else { return };
-    if !["loadSkill", "readSkillResource", "listNotebooks", "listPages", "searchNotes", "readPage", "executeBatchPlan"].contains(&name) { return; }
+    if !super::super::agent::is_authorized_tool(name) { return; }
     let response = tools.call(request.conversation_id.clone(), request.turn_id.clone(),
         value["id"].as_str().unwrap_or_default().to_owned(), name.to_owned(),
         value["arguments"].clone(), Duration::from_secs(300));

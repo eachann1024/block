@@ -47,6 +47,7 @@ pub(super) fn backend_name(backend: BackendKind) -> &'static str {
         BackendKind::Claude => "Claude",
         BackendKind::Dsh => "dsh",
         BackendKind::Pi => "Pi",
+        BackendKind::Agy => "agy",
     }
 }
 
@@ -57,6 +58,7 @@ pub(super) fn backend_logo(backend: BackendKind) -> &'static str {
         BackendKind::Claude => "agents/claude.svg",
         BackendKind::Dsh => "agents/dsh.svg",
         BackendKind::Pi => "agents/pi.svg",
+        BackendKind::Agy => "agents/agy.svg",
     }
 }
 
