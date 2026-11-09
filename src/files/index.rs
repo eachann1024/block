@@ -37,10 +37,22 @@ struct Entry {
 }
 
 #[derive(Default)]
-pub struct TreeIndex { root: Link, serial: u64, notes: usize }
+pub struct TreeIndex { root: Link, serial: u64, notes: usize, manual_order: bool }
 
 impl TreeIndex {
-    pub fn new(nodes: Vec<Node>) -> Self {
+    pub fn new(mut nodes: Vec<Node>) -> Self {
+        let orders = super::load_state().unwrap_or_default().file_order;
+        fn arrange(nodes: &mut [Node], orders: &std::collections::BTreeMap<PathBuf, Vec<PathBuf>>) -> bool {
+            let mut changed = false;
+            if let Some(order) = nodes.first().and_then(|n| n.path.parent()).and_then(|p| orders.get(p)) {
+                let ranks: std::collections::HashMap<_, _> = order.iter().enumerate().map(|(i, p)| (p.as_path(), i)).collect();
+                nodes.sort_by_key(|n| ranks.get(n.path.as_path()).copied().unwrap_or(usize::MAX));
+                changed = true;
+            }
+            for node in nodes { changed |= arrange(&mut node.children, orders); }
+            changed
+        }
+        let manual_order = arrange(&mut nodes, &orders);
         let mut rows = Vec::new();
         for node in nodes {
             let root = (Arc::<str>::from(node.name.as_str()), Arc::<Path>::from(node.path.as_path()), node.dir);
@@ -49,7 +61,7 @@ impl TreeIndex {
         let notes = rows.iter().filter(|r| !r.dir).count();
         let serial = rows.len() as u64;
         let root = build(&mut rows.into_iter(), serial as usize, 0);
-        Self { root, serial, notes }
+        Self { root, serial, notes, manual_order }
     }
 
     pub fn len(&self) -> usize { visible(&self.root) }
@@ -76,6 +88,7 @@ impl TreeIndex {
 
     /// Full path identity, including a stale directory at the same root path.
     pub fn contains_root_path(&self, path: &Path) -> bool {
+        if self.manual_order { return self.path_index(path).is_some(); }
         let name = path.file_name().unwrap_or_default().to_string_lossy();
         [false, true].into_iter().any(|dir| {
             let rank = insertion_rank(&self.root, dir, &name, path);
@@ -149,7 +162,7 @@ impl TreeIndex {
     pub fn insert_note(&mut self, path: PathBuf) {
         if self.contains_root_path(&path) { return; }
         let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
-        let rank = insertion_rank(&self.root, false, &name, &path);
+        let rank = if self.manual_order { size(&self.root) } else { insertion_rank(&self.root, false, &name, &path) };
         let stem = row_stem(&name, false);
         let row = Row {
             root_name: Arc::from(name.as_str()), root_path: Arc::from(path.as_path()),
@@ -159,6 +172,46 @@ impl TreeIndex {
         self.notes += 1;
         let (left, right) = split(self.root.take(), rank);
         self.root = merge(merge(left, Some(entry)), right);
+    }
+
+    fn path_index(&self, path: &Path) -> Option<usize> {
+        fn walk(link: &Link, path: &Path, offset: usize) -> Option<usize> {
+            let n = link.as_ref()?;
+            let index = offset + size(&n.left);
+            if n.row.path.as_ref() == path { return Some(index); }
+            walk(&n.left, path, offset).or_else(|| walk(&n.right, path, index + 1))
+        }
+        walk(&self.root, path, 0)
+    }
+
+    pub fn is_root(&self, path: &Path) -> bool {
+        self.path_index(path).and_then(|i| entry_at(&self.root, i)).is_some_and(|n| n.row.depth == 0)
+    }
+
+    pub fn siblings(&self, path: &Path) -> Vec<PathBuf> {
+        fn walk(link: &Link, parent: Option<&Path>, out: &mut Vec<PathBuf>) {
+            let Some(n) = link else { return };
+            walk(&n.left, parent, out);
+            if n.row.path.parent() == parent { out.push(n.row.path.to_path_buf()); }
+            walk(&n.right, parent, out);
+        }
+        let mut out = Vec::new();
+        walk(&self.root, path.parent(), &mut out);
+        out
+    }
+
+    pub fn reorder(&mut self, source: &Path, target: &Path, after: bool) {
+        if source == target || source.parent() != target.parent() { return; }
+        let (Some(from), Some(to)) = (self.path_index(source), self.path_index(target)) else { return };
+        let count = entry_at(&self.root, from).unwrap().row.descendants + 1;
+        let slot = to + if after { entry_at(&self.root, to).unwrap().row.descendants + 1 } else { 0 };
+        let (left, rest) = split(self.root.take(), from);
+        let (moving, right) = split(rest, count);
+        let remainder = merge(left, right);
+        let slot = if from < slot { slot - count } else { slot };
+        let (left, right) = split(remainder, slot);
+        self.root = merge(merge(left, moving), right);
+        self.manual_order = true;
     }
 
     fn entry(&mut self, row: Row) -> Box<Entry> {

@@ -117,6 +117,8 @@ pub struct State {
     pub folder: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notebooks: Vec<PathBuf>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub file_order: std::collections::BTreeMap<PathBuf, Vec<PathBuf>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ignored_search_folders: Vec<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
