@@ -10,6 +10,26 @@ use super::model::{Block, Doc, Kind, Numbering};
 #[path = "markdown_boundaries.rs"] mod boundaries;
 #[path = "markdown_list.rs"] mod list;
 
+/// Visible text runs, with their ranges in the editor block. Raw HTML scaffolding
+/// is excluded; code remains literal, and semantic table text is already projected.
+pub(crate) fn search_runs(block: &Block) -> Vec<(std::ops::Range<usize>, String)> {
+    if block.meta.raw_source.is_some() && block.text.trim_start().starts_with('<') {
+        if let Some(tokens) = html::tokens(&block.text) {
+            let mut hidden = false;
+            return tokens.into_iter().filter_map(|token| match token.value {
+                html::HtmlValue::Tag { name, close, .. } => {
+                    if matches!(name.as_str(), "script" | "style") { hidden = !close; }
+                    None
+                }
+                html::HtmlValue::Text(text) if !hidden => Some((token.range, text)),
+                _ => None,
+            }).collect();
+        }
+        return Vec::new();
+    }
+    vec![(0..block.text.len(), block.text.clone())]
+}
+
 pub fn strip_frontmatter(source: &str) -> &str { blocks::strip_frontmatter(source) }
 pub fn rebuild_table_source(table: &mut super::model::Table) { table::rebuild(table) }
 pub(super) fn serialize_table(table: &super::model::Table, out: &mut String) { table::serialize(table, out) }

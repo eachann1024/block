@@ -64,11 +64,24 @@ fn folder_label(root: &Path, path: &Path, stem: &str, include_root_name: bool) -
 }
 
 fn inspect(root: &Path, path: &Path, query: &str, include_root_name: bool) -> Option<Hit> {
-    let stem = path.file_stem()?.to_string_lossy().into_owned();
-    let title_marks = find_all(&stem, query);
     let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     let body = if size <= MAX_FILE_BYTES { std::fs::read_to_string(path).unwrap_or_default() } else { String::new() };
-    let body_matches = find_all(&body, query);
+    inspect_body(root, path, query, include_root_name, &body)
+}
+
+pub(super) fn inspect_body(root: &Path, path: &Path, query: &str, include_root_name: bool, source: &str) -> Option<Hit> {
+    let stem = path.file_stem()?.to_string_lossy().into_owned();
+    let title_marks = find_all(&stem, query);
+    let doc = crate::editor::markdown::parse(source);
+    let mut body = String::new();
+    let mut body_matches = Vec::new();
+    for (_, text) in doc.blocks.iter().flat_map(crate::editor::markdown::search_runs) {
+        let offset = body.len();
+        body_matches.extend(find_all(&text, query).into_iter()
+            .map(|range| offset + range.start..offset + range.end));
+        body.push_str(&text);
+        body.push('\n');
+    }
     let count = body_matches.len();
     let found = body_matches.into_iter().next();
     if title_marks.is_empty() && found.is_none() { return None; }
