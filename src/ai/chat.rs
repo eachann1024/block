@@ -74,7 +74,7 @@ pub(crate) struct AiChat {
     pub(super) pending_approval: Option<(String, String, String)>, pub(super) approval_state: Option<(String, std::rc::Rc<std::cell::RefCell<crate::ui::ai_approval::ApprovalState>>)>,
     pub(super) pending_question: Option<PendingQuestion>,
     pub(super) backend_statuses: Vec<(super::backend::BackendKind, super::backend::BackendStatus)>,
-    pub(super) model_cache: Vec<(super::backend::BackendKind, chat_models::ModelStatus, Vec<super::backend::ModelOption>)>,
+    pub(super) model_cache: super::backend::model_cache::ModelCache,
     pub(super) serial: u64,
     pub(super) error: Option<String>,
     pub(super) error_settings: bool,
@@ -154,6 +154,7 @@ pub(crate) fn sync_settings(cx: &mut App) {
         let recognized = this.recognized_backends();
         this.backend_config.ensure_valid_selection(&recognized);
         this.probe_backend(super::backend::BackendKind::Builtin, cx);
+        this.model_cache.invalidate(super::backend::BackendKind::Builtin);
         this.refresh_models_for(super::backend::BackendKind::Builtin, cx);
         cx.notify();
     });
@@ -218,7 +219,7 @@ impl AiChat {
             backend_config: super::backend::BackendConfig::load(), backend_runtime: Default::default(), active_external: None, external_tools: None,
             sent_draft: None, deferred_drafts: chat_drafts::load(), retry_draft: chat_draft_state::retry_for_conversation(active.retry, current), selection_scope: false, pending_approval: None, approval_state: None, pending_question: None,
             backend_statuses: vec![(super::backend::BackendKind::Builtin, super::backend::BackendStatus::Ready { version: "Block".into() })],
-            model_cache: Vec::new(), serial: 0, error: None,
+            model_cache: Default::default(), serial: 0, error: None,
             error_settings: false, picker_cache: Default::default(), pick_index: 0, picker_dismissed: false, history: false, open: false, fullscreen: chat_resize::load_fullscreen(), last_en: crate::theme::is_en(), editor: None, panel_focus: cx.focus_handle(), scroll: ScrollHandle::new(), deck_scroll: ScrollHandle::new(), _sub: sub };
         for kind in super::backend::BackendKind::ALL {
             chat.probe_backend(kind, cx);

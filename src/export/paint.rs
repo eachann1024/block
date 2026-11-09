@@ -3,9 +3,9 @@ use cosmic_text::{Buffer, Color, FontSystem, SwashCache};
 use tiny_skia::Pixmap;
 
 use super::decor_shapes::fill_rect;
-use super::layout::{Layout, SCALE, STRIKE};
+use super::layout::{CODE, Layout, SCALE, STRIKE};
 use super::palette::Palette;
-use super::rich::{BACKGROUND_SHIFT, UNDERLINE};
+use super::rich::{BACKGROUND_SHIFT, HIGHLIGHT, LINK, UNDERLINE};
 use super::{Cancellation, ExportError};
 
 pub(super) fn rasterize(
@@ -37,7 +37,7 @@ pub(super) fn rasterize(
                     frame.y,
                     frame.width,
                     frame.height,
-                    pal.bg(color),
+                    color,
                 );
             }
             let border = pal.table_border;
@@ -63,8 +63,7 @@ pub(super) fn rasterize(
                 row.x,
                 row.y + 8.0,
                 (&pal, row.callout.map_or(pal.secondary, |kind| {
-                    let (_, _, color, _, _) = crate::ui::callout_controls::tone(kind, pal.dark);
-                    Color::rgb((color >> 16) as u8, (color >> 8) as u8, color as u8)
+                    pal.callout_colors(kind).2
                 })),
                 fonts,
                 cache,
@@ -75,14 +74,18 @@ pub(super) fn rasterize(
         for run in row.buffer.layout_runs() {
             for glyph in run.glyphs {
                 let index = glyph.metadata >> BACKGROUND_SHIFT;
-                if let Some(color) = index.checked_sub(1).and_then(|i| row.backgrounds.get(i)) {
+                let background = index.checked_sub(1).and_then(|i| row.backgrounds.get(i))
+                    .map(|color| pal.bg(*color))
+                    .or_else(|| (glyph.metadata & CODE != 0).then_some(pal.code_bg))
+                    .or_else(|| (glyph.metadata & HIGHLIGHT != 0).then(|| pal.highlight_bg()));
+                if let Some(color) = background {
                     fill_rect(
                         &mut image,
                         row.x + glyph.x,
                         row.text_y + run.line_top + 1.,
                         glyph.w,
                         run.line_height - 2.,
-                        pal.bg(*color),
+                        color,
                     );
                 }
             }
@@ -109,7 +112,7 @@ pub(super) fn rasterize(
                         row.text_y + run.line_y - glyph.font_size * 0.3,
                         glyph.w,
                         1.,
-                        glyph.color_opt.map_or(fg, |c| pal.fg(c)),
+                        glyph_color(glyph.color_opt, glyph.metadata, &pal, fg),
                     );
                 }
                 if glyph.metadata & UNDERLINE != 0 {
@@ -119,13 +122,17 @@ pub(super) fn rasterize(
                         row.text_y + run.line_y + 2.,
                         glyph.w,
                         1.,
-                        glyph.color_opt.map_or(fg, |c| pal.fg(c)),
+                        glyph_color(glyph.color_opt, glyph.metadata, &pal, fg),
                     );
                 }
             }
         }
     }
     Ok(image)
+}
+
+fn glyph_color(color: Option<Color>, metadata: usize, pal: &Palette, default: Color) -> Color {
+    color.map_or_else(|| if metadata & LINK != 0 { pal.link_fg() } else { default }, |c| pal.fg(c))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -148,7 +155,7 @@ pub(super) fn text(
             if glyph.glyph_id == 0 {
                 continue;
             }
-            let glyph_color = glyph.color_opt.map_or(default, |c| pal.fg(c));
+            let glyph_color = glyph_color(glyph.color_opt, glyph.metadata, pal, default);
             let physical = glyph.physical((x * SCALE, (y + run.line_y) * SCALE), SCALE);
             let mut drew = false;
             cache.with_pixels(

@@ -14,6 +14,7 @@ mod format;
 mod job;
 mod layout;
 mod media;
+mod media_theme;
 mod paint;
 mod palette;
 mod palette_colors;

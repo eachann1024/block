@@ -1,5 +1,5 @@
 //! Output formats offered by the export view, and the Markdown renderer.
-use super::{RenderOptions, WATERMARK_LABEL};
+use super::RenderOptions;
 use crate::editor::markdown;
 use crate::editor::model::{Block, Doc, Kind};
 use crate::theme::tr;
@@ -51,6 +51,10 @@ impl ExportFormat {
     pub fn is_visual(self) -> bool {
         matches!(self, Self::Png | Self::Pdf)
     }
+
+    pub fn supports_watermark(self) -> bool {
+        self != Self::Markdown
+    }
 }
 
 pub fn render_markdown(blocks: &[Block], options: &RenderOptions) -> String {
@@ -70,12 +74,6 @@ pub fn render_markdown(blocks: &[Block], options: &RenderOptions) -> String {
         if !duplicated {
             out.insert_str(0, &format!("# {title}\n\n"));
         }
-    }
-    if options.footer {
-        if !out.ends_with('\n') {
-            out.push('\n');
-        }
-        out.push_str(&format!("\n---\n*{WATERMARK_LABEL}*\n"));
     }
     out
 }

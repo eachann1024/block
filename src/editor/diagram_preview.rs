@@ -120,10 +120,13 @@ fn mermaid_theme(dark: bool) -> MermaidTheme {
 }
 
 pub(crate) fn render_mermaid_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f32, f32), String> {
+    render_mermaid_svg_with_theme(source, &mermaid_theme(dark))
+}
+
+pub(crate) fn render_mermaid_svg_with_theme(source: &str, theme: &MermaidTheme) -> Result<(Vec<u8>, f32, f32), String> {
     let parsed = parse_mermaid_strict(source).map_err(|e| concise_error(&e.to_string()))?;
-    let theme = mermaid_theme(dark);
     let config = LayoutConfig::default();
-    let layout = compute_layout(&parsed.graph, &theme, &config);
+    let layout = compute_layout(&parsed.graph, theme, &config);
     let dims = measure_svg_dimensions(&layout, &config, None);
     let raw_w = dims.width.max(40.);
     let raw_h = dims.height.max(24.);
@@ -132,7 +135,7 @@ pub(crate) fn render_mermaid_svg(source: &str, dark: bool) -> Result<(Vec<u8>, f
     let logical_h = (raw_h * scale).round().max(24.);
     let svg = render_svg_with_dimensions(
         &layout,
-        &theme,
+        theme,
         &config,
         Some(((logical_w * 2.).round(), (logical_h * 2.).round())),
     );
