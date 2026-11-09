@@ -244,6 +244,7 @@ impl Editor {
         if !self.selection_ranges().is_empty() {
             self.table_menu = None; self.block_menu = None;
             let spec = crate::dropdown::PlacementSpec::point(event.position).viewport(self.list.viewport_bounds());
+            super::menu_keys::arm_format(0);
             self.format = Some(FormatPop::SelectionMenu { spec });
             cx.notify();
             return;

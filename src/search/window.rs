@@ -161,7 +161,13 @@ impl SearchWindow {
                     this.state.sync_folders(main_folders(cx));
                     this.state.run_search(query, cx, |this| Some(&mut this.state));
                 }
-                InputEvent::PressEnter { .. } => this.open_hit(window, cx),
+                InputEvent::PressEnter { .. } => {
+                    if this.state.scope_menu_open {
+                        let changed = this.state.accept_scope_cursor();
+                        if changed { this.state.research(cx, |this| Some(&mut this.state)); }
+                        cx.notify();
+                    } else { this.open_hit(window, cx); }
+                },
                 _ => {}
             }
         });
@@ -221,6 +227,7 @@ impl Render for SearchWindow {
             cx.defer(move |cx| { task.update(cx, |this, cx| this.state.research(cx, |this| Some(&mut this.state))).ok(); });
         }
         div()
+            .child(crate::ui::menu_nav::flush_layer(cx))
             .id("search-window").key_context("SearchPalette").size_full().relative()
             .flex().flex_col().overflow_hidden().rounded(px(12.))
             .bg(theme.menu).border_1().border_color(theme.menu_border).text_color(theme.text)
@@ -228,8 +235,14 @@ impl Render for SearchWindow {
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
                 if this.state.scope_menu_open { this.state.scope_menu_open = false; cx.notify(); }
             }))
-            .on_action(cx.listener(|this, _: &SearchUp, _, cx| { this.state.move_selection(-1); cx.notify(); }))
-            .on_action(cx.listener(|this, _: &SearchDown, _, cx| { this.state.move_selection(1); cx.notify(); }))
+            .on_action(cx.listener(|this, _: &SearchUp, _, cx| {
+                if !this.state.step_scope_menu(false) { this.state.move_selection(-1); }
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &SearchDown, _, cx| {
+                if !this.state.step_scope_menu(true) { this.state.move_selection(1); }
+                cx.notify();
+            }))
             .on_action(cx.listener(|this, _: &SearchNextScope, _, cx| this.step_scope(1, cx)))
             .on_action(cx.listener(|this, _: &SearchPrevScope, _, cx| this.step_scope(-1, cx)))
             .on_action(cx.listener(|this, _: &SearchResetScopeAll, _, cx| {

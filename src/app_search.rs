@@ -139,7 +139,12 @@ impl Workspace {
                     search.state.run_search(query, cx, |this| this.search.as_mut().map(|search| &mut search.state));
                 }
             }
-            InputEvent::PressEnter { .. } => this.open_hit(window, cx),
+            InputEvent::PressEnter { .. } => {
+                if this.search.as_ref().is_some_and(|search| search.state.scope_menu_open) {
+                    let changed = this.search.as_mut().is_some_and(|search| search.state.accept_scope_cursor());
+                    this.finish_scope(changed, cx);
+                } else { this.open_hit(window, cx); }
+            },
             _ => {}
         });
         let focus_input = input.clone();
@@ -193,10 +198,12 @@ impl Workspace {
                 }
             }))
             .on_action(cx.listener(|this, _: &SearchUp, _, cx| {
-                if let Some(search) = &mut this.search { search.state.move_selection(-1); cx.notify(); }
+                if let Some(search) = &mut this.search && !search.state.step_scope_menu(false) { search.state.move_selection(-1); }
+                cx.notify();
             }))
             .on_action(cx.listener(|this, _: &SearchDown, _, cx| {
-                if let Some(search) = &mut this.search { search.state.move_selection(1); cx.notify(); }
+                if let Some(search) = &mut this.search && !search.state.step_scope_menu(true) { search.state.move_selection(1); }
+                cx.notify();
             }))
             .on_action(cx.listener(|this, _: &SearchNextScope, _, cx| this.cycle_search_scope(1, cx)))
             .on_action(cx.listener(|this, _: &SearchPrevScope, _, cx| this.cycle_search_scope(-1, cx)))

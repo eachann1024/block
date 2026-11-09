@@ -8,7 +8,7 @@ use gpui::{
 use crate::{
     dropdown::{self, RowSpec},
     theme::is_dark,
-    ui::icon_button::copy_button as ui_copy_button,
+    ui::{icon_button::copy_button as ui_copy_button, menu_nav},
 };
 use super::{
     block_menu::{Cmd, LANGUAGES, Mode, canonical_lang_tag, language_icon, language_label},
@@ -34,6 +34,11 @@ thread_local! {
     static COPIED_BLOCKS: RefCell<HashSet<u64>> = Default::default();
     static LANG_BOUNDS: RefCell<HashMap<u64, (Bounds<Pixels>, Size<Pixels>)>> = Default::default();
     static LANG_PICKER: RefCell<Option<LangPicker>> = const { RefCell::new(None) };
+    static LANG_SCROLL: gpui::ScrollHandle = gpui::ScrollHandle::new();
+}
+
+fn lang_scroll() -> gpui::ScrollHandle {
+    LANG_SCROLL.with(|scroll| scroll.clone())
 }
 
 pub(super) fn is_mermaid(language: &str) -> bool {
@@ -65,8 +70,11 @@ pub(super) fn step_lang_picker(down: bool, cx: &mut Context<Editor>) -> bool {
         let mut borrow = slot.borrow_mut();
         let Some(picker) = borrow.as_mut() else { return false };
         let count = LANGUAGES.len();
-        let cur = picker.index.min(count.saturating_sub(1));
-        picker.index = if down { (cur + 1) % count } else { (cur + count - 1) % count };
+        if count == 0 { return false; }
+        let next = menu_nav::step_uniform(picker.index, count, down);
+        let changed = next != picker.index.min(count - 1);
+        picker.index = next;
+        if changed { menu_nav::reveal_or_defer(&lang_scroll(), next, count); }
         true
     });
     if stepped { cx.notify(); }
@@ -198,6 +206,8 @@ pub(super) fn top_controls(
             let checked_idx = LANGUAGES.iter().position(|(t, _)| *t == cur_canon).unwrap_or(default_idx);
             let fallback = point(event.position.x - px(LANG_MENU_W), event.position.y + px(12.));
             window.focus(&this.focus, cx);
+            lang_scroll().set_offset(point(px(0.), px(0.)));
+            menu_nav::reveal_or_defer(&lang_scroll(), checked_idx, LANGUAGES.len());
             LANG_PICKER.with(|slot| {
                 *slot.borrow_mut() = Some(LangPicker { block_id, fallback, index: checked_idx });
             });
@@ -235,7 +245,8 @@ fn lang_dropdown(
         .unwrap_or(px(dropdown::MAX_HEIGHT));
     let mut menu = dropdown::shell(("code-lang-menu", block_id as usize))
         .w(px(LANG_MENU_W))
-        .max_h(max_h);
+        .max_h(max_h)
+        .track_scroll(&lang_scroll());
     for (idx, (tag, _)) in LANGUAGES.iter().copied().enumerate() {
         let label = language_label(tag);
         let checked = cur_canon == tag;

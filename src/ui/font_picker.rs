@@ -77,6 +77,7 @@ pub fn font_picker_popover(
     search_input: &gpui::Entity<gpui_component::input::InputState>,
     scroll_handle: &gpui::UniformListScrollHandle,
     items: Rc<[FlatFontItem]>,
+    cursor: usize,
     phase: crate::ui::motion::PopupMotion,
     pop_gen: u64,
     cx: &mut gpui::Context<Workspace>,
@@ -124,6 +125,7 @@ pub fn font_picker_popover(
                 range.map(|ix| {
                     let item = &items_clone[ix];
                     let active = item.selected;
+                    let keyed = ix == cursor;
                     let name = item.name.clone();
                     let picked = name.to_string();
                     let check_colors = IconColors {
@@ -135,6 +137,7 @@ pub fn font_picker_popover(
                         .id(ElementId::NamedInteger("font-row".into(), ix as u64))
                         .w_full().h(px(ITEM_HEIGHT)).px(px(10.)).rounded(crate::ui::radius::CONTROL)
                         .flex().items_center().justify_between().cursor(CursorStyle::PointingHand)
+                        .when(keyed, move |s| s.bg(pal.hover_bg))
                         .hover(move |s| s.bg(pal.hover_bg))
                         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
                             cx.stop_propagation();
@@ -171,6 +174,16 @@ pub fn font_picker_popover(
                 cx.stop_propagation();
                 this.close_font_picker(cx);
             }
+        }))
+        .capture_action(cx.listener(|this, _: &gpui_component::input::MoveUp, _, cx| {
+            if this.step_font_picker(false, cx) { cx.stop_propagation(); }
+        }))
+        .capture_action(cx.listener(|this, _: &gpui_component::input::MoveDown, _, cx| {
+            if this.step_font_picker(true, cx) { cx.stop_propagation(); }
+        }))
+        .capture_action(cx.listener(|this, action: &gpui_component::input::Enter, window, cx| {
+            if action.shift || action.secondary { return; }
+            if this.accept_font_picker(window, cx) { cx.stop_propagation(); }
         }))
         .child(search_bar).child(list_element);
 
