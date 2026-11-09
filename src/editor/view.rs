@@ -43,6 +43,7 @@ pub struct Editor {
     pub(super) hover: Option<u64>,
     pub(super) hover_gen: u64,
     pub(super) dragging: Option<u64>,
+    pub(super) drag_ranges: std::cell::RefCell<interaction::DragRanges>,
     pub(super) drag_over: Option<interaction::DropTarget>,
     pub(super) selecting: bool,
     pub(super) block_menu: Option<super::block_menu::BlockMenu>, pub(super) block_menu_scroll: gpui::ScrollHandle,
@@ -97,7 +98,7 @@ impl Editor {
         crate::dropdown::register_editor(&cx.entity()); super::zoom::register_editor(&cx.entity());
         cx.on_app_quit(|editor, _| { editor.prepare_to_quit(); async {} }).detach();
         let doc = Doc::empty(); let caret = Caret::new(doc.blocks[0].id);
-        Self { doc, caret, focus: cx.focus_handle(), preview_focus: cx.focus_handle(), preview_was_open: false, hover: None, hover_gen: 0, dragging: None,
+        Self { doc, caret, focus: cx.focus_handle(), preview_focus: cx.focus_handle(), preview_was_open: false, hover: None, hover_gen: 0, dragging: None, drag_ranges: Default::default(),
             drag_over: None, selecting: false, block_menu: None, block_menu_scroll: Default::default(), nowrap: Default::default(), folded: Default::default(), fold_tails: Vec::new(), table_sel: None, table_menu: None, table_drag: None, table_extend: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, image_menu: None, link_ui: Default::default(), layouts: HashMap::new(),
             list: ListState::new(1, ListAlignment::Top, px(120.)), scroll_top: (0, px(0.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),

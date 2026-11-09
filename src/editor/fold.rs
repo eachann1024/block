@@ -151,10 +151,10 @@ impl Editor {
     pub(super) fn is_index_hidden(&self, index: usize) -> bool {
         // Hidden when any enclosing folded heading does not reveal this block.
         // A lower folded heading can reveal its own tail without opening its parent.
-        (0..index).any(|heading| {
+        self.folded.iter().any(|id| {
+            let Some(heading) = self.doc.index_of(*id).filter(|&heading| heading < index) else { return false; };
             let block = &self.doc.blocks[heading];
-            self.folded.contains(&block.id)
-                && heading_level(block).is_some()
+            heading_level(block).is_some()
                 && index < fold_end(&self.doc, heading)
                 && !self.tail_reveals(heading, index)
         })
