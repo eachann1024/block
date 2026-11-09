@@ -2,7 +2,7 @@
 use super::export_docx::HEADING_SIZES;
 use super::format::{heading_level, is_rule};
 use super::palette::Palette;
-use super::{Cancellation, ExportError, RenderOptions};
+use super::{Cancellation, ExportError, RenderOptions, WATERMARK_LABEL};
 use crate::editor::model::{Block, CellAlignment, Kind, MarkKind, Table};
 use cosmic_text::Color;
 
@@ -271,7 +271,7 @@ pub(super) fn body(
     }
     if options.footer {
         let props = format!("<w:pBdr><w:top w:val=\"single\" w:sz=\"4\" w:space=\"8\" w:color=\"{}\"/></w:pBdr><w:spacing w:before=\"480\"/>", hex(pal.divider));
-        let run = format!("<w:r><w:rPr><w:color w:val=\"{}\"/><w:sz w:val=\"18\"/></w:rPr><w:t>Block</w:t></w:r>", hex(pal.secondary));
+        let run = format!("<w:r><w:rPr><w:color w:val=\"{}\"/><w:sz w:val=\"18\"/></w:rPr><w:t>{WATERMARK_LABEL}</w:t></w:r>", hex(pal.secondary));
         out.push_str(&para(None, &props, &run));
     }
     out.push_str(&format!(
