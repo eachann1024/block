@@ -85,7 +85,29 @@ async fn fetch_url(url: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+fn local_font_urls(filename: &str) -> Vec<String> {
+    let mut names = vec![filename];
+    match filename {
+        "ibm-plex-sans-latin-400-normal.ttf" => names.push("IBMPlexSans-Regular.ttf"),
+        "ibm-plex-sans-latin-600-normal.ttf" => names.push("IBMPlexSans-SemiBold.ttf"),
+        "jetbrains-mono-latin-400-normal.ttf" => names.push("JetBrainsMono-Regular.ttf"),
+        "jetbrains-mono-latin-500-normal.ttf" => names.push("JetBrainsMono-Medium.ttf"),
+        _ => {}
+    }
+    let mut urls = Vec::with_capacity(names.len() * 2);
+    for name in names {
+        urls.push(format!("./editor/fonts/{name}"));
+        urls.push(format!("./fonts/{name}"));
+    }
+    urls
+}
+
 async fn fetch_spec(spec: FontSpec, errors: &mut Vec<String>) -> Option<Vec<u8>> {
+    for url in local_font_urls(spec.filename) {
+        if let Ok(bytes) = fetch_url(&url).await {
+            return Some(bytes);
+        }
+    }
     let mut last_err = String::new();
     for url in spec.urls() {
         if !url.ends_with(".ttf") {

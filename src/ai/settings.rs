@@ -32,14 +32,17 @@ impl Global for Holder {}
 
 /// Creates the form the first time 偏好设置 opens (inputs need a window).
 pub(crate) fn ensure(window: &mut Window, cx: &mut App) {
-    let chat_entity = super::chat::chat(window, cx);
-    chat_entity.update(cx, |chat, cx| {
-        for kind in super::backend::BackendKind::ALL {
-            if kind != super::backend::BackendKind::Builtin && chat.backend_status(kind).is_none() {
-                chat.probe_backend(kind, cx);
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let chat_entity = super::chat::chat(window, cx);
+        chat_entity.update(cx, |chat, cx| {
+            for kind in super::backend::BackendKind::ALL {
+                if kind != super::backend::BackendKind::Builtin && chat.backend_status(kind).is_none() {
+                    chat.probe_backend(kind, cx);
+                }
             }
-        }
-    });
+        });
+    }
     if cx.has_global::<Holder>() { return; }
     let form = cx.new(|cx| AiSettings::new(window, cx));
     cx.set_global(Holder(form));
