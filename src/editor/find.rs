@@ -33,6 +33,36 @@ pub(super) fn find_all(text: &str, query: &str) -> Vec<Range<usize>> {
 }
 
 impl Editor {
+    pub(crate) fn queue_search_jump(&mut self, path: std::path::PathBuf, query: String, cx: &mut Context<Self>) {
+        self.search_jump = Some((path, query));
+        self.apply_search_jump(cx);
+    }
+
+    pub(super) fn apply_search_jump(&mut self, cx: &mut Context<Self>) {
+        let Some((path, _)) = &self.search_jump else { return };
+        if self.path.as_ref() != Some(path) || self.persistence.loading { return; }
+        let Some((_, query)) = self.search_jump.take() else { return };
+        let found = self.doc.blocks.iter().find_map(|block| {
+            super::markdown::search_runs(block).into_iter().find_map(|(source, text)| {
+                let range = crate::files::search::find_all(&text, &query).into_iter().next()?;
+                // Decoded entities have different byte lengths; select their source run.
+                let range = if block.text.get(source.clone()) == Some(text.as_str()) {
+                    source.start + range.start..source.start + range.end
+                } else { source };
+                Some((block.id, range))
+            })
+        });
+        let Some((id, range)) = found else { return };
+        self.clear_transient_overlays();
+        self.ensure_block_visible(id);
+        self.caret.anchor = Position { block: id, offset: range.start };
+        self.caret.head = Position { block: id, offset: range.end };
+        self.caret.composing = None;
+        self.reveal_caret = true;
+        if let Some(index) = self.doc.index_of(id) { self.list.scroll_to_reveal_item(index); }
+        cx.notify();
+    }
+
     pub(crate) fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.is_markdown_note() && !self.editing_source() { return; }
         let seed = self.single_block_selection();

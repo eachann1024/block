@@ -84,6 +84,7 @@ pub struct Editor {
     /// Quick-note mode: no floating toolbar, no block handles, narrower padding, no status bar.
     pub(super) minimal: bool,
     pub(super) find: Option<super::find::FindState>,
+    pub(super) search_jump: Option<(PathBuf, String)>,
     pub(super) annotate: super::annotate::AnnotateState,
     pub(super) outline: super::outline::OutlineState,
     pub(super) sessions: HashMap<PathBuf, session::TabSession>,
@@ -101,7 +102,7 @@ impl Editor {
             list: ListState::new(1, ListAlignment::Top, px(120.)), scroll_top: (0, px(0.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
-            persistence: Persistence::default(), pointer_subscriptions: Vec::new(), block_clip: None, block_sel: None, minimal: false, find: None, annotate: Default::default(), sessions: HashMap::new(),
+            persistence: Persistence::default(), pointer_subscriptions: Vec::new(), block_clip: None, block_sel: None, minimal: false, find: None, search_jump: None, annotate: Default::default(), sessions: HashMap::new(),
             outline: Default::default(), surface: super::surface::Surface::Note, source_layouts: HashMap::new(), source_drag: false }
     }
     pub fn set_minimal(&mut self, minimal: bool) { self.minimal = minimal; }

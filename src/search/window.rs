@@ -198,11 +198,12 @@ impl SearchWindow {
     }
     fn open_hit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(path) = self.state.selected_path() else { return };
+        let query = self.state.selected_query();
         self.close(window, cx);
         let Some((Some(main_handle), workspace)) = main_window(cx) else { return };
         activate_main_window(cx);
         let _ = main_handle.update(cx, |_, main_win, cx| {
-            workspace.update(cx, |w, cx| w.open_from_search(path, main_win, cx));
+            workspace.update(cx, |w, cx| w.open_from_search(path, query, main_win, cx));
         });
     }
     fn step_scope(&mut self, delta: isize, cx: &mut Context<Self>) {
