@@ -163,6 +163,9 @@ impl Editor {
         s.status = AiStatus::Thinking { tick: 0, partial: String::new(), reasoning: String::new() };
         let (user, input) = (user_prompt(&s.original, &prompt), s.input.clone());
         input.update(cx, |i, cx| i.set_value("", window, cx));
+        #[cfg(not(target_family = "wasm"))]
+        let rx = super::inline_backend::stream(SYSTEM_PROMPT.to_owned(), user, cancel, cx);
+        #[cfg(target_family = "wasm")]
         let rx = provider::stream(SYSTEM_PROMPT.to_owned(), user, cancel);
         cx.spawn_in(window, async move |this, cx| {
             loop {

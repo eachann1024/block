@@ -37,13 +37,18 @@ fn run_inner(request: &TurnRequest, events: &Sender<BackendEvent>, tools: ToolBr
         Some(json!({"type":"function","name":function.get("name")?,"description":function.get("description")?,"inputSchema":function.get("parameters")?}))
     }).collect();
     if dynamic.is_empty() { return Err(BackendError::new("codex_tools", "Block 工具定义不可用")); }
-    let (sandbox, approval_policy, sandbox_policy) = if full_permissions {
+    let (sandbox, approval_policy, sandbox_policy) = if request.config.get("textOnly").and_then(Value::as_bool) == Some(true) {
+        ("read-only", "never", json!({"type":"readOnly"}))
+    } else if full_permissions {
         ("danger-full-access", "never", json!({"type":"dangerFullAccess"}))
     } else {
         ("workspace-write", "on-request", json!({"type":"workspaceWrite"}))
     };
+    let instructions = if request.config.get("textOnly").and_then(Value::as_bool) == Some(true) {
+        "Return only the requested rewritten text. Do not use tools or edit files."
+    } else { "笔记和选区可使用 Block 提供的工具读取，批量修改笔记内容请优先使用 executeBatchPlan。" };
     let mut params = json!({"cwd":cwd,"sandbox":sandbox,"approvalPolicy":approval_policy,
-        "developerInstructions":"笔记和选区可使用 Block 提供的工具读取，批量修改笔记内容请优先使用 executeBatchPlan。"});
+        "developerInstructions":instructions});
     if let Some(model) = request.config.get("model").and_then(Value::as_str).filter(|model| !model.is_empty()) { params["model"] = json!(model); }
     let method = if let Some(id) = &request.native_session_id { params["threadId"] = json!(id); "thread/resume" }
         else { params["dynamicTools"] = json!(dynamic); "thread/start" };
