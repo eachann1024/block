@@ -155,6 +155,15 @@ pub fn parse(source: &str) -> Doc {
         result.push(block);
     }
     swallow_separators(&mut result);
+    let mut numbering = Numbering::default();
+    let mut after_blank = false;
+    for block in &mut result {
+        // Blank source lines may split the editor list, but do not make the next
+        // Markdown item's marker an explicit start. Keep only the source run's start.
+        if is_blank(block) { after_blank = true; continue; }
+        numbering.normalize_imported_start(block, after_blank);
+        after_blank = false;
+    }
     Doc::from_blocks(result)
 }
 
