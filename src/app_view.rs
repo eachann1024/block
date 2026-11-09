@@ -22,6 +22,8 @@ impl Render for Workspace {
         let export = crate::export::active_view(cx);
         let ai_fullscreen = self.ai_immersive(cx);
         let drawer_open = split.sidebar_drawer && !ai_fullscreen && !self.is_history_open();
+        self.settings_sidebar_intro(drawer_open, window, cx);
+        let drawer_leaving = self.settings.as_ref().is_some_and(|m| m.sidebar_intro_leaving);
         sync_fullscreen_traffic_lights(self, ai_fullscreen, window);
         let root = div().size_full().relative().flex().flex_col().overflow_hidden().bg(theme.shell).text_color(theme.text)
             .child(crate::ui::menu_nav::flush_layer(cx))
@@ -94,6 +96,9 @@ impl Render for Workspace {
                             cx.stop_propagation();
                             this.toggle_sidebar(window, cx);
                         }))
+                        .map(|scrim| if drawer_leaving {
+                            crate::ui::motion::layer_fade(scrim, "settings-sidebar-scrim-exit", false).into_any_element()
+                        } else { scrim.into_any_element() })
                 ))
                 .when(self.settings.is_none(), |d| {
                     let Some(panel) = crate::editor::ai::chat::panel(cx) else { return d; };
@@ -106,10 +111,13 @@ impl Render for Workspace {
                         d.child(panel)
                     }
                 })
-                .when(drawer_open, |d| d.child(
-                    div().absolute().top_0().left_0().bottom_0().w(self.sidebar_width).occlude().shadow_lg()
-                        .child(if self.settings.is_some() { self.settings_sidebar(cx).into_any_element() } else { self.sidebar(cx).into_any_element() })
-                )))
+                .when(drawer_open, |d| {
+                    let drawer = div().absolute().top_0().left_0().bottom_0().w(self.sidebar_width).occlude().shadow_lg()
+                        .child(if self.settings.is_some() { self.settings_sidebar(cx).into_any_element() } else { self.sidebar(cx).into_any_element() });
+                    d.child(if drawer_leaving {
+                        crate::ui::motion::drawer_exit(drawer, "settings-sidebar-exit", self.sidebar_width).into_any_element()
+                    } else { drawer.into_any_element() })
+                }))
             // The export view has its own title row and back button, so it covers the window.
             .children(export.map(|view| {
                 gpui::deferred(div().absolute().top_0().left_0().size_full().occlude().bg(theme.shell).child(view)).with_priority(4)
