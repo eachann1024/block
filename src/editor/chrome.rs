@@ -62,7 +62,7 @@ fn collapsed_gap(prev: &Block, block: &Block) -> f32 {
     above.max(below)
 }
 /// (top, bottom) padding of a row; the gap between rows is carried by the lower row's top.
-fn row_pads(this: &Editor, index: usize) -> (f32, f32) {
+pub(super) fn row_pads(this: &Editor, index: usize) -> (f32, f32) {
     let block = &this.doc.blocks[index];
     let zoom = super::zoom::zoom_factor(this.minimal);
     if this.minimal { return (2. * zoom, 2. * zoom); }
@@ -256,12 +256,15 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let editor = cx.entity();
     let row = block_row(cx.entity(), block, row_pads(this, index), handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, this.is_first_line_delete_armed(block.id), cx);
     let id = block.id;
+    let (pt, pb) = row_pads(this, index);
     let bounds = gpui::canvas(|_, _, _| (), move |bounds, (), _, cx| {
         editor.update(cx, |this, _| { this.painted_rows.insert(id, bounds); });
     }).absolute().top_0().left_0().size_full();
     div().relative().when(this.dragging == Some(block.id), |row| row.opacity(0.55))
         .when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
         .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md()))
+        .when(this.outline.highlight == Some(id), |row| row.child(crate::ui::reveal::anchor_highlight(
+            px(HANDLE_WIDTH + ROW_GAP), px(RIGHT_INSET), px(pt), px(pb))))
         .child(row).child(bounds).into_any_element()
 }
 pub(super) use super::toolbar::selection_toolbar;
