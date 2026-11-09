@@ -77,17 +77,47 @@ pub(crate) fn open_external_url(raw: &str, base_note: Option<&std::path::Path>) 
 
 /// Pressed states for the selection toolbar; a mark is on only when it covers every selected character.
 #[derive(Default, Clone, Copy)]
-pub(super) struct ToolbarState { pub bold: bool, pub italic: bool, pub strike: bool, pub code: bool, pub underline: bool, pub link: bool, pub colored: bool, pub table: bool, pub grid: bool, pub locked: bool, pub plain: bool }
+pub(super) struct ToolbarState {
+    pub bold: bool, pub italic: bool, pub strike: bool, pub code: bool,
+    pub underline: bool, pub link: bool, pub colored: bool,
+    pub available: ToolbarCapabilities,
+}
+
+/// Intersect block capabilities separately from the selection's active formatting.
+#[derive(Default, Clone, Copy)]
+pub(super) struct ToolbarCapabilities {
+    pub block_type: bool,
+    pub rich_text: bool,
+    pub bold: bool,
+    pub link: bool,
+}
 
 impl Editor {
+    fn toolbar_capabilities(&self, ranges: &[(u64, Range<usize>)]) -> ToolbarCapabilities {
+        if !self.is_markdown_note() || self.caret.is_empty() { return ToolbarCapabilities::default(); }
+        let (_, end, first, last) = self.ordered();
+        // Include empty interior blocks, but exclude a final block touched only at offset zero.
+        let mut available = ToolbarCapabilities { block_type: true, rich_text: true, bold: true, link: false };
+        let mut table = false;
+        for index in first..=last {
+            if first != last && index == last && end.offset == 0 { break; }
+            let block = &self.doc.blocks[index];
+            let rich = block.meta.raw_source.is_none() && block.meta.code_language.is_none();
+            table |= block.meta.table.is_some();
+            available.block_type &= rich && block.meta.table.is_none();
+            available.rich_text &= rich;
+            available.bold &= rich && !matches!(block.kind,
+                super::model::Kind::H1 | super::model::Kind::H2 | super::model::Kind::H3);
+        }
+        let grid = ranges.len() > 1 && table || ranges.iter().any(|(id, range)| self.doc.get(*id)
+            .and_then(|b| b.meta.table.as_ref()).is_some_and(|t| t.cell_at_range(range).is_none()));
+        available.link = available.rich_text && !ranges.is_empty() && !grid;
+        available
+    }
+
     pub(super) fn toolbar_state(&self) -> ToolbarState {
         let ranges = self.selection_ranges();
-        let mut state = ToolbarState { table: ranges.iter().any(|(id, _)| self.doc.get(*id).is_some_and(|b| b.meta.table.is_some())), ..Default::default() };
-        let any = |f: &dyn Fn(&super::model::Block) -> bool| ranges.iter().any(|(id, _)| self.doc.get(*id).is_some_and(f));
-        state.plain = any(&|b| b.meta.raw_source.is_some() || b.meta.code_language.is_some());
-        state.locked = state.table || state.plain;
-        state.grid = ranges.len() > 1 && state.table || ranges.iter().any(|(id, r)| self.doc.get(*id)
-            .and_then(|b| b.meta.table.as_ref()).is_some_and(|t| t.cell_at_range(r).is_none()));
+        let mut state = ToolbarState { available: self.toolbar_capabilities(&ranges), ..Default::default() };
         if ranges.is_empty() { return state; }
         let span_cov = |spans: &[super::model::Span], r: &Range<usize>, mark: MarkKind| {
             spans.iter().filter(|s| s.marks.contains(&mark)).map(|s| s.end.min(r.end).saturating_sub(s.start.max(r.start))).sum::<usize>() >= r.len()

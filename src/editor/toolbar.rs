@@ -4,7 +4,7 @@ use gpui::{BoxShadow, Bounds, Context, Entity, MouseButton, Pixels, Point, Share
     point, prelude::*, px, rgb, rgba};
 use crate::{icons::{Icon, stateful_icon}, theme::{Theme, tr}};
 pub(super) use crate::ui::floating_bar::{
-    ToolbarColors, animate as animate_bar, disabled_icon_button, duo_icon_colors, icon_toggle_button, sep, shell as pill,
+    ToolbarColors, animate as animate_bar, duo_icon_colors, icon_toggle_button, sep, shell as pill,
 };
 use super::{format_cmds::FormatPop, model::{Kind, MarkKind}, view::Editor};
 
@@ -58,32 +58,30 @@ impl RenderOnce for SelectionToolbar {
             )
         };
         let mark = |g, tip, kind: MarkKind, on| button(g, tip, on, false, false, editor.clone(), move |this, _, cx| this.mark(kind, cx));
-        let text_blocks = !state.locked;
-        let rich = !state.plain;
+        let available = state.available;
         // Narrow editors (AI 助手 open): wrap onto a second row inside the editor
         // instead of running under the chat panel.
         let room = editor.read(cx).list.viewport_bounds().size.width - px(16.);
         let bar = pill().px(px(4.)).py(px(6.)).gap(px(4.)).id("selection-toolbar").max_w(room).flex_wrap().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(button(Icon::TbComment, tr("添加批注", "Add annotation"), false, comment_open, false, editor.clone(), |this, w, cx| this.start_annotation(w, cx)))
             .child(button(Icon::TbReaction, tr("添加表情回应", "Add reaction"), false, reaction_open, false, editor.clone(), |this, w, cx| this.open_reactions(w, cx)))
-            .child(sep())
-            .when(text_blocks, |bar| bar
-                .child(button(Icon::TbType, tr("文字类型", "Text type"), false, kinds_open, true, editor.clone(), |this, w, cx| this.toggle_menu(true, w, cx)))
-                .child(sep()))
-            .when(rich, |bar| bar
-                .child(mark(Icon::TbBold, tr("粗体", "Bold"), MarkKind::Bold, state.bold))
+            .when(available.block_type, |bar| bar
+                .child(sep())
+                .child(button(Icon::TbType, tr("文字类型", "Text type"), false, kinds_open, true, editor.clone(), |this, w, cx| this.toggle_menu(true, w, cx))))
+            .when(available.rich_text, |bar| bar
+                .child(sep())
+                .when(available.bold, |bar| bar.child(mark(Icon::TbBold, tr("粗体", "Bold"), MarkKind::Bold, state.bold)))
                 .child(mark(Icon::TbItalic, tr("斜体", "Italic"), MarkKind::Italic, state.italic))
                 .child(button(Icon::TbUnderline, tr("下划线", "Underline"), state.underline, false, false, editor.clone(), |this, _, cx| this.underline(cx)))
                 .child(mark(Icon::TbStrike, tr("删除线", "Strikethrough"), MarkKind::Strike, state.strike))
                 .child(mark(Icon::TbCode, tr("行内代码", "Inline code"), MarkKind::Code, state.code))
-                .child(palette_button(state.colored, palette_open, editor.clone()))
-                .child(sep()))
-            .when(text_blocks, |bar| bar
-                .child(button(Icon::TbList, tr("列表", "Lists"), false, lists_open, true, editor.clone(), |this, w, cx| this.toggle_menu(false, w, cx)))
-                .child(sep()))
-            .when(rich && !state.grid, |bar| bar
-                .child(button(Icon::TbLink, tr("链接 ⌘⇧K", "Link ⌘⇧K"), state.link, link_open, false, editor.clone(), |this, w, cx| this.open_toolbar_link(w, cx))))
-            .when(rich && state.grid, |bar| bar.child(disabled_icon_button(Icon::TbLink)));
+                .child(palette_button(state.colored, palette_open, editor.clone())))
+            .when(available.block_type, |bar| bar
+                .child(sep())
+                .child(button(Icon::TbList, tr("列表", "Lists"), false, lists_open, true, editor.clone(), |this, w, cx| this.toggle_menu(false, w, cx))))
+            .when(available.link, |bar| bar
+                .child(sep())
+                .child(button(Icon::TbLink, tr("链接 ⌘⇧K", "Link ⌘⇧K"), state.link, link_open, false, editor.clone(), |this, w, cx| this.open_toolbar_link(w, cx))));
         gpui::anchored().position(self.anchor).snap_to_window_with_margin(px(8.)).child(animate_bar(bar, "selection-toolbar-enter"))
     }
 }
