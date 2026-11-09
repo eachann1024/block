@@ -43,6 +43,8 @@ pub use palette::{ExportTheme, RenderOptions};
 pub use preferences::ExportPreferences;
 pub(crate) use source::{BlockLayout, SourceContext, TableGeometry};
 
+pub(super) const WATERMARK_LABEL: &str = "Block App";
+
 use crate::editor::model::Block;
 use cosmic_text::{FontSystem, SwashCache};
 use tiny_skia::Pixmap;
