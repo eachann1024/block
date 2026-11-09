@@ -69,7 +69,7 @@ pub fn grip_button(
         .justify_center()
         .when(active, move |s| s.bg(bg_hover))
         .hover(move |s| s.bg(bg_hover))
-        .cursor(CursorStyle::PointingHand)
+        .cursor(if active { CursorStyle::ClosedHand } else { CursorStyle::OpenHand })
         .child(
             div()
                 .relative()
@@ -162,4 +162,17 @@ pub fn fold_button(
         .tooltip_above(move |window, cx| build_tooltip(tip, window, cx))
         .child(hover_icon(glyph, 14. * zoom, base_fg, hover_fg))
         .on_mouse_down(MouseButton::Left, listener)
+}
+
+/// Overlay-only drop feedback: keeps row geometry stable throughout the drag.
+pub fn block_drop_marker(left: Pixels, right: Pixels, after: bool, nested: bool, zoom: f32) -> Div {
+    let theme = Theme::ocean();
+    div().absolute().left(left).right(right).h(px(3. * zoom)).bg(theme.accent)
+        .when(after, |line| line.bottom_0()).when(!after, |line| line.top_0())
+        .child(div().absolute().left(px(-3. * zoom)).top(px(-2. * zoom))
+            .size(px(7. * zoom)).rounded_full().bg(theme.accent))
+        .when(nested, |line| line.child(div().absolute().right_0().bottom(px(4. * zoom))
+            .px(px(8. * zoom)).py(px(2. * zoom)).rounded(px(4. * zoom))
+            .bg(theme.paper).text_color(theme.accent).text_size(px(14. * zoom))
+            .child(tr("放入子节点", "Drop as child"))))
 }
