@@ -47,6 +47,12 @@ impl SearchState {
         self.hits.get(self.selected).map(|hit| hit.path.clone())
     }
 
+    pub fn selected_query(&self) -> String {
+        self.hits.get(self.selected).and_then(|hit| {
+            hit.marks.first().and_then(|range| hit.snippet.get(range.clone()))
+        }).unwrap_or_default().to_owned()
+    }
+
     pub fn scope_label(&self) -> String {
         match &self.scope {
             SearchScope::All => crate::theme::tr("全部文件夹", "All Folders").to_string(),

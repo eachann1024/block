@@ -43,6 +43,9 @@ impl Editor {
         self.status = message; cx.notify();
     }
     pub fn open(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if self.search_jump.as_ref().is_some_and(|(target, _)| target != &path) {
+            self.search_jump = None;
+        }
         crate::log::set_context(format!("note={}", path.display()));
         let pending_open = match &self.persistence.pending { Some(Pending::Open(pending)) => Some(pending.as_path()), _ => None };
         if super::open_dedup::duplicate_open(
@@ -147,6 +150,7 @@ impl Editor {
     }
     /// Missing or unreadable files stay on the selected path instead of the previous note.
     fn fail_open(&mut self, path: PathBuf, prev: Option<PathBuf>, error: String, cx: &mut Context<Self>) {
+        self.search_jump = None;
         crate::log::error(&format!("failed to load {}: {error}", path.display()));
         let missing = error.contains("No such file") || error.contains("找不到")
             || error.contains("Permission denied") || error.contains("权限") || error.contains("Operation not permitted");

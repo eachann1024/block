@@ -157,13 +157,15 @@ impl Workspace {
 
     fn open_hit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(path) = self.search.as_ref().and_then(|search| search.state.selected_path()) else { return };
-        self.open_from_search(path, window, cx);
+        let query = self.search.as_ref().unwrap().state.selected_query();
+        self.open_from_search(path, query, window, cx);
     }
 
-    pub(crate) fn open_from_search(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn open_from_search(&mut self, path: PathBuf, query: String, window: &mut Window, cx: &mut Context<Self>) {
         self.settings = None;
         self.close_search(window, cx);
         if self.busy() { return; }
+        self.editor.update(cx, |editor, cx| editor.queue_search_jump(path.clone(), query, cx));
         if self.folder.as_deref().is_some_and(|current| path.starts_with(current)) {
             self.open_file(path, cx);
             self.restore_focus(window, cx);
