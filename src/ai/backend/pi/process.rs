@@ -93,6 +93,7 @@ pub(super) fn start(
     let prompt = format!("{}\n\nBlock context: {}", request.message, context);
     let mut command = cli_env::command("pi");
     command.args(["--mode", "json"]);
+    if let Some(level) = request.config.get("thinkingLevel").and_then(Value::as_str) { command.args(["--thinking", level]); }
     if request.config.get("textOnly").and_then(Value::as_bool) == Some(true) { command.args(["--no-tools", "--no-extensions", "--no-mcp"]); }
     if request.config.get("fullPermissions").and_then(Value::as_bool) == Some(true) {
         command.arg("--approve");
