@@ -92,7 +92,7 @@ impl Workspace {
                 .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
                     .text_size(px(14.)).font_weight(FontWeight(500.)).text_color(theme.text_secondary)
                     .child(title)))
-            .child(div().flex_none().mr(px(10.)).flex().items_center().gap(px(8.))
+            .child(div().flex_none().flex().items_center().gap(px(8.))
                 .child(render_mode_switch(mode, move |mode, _, cx| {
                     entity_mode.update(cx, |this, cx| this.toggle_history_mode(mode, cx));
                 }))
