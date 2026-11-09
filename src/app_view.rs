@@ -230,7 +230,7 @@ impl Workspace {
         let new_note_tip = if cfg!(target_os = "macos") { tr("新建笔记 ⌘N", "New Note ⌘N") } else { tr("新建笔记 Ctrl+N", "New Note Ctrl+N") };
         div().w(self.sidebar_width).flex_none().h_full().relative().flex().flex_col()
             .bg(theme.sidebar).border_r_1().border_color(theme.sidebar_border)
-            .child(div().flex_none().pt(px(10.)).pb(px(8.)).flex().items_center().gap(px(6.))
+            .child(div().flex_none().pt(px(10.)).px(px(10.)).pb(px(8.)).flex().items_center().gap(px(6.))
                 .child(self.search_button(enabled, cx))
                 .child(toolbar_icon_button("new-folder", Icon::FolderPlus, enabled, tr("新建文件夹", "New Folder"), cx.listener(|this, _, window, cx| {
                     this.new_item(true, window, cx);
@@ -267,7 +267,7 @@ impl Workspace {
     fn settings_footer(&self, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
         let tip = if cfg!(target_os = "macos") { tr("设置 ⌘,", "Settings ⌘,") } else { tr("设置 Ctrl+,", "Settings Ctrl+,") };
-        div().flex_none().py(px(6.)).border_t_1().border_color(theme.hairline)
+        div().flex_none().px(px(8.)).py(px(6.)).border_t_1().border_color(theme.hairline)
             .flex().items_center().gap(px(4.)).bg(theme.sidebar)
             .child(self.notebook_switcher(cx))
             .when(crate::updater::has_update(), |f| {
