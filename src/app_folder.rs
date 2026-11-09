@@ -13,13 +13,17 @@ impl Workspace {
     }
 
     pub(super) fn use_folder_guarded(&mut self, folder: PathBuf, startup_epoch: Option<u64>, cx: &mut Context<Self>) {
+        self.prepare_folder(folder, startup_epoch, true, cx);
+    }
+
+    fn prepare_folder(&mut self, folder: PathBuf, startup_epoch: Option<u64>, allow_authorization: bool, cx: &mut Context<Self>) {
         if self.busy() { return; }
         if self.history.is_some() || self.history_opening { self.close_page_history(cx); }
         self.undo_restore = None;
         self.history_toast = None;
         if self.restore_superseded(startup_epoch, cx) { return; }
         self.scan_generation = self.scan_generation.wrapping_add(1);
-        let startup_tabs = self.startup_tabs.take();
+        let startup_tabs = self.startup_tabs.clone();
         let failed_folder = folder.clone();
         self.loading = true;
         self.notice = format!("{} {}…", tr("正在扫描", "Scanning"), folder.display());
@@ -28,7 +32,7 @@ impl Workspace {
         cx.spawn(async move |this, cx| {
             let result = cx.background_executor().spawn(async move {
                 let scan = scan(&folder)?;
-                let notice = if scan.warning_count > 0 {
+                let mut notice = if scan.warning_count > 0 {
                     if crate::theme::is_en() {
                         format!("Some directories could not be read ({} items): {}", scan.warning_count, scan.warnings.join("; "))
                     } else {
@@ -36,6 +40,11 @@ impl Workspace {
                     }
                 } else if scan.nodes.is_empty() { tr("此文件夹没有 Markdown 笔记或可浏览的子目录", "No Markdown notes or folders found").into() }
                 else { String::new() };
+                if let Err(error) = crate::files::access::remember(&folder) {
+                    crate::log::warn(&format!("could not preserve folder access {}: {error}", folder.display()));
+                    if !notice.is_empty() { notice.push('\n'); }
+                    notice.push_str(tr("访问授权未能保存，重启后可能需要重新选择文件夹", "Folder access could not be saved; you may need to select it again after restarting"));
+                }
                 let mut tabs = Vec::new();
                 let mut active_tab = None;
                 if let Some((saved_tabs, saved_active)) = startup_tabs {
@@ -58,11 +67,17 @@ impl Workspace {
                 }
                 match result {
                     Err(error) => {
-                        this.folder_error = Some(failed_folder);
-                        this.notice = format!("{}: {error}", tr("无法打开文件夹", "Failed to open folder"));
-                        this.refresh(cx);
+                        crate::log::warn(&format!("failed to open folder {}: {error}", failed_folder.display()));
+                        this.folder_error = Some(failed_folder.clone());
+                        if allow_authorization && crate::files::access::needs_authorization(&error) {
+                            this.authorize_folder(failed_folder, startup_epoch, cx);
+                        } else {
+                            this.notice = format!("{} {}: {error}", tr("无法打开文件夹", "Failed to open folder"), failed_folder.display());
+                            this.refresh(cx);
+                        }
                     }
                     Ok(prepared) => {
+                        this.startup_tabs = None;
                         this.folder_error = None;
                         this.pending = Some(prepared);
                         let closed = this.editor.update(cx, |editor, cx| editor.close(cx));
@@ -75,6 +90,53 @@ impl Workspace {
                             this.notice = tr("正在保存当前笔记，完成后切换文件夹…", "Saving current note before switching folder…").into();
                             this.refresh(cx);
                         }
+                    }
+                }
+            });
+        }).detach();
+    }
+
+    /// A remembered path is not a macOS grant. Recover through the system picker
+    /// once; cancellation or a second denial leaves the current notebook intact.
+    fn authorize_folder(&mut self, folder: PathBuf, startup_epoch: Option<u64>, cx: &mut Context<Self>) {
+        self.choosing = true;
+        self.notice = format!("{} {}", tr("请重新选择此文件夹以恢复访问：", "Select this folder again to restore access:"), folder.display());
+        self.refresh(cx);
+        let prompt = cx.prompt_for_paths(PathPromptOptions {
+            files: false, directories: true, multiple: false,
+            prompt: Some(tr("授权访问", "Allow Access").into()),
+        });
+        cx.spawn(async move |this, cx| {
+            let result = prompt.await;
+            // Comparing canonical paths also accepts an alias or a selected parent.
+            let selection = cx.background_executor().spawn(async move {
+                match result {
+                    Ok(Ok(Some(paths))) => {
+                        let accepted = paths.first().is_some_and(|selected| {
+                            let selected = std::fs::canonicalize(selected).unwrap_or_else(|_| selected.clone());
+                            let target = std::fs::canonicalize(&folder).unwrap_or_else(|_| folder.clone());
+                            target.starts_with(selected)
+                        });
+                        if accepted { Ok(Some(folder)) }
+                        else { Err(tr("请选择原笔记本文件夹或它的上级目录", "Select the original notebook folder or its parent").to_owned()) }
+                    }
+                    Ok(Ok(None)) => Ok(None),
+                    Ok(Err(error)) => Err(error.to_string()),
+                    Err(error) => Err(error.to_string()),
+                }
+            }).await;
+            let _ = this.update(cx, |this, cx| {
+                this.choosing = false;
+                if this.restore_superseded(startup_epoch, cx) { return; }
+                match selection {
+                    Ok(Some(folder)) => this.prepare_folder(folder, startup_epoch, false, cx),
+                    Ok(None) => {
+                        this.notice = tr("未授权访问，已保留当前工作区；可重新选择该笔记本以重试", "Access not granted; current workspace kept. Select the notebook again to retry").into();
+                        this.refresh(cx);
+                    }
+                    Err(error) => {
+                        this.notice = format!("{}: {error}", tr("无法恢复文件夹访问", "Could not restore folder access"));
+                        this.refresh(cx);
                     }
                 }
             });
