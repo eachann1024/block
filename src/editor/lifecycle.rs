@@ -1,10 +1,15 @@
 use std::{collections::{HashMap, HashSet}, path::{Path, PathBuf}, sync::{Arc, Mutex}, time::Duration};
-use gpui::{Context, Task};
+use gpui::{Context, ListOffset, Pixels, Task};
 use crate::theme::tr;
-use super::{Editor, Doc, storage::{self, Fingerprint}};
+use super::{Editor, Doc, selection::Position, storage::{self, Fingerprint}};
 
 #[derive(Clone)]
 pub(in crate::editor) enum Pending { Open(PathBuf), Close, ReleaseUnder }
+enum DiskPlace {
+    None,
+    Note { anchor_ix: usize, anchor_off: usize, head_ix: usize, head_off: usize, item_ix: usize, offset: Pixels },
+    Source { anchor: usize, head: usize, item_ix: usize, offset: Pixels },
+}
 #[derive(Default)]
 pub(in crate::editor) struct DiskGate { pub epoch: u64, pub saved: HashMap<PathBuf, Fingerprint> }
 pub(in crate::editor) struct Persistence {
@@ -18,11 +23,15 @@ pub(in crate::editor) struct Persistence {
     pub timer: Option<Task<()>>,
     pub gate: Arc<Mutex<DiskGate>>,
     pub write_epoch: u64,
+    /// Window activation asked to re-read the open file, but a save was still in flight.
+    pub refresh_after_save: bool,
+    pub disk_refresh: u64,
 }
 impl Default for Persistence {
     fn default() -> Self {
         Self { revision: 0, generation: 0, base: Fingerprint(0), pending: None,
-            saving: HashSet::new(), loading: false, loading_path: None, timer: None, gate: Arc::new(Mutex::new(DiskGate::default())), write_epoch: 0 }
+            saving: HashSet::new(), loading: false, loading_path: None, timer: None, gate: Arc::new(Mutex::new(DiskGate::default())), write_epoch: 0,
+            refresh_after_save: false, disk_refresh: 0 }
     }
 }
 impl Editor {
@@ -227,9 +236,144 @@ impl Editor {
                         } else if let Some(sess) = this.sessions.get_mut(&path) { sess.status = error; }
                     }
                 }
+                this.finish_disk_refresh(cx);
                 cx.notify();
             });
         }).detach();
+    }
+    /// Re-read the open file after the window becomes active.
+    /// Unchanged disk keeps unsaved keystrokes. A changed file replaces the buffer.
+    pub fn refresh_from_disk(&mut self, cx: &mut Context<Self>) {
+        if self.caret.composing.is_some() || self.source_composing() { return; }
+        if self.persistence.loading || self.persistence.pending.is_some() { return; }
+        let Some(path) = self.path.clone() else { return; };
+        if self.persistence.saving.contains(&path) {
+            self.persistence.refresh_after_save = true;
+            return;
+        }
+        self.persistence.timer = None;
+        self.persistence.disk_refresh = self.persistence.disk_refresh.wrapping_add(1);
+        let token = self.persistence.disk_refresh;
+        let revision = self.persistence.revision;
+        let request = path.clone();
+        let task = cx.background_executor().spawn(async move { storage::load_disk(&request) });
+        cx.spawn(async move |this, cx| {
+            let loaded = task.await;
+            let _ = this.update(cx, |this, cx| {
+                if this.persistence.disk_refresh != token { return; }
+                if this.path.as_deref() != Some(path.as_path()) { return; }
+                if this.caret.composing.is_some() || this.source_composing() {
+                    if this.dirty && this.persistence.revision == revision { this.touch(cx); }
+                    return;
+                }
+                if this.persistence.saving.contains(&path) {
+                    this.persistence.refresh_after_save = true;
+                    return;
+                }
+                if this.persistence.revision != revision { return; }
+                match loaded {
+                    Ok(loaded) => this.adopt_external(path, loaded, cx),
+                    Err(_) => { if this.dirty { this.flush(cx); } }
+                }
+            });
+        }).detach();
+    }
+    fn finish_disk_refresh(&mut self, cx: &mut Context<Self>) {
+        if !self.persistence.refresh_after_save { return; }
+        if self.path.as_ref().is_some_and(|path| self.persistence.saving.contains(path)) { return; }
+        self.persistence.refresh_after_save = false;
+        self.refresh_from_disk(cx);
+    }
+    /// Disk is the source of truth once it diverges from the last load or save.
+    fn adopt_external(&mut self, path: PathBuf, loaded: storage::Loaded, cx: &mut Context<Self>) {
+        if loaded.base == self.persistence.base {
+            if self.dirty { self.flush(cx); }
+            return;
+        }
+        storage::discard_draft(&path);
+        self.persistence.timer = None;
+        if self.buffer_matches_disk(&loaded) {
+            self.persistence.base = loaded.base;
+            self.persistence.gate.lock().unwrap().saved.insert(path, loaded.base);
+            self.dirty = false;
+            self.persistence.revision = self.persistence.revision.wrapping_add(1);
+            self.status.clear();
+            cx.notify();
+            return;
+        }
+        let place = self.capture_place();
+        self.show_loaded(path, loaded, cx);
+        self.restore_place(place);
+        self.dirty = false;
+        self.persistence.timer = None;
+        self.persistence.revision = self.persistence.revision.wrapping_add(1);
+        self.status.clear();
+        cx.notify();
+    }
+    fn buffer_matches_disk(&self, loaded: &storage::Loaded) -> bool {
+        use crate::editor::surface::Surface;
+        use crate::files::classify::OpenKind;
+        match &loaded.kind {
+            OpenKind::Markdown(text) => matches!(self.surface, Surface::Note) && crate::editor::markdown::serialize(&self.doc) == *text,
+            OpenKind::Source(file) => matches!(self.surface, Surface::Source(_))
+                && self.raw_save().is_some_and(|(text, bom)| text == file.text && bom == file.bom),
+            OpenKind::Preview { svg: Some(file) } => matches!(self.surface, Surface::Preview { source: Some(_), .. })
+                && self.raw_save().is_some_and(|(text, bom)| text == file.text && bom == file.bom),
+            _ => false,
+        }
+    }
+    fn capture_place(&self) -> DiskPlace {
+        use crate::editor::surface::Surface;
+        if let Surface::Source(doc) | Surface::Preview { source: Some(doc), .. } = &self.surface {
+            let top = doc.list.logical_scroll_top();
+            return DiskPlace::Source { anchor: doc.anchor, head: doc.head, item_ix: top.item_ix, offset: top.offset_in_item };
+        }
+        if matches!(self.surface, Surface::Note) {
+            let top = self.list.logical_scroll_top();
+            return DiskPlace::Note {
+                anchor_ix: self.doc.index_of(self.caret.anchor.block).unwrap_or(0),
+                anchor_off: self.caret.anchor.offset,
+                head_ix: self.doc.index_of(self.caret.head.block).unwrap_or(0),
+                head_off: self.caret.head.offset,
+                item_ix: top.item_ix,
+                offset: top.offset_in_item,
+            };
+        }
+        DiskPlace::None
+    }
+    fn restore_place(&mut self, place: DiskPlace) {
+        use crate::editor::surface::Surface;
+        match place {
+            DiskPlace::None => {}
+            DiskPlace::Note { anchor_ix, anchor_off, head_ix, head_off, item_ix, offset } => {
+                if !matches!(self.surface, Surface::Note) || self.doc.blocks.is_empty() { return; }
+                let n = self.doc.blocks.len();
+                let at = |ix: usize, off: usize| {
+                    let block = &self.doc.blocks[ix.min(n - 1)];
+                    Position { block: block.id, offset: super::selection::boundary(&block.text, off) }
+                };
+                self.caret.anchor = at(anchor_ix, anchor_off);
+                self.caret.head = at(head_ix, head_off);
+                self.caret.composing = None;
+                self.reveal_caret = false;
+                self.link_ui.quiet = Some(self.caret.head);
+                let item_ix = item_ix.min(n - 1);
+                self.list.scroll_to(ListOffset { item_ix, offset_in_item: offset });
+                self.scroll_top = (item_ix, offset);
+            }
+            DiskPlace::Source { anchor, head, item_ix, offset } => {
+                let Some(doc) = (match &mut self.surface {
+                    Surface::Source(doc) => Some(doc),
+                    Surface::Preview { source: Some(doc), .. } => Some(doc),
+                    _ => None,
+                }) else { return; };
+                doc.anchor = doc.text.snap(anchor);
+                doc.head = doc.text.snap(head);
+                let lines = doc.text.line_count().max(1);
+                let item_ix = item_ix.min(lines - 1);
+                doc.list.scroll_to(ListOffset { item_ix, offset_in_item: offset });
+            }
+        }
     }
     /// Final recovery checkpoint under the write lock. GPUI quit futures only have a 100ms budget.
     pub fn prepare_to_quit(&mut self) -> bool {
