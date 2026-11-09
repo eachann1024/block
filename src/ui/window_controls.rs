@@ -9,6 +9,9 @@ pub const fn is_macos() -> bool {
 
 /// macOS traffic-light origin. `Y` centers a 14px button in the 40px titlebar; `Y_TALL` centers it in the 52px fullscreen session bar.
 pub const TRAFFIC_X: f32 = 16.;
+/// A 26px titlebar action contains an 18px glyph (4px inset). Match the
+/// traffic lights' visible 16px edge clearance on the opposite side.
+pub const TITLEBAR_ACTION_TRAILING: f32 = if is_macos() { TRAFFIC_X - 4. } else { 0. };
 pub const TRAFFIC_Y: f32 = 13.;
 pub const TRAFFIC_Y_TALL: f32 = 19.;
 /// Left inset that keeps the session title clear of the traffic lights. Matches the titlebar's leading pad.
