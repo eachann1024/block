@@ -127,9 +127,17 @@ pub(super) fn parse(input: &str) -> Option<RichText> {
     }
     let input = normalize_cjk_strong(input);
     // The sentinel prevents an inline fragment from being interpreted as a block.
-    let source = format!("x {input}"); let mut skip = 2;
+    let source = format!("x {input}");
+    let (text, spans, tags) = parse_events(Parser::new_ext(&source, Options::ENABLE_STRIKETHROUGH))?;
+    let text = text.strip_prefix("x ")?.to_owned();
+    Some((text, spans.into_iter().map(|span| Span { start:span.start - 2, end:span.end - 2, marks:span.marks }).collect(),
+        tags.into_iter().map(|tag| InlineTag { start:tag.start - 2, end:tag.end - 2, ..tag }).collect()))
+}
+
+/// Consume the parser's events directly, including GFM's table-specific escaping.
+pub(super) fn parse_events<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Option<RichText> {
     let mut b = Builder::default();
-    for event in Parser::new_ext(&source, Options::ENABLE_STRIKETHROUGH) {
+    for event in events {
         match event {
             Event::Start(Tag::Paragraph) | Event::End(TagEnd::Paragraph) => {},
             Event::Start(Tag::Strong) => b.marks[0] += 1,
@@ -148,9 +156,7 @@ pub(super) fn parse(input: &str) -> Option<RichText> {
                 if start < b.text.len() { b.inline.push(InlineTag {
                     start, end:b.text.len(), name:"a".into(), attrs }); }
             },
-            Event::Text(value) => {
-                let n = skip.min(value.len()); skip -= n; b.append(&value[n..]);
-            },
+            Event::Text(value) => b.append(&value),
             Event::Code(value) => { b.marks[3] += 1; b.append(&value); b.marks[3] -= 1; },
             Event::InlineHtml(value) => for token in html::tokens(&value)? { b.html(token.value)?; },
             Event::SoftBreak | Event::HardBreak => b.append("\n"),
@@ -166,71 +172,10 @@ pub(super) fn parse_html(input: &str) -> Option<RichText> {
     b.finish()
 }
 
-/// Split at all semantic boundaries so overlapping marks and HTML attributes survive.
-/// Close/reopen wrappers at crossing ranges to produce valid nested HTML.
+/// Markdown and HTML have separate serialization rules.
 pub(super) fn serialize(block: &Block, out: &mut String) {
-    serialize_with_links(block, out, true);
+    super::write::markdown(block, out);
 }
-
 pub(super) fn serialize_html(block: &Block, out: &mut String) {
-    serialize_with_links(block, out, false);
-}
-
-fn serialize_with_links(block: &Block, out: &mut String, markdown_links: bool) {
-    let mut block = block.clone(); block.normalize_spans();
-    let mut boundaries = vec![0, block.text.len()];
-    for span in &block.spans { boundaries.extend([span.start, span.end]); }
-    let valid: Vec<_> = block.meta.inline.iter().filter(|tag|
-        tag.start < tag.end && tag.end <= block.text.len()
-        && block.text.is_char_boundary(tag.start) && block.text.is_char_boundary(tag.end)).collect();
-    // Plain `[text](url)` links match what thinkly writes; other anchors stay HTML.
-    let mut bracket: Vec<&InlineTag> = Vec::new();
-    let mut candidates: Vec<_> = valid.iter().copied().filter(|t| markdown_links && t.name == "a"
-        && t.attrs.len() == 1 && t.attrs[0].0 == "href").collect();
-    candidates.sort_by_key(|t| t.start);
-    for link in candidates { if bracket.last().is_none_or(|last| last.end <= link.start) { bracket.push(link); } }
-    let tags: Vec<_> = valid.iter().copied().filter(|t| !bracket.iter().any(|b| std::ptr::eq(*b, *t))).collect();
-    for tag in valid.iter() { boundaries.extend([tag.start, tag.end]); }
-    boundaries.sort_unstable(); boundaries.dedup();
-    for pair in boundaries.windows(2) {
-        let (start, end) = (pair[0], pair[1]);
-        let link = bracket.iter().find(|tag| tag.start <= start && end <= tag.end);
-        if link.is_some_and(|tag| tag.start == start) { out.push('['); }
-        let active: Vec<_> = tags.iter().filter(|tag| tag.start <= start && end <= tag.end).collect();
-        for tag in &active { html::open_tag(&tag.name, &tag.attrs, out); }
-        let marks = block.spans.iter().find(|span| span.start <= start && end <= span.end)
-            .map_or(&[][..], |span| span.marks.as_slice());
-        for mark in marks { out.push_str(tag(*mark, false)); }
-        escape(&block.text[start..end], out);
-        for mark in marks.iter().rev() { out.push_str(tag(*mark, true)); }
-        for tag in active.iter().rev() { out.push_str("</"); out.push_str(&tag.name); out.push('>'); }
-        if let Some(tag) = link.filter(|tag| tag.end == end) {
-            out.push_str("](");
-            for ch in tag.attrs[0].1.chars() {
-                match ch { ' '|'('|')'|'<'|'>'|'\\'|'"'|'\n' => { let mut b = [0u8; 4];
-                    for byte in ch.encode_utf8(&mut b).bytes() { out.push_str(&format!("%{byte:02X}")); } }
-                    _ => out.push(ch) }
-            }
-            out.push(')');
-        }
-    }
-}
-fn tag(mark: MarkKind, close: bool) -> &'static str {
-    match (mark, close) {
-        (MarkKind::Bold,false) => "<strong>", (MarkKind::Bold,true) => "</strong>",
-        (MarkKind::Italic,false) => "<em>", (MarkKind::Italic,true) => "</em>",
-        (MarkKind::Strike,false) => "<del>", (MarkKind::Strike,true) => "</del>",
-        (MarkKind::Code,false) => "<code>", (MarkKind::Code,true) => "</code>",
-    }
-}
-fn escape(value: &str, out: &mut String) {
-    use std::fmt::Write;
-    let leading = value.len() - value.trim_start_matches(' ').len();
-    let trailing = value.trim_end_matches(' ').len();
-    for (at, ch) in value.char_indices() {
-        if ch == '\n' { out.push_str("<br>"); }
-        else if ch.is_ascii_punctuation() || matches!(ch, '\r'|'\t') { let _ = write!(out, "&#{};", ch as u32); }
-        else if ch == ' ' && (at < leading || at >= trailing) { out.push_str("&#32;"); }
-        else { out.push(ch); }
-    }
+    super::write::html(block, out);
 }

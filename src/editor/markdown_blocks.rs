@@ -66,7 +66,7 @@ pub(super) fn classify(line: &str) -> (Kind,&str,bool,usize,Option<u64>,bool) {
     let compact: String = line.chars().filter(|c| !c.is_whitespace()).collect();
     let rule = (compact.len()>=3 && ['-','*','_','='].iter().any(|c| compact.chars().all(|v| v==*c)))
         || is_html_hr(body);
-    if rule || line.contains("][") {
+    if rule || unescaped(line, "][") {
         return (Kind::Paragraph,line,false,0,None,true);
     }
     for (prefix,kind) in [("- [ ] ",Kind::Todo),("- [x] ",Kind::Todo),("- [X] ",Kind::Todo),
@@ -96,9 +96,36 @@ pub(super) fn classify(line: &str) -> (Kind,&str,bool,usize,Option<u64>,bool) {
     }
     let opaque = rule || body.starts_with("<!--")
         || body.starts_with("$$") || body.starts_with(":::") || body.starts_with("[[")
-        || body.starts_with("<!") || body.starts_with("[^") || line.contains("]: ");
+        || body.starts_with("<!") || body.starts_with("[^") || reference_definition(body);
     if opaque { return (Kind::Paragraph,line,false,0,None,true); }
     (Kind::Paragraph,body,false,indent,None,false)
+}
+
+fn unescaped(source: &str, needle: &str) -> bool {
+    source.match_indices(needle).any(|(at, _)|
+        source[..at].bytes().rev().take_while(|b| *b == b'\\').count() % 2 == 0
+            && !inside_code(source, at))
+}
+fn inside_code(source: &str, at: usize) -> bool {
+    let mut offset = 0;
+    let mut fence = 0;
+    while offset < at {
+        let rest = &source[offset..];
+        let ch = rest.chars().next().unwrap();
+        if ch == '\\' && fence == 0 {
+            offset += 1;
+            if let Some(ch) = source[offset..].chars().next() { offset += ch.len_utf8(); }
+        } else if ch == '`' {
+            let count = rest.bytes().take_while(|b| *b == b'`').count();
+            if fence == 0 { fence = count; } else if fence == count { fence = 0; }
+            offset += count;
+        } else { offset += ch.len_utf8(); }
+    }
+    fence > 0
+}
+fn reference_definition(body: &str) -> bool {
+    body.starts_with('[') && body.match_indices("]:").any(|(at, _)|
+        body[..at].bytes().rev().take_while(|b| *b == b'\\').count() % 2 == 0)
 }
 
 // ---- YAML frontmatter: a leading `---` ... `---` pair is shown as a `yaml-frontmatter` code block. ----
