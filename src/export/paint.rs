@@ -22,6 +22,11 @@ pub(super) fn rasterize(
     super::decor_paper::paint_paper(&mut image, layout, &pal, cancel)?;
     super::chrome::paint_chrome(&mut image, layout, &pal, fonts, cache, cancel)?;
 
+    for picture in &layout.pictures {
+        cancel.check()?;
+        super::media::paint(&mut image, picture);
+    }
+
     for row in &layout.rows {
         cancel.check()?;
         if let Some(frame) = &row.frame {

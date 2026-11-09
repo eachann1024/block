@@ -45,6 +45,7 @@ impl ExportView {
             show_title: self.show_title,
             footer: self.watermark,
             title: self.title.clone(),
+            source: self.source.clone(),
         }
     }
 

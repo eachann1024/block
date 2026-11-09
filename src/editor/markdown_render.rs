@@ -83,7 +83,17 @@ pub(crate) fn inline(block: &Block) -> String {
 }
 
 fn table(table: &Table) -> String {
-    let mut out = String::from("<table>\n");
+    let widths: Option<Vec<f32>> = (0..table.columns).map(|column| {
+        table.column_widths.get(column)?.as_deref()?.strip_suffix("px")?.parse::<f32>().ok()
+            .filter(|w| w.is_finite() && *w > 0.)
+    }).collect();
+    let mut out = String::from("<table");
+    if let Some(widths) = &widths {
+        let total: f32 = widths.iter().sum();
+        out.push_str(&format!(" style=\"width:{total}px;max-width:100%;table-layout:fixed\"><colgroup>"));
+        for width in widths { out.push_str(&format!("<col style=\"width:{}%\">", width / total * 100.)); }
+        out.push_str("</colgroup>\n");
+    } else { out.push_str(">\n"); }
     for row in &table.rows {
         out.push_str("<tr>");
         for cell in &row.cells {
@@ -95,7 +105,10 @@ fn table(table: &Table) -> String {
             if cell.rowspan > 1 {
                 attrs.push_str(&format!(" rowspan=\"{}\"", cell.rowspan));
             }
-            match cell.alignment() {
+            let alignment = if cell.attrs.is_empty() {
+                table.alignments.get(cell.column).copied().unwrap_or_default()
+            } else { cell.alignment() };
+            match alignment {
                 CellAlignment::Center => attrs.push_str(" style=\"text-align:center\""),
                 CellAlignment::Right => attrs.push_str(" style=\"text-align:right\""),
                 CellAlignment::Left => {}
@@ -162,7 +175,13 @@ pub(crate) fn render_blocks(blocks: &[Block]) -> String {
             out.push_str(&format!("<pre><code{class}>{}</code></pre>\n", esc(&block.text)));
         } else if let Some(image) = crate::editor::image_source::spec_of(block) {
             if safe_href(&image.src) {
-                out.push_str(&format!("<p><img src=\"{}\" alt=\"{}\"></p>\n", esc(&image.src), esc(&image.alt)));
+                let align = match image.align {
+                    crate::editor::image_source::Align::Left => "left",
+                    crate::editor::image_source::Align::Center => "center",
+                    crate::editor::image_source::Align::Right => "right",
+                };
+                let width = image.width.map_or(String::new(), |w| format!(" width=\"{w}\""));
+                out.push_str(&format!("<p style=\"text-align:{align}\"><img src=\"{}\" alt=\"{}\"{width} style=\"max-width:100%;height:auto\"></p>\n", esc(&image.src), esc(&image.alt)));
             } else {
                 out.push_str(&format!("<p>{}</p>\n", esc(&image.alt)));
             }
