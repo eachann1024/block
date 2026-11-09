@@ -6,7 +6,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use super::scan::{Node, Scan, sort_nodes};
-use super::search::{Hit, find_all};
+use super::search::Hit;
 use super::state::State;
 use crate::theme::tr;
 
@@ -211,19 +211,7 @@ pub fn search_all(root: &Path, query: &str, limit: usize) -> Vec<Hit> {
         }) {
             continue;
         }
-        let Some(stem) = path.file_stem().map(|s| s.to_string_lossy().into_owned()) else { continue };
-        let title_marks = find_all(&stem, query);
-        let body_matches = find_all(body, query);
-        let count = body_matches.len();
-        let found = body_matches.into_iter().next();
-        if title_marks.is_empty() && found.is_none() { continue; }
-        let snippet = body.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").trim_start_matches('#').trim().chars().take(70).collect::<String>();
-        let marks = find_all(&snippet, query);
-        let rel_folder = path.parent().and_then(|p| p.strip_prefix(root).ok()).map(|p| {
-            p.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join(" / ")
-        }).unwrap_or_default();
-        let folder = if rel_folder.is_empty() { String::new() } else { format!("{rel_folder} / {stem}") };
-        let hit = Hit { path: path.clone(), title: stem, folder, title_match: !title_marks.is_empty(), title_marks, snippet, marks, count };
+        let Some(hit) = super::search::inspect_body(root, path, query, false, body) else { continue };
         if hit.title_match { titles.push(hit); } else { bodies.push(hit); }
     }
     titles.extend(bodies);

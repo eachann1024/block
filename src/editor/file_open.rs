@@ -83,6 +83,7 @@ impl Editor {
             }
         }
         self.refresh_find_matches(cx);
+        self.apply_search_jump(cx);
         cx.notify();
     }
 
