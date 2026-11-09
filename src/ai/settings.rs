@@ -119,6 +119,7 @@ impl AiSettings {
     }
 
     pub(super) fn save(&mut self, cx: &mut Context<Self>) {
+        self.general.invalidate_builtin_models();
         let cfg = self.current(cx);
         self.providers = cfg.providers.clone();
         if let Err(e) = provider::save(&cfg) {

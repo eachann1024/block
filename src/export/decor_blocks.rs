@@ -28,11 +28,10 @@ pub(super) fn paint_block_bg(image: &mut Pixmap, row: &Row, layout: &Layout, pal
         return;
     }
     if let Some(kind) = row.callout {
-        let (bg, border, accent, _, _) = crate::ui::callout_controls::tone(kind, pal.dark);
-        let color = |hex: u32| Color::rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8);
-        fill_rounded_rect(image, x, row.y, w, row.height, 8., color(bg));
-        stroke_rounded_rect(image, x, row.y, w, row.height, 8., 1., color(border));
-        fill_rounded_rect(image, x, row.y, 4., row.height, 2., color(accent));
+        let (bg, border, accent) = pal.callout_colors(kind);
+        fill_rounded_rect(image, x, row.y, w, row.height, 8., bg);
+        stroke_rounded_rect(image, x, row.y, w, row.height, 8., 1., border);
+        fill_rounded_rect(image, x, row.y, 4., row.height, 2., accent);
         return;
     }
     if row.code {

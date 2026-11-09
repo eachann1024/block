@@ -1,5 +1,6 @@
 mod bridge;
 mod mcp_bridge;
+pub(crate) mod model_cache;
 mod agy;
 pub(crate) mod cli_env;
 mod gate;
