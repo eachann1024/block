@@ -125,19 +125,7 @@ pub(super) fn build(
     let mut pictures = Vec::new();
     let mut y = margin_top + chrome.header_h;
 
-    // The big title already shows the file name; drop a leading H1 that repeats it.
-    let title = options.title.trim();
-    let blocks = match blocks.first() {
-        Some(first)
-            if options.show_title
-                && !title.is_empty()
-                && first.kind == Kind::H1
-                && first.text.split_whitespace().eq(title.split_whitespace()) =>
-        {
-            &blocks[1..]
-        }
-        _ => blocks,
-    };
+    let blocks = super::document::blocks(blocks, &options);
     let markers = build_markers(blocks, fonts, theme, content_width)?;
     let mut gutters = std::collections::BTreeMap::<usize, f32>::new();
     let default_g = 28.0;

@@ -17,6 +17,12 @@ pub(super) struct Picture {
     pub height: f32,
 }
 
+impl Picture {
+    pub(super) fn png(&self) -> Result<Vec<u8>, ExportError> {
+        self.pixels.encode_png().map_err(|e| ExportError::Encoding(e.to_string()))
+    }
+}
+
 pub(super) fn load(
     spec: &ImageSpec,
     block_id: u64,

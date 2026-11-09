@@ -1,73 +1,59 @@
-//! Word (.docx) export: an OpenXML package built in memory and stored in a ZIP container.
-use super::export_docx_xml::{body, hex};
+//! Editable OpenXML export, using the preview's type scale, colors and content column.
+use super::export_docx_assets::Assets;
+use super::export_docx_xml::{body, font, hex, size, spacing};
 use super::export_zip::zip_store;
-use super::palette::Palette;
 use super::{Cancellation, ExportError, RenderOptions};
-use crate::editor::model::Block;
+use crate::editor::model::{Block, Kind};
 
-const NS: &str = "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"";
-const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+const NS: &str = concat!(
+    "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" ",
+    "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" ",
+    "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" ",
+    "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" ",
+    "xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\""
+);
+const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>";
 const CONTENT_TYPES: &str = concat!(
-    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n",
     "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">",
     "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>",
     "<Default Extension=\"xml\" ContentType=\"application/xml\"/>",
+    "<Default Extension=\"png\" ContentType=\"image/png\"/>",
     "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>",
     "<Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>",
     "<Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml\"/>",
+    "<Override PartName=\"/word/header1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/>",
     "</Types>"
 );
-const ROOT_RELS: &str = concat!(
-    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n",
-    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
-    "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/>",
-    "</Relationships>"
-);
-const DOCUMENT_RELS: &str = concat!(
-    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n",
-    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
-    "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>",
-    "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings\" Target=\"settings.xml\"/>",
-    "</Relationships>"
-);
+const ROOT_RELS: &str = "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>";
 
-// Heading sizes in half-points: H1..H6.
-pub(super) const HEADING_SIZES: [u32; 6] = [44, 34, 28, 24, 22, 20];
-
-fn style(id: &str, name: &str, based: bool, ppr: &str, rpr: &str) -> String {
-    let based = if based { "<w:basedOn w:val=\"Normal\"/>" } else { "" };
-    format!(
-        "<w:style w:type=\"paragraph\" w:styleId=\"{id}\"><w:name w:val=\"{name}\"/>{based}<w:qFormat/><w:pPr>{ppr}</w:pPr><w:rPr>{rpr}</w:rPr></w:style>"
-    )
-}
-
-fn styles(options: &RenderOptions, pal: &Palette) -> String {
-    let theme = options.theme;
-    let (body_font, head_font) = (theme.body_family(), theme.heading_family());
-    let (text, title) = (hex(pal.text), hex(pal.title));
+fn styles(options: &RenderOptions) -> String {
+    let spec = options.theme.spec();
+    let pal = options.theme.palette();
     let mut out = format!(
-        "{DECLARATION}<w:styles {NS}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Calibri\" w:hAnsi=\"Calibri\" w:eastAsia=\"{body_font}\" w:cs=\"Calibri\"/><w:color w:val=\"{text}\"/><w:sz w:val=\"22\"/><w:szCs w:val=\"22\"/><w:lang w:val=\"en-US\" w:eastAsia=\"zh-CN\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"120\" w:line=\"360\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>"
+        "{DECLARATION}<w:styles {NS}><w:docDefaults><w:rPrDefault><w:rPr>{}<w:color w:val=\"{}\"/>{}<w:lang w:val=\"en-US\" w:eastAsia=\"zh-CN\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:widowControl w:val=\"0\"/><w:autoSpaceDE w:val=\"0\"/><w:autoSpaceDN w:val=\"0\"/><w:snapToGrid w:val=\"0\"/>{}</w:pPr></w:pPrDefault></w:docDefaults><w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/><w:qFormat/></w:style>",
+        font(spec.body_family),
+        hex(pal.text),
+        size(spec.body),
+        spacing(0., 0., spec.body * spec.leading)
     );
-    out.push_str("<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/><w:qFormat/></w:style>");
-    let head_rpr = |size: u32| format!("<w:rFonts w:eastAsia=\"{head_font}\"/><w:b/><w:color w:val=\"{title}\"/><w:sz w:val=\"{size}\"/><w:szCs w:val=\"{size}\"/>");
-    out.push_str(&style("Title", "Title", true, "<w:spacing w:before=\"0\" w:after=\"360\"/>", &head_rpr(52)));
-    for (index, size) in HEADING_SIZES.iter().enumerate() {
-        let level = index + 1;
-        let ppr = format!("<w:keepNext/><w:spacing w:before=\"280\" w:after=\"120\"/><w:outlineLvl w:val=\"{index}\"/>");
-        out.push_str(&style(&format!("Heading{level}"), &format!("heading {level}"), true, &ppr, &head_rpr(*size)));
+    for (level, kind) in [
+        (1, Kind::H1),
+        (2, Kind::H2),
+        (3, Kind::H3),
+        (4, Kind::H3),
+        (5, Kind::H3),
+        (6, Kind::H3),
+    ] {
+        let mut b = Block::new(0, kind, String::new());
+        b.meta.heading_level = Some(level);
+        let px = super::style::block_font_size(options.theme, &b, false);
+        let weight = if level == 6 {
+            "<w:b w:val=\"0\"/><w:bCs w:val=\"0\"/>"
+        } else {
+            "<w:b/><w:bCs/>"
+        };
+        out.push_str(&format!("<w:style w:type=\"paragraph\" w:styleId=\"Heading{level}\"><w:name w:val=\"heading {level}\"/><w:basedOn w:val=\"Normal\"/><w:qFormat/><w:pPr><w:keepNext/><w:outlineLvl w:val=\"{}\"/></w:pPr><w:rPr>{}{weight}<w:color w:val=\"{}\"/>{}</w:rPr></w:style>",level-1,font(spec.heading_family),hex(pal.title),size(px)));
     }
-    let quote_ppr = format!(
-        "<w:pBdr><w:left w:val=\"single\" w:sz=\"18\" w:space=\"8\" w:color=\"{}\"/></w:pBdr><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"{}\"/><w:ind w:left=\"240\"/>",
-        hex(pal.quote_bar),
-        hex(pal.quote_bg)
-    );
-    out.push_str(&style("Quote", "Quote", true, &quote_ppr, &format!("<w:color w:val=\"{}\"/>", hex(pal.quote_fg))));
-    let code_ppr = format!(
-        "<w:pBdr><w:top w:val=\"single\" w:sz=\"4\" w:space=\"4\" w:color=\"{c}\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"4\" w:color=\"{c}\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"4\" w:color=\"{c}\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"4\" w:color=\"{c}\"/></w:pBdr><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"{}\"/><w:spacing w:line=\"276\" w:lineRule=\"auto\"/>",
-        hex(pal.code_bg),
-        c = hex(pal.code_border)
-    );
-    out.push_str(&style("CodeBlock", "Code Block", true, &code_ppr, "<w:rFonts w:ascii=\"Menlo\" w:hAnsi=\"Menlo\" w:cs=\"Consolas\" w:eastAsia=\"Menlo\"/><w:sz w:val=\"20\"/><w:szCs w:val=\"20\"/>"));
     out.push_str("</w:styles>");
     out
 }
@@ -77,22 +63,39 @@ pub fn render_docx(
     options: &RenderOptions,
     cancel: &Cancellation,
 ) -> Result<Vec<u8>, ExportError> {
+    super::budget::validate(blocks)?;
     cancel.check()?;
     let pal = options.theme.palette();
+    let mut assets = Assets::default();
+    assets.page_background(options, cancel, NS)?;
     let document = format!(
         "{DECLARATION}<w:document {NS}><w:background w:color=\"{}\"/><w:body>{}</w:body></w:document>",
         hex(pal.inner_canvas),
-        body(blocks, options, &pal, cancel)?
+        body(blocks, options, &pal, cancel, &mut assets)?
     );
-    let settings = format!("{DECLARATION}<w:settings {NS}><w:displayBackgroundShape/></w:settings>");
+    let settings = format!(
+        "{DECLARATION}<w:settings {NS}><w:displayBackgroundShape/><w:autoHyphenation w:val=\"0\"/><w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"15\"/></w:compat></w:settings>"
+    );
+    let mut files = vec![
+        (
+            "[Content_Types].xml".into(),
+            CONTENT_TYPES.as_bytes().to_vec(),
+        ),
+        ("_rels/.rels".into(), ROOT_RELS.as_bytes().to_vec()),
+        (
+            "word/_rels/document.xml.rels".into(),
+            assets.relationships().into_bytes(),
+        ),
+        ("word/styles.xml".into(), styles(options).into_bytes()),
+        ("word/settings.xml".into(), settings.into_bytes()),
+        ("word/document.xml".into(), document.into_bytes()),
+    ];
+    files.extend(assets.files);
     cancel.check()?;
-    let styles = styles(options, &pal);
-    zip_store(&[
-        ("[Content_Types].xml", CONTENT_TYPES.as_bytes()),
-        ("_rels/.rels", ROOT_RELS.as_bytes()),
-        ("word/_rels/document.xml.rels", DOCUMENT_RELS.as_bytes()),
-        ("word/styles.xml", styles.as_bytes()),
-        ("word/settings.xml", settings.as_bytes()),
-        ("word/document.xml", document.as_bytes()),
-    ])
+    zip_store(
+        &files
+            .iter()
+            .map(|(n, b)| (n.as_str(), b.as_slice()))
+            .collect::<Vec<_>>(),
+    )
 }
