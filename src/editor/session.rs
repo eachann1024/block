@@ -123,6 +123,7 @@ impl Editor {
         self.path = Some(path);
         self.link_ui.quiet = Some(self.caret.head);
         self.refresh_find_matches(cx);
+        self.apply_search_jump(cx);
         cx.notify();
     }
 
