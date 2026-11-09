@@ -13,6 +13,7 @@ mod export_zip;
 mod format;
 mod job;
 mod layout;
+mod media;
 mod paint;
 mod palette;
 mod palette_colors;
@@ -36,7 +37,7 @@ pub(crate) use view::{ExportSlot, ExportView, Snapshot, active_view, close_activ
 pub use budget::{ExportError, preflight};
 pub use format::ExportFormat;
 pub use job::{Cancellation, ExportJob, Timings, write_bytes, write_png};
-pub use palette::{ExportTheme, RenderOptions};
+pub use palette::{ExportTheme, RenderOptions, SourceContext};
 
 use crate::editor::model::Block;
 use cosmic_text::{FontSystem, SwashCache};

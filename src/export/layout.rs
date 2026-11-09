@@ -33,6 +33,7 @@ pub(super) struct Row {
 
 pub(super) struct Layout {
     pub rows: Vec<Row>,
+    pub pictures: Vec<super::media::Picture>,
     pub chrome: super::chrome::ChromeLayout,
     pub options: RenderOptions,
     pub margin_top: f32,
@@ -119,6 +120,7 @@ pub(super) fn build(
     let content_width = PAGE_WIDTH - margin_left - margin_right;
     let chrome = super::chrome::build_chrome(fonts, &options, margin_left, content_width);
     let mut rows = Vec::with_capacity(blocks.len());
+    let mut pictures = Vec::new();
     let mut y = margin_top + chrome.header_h;
 
     // The big title already shows the file name; drop a leading H1 that repeats it.
@@ -147,23 +149,30 @@ pub(super) fn build(
 
     for (block, marker) in blocks.iter().zip(markers) {
         cancel.check()?;
+        let indent = (block.meta.indent as f32 * 8.5).min((content_width - 80.0).max(0.0));
         if let Some(table) = &block.meta.table {
             y = super::table::append(
                 table,
                 &mut rows,
                 y,
-                margin_left,
-                content_width,
+                margin_left + indent,
+                content_width - indent,
                 theme,
                 fonts,
                 cancel,
             )? + 10.0;
             continue;
         }
+        if let Some(spec) = crate::editor::image_source::spec_of(block) {
+            let picture = super::media::load(&spec, &options.source, margin_left + indent, y, content_width - indent, cancel)?;
+            y += picture.height + 10.;
+            budget::canvas(PAGE_WIDTH * SCALE, (y + margin_bottom) * SCALE)?;
+            pictures.push(picture);
+            continue;
+        }
         let code = block.meta.code_language.is_some();
-        let size = block_font_size(theme, block.kind, code);
+        let size = block_font_size(theme, block, code);
         let line_height = size * line_factor(theme, block.kind, code);
-        let indent = (block.meta.indent as f32 * 8.5).min((content_width - 80.0).max(0.0));
         let (gutter, pad_x, pad_top, pad_bottom) = block_box_metrics(
             theme,
             block.kind,
@@ -190,6 +199,10 @@ pub(super) fn build(
                     + 4.0
             })
             .unwrap_or(0.0);
+        let mut base = attributes(theme, block.kind, &[], code);
+        if block.meta.heading_level == Some(6) && block.kind == Kind::H3 {
+            base = base.weight(Weight::MEDIUM);
+        }
         let shaped = super::rich::shape(
             block,
             fonts,
@@ -197,7 +210,7 @@ pub(super) fn build(
             line_height,
             width,
             None,
-            attributes(theme, block.kind, &[], code),
+            base,
         )?;
         let text_h = shaped
             .buffer
@@ -231,6 +244,7 @@ pub(super) fn build(
     let (width, height) = budget::canvas(PAGE_WIDTH * SCALE, end * SCALE)?;
     Ok(Layout {
         rows,
+        pictures,
         chrome,
         options,
         margin_top,

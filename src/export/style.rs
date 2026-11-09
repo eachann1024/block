@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use cosmic_text::Color;
 
 use super::palette::{ExportTheme, Palette};
-use crate::editor::model::Kind;
+use crate::editor::model::{Block, Kind};
 
 pub(super) fn row_text_color(kind: Kind, code: bool, pal: &Palette) -> Color {
     if code {
@@ -17,15 +17,17 @@ pub(super) fn row_text_color(kind: Kind, code: bool, pal: &Palette) -> Color {
     }
 }
 
-pub(super) fn block_font_size(theme: ExportTheme, kind: Kind, code: bool) -> f32 {
+pub(super) fn block_font_size(theme: ExportTheme, block: &Block, code: bool) -> f32 {
     let spec = theme.spec();
     if code {
         return 14.5;
     }
-    match kind {
-        Kind::H1 => spec.heads[0],
-        Kind::H2 => spec.heads[1],
-        Kind::H3 => spec.heads[2],
+    match (block.kind, block.meta.heading_level) {
+        (Kind::H1, _) => spec.heads[0],
+        (Kind::H2, _) => spec.heads[1],
+        (Kind::H3, Some(4)) => spec.body * 1.12,
+        (Kind::H3, Some(5 | 6)) => spec.body,
+        (Kind::H3, _) => spec.heads[2],
         _ => spec.body,
     }
 }
@@ -103,6 +105,14 @@ pub(super) fn attribute_color(attrs: &[(String, String)], background: bool) -> O
     if let Some(value) = css(attrs, property).and_then(|v| color(v, background)) {
         return Some(value);
     }
+    if background && let Some(value) = css(attrs, "background").and_then(|v| color(v, true)) {
+        return Some(value);
+    }
+    let html_attr = if background { "bgcolor" } else { "color" };
+    if let Some(value) = attrs.iter().find(|(name, _)| name.eq_ignore_ascii_case(html_attr))
+        .and_then(|(_, value)| color(value, background)) {
+        return Some(value);
+    }
     let suffix = if background {
         "background-color"
     } else {
@@ -115,33 +125,15 @@ pub(super) fn attribute_color(attrs: &[(String, String)], background: bool) -> O
     })
 }
 
-fn color(value: &str, background: bool) -> Option<Color> {
+pub(super) fn color(value: &str, background: bool) -> Option<Color> {
     let lower = value.trim().to_ascii_lowercase();
-    let named = match (lower.as_str(), background) {
-        ("default", _) => return None,
-        ("transparent", _) => return Some(Color::rgba(0, 0, 0, 0)),
-        ("gray", false) => "#787774",
-        ("brown", false) => "#9f6b53",
-        ("red", false) => "#d44c47",
-        ("orange", false) => "#d9730d",
-        ("yellow", false) => "#cb912f",
-        ("green", false) => "#448361",
-        ("blue", false) => "#337ea9",
-        ("purple", false) => "#9065b0",
-        ("pink", false) => "#c14c8a",
-        ("gray", true) => "#ebeced",
-        ("brown", true) => "#e9e5e3",
-        ("red", true) => "#fbe4e4",
-        ("orange", true) => "#f6e9d9",
-        ("yellow", true) => "#fbf3db",
-        ("green", true) => "#ddedea",
-        ("blue", true) => "#ddebf1",
-        ("purple", true) => "#eae4f2",
-        ("pink", true) => "#f4dfeb",
-        ("black", _) => "#000000",
-        ("white", _) => "#ffffff",
+    let named = crate::editor::text_runs::named_color_hex(&lower, background, false).unwrap_or(match lower.as_str() {
+        "default" | "none" | "" => return None,
+        "transparent" => return Some(Color::rgba(0, 0, 0, 0)),
+        "black" => "#000000",
+        "white" => "#ffffff",
         _ => lower.as_str(),
-    };
+    });
     if let Ok(value) = gpui::Rgba::try_from(named) {
         return Some(Color::rgba(
             (value.r * 255.).round() as u8,
