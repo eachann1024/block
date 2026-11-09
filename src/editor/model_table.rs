@@ -134,8 +134,15 @@ impl Table {
         self.columns > 0 && !self.rows.is_empty() && benign_table && self.column_widths.iter().all(Option::is_none)
             && self.rows.iter().enumerate().all(|(index, row)| row.cells.len() == self.columns
                 && row.cells.iter().all(|cell| cell.colspan == 1 && cell.rowspan == 1 && cell.header == (index == 0)
-                    && cell.attrs.iter().all(|(k, _)| matches!(k.as_str(),
-                        "colspan" | "rowspan" | "data-thinkly-text-alignment" | "data-goose-text-alignment" | "align"))))
+                    && cell.attrs.iter().all(|(k, v)| match k.as_str() {
+                        "colspan" | "rowspan" | "data-thinkly-text-alignment" | "data-goose-text-alignment" | "align" => true,
+                        // Exported tables repeat alignment in CSS; it is preserved by to_pipe.
+                        "style" => v.split(';').filter(|part| !part.trim().is_empty()).all(|part| {
+                            part.split_once(':').is_some_and(|(name, value)| name.trim() == "text-align"
+                                && matches!(value.trim(), "left" | "center" | "right"))
+                        }),
+                        _ => false,
+                    })))
     }
     /// Converts a simple HTML table into a pipe table. Returns false when that would lose data.
     pub fn to_pipe(&mut self) -> bool {
