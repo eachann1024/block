@@ -287,6 +287,7 @@ impl Editor {
         self.preferred_x = None;
         self.note_fold_tail(heading_id, id);
         self.record_changes(before, vec![ListChange { start: end, before: 0, after: 1 }], true, cx);
+        self.show_hidden_tail(id);
         true
     }
 
@@ -350,15 +351,89 @@ impl Editor {
         self.fold_tails.retain(|(id, _)| *id != heading);
     }
 
+    /// Show `block` as the tail of every fold that hides it, when nothing hidden follows it.
+    /// Returns whether the block is visible afterward. Never opens the fold.
+    pub(super) fn show_hidden_tail(&mut self, block: u64) -> bool {
+        let Some(index) = self.doc.index_of(block) else { return false; };
+        if !self.is_index_hidden(index) { return true; }
+        for heading_index in 0..index {
+            let heading = &self.doc.blocks[heading_index];
+            if !self.is_heading_folded(heading.id) { continue; }
+            let end = fold_end(&self.doc, heading_index);
+            if index >= end || self.tail_reveals(heading_index, index) { continue; }
+            if (index + 1..end).any(|i| self.is_index_hidden(i)) { continue; }
+            self.note_fold_tail(heading.id, block);
+        }
+        self.doc.index_of(block).is_some_and(|index| !self.is_index_hidden(index))
+    }
+
+    fn was_fold_visible(before: &Snapshot, heading: u64, block: u64) -> bool {
+        let Some(heading_index) = before.doc.index_of(heading) else { return false };
+        let Some(index) = before.doc.index_of(block) else { return false };
+        let Some(&(_, start)) = before.fold_tails.iter().find(|(id, _)| *id == heading) else { return false };
+        let Some(start) = before.doc.index_of(start) else { return false };
+        let end = fold_end(&before.doc, heading_index);
+        start > heading_index && start < end && index >= start && index < end
+    }
+
+    fn innermost_folded(&self, index: usize) -> Option<usize> {
+        (0..index).rev().find(|&heading| {
+            let block = &self.doc.blocks[heading];
+            self.is_heading_folded(block.id) && index < fold_end(&self.doc, heading)
+        })
+    }
+
+    /// New blocks dropped into a hidden body move to that section's end so the
+    /// old body stays folded and the new blocks can become the visible tail.
+    fn park_new_blocks(&mut self, before: &Snapshot) {
+        let new_ids: Vec<u64> = self.doc.blocks.iter()
+            .filter(|block| before.doc.index_of(block.id).is_none())
+            .map(|block| block.id)
+            .collect();
+        for id in new_ids {
+            let Some(index) = self.doc.index_of(id) else { continue };
+            let Some(inner) = self.innermost_folded(index) else { continue };
+            let heading = self.doc.blocks[inner].id;
+            let end = fold_end(&self.doc, inner);
+            let last_hidden = (inner + 1..end).filter(|&i| {
+                let block = self.doc.blocks[i].id;
+                before.doc.index_of(block).is_some() && !Self::was_fold_visible(before, heading, block)
+            }).max();
+            let Some(last_hidden) = last_hidden else { continue };
+            if index > last_hidden || index + 1 == end { continue; }
+            let block = self.doc.blocks[index].clone();
+            self.doc.splice_blocks(index..index + 1, Vec::new());
+            let end = self.doc.index_of(heading)
+                .map(|inner| fold_end(&self.doc, inner))
+                .unwrap_or(self.doc.blocks.len())
+                .min(self.doc.blocks.len());
+            self.doc.splice_blocks(end..end, vec![block]);
+        }
+    }
+
     /// Keep each visible tail attached to blocks inserted or retargeted inside its folded section.
+    /// A folded heading with no tail yet still claims a block appended after its hidden body,
+    /// so focusing that block does not open the section or land in a hidden empty paragraph.
     pub(super) fn sync_fold_tail(&mut self, before: &Snapshot) {
-        if self.fold_tails.is_empty() && before.fold_tails.is_empty() { return; }
+        if self.folded.is_empty() {
+            self.fold_tails.clear();
+            return;
+        }
+        if self.doc.blocks.iter().any(|block| before.doc.index_of(block.id).is_none()) {
+            self.park_new_blocks(before);
+        }
         let mut headings: Vec<u64> = self.fold_tails.iter().map(|(id, _)| *id).collect();
         for (id, _) in &before.fold_tails {
             if !headings.contains(id) { headings.push(*id); }
         }
+        for id in &self.folded {
+            if !headings.contains(id) { headings.push(*id); }
+        }
         for heading in headings {
             self.sync_one_fold_tail(heading, before);
+        }
+        if self.doc.index_of(self.caret.head.block).is_some_and(|index| self.is_index_hidden(index)) {
+            self.show_hidden_tail(self.caret.head.block);
         }
     }
 
@@ -395,10 +470,20 @@ impl Editor {
             self.set_fold_tail(heading, self.doc.blocks[index].id);
             return;
         }
-        if let Some(block) = self.doc.blocks.iter().enumerate().find_map(|(index, block)| {
-            (inside(index) && before.doc.index_of(block.id).is_none()).then_some(block.id)
+        if let Some(index) = (heading_index + 1..end).find(|&index| {
+            let id = self.doc.blocks[index].id;
+            before.doc.index_of(id).is_some() && Self::was_fold_visible(before, heading, id)
         }) {
-            self.set_fold_tail(heading, block);
+            self.set_fold_tail(heading, self.doc.blocks[index].id);
+            return;
+        }
+        let last_old_hidden = (heading_index + 1..end).filter(|&index| {
+            let id = self.doc.blocks[index].id;
+            before.doc.index_of(id).is_some() && !Self::was_fold_visible(before, heading, id)
+        }).max();
+        let from = last_old_hidden.map(|index| index + 1).unwrap_or(heading_index + 1);
+        if let Some(index) = (from..end).find(|&index| before.doc.index_of(self.doc.blocks[index].id).is_none()) {
+            self.set_fold_tail(heading, self.doc.blocks[index].id);
             return;
         }
         if let Some(caret) = self.doc.index_of(self.caret.head.block).filter(|&index| inside(index))
