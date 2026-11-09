@@ -247,6 +247,14 @@ impl Workspace {
     fn route_edit_action(&mut self, action: crate::editor::view::EditorAction, window: &mut Window, cx: &mut Context<Self>) {
         if crate::quick::is_quick_panel_active() && crate::quick::dispatch_editor_action(&action, cx) { return; }
         if crate::editor::paste_clipboard::forward_focused_input_action(&action, window, cx) { return; }
+        if matches!(action, crate::editor::view::EditorAction::Copy)
+            && self.renaming.is_none()
+            && self.tree.read(cx).is_focused(window)
+            && let Some((path, _)) = self.tree.read(cx).active_target()
+        {
+            crate::editor::clipboard_files::copy_files(&[path], cx);
+            return;
+        }
         if self.settings.is_none() && !self.is_history_open() && !crate::editor::ai::chat::is_fullscreen(cx) && crate::export::active_view(cx).is_none() {
             window.focus(&self.editor.focus_handle(cx), cx);
             self.editor.update(cx, |e, cx| e.handle(&action, window, cx));

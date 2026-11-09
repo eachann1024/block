@@ -105,6 +105,9 @@ impl Editor {
 pub(crate) fn forward_focused_input_action(action: &super::view::EditorAction, window: &mut gpui::Window, cx: &mut gpui::App) -> bool {
     if gpui_component::WindowExt::focused_input(window, cx).is_none() { return false; }
     use super::view::EditorAction::*;
+    if matches!(action, Paste) && cx.read_from_clipboard().is_some_and(|item| super::clipboard_files::string_text(&item).is_none()) {
+        return true;
+    }
     let a: Option<Box<dyn gpui::Action>> = match action {
         Paste => Some(Box::new(gpui_component::input::Paste)), Copy => Some(Box::new(gpui_component::input::Copy)),
         Cut => Some(Box::new(gpui_component::input::Cut)), SelectAll => Some(Box::new(gpui_component::input::SelectAll)),
