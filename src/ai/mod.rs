@@ -8,6 +8,8 @@ pub(crate) mod backend;
 mod anthropic;
 pub(crate) mod provider;
 pub(super) mod session;
+#[cfg(not(target_family = "wasm"))]
+mod inline_backend;
 pub(super) mod panel;
 pub(super) mod preview;
 pub(crate) mod settings;

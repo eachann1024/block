@@ -2,9 +2,8 @@
 //!
 //! The page keeps a readable floor: the note at 480, Settings at 680. A shortage
 //! is absorbed by the chat first (down to its minimum, then by floating over the
-//! page). An expanded sidebar stays on screen: it docks when the page floor fits
-//! beside it, and otherwise draws over the page. It does not disappear when the
-//! window has no column left. A saved chat width is restored when the window grows.
+//! page). The sidebar docks when the page floor fits beside it. Otherwise it stays
+//! hidden until explicitly opened as a drawer. A saved chat width is restored when the window grows.
 
 use std::cell::Cell;
 
@@ -121,13 +120,14 @@ pub fn resolve(input: Input) -> ShellSplit {
     let sidebar = reserved_sidebar(input.sidebar_collapsed, input.sidebar_width);
     let expanded = sidebar > 0.;
     let can_dock = expanded && sidebar + floor <= input.window_width + 0.5;
-    // No column left: draw the expanded sidebar over the page instead of hiding it.
-    let drawer = expanded && !can_dock;
-    let docked = if drawer { 0. } else { sidebar };
+    // Reserve no column when space runs out; only an explicit toggle opens the drawer.
+    let yielded = expanded && !can_dock;
+    let drawer = yielded && input.sidebar_pinned;
+    let docked = if yielded { 0. } else { sidebar };
 
     if !input.chat_open || input.chat_fullscreen {
         return ShellSplit {
-            sidebar_yielded: drawer,
+            sidebar_yielded: yielded,
             sidebar_drawer: drawer,
             chat_overlay: false,
             chat_width: desired,
@@ -135,27 +135,27 @@ pub fn resolve(input: Input) -> ShellSplit {
     }
 
     if docked + floor + desired <= input.window_width + 0.5 {
-        return done(drawer, false, desired);
+        return done(yielded, drawer, false, desired);
     }
     let beside = input.window_width - docked - floor;
     if docked > 0. && beside + 0.5 >= input.chat_min {
-        return done(drawer, false, beside.min(desired).max(input.chat_min));
+        return done(yielded, drawer, false, beside.min(desired).max(input.chat_min));
     }
     // The chat cannot take a column beside the sidebar. Keep the sidebar and,
     // when it is only a drawer, dock the chat in the width it freed.
-    if drawer {
+    if yielded {
         let free = input.window_width - floor;
         if free + 0.5 >= input.chat_min {
             return ShellSplit {
                 sidebar_yielded: true,
-                sidebar_drawer: true,
+                sidebar_drawer: drawer,
                 chat_overlay: false,
                 chat_width: free.min(desired).max(input.chat_min),
             };
         }
     }
     ShellSplit {
-        sidebar_yielded: drawer,
+        sidebar_yielded: yielded,
         sidebar_drawer: drawer,
         chat_overlay: true,
         chat_width: input.chat_min.min(input.window_width.max(input.chat_min)),
@@ -172,8 +172,8 @@ pub fn settings_floor() -> gpui::Pixels {
     px(SETTINGS_FLOOR)
 }
 
-fn done(drawer: bool, overlay: bool, chat_width: f32) -> ShellSplit {
-    ShellSplit { sidebar_yielded: drawer, sidebar_drawer: drawer, chat_overlay: overlay, chat_width }
+fn done(yielded: bool, drawer: bool, overlay: bool, chat_width: f32) -> ShellSplit {
+    ShellSplit { sidebar_yielded: yielded, sidebar_drawer: drawer, chat_overlay: overlay, chat_width }
 }
 
 fn reserved_sidebar(collapsed: bool, width: f32) -> f32 {
@@ -250,9 +250,9 @@ mod tests {
     }
 
     #[test]
-    fn sidebar_draws_over_the_page_when_it_cannot_dock() {
+    fn sidebar_hides_when_it_cannot_dock() {
         let split = resolve(input(700., 240., 396., true));
-        assert!(split.sidebar_yielded && split.sidebar_drawer && split.chat_overlay);
+        assert!(split.sidebar_yielded && !split.sidebar_drawer && split.chat_overlay);
         assert_eq!(split.chat_width, CHAT_MIN);
         let text = 700. - note_padding(split, 700., 240.);
         assert!(text >= NOTE_FLOOR - 0.5);
@@ -287,10 +287,10 @@ mod tests {
     }
 
     #[test]
-    fn closed_chat_draws_a_sidebar_that_cannot_dock() {
+    fn closed_chat_hides_a_sidebar_that_cannot_dock() {
         assert!(!resolve(input(1100., 240., 396., false)).sidebar_yielded);
         let split = resolve(input(800., 420., 396., false));
-        assert!(split.sidebar_yielded && split.sidebar_drawer && !split.chat_overlay);
+        assert!(split.sidebar_yielded && !split.sidebar_drawer && !split.chat_overlay);
     }
 
     #[test]
@@ -301,16 +301,16 @@ mod tests {
     }
 
     #[test]
-    fn narrowest_window_draws_the_sidebar_and_floats_the_chat() {
+    fn narrowest_window_hides_the_sidebar_and_floats_the_chat() {
         let split = resolve(input(SETTINGS_FLOOR, 240., 396., true));
-        assert!(split.sidebar_yielded && split.sidebar_drawer && split.chat_overlay);
+        assert!(split.sidebar_yielded && !split.sidebar_drawer && split.chat_overlay);
         assert!(SETTINGS_FLOOR - note_padding(split, SETTINGS_FLOOR, 240.) >= NOTE_FLOOR - 0.5);
     }
 
     #[test]
-    fn settings_nav_opens_over_the_page_until_the_floor_fits() {
+    fn settings_nav_hides_until_the_floor_fits() {
         let narrow = resolve(settings(900., 240.));
-        assert!(narrow.sidebar_yielded && narrow.sidebar_drawer && !narrow.chat_overlay);
+        assert!(narrow.sidebar_yielded && !narrow.sidebar_drawer && !narrow.chat_overlay);
         let wide = resolve(settings(960., 240.));
         assert!(!wide.sidebar_yielded && !wide.sidebar_drawer);
         assert!(960. - 240. >= SETTINGS_FLOOR);
