@@ -234,6 +234,46 @@ impl Editor {
             _ => {}
         }
     }
+    /// Recomputes the open menu's trigger from the current chrome so a resize does not
+    /// leave it on the rectangle captured when it opened. A point anchor only refreshes
+    /// its viewport. A right-aligned cell menu is the grid's more button.
+    pub(in crate::editor) fn live_table_menu_spec(&self, menu: &TableMenu) -> crate::dropdown::PlacementSpec {
+        let viewport = self.list.viewport_bounds();
+        let frozen = menu.spec;
+        let point_anchor = frozen.trigger.size.width <= px(0.) && frozen.trigger.size.height <= px(0.);
+        if point_anchor {
+            return frozen.viewport(viewport);
+        }
+        let Some(chrome) = self.table_chrome.as_ref().filter(|chrome| chrome.block == menu.block) else {
+            return frozen.viewport(viewport);
+        };
+        let zoom = super::zoom::zoom_factor(self.minimal);
+        let rect = match menu.sel {
+            TableSel::Row(row) => {
+                let Some(span) = chrome.rows.get(row) else { return frozen.viewport(viewport); };
+                let mid_y = (span.0 + span.1 + if row + 1 < chrome.rows.len() { px(1.) } else { px(0.) }) / 2.;
+                Bounds::new(point(chrome.bounds.left() - px(6.5 * zoom), mid_y - px(12. * zoom)), gpui::size(px(13. * zoom), px(24. * zoom)))
+            }
+            TableSel::Column(col) => {
+                let Some(span) = chrome.columns.get(col) else { return frozen.viewport(viewport); };
+                let (seen_l, seen_r) = (span.0.max(chrome.bounds.left()), span.1.min(chrome.bounds.right()));
+                let x = ((seen_l + seen_r + if col + 1 < chrome.columns.len() && seen_r == span.1 { px(1.) } else { px(0.) }) / 2. - px(12. * zoom)).max(chrome.bounds.left());
+                Bounds::new(point(x, chrome.bounds.top() - px(6.5 * zoom)), gpui::size(px(24. * zoom), px(14. * zoom)))
+            }
+            TableSel::Cell(_, _) if frozen.align_x == crate::dropdown::AlignX::Right => {
+                let btn_sz = px(26. * zoom);
+                Bounds::new(point(chrome.bounds.right() + px(22. * zoom), chrome.bounds.top()), gpui::size(btn_sz, btn_sz))
+            }
+            TableSel::Cell(row, col) => {
+                let (Some(column), Some(row_span)) = (chrome.columns.get(col), chrome.rows.get(row)) else {
+                    return frozen.viewport(viewport);
+                };
+                Bounds::from_corners(point(column.0, row_span.0), point(column.1, row_span.1))
+            }
+            TableSel::Whole => return frozen.viewport(viewport),
+        };
+        crate::dropdown::PlacementSpec::below(rect).viewport(viewport).gap(frozen.gap).margin(frozen.margin).align_x(frozen.align_x)
+    }
     pub(in crate::editor) fn open_table_menu_spec(&mut self, id: u64, sel: TableSel, spec: crate::dropdown::PlacementSpec, cx: &mut Context<Self>) {
         self.table_menu = Some(TableMenu { block: id, sel, spec }); cx.notify();
     }
