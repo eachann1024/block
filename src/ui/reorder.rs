@@ -37,14 +37,24 @@ pub fn insertion_target<T: 'static, E: StatefulInteractiveElement + ParentElemen
     content: E, position: DropPosition, folder: bool, accepts: impl Fn(&T) -> bool + 'static,
 ) -> E {
     let bounds = position.0.clone();
+    let edge = std::rc::Rc::new(std::cell::Cell::new(None));
+    let paint_edge = edge.clone();
     content.relative().child(super::placement::track_bounds(bounds, false))
+        // Paint independently of the row border: square ends, no layout changes.
+        .child(gpui::canvas(|_, _, _| (), move |bounds, _, window, _| {
+            if let Some(after) = paint_edge.take() {
+                let y = if after { bounds.bottom() - px(2.) } else { bounds.top() };
+                let line = gpui::Bounds::new(gpui::point(bounds.left(), y), gpui::size(bounds.size.width, px(2.)));
+                window.paint_quad(gpui::fill(line, Theme::ocean().accent));
+            }
+        }).absolute().top_0().left_0().size_full())
         .on_drag_move::<T>(|_, window, _| window.refresh())
         .drag_over::<T>(move |style, item, window, _| {
             if !accepts(item) { return style; }
             let theme = Theme::ocean();
             if folder && position.middle(window) { return style.bg(theme.selected).border_color(theme.accent); }
-            if position.after(window) { style.border_b_2().border_color(theme.accent) }
-            else { style.border_t_2().border_color(theme.accent) }
+            edge.set(Some(position.after(window)));
+            style
         })
 }
 
