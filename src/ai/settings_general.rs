@@ -3,17 +3,15 @@ use std::{cell::Cell, rc::Rc};
 use gpui::{AppContext, Bounds, Context, Entity, Pixels, Subscription, Window, div, prelude::*, px};
 use gpui_component::input::{Input, InputEvent, InputState};
 use super::{AiSettings, TestNote};
-use super::super::{annotation_config::AnnotationConfig, backend::{self, BackendKind, ModelOption}, backend_ui};
+use super::super::{annotation_config::AnnotationConfig, backend::{self, BackendKind, ModelOption, model_cache::{ModelCache, ModelStatus}}, backend_ui};
 use crate::{theme::{Theme, tr}, ui::{ai_controls, settings_controls::{card_title, setting_row, settings_card}}};
 
 pub(super) struct GeneralSettings {
     config: Option<AnnotationConfig>,
     open: bool,
     backend: BackendKind,
-    models: Vec<ModelOption>,
-    loading: bool,
+    models: ModelCache,
     error: Option<String>,
-    generation: u64,
     search: Entity<InputState>,
     bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
     _subscription: Subscription,
@@ -28,8 +26,12 @@ impl GeneralSettings {
         let subscription = cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Change) { cx.notify(); }
         });
-        Self { config: result.ok(), open: false, backend, models: Vec::new(), loading: false, error,
-            generation: 0, search, bounds: Default::default(), _subscription: subscription }
+        Self { config: result.ok(), open: false, backend, models: Default::default(), error,
+            search, bounds: Default::default(), _subscription: subscription }
+    }
+
+    pub(super) fn invalidate_builtin_models(&mut self) {
+        self.models.invalidate(BackendKind::Builtin);
     }
 }
 
@@ -42,9 +44,8 @@ impl AiSettings {
 
     fn load_annotation_models(&mut self, kind: BackendKind, cx: &mut Context<Self>) {
         self.general.backend = kind;
-        self.general.models.clear(); self.general.loading = true; self.general.error = None;
-        self.general.generation += 1;
-        let generation = self.general.generation;
+        self.general.error = None;
+        let Some(generation) = self.general.models.begin_refresh(kind) else { cx.notify(); return; };
         let builtin = self.general.config.as_ref().filter(|config| config.backend == kind && kind == BackendKind::Builtin)
             .map(AnnotationConfig::builtin_config);
         let task = cx.background_spawn(async move {
@@ -55,20 +56,14 @@ impl AiSettings {
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
-                if this.general.generation != generation { return; }
-                this.general.loading = false;
-                match result {
-                    Ok(models) => {
-                        // Resolve an initially unknown model once, never follow later chat changes.
-                        if let Some(config) = &this.general.config
-                            && config.backend == kind && config.model.is_empty()
-                            && let Some(first) = models.first() {
-                            let mut config = config.clone(); config.model = first.value.clone();
-                            this.save_annotation_config(config, cx);
-                        }
-                        this.general.models = models;
-                    }
-                    Err(error) => this.general.error = Some(error),
+                if !this.general.models.finish(kind, generation, result) { return; }
+                // Resolve an initially unknown model once, never follow later chat changes.
+                if this.general.models.status(kind) == ModelStatus::Ready
+                    && let Some(config) = &this.general.config
+                    && config.backend == kind && config.model.is_empty()
+                    && let Some(first) = this.general.models.choices(kind).first() {
+                    let mut config = config.clone(); config.model = first.value.clone();
+                    this.save_annotation_config(config, cx);
                 }
                 cx.notify();
             });
@@ -90,6 +85,9 @@ impl AiSettings {
         let label = config.filter(|c| !c.model.is_empty()).map_or_else(
             || backend_ui::backend_name(kind).to_owned(), |c| c.model.clone());
         let thinking = config.map(|c| backend_ui::thinking_label(&c.thinking));
+        let model_error = match self.general.models.status(self.general.backend) {
+            ModelStatus::Error(error) => Some(error), _ => None,
+        };
         let trigger = ai_controls::deck_trigger_capsule("annotation-model-trigger", backend_ui::backend_logo(kind),
             label, thinking, true, self.general.open, cx.listener(|this, _, window, cx| {
                 cx.stop_propagation();
@@ -104,7 +102,7 @@ impl AiSettings {
         div().w_full().min_w_0().flex().flex_col().gap(px(12.))
             .child(card_title(tr("普通功能", "General Features")))
             .child(settings_card(12.).child(setting_row(tr("标注功能", "Annotations"), trigger)))
-            .children(self.general.error.as_ref().map(|error| div().text_size(px(14.)).text_color(Theme::ocean().text_secondary).child(error.clone())))
+            .children(self.general.error.as_ref().or(model_error.as_ref()).map(|error| div().text_size(px(14.)).text_color(Theme::ocean().text_secondary).child(error.clone())))
     }
 
     pub(in crate::editor::ai) fn annotation_menu(&self, window: &Window, cx: &mut Context<Self>) -> Option<gpui::Deferred> {
@@ -125,7 +123,8 @@ impl AiSettings {
                 })));
         }
         let mut models = div().id("annotation-model-list").h(px(208.)).overflow_y_scroll().p(px(6.)).flex().flex_col().gap(px(2.));
-        for (index, model) in self.general.models.iter().enumerate().filter(|(_, m)| m.value.to_lowercase().contains(&query) || m.label.to_lowercase().contains(&query)) {
+        let choices = self.general.models.choices(kind);
+        for (index, model) in choices.iter().enumerate().filter(|(_, m)| m.value.to_lowercase().contains(&query) || m.label.to_lowercase().contains(&query)) {
             let value = model.value.clone();
             let active = config.is_some_and(|c| c.backend == kind && c.model == value);
             models = models.child(ai_controls::model_row(format!("annotation-model-{index}"), backend_ui::backend_logo(kind),
@@ -136,8 +135,8 @@ impl AiSettings {
                     this.save_annotation_config(config, cx);
                 })));
         }
-        if self.general.loading || self.general.models.is_empty() {
-            models = models.child(div().p(px(8.)).text_size(px(14.)).child(if self.general.loading {
+        if choices.is_empty() {
+            models = models.child(div().p(px(8.)).text_size(px(14.)).child(if self.general.models.status(kind) == ModelStatus::Loading {
                 tr("正在获取模型…", "Loading models…")
             } else { tr("暂无可选模型", "No models available") }));
         }

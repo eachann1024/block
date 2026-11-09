@@ -10,6 +10,8 @@ use cosmic_text::{
 };
 
 pub(super) const UNDERLINE: usize = 16;
+pub(super) const LINK: usize = 32;
+pub(super) const HIGHLIGHT: usize = 64;
 pub(super) const BACKGROUND_SHIFT: usize = 8;
 pub(super) struct Shaped {
     pub buffer: Buffer,
@@ -74,7 +76,6 @@ pub(super) fn shape_with_wrap(
             if block.text[start..end].is_ascii() {
                 attrs = attrs.family(Family::Monospace);
             }
-            background = Some(Color::rgb(237, 240, 245));
         }
         for tag in block
             .meta
@@ -83,8 +84,7 @@ pub(super) fn shape_with_wrap(
             .filter(|tag| tag.start <= start && end <= tag.end)
         {
             if tag.name == "a" {
-                attrs = attrs.color(Color::rgb(51, 126, 169));
-                flags |= UNDERLINE;
+                flags |= UNDERLINE | LINK;
             }
             if matches!(tag.name.as_str(), "u" | "ins")
                 || style::css(&tag.attrs, "text-decoration")
@@ -95,8 +95,8 @@ pub(super) fn shape_with_wrap(
             if style::css(&tag.attrs, "text-decoration").is_some_and(|v| v.contains("line-through")) {
                 flags |= STRIKE;
             }
-            if tag.name == "mark" && background.is_none() {
-                background = style::color("yellow", true);
+            if tag.name == "mark" {
+                flags |= HIGHLIGHT;
             }
             if let Some(color) = style::attribute_color(&tag.attrs, false) {
                 attrs = attrs.color(color);

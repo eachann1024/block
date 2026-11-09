@@ -155,6 +155,42 @@ impl ExportTheme {
 }
 
 impl Palette {
+    /// Decorative accents (for example Riso pink) may be too light for small text.
+    pub fn link_fg(&self) -> Color {
+        let luminance = |color: Color| {
+            let linear = |value: u8| {
+                let v = value as f32 / 255.;
+                if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+            };
+            0.2126 * linear(color.r()) + 0.7152 * linear(color.g()) + 0.0722 * linear(color.b())
+        };
+        let (a, b) = (luminance(self.accent), luminance(self.inner_canvas));
+        if (a.max(b) + 0.05) / (a.min(b) + 0.05) >= 4.5 { self.accent } else { self.title }
+    }
+
+    pub fn table_header_bg(&self) -> Color {
+        mix(self.inner_canvas, self.accent, if self.dark { 0.16 } else { 0.08 })
+    }
+
+    pub fn highlight_bg(&self) -> Color {
+        mix(self.inner_canvas, self.accent, if self.dark { 0.30 } else { 0.22 })
+    }
+
+    /// Keep warning/tip semantics while tinting their surface to the selected paper.
+    pub fn callout_colors(&self, kind: crate::editor::model::CalloutKind) -> (Color, Color, Color) {
+        let (_, _, color, _, _) = crate::ui::callout_controls::tone(kind, self.dark);
+        let accent = if kind == crate::editor::model::CalloutKind::Note {
+            self.link_fg()
+        } else {
+            Color::rgb((color >> 16) as u8, (color >> 8) as u8, color as u8)
+        };
+        (
+            mix(self.inner_canvas, accent, if self.dark { 0.12 } else { 0.07 }),
+            mix(self.inner_canvas, accent, 0.35),
+            accent,
+        )
+    }
+
     /// Explicit text color from the document; dark themes lift colors that would vanish.
     pub fn fg(&self, color: Color) -> Color {
         if !self.dark {
