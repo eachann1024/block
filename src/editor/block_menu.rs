@@ -75,23 +75,11 @@ impl Editor {
             .unwrap_or_else(|| Bounds::new(point(anchor.x, (anchor.y - px(28.)).max(px(0.))), size(px(SLASH_MENU_WIDTH), px(24.))));
         self.open_block_menu_at(id, trigger, mode, cx);
     }
-    /// Entries currently shown; the slash menu filters by what follows the slash.
-    pub(super) fn block_menu_entries(&self) -> Vec<Option<Cmd>> {
-        let Some(menu) = self.block_menu else { return Vec::new() };
-        self.block_menu_entries_for(menu)
-    }
     pub(super) fn block_menu_entries_for(&self, menu: BlockMenu) -> Vec<Option<Cmd>> {
         match menu.mode {
             Mode::Slash => {
                 let Some(block) = self.doc.get(menu.block) else { return Vec::new() };
-                if !block.text.is_empty() && !block.text.starts_with('/') { return Vec::new(); }
-                let slash: &[Option<Cmd>] = if self.minimal { &SLASH_MINIMAL } else { &SLASH };
-                let query = block.text.trim_start_matches('/').to_lowercase();
-                if query.is_empty() { return slash.to_vec(); }
-                let mut hits: Vec<Cmd> = slash.iter().copied().flatten()
-                    .filter(|c| c.label().to_lowercase().contains(&query) || c.keywords().contains(&query)).collect();
-                hits.sort_by_key(|c| !c.label().to_lowercase().starts_with(&query));
-                hits.into_iter().map(Some).collect()
+                slash_entries_for_text(&block.text, self.minimal)
             }
             Mode::Handle => Vec::new(),
         }
@@ -126,9 +114,20 @@ impl Editor {
     pub(super) fn sync_block_menu_after_edit(&mut self, cx: &mut Context<Self>) {
         let Some(menu) = self.block_menu else { return };
         if menu.mode != Mode::Slash { return; }
+        let valid = self.caret.head.block == menu.block
+            && self.doc.get(menu.block).is_some_and(|b| b.text.starts_with('/'));
+        if !valid {
+            self.block_menu = None;
+            cx.notify();
+            return;
+        }
         let entries = self.block_menu_entries_for(menu);
         let slots = Self::entry_slots(&entries);
-        if !menu_nav::has_item(&slots) { return; }
+        if !menu_nav::has_item(&slots) {
+            self.block_menu = None;
+            cx.notify();
+            return;
+        }
         let next = menu_nav::clamp_index(menu.index, &slots);
         if let Some(menu) = &mut self.block_menu { menu.index = next; }
         menu_nav::reveal_or_defer(&self.block_menu_scroll, next, entries.len());
@@ -235,4 +234,31 @@ impl Editor {
     }
 }
 
+fn slash_entries_for_text(text: &str, minimal: bool) -> Vec<Option<Cmd>> {
+    if !text.is_empty() && !text.starts_with('/') { return Vec::new(); }
+    let slash: &[Option<Cmd>] = if minimal { &SLASH_MINIMAL } else { &SLASH };
+    let Some(raw) = text.strip_prefix('/') else { return slash.to_vec() };
+    let query = raw.to_lowercase();
+    if query.is_empty() { return slash.to_vec(); }
+    let mut hits: Vec<Cmd> = slash.iter().copied().flatten()
+        .filter(|c| c.label().to_lowercase().contains(&query) || c.keywords().contains(&query)).collect();
+    hits.sort_by_key(|c| !c.label().to_lowercase().starts_with(&query));
+    hits.into_iter().map(Some).collect()
+}
+
 pub(super) const SLASH_MENU_WIDTH: f32 = 224.;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repeated_slashes_do_not_keep_the_full_slash_menu_open() {
+        assert!(!slash_entries_for_text("", false).is_empty());
+        assert!(!slash_entries_for_text("/", false).is_empty());
+        assert!(!slash_entries_for_text("/h1", false).is_empty());
+        assert!(slash_entries_for_text("//", false).is_empty());
+        assert!(slash_entries_for_text("////", false).is_empty());
+        assert!(slash_entries_for_text("plain", false).is_empty());
+    }
+}

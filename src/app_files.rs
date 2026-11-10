@@ -118,11 +118,7 @@ impl Workspace {
         let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| match event {
             InputEvent::Change => this.tree.update(cx, |_, cx| cx.notify()),
             InputEvent::PressEnter { .. } => {
-                let blank = this.renaming.as_ref().is_some_and(|state| state.blank);
                 this.commit_rename(window, cx);
-                if blank && this.renaming.is_none() {
-                    this.restore_focus(window, cx);
-                }
             }
             InputEvent::Blur if this.renaming.is_some() => this.finish_blank_rename_on_blur(window, cx),
             _ => {}
@@ -160,9 +156,23 @@ impl Workspace {
     }
 
     pub(super) fn commit_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(state) = &self.renaming else { return; };
+        let (path, dir, blank) = (state.path.clone(), state.dir, state.blank);
         if self.apply_rename(cx) {
-            let focus = self.tree.read(cx).focus_handle().clone();
-            window.focus(&focus, cx);
+            if dir {
+                let focus = self.tree.read(cx).focus_handle().clone();
+                window.focus(&focus, cx);
+            } else {
+                let is_open = self.editor.read(cx).current_path().is_some_and(|p| p == path || p.starts_with(&path));
+                if is_open {
+                    self.editor.update(cx, |editor, cx| {
+                        editor.focus_content(blank, window, cx);
+                    });
+                } else {
+                    let focus = self.tree.read(cx).focus_handle().clone();
+                    window.focus(&focus, cx);
+                }
+            }
         }
     }
 
@@ -184,7 +194,7 @@ impl Workspace {
         }
         self.renaming = None;
         self.tree.update(cx, |tree, cx| tree.finish_rename(&path, name.clone().into(), cx));
-        let reopen = self.open_under(&path, cx);
+        let reopen = if dir { self.open_under(&path, cx) } else { Some(path.clone()) };
         self.start_file_op(FileOp::Rename { path, name, dir, reopen }, cx);
         true
     }

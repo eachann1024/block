@@ -172,8 +172,9 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession, phase: cr
     );
     let pos_editor = editor.clone();
     let editor_id = editor.entity_id();
-    gpui::deferred(
-        crate::ui::placement::smart_anchored_with(move |_, cx| {
+    crate::ui::placement::anchored_motion_with(
+        ("inline-ai-pop", pop_gen),
+        move |_, cx| {
             let ed = pos_editor.read(cx);
             let trigger = target_ids
                 .iter()
@@ -184,75 +185,71 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession, phase: cr
                 .viewport(ed.list.viewport_bounds())
                 .gap(px(6.))
                 .margin(px(12.))
-        })
-        .child(crate::ui::motion::animate_popup(
-            panel_shell("inline-ai")
-                .on_action(|_: &view::Backspace, _, _| {})
-                .on_action(|_: &view::Delete, _, _| {})
-                .on_action(|_: &view::Left, _, _| {})
-                .on_action(|_: &view::Right, _, _| {})
-                .on_action(|_: &view::SelectLeft, _, _| {})
-                .on_action(|_: &view::SelectRight, _, _| {})
-                .on_action(|_: &view::SelectAll, _, _| {})
-                .capture_action({
-                    let ed = editor.clone();
-                    move |_: &gpui_component::input::MoveUp, _, cx| {
-                        if ed.update(cx, |this, cx| this.ai_step_menu(false, cx)) { cx.stop_propagation(); }
-                    }
-                })
-                .capture_action({
-                    let ed = editor.clone();
-                    move |_: &gpui_component::input::MoveDown, _, cx| {
-                        if ed.update(cx, |this, cx| this.ai_step_menu(true, cx)) { cx.stop_propagation(); }
-                    }
-                })
-                .on_action(|_: &view::Up, _, _| {})
-                .on_action(|_: &view::Down, _, _| {})
-                .on_action(|_: &view::SelectUp, _, _| {})
-                .on_action(|_: &view::SelectDown, _, _| {})
-                .on_action(|_: &view::Enter, _, _| {})
-                .on_action(|_: &view::Copy, _, _| {})
-                .on_action(|_: &view::Cut, _, _| {})
-                .on_action(|_: &view::Paste, _, _| {})
-                .on_action(|_: &view::Bold, _, _| {})
-                .on_action(|_: &view::Italic, _, _| {})
-                .on_action(|_: &view::Strike, _, _| {})
-                .on_action(|_: &view::Code, _, _| {})
-                .on_action(|_: &view::Undo, _, _| {})
-                .on_action(|_: &view::Redo, _, _| {})
-                .on_action(|_: &view::Cancel, _, _| {})
-                .on_action(|_: &view::NextCell, _, _| {})
-                .on_action(|_: &view::PreviousCell, _, _| {})
-                .on_action(|_: &view::TableMenuKey, _, _| {})
-                .on_action(|_: &view::SetParagraph, _, _| {})
-                .on_action(|_: &view::SetH1, _, _| {})
-                .on_action(|_: &view::SetH2, _, _| {})
-                .on_action(|_: &view::SetH3, _, _| {})
-                .on_action(|_: &view::MoveBlockUp, _, _| {})
-                .on_action(|_: &view::MoveBlockDown, _, _| {})
-                .on_action(|_: &view::Underline, _, _| {})
-                .on_action(|_: &view::EditLink, _, _| {})
-                .on_action(|_: &view::ExitBlock, _, _| {})
-                .on_action(|_: &view::DocStart, _, _| {})
-                .on_action(|_: &view::DocEnd, _, _| {})
-                .on_action(|_: &view::Find, _, _| {})
-                .on_action(|_: &view::ImageGrow, _, _| {})
-                .on_action(|_: &view::ImageShrink, _, _| {})
-                .on_key_down(move |e, window, cx| {
-                    if e.keystroke.key == "escape" {
-                        key_editor.update(cx, |this, cx| this.ai_escape(window, cx));
-                        cx.stop_propagation();
-                    }
-                })
-                .children(err_row)
-                .children(result)
-                .child(prompt_row)
-                .when(show_footer, |d| d.child(footer))
-                .children(submenu),
-            phase,
-            ("inline-ai-pop", pop_gen),
-        )),
+        },
+        panel_shell("inline-ai")
+            .on_action(|_: &view::Backspace, _, _| {})
+            .on_action(|_: &view::Delete, _, _| {})
+            .on_action(|_: &view::Left, _, _| {})
+            .on_action(|_: &view::Right, _, _| {})
+            .on_action(|_: &view::SelectLeft, _, _| {})
+            .on_action(|_: &view::SelectRight, _, _| {})
+            .on_action(|_: &view::SelectAll, _, _| {})
+            .capture_action({
+                let ed = editor.clone();
+                move |_: &gpui_component::input::MoveUp, _, cx| {
+                    if ed.update(cx, |this, cx| this.ai_step_menu(false, cx)) { cx.stop_propagation(); }
+                }
+            })
+            .capture_action({
+                let ed = editor.clone();
+                move |_: &gpui_component::input::MoveDown, _, cx| {
+                    if ed.update(cx, |this, cx| this.ai_step_menu(true, cx)) { cx.stop_propagation(); }
+                }
+            })
+            .on_action(|_: &view::Up, _, _| {})
+            .on_action(|_: &view::Down, _, _| {})
+            .on_action(|_: &view::SelectUp, _, _| {})
+            .on_action(|_: &view::SelectDown, _, _| {})
+            .on_action(|_: &view::Enter, _, _| {})
+            .on_action(|_: &view::Copy, _, _| {})
+            .on_action(|_: &view::Cut, _, _| {})
+            .on_action(|_: &view::Paste, _, _| {})
+            .on_action(|_: &view::Bold, _, _| {})
+            .on_action(|_: &view::Italic, _, _| {})
+            .on_action(|_: &view::Strike, _, _| {})
+            .on_action(|_: &view::Code, _, _| {})
+            .on_action(|_: &view::Undo, _, _| {})
+            .on_action(|_: &view::Redo, _, _| {})
+            .on_action(|_: &view::Cancel, _, _| {})
+            .on_action(|_: &view::NextCell, _, _| {})
+            .on_action(|_: &view::PreviousCell, _, _| {})
+            .on_action(|_: &view::TableMenuKey, _, _| {})
+            .on_action(|_: &view::SetParagraph, _, _| {})
+            .on_action(|_: &view::SetH1, _, _| {})
+            .on_action(|_: &view::SetH2, _, _| {})
+            .on_action(|_: &view::SetH3, _, _| {})
+            .on_action(|_: &view::MoveBlockUp, _, _| {})
+            .on_action(|_: &view::MoveBlockDown, _, _| {})
+            .on_action(|_: &view::Underline, _, _| {})
+            .on_action(|_: &view::EditLink, _, _| {})
+            .on_action(|_: &view::ExitBlock, _, _| {})
+            .on_action(|_: &view::DocStart, _, _| {})
+            .on_action(|_: &view::DocEnd, _, _| {})
+            .on_action(|_: &view::Find, _, _| {})
+            .on_action(|_: &view::ImageGrow, _, _| {})
+            .on_action(|_: &view::ImageShrink, _, _| {})
+            .on_key_down(move |e, window, cx| {
+                if e.keystroke.key == "escape" {
+                    key_editor.update(cx, |this, cx| this.ai_escape(window, cx));
+                    cx.stop_propagation();
+                }
+            })
+            .children(err_row)
+            .children(result)
+            .child(prompt_row)
+            .when(show_footer, |d| d.child(footer))
+            .children(submenu),
+        phase,
+        2,
     )
-    .with_priority(2)
-    .into_any_element()
 }
