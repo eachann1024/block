@@ -1,13 +1,12 @@
 use std::cell::RefCell;
 use gpui::{
-    App, Bounds, BoxShadow, CursorStyle, Div, ElementId, Entity, FontWeight, Hsla, IntoElement,
-    MouseButton, Pixels, Point, SharedString, Size, Stateful, Window, div,
+    App, BoxShadow, CursorStyle, Div, ElementId, Entity, FontWeight, Hsla, IntoElement,
+    MouseButton, SharedString, Stateful, div,
     point, prelude::*, px, rgb, rgba, transparent_black,
 };
 pub use crate::ui::placement::{
     AlignX, PlacementSpec, anchored_motion, anchored_motion_with, max_height_for_spec,
-    smart_anchored, smart_anchored_with, smart_popover as deferred_popover_for,
-    smart_popover_with as deferred_popover_with,
+    smart_anchored_with,
 };
 use crate::{
     app::Workspace,
@@ -19,9 +18,6 @@ use crate::{
 pub const MIN_WIDTH: f32 = 160.;
 pub const MAX_WIDTH: f32 = 320.;
 pub const MAX_HEIGHT: f32 = 304.;
-pub const MAX_H: f32 = MAX_HEIGHT;
-pub const WINDOW_MARGIN: f32 = 8.;
-pub const TRIGGER_GAP: f32 = 4.;
 pub const ROW_HEIGHT: f32 = 28.;
 
 #[derive(Clone, Copy)]
@@ -61,10 +57,6 @@ pub fn palette() -> DropdownPalette {
     }
 }
 
-pub fn row_hover_bg() -> Hsla {
-    palette().hover_bg
-}
-
 pub fn shadows() -> Vec<BoxShadow> {
     if is_dark() {
         vec![
@@ -79,11 +71,6 @@ pub fn shadows() -> Vec<BoxShadow> {
             BoxShadow { color: rgba(0x00000014).into(), offset: point(px(0.), px(2.)), blur_radius: px(6.), spread_radius: px(0.), inset: false },
         ]
     }
-}
-
-pub fn max_height_for(window: &Window) -> Pixels {
-    let avail = f32::from(window.viewport_size().height) - 16.;
-    px(avail.clamp(80., MAX_HEIGHT))
 }
 
 pub fn shell_unbounded(id: impl Into<ElementId>) -> Stateful<Div> {
@@ -101,28 +88,8 @@ pub fn shell(id: impl Into<ElementId>) -> Stateful<Div> {
     shell_unbounded(id).min_w(px(MIN_WIDTH)).max_w(px(MAX_WIDTH))
 }
 
-pub fn pill_trigger(id: impl Into<ElementId>, label: impl Into<SharedString>, open: bool) -> Stateful<Div> {
-    let dark = is_dark();
-    let bg: Hsla = if dark { rgb(0x262626).into() } else { rgb(0xfcfcfb).into() };
-    let border: Hsla = if dark { rgba(0xffffff1a).into() } else { rgba(0x0b0b0b1a).into() };
-    let hover_border: Hsla = if dark { rgba(0xffffff38).into() } else { rgba(0x0b0b0b40).into() };
-    let fg: Hsla = if dark { rgb(0x8e8d88).into() } else { rgb(0x898781).into() };
-    let hover_fg: Hsla = if dark { rgb(0xececec).into() } else { rgb(0x1f1e1d).into() };
-    div().id(id).h(px(22.)).px(px(8.)).rounded(crate::ui::radius::CONTROL).border_1()
-        .border_color(if open { hover_border } else { border }).bg(bg).flex().items_center()
-        .cursor(CursorStyle::PointingHand).text_size(px(12.)).line_height(px(16.))
-        .text_color(if open { hover_fg } else { fg })
-        .hover(move |s| s.border_color(hover_border).text_color(hover_fg))
-        .child(label.into())
-}
-
 pub fn line_icon(glyph: Icon, size: f32, color: Hsla) -> impl IntoElement {
     icon(glyph, px(size), IconColors { line: color, fill: transparent_black(), accent: color })
-}
-
-pub fn duo_icon(glyph: Icon, size: f32) -> impl IntoElement {
-    let p = palette();
-    icon(glyph, px(size), IconColors { line: p.icon, fill: p.icon_fill, accent: p.icon_accent })
 }
 
 #[derive(Default)]
@@ -202,14 +169,6 @@ pub fn row_with_colors(id: impl Into<ElementId>, spec: RowSpec, colors: Option<(
             .child(div().size(px(16.)).flex().items_center().justify_center().child(line_icon(Icon::Check, 16., p.text)))))
 }
 
-pub fn row(id: impl Into<ElementId>, icon: Option<Icon>, label: impl Into<SharedString>, checked: bool) -> gpui_base::Button {
-    row_with(id, RowSpec { icon, label: label.into(), checked, ..Default::default() })
-}
-
-pub fn danger_row(id: impl Into<ElementId>, icon: Option<Icon>, label: impl Into<SharedString>) -> gpui_base::Button {
-    row_with(id, RowSpec { icon, label: label.into(), danger: true, ..Default::default() })
-}
-
 pub fn separator() -> impl IntoElement {
     gpui_component::separator::Separator::horizontal()
         .color(palette().sep)
@@ -223,23 +182,6 @@ pub fn separator() -> impl IntoElement {
 pub fn group_label(label: impl Into<SharedString>) -> Div {
     div().px(px(10.)).py(px(4.)).flex_none().text_size(px(13.)).line_height(px(17.))
         .font_weight(FontWeight::MEDIUM).text_color(palette().muted).child(label.into())
-}
-
-pub fn anchor_below_right(trigger: Bounds<Pixels>, menu_width: f32, est_height: f32, viewport: Option<Size<Pixels>>) -> Point<Pixels> {
-    let x = (trigger.right() - px(menu_width)).max(px(WINDOW_MARGIN));
-    let below = trigger.bottom() + px(TRIGGER_GAP);
-    let h = est_height.min(MAX_HEIGHT);
-    let y = match viewport {
-        Some(vp) if below + px(h) > vp.height - px(WINDOW_MARGIN) && trigger.top() - px(TRIGGER_GAP) - px(h) >= px(WINDOW_MARGIN) => {
-            trigger.top() - px(TRIGGER_GAP) - px(h)
-        }
-        _ => below,
-    };
-    point(x, y)
-}
-
-pub fn deferred_popover(anchor: Point<Pixels>, child: impl IntoElement, priority: usize) -> gpui::Deferred {
-    deferred_popover_for(PlacementSpec::point(anchor), child, priority)
 }
 
 thread_local! {

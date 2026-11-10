@@ -211,7 +211,7 @@ fn scan_fstring_expr(text: &str, start_offset: usize, tokens: &mut Vec<CodeToken
                 tokens.push(CodeToken { range: cur..cur + 1, kind: TokenKind::Colon });
                 pos += 1;
             }
-            _ => pos += 1,
+            _ => pos += text[cur..].chars().next().map_or(1, char::len_utf8),
         }
     }
     pos

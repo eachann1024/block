@@ -160,9 +160,9 @@ pub fn rename(path: &Path, name: &str, dir: bool) -> io::Result<PathBuf> {
         super::vfs::rename_tree(path, &target)?;
         #[cfg(not(target_family = "wasm"))]
         std::fs::rename(path, &target)?;
-        super::order::path_moved(path, &target);
         #[cfg(not(target_family = "wasm"))]
         crate::page_history::on_path_moved(path, &target, dir)?;
+        super::order::path_moved(path, &target);
     }
     Ok(target)
 }
@@ -179,9 +179,9 @@ pub fn move_to(path: &Path, dest: &Path) -> io::Result<PathBuf> {
     super::vfs::rename_tree(path, &target)?;
     #[cfg(not(target_family = "wasm"))]
     std::fs::rename(path, &target)?;
-    super::order::path_moved(path, &target);
     #[cfg(not(target_family = "wasm"))]
     crate::page_history::on_path_moved(path, &target, dir)?;
+    super::order::path_moved(path, &target);
     Ok(target)
 }
 

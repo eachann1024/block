@@ -88,11 +88,6 @@ pub(super) fn family_of(name: &'static str) -> Family<'static> {
     if name == super::spec::MONO { Family::Monospace } else { Family::Name(name) }
 }
 
-pub(super) fn require_glyphs(buffer: &Buffer) -> Result<(), ExportError> {
-    let _ = buffer;
-    Ok(())
-}
-
 pub(super) fn plain(
     fonts: &mut FontSystem,
     theme: ExportTheme,
@@ -106,7 +101,6 @@ pub(super) fn plain(
     let attrs = attributes(theme, Kind::Paragraph, &[], false);
     buffer.set_text(text, &attrs, Shaping::Advanced, None);
     buffer.shape_until_scroll(fonts, false);
-    require_glyphs(&buffer)?;
     Ok(buffer)
 }
 

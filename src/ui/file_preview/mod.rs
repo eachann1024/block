@@ -32,7 +32,6 @@ pub struct FilePreview {
     dragging: bool,
     pointer_moved: bool,
     open_note: String,
-    show_filename: bool,
 }
 
 enum Body {
@@ -74,15 +73,9 @@ impl FilePreview {
             dragging: false,
             pointer_moved: false,
             open_note: String::new(),
-            show_filename: true,
         };
         if supported { preview.start_disk(cx); }
         preview
-    }
-
-    /// Filename now lives in the window title bar, so this only stores the flag.
-    pub fn set_show_filename(&mut self, show: bool, _cx: &mut Context<Self>) {
-        self.show_filename = show;
     }
 
     /// Debounced preview of unsaved SVG text. Does not read the path again.

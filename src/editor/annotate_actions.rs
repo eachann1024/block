@@ -72,7 +72,6 @@ impl Editor {
             .filter(|note| !note.body.is_empty() && !note.is_applied())
             .find_map(|note| {
                 let (block_id, range, _) = resolve_annotation_spans(&self.doc, note).into_iter().find(|(id, _, _)| *id == pos.block)?;
-                if block_id != pos.block { return None; }
                 let inside = super::is_whole_table_span(&self.doc, block_id, &range)
                     || (pos.offset >= range.start && pos.offset < range.end);
                 inside.then_some(note.id)

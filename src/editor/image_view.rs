@@ -61,19 +61,6 @@ fn handle(editor: Entity<Editor>, id: u64, left: bool, dir: f32, zoom: f32, img_
         })
 }
 
-/// The block under `position`, preferring rendered list geometry so static images are found too.
-impl Editor {
-    pub(super) fn block_at(&self, position: gpui::Point<gpui::Pixels>) -> Option<(u64, gpui::Bounds<gpui::Pixels>)> {
-        let start = self.list.logical_scroll_top().item_ix;
-        for index in start..self.doc.blocks.len() {
-            let Some(bounds) = self.list.bounds_for_item(index) else { continue };
-            if bounds.top() > position.y { break; }
-            if bounds.contains(&position) { return Some((self.doc.blocks[index].id, bounds)); }
-        }
-        None
-    }
-}
-
 pub(super) fn image_block(editor: Entity<Editor>, id: u64, target: ImageTarget, spec: ImageSpec, active: bool, pop: Option<ImagePop>, zoom: f32, has_overlay: bool, cx: &mut App) -> impl IntoElement {
     let (ready_path, remote_pending) = match target {
         ImageTarget::Local(path) => (Some(path), None),

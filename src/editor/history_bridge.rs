@@ -200,11 +200,6 @@ impl Editor {
         Ok(base.0)
     }
 
-    pub fn history_saved_base(&self, path: &Path) -> Option<u64> {
-        if self.path.as_deref() == Some(path) { Some(self.persistence.base.0) }
-        else { self.sessions.get(path).map(|session| session.base.0) }
-    }
-
     pub fn history_anchor_matches(&self, path: &Path, content: &str, base: u64) -> bool {
         if self.is_path_dirty(path) || self.persistence.saving.contains(path) { return false; }
         if self.path.as_deref() == Some(path) {
