@@ -72,16 +72,15 @@ impl Editor {
         }
         false
     }
-    pub(super) fn sync_reveal_after_paint(&mut self, pad: (f32, f32)) {
+    pub(super) fn sync_reveal_after_paint(&mut self, _pad: (f32, f32)) {
         if !self.reveal_caret { return; }
         self.reveal_caret = false;
         if self.minimal { return; }
         if self.doc.index_of(self.caret.head.block) == Some(0) && self.caret.head.offset == 0 {
             self.list.scroll_to_reveal_item(0);
-        } else if let Some(last_idx) = self.last_visible_index().filter(|&i| self.doc.blocks[i].id == self.caret.head.block)
-            && self.list.bounds_for_item(last_idx).is_some_and(|b| b.size.height <= self.list.viewport_bounds().size.height - px(pad.0 + pad.1))
-        {
-            self.list.scroll_to_reveal_item(last_idx);
+        } else if let Some(layout) = self.layouts.get(&self.caret.head.block) {
+            let line_h = layout.cells.first().map_or(layout.line_height, |c| c.text.line_height);
+            crate::ui::scrollbar::reveal_line(&self.list, layout.point(self.caret.head.offset).y, line_h, px(super::view::REVEAL_MARGIN));
         }
     }
     /// End index (inclusive) of `start`'s nested list subtree.

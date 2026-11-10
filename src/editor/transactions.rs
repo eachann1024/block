@@ -89,6 +89,7 @@ impl Editor {
             self.changed(cx);
             if !same { break; }
         }
+        self.sync_block_menu_after_edit(cx);
     }
     pub(in crate::editor) fn commit_composition(&mut self, cx: &mut Context<Self>) {
         self.caret.composing = None;
