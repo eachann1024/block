@@ -19,7 +19,7 @@ use super::input::transactions::{Snapshot, HistoryEntry};
 #[path = "session.rs"] mod session; #[cfg(not(target_family = "wasm"))] #[path = "create_preview.rs"] mod create_preview;
 use {selection::Caret, layout::TextLayout, lifecycle::Persistence};
 /// Space kept between the caret line and the viewport edge when the caret scrolls into view.
-const REVEAL_MARGIN: f32 = 80.;
+pub(super) const REVEAL_MARGIN: f32 = 80.;
 actions!(editor, [Backspace, Delete, Left, Right, SelectLeft, SelectRight, SelectAll,
     Up, Down, SelectUp, SelectDown, Enter, Copy, Cut, Paste, Bold, Italic, Strike, Code,
     Undo, Redo, Cancel, Save, NextCell, PreviousCell, TableMenuKey,
@@ -116,6 +116,28 @@ impl Editor {
         self.block_menu.take().is_some() | self.table_menu.take().is_some()
             | self.format.take().is_some() | self.image_menu.take().is_some()
             | super::code_block::close_menus() | crate::ui::callout_controls::close_menu()
+    }
+    pub fn focus_content(&mut self, reset_to_start: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if matches!(self.surface, super::surface::Surface::Note) {
+            if reset_to_start || self.doc.get(self.caret.head.block).is_none() {
+                if let Some(first) = self.doc.blocks.first() {
+                    let at = selection::Position { block: first.id, offset: 0 };
+                    self.set_head(at, false, cx);
+                    self.list.scroll_to_reveal_item(0);
+                }
+            } else {
+                self.set_head(self.caret.head, false, cx);
+                self.reveal();
+            }
+        } else if let Some(doc) = self.source_doc_mut() {
+            if reset_to_start {
+                doc.head = 0;
+                doc.anchor = 0;
+            }
+        }
+        let focus = self.focus.clone();
+        window.focus(&focus, cx);
+        cx.notify();
     }
     fn reveal(&mut self) {
         if !self.reveal_caret { return; }
@@ -240,16 +262,22 @@ impl Render for Editor {
                         .unwrap_or((this.caret.head.block, super::image_import::Place::After));
                     this.import_images(id, place, paths.paths().to_vec(), window, cx);
                 }))
-                .children(crate::ui::motion::popup_hold("block-menu", self.block_menu).and_then(|(phase, pop_gen, menu)| {
-                    crate::ui::motion::schedule_popup_finish("block-menu", pop_gen, cx);
-                    let entries = self.block_menu_entries_for(menu);
-                    if entries.is_empty() { None } else { Some(super::block_menu::overlay(self, cx.entity(), menu, entries, phase, pop_gen, window)) }
-                }))
-                .children(crate::ui::motion::popup_hold("table-menu", self.table_menu).map(|(phase, pop_gen, menu)| {
-                    crate::ui::motion::schedule_popup_finish("table-menu", pop_gen, cx);
-                    let dims = self.table_dimensions(menu.block).unwrap_or((1, 1));
-                    super::table_chrome::menu_popup(cx.entity(), menu, phase, pop_gen, dims)
-                }))
+                .children({
+                    let menu_key = format!("block-menu-{}", cx.entity_id());
+                    crate::ui::motion::popup_hold(&menu_key, self.block_menu).and_then(|(phase, pop_gen, menu)| {
+                        crate::ui::motion::schedule_popup_finish(&menu_key, pop_gen, cx);
+                        let entries = self.block_menu_entries_for(menu);
+                        if entries.is_empty() { None } else { Some(super::block_menu::overlay(self, cx.entity(), menu, entries, phase, pop_gen, window)) }
+                    })
+                })
+                .children({
+                    let table_key = format!("table-menu-{}", cx.entity_id());
+                    crate::ui::motion::popup_hold(&table_key, self.table_menu).map(|(phase, pop_gen, menu)| {
+                        crate::ui::motion::schedule_popup_finish(&table_key, pop_gen, cx);
+                        let dims = self.table_dimensions(menu.block).unwrap_or((1, 1));
+                        super::table_chrome::menu_popup(cx.entity(), menu, phase, pop_gen, dims)
+                    })
+                })
                 .on_action(cx.listener(|this, _: &SetParagraph, _, cx| this.set_kind_shortcut(super::model::Kind::Paragraph, cx)))
                 .on_action(cx.listener(|this, _: &SetH1, _, cx| this.set_kind_shortcut(super::model::Kind::H1, cx)))
                 .on_action(cx.listener(|this, _: &SetH2, _, cx| this.set_kind_shortcut(super::model::Kind::H2, cx)))
