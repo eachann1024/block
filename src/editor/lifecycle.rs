@@ -118,7 +118,7 @@ impl Editor {
     pub(super) fn load_path(&mut self, path: PathBuf, prev: Option<PathBuf>, cx: &mut Context<Self>) {
         self.persistence.generation += 1;
         let generation = self.persistence.generation;
-        if self.minimal {
+        if self.minimal || cfg!(target_family = "wasm") {
             self.persistence.loading = false;
             self.persistence.loading_path = None;
             match storage::load(&path) {
