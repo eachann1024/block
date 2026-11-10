@@ -68,7 +68,7 @@ pub fn load_custom_fonts(cx: &mut App) {
             crate::log::warn(&format!("No valid font family found in custom font {:?}", path));
             continue;
         }
-        if let Err(e) = cx.text_system().add_fonts(vec![Cow::Owned(bytes.clone())]) {
+        if let Err(e) = cx.text_system().add_fonts(vec![Cow::Owned(bytes)]) {
             crate::log::warn(&format!("Failed to register custom font {:?}: {e}", path));
             continue;
         }

@@ -105,7 +105,7 @@ impl AiChat {
                                 this.push_msg(Msg { role: "tool".into(), content: String::new(), tool_call_id: Some(id), plan, ..Default::default() });
                                 let at = this.conv().map_or(0, |c| c.messages.len() - 1);
                                 if this.plan_at(at).is_some() {
-                                    this.link_plan(at, 0, false, cx);
+                                    this.link_plan(at, 0, cx);
                                 }
                                 if let Some(m) = this.current.and_then(|cid| this.convs.iter_mut().find(|c| c.id == cid)).and_then(|c| c.messages.last_mut()) {
                                     m.content = result.to_string();

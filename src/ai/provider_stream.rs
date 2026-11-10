@@ -51,7 +51,7 @@ pub(crate) fn stream_agent_with_config(config: Config, msgs: Vec<serde_json::Val
                 let data = data.trim();
                 if data == "[DONE]" { completed = true; continue; }
                 let Ok(v) = serde_json::from_str::<serde_json::Value>(data) else { continue };
-                if let Some(err) = v.pointer("/error/message").and_then(|m| m.as_str()) { let _ = child.kill(); return fail(format_error(err), false); }
+                if let Some(err) = v.pointer("/error/message").and_then(|m| m.as_str()) { let _ = child.kill(); let _ = child.wait(); return fail(format_error(err), false); }
                 if v.pointer("/choices/0/finish_reason").is_some_and(|r| r.as_str().is_some()) { completed = true; }
                 let delta = v.pointer("/choices/0/delta");
                 if let Some(t) = delta.and_then(|d| d.get("reasoning_content").or_else(|| d.get("reasoning"))).and_then(|t| t.as_str()) {

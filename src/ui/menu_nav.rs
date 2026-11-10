@@ -5,7 +5,7 @@
 //! line. Callers invoke this from key handling only — never from hover or paint
 //! of an unchanged list — so pointer movement does not move the scroll offset.
 use std::cell::Cell;
-use gpui::{Pixels, ScrollHandle, Styled, point, px};
+use gpui::{ScrollHandle, Styled, point, px};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Slot {
@@ -67,10 +67,6 @@ enum Reveal {
 
 /// Places `child_ix` on the vertical center of the viewport, then clamps so the
 /// first rows stay at the top and the last rows stay fully visible.
-pub fn reveal_centered(handle: &ScrollHandle, child_ix: usize, expected: usize) -> bool {
-    matches!(place(handle, child_ix, expected), Reveal::Applied)
-}
-
 fn place(handle: &ScrollHandle, child_ix: usize, expected: usize) -> Reveal {
     if expected == 0 || handle.children_count() != expected { return Reveal::Stale; }
     let Some(item) = handle.bounds_for_item(child_ix) else { return Reveal::Stale };

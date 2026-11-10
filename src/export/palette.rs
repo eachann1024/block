@@ -25,7 +25,6 @@ pub use super::source::SourceContext;
 #[derive(Clone, Debug, PartialEq)]
 pub struct RenderOptions {
     pub theme: ExportTheme,
-    pub card: bool,
     pub show_title: bool,
     pub footer: bool,
     pub title: String,
@@ -36,7 +35,6 @@ impl Default for RenderOptions {
     fn default() -> Self {
         Self {
             theme: ExportTheme::default(),
-            card: false,
             show_title: true,
             footer: true,
             title: String::new(),

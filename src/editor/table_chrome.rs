@@ -1,6 +1,6 @@
 //! Table controls shown while the pointer is over a table: row and column capsule handles
 //! on the grid border, the bottom add-row bar, the right add-column bar, the top-right more button, drop line, and menus.
-use gpui::{AnyElement, Bounds, Div, Entity, MouseButton, Pixels, Point, Stateful, Window, div, point, prelude::*, px, size};
+use gpui::{AnyElement, Bounds, Entity, MouseButton, Pixels, Point, Window, div, point, prelude::*, px, size};
 mod resize;
 use super::{table_layout, table_resize, table_actions::{TableChrome, TableCmd, TableDrag, TableMenu, TableSel, menu_items, unoccluded}, view::Editor};
 use crate::{
@@ -33,9 +33,9 @@ fn menu_item(id: (&'static str, usize), cmd: TableCmd, disabled: bool, checked: 
 }
 
 pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<(u64, TableSel)>,
-    menu: Option<TableMenu>, drag: Option<TableDrag>, window: &Window) -> Vec<AnyElement> {
+    menu: Option<TableMenu>, drag: Option<TableDrag>, minimal: bool, window: &Window) -> Vec<AnyElement> {
     let theme = Theme::ocean();
-    let zoom = super::zoom::zoom_factor(false);
+    let zoom = super::zoom::zoom_factor(minimal);
     let (gl, gs, gp) = (GRIP_LONG * zoom, GRIP_SHORT * zoom, GRIP_PAD * zoom);
     let id = chrome.block;
     let locked_sel = drag.filter(|d| d.block == id).map(|d| d.sel)
@@ -184,7 +184,7 @@ pub(super) fn overlay(editor: Entity<Editor>, chrome: &TableChrome, sel: Option<
 
 pub(super) fn menu_popup(editor: Entity<Editor>, menu: TableMenu, phase: crate::ui::motion::PopupMotion, pop_gen: u64, dims: (usize, usize)) -> AnyElement {
     let id = menu.block;
-    let items = menu_items(menu.sel, dims.0, dims.1);
+    let items = menu_items(menu.sel);
     let sel = menu.sel;
     let fitted = table_layout::widths_of(editor.entity_id(), id).fit;
     let width = if matches!(sel, TableSel::Row(_) | TableSel::Column(_)) { px(188.) } else { px(224.) };

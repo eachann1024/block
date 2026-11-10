@@ -81,10 +81,6 @@ pub fn elapsed(key: &str, value: ProcessElapsed) -> AnyElement {
     }
 }
 
-pub fn status_icon(key: &str, status: TaskStatus) -> AnyElement {
-    status_icon_with_pattern(key, status, LoaderPattern::Orbit)
-}
-
 pub fn status_icon_with_pattern(key: &str, status: TaskStatus, pattern: LoaderPattern) -> AnyElement {
     let theme = super::ai_theme::theme();
     if status == TaskStatus::Unknown {
@@ -143,8 +139,8 @@ fn step_glyph(kind: ProcessStepIcon, color: Hsla) -> AnyElement {
 }
 
 pub fn row_icon_slot(
-    _key: &str, row_group: &SharedString, kind: ProcessStepIcon,
-    _status: TaskStatus, is_open: bool, expandable: bool,
+    row_group: &SharedString, kind: ProcessStepIcon,
+    is_open: bool, expandable: bool,
 ) -> AnyElement {
     let theme = super::ai_theme::theme();
     let color = ink_3();
@@ -163,8 +159,6 @@ pub fn row_icon_slot(
             .child(icon(Icon::TbChevronRight, px(12.), theme.mono_icon_colors(color))))
         .into_any_element()
 }
-
-pub fn tool_chip(detail: &str) -> AnyElement { inline_tool_chip(detail, true) }
 
 pub fn inline_tool_chip(detail: &str, mono: bool) -> AnyElement {
     let theme = super::ai_theme::theme();

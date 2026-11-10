@@ -261,11 +261,10 @@ impl AiChat {
     }
     fn push(&mut self, role: &str, content: String) { self.push_msg(Msg { role: role.into(), content, ..Default::default() }); }
     pub(super) fn push_msg(&mut self, msg: Msg) {
-        let content = msg.content.clone();
         let id = self.current.unwrap_or_else(|| {
             let mut id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
             while self.convs.iter().any(|conversation| conversation.id == id) { id = id.wrapping_add(1); }
-            let title: String = content.lines().find(|l| !l.trim().is_empty() && !l.starts_with('>')).unwrap_or(crate::theme::tr("新会话", "New Chat")).chars().take(24).collect();
+            let title: String = msg.content.lines().find(|l| !l.trim().is_empty() && !l.starts_with('>')).unwrap_or(crate::theme::tr("新会话", "New Chat")).chars().take(24).collect();
             self.convs.insert(0, Conv { id, title, messages: Vec::new(), backend: self.selected_backend(), native_session_id: None });
             self.current = Some(id);
             id

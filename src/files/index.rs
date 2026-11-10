@@ -68,9 +68,6 @@ impl TreeIndex {
     }
 
     pub fn len(&self) -> usize { visible(&self.root) }
-    #[allow(dead_code)]
-    pub fn note_count(&self) -> usize { self.notes }
-
     pub fn has_notes(&self) -> bool { self.notes > 0 }
 
     pub fn row(&mut self, rank: usize) -> Option<(usize, Arc<Row>, bool)> {

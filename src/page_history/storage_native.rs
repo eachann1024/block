@@ -133,6 +133,8 @@ fn ensure_worker() {
     static START: Once = Once::new();
     START.call_once(|| {
         if let Err(error) = std::thread::Builder::new().name("block-history".into()).spawn(|| {
+            // Pending records from a previous session are loaded once; later ones arrive through `stage`.
+            let mut hydrated = false;
             loop {
                 std::thread::sleep(Duration::from_secs(1));
                 match lock() {
@@ -141,7 +143,10 @@ fn ensure_worker() {
                             crate::log::warn(&format!("history archive: {error}"));
                             continue;
                         }
-                        hydrate_known(&mut store);
+                        if !hydrated {
+                            hydrate_known(&mut store);
+                            hydrated = true;
+                        }
                         let now = now_seconds();
                         let due: Vec<String> = store.pending.iter().filter(|(_, item)| {
                             now.saturating_sub(item.last_at) >= QUIET_SECS || now.saturating_sub(item.first_at) >= CONTINUOUS_SECS

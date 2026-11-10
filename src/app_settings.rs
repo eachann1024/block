@@ -25,9 +25,6 @@ pub(crate) enum SettingsTab {
 
 impl SettingsTab {
     pub(crate) const ALL: [Self; 4] = [Self::Ai, Self::Appearance, Self::Folders, Self::Shortcuts];
-    #[doc(hidden)]
-    #[allow(dead_code, non_upper_case_globals)]
-    pub(crate) const General: Self = Self::Folders;
 
     pub(crate) fn title(self) -> &'static str {
         match self {

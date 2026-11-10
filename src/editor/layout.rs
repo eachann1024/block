@@ -16,10 +16,6 @@ pub(in crate::editor) fn get_key(editor: gpui::EntityId, block: u64) -> Option<L
 pub(in crate::editor) fn set_key(editor: gpui::EntityId, block: u64, key: LayoutKey) {
     KEYS.with(|keys| { keys.borrow_mut().insert((editor, block), key); });
 }
-#[allow(dead_code)]
-pub(in crate::editor) fn clear_keys() {
-    KEYS.with(|keys| keys.borrow_mut().clear());
-}
 pub(in crate::editor) fn clear_editor_keys(editor: gpui::EntityId) {
     KEYS.with(|keys| keys.borrow_mut().retain(|(ed, _), _| *ed != editor));
 }
@@ -71,12 +67,13 @@ impl TextLayout {
         Self { bounds: Bounds::default(), lines: Vec::new(), line_height, cells: Vec::new(), alignment: gpui::TextAlign::Left, code_spans: Vec::new() }
     }
     pub(in crate::editor) fn aligned_x(&self, line: &WrappedLine, visual: usize) -> Pixels {
-        let mut starts = vec![px(0.)];
-        starts.extend(line.wrap_boundaries.iter().map(|edge|
-            line.unwrapped_layout.runs[edge.run_ix].glyphs[edge.glyph_ix].position.x));
-        starts.push(line.unwrapped_layout.width);
-        let index = visual.min(starts.len()-2);
-        let extra = (self.bounds.size.width - (starts[index+1]-starts[index])).max(px(0.));
+        let edge_x = |i: usize| { let edge = &line.wrap_boundaries[i];
+            line.unwrapped_layout.runs[edge.run_ix].glyphs[edge.glyph_ix].position.x };
+        let rows = line.wrap_boundaries.len();
+        let index = visual.min(rows);
+        let start = if index == 0 { px(0.) } else { edge_x(index - 1) };
+        let end = if index < rows { edge_x(index) } else { line.unwrapped_layout.width };
+        let extra = (self.bounds.size.width - (end - start)).max(px(0.));
         match self.alignment { gpui::TextAlign::Center => extra / 2.,
             gpui::TextAlign::Right => extra, _ => px(0.) }
     }

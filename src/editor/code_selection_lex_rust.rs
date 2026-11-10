@@ -25,6 +25,8 @@ pub fn scan_rust_token(text: &str, i: usize) -> Option<(usize, Vec<CodeToken>)> 
     }
 
     if let Some((len, kind)) = scan_rust_char_or_lifetime(text, i) {
+        // Escapes before a multibyte char can stop mid-char; never end a token inside one.
+        let len = (len..=text.len() - i).find(|l| text.is_char_boundary(i + l)).unwrap_or(len);
         return Some((len, vec![CodeToken { range: i..i + len, kind }]));
     }
 

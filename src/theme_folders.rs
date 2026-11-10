@@ -140,7 +140,7 @@ pub fn matches_folder_rule(name: &str) -> Option<bool> {
     for cr in guard.iter() {
         if !cr.rule.regex {
             let pat = cr.rule.pattern.trim();
-            if !pat.is_empty() && (pat == name || pat.eq_ignore_ascii_case(name)) {
+            if !pat.is_empty() && pat.eq_ignore_ascii_case(name) {
                 return Some(cr.rule.hidden);
             }
         }

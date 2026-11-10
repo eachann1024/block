@@ -80,27 +80,6 @@ impl Editor {
         })));
         cx.notify();
     }
-    /// Selection toolbar entry (AI 润色).
-    #[allow(dead_code)]
-    pub(in crate::editor) fn open_ai(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.is_markdown_note() { self.status = tr("当前页面不可编辑或 AI 未开启。", "Page is not editable or AI is disabled.").into(); cx.notify(); return; }
-        let parts = self.selection_ranges();
-        let original = parts.iter().filter_map(|(id, r)| self.doc.get(*id).map(|b| {
-            // Paragraphs go to the model as inline Markdown so links / bold / code survive 应用修改.
-            if b.kind != crate::editor::model::Kind::Paragraph || b.meta.table.is_some() || b.meta.raw_source.is_some() { return b.text[r.clone()].to_owned(); }
-            let mut piece = b.slice(r.clone()); piece.meta.indent = 0; piece.meta.list_start = None;
-            let md = crate::editor::markdown::serialize(&crate::editor::model::Doc::from_blocks(vec![piece]));
-            let md = md.trim().to_owned();
-            if md.is_empty() { b.text[r.clone()].to_owned() } else { md }
-        })).collect::<Vec<_>>().join("\n");
-        if original.trim().is_empty() { self.status = tr("请重新选择正文。", "Please select text first.").into(); cx.notify(); return; }
-        if !self.can_replace_selection() { self.status = tr("请重新选择正文。", "Please select text first.").into(); cx.notify(); return; }
-        let (a, b, _, _) = self.ordered();
-        // Card sits under the last target block, like thinkly's inline AI menu, so the diff stays visible.
-        let below = self.layouts.get(&b.block).map(|l| point(l.bounds.left(), l.bounds.bottom() + px(8.)));
-        let anchor = below.or_else(|| self.toolbar_anchor.map(|p| p + point(px(0.), px(44.)))).unwrap_or_else(|| window.mouse_position() + point(px(0.), px(16.)));
-        self.start_ai(anchor, (a, b), parts, original, window, cx);
-    }
     /// Slash / block-handle / space-on-empty-paragraph entry (AI 写作).
     pub(in crate::editor) fn open_ai_block(&mut self, id: u64, slash: bool, anchor: Option<Point<Pixels>>, window: &mut Window, cx: &mut Context<Self>) {
         if self.minimal || !self.is_markdown_note() { return; }

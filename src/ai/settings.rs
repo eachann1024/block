@@ -23,7 +23,7 @@ pub(crate) struct AiSettings {
     pub(super) testing: bool, pub(super) test_note: Option<TestNote>,
     pub(super) toggle_anim: crate::ui::toggle_pill::TogglePillState,
     pub(super) focused_backend: super::backend::BackendKind,
-    pub(super) general: settings_general::GeneralSettings,
+    general: settings_general::GeneralSettings,
     _subs: Vec<Subscription>,
 }
 

@@ -71,11 +71,6 @@ impl Workspace {
             .when_some(popover, |d, p| d.child(p))
     }
 
-    #[allow(dead_code)]
-    pub(super) fn general_tab(&self, cx: &mut Context<Self>) -> gpui::Div {
-        self.folders_tab(cx)
-    }
-
     pub(super) fn shortcuts_tab(&self, cx: &mut Context<Self>) -> gpui::Div {
         let theme = Theme::ocean();
         let recording = self.settings.as_ref().and_then(|m| m.recording);
@@ -106,6 +101,4 @@ impl Workspace {
             .child(setting_row(tr("AI 助手面板", "AI Assistant Panel"), static_keycap("secondary-j")))
             .child(setting_row(tr("性能与占用", "Performance & Usage"), static_keycap("secondary-shift-m"))))
     }
-
-
 }

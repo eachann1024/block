@@ -1,5 +1,6 @@
 //! Token-stack based word-pair matching for nested blocks across Bash, Lean, SQL, Mermaid, and LaTeX.
 use std::ops::Range;
+use super::code_selection_brackets::trim_span;
 use super::code_selection_tokens::{CodeToken, TokenKind};
 
 #[derive(Debug, Clone)]
@@ -205,21 +206,4 @@ fn collect_latex_pairs(text: &str, tokens: &[CodeToken]) -> Vec<WordPair> {
     }
 
     pairs
-}
-
-pub fn trim_span(text: &str, span: Range<usize>) -> Range<usize> {
-    if span.start >= span.end || span.end > text.len() {
-        let pos = span.start.min(text.len());
-        return pos..pos;
-    }
-    let sub = &text[span.start..span.end];
-    let trimmed = sub.trim();
-    if trimmed.is_empty() {
-        return span.start..span.start;
-    }
-    let leading = sub.len() - sub.trim_start().len();
-    let trailing = sub.len() - sub.trim_end().len();
-    let start = (span.start + leading).min(span.end);
-    let end = span.end.saturating_sub(trailing).max(start);
-    start..end
 }

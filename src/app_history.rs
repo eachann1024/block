@@ -64,7 +64,7 @@ impl Workspace {
         let Some(capture) = self.editor.update(cx, |editor, cx| editor.begin_history_capture(cx)) else { return; };
         if !crate::files::ops::exists(&capture.path) { return; }
         match self.editor.read(cx).poll_history_capture(&capture) {
-            HistoryCapturePoll::Ready { content, base } => self.install_history(capture, content, base, cx),
+            HistoryCapturePoll::Ready { .. } => self.install_history(capture, cx),
             HistoryCapturePoll::Failed(message) => { self.notice = message; cx.notify(); }
             HistoryCapturePoll::Superseded => {}
             HistoryCapturePoll::Pending => {
@@ -90,11 +90,11 @@ impl Workspace {
                         });
                         cx.background_executor().timer(Duration::from_millis(40)).await;
                     }
-                    HistoryCapturePoll::Ready { content, base } => {
+                    HistoryCapturePoll::Ready { .. } => {
                         let _ = this.update(cx, |this, cx| {
                             if !this.history_opening || this.history_token != token { return; }
                             this.history_opening = false;
-                            this.install_history(capture.clone(), content, base, cx);
+                            this.install_history(capture.clone(), cx);
                         });
                         return;
                     }
@@ -116,7 +116,7 @@ impl Workspace {
         }).detach();
     }
 
-    fn install_history(&mut self, capture: HistoryCapture, _content: String, _base: u64, cx: &mut Context<Self>) {
+    fn install_history(&mut self, capture: HistoryCapture, cx: &mut Context<Self>) {
         let HistoryCapturePoll::Ready { content, base } = self.editor.read(cx).poll_history_capture(&capture) else { return; };
         let prev_sidebar_collapsed = self.sidebar_collapsed;
         self.sidebar_collapsed = true;

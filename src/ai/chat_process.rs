@@ -28,16 +28,6 @@ thread_local! {
 pub(crate) fn smoke_process_data() -> (Vec<ProcessStep>, Vec<String>) { SMOKE_STEPS.with(|data| data.borrow().clone()) }
 pub(crate) fn smoke_visible_replies() -> Vec<String> { SMOKE_REPLIES.with(|data| data.borrow().clone()) }
 
-#[allow(dead_code)]
-pub(crate) fn step_for(name: &str) -> String {
-    if super::agent::is_authorized_tool(name) {
-        let (zh, en) = super::agent::tool_step_label(name);
-        crate::theme::tr(zh, en).to_owned()
-    } else {
-        name.to_owned()
-    }
-}
-
 pub(super) fn open_created_plan(chat: &mut AiChat, cx: &mut gpui::Context<AiChat>) {
     let at = chat.conv().and_then(|conversation| conversation.messages.iter().enumerate().rev().take_while(|(_, message)| message.role != "user")
         .find(|(_, message)| message.plan.as_ref().is_some_and(|plan| plan.state == agent::PlanState::Applied && !plan.ops.is_empty()
@@ -142,14 +132,13 @@ pub(super) fn render_messages(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> 
                 if streaming { std::time::Instant::now().checked_sub(duration).map(ProcessElapsed::Running) }
                 else { end.map(|_| ProcessElapsed::Finished(duration)) }
             });
-            let step_statuses = steps.iter().map(|step| if step.running { TaskStatus::Running } else if step.detail == tr("失败", "Failed") { TaskStatus::Failed } else if step.detail == tr("状态未知", "Status unknown") { TaskStatus::Unknown } else { TaskStatus::Completed }).collect();
             let weak_chat = cx.weak_entity();
             let on_details_changed = Some(Rc::new(move |cx: &mut gpui::App| {
                 if let Some(chat) = weak_chat.upgrade() { chat.update(cx, |_, cx| cx.notify()); }
             }) as Rc<dyn Fn(&mut gpui::App)>);
             body = body.child(process_card_with_options(
                 ProcessCardSpec { key, stage, headline, steps, notes, steps_expanded, steps_toggle_seq, notes_expanded, steps_scroll },
-                ProcessCardOptions { status: Some(status), elapsed, search_query, step_statuses, step_details: details, step_metas: metas, diff_chips, on_details_changed, ..Default::default() },
+                ProcessCardOptions { status: Some(status), elapsed, search_query, step_details: details, step_metas: metas, diff_chips, on_details_changed, ..Default::default() },
                 cx.listener(move |_, _, _, cx| { TURNS.with(|states| { let mut states = states.borrow_mut(); let state = states.entry(step_key.clone()).or_default(); state.steps_expanded = !state.steps_expanded; state.steps_toggle_seq += 1; }); cx.notify(); }),
                 cx.listener(move |_, _, _, cx| { TURNS.with(|states| { let mut states = states.borrow_mut(); let state = states.entry(notes_key.clone()).or_default(); state.notes_expanded = !state.notes_expanded; }); cx.notify(); }),
             ));
@@ -214,7 +203,7 @@ fn plan_card(at: usize, plan: agent::Plan, cx: &mut gpui::Context<AiChat>) -> im
         PlanState::Partial => tr("部分写入失败", "Partially failed"), PlanState::Canceled => tr("已取消", "Canceled"), PlanState::Undone => tr("已撤回", "Undone"),
         PlanState::UndoConflict => tr("撤回冲突", "Undo conflict"), PlanState::Stale => tr("已失效", "Stale") };
     let open: Option<Box<dyn Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App)>> = if pending {
-        let listener = cx.listener(move |this, event, window, cx| { let _ = (event, window); this.link_plan(at, 0, false, cx); });
+        let listener = cx.listener(move |this, event, window, cx| { let _ = (event, window); this.link_plan(at, 0, cx); });
         Some(Box::new(move |event, window, cx| listener(event, window, cx)))
     } else if matches!(plan.state, PlanState::Applied | PlanState::Partial) {
         let listener = cx.listener(move |this, event, window, cx| { let _ = (event, window); this.open_plan_page(at, 0, cx); });

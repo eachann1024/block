@@ -10,7 +10,7 @@ use super::{
     export_pdf::render_pdf,
     format::render_markdown,
     view::ExportView,
-    write_bytes, write_png,
+    write_bytes,
 };
 use crate::editor::model::Block;
 use crate::theme::tr;
@@ -45,7 +45,6 @@ impl ExportView {
     pub(super) fn render_options(&self) -> RenderOptions {
         RenderOptions {
             theme: self.style,
-            card: self.card,
             show_title: self.show_title,
             footer: self.watermark && self.format.supports_watermark(),
             title: self.title.clone(),
@@ -156,7 +155,7 @@ impl ExportView {
                             match format {
                                 ExportFormat::Png => {
                                     let png = png.ok_or(ExportError::Cancelled)?;
-                                    write_png(&path, png.bytes(), &cancel)?;
+                                    write_bytes(&path, png.bytes(), &cancel)?;
                                 }
                                 ExportFormat::Pdf => {
                                     let bytes = render_pdf(&blocks, options, &cancel)?;
