@@ -109,7 +109,6 @@ impl Editor {
         let shift = new_len as isize - range.len() as isize;
         for note in self.annotate.annotations.iter_mut().filter(|note| note.block_index == block_index) {
             if note.id == id {
-                note.block_index = block_index;
                 note.start = range.start;
                 note.end = range.start + new_len;
             } else if note.start >= range.end {

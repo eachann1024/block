@@ -92,7 +92,7 @@ impl AiChat {
         }
     }
 
-    pub(in crate::editor::ai) fn link_plan(&mut self, at: usize, op_idx: usize, _diff: bool, cx: &mut Context<Self>) {
+    pub(in crate::editor::ai) fn link_plan(&mut self, at: usize, op_idx: usize, cx: &mut Context<Self>) {
         let Some(plan) = self.plan_at(at).cloned().filter(|plan| plan.state == agent::PlanState::Pending) else { return };
         let Some(op) = plan.ops.get(op_idx) else { return };
         let Some(conv_id) = self.current else { return };
@@ -158,7 +158,7 @@ impl AiChat {
                 .find(|(_, msg)| msg.plan.as_ref().is_some_and(|plan| plan.state == agent::PlanState::Pending && !plan.ops.is_empty()))
                 .map(|(idx, _)| idx)
         });
-        if let Some(at) = at { self.link_plan(at, 0, true, cx); }
+        if let Some(at) = at { self.link_plan(at, 0, cx); }
     }
 }
 
@@ -246,7 +246,7 @@ pub(crate) fn prepare_plan_link_smoke(root: PathBuf, window: &mut gpui::Window, 
         let (result, plan) = agent::exec("executeBatchPlan", &args, &context);
         let plan = plan.ok_or_else(|| format!("Plan fixture failed: {result}"))?;
         chat.push_msg(super::chat::Msg { role: "tool".into(), content: result.to_string(), plan: Some(plan), ..Default::default() });
-        chat.link_plan(1, 0, false, cx); cx.notify(); Ok(())
+        chat.link_plan(1, 0, cx); cx.notify(); Ok(())
     })
 }
 
@@ -267,7 +267,7 @@ pub(crate) fn prepare_create_plan_smoke(root: PathBuf, window: &mut gpui::Window
         let (result, plan) = agent::exec("executeBatchPlan", &args, &context);
         let plan = plan.ok_or_else(|| format!("Create plan fixture failed: {result}"))?;
         chat.push_msg(super::chat::Msg { role: "tool".into(), content: result.to_string(), plan: Some(plan), ..Default::default() });
-        chat.link_plan(1, 0, false, cx); cx.notify(); Ok(path)
+        chat.link_plan(1, 0, cx); cx.notify(); Ok(path)
     })
 }
 

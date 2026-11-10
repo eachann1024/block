@@ -110,16 +110,6 @@ impl Editor {
                 .is_some_and(|range| range == (0..block.text.len()))
         })
     }
-    #[allow(dead_code)]
-    pub(in crate::editor) fn set_table_cell(&mut self, id: u64, row: usize, cell: usize,
-        text: String, cx: &mut Context<Self>) {
-        self.commit_composition(cx);
-        let Some(index) = self.doc.index_of(id) else { return; };
-        let before = self.snapshot();
-        if self.doc.set_table_cell_text(id, row, cell, text) {
-            self.record_changes(before, vec![ListChange { start:index, before:1, after:1 }], true, cx);
-        }
-    }
     pub(in crate::editor) fn replace_selection(&mut self, text: &str, marker: bool, cx: &mut Context<Self>) {
         self.replace_selection_impl(text, marker, true, cx);
     }
@@ -240,24 +230,6 @@ impl Editor {
         self.commit_composition(cx);
         let Some(index) = self.doc.index_of(id) else { return; };
         let before = self.snapshot(); self.doc.toggle_checked(id);
-        self.record_changes(before, vec![ListChange { start: index, before: 1, after: 1 }], true, cx);
-    }
-    #[allow(dead_code)]
-    pub(in crate::editor) fn cycle_heading(&mut self, id: u64, cx: &mut Context<Self>) {
-        if self.path.is_none() { return; }
-        if self.doc.get(id).is_some_and(|block| block.meta.table.is_some()) {
-            self.status = crate::theme::tr(
-                "表格单元格保持表格结构，不支持转换为标题",
-                "Table cells keep their table structure; heading conversion is unavailable",
-            ).into();
-            cx.notify(); return;
-        }
-        self.commit_composition(cx);
-        let Some(index) = self.doc.index_of(id) else { return; };
-        let before = self.snapshot();
-        let kind = self.doc.get(id).map(|b| b.kind);
-        let next = match kind { Some(Kind::Paragraph) => Kind::H1, Some(Kind::H1) => Kind::H2, Some(Kind::H2) => Kind::H3, _ => Kind::Paragraph };
-        self.doc.set_kind(id, next);
         self.record_changes(before, vec![ListChange { start: index, before: 1, after: 1 }], true, cx);
     }
 }

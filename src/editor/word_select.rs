@@ -116,7 +116,7 @@ fn word_range_in_slice(slice: &str, rel_offset: usize) -> Range<usize> {
         return probe..probe;
     }
     let line = &slice[line_start..line_end];
-    let line_probe = (probe - line_start).min(line.len().saturating_sub(1));
+    let line_probe = boundary(line, (probe - line_start).min(line.len().saturating_sub(1)));
 
     #[cfg(target_os = "macos")]
     if let Some(range) = macos_word_range(line, line_probe) {

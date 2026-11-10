@@ -250,7 +250,16 @@ pub fn update_state(change: impl FnOnce(&mut State)) -> io::Result<State> {
     {
         let _guard = WRITE.lock().unwrap_or_else(|poison| poison.into_inner());
         let path = state_path()?;
-        let mut state = load_state_at(&path).unwrap_or_default();
+        let mut state = match load_state_at(&path) {
+            Ok(state) => state,
+            Err(error) => {
+                // Keep a corrupt file for recovery instead of silently overwriting it with defaults.
+                if error.kind() == io::ErrorKind::InvalidData {
+                    let _ = fs::rename(&path, path.with_extension("json.corrupt"));
+                }
+                State::default()
+            }
+        };
         change(&mut state);
         write_state_at(&path, &state)?;
         Ok(state)
@@ -304,7 +313,10 @@ fn write_state_at(path: &Path, state: &State) -> io::Result<()> {
         file.sync_all()?;
         drop(file);
         fs::rename(&temp, path)?;
-        fs::File::open(parent)?.sync_all()
+        // Directories cannot be opened as files on Windows; the rename is already committed.
+        #[cfg(unix)]
+        fs::File::open(parent)?.sync_all()?;
+        Ok::<(), io::Error>(())
     })();
     if result.is_err() { let _ = fs::remove_file(&temp); }
     if let Ok(entries) = fs::read_dir(parent) {

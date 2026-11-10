@@ -25,7 +25,7 @@ impl Workspace {
         });
         let entity_select = cx.entity();
         let preview = render_preview_surface(
-            note_path, selected_version, selected_content, &hist.current_content, hist.mode,
+            note_path, selected_version, selected_content, hist.mode,
             hist.error.as_ref(), diff_blocks, preview_key,
             cx.listener(|this, _, _, cx| this.recompare_history(cx)),
             cx.listener(|this, _, window, cx| this.confirm_restore(window, cx)),

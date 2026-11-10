@@ -46,7 +46,7 @@ pub fn read_file(path: &Path) -> Result<Classified, String> {
     {
         let text = super::vfs::read_to_string(path).unwrap_or_default();
         let bytes = text.into_bytes();
-        return Ok(Classified { kind: kind_of(path, &bytes, bytes.len() as u64), bytes });
+        return Ok(Classified { kind: kind_of(path, &bytes), bytes });
     }
     #[cfg(not(target_family = "wasm"))]
     {
@@ -66,7 +66,7 @@ pub fn read_file(path: &Path) -> Result<Classified, String> {
             Ok(None) => return Ok(Classified { kind: over_limit(path), bytes: Vec::new() }),
             Ok(Some(bytes)) => bytes,
         };
-        Ok(Classified { kind: kind_of(path, &bytes, len), bytes })
+        Ok(Classified { kind: kind_of(path, &bytes), bytes })
     }
 }
 
@@ -98,7 +98,7 @@ fn file_name(path: &Path) -> String {
     path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
-fn kind_of(path: &Path, bytes: &[u8], _len: u64) -> OpenKind {
+fn kind_of(path: &Path, bytes: &[u8]) -> OpenKind {
     let name = file_name(path);
     if crate::ui::file_preview::is_svg_path(path) {
         return match decode_source(path, bytes, true) {

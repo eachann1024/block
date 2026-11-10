@@ -80,8 +80,7 @@ pub(crate) fn diff(conv: u64, at: usize, page: &str, before: &str, after: &str) 
             if *change == 0 {
                 next_group = None;
             } else if text.trim().is_empty() {
-                if groups[index] == index && let Some((next_change, group)) = next_group.filter(|(c, _)| *c == *change) {
-                    let _ = next_change;
+                if groups[index] == index && let Some((_, group)) = next_group.filter(|(c, _)| *c == *change) {
                     groups[index] = group;
                 }
             } else {

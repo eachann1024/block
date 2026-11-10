@@ -34,7 +34,6 @@ pub(crate) fn search_runs(block: &Block) -> Vec<(std::ops::Range<usize>, String)
 
 pub fn strip_frontmatter(source: &str) -> &str { blocks::strip_frontmatter(source) }
 pub fn rebuild_table_source(table: &mut super::model::Table) { table::rebuild(table) }
-pub(super) fn serialize_table(table: &super::model::Table, out: &mut String) { table::serialize(table, out) }
 
 /// Opaque constructs retain their original bytes and an explicit explanation.
 fn raw(id: u64, source: String, reason: &str) -> Block {

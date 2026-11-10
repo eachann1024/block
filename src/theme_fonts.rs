@@ -1,12 +1,11 @@
 //! Font settings, installed/imported font lists, and fallback resolution.
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::RwLock;
 use gpui::SharedString;
 pub use crate::files::state::{FontChoice, LineHeight};
 
 static FONT_CHOICE: AtomicU8 = AtomicU8::new(0);
-static SMOOTHING: AtomicBool = AtomicBool::new(true);
 static CUSTOM_EDITOR_FONT: RwLock<Option<String>> = RwLock::new(None);
 static CUSTOM_CODE_FONT: RwLock<Option<String>> = RwLock::new(None);
 static LINE_HEIGHT: AtomicU8 = AtomicU8::new(1);
@@ -20,10 +19,6 @@ const CJK_FALLBACKS: &[&str] = &["PingFang SC", "Songti SC", "Noto Sans SC", "Mi
 static RESOLVED_FONTS: RwLock<(&'static str, &'static str, &'static str)> =
     RwLock::new(("PingFang SC", "Songti SC", "Menlo"));
 
-#[allow(dead_code)]
-pub fn font_choice() -> FontChoice {
-    match FONT_CHOICE.load(Ordering::Relaxed) { 1 => FontChoice::Serif, _ => FontChoice::Sans }
-}
 pub fn set_font_choice(font: FontChoice) {
     FONT_CHOICE.store(match font { FontChoice::Sans => 0, FontChoice::Serif => 1 }, Ordering::Relaxed);
 }
@@ -137,7 +132,7 @@ pub fn editor_font() -> (SharedString, &'static [&'static str]) {
     let (_, serif, _) = resolved();
     let custom = CUSTOM_EDITOR_FONT.read().ok().and_then(|g| g.clone());
     match custom.as_deref() {
-        None | Some("") | Some("system-sans") => (".SystemUIFont".into(), &[]),
+        None | Some("") | Some("system-sans") => (ui_font_family(), &[]),
         Some("system-serif") if serif == "Songti SC" => (serif.into(), &[]),
         Some("system-serif") => (serif.into(), SERIF_FALLBACKS),
         Some(name) => (SharedString::from(name.to_owned()), CJK_FALLBACKS),
@@ -145,7 +140,6 @@ pub fn editor_font() -> (SharedString, &'static [&'static str]) {
 }
 
 pub fn set_font_smoothing(on: bool) {
-    SMOOTHING.store(on, Ordering::Relaxed);
     if !cfg!(target_os = "macos") { return; }
     let val = if on { "2" } else { "0" };
     std::thread::spawn(move || {

@@ -63,8 +63,6 @@ impl FileTree {
     }
 
     pub fn focus_handle(&self) -> &FocusHandle { &self.focus }
-    #[allow(dead_code)]
-    pub fn note_count(&self) -> usize { self.index.note_count() }
     pub fn is_focused(&self, window: &gpui::Window) -> bool { self.focus.is_focused(window) }
     pub fn active_target(&self) -> Option<(PathBuf, bool)> {
         self.focus_dir.as_ref().map(|d| (d.clone(), true)).or_else(|| self.selected.as_ref().map(|p| (p.clone(), false)))

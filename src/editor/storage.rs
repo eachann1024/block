@@ -219,6 +219,6 @@ pub(super) fn save(path: &Path, doc: &SaveDoc, base: Fingerprint) -> Result<Fing
                 crate::log::warn(&format!("history was not recorded for {}: {error}", path.display()));
             }
         }
-        Ok(fingerprint(&bytes))
+        Ok(next_fp)
     }
 }

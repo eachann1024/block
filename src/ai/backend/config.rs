@@ -85,7 +85,6 @@ impl BackendConfig {
         self.priority_order(recognized).into_iter().filter(|&kind| self.is_enabled(kind)).collect()
     }
 
-    #[allow(dead_code)]
     pub(crate) fn promote_priority(&mut self, kind: BackendKind, recognized: &[BackendKind]) -> Result<(), String> {
         let previous = self.clone();
         self.priority = self.priority_order(recognized);

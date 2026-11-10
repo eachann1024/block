@@ -222,7 +222,6 @@ impl Element for BlockText {
                     }
                 }
             }
-            super::inline_code_chip::paint_borders(layout, &chip, window);
             paint_lines(layout, false, window, cx);
             for rect in &sel_rects {
                 window.with_content_mask(Some(gpui::ContentMask { bounds: *rect }), |window| super::text_runs::paint_tinted_lines(layout, Theme::ocean().selection_text, window));
