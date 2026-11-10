@@ -44,9 +44,9 @@ cargo run
 bun run build
 ```
 
-该命令会编译&#32;<code>&#45;&#45;locked &#45;&#45;release</code>&#32;二进制，打包为&#32;<code>dist&#47;Block&#46;app</code>（Bundle ID：<code>dev&#46;eachann&#46;block</code>），执行 ad&#45;hoc 签名并校验系统动态库依赖，随后替换&#32;<code>&#47;Applications&#47;Block&#46;app</code>&#32;并启动应用（若旧进程正在运行会先请求优雅退出）。
+该命令使用本地&#32;<code>fast</code>&#32;profile（无 LTO，增量编译；可用&#32;<code>BLOCK_PROFILE</code>&#32;覆盖）编译，打包为&#32;<code>dist&#47;Block&#46;app</code>（Bundle ID：<code>dev&#46;eachann&#46;block</code>），执行 ad&#45;hoc 签名，随后替换&#32;<code>&#47;Applications&#47;Block&#46;app</code>&#32;并启动应用（若旧进程正在运行会先请求优雅退出）。
 
-仅构建&#32;<code>dist&#47;Block&#46;app</code>&#32;而不覆盖&#32;<code>&#47;Applications</code>（例如在 CI 环境中）：
+仅构建&#32;<code>dist&#47;Block&#46;app</code>&#32;而不覆盖&#32;<code>&#47;Applications</code>（例如在 CI 环境中）时使用&#32;<code>&#45;&#45;locked &#45;&#45;release</code>&#32;编译并校验系统动态库依赖：
 
 ```sh
 bun run build:ci
@@ -59,6 +59,8 @@ bun run build:ci
 ```sh
 bun run build:web
 ```
+
+产物输出到仓库同级的&#32;<code>&#46;&#46;&#47;public&#47;fast&#47;editor</code>。
 
 ## 开源许可与第三方致谢
 
