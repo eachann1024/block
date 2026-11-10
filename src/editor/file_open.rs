@@ -68,7 +68,6 @@ impl Editor {
                 if source.is_some() {
                     preview.update(cx, |preview, cx| {
                         if let Some(text) = text { preview.set_svg_source(text, cx); }
-                        preview.set_show_filename(false, cx);
                     });
                 }
                 self.surface = Surface::Preview { preview, source, show_source: false };

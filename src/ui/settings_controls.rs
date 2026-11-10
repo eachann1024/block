@@ -58,23 +58,6 @@ pub fn setting_row(title: &'static str, control: impl IntoElement) -> gpui::Div 
         .child(div().min_w_0().flex_1().flex().justify_end().overflow_hidden().child(control))
 }
 
-pub fn checkbox_switch(
-    id: impl Into<gpui::ElementId>, checked: bool, enabled: bool,
-) -> gpui::Stateful<gpui::Div> {
-    let theme = Theme::ocean();
-    let id: gpui::ElementId = id.into();
-    let probe = crate::ui::smoke_overlay::probe_for(&id);
-    div().id(id).relative().children(probe).size(px(28.)).flex().items_center().justify_center()
-        .when(enabled, |d| d.cursor(CursorStyle::PointingHand))
-        .when(!enabled, |d| d.opacity(0.5))
-        .child(div().size(px(20.)).flex().items_center().justify_center().rounded(px(6.))
-            .border_1().border_color(if checked { theme.accent } else { theme.btn_border })
-            .bg(if checked { theme.accent } else { card_bg() })
-            .when(checked, |d| d.child(crate::icons::icon(
-                crate::icons::Icon::Check, px(14.), theme.mono_icon_colors(gpui::rgb(0xffffff).into()),
-            ))))
-}
-
 pub fn static_badge(label: impl Into<SharedString>, mono: bool) -> gpui::Div {
     let theme = Theme::ocean();
     div().max_w_full().min_w_0().h(px(32.)).px(px(12.)).rounded(crate::ui::radius::CONTROL).bg(theme.shell).border_1().border_color(theme.hairline)
@@ -82,25 +65,6 @@ pub fn static_badge(label: impl Into<SharedString>, mono: bool) -> gpui::Div {
         .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(14.)).text_color(theme.text_secondary)
             .when(mono, |d| d.font(mono_font()))
             .child(label.into()))
-}
-
-pub fn tag_chip(
-    id: impl Into<gpui::ElementId>, label: impl Into<SharedString>, active: bool, mono: bool,
-) -> gpui::Stateful<gpui::Div> {
-    let theme = Theme::ocean();
-    let sel_bg = selected_bg();
-    let idle_bg = if is_dark() { gpui::rgb(0x2a2a2a).into() } else { theme.shell };
-    let id: gpui::ElementId = id.into();
-    let probe = crate::ui::smoke_overlay::probe_for(&id);
-    div().id(id).relative().children(probe).h(px(30.)).px(px(10.)).flex().items_center().gap(px(6.)).rounded(crate::ui::radius::CONTROL).text_size(px(13.))
-        .when(mono, |d| d.font(mono_font()))
-        .bg(if active { sel_bg } else { idle_bg })
-        .border_1().border_color(if active { theme.accent } else { theme.btn_border })
-        .text_color(if active { theme.text } else { theme.text_secondary })
-        .cursor(CursorStyle::PointingHand)
-        .when(!active, |d| d.hover(move |s| s.bg(theme.hover).border_color(theme.accent).text_color(theme.text)))
-        .when(active, |d| d.child(div().size(px(6.)).rounded(px(3.)).bg(theme.accent)))
-        .child(label.into())
 }
 
 pub fn action_button(

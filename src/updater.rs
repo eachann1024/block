@@ -2,7 +2,6 @@
 //! Installers come from the GitHub release. When the asset digest is present, the download is checked against it.
 
 use std::{
-    io::Read,
     path::Path,
     process::Command,
     sync::{
@@ -57,7 +56,6 @@ pub struct UpdateInfo {
     pub days: Vec<DayLog>,
     pub download_url: String,
     pub asset_name: String,
-    pub is_delta: bool,
     pub total_bytes: u64,
     pub sha256: Option<String>,
     pub manual_build: bool,
@@ -190,14 +188,16 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     ];
 
     let bit_len = (bytes.len() as u64).wrapping_mul(8);
-    let mut padded = bytes.to_vec();
-    padded.push(0x80);
-    while (padded.len() % 64) != 56 {
-        padded.push(0x00);
+    // Full blocks are hashed in place; only the final partial block is copied and padded.
+    let full = bytes.len() / 64 * 64;
+    let mut tail = bytes[full..].to_vec();
+    tail.push(0x80);
+    while (tail.len() % 64) != 56 {
+        tail.push(0x00);
     }
-    padded.extend_from_slice(&bit_len.to_be_bytes());
+    tail.extend_from_slice(&bit_len.to_be_bytes());
 
-    for chunk in padded.chunks_exact(64) {
+    for chunk in bytes[..full].chunks_exact(64).chain(tail.chunks_exact(64)) {
         let mut w = [0u32; 64];
         for i in 0..16 {
             let s = i * 4;
@@ -490,7 +490,6 @@ fn mock_update_info() -> UpdateInfo {
         days: vec![day1, day2],
         download_url: format!("https://github.com/eachann1024/block/releases/download/v1.0.999/{asset_name}"),
         asset_name,
-        is_delta: false,
         total_bytes: 4_404_019,
         sha256: None,
         manual_build: false,
@@ -621,7 +620,6 @@ pub fn check_for_updates() -> bool {
         days,
         download_url,
         asset_name,
-        is_delta: false,
         total_bytes,
         sha256,
         manual_build,
@@ -757,10 +755,6 @@ pub fn has_update() -> bool {
     HAS_UPDATE.load(Ordering::Relaxed)
 }
 
-pub fn is_modal_open() -> bool {
-    OPEN.load(Ordering::Relaxed)
-}
-
 pub fn open(cx: &mut Context<Workspace>) {
     accept_badge_click();
     cx.notify();
@@ -795,7 +789,7 @@ fn download_file_with_fallback(
         let dest_str = dest.to_string_lossy().into_owned();
 
         let mut child = match Command::new("curl")
-            .args(["-sSL", "--connect-timeout", "4", "--max-time", "180", "-o", &dest_str, url])
+            .args(["-fsSL", "--connect-timeout", "4", "--max-time", "180", "-o", &dest_str, url])
             .spawn()
         {
             Ok(c) => c,
@@ -913,122 +907,30 @@ fn perform_update(
         }
     }
 
-    // Decompress and in-place replacement for delta packages
-    if info.is_delta {
-        let downloaded_bytes = std::fs::read(&temp_asset).map_err(|e| e.to_string())?;
-        let mut decoder = flate2::read::GzDecoder::new(&downloaded_bytes[..]);
-        let mut binary = Vec::new();
-        decoder.read_to_end(&mut binary).map_err(|e| format!("Gzip decode failed: {e}"))?;
-
-        let temp_bin = std::env::temp_dir().join(format!("block-bin-{}", std::process::id()));
-        std::fs::write(&temp_bin, &binary).map_err(|e| e.to_string())?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&temp_bin, std::fs::Permissions::from_mode(0o755));
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            let _ = Command::new("codesign")
-                .args(["--force", "--sign", "-", temp_bin.to_str().unwrap_or_default()])
-                .output();
-        }
-
-        let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
-
-        #[cfg(unix)]
-        {
-            let replace_attempt = (|| -> std::io::Result<()> {
-                let exe_dir = current_exe.parent().unwrap_or(Path::new("."));
-                let staged_exe = exe_dir.join(format!(".block-update-{}.tmp", std::process::id()));
-                if std::fs::copy(&temp_bin, &staged_exe).is_ok() {
-                    use std::os::unix::fs::PermissionsExt;
-                    let _ = std::fs::set_permissions(&staged_exe, std::fs::Permissions::from_mode(0o755));
-                    if std::fs::rename(&staged_exe, &current_exe).is_ok() {
-                        return Ok(());
-                    }
-                    let _ = std::fs::remove_file(&staged_exe);
-                }
-
-                std::fs::copy(&temp_bin, &current_exe)?;
-                use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(&current_exe, std::fs::Permissions::from_mode(0o755));
-                Ok(())
-            })();
-
-            if let Err(_err) = replace_attempt {
-                #[cfg(target_os = "macos")]
-                {
-                    let temp_bin_str = temp_bin.to_string_lossy().replace('\'', "'\\''");
-                    let current_exe_str = current_exe.to_string_lossy().replace('\'', "'\\''");
-                    let script = format!(
-                        "do shell script \"cp -f '{temp_bin_str}' '{current_exe_str}' && codesign --force --sign - '{current_exe_str}'\" with administrator privileges"
-                    );
-                    let status = Command::new("/usr/bin/osascript")
-                        .args(["-e", &script])
-                        .status()
-                        .map_err(|e| format!("osascript failed: {e}"))?;
-                    if !status.success() {
-                        let _ = std::fs::remove_file(&temp_bin);
-                        return Err("Administrator privilege escalation failed".to_string());
-                    }
-                }
-                #[cfg(not(target_os = "macos"))]
-                {
-                    let _ = std::fs::remove_file(&temp_bin);
-                    return Err(format!("Failed to replace binary: {_err}"));
-                }
-            }
-        }
-
-        #[cfg(windows)]
-        {
-            let exe_dir = current_exe.parent().unwrap_or(Path::new("."));
-            let old_exe = exe_dir.join(format!("block-{}.old", std::process::id()));
-            let _ = std::fs::rename(&current_exe, &old_exe);
-            if let Err(e) = std::fs::copy(&temp_bin, &current_exe) {
-                let _ = std::fs::remove_file(&temp_bin);
-                return Err(format!("Failed to replace binary on Windows: {e}"));
-            }
-        }
-
-        let _ = std::fs::remove_file(&temp_bin);
-        let _ = std::fs::remove_file(&temp_asset);
-
-        // Spawn new binary and exit
-        let mut cmd = Command::new(&current_exe);
-        cmd.args(std::env::args().skip(1));
-        let _ = cmd.spawn();
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("open").arg(&temp_asset).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new(&temp_asset).spawn();
         std::process::exit(0);
-    } else {
-        // Fallback full installer
-        #[cfg(target_os = "macos")]
-        {
-            let _ = Command::new("open").arg(&temp_asset).spawn();
-        }
-        #[cfg(target_os = "windows")]
-        {
-            let _ = Command::new(&temp_asset).spawn();
-            std::process::exit(0);
-        }
-        #[cfg(target_os = "linux")]
-        {
-            if info.asset_name.ends_with(".deb") {
-                let status = Command::new("xdg-open")
-                    .arg(&temp_asset)
-                    .status()
-                    .map_err(|err| format!("Could not open the deb installer: {err}"))?;
-                if !status.success() {
-                    return Err("Could not open the deb installer".to_string());
-                }
-            } else {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(&temp_asset, std::fs::Permissions::from_mode(0o755));
-                let _ = Command::new(&temp_asset).args(std::env::args().skip(1)).spawn();
-                std::process::exit(0);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if info.asset_name.ends_with(".deb") {
+            let status = Command::new("xdg-open")
+                .arg(&temp_asset)
+                .status()
+                .map_err(|err| format!("Could not open the deb installer: {err}"))?;
+            if !status.success() {
+                return Err("Could not open the deb installer".to_string());
             }
+        } else {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&temp_asset, std::fs::Permissions::from_mode(0o755));
+            let _ = Command::new(&temp_asset).args(std::env::args().skip(1)).spawn();
+            std::process::exit(0);
         }
     }
 
@@ -1235,9 +1137,9 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
         let downloaded_mb = progress.downloaded_bytes as f64 / (1024.0 * 1024.0);
         let total_mb = progress.total_bytes as f64 / (1024.0 * 1024.0);
         let left_text = if is_en {
-            format!("Incremental update v{} ({:.1} MB / {:.1} MB)", info.latest_version, downloaded_mb, total_mb)
+            format!("Downloading update v{} ({:.1} MB / {:.1} MB)", info.latest_version, downloaded_mb, total_mb)
         } else {
-            format!("正在增量更新 v{}（{:.1} MB / {:.1} MB）", info.latest_version, downloaded_mb, total_mb)
+            format!("正在下载更新 v{}（{:.1} MB / {:.1} MB）", info.latest_version, downloaded_mb, total_mb)
         };
         let right_text = format!("{}%", progress.pct);
         let progress_label = left_text.clone();

@@ -1,6 +1,6 @@
 //! Block-level commands shared by the "+" menu, the slash menu, and code block actions.
 use std::{cell::RefCell, collections::HashMap};
-use gpui::{Bounds, Context, EntityId, Pixels, Point, Window, point, px, size};
+use gpui::{Bounds, Context, EntityId, Pixels, Point, Window, point, px};
 use super::{input::transactions::ListChange, model::{Block, Kind, Table},
     view::{Editor, selection::Position}};
 use crate::icons::Icon;
@@ -67,13 +67,6 @@ impl Editor {
         let anchor = point(trigger.left(), trigger.bottom() + px(4.));
         self.block_menu = Some(BlockMenu { block: id, anchor, trigger, mode, index: 0 });
         cx.notify();
-    }
-    #[allow(dead_code)]
-    pub(super) fn open_block_menu(&mut self, id: u64, anchor: Point<Pixels>, mode: Mode, cx: &mut Context<Self>) {
-        let trigger = self
-            .block_trigger_bounds(cx.entity_id(), id)
-            .unwrap_or_else(|| Bounds::new(point(anchor.x, (anchor.y - px(28.)).max(px(0.))), size(px(SLASH_MENU_WIDTH), px(24.))));
-        self.open_block_menu_at(id, trigger, mode, cx);
     }
     pub(super) fn block_menu_entries_for(&self, menu: BlockMenu) -> Vec<Option<Cmd>> {
         match menu.mode {

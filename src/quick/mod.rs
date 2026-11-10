@@ -227,7 +227,7 @@ pub fn rebind_hotkeys(cx: &mut App) {
 fn start_hotkey(cx: &mut App) {
     match GlobalHotKeyManager::new() {
         Ok(manager) => cx.global_mut::<QuickState>().hotkey = Some(manager),
-        Err(error) => { eprintln!("全局快捷键不可用: {error}"); return; }
+        Err(error) => { crate::log::error(&format!("全局快捷键不可用: {error}")); return; }
     }
     rebind_hotkeys(cx);
     cx.spawn(async move |cx| {

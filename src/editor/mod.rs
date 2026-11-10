@@ -31,7 +31,6 @@ mod presentation;
 pub(crate) mod block_menu;
 pub(crate) use paste::MARKDOWN_CLIPBOARD_V1;
 mod menu_keys;
-mod menu_style;
 mod format_cmds;
 mod format_ui;
 mod toolbar;

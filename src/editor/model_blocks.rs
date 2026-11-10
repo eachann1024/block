@@ -71,15 +71,6 @@ impl Block {
         }).collect();
         out.normalize_spans(); out
     }
-    pub fn split_off(&mut self, at: usize, new_id: u64, kind: Kind) -> Option<Block> {
-        if self.meta.table.is_some() || !self.text.is_char_boundary(at) { return None; }
-        let mut right = self.slice(at..self.text.len()); right.id = new_id; right.kind = kind;
-        right.checked = false; right.meta.list_start = None;
-        if kind != Kind::Quote { right.meta.callout = None; }
-        // A split must not duplicate the imported blank-body sentinel.
-        right.meta.code_empty_line = false;
-        *self = self.slice(0..at); Some(right)
-    }
     pub fn append(&mut self, other: &Block) {
         // Tables are structural blocks; callers must splice them rather than concatenate projections.
         if self.meta.table.is_some() || other.meta.table.is_some() { return; }

@@ -19,7 +19,6 @@ pub fn render_preview_surface(
     note_path: Option<&Path>,
     selected_version: Option<&HistoryVersion>,
     selected_content: Option<&str>,
-    current_content: &str,
     mode: PreviewMode,
     error: Option<&HistoryError>,
     diff_blocks: Option<&[DiffBlock]>,
@@ -27,7 +26,6 @@ pub fn render_preview_surface(
     on_re_diff: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     on_retry_restore: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    let _ = current_content;
     let theme = Theme::ocean();
     let same_as_current = selected_version.map(|version| version.same_as_current).unwrap_or(false);
 

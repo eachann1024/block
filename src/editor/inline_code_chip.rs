@@ -95,9 +95,6 @@ pub(in crate::editor) fn paint_fills(layout: &TextLayout, st: &ChipState, window
     });
 }
 
-/// Notion-style classic inline code has no border; kept as a no-op hook for paint order.
-pub(in crate::editor) fn paint_borders(_layout: &TextLayout, _st: &ChipState, _window: &mut Window) {}
-
 struct Piece { b: Bounds<Pixels>, l: Pixels, r: Pixels, chip: bool }
 
 /// Selection pieces of one text layout. Plain text and chip interiors share the full chip height

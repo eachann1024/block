@@ -1,4 +1,4 @@
-use super::{Block, Doc, Kind};
+use super::{Block, Kind};
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
@@ -98,24 +98,6 @@ impl Block {
         if let Some(table) = &self.meta.table { self.text = table.projection(); self.spans.clear(); }
     }
 }
-impl Doc {
-    /// Returns false without changing a document when the target is missing or unchanged.
-    #[allow(dead_code)]
-    pub fn set_table_cell_text(&mut self, id: u64, row: usize, cell: usize, text: String) -> bool {
-        let Some(block) = self.get_mut(id) else { return false; };
-        let Some(target) = block.meta.table.as_mut().and_then(|t| t.cell_mut(row, cell)) else { return false; };
-        if target.content.text == text { return false; }
-        let old = &target.content.text;
-        let mut prefix = old.bytes().zip(text.bytes()).take_while(|(a,b)| a == b).count();
-        while !old.is_char_boundary(prefix) || !text.is_char_boundary(prefix) { prefix -= 1; }
-        let mut suffix = old[prefix..].bytes().rev().zip(text[prefix..].bytes().rev())
-            .take_while(|(a,b)| a == b).count();
-        while !old.is_char_boundary(old.len()-suffix) || !text.is_char_boundary(text.len()-suffix) { suffix -= 1; }
-        target.content.replace_range(prefix..old.len()-suffix, &text[prefix..text.len()-suffix]);
-        block.sync_table_text(); self.refresh_block(id); true
-    }
-}
-
 /// Structural edits. Every edit works on a Markdown pipe table: the first row is the header.
 impl TableCell {
     fn blank(row: usize, column: usize) -> Self {

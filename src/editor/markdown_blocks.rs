@@ -27,28 +27,6 @@ pub(super) fn inline_math_block(line: &str) -> Option<(usize, &str)> {
     }
     None
 }
-/// A paragraph with delimiters spanning editor lines must stay opaque as a whole.
-#[allow(dead_code)]
-pub(super) fn unclosed_inline(line:&str)->bool {
-    let bytes=line.as_bytes(); let mut i=0; let mut marks=[false;3]; let mut code=0; let mut brackets=0i32;
-    while i<bytes.len() {
-        let ch=bytes[i];
-        if ch==b'\\' && code==0 {i=(i+2).min(bytes.len());continue;}
-        if ch==b'`' {
-            let n=bytes[i..].iter().take_while(|b|**b==ch).count();
-            if code==0 {code=n;} else if code==n {code=0;} i+=n;continue;
-        }
-        if code!=0 {i+=1;continue;}
-        if ch==b'[' {brackets+=1;} else if ch==b']' {brackets-=1;}
-        if ch==b'*' || ch==b'~' {
-            let n=bytes[i..].iter().take_while(|b|**b==ch).count();
-            if ch==b'*' {marks[0]^=n%2==1;marks[1]^=(n/2)%2==1;}
-            else {marks[2]^=(n/2)%2==1;} i+=n;continue;
-        }
-        i+=1;
-    }
-    code!=0 || brackets!=0 || marks.into_iter().any(|v|v)
-}
 fn is_html_hr(body: &str) -> bool {
     let b = body.trim();
     b.eq_ignore_ascii_case("<hr>") || b.eq_ignore_ascii_case("<hr/>") || b.eq_ignore_ascii_case("<hr />")

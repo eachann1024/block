@@ -44,7 +44,7 @@ pub(crate) use view::{ExportSlot, ExportView, Snapshot, active_view, close_activ
 
 pub use budget::{ExportError, preflight};
 pub use format::ExportFormat;
-pub use job::{Cancellation, ExportJob, Timings, write_bytes, write_png};
+pub use job::{Cancellation, ExportJob, Timings, write_bytes};
 pub use palette::{ExportTheme, RenderOptions};
 pub use preferences::ExportPreferences;
 pub(crate) use source::{BlockLayout, SourceContext, TableGeometry};
