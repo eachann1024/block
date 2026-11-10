@@ -1,5 +1,5 @@
 # Block
-<strong>Block</strong>（仓库名&#32;<code>block</code>）是一款使用 Rust 与 GPUI 构建的原生 macOS 块级 Markdown 笔记应用，同时提供基于 WebAssembly &#43; WebGPU&#47;WebGL2 的浏览器端编辑器。它直接读写本地文件夹中的&#32;<code>&#46;md</code>&#32;文件，不绑定私有格式，兼顾即时排版的阅读感与纯文本的可迁移性。
+使用 Rust 与 GPUI 构建的原生 macOS 块级 Markdown 笔记应用，同时提供基于 WebAssembly &#43; WebGPU&#47;WebGL2 的浏览器端编辑器。它直接读写本地文件夹中的&#32;<code>&#46;md</code>&#32;文件，不绑定私有格式，兼顾即时排版的阅读感与纯文本的可迁移性。
 
 > <strong>Block</strong>&#32;is a native macOS block&#45;based Markdown notebook built in Rust on top of GPUI&#44; with a companion WebAssembly editor&#46; It works directly over plain local&#32;<code>&#46;md</code>&#32;folders with zero lock&#45;in&#46;
 
