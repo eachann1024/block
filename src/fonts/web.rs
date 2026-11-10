@@ -124,19 +124,30 @@ async fn fetch_spec(spec: FontSpec, errors: &mut Vec<String>) -> Option<Vec<u8>>
     None
 }
 
-/// Fetches Latin UI & monospace fonts before resolving `.SystemUIFont` on web.
-pub async fn load_ui_fonts() -> Vec<&'static [u8]> {
-    let mut errors = Vec::new();
-    let mut out = Vec::new();
-    for spec in [
+/// Fetches Latin UI & monospace fonts in parallel before resolving `.SystemUIFont` on web.
+pub async fn load_ui_fonts(cx: &gpui::AsyncApp) -> Vec<&'static [u8]> {
+    let specs = [
         IBM_PLEX_SANS_400,
         IBM_PLEX_SANS_600,
         JETBRAINS_MONO_400,
         JETBRAINS_MONO_500,
-    ] {
-        if let Some(bytes) = fetch_spec(spec, &mut errors).await {
-            out.push(register_export_font(bytes));
+    ];
+    let mut tasks = Vec::with_capacity(specs.len());
+    for spec in specs {
+        tasks.push(cx.spawn(async move |_| {
+            let mut errs = Vec::new();
+            let bytes = fetch_spec(spec, &mut errs).await;
+            (bytes, errs)
+        }));
+    }
+    let mut errors = Vec::new();
+    let mut out = Vec::new();
+    for task in tasks {
+        let (bytes, errs) = task.await;
+        if let Some(b) = bytes {
+            out.push(register_export_font(b));
         }
+        errors.extend(errs);
     }
     if !out.is_empty() {
         crate::export::reset_font_system();
