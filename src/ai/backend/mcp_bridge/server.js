@@ -21,6 +21,7 @@ readline.createInterface({input: process.stdin}).on('close', () => process.exit(
   if (message.method !== 'tools/call') return send({jsonrpc: '2.0', id: message.id, error: {code: -32601, message: 'Method not found'}});
   const socket = net.createConnection({host: '127.0.0.1', port: Number(process.env.BLOCK_MCP_PORT)});
   let response = '';
+  socket.setEncoding('utf8');
   socket.setTimeout(300000);
   socket.on('connect', () => socket.write(JSON.stringify({token: process.env.BLOCK_MCP_TOKEN, id: String(message.id), name: message.params.name, arguments: message.params.arguments || {}}) + '\n'));
   socket.on('data', data => {

@@ -186,7 +186,7 @@ impl Render for Editor {
         let anchor_sync = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
             anchor_editor.update(cx, |this, cx| {
                 let mut changed = super::annotate_fit::sync_after_paint(this, bounds);
-                this.sync_reveal_after_paint(pad);
+                this.sync_reveal_after_paint();
                 let top = this.list.logical_scroll_top();
                 let cur_scroll = (top.item_ix, top.offset_in_item);
                 if this.scroll_top != cur_scroll { this.scroll_top = cur_scroll; crate::dropdown::dismiss_all(cx); changed = true; }
@@ -255,7 +255,7 @@ impl Render for Editor {
                 .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.finish_extend(cx); this.clear_pointer(); cx.notify(); }))
                 .child(super::source_view::editor_column(self, rows, std_w, rail_slot, pad, cx))
                 .when_some(self.table_chrome.clone(), |root, chrome| {
-                    root.children(super::table_chrome::overlay(cx.entity(), &chrome, self.table_sel, self.table_menu, self.table_drag, window))
+                    root.children(super::table_chrome::overlay(cx.entity(), &chrome, self.table_sel, self.table_menu, self.table_drag, self.minimal, window))
                 })
                 .on_drop(cx.listener(|this, paths: &gpui::ExternalPaths, window, cx| {
                     let (id, place) = this.drop_target(window.mouse_position())

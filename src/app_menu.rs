@@ -159,17 +159,8 @@ impl Workspace {
     /// out of a subfolder), plus every folder except the item itself, its
     /// descendants and its current parent.
     fn move_list(&self, path: &Path, dir: bool, cx: &mut Context<Self>) -> AnyElement {
-        let Some(root) = self.folder.clone() else { return div().into_any_element() };
-        let current = path.parent().map(Path::to_path_buf);
-        let mut choices = Vec::new();
-        if current.as_deref() != Some(root.as_path()) {
-            choices.push((root.clone(), 0usize, display_name(&root, true), true));
-        }
-        for (folder, depth, name) in self.tree.read(cx).folders() {
-            if dir && folder.starts_with(path) { continue; }
-            if current.as_deref() == Some(folder.as_path()) { continue; }
-            choices.push((folder, depth, name, false));
-        }
+        if self.folder.is_none() { return div().into_any_element(); }
+        let choices = self.move_choices(path, dir, cx);
         let move_cursor = move_nav_cursor();
         let items = choices.into_iter().enumerate().map(|(index, (folder, depth, name, is_root))| {
             let (from, dest) = (path.to_path_buf(), folder.clone());

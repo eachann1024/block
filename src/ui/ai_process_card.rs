@@ -40,7 +40,6 @@ pub struct ProcessCardOptions {
     pub elapsed: Option<ProcessElapsed>,
     pub loader: LoaderPattern,
     pub search_query: Option<String>,
-    pub step_statuses: Vec<TaskStatus>,
     pub step_details: Vec<String>,
     pub step_metas: Vec<ProcessStepMeta>,
     pub diff_chips: Vec<ProcessDiffChip>,
@@ -83,14 +82,6 @@ fn fallback_chips(notes: &[String]) -> Vec<ProcessDiffChip> {
             ],
         }
     }).collect()
-}
-
-pub fn process_card(
-    spec: ProcessCardSpec,
-    on_toggle_steps: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-    on_toggle_notes: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> AnyElement {
-    process_card_with_options(spec, ProcessCardOptions::default(), on_toggle_steps, on_toggle_notes)
 }
 
 pub fn process_card_with_options(
@@ -162,9 +153,6 @@ pub fn process_card_with_options(
                 let label = if step.merged_count > 1 { format!("{} ×{}", step.label, step.merged_count) } else { step.label.clone() };
                 let chip_label = if step.detail.is_empty() { tr("详情", "Details") } else { &step.detail };
                 let row_group = SharedString::from(format!("ai-process-row-group-{key}-{index}"));
-                let step_status = options.step_statuses.get(index).copied().unwrap_or_else(|| {
-                    if step.running { TaskStatus::Running } else if step.detail == tr("失败", "Failed") { TaskStatus::Failed } else { TaskStatus::Completed }
-                });
                 let mut chip = div().id(SharedString::from(format!("ai-process-tool-{key}-{index}"))).relative()
                     .children(smoke_overlay::probe("ai-process-tool-chip")).children(smoke_overlay::probe(format!("ai-process-tool-chip-{index}")))
                     .flex_1().min_w_0().child(ai_process_status::inline_tool_chip(chip_label, mono));
@@ -181,7 +169,7 @@ pub fn process_card_with_options(
                 }
                 let mut row = div().id(SharedString::from(format!("ai-process-row-{key}-{index}"))).group(row_group.clone())
                     .mx(px(-3.)).px(px(3.)).h(px(28.)).flex_none().flex().items_center().gap(px(8.)).rounded(crate::ui::radius::CONTROL).hover(|s| s.bg(ai_process_status::row_hover_bg()))
-                    .child(ai_process_status::row_icon_slot(&format!("{key}-step-{index}"), &row_group, icon_kind, step_status, is_open, has_detail))
+                    .child(ai_process_status::row_icon_slot(&row_group, icon_kind, is_open, has_detail))
                     .child(div().flex_none().text_size(px(12.5)).font_weight(FontWeight(500.)).text_color(theme.text).child(label))
                     .child(chip);
                 if has_detail {

@@ -145,7 +145,7 @@ fn open(cx: &mut App) {
             let state = cx.global_mut::<SearchWindowGlobal>();
             state.window = state.view.take().map(|view| (handle, view));
         }
-        Err(error) => eprintln!("无法打开全局搜索窗口: {error}"),
+        Err(error) => crate::log::error(&format!("无法打开全局搜索窗口: {error}")),
     }
 }
 impl SearchWindow {

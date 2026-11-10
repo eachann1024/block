@@ -1,20 +1,12 @@
 //! Floating selection toolbar (F-Toolbar): light pill of 28px icon buttons split by hairline separators.
 use std::{cell::RefCell, collections::HashMap};
-use gpui::{BoxShadow, Bounds, Context, Entity, MouseButton, Pixels, Point, SharedString, Window,
-    point, prelude::*, px, rgb, rgba};
+use gpui::{Bounds, Context, Entity, MouseButton, Pixels, Point, SharedString, Window,
+    prelude::*, px, rgb};
 use crate::{icons::{Icon, stateful_icon}, theme::{Theme, tr}};
 pub(super) use crate::ui::floating_bar::{
     ToolbarColors, animate as animate_bar, duo_icon_colors, icon_toggle_button, sep, shell as pill,
 };
 use super::{format_cmds::FormatPop, model::{Kind, MarkKind}, view::Editor};
-
-#[allow(dead_code)]
-pub(super) fn menu_shadows() -> Vec<BoxShadow> {
-    vec![
-        BoxShadow { color: rgba(0x1f1e1d1f).into(), offset: point(px(0.), px(12.)), blur_radius: px(32.), spread_radius: px(0.), inset: false },
-        BoxShadow { color: rgba(0x1f1e1d0f).into(), offset: point(px(0.), px(1.)), blur_radius: px(3.), spread_radius: px(0.), inset: false },
-    ]
-}
 
 thread_local! { static BOUNDS: RefCell<HashMap<&'static str, Bounds<Pixels>>> = Default::default(); }
 /// Placement spec for a toolbar dropdown button: left-aligned to the button, flipping above if needed.

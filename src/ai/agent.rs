@@ -20,19 +20,6 @@ pub(super) const SKILLS: &[(&str, &str, &str, &[&str])] = &[
 pub(crate) const TOOL_NAMES: &[&str] = &["loadSkill", "readSkillResource", "listNotebooks", "listPages", "searchNotes", "readPage", "askUserQuestion", "executeBatchPlan"];
 pub(crate) const SYSTEM_PROMPT_HINT: &str = "Use Block tools (listNotebooks, listPages, searchNotes, readPage, executeBatchPlan, loadSkill, readSkillResource, askUserQuestion) when reading, batch-editing Block notes, or asking user confirmation.";
 pub(crate) fn is_authorized_tool(name: &str) -> bool { TOOL_NAMES.contains(&name) }
-pub(crate) fn tool_step_label(name: &str) -> (&'static str, &'static str) {
-    match name {
-        "loadSkill" => ("加载技能", "Load skill"),
-        "readSkillResource" => ("读取技能资源", "Read skill resource"),
-        "listNotebooks" => ("列出笔记本", "List notebooks"),
-        "listPages" => ("列出笔记", "List pages"),
-        "searchNotes" => ("搜索笔记", "Search notes"),
-        "readPage" => ("读取笔记", "Read page"),
-        "askUserQuestion" => ("等待用户确认问题", "Ask user questions"),
-        "executeBatchPlan" => ("生成变更计划", "Prepare batch plan"),
-        _ => ("调用工具", "Run tool"),
-    }
-}
 
 const BATCH_DESC: &str = "准备并处理笔记变更计划。修改已有页面会生成审批卡片，用户确认后才写入；纯新建自动写入。局部修改必须用 search_replace（oldString 须为 readPage 返回的精确片段，newString 可为空表示删除该片段，replaceAll 可选），整页重写才用 edit，新建用 create。参数格式：{title:\"整理笔记\",summary:\"更新账号页\",operations:[{type:\"search_replace\",pageId:\"page-1\",oldString:\"旧片段\",newString:\"新片段\"}]}。计划生成后停止，不要重复提交；结构预检失败可修正并重试一次。同页操作按顺序模拟。";
 const ASK_DESC: &str = "当任务需求不明确、存在多种方案或需要用户确认细节（如确认合并范围、选择文件名、勾选需要处理的项等）时，调用此工具向用户展示交互式单选/多选卡片，禁止在普通文本回复中列举问题让用户打字回答。每次最多4个问题，每个问题提供2~4个简短明确的选项（卡片自带自定义输入框与跳过按钮，无需添加“其他”选项）。";

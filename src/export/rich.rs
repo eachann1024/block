@@ -1,7 +1,7 @@
 //! Shape semantic spans once, sharing exactly the same buffers with the raster pass.
 use super::{
     ExportError,
-    layout::{CODE, STRIKE, require_glyphs},
+    layout::{CODE, STRIKE},
     style,
 };
 use crate::editor::model::{Block, MarkKind};
@@ -133,7 +133,6 @@ pub(super) fn shape_with_wrap(
     buffer.set_wrap(wrap);
     buffer.set_rich_text(spans, &base, Shaping::Advanced, alignment);
     buffer.shape_until_scroll(fonts, false);
-    require_glyphs(&buffer)?;
     Ok(Shaped {
         buffer,
         backgrounds,

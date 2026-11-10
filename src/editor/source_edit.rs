@@ -52,7 +52,7 @@ impl Editor {
         let Some(doc) = self.source_doc() else { return };
         let body = doc.text.body().to_owned();
         let range = range.map(|r| super::input::from_utf16(&body, &r)).unwrap_or_else(|| doc.selection());
-        self.source_apply(range, text, true, cx);
+        self.source_apply(range, text, cx);
     }
     pub(super) fn source_mark(&mut self, range: Option<Range<usize>>, text: &str, selected: Option<Range<usize>>, cx: &mut Context<Self>) {
         let Some(doc) = self.source_doc_mut() else { return };
@@ -122,7 +122,7 @@ impl Editor {
     }
     fn source_insert(&mut self, text: &str, cx: &mut Context<Self>) {
         let range = self.source_doc().map(|d| d.selection()).unwrap_or(0..0);
-        self.source_apply(range, text, true, cx);
+        self.source_apply(range, text, cx);
     }
     fn source_delete(&mut self, forward: bool, cx: &mut Context<Self>) {
         let Some(doc) = self.source_doc() else { return };
@@ -131,7 +131,7 @@ impl Editor {
         } else {
             step_offset(doc.text.body(), doc.head, false)..doc.head
         };
-        self.source_apply(range, "", true, cx);
+        self.source_apply(range, "", cx);
     }
     pub(super) fn source_delete_word(&mut self, forward: bool, cx: &mut Context<Self>) {
         let Some(doc) = self.source_doc() else { return };
@@ -139,7 +139,7 @@ impl Editor {
         let body = doc.text.body().to_owned();
         let head = doc.head;
         let range = if forward { word_edge(&body, head, true) } else { word_edge(&body, head, false) };
-        self.source_apply(range, "", true, cx);
+        self.source_apply(range, "", cx);
     }
     pub(super) fn source_delete_line(&mut self, to_end: bool, cx: &mut Context<Self>) {
         let Some(doc) = self.source_doc() else { return };
@@ -147,7 +147,7 @@ impl Editor {
         let (start, visible) = doc.text.line_visible(index);
         let head = doc.head;
         let range = if to_end { head..(start + visible.len()).max(head) } else { start.min(head)..head };
-        self.source_apply(range, "", true, cx);
+        self.source_apply(range, "", cx);
     }
     fn source_copy(&mut self, cut: bool, cx: &mut Context<Self>) {
         let Some(doc) = self.source_doc() else { return };
@@ -157,7 +157,7 @@ impl Editor {
         // Source selections are ordinary Markdown text; only the explicit Copy Markdown
         // command forces a block paste. A single copied word must still paste inline.
         cx.write_to_clipboard(ClipboardItem::new_string(text));
-        if cut { self.source_apply(range, "", true, cx); } else { cx.notify(); }
+        if cut { self.source_apply(range, "", cx); } else { cx.notify(); }
     }
     pub(super) fn source_paste(&mut self, item: Option<ClipboardItem>, cx: &mut Context<Self>) {
         let item = item.or_else(|| cx.read_from_clipboard());
@@ -165,7 +165,7 @@ impl Editor {
         let text = super::clipboard_files::string_text(&item).unwrap_or_default();
         if text.is_empty() { return; }
         let range = self.source_doc().map(|d| d.selection()).unwrap_or(0..0);
-        self.source_apply(range, &text, true, cx);
+        self.source_apply(range, &text, cx);
     }
     fn source_undo(&mut self, redo: bool, cx: &mut Context<Self>) {
         self.finish_source_composition(cx);
@@ -185,7 +185,7 @@ impl Editor {
         self.source_layouts.clear();
         self.touch(cx);
     }
-    fn source_apply(&mut self, range: Range<usize>, insert: &str, record: bool, cx: &mut Context<Self>) {
+    fn source_apply(&mut self, range: Range<usize>, insert: &str, cx: &mut Context<Self>) {
         let Some(doc) = self.source_doc_mut() else { return };
         let start = doc.text.snap(range.start.min(range.end));
         let end = doc.text.snap(range.end.max(range.start)).max(start);
@@ -199,7 +199,7 @@ impl Editor {
         doc.runs_rev = 0;
         doc.note_highlight();
         doc.sync_list();
-        if record { push_edit(doc, Edit { start, removed, inserted: insert.to_owned() }); }
+        push_edit(doc, Edit { start, removed, inserted: insert.to_owned() });
         self.source_layouts.clear();
         self.touch(cx);
     }
@@ -208,14 +208,6 @@ impl Editor {
         let offset = doc.text.snap(offset);
         doc.head = offset;
         if !extend { doc.anchor = offset; }
-        doc.reveal = true;
-        cx.notify();
-    }
-    #[allow(dead_code)]
-    pub(super) fn source_select(&mut self, range: Range<usize>, cx: &mut Context<Self>) {
-        let Some(doc) = self.source_doc_mut() else { return };
-        doc.anchor = doc.text.snap(range.start);
-        doc.head = doc.text.snap(range.end);
         doc.reveal = true;
         cx.notify();
     }

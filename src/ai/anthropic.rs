@@ -178,6 +178,7 @@ pub(super) fn stream_turn(
                     let err = v.pointer("/error/message").or_else(|| v.get("message")).and_then(|m| m.as_str())
                         .unwrap_or_else(|| tr("Anthropic 服务返回错误", "Anthropic service error"));
                     let _ = child.kill();
+                    let _ = child.wait();
                     return fail(provider::format_error(err), false);
                 }
                 "content_block_start" => {

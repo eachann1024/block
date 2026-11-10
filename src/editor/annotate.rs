@@ -176,8 +176,8 @@ pub(super) fn paint_highlights(editor: &Editor, block: u64, layout: &TextLayout,
     let (base, active_bg) = if dark { (HL_SELECT_BG_DARK, HL_ACTIVE_BG_DARK) } else { (HL_SELECT_BG, HL_ACTIVE_BG) };
     let (done_bg, done_flash) = if dark { (HL_DONE_BG_DARK, HL_DONE_FLASH_DARK) } else { (HL_DONE_BG, HL_DONE_FLASH) };
     for annotation in &editor.annotate.annotations {
-        let Some((id, range, is_ai)) = resolve_annotation_spans(&editor.doc, annotation).into_iter().find(|(id, _, _)| *id == block) else { continue };
-        if id != block || range.is_empty() || is_whole_table_span(&editor.doc, block, &range) { continue; }
+        let Some((_, range, is_ai)) = resolve_annotation_spans(&editor.doc, annotation).into_iter().find(|(id, _, _)| *id == block) else { continue };
+        if range.is_empty() || is_whole_table_span(&editor.doc, block, &range) { continue; }
         let active = editor.annotate.active_annotation == Some(annotation.id) || editor.annotate.hovered_annotation == Some(annotation.id);
         let color = if annotation.streaming {
             let level = crate::ui::fade::breathe(window);

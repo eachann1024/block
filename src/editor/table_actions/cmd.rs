@@ -53,7 +53,7 @@ impl TableCmd {
     }
 }
 /// Menu contents for each kind of selection, in display order. `None` separates groups.
-pub(in crate::editor) fn menu_items(sel: TableSel, _rows: usize, _columns: usize) -> Vec<Option<TableCmd>> {
+pub(in crate::editor) fn menu_items(sel: TableSel) -> Vec<Option<TableCmd>> {
     use TableCmd::*;
     match sel {
         TableSel::Column(_) => vec![Some(InsertColLeft), Some(InsertColRight), Some(DeleteColumn)],

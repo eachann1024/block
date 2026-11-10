@@ -147,7 +147,7 @@ impl AiChat {
         let canceled = plan.state == agent::PlanState::Canceled;
         self.set_plan(at, plan);
         if canceled { super::super::plan_link::clear_plan(self.current, at, cx); }
-        else { super::super::plan_link::clear_plan_page(self.current, at, &page, cx); self.link_plan(at, 0, false, cx); }
+        else { super::super::plan_link::clear_plan_page(self.current, at, &page, cx); self.link_plan(at, 0, cx); }
         cx.notify();
     }
 

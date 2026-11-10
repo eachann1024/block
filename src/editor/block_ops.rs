@@ -72,7 +72,7 @@ impl Editor {
         }
         false
     }
-    pub(super) fn sync_reveal_after_paint(&mut self, _pad: (f32, f32)) {
+    pub(super) fn sync_reveal_after_paint(&mut self) {
         if !self.reveal_caret { return; }
         self.reveal_caret = false;
         if self.minimal { return; }

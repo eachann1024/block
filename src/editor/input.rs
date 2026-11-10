@@ -136,7 +136,6 @@ impl Editor {
                 cx.notify();
             }
         }
-        let _ = window;
     }
     /// Smart paste shared by `Cmd+V` and the web `paste` event: images, plain text, tables, blocks, links.
     pub(super) fn paste_clipboard_item(&mut self, item: Option<ClipboardItem>, window: &mut Window, cx: &mut Context<Self>) {
