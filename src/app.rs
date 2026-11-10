@@ -215,6 +215,9 @@ impl Workspace {
         Self::install_shortcut_router(window, cx);
         window.focus(&this.root_focus, cx);
         cx.spawn(async move |this, cx| {
+            #[cfg(target_family = "wasm")]
+            let saved = load_state();
+            #[cfg(not(target_family = "wasm"))]
             let saved = cx.background_executor().spawn(async { load_state() }).await;
             let _ = this.update(cx, |this, cx| {
                 this.loading = false;

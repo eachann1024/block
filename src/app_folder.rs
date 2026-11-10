@@ -31,7 +31,7 @@ impl Workspace {
         self.refresh(cx);
         // Only one request is admitted; switching/creating stays disabled until it settles.
         cx.spawn(async move |this, cx| {
-            let result = cx.background_executor().spawn(async move {
+            let scan_work = async move {
                 crate::files::order::save(outgoing_order)?;
                 let scan = scan(&folder)?;
                 let mut notice = if scan.warning_count > 0 {
@@ -60,7 +60,11 @@ impl Workspace {
                 Ok::<_, std::io::Error>(PreparedFolder {
                     path: folder, index: TreeIndex::new(scan.nodes), notice, tabs, active_tab,
                 })
-            }).await;
+            };
+            #[cfg(target_family = "wasm")]
+            let result = scan_work.await;
+            #[cfg(not(target_family = "wasm"))]
+            let result = cx.background_executor().spawn(scan_work).await;
             let _ = this.update(cx, |this, cx| {
                 this.loading = false;
                 if this.restore_superseded(startup_epoch, cx) {
@@ -179,6 +183,9 @@ impl Workspace {
         self.persisting = true;
         self.refresh(cx);
         cx.spawn(async move |this, cx| {
+            #[cfg(target_family = "wasm")]
+            let saved = save_folder(&folder);
+            #[cfg(not(target_family = "wasm"))]
             let saved = cx.background_executor().spawn(async move { save_folder(&folder) }).await;
             let _ = this.update(cx, |this, cx| {
                 this.persisting = false;
