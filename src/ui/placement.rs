@@ -85,7 +85,6 @@ impl PlacementSpec {
     }
 
     pub fn viewport(mut self, viewport: Bounds<Pixels>) -> Self { self.viewport = Some(viewport); self }
-    pub fn maybe_viewport(mut self, viewport: Option<Bounds<Pixels>>) -> Self { self.viewport = viewport; self }
     pub fn gap(mut self, gap: Pixels) -> Self { self.gap = gap; self }
     pub fn margin(mut self, margin: Pixels) -> Self { self.margin = margin; self }
     pub fn align_x(mut self, align_x: AlignX) -> Self { self.align_x = align_x; self }
@@ -256,10 +255,6 @@ impl SmartAnchored {
         self.key = key.into();
         self
     }
-}
-
-pub fn smart_popover(spec: PlacementSpec, child: impl IntoElement, priority: usize) -> Deferred {
-    deferred(smart_anchored(spec).child(crate::ui::motion::popup_enter(div().child(child), "dropdown-popup"))).with_priority(priority)
 }
 
 pub fn smart_popover_with(resolver: impl Fn(&Window, &App) -> PlacementSpec + 'static, child: impl IntoElement, priority: usize) -> Deferred {

@@ -4,10 +4,6 @@ use serde_json::{json, Value};
 use super::{agent, AiChat, Msg};
 use super::super::backend::{self, ApprovalResponse, BackendError, BackendEvent, BackendEventKind, BackendKind, BackendStatus, NoteContext, ToolBridge, ToolRequest, TurnRequest};
 impl AiChat {
-    #[allow(dead_code)]
-    pub(in crate::editor::ai) fn context_scope(&self) -> backend::ContextScope {
-        if self.selection_scope { backend::ContextScope::Selection } else { backend::ContextScope::CurrentNote }
-    }
     pub(in crate::editor::ai) fn selection_available(&self, cx: &App) -> bool { self.note_context(cx).selection.is_some() }
     pub(in crate::editor::ai) fn set_context_scope(&mut self, scope: backend::ContextScope, cx: &mut Context<Self>) {
         self.selection_scope = scope == backend::ContextScope::Selection && self.selection_available(cx);
@@ -336,7 +332,7 @@ impl AiChat {
             super::super::chat_process::record_tool(self, &request, &result, false, cx);
             self.push_msg(Msg { role: "tool".into(), content: result.to_string(), tool_call_id: Some(request.request_id.clone()), plan: Some(plan), ..Default::default() });
             let at = self.conv().map_or(0, |c| c.messages.len() - 1);
-            self.link_plan(at, 0, false, cx);
+            self.link_plan(at, 0, cx);
         } else { super::super::chat_process::record_tool(self, &request, &result, true, cx); }
         let _ = request.responder.respond(Ok(result));
         false

@@ -81,15 +81,6 @@ pub fn on_file_saved(path: &Path, content: &str) -> Result<(), String> {
     stage(path, content)
 }
 
-pub fn force_snapshot(path: &Path, content: &str) -> Result<SnapshotMeta, String> {
-    let mut store = lock()?;
-    boot(&mut store)?;
-    promote(&mut store, path, true)?;
-    let page_id = get_or_create(&mut store, path)?;
-    let sha = sha256_hex(content.as_bytes());
-    commit_snapshot(&page_id, content, &sha).map_err(|error| error.to_string())
-}
-
 pub fn load_versions(path: &Path, current_content: &str) -> Result<Vec<HistoryVersion>, String> {
     versions_for(path, current_content)
 }

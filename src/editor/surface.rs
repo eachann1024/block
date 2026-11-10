@@ -69,7 +69,6 @@ impl Editor {
         *show_source = show;
         preview.update(cx, |preview, cx| {
             if let Some(text) = text { preview.set_svg_source(text, cx); }
-            preview.set_show_filename(false, cx);
         });
         cx.notify();
     }

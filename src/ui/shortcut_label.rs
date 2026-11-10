@@ -4,7 +4,7 @@
 //! line-height so CJK/Latin text and key symbols share one vertical center.
 
 use gpui::{
-    Div, Font, FontFeatures, FontStyle, FontWeight, Hsla, Pixels, SharedString, TextRun, Window,
+    Div, Font, FontFeatures, FontStyle, FontWeight, Hsla, Pixels, SharedString,
     div, prelude::*, px, transparent_black,
 };
 use crate::icons::{Icon, IconColors, icon};
@@ -42,8 +42,7 @@ impl ShortcutStyle {
 
 pub fn ui_font(weight: FontWeight) -> Font {
     Font {
-        // Same face as `theme::ui_font_family`: SF Pro on macOS.
-        family: ".SystemUIFont".into(),
+        family: crate::theme::ui_font_family(),
         weight,
         style: FontStyle::Normal,
         features: FontFeatures::default(),
@@ -63,12 +62,6 @@ pub fn key_char_icon(ch: char) -> Option<Icon> {
         '↓' => Some(Icon::ArrowDown),
         _ => None,
     }
-}
-
-pub fn key_icon(part: &str) -> Option<Icon> {
-    let mut chars = part.chars();
-    let ch = chars.next()?;
-    chars.next().is_none().then(|| key_char_icon(ch)).flatten()
 }
 
 pub fn parse_segments(text: &str) -> Vec<Segment<'_>> {
@@ -141,40 +134,6 @@ pub fn shortcut_label(text: impl AsRef<str>, style: ShortcutStyle) -> Div {
         }
     }
     row
-}
-
-pub fn measure_width(text: &str, style: &ShortcutStyle, window: &Window) -> Pixels {
-    let mut width = Pixels::ZERO;
-    let mut prev_key = false;
-    for seg in parse_segments(text) {
-        match seg {
-            Segment::Key(_) => {
-                if prev_key {
-                    width += px(KEY_GAP);
-                }
-                prev_key = true;
-                width += style.icon_size;
-            }
-            Segment::Text(slice) => {
-                prev_key = false;
-                if slice.is_empty() {
-                    continue;
-                }
-                let run = TextRun {
-                    len: slice.len(),
-                    font: style.font.clone(),
-                    color: transparent_black(),
-                    background_color: None,
-                    underline: None,
-                    strikethrough: None,
-                };
-                let s: SharedString = slice.to_owned().into();
-                let line = window.text_system().shape_line(s, style.font_size, &[run], None);
-                width += line.width;
-            }
-        }
-    }
-    width
 }
 
 pub fn shortcut_hint(text: impl AsRef<str>, color: Hsla) -> Div {

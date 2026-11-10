@@ -221,7 +221,7 @@ impl QuickView {
                                 cx,
                             );
                         } else if crate::theme::is_en() {
-                            this.set_notice(format!("Saved to {file}"), true, cx);
+                            this.set_notice(format!("Saved to {file} (content changed, not cleared)"), true, cx);
                         } else {
                             this.set_notice(format!("已存入 {file}（当前内容已修改，未清空）"), true, cx);
                         }

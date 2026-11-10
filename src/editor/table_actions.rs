@@ -279,13 +279,13 @@ impl Editor {
     }
     pub(in crate::editor) fn open_table_menu_spec(&mut self, id: u64, sel: TableSel, spec: crate::dropdown::PlacementSpec, cx: &mut Context<Self>) {
         let dims = self.table_dimensions(id).unwrap_or((1, 1));
-        super::menu_keys::arm_table(&table_slots(&menu_items(sel, dims.0, dims.1), dims));
+        super::menu_keys::arm_table(&table_slots(&menu_items(sel), dims));
         self.table_menu = Some(TableMenu { block: id, sel, spec }); cx.notify();
     }
     pub(super) fn step_table_menu(&mut self, down: bool, cx: &mut Context<Self>) -> bool {
         let Some(menu) = self.table_menu else { return false };
         let dims = self.table_dimensions(menu.block).unwrap_or((1, 1));
-        let items = menu_items(menu.sel, dims.0, dims.1);
+        let items = menu_items(menu.sel);
         let slots = table_slots(&items, dims);
         if !crate::ui::menu_nav::has_item(&slots) { return false; }
         let cur = super::menu_keys::table_index();
@@ -299,7 +299,7 @@ impl Editor {
     pub(super) fn activate_table_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some(menu) = self.table_menu else { return false };
         let dims = self.table_dimensions(menu.block).unwrap_or((1, 1));
-        let items = menu_items(menu.sel, dims.0, dims.1);
+        let items = menu_items(menu.sel);
         let slots = table_slots(&items, dims);
         if !crate::ui::menu_nav::has_item(&slots) { return false; }
         let index = crate::ui::menu_nav::clamp_index(super::menu_keys::table_index(), &slots);

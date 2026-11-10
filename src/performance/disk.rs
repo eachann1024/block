@@ -13,9 +13,6 @@ pub struct DiskCategory { pub id: &'static str, pub bytes: u64 }
 
 #[derive(Default)]
 pub struct DiskSnapshot {
-    pub app_bytes: u64,
-    pub data_bytes: u64,
-    pub notebook_bytes: u64,
     pub categories: Vec<DiskCategory>,
     pub partial: bool,
     pub cancelled: bool,
@@ -56,20 +53,14 @@ fn scan(paths: DiskPaths, cancel: &AtomicBool) -> DiskSnapshot {
                 if group == 3 && path != root && metadata.is_dir() && should_skip_notebook_dir(&path) {
                     continue;
                 }
-                let Some(identity) = identity(&metadata) else {
-                    record_error(&mut result, &path, "file identity unavailable");
-                    continue;
-                };
-                if !seen.insert(identity) { continue; }
+                // Platforms without a file identity count every path without hard-link dedupe.
+                if let Some(identity) = identity(&metadata) && !seen.insert(identity) { continue; }
                 if metadata.is_file() {
                     let category = category(group, &root, &path);
-                    let amount = metadata.len();
-                    let category_total = result.categories[category].bytes.checked_add(amount);
-                    let group_total = match group { 0 => result.app_bytes, 1 | 2 => result.data_bytes, _ => result.notebook_bytes }.checked_add(amount);
-                    if let (Some(category_total), Some(group_total)) = (category_total, group_total) {
-                        result.categories[category].bytes = category_total;
-                        match group { 0 => result.app_bytes = group_total, 1 | 2 => result.data_bytes = group_total, _ => result.notebook_bytes = group_total }
-                    } else { record_error(&mut result, &path, "byte count overflow"); }
+                    match result.categories[category].bytes.checked_add(metadata.len()) {
+                        Some(total) => result.categories[category].bytes = total,
+                        None => record_error(&mut result, &path, "byte count overflow"),
+                    }
                 } else if metadata.is_dir() {
                     match fs::read_dir(&path) {
                         Ok(entries) => {

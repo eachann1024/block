@@ -94,6 +94,6 @@ fn open(cx: &mut App) {
             state.visible = state.window.is_some();
             configure_quick_panel();
         }
-        Err(error) => eprintln!("无法打开速记小窗: {error}"),
+        Err(error) => crate::log::error(&format!("无法打开速记小窗: {error}")),
     }
 }

@@ -89,13 +89,13 @@ pub(super) fn select_heading(editor: &mut Editor, block_id: u64, _: &mut Window,
 }
 
 pub(super) fn overlay(editor: &mut Editor, window: &Window, cx: &mut Context<Editor>) -> Option<AnyElement> {
-    if !can_fit(editor, window) || entries(editor).is_empty() {
+    let items = if can_fit(editor, window) { entries(editor) } else { Vec::new() };
+    if items.is_empty() {
         editor.outline.hovered = false;
         editor.outline.pinned_closed = false;
         crate::ui::motion::popup_reset("outline-popover");
         return None;
     }
-    let items = entries(editor);
     Some(crate::ui::outline_rail::outline_rail(items, editor.outline.hovered, |this: &mut Editor, hovered, _, cx| {
         if this.outline.pinned_closed {
             if !hovered { this.outline.pinned_closed = false; }

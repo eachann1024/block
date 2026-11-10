@@ -209,12 +209,6 @@ impl Editor {
             crate::dropdown::PlacementSpec::point(window.mouse_position() + point(px(0.), px(12.))).viewport(vp)
         }
     }
-    #[allow(dead_code)]
-    pub(super) fn open_palette(&mut self, window: &Window, cx: &mut Context<Self>) {
-        if self.selection_ranges().is_empty() { return; }
-        self.format = Some(FormatPop::Palette { spec: self.pop_spec(window) });
-        cx.notify();
-    }
     pub(super) fn show_link_popover(&mut self, initial: String, existing: bool, spec: crate::dropdown::PlacementSpec, window: &mut Window, cx: &mut Context<Self>) {
         let input = cx.new(|cx| {
             let mut state = InputState::new(window, cx).placeholder(crate::theme::tr("粘贴或输入链接", "Paste or enter a link"));

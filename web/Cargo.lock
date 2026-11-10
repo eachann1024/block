@@ -478,7 +478,6 @@ dependencies = [
 name = "block-web"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "console_error_panic_hook",
  "cosmic-text",
  "flate2",
