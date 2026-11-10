@@ -108,8 +108,13 @@ pub fn reveal_line(list: &ListState, y: Pixels, height: Pixels, margin: Pixels) 
     }
 }
 
-/// Brings an item that is not laid out yet into view, then leaves `margin` beyond it.
+/// Brings an item into view with at least `margin` inside the viewport. Does nothing while an
+/// already-measured item sits inside that band, avoiding `scroll_to_reveal_item`'s bottom-padding jump.
 pub fn reveal_item(list: &ListState, ix: usize, margin: Pixels) {
+    if let Some(bounds) = list.bounds_for_item(ix) {
+        reveal_line(list, bounds.top(), bounds.size.height, margin);
+        return;
+    }
     let above = list.item_is_above_viewport(ix) == Some(true);
     let below = list.item_is_below_viewport(ix) == Some(true);
     list.scroll_to_reveal_item(ix);
