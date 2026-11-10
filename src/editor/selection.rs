@@ -50,6 +50,9 @@ impl Editor {
         self.caret.head = at;
         if !extend { self.caret.anchor = at; }
         self.caret.composing = None;
+        if self.block_menu.is_some_and(|m| m.mode == crate::editor::block_menu::Mode::Slash && m.block != at.block) {
+            self.block_menu = None;
+        }
         self.reveal_caret = true;
         if let Some(layout) = self.layouts.get(&at.block) {
             let p = layout.point(at.offset);
