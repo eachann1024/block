@@ -5,6 +5,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 const CJK_RANGES: &[(u32, u32)] = &[
+    (0x0020, 0x007E),
     (0x2014, 0x2026),
     (0x2190, 0x27BF),
     (0x2E80, 0x33FF),
@@ -96,7 +97,7 @@ pub(crate) fn metric_font(family: &str) -> Vec<u8> {
     put_u16(&mut os2, 4, 400);
     put_u16(&mut os2, 6, 5);
     put_u16(&mut os2, 62, 0x0040);
-    put_u16(&mut os2, 64, 0x2014);
+    put_u16(&mut os2, 64, 0x0020);
     put_u16(&mut os2, 66, 0xFFEF);
     put_u16(&mut os2, 68, 880);
     put_u16(&mut os2, 70, (-120i16) as u16);
