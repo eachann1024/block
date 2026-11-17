@@ -195,7 +195,7 @@ impl Element for BlockText {
                 if head.block == self.block && window.is_window_active() {
                     let p = layout.point(head.offset);
                     let line_h = layout.cells.first().map_or(layout.line_height, |c| c.text.line_height);
-                    let (mut origin, caret_h) = layout.caret_geometry(head.offset);
+                    let (mut origin, caret_h) = layout.caret_geometry(head.offset, cx.text_system());
                     if let Some(end) = super::code_escape::side(self.editor.entity_id(), head) {
                         origin = super::code_escape::caret_point(layout, origin, end);
                     }

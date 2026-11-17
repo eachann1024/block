@@ -143,7 +143,7 @@ fn paint_line(editor: &gpui::Entity<Editor>, index: usize, layout: &TextLayout, 
         y += line.size(layout.line_height).height;
     }
     if let Some(local) = caret {
-        let (origin, caret_h) = layout.caret_geometry(local.min(vis_len));
+        let (origin, caret_h) = layout.caret_geometry(local.min(vis_len), cx.text_system());
         let alpha = super::caret_blink::alpha(editor, (u64::MAX - index as u64, local), cx);
         if alpha > 0. { window.paint_quad(fill(Bounds::new(origin, size(px(2.), caret_h)), theme.accent.opacity(alpha)).corner_radii(px(1.))); }
         crate::sync_ime_cursor_area(f32::from(origin.x), f32::from(origin.y), f32::from(caret_h));
