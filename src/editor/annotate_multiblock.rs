@@ -43,6 +43,7 @@ impl Editor {
                 crate::ui::fade::record_flash(id);
                 self.normalize_annotations();
                 self.persist_annotations();
+                self.remeasure_annotation_rows();
                 window.focus(&self.focus, cx);
                 cx.notify();
                 return;
@@ -53,6 +54,7 @@ impl Editor {
             current.ai_error = Some(tr("原文已变化，无法应用这条批注", "The selected text changed and this annotation cannot be applied").into());
         }
         self.persist_annotations();
+        self.remeasure_annotation_rows();
         cx.notify();
     }
 }

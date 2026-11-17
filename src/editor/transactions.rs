@@ -109,8 +109,10 @@ impl Editor {
                 break;
             }
             if !ann_same {
+                self.annotate.foot_picker_note = None;
                 self.caret_hidden = true;
                 self.toolbar_anchor = None;
+                self.remeasure_annotation_rows();
                 cx.notify();
                 break;
             }

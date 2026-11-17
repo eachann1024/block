@@ -46,6 +46,9 @@ impl Editor {
         self.table_sel = None;
         self.table_chrome = None;
         self.format = None;
+        self.annotate.reactions = None;
+        self.annotate.foot_picker_note = None;
+        self.annotate.hovered_annotation = None;
         self.block_sel = None;
         self.layouts.clear();
         self.pending_vertical = None;
