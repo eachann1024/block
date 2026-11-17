@@ -1,5 +1,73 @@
-use gpui::{Bounds, Context, Pixels, Point, WrappedLine, point, px, size};
+use gpui::{Bounds, Context, FontId, Pixels, Point, TextSystem, WrappedLine, point, px, size};
 use super::{Editor, selection::{Position, boundary}};
+
+thread_local! {
+    /// Cached `(above_baseline, below_baseline)` ink span in em units `(cjk, regular)` per `FontId`.
+    static CARET_SPANS: std::cell::RefCell<std::collections::HashMap<FontId, (Option<(f32, f32)>, (f32, f32))>> = Default::default();
+}
+
+fn glyph_span_em(ts: &TextSystem, font_id: FontId, ch: char) -> Option<(f32, f32)> {
+    let b = ts.typographic_bounds(font_id, px(100.), ch).ok()?;
+    let h = f32::from(b.size.height) * 0.01;
+    if !(0.05..=2.5).contains(&h) { return None; }
+    let y = f32::from(b.origin.y) * 0.01;
+    // Font-kit typographic bounds put y upward from the baseline: top = y + h, bottom below baseline = -y.
+    Some(((y + h).clamp(0.2, 1.8), (-y).clamp(-0.3, 1.2)))
+}
+
+fn caret_span_px(ts: &TextSystem, font_id: FontId, font_px: Pixels, prefer_cjk: bool) -> (Pixels, Pixels) {
+    let (cjk, reg) = CARET_SPANS.with(|cache| {
+        if let Some(&entry) = cache.borrow().get(&font_id) { return entry; }
+        let cjk = match (glyph_span_em(ts, font_id, '国'), glyph_span_em(ts, font_id, '永')) {
+            (Some(a), Some(b)) => Some(((a.0 + b.0) * 0.5 + 0.10, ((a.1 + b.1) * 0.5 + 0.10).max(0.12))),
+            (Some(a), None) | (None, Some(a)) => Some((a.0 + 0.10, (a.1 + 0.10).max(0.12))),
+            (None, None) => None,
+        };
+        let cap = glyph_span_em(ts, font_id, 'H')
+            .or_else(|| glyph_span_em(ts, font_id, '0'))
+            .map(|(top, bot)| (top + 0.16, bot.max(0.) + 0.16))
+            .or_else(|| {
+                let cap_em = (f32::from(ts.cap_height(font_id, px(100.))) * 0.01).clamp(0.45, 1.15);
+                (cap_em > 0.45).then_some((cap_em + 0.16, 0.16))
+            })
+            .or(cjk)
+            .unwrap_or_else(|| {
+                let asc = (f32::from(ts.ascent(font_id, px(100.))) * 0.01).clamp(0.55, 1.20);
+                let desc = (f32::from(ts.descent(font_id, px(100.))) * 0.01).clamp(0.10, 0.45);
+                (asc * 0.92, desc * 0.75)
+            });
+        let entry = (cjk, cap);
+        cache.borrow_mut().insert(font_id, entry);
+        entry
+    });
+    let (above, below) = if prefer_cjk { cjk.unwrap_or(reg) } else { reg };
+    (font_px * above, font_px * below)
+}
+
+fn is_cjk_ideograph(ch: char) -> bool {
+    matches!(ch as u32, 0x2E80..=0x9FFF | 0xF900..=0xFAFF | 0xFE30..=0xFE4F | 0xFF00..=0xFFEF | 0x20000..=0x323AF)
+}
+
+fn caret_run_at(line: &WrappedLine, local_idx: usize) -> Option<(FontId, bool)> {
+    let text = line.text.as_ref();
+    let probe_char = if local_idx > 0 {
+        text.get(..local_idx).and_then(|s| s.chars().next_back())
+    } else {
+        text.chars().find(|&c| c != '\u{200b}')
+    };
+    let prefer_cjk = probe_char.is_some_and(is_cjk_ideograph);
+    let mut chosen = None;
+    for run in line.runs() {
+        for g in &run.glyphs {
+            if local_idx > 0 && g.index < local_idx {
+                chosen = Some(run.font_id);
+            } else if chosen.is_none() {
+                return Some((run.font_id, prefer_cjk));
+            }
+        }
+    }
+    chosen.or_else(|| line.runs().first().map(|r| r.font_id)).map(|id| (id, prefer_cjk))
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::editor) struct LayoutKey {
@@ -104,25 +172,34 @@ impl TextLayout {
         }
         self.bounds.origin
     }
-    /// Baseline-anchored caret `(origin, height)` so fonts whose ascent/descent sit asymmetrically
-    /// inside the line box still get a caret visually centered on their ideographs and capitals.
-    pub fn caret_geometry(&self, offset: usize) -> (Point<Pixels>, Pixels) {
+    /// Font-adaptive caret `(origin, height)` anchored to the active run's actual glyph ink bounds
+    /// relative to the painted baseline so every font family centers cleanly.
+    pub fn caret_geometry(&self, offset: usize, ts: &TextSystem) -> (Point<Pixels>, Pixels) {
         if !self.cells.is_empty() {
             let cell = self.cells.iter().find(|cell| cell.range.start <= offset && offset <= cell.range.end)
                 .unwrap_or_else(|| if offset < self.cells[0].range.start { &self.cells[0] }
                     else { self.cells.last().unwrap() });
-            return cell.text.caret_geometry(offset.saturating_sub(cell.range.start));
+            return cell.text.caret_geometry(offset.saturating_sub(cell.range.start), ts);
         }
         let shaped = crate::editor::inline_code::doc_to_shaped(offset, &self.code_spans);
         let mut y = px(0.);
         for (i, (start, line)) in self.lines.iter().enumerate() {
             if shaped <= start + line.len() || i + 1 == self.lines.len() {
-                let p = line.position_for_index(shaped.saturating_sub(*start).min(line.len()), self.line_height).unwrap_or_default();
+                let local = shaped.saturating_sub(*start).min(line.len());
+                let p = line.position_for_index(local, self.line_height).unwrap_or_default();
                 let visual = (p.y / self.line_height) as usize;
                 let font_px = line.font_size();
-                let caret_h = (font_px * 1.125).round().min(self.line_height);
                 let baseline = (self.line_height - line.ascent() - line.descent()) * 0.5 + line.ascent();
-                let top = (baseline - font_px * 0.95).clamp(px(0.), self.line_height - caret_h);
+                let (caret_h, top) = if let Some((font_id, prefer_cjk)) = caret_run_at(line, local) {
+                    let (above, below) = caret_span_px(ts, font_id, font_px, prefer_cjk);
+                    let h = (above + below).round().clamp((font_px * 0.85).round(), self.line_height);
+                    let mid = baseline - (above - below) * 0.5;
+                    let top = (mid - h * 0.5).clamp(px(0.), self.line_height - h);
+                    (h, top)
+                } else {
+                    let h = (font_px * 1.125).round().min(self.line_height);
+                    (h, (baseline - font_px * 0.95).clamp(px(0.), self.line_height - h))
+                };
                 let dx = if offset == 0 { px(0.) } else { px(0.5) };
                 return (self.bounds.origin + point(p.x + self.aligned_x(line, visual) + dx, y + p.y + top), caret_h);
             }

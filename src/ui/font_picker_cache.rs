@@ -59,17 +59,11 @@ pub fn get_or_build_catalog(role: FontPickerRole) -> Rc<[CandidateItem]> {
 
 fn build_candidates(role: FontPickerRole) -> Vec<CandidateItem> {
     let mut names = imported_fonts();
-    let installed = installed_fonts();
-    match role {
-        FontPickerRole::Body => {
-            names.extend(installed);
-            names.push(resolved_body_font().to_string());
-        }
-        FontPickerRole::Code => {
-            names.extend(installed.into_iter().filter(|f| is_monospace_name(f)));
-            names.push(resolved_mono_font().to_string());
-        }
-    }
+    names.extend(installed_fonts());
+    names.push(match role {
+        FontPickerRole::Body => resolved_body_font().to_string(),
+        FontPickerRole::Code => resolved_mono_font().to_string(),
+    });
 
     let mut seen = HashSet::new();
     let mut unique = Vec::new();
@@ -89,7 +83,14 @@ fn build_candidates(role: FontPickerRole) -> Vec<CandidateItem> {
             });
         }
     }
-    unique.sort_by(|a, b| a.search_key.cmp(&b.search_key));
+    unique.sort_by(|a, b| match role {
+        FontPickerRole::Code => {
+            is_monospace_name(b.name.as_ref())
+                .cmp(&is_monospace_name(a.name.as_ref()))
+                .then_with(|| a.search_key.cmp(&b.search_key))
+        }
+        FontPickerRole::Body => a.search_key.cmp(&b.search_key),
+    });
     unique
 }
 
