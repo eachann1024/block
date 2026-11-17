@@ -262,7 +262,9 @@ impl Editor {
             }
             Backspace | Delete | Cut | Copy => {
                 if !matches!(action, Backspace | Delete) {
-                    let blocks: Vec<Block> = (lo..=hi).map(|i| self.doc.blocks[i].clone()).collect();
+                    let blocks: Vec<Block> = (lo..=hi)
+                        .map(|i| self.clipboard_block_slice(i, 0..self.doc.blocks[i].text.len()))
+                        .collect();
                     if !self.copy_image_blocks(&blocks, cx) {
                         cx.write_to_clipboard(super::paste_clipboard::blocks_item(blocks));
                     }
