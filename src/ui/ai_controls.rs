@@ -75,7 +75,7 @@ pub fn model_row(
         .rounded(crate::ui::radius::CONTROL).flex().items_center()
         .text_size(px(if wide { 14.5 } else { 14. })).line_height(px(20.)).text_color(theme.text)
         .cursor(CursorStyle::PointingHand)
-        .when(active, |row| row.bg(theme.selected).font_weight(FontWeight(500.)))
+        .when(active, |row| row.bg(theme.selected).font_weight(FontWeight(460.)))
         .hover(move |style| style.bg(theme.hover))
         .child(super::settings_controls::brand_glyph(logo, if wide { 16. } else { 15. }, theme.text))
         .child(div().flex_1().min_w_0().flex().items_center().gap(px(6.))
@@ -102,13 +102,13 @@ pub fn thinking_level_item(
         .cursor(CursorStyle::PointingHand).text_size(px(if compact { 13. } else { 14. })).line_height(px(20.));
     if compact {
         base.flex_1().h(px(26.)).px(px(6.)).rounded(px(6.)).flex().items_center().justify_center().gap(px(4.))
-            .when(active, |d| d.bg(theme.selected).border_1().border_color(theme.accent).text_color(theme.text).font_weight(FontWeight(500.)))
+            .when(active, |d| d.bg(theme.selected).border_1().border_color(theme.accent).text_color(theme.text).font_weight(FontWeight(460.)))
             .when(!active, |d| d.text_color(theme.text_secondary).hover(move |s| s.bg(theme.hover)))
             .child(label)
             .on_mouse_down(MouseButton::Left, on_click)
     } else {
         base.w_full().h(px(36.)).px(px(12.)).rounded(crate::ui::radius::CONTROL).flex().items_center().justify_between()
-            .when(active, |d| d.bg(theme.selected).text_color(theme.text).font_weight(FontWeight(500.)))
+            .when(active, |d| d.bg(theme.selected).text_color(theme.text).font_weight(FontWeight(460.)))
             .when(!active, |d| d.text_color(theme.text).hover(move |s| s.bg(theme.hover)))
             .child(label)
             .child(div().size(px(16.)).flex_none().flex().items_center().justify_center()
@@ -130,7 +130,7 @@ pub fn deck_trigger_capsule(
         .h(px(if fullscreen { 32. } else { 30. })).px(px(if fullscreen { 12. } else { 10. })).max_w(px(max_w)).flex_none().flex().items_center().gap(px(7.))
         .rounded(crate::ui::radius::CONTROL).bg(if open { theme.selected } else { theme.shell }).border_1()
         .border_color(if open { theme.accent } else { theme.btn_border })
-        .text_size(px(if fullscreen { 14. } else { 13.5 })).line_height(px(20.)).text_color(theme.text).font_weight(FontWeight(500.))
+        .text_size(px(if fullscreen { 14. } else { 13. })).line_height(px(20.)).text_color(theme.text).font_weight(FontWeight(460.))
         .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover).border_color(theme.accent))
         .child(super::settings_controls::brand_glyph(logo, if fullscreen { 16. } else { 15. }, theme.text))
         .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(label))

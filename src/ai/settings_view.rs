@@ -1,6 +1,6 @@
 //! Rendering for 设置 › AI 助手: provider cards and connection fields.
 use gpui::{
-    Context, CursorStyle, Entity, FontWeight, IntoElement, MouseButton, ParentElement, Render,
+    Context, CursorStyle, Entity, IntoElement, MouseButton, ParentElement, Render,
     SharedString, Styled, Window, div, prelude::*, px,
 };
 use gpui_component::input::{Input, InputState};
@@ -14,6 +14,7 @@ use crate::ui::settings_controls::{
     action_button, brand_glyph, card_bg, selected_bg, setting_row,
     status_action_button,
 };
+use crate::ui::{icon_size, type_scale};
 
 fn input_box(input: &Entity<InputState>) -> impl IntoElement {
     div().flex_1().min_w_0().child(Input::new(input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)))
@@ -22,7 +23,7 @@ fn input_box(input: &Entity<InputState>) -> impl IntoElement {
 fn field_shell() -> gpui::Div {
     let theme = Theme::ocean();
     div().h(px(34.)).px(px(10.)).flex().items_center().rounded(crate::ui::radius::CONTROL).border_1().border_color(theme.btn_border)
-        .bg(theme.shell).text_size(px(14.))
+        .bg(theme.shell).text_size(type_scale::BODY)
 }
 
 fn field_flex(input: &Entity<InputState>) -> gpui::Div {
@@ -42,8 +43,8 @@ impl AiSettings {
             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, w, cx| this.select_provider(id, w, cx)))
             .child(div().size(px(26.)).rounded(px(6.)).bg(card_bg()).border_1().border_color(theme.hairline)
                 .flex().items_center().justify_center().flex_none()
-                .child(crate::icons::brand_icon(p.icon(), px(15.), gpui::rgb(p.brand_rgb).into())))
-            .child(div().flex_1().min_w_0().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(500.)).text_color(theme.text)
+                .child(crate::icons::brand_icon(p.icon(), px(icon_size::ROW), gpui::rgb(p.brand_rgb).into())))
+            .child(div().flex_1().min_w_0().text_size(type_scale::BODY).line_height(px(20.)).font_weight(type_scale::CONTROL).text_color(theme.text)
                 .overflow_hidden().whitespace_nowrap().text_ellipsis().child(p.label()))
     }
 
@@ -75,8 +76,8 @@ impl AiSettings {
         let head = div().w_full().pb(px(12.)).border_b_1().border_color(theme.hairline)
             .flex().items_center().justify_between().gap(px(10.))
             .child(div().flex().items_center().gap(px(8.))
-                .child(brand_glyph(backend_ui::backend_logo(BackendKind::Builtin), 18., theme.text))
-                .child(div().text_size(px(15.)).line_height(px(22.)).font_weight(FontWeight(560.)).text_color(theme.text)
+                .child(brand_glyph(backend_ui::backend_logo(BackendKind::Builtin), icon_size::CHROME, theme.text))
+                .child(div().text_size(type_scale::CARD_TITLE).line_height(px(22.)).font_weight(type_scale::TITLE).text_color(theme.text)
                     .child(backend_ui::backend_name(BackendKind::Builtin))))
             .child(status_action_button("ai-test", Some(test_icon), test_label, test_ok, !self.testing)
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.test(cx))));
@@ -93,7 +94,7 @@ impl AiSettings {
                 div().px(px(12.)).py(px(8.)).rounded(crate::ui::radius::CONTROL).border_1()
                     .bg(if dark { gpui::rgb(0x3a1d1d) } else { gpui::rgb(0xfef3f2) })
                     .border_color(if dark { gpui::rgb(0x6e2c2c) } else { gpui::rgb(0xfecdca) })
-                    .text_size(px(14.))
+                    .text_size(type_scale::BODY)
                     .text_color(if dark { gpui::rgb(0xf97066) } else { gpui::rgb(0xb42318) })
                     .child(SharedString::from(e))
             }))

@@ -85,17 +85,17 @@ impl Workspace {
         let page_open = is_page_menu_open();
         let more_group: SharedString = "titlebar-more-btn".into();
         let send_seg = self.annotation_actions(cx);
-        let (sz, rd) = if send_seg.is_some() { (px(24.), px(6.)) } else { (px(26.), crate::ui::radius::CONTROL) };
+        let (sz, rd) = if send_seg.is_some() { (px(24.), px(6.)) } else { (px(crate::ui::icon_size::CHROME_BOX), crate::ui::radius::CONTROL) };
         let more = div().id("titlebar-more").relative().children(crate::ui::smoke_overlay::probe("titlebar-more")).child(crate::ui::placement::track_bounds(super::tab_menu::PAGE_TRIGGER.with(Clone::clone), page_open)).group(more_group.clone()).size(sz).rounded(rd)
             .flex_none().flex().items_center().justify_center().cursor(gpui::CursorStyle::PointingHand)
-            .when(page_open, |b| b.bg(theme.selected)).when(!page_open, |b| b.hover(|s| s.bg(theme.hover)))
+            .when(page_open, |b| b.bg(theme.selected).border_1().border_color(theme.accent)).when(!page_open, |b| b.hover(|s| s.bg(theme.hover)))
             .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
                 cx.stop_propagation();
                 this.close_overlays(cx);
                 toggle_page_menu(event.position);
                 cx.notify();
             }))
-            .child(if page_open { icon(Icon::More, px(18.), theme.icon_colors(theme.accent)) } else { hover_tinted_icon(more_group, Icon::More, 18., theme.text_secondary, theme.text, theme.icon_fill) });
+            .child(if page_open { icon(Icon::More, px(crate::ui::icon_size::CHROME), theme.icon_colors(theme.accent)) } else { hover_tinted_icon(more_group, Icon::More, crate::ui::icon_size::CHROME, theme.text_secondary, theme.text, theme.icon_fill) });
         crate::ui::annotation_card::titlebar_split_pill(send_seg, more)
     }
 

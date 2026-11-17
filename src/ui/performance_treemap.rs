@@ -1,9 +1,9 @@
 use std::rc::Rc;
 use gpui::{
-    AnyElement, App, CursorStyle, FontWeight, Hsla, IntoElement, MouseButton, ParentElement,
+    AnyElement, App, CursorStyle, Hsla, IntoElement, MouseButton, ParentElement,
     SharedString, Styled, Window, div, prelude::*, px, relative,
 };
-use crate::{theme::Theme, ui::{performance_rows::tabular_nums, radius, smoke_overlay}};
+use crate::{theme::Theme, ui::{performance_rows::tabular_nums, radius, smoke_overlay, type_scale}};
 
 #[derive(Clone)]
 pub struct TreemapItem {
@@ -108,11 +108,11 @@ fn tile(item: &TreemapItem, share: f32, total: u128, prefix: &str, selected: Opt
         .flex().flex_col().justify_between().cursor(CursorStyle::PointingHand)
         .on_hover(move |hovered, window, cx| { if *hovered { on_hover(&hover_id, window, cx); } })
         .on_mouse_down(MouseButton::Left, move |_, window, cx| on_click(&click_id, window, cx))
-        .child(div().w_full().flex().items_center().gap(px(5.)).text_size(px(13.)).text_color(theme.text)
+        .child(div().w_full().flex().items_center().gap(px(5.)).text_size(type_scale::SMALL).text_color(theme.text)
             .child(div().size(px(7.)).flex_none().rounded_full().bg(item.color))
-            .child(div().flex_1().min_w_0().font_weight(FontWeight(500.)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(item.label.clone()))
-            .child(div().flex_none().whitespace_nowrap().font_weight(FontWeight(560.)).font_features(tabular_nums()).child(format_bytes(item.bytes))))
-        .child(div().w_full().flex().items_center().gap(px(8.)).text_size(px(12.)).text_color(theme.text_secondary)
+            .child(div().flex_1().min_w_0().font_weight(type_scale::CONTROL).overflow_hidden().whitespace_nowrap().text_ellipsis().child(item.label.clone()))
+            .child(div().flex_none().whitespace_nowrap().font_weight(type_scale::TITLE).font_features(tabular_nums()).child(format_bytes(item.bytes))))
+        .child(div().w_full().flex().items_center().gap(px(8.)).text_size(type_scale::META).text_color(theme.text_secondary)
             .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().font_features(tabular_nums()).child(item.detail.clone()))
             .child(div().flex_none().whitespace_nowrap().font_features(tabular_nums()).child(percent)))
         .child(div().w_full().h(px(3.)).rounded(radius::PILL).bg(theme.shell).overflow_hidden()

@@ -12,13 +12,13 @@ use std::{
 };
 
 use gpui::{
-    AnyElement, App, Context, FontWeight, MouseButton, div, prelude::*, px,
+    AnyElement, App, Context, MouseButton, div, prelude::*, px,
 };
 
 use crate::{
     app::Workspace,
     theme::{Theme, tr},
-    ui::modal,
+    ui::{modal, type_scale},
 };
 
 static OPEN: AtomicBool = AtomicBool::new(false);
@@ -1049,14 +1049,14 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
                     .child(
                         div()
                             .text_size(px(18.))
-                            .font_weight(FontWeight(600.))
+                            .font_weight(type_scale::TITLE)
                             .text_color(theme.text)
                             .child(day.date.clone()),
                     )
                     .child(
                         div()
                             .font_family("JetBrains Mono")
-                            .text_size(px(14.))
+                            .text_size(type_scale::BODY)
                             .text_color(theme.text_secondary)
                             .child(day.version_tag.clone()),
                     ),
@@ -1065,8 +1065,8 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
         if !sec.highlights.is_empty() {
             day_div = day_div.child(
                 div()
-                    .text_size(px(15.))
-                    .font_weight(FontWeight(600.))
+                    .text_size(type_scale::CARD_TITLE)
+                    .font_weight(type_scale::TITLE)
                     .text_color(theme.text)
                     .child(format!("{hl_prefix}{}", sec.highlights)),
             );
@@ -1075,8 +1075,8 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
         if !sec.features.is_empty() {
             let mut feat_list = div().flex().flex_col().gap(px(4.)).child(
                 div()
-                    .text_size(px(14.))
-                    .font_weight(FontWeight(600.))
+                    .text_size(type_scale::BODY)
+                    .font_weight(type_scale::TITLE)
                     .text_color(theme.text)
                     .child(feat_header),
             );
@@ -1086,7 +1086,7 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
                         .flex()
                         .items_start()
                         .gap(px(6.))
-                        .text_size(px(14.))
+                        .text_size(type_scale::BODY)
                         .line_height(px(20.))
                         .text_color(theme.text)
                         .child(div().text_color(theme.text_secondary).child("•"))
@@ -1099,8 +1099,8 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
         if !sec.fixes.is_empty() {
             let mut fix_list = div().flex().flex_col().gap(px(4.)).child(
                 div()
-                    .text_size(px(14.))
-                    .font_weight(FontWeight(600.))
+                    .text_size(type_scale::BODY)
+                    .font_weight(type_scale::TITLE)
                     .text_color(theme.text)
                     .child(fix_header),
             );
@@ -1110,7 +1110,7 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
                         .flex()
                         .items_start()
                         .gap(px(6.))
-                        .text_size(px(14.))
+                        .text_size(type_scale::BODY)
                         .line_height(px(20.))
                         .text_color(theme.text)
                         .child(div().text_color(theme.text_secondary).child("•"))
@@ -1157,14 +1157,14 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
                         .justify_between()
                         .child(
                             div()
-                                .text_size(px(14.))
+                                .text_size(type_scale::BODY)
                                 .text_color(theme.text)
                                 .child(left_text),
                         )
                         .child(
                             div()
                                 .font_family("JetBrains Mono")
-                                .text_size(px(14.))
+                                .text_size(type_scale::BODY)
                                 .text_color(theme.text_secondary)
                                 .child(right_text),
                         ),
@@ -1183,7 +1183,7 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
         Some(
             div()
                 .flex_1()
-                .text_size(px(14.))
+                .text_size(type_scale::BODY)
                 .text_color(theme.text)
                 .child(if is_en {
                     format!("No installer is published for this system. Clone the source and build it yourself: {SOURCE_URL}")
@@ -1212,7 +1212,7 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
                 .border_1()
                 .border_color(theme.btn_border)
                 .text_color(theme.text)
-                .text_size(px(14.))
+                .text_size(type_scale::BODY)
                 .line_height(px(20.))
                 .flex()
                 .items_center()
@@ -1235,9 +1235,9 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
                 .rounded(crate::ui::radius::CONTROL)
                 .bg(theme.accent)
                 .text_color(gpui::white())
-                .text_size(px(14.))
+                .text_size(type_scale::BODY)
                 .line_height(px(20.))
-                .font_weight(FontWeight(500.))
+                .font_weight(type_scale::CONTROL)
                 .flex()
                 .items_center()
                 .justify_center()
@@ -1267,7 +1267,7 @@ pub fn view(cx: &mut Context<Workspace>) -> Option<AnyElement> {
         .px(px(24.))
         .pb(px(20.))
         .gap(px(16.))
-        .text_size(px(14.))
+        .text_size(type_scale::BODY)
         .line_height(px(20.))
         .child(scroll_content)
         .child(bottom_section);

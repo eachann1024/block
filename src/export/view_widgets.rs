@@ -2,7 +2,7 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, Axis, ClickEvent, FontWeight, Hsla, IntoElement, ParentElement, Role, Styled, Toggled,
+    App, Axis, ClickEvent, Hsla, IntoElement, ParentElement, Role, Styled, Toggled,
     Window, div, prelude::*, px,
 };
 use gpui_base::{Button, RadioGroup, Switch, SwitchThumb};
@@ -11,6 +11,7 @@ use super::format::ExportFormat;
 use super::palette::ExportTheme;
 use crate::icons::{Icon, icon};
 use crate::theme::Theme;
+use crate::ui::{icon_size, type_scale};
 
 fn c(value: u32) -> Hsla {
     gpui::rgb(value).into()
@@ -18,7 +19,7 @@ fn c(value: u32) -> Hsla {
 
 pub(super) fn section(title: &'static str, content: impl IntoElement) -> impl IntoElement {
     let theme = Theme::ocean();
-    let head = div().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(560.)).text_color(theme.text).child(title);
+    let head = div().text_size(type_scale::BODY).line_height(px(20.)).font_weight(type_scale::TITLE).text_color(theme.text).child(title);
     div().flex().flex_col().gap(px(8.)).child(head).child(content)
 }
 
@@ -51,9 +52,9 @@ pub(super) fn format_bar(
             .rounded(crate::ui::radius::CONTROL)
             .border_1()
             .border_color(gpui::transparent_black())
-            .text_size(px(14.))
+            .text_size(type_scale::BODY)
             .line_height(px(20.))
-            .font_weight(FontWeight(if selected { 500. } else { 460. }))
+            .font_weight(type_scale::CONTROL)
             .text_color(theme.text_secondary)
             .cursor_pointer()
             .child(fmt.label());
@@ -107,9 +108,9 @@ pub(super) fn segmented(
             .rounded(crate::ui::radius::CONTROL)
             .border_1()
             .border_color(gpui::transparent_black())
-            .text_size(px(14.))
+            .text_size(type_scale::BODY)
             .line_height(px(20.))
-            .font_weight(FontWeight(if selected { 500. } else { 460. }))
+            .font_weight(type_scale::CONTROL)
             .text_color(theme.text_secondary)
             .child(label);
         if selected {
@@ -191,14 +192,14 @@ fn swatch_card(
         .items_center()
         .gap(px(10.))
         .cursor_pointer()
-        .text_size(px(14.))
-        .font_weight(FontWeight(if selected { 500. } else { 460. }))
+        .text_size(type_scale::BODY)
+        .font_weight(type_scale::CONTROL)
         .child(chip)
         .child(label)
         .when(selected, |d| {
             d.child(icon(
                 Icon::Check,
-                px(14.),
+                px(icon_size::INLINE),
                 theme.icon_colors(theme.accent),
             ))
         });
@@ -234,7 +235,7 @@ pub(super) fn switch_row(
         .flex()
         .items_center()
         .justify_between()
-        .child(div().text_size(px(14.)).text_color(theme.text).child(label))
+        .child(div().text_size(type_scale::BODY).text_color(theme.text).child(label))
         .child(
             Switch::new(id)
                 .checked(on)
@@ -281,8 +282,8 @@ pub(super) fn button(
         .justify_center()
         .gap(px(6.))
         .rounded(crate::ui::radius::CONTROL)
-        .text_size(px(14.))
-        .font_weight(FontWeight(500.))
+        .text_size(type_scale::BODY)
+        .font_weight(type_scale::CONTROL)
         .child(glyph)
         .child(label);
     let base = if primary {

@@ -1,12 +1,12 @@
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, Context, FontWeight, HoverListenerMode, InteractiveElement, IntoElement,
+    AnyElement, Context, HoverListenerMode, InteractiveElement, IntoElement,
     MouseButton, ParentElement, Pixels, Rgba, StatefulInteractiveElement, Styled, Window, div, px,
     rgb,
 };
 
-use super::{motion, popover, radius, smoke_overlay};
+use super::{motion, popover, radius, smoke_overlay, type_scale};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OutlineEntry {
@@ -68,7 +68,7 @@ pub fn outline_rail<V: 'static>(
                 .cursor_pointer();
             let row = if entry.active {
                 row.bg(theme.selected).border_1().border_color(theme.accent)
-                    .text_color(theme.text).font_weight(FontWeight::MEDIUM)
+                    .text_color(theme.text).font_weight(type_scale::CONTROL)
             } else {
                 let fg = if entry.bar_lit { theme.text } else { theme.text_secondary };
                 let hover_bg = theme.hover;
@@ -87,7 +87,7 @@ pub fn outline_rail<V: 'static>(
                 .children(smoke_overlay::probe(format!("outline-bar-{idx}")))
                 .child(div().w(bar_width(entry.level)).h(px(2.)).rounded(px(1.))
                     .bg(bar_color(entry.bar_lit)).flex_none())
-                .child(div().flex_1().min_w_0().truncate().text_size(px(13.))
+                .child(div().flex_1().min_w_0().truncate().text_size(type_scale::SMALL)
                     .line_height(px(18.)).child(entry.title)),
             );
         }

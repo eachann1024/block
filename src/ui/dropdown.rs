@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use gpui::{
-    App, BoxShadow, CursorStyle, Div, ElementId, Entity, FontWeight, Hsla, IntoElement,
+    App, BoxShadow, CursorStyle, Div, ElementId, Entity, Hsla, IntoElement,
     MouseButton, SharedString, Stateful, div,
     point, prelude::*, px, rgb, rgba, transparent_black,
 };
@@ -42,7 +42,7 @@ pub fn palette() -> DropdownPalette {
         DropdownPalette {
             bg: rgb(0x222222).into(), text: rgb(0xececec).into(), icon: rgb(0xb4b4b4).into(),
             icon_fill: rgb(0x31456a).into(), icon_accent: rgb(0x779de8).into(),
-            muted: rgb(0x8e8d88).into(), hover_bg: rgba(0xffffff12).into(), checked_bg: rgba(0xffffff12).into(),
+            muted: rgb(0x8e8d88).into(), hover_bg: rgba(0xffffff12).into(), checked_bg: rgb(0x343434).into(),
             sep: rgba(0xffffff1a).into(), danger_fg: rgb(0xf28b82).into(), danger_fill: rgba(0xf28b822e).into(),
             danger_hover_bg: rgb(0xd03b3b).into(), danger_hover_fg: rgb(0xffffff).into(),
         }
@@ -50,7 +50,7 @@ pub fn palette() -> DropdownPalette {
         DropdownPalette {
             bg: rgb(0xffffff).into(), text: rgb(0x1f1e1d).into(), icon: rgb(0x3d3c39).into(),
             icon_fill: rgb(0xc9d8f3).into(), icon_accent: rgb(0x547dd0).into(),
-            muted: rgb(0x898781).into(), hover_bg: rgba(0x0b0b0b0d).into(), checked_bg: rgba(0x0000000d).into(),
+            muted: rgb(0x898781).into(), hover_bg: rgba(0x0b0b0b0d).into(), checked_bg: rgb(0xe5edfc).into(),
             sep: rgba(0x0b0b0b1a).into(), danger_fg: rgb(0x8e2626).into(), danger_fill: rgba(0xd03b3b24).into(),
             danger_hover_bg: rgb(0xd03b3b).into(), danger_hover_fg: rgb(0xffffff).into(),
         }
@@ -149,8 +149,9 @@ pub fn row_with_colors(id: impl Into<ElementId>, spec: RowSpec, colors: Option<(
             });
         row.text_color(p.text)
             .when(spec.checked, move |s| s.bg(p.checked_bg))
-            .when(spec.highlighted && !spec.disabled, move |s| s.bg(p.hover_bg))
-            .when(!spec.disabled, move |s| s.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(p.hover_bg)))
+            .when(spec.highlighted && !spec.disabled && !spec.checked, move |s| s.bg(p.hover_bg))
+            .when(!spec.disabled, move |s| s.cursor(CursorStyle::PointingHand))
+            .when(!spec.disabled && !spec.checked, move |s| s.hover(move |s| s.bg(p.hover_bg)))
             .child(lead)
     };
     let hint_group = group.clone();
@@ -164,7 +165,7 @@ pub fn row_with_colors(id: impl Into<ElementId>, spec: RowSpec, colors: Option<(
                 crate::ui::shortcut_label::shortcut_hint(h, p.muted)
             })
         })
-        .when(spec.chevron, |r| r.child(div().ml_auto().pl(px(8.)).flex_none().flex().items_center().child(line_icon(Icon::TbChevronRight, 12., p.muted))))
+        .when(spec.chevron, |r| r.child(div().ml_auto().pl(px(8.)).flex_none().flex().items_center().child(line_icon(Icon::TbChevronRight, crate::ui::icon_size::INLINE, p.muted))))
         .when(spec.checked, |r| r.child(div().ml_auto().pl(px(12.)).flex_none().flex().items_center()
             .child(div().size(px(16.)).flex().items_center().justify_center().child(line_icon(Icon::Check, 16., p.text)))))
 }
@@ -181,7 +182,7 @@ pub fn separator() -> impl IntoElement {
 
 pub fn group_label(label: impl Into<SharedString>) -> Div {
     div().px(px(10.)).py(px(4.)).flex_none().text_size(px(13.)).line_height(px(17.))
-        .font_weight(FontWeight::MEDIUM).text_color(palette().muted).child(label.into())
+        .font_weight(crate::ui::type_scale::TITLE).text_color(palette().muted).child(label.into())
 }
 
 thread_local! {

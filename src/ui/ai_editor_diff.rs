@@ -1,8 +1,8 @@
 use std::collections::HashSet;
-use gpui::{AnyElement, CursorStyle, FontWeight, Hsla, IntoElement, MouseButton, SharedString, div, prelude::*, px, rgb};
+use gpui::{AnyElement, CursorStyle, Hsla, IntoElement, MouseButton, SharedString, div, prelude::*, px, rgb};
 use crate::{
     editor::{ai::plan_link::{self, ActivePlanLink}, model::{Block, Kind, TableRow}, text_runs::styled_text as text},
-    icons::{Icon, icon}, theme::{is_dark, tr}, ui::{radius, smoke_overlay},
+    icons::{Icon, icon}, theme::{is_dark, tr}, ui::{icon_size, radius, smoke_overlay, type_scale},
 };
 use super::ai_plan_card::pill;
 
@@ -333,9 +333,9 @@ fn table_row(row: &TableRow, change: i8, header: Option<bool>, bottom_border: bo
         .when(change > 0, |el| el.bg(pal.add_bg))
         .children(row.cells.iter().enumerate().map(|(idx, cell)| {
             let cell_header = header.unwrap_or(cell.header);
-            div().flex_1().min_w_0().overflow_hidden().px(px(8.)).py(px(6.)).text_size(px(13.5)).line_height(px(20.))
+            div().flex_1().min_w_0().overflow_hidden().px(px(8.)).py(px(6.)).text_size(type_scale::SMALL).line_height(px(20.))
                 .when(idx + 1 < count, |el| el.border_r_1().border_color(theme.hairline))
-                .when(cell_header, |el| el.font_weight(FontWeight(600.)).text_color(theme.text_secondary))
+                .when(cell_header, |el| el.font_weight(type_scale::TITLE).text_color(theme.text_secondary))
                 .child(text(&cell.content))
         }))
 }
@@ -352,7 +352,7 @@ fn block_view(block: &Block, change: i8) -> AnyElement {
     }
     let is_heading = matches!(block.kind, Kind::H1 | Kind::H2 | Kind::H3);
     let (font_size, line_h) = match block.kind {
-        Kind::H1 => (20., 28.), Kind::H2 => (17., 24.), Kind::H3 => (15.5, 22.), _ => (14.5, 22.),
+        Kind::H1 => (20., 28.), Kind::H2 => (17., 24.), Kind::H3 => (15.5, 22.), _ => (14., 22.),
     };
     let is_tsv = block.kind == Kind::Paragraph && block.text.matches('\t').count() >= 2;
     let is_code = block.meta.code_language.is_some();
@@ -360,18 +360,18 @@ fn block_view(block: &Block, change: i8) -> AnyElement {
         let cells: Vec<_> = block.text.split('\t').map(str::trim).filter(|s| !s.is_empty()).collect();
         div().w_full().min_w_0().overflow_hidden().flex().flex_wrap().items_center().gap(px(6.)).py(px(2.)).children(cells.into_iter().map(|cell| {
             div().px(px(7.)).py(px(2.)).rounded(px(5.)).bg(theme.shell).border_1().border_color(theme.hairline)
-                .text_size(px(12.5)).line_height(px(18.)).child(cell.to_owned())
+                .text_size(type_scale::META).line_height(px(18.)).child(cell.to_owned())
         })).into_any_element()
     } else if is_code {
         div().w_full().min_w_0().overflow_hidden().px(px(10.)).py(px(6.)).rounded(px(6.)).bg(pal.code_bg).border_1().border_color(theme.hairline)
-            .font_family("JetBrains Mono").text_size(px(12.5)).line_height(px(19.)).child(text(block)).into_any_element()
+            .font_family("JetBrains Mono").text_size(type_scale::META).line_height(px(19.)).child(text(block)).into_any_element()
     } else if block.kind == Kind::Todo {
         let checked = block.checked;
         div().w_full().min_w_0().overflow_hidden().flex().items_start().gap(px(8.))
             .child(div().mt(px(3.5)).size(px(15.)).flex_none().rounded(px(4.)).border_1()
                 .border_color(if checked { theme.accent } else { theme.btn_border })
                 .when(checked, |b| b.bg(theme.accent).flex().items_center().justify_center()
-                    .child(icon(Icon::Check, px(10.), theme.mono_icon_colors(rgb(0xffffff).into())))))
+                    .child(icon(Icon::Check, px(icon_size::MICRO), theme.mono_icon_colors(rgb(0xffffff).into())))))
             .child(div().flex_1().min_w_0().overflow_hidden().child(text(block))).into_any_element()
     } else if matches!(block.kind, Kind::Bullet | Kind::Numbered) {
         div().w_full().min_w_0().overflow_hidden().flex().items_baseline().gap(px(6.))
@@ -385,7 +385,7 @@ fn block_view(block: &Block, change: i8) -> AnyElement {
     div().relative().w_full().min_w_0().overflow_hidden()
         .when(change < 0 && !block.text.is_empty(), |row| row.children(smoke_overlay::probe("ai-plan-diff-del-row")))
         .py(px(2.)).text_size(px(font_size)).line_height(px(line_h))
-        .when(is_heading, |row| row.font_weight(FontWeight(600.)))
+        .when(is_heading, |row| row.font_weight(type_scale::TITLE))
         .when(change < 0, |row| row.text_color(theme.text_secondary))
         .child(content).into_any_element()
 }
@@ -437,7 +437,7 @@ fn contents(link: &ActivePlanLink) -> impl IntoElement {
     let (theme, pal) = (crate::theme::Theme::ocean(), palette());
     let body = div().w_full().min_w_0().overflow_hidden().flex().flex_col().gap(px(8.));
     let Ok(lines) = plan_link::selection::diff(link.conv_id, link.msg_at, &link.page, &link.before_text, &link.after_text) else {
-        return body.child(div().text_size(px(13.)).text_color(theme.text_secondary).child(tr("改动过大，仅支持完整预览和应用", "Change too large for individual selection; preview and apply all")))
+        return body.child(div().text_size(type_scale::SMALL).text_color(theme.text_secondary).child(tr("改动过大，仅支持完整预览和应用", "Change too large for individual selection; preview and apply all")))
             .children(link.after_blocks.iter().map(|block| block_view(block, 0)));
     };
     let (mut seen_removed, mut seen_added, mut seen_table_removed, mut seen_table_added) = (false, false, false, false);
@@ -448,7 +448,7 @@ fn contents(link: &ActivePlanLink) -> impl IntoElement {
         (line.change != 0 || ctx_indices.contains(&line.index)) && parse::is_meaningful_line(&line.text)
     }).collect();
     if visible.is_empty() {
-        return body.child(div().py(px(6.)).text_size(px(13.)).text_color(theme.text_secondary).child(tr("未选择修改，保留原文", "No changes selected; original remains")));
+        return body.child(div().py(px(6.)).text_size(type_scale::SMALL).text_color(theme.text_secondary).child(tr("未选择修改，保留原文", "No changes selected; original remains")));
     }
     let total_visible = visible.len();
     let header_bg: Hsla = if is_dark() { gpui::rgba(0xffffff08).into() } else { rgb(0xf5f3ed).into() };
@@ -478,18 +478,18 @@ fn contents(link: &ActivePlanLink) -> impl IntoElement {
                 cx.stop_propagation(); plan_link::toggle_diff(selection_index, cx);
             }))
             .child(div().w(px(26.)).flex_none().flex().items_center().justify_center()
-                .font_family("JetBrains Mono").text_size(px(13.)).font_weight(FontWeight(600.)).text_color(gutter_color).child(gutter_symbol))
+                .font_family("JetBrains Mono").text_size(type_scale::SMALL).font_weight(type_scale::TITLE).text_color(gutter_color).child(gutter_symbol))
             .child(div().flex_1().min_w_0().overflow_hidden()
                 .when(!is_table, |el| el.py(px(6.)).pr(px(8.)))
                 .when(line.change > 0 && !line.included, |el| el.text_color(theme.text_secondary).line_through())
                 .child(line_view(&line.text, is_header, if line.included { line.change } else { 0 })))
             .when(line.change != 0, |row| row.child(div().flex_none().px(px(10.)).flex().items_center().gap(px(6.))
-                .when(!line.included, |el| el.child(div().px(px(5.)).py(px(1.)).rounded(px(4.)).bg(theme.shell).text_size(px(11.5)).text_color(theme.text_secondary)
+                .when(!line.included, |el| el.child(div().px(px(5.)).py(px(1.)).rounded(px(4.)).bg(theme.shell).text_size(type_scale::META).text_color(theme.text_secondary)
                     .child(if line.change < 0 { tr("保留", "Kept") } else { tr("跳过", "Skipped") })))
                 .child(div().size(px(16.)).flex_none().rounded(px(4.)).border_1()
                     .border_color(theme.btn_border)
                     .bg(if line.included { theme.selected } else { theme.paper }).flex().items_center().justify_center()
-                    .when(line.included, |mark| mark.child(icon(Icon::Check, px(11.), theme.mono_icon_colors(theme.text_secondary)))))));
+                    .when(line.included, |mark| mark.child(icon(Icon::Check, px(icon_size::MICRO), theme.mono_icon_colors(theme.text_secondary)))))));
         list = list.child(row);
         seen_removed |= line.change < 0; seen_added |= line.change > 0;
         seen_table_removed |= is_table && line.change < 0; seen_table_added |= is_table && line.change > 0;
@@ -510,11 +510,11 @@ pub(crate) fn editor_plan_review_card(link: ActivePlanLink) -> impl IntoElement 
             .flex().items_center().justify_between().gap(px(10.))
             .child(div().flex_1().min_w_0().overflow_hidden().flex().items_center().gap(px(8.))
                 .child(div().flex_none().px(px(7.)).py(px(2.)).rounded(px(5.))
-                    .flex().items_center().gap(px(4.)).text_size(px(12.)).font_weight(FontWeight(500.)).text_color(theme.accent)
-                    .child(icon(Icon::Sparkles, px(12.), theme.mono_icon_colors(theme.accent))).child(tr("AI 审阅", "AI Review")))
-                .child(div().min_w_0().overflow_hidden().text_size(px(14.5)).font_weight(FontWeight(600.)).text_color(theme.text).child(title))
+                    .flex().items_center().gap(px(4.)).text_size(type_scale::META).font_weight(type_scale::CONTROL).text_color(theme.accent)
+                    .child(icon(Icon::Sparkles, px(icon_size::MICRO), theme.mono_icon_colors(theme.accent))).child(tr("AI 审阅", "AI Review")))
+                .child(div().min_w_0().overflow_hidden().text_size(type_scale::BODY).font_weight(type_scale::TITLE).text_color(theme.text).child(title))
                 .when_some(counts, |el, (removed, added)| el.child(div().relative().children(smoke_overlay::probe("ai-plan-diff-counts"))
-                    .flex_none().flex().items_center().gap(px(4.)).font_family("JetBrains Mono").text_size(px(12.)).font_weight(FontWeight(500.))
+                    .flex_none().flex().items_center().gap(px(4.)).font_family("JetBrains Mono").text_size(type_scale::META).font_weight(type_scale::MONO_MEDIUM)
                     .child(div().px(px(6.)).py(px(1.)).rounded(px(4.)).bg(pal.del_badge).text_color(pal.del_text).child(format!("−{removed}")))
                     .child(div().px(px(6.)).py(px(1.)).rounded(px(4.)).bg(pal.add_badge).text_color(pal.add_text).child(format!("+{added}")))))))
         .child(div().w_full().min_w_0().overflow_hidden().p(px(14.)).child(contents(&link)))
@@ -523,12 +523,12 @@ pub(crate) fn editor_plan_review_card(link: ActivePlanLink) -> impl IntoElement 
             .flex().items_center().justify_between().gap(px(12.))
             .child(div().flex_1().min_w_0().overflow_hidden().flex().items_center().gap(px(8.))
                 .child(div().relative().children(smoke_overlay::probe("ai-plan-inline-step"))
-                    .flex_none().px(px(7.)).py(px(2.)).rounded(radius::CONTROL).text_color(theme.text_secondary).text_size(px(12.5)).font_weight(FontWeight(500.))
+                    .flex_none().px(px(7.)).py(px(2.)).rounded(radius::CONTROL).text_color(theme.text_secondary).text_size(type_scale::META).font_weight(type_scale::CONTROL)
                     .child(if link.page_ops > 1 {
                         if crate::theme::is_en() { format!("{} changes on this page", link.page_ops) } else { format!("本页 {} 项修改", link.page_ops) }
                     } else if crate::theme::is_en() { format!("Change {} / {}", link.op_idx + 1, link.total_ops) }
                     else { format!("修改 {} / {}", link.op_idx + 1, link.total_ops) }))
-                .child(div().flex_1().min_w_0().overflow_hidden().text_size(px(13.5)).line_height(px(20.)).text_color(theme.text_secondary).child(link.summary.clone())))
+                .child(div().flex_1().min_w_0().overflow_hidden().text_size(type_scale::SMALL).line_height(px(20.)).text_color(theme.text_secondary).child(link.summary.clone())))
             .child(div().flex_none().flex().items_center().gap(px(6.))
                 .child(pill("ai-plan-inline-reject", if link.is_create { tr("关闭预览", "Close preview") } else { tr("拒绝此项", "Reject change") }.into(), false, move |_, _, cx| plan_link::decide(reject.clone(), false, cx)))
                 .child(pill("ai-plan-inline-accept", if link.total_ops > 1 { tr("接受全部修改", "Accept all changes") } else { tr("接受修改", "Accept change") }.into(), true, move |_, _, cx| plan_link::decide(accept.clone(), true, cx)))))

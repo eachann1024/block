@@ -2,7 +2,8 @@
 use std::cell::Cell;
 use std::rc::Rc;
 use crate::ui::tooltip::TooltipExt;
-use gpui::{Bounds, CursorStyle, Focusable, FontWeight, IntoElement, MouseButton, ParentElement, Pixels, Render, SharedString, Styled, Window, WindowControlArea, div, prelude::*, px};
+use gpui::{Bounds, CursorStyle, Focusable, IntoElement, MouseButton, ParentElement, Pixels, Render, SharedString, Styled, Window, WindowControlArea, div, prelude::*, px};
+use crate::ui::{icon_size, type_scale};
 
 thread_local! {
     static HISTORY_TRIGGER: Rc<Cell<Option<Bounds<Pixels>>>> = Rc::new(Cell::new(None));
@@ -89,7 +90,7 @@ impl Render for AiChat {
                 bar.child(gutter)
             })
             .child(title_drag("ai-chat-title-drag", self.fullscreen).flex_1().min_w_0().h_full().flex().items_center().overflow_hidden()
-                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(15.)).font_weight(FontWeight(600.)).child(title)))
+                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(type_scale::CARD_TITLE).font_weight(type_scale::TITLE).child(title)))
             .child(crate::ui::icon_button::header_action_button("ai-chat-new", Icon::AiPlus, false, Some(tr("新建会话", "New chat")), cx.listener(|this, _, w, cx| {
                 cx.stop_propagation();
                 let backend = this.selected_backend(); this.save_tab_draft(cx); this.tab_drafts.remove(&None); this.new_conv(w, cx); this.select_backend(backend, w, cx);
@@ -113,7 +114,7 @@ impl Render for AiChat {
         }
         let history = history_motion.is_some().then(|| {
             let list = if self.convs.iter().all(|c| c.messages.is_empty()) {
-                div().p(px(12.)).text_size(px(14.)).text_color(theme.text_secondary).child(tr("暂无历史会话", "No chat history"))
+                div().p(px(12.)).text_size(type_scale::BODY).text_color(theme.text_secondary).child(tr("暂无历史会话", "No chat history"))
             } else {
                 self.convs.iter().filter(|c| !c.messages.is_empty()).fold(div().flex().flex_col().p(px(4.)), |d, c| {
                     let (id, active) = (c.id, Some(c.id) == self.current);
@@ -124,8 +125,8 @@ impl Render for AiChat {
                             cx.stop_propagation();
                             this.switch_tab(Some(id), w, cx);
                         }))
-                        .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(14.)).child(c.title.clone()))
-                        .child(div().flex_none().text_size(px(13.)).text_color(theme.text_secondary).child(backend_ui::backend_name(c.backend)))
+                        .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(type_scale::BODY).child(c.title.clone()))
+                        .child(div().flex_none().text_size(type_scale::SMALL).text_color(theme.text_secondary).child(backend_ui::backend_name(c.backend)))
                         .child(div().id(del_id.clone()).group(del_id.clone()).size(px(22.)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::MICRO_SM)
                             .hover(move |s| s.bg(theme.shell))
                             .tooltip_above(crate::theme::tooltip(tr("删除会话", "Delete chat")))
@@ -134,7 +135,7 @@ impl Render for AiChat {
                                 if this.current == Some(id) { super::plan_link::clear(cx); this.stop(); this.current = None; }
                                 this.tab_drafts.remove(&Some(id)); this.convs.retain(|c| c.id != id); this.persist(); this.persist_active_draft(cx); cx.notify();
                             }))
-                            .child(stateful_icon(del_id, Icon::Trash, px(13.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
+                            .child(stateful_icon(del_id, Icon::Trash, px(icon_size::INLINE), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
                 })
             };
             // Hung from the history button; the panel positions it with the shared anchor.
@@ -147,9 +148,9 @@ impl Render for AiChat {
         let body = super::chat_process::render_messages(self, cx)
             .when(empty, |body| body.child(super::chat_empty::view(self, cx)));
         let error = self.error.clone().map(|e| div().mx(px(12.)).mb(px(8.)).p(px(10.)).flex().items_start().gap(px(8.)).rounded(crate::ui::radius::CONTROL)
-            .bg(gpui::hsla(0., 0.75, 0.5, 0.08)).text_size(px(14.))
+            .bg(gpui::hsla(0., 0.75, 0.5, 0.08)).text_size(type_scale::BODY)
             .child(div().flex_1().flex().flex_col().gap(px(2.))
-                .child(div().font_weight(FontWeight(600.)).text_color(gpui::rgb(0xb42318)).child(tr("本轮失败原因", "Request failed")))
+                .child(div().font_weight(type_scale::TITLE).text_color(gpui::rgb(0xb42318)).child(tr("本轮失败原因", "Request failed")))
                 .child(div().text_color(theme.text).child(e))
                 .when(self.error_settings, |d| d.child(crate::ui::ai_controls::action_chip(
                     "ai-chat-settings", None, tr("打开 AI 设置", "Open AI settings"), false, false,
@@ -160,15 +161,15 @@ impl Render for AiChat {
         let chips = chip_list.into_iter().enumerate().fold(div().flex().flex_wrap().gap(px(4.)), |d, (i, (is_ref, name))| {
             let x_id = SharedString::from(format!("chip-x-{i}"));
             d.child(div().id(SharedString::from(format!("chip-{i}"))).flex().items_center().gap(px(4.)).px(px(6.)).py(px(2.)).rounded(crate::ui::radius::CONTROL)
-                .bg(theme.hover).text_size(px(14.))
-                .child(duo_glyph(if is_ref { Icon::Note } else { Icon::Sparkles }, 12., theme.accent))
+                .bg(theme.hover).text_size(type_scale::BODY)
+                .child(duo_glyph(if is_ref { Icon::Note } else { Icon::Sparkles }, icon_size::MICRO, theme.accent))
                 .child(if is_ref { name.clone() } else { format!("/{name}") })
                 .child(div().id(x_id.clone()).group(x_id.clone()).cursor(CursorStyle::PointingHand)
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                         if is_ref { this.refs.retain(|r| r != &name); } else { this.skills.retain(|s| s != &name); } this.persist_active_draft(cx);
                         cx.notify();
                     }))
-                    .child(stateful_icon(x_id, Icon::Close, px(10.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
+                    .child(stateful_icon(x_id, Icon::Close, px(icon_size::MICRO), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
         });
         self.refresh_picker(cx);
         let token = self.picker_token(cx);
@@ -180,7 +181,7 @@ impl Render for AiChat {
         let picker_height = (f32::from(window.viewport_size().height) - 260.).clamp(80., 200.);
         let picker = picker_open.then(|| {
             let list = if picks.is_empty() {
-                div().p(px(10.)).text_size(px(14.)).text_color(theme.text_secondary)
+                div().p(px(10.)).text_size(type_scale::BODY).text_color(theme.text_secondary)
                     .child(if self.picker_cache.loading { tr("正在加载…", "Loading…") } else if token.starts_with('@') { tr("没有匹配的文件", "No matching files") } else { tr("没有匹配的指令或技能", "No matching commands or skills") })
                     .into_any_element()
             } else {
@@ -203,13 +204,13 @@ impl Render for AiChat {
                 })).track_scroll(&scroll).h(px(height)).w_full().into_any_element()
             };
             div().mx(px(16.)).mb(px(4.)).flex_none().max_h(px(picker_height)).rounded(crate::ui::radius::SURFACE).border_1().border_color(theme.menu_border).bg(theme.menu)
-                .child(div().px(px(10.)).pt(px(6.)).text_size(px(14.)).text_color(theme.text_secondary).child(if token.starts_with('@') { tr("引用文件", "Reference File") } else { tr("指令与技能", "Commands & Skills") }))
+                .child(div().px(px(10.)).pt(px(6.)).text_size(type_scale::BODY).text_color(theme.text_secondary).child(if token.starts_with('@') { tr("引用文件", "Reference File") } else { tr("指令与技能", "Commands & Skills") }))
                 .child(list)
         });
         let busy = self.streaming.is_some() || self.pending_question.is_some();
         let action = if busy {
             crate::ui::ai_controls::action_chip("ai-chat-stop", None, tr("停止", "Stop"), false, false, cx.listener(|this, _, _, cx| { this.stop(); cx.notify(); }))
-                .h(px(28.)).bg(theme.text).text_color(theme.paper).font_weight(FontWeight(500.)).hover(move |s| s.bg(theme.text_secondary))
+                .h(px(28.)).bg(theme.text).text_color(theme.paper).font_weight(type_scale::CONTROL).hover(move |s| s.bg(theme.text_secondary))
         } else {
             crate::ui::ai_controls::send_button_enabled("ai-chat-send", !self.input.read(cx).value().trim().is_empty(), cx.listener(move |this, _, w, cx| { cx.stop_propagation(); this.send(w, cx); })).size(px(28.))
         };
@@ -274,7 +275,7 @@ impl Render for AiChat {
         let interactive_card = question.or(approval);
         let draft_recovery = self.has_deferred_draft().then(|| {
             let has_current_draft = !self.input.read(cx).value().is_empty() || !self.refs.is_empty() || !self.skills.is_empty();
-            div().px(px(16.)).pb(px(8.)).flex().flex_col().items_start().gap(px(6.)).text_size(px(14.))
+            div().px(px(16.)).pb(px(8.)).flex().flex_col().items_start().gap(px(6.)).text_size(type_scale::BODY)
                 .child(div().text_color(theme.text_secondary).child(if has_current_draft {
                     tr("切换时会保存当前草稿。", "Your current draft will be saved when you switch.")
                 } else {
