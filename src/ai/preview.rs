@@ -12,7 +12,7 @@ use gpui::{
 use super::session::{AiStatus, clean_stream};
 use crate::{
     editor::{
-        chrome::{HANDLE_WIDTH, RIGHT_INSET, ROW_GAP},
+        chrome::{HANDLE_WIDTH, INDENT_PER_CHAR, RIGHT_INSET, ROW_GAP, block_gutter, collapsed_gap},
         markdown,
         model::{Block, Kind, MarkKind, TableRow},
         text_runs::{attribute_color, color, css},
@@ -190,10 +190,20 @@ fn block_styled_text(block: &Block, caret: Option<Hsla>) -> StyledText {
     StyledText::new(full).with_highlights(highlights)
 }
 
-fn struck_original_block(block: &Block, range: &std::ops::Range<usize>, zoom: f32) -> AnyElement {
+fn struck_original_block(block: &Block, range: &std::ops::Range<usize>, minimal: bool, zoom: f32) -> AnyElement {
+    let theme = Theme::ocean();
     let dark = is_dark();
     let del_fg: Hsla = if dark { rgb(0xf28b82).into() } else { rgb(0xb42318).into() };
     let del_bg: Hsla = if dark { hsla(4. / 360., 0.55, 0.25, 0.45) } else { rgb(0xfbe9e7).into() };
+    let (size_px, factor) = crate::ui::editor_content::heading_metrics(
+        block.kind,
+        block.meta.heading_level,
+        block.meta.code_language.is_some(),
+        minimal,
+        f32::from(theme.editor_font),
+        zoom,
+    );
+    let line_px = size_px * factor;
     let text = &block.text;
     let start = range.start.min(text.len());
     let end = range.end.min(text.len()).max(start);
@@ -201,13 +211,14 @@ fn struck_original_block(block: &Block, range: &std::ops::Range<usize>, zoom: f3
 
     if whole {
         return div()
-            .px(px(8. * zoom))
-            .py(px(4. * zoom))
+            .mx(px(-6. * zoom))
+            .px(px(6. * zoom))
+            .py(px(2. * zoom))
             .rounded(px(6. * zoom))
             .bg(del_bg)
             .text_color(del_fg)
-            .text_size(px(15. * zoom))
-            .line_height(px(24. * zoom))
+            .text_size(px(size_px))
+            .line_height(px(line_px))
             .line_through()
             .child(text.clone())
             .into_any_element();
@@ -229,11 +240,10 @@ fn struck_original_block(block: &Block, range: &std::ops::Range<usize>, zoom: f3
         ));
     }
     div()
-        .px(px(4. * zoom))
-        .py(px(2. * zoom))
-        .text_size(px(15. * zoom))
-        .line_height(px(24. * zoom))
-        .text_color(Theme::ocean().text)
+        .py(px(1. * zoom))
+        .text_size(px(size_px))
+        .line_height(px(line_px))
+        .text_color(theme.text)
         .child(StyledText::new(text.clone()).with_highlights(highlights))
         .into_any_element()
 }
@@ -266,6 +276,7 @@ fn table_row_view(row: &TableRow, bottom_border: bool, zoom: f32) -> impl IntoEl
 
 fn render_native_block(
     block: &Block,
+    top_gap: f32,
     list_number: Option<usize>,
     caret: Option<Hsla>,
     minimal: bool,
@@ -283,13 +294,16 @@ fn render_native_block(
         zoom,
     );
     let line_px = size_px * factor;
-    let indent_px = block.meta.indent.min(10) as f32 * 14.84 * zoom;
+    let indent_px = block.meta.indent.min(12) as f32 * INDENT_PER_CHAR * zoom;
+    let marker_width = block_gutter(block, zoom);
 
-    let node: gpui::Div = if crate::editor::block_menu::is_divider(block) {
+    let inner: gpui::Div = if crate::editor::block_menu::is_divider(block) {
         div()
             .w_full()
-            .py(px(6. * zoom))
-            .child(div().h(px(1. * zoom)).w_full().bg(theme.hairline))
+            .h(px(16. * zoom))
+            .flex()
+            .items_center()
+            .child(div().h(px(1. * zoom)).w_full().bg(if dark { theme.hairline } else { gpui::rgba(0x0b0b0b33).into() }))
     } else if let Some(table) = &block.meta.table {
         let rows_len = table.rows.len();
         div()
@@ -305,108 +319,129 @@ fn render_native_block(
         div()
             .w_full()
             .min_w_0()
-            .px(px(12. * zoom))
-            .py(px(9. * zoom))
+            .px(px(16. * zoom))
+            .py(px(12. * zoom))
             .rounded(px(8. * zoom))
             .bg(theme.code_bg)
             .border_1()
             .border_color(theme.hairline)
             .font_family(crate::theme::mono_font_family())
-            .text_size(px(13.5 * zoom))
-            .line_height(px(20. * zoom))
+            .text_size(px(size_px))
+            .line_height(px(line_px))
             .text_color(theme.text)
             .child(block_styled_text(block, caret))
     } else if let Some(callout_kind) = block.meta.callout {
         let st = crate::ui::callout_controls::style(callout_kind);
-        div()
-            .relative()
-            .w_full()
-            .min_w_0()
-            .mt(px(2. * zoom))
-            .py(px(10. * zoom))
-            .pr(px(14. * zoom))
-            .pl(px(40. * zoom))
-            .rounded(px(8. * zoom))
-            .bg(st.bg)
-            .border_1()
-            .border_color(st.border)
-            .text_size(px(15. * zoom))
-            .line_height(px(24. * zoom))
-            .text_color(theme.text)
-            .child(
-                div().absolute().left(px(12. * zoom)).top(px(12.5 * zoom)).child(icon(
-                    Icon::Callout,
-                    px(17. * zoom),
-                    IconColors {
-                        line: st.accent,
-                        fill: st.icon_fill,
-                        accent: st.accent,
-                    },
-                )),
-            )
-            .child(block_styled_text(block, caret))
-    } else if block.kind == Kind::Todo {
+        crate::ui::callout_controls::style_card(
+            div()
+                .relative()
+                .w_full()
+                .min_w_0()
+                .text_size(px(size_px))
+                .line_height(px(line_px))
+                .text_color(theme.text),
+            callout_kind,
+            zoom,
+        )
+        .child(
+            div()
+                .absolute()
+                .top(px(7. * zoom))
+                .left(px(10. * zoom))
+                .h(px(26. * zoom))
+                .flex()
+                .items_center()
+                .gap(px(4. * zoom))
+                .child(
+                    div()
+                        .size(px(26. * zoom))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(icon(
+                            Icon::Callout,
+                            px(crate::ui::icon_size::ROW * zoom),
+                            IconColors {
+                                line: st.accent,
+                                fill: st.icon_fill,
+                                accent: st.accent,
+                            },
+                        )),
+                )
+                .child(
+                    div()
+                        .h(px(24. * zoom))
+                        .px(px(4. * zoom))
+                        .flex()
+                        .items_center()
+                        .text_size(px(14. * zoom))
+                        .line_height(px(20. * zoom))
+                        .font_weight(crate::ui::type_scale::TITLE)
+                        .text_color(st.text)
+                        .child(crate::ui::callout_controls::label(callout_kind)),
+                ),
+        )
+        .child(block_styled_text(block, caret))
+    } else if marker_width > 0. {
         let checked = block.checked;
         let check_border: Hsla = if checked || caret.is_some() {
-            theme.accent
+            rgb(0x4774cf).into()
         } else if dark {
             rgb(0x858585).into()
         } else {
-            rgb(0x526071).into()
+            gpui::rgba(0x0b0b0b80).into()
+        };
+        let marker = match block.kind {
+            Kind::Bullet => "•".to_owned(),
+            Kind::Numbered => format!("{}.", list_number.unwrap_or(1)),
+            _ => String::new(),
         };
         div()
             .w_full()
             .min_w_0()
-            .pl(px(indent_px))
             .flex()
             .items_start()
-            .gap(px(10. * zoom))
-            .text_size(px(size_px))
-            .line_height(px(line_px))
-            .text_color(theme.text)
             .child(
                 div()
-                    .mt(px(((line_px - 16. * zoom).max(0.)) * 0.5))
-                    .size(px(16. * zoom))
+                    .w(px(marker_width))
+                    .pl(px(indent_px))
                     .flex_none()
-                    .rounded(px(4. * zoom))
-                    .border_1()
-                    .border_color(check_border)
-                    .bg(if checked { theme.accent } else { theme.paper })
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .when(checked, |b| {
-                        b.child(icon(
-                            Icon::Check,
-                            px(11. * zoom),
-                            IconColors {
-                                line: rgb(0xffffff).into(),
-                                fill: transparent_black(),
-                                accent: rgb(0xffffff).into(),
-                            },
-                        ))
-                    }),
+                    .text_color(theme.text)
+                    .text_size(px(size_px))
+                    .line_height(px(line_px))
+                    .when(block.kind == Kind::Todo, |col| {
+                        col.child(
+                            div()
+                                .mt(px((line_px - 16. * zoom).max(0.) * 0.5))
+                                .ml(px(4.8 * zoom))
+                                .size(px(16. * zoom))
+                                .flex_none()
+                                .rounded(px(4. * zoom))
+                                .when(!checked, |b| b.border_1().border_color(check_border).bg(theme.paper))
+                                .when(checked, |b| {
+                                    b.bg(rgb(0x4774cf)).flex().items_center().justify_center().child(icon(
+                                        Icon::Check,
+                                        px(12. * zoom),
+                                        IconColors {
+                                            line: rgb(0xffffff).into(),
+                                            fill: transparent_black(),
+                                            accent: rgb(0xffffff).into(),
+                                        },
+                                    ))
+                                }),
+                        )
+                    })
+                    .when(!marker.is_empty(), |col| col.flex().justify_end().pr(px(8. * zoom)).child(marker)),
             )
-            .child(div().flex_1().min_w_0().child(block_styled_text(block, caret)))
-    } else if matches!(block.kind, Kind::Bullet | Kind::Numbered) {
-        let marker = if block.kind == Kind::Bullet {
-            "•".to_owned()
-        } else {
-            format!("{}.", list_number.unwrap_or(1))
-        };
-        div()
-            .w_full()
-            .min_w_0()
-            .pl(px(indent_px))
-            .flex()
-            .items_baseline()
-            .gap(px(8. * zoom))
-            .text_size(px(size_px))
-            .line_height(px(line_px))
-            .text_color(theme.text)
-            .child(div().flex_none().text_color(theme.text_secondary).child(marker))
-            .child(div().flex_1().min_w_0().child(block_styled_text(block, caret)))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_size(px(size_px))
+                    .line_height(px(line_px))
+                    .text_color(theme.text)
+                    .child(block_styled_text(block, caret)),
+            )
     } else if block.kind == Kind::Quote {
         div()
             .relative()
@@ -416,7 +451,7 @@ fn render_native_block(
             .py(px(1.6 * zoom))
             .text_size(px(size_px))
             .line_height(px(line_px))
-            .text_color(theme.text_secondary)
+            .text_color(theme.text)
             .child(div().absolute().left_0().top_0().bottom_0().w(px(3. * zoom)).bg(theme.quote_bar))
             .child(block_styled_text(block, caret))
     } else {
@@ -432,6 +467,7 @@ fn render_native_block(
             .child(block_styled_text(block, caret))
     };
 
+    let node = div().w_full().min_w_0().pt(px(top_gap)).child(inner);
     if let Some((serial, idx)) = anim_key {
         node.with_animation(
             gpui::ElementId::from(gpui::SharedString::from(format!("ai-blk-{serial}-{idx}"))),
@@ -501,9 +537,15 @@ pub(in crate::editor) fn render_stream_row(
                 num_run = 0;
                 None
             };
+            let top_gap = if idx == 0 {
+                0.
+            } else {
+                collapsed_gap(&parsed[idx - 1], blk) * zoom
+            };
             let is_last = idx + 1 == total_blocks;
             render_native_block(
                 blk,
+                top_gap,
                 num,
                 if is_last { caret_color } else { None },
                 editor.minimal,
@@ -521,7 +563,7 @@ pub(in crate::editor) fn render_stream_row(
                 if blk.text.is_empty() {
                     None
                 } else {
-                    Some(struck_original_block(blk, r, zoom))
+                    Some(struck_original_block(blk, r, editor.minimal, zoom))
                 }
             })
             .collect()
@@ -591,10 +633,21 @@ pub(in crate::editor) fn render_stream_row(
                             .relative()
                             .w_full()
                             .min_w_0()
+                            .font_family(crate::theme::editor_font().0)
                             .flex()
                             .flex_col()
-                            .gap(px(8. * zoom))
-                            .children(struck_originals)
+                            .when(!struck_originals.is_empty(), |d| {
+                                d.child(
+                                    div()
+                                        .w_full()
+                                        .min_w_0()
+                                        .pb(px(8. * zoom))
+                                        .flex()
+                                        .flex_col()
+                                        .gap(px(4. * zoom))
+                                        .children(struck_originals),
+                                )
+                            })
                             .when(rendered_blocks.is_empty() && streaming, |d| {
                                 d.child(
                                     div()
