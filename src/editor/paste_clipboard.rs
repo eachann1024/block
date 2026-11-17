@@ -91,7 +91,57 @@ pub(super) fn block_markdown(item: &ClipboardItem, text: &str) -> Option<String>
         .then_some(payload.markdown)
 }
 
-pub(super) fn blocks_item(blocks: Vec<Block>) -> ClipboardItem {
+fn is_atomic_block(block: &Block) -> bool {
+    super::image_source::spec_of(block).is_some() || super::block_menu::is_divider(block)
+}
+
+fn normalize_copied_blocks(blocks: &mut [Block]) {
+    let mut ancestors: Vec<(usize, usize)> = Vec::new();
+    for block in blocks {
+        let is_list = matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo)
+            && block.meta.table.is_none()
+            && !is_atomic_block(block)
+            && block.meta.code_language.is_none();
+        if let Some(code) = &mut block.meta.list_code {
+            while ancestors.last().is_some_and(|&(orig, _)| orig > code.parent_indent) {
+                ancestors.pop();
+            }
+            if let Some(&(orig_parent, new_parent)) = ancestors.last()
+                && orig_parent == code.parent_indent
+            {
+                let delta = orig_parent - new_parent;
+                code.parent_indent = new_parent;
+                block.meta.indent = block.meta.indent.saturating_sub(delta);
+            } else {
+                block.meta.list_code = None;
+                block.meta.indent = 0;
+            }
+            continue;
+        }
+        let orig = block.meta.indent;
+        while ancestors.last().is_some_and(|&(p_orig, _)| p_orig >= orig) {
+            ancestors.pop();
+        }
+        if let Some(&(p_orig, p_new)) = ancestors.last() {
+            block.meta.indent = orig.saturating_sub(p_orig - p_new);
+        } else if orig > 0
+            && (is_list
+                || block.kind != Kind::Paragraph
+                || block.meta.code_language.is_some()
+                || block.meta.table.is_some()
+                || is_atomic_block(block)
+                || block.meta.callout.is_some())
+        {
+            block.meta.indent = 0;
+        }
+        if is_list {
+            ancestors.push((orig, block.meta.indent));
+        }
+    }
+}
+
+pub(super) fn blocks_item(mut blocks: Vec<Block>) -> ClipboardItem {
+    normalize_copied_blocks(&mut blocks);
     let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(blocks));
     let text = markdown.strip_suffix('\n').unwrap_or(&markdown).to_owned();
     block_item(text, &markdown)
@@ -102,7 +152,7 @@ impl Editor {
         let block = &self.doc.blocks[index];
         let mut part = if range == (0..block.text.len()) {
             block.clone()
-        } else if block.is_atomic() {
+        } else if is_atomic_block(block) || block.meta.table.is_some() {
             block.text_slice(range).unwrap_or_else(|| block.clone())
         } else {
             block.slice(range)
@@ -119,11 +169,15 @@ impl Editor {
         let block = &self.doc.blocks[first];
         if first == last {
             let whole = a.offset == 0 && b.offset == block.text.len();
+            let whole_table = self.table_sel == Some((block.id, super::table_actions::TableSel::Whole));
             let cell_text = block.meta.table.as_ref().is_some_and(|table|
-                self.table_sel != Some((block.id, super::table_actions::TableSel::Whole))
-                    && table.cell_at_range(&(a.offset..b.offset)).is_some());
-            let atomic = block.meta.table.is_some() || super::image_source::spec_of(block).is_some()
-                || super::block_menu::is_divider(block);
+                !whole_table && table.cell_at_range(&(a.offset..b.offset)).is_some());
+            let multi_cell = block.meta.table.is_some() && !cell_text && !whole && !whole_table;
+            let atomic = block.meta.table.is_some() || is_atomic_block(block);
+            if multi_cell {
+                let fragment = block.text_slice(a.offset..b.offset)?;
+                return Some(ClipboardItem::new_string(inline_markdown(&fragment)));
+            }
             if cell_text || !whole || !atomic {
                 return Some(inline_item(&block.text_slice(a.offset..b.offset)?));
             }
