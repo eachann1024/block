@@ -55,7 +55,13 @@ impl Editor {
 }
 
 /// Dashed ring around target block(s) while in `AiStatus::Input`.
-pub(in crate::editor) fn paint_outline(editor: &Editor, block: u64, layout: &TextLayout, window: &mut Window) {
+pub(in crate::editor) fn paint_outline(
+    editor_id: EntityId,
+    editor: &Editor,
+    block: u64,
+    layout: &TextLayout,
+    window: &mut Window,
+) {
     let Some(s) = editor.ai_session() else { return };
     if !matches!(s.status, AiStatus::Input) {
         return;
@@ -66,9 +72,20 @@ pub(in crate::editor) fn paint_outline(editor: &Editor, block: u64, layout: &Tex
     let zoom = crate::editor::zoom::zoom_factor(editor.minimal);
     let b = layout.bounds;
     let ring = Bounds::new(
-        b.origin - point(px(12. * zoom), px(6. * zoom)),
-        b.size + size(px(24. * zoom), px(12. * zoom)),
+        b.origin - point(px(8. * zoom), px(5. * zoom)),
+        b.size + size(px(16. * zoom), px(10. * zoom)),
     );
+    if s.parts.first().is_some_and(|(id, _)| *id == block) {
+        LIVE_PREVIEW_BOUNDS.with(|m| {
+            m.borrow_mut().insert(editor_id, ring);
+        });
+    } else if s.parts.last().is_some_and(|(id, _)| *id == block) {
+        LIVE_PREVIEW_BOUNDS.with(|m| {
+            let mut map = m.borrow_mut();
+            let combined = map.get(&editor_id).map_or(ring, |prev| prev.union(&ring));
+            map.insert(editor_id, combined);
+        });
+    }
     window.paint_quad(gpui::quad(
         ring,
         px(10. * zoom),
@@ -543,8 +560,8 @@ pub(in crate::editor) fn render_stream_row(
     .absolute()
     .inset_0();
 
-    let left_pad = (HANDLE_WIDTH + ROW_GAP - 12. * zoom).max(0.);
-    let right_pad = if editor.minimal { 0. } else { (RIGHT_INSET - 12. * zoom).max(0.) };
+    let left_pad = (HANDLE_WIDTH + ROW_GAP - 8. * zoom).max(0.);
+    let right_pad = if editor.minimal { 0. } else { (RIGHT_INSET - 8. * zoom).max(0.) };
 
     Some(
         div()
@@ -560,8 +577,8 @@ pub(in crate::editor) fn render_stream_row(
                 div()
                     .relative()
                     .w_full()
-                    .max_w(theme.content_width + px(24. * zoom))
-                    .px(px(12. * zoom))
+                    .max_w(theme.content_width + px(16. * zoom))
+                    .px(px(8. * zoom))
                     .py(px(8. * zoom))
                     .child(outline_canvas)
                     .child(
