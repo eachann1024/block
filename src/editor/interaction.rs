@@ -58,6 +58,10 @@ impl Editor {
     }
     pub(in crate::editor) fn hover_block(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
         if self.minimal || self.dragging.is_some() || self.table_drag.is_some() || self.table_extend.is_some() || crate::editor::table_resize::active().is_some() || self.selecting { return; }
+        if self.has_active_overlay() {
+            if self.hover.take().is_some() { cx.notify(); }
+            return;
+        }
         self.hover_gen = self.hover_gen.wrapping_add(1);
         if hovered {
             if self.hover != Some(id) { self.hover = Some(id); cx.notify(); }

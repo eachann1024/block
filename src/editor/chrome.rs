@@ -212,6 +212,27 @@ fn todo_box(checked: bool, top: f32, zoom: f32, toggle: impl Fn(&mut gpui::App) 
 fn table_grip_button(id: (&'static str, usize), active: bool, zoom: f32, listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
     grip_button(id, active, zoom, listener).mr(px(4. * zoom))
 }
+impl Editor {
+    /// True whenever inline AI, any floating toolbar, dropdown menu, or annotation popover is open.
+    pub(in crate::editor) fn has_active_overlay(&self) -> bool {
+        self.format.is_some()
+            || !self.caret.is_empty()
+            || self.toolbar_anchor.is_some()
+            || self.block_menu.is_some()
+            || self.table_menu.is_some()
+            || self.image_menu.is_some()
+            || self.find.is_some()
+            || self.has_caret_link()
+            || super::code_block::is_any_menu_open()
+            || crate::ui::callout_controls::is_any_menu_open()
+            || self.annotate.active_annotation.is_some()
+            || self.annotate.hovered_annotation.is_some()
+            || self.annotate.composer.is_some()
+            || self.annotate.reactions.is_some()
+            || self.annotate.followup.is_some()
+    }
+}
+
 pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Context<Editor>) -> gpui::AnyElement {
     #[cfg(not(target_family = "wasm"))]
     if let Some(row) = super::ai::plan_link::render_linked_row(this, index, cx) { return row; }
@@ -221,13 +242,11 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let edge = this.drag_over.filter(|target| if target.after { target.slot.saturating_sub(1) == index } else { target.slot == index }).map(|target| (target.after, target.indent, target.nested));
     let whole_table = block.meta.table.is_some() && this.table_sel == Some((block.id, super::table_actions::TableSel::Whole));
     let grip_active = this.dragging == Some(block.id) || whole_table;
-    let handles = !this.minimal && (this.hover == Some(block.id) || this.caret.head.block == block.id || grip_active);
+    let has_overlay = this.has_active_overlay();
+    let handles = !this.minimal && !has_overlay && (this.hover == Some(block.id) || this.caret.head.block == block.id || grip_active);
     let folded = !this.minimal && this.is_heading_folded(block.id);
     let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
     let image_pop = this.image_menu.as_ref().filter(|(mid, _)| *mid == block.id).map(|(_, p)| p.clone());
-    let has_overlay = this.block_menu.is_some() || this.table_menu.is_some() || this.format.is_some()
-        || this.annotate.active_annotation.is_some() || this.annotate.hovered_annotation.is_some()
-        || this.annotate.composer.is_some() || this.annotate.reactions.is_some();
     let editor = cx.entity();
     let pads = row_pads(this, index);
     let row = block_row(cx.entity(), block, pads, handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, this.is_first_line_delete_armed(block.id), cx);

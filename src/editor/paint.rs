@@ -166,7 +166,7 @@ impl Element for BlockText {
             super::find_bar::paint_matches(self.editor.read(cx), self.block, layout, window);
             super::annotate::paint_highlights(self.editor.read(cx), self.block, layout, window);
         });
-        super::ai::preview::paint_outline(self.editor.read(cx), self.block, layout, window);
+        super::ai::preview::paint_outline(self.editor.entity_id(), self.editor.read(cx), self.block, layout, window);
         if is_table { super::table_actions::track_hover(self.editor.clone(), self.block, layout, hitbox.clone(), window); }
         let tint = {
             let editor = self.editor.read(cx);

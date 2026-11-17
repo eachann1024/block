@@ -3,8 +3,8 @@
 //! - Input mode: plain-language default tags + starred/recent user prompt row (`<=12 chars…` + hover Tooltip + `☆/★`).
 //! - Streaming mode: single clean row (`● 正在生成… [停止]`), while blocks stream live on paper.
 //! - Review mode: Enter accepts (`完成 ↵` / `替换 ↵`), typing refines in place, plus `插入下方` / `重写` / `放弃`.
-use gpui::{AnyElement, Entity, FontWeight, SharedString, div, point, prelude::*, px, rgb};
-use gpui_component::input::Input;
+use std::{cell::Cell, rc::Rc};
+use gpui::{AnyElement, Bounds, Entity, FontWeight, Pixels, SharedString, deferred, div, point, prelude::*, px, rgb};
 
 use super::super::view;
 use super::inline_prompts;
@@ -13,7 +13,8 @@ use crate::editor::view::Editor;
 use crate::icons::{Icon, icon};
 use crate::theme::{Theme, tr};
 use crate::ui::ai_controls::{
-    PANEL_WIDTH, action_chip, action_chip_hint, input_capsule, panel_shell, saved_prompt_chip, send_button,
+    PANEL_WIDTH, action_chip, action_chip_hint, inline_text_input, input_capsule, panel_shell,
+    saved_prompt_chip, send_button_enabled,
 };
 
 fn tag_button(
@@ -32,7 +33,7 @@ fn tag_button(
     })
 }
 
-fn translate_tag(current: AiMenu, editor: &Entity<Editor>) -> gpui_base::Button {
+fn translate_tag(current: AiMenu, bounds_slot: Rc<Cell<Option<Bounds<Pixels>>>>, editor: &Entity<Editor>) -> gpui_base::Button {
     let theme = Theme::ocean();
     let open = current == AiMenu::Translate;
     let ed = editor.clone();
@@ -40,7 +41,8 @@ fn translate_tag(current: AiMenu, editor: &Entity<Editor>) -> gpui_base::Button 
         ed.update(cx, |this, cx| this.ai_toggle_menu(AiMenu::Translate, cx));
         cx.stop_propagation();
     })
-    .child(div().text_color(theme.text_secondary).text_size(px(11.)).child(if open { "▴" } else { "▾" }))
+    .child(crate::ui::placement::track_bounds(bounds_slot, false))
+    .child(div().text_color(theme.text_secondary).text_size(px(12.)).line_height(px(16.)).child(if open { "▴" } else { "▾" }))
 }
 
 fn submenu_item(p: Preset, highlighted: bool, editor: &Entity<Editor>) -> gpui_base::Button {
@@ -133,24 +135,28 @@ pub(in crate::editor) fn render(
             )
     } else {
         let send_ed = editor.clone();
+        let is_review = matches!(s.status, AiStatus::Review { .. });
+        let can_send = is_review || s.has_input_text;
         field
-            .child(icon(Icon::Sparkles, px(crate::ui::icon_size::ROW), theme.icon_colors(theme.accent)))
             .child(
                 div()
-                    .flex_1()
-                    .min_w_0()
-                    .h(px(26.))
-                    .text_size(px(14.))
-                    .child(Input::new(&s.input).appearance(false).bordered(false).focus_bordered(false).h(px(26.))),
+                    .size(px(16.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(icon(Icon::Sparkles, px(crate::ui::icon_size::ROW), theme.icon_colors(theme.accent))),
             )
-            .child(send_button("ai-send", move |_, window, cx| {
+            .child(inline_text_input(&s.input))
+            .child(send_button_enabled("ai-send", can_send, move |_, window, cx| {
                 send_ed.update(cx, |this, cx| this.ai_submit_input(window, cx));
                 cx.stop_propagation();
             }))
     };
 
     let mut bottom_area: Option<AnyElement> = None;
-    let mut submenu: Option<gpui::Stateful<gpui::Div>> = None;
+    let mut submenu: Option<AnyElement> = None;
+    let trans_bounds: Rc<Cell<Option<Bounds<Pixels>>>> = Rc::new(Cell::new(None));
 
     match &s.status {
         AiStatus::Input => {
@@ -160,7 +166,7 @@ pub(in crate::editor) fn render(
                 default_row = default_row.child(preset_chip(*p, &editor));
             }
             if !empty_ctx {
-                default_row = default_row.child(translate_tag(s.menu, &editor).h(px(26.)));
+                default_row = default_row.child(translate_tag(s.menu, trans_bounds.clone(), &editor).h(px(26.)));
             }
 
             let saved = inline_prompts::list();
@@ -202,10 +208,28 @@ pub(in crate::editor) fn render(
 
             if !empty_ctx && s.menu == AiMenu::Translate {
                 let items = [Preset::English, Preset::Chinese];
-                submenu = Some(
-                    items.iter().enumerate().fold(crate::dropdown::shell("ai-submenu").w(px(148.)), |d, (ix, p)| {
+                let menu_card = items
+                    .iter()
+                    .enumerate()
+                    .fold(crate::dropdown::shell("ai-submenu").w(px(152.)), |d, (ix, p)| {
                         d.child(submenu_item(*p, ix == s.menu_index, &editor))
-                    }),
+                    });
+                let sub_ed = editor.clone();
+                let tracked = trans_bounds.clone();
+                let fallback = gpui::Bounds::new(s.anchor, gpui::size(px(64.), px(26.)));
+                submenu = Some(
+                    deferred(
+                        crate::dropdown::smart_anchored_with(move |_, cx| {
+                            let vp = sub_ed.read(cx).list.viewport_bounds();
+                            let anchor_rect = tracked.get().unwrap_or(fallback);
+                            crate::dropdown::PlacementSpec::below(anchor_rect)
+                                .align_x(crate::dropdown::AlignX::Left)
+                                .viewport(vp)
+                                .gap(px(4.))
+                        })
+                        .child(menu_card),
+                    )
+                    .into_any_element(),
                 );
             }
 

@@ -1,5 +1,4 @@
 use gpui::{CursorStyle, MouseButton, SharedString, div, prelude::*, px};
-use gpui_component::input::Input;
 use super::{backend::{BackendKind, BackendStatus}, backend_ui, chat::AiChat};
 use crate::{icons::{Icon, icon}, theme::tr, ui::{ai_controls, icon_size, type_scale}};
 
@@ -80,7 +79,7 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
         .flex().items_center().gap(px(8.))
         .child(icon(Icon::FindSearch, px(icon_size::ROW), theme.mono_icon_colors(theme.text_secondary)))
         .when_some(backend_ui::search_input(), |bar, input| {
-            bar.child(div().flex_1().min_w_0().child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).h(px(30.))))
+            bar.child(ai_controls::inline_text_input(&input))
         });
 
     let query = backend_ui::search_query(cx);
