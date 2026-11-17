@@ -112,6 +112,7 @@ pub(in crate::editor) struct AiSession {
     pub original: String,
     pub context_before: String,
     pub input: Entity<InputState>,
+    pub has_input_text: bool,
     pub status: AiStatus,
     pub error: Option<String>,
     pub prompt: String,
@@ -233,14 +234,25 @@ impl Editor {
         cx: &mut Context<Self>,
     ) {
         self.cancel_ai();
+        self.hover = None;
         super::preview::clear_preview_bounds(cx.entity_id());
         let empty_ctx = original.trim().is_empty();
         let input = cx.new(|cx| InputState::new(window, cx).placeholder(input_placeholder(empty_ctx)));
-        let sub = cx.subscribe_in(&input, window, |this, _, event: &InputEvent, window, cx| {
-            if let InputEvent::PressEnter { secondary: false, .. } = event {
-                if !this.ai_accept_menu(window, cx) {
-                    this.ai_submit_input(window, cx);
+        let sub = cx.subscribe_in(&input, window, |this, state, event: &InputEvent, window, cx| {
+            match event {
+                InputEvent::PressEnter { secondary: false, .. } => {
+                    if !this.ai_accept_menu(window, cx) {
+                        this.ai_submit_input(window, cx);
+                    }
                 }
+                InputEvent::Change => {
+                    let non_empty = !state.read(cx).value().trim().is_empty();
+                    if let Some(s) = this.ai_mut() && s.has_input_text != non_empty {
+                        s.has_input_text = non_empty;
+                        cx.notify();
+                    }
+                }
+                _ => {}
             }
         });
         input.update(cx, |s, cx| s.focus(window, cx));
@@ -260,6 +272,7 @@ impl Editor {
             original,
             context_before,
             input,
+            has_input_text: false,
             status: AiStatus::Input,
             error: None,
             prompt: String::new(),
@@ -483,6 +496,7 @@ impl Editor {
                 None => (AiStatus::Input, input_placeholder(empty_ctx), true),
             };
             s.status = next_status;
+            s.has_input_text = !s.restore_input.trim().is_empty();
             Some((s.input.clone(), s.restore_input.clone(), ph, is_input))
         }) else {
             return;
@@ -514,6 +528,7 @@ impl Editor {
             let serial = s.serial;
             s.prompt = prompt.clone();
             s.restore_input = restore_input;
+            s.has_input_text = false;
             s.menu = AiMenu::None;
             s.error = None;
             let prev_draft = match &s.status {
@@ -600,6 +615,7 @@ impl Editor {
                                         None => (AiStatus::Input, input_placeholder(empty_ctx), true),
                                     };
                                     s.status = fallback;
+                                    s.has_input_text = !restored_text.trim().is_empty();
                                     if clear_bounds {
                                         super::preview::clear_preview_bounds(entity_id);
                                     }

@@ -33,6 +33,10 @@ pub fn is_menu_open(block_id: u64) -> bool {
     OPEN_MENU.with(|slot| slot.get().is_some_and(|(id, _)| id == block_id))
 }
 
+pub fn is_any_menu_open() -> bool {
+    OPEN_MENU.with(|slot| slot.get().is_some())
+}
+
 pub fn arm_menu(kind: CalloutKind) {
     let index = ALL_KINDS.iter().position(|item| *item == kind).unwrap_or(0);
     MENU_INDEX.with(|cell| cell.set(index));

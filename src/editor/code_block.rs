@@ -57,6 +57,10 @@ pub(super) fn is_menu_open_for(block_id: u64) -> bool {
     LANG_PICKER.with(|slot| slot.borrow().is_some_and(|p| p.block_id == block_id))
 }
 
+pub(super) fn is_any_menu_open() -> bool {
+    LANG_PICKER.with(|slot| slot.borrow().is_some())
+}
+
 pub(super) fn close_menus() -> bool {
     LANG_PICKER.with(|slot| slot.borrow_mut().take().is_some())
 }
