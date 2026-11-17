@@ -299,6 +299,13 @@ fn normalize_cjk_strong(input: &str) -> std::borrow::Cow<'_, str> {
     let mut out = String::with_capacity(input.len() + 16);
     let (mut i, mut changed) = (0, false);
     while i < bytes.len() {
+        if bytes[i] == b'\\' && i + 1 < bytes.len() {
+            out.push('\\');
+            let ch = input[i + 1..].chars().next().unwrap();
+            out.push(ch);
+            i += 1 + ch.len_utf8();
+            continue;
+        }
         if bytes[i] == b'`' {
             let ticks = bytes[i..].iter().take_while(|&&b| b == b'`').count();
             out.push_str(&input[i..i + ticks]); i += ticks;

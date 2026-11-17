@@ -29,7 +29,7 @@ impl Editor {
         if self.editing_source() { self.finish_source_composition(cx); self.source_doc_edge(end, extend, cx); return; }
         if !self.is_markdown_note() { return; }
         let block = if end { self.last_visible_index().and_then(|i| self.doc.blocks.get(i)) } else { self.doc.blocks.first() };
-        let Some(at) = block.map(|b| super::view::selection::Position { block: b.id, offset: if end { b.text.len() } else { 0 } }) else { return };
+        let Some(at) = block.map(|b| super::view::selection::Position { block: b.id, offset: if end && (extend || !b.is_atomic()) { b.text.len() } else { 0 } }) else { return };
         self.table_sel = None; self.preferred_x = None; self.block_sel = None;
         self.set_head(at, extend, cx);
         // The first frame only brings the far block into view; once it has a layout, reveal the caret exactly.
@@ -207,7 +207,7 @@ impl Editor {
             }
             return true;
         }
-        let to = Position { block: prev.id, offset: prev.text.len() };
+        let to = Position { block: prev.id, offset: if prev.is_atomic() { 0 } else { prev.text.len() } };
         if block.text.is_empty() { self.drop_block(index, to, cx); } else { self.set_head(to, false, cx); }
         true
     }

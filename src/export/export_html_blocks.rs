@@ -180,7 +180,8 @@ pub(super) fn render_blocks(
         };
         if let Some(p) = picture.take() {
             let data = document::base64(&p.png()?);
-            out.push_str(&format!("<div style=\"margin-left:{indent}px;margin-bottom:10px;height:{}px\"><img alt=\"{}\" src=\"data:image/png;base64,{data}\" style=\"display:block;margin-left:{}px;width:{}px;height:{}px\"></div>", p.height, esc(&block.text), p.x, p.width, p.height));
+            let alt = crate::editor::image_source::spec_of(block).map(|s| s.alt).unwrap_or_default();
+            out.push_str(&format!("<div style=\"margin-left:{indent}px;margin-bottom:10px;height:{}px\"><img alt=\"{}\" src=\"data:image/png;base64,{data}\" style=\"display:block;margin-left:{}px;width:{}px;height:{}px\"></div>", p.height, esc(&alt), p.x, p.width, p.height));
             if !options
                 .source
                 .block(block.id)

@@ -65,6 +65,8 @@ pub struct BlockMeta {
     /// H4–H6 keep the existing heading kind vocabulary and carry the exact level here.
     pub heading_level: Option<u8>,
     pub callout: Option<CalloutKind>,
+    /// Structural `>` wrapper depth for non-Quote blocks inside blockquotes (`> - item`, `> # h`).
+    pub quote_depth: usize,
     pub table: Option<Table>,
     /// The source had no blank line after this block where the serializer would write one.
     pub tight: bool,
@@ -116,8 +118,14 @@ impl Doc {
         self.refresh_block(id);
     }
     pub fn set_kind(&mut self, id: u64, kind: Kind) {
-        if self.get(id).is_some_and(|block| block.meta.table.is_some()) { return; }
-        if let Some(block) = self.get_mut(id) { block.kind = kind; block.meta.heading_level = None; block.meta.callout = None; block.meta.divider = false; block.meta.image = None; block.meta.clean_source = None; block.meta.code_language = None; block.meta.code_empty_line = false; block.meta.list_code = None; block.meta.html_paragraph = None;
+        let Some(cur) = self.get(id) else { return };
+        if cur.meta.table.is_some() { return; }
+        let plain_target = cur.kind == kind && cur.meta.heading_level.is_none() && cur.meta.callout.is_none()
+            && !cur.is_atomic() && cur.meta.code_language.is_none() && cur.meta.list_code.is_none()
+            && cur.meta.html_paragraph.is_none() && cur.meta.quote_depth == 0
+            && (matches!(kind, Kind::Bullet | Kind::Numbered | Kind::Todo) || (cur.meta.indent == 0 && cur.meta.list_start.is_none()));
+        if plain_target { return; }
+        if let Some(block) = self.get_mut(id) { block.kind = kind; block.meta.heading_level = None; block.meta.callout = None; block.meta.quote_depth = 0; block.meta.divider = false; block.meta.image = None; block.meta.clean_source = None; block.meta.code_language = None; block.meta.code_empty_line = false; block.meta.list_code = None; block.meta.html_paragraph = None;
             if !matches!(kind, Kind::Bullet | Kind::Numbered | Kind::Todo) { block.meta.indent = 0; block.meta.list_start = None; }
         }
         self.refresh_block(id);
@@ -147,14 +155,4 @@ impl Doc {
         if self.blocks.is_empty() { self.push(Kind::Paragraph, String::new()); }
         removed
     }
-}
-/// Typing marker recognition; exact consumed bytes include multi-digit numbering.
-pub fn marker_kind(text: &str) -> Option<(Kind, usize)> {
-    for (marker, kind) in [("### ",Kind::H3),("## ",Kind::H2),("# ",Kind::H1),
-        ("- ",Kind::Bullet),("> ",Kind::Quote),("[] ",Kind::Todo)] {
-        if text.starts_with(marker) { return Some((kind, marker.len())); }
-    }
-    let digits = text.bytes().take_while(u8::is_ascii_digit).count();
-    if digits > 0 && text[digits..].starts_with(". ") { return Some((Kind::Numbered, digits + 2)); }
-    None
 }
