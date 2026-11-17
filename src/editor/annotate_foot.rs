@@ -25,30 +25,93 @@ fn close_active(editor: &mut Editor, window: &mut Window, cx: &mut Context<Edito
     editor.annotate.hovered_annotation = None;
     editor.annotate.followup = None;
     editor.annotate.editing = None;
+    editor.annotate.foot_picker_note = None;
+    editor.remeasure_annotation_rows();
     window.focus(&editor.focus, cx);
     cx.notify();
 }
 
-/// Resolves the last visible block of a single- or multi-block annotation span.
-fn anchor_block_for_note(editor: &Editor, note: &Annotation) -> Option<u64> {
-    let spans = resolve_annotation_spans(&editor.doc, note);
-    spans
-        .iter()
+/// Maps `raw_index` to itself when visible, or walks up to the governing visible block
+/// (e.g. a folded heading) so annotations inside folded sections never vanish into hidden rows.
+fn visible_block_or_ancestor(editor: &Editor, raw_index: usize) -> Option<u64> {
+    if editor.doc.blocks.is_empty() {
+        return None;
+    }
+    let clamped = raw_index.min(editor.doc.blocks.len() - 1);
+    if editor.minimal {
+        return Some(editor.doc.blocks[clamped].id);
+    }
+    (0..=clamped)
         .rev()
-        .find(|&&(bid, _, _)| editor.doc.index_of(bid).is_some_and(|ix| !editor.is_index_hidden(ix)))
-        .or_else(|| spans.last())
-        .map(|&(bid, _, _)| bid)
-        .or_else(|| resolve_annotation_span(&editor.doc, note).map(|(bid, _, _)| bid))
+        .find(|&ix| !editor.is_index_hidden(ix))
+        .or_else(|| (0..editor.doc.blocks.len()).find(|&ix| !editor.is_index_hidden(ix)))
+        .map(|ix| editor.doc.blocks[ix].id)
 }
 
-fn anchor_block_for_composer(editor: &Editor, composer: &AnnotateComposer) -> u64 {
-    composer
+/// Resolves the last visible block of a single- or multi-block annotation span, falling back to
+/// the nearest visible ancestor or stored block index when text changed or headings are folded.
+pub(in crate::editor) fn anchor_block_for_note(editor: &Editor, note: &Annotation) -> Option<u64> {
+    let spans = resolve_annotation_spans(&editor.doc, note);
+    if let Some(&(_, _, _)) = spans.first() {
+        if let Some(&(bid, _, _)) = spans
+            .iter()
+            .rev()
+            .find(|&&(bid, _, _)| editor.doc.index_of(bid).is_some_and(|ix| editor.minimal || !editor.is_index_hidden(ix)))
+        {
+            return Some(bid);
+        }
+        if let Some(last_ix) = spans.last().and_then(|&(bid, _, _)| editor.doc.index_of(bid)) {
+            return visible_block_or_ancestor(editor, last_ix);
+        }
+    }
+    if let Some((bid, _, _)) = resolve_annotation_span(&editor.doc, note)
+        && let Some(ix) = editor.doc.index_of(bid)
+    {
+        return visible_block_or_ancestor(editor, ix);
+    }
+    let fallback_ix = note.anchors.last().map_or(note.block_index, |a| a.block_index);
+    visible_block_or_ancestor(editor, fallback_ix)
+}
+
+pub(in crate::editor) fn anchor_block_for_composer(editor: &Editor, composer: &AnnotateComposer) -> Option<u64> {
+    if let Some(t) = composer
         .targets
         .iter()
         .rev()
-        .find(|t| editor.doc.index_of(t.block_id).is_some_and(|ix| !editor.is_index_hidden(ix)))
-        .or_else(|| composer.targets.last())
-        .map_or(composer.block_id, |t| t.block_id)
+        .find(|t| editor.doc.index_of(t.block_id).is_some_and(|ix| editor.minimal || !editor.is_index_hidden(ix)))
+    {
+        return Some(t.block_id);
+    }
+    let raw_ix = composer
+        .targets
+        .last()
+        .and_then(|t| editor.doc.index_of(t.block_id).or(Some(t.block_index)))
+        .or_else(|| editor.doc.index_of(composer.block_id))
+        .unwrap_or(0);
+    visible_block_or_ancestor(editor, raw_ix)
+}
+
+/// Wraps a shrink-to-fit capsule so it hugs short text while clamping to `min(100%, 460px)` in
+/// narrow or deeply indented containers (preventing right-edge button clipping in Taffy flexbox)
+/// and isolating clicks strictly to the capsule's own bounds (no full-width click dead zone).
+fn wrap_chip(chip: impl IntoElement) -> AnyElement {
+    div()
+        .w_full()
+        .max_w(px(460.))
+        .min_w_0()
+        .flex()
+        .items_start()
+        .child(
+            div()
+                .max_w_full()
+                .min_w_0()
+                .occlude()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                .child(chip),
+        )
+        .into_any_element()
 }
 
 fn expanded_card(
@@ -60,10 +123,15 @@ fn expanded_card(
     let id = note.id;
     let state = build_card_state(&note, editing, followup, cx);
     card_shell(SharedString::from(format!("annotation-foot-card-{id}")), true)
+        .w_full()
         .max_w(px(440.))
+        .min_w_0()
+        .occlude()
         .key_context("AnnotationPopover")
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx)))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
         .on_action(cx.listener(move |this, _: &Escape, window, cx| {
             if this.annotate.editing.as_ref().is_some_and(|e| e.annotation_id == id) {
                 this.cancel_edit_annotation(window, cx);
@@ -91,28 +159,31 @@ fn render_note_entry(note: Annotation, editor: &Editor, cx: &mut Context<Editor>
 
     if note.is_generated() {
         let rewritten: SharedString = note.ai_rewritten.clone().unwrap_or_default().into();
-        let chip = annotation_note::foot_note_chip(
-            SharedString::from(format!("annotation-foot-chip-{id}")),
-            id,
-            is_highlighted,
-            FootChipKind::Review {
-                rewritten,
-                expanded: is_active,
-                on_toggle: on_press(cx.listener(move |this, _, window, cx| {
-                    cx.stop_propagation();
-                    this.toggle_annotation_detail(id, window, cx);
-                })),
-                on_accept: on_press(cx.listener(move |this, _, window, cx| {
-                    cx.stop_propagation();
-                    this.apply_annotation(id, window, cx);
-                })),
-            },
-        )
-        .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx)));
+        let chip = wrap_chip(
+            annotation_note::foot_note_chip(
+                SharedString::from(format!("annotation-foot-chip-{id}")),
+                id,
+                is_highlighted,
+                FootChipKind::Review {
+                    rewritten,
+                    expanded: is_active,
+                    on_toggle: on_press(cx.listener(move |this, _, window, cx| {
+                        cx.stop_propagation();
+                        this.toggle_annotation_detail(id, window, cx);
+                    })),
+                    on_accept: on_press(cx.listener(move |this, _, window, cx| {
+                        cx.stop_propagation();
+                        this.apply_annotation(id, window, cx);
+                    })),
+                },
+            )
+            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx))),
+        );
 
         if is_active {
             return div()
                 .w_full()
+                .min_w_0()
                 .flex()
                 .flex_col()
                 .items_start()
@@ -121,7 +192,7 @@ fn render_note_entry(note: Annotation, editor: &Editor, cx: &mut Context<Editor>
                 .child(expanded_card(note, None, None, cx))
                 .into_any_element();
         }
-        return chip.into_any_element();
+        return chip;
     }
 
     if is_active {
@@ -129,44 +200,46 @@ fn render_note_entry(note: Annotation, editor: &Editor, cx: &mut Context<Editor>
     }
 
     if note.streaming {
-        return annotation_note::foot_note_chip(
+        return wrap_chip(
+            annotation_note::foot_note_chip(
+                SharedString::from(format!("annotation-foot-chip-{id}")),
+                id,
+                is_highlighted,
+                FootChipKind::Generating {
+                    body: note.body.into(),
+                    on_toggle: on_press(cx.listener(move |this, _, window, cx| {
+                        cx.stop_propagation();
+                        this.toggle_annotation_detail(id, window, cx);
+                    })),
+                },
+            )
+            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx))),
+        );
+    }
+
+    wrap_chip(
+        annotation_note::foot_note_chip(
             SharedString::from(format!("annotation-foot-chip-{id}")),
             id,
             is_highlighted,
-            FootChipKind::Generating {
+            FootChipKind::Draft {
                 body: note.body.into(),
                 on_toggle: on_press(cx.listener(move |this, _, window, cx| {
                     cx.stop_propagation();
                     this.toggle_annotation_detail(id, window, cx);
                 })),
+                on_edit: on_press(cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.start_edit_annotation(id, window, cx);
+                })),
+                on_delete: on_press(cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.delete_annotation(id, window, cx);
+                })),
             },
         )
-        .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx)))
-        .into_any_element();
-    }
-
-    annotation_note::foot_note_chip(
-        SharedString::from(format!("annotation-foot-chip-{id}")),
-        id,
-        is_highlighted,
-        FootChipKind::Draft {
-            body: note.body.into(),
-            on_toggle: on_press(cx.listener(move |this, _, window, cx| {
-                cx.stop_propagation();
-                this.toggle_annotation_detail(id, window, cx);
-            })),
-            on_edit: on_press(cx.listener(move |this, _, window, cx| {
-                cx.stop_propagation();
-                this.start_edit_annotation(id, window, cx);
-            })),
-            on_delete: on_press(cx.listener(move |this, _, window, cx| {
-                cx.stop_propagation();
-                this.delete_annotation(id, window, cx);
-            })),
-        },
+        .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx))),
     )
-    .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx)))
-    .into_any_element()
 }
 
 pub(super) fn block_strip(editor: &Editor, block: &Block, zoom: f32, cx: &mut Context<Editor>) -> Option<AnyElement> {
@@ -196,7 +269,7 @@ pub(super) fn block_strip(editor: &Editor, block: &Block, zoom: f32, cx: &mut Co
         .annotate
         .composer
         .as_ref()
-        .filter(|c| anchor_block_for_composer(editor, c) == block_id)
+        .filter(|c| anchor_block_for_composer(editor, c) == Some(block_id))
         .map(|c| c.input.clone());
 
     if anchored_notes.is_empty() && composer_input.is_none() {
@@ -210,15 +283,34 @@ pub(super) fn block_strip(editor: &Editor, block: &Block, zoom: f32, cx: &mut Co
         .filter_map(|note| {
             let emoji = note.reactions.first()?.clone();
             let highlighted = editor.annotate.active_annotation == Some(note.id)
-                || editor.annotate.hovered_annotation == Some(note.id);
+                || editor.annotate.hovered_annotation == Some(note.id)
+                || editor.annotate.foot_picker_note == Some(note.id);
             Some((note.id, emoji, highlighted))
         })
         .collect();
 
-    if let Some(&(last_rx_id, ref last_emoji, _)) = reaction_notes.last() {
-        let picker_open = editor.annotate.foot_picker_note == Some(last_rx_id);
-        let selected_emoji = last_emoji.clone();
-        let mut rx_row = div().flex().flex_wrap().items_center().gap(px(6.));
+    if let Some(&(last_rx_id, _, _)) = reaction_notes.last() {
+        let &(target_rx_id, ref target_emoji, _) = reaction_notes
+            .iter()
+            .find(|&&(id, _, _)| editor.annotate.foot_picker_note == Some(id))
+            .or_else(|| reaction_notes.iter().find(|&&(id, _, _)| editor.annotate.active_annotation == Some(id)))
+            .or_else(|| reaction_notes.iter().find(|&&(id, _, _)| editor.annotate.hovered_annotation == Some(id)))
+            .unwrap_or_else(|| reaction_notes.last().unwrap());
+        let picker_open = editor.annotate.foot_picker_note == Some(target_rx_id);
+        let selected_emoji = target_emoji.clone();
+        let add_target_id = if picker_open { target_rx_id } else { last_rx_id };
+
+        let mut rx_row = div()
+            .max_w_full()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap(px(6.))
+            .occlude()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation());
+
         for (id, emoji, highlighted) in &reaction_notes {
             let id = *id;
             let emoji_str = emoji.clone();
@@ -232,15 +324,19 @@ pub(super) fn block_strip(editor: &Editor, block: &Block, zoom: f32, cx: &mut Co
                 .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                     cx.stop_propagation();
                     this.toggle_reaction_on_note(id, &emoji_str, cx);
+                }))
+                .on_mouse_down(MouseButton::Right, cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.toggle_foot_reaction_picker(id, cx);
                 })),
             );
         }
         rx_row = rx_row.child(
             annotation_note::reaction_add_button(SharedString::from(format!("foot-rx-add-{block_id}")), picker_open)
-                .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(last_rx_id, *hovered, cx)))
+                .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(add_target_id, *hovered, cx)))
                 .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                     cx.stop_propagation();
-                    this.toggle_foot_reaction_picker(last_rx_id, cx);
+                    this.toggle_foot_reaction_picker(add_target_id, cx);
                 })),
         );
         if picker_open {
@@ -250,13 +346,13 @@ pub(super) fn block_strip(editor: &Editor, block: &Block, zoom: f32, cx: &mut Co
                     let selected = selected_emoji == emoji;
                     bar.child(
                         annotation_note::reaction_picker_item(
-                            SharedString::from(format!("foot-pick-emoji-{last_rx_id}-{ix}")),
+                            SharedString::from(format!("foot-pick-emoji-{target_rx_id}-{ix}")),
                             emoji,
                             selected,
                         )
                         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
-                            this.toggle_reaction_on_note(last_rx_id, emoji, cx);
+                            this.toggle_reaction_on_note(target_rx_id, emoji, cx);
                         })),
                     )
                 },
@@ -278,12 +374,25 @@ pub(super) fn block_strip(editor: &Editor, block: &Block, zoom: f32, cx: &mut Co
             div()
                 .w_full()
                 .max_w(px(360.))
+                .min_w_0()
+                .occlude()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
                 .child(composer_row(input, has_text, false, cx))
                 .into_any_element(),
         );
     }
 
-    let left_pad = HANDLE_WIDTH + ROW_GAP + block_gutter(block, zoom);
+    let raw_left = HANDLE_WIDTH + ROW_GAP + block_gutter(block, zoom);
+    let left_pad = if editor.annotate.editor_width > px(0.) {
+        let max_left = (f32::from(editor.annotate.editor_width) - RIGHT_INSET - 200.).max(HANDLE_WIDTH + ROW_GAP);
+        raw_left.min(max_left)
+    } else {
+        raw_left
+    };
+    let bottom_pad = if block.meta.table.is_some() { 10. * zoom } else { 2. * zoom };
+
     Some(
         div()
             .id(("annotate-foot", block_id as usize))
@@ -292,12 +401,11 @@ pub(super) fn block_strip(editor: &Editor, block: &Block, zoom: f32, cx: &mut Co
             .pl(px(left_pad))
             .pr(px(RIGHT_INSET))
             .pt(px(6. * zoom))
-            .occlude()
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .pb(px(bottom_pad))
             .child(
                 div()
                     .w_full()
+                    .min_w_0()
                     .max_w(Theme::ocean().content_width)
                     .flex()
                     .flex_col()

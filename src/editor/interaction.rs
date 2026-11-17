@@ -109,7 +109,11 @@ impl Editor {
         if self.path.is_some() && !self.is_markdown_note() { return; }
         self.table_menu = None; self.table_sel = None; self.block_menu = None; self.block_sel = None;
         let prev_active = self.annotate.active_annotation.take();
-        self.annotate.followup = None;
+        let had_followup = self.annotate.followup.take().is_some();
+        let had_foot_picker = self.annotate.foot_picker_note.take().is_some();
+        if prev_active.is_some() || had_followup || had_foot_picker {
+            self.remeasure_annotation_rows();
+        }
         crate::editor::code_block::close_menus();
         crate::ui::callout_controls::close_menu();
         if let Some(ai_input) = self.ai_session().and_then(|s| {
