@@ -110,7 +110,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
     let preview_lang = code_lang.as_deref().is_some_and(super::code_block::is_preview_lang);
     let code_visible = handles || active;
     let first_line_h = if rule { 16. * zoom } else if code_lang.is_some() { 30. * zoom } else { line };
-    let handle_top = if is_table { 4.9 * zoom } else if image.is_some() { 4. * zoom } else { ((first_line_h - 26. * zoom) / 2. + if callout.is_some() { 12. * zoom } else { 0. }).max(-pt) };
+    let handle_top = if is_table { 4.9 * zoom } else if image.is_some() { 4. * zoom } else if callout.is_some() { (7. * zoom).max(-pt) } else { ((first_line_h - 26. * zoom) / 2.).max(-pt) };
     let regular_handles = !minimal && !is_table && handles;
     div().id(("block", id as usize)).relative().w_full().min_w_0().pt(px(pt)).pb(px(pb))
         .when(drop_edge.is_some_and(|(_, _, nested)| nested), |row| row.bg(theme.accent.opacity(0.10)).rounded(px(4. * zoom)))
@@ -193,7 +193,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                     body.child(super::code_block::copy_button(editor.clone(), id, code_lang.unwrap_or_default(), code_visible, minimal, cx))
                 })
                 .when_some(callout.filter(|_| !minimal), |body, kind| {
-                    body.child(crate::ui::callout_controls::controls(editor, id, kind, code_visible, zoom, cx))
+                    body.child(crate::ui::callout_controls::controls(editor, id, kind, zoom, cx))
                 })))
         .when_some(drop_edge, |row, (after, indent, nested)| row.child(crate::ui::reveal::block_drop_marker(
             px(handle_w + ROW_GAP + indent.min(12) as f32 * INDENT_PER_CHAR * zoom),
