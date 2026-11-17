@@ -8,6 +8,7 @@ use gpui::{
 use gpui_component::input::InputState;
 use crate::icons::{Icon, icon, stateful_icon};
 use crate::theme::Theme;
+use crate::ui::icon_size;
 use super::index::{Row, TreeIndex};
 
 actions!(file_tree, [RenameSelected, TrashSelected]);
@@ -28,7 +29,7 @@ impl Render for DragGhost {
         div().h(px(30.)).px(px(10.)).max_w(px(220.)).flex().items_center().gap(px(6.))
             .rounded(crate::ui::radius::CONTROL).bg(theme.paper).border_1().border_color(theme.accent).opacity(0.94)
             .text_size(theme.ui_font).font_weight(FontWeight(460.)).text_color(theme.text)
-            .child(icon(kind, px(16.), theme.icon_colors(theme.accent)))
+            .child(icon(kind, px(icon_size::ROW), theme.icon_colors(theme.accent)))
             .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().relative().top(LABEL_OPTICAL_NUDGE).child(self.label.clone()))
     }
 }
@@ -228,8 +229,8 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
     let rename_vis = editing.as_ref().map(|input| crate::ui::rename_row::inspect(&path, dir, input, cx));
     let row_active = highlighted || is_target || rename_vis.is_some();
     let kind_icon = match &rename_vis {
-        Some(vis) => icon(kind, px(16.), vis.icon_colors),
-        None => stateful_icon("tree-row", kind, px(16.), highlighted || is_target, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if highlighted { theme.accent } else { theme.text })),
+        Some(vis) => icon(kind, px(icon_size::ROW), vis.icon_colors),
+        None => stateful_icon("tree-row", kind, px(icon_size::ROW), highlighted || is_target, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if highlighted { theme.accent } else { theme.text })),
     };
     let label = row.stem.clone();
     let drag_item = DragItem { path: path.to_path_buf(), dir, label: label.clone() };
@@ -270,9 +271,9 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
             }))
         })
         .when_some(arrow, |row, a| row.child(
-            div().size(px(18.)).flex_none().flex().items_center().justify_center()
-                .child(stateful_icon("tree-row", a, px(18.), row_active, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text_secondary)))))
-        .child(div().size(px(16.)).flex_none().flex().items_center().justify_center().child(kind_icon))
+            div().size(px(icon_size::ROW)).flex_none().flex().items_center().justify_center()
+                .child(stateful_icon("tree-row", a, px(icon_size::ROW), row_active, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text_secondary)))))
+        .child(div().size(px(icon_size::ROW)).flex_none().flex().items_center().justify_center().child(kind_icon))
         .when_some(rename_vis.as_ref(), |row, vis| crate::ui::rename_row::style_capsule(row, vis))
         .child(match &editing {
             Some(input) => crate::ui::rename_row::input_slot(input).relative().top(LABEL_OPTICAL_NUDGE),
@@ -296,7 +297,7 @@ fn file_row(index: usize, row: Arc<Row>, expanded: bool, selected: Option<&Path>
                         if let Some(handler) = this.on_context.clone() { handler(Some((path.to_path_buf(), dir)), event.position, window, cx); }
                     }
                 }))
-                .child(stateful_icon("row-more-btn", Icon::More, px(14.), is_target, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
+                .child(stateful_icon("row-more-btn", Icon::More, px(icon_size::INLINE), is_target, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))))
         .on_mouse_down(MouseButton::Right, cx.listener({
             let path = path.clone();
             move |this, event: &gpui::MouseDownEvent, window, cx| {

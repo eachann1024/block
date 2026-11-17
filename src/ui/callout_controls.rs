@@ -6,7 +6,7 @@
 use crate::ui::tooltip::TooltipExt;
 use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, time::Duration};
 use gpui::{
-    Bounds, Context, CursorStyle, Div, ElementId, Entity, Focusable, FontWeight, Hsla,
+    Bounds, Context, CursorStyle, Div, ElementId, Entity, Focusable, Hsla,
     MouseButton, MouseDownEvent, Pixels, Point, Size, Stateful, Window, anchored, deferred, div,
     point, prelude::*, px, rgb, size, transparent_black,
 };
@@ -15,6 +15,7 @@ use crate::{
     editor::{model::CalloutKind, view::Editor},
     icons::{Icon, IconColors, icon},
     theme::{Theme, is_dark, tooltip, tr},
+    ui::{icon_size, type_scale},
 };
 
 thread_local! {
@@ -149,13 +150,13 @@ fn menu_row(
     let theme = Theme::ocean();
     let st = style(kind);
     div().id(id).relative().w_full().h(px(32.)).px(px(10.)).rounded(px(6.)).children(crate::ui::smoke_overlay::probe(probe_name))
-        .flex().items_center().gap(px(8.)).cursor(CursorStyle::PointingHand).text_size(px(14.)).text_color(theme.text)
-        .when(checked, move |d| d.bg(theme.selected).border_1().border_color(theme.accent).font_weight(FontWeight(500.)))
+        .flex().items_center().gap(px(8.)).cursor(CursorStyle::PointingHand).text_size(type_scale::BODY).text_color(theme.text)
+        .when(checked, move |d| d.bg(theme.selected).border_1().border_color(theme.accent).font_weight(type_scale::CONTROL))
         .when(highlighted && !checked, move |d| d.bg(theme.hover))
         .when(!checked, move |d| d.hover(|s| s.bg(theme.hover)))
         .child(div().size(px(10.)).flex_none().rounded(px(5.)).bg(st.bg).border_1().border_color(st.accent))
         .child(div().flex_1().min_w_0().child(label(kind)))
-        .child(div().flex_none().font_family(crate::theme::mono_font_family()).text_size(px(14.)).text_color(theme.text_secondary).child(kind.tag()))
+        .child(div().flex_none().font_family(crate::theme::mono_font_family()).text_size(type_scale::BODY).text_color(theme.text_secondary).child(kind.tag()))
         .on_mouse_down(MouseButton::Left, on_click)
 }
 
@@ -203,7 +204,7 @@ pub fn controls(
         .when(open, |d| d.bg(theme.paper).border_1().border_color(st.accent))
         .hover(move |s| s.bg(theme.paper).border_1().border_color(st.border))
         .tooltip_above(tooltip(tr("点击切换标注类型", "Click to switch callout type")))
-        .child(icon(Icon::Callout, px(17. * zoom), IconColors { line: st.accent, fill: st.icon_fill, accent: st.accent }))
+        .child(icon(Icon::Callout, px(icon_size::ROW * zoom), IconColors { line: st.accent, fill: st.icon_fill, accent: st.accent }))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, window, cx| {
             cx.stop_propagation(); if !is_menu_open(id) { arm_menu(kind); } toggle_menu(id, event.position); this.focus_handle(cx).focus(window, cx); cx.notify();
         }));
@@ -213,7 +214,7 @@ pub fn controls(
         .when(open, |d| d.bg(theme.paper).border_1().border_color(st.accent))
         .hover(move |s| s.bg(theme.paper).border_1().border_color(st.border))
         .flex().items_center().gap(px(4. * zoom)).cursor(CursorStyle::PointingHand)
-        .text_size(px(14. * zoom)).font_weight(FontWeight(550.)).text_color(st.text)
+        .text_size(px(14. * zoom)).font_weight(type_scale::TITLE).text_color(st.text)
         .child(label(kind)).child(div().text_size(px(12. * zoom)).text_color(st.text).child("▾")).child(bounds_tracker)
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, window, cx| {
             cx.stop_propagation(); if !is_menu_open(id) { arm_menu(kind); } toggle_menu(id, event.position); this.focus_handle(cx).focus(window, cx); cx.notify();

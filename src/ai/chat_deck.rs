@@ -1,7 +1,7 @@
-use gpui::{CursorStyle, FontWeight, MouseButton, SharedString, div, prelude::*, px};
+use gpui::{CursorStyle, MouseButton, SharedString, div, prelude::*, px};
 use gpui_component::input::Input;
 use super::{backend::{BackendKind, BackendStatus}, backend_ui, chat::AiChat};
-use crate::{icons::{Icon, icon}, theme::tr, ui::ai_controls};
+use crate::{icons::{Icon, icon}, theme::tr, ui::{ai_controls, icon_size, type_scale}};
 
 thread_local! {
     static TRIGGER_BOUNDS: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>> = Default::default();
@@ -78,7 +78,7 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
 
     let search_bar = div().h(px(header_h)).px(px(header_px)).flex_none().border_b_1().border_color(theme.hairline)
         .flex().items_center().gap(px(8.))
-        .child(icon(Icon::FindSearch, px(if wide { 15. } else { 14. }), theme.mono_icon_colors(theme.text_secondary)))
+        .child(icon(Icon::FindSearch, px(icon_size::ROW), theme.mono_icon_colors(theme.text_secondary)))
         .when_some(backend_ui::search_input(), |bar, input| {
             bar.child(div().flex_1().min_w_0().child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).h(px(30.))))
         });
@@ -135,7 +135,7 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
                 ));
             }
             col.child(div().px(px(10.)).py(px(6.)).border_t_1().border_color(theme.hairline).flex().items_center().justify_between().gap(px(8.))
-                .child(div().flex_none().text_size(px(12.5)).text_color(theme.text_secondary).child("Thinking Level"))
+                .child(div().flex_none().text_size(type_scale::META).text_color(theme.text_secondary).child("Thinking Level"))
                 .child(pills))
         });
 
@@ -155,7 +155,7 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
             }
             row.child(div().w(px(if chat.fullscreen { 216. } else { 176. })).flex_none().border_l_1().border_color(theme.hairline).flex().flex_col()
                 .child(div().h(px(header_h)).px(px(header_px)).flex_none().border_b_1().border_color(theme.hairline).flex().items_center()
-                    .child(div().text_size(px(13.5)).font_weight(FontWeight(500.)).text_color(theme.text_secondary).child("Thinking Level")))
+                    .child(div().text_size(type_scale::SMALL).font_weight(type_scale::CONTROL).text_color(theme.text_secondary).child("Thinking Level")))
                 .child(levels))
         });
 
@@ -171,8 +171,8 @@ pub(super) fn view(chat: &AiChat, window: &gpui::Window, cx: &mut gpui::Context<
             .h(px(28.)).px(px(8.)).rounded(px(6.)).flex().items_center().gap(px(6.)).cursor(CursorStyle::PointingHand)
             .hover(move |s| s.bg(theme.hover))
             .child(div().size(px(6.)).rounded_full().bg(if full_access { theme.accent } else { theme.text_secondary }))
-            .child(div().text_size(px(13.5)).text_color(if full_access { theme.text } else { theme.text_secondary }).child(perm_label))
-            .child(crate::dropdown::line_icon(Icon::ChevronUp, 11., theme.text_secondary))
+            .child(div().text_size(type_scale::SMALL).text_color(if full_access { theme.text } else { theme.text_secondary }).child(perm_label))
+            .child(crate::dropdown::line_icon(Icon::ChevronUp, icon_size::MICRO, theme.text_secondary))
             .on_mouse_down(MouseButton::Left, cx.listener(move |chat, _, window, cx| {
                 cx.stop_propagation();
                 if selected == BackendKind::Builtin {

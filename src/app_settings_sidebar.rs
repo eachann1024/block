@@ -18,7 +18,7 @@ impl Workspace {
                 .children(SettingsTab::ALL.into_iter().enumerate().map(|(ix, tab)| {
                     let active = current == Some(tab);
                     let cat_group = SharedString::from(format!("settings-cat-{ix}"));
-                    div().id(("settings-tab", ix)).group(cat_group.clone()).relative().w_full().h(px(34.)).flex_none().px(px(10.)).rounded(crate::ui::radius::CONTROL).flex().items_center().gap(px(8.))
+                    div().id(("settings-tab", ix)).group(cat_group.clone()).relative().w_full().h(theme.menu_item_height).flex_none().px(px(10.)).rounded(crate::ui::radius::CONTROL).flex().items_center().gap(px(8.))
                         .when(tab == SettingsTab::Folders, |d| d.children(crate::ui::smoke_overlay::probe("settings-tab-folders")))
                         .border_1().border_color(gpui::transparent_black())
                         .text_size(px(14.)).line_height(px(20.)).cursor(CursorStyle::PointingHand)
@@ -30,7 +30,7 @@ impl Workspace {
                             if this.shell_split(window, cx).sidebar_drawer { this.sidebar_pinned = false; cx.notify(); }
                             this.select_settings_tab(tab, cx);
                         }))
-                        .child(stateful_icon(cat_group, tab.icon(), px(15.), active, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if active { theme.accent } else { theme.text })))
+                        .child(stateful_icon(cat_group, tab.icon(), px(crate::ui::icon_size::ROW), active, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if active { theme.accent } else { theme.text })))
                         .child(tab.title())
                 })))
             .child(self.resize_handle(cx))

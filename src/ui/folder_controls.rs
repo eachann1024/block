@@ -12,7 +12,7 @@ pub fn folder_check_box(checked: bool) -> gpui::Div {
     let theme = Theme::ocean();
     div().size(px(15.)).rounded(px(4.)).flex_none().flex().items_center().justify_center()
         .bg(card_bg()).border_1().border_color(if checked { theme.accent } else { theme.btn_border })
-        .when(checked, |b| b.child(crate::icons::icon(crate::icons::Icon::Check, px(11.), theme.icon_colors(theme.accent))))
+        .when(checked, |b| b.child(crate::icons::icon(crate::icons::Icon::Check, px(crate::ui::icon_size::MICRO), theme.icon_colors(theme.accent))))
 }
 
 pub fn folder_check_pill(

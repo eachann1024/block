@@ -1,12 +1,12 @@
 //! View rendering helpers for Page History in the Workspace.
 use gpui::{
-    Context, FontWeight, IntoElement, ParentElement, Styled, Window, WindowControlArea, div, prelude::*, px,
+    Context, IntoElement, ParentElement, Styled, Window, WindowControlArea, div, prelude::*, px,
 };
 use crate::{
     icons::Icon,
     page_history::{HistoryError, PreviewMode, render_history_panel, render_mode_switch, render_preview_surface, render_restore_button, render_restore_modal, restore_availability},
     theme::{Theme, tr},
-    ui::{icon_button::icon_button, radius, text_action::plain_action},
+    ui::{icon_button::icon_button, radius, text_action::plain_action, type_scale},
 };
 use super::Workspace;
 
@@ -87,10 +87,10 @@ impl Workspace {
                 .on_click(|event, window, _| if event.click_count() == 2 { window.titlebar_double_click(); })
                 .child(div().h(px(28.)).px(px(10.)).flex_none().max_w(px(360.)).overflow_hidden().rounded(radius::CONTROL)
                     .bg(theme.selected).border_1().border_color(theme.accent).flex().items_center()
-                    .text_size(px(14.)).font_weight(FontWeight(460.)).text_color(theme.text).whitespace_nowrap().text_ellipsis()
+                    .text_size(type_scale::BODY).font_weight(type_scale::CONTROL).text_color(theme.text).whitespace_nowrap().text_ellipsis()
                     .child(format!("{note_name} · {}", tr("页面历史", "Page History"))))
                 .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-                    .text_size(px(14.)).font_weight(FontWeight(500.)).text_color(theme.text_secondary)
+                    .text_size(type_scale::BODY).font_weight(type_scale::CONTROL).text_color(theme.text_secondary)
                     .child(title)))
             .child(div().flex_none().flex().items_center().gap(px(8.))
                 .child(render_mode_switch(mode, move |mode, _, cx| {
@@ -109,7 +109,7 @@ impl Workspace {
         let can_undo = toast.can_undo;
         Some(div().mx(px(28.)).mt(px(12.)).p(px(10.)).rounded(radius::CONTROL).bg(theme.selected).border_1().border_color(theme.accent)
             .flex().items_center().justify_between().gap(px(12.))
-            .child(div().text_size(px(14.)).font_weight(FontWeight(460.)).text_color(theme.text).child(msg))
+            .child(div().text_size(type_scale::BODY).font_weight(type_scale::CONTROL).text_color(theme.text).child(msg))
             .child(div().flex().items_center().gap(px(8.))
                 .when(can_undo, |row| row.child(plain_action(
                     "history-toast-undo", tr("撤销恢复", "Undo Restore"), 28., 12., 13.,

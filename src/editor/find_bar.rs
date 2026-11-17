@@ -17,7 +17,7 @@ fn button(glyph: Icon, id: &'static str, on: impl Fn(&mut Editor, &mut Window, &
     let theme = Theme::ocean();
     div().id(id).group(id).relative().children(crate::ui::smoke_overlay::probe(id)).size(px(32.)).flex_none().flex().items_center().justify_center().rounded(crate::ui::radius::CONTROL)
         .cursor(CursorStyle::PointingHand).hover(|s| s.bg(theme.hover))
-        .child(stateful_icon(id, glyph, px(14.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
+        .child(stateful_icon(id, glyph, px(crate::ui::icon_size::INLINE), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| { on(this, window, cx); cx.stop_propagation(); }))
 }
 
@@ -32,7 +32,7 @@ pub(super) fn find_bar(editor: &Editor, cx: &mut Context<Editor>) -> Option<impl
         .key_context("FindBar")
         .on_action(cx.listener(|this, _: &Escape, window, cx| { this.close_find(window, cx); cx.stop_propagation(); }))
         .on_action(cx.listener(|this, _: &ExitBlock, window, cx| { this.find_step(false, window, cx); cx.stop_propagation(); }))
-        .child(icon(Icon::FindSearch, px(14.), theme.mono_icon_colors(theme.text_secondary)))
+        .child(icon(Icon::FindSearch, px(crate::ui::icon_size::ROW), theme.mono_icon_colors(theme.text_secondary)))
         .child(div().w(px(180.)).h(px(28.)).flex_none().flex().items_center().text_size(px(14.))
             .child(Input::new(&find.input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)).px(px(0.))))
         .child(div().flex_none().w(px(72.)).px(px(6.)).flex().justify_end().text_color(theme.text_secondary).child(label))

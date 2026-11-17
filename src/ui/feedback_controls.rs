@@ -2,14 +2,14 @@
 use crate::ui::tooltip::TooltipExt;
 use std::time::Duration;
 use gpui::{
-    Animation, AnimationExt as _, App, AvailableSpace, CursorStyle, ElementId, FontWeight,
+    Animation, AnimationExt as _, App, AvailableSpace, CursorStyle, ElementId,
     InteractiveElement, IntoElement, MouseButton, ParentElement, SharedString,
     StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder as _, px,
 };
 use gpui_component::animation::cubic_bezier;
 use crate::icons::{Icon, icon, stateful_icon};
 use crate::theme::{Theme, tooltip, tr};
-use super::{modal::puff_burst_cluster, radius};
+use super::{icon_size, modal::puff_burst_cluster, radius, type_scale};
 
 fn prepaint_element(bounds: gpui::Bounds<gpui::Pixels>, window: &mut Window, cx: &mut App, mut el: gpui::AnyElement) -> gpui::AnyElement {
     let space = gpui::size(AvailableSpace::Definite(bounds.size.width), AvailableSpace::Definite(bounds.size.height));
@@ -50,7 +50,7 @@ pub fn titlebar_feedback_button(
         let icon_node = stateful_icon(
             "titlebar-feedback",
             Icon::MessageSquare,
-            px(18.),
+            px(icon_size::CHROME),
             open || hovered,
             idle,
             duo_hover,
@@ -171,19 +171,19 @@ pub fn feedback_chip(
         .flex()
         .items_center()
         .justify_center()
-        .text_size(px(14.))
+        .text_size(type_scale::BODY)
         .cursor(CursorStyle::PointingHand)
         .when(active, |d| {
             d.border_color(theme.accent)
                 .bg(theme.selected)
                 .text_color(theme.text)
-                .font_weight(FontWeight(600.))
+                .font_weight(type_scale::TITLE)
         })
         .when(!active, |d| {
             d.border_color(theme.btn_border)
                 .bg(theme.sidebar)
                 .text_color(theme.text_secondary)
-                .font_weight(FontWeight(500.))
+                .font_weight(type_scale::CONTROL)
                 .hover(move |s| {
                     s.border_color(theme.accent)
                         .bg(theme.hover)
@@ -236,8 +236,8 @@ pub fn feedback_send_button(
             .rounded(px(8.))
             .bg(theme.accent)
             .text_color(gpui::white())
-            .text_size(px(14.))
-            .font_weight(FontWeight(600.))
+            .text_size(type_scale::BODY)
+            .font_weight(type_scale::TITLE)
             .flex()
             .items_center()
             .justify_center()

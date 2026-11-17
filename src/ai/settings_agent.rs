@@ -127,7 +127,7 @@ impl AiSettings {
             .bg(bg).border_1().border_color(border)
             .flex().items_center().justify_between().gap(px(10.))
             .child(div().flex().items_center().gap(px(8.)).min_w_0().flex_1()
-                .child(div().flex_none().child(icon(Icon::HelpCircle, px(15.), theme.mono_icon_colors(fg))))
+                .child(div().flex_none().child(icon(Icon::HelpCircle, px(crate::ui::icon_size::INLINE), theme.mono_icon_colors(fg))))
                 .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
                     .text_size(px(14.)).line_height(px(20.)).text_color(fg)
                     .child(tr("当前未在对话栏启用，开启后可在模型切换器中选择", "Disabled in chat. Enable to select in the model switcher"))))

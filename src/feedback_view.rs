@@ -1,6 +1,6 @@
 //! Ocean Paper view for the Feedback modal (`#feedback-overlay` / `#feedback-dialog`).
 use gpui::{
-    AnyElement, App, Context, Focusable, FontWeight, InteractiveElement, IntoElement, MouseButton,
+    AnyElement, App, Context, Focusable, InteractiveElement, IntoElement, MouseButton,
     ParentElement, Render, SharedString, Styled, Window, div, px, rgb,
 };
 use gpui_component::input::{Escape as InputEscape, Input, Textarea};
@@ -11,7 +11,7 @@ use crate::theme::{Theme, is_en, tr};
 use crate::ui::feedback_controls::{feedback_chip, feedback_done_badge, feedback_send_button};
 use crate::ui::modal::{modal_close_button, modal_secondary_button};
 use crate::ui::motion::modal_enter;
-use crate::ui::radius;
+use crate::ui::{radius, type_scale};
 
 impl Render for FeedbackModal {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -29,8 +29,8 @@ impl Render for FeedbackModal {
             });
             div().id("feedback-header").relative().children(crate::ui::smoke_overlay::probe("feedback-header")).flex().items_start().justify_between().gap(px(12.)).child(
                 div().flex_1().min_w_0().flex().flex_col().gap(px(4.))
-                    .child(div().text_size(px(20.)).line_height(px(26.)).font_weight(FontWeight(650.)).text_color(theme.text).child(tr("给我们带句话", "Send us a note")))
-                    .child(div().w_full().whitespace_normal().text_size(px(14.)).line_height(px(21.)).text_color(theme.text_secondary).child(tr(
+                    .child(div().text_size(px(20.)).line_height(px(26.)).font_weight(type_scale::TITLE).text_color(theme.text).child(tr("给我们带句话", "Send us a note")))
+                    .child(div().w_full().whitespace_normal().text_size(type_scale::BODY).line_height(px(21.)).text_color(theme.text_secondary).child(tr(
                         "用得顺不顺手、哪里可以做得更好，或者遇到了问题、有什么想法，都可以跟我们聊聊。",
                         "Tell us what's working well, what could be better, or anything that got in your way.",
                     ))),
@@ -77,21 +77,21 @@ impl FeedbackModal {
         let msg_box = div().id("feedback-message-box").relative().children(crate::ui::smoke_overlay::probe("feedback-message-box"))
             .min_h(px(116.)).px(px(10.)).py(px(8.)).rounded(px(8.))
             .border_1().border_color(if msg_focused { theme.accent } else { theme.btn_border })
-            .bg(theme.sidebar).text_size(px(14.)).line_height(px(22.)).text_color(theme.text)
+            .bg(theme.sidebar).text_size(type_scale::BODY).line_height(px(22.)).text_color(theme.text)
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, w, cx| this.message.update(cx, |m, cx| m.focus(w, cx))))
             .child(Textarea::new(&self.message).appearance(false).bordered(false));
 
         let contact_box = div().id("feedback-contact-box").relative().children(crate::ui::smoke_overlay::probe("feedback-contact-box"))
             .h(px(38.)).px(px(10.)).rounded(px(8.))
             .border_1().border_color(if contact_focused { theme.accent } else { theme.btn_border })
-            .bg(theme.sidebar).flex().items_center().text_size(px(14.)).text_color(theme.text)
+            .bg(theme.sidebar).flex().items_center().text_size(type_scale::BODY).text_color(theme.text)
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, w, cx| this.contact.update(cx, |c, cx| c.focus(w, cx))))
             .child(div().flex_1().child(Input::new(&self.contact).appearance(false).bordered(false).focus_bordered(false).h(px(32.))));
 
         let status = if let Some(err) = self.error.clone() {
-            div().id("feedback-status").text_size(px(14.)).text_color(rgb(0xc4514b)).child(err)
+            div().id("feedback-status").text_size(type_scale::BODY).text_color(rgb(0xc4514b)).child(err)
         } else if has_draft_text {
-            div().id("feedback-status").text_size(px(14.)).text_color(theme.text_secondary)
+            div().id("feedback-status").text_size(type_scale::BODY).text_color(theme.text_secondary)
                 .child(tr("草稿已自动保存，误关也不会丢失", "Draft auto-saved"))
         } else {
             div().id("feedback-status")
@@ -103,8 +103,8 @@ impl FeedbackModal {
             send_ent.update(cx, |m, cx| m.submit(w, cx));
         });
 
-        let email_head = div().flex().items_center().gap(px(6.)).text_size(px(14.))
-            .child(div().font_weight(FontWeight(600.)).text_color(theme.text).child(tr("回复邮箱", "Reply email")))
+        let email_head = div().flex().items_center().gap(px(6.)).text_size(type_scale::BODY)
+            .child(div().font_weight(type_scale::TITLE).text_color(theme.text).child(tr("回复邮箱", "Reply email")))
             .child(div().text_color(theme.text_secondary).child(tr("（选填）", "(optional)")));
 
         div().flex().flex_col().gap(px(16.))
@@ -126,15 +126,15 @@ impl FeedbackModal {
         };
         div().id("feedback-done").relative().children(crate::ui::smoke_overlay::probe("feedback-done")).py(px(8.)).flex().flex_col().items_center().gap(px(12.))
             .child(feedback_done_badge(self.done_seq))
-            .child(div().text_size(px(18.)).font_weight(FontWeight(650.)).text_color(theme.text).child(tr("收到了，谢谢你", "Got it, thank you")))
-            .child(div().text_size(px(14.)).line_height(px(22.)).text_color(theme.text_secondary).child(note))
+            .child(div().text_size(px(18.)).font_weight(type_scale::TITLE).text_color(theme.text).child(tr("收到了，谢谢你", "Got it, thank you")))
+            .child(div().text_size(type_scale::BODY).line_height(px(22.)).text_color(theme.text_secondary).child(note))
             .child(div().pt(px(6.)).w(px(96.)).child(modal_secondary_button("feedback-done-close", tr("好的", "Done"), |_, w, cx| { let _ = close(w, cx); })))
     }
 }
 
 fn field_section(theme: &Theme, title: &'static str, body: impl IntoElement) -> impl IntoElement {
     div().flex().flex_col().gap(px(8.))
-        .child(div().text_size(px(14.)).font_weight(FontWeight(600.)).text_color(theme.text).child(title))
+        .child(div().text_size(type_scale::BODY).font_weight(type_scale::TITLE).text_color(theme.text).child(title))
         .child(body)
 }
 

@@ -53,7 +53,7 @@ pub fn render_restore_modal(
                         .cursor(CursorStyle::PointingHand)
                         .hover(|s| s.bg(theme.hover))
                         .on_mouse_down(MouseButton::Left, move |ev, w, cx| on_cancel_close(ev, w, cx))
-                        .child(icon(Icon::Close, px(14.), theme.icon_colors(theme.text_secondary))),
+                        .child(icon(Icon::Close, px(crate::ui::icon_size::INLINE), theme.mono_icon_colors(theme.text_secondary))),
                 ),
         )
         .child(

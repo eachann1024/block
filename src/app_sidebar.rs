@@ -1,11 +1,12 @@
 //! Sidebar chrome: resizable edge, notebook switcher and window-level overlays.
 use crate::ui::tooltip::TooltipExt;
 use gpui::{
-    AnyElement, Context, CursorStyle, FontWeight, MouseButton, Pixels, SharedString,
+    AnyElement, Context, CursorStyle, MouseButton, Pixels, SharedString,
     Window, WindowControlArea, div, point, prelude::*, px,
 };
 use crate::icons::{Icon, stateful_icon};
 use crate::theme::{Theme, format_hotkey, tr};
+use crate::ui::{icon_size, type_scale};
 use super::{Workspace, file_ops::display_name, tabs::hover_tinted_icon, update_state_width};
 use super::menu::{ItemId, menu_item, menu_surface, separator};
 
@@ -13,8 +14,8 @@ pub(super) const MIN_WIDTH: f32 = 240.;
 pub(super) const MAX_WIDTH: f32 = 420.;
 const TITLEBAR_LEFT_PAD: f32 = if cfg!(any(target_os = "macos", target_family = "wasm")) { 82. } else { 10. };
 const TITLEBAR_RIGHT_PAD: f32 = 8.;
-const TOGGLE_SIZE: f32 = 26.;
-const NAV_BUTTON_SIZE: f32 = 24.;
+const TOGGLE_SIZE: f32 = icon_size::CHROME_BOX;
+const NAV_BUTTON_SIZE: f32 = icon_size::CHROME_BOX;
 const TITLEBAR_GAP: f32 = 2.;
 
 /// Collapsed header hugs its content: traffic lights, optional nav buttons, then the toggle.
@@ -99,7 +100,7 @@ impl Workspace {
                         cx.stop_propagation();
                         this.toggle_sidebar(window, cx);
                     }))
-                    .child(hover_tinted_icon(btn_group, glyph, 18., theme.text_secondary, theme.text, theme.icon_fill)))))
+                    .child(hover_tinted_icon(btn_group, glyph, icon_size::CHROME, theme.text_secondary, theme.text, theme.icon_fill)))))
     }
 
     /// Invisible 8px strip over the sidebar's right border.
@@ -146,9 +147,10 @@ impl Workspace {
         let enabled = self.ui_enabled();
         let open = self.switcher_open;
         div().id("notebook-switcher").group("notebook-switcher").relative().child(crate::ui::placement::track_bounds(SWITCHER_BOUNDS.with(Clone::clone), open)).children(crate::ui::smoke_overlay::probe("notebook-switcher")).flex_1().min_w_0().h(px(30.)).px(px(8.)).flex().items_center().gap(px(7.))
-            .rounded(crate::ui::radius::CONTROL).text_size(px(14.)).font_weight(FontWeight(500.)).text_color(theme.text)
-            .when(open, |b| b.bg(theme.hover))
-            .when(enabled, |b| b.cursor(CursorStyle::PointingHand).hover(|style| style.bg(theme.hover))
+            .rounded(crate::ui::radius::CONTROL).border_1().border_color(gpui::transparent_black())
+            .text_size(type_scale::BODY).font_weight(type_scale::CONTROL).text_color(theme.text)
+            .when(open, |b| b.bg(theme.selected).border_color(theme.accent))
+            .when(enabled, |b| b.cursor(CursorStyle::PointingHand).when(!open, |b| b.hover(|style| style.bg(theme.hover)))
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                     cx.stop_propagation();
                     let open = !this.switcher_open;
@@ -157,9 +159,9 @@ impl Workspace {
                     cx.notify();
                 })))
             .when(!enabled, |b| b.opacity(0.5))
-            .child(stateful_icon("notebook-switcher", Icon::FolderOpen, px(16.), open, theme.mono_icon_colors(theme.text), theme.icon_colors(theme.text)))
+            .child(stateful_icon("notebook-switcher", Icon::FolderOpen, px(icon_size::ROW), open, theme.mono_icon_colors(theme.text), theme.icon_colors(if open { theme.accent } else { theme.text })))
             .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(name))
-            .child(stateful_icon("notebook-switcher", Icon::ChevronUp, px(16.), open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text_secondary)))
+            .child(stateful_icon("notebook-switcher", Icon::ChevronUp, px(icon_size::INLINE), open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text_secondary)))
     }
 
     /// Window-level overlays: outside-click catcher, switcher list, tree menu, search.
@@ -256,5 +258,5 @@ fn forget_button(path: std::path::PathBuf, cx: &mut Context<Workspace>) -> gpui:
             }).detach();
             cx.notify();
         }))
-        .child(stateful_icon(group, Icon::Close, px(12.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
+        .child(stateful_icon(group, Icon::Close, px(icon_size::MICRO), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
 }

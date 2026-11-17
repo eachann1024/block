@@ -1,9 +1,9 @@
 use std::time::{Duration, Instant};
 use gpui::{
-    Animation, AnimationExt, AnyElement, FontWeight, Hsla, IntoElement, SharedString, div,
+    Animation, AnimationExt, AnyElement, Hsla, IntoElement, SharedString, div,
     prelude::*, px, rgb, rgba,
 };
-use crate::{icons::{Icon, icon}, theme::is_dark};
+use crate::{icons::{Icon, icon}, theme::is_dark, ui::{icon_size, type_scale}};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TaskStatus { Running, Completed, Failed, Stopped, Unknown }
@@ -71,7 +71,7 @@ fn elapsed_label(duration: Duration) -> String {
 }
 
 pub fn elapsed(key: &str, value: ProcessElapsed) -> AnyElement {
-    let text = div().font_family(crate::theme::mono_font_family()).text_size(px(12.)).text_color(ink_3());
+    let text = div().font_family(crate::theme::mono_font_family()).text_size(type_scale::META).text_color(ink_3());
     match value {
         ProcessElapsed::Finished(_) => text.child(elapsed_label(value.duration())).into_any_element(),
         ProcessElapsed::Running(_) => text.with_animation(
@@ -95,7 +95,7 @@ pub fn status_icon_with_pattern(key: &str, status: TaskStatus, pattern: LoaderPa
             TaskStatus::Stopped => Icon::Stop,
             _ => unreachable!(),
         };
-        return icon(glyph, px(12.), theme.mono_icon_colors(color)).into_any_element();
+        return icon(glyph, px(icon_size::MICRO), theme.mono_icon_colors(color)).into_any_element();
     }
     let mut grid = div().w(px(15.)).h(px(15.)).flex().flex_col().gap(px(1.5));
     for row in 0..3 {
@@ -135,7 +135,7 @@ fn step_glyph(kind: ProcessStepIcon, color: Hsla) -> AnyElement {
         ProcessStepIcon::Run => Icon::ToolRun,
         ProcessStepIcon::Read => Icon::ToolRead,
     };
-    icon(glyph, px(13.), theme.mono_icon_colors(color)).into_any_element()
+    icon(glyph, px(icon_size::MICRO), theme.mono_icon_colors(color)).into_any_element()
 }
 
 pub fn row_icon_slot(
@@ -146,7 +146,7 @@ pub fn row_icon_slot(
     let color = ink_3();
     if is_open {
         return div().size(px(16.)).flex_none().flex().items_center().justify_center()
-            .child(icon(Icon::TbChevron, px(12.), theme.mono_icon_colors(color))).into_any_element();
+            .child(icon(Icon::TbChevron, px(icon_size::MICRO), theme.mono_icon_colors(color))).into_any_element();
     }
     let base = div().size(px(16.)).flex().items_center().justify_center()
         .when(expandable, |el| el.group_hover(row_group.clone(), |s| s.invisible()))
@@ -156,7 +156,7 @@ pub fn row_icon_slot(
         .child(base)
         .child(div().absolute().top_0().left_0().size(px(16.)).flex().items_center().justify_center()
             .invisible().group_hover(row_group.clone(), |s| s.visible())
-            .child(icon(Icon::TbChevronRight, px(12.), theme.mono_icon_colors(color))))
+            .child(icon(Icon::TbChevronRight, px(icon_size::MICRO), theme.mono_icon_colors(color))))
         .into_any_element()
 }
 
@@ -166,7 +166,7 @@ pub fn inline_tool_chip(detail: &str, mono: bool) -> AnyElement {
         .border_1().border_color(field_border()).bg(field_bg()).hover(|s| s.bg(row_hover_bg()))
         .flex().items_center().overflow_hidden()
         .when(mono, |el| el.font_family(crate::theme::mono_font_family()))
-        .text_size(px(11.5)).font_weight(FontWeight(400.)).text_color(theme.text_secondary)
+        .text_size(type_scale::META).font_weight(type_scale::REGULAR).text_color(theme.text_secondary)
         .child(div().w_full().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(detail.to_owned()))
         .into_any_element()
 }
@@ -175,12 +175,12 @@ pub fn diff_preview_popover(chip: &ProcessDiffChip) -> AnyElement {
     let (theme, green, red) = (super::ai_theme::theme(), diff_green(), diff_red());
     div().w(px(288.)).overflow_hidden().rounded(px(10.)).border_1().border_color(theme.btn_border).bg(theme.paper).shadow_lg().flex().flex_col()
         .child(div().flex().items_center().justify_between().gap(px(8.)).border_b_1().border_color(theme.hairline).px(px(10.)).py(px(6.))
-            .font_family(crate::theme::mono_font_family()).text_size(px(11.))
+            .font_family(crate::theme::mono_font_family()).text_size(type_scale::META)
             .child(div().min_w_0().flex_1().overflow_hidden().whitespace_nowrap().text_ellipsis().text_color(theme.text_secondary).child(chip.file.clone()))
             .child(div().flex_none().flex().items_center().gap(px(4.))
                 .when(chip.add > 0, |el| el.child(div().text_color(green).child(format!("+{}", chip.add))))
                 .when(chip.del > 0, |el| el.child(div().text_color(red).child(format!("−{}", chip.del))))))
-        .child(div().py(px(4.)).font_family(crate::theme::mono_font_family()).text_size(px(11.)).line_height(px(19.8)).flex().flex_col()
+        .child(div().py(px(4.)).font_family(crate::theme::mono_font_family()).text_size(type_scale::META).line_height(px(20.)).flex().flex_col()
             .children(chip.lines.iter().map(|line| {
                 let (bg, fg, sign) = match line.tone {
                     DetailTone::Add => (green_tint(), green, "+"),

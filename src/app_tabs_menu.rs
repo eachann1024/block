@@ -137,7 +137,6 @@ pub(super) fn render_closing_ghost(ghost: &ClosingGhost) -> impl IntoElement {
     div().id(("tab-closing", ghost.seq as usize)).h(px(28.)).flex_none().overflow_hidden()
         .rounded(crate::ui::radius::CONTROL).flex().items_center().gap(px(6.)).text_size(px(13.)).line_height(px(18.))
         .text_color(theme.text_secondary)
-        .child(icon(Icon::Note, px(14.), theme.mono_icon_colors(theme.text_secondary)))
         .child(div().relative().flex_1().min_w_0().h_full().flex().items_center().overflow_hidden()
             .child(div().whitespace_nowrap().child(ghost.label.clone()))
             .child(tab_fade(theme.shell).absolute().top_0().bottom_0().right_0()))
