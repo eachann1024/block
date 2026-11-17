@@ -12,7 +12,7 @@ const TOOLTIP_HEIGHT: f32 = 30.;
 const TOOLTIP_PAD_X: f32 = 12.;
 const TOOLTIP_FONT_SIZE: f32 = 13.;
 const TOOLTIP_LINE_HEIGHT: f32 = 18.;
-const TOOLTIP_ICON_SIZE: f32 = 14.;
+const TOOLTIP_ICON_SIZE: f32 = crate::ui::icon_size::INLINE;
 const TOOLTIP_ICON_GAP: f32 = 5.;
 const TOOLTIP_OFFSET_BELOW: f32 = 6.;
 

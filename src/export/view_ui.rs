@@ -100,7 +100,7 @@ impl ExportView {
                     window.titlebar_double_click();
                 }
             })
-            .child(icon(Icon::Image, px(15.), theme.mono_icon_colors(theme.text_secondary)))
+            .child(icon(Icon::Image, px(crate::ui::icon_size::ROW), theme.mono_icon_colors(theme.text_secondary)))
             .child(
                 div()
                     .min_w_0()
@@ -234,7 +234,7 @@ impl ExportView {
                                     .id("export-reveal")
                                     .flex_none()
                                     .cursor_pointer()
-                                    .font_weight(FontWeight(500.))
+                                    .font_weight(crate::ui::type_scale::CONTROL)
                                     .text_color(theme.accent)
                                     .on_click(
                                         cx.listener(|this, _: &ClickEvent, _, _| this.reveal_saved()),
@@ -269,7 +269,7 @@ impl ExportView {
         let mut fill = c(0xffffff);
         fill.a = 0.35;
         let colors = IconColors { line: c(0xffffff), fill, accent: c(0xffffff) };
-        let glyph = icon(Icon::Download, px(15.), colors);
+        let glyph = icon(Icon::Download, px(crate::ui::icon_size::ROW), colors);
         button("export-save", self.format.save_label(), glyph, true, ready)
             .when(ready, |b| b.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.save(cx))))
     }
@@ -279,7 +279,7 @@ impl ExportView {
         let glyph = stateful_icon(
             "export-copy",
             if self.copied { Icon::Check } else { Icon::Copy },
-            px(15.),
+            px(crate::ui::icon_size::ROW),
             self.copied,
             theme.mono_icon_colors(theme.text),
             theme.icon_colors(if self.copied { theme.accent } else { theme.text }),

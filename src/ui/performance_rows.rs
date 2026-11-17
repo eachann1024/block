@@ -1,12 +1,12 @@
 use std::{sync::OnceLock, time::Duration};
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, CursorStyle, Div, FontFeatures, FontWeight,
+    Animation, AnimationExt, AnyElement, App, CursorStyle, Div, FontFeatures,
     IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString, Stateful, Styled,
     Window, div, linear_color_stop, linear_gradient, prelude::*, px, relative,
 };
 use crate::{
     theme::{Theme, is_dark, tr},
-    ui::{annotation_card::spinner, fade, radius, smoke_overlay},
+    ui::{annotation_card::spinner, fade, radius, smoke_overlay, type_scale},
 };
 
 /// OpenType `tnum`: every digit has the same advance, so 142.3 and 188.8 occupy the same width.
@@ -22,14 +22,14 @@ pub fn metric(label: impl Into<SharedString>, value: impl Into<SharedString>) ->
         .flex_none()
         .items_center()
         .gap(px(5.))
-        .text_size(px(12.))
+        .text_size(type_scale::META)
         .child(div().flex_none().whitespace_nowrap().text_color(theme.text_secondary).child(label.into()))
         .child(
             div()
                 .flex_none()
                 .whitespace_nowrap()
-                .text_size(px(13.))
-                .font_weight(FontWeight(560.))
+                .text_size(type_scale::SMALL)
+                .font_weight(type_scale::TITLE)
                 .font_features(tabular_nums())
                 .text_color(theme.text)
                 .child(value.into()),
@@ -57,8 +57,8 @@ pub fn refresh_button(
         .items_center()
         .justify_center()
         .gap(px(6.))
-        .text_size(px(13.))
-        .font_weight(FontWeight(460.))
+        .text_size(type_scale::SMALL)
+        .font_weight(type_scale::CONTROL)
         .text_color(if loading { theme.text_secondary } else { theme.text })
         .cursor(if loading { CursorStyle::Arrow } else { CursorStyle::PointingHand })
         .when(!loading, |btn| btn.hover(|s| s.bg(theme.hover).border_color(theme.accent)))
@@ -95,8 +95,8 @@ pub fn loading_screen() -> AnyElement {
                 .child(spinner("performance-loading-spin", theme.accent))
                 .child(
                     div()
-                        .text_size(px(13.))
-                        .font_weight(FontWeight(500.))
+                        .text_size(type_scale::SMALL)
+                        .font_weight(type_scale::CONTROL)
                         .text_color(theme.text)
                         .child(tr("正在统计磁盘与进程占用…", "Scanning storage and process usage…")),
                 ),

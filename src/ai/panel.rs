@@ -105,7 +105,7 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession, phase: cr
     } else {
         let send_ed = editor.clone();
         field
-            .child(icon(Icon::Sparkles, px(15.), theme.icon_colors(theme.accent)))
+            .child(icon(Icon::Sparkles, px(crate::ui::icon_size::ROW), theme.icon_colors(theme.accent)))
             .child(div().flex_1().min_w_0().h(px(26.)).text_size(px(14.)).child(Input::new(&s.input).appearance(false).bordered(false).focus_bordered(false).h(px(26.))))
             .child(send_button("ai-send", move |_, window, cx| {
                 send_ed.update(cx, |this, cx| this.ai_submit_input(window, cx));

@@ -1,6 +1,6 @@
 use std::ops::Range;
 use gpui::{
-    AnyElement, App, Context, CursorStyle, Div, FontWeight, HighlightStyle, MouseButton,
+    AnyElement, App, Context, CursorStyle, Div, HighlightStyle, MouseButton,
     MouseDownEvent, SharedString, StyledText, Window, div, prelude::*, px,
 };
 use gpui_component::input::Input;
@@ -144,9 +144,9 @@ fn hit_row<V: 'static>(
         .cursor(CursorStyle::PointingHand)
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| on_pick(this, ix, window, cx)))
         .child(div().flex().items_center().gap(px(8.))
-            .child(div().flex_none().child(stateful_icon(hit_group, Icon::Note, px(14.), selected, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if selected { theme.accent } else { theme.text }))))
+            .child(div().flex_none().child(stateful_icon(hit_group, Icon::Note, px(crate::ui::icon_size::ROW), selected, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(if selected { theme.accent } else { theme.text }))))
             .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis()
-                .text_size(px(14.)).font_weight(FontWeight(500.)).child(highlighted(hit.title.clone(), &hit.title_marks)))
+                .text_size(px(14.)).font_weight(crate::ui::type_scale::CONTROL).child(highlighted(hit.title.clone(), &hit.title_marks)))
             .child(div().flex_none().max_w(px(220.)).overflow_hidden().whitespace_nowrap().text_ellipsis()
                 .text_size(px(12.)).text_color(theme.text_secondary).child(right)))
         .when(!hit.snippet.is_empty(), |row| row.child(div().pl(px(22.)).overflow_hidden().whitespace_nowrap().text_ellipsis()

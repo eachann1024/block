@@ -1,5 +1,5 @@
-use gpui::{CursorStyle, Div, ElementId, FontWeight, IntoElement, Stateful, div, prelude::*, px, rgb, rgba};
-use crate::theme::Theme;
+use gpui::{CursorStyle, Div, ElementId, IntoElement, Stateful, div, prelude::*, px, rgb, rgba};
+use crate::{theme::Theme, ui::type_scale};
 
 /// Card container with semantic status indicator and optional floating shadow.
 pub fn rail_note(id: impl Into<ElementId>, status: u32, floating: bool, content: impl IntoElement) -> Stateful<Div> {
@@ -53,8 +53,8 @@ pub fn reaction_pill(id: impl Into<ElementId>, emoji: &str, active: bool) -> Sta
         .items_center()
         .justify_center()
         .cursor(CursorStyle::PointingHand)
-        .child(div().text_size(px(14.)).line_height(px(16.)).child(emoji.to_owned()))
-        .child(div().text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight(500.)).child("1"))
+        .child(div().text_size(type_scale::BODY).line_height(px(16.)).child(emoji.to_owned()))
+        .child(div().text_size(type_scale::META).line_height(px(16.)).font_weight(type_scale::CONTROL).child("1"))
 }
 
 /// Emoji picker button inside the reaction popover, highlighting already-selected reactions.
@@ -94,7 +94,7 @@ pub fn badge(id: impl Into<ElementId>, index: usize, generated: bool, active: bo
     let border = if active || generated { theme.accent } else { theme.btn_border };
     div().id(id).size(px(24.)).rounded_full().bg(bg).border_1().border_color(border)
         .flex().items_center().justify_center()
-        .text_size(px(14.)).line_height(px(16.)).font_weight(FontWeight(600.)).text_color(theme.text)
+        .text_size(type_scale::BODY).line_height(px(16.)).font_weight(type_scale::TITLE).text_color(theme.text)
         .cursor(CursorStyle::PointingHand).hover(move |s| s.border_color(theme.accent))
         .child(format!("{index}"))
 }

@@ -1,12 +1,12 @@
 use gpui::{
-    AnimationExt, App, BoxShadow, CursorStyle, Div, ElementId, Entity, FontWeight, Hsla,
+    AnimationExt, App, BoxShadow, CursorStyle, Div, ElementId, Entity, Hsla,
     IntoElement, MouseButton, MouseDownEvent, Pixels, SharedString, Stateful, Styled, Window,
     div, prelude::*, px, rgb,
 };
 use gpui_component::input::{Input, InputState};
 use crate::{
     theme::{Theme, is_dark},
-    ui::dropdown::{palette, shadows as dropdown_shadows},
+    ui::{dropdown::{palette, shadows as dropdown_shadows}, type_scale},
 };
 
 fn accent_hover() -> Hsla {
@@ -29,7 +29,7 @@ pub fn card(id: impl Into<ElementId>, width: Option<Pixels>) -> Stateful<Div> {
         .bg(p.bg)
         .shadow(shadows())
         .occlude()
-        .text_size(px(14.))
+        .text_size(type_scale::BODY)
         .line_height(px(20.))
         .text_color(p.text)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -48,7 +48,7 @@ pub fn inline_input_slot(input: &Entity<InputState>, width: Option<Pixels>) -> D
         .bg(input_bg)
         .border_1()
         .border_color(theme.accent)
-        .text_size(px(14.))
+        .text_size(type_scale::BODY)
         .line_height(px(20.))
         .text_color(theme.text)
         .flex()
@@ -89,9 +89,9 @@ pub fn inline_action_button(
         .items_center()
         .justify_center()
         .cursor(CursorStyle::PointingHand)
-        .text_size(px(14.))
+        .text_size(type_scale::BODY)
         .line_height(px(20.))
-        .font_weight(FontWeight(500.))
+        .font_weight(type_scale::CONTROL)
         .when(accent, |b| {
             b.bg(theme.accent)
                 .text_color(rgb(0xffffff))
@@ -120,7 +120,7 @@ pub fn find_card(id: impl Into<ElementId>) -> Stateful<Div> {
         .border_1()
         .border_color(theme.menu_border)
         .shadow(shadows())
-        .text_size(px(12.))
+        .text_size(type_scale::META)
         .text_color(theme.text)
         .occlude()
 }

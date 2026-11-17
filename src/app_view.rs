@@ -303,7 +303,7 @@ impl Workspace {
             .when(enabled, |b| b.cursor(gpui::CursorStyle::PointingHand).hover(|style| style.bg(theme.btn_hover))
                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, window, cx| this.open_search(window, cx))))
             .when(!enabled, |b| b.opacity(0.5))
-            .child(stateful_icon("sidebar-search-btn", Icon::FindSearch, px(14.), search_open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
+            .child(stateful_icon("sidebar-search-btn", Icon::FindSearch, px(crate::ui::icon_size::ROW), search_open, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
             .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(tr("搜索", "Search")))
             .child(kbd(shortcut))
     }
@@ -334,13 +334,13 @@ impl Workspace {
                             .bg(theme.paper)
                             .border_1()
                             .border_color(theme.btn_border)
-                            .hover(|s| s.bg(theme.hover).border_color(theme.accent))
+                            .hover(|s| s.bg(theme.hover))
                             .tooltip_above(crate::ui::tooltip::tooltip(tr("有可用更新", "Update available")))
                             .on_mouse_down(gpui::MouseButton::Left, move |e, w, cx| on_down(e, w, cx))
                             .child(stateful_icon(
                                 "updater-badge-btn",
                                 Icon::Download,
-                                px(16.),
+                                px(crate::ui::icon_size::CHROME),
                                 false,
                                 theme.mono_icon_colors(theme.text_secondary),
                                 theme.icon_colors(theme.text),

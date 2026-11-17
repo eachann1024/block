@@ -2,7 +2,8 @@
 use std::path::{Path, PathBuf};
 use gpui::{App, Context, KeyBinding, actions, div, prelude::*, px};
 use crate::icons::Icon;
-use crate::ui::icon_button::icon_button;
+use crate::theme::tr;
+use crate::ui::icon_button::titlebar_icon_button;
 use super::{Workspace, tabs::{clear_tab_menu, record_tab_open}};
 
 const MAX_NAV_HISTORY: usize = 64;
@@ -199,11 +200,11 @@ impl Workspace {
         if !show_back && !show_fwd { return None; }
         let enabled = self.ui_enabled();
         Some(div().flex_none().flex().items_center().gap(px(2.))
-            .when(show_back, |d| d.child(icon_button("nav-back", Icon::ChevronLeft, enabled, cx.listener(|this, _, _, cx| {
+            .when(show_back, |d| d.child(titlebar_icon_button("nav-back", Icon::ChevronLeft, false, enabled, tr("后退", "Back"), cx.listener(|this, _, _, cx| {
                 cx.stop_propagation();
                 this.navigate_back(cx);
             }))))
-            .when(show_fwd, |d| d.child(icon_button("nav-forward", Icon::ChevronRight, enabled, cx.listener(|this, _, _, cx| {
+            .when(show_fwd, |d| d.child(titlebar_icon_button("nav-forward", Icon::ChevronRight, false, enabled, tr("前进", "Forward"), cx.listener(|this, _, _, cx| {
                 cx.stop_propagation();
                 this.navigate_forward(cx);
             })))))
