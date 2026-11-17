@@ -52,10 +52,18 @@ impl Run {
         self.annotation_emoji(cx, 0).await?;
         let reactions = self.editor(cx, |e| e.annotation_smoke_notes());
         self.check(9, reactions.len() == 1 && reactions[0].5.is_empty() && reactions[0].6 == ["👍"]
-            && self.editor(cx, |e| e.annotation_smoke_spans()) == expected, "无批注时跨行表情也只创建一个记录")?;
+            && self.editor(cx, |e| e.is_caret_hidden())
+            && self.editor(cx, |e| e.annotation_smoke_spans()) == expected, "无批注时跨行表情也只创建一个记录且收起文本光标")?;
         self.annotation_drag(cx, (0, 3), (3, 6)).await?;
         self.annotation_emoji(cx, 0).await?;
         self.check(9, self.editor(cx, |e| e.annotation_smoke_notes()).is_empty(), "重复选择相同表情移除整段回应")?;
+        self.press(cx, "cmd-z").await?;
+        self.check(9, self.editor(cx, |e| e.annotation_smoke_notes()).len() == 1
+            && self.editor(cx, |e| e.annotation_smoke_notes())[0].6 == ["👍"]
+            && self.editor(cx, |e| e.smoke_annotations_persisted()), "撤销取消表情可恢复表情回应")?;
+        self.press(cx, "cmd-shift-z").await?;
+        self.check(9, self.editor(cx, |e| e.annotation_smoke_notes()).is_empty()
+            && self.editor(cx, |e| e.smoke_annotations_persisted()), "重做再次移除表情回应")?;
         self.annotation_drag(cx, (0, 3), (3, 6)).await?;
         self.click_target(cx, crate::theme::tr("添加批注", "Add annotation"), "准备整段改写").await?;
         self.type_text(cx, "Rewrite").await?;

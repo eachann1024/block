@@ -80,6 +80,8 @@ impl Editor {
         self.annotate.composer.as_ref().map(|c| c.targets.len())
             .or_else(|| self.annotate.reactions.as_ref().map(|p| p.targets.len())).unwrap_or(0)
     }
+
+    pub(crate) fn is_caret_hidden(&self) -> bool { self.caret_hidden }
 }
 
 impl Editor {

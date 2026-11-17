@@ -139,16 +139,16 @@ impl Element for BlockText {
                 if !extend { this.caret.anchor = this.caret.head; }
             }
         });
-        let (focused, selected, head, empty, composing, placeholder, link_ranges) = {
+        let (focused, caret_hidden, selected, head, empty, composing, placeholder, link_ranges) = {
             let editor = self.editor.read(cx);
             let placeholder = editor.doc.get(self.block).and_then(|block| super::empty_hint::hint_for(block,
                 editor.is_first_line_delete_armed(self.block)));
-            (editor.focus.is_focused(window), editor.selected_range(self.block), editor.caret.head,
+            (editor.focus.is_focused(window), editor.caret_hidden, editor.selected_range(self.block), editor.caret.head,
                 editor.caret.is_empty(), editor.caret.composing.clone(),
-                placeholder.filter(|_| editor.path.is_some() && editor.caret.head.block == self.block && editor.caret.composing.is_none()),
+                placeholder.filter(|_| editor.path.is_some() && !editor.caret_hidden && editor.caret.head.block == self.block && editor.caret.composing.is_none()),
                 editor.active_link_ranges(self.block, window))
         };
-        let chip = super::inline_code_chip::ChipState { caret: (focused && empty && head.block == self.block
+        let chip = super::inline_code_chip::ChipState { caret: (focused && !caret_hidden && empty && head.block == self.block
                 && super::code_escape::side(self.editor.entity_id(), head).is_none()).then_some(head.offset),
             selection: if focused { selected.clone() } else { None }, hover: super::inline_code::hovered(self.editor.entity_id(), self.block) };
         let (fenced, minimal) = {
@@ -199,7 +199,7 @@ impl Element for BlockText {
                     if let Some(end) = super::code_escape::side(self.editor.entity_id(), head) {
                         origin = super::code_escape::caret_point(layout, origin, end);
                     }
-                    if empty {
+                    if empty && !caret_hidden {
                         let color = if self.editor.read(cx).is_first_line_delete_armed(self.block) { crate::ui::reveal::delete_arm_caret_color() } else { Theme::ocean().accent };
                         let alpha = super::caret_blink::alpha(&self.editor, (head.block, head.offset), cx);
                         if alpha > 0. { window.paint_quad(fill(Bounds::new(origin, size(px(2.), caret_h)), color.opacity(alpha)).corner_radii(px(1.))); }

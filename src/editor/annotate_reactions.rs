@@ -138,20 +138,29 @@ impl Editor {
 
     pub(crate) fn pick_reaction(&mut self, emoji: &str, cx: &mut Context<Self>) {
         let Some(picker) = self.annotate.reactions.take() else { return };
+        let before = self.snapshot();
         self.apply_single_reaction(picker.annotation_id, Some(&picker.targets), emoji);
         self.normalize_annotations();
         self.persist_annotations();
         self.caret.anchor = self.caret.head;
+        self.caret_hidden = true;
         self.table_sel = None;
         self.toolbar_anchor = None;
+        self.record_annotation_change(before, cx);
         cx.notify();
     }
 
     pub(crate) fn toggle_reaction_on_note(&mut self, id: u64, emoji: &str, cx: &mut Context<Self>) {
+        let before = self.snapshot();
         self.annotate.foot_picker_note = None;
         self.apply_single_reaction(Some(id), None, emoji);
         self.normalize_annotations();
         self.persist_annotations();
+        self.caret.anchor = self.caret.head;
+        self.caret_hidden = true;
+        self.table_sel = None;
+        self.toolbar_anchor = None;
+        self.record_annotation_change(before, cx);
         cx.notify();
     }
 

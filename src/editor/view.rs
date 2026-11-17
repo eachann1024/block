@@ -71,6 +71,7 @@ pub struct Editor {
     pub(super) preferred_x: Option<Pixels>,
     pub(super) pending_vertical: Option<(u64, Pixels, bool, bool)>,
     pub(super) reveal_caret: bool,
+    pub(super) caret_hidden: bool,
     pub(super) dirty: bool,
     pub(super) path: Option<PathBuf>,
     pub(super) status: String,
@@ -100,7 +101,7 @@ impl Editor {
         Self { doc, caret, focus: cx.focus_handle(), preview_focus: cx.focus_handle(), preview_was_open: false, hover: None, hover_gen: 0, dragging: None, drag_ranges: Default::default(),
             painted_rows: HashMap::new(), drag_over: None, selecting: false, block_menu: None, block_menu_scroll: Default::default(), nowrap: Default::default(), folded: Default::default(), fold_tails: Vec::new(), table_sel: None, table_menu: None, table_drag: None, table_extend: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, image_menu: None, link_ui: Default::default(), layouts: HashMap::new(),
             list: ListState::new(1, ListAlignment::Top, px(120.)), scroll_top: (0, px(0.)), preferred_x: None, pending_vertical: None,
-            reveal_caret: false, dirty: false, path: None, status: String::new(),
+            reveal_caret: false, caret_hidden: false, dirty: false, path: None, status: String::new(),
             history: Vec::new(), redo: Vec::new(), composition_before: None,
             persistence: Persistence::default(), pointer_subscriptions: Vec::new(), block_sel: None, minimal: false, find: None, search_jump: None, annotate: Default::default(), sessions: HashMap::new(),
             outline: Default::default(), surface: super::surface::Surface::Note, source_layouts: HashMap::new(), source_drag: false }
