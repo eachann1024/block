@@ -50,7 +50,7 @@ fn is_list_kind(block: &Block) -> bool {
 }
 /// Space above `block` after margin collapsing with `prev`: list items sit 4px apart
 /// (adjacent lists have no extra margin), everything else uses the larger margin.
-fn collapsed_gap(prev: &Block, block: &Block) -> f32 {
+pub(in crate::editor) fn collapsed_gap(prev: &Block, block: &Block) -> f32 {
     if is_list_kind(prev) && is_list_kind(block) { return 4.; }
     let above = margins(prev).1;
     let below = if prev.kind == Kind::H1
