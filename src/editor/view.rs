@@ -114,12 +114,7 @@ impl Editor {
     pub fn is_dirty(&self) -> bool { self.dirty }
     pub(crate) fn dismiss_dropdowns(&mut self) -> bool {
         let format_closed = match &mut self.format {
-            Some(super::format_cmds::FormatPop::Ai(s)) => {
-                let had_sub = s.menu != super::ai::session::AiMenu::None;
-                s.menu = super::ai::session::AiMenu::None;
-                s.menu_index = 0;
-                had_sub
-            }
+            Some(super::format_cmds::FormatPop::Ai(_)) => false,
             other => other.take().is_some(),
         };
         self.block_menu.take().is_some() | self.table_menu.take().is_some()
