@@ -112,6 +112,20 @@ impl Editor {
         self.annotate.followup = None;
         crate::editor::code_block::close_menus();
         crate::ui::callout_controls::close_menu();
+        if let Some(ai_input) = self.ai_session().and_then(|s| {
+            (!matches!(s.status, crate::editor::ai::session::AiStatus::Input)).then(|| s.input.clone())
+        }) {
+            if let Some(s) = self.format.as_mut().and_then(|f| match f {
+                crate::editor::format_cmds::FormatPop::Ai(s) => Some(s),
+                _ => None,
+            }) {
+                s.menu = crate::editor::ai::session::AiMenu::None;
+                s.menu_index = 0;
+            }
+            ai_input.update(cx, |i, cx| i.focus(window, cx));
+            cx.notify();
+            return;
+        }
         self.close_format(window, cx);
         if self.path.is_none() || !self.list.viewport_bounds().contains(&event.position) { return; }
         if (event.modifiers.platform || (!cfg!(target_os = "macos") && event.modifiers.control))
@@ -324,11 +338,17 @@ impl Editor {
                         self.commit_composition(cx);
                         let before = self.snapshot();
                         let old_indent = self.doc.blocks[from].meta.indent;
-                        let moved: Vec<_> = (from..from + n).map(|i| {
+                        let moved: Vec<_> = (from..from + n).enumerate().map(|(offset, i)| {
                             let mut block = self.doc.blocks[i].clone();
-                            block.meta.indent = target.indent + block.meta.indent.saturating_sub(old_indent);
+                            let next_indent = target.indent + block.meta.indent.saturating_sub(old_indent);
+                            if next_indent != block.meta.indent { block.meta.clean_source = None; }
+                            block.meta.indent = next_indent;
+                            if (to + offset != 0 || next_indent > 0) && block.meta.code_language.as_deref() == Some("yaml-frontmatter") {
+                                block.meta.code_language = Some("yaml".into());
+                                block.meta.clean_source = None;
+                            }
                             if let Some(code) = &mut block.meta.list_code {
-                                if i == from { block.meta.list_code = None; }
+                                if i == from { block.meta.list_code = None; block.meta.clean_source = None; }
                                 else { code.parent_indent = target.indent + code.parent_indent.saturating_sub(old_indent); }
                             }
                             block
