@@ -1,0 +1,566 @@
+package theme
+
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
+
+	"block/internal/model"
+	"github.com/egoist/mygo/ui"
+)
+
+// Ocean Paper layout & radius constants (matching DESIGN.md & src/theme.rs).
+const (
+	TitleBarHeight          float32 = 40
+	FullscreenBarHeight     float32 = 52
+	TrafficX                float32 = 16
+	TrafficY                float32 = 13
+	TrafficYTall            float32 = 19
+	TrafficLeadingMacOS     float32 = 82
+	TrafficLeadingOther     float32 = 16
+	SidebarDefaultWidth     float32 = 252
+	SidebarMinWidth         float32 = 240
+	SidebarMaxWidth         float32 = 420
+	AIPanelDefaultWidth     float32 = 380
+	AIPanelMinWidth         float32 = 320
+	AIPanelMaxWidth         float32 = 620
+	EditorStandardWidth     float32 = 672
+	EditorMaxOuterWidth     float32 = 720
+	RadiusControl           float32 = 8
+	RadiusCard              float32 = 12
+	RadiusSurface           float32 = 14
+	RadiusPill              float32 = 999
+	FontBodySize            float32 = 16
+	FontUISize              float32 = 14
+	FontSmallMinSize        float32 = 14
+)
+
+func IsMacOS() bool {
+	return runtime.GOOS == "darwin" || runtime.GOOS == "js"
+}
+
+func TrafficLeading() float32 {
+	if IsMacOS() {
+		return TrafficLeadingMacOS
+	}
+	return TrafficLeadingOther
+}
+
+func TitleBarActionTrailing() float32 {
+	if IsMacOS() {
+		return TrafficX - 4
+	}
+	return 0
+}
+
+// Palette holds the complete Ocean Paper Light or Dark token set.
+type Palette struct {
+	Dark           bool
+	Shell          ui.Color
+	Sidebar        ui.Color
+	SettingsBG     ui.Color
+	Paper          ui.Color
+	Card           ui.Color
+	Menu           ui.Color
+	Text           ui.Color
+	UIText         ui.Color
+	TextSecondary  ui.Color
+	UITextMuted    ui.Color
+	Placeholder    ui.Color
+	Accent         ui.Color
+	AccentHover    ui.Color
+	AccentPressed  ui.Color
+	AccentText     ui.Color
+	IconFill       ui.Color
+	Hover          ui.Color
+	Selected       ui.Color
+	Hairline       ui.Color
+	SidebarBorder  ui.Color
+	BtnBorder      ui.Color
+	CodeBG         ui.Color
+	QuoteBar       ui.Color
+	SelectionBG    ui.Color
+	SelectionFG    ui.Color
+	Danger         ui.Color
+	DangerSurface  ui.Color
+	Warning        ui.Color
+	WarningSurface ui.Color
+	Success        ui.Color
+	SuccessSurface ui.Color
+	DiffAddBG      ui.Color
+	DiffAddFG      ui.Color
+	DiffDelBG      ui.Color
+	DiffDelFG      ui.Color
+}
+
+var OceanLight = Palette{
+	Dark:           false,
+	Shell:          ui.Hex("#f1f1f1"),
+	Sidebar:        ui.Hex("#fafafa"),
+	SettingsBG:     ui.Hex("#f8f8f8"),
+	Paper:          ui.Hex("#ffffff"),
+	Card:           ui.Hex("#ffffff"),
+	Menu:           ui.Hex("#ffffff"),
+	Text:           ui.Hex("#1f1e1d"),
+	UIText:         ui.Hex("#20242c"),
+	TextSecondary:  ui.Hex("#52514e"),
+	UITextMuted:    ui.Hex("#526071"),
+	Placeholder:    ui.Hex("#93918c"),
+	Accent:         ui.Hex("#547dd0"),
+	AccentHover:    ui.Hex("#456ec2"),
+	AccentPressed:  ui.Hex("#395fb0"),
+	AccentText:     ui.Hex("#ffffff"),
+	IconFill:       ui.Hex("#c9d8f3"),
+	Hover:          ui.Hex("#eef3fc"),
+	Selected:       ui.Hex("#e5edfc"),
+	Hairline:       ui.Hex("#e4e6ea"),
+	SidebarBorder:  ui.Hex("#e6e6e6"),
+	BtnBorder:      ui.Hex("#dcdcdc"),
+	CodeBG:         ui.Hex("#f3f1ec"),
+	QuoteBar:       ui.Hex("#dbd9d4"),
+	SelectionBG:    ui.Hex("#cde2fb"),
+	SelectionFG:    ui.Hex("#184f95"),
+	Danger:         ui.Hex("#d64545"),
+	DangerSurface:  ui.Hex("#fdeeee"),
+	Warning:        ui.Hex("#c9822b"),
+	WarningSurface: ui.Hex("#fef5e7"),
+	Success:        ui.Hex("#2e8b57"),
+	SuccessSurface: ui.Hex("#eaf6ef"),
+	DiffAddBG:      ui.Hex("#e9f7ef"),
+	DiffAddFG:      ui.Hex("#1e6b3f"),
+	DiffDelBG:      ui.Hex("#fdecea"),
+	DiffDelFG:      ui.Hex("#9e2a2b"),
+}
+
+var OceanDark = Palette{
+	Dark:           true,
+	Shell:          ui.Hex("#343434"),
+	Sidebar:        ui.Hex("#222222"),
+	SettingsBG:     ui.Hex("#181818"),
+	Paper:          ui.Hex("#181818"),
+	Card:           ui.Hex("#222222"),
+	Menu:           ui.Hex("#222222"),
+	Text:           ui.Hex("#ececec"),
+	UIText:         ui.Hex("#ececec"),
+	TextSecondary:  ui.Hex("#b4b4b4"),
+	UITextMuted:    ui.Hex("#a0a7b4"),
+	Placeholder:    ui.Hex("#767676"),
+	Accent:         ui.Hex("#779de8"),
+	AccentHover:    ui.Hex("#88aae9"),
+	AccentPressed:  ui.Hex("#638ad8"),
+	AccentText:     ui.Hex("#111622"),
+	IconFill:       ui.Hex("#31456a"),
+	Hover:          ui.Hex("#2c2c2c"),
+	Selected:       ui.Hex("#343434"),
+	Hairline:       ui.Hex("#2e2e2e"),
+	SidebarBorder:  ui.Hex("#333333"),
+	BtnBorder:      ui.Hex("#444444"),
+	CodeBG:         ui.Hex("#242424"),
+	QuoteBar:       ui.Hex("#484848"),
+	SelectionBG:    ui.Hex("#2d426b"),
+	SelectionFG:    ui.Hex("#9dbcf5"),
+	Danger:         ui.Hex("#ef6b6b"),
+	DangerSurface:  ui.Hex("#3a2020"),
+	Warning:        ui.Hex("#e5a54b"),
+	WarningSurface: ui.Hex("#382c1a"),
+	Success:        ui.Hex("#4fb87d"),
+	SuccessSurface: ui.Hex("#1c3527"),
+	DiffAddBG:      ui.Hex("#1b3526"),
+	DiffAddFG:      ui.Hex("#7be0a6"),
+	DiffDelBG:      ui.Hex("#3b1f21"),
+	DiffDelFG:      ui.Hex("#f59393"),
+}
+
+type IconColors struct {
+	Line   ui.Color
+	Fill   ui.Color
+	Accent ui.Color
+}
+
+func (p Palette) DuoIconColors(line ui.Color) IconColors {
+	return IconColors{
+		Line:   line,
+		Fill:   p.IconFill,
+		Accent: p.Accent,
+	}
+}
+
+func (p Palette) MonoIconColors(c ui.Color) IconColors {
+	return IconColors{
+		Line:   c,
+		Fill:   ui.Transparent,
+		Accent: c,
+	}
+}
+
+func (p Palette) ToUITheme(fontFamily string) ui.Theme {
+	base := *ui.LightTheme()
+	if p.Dark {
+		base = *ui.DarkTheme()
+	}
+	base.Dark = p.Dark
+	base.Background = p.Paper
+	base.Surface = p.Card
+	base.SurfaceHover = p.Hover
+	base.SurfacePressed = p.Selected
+	base.Border = p.Hairline
+	base.Text = p.Text
+	base.TextMuted = p.TextSecondary
+	base.Accent = p.Accent
+	base.AccentHover = p.AccentHover
+	base.AccentPressed = p.AccentPressed
+	base.AccentText = p.AccentText
+	base.InactiveAccent = p.Accent
+	base.Danger = p.Danger
+	base.Warning = p.Warning
+	base.Success = p.Success
+	base.Selection = p.SelectionBG
+	base.Focus = p.Accent
+	base.FocusRingWidth = 2
+	base.FocusRingOffset = 1
+	base.Radius = RadiusControl
+	base.FontSize = FontUISize
+	base.Font = fontFamily
+	base.Scrollbar = p.TextSecondary.Alpha(0.32)
+	base.ScrollbarWidth = 6
+	return base
+}
+
+// Inline highlight/text colors supported in selection palette & Markdown spans.
+type NamedColor struct {
+	Name string
+	Zh   string
+	En   string
+	FG   ui.Color
+	BG   ui.Color
+}
+
+func FormatPalette(dark bool) []NamedColor {
+	if dark {
+		return []NamedColor{
+			{Name: "default", Zh: "默认", En: "Default", FG: OceanDark.Text, BG: ui.Transparent},
+			{Name: "gray", Zh: "灰", En: "Gray", FG: ui.Hex("#a6a6a6"), BG: ui.Hex("#2f2f2f")},
+			{Name: "brown", Zh: "棕", En: "Brown", FG: ui.Hex("#c99a7c"), BG: ui.Hex("#3a2b22")},
+			{Name: "orange", Zh: "橙", En: "Orange", FG: ui.Hex("#eba059"), BG: ui.Hex("#3e2b18")},
+			{Name: "yellow", Zh: "黄", En: "Yellow", FG: ui.Hex("#e5c454"), BG: ui.Hex("#3c3417")},
+			{Name: "green", Zh: "绿", En: "Green", FG: ui.Hex("#6bc48d"), BG: ui.Hex("#1e3628")},
+			{Name: "blue", Zh: "蓝", En: "Blue", FG: ui.Hex("#779de8"), BG: ui.Hex("#20304d")},
+			{Name: "purple", Zh: "紫", En: "Purple", FG: ui.Hex("#b58ce6"), BG: ui.Hex("#312344")},
+			{Name: "pink", Zh: "粉", En: "Pink", FG: ui.Hex("#e386b1"), BG: ui.Hex("#3e2230")},
+			{Name: "red", Zh: "红", En: "Red", FG: ui.Hex("#ef7676"), BG: ui.Hex("#402121")},
+		}
+	}
+	return []NamedColor{
+		{Name: "default", Zh: "默认", En: "Default", FG: OceanLight.Text, BG: ui.Transparent},
+		{Name: "gray", Zh: "灰", En: "Gray", FG: ui.Hex("#6f6e69"), BG: ui.Hex("#f1f0ec")},
+		{Name: "brown", Zh: "棕", En: "Brown", FG: ui.Hex("#8c5a3c"), BG: ui.Hex("#f6ede7")},
+		{Name: "orange", Zh: "橙", En: "Orange", FG: ui.Hex("#c4681c"), BG: ui.Hex("#fbefe3")},
+		{Name: "yellow", Zh: "黄", En: "Yellow", FG: ui.Hex("#9e7b12"), BG: ui.Hex("#fbf5dd")},
+		{Name: "green", Zh: "绿", En: "Green", FG: ui.Hex("#2b7a4b"), BG: ui.Hex("#e8f5ee")},
+		{Name: "blue", Zh: "蓝", En: "Blue", FG: ui.Hex("#3563b8"), BG: ui.Hex("#e8f0fc")},
+		{Name: "purple", Zh: "紫", En: "Purple", FG: ui.Hex("#7145a6"), BG: ui.Hex("#f1ebf9")},
+		{Name: "pink", Zh: "粉", En: "Pink", FG: ui.Hex("#b03b72"), BG: ui.Hex("#fae9f1")},
+		{Name: "red", Zh: "红", En: "Red", FG: ui.Hex("#c43838"), BG: ui.Hex("#fceaea")},
+	}
+}
+
+func ResolveNamedFG(name string, dark bool) (ui.Color, bool) {
+	if name == "" || name == "default" {
+		return ui.Transparent, false
+	}
+	for _, item := range FormatPalette(dark) {
+		if item.Name == name {
+			return item.FG, true
+		}
+	}
+	return ui.Transparent, false
+}
+
+func ResolveNamedBG(name string, dark bool) (ui.Color, bool) {
+	if name == "" || name == "default" {
+		return ui.Transparent, false
+	}
+	for _, item := range FormatPalette(dark) {
+		if item.Name == name {
+			return item.BG, true
+		}
+	}
+	return ui.Transparent, false
+}
+
+// Global reactive runtime theme/language/folder-rule state.
+var (
+	langAtomic atomic.Int32 // 0 = unset, 1 = Zh, 2 = En
+	darkAtomic atomic.Bool
+	modeMu     sync.RWMutex
+	themeMode  = model.ThemeSystem
+	editorFont = ""
+	codeFont   = "Menlo"
+	lineHeight = model.LineHeightNormal
+	zoomLevel  = float32(1.0)
+)
+
+func SystemLanguage() model.LanguageMode {
+	for _, env := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
+		v := strings.ToLower(os.Getenv(env))
+		if strings.HasPrefix(v, "zh") {
+			return model.LangZh
+		}
+		if strings.HasPrefix(v, "en") {
+			return model.LangEn
+		}
+	}
+	return model.LangZh
+}
+
+func Language() model.LanguageMode {
+	switch langAtomic.Load() {
+	case 1:
+		return model.LangZh
+	case 2:
+		return model.LangEn
+	default:
+		l := SystemLanguage()
+		SetLanguage(l)
+		return l
+	}
+}
+
+func SetLanguage(l model.LanguageMode) {
+	if l == model.LangEn {
+		langAtomic.Store(2)
+	} else {
+		langAtomic.Store(1)
+	}
+}
+
+func IsEn() bool {
+	return Language() == model.LangEn
+}
+
+func Tr(zh, en string) string {
+	if IsEn() {
+		return en
+	}
+	return zh
+}
+
+func SetDark(dark bool) {
+	darkAtomic.Store(dark)
+}
+
+func IsDark() bool {
+	return darkAtomic.Load()
+}
+
+func Ocean() Palette {
+	if IsDark() {
+		return OceanDark
+	}
+	return OceanLight
+}
+
+func SetThemeMode(m model.ThemeMode, systemDark bool) {
+	modeMu.Lock()
+	themeMode = m
+	modeMu.Unlock()
+	switch m {
+	case model.ThemeDark:
+		SetDark(true)
+	case model.ThemeLight:
+		SetDark(false)
+	default:
+		SetDark(systemDark)
+	}
+}
+
+func CurrentThemeMode() model.ThemeMode {
+	modeMu.RLock()
+	defer modeMu.RUnlock()
+	return themeMode
+}
+
+func SetTypography(edFont, cdFont string, lh model.LineHeightMode) {
+	modeMu.Lock()
+	editorFont = strings.TrimSpace(edFont)
+	if strings.TrimSpace(cdFont) != "" {
+		codeFont = strings.TrimSpace(cdFont)
+	}
+	if lh != "" {
+		lineHeight = lh
+	}
+	modeMu.Unlock()
+}
+
+func Typography() (edFont, cdFont string, lh model.LineHeightMode) {
+	modeMu.RLock()
+	defer modeMu.RUnlock()
+	return editorFont, codeFont, lineHeight
+}
+
+func SetZoom(z float32) float32 {
+	if z < 0.7 {
+		z = 0.7
+	}
+	if z > 2.0 {
+		z = 2.0
+	}
+	modeMu.Lock()
+	zoomLevel = z
+	modeMu.Unlock()
+	return z
+}
+
+func Zoom() float32 {
+	modeMu.RLock()
+	defer modeMu.RUnlock()
+	if zoomLevel <= 0 {
+		return 1.0
+	}
+	return zoomLevel
+}
+
+// Folder rules & search ignore helpers (matching src/theme_folders.rs).
+type compiledFolderRule struct {
+	rule model.FolderRule
+	re   *regexp.Regexp
+}
+
+var (
+	folderMu             sync.RWMutex
+	compiledRules        []compiledFolderRule
+	ignoredSearchFolders []string
+)
+
+func SetFolderRules(rules []model.FolderRule) {
+	compiled := make([]compiledFolderRule, 0, len(rules))
+	for _, r := range rules {
+		var re *regexp.Regexp
+		if r.Regex && strings.TrimSpace(r.Pattern) != "" {
+			re, _ = regexp.Compile(strings.TrimSpace(r.Pattern))
+		}
+		compiled = append(compiled, compiledFolderRule{rule: r, re: re})
+	}
+	folderMu.Lock()
+	compiledRules = compiled
+	folderMu.Unlock()
+}
+
+func FolderRules() []model.FolderRule {
+	folderMu.RLock()
+	defer folderMu.RUnlock()
+	out := make([]model.FolderRule, len(compiledRules))
+	for i, c := range compiledRules {
+		out[i] = c.rule
+	}
+	return out
+}
+
+func NormalizeFolderPattern(raw string) string {
+	s := strings.TrimSpace(raw)
+	if len(s) >= 2 && strings.HasPrefix(s, "/") && strings.HasSuffix(s, "/") {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
+func ValidateFolderRule(raw string, isRegex bool) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", errString(Tr("规则不能为空", "Pattern cannot be empty"))
+	}
+	if isRegex {
+		if _, err := regexp.Compile(trimmed); err != nil {
+			return "", errString(Tr("正则表达式格式无效", "Invalid regular expression"))
+		}
+		return trimmed, nil
+	}
+	if trimmed == "." || trimmed == ".." || strings.ContainsAny(trimmed, `/\`) {
+		return "", errString(Tr("文件夹名称不能包含路径分隔符", "Folder name cannot contain path separators"))
+	}
+	return trimmed, nil
+}
+
+type errString string
+
+func (e errString) Error() string { return string(e) }
+
+// IsFolderHidden evaluates default hidden dot-folders, assets folder, and custom FolderRules.
+// Later rules override earlier rules, allowing explicit unhide (`Hidden: false`) of dot-folders.
+func IsFolderHidden(folderName string, assetsFolder string, hideAssets bool) bool {
+	hidden := strings.HasPrefix(folderName, ".")
+	if hideAssets && assetsFolder != "" && strings.EqualFold(folderName, assetsFolder) {
+		hidden = true
+	}
+	folderMu.RLock()
+	defer folderMu.RUnlock()
+	for _, c := range compiledRules {
+		pat := strings.TrimSpace(c.rule.Pattern)
+		if pat == "" {
+			continue
+		}
+		matched := false
+		if c.rule.Regex {
+			if c.re != nil && c.re.MatchString(folderName) {
+				matched = true
+			}
+		} else if folderName == pat {
+			matched = true
+		}
+		if matched {
+			hidden = c.rule.Hidden
+		}
+	}
+	return hidden
+}
+
+func SetIgnoredSearchFolders(paths []string) {
+	dedup := make([]string, 0, len(paths))
+	seen := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		clean := filepath.Clean(strings.TrimSpace(p))
+		if clean == "" || clean == "." || seen[clean] {
+			continue
+		}
+		seen[clean] = true
+		dedup = append(dedup, clean)
+	}
+	folderMu.Lock()
+	ignoredSearchFolders = dedup
+	folderMu.Unlock()
+}
+
+func IgnoredSearchFolders() []string {
+	folderMu.RLock()
+	defer folderMu.RUnlock()
+	return append([]string(nil), ignoredSearchFolders...)
+}
+
+func IsSearchFolderIgnored(absPath string) bool {
+	clean := filepath.Clean(absPath)
+	folderMu.RLock()
+	defer folderMu.RUnlock()
+	for _, ignored := range ignoredSearchFolders {
+		if clean == ignored || strings.HasPrefix(clean, ignored+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+func DisplayFolderPath(absPath string) string {
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		if rel, err := filepath.Rel(home, absPath); err == nil && !strings.HasPrefix(rel, "..") {
+			if rel == "." {
+				return "~"
+			}
+			return "~/" + filepath.ToSlash(rel)
+		}
+	}
+	return absPath
+}

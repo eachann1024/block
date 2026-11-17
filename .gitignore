@@ -1,0 +1,7 @@
+/dist/
+/build/
+/.mygo/
+*.sock
+*.test
+.DS_Store
+AGENTS.md

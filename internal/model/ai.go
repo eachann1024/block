@@ -1,0 +1,228 @@
+package model
+
+import "encoding/json"
+
+type BackendKind string
+
+const (
+	BackendBuiltin BackendKind = "builtin"
+	BackendCodex   BackendKind = "codex"
+	BackendClaude  BackendKind = "claude"
+	BackendDsh     BackendKind = "dsh"
+	BackendPi      BackendKind = "pi"
+	BackendAgy     BackendKind = "agy"
+)
+
+var AllBackends = []BackendKind{
+	BackendBuiltin,
+	BackendCodex,
+	BackendClaude,
+	BackendDsh,
+	BackendPi,
+	BackendAgy,
+}
+
+func (b BackendKind) DisplayName() string {
+	switch b {
+	case BackendBuiltin:
+		return "Built-in"
+	case BackendCodex:
+		return "Codex"
+	case BackendClaude:
+		return "Claude"
+	case BackendDsh:
+		return "DSH"
+	case BackendPi:
+		return "Pi"
+	case BackendAgy:
+		return "Antigravity"
+	default:
+		return string(b)
+	}
+}
+
+func (b BackendKind) AssetPath() string {
+	switch b {
+	case BackendCodex, BackendClaude, BackendDsh, BackendPi, BackendAgy:
+		return "agents/" + string(b) + ".svg"
+	default:
+		return "agents/builtin.svg"
+	}
+}
+
+type Protocol string
+
+const (
+	ProtocolOpenAI    Protocol = "openai"
+	ProtocolAnthropic Protocol = "anthropic"
+)
+
+type ProviderProfile struct {
+	BaseURL  string   `json:"base_url,omitempty"`
+	APIKey   string   `json:"api_key,omitempty"`
+	Model    string   `json:"model,omitempty"`
+	Protocol Protocol `json:"protocol,omitempty"`
+}
+
+// AIProviderConfig matches ~/Library/Application Support/Block/ai.json.
+type AIProviderConfig struct {
+	Enabled   bool                       `json:"enabled"`
+	Provider  string                     `json:"provider"`
+	Protocol  Protocol                   `json:"protocol"`
+	BaseURL   string                     `json:"base_url"`
+	APIKey    string                     `json:"api_key"`
+	Model     string                     `json:"model"`
+	Providers map[string]ProviderProfile `json:"providers,omitempty"`
+}
+
+// AIBackendAdapterOptions stores per-CLI-adapter preferences in ai-backends.json.
+type AIBackendAdapterOptions struct {
+	Enabled         *bool  `json:"enabled,omitempty"`
+	Model           string `json:"model,omitempty"`
+	ThinkingLevel   string `json:"thinkingLevel,omitempty"` // "low", "medium", "high"
+	FullPermissions bool   `json:"fullPermissions,omitempty"`
+	Locked          bool   `json:"locked,omitempty"`
+}
+
+// AIBackendsConfig matches ~/Library/Application Support/Block/ai-backends.json.
+type AIBackendsConfig struct {
+	Selected BackendKind                        `json:"selected"`
+	Priority []BackendKind                      `json:"priority,omitempty"`
+	Adapters map[string]AIBackendAdapterOptions `json:"adapters,omitempty"`
+}
+
+type PlanOpKind string
+
+const (
+	PlanOpReplace    PlanOpKind = "replace"
+	PlanOpCreateNote PlanOpKind = "createNote"
+)
+
+type PlanOp struct {
+	Kind         PlanOpKind `json:"kind,omitempty"`
+	Page         string     `json:"page"`
+	Old          string     `json:"old"`
+	New          string     `json:"new"`
+	LineSelected []bool     `json:"-"` // Per-changed-hunk/row selection in editor diff review
+}
+
+type BatchPlan struct {
+	ID       string            `json:"id,omitempty"`
+	Summary  string            `json:"summary,omitempty"`
+	Root     string            `json:"root"`
+	Ops      []PlanOp          `json:"ops"`
+	Expected map[string]string `json:"expected,omitempty"` // Full snapshot before modification
+	Status   string            `json:"status,omitempty"`   // "pending", "applied", "rejected"
+}
+
+type ToolKind string
+
+const (
+	ToolKindThink ToolKind = "think"
+	ToolKindRead  ToolKind = "read"
+	ToolKindWrite ToolKind = "write"
+	ToolKindRun   ToolKind = "run"
+)
+
+type ProcessStep struct {
+	ID       string   `json:"id"`
+	Kind     ToolKind `json:"kind"`
+	Title    string   `json:"title"`
+	Detail   string   `json:"detail,omitempty"`
+	ToolName string   `json:"toolName,omitempty"`
+	FileRef  string   `json:"fileRef,omitempty"`
+	Done     bool     `json:"done"`
+}
+
+type SourceNote struct {
+	Title string `json:"title"`
+	Path  string `json:"path"`
+}
+
+type QuestionOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+type QuestionItem struct {
+	ID          string           `json:"id"`
+	Prompt      string           `json:"prompt"`
+	Options     []QuestionOption `json:"options"`
+	MultiSelect bool             `json:"multiSelect,omitempty"`
+	Chosen      []int            `json:"chosen,omitempty"`
+	CustomText  string           `json:"customText,omitempty"`
+}
+
+type QuestionCard struct {
+	RequestID string         `json:"requestId"`
+	Questions []QuestionItem `json:"questions"`
+	Submitted bool           `json:"submitted,omitempty"`
+}
+
+type ApprovalDecision string
+
+const (
+	ApprovalPending ApprovalDecision = ""
+	ApprovalAllow   ApprovalDecision = "allow"
+	ApprovalDeny    ApprovalDecision = "deny"
+	ApprovalSkip    ApprovalDecision = "skip"
+)
+
+type ApprovalCard struct {
+	RequestID string           `json:"requestId"`
+	ToolName  string           `json:"toolName"`
+	Command   string           `json:"command"`
+	Reason    string           `json:"reason,omitempty"`
+	Decision  ApprovalDecision `json:"decision,omitempty"`
+	Failed    bool             `json:"failed,omitempty"`
+	ErrorText string           `json:"errorText,omitempty"`
+}
+
+type ChatMessage struct {
+	Role        string          `json:"role"` // "user", "assistant", "tool"
+	Content     string          `json:"content"`
+	Context     string          `json:"context,omitempty"`
+	ToolCalls   json.RawMessage `json:"tool_calls,omitempty"`
+	ToolCallID  string          `json:"tool_call_id,omitempty"`
+	Plan        *BatchPlan      `json:"plan,omitempty"`
+	Process     []ProcessStep   `json:"process,omitempty"`
+	Sources     []SourceNote    `json:"sources,omitempty"`
+	Question    *QuestionCard   `json:"question,omitempty"`
+	Approval    *ApprovalCard   `json:"approval,omitempty"`
+	DurationMs  int64           `json:"durationMs,omitempty"`
+	Refs        []string        `json:"refs,omitempty"`
+	Skills      []string        `json:"skills,omitempty"`
+	Error       string          `json:"error,omitempty"`
+	NeedSetting bool            `json:"needSetting,omitempty"`
+}
+
+type Conversation struct {
+	ID              uint64        `json:"id"`
+	Title           string        `json:"title"`
+	Messages        []ChatMessage `json:"messages"`
+	Backend         BackendKind   `json:"backend,omitempty"`
+	NativeSessionID string        `json:"native_session_id,omitempty"`
+}
+
+type SentDraft struct {
+	Text         string   `json:"text"`
+	Refs         []string `json:"refs"`
+	Skills       []string `json:"skills"`
+	Conversation uint64   `json:"conversation"`
+	MessageIndex int      `json:"message_index"`
+}
+
+type ActiveDraft struct {
+	Conversation *uint64    `json:"conversation"`
+	Text         string     `json:"text"`
+	Refs         []string   `json:"refs"`
+	Skills       []string   `json:"skills"`
+	Retry        *SentDraft `json:"retry,omitempty"`
+}
+
+type SkillSpec struct {
+	ID          string
+	Name        string
+	Description string
+	Content     string
+}

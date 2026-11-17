@@ -1,0 +1,1358 @@
+package ai
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"block/assets"
+	"block/internal/model"
+	"block/internal/theme"
+	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/markdown"
+)
+
+const (
+	defaultPanelWidth float32 = theme.AIPanelDefaultWidth
+	minPanelWidth     float32 = theme.AIPanelMinWidth
+	maxPanelWidth     float32 = theme.AIPanelMaxWidth
+	maxBuiltinSteps           = 8
+)
+
+type tabDraft struct {
+	Text   string
+	Refs   []string
+	Skills []string
+	Retry  *model.SentDraft
+}
+
+type pickKind uint8
+
+const (
+	pickFolder pickKind = iota
+	pickPage
+	pickSkill
+	pickNewConv
+)
+
+type pickItem struct {
+	kind  pickKind
+	value string
+	label string
+	hint  string
+}
+
+type questionUIState struct {
+	qi         int
+	answers    map[int]map[int]bool
+	customText map[int]string
+	dismissed  bool
+	submitted  bool
+}
+
+type approvalUIState struct {
+	choice    model.ApprovalDecision
+	submitted bool
+}
+
+// Controller manages AI assistant state, persistence, protocols, plans, and UI rendering.
+type Controller struct {
+	mu      sync.RWMutex
+	dataDir string
+	host    model.WorkspaceHost
+	codec   model.MarkdownCodec
+
+	services ui.Services
+
+	open       bool
+	fullscreen bool
+	panelWidth float32
+
+	providerCfg model.AIProviderConfig
+	backendsCfg model.AIBackendsConfig
+
+	convs     []model.Conversation
+	currentID uint64
+
+	draftText      string
+	draftRefs      []string
+	draftSkills    []string
+	retryDraft     *model.SentDraft
+	sentDraft      *model.SentDraft
+	deferredDrafts []model.SentDraft
+	tabDrafts      map[uint64]tabDraft
+
+	composerEpoch     int
+	composerHandle    ui.Handle
+	composerComposing bool
+	composerSelectEnd bool
+	messagesList      ui.ListState
+	pickerList        ui.ListState
+	mdOpts            markdown.Options
+
+	pickIndex       int
+	pickerDismissed bool
+	pickerFolder    string
+	pickerFolders   []string
+	pickerPages     []string
+	pickerSkills    []model.SkillSpec
+	pickerLoading   bool
+	pickerInjected  bool
+	pickerRoot      string
+	pickerRefreshed time.Time
+
+	historyOpen bool
+	deckOpen    bool
+	deckSearch  string
+
+	backendStatuses map[model.BackendKind]BackendStatus
+	backendModels   map[model.BackendKind][]ModelOption
+	modelStatus     map[model.BackendKind]string
+	statusOverrides map[model.BackendKind]BackendStatus
+
+	streaming         bool
+	streamSerial      uint64
+	streamCancel      func()
+	partialText       string
+	partialThink      string
+	turnError         string
+	turnErrorSettings bool
+
+	mockResponder        bool
+	mockApprovalFailOnce bool
+
+	activeExternal *runningExternalTurn
+	activePlan     *ActivePlanPreview
+	planSelections map[planSelKey]*diffSelection
+
+	expandedProcess     map[string]bool
+	expandedStepDetails map[string]bool
+	expandedSources     map[string]bool
+	expandedNotes       map[string]bool
+	questionUI          map[string]*questionUIState
+	approvalUI          map[string]*approvalUIState
+
+	settingsFocused     model.BackendKind
+	settingsShowKey     bool
+	settingsTesting     bool
+	settingsTestOK      bool
+	settingsTestErr     string
+	settingsModelStatus string
+	settingsBaseURL     string
+	settingsAPIKey      string
+	settingsModel       string
+}
+
+// NewController initializes an AI Controller backed by dataDir, host, and codec.
+func NewController(dataDir string, host model.WorkspaceHost, codec model.MarkdownCodec) *Controller {
+	if strings.TrimSpace(dataDir) == "" {
+		if cfgDir, err := os.UserConfigDir(); err == nil && cfgDir != "" {
+			dataDir = filepath.Join(cfgDir, "Block")
+		} else {
+			dataDir = filepath.Join(os.TempDir(), "block-ai")
+		}
+	}
+	ctrl := &Controller{
+		dataDir:             dataDir,
+		host:                host,
+		codec:               codec,
+		panelWidth:          defaultPanelWidth,
+		tabDrafts:           make(map[uint64]tabDraft),
+		backendStatuses:     make(map[model.BackendKind]BackendStatus),
+		backendModels:       make(map[model.BackendKind][]ModelOption),
+		modelStatus:         make(map[model.BackendKind]string),
+		statusOverrides:     make(map[model.BackendKind]BackendStatus),
+		planSelections:      make(map[planSelKey]*diffSelection),
+		expandedProcess:     make(map[string]bool),
+		expandedStepDetails: make(map[string]bool),
+		expandedSources:     make(map[string]bool),
+		expandedNotes:       make(map[string]bool),
+		questionUI:          make(map[string]*questionUIState),
+		approvalUI:          make(map[string]*approvalUIState),
+		settingsFocused:     model.BackendBuiltin,
+	}
+	ctrl.backendStatuses[model.BackendBuiltin] = BackendStatus{
+		State:   BackendStateReady,
+		Version: "Block",
+	}
+	ctrl.loadAllFromDisk()
+	ctrl.syncSettingsFieldsLocked()
+	ctrl.loadBuiltinSkillsLocked()
+	ctrl.messagesList.FollowEnd = true
+	return ctrl
+}
+
+func (c *Controller) loadAllFromDisk() {
+	c.providerCfg = normalizeProviderConfig(c.readProviderFile())
+	c.backendsCfg = c.readBackendsFile()
+	c.convs = c.readChatsFile()
+	c.deferredDrafts = c.readFailedDraftsFile()
+
+	active := c.readActiveDraftFile()
+	if active.Conversation != nil && c.hasConvLocked(*active.Conversation) {
+		c.currentID = *active.Conversation
+	}
+	c.draftText = active.Text
+	c.draftRefs = append([]string(nil), active.Refs...)
+	c.draftSkills = append([]string(nil), active.Skills...)
+	if active.Retry != nil && active.Retry.Conversation == c.currentID && c.currentID != 0 {
+		cp := *active.Retry
+		c.retryDraft = &cp
+	}
+	c.ensureValidSelectionLocked()
+}
+
+func (c *Controller) filePath(name string) string {
+	return filepath.Join(c.dataDir, name)
+}
+
+func (c *Controller) readJSONFile(name string, dst any) bool {
+	data, err := os.ReadFile(c.filePath(name))
+	if err != nil {
+		return false
+	}
+	return json.Unmarshal(data, dst) == nil
+}
+
+func (c *Controller) writeJSONFile(name string, v any) error {
+	if err := os.MkdirAll(c.dataDir, 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	p := c.filePath(name)
+	tmp := fmt.Sprintf("%s.tmp.%d", p, time.Now().UnixNano())
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, p); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) readProviderFile() model.AIProviderConfig {
+	cfg := model.AIProviderConfig{
+		Enabled:  true,
+		Provider: "deepseek",
+		Protocol: model.ProtocolOpenAI,
+		BaseURL:  "https://api.deepseek.com/v1",
+	}
+	_ = c.readJSONFile("ai.json", &cfg)
+	return cfg
+}
+
+func (c *Controller) readBackendsFile() model.AIBackendsConfig {
+	var cfg model.AIBackendsConfig
+	if !c.readJSONFile("ai-backends.json", &cfg) {
+		cfg.Selected = model.BackendBuiltin
+	}
+	if cfg.Selected == "" {
+		cfg.Selected = model.BackendBuiltin
+	}
+	if cfg.Adapters == nil {
+		cfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
+	}
+	return cfg
+}
+
+func (c *Controller) readChatsFile() []model.Conversation {
+	var convs []model.Conversation
+	if !c.readJSONFile("ai-chats.json", &convs) {
+		return nil
+	}
+	return convs
+}
+
+func (c *Controller) readActiveDraftFile() model.ActiveDraft {
+	var draft model.ActiveDraft
+	_ = c.readJSONFile("ai-active-draft.json", &draft)
+	return draft
+}
+
+func (c *Controller) readFailedDraftsFile() []model.SentDraft {
+	var list []model.SentDraft
+	_ = c.readJSONFile("ai-failed-drafts.json", &list)
+	return list
+}
+
+func (c *Controller) persistChatsLocked() {
+	keep := make([]model.Conversation, 0, len(c.convs))
+	for _, conv := range c.convs {
+		if len(conv.Messages) > 0 {
+			keep = append(keep, conv)
+		}
+	}
+	_ = c.writeJSONFile("ai-chats.json", keep)
+}
+
+func (c *Controller) persistActiveDraftLocked() {
+	var convPtr *uint64
+	if c.currentID != 0 {
+		id := c.currentID
+		convPtr = &id
+	}
+	draft := model.ActiveDraft{
+		Conversation: convPtr,
+		Text:         c.draftText,
+		Refs:         append([]string(nil), c.draftRefs...),
+		Skills:       append([]string(nil), c.draftSkills...),
+		Retry:        c.retryDraft,
+	}
+	_ = c.writeJSONFile("ai-active-draft.json", draft)
+}
+
+func (c *Controller) persistFailedDraftsLocked() {
+	_ = c.writeJSONFile("ai-failed-drafts.json", c.deferredDrafts)
+}
+
+func (c *Controller) requestRedraw() {
+	c.mu.RLock()
+	svc := c.services
+	host := c.host
+	c.mu.RUnlock()
+	svc.Invalidate()
+	if host != nil {
+		host.RequestRedraw()
+	}
+}
+
+func (c *Controller) hasConvLocked(id uint64) bool {
+	if id == 0 {
+		return false
+	}
+	for i := range c.convs {
+		if c.convs[i].ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Controller) findConvLocked(id uint64) *model.Conversation {
+	if id == 0 {
+		return nil
+	}
+	for i := range c.convs {
+		if c.convs[i].ID == id {
+			return &c.convs[i]
+		}
+	}
+	return nil
+}
+
+// IsOpen reports whether the AI panel is open.
+func (c *Controller) IsOpen() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.open
+}
+
+// SetOpen sets the AI panel open state.
+func (c *Controller) SetOpen(open bool) {
+	c.mu.Lock()
+	if c.open == open {
+		c.mu.Unlock()
+		return
+	}
+	c.open = open
+	if !open {
+		c.historyOpen = false
+		c.deckOpen = false
+	} else {
+		c.composerHandle.Focus()
+	}
+	c.mu.Unlock()
+	c.requestRedraw()
+}
+
+// ToggleOpen toggles the AI panel open state.
+func (c *Controller) ToggleOpen() {
+	c.mu.Lock()
+	next := !c.open
+	c.open = next
+	if !next {
+		c.historyOpen = false
+		c.deckOpen = false
+	} else {
+		c.composerHandle.Focus()
+	}
+	c.mu.Unlock()
+	c.requestRedraw()
+}
+
+// IsFullscreen reports whether the AI panel is in fullscreen mode.
+func (c *Controller) IsFullscreen() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.fullscreen
+}
+
+// SetFullscreen sets the AI panel fullscreen state.
+func (c *Controller) SetFullscreen(fs bool) {
+	c.mu.Lock()
+	if c.fullscreen == fs {
+		c.mu.Unlock()
+		return
+	}
+	c.fullscreen = fs
+	c.mu.Unlock()
+	c.requestRedraw()
+}
+
+// ToggleFullscreen toggles fullscreen mode for the AI panel.
+func (c *Controller) ToggleFullscreen() {
+	c.mu.Lock()
+	c.fullscreen = !c.fullscreen
+	c.mu.Unlock()
+	c.requestRedraw()
+}
+
+// PanelWidth returns the current sidebar width of the AI panel.
+func (c *Controller) PanelWidth() float32 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.panelWidth <= 0 {
+		return defaultPanelWidth
+	}
+	return c.panelWidth
+}
+
+// SetPanelWidth clamps and updates the AI panel width.
+func (c *Controller) SetPanelWidth(w float32) {
+	if w < minPanelWidth {
+		w = minPanelWidth
+	}
+	if w > maxPanelWidth {
+		w = maxPanelWidth
+	}
+	c.mu.Lock()
+	c.panelWidth = w
+	c.mu.Unlock()
+	c.requestRedraw()
+}
+
+// ProviderConfig returns a copy of the built-in AI provider config.
+func (c *Controller) ProviderConfig() model.AIProviderConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return cloneProviderConfig(c.providerCfg)
+}
+
+// SaveProviderConfig normalizes, saves, and applies the built-in AI provider config.
+func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
+	norm := normalizeProviderConfig(cfg)
+	if norm.Providers == nil {
+		norm.Providers = make(map[string]model.ProviderProfile)
+	}
+	if norm.Provider != "" {
+		norm.Providers[norm.Provider] = model.ProviderProfile{
+			Protocol: norm.Protocol,
+			BaseURL:  norm.BaseURL,
+			APIKey:   norm.APIKey,
+			Model:    norm.Model,
+		}
+	}
+	if err := c.writeJSONFile("ai.json", norm); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.providerCfg = norm
+	c.syncSettingsFieldsLocked()
+	if c.turnErrorSettings {
+		c.turnError = ""
+		c.turnErrorSettings = false
+	}
+	c.modelStatus[model.BackendBuiltin] = ""
+	delete(c.backendModels, model.BackendBuiltin)
+	c.mu.Unlock()
+	c.requestRedraw()
+	return nil
+}
+
+func (c *Controller) syncSettingsFieldsLocked() {
+	c.settingsBaseURL = c.providerCfg.BaseURL
+	c.settingsAPIKey = c.providerCfg.APIKey
+	c.settingsModel = c.providerCfg.Model
+}
+
+// BackendsConfig returns a copy of the backend adapter configuration.
+func (c *Controller) BackendsConfig() model.AIBackendsConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return cloneBackendsConfig(c.backendsCfg)
+}
+
+// SaveBackendsConfig persists and applies the backend adapter configuration.
+func (c *Controller) SaveBackendsConfig(cfg model.AIBackendsConfig) error {
+	cp := cloneBackendsConfig(cfg)
+	c.mu.Lock()
+	prev := c.backendsCfg
+	c.backendsCfg = cp
+	c.ensureValidSelectionLocked()
+	toSave := cloneBackendsConfig(c.backendsCfg)
+	if err := c.writeJSONFile("ai-backends.json", toSave); err != nil {
+		c.backendsCfg = prev
+		c.mu.Unlock()
+		return err
+	}
+	c.mu.Unlock()
+	c.requestRedraw()
+	return nil
+}
+
+func isBackendEnabled(cfg model.AIBackendsConfig, kind model.BackendKind) bool {
+	if opt, ok := cfg.Adapters[string(kind)]; ok && opt.Enabled != nil {
+		return *opt.Enabled
+	}
+	return kind == model.BackendBuiltin
+}
+
+// CanDisableBackend reports whether kind can be disabled while keeping at least one enabled backend.
+func (c *Controller) CanDisableBackend(kind model.BackendKind) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.canDisableBackendLocked(kind)
+}
+
+func (c *Controller) canDisableBackendLocked(kind model.BackendKind) bool {
+	if !isBackendEnabled(c.backendsCfg, kind) {
+		return false
+	}
+	recognized := c.recognizedBackendsLocked()
+	enabledCount := 0
+	for _, b := range recognized {
+		if isBackendEnabled(c.backendsCfg, b) {
+			enabledCount++
+		}
+	}
+	return enabledCount > 1
+}
+
+// SetBackendEnabled enables or disables a backend while ensuring at least one remains enabled.
+func (c *Controller) SetBackendEnabled(kind model.BackendKind, on bool) error {
+	c.mu.Lock()
+	if !on && !c.canDisableBackendLocked(kind) {
+		c.mu.Unlock()
+		return errors.New(theme.Tr("至少需要保留一个启用的 AI 后端", "At least one AI backend must remain enabled"))
+	}
+	prev := cloneBackendsConfig(c.backendsCfg)
+	if c.backendsCfg.Adapters == nil {
+		c.backendsCfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
+	}
+	opt := c.backendsCfg.Adapters[string(kind)]
+	val := on
+	opt.Enabled = &val
+	c.backendsCfg.Adapters[string(kind)] = opt
+	c.ensureValidSelectionLocked()
+	if err := c.writeJSONFile("ai-backends.json", c.backendsCfg); err != nil {
+		c.backendsCfg = prev
+		c.mu.Unlock()
+		return err
+	}
+	c.mu.Unlock()
+	c.requestRedraw()
+	return nil
+}
+
+// SetBackendLocked sets the locked flag for a backend adapter and persists it.
+func (c *Controller) SetBackendLocked(kind model.BackendKind, locked bool) error {
+	c.mu.Lock()
+	prev := cloneBackendsConfig(c.backendsCfg)
+	if c.backendsCfg.Adapters == nil {
+		c.backendsCfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
+	}
+	opt := c.backendsCfg.Adapters[string(kind)]
+	opt.Locked = locked
+	c.backendsCfg.Adapters[string(kind)] = opt
+	if err := c.writeJSONFile("ai-backends.json", c.backendsCfg); err != nil {
+		c.backendsCfg = prev
+		c.mu.Unlock()
+		return err
+	}
+	c.mu.Unlock()
+	c.requestRedraw()
+	return nil
+}
+
+// PromoteBackend enables kind if needed, promotes it to top priority, and selects it.
+func (c *Controller) PromoteBackend(kind model.BackendKind) error {
+	c.mu.Lock()
+	prev := cloneBackendsConfig(c.backendsCfg)
+	if c.backendsCfg.Adapters == nil {
+		c.backendsCfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
+	}
+	opt := c.backendsCfg.Adapters[string(kind)]
+	on := true
+	opt.Enabled = &on
+	c.backendsCfg.Adapters[string(kind)] = opt
+
+	recognized := c.recognizedBackendsLocked()
+	order := c.priorityOrderLocked(recognized)
+	nextOrder := make([]model.BackendKind, 0, len(order)+1)
+	nextOrder = append(nextOrder, kind)
+	for _, b := range order {
+		if b != kind {
+			nextOrder = append(nextOrder, b)
+		}
+	}
+	c.backendsCfg.Priority = nextOrder
+	c.backendsCfg.Selected = kind
+	if err := c.writeJSONFile("ai-backends.json", c.backendsCfg); err != nil {
+		c.backendsCfg = prev
+		c.mu.Unlock()
+		return err
+	}
+	c.mu.Unlock()
+	c.requestRedraw()
+	return nil
+}
+
+// EnableMockResponder toggles deterministic offline mock responses for tests and smoke runs.
+func (c *Controller) EnableMockResponder(on bool) {
+	c.mu.Lock()
+	c.mockResponder = on
+	c.mu.Unlock()
+}
+
+// SetMockApprovalFailOnce configures the next approval submission to fail once before succeeding.
+func (c *Controller) SetMockApprovalFailOnce(on bool) {
+	c.mu.Lock()
+	c.mockApprovalFailOnce = on
+	c.mu.Unlock()
+}
+
+// NewConversation clears the active conversation into a fresh draft and focuses the composer.
+func (c *Controller) NewConversation() {
+	c.mu.Lock()
+	c.saveTabDraftLocked()
+	c.stopStreamingLocked()
+	c.clearActivePlanLocked()
+	delete(c.tabDrafts, 0)
+	c.currentID = 0
+	c.draftText = ""
+	c.draftRefs = nil
+	c.draftSkills = nil
+	c.retryDraft = nil
+	c.turnError = ""
+	c.turnErrorSettings = false
+	c.historyOpen = false
+	c.pickIndex = 0
+	c.pickerDismissed = false
+	c.composerEpoch++
+	c.composerHandle.Focus()
+	c.persistActiveDraftLocked()
+	c.mu.Unlock()
+	c.requestRedraw()
+}
+
+// SelectConversation switches to conversation id while isolating per-conversation drafts.
+func (c *Controller) SelectConversation(id uint64) {
+	c.mu.Lock()
+	if id != 0 && !c.hasConvLocked(id) {
+		c.mu.Unlock()
+		return
+	}
+	if c.currentID == id {
+		c.historyOpen = false
+		c.linkLatestPendingPlanLocked()
+		c.mu.Unlock()
+		c.requestRedraw()
+		return
+	}
+	c.saveTabDraftLocked()
+	c.stopStreamingLocked()
+	c.clearActivePlanLocked()
+	c.currentID = id
+	c.historyOpen = false
+	c.turnError = ""
+	c.turnErrorSettings = false
+	c.pickIndex = 0
+	c.pickerDismissed = false
+	td := c.tabDrafts[id]
+	c.draftText = td.Text
+	c.draftRefs = append([]string(nil), td.Refs...)
+	c.draftSkills = append([]string(nil), td.Skills...)
+	if td.Retry != nil {
+		cp := *td.Retry
+		c.retryDraft = &cp
+	} else {
+		c.retryDraft = nil
+	}
+	c.composerEpoch++
+	c.composerHandle.Focus()
+	c.persistActiveDraftLocked()
+	c.linkLatestPendingPlanLocked()
+	c.mu.Unlock()
+	c.requestRedraw()
+}
+
+func (c *Controller) saveTabDraftLocked() {
+	var retryCopy *model.SentDraft
+	if c.retryDraft != nil {
+		cp := *c.retryDraft
+		retryCopy = &cp
+	}
+	c.tabDrafts[c.currentID] = tabDraft{
+		Text:   c.draftText,
+		Refs:   append([]string(nil), c.draftRefs...),
+		Skills: append([]string(nil), c.draftSkills...),
+		Retry:  retryCopy,
+	}
+}
+
+// Conversations returns a snapshot slice of stored conversations.
+func (c *Controller) Conversations() []model.Conversation {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	out := make([]model.Conversation, len(c.convs))
+	for i := range c.convs {
+		out[i] = cloneConversation(c.convs[i])
+	}
+	return out
+}
+
+// CurrentConversation returns a copy of the active conversation, or nil for a blank new chat.
+func (c *Controller) CurrentConversation() *model.Conversation {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	conv := c.findConvLocked(c.currentID)
+	if conv == nil {
+		return nil
+	}
+	cp := cloneConversation(*conv)
+	return &cp
+}
+
+// ActiveDraftText returns the current composer draft text.
+func (c *Controller) ActiveDraftText() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.draftText
+}
+
+// SetDraftText updates the active composer draft text and persists it.
+func (c *Controller) SetDraftText(s string) {
+	c.mu.Lock()
+	c.draftText = s
+	c.pickerDismissed = false
+	c.pickIndex = 0
+	c.saveTabDraftLocked()
+	c.persistActiveDraftLocked()
+	c.mu.Unlock()
+	c.requestRedraw()
+}
+
+// InjectTestFiles populates the reference picker index with synthetic or test file paths.
+func (c *Controller) InjectTestFiles(paths []string) {
+	foldersSet := make(map[string]struct{})
+	pages := make([]string, 0, len(paths))
+	skills := make([]model.SkillSpec, 0)
+	seenPages := make(map[string]struct{})
+
+	for _, raw := range paths {
+		clean := filepath.ToSlash(strings.TrimSpace(raw))
+		clean = strings.TrimPrefix(clean, "./")
+		if clean == "" {
+			continue
+		}
+		if strings.HasSuffix(clean, "/") {
+			dir := strings.TrimSuffix(clean, "/")
+			if dir != "" {
+				addFolderAncestors(dir, foldersSet)
+			}
+			continue
+		}
+		if dir := pathDirSlash(clean); dir != "" && dir != "." {
+			addFolderAncestors(dir, foldersSet)
+		}
+		page := strings.TrimSuffix(clean, ".md")
+		if _, dup := seenPages[page]; !dup {
+			seenPages[page] = struct{}{}
+			pages = append(pages, page)
+		}
+		if strings.HasSuffix(page, "/SKILL") || page == "SKILL" {
+			name := pathBaseSlash(strings.TrimSuffix(page, "SKILL"))
+			if name == "" || name == "." {
+				name = page
+			}
+			skills = append(skills, model.SkillSpec{
+				ID:          name,
+				Name:        name,
+				Description: "Workspace skill",
+			})
+		}
+	}
+
+	folders := make([]string, 0, len(foldersSet))
+	for f := range foldersSet {
+		folders = append(folders, f)
+	}
+	sort.Strings(folders)
+	sort.Strings(pages)
+
+	c.mu.Lock()
+	c.pickerFolders = folders
+	c.pickerPages = pages
+	c.loadBuiltinSkillsLocked()
+	for _, sk := range skills {
+		c.upsertSkillLocked(sk)
+	}
+	c.pickerInjected = true
+	c.pickerLoading = false
+	c.pickerRefreshed = time.Now()
+	c.mu.Unlock()
+	c.requestRedraw()
+}
+
+func addFolderAncestors(dir string, set map[string]struct{}) {
+	for dir != "" && dir != "." {
+		set[dir] = struct{}{}
+		dir = pathDirSlash(dir)
+	}
+}
+
+func pathDirSlash(p string) string {
+	idx := strings.LastIndexByte(p, '/')
+	if idx <= 0 {
+		return ""
+	}
+	return p[:idx]
+}
+
+func pathBaseSlash(p string) string {
+	p = strings.TrimSuffix(p, "/")
+	if idx := strings.LastIndexByte(p, '/'); idx >= 0 {
+		return p[idx+1:]
+	}
+	return p
+}
+
+// SendPrompt submits text (or the current draft when text is empty) as a user prompt.
+func (c *Controller) SendPrompt(text string) {
+	c.mu.Lock()
+	if c.streaming {
+		c.mu.Unlock()
+		return
+	}
+	if text != "" {
+		c.draftText = text
+	}
+	original := c.draftText
+	question := strings.TrimSpace(original)
+	if question == "" || question == "@" || question == "/" {
+		c.mu.Unlock()
+		return
+	}
+	backend := c.selectedBackendLocked()
+	if backend == model.BackendBuiltin && !c.mockResponder {
+		if msg, needSettings := validateProviderConfig(c.providerCfg); msg != "" {
+			c.turnError = msg
+			c.turnErrorSettings = needSettings
+			c.mu.Unlock()
+			c.requestRedraw()
+			return
+		}
+	}
+
+	if c.currentID == 0 {
+		delete(c.tabDrafts, 0)
+	}
+
+	refs := append([]string(nil), c.draftRefs...)
+	skills := append([]string(nil), c.draftSkills...)
+	c.draftRefs = nil
+	c.draftSkills = nil
+
+	var ctxBuf strings.Builder
+	var shownBuf strings.Builder
+	for _, r := range refs {
+		shownBuf.WriteString("@")
+		shownBuf.WriteString(r)
+		shownBuf.WriteByte(' ')
+		md := c.readPageContentLocked(c.activeRootLocked(), r)
+		if md != "" {
+			ctxBuf.WriteString(fmt.Sprintf("\n\n# 引用文件：%s（pageId: %s）\n\n%s", r, r, truncateRunes(md, 12000)))
+		}
+	}
+	for _, sk := range skills {
+		shownBuf.WriteString("/")
+		shownBuf.WriteString(sk)
+		shownBuf.WriteByte(' ')
+		if spec, ok := c.findSkillLocked(sk); ok && spec.Content != "" {
+			ctxBuf.WriteString(fmt.Sprintf("\n\n# 用户调用的 Skill：%s\n\n%s", sk, spec.Content))
+		}
+	}
+
+	content := question
+	if shownBuf.Len() > 0 {
+		content = shownBuf.String() + question
+	}
+
+	retryMatch := c.retryDraft != nil &&
+		c.retryDraft.Conversation == c.currentID &&
+		c.retryDraft.Text == original &&
+		slicesEqual(c.retryDraft.Refs, refs) &&
+		slicesEqual(c.retryDraft.Skills, skills)
+
+	if retryMatch {
+		cp := *c.retryDraft
+		c.sentDraft = &cp
+		c.retryDraft = nil
+	} else {
+		c.pushMessageLocked(model.ChatMessage{
+			Role:    "user",
+			Content: content,
+			Context: ctxBuf.String(),
+			Refs:    refs,
+			Skills:  skills,
+		})
+		conv := c.findConvLocked(c.currentID)
+		if conv != nil && len(conv.Messages) > 0 {
+			c.sentDraft = &model.SentDraft{
+				Text:         original,
+				Refs:         refs,
+				Skills:       skills,
+				Conversation: conv.ID,
+				MessageIndex: len(conv.Messages) - 1,
+			}
+		}
+	}
+
+	c.turnError = ""
+	c.turnErrorSettings = false
+	c.draftText = ""
+	c.pickerDismissed = false
+	c.pickIndex = 0
+	c.saveTabDraftLocked()
+	c.persistActiveDraftLocked()
+
+	isMock := c.mockResponder
+	convID := c.currentID
+	c.mu.Unlock()
+
+	c.requestRedraw()
+	if isMock {
+		c.startMockTurn(convID, question)
+		return
+	}
+	if backend == model.BackendBuiltin {
+		c.startBuiltinTurn(convID, 0)
+	} else {
+		c.startExternalTurn(convID, backend)
+	}
+}
+
+// IsStreaming reports whether an AI response turn is currently in progress.
+func (c *Controller) IsStreaming() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.streaming
+}
+
+// StopStreaming cancels any in-flight AI response and preserves partial output.
+func (c *Controller) StopStreaming() {
+	c.mu.Lock()
+	c.stopStreamingLocked()
+	c.mu.Unlock()
+	c.requestRedraw()
+}
+
+func (c *Controller) stopStreamingLocked() {
+	wasBusy := c.streaming || c.hasPendingQuestionLocked()
+	if wasBusy && c.currentID != 0 {
+		c.recordTurnOutcomeLocked("stopped")
+	}
+	c.sentDraft = nil
+	if c.activeExternal != nil {
+		c.activeExternal.cancel()
+		c.activeExternal = nil
+	}
+	if c.streamCancel != nil {
+		c.streamCancel()
+		c.streamCancel = nil
+	}
+	c.streaming = false
+	c.streamSerial++
+	partial := c.partialText
+	c.partialText = ""
+	c.partialThink = ""
+	if strings.TrimSpace(partial) != "" {
+		c.pushMessageLocked(model.ChatMessage{
+			Role:    "assistant",
+			Content: partial,
+		})
+	}
+}
+
+func (c *Controller) pushMessageLocked(msg model.ChatMessage) {
+	if c.currentID == 0 {
+		id := uint64(time.Now().UnixMilli())
+		if id == 0 {
+			id = 1
+		}
+		for c.hasConvLocked(id) {
+			id++
+		}
+		title := firstTitleLine(msg.Content)
+		if title == "" {
+			title = theme.Tr("新会话", "New Chat")
+		}
+		conv := model.Conversation{
+			ID:      id,
+			Title:   title,
+			Backend: c.selectedBackendLocked(),
+		}
+		c.convs = append([]model.Conversation{conv}, c.convs...)
+		c.currentID = id
+	}
+	if conv := c.findConvLocked(c.currentID); conv != nil {
+		conv.Messages = append(conv.Messages, msg)
+	}
+	c.persistChatsLocked()
+}
+
+func (c *Controller) recordTurnOutcomeLocked(outcome string) {
+	conv := c.findConvLocked(c.currentID)
+	if conv == nil {
+		return
+	}
+	conv.Messages = append(conv.Messages, model.ChatMessage{
+		Role:    "turn_outcome",
+		Content: outcome,
+	})
+	c.persistChatsLocked()
+}
+
+func (c *Controller) hasPendingQuestionLocked() bool {
+	conv := c.findConvLocked(c.currentID)
+	if conv == nil {
+		return false
+	}
+	for i := len(conv.Messages) - 1; i >= 0; i-- {
+		m := conv.Messages[i]
+		if m.Role == "user" {
+			break
+		}
+		if m.Question != nil && !m.Question.Submitted {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Controller) restoreFailedDraftLocked() {
+	if c.sentDraft == nil {
+		return
+	}
+	draft := *c.sentDraft
+	c.sentDraft = nil
+	conv := c.findConvLocked(draft.Conversation)
+	if c.currentID == draft.Conversation && c.draftText == "" && len(c.draftRefs) == 0 && len(c.draftSkills) == 0 {
+		if conv != nil && draft.MessageIndex >= 0 && len(conv.Messages) == draft.MessageIndex+1 {
+			conv.Messages = conv.Messages[:len(conv.Messages)-1]
+			c.persistChatsLocked()
+		} else {
+			cp := draft
+			c.retryDraft = &cp
+		}
+		c.draftText = draft.Text
+		c.draftRefs = append([]string(nil), draft.Refs...)
+		c.draftSkills = append([]string(nil), draft.Skills...)
+		c.composerEpoch++
+		c.persistActiveDraftLocked()
+		return
+	}
+	c.deferredDrafts = append(c.deferredDrafts, draft)
+	c.persistFailedDraftsLocked()
+}
+
+func (c *Controller) activeRootLocked() string {
+	if c.host == nil {
+		return ""
+	}
+	if root := strings.TrimSpace(c.host.ActiveNotebook()); root != "" {
+		return root
+	}
+	if nbs := c.host.Notebooks(); len(nbs) > 0 {
+		return nbs[0]
+	}
+	return ""
+}
+
+func (c *Controller) activePageLocked(root string) string {
+	if c.host == nil {
+		return ""
+	}
+	p := strings.TrimSpace(c.host.ActiveNotePath())
+	if p == "" {
+		return ""
+	}
+	if root != "" {
+		if rel, err := filepath.Rel(root, p); err == nil && !strings.HasPrefix(rel, "..") {
+			return strings.TrimSuffix(filepath.ToSlash(rel), ".md")
+		}
+	}
+	return strings.TrimSuffix(filepath.Base(p), ".md")
+}
+
+func (c *Controller) readPageContentLocked(root, page string) string {
+	if page == "" {
+		return ""
+	}
+	abs := page
+	if !filepath.IsAbs(abs) && root != "" {
+		abs = filepath.Join(root, filepath.FromSlash(page)+".md")
+	}
+	if c.host != nil {
+		if txt, err := c.host.ReadNote(abs); err == nil {
+			return txt
+		}
+	}
+	if abs != "" {
+		if b, err := os.ReadFile(abs); err == nil {
+			return string(b)
+		}
+	}
+	return ""
+}
+
+func (c *Controller) loadBuiltinSkillsLocked() {
+	builtins := []struct {
+		id   string
+		file string
+		desc string
+	}{
+		{"createNoote", "createNoote.md", "在本轮确定的笔记本和目录新建页面"},
+		{"updateNote", "updateNote.md", "改写、追加、补充或重命名当前页"},
+		{"searchNotes", "searchNotes.md", "跨笔记本和目录搜索并读取页面"},
+		{"chat", "chat.md", "仅解释或建议，不改笔记"},
+		{"markdown", "markdown.md", "创建或修改笔记时的 Markdown 指引"},
+	}
+	c.pickerSkills = nil
+	for _, b := range builtins {
+		content := assets.ReadSkill(b.file)
+		c.pickerSkills = append(c.pickerSkills, model.SkillSpec{
+			ID:          b.id,
+			Name:        b.id,
+			Description: b.desc,
+			Content:     content,
+		})
+	}
+}
+
+func (c *Controller) upsertSkillLocked(spec model.SkillSpec) {
+	for i := range c.pickerSkills {
+		if c.pickerSkills[i].ID == spec.ID || c.pickerSkills[i].Name == spec.Name {
+			c.pickerSkills[i] = spec
+			return
+		}
+	}
+	c.pickerSkills = append(c.pickerSkills, spec)
+}
+
+func (c *Controller) findSkillLocked(name string) (model.SkillSpec, bool) {
+	for _, s := range c.pickerSkills {
+		if s.ID == name || s.Name == name {
+			return s, true
+		}
+	}
+	return model.SkillSpec{}, false
+}
+
+func (c *Controller) refreshPickerIfNeeded() {
+	c.mu.Lock()
+	if c.pickerInjected || c.pickerLoading || c.host == nil {
+		c.mu.Unlock()
+		return
+	}
+	root := c.activeRootLocked()
+	if root == "" {
+		c.mu.Unlock()
+		return
+	}
+	if c.pickerRoot == root && time.Since(c.pickerRefreshed) < 5*time.Second {
+		c.mu.Unlock()
+		return
+	}
+	c.pickerLoading = true
+	c.pickerRoot = root
+	host := c.host
+	c.mu.Unlock()
+
+	go func() {
+		entries, err := host.ListNotebookFiles(root)
+		foldersSet := make(map[string]struct{})
+		var pages []string
+		var skills []model.SkillSpec
+
+		var walk func(list []model.FileEntry)
+		walk = func(list []model.FileEntry) {
+			for _, ent := range list {
+				rel, rerr := filepath.Rel(root, ent.Path)
+				if rerr != nil {
+					continue
+				}
+				slash := filepath.ToSlash(rel)
+				if ent.IsDir {
+					foldersSet[slash] = struct{}{}
+					walk(ent.Children)
+				} else if ent.IsMarkdown || strings.HasSuffix(strings.ToLower(ent.RawName), ".md") {
+					page := strings.TrimSuffix(slash, ".md")
+					pages = append(pages, page)
+					if strings.HasSuffix(page, "/SKILL") || page == "SKILL" {
+						if txt, err := host.ReadNote(ent.Path); err == nil {
+							skills = append(skills, parseSkillMarkdown(page, txt))
+						}
+					}
+				}
+			}
+		}
+		if err == nil {
+			walk(entries)
+		}
+		folders := make([]string, 0, len(foldersSet))
+		for f := range foldersSet {
+			folders = append(folders, f)
+		}
+		sort.Strings(folders)
+		sort.Strings(pages)
+
+		c.mu.Lock()
+		if !c.pickerInjected && c.pickerRoot == root {
+			c.pickerFolders = folders
+			c.pickerPages = pages
+			c.loadBuiltinSkillsLocked()
+			for _, sk := range skills {
+				c.upsertSkillLocked(sk)
+			}
+			c.pickerRefreshed = time.Now()
+		}
+		c.pickerLoading = false
+		c.mu.Unlock()
+		c.requestRedraw()
+	}()
+}
+
+func parseSkillMarkdown(page, body string) model.SkillSpec {
+	name := pathBaseSlash(strings.TrimSuffix(page, "SKILL"))
+	if name == "" || name == "." {
+		name = page
+	}
+	desc := ""
+	for _, line := range strings.Split(body, "\n") {
+		trim := strings.TrimSpace(line)
+		if v, ok := strings.CutPrefix(trim, "name:"); ok {
+			if clean := strings.Trim(strings.TrimSpace(v), `"`); clean != "" {
+				name = clean
+			}
+		} else if v, ok := strings.CutPrefix(trim, "description:"); ok {
+			desc = strings.Trim(strings.TrimSpace(v), `"`)
+		}
+	}
+	return model.SkillSpec{ID: name, Name: name, Description: desc, Content: body}
+}
+
+func firstTitleLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		trim := strings.TrimSpace(line)
+		if trim == "" || strings.HasPrefix(trim, ">") {
+			continue
+		}
+		return truncateRunes(trim, 24)
+	}
+	return ""
+}
+
+func truncateRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes])
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func cloneProviderConfig(cfg model.AIProviderConfig) model.AIProviderConfig {
+	cp := cfg
+	if cfg.Providers != nil {
+		cp.Providers = make(map[string]model.ProviderProfile, len(cfg.Providers))
+		for k, v := range cfg.Providers {
+			cp.Providers[k] = v
+		}
+	}
+	return cp
+}
+
+func cloneBackendsConfig(cfg model.AIBackendsConfig) model.AIBackendsConfig {
+	cp := cfg
+	cp.Priority = append([]model.BackendKind(nil), cfg.Priority...)
+	if cfg.Adapters != nil {
+		cp.Adapters = make(map[string]model.AIBackendAdapterOptions, len(cfg.Adapters))
+		for k, v := range cfg.Adapters {
+			if v.Enabled != nil {
+				b := *v.Enabled
+				v.Enabled = &b
+			}
+			cp.Adapters[k] = v
+		}
+	}
+	return cp
+}
+
+func cloneConversation(conv model.Conversation) model.Conversation {
+	cp := conv
+	if conv.Messages != nil {
+		cp.Messages = make([]model.ChatMessage, len(conv.Messages))
+		for i, m := range conv.Messages {
+			cp.Messages[i] = m
+			if m.Process != nil {
+				cp.Messages[i].Process = append([]model.ProcessStep(nil), m.Process...)
+			}
+			if m.Sources != nil {
+				cp.Messages[i].Sources = append([]model.SourceNote(nil), m.Sources...)
+			}
+			if m.Refs != nil {
+				cp.Messages[i].Refs = append([]string(nil), m.Refs...)
+			}
+			if m.Skills != nil {
+				cp.Messages[i].Skills = append([]string(nil), m.Skills...)
+			}
+			if m.Plan != nil {
+				p := *m.Plan
+				p.Ops = append([]model.PlanOp(nil), m.Plan.Ops...)
+				if m.Plan.Expected != nil {
+					p.Expected = make(map[string]string, len(m.Plan.Expected))
+					for k, v := range m.Plan.Expected {
+						p.Expected[k] = v
+					}
+				}
+				cp.Messages[i].Plan = &p
+			}
+		}
+	}
+	return cp
+}

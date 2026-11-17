@@ -1,0 +1,12 @@
+{
+  "name": "block-go",
+  "version": "1.0.379",
+  "private": true,
+  "license": "Apache-2.0",
+  "scripts": {
+    "check": "CGO_ENABLED=0 go vet ./... && CGO_ENABLED=0 go build ./...",
+    "build": "CGO_ENABLED=0 go build -o dist/block ./cmd/block && CGO_ENABLED=0 go tool mygo build -skip-dmg",
+    "test": "CGO_ENABLED=0 go test ./...",
+    "smoke": "CGO_ENABLED=0 go test -v -run TestFullWorkspaceClickAcceptance ./internal/smoke && ./dist/block --smoke-once"
+  }
+}
