@@ -370,10 +370,11 @@ fn render_native_block(
                 )
                 .child(
                     div()
-                        .h(px(24. * zoom))
+                        .h(px(26. * zoom))
                         .px(px(4. * zoom))
                         .flex()
                         .items_center()
+                        .font_family(crate::theme::ui_font_family())
                         .text_size(px(14. * zoom))
                         .line_height(px(20. * zoom))
                         .font_weight(crate::ui::type_scale::TITLE)
