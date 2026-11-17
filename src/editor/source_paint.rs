@@ -144,7 +144,8 @@ fn paint_line(editor: &gpui::Entity<Editor>, index: usize, layout: &TextLayout, 
     }
     if let Some(local) = caret {
         let p = layout.point(local.min(vis_len));
-        window.paint_quad(fill(Bounds::new(p, size(px(1.5), layout.line_height)), theme.accent));
+        let alpha = super::caret_blink::alpha(editor, (u64::MAX - index as u64, local), cx);
+        if alpha > 0. { window.paint_quad(fill(Bounds::new(p, size(px(2.), layout.line_height)), theme.accent.opacity(alpha)).corner_radii(px(1.))); }
         crate::sync_ime_cursor_area(f32::from(p.x), f32::from(p.y), f32::from(layout.line_height));
     }
     if let Some(mark) = composing {
