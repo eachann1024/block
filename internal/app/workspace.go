@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -63,6 +64,10 @@ type Workspace struct {
 	modals *modals.Manager
 	quick  *modals.QuickNoteController
 
+	// OnAppMenuOrHotkeysChanged is notified whenever Settings updates shortcuts or language
+	// so main.go can live-refresh the native application menu bar and OS global hotkeys.
+	OnAppMenuOrHotkeysChanged func(st model.AppState)
+
 	watchCancel context.CancelFunc
 	lastSnapAt  map[string]time.Time
 }
@@ -107,6 +112,7 @@ func NewWorkspace(dataDir string) *Workspace {
 	w.quick = modals.NewQuickNoteController(actualDir, w, codec)
 
 	w.wireModalCallbacks()
+	w.wireQuickNoteCallbacks()
 	w.hydrateInitialWorkspace()
 	return w
 }
@@ -127,7 +133,24 @@ func (w *Workspace) newEditorSession(cleanPath string, doc *model.Doc) *editor.S
 	sess := editor.NewSession(cleanPath, doc, w.codec, w)
 	sess.SetDataDir(w.dataDir)
 	sess.SetInlineAIResponder(w.inlineAIRespond)
+	sess.SetAnnotationAIResponder(w.annotationAIRespond)
 	return sess
+}
+
+func stripOuterMarkdownFence(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.HasPrefix(trimmed, "```") {
+		return trimmed
+	}
+	firstNL := strings.IndexByte(trimmed, '\n')
+	if firstNL < 0 {
+		return trimmed
+	}
+	rest := strings.TrimSpace(trimmed[firstNL+1:])
+	if strings.HasSuffix(rest, "```") {
+		return strings.TrimSpace(strings.TrimSuffix(rest, "```"))
+	}
+	return trimmed
 }
 
 func (w *Workspace) inlineAIRespond(ctxText, orig, draft, instruction string) string {
@@ -136,6 +159,22 @@ func (w *Workspace) inlineAIRespond(ctxText, orig, draft, instruction string) st
 	src := strings.TrimSpace(orig)
 	if src == "" {
 		src = strings.TrimSpace(draft)
+	}
+
+	if w.ai != nil && w.ai.IsLiveProviderReady() {
+		sysPrompt := "You are Block's inline writing assistant. Output ONLY the requested Markdown text without preamble, commentary, or outer triple-backtick fences."
+		var userPrompt string
+		if strings.TrimSpace(orig) == "" {
+			userPrompt = fmt.Sprintf("Context before cursor:\n%s\n\nDraft:\n%s\n\nInstruction:\n%s", ctxText, draft, inst)
+		} else {
+			userPrompt = fmt.Sprintf("Surrounding context:\n%s\n\nSelected text to transform:\n%s\n\nInstruction:\n%s", ctxText, src, inst)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		out, err := w.ai.CompletePrompt(ctx, sysPrompt, userPrompt)
+		cancel()
+		if err == nil && strings.TrimSpace(out) != "" {
+			return stripOuterMarkdownFence(out)
+		}
 	}
 
 	// Empty-block generation modes (续写 / 列大纲 / 待办清单 / 头脑风暴 / 自定义)
@@ -190,6 +229,138 @@ func (w *Workspace) inlineAIRespond(ctxText, orig, draft, instruction string) st
 	}
 }
 
+func (w *Workspace) annotationAIRespond(docMarkdown string, pending []*model.Annotation) map[string]string {
+	out := make(map[string]string, len(pending))
+	if len(pending) == 0 {
+		return out
+	}
+
+	if w.ai != nil && w.ai.IsLiveProviderReady() {
+		type reqItem struct {
+			ID         string   `json:"id"`
+			AnchorText string   `json:"anchor_text"`
+			Note       string   `json:"note"`
+			Reactions  []string `json:"reactions,omitempty"`
+		}
+		items := make([]reqItem, 0, len(pending))
+		for _, a := range pending {
+			if a == nil {
+				continue
+			}
+			items = append(items, reqItem{
+				ID:         a.ID,
+				AnchorText: a.QuotedText,
+				Note:       a.Note,
+				Reactions:  a.Reactions,
+			})
+		}
+		payload, _ := json.MarshalIndent(items, "", "  ")
+		sysPrompt := `You rewrite annotated spans in a Markdown document. Return ONLY valid JSON as an array of objects: [{"id":"...","replacement":"..."}]. Do not include markdown fences or extra prose.`
+		userPrompt := fmt.Sprintf("Document Markdown:\n%s\n\nAnnotations to rewrite:\n%s", docMarkdown, string(payload))
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		raw, err := w.ai.CompletePrompt(ctx, sysPrompt, userPrompt)
+		cancel()
+		if err == nil && strings.TrimSpace(raw) != "" {
+			clean := stripOuterMarkdownFence(raw)
+			type respItem struct {
+				ID          string `json:"id"`
+				Replacement string `json:"replacement"`
+			}
+			var parsed []respItem
+			if json.Unmarshal([]byte(clean), &parsed) == nil {
+				for _, it := range parsed {
+					if strings.TrimSpace(it.ID) != "" && strings.TrimSpace(it.Replacement) != "" {
+						out[it.ID] = it.Replacement
+					}
+				}
+			} else {
+				var asMap map[string]string
+				if json.Unmarshal([]byte(clean), &asMap) == nil {
+					for k, v := range asMap {
+						if strings.TrimSpace(k) != "" && strings.TrimSpace(v) != "" {
+							out[k] = v
+						}
+					}
+				}
+			}
+		}
+	}
+
+	for _, a := range pending {
+		if a == nil || strings.TrimSpace(out[a.ID]) != "" {
+			continue
+		}
+		anchor := strings.TrimSpace(a.QuotedText)
+		note := strings.TrimSpace(a.Note)
+		noteLower := strings.ToLower(note)
+		switch {
+		case strings.Contains(note, "翻译") || strings.Contains(noteLower, "translate"):
+			out[a.ID] = fmt.Sprintf("Translated: %s", anchor)
+		case strings.Contains(note, "加粗") || strings.Contains(noteLower, "bold"):
+			out[a.ID] = fmt.Sprintf("**%s**", anchor)
+		case strings.Contains(note, "精简") || strings.Contains(noteLower, "concise") || strings.Contains(noteLower, "shorten"):
+			runes := []rune(anchor)
+			if len(runes) > 16 {
+				out[a.ID] = string(runes[:16])
+			} else {
+				out[a.ID] = strings.TrimSuffix(strings.TrimSuffix(anchor, "。"), ".")
+			}
+		default:
+			out[a.ID] = fmt.Sprintf("%s（%s）", anchor, note)
+		}
+	}
+	return out
+}
+
+func (w *Workspace) wireQuickNoteCallbacks() {
+	if w.quick == nil {
+		return
+	}
+	w.quick.OnSavedNote = func(path string) {
+		w.RescanNotebook()
+		_ = w.OpenNote(path, 0)
+	}
+	w.quick.GetQuickZoom = func() float32 {
+		w.mu.RLock()
+		defer w.mu.RUnlock()
+		if w.state.QuickEditorZoom != nil && *w.state.QuickEditorZoom > 0 {
+			return *w.state.QuickEditorZoom
+		}
+		return 1.0
+	}
+	w.quick.OnQuickZoomChanged = func(zoom float32) {
+		z := zoom
+		next, err := files.UpdateState(func(st *model.AppState) {
+			st.QuickEditorZoom = &z
+		})
+		if err == nil {
+			w.mu.Lock()
+			w.state = next
+			w.mu.Unlock()
+		}
+	}
+	w.quick.GetQuickBounds = func() *model.SavedWindowBounds {
+		w.mu.RLock()
+		defer w.mu.RUnlock()
+		if w.state.QuickWindowBounds == nil {
+			return nil
+		}
+		cp := *w.state.QuickWindowBounds
+		return &cp
+	}
+	w.quick.OnQuickBoundsChanged = func(b model.SavedWindowBounds) {
+		cp := b
+		next, err := files.UpdateState(func(st *model.AppState) {
+			st.QuickWindowBounds = &cp
+		})
+		if err == nil {
+			w.mu.Lock()
+			w.state = next
+			w.mu.Unlock()
+		}
+	}
+}
+
 func (w *Workspace) wireModalCallbacks() {
 	w.modals.GetState = func() model.AppState {
 		w.mu.RLock()
@@ -224,6 +395,9 @@ func (w *Workspace) wireModalCallbacks() {
 			}
 		}
 		w.RescanNotebook()
+		if w.OnAppMenuOrHotkeysChanged != nil {
+			w.OnAppMenuOrHotkeysChanged(next)
+		}
 		w.RequestRedraw()
 	}
 	w.modals.RenderAISettings = func(c *ui.Context) {
@@ -509,6 +683,12 @@ func (w *Workspace) OpenExportStage() bool {
 		return false
 	}
 	w.FlushDirtySessions()
+	if !sess.Dirty() {
+		if diskText, _, err := files.ReadNote(active); err == nil && diskText != sess.Markdown() {
+			sess.SetDoc(w.codec.Parse(diskText))
+			sess.MarkSaved()
+		}
+	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
 	w.modals.CloseSettings()
@@ -538,6 +718,12 @@ func (w *Workspace) OpenPageHistory() bool {
 		return false
 	}
 	w.FlushDirtySessions()
+	if !sess.Dirty() {
+		if diskText, _, err := files.ReadNote(active); err == nil && diskText != sess.Markdown() {
+			sess.SetDoc(w.codec.Parse(diskText))
+			sess.MarkSaved()
+		}
+	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
 	w.modals.CloseSettings()
@@ -1363,6 +1549,9 @@ func (w *Workspace) removeClosedOrDeletedPath(target string) {
 // CloseTab flushes dirty changes on path, pushes it to ClosedTabs, and closes the tab.
 func (w *Workspace) CloseTab(path string) {
 	clean := filepath.Clean(path)
+	w.mu.Lock()
+	delete(w.lastSnapAt, clean)
+	w.mu.Unlock()
 	w.flushSingleSession(clean)
 
 	w.mu.Lock()
@@ -1685,31 +1874,32 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		return
 	}
 
-	w.mu.RLock()
-	customSearch := w.state.ShortcutSearch
-	w.mu.RUnlock()
+	st := w.State()
 
-	matchSpec := func(custom, fallback string) bool {
-		raw := fallback
-		if strings.TrimSpace(custom) != "" {
-			raw = custom
-		}
+	matchRaw := func(raw string) bool {
 		mods, key, ok := blockui.ParseShortcut(raw)
 		if !ok {
 			return false
 		}
 		return c.Shortcut(mods, key)
 	}
-
-	if matchSpec(customSearch, "cmd-k") {
-		w.modals.OpenSearch(false)
-		return
+	matchAction := func(action string) bool {
+		return matchRaw(modals.EffectiveShortcut(st, action))
 	}
-	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyK) {
+
+	if matchAction("global_summon") {
 		w.modals.OpenSearch(true)
 		return
 	}
-	if matchSpec("", "cmd-,") {
+	if matchAction("quick_note") {
+		w.quick.TriggerHotkey()
+		return
+	}
+	if matchAction("search") {
+		w.modals.OpenSearch(false)
+		return
+	}
+	if matchRaw("cmd-,") {
 		if w.modals.IsSettingsOpen() {
 			w.modals.CloseSettings()
 		} else {
@@ -1717,7 +1907,10 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		}
 		return
 	}
-	if matchSpec("", "cmd-shift-m") {
+	if w.modals.IsSettingsOpen() {
+		return
+	}
+	if matchAction("performance") {
 		if w.modals.IsPerformanceOpen() {
 			w.modals.ClosePerformance()
 		} else {
@@ -1725,31 +1918,31 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		}
 		return
 	}
-	if matchSpec("", "cmd-j") {
+	if matchAction("toggle_ai") {
 		w.ToggleAIPanel()
 		return
 	}
-	if matchSpec("", "alt-b") || c.Shortcut(ui.Cmd, ui.KeyBackslash) {
+	if matchAction("toggle_sidebar") || c.Shortcut(ui.Cmd, ui.KeyBackslash) {
 		w.ToggleSidebar(vpW)
 		return
 	}
-	if matchSpec("", "cmd-n") || matchSpec("", "cmd-t") {
+	if matchAction("new_note") || matchRaw("cmd-t") {
 		_, _ = w.CreateNewNote()
 		return
 	}
-	if matchSpec("", "cmd-shift-n") {
+	if matchRaw("cmd-shift-n") {
 		_, _ = w.CreateNewFolder()
 		return
 	}
-	if matchSpec("", "cmd-w") {
+	if matchRaw("cmd-w") {
 		w.CloseActiveTab()
 		return
 	}
-	if matchSpec("", "cmd-shift-t") {
+	if matchRaw("cmd-shift-t") {
 		w.ReopenClosedTab()
 		return
 	}
-	if matchSpec("", "cmd-shift-e") {
+	if matchAction("export_image") {
 		w.OpenExportStage()
 		return
 	}
@@ -1889,6 +2082,7 @@ func (w *Workspace) Render(c *ui.Context) {
 	hasFBDraft := w.state.FeedbackDraft != nil
 	toast := w.historyToast
 	recPath := w.recoveryPath
+	stSnap := w.state
 	w.mu.Unlock()
 
 	inSettings := w.modals.IsSettingsOpen()
@@ -1962,8 +2156,15 @@ func (w *Workspace) Render(c *ui.Context) {
 				CanForward:         w.nav.CanForward(),
 				ZoomPct:            w.ZoomPct(),
 				PendingAnnotations: pendingAnnots,
+				ShortcutSidebar:    modals.EffectiveShortcut(stSnap, "toggle_sidebar"),
+				ShortcutNewTab:     "cmd-t",
+				ShortcutAI:         modals.EffectiveShortcut(stSnap, "toggle_ai"),
+				ShortcutExport:     modals.EffectiveShortcut(stSnap, "export_image"),
 				OnSendAnnotations: func() {
-					w.ai.SetOpen(true)
+					if activeSess != nil {
+						activeSess.GeneratePendingAnnotations()
+						w.RequestRedraw()
+					}
 				},
 				MenuState: w.tabMenu,
 				OnToggleSidebar: func() {
@@ -2063,7 +2264,7 @@ func (w *Workspace) Render(c *ui.Context) {
 
 			// Docked Sidebar
 			if !aiImmersive && layout.SidebarDocked {
-				w.renderSidebarColumn(c, activeNB, notebooks, entries, activeTab, notice, false)
+				w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, false)
 			}
 
 			// Center Content (Note Editor, Non-Markdown Surface, or Empty Mascot State)
@@ -2130,7 +2331,7 @@ func (w *Workspace) Render(c *ui.Context) {
 						w.ai.SetPanelWidth(chatW)
 					}
 				}
-				w.ai.SetPanelWidth(layout.ChatWidth)
+				w.ai.SetRenderWidth(layout.ChatWidth)
 				w.ai.RenderPanel(c)
 			}
 
@@ -2146,7 +2347,7 @@ func (w *Workspace) Render(c *ui.Context) {
 				drawer := ui.Row(c).Absolute().Left(0).Top(0).Bottom(0).Width(w.sidebarWidth).
 					Shadow(8, 0, 28, 0, ui.RGBA(0, 0, 0, 0.22))
 				drawer.Children(func() {
-					w.renderSidebarColumn(c, activeNB, notebooks, entries, activeTab, notice, true)
+					w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, true)
 				})
 			}
 		})
@@ -2189,6 +2390,7 @@ func (w *Workspace) renderRecoveryBanner(c *ui.Context, recPath string) {
 
 func (w *Workspace) renderSidebarColumn(
 	c *ui.Context,
+	stSnap model.AppState,
 	activeNB string,
 	notebooks []string,
 	entries []model.FileEntry,
@@ -2205,13 +2407,15 @@ func (w *Workspace) renderSidebarColumn(
 				st.SidebarWidth = &clamped
 			})
 		},
-		ActiveNotebook: activeNB,
-		Notebooks:      notebooks,
-		Entries:        entries,
-		ActiveNote:     activeNote,
-		Notice:         notice,
-		SearchOpen:     w.modals.IsSearchOpen(),
-		SettingsOpen:   w.modals.IsSettingsOpen(),
+		ActiveNotebook:  activeNB,
+		Notebooks:       notebooks,
+		Entries:         entries,
+		ActiveNote:      activeNote,
+		Notice:          notice,
+		SearchOpen:      w.modals.IsSearchOpen(),
+		SettingsOpen:    w.modals.IsSettingsOpen(),
+		ShortcutSearch:  modals.EffectiveShortcut(stSnap, "search"),
+		ShortcutNewNote: modals.EffectiveShortcut(stSnap, "new_note"),
 		OnOpenSearch: func() {
 			w.modals.OpenSearch(false)
 		},

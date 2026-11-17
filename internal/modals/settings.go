@@ -1,6 +1,7 @@
 package modals
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -17,6 +18,74 @@ const (
 	defaultSearchShortcut = "cmd-shift-k"
 	defaultQuickShortcut  = "alt-n"
 )
+
+type shortcutActionSpec struct {
+	action   string
+	buttonID string
+	def      string
+	zh       string
+	en       string
+}
+
+var shortcutActionSpecs = []shortcutActionSpec{
+	{action: "global_summon", buttonID: "settings-rec-search", def: defaultSearchShortcut, zh: "全局唤出", en: "Global Summon"},
+	{action: "quick_note", buttonID: "settings-rec-quick", def: defaultQuickShortcut, zh: "速记小窗", en: "Quick Note"},
+	{action: "search", buttonID: "settings-rec-inapp-search", def: "cmd-k", zh: "搜索笔记", en: "Search Notes"},
+	{action: "new_note", buttonID: "settings-rec-new-note", def: "cmd-n", zh: "新建笔记", en: "New Note"},
+	{action: "toggle_sidebar", buttonID: "settings-rec-sidebar", def: "alt-b", zh: "显示或隐藏侧栏", en: "Toggle Sidebar"},
+	{action: "toggle_ai", buttonID: "settings-rec-ai", def: "cmd-j", zh: "AI 助手面板", en: "AI Assistant Panel"},
+	{action: "export_image", buttonID: "settings-rec-export", def: "cmd-shift-e", zh: "导出与生成图片", en: "Export & Image"},
+	{action: "performance", buttonID: "settings-rec-perf", def: "cmd-shift-m", zh: "性能与占用", en: "Performance & Usage"},
+}
+
+// AllShortcutDefaults returns a fresh map of every customizable shortcut action ID to its default chord.
+func AllShortcutDefaults() map[string]string {
+	out := make(map[string]string, len(shortcutActionSpecs))
+	for _, spec := range shortcutActionSpecs {
+		out[spec.action] = spec.def
+	}
+	return out
+}
+
+// EffectiveShortcut returns the active shortcut chord for `action`, falling back to its default.
+func EffectiveShortcut(st model.AppState, action string) string {
+	switch action {
+	case "global_summon":
+		if v := strings.TrimSpace(st.ShortcutSearch); v != "" {
+			return v
+		}
+		if st.CustomShortcuts != nil {
+			if v := strings.TrimSpace(st.CustomShortcuts[action]); v != "" {
+				return v
+			}
+		}
+		return defaultSearchShortcut
+	case "quick_note":
+		if v := strings.TrimSpace(st.ShortcutQuick); v != "" {
+			return v
+		}
+		if st.CustomShortcuts != nil {
+			if v := strings.TrimSpace(st.CustomShortcuts[action]); v != "" {
+				return v
+			}
+		}
+		return defaultQuickShortcut
+	case "find":
+		return "cmd-f"
+	default:
+		if st.CustomShortcuts != nil {
+			if v := strings.TrimSpace(st.CustomShortcuts[action]); v != "" {
+				return v
+			}
+		}
+		for _, spec := range shortcutActionSpecs {
+			if spec.action == action {
+				return spec.def
+			}
+		}
+		return ""
+	}
+}
 
 // Manager owns the full-window Settings page and every modal overlay in Block.
 type Manager struct {
@@ -37,10 +106,12 @@ type Manager struct {
 	fallbackState model.AppState
 
 	// Settings page state.
-	settingsOpen        bool
-	settingsTab         string
-	recordingShortcut   string
-	fontPickerOpen      string
+	settingsOpen           bool
+	settingsTab            string
+	recordingShortcut      string
+	justRecordedShortcut   bool
+	shortcutConflictNotice string
+	fontPickerOpen         string
 	fontQuery           string
 	fontCursor          int
 	fontFamilies        []ui.FontFamily
@@ -181,9 +252,10 @@ func (m *Manager) ActiveSettingsTab() string {
 	return m.settingsTab
 }
 
-// IsRecordingShortcut reports whether the shortcut recorder is actively capturing keys.
+// IsRecordingShortcut reports whether the shortcut recorder is actively capturing keys
+// (including the remainder of the frame in which a key was just captured).
 func (m *Manager) IsRecordingShortcut() bool {
-	return m.settingsOpen && m.recordingShortcut != ""
+	return m.settingsOpen && (m.recordingShortcut != "" || m.justRecordedShortcut)
 }
 
 // OpenSettings opens the full-window Settings page at `tab` ("ai", "appearance", "folders", "shortcuts").
@@ -201,6 +273,7 @@ func (m *Manager) OpenSettings(tab string) {
 		m.assetsDraft = "assets"
 	}
 	m.recordingShortcut = ""
+	m.shortcutConflictNotice = ""
 	m.fontPickerOpen = ""
 	m.folderRuleError = ""
 	m.regexRuleError = ""
@@ -215,6 +288,7 @@ func (m *Manager) CloseSettings() {
 	}
 	m.settingsOpen = false
 	m.recordingShortcut = ""
+	m.shortcutConflictNotice = ""
 	m.fontPickerOpen = ""
 	m.requestRedraw()
 }
@@ -296,8 +370,11 @@ func (m *Manager) RenderSettings(c *ui.Context) {
 							Label(title)
 						if active {
 							btn.Background(pal.Selected).Border(1, pal.Accent)
-						} else if btn.Hovered() {
-							btn.Background(pal.Hover)
+						} else {
+							if btn.Hovered() {
+								btn.Background(pal.Hover)
+							}
+							btn.Border(1, ui.Transparent)
 						}
 						btn.Children(func() {
 							if active {
@@ -364,10 +441,12 @@ func (m *Manager) RenderSettings(c *ui.Context) {
 	if m.fontPickerOpen != "" {
 		m.renderFontPickerOverlay(c)
 	}
+	m.justRecordedShortcut = false
 }
 
 func (m *Manager) selectSettingsTab(tab string) {
 	m.recordingShortcut = ""
+	m.shortcutConflictNotice = ""
 	m.fontPickerOpen = ""
 	m.settingsTab = tab
 }
@@ -989,59 +1068,63 @@ func (m *Manager) saveFolderRules(rules []model.FolderRule) {
 func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 	pal := theme.Ocean()
 	st := m.currentState()
-	searchSpec := st.ShortcutSearch
-	if searchSpec == "" {
-		searchSpec = defaultSearchShortcut
+	customized := strings.TrimSpace(st.ShortcutSearch) != "" ||
+		strings.TrimSpace(st.ShortcutQuick) != "" ||
+		len(st.CustomShortcuts) > 0
+	if !customized {
+		for _, spec := range shortcutActionSpecs {
+			if normalizeShortcutSpec(EffectiveShortcut(st, spec.action)) != normalizeShortcutSpec(spec.def) {
+				customized = true
+				break
+			}
+		}
 	}
-	quickSpec := st.ShortcutQuick
-	if quickSpec == "" {
-		quickSpec = defaultQuickShortcut
-	}
-	customized := searchSpec != defaultSearchShortcut || quickSpec != defaultQuickShortcut
 
 	settingsCard(c, func() {
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+		ui.Row(c).FillWidth().MinHeight(32).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 			ui.Text(c, theme.Tr("快捷键", "Shortcuts")).FontSize(16).FontWeight(600).TextColor(pal.Text)
 			if customized {
 				rst := internalui.ActionButton(c, "settings-shortcuts-reset", theme.Tr("恢复默认", "Reset"), nil, internalui.ButtonGhost, false)
 				if rst.Clicked() {
 					m.recordingShortcut = ""
+					m.shortcutConflictNotice = ""
 					m.mutateState(func(s *model.AppState) {
 						s.ShortcutSearch = ""
 						s.ShortcutQuick = ""
+						s.CustomShortcuts = nil
 					})
 				}
 			}
 		})
 
-		settingRow(c, theme.Tr("全局唤出", "Global Summon"), func() {
-			m.shortcutRecorderButton(c, "settings-rec-search", "search", searchSpec)
-		})
-		settingRow(c, theme.Tr("速记小窗", "Quick Note"), func() {
-			m.shortcutRecorderButton(c, "settings-rec-quick", "quick", quickSpec)
-		})
-		settingRow(c, theme.Tr("搜索笔记", "Search Notes"), func() {
-			keycapText(c, internalui.FormatShortcutDisplay("cmd-k"))
-		})
-		settingRow(c, theme.Tr("当前笔记查找", "Find in Note"), func() {
-			keycapText(c, internalui.FormatShortcutDisplay("cmd-f"))
-		})
-		settingRow(c, theme.Tr("新建笔记", "New Note"), func() {
-			keycapText(c, internalui.FormatShortcutDisplay("cmd-n"))
-		})
-		settingRow(c, theme.Tr("AI 助手面板", "AI Assistant Panel"), func() {
-			keycapText(c, internalui.FormatShortcutDisplay("cmd-j"))
-		})
-		settingRow(c, theme.Tr("性能与占用", "Performance & Usage"), func() {
-			keycapText(c, internalui.FormatShortcutDisplay("cmd-shift-m"))
-		})
+		if m.shortcutConflictNotice != "" {
+			noticeRow := ui.Row(c.Key("settings-shortcut-conflict-notice")).FillWidth().
+				Padding(8, 12, 8, 12).Radius(theme.RadiusControl).
+				Background(pal.WarningSurface).Border(1, pal.Warning.Alpha(0.35))
+			internalui.Probe(noticeRow, "settings-shortcut-conflict-notice")
+			noticeRow.Children(func() {
+				ui.Text(c, m.shortcutConflictNotice).FontSize(14).TextColor(pal.Warning)
+			})
+		}
+
+		for _, spec := range shortcutActionSpecs {
+			s := spec
+			settingRow(c, theme.Tr(s.zh, s.en), func() {
+				m.shortcutRecorderButton(c, s.buttonID, s.action, EffectiveShortcut(st, s.action))
+			})
+			if s.action == "search" {
+				settingRow(c, theme.Tr("当前笔记查找", "Find in Note"), func() {
+					keycapText(c, internalui.FormatShortcutDisplay("cmd-f"))
+				})
+			}
+		}
 	})
 }
 
 func (m *Manager) shortcutRecorderButton(c *ui.Context, id, kind, spec string) {
 	pal := theme.Ocean()
 	recording := m.recordingShortcut == kind
-	label := internalui.FormatShortcutDisplay(spec)
+	label := formatShortcutLabel(spec)
 	if recording {
 		label = theme.Tr("按下快捷键…", "Press shortcut…")
 	}
@@ -1052,8 +1135,11 @@ func (m *Manager) shortcutRecorderButton(c *ui.Context, id, kind, spec string) {
 		bg = pal.Selected
 	}
 	btn := ui.ButtonBase(c.Key(id)).Height(32).MinWidth(130).PaddingX(12).Center().
-		Radius(theme.RadiusControl).Background(bg).Border(1, borderCol).
-		Cursor(ui.CursorPointer).Label(label)
+		Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(label)
+	if !recording && btn.Hovered() {
+		bg = pal.Hover
+	}
+	btn.Background(bg).Border(1, borderCol)
 	btn.Children(func() {
 		ui.Text(c, label).FontSize(14).FontWeight(500).TextColor(pal.Text).SingleLine()
 	})
@@ -1063,20 +1149,201 @@ func (m *Manager) shortcutRecorderButton(c *ui.Context, id, kind, spec string) {
 			m.recordingShortcut = ""
 		} else {
 			m.recordingShortcut = kind
-			m.settingsFocusHandle.Focus(c)
 		}
 	}
 }
 
-func (m *Manager) applyRecordedShortcut(kind, spec string) {
-	m.recordingShortcut = ""
-	m.mutateState(func(s *model.AppState) {
-		if kind == "search" {
-			s.ShortcutSearch = spec
-		} else if kind == "quick" {
-			s.ShortcutQuick = spec
+func setActionShortcut(s *model.AppState, action, spec string) {
+	switch action {
+	case "global_summon":
+		s.ShortcutSearch = spec
+	case "quick_note":
+		s.ShortcutQuick = spec
+	default:
+		if spec == "" {
+			if s.CustomShortcuts != nil {
+				delete(s.CustomShortcuts, action)
+				if len(s.CustomShortcuts) == 0 {
+					s.CustomShortcuts = nil
+				}
+			}
+			return
 		}
+		if s.CustomShortcuts == nil {
+			s.CustomShortcuts = make(map[string]string)
+		}
+		s.CustomShortcuts[action] = spec
+	}
+}
+
+func (m *Manager) applyRecordedShortcut(action, spec string) {
+	m.recordingShortcut = ""
+	m.justRecordedShortcut = true
+	normNew := normalizeShortcutSpec(spec)
+	var conflictMsg string
+
+	m.mutateState(func(s *model.AppState) {
+		prevSpec := EffectiveShortcut(*s, action)
+		if normalizeShortcutSpec(prevSpec) == normNew {
+			setActionShortcut(s, action, spec)
+			return
+		}
+		for _, other := range shortcutActionSpecs {
+			if other.action == action {
+				continue
+			}
+			if normalizeShortcutSpec(EffectiveShortcut(*s, other.action)) == normNew {
+				reassigned := prevSpec
+				if normalizeShortcutSpec(prevSpec) == normalizeShortcutSpec(other.def) {
+					reassigned = ""
+				}
+				setActionShortcut(s, other.action, reassigned)
+				otherLabel := theme.Tr(other.zh, other.en)
+				conflictMsg = theme.Tr(
+					fmt.Sprintf("已将冲突快捷键从「%s」调整为 %s", otherLabel, formatShortcutLabel(prevSpec)),
+					fmt.Sprintf("Reassigned conflicting shortcut from %s to %s", otherLabel, formatShortcutLabel(prevSpec)),
+				)
+				break
+			}
+		}
+		setActionShortcut(s, action, spec)
 	})
+	m.shortcutConflictNotice = conflictMsg
+}
+
+func normalizeShortcutSpec(spec string) string {
+	s := strings.ToLower(strings.TrimSpace(spec))
+	if s == "" {
+		return ""
+	}
+	s = strings.ReplaceAll(s, "+", "-")
+	var ctrl, alt, shift, cmd bool
+	var keyPart string
+	for _, p := range strings.Split(s, "-") {
+		switch p {
+		case "":
+			continue
+		case "cmd", "cmdorctrl", "meta", "super", "command":
+			cmd = true
+		case "ctrl", "control":
+			ctrl = true
+		case "alt", "opt", "option":
+			alt = true
+		case "shift":
+			shift = true
+		case "comma", ",":
+			keyPart = "comma"
+		case "period", ".":
+			keyPart = "period"
+		case "slash", "/":
+			keyPart = "slash"
+		case "minus", "-":
+			keyPart = "minus"
+		case "equal", "=", "plus":
+			keyPart = "equal"
+		case "bracketleft", "[":
+			keyPart = "bracketleft"
+		case "bracketright", "]":
+			keyPart = "bracketright"
+		case "backslash", "\\":
+			keyPart = "\\"
+		case "semicolon", ";":
+			keyPart = ";"
+		case "quote", "apostrophe", "'":
+			keyPart = "'"
+		case "backquote", "grave", "`":
+			keyPart = "`"
+		case "return", "enter":
+			keyPart = "enter"
+		case "esc", "escape":
+			keyPart = "escape"
+		default:
+			keyPart = p
+		}
+	}
+	if keyPart == "" {
+		return ""
+	}
+	var parts []string
+	if ctrl {
+		parts = append(parts, "ctrl")
+	}
+	if alt {
+		parts = append(parts, "alt")
+	}
+	if shift {
+		parts = append(parts, "shift")
+	}
+	if cmd {
+		parts = append(parts, "cmd")
+	}
+	parts = append(parts, keyPart)
+	return strings.Join(parts, "-")
+}
+
+func formatShortcutLabel(spec string) string {
+	if _, _, ok := internalui.ParseShortcut(spec); ok {
+		return internalui.FormatShortcutDisplay(spec)
+	}
+	norm := normalizeShortcutSpec(spec)
+	if norm == "" {
+		return spec
+	}
+	parts := strings.Split(norm, "-")
+	keyTok := parts[len(parts)-1]
+	modToks := parts[:len(parts)-1]
+	var ctrl, alt, shift, cmd bool
+	for _, m := range modToks {
+		switch m {
+		case "ctrl":
+			ctrl = true
+		case "alt":
+			alt = true
+		case "shift":
+			shift = true
+		case "cmd":
+			cmd = true
+		}
+	}
+	keyLabel := strings.ToUpper(keyTok)
+	switch keyTok {
+	case "backspace":
+		keyLabel = "⌫"
+	case "\\", ";", "'", "`":
+		keyLabel = keyTok
+	}
+	if theme.IsMacOS() {
+		var sb strings.Builder
+		if ctrl {
+			sb.WriteString("⌃")
+		}
+		if alt {
+			sb.WriteString("⌥")
+		}
+		if shift {
+			sb.WriteString("⇧")
+		}
+		if cmd {
+			sb.WriteString("⌘")
+		}
+		sb.WriteString(keyLabel)
+		return sb.String()
+	}
+	var out []string
+	if ctrl {
+		out = append(out, "Ctrl")
+	}
+	if alt {
+		out = append(out, "Alt")
+	}
+	if shift {
+		out = append(out, "Shift")
+	}
+	if cmd {
+		out = append(out, "Super")
+	}
+	out = append(out, keyLabel)
+	return strings.Join(out, "+")
 }
 
 func inputEventToShortcutSpec(ev ui.InputEvent) (string, bool) {
@@ -1112,12 +1379,22 @@ func shortcutKeyName(k ui.Key) string {
 		return "tab"
 	case ui.KeyEnter:
 		return "enter"
+	case ui.KeyBackspace:
+		return "backspace"
 	case ui.KeyComma:
 		return "comma"
 	case ui.KeyPeriod:
 		return "period"
 	case ui.KeySlash:
 		return "slash"
+	case ui.KeyBackslash:
+		return "\\"
+	case ui.KeySemicolon:
+		return ";"
+	case ui.KeyQuote:
+		return "'"
+	case ui.KeyBackquote:
+		return "`"
 	case ui.KeyMinus:
 		return "minus"
 	case ui.KeyEqual:
@@ -1127,6 +1404,9 @@ func shortcutKeyName(k ui.Key) string {
 	case ui.KeyBracketRight:
 		return "bracketright"
 	default:
+		if k >= ui.KeyF1 && k <= ui.KeyF12 {
+			return fmt.Sprintf("f%d", 1+int(k-ui.KeyF1))
+		}
 		if k >= ui.KeyA && k <= ui.KeyZ {
 			return string(rune('a' + (k - ui.KeyA)))
 		}

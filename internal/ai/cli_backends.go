@@ -379,6 +379,32 @@ func (c *Controller) selectBackendLocked(kind model.BackendKind) {
 	_ = c.writeJSONFile("ai-backends.json", c.backendsCfg)
 }
 
+// SetActiveBackend switches the active backend (enabling it if recognized) and persists selection.
+func (c *Controller) SetActiveBackend(kind model.BackendKind) error {
+	c.mu.Lock()
+	if !c.isBackendRecognizedLocked(kind) {
+		c.mu.Unlock()
+		return fmt.Errorf("%s CLI 未安装或不可用", kind.DisplayName())
+	}
+	if kind != model.BackendBuiltin {
+		if c.backendsCfg.Adapters == nil {
+			c.backendsCfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
+		}
+		opt := c.backendsCfg.Adapters[string(kind)]
+		if opt.Enabled == nil || !*opt.Enabled {
+			on := true
+			opt.Enabled = &on
+			c.backendsCfg.Adapters[string(kind)] = opt
+		}
+	}
+	c.selectBackendLocked(kind)
+	c.backendsCfg.Selected = kind
+	err := c.writeJSONFile("ai-backends.json", c.backendsCfg)
+	c.mu.Unlock()
+	c.requestRedraw()
+	return err
+}
+
 func (c *Controller) backendThinkingLocked(kind model.BackendKind) string {
 	if opt, ok := c.backendsCfg.Adapters[string(kind)]; ok {
 		switch opt.ThinkingLevel {
@@ -617,6 +643,9 @@ func startMCPBridge(ctrl *Controller, convID uint64) (*mcpBridgeServer, error) {
 			rawArgs, _ := json.Marshal(argsVal)
 			ctrl.mu.Lock()
 			resJSON, plan, sources := ctrl.executeToolLocked(name, string(rawArgs))
+			if ctrl.streaming && ctrl.currentID == convID {
+				ctrl.partialSteps = append(ctrl.partialSteps, processStepForTool(name, string(rawArgs)))
+			}
 			if plan != nil && ctrl.currentID == convID {
 				ctrl.pushMessageLocked(model.ChatMessage{
 					Role:    "tool",
@@ -712,6 +741,7 @@ func (c *Controller) startExternalTurn(convID uint64, kind model.BackendKind) {
 	c.streaming = true
 	c.partialText = ""
 	c.partialThink = ""
+	c.partialSteps = nil
 	c.mu.Unlock()
 
 	bridge, err := startMCPBridge(c, convID)
@@ -757,13 +787,27 @@ func (c *Controller) startExternalTurn(convID uint64, kind model.BackendKind) {
 			c.recordTurnOutcomeLocked("failed")
 			c.restoreFailedDraftLocked()
 		} else if ctx.Err() == nil {
-			if strings.TrimSpace(c.partialText) != "" {
+			var steps []model.ProcessStep
+			if strings.TrimSpace(c.partialThink) != "" {
+				steps = append(steps, model.ProcessStep{
+					ID:     fmt.Sprintf("think-%d", convID),
+					Kind:   model.ToolKindThink,
+					Title:  theme.Tr("思考过程", "Thinking"),
+					Detail: strings.TrimSpace(c.partialThink),
+					Done:   true,
+				})
+			}
+			steps = append(steps, c.partialSteps...)
+			if strings.TrimSpace(c.partialText) != "" || len(steps) > 0 {
 				c.pushMessageLocked(model.ChatMessage{
 					Role:    "assistant",
 					Content: c.partialText,
+					Process: steps,
 				})
-				c.partialText = ""
 			}
+			c.partialText = ""
+			c.partialThink = ""
+			c.partialSteps = nil
 			c.recordTurnOutcomeLocked("completed")
 			c.sentDraft = nil
 		}
@@ -909,6 +953,13 @@ func (c *Controller) runCLIAdapterProcess(
 		_, _ = fmt.Fprintf(stdin, `{"id":3,"method":"turn/start","params":{"input":[{"type":"text","text":%q}],"effort":%q}}`+"\n", prompt, thinking)
 	}
 
+	var stdinClosed sync.Once
+	closeStdin := func() {
+		if stdin != nil {
+			stdinClosed.Do(func() { _ = stdin.Close() })
+		}
+	}
+
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
@@ -923,8 +974,11 @@ func (c *Controller) runCLIAdapterProcess(
 		if json.Unmarshal([]byte(line), &frame) != nil {
 			continue
 		}
-		c.handleCLIStreamFrame(convID, serial, frame)
+		if c.handleCLIStreamFrame(convID, serial, frame) {
+			closeStdin()
+		}
 	}
+	closeStdin()
 	waitErr := cmd.Wait()
 	if ctx.Err() != nil {
 		return nil
@@ -939,34 +993,99 @@ func (c *Controller) runCLIAdapterProcess(
 	return nil
 }
 
-func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[string]any) {
+func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[string]any) bool {
 	c.mu.Lock()
 	if c.streamSerial != serial || c.currentID != convID {
 		c.mu.Unlock()
-		return
+		return false
 	}
 	typ, _ := frame["type"].(string)
 	method, _ := frame["method"].(string)
+	turnDone := false
+
+	upsertStep := func(step model.ProcessStep) {
+		if step.ID != "" {
+			for i := range c.partialSteps {
+				if c.partialSteps[i].ID == step.ID {
+					c.partialSteps[i] = step
+					return
+				}
+			}
+		}
+		c.partialSteps = append(c.partialSteps, step)
+	}
 
 	switch {
+	case typ == "system":
+		if id, ok := frame["session_id"].(string); ok && id != "" {
+			if conv := c.findConvLocked(convID); conv != nil {
+				conv.NativeSessionID = id
+				c.persistChatsLocked()
+			}
+		}
 	case typ == "assistant":
 		if msg, ok := frame["message"].(map[string]any); ok {
 			if blocks, ok := msg["content"].([]any); ok {
 				for _, b := range blocks {
 					bm, _ := b.(map[string]any)
-					if bm["type"] == "text" {
+					switch bm["type"] {
+					case "text":
 						if txt, ok := bm["text"].(string); ok {
 							c.partialText += txt
 						}
+					case "thinking":
+						if th, ok := bm["thinking"].(string); ok && strings.TrimSpace(th) != "" {
+							c.partialSteps = append(c.partialSteps, model.ProcessStep{
+								ID:     fmt.Sprintf("think-%d-%d", convID, len(c.partialSteps)),
+								Kind:   model.ToolKindThink,
+								Title:  theme.Tr("思考过程", "Thinking"),
+								Detail: strings.TrimSpace(th),
+								Done:   true,
+							})
+						}
+					case "tool_use":
+						name, _ := bm["name"].(string)
+						rawArgs, _ := json.Marshal(bm["input"])
+						step := processStepForTool(name, string(rawArgs))
+						if id, _ := bm["id"].(string); id != "" {
+							step.ID = id
+						}
+						upsertStep(step)
 					}
 				}
 			}
 		}
+	case typ == "result":
+		if id, ok := frame["session_id"].(string); ok && id != "" {
+			if conv := c.findConvLocked(convID); conv != nil {
+				conv.NativeSessionID = id
+				c.persistChatsLocked()
+			}
+		}
+		if res, ok := frame["result"].(string); ok && res != "" && strings.TrimSpace(c.partialText) == "" {
+			c.partialText = res
+		}
 	case typ == "message_update":
 		if sub, ok := frame["assistantMessageEvent"].(map[string]any); ok {
-			if sub["type"] == "text_delta" {
+			switch sub["type"] {
+			case "text_delta":
 				if d, ok := sub["delta"].(string); ok {
 					c.partialText += d
+				}
+			case "thinking_delta":
+				if d, ok := sub["delta"].(string); ok {
+					c.partialThink += d
+				}
+			}
+		}
+	case method == "thread/started":
+		if params, ok := frame["params"].(map[string]any); ok {
+			if thr, ok := params["thread"].(map[string]any); ok {
+				if id, ok := thr["id"].(string); ok && id != "" {
+					if conv := c.findConvLocked(convID); conv != nil {
+						conv.NativeSessionID = id
+						c.persistChatsLocked()
+					}
 				}
 			}
 		}
@@ -976,6 +1095,51 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 				c.partialText += d
 			}
 		}
+	case method == "item/reasoning/summaryTextDelta" || method == "item/reasoning/textDelta":
+		if params, ok := frame["params"].(map[string]any); ok {
+			if d, ok := params["delta"].(string); ok {
+				c.partialThink += d
+			}
+		}
+	case method == "item/started" || method == "item/completed":
+		if params, ok := frame["params"].(map[string]any); ok {
+			if item, ok := params["item"].(map[string]any); ok {
+				itemID, _ := item["id"].(string)
+				itemType, _ := item["type"].(string)
+				done := method == "item/completed"
+				switch itemType {
+				case "mcpToolCall":
+					toolName, _ := item["tool"].(string)
+					rawArgs, _ := json.Marshal(item["arguments"])
+					step := processStepForTool(toolName, string(rawArgs))
+					if itemID != "" {
+						step.ID = itemID
+					}
+					step.Done = done
+					upsertStep(step)
+				case "commandExecution":
+					cmdStr, _ := item["command"].(string)
+					upsertStep(model.ProcessStep{
+						ID:       itemID,
+						Kind:     model.ToolKindRun,
+						Title:    theme.Tr("执行命令", "Run command"),
+						Detail:   cmdStr,
+						ToolName: "bash",
+						Done:     done,
+					})
+				case "fileChange":
+					upsertStep(model.ProcessStep{
+						ID:       itemID,
+						Kind:     model.ToolKindWrite,
+						Title:    theme.Tr("修改文件", "Edit file"),
+						ToolName: "fileChange",
+						Done:     done,
+					})
+				}
+			}
+		}
+	case method == "turn/completed":
+		turnDone = true
 	case typ == "session":
 		if id, ok := frame["id"].(string); ok && id != "" {
 			if conv := c.findConvLocked(convID); conv != nil {
@@ -996,4 +1160,5 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 	}
 	c.mu.Unlock()
 	c.requestRedraw()
+	return turnDone
 }

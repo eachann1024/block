@@ -101,6 +101,9 @@ type SidebarProps struct {
 	SettingsOpen bool
 	HasUpdate    bool
 
+	ShortcutSearch  string
+	ShortcutNewNote string
+
 	OnOpenSearch       func()
 	OnNewFolder        func()
 	OnNewNote          func()
@@ -302,7 +305,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					}
 					icons.Draw(c, icons.FindSearch, 16, ic)
 					ui.Text(c, theme.Tr("搜索", "Search")).FontSize(14).TextColor(pal.TextSecondary).Grow(1).SingleLine().Ellipsis("…")
-					ui.Text(c, blockui.FormatShortcutDisplay("cmd-k")).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+					ui.Text(c, blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutSearch, "cmd-k"))).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
 				})
 				blockui.Probe(searchBtn, "search-button")
 				if searchBtn.Clicked() && p.OnOpenSearch != nil {
@@ -321,7 +324,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				nnBtn := blockui.IconButton(c, icons.NotePlus, blockui.IconButtonOptions{
 					ID:      "new-note",
 					Size:    32,
-					Tooltip: fmt.Sprintf("%s %s", theme.Tr("新建笔记", "New Note"), blockui.FormatShortcutDisplay("cmd-n")),
+					Tooltip: fmt.Sprintf("%s %s", theme.Tr("新建笔记", "New Note"), blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewNote, "cmd-n"))),
 				})
 				if nnBtn.Clicked() && p.OnNewNote != nil {
 					p.OnNewNote()
@@ -402,7 +405,9 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				if p.State.SwitcherOpen {
 					sw.Background(pal.Selected).Border(1, pal.Accent)
 				} else if sw.Hovered() {
-					sw.Background(pal.Hover)
+					sw.Background(pal.Hover).Border(1, ui.Transparent)
+				} else {
+					sw.Border(1, ui.Transparent)
 				}
 				sw.Children(func() {
 					ic := pal.MonoIconColors(pal.Text)
@@ -524,16 +529,16 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) bool {
 	switch {
 	case isDropTarget && p.State.DropIntoDir:
 		btn.Background(pal.Selected).Border(1, pal.Accent)
-	case isDropTarget && !p.State.DropAfter:
-		btn.BorderWidth(2, 0, 0, 0).BorderColor(pal.Accent).Background(pal.Hover)
-	case isDropTarget && p.State.DropAfter:
-		btn.BorderWidth(0, 0, 2, 0).BorderColor(pal.Accent).Background(pal.Hover)
+	case isDropTarget:
+		btn.Background(pal.Hover).Border(1, ui.Transparent)
 	case selected:
-		btn.Background(pal.Selected)
+		btn.Background(pal.Selected).Border(1, ui.Transparent)
 	case menuTarget:
 		btn.Background(pal.Hover).Border(1, pal.Accent)
 	case hovered:
-		btn.Background(pal.Hover)
+		btn.Background(pal.Hover).Border(1, ui.Transparent)
+	default:
+		btn.Border(1, ui.Transparent)
 	}
 
 	// Track drag-and-drop sibling reorder & folder move.
@@ -593,7 +598,18 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) bool {
 		}
 		ui.Text(c, entry.Name).FontSize(14).FontWeight(weight).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 	})
-	blockui.Probe(btn, rowKey)
+	dropLine := isDropTarget && !p.State.DropIntoDir
+	dropAfter := p.State.DropAfter
+	btn.DrawOver(func(pt *ui.Painter, rect ui.Rect) {
+		blockui.RecordBounds(rowKey, rect)
+		if dropLine {
+			y := rect.Y
+			if dropAfter {
+				y = rect.Y + rect.H - 2
+			}
+			pt.Fill(ui.Rect{X: rect.X + indent, Y: y, W: max(rect.W-indent-6, 16), H: 2}, pal.Accent, 1)
+		}
+	})
 
 	if btn.RightClicked() {
 		b := btn.Bounds()

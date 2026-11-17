@@ -1,0 +1,270 @@
+# 不要往 GitHub Release 添加允许名单以外的附件。唯一名单是 scripts/release/allowed-assets.mjs 里的 5 个安装包。
+# Do not add GitHub Release assets beyond the allowlist. The only list is the 5 installers in scripts/release/allowed-assets.mjs.
+
+name: Daily Release
+
+on:
+  schedule:
+    # 每天 00:00 UTC（北京时间 08:00）检查；仅当自上一版 Release 后有面向用户的新提交且当日未发版时构建发布。
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish GitHub Release after building installers
+        type: boolean
+        default: true
+      force:
+        description: Build even when no new user-facing commits exist
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # Separate from older runs so a cancelled build cannot block or publish this one.
+  group: block-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SOURCE_SHA: ${{ github.sha }}
+  CGO_ENABLED: '0'
+
+jobs:
+  prepare:
+    name: Select version and release notes
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      publish: ${{ steps.check.outputs.publish }}
+      version: ${{ steps.check.outputs.version }}
+      release_tag: ${{ steps.check.outputs.release_tag }}
+      auto_bump: ${{ steps.check.outputs.auto_bump }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check commits and generate release plan
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish == true }}
+          FORCE: ${{ inputs.force == true }}
+          MAGPIE_BASE_URL: ${{ github.ref == 'refs/heads/main' && vars.MAGPIE_BASE_URL || '' }}
+          MAGPIE_API_KEY: ${{ github.ref == 'refs/heads/main' && secrets.MAGPIE_API_KEY || '' }}
+          MAGPIE_CA_CERT: scripts/release/pubgw-cert.pem
+          CHANGELOG_MODEL: antigravity/gemini-3.8-flash
+        run: node scripts/release/select-release.mjs
+      - uses: actions/upload-artifact@v4
+        if: steps.check.outputs.should_build == 'yes'
+        with:
+          name: release-plan-${{ env.SOURCE_SHA }}
+          path: release-plan.json
+          if-no-files-found: error
+          retention-days: 5
+
+  release-macos:
+    name: macOS ${{ matrix.arch }} DMG
+    needs: [prepare]
+    if: needs.prepare.outputs.should_build == 'yes' && github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+          - arch: x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-plan-${{ env.SOURCE_SHA }}
+          path: .
+      - name: Build release .app and DMG
+        env:
+          BLOCK_ARCH: ${{ matrix.arch }}
+        run: bun scripts/release/package-release.mjs
+      - name: Resolve allowlisted macOS installer
+        id: installer
+        shell: bash
+        run: echo "name=$(node scripts/release/allowed-assets.mjs macos ${{ matrix.arch }} dmg)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: block-installer-macos-${{ matrix.arch }}
+          path: dist/release/${{ steps.installer.outputs.name }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release-windows:
+    name: Windows x64 NSIS
+    needs: [prepare]
+    if: needs.prepare.outputs.should_build == 'yes' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-plan-${{ env.SOURCE_SHA }}
+          path: .
+      - name: Install NSIS 3.13
+        shell: pwsh
+        run: |
+          choco install nsis --version=3.13.0 -y --no-progress
+          Add-Content -Path $env:GITHUB_PATH -Value "${env:ProgramFiles(x86)}\NSIS"
+      - name: Build NSIS installer
+        env:
+          BLOCK_ARCH: x64
+        run: node scripts/release/package-windows.mjs
+      - name: Resolve allowlisted Windows installer
+        id: installer
+        shell: bash
+        run: echo "name=$(node scripts/release/allowed-assets.mjs windows x64 exe)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: block-installer-windows-x64
+          path: dist/release/${{ steps.installer.outputs.name }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release-linux:
+    name: Linux x64 deb and AppImage
+    needs: [prepare]
+    if: needs.prepare.outputs.should_build == 'yes' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-plan-${{ env.SOURCE_SHA }}
+          path: .
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends patchelf ca-certificates curl
+          curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
+            "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
+          chmod +x "$RUNNER_TEMP/appimagetool"
+          echo "APPIMAGETOOL=$RUNNER_TEMP/appimagetool" >> "$GITHUB_ENV"
+          echo "APPIMAGE_ARCH=x86_64" >> "$GITHUB_ENV"
+      - name: Build AppImage and deb
+        env:
+          BLOCK_ARCH: x64
+        run: |
+          node scripts/release/package-linux.mjs
+          node scripts/release/package-native.mjs
+      - name: Resolve allowlisted Linux installers
+        id: installer
+        shell: bash
+        run: |
+          {
+            echo "app=$(node scripts/release/allowed-assets.mjs linux x64 AppImage)"
+            echo "deb=$(node scripts/release/allowed-assets.mjs linux x64 deb)"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: block-installer-linux-x64
+          path: |
+            dist/release/${{ steps.installer.outputs.app }}
+            dist/release/${{ steps.installer.outputs.deb }}
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish GitHub Release
+    needs: [prepare, release-macos, release-windows, release-linux]
+    if: >-
+      needs.prepare.outputs.should_build == 'yes' &&
+      github.ref == 'refs/heads/main' &&
+      needs.release-macos.result == 'success' &&
+      needs.release-windows.result == 'success' &&
+      needs.release-linux.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-plan-${{ env.SOURCE_SHA }}
+          path: .
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: block-installer-*
+          merge-multiple: true
+          path: dist/release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: block-release-${{ env.SOURCE_SHA }}
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish GitHub Release
+        if: needs.prepare.outputs.publish == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: node scripts/release/publish-release.mjs
+      - name: Prune and verify release assets
+        if: needs.prepare.outputs.publish == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: node scripts/release/prune-release-assets.mjs
+      - name: Update AUR block-bin
+        if: needs.prepare.outputs.publish == 'yes'
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: bash scripts/release/publish-aur.sh

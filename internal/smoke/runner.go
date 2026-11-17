@@ -1,7 +1,11 @@
 package smoke
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +15,7 @@ import (
 	"block/internal/app"
 	"block/internal/files"
 	"block/internal/markdown"
+	"block/internal/modals"
 	"block/internal/model"
 	"block/internal/theme"
 	blockui "block/internal/ui"
@@ -1349,7 +1354,476 @@ func RunAll(baseTempDir string) (*Report, error) {
 		return rep, err
 	}
 
-	blockui.SetSmokeFinished(true, "All 20 acceptance steps passed")
+	// Step 21: Adversarial Zero-Jitter Pointer & Focus Sweep across Titlebar, Sidebar, and Rich Note (`0.0px` ΔY / ΔH).
+	if err := runStep(21, "Adversarial zero-jitter hover & focus sweep (0.0px delta)", func() (string, error) {
+		jitterNote := filepath.Join(nbDir, "JitterSweep.md")
+		richMD := strings.Join([]string{
+			"# Zero Jitter Heading",
+			"",
+			"Single line paragraph next to block handle.",
+			"",
+			"- [ ] Checkable item without vertical shift",
+			"",
+			"> [!NOTE]",
+			"> Callout body stays rock solid on hover.",
+			"",
+			"```go",
+			"package main",
+			"func main() {}",
+			"```",
+			"",
+			"![sample](sample.png)",
+			"",
+			"Trailing paragraph below image and code block.",
+			"",
+		}, "\n")
+		if err := ws.WriteNote(jitterNote, richMD); err != nil {
+			return "", err
+		}
+		if err := ws.OpenNote(jitterNote, 0); err != nil {
+			return "", err
+		}
+		tt.SetSize(1200, 1080)
+		tt.Move(-20, -20)
+		tt.Frame()
+
+		sess := ws.ActiveSession()
+		if sess == nil {
+			return "", fmt.Errorf("expected active session for JitterSweep.md")
+		}
+		trackedProbes := []string{
+			"notebook-switcher",
+			"tree-row:" + jitterNote,
+			"tab:" + jitterNote,
+			"callout-icon",
+			"callout-pill",
+		}
+		for _, blk := range sess.Doc().Blocks {
+			trackedProbes = append(trackedProbes, fmt.Sprintf("block-%d", blk.ID))
+		}
+
+		baseline := make(map[string]ui.Rect, len(trackedProbes))
+		for _, id := range trackedProbes {
+			r, ok := blockui.TargetBounds(id)
+			if !ok {
+				return "", fmt.Errorf("missing baseline probe %q in rich note", id)
+			}
+			baseline[id] = r
+		}
+
+		assertNoShift := func(contextLabel string) error {
+			for _, id := range trackedProbes {
+				base := baseline[id]
+				cur, ok := blockui.TargetBounds(id)
+				if !ok {
+					return fmt.Errorf("probe %q vanished during %s", id, contextLabel)
+				}
+				if math.Abs(float64(cur.Y-base.Y)) > 0.05 || math.Abs(float64(cur.H-base.H)) > 0.05 {
+					return fmt.Errorf("layout jitter on %q at %s: baseline=(Y:%.2f,H:%.2f) got=(Y:%.2f,H:%.2f)",
+						id, contextLabel, base.Y, base.H, cur.Y, cur.H)
+				}
+			}
+			return nil
+		}
+
+		// Sweep X columns (sidebar, block gutter/handle, note body, right outline rail) every 16px Y
+		for _, x := range []float32{90, 290, 480, 1140} {
+			for y := float32(12); y <= 780; y += 16 {
+				tt.Move(x, y)
+				tt.Frame()
+				if err := assertNoShift(fmt.Sprintf("hover(%.0f,%.0f)", x, y)); err != nil {
+					return "", err
+				}
+			}
+		}
+
+		// Click the image block to open floating image-toolbar -> trailing paragraph must stay at exact same Y!
+		for _, blk := range sess.Doc().Blocks {
+			if blk.Kind == model.BlockImage {
+				if err := clickTarget(tt, fmt.Sprintf("image-%d", blk.ID)); err != nil {
+					return "", err
+				}
+				tt.Frame()
+				if _, ok := blockui.TargetBounds("image-toolbar"); !ok {
+					return "", fmt.Errorf("expected floating image-toolbar overlay when image block focused")
+				}
+				if err := assertNoShift("image-toolbar-focus"); err != nil {
+					return "", err
+				}
+				break
+			}
+		}
+		return fmt.Sprintf("0.0px ΔY/ΔH verified across %d probes & image-toolbar focus", len(trackedProbes)), nil
+	}); err != nil {
+		rep.TotalTime = time.Since(startAll)
+		return rep, err
+	}
+
+	// Step 22: Real Local HTTP OpenAI SSE Full-Chain (multi-tool chat + BatchPlan + live Inline AI + titlebar 统一发送 annotation AI).
+	if err := runStep(22, "Real HTTP OpenAI SSE chat + Inline AI + 统一发送 annotations", func() (string, error) {
+		liveNote := filepath.Join(nbDir, "LiveAINote.md")
+		if err := ws.WriteNote(liveNote, "# Live AI Verification\n\nOriginal sentence to polish.\n"); err != nil {
+			return "", err
+		}
+		if err := ws.OpenNote(liveNote, 0); err != nil {
+			return "", err
+		}
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v1/models" {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"data":[{"id":"gpt-4.1-smoke"}]}`))
+				return
+			}
+			var req struct {
+				Stream   bool `json:"stream"`
+				Messages []struct {
+					Role    string `json:"role"`
+					Content any    `json:"content"`
+				} `json:"messages"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			w.Header().Set("Content-Type", "text/event-stream")
+			flusher, _ := w.(http.Flusher)
+
+			sysText := ""
+			userText := ""
+			toolResults := 0
+			for _, m := range req.Messages {
+				s, _ := m.Content.(string)
+				switch m.Role {
+				case "system":
+					sysText = s
+				case "user":
+					userText = s
+				case "tool":
+					toolResults++
+				}
+			}
+
+			// Case A: Workspace Inline AI (`CompletePrompt`)
+			if strings.Contains(sysText, "inline writing assistant") {
+				fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"Live SSE Inline Polished Sentence."}}]}`)
+				fmt.Fprintln(w, `data: {"choices":[{"finish_reason":"stop","delta":{}}]}`)
+				fmt.Fprintln(w, `data: [DONE]`)
+				if flusher != nil {
+					flusher.Flush()
+				}
+				return
+			}
+
+			// Case B: Workspace Batch Annotation Rewrite (`CompletePrompt`)
+			if strings.Contains(sysText, "rewrite annotated spans") {
+				// Extract first annotation id from userText JSON
+				annID := "ann-1"
+				if idx := strings.Index(userText, `"id": "`); idx >= 0 {
+					rest := userText[idx+7:]
+					if end := strings.IndexByte(rest, '"'); end > 0 {
+						annID = rest[:end]
+					}
+				}
+				respJSON, _ := json.Marshal([]map[string]string{{
+					"id":          annID,
+					"replacement": "Live SSE Annotation Rewritten Span.",
+				}})
+				chunk, _ := json.Marshal(map[string]any{
+					"choices": []map[string]any{{
+						"delta": map[string]any{"content": string(respJSON)},
+					}},
+				})
+				fmt.Fprintf(w, "data: %s\n", chunk)
+				fmt.Fprintln(w, `data: {"choices":[{"finish_reason":"stop","delta":{}}]}`)
+				fmt.Fprintln(w, `data: [DONE]`)
+				if flusher != nil {
+					flusher.Flush()
+				}
+				return
+			}
+
+			// Case C: Multi-turn Chat SSE (`readNote` -> `executeBatchPlan` -> final reply)
+			if toolResults == 0 {
+				fmt.Fprintln(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_read","function":{"name":"readNote","arguments":"{\"pageId\":\"LiveAINote\"}"}}]}}]}`)
+				planArgs, _ := json.Marshal(map[string]any{
+					"title":   "Live SSE Update",
+					"summary": "Update LiveAINote via real HTTP SSE",
+					"operations": []map[string]any{{
+						"type":      "search_replace",
+						"pageId":    "LiveAINote",
+						"oldString": "Original sentence to polish.",
+						"newString": "Chat Plan Updated Sentence.",
+					}},
+				})
+				tcChunk, _ := json.Marshal(map[string]any{
+					"choices": []map[string]any{{
+						"delta": map[string]any{
+							"tool_calls": []map[string]any{{
+								"index": 1,
+								"id":    "call_plan",
+								"function": map[string]any{
+									"name":      "executeBatchPlan",
+									"arguments": string(planArgs),
+								},
+							}},
+						},
+					}},
+				})
+				fmt.Fprintf(w, "data: %s\n", tcChunk)
+				fmt.Fprintln(w, `data: {"choices":[{"finish_reason":"tool_calls","delta":{}}]}`)
+				fmt.Fprintln(w, `data: [DONE]`)
+			} else {
+				fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"已完成实时 SSE 计划生成。"}}]}`)
+				fmt.Fprintln(w, `data: {"choices":[{"finish_reason":"stop","delta":{}}]}`)
+				fmt.Fprintln(w, `data: [DONE]`)
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}))
+		defer srv.Close()
+
+		ws.AI().EnableMockResponder(false)
+		defer ws.AI().EnableMockResponder(true)
+
+		if err := ws.AI().SaveProviderConfig(model.AIProviderConfig{
+			Enabled:  true,
+			Provider: "openai",
+			Protocol: model.ProtocolOpenAI,
+			BaseURL:  srv.URL + "/v1",
+			APIKey:   "sk-live-sse-test",
+			Model:    "gpt-4.1-smoke",
+		}); err != nil {
+			return "", err
+		}
+		if !ws.AI().IsLiveProviderReady() {
+			return "", fmt.Errorf("expected IsLiveProviderReady() == true after configuring live HTTP provider")
+		}
+
+		// 22a. Multi-turn chat SSE -> BatchPlan -> AcceptPlan
+		ws.AI().NewConversation()
+		ws.AI().SendPrompt("通过真实 SSE 更新当前笔记")
+		if err := waitUntil(3*time.Second, func() bool {
+			return !ws.AI().IsStreaming() && ws.AI().ActivePlan() != nil
+		}); err != nil {
+			return "", fmt.Errorf("live HTTP SSE chat plan timeout: %w", err)
+		}
+		ap := ws.AI().ActivePlan()
+		if err := ws.AI().AcceptPlan(ap.ConvID, ap.MsgIndex); err != nil {
+			return "", err
+		}
+		if got, _ := ws.ReadNote(liveNote); !strings.Contains(got, "Chat Plan Updated Sentence.") {
+			return "", fmt.Errorf("expected accepted SSE BatchPlan content, got %q", got)
+		}
+
+		// 22b. Live Inline AI (`tb-ai` -> type prompt -> Enter -> wait for live HTTP SSE -> `ai-accept`)
+		tt.Frame()
+		sess := ws.ActiveSession()
+		sess.SelectRange(1, 0, 1, len([]rune(sess.Doc().Blocks[1].PlainText())))
+		tt.Frame()
+		if err := clickTarget(tt, "tb-ai"); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		tt.Type("润色表达")
+		tt.Key(0, ui.KeyEnter)
+		if err := waitUntil(2*time.Second, func() bool {
+			tt.Frame()
+			_, ok := blockui.TargetBounds("ai-accept")
+			return ok
+		}); err != nil {
+			return "", fmt.Errorf("live Inline AI SSE timeout: %w", err)
+		}
+		if err := clickTarget(tt, "ai-accept"); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if !strings.Contains(sess.Markdown(), "Live SSE Inline Polished Sentence.") {
+			return "", fmt.Errorf("expected live Inline AI output in note, got %q", sess.Markdown())
+		}
+
+		// 22c. Titlebar `统一发送` (`annotations-send-all`) -> `ann-accept-<id>`
+		sess.FocusBlock(1)
+		sess.SelectRange(1, 0, 1, len([]rune(sess.Doc().Blocks[1].PlainText())))
+		ann := sess.AddAnnotation("翻译并精炼")
+		if ann == nil {
+			return "", fmt.Errorf("expected AddAnnotation to create pending annotation")
+		}
+		tt.Frame()
+		if err := clickTarget(tt, "annotations-send-all"); err != nil {
+			return "", fmt.Errorf("expected titlebar annotations-send-all button: %w", err)
+		}
+		tt.Frame()
+		if err := clickTarget(tt, "ann-accept-"+ann.ID); err != nil {
+			return "", fmt.Errorf("expected ann-accept-%s after 统一发送: %w", ann.ID, err)
+		}
+		tt.Frame()
+		if !strings.Contains(sess.Markdown(), "Live SSE Annotation Rewritten Span.") {
+			return "", fmt.Errorf("expected applied annotation rewrite in note, got %q", sess.Markdown())
+		}
+		return "Live OpenAI SSE chat + Inline AI + 统一发送 annotation rewrite verified", nil
+	}); err != nil {
+		rep.TotalTime = time.Since(startAll)
+		return rep, err
+	}
+
+	// Step 23: Quick Note 1:1 Full Flow (centered 3-dot pager, zoom persistence, SaveToNotebook auto-open).
+	if err := runStep(23, "Quick Note 3-dot pager, zoom persistence & auto-open on save", func() (string, error) {
+		qn := ws.QuickNote()
+		qn.Show()
+		ttQuick := ui.NewTester(qn.RenderView, 440, 520)
+		ttQuick.Frame()
+
+		for _, id := range []string{"quick-slot-0", "quick-slot-1", "quick-slot-2", "save-to-note", "quick-note-editor"} {
+			if _, ok := blockui.TargetBounds(id); !ok {
+				return "", fmt.Errorf("missing Quick Note probe %q", id)
+			}
+		}
+		if err := clickTarget(ttQuick, "quick-slot-1"); err != nil {
+			return "", err
+		}
+		if qn.ActiveSlot() != 1 {
+			return "", fmt.Errorf("expected ActiveSlot()==1 after clicking quick-slot-1, got %d", qn.ActiveSlot())
+		}
+		// Zoom in (`Cmd+=`) persists QuickEditorZoom into AppState, then reset (`Cmd+0`)
+		ttQuick.Key(ui.Cmd, ui.KeyEqual)
+		ttQuick.Frame()
+		if z := ws.State().QuickEditorZoom; z == nil || *z <= 1.0 {
+			return "", fmt.Errorf("expected QuickEditorZoom > 1.0 persisted in AppState, got %v", z)
+		}
+		ttQuick.Key(ui.Cmd, ui.Key0)
+		ttQuick.Frame()
+
+		qn.SetText("# Quick Auto-Opened Note\n\nCaptured in slot 2 and opened in main workspace.\n")
+		ttQuick.Frame()
+		if err := clickTarget(ttQuick, "save-to-note"); err != nil {
+			return "", err
+		}
+		qn.Hide()
+		tt.Frame()
+		if !strings.Contains(filepath.Base(ws.ActiveNotePath()), "Quick Auto-Opened Note") {
+			return "", fmt.Errorf("expected saved Quick Note auto-opened as active tab, got %q", ws.ActiveNotePath())
+		}
+		return "Quick Note 3-dot slots + QuickEditorZoom + auto-open verified", nil
+	}); err != nil {
+		rep.TotalTime = time.Since(startAll)
+		return rep, err
+	}
+
+	// Step 24: Shortcut Settings Full Rebind, Conflict Resolution, Live Workspace Routing & Reset.
+	if err := runStep(24, "Shortcut Settings 8-action rebind, conflict resolution & live routing", func() (string, error) {
+		ws.OpenSettings("shortcuts")
+		tt.Frame()
+		for _, id := range []string{
+			"settings-rec-search", "settings-rec-quick", "settings-rec-inapp-search",
+			"settings-rec-new-note", "settings-rec-sidebar", "settings-rec-ai",
+			"settings-rec-export", "settings-rec-perf",
+		} {
+			if _, ok := blockui.TargetBounds(id); !ok {
+				return "", fmt.Errorf("missing shortcut recorder button %q", id)
+			}
+		}
+
+		// Record Alt+J on toggle_ai
+		if err := clickTarget(tt, "settings-rec-ai"); err != nil {
+			return "", err
+		}
+		tt.Key(ui.Alt, ui.KeyJ)
+		tt.Frame()
+		if got := modals.EffectiveShortcut(ws.State(), "toggle_ai"); got != "alt-j" {
+			return "", fmt.Errorf("expected toggle_ai rebound to alt-j, got %q", got)
+		}
+
+		// Record conflicting Alt+J on export_image -> conflict notice appears and reassigns toggle_ai!
+		if err := clickTarget(tt, "settings-rec-export"); err != nil {
+			return "", err
+		}
+		tt.Key(ui.Alt, ui.KeyJ)
+		tt.Frame()
+		if _, ok := blockui.TargetBounds("settings-shortcut-conflict-notice"); !ok {
+			return "", fmt.Errorf("expected settings-shortcut-conflict-notice on duplicate chord (recording=%v ai=%q export=%q)",
+				ws.Modals().IsRecordingShortcut(),
+				modals.EffectiveShortcut(ws.State(), "toggle_ai"),
+				modals.EffectiveShortcut(ws.State(), "export_image"))
+		}
+
+		// Rebind toggle_ai to Alt+Shift+J -> exit Settings -> trigger Alt+Shift+J live in Workspace!
+		if err := clickTarget(tt, "settings-rec-ai"); err != nil {
+			return "", err
+		}
+		tt.Key(ui.Alt|ui.Shift, ui.KeyJ)
+		tt.Frame()
+		if err := clickTarget(tt, "settings-back"); err != nil {
+			return "", err
+		}
+		ws.AI().SetOpen(false)
+		tt.Frame()
+		tt.Key(ui.Alt|ui.Shift, ui.KeyJ)
+		tt.Frame()
+		if !ws.AI().IsOpen() {
+			return "", fmt.Errorf("expected custom Alt+Shift+J shortcut to open AI panel in Workspace")
+		}
+		ws.AI().SetOpen(false)
+
+		// Reset all shortcuts back to defaults
+		ws.OpenSettings("shortcuts")
+		tt.Frame()
+		if err := clickTarget(tt, "settings-shortcuts-reset"); err != nil {
+			return "", err
+		}
+		if got := modals.EffectiveShortcut(ws.State(), "toggle_ai"); got != "cmd-j" {
+			return "", fmt.Errorf("expected toggle_ai reset to cmd-j, got %q", got)
+		}
+		_ = clickTarget(tt, "settings-back")
+		tt.Frame()
+		return "8-action shortcuts + conflict reassignment + live routing + reset verified", nil
+	}); err != nil {
+		rep.TotalTime = time.Since(startAll)
+		return rep, err
+	}
+
+	// Step 25: Page History External Conflict Re-Diff (`重新对比`), Formatted Clean Preview & Read-Only Guard.
+	if err := runStep(25, "Page History external conflict re-diff, clean view & read-only guard", func() (string, error) {
+		histNote := filepath.Join(nbDir, "HistoryTarget.md")
+		if err := ws.OpenNote(histNote, 0); err != nil {
+			return "", err
+		}
+		if !ws.OpenPageHistory() {
+			return "", fmt.Errorf("expected OpenPageHistory() == true")
+		}
+		tt.Frame()
+
+		// Modify file externally on disk while Page History is open -> conflict banner + `history-error-action` (`重新对比`)!
+		if err := os.WriteFile(histNote, []byte("# Version Three External\n\nDisk modified externally.\n"), 0o644); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if _, ok := blockui.TargetBounds("history-error-action"); !ok {
+			return "", fmt.Errorf("expected history-error-action (重新对比) when note changes externally on disk")
+		}
+		if err := clickTarget(tt, "history-error-action"); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if _, stillConflict := blockui.TargetBounds("history-error-action"); stillConflict {
+			return "", fmt.Errorf("expected external conflict banner cleared after clicking 重新对比")
+		}
+
+		// Switch to formatted clean Markdown view (`history-mode-clean`) and exit (`history-back`)
+		if err := clickTarget(tt, "history-mode-clean"); err != nil {
+			return "", err
+		}
+		if err := clickTarget(tt, "history-back"); err != nil {
+			return "", err
+		}
+		if ws.IsPageHistoryOpen() {
+			return "", fmt.Errorf("expected Page History closed after history-back")
+		}
+		return "Page History external conflict re-diff + clean Markdown preview verified", nil
+	}); err != nil {
+		rep.TotalTime = time.Since(startAll)
+		return rep, err
+	}
+
+	blockui.SetSmokeFinished(true, "All 25 acceptance steps passed")
 	rep.TotalTime = time.Since(startAll)
 	return rep, nil
 }

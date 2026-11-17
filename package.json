@@ -4,9 +4,16 @@
   "private": true,
   "license": "Apache-2.0",
   "scripts": {
-    "check": "CGO_ENABLED=0 go vet ./... && CGO_ENABLED=0 go build ./...",
-    "build": "CGO_ENABLED=0 go build -o dist/block ./cmd/block && CGO_ENABLED=0 go tool mygo build -skip-dmg",
+    "dev": "CGO_ENABLED=0 go run ./cmd/block",
+    "check": "bash scripts/fast-check.sh",
+    "build": "bun scripts/build-app.mjs",
+    "build:ci": "bun scripts/build-app.mjs --no-install",
+    "build:windows": "bun scripts/build-app.mjs --platform windows --arch x64 --no-install",
+    "build:linux": "bun scripts/build-app.mjs --platform linux --arch x64 --no-install",
     "test": "CGO_ENABLED=0 go test ./...",
-    "smoke": "CGO_ENABLED=0 go test -v -run TestFullWorkspaceClickAcceptance ./internal/smoke && ./dist/block --smoke-once"
+    "smoke": "CGO_ENABLED=0 go test -v -run TestFullWorkspaceClickAcceptance ./internal/smoke && ./dist/block --smoke-once",
+    "ai:state": "python3 scripts/dump_ai_state.py",
+    "ai:map": "python3 scripts/gen_ai_map.py",
+    "logs": "tail -n 100 -f \"$HOME/Library/Application Support/Block/logs/block.log\""
   }
 }

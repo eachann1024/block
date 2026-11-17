@@ -11,6 +11,7 @@ import (
 
 	"block/internal/app"
 	"block/internal/files"
+	"block/internal/modals"
 	"block/internal/model"
 	"block/internal/theme"
 	blockui "block/internal/ui"
@@ -71,11 +72,11 @@ func main() {
 		mygo.Theme.SetSource(mygo.ThemeSystem)
 	}
 
-	shortcuts := map[string]string{
-		"search":     st.ShortcutSearch,
-		"quick_note": st.ShortcutQuick,
-	}
-	menu := app.BuildMenuBar(shortcuts, app.MenuActions{
+	isQuitting := false
+
+	var openMainWindow func() *mygo.Window
+
+	menuActions := app.MenuActions{
 		OnAbout: func() {
 			ws.Modals().OpenAbout()
 		},
@@ -139,10 +140,49 @@ func main() {
 		OnNavigateFwd: func() {
 			ws.NavigateForward()
 		},
-	})
-	mygo.App.SetMenu(menu)
+	}
 
-	openMainWindow := func() *mygo.Window {
+	buildShortcutsMap := func(cur model.AppState) map[string]string {
+		return map[string]string{
+			"global_summon":  modals.EffectiveShortcut(cur, "global_summon"),
+			"quick_note":     modals.EffectiveShortcut(cur, "quick_note"),
+			"search":         modals.EffectiveShortcut(cur, "search"),
+			"new_note":       modals.EffectiveShortcut(cur, "new_note"),
+			"toggle_sidebar": modals.EffectiveShortcut(cur, "toggle_sidebar"),
+			"toggle_ai":      modals.EffectiveShortcut(cur, "toggle_ai"),
+			"export_image":   modals.EffectiveShortcut(cur, "export_image"),
+			"performance":    modals.EffectiveShortcut(cur, "performance"),
+		}
+	}
+
+	syncMenuAndHotkeys := func(cur model.AppState) {
+		mygo.App.SetMenu(app.BuildMenuBar(buildShortcutsMap(cur), menuActions))
+		if !mygo.App.IsReady() || isIsolatedRun {
+			return
+		}
+		mygo.GlobalShortcut.UnregisterAll()
+		if quickAccel := blockui.ToMyGoAccelerator(modals.EffectiveShortcut(cur, "quick_note")); quickAccel != "" {
+			_ = mygo.GlobalShortcut.Register(quickAccel, func() {
+				ws.QuickNote().TriggerHotkey()
+			})
+		}
+		if summonAccel := blockui.ToMyGoAccelerator(modals.EffectiveShortcut(cur, "global_summon")); summonAccel != "" {
+			_ = mygo.GlobalShortcut.Register(summonAccel, func() {
+				if w := openMainWindow(); w != nil {
+					w.Restore()
+					w.Show()
+					w.Focus()
+				}
+				ws.Modals().OpenSearch(true)
+				ws.RequestRedraw()
+			})
+		}
+	}
+
+	ws.OnAppMenuOrHotkeysChanged = syncMenuAndHotkeys
+	mygo.App.SetMenu(app.BuildMenuBar(buildShortcutsMap(st), menuActions))
+
+	openMainWindow = func() *mygo.Window {
 		if existing := ws.Window(); existing != nil {
 			if !hiddenFlag {
 				existing.Show()
@@ -169,8 +209,12 @@ func main() {
 			Content:              ui.View(ws.Render),
 		})
 		ws.AttachWindow(win)
-		win.OnClose(func(*mygo.CloseEvent) {
+		win.OnClose(func(e *mygo.CloseEvent) {
 			ws.FlushDirtySessions()
+			if runtime.GOOS == "darwin" && !isIsolatedRun && !isQuitting {
+				e.PreventDefault()
+				win.Hide()
+			}
 		})
 		return win
 	}
@@ -228,6 +272,7 @@ func main() {
 	})
 
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
+		isQuitting = true
 		ws.FlushDirtySessions()
 	})
 
@@ -239,21 +284,8 @@ func main() {
 		})
 
 		openMainWindow()
-		if !hiddenFlag {
-			ws.QuickNote().AttachDesktop()
-		}
-
-		if !isIsolatedRun {
-			quickAccel := blockui.ToMyGoAccelerator("alt-n")
-			if custom := strings.TrimSpace(ws.State().ShortcutQuick); custom != "" {
-				if parsed := blockui.ToMyGoAccelerator(custom); parsed != "" {
-					quickAccel = parsed
-				}
-			}
-			_ = mygo.GlobalShortcut.Register(quickAccel, func() {
-				ws.QuickNote().TriggerHotkey()
-			})
-		}
+		ws.QuickNote().AttachDesktop()
+		syncMenuAndHotkeys(ws.State())
 	})
 
 	if err := mygo.App.Run(); err != nil {

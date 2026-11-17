@@ -70,9 +70,10 @@ type Controller struct {
 
 	services ui.Services
 
-	open       bool
-	fullscreen bool
-	panelWidth float32
+	open        bool
+	fullscreen  bool
+	panelWidth  float32
+	renderWidth float32
 
 	providerCfg model.AIProviderConfig
 	backendsCfg model.AIBackendsConfig
@@ -121,6 +122,7 @@ type Controller struct {
 	streamCancel      func()
 	partialText       string
 	partialThink      string
+	partialSteps      []model.ProcessStep
 	turnError         string
 	turnErrorSettings bool
 
@@ -441,6 +443,16 @@ func (c *Controller) SetPanelWidth(w float32) {
 	c.requestRedraw()
 }
 
+// SetRenderWidth sets the transient per-frame render width without altering PanelWidth.
+func (c *Controller) SetRenderWidth(w float32) {
+	if w < 0 {
+		w = 0
+	}
+	c.mu.Lock()
+	c.renderWidth = w
+	c.mu.Unlock()
+}
+
 // ProviderConfig returns a copy of the built-in AI provider config.
 func (c *Controller) ProviderConfig() model.AIProviderConfig {
 	c.mu.RLock()
@@ -622,6 +634,13 @@ func (c *Controller) EnableMockResponder(on bool) {
 	c.mu.Lock()
 	c.mockResponder = on
 	c.mu.Unlock()
+}
+
+// IsMockEnabled reports whether deterministic mock responses are enabled.
+func (c *Controller) IsMockEnabled() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.mockResponder
 }
 
 // SetMockApprovalFailOnce configures the next approval submission to fail once before succeeding.
@@ -986,6 +1005,7 @@ func (c *Controller) stopStreamingLocked() {
 	partial := c.partialText
 	c.partialText = ""
 	c.partialThink = ""
+	c.partialSteps = nil
 	if strings.TrimSpace(partial) != "" {
 		c.pushMessageLocked(model.ChatMessage{
 			Role:    "assistant",
