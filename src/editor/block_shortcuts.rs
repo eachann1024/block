@@ -19,7 +19,7 @@ impl Editor {
         let before = self.snapshot();
         for index in first..=last {
             let block = &self.doc.blocks[index];
-            if block.meta.table.is_some() || block.meta.raw_source.is_some() || block.meta.code_language.is_some() { continue; }
+            if block.meta.table.is_some() || block.is_atomic() || block.meta.code_language.is_some() { continue; }
             let id = block.id; self.doc.set_kind(id, target);
         }
         self.record(before, cx);
@@ -52,7 +52,7 @@ fn is_divider(block: &Block) -> bool {
     super::image_source::spec_of(block).is_none() && super::block_menu::is_divider(block)
 }
 /// Blocks that must never be merged into or out of by Backspace/Delete.
-fn structural(block: &Block) -> bool { block.meta.raw_source.is_some() || block.meta.code_language.is_some() }
+fn structural(block: &Block) -> bool { block.is_atomic() || block.meta.code_language.is_some() }
 
 impl Editor {
     pub(in crate::editor) fn can_arm_first_line_delete(&self, id: u64) -> bool {
@@ -61,7 +61,7 @@ impl Editor {
             && self.block_sel.is_none() && self.table_sel.is_none() && self.caret.head == (Position { block: id, offset: 0 })
             && self.doc.blocks.first().is_some_and(|b| b.id == id && b.kind == Kind::Paragraph && b.text.is_empty()
                 && b.meta.indent == 0 && b.meta.code_language.is_none() && b.meta.table.is_none()
-                && b.meta.raw_source.is_none() && b.meta.callout.is_none() && b.meta.html_paragraph.is_none())
+                && !b.is_atomic() && b.meta.callout.is_none() && b.meta.html_paragraph.is_none())
     }
     pub(in crate::editor) fn is_first_line_delete_armed(&self, id: u64) -> bool {
         FIRST_LINE_ARMED.with(|slot| *slot.borrow() == Some(id)) && self.can_arm_first_line_delete(id)
@@ -182,7 +182,7 @@ impl Editor {
             }
             return true;
         }
-        if block.meta.raw_source.is_some() || block.meta.html_paragraph.is_some() { return top_of_flow && self.insert_above(block.id, cx); }
+        if block.is_atomic() || block.meta.html_paragraph.is_some() { return top_of_flow && self.insert_above(block.id, cx); }
         match block.kind {
             Kind::H1 | Kind::H2 | Kind::H3 | Kind::Quote => { self.demote(block.id, cx); return true; }
             Kind::Bullet | Kind::Numbered | Kind::Todo => {
@@ -217,7 +217,7 @@ impl Editor {
         let id = self.caret.head.block;
         if self.doc.get(id).is_some_and(|b| b.meta.code_language.is_some()) { self.add_below(id, window, cx); }
         else if self.doc.get(id).is_some_and(|b| b.meta.table.is_some()) { self.replace(None, "\n", window, cx); }
-        else if self.doc.get(id).is_some_and(|b| matches!(b.kind, Kind::Paragraph | Kind::Quote | Kind::Bullet | Kind::Numbered | Kind::Todo) && b.meta.raw_source.is_none() && super::image_source::spec_of(b).is_none()) { self.insert_in_block("\n", cx); }
+        else if self.doc.get(id).is_some_and(|b| matches!(b.kind, Kind::Paragraph | Kind::Quote | Kind::Bullet | Kind::Numbered | Kind::Todo) && !b.is_atomic()) { self.insert_in_block("\n", cx); }
         else { self.handle(&super::view::EditorAction::Enter, window, cx); }
     }
     /// Deleting a selection that spans blocks keeps what is left of the end blocks as
@@ -230,14 +230,14 @@ impl Editor {
         let before = self.snapshot();
         let first = self.doc.blocks[ai].clone(); let last = self.doc.blocks[bi].clone();
         // Source-backed blocks (images, dividers, HTML) are never cut in half.
-        let head = (a.offset > 0).then(|| if first.meta.raw_source.is_some() { first.clone() } else { first.slice(0..a.offset) });
-        let tail = (b.offset < last.text.len()).then(|| if last.meta.raw_source.is_some() { last.clone() } else { last.slice(b.offset..last.text.len()) });
+        let head = (a.offset > 0).then(|| if first.is_atomic() { first.clone() } else { first.slice(0..a.offset) });
+        let tail = (b.offset < last.text.len()).then(|| if last.is_atomic() { last.clone() } else { last.slice(b.offset..last.text.len()) });
         let mut pieces = Vec::new();
         let at = match (&head, &tail) {
             (Some(h), _) => Position { block: h.id, offset: h.text.len() },
             (None, Some(t)) => Position { block: t.id, offset: 0 },
             (None, None) => {
-                let empty = if first.meta.table.is_some() || first.meta.raw_source.is_some() {
+                let empty = if first.meta.table.is_some() || first.is_atomic() {
                     Block::new(first.id, Kind::Paragraph, String::new())
                 } else { first.slice(0..0) };
                 pieces.push(empty);

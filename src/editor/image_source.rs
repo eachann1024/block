@@ -150,7 +150,7 @@ pub(crate) fn is_remote(src: &str) -> bool {
         || (s.len() > 8 && s[..8].eq_ignore_ascii_case(b"https://"))
 }
 
-pub(crate) fn spec_of(block: &Block) -> Option<ImageSpec> { parse(block.meta.raw_source.as_deref()?) }
+pub(crate) fn spec_of(block: &Block) -> Option<ImageSpec> { parse(block.meta.image.as_deref()?) }
 
 pub(crate) fn resolve_path(spec: &ImageSpec, note: Option<&Path>) -> Option<PathBuf> {
     let src = spec.src.trim();

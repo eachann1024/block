@@ -104,6 +104,7 @@ fn canonical_block(block: &Block) -> String {
 
 fn zero_ids(block: &mut Block) {
     block.id = 0;
+    block.meta.clean_source = None;
     if let Some(table) = block.meta.table.as_mut() {
         for row in &mut table.rows {
             for cell in &mut row.cells {

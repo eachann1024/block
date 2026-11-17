@@ -12,7 +12,7 @@ pub(super) fn push(out: &mut Vec<Span>, start: usize, end: usize, marks: Vec<Mar
 }
 impl Block {
     pub fn normalize_spans(&mut self) {
-        if self.meta.code_language.is_some() || self.meta.raw_source.is_some() { self.spans.clear(); return; }
+        if self.meta.code_language.is_some() || self.is_atomic() { self.spans.clear(); return; }
         let mut events = Vec::with_capacity(self.spans.len() * 4);
         for span in &self.spans {
             if !valid(&self.text, &(span.start..span.end)) || span.start == span.end { continue; }
@@ -30,7 +30,7 @@ impl Block {
     }
     pub fn toggle_mark(&mut self, range: Range<usize>, mark: MarkKind) {
         if !valid(&self.text, &range) || range.is_empty() || self.meta.code_language.is_some()
-            || self.meta.raw_source.is_some() { return; }
+            || self.is_atomic() { return; }
         if let Some(table) = &mut self.meta.table {
             for (row, cell, body) in table.cell_ranges() {
                 let start = range.start.max(body.start).min(body.end) - body.start;
@@ -57,6 +57,7 @@ impl Block {
             push(&mut out,start,end,marks);
         }
         self.spans = out;
+        self.meta.clean_source = None;
     }
     /// Insertions inherit the mark set immediately to their left (right at byte zero).
     /// Replacements inherit the first replaced character. Invalid UTF-8 ranges are rejected.
@@ -90,7 +91,9 @@ impl Block {
         super::inline_ops::replace(&mut self.meta.inline, range.clone(), text.len());
         self.text.replace_range(range,text); self.spans = out;
         // This flag preserves an imported blank body only until its first content edit.
-        self.meta.code_empty_line = false; true
+        self.meta.code_empty_line = false;
+        self.meta.clean_source = None;
+        true
     }
 }
 
@@ -98,7 +101,7 @@ impl Block {
     /// Runs `f` on every leaf block (the block itself, or each table cell) that the range touches.
     fn edit_leaf(&mut self, range: Range<usize>, f: &mut dyn FnMut(&mut Block, Range<usize>)) {
         if !valid(&self.text, &range) || range.is_empty() || self.meta.code_language.is_some()
-            || self.meta.raw_source.is_some() { return; }
+            || self.is_atomic() { return; }
         if let Some(table) = &mut self.meta.table {
             for (row, cell, body) in table.cell_ranges() {
                 let start = range.start.max(body.start).min(body.end) - body.start;
@@ -107,6 +110,7 @@ impl Block {
             }
             return;
         }
+        self.meta.clean_source = None;
         f(self, range);
     }
     /// Removes bold/italic/strike/code over the range, keeping marks outside it.

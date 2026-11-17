@@ -9,7 +9,7 @@ use super::{
 
 pub(super) fn is_list(block: &Block) -> bool {
     matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo)
-        && block.meta.table.is_none() && block.meta.raw_source.is_none() && block.meta.code_language.is_none()
+        && block.meta.table.is_none() && !block.is_atomic() && block.meta.code_language.is_none()
 }
 fn is_atomic(block: &Block) -> bool {
     super::image_source::spec_of(block).is_some() || is_divider(block)
@@ -41,7 +41,7 @@ impl Editor {
     pub(in crate::editor) fn insert_top_paragraph(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(first) = self.doc.blocks.first().filter(|_| self.path.is_some()) else { return false };
         if first.kind == Kind::Paragraph && first.text.is_empty() && first.meta.table.is_none()
-            && first.meta.code_language.is_none() && first.meta.raw_source.is_none() && first.meta.html_paragraph.is_none() && !is_atomic(first) {
+            && first.meta.code_language.is_none() && first.meta.html_paragraph.is_none() && !is_atomic(first) {
             let id = first.id; self.table_sel = None; self.table_menu = None; self.block_sel = None; self.preferred_x = None;
             self.set_head(Position { block: id, offset: 0 }, false, cx); self.list.scroll_to_reveal_item(0); return true;
         }
@@ -185,7 +185,7 @@ impl Editor {
         let before = self.snapshot();
         for index in first..=last {
             let block = &self.doc.blocks[index];
-            if block.meta.table.is_some() || block.meta.raw_source.is_some() { continue; }
+            if block.meta.table.is_some() || block.is_atomic() { continue; }
             let id = block.id;
             self.doc.set_kind(id, Kind::Paragraph);
             if !all_code {
@@ -212,7 +212,7 @@ impl Editor {
             }
         }
         let id = self.caret.head.block;
-        if self.doc.get(id).is_some_and(|b| b.kind == Kind::Todo && b.meta.table.is_none() && b.meta.raw_source.is_none() && b.meta.code_language.is_none()) {
+        if self.doc.get(id).is_some_and(|b| b.kind == Kind::Todo && b.meta.table.is_none() && !b.is_atomic() && b.meta.code_language.is_none()) {
             self.commit_composition(cx);
             let before = self.snapshot();
             self.doc.toggle_checked(id);

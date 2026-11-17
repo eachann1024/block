@@ -102,7 +102,7 @@ impl Editor {
         let block = &self.doc.blocks[index];
         let mut part = if range == (0..block.text.len()) {
             block.clone()
-        } else if block.meta.raw_source.is_some() {
+        } else if block.is_atomic() {
             block.text_slice(range).unwrap_or_else(|| block.clone())
         } else {
             block.slice(range)

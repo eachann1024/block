@@ -81,7 +81,7 @@ impl Editor {
             let b = &self.doc.blocks[i];
             let range = if selected_only { self.selected_range(b.id).unwrap_or(0..0) } else { 0..b.text.len() };
             let metadata = b.meta.code_language.as_ref().map_or(0, |s| s.len())
-                .saturating_add(b.meta.raw_source.as_ref().map_or(0, |s| if selected_only { range.len() } else { s.len() }));
+                .saturating_add(b.meta.image.as_ref().map_or(0, |s| if selected_only { range.len() } else { s.len() }));
             let count = b.spans.iter().filter(|s| s.start < range.end && s.end > range.start).count();
             (bytes.saturating_add(range.len()).saturating_add(metadata), spans.saturating_add(count))
         })
