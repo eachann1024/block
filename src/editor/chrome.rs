@@ -81,7 +81,7 @@ pub(super) fn row_pads(this: &Editor, index: usize) -> (f32, f32) {
     (top, bottom)
 }
 
-pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<(bool, usize, bool)>, list: super::list_marker::ListCtx, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, has_overlay: bool, delete_armed: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
+pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<(bool, usize, bool)>, list: super::list_marker::ListCtx, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, has_overlay: bool, delete_armed: bool, foot: Option<gpui::AnyElement>, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
     let zoom = super::zoom::zoom_factor(minimal);
     let handle_w = HANDLE_WIDTH;
@@ -195,6 +195,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                 .when_some(callout.filter(|_| !minimal), |body, kind| {
                     body.child(crate::ui::callout_controls::controls(editor, id, kind, zoom, cx))
                 })))
+        .children(foot)
         .when_some(drop_edge, |row, (after, indent, nested)| row.child(crate::ui::reveal::block_drop_marker(
             px(handle_w + ROW_GAP + indent.min(12) as f32 * INDENT_PER_CHAR * zoom),
             px(right_inset), after, nested, zoom)))
@@ -219,6 +220,7 @@ impl Editor {
             || self.annotate.hovered_annotation.is_some()
             || self.annotate.composer.is_some()
             || self.annotate.reactions.is_some()
+            || self.annotate.foot_picker_note.is_some()
             || self.annotate.followup.is_some()
     }
 }
@@ -239,7 +241,8 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let image_pop = this.image_menu.as_ref().filter(|(mid, _)| *mid == block.id).map(|(_, p)| p.clone());
     let editor = cx.entity();
     let pads = row_pads(this, index);
-    let row = block_row(cx.entity(), block, pads, handles, grip_active, folded, edge, list, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, this.is_first_line_delete_armed(block.id), cx);
+    let foot = super::annotate_foot::block_strip(this, block, super::zoom::zoom_factor(this.minimal), cx);
+    let row = block_row(cx.entity(), block, pads, handles, grip_active, folded, edge, list, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, this.is_first_line_delete_armed(block.id), foot, cx);
     let id = block.id;
     let (pt, pb) = pads;
     let bounds = gpui::canvas(|_, _, _| (), move |bounds, (), _, cx| {
