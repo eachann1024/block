@@ -50,6 +50,7 @@ impl Editor {
         self.caret.head = at;
         if !extend { self.caret.anchor = at; }
         self.caret.composing = None;
+        self.caret_hidden = false;
         if self.block_menu.is_some_and(|m| m.mode == crate::editor::block_menu::Mode::Slash && m.block != at.block) {
             self.block_menu = None;
         }

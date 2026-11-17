@@ -8,13 +8,14 @@ pub(in crate::editor) struct Snapshot {
     block_sel: Option<(usize, usize)>, table_sel: Option<(u64, super::super::table_actions::TableSel)>,
     /// Per folded heading: `(heading id, first block id shown after its hidden body)`.
     pub fold_tails: Vec<(u64, u64)>,
+    pub annotations: Vec<crate::editor::annotate::Annotation>,
 }
 #[derive(Clone)]
 pub(in crate::editor) struct ListChange { pub start: usize, pub before: usize, pub after: usize }
 pub(in crate::editor) struct HistoryEntry { state: Snapshot, changes: Vec<ListChange> }
 impl Editor {
     pub(in crate::editor) fn snapshot(&self) -> Snapshot {
-        Snapshot { doc: self.doc.clone(), caret: self.caret.clone(), block_sel: self.block_sel, table_sel: self.table_sel, fold_tails: self.fold_tails.clone() }
+        Snapshot { doc: self.doc.clone(), caret: self.caret.clone(), block_sel: self.block_sel, table_sel: self.table_sel, fold_tails: self.fold_tails.clone(), annotations: self.annotate.annotations.clone() }
     }
     fn selection_change(&self, before: &Snapshot) -> ListChange {
         let a = before.doc.index_of(before.caret.anchor.block).unwrap_or(0);
@@ -66,7 +67,16 @@ impl Editor {
     fn invalidate_edit(&mut self, before: &Snapshot) {
         self.apply_changes(&[self.selection_change(before)], true);
     }
+    pub(in crate::editor) fn record_annotation_change(&mut self, mut before: Snapshot, cx: &mut Context<Self>) {
+        if self.annotate.annotations == before.annotations { return; }
+        before.caret.anchor = before.caret.head;
+        self.history.push(HistoryEntry { state: before, changes: Vec::new() });
+        if self.history.len() > 200 { self.history.remove(0); }
+        self.redo.clear();
+        cx.notify();
+    }
     pub(in crate::editor) fn changed(&mut self, cx: &mut Context<Self>) {
+        self.caret_hidden = false;
         self.outline.clear_navigation();
         self.reveal_caret = true;
         self.touch(cx);
@@ -74,20 +84,36 @@ impl Editor {
     pub(in crate::editor) fn undo(&mut self, redo: bool, cx: &mut Context<Self>) {
         self.commit_composition(cx);
         self.composition_before = None;
-        // An entry that restores the very same document would only move the selection
-        // (select the text without removing it); keep popping until text really changes.
+        // An entry that restores the very same document and annotations would only move the selection
+        // (select the text without removing it); keep popping until text or annotations really change.
         loop {
             let item = if redo { self.redo.pop() } else { self.history.pop() };
             let Some(mut item) = item else { break };
-            let same = item.state.doc == self.doc;
+            let doc_same = item.state.doc == self.doc;
+            let ann_same = item.state.annotations == self.annotate.annotations;
             let target = std::mem::replace(&mut item.state, self.snapshot());
             self.doc = target.doc; self.caret = target.caret; self.caret.composing = None;
             self.block_sel = target.block_sel; self.table_sel = target.table_sel;
             self.fold_tails = target.fold_tails;
-            self.apply_changes(&item.changes, redo);
+            if !ann_same {
+                self.annotate.annotations = target.annotations;
+                self.normalize_annotations();
+                self.persist_annotations();
+            }
+            if !doc_same {
+                self.apply_changes(&item.changes, redo);
+            }
             if redo { self.history.push(item); } else { self.redo.push(item); }
-            self.changed(cx);
-            if !same { break; }
+            if !doc_same {
+                self.changed(cx);
+                break;
+            }
+            if !ann_same {
+                self.caret_hidden = true;
+                self.toolbar_anchor = None;
+                cx.notify();
+                break;
+            }
         }
         self.sync_block_menu_after_edit(cx);
     }
