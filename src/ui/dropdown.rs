@@ -122,12 +122,12 @@ pub fn row_with_colors(id: impl Into<ElementId>, spec: RowSpec, colors: Option<(
         let fg = if spec.highlighted && !spec.disabled { p.danger_hover_fg } else { p.danger_fg };
         let idle_c = IconColors { line: p.danger_fg, fill: transparent_black(), accent: p.danger_fg };
         let hov_c = IconColors { line: p.danger_hover_fg, fill: rgba(0xffffff33).into(), accent: p.danger_hover_fg };
-        let lead = div().relative().size(px(16.)).flex_none().flex().items_center().justify_center()
+        let lead = div().relative().size(px(crate::ui::icon_size::ROW)).flex_none().flex().items_center().justify_center()
             .when_some(spec.icon, |slot, g| {
                 if spec.disabled {
-                    slot.child(icon(g, px(16.), idle_c))
+                    slot.child(icon(g, px(crate::ui::icon_size::ROW), idle_c))
                 } else {
-                    slot.child(stateful_icon(group.clone(), g, px(16.), active, idle_c, hov_c))
+                    slot.child(stateful_icon(group.clone(), g, px(crate::ui::icon_size::ROW), active, idle_c, hov_c))
                 }
             });
         row.text_color(fg)
@@ -139,12 +139,12 @@ pub fn row_with_colors(id: impl Into<ElementId>, spec: RowSpec, colors: Option<(
             IconColors { line: p.icon, fill: transparent_black(), accent: p.icon },
             IconColors { line: p.icon, fill: p.icon_fill, accent: p.icon_accent },
         ));
-        let lead = div().size(px(16.)).flex_none().flex().items_center().justify_center()
+        let lead = div().size(px(crate::ui::icon_size::ROW)).flex_none().flex().items_center().justify_center()
             .when_some(spec.icon, |slot, g| {
                 if spec.disabled {
-                    slot.child(icon(g, px(16.), idle_c))
+                    slot.child(icon(g, px(crate::ui::icon_size::ROW), idle_c))
                 } else {
-                    slot.child(stateful_icon(group.clone(), g, px(16.), active, idle_c, active_c))
+                    slot.child(stateful_icon(group.clone(), g, px(crate::ui::icon_size::ROW), active, idle_c, active_c))
                 }
             });
         row.text_color(p.text)
