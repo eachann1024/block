@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>行内代码 A（推荐）· 暖纸微胶囊 + 中英智能微呼吸与边界双击选词</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;background:#f1f1f1;-webkit-font-smoothing:antialiased}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input,textarea{font-family:inherit;font-size:14px}
+*{box-sizing:border-box}
+::selection{background:#cde2fb;color:#184f95}
+.ic-v1-light{display:inline-block;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:13.5px;line-height:20px;padding:1px 6px;margin:0 3px;border-radius:5px;background:#f3f1ec;border:1px solid #e4e1d8;color:#2c3a52;vertical-align:baseline}
+.ic-v1-dark{display:inline-block;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:13.5px;line-height:20px;padding:1px 6px;margin:0 3px;border-radius:5px;background:#242424;border:1px solid #353535;color:#dbe4f3;vertical-align:baseline}
+.ic-v1-sel-light{display:inline-block;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:13.5px;line-height:20px;padding:1px 6px;margin:0 3px;border-radius:5px;background:#e5edfc;border:1px solid #547dd0;box-shadow:inset 0 0 0 1px #547dd0;color:#184f95;vertical-align:baseline}
+.ic-v1-sel-dark{display:inline-block;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:13.5px;line-height:20px;padding:1px 6px;margin:0 3px;border-radius:5px;background:#2d426b;border:1px solid #779de8;box-shadow:inset 0 0 0 1px #779de8;color:#9dbcf5;vertical-align:baseline}
+.ic-legacy-light{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:16px;background:#f3f1ec;color:#1f1e1d}
+.ic-legacy-dark{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:16px;background:#242424;color:#ececec}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:940px;display:flex;flex-direction:column;background:{{pageBg}};color:{{textPrimary}};font-size:14px;line-height:20px">
+
+  <!-- 顶部状态与明暗切换控制条 -->
+  <header style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:{{barBg}};border-bottom:1px solid {{borderCol}}">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+      </div>
+      <span style="font-weight:560;color:{{textPrimary}}">行内代码 A（推荐）· 暖纸微胶囊 + 中英智能微呼吸</span>
+      <span style="color:{{textSecondary}}">解决底色直贴汉字与破折号、无内边距无圆角及光标边界粘连问题</span>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <!-- 交互状态切换 -->
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
+        <button type="button" onClick="{{setStateRead}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{readBg}};color:{{readCol}};box-shadow:{{readRing}};font-weight:460;cursor:pointer">常规阅读</button>
+        <button type="button" onClick="{{setStateEdge}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{edgeBg}};color:{{edgeCol}};box-shadow:{{edgeRing}};font-weight:460;cursor:pointer">右边界输入跳出</button>
+        <button type="button" onClick="{{setStateSelect}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{selBg}};color:{{selCol}};box-shadow:{{selRing}};font-weight:460;cursor:pointer">双击整词选中</button>
+      </div>
+
+      <!-- 浅色 / 深色切换 -->
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
+        <button type="button" onClick="{{setLight}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{lightBtnBg}};color:{{lightBtnCol}};box-shadow:{{lightBtnRing}};font-weight:460;cursor:pointer">浅色 Ocean Light</button>
+        <button type="button" onClick="{{setDark}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{darkBtnBg}};color:{{darkBtnCol}};box-shadow:{{darkBtnRing}};font-weight:460;cursor:pointer">深色 Ocean Dark</button>
+      </div>
+    </div>
+  </header>
+
+  <main style="flex:1;max-width:1180px;width:100%;margin:0 auto;padding:32px 28px 56px;display:flex;flex-direction:column;gap:24px">
+
+    <!-- 1. 问题复现 vs 方案 A 直观对比卡片 -->
+    <section style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">截图原场景对比 · 任务列表行内代码混排</span>
+        <span style="font-size:14px;color:{{textSecondary}}">字号收敛至 0.85em (13.5px) · 左右内边距 6px · 外侧中英间隙 3px · 圆角 5px</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <!-- 改动前：原图复现 -->
+        <div style="padding:16px 18px;border-radius:8px;background:{{subSurface}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:14px;font-weight:500;color:{{textSecondary}}">当前现状（GPUI TextRun 纯背景色块直铺）</span>
+            <span style="font-size:14px;color:#b42318">直角贴字 · 0px 间距</span>
+          </div>
+          <div style="padding:14px 12px;border-radius:6px;background:{{paperBg}};border:1px solid {{borderCol}};display:flex;align-items:center;gap:10px;font-size:16px;line-height:26px;color:{{editorText}}">
+            <span aria-hidden="true" style="color:{{handleCol}};display:inline-flex;align-items:center">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"/><circle cx="10.5" cy="3.5" r="1.2"/><circle cx="5.5" cy="8" r="1.2"/><circle cx="10.5" cy="8" r="1.2"/><circle cx="5.5" cy="12.5" r="1.2"/><circle cx="10.5" cy="12.5" r="1.2"/></svg>
+            </span>
+            <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #8a8984;display:inline-block;flex:none"></span>
+            <div>格式：邮箱----密码----邮箱<code class="{{legacyCodeCls}}">client_id</code>----邮箱<code class="{{legacyCodeCls}}">refresh_token</code></div>
+          </div>
+        </div>
+
+        <!-- 改动后：方案 A -->
+        <div style="padding:16px 18px;border-radius:8px;background:{{selectedSurface}};border:1px solid {{accentCol}};display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:14px;font-weight:560;color:{{textPrimary}}">方案 A · 暖纸微胶囊（1px 暖灰微描边 + 3px 呼吸距）</span>
+            <span style="font-size:14px;color:{{accentCol}};font-weight:500">圆角 5px · 边界清晰</span>
+          </div>
+          <div style="padding:14px 12px;border-radius:6px;background:{{paperBg}};border:1px solid {{borderCol}};display:flex;align-items:center;gap:10px;font-size:16px;line-height:26px;color:{{editorText}}">
+            <span aria-hidden="true" style="color:{{handleCol}};display:inline-flex;align-items:center">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"/><circle cx="10.5" cy="3.5" r="1.2"/><circle cx="5.5" cy="8" r="1.2"/><circle cx="10.5" cy="8" r="1.2"/><circle cx="5.5" cy="12.5" r="1.2"/><circle cx="10.5" cy="12.5" r="1.2"/></svg>
+            </span>
+            <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #8a8984;display:inline-block;flex:none"></span>
+            <div>格式：邮箱----密码----邮箱<code class="{{v1CodeCls}}">client_id</code>----邮箱<code class="{{v1CodeCls}}">refresh_token</code></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 真实编辑器版心（700px）多语境排版预览 -->
+    <section style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:28px 32px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid {{borderCol}};padding-bottom:14px">
+        <span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">编辑器标准版心（700px）· 列表、段落与连续胶囊表现</span>
+        <span style="font-size:14px;color:{{textSecondary}}">冷靛蓝字色 #2c3a52 替代刺眼酒红 · 贴合 Ocean Paper 纸面</span>
+      </div>
+
+      <div style="max-width:700px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px;font-size:16px;line-height:26px;color:{{editorText}}">
+
+        <!-- 任务项 1（可交互点击体验状态） -->
+        <div style="display:flex;align-items:center;gap:10px;padding:4px 8px;margin:0 -8px;border-radius:6px;background:{{activeRowBg}}">
+          <span aria-hidden="true" style="color:{{handleCol}};display:inline-flex;align-items:center">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"/><circle cx="10.5" cy="3.5" r="1.2"/><circle cx="5.5" cy="8" r="1.2"/><circle cx="10.5" cy="8" r="1.2"/><circle cx="5.5" cy="12.5" r="1.2"/><circle cx="10.5" cy="12.5" r="1.2"/></svg>
+          </span>
+          <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #8a8984;display:inline-block;flex:none"></span>
+
+          <sc-if value="{{isRead}}" hint-placeholder-val="{{true}}">
+            <div>格式：邮箱----密码----邮箱<code class="{{v1CodeCls}}">client_id</code>----邮箱<code class="{{v1CodeCls}}">refresh_token</code></div>
+          </sc-if>
+
+          <sc-if value="{{isEdge}}" hint-placeholder-val="{{false}}">
+            <div style="display:flex;align-items:center;flex-wrap:wrap">
+              <span>格式：邮箱----密码----邮箱</span>
+              <code class="{{v1CodeCls}}">client_id</code>
+              <span style="display:inline-block;width:2px;height:19px;background:{{accentCol}};margin:0 1px;vertical-align:middle"></span>
+              <span style="color:{{accentCol}};font-size:14px;padding:0 6px;border-radius:4px;background:{{selectedSurface}};margin-left:4px">← 右边界外侧光标：再输入 `----` 直接落入普通正文</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{isSelect}}" hint-placeholder-val="{{false}}">
+            <div style="display:flex;align-items:center;flex-wrap:wrap">
+              <span>格式：邮箱----密码----邮箱</span>
+              <code class="{{v1SelCodeCls}}">client_id</code>
+              <span>----邮箱</span>
+              <code class="{{v1CodeCls}}">refresh_token</code>
+              <span style="color:{{accentCol}};font-size:14px;padding:0 6px;border-radius:4px;background:{{selectedSurface}};margin-left:8px">双击整词选中 `client_id`（含下划线）</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <!-- 任务项 2：已勾选态 -->
+        <div style="display:flex;align-items:center;gap:10px;padding:4px 8px;margin:0 -8px">
+          <span aria-hidden="true" style="width:14px;display:inline-block"></span>
+          <span style="width:16px;height:16px;border-radius:4px;background:{{accentCol}};display:inline-flex;align-items:center;justify-content:center;flex:none">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2l2.3 2.3 4.7-5"/></svg>
+          </span>
+          <div style="color:{{textSecondary}};text-decoration:line-through">校验返回字段中的<code class="{{v1CodeCls}}">access_token</code>与过期时间戳<code class="{{v1CodeCls}}">expires_in</code></div>
+        </div>
+
+        <!-- 段落混排：连续行内代码与路径/快捷键 -->
+        <p style="margin:4px 0 0 24px">
+          当请求携带<code class="{{v1CodeCls}}">grant_type=refresh_token</code>时，服务端会比对<code class="{{v1CodeCls}}">client_id</code>与<code class="{{v1CodeCls}}">refresh_token</code>的绑定关系；若紧邻连续出现如<code class="{{v1CodeCls}}">⌘C</code><code class="{{v1CodeCls}}">⌘V</code>或<code class="{{v1CodeCls}}">src/editor/paint.rs</code>，相邻胶囊自动保持<code class="{{v1CodeCls}}">4px</code>独立间隙，绝不粘连成同一长条。
+        </p>
+      </div>
+    </section>
+
+    <!-- 3. 排版几何与编辑交互逻辑改进规范（3 栏） -->
+    <section style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">1. 胶囊自绘与中英微呼吸</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:{{accentCol}}">paint.rs</span>
+        </div>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          不再依赖 GPUI <code class="{{v1CodeCls}}">TextRun.background_color</code> 的零边距整块填充。在文本整形时为代码 span 两端注入 <code class="{{v1CodeCls}}">6px</code> 水平呼吸内距，中英文或连字符交界处外扩 <code class="{{v1CodeCls}}">3px</code> 视觉间隙，并在背景层独立绘制 <code class="{{v1CodeCls}}">5px</code> 圆角与 <code class="{{v1CodeCls}}">1px</code> 暖灰轮廓。
+        </p>
+      </div>
+
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">2. 右边界跳出与退格剥离</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:{{accentCol}}">inline_rules.rs</span>
+        </div>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          闭合反引号生成行内代码后，光标默认停在胶囊<strong>右边界外侧</strong>，紧接着输入 <code class="{{v1CodeCls}}">----</code> 或中文不会误吞进代码底色；按 <code class="{{v1CodeCls}}">→</code> 在「胶囊内尾 / 胶囊外首」切换，尾端按 <code class="{{v1CodeCls}}">Backspace</code> 优先解除代码样式保留文字。
+        </p>
+      </div>
+
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">3. 标识符整词双击与断行</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:{{accentCol}}">selection.rs</span>
+        </div>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          在行内代码内双击时，将 <code class="{{v1CodeCls}}">_</code>、<code class="{{v1CodeCls}}">-</code>、<code class="{{v1CodeCls}}">.</code> 视为标识符组成部分，一键完整选中 <code class="{{v1CodeCls}}">client_id</code> 或 <code class="{{v1CodeCls}}">refresh_token</code>；折行时拆分为左右独立闭合圆角片段。
+        </p>
+      </div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = { dark: false, mode: 'read' };
+  }
+  setLight() { this.setState({ dark: false }); }
+  setDark() { this.setState({ dark: true }); }
+  setStateRead() { this.setState({ mode: 'read' }); }
+  setStateEdge() { this.setState({ mode: 'edge' }); }
+  setStateSelect() { this.setState({ mode: 'select' }); }
+
+  renderVals() {
+    const d = this.state.dark;
+    const m = this.state.mode;
+    const activeBg = d ? '#343434' : '#e5edfc';
+    const activeCol = d ? '#ececec' : '#20242c';
+    const activeRing = d ? 'inset 0 0 0 1px #779de8' : 'inset 0 0 0 1px #547dd0';
+    const idleCol = d ? '#b4b4b4' : '#526071';
+
+    return {
+      pageBg: d ? '#181818' : '#f8f8f8',
+      barBg: d ? '#222222' : '#fafafa',
+      shellBg: d ? '#343434' : '#f1f1f1',
+      cardBg: d ? '#222222' : '#ffffff',
+      paperBg: d ? '#181818' : '#ffffff',
+      subSurface: d ? '#1b1b1b' : '#f8f8f8',
+      selectedSurface: d ? '#232c3d' : '#f3f7fe',
+      activeRowBg: m === 'read' ? 'transparent' : (d ? '#232c3d' : '#f5f8fe'),
+      borderCol: d ? '#2e2e2e' : '#e4e6ea',
+      btnBorder: d ? '#444444' : '#dcdcdc',
+      textPrimary: d ? '#ececec' : '#20242c',
+      textSecondary: d ? '#b4b4b4' : '#526071',
+      editorText: d ? '#ececec' : '#1f1e1d',
+      handleCol: d ? '#6e6e6e' : '#b0afa9',
+      accentCol: d ? '#779de8' : '#547dd0',
+
+      v1CodeCls: d ? 'ic-v1-dark' : 'ic-v1-light',
+      v1SelCodeCls: d ? 'ic-v1-sel-dark' : 'ic-v1-sel-light',
+      legacyCodeCls: d ? 'ic-legacy-dark' : 'ic-legacy-light',
+
+      isRead: m === 'read',
+      isEdge: m === 'edge',
+      isSelect: m === 'select',
+
+      readBg: m === 'read' ? activeBg : 'transparent',
+      readCol: m === 'read' ? activeCol : idleCol,
+      readRing: m === 'read' ? activeRing : 'none',
+
+      edgeBg: m === 'edge' ? activeBg : 'transparent',
+      edgeCol: m === 'edge' ? activeCol : idleCol,
+      edgeRing: m === 'edge' ? activeRing : 'none',
+
+      selBg: m === 'select' ? activeBg : 'transparent',
+      selCol: m === 'select' ? activeCol : idleCol,
+      selRing: m === 'select' ? activeRing : 'none',
+
+      lightBtnBg: !d ? activeBg : 'transparent',
+      lightBtnCol: !d ? activeCol : idleCol,
+      lightBtnRing: !d ? activeRing : 'none',
+
+      darkBtnBg: d ? activeBg : 'transparent',
+      darkBtnCol: d ? activeCol : idleCol,
+      darkBtnRing: d ? activeRing : 'none'
+    };
+  }
+}
+</script>
+</body>
+</html>

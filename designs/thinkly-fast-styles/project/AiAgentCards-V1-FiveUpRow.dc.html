@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Agent 卡片布局 A（推荐）· 单行五联紧凑方卡（96px 高 · 24px 图标 · 消除 Pi 换行拉伸 + 右下紧凑保存）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#779de8}a:hover{color:#547dd0}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+button:focus-visible,input:focus-visible{outline:2px solid #779de8;outline-offset:1px}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.nav-row{width:100%;height:34px;padding:0 10px;border-radius:8px;display:flex;align-items:center;gap:8px;cursor:pointer;box-sizing:border-box;text-align:left;background:transparent}
+.pcard{flex:1;min-width:0;padding:10px 12px;border-radius:8px;display:flex;align-items:center;gap:8px;cursor:pointer;box-sizing:border-box;text-align:left}
+.tbtn{height:30px;padding:0 12px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;box-sizing:border-box;white-space:nowrap;font-weight:460}
+.abtn{height:32px;padding:0 14px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;box-sizing:border-box;white-space:nowrap;font-weight:500;flex:none}
+.agent-tile{flex:1;min-width:0;height:96px;padding:12px;border-radius:8px;display:flex;flex-direction:column;justify-content:space-between;box-sizing:border-box;cursor:pointer;position:relative;transition:border-color 140ms ease,background-color 140ms ease}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:920px;box-sizing:border-box;display:flex;flex-direction:column;background:{{shellBg}};color:{{textPrimary}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;overflow:hidden;-webkit-font-smoothing:antialiased">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;background:{{shellBg}};border-bottom:1px solid {{shellBorder}};box-sizing:border-box">
+<div style="width:260px;flex:none;height:100%;padding:0 10px 0 16px;border-right:1px solid {{shellBorder}};display:flex;align-items:center;justify-content:space-between;box-sizing:border-box">
+<div aria-hidden="true" style="display:flex;align-items:center;gap:8px;flex:none">
+<span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+<span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+<span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+</div>
+<span style="color:{{textSecondary}};font-weight:460">设置</span>
+</div>
+
+<div style="flex:1;min-width:0;height:100%;padding:0 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-sizing:border-box">
+<div style="display:flex;align-items:center;gap:6px;min-width:0">
+<span style="color:{{textSecondary}}">设置</span>
+<span style="color:{{textSecondary}}">/</span>
+<span style="color:{{textPrimary}};font-weight:460">AI 助手 · 方案 A（单行五联紧凑方卡 96px）</span>
+</div>
+
+<div style="display:flex;align-items:center;gap:8px;flex:none">
+<button type="button" class="tbtn" onClick="{{toggleTheme}}" style="height:26px;padding:0 10px;background:{{cardBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">{{themeLabel}}</button>
+</div>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex">
+
+<aside aria-label="设置分类导航" style="width:260px;flex:none;background:{{sidebarBg}};border-right:1px solid {{shellBorder}};display:flex;flex-direction:column;justify-content:space-between;padding:12px 10px;box-sizing:border-box">
+<nav aria-label="设置分类" style="display:flex;flex-direction:column;gap:4px">
+<button type="button" class="nav-row" style="background:{{selectedBg}};color:{{textPrimary}};border:1px solid {{accent}};font-weight:500">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<path d="M12 3.5L14.2 9.3L20 11.5L14.2 13.7L12 19.5L9.8 13.7L4 11.5L9.8 9.3L12 3.5Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+<path d="M18.5 4V7M17 5.5H20" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path>
+</svg>
+<span>AI 助手</span>
+</button>
+
+<button type="button" class="nav-row" style="color:{{textSecondary}};border:1px solid transparent;font-weight:460">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+<circle cx="9" cy="7" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle>
+<circle cx="15" cy="12" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle>
+<circle cx="10" cy="17" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle>
+</svg>
+<span>通用与编辑</span>
+</button>
+
+<button type="button" class="nav-row" style="color:{{textSecondary}};border:1px solid transparent;font-weight:460">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<rect x="3.5" y="4.5" width="17" height="12" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M8 20H16M12 16.5V20" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path>
+</svg>
+<span>外观与字体</span>
+</button>
+
+<button type="button" class="nav-row" style="color:{{textSecondary}};border:1px solid transparent;font-weight:460">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<rect x="3.25" y="5.75" width="17.5" height="12.5" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M7.5 10h2M11 10h2M14.5 10h2M7.5 14h9" stroke="{{accent}}" stroke-width="1.5" stroke-linecap="round"></path>
+</svg>
+<span>基础快捷键</span>
+</button>
+</nav>
+</aside>
+
+<main style="flex:1;min-width:0;background:{{settingsBg}};overflow-y:auto">
+<div style="max-width:720px;margin:0 auto;padding:40px 28px 64px;display:flex;flex-direction:column;gap:24px;box-sizing:border-box">
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+<h1 style="margin:0;font-size:24px;line-height:32px;font-weight:560;color:{{textPrimary}}">AI 助手</h1>
+<button type="button" aria-label="关闭设置" style="width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:{{textSecondary}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+</button>
+</div>
+
+<section aria-label="AI 与本机 Agent" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">AI 与本机 Agent</span>
+<button type="button" class="tbtn" onClick="{{toggleMaster}}" style="background:{{masterBg}};border:1px solid {{masterBorder}};color:{{textPrimary}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M12 3.5L14.2 9.3L20 11.5L14.2 13.7L12 19.5L9.8 13.7L4 11.5L9.8 9.3L12 3.5Z" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.6" stroke-linejoin="round"></path>
+<path d="M18.5 4V7M17 5.5H20" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path>
+</svg>
+<span>{{masterLabel}}</span>
+</button>
+</div>
+
+<sc-if value="{{isMasterOn}}" hint-placeholder-val="{{true}}">
+<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px">
+
+<div class="agent-tile" onClick="{{focusBuiltin}}" style="background:{{c0Bg}};border:1px solid {{c0Border}};box-shadow:{{c0Ring}}">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+<svg width="24" height="24" viewBox="0 0 640 640" fill="currentColor" aria-hidden="true" style="color:{{textPrimary}};flex:none">
+<path d="M367.4 65.9C364.6 67.5 356.1 74.4 348.4 81.2C340.8 88 328.9 98.3 322 104C315.1 109.8 305.5 118.4 300.5 123.1C288.6 134.5 278.3 142.3 277.6 140.4C244 155 206 171.1 192.5 179.5C161.4 192.9 128.5 223 116.5 240.5C100.6 262.3 84.4 300.7 81.5 318.8C67.3 346.3 32 386 13.1 419.8L0.3 488C13.4 589.9 42.1 621.3 80.1 634.3C97.1 640.2 91.9 640 254.1 640C336 640 403 639.7 403 639.2C400.1 610 393 597.4 388 592.2C415.9 604 405.3 580.1 399.4 573.1C388.4 516.6 394.4 481.1 400.3 471.5C446 466.3 487 449.7 511 417.1C533 376.9 535.4 370.2 530.8 350.5C503.3 317.7 492 268.8 494.4 260.7C488 227.9 465 206.3 444.4 191.2C416.8 166.5 381.4 141.1 385.5 106.5C387.7 88.5 385.3 70.5 380 65.7C376.2 62.3 373.8 62.3 367.4 65.9ZM336.5 158.1L326.6 196.5L359.4 194.1L300.3 288.3L323.8 214.1L291.3 217.6L345.7 120.4L336.5 158.1Z"></path>
+</svg>
+<button type="button" aria-label="切换内置 AI 启用状态" onClick="{{toggleBuiltin}}" style="width:20px;height:20px;padding:0;border-radius:6px;background:{{c0CheckBg}};border:1px solid {{c0CheckBorder}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none">
+<sc-if value="{{c0Enabled}}" hint-placeholder-val="{{true}}">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.5L9.5 17L19 7.5" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</sc-if>
+</button>
+</div>
+<span style="font-size:14px;line-height:20px;font-weight:560;color:{{textPrimary}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">内置 AI</span>
+</div>
+
+<div class="agent-tile" onClick="{{focusCodex}}" style="background:{{c1Bg}};border:1px solid {{c1Border}};box-shadow:{{c1Ring}}">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true" style="color:{{textPrimary}};flex:none">
+<path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"></path>
+</svg>
+<button type="button" aria-label="切换 Codex 启用状态" onClick="{{toggleCodex}}" style="width:20px;height:20px;padding:0;border-radius:6px;background:{{c1CheckBg}};border:1px solid {{c1CheckBorder}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none">
+<sc-if value="{{c1Enabled}}" hint-placeholder-val="{{true}}">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.5L9.5 17L19 7.5" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</sc-if>
+</button>
+</div>
+<span style="font-size:14px;line-height:20px;font-weight:560;color:{{textPrimary}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Codex</span>
+</div>
+
+<div class="agent-tile" onClick="{{focusClaude}}" style="background:{{c2Bg}};border:1px solid {{c2Border}};box-shadow:{{c2Ring}}">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true" style="color:{{textPrimary}};flex:none">
+<path d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z"></path>
+</svg>
+<button type="button" aria-label="切换 Claude 启用状态" onClick="{{toggleClaude}}" style="width:20px;height:20px;padding:0;border-radius:6px;background:{{c2CheckBg}};border:1px solid {{c2CheckBorder}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none">
+<sc-if value="{{c2Enabled}}" hint-placeholder-val="{{true}}">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.5L9.5 17L19 7.5" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</sc-if>
+</button>
+</div>
+<span style="font-size:14px;line-height:20px;font-weight:560;color:{{textPrimary}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Claude</span>
+</div>
+
+<div class="agent-tile" onClick="{{focusDsh}}" style="background:{{c3Bg}};border:1px solid {{c3Border}};box-shadow:{{c3Ring}}">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true" style="color:{{textPrimary}};flex:none">
+<path d="M23.748 4.482c-.254-.124-.364.113-.512.234-.051.039-.094.09-.137.136-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.156-.708-.311-.955-.65-.172-.241-.219-.51-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.093.172.187.129.323-.082.28-.18.552-.266.833-.055.179-.137.217-.329.14a5.526 5.526 0 01-1.736-1.18c-.857-.828-1.631-1.742-2.597-2.458a11.365 11.365 0 00-.689-.471c-.985-.957.13-1.743.388-1.836.27-.098.093-.432-.779-.428-.872.004-1.67.295-2.687.684a3.055 3.055 0 01-.465.137 9.597 9.597 0 00-2.883-.102c-1.885.21-3.39 1.102-4.497 2.623C.082 8.606-.231 10.684.152 12.85c.403 2.284 1.569 4.175 3.36 5.653 1.858 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.133-.284 4.994-1.86.47.234.962.327 1.78.397.63.059 1.236-.03 1.705-.128.735-.156.684-.837.419-.961-2.155-1.004-1.682-.595-2.113-.926 1.096-1.296 2.746-2.642 3.392-7.003.05-.347.007-.565 0-.845-.004-.17.035-.237.23-.256a4.173 4.173 0 001.545-.475c1.396-.763 1.96-2.015 2.093-3.517.02-.23-.004-.467-.247-.588zM11.581 18c-2.089-1.642-3.102-2.183-3.52-2.16-.392.024-.321.471-.235.763.09.288.207.486.371.739.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.167-1.361-.802-2.5-1.86-3.301-3.307-.774-1.393-1.224-2.887-1.298-4.482-.02-.386.093-.522.477-.592a4.696 4.696 0 011.529-.039c2.132.312 3.946 1.265 5.468 2.774.868.86 1.525 1.887 2.202 2.891.72 1.066 1.494 2.082 2.48 2.914.348.292.625.514.891.677-.802.09-2.14.11-3.054-.614z"></path>
+</svg>
+<button type="button" aria-label="切换 dsh 启用状态" onClick="{{toggleDsh}}" style="width:20px;height:20px;padding:0;border-radius:6px;background:{{c3CheckBg}};border:1px solid {{c3CheckBorder}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none">
+<sc-if value="{{c3Enabled}}" hint-placeholder-val="{{false}}">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.5L9.5 17L19 7.5" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</sc-if>
+</button>
+</div>
+<span style="font-size:14px;line-height:20px;font-weight:560;color:{{textPrimary}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">dsh</span>
+</div>
+
+<div class="agent-tile" onClick="{{focusPi}}" style="background:{{c4Bg}};border:1px solid {{c4Border}};box-shadow:{{c4Ring}}">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+<svg width="24" height="24" viewBox="0 0 4 4" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true" style="color:{{textPrimary}};flex:none">
+<path d="M0 0h3v1H0zM2 1h1v1H2zM0 1h1v3H0zM1 2h1v1H1zM3 2h1v2H3z"></path>
+</svg>
+<button type="button" aria-label="切换 Pi 启用状态" onClick="{{togglePi}}" style="width:20px;height:20px;padding:0;border-radius:6px;background:{{c4CheckBg}};border:1px solid {{c4CheckBorder}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none">
+<sc-if value="{{c4Enabled}}" hint-placeholder-val="{{false}}">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.5L9.5 17L19 7.5" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</sc-if>
+</button>
+</div>
+<span style="font-size:14px;line-height:20px;font-weight:560;color:{{textPrimary}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Pi</span>
+</div>
+
+</div>
+
+<div style="display:flex;align-items:center;justify-content:flex-end;padding-top:2px">
+<button type="button" class="abtn" onClick="{{saveBackends}}" style="background:{{saveBtnBg}};border:1px solid {{saveBtnBorder}};color:{{saveBtnCol}};opacity:{{saveBtnOpacity}}">保存</button>
+</div>
+</sc-if>
+</section>
+
+<sc-if value="{{showLockedBar}}" hint-placeholder-val="{{true}}">
+<section aria-label="未启用提示" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:14px;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<span style="color:{{textPrimary}}">{{focusedName}} 当前未启用，勾选卡片右上角后可修改以下配置</span>
+<button type="button" class="abtn" onClick="{{enableFocused}}" style="background:{{shellBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">选中</button>
+</section>
+</sc-if>
+
+<sc-if value="{{showBuiltinConfig}}" hint-placeholder-val="{{false}}">
+<section aria-label="服务商与连接" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:16px;opacity:{{configOpacity}}">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">服务商与连接</span>
+<button type="button" class="tbtn" style="background:{{shellBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">连接测试</button>
+</div>
+<div style="display:flex;gap:10px">
+<button type="button" class="pcard" style="background:{{selectedBg}};border:1px solid {{accent}};color:{{textPrimary}}">
+<span style="font-weight:500">DeepSeek</span>
+</button>
+<button type="button" class="pcard" style="background:{{shellBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">
+<span style="font-weight:500">OpenAI 协议</span>
+</button>
+<button type="button" class="pcard" style="background:{{shellBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">
+<span style="font-weight:500">Claude 协议</span>
+</button>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+<label for="a-base-url" style="color:{{textPrimary}}">接口地址</label>
+<input id="a-base-url" type="text" value="https://api.deepseek.com" style="width:380px;max-width:100%;height:34px;padding:0 10px;border-radius:8px;border:1px solid {{btnBorder}};background:{{shellBg}};color:{{textPrimary}};box-sizing:border-box" class="mono" />
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+<label for="a-api-key" style="color:{{textPrimary}}">API 密钥</label>
+<div style="width:380px;max-width:100%;display:flex;align-items:center;gap:8px">
+<input id="a-api-key" type="password" value="sk-1234567890" style="flex:1;min-width:0;height:34px;padding:0 10px;border-radius:8px;border:1px solid {{btnBorder}};background:{{shellBg}};color:{{textPrimary}};box-sizing:border-box" class="mono" />
+<button type="button" class="abtn" style="background:{{shellBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">显示</button>
+</div>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{showAgentConfig}}" hint-placeholder-val="{{true}}">
+<section aria-label="权限设置" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:16px;opacity:{{configOpacity}}">
+<span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">{{focusedName}} 权限设置</span>
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+<span style="color:{{textPrimary}}">最大权限</span>
+<button type="button" aria-label="切换最大权限" onClick="{{toggleFullPerm}}" style="width:20px;height:20px;padding:0;border-radius:6px;background:{{permCheckBg}};border:1px solid {{permCheckBorder}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+<sc-if value="{{fullPermOn}}" hint-placeholder-val="{{false}}">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.5L9.5 17L19 7.5" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</sc-if>
+</button>
+</div>
+</section>
+</sc-if>
+
+</div>
+</main>
+
+</div>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":920}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = {
+      dark: true,
+      masterOn: true,
+      focused: 'dsh',
+      saved: { builtin: true, codex: true, claude: true, dsh: false, pi: false },
+      pending: {},
+      fullPerm: { codex: true, claude: true, dsh: false, pi: false }
+    };
+  }
+  isEnabled(k) {
+    const st = this.state;
+    const pending = st.pending || {};
+    const saved = st.saved || {};
+    return Object.prototype.hasOwnProperty.call(pending, k) ? pending[k] : !!saved[k];
+  }
+  hasPending() {
+    const st = this.state;
+    const pending = st.pending || {};
+    const saved = st.saved || {};
+    return Object.keys(pending).some((k) => pending[k] !== saved[k]);
+  }
+  toggleKind(k, e) {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const next = !this.isEnabled(k);
+    const saved = this.state.saved || {};
+    const pending = Object.assign({}, this.state.pending || {}, { [k]: next });
+    if (pending[k] === saved[k]) delete pending[k];
+    this.setState({ focused: k, pending });
+  }
+  renderVals() {
+    const st = this.state;
+    const dark = st.dark;
+    const shellBg = dark ? '#343434' : '#f1f1f1';
+    const sidebarBg = dark ? '#222222' : '#fafafa';
+    const settingsBg = dark ? '#181818' : '#f8f8f8';
+    const cardBg = dark ? '#222222' : '#ffffff';
+    const textPrimary = dark ? '#ececec' : '#20242c';
+    const textSecondary = dark ? '#b4b4b4' : '#526071';
+    const accent = dark ? '#779de8' : '#547dd0';
+    const iconFill = dark ? '#31456a' : '#c9d8f3';
+    const selectedBg = dark ? '#222e46' : '#e5edfc';
+    const borderCol = dark ? '#2e2e2e' : '#e4e6ea';
+    const shellBorder = dark ? '#333333' : '#e6e6e6';
+    const btnBorder = dark ? '#444444' : '#dcdcdc';
+    const ring = `inset 0 0 0 1px ${accent}`;
+
+    const names = { builtin: '内置 AI', codex: 'Codex', claude: 'Claude', dsh: 'dsh', pi: 'Pi' };
+    const cardProps = (k) => {
+      const foc = st.focused === k;
+      const en = this.isEnabled(k);
+      return {
+        bg: foc ? selectedBg : shellBg,
+        border: foc ? accent : btnBorder,
+        ring: foc ? ring : 'none',
+        en,
+        checkBg: en ? accent : cardBg,
+        checkBorder: en ? accent : btnBorder
+      };
+    };
+    const c0 = cardProps('builtin');
+    const c1 = cardProps('codex');
+    const c2 = cardProps('claude');
+    const c3 = cardProps('dsh');
+    const c4 = cardProps('pi');
+    const dirty = this.hasPending();
+    const focSavedEn = st.saved[st.focused];
+    const permOn = !!st.fullPerm[st.focused] && focSavedEn;
+
+    return {
+      shellBg, sidebarBg, settingsBg, cardBg, textPrimary, textSecondary,
+      accent, iconFill, selectedBg, borderCol, shellBorder, btnBorder,
+      themeLabel: dark ? '深色预览' : '浅色预览',
+      isMasterOn: st.masterOn,
+      masterLabel: st.masterOn ? '已开启' : '已关闭',
+      masterBg: st.masterOn ? selectedBg : shellBg,
+      masterBorder: st.masterOn ? accent : btnBorder,
+      c0Bg: c0.bg, c0Border: c0.border, c0Ring: c0.ring, c0Enabled: c0.en, c0CheckBg: c0.checkBg, c0CheckBorder: c0.checkBorder,
+      c1Bg: c1.bg, c1Border: c1.border, c1Ring: c1.ring, c1Enabled: c1.en, c1CheckBg: c1.checkBg, c1CheckBorder: c1.checkBorder,
+      c2Bg: c2.bg, c2Border: c2.border, c2Ring: c2.ring, c2Enabled: c2.en, c2CheckBg: c2.checkBg, c2CheckBorder: c2.checkBorder,
+      c3Bg: c3.bg, c3Border: c3.border, c3Ring: c3.ring, c3Enabled: c3.en, c3CheckBg: c3.checkBg, c3CheckBorder: c3.checkBorder,
+      c4Bg: c4.bg, c4Border: c4.border, c4Ring: c4.ring, c4Enabled: c4.en, c4CheckBg: c4.checkBg, c4CheckBorder: c4.checkBorder,
+      saveBtnBg: selectedBg,
+      saveBtnBorder: accent,
+      saveBtnCol: dirty ? textPrimary : textSecondary,
+      saveBtnOpacity: dirty ? '1' : '0.5',
+      focusedName: names[st.focused],
+      showLockedBar: st.masterOn && !focSavedEn,
+      showBuiltinConfig: st.masterOn && st.focused === 'builtin',
+      showAgentConfig: st.masterOn && st.focused !== 'builtin',
+      configOpacity: focSavedEn ? '1' : '0.45',
+      fullPermOn: permOn,
+      permCheckBg: permOn ? accent : cardBg,
+      permCheckBorder: permOn ? accent : btnBorder,
+      toggleTheme: () => this.setState({ dark: !st.dark }),
+      toggleMaster: () => this.setState({ masterOn: !st.masterOn }),
+      focusBuiltin: () => this.setState({ focused: 'builtin' }),
+      focusCodex: () => this.setState({ focused: 'codex' }),
+      focusClaude: () => this.setState({ focused: 'claude' }),
+      focusDsh: () => this.setState({ focused: 'dsh' }),
+      focusPi: () => this.setState({ focused: 'pi' }),
+      toggleBuiltin: (e) => this.toggleKind('builtin', e),
+      toggleCodex: (e) => this.toggleKind('codex', e),
+      toggleClaude: (e) => this.toggleKind('claude', e),
+      toggleDsh: (e) => this.toggleKind('dsh', e),
+      togglePi: (e) => this.toggleKind('pi', e),
+      saveBackends: () => {
+        if (!dirty) return;
+        this.setState({ saved: Object.assign({}, st.saved, st.pending), pending: {} });
+      },
+      enableFocused: () => this.toggleKind(st.focused),
+      toggleFullPerm: () => {
+        if (!focSavedEn) return;
+        this.setState({ fullPerm: Object.assign({}, st.fullPerm, { [st.focused]: !st.fullPerm[st.focused] }) });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

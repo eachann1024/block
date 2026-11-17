@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方案 C · 选区右上跨线实心纸签与顶栏汇总抽屉</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button{font-family:inherit;font-size:14px;line-height:20px;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid #547dd0;outline-offset:1px}
+*{box-sizing:border-box}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:880px;display:flex;justify-content:center;background:{{stageBg}};color:{{textPrimary}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased">
+
+  <div style="width:100%;max-width:{{winMaxW}};min-height:880px;display:flex;flex-direction:column;background:{{paperBg}};border-left:1px solid {{shellBorder}};border-right:1px solid {{shellBorder}}">
+
+    <header style="height:40px;flex:none;display:flex;align-items:center;background:{{paperBg}};border-bottom:1px solid {{shellBorder}}">
+      <div style="width:248px;height:100%;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 16px;background:{{sidebarBg}};border-right:1px solid {{shellBorder}}">
+        <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+          <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:block"></span>
+          <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:block"></span>
+          <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:block"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <button type="button" aria-label="后退" style="width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:{{textSecondary}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5"></path></svg>
+          </button>
+          <button type="button" aria-label="切换侧栏" style="width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:{{textSecondary}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="2"></rect><path d="M6.2 2.5v11" stroke="{{accent}}"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <div style="flex:1;min-width:0;display:flex;align-items:center;justify-content:space-between;padding:0 14px 0 18px">
+        <span style="font-size:14px;font-weight:560;color:{{textPrimary}};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">未命名</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:none">
+          <sc-if value="{{isNarrow}}" hint-placeholder-val="{{true}}">
+            <button type="button" onClick="{{toggleSheet}}" style="height:28px;padding:0 10px;border-radius:8px;border:1px solid {{topPillBorder}};background:{{topPillBg}};color:{{textPrimary}};display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:500">
+              <span>{{reactionEmoji}} {{reactionCount}}</span>
+              <sc-if value="{{hasNote2}}" hint-placeholder-val="{{true}}">
+                <span style="width:1px;height:12px;background:{{borderCol}}"></span>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="{{accent}}" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.5h11v7.5H6.5L3.5 13.5V11h-1V3.5z" fill="{{iconFill}}" stroke="none"></path><path d="M2.5 3.5h11v7.5H6.5L3.5 13.5V11h-1V3.5z"></path></svg>
+                <span>1</span>
+              </sc-if>
+            </button>
+          </sc-if>
+          <button type="button" aria-label="AI 助手" style="width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:{{textSecondary}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M8 2l1.4 4.1L13.5 7.5 9.4 8.9 8 13 6.6 8.9 2.5 7.5 6.6 6.1 8 2z" fill="{{iconFill}}"></path></svg>
+          </button>
+          <button type="button" aria-label="更多选项" style="width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:{{textSecondary}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2"></circle><circle cx="8" cy="8" r="1.2"></circle><circle cx="12.5" cy="8" r="1.2"></circle></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+
+      <aside aria-label="工作区文件树" style="width:248px;flex:0 0 248px;background:{{sidebarBg}};border-right:1px solid {{shellBorder}};display:flex;flex-direction:column;justify-content:space-between;padding:12px 10px 0">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:6px;padding-bottom:8px">
+            <button type="button" style="flex:1;min-width:0;height:32px;padding:0 8px 0 10px;border-radius:8px;border:1px solid {{btnBorder}};background:{{paperBg}};color:{{textSecondary}};display:flex;align-items:center;justify-content:space-between;gap:6px">
+              <span style="display:inline-flex;align-items:center;gap:6px">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.3"></circle><path d="M10.4 10.4L13.5 13.5"></path></svg>
+                <span>搜索</span>
+              </span>
+              <span style="padding:2px 5px;border-radius:5px;background:{{shellBg}};border:1px solid {{borderCol}};font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:12px;line-height:14px;color:{{textSecondary}}">⌘K</span>
+            </button>
+            <button type="button" aria-label="新建文件夹" style="width:32px;height:32px;flex:none;border-radius:8px;border:1px solid {{btnBorder}};background:{{paperBg}};color:{{textPrimary}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4.2h4l1.4 1.6H14v6.7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4.2z"></path><path d="M8 7.6v3.2M6.4 9.2h3.2" stroke="{{accent}}"></path></svg>
+            </button>
+            <button type="button" aria-label="新建笔记" style="width:32px;height:32px;flex:none;border-radius:8px;border:1px solid {{btnBorder}};background:{{paperBg}};color:{{textPrimary}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 2.5h5.8l3.2 3.2v7.8h-9v-11z"></path><path d="M8 7.5v3.4M6.3 9.2h3.4" stroke="{{accent}}"></path></svg>
+            </button>
+          </div>
+
+          <button type="button" style="height:32px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:{{textPrimary}};display:flex;align-items:center;gap:8px;text-align:left">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="{{textSecondary}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4l4 4-4 4"></path></svg>
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M2 4.2h4l1.4 1.6H14v6.7H2V4.2z" fill="{{iconFill}}" stroke="none"></path><path d="M2 4.2h4l1.4 1.6H14v6.7H2V4.2z"></path></svg>
+            <span>backups</span>
+          </button>
+
+          <sc-for list="{{sideDocs}}" as="doc" hint-placeholder-count="4">
+            <button type="button" style="height:32px;padding:0 10px 0 22px;border:0;border-radius:8px;background:transparent;color:{{textPrimary}};display:flex;align-items:center;gap:8px;text-align:left">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="{{textSecondary}}" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 2.5h5.8l3.2 3.2v7.8h-9v-11z"></path><path d="M5.5 7.8h5M5.5 10.2h3.4"></path></svg>
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{doc.title}}</span>
+            </button>
+          </sc-for>
+
+          <button type="button" style="height:32px;padding:0 10px 0 22px;border:0;border-radius:8px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{textPrimary}};font-weight:500;display:flex;align-items:center;gap:8px;text-align:left">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="{{accent}}" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 2.5h5.8l3.2 3.2v7.8h-9v-11z" fill="{{iconFill}}" stroke="none"></path><path d="M3.5 2.5h5.8l3.2 3.2v7.8h-9v-11z"></path><path d="M5.5 7.8h5M5.5 10.2h3.4"></path></svg>
+            <span>未命名</span>
+          </button>
+        </div>
+
+        <div style="height:42px;margin:0 -10px;padding:0 12px;border-top:1px solid {{shellBorder}};display:flex;align-items:center;justify-content:space-between;color:{{textPrimary}}">
+          <button type="button" style="flex:1;height:30px;padding:0 6px;border:0;border-radius:6px;background:transparent;color:{{textPrimary}};display:flex;align-items:center;justify-content:space-between">
+            <span style="display:inline-flex;align-items:center;gap:8px">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M2 4.2h4l1.4 1.6H14v6.7H2V4.2z"></path></svg>
+              <span>创业团队</span>
+            </span>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="{{textSecondary}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 10L8 6.5l3.5 3.5"></path></svg>
+          </button>
+          <span style="width:1px;height:16px;background:{{shellBorder}};margin:0 6px"></span>
+          <button type="button" aria-label="设置" style="width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:{{textSecondary}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"></path><circle cx="5.5" cy="4.5" r="1.4" fill="{{paperBg}}"></circle><circle cx="10.5" cy="8" r="1.4" fill="{{paperBg}}"></circle><circle cx="6.8" cy="11.5" r="1.4" fill="{{paperBg}}"></circle></svg>
+          </button>
+        </div>
+      </aside>
+
+      <main style="flex:999 1 560px;min-width:0;position:relative;display:flex;justify-content:center;gap:24px;padding:42px 32px 56px;background:{{paperBg}}">
+
+        <sc-if value="{{showSheet}}" hint-placeholder-val="{{false}}">
+          <div style="position:absolute;top:10px;right:16px;z-index:30;width:276px;padding:12px;border-radius:10px;background:{{menuBg}};border:1px solid {{borderCol}};box-shadow:{{popShadow}};display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <div style="display:flex;align-items:center;gap:6px">
+                <sc-for list="{{emojis}}" as="em" hint-placeholder-count="4">
+                  <button type="button" onClick="{{em.pick}}" style="width:28px;height:28px;border-radius:6px;border:{{em.border}};background:{{em.bg}};display:inline-flex;align-items:center;justify-content:center;padding:0;font-size:15px">{{em.glyph}}</button>
+                </sc-for>
+              </div>
+              <button type="button" onClick="{{toggleSheet}}" aria-label="关闭浮层" style="width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:{{textSecondary}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+                <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7"></path></svg>
+              </button>
+            </div>
+
+            <sc-if value="{{hasNote2}}" hint-placeholder-val="{{true}}">
+              <div style="padding:10px;border-radius:8px;background:{{sidebarBg}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:8px">
+                <div style="padding:8px 10px;border-radius:6px;background:{{selectedBg}};color:{{rewriteFg}};font-size:14px;line-height:20px">按起订量区间提供阶梯美元报价</div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <button type="button" onClick="{{acceptNote}}" aria-label="同意替换" style="width:28px;height:28px;border-radius:6px;border:0;background:{{accent}};color:#ffffff;display:inline-flex;align-items:center;justify-content:center;padding:0">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5l3 3 6-7"></path></svg>
+                  </button>
+                  <span style="flex:1"></span>
+                  <button type="button" onClick="{{deleteNote}}" aria-label="删除批注" style="width:26px;height:26px;border-radius:6px;border:0;background:transparent;color:{{textSecondary}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4h9M5.5 4V2.5h3V4M3.8 4l.6 7.5h5.2l.6-7.5"></path></svg>
+                  </button>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <article style="flex:1;min-width:0;max-width:672px;display:flex;flex-direction:column;gap:14px;font-size:16px;line-height:28px;color:{{editorText}}">
+
+          <div style="position:relative;padding-top:{{leadTopPad}}">
+            <sc-if value="{{isNarrow}}" hint-placeholder-val="{{true}}">
+              <div style="position:absolute;top:0;right:0;display:inline-flex;align-items:center;gap:6px">
+                <button type="button" onClick="{{toggleReaction}}" style="height:24px;padding:0 9px;border-radius:8px 8px 2px 8px;border:{{tabBorder}};background:{{paperBg}};box-shadow:{{tabShadow}};color:{{pillFg}};display:inline-flex;align-items:center;gap:4px;font-size:14px;line-height:16px;font-weight:500">
+                  <span>{{reactionEmoji}}</span>
+                  <span>{{reactionCount}}</span>
+                </button>
+              </div>
+            </sc-if>
+
+            <p style="margin:0">
+              <span>🌈 本次更新重点：英、</span><span style="background:{{hlSpan1}};border-radius:3px;padding:2px 0">韩两站新增四大美容护理扩展产线并换上全新首屏封面；全面隐去具体地址、“工贸”字样与公开出厂底价，补齐打样交期与保密开模保障；全站官方邮箱统一换为 </span><code style="padding:2px 6px;border-radius:4px;background:{{codePillBg}};color:{{codeText}};font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:14px">cherry@yjyiyang.com</code><span style="background:{{hlSpan1}};border-radius:3px;padding:2px 0"> 并打通后台询盘双重留底。</span>
+            </p>
+          </div>
+
+          <p style="margin:0;font-weight:560">
+            <span style="background:{{hlSpan1}};border-radius:3px;padding:2px 4px 2px 0">✨ 新功能</span>
+          </p>
+
+          <div style="position:relative">
+            <span aria-hidden="true" style="position:absolute;left:-20px;top:6px;color:{{handleCol}};font-size:14px;line-height:16px;letter-spacing:1px">⋮⋮</span>
+            <p style="margin:0">
+              <span style="background:{{hlSpan1}};border-radius:3px;padding:2px 0">· 英、韩两站新增纯钛调色棒、便携皮套美甲组、粉刺死皮精密工具、圆头安全美容剪四大精选区，点按类别即可切换查看并直接询价。</span>
+            </p>
+          </div>
+
+          <p style="margin:0">
+            <span style="background:{{hlSpan1}};border-radius:3px;padding:2px 0">· 补齐四大源头工厂保障：5–7 个工作日出定制打样、确认后 15–25 天大货出厂，支持签保密协议开专属模具、同厂礼盒组装及欧美环保检测支持。</span>
+          </p>
+
+          <div style="position:relative">
+            <span aria-hidden="true" style="position:absolute;left:-20px;top:6px;color:{{handleCol}};font-size:14px;line-height:16px;letter-spacing:1px">⋮⋮</span>
+            <p style="margin:0">
+              <span style="background:{{hlSpan1}};border-radius:3px;padding:2px 0">· 韩国站支持卡片一键带入询盘、多选器型，并新增「款式未定」「颜色未定」选项；英文站新增纯钛、玉石与不锈钢刮痧板对比指南入口。</span>
+            </p>
+          </div>
+
+          <p style="margin:0">
+            <span style="background:{{hlSpan1}};border-radius:3px;padding:2px 0">· 右侧快捷联系栏支持英、韩双语提示，鼠标移到邮箱、电话、微信按钮上即可看清具体账号与号码。</span>
+          </p>
+
+          <p style="margin:0;font-weight:560">
+            <span style="background:{{hlSpan1}};border-radius:3px;padding:2px 4px 2px 0">🪐 优化</span>
+          </p>
+
+          <div style="position:relative;padding-top:{{note2TopPad}}">
+            <sc-if value="{{showNote2Tab}}" hint-placeholder-val="{{true}}">
+              <div style="position:absolute;top:0;right:0;display:inline-flex;align-items:center">
+                <button type="button" onClick="{{toggleSheet}}" style="height:24px;padding:0 9px;border-radius:8px 8px 2px 8px;border:1px solid {{accent}};background:{{paperBg}};box-shadow:{{tabShadow}};color:{{textPrimary}};display:inline-flex;align-items:center;gap:5px;font-size:14px;line-height:16px;font-weight:500">
+                  <span style="width:7px;height:7px;border-radius:4px;background:{{accent}};display:block"></span>
+                  <span>#1</span>
+                </button>
+              </div>
+            </sc-if>
+
+            <p style="margin:0">
+              <span style="background:{{hlSpan1}};border-radius:3px;padding:2px 0">· 全站页面、隐私说明与搜索引擎收录信息已隐去省市地名、住宅门牌号与“工贸”字样，统一展示品牌 YiYang，并撤掉</span><span style="background:{{hlSpan2}};border-radius:3px;padding:2px 2px">公开美元底价改为阶梯报价</span><span>。</span>
+            </p>
+          </div>
+
+          <p style="margin:0">
+            <span>· 全站联系与收信邮箱统一换为 </span><code style="padding:2px 6px;border-radius:4px;background:{{codeBg}};color:{{codeText}};font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:14px">cherry@yjyiyang.com</code><span> 并在联系栏置顶标为「推荐」；询盘表放开数量填写限制，方便新品牌拿样或谈试单。</span>
+          </p>
+
+          <p style="margin:0">
+            <span>· 英文主站首屏三张轮播大图与社交分享封面全面换新；韩国站刮痧板默认先展示 4 款畅销器型，点一下即可展开全部 9 款。</span>
+          </p>
+
+        </article>
+
+        <sc-if value="{{isWide}}" hint-placeholder-val="{{false}}">
+          <aside aria-label="宽屏右侧批注轨" style="width:224px;flex:0 0 224px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <button type="button" onClick="{{toggleReaction}}" style="height:24px;padding:0 9px;border-radius:12px;border:{{tabBorder}};background:{{selectedBg}};color:{{pillFg}};display:inline-flex;align-items:center;gap:4px;font-size:14px;line-height:16px;font-weight:500">
+                <span>{{reactionEmoji}}</span>
+                <span>{{reactionCount}}</span>
+              </button>
+            </div>
+            <sc-if value="{{hasNote2}}" hint-placeholder-val="{{true}}">
+              <div style="margin-top:404px;padding:10px 12px;border-radius:10px;background:{{menuBg}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:10px">
+                <div style="padding:8px 10px;border-radius:6px;background:{{selectedBg}};color:{{rewriteFg}};font-size:14px;line-height:20px">按起订量区间提供阶梯美元报价</div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <button type="button" onClick="{{acceptNote}}" aria-label="同意替换" style="width:28px;height:28px;border-radius:6px;border:0;background:{{accent}};color:#ffffff;display:inline-flex;align-items:center;justify-content:center;padding:0">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5l3 3 6-7"></path></svg>
+                  </button>
+                </div>
+              </div>
+            </sc-if>
+          </aside>
+        </sc-if>
+
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"light","options":["light","dark"]},"viewport":{"editor":"enum","default":"narrow","options":["narrow","compact","wide"]},"$preview":{"width":1000,"height":880}}'>
+const EMOJI_LIST = ['🤔', '👍', '❤️', '👀'];
+const SIDE_DOCS = [
+  { title: '更深入调研' },
+  { title: '官网' },
+  { title: '钛刮痧片' },
+  { title: '苹果账号购买' }
+];
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { emoji: '🤔', count: 1, activeReaction: true, sheetOpen: false, hasNote2: true };
+  }
+  renderVals() {
+    const isDark = (this.props.theme ?? 'light') === 'dark';
+    const vp = this.props.viewport ?? 'narrow';
+    const isWide = vp === 'wide';
+    const winMaxW = vp === 'compact' ? '820px' : (isWide ? '1360px' : '1000px');
+
+    const stageBg = isDark ? '#121212' : '#eef0f4';
+    const shellBg = isDark ? '#343434' : '#f1f1f1';
+    const shellBorder = isDark ? '#333333' : '#e6e6e6';
+    const sidebarBg = isDark ? '#222222' : '#fafafa';
+    const paperBg = isDark ? '#181818' : '#ffffff';
+    const menuBg = isDark ? '#222222' : '#ffffff';
+    const textPrimary = isDark ? '#ececec' : '#20242c';
+    const editorText = isDark ? '#ececec' : '#1f1e1d';
+    const textSecondary = isDark ? '#b4b4b4' : '#526071';
+    const accent = isDark ? '#779de8' : '#547dd0';
+    const iconFill = isDark ? '#31456a' : '#c9d8f3';
+    const selectedBg = isDark ? '#343434' : '#e5edfc';
+    const borderCol = isDark ? '#2e2e2e' : '#e4e6ea';
+    const btnBorder = isDark ? '#444444' : '#dcdcdc';
+    const codeBg = isDark ? '#262626' : '#f3f1ec';
+    const codePillBg = isDark ? '#352b1c' : '#f5e7c4';
+    const codeText = isDark ? '#ff8b8b' : '#b42318';
+    const handleCol = isDark ? '#5a5a5a' : '#b8b6b0';
+
+    const hlSpan1 = isDark ? '#43361c' : '#fef0d1';
+    const hlSpan2 = this.state.hasNote2 ? (isDark ? '#243552' : '#e5edfc') : 'transparent';
+    const rewriteFg = isDark ? '#ececec' : '#184f95';
+
+    const active = this.state.activeReaction;
+    const pillFg = isDark ? '#9ec3ff' : '#1757ac';
+    const tabBorder = active ? ('1px solid ' + accent) : ('1px solid ' + btnBorder);
+    const tabShadow = isDark ? '0 2px 6px rgba(0,0,0,0.4)' : '0 2px 6px rgba(32,36,44,0.08)';
+    const popShadow = isDark ? '0 8px 24px rgba(0,0,0,0.45)' : '0 8px 24px rgba(32,36,44,0.12)';
+
+    const emojis = EMOJI_LIST.map((glyph) => {
+      const sel = this.state.emoji === glyph;
+      return {
+        glyph,
+        bg: sel ? selectedBg : 'transparent',
+        border: sel ? ('1px solid ' + accent) : '1px solid transparent',
+        pick: () => this.setState({ emoji: glyph, count: 1, activeReaction: true })
+      };
+    });
+
+    return {
+      stageBg, shellBg, shellBorder, sidebarBg, paperBg, menuBg,
+      textPrimary, editorText, textSecondary, accent, iconFill,
+      selectedBg, borderCol, btnBorder, codeBg, codePillBg, codeText, handleCol,
+      hlSpan1, hlSpan2, rewriteFg,
+      winMaxW,
+      isNarrow: !isWide,
+      isWide,
+      leadTopPad: isWide ? '0' : '26px',
+      note2TopPad: (!isWide && this.state.hasNote2) ? '26px' : '0',
+      showNote2Tab: !isWide && this.state.hasNote2,
+      showSheet: !isWide && this.state.sheetOpen,
+      topPillBg: this.state.sheetOpen ? selectedBg : sidebarBg,
+      topPillBorder: this.state.sheetOpen ? accent : borderCol,
+      sideDocs: SIDE_DOCS,
+      reactionEmoji: this.state.emoji,
+      reactionCount: this.state.count,
+      pillFg, tabBorder, tabShadow, popShadow,
+      emojis,
+      hasNote2: this.state.hasNote2,
+      toggleReaction: () => this.setState({ activeReaction: !active, count: active ? 1 : 2 }),
+      toggleSheet: () => this.setState({ sheetOpen: !this.state.sheetOpen }),
+      acceptNote: () => this.setState({ hasNote2: false, sheetOpen: false }),
+      deleteNote: () => this.setState({ hasNote2: false, sheetOpen: false })
+    };
+  }
+}
+</script>
+</body>
+</html>

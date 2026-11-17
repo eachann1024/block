@@ -137,13 +137,14 @@ type Session struct {
 	outlineForceNarrow  bool
 
 	// Annotations
-	annotations      []*model.Annotation
-	activeAnnotID    string
-	hoveredAnnotID   string
-	editingAnnotID   string
-	editingAnnotText string
-	editingHandle    ui.Handle
-	nextAnnotSeq     int
+	annotations           []*model.Annotation
+	annotationAIResponder func(docMarkdown string, pending []*model.Annotation) map[string]string
+	activeAnnotID         string
+	hoveredAnnotID        string
+	editingAnnotID        string
+	editingAnnotText      string
+	editingHandle         ui.Handle
+	nextAnnotSeq          int
 
 	// BatchPlan diff review
 	activePlan     *model.BatchPlan
@@ -167,6 +168,7 @@ type Session struct {
 	imageAltHandle    ui.Handle
 	imageCache        map[string]ui.ImageSource
 	imageFailed       map[string]bool
+	imageRects        map[model.BlockID]ui.Rect
 	imgResizeBlock    model.BlockID
 	imgResizeStartPct float32
 	imgResizeCurPct   float32
@@ -210,6 +212,7 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 		folded:       make(map[model.BlockID]bool),
 		imageCache:   make(map[string]ui.ImageSource),
 		imageFailed:  make(map[string]bool),
+		imageRects:   make(map[model.BlockID]ui.Rect),
 	}
 	return s
 }

@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>深色代码配色 B · Warm Espresso 暖墨琥珀（纸感暖炭风）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#ececec;background:#181818;-webkit-font-smoothing:antialiased}
+a{color:#779de8;text-decoration:none}a:hover{color:#9dbcf5}
+button{font-family:inherit;font-size:14px}
+*{box-sizing:border-box}
+::selection{background:#2d426b;color:#9dbcf5}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-feature-settings:"liga" 0}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:1020px;display:flex;flex-direction:column;background:#181818;color:#ececec;font-size:14px;line-height:20px">
+
+  <!-- 顶部控制栏 -->
+  <header style="height:46px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:#222222;border-bottom:1px solid #2e2e2e">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+      </div>
+      <span style="font-weight:560;color:#ececec">深色代码配色 B · Warm Espresso 暖墨琥珀</span>
+      <span style="color:#b4b4b4">代码块几何与控件样式 100% 保持原样 · 纯暖炭底 #222120 + 琥珀金键名 #f2be79 + 青瓷绿 #94c9a9</span>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:#343434;border:1px solid #444444">
+        <button type="button" onClick="{{setIdle}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{idleBtnBg}};color:{{idleBtnCol}};box-shadow:{{idleBtnRing}};font-weight:460;cursor:pointer">闲置态</button>
+        <button type="button" onClick="{{setHover}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{hoverBtnBg}};color:{{hoverBtnCol}};box-shadow:{{hoverBtnRing}};font-weight:460;cursor:pointer">悬停 / 光标态</button>
+        <button type="button" onClick="{{setMenu}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{menuBtnBg}};color:{{menuBtnCol}};box-shadow:{{menuBtnRing}};font-weight:460;cursor:pointer">语言下拉</button>
+      </div>
+    </div>
+  </header>
+
+  <main style="flex:1;max-width:1220px;width:100%;margin:0 auto;padding:28px 28px 56px;display:flex;flex-direction:column;gap:24px">
+
+    <!-- 1. 截图原场景左右对比（样式不变，仅对比配色主题） -->
+    <section style="background:#222222;border:1px solid #2e2e2e;border-radius:10px;padding:20px 24px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:15px;line-height:22px;font-weight:560;color:#ececec">截图原场景对比 · 告别偏蓝乌黑底，融入 #181818 中性石墨纸面</span>
+        <span style="font-size:14px;color:#b4b4b4">底色 #222120 暖炭灰 · 键名 #f2be79 琥珀金 · 字符串 #94c9a9 青瓷薄荷</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px">
+        <!-- 左侧：当前丑陋配色复现 -->
+        <div style="padding:16px 18px;border-radius:8px;background:#1b1b1b;border:1px solid #2e2e2e;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:14px;font-weight:500;color:#b4b4b4">当前现状（误用 default_light 浅色高亮）</span>
+            <span style="font-size:14px;color:#e57368">#16191e 冷蓝底格格不入 · 键名看不见</span>
+          </div>
+
+          <div style="padding:16px 16px 16px 38px;border-radius:8px;background:#181818;border:1px solid #262626;position:relative">
+            <span aria-hidden="true" style="position:absolute;left:13px;top:24px;color:#787878;display:inline-flex">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"></circle><circle cx="10.5" cy="3.5" r="1.2"></circle><circle cx="5.5" cy="8" r="1.2"></circle><circle cx="10.5" cy="8" r="1.2"></circle><circle cx="5.5" cy="12.5" r="1.2"></circle><circle cx="10.5" cy="12.5" r="1.2"></circle></svg>
+            </span>
+            <div class="mono" style="position:relative;padding:34px 12px 10px;border-radius:6px;background:#16191e;font-size:14px;line-height:22px;color:#ececec;word-break:break-all">
+              <div style="position:absolute;top:6px;right:6px;height:22px;display:flex;align-items:center;gap:4px">
+                <span style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;color:#9aa3b2">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+                </span>
+                <span style="height:22px;padding:0 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:#1f2228;color:#9aa3b2;font-family:Inter,sans-serif;font-size:12px;display:inline-flex;align-items:center">yaml</span>
+              </div>
+              <div>{</div>
+              <div style="padding-left:16px"><span style="color:#48484a">goose-id</span>: <span style="color:#268026">local-mvezjy17iwf4mlovmr-%E5%BC%95%E4%BD%93%E5%90%91%E4%B8%8A(%E5%BC%B9%E5%8A%9B%E5%B8%A6_%E8%87%AA%E9%87%8D_%E8%B4%9F%E9%87%8D%E5%BC%95%E4%BD%93).md</span></div>
+              <div>}<span style="display:inline-block;width:2px;height:16px;background:#779de8;vertical-align:middle;margin-left:1px"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧：配色 B（Warm Espresso） -->
+        <div style="padding:16px 18px;border-radius:8px;background:#26211c;border:1px solid #f2be79;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:14px;font-weight:560;color:#ececec">配色 B · Warm Espresso（暖墨琥珀）</span>
+            <span style="font-size:14px;color:#f2be79;font-weight:500">暖珀金键名 + 青瓷薄荷绿字符串</span>
+          </div>
+
+          <div style="padding:16px 16px 16px 38px;border-radius:8px;background:#181818;border:1px solid #2e2e2e;position:relative">
+            <span aria-hidden="true" style="position:absolute;left:13px;top:24px;color:#787878;display:inline-flex">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"></circle><circle cx="10.5" cy="3.5" r="1.2"></circle><circle cx="5.5" cy="8" r="1.2"></circle><circle cx="10.5" cy="8" r="1.2"></circle><circle cx="5.5" cy="12.5" r="1.2"></circle><circle cx="10.5" cy="12.5" r="1.2"></circle></svg>
+            </span>
+            <!-- 严格保持原版样式 -->
+            <div class="mono" style="position:relative;padding:34px 12px 10px;border-radius:6px;background:#222120;font-size:14px;line-height:22px;color:#e6e1d8;word-break:break-all">
+              <div style="position:absolute;top:6px;right:6px;height:22px;display:flex;align-items:center;gap:4px">
+                <span style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;color:#9e9990">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+                </span>
+                <span style="height:22px;padding:0 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:#2b2a28;color:#a8a298;font-family:Inter,sans-serif;font-size:12px;display:inline-flex;align-items:center">yaml</span>
+              </div>
+              <div><span style="color:#8a857d">{</span></div>
+              <div style="padding-left:16px"><span style="color:#f2be79">goose-id</span><span style="color:#8a857d">:</span> <span style="color:#94c9a9">local-mvezjy17iwf4mlovmr-%E5%BC%95%E4%BD%93%E5%90%91%E4%B8%8A(%E5%BC%B9%E5%8A%9B%E5%B8%A6_%E8%87%AA%E9%87%8D_%E8%B4%9F%E9%87%8D%E5%BC%95%E4%BD%93).md</span></div>
+              <div><span style="color:#8a857d">}</span><span style="display:inline-block;width:2px;height:16px;background:#779de8;vertical-align:middle;margin-left:1px"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 编辑器标准版心（700px）多语言代码块预览（保持原有卡片样式） -->
+    <section style="background:#222222;border:1px solid #2e2e2e;border-radius:10px;padding:24px 32px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #2e2e2e;padding-bottom:14px">
+        <span style="font-size:15px;line-height:22px;font-weight:560;color:#ececec">编辑器标准版心（700px）· YAML 与 Rust 真实代码块预览</span>
+        <span style="font-size:14px;color:#b4b4b4">灵感来自 Vesper 与 Monokai Ristretto，零蓝光负担的纸墨暖调</span>
+      </div>
+
+      <div style="max-width:700px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:18px;padding:4px 0">
+        <!-- 代码块 1：YAML -->
+        <div style="position:relative;padding-left:28px">
+          <sc-if value="{{showChrome}}" hint-placeholder-val="{{true}}">
+            <span aria-hidden="true" style="position:absolute;left:2px;top:9px;color:#787878;display:inline-flex">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"></circle><circle cx="10.5" cy="3.5" r="1.2"></circle><circle cx="5.5" cy="8" r="1.2"></circle><circle cx="10.5" cy="8" r="1.2"></circle><circle cx="5.5" cy="12.5" r="1.2"></circle><circle cx="10.5" cy="12.5" r="1.2"></circle></svg>
+            </span>
+          </sc-if>
+
+          <div class="mono" style="position:relative;padding:34px 12px 10px;border-radius:6px;background:#222120;font-size:14px;line-height:22px;color:#e6e1d8;word-break:break-all">
+            <sc-if value="{{showChrome}}" hint-placeholder-val="{{true}}">
+              <div style="position:absolute;top:6px;right:6px;height:22px;display:flex;align-items:center;gap:4px;z-index:10">
+                <button type="button" onClick="{{triggerCopy}}" aria-label="复制代码" style="width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:{{copyFg}};display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer">
+                  <sc-if value="{{isCopied}}" hint-placeholder-val="{{false}}">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>
+                  </sc-if>
+                  <sc-if value="{{notCopied}}" hint-placeholder-val="{{true}}">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+                  </sc-if>
+                </button>
+                <button type="button" onClick="{{toggleMenu}}" style="height:22px;padding:0 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:{{pillBg}};color:{{pillFg}};font-family:Inter,sans-serif;font-size:12px;display:inline-flex;align-items:center;cursor:pointer">{{langLabel}}</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{menuOpen}}" hint-placeholder-val="{{false}}">
+              <div role="menu" style="position:absolute;top:32px;right:6px;width:184px;padding:4px;border-radius:10px;background:#282624;border:1px solid #3d3a36;box-shadow:0 10px 28px rgba(0,0,0,0.42);font-family:Inter,sans-serif;font-size:14px;z-index:30;display:flex;flex-direction:column;gap:2px">
+                <sc-for list="{{langItems}}" as="it" hint-placeholder-count="5">
+                  <button type="button" role="menuitemradio" aria-checked="{{it.checked}}" onClick="{{it.pick}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{it.rowBg}};color:#ececec;display:flex;align-items:center;justify-content:space-between;cursor:pointer;text-align:left">
+                    <span>{{it.label}}</span>
+                    <sc-if value="{{it.checked}}" hint-placeholder-val="{{false}}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f2be79" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>
+                    </sc-if>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <div><span style="color:#8a857d">{</span></div>
+            <div style="padding-left:16px"><span style="color:#f2be79">goose-id</span><span style="color:#8a857d">:</span> <span style="color:#94c9a9">local-mvezjy17iwf4mlovmr-%E5%BC%95%E4%BD%93%E5%90%91%E4%B8%8A(%E5%BC%B9%E5%8A%9B%E5%B8%A6_%E8%87%AA%E9%87%8D_%E8%B4%9F%E9%87%8D%E5%BC%95%E4%BD%93).md</span></div>
+            <div><span style="color:#8a857d">}</span></div>
+          </div>
+        </div>
+
+        <!-- 代码块 2：Rust 全语法元素演示 -->
+        <div style="position:relative;padding-left:28px">
+          <div class="mono" style="position:relative;padding:34px 12px 10px;border-radius:6px;background:#222120;font-size:14px;line-height:22px;color:#e6e1d8">
+            <sc-if value="{{showChrome}}" hint-placeholder-val="{{true}}">
+              <div style="position:absolute;top:6px;right:6px;height:22px;display:flex;align-items:center;gap:4px">
+                <span style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;color:#9e9990">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+                </span>
+                <span style="height:22px;padding:0 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:#2b2a28;color:#a8a298;font-family:Inter,sans-serif;font-size:12px;display:inline-flex;align-items:center">rust</span>
+              </div>
+            </sc-if>
+            <div><span style="color:#948e84">// Warm Espresso：暖炭底色配琥珀金与珊瑚陶红，夜间护眼不偏蓝</span></div>
+            <div><span style="color:#e68a7c">pub fn</span> <span style="color:#f5d096">load_note_meta</span><span style="color:#8a857d">(</span>path<span style="color:#8a857d">: &amp;</span><span style="color:#d39bb6">Path</span><span style="color:#8a857d">) -&gt;</span> <span style="color:#d39bb6">Option</span><span style="color:#8a857d">&lt;</span><span style="color:#d39bb6">NoteMeta</span><span style="color:#8a857d">&gt; {</span></div>
+            <div style="padding-left:20px"><span style="color:#e68a7c">let</span> raw <span style="color:#a89f91">=</span> fs<span style="color:#8a857d">::</span><span style="color:#f5d096">read_to_string</span><span style="color:#8a857d">(</span>path<span style="color:#8a857d">).</span><span style="color:#f5d096">ok</span><span style="color:#8a857d">()?;</span></div>
+            <div style="padding-left:20px"><span style="color:#e68a7c">let</span> limit<span style="color:#8a857d">:</span> <span style="color:#d39bb6">usize</span> <span style="color:#a89f91">=</span> <span style="color:#e09f67">4096</span><span style="color:#8a857d">;</span></div>
+            <div style="padding-left:20px">serde_yaml<span style="color:#8a857d">::</span><span style="color:#f5d096">from_str</span><span style="color:#8a857d">(&amp;</span>raw<span style="color:#8a857d">[..</span>raw<span style="color:#8a857d">.</span><span style="color:#f5d096">len</span><span style="color:#8a857d">().</span><span style="color:#f5d096">min</span><span style="color:#8a857d">(</span>limit<span style="color:#8a857d">)]).</span><span style="color:#f5d096">ok</span><span style="color:#8a857d">()</span></div>
+            <div><span style="color:#8a857d">}</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Warm Espresso 完整语法 Token 色板 -->
+    <section style="background:#222222;border:1px solid #2e2e2e;border-radius:10px;padding:18px 24px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:15px;font-weight:560;color:#ececec">配色 B（Warm Espresso）· 语法高亮色值表</span>
+        <span class="mono" style="font-size:13px;color:#f2be79">src/editor/syntax.rs · src/editor/code_block.rs</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
+        <div style="padding:12px 14px;border-radius:8px;background:#1b1b1b;border:1px solid #2e2e2e;display:flex;align-items:center;gap:10px">
+          <span style="width:24px;height:24px;border-radius:6px;background:#222120;border:1px solid #3d3a36;flex:none"></span>
+          <div><div style="font-weight:500;color:#ececec">代码块底色</div><div class="mono" style="font-size:13px;color:#b4b4b4">#222120 · 胶囊 #2b2a28</div></div>
+        </div>
+        <div style="padding:12px 14px;border-radius:8px;background:#1b1b1b;border:1px solid #2e2e2e;display:flex;align-items:center;gap:10px">
+          <span style="width:24px;height:24px;border-radius:6px;background:#f2be79;flex:none"></span>
+          <div><div style="font-weight:500;color:#ececec">属性 / 键名 (property)</div><div class="mono" style="font-size:13px;color:#f2be79">#f2be79 暖珀金</div></div>
+        </div>
+        <div style="padding:12px 14px;border-radius:8px;background:#1b1b1b;border:1px solid #2e2e2e;display:flex;align-items:center;gap:10px">
+          <span style="width:24px;height:24px;border-radius:6px;background:#94c9a9;flex:none"></span>
+          <div><div style="font-weight:500;color:#ececec">字符串 (string)</div><div class="mono" style="font-size:13px;color:#94c9a9">#94c9a9 青瓷薄荷</div></div>
+        </div>
+        <div style="padding:12px 14px;border-radius:8px;background:#1b1b1b;border:1px solid #2e2e2e;display:flex;align-items:center;gap:10px">
+          <span style="width:24px;height:24px;border-radius:6px;background:#e68a7c;flex:none"></span>
+          <div><div style="font-weight:500;color:#ececec">关键字 (keyword)</div><div class="mono" style="font-size:13px;color:#e68a7c">#e68a7c 珊瑚陶红</div></div>
+        </div>
+        <div style="padding:12px 14px;border-radius:8px;background:#1b1b1b;border:1px solid #2e2e2e;display:flex;align-items:center;gap:10px">
+          <span style="width:24px;height:24px;border-radius:6px;background:#f5d096;flex:none"></span>
+          <div><div style="font-weight:500;color:#ececec">函数 (function)</div><div class="mono" style="font-size:13px;color:#f5d096">#f5d096 奶油香槟</div></div>
+        </div>
+        <div style="padding:12px 14px;border-radius:8px;background:#1b1b1b;border:1px solid #2e2e2e;display:flex;align-items:center;gap:10px">
+          <span style="width:24px;height:24px;border-radius:6px;background:#d39bb6;flex:none"></span>
+          <div><div style="font-weight:500;color:#ececec">类型 (type)</div><div class="mono" style="font-size:13px;color:#d39bb6">#d39bb6 灰粉梅</div></div>
+        </div>
+        <div style="padding:12px 14px;border-radius:8px;background:#1b1b1b;border:1px solid #2e2e2e;display:flex;align-items:center;gap:10px">
+          <span style="width:24px;height:24px;border-radius:6px;background:#e09f67;flex:none"></span>
+          <div><div style="font-weight:500;color:#ececec">数字 / 常量 (number)</div><div class="mono" style="font-size:13px;color:#e09f67">#e09f67 焦糖橙</div></div>
+        </div>
+        <div style="padding:12px 14px;border-radius:8px;background:#1b1b1b;border:1px solid #2e2e2e;display:flex;align-items:center;gap:10px">
+          <span style="width:24px;height:24px;border-radius:6px;background:#8a857d;flex:none"></span>
+          <div><div style="font-weight:500;color:#ececec">标点 / 注释</div><div class="mono" style="font-size:13px;color:#8a857d">#8a857d / #757067</div></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1020}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { mode: 'hover', lang: 'yaml', copied: false };
+  }
+
+  renderVals() {
+    const m = this.state.mode;
+    const lang = this.state.lang;
+    const copied = this.state.copied;
+
+    const activeBg = '#343434';
+    const activeCol = '#ececec';
+    const activeRing = 'inset 0 0 0 1px #779de8';
+    const idleCol = '#b4b4b4';
+    const langs = ['yaml', 'rust', 'typescript', 'json', 'python', 'bash'];
+
+    return {
+      showChrome: m !== 'idle',
+      menuOpen: m === 'menu',
+      langLabel: lang,
+      isCopied: copied,
+      notCopied: !copied,
+
+      copyFg: copied ? '#94c9a9' : '#9e9990',
+      pillBg: m === 'menu' ? '#363431' : '#2b2a28',
+      pillFg: m === 'menu' ? '#ececec' : '#a8a298',
+
+      setIdle: () => this.setState({ mode: 'idle' }),
+      setHover: () => this.setState({ mode: 'hover' }),
+      setMenu: () => this.setState({ mode: 'menu' }),
+      triggerCopy: () => this.setState({ copied: !this.state.copied }),
+      toggleMenu: () => this.setState({ mode: m === 'menu' ? 'hover' : 'menu' }),
+
+      langItems: langs.map((l) => ({
+        label: l,
+        checked: l === lang,
+        rowBg: l === lang ? '#363431' : 'transparent',
+        pick: () => this.setState({ lang: l, mode: 'hover' })
+      })),
+
+      idleBtnBg: m === 'idle' ? activeBg : 'transparent',
+      idleBtnCol: m === 'idle' ? activeCol : idleCol,
+      idleBtnRing: m === 'idle' ? activeRing : 'none',
+
+      hoverBtnBg: m === 'hover' ? activeBg : 'transparent',
+      hoverBtnCol: m === 'hover' ? activeCol : idleCol,
+      hoverBtnRing: m === 'hover' ? activeRing : 'none',
+
+      menuBtnBg: m === 'menu' ? activeBg : 'transparent',
+      menuBtnCol: m === 'menu' ? activeCol : idleCol,
+      menuBtnRing: m === 'menu' ? activeRing : 'none'
+    };
+  }
+}
+</script>
+</body>
+</html>

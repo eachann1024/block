@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>AI 修改联动 B · 侧栏单行定位胶囊 + 编辑器改动块虚线聚焦框与块下原位悬浮审阅舱</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input,textarea{font-family:inherit;font-size:14px;line-height:20px;color:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid #547dd0;outline-offset:1px}
+*{box-sizing:border-box}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.ib{width:28px;height:28px;border:0;border-radius:8px;background:transparent;display:inline-flex;align-items:center;justify-content:center;padding:0;flex:none}
+.row{width:100%;height:32px;padding:0 10px;border:0;border-radius:8px;background:transparent;display:flex;align-items:center;gap:8px;text-align:left}
+table{border-collapse:collapse;width:100%;font-size:14px;line-height:22px}
+th,td{padding:8px 10px;text-align:left;vertical-align:top}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:920px;display:flex;flex-direction:column;background:{{shellBg}};color:{{textPrimary}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased">
+
+  <!-- 顶部交互演示切换条 -->
+  <div style="min-height:46px;padding:6px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:{{sidebarBg}};border-bottom:1px solid {{borderCol}};flex:none">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-weight:560">方案 B · 侧栏极简胶囊锚点 + 编辑器改动块虚线框与块下悬浮审阅舱（支持切「修改后预览 / 对比」）</span>
+      <button type="button" onClick="{{toggleTheme}}" style="height:28px;padding:0 10px;border:1px solid {{btnBorder}};border-radius:8px;background:{{cardBg}}">{{themeLabel}}</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <button type="button" onClick="{{setCleanPreview}}" style="height:28px;padding:0 10px;border:0;border-radius:8px;background:{{modeCleanBg}};box-shadow:{{modeCleanRing}};font-weight:460">1. 修改后成品预览（默认清爽）</button>
+      <button type="button" onClick="{{setDiffPreview}}" style="height:28px;padding:0 10px;border:0;border-radius:8px;background:{{modeDiffBg}};box-shadow:{{modeDiffRing}};font-weight:460">2. 增删对比视图</button>
+      <button type="button" onClick="{{setApplied}}" style="height:28px;padding:0 10px;border:0;border-radius:8px;background:{{modeAppliedBg}};box-shadow:{{modeAppliedRing}};font-weight:460">3. 接受后状态</button>
+    </div>
+  </div>
+
+  <!-- 40px 标题栏 -->
+  <header style="height:40px;display:flex;align-items:center;background:{{shellBg}};border-bottom:1px solid {{shellBorder}};flex:none">
+    <div style="width:240px;height:100%;padding:0 10px 0 16px;display:flex;align-items:center;justify-content:space-between;border-right:1px solid {{shellBorder}};flex:none">
+      <div aria-hidden="true" style="display:flex;gap:8px;align-items:center">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      </div>
+      <button type="button" class="ib" aria-label="切换左侧栏" style="color:{{textSecondary}}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{iconFill}}"></path>
+          <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
+          <path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div style="flex:1;min-width:0;height:100%;padding:0 14px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0">
+        <span style="font-weight:560">潮州汕头行程.md</span>
+        <span style="color:{{textSecondary}}">·</span>
+        <span style="color:{{textSecondary}}">{{headerHint}}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button type="button" aria-label="AI 助手已开启" style="height:28px;padding:0 9px;border:0;border-radius:8px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{accent}};display:inline-flex;align-items:center;gap:5px;font-weight:500">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 3.5L14.2 9.1L19.8 11.3L14.2 13.5L12 19.1L9.8 13.5L4.2 11.3L9.8 9.1L12 3.5Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path>
+          </svg>
+          <span>AI</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主体三栏 -->
+  <div style="flex:1;min-height:0;display:flex;background:{{paperBg}}">
+
+    <!-- 左侧文件树 -->
+    <aside style="width:240px;flex:none;background:{{sidebarBg}};border-right:1px solid {{shellBorder}};padding:12px 10px;display:flex;flex-direction:column;justify-content:space-between">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div style="height:32px;padding:0 10px;margin-bottom:6px;border-radius:8px;background:{{shellBg}};display:flex;align-items:center;justify-content:space-between;color:{{textSecondary}}">
+          <span>搜索</span>
+          <span class="mono" style="font-size:12px">⌘K</span>
+        </div>
+        <button type="button" class="row" style="background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{textPrimary}};font-weight:560;justify-content:space-between">
+          <span>潮州汕头行程</span>
+          <span style="width:8px;height:8px;border-radius:4px;background:{{accent}}"></span>
+        </button>
+        <button type="button" class="row" style="color:{{textSecondary}}"><span>美食备选清单</span></button>
+        <button type="button" class="row" style="color:{{textSecondary}}"><span>Cargo.lock</span></button>
+        <button type="button" class="row" style="color:{{textSecondary}}"><span>Cargo.toml</span></button>
+        <button type="button" class="row" style="color:{{textSecondary}}"><span>DESIGN</span></button>
+      </div>
+      <div style="padding:10px 8px 2px;border-top:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;color:{{textSecondary}}">
+        <span>thinkly-fast</span>
+        <span>设置</span>
+      </div>
+    </aside>
+
+    <!-- 中间编辑器：延续 preview.rs 的虚线聚焦框语言 + 块下原位悬浮审阅舱 -->
+    <main style="flex:1;min-width:0;padding:36px 40px;overflow:auto;background:{{paperBg}}">
+      <article style="max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:18px;font-size:16px;line-height:28px">
+        <h1 style="margin:0;font-size:26px;line-height:34px;font-weight:600">潮州汕头五日行程</h1>
+        <p style="margin:0;color:{{textSecondary}}">高铁往返潮汕站，前两晚住汕头龙湖区，周四上南澳岛看日落，周五傍晚转场潮州古城。</p>
+
+        <!-- 联动聚焦块：一体化审阅顶栏 + 3px 语义竖条与 −/+ 槽位增删对比 + 底部操作坞 -->
+        <div style="border-radius:12px;background:{{cardBg}};border:1px solid {{accent}};overflow:hidden;display:flex;flex-direction:column">
+          <div style="padding:10px 14px;background:{{shellBg}};border-bottom:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div style="display:flex;align-items:center;gap:8px;min-width:0">
+              <sc-if value="{{isPending}}" hint-placeholder-val="{{true}}">
+                <span style="padding:2px 7px;border-radius:5px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{accent}};font-size:12px;font-weight:500">AI 审阅</span>
+              </sc-if>
+              <h2 style="margin:0;font-size:15px;line-height:22px;font-weight:600">总路线</h2>
+              <sc-if value="{{isPending}}" hint-placeholder-val="{{true}}">
+                <span class="mono" style="padding:1px 6px;border-radius:4px;background:{{delBg}};color:{{delText}};font-size:12px;font-weight:500">−2</span>
+                <span class="mono" style="padding:1px 6px;border-radius:4px;background:{{diffAddRowBg}};color:{{accent}};font-size:12px;font-weight:500">+5</span>
+              </sc-if>
+            </div>
+
+            <!-- 块内一键切换「修改后预览 / 增删对比」 -->
+            <sc-if value="{{isPending}}" hint-placeholder-val="{{true}}">
+              <div style="display:inline-flex;padding:2px;gap:2px;border-radius:8px;background:{{cardBg}};border:1px solid {{btnBorder}}">
+                <button type="button" onClick="{{setCleanPreview}}" style="height:26px;padding:0 10px;border:0;border-radius:6px;background:{{modeCleanBg}};box-shadow:{{modeCleanRing}};font-size:13px;font-weight:500">修改后预览</button>
+                <button type="button" onClick="{{setDiffPreview}}" style="height:26px;padding:0 10px;border:0;border-radius:6px;background:{{modeDiffBg}};box-shadow:{{modeDiffRing}};font-size:13px;font-weight:500">增删对比</button>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="padding:14px">
+            <div style="border:1px solid {{borderCol}};border-radius:10px;overflow:hidden">
+              <table>
+                <thead>
+                  <tr style="background:{{shellBg}};border-bottom:1px solid {{borderCol}}">
+                    <th style="width:98px;font-weight:560">日期</th>
+                    <th style="width:148px;font-weight:560">所在地区 / 城市</th>
+                    <th style="font-weight:560">主要安排</th>
+                    <th style="width:108px;font-weight:560">住哪</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style="background:{{diffAddRowBg}};border-bottom:1px solid {{borderCol}};border-left:3px solid {{accent}}">
+                    <td style="font-weight:500">周三 11/11</td>
+                    <td>汕头市区</td>
+                    <td>
+                      <span>23:00 前后到汕头站，吃宵夜；备选 </span>
+                      <span style="padding:1px 7px;border-radius:6px;background:{{highlightBg}};color:{{highlightText}};font-weight:560">头新溪谢肥记 (君)</span>
+                    </td>
+                    <td>汕头龙湖区</td>
+                  </tr>
+                  <tr style="background:{{diffAddRowBg}};border-bottom:1px solid {{borderCol}};border-left:3px solid {{accent}}">
+                    <td style="font-weight:500">周四 11/12</td>
+                    <td>汕头市区 → 南澳岛</td>
+                    <td>午饭牛肉火锅，下午上南澳：钱澳湾、长山尾日落</td>
+                    <td>南澳后宅</td>
+                  </tr>
+                  <tr style="background:{{diffAddRowBg}};border-bottom:1px solid {{borderCol}};border-left:3px solid {{accent}}">
+                    <td style="font-weight:500">周五 11/13</td>
+                    <td>南澳岛 → 潮州市区</td>
+                    <td>下午云澳渔港、三囱崖、青澳湾，傍晚去潮州</td>
+                    <td>潮州古城周边</td>
+                  </tr>
+                  <sc-if value="{{showDeletedRows}}" hint-placeholder-val="{{false}}">
+                    <tr style="background:{{delBg}};color:{{delText}};text-decoration:line-through;border-bottom:1px solid {{borderCol}};border-left:3px solid #d94848">
+                      <td>− 周六 11/14</td>
+                      <td>—</td>
+                      <td>下午开元寺、牌坊街，晚上灯光秀</td>
+                      <td>潮州古城周边</td>
+                    </tr>
+                    <tr style="background:{{delBg}};color:{{delText}};text-decoration:line-through;border-bottom:1px solid {{borderCol}};border-left:3px solid #d94848">
+                      <td>− 周日 11/15</td>
+                      <td>—</td>
+                      <td>下午广济桥、韩文公祠，18:23 上车</td>
+                      <td>她回广州，你回阳江</td>
+                    </tr>
+                  </sc-if>
+                  <tr style="background:{{diffAddRowBg}};border-bottom:1px solid {{borderCol}};border-left:3px solid {{accent}}">
+                    <td style="font-weight:500">周六 11/14</td>
+                    <td>潮州市区</td>
+                    <td>下午开元寺、牌坊街，晚上广济桥灯光秀</td>
+                    <td>潮州古城周边</td>
+                  </tr>
+                  <tr style="background:{{diffAddRowBg}};border-left:3px solid {{accent}}">
+                    <td style="font-weight:500">周日 11/15</td>
+                    <td>潮州市区 → 潮汕站</td>
+                    <td>下午广济桥、韩文公祠，18:23 潮汕站上车</td>
+                    <td>她回广州 / 你回阳江</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 紧贴改动块底部的原位审阅舱 -->
+          <sc-if value="{{isPending}}" hint-placeholder-val="{{true}}">
+            <div style="padding:10px 14px;background:{{shellBg}};border-top:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                <span class="mono" style="padding:2px 7px;border-radius:6px;background:{{selectedBg}};color:{{accent}};font-size:12px;font-weight:500">修改 1 / 2</span>
+                <span style="font-size:13.5px;color:{{textSecondary}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">补全周三至周日完整路线表并修正列对齐</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;flex:none">
+                <button type="button" onClick="{{setCleanPreview}}" style="height:30px;padding:0 12px;border-radius:8px;border:1px solid {{btnBorder}};background:{{cardBg}}">拒绝此项</button>
+                <button type="button" onClick="{{setApplied}}" style="height:30px;padding:0 14px;border-radius:8px;border:0;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{textPrimary}};font-weight:560">接受修改</button>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </article>
+    </main>
+
+    <!-- 右侧 AI 聊天栏：极简胶囊锚点卡，把空间完全留给 AI 回复正文 -->
+    <section aria-label="AI 助手面板" style="width:400px;flex:none;background:{{cardBg}};border-left:1px solid {{shellBorder}};display:flex;flex-direction:column">
+
+      <div style="height:52px;padding:0 16px;border-bottom:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none">
+        <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;font-weight:600">
+          我想你帮我查一下这篇笔记 这些笔记提到…
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;flex:none">
+          <button type="button" class="ib" aria-label="全屏模式" style="color:{{textSecondary}}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
+          </button>
+          <button type="button" class="ib" aria-label="新建会话" style="color:{{textSecondary}}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          </button>
+          <button type="button" class="ib" aria-label="关闭 AI" style="color:{{textSecondary}}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <div style="flex:1;min-height:0;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px">
+
+        <!-- 用户提问气泡 -->
+        <div style="align-self:flex-end;max-width:300px;padding:8px 12px;border-radius:14px;background:{{hoverBg}};line-height:22px">
+          帮我核实笔记里的潮汕地点是否顺路，并把周三到周日的总路线表格补全。
+        </div>
+
+        <!-- 方案 B 侧栏极简联动条：仅一行文件锚点 + 定位胶囊 -->
+        <div style="padding:10px 12px;border-radius:12px;border:1px solid {{borderCol}};background:{{shellBg}};display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div style="display:flex;align-items:center;gap:6px;min-width:0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M6 3.75h8l4 4V20.25H6z" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5" stroke-linejoin="round"></path>
+              </svg>
+              <span style="font-weight:560">潮州汕头行程.md</span>
+            </div>
+            <span style="padding:2px 8px;border-radius:6px;background:{{selectedBg}};color:{{accent}};font-weight:500">{{statusBadge}}</span>
+          </div>
+
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <button type="button" onClick="{{setCleanPreview}}" style="height:28px;padding:0 10px;border-radius:8px;border:1px solid {{accent}};background:{{selectedBg}};display:inline-flex;align-items:center;gap:6px;font-weight:500">
+              <span class="mono" style="font-size:12px;color:{{accent}}">①</span>
+              <span>总路线表格（在编辑器审阅）</span>
+            </button>
+            <button type="button" onClick="{{setDiffPreview}}" style="height:28px;padding:0 10px;border-radius:8px;border:1px solid {{btnBorder}};background:{{cardBg}};display:inline-flex;align-items:center;gap:6px">
+              <span class="mono" style="font-size:12px;color:{{textSecondary}}">②</span>
+              <span>切换对比明细</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- AI 正文回答成为右侧主角，阅读体验连贯 -->
+        <div style="display:flex;flex-direction:column;gap:10px;line-height:22px">
+          <div style="font-weight:560">地点信息已经核实确认啦，完全准确无误：</div>
+          <div style="display:flex;flex-direction:column;gap:8px;color:{{textSecondary}}">
+            <div>• <strong style="color:{{textPrimary}}">汕头市区</strong>：汕头站、龙湖区、杏花吴记、吴记富苑、头新溪谢肥记（位于龙湖区新溪镇，从高铁站打车约 15 分钟）。</div>
+            <div>• <strong style="color:{{textPrimary}}">南澳岛（行政上属汕头市南澳县）</strong>：南澳大桥上岛后依次经过长山尾灯塔、钱澳湾、后宅镇，次日走南线云澳渔港、三囱崖灯塔、青澳湾，完全不走回头路。</div>
+            <div>• <strong style="color:{{textPrimary}}">潮州市区</strong>：开元寺、牌坊街、广济桥与韩文公祠集中在湘桥区一江两岸，周日 18:23 返程时间充裕。</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 底部输入舱 -->
+      <div style="padding:12px 16px 16px;border-top:1px solid {{borderCol}};flex:none">
+        <div style="padding:10px;border-radius:12px;border:1px solid {{btnBorder}};background:{{paperBg}};display:flex;flex-direction:column;gap:10px">
+          <div style="color:{{textSecondary}}">向 AI 提问，/ 调用技能，@ 引用笔记…</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <button type="button" style="height:28px;padding:0 10px;border-radius:8px;border:1px solid {{btnBorder}};background:{{cardBg}};display:inline-flex;align-items:center;gap:6px">
+              <span class="mono" style="font-size:13px">gemini-3.8-flash</span>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{{textSecondary}}" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+            </button>
+            <button type="button" style="height:30px;padding:0 14px;border-radius:8px;border:0;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{textPrimary}};font-weight:560">发送</button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["dark","light"]},"viewMode":{"editor":"enum","default":"clean","options":["clean","diff","applied"]},"$preview":{"width":1440,"height":920}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { theme: null, viewMode: null };
+  }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'dark';
+    const isDark = theme === 'dark';
+    const viewMode = this.state.viewMode ?? this.props.viewMode ?? 'clean';
+    const isApplied = viewMode === 'applied';
+    const isPending = !isApplied;
+    const isDiff = viewMode === 'diff';
+    const isClean = viewMode === 'clean';
+
+    const shellBg = isDark ? '#343434' : '#f1f1f1';
+    const sidebarBg = isDark ? '#222222' : '#fafafa';
+    const paperBg = isDark ? '#181818' : '#ffffff';
+    const cardBg = isDark ? '#222222' : '#ffffff';
+    const textPrimary = isDark ? '#ececec' : '#20242c';
+    const textSecondary = isDark ? '#b4b4b4' : '#526071';
+    const accent = isDark ? '#779de8' : '#547dd0';
+    const iconFill = isDark ? '#31456a' : '#c9d8f3';
+    const hoverBg = isDark ? '#2c2c2c' : '#eef3fc';
+    const selectedBg = isDark ? '#343434' : '#e5edfc';
+    const borderCol = isDark ? '#2e2e2e' : '#e4e6ea';
+    const shellBorder = isDark ? '#333333' : '#e6e6e6';
+    const btnBorder = isDark ? '#444444' : '#dcdcdc';
+    const delBg = isDark ? '#3a2020' : '#fbe9e7';
+    const delText = isDark ? '#f9a8a8' : '#b42318';
+    const addBg = isDark ? '#1d3528' : '#e3f6ec';
+    const highlightBg = isDark ? '#3d3519' : '#fef3c7';
+    const highlightText = isDark ? '#fde68a' : '#92400e';
+
+    return {
+      shellBg, sidebarBg, paperBg, cardBg, textPrimary, textSecondary,
+      accent, iconFill, hoverBg, selectedBg, borderCol, shellBorder, btnBorder,
+      delBg, delText, highlightBg, highlightText,
+      isPending,
+      showDeletedRows: isDiff,
+      diffAddRowBg: isDiff ? addBg : 'transparent',
+      themeLabel: isDark ? '深色 Ocean Dark' : '浅色 Ocean Light',
+      modeCleanBg: isClean ? selectedBg : 'transparent',
+      modeCleanRing: isClean ? ('inset 0 0 0 1px ' + accent) : 'none',
+      modeDiffBg: isDiff ? selectedBg : 'transparent',
+      modeDiffRing: isDiff ? ('inset 0 0 0 1px ' + accent) : 'none',
+      modeAppliedBg: isApplied ? selectedBg : 'transparent',
+      modeAppliedRing: isApplied ? ('inset 0 0 0 1px ' + accent) : 'none',
+      blockBorder: isPending ? ('1px dashed ' + accent) : ('1px solid ' + borderCol),
+      headerHint: isApplied ? '已应用 AI 修改' : '正在编辑器中审阅 AI 变更计划',
+      statusBadge: isApplied ? '已应用' : '编辑器待审阅',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      setCleanPreview: () => this.setState({ viewMode: 'clean' }),
+      setDiffPreview: () => this.setState({ viewMode: 'diff' }),
+      setApplied: () => this.setState({ viewMode: 'applied' })
+    };
+  }
+}
+</script>
+</body>
+</html>

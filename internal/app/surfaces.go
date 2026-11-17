@@ -9,6 +9,7 @@ import (
 
 	"block/internal/files"
 	"block/internal/icons"
+	"block/internal/markdown"
 	"block/internal/model"
 	"block/internal/theme"
 	blockui "block/internal/ui"
@@ -416,17 +417,18 @@ func formatSnapshotTime(ts int64, format string) string {
 
 // PageHistoryView manages the full-window Page History stage (`app_history_view.rs` 1:1).
 type PageHistoryView struct {
-	Open         bool
-	NotePath     string
-	CurrentText  string
-	IsReadOnly   bool
-	Entries      []model.HistorySnapshot
-	SelectedID   string
-	SelectedText string
-	DiffLines    []model.DiffLine
-	Mode         string // "diff" or "clean"
-	ConfirmOpen  bool
-	ErrorMsg     string
+	Open             bool
+	NotePath         string
+	CurrentText      string
+	IsReadOnly       bool
+	ExternalConflict bool
+	Entries          []model.HistorySnapshot
+	SelectedID       string
+	SelectedText     string
+	DiffLines        []model.DiffLine
+	Mode             string // "diff" or "clean"
+	ConfirmOpen      bool
+	ErrorMsg         string
 }
 
 // HistoryToast represents the undoable banner shown at the top of the note after restoring a snapshot.
@@ -448,6 +450,11 @@ func (h *PageHistoryView) OpenForNote(
 	h.Open = true
 	h.NotePath = notePath
 	h.CurrentText = currentText
+	h.IsReadOnly = false
+	if info, err := os.Stat(notePath); err == nil && info.Mode().Perm()&0o200 == 0 {
+		h.IsReadOnly = true
+	}
+	h.ExternalConflict = false
 	h.Entries = append([]model.HistorySnapshot(nil), entries...)
 	if h.Mode == "" {
 		h.Mode = "diff"
@@ -460,6 +467,18 @@ func (h *PageHistoryView) OpenForNote(
 	if len(h.Entries) > 0 {
 		h.SelectVersion(h.Entries[0].ID, loadSnap, diffFn)
 	}
+}
+
+// CheckExternalConflict checks whether the underlying file on disk changed since Page History was opened.
+func (h *PageHistoryView) CheckExternalConflict() bool {
+	if !h.Open || h.NotePath == "" {
+		return false
+	}
+	diskTxt, _, err := files.ReadNote(h.NotePath)
+	if err == nil && diskTxt != h.CurrentText {
+		h.ExternalConflict = true
+	}
+	return h.ExternalConflict
 }
 
 // Close exits the full-window Page History stage.
@@ -620,7 +639,16 @@ func (h *PageHistoryView) Render(
 					}
 				}
 
-				canRestore := h.SelectedID != "" && !h.IsReadOnly && h.ErrorMsg == "" && h.SelectedText != h.CurrentText
+				canRestore := h.SelectedID != "" && !h.IsReadOnly && !h.ExternalConflict && h.ErrorMsg == "" && h.SelectedText != h.CurrentText
+				restoreHint := theme.Tr("恢复此版本", "Restore this version")
+				switch {
+				case h.IsReadOnly:
+					restoreHint = theme.Tr("此页面只读，无法恢复。", "This page is read-only; cannot restore.")
+				case h.ExternalConflict:
+					restoreHint = theme.Tr("页面已更新，请重新对比。", "Page has been updated externally; please re-diff.")
+				case h.SelectedID != "" && h.SelectedText == h.CurrentText:
+					restoreHint = theme.Tr("与当前版本内容相同", "Identical to current version")
+				}
 				resBtn := blockui.ActionButton(
 					c,
 					"history-restore",
@@ -629,6 +657,7 @@ func (h *PageHistoryView) Render(
 					blockui.ButtonPrimary,
 					!canRestore || h.ConfirmOpen,
 				)
+				resBtn.Tooltip(restoreHint)
 				if resBtn.Clicked() && canRestore {
 					h.ConfirmOpen = true
 				}
@@ -636,65 +665,75 @@ func (h *PageHistoryView) Render(
 		})
 
 		// 2. Split body: Left preview + Right 268px timeline sidebar.
+		h.CheckExternalConflict()
 		ui.Row(c).Grow(1).MinHeight(0).FillWidth().Children(func() {
-			previewCol := ui.Scroll(c).Grow(1).MinWidth(0).FillHeight().Padding(28, 36, 40, 36).Background(pal.Paper)
-			blockui.Probe(previewCol, "history-preview")
-			_, codeFont, _ := theme.Typography()
-			if strings.TrimSpace(codeFont) == "" {
-				codeFont = "monospace"
-			}
-			previewCol.Children(func() {
-				inner := ui.Column(c).FillWidth().MaxWidth(672).Gap(6).MarginX(0)
-				inner.Children(func() {
-					if len(h.Entries) == 0 {
-						ui.Column(c).FillWidth().PaddingY(48).Center().Gap(10).Children(func() {
-							icons.Duo(c, icons.History, 36, true)
-							ui.Text(c, theme.Tr("当前笔记还没有历史版本快照（保存修改后自动生成）", "No history snapshots recorded for this note yet.")).
-								FontSize(14).TextColor(pal.TextSecondary)
-						})
-						return
-					}
-					if h.ErrorMsg != "" {
-						ui.Column(c).FillWidth().Padding(16).Radius(theme.RadiusControl).Background(pal.DangerSurface).Gap(8).Children(func() {
-							ui.Text(c, h.ErrorMsg).FontSize(14).TextColor(pal.Danger)
-							retryBtn := blockui.ActionButton(c, "history-retry", theme.Tr("重试", "Retry"), nil, blockui.ButtonSecondary, false)
-							if retryBtn.Clicked() && onRetry != nil {
-								onRetry()
-							}
-						})
-						return
-					}
-					if h.Mode == "clean" {
-						for ix, line := range strings.Split(h.SelectedText, "\n") {
-							c.Key(fmt.Sprintf("hist-clean-%d", ix))
-							if line == "" {
-								ui.Box(c).Height(12)
-							} else {
-								ui.Text(c, line).FontSize(15).LineHeight(1.6).TextColor(pal.Text)
-							}
+			leftWrap := ui.Column(c).Grow(1).MinWidth(0).FillHeight().Background(pal.Paper)
+			leftWrap.Children(func() {
+				if h.ExternalConflict {
+					ui.Row(c).FillWidth().Margin(12, 28, 0, 28).Padding(10, 12, 10, 14).
+						Radius(theme.RadiusControl).Background(pal.Shell).Border(1, pal.Hairline).
+						AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
+						ui.Text(c, theme.Tr("页面已更新，请重新对比。", "Page has been updated externally; please re-diff.")).
+							FontSize(14).TextColor(pal.TextSecondary)
+						reBtn := blockui.ActionButton(c, "history-error-action", theme.Tr("重新对比", "Re-diff"), nil, blockui.ButtonSecondary, false)
+						if reBtn.Clicked() && onRetry != nil {
+							onRetry()
 						}
-						return
-					}
-					for ix, dl := range h.DiffLines {
-						c.Key(fmt.Sprintf("hist-diff-%d", ix))
-						prefix := "  "
-						bg := ui.Transparent
-						fg := pal.Text
-						switch dl.Kind {
-						case model.DiffInsert:
-							prefix = "+ "
-							bg = pal.DiffAddBG
-							fg = pal.DiffAddFG
-						case model.DiffDelete:
-							prefix = "- "
-							bg = pal.DiffDelBG
-							fg = pal.DiffDelFG
+					})
+				}
+
+				previewCol := ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(28, 36, 40, 36).Background(pal.Paper)
+				blockui.Probe(previewCol, "history-preview")
+				edFont, codeFont, _ := theme.Typography()
+				if strings.TrimSpace(codeFont) == "" {
+					codeFont = "monospace"
+				}
+				previewCol.Children(func() {
+					inner := ui.Column(c).FillWidth().MaxWidth(672).Gap(8).MarginX(0)
+					inner.Children(func() {
+						if len(h.Entries) == 0 {
+							ui.Column(c).FillWidth().PaddingY(48).Center().Gap(10).Children(func() {
+								icons.Duo(c, icons.History, 36, true)
+								ui.Text(c, theme.Tr("当前笔记还没有历史版本快照（保存修改后自动生成）", "No history snapshots recorded for this note yet.")).
+									FontSize(14).TextColor(pal.TextSecondary)
+							})
+							return
 						}
-						row := ui.Row(c).FillWidth().Padding(3, 10, 3, 10).Radius(4).Background(bg)
-						row.Children(func() {
-							ui.Text(c, prefix+dl.Text).Font(codeFont).FontSize(14).LineHeight(1.5).TextColor(fg)
-						})
-					}
+						if h.ErrorMsg != "" {
+							ui.Column(c).FillWidth().Padding(16).Radius(theme.RadiusControl).Background(pal.DangerSurface).Gap(8).Children(func() {
+								ui.Text(c, h.ErrorMsg).FontSize(14).TextColor(pal.Danger)
+								retryBtn := blockui.ActionButton(c, "history-retry", theme.Tr("重试", "Retry"), nil, blockui.ButtonSecondary, false)
+								if retryBtn.Clicked() && onRetry != nil {
+									onRetry()
+								}
+							})
+							return
+						}
+						if h.Mode == "clean" {
+							renderHistoryCleanMarkdown(c, h.SelectedText, edFont, codeFont)
+							return
+						}
+						for ix, dl := range h.DiffLines {
+							c.Key(fmt.Sprintf("hist-diff-%d", ix))
+							prefix := "  "
+							bg := ui.Transparent
+							fg := pal.Text
+							switch dl.Kind {
+							case model.DiffInsert:
+								prefix = "+ "
+								bg = pal.DiffAddBG
+								fg = pal.DiffAddFG
+							case model.DiffDelete:
+								prefix = "- "
+								bg = pal.DiffDelBG
+								fg = pal.DiffDelFG
+							}
+							row := ui.Row(c).FillWidth().Padding(3, 10, 3, 10).Radius(4).Background(bg)
+							row.Children(func() {
+								ui.Text(c, prefix+dl.Text).Font(codeFont).FontSize(14).LineHeight(1.5).TextColor(fg)
+							})
+						}
+					})
 				})
 			})
 
@@ -725,7 +764,9 @@ func (h *PageHistoryView) Render(
 							case sel:
 								btn.Background(pal.Selected).Border(1, pal.Accent)
 							case btn.Hovered():
-								btn.Background(pal.Hover)
+								btn.Background(pal.Hover).Border(1, ui.Transparent)
+							default:
+								btn.Border(1, ui.Transparent)
 							}
 							btn.Children(func() {
 								col := ui.Column(c).FillWidth().Gap(3)
@@ -783,6 +824,95 @@ func (h *PageHistoryView) Render(
 				h.ConfirmOpen = false
 			}
 		})
+	}
+}
+
+func renderHistoryCleanMarkdown(c *ui.Context, rawText, edFont, codeFont string) {
+	pal := theme.Ocean()
+	doc := markdown.ParseMarkdown(rawText)
+	if doc == nil || len(doc.Blocks) == 0 {
+		ui.Text(c, theme.Tr("（空笔记）", "(Empty note)")).FontSize(15).TextColor(pal.TextSecondary)
+		return
+	}
+	for ix, b := range doc.Blocks {
+		c.Key(fmt.Sprintf("hist-clean-blk-%d", ix))
+		switch b.Kind {
+		case model.BlockDivider:
+			ui.Box(c).FillWidth().Height(1).MarginY(8).Background(pal.Hairline)
+		case model.BlockCode, model.BlockRawHTML:
+			ui.Box(c).FillWidth().Padding(10, 14).Radius(theme.RadiusControl).Background(pal.CodeBG).Border(1, pal.Hairline).Children(func() {
+				ui.Text(c, b.Code).Font(codeFont).FontSize(14).LineHeight(1.5).TextColor(pal.Text)
+			})
+		case model.BlockTable:
+			if b.Table != nil && len(b.Table.Rows) > 0 {
+				ui.Column(c).FillWidth().Radius(6).Border(1, pal.Hairline).Clip().Children(func() {
+					for rIdx, r := range b.Table.Rows {
+						rowEl := ui.Row(c).FillWidth()
+						if rIdx+1 < len(b.Table.Rows) {
+							rowEl.BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
+						}
+						if rIdx == 0 {
+							rowEl.Background(pal.Shell)
+						}
+						rowEl.Children(func() {
+							for _, cell := range r {
+								ui.Box(c).Grow(1).Padding(6, 10).Children(func() {
+									t := ui.Text(c, cell.PlainText()).FontSize(14).TextColor(pal.Text)
+									if rIdx == 0 {
+										t.FontWeight(600)
+									}
+								})
+							}
+						})
+					}
+				})
+			}
+		case model.BlockQuote, model.BlockCallout:
+			txt := b.PlainText()
+			if b.Kind == model.BlockCallout && b.Callout != "" {
+				txt = fmt.Sprintf("[%s] %s", b.Callout, txt)
+			}
+			ui.Box(c).FillWidth().Padding(6, 12, 6, 14).BorderWidth(0, 0, 0, 3).BorderColor(pal.Accent).Background(pal.Shell).Radius(4).Children(func() {
+				t := ui.Text(c, txt).FontSize(15).LineHeight(1.6).TextColor(pal.Text)
+				if edFont != "" {
+					t.Font(edFont)
+				}
+			})
+		default:
+			fs, fw := float32(16), 400
+			switch b.Kind {
+			case model.BlockHeading1:
+				fs, fw = 28, 700
+			case model.BlockHeading2:
+				fs, fw = 22, 650
+			case model.BlockHeading3:
+				fs, fw = 19, 600
+			case model.BlockHeading4, model.BlockHeading5, model.BlockHeading6:
+				fs, fw = 17, 600
+			}
+			prefix := ""
+			switch b.Kind {
+			case model.BlockBullet:
+				prefix = "• "
+			case model.BlockNumbered:
+				prefix = "1. "
+			case model.BlockTodo:
+				if b.Checked {
+					prefix = "☑ "
+				} else {
+					prefix = "☐ "
+				}
+			}
+			txt := prefix + b.PlainText()
+			if strings.TrimSpace(txt) == "" {
+				ui.Box(c).Height(10)
+			} else {
+				t := ui.Text(c, txt).FontSize(fs).FontWeight(fw).LineHeight(1.55).TextColor(pal.Text)
+				if edFont != "" {
+					t.Font(edFont)
+				}
+			}
+		}
 	}
 }
 

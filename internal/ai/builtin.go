@@ -135,6 +135,88 @@ func builtinReady(cfg model.AIProviderConfig) bool {
 	return msg == ""
 }
 
+// IsLiveProviderReady reports whether the built-in provider is configured and mock mode is disabled.
+func (c *Controller) IsLiveProviderReady() bool {
+	return !c.IsMockEnabled() && builtinReady(normalizeProviderConfig(c.ProviderConfig()))
+}
+
+// RefreshBuiltinModels queries the configured built-in provider's /models endpoint and caches the result.
+func (c *Controller) RefreshBuiltinModels(ctx context.Context) ([]ModelOption, error) {
+	if ctx == nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+	}
+	cfg := normalizeProviderConfig(c.ProviderConfig())
+	opts, err := listModelsForBackend(ctx, model.BackendBuiltin, cfg)
+	c.mu.Lock()
+	if err != nil {
+		c.modelStatus[model.BackendBuiltin] = "error:" + err.Error()
+	} else {
+		c.backendModels[model.BackendBuiltin] = opts
+		c.modelStatus[model.BackendBuiltin] = "ready"
+	}
+	c.mu.Unlock()
+	c.requestRedraw()
+	return opts, err
+}
+
+// TestConnection validates the built-in provider configuration against its live completion endpoint.
+func (c *Controller) TestConnection(ctx context.Context) error {
+	if ctx == nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+	}
+	cfg := normalizeProviderConfig(c.ProviderConfig())
+	err := testBuiltinConnection(ctx, cfg)
+	c.mu.Lock()
+	c.settingsTesting = false
+	if err != nil {
+		c.settingsTestOK = false
+		c.settingsTestErr = err.Error()
+	} else {
+		c.settingsTestOK = true
+		c.settingsTestErr = ""
+	}
+	c.mu.Unlock()
+	c.requestRedraw()
+	return err
+}
+
+// CompletePrompt runs a single-shot streaming SSE completion against the configured live provider.
+func (c *Controller) CompletePrompt(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cfg := normalizeProviderConfig(c.ProviderConfig())
+	if msg, _ := validateProviderConfig(cfg); msg != "" {
+		return "", errors.New(msg)
+	}
+	msgs := make([]map[string]any, 0, 2)
+	if strings.TrimSpace(systemPrompt) != "" {
+		msgs = append(msgs, map[string]any{"role": "system", "content": systemPrompt})
+	}
+	msgs = append(msgs, map[string]any{"role": "user", "content": userPrompt})
+
+	events := make(chan sseEvent, 32)
+	go streamBuiltinCompletion(ctx, cfg, msgs, nil, "", events)
+
+	var sb strings.Builder
+	for ev := range events {
+		if ev.delta != "" {
+			sb.WriteString(ev.delta)
+		}
+		if ev.err != "" {
+			return "", errors.New(ev.err)
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return "", errors.New(formatProviderError(err.Error()))
+	}
+	return strings.TrimSpace(sb.String()), nil
+}
+
 func formatProviderError(raw string) string {
 	low := strings.ToLower(raw)
 	switch {
@@ -758,6 +840,7 @@ func (c *Controller) startBuiltinTurn(convID uint64, step int) {
 	c.streaming = true
 	c.partialText = ""
 	c.partialThink = ""
+	c.partialSteps = nil
 	c.streamCancel = cancel
 	c.mu.Unlock()
 
@@ -788,6 +871,7 @@ func (c *Controller) startBuiltinTurn(convID uint64, step int) {
 				c.turnErrorSettings = ev.settings
 				c.partialText = ""
 				c.partialThink = ""
+				c.partialSteps = nil
 				c.recordTurnOutcomeLocked("failed")
 				c.restoreFailedDraftLocked()
 				c.mu.Unlock()
@@ -800,6 +884,8 @@ func (c *Controller) startBuiltinTurn(convID uint64, step int) {
 				if len(ev.toolCalls) > 0 && step >= maxBuiltinSteps {
 					c.turnError = theme.Tr("已达到工具调用上限，请缩小范围后继续。", "Tool limit reached. Narrow the scope and continue.")
 					c.partialText = ""
+					c.partialThink = ""
+					c.partialSteps = nil
 					c.recordTurnOutcomeLocked("failed")
 					c.restoreFailedDraftLocked()
 					c.mu.Unlock()
@@ -807,13 +893,26 @@ func (c *Controller) startBuiltinTurn(convID uint64, step int) {
 					return
 				}
 				text := c.partialText
+				think := c.partialThink
 				c.partialText = ""
 				c.partialThink = ""
+				c.partialSteps = nil
 				if len(ev.toolCalls) == 0 {
-					if strings.TrimSpace(text) != "" {
+					var proc []model.ProcessStep
+					if strings.TrimSpace(think) != "" {
+						proc = append(proc, model.ProcessStep{
+							ID:     fmt.Sprintf("think-%d-%d", convID, step),
+							Kind:   model.ToolKindThink,
+							Title:  theme.Tr("思考过程", "Thinking"),
+							Detail: strings.TrimSpace(think),
+							Done:   true,
+						})
+					}
+					if strings.TrimSpace(text) != "" || len(proc) > 0 {
 						c.pushMessageLocked(model.ChatMessage{
 							Role:    "assistant",
 							Content: text,
+							Process: proc,
 						})
 					}
 					c.recordTurnOutcomeLocked("completed")
@@ -822,7 +921,7 @@ func (c *Controller) startBuiltinTurn(convID uint64, step int) {
 					c.requestRedraw()
 					return
 				}
-				waitingQuestion := c.handleBuiltinToolCallsLocked(convID, text, ev.toolCalls)
+				waitingQuestion := c.handleBuiltinToolCallsLocked(convID, step, text, think, ev.toolCalls)
 				c.mu.Unlock()
 				c.requestRedraw()
 				if !waitingQuestion && step < maxBuiltinSteps {
@@ -873,6 +972,8 @@ func (c *Controller) buildBuiltinAPIMessagesLocked(root, currentPage, currentMD 
 						"content":    m.Content,
 						"tool_calls": raw,
 					})
+				} else if (m.Question != nil || m.Approval != nil) && strings.TrimSpace(m.Content) == "" {
+					continue
 				} else {
 					msgs = append(msgs, map[string]any{
 						"role":    "assistant",
@@ -896,7 +997,7 @@ func (c *Controller) buildBuiltinAPIMessagesLocked(root, currentPage, currentMD 
 	return msgs
 }
 
-func (c *Controller) handleBuiltinToolCallsLocked(convID uint64, text string, calls []streamToolCall) bool {
+func (c *Controller) handleBuiltinToolCallsLocked(convID uint64, step int, text, think string, calls []streamToolCall) bool {
 	rawCalls := make([]map[string]any, 0, len(calls))
 	for _, tc := range calls {
 		rawCalls = append(rawCalls, map[string]any{
@@ -909,15 +1010,27 @@ func (c *Controller) handleBuiltinToolCallsLocked(convID uint64, text string, ca
 		})
 	}
 	rawJSON, _ := json.Marshal(rawCalls)
+	var assistantProc []model.ProcessStep
+	if strings.TrimSpace(think) != "" {
+		assistantProc = append(assistantProc, model.ProcessStep{
+			ID:     fmt.Sprintf("think-%d-%d", convID, step),
+			Kind:   model.ToolKindThink,
+			Title:  theme.Tr("思考过程", "Thinking"),
+			Detail: strings.TrimSpace(think),
+			Done:   true,
+		})
+	}
 	c.pushMessageLocked(model.ChatMessage{
 		Role:      "assistant",
 		Content:   text,
 		ToolCalls: rawJSON,
+		Process:   assistantProc,
 	})
 
 	waitingQuestion := false
 	for _, tc := range calls {
-		if tc.Name == "askUserQuestion" && !waitingQuestion {
+		procStep := processStepForTool(tc.Name, tc.Arguments)
+		if (tc.Name == "askUserQuestion" || tc.Name == "askQuestion") && !waitingQuestion {
 			var args map[string]any
 			_ = json.Unmarshal([]byte(tc.Arguments), &args)
 			card := parseQuestionCard(tc.ID, args)
@@ -926,6 +1039,7 @@ func (c *Controller) handleBuiltinToolCallsLocked(convID uint64, text string, ca
 					Role:       "assistant",
 					ToolCallID: tc.ID,
 					Question:   card,
+					Process:    []model.ProcessStep{procStep},
 				})
 				waitingQuestion = true
 				continue
@@ -938,6 +1052,7 @@ func (c *Controller) handleBuiltinToolCallsLocked(convID uint64, text string, ca
 			ToolCallID: tc.ID,
 			Plan:       plan,
 			Sources:    sources,
+			Process:    []model.ProcessStep{procStep},
 		}
 		c.pushMessageLocked(msg)
 		if plan != nil {
@@ -949,6 +1064,93 @@ func (c *Controller) handleBuiltinToolCallsLocked(convID uint64, text string, ca
 	}
 	c.persistChatsLocked()
 	return waitingQuestion
+}
+
+func processStepForTool(name, rawArgs string) model.ProcessStep {
+	var args map[string]any
+	_ = json.Unmarshal([]byte(rawArgs), &args)
+	switch name {
+	case "loadSkill":
+		sk, _ := args["skill"].(string)
+		return model.ProcessStep{
+			ID:       fmt.Sprintf("tool-%d", time.Now().UnixNano()),
+			Kind:     model.ToolKindRun,
+			Title:    theme.Tr("加载工作区技能", "Load skill"),
+			Detail:   sk,
+			ToolName: name,
+			Done:     true,
+		}
+	case "listNotebooks":
+		return model.ProcessStep{
+			ID:       fmt.Sprintf("tool-%d", time.Now().UnixNano()),
+			Kind:     model.ToolKindRun,
+			Title:    theme.Tr("列出笔记本", "List notebooks"),
+			ToolName: name,
+			Done:     true,
+		}
+	case "listPages", "listNotebookFiles":
+		return model.ProcessStep{
+			ID:       fmt.Sprintf("tool-%d", time.Now().UnixNano()),
+			Kind:     model.ToolKindRead,
+			Title:    theme.Tr("扫描笔记本目录", "List notebook files"),
+			ToolName: name,
+			Done:     true,
+		}
+	case "searchNotes":
+		q, _ := args["query"].(string)
+		return model.ProcessStep{
+			ID:       fmt.Sprintf("tool-%d", time.Now().UnixNano()),
+			Kind:     model.ToolKindRun,
+			Title:    theme.Tr("搜索笔记", "Search notes"),
+			Detail:   q,
+			ToolName: name,
+			Done:     true,
+		}
+	case "readPage", "readNote":
+		p, _ := args["pageId"].(string)
+		if p == "" {
+			p, _ = args["path"].(string)
+		}
+		p = strings.TrimSuffix(p, ".md")
+		return model.ProcessStep{
+			ID:       fmt.Sprintf("tool-%d", time.Now().UnixNano()),
+			Kind:     model.ToolKindRead,
+			Title:    theme.Tr("读取笔记", "Read note"),
+			Detail:   p + ".md",
+			ToolName: name,
+			FileRef:  p,
+			Done:     true,
+		}
+	case "askUserQuestion", "askQuestion":
+		return model.ProcessStep{
+			ID:       fmt.Sprintf("tool-%d", time.Now().UnixNano()),
+			Kind:     model.ToolKindRun,
+			Title:    theme.Tr("向用户确认", "Ask user"),
+			ToolName: name,
+			Done:     true,
+		}
+	case "executeBatchPlan":
+		sum, _ := args["summary"].(string)
+		if sum == "" {
+			sum, _ = args["title"].(string)
+		}
+		return model.ProcessStep{
+			ID:       fmt.Sprintf("tool-%d", time.Now().UnixNano()),
+			Kind:     model.ToolKindWrite,
+			Title:    theme.Tr("生成变更计划", "Prepare batch plan"),
+			Detail:   sum,
+			ToolName: name,
+			Done:     true,
+		}
+	default:
+		return model.ProcessStep{
+			ID:       fmt.Sprintf("tool-%d", time.Now().UnixNano()),
+			Kind:     model.ToolKindRun,
+			Title:    name,
+			ToolName: name,
+			Done:     true,
+		}
+	}
 }
 
 func (c *Controller) executeToolLocked(name, rawArgs string) (string, *model.BatchPlan, []model.SourceNote) {
@@ -984,7 +1186,7 @@ func (c *Controller) executeToolLocked(name, rawArgs string) (string, *model.Bat
 		}
 		return marshalJSON(map[string]any{"notebooks": nbs}), nil, nil
 
-	case "listPages":
+	case "listPages", "listNotebookFiles":
 		pages := c.listPagesForRootLocked(root)
 		arr := make([]map[string]any, 0, len(pages))
 		for _, p := range pages {
@@ -1001,8 +1203,14 @@ func (c *Controller) executeToolLocked(name, rawArgs string) (string, *model.Bat
 					if i >= 20 {
 						break
 					}
+					pageID := strings.TrimSuffix(filepath.Base(h.Path), ".md")
+					if root != "" {
+						if rel, rerr := filepath.Rel(root, h.Path); rerr == nil && !strings.HasPrefix(rel, "..") {
+							pageID = strings.TrimSuffix(filepath.ToSlash(rel), ".md")
+						}
+					}
 					results = append(results, map[string]any{
-						"pageId":  strings.TrimSuffix(filepath.Base(h.Path), ".md"),
+						"pageId":  pageID,
 						"title":   h.Title,
 						"snippet": h.Snippet,
 					})
@@ -1028,10 +1236,15 @@ func (c *Controller) executeToolLocked(name, rawArgs string) (string, *model.Bat
 		}
 		return marshalJSON(map[string]any{"query": q, "results": results}), nil, nil
 
-	case "readPage":
+	case "readPage", "readNote":
 		page, _ := args["pageId"].(string)
 		if page == "" {
+			page, _ = args["path"].(string)
+		}
+		if page == "" {
 			page = c.activePageLocked(root)
+		} else if !filepath.IsAbs(page) {
+			page = strings.TrimSuffix(page, ".md")
 		}
 		md := c.readPageContentLocked(root, page)
 		if md == "" {

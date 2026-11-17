@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"block/internal/icons"
@@ -270,18 +269,12 @@ func scanTree(root string, seen map[fileIdentity]struct{}, errs *[]string, class
 }
 
 func addFileBytes(path string, info os.FileInfo, seen map[fileIdentity]struct{}, classify func(string) int, totals []uint64) {
-	var fileBytes uint64
-	if st, ok := info.Sys().(*syscall.Stat_t); ok {
-		id := fileIdentity{dev: uint64(st.Dev), ino: uint64(st.Ino)}
+	id, hasID, fileBytes := statPhysicalFile(info)
+	if hasID {
 		if _, dup := seen[id]; dup {
 			return
 		}
 		seen[id] = struct{}{}
-		if st.Blocks > 0 {
-			fileBytes = uint64(st.Blocks) * 512
-		}
-	} else if info.Size() > 0 {
-		fileBytes = uint64(info.Size())
 	}
 
 	idx := classify(path)

@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>行内 AI 全流程 A（推荐）· 420px 悬浮指挥舱 + 纸面原位流式落墨</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#3d63b0}a:hover{color:#2c4c8c}
+*{box-sizing:border-box}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+::selection{background:#cde2fb;color:#184f95}
+.ib{width:28px;height:28px;border:0;border-radius:6px;background:transparent;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;flex:none}
+.ib:hover{background:#eef3fc}
+.seg{height:30px;padding:0 10px;border:0;border-radius:6px;background:transparent;font-size:14px;font-weight:460;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.chip{height:28px;padding:0 8px;border:0;border-radius:6px;background:transparent;font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;flex:none}
+.chip:hover{background:#eef3fc}
+.chip-pri{height:28px;padding:0 10px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;color:#20242c;font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;flex:none}
+.chip-pri:hover{background:#dce8fb}
+.mi{width:100%;height:32px;padding:0 10px;border:0;border-radius:6px;background:transparent;display:flex;align-items:center;gap:8px;font-size:14px;text-align:left;cursor:pointer}
+.mi:hover{background:#eef3fc}
+.kbd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:16px;padding:1px 5px;border-radius:5px;border:1px solid #dcdcdc;background:#f1f1f1;color:#526071;flex:none}
+.shimmer{background:linear-gradient(90deg,#526071 0%,#526071 35%,#20242c 50%,#526071 65%,#526071 100%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:shimmer-sweep 1.6s linear infinite}
+.ink-caret{display:inline-block;width:2px;height:18px;background:#547dd0;vertical-align:-3px;margin-left:2px;border-radius:1px;animation:caret-pulse 0.9s ease-in-out infinite}
+.dot-pulse{width:8px;height:8px;border-radius:4px;background:#547dd0;flex:none;animation:dot-breathe 1.2s ease-in-out infinite}
+.skel-bar{height:14px;border-radius:4px;background:#e5edfc;animation:skel-fade 1.3s ease-in-out infinite}
+@keyframes shimmer-sweep{from{background-position:140% 0}to{background-position:-40% 0}}
+@keyframes caret-pulse{0%,100%{opacity:1}50%{opacity:0.2}}
+@keyframes dot-breathe{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(0.75);opacity:0.45}}
+@keyframes skel-fade{0%,100%{opacity:0.85}50%{opacity:0.4}}
+@media(prefers-reduced-motion:reduce){.shimmer,.ink-caret,.dot-pulse,.skel-bar{animation:none}.shimmer{-webkit-text-fill-color:#526071}}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:980px;display:flex;flex-direction:column;background:{{pageBg}};color:{{textPri}};font-size:14px;line-height:20px">
+
+  <!-- 顶部全流程交互切换条 -->
+  <div style="min-height:48px;flex:none;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:8px 18px;background:{{barBg}};border-bottom:1px solid {{shellBorder}}">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+        <button type="button" class="seg" onClick="{{pickEmptyCtx}}" style="background:{{ctxEmptyBg}};color:{{ctxEmptyFg}};box-shadow:{{ctxEmptyRing}}">空行 / 起草</button>
+        <button type="button" class="seg" onClick="{{pickSelCtx}}" style="background:{{ctxSelBg}};color:{{ctxSelFg}};box-shadow:{{ctxSelRing}}">选区改写</button>
+      </div>
+      <sc-if value="{{isStageStream}}" hint-placeholder-val="{{false}}">
+        <button type="button" class="chip" onClick="{{replayStream}}" style="border:1px solid {{btnBorder}};background:{{paperBg}};color:{{textPri}}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg>
+          <span>重播流式动画</span>
+        </button>
+      </sc-if>
+    </div>
+
+    <div role="tablist" aria-label="行内 AI 生命周期阶段" style="display:inline-flex;flex-wrap:wrap;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+      <sc-for list="{{stageTabs}}" as="st" hint-placeholder-count="6">
+        <button type="button" role="tab" aria-selected="{{st.active}}" class="seg" onClick="{{st.pick}}" style="background:{{st.bg}};color:{{st.fg}};box-shadow:{{st.ring}}">{{st.label}}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- Block 标准 40px 窗口顶栏 -->
+  <header style="height:40px;flex:none;display:flex;align-items:center;background:{{shellBg}};border-bottom:1px solid {{shellBorder}}">
+    <div style="width:260px;height:100%;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 14px;border-right:1px solid {{shellBorder}}">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+      </div>
+      <button type="button" class="ib" aria-label="切换侧栏" style="color:{{textSec}}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{duoFill}}"></path>
+          <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
+          <path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5"></path>
+        </svg>
+      </button>
+    </div>
+
+    <nav aria-label="已打开标签页" style="flex:1;min-width:0;display:flex;align-items:center;gap:4px;padding:0 10px;overflow:hidden">
+      <button type="button" style="height:28px;padding:0 12px;border:0;border-radius:6px;background:{{selBg}};box-shadow:inset 0 0 0 1px {{accentCol}};color:{{textPri}};font-weight:500;display:inline-flex;align-items:center;gap:7px;cursor:pointer">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accentCol}}" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="{{duoFill}}" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+        <span>发布就绪与回滚规范</span>
+      </button>
+      <button type="button" style="height:28px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:{{textSec}};display:inline-flex;align-items:center;gap:7px;cursor:pointer">
+        <span>产品原则</span>
+      </button>
+    </nav>
+
+    <div style="height:100%;display:flex;align-items:center;gap:6px;padding:0 12px;border-left:1px solid {{shellBorder}}">
+      <button type="button" class="ib" onClick="{{toggleSidebarChat}}" aria-label="AI 助手侧栏" style="background:{{chatBtnBg}};box-shadow:{{chatBtnRing}};color:{{textPri}}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3z" fill="{{duoFill}}" stroke="{{accentCol}}" stroke-width="1.6" stroke-linejoin="round"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- 主工作区（侧栏 + 672px 标准纸面 + 可选接力侧栏） -->
+  <div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+
+    <!-- 左侧文件树 260px -->
+    <aside aria-label="工作区文件树" style="width:260px;flex:none;background:{{barBg}};border-right:1px solid {{shellBorder}};padding:12px 10px;display:flex;flex-direction:column;gap:4px">
+      <div style="height:32px;padding:0 10px;border-radius:6px;background:{{selBg}};box-shadow:inset 0 0 0 1px {{accentCol}};color:{{textPri}};font-weight:460;display:flex;align-items:center;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accentCol}}" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="{{duoFill}}" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path></svg>
+        <span>发布就绪与回滚规范</span>
+      </div>
+      <div style="height:32px;padding:0 10px;border-radius:6px;color:{{textSec}};display:flex;align-items:center;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z"></path></svg>
+        <span>产品原则</span>
+      </div>
+      <div style="height:32px;padding:0 10px;border-radius:6px;color:{{textSec}};display:flex;align-items:center;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z"></path></svg>
+        <span>核心环境变量清单</span>
+      </div>
+    </aside>
+
+    <!-- 正文编辑区（标准版心 672px） -->
+    <main style="flex:999 1 560px;min-width:0;background:{{paperBg}};padding:44px 40px 120px;display:flex;justify-content:center;overflow-y:auto">
+      <article style="width:100%;max-width:672px;display:flex;flex-direction:column;gap:18px;font-size:16px;line-height:28px;color:{{editorFg}}">
+
+        <h1 style="margin:0;font-size:28px;line-height:36px;font-weight:600;color:{{textPri}}">发布就绪与回滚规范</h1>
+
+        <p style="margin:0;color:{{editorFg}}">每次生产环境变更必须在灰度窗口开启前完成双人交叉核验。数据库结构变更需兼容前一个稳定版本，禁止在同一批次内同时执行字段重命名与旧列清理。</p>
+
+        <!-- 目标块区域（承载全套 6 阶段原位状态） -->
+        <div style="position:relative;margin-top:4px">
+
+          <!-- 左侧块把手 + -->
+          <button type="button" onClick="{{goSlash}}" aria-label="打开块菜单" style="position:absolute;left:-32px;top:6px;width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:{{textSec}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          </button>
+
+          <!-- 01 唤出态：空行斜杠 vs 选区浮动条 -->
+          <sc-if value="{{isStageTrigger}}" hint-placeholder-val="{{false}}">
+            <sc-if value="{{isEmptyCtx}}" hint-placeholder-val="{{true}}">
+              <div style="padding:6px 12px;border-radius:8px;border:1px dashed {{accentCol}};background:{{hoverBg}};display:flex;align-items:center;gap:2px">
+                <span style="font-family:'JetBrains Mono',monospace;color:{{accentCol}};font-weight:500">/</span>
+                <span class="ink-caret"></span>
+                <span style="margin-left:8px;color:{{textSec}};font-size:15px">输入命令过滤，或按空格直达 AI 写作</span>
+              </div>
+
+              <!-- 紧凑斜杠菜单 244px -->
+              <div role="menu" aria-label="斜杠命令菜单" style="margin-top:6px;width:248px;padding:5px;border-radius:10px;background:{{menuBg}};border:1px solid {{borderCol}};box-shadow:0 10px 28px rgba(32,36,44,0.12);display:flex;flex-direction:column;gap:2px">
+                <button type="button" role="menuitem" class="mi" onClick="{{goInput}}" style="background:{{selBg}};box-shadow:inset 0 0 0 1px {{accentCol}};color:{{textPri}};font-weight:500">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3z" fill="{{duoFill}}" stroke="{{accentCol}}" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+                  <span style="flex:1">AI 写作</span>
+                  <span class="kbd">空格 / ↵</span>
+                </button>
+                <div style="height:1px;background:{{borderCol}};margin:3px 6px"></div>
+                <button type="button" role="menuitem" class="mi" onClick="{{goInput}}" style="color:{{textPri}}">
+                  <span style="width:16px;text-align:center;font-weight:600;color:{{textSec}};font-size:13px">H1</span>
+                  <span style="flex:1">一级标题</span>
+                  <span class="kbd">⌘⌥1</span>
+                </button>
+                <button type="button" role="menuitem" class="mi" onClick="{{goInput}}" style="color:{{textPri}}">
+                  <span style="width:16px;text-align:center;font-weight:600;color:{{textSec}};font-size:13px">H2</span>
+                  <span style="flex:1">二级标题</span>
+                  <span class="kbd">⌘⌥2</span>
+                </button>
+                <button type="button" role="menuitem" class="mi" onClick="{{goInput}}" style="color:{{textPri}}">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{textSec}}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8.5 12.5l2.3 2.3 4.7-4.8"></path></svg>
+                  <span style="flex:1">待办清单</span>
+                  <span class="kbd">⌘⌥4</span>
+                </button>
+                <button type="button" role="menuitem" class="mi" onClick="{{goInput}}" style="color:{{textPri}}">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{textSec}}" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect><path d="M3.5 9.5h17M9.5 9.5v10"></path></svg>
+                  <span style="flex:1">表格</span>
+                </button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{isSelCtx}}" hint-placeholder-val="{{false}}">
+              <!-- 选区唤出浮动格式条 -->
+              <div role="toolbar" aria-label="选区格式与 AI 工具栏" style="margin-bottom:8px;display:inline-flex;align-items:center;gap:3px;padding:4px;border-radius:8px;background:{{menuBg}};border:1px solid {{borderCol}};box-shadow:0 8px 22px rgba(32,36,44,0.12)">
+                <button type="button" class="chip-pri" onClick="{{goInput}}">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3z" fill="{{duoFill}}" stroke="{{accentCol}}" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+                  <span>AI 改写</span>
+                  <span class="kbd" style="background:#ffffff">⌘J</span>
+                </button>
+                <div style="width:1px;height:16px;background:{{borderCol}};margin:0 2px"></div>
+                <button type="button" class="chip" style="color:{{textPri}};font-weight:600">B</button>
+                <button type="button" class="chip" style="color:{{textPri}};font-style:italic">I</button>
+                <button type="button" class="chip" style="color:{{textPri}};font-family:'JetBrains Mono',monospace">&lt;/&gt;</button>
+              </div>
+              <div style="padding:8px 12px;border-radius:8px;background:#cde2fb;color:#184f95">
+                灰度发布前需要把所有零散的环境变量、特性开关还有如果出问题怎么切回老版本的步骤全部人工对一遍，确保大家都能看懂并且不会漏掉关键项。
+              </div>
+            </sc-if>
+          </sc-if>
+
+          <!-- 02..05 纸面锚定虚线框（输入 / 流式落墨 / 原位审阅 / 中断挽留） -->
+          <sc-if value="{{showDashedTarget}}" hint-placeholder-val="{{true}}">
+            <div style="padding:10px 14px;border-radius:10px;border:1px dashed {{targetBorderCol}};background:{{targetBgCol}};transition:background 0.2s">
+
+              <!-- 02 输入态下的纸面锚点显示 -->
+              <sc-if value="{{isStageInput}}" hint-placeholder-val="{{true}}">
+                <sc-if value="{{isEmptyCtx}}" hint-placeholder-val="{{true}}">
+                  <span style="color:{{textSec}};font-size:15px">AI 将在此处结合上文起草内容…</span>
+                </sc-if>
+                <sc-if value="{{isSelCtx}}" hint-placeholder-val="{{false}}">
+                  <span>灰度发布前需要把所有零散的环境变量、特性开关还有如果出问题怎么切回老版本的步骤全部人工对一遍，确保大家都能看懂并且不会漏掉关键项。</span>
+                </sc-if>
+              </sc-if>
+
+              <!-- 03 生成过程动画：思考骨架 -> 纸面原位流式吐字 -->
+              <sc-if value="{{isStageStream}}" hint-placeholder-val="{{false}}">
+                <sc-if value="{{isReasoningPhase}}" hint-placeholder-val="{{false}}">
+                  <div style="display:flex;flex-direction:column;gap:10px;padding:4px 0">
+                    <div class="skel-bar" style="width:72%"></div>
+                    <div class="skel-bar" style="width:90%"></div>
+                    <div class="skel-bar" style="width:54%"></div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{isWritingPhase}}" hint-placeholder-val="{{true}}">
+                  <div style="white-space:pre-line;color:{{editorFg}};font-size:16px;line-height:28px">
+                    <span>{{streamVisibleText}}</span><span class="ink-caret"></span>
+                  </div>
+                </sc-if>
+              </sc-if>
+
+              <!-- 04 审阅态：空行新稿卡片 vs 选区词级红删绿增 Diff -->
+              <sc-if value="{{isStageReview}}" hint-placeholder-val="{{false}}">
+                <sc-if value="{{isEmptyCtx}}" hint-placeholder-val="{{true}}">
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <sc-for list="{{reviewChecklist}}" as="row" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:flex-start;gap:9px">
+                        <span style="margin-top:6px;width:15px;height:15px;border-radius:4px;border:1.5px solid #547dd0;background:#ffffff;flex:none"></span>
+                        <span><strong style="font-weight:560;color:{{textPri}}">{{row.head}}</strong>{{row.body}}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{isSelCtx}}" hint-placeholder-val="{{false}}">
+                  <div>
+                    <span>灰度发布前需逐项核验 </span>
+                    <span style="background:#fbe9e7;color:#b42318;text-decoration:line-through;padding:1px 6px;border-radius:4px">所有零散的环境变量、特性开关还有如果出问题怎么切回老版本的步骤</span>
+                    <span> </span>
+                    <span style="background:#e3f6ec;color:#087443;padding:1px 6px;border-radius:4px">{{selAddedSpan}}</span>
+                    <span>，确保回滚路径清晰可执行。</span>
+                  </div>
+                </sc-if>
+              </sc-if>
+
+              <!-- 05 中断与异常挽留态 -->
+              <sc-if value="{{isStageInterrupt}}" hint-placeholder-val="{{false}}">
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;align-items:center;gap:8px;color:#8a4e08;font-size:14px;font-weight:500">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#b86b11" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4.5M12 16h.01"></path></svg>
+                    <span>已手动暂停 · 已保留前 2 条草稿（原文未改动）</span>
+                  </div>
+                  <div style="color:{{editorFg}};white-space:pre-line">- [ ] 环境变量核对：确认新增密钥已在灰度集群注入
+- [ ] 流量降级开关：验证特性开关可在 10 秒内秒级切回</div>
+                </div>
+              </sc-if>
+
+            </div>
+          </sc-if>
+
+          <!-- 06 完成落纸态：干净融入正文 + 句尾轻量可撤销微章 -->
+          <sc-if value="{{isStageDone}}" hint-placeholder-val="{{false}}">
+            <div style="display:flex;flex-direction:column;gap:8px;padding:4px 0">
+              <sc-if value="{{isEmptyCtx}}" hint-placeholder-val="{{true}}">
+                <sc-for list="{{reviewChecklist}}" as="row" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:flex-start;gap:9px">
+                    <span style="margin-top:6px;width:15px;height:15px;border-radius:4px;border:1.5px solid #526071;flex:none"></span>
+                    <span><strong style="font-weight:560;color:{{textPri}}">{{row.head}}</strong>{{row.body}}</span>
+                  </div>
+                </sc-for>
+              </sc-if>
+              <sc-if value="{{isSelCtx}}" hint-placeholder-val="{{false}}">
+                <p style="margin:0">灰度发布前需逐项核验 {{selAddedSpan}}，确保回滚路径清晰可执行。<span class="ink-caret"></span></p>
+              </sc-if>
+
+              <div style="margin-top:4px;display:inline-flex;align-items:center;gap:8px;align-self:flex-start;padding:4px 10px;border-radius:6px;background:{{shellBg}};border:1px solid {{borderCol}};font-size:13px;color:{{textSec}}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#087443" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>
+                <span>已写入正文</span>
+                <button type="button" onClick="{{goReview}}" style="border:0;background:transparent;padding:0;color:#3d63b0;font-weight:500;cursor:pointer;font-size:13px">撤销 ⌘Z</button>
+                <span>·</span>
+                <button type="button" onClick="{{goReview}}" style="border:0;background:transparent;padding:0;color:{{textSec}};cursor:pointer;font-size:13px">继续微调</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- 420px 紧凑无头悬浮指挥舱（02 输入 / 03 生成 / 04 审阅 / 05 中断） -->
+          <sc-if value="{{showFloatingPod}}" hint-placeholder-val="{{true}}">
+            <div role="dialog" aria-label="行内 AI 指挥舱" style="position:relative;margin-top:8px;width:420px;max-width:100%;padding:8px;border-radius:10px;background:{{menuBg}};border:1px solid {{borderCol}};box-shadow:0 12px 32px rgba(32,36,44,0.14);display:flex;flex-direction:column;gap:6px">
+
+              <!-- 已挂载 @上下文胶囊行（按需显影，不占默认高度） -->
+              <sc-if value="{{showRefRow}}" hint-placeholder-val="{{true}}">
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:0 2px">
+                  <span style="height:22px;padding:0 7px;border-radius:5px;background:{{selBg}};box-shadow:inset 0 0 0 1px {{accentCol}};color:{{textPri}};font-size:12px;display:inline-flex;align-items:center;gap:4px">
+                    <span>@{{attachedNote}}</span>
+                    <button type="button" onClick="{{clearRef}}" aria-label="移除引用笔记" style="border:0;background:transparent;padding:0;color:{{textSec}};cursor:pointer;font-size:12px;line-height:1">×</button>
+                  </span>
+                  <span style="height:22px;padding:0 7px;border-radius:5px;background:{{shellBg}};color:{{textSec}};font-size:12px;display:inline-flex;align-items:center">已关联上文段落</span>
+                </div>
+              </sc-if>
+
+              <!-- 03 生成中：单行微光思考与进度舱 -->
+              <sc-if value="{{isStageStream}}" hint-placeholder-val="{{false}}">
+                <div style="position:relative;min-height:38px;padding:0 8px 0 12px;border-radius:8px;background:{{codeBg}};border:1px solid {{borderCol}};display:flex;align-items:center;gap:9px;overflow:hidden">
+                  <span class="dot-pulse"></span>
+                  <span class="shimmer" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:460">{{streamStatusText}}</span>
+                  <button type="button" class="chip" onClick="{{stopToInterrupt}}" style="height:26px;padding:0 8px;background:{{paperBg}};border:1px solid {{btnBorder}};color:{{textPri}}">
+                    <span style="width:7px;height:7px;border-radius:1.5px;background:#b42318;display:inline-block"></span>
+                    <span>停止</span>
+                  </button>
+                  <div style="position:absolute;left:0;bottom:0;height:2px;width:{{streamProgressPct}};background:#547dd0;transition:width 0.12s linear"></div>
+                </div>
+              </sc-if>
+
+              <!-- 02 输入态 & 04 审阅追问态：输入胶囊 -->
+              <sc-if value="{{showPromptBox}}" hint-placeholder-val="{{true}}">
+                <div style="min-height:38px;padding:0 6px 0 10px;border-radius:8px;background:{{codeBg}};border:1px solid {{btnBorder}};display:flex;align-items:center;gap:7px">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+                    <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3z" fill="{{duoFill}}" stroke="{{accentCol}}" stroke-width="1.6" stroke-linejoin="round"></path>
+                  </svg>
+                  <label style="flex:1;min-width:0;display:flex;align-items:center">
+                    <span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">AI 指令</span>
+                    <input value="{{promptValue}}" onChange="{{onPromptInput}}" placeholder="{{promptPlaceholder}}" style="width:100%;border:0;outline:0;background:transparent;color:{{textPri}};font-size:14px">
+                  </label>
+                  <button type="button" class="ib" onClick="{{toggleRefPopover}}" aria-label="引用工作区笔记 @" style="width:24px;height:24px;background:{{refBtnBg}};box-shadow:{{refBtnRing}};color:{{textSec}};font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500">@</button>
+                  <button type="button" onClick="{{runStream}}" aria-label="发送指令" style="width:24px;height:24px;border:0;border-radius:6px;background:#20242c;color:#ffffff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"></path></svg>
+                  </button>
+                </div>
+              </sc-if>
+
+              <!-- 02 输入态底栏：420px 宽单行排布，绝不把关闭按钮挤掉行 -->
+              <sc-if value="{{isStageInput}}" hint-placeholder-val="{{true}}">
+                <div style="display:flex;align-items:center;gap:2px">
+                  <sc-for list="{{activePresets}}" as="pr" hint-placeholder-count="3">
+                    <button type="button" class="chip" onClick="{{pr.run}}" style="color:{{textPri}}">{{pr.label}}</button>
+                  </sc-for>
+                  <button type="button" class="chip" onClick="{{toggleMorePopover}}" style="background:{{moreBtnBg}};box-shadow:{{moreBtnRing}};color:{{textPri}}">
+                    <span>{{moreBtnLabel}}</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="{{textSec}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+                  </button>
+                  <span style="flex:1"></span>
+                  <button type="button" class="chip" onClick="{{toggleModelPopover}}" aria-label="切换模型与偏好" style="padding:0 6px;background:{{modelBtnBg}};box-shadow:{{modelBtnRing}};color:{{textSec}};font-size:12px">
+                    <span>{{activeModelShort}}</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"></path></svg>
+                  </button>
+                  <button type="button" class="ib" onClick="{{goSlash}}" aria-label="关闭 (Esc)" style="width:26px;height:26px;color:{{textSec}}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+                  </button>
+                </div>
+              </sc-if>
+
+              <!-- 04 审阅追问态底栏：主次分明 + 插入下方 + 多轮草稿版本切换 -->
+              <sc-if value="{{isStageReview}}" hint-placeholder-val="{{false}}">
+                <div style="display:flex;align-items:center;gap:4px">
+                  <button type="button" class="chip-pri" onClick="{{acceptToDone}}">
+                    <span>{{acceptBtnLabel}}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#3d63b0">↵</span>
+                  </button>
+                  <button type="button" class="chip" onClick="{{acceptToDone}}" style="color:{{textPri}}">插入下方</button>
+                  <button type="button" class="chip" onClick="{{refineShorter}}" style="color:#3d63b0">再精炼</button>
+                  <button type="button" class="chip" onClick="{{goInput}}" style="color:{{textSec}}">放弃</button>
+                  <span style="flex:1"></span>
+                  <div style="display:inline-flex;align-items:center;gap:2px;padding:1px 4px;border-radius:6px;background:{{shellBg}};border:1px solid {{borderCol}};font-family:'JetBrains Mono',monospace;font-size:12px;color:{{textSec}}">
+                    <button type="button" onClick="{{prevDraftVer}}" aria-label="上一版草稿" style="border:0;background:transparent;padding:0 3px;color:{{textSec}};cursor:pointer">‹</button>
+                    <span>{{draftVerText}}</span>
+                    <button type="button" onClick="{{nextDraftVer}}" aria-label="下一版草稿" style="border:0;background:transparent;padding:0 3px;color:{{textSec}};cursor:pointer">›</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <!-- 05 中断接力态底栏：保留半截 / 重试 / 转右侧栏对话接力 -->
+              <sc-if value="{{isStageInterrupt}}" hint-placeholder-val="{{false}}">
+                <div style="display:flex;align-items:center;gap:4px">
+                  <button type="button" class="chip-pri" onClick="{{acceptToDone}}">采纳已生成</button>
+                  <button type="button" class="chip" onClick="{{replayStream}}" style="color:{{textPri}}">继续生成</button>
+                  <button type="button" class="chip" onClick="{{escalateToSidebar}}" style="color:#3d63b0;font-weight:500">
+                    <span>转入侧栏对话</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"></path></svg>
+                  </button>
+                  <span style="flex:1"></span>
+                  <button type="button" class="chip" onClick="{{goInput}}" style="color:{{textSec}}">放弃</button>
+                </div>
+              </sc-if>
+
+              <!-- 弹出层 1：@ 引用工作区笔记 -->
+              <sc-if value="{{isRefOpen}}" hint-placeholder-val="{{false}}">
+                <div role="menu" aria-label="引用笔记作为上下文" style="position:absolute;right:8px;top:48px;z-index:30;width:224px;padding:5px;border-radius:10px;background:{{menuBg}};border:1px solid {{borderCol}};box-shadow:0 10px 28px rgba(32,36,44,0.14);display:flex;flex-direction:column;gap:2px">
+                  <sc-for list="{{refNotes}}" as="rn" hint-placeholder-count="3">
+                    <button type="button" role="menuitem" class="mi" onClick="{{rn.pick}}" style="color:{{textPri}}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="1.6" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="{{duoFill}}" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path></svg>
+                      <span style="flex:1">{{rn.name}}</span>
+                    </button>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <!-- 弹出层 2：更多预设指令 -->
+              <sc-if value="{{isMoreOpen}}" hint-placeholder-val="{{false}}">
+                <div role="menu" aria-label="更多预设动作" style="position:absolute;left:132px;top:78px;z-index:30;width:176px;padding:5px;border-radius:10px;background:{{menuBg}};border:1px solid {{borderCol}};box-shadow:0 10px 28px rgba(32,36,44,0.14);display:flex;flex-direction:column;gap:2px">
+                  <sc-for list="{{morePresets}}" as="mp" hint-placeholder-count="4">
+                    <button type="button" role="menuitem" class="mi" onClick="{{mp.run}}" style="color:{{textPri}}">{{mp.label}}</button>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <!-- 弹出层 3：不中断会话的轻量模型切换（修复原版点齿轮直接丢会话跳走） -->
+              <sc-if value="{{isModelOpen}}" hint-placeholder-val="{{false}}">
+                <div role="menu" aria-label="行内模型快速切换" style="position:absolute;right:8px;top:78px;z-index:30;width:208px;padding:5px;border-radius:10px;background:{{menuBg}};border:1px solid {{borderCol}};box-shadow:0 10px 28px rgba(32,36,44,0.14);display:flex;flex-direction:column;gap:2px">
+                  <sc-for list="{{modelOptions}}" as="mo" hint-placeholder-count="3">
+                    <button type="button" role="menuitem" class="mi" onClick="{{mo.pick}}" style="background:{{mo.bg}};box-shadow:{{mo.ring}};color:{{textPri}}">
+                      <span style="flex:1">{{mo.name}}</span>
+                      <span style="font-size:12px;color:{{textSec}}">{{mo.tag}}</span>
+                    </button>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+            </div>
+          </sc-if>
+
+        </div>
+
+        <p style="margin:12px 0 0;color:{{editorFg}}">通过自动化门禁检查后，发布流水线将按 5% → 25% → 100% 三阶段推进，每阶段观察窗口不少于 15 分钟。</p>
+
+      </article>
+    </main>
+
+    <!-- 右侧 AI 助手侧栏（演示阶段 05「转入侧栏对话」无缝接力） -->
+    <sc-if value="{{sidebarChatOpen}}" hint-placeholder-val="{{false}}">
+      <aside aria-label="右侧 AI 助手无缝接力" style="width:320px;flex:none;background:{{barBg}};border-left:1px solid {{shellBorder}};padding:14px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-weight:560;color:{{textPri}}">AI 助手 · 已接力行内上下文</span>
+          <button type="button" class="ib" onClick="{{toggleSidebarChat}}" aria-label="收起 AI 侧栏" style="color:{{textSec}}">×</button>
+        </div>
+        <div style="padding:10px 12px;border-radius:8px;background:{{selBg}};box-shadow:inset 0 0 0 1px {{accentCol}};font-size:13px;color:{{textPri}}">
+          已带入《发布就绪与回滚规范》选区与前 2 条未完草稿，可继续多轮深度推演。
+        </div>
+        <div style="padding:10px 12px;border-radius:8px;background:{{paperBg}};border:1px solid {{borderCol}};font-size:14px;color:{{textPri}};line-height:22px">
+          我已保留前两条检查项，是否需要结合 `@核心环境变量清单` 补齐第 3 条数据库回滚脚本校验？
+        </div>
+      </aside>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"themeMode":{"editor":"enum","default":"light","options":["light","dark"]},"contextMode":{"editor":"enum","default":"empty","options":["empty","selection"]},"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      ctx: null,
+      stage: 'input',
+      prompt: '',
+      attachedNote: '核心环境变量清单',
+      hasRef: true,
+      pop: 'none',
+      modelIdx: 0,
+      draftVer: 1,
+      streamTick: 16,
+      autoFinish: false,
+      sidebarChatOpen: false
+    };
+    this._timer = null;
+  }
+
+  componentWillUnmount() {
+    if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
+  }
+
+  startStream(autoFinish) {
+    if (this._timer) clearInterval(this._timer);
+    this.setState({ stage: 'stream', streamTick: 0, autoFinish: Boolean(autoFinish), pop: 'none' });
+    this._timer = setInterval(() => {
+      const cur = (this.state.streamTick ?? 0) + 1;
+      if (cur >= 28) {
+        clearInterval(this._timer);
+        this._timer = null;
+        if (this.state.autoFinish) {
+          this.setState({ stage: 'review', streamTick: 28 });
+        } else {
+          this.setState({ streamTick: 24 });
+        }
+      } else {
+        this.setState({ streamTick: cur });
+      }
+    }, 95);
+  }
+
+  renderVals() {
+    const dark = (this.props.themeMode ?? 'light') === 'dark';
+    const ctx = this.state.ctx ?? (this.props.contextMode ?? 'empty');
+    const isEmptyCtx = ctx === 'empty';
+    const stage = this.state.stage ?? 'input';
+    const pop = this.state.pop ?? 'none';
+    const draftVer = this.state.draftVer ?? 1;
+    const tick = this.state.streamTick ?? 16;
+
+    const stages = [
+      { id: 'trigger', label: '01 / 唤出' },
+      { id: 'input', label: '02 指令与引用' },
+      { id: 'stream', label: '03 生成动画' },
+      { id: 'review', label: '04 审阅追问' },
+      { id: 'interrupt', label: '05 中断接力' },
+      { id: 'done', label: '06 完成落纸' }
+    ];
+
+    const activeBg = dark ? '#343434' : '#e5edfc';
+    const activeFg = dark ? '#ececec' : '#20242c';
+    const mutedFg = dark ? '#b4b4b4' : '#526071';
+    const accent = dark ? '#779de8' : '#547dd0';
+
+    const stageTabs = stages.map((s) => ({
+      label: s.label,
+      active: stage === s.id,
+      bg: stage === s.id ? activeBg : 'transparent',
+      fg: stage === s.id ? activeFg : mutedFg,
+      ring: stage === s.id ? ('inset 0 0 0 1px ' + accent) : 'none',
+      pick: () => {
+        if (s.id === 'stream') {
+          this.startStream(false);
+        } else {
+          if (this._timer) { clearInterval(this._timer); this._timer = null; }
+          this.setState({ stage: s.id, pop: 'none' });
+        }
+      }
+    }));
+
+    const fullStreamEmpty = '- [ ] 环境变量核对：确认新增密钥已在灰度集群注入\n- [ ] 流量降级开关：验证特性开关可在 10 秒内切回旧链路\n- [ ] 回滚演练确认：核对双写快照与索引无破坏性删除';
+    const fullStreamSel = '灰度发布前需逐项核验核心环境变量、特性开关与秒级回滚步骤，确保回滚路径清晰可执行。';
+    const targetStreamSource = isEmptyCtx ? fullStreamEmpty : fullStreamSel;
+    const isReasoningPhase = tick < 7;
+    const ratio = Math.min(1, Math.max(0.08, (tick - 6) / 20));
+    const sliceChars = Math.max(2, Math.floor(targetStreamSource.length * ratio));
+    const streamVisibleText = targetStreamSource.slice(0, sliceChars);
+    const pct = Math.min(100, Math.round((tick / 28) * 100)) + '%';
+
+    const streamStatusText = isReasoningPhase
+      ? (isEmptyCtx ? '正在结合上文与 @核心环境变量清单 构思结构…' : '正在分析长句冗余并提炼关键检查项…')
+      : (isEmptyCtx ? '正在原位流式写入待办检查项…' : '正在流式生成精简改写稿…');
+
+    const emptyPresets = [
+      { label: '续写上文', run: () => this.startStream(true) },
+      { label: '列检查清单', run: () => this.startStream(true) },
+      { label: '提炼大纲', run: () => this.startStream(true) }
+    ];
+    const selPresets = [
+      { label: '润色', run: () => this.startStream(true) },
+      { label: '精简', run: () => this.startStream(true) },
+      { label: '转待办', run: () => this.startStream(true) }
+    ];
+
+    const morePresets = (isEmptyCtx
+      ? ['头脑风暴 5 点', '生成风险对比表', '起草总结段', '口语化草稿']
+      : ['翻译成英文', '翻译成中文', '改为严谨书面语', '整理为无序列表']
+    ).map((label) => ({ label, run: () => this.startStream(true) }));
+
+    const models = [
+      { name: 'Claude Sonnet 4', short: 'Sonnet', tag: '均衡' },
+      { name: 'DeepSeek V3', short: 'DeepSeek', tag: '极速' },
+      { name: 'GPT-5 Mini', short: 'GPT-5m', tag: '轻量' }
+    ];
+    const curModel = models[this.state.modelIdx ?? 0] || models[0];
+    const modelOptions = models.map((m, i) => ({
+      name: m.name,
+      tag: m.tag,
+      bg: i === (this.state.modelIdx ?? 0) ? activeBg : 'transparent',
+      ring: i === (this.state.modelIdx ?? 0) ? ('inset 0 0 0 1px ' + accent) : 'none',
+      pick: () => this.setState({ modelIdx: i, pop: 'none' })
+    }));
+
+    const refNotes = ['核心环境变量清单', '产品原则', '上次故障复盘纪要'].map((name) => ({
+      name,
+      pick: () => this.setState({ attachedNote: name, hasRef: true, pop: 'none' })
+    }));
+
+    const checklistV1 = [
+      { head: '环境变量核对：', body: '确认新增配置与密钥已在灰度集群就绪，默认值可安全兜底。' },
+      { head: '特性开关验证：', body: '确认降级开关可在 10 秒内切回旧链路，无需重新发版。' },
+      { head: '数据兼容检查：', body: '确认迁移脚本保留旧列读取兼容，满足双版本并行窗口。' }
+    ];
+    const checklistV2 = [
+      { head: '配置与密钥：', body: '灰度注入完毕且默认兜底生效。' },
+      { head: '秒级回滚开关：', body: '10 秒内可切回旧版本链路。' },
+      { head: '旧列兼容：', body: '灰度期内禁止删除旧字段。' }
+    ];
+
+    const isStageTrigger = stage === 'trigger';
+    const isStageInput = stage === 'input';
+    const isStageStream = stage === 'stream';
+    const isStageReview = stage === 'review';
+    const isStageInterrupt = stage === 'interrupt';
+    const isStageDone = stage === 'done';
+
+    return {
+      pageBg: dark ? '#181818' : '#f1f1f1',
+      shellBg: dark ? '#343434' : '#f1f1f1',
+      barBg: dark ? '#222222' : '#fafafa',
+      paperBg: dark ? '#181818' : '#ffffff',
+      menuBg: dark ? '#222222' : '#ffffff',
+      codeBg: dark ? '#242424' : '#f3f1ec',
+      hoverBg: dark ? '#2c2c2c' : '#eef3fc',
+      selBg: activeBg,
+      textPri: activeFg,
+      textSec: mutedFg,
+      editorFg: dark ? '#ececec' : '#1f1e1d',
+      accentCol: accent,
+      duoFill: dark ? '#31456a' : '#c9d8f3',
+      borderCol: dark ? '#2e2e2e' : '#e4e6ea',
+      shellBorder: dark ? '#333333' : '#e6e6e6',
+      btnBorder: dark ? '#444444' : '#dcdcdc',
+
+      isEmptyCtx,
+      isSelCtx: !isEmptyCtx,
+      ctxEmptyBg: isEmptyCtx ? activeBg : 'transparent',
+      ctxEmptyFg: isEmptyCtx ? activeFg : mutedFg,
+      ctxEmptyRing: isEmptyCtx ? ('inset 0 0 0 1px ' + accent) : 'none',
+      ctxSelBg: !isEmptyCtx ? activeBg : 'transparent',
+      ctxSelFg: !isEmptyCtx ? activeFg : mutedFg,
+      ctxSelRing: !isEmptyCtx ? ('inset 0 0 0 1px ' + accent) : 'none',
+      pickEmptyCtx: () => this.setState({ ctx: 'empty', pop: 'none' }),
+      pickSelCtx: () => this.setState({ ctx: 'selection', pop: 'none' }),
+
+      stageTabs,
+      isStageTrigger,
+      isStageInput,
+      isStageStream,
+      isStageReview,
+      isStageInterrupt,
+      isStageDone,
+      showDashedTarget: isStageInput || isStageStream || isStageReview || isStageInterrupt,
+      showFloatingPod: isStageInput || isStageStream || isStageReview || isStageInterrupt,
+      showPromptBox: isStageInput || isStageReview,
+      targetBorderCol: isStageInterrupt ? '#b86b11' : accent,
+      targetBgCol: isStageInterrupt ? (dark ? '#2b2418' : '#fdf5e8') : (dark ? '#242c3d' : '#eef3fc'),
+
+      isReasoningPhase,
+      isWritingPhase: !isReasoningPhase,
+      streamVisibleText,
+      streamStatusText,
+      streamProgressPct: pct,
+      replayStream: () => this.startStream(false),
+      runStream: () => this.startStream(true),
+      stopToInterrupt: () => {
+        if (this._timer) { clearInterval(this._timer); this._timer = null; }
+        this.setState({ stage: 'interrupt', pop: 'none' });
+      },
+
+      goSlash: () => this.setState({ stage: 'trigger', pop: 'none' }),
+      goInput: () => this.setState({ stage: 'input', pop: 'none' }),
+      goReview: () => this.setState({ stage: 'review', pop: 'none' }),
+      acceptToDone: () => this.setState({ stage: 'done', pop: 'none' }),
+
+      promptValue: this.state.prompt ?? '',
+      onPromptInput: (e) => this.setState({ prompt: e && e.target ? e.target.value : '' }),
+      promptPlaceholder: isStageReview
+        ? '输入追问继续微调（如：再简短一半、改成表格）…'
+        : (isEmptyCtx ? '输入主题起草，或点下方续写（@ 可引用笔记）…' : '告诉 AI 如何改写这段内容（如：精简、转列表）…'),
+
+      showRefRow: Boolean(this.state.hasRef) && (isStageInput || isStageReview),
+      attachedNote: this.state.attachedNote ?? '核心环境变量清单',
+      clearRef: () => this.setState({ hasRef: false }),
+      isRefOpen: pop === 'ref',
+      refBtnBg: pop === 'ref' ? activeBg : 'transparent',
+      refBtnRing: pop === 'ref' ? ('inset 0 0 0 1px ' + accent) : 'none',
+      toggleRefPopover: () => this.setState({ pop: this.state.pop === 'ref' ? 'none' : 'ref' }),
+      refNotes,
+
+      activePresets: isEmptyCtx ? emptyPresets : selPresets,
+      moreBtnLabel: isEmptyCtx ? '更多起草' : '翻译与语气',
+      isMoreOpen: pop === 'more',
+      moreBtnBg: pop === 'more' ? activeBg : 'transparent',
+      moreBtnRing: pop === 'more' ? ('inset 0 0 0 1px ' + accent) : 'none',
+      toggleMorePopover: () => this.setState({ pop: this.state.pop === 'more' ? 'none' : 'more' }),
+      morePresets,
+
+      activeModelShort: curModel.short,
+      isModelOpen: pop === 'model',
+      modelBtnBg: pop === 'model' ? activeBg : 'transparent',
+      modelBtnRing: pop === 'model' ? ('inset 0 0 0 1px ' + accent) : 'none',
+      toggleModelPopover: () => this.setState({ pop: this.state.pop === 'model' ? 'none' : 'model' }),
+      modelOptions,
+
+      acceptBtnLabel: isEmptyCtx ? '写入正文' : '替换原文',
+      reviewChecklist: draftVer === 2 ? checklistV2 : checklistV1,
+      selAddedSpan: draftVer === 2
+        ? '核心环境变量与 10 秒级特性回滚开关'
+        : '核心环境变量、特性降级开关与标准回滚步骤',
+      draftVerText: draftVer + '/2',
+      refineShorter: () => this.setState({ draftVer: 2 }),
+      prevDraftVer: () => this.setState({ draftVer: 1 }),
+      nextDraftVer: () => this.setState({ draftVer: 2 }),
+
+      sidebarChatOpen: Boolean(this.state.sidebarChatOpen),
+      chatBtnBg: this.state.sidebarChatOpen ? activeBg : 'transparent',
+      chatBtnRing: this.state.sidebarChatOpen ? ('inset 0 0 0 1px ' + accent) : 'none',
+      toggleSidebarChat: () => this.setState({ sidebarChatOpen: !this.state.sidebarChatOpen }),
+      escalateToSidebar: () => this.setState({ sidebarChatOpen: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

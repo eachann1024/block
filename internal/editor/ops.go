@@ -2543,6 +2543,44 @@ func (s *Session) updateAnnotationNote(id, note string) bool {
 	return false
 }
 
+func (s *Session) SetAnnotationAIResponder(fn func(docMarkdown string, pending []*model.Annotation) map[string]string) {
+	s.annotationAIResponder = fn
+}
+
+func (s *Session) GeneratePendingAnnotations() int {
+	if s.annotationAIResponder == nil || len(s.annotations) == 0 {
+		return 0
+	}
+	var pending []*model.Annotation
+	for _, a := range s.annotations {
+		if a != nil && strings.TrimSpace(a.Note) != "" && a.RewriteResult == "" {
+			cp := *a
+			if len(a.Reactions) > 0 {
+				cp.Reactions = slices.Clone(a.Reactions)
+			}
+			pending = append(pending, &cp)
+		}
+	}
+	if len(pending) == 0 {
+		return 0
+	}
+	results := s.annotationAIResponder(s.Markdown(), pending)
+	if len(results) == 0 {
+		return 0
+	}
+	updated := 0
+	for _, a := range s.annotations {
+		if a == nil || strings.TrimSpace(a.Note) == "" || a.RewriteResult != "" {
+			continue
+		}
+		if res, ok := results[a.ID]; ok && strings.TrimSpace(res) != "" {
+			a.RewriteResult = res
+			updated++
+		}
+	}
+	return updated
+}
+
 func (s *Session) ApplyAnnotationRewrite(id, replacement string) bool {
 	var ann *model.Annotation
 	for _, item := range s.annotations {

@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>全局唤出搜索 C · 底栏右下角原位替换为文件夹切换器</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;background:#eef0f4;-webkit-font-smoothing:antialiased}
+a{color:#3d63b0}a:hover{color:#2c4c8c}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+*{box-sizing:border-box}
+::selection{background:#cde2fb;color:#184f95}
+.kbd{display:inline-flex;align-items:center;justify-content:center;height:22px;padding:0 7px;border-radius:5px;background:#f1f1f1;border:1px solid #dcdcdc;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:14px;line-height:18px;color:#526071;white-space:nowrap}
+.footer-scope-btn{height:26px;padding:0 8px;border-radius:6px;border:1px solid transparent;background:transparent;color:#20242c;display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:460;cursor:pointer;white-space:nowrap}
+.footer-scope-btn:hover{background:#eef3fc;border-color:#dcdcdc}
+.footer-scope-btn-open{height:26px;padding:0 8px;border-radius:6px;border:1px solid #547dd0;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;color:#20242c;display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap}
+.menu-row{width:100%;height:34px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#20242c;display:flex;align-items:center;gap:8px;font-size:14px;text-align:left;cursor:pointer}
+.menu-row:hover{background:#eef3fc}
+.hit-row{width:100%;padding:8px 12px;border:1px solid transparent;border-radius:8px;background:transparent;color:#20242c;display:flex;flex-direction:column;gap:3px;text-align:left;cursor:pointer}
+.hit-row:hover{background:#eef3fc}
+mark{background:#fbe7a6;color:#20242c;border-radius:2px;padding:0 1px}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:900px;padding:48px 36px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:32px;background:#eef0f4;color:#20242c;font-size:14px;line-height:20px">
+
+<div style="width:100%;max-width:1368px;display:flex;flex-wrap:wrap;gap:32px;justify-content:center;align-items:flex-start">
+
+<!-- 左窗：全局唤出初始空状态（顶栏保持极简，底栏右下角移除「⇧ ⌘ K 全局唤出」并原位放置文件夹切换器） -->
+<section aria-label="全局唤出空状态与底栏文件夹切换" style="flex:1 1 620px;max-width:660px;height:460px;background:#ffffff;border:1px solid #e4e6ea;border-radius:12px;box-shadow:0 20px 50px rgba(32,36,44,.12);display:flex;flex-direction:column;overflow:hidden;position:relative">
+
+<div style="height:52px;flex:none;padding:0 16px;border-bottom:1px solid #e4e6ea;display:flex;align-items:center;gap:10px">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="flex:none"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg>
+<label style="flex:1;min-width:0;display:flex;align-items:center">
+<span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">搜索标题与正文</span>
+<input value="" placeholder="搜索标题与正文" readonly="readonly" style="width:100%;height:36px;border:0;outline:0;background:transparent;font-size:16px;color:#20242c">
+</label>
+<button type="button" aria-label="关闭搜索" style="border:0;background:transparent;padding:0;cursor:pointer;display:inline-flex;align-items:center">
+<span class="kbd">esc</span>
+</button>
+</div>
+
+<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:24px;color:#526071;font-size:14px">
+<span>{{emptyHintText}}</span>
+</div>
+
+<!-- 底栏：右下角移除「⇧ ⌘ K 全局唤出」，原位改为文件夹范围切换器 -->
+<div style="height:36px;flex:none;padding:0 12px 0 16px;border-top:1px solid #e4e6ea;background:#fafafa;display:flex;align-items:center;gap:16px;color:#526071;font-size:14px">
+<span style="display:inline-flex;align-items:center;gap:6px"><span class="kbd">↑</span><span class="kbd">↓</span><span>选择</span></span>
+<span style="display:inline-flex;align-items:center;gap:6px"><span class="kbd">↵</span><span>打开</span></span>
+<span style="display:inline-flex;align-items:center;gap:6px"><span class="kbd">esc</span><span>关闭</span></span>
+
+<button type="button" class="footer-scope-btn" onClick="{{cycleScope}}" aria-label="切换搜索文件夹范围" style="margin-left:auto">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#c9d8f3" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+<span>{{activeScopeLabel}}</span>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"></path></svg>
+</button>
+</div>
+
+</section>
+
+<!-- 右窗：跨文件夹搜索结果 + 底栏右下角向上弹出文件夹选择浮层 -->
+<section aria-label="跨文件夹搜索与底栏上浮文件夹菜单" style="flex:1 1 620px;max-width:660px;height:460px;background:#ffffff;border:1px solid #e4e6ea;border-radius:12px;box-shadow:0 20px 50px rgba(32,36,44,.12);display:flex;flex-direction:column;overflow:hidden;position:relative">
+
+<div style="height:52px;flex:none;padding:0 16px;border-bottom:1px solid #e4e6ea;display:flex;align-items:center;gap:10px">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="flex:none"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg>
+<label style="flex:1;min-width:0;display:flex;align-items:center">
+<span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">搜索关键词</span>
+<input value="异步" placeholder="搜索标题与正文" readonly="readonly" style="width:100%;height:36px;border:0;outline:0;background:transparent;font-size:16px;color:#20242c">
+</label>
+<button type="button" aria-label="关闭搜索" style="border:0;background:transparent;padding:0;cursor:pointer;display:inline-flex;align-items:center">
+<span class="kbd">esc</span>
+</button>
+</div>
+
+<div style="flex:1;min-height:0;padding:8px 10px;overflow-y:auto;display:flex;flex-direction:column;gap:2px">
+<div style="padding:6px 12px 2px;font-size:14px;color:#526071">标题匹配</div>
+<sc-for list="{{titleHits}}" as="hit" hint-placeholder-count="2">
+<button type="button" class="hit-row" onClick="{{hit.pick}}" style="background:{{hit.bg}};box-shadow:{{hit.ring}}">
+<span style="display:flex;align-items:center;gap:8px;width:100%">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M7 3h7l5 5v13H7z" fill="#c9d8f3" stroke="#526071" stroke-width="1.6" stroke-linejoin="round"></path><path d="M14 3v5h5" stroke="#547dd0" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+<span style="font-weight:500;color:#20242c">{{hit.titlePrefix}}<mark>{{hit.titleMark}}</mark>{{hit.titleSuffix}}</span>
+<span style="margin-left:auto;color:#526071;font-size:14px;white-space:nowrap">{{hit.folderPath}}</span>
+</span>
+<span style="padding-left:23px;color:#526071;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{hit.snippet}}</span>
+</button>
+</sc-for>
+
+<div style="padding:10px 12px 2px;font-size:14px;color:#526071">{{bodyGroupHeader}}</div>
+<sc-for list="{{bodyHits}}" as="hit" hint-placeholder-count="2">
+<button type="button" class="hit-row" onClick="{{hit.pick}}" style="background:{{hit.bg}};box-shadow:{{hit.ring}}">
+<span style="display:flex;align-items:center;gap:8px;width:100%">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M7 3h7l5 5v13H7z" fill="#c9d8f3" stroke="#526071" stroke-width="1.6" stroke-linejoin="round"></path><path d="M14 3v5h5" stroke="#547dd0" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+<span style="font-weight:500;color:#20242c">{{hit.title}}</span>
+<span style="margin-left:auto;color:#526071;font-size:14px;white-space:nowrap">{{hit.folderPath}}</span>
+</span>
+<span style="padding-left:23px;color:#526071;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{hit.snippetPrefix}}<mark>{{hit.snippetMark}}</mark>{{hit.snippetSuffix}}</span>
+</button>
+</sc-for>
+</div>
+
+<!-- 底栏右下角向上弹出的文件夹选择菜单 -->
+<sc-if value="{{menuOpen}}" hint-placeholder-val="{{true}}">
+<div role="menu" aria-label="选择搜索文件夹" style="position:absolute;bottom:42px;right:12px;z-index:10;width:236px;padding:6px;background:#ffffff;border:1px solid #e4e6ea;border-radius:10px;box-shadow:0 12px 32px rgba(32,36,44,.14);display:flex;flex-direction:column;gap:2px">
+<sc-for list="{{scopeItems}}" as="item" hint-placeholder-count="4">
+<button type="button" class="menu-row" onClick="{{item.pick}}" style="background:{{item.bg}};box-shadow:{{item.ring}};font-weight:{{item.weight}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="{{item.iconFill}}" stroke="{{item.iconStroke}}" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{item.name}}</span>
+<span style="color:#526071;font-size:14px">{{item.countLabel}}</span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<!-- 底栏：右下角不显示「⇧ ⌘ K 全局唤出」，原位放置文件夹切换器 -->
+<div style="height:36px;flex:none;padding:0 12px 0 16px;border-top:1px solid #e4e6ea;background:#fafafa;display:flex;align-items:center;gap:16px;color:#526071;font-size:14px">
+<span style="display:inline-flex;align-items:center;gap:6px"><span class="kbd">↑</span><span class="kbd">↓</span><span>选择</span></span>
+<span style="display:inline-flex;align-items:center;gap:6px"><span class="kbd">↵</span><span>打开</span></span>
+<span style="display:inline-flex;align-items:center;gap:6px"><span class="kbd">esc</span><span>关闭</span></span>
+
+<button type="button" class="footer-scope-btn-open" onClick="{{toggleMenu}}" aria-label="展开或收起文件夹列表" style="margin-left:auto">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#c9d8f3" stroke="#547dd0" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+<span>{{activeScopeLabel}}</span>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#3d63b0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"></path></svg>
+</button>
+</div>
+
+</section>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"scope":{"editor":"enum","default":"全部文件夹","options":["全部文件夹","工作笔记","产品文档","个人知识库"]},"showDropdown":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      scope: null,
+      menuOpen: null,
+      selectedHit: 't1'
+    };
+  }
+
+  renderVals() {
+    const scopes = [
+      { id: '全部文件夹', name: '全部文件夹', countLabel: '3 个文件夹' },
+      { id: '工作笔记', name: '工作笔记', countLabel: '28 篇' },
+      { id: '产品文档', name: '产品文档', countLabel: '19 篇' },
+      { id: '个人知识库', name: '个人知识库', countLabel: '42 篇' }
+    ];
+    const activeScope = this.state.scope ?? this.props.scope ?? '全部文件夹';
+    const menuOpen = this.state.menuOpen ?? this.props.showDropdown ?? true;
+
+    const allTitleHits = [
+      {
+        id: 't1',
+        folder: '工作笔记',
+        titlePrefix: '把周会改成',
+        titleMark: '异步',
+        titleSuffix: '',
+        folderPath: '工作笔记 / 会议记录',
+        snippet: '上周排了三场同步会，两场结束时没有结论，核心议题改为先写文档……'
+      },
+      {
+        id: 't2',
+        folder: '个人知识库',
+        titlePrefix: 'Rust ',
+        titleMark: '异步',
+        titleSuffix: '运行时调度笔记',
+        folderPath: '个人知识库 / 编程',
+        snippet: '任务队列采用工作窃取机制，避免跨线程唤醒带来的额外上下文切换……'
+      }
+    ];
+
+    const allBodyHits = [
+      {
+        id: 'b1',
+        folder: '产品文档',
+        title: '团队协作与产品原则',
+        folderPath: '产品文档 · 2 处',
+        snippetPrefix: '……默认采用',
+        snippetMark: '异步',
+        snippetSuffix: '文档沟通，只有需要当场拍板时才发起会议……'
+      },
+      {
+        id: 'b2',
+        folder: '工作笔记',
+        title: 'Q4 需求评审清单',
+        folderPath: '工作笔记 / 需求评审',
+        snippetPrefix: '……评审意见全部改为',
+        snippetMark: '异步',
+        snippetSuffix: '批注，周三下班前收齐结论……'
+      }
+    ];
+
+    const filterByScope = (list) =>
+      activeScope === '全部文件夹' ? list : list.filter((it) => it.folder === activeScope);
+
+    const decorateHit = (hit) => {
+      const sel = this.state.selectedHit === hit.id;
+      return {
+        ...hit,
+        bg: sel ? '#e5edfc' : 'transparent',
+        ring: sel ? 'inset 0 0 0 1px #547dd0' : 'none',
+        pick: () => this.setState({ selectedHit: hit.id })
+      };
+    };
+
+    const titleHits = filterByScope(allTitleHits).map(decorateHit);
+    const bodyHits = filterByScope(allBodyHits).map(decorateHit);
+
+    const scopeItems = scopes.map((s) => {
+      const sel = s.id === activeScope;
+      return {
+        ...s,
+        bg: sel ? '#e5edfc' : 'transparent',
+        ring: sel ? 'inset 0 0 0 1px #547dd0' : 'none',
+        weight: sel ? '500' : '400',
+        iconFill: sel ? '#c9d8f3' : 'transparent',
+        iconStroke: sel ? '#547dd0' : '#526071',
+        pick: () => this.setState({ scope: s.id, menuOpen: false })
+      };
+    });
+
+    const emptyHintText =
+      activeScope === '全部文件夹'
+        ? '输入关键词搜索全部 Markdown 文件夹的标题与正文'
+        : '输入关键词搜索「' + activeScope + '」的标题与正文';
+
+    return {
+      activeScopeLabel: activeScope,
+      emptyHintText,
+      menuOpen,
+      scopeItems,
+      titleHits,
+      bodyHits,
+      bodyGroupHeader: '正文匹配 · ' + (bodyHits.length + 1) + ' 处',
+      toggleMenu: () => this.setState({ menuOpen: !menuOpen }),
+      cycleScope: () => {
+        const idx = scopes.findIndex((s) => s.id === activeScope);
+        const next = scopes[(idx + 1) % scopes.length].id;
+        this.setState({ scope: next });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

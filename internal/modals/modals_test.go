@@ -1,6 +1,7 @@
 package modals
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"block/internal/model"
 	"block/internal/theme"
+	internalui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -428,5 +430,165 @@ func TestQuickNoteControllerDebounceAndSave(t *testing.T) {
 	}
 	if q.Text() != "" {
 		t.Fatalf("expected active slot cleared after saving to notebook")
+	}
+}
+
+func TestQuickNoteParityPagerScrollZoomAndCallbacks(t *testing.T) {
+	theme.SetLanguage(model.LangZh)
+	tmp := t.TempDir()
+	nb := filepath.Join(tmp, "notebook")
+	if err := os.MkdirAll(nb, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	host := newStubHost(nb)
+	q := NewQuickNoteController(filepath.Join(tmp, "data"), host, nil)
+
+	var zoomVal float32 = 1.0
+	var zoomChanges []float32
+	var savedNotes []string
+	q.GetQuickZoom = func() float32 { return zoomVal }
+	q.OnQuickZoomChanged = func(z float32) {
+		zoomVal = z
+		zoomChanges = append(zoomChanges, z)
+	}
+	q.OnSavedNote = func(p string) {
+		savedNotes = append(savedNotes, p)
+	}
+
+	internalui.ClearTargets()
+	tt := ui.NewTester(q.RenderView, 440, 520)
+
+	// Centered 3-dot pager & header probes ("quick-save" + "save-to-note" + "quick-close").
+	pagerRect, ok := internalui.TargetBounds("quick-pager")
+	if !ok {
+		t.Fatalf("expected quick-pager bounds recorded")
+	}
+	pagerCenter := pagerRect.X + pagerRect.W/2
+	if math.Abs(float64(pagerCenter-220)) > 6 {
+		t.Fatalf("expected centered quick-pager near x=220, got center=%.1f (rect=%+v)", pagerCenter, pagerRect)
+	}
+	for _, probeID := range []string{"quick-slot-0", "quick-slot-1", "quick-slot-2", "quick-save", "save-to-note", "quick-close"} {
+		if _, ok := internalui.TargetBounds(probeID); !ok {
+			t.Fatalf("expected probe %q recorded", probeID)
+		}
+	}
+
+	// OnShiftScroll: 16px threshold, negative -> next, 160ms cooldown, positive -> previous.
+	if got := q.OnShiftScroll(-8); got != 0 {
+		t.Fatalf("expected partial -8 delta not to switch yet, got slot %d", got)
+	}
+	if got := q.OnShiftScroll(-8); got != 1 || q.ActiveSlot() != 1 {
+		t.Fatalf("expected -16 accumulated delta to advance to slot 1, got %d", got)
+	}
+	if got := q.OnShiftScroll(-24); got != 1 {
+		t.Fatalf("expected 160ms cooldown to suppress immediate switch, got %d", got)
+	}
+	time.Sleep(170 * time.Millisecond)
+	if got := q.OnShiftScroll(20); got != 0 || q.ActiveSlot() != 0 {
+		t.Fatalf("expected positive delta after cooldown to move back to slot 0, got %d", got)
+	}
+
+	// QuickEditorZoom shortcuts: Cmd+= (1.1), Cmd+- (0.9), Cmd+0 (1.0).
+	tt.Key(ui.Cmd, ui.KeyEqual)
+	tt.Key(ui.Cmd, ui.KeyMinus)
+	tt.Key(ui.Cmd, ui.Key0)
+	if len(zoomChanges) != 3 || zoomChanges[0] != 1.1 || zoomChanges[1] != 0.9 || zoomChanges[2] != 1.0 {
+		t.Fatalf("unexpected QuickEditorZoom sequence: %v", zoomChanges)
+	}
+
+	// SaveToNotebook triggers OnSavedNote callback and sets notice.
+	q.SetText("# Callback Test\nBody")
+	savedPath, err := q.SaveToNotebook()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(savedNotes) != 1 || savedNotes[0] != savedPath {
+		t.Fatalf("expected OnSavedNote(%q), got %v", savedPath, savedNotes)
+	}
+}
+
+func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T) {
+	m, _, state := setupManager(t)
+	defs := AllShortcutDefaults()
+	for _, k := range []string{"global_summon", "quick_note", "search", "new_note", "toggle_sidebar", "toggle_ai", "export_image", "performance"} {
+		if defs[k] == "" {
+			t.Fatalf("expected default for %q", k)
+		}
+	}
+	if got := EffectiveShortcut(*state, "toggle_ai"); got != "cmd-j" {
+		t.Fatalf("expected default toggle_ai=cmd-j, got %q", got)
+	}
+
+	m.OpenSettings("shortcuts")
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Box(c).Fill().Children(func() {
+			m.RenderSettings(c)
+		})
+	}, 1000, 760)
+
+	// Record custom shortcut onto toggle_ai ("⌘J" button).
+	if err := tt.Click("⌘J"); err != nil {
+		t.Fatal(err)
+	}
+	if !m.IsRecordingShortcut() || m.recordingShortcut != "toggle_ai" {
+		t.Fatalf("expected recording toggle_ai, got %q", m.recordingShortcut)
+	}
+	tt.Key(ui.Cmd, ui.KeyF5)
+	if got := EffectiveShortcut(*state, "toggle_ai"); got != "cmd-f5" {
+		t.Fatalf("expected toggle_ai=cmd-f5, got %q", got)
+	}
+	if state.CustomShortcuts["toggle_ai"] != "cmd-f5" {
+		t.Fatalf("expected CustomShortcuts[toggle_ai]=cmd-f5, got %+v", state.CustomShortcuts)
+	}
+
+	// Expanded key names verification.
+	for tcKey, want := range map[ui.Key]string{
+		ui.KeyBackslash: "\\",
+		ui.KeySemicolon: ";",
+		ui.KeyQuote:     "'",
+		ui.KeyBackquote: "`",
+		ui.KeyBackspace: "backspace",
+		ui.KeyF12:       "f12",
+	} {
+		if got := shortcutKeyName(tcKey); got != want {
+			t.Fatalf("shortcutKeyName(%v) = %q, want %q", tcKey, got, want)
+		}
+	}
+
+	// Conflict resolution: record "cmd-k" (currently search's default) onto toggle_ai.
+	tt.Frame()
+	if err := tt.Click("⌘F5"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Key(ui.Cmd, ui.KeyK)
+	if got := EffectiveShortcut(*state, "toggle_ai"); got != "cmd-k" {
+		t.Fatalf("expected toggle_ai=cmd-k after conflict, got %q", got)
+	}
+	if got := EffectiveShortcut(*state, "search"); got == "cmd-k" {
+		t.Fatalf("expected search reassigned away from cmd-k on conflict, still %q", got)
+	}
+	tt.Frame()
+	if _, ok := internalui.TargetBounds("settings-shortcut-conflict-notice"); !ok {
+		t.Fatalf("expected conflict notice probe rendered")
+	}
+
+	// Also customize quick_note and verify reset clears all 3 fields.
+	if err := tt.Click("⌥N"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Key(ui.Cmd, ui.KeyBackslash)
+	if state.ShortcutQuick != "cmd-\\" {
+		t.Fatalf("expected ShortcutQuick=cmd-\\, got %q", state.ShortcutQuick)
+	}
+
+	if err := tt.Click("恢复默认"); err != nil {
+		t.Fatal(err)
+	}
+	if state.ShortcutSearch != "" || state.ShortcutQuick != "" || len(state.CustomShortcuts) != 0 {
+		t.Fatalf("expected reset to clear all custom shortcuts, got search=%q quick=%q custom=%+v",
+			state.ShortcutSearch, state.ShortcutQuick, state.CustomShortcuts)
+	}
+	if EffectiveShortcut(*state, "toggle_ai") != "cmd-j" || EffectiveShortcut(*state, "search") != "cmd-k" {
+		t.Fatalf("expected defaults restored after reset")
 	}
 }
