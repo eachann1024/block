@@ -1,10 +1,9 @@
 //! Interactive Callout block controls (Ocean Paper Scheme A):
 //! - Semantic 5-state palette (Note, Tip, Important, Warning, Caution) with 1px semantic border.
 //! - Dedicated top header bar above block text so controls never overlap text.
-//! - Clickable left icon & type badge (`提示 ▾`) opening a 5-state dropdown popover with backdrop.
-//! - Top-right quick actions (`切换类型`, `转为正文`) mounted after `BlockText` for reliable hit-testing.
+//! - Clickable left icon & type badge opening a 5-state dropdown popover with backdrop.
 use crate::ui::tooltip::TooltipExt;
-use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, time::Duration};
+use std::{cell::{Cell, RefCell}, collections::HashMap};
 use gpui::{
     Bounds, Context, CursorStyle, Div, ElementId, Entity, Focusable, Hsla,
     MouseButton, MouseDownEvent, Pixels, Point, Size, Stateful, Window, anchored, deferred, div,
@@ -22,7 +21,6 @@ thread_local! {
     static OPEN_MENU: Cell<Option<(u64, Point<Pixels>)>> = const { Cell::new(None) };
     static MENU_INDEX: Cell<usize> = const { Cell::new(0) };
     static TRIGGER_BOUNDS: RefCell<HashMap<u64, (Bounds<Pixels>, Size<Pixels>)>> = Default::default();
-    static COPIED: RefCell<HashSet<u64>> = Default::default();
 }
 
 pub fn close_menu() -> bool {
@@ -118,16 +116,6 @@ pub fn label(kind: CalloutKind) -> &'static str {
     }
 }
 
-pub fn next_kind(kind: CalloutKind) -> CalloutKind {
-    match kind {
-        CalloutKind::Note => CalloutKind::Tip,
-        CalloutKind::Tip => CalloutKind::Important,
-        CalloutKind::Important => CalloutKind::Warning,
-        CalloutKind::Warning => CalloutKind::Caution,
-        CalloutKind::Caution => CalloutKind::Note,
-    }
-}
-
 pub const ALL_KINDS: [CalloutKind; 5] = [
     CalloutKind::Note,
     CalloutKind::Tip,
@@ -154,25 +142,15 @@ fn menu_row(
     let theme = Theme::ocean();
     let st = style(kind);
     div().id(id).relative().w_full().h(px(32.)).px(px(10.)).rounded(px(6.)).children(crate::ui::smoke_overlay::probe(probe_name))
-        .flex().items_center().gap(px(8.)).cursor(CursorStyle::PointingHand).text_size(type_scale::BODY).text_color(theme.text)
+        .flex().items_center().gap(px(8.)).cursor(CursorStyle::PointingHand)
+        .text_size(type_scale::BODY).line_height(px(20.)).text_color(theme.text)
         .when(checked, move |d| d.bg(theme.selected).border_1().border_color(theme.accent).font_weight(type_scale::CONTROL))
         .when(highlighted && !checked, move |d| d.bg(theme.hover))
         .when(!checked, move |d| d.hover(|s| s.bg(theme.hover)))
         .child(div().size(px(10.)).flex_none().rounded(px(5.)).bg(st.bg).border_1().border_color(st.accent))
         .child(div().flex_1().min_w_0().child(label(kind)))
-        .child(div().flex_none().font_family(crate::theme::mono_font_family()).text_size(type_scale::BODY).text_color(theme.text_secondary).child(kind.tag()))
+        .child(div().flex_none().font_family(crate::theme::mono_font_family()).text_size(type_scale::BODY).line_height(px(20.)).text_color(theme.text_secondary).child(kind.tag()))
         .on_mouse_down(MouseButton::Left, on_click)
-}
-
-fn chip(id: ElementId, probe: &'static str, zoom: f32, st: CalloutStyle, label: &'static str, tip: &'static str) -> Stateful<Div> {
-    let theme = Theme::ocean();
-    div().id(id).relative().children(crate::ui::smoke_overlay::probe(probe))
-        .h(px(24. * zoom)).px(px(8. * zoom)).rounded(px(6. * zoom))
-        .bg(theme.paper).border_1().border_color(st.border)
-        .flex().items_center().cursor(CursorStyle::PointingHand)
-        .text_size(px(14. * zoom)).text_color(theme.text_secondary)
-        .hover(move |s| s.bg(theme.hover).text_color(theme.text).border_color(st.accent))
-        .tooltip_above(tooltip(tip)).child(label)
 }
 
 /// Interactive header controls and 5-state type picker, mounted AFTER `BlockText`.
@@ -180,7 +158,6 @@ pub fn controls(
     editor: Entity<Editor>,
     id: u64,
     kind: CalloutKind,
-    visible: bool,
     zoom: f32,
     cx: &mut Context<Editor>,
 ) -> impl IntoElement {
@@ -190,10 +167,6 @@ pub fn controls(
     let open = is_menu_open(id);
     let icon_id = ElementId::from(("callout-icon", id as usize));
     let pill_id = ElementId::from(("callout-pill", id as usize));
-    let copy_id = ElementId::from(("callout-copy", id as usize));
-    let cycle_id = ElementId::from(("callout-cycle", id as usize));
-    let clear_id = ElementId::from(("callout-clear", id as usize));
-    let copied = COPIED.with(|set| set.borrow().contains(&id));
 
     let bounds_tracker = gpui::canvas(
         move |bounds, window, _| {
@@ -204,9 +177,10 @@ pub fn controls(
     ).absolute().top_0().left_0().size_full();
 
     let icon_btn = div().id(icon_id).relative().children(crate::ui::smoke_overlay::probe("callout-icon"))
-        .size(px(26. * zoom)).rounded(px(6. * zoom)).flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
-        .when(open, |d| d.bg(theme.paper).border_1().border_color(st.accent))
-        .hover(move |s| s.bg(theme.paper).border_1().border_color(st.border))
+        .size(px(26. * zoom)).rounded(px(6. * zoom)).border_1().border_color(transparent_black())
+        .flex().items_center().justify_center().cursor(CursorStyle::PointingHand)
+        .when(open, |d| d.bg(theme.paper).border_color(st.accent))
+        .hover(move |s| s.bg(theme.paper).border_color(st.border))
         .tooltip_above(tooltip(tr("点击切换标注类型", "Click to switch callout type")))
         .child(icon(Icon::Callout, px(icon_size::ROW * zoom), IconColors { line: st.accent, fill: st.icon_fill, accent: st.accent }))
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, window, cx| {
@@ -214,39 +188,20 @@ pub fn controls(
         }));
 
     let pill_btn = div().id(pill_id).relative().children(crate::ui::smoke_overlay::probe("callout-pill"))
-        .h(px(24. * zoom)).px(px(8. * zoom)).rounded(px(6. * zoom))
-        .when(open, |d| d.bg(theme.paper).border_1().border_color(st.accent))
-        .hover(move |s| s.bg(theme.paper).border_1().border_color(st.border))
+        .h(px(26. * zoom)).px(px(4. * zoom)).rounded(px(6. * zoom)).border_1().border_color(transparent_black())
+        .when(open, |d| d.bg(theme.paper).border_color(st.accent))
+        .hover(move |s| s.bg(theme.paper).border_color(st.border))
         .flex().items_center().gap(px(4. * zoom)).cursor(CursorStyle::PointingHand)
-        .text_size(px(14. * zoom)).font_weight(type_scale::TITLE).text_color(st.text)
-        .child(label(kind)).child(div().text_size(px(12. * zoom)).text_color(st.text).child("▾")).child(bounds_tracker)
+        .font_family(crate::theme::ui_font_family())
+        .text_size(px(14. * zoom)).line_height(px(20. * zoom)).font_weight(type_scale::TITLE).text_color(st.text)
+        .child(div().flex().items_center().child(label(kind)))
+        .child(div().size(px(icon_size::MICRO * zoom)).flex_none().flex().items_center().justify_center().child(
+            icon(Icon::TbChevron, px(icon_size::MICRO * zoom), IconColors { line: st.text, fill: transparent_black(), accent: st.text }),
+        ))
+        .child(bounds_tracker)
         .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, window, cx| {
             cx.stop_propagation(); if !is_menu_open(id) { arm_menu(kind); } toggle_menu(id, event.position); this.focus_handle(cx).focus(window, cx); cx.notify();
         }));
-
-    let copy_editor = editor.clone();
-    let right_actions = div().flex().items_center().gap(px(4. * zoom))
-        .when(!visible && !open, |d| d.invisible())
-        .child(chip(copy_id, "callout-copy", zoom, st, if copied { tr("已复制", "Copied") } else { tr("复制", "Copy") }, tr("复制标注文本", "Copy callout text"))
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                cx.stop_propagation();
-                this.copy_block_text(id, cx);
-                COPIED.with(|set| { set.borrow_mut().insert(id); });
-                cx.notify();
-                let entity = copy_editor.downgrade();
-                cx.spawn(async move |_, cx| {
-                    cx.background_executor().timer(Duration::from_millis(1500)).await;
-                    let _ = entity.update(cx, |_, cx| { COPIED.with(|set| { set.borrow_mut().remove(&id); }); cx.notify(); });
-                }).detach();
-            })))
-        .child(chip(cycle_id, "callout-cycle", zoom, st, tr("切换类型", "Switch"), tr("切换下一标注类型", "Next callout type"))
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
-                cx.stop_propagation(); close_menu(); this.set_callout_kind(id, Some(next_kind(kind)), cx); this.focus_handle(cx).focus(window, cx);
-            })))
-        .child(chip(clear_id, "callout-clear", zoom, st, tr("转为正文", "To Text"), tr("转为普通正文", "Convert to paragraph"))
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
-                cx.stop_propagation(); close_menu(); this.set_callout_kind(id, None, cx); this.focus_handle(cx).focus(window, cx);
-            })));
 
     let callout_key = format!("callout-menu-{id}");
     let motion = crate::ui::motion::popup_motion(&callout_key, open);
@@ -315,9 +270,9 @@ pub fn controls(
         div().child(backdrop).child(popup)
     });
 
-    div().absolute().top(px(7. * zoom)).left(px(10. * zoom)).right(px(10. * zoom)).h(px(26. * zoom))
-        .flex().items_center().justify_between()
-        .child(div().flex().items_center().gap(px(4. * zoom)).child(icon_btn).child(pill_btn))
-        .child(right_actions)
+    div().absolute().top(px(7. * zoom)).left(px(10. * zoom)).h(px(26. * zoom))
+        .flex().items_center().gap(px(3. * zoom))
+        .child(icon_btn)
+        .child(pill_btn)
         .children(popover)
 }
