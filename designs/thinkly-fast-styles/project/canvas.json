@@ -1113,6 +1113,39 @@
       "x": 0,
       "y": 0
     },
+    "AnnotateNarrow-V1-SafeGutter.dc.html": {
+      "expand": "fill",
+      "h": 880,
+      "is_interactive": true,
+      "page": "annotate-narrow",
+      "radius": 12,
+      "title": "方案 A（推荐）· 右侧自适应安全槽（页边保底 64px 净空 + 纵向防撞列队）",
+      "w": 1000,
+      "x": 0,
+      "y": 0
+    },
+    "AnnotateNarrow-V2-BlockFootStrip.dc.html": {
+      "expand": "fill",
+      "h": 880,
+      "is_interactive": true,
+      "page": "annotate-narrow",
+      "radius": 12,
+      "title": "方案 B · 选区段尾内联胶囊排（退回文档流左下锚定 + 零占用右侧页边）",
+      "w": 1000,
+      "x": 1080,
+      "y": 0
+    },
+    "AnnotateNarrow-V3-CornerTabDock.dc.html": {
+      "expand": "fill",
+      "h": 880,
+      "is_interactive": true,
+      "page": "annotate-narrow",
+      "radius": 12,
+      "title": "方案 C · 选区右上跨线实心纸签 + 顶栏汇总胶囊抽屉",
+      "w": 1000,
+      "x": 2160,
+      "y": 0
+    },
     "ListCaret-V1-QuietInk.dc.html": {
       "expand": "fill",
       "h": 1000,
@@ -1158,10 +1191,19 @@
     }
   ],
   "launch": {
-    "page": "inline-ai",
+    "page": "annotate-narrow",
     "view": "canvas"
   },
   "notes": {
+    "annotate-narrow-row": {
+      "kind": "title1",
+      "maxW": 3160,
+      "page": "annotate-narrow",
+      "text": "窄窗表情回应与批注微章防堆叠 · 消除右上角遮字 · 三套方案",
+      "w": 240,
+      "x": 0,
+      "y": -260
+    },
     "ai-agent-cards-compact-row": {
       "kind": "title1",
       "maxW": 4480,
@@ -1439,11 +1481,18 @@
     "AiAgentCards-V2-CompactPills.dc.html",
     "AiAgentCards-V3-ListRows.dc.html",
     "InlineAi-V1-PaperStream.dc.html",
+    "AnnotateNarrow-V1-SafeGutter.dc.html",
+    "AnnotateNarrow-V2-BlockFootStrip.dc.html",
+    "AnnotateNarrow-V3-CornerTabDock.dc.html",
     "ListCaret-V1-QuietInk.dc.html",
     "ListCaret-V2-PaperTag.dc.html",
     "ListCaret-V3-GuideRail.dc.html"
   ],
   "pages": [
+    {
+      "id": "annotate-narrow",
+      "name": "窄窗回应防堆叠"
+    },
     {
       "id": "inline-ai",
       "name": "行内 AI 全流程"

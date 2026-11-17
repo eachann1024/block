@@ -1,4 +1,5 @@
-//! Right-rail annotations, narrow-mode inline/badge adaptive layout, and reaction picker.
+//! Wide-window right-rail annotations and selection-toolbar reaction picker.
+//! Narrow windows render Scheme B block-foot strips inline via `annotate_foot`.
 use gpui::{
     AnyElement, Bounds, BoxShadow, Context, IntoElement, MouseButton, ParentElement, Pixels,
     Point, SharedString, Styled, Window, deferred, div, point, prelude::*, px, rgba, size,
@@ -7,11 +8,9 @@ use crate::{theme::Theme, ui::annotation_note};
 use super::{
     annotate::{ReactionPicker, resolve_annotation_span},
     annotate_fit::{
-        BADGE_STEP, INLINE_GAP, INLINE_MAX_W, INLINE_RIGHT, card_height, card_width,
-        composer_height, fit_inline_card, measure_row, refresh_from_render, row_bottom,
+        card_height, card_width, composer_height, measure_row, refresh_from_render,
         row_target, state_kind,
     },
-    annotate_pop,
     annotate_rail::{RAIL_W, annotation_row, composer_row},
     view::Editor,
 };
@@ -30,7 +29,7 @@ pub(super) fn can_fit_wide_rail(editor: &Editor, std_w: Pixels) -> bool {
     };
     actual_w > px(0.) && actual_w >= min_w
 }
-const REACTIONS: [&str; 8] = ["👍", "❤️", "🎉", "🤔", "👀", "🔥", "✅", "💡"];
+pub(super) const REACTIONS: [&str; 8] = ["👍", "❤️", "🎉", "🤔", "👀", "🔥", "✅", "💡"];
 
 fn popover_shadows() -> Vec<BoxShadow> {
     let shadow = |color, y, blur| BoxShadow { color, offset: point(px(0.), px(y)), blur_radius: px(blur), spread_radius: px(0.), inset: false };
@@ -39,110 +38,15 @@ fn popover_shadows() -> Vec<BoxShadow> {
 
 pub(super) fn overlay(editor: &mut Editor, _window: &mut Window, cx: &mut Context<Editor>) -> Option<AnyElement> {
     if editor.minimal || editor.path.is_none() { return None; }
-    let has_rail = editor.annotate.has_visible_rail();
-    let has_reactions = editor.annotate.reactions.is_some();
-    if !has_rail && !has_reactions { return None; }
-    refresh_from_render(editor);
     let std_w = super::chrome::standard_width(Theme::ocean().content_width);
-    let narrow = !can_fit_wide_rail(editor, std_w);
+    let wide_rail = editor.annotate.has_visible_rail() && can_fit_wide_rail(editor, std_w);
+    let has_reactions = editor.annotate.reactions.is_some();
+    if !wide_rail && !has_reactions { return None; }
+    if wide_rail {
+        refresh_from_render(editor);
+    }
 
-    let rail = has_rail.then(|| {
-        if narrow {
-            let mut markers = Vec::new();
-            let mut popover = None;
-            let mut next_y = px(12.);
-            let mut notes = editor.annotate.annotations.iter()
-                .filter(|note| !note.is_applied() || !note.reactions.is_empty())
-                .cloned()
-                .map(|note| {
-                    let target = resolve_annotation_span(&editor.doc, &note).map(|(id, range, _)| (id, range.start));
-                    let y = target.map(|(id, offset)| row_target(editor, id, offset)).unwrap_or(px(24.));
-                    (y, target.map(|(id, _)| id), note)
-                })
-                .collect::<Vec<_>>();
-            notes.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-            for (index, (target_y, target_block, note)) in notes.into_iter().enumerate() {
-                let id = note.id;
-                let is_active = editor.annotate.active_annotation == Some(id);
-                let is_hovered = editor.annotate.hovered_annotation == Some(id);
-                let is_highlighted = is_active || is_hovered;
-                if note.body.is_empty() && !note.reactions.is_empty() {
-                    let y = target_y.max(next_y);
-                    next_y = y + px(BADGE_STEP);
-                    let emoji = note.reactions[0].clone();
-                    markers.push(annotation_note::reaction_pill(SharedString::from(format!("annotation-marker-{id}")), &emoji, is_highlighted)
-                        .absolute().top(y).right(px(INLINE_RIGHT)).occlude()
-                        .on_hover(cx.listener(move |this, hovered: &bool, _, cx| this.hover_annotation(id, *hovered, cx)))
-                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                            cx.stop_propagation();
-                            this.toggle_reaction_on_note(id, &emoji, cx);
-                        })).into_any_element());
-                    continue;
-                }
-                let editing = editor.annotate.editing.as_ref().filter(|f| f.annotation_id == id).map(|f| f.input.clone());
-                let followup = editor.annotate.followup.as_ref().filter(|f| f.annotation_id == id).map(|f| f.input.clone());
-                let has_edit = editing.is_some();
-                let has_followup = followup.is_some();
-                let kind = state_kind(&note, has_edit, has_followup);
-                let card_h = card_height(&note, has_edit, has_followup);
-                let pref_w = card_width(&note, has_edit, has_followup, px(INLINE_MAX_W));
-                if let Some((top, card_w)) = fit_inline_card(editor, target_block, target_y, next_y, card_h, pref_w) {
-                    next_y = top + card_h + px(INLINE_GAP);
-                    let row = annotation_row(note, editor.annotate.active_annotation, editor.annotate.hovered_annotation, editing, followup, cx);
-                    markers.push(
-                        div().absolute().top(top).right(px(INLINE_RIGHT)).w(card_w).occlude()
-                            .child(row)
-                            .child(measure_row(id, kind, cx))
-                            .into_any_element(),
-                    );
-                } else {
-                    let y = target_y.max(next_y);
-                    next_y = y + px(BADGE_STEP);
-                    let has_input = has_edit || has_followup;
-                    let show_pop = is_highlighted || has_input;
-                    markers.push(div().absolute().top(y).right(px(INLINE_RIGHT))
-                        .child(annotate_pop::badge(&note, index + 1, show_pop, cx)).into_any_element());
-                    if is_hovered || (popover.is_none() && (is_active || has_input)) {
-                        popover = Some(annotate_pop::popover_layer(
-                            note, editing, followup, y,
-                            editor.annotate.editor_width, editor.annotate.editor_height, cx,
-                        ));
-                    }
-                }
-            }
-            let mut layer = div().id("annotate-rail").absolute().top_0().left_0().size_full().children(markers).children(popover);
-            if let Some(composer) = &editor.annotate.composer {
-                let input = composer.input.clone();
-                let has_text = !input.read(cx).value().trim().is_empty();
-                let y = row_target(editor, composer.block_id, composer.range.start);
-                let comp_h = composer_height();
-                if let Some((top, card_w)) = fit_inline_card(editor, Some(composer.block_id), y, next_y, comp_h, px(RAIL_W)) {
-                    layer = layer.child(
-                        div().absolute().top(top).right(px(INLINE_RIGHT)).w(card_w).occlude()
-                            .child(composer_row(input, has_text, false, cx))
-                            .child(measure_row(0, 0, cx)),
-                    );
-                } else {
-                    let below_y = (row_bottom(editor, composer.block_id, y) + px(8.)).max(px(16.));
-                    let ed_h = editor.annotate.editor_height;
-                    let pop_top = if below_y + comp_h > ed_h - px(16.) && y > comp_h + px(16.) {
-                        (y - comp_h - px(8.)).max(px(16.))
-                    } else if ed_h > comp_h + px(24.) {
-                        below_y.min((ed_h - comp_h - px(16.)).max(px(16.)))
-                    } else {
-                        below_y
-                    };
-                    let ed_w = editor.annotate.editor_width;
-                    let pop_w = if ed_w > px(80.) { (ed_w - px(48.)).min(px(280.)).max(px(180.)) } else { px(RAIL_W) };
-                    layer = layer.child(
-                        div().absolute().top(pop_top).right(px(24.)).w(pop_w).occlude()
-                            .child(composer_row(input, has_text, true, cx))
-                            .child(measure_row(0, 0, cx)),
-                    );
-                }
-            }
-            return layer;
-        }
+    let rail = wide_rail.then(|| {
         let mut rows: Vec<(Pixels, u64, u8, Pixels, Pixels, AnyElement)> = editor.annotate.annotations.iter()
             .filter(|note| !note.is_applied() || !note.reactions.is_empty()).cloned().map(|note| {
                 let target = resolve_annotation_span(&editor.doc, &note).map(|(id, range, _)| (id, range.start));
