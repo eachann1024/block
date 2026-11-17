@@ -137,7 +137,7 @@ impl Editor {
         let before = self.snapshot();
         let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
         if ai == bi && self.doc.get(a.block).is_some_and(|blk| blk.meta.code_language.is_some()
-            || blk.is_atomic() || blk.meta.table.as_ref().is_some_and(|t|
+            || blk.meta.table.as_ref().is_some_and(|t|
                 t.cell_at_range(&(a.offset..b.offset)).is_some())) {
             self.doc.replace_range(a.block, a.offset..b.offset, &normalized);
             let at = Position { block: a.block, offset: a.offset + normalized.len() };
@@ -149,21 +149,21 @@ impl Editor {
         }
         let mut id = a.block;
         let mut offset = a.offset + normalized.len();
-        if ai == bi && !normalized.contains('\n') && self.doc.blocks[ai].meta.table.is_none() {
+        let starts_atomic = self.doc.blocks[ai].meta.table.is_some() || self.doc.blocks[ai].is_atomic();
+        if ai == bi && !normalized.contains('\n') && !starts_atomic {
             self.doc.replace_range(a.block, a.offset..b.offset, &normalized);
             if a == b { self.code_escape_strip(a, normalized.len(), cx); }
         } else {
-            let starts_table = self.doc.blocks[ai].meta.table.is_some();
-            let mut combined = if starts_table {
+            let mut combined = if starts_atomic {
                 crate::editor::model::Block::new(a.block, Kind::Paragraph, String::new())
             } else { self.doc.blocks[ai].clone() };
             if ai == bi {
-                if starts_table { combined.replace_range(0..0, &normalized); offset = normalized.len(); }
+                if starts_atomic { combined.replace_range(0..0, &normalized); offset = normalized.len(); }
                 else { combined.replace_range(a.offset..b.offset, &normalized); }
             } else {
-                let prefix = if starts_table { 0 } else { a.offset };
+                let prefix = if starts_atomic { 0 } else { a.offset };
                 combined.replace_range(prefix..combined.text.len(), &normalized); offset = prefix + normalized.len();
-                if self.doc.blocks[bi].meta.table.is_none() {
+                if self.doc.blocks[bi].meta.table.is_none() && !self.doc.blocks[bi].is_atomic() {
                     let suffix = self.doc.blocks[bi].slice(b.offset..self.doc.blocks[bi].text.len());
                     combined.append(&suffix);
                 }
@@ -171,7 +171,7 @@ impl Editor {
             let carry = match combined.kind { Kind::Bullet | Kind::Numbered | Kind::Todo | Kind::Quote => combined.kind, _ => Kind::Paragraph };
             let mut pieces = Vec::new(); let mut start = 0;
             for (newline, _) in normalized.match_indices('\n') {
-                let end = if starts_table { newline } else { a.offset + newline };
+                let end = if starts_atomic { newline } else { a.offset + newline };
                 pieces.push(combined.slice(start..end)); start = end + 1;
             }
             pieces.push(combined.slice(start..combined.text.len()));

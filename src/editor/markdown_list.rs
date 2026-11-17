@@ -34,7 +34,9 @@ fn starts_block_in_list(line: &str, next_raw: Option<&str>, raw_tail: &[&str]) -
         return true;
     }
     let (_, trimmed) = blocks::leading_columns(line);
-    if trimmed.starts_with('>') || (trimmed.starts_with(":::") && trimmed.trim() != ":::")
+    let setext_bar = !trimmed.trim_end().is_empty()
+        && (trimmed.trim_end().bytes().all(|b| b == b'=') || trimmed.trim_end().bytes().all(|b| b == b'-'));
+    if setext_bar || trimmed.starts_with('>') || (trimmed.starts_with(":::") && trimmed.trim() != ":::")
         || blocks::classify_heading(trimmed).is_some()
         || super::super::image_source::parse(trimmed).is_some()
         || paragraph::starts(trimmed)
@@ -192,12 +194,16 @@ pub(super) fn parse_item(id: u64, lines: &[&str], defs: &str) -> Option<(Vec<Blo
         if raw.trim().is_empty() { child_source.push('\n'); }
         else { child_source.push_str(&strip_columns(raw, strip_cols)); }
     }
-    parent.meta.tight = first_child == para_end;
-    let children = super::parse_with_defs(&child_source, defs);
+    let children = super::parse_blocks_with_defs(&child_source, defs);
     let mut result = vec![parent];
-    for mut child in children.blocks.iter().cloned() {
+    for _ in para_end..first_child {
+        result.push(Block::new(id + result.len() as u64, Kind::Paragraph, String::new()));
+    }
+    for mut child in children {
         child.id = id + result.len() as u64;
-        child.meta.indent += strip_cols;
+        if !super::is_blank(&child) {
+            child.meta.indent += strip_cols;
+        }
         child.meta.clean_source = None;
         if let Some(code) = &mut child.meta.list_code { code.parent_indent += strip_cols; }
         result.push(child);

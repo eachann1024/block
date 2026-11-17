@@ -87,7 +87,7 @@ pub(super) fn render(events: impl IntoIterator<Item = Event<'static>>) -> Option
 fn simplify_escapes(mut source: String) -> String {
     if !source.contains('\\') { return source; }
     let expected = parsed_events(&source);
-    for ch in ['~', '.', '-', '+', '#', '!', '_', '(', ')', ':', '/', '@'] {
+    for ch in ['~', '.', '-', '+', '#', '!', '_', '*', '[', ']', '(', ')', ':', '/', '@'] {
         let escaped = format!("\\{ch}");
         if !source.contains(&escaped) { continue; }
         let candidate = source.replace(&escaped, &ch.to_string());

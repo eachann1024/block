@@ -157,7 +157,7 @@ fn norm_ref_label(label: &str) -> String {
 /// so accidental `[NOTE]: text` lines without reference links stay ordinary paragraphs.
 pub(super) fn collect_ref_defs(source: &str) -> (String, HashSet<String>) {
     if !source.contains("]:") { return (String::new(), HashSet::new()); }
-    let parser = Parser::new_ext(source, Options::ENABLE_STRIKETHROUGH);
+    let parser = Parser::new_ext(source, Options::ENABLE_STRIKETHROUGH | Options::ENABLE_FOOTNOTES);
     if parser.reference_definitions().iter().next().is_none() {
         return (String::new(), HashSet::new());
     }
@@ -198,7 +198,7 @@ pub(super) fn consumed_ref_def_lines(lines: &[&str], used: &HashSet<String>) -> 
     }
     for count in 1..=lines.len().min(4) {
         let chunk = lines[..count].concat();
-        let parser = Parser::new(&chunk);
+        let parser = Parser::new_ext(&chunk, Options::ENABLE_FOOTNOTES);
         let labels: Vec<String> = parser.reference_definitions().iter().map(|(k, _)| norm_ref_label(k)).collect();
         if labels.is_empty() || !labels.iter().all(|l| used.contains(l)) { continue; }
         if parser.into_iter().next().is_none() {
