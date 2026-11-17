@@ -1,8 +1,72 @@
-use super::{Block, BlockMeta, Kind, Span, spans};
+use super::{Block, BlockMeta, CleanSource, Kind, Span, spans};
 use std::ops::Range;
+
+struct Fnv1a(u64);
+impl Fnv1a {
+    fn new() -> Self { Self(0xcbf29ce484222325) }
+    fn bytes(&mut self, bytes: &[u8]) {
+        for &b in bytes { self.0 = (self.0 ^ u64::from(b)).wrapping_mul(0x100000001b3); }
+        self.0 = (self.0 ^ 0xff).wrapping_mul(0x100000001b3);
+    }
+    fn u8(&mut self, v: u8) { self.bytes(&[v]); }
+    fn usize(&mut self, v: usize) { self.bytes(&(v as u64).to_le_bytes()); }
+    fn opt_str(&mut self, v: Option<&str>) {
+        match v { Some(s) => { self.u8(1); self.bytes(s.as_bytes()); } None => self.u8(0) }
+    }
+}
+
 impl Block {
     pub fn new(id: u64, kind: Kind, text: String) -> Self {
         Self { id, kind, text, checked: false, spans: Vec::new(), meta: BlockMeta::default() }
+    }
+    pub fn divider(id: u64) -> Self { Self::divider_with_source(id, "***\n") }
+    pub fn divider_with_source(id: u64, source: &str) -> Self {
+        let mut block = Self::new(id, Kind::Paragraph, source.to_owned());
+        block.meta.divider = true;
+        block
+    }
+    pub fn image(id: u64, source: String) -> Self {
+        let mut block = Self::new(id, Kind::Paragraph, source.clone());
+        block.meta.image = Some(source);
+        block
+    }
+    pub fn is_atomic(&self) -> bool {
+        self.meta.divider || self.meta.image.is_some()
+    }
+    pub fn semantic_fingerprint(&self) -> u64 {
+        let mut h = Fnv1a::new();
+        h.u8(self.kind as u8);
+        h.u8(u8::from(self.checked));
+        h.bytes(self.text.as_bytes());
+        h.usize(self.spans.len());
+        for s in &self.spans {
+            h.usize(s.start); h.usize(s.end); h.usize(s.marks.len());
+            for m in &s.marks { h.u8(*m as u8); }
+        }
+        h.usize(self.meta.indent);
+        match self.meta.list_start { Some(n) => { h.u8(1); h.bytes(&n.to_le_bytes()); } None => h.u8(0) }
+        h.opt_str(self.meta.code_language.as_deref());
+        h.u8(u8::from(self.meta.code_empty_line));
+        h.u8(u8::from(self.meta.divider));
+        h.opt_str(self.meta.image.as_deref());
+        h.usize(self.meta.inline.len());
+        for t in &self.meta.inline {
+            h.usize(t.start); h.usize(t.end); h.bytes(t.name.as_bytes()); h.usize(t.attrs.len());
+            for (k, v) in &t.attrs { h.bytes(k.as_bytes()); h.bytes(v.as_bytes()); }
+        }
+        h.u8(self.meta.heading_level.unwrap_or(0));
+        h.u8(self.meta.callout.map_or(0, |c| c as u8 + 1));
+        h.0
+    }
+    pub fn seal_clean_source(&mut self, source: String, list_number: Option<u64>) {
+        self.normalize_spans();
+        let fingerprint = self.semantic_fingerprint();
+        self.meta.clean_source = Some(CleanSource { source, fingerprint, list_number });
+    }
+    pub fn clean_source_for(&self, list_number: Option<u64>) -> Option<&str> {
+        let clean = self.meta.clean_source.as_ref()?;
+        (clean.list_number == list_number && clean.fingerprint == self.semantic_fingerprint())
+            .then_some(clean.source.as_str())
     }
     /// A text selection has inline formatting, but no heading, list or table shell.
     pub fn text_slice(&self, range: Range<usize>) -> Option<Self> {
@@ -33,21 +97,23 @@ impl Block {
             if changed { self.sync_table_text(); }
             return changed;
         }
-        if self.meta.code_language.is_some() || self.meta.raw_source.is_some() {
+        if self.meta.code_language.is_some() || self.is_atomic() {
             return self.replace_range(range, &fragment.text);
         }
         let mut combined = self.slice(0..range.start);
         combined.append(fragment);
         combined.append(&self.slice(range.end..self.text.len()));
+        combined.meta.clean_source = None;
         if *self == combined { return false; }
         *self = combined; true
     }
     pub fn slice(&self, range: Range<usize>) -> Self {
         let valid = spans::valid(&self.text,&range);
+        let whole = valid && range == (0..self.text.len());
         let text = if valid { self.text[range.clone()].to_owned() } else { String::new() };
         if valid && let Some(table) = &self.meta.table {
             let mut block = self.clone();
-            if range != (0..self.text.len()) { block.meta.table = Some(table.slice(range)); }
+            if !whole { block.meta.table = Some(table.slice(range)); }
             block.sync_table_text();
             return block;
         }
@@ -55,10 +121,11 @@ impl Block {
             code_language:self.meta.code_language.clone(),
             list_code:self.meta.list_code.clone(),
             code_empty_line:valid && self.text.is_empty() && self.meta.code_empty_line,
-            raw_source:self.meta.raw_source.as_ref().map(|_| text.clone()),
+            divider:whole && self.meta.divider,
+            image:if whole { self.meta.image.clone() } else { None },
+            clean_source:if whole { self.meta.clean_source.clone() } else { None },
             inline:super::inline_ops::slice(&self.meta.inline, range.clone()),
-            html_paragraph:self.meta.html_paragraph.clone(),
-            unsupported_reason:self.meta.unsupported_reason.clone(),
+            html_paragraph:if whole { self.meta.html_paragraph.clone() } else { None },
             heading_level:self.meta.heading_level, callout:self.meta.callout,
             table:None, tight:self.meta.tight };
         let mut out = Self { id:self.id,kind:self.kind,text,checked:self.checked,spans:Vec::new(),meta };
@@ -74,6 +141,7 @@ impl Block {
     pub fn append(&mut self, other: &Block) {
         // Tables are structural blocks; callers must splice them rather than concatenate projections.
         if self.meta.table.is_some() || other.meta.table.is_some() { return; }
+        self.meta.clean_source = None;
         let offset = self.text.len(); self.text.push_str(&other.text);
         if !self.text.is_empty() { self.meta.code_empty_line = false; }
         self.spans.extend(other.spans.iter().map(|s| Span { start:s.start+offset,end:s.end+offset,marks:s.marks.clone() }));
@@ -96,7 +164,7 @@ impl Numbering {
         if after_blank && let Some(start) = block.meta.list_start && start != number {
             // A different marker after a blank explicitly starts another source run.
             self.levels.last_mut().unwrap().1 = start;
-        } else if block.meta.raw_source.is_none() {
+        } else {
             block.meta.list_start = None;
         }
     }

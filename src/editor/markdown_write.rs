@@ -119,8 +119,8 @@ pub(super) fn markdown(block: &Block, out: &mut String) {
         let source = source.trim_end_matches('\n');
         let source = if let Some(level) = level { source.get(level as usize + 1..).unwrap_or("") } else { source };
         let mut expected = block.clone(); expected.normalize_spans();
-        if inline::parse(source).is_some_and(|(text, spans, tags)|
-            text == expected.text && spans == expected.spans && tags == expected.meta.inline) {
+        let (text, spans, tags) = inline::parse(source);
+        if text == expected.text && spans == expected.spans && tags == expected.meta.inline {
             // These editor extensions are not enabled in the CommonMark writer.
             // Quote their opener when they are ordinary paragraph text.
             if source.starts_with("$$") || source.starts_with(":::") { out.push('\\'); }

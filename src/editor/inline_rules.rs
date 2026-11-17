@@ -82,7 +82,7 @@ impl Editor {
         let (a, b, ai, bi) = self.ordered();
         if ai != bi || a.offset >= b.offset { return false; }
         let Some(block) = self.doc.get(a.block) else { return false };
-        if block.meta.code_language.is_some() || block.meta.raw_source.is_some() { return false; }
+        if block.meta.code_language.is_some() || block.is_atomic() { return false; }
         match text {
             "`" => { self.mark(MarkKind::Code, cx); return true; }
             "~" => { self.mark(MarkKind::Strike, cx); return true; }
@@ -124,7 +124,7 @@ impl Editor {
         let Some(url) = is_single_url(text) else { return false };
         let ranges = self.selection_ranges();
         if ranges.is_empty() { return false; }
-        if ranges.iter().any(|(id, _)| self.doc.get(*id).is_some_and(|b| b.meta.code_language.is_some() || b.meta.raw_source.is_some())) {
+        if ranges.iter().any(|(id, _)| self.doc.get(*id).is_some_and(|b| b.meta.code_language.is_some() || b.is_atomic())) {
             return false;
         }
         let before = self.snapshot();
@@ -141,7 +141,7 @@ impl Editor {
         if !self.caret.is_empty() || self.caret.composing.is_some() { return; }
         let at = self.caret.head;
         let Some(block) = self.doc.get(at.block) else { return };
-        if block.meta.code_language.is_some() || block.meta.raw_source.is_some() || block.meta.table.is_some() { return; }
+        if block.meta.code_language.is_some() || block.is_atomic() || block.meta.table.is_some() { return; }
         if at.offset < typed.len() || !block.text.is_char_boundary(at.offset) { return; }
         let close_pos = at.offset - typed.len();
         if block.spans.iter().any(|s| s.marks.contains(&MarkKind::Code) && s.start < close_pos && s.end >= at.offset) { return; }
@@ -210,7 +210,7 @@ impl Editor {
                 if block.kind == super::model::Kind::Paragraph
                     && block.meta.table.is_none()
                     && block.meta.code_language.is_none()
-                    && block.meta.raw_source.is_none()
+                    && !block.is_atomic()
                     && block.meta.callout.is_none()
                     && block.spans.is_empty()
                     && super::image_source::parse(&block.text).is_some()
@@ -267,7 +267,7 @@ impl Editor {
         let is_plain = block.kind == super::model::Kind::Paragraph
             && block.meta.table.is_none()
             && block.meta.code_language.is_none()
-            && block.meta.raw_source.is_none()
+            && !block.is_atomic()
             && block.meta.callout.is_none()
             && block.spans.is_empty();
         if !is_plain || super::image_source::parse(&block.text).is_none() {
@@ -276,8 +276,8 @@ impl Editor {
         if let Some(block) = self.doc.get_mut(id) {
             let line = format!("{}\n", block.text.trim_end_matches(['\r', '\n']));
             block.text = line.clone();
-            block.meta.raw_source = Some(line);
-            block.meta.unsupported_reason = Some("Image".to_owned());
+            block.meta.image = Some(line);
+            block.meta.clean_source = None;
         }
         self.doc.refresh_block(id);
         true

@@ -3,10 +3,10 @@ use gpui::Context;
 use super::{input::transactions::ListChange, model::{Block, Kind}, view::Editor};
 
 fn is_list(block: &Block) -> bool {
-    matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) && block.meta.table.is_none() && block.meta.raw_source.is_none()
+    matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo) && block.meta.table.is_none() && !block.is_atomic()
 }
 fn is_paragraph(block: &Block) -> bool {
-    block.kind == Kind::Paragraph && block.meta.table.is_none() && block.meta.raw_source.is_none()
+    block.kind == Kind::Paragraph && block.meta.table.is_none() && !block.is_atomic()
         && block.meta.code_language.is_none() && block.meta.callout.is_none()
 }
 
@@ -28,7 +28,7 @@ impl Editor {
             if new == old { return; }
             self.commit_composition(cx);
             let before = self.snapshot();
-            if let Some(b) = self.doc.get_mut(id) { b.meta.indent = new; b.meta.html_paragraph = None; }
+            if let Some(b) = self.doc.get_mut(id) { b.meta.indent = new; b.meta.html_paragraph = None; b.meta.clean_source = None; }
             self.doc.refresh_block(id);
             self.record_changes(before, vec![ListChange { start: index, before: 1, after: 1 }], true, cx);
             return;
@@ -46,7 +46,7 @@ impl Editor {
         for i in index..=last {
             let child = self.doc.blocks[i].id;
             let indent = self.doc.blocks[i].meta.indent;
-            if let Some(b) = self.doc.get_mut(child) { b.meta.indent = (indent + new).saturating_sub(old); }
+            if let Some(b) = self.doc.get_mut(child) { b.meta.indent = (indent + new).saturating_sub(old); b.meta.clean_source = None; }
             self.doc.refresh_block(child);
         }
         let count = last - index + 1;
@@ -138,7 +138,7 @@ impl Editor {
                 let id = self.doc.blocks[i].id;
                 let old = self.doc.blocks[i].meta.indent;
                 let new = if forward { (old + 2).min(12) } else { old.saturating_sub(2) };
-                if let Some(b) = self.doc.get_mut(id) { b.meta.indent = new; b.meta.html_paragraph = None; }
+                if let Some(b) = self.doc.get_mut(id) { b.meta.indent = new; b.meta.html_paragraph = None; b.meta.clean_source = None; }
                 self.doc.refresh_block(id);
             }
             let count = bi - ai + 1;
@@ -167,7 +167,7 @@ impl Editor {
             if !is_list(&self.doc.blocks[i]) { continue; }
             let id = self.doc.blocks[i].id;
             let indent = (self.doc.blocks[i].meta.indent as isize + delta).max(0) as usize;
-            if let Some(b) = self.doc.get_mut(id) { b.meta.indent = indent; }
+            if let Some(b) = self.doc.get_mut(id) { b.meta.indent = indent; b.meta.clean_source = None; }
             self.doc.refresh_block(id);
         }
         let count = bi - ai + 1;

@@ -1,127 +1,206 @@
-use super::{blocks, inline, raw};
+use super::{blocks, boundaries, inline, paragraph};
 use super::super::model::{Block, Kind, ListCode};
-use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
-pub(super) fn parse(id: u64, lines: &[&str]) -> Option<(Vec<Block>, usize)> {
-    let line = lines.first()?.trim_end_matches(['\r', '\n']);
-    let (kind, body, checked, indent, start, opaque) = blocks::classify(line);
-    if !matches!(kind, Kind::Bullet | Kind::Numbered | Kind::Todo) { return None; }
-    let next = lines.iter().skip(1).find(|line| !line.trim().is_empty())?;
-    let (next_kind, _, _, next_indent, _, _) = blocks::classify(next.trim_end_matches(['\r', '\n']));
-    if next_indent <= indent { return None; }
-    if matches!(next_kind, Kind::Bullet | Kind::Numbered | Kind::Todo) { return None; }
-    let limit = lines.iter().enumerate().skip(1).find_map(|(index, line)| {
-        if line.trim().is_empty() { return None; }
-        let (_, _, _, child_indent, _, _) = blocks::classify(line.trim_end_matches(['\r', '\n']));
-        (child_indent <= indent).then_some(index)
-    }).unwrap_or(lines.len());
-    let source = lines[..limit].concat();
-    if indent >= 4 {
-        let mut block = raw(id, source, "Unsupported list item is retained as original Markdown");
-        block.kind = kind; block.checked = checked; block.meta.indent = indent; block.meta.list_start = start;
-        return Some((vec![block], limit));
-    }
-    let mut item_range = None;
-    let mut depth = 0usize;
-    let mut code = None;
-    let mut code_text = String::new();
-    let mut in_code = false;
-    let mut nested = false;
-    for (event, range) in Parser::new_ext(&source, Options::ENABLE_TASKLISTS).into_offset_iter() {
-        match event {
-            Event::Start(Tag::Item) => {
-                depth += 1;
-                if depth == 1 { item_range = Some(range); } else { nested = true; }
+pub(super) fn strip_columns(line: &str, cols: usize) -> String {
+    let mut rem = cols;
+    let mut idx = 0;
+    for (i, ch) in line.char_indices() {
+        if rem == 0 { idx = i; break; }
+        match ch {
+            ' ' => { rem -= 1; idx = i + 1; }
+            '\t' => {
+                if rem >= 4 { rem -= 4; idx = i + 1; }
+                else {
+                    let spaces = " ".repeat(4 - rem);
+                    return format!("{spaces}{}", &line[i + 1..]);
+                }
             }
-            Event::End(TagEnd::Item) => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 && item_range.is_some() { break; }
-            }
-            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info))) if depth == 1 => {
-                if code.is_some() { nested = true; }
-                code = Some((range, info.into_string())); in_code = true;
-            }
-            Event::End(TagEnd::CodeBlock) => in_code = false,
-            Event::Text(text) if in_code => code_text.push_str(&text),
-            _ => {}
+            _ => { idx = i; break; }
         }
     }
-    let item = item_range?;
-    if item.start > line.len() { return None; }
-    let count = lines.iter().scan(0usize, |bytes, line| {
-        if *bytes >= item.end { return None; }
-        *bytes += line.len(); Some(())
-    }).count();
-    if count == 0 { return None; }
-    let original = lines[..count].concat();
-    if let Some((range, language)) = code && !nested && !opaque {
-        let open_line = source[..range.start].rfind('\n').map_or(0, |at| at + 1);
-        let before = source.get(lines[0].len()..open_line).unwrap_or("not a continuation");
-        let after = &source[range.end..original.len().min(source.len())];
-        let marker_width = if kind == Kind::Numbered {
-            line.trim_start().bytes().take_while(u8::is_ascii_digit).count() + 2
-        } else { 2 };
-        let same_line = open_line == 0 && blocks::fence(body).is_some();
-        let opening = &source[open_line..range.start];
-        let padding = opening.len();
-        if (same_line || (open_line >= lines[0].len() && before.trim().is_empty()
-            && opening.bytes().all(|byte| byte == b' ') && padding >= indent + marker_width
-            && padding <= indent + marker_width + 3)) && after.trim().is_empty()
-            && let Some((text, spans, annotations)) = inline::parse(if same_line { "" } else { body })
-        {
-            let mut parent = Block::new(id, kind, text);
-            parent.checked = checked; parent.meta.indent = indent; parent.meta.list_start = start;
-            parent.spans = spans; parent.meta.inline = annotations;
-            let empty_line = code_text == "\n" || code_text == "\r\n";
-            if code_text.ends_with('\n') { code_text.pop(); if code_text.ends_with('\r') { code_text.pop(); } }
-            let mut child = Block::new(id + 1, Kind::Paragraph, code_text);
-            child.meta.code_language = Some(language); child.meta.code_empty_line = empty_line;
-            child.meta.list_code = Some(ListCode { parent_indent: indent,
-                extra_indent: if same_line { 0 } else { padding - indent - marker_width },
-                blank_before: !same_line && !before.is_empty(), same_line });
-            return Some((vec![parent, child], count));
-        }
-    }
-    let mut block = raw(id, original, "Unsupported list item is retained as original Markdown");
-    block.kind = kind; block.checked = checked; block.meta.indent = indent; block.meta.list_start = start;
-    Some((vec![block], count))
+    line[idx..].to_owned()
 }
 
-/// Parse indented child blocks independently so images/tables remain editable.
-pub(super) fn children(id: u64, lines: &[&str]) -> Option<(Vec<Block>, usize)> {
-    let line = lines.first()?.trim_end_matches(['\r', '\n']);
-    let (kind, body, checked, indent, start, opaque) = blocks::classify(line);
-    if opaque || !matches!(kind, Kind::Bullet | Kind::Numbered | Kind::Todo) || blocks::fence(body).is_some() { return None; }
-    let width = if kind == Kind::Numbered {
-        line.trim_start().bytes().take_while(u8::is_ascii_digit).count() + 2
-    } else { 2 };
-    let padding = indent + width;
-    let first = (1..lines.len()).find(|&i| !lines[i].trim().is_empty())?;
-    if lines[first].bytes().take_while(|b| *b == b' ').count() < padding { return None; }
-    let end = (first..lines.len()).find(|&i| !lines[i].trim().is_empty()
-        && lines[i].bytes().take_while(|b| *b == b' ').count() < padding).unwrap_or(lines.len());
-    // Lazy text continuations belong to the parent's paragraph, not a new child.
-    if first == 1 && !body.is_empty() {
-        let next = lines[first][padding..].trim_end();
-        let (child_kind, _, _, _, _, _) = blocks::classify(next);
-        if child_kind == Kind::Paragraph && blocks::fence(next).is_none()
-            && !next.starts_with(['!', '<', '|']) { return None; }
+fn is_pipe_delimiter(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.contains('-') && trimmed.contains('|')
+        && trimmed.chars().all(|c| matches!(c, ' ' | '\t' | '-' | ':' | '|'))
+}
+
+fn starts_block_in_list(line: &str, next_raw: Option<&str>, raw_tail: &[&str]) -> bool {
+    if blocks::is_thematic_break(line) || blocks::classify_list_marker(line).is_some()
+        || blocks::fence_any_indent(line).is_some() || blocks::inline_math_block(line).is_some()
+    {
+        return true;
     }
-    let (text, spans, annotations) = inline::parse(body)?;
-    let mut parent = Block::new(id, kind, text);
-    parent.checked = checked; parent.spans = spans; parent.meta.inline = annotations;
-    parent.meta.indent = indent; parent.meta.list_start = start;
-    let content_end = (first..end).rfind(|&i| !lines[i].trim().is_empty()).map_or(end, |i| i + 1);
-    let source: String = lines[first..content_end].iter().map(|line| {
-        if line.trim().is_empty() { "\n" } else { &line[padding..] }
-    }).collect();
-    let children = super::parse(&source);
+    let (_, trimmed) = blocks::leading_columns(line);
+    if trimmed.starts_with('>') || (trimmed.starts_with(":::") && trimmed.trim() != ":::")
+        || blocks::classify_heading(trimmed).is_some()
+        || super::super::image_source::parse(trimmed).is_some()
+        || paragraph::starts(trimmed)
+        || trimmed.to_ascii_lowercase().starts_with("<table")
+        || boundaries::raw_html_lines(raw_tail).is_some()
+    {
+        return true;
+    }
+    trimmed.contains('|') && next_raw.is_some_and(|n| is_pipe_delimiter(n.trim_end_matches(['\r', '\n'])))
+}
+
+pub(super) fn parse_item(id: u64, lines: &[&str], defs: &str) -> Option<(Vec<Block>, usize)> {
+    let raw0 = *lines.first()?;
+    let line0 = raw0.trim_end_matches(['\r', '\n']);
+    let marker = blocks::classify_list_marker(line0)?;
+    let content_col = marker.indent + marker.marker_width;
+
+    // 1. Same-line fenced code block (`- ```rust`).
+    if let Some((_, _, f_char, f_width, f_info)) = blocks::fence_any_indent(marker.body) {
+        let mut body = String::new();
+        let mut end = 1;
+        while end < lines.len() {
+            let next_raw = lines[end];
+            end += 1;
+            let next_line = next_raw.trim_end_matches(['\r', '\n']);
+            if blocks::closes_fence_any_indent(next_line, f_char, f_width) { break; }
+            body.push_str(&strip_columns(next_raw, content_col));
+        }
+        let empty_line = body == "\n" || body == "\r\n";
+        if body.ends_with('\n') { body.pop(); if body.ends_with('\r') { body.pop(); } }
+        let mut parent = Block::new(id, marker.kind, String::new());
+        parent.checked = marker.checked;
+        parent.meta.indent = marker.indent;
+        parent.meta.list_start = marker.start;
+        let mut child = Block::new(id + 1, Kind::Paragraph, body);
+        child.meta.code_language = Some(f_info.to_owned());
+        child.meta.code_empty_line = empty_line;
+        child.meta.list_code = Some(ListCode {
+            parent_indent: marker.indent,
+            extra_indent: 0,
+            blank_before: false,
+            same_line: true,
+        });
+        return Some((vec![parent, child], end));
+    }
+
+    // 2. Collect soft-wrapped / lazy continuation lines of the item's first paragraph.
+    let mut para_lines: Vec<&str> = Vec::new();
+    let mut para_end = 1usize;
+    if !marker.body.trim().is_empty() {
+        para_lines.push(marker.body);
+        while para_end < lines.len() {
+            let next_line = lines[para_end].trim_end_matches(['\r', '\n']);
+            if next_line.trim().is_empty() { break; }
+            let (next_indent, trimmed) = blocks::leading_columns(next_line);
+            if marker.indent > 0 && next_indent < marker.indent { break; }
+            if starts_block_in_list(next_line, lines.get(para_end + 1).copied(), &lines[para_end..]) {
+                break;
+            }
+            para_lines.push(trimmed);
+            para_end += 1;
+        }
+    }
+
+    // 3. Check whether indented child blocks belong to this item.
+    let first_child = (para_end..lines.len()).find(|&i| !lines[i].trim().is_empty()).filter(|&fc| {
+        let (child_indent, _) = blocks::leading_columns(lines[fc].trim_end_matches(['\r', '\n']));
+        if fc == para_end { child_indent > marker.indent } else { child_indent >= content_col }
+    });
+
+    let joined_body = para_lines.join("\n");
+    let (text, spans, inline_tags) = inline::parse_with_defs(&joined_body, defs);
+    let mut parent = Block::new(id, marker.kind, text);
+    parent.checked = marker.checked;
+    parent.meta.indent = marker.indent;
+    parent.meta.list_start = marker.start;
+    parent.spans = spans;
+    parent.meta.inline = inline_tags;
+
+    let Some(first_child) = first_child else {
+        if defs.is_empty() || !joined_body.contains('[') {
+            parent.seal_clean_source(lines[..para_end].concat(), None);
+        }
+        return Some((vec![parent], para_end));
+    };
+
+    let (first_child_indent, _) = blocks::leading_columns(lines[first_child].trim_end_matches(['\r', '\n']));
+    let min_after_blank = content_col.min(first_child_indent);
+    let mut region_end = first_child + 1;
+    let mut in_fence: Option<(u8, usize)> = blocks::fence_any_indent(lines[first_child].trim_end_matches(['\r', '\n']))
+        .map(|(_, _, ch, w, _)| (ch, w));
+    while region_end < lines.len() {
+        let raw = lines[region_end];
+        let line = raw.trim_end_matches(['\r', '\n']);
+        if let Some((f_ch, f_w)) = in_fence {
+            if blocks::closes_fence_any_indent(line, f_ch, f_w) { in_fence = None; }
+            region_end += 1;
+            continue;
+        }
+        if line.trim().is_empty() {
+            region_end += 1;
+            continue;
+        }
+        let (col, _) = blocks::leading_columns(line);
+        let after_blank = lines[region_end - 1].trim().is_empty();
+        let belongs = if after_blank { col >= min_after_blank } else { col > marker.indent };
+        if !belongs { break; }
+        in_fence = blocks::fence_any_indent(line).map(|(_, _, ch, w, _)| (ch, w));
+        region_end += 1;
+    }
+
+    let content_end = (first_child..region_end)
+        .rfind(|&i| !lines[i].trim().is_empty())
+        .map_or(first_child + 1, |i| i + 1);
+
+    // Preserve `ListCode` metadata when the only child is a single fenced code block.
+    if para_end == 1 && let Some((f_indent, _, f_char, f_width, f_info)) =
+        blocks::fence_any_indent(lines[first_child].trim_end_matches(['\r', '\n']))
+    {
+        let mut close_at = None;
+        for idx in (first_child + 1)..content_end {
+            if blocks::closes_fence_any_indent(lines[idx].trim_end_matches(['\r', '\n']), f_char, f_width) {
+                close_at = Some(idx);
+                break;
+            }
+        }
+        if close_at == Some(content_end - 1) && f_indent >= content_col && f_indent <= content_col + 3 {
+            let mut body = String::new();
+            for raw in &lines[first_child + 1..content_end - 1] {
+                body.push_str(&strip_columns(raw, f_indent));
+            }
+            let empty_line = body == "\n" || body == "\r\n";
+            if body.ends_with('\n') { body.pop(); if body.ends_with('\r') { body.pop(); } }
+            let mut child = Block::new(id + 1, Kind::Paragraph, body);
+            child.meta.code_language = Some(f_info.to_owned());
+            child.meta.code_empty_line = empty_line;
+            child.meta.list_code = Some(ListCode {
+                parent_indent: marker.indent,
+                extra_indent: f_indent - content_col,
+                blank_before: first_child > para_end,
+                same_line: false,
+            });
+            return Some((vec![parent, child], content_end));
+        }
+    }
+
+    let min_child_col = (first_child..content_end)
+        .filter(|&i| !lines[i].trim().is_empty())
+        .map(|i| blocks::leading_columns(lines[i].trim_end_matches(['\r', '\n'])).0)
+        .min()
+        .unwrap_or(content_col);
+    let strip_cols = content_col.min(min_child_col).max(marker.indent + 1);
+    let mut child_source = String::new();
+    for raw in &lines[first_child..content_end] {
+        if raw.trim().is_empty() { child_source.push('\n'); }
+        else { child_source.push_str(&strip_columns(raw, strip_cols)); }
+    }
+    parent.meta.tight = first_child == para_end;
+    let children = super::parse_with_defs(&child_source, defs);
     let mut result = vec![parent];
     for mut child in children.blocks.iter().cloned() {
         child.id = id + result.len() as u64;
-        child.meta.indent += padding;
-        if let Some(code) = &mut child.meta.list_code { code.parent_indent += padding; }
+        child.meta.indent += strip_cols;
+        child.meta.clean_source = None;
+        if let Some(code) = &mut child.meta.list_code { code.parent_indent += strip_cols; }
         result.push(child);
     }
-    Some((result, end))
+    Some((result, content_end))
 }

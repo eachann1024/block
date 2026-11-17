@@ -15,7 +15,7 @@ thread_local! {
 pub(in crate::editor) const PAD_BYTES: usize = 2;
 
 pub(in crate::editor) fn code_spans(block: &Block) -> Vec<Range<usize>> {
-    if block.meta.code_language.is_some() || block.meta.raw_source.is_some()
+    if block.meta.code_language.is_some() || block.is_atomic()
         || block.meta.table.is_some() || block.text.is_empty() { return Vec::new(); }
     let mut out: Vec<Range<usize>> = Vec::new();
     for s in &block.spans {

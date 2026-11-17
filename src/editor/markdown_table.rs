@@ -2,12 +2,44 @@ use super::{inline, table_html, write};
 use super::super::model::{Block, Kind, Table, TableCell, TableFormat, TableRow, CellAlignment};
 use pulldown_cmark::{Alignment, Event, Options, Parser, Tag, TagEnd};
 
-pub(super) fn parse_pipe(source: &str) -> Option<(Table, usize)> {
+fn split_pipe_cells(line: &str) -> Vec<&str> {
+    let line = line.trim();
+    let bytes = line.as_bytes();
+    let mut cuts = Vec::new();
+    let mut escaped = false;
+    for (idx, &byte) in bytes.iter().enumerate() {
+        if byte == b'|' && !escaped { cuts.push(idx); }
+        escaped = byte == b'\\' && !escaped;
+    }
+    if cuts.is_empty() { return vec![line]; }
+    let start = if cuts.first() == Some(&0) { 1 } else { 0 };
+    let has_trailing = cuts.last() == Some(&(bytes.len() - 1));
+    let mut out = Vec::new();
+    let mut prev = if start == 1 { 1 } else { 0 };
+    for &cut in &cuts[start..cuts.len() - usize::from(has_trailing)] {
+        out.push(line[prev..cut].trim());
+        prev = cut + 1;
+    }
+    if !has_trailing {
+        out.push(line[prev..].trim());
+    }
+    out
+}
+
+pub(super) fn parse_pipe(source: &str, defs: &str) -> Option<(Table, usize)> {
     let mut table = Table { format:TableFormat::Pipe, rows:Vec::new(), columns:0,
         alignments:Vec::new(), column_widths:Vec::new(), attrs:Vec::new(), source:String::new() };
     let mut started = false; let mut header = false;
     let mut cell_events = None;
-    for (event, range) in Parser::new_ext(source, Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH).into_offset_iter() {
+    let combined;
+    let parse_src = if defs.is_empty() || !source.contains('[') {
+        source
+    } else {
+        combined = format!("{source}\n\n{defs}");
+        combined.as_str()
+    };
+    let opts = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_FOOTNOTES;
+    for (event, range) in Parser::new_ext(parse_src, opts).into_offset_iter() {
         match event {
             Event::Start(Tag::Table(alignments)) if !started && range.start == 0 => {
                 started = true; table.columns = alignments.len();
@@ -25,36 +57,64 @@ pub(super) fn parse_pipe(source: &str) -> Option<(Table, usize)> {
             },
             Event::End(TagEnd::TableCell) if started => {
                 let (range, events) = cell_events.take()?;
-                let (text, spans, annotations) = inline::parse_events(events)?;
+                let (text, spans, annotations) = inline::parse_events(events);
                 let mut content = Block::new(0, Kind::Paragraph, text);
                 content.spans = spans; content.meta.inline = annotations;
                 let row = table.rows.len().checked_sub(1)?; let column = table.rows[row].cells.len();
+                let clamped = range.start.min(source.len())..range.end.min(source.len());
                 table.rows[row].cells.push(TableCell { original:Box::new(content.clone()), content,
-                    row, column, colspan:1, rowspan:1, header, attrs:Vec::new(), source_range:range });
+                    row, column, colspan:1, rowspan:1, header, attrs:Vec::new(), source_range:clamped });
             },
             Event::End(TagEnd::Table) if started => {
-                table.source = source[..range.end].to_owned();
-                if table.source.lines().enumerate().filter(|(index,_)| *index != 1)
-                    .any(|(_,line)| cell_count(line) > table.columns) { return None; }
-                return Some((table, range.end));
+                let end_byte = range.end.min(source.len());
+                table.source = source[..end_byte].to_owned();
+                // Preserve any extra trailing columns that CommonMark dropped past the header width.
+                let raw_rows: Vec<&str> = table.source.lines().enumerate()
+                    .filter_map(|(idx, line)| (idx != 1).then_some(line))
+                    .collect();
+                for (r, raw_line) in raw_rows.iter().enumerate() {
+                    let raw_cells = split_pipe_cells(raw_line);
+                    if raw_cells.len() > table.columns && let Some(row_obj) = table.rows.get_mut(r) {
+                        for col in row_obj.cells.len()..raw_cells.len() {
+                            let (text, spans, annotations) = inline::parse_with_defs(&raw_cells[col].replace("\\|", "|"), defs);
+                            let mut content = Block::new(0, Kind::Paragraph, text);
+                            content.spans = spans; content.meta.inline = annotations;
+                            row_obj.cells.push(TableCell {
+                                original: Box::new(content.clone()), content,
+                                row: r, column: col, colspan: 1, rowspan: 1,
+                                header: r == 0, attrs: Vec::new(), source_range: 0..0,
+                            });
+                        }
+                        table.columns = table.columns.max(raw_cells.len());
+                    }
+                }
+                while table.alignments.len() < table.columns {
+                    table.alignments.push(CellAlignment::Left);
+                }
+                for (r, row_obj) in table.rows.iter_mut().enumerate() {
+                    while row_obj.cells.len() < table.columns {
+                        let col = row_obj.cells.len();
+                        let empty = Block::new(0, Kind::Paragraph, String::new());
+                        row_obj.cells.push(TableCell {
+                            original: Box::new(empty.clone()), content: empty,
+                            row: r, column: col, colspan: 1, rowspan: 1,
+                            header: r == 0, attrs: Vec::new(), source_range: 0..0,
+                        });
+                    }
+                }
+                if !defs.is_empty() && source[..end_byte].contains('[') {
+                    // Ensure reference-link expansion persists if saved later.
+                    let mut fresh = String::new();
+                    write_pipe(&table, &mut fresh);
+                    table.source = fresh;
+                }
+                return Some((table, end_byte));
             },
             _ if !started => return None,
             event => if let Some((_, events)) = &mut cell_events { events.push(event); },
         }
     }
     None
-}
-
-fn cell_count(line: &str) -> usize {
-    let line = line.trim(); let bytes = line.as_bytes(); let mut escaped = false; let mut pipes = 0;
-    for byte in bytes {
-        if *byte == b'|' && !escaped { pipes += 1; }
-        escaped = *byte == b'\\' && !escaped;
-    }
-    let leading = usize::from(line.starts_with('|'));
-    let trailing = usize::from(line.ends_with('|') && !escaped
-        && bytes.iter().rev().skip(1).take_while(|b| **b == b'\\').count() % 2 == 0);
-    (pipes + 1usize).saturating_sub(leading + trailing)
 }
 
 pub(super) fn serialize(table: &Table, out: &mut String) {
@@ -83,7 +143,7 @@ fn write_pipe(table: &Table, out: &mut String) {
     }
     events.push(Event::End(TagEnd::Table));
     if let Some(source) = write::render(events) {
-        if parse_pipe(&source).is_some_and(|(parsed, _)| parsed.columns == table.columns
+        if parse_pipe(&source, "").is_some_and(|(parsed, _)| parsed.columns == table.columns
             && parsed.rows.len() == table.rows.len()
             && parsed.rows.iter().zip(&table.rows).all(|(a, b)| a.cells.len() == b.cells.len())
             && parsed.rows.iter().flat_map(|row| &row.cells)

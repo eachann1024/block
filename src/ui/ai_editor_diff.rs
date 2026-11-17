@@ -126,22 +126,12 @@ mod parse {
             }
             return;
         }
-        if block.meta.raw_source.is_none() && !has_html_tag(&block.text) { return; }
-        let raw = block.text.trim_end_matches(['\r', '\n']).trim_start_matches([' ', '\t']);
-        let (kind, body, checked, level) = if block.meta.raw_source.is_some() {
-            classify_prefix(raw)
-        } else {
-            (block.kind, block.text.as_str(), block.checked, block.meta.heading_level)
-        };
-        let parsed = parse_inline_fragment(body);
-        block.kind = kind;
-        block.checked = checked;
-        block.meta.heading_level = level;
+        if block.is_atomic() || !has_html_tag(&block.text) { return; }
+        let parsed = parse_inline_fragment(&block.text);
         block.text = parsed.text;
         block.spans = parsed.spans;
         block.meta.inline = parsed.meta.inline;
-        block.meta.raw_source = None;
-        block.meta.unsupported_reason = None;
+        block.meta.clean_source = None;
     }
 
     fn has_html_tag(text: &str) -> bool {
@@ -152,26 +142,6 @@ mod parse {
             }
         }
         false
-    }
-
-    fn classify_prefix(body: &str) -> (Kind, &str, bool, Option<u8>) {
-        for (prefix, checked) in [("- [ ] ", false), ("- [x] ", true), ("- [X] ", true)] {
-            if let Some(rest) = body.strip_prefix(prefix) { return (Kind::Todo, rest, checked, None); }
-        }
-        for prefix in ["- ", "+ ", "* "] {
-            if let Some(rest) = body.strip_prefix(prefix) { return (Kind::Bullet, rest, false, None); }
-        }
-        let digits = body.bytes().take_while(u8::is_ascii_digit).count();
-        if digits > 0 && (body[digits..].starts_with(". ") || body[digits..].starts_with(") ")) {
-            return (Kind::Numbered, &body[digits + 2..], false, None);
-        }
-        for (prefix, kind, lvl) in [
-            ("###### ", Kind::H3, Some(6)), ("##### ", Kind::H3, Some(5)), ("#### ", Kind::H3, Some(4)),
-            ("### ", Kind::H3, None), ("## ", Kind::H2, None), ("# ", Kind::H1, None), ("> ", Kind::Quote, None),
-        ] {
-            if let Some(rest) = body.strip_prefix(prefix) { return (kind, rest, false, lvl); }
-        }
-        (Kind::Paragraph, body, false, None)
     }
 
     #[derive(Clone)]
