@@ -162,7 +162,7 @@ impl Render for AiChat {
             let x_id = SharedString::from(format!("chip-x-{i}"));
             d.child(div().id(SharedString::from(format!("chip-{i}"))).flex().items_center().gap(px(4.)).px(px(6.)).py(px(2.)).rounded(crate::ui::radius::CONTROL)
                 .bg(theme.hover).text_size(type_scale::BODY)
-                .child(duo_glyph(if is_ref { Icon::Note } else { Icon::Sparkles }, icon_size::MICRO, theme.accent))
+                .child(duo_glyph(if is_ref { Icon::Note } else { Icon::Sparkles }, icon_size::ROW, theme.accent))
                 .child(if is_ref { name.clone() } else { format!("/{name}") })
                 .child(div().id(x_id.clone()).group(x_id.clone()).cursor(CursorStyle::PointingHand)
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {

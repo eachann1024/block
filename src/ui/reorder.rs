@@ -14,7 +14,7 @@ impl Render for Preview {
         div().h(px(30.)).px(px(10.)).max_w(px(260.)).flex().items_center().gap(px(8.))
             .rounded(super::radius::CONTROL).bg(theme.menu).border_1().border_color(theme.accent)
             .text_size(theme.ui_font).text_color(theme.text)
-            .child(icon(self.glyph, px(16.), theme.icon_colors(theme.text)))
+            .child(icon(self.glyph, px(super::icon_size::ROW), theme.icon_colors(theme.text)))
             .child(div().overflow_hidden().whitespace_nowrap().text_ellipsis().child(self.label.clone()))
     }
 }

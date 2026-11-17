@@ -60,7 +60,7 @@ pub fn folder_check_row(
         .on_change(move |_state, ev, window, cx| on_toggle(ev, window, cx))
         .child(
             div().flex().items_center().gap(px(10.)).flex_1().min_w_0()
-                .child(crate::icons::icon(glyph, px(16.), icon_colors))
+                .child(crate::icons::icon(glyph, px(crate::ui::icon_size::ROW), icon_colors))
                 .child(div().text_size(px(14.)).font_weight(FontWeight(460.)).text_color(theme.text).child(label)),
         )
         .child(folder_check_box(checked))

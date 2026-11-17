@@ -34,7 +34,7 @@ impl Workspace {
             let name = crate::search::folder_name(&folder_path);
             let short_path = display_folder_path(&folder_path);
             let left = div().flex().items_center().gap(px(10.)).flex_1().min_w_0()
-                .child(icon(Icon::Folder, px(16.), folder_colors))
+                .child(icon(Icon::Folder, px(crate::ui::icon_size::ROW), folder_colors))
                 .child(div().flex_none().font(mono_font()).text_size(px(14.)).text_color(theme.text).child(name))
                 .child(div().min_w_0().truncate().font(mono_font()).text_size(px(14.)).text_color(theme.text_secondary).child(short_path));
             let toggle_path = folder_path.clone();
@@ -63,7 +63,7 @@ impl Workspace {
         )(cx);
 
         let assets_left = div().flex().items_center().gap(px(10.)).flex_1().min_w_0()
-            .child(icon(Icon::Folder, px(16.), theme.icon_colors(theme.text)))
+            .child(icon(Icon::Folder, px(crate::ui::icon_size::ROW), theme.icon_colors(theme.text)))
             .child(folder_name_input("folder-assets-input", &modal.assets_input).font(mono_font()));
 
         let assets_right = div().flex().items_center().gap(px(10.)).flex_none()
@@ -79,7 +79,7 @@ impl Workspace {
                 theme.icon_colors(theme.text)
             };
             let left = div().flex().items_center().gap(px(10.)).flex_1().min_w_0()
-                .child(icon(Icon::Folder, px(16.), folder_colors))
+                .child(icon(Icon::Folder, px(crate::ui::icon_size::ROW), folder_colors))
                 .child(div().min_w_0().truncate().font(mono_font()).text_size(px(14.)).text_color(theme.text).child(rule.pattern.clone()));
             let seg = folder_visibility_segmented(
                 ("folder-seg-exact", ix),
