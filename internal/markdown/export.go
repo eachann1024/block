@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -27,7 +29,553 @@ const (
 	defaultExportWidth = 816
 	exportScale        = 2.0
 	maxPDFPageHeightPt = 1152
+	watermarkLabel     = "Block"
 )
+
+// TitleMark describes how the document title is separated from the body.
+type TitleMark uint8
+
+const (
+	TitleMarkRule TitleMark = iota
+	TitleMarkBar
+	TitleMarkWavy
+	TitleMarkHighlight
+	TitleMarkDoubleRule
+	TitleMarkBand
+	TitleMarkCursor
+)
+
+// CardSpec describes optional floating card geometry on a paper theme.
+type CardSpec struct {
+	Inset     float32
+	Radius    float32
+	Border    ui.Color
+	HasBorder bool
+	Shadow    ui.Color
+}
+
+// PaperThemeSpec defines the complete color palette and page geometry for a paper export theme.
+type PaperThemeSpec struct {
+	Theme         model.ExportTheme
+	Dark          bool
+	Canvas        ui.Color
+	InnerCanvas   ui.Color
+	Text          ui.Color
+	Title         ui.Color
+	Secondary     ui.Color
+	Accent        ui.Color
+	Accent2       ui.Color
+	CodeBG        ui.Color
+	CodeBorder    ui.Color
+	QuoteBG       ui.Color
+	QuoteFG       ui.Color
+	QuoteBar      ui.Color
+	TableBorder   ui.Color
+	Divider       ui.Color
+	Swatch        [3]ui.Color // [paper, accent, inner_card]
+	Card          *CardSpec
+	PadTop        float32
+	PadRight      float32
+	PadBottom     float32
+	PadLeft       float32
+	BodySize      float32
+	Leading       float32
+	TitleSize     float32
+	HeadSizes     [3]float32
+	Mark          TitleMark
+	TitleFamily   string
+	HeadingFamily string
+	BodyFamily    string
+	TitleBold     bool
+}
+
+const (
+	fontPing = "PingFang SC"
+	fontSong = "Songti SC"
+	fontKai  = "Kaiti SC"
+	fontMono = "Menlo, monospace"
+)
+
+func rgbHex(v uint32) ui.Color {
+	return ui.RGB(uint8(v>>16), uint8(v>>8), uint8(v))
+}
+
+func rgbaBytes(r, g, b, a uint8) ui.Color {
+	return ui.Color{R: r, G: g, B: b, A: a}
+}
+
+// NormalizeExportTheme resolves t to one of the 12 supported ExportTheme values (defaulting to Mono).
+func NormalizeExportTheme(t model.ExportTheme) model.ExportTheme {
+	switch t {
+	case model.ExportThemeMono,
+		model.ExportThemeJournal,
+		model.ExportThemeRiso,
+		model.ExportThemePress,
+		model.ExportThemePoster,
+		model.ExportThemeMist,
+		model.ExportThemeInk,
+		model.ExportThemeKraft,
+		model.ExportThemeNeon,
+		model.ExportThemeFilm,
+		model.ExportThemeNight,
+		model.ExportThemeTerminal:
+		return t
+	default:
+		return model.ExportThemeMono
+	}
+}
+
+// PaperTheme returns the 1:1 paper theme specification for any of the 12 ExportTheme styles.
+func PaperTheme(t model.ExportTheme) PaperThemeSpec {
+	t = NormalizeExportTheme(t)
+	open := func(dark bool, mark TitleMark, titleSize float32, titleFam, bodyFam string) PaperThemeSpec {
+		return PaperThemeSpec{
+			Theme:         t,
+			Dark:          dark,
+			PadTop:        72,
+			PadRight:      72,
+			PadBottom:     64,
+			PadLeft:       72,
+			BodySize:      17,
+			Leading:       1.75,
+			TitleSize:     titleSize,
+			HeadSizes:     [3]float32{28, 22, 19},
+			Mark:          mark,
+			TitleFamily:   titleFam,
+			HeadingFamily: titleFam,
+			BodyFamily:    bodyFam,
+			TitleBold:     true,
+		}
+	}
+	journal := func(dark bool, border ui.Color) PaperThemeSpec {
+		return PaperThemeSpec{
+			Theme: t,
+			Dark:  dark,
+			Card: &CardSpec{
+				Inset:     60,
+				Radius:    14,
+				Border:    border,
+				HasBorder: true,
+				Shadow:    rgbaBytes(90, 60, 10, 16),
+			},
+			PadTop:        54,
+			PadRight:      44,
+			PadBottom:     44,
+			PadLeft:       44,
+			BodySize:      18,
+			Leading:       1.85,
+			TitleSize:     34,
+			HeadSizes:     [3]float32{30, 25, 21},
+			Mark:          TitleMarkWavy,
+			TitleFamily:   fontKai,
+			HeadingFamily: fontKai,
+			BodyFamily:    fontPing,
+			TitleBold:     false,
+		}
+	}
+	floating := func(dark bool, border *ui.Color, shadow ui.Color) PaperThemeSpec {
+		card := &CardSpec{
+			Inset:  48,
+			Radius: 20,
+			Shadow: shadow,
+		}
+		if border != nil {
+			card.Border = *border
+			card.HasBorder = true
+		}
+		return PaperThemeSpec{
+			Theme:         t,
+			Dark:          dark,
+			Card:          card,
+			PadTop:        56,
+			PadRight:      56,
+			PadBottom:     52,
+			PadLeft:       56,
+			BodySize:      17,
+			Leading:       1.75,
+			TitleSize:     38,
+			HeadSizes:     [3]float32{27, 21, 18.5},
+			Mark:          TitleMarkBar,
+			TitleFamily:   fontPing,
+			HeadingFamily: fontPing,
+			BodyFamily:    fontPing,
+			TitleBold:     true,
+		}
+	}
+
+	var s PaperThemeSpec
+	switch t {
+	case model.ExportThemeJournal:
+		s = journal(false, ui.RGB(240, 232, 208))
+		s.Canvas, s.InnerCanvas = rgbHex(0xfef9e7), rgbHex(0xfffef5)
+		s.Text, s.Title, s.Secondary = rgbHex(0x1f1e1d), rgbHex(0x1f1e1d), rgbHex(0x5e5d59)
+		s.Accent, s.Accent2 = rgbHex(0xd97706), rgbaBytes(252, 196, 57, 140)
+		s.CodeBG, s.CodeBorder = rgbHex(0xfaf5e6), rgbHex(0xe8dcc8)
+		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0x5e5d59), rgbHex(0xe8dcc8)
+		s.TableBorder, s.Divider = rgbHex(0xe8dcc8), rgbHex(0xe8dcc8)
+		s.Swatch = [3]ui.Color{rgbHex(0xfef9e7), rgbHex(0xd97706), rgbHex(0xfffef5)}
+
+	case model.ExportThemeRiso:
+		s = open(false, TitleMarkHighlight, 44, fontPing, fontPing)
+		s.Canvas, s.InnerCanvas = rgbHex(0xf4efe4), rgbHex(0xf4efe4)
+		s.Text, s.Title, s.Secondary = rgbHex(0x1f2a44), rgbHex(0x1d3fa8), rgbHex(0x4a5470)
+		s.Accent, s.Accent2 = rgbHex(0xff5aa8), rgbHex(0x1d3fa8)
+		s.CodeBG, s.CodeBorder = rgbHex(0xfbf7ee), rgbHex(0x1d3fa8)
+		s.QuoteBG, s.QuoteFG, s.QuoteBar = rgbHex(0xffe4f0), rgbHex(0x1f2a44), rgbHex(0xff5aa8)
+		s.TableBorder, s.Divider = rgbHex(0x9aa6cc), rgbHex(0x1d3fa8)
+		s.Swatch = [3]ui.Color{rgbHex(0xf4efe4), rgbHex(0xff5aa8), rgbHex(0xf4efe4)}
+
+	case model.ExportThemePress:
+		s = open(false, TitleMarkDoubleRule, 46, fontSong, fontSong)
+		s.PadTop, s.PadBottom = 64, 60
+		s.BodySize, s.Leading = 17.5, 1.8
+		s.Canvas, s.InnerCanvas = rgbHex(0xf1ead9), rgbHex(0xf1ead9)
+		s.Text, s.Title, s.Secondary = rgbHex(0x23201b), rgbHex(0x1a1814), rgbHex(0x5a5244)
+		s.Accent, s.Accent2 = rgbHex(0x9c2b1f), rgbHex(0x23201b)
+		s.CodeBG, s.CodeBorder = rgbHex(0xe8dfcb), rgbHex(0xb9ab8d)
+		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0x23201b), rgbHex(0x23201b)
+		s.TableBorder, s.Divider = rgbHex(0x8c826e), rgbHex(0x23201b)
+		s.Swatch = [3]ui.Color{rgbHex(0xf1ead9), rgbHex(0x9c2b1f), rgbHex(0xf1ead9)}
+
+	case model.ExportThemePoster:
+		s = open(false, TitleMarkBand, 50, fontPing, fontPing)
+		s.PadTop = 56
+		s.Canvas, s.InnerCanvas = rgbHex(0xffffff), rgbHex(0xffffff)
+		s.Text, s.Title, s.Secondary = rgbHex(0x1c1c1c), rgbHex(0x1c1c1c), rgbHex(0x5c5c5c)
+		s.Accent, s.Accent2 = rgbHex(0xd8401a), rgbHex(0xffffff)
+		s.CodeBG, s.CodeBorder = rgbHex(0xf5f3f1), rgbHex(0xebe6e1)
+		s.QuoteBG, s.QuoteFG, s.QuoteBar = rgbHex(0xfff1ea), rgbHex(0x1c1c1c), rgbHex(0xd8401a)
+		s.TableBorder, s.Divider = rgbHex(0xe0dcd8), rgbHex(0xe8e4e0)
+		s.Swatch = [3]ui.Color{rgbHex(0xffffff), rgbHex(0xe2471b), rgbHex(0xffffff)}
+
+	case model.ExportThemeMist:
+		s = floating(false, nil, rgbaBytes(30, 50, 90, 22))
+		s.Canvas, s.InnerCanvas = rgbHex(0xe9edf2), rgbHex(0xffffff)
+		s.Text, s.Title, s.Secondary = rgbHex(0x1e293b), rgbHex(0x0f172a), rgbHex(0x55627a)
+		s.Accent, s.Accent2 = rgbHex(0x3b6cf6), rgbHex(0x3b6cf6)
+		s.CodeBG, s.CodeBorder = rgbHex(0xf3f5f9), rgbHex(0xe3e8ef)
+		s.QuoteBG, s.QuoteFG, s.QuoteBar = rgbHex(0xf2f6fd), rgbHex(0x1e293b), rgbHex(0x3b6cf6)
+		s.TableBorder, s.Divider = rgbHex(0xdfe5ee), rgbHex(0xe3e8ef)
+		s.Swatch = [3]ui.Color{rgbHex(0xe9edf2), rgbHex(0x3b6cf6), rgbHex(0xffffff)}
+
+	case model.ExportThemeInk:
+		s = open(true, TitleMarkRule, 42, fontPing, fontPing)
+		s.Canvas, s.InnerCanvas = rgbHex(0x121212), rgbHex(0x121212)
+		s.Text, s.Title, s.Secondary = rgbHex(0xe6e6e6), rgbHex(0xffffff), rgbHex(0xa3a3a3)
+		s.Accent, s.Accent2 = rgbHex(0xededed), rgbHex(0x3a3a3a)
+		s.CodeBG, s.CodeBorder = rgbHex(0x1e1e1e), rgbHex(0x2e2e2e)
+		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0xf5f5f5), rgbHex(0xededed)
+		s.TableBorder, s.Divider = rgbHex(0x3a3a3a), rgbHex(0x3a3a3a)
+		s.Swatch = [3]ui.Color{rgbHex(0x121212), rgbHex(0xededed), rgbHex(0x121212)}
+
+	case model.ExportThemeKraft:
+		s = journal(true, ui.RGB(58, 53, 45))
+		s.Canvas, s.InnerCanvas = rgbHex(0x1c1a17), rgbHex(0x27241f)
+		s.Text, s.Title, s.Secondary = rgbHex(0xece3cf), rgbHex(0xfbf3df), rgbHex(0xb3a78c)
+		s.Accent, s.Accent2 = rgbHex(0xf0c35a), rgbaBytes(240, 195, 90, 120)
+		s.CodeBG, s.CodeBorder = rgbHex(0x1f1d19), rgbHex(0x4a4538)
+		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0xc9bea4), rgbHex(0x5c5446)
+		s.TableBorder, s.Divider = rgbHex(0x4a4538), rgbHex(0x3d382f)
+		s.Swatch = [3]ui.Color{rgbHex(0x1c1a17), rgbHex(0xf0c35a), rgbHex(0x27241f)}
+
+	case model.ExportThemeNeon:
+		s = open(true, TitleMarkBar, 44, fontPing, fontPing)
+		s.Canvas, s.InnerCanvas = rgbHex(0x14152b), rgbHex(0x14152b)
+		s.Text, s.Title, s.Secondary = rgbHex(0xecebff), rgbHex(0xffffff), rgbHex(0xa9a8d0)
+		s.Accent, s.Accent2 = rgbHex(0x3fe0d0), rgbHex(0xff6a3d)
+		s.CodeBG, s.CodeBorder = rgbHex(0x0f1024), rgbHex(0x2e3170)
+		s.QuoteBG, s.QuoteFG, s.QuoteBar = rgbHex(0x1d1f3d), rgbHex(0xecebff), rgbHex(0x3fe0d0)
+		s.TableBorder, s.Divider = rgbHex(0x34376e), rgbHex(0x34376e)
+		s.Swatch = [3]ui.Color{rgbHex(0x14152b), rgbHex(0x3fe0d0), rgbHex(0x14152b)}
+
+	case model.ExportThemeFilm:
+		s = open(true, TitleMarkBar, 42, fontSong, fontPing)
+		s.Card = &CardSpec{Inset: 40, Radius: 10}
+		s.PadTop, s.PadRight, s.PadBottom, s.PadLeft = 56, 56, 52, 56
+		s.Leading = 1.8
+		s.TitleBold = false
+		s.HeadingFamily = fontPing
+		s.Canvas, s.InnerCanvas = rgbHex(0x141210), rgbHex(0x0b0a09)
+		s.Text, s.Title, s.Secondary = rgbHex(0xe8e0d0), rgbHex(0xfbf5e8), rgbHex(0xa89c86)
+		s.Accent, s.Accent2 = rgbHex(0xf2a33a), rgbHex(0xf2a33a)
+		s.CodeBG, s.CodeBorder = rgbHex(0x1f1c18), rgbHex(0x302b24)
+		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0xfbf5e8), rgbHex(0xf2a33a)
+		s.TableBorder, s.Divider = rgbHex(0x403a30), rgbHex(0x302b24)
+		s.Swatch = [3]ui.Color{rgbHex(0x141210), rgbHex(0xf2a33a), rgbHex(0x0b0a09)}
+
+	case model.ExportThemeNight:
+		border := ui.RGB(38, 44, 54)
+		s = floating(true, &border, ui.Transparent)
+		s.Canvas, s.InnerCanvas = rgbHex(0x0d1117), rgbHex(0x161b22)
+		s.Text, s.Title, s.Secondary = rgbHex(0xd1d7e0), rgbHex(0xf0f3f6), rgbHex(0x8b949e)
+		s.Accent, s.Accent2 = rgbHex(0x7aa2f7), rgbHex(0x7aa2f7)
+		s.CodeBG, s.CodeBorder = rgbHex(0x0f1318), rgbHex(0x262c36)
+		s.QuoteBG, s.QuoteFG, s.QuoteBar = rgbHex(0x1b2230), rgbHex(0xd1d7e0), rgbHex(0x7aa2f7)
+		s.TableBorder, s.Divider = rgbHex(0x30363d), rgbHex(0x262c36)
+		s.Swatch = [3]ui.Color{rgbHex(0x0d1117), rgbHex(0x7aa2f7), rgbHex(0x161b22)}
+
+	case model.ExportThemeTerminal:
+		s = open(true, TitleMarkCursor, 36, fontPing, fontPing)
+		s.TitleFamily = fontMono
+		s.Canvas, s.InnerCanvas = rgbHex(0x0c0f0c), rgbHex(0x0c0f0c)
+		s.Text, s.Title, s.Secondary = rgbHex(0xd6e4d6), rgbHex(0x8ee08a), rgbHex(0x7f957f)
+		s.Accent, s.Accent2 = rgbHex(0x7ee787), rgbHex(0x7ee787)
+		s.CodeBG, s.CodeBorder = rgbHex(0x121812), rgbHex(0x243024)
+		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0xb8ccb8), rgbHex(0x3f6b3f)
+		s.TableBorder, s.Divider = rgbHex(0x2a3a2a), rgbHex(0x2a3a2a)
+		s.Swatch = [3]ui.Color{rgbHex(0x0c0f0c), rgbHex(0x7ee787), rgbHex(0x0c0f0c)}
+
+	default: // model.ExportThemeMono
+		s = open(false, TitleMarkRule, 42, fontPing, fontPing)
+		s.Canvas, s.InnerCanvas = rgbHex(0xffffff), rgbHex(0xffffff)
+		s.Text, s.Title, s.Secondary = rgbHex(0x1f1e1d), rgbHex(0x111111), rgbHex(0x5e5d59)
+		s.Accent, s.Accent2 = rgbHex(0x111111), rgbHex(0x111111)
+		s.CodeBG, s.CodeBorder = rgbHex(0xf4f4f2), rgbHex(0xe4e4e0)
+		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0x1f1e1d), rgbHex(0x111111)
+		s.TableBorder, s.Divider = rgbHex(0xd6d6d1), rgbHex(0xdcdcd7)
+		s.Swatch = [3]ui.Color{rgbHex(0xffffff), rgbHex(0x111111), rgbHex(0xffffff)}
+	}
+	return s
+}
+
+func (s PaperThemeSpec) Margins() (top, right, bottom, left float32) {
+	var inset float32
+	if s.Card != nil {
+		inset = s.Card.Inset
+	}
+	return s.PadTop + inset, s.PadRight + inset, s.PadBottom + inset, s.PadLeft + inset
+}
+
+func (s PaperThemeSpec) BlockRadius() float32 {
+	switch s.Theme {
+	case model.ExportThemeJournal, model.ExportThemeKraft, model.ExportThemeMist, model.ExportThemeNight:
+		return 10
+	case model.ExportThemePress, model.ExportThemeRiso, model.ExportThemeTerminal:
+		return 2
+	default:
+		return 6
+	}
+}
+
+func (s PaperThemeSpec) UsesSquareBullets() bool {
+	return s.Theme == model.ExportThemePoster || s.Theme == model.ExportThemeTerminal || s.Theme == model.ExportThemeRiso
+}
+
+// LinkFG returns Accent when WCAG AA contrast against InnerCanvas is >= 4.5, otherwise Title.
+func (s PaperThemeSpec) LinkFG() ui.Color {
+	lum := func(c ui.Color) float64 {
+		lin := func(v uint8) float64 {
+			x := float64(v) / 255.0
+			if x <= 0.04045 {
+				return x / 12.92
+			}
+			return math.Pow((x+0.055)/1.055, 2.4)
+		}
+		return 0.2126*lin(c.R) + 0.7152*lin(c.G) + 0.0722*lin(c.B)
+	}
+	a, b := lum(s.Accent), lum(s.InnerCanvas)
+	if b > a {
+		a, b = b, a
+	}
+	if (a+0.05)/(b+0.05) >= 4.5 {
+		return s.Accent
+	}
+	return s.Title
+}
+
+func (s PaperThemeSpec) TableHeaderBG() ui.Color {
+	t := float32(0.08)
+	if s.Dark {
+		t = 0.16
+	}
+	return mixUIColor(s.InnerCanvas, s.Accent, t)
+}
+
+func (s PaperThemeSpec) HighlightBG() ui.Color {
+	t := float32(0.22)
+	if s.Dark {
+		t = 0.30
+	}
+	return mixUIColor(s.InnerCanvas, s.Accent, t)
+}
+
+func (s PaperThemeSpec) FG(c ui.Color) ui.Color {
+	if !s.Dark {
+		return c
+	}
+	luma := (0.299*float32(c.R) + 0.587*float32(c.G) + 0.114*float32(c.B)) / 255.0
+	if luma >= 0.5 {
+		return c
+	}
+	t := (0.5-luma)/0.5*0.7 + 0.2
+	return mixUIColor(c, ui.RGB(255, 255, 255), t)
+}
+
+func (s PaperThemeSpec) BG(c ui.Color) ui.Color {
+	if !s.Dark || c.A == 0 {
+		return c
+	}
+	mixed := mixUIColor(c, s.InnerCanvas, 0.78)
+	return ui.Color{R: mixed.R, G: mixed.G, B: mixed.B, A: c.A}
+}
+
+func (s PaperThemeSpec) CalloutColors(kind model.CalloutKind) (bg, border, accent ui.Color, title string) {
+	switch kind {
+	case model.CalloutTip:
+		if s.Dark {
+			accent = theme.OceanDark.Success
+		} else {
+			accent = theme.OceanLight.Success
+		}
+		title = "TIP"
+	case model.CalloutImportant:
+		if s.Dark {
+			accent = ui.Hex("#a78bfa")
+		} else {
+			accent = ui.Hex("#7c3aed")
+		}
+		title = "IMPORTANT"
+	case model.CalloutWarning:
+		if s.Dark {
+			accent = theme.OceanDark.Warning
+		} else {
+			accent = theme.OceanLight.Warning
+		}
+		title = "WARNING"
+	case model.CalloutCaution:
+		if s.Dark {
+			accent = theme.OceanDark.Danger
+		} else {
+			accent = theme.OceanLight.Danger
+		}
+		title = "CAUTION"
+	default:
+		accent = s.LinkFG()
+		title = "NOTE"
+	}
+	bgMix := float32(0.07)
+	if s.Dark {
+		bgMix = 0.12
+	}
+	bg = mixUIColor(s.InnerCanvas, accent, bgMix)
+	border = mixUIColor(s.InnerCanvas, accent, 0.35)
+	return bg, border, accent, title
+}
+
+func legacyOceanPaperSpec(pal theme.Palette) PaperThemeSpec {
+	return PaperThemeSpec{
+		Theme:         model.ExportThemeMono,
+		Dark:          pal.Dark,
+		Canvas:        pal.Shell,
+		InnerCanvas:   pal.Paper,
+		Text:          pal.Text,
+		Title:         pal.Text,
+		Secondary:     pal.TextSecondary,
+		Accent:        pal.Accent,
+		Accent2:       pal.AccentText,
+		CodeBG:        pal.CodeBG,
+		CodeBorder:    pal.Hairline,
+		QuoteBG:       pal.Hover,
+		QuoteFG:       pal.TextSecondary,
+		QuoteBar:      pal.QuoteBar,
+		TableBorder:   pal.Hairline,
+		Divider:       pal.Hairline,
+		Swatch:        [3]ui.Color{pal.Shell, pal.Accent, pal.Paper},
+		Card:          &CardSpec{Inset: 24, Radius: 14, Border: pal.Hairline, HasBorder: true},
+		PadTop:        48,
+		PadRight:      56,
+		PadBottom:     48,
+		PadLeft:       56,
+		BodySize:      16,
+		Leading:       1.75,
+		TitleSize:     32,
+		HeadSizes:     [3]float32{28, 22, 19},
+		Mark:          TitleMarkRule,
+		TitleFamily:   fontPing,
+		HeadingFamily: fontPing,
+		BodyFamily:    fontPing,
+		TitleBold:     true,
+	}
+}
+
+func parseExportThemeName(raw string) (model.ExportTheme, bool) {
+	v := model.ExportTheme(strings.ToLower(strings.TrimSpace(raw)))
+	switch v {
+	case model.ExportThemeMono,
+		model.ExportThemeJournal,
+		model.ExportThemeRiso,
+		model.ExportThemePress,
+		model.ExportThemePoster,
+		model.ExportThemeMist,
+		model.ExportThemeInk,
+		model.ExportThemeKraft,
+		model.ExportThemeNeon,
+		model.ExportThemeFilm,
+		model.ExportThemeNight,
+		model.ExportThemeTerminal:
+		return v, true
+	default:
+		return "", false
+	}
+}
+
+func resolveExportPaper(prefs model.ExportPreferences) (PaperThemeSpec, bool) {
+	if prefs.Style != "" {
+		return PaperTheme(prefs.Style), false
+	}
+	if parsed, ok := parseExportThemeName(prefs.Theme); ok {
+		return PaperTheme(parsed), false
+	}
+	switch strings.ToLower(strings.TrimSpace(prefs.Theme)) {
+	case "light":
+		return legacyOceanPaperSpec(theme.OceanLight), true
+	case "dark":
+		return legacyOceanPaperSpec(theme.OceanDark), true
+	case "current":
+		return legacyOceanPaperSpec(theme.Ocean()), true
+	default:
+		return PaperTheme(model.ExportThemeMono), false
+	}
+}
+
+func resolveShowTitle(prefs model.ExportPreferences) bool {
+	if prefs.ShowTitle != nil {
+		return *prefs.ShowTitle
+	}
+	return true
+}
+
+func resolveWatermark(prefs model.ExportPreferences) bool {
+	if prefs.Watermark != nil {
+		return *prefs.Watermark
+	}
+	return true
+}
+
+func resolveTitleText(doc *model.Doc, notePath string, prefs model.ExportPreferences) string {
+	if t := strings.TrimSpace(prefs.Title); t != "" {
+		return t
+	}
+	return resolveDocTitle(doc, notePath)
+}
+
+func exportBodyBlocks(blocks []model.Block, title string, showTitle bool) []model.Block {
+	if !showTitle || len(blocks) == 0 {
+		return blocks
+	}
+	trimmedTitle := strings.Join(strings.Fields(title), " ")
+	if trimmedTitle == "" {
+		return blocks
+	}
+	first := &blocks[0]
+	if first.Kind == model.BlockHeading1 {
+		firstText := strings.Join(strings.Fields(first.PlainText()), " ")
+		if firstText == trimmedTitle {
+			return blocks[1:]
+		}
+	}
+	return blocks
+}
 
 // ExportDocument renders doc into the requested format bytes.
 func ExportDocument(doc *model.Doc, notePath string, format model.ExportFormat, prefs model.ExportPreferences) ([]byte, error) {
@@ -98,17 +646,6 @@ func ExportToFile(doc *model.Doc, notePath, outPath string, format model.ExportF
 	return nil
 }
 
-func resolveExportPalette(prefs model.ExportPreferences) theme.Palette {
-	switch strings.ToLower(strings.TrimSpace(prefs.Theme)) {
-	case "dark":
-		return theme.OceanDark
-	case "light":
-		return theme.OceanLight
-	default:
-		return theme.Ocean()
-	}
-}
-
 func resolveExportWidth(prefs model.ExportPreferences) int {
 	if prefs.Width >= 360 && prefs.Width <= 2400 {
 		return prefs.Width
@@ -127,10 +664,6 @@ func resolveDocTitle(doc *model.Doc, notePath string) string {
 		}
 	}
 	return theme.Tr("未命名", "Untitled")
-}
-
-func uiColorHex(c ui.Color) string {
-	return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B)
 }
 
 func uiColorCSS(c ui.Color) string {
@@ -154,7 +687,7 @@ func mixUIColor(a, b ui.Color, t float32) ui.Color {
 	return ui.RGB(lerp(a.R, b.R), lerp(a.G, b.G), lerp(a.B, b.B))
 }
 
-func resolveSpanColor(raw string, bg bool, pal theme.Palette) (ui.Color, bool) {
+func resolveSpanColor(raw string, bg bool, pal PaperThemeSpec) (ui.Color, bool) {
 	v := strings.TrimSpace(strings.ToLower(raw))
 	if v == "" || v == "default" || v == "none" || v == "transparent" {
 		return ui.Transparent, false
@@ -169,11 +702,23 @@ func resolveSpanColor(raw string, bg bool, pal theme.Palette) (ui.Color, bool) {
 		}
 	}
 	if v == "black" {
-		return ui.RGB(0, 0, 0), true
+		c := ui.RGB(0, 0, 0)
+		if !bg {
+			c = pal.FG(c)
+		} else {
+			c = pal.BG(c)
+		}
+		return c, true
 	}
 	if v == "white" {
-		return ui.RGB(255, 255, 255), true
+		c := ui.RGB(255, 255, 255)
+		if bg {
+			c = pal.BG(c)
+		}
+		return c, true
 	}
+	var parsed ui.Color
+	var ok bool
 	if strings.HasPrefix(v, "#") {
 		h := v[1:]
 		if len(h) == 3 {
@@ -181,7 +726,7 @@ func resolveSpanColor(raw string, bg bool, pal theme.Palette) (ui.Color, bool) {
 			g, e2 := strconv.ParseUint(h[1:2]+h[1:2], 16, 8)
 			b, e3 := strconv.ParseUint(h[2:3]+h[2:3], 16, 8)
 			if e1 == nil && e2 == nil && e3 == nil {
-				return ui.RGB(uint8(r), uint8(g), uint8(b)), true
+				parsed, ok = ui.RGB(uint8(r), uint8(g), uint8(b)), true
 			}
 		} else if len(h) == 6 || len(h) == 8 {
 			r, e1 := strconv.ParseUint(h[0:2], 16, 8)
@@ -193,22 +738,20 @@ func resolveSpanColor(raw string, bg bool, pal theme.Palette) (ui.Color, bool) {
 				a, e4 = strconv.ParseUint(h[6:8], 16, 8)
 			}
 			if e1 == nil && e2 == nil && e3 == nil && e4 == nil {
-				return ui.Color{R: uint8(r), G: uint8(g), B: uint8(b), A: uint8(a)}, true
+				parsed, ok = ui.Color{R: uint8(r), G: uint8(g), B: uint8(b), A: uint8(a)}, true
 			}
 		}
-	}
-	if strings.HasPrefix(v, "rgb(") && strings.HasSuffix(v, ")") {
+	} else if strings.HasPrefix(v, "rgb(") && strings.HasSuffix(v, ")") {
 		parts := strings.Split(v[4:len(v)-1], ",")
 		if len(parts) == 3 {
 			r, e1 := strconv.Atoi(strings.TrimSpace(parts[0]))
 			g, e2 := strconv.Atoi(strings.TrimSpace(parts[1]))
 			b, e3 := strconv.Atoi(strings.TrimSpace(parts[2]))
 			if e1 == nil && e2 == nil && e3 == nil {
-				return ui.RGB(clampU8(r), clampU8(g), clampU8(b)), true
+				parsed, ok = ui.RGB(clampU8(r), clampU8(g), clampU8(b)), true
 			}
 		}
-	}
-	if strings.HasPrefix(v, "rgba(") && strings.HasSuffix(v, ")") {
+	} else if strings.HasPrefix(v, "rgba(") && strings.HasSuffix(v, ")") {
 		parts := strings.Split(v[5:len(v)-1], ",")
 		if len(parts) == 4 {
 			r, e1 := strconv.Atoi(strings.TrimSpace(parts[0]))
@@ -216,11 +759,17 @@ func resolveSpanColor(raw string, bg bool, pal theme.Palette) (ui.Color, bool) {
 			b, e3 := strconv.Atoi(strings.TrimSpace(parts[2]))
 			a, e4 := strconv.ParseFloat(strings.TrimSpace(parts[3]), 64)
 			if e1 == nil && e2 == nil && e3 == nil && e4 == nil {
-				return ui.Color{R: clampU8(r), G: clampU8(g), B: clampU8(b), A: clampU8(int(a*255 + 0.5))}, true
+				parsed, ok = ui.Color{R: clampU8(r), G: clampU8(g), B: clampU8(b), A: clampU8(int(a*255 + 0.5))}, true
 			}
 		}
 	}
-	return ui.Transparent, false
+	if !ok {
+		return ui.Transparent, false
+	}
+	if bg {
+		return pal.BG(parsed), true
+	}
+	return pal.FG(parsed), true
 }
 
 func clampU8(v int) uint8 {
@@ -231,37 +780,6 @@ func clampU8(v int) uint8 {
 		return 255
 	}
 	return uint8(v)
-}
-
-func calloutPalette(kind model.CalloutKind, pal theme.Palette) (bg, border, accent ui.Color, title string) {
-	switch kind {
-	case model.CalloutTip:
-		accent = pal.Success
-		title = "TIP"
-	case model.CalloutImportant:
-		if pal.Dark {
-			accent = ui.Hex("#a78bfa")
-		} else {
-			accent = ui.Hex("#7c3aed")
-		}
-		title = "IMPORTANT"
-	case model.CalloutWarning:
-		accent = pal.Warning
-		title = "WARNING"
-	case model.CalloutCaution:
-		accent = pal.Danger
-		title = "CAUTION"
-	default:
-		accent = pal.Accent
-		title = "NOTE"
-	}
-	bgMix := float32(0.07)
-	if pal.Dark {
-		bgMix = 0.14
-	}
-	bg = mixUIColor(pal.Paper, accent, bgMix)
-	border = mixUIColor(pal.Paper, accent, 0.35)
-	return bg, border, accent, title
 }
 
 func resolveLocalImagePath(src, notePath string) (string, bool) {
@@ -303,11 +821,22 @@ func resolveLocalImagePath(src, notePath string) (string, bool) {
 
 func exportMarkdown(doc *model.Doc, notePath string, prefs model.ExportPreferences) string {
 	md := SerializeMarkdown(doc)
-	if prefs.IncludeMeta {
-		title := resolveDocTitle(doc, notePath)
-		hasTopHeading := len(doc.Blocks) > 0 && doc.Blocks[0].Kind == model.BlockHeading1
+	showTitle := resolveShowTitle(prefs)
+	title := strings.TrimSpace(prefs.Title)
+	if title == "" && (prefs.IncludeMeta || (prefs.ShowTitle != nil && *prefs.ShowTitle)) {
+		title = resolveDocTitle(doc, notePath)
+	}
+	if showTitle && title != "" {
 		hasFM := len(doc.Blocks) > 0 && doc.Blocks[0].Kind == model.BlockCode && doc.Blocks[0].Language == "yaml-frontmatter"
-		if title != "" && !hasTopHeading && !hasFM {
+		duplicated := false
+		for i := range doc.Blocks {
+			b := &doc.Blocks[i]
+			if strings.TrimSpace(b.PlainText()) != "" || b.Table != nil {
+				duplicated = b.Kind == model.BlockHeading1 && strings.TrimSpace(b.PlainText()) == title
+				break
+			}
+		}
+		if !hasFM && !duplicated {
 			return "# " + title + "\n\n" + md
 		}
 	}
@@ -317,10 +846,12 @@ func exportMarkdown(doc *model.Doc, notePath string, prefs model.ExportPreferenc
 // ---- HTML Export ----
 
 func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) string {
-	pal := resolveExportPalette(prefs)
+	pal, legacy := resolveExportPaper(prefs)
 	width := resolveExportWidth(prefs)
-	title := resolveDocTitle(doc, notePath)
-	css := buildHTMLStylesheet(pal, width)
+	showTitle := resolveShowTitle(prefs)
+	watermark := resolveWatermark(prefs)
+	title := resolveTitleText(doc, notePath, prefs)
+	css := buildHTMLStylesheet(pal, legacy, width, title)
 
 	var out strings.Builder
 	out.WriteString("<!DOCTYPE html>\n<html lang=\"zh-CN\"><head><meta charset=\"utf-8\">")
@@ -331,87 +862,204 @@ func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 	out.WriteString(css)
 	out.WriteString("</style></head><body><div class=\"page\"><article class=\"paper\">")
 
-	if prefs.IncludeMeta {
-		out.WriteString("<header class=\"doc-header\"><h1 class=\"doc-title\">")
-		out.WriteString(escapeHTMLText(title))
-		out.WriteString("</h1><div class=\"doc-rule\"></div></header>")
+	if showTitle {
+		out.WriteString(renderHTMLHeader(pal, legacy, title))
 	}
 
+	bodyBlocks := exportBodyBlocks(doc.Blocks, title, showTitle)
 	var num listNumbering
-	blocks := doc.Blocks
-	for i := 0; i < len(blocks); i++ {
-		b := &blocks[i]
+	for i := 0; i < len(bodyBlocks); i++ {
+		b := &bodyBlocks[i]
 		if b.Kind.IsList() {
 			start := i
 			kind := b.Kind
-			for i+1 < len(blocks) && blocks[i+1].Kind == kind {
+			for i+1 < len(bodyBlocks) && bodyBlocks[i+1].Kind == kind {
 				i++
 			}
-			renderHTMLList(&out, blocks[start:i+1], &num, pal)
+			renderHTMLList(&out, bodyBlocks[start:i+1], &num, pal)
 			continue
 		}
 		num.next(b)
 		renderHTMLBlock(&out, b, notePath, pal)
 	}
 
-	if prefs.IncludeMeta {
+	if watermark {
 		now := time.Now().UTC().Format("2006.01.02")
-		out.WriteString(fmt.Sprintf(`<footer class="doc-footer"><span>Block</span><span>%s</span></footer>`, now))
+		out.WriteString(fmt.Sprintf(`<footer class="doc-footer"><span>%s</span><span>%s</span></footer>`, watermarkLabel, now))
+	} else {
+		out.WriteString(`<div style="height:16px"></div>`)
 	}
 	out.WriteString("</article></div></body></html>\n")
 	return out.String()
 }
 
-func buildHTMLStylesheet(pal theme.Palette, width int) string {
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
+}
+
+func htmlFontStack(fam string) string {
+	switch fam {
+	case fontSong:
+		return `"Songti SC","Noto Serif SC",serif`
+	case fontKai:
+		return `"Kaiti SC","STKaiti",cursive,serif`
+	case fontMono:
+		return `"Menlo","JetBrains Mono",monospace`
+	default:
+		return `-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif`
+	}
+}
+
+func buildHTMLStylesheet(pal PaperThemeSpec, legacy bool, width int, title string) string {
+	var inset, radius float32
+	borderCSS := "0 0 0 transparent"
+	shadowCSS := ""
+	if pal.Card != nil {
+		inset = pal.Card.Inset
+		radius = pal.Card.Radius
+		if pal.Card.HasBorder {
+			borderCSS = fmt.Sprintf("inset 0 0 0 1px %s", uiColorCSS(pal.Card.Border))
+		}
+		if pal.Card.Shadow.A > 0 {
+			shadowCSS = fmt.Sprintf(",0 8px 14px %s", uiColorCSS(pal.Card.Shadow))
+		}
+	}
+	titleFam := pal.HeadingFamily
+	if isASCII(title) {
+		titleFam = pal.TitleFamily
+	}
+	titleWeight := 400
+	if pal.TitleBold {
+		titleWeight = 700
+	}
+	linkColor := uiColorCSS(pal.LinkFG())
+	blockRadius := pal.BlockRadius()
+	quoteCSS := fmt.Sprintf(
+		"margin:0 0 16px;padding:12px 20px;border-left:4px solid %s;background:%s;border-radius:%.0fpx;color:%s",
+		uiColorCSS(pal.QuoteBar), uiColorCSS(pal.QuoteBG), blockRadius, uiColorCSS(pal.QuoteFG),
+	)
+	if !legacy && pal.Theme == model.ExportThemePress {
+		quoteCSS = fmt.Sprintf(
+			"margin:0 0 16px;padding:12px 4px;border-top:1px solid %s;border-bottom:1px solid %s;color:%s",
+			uiColorCSS(pal.QuoteBar), uiColorCSS(pal.QuoteBar), uiColorCSS(pal.QuoteFG),
+		)
+	}
+	bulletStyle := ""
+	if !legacy && pal.UsesSquareBullets() {
+		bulletStyle = "ul{list-style-type:square}"
+	}
+	h2Rule := ""
+	if !legacy && pal.Theme == model.ExportThemePress {
+		h2Rule = fmt.Sprintf("h2{padding-bottom:6px;border-bottom:1px solid %s}", uiColorCSS(pal.Divider))
+	} else if !legacy && pal.Theme == model.ExportThemePoster {
+		h2Rule = fmt.Sprintf("h2{padding-left:12px;border-left:5px solid %s}", uiColorCSS(pal.Accent))
+	} else if !legacy && pal.Theme == model.ExportThemeRiso {
+		ink := ui.Color{R: pal.Accent.R, G: pal.Accent.G, B: pal.Accent.B, A: 80}
+		h2Rule = fmt.Sprintf("h2 span.riso-h2{background:linear-gradient(transparent 55%%,%s 55%%,%s 90%%,transparent 90%%);box-decoration-break:clone}", uiColorCSS(ink), uiColorCSS(ink))
+	}
+
 	return fmt.Sprintf(`*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:%s;color:%s;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif}
-.page{max-width:%dpx;margin:0 auto;padding:32px 20px}
-.paper{background:%s;border:1px solid %s;border-radius:14px;padding:48px 56px;font-size:16px;line-height:1.75;overflow-wrap:anywhere}
-.doc-header{margin-bottom:28px}.doc-title{margin:0;font-size:32px;line-height:1.3;font-weight:700;color:%s}.doc-rule{height:2px;margin-top:14px;background:%s}
-.doc-footer{display:flex;justify-content:space-between;margin-top:32px;padding-top:14px;border-top:1px solid %s;font-size:13px;color:%s}
-h1,h2,h3,h4,h5,h6{margin:20px 0 10px;line-height:1.35;color:%s;font-weight:700}
-h1{font-size:28px}h2{font-size:22px}h3{font-size:19px}h4{font-size:17px}h5,h6{font-size:16px}
-p{margin:0 0 12px}
-ul,ol{margin:0 0 12px;padding-left:26px}ul.todo-list{list-style:none;padding-left:6px}li{margin:4px 0}
-blockquote{margin:0 0 14px;padding:10px 18px;border-left:4px solid %s;background:%s;border-radius:0 8px 8px 0;color:%s}
-.callout{margin:0 0 14px;padding:12px 16px;border-radius:8px;border-left:4px solid;box-shadow:inset 0 0 0 1px rgba(128,128,128,.16)}
-.callout-title{font-size:13px;font-weight:700;letter-spacing:.04em;margin-bottom:6px}
-pre{margin:0 0 14px;padding:14px 16px;background:%s;border:1px solid %s;border-radius:8px;overflow-x:auto;font-family:"Menlo","JetBrains Mono",monospace;font-size:14px;line-height:1.55}
-code{font-family:"Menlo","JetBrains Mono",monospace;font-size:.9em;background:%s;padding:1px 5px;border-radius:4px}
+html,body{margin:0;padding:0;background:%s;color:%s;font-family:%s}
+.page{width:%dpx;max-width:100%%;margin:0 auto;padding:%.0fpx;background:%s}
+.paper{background:%s;border-radius:%.0fpx;box-shadow:%s%s;padding:%.0fpx %.0fpx %.0fpx %.0fpx;font-size:%.1fpx;line-height:%.2f;color:%s;overflow-wrap:anywhere}
+.doc-header{margin-bottom:28px}.doc-title{margin:0;font-family:%s;font-size:%.1fpx;line-height:1.3;font-weight:%d;color:%s}
+.doc-footer{display:flex;justify-content:space-between;margin-top:28px;padding-top:16px;border-top:1px solid %s;font-size:14px;line-height:19.6px;color:%s}
+h1,h2,h3,h4,h5,h6{margin:18px 0 8px;line-height:1.35;font-family:%s;color:%s;font-weight:700}
+h1{font-size:%.1fpx}h2{font-size:%.1fpx}h3{font-size:%.1fpx}h4{font-size:%.1fpx}h5,h6{font-size:%.1fpx;font-weight:500}
+%s
+p{margin:0 0 10px}
+ul,ol{margin:0 0 10px;padding-left:26px}%s ul.todo-list{list-style:none;padding-left:4px}li{margin:4px 0}
+blockquote{%s}
+.callout{margin:0 0 14px;padding:12px 16px;border-radius:8px;border-left:4px solid}
+.callout-title{font-size:14px;font-weight:700;letter-spacing:.04em;margin-bottom:6px}
+pre{margin:0 0 16px;padding:14px 18px;background:%s;border:1px solid %s;border-radius:%.0fpx;overflow-x:auto;font-family:%s;font-size:14.5px;line-height:1.6}
+code{font-family:%s;font-size:.9em;background:%s;padding:1px 5px;border-radius:4px}
 pre code{background:transparent;padding:0}
 table{width:100%%;border-collapse:collapse;margin:0 0 14px}
 th,td{border:1px solid %s;padding:8px 12px;text-align:left;vertical-align:top}
-th{background:%s;font-weight:600}
+th{background:%s;color:%s;font-weight:600}
 hr{border:0;border-top:1px solid %s;margin:18px 0}
-a{color:%s;text-decoration:underline}
+a,table a,th a,td a{color:%s;text-decoration:underline}
 img{max-width:100%%;height:auto;border-radius:6px}`,
-		uiColorCSS(pal.Shell), uiColorCSS(pal.Text),
-		width,
-		uiColorCSS(pal.Paper), uiColorCSS(pal.Hairline),
-		uiColorCSS(pal.Text), uiColorCSS(pal.Accent),
-		uiColorCSS(pal.Hairline), uiColorCSS(pal.TextSecondary),
-		uiColorCSS(pal.Text),
-		uiColorCSS(pal.QuoteBar), uiColorCSS(pal.Hover), uiColorCSS(pal.TextSecondary),
-		uiColorCSS(pal.CodeBG), uiColorCSS(pal.Hairline),
-		uiColorCSS(pal.CodeBG),
-		uiColorCSS(pal.Hairline),
-		uiColorCSS(pal.Hover),
-		uiColorCSS(pal.Hairline),
-		uiColorCSS(pal.Accent),
+		uiColorCSS(pal.Canvas), uiColorCSS(pal.Text), htmlFontStack(pal.BodyFamily),
+		width, inset, uiColorCSS(pal.Canvas),
+		uiColorCSS(pal.InnerCanvas), radius, borderCSS, shadowCSS,
+		pal.PadTop, pal.PadRight, pal.PadBottom, pal.PadLeft, pal.BodySize, pal.Leading, uiColorCSS(pal.Text),
+		htmlFontStack(titleFam), pal.TitleSize, titleWeight, uiColorCSS(pal.Title),
+		uiColorCSS(pal.Divider), uiColorCSS(pal.Secondary),
+		htmlFontStack(pal.HeadingFamily), uiColorCSS(pal.Title),
+		pal.HeadSizes[0], pal.HeadSizes[1], pal.HeadSizes[2], pal.BodySize*1.12, pal.BodySize,
+		h2Rule,
+		bulletStyle,
+		quoteCSS,
+		uiColorCSS(pal.CodeBG), uiColorCSS(pal.CodeBorder), blockRadius, htmlFontStack(fontMono),
+		htmlFontStack(fontMono), uiColorCSS(pal.CodeBG),
+		uiColorCSS(pal.TableBorder),
+		uiColorCSS(pal.TableHeaderBG()), uiColorCSS(pal.Title),
+		uiColorCSS(pal.Divider),
+		linkColor,
 	)
 }
 
-func renderHTMLSpans(out *strings.Builder, spans []model.Span, pal theme.Palette) {
+func renderHTMLHeader(pal PaperThemeSpec, legacy bool, title string) string {
+	escTitle := escapeHTMLText(title)
+	if legacy {
+		return fmt.Sprintf(`<header class="doc-header"><h1 class="doc-title">%s</h1><div style="height:2px;margin-top:14px;background:%s"></div></header>`,
+			escTitle, uiColorCSS(pal.Accent))
+	}
+	switch pal.Mark {
+	case TitleMarkBar:
+		return fmt.Sprintf(`<header style="margin-bottom:34px"><h1 class="doc-title">%s</h1><div style="height:4px;width:48px;border-radius:2px;margin-top:18px;background:%s"></div></header>`,
+			escTitle, uiColorCSS(pal.Accent))
+	case TitleMarkWavy:
+		return fmt.Sprintf(`<header style="margin-bottom:30px"><h1 class="doc-title">%s</h1><svg width="150" height="12" style="display:block;margin-top:8px"><path d="M0 6 Q6 0 12 6 T24 6 T36 6 T48 6 T60 6 T72 6 T84 6 T96 6 T108 6 T120 6 T132 6 T144 6 T156 6" fill="none" stroke="%s" stroke-width="2"/></svg></header>`,
+			escTitle, uiColorCSS(pal.Accent))
+	case TitleMarkDoubleRule:
+		return fmt.Sprintf(`<header style="margin-bottom:34px"><h1 class="doc-title" style="text-align:center">%s</h1><div style="height:7px;margin-top:18px;border-top:3px solid %s;border-bottom:1px solid %s"></div></header>`,
+			escTitle, uiColorCSS(pal.Divider), uiColorCSS(pal.Divider))
+	case TitleMarkHighlight:
+		ink := uiColorCSS(ui.Color{R: pal.Accent.R, G: pal.Accent.G, B: pal.Accent.B, A: 105})
+		return fmt.Sprintf(`<header style="margin-bottom:36px"><h1 class="doc-title"><span style="background:linear-gradient(transparent 50%%,%s 50%%,%s 88%%,transparent 88%%);box-decoration-break:clone">%s</span></h1></header>`,
+			ink, ink, escTitle)
+	case TitleMarkCursor:
+		return fmt.Sprintf(`<header style="margin-bottom:36px"><h1 class="doc-title">%s<span style="display:inline-block;vertical-align:middle;margin-left:10px;width:%.1fpx;height:%.1fpx;background:%s"></span></h1></header>`,
+			escTitle, pal.TitleSize*0.55, pal.TitleSize*0.91, uiColorCSS(pal.Accent))
+	case TitleMarkBand:
+		top, right, _, left := pal.Margins()
+		return fmt.Sprintf(`<header style="margin:-%.0fpx -%.0fpx 52px -%.0fpx;padding:%.0fpx %.0fpx 44px %.0fpx;background:%s"><h1 class="doc-title" style="color:%s">%s</h1></header>`,
+			top, right, left, top, right, left, uiColorCSS(pal.Accent), uiColorCSS(pal.Accent2), escTitle)
+	default: // TitleMarkRule
+		return fmt.Sprintf(`<header style="margin-bottom:36px"><h1 class="doc-title">%s</h1><div style="height:2px;margin-top:20px;background:%s"></div></header>`,
+			escTitle, uiColorCSS(pal.Title))
+	}
+}
+
+func renderHTMLSpans(out *strings.Builder, spans []model.Span, pal PaperThemeSpec) {
+	linkFG := pal.LinkFG()
 	for _, sp := range spans {
 		var openTags, closeTags []string
+		fgColor, hasFG := resolveSpanColor(sp.FGColor, false, pal)
 		if sp.Link != "" {
-			openTags = append(openTags, fmt.Sprintf(`<a href="%s">`, escapeAttrValue(sp.Link)))
+			linkStyle := uiColorCSS(linkFG)
+			if hasFG {
+				linkStyle = uiColorCSS(fgColor)
+			}
+			openTags = append(openTags, fmt.Sprintf(`<a href="%s" style="color:%s;text-decoration:underline">`, escapeAttrValue(sp.Link), linkStyle))
 			closeTags = append(closeTags, "</a>")
 		}
 		var css strings.Builder
-		if c, ok := resolveSpanColor(sp.FGColor, false, pal); ok {
+		if hasFG {
 			css.WriteString("color:")
-			css.WriteString(uiColorCSS(c))
+			css.WriteString(uiColorCSS(fgColor))
+			css.WriteByte(';')
+		} else if sp.Link != "" {
+			css.WriteString("color:")
+			css.WriteString(uiColorCSS(linkFG))
 			css.WriteByte(';')
 		}
 		if c, ok := resolveSpanColor(sp.BGColor, true, pal); ok {
@@ -453,7 +1101,7 @@ func renderHTMLSpans(out *strings.Builder, spans []model.Span, pal theme.Palette
 	}
 }
 
-func renderHTMLList(out *strings.Builder, items []model.Block, num *listNumbering, pal theme.Palette) {
+func renderHTMLList(out *strings.Builder, items []model.Block, num *listNumbering, pal PaperThemeSpec) {
 	if len(items) == 0 {
 		return
 	}
@@ -495,12 +1143,18 @@ func renderHTMLList(out *strings.Builder, items []model.Block, num *listNumberin
 	out.WriteByte('\n')
 }
 
-func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal theme.Palette) {
+func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal PaperThemeSpec) {
 	switch {
 	case b.Kind.IsHeading():
 		lvl := b.Kind.HeadingLevel()
 		out.WriteString(fmt.Sprintf("<h%d>", lvl))
-		renderHTMLSpans(out, b.Spans, pal)
+		if lvl == 2 && pal.Theme == model.ExportThemeRiso {
+			out.WriteString(`<span class="riso-h2">`)
+			renderHTMLSpans(out, b.Spans, pal)
+			out.WriteString(`</span>`)
+		} else {
+			renderHTMLSpans(out, b.Spans, pal)
+		}
 		out.WriteString(fmt.Sprintf("</h%d>\n", lvl))
 
 	case b.Kind == model.BlockDivider:
@@ -512,7 +1166,7 @@ func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal 
 		out.WriteString("</p></blockquote>\n")
 
 	case b.Kind == model.BlockCallout:
-		bg, border, accent, title := calloutPalette(b.Callout, pal)
+		bg, border, accent, title := pal.CalloutColors(b.Callout)
 		out.WriteString(fmt.Sprintf(
 			`<div class="callout callout-%s" style="background:%s;border-left-color:%s;box-shadow:inset 0 0 0 1px %s"><div class="callout-title" style="color:%s">%s</div><div>`,
 			strings.ToLower(title), uiColorCSS(bg), uiColorCSS(accent), uiColorCSS(border), uiColorCSS(accent), title,
@@ -648,7 +1302,7 @@ func detectImageMime(path string, data []byte) string {
 	return "image/png"
 }
 
-// ---- PNG & PDF Visual Rendering (2x Ocean Paper via mygo/ui) ----
+// ---- PNG & PDF Visual Rendering (2x Paper Styles via mygo/ui) ----
 
 type paintedBlock struct {
 	kind       model.BlockKind
@@ -694,10 +1348,14 @@ type paintedImage struct {
 
 type exportScene struct {
 	width, height float32
-	pal           theme.Palette
+	marginLeft    float32
+	contentWidth  float32
+	pal           PaperThemeSpec
+	legacy        bool
 	titleLayout   *ui.TextLayout
+	titleX        float32
 	titleY        float32
-	titleRuleY    float32
+	titleH        float32
 	blocks        []paintedBlock
 	footerY       float32
 	footerLeft    *ui.TextLayout
@@ -705,10 +1363,11 @@ type exportScene struct {
 	showFooter    bool
 }
 
-func toUISpans(spans []model.Span, pal theme.Palette, baseSize float32, isCodeBlock bool) []ui.Span {
+func toUISpans(spans []model.Span, pal PaperThemeSpec, baseSize float32, isCodeBlock bool) []ui.Span {
 	if len(spans) == 0 {
 		return []ui.Span{{Text: " "}}
 	}
+	linkFG := pal.LinkFG()
 	out := make([]ui.Span, 0, len(spans))
 	for _, sp := range spans {
 		us := ui.Span{
@@ -722,7 +1381,7 @@ func toUISpans(spans []model.Span, pal theme.Palette, baseSize float32, isCodeBl
 			us.Weight = 700
 		}
 		if sp.Marks&model.MarkCode != 0 || isCodeBlock {
-			us.Font = "Menlo, monospace"
+			us.Font = fontMono
 			if !isCodeBlock {
 				us.Background = pal.CodeBG
 				us.Radius = 4
@@ -730,7 +1389,7 @@ func toUISpans(spans []model.Span, pal theme.Palette, baseSize float32, isCodeBl
 			}
 		}
 		if sp.Link != "" {
-			us.Color = pal.Accent
+			us.Color = linkFG
 			us.Underline = true
 		}
 		if c, ok := resolveSpanColor(sp.FGColor, false, pal); ok {
@@ -746,33 +1405,65 @@ func toUISpans(spans []model.Span, pal theme.Palette, baseSize float32, isCodeBl
 }
 
 func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPreferences) exportScene {
-	pal := resolveExportPalette(prefs)
+	pal, legacy := resolveExportPaper(prefs)
 	pageW := float32(resolveExportWidth(prefs))
-	const padX = float32(64)
-	const padTop = float32(56)
-	const padBottom = float32(56)
-	contentW := pageW - 2*padX
+	padTop, padRight, padBottom, padLeft := pal.Margins()
+	contentW := pageW - padLeft - padRight
 
 	sc := exportScene{
-		width: pageW,
-		pal:   pal,
+		width:        pageW,
+		marginLeft:   padLeft,
+		contentWidth: contentW,
+		pal:          pal,
+		legacy:       legacy,
 	}
 	y := padTop
 
-	if prefs.IncludeMeta {
-		title := resolveDocTitle(doc, notePath)
-		tFont := ui.Font{Size: 30, Weight: 700, LineHeight: 1.3}
-		tLay := ui.ShapeRichTextWith([]ui.Span{{Text: title, Weight: 700, Size: 30}}, tFont, ui.TextShape{Width: contentW})
+	showTitle := resolveShowTitle(prefs)
+	title := resolveTitleText(doc, notePath, prefs)
+	if showTitle {
+		tWeight := 400
+		if pal.TitleBold {
+			tWeight = 700
+		}
+		tFam := pal.HeadingFamily
+		if isASCII(title) {
+			tFam = pal.TitleFamily
+		}
+		tFont := ui.Font{Family: tFam, Size: pal.TitleSize, Weight: tWeight, LineHeight: 1.3}
+		shape := ui.TextShape{Width: contentW}
+		if pal.Mark == TitleMarkDoubleRule {
+			shape.Align = ui.Center
+		}
+		tLay := ui.ShapeRichTextWith([]ui.Span{{Text: title, Font: tFam, Weight: tWeight, Size: pal.TitleSize}}, tFont, shape)
 		_, th := tLay.Size()
 		sc.titleLayout = tLay
+		sc.titleX = padLeft
 		sc.titleY = y
-		sc.titleRuleY = y + th + 14
-		y = sc.titleRuleY + 24
+		sc.titleH = th
+		below := float32(36)
+		switch pal.Mark {
+		case TitleMarkRule:
+			below = 20 + 2 + 36
+		case TitleMarkBar:
+			below = 18 + 4 + 34
+		case TitleMarkWavy:
+			below = 8 + 12 + 30
+		case TitleMarkDoubleRule:
+			below = 18 + 7 + 34
+		case TitleMarkBand:
+			below = 44 + 52
+		}
+		if legacy {
+			below = 14 + 24
+		}
+		y += th + below
 	}
 
+	bodyBlocks := exportBodyBlocks(doc.Blocks, title, showTitle)
 	var num listNumbering
-	for i := range doc.Blocks {
-		b := &doc.Blocks[i]
+	for i := range bodyBlocks {
+		b := &bodyBlocks[i]
 		ord := num.next(b)
 		indent := float32(b.Indent) * 12
 		if indent > contentW-120 {
@@ -781,7 +1472,7 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 		if indent < 0 {
 			indent = 0
 		}
-		bx := padX + indent
+		bx := padLeft + indent
 		avail := contentW - indent
 
 		switch {
@@ -792,7 +1483,7 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 				y:         y,
 				w:         avail,
 				h:         20,
-				borderCol: pal.Hairline,
+				borderCol: pal.Divider,
 			})
 			y += 28
 
@@ -804,7 +1495,7 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 
 		case b.Kind == model.BlockTable && b.Table != nil:
 			pb := buildPaintedTable(b.Table, bx, y, avail, pal)
-			y += pb.h + 16
+			y += pb.h + 14
 			sc.blocks = append(sc.blocks, pb)
 
 		case b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML:
@@ -812,17 +1503,21 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 			if codeText == "" {
 				codeText = " "
 			}
-			font := ui.Font{Family: "Menlo, monospace", Size: 13.5, LineHeight: 1.55}
-			padBoxX, padBoxY := float32(16), float32(12)
+			font := ui.Font{Family: fontMono, Size: 14.5, LineHeight: 1.6}
+			padBoxX, padBoxY := float32(18), float32(14)
 			var labelLay *ui.TextLayout
 			labelH := float32(0)
 			if b.Language != "" {
-				lf := ui.Font{Size: 12, Weight: 600, LineHeight: 1.3}
-				labelLay = ui.ShapeRichTextWith([]ui.Span{{Text: strings.ToUpper(b.Language), Size: 12, Weight: 600}}, lf, ui.TextShape{Width: avail - 2*padBoxX})
+				langLabel := b.Language
+				if strings.EqualFold(langLabel, "yaml-frontmatter") || strings.EqualFold(langLabel, "frontmatter") {
+					langLabel = "yaml"
+				}
+				lf := ui.Font{Size: 13, Weight: 600, LineHeight: 1.3}
+				labelLay = ui.ShapeRichTextWith([]ui.Span{{Text: strings.ToUpper(langLabel), Size: 13, Weight: 600}}, lf, ui.TextShape{Width: avail - 2*padBoxX})
 				_, lh := labelLay.Size()
 				labelH = lh + 6
 			}
-			lay := ui.ShapeRichTextWith([]ui.Span{{Text: codeText, Size: 13.5, Font: "Menlo, monospace"}}, font, ui.TextShape{Width: avail - 2*padBoxX})
+			lay := ui.ShapeRichTextWith([]ui.Span{{Text: codeText, Size: 14.5, Font: fontMono}}, font, ui.TextShape{Width: avail - 2*padBoxX})
 			_, th := lay.Size()
 			bh := th + 2*padBoxY + labelH
 			sc.blocks = append(sc.blocks, paintedBlock{
@@ -836,19 +1531,19 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 				layout:    lay,
 				textColor: pal.Text,
 				bgColor:   pal.CodeBG,
-				borderCol: pal.Hairline,
+				borderCol: pal.CodeBorder,
 				labelLay:  labelLay,
 			})
-			y += bh + 14
+			y += bh + 18
 
 		case b.Kind == model.BlockCallout:
-			bg, border, accent, title := calloutPalette(b.Callout, pal)
+			bg, border, accent, cTitle := pal.CalloutColors(b.Callout)
 			padBoxX, padBoxY := float32(18), float32(12)
 			lf := ui.Font{Size: 13, Weight: 700, LineHeight: 1.3}
-			labelLay := ui.ShapeRichTextWith([]ui.Span{{Text: title, Size: 13, Weight: 700}}, lf, ui.TextShape{Width: avail - 2*padBoxX})
+			labelLay := ui.ShapeRichTextWith([]ui.Span{{Text: cTitle, Size: 13, Weight: 700}}, lf, ui.TextShape{Width: avail - 2*padBoxX})
 			_, lh := labelLay.Size()
-			bodyFont := ui.Font{Size: 15.5, LineHeight: 1.65}
-			lay := ui.ShapeRichTextWith(toUISpans(b.Spans, pal, 15.5, false), bodyFont, ui.TextShape{Width: avail - 2*padBoxX})
+			bodyFont := ui.Font{Family: pal.BodyFamily, Size: pal.BodySize, LineHeight: pal.Leading}
+			lay := ui.ShapeRichTextWith(toUISpans(b.Spans, pal, pal.BodySize, false), bodyFont, ui.TextShape{Width: avail - 2*padBoxX})
 			_, th := lay.Size()
 			bh := th + lh + 6 + 2*padBoxY
 			sc.blocks = append(sc.blocks, paintedBlock{
@@ -869,9 +1564,14 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 			y += bh + 14
 
 		case b.Kind == model.BlockQuote:
-			padBoxX, padBoxY := float32(18), float32(10)
-			font := ui.Font{Size: 16, LineHeight: 1.7}
-			lay := ui.ShapeRichTextWith(toUISpans(b.Spans, pal, 16, false), font, ui.TextShape{Width: avail - 2*padBoxX})
+			padBoxX, padBoxY := float32(20), float32(12)
+			if !legacy && pal.Theme == model.ExportThemePress {
+				padBoxX = 4
+			} else if pal.QuoteBG.A == 0 {
+				padBoxY = 2
+			}
+			font := ui.Font{Family: pal.BodyFamily, Size: pal.BodySize, LineHeight: pal.Leading}
+			lay := ui.ShapeRichTextWith(toUISpans(b.Spans, pal, pal.BodySize, false), font, ui.TextShape{Width: avail - 2*padBoxX})
 			_, th := lay.Size()
 			bh := th + 2*padBoxY
 			sc.blocks = append(sc.blocks, paintedBlock{
@@ -883,35 +1583,29 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 				textX:     bx + padBoxX,
 				textY:     y + padBoxY,
 				layout:    lay,
-				textColor: pal.TextSecondary,
-				bgColor:   pal.Hover,
+				textColor: pal.QuoteFG,
+				bgColor:   pal.QuoteBG,
 				accentCol: pal.QuoteBar,
 			})
-			y += bh + 14
+			y += bh + 18
 
 		case b.Kind.IsList():
-			marker := "•"
+			var mLay *ui.TextLayout
+			gutter := float32(28)
 			if b.Kind == model.BlockNumbered {
 				if ord <= 0 {
 					ord = 1
 				}
-				marker = fmt.Sprintf("%d.", ord)
-			} else if b.Kind == model.BlockTodo {
-				if b.Checked {
-					marker = "☑"
-				} else {
-					marker = "☐"
+				marker := fmt.Sprintf("%d.", ord)
+				mFont := ui.Font{Family: pal.BodyFamily, Size: pal.BodySize, Weight: 600, LineHeight: pal.Leading}
+				mLay = ui.ShapeRichTextWith([]ui.Span{{Text: marker, Size: pal.BodySize, Weight: 600}}, mFont, ui.TextShape{Width: 64})
+				mw, _ := mLay.Size()
+				if mw+12 > gutter {
+					gutter = mw + 12
 				}
 			}
-			mFont := ui.Font{Size: 16, Weight: 600, LineHeight: 1.7}
-			mLay := ui.ShapeRichTextWith([]ui.Span{{Text: marker, Size: 16, Weight: 600}}, mFont, ui.TextShape{Width: 64})
-			mw, _ := mLay.Size()
-			gutter := float32(26)
-			if mw+10 > gutter {
-				gutter = mw + 10
-			}
-			bodyFont := ui.Font{Size: 16, LineHeight: 1.7}
-			lay := ui.ShapeRichTextWith(toUISpans(b.Spans, pal, 16, false), bodyFont, ui.TextShape{Width: avail - gutter})
+			bodyFont := ui.Font{Family: pal.BodyFamily, Size: pal.BodySize, LineHeight: pal.Leading}
+			lay := ui.ShapeRichTextWith(toUISpans(b.Spans, pal, pal.BodySize, false), bodyFont, ui.TextShape{Width: avail - gutter})
 			_, th := lay.Size()
 			sc.blocks = append(sc.blocks, paintedBlock{
 				kind:      b.Kind,
@@ -924,47 +1618,73 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 				layout:    lay,
 				textColor: pal.Text,
 				markerLay: mLay,
-				markerCol: pal.Accent,
+				markerCol: pal.Title,
+				accentCol: pal.Accent,
 				checked:   b.Checked,
 			})
-			y += th + 6
+			y += th + 4
 
 		case b.Kind.IsHeading():
 			lvl := b.Kind.HeadingLevel()
-			sizes := [6]float32{28, 22, 19, 17.5, 16.5, 16}
-			sz := sizes[lvl-1]
-			topGap := float32(10)
+			sz := pal.BodySize
+			switch lvl {
+			case 1:
+				sz = pal.HeadSizes[0]
+			case 2:
+				sz = pal.HeadSizes[1]
+			case 3:
+				sz = pal.HeadSizes[2]
+			case 4:
+				sz = pal.BodySize * 1.12
+			}
+			topGap := float32(8)
 			if lvl == 1 {
-				topGap = 16
+				topGap = 18
+			} else if lvl == 2 {
+				topGap = 12
 			}
 			y += topGap
-			font := ui.Font{Size: sz, Weight: 700, LineHeight: 1.35}
+			weight := 700
+			if lvl == 6 {
+				weight = 500
+			}
+			font := ui.Font{Family: pal.HeadingFamily, Size: sz, Weight: weight, LineHeight: 1.35}
 			spans := toUISpans(b.Spans, pal, sz, false)
 			for idx := range spans {
-				spans[idx].Weight = 700
+				spans[idx].Weight = weight
 			}
 			lay := ui.ShapeRichTextWith(spans, font, ui.TextShape{Width: avail})
 			_, th := lay.Size()
+			botPad := float32(0)
+			if lvl == 2 && !legacy && pal.Theme == model.ExportThemePress {
+				botPad = 6
+			}
+			gapAfter := float32(8)
+			if lvl == 1 {
+				gapAfter = 10
+			}
 			sc.blocks = append(sc.blocks, paintedBlock{
 				kind:      b.Kind,
 				x:         bx,
 				y:         y,
 				w:         avail,
-				h:         th,
+				h:         th + botPad,
 				textX:     bx,
 				textY:     y,
 				layout:    lay,
-				textColor: pal.Text,
+				textColor: pal.Title,
+				accentCol: pal.Accent,
+				borderCol: pal.Divider,
 			})
-			y += th + 10
+			y += th + botPad + gapAfter
 
 		default: // BlockParagraph
 			if len(b.Spans) == 0 {
 				y += 14
 				continue
 			}
-			font := ui.Font{Size: 16, LineHeight: 1.75}
-			lay := ui.ShapeRichTextWith(toUISpans(b.Spans, pal, 16, false), font, ui.TextShape{Width: avail})
+			font := ui.Font{Family: pal.BodyFamily, Size: pal.BodySize, LineHeight: pal.Leading}
+			lay := ui.ShapeRichTextWith(toUISpans(b.Spans, pal, pal.BodySize, false), font, ui.TextShape{Width: avail})
 			_, th := lay.Size()
 			sc.blocks = append(sc.blocks, paintedBlock{
 				kind:      model.BlockParagraph,
@@ -977,18 +1697,20 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 				layout:    lay,
 				textColor: pal.Text,
 			})
-			y += th + 12
+			y += th + 10
 		}
 	}
 
-	if prefs.IncludeMeta {
+	if resolveWatermark(prefs) {
 		sc.showFooter = true
-		sc.footerY = y + 20
-		ff := ui.Font{Size: 13, LineHeight: 1.4}
-		sc.footerLeft = ui.ShapeRichTextWith([]ui.Span{{Text: "Block", Size: 13}}, ff, ui.TextShape{Width: contentW / 2})
+		sc.footerY = y + 28
+		ff := ui.Font{Family: pal.BodyFamily, Size: 14, LineHeight: 1.4}
+		sc.footerLeft = ui.ShapeRichTextWith([]ui.Span{{Text: watermarkLabel, Size: 14}}, ff, ui.TextShape{Width: contentW / 2})
 		dateStr := time.Now().UTC().Format("2006.01.02")
-		sc.footerRight = ui.ShapeRichTextWith([]ui.Span{{Text: dateStr, Size: 13}}, ff, ui.TextShape{Width: contentW / 2})
-		y = sc.footerY + 34
+		sc.footerRight = ui.ShapeRichTextWith([]ui.Span{{Text: dateStr, Size: 14}}, ff, ui.TextShape{Width: contentW / 2})
+		y = sc.footerY + 16 + 14*1.4
+	} else {
+		y += 12
 	}
 
 	sc.height = y + padBottom
@@ -998,7 +1720,7 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 	return sc
 }
 
-func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, pal theme.Palette) (paintedBlock, bool) {
+func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, pal PaperThemeSpec) (paintedBlock, bool) {
 	if localPath, ok := resolveLocalImagePath(b.ImageSrc, notePath); ok {
 		if raw, err := os.ReadFile(localPath); err == nil {
 			if bm, err := ui.DecodeBitmap(raw); err == nil {
@@ -1067,13 +1789,13 @@ func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, p
 		textX:     bx + 12,
 		textY:     by + 10,
 		layout:    lay,
-		textColor: pal.TextSecondary,
+		textColor: pal.Secondary,
 		bgColor:   pal.CodeBG,
-		borderCol: pal.Hairline,
+		borderCol: pal.CodeBorder,
 	}, true
 }
 
-func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal theme.Palette) paintedBlock {
+func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal PaperThemeSpec) paintedBlock {
 	cols := 0
 	if len(t.Rows) > 0 {
 		cols = len(t.Rows[0])
@@ -1107,6 +1829,7 @@ func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal theme.Pale
 	const padCellY = float32(7)
 	pt := &paintedTable{colWidths: colWidths}
 	curY := by
+	headerBG := pal.TableHeaderBG()
 	for r, row := range t.Rows {
 		isHeader := r == 0
 		rowH := float32(28)
@@ -1120,12 +1843,13 @@ func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal theme.Pale
 			}
 			weight := 400
 			fg := pal.Text
-			bg := pal.Paper
+			bg := pal.InnerCanvas
 			if isHeader {
 				weight = 700
-				bg = pal.Hover
+				fg = pal.Title
+				bg = headerBG
 			}
-			font := ui.Font{Size: 14, Weight: weight, LineHeight: 1.45}
+			font := ui.Font{Family: pal.BodyFamily, Size: 14, Weight: weight, LineHeight: 1.45}
 			uSpans := toUISpans(cellSpans, pal, 14, false)
 			if isHeader {
 				for idx := range uSpans {
@@ -1167,7 +1891,7 @@ func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal theme.Pale
 		y:         by,
 		w:         avail,
 		h:         curY - by,
-		borderCol: pal.Hairline,
+		borderCol: pal.TableBorder,
 		table:     pt,
 	}
 }
@@ -1179,6 +1903,231 @@ func maxFloat32(a, b float32) float32 {
 	return b
 }
 
+func buildTextureBitmap(w, h int, pal PaperThemeSpec) *ui.Bitmap {
+	switch pal.Theme {
+	case model.ExportThemeRiso, model.ExportThemePress, model.ExportThemeJournal, model.ExportThemeKraft:
+	default:
+		return nil
+	}
+	pw := int(float32(w) * exportScale)
+	ph := int(float32(h) * exportScale)
+	img := image.NewRGBA(image.Rect(0, 0, pw, ph))
+	// Fill base canvas
+	c := pal.Canvas
+	for i := 0; i < len(img.Pix); i += 4 {
+		img.Pix[i] = c.R
+		img.Pix[i+1] = c.G
+		img.Pix[i+2] = c.B
+		img.Pix[i+3] = 255
+	}
+	if pal.Theme == model.ExportThemeRiso {
+		paintGrainRGBA(img, color.NRGBA{R: 40, G: 30, B: 20, A: 14}, 0x517cc1b7)
+	} else if pal.Theme == model.ExportThemePress {
+		paintGrainRGBA(img, color.NRGBA{R: 60, G: 45, B: 25, A: 11}, 0x9e3779b9)
+	}
+	if pal.Card != nil {
+		inset := pal.Card.Inset
+		cx, cy := inset, inset
+		cw, ch := float32(w)-inset*2, float32(h)-inset*2
+		if pal.Card.Shadow.A > 0 {
+			s := pal.Card.Shadow
+			for _, layer := range [][3]float32{{2, 0, 1.0}, {8, 4, 0.6}, {18, 10, 0.3}} {
+				a := uint8(float32(s.A) * layer[2])
+				fillRoundedRGBA(img, cx-layer[1], cy+layer[0]-layer[1]*0.5, cw+layer[1]*2, ch+layer[1], pal.Card.Radius+layer[1], color.NRGBA{R: s.R, G: s.G, B: s.B, A: a})
+			}
+		}
+		fillRoundedRGBA(img, cx, cy, cw, ch, pal.Card.Radius, color.NRGBA{R: pal.InnerCanvas.R, G: pal.InnerCanvas.G, B: pal.InnerCanvas.B, A: 255})
+		if pal.Card.HasBorder {
+			strokeRoundedRGBA(img, cx+0.5, cy+0.5, cw-1, ch-1, pal.Card.Radius, 1.0, pal.Card.Border)
+		}
+		if pal.Theme == model.ExportThemeKraft {
+			dot := color.NRGBA{R: 240, G: 228, B: 200, A: 22}
+			gap := float32(22)
+			for dy := cy + gap*0.5; dy < cy+ch-pal.Card.Radius*0.5; dy += gap {
+				for dx := cx + gap*0.5; dx < cx+cw-pal.Card.Radius*0.5; dx += gap {
+					fillDotRGBA(img, dx, dy, 1.3, dot)
+				}
+			}
+		}
+		if pal.Theme == model.ExportThemeJournal || pal.Theme == model.ExportThemeKraft {
+			paintWashiRGBA(img, float32(w)*0.5, cy, 142, 34, -2.0, pal.Accent2)
+		}
+	}
+	return ui.NewBitmap(img)
+}
+
+func blendPix(pix []byte, idx int, r, g, b, a uint32) {
+	if a == 0 {
+		return
+	}
+	pix[idx] = uint8((r*a + uint32(pix[idx])*(255-a) + 127) / 255)
+	pix[idx+1] = uint8((g*a + uint32(pix[idx+1])*(255-a) + 127) / 255)
+	pix[idx+2] = uint8((b*a + uint32(pix[idx+2])*(255-a) + 127) / 255)
+}
+
+func paintGrainRGBA(img *image.RGBA, col color.NRGBA, seed uint32) {
+	w, h := img.Bounds().Dx(), img.Bounds().Dy()
+	for py := 0; py < h; py += 3 {
+		for px := 0; px < w; px += 3 {
+			hash := (uint32(px)*374761393 + uint32(py)*668265263) ^ seed
+			hash = (hash ^ (hash >> 13)) * 1274126177
+			if (hash >> 24) < 52 {
+				idx := py*img.Stride + px*4
+				blendPix(img.Pix, idx, uint32(col.R), uint32(col.G), uint32(col.B), uint32(col.A))
+			}
+		}
+	}
+}
+
+func fillDotRGBA(img *image.RGBA, cx, cy, r float32, col color.NRGBA) {
+	w, h := img.Bounds().Dx(), img.Bounds().Dy()
+	cx, cy, r = cx*exportScale, cy*exportScale, r*exportScale
+	x0 := max(int(math.Floor(float64(cx-r-1))), 0)
+	x1 := min(int(math.Ceil(float64(cx+r+1))), w-1)
+	y0 := max(int(math.Floor(float64(cy-r-1))), 0)
+	y1 := min(int(math.Ceil(float64(cy+r+1))), h-1)
+	for py := y0; py <= y1; py++ {
+		dy := float32(py) + 0.5 - cy
+		for px := x0; px <= x1; px++ {
+			dx := float32(px) + 0.5 - cx
+			dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+			cov := r + 0.5 - dist
+			if cov <= 0 {
+				continue
+			}
+			if cov > 1 {
+				cov = 1
+			}
+			a := uint32(float32(col.A)*cov + 0.5)
+			idx := py*img.Stride + px*4
+			blendPix(img.Pix, idx, uint32(col.R), uint32(col.G), uint32(col.B), a)
+		}
+	}
+}
+
+func roundedRectSDF(px, py, x, y, w, h, rad float32) float32 {
+	cx := x + w*0.5
+	cy := y + h*0.5
+	hw := w*0.5 - rad
+	hh := h*0.5 - rad
+	if hw < 0 {
+		hw = 0
+	}
+	if hh < 0 {
+		hh = 0
+	}
+	qx := float32(math.Abs(float64(px-cx))) - hw
+	qy := float32(math.Abs(float64(py-cy))) - hh
+	mx := maxFloat32(qx, 0)
+	my := maxFloat32(qy, 0)
+	out := float32(math.Sqrt(float64(mx*mx + my*my)))
+	in := maxFloat32(qx, qy)
+	if in > 0 {
+		in = 0
+	}
+	return out + in - rad
+}
+
+func fillRoundedRGBA(img *image.RGBA, x, y, w, h, rad float32, col color.NRGBA) {
+	pw, ph := img.Bounds().Dx(), img.Bounds().Dy()
+	sx, sy, sw, sh, srad := x*exportScale, y*exportScale, w*exportScale, h*exportScale, rad*exportScale
+	x0 := max(int(math.Floor(float64(sx-1))), 0)
+	x1 := min(int(math.Ceil(float64(sx+sw+1))), pw-1)
+	y0 := max(int(math.Floor(float64(sy-1))), 0)
+	y1 := min(int(math.Ceil(float64(sy+sh+1))), ph-1)
+	for py := y0; py <= y1; py++ {
+		fy := float32(py) + 0.5
+		for px := x0; px <= x1; px++ {
+			fx := float32(px) + 0.5
+			d := roundedRectSDF(fx, fy, sx, sy, sw, sh, srad)
+			cov := 0.5 - d
+			if cov <= 0 {
+				continue
+			}
+			if cov > 1 {
+				cov = 1
+			}
+			a := uint32(float32(col.A)*cov + 0.5)
+			idx := py*img.Stride + px*4
+			blendPix(img.Pix, idx, uint32(col.R), uint32(col.G), uint32(col.B), a)
+		}
+	}
+}
+
+func strokeRoundedRGBA(img *image.RGBA, x, y, w, h, rad, width float32, col ui.Color) {
+	pw, ph := img.Bounds().Dx(), img.Bounds().Dy()
+	sx, sy, sw, sh, srad, swid := x*exportScale, y*exportScale, w*exportScale, h*exportScale, rad*exportScale, width*exportScale
+	x0 := max(int(math.Floor(float64(sx-swid-1))), 0)
+	x1 := min(int(math.Ceil(float64(sx+sw+swid+1))), pw-1)
+	y0 := max(int(math.Floor(float64(sy-swid-1))), 0)
+	y1 := min(int(math.Ceil(float64(sy+sh+swid+1))), ph-1)
+	half := swid * 0.5
+	for py := y0; py <= y1; py++ {
+		fy := float32(py) + 0.5
+		for px := x0; px <= x1; px++ {
+			fx := float32(px) + 0.5
+			d := float32(math.Abs(float64(roundedRectSDF(fx, fy, sx, sy, sw, sh, srad))))
+			cov := half + 0.5 - d
+			if cov <= 0 {
+				continue
+			}
+			if cov > 1 {
+				cov = 1
+			}
+			a := uint32(float32(col.A)*cov + 0.5)
+			idx := py*img.Stride + px*4
+			blendPix(img.Pix, idx, uint32(col.R), uint32(col.G), uint32(col.B), a)
+		}
+	}
+}
+
+func paintWashiRGBA(img *image.RGBA, cx, cy, w, h, angleDeg float32, col ui.Color) {
+	dw, dh := img.Bounds().Dx(), img.Bounds().Dy()
+	cx, cy = cx*exportScale, cy*exportScale
+	hw, hh := w*0.5*exportScale, h*0.5*exportScale
+	notch := float32(4) * exportScale
+	stripeOn, period := float32(5)*exportScale, float32(11)*exportScale
+	rad := float64(angleDeg) * math.Pi / 180.0
+	cosA, sinA := float32(math.Cos(rad)), float32(math.Sin(rad))
+	boundX := int(math.Ceil(float64(hw*float32(math.Abs(float64(cosA)))+hh*float32(math.Abs(float64(sinA)))))) + 2
+	boundY := int(math.Ceil(float64(hw*float32(math.Abs(float64(sinA)))+hh*float32(math.Abs(float64(cosA)))))) + 2
+	icx, icy := int(cx), int(cy)
+	for dy := -boundY; dy <= boundY; dy++ {
+		py := icy + dy
+		if py < 0 || py >= dh {
+			continue
+		}
+		for dx := -boundX; dx <= boundX; dx++ {
+			px := icx + dx
+			if px < 0 || px >= dw {
+				continue
+			}
+			lx := float32(dx)*cosA + float32(dy)*sinA
+			ly := -float32(dx)*sinA + float32(dy)*cosA
+			if float32(math.Abs(float64(ly))) > hh {
+				continue
+			}
+			t := float32(math.Mod(float64((ly+hh)/(2*hh)*3.0), 1.0))
+			if t < 0 {
+				t += 1
+			}
+			tooth := notch * (1.0 - float32(math.Abs(float64(t*2.0-1.0))))
+			if float32(math.Abs(float64(lx))) > hw-tooth {
+				continue
+			}
+			rem := float32(math.Mod(float64(lx+hw), float64(period)))
+			if rem < 0 {
+				rem += period
+			}
+			idx := py*img.Stride + px*4
+			blendPix(img.Pix, idx, uint32(col.R), uint32(col.G), uint32(col.B), uint32(col.A))
+			if rem < stripeOn {
+				blendPix(img.Pix, idx, 255, 255, 255, 51)
+			}
+		}
+	}
+}
+
 func renderDocRGBA(doc *model.Doc, notePath string, prefs model.ExportPreferences) (*image.RGBA, exportScene) {
 	sc := buildExportScene(doc, notePath, prefs)
 	w := int(sc.width)
@@ -1186,28 +2135,114 @@ func renderDocRGBA(doc *model.Doc, notePath string, prefs model.ExportPreference
 	if h > 16000 {
 		h = 16000
 	}
+	texBitmap := buildTextureBitmap(w, h, sc.pal)
 	rgba := ui.Render(func(c *ui.Context) {
 		ui.Box(c).Size(sc.width, float32(h)).Draw(func(p *ui.Painter, r ui.Rect) {
-			p.Fill(r, sc.pal.Paper, 0)
+			if texBitmap != nil {
+				bw, bh := texBitmap.Size()
+				p.ImageRegion(texBitmap, ui.Rect{W: float32(bw), H: float32(bh)}, r, ui.ImageOptions{})
+			} else {
+				p.Fill(r, sc.pal.Canvas, 0)
+				if sc.pal.Card != nil {
+					inset := sc.pal.Card.Inset
+					cardRect := ui.Rect{X: inset, Y: inset, W: sc.width - inset*2, H: float32(h) - inset*2}
+					if sc.pal.Card.Shadow.A > 0 {
+						p.Shadow(cardRect, sc.pal.Card.Radius, 0, 6, 16, 0, sc.pal.Card.Shadow)
+					}
+					p.Fill(cardRect, sc.pal.InnerCanvas, sc.pal.Card.Radius)
+					if sc.pal.Card.HasBorder {
+						p.Stroke(cardRect, sc.pal.Card.Border, sc.pal.Card.Radius, 1)
+					}
+				}
+				if !sc.legacy && sc.pal.Theme == model.ExportThemeFilm {
+					hole := ui.Color{R: 232, G: 224, B: 208, A: 40}
+					for x := float32(14); x+14 <= sc.width-10; x += 30 {
+						p.Fill(ui.Rect{X: x, Y: 11, W: 14, H: 18}, hole, 3)
+						p.Fill(ui.Rect{X: x, Y: float32(h) - 29, W: 14, H: 18}, hole, 3)
+					}
+				}
+			}
+
 			if sc.titleLayout != nil {
-				p.TextLayout(sc.titleLayout, 64, sc.titleY, sc.pal.Text)
-				p.Fill(ui.Rect{X: 64, Y: sc.titleRuleY, W: sc.width - 128, H: 2}, sc.pal.Accent, 1)
+				paintExportHeader(p, sc)
 			}
 			for _, b := range sc.blocks {
-				paintSceneBlock(p, b, sc.pal)
+				paintSceneBlock(p, b, sc.pal, sc.legacy)
 			}
 			if sc.showFooter {
-				p.Line(64, sc.footerY, sc.width-64, sc.footerY, 1, sc.pal.Hairline)
-				p.TextLayout(sc.footerLeft, 64, sc.footerY+10, sc.pal.TextSecondary)
+				p.Line(sc.marginLeft, sc.footerY, sc.marginLeft+sc.contentWidth, sc.footerY, 1, sc.pal.Divider)
+				p.TextLayout(sc.footerLeft, sc.marginLeft, sc.footerY+16, sc.pal.Secondary)
 				rw, _ := sc.footerRight.Size()
-				p.TextLayout(sc.footerRight, sc.width-64-rw, sc.footerY+10, sc.pal.TextSecondary)
+				p.TextLayout(sc.footerRight, sc.marginLeft+sc.contentWidth-rw, sc.footerY+16, sc.pal.Secondary)
 			}
 		})
 	}, w, h, exportScale)
 	return rgba, sc
 }
 
-func paintSceneBlock(p *ui.Painter, b paintedBlock, pal theme.Palette) {
+func paintExportHeader(p *ui.Painter, sc exportScene) {
+	pal := sc.pal
+	x, w, hy, th := sc.titleX, sc.contentWidth, sc.titleY, sc.titleH
+	titleCol := pal.Title
+	if sc.legacy {
+		p.TextLayout(sc.titleLayout, x, hy, titleCol)
+		p.Fill(ui.Rect{X: x, Y: hy + th + 14, W: w, H: 2}, pal.Accent, 1)
+		return
+	}
+	switch pal.Mark {
+	case TitleMarkRule:
+		p.Fill(ui.Rect{X: x, Y: hy + th + 20, W: w, H: 2}, pal.Title, 0)
+	case TitleMarkBar:
+		p.Fill(ui.Rect{X: x, Y: hy + th + 18, W: 48, H: 4}, pal.Accent, 2)
+	case TitleMarkWavy:
+		path := &ui.Path{}
+		wy := hy + th + 8
+		mid := wy + 12*0.6
+		step := float32(150-4) / 6.0
+		path.MoveTo(x+2, mid)
+		for i := 0; i < 6; i++ {
+			x0 := x + 2 + step*float32(i)
+			crest := wy + 12*0.1
+			if i%2 != 0 {
+				crest = wy + 12*1.1
+			}
+			path.QuadTo(x0+step*0.5, crest, x0+step, mid)
+		}
+		path.Cap(ui.RoundCap)
+		p.StrokePath(path, 2.4, pal.Accent)
+	case TitleMarkDoubleRule:
+		p.Fill(ui.Rect{X: x, Y: hy + th + 18, W: w, H: 3}, pal.Divider, 0)
+		p.Fill(ui.Rect{X: x, Y: hy + th + 24, W: w, H: 1}, pal.Divider, 0)
+	case TitleMarkBand:
+		p.Fill(ui.Rect{X: 0, Y: 0, W: sc.width, H: hy + th + 44}, pal.Accent, 0)
+		titleCol = pal.Accent2
+	case TitleMarkHighlight:
+		ink := ui.Color{R: pal.Accent.R, G: pal.Accent.G, B: pal.Accent.B, A: 105}
+		lines := sc.titleLayout.Lines()
+		for _, ln := range lines {
+			lineH := ln.Rect.H
+			if lineH <= 0 {
+				lineH = pal.TitleSize * 1.3
+			}
+			p.Fill(ui.Rect{X: x + ln.Rect.X - 4, Y: hy + ln.Rect.Y + lineH*0.5, W: ln.Rect.W + 8, H: lineH * 0.38}, ink, 2)
+		}
+	case TitleMarkCursor:
+		lines := sc.titleLayout.Lines()
+		if len(lines) > 0 {
+			last := lines[len(lines)-1]
+			lineH := last.Rect.H
+			if lineH <= 0 {
+				lineH = pal.TitleSize * 1.3
+			}
+			cw := float32(math.Round(float64(pal.TitleSize * 0.55)))
+			p.Fill(ui.Rect{X: x + last.Rect.X + last.Rect.W + 10, Y: hy + last.Rect.Y + lineH*0.16, W: cw, H: lineH * 0.7}, pal.Accent, 0)
+		}
+	}
+	p.TextLayout(sc.titleLayout, x, hy, titleCol)
+}
+
+func paintSceneBlock(p *ui.Painter, b paintedBlock, pal PaperThemeSpec, legacy bool) {
+	radius := pal.BlockRadius()
 	switch {
 	case b.kind == model.BlockDivider:
 		midY := b.y + b.h/2
@@ -1236,10 +2271,14 @@ func paintSceneBlock(p *ui.Painter, b paintedBlock, pal theme.Palette) {
 
 	case b.kind == model.BlockCode || b.kind == model.BlockRawHTML:
 		rect := ui.Rect{X: b.x, Y: b.y, W: b.w, H: b.h}
-		p.Fill(rect, b.bgColor, 8)
-		p.Stroke(rect, b.borderCol, 8, 1)
+		p.Fill(rect, b.bgColor, radius)
+		sw := float32(1)
+		if !legacy && pal.Theme == model.ExportThemeRiso {
+			sw = 1.5
+		}
+		p.Stroke(rect, b.borderCol, radius, sw)
 		if b.labelLay != nil {
-			p.TextLayout(b.labelLay, b.textX, b.y+12, pal.TextSecondary)
+			p.TextLayout(b.labelLay, b.textX, b.y+14, pal.Secondary)
 		}
 		if b.layout != nil {
 			p.TextLayout(b.layout, b.textX, b.textY, b.textColor)
@@ -1258,16 +2297,72 @@ func paintSceneBlock(p *ui.Painter, b paintedBlock, pal theme.Palette) {
 		}
 
 	case b.kind == model.BlockQuote:
-		rect := ui.Rect{X: b.x, Y: b.y, W: b.w, H: b.h}
-		p.Fill(rect, b.bgColor, 6)
-		p.Fill(ui.Rect{X: b.x, Y: b.y, W: 4, H: b.h}, b.accentCol, 2)
+		if !legacy && pal.Theme == model.ExportThemePress {
+			p.Line(b.x, b.y, b.x+b.w, b.y, 1, b.accentCol)
+			p.Line(b.x, b.y+b.h, b.x+b.w, b.y+b.h, 1, b.accentCol)
+		} else {
+			if b.bgColor.A > 0 {
+				p.Fill(ui.Rect{X: b.x, Y: b.y, W: b.w, H: b.h}, b.bgColor, radius)
+			}
+			barW := float32(4)
+			if !legacy && (pal.Theme == model.ExportThemeJournal || pal.Theme == model.ExportThemeFilm) {
+				barW = 3
+			}
+			p.Fill(ui.Rect{X: b.x, Y: b.y, W: barW, H: b.h}, b.accentCol, barW*0.5)
+		}
 		if b.layout != nil {
 			p.TextLayout(b.layout, b.textX, b.textY, b.textColor)
 		}
 
 	case b.kind.IsList():
-		if b.markerLay != nil {
-			p.TextLayout(b.markerLay, b.x, b.y, b.markerCol)
+		lineH := pal.BodySize * pal.Leading
+		cy := b.y + lineH*0.5
+		switch b.kind {
+		case model.BlockTodo:
+			if b.checked {
+				p.Fill(ui.Rect{X: b.x, Y: cy - 7.5, W: 15, H: 15}, b.accentCol, 3.5)
+				chk := &ui.Path{}
+				chk.MoveTo(b.x+3.5, cy)
+				chk.LineTo(b.x+6.5, cy+3.2)
+				chk.LineTo(b.x+11.5, cy-3.2)
+				chk.Cap(ui.RoundCap).Join(ui.RoundJoin)
+				p.StrokePath(chk, 1.8, pal.InnerCanvas)
+			} else {
+				p.Stroke(ui.Rect{X: b.x + 0.75, Y: cy - 6.75, W: 13.5, H: 13.5}, b.accentCol, 3, 1.5)
+			}
+		case model.BlockNumbered:
+			if b.markerLay != nil {
+				p.TextLayout(b.markerLay, b.x, b.y, b.markerCol)
+			}
+		default: // Bullet
+			if !legacy && pal.UsesSquareBullets() {
+				p.Fill(ui.Rect{X: b.x + 2, Y: cy - 3.5, W: 7, H: 7}, b.accentCol, 0)
+			} else {
+				p.Fill(ui.Rect{X: b.x + 2, Y: cy - 3.2, W: 6.4, H: 6.4}, b.accentCol, 3.2)
+			}
+		}
+		if b.layout != nil {
+			p.TextLayout(b.layout, b.textX, b.textY, b.textColor)
+		}
+
+	case b.kind == model.BlockHeading2:
+		if !legacy {
+			switch pal.Theme {
+			case model.ExportThemeRiso:
+				ink := ui.Color{R: pal.Accent.R, G: pal.Accent.G, B: pal.Accent.B, A: 80}
+				lw, _ := b.layout.Size()
+				if lw > b.w {
+					lw = b.w
+				}
+				lineH := pal.HeadSizes[1] * 1.35
+				p.Fill(ui.Rect{X: b.x - 3, Y: b.textY + lineH*0.55, W: lw + 6, H: lineH * 0.35}, ink, 2)
+			case model.ExportThemePress:
+				p.Line(b.x, b.y+b.h-1, b.x+b.w, b.y+b.h-1, 1, b.borderCol)
+			case model.ExportThemePoster:
+				lineH := pal.HeadSizes[1] * 1.35
+				bh := lineH * 0.62
+				p.Fill(ui.Rect{X: b.x - 16, Y: b.textY + (lineH-bh)*0.5, W: 5, H: bh}, b.accentCol, 0)
+			}
 		}
 		if b.layout != nil {
 			p.TextLayout(b.layout, b.textX, b.textY, b.textColor)
@@ -1359,8 +2454,6 @@ func exportPDF(doc *model.Doc, notePath string, prefs model.ExportPreferences) (
 		out.WriteString("\nendobj\n")
 	}
 
-	// Object 1: Catalog, Object 2: Pages
-	// Each page i uses 3 objects: Page (3 + 3*i), Image XObject (4 + 3*i), Contents (5 + 3*i)
 	var kids strings.Builder
 	for i := range pages {
 		if i > 0 {
@@ -1414,7 +2507,7 @@ func addSaturate(a, b uint8) uint8 {
 	return uint8(s)
 }
 
-// ---- DOCX Export (OOXML zip) ----
+// ---- DOCX Export (OOXML zip, aligned with 12 paper styles) ----
 
 const (
 	docxNS = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ` +
@@ -1476,26 +2569,45 @@ func docxTwips(px float32) int {
 	return v
 }
 
+func docxHalfPt(px float32) int {
+	v := int(px*1.5 + 0.5)
+	if v < 16 {
+		return 16
+	}
+	return v
+}
+
+func docxFontXML(fam string) string {
+	if fam == fontMono {
+		return `<w:rFonts w:ascii="Menlo" w:hAnsi="Menlo" w:eastAsia="PingFang SC" w:cs="Menlo"/>`
+	}
+	return fmt.Sprintf(`<w:rFonts w:ascii="%s" w:hAnsi="%s" w:eastAsia="%s" w:cs="%s"/>`, fam, fam, fam, fam)
+}
+
 func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) ([]byte, error) {
-	pal := resolveExportPalette(prefs)
+	pal, legacy := resolveExportPaper(prefs)
 	pageW := float32(resolveExportWidth(prefs))
-	const marginPx = float32(72)
-	contentW := pageW - 2*marginPx
+	topM, rightM, bottomM, leftM := pal.Margins()
+	contentW := pageW - leftM - rightM
+	if contentW < 240 {
+		contentW = 240
+	}
+	bodyHalfPt := docxHalfPt(pal.BodySize)
+	line240 := int(pal.Leading*240 + 0.5)
 
 	assets := &docxAssets{nextRelID: 3}
 	var body strings.Builder
 
-	if prefs.IncludeMeta {
-		title := resolveDocTitle(doc, notePath)
-		body.WriteString(fmt.Sprintf(
-			`<w:p><w:pPr><w:pStyle w:val="Heading1"/><w:pBdr><w:bottom w:val="single" w:sz="12" w:space="6" w:color="%s"/></w:pBdr><w:spacing w:before="0" w:after="240"/></w:pPr><w:r><w:rPr><w:b/><w:bCs/><w:color w:val="%s"/><w:sz w:val="48"/><w:szCs w:val="48"/></w:rPr>%s</w:r></w:p>`,
-			docxHex(pal.Accent), docxHex(pal.Text), docxTextXML(title),
-		))
+	showTitle := resolveShowTitle(prefs)
+	title := resolveTitleText(doc, notePath, prefs)
+	if showTitle {
+		body.WriteString(renderDOCXTitle(pal, legacy, title, pageW, topM, rightM, leftM))
 	}
 
+	bodyBlocks := exportBodyBlocks(doc.Blocks, title, showTitle)
 	var num listNumbering
-	for i := range doc.Blocks {
-		b := &doc.Blocks[i]
+	for i := range bodyBlocks {
+		b := &bodyBlocks[i]
 		ord := num.next(b)
 		indentPx := float32(b.Indent) * 12
 		avail := contentW - indentPx
@@ -1507,7 +2619,7 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 		case b.Kind == model.BlockDivider:
 			body.WriteString(fmt.Sprintf(
 				`<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="%s"/></w:pBdr><w:spacing w:before="120" w:after="160"/></w:pPr></w:p>`,
-				docxHex(pal.Hairline),
+				docxHex(pal.Divider),
 			))
 
 		case b.Kind == model.BlockImage:
@@ -1549,7 +2661,7 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 			}
 			body.WriteString(fmt.Sprintf(
 				`<w:p><w:pPr><w:spacing w:before="0" w:after="120"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/></w:rPr>%s</w:r></w:p>`,
-				docxHex(pal.TextSecondary), docxTextXML("[Image] "+alt),
+				docxHex(pal.Secondary), docxTextXML("[Image] "+alt),
 			))
 
 		case b.Kind == model.BlockTable && b.Table != nil:
@@ -1561,29 +2673,29 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 			if b.Language != "" {
 				inner.WriteString(fmt.Sprintf(
 					`<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="%s"/><w:sz w:val="20"/></w:rPr>%s</w:r></w:p>`,
-					docxHex(pal.TextSecondary), docxTextXML(strings.ToUpper(b.Language)),
+					docxHex(pal.Secondary), docxTextXML(strings.ToUpper(b.Language)),
 				))
 			}
 			inner.WriteString(fmt.Sprintf(
-				`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="320" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Menlo" w:hAnsi="Menlo" w:eastAsia="PingFang SC" w:cs="Menlo"/><w:sz w:val="21"/><w:szCs w:val="21"/><w:color w:val="%s"/></w:rPr>%s</w:r></w:p>`,
-				docxHex(pal.Text), docxTextXML(b.Code),
+				`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="320" w:lineRule="auto"/></w:pPr><w:r><w:rPr>%s<w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="%s"/></w:rPr>%s</w:r></w:p>`,
+				docxFontXML(fontMono), docxHex(pal.Text), docxTextXML(b.Code),
 			))
 			borders := fmt.Sprintf(
 				`<w:top w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:left w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:right w:val="single" w:sz="6" w:space="0" w:color="%s"/>`,
-				docxHex(pal.Hairline), docxHex(pal.Hairline), docxHex(pal.Hairline), docxHex(pal.Hairline),
+				docxHex(pal.CodeBorder), docxHex(pal.CodeBorder), docxHex(pal.CodeBorder), docxHex(pal.CodeBorder),
 			)
 			body.WriteString(renderDOCXBox(inner.String(), avail, indentPx, pal.CodeBG, borders))
 
 		case b.Kind == model.BlockCallout:
-			bg, border, accent, title := calloutPalette(b.Callout, pal)
+			bg, border, accent, cTitle := pal.CalloutColors(b.Callout)
 			var inner strings.Builder
 			inner.WriteString(fmt.Sprintf(
 				`<w:p><w:pPr><w:spacing w:before="0" w:after="80"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="%s"/><w:sz w:val="22"/></w:rPr>%s</w:r></w:p>`,
-				docxHex(accent), docxTextXML(title),
+				docxHex(accent), docxTextXML(cTitle),
 			))
 			inner.WriteString(fmt.Sprintf(
-				`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="360" w:lineRule="auto"/></w:pPr>%s</w:p>`,
-				renderDOCXRuns(b.Spans, pal, false, 24, pal.Text, assets),
+				`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
+				line240, renderDOCXRuns(b.Spans, pal, false, bodyHalfPt, pal.Text, assets),
 			))
 			borders := fmt.Sprintf(
 				`<w:top w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:left w:val="single" w:sz="24" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:right w:val="single" w:sz="6" w:space="0" w:color="%s"/>`,
@@ -1593,14 +2705,27 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 
 		case b.Kind == model.BlockQuote:
 			inner := fmt.Sprintf(
-				`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="360" w:lineRule="auto"/></w:pPr>%s</w:p>`,
-				renderDOCXRuns(b.Spans, pal, false, 24, pal.TextSecondary, assets),
+				`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
+				line240, renderDOCXRuns(b.Spans, pal, false, bodyHalfPt, pal.QuoteFG, assets),
 			)
 			borders := fmt.Sprintf(`<w:left w:val="single" w:sz="24" w:space="0" w:color="%s"/>`, docxHex(pal.QuoteBar))
-			body.WriteString(renderDOCXBox(inner, avail, indentPx, pal.Hover, borders))
+			if !legacy && pal.Theme == model.ExportThemePress {
+				borders = fmt.Sprintf(
+					`<w:top w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="6" w:space="0" w:color="%s"/>`,
+					docxHex(pal.QuoteBar), docxHex(pal.QuoteBar),
+				)
+			}
+			bg := pal.QuoteBG
+			if bg.A == 0 {
+				bg = pal.InnerCanvas
+			}
+			body.WriteString(renderDOCXBox(inner, avail, indentPx, bg, borders))
 
 		case b.Kind.IsList():
 			marker := "•"
+			if !legacy && pal.UsesSquareBullets() {
+				marker = "▪"
+			}
 			if b.Kind == model.BlockNumbered {
 				if ord <= 0 {
 					ord = 1
@@ -1614,46 +2739,62 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 				}
 			}
 			gutter := float32(24)
-			runs := renderDOCXRuns(b.Spans, pal, false, 24, pal.Text, assets)
+			runs := renderDOCXRuns(b.Spans, pal, false, bodyHalfPt, pal.Text, assets)
 			body.WriteString(fmt.Sprintf(
-				`<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="%d"/></w:tabs><w:ind w:left="%d" w:hanging="%d"/><w:spacing w:before="0" w:after="80" w:line="360" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/></w:rPr>%s</w:r><w:r><w:tab/></w:r>%s</w:p>`,
-				docxTwips(indentPx+gutter), docxTwips(indentPx+gutter), docxTwips(gutter),
+				`<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="%d"/></w:tabs><w:ind w:left="%d" w:hanging="%d"/><w:spacing w:before="0" w:after="80" w:line="%d" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/></w:rPr>%s</w:r><w:r><w:tab/></w:r>%s</w:p>`,
+				docxTwips(indentPx+gutter), docxTwips(indentPx+gutter), docxTwips(gutter), line240,
 				docxHex(pal.Accent), docxTextXML(marker), runs,
 			))
 
 		case b.Kind.IsHeading():
 			lvl := b.Kind.HeadingLevel()
-			halfPts := [6]int{42, 33, 28, 26, 24, 24}[lvl-1]
-			runs := renderDOCXRuns(b.Spans, pal, true, halfPts, pal.Text, assets)
+			px := pal.BodySize
+			switch lvl {
+			case 1:
+				px = pal.HeadSizes[0]
+			case 2:
+				px = pal.HeadSizes[1]
+			case 3:
+				px = pal.HeadSizes[2]
+			case 4:
+				px = pal.BodySize * 1.12
+			}
+			halfPts := docxHalfPt(px)
+			bold := lvl != 6
+			runs := renderDOCXRuns(b.Spans, pal, bold, halfPts, pal.Title, assets)
+			bdr := ""
+			if lvl == 2 && !legacy && pal.Theme == model.ExportThemePress {
+				bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="%s"/></w:pBdr>`, docxHex(pal.Divider))
+			}
 			body.WriteString(fmt.Sprintf(
-				`<w:p><w:pPr><w:pStyle w:val="Heading%d"/><w:spacing w:before="200" w:after="120"/></w:pPr>%s</w:p>`,
-				lvl, runs,
+				`<w:p><w:pPr><w:pStyle w:val="Heading%d"/>%s<w:spacing w:before="200" w:after="120"/></w:pPr>%s</w:p>`,
+				lvl, bdr, runs,
 			))
 
 		default:
-			runs := renderDOCXRuns(b.Spans, pal, false, 24, pal.Text, assets)
+			runs := renderDOCXRuns(b.Spans, pal, false, bodyHalfPt, pal.Text, assets)
 			body.WriteString(fmt.Sprintf(
-				`<w:p><w:pPr><w:ind w:left="%d"/><w:spacing w:before="0" w:after="140" w:line="360" w:lineRule="auto"/></w:pPr>%s</w:p>`,
-				docxTwips(indentPx), runs,
+				`<w:p><w:pPr><w:ind w:left="%d"/><w:spacing w:before="0" w:after="140" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
+				docxTwips(indentPx), line240, runs,
 			))
 		}
 	}
 
-	if prefs.IncludeMeta {
+	if resolveWatermark(prefs) {
 		dateStr := time.Now().UTC().Format("2006.01.02")
 		body.WriteString(fmt.Sprintf(
-			`<w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="6" w:space="6" w:color="%s"/></w:pBdr><w:tabs><w:tab w:val="right" w:pos="%d"/></w:tabs><w:spacing w:before="280" w:after="0"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="20"/></w:rPr>%s<w:tab/>%s</w:r></w:p>`,
-			docxHex(pal.Hairline), docxTwips(contentW), docxHex(pal.TextSecondary), docxTextXML("Block"), docxTextXML(dateStr),
+			`<w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="6" w:space="6" w:color="%s"/></w:pBdr><w:tabs><w:tab w:val="right" w:pos="%d"/></w:tabs><w:spacing w:before="280" w:after="0"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="21"/></w:rPr>%s<w:tab/>%s</w:r></w:p>`,
+			docxHex(pal.Divider), docxTwips(contentW), docxHex(pal.Secondary), docxTextXML(watermarkLabel), docxTextXML(dateStr),
 		))
 	}
 
 	body.WriteString(fmt.Sprintf(
 		`<w:sectPr><w:pgSz w:w="%d" w:h="16838"/><w:pgMar w:top="%d" w:right="%d" w:bottom="%d" w:left="%d" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr>`,
-		docxTwips(pageW), docxTwips(marginPx), docxTwips(marginPx), docxTwips(marginPx), docxTwips(marginPx),
+		docxTwips(pageW), docxTwips(topM), docxTwips(rightM), docxTwips(bottomM), docxTwips(leftM),
 	))
 
 	docXML := fmt.Sprintf(`%s<w:document %s><w:background w:color="%s"/><w:body>%s</w:body></w:document>`,
-		xmlDecl, docxNS, docxHex(pal.Paper), body.String(),
+		xmlDecl, docxNS, docxHex(pal.InnerCanvas), body.String(),
 	)
 
 	stylesXML := buildDOCXStyles(pal)
@@ -1662,7 +2803,7 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 		xmlDecl, docxNS,
 	)
 	contentTypes := xmlDecl + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
-		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-officedocument.relationships+xml"/>` +
 		`<Default Extension="xml" ContentType="application/xml"/>` +
 		`<Default Extension="png" ContentType="image/png"/>` +
 		`<Default Extension="jpg" ContentType="image/jpeg"/>` +
@@ -1714,17 +2855,85 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 	return zipBuf.Bytes(), nil
 }
 
-func buildDOCXStyles(pal theme.Palette) string {
+func renderDOCXTitle(pal PaperThemeSpec, legacy bool, title string, pageW, topM, rightM, leftM float32) string {
+	fam := pal.HeadingFamily
+	if isASCII(title) {
+		fam = pal.TitleFamily
+	}
+	halfPt := docxHalfPt(pal.TitleSize)
+	boldXML := ""
+	if pal.TitleBold {
+		boldXML = "<w:b/><w:bCs/>"
+	}
+	fg := pal.Title
+	if !legacy && pal.Mark == TitleMarkBand {
+		fg = pal.Accent2
+	}
+	hl := ""
+	if !legacy && pal.Mark == TitleMarkHighlight {
+		hl = fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(pal.HighlightBG()))
+	}
+	run := fmt.Sprintf(`<w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/>%s</w:rPr>%s</w:r>`,
+		docxFontXML(fam), boldXML, docxHex(fg), halfPt, halfPt, hl, docxTextXML(title))
+	if !legacy && pal.Mark == TitleMarkCursor {
+		run += fmt.Sprintf(`<w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr><w:t> ▌</w:t></w:r>`, docxHex(pal.Accent), halfPt)
+	}
+	if !legacy && pal.Mark == TitleMarkBand {
+		full := docxTwips(pageW)
+		return fmt.Sprintf(
+			`<w:tbl><w:tblPr><w:tblW w:w="%d" w:type="dxa"/><w:tblInd w:w="-%d" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="%d" w:type="dxa"/><w:left w:w="%d" w:type="dxa"/><w:bottom w:w="660" w:type="dxa"/><w:right w:w="%d" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="%d"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="%s"/></w:tcPr><w:p><w:pPr><w:keepNext/><w:spacing w:before="0" w:after="0"/></w:pPr>%s</w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:before="0" w:after="240" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`,
+			full, docxTwips(leftM), docxTwips(topM), docxTwips(leftM), docxTwips(rightM), full, full, docxHex(pal.Accent), run,
+		)
+	}
+	jc := ""
+	bdr := fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="12" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(pal.Accent))
+	if !legacy {
+		switch pal.Mark {
+		case TitleMarkDoubleRule:
+			jc = `<w:jc w:val="center"/>`
+			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="double" w:sz="8" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(pal.Divider))
+		case TitleMarkRule:
+			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="12" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(pal.Title))
+		case TitleMarkWavy:
+			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="wave" w:sz="8" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(pal.Accent))
+		case TitleMarkHighlight, TitleMarkCursor:
+			bdr = ""
+		}
+	}
+	return fmt.Sprintf(
+		`<w:p><w:pPr><w:pStyle w:val="Heading1"/><w:keepNext/>%s%s<w:spacing w:before="0" w:after="260"/></w:pPr>%s</w:p>`,
+		jc, bdr, run,
+	)
+}
+
+func buildDOCXStyles(pal PaperThemeSpec) string {
+	bodyHalfPt := docxHalfPt(pal.BodySize)
+	line240 := int(pal.Leading*240 + 0.5)
 	var out strings.Builder
 	out.WriteString(fmt.Sprintf(
-		`%s<w:styles %s><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="PingFang SC" w:hAnsi="PingFang SC" w:eastAsia="PingFang SC" w:cs="PingFang SC"/><w:color w:val="%s"/><w:sz w:val="24"/><w:szCs w:val="24"/><w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:widowControl w:val="0"/><w:spacing w:before="0" w:after="0" w:line="360" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>`,
-		xmlDecl, docxNS, docxHex(pal.Text),
+		`%s<w:styles %s><w:docDefaults><w:rPrDefault><w:rPr>%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/><w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:widowControl w:val="0"/><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>`,
+		xmlDecl, docxNS, docxFontXML(pal.BodyFamily), docxHex(pal.Text), bodyHalfPt, bodyHalfPt, line240,
 	))
-	halfPts := [6]int{42, 33, 28, 26, 24, 24}
 	for lvl := 1; lvl <= 6; lvl++ {
+		px := pal.BodySize
+		switch lvl {
+		case 1:
+			px = pal.HeadSizes[0]
+		case 2:
+			px = pal.HeadSizes[1]
+		case 3:
+			px = pal.HeadSizes[2]
+		case 4:
+			px = pal.BodySize * 1.12
+		}
+		hp := docxHalfPt(px)
+		bTag := "<w:b/><w:bCs/>"
+		if lvl == 6 {
+			bTag = `<w:b w:val="0"/><w:bCs w:val="0"/>`
+		}
 		out.WriteString(fmt.Sprintf(
-			`<w:style w:type="paragraph" w:styleId="Heading%d"><w:name w:val="heading %d"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:outlineLvl w:val="%d"/></w:pPr><w:rPr><w:b/><w:bCs/><w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr></w:style>`,
-			lvl, lvl, lvl-1, docxHex(pal.Text), halfPts[lvl-1], halfPts[lvl-1],
+			`<w:style w:type="paragraph" w:styleId="Heading%d"><w:name w:val="heading %d"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:outlineLvl w:val="%d"/></w:pPr><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr></w:style>`,
+			lvl, lvl, lvl-1, docxFontXML(pal.HeadingFamily), bTag, docxHex(pal.Title), hp, hp,
 		))
 	}
 	out.WriteString("</w:styles>")
@@ -1775,15 +2984,16 @@ func escapeXMLText(s string) string {
 	return b.String()
 }
 
-func renderDOCXRuns(spans []model.Span, pal theme.Palette, baseBold bool, halfPt int, baseFG ui.Color, assets *docxAssets) string {
+func renderDOCXRuns(spans []model.Span, pal PaperThemeSpec, baseBold bool, halfPt int, baseFG ui.Color, assets *docxAssets) string {
 	if len(spans) == 0 {
 		return ""
 	}
+	linkFG := pal.LinkFG()
 	var out strings.Builder
 	for _, sp := range spans {
 		var rpr strings.Builder
 		if sp.Marks&model.MarkCode != 0 {
-			rpr.WriteString(`<w:rFonts w:ascii="Menlo" w:hAnsi="Menlo" w:eastAsia="PingFang SC" w:cs="Menlo"/>`)
+			rpr.WriteString(docxFontXML(fontMono))
 		}
 		if baseBold || sp.Marks&model.MarkBold != 0 {
 			rpr.WriteString("<w:b/><w:bCs/>")
@@ -1799,7 +3009,7 @@ func renderDOCXRuns(spans []model.Span, pal theme.Palette, baseBold bool, halfPt
 		}
 		fg := baseFG
 		if sp.Link != "" {
-			fg = pal.Accent
+			fg = linkFG
 		}
 		if c, ok := resolveSpanColor(sp.FGColor, false, pal); ok {
 			fg = c
@@ -1831,7 +3041,7 @@ func renderDOCXBox(content string, widthPx, indentPx float32, bg ui.Color, borde
 	)
 }
 
-func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal theme.Palette, assets *docxAssets) string {
+func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal PaperThemeSpec, assets *docxAssets) string {
 	cols := 0
 	if len(t.Rows) > 0 {
 		cols = len(t.Rows[0])
@@ -1863,7 +3073,7 @@ func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal theme.Pa
 	for _, cw := range colWidths {
 		grid.WriteString(fmt.Sprintf(`<w:gridCol w:w="%d"/>`, cw))
 	}
-	bc := docxHex(pal.Hairline)
+	bc := docxHex(pal.TableBorder)
 	borders := fmt.Sprintf(
 		`<w:top w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:left w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:right w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="%s"/>`,
 		bc, bc, bc, bc, bc, bc,
@@ -1873,6 +3083,7 @@ func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal theme.Pa
 		`<w:tbl><w:tblPr><w:tblW w:w="%d" w:type="dxa"/><w:tblInd w:w="%d" w:type="dxa"/><w:tblBorders>%s</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="90" w:type="dxa"/><w:bottom w:w="90" w:type="dxa"/><w:left w:w="120" w:type="dxa"/><w:right w:w="120" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>%s</w:tblGrid>`,
 		totalTwips, docxTwips(indentPx), borders, grid.String(),
 	))
+	headerBG := pal.TableHeaderBG()
 	for r, row := range t.Rows {
 		isHeader := r == 0
 		out.WriteString("<w:tr>")
@@ -1882,14 +3093,16 @@ func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal theme.Pa
 				cellSpans = row[c].Spans
 			}
 			shd := ""
+			baseFG := pal.Text
 			if isHeader {
-				shd = fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(pal.Hover))
+				shd = fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(headerBG))
+				baseFG = pal.Title
 			}
 			jc := "left"
 			if c < len(t.Aligns) && t.Aligns[c] != model.ColAlignNone {
 				jc = string(t.Aligns[c])
 			}
-			runs := renderDOCXRuns(cellSpans, pal, isHeader, 22, pal.Text, assets)
+			runs := renderDOCXRuns(cellSpans, pal, isHeader, 22, baseFG, assets)
 			out.WriteString(fmt.Sprintf(
 				`<w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/>%s<w:vAlign w:val="top"/></w:tcPr><w:p><w:pPr><w:jc w:val="%s"/><w:spacing w:before="0" w:after="0" w:line="320" w:lineRule="auto"/></w:pPr>%s</w:p></w:tc>`,
 				colWidths[c], shd, jc, runs,

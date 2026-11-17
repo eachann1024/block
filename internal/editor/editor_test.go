@@ -2,9 +2,13 @@ package editor
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"block/internal/markdown"
 	"block/internal/model"
 	"block/internal/theme"
 	appUi "block/internal/ui"
@@ -550,5 +554,422 @@ func TestCodePreviewTableImageHandlesAndBatchPlanDiff(t *testing.T) {
 	// Check font sizes >= 14 across theme constants used
 	if theme.FontSmallMinSize < 14 || theme.FontBodySize < 16 || theme.EditorStandardWidth != 672 {
 		t.Fatalf("unexpected theme constants")
+	}
+}
+
+func TestSelectionToolbarAdaptiveMoreFoldingAndBlockCapabilities(t *testing.T) {
+	appUi.ResetSmoke()
+	doc := &model.Doc{
+		Blocks: []model.Block{
+			{ID: 1, Kind: model.BlockParagraph, Spans: []model.Span{{Text: "Selectable rich text"}}},
+			{ID: 2, Kind: model.BlockCode, Language: "go", Code: "fmt.Println(1)"},
+			{ID: 3, Kind: model.BlockDivider},
+		},
+	}
+	s := NewSession("/tmp/toolbar.md", doc, nil, nil)
+	s.FocusBlock(0)
+	s.SelectRange(0, 0, 0, 10)
+	// Narrow viewport (320px): toolbar stays single-row and folds tail items into tb-more.
+	tt := ui.NewTester(makeSessionView(s, false), 320, 480)
+	tt.Frame()
+	barRect, ok := appUi.TargetBounds("selection-toolbar")
+	if !ok {
+		t.Fatalf("expected selection-toolbar bounds at 320px")
+	}
+	if barRect.H > 40 {
+		t.Fatalf("expected single-row selection-toolbar (H<=40), got H=%v", barRect.H)
+	}
+	if _, ok := appUi.TargetBounds("tb-more"); !ok {
+		t.Fatalf("expected tb-more overflow button in narrow viewport")
+	}
+	if _, ok := appUi.TargetBounds("tb-link"); ok {
+		t.Fatalf("expected tb-link folded out of inline row at 320px")
+	}
+	moreR, _ := appUi.TargetBounds("tb-more")
+	clickProbe(t, tt, "tb-more")
+	if _, ok := appUi.TargetBounds("toolbar-more-menu"); !ok {
+		t.Fatalf("expected toolbar-more-menu after clicking tb-more (moreR=%+v barR=%+v pop=%q selOpen=%v)",
+			moreR, barRect, s.toolbarPop, s.IsSelectionToolbarOpen())
+	}
+	// Click Bold inside overflow menu if bold was folded, or toggle via menu item.
+	if r, ok := appUi.TargetBounds("toolbar-more-item-0"); ok {
+		tt.ClickAt(r.X+r.W*0.5, r.Y+r.H*0.5)
+	}
+
+	// Code block selection: hides rich-text & block-type buttons, keeps comment/reaction/ai.
+	s.closeTransientOverlays()
+	tt.SetSize(900, 500)
+	s.FocusBlock(1)
+	s.SelectRange(1, 0, 1, 5)
+	appUi.ResetSmoke()
+	tt.Frame()
+	if !s.IsSelectionToolbarOpen() {
+		t.Fatalf("expected selection toolbar open for code block")
+	}
+	if _, ok := appUi.TargetBounds("tb-comment"); !ok {
+		t.Fatalf("expected tb-comment on code block")
+	}
+	if _, ok := appUi.TargetBounds("tb-bold"); ok {
+		t.Fatalf("expected tb-bold hidden on code block")
+	}
+	if _, ok := appUi.TargetBounds("tb-type"); ok {
+		t.Fatalf("expected tb-type hidden on code block")
+	}
+
+	// Divider block does not open text selection toolbar.
+	s.SelectRange(2, 0, 2, 3)
+	if s.IsSelectionToolbarOpen() {
+		t.Fatalf("expected selection toolbar disabled on divider block")
+	}
+}
+
+func TestInlineAIPromptChipsStarLimitAndCancelRestore(t *testing.T) {
+	appUi.ResetSmoke()
+	dataDir := t.TempDir()
+	doc := &model.Doc{
+		Blocks: []model.Block{
+			{ID: 1, Kind: model.BlockParagraph, Spans: []model.Span{{Text: "Original sentence here"}}},
+			{ID: 2, Kind: model.BlockParagraph},
+			{ID: 3, Kind: model.BlockTable, Table: &model.TableData{
+				Rows: [][]model.TableCell{
+					{{Spans: []model.Span{{Text: "Header"}}}, {Spans: []model.Span{{Text: "Value"}}}},
+					{{Spans: []model.Span{{Text: "CellText"}}}, {Spans: []model.Span{{Text: "123"}}}},
+				},
+			}},
+		},
+	}
+	s := NewSession("/tmp/ai.md", doc, markdown.NewCodec(), nil)
+	s.SetDataDir(dataDir)
+
+	// 1) Empty block /ai -> seeded empty starred presets.
+	s.FocusBlock(1)
+	tt := ui.NewTester(makeSessionView(s, false), 900, 650)
+	tt.Type("/ai")
+	tt.Key(0, ui.KeyEnter)
+	if !s.IsInlineAIOpen() {
+		t.Fatalf("expected inline AI open from /ai slash command")
+	}
+	if _, ok := appUi.TargetBounds("inline-ai"); !ok {
+		t.Fatalf("expected inline-ai panel probe")
+	}
+	emptyEntries := s.ensurePromptStore().list(PromptScopeEmpty)
+	if len(emptyEntries) != 4 || !emptyEntries[0].Starred || emptyEntries[0].Preset != PresetContinue {
+		t.Fatalf("unexpected seeded empty presets: %+v", emptyEntries)
+	}
+
+	// Unstar first empty preset -> moves behind starred items; add custom prompts past 3 rows -> prunes trailing unstarred.
+	clickProbe(t, tt, "ai-saved-star-0")
+	afterUnstar := s.ensurePromptStore().list(PromptScopeEmpty)
+	if afterUnstar[len(afterUnstar)-1].Preset != PresetContinue || afterUnstar[len(afterUnstar)-1].Starred {
+		t.Fatalf("expected unstarred preset moved to back, got %+v", afterUnstar)
+	}
+	for i := 0; i < 16; i++ {
+		s.ensurePromptStore().record(PromptScopeEmpty, fmt.Sprintf("CustomPromptNumber%02d", i))
+	}
+	capped := s.ensurePromptStore().list(PromptScopeEmpty)
+	rows := chipRowIndices(capped)
+	for i, it := range capped {
+		if !it.Starred && rows[i] >= inlineAIMaxChipRows {
+			t.Fatalf("unstarred chip %d (%q) exceeded MAX_CHIP_ROWS=%d (row=%d)", i, it.ShortLabel(), inlineAIMaxChipRows, rows[i])
+		}
+	}
+	// Verify persisted to ai-inline-prompts.json and reloaded in a fresh session.
+	if _, err := os.Stat(filepath.Join(dataDir, "ai-inline-prompts.json")); err != nil {
+		t.Fatalf("expected ai-inline-prompts.json persisted: %v", err)
+	}
+	s2 := NewSession("/tmp/ai2.md", doc.Clone(), nil, nil)
+	s2.SetDataDir(dataDir)
+	reloaded := s2.ensurePromptStore().list(PromptScopeEmpty)
+	if len(reloaded) != len(capped) {
+		t.Fatalf("reloaded prompt count mismatch: %d vs %d", len(reloaded), len(capped))
+	}
+	s.aiClose()
+
+	// 2) Thinking cancel via Esc restores user's typed instruction.
+	release := make(chan struct{})
+	s.SetInlineAIResponder(func(ctx, orig, draft, instruction string) string {
+		<-release
+		return "NeverApplied"
+	})
+	s.SelectRange(0, 0, 0, len([]rune("Original sentence here")))
+	tt.Frame()
+	clickProbe(t, tt, "tb-ai")
+	if !s.IsInlineAIOpen() {
+		t.Fatalf("expected inline AI open from tb-ai")
+	}
+	tt.Type("Make it crisp and clear")
+	tt.Key(0, ui.KeyEnter)
+	if s.inlineAI == nil || s.inlineAI.Status != aiStatusThinking {
+		t.Fatalf("expected Thinking status while responder is blocked")
+	}
+	if _, ok := appUi.TargetBounds("ai-stop"); !ok {
+		t.Fatalf("expected ai-stop button visible during Thinking")
+	}
+	tt.Key(0, ui.KeyEscape)
+	if s.inlineAI == nil || s.inlineAI.Status != aiStatusInput {
+		t.Fatalf("expected Esc during Thinking to return to Input status")
+	}
+	if s.inlineAI.InputText != "Make it crisp and clear" {
+		t.Fatalf("expected typed prompt restored on cancel, got %q", s.inlineAI.InputText)
+	}
+	close(release)
+	s.aiClose()
+
+	// 3) Fast responder -> native block preview -> Enter accepts via ReplaceAIMarkdown & Insert Below.
+	s.SetInlineAIResponder(func(ctx, orig, draft, instruction string) string {
+		return "### Polished\n- Item A"
+	})
+	s.SelectRange(0, 0, 0, len([]rune("Original sentence here")))
+	tt.Frame()
+	clickProbe(t, tt, "tb-ai")
+	tt.Type("Polish into list")
+	tt.Key(0, ui.KeyEnter)
+	if s.inlineAI == nil || s.inlineAI.Status != aiStatusReview {
+		t.Fatalf("expected Review status after fast responder")
+	}
+	if _, ok := appUi.TargetBounds("inline-ai-preview"); !ok {
+		t.Fatalf("expected inline-ai-preview on paper")
+	}
+	if !tt.HasText("Polished") || !tt.HasText("Item A") {
+		t.Fatalf("expected native parsed preview blocks rendered on paper")
+	}
+	// Accept with empty Enter.
+	tt.Key(0, ui.KeyEnter)
+	if s.IsInlineAIOpen() {
+		t.Fatalf("expected inline AI closed after Enter accept")
+	}
+	if s.Doc().Blocks[0].Kind != model.BlockHeading3 || s.Doc().Blocks[1].Kind != model.BlockBullet {
+		t.Fatalf("expected ReplaceAIMarkdown to produce H3 + Bullet, got %+v", s.Doc().Blocks[:2])
+	}
+
+	// Table cell inline ReplaceAIMarkdown vs structural rejection.
+	tblIdx := len(s.Doc().Blocks) - 1
+	tblText := s.Doc().Blocks[tblIdx].PlainText()
+	cellOff := strings.Index(tblText, "CellText")
+	if cellOff < 0 {
+		t.Fatalf("missing CellText in %q", tblText)
+	}
+	s.SelectRange(tblIdx, cellOff, tblIdx, cellOff+len("CellText"))
+	if s.ReplaceAIMarkdown("# HeadingNotAllowedInCell") {
+		t.Fatalf("expected structural markdown rejected inside table cell slice")
+	}
+	if !s.ReplaceAIMarkdown("**UpdatedCell**") {
+		t.Fatalf("expected inline markdown applied inside table cell slice")
+	}
+	if s.Doc().Blocks[tblIdx].Table.Rows[1][0].PlainText() != "UpdatedCell" {
+		t.Fatalf("unexpected cell text: %q", s.Doc().Blocks[tblIdx].Table.Rows[1][0].PlainText())
+	}
+}
+
+func TestSelectedMarkdownAndSelectedDoc(t *testing.T) {
+	appUi.ResetSmoke()
+	doc := &model.Doc{
+		Blocks: []model.Block{
+			{
+				ID:   1,
+				Kind: model.BlockHeading1,
+				Spans: []model.Span{
+					{Text: "Hello "},
+					{Text: "World", Marks: model.MarkBold},
+					{Text: " "},
+					{Text: "code", Marks: model.MarkCode},
+					{Text: " "},
+					{Text: "site", Link: "https://example.com"},
+				},
+			},
+			{ID: 2, Kind: model.BlockBullet, Indent: 4, Spans: []model.Span{{Text: "Parent", Marks: model.MarkItalic}}},
+			{ID: 3, Kind: model.BlockBullet, Indent: 6, Spans: []model.Span{{Text: "Child"}}},
+			{ID: 4, Kind: model.BlockTable, Table: &model.TableData{
+				Rows: [][]model.TableCell{
+					{{Spans: []model.Span{{Text: "A", Marks: model.MarkBold}}}, {Spans: []model.Span{{Text: "B"}}}, {Spans: []model.Span{{Text: "C"}}}},
+					{{Spans: []model.Span{{Text: "D"}}}, {Spans: []model.Span{{Text: "E"}}}, {Spans: []model.Span{{Text: "F"}}}},
+				},
+			}},
+		},
+	}
+	s := NewSession("/tmp/copy.md", doc, nil, nil)
+	s.FocusBlock(0)
+	if s.SelectedDoc() != nil || s.SelectedMarkdown() != "" {
+		t.Fatalf("expected nil SelectedDoc and empty SelectedMarkdown without selection")
+	}
+
+	// Single-block inline selection preserves bold/code/link without heading prefix.
+	s.SelectRange(0, 6, 0, len([]rune(doc.Blocks[0].PlainText())))
+	md := s.SelectedMarkdown()
+	if strings.HasPrefix(md, "# ") || !strings.Contains(md, "**World**") || !strings.Contains(md, "`code`") || !strings.Contains(md, "[site](https://example.com)") {
+		t.Fatalf("unexpected inline SelectedMarkdown: %q", md)
+	}
+
+	// Multi-block selection normalizes orphan indentation (4->0, 6->2).
+	s.SelectRange(1, 0, 2, 5)
+	snap := s.SelectedDoc()
+	if snap == nil || len(snap.Blocks) != 2 {
+		t.Fatalf("expected 2 blocks in SelectedDoc, got %+v", snap)
+	}
+	if snap.Blocks[0].Indent != 0 || snap.Blocks[1].Indent != 2 {
+		t.Fatalf("expected normalized indents [0, 2], got [%d, %d]", snap.Blocks[0].Indent, snap.Blocks[1].Indent)
+	}
+	multiMD := s.SelectedMarkdown()
+	if !strings.Contains(multiMD, "*Parent*") || !strings.Contains(multiMD, "  - Child") {
+		t.Fatalf("unexpected multi-block SelectedMarkdown: %q", multiMD)
+	}
+
+	// Table partial multi-cell slice.
+	tblPlain := doc.Blocks[3].PlainText()
+	bIdx := strings.Index(tblPlain, "B")
+	dIdx := strings.Index(tblPlain, "D")
+	s.SelectRange(3, bIdx, 3, dIdx+1)
+	tblSnap := s.SelectedDoc()
+	if tblSnap == nil || len(tblSnap.Blocks) != 1 || tblSnap.Blocks[0].Kind != model.BlockTable || len(tblSnap.Blocks[0].Table.Rows) != 2 {
+		t.Fatalf("expected sliced table doc, got %+v", tblSnap)
+	}
+
+	// Cmd+C copies Markdown formatting via tester.
+	s.FocusBlock(0)
+	s.SelectRange(0, 6, 0, 11) // "World" (Bold)
+	tt := ui.NewTester(makeSessionView(s, false), 900, 500)
+	tt.Key(ui.Cmd, ui.KeyC)
+	if got := tt.Clipboard(); got != "**World**" {
+		t.Fatalf("expected Cmd+C to copy **World**, got %q", got)
+	}
+}
+
+func TestListDepthMarkersAndGuides(t *testing.T) {
+	appUi.ResetSmoke()
+	doc := &model.Doc{
+		Blocks: []model.Block{
+			{ID: 10, Kind: model.BlockBullet, Indent: 0, Spans: []model.Span{{Text: "Root bullet"}}},
+			{ID: 11, Kind: model.BlockBullet, Indent: 2, Spans: []model.Span{{Text: "Depth 1 bullet"}}},
+			{ID: 12, Kind: model.BlockBullet, Indent: 4, Spans: []model.Span{{Text: "Depth 2 bullet"}}},
+			{ID: 13, Kind: model.BlockParagraph, Indent: 4, Spans: []model.Span{{Text: "Continuation paragraph"}}},
+			{ID: 14, Kind: model.BlockNumbered, Indent: 0, Spans: []model.Span{{Text: "First numbered"}}},
+			{ID: 15, Kind: model.BlockNumbered, Indent: 2, Spans: []model.Span{{Text: "Nested numbered"}}},
+		},
+	}
+	s := NewSession("", doc, nil, nil)
+	_ = ui.NewTester(makeSessionView(s, false), 900, 600)
+
+	if _, ok := appUi.TargetBounds("list-bullet-10"); !ok {
+		t.Fatalf("expected root bullet marker")
+	}
+	if r, ok := appUi.TargetBounds("list-bullet-10"); !ok || r.W != 6 {
+		t.Fatalf("expected depth 0 bullet diameter 6px, got %+v", r)
+	}
+	if r, ok := appUi.TargetBounds("list-bullet-12"); !ok || r.W != 5 {
+		t.Fatalf("expected depth 2 bullet diameter 5px, got %+v", r)
+	}
+	if _, ok := appUi.TargetBounds("list-guide-11-0"); !ok {
+		t.Fatalf("expected ancestor guide line on depth 1 bullet")
+	}
+	if _, ok := appUi.TargetBounds("list-guide-12-1"); !ok {
+		t.Fatalf("expected two ancestor guide lines on depth 2 bullet")
+	}
+	if _, ok := appUi.TargetBounds("list-guide-13-0"); !ok {
+		t.Fatalf("expected ancestor guide line on indented continuation paragraph")
+	}
+	if _, ok := appUi.TargetBounds("list-number-14"); !ok {
+		t.Fatalf("expected numbered marker")
+	}
+}
+
+func TestEmptyLineHintBandKeycapsAndOverlaySuppressesHandles(t *testing.T) {
+	appUi.ResetSmoke()
+	doc := &model.Doc{
+		Blocks: []model.Block{
+			{ID: 1, Kind: model.BlockParagraph},
+			{ID: 2, Kind: model.BlockHeading1},
+			{ID: 3, Kind: model.BlockParagraph, Spans: []model.Span{{Text: "Body line"}}},
+		},
+	}
+	s := NewSession("", doc, nil, nil)
+	s.FocusBlock(0)
+	tt := ui.NewTester(makeSessionView(s, false), 900, 500)
+
+	if _, ok := appUi.TargetBounds("empty-line-band"); !ok {
+		t.Fatalf("expected empty-line-band on focused empty paragraph")
+	}
+	if _, ok := appUi.TargetBounds("empty-hint-menu-keys"); !ok {
+		t.Fatalf("expected empty-hint-menu-keys on wide empty paragraph")
+	}
+
+	// Narrow column drops keycaps to avoid crowding hint text.
+	appUi.ResetSmoke()
+	tt.SetSize(250, 500)
+	if _, ok := appUi.TargetBounds("empty-hint-menu-keys"); ok {
+		t.Fatalf("expected keycaps hidden in narrow 250px viewport")
+	}
+
+	// Empty heading shows Heading 1 placeholder without menu keycaps.
+	tt.SetSize(900, 500)
+	s.FocusBlock(1)
+	appUi.ResetSmoke()
+	tt.Frame()
+	if !tt.HasText(theme.Tr("标题 1", "Heading 1")) {
+		t.Fatalf("expected empty heading hint text")
+	}
+	if _, ok := appUi.TargetBounds("empty-hint-menu-keys"); ok {
+		t.Fatalf("expected no menu keycaps on empty heading")
+	}
+
+	// Focused non-empty block shows handle; opening find overlay hides handle.
+	appUi.ResetSmoke()
+	s.FocusBlock(2)
+	tt.Frame()
+	if _, ok := appUi.TargetBounds("block-grip-3"); !ok {
+		t.Fatalf("expected block-grip-3 when no overlay open")
+	}
+	appUi.ResetSmoke()
+	s.OpenFind()
+	tt.Frame()
+	if _, ok := appUi.TargetBounds("block-grip-3"); ok {
+		t.Fatalf("expected block-grip-3 suppressed while find overlay is open")
+	}
+	_ = time.Millisecond
+}
+
+func TestCalloutFiveStateHeaderMenuAndImageResize(t *testing.T) {
+	appUi.ResetSmoke()
+	doc := &model.Doc{
+		Blocks: []model.Block{
+			{ID: 1, Kind: model.BlockCallout, Callout: model.CalloutNote, Spans: []model.Span{{Text: "Watch "}, {Text: "inline", Marks: model.MarkCode}}},
+			{ID: 2, Kind: model.BlockImage, ImageSrc: "missing.png", ImageAlt: "Cover", ImageAlign: model.ImageAlignLeft},
+		},
+	}
+	s := NewSession("", doc, nil, nil)
+	s.FocusBlock(0)
+	tt := ui.NewTester(makeSessionView(s, false), 900, 700)
+
+	// Open 5-state Callout menu via header pill click.
+	clickProbe(t, tt, "callout-pill")
+	if _, ok := appUi.TargetBounds("callout-kind-menu"); !ok {
+		t.Fatalf("expected callout-kind-menu open")
+	}
+	clickProbe(t, tt, "callout-opt-3") // Warning
+	if s.Doc().Blocks[0].Callout != model.CalloutWarning {
+		t.Fatalf("expected CalloutWarning after opt-3 click, got %q", s.Doc().Blocks[0].Callout)
+	}
+
+	// Re-open and convert to plain paragraph.
+	clickProbe(t, tt, "callout-icon")
+	clickProbe(t, tt, "callout-opt-plain")
+	if s.Doc().Blocks[0].Kind != model.BlockParagraph {
+		t.Fatalf("expected converted to BlockParagraph, got %v", s.Doc().Blocks[0].Kind)
+	}
+
+	// Image block defaults to full width and shows left/right resize handles when focused.
+	s.FocusBlock(1)
+	tt.Frame()
+	if _, ok := appUi.TargetBounds("img-resize-left"); !ok {
+		t.Fatalf("expected img-resize-left probe on focused image")
+	}
+	rightR, ok := appUi.TargetBounds("img-resize-right")
+	if !ok {
+		t.Fatalf("expected img-resize-right probe on focused image")
+	}
+	tt.Press(rightR.X+rightR.W*0.5, rightR.Y+rightR.H*0.5)
+	tt.Move(rightR.X+rightR.W*0.5-120, rightR.Y+rightR.H*0.5)
+	tt.Release(rightR.X+rightR.W*0.5-120, rightR.Y+rightR.H*0.5)
+	if s.Doc().Blocks[1].ImageWidth <= 0 || s.Doc().Blocks[1].ImageWidth >= 100 {
+		t.Fatalf("expected resized ImageWidth in (0, 100), got %v", s.Doc().Blocks[1].ImageWidth)
 	}
 }

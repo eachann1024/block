@@ -2,6 +2,7 @@ package editor
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,6 +33,13 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		s.doc = model.NewEmptyDoc()
 	}
 	s.readOnly = readOnly
+	s.pollInlineAI()
+	if s.copyPending {
+		s.copyPending = false
+		if md := s.SelectedMarkdown(); md != "" {
+			c.WriteClipboard(md)
+		}
+	}
 
 	winW, winH := c.Size()
 	if viewportWidth <= 0 {
@@ -91,6 +99,12 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 						if s.isBlockHiddenByFold(i) {
 							continue
 						}
+						if handled, hov := s.renderInlineAIPreviewRow(c, i, readOnly); handled {
+							if hov {
+								nextHover = i
+							}
+							continue
+						}
 						hovered := s.renderBlockRow(c, i, readOnly)
 						if hovered {
 							nextHover = i
@@ -118,7 +132,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		s.renderSelectionToolbar(c)
 		s.renderBlockMenuOverlay(c)
 		s.renderCodeLangMenuOverlay(c)
+		s.renderCalloutMenuOverlay(c)
 		s.renderTableMenuOverlay(c)
+		s.renderInlineAIPanel(c)
 		s.renderOutlineRail(c)
 		s.renderAnnotationRail(c)
 		s.renderPlanDiffCard(c)
@@ -142,14 +158,36 @@ func (s *Session) focusOrInsertBottomParagraph() {
 }
 
 func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
+	if c.Shortcut(ui.Cmd, ui.KeyC) && s.inlineAI == nil && !s.findOpen && s.hasNonEmptySelection() {
+		if md := s.SelectedMarkdown(); md != "" {
+			c.WriteClipboard(md)
+		}
+	}
 	if c.Shortcut(ui.Cmd, ui.KeyF) {
 		s.OpenFind()
 	}
 	if c.Shortcut(0, ui.KeyEscape) {
-		if s.findOpen {
+		if s.inlineAI != nil {
+			s.aiEscape()
+		} else if s.findOpen {
 			s.CloseFind()
 		} else if s.hasAnyOverlayOpen() {
 			s.closeTransientOverlays()
+		}
+	}
+	if s.calloutMenuBlock != 0 && !readOnly {
+		total := len(allCalloutKinds) + 1
+		if c.Shortcut(0, ui.KeyDown) {
+			s.calloutMenuIndex = (s.calloutMenuIndex + 1) % total
+		} else if c.Shortcut(0, ui.KeyUp) {
+			s.calloutMenuIndex = (s.calloutMenuIndex - 1 + total) % total
+		} else if c.Shortcut(0, ui.KeyEnter) {
+			if s.calloutMenuIndex >= 0 && s.calloutMenuIndex < len(allCalloutKinds) {
+				k := allCalloutKinds[s.calloutMenuIndex]
+				s.setCalloutKind(s.calloutMenuBlock, &k)
+			} else {
+				s.setCalloutKind(s.calloutMenuBlock, nil)
+			}
 		}
 	}
 	if readOnly {
@@ -239,8 +277,14 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 	showHandles := !readOnly && !s.hasAnyOverlayOpen() && (isHovered || isFocused || s.dragBlockID == id)
 	isFolded := !readOnly && b.Kind.IsHeading() && s.folded[id]
 	blankPara := b.Kind == model.BlockParagraph && b.PlainText() == ""
+	listCtx := s.computeListCtx(idx)
+
+	if s.inlineAI != nil {
+		s.paintInlineAIOutline(c, row, id)
+	}
 
 	row.Children(func() {
+		drawListGuides(c, id, listCtx)
 		line := ui.Row(c.Key("row-inner")).FillWidth().AlignItems(ui.Start)
 		line.Children(func() {
 			// Left handle gutter (56px wide + 4px margin), strictly only shown on hover or focus!
@@ -322,21 +366,18 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 				}
 			})
 
-			// List / indent marker gutter
+			// List / indent marker gutter (depth-aware bullets, accent numbers, paper-tag todo box)
 			indentPx := float32(min(max(b.Indent, 0), 12)) * editorIndentStep
 			if b.Kind.IsList() {
+				_, _, lh := blockTextMetrics(b.Kind)
+				lineH := theme.FontBodySize * lh
 				marker := ui.Row(c.Key("marker")).Width(editorMarkerWidth+indentPx).Shrink(0).
-					Padding(0, 8, 0, indentPx).Justify(ui.End).AlignItems(ui.Center)
+					Padding(0, 0, 0, indentPx).AlignItems(ui.Start)
+				if b.Kind != model.BlockTodo {
+					marker.Justify(ui.End)
+				}
 				marker.Children(func() {
-					switch b.Kind {
-					case model.BlockBullet:
-						ui.Text(c, "•").FontSize(theme.FontBodySize).TextColor(pal.Text)
-					case model.BlockNumbered:
-						ui.Text(c, fmt.Sprintf("%d.", s.numberedListIndex(idx))).
-							FontSize(theme.FontBodySize).TextColor(pal.Text)
-					case model.BlockTodo:
-						s.renderTodoCheckbox(c, idx, b.Checked, readOnly)
-					}
+					s.renderListMarker(c, idx, b, listCtx, theme.FontBodySize, lineH, readOnly)
 				})
 			} else if indentPx > 0 {
 				ui.Box(c.Key("indent-pad")).Width(indentPx).Shrink(0)
@@ -357,26 +398,140 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 	return isHovered
 }
 
-func (s *Session) renderTodoCheckbox(c *ui.Context, idx int, checked, readOnly bool) {
-	pal := theme.Ocean()
-	id := s.doc.Blocks[idx].ID
-	cb := ui.ButtonBase(c.Key(fmt.Sprintf("todo-checkbox-%d", id))).Size(18, 18).Margin(4, 0, 0, 0).
-		Center().Radius(4).Cursor(ui.CursorPointer).Disabled(readOnly).
-		Label(theme.Tr("待办复选框", "Todo checkbox"))
-	if checked {
-		cb.Background(pal.Accent)
-	} else {
-		border := pal.BtnBorder
-		if cb.Hovered() {
-			border = pal.Accent
+const (
+	listMarkCenter = editorMarkerWidth - 11
+	listTodoCenter = 12.8
+	listMaxScan    = 256
+)
+
+type listAncestor struct {
+	Indent int
+	Center float32
+}
+
+type listCtx struct {
+	Number    int
+	Ancestors []listAncestor
+}
+
+func (s *Session) computeListCtx(idx int) listCtx {
+	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return listCtx{}
+	}
+	b := &s.doc.Blocks[idx]
+	num := 0
+	if b.Kind == model.BlockNumbered {
+		num = s.numberedListIndex(idx)
+	}
+	if !b.Kind.IsList() && b.Indent <= 0 {
+		return listCtx{Number: num}
+	}
+	var ancestors []listAncestor
+	threshold := b.Indent
+	start := max(idx-listMaxScan, 0)
+	for prev := idx - 1; prev >= start && threshold > 0; prev-- {
+		pb := &s.doc.Blocks[prev]
+		if !pb.Kind.IsList() {
+			if pb.Indent > 0 {
+				continue
+			}
+			break
 		}
-		cb.Border(1.5, border)
+		if pb.Indent < threshold {
+			center := listMarkCenter
+			if pb.Kind == model.BlockTodo {
+				center = listTodoCenter
+			}
+			ancestors = append(ancestors, listAncestor{Indent: pb.Indent, Center: center})
+			threshold = pb.Indent
+		}
+	}
+	return listCtx{Number: num, Ancestors: ancestors}
+}
+
+func drawListGuides(c *ui.Context, id model.BlockID, ctx listCtx) {
+	if len(ctx.Ancestors) == 0 {
+		return
+	}
+	col := ui.Hex("#e6e4df")
+	if theme.IsDark() {
+		col = ui.Hex("#333333")
+	}
+	for i, anc := range ctx.Ancestors {
+		x := float32(math.Round(float64(editorHandleWidth + editorRowGap + float32(min(anc.Indent, 12))*editorIndentStep + anc.Center)))
+		g := ui.Box(c.Key(fmt.Sprintf("list-guide-%d-%d", id, i))).Absolute().Top(0).Bottom(0).Left(x).Width(1).
+			Background(col).IgnoreInput(true)
+		appUi.Probe(g, fmt.Sprintf("list-guide-%d-%d", id, i))
+	}
+}
+
+func listBulletColor() ui.Color {
+	if theme.IsDark() {
+		return ui.Hex("#a9a8a4")
+	}
+	return ui.Hex("#6f6e69")
+}
+
+func (s *Session) renderListMarker(c *ui.Context, idx int, b *model.Block, ctx listCtx, size, lineH float32, readOnly bool) {
+	pal := theme.Ocean()
+	depth := len(ctx.Ancestors)
+	switch b.Kind {
+	case model.BlockBullet:
+		d := float32(5)
+		if depth == 0 {
+			d = 6
+		}
+		cell := ui.Row(c.Key("bullet-cell")).Height(lineH).Padding(0, 11-d/2, 0, 0).AlignItems(ui.Center)
+		cell.Children(func() {
+			dot := ui.Box(c.Key(fmt.Sprintf("list-bullet-%d", b.ID))).Size(d, d).Radius(d / 2)
+			switch depth {
+			case 0:
+				dot.Background(pal.Accent)
+			case 1:
+				dot.Background(listBulletColor())
+			default:
+				dot.Border(1.25, listBulletColor())
+			}
+			appUi.Probe(dot, fmt.Sprintf("list-bullet-%d", b.ID))
+		})
+	case model.BlockNumbered:
+		col := pal.TextSecondary
+		if depth == 0 {
+			col = pal.Accent
+		}
+		cell := ui.Row(c.Key("num-cell")).Height(lineH).Padding(0, 8, 0, 0).AlignItems(ui.Center)
+		cell.Children(func() {
+			txt := ui.Text(c, fmt.Sprintf("%d.", max(ctx.Number, 1))).Font("monospace").
+				FontSize(size * 0.84).FontWeight(500).TextColor(col).SingleLine()
+			appUi.Probe(txt, fmt.Sprintf("list-number-%d", b.ID))
+		})
+	case model.BlockTodo:
+		s.renderTodoCheckbox(c, idx, b.Checked, readOnly, lineH)
+	}
+}
+
+func (s *Session) renderTodoCheckbox(c *ui.Context, idx int, checked, readOnly bool, lineH float32) {
+	pal := theme.Ocean()
+	dark := theme.IsDark()
+	id := s.doc.Blocks[idx].ID
+	bg, ring, hoverRing := ui.Hex("#f3f1ec"), ui.Hex("#dedcd6"), ui.Hex("#c4c2bb")
+	if dark {
+		bg, ring, hoverRing = ui.Hex("#242424"), ui.Hex("#3a3a3a"), ui.Hex("#5a5a5a")
+	}
+	top := max((lineH-16)*0.5, 0)
+	cb := ui.ButtonBase(c.Key(fmt.Sprintf("todo-checkbox-%d", id))).Size(16, 16).Margin(top, 0, 0, 4.8).
+		Center().Radius(5).Background(bg).Cursor(ui.CursorPointer).Disabled(readOnly).
+		Label(theme.Tr("待办复选框", "Todo checkbox"))
+	if cb.Hovered() && !readOnly {
+		cb.Border(1, hoverRing)
+	} else {
+		cb.Border(1, ring)
 	}
 	cb.Children(func() {
-		idLayer := ui.Box(c).Absolute().Left(0).Top(0).Size(18, 18).PassThrough()
+		idLayer := ui.Box(c).Absolute().Left(0).Top(0).Size(16, 16).PassThrough()
 		appUi.Probe(idLayer, fmt.Sprintf("todo-checkbox-%d", id))
 		if checked {
-			icons.Draw(c, icons.Check, 12, pal.MonoIconColors(pal.AccentText))
+			icons.Draw(c, icons.Check, 12, pal.MonoIconColors(pal.Accent))
 		}
 	})
 	appUi.Probe(cb, "todo-checkbox")
@@ -435,41 +590,80 @@ func blockTextMetrics(kind model.BlockKind) (fontSize float32, weight int, lineH
 	}
 }
 
-func calloutStyle(pal theme.Palette, kind model.CalloutKind) (bg, border, accent ui.Color, label string) {
-	switch kind {
-	case model.CalloutTip:
-		return pal.SuccessSurface, pal.Success.Alpha(0.35), pal.Success, theme.Tr("提示", "Tip")
-	case model.CalloutImportant:
-		return pal.Selected, pal.Accent.Alpha(0.4), pal.Accent, theme.Tr("重要", "Important")
-	case model.CalloutWarning:
-		return pal.WarningSurface, pal.Warning.Alpha(0.4), pal.Warning, theme.Tr("警告", "Warning")
-	case model.CalloutCaution:
-		return pal.DangerSurface, pal.Danger.Alpha(0.4), pal.Danger, theme.Tr("注意", "Caution")
-	default:
-		return pal.Hover, pal.Accent.Alpha(0.3), pal.Accent, theme.Tr("标注", "Note")
-	}
-}
-
 func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, isFocused, readOnly, deleteArmed bool) {
 	pal := theme.Ocean()
+	dark := theme.IsDark()
 	fontSize, weight, lh := blockTextMetrics(b.Kind)
 
 	wrap := ui.Column(c.Key("text-wrap")).FillWidth()
 	if b.Kind == model.BlockQuote {
 		wrap.Padding(2, 0, 2, 16).BorderWidth(0, 0, 0, 3).BorderColor(pal.QuoteBar)
 	} else if b.Kind == model.BlockCallout {
-		bg, brd, acc, lbl := calloutStyle(pal, b.Callout)
-		wrap.Padding(10, 14).Gap(4).Radius(theme.RadiusControl).Background(bg).Border(1, brd)
-		wrap.Children(func() {
-			hdr := ui.Row(c.Key("callout-hdr")).Gap(6).AlignItems(ui.Center)
-			hdr.Children(func() {
-				icons.Draw(c, icons.Callout, 16, pal.MonoIconColors(acc))
-				ui.Text(c, lbl).FontSize(14).FontWeight(600).TextColor(acc)
-			})
-		})
+		st := calloutTone(b.Callout, dark)
+		wrap.Padding(38, 16, 12, 44).Radius(theme.RadiusControl).Background(st.BG).Border(1, st.Border)
 	}
 
 	wrap.Children(func() {
+		if b.Kind == model.BlockCallout {
+			st := calloutTone(b.Callout, dark)
+			open := s.calloutMenuBlock == b.ID
+			curKind := b.Callout
+			if curKind == "" {
+				curKind = model.CalloutNote
+			}
+			hdr := ui.Row(c.Key("callout-hdr")).Absolute().Top(7).Left(10).Height(26).
+				Gap(3).AlignItems(ui.Center)
+			hdr.Children(func() {
+				toggleMenu := func() {
+					if readOnly {
+						return
+					}
+					if s.calloutMenuBlock == b.ID {
+						s.calloutMenuBlock = 0
+					} else {
+						s.calloutMenuBlock = b.ID
+						s.calloutMenuIndex = 0
+						for i, k := range allCalloutKinds {
+							if k == curKind {
+								s.calloutMenuIndex = i
+								break
+							}
+						}
+					}
+				}
+				iconBtn := ui.ButtonBase(c.Key(fmt.Sprintf("callout-icon-%d", b.ID))).Size(26, 26).Center().
+					Radius(6).Cursor(ui.CursorPointer).Label(theme.Tr("点击切换标注类型", "Click to switch callout type"))
+				if open {
+					iconBtn.Background(pal.Paper).Border(1, st.Accent)
+				} else if iconBtn.Hovered() {
+					iconBtn.Background(pal.Paper).Border(1, st.Border)
+				}
+				iconBtn.Children(func() {
+					icons.Draw(c, icons.Callout, 16, theme.IconColors{Line: st.Accent, Fill: st.IconFill, Accent: st.Accent})
+				})
+				appUi.Probe(iconBtn, "callout-icon")
+				if iconBtn.Clicked() {
+					toggleMenu()
+				}
+
+				pillBtn := ui.ButtonBase(c.Key(fmt.Sprintf("callout-pill-%d", b.ID))).Height(26).PaddingX(4).Gap(4).
+					AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(calloutLabel(curKind))
+				if open {
+					pillBtn.Background(pal.Paper).Border(1, st.Accent)
+				} else if pillBtn.Hovered() {
+					pillBtn.Background(pal.Paper).Border(1, st.Border)
+				}
+				pillBtn.Children(func() {
+					ui.Text(c, calloutLabel(curKind)).FontSize(14).FontWeight(600).TextColor(st.Text).SingleLine()
+					icons.Draw(c, icons.TbChevron, 12, pal.MonoIconColors(st.Text))
+				})
+				appUi.Probe(pillBtn, fmt.Sprintf("callout-pill-%d", b.ID))
+				appUi.Probe(pillBtn, "callout-pill")
+				if pillBtn.Clicked() {
+					toggleMenu()
+				}
+			})
+		}
 		if isFocused && !readOnly {
 			s.renderEditableTextBlock(c, idx, b, fontSize, weight, lh, deleteArmed)
 			return
@@ -479,7 +673,7 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 		if len(spans) == 0 {
 			placeholder := " "
 			if idx == 0 && b.Kind == model.BlockParagraph {
-				placeholder = theme.Tr("输入 '/' 插入块或开始写作…", "Type '/' for commands or start writing…")
+				placeholder = theme.Tr("开始输入…", "Start typing…")
 			}
 			rt = ui.Text(c.Key("rt-empty"), placeholder).FontSize(fontSize).LineHeight(lh).
 				TextColor(pal.Placeholder).FillWidth()
@@ -497,145 +691,250 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 	})
 }
 
+type emptyHintSpec struct {
+	Text     string
+	MenuKeys bool
+	Armed    bool
+}
+
+func emptyHintFor(b *model.Block, deleteArmed bool) *emptyHintSpec {
+	if b == nil || b.PlainText() != "" || b.Kind == model.BlockTable || b.Kind == model.BlockImage ||
+		b.Kind == model.BlockDivider || b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML {
+		return nil
+	}
+	switch b.Kind {
+	case model.BlockParagraph:
+		if deleteArmed {
+			return &emptyHintSpec{
+				Text:  theme.Tr("再次按删除键删除此行", "Press Backspace again to delete this line"),
+				Armed: true,
+			}
+		}
+		return &emptyHintSpec{
+			Text:     theme.Tr("开始输入…", "Start typing…"),
+			MenuKeys: true,
+		}
+	case model.BlockHeading1:
+		return &emptyHintSpec{Text: theme.Tr("标题 1", "Heading 1")}
+	case model.BlockHeading2:
+		return &emptyHintSpec{Text: theme.Tr("标题 2", "Heading 2")}
+	case model.BlockHeading3:
+		return &emptyHintSpec{Text: theme.Tr("标题 3", "Heading 3")}
+	case model.BlockHeading4:
+		return &emptyHintSpec{Text: theme.Tr("标题 4", "Heading 4")}
+	case model.BlockHeading5:
+		return &emptyHintSpec{Text: theme.Tr("标题 5", "Heading 5")}
+	case model.BlockHeading6:
+		return &emptyHintSpec{Text: theme.Tr("标题 6", "Heading 6")}
+	default:
+		return nil
+	}
+}
+
 func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block, fontSize float32, weight int, lh float32, deleteArmed bool) {
 	pal := theme.Ocean()
+	dark := theme.IsDark()
 	draft := b.PlainText()
 	oldText := draft
 	handle := *s.blockHandle(b.ID)
+	hint := emptyHintFor(b, deleteArmed)
 
-	in := ui.TextAreaBase(c.Key("input"), &draft).Lines(1, 500).FillWidth().
-		FontSize(fontSize).FontWeight(weight).LineHeight(lh).
-		TextColor(pal.Text).CaretColor(pal.Accent).Bind(&handle)
-
-	if deleteArmed {
-		in.Placeholder(theme.Tr("再次按删除键删除此行", "Press Backspace again to delete this line")).
-			PlaceholderColor(pal.Danger).CaretColor(pal.Danger)
-	} else if b.Kind == model.BlockParagraph && idx == 0 && len(s.doc.Blocks) == 1 && draft == "" {
-		in.Placeholder(theme.Tr("输入 '/' 插入块…", "Type '/' for commands…")).
-			PlaceholderColor(pal.Placeholder)
-	}
-
-	// Apply inline span weights/colors + find/annotation highlights via TextRanges.
-	ranges := s.buildInputTextRanges(idx, b)
-	if len(ranges) > 0 {
-		in.TextRanges(ranges...)
-	}
-
-	in.OnPaste(func(pasted string) bool {
-		if strings.Contains(pasted, "\n") || looksLikeMarkdownBlock(pasted) {
-			s.PasteText(pasted)
-			return true
+	wrap := ui.Box(c.Key("edit-wrap")).FillWidth()
+	if hint != nil && !hint.Armed {
+		bandCol := ui.Hex("#f8f8f6")
+		if dark {
+			bandCol = ui.Hex("#1e1e1e")
 		}
-		return false
-	})
+		linePx := fontSize * lh
+		wrap.Draw(func(p *ui.Painter, r ui.Rect) {
+			bandH := linePx + 4
+			band := ui.Rect{
+				X: r.X - 8,
+				Y: r.Y + (linePx-bandH)*0.5,
+				W: r.W + 16,
+				H: bandH,
+			}
+			p.Fill(band, bandCol, 6)
+			appUi.RecordBounds("empty-line-band", band)
+		})
+	}
 
-	in.OnTextKey(func(k ui.TextKey) bool {
-		curText := k.Text()
-		caretEstimate := s.estimateCaret(idx, oldText, curText)
+	var in ui.Element
+	wrap.Children(func() {
+		if hint != nil {
+			hintCol := ui.Hex("#9b9a95")
+			if dark {
+				hintCol = ui.Hex("#7a7975")
+			}
+			if hint.Armed {
+				hintCol = pal.Danger
+			}
+			linePx := fontSize * lh
+			hintRow := ui.Row(c.Key("empty-hint-row")).Absolute().Top(0).Left(8).Right(0).Height(linePx).
+				AlignItems(ui.Center).Justify(ui.SpaceBetween).IgnoreInput(true)
+			hintRow.Children(func() {
+				ui.Text(c, hint.Text).FontSize(fontSize).TextColor(hintCol).SingleLine()
+				availBody := s.viewportWidth - editorHandleWidth - editorRowGap - editorRightInset
+				if availBody <= 0 {
+					availBody = theme.EditorStandardWidth
+				}
+				if hint.MenuKeys && min(availBody, theme.EditorStandardWidth) >= 260 {
+					keyCol := ui.Hex("#6f6e69")
+					keyBrd := ui.Hex("#dedcd6")
+					if dark {
+						keyCol = ui.Hex("#a5a4a0")
+						keyBrd = ui.Hex("#3a3a3a")
+					}
+					keys := ui.Row(c.Key("empty-hint-menu-keys")).AlignItems(ui.Center).Gap(6)
+					keys.Children(func() {
+						for _, capLbl := range []string{"/", "、"} {
+							ui.Box(c).Height(20).MinWidth(20).PaddingX(5).Center().Radius(5).Border(1, keyBrd).
+								Children(func() {
+									ui.Text(c, capLbl).Font("monospace").FontSize(12).TextColor(keyCol).SingleLine()
+								})
+						}
+						ui.Text(c, theme.Tr("菜单", "Menu")).FontSize(13).TextColor(hintCol).SingleLine()
+					})
+					appUi.Probe(keys, "empty-hint-menu-keys")
+				}
+			})
+		}
 
-		// Slash menu keyboard navigation
-		if s.blockMenu != nil && s.blockMenu.Mode == menuSlash && s.blockMenu.BlockIdx == idx {
-			switch {
-			case k.Key == ui.KeyUp && k.Mods == 0:
-				return s.stepSlashMenu(false)
-			case k.Key == ui.KeyDown && k.Mods == 0:
-				return s.stepSlashMenu(true)
-			case k.Key == ui.KeyEnter && k.Mods == 0:
-				if s.activateSlashMenu() {
+		in = ui.TextAreaBase(c.Key("input"), &draft).Lines(1, 500).FillWidth().
+			FontSize(fontSize).FontWeight(weight).LineHeight(lh).
+			TextColor(pal.Text).CaretColor(pal.Accent).Bind(&handle)
+
+		if deleteArmed {
+			in.CaretColor(pal.Danger)
+		}
+
+		// Apply inline span weights/colors + find/annotation highlights via TextRanges.
+		ranges := s.buildInputTextRanges(idx, b)
+		if len(ranges) > 0 {
+			in.TextRanges(ranges...)
+		}
+
+		in.OnPaste(func(pasted string) bool {
+			if strings.Contains(pasted, "\n") || looksLikeMarkdownBlock(pasted) {
+				s.PasteText(pasted)
+				return true
+			}
+			return false
+		})
+
+		in.OnTextKey(func(k ui.TextKey) bool {
+			curText := k.Text()
+			caretEstimate := s.estimateCaret(idx, oldText, curText)
+
+			// Slash menu keyboard navigation
+			if s.blockMenu != nil && s.blockMenu.Mode == menuSlash && s.blockMenu.BlockIdx == idx {
+				switch {
+				case k.Key == ui.KeyUp && k.Mods == 0:
+					return s.stepSlashMenu(false)
+				case k.Key == ui.KeyDown && k.Mods == 0:
+					return s.stepSlashMenu(true)
+				case k.Key == ui.KeyEnter && k.Mods == 0:
+					if s.activateSlashMenu() {
+						return true
+					}
+				case k.Key == ui.KeyEscape && k.Mods == 0:
+					s.blockMenu = nil
 					return true
 				}
-			case k.Key == ui.KeyEscape && k.Mods == 0:
-				s.blockMenu = nil
+			}
+
+			// Document-level shortcuts inside focused text area
+			switch {
+			case k.Mods == ui.Cmd && k.Key == ui.KeyC:
+				if s.hasNonEmptySelection() {
+					s.copyPending = true
+					return true
+				}
+			case k.Mods == ui.Cmd && k.Key == ui.KeyZ:
+				s.Undo()
+				return true
+			case (k.Mods == ui.Cmd|ui.Shift && k.Key == ui.KeyZ) || (k.Mods == ui.Cmd && k.Key == ui.KeyY):
+				s.Redo()
+				return true
+			case k.Mods == ui.Cmd && k.Key == ui.KeyB:
+				s.ToggleMarkOnSelection(model.MarkBold)
+				return true
+			case k.Mods == ui.Cmd && k.Key == ui.KeyI:
+				s.ToggleMarkOnSelection(model.MarkItalic)
+				return true
+			case k.Mods == ui.Cmd && k.Key == ui.KeyU:
+				s.ToggleMarkOnSelection(model.MarkUnderline)
+				return true
+			case k.Mods == ui.Cmd && k.Key == ui.KeyE:
+				s.ToggleMarkOnSelection(model.MarkCode)
+				return true
+			case k.Mods == ui.Cmd|ui.Shift && k.Key == ui.KeyX:
+				s.ToggleMarkOnSelection(model.MarkStrike)
+				return true
+			case k.Mods == ui.Cmd && k.Key == ui.KeyF:
+				s.OpenFind()
+				return true
+			case k.Mods == 0 && k.Key == ui.KeyEnter:
+				if s.handleEnterOnBlock(idx, curText, caretEstimate) {
+					return true
+				}
+			case k.Mods == 0 && k.Key == ui.KeyBackspace:
+				if s.handleBackspaceOnBlock(idx, curText, caretEstimate) {
+					return true
+				}
+			case k.Mods == 0 && k.Key == ui.KeyTab:
+				if b.Kind.IsList() && b.Indent < 8 {
+					s.pushUndo()
+					b.Indent++
+					b.Dirty = true
+					s.markDirty()
+					return true
+				}
+			case k.Mods == ui.Shift && k.Key == ui.KeyTab:
+				if b.Kind.IsList() && b.Indent > 0 {
+					s.pushUndo()
+					b.Indent--
+					b.Dirty = true
+					s.markDirty()
+					return true
+				}
+			case k.Mods == 0 && k.Key == ui.KeyUp && caretEstimate == 0 && idx > 0:
+				s.FocusBlock(idx - 1)
+				endOff := len([]rune(s.doc.Blocks[idx-1].PlainText()))
+				s.selAnchor = Position{Block: idx - 1, Offset: endOff}
+				s.selHead = s.selAnchor
+				s.selSyncPending = true
+				return true
+			case k.Mods == 0 && k.Key == ui.KeyDown && caretEstimate == len([]rune(curText)) && idx+1 < len(s.doc.Blocks):
+				s.FocusBlock(idx + 1)
 				return true
 			}
+			return false
+		})
+
+		if s.focusPending {
+			in.Focus()
+			s.focusPending = false
+		}
+		if s.selSyncPending && s.selAnchor.Block == idx && s.selHead.Block == idx {
+			in.SetTextSelection(s.selAnchor.Offset, s.selHead.Offset)
+			s.selSyncPending = false
 		}
 
-		// Document-level shortcuts inside focused text area
-		switch {
-		case k.Mods == ui.Cmd && k.Key == ui.KeyZ:
-			s.Undo()
-			return true
-		case (k.Mods == ui.Cmd|ui.Shift && k.Key == ui.KeyZ) || (k.Mods == ui.Cmd && k.Key == ui.KeyY):
-			s.Redo()
-			return true
-		case k.Mods == ui.Cmd && k.Key == ui.KeyB:
-			s.ToggleMarkOnSelection(model.MarkBold)
-			return true
-		case k.Mods == ui.Cmd && k.Key == ui.KeyI:
-			s.ToggleMarkOnSelection(model.MarkItalic)
-			return true
-		case k.Mods == ui.Cmd && k.Key == ui.KeyU:
-			s.ToggleMarkOnSelection(model.MarkUnderline)
-			return true
-		case k.Mods == ui.Cmd && k.Key == ui.KeyE:
-			s.ToggleMarkOnSelection(model.MarkCode)
-			return true
-		case k.Mods == ui.Cmd|ui.Shift && k.Key == ui.KeyX:
-			s.ToggleMarkOnSelection(model.MarkStrike)
-			return true
-		case k.Mods == ui.Cmd && k.Key == ui.KeyF:
-			s.OpenFind()
-			return true
-		case k.Mods == 0 && k.Key == ui.KeyEnter:
-			if s.handleEnterOnBlock(idx, curText, caretEstimate) {
-				return true
+		if in.Changed() {
+			_, selEnd := in.TextSelection()
+			if selEnd == 0 && draft != "" {
+				selEnd = estimateCaretAfterEdit(oldText, draft)
 			}
-		case k.Mods == 0 && k.Key == ui.KeyBackspace:
-			if s.handleBackspaceOnBlock(idx, curText, caretEstimate) {
-				return true
+			s.applyBlockTextEdit(idx, draft, selEnd)
+		} else if !s.selSyncPending && in.Focused() {
+			selStart, selEnd := in.TextSelection()
+			if s.selAnchor.Block == s.selHead.Block {
+				s.selAnchor = Position{Block: idx, Offset: selStart}
+				s.selHead = Position{Block: idx, Offset: selEnd}
 			}
-		case k.Mods == 0 && k.Key == ui.KeyTab:
-			if b.Kind.IsList() && b.Indent < 8 {
-				s.pushUndo()
-				b.Indent++
-				b.Dirty = true
-				s.markDirty()
-				return true
-			}
-		case k.Mods == ui.Shift && k.Key == ui.KeyTab:
-			if b.Kind.IsList() && b.Indent > 0 {
-				s.pushUndo()
-				b.Indent--
-				b.Dirty = true
-				s.markDirty()
-				return true
-			}
-		case k.Mods == 0 && k.Key == ui.KeyUp && caretEstimate == 0 && idx > 0:
-			s.FocusBlock(idx - 1)
-			endOff := len([]rune(s.doc.Blocks[idx-1].PlainText()))
-			s.selAnchor = Position{Block: idx - 1, Offset: endOff}
-			s.selHead = s.selAnchor
-			s.selSyncPending = true
-			return true
-		case k.Mods == 0 && k.Key == ui.KeyDown && caretEstimate == len([]rune(curText)) && idx+1 < len(s.doc.Blocks):
-			s.FocusBlock(idx + 1)
-			return true
 		}
-		return false
 	})
-
-	if s.focusPending {
-		in.Focus()
-		s.focusPending = false
-	}
-	if s.selSyncPending && s.selAnchor.Block == idx && s.selHead.Block == idx {
-		in.SetTextSelection(s.selAnchor.Offset, s.selHead.Offset)
-		s.selSyncPending = false
-	}
-
-	if in.Changed() {
-		_, selEnd := in.TextSelection()
-		if selEnd == 0 && draft != "" {
-			selEnd = estimateCaretAfterEdit(oldText, draft)
-		}
-		s.applyBlockTextEdit(idx, draft, selEnd)
-	} else if !s.selSyncPending && in.Focused() {
-		selStart, selEnd := in.TextSelection()
-		if s.selAnchor.Block == s.selHead.Block {
-			s.selAnchor = Position{Block: idx, Offset: selStart}
-			s.selHead = Position{Block: idx, Offset: selEnd}
-		}
-	}
 
 	s.setBlockHandle(b.ID, handle)
 }
@@ -650,6 +949,21 @@ func (s *Session) estimateCaret(idx int, oldText, curText string) int {
 	return len([]rune(curText))
 }
 
+func inlineCodeStyle(baseSize float32, dark bool) (fg, bg ui.Color, padX, padY, radius float32) {
+	if dark {
+		fg = ui.Hex("#FF7369")
+		bg = ui.RGBA(255, 255, 255, 0.094)
+	} else {
+		fg = ui.Hex("#EB5757")
+		bg = ui.RGBA(135, 131, 120, 0.15)
+	}
+	scale := min(baseSize/16, 1)
+	padX = min(baseSize*0.25+1.5*scale, 9)
+	padY = 2.5 * scale
+	radius = max(min(float32(math.Round(float64(4*scale))), 5), 3)
+	return
+}
+
 func (s *Session) buildDisplaySpans(idx int, b *model.Block, baseSize float32, baseWeight int) []ui.Span {
 	pal := theme.Ocean()
 	dark := theme.IsDark()
@@ -657,6 +971,7 @@ func (s *Session) buildDisplaySpans(idx int, b *model.Block, baseSize float32, b
 		return nil
 	}
 
+	codeFG, codeBG, codePadX, codePadY, codeRadius := inlineCodeStyle(baseSize, dark)
 	var out []ui.Span
 	pos := 0
 	for _, sp := range b.Spans {
@@ -679,9 +994,11 @@ func (s *Session) buildDisplaySpans(idx int, b *model.Block, baseSize float32, b
 		if sp.Marks&model.MarkCode != 0 {
 			u.Font = "monospace"
 			u.Size = max(baseSize-2, theme.FontSmallMinSize)
-			u.Background = pal.CodeBG
-			u.Radius = 4
-			u.PaddingX = 4
+			u.Color = codeFG
+			u.Background = codeBG
+			u.Radius = codeRadius
+			u.PaddingX = codePadX
+			u.PaddingY = codePadY
 		}
 		if sp.Link != "" {
 			u.Color = pal.Accent
@@ -694,12 +1011,20 @@ func (s *Session) buildDisplaySpans(idx int, b *model.Block, baseSize float32, b
 			u.Background = bg
 			u.Radius = 3
 		}
-		// Highlight annotation range or find match if overlapping.
-		if s.rangeHasAnnotation(b.ID, s0, s1) && u.Background.A == 0 {
+		// Highlight annotation range or find match, aligned to inline code chip band height.
+		if s.rangeHasAnnotation(b.ID, s0, s1) && (u.Background.A == 0 || sp.Marks&model.MarkCode != 0) {
 			u.Background = pal.WarningSurface
+			u.PaddingY = codePadY
+			if u.Radius == 0 {
+				u.Radius = 2
+			}
 		}
 		if s.rangeHasFindMatch(idx, s0, s1) {
 			u.Background = pal.SelectionBG
+			u.PaddingY = codePadY
+			if u.Radius == 0 {
+				u.Radius = 2
+			}
 		}
 		out = append(out, u)
 	}
@@ -709,6 +1034,7 @@ func (s *Session) buildDisplaySpans(idx int, b *model.Block, baseSize float32, b
 func (s *Session) buildInputTextRanges(idx int, b *model.Block) []ui.TextRange {
 	pal := theme.Ocean()
 	dark := theme.IsDark()
+	codeFG, _, _, _, _ := inlineCodeStyle(theme.FontBodySize, dark)
 	var out []ui.TextRange
 	pos := 0
 	for _, sp := range b.Spans {
@@ -719,6 +1045,10 @@ func (s *Session) buildInputTextRanges(idx int, b *model.Block) []ui.TextRange {
 		hasStyle := false
 		if sp.Marks&model.MarkBold != 0 {
 			tr.Start, tr.End, tr.Weight = s0, s1, 700
+			hasStyle = true
+		}
+		if sp.Marks&model.MarkCode != 0 {
+			tr.Start, tr.End, tr.Color = s0, s1, codeFG
 			hasStyle = true
 		}
 		if col, ok := theme.ResolveNamedFG(sp.FGColor, dark); ok {
@@ -1316,17 +1646,21 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 	if widthPct <= 0 || widthPct > 100 {
 		widthPct = 100
 	}
+	dragging := s.imgResizeBlock == id
+	if dragging {
+		widthPct = clampFloat32(s.imgResizeCurPct, 10, 100)
+	}
 
 	outer := ui.Column(c.Key("img-outer")).FillWidth().AlignItems(align).Gap(8)
 	outer.Children(func() {
-		// Floating Image Toolbar shown when image block is focused
-		if isFocused && !readOnly {
+		// Floating Image Toolbar shown when image block is focused and not dragging
+		if isFocused && !readOnly && !dragging {
 			s.renderImageToolbar(c, idx, b)
 		}
 
 		picBox := ui.Box(c.Key(fmt.Sprintf("img-frame-%d", id))).WidthPercent(widthPct).Radius(6).Clip().
 			Cursor(ui.CursorPointer)
-		if isFocused {
+		if isFocused || dragging {
 			picBox.Border(2, pal.Accent)
 		} else {
 			picBox.Border(1, pal.Hairline)
@@ -1352,9 +1686,72 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 					ui.Text(c, lbl).FontSize(14).TextColor(pal.TextSecondary)
 				})
 			}
+
+			// Left & Right drag-resize side handles (aligned with src/editor/image_resize.rs)
+			if !readOnly && (isFocused || dragging || picBox.Hovered()) {
+				scale := float32(1)
+				if b.ImageAlign == model.ImageAlignCenter {
+					scale = 2
+				}
+				availW := min(max(s.editorRect.W-editorHandleWidth-editorRowGap-editorRightInset, 200), theme.EditorStandardWidth)
+				if availW <= 0 {
+					availW = theme.EditorStandardWidth
+				}
+				for _, side := range []struct {
+					probe string
+					left  bool
+					dir   float32
+				}{
+					{"img-resize-left", true, -1},
+					{"img-resize-right", false, 1},
+				} {
+					h := ui.Box(c.Key(fmt.Sprintf("%s-%d", side.probe, id))).Absolute().
+						TopPercent(25).BottomPercent(25).Width(12).Center().Cursor(ui.CursorResizeColumn)
+					if side.left {
+						h.Left(2)
+					} else {
+						h.Right(2)
+					}
+					h.Children(func() {
+						pillBG := ui.RGBA(255, 255, 255, 0.85)
+						if theme.IsDark() {
+							pillBG = ui.RGBA(34, 34, 34, 0.85)
+						}
+						ui.Box(c).Width(4).FillHeight().Radius(2).Background(pillBG).Border(1, pal.Hairline)
+					})
+					appUi.Probe(h, side.probe)
+					dx, _, held := h.Dragged()
+					if held {
+						if s.imgResizeBlock != id {
+							s.imgResizeBlock = id
+							s.imgResizeStartPct = widthPct
+							s.imgResizeCurPct = widthPct
+						}
+						if dx != 0 {
+							deltaPct := (dx * side.dir * scale / availW) * 100
+							s.imgResizeCurPct = clampFloat32(s.imgResizeCurPct+deltaPct, 10, 100)
+						}
+					} else if s.imgResizeBlock == id {
+						finalPct := clampFloat32(s.imgResizeCurPct, 10, 100)
+						startPct := s.imgResizeStartPct
+						s.imgResizeBlock = 0
+						if math.Abs(float64(finalPct-startPct)) >= 0.5 {
+							s.pushUndo()
+							if finalPct >= 99.5 {
+								b.ImageWidth = 0
+							} else {
+								b.ImageWidth = float32(math.Round(float64(finalPct)))
+							}
+							b.Dirty = true
+							b.CleanSource = ""
+							s.markDirty()
+						}
+					}
+				}
+			}
 		})
 		appUi.Probe(picBox, fmt.Sprintf("image-%d", id))
-		if picBox.Clicked() && !readOnly {
+		if picBox.Clicked() && !readOnly && !dragging {
 			s.FocusBlock(idx)
 		}
 	})

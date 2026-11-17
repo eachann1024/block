@@ -101,9 +101,7 @@ func main() {
 			ws.Modals().OpenSearch(false)
 		},
 		OnExportImage: func() {
-			if active := ws.ActiveNotePath(); active != "" {
-				ws.Modals().OpenExport(active)
-			}
+			ws.OpenExportStage()
 		},
 		OnCloseTab: func() {
 			ws.CloseActiveTab()

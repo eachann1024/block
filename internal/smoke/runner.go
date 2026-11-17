@@ -9,6 +9,7 @@ import (
 
 	"block/internal/ai"
 	"block/internal/app"
+	"block/internal/files"
 	"block/internal/markdown"
 	"block/internal/model"
 	"block/internal/theme"
@@ -110,7 +111,7 @@ func RunAll(baseTempDir string) (*Report, error) {
 	}
 
 	runStep := func(idx int, name string, fn func() (string, error)) error {
-		blockui.SetSmokeStep(nil, fmt.Sprintf("[%d/15] %s", idx, name))
+		blockui.SetSmokeStep(nil, fmt.Sprintf("[%d/20] %s", idx, name))
 		t0 := time.Now()
 		detail, err := fn()
 		dur := time.Since(t0)
@@ -954,7 +955,401 @@ func RunAll(baseTempDir string) (*Report, error) {
 		return rep, err
 	}
 
-	blockui.SetSmokeFinished(true, "All 15 acceptance steps passed")
+	// Step 16: Single-row selection toolbar overflow (`tb-more`), `SelectedMarkdown()`, & 3-column layout yield priority.
+	if err := runStep(16, "Toolbar overflow tb-more, SelectedMarkdown & 3-col layout yield", func() (string, error) {
+		_ = ws.OpenNote(firstNotePath, 0)
+		if err := ws.WriteNote(firstNotePath, "# Layout & Toolbar\n\n**BoldWord** and `inlineCode` sample.\n"); err != nil {
+			return "", err
+		}
+		sess := ws.ActiveSession()
+		sess.FocusBlock(1)
+		sess.SelectRange(1, 0, 1, 8)
+		if got := sess.SelectedMarkdown(); !strings.Contains(got, "**BoldWord**") {
+			return "", fmt.Errorf("expected SelectedMarkdown to preserve **BoldWord**, got %q", got)
+		}
+
+		// Narrow window + open docked AI -> sidebar yields first, AI stays docked, narrow note triggers tb-more!
+		ws.AI().SetOpen(true)
+		tt.SetSize(680, 720)
+		tt.Frame()
+		if _, sideDocked := blockui.TargetBounds("sidebar"); sideDocked {
+			return "", fmt.Errorf("expected left sidebar yielded at 680px when AI chat is docked")
+		}
+		if err := clickTarget(tt, "tb-more"); err != nil {
+			return "", fmt.Errorf("expected tb-more overflow button in narrow column: %w", err)
+		}
+		if _, ok := blockui.TargetBounds("toolbar-more-menu"); !ok {
+			return "", fmt.Errorf("expected toolbar-more-menu open after clicking tb-more")
+		}
+		tt.Key(0, ui.KeyEscape)
+
+		// Opening a file from the narrow sidebar drawer auto-closes the drawer!
+		if err := clickTarget(tt, "sidebar-toggle"); err != nil {
+			return "", err
+		}
+		if _, ok := blockui.TargetBounds("sidebar-drawer-scrim"); !ok {
+			return "", fmt.Errorf("expected sidebar-drawer-scrim open")
+		}
+		if err := clickTarget(tt, "tree-row:"+firstNotePath); err != nil {
+			return "", err
+		}
+		if _, stillOpen := blockui.TargetBounds("sidebar-drawer-scrim"); stillOpen {
+			return "", fmt.Errorf("expected sidebar drawer auto-closed after opening file")
+		}
+
+		ws.AI().SetOpen(false)
+		tt.SetSize(1200, 780)
+		tt.Frame()
+		return "tb-more + SelectedMarkdown + docked AI priority verified", nil
+	}); err != nil {
+		rep.TotalTime = time.Since(startAll)
+		return rep, err
+	}
+
+	// Step 17: Starred Inline AI (`tb-ai` / `/ai`), `ai-inline-prompts.json`, 5-state Callout dropdown, list guides & empty hints.
+	if err := runStep(17, "Starred Inline AI, 5-state Callout, list guides & empty hints", func() (string, error) {
+		seed := "> [!NOTE]\n> Callout body\n\n- Parent bullet\n  - Nested bullet\n\n\n"
+		if err := ws.WriteNote(firstNotePath, seed); err != nil {
+			return "", err
+		}
+		sess := ws.ActiveSession()
+		lastIdx := len(sess.Doc().Blocks) - 1
+		sess.FocusBlock(lastIdx)
+		tt.Frame()
+
+		// Empty-block caret hint keycaps (`/` `、`)
+		if _, ok := blockui.TargetBounds("empty-hint-menu-keys"); !ok {
+			return "", fmt.Errorf("expected empty-hint-menu-keys on focused empty paragraph")
+		}
+
+		// Nested list ancestor guide hairline
+		nestedID := sess.Doc().Blocks[2].ID
+		if _, ok := blockui.TargetBounds(fmt.Sprintf("list-guide-%d-0", nestedID)); !ok {
+			return "", fmt.Errorf("expected list-guide-%d-0 on nested list item", nestedID)
+		}
+
+		// 5-state semantic Callout dropdown (`callout-pill` -> `callout-opt-3` Warning)
+		if err := clickTarget(tt, "callout-pill"); err != nil {
+			return "", err
+		}
+		if _, ok := blockui.TargetBounds("callout-kind-menu"); !ok {
+			return "", fmt.Errorf("expected callout-kind-menu open")
+		}
+		if err := clickTarget(tt, "callout-opt-3"); err != nil {
+			return "", err
+		}
+		if sess.Doc().Blocks[0].Callout != model.CalloutWarning {
+			return "", fmt.Errorf("expected Callout WARNING, got %q", sess.Doc().Blocks[0].Callout)
+		}
+
+		// Starred Inline AI on empty block -> toggle star -> generate native block preview -> Enter accept
+		sess.FocusBlock(len(sess.Doc().Blocks) - 1)
+		tt.Frame()
+		tt.Type("/ai")
+		tt.Key(0, ui.KeyEnter)
+		if _, ok := blockui.TargetBounds("inline-ai"); !ok {
+			return "", fmt.Errorf("expected inline-ai open after /ai")
+		}
+		if err := clickTarget(tt, "ai-saved-star-0"); err != nil {
+			return "", err
+		}
+		if _, err := os.Stat(filepath.Join(dataDir, "ai-inline-prompts.json")); err != nil {
+			return "", fmt.Errorf("expected ai-inline-prompts.json saved: %w", err)
+		}
+		// Click the first remaining starred preset ("列大纲") and then click ai-accept!
+		if err := clickTarget(tt, "ai-saved-prompt-0"); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if _, ok := blockui.TargetBounds("inline-ai-preview"); !ok {
+			return "", fmt.Errorf("expected inline-ai-preview on paper")
+		}
+		if err := clickTarget(tt, "ai-accept"); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if !strings.Contains(sess.Markdown(), "核心脉络") {
+			return "", fmt.Errorf("expected accepted inline AI outline in note, got %q", sess.Markdown())
+		}
+		return "Inline AI stars + Callout 5-state + list guides + empty hints passed", nil
+	}); err != nil {
+		rep.TotalTime = time.Since(startAll)
+		return rep, err
+	}
+
+	// Step 18: Non-Markdown file surfaces in tabs (PNG zoom, SVG preview/source, HTML browser btn, UTF-8 BOM JSON, Binary blocked).
+	if err := runStep(18, "Non-Markdown tabs (PNG, SVG preview/source, HTML, UTF-8 BOM, Blocked)", func() (string, error) {
+		// 18a. 1x1 valid PNG -> image-preview-stage + tb-img-zoom-in
+		pngPath := filepath.Join(nbDir, "sample.png")
+		onePxPNG := []byte{
+			0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+			0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+			0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+			0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+			0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+			0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+		}
+		if err := os.WriteFile(pngPath, onePxPNG, 0o644); err != nil {
+			return "", err
+		}
+		if err := ws.OpenNote(pngPath, 0); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if _, ok := blockui.TargetBounds("image-preview-stage"); !ok {
+			return "", fmt.Errorf("expected image-preview-stage for .png")
+		}
+		if err := clickTarget(tt, "tb-img-zoom-in"); err != nil {
+			return "", err
+		}
+		if err := clickTarget(tt, "tb-img-zoom-fit"); err != nil {
+			return "", err
+		}
+
+		// 18b. SVG -> svg-preview-stage -> switch svg-mode-source -> source-editor
+		svgPath := filepath.Join(nbDir, "badge.svg")
+		if err := os.WriteFile(svgPath, []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" fill="#007AFF"/></svg>`), 0o644); err != nil {
+			return "", err
+		}
+		if err := ws.OpenNote(svgPath, 0); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if _, ok := blockui.TargetBounds("svg-preview-stage"); !ok {
+			return "", fmt.Errorf("expected svg-preview-stage for .svg")
+		}
+		if err := clickTarget(tt, "svg-mode-source"); err != nil {
+			return "", err
+		}
+		if _, ok := blockui.TargetBounds("source-editor"); !ok {
+			return "", fmt.Errorf("expected source-editor after switching SVG to Source mode")
+		}
+
+		// 18c. HTML -> html-browser + source-editor
+		htmlPath := filepath.Join(nbDir, "demo.html")
+		if err := os.WriteFile(htmlPath, []byte("<!doctype html><h1>Hello</h1>\n"), 0o644); err != nil {
+			return "", err
+		}
+		if err := ws.OpenNote(htmlPath, 0); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if _, ok := blockui.TargetBounds("html-browser"); !ok {
+			return "", fmt.Errorf("expected html-browser button in titlebar for .html")
+		}
+
+		// 18d. UTF-8 BOM JSON -> WriteNote preserves leading BOM!
+		bomPath := filepath.Join(nbDir, "config.json")
+		if err := os.WriteFile(bomPath, append([]byte{0xEF, 0xBB, 0xBF}, []byte("{\"ok\":true}\n")...), 0o644); err != nil {
+			return "", err
+		}
+		if err := ws.OpenNote(bomPath, 0); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if err := ws.WriteNote(bomPath, "{\"ok\":false}\n"); err != nil {
+			return "", err
+		}
+		rawBOM, err := os.ReadFile(bomPath)
+		if err != nil || len(rawBOM) < 3 || rawBOM[0] != 0xEF || rawBOM[1] != 0xBB || rawBOM[2] != 0xBF {
+			return "", fmt.Errorf("expected UTF-8 BOM preserved on save, got %x", rawBOM)
+		}
+
+		// 18e. Binary file -> blocked-file-view
+		binPath := filepath.Join(nbDir, "archive.bin")
+		if err := os.WriteFile(binPath, []byte{0x00, 0xFF, 0x10, 0x00, 0x89}, 0o644); err != nil {
+			return "", err
+		}
+		if err := ws.OpenNote(binPath, 0); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if _, ok := blockui.TargetBounds("blocked-file-view"); !ok {
+			return "", fmt.Errorf("expected blocked-file-view for binary file")
+		}
+
+		_ = ws.OpenNote(firstNotePath, 0)
+		ws.CloseOtherTabs(firstNotePath)
+		tt.Frame()
+		return "PNG + SVG + HTML + UTF-8 BOM + Blocked tabs verified", nil
+	}); err != nil {
+		rep.TotalTime = time.Since(startAll)
+		return rep, err
+	}
+
+	// Step 19: Full-window Page History (`history-view` -> restore -> `history-toast-undo`), manual `FileOrder` & recovery draft.
+	if err := runStep(19, "Full-window Page History + Undo toast, FileOrder & recovery draft", func() (string, error) {
+		histNote := filepath.Join(nbDir, "HistoryTarget.md")
+		if err := ws.WriteNote(histNote, "# Version One\n\nOriginal paragraph.\n"); err != nil {
+			return "", err
+		}
+		if err := ws.WriteNote(histNote, "# Version Two\n\nUpdated paragraph.\n"); err != nil {
+			return "", err
+		}
+		if err := ws.OpenNote(histNote, 0); err != nil {
+			return "", err
+		}
+		tt.Frame()
+
+		// Open Page History via titlebar-more -> page-history
+		if err := clickTarget(tt, "titlebar-more"); err != nil {
+			return "", err
+		}
+		if err := clickTarget(tt, "page-history"); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if !ws.IsPageHistoryOpen() {
+			return "", fmt.Errorf("expected full-window Page History open")
+		}
+		if _, ok := blockui.TargetBounds("history-view"); !ok {
+			return "", fmt.Errorf("expected history-view probe")
+		}
+		// Toggle clean mode & back to diff mode, select older snapshot (history-snap-1), restore -> confirm!
+		if err := clickTarget(tt, "history-mode-clean"); err != nil {
+			return "", err
+		}
+		if err := clickTarget(tt, "history-mode-diff"); err != nil {
+			return "", err
+		}
+		if err := clickTarget(tt, "history-snap-1"); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if err := clickTarget(tt, "history-restore"); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if err := clickTarget(tt, "history-confirm-restore"); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if ws.IsPageHistoryOpen() {
+			return "", fmt.Errorf("expected history view closed after restore")
+		}
+		if got, _ := ws.ReadNote(histNote); !strings.Contains(got, "Version One") {
+			return "", fmt.Errorf("expected restored Version One, got %q", got)
+		}
+		// Post-restore toast undo (`history-toast-undo`) restores Version Two!
+		if _, ok := blockui.TargetBounds("history-toast-undo"); !ok {
+			return "", fmt.Errorf("expected history-toast-undo banner in note column")
+		}
+		if err := clickTarget(tt, "history-toast-undo"); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if got, _ := ws.ReadNote(histNote); !strings.Contains(got, "Version Two") {
+			return "", fmt.Errorf("expected Undo Restore to bring back Version Two, got %q", got)
+		}
+
+		// Manual sibling reorder persists across notebook switches!
+		ws.ReorderSibling(nbDir, histNote, firstNotePath, false)
+		entriesBefore := ws.Entries()
+		_ = ws.SetNotebook(nbDir2)
+		_ = ws.SetNotebook(nbDir)
+		entriesAfter := ws.Entries()
+		if len(entriesBefore) != len(entriesAfter) {
+			return "", fmt.Errorf("entries count mismatch after notebook switch")
+		}
+		var idxHist, idxFirst int
+		for i, e := range entriesAfter {
+			if filepath.Clean(e.Path) == filepath.Clean(histNote) {
+				idxHist = i
+			}
+			if filepath.Clean(e.Path) == filepath.Clean(firstNotePath) {
+				idxFirst = i
+			}
+		}
+		if idxHist >= idxFirst {
+			return "", fmt.Errorf("expected reordered %s (idx %d) before %s (idx %d)", filepath.Base(histNote), idxHist, filepath.Base(firstNotePath), idxFirst)
+		}
+
+		// Crash-recovery draft round-trip (`SaveRecovery` -> `NewWorkspace` -> `ApplyPendingRecoveryDraft`)
+		_ = files.SaveRecovery(histNote, "# Recovered From Crash\n")
+		wsRec := app.NewWorkspace(dataDir)
+		if p, _, ok := wsRec.PendingRecoveryDraft(); !ok || filepath.Clean(p) != filepath.Clean(histNote) {
+			return "", fmt.Errorf("expected PendingRecoveryDraft for %s, got %q ok=%v", histNote, p, ok)
+		}
+		if _, err := wsRec.ApplyPendingRecoveryDraft(); err != nil {
+			return "", err
+		}
+		return "Page History + Undo toast + FileOrder + Recovery verified", nil
+	}); err != nil {
+		rep.TotalTime = time.Since(startAll)
+		return rep, err
+	}
+
+	// Step 20: Full-window 12-theme `A-Export` stage (`export-view`, light/dark 6+6 themes, toggles, save & back).
+	if err := runStep(20, "Full-window 12-theme A-Export stage & preferences persistence", func() (string, error) {
+		_ = ws.OpenNote(firstNotePath, 0)
+		if err := ws.WriteNote(firstNotePath, "# Ocean Export Stage\n\nParagraph for 12-theme preview.\n"); err != nil {
+			return "", err
+		}
+		tt.Frame()
+
+		savedOut := filepath.Join(baseTempDir, "exports", "stage-out.png")
+		ws.Export().OnSaveDialog = func(dir, suggested string, done func(string)) {
+			done(savedOut)
+		}
+
+		// Open full-window Export stage from titlebar-more -> page-export-image
+		if err := clickTarget(tt, "titlebar-more"); err != nil {
+			return "", err
+		}
+		if err := clickTarget(tt, "page-export-image"); err != nil {
+			return "", err
+		}
+		tt.Frame()
+		if !ws.Export().IsOpen() {
+			return "", fmt.Errorf("expected full-window export stage open")
+		}
+		for _, id := range []string{"export-view", "export-back", "export-stage", "export-options", "export-title-toggle", "export-watermark", "export-save"} {
+			if _, ok := blockui.TargetBounds(id); !ok {
+				return "", fmt.Errorf("expected probe %q in A-Export view", id)
+			}
+		}
+
+		// Switch to Dark · 6 -> Neon, then Light · 6 -> Journal, toggle watermark, click export-save -> export-back
+		if err := tt.Click("深色 · 6"); err != nil {
+			return "", fmt.Errorf("click dark theme tab: %w", err)
+		}
+		if err := clickTarget(tt, "export-style-neon"); err != nil {
+			return "", err
+		}
+		if ws.Export().ActiveStyle() != model.ExportThemeNeon {
+			return "", fmt.Errorf("expected Neon export theme, got %q", ws.Export().ActiveStyle())
+		}
+		if err := tt.Click("浅色 · 6"); err != nil {
+			return "", fmt.Errorf("click light theme tab: %w", err)
+		}
+		if err := clickTarget(tt, "export-style-journal"); err != nil {
+			return "", err
+		}
+		if err := clickTarget(tt, "export-watermark"); err != nil {
+			return "", err
+		}
+		if err := clickTarget(tt, "export-save"); err != nil {
+			return "", err
+		}
+		if info, err := os.Stat(savedOut); err != nil || info.Size() == 0 {
+			return "", fmt.Errorf("expected non-empty saved export PNG at %s: %v", savedOut, err)
+		}
+		if _, err := os.Stat(filepath.Join(dataDir, "export-preferences.json")); err != nil {
+			return "", fmt.Errorf("expected export-preferences.json persisted: %w", err)
+		}
+		if err := clickTarget(tt, "export-back"); err != nil {
+			return "", err
+		}
+		if ws.Export().IsOpen() {
+			return "", fmt.Errorf("expected export stage closed after export-back")
+		}
+		return "12-theme A-Export stage + save + prefs verified", nil
+	}); err != nil {
+		rep.TotalTime = time.Since(startAll)
+		return rep, err
+	}
+
+	blockui.SetSmokeFinished(true, "All 20 acceptance steps passed")
 	rep.TotalTime = time.Since(startAll)
 	return rep, nil
 }
