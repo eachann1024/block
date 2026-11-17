@@ -45,14 +45,25 @@ impl Editor {
         });
         let focus_input = input.clone();
         self.annotate.reactions = None;
+        self.annotate.foot_picker_note = None;
         self.format = None;
         self.annotate.composer = Some(AnnotateComposer { block_id, range, targets, input, _sub: sub });
+        self.remeasure_annotation_rows();
+        let std_w = crate::editor::chrome::standard_width(crate::theme::Theme::ocean().content_width);
+        if !crate::editor::annotate_ui::can_fit_wide_rail(self, std_w)
+            && let Some(comp) = &self.annotate.composer
+            && let Some(anchor_id) = crate::editor::annotate_foot::anchor_block_for_composer(self, comp)
+            && let Some(ix) = self.doc.index_of(anchor_id)
+        {
+            crate::ui::scrollbar::reveal_item(&self.list, ix, gpui::px(80.));
+        }
         cx.defer_in(window, move |_, window, cx| { focus_input.update(cx, |i, cx| i.focus(window, cx)); });
         cx.notify();
     }
 
     pub(in crate::editor) fn close_annotation_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.annotate.composer = None;
+        self.remeasure_annotation_rows();
         window.focus(&self.focus, cx);
         cx.notify();
     }
@@ -71,6 +82,7 @@ impl Editor {
         self.caret_hidden = true;
         self.table_sel = None;
         self.toolbar_anchor = None;
+        self.remeasure_annotation_rows();
         self.record_annotation_change(before, cx);
         window.focus(&self.focus, cx);
         cx.notify();

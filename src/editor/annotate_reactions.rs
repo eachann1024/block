@@ -132,7 +132,9 @@ impl Editor {
             });
         let annotation_id = self.find_span_reaction_owner(&targets);
         self.format = None;
+        self.annotate.foot_picker_note = None;
         self.annotate.reactions = Some(ReactionPicker { targets, annotation_id, anchor });
+        self.remeasure_annotation_rows();
         cx.notify();
     }
 
@@ -146,6 +148,7 @@ impl Editor {
         self.caret_hidden = true;
         self.table_sel = None;
         self.toolbar_anchor = None;
+        self.remeasure_annotation_rows();
         self.record_annotation_change(before, cx);
         cx.notify();
     }
@@ -160,12 +163,15 @@ impl Editor {
         self.caret_hidden = true;
         self.table_sel = None;
         self.toolbar_anchor = None;
+        self.remeasure_annotation_rows();
         self.record_annotation_change(before, cx);
         cx.notify();
     }
 
     pub(crate) fn toggle_foot_reaction_picker(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.annotate.reactions = None;
         self.annotate.foot_picker_note = (self.annotate.foot_picker_note != Some(id)).then_some(id);
+        self.remeasure_annotation_rows();
         cx.notify();
     }
 

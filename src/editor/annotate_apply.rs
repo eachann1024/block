@@ -35,6 +35,7 @@ impl Editor {
         let document = markdown::serialize(&self.doc);
         let receiver = ai::stream(document, tasks, cx);
         self.persist_annotations();
+        self.remeasure_annotation_rows();
         cx.notify();
         cx.spawn(async move |this, cx| {
             let mut output = String::new();
@@ -90,6 +91,7 @@ impl Editor {
             }
         }
         self.persist_annotations();
+        self.remeasure_annotation_rows();
         cx.notify();
     }
 
@@ -102,6 +104,7 @@ impl Editor {
             }
         }
         self.persist_annotations();
+        self.remeasure_annotation_rows();
         cx.notify();
     }
 
