@@ -1,19 +1,18 @@
 //! Minimalist Ocean Paper inline AI floating bar (396px):
 //! - No model switcher, no `@`, no gear or close icons (Esc / click outside closes).
-//! - Input mode: plain-language default tags + starred/recent user prompt row (`<=12 chars…` + hover Tooltip + `☆/★`).
+//! - Input mode: unified prompt chips (`<=12 chars…` + hover Tooltip + `☆/★`), starred by default, max 3 rows.
 //! - Streaming mode: single clean row (`● 正在生成… [停止]`), while blocks stream live on paper.
 //! - Review mode: Enter accepts (`完成 ↵` / `替换 ↵`), typing refines in place, plus `插入下方` / `重写` / `放弃`.
-use std::{cell::Cell, rc::Rc};
-use gpui::{AnyElement, Bounds, Entity, FontWeight, Pixels, SharedString, deferred, div, point, prelude::*, px, rgb};
+use gpui::{AnyElement, Entity, FontWeight, SharedString, div, point, prelude::*, px, rgb};
 
 use super::super::view;
-use super::inline_prompts;
-use super::session::{AiMenu, AiSession, AiStatus, EMPTY_PRESETS, Preset, SEL_PRESETS};
+use super::inline_prompts::{self, PromptScope};
+use super::session::{AiSession, AiStatus};
 use crate::editor::view::Editor;
 use crate::icons::{Icon, icon};
 use crate::theme::{Theme, tr};
 use crate::ui::ai_controls::{
-    PANEL_WIDTH, action_chip, action_chip_hint, inline_text_input, input_capsule, panel_shell,
+    PANEL_WIDTH, action_chip_hint, inline_text_input, input_capsule, panel_shell,
     saved_prompt_chip, send_button_enabled,
 };
 
@@ -31,47 +30,6 @@ fn tag_button(
         editor.update(cx, |this, cx| run(this, window, cx));
         cx.stop_propagation();
     })
-}
-
-fn translate_tag(current: AiMenu, bounds_slot: Rc<Cell<Option<Bounds<Pixels>>>>, editor: &Entity<Editor>) -> gpui_base::Button {
-    let theme = Theme::ocean();
-    let open = current == AiMenu::Translate;
-    let ed = editor.clone();
-    action_chip("ai-translate", None, tr("翻译", "Translate"), false, open, move |_, _, cx| {
-        ed.update(cx, |this, cx| this.ai_toggle_menu(AiMenu::Translate, cx));
-        cx.stop_propagation();
-    })
-    .child(crate::ui::placement::track_bounds(bounds_slot, false))
-    .child(div().text_color(theme.text_secondary).text_size(px(12.)).line_height(px(16.)).child(if open { "▴" } else { "▾" }))
-}
-
-fn submenu_item(p: Preset, highlighted: bool, editor: &Entity<Editor>) -> gpui_base::Button {
-    let editor = editor.clone();
-    crate::dropdown::row_with(
-        SharedString::from(format!("ai-item-{p:?}")),
-        crate::dropdown::RowSpec {
-            label: p.label().into(),
-            highlighted,
-            ..Default::default()
-        },
-    )
-    .on_mouse_down(gpui::MouseButton::Left, move |_, window, cx| {
-        editor.update(cx, |this, cx| this.ai_preset(p, window, cx));
-        cx.stop_propagation();
-    })
-}
-
-fn preset_chip(p: Preset, editor: &Entity<Editor>) -> gpui_base::Button {
-    tag_button(
-        SharedString::from(format!("ai-preset-{p:?}")),
-        p.label(),
-        None,
-        false,
-        false,
-        editor,
-        move |this, w, cx| this.ai_preset(p, w, cx),
-    )
-    .h(px(26.))
 }
 
 pub(in crate::editor) fn render(
@@ -155,93 +113,46 @@ pub(in crate::editor) fn render(
     };
 
     let mut bottom_area: Option<AnyElement> = None;
-    let mut submenu: Option<AnyElement> = None;
-    let trans_bounds: Rc<Cell<Option<Bounds<Pixels>>>> = Rc::new(Cell::new(None));
 
     match &s.status {
         AiStatus::Input => {
-            let defaults = if empty_ctx { EMPTY_PRESETS } else { SEL_PRESETS };
-            let mut default_row = div().flex().flex_wrap().items_center().gap(px(2.));
-            for p in defaults {
-                default_row = default_row.child(preset_chip(*p, &editor));
-            }
-            if !empty_ctx {
-                default_row = default_row.child(translate_tag(s.menu, trans_bounds.clone(), &editor).h(px(26.)));
-            }
-
-            let saved = inline_prompts::list();
-            let user_row = (!saved.is_empty()).then(|| {
-                let mut row = div()
+            let scope = PromptScope::from_empty_ctx(empty_ctx);
+            let entries = inline_prompts::list(scope);
+            if !entries.is_empty() {
+                let mut grid = div()
+                    .w_full()
+                    .max_h(px(inline_prompts::CHIP_AREA_MAX_H))
+                    .overflow_hidden()
                     .flex()
                     .flex_wrap()
                     .items_center()
-                    .gap(px(5.))
-                    .pt(px(5.))
-                    .border_t_1()
-                    .border_color(theme.hairline);
-                for (ix, item) in saved.into_iter().enumerate() {
-                    let short = inline_prompts::trunc12(&item.text);
-                    let full = item.text;
-                    let run_text = full.clone();
-                    let star_text = full.clone();
+                    .gap(px(inline_prompts::CHIP_GAP));
+                for (ix, item) in entries.into_iter().enumerate() {
+                    let short = item.target.short_label();
+                    let full = item.target.full_label();
+                    let run_target = item.target.clone();
+                    let star_target = item.target;
                     let run_ed = editor.clone();
                     let star_ed = editor.clone();
-                    row = row.child(saved_prompt_chip(
+                    grid = grid.child(saved_prompt_chip(
                         ix,
                         short,
                         full,
                         item.starred,
                         move |_, window, cx| {
-                            let t = run_text.clone();
-                            run_ed.update(cx, |this, cx| this.ai_run_saved_prompt(t, window, cx));
+                            let target = run_target.clone();
+                            run_ed.update(cx, |this, cx| this.ai_run_prompt_target(target, window, cx));
                             cx.stop_propagation();
                         },
                         move |_, _, cx| {
-                            let t = star_text.clone();
-                            star_ed.update(cx, |this, cx| this.ai_toggle_saved_star(&t, cx));
+                            let target = star_target.clone();
+                            star_ed.update(cx, |this, cx| this.ai_toggle_prompt_star(scope, &target, cx));
                             cx.stop_propagation();
                         },
                     ));
                 }
-                row
-            });
-
-            if !empty_ctx && s.menu == AiMenu::Translate {
-                let items = [Preset::English, Preset::Chinese];
-                let menu_card = items
-                    .iter()
-                    .enumerate()
-                    .fold(crate::dropdown::shell("ai-submenu").w(px(152.)), |d, (ix, p)| {
-                        d.child(submenu_item(*p, ix == s.menu_index, &editor))
-                    });
-                let sub_ed = editor.clone();
-                let tracked = trans_bounds.clone();
-                let fallback = gpui::Bounds::new(s.anchor, gpui::size(px(64.), px(26.)));
-                submenu = Some(
-                    deferred(
-                        crate::dropdown::smart_anchored_with(move |_, cx| {
-                            let vp = sub_ed.read(cx).list.viewport_bounds();
-                            let anchor_rect = tracked.get().unwrap_or(fallback);
-                            crate::dropdown::PlacementSpec::below(anchor_rect)
-                                .align_x(crate::dropdown::AlignX::Left)
-                                .viewport(vp)
-                                .gap(px(4.))
-                        })
-                        .child(menu_card),
-                    )
-                    .into_any_element(),
-                );
+                bottom_area = Some(grid.into_any_element());
             }
-
-            bottom_area = Some(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(5.))
-                    .child(default_row)
-                    .children(user_row)
-                    .into_any_element(),
-            );
         }
         AiStatus::Thinking { .. } => {}
         AiStatus::Review { .. } => {
@@ -347,22 +258,6 @@ pub(in crate::editor) fn render(
             .on_action(|_: &view::SelectLeft, _, _| {})
             .on_action(|_: &view::SelectRight, _, _| {})
             .on_action(|_: &view::SelectAll, _, _| {})
-            .capture_action({
-                let ed = editor.clone();
-                move |_: &gpui_component::input::MoveUp, _, cx| {
-                    if ed.update(cx, |this, cx| this.ai_step_menu(false, cx)) {
-                        cx.stop_propagation();
-                    }
-                }
-            })
-            .capture_action({
-                let ed = editor.clone();
-                move |_: &gpui_component::input::MoveDown, _, cx| {
-                    if ed.update(cx, |this, cx| this.ai_step_menu(true, cx)) {
-                        cx.stop_propagation();
-                    }
-                }
-            })
             .on_action(|_: &view::Up, _, _| {})
             .on_action(|_: &view::Down, _, _| {})
             .on_action(|_: &view::SelectUp, _, _| {})
@@ -403,8 +298,7 @@ pub(in crate::editor) fn render(
             })
             .children(err_row)
             .child(prompt_row)
-            .children(bottom_area)
-            .children(submenu),
+            .children(bottom_area),
         phase,
         2,
     )

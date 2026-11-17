@@ -115,13 +115,6 @@ impl Editor {
         if let Some(ai_input) = self.ai_session().and_then(|s| {
             (!matches!(s.status, crate::editor::ai::session::AiStatus::Input)).then(|| s.input.clone())
         }) {
-            if let Some(s) = self.format.as_mut().and_then(|f| match f {
-                crate::editor::format_cmds::FormatPop::Ai(s) => Some(s),
-                _ => None,
-            }) {
-                s.menu = crate::editor::ai::session::AiMenu::None;
-                s.menu_index = 0;
-            }
             ai_input.update(cx, |i, cx| i.focus(window, cx));
             cx.notify();
             return;
