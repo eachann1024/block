@@ -194,14 +194,11 @@ impl Element for BlockText {
                 // Hide the caret and IME composition chrome when the window is inactive while keeping selection visible.
                 if head.block == self.block && window.is_window_active() {
                     let p = layout.point(head.offset);
-                    let p = super::code_escape::side(self.editor.entity_id(), head).map_or(p, |end| super::code_escape::caret_point(layout, p, end));
                     let line_h = layout.cells.first().map_or(layout.line_height, |c| c.text.line_height);
-                    let font_px = layout.cells.first()
-                        .and_then(|c| c.text.lines.first().map(|(_, l)| l.font_size()))
-                        .or_else(|| layout.lines.first().map(|(_, l)| l.font_size()))
-                        .unwrap_or(line_h * 0.67);
-                    let caret_h = (font_px * 1.125).round().min(line_h);
-                    let origin = point(p.x, p.y + ((line_h - caret_h) * 0.5).round());
+                    let (mut origin, caret_h) = layout.caret_geometry(head.offset);
+                    if let Some(end) = super::code_escape::side(self.editor.entity_id(), head) {
+                        origin = super::code_escape::caret_point(layout, origin, end);
+                    }
                     if empty {
                         let color = if self.editor.read(cx).is_first_line_delete_armed(self.block) { crate::ui::reveal::delete_arm_caret_color() } else { Theme::ocean().accent };
                         let alpha = super::caret_blink::alpha(&self.editor, (head.block, head.offset), cx);
