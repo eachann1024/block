@@ -20,10 +20,14 @@ impl Editor {
         }
         let ai = self.ai_session().map(|s| {
             let review = matches!(s.status, super::super::ai::session::AiStatus::Review { .. });
-            (s.input.clone(), review)
+            (s.input.clone(), review, s.is_empty_ctx())
         });
-        if let Some((input, review)) = ai {
-            let ph = if review { super::super::ai::session::review_placeholder() } else { super::super::ai::session::input_placeholder() };
+        if let Some((input, review, empty_ctx)) = ai {
+            let ph = if review {
+                super::super::ai::session::review_placeholder()
+            } else {
+                super::super::ai::session::input_placeholder(empty_ctx)
+            };
             input.update(cx, |i, cx| i.set_placeholder(ph, window, cx));
         }
         if let Some(input) = self.annotate.composer.as_ref().map(|c| c.input.clone()) {
