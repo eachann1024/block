@@ -172,8 +172,8 @@ impl Editor {
         let item = cx.read_from_clipboard().ok_or("全选复制后剪贴板为空")?;
         let clip_plain = item.text().ok_or("全选复制后剪贴板缺少纯文本")?;
         let clip_md = super::paste_clipboard::block_markdown(&item, &clip_plain).ok_or("全选复制后剪贴板缺少块结构")?;
-        if !clip_plain.contains("潮汕") || clip_plain.contains("# 潮汕") {
-            return Err("全选复制后的纯文本应仅包含可见文字".into());
+        if !clip_plain.contains("# 潮汕") || !clip_plain.contains("- ") {
+            return Err("多块复制后的剪贴板文本未保留 Markdown 格式".into());
         }
         // 3. QuickNote (小窗 minimal=true) paste from clipboard plain text & full source
         let prev_minimal = self.minimal;

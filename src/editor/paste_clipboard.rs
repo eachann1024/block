@@ -9,26 +9,59 @@ const INLINE_V1: &str = "com.block.editor.inline.v1";
 #[derive(Deserialize, Serialize)]
 struct InlinePayload {
     kind: String,
+    #[serde(default)]
+    clipboard: String,
     text: String,
     spans: Vec<Span>,
     inline: Vec<InlineTag>,
 }
 
+fn inline_markdown(fragment: &Block) -> String {
+    if fragment.spans.is_empty() && fragment.meta.inline.is_empty() {
+        return fragment.text.clone();
+    }
+    let mut parts = Vec::new();
+    let mut start = 0;
+    for (idx, ch) in fragment.text.char_indices() {
+        if ch == '\n' {
+            let mut line = fragment.slice(start..idx);
+            line.kind = Kind::Paragraph;
+            line.meta.indent = 0;
+            let md = super::markdown::serialize(&super::model::Doc::from_blocks(vec![line]));
+            parts.push(md.strip_suffix('\n').unwrap_or(&md).to_owned());
+            start = idx + 1;
+        }
+    }
+    let mut tail = fragment.slice(start..fragment.text.len());
+    tail.kind = Kind::Paragraph;
+    tail.meta.indent = 0;
+    let md = super::markdown::serialize(&super::model::Doc::from_blocks(vec![tail]));
+    parts.push(md.strip_suffix('\n').unwrap_or(&md).to_owned());
+    parts.join("\n")
+}
+
 /// Text selections carry only inline styles; their heading/list/container is not selected.
 pub(super) fn inline_item(fragment: &Block) -> ClipboardItem {
-    let payload = InlinePayload { kind: INLINE_V1.into(), text: fragment.text.clone(),
-        spans: fragment.spans.clone(), inline: fragment.meta.inline.clone() };
+    let clipboard = inline_markdown(fragment);
+    let payload = InlinePayload {
+        kind: INLINE_V1.into(),
+        clipboard: clipboard.clone(),
+        text: fragment.text.clone(),
+        spans: fragment.spans.clone(),
+        inline: fragment.meta.inline.clone(),
+    };
     match serde_json::to_string(&payload) {
-        Ok(metadata) => ClipboardItem::new_string_with_metadata(fragment.text.clone(), metadata),
-        Err(_) => ClipboardItem::new_string(fragment.text.clone()),
+        Ok(metadata) => ClipboardItem::new_string_with_metadata(clipboard, metadata),
+        Err(_) => ClipboardItem::new_string(clipboard),
     }
 }
 
 pub(super) fn inline_fragment(item: &ClipboardItem, text: &str) -> Option<Block> {
     let payload: InlinePayload = serde_json::from_str(item.metadata()?).ok()?;
-    let valid = |start, end| start <= end && end <= text.len()
-        && text.is_char_boundary(start) && text.is_char_boundary(end);
-    if payload.kind != INLINE_V1 || payload.text != text
+    let expected = if payload.clipboard.is_empty() { &payload.text } else { &payload.clipboard };
+    let valid = |start, end| start <= end && end <= payload.text.len()
+        && payload.text.is_char_boundary(start) && payload.text.is_char_boundary(end);
+    if payload.kind != INLINE_V1 || expected != text
         || !payload.spans.iter().all(|span| valid(span.start, span.end))
         || !payload.inline.iter().all(|tag| valid(tag.start, tag.end)) { return None; }
     let mut fragment = Block::new(0, Kind::Paragraph, payload.text);
@@ -59,12 +92,27 @@ pub(super) fn block_markdown(item: &ClipboardItem, text: &str) -> Option<String>
 }
 
 pub(super) fn blocks_item(blocks: Vec<Block>) -> ClipboardItem {
-    let text = blocks.iter().map(|block| block.text.as_str()).collect::<Vec<_>>().join("\n");
     let markdown = super::markdown::serialize(&super::model::Doc::from_blocks(blocks));
+    let text = markdown.strip_suffix('\n').unwrap_or(&markdown).to_owned();
     block_item(text, &markdown)
 }
 
 impl Editor {
+    pub(super) fn clipboard_block_slice(&self, index: usize, range: std::ops::Range<usize>) -> Block {
+        let block = &self.doc.blocks[index];
+        let mut part = if range == (0..block.text.len()) {
+            block.clone()
+        } else if block.meta.raw_source.is_some() {
+            block.text_slice(range).unwrap_or_else(|| block.clone())
+        } else {
+            block.slice(range)
+        };
+        if let Some(number) = self.doc.list_number(block.id) {
+            part.meta.list_start = Some(number);
+        }
+        part
+    }
+
     pub(super) fn selection_clipboard_item(&self) -> Option<ClipboardItem> {
         let (a, b, first, last) = self.ordered();
         if a == b { return None; }
@@ -80,17 +128,19 @@ impl Editor {
                 return Some(inline_item(&block.text_slice(a.offset..b.offset)?));
             }
         }
-        let blocks = (first..=last).filter_map(|i| {
-            // The next block's type is not selected when the range ends at its first byte.
+        if first + 1 == last && a.offset == block.text.len() && !block.text.is_empty() && b.offset == 0 {
+            return Some(ClipboardItem::new_string("\n".into()));
+        }
+        let blocks: Vec<Block> = (first..=last).filter_map(|i| {
+            // Unselected boundary endpoints do not carry their neighbour block's container.
             if i == last && first != last && b.offset == 0 { return None; }
-            let block = &self.doc.blocks[i];
-            self.selected_range(block.id).map(|range| {
-                if range == (0..block.text.len()) { block.clone() }
-                else if block.meta.raw_source.is_some() { block.text_slice(range).unwrap_or_else(|| block.clone()) }
-                else { block.slice(range) }
-            })
+            let cur = &self.doc.blocks[i];
+            if i == first && first != last && a.offset == cur.text.len() && !cur.text.is_empty() {
+                return None;
+            }
+            self.selected_range(cur.id).map(|range| self.clipboard_block_slice(i, range))
         }).collect();
-        Some(blocks_item(blocks))
+        (!blocks.is_empty()).then(|| blocks_item(blocks))
     }
 
     /// Copy controls copy a block's text, not its surrounding code/callout container.
