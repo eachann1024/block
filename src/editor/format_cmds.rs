@@ -15,6 +15,8 @@ pub(super) enum FormatPop {
     /// Text-type and list dropdowns of the selection toolbar.
     Kinds { spec: crate::dropdown::PlacementSpec, current: Option<super::model::Kind> },
     Lists { spec: crate::dropdown::PlacementSpec, current: Option<super::model::Kind> },
+    /// Overflow (`•••`) menu when the single-row selection toolbar exceeds editor width.
+    More { spec: crate::dropdown::PlacementSpec },
     Ai(Box<crate::editor::ai::session::AiSession>),
     /// Right-click menu over a non-empty selection; keeps the selection alive.
     SelectionMenu { spec: crate::dropdown::PlacementSpec },
