@@ -46,10 +46,13 @@ fn palette() -> Palette {
 pub(in crate::editor) struct Metrics { pub h: Pixels, pub pad: Pixels, pub radius: Pixels }
 
 pub(in crate::editor) fn metrics(layout: &TextLayout) -> Metrics {
-    let font = layout.lines.first().map(|(_, l)| l.font_size()).unwrap_or(px(16.));
+    let font = layout.lines.first().map(|(_, l)| l.font_size())
+        .or_else(|| layout.cells.first().and_then(|c| c.text.lines.first().map(|(_, l)| l.font_size())))
+        .unwrap_or(px(16.));
+    let line_h = layout.cells.first().map_or(layout.line_height, |c| c.text.line_height);
     let f = f32::from(font);
     let s = (f / 16.).min(1.);
-    let h = (font + px(5. * s)).round().min(layout.line_height - px(2. * s)).max(px(18. * s).min(layout.line_height));
+    let h = (font + px(5. * s)).round().min(line_h - px(2. * s)).max(px(18. * s).min(line_h));
     Metrics { h, pad: px((f * 0.25 + 1.5 * s).min(9.)), radius: px((4. * s).round().clamp(3., 5.)) }
 }
 
@@ -97,8 +100,8 @@ pub(in crate::editor) fn paint_fills(layout: &TextLayout, st: &ChipState, window
 
 struct Piece { b: Bounds<Pixels>, l: Pixels, r: Pixels, chip: bool }
 
-/// Selection pieces of one text layout. Plain text and chip interiors share the full chip height
-/// `m.h` and outer `m.pad` / `m.radius` so selection bands align seamlessly with borderless chips.
+/// Band pieces of one text layout. Plain text and chip interiors share the full chip height
+/// `m.h` and outer `m.pad` / `m.radius` so bands align seamlessly with borderless chips.
 fn pieces(layout: &TextLayout, range: Range<usize>) -> Vec<Piece> {
     let m = metrics(layout);
     let mut out: Vec<Piece> = Vec::new();
@@ -127,7 +130,7 @@ fn pieces(layout: &TextLayout, range: Range<usize>) -> Vec<Piece> {
         }
     }
     if cursor < range.end { plain(&mut out, cursor, range.end); }
-    // A plain band beside a chip reaches into its edge, so a selection crossing the edge reads as one.
+    // A plain band beside a chip reaches into its edge, so a band crossing the edge reads as one.
     for i in 1..out.len() {
         let (prev, next) = (out[i - 1].b, out[i].b);
         let gap = next.left() - prev.right();
@@ -140,6 +143,26 @@ fn pieces(layout: &TextLayout, range: Range<usize>) -> Vec<Piece> {
     out
 }
 
+fn layout_pieces(layout: &TextLayout, range: Range<usize>) -> Vec<Piece> {
+    if layout.cells.is_empty() {
+        pieces(layout, range)
+    } else {
+        layout.cells.iter().filter(|c| c.range.start < range.end && range.start < c.range.end).flat_map(|c| {
+            let a = range.start.max(c.range.start) - c.range.start;
+            let b = range.end.min(c.range.end) - c.range.start;
+            pieces(&c.text, a..b)
+        }).collect()
+    }
+}
+
+pub(in crate::editor) fn paint_band(layout: &TextLayout, range: Range<usize>, color: Hsla, window: &mut Window) {
+    if range.is_empty() { return; }
+    for p in layout_pieces(layout, range) {
+        let corners = Corners { top_left: p.l, bottom_left: p.l, top_right: p.r, bottom_right: p.r };
+        window.paint_quad(quad(p.b, corners, color, 0., gpui::transparent_black(), BorderStyle::default()));
+    }
+}
+
 pub(in crate::editor) fn paint_selection(layout: &TextLayout, range: Range<usize>, window: &mut Window) -> Vec<Bounds<Pixels>> {
     let sel_color = Theme::ocean().selection;
     if range.is_empty() {
@@ -147,13 +170,7 @@ pub(in crate::editor) fn paint_selection(layout: &TextLayout, range: Range<usize
         for r in &rects { window.paint_quad(quad(*r, px(2.), sel_color, 0., gpui::transparent_black(), BorderStyle::default())); }
         return rects;
     }
-    let all: Vec<Piece> = if layout.cells.is_empty() { pieces(layout, range) } else {
-        layout.cells.iter().filter(|c| c.range.start < range.end && range.start < c.range.end).flat_map(|c| {
-            let a = range.start.max(c.range.start) - c.range.start;
-            let b = range.end.min(c.range.end) - c.range.start;
-            pieces(&c.text, a..b)
-        }).collect()
-    };
+    let all = layout_pieces(layout, range);
     for p in &all {
         let corners = Corners { top_left: p.l, bottom_left: p.l, top_right: p.r, bottom_right: p.r };
         window.paint_quad(quad(p.b, corners, sel_color, 0., gpui::transparent_black(), BorderStyle::default()));

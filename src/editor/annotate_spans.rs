@@ -35,8 +35,32 @@ pub(super) fn resolve_anchor(doc: &Doc, anchor: &AnnotationAnchor) -> Option<(u6
 }
 
 pub(in crate::editor) fn resolve_annotation_spans(doc: &Doc, note: &Annotation) -> Vec<(u64, Range<usize>, bool)> {
-    if note.anchors.is_empty() { resolve_annotation_span(doc, note).into_iter().collect() }
-    else { note.anchors.iter().filter_map(|anchor| resolve_anchor(doc, anchor)).collect() }
+    if note.anchors.is_empty() { return resolve_annotation_span(doc, note).into_iter().collect(); }
+    let applied = note.is_applied();
+    let mut used = Vec::with_capacity(note.anchors.len());
+    note.anchors.iter().filter_map(|anchor| {
+        if let Some(block) = doc.blocks.get(anchor.block_index)
+            && !used.contains(&block.id)
+            && let Some(range) = super::find_in_text(&block.text, anchor.start, &anchor.quote)
+        {
+            used.push(block.id);
+            return Some((block.id, range, applied));
+        }
+        if let Some((_, _, id, range)) = doc.blocks.iter().enumerate()
+            .filter(|(_, b)| !used.contains(&b.id))
+            .filter_map(|(idx, b)| {
+                super::find_in_text(&b.text, anchor.start, &anchor.quote)
+                    .map(|range| (idx.abs_diff(anchor.block_index), range.start.abs_diff(anchor.start), b.id, range))
+            })
+            .min_by_key(|(block_dist, start_dist, _, _)| (*block_dist, *start_dist))
+        {
+            used.push(id);
+            return Some((id, range, applied));
+        }
+        doc.blocks.get(anchor.block_index)
+            .filter(|b| !used.contains(&b.id) && crate::editor::image_source::spec_of(b).is_some())
+            .map(|b| { used.push(b.id); (b.id, 0..0, applied) })
+    }).collect()
 }
 
 pub(super) fn matches_targets(doc: &Doc, note: &Annotation, targets: &[AnnotationTarget]) -> bool {
