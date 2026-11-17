@@ -54,6 +54,7 @@ impl Editor {
             }
             Some(super::format_cmds::FormatPop::SelectionMenu { .. }) => super::format_ui::run_selection(self, index, window, cx),
             Some(super::format_cmds::FormatPop::Palette { .. }) => super::format_cmds::palette::activate_swatch(self, index, window, cx),
+            Some(super::format_cmds::FormatPop::More { .. }) => self.activate_more_slot(index, window, cx),
             _ => return false,
         }
         true
@@ -67,6 +68,7 @@ impl Editor {
             Some(super::format_cmds::FormatPop::Lists { .. }) => Some(vec![item(); super::toolbar::menu_kinds(false).len()]),
             Some(super::format_cmds::FormatPop::SelectionMenu { .. }) => Some(vec![item(), item(), skip(), item()]),
             Some(super::format_cmds::FormatPop::Palette { .. }) => Some(super::format_cmds::palette::palette_slots()),
+            Some(super::format_cmds::FormatPop::More { .. }) => Some(super::toolbar::more_slots(self)),
             _ => None,
         }
     }
