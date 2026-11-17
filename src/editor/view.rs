@@ -119,6 +119,7 @@ impl Editor {
         };
         self.block_menu.take().is_some() | self.table_menu.take().is_some()
             | format_closed | self.image_menu.take().is_some()
+            | self.annotate.foot_picker_note.take().is_some()
             | super::code_block::close_menus() | crate::ui::callout_controls::close_menu()
     }
     pub fn focus_content(&mut self, reset_to_start: bool, window: &mut Window, cx: &mut Context<Self>) {

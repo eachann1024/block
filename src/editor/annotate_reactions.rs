@@ -20,7 +20,7 @@ fn span_key(doc: &Doc, note: &Annotation) -> SpanKey {
 }
 
 impl Annotation {
-    pub(super) fn has_non_reaction_data(&self) -> bool {
+    pub(in crate::editor) fn has_non_reaction_data(&self) -> bool {
         !self.body.is_empty()
             || self.ai_rewritten.is_some()
             || self.ai_error.is_some()
@@ -32,7 +32,7 @@ impl Annotation {
 impl Editor {
     /// Enforces at most one reaction per resolved selection span and at most one emoji per note,
     /// preserving comments, AI rewrites, errors, and in-flight requests.
-    pub(super) fn normalize_annotations(&mut self) -> bool {
+    pub(in crate::editor) fn normalize_annotations(&mut self) -> bool {
         let mut changed = false;
         for note in &mut self.annotate.annotations {
             if note.is_applied() && note.has_non_reaction_data() {
@@ -98,6 +98,11 @@ impl Editor {
         {
             self.annotate.hovered_annotation = None;
         }
+        if let Some(picker_id) = self.annotate.foot_picker_note
+            && !self.annotate.annotations.iter().any(|n| n.id == picker_id && !n.reactions.is_empty())
+        {
+            self.annotate.foot_picker_note = None;
+        }
     }
 
     fn find_span_reaction_owner(&self, targets: &[AnnotationTarget]) -> Option<u64> {
@@ -143,9 +148,15 @@ impl Editor {
     }
 
     pub(crate) fn toggle_reaction_on_note(&mut self, id: u64, emoji: &str, cx: &mut Context<Self>) {
+        self.annotate.foot_picker_note = None;
         self.apply_single_reaction(Some(id), None, emoji);
         self.normalize_annotations();
         self.persist_annotations();
+        cx.notify();
+    }
+
+    pub(crate) fn toggle_foot_reaction_picker(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.annotate.foot_picker_note = (self.annotate.foot_picker_note != Some(id)).then_some(id);
         cx.notify();
     }
 
