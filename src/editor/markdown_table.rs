@@ -4,25 +4,22 @@ use pulldown_cmark::{Alignment, Event, Options, Parser, Tag, TagEnd};
 
 fn split_pipe_cells(line: &str) -> Vec<&str> {
     let line = line.trim();
-    let bytes = line.as_bytes();
-    let mut cuts = Vec::new();
+    if line.is_empty() || line == "|" { return Vec::new(); }
+    let inner = line.strip_prefix('|').unwrap_or(line);
+    let trailing_unescaped = inner.ends_with('|')
+        && inner[..inner.len() - 1].bytes().rev().take_while(|&b| b == b'\\').count() % 2 == 0;
+    let inner = if trailing_unescaped { &inner[..inner.len() - 1] } else { inner };
+    let mut out = Vec::new();
+    let mut prev = 0usize;
     let mut escaped = false;
-    for (idx, &byte) in bytes.iter().enumerate() {
-        if byte == b'|' && !escaped { cuts.push(idx); }
+    for (idx, byte) in inner.bytes().enumerate() {
+        if byte == b'|' && !escaped {
+            out.push(inner[prev..idx].trim());
+            prev = idx + 1;
+        }
         escaped = byte == b'\\' && !escaped;
     }
-    if cuts.is_empty() { return vec![line]; }
-    let start = if cuts.first() == Some(&0) { 1 } else { 0 };
-    let has_trailing = cuts.last() == Some(&(bytes.len() - 1));
-    let mut out = Vec::new();
-    let mut prev = if start == 1 { 1 } else { 0 };
-    for &cut in &cuts[start..cuts.len() - usize::from(has_trailing)] {
-        out.push(line[prev..cut].trim());
-        prev = cut + 1;
-    }
-    if !has_trailing {
-        out.push(line[prev..].trim());
-    }
+    out.push(inner[prev..].trim());
     out
 }
 

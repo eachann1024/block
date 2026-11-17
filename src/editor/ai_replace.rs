@@ -13,8 +13,7 @@ impl Editor {
         let end = self.doc.blocks.get(last)?;
         start.text.get(..a.offset)?; end.text.get(b.offset..)?;
         let source = source.replace("\r\n", "\n").replace('\r', "\n");
-        let literal = first == last && (start.meta.code_language.is_some()
-            || (start.is_atomic() && (a.offset != 0 || b.offset != start.text.len())));
+        let literal = first == last && start.meta.code_language.is_some();
         if literal || source.is_empty() {
             self.block_sel = None; self.table_sel = None;
             self.replace_selection(&source, false, cx);

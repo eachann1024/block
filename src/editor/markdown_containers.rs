@@ -40,7 +40,8 @@ pub(super) fn parse_callout(id: u64, lines: &[&str], defs: &str) -> Option<(Bloc
 }
 
 fn is_structural_quote_inner(line: &str) -> bool {
-    if line.trim().is_empty() || blocks::is_thematic_break(line) || blocks::classify_list_marker(line).is_some()
+    if line.trim().is_empty() { return false; }
+    if blocks::is_thematic_break(line) || blocks::classify_list_marker(line).is_some()
         || blocks::fence_any_indent(line).is_some() || blocks::inline_math_block(line).is_some()
     {
         return true;
@@ -74,18 +75,27 @@ pub(super) fn parse_blockquote(id: u64, lines: &[&str], defs: &str) -> Option<(V
     if end == 0 { return None; }
     let simple_prose = inner_lines.iter().all(|l| !is_structural_quote_inner(l))
         && !inner_lines.iter().enumerate().any(|(i, l)| {
-            l.contains('|') && inner_lines.get(i + 1).is_some_and(|n| {
+            !l.trim().is_empty() && inner_lines.get(i + 1).is_some_and(|n| {
                 let n = n.trim();
-                n.contains('-') && n.contains('|') && n.chars().all(|c| matches!(c, ' ' | '\t' | '-' | ':' | '|'))
+                !n.is_empty() && (
+                    (l.contains('|') && n.contains('-') && n.contains('|') && n.chars().all(|c| matches!(c, ' ' | '\t' | '-' | ':' | '|')))
+                    || n.bytes().all(|b| b == b'=') || n.bytes().all(|b| b == b'-')
+                )
             })
         });
     if simple_prose {
-        let joined = inner_lines.join("\n");
-        let (text, spans, tags) = inline::parse_with_defs(&joined, defs);
-        let mut block = Block::new(id, Kind::Quote, text);
-        block.spans = spans;
-        block.meta.inline = tags;
-        if defs.is_empty() || !joined.contains('[') {
+        let mut block = Block::new(id, Kind::Quote, String::new());
+        let mut has_bracket = false;
+        for (i, body) in inner_lines.iter().enumerate() {
+            if i > 0 { block.replace_range(block.text.len()..block.text.len(), "\n"); }
+            if body.is_empty() { continue; }
+            has_bracket |= body.contains('[');
+            let (text, spans, tags) = inline::parse_with_defs(body, defs);
+            let mut part = Block::new(0, Kind::Paragraph, text);
+            part.spans = spans; part.meta.inline = tags;
+            block.append(&part);
+        }
+        if defs.is_empty() || !has_bracket {
             block.seal_clean_source(lines[..end].concat(), None);
         }
         return Some((vec![block], end));
@@ -95,16 +105,12 @@ pub(super) fn parse_blockquote(id: u64, lines: &[&str], defs: &str) -> Option<(V
         inner_source.push_str(line);
         inner_source.push('\n');
     }
-    let parsed = super::parse_with_defs(&inner_source, defs);
+    let parsed = super::parse_blocks_with_defs(&inner_source, defs);
     let mut out = Vec::new();
-    for mut block in parsed.blocks.iter().cloned() {
+    for mut block in parsed {
         block.id = id + out.len() as u64;
         block.meta.clean_source = None;
-        if block.kind == Kind::Paragraph && block.meta.table.is_none()
-            && block.meta.code_language.is_none() && !block.is_atomic()
-        {
-            block.kind = Kind::Quote;
-        }
+        block.meta.quote_depth += 1;
         out.push(block);
     }
     Some((out, end))
@@ -184,7 +190,7 @@ pub(super) fn serialize_quote(block: &Block, out: &mut String) {
         return;
     }
     let parts: Vec<&str> = block.text.split('\n').collect();
-    if parts.iter().any(|p| p.is_empty() || is_structural_quote_inner(p)) {
+    if parts.iter().any(|p| is_structural_quote_inner(p)) {
         out.push_str(&indent_str);
         out.push_str("> ");
         inline::serialize(block, out);
@@ -194,12 +200,16 @@ pub(super) fn serialize_quote(block: &Block, out: &mut String) {
     let mut start = 0;
     for part in parts {
         let end = start + part.len();
-        let mut slice = block.slice(start..end);
-        slice.kind = Kind::Paragraph;
         out.push_str(&indent_str);
-        out.push_str("> ");
-        inline::serialize(&slice, out);
-        out.push('\n');
+        if part.is_empty() {
+            out.push_str(">\n");
+        } else {
+            let mut slice = block.slice(start..end);
+            slice.kind = Kind::Paragraph;
+            out.push_str("> ");
+            inline::serialize(&slice, out);
+            out.push('\n');
+        }
         start = end + 1;
     }
 }
