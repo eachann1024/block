@@ -33,6 +33,7 @@ impl Editor {
             self.ensure_block_visible(block_id);
             self.caret.anchor = Position { block: block_id, offset: range.start };
             self.caret.head = self.caret.anchor;
+            self.caret_hidden = true;
             self.table_sel = None;
             if !note.body.is_empty() { self.reveal_caret = true; }
         }
@@ -111,11 +112,13 @@ impl Editor {
     pub(crate) fn save_edit_annotation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(edit) = self.annotate.editing.take() else { return };
         let text = edit.input.read(cx).value().trim().to_owned();
-        if !text.is_empty()
-            && let Some(note) = self.annotate.annotations.iter_mut().find(|n| n.id == edit.annotation_id)
-        {
-            note.body = text;
-            self.persist_annotations();
+        if !text.is_empty() {
+            let before = self.snapshot();
+            if let Some(note) = self.annotate.annotations.iter_mut().find(|n| n.id == edit.annotation_id) {
+                note.body = text;
+                self.persist_annotations();
+            }
+            self.record_annotation_change(before, cx);
         }
         window.focus(&self.focus, cx);
         cx.notify();
@@ -129,6 +132,7 @@ impl Editor {
     }
 
     pub(crate) fn delete_annotation(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let before = self.snapshot();
         if let Some(note) = self.annotate.annotations.iter_mut().find(|n| n.id == id) {
             note.body.clear();
             note.ai_rewritten = None;
@@ -139,6 +143,8 @@ impl Editor {
         }
         self.normalize_annotations();
         self.persist_annotations();
+        self.caret_hidden = true;
+        self.record_annotation_change(before, cx);
         window.focus(&self.focus, cx);
         cx.notify();
     }

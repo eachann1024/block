@@ -52,7 +52,7 @@ impl Editor {
         if self.link_ui.hover != found { self.link_ui.hover = found; cx.notify(); }
     }
     pub(super) fn has_caret_link(&self) -> bool {
-        if self.format.is_some() || self.path.is_none() || !self.caret.is_empty()
+        if self.format.is_some() || self.path.is_none() || self.caret_hidden || !self.caret.is_empty()
             || self.selecting || self.dragging.is_some() || self.table_drag.is_some()
             || self.block_menu.is_some() || self.table_menu.is_some()
             || self.annotate.active_annotation.is_some() || self.annotate.hovered_annotation.is_some()
@@ -67,7 +67,7 @@ impl Editor {
     }
     /// Link holding a collapsed caret when the editor is focused.
     fn caret_link(&self, window: &Window) -> Option<(u64, Range<usize>, String)> {
-        if self.format.is_some() || self.path.is_none() || !self.caret.is_empty()
+        if self.format.is_some() || self.path.is_none() || self.caret_hidden || !self.caret.is_empty()
             || self.selecting || self.dragging.is_some() || self.table_drag.is_some()
             || self.block_menu.is_some() || self.table_menu.is_some()
             || self.annotate.active_annotation.is_some() || self.annotate.hovered_annotation.is_some()

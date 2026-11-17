@@ -29,8 +29,8 @@ pub(super) const HL_TABLE_BORDER_ACTIVE: u32 = 0xa66a00;
 pub(super) const HL_TABLE_BORDER_DARK: u32 = 0xdb9300;
 pub(super) const HL_TABLE_BORDER_ACTIVE_DARK: u32 = 0xfab219;
 pub(super) const ANNOTATION_PENDING: u32 = 0xf5c84c;
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(super) struct Annotation {
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(in crate::editor) struct Annotation {
     pub id: u64, pub block_index: usize, pub start: usize, pub end: usize,
     pub quote: String, pub body: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")] pub anchors: Vec<AnnotationAnchor>,

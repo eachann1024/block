@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use super::{Annotation, AnnotationTarget, find_snippet, next_id, resolve_annotation_span};
 use crate::editor::model::Doc;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(in crate::editor) struct AnnotationAnchor {
     pub block_index: usize,
     pub start: usize,
