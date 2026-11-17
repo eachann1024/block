@@ -3,6 +3,10 @@
 
 > <strong>Block</strong>&#32;is a native macOS block&#45;based Markdown notebook built in Rust on top of GPUI&#44; with a companion WebAssembly editor&#46; It works directly over plain local&#32;<code>&#46;md</code>&#32;folders with zero lock&#45;in&#46;
 
+- **官方网站（中文）**：[https://block.cooool.top/](https://block.cooool.top/)
+- **Official Website (English)**：[https://block.cooool.top/en/](https://block.cooool.top/en/)
+- **Markdown 与块笔记对比（Notion / Obsidian / Typora / Logseq / 思源笔记 / 语雀）**：[https://block.cooool.top/compare/](https://block.cooool.top/compare/) · [English Comparison](https://block.cooool.top/en/compare/)
+
 ## 核心特性
 
 - <strong>本地文件夹直读</strong>：打开任意本地文件夹即可按树状结构浏览与搜索 Markdown 笔记（文件夹优先、自然序排列），最近打开的工作区保存在&#32;<code>&#126;&#47;Library&#47;Application Support&#47;Block&#47;state&#46;json</code>。
