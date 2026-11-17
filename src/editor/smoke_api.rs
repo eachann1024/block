@@ -33,7 +33,7 @@ impl Editor {
     }
     pub fn first_line_placeholder(&self) -> &'static str {
         if self.first_line_delete_armed() { crate::ui::reveal::delete_arm_placeholder_text() }
-        else { crate::theme::tr("输入 / 或 、 唤出菜单，或开始输入…", "Type / to open menu, or start typing…") }
+        else { super::empty_hint::paragraph_text() }
     }
     pub(crate) fn first_block_text(&self) -> String {
         self.doc.blocks.first().map(|b| b.text.clone()).unwrap_or_default()

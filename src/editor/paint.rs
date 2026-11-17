@@ -141,7 +141,7 @@ impl Element for BlockText {
         });
         let (focused, selected, head, empty, composing, placeholder, link_ranges) = {
             let editor = self.editor.read(cx);
-            let placeholder = editor.doc.get(self.block).and_then(|block| placeholder_text(block,
+            let placeholder = editor.doc.get(self.block).and_then(|block| super::empty_hint::hint_for(block,
                 editor.is_first_line_delete_armed(self.block)));
             (editor.focus.is_focused(window), editor.selected_range(self.block), editor.caret.head,
                 editor.caret.is_empty(), editor.caret.composing.clone(),
@@ -176,6 +176,7 @@ impl Element for BlockText {
                 _ => None,
             }
         };
+        if let Some(hint) = placeholder { super::empty_hint::paint_band(layout, hint, window); }
         window.with_content_mask(clip, |window| {
             if let Some((sel, columns)) = tint { table_layout::paint_selection(layout, sel, columns, window); }
             super::inline_code_chip::paint_fills(layout, &chip, window);
@@ -202,7 +203,9 @@ impl Element for BlockText {
                     let caret_h = (font_px * 1.125).round().min(line_h);
                     let origin = point(p.x, p.y + ((line_h - caret_h) * 0.5).round());
                     if empty {
-                        window.paint_quad(fill(Bounds::new(origin, size(px(1.5), caret_h)), if self.editor.read(cx).is_first_line_delete_armed(self.block) { crate::ui::reveal::delete_arm_caret_color() } else { Theme::ocean().accent }));
+                        let color = if self.editor.read(cx).is_first_line_delete_armed(self.block) { crate::ui::reveal::delete_arm_caret_color() } else { Theme::ocean().accent };
+                        let alpha = super::caret_blink::alpha(&self.editor, (head.block, head.offset), cx);
+                        if alpha > 0. { window.paint_quad(fill(Bounds::new(origin, size(px(2.), caret_h)), color.opacity(alpha)).corner_radii(px(1.))); }
                         crate::sync_ime_cursor_area(f32::from(origin.x), f32::from(origin.y), f32::from(caret_h));
                     }
                     if let Some(range) = composing {
@@ -233,47 +236,13 @@ impl Element for BlockText {
                 super::annotate::paint_table_highlights(self.editor.read(cx), self.block, layout, window);
             }
         });
-        if let Some(text) = placeholder { paint_placeholder(layout, text, self.editor.read(cx).is_first_line_delete_armed(self.block), window, cx); }
+        if let Some(hint) = placeholder { super::empty_hint::paint(layout, hint, window, cx); }
         let saved = std::mem::replace(layout, TextLayout::empty(px(0.)));
         self.editor.update(cx, |this, _| { this.layouts.insert(self.block, saved); });
         let _ = bounds;
     }
 }
 pub(super) use crate::ui::editor_content::heading_metrics;
-fn placeholder_text(block: &super::model::Block, delete_armed: bool) -> Option<&'static str> {
-    if !block.text.is_empty() || block.meta.table.is_some() || block.is_atomic()
-        || block.meta.code_language.is_some() { return None; }
-    use crate::theme::tr;
-    Some(match (block.kind, block.meta.heading_level) {
-        (Kind::Paragraph, _) if delete_armed => crate::ui::reveal::delete_arm_placeholder_text(),
-        (Kind::Paragraph, _) => tr("输入 / 或 、 唤出菜单，或开始输入…", "Type / to open menu, or start typing…"),
-        (Kind::H1, _) => tr("标题 1", "Heading 1"),
-        (Kind::H2, _) => tr("标题 2", "Heading 2"),
-        (Kind::H3, Some(4)) => tr("标题 4", "Heading 4"),
-        (Kind::H3, Some(5)) => tr("标题 5", "Heading 5"),
-        (Kind::H3, Some(6)) => tr("标题 6", "Heading 6"),
-        (Kind::H3, _) => tr("标题 3", "Heading 3"),
-        _ => return None,
-    })
-}
-thread_local! { static PLACEHOLDER: RefCell<Option<(u64, &'static str, gpui::ShapedLine)>> = const { RefCell::new(None) }; }
-/// Hint drawn over the zero-width placeholder glyph; never part of the text or hit testing.
-fn paint_placeholder(layout: &TextLayout, text: &'static str, delete_armed: bool, window: &mut Window, cx: &mut App) {
-    let dark = crate::theme::is_dark();
-    let font_size = layout.lines.first().map_or(Theme::ocean().editor_font, |(_, l)| l.font_size());
-    let key = crate::theme::font_settings_hash() ^ ((crate::theme::is_en() as u64) << 32)
-        ^ ((dark as u64) << 33) ^ (((f32::from(font_size) as u64) & 0xff) << 34) ^ ((delete_armed as u64) << 42);
-    let line = PLACEHOLDER.with(|slot| {
-        let mut slot = slot.borrow_mut();
-        if slot.as_ref().is_none_or(|(c, cached_text, _)| *c != key || *cached_text != text) {
-            let color = if delete_armed { crate::ui::reveal::delete_arm_placeholder_color() } else if dark { rgb(0x6e6d68).into() } else { rgb(0x9b9a95).into() };
-            let mut run = plain(text.len(), color); run.font.weight = FontWeight::NORMAL;
-            *slot = Some((key, text, window.text_system().shape_line(SharedString::from(text), font_size, &[run], None)));
-        }
-        slot.as_ref().map(|(_, _, l)| l.clone()).unwrap()
-    });
-    let _ = line.paint(layout.bounds.origin, layout.line_height, gpui::TextAlign::Left, None, window, cx);
-}
 impl IntoElement for BlockText { type Element = Self; fn into_element(self) -> Self { self } }
 fn vertical_offset(editor: &Editor, block: u64, layout: &TextLayout) -> Option<usize> {
     let (id, x, down, _) = editor.pending_vertical?;

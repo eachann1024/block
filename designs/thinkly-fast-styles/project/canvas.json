@@ -1112,6 +1112,36 @@
       "w": 1440,
       "x": 0,
       "y": 0
+    },
+    "ListCaret-V1-QuietInk.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "列表与空行 A（推荐）· 静墨：缓呼吸光标 + 键帽提示 + 圆点/空心圆/方点三级",
+      "w": 1440,
+      "x": 0,
+      "y": 12040
+    },
+    "ListCaret-V2-PaperTag.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "列表与空行 B · 纸签：步进闪烁光标 + 序号纸签徽标 + 短横线层级",
+      "w": 1440,
+      "x": 1520,
+      "y": 12040
+    },
+    "ListCaret-V3-GuideRail.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "page": "editor",
+      "title": "列表与空行 C · 引线：宽光标 + 层级引导竖线 + 强调色等宽序号",
+      "w": 1440,
+      "x": 3040,
+      "y": 12040
     }
   },
   "createdOnFiles": {
@@ -1281,6 +1311,15 @@
       "w": 240,
       "x": 0,
       "y": 660
+    },
+    "list-caret-row": {
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "editor",
+      "text": "空行占位提示 · 闪烁光标 · 有序与无序列表 · 三套方案",
+      "w": 240,
+      "x": 0,
+      "y": 11800
     }
   },
   "order": [
@@ -1399,7 +1438,10 @@
     "AiAgentCards-V1-FiveUpRow.dc.html",
     "AiAgentCards-V2-CompactPills.dc.html",
     "AiAgentCards-V3-ListRows.dc.html",
-    "InlineAi-V1-PaperStream.dc.html"
+    "InlineAi-V1-PaperStream.dc.html",
+    "ListCaret-V1-QuietInk.dc.html",
+    "ListCaret-V2-PaperTag.dc.html",
+    "ListCaret-V3-GuideRail.dc.html"
   ],
   "pages": [
     {
