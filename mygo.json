@@ -1,0 +1,31 @@
+{
+  "name": "Block",
+  "slug": "block",
+  "identifier": "com.block.notes",
+  "version": "1.0.379",
+  "copyright": "Copyright © 2026 Block Contributors",
+  "license": "Apache-2.0",
+  "icon": "resources/icon.png",
+  "resourcesExclude": ["icon.png", "AppIcon.icns"],
+  "main": "./cmd/block",
+  "out": "dist",
+  "urlSchemes": ["block"],
+  "fileAssociations": [
+    {
+      "ext": ["md", "markdown"],
+      "name": "Markdown Document",
+      "mimeType": "text/markdown",
+      "role": "Editor"
+    }
+  ],
+  "macos": {
+    "icon": "resources/AppIcon.icns",
+    "minimumSystemVersion": "12.0",
+    "signingIdentity": "-",
+    "dmgTitle": "Block"
+  },
+  "linux": {
+    "webview": false,
+    "categories": ["Office", "TextEditor", "Utility"]
+  }
+}

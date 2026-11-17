@@ -1,0 +1,183 @@
+package model
+
+type ThemeMode string
+
+const (
+	ThemeSystem ThemeMode = "system"
+	ThemeLight  ThemeMode = "light"
+	ThemeDark   ThemeMode = "dark"
+)
+
+type LineHeightMode string
+
+const (
+	LineHeightTight  LineHeightMode = "tight"
+	LineHeightNormal LineHeightMode = "normal"
+	LineHeightLoose  LineHeightMode = "loose"
+)
+
+func (l LineHeightMode) Factor() float32 {
+	switch l {
+	case LineHeightTight:
+		return 1.35
+	case LineHeightLoose:
+		return 1.75
+	default:
+		return 1.5
+	}
+}
+
+type FontChoice string
+
+const (
+	FontSans  FontChoice = "sans"
+	FontSerif FontChoice = "serif"
+)
+
+type LanguageMode string
+
+const (
+	LangZh LanguageMode = "zh"
+	LangEn LanguageMode = "en"
+)
+
+type FolderRule struct {
+	Pattern string `json:"pattern"`
+	Regex   bool   `json:"regex"`
+	Hidden  bool   `json:"hidden"`
+}
+
+type LastFormatColors struct {
+	TextColor       string `json:"textColor"`
+	BackgroundColor string `json:"backgroundColor"`
+}
+
+type FeedbackDraft struct {
+	Category string `json:"category,omitempty"`
+	Platform string `json:"platform,omitempty"`
+	Message  string `json:"message,omitempty"`
+	Contact  string `json:"contact,omitempty"`
+}
+
+type SavedWindowBounds struct {
+	X          float32 `json:"x"`
+	Y          float32 `json:"y"`
+	Width      float32 `json:"width"`
+	Height     float32 `json:"height"`
+	DisplayID  *uint32 `json:"displayId,omitempty"`
+	Fullscreen bool    `json:"fullscreen,omitempty"`
+	Maximized  bool    `json:"maximized,omitempty"`
+}
+
+type ExportFormat string
+
+const (
+	ExportPNG      ExportFormat = "png"
+	ExportHTML     ExportFormat = "html"
+	ExportPDF      ExportFormat = "pdf"
+	ExportDOCX     ExportFormat = "docx"
+	ExportMarkdown ExportFormat = "markdown"
+	ExportZIP      ExportFormat = "zip"
+)
+
+type ExportPreferences struct {
+	Format      ExportFormat `json:"format,omitempty"`
+	Theme       string       `json:"theme,omitempty"` // "light", "dark", "current"
+	IncludeMeta bool         `json:"includeMeta,omitempty"`
+	Width       int          `json:"width,omitempty"`
+}
+
+// AppState matches ~/Library/Application Support/Block/state.json 1:1.
+type AppState struct {
+	Folder                string              `json:"folder,omitempty"`
+	Notebooks             []string            `json:"notebooks,omitempty"`
+	FileOrder             map[string][]string `json:"file_order,omitempty"`
+	IgnoredSearchFolders  []string            `json:"ignored_search_folders,omitempty"`
+	SidebarWidth          *float32            `json:"sidebar_width,omitempty"`
+	SidebarCollapsed      bool                `json:"sidebar_collapsed,omitempty"`
+	AIPanelWidth          *float32            `json:"ai_panel_width,omitempty"`
+	AIFullscreen          bool                `json:"ai_fullscreen,omitempty"`
+	Theme                 ThemeMode           `json:"theme,omitempty"`
+	Language              LanguageMode        `json:"language,omitempty"`
+	FontFamily            FontChoice          `json:"font_family,omitempty"`
+	FontSmoothing         *bool               `json:"font_smoothing,omitempty"`
+	AssetsFolder          string              `json:"assets_folder,omitempty"`
+	HideAssetsFolder      *bool               `json:"hide_assets_folder,omitempty"`
+	HideNonMarkdownFiles  *bool               `json:"hide_non_markdown_files,omitempty"`
+	HiddenFolderRegex     string              `json:"hidden_folder_regex,omitempty"`
+	FolderRules           []FolderRule        `json:"folder_rules,omitempty"`
+	ShortcutSearch        string              `json:"shortcut_search,omitempty"`
+	ShortcutQuick         string              `json:"shortcut_quick,omitempty"`
+	OpenTabs              []string            `json:"open_tabs,omitempty"`
+	ActiveTab             string              `json:"active_tab,omitempty"`
+	LastFormatColors      *LastFormatColors   `json:"last_format_colors,omitempty"`
+	ExportPreferences     *ExportPreferences  `json:"export_preferences,omitempty"`
+	ExportDirectory       string              `json:"export_directory,omitempty"`
+	MainWindowBounds      *SavedWindowBounds  `json:"main_window_bounds,omitempty"`
+	EditorZoom            *float32            `json:"editor_zoom,omitempty"`
+	QuickEditorZoom       *float32            `json:"quick_editor_zoom,omitempty"`
+	EditorFont            string              `json:"editor_font,omitempty"`
+	CodeFont              string              `json:"code_font,omitempty"`
+	LineHeight            LineHeightMode      `json:"line_height,omitempty"`
+	QuickWindowBounds     *SavedWindowBounds  `json:"quick_window_bounds,omitempty"`
+	FeedbackDraft         *FeedbackDraft      `json:"feedback_draft,omitempty"`
+}
+
+func DefaultAppState(defaultLang LanguageMode) AppState {
+	hideAssets := true
+	hideNonMD := false
+	return AppState{
+		Theme:                ThemeSystem,
+		Language:             defaultLang,
+		FontFamily:           FontSans,
+		LineHeight:           LineHeightNormal,
+		AssetsFolder:         "assets",
+		HideAssetsFolder:     &hideAssets,
+		HideNonMarkdownFiles: &hideNonMD,
+	}
+}
+
+type FileEntry struct {
+	Path       string
+	Name       string // Filename with extension for non-md or folder name; display stem for .md
+	RawName    string // Exact base filename on disk
+	IsDir      bool
+	IsMarkdown bool
+	ModUnix    int64
+	Size       int64
+	Children   []FileEntry
+}
+
+type SearchHit struct {
+	Path       string
+	Notebook   string
+	Title      string
+	Line       int
+	Snippet    string
+	MatchStart int
+	MatchEnd   int
+}
+
+type HistorySnapshot struct {
+	ID          string `json:"id"`
+	NotePath    string `json:"notePath"`
+	Timestamp   int64  `json:"timestamp"`
+	ContentHash string `json:"contentHash"`
+	Size        int    `json:"size"`
+	Summary     string `json:"summary,omitempty"`
+}
+
+type DiffLineKind uint8
+
+const (
+	DiffEqual DiffLineKind = iota
+	DiffDelete
+	DiffInsert
+)
+
+type DiffLine struct {
+	Kind    DiffLineKind
+	OldLine int
+	NewLine int
+	Text    string
+}
