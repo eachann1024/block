@@ -205,7 +205,7 @@ impl Editor {
         // thinkly `emptyParagraphAiShortcut`: space in an empty paragraph opens inline AI.
         if !self.minimal && text == " " && !composing && self.caret.is_empty() {
             let id = self.caret.head.block;
-            if self.doc.get(id).is_some_and(|b| b.text.is_empty() && b.kind == Kind::Paragraph && b.meta.table.is_none() && b.meta.raw_source.is_none() && b.meta.code_language.is_none()) {
+            if self.doc.get(id).is_some_and(|b| b.text.is_empty() && b.kind == Kind::Paragraph && b.meta.table.is_none() && !b.is_atomic() && b.meta.code_language.is_none()) {
                 let anchor = self.layouts.get(&id).map(|l| gpui::point(l.bounds.left(), l.bounds.bottom() + gpui::px(4.)));
                 self.open_ai_block(id, false, anchor, window, cx);
                 return;
@@ -236,7 +236,7 @@ impl Editor {
         else if matches!(text, "*" | "_" | "~" | "`" | "=" | ")") { self.inline_rule(text, cx); }
         if text == "/" {
             let id = self.caret.head.block;
-            if self.doc.get(id).is_some_and(|b| b.text == "/" && b.kind == Kind::Paragraph && b.meta.table.is_none() && b.meta.raw_source.is_none() && b.meta.code_language.is_none()) {
+            if self.doc.get(id).is_some_and(|b| b.text == "/" && b.kind == Kind::Paragraph && b.meta.table.is_none() && !b.is_atomic() && b.meta.code_language.is_none()) {
                 let trigger = pre_bounds
                     .or_else(|| self.block_trigger_bounds(cx.entity_id(), id))
                     .unwrap_or_else(|| gpui::Bounds::new(gpui::point(gpui::px(300.), gpui::px(176.)), gpui::size(gpui::px(224.), gpui::px(24.))));

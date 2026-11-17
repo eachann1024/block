@@ -84,7 +84,7 @@ impl Editor {
         let mut table = Table::blank(grid.len(), columns);
         fill(&mut table, 0, 0); table.finish_structure();
         let replace = self.doc.get(id).is_some_and(|b| b.text.is_empty() && b.kind == Kind::Paragraph
-            && b.meta.table.is_none() && b.meta.raw_source.is_none() && b.meta.code_language.is_none());
+            && b.meta.table.is_none() && !b.is_atomic() && b.meta.code_language.is_none());
         let mut blocks = vec![Block::from_table(0, table)];
         if index + 1 >= self.doc.blocks.len() { blocks.push(Block::new(0, Kind::Paragraph, String::new())); }
         let before = self.snapshot();

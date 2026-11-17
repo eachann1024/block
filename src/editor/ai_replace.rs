@@ -14,7 +14,7 @@ impl Editor {
         start.text.get(..a.offset)?; end.text.get(b.offset..)?;
         let source = source.replace("\r\n", "\n").replace('\r', "\n");
         let literal = first == last && (start.meta.code_language.is_some()
-            || (start.meta.raw_source.is_some() && (a.offset != 0 || b.offset != start.text.len())));
+            || (start.is_atomic() && (a.offset != 0 || b.offset != start.text.len())));
         if literal || source.is_empty() {
             self.block_sel = None; self.table_sel = None;
             self.replace_selection(&source, false, cx);
@@ -24,7 +24,7 @@ impl Editor {
         let blocks: Vec<Block> = doc.blocks.iter().cloned().collect();
         let inline = blocks.len() == 1 && blocks[0].kind == Kind::Paragraph
             && blocks[0].meta.table.is_none() && blocks[0].meta.code_language.is_none()
-            && blocks[0].meta.raw_source.is_none() && blocks[0].meta.callout.is_none()
+            && !blocks[0].is_atomic() && blocks[0].meta.callout.is_none()
             && blocks[0].meta.indent == 0;
         let in_cell = (first == last && (a.offset != 0 || b.offset != start.text.len()))
             .then(|| start.meta.table.as_ref()?.cell_at_range(&(a.offset..b.offset))).flatten();
@@ -46,10 +46,10 @@ impl Editor {
             return Some((a, at));
         }
         self.block_sel = None; self.table_sel = None;
-        if inline && start.meta.table.is_none() && start.meta.raw_source.is_none()
+        if inline && start.meta.table.is_none() && !start.is_atomic()
             && start.meta.code_language.is_none()
             && (first..=last).all(|i| self.doc.blocks[i].meta.table.is_none()
-                && self.doc.blocks[i].meta.raw_source.is_none() && self.doc.blocks[i].meta.code_language.is_none()) {
+                && !self.doc.blocks[i].is_atomic() && self.doc.blocks[i].meta.code_language.is_none()) {
             self.insert_paste_inline(&blocks[0], cx);
             Some((a, self.caret.head))
         } else {

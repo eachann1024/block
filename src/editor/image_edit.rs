@@ -4,7 +4,7 @@ use gpui::{Context, Entity, Window, prelude::*};
 use gpui_component::input::{InputEvent, InputState};
 use crate::theme::tr;
 use super::{image_source::{self, ImageSpec}, input::transactions::ListChange,
-    model::{Block, Kind}, view::{Editor, selection::Position}};
+    model::Block, view::{Editor, selection::Position}};
 
 #[derive(Clone)]
 pub(super) enum ImagePop {
@@ -23,7 +23,7 @@ impl Editor {
         if spec == old { cx.notify(); return; }
         self.commit_composition(cx);
         let line = image_source::format(&spec);
-        let mut block = Block::new(0, Kind::Paragraph, line.clone()); block.meta.raw_source = Some(line);
+        let block = Block::image(0, line);
         let before = self.snapshot();
         self.doc.splice_blocks(index..index + 1, vec![block]);
         let new_id = self.doc.blocks[index].id;

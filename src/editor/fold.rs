@@ -46,7 +46,7 @@ fn save_store(store: &FoldStore) {
 }
 
 pub(super) fn heading_level(block: &Block) -> Option<u8> {
-    if block.meta.code_language.is_some() || block.meta.raw_source.is_some() || block.meta.table.is_some() {
+    if block.meta.code_language.is_some() || block.is_atomic() || block.meta.table.is_some() {
         return None;
     }
     match block.kind {
@@ -308,7 +308,7 @@ impl Editor {
         if heading_level(block).is_some() { return false; }
         let removable = block.text.is_empty()
             && block.meta.table.is_none()
-            && block.meta.raw_source.is_none()
+            && !block.is_atomic()
             && block.meta.code_language.is_none()
             && block.meta.html_paragraph.is_none();
         if removable {
