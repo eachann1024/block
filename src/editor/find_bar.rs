@@ -51,7 +51,9 @@ pub(super) fn paint_matches(editor: &Editor, block: u64, layout: &TextLayout, wi
         let is_cur = current.as_ref() == Some(&range);
         let color = if is_cur { active } else { matched };
         for rect in layout.rects(range) {
-            let rect: Bounds<Pixels> = rect;
+            let m = super::inline_code_chip::metrics(layout);
+            let top = rect.top() + ((rect.size.height - m.h) * 0.5).round();
+            let rect: Bounds<Pixels> = Bounds::new(gpui::point(rect.left(), top), gpui::size(rect.size.width, m.h));
             if is_cur {
                 window.paint_quad(quad(rect, px(2.), rgb(color), px(1.), rgb(ring), BorderStyle::Solid));
             } else {

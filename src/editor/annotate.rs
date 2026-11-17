@@ -190,16 +190,12 @@ pub(super) fn paint_highlights(editor: &Editor, block: u64, layout: &TextLayout,
             let level = crate::ui::fade::level(annotation.id, if active { 1. } else { 0. }, window);
             crate::ui::fade::mix(base, active_bg, level)
         };
-        for rect in layout.rects(range) {
-            window.paint_quad(quad(rect, px(2.), color, px(0.), transparent_black(), BorderStyle::default()));
-        }
+        super::inline_code_chip::paint_band(layout, range, color, window);
     }
     let composing = editor.annotate.composer.iter().flat_map(|c| &c.targets).filter(|t| t.block_id == block && !t.range.is_empty() && !is_whole_table_span(&editor.doc, block, &t.range)).map(|t| t.range.clone());
     let reacting = editor.annotate.reactions.iter().flat_map(|p| &p.targets).filter(|t| t.block_id == block && !t.range.is_empty() && !is_whole_table_span(&editor.doc, block, &t.range)).map(|t| t.range.clone());
     for range in composing.into_iter().chain(reacting) {
-        for rect in layout.rects(range) {
-            window.paint_quad(quad(rect, px(2.), rgb(base), px(0.), transparent_black(), BorderStyle::default()));
-        }
+        super::inline_code_chip::paint_band(layout, range, rgb(base).into(), window);
     }
 }
 
