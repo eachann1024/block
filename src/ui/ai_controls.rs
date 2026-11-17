@@ -274,6 +274,7 @@ pub fn saved_prompt_chip(
         (false, false) => (rgb(0xf3f1ec), rgb(0xe4e6ea)),
         (false, true) => (rgb(0x2a2a2a), rgb(0x3d3d3d)),
     };
+    let show_full_tip = short_text != full_text;
     let star_colors = if starred {
         IconColors { line: theme.accent, fill: theme.accent, accent: gpui::transparent_black() }
     } else {
@@ -318,7 +319,7 @@ pub fn saved_prompt_chip(
                 .whitespace_nowrap()
                 .cursor(CursorStyle::PointingHand)
                 .hover(move |s| s.text_color(theme.accent))
-                .tooltip_above(crate::ui::tooltip::tooltip(full_text))
+                .when(show_full_tip, |b| b.tooltip_above(crate::ui::tooltip::tooltip(full_text)))
                 .child(short_text)
                 .on_mouse_down(MouseButton::Left, on_run),
         )

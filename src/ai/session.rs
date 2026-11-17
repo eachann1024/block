@@ -28,7 +28,10 @@ pub(in crate::editor) fn review_placeholder() -> &'static str {
     tr("不满意？直接打字继续改，或按回车完成…", "Type to refine further, or press Enter to finish…")
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(in crate::editor) enum Preset {
     Continue,
     Outline,
@@ -37,8 +40,7 @@ pub(in crate::editor) enum Preset {
     Polish,
     Simplify,
     Plain,
-    English,
-    Chinese,
+    Translate,
 }
 
 pub(in crate::editor) const EMPTY_PRESETS: &[Preset] = &[
@@ -48,25 +50,35 @@ pub(in crate::editor) const EMPTY_PRESETS: &[Preset] = &[
     Preset::Brainstorm,
 ];
 
-pub(in crate::editor) const SEL_PRESETS: &[Preset] = &[
+pub(in crate::editor) const EDIT_PRESETS: &[Preset] = &[
     Preset::Polish,
     Preset::Simplify,
     Preset::Plain,
+    Preset::Translate,
 ];
 
 impl Preset {
     pub(in crate::editor) fn label(self) -> &'static str {
+        let (zh, en) = self.labels();
+        tr(zh, en)
+    }
+
+    fn labels(self) -> (&'static str, &'static str) {
         match self {
-            Preset::Continue => tr("续写", "Continue"),
-            Preset::Outline => tr("列大纲", "Outline"),
-            Preset::Tasks => tr("待办清单", "To-do list"),
-            Preset::Brainstorm => tr("头脑风暴", "Brainstorm"),
-            Preset::Polish => tr("润色", "Polish"),
-            Preset::Simplify => tr("精简", "Simplify"),
-            Preset::Plain => tr("通俗一点", "Plain language"),
-            Preset::English => tr("译成英文", "Translate to English"),
-            Preset::Chinese => tr("译成中文", "Translate to Chinese"),
+            Preset::Continue => ("续写", "Continue"),
+            Preset::Outline => ("列大纲", "Outline"),
+            Preset::Tasks => ("待办清单", "To-do list"),
+            Preset::Brainstorm => ("头脑风暴", "Brainstorm"),
+            Preset::Polish => ("润色", "Polish"),
+            Preset::Simplify => ("精简", "Simplify"),
+            Preset::Plain => ("通俗一点", "Plain language"),
+            Preset::Translate => ("翻译", "Translate"),
         }
+    }
+
+    pub(in crate::editor) fn matches_input(self, raw: &str) -> bool {
+        let (zh, en) = self.labels();
+        raw == zh || raw.eq_ignore_ascii_case(en)
     }
 
     fn prompt(self) -> &'static str {
@@ -78,16 +90,9 @@ impl Preset {
             Preset::Polish => "润色给定片段，使表达更清晰流畅，保留原意与关键细节。",
             Preset::Simplify => "精简给定片段，删去冗余修饰，只保留核心信息。",
             Preset::Plain => "用通俗直白的大白话改写给定片段，去掉生僻黑话或绕口表达。",
-            Preset::English => "将给定片段准确自然地翻译成英文。",
-            Preset::Chinese => "将给定片段准确自然地翻译成中文。",
+            Preset::Translate => "智能中英互译：若给定片段主要为中文则准确自然地翻译成英文；若主要为英文或其他外语则准确自然地翻译成中文。保留专有名词、代码标识符与原有 Markdown 格式。",
         }
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(in crate::editor) enum AiMenu {
-    None,
-    Translate,
 }
 
 #[derive(Clone)]
@@ -117,8 +122,6 @@ pub(in crate::editor) struct AiSession {
     pub error: Option<String>,
     pub prompt: String,
     pub restore_input: String,
-    pub menu: AiMenu,
-    pub menu_index: usize,
     pub cancel: Arc<AtomicBool>,
     pub serial: u64,
     _sub: Rc<(Subscription, Subscription)>,
@@ -241,9 +244,7 @@ impl Editor {
         let sub = cx.subscribe_in(&input, window, |this, state, event: &InputEvent, window, cx| {
             match event {
                 InputEvent::PressEnter { secondary: false, .. } => {
-                    if !this.ai_accept_menu(window, cx) {
-                        this.ai_submit_input(window, cx);
-                    }
+                    this.ai_submit_input(window, cx);
                 }
                 InputEvent::Change => {
                     let non_empty = !state.read(cx).value().trim().is_empty();
@@ -277,8 +278,6 @@ impl Editor {
             error: None,
             prompt: String::new(),
             restore_input: String::new(),
-            menu: AiMenu::None,
-            menu_index: 0,
             cancel: Arc::new(AtomicBool::new(false)),
             serial: 0,
             _sub: Rc::new((sub, esc)),
@@ -372,55 +371,12 @@ impl Editor {
         }
     }
 
-    pub(in crate::editor) fn ai_toggle_menu(&mut self, menu: AiMenu, cx: &mut Context<Self>) {
-        if let Some(s) = self.ai_mut() {
-            s.menu_index = 0;
-            s.menu = if s.menu == menu { AiMenu::None } else { menu };
-        }
-        cx.notify();
-    }
-
-    pub(in crate::editor) fn ai_step_menu(&mut self, down: bool, cx: &mut Context<Self>) -> bool {
-        let Some(s) = self.ai_session() else { return false };
-        let count = match s.menu {
-            AiMenu::Translate => 2,
-            AiMenu::None => return false,
-        };
-        let next = crate::ui::menu_nav::step_uniform(s.menu_index, count, down);
-        if let Some(s) = self.ai_mut() {
-            s.menu_index = next;
-        }
-        cx.notify();
-        true
-    }
-
-    pub(in crate::editor) fn ai_accept_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let Some(s) = self.ai_session() else { return false };
-        let items: &[Preset] = match s.menu {
-            AiMenu::Translate => &[Preset::English, Preset::Chinese],
-            AiMenu::None => return false,
-        };
-        let Some(preset) = items.get(s.menu_index.min(items.len() - 1)).copied() else { return false };
-        self.ai_preset(preset, window, cx);
-        true
-    }
-
     pub(in crate::editor) fn ai_escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         thread_local! { static GUARD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
         if GUARD.with(|cell| cell.get()) {
             return;
         }
         let Some(s) = self.ai_session() else { return };
-        if s.menu != AiMenu::None {
-            if let Some(s) = self.ai_mut() {
-                s.menu = AiMenu::None;
-                s.menu_index = 0;
-            }
-            GUARD.with(|cell| cell.set(true));
-            cx.on_next_frame(window, |_, _, _| GUARD.with(|cell| cell.set(false)));
-            cx.notify();
-            return;
-        }
         if matches!(s.status, AiStatus::Thinking { .. }) {
             GUARD.with(|cell| cell.set(true));
             cx.on_next_frame(window, |_, _, _| GUARD.with(|cell| cell.set(false)));
@@ -435,27 +391,61 @@ impl Editor {
         if matches!(s.status, AiStatus::Thinking { .. }) {
             return;
         }
+        let is_review = matches!(s.status, AiStatus::Review { .. });
+        let scope = if is_review || !s.is_empty_ctx() {
+            super::inline_prompts::PromptScope::Edit
+        } else {
+            super::inline_prompts::PromptScope::Empty
+        };
         let text = s.input.read(cx).value().trim().to_owned();
         if text.is_empty() {
-            if matches!(s.status, AiStatus::Review { .. }) {
+            if is_review {
                 self.ai_accept(window, cx);
             }
             return;
         }
-        super::inline_prompts::record(&text);
-        self.ai_run(text.clone(), text, true, window, cx);
+        super::inline_prompts::record(scope, &text);
+        let presets = match scope {
+            super::inline_prompts::PromptScope::Edit => EDIT_PRESETS,
+            super::inline_prompts::PromptScope::Empty => EMPTY_PRESETS,
+        };
+        let instruction = presets
+            .iter()
+            .copied()
+            .find(|p| p.matches_input(&text))
+            .map(|p| p.prompt().to_owned())
+            .unwrap_or_else(|| text.clone());
+        self.ai_run(instruction, text, true, window, cx);
     }
 
-    pub(in crate::editor) fn ai_run_saved_prompt(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) {
-        let clean = text.trim().to_owned();
-        if clean.is_empty() {
-            return;
+    pub(in crate::editor) fn ai_run_prompt_target(
+        &mut self,
+        target: super::inline_prompts::PromptTarget,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match target {
+            super::inline_prompts::PromptTarget::Preset { preset } => self.ai_preset(preset, window, cx),
+            super::inline_prompts::PromptTarget::Custom { text } => {
+                let clean = text.trim().to_owned();
+                if !clean.is_empty() {
+                    let typed = self
+                        .ai_session()
+                        .map(|s| s.input.read(cx).value().to_string())
+                        .unwrap_or_default();
+                    self.ai_run(clean, typed, false, window, cx);
+                }
+            }
         }
-        self.ai_run(clean.clone(), clean, false, window, cx);
     }
 
-    pub(in crate::editor) fn ai_toggle_saved_star(&mut self, text: &str, cx: &mut Context<Self>) {
-        super::inline_prompts::toggle_star(text);
+    pub(in crate::editor) fn ai_toggle_prompt_star(
+        &mut self,
+        scope: super::inline_prompts::PromptScope,
+        target: &super::inline_prompts::PromptTarget,
+        cx: &mut Context<Self>,
+    ) {
+        super::inline_prompts::toggle_star(scope, target);
         cx.notify();
     }
 
@@ -519,7 +509,7 @@ impl Editor {
         cx: &mut Context<Self>,
     ) {
         let entity_id = cx.entity_id();
-        let (user, input, serial) = {
+        {
             let Some(s) = self.ai_mut() else { return };
             s.cancel.store(true, Ordering::Relaxed);
             let cancel = Arc::new(AtomicBool::new(false));
@@ -529,7 +519,6 @@ impl Editor {
             s.prompt = prompt.clone();
             s.restore_input = restore_input;
             s.has_input_text = false;
-            s.menu = AiMenu::None;
             s.error = None;
             let prev_draft = match &s.status {
                 AiStatus::Review { draft } if refine_existing => Some(draft.clone()),
@@ -643,9 +632,7 @@ impl Editor {
                 }
             })
             .detach();
-            (user, input, serial)
-        };
-        let _ = (user, input, serial);
+        }
         self.remeasure_ai_rows();
         cx.notify();
     }
