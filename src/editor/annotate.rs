@@ -76,6 +76,7 @@ pub(super) struct ReactionPicker {
 pub(super) struct AnnotateState {
     pub loaded_path: Option<PathBuf>, pub annotations: Vec<Annotation>, pub composer: Option<AnnotateComposer>,
     pub followup: Option<AnnotationFollowup>, pub editing: Option<AnnotationEdit>, pub reactions: Option<ReactionPicker>,
+    pub foot_picker_note: Option<u64>,
     pub active_annotation: Option<u64>, pub hovered_annotation: Option<u64>, pub hover_seq: u64,
     pub editor_left: Pixels, pub editor_top: Pixels, pub editor_width: Pixels, pub editor_height: Pixels,
     pub fit_snapshot: super::annotate_fit::LayoutSnapshot, pub request_seq: u64,
@@ -237,6 +238,7 @@ impl Editor {
             self.annotate.followup = None;
             self.annotate.editing = None;
             self.annotate.reactions = None;
+            self.annotate.foot_picker_note = None;
             self.annotate.active_annotation = None;
             self.annotate.hovered_annotation = None;
             if self.normalize_annotations() {
