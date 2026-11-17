@@ -81,7 +81,7 @@ pub(super) fn row_pads(this: &Editor, index: usize) -> (f32, f32) {
     (top, bottom)
 }
 
-pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<(bool, usize, bool)>, list: super::list_marker::ListCtx, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, has_overlay: bool, delete_armed: bool, foot: Option<gpui::AnyElement>, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
+pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, hovered: bool, grip_active: bool, folded: bool, drop_edge: Option<(bool, usize, bool)>, list: super::list_marker::ListCtx, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, has_overlay: bool, delete_armed: bool, foot: Option<gpui::AnyElement>, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
     let zoom = super::zoom::zoom_factor(minimal);
     let handle_w = HANDLE_WIDTH;
@@ -131,7 +131,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                         .child(delete_arm_button(("del-arm", id as usize), zoom, cx.listener(move |this, _: &gpui::MouseDownEvent, window, cx| {
                             window.focus(&this.focus, cx); this.confirm_first_line_delete(id, cx); cx.stop_propagation();
                         }))))
-                    .when(regular_handles && blank && !delete_armed, |row| row
+                    .when(hovered && blank && !delete_armed, |row| row
                         .child(handle_button(Icon::Plus, ("add", id as usize), zoom, cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
                             this.focus_block(id, window, cx);
                             let trigger = this.block_trigger_bounds(cx.entity_id(), id)
@@ -235,6 +235,7 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let whole_table = block.meta.table.is_some() && this.table_sel == Some((block.id, super::table_actions::TableSel::Whole));
     let grip_active = this.dragging == Some(block.id) || whole_table;
     let has_overlay = this.has_active_overlay();
+    let hovered = !this.minimal && !has_overlay && this.hover == Some(block.id);
     let handles = !this.minimal && !has_overlay && (this.hover == Some(block.id) || (!this.caret_hidden && this.caret.head.block == block.id) || grip_active);
     let folded = !this.minimal && this.is_heading_folded(block.id);
     let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
@@ -242,7 +243,7 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let editor = cx.entity();
     let pads = row_pads(this, index);
     let foot = super::annotate_foot::block_strip(this, block, super::zoom::zoom_factor(this.minimal), cx);
-    let row = block_row(cx.entity(), block, pads, handles, grip_active, folded, edge, list, !this.caret_hidden && this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, this.is_first_line_delete_armed(block.id), foot, cx);
+    let row = block_row(cx.entity(), block, pads, handles, hovered, grip_active, folded, edge, list, !this.caret_hidden && this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, this.is_first_line_delete_armed(block.id), foot, cx);
     let id = block.id;
     let (pt, pb) = pads;
     let bounds = gpui::canvas(|_, _, _| (), move |bounds, (), _, cx| {
