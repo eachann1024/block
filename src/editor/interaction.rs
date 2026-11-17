@@ -244,6 +244,14 @@ impl Editor {
         if !event.dragging() {
             self.update_link_hover(event.position, cx);
             self.update_code_hover(event.position, cx);
+            if !self.minimal && !self.has_active_overlay()
+                && let Some((&id, _)) = self.painted_rows.iter().find(|(_, b)| b.contains(&event.position))
+                && self.hover != Some(id)
+            {
+                self.hover_gen = self.hover_gen.wrapping_add(1);
+                self.hover = Some(id);
+                cx.notify();
+            }
             if self.selecting || self.dragging.is_some() { self.clear_pointer(); cx.notify(); }
             return;
         }
@@ -320,7 +328,15 @@ impl Editor {
         }
         if self.dragging.is_some() { self.update_drop(position); }
         let dragging = self.dragging; let target = self.drag_over;
+        let selecting = self.selecting;
         self.clear_pointer();
+        if dragging.is_none() && selecting && !self.minimal && !self.has_active_overlay() {
+            let hovered = self.painted_rows.iter().find_map(|(&id, b)| b.contains(&position).then_some(id));
+            if self.hover != hovered {
+                self.hover_gen = self.hover_gen.wrapping_add(1);
+                self.hover = hovered;
+            }
+        }
         if let (Some(id), Some(target)) = (dragging, target) {
             if self.path.is_some() && self.list.viewport_bounds().contains(&position) {
                 if let Some((from, n)) = self.drag_span(id) {
