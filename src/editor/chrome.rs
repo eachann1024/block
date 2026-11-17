@@ -1,7 +1,7 @@
 //! Stable gutters, a persistent width switch, and selection-only formatting.
-use gpui::{CursorStyle, MouseButton, Pixels, div, prelude::*, px, rgb, transparent_black};
+use gpui::{CursorStyle, MouseButton, Pixels, div, prelude::*, px};
 use crate::{
-    icons::{Icon, IconColors, icon},
+    icons::Icon,
     theme::{Theme, is_dark},
     ui::reveal::{delete_arm_button, fold_button, handle_button},
 };
@@ -10,7 +10,7 @@ use super::{model::{Block, Kind}, paint::BlockText, view::Editor};
 
 pub(super) const HANDLE_WIDTH: f32 = 56.;
 /// ul/ol padding-left in the reference page; also one marker column.
-const MARKER_WIDTH: f32 = 29.68;
+pub(super) const MARKER_WIDTH: f32 = 29.68;
 /// Nesting is stored as marker characters; two of them make one list level.
 pub(super) const INDENT_PER_CHAR: f32 = MARKER_WIDTH / 2.;
 pub(super) const ROW_GAP: f32 = 4.;
@@ -81,7 +81,7 @@ pub(super) fn row_pads(this: &Editor, index: usize) -> (f32, f32) {
     (top, bottom)
 }
 
-pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<(bool, usize, bool)>, number: Option<u64>, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, has_overlay: bool, delete_armed: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
+pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32, f32), handles: bool, grip_active: bool, folded: bool, drop_edge: Option<(bool, usize, bool)>, list: super::list_marker::ListCtx, active: bool, note: Option<std::path::PathBuf>, nowrap: bool, minimal: bool, image_pop: Option<super::image_edit::ImagePop>, has_overlay: bool, delete_armed: bool, cx: &mut gpui::Context<Editor>) -> impl IntoElement {
     let theme = Theme::ocean(); let id = block.id;
     let zoom = super::zoom::zoom_factor(minimal);
     let handle_w = HANDLE_WIDTH;
@@ -91,9 +91,9 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
     let is_table = block.meta.table.is_some();
     let checked = block.checked;
     let checkbox_editor = editor.clone();
-    let marker = match block.kind { Kind::Bullet => "•".into(), Kind::Numbered => format!("{}.", number.unwrap_or(1)), _ => String::new() };
     let (size, factor) = super::paint::heading_metrics(block.kind, block.meta.heading_level, block.meta.code_language.is_some(), minimal, f32::from(theme.editor_font), zoom);
     let line = size * factor;
+    let marker = super::list_marker::marker(block, &list, size, line, zoom);
     let indent = block.meta.indent.min(12) as f32 * INDENT_PER_CHAR * zoom;
     let marker_width = block_gutter(block, zoom);
     let image = super::image_source::spec_of(block)
@@ -112,6 +112,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
     let handle_top = if is_table { 4.9 * zoom } else if image.is_some() { 4. * zoom } else if callout.is_some() { (7. * zoom).max(-pt) } else { ((first_line_h - 26. * zoom) / 2.).max(-pt) };
     let regular_handles = !minimal && !is_table && handles;
     div().id(("block", id as usize)).relative().w_full().min_w_0().pt(px(pt)).pb(px(pb))
+        .children(super::list_marker::guides(&list, zoom))
         .when(drop_edge.is_some_and(|(_, _, nested)| nested), |row| row.bg(theme.accent.opacity(0.10)).rounded(px(4. * zoom)))
         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
             this.hover_block(id, *hovered, cx);
@@ -155,11 +156,11 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                         })))), ("handle-reveal", id as usize))))
             .when(marker_width > 0., |row| row.child(div().w(px(marker_width)).pl(px(indent)).flex_none().text_color(theme.text)
                 .text_size(px(size)).line_height(px(line))
-                .when(block.kind == Kind::Todo, |row| row.child(todo_box(checked, (line - 16. * zoom).max(0.) / 2., zoom, move |cx| {
+                .when(block.kind == Kind::Todo, |row| row.child(super::list_marker::todo_box(checked, (line - 16. * zoom).max(0.) / 2., zoom, move |cx| {
                     checkbox_editor.update(cx, |this, cx| this.toggle_checked(id, cx));
                 })))
                 // Outside markers sit flush against the text like CSS `list-style-position: outside`.
-                .when(!marker.is_empty(), |row| row.flex().justify_end().pr(px(8. * zoom)).child(marker))))
+                .when_some(marker, |row, marker| row.flex().justify_end().child(marker))))
             .child(div().flex_1().min_w_0().flex().flex_col().relative()
                 .when(marker_width == 0., |body| body.max_w(theme.content_width))
                 .when((block.kind == Kind::Quote || block.meta.quote_depth > 0) && callout.is_none(), |body| body.pl(px(16. * zoom)).py(px(1.6 * zoom)).child(
@@ -198,16 +199,6 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
             px(handle_w + ROW_GAP + indent.min(12) as f32 * INDENT_PER_CHAR * zoom),
             px(right_inset), after, nested, zoom)))
 }
-fn todo_box(checked: bool, top: f32, zoom: f32, toggle: impl Fn(&mut gpui::App) + 'static) -> impl IntoElement {
-    let dark = is_dark();
-    let border: gpui::Hsla = if checked { rgb(0x4774cf).into() } else if dark { rgb(0x858585).into() } else { gpui::rgba(0x0b0b0b80).into() };
-    let hover_border: gpui::Hsla = if checked { rgb(0x3a62b8).into() } else if dark { rgb(0xa3a3a3).into() } else { gpui::rgba(0x0b0b0bcc).into() };
-    div().mt(px(top)).ml(px(4.8 * zoom)).size(px(16. * zoom)).relative().children(crate::ui::smoke_overlay::probe("todo-checkbox")).flex().items_center().justify_center().rounded(px(4. * zoom)).cursor(CursorStyle::PointingHand)
-        .when(!checked, |b| b.border_1().border_color(border)).hover(move |s| if checked { s.bg(rgb(0x3a62b8)) } else { s.border_color(hover_border) })
-        .when(checked, |b| b.bg(rgb(0x4774cf)).child(icon(Icon::Check, px(12. * zoom),
-            IconColors { line: rgb(0xffffff).into(), fill: transparent_black(), accent: rgb(0xffffff).into() })))
-        .on_mouse_down(MouseButton::Left, move |_, _, cx| { toggle(cx); cx.stop_propagation(); })
-}
 fn table_grip_button(id: (&'static str, usize), active: bool, zoom: f32, listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
     grip_button(id, active, zoom, listener).mr(px(4. * zoom))
 }
@@ -237,7 +228,7 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     if let Some(row) = super::ai::plan_link::render_linked_row(this, index, cx) { return row; }
     if let Some(row) = super::ai::preview::render_stream_row(this, index, cx) { return row; }
     let block = &this.doc.blocks[index];
-    let number = (block.kind == Kind::Numbered).then(|| this.doc.list_number(block.id)).flatten();
+    let list = super::list_marker::ctx(this, index);
     let edge = this.drag_over.filter(|target| if target.after { target.slot.saturating_sub(1) == index } else { target.slot == index }).map(|target| (target.after, target.indent, target.nested));
     let whole_table = block.meta.table.is_some() && this.table_sel == Some((block.id, super::table_actions::TableSel::Whole));
     let grip_active = this.dragging == Some(block.id) || whole_table;
@@ -248,7 +239,7 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let image_pop = this.image_menu.as_ref().filter(|(mid, _)| *mid == block.id).map(|(_, p)| p.clone());
     let editor = cx.entity();
     let pads = row_pads(this, index);
-    let row = block_row(cx.entity(), block, pads, handles, grip_active, folded, edge, number, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, this.is_first_line_delete_armed(block.id), cx);
+    let row = block_row(cx.entity(), block, pads, handles, grip_active, folded, edge, list, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, this.is_first_line_delete_armed(block.id), cx);
     let id = block.id;
     let (pt, pb) = pads;
     let bounds = gpui::canvas(|_, _, _| (), move |bounds, (), _, cx| {
