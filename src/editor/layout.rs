@@ -104,6 +104,33 @@ impl TextLayout {
         }
         self.bounds.origin
     }
+    /// Baseline-anchored caret `(origin, height)` so fonts whose ascent/descent sit asymmetrically
+    /// inside the line box still get a caret visually centered on their ideographs and capitals.
+    pub fn caret_geometry(&self, offset: usize) -> (Point<Pixels>, Pixels) {
+        if !self.cells.is_empty() {
+            let cell = self.cells.iter().find(|cell| cell.range.start <= offset && offset <= cell.range.end)
+                .unwrap_or_else(|| if offset < self.cells[0].range.start { &self.cells[0] }
+                    else { self.cells.last().unwrap() });
+            return cell.text.caret_geometry(offset.saturating_sub(cell.range.start));
+        }
+        let shaped = crate::editor::inline_code::doc_to_shaped(offset, &self.code_spans);
+        let mut y = px(0.);
+        for (i, (start, line)) in self.lines.iter().enumerate() {
+            if shaped <= start + line.len() || i + 1 == self.lines.len() {
+                let p = line.position_for_index(shaped.saturating_sub(*start).min(line.len()), self.line_height).unwrap_or_default();
+                let visual = (p.y / self.line_height) as usize;
+                let font_px = line.font_size();
+                let caret_h = (font_px * 1.125).round().min(self.line_height);
+                let baseline = (self.line_height - line.ascent() - line.descent()) * 0.5 + line.ascent();
+                let top = (baseline - font_px * 0.95).clamp(px(0.), self.line_height - caret_h);
+                let dx = if offset == 0 { px(0.) } else { px(0.5) };
+                return (self.bounds.origin + point(p.x + self.aligned_x(line, visual) + dx, y + p.y + top), caret_h);
+            }
+            y += line.size(self.line_height).height;
+        }
+        let caret_h = (self.line_height * 0.75).round().min(self.line_height);
+        (self.bounds.origin + point(px(0.), (self.line_height - caret_h) * 0.5), caret_h)
+    }
     pub fn hit(&self, point: Point<Pixels>) -> usize {
         if !self.cells.is_empty() {
             let distance = |cell: &CellLayout| {
