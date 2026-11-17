@@ -143,10 +143,10 @@ fn paint_line(editor: &gpui::Entity<Editor>, index: usize, layout: &TextLayout, 
         y += line.size(layout.line_height).height;
     }
     if let Some(local) = caret {
-        let p = layout.point(local.min(vis_len));
+        let (origin, caret_h) = layout.caret_geometry(local.min(vis_len));
         let alpha = super::caret_blink::alpha(editor, (u64::MAX - index as u64, local), cx);
-        if alpha > 0. { window.paint_quad(fill(Bounds::new(p, size(px(2.), layout.line_height)), theme.accent.opacity(alpha)).corner_radii(px(1.))); }
-        crate::sync_ime_cursor_area(f32::from(p.x), f32::from(p.y), f32::from(layout.line_height));
+        if alpha > 0. { window.paint_quad(fill(Bounds::new(origin, size(px(2.), caret_h)), theme.accent.opacity(alpha)).corner_radii(px(1.))); }
+        crate::sync_ime_cursor_area(f32::from(origin.x), f32::from(origin.y), f32::from(caret_h));
     }
     if let Some(mark) = composing {
         for rect in layout.rects(mark) {
