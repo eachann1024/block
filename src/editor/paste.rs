@@ -18,7 +18,7 @@ impl Editor {
         let (a, b, first, last) = self.ordered();
         if first != last { return false; }
         let block = &self.doc.blocks[first];
-        if block.meta.code_language.is_some() || block.is_atomic() { return true; }
+        if block.meta.code_language.is_some() { return true; }
         let range = a.offset..b.offset;
         let (leaf, range) = if let Some(table) = &block.meta.table {
             let Some((row, cell, range)) = table.cell_at_range(&range) else { return false; };
@@ -76,7 +76,7 @@ impl Editor {
         if self.table_sel.is_some_and(|(_, selection)| !matches!(selection, super::table_actions::TableSel::Whole)) {
             self.table_edit_rejected(cx); return;
         }
-        let whole_table = self.table_sel.is_some();
+        let whole_table = self.table_sel.is_some() || (ai == bi && first.is_atomic() && a.offset == 0 && b.offset == first.text.len());
         if plain && whole_table { self.insert_paste_blocks(plain_blocks(&text), cx); return; }
         if plain || literal { self.replace_plain_selection(&text, cx); return; }
         let in_cell = ai == bi && first.meta.table.as_ref().is_some_and(|table|

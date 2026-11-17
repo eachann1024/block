@@ -9,9 +9,12 @@ fn single_run(b: &Block) -> Option<Run> {
     if let Some(code) = &b.meta.list_code {
         return Some(Run { indent: code.parent_indent.saturating_add(1), count: 0, start: 0 });
     }
-    matches!(b.kind, Kind::Numbered | Kind::Bullet | Kind::Todo).then_some(Run {
-        indent: b.meta.indent, count: u64::from(b.kind == Kind::Numbered), start: b.meta.list_start.unwrap_or(1),
-    })
+    if matches!(b.kind, Kind::Numbered | Kind::Bullet | Kind::Todo) {
+        return Some(Run {
+            indent: b.meta.indent, count: u64::from(b.kind == Kind::Numbered), start: b.meta.list_start.unwrap_or(1),
+        });
+    }
+    (b.meta.indent > 0).then_some(Run { indent: b.meta.indent, count: 0, start: 0 })
 }
 fn merge_run(a: Run, b: Run) -> Option<Run> {
     Some(if a.indent < b.indent { a } else if b.indent < a.indent { b }
@@ -156,7 +159,11 @@ impl Blocks {
                 if code.parent_indent>=indent {return scan(&n.left,key,true,indent,state);}
                 return true;
             }
-            if !matches!(b.kind,Kind::Numbered|Kind::Bullet|Kind::Todo) || b.meta.indent<indent {return true;}
+            if !matches!(b.kind,Kind::Numbered|Kind::Bullet|Kind::Todo) {
+                if b.meta.indent > indent { return scan(&n.left,key,true,indent,state); }
+                return true;
+            }
+            if b.meta.indent<indent {return true;}
             if b.meta.indent==indent {
                 if b.kind!=Kind::Numbered {return true;}
                 state.0=state.0.saturating_add(1);state.1=b.meta.list_start.unwrap_or(1);

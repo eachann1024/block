@@ -116,7 +116,13 @@ impl Editor {
         if to == lo { return None; }
         self.commit_composition(cx);
         let before = self.snapshot();
-        let moved: Vec<Block> = (lo..=hi_ext).map(|i| self.doc.blocks[i].clone()).collect();
+        let mut moved: Vec<Block> = (lo..=hi_ext).map(|i| self.doc.blocks[i].clone()).collect();
+        for (idx, b) in moved.iter_mut().enumerate() {
+            if to + idx != 0 && b.meta.code_language.as_deref() == Some("yaml-frontmatter") {
+                b.meta.code_language = Some("yaml".into());
+                b.meta.clean_source = None;
+            }
+        }
         self.doc.splice_blocks(lo..hi_ext + 1, Vec::new());
         self.doc.splice_blocks(to..to, moved);
         self.record_changes(before, vec![ListChange { start: lo, before: n, after: 0 }, ListChange { start: to, before: 0, after: n }], true, cx);
@@ -156,7 +162,15 @@ impl Editor {
             (first.min(last_idx), last.min(last_idx), false)
         };
         let hi_ext = self.list_subtree_end(hi_sel);
-        let copies: Vec<Block> = (lo..=hi_ext).map(|i| { let mut b = self.doc.blocks[i].clone(); b.id = 0; b }).collect();
+        let copies: Vec<Block> = (lo..=hi_ext).map(|i| {
+            let mut b = self.doc.blocks[i].clone();
+            b.id = 0;
+            if b.meta.code_language.as_deref() == Some("yaml-frontmatter") {
+                b.meta.code_language = Some("yaml".into());
+                b.meta.clean_source = None;
+            }
+            b
+        }).collect();
         if copies.is_empty() { return; }
         let (count, insert_at) = (copies.len(), hi_ext + 1);
         let before = self.snapshot();

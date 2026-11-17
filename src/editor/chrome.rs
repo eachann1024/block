@@ -29,7 +29,7 @@ pub(super) fn block_gutter(block: &Block, zoom: f32) -> f32 {
 }
 pub(super) fn body_padding(block: &Block, zoom: f32) -> f32 {
     if block.meta.callout.is_some() { 62. * zoom }
-    else if block.kind == Kind::Quote { 16. * zoom } else { 0. }
+    else if block.kind == Kind::Quote || block.meta.quote_depth > 0 { 16. * zoom } else { 0. }
 }
 
 /// CSS (margin-top, margin-bottom) of a block in the reference page.
@@ -163,7 +163,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                 .when(!marker.is_empty(), |row| row.flex().justify_end().pr(px(8. * zoom)).child(marker))))
             .child(div().flex_1().min_w_0().flex().flex_col().relative()
                 .when(marker_width == 0., |body| body.max_w(theme.content_width))
-                .when(block.kind == Kind::Quote && callout.is_none(), |body| body.pl(px(16. * zoom)).py(px(1.6 * zoom)).child(
+                .when((block.kind == Kind::Quote || block.meta.quote_depth > 0) && callout.is_none(), |body| body.pl(px(16. * zoom)).py(px(1.6 * zoom)).child(
                     div().absolute().left_0().top_0().bottom_0().w(px(3. * zoom)).bg(theme.quote_bar)))
                 .when_some(callout, |body, kind| {
                     crate::ui::callout_controls::style_card(body, kind, zoom)

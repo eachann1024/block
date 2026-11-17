@@ -28,14 +28,30 @@ pub fn parse(source: &str) -> Doc {
     let decoded = raw_guard::decode(source);
     let source: &str = decoded.strip_prefix('\u{feff}').unwrap_or(&decoded);
     let (defs, used_labels) = blocks::collect_ref_defs(source);
-    parse_inner(source, &defs, &used_labels)
+    let mut result = parse_blocks(source, &defs, &used_labels);
+    swallow_separators(&mut result);
+    let mut numbering = Numbering::default();
+    let mut after_blank = false;
+    for block in &mut result {
+        if is_blank(block) { after_blank = true; continue; }
+        numbering.normalize_imported_start(block, after_blank);
+        after_blank = false;
+    }
+    let mut check_num = Numbering::default();
+    for block in &mut result {
+        let num = check_num.next(block);
+        if let Some(clean) = block.meta.clean_source.take() {
+            block.seal_clean_source(clean.source, num);
+        }
+    }
+    Doc::from_blocks(result)
 }
 
-pub(super) fn parse_with_defs(source: &str, defs: &str) -> Doc {
-    parse_inner(source, defs, &std::collections::HashSet::new())
+pub(super) fn parse_blocks_with_defs(source: &str, defs: &str) -> Vec<Block> {
+    parse_blocks(source, defs, &std::collections::HashSet::new())
 }
 
-fn parse_inner(source: &str, defs: &str, used_labels: &std::collections::HashSet<String>) -> Doc {
+fn parse_blocks(source: &str, defs: &str, used_labels: &std::collections::HashSet<String>) -> Vec<Block> {
     let lines: Vec<_> = source.split_inclusive('\n').collect();
     let mut result: Vec<Block> = Vec::new();
     let mut index = 0usize;
@@ -206,23 +222,7 @@ fn parse_inner(source: &str, defs: &str, used_labels: &std::collections::HashSet
         result.push(block);
     }
 
-    swallow_separators(&mut result);
-    let mut numbering = Numbering::default();
-    let mut after_blank = false;
-    for block in &mut result {
-        if is_blank(block) { after_blank = true; continue; }
-        numbering.normalize_imported_start(block, after_blank);
-        after_blank = false;
-    }
-    // Stamp final computed list numbers onto `clean_source` so renumbering invalidates stale prefixes.
-    let mut check_num = Numbering::default();
-    for block in &mut result {
-        let num = check_num.next(block);
-        if let Some(clean) = block.meta.clean_source.take() {
-            block.seal_clean_source(clean.source, num);
-        }
-    }
-    Doc::from_blocks(result)
+    result
 }
 
 fn can_multiline_list(block: &Block) -> bool {
@@ -251,27 +251,65 @@ pub fn serialize(doc: &Doc) -> String {
     let mut at = 0;
     while at < blocks.len() {
         let block = blocks[at];
+        if block.meta.quote_depth > 0 {
+            if !out.is_empty() && !out.ends_with('\n') { out.push('\n'); }
+            if at > 0 && needs_separator(blocks[at - 1], nexts[at - 1]) && !out.ends_with("\n\n") { out.push('\n'); }
+            let mut end = at + 1;
+            while end < blocks.len() && blocks[end].meta.quote_depth > 0 { end += 1; }
+            if blocks[at..end].iter().any(|b| b.meta.indent == 0) { numbering = Numbering::default(); }
+            let inner: Vec<Block> = blocks[at..end].iter().map(|b| {
+                let mut c = (*b).clone();
+                c.meta.quote_depth -= 1;
+                c.meta.clean_source = None;
+                c
+            }).collect();
+            let source = serialize(&Doc::from_blocks(inner));
+            for line in source.split_inclusive('\n') {
+                let trimmed = line.trim_end_matches(['\r', '\n']);
+                if trimmed.is_empty() { out.push_str(">\n"); }
+                else { out.push_str("> "); out.push_str(trimmed); out.push('\n'); }
+            }
+            at = end;
+            continue;
+        }
         // Serialize descendants at local depth, then indent every line, including
         // images, dividers, tables and fences. This keeps standard Markdown nesting.
-        if at > 0 && is_list(blocks[at - 1]) && block.meta.indent > blocks[at - 1].meta.indent {
+        if at > 0 && is_list(blocks[at - 1]) && blocks[at - 1].meta.quote_depth == 0 {
             let parent = blocks[at - 1];
-            let padding = parent.meta.indent + if parent.kind == Kind::Numbered {
-                doc.list_number(parent.id).unwrap_or(1).to_string().len() + 2
-            } else { 2 };
-            let end = (at..blocks.len()).find(|&i| blocks[i].meta.indent < padding).unwrap_or(blocks.len());
-            if end > at {
-                let children = blocks[at..end].iter().map(|block| {
-                    let mut child = (*block).clone();
-                    child.meta.indent -= padding;
-                    if let Some(code) = &mut child.meta.list_code { code.parent_indent = code.parent_indent.saturating_sub(padding); }
+            let first_real = (at..blocks.len()).find(|&i| !is_blank(blocks[i]));
+            if let Some(first_real) = first_real && blocks[first_real].meta.indent > parent.meta.indent
+                && blocks[first_real].meta.list_code.is_none() && blocks[first_real].meta.quote_depth == 0
+            {
+                let padding = parent.meta.indent + if parent.kind == Kind::Numbered {
+                    doc.list_number(parent.id).unwrap_or(1).to_string().len() + 2
+                } else { 2 };
+                let mut scan_end = first_real + 1;
+                while scan_end < blocks.len() {
+                    if is_blank(blocks[scan_end]) { scan_end += 1; continue; }
+                    if blocks[scan_end].meta.indent <= parent.meta.indent || blocks[scan_end].meta.quote_depth > 0 { break; }
+                    scan_end += 1;
+                }
+                let end = (first_real..scan_end).rfind(|&i| !is_blank(blocks[i])).map_or(first_real + 1, |i| i + 1);
+                let min_indent = (first_real..end)
+                    .filter(|&i| !is_blank(blocks[i]))
+                    .map(|i| blocks[i].meta.indent)
+                    .min()
+                    .unwrap_or(padding);
+                let step = padding.min(min_indent);
+                let children: Vec<Block> = blocks[at..end].iter().map(|b| {
+                    let mut child = (*b).clone();
+                    if !is_blank(&child) { child.meta.indent -= step; }
+                    if let Some(code) = &mut child.meta.list_code { code.parent_indent = code.parent_indent.saturating_sub(step); }
                     child
                 }).collect();
                 if !out.is_empty() && !out.ends_with('\n') { out.push('\n'); }
-                if needs_separator(parent, nexts[at - 1]) && !out.ends_with("\n\n") { out.push('\n'); }
+                if at == first_real && needs_separator(parent, nexts[at - 1]) && !out.ends_with("\n\n") {
+                    out.push('\n');
+                }
                 let source = serialize(&Doc::from_blocks(children));
                 for line in source.split_inclusive('\n') {
                     if line.trim().is_empty() { out.push('\n'); }
-                    else { out.push_str(&" ".repeat(padding)); out.push_str(line); }
+                    else { out.push_str(&" ".repeat(step)); out.push_str(line); }
                 }
                 at = end;
                 continue;
@@ -297,7 +335,10 @@ pub fn serialize(doc: &Doc) -> String {
         }
 
         if let Some(table) = &block.meta.table { table::serialize(table, &mut out); continue; }
-        if !same_line && !blocks.get(at).is_some_and(|next| same_line_list_code(block, next))
+        let frontmatter_moved = block.meta.code_language.as_deref() == Some("yaml-frontmatter")
+            && (!is_first || block.meta.indent > 0 || block.meta.quote_depth > 0);
+        if !frontmatter_moved && !same_line
+            && !blocks.get(at).is_some_and(|next| same_line_list_code(block, next))
             && let Some(clean) = block.clean_source_for(number)
         {
             out.push_str(clean);
@@ -309,6 +350,7 @@ pub fn serialize(doc: &Doc) -> String {
             continue;
         }
         if let Some(image_src) = &block.meta.image {
+            out.push_str(&" ".repeat(block.meta.indent));
             out.push_str(image_src);
             if !image_src.ends_with('\n') { out.push('\n'); }
             continue;
@@ -334,7 +376,7 @@ pub fn serialize(doc: &Doc) -> String {
             } else if block.meta.code_empty_line { out.push_str(&padding); out.push('\n'); }
             out.push_str(&padding); out.push_str(&fence); out.push('\n'); continue;
         }
-        if block.meta.html_paragraph.is_some() || (block.kind == Kind::Paragraph && block.meta.indent > 0) {
+        if block.meta.html_paragraph.is_some() || (block.kind == Kind::Paragraph && !block.text.is_empty() && block.meta.indent > 0) {
             paragraph::serialize(block, &mut out); continue;
         }
         if block.kind == Kind::Quote {
@@ -388,7 +430,7 @@ fn is_plain(block: &Block) -> bool {
     block.meta.table.is_none() && !block.is_atomic()
         && block.meta.html_paragraph.is_none() && block.meta.code_language.is_none()
 }
-fn is_blank(block: &Block) -> bool {
+pub(super) fn is_blank(block: &Block) -> bool {
     is_plain(block) && block.kind == Kind::Paragraph && block.meta.indent == 0 && block.text.is_empty()
         && block.meta.clean_source.is_none()
 }
@@ -443,8 +485,10 @@ fn swallow_separators(blocks: &mut Vec<Block>) {
             && optional_separator(refs[at], nexts[at]) && !required_separator(refs[at], nexts[at])).collect();
         let mut drop = vec![false; refs.len()];
         for at in 0..refs.len().saturating_sub(1) {
-            if is_blank(refs[at + 1]) && (required_separator(refs[at], nexts[at])
-                || (optional_separator(refs[at], nexts[at]) && !tight[at])) {
+            if is_blank(refs[at + 1]) && refs[at].meta.quote_depth == refs[at + 1].meta.quote_depth
+                && (required_separator(refs[at], nexts[at])
+                    || (optional_separator(refs[at], nexts[at]) && !tight[at]))
+            {
                 drop[at + 1] = true;
             }
         }

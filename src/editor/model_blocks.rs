@@ -56,6 +56,17 @@ impl Block {
         }
         h.u8(self.meta.heading_level.unwrap_or(0));
         h.u8(self.meta.callout.map_or(0, |c| c as u8 + 1));
+        h.usize(self.meta.quote_depth);
+        match &self.meta.list_code {
+            Some(lc) => {
+                h.u8(1);
+                h.usize(lc.parent_indent);
+                h.usize(lc.extra_indent);
+                h.u8(u8::from(lc.blank_before));
+                h.u8(u8::from(lc.same_line));
+            }
+            None => h.u8(0),
+        }
         h.0
     }
     pub fn seal_clean_source(&mut self, source: String, list_number: Option<u64>) {
@@ -127,6 +138,7 @@ impl Block {
             inline:super::inline_ops::slice(&self.meta.inline, range.clone()),
             html_paragraph:if whole { self.meta.html_paragraph.clone() } else { None },
             heading_level:self.meta.heading_level, callout:self.meta.callout,
+            quote_depth:self.meta.quote_depth,
             table:None, tight:self.meta.tight };
         let mut out = Self { id:self.id,kind:self.kind,text,checked:self.checked,spans:Vec::new(),meta };
         if !valid { return out; }
@@ -160,11 +172,14 @@ impl Numbering {
     }
     /// Source markers on continuation items are counters, not explicit list starts.
     pub(in crate::editor) fn normalize_imported_start(&mut self, block: &mut Block, after_blank: bool) {
-        let Some((number, true)) = self.advance(block) else { return; };
-        if after_blank && let Some(start) = block.meta.list_start && start != number {
-            // A different marker after a blank explicitly starts another source run.
-            self.levels.last_mut().unwrap().1 = start;
-        } else {
+        let Some((number, continued)) = self.advance(block) else { return; };
+        if after_blank {
+            if block.meta.list_start == Some(1) && !continued {
+                block.meta.list_start = None;
+            } else if continued && let Some(start) = block.meta.list_start && start != number {
+                self.levels.last_mut().unwrap().1 = start;
+            }
+        } else if continued || block.meta.list_start == Some(1) {
             block.meta.list_start = None;
         }
     }
@@ -174,7 +189,10 @@ impl Numbering {
             return None;
         }
         if !matches!(block.kind,Kind::Numbered|Kind::Bullet|Kind::Todo) {
-            self.levels.clear(); return None;
+            while self.levels.last().is_some_and(|(depth, _)| *depth >= block.meta.indent) {
+                self.levels.pop();
+            }
+            return None;
         }
         let indent = block.meta.indent;
         while self.levels.last().is_some_and(|(depth,_)| *depth > indent) { self.levels.pop(); }
