@@ -1,7 +1,7 @@
 //! General AI features use the same model controls as the chat composer.
 use std::{cell::Cell, rc::Rc};
 use gpui::{AppContext, Bounds, Context, Entity, Pixels, Subscription, Window, div, prelude::*, px};
-use gpui_component::input::{Input, InputEvent, InputState};
+use gpui_component::input::{InputEvent, InputState};
 use super::{AiSettings, TestNote};
 use super::super::{annotation_config::AnnotationConfig, backend::{self, BackendKind, ModelOption, model_cache::{ModelCache, ModelStatus}}, backend_ui};
 use crate::{theme::{Theme, tr}, ui::{ai_controls, settings_controls::{card_title, setting_row, settings_card}}};
@@ -148,8 +148,8 @@ impl AiSettings {
                     if let Some(mut config) = this.general.config.clone() { config.thinking = level.into(); this.save_annotation_config(config, cx); }
                 })));
         }
-        let search = div().h(px(40.)).px(px(10.)).border_b_1().border_color(theme.hairline)
-            .child(Input::new(&self.general.search).appearance(false).bordered(false).focus_bordered(false));
+        let search = div().h(px(40.)).px(px(10.)).flex().items_center().border_b_1().border_color(theme.hairline)
+            .child(ai_controls::inline_text_input(&self.general.search));
         let width = px(520.).min(window.viewport_size().width - px(16.));
         let panel = ai_controls::panel_shell("annotation-model-menu").w(width).max_h(window.viewport_size().height - px(16.))
             .on_scroll(|_, _, cx| cx.stop_propagation())

@@ -3,7 +3,7 @@ use gpui::{
     Context, CursorStyle, Entity, IntoElement, MouseButton, ParentElement, Render,
     SharedString, Styled, Window, div, prelude::*, px,
 };
-use gpui_component::input::{Input, InputState};
+use gpui_component::input::InputState;
 
 use super::backend::{BackendConfig, BackendKind};
 use super::backend_ui;
@@ -17,7 +17,7 @@ use crate::ui::settings_controls::{
 use crate::ui::{icon_size, type_scale};
 
 fn input_box(input: &Entity<InputState>) -> impl IntoElement {
-    div().flex_1().min_w_0().child(Input::new(input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)))
+    crate::ui::ai_controls::inline_text_input(input)
 }
 
 fn field_shell() -> gpui::Div {

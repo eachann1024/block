@@ -145,17 +145,37 @@ pub fn panel_shell(id: impl Into<SharedString>) -> Stateful<Div> {
     let shadows: Vec<BoxShadow> = dropdown::shadows();
     div().id(eid.clone()).relative().children(crate::ui::smoke_overlay::probe_for(&eid))
         .w(px(PANEL_WIDTH)).flex().flex_col()
-        .rounded(crate::ui::radius::SURFACE).border_1().border_color(theme.menu_border).bg(theme.menu)
+        .rounded(crate::ui::radius::SURFACE).bg(theme.menu)
         .text_color(theme.text).text_size(px(14.)).line_height(px(20.)).shadow(shadows).occlude().overflow_hidden()
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 }
 
 pub fn input_capsule(busy: bool) -> Div {
     let theme = Theme::ocean();
-    div().min_h(px(36.)).pl(px(10.)).pr(px(6.)).flex().items_center().gap(px(8.))
+    div().h(px(36.)).pl(px(10.)).pr(px(6.)).flex().items_center().gap(px(8.))
         .rounded(px(8.)).border_1()
         .border_color(if busy { theme.hairline } else { theme.btn_border })
         .bg(theme.code_bg)
+}
+
+pub fn inline_text_input(input: &gpui::Entity<gpui_component::input::InputState>) -> Div {
+    div()
+        .flex_1()
+        .min_w_0()
+        .h(px(20.))
+        .flex()
+        .items_center()
+        .child(
+            gpui_component::input::Input::new(input)
+                .appearance(false)
+                .bordered(false)
+                .focus_bordered(false)
+                .h(px(20.))
+                .px(px(0.))
+                .py(px(0.))
+                .text_size(px(14.))
+                .line_height(px(20.)),
+        )
 }
 
 pub fn send_button(
