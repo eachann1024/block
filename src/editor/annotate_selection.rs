@@ -61,14 +61,17 @@ impl Editor {
         let Some(composer) = &self.annotate.composer else { return };
         let body = composer.input.read(cx).value().trim().to_owned();
         if body.is_empty() { return; }
+        let before = self.snapshot();
         let Some(composer) = self.annotate.composer.take() else { return };
         if let Some(note) = Annotation::for_targets(&composer.targets, body) {
             self.annotate.annotations.push(note);
         }
         self.persist_annotations();
         self.caret.anchor = self.caret.head; // collapse selection so the floating toolbar doesn't reappear
+        self.caret_hidden = true;
         self.table_sel = None;
         self.toolbar_anchor = None;
+        self.record_annotation_change(before, cx);
         window.focus(&self.focus, cx);
         cx.notify();
     }

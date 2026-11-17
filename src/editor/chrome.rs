@@ -235,14 +235,14 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let whole_table = block.meta.table.is_some() && this.table_sel == Some((block.id, super::table_actions::TableSel::Whole));
     let grip_active = this.dragging == Some(block.id) || whole_table;
     let has_overlay = this.has_active_overlay();
-    let handles = !this.minimal && !has_overlay && (this.hover == Some(block.id) || this.caret.head.block == block.id || grip_active);
+    let handles = !this.minimal && !has_overlay && (this.hover == Some(block.id) || (!this.caret_hidden && this.caret.head.block == block.id) || grip_active);
     let folded = !this.minimal && this.is_heading_folded(block.id);
     let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
     let image_pop = this.image_menu.as_ref().filter(|(mid, _)| *mid == block.id).map(|(_, p)| p.clone());
     let editor = cx.entity();
     let pads = row_pads(this, index);
     let foot = super::annotate_foot::block_strip(this, block, super::zoom::zoom_factor(this.minimal), cx);
-    let row = block_row(cx.entity(), block, pads, handles, grip_active, folded, edge, list, this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, this.is_first_line_delete_armed(block.id), foot, cx);
+    let row = block_row(cx.entity(), block, pads, handles, grip_active, folded, edge, list, !this.caret_hidden && this.caret.head.block == block.id && this.block_sel.is_none(), this.path.clone(), this.nowrap.contains(&block.id), this.minimal, image_pop, has_overlay, this.is_first_line_delete_armed(block.id), foot, cx);
     let id = block.id;
     let (pt, pb) = pads;
     let bounds = gpui::canvas(|_, _, _| (), move |bounds, (), _, cx| {

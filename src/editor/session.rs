@@ -38,6 +38,7 @@ impl Editor {
         self.outline.clear_navigation();
         crate::editor::block_shortcuts::clear_first_line_delete();
         self.clear_pointer();
+        self.caret_hidden = false;
         self.toolbar_anchor = None;
         self.hover = None;
         self.block_menu = None;
