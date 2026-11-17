@@ -304,8 +304,9 @@ pub(in crate::editor) fn render(
 
     let key_editor = editor.clone();
     let target_ids: Vec<u64> = s.parts.iter().map(|(id, _)| *id).collect();
+    let anchor_x = s.anchor.x;
     let fallback_trigger = gpui::Bounds::new(
-        point(s.anchor.x, (s.anchor.y - px(32.)).max(px(0.))),
+        point(anchor_x, (s.anchor.y - px(32.)).max(px(0.))),
         gpui::size(px(PANEL_WIDTH), px(24.)),
     );
     let pos_editor = editor.clone();
@@ -314,6 +315,7 @@ pub(in crate::editor) fn render(
         ("inline-ai-pop", pop_gen),
         move |_, cx| {
             let ed = pos_editor.read(cx);
+            let vp = ed.list.viewport_bounds();
             let trigger = super::preview::live_preview_bounds(editor_id)
                 .or_else(|| {
                     target_ids
@@ -321,9 +323,17 @@ pub(in crate::editor) fn render(
                         .filter_map(|id| ed.block_trigger_bounds(editor_id, *id))
                         .reduce(|a, b| a.union(&b))
                 })
+                .or_else(|| {
+                    let first_id = *target_ids.first()?;
+                    let idx = ed.doc.index_of(first_id)?;
+                    let scroll_top = ed.list.logical_scroll_top().item_ix;
+                    let x = (vp.left() + px(crate::editor::chrome::HANDLE_WIDTH + crate::editor::chrome::ROW_GAP - 8.)).max(anchor_x);
+                    let y = if idx < scroll_top { vp.top() } else { vp.bottom() };
+                    Some(gpui::Bounds::new(point(x, y), gpui::size(px(PANEL_WIDTH), px(2.))))
+                })
                 .unwrap_or(fallback_trigger);
             crate::ui::placement::PlacementSpec::below(trigger)
-                .viewport(ed.list.viewport_bounds())
+                .viewport(vp)
                 .gap(px(10.))
                 .margin(px(12.))
         },
