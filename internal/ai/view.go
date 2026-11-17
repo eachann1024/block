@@ -31,6 +31,9 @@ func (c *Controller) RenderPanel(cUI *ui.Context) {
 	if panelW <= 0 {
 		panelW = defaultPanelWidth
 	}
+	if !fullscreen && c.renderWidth > 0 {
+		panelW = c.renderWidth
+	}
 	provCfg := c.providerCfg
 	selectedBackend := c.selectedBackendLocked()
 	c.mu.RUnlock()
@@ -172,7 +175,7 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 					active := convID == curID
 					rowID := fmt.Sprintf("conv-%d", convID)
 					row := ui.Row(cUI.Key(rowID)).FillWidth().Height(34).PaddingX(8).Gap(8).
-						AlignItems(ui.Center).Radius(theme.RadiusControl)
+						AlignItems(ui.Center).Radius(theme.RadiusControl).Border(1, ui.Transparent)
 					if active {
 						row.Background(pal.Selected)
 					} else if row.Hovered() {
@@ -313,6 +316,7 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 	}
 	streaming := c.streaming
 	partial := c.partialText
+	partialSteps := append([]model.ProcessStep(nil), c.partialSteps...)
 	c.mu.RUnlock()
 
 	scroll := ui.Scroll(cUI.Key("ai-chat-scroll")).FillWidth().Grow(1)
@@ -344,7 +348,7 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 				}
 
 				turnKey := fmt.Sprintf("%d-%d", conv.ID, start)
-				steps, notes := collectTurnProcess(turn, turnStreaming, partial)
+				steps, notes := collectTurnProcess(turn, turnStreaming, partial, partialSteps)
 				if len(steps) > 0 {
 					c.renderProcessCard(cUI, pal, turnKey, turn, steps, notes, turnStreaming)
 				}
@@ -470,7 +474,7 @@ func (c *Controller) markdownOptions(pal theme.Palette) *markdown.Options {
 	return &c.mdOpts
 }
 
-func collectTurnProcess(turn []model.ChatMessage, streaming bool, partial string) ([]model.ProcessStep, []string) {
+func collectTurnProcess(turn []model.ChatMessage, streaming bool, partial string, partialSteps []model.ProcessStep) ([]model.ProcessStep, []string) {
 	var steps []model.ProcessStep
 	var notes []string
 	seenNotes := make(map[string]bool)
@@ -494,6 +498,12 @@ func collectTurnProcess(turn []model.ChatMessage, streaming bool, partial string
 		}
 	}
 	if streaming {
+		for _, st := range partialSteps {
+			steps = append(steps, st)
+			if st.FileRef != "" {
+				addNote(st.FileRef)
+			}
+		}
 		lbl := theme.Tr("思考中", "Thinking")
 		det := theme.Tr("等待模型响应…", "Waiting for model response…")
 		if strings.TrimSpace(partial) != "" {
@@ -591,7 +601,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 
 						chipID := fmt.Sprintf("ai-process-tool-chip-%d", i)
 						row := ui.ButtonBase(cUI.Key(chipID+"-"+turnKey)).FillWidth().MinHeight(28).PaddingX(6).Gap(8).
-							AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(st.Title)
+							AlignItems(ui.Center).Radius(6).Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(st.Title)
 						if row.Hovered() {
 							row.Background(pal.Hover)
 						}
@@ -916,7 +926,7 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 				optID := fmt.Sprintf("ai-question-opt-%d-%d", qi, idx)
 				on := pickedMap != nil && pickedMap[idx]
 				row := ui.ButtonBase(cUI.Key(optID+"-"+qKey)).FillWidth().MinHeight(32).Padding(6, 8).Gap(8).
-					AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(opt.Label)
+					AlignItems(ui.Center).Radius(6).Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(opt.Label)
 				if on {
 					row.Background(pal.Selected)
 				} else if row.Hovered() {
@@ -1075,7 +1085,7 @@ func (c *Controller) renderApprovalCard(cUI *ui.Context, pal theme.Palette, conv
 		renderOpt := func(id, label string, dec model.ApprovalDecision) {
 			selected := choice == dec
 			row := ui.ButtonBase(cUI.Key(id+"-"+aKey)).FillWidth().MinHeight(30).Padding(5, 8).Gap(8).
-				AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(label)
+				AlignItems(ui.Center).Radius(6).Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(label)
 			if row.Hovered() {
 				row.Background(pal.Hover)
 			}
@@ -1430,7 +1440,7 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 				it := items[i]
 				rowID := fmt.Sprintf("ai-pick-%d", i)
 				row := ui.ButtonBase(cUI.Key(rowID)).FillWidth().Height(36).PaddingX(10).Gap(8).
-					AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(it.label)
+					AlignItems(ui.Center).Radius(6).Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(it.label)
 				if i == selected {
 					row.Background(pal.Selected).Border(1, pal.Accent)
 				} else if row.Hovered() {
@@ -1803,7 +1813,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 					active := m.Value == curModel
 					mID := fmt.Sprintf("ai-model-%d", idx)
 					row := ui.ButtonBase(cUI.Key(mID)).FillWidth().Height(34).PaddingX(10).Gap(8).
-						AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(m.Label)
+						AlignItems(ui.Center).Radius(6).Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(m.Label)
 					if active {
 						row.Background(pal.Selected)
 					} else if row.Hovered() {
@@ -1944,7 +1954,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 					isFocused := focused == k
 
 					card := ui.Row(cUI.Key(cardID)).FillWidth().Height(40).PaddingX(10).Gap(8).
-						AlignItems(ui.Center).Radius(theme.RadiusControl)
+						AlignItems(ui.Center).Radius(theme.RadiusControl).Border(1, ui.Transparent)
 					if isFocused {
 						card.Background(pal.Selected).Border(1, pal.Accent)
 					} else if card.Hovered() {
@@ -2222,25 +2232,13 @@ func (c *Controller) runConnectionTestAsync() {
 	c.settingsTesting = true
 	c.settingsTestOK = false
 	c.settingsTestErr = ""
-	cfg := normalizeProviderConfig(c.providerCfg)
 	c.mu.Unlock()
 	c.requestRedraw()
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		err := testBuiltinConnection(ctx, cfg)
-		c.mu.Lock()
-		c.settingsTesting = false
-		if err != nil {
-			c.settingsTestOK = false
-			c.settingsTestErr = err.Error()
-		} else {
-			c.settingsTestOK = true
-			c.settingsTestErr = ""
-		}
-		c.mu.Unlock()
-		c.requestRedraw()
+		_ = c.TestConnection(ctx)
 	}()
 }
 

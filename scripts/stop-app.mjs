@@ -1,0 +1,55 @@
+import { spawnSync } from "node:child_process";
+import { bundleId, installedExecutable, legacyBundleId, legacyInstalledExecutable } from "./app-bundle.mjs";
+
+const executable = "block";
+const quitWaitMs = 8000;
+const quitRequestMs = 4000;
+
+export function appPids() {
+  if (process.platform !== "darwin") return [];
+  return pidsFor(new Set([installedExecutable, legacyInstalledExecutable]));
+}
+
+export function matchingPids(releaseBinary) {
+  if (process.platform !== "darwin") return [];
+  return pidsFor(new Set([installedExecutable, legacyInstalledExecutable, releaseBinary]));
+}
+
+function pidsFor(binaries) {
+  const listed = spawnSync("ps", ["-axww", "-o", "pid=,comm="], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
+  if (listed.status !== 0) throw new Error(listed.stderr || "ps failed");
+  return listed.stdout.split("\n").flatMap((line) => {
+    const match = /^\s*(\d+)\s+(.*)$/.exec(line.trimEnd());
+    if (!match) return [];
+    const pid = Number(match[1]);
+    return Number.isInteger(pid) && binaries.has(match[2]) ? [pid] : [];
+  });
+}
+
+export function requestQuit() {
+  if (process.platform !== "darwin") return false;
+  if (!appPids().length) return false;
+  let ok = false;
+  for (const id of [bundleId, legacyBundleId, "com.block.notes"]) {
+    const result = spawnSync("osascript", ["-e", `tell application id "${id}" to quit`], {
+      encoding: "utf8",
+      timeout: quitRequestMs,
+    });
+    if (result.status === 0) ok = true;
+  }
+  return ok;
+}
+
+export async function stopRunningApp(releaseBinary) {
+  const before = matchingPids(releaseBinary);
+  if (!before.length) return [];
+  const deadline = Date.now() + quitWaitMs;
+  const asked = requestQuit();
+  while (Date.now() < deadline) {
+    if (!matchingPids(releaseBinary).length) return before;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  const stuck = matchingPids(releaseBinary);
+  if (!asked) throw new Error(`could not ask ${bundleId} to quit; still running: ${stuck.join(", ")}`);
+  throw new Error(`${executable} did not quit within ${quitWaitMs}ms: ${stuck.join(", ")}; refusing to kill unsaved work`);
+}

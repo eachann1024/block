@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>深色代码块 C · 墨石内凹槽与行号标尺</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#ececec;background:#181818;-webkit-font-smoothing:antialiased}
+a{color:#779de8;text-decoration:none}a:hover{color:#9dbcf5}
+button{font-family:inherit;font-size:14px}
+*{box-sizing:border-box}
+::selection{background:#2d426b;color:#9dbcf5}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-feature-settings:"liga" 0}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:980px;display:flex;flex-direction:column;background:{{pageBg}};color:{{textPrimary}};font-size:14px;line-height:20px">
+
+  <!-- 顶部控制栏 -->
+  <header style="height:46px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:{{barBg}};border-bottom:1px solid {{borderCol}}">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+      </div>
+      <span style="font-weight:560;color:{{textPrimary}}">深色代码块 C · 墨石内凹槽与静默行号标尺</span>
+      <span style="color:{{textSecondary}}">深邃 #141414 内凹纸槽 + 36px 静默行号与软折行续行符 ↪ + 无框轻语语言标签</span>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
+        <button type="button" onClick="{{setIdle}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{idleBtnBg}};color:{{idleBtnCol}};box-shadow:{{idleBtnRing}};font-weight:460;cursor:pointer">闲置态</button>
+        <button type="button" onClick="{{setHover}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{hoverBtnBg}};color:{{hoverBtnCol}};box-shadow:{{hoverBtnRing}};font-weight:460;cursor:pointer">悬停 / 光标态</button>
+        <button type="button" onClick="{{setMenu}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{menuBtnBg}};color:{{menuBtnCol}};box-shadow:{{menuBtnRing}};font-weight:460;cursor:pointer">语言下拉</button>
+      </div>
+
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
+        <button type="button" onClick="{{setDark}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{darkBtnBg}};color:{{darkBtnCol}};box-shadow:{{darkBtnRing}};font-weight:460;cursor:pointer">深色 Ocean Dark</button>
+        <button type="button" onClick="{{setLight}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{lightBtnBg}};color:{{lightBtnCol}};box-shadow:{{lightBtnRing}};font-weight:460;cursor:pointer">浅色 Ocean Light</button>
+      </div>
+    </div>
+  </header>
+
+  <main style="flex:1;max-width:1220px;width:100%;margin:0 auto;padding:28px 28px 56px;display:flex;flex-direction:column;gap:24px">
+
+    <!-- 1. 截图原场景左右对比 -->
+    <section style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:20px 24px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">截图原场景对比 · 糊成一团的折行长串 vs 行号标尺与续行引导</span>
+        <span style="font-size:14px;color:{{textSecondary}}">当长路径或 URL 编码串发生软折行时，行号列区分逻辑行与视觉折行（↪）</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px">
+        <!-- 左侧：当前丑陋现状复现 -->
+        <div style="padding:16px 18px;border-radius:8px;background:{{subSurface}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:14px;font-weight:500;color:{{textSecondary}}">当前现状（截图复现）</span>
+            <span style="font-size:14px;color:#e57368">折行后难辨行首 · 粗框胶囊突兀</span>
+          </div>
+
+          <div style="padding:16px 16px 16px 36px;border-radius:8px;background:#181818;border:1px solid #262626;position:relative">
+            <span aria-hidden="true" style="position:absolute;left:12px;top:24px;color:#787878;display:inline-flex">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"></circle><circle cx="10.5" cy="3.5" r="1.2"></circle><circle cx="5.5" cy="8" r="1.2"></circle><circle cx="10.5" cy="8" r="1.2"></circle><circle cx="5.5" cy="12.5" r="1.2"></circle><circle cx="10.5" cy="12.5" r="1.2"></circle></svg>
+            </span>
+            <div class="mono" style="position:relative;padding:34px 12px 10px;border-radius:6px;background:#16191e;font-size:14px;line-height:22px;color:#ececec;word-break:break-all">
+              <div style="position:absolute;top:6px;right:6px;display:flex;align-items:center;gap:4px">
+                <span style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;color:#9aa3b2">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+                </span>
+                <span style="height:22px;padding:0 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:#1f2228;color:#9aa3b2;font-family:Inter,sans-serif;font-size:12px;display:inline-flex;align-items:center">yaml</span>
+              </div>
+              <div>{</div>
+              <div style="padding-left:16px"><span style="color:#48484a">goose-id</span>: <span style="color:#268026">local-mvezjy17iwf4mlovmr-%E5%BC%95%E4%BD%93%E5%90%91%E4%B8%8A(%E5%BC%B9%E5%8A%9B%E5%B8%A6_%E8%87%AA%E9%87%8D_%E8%B4%9F%E9%87%8D%E5%BC%95%E4%BD%93).md</span></div>
+              <div>}<span style="display:inline-block;width:2px;height:16px;background:#779de8;vertical-align:middle;margin-left:1px"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧：方案 C 重构效果 -->
+        <div style="padding:16px 18px;border-radius:8px;background:{{selectedSurface}};border:1px solid {{accentCol}};display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:14px;font-weight:560;color:{{textPrimary}}">方案 C · 墨石内凹槽 + 静默行号列 + 去边框轻语标签</span>
+            <span style="font-size:14px;color:{{accentCol}};font-weight:500">逻辑行号 1/2/3 + 软折行 ↪</span>
+          </div>
+
+          <div style="padding:16px 16px 16px 36px;border-radius:8px;background:{{paperBg}};border:1px solid {{borderCol}};position:relative">
+            <span aria-hidden="true" style="position:absolute;left:12px;top:27px;color:{{handleCol}};display:inline-flex">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"></circle><circle cx="10.5" cy="3.5" r="1.2"></circle><circle cx="5.5" cy="8" r="1.2"></circle><circle cx="10.5" cy="8" r="1.2"></circle><circle cx="5.5" cy="12.5" r="1.2"></circle><circle cx="10.5" cy="12.5" r="1.2"></circle></svg>
+            </span>
+
+            <div class="mono" style="position:relative;border-radius:8px;background:{{codeBg}};border:1px solid {{codeBorder}};padding:12px 14px 12px 10px;font-size:14px;line-height:22px;color:{{synText}}">
+              <!-- 右上角无框轻语控件 -->
+              <div style="position:absolute;top:8px;right:10px;display:inline-flex;align-items:center;gap:4px">
+                <button type="button" onClick="{{triggerCopy}}" aria-label="复制代码" style="width:22px;height:22px;border:0;border-radius:5px;background:{{ghostHoverBg}};color:{{pillFg}};display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer">
+                  <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+                </button>
+                <button type="button" onClick="{{toggleMenu}}" style="height:22px;padding:0 6px;border:0;border-radius:5px;background:{{ghostHoverBg}};color:{{pillFg}};font-family:Inter,sans-serif;font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:3px;cursor:pointer">
+                  <span>{{langLabel}}</span>
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 6.5L8 10l3.5-3.5"></path></svg>
+                </button>
+              </div>
+
+              <!-- 行 1 -->
+              <div style="display:grid;grid-template-columns:38px 1fr">
+                <span style="text-align:right;padding-right:12px;color:{{gutterCol}};font-size:12px;user-select:none">1</span>
+                <div><span style="color:{{synPunct}}">{</span></div>
+              </div>
+              <!-- 行 2（带折行续行指示） -->
+              <div style="display:grid;grid-template-columns:38px 1fr">
+                <span style="text-align:right;padding-right:12px;color:{{gutterCol}};font-size:12px;user-select:none">2</span>
+                <div style="padding-left:16px"><span style="color:{{synKey}}">goose-id</span><span style="color:{{synPunct}}">:</span> <span style="color:{{synStr}}">local-mvezjy17iwf4mlovmr-</span></div>
+              </div>
+              <div style="display:grid;grid-template-columns:38px 1fr">
+                <span style="text-align:right;padding-right:12px;color:{{wrapGlyphCol}};font-size:12px;user-select:none">↪</span>
+                <div style="padding-left:16px"><span style="color:{{synStrMuted}}">%E5%BC%95%E4%BD%93%E5%90%91%E4%B8%8A(%E5%BC%B9%E5%8A%9B%E5%B8%A6_%E8%87%AA%E9%87%8D_%E8%B4%9F%E9%87%8D%E5%BC%95%E4%BD%93)</span><span style="color:{{synStr}}">.md</span></div>
+              </div>
+              <!-- 行 3（当前光标所在行高亮） -->
+              <div style="display:grid;grid-template-columns:38px 1fr;background:{{activeLineBg}}">
+                <span style="text-align:right;padding-right:12px;color:{{accentCol}};font-size:12px;font-weight:500;user-select:none">3</span>
+                <div><span style="color:{{synPunct}}">}</span><span style="display:inline-block;width:2px;height:16px;background:{{accentCol}};vertical-align:middle;margin-left:2px"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 真实编辑器标准版心（700px）交互体验 -->
+    <section style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:26px 32px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid {{borderCol}};padding-bottom:14px">
+        <span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">编辑器标准版心（700px）· 墨石内凹槽与当前行高亮交互</span>
+        <span style="font-size:14px;color:{{textSecondary}}">闲置时右上角仅以静默文字显示语言名，悬停时浮现按钮底衬与复制图标</span>
+      </div>
+
+      <div style="max-width:700px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px;padding:8px 0">
+        <p style="margin:0;font-size:16px;line-height:26px;color:{{editorText}}">适合偏好代码编辑器秩序感、常写多行配置或长折行块的用户：</p>
+
+        <div style="position:relative;padding-left:28px">
+          <sc-if value="{{showChrome}}" hint-placeholder-val="{{true}}">
+            <span aria-hidden="true" style="position:absolute;left:2px;top:14px;color:{{handleCol}};display:inline-flex">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"></circle><circle cx="10.5" cy="3.5" r="1.2"></circle><circle cx="5.5" cy="8" r="1.2"></circle><circle cx="10.5" cy="8" r="1.2"></circle><circle cx="5.5" cy="12.5" r="1.2"></circle><circle cx="10.5" cy="12.5" r="1.2"></circle></svg>
+            </span>
+          </sc-if>
+
+          <div class="mono" style="position:relative;border-radius:8px;background:{{codeBg}};border:1px solid {{codeBorder}};padding:12px 14px 12px 0;font-size:14px;line-height:22px;color:{{synText}}">
+            <!-- 右上角轻语标签：闲置仅显示静默语言名，悬停显示复制 + 可点击胶囊 -->
+            <div style="position:absolute;top:8px;right:10px;display:inline-flex;align-items:center;gap:4px;z-index:10">
+              <sc-if value="{{showChrome}}" hint-placeholder-val="{{true}}">
+                <button type="button" onClick="{{triggerCopy}}" aria-label="复制代码" style="height:22px;padding:0 6px;border:0;border-radius:5px;background:{{ghostHoverBg}};color:{{copyFg}};display:inline-flex;align-items:center;gap:3px;font-family:Inter,sans-serif;font-size:12px;cursor:pointer">
+                  <sc-if value="{{isCopied}}" hint-placeholder-val="{{false}}">
+                    <span style="display:inline-flex;align-items:center;gap:3px">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>
+                      <span>已复制</span>
+                    </span>
+                  </sc-if>
+                  <sc-if value="{{notCopied}}" hint-placeholder-val="{{true}}">
+                    <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+                  </sc-if>
+                </button>
+              </sc-if>
+              <button type="button" onClick="{{toggleMenu}}" style="height:22px;padding:0 6px;border:0;border-radius:5px;background:{{langBtnBg}};color:{{langBtnFg}};font-family:Inter,sans-serif;font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:3px;cursor:pointer">
+                <span>{{langLabel}}</span>
+                <sc-if value="{{showChrome}}" hint-placeholder-val="{{true}}">
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 6.5L8 10l3.5-3.5"></path></svg>
+                </sc-if>
+              </button>
+            </div>
+
+            <sc-if value="{{menuOpen}}" hint-placeholder-val="{{false}}">
+              <div role="menu" style="position:absolute;top:34px;right:10px;width:188px;padding:4px;border-radius:10px;background:{{menuSurface}};border:1px solid {{menuBorder}};box-shadow:0 10px 28px rgba(0,0,0,0.38);font-family:Inter,sans-serif;font-size:14px;z-index:30;display:flex;flex-direction:column;gap:2px">
+                <sc-for list="{{langItems}}" as="it" hint-placeholder-count="5">
+                  <button type="button" role="menuitemradio" aria-checked="{{it.checked}}" onClick="{{it.pick}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{it.rowBg}};color:{{it.rowFg}};display:flex;align-items:center;justify-content:space-between;cursor:pointer;text-align:left">
+                    <span>{{it.label}}</span>
+                    <sc-if value="{{it.checked}}" hint-placeholder-val="{{false}}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accentCol}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>
+                    </sc-if>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <div style="display:grid;grid-template-columns:42px 1fr">
+              <span style="text-align:right;padding-right:14px;color:{{gutterCol}};font-size:12px;border-right:1px solid {{gutterSep}};margin-right:12px;user-select:none">1</span>
+              <div><span style="color:{{synPunct}}">{</span></div>
+            </div>
+            <div style="display:grid;grid-template-columns:42px 1fr;background:{{activeLineBg}}">
+              <span style="text-align:right;padding-right:14px;color:{{accentCol}};font-size:12px;font-weight:500;border-right:1px solid {{accentCol}};margin-right:12px;user-select:none">2</span>
+              <div style="padding-left:16px"><span style="color:{{synKey}}">"goose-id"</span><span style="color:{{synPunct}}">:</span> <span style="color:{{synStr}}">"local-mvezjy17iwf4mlovmr-引体向上.md"</span><span style="color:{{synPunct}}">,</span><span style="display:inline-block;width:2px;height:16px;background:{{accentCol}};vertical-align:middle;margin-left:2px"></span></div>
+            </div>
+            <div style="display:grid;grid-template-columns:42px 1fr">
+              <span style="text-align:right;padding-right:14px;color:{{gutterCol}};font-size:12px;border-right:1px solid {{gutterSep}};margin-right:12px;user-select:none">3</span>
+              <div style="padding-left:16px"><span style="color:{{synKey}}">"readonly"</span><span style="color:{{synPunct}}">:</span> <span style="color:{{synKw}}">false</span></div>
+            </div>
+            <div style="display:grid;grid-template-columns:42px 1fr">
+              <span style="text-align:right;padding-right:14px;color:{{gutterCol}};font-size:12px;border-right:1px solid {{gutterSep}};margin-right:12px;user-select:none">4</span>
+              <div><span style="color:{{synPunct}}">}</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. 方案 C 设计参数 -->
+    <section style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px">
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">1. #141414 墨石内凹底</span>
+          <span class="mono" style="font-size:13px;color:{{accentCol}}">Inset Surface</span>
+        </div>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          相比浮起的浅灰卡片，方案 C 让代码块比 <span class="mono" style="color:{{textPrimary}}">#181818</span> 正文纸面略沉一级（<span class="mono" style="color:{{textPrimary}}">#141414</span> + <span class="mono" style="color:{{textPrimary}}">1px solid #292929</span>），形成安静的内凹代码槽。
+        </p>
+      </div>
+
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">2. 逻辑行号与软折行 ↪</span>
+          <span class="mono" style="font-size:13px;color:{{accentCol}}">Gutter 38px</span>
+        </div>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          左侧 <span class="mono" style="color:{{textPrimary}}">38px</span> 标尺列使用低对比度 <span class="mono" style="color:{{textPrimary}}">#565656</span> 标记行号；长 URL 软折行时在续行处显示 <span class="mono" style="color:{{textPrimary}}">↪</span>，光标所在行以 <span class="mono" style="color:{{textPrimary}}">#779de8</span> 点亮。
+        </p>
+      </div>
+
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">3. 去边框轻语语言标签</span>
+          <span class="mono" style="font-size:13px;color:{{accentCol}}">Whisper Pill</span>
+        </div>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          闲置时去除右上角胶囊外框，仅以 <span class="mono" style="color:{{textPrimary}}">#686868</span> 静默显示 <span class="mono" style="color:{{textPrimary}}">yaml</span>；鼠标移入或光标进入时才显现按钮底色与复制图标。
+        </p>
+      </div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { dark: true, mode: 'hover', lang: 'yaml', copied: false };
+  }
+
+  renderVals() {
+    const d = this.state.dark;
+    const m = this.state.mode;
+    const lang = this.state.lang;
+    const copied = this.state.copied;
+
+    const activeBg = d ? '#343434' : '#e5edfc';
+    const activeCol = d ? '#ececec' : '#20242c';
+    const activeRing = d ? 'inset 0 0 0 1px #779de8' : 'inset 0 0 0 1px #547dd0';
+    const idleCol = d ? '#b4b4b4' : '#526071';
+    const langs = ['yaml', 'rust', 'typescript', 'json', 'python', 'bash'];
+
+    return {
+      pageBg: d ? '#181818' : '#f8f8f8',
+      barBg: d ? '#222222' : '#fafafa',
+      shellBg: d ? '#343434' : '#f1f1f1',
+      cardBg: d ? '#222222' : '#ffffff',
+      paperBg: d ? '#181818' : '#ffffff',
+      subSurface: d ? '#1b1b1b' : '#f8f8f8',
+      selectedSurface: d ? '#1f2633' : '#f3f7fe',
+      borderCol: d ? '#2e2e2e' : '#e4e6ea',
+      btnBorder: d ? '#444444' : '#dcdcdc',
+      textPrimary: d ? '#ececec' : '#20242c',
+      textSecondary: d ? '#b4b4b4' : '#526071',
+      editorText: d ? '#ececec' : '#1f1e1d',
+      handleCol: d ? '#6e6e6e' : '#b0afa9',
+      accentCol: d ? '#779de8' : '#547dd0',
+
+      codeBg: d ? '#141414' : '#f4f3ee',
+      codeBorder: d ? '#292929' : '#e2e0d8',
+      gutterCol: d ? '#595959' : '#9c9a92',
+      gutterSep: d ? '#242424' : '#e4e2da',
+      wrapGlyphCol: d ? '#4a5d80' : '#7b96c9',
+      activeLineBg: d ? 'rgba(119,157,232,0.07)' : 'rgba(84,125,208,0.07)',
+
+      ghostHoverBg: d ? '#242424' : '#e9e7e0',
+      pillFg: d ? '#a8a8a8' : '#52514e',
+      copyFg: copied ? (d ? '#8ce0b1' : '#2e6b34') : (d ? '#b4b4b4' : '#52514e'),
+      langBtnBg: m === 'idle' ? 'transparent' : (m === 'menu' ? (d ? '#303030' : '#e5edfc') : (d ? '#242424' : '#e9e7e0')),
+      langBtnFg: m === 'idle' ? (d ? '#6e6e6e' : '#8a8984') : (d ? '#cfcfcf' : '#20242c'),
+
+      synText: d ? '#e6e6e6' : '#2c2e33',
+      synPunct: d ? '#8a8a8a' : '#6e6d68',
+      synKey: d ? '#88b4f7' : '#245bb2',
+      synStr: d ? '#8fd19e' : '#2e6b34',
+      synStrMuted: d ? '#639670' : '#527d57',
+      synKw: d ? '#d2a6ff' : '#7b3aa8',
+
+      menuSurface: d ? '#252525' : '#ffffff',
+      menuBorder: d ? '#383838' : '#e4e4e4',
+
+      showChrome: m !== 'idle',
+      menuOpen: m === 'menu',
+      langLabel: lang,
+      isCopied: copied,
+      notCopied: !copied,
+
+      setIdle: () => this.setState({ mode: 'idle' }),
+      setHover: () => this.setState({ mode: 'hover' }),
+      setMenu: () => this.setState({ mode: 'menu' }),
+      setDark: () => this.setState({ dark: true }),
+      setLight: () => this.setState({ dark: false }),
+      triggerCopy: () => this.setState({ copied: !this.state.copied }),
+      toggleMenu: () => this.setState({ mode: m === 'menu' ? 'hover' : 'menu' }),
+
+      langItems: langs.map((l) => ({
+        label: l,
+        checked: l === lang,
+        rowBg: l === lang ? (d ? '#323232' : '#eef3fc') : 'transparent',
+        rowFg: d ? '#ececec' : '#1f1e1d',
+        pick: () => this.setState({ lang: l, mode: 'hover' })
+      })),
+
+      idleBtnBg: m === 'idle' ? activeBg : 'transparent',
+      idleBtnCol: m === 'idle' ? activeCol : idleCol,
+      idleBtnRing: m === 'idle' ? activeRing : 'none',
+
+      hoverBtnBg: m === 'hover' ? activeBg : 'transparent',
+      hoverBtnCol: m === 'hover' ? activeCol : idleCol,
+      hoverBtnRing: m === 'hover' ? activeRing : 'none',
+
+      menuBtnBg: m === 'menu' ? activeBg : 'transparent',
+      menuBtnCol: m === 'menu' ? activeCol : idleCol,
+      menuBtnRing: m === 'menu' ? activeRing : 'none',
+
+      darkBtnBg: d ? activeBg : 'transparent',
+      darkBtnCol: d ? activeCol : idleCol,
+      darkBtnRing: d ? activeRing : 'none',
+
+      lightBtnBg: !d ? activeBg : 'transparent',
+      lightBtnCol: !d ? activeCol : idleCol,
+      lightBtnRing: !d ? activeRing : 'none'
+    };
+  }
+}
+</script>
+</body>
+</html>

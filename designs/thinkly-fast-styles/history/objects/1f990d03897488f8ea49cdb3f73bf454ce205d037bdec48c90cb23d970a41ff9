@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>关于 Block · 方案 B · 左图右文</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#3d63b0}a:hover{color:#2f4f92}
+.pill{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:8px;text-decoration:none;font-size:14px;transition:background-color .14s ease}
+.pill:hover{background:var(--hover)}
+</style>
+</helmet>
+<div style="width:640px;height:560px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;background:{{t.backdrop}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;color:{{t.text}};--hover:{{t.hover}}">
+<section aria-labelledby="about-title-b" style="width:480px;box-sizing:border-box;display:flex;flex-direction:column;background:{{t.menu}};border:1px solid {{t.border}};border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,0.12);overflow:hidden">
+<div style="display:flex;gap:20px;align-items:center;padding:28px 28px 24px">
+<img src="/_blob/6768a211187044ad08d09ce47a61554d" alt="" style="width:72px;height:72px;flex:none">
+<div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+<div style="display:flex;align-items:baseline;gap:10px">
+<h1 id="about-title-b" style="margin:0;font-size:22px;line-height:30px;font-weight:560">Block</h1>
+<span style="color:{{t.sub}}">0.1.0</span>
+</div>
+<p style="margin:0;color:{{t.sub}}">{{s.tagline}}</p>
+</div>
+</div>
+<div style="display:flex;align-items:center;gap:12px;padding:16px 28px;background:{{t.shell}};border-top:1px solid {{t.border}}">
+<div aria-hidden="true" style="width:36px;height:36px;border-radius:18px;flex:none;background:{{t.fill}};color:{{t.accent}};display:flex;align-items:center;justify-content:center;font-weight:560">E</div>
+<div style="display:flex;flex-direction:column;flex:1;min-width:0">
+<span style="font-weight:560">eachann</span>
+<span style="color:{{t.sub}}">github.com/eachann1024</span>
+</div>
+<a class="pill" href="https://github.com/eachann1024" style="color:{{t.text}};border:1px solid {{t.btn}};background:{{t.menu}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-9 9"></path><path d="M18 14v6H4V6h6"></path></svg>
+{{s.profile}}
+</a>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px 12px 28px;border-top:1px solid {{t.border}}">
+<a href="https://github.com/eachann1024/block" style="color:{{t.accent}};text-decoration:none">{{s.repo}}</a>
+<button type="button" style="height:34px;padding:0 16px;border-radius:8px;font:inherit;font-size:14px;cursor:pointer;background:{{t.primary}};color:#ffffff;border:0">{{s.close}}</button>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["zh","en"],"default":"zh"},"dark":{"editor":"boolean","default":false},"$preview":{"width":640,"height":560}}'>
+class Component extends DCLogic {
+renderVals() {
+const dark = this.props.dark ?? false;
+const en = (this.props.lang ?? 'zh') === 'en';
+const t = dark
+? { backdrop:'#111111', menu:'#222222', shell:'#2a2a2a', text:'#ececec', sub:'#b4b4b4', border:'#383838', btn:'#444444', hover:'#2c2c2c', accent:'#779de8', fill:'#31456a', primary:'#445066' }
+: { backdrop:'#d9dadc', menu:'#ffffff', shell:'#f8f8f8', text:'#1f1e1d', sub:'#52514e', border:'#e4e4e4', btn:'#dcdcdc', hover:'#eef3fc', accent:'#3d63b0', fill:'#c9d8f3', primary:'#2f3540' };
+const s = en
+? { tagline:'A block-based Markdown notebook', profile:'Open GitHub', repo:'View source on GitHub', close:'Done' }
+: { tagline:'文字之隅，落笔即成。', profile:'打开 GitHub', repo:'在 GitHub 查看源码', close:'好' };
+return { t, s };
+}
+}
+</script>
+</body>
+</html>

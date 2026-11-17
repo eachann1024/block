@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>代码块 · 居右控件与滚动即收起的通用下拉</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1f64d8;text-decoration:none}a:hover{color:#154cb0;text-decoration:underline}
+button{font-family:inherit}
+.cw{position:relative}
+.pre{margin:8px 0;padding:34px 12px 10px;background:#f8f8f6;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;line-height:21px;color:#393a34;white-space:pre;overflow-x:auto}
+.pre .k{color:#a0436b}.pre .s{color:#467a3c}.pre .c{color:#8b8a84}.pre .f{color:#2f5fb3}
+.head{position:absolute;top:6px;right:6px;height:22px;display:inline-flex;align-items:center;gap:4px}
+.copy{position:relative;width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:#898781;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.copy:hover,.copy.on{background:rgba(11,11,11,.05);color:#1f1e1d}
+.pill{height:22px;padding:0 8px;border-radius:8px;border:1px solid rgba(11,11,11,.1);background:#fcfcfb;color:#898781;font-size:12px;line-height:20px;cursor:pointer;box-sizing:border-box}
+.pill:hover,.pill.on{background:#f4f3f0;color:#1f1e1d}
+.tip{position:absolute;top:30px;left:50%;transform:translateX(-50%);white-space:nowrap;background:#1f1e1d;color:#ffffff;font-size:13px;line-height:18px;padding:4px 8px;border-radius:6px;pointer-events:none;z-index:6}
+.menu{position:absolute;z-index:55;min-width:160px;max-width:320px;max-height:304px;overflow-y:auto;overscroll-behavior:contain;padding:4px;border-radius:12px;background:#ffffff;box-shadow:0 0 0 1px rgba(0,0,0,.08),0 8px 24px rgba(0,0,0,.12),0 2px 6px rgba(0,0,0,.08);font-size:14px;line-height:20px;box-sizing:border-box;display:flex;flex-direction:column}
+.row{height:28px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:#1f1e1d;font-size:14px;text-align:left;cursor:pointer;width:100%;box-sizing:border-box}
+.row:hover{background:rgba(11,11,11,.05)}
+.row.ck{background:rgba(0,0,0,.05)}
+.row .ic{width:16px;height:16px;flex:none;color:#52514e;display:inline-flex}
+.row .tick{margin-left:auto;padding-left:12px;width:16px;height:16px;flex:none;color:#1f1e1d;display:inline-flex}
+.row.danger{color:#8e2626}.row.danger .ic{color:#8e2626}
+.row.danger:hover{background:#d03b3b;color:#ffffff}.row.danger:hover .ic{color:#ffffff}
+.msep{height:1px;margin:4px 0;background:rgba(11,11,11,.1);flex:none}
+.grp{font-size:13px;line-height:17px;font-weight:500;color:#898781;padding:4px 10px;flex:none}
+.card{padding:20px 24px;border:1px solid #eceae4;border-radius:10px;background:#ffffff;display:flex;flex-direction:column;gap:14px}
+.cap{font-size:14px;line-height:20px;color:#5e5d59}
+.rend{position:relative;border-radius:6px;padding-top:24px}
+.lead{position:absolute;top:0;left:4px;height:24px;display:inline-flex;align-items:center;gap:6px}
+.src{height:20px;padding:0 6px 0 3px;display:inline-flex;align-items:center;gap:3px;border:0;border-radius:6px;background:transparent;color:#52514e;font-size:13px;cursor:pointer}
+.src:hover{background:#f2f0ea}
+.rhead{position:absolute;top:0;right:8px;height:24px;display:inline-flex;align-items:center;gap:4px}
+.tbl{border-collapse:collapse;font-size:13px;line-height:18px;color:#1f1e1d}
+.tbl th,.tbl td{border:1px solid #c9c7c0;padding:3px 10px;text-align:left}
+.tbl th{background:rgba(0,0,0,.04);font-weight:600}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:8px 16px;font-size:14px;line-height:20px}
+.kv dt{color:#5e5d59}.kv dd{margin:0;color:#1f1e1d}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+</style>
+</helmet>
+<div style="width:100%;height:980px;box-sizing:border-box;display:flex;flex-direction:column;background:#f7f7f5;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#1f1e1d;font-size:14px;line-height:20px;overflow:hidden">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;padding:0 16px;gap:12px;background:#f7f7f5;border-bottom:1px solid #ececea">
+<div aria-hidden="true" style="display:flex;gap:8px;width:52px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<div style="flex:1;text-align:center;font-size:13px;color:#5e5d59">代码块居右控件 · 页面滚动即收起的通用下拉</div>
+<div style="display:flex;gap:6px">
+<button onClick="{{setIdle}}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #dcdad4;background:{{idleBg}};color:#1f1e1d;font-size:13px;cursor:pointer">闲置</button>
+<button onClick="{{setHover}}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #dcdad4;background:{{hoverBg}};color:#1f1e1d;font-size:13px;cursor:pointer">悬停</button>
+<button onClick="{{openLang}}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #dcdad4;background:{{langBg}};color:#1f1e1d;font-size:13px;cursor:pointer">语言菜单</button>
+</div>
+</header>
+
+<main onScroll="{{onMainScroll}}" style="flex:1;min-height:0;background:#ffffff;overflow:auto;padding:28px 64px 120px;box-sizing:border-box;display:flex;flex-direction:column;gap:40px">
+
+<section style="max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:12px">
+<div class="cap">1. 普通代码块：复制 + 语言胶囊居右。语言菜单打开后滚动这一栏，菜单立即收起。</div>
+<p style="margin:0;font-size:16px;line-height:26px;color:#1f1e1d">在 Rust 里读取配置文件，然后按需合并默认值：</p>
+<div class="cw" onMouseEnter="{{enterBlock}}" onMouseLeave="{{leaveBlock}}">
+<div class="pre"><span class="k">fn</span> <span class="f">load_config</span>(path: &amp;Path) -&gt; Result&lt;Config&gt; {
+    <span class="k">let</span> raw = fs::read_to_string(path)?;
+    <span class="c">// 缺失字段回落到默认值</span>
+    <span class="k">let</span> cfg: Config = toml::from_str(&amp;raw)?;
+    Ok(cfg.merge(Config::default()))
+}</div>
+<sc-if value="{{showChrome}}" hint-placeholder-val="{{true}}">
+<div class="head" style="top:14px">
+<button class="copy" aria-label="复制代码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+<sc-if value="{{showTip}}" hint-placeholder-val="{{true}}"><span class="tip">Copy code</span></sc-if>
+</button>
+<button class="{{pillClass}}" aria-haspopup="menu" aria-expanded="{{langOpen}}" onClick="{{toggleLang}}">{{langLabel}}</button>
+</div>
+</sc-if>
+<sc-if value="{{langOpen}}" hint-placeholder-val="{{false}}">
+<div class="menu" role="menu" style="top:40px;right:6px;width:200px">
+<sc-for list="{{languages}}" as="item" hint-placeholder-count="6">
+<button class="{{item.cls}}" role="menuitemradio" aria-checked="{{item.checked}}" onClick="{{item.pick}}">
+<span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{item.d}}"></path></svg></span>
+<span>{{item.label}}</span>
+<span class="tick"><sc-if value="{{item.checked}}" hint-placeholder-val="{{false}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></sc-if></span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+</div>
+<p style="margin:0;font-size:16px;line-height:26px;color:#1f1e1d">闲置时代码块只有底色；悬停或光标进入后才出现复制按钮和语言胶囊。</p>
+<div style="height:220px"></div>
+</section>
+
+<section style="max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:12px">
+<div class="cap">2. 可渲染语言（Mermaid / LaTeX / CSV / Markdown）：默认显示渲染结果，左上 Source 切换源码</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px">
+
+<div class="card">
+<div class="cap">Mermaid · 渲染态（无底色，左上 Source ▸）</div>
+<div class="rend">
+<div class="lead"><button class="src"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 6l7 6-7 6z"></path></svg>Source</button></div>
+<div class="rhead"><button class="pill">Mermaid</button></div>
+<div style="padding:12px 8px;display:flex;justify-content:center">
+<svg width="260" height="120" viewBox="0 0 260 120" role="img" aria-label="流程图示例：读取、解析、合并">
+<g fill="#ffffff" stroke="#8b8a84" stroke-width="1.2"><rect x="8" y="44" width="64" height="32" rx="6"></rect><rect x="98" y="44" width="64" height="32" rx="6"></rect><rect x="188" y="44" width="64" height="32" rx="6"></rect></g>
+<g stroke="#8b8a84" stroke-width="1.2" fill="none"><path d="M72 60h22M162 60h22"></path><path d="M90 56l4 4-4 4M180 56l4 4-4 4"></path></g>
+<g font-size="13" fill="#1f1e1d" text-anchor="middle" font-family="Inter,'PingFang SC',sans-serif"><text x="40" y="64">读取</text><text x="130" y="64">解析</text><text x="220" y="64">合并</text></g>
+</svg>
+</div>
+</div>
+</div>
+
+<div class="card">
+<div class="cap">CSV · 源码展开态（1.5px 描边，源码区在下）</div>
+<div class="rend" style="border:1.5px solid #b8b6af;border-radius:8px;background:#f8f8f6">
+<div class="lead"><button class="src"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 9l6 7 6-7z"></path></svg>Source</button></div>
+<div class="rhead" style="top:3px;right:3px"><button class="pill">CSV</button></div>
+<div style="padding:10px 14px;display:flex;justify-content:center">
+<table class="tbl"><thead><tr><th>城市</th><th>天数</th><th>预算</th></tr></thead><tbody><tr><td>京都</td><td>4</td><td>6800</td></tr><tr><td>大阪</td><td>2</td><td>3200</td></tr></tbody></table>
+</div>
+<div class="pre" style="margin:0;border-top:1px solid #b8b6af;border-radius:0 0 7px 7px;background:rgba(0,0,0,.035);padding:12px 16px;line-height:1.55">城市,天数,预算
+京都,4,6800
+大阪,2,3200</div>
+</div>
+</div>
+
+<div class="card">
+<div class="cap">LaTeX · 渲染成功（居中）</div>
+<div class="rend" style="background:#f8f8f6">
+<div class="lead"><button class="src"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 6l7 6-7 6z"></path></svg>Source</button></div>
+<div class="rhead"><button class="pill">LaTeX</button></div>
+<div style="padding:16px 8px;text-align:center;font-family:'Times New Roman',serif;font-size:20px;font-style:italic">e<sup style="font-size:13px">iπ</sup> + 1 = 0</div>
+</div>
+</div>
+
+<div class="card">
+<div class="cap">LaTeX · 解析出错（左上状态 + 底部错误条）</div>
+<div class="rend" style="border:1.5px solid #b8b6af;border-radius:8px;background:#f8f8f6">
+<div class="lead"><button class="src"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 9l6 7 6-7z"></path></svg>Source</button><span style="font-size:12px;color:#c65949">无法渲染</span></div>
+<div class="rhead" style="top:3px;right:3px"><button class="pill">LaTeX</button></div>
+<div class="pre" style="margin:8px 0 0;border-top:1px solid #b8b6af;border-radius:0;background:rgba(0,0,0,.035);padding:12px 16px;line-height:1.55">\frac{a}{b</div>
+<div style="font-size:13px;line-height:18px;padding:4px 8px;border-top:1px solid #b8b6af;color:#c65949">缺少右花括号 “}”，位置 9</div>
+</div>
+</div>
+
+</div>
+</section>
+
+<section style="max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:12px">
+<div class="cap">3. 通用下拉组件 Dropdown：全局所有下拉（代码块语言、块菜单、表格菜单、图片菜单、设置选择框）共用</div>
+<div style="display:grid;grid-template-columns:260px 1fr;gap:28px;align-items:start">
+<div class="menu" style="position:relative;width:240px">
+<div class="grp">分组标题</div>
+<button class="row"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14v10H10l-4 4v-4H5z"></path></svg></span><span>带图标的行</span></button>
+<button class="row ck"><span class="ic"></span><span>选中行（无图标留空位）</span><span class="tick"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></span></button>
+<button class="row"><span class="ic"></span><span>普通行</span></button>
+<div class="msep"></div>
+<button class="row danger"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"></path></svg></span><span>危险操作</span></button>
+</div>
+<dl class="kv" style="margin:0">
+<dt>容器</dt><dd>白底、圆角 12、内边距 4、无描边；三层阴影（1px 轮廓 + 8/24 + 2/6）；宽 160–320</dd>
+<dt>高度</dt><dd>最高 304（且不超过窗口高 − 16），超出在菜单内部滚动，滚动不外溢</dd>
+<dt>行</dt><dd>高 28、左右 10、间距 8、圆角 8、14px；悬停与选中底色 <span class="mono">rgba(11,11,11,.05)</span></dd>
+<dt>图标列</dt><dd>16px 前置图标，颜色 #52514e；无图标的行保留 16px 空位，文字始终对齐</dd>
+<dt>选中</dt><dd>行尾 16px 对勾，左侧留 12</dd>
+<dt>分隔 / 分组</dt><dd>1px 分隔线上下 4；分组标题 13px 中粗灰色</dd>
+<dt>危险行</dt><dd>文字 #8e2626；悬停整行红底 #d03b3b、白字</dd>
+<dt>定位</dt><dd>右边缘对齐触发按钮，顶部在按钮下方 4px；下方放不下翻到上方，始终离窗口边 8px</dd>
+<dt>收起</dt><dd>页面或编辑区任意滚动、点击外部、Esc、选中一项、窗口失焦时立即收起，触发按钮恢复未展开态</dd>
+<dt>键盘</dt><dd>↑ ↓ 移动高亮，Enter 选中，打开时高亮当前选中项</dd>
+</dl>
+</div>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","default":"hover","options":["idle","hover","lang"]},"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+constructor(p) {
+super(p);
+this.state = { mode: null, lang: 'auto' };
+}
+renderVals() {
+const mode = this.state.mode ?? this.props.mode ?? 'hover';
+const lang = this.state.lang;
+const on = '#e7effd', off = '#ffffff';
+const D = {
+csv: 'M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM4 10h16M4 15h16M10 4v16',
+latex: 'M17 5H7l6 7-6 7h10',
+md: 'M6 4h9l4 4v12H6zM14 4v5h5M9 13h7M9 17h5',
+mermaid: 'M4 4h6v5H4zM14 15h6v5h-6zM7 9v4h10v2'
+};
+const list = [['auto', ''], ['CSV', D.csv], ['LaTeX', D.latex], ['Markdown', D.md], ['Mermaid', D.mermaid], ['Plain Text', ''], ['Bash', ''], ['CSS', ''], ['HTML', ''], ['JavaScript', ''], ['JSON', ''], ['Lean', ''], ['Python', ''], ['Rust', ''], ['SQL', ''], ['TypeScript', ''], ['XML', ''], ['YAML', '']];
+const set = (m) => this.setState({ mode: m });
+return {
+idleBg: mode === 'idle' ? on : off,
+hoverBg: mode === 'hover' ? on : off,
+langBg: mode === 'lang' ? on : off,
+showChrome: mode !== 'idle',
+showTip: mode === 'hover',
+langOpen: mode === 'lang',
+langLabel: lang,
+pillClass: mode === 'lang' ? 'pill on' : 'pill',
+setIdle: () => set('idle'),
+setHover: () => set('hover'),
+openLang: () => set('lang'),
+toggleLang: () => set(mode === 'lang' ? 'hover' : 'lang'),
+enterBlock: () => { if (mode === 'idle') set('hover'); },
+leaveBlock: () => { if (mode === 'hover') set('idle'); },
+onMainScroll: () => { if (mode === 'lang') set('hover'); },
+languages: list.map(([label, d]) => ({
+label, d,
+checked: label === lang,
+cls: label === lang ? 'row ck' : 'row',
+pick: () => this.setState({ lang: label, mode: 'hover' })
+}))
+};
+}
+}
+</script>
+</body>
+</html>

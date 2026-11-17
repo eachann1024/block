@@ -59,6 +59,11 @@ type TitlebarProps struct {
 	CanForward bool
 	ZoomPct    int // 90, 100, 110
 
+	ShortcutSidebar string
+	ShortcutNewTab  string
+	ShortcutAI      string
+	ShortcutExport  string
+
 	PendingAnnotations int
 	OnSendAnnotations  func()
 
@@ -178,7 +183,11 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 				if p.SidebarWide {
 					glyph = icons.SidebarCollapse
 				}
-				tip := fmt.Sprintf("%s %s", theme.Tr("侧边栏", "Sidebar"), blockui.FormatShortcutDisplay("alt-b"))
+				sbSc := p.ShortcutSidebar
+				if sbSc == "" {
+					sbSc = "alt-b"
+				}
+				tip := fmt.Sprintf("%s %s", theme.Tr("侧边栏", "Sidebar"), blockui.FormatShortcutDisplay(sbSc))
 				if p.SidebarAutoHidden {
 					if p.InSettings {
 						tip = theme.Tr("窗口较窄，设置导航已让出。点击以浮层打开", "Settings navigation stepped aside. Click to open it over the page")
@@ -254,9 +263,9 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 						case active && multi:
 							pill.Background(pal.Paper).Border(1, pal.Hairline)
 						case hovered:
-							pill.Background(pal.Hover)
+							pill.Background(pal.Hover).Border(1, ui.Transparent)
 						default:
-							pill.Background(ui.Transparent)
+							pill.Background(ui.Transparent).Border(1, ui.Transparent)
 						}
 						var closeClicked bool
 						pill.Children(func() {
@@ -366,9 +375,13 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 					p.OnToggleFeedback()
 				}
 
+				aiSc := p.ShortcutAI
+				if aiSc == "" {
+					aiSc = "cmd-j"
+				}
 				aiBtn := blockui.IconButton(c, icons.Sparkles, blockui.IconButtonOptions{
 					ID:      "titlebar-ai",
-					Tooltip: fmt.Sprintf("%s %s", theme.Tr("AI 助手", "AI Assistant"), blockui.FormatShortcutDisplay("cmd-j")),
+					Tooltip: fmt.Sprintf("%s %s", theme.Tr("AI 助手", "AI Assistant"), blockui.FormatShortcutDisplay(aiSc)),
 					Active:  p.AIOpen,
 				})
 				if aiBtn.Clicked() && p.OnToggleAI != nil {
@@ -612,7 +625,7 @@ func buildPageMenuItems(p TitlebarProps) []blockui.MenuItemSpec {
 		{
 			ID:       "page-export-image",
 			Label:    theme.Tr("导出与生成图片…", "Export & Image…"),
-			Shortcut: blockui.FormatShortcutDisplay("cmd-shift-e"),
+			Shortcut: blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutExport, "cmd-shift-e")),
 			Icon:     &icImg,
 			OnClick: func() {
 				p.MenuState.Close()
@@ -692,6 +705,13 @@ func buildPageMenuItems(p TitlebarProps) []blockui.MenuItemSpec {
 			},
 		},
 	}
+}
+
+func nonEmptyOr(val, fallback string) string {
+	if strings.TrimSpace(val) != "" {
+		return val
+	}
+	return fallback
 }
 
 func buildTabContextItems(p TitlebarProps) []blockui.MenuItemSpec {

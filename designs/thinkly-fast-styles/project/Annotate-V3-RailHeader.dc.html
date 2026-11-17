@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>紧凑批注 C · 宽屏页边无框眉批 + 窄窗顶栏汇总胶囊与底部悬浮抽屉 Sheet</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;background:#f1f1f1;-webkit-font-smoothing:antialiased}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input,textarea{font-family:inherit;font-size:14px}
+*{box-sizing:border-box}
+::selection{background:#cde2fb;color:#184f95}
+.span-btn{border:0;background:transparent;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer;display:inline}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:920px;display:flex;flex-direction:column;background:{{canvasBg}};color:#20242c;font-size:14px;line-height:20px">
+
+  <!-- 画板顶部视口模式切换栏 -->
+  <div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:#fafafa;border-bottom:1px solid #e6e6e6">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-weight:560;color:#20242c">方案 C · 顶栏汇总胶囊 + 底部悬浮抽屉 Sheet</span>
+      <span style="color:#526071">窄窗下正文 100% 洁净无右栏，点击高亮段落或顶栏「批注 · 3」胶囊时从底部浮起抽屉面板</span>
+    </div>
+    <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:#f1f1f1;border:1px solid #dcdcdc">
+      <button type="button" onClick="{{setNarrow}}" style="height:28px;padding:0 12px;border:0;border-radius:6px;background:{{narrowBtnBg}};color:{{narrowBtnCol}};box-shadow:{{narrowBtnRing}};font-weight:460;cursor:pointer">窄窗无侧边空间 (760px)</button>
+      <button type="button" onClick="{{setWide}}" style="height:28px;padding:0 12px;border:0;border-radius:6px;background:{{wideBtnBg}};color:{{wideBtnCol}};box-shadow:{{wideBtnRing}};font-weight:460;cursor:pointer">宽屏并排 (1440px)</button>
+    </div>
+  </div>
+
+  <!-- 模拟应用窗口容器 -->
+  <div style="{{frameStyle}}">
+
+    <!-- 顶部 40px 标题栏 -->
+    <header style="height:40px;flex:none;display:flex;align-items:center;background:#f1f1f1;border-bottom:1px solid #e6e6e6;padding:0 12px 0 0">
+      <div style="width:{{sidebarW}};height:100%;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 14px;border-right:1px solid #e6e6e6">
+        <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+          <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+          <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+          <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+        </div>
+        <button type="button" aria-label="收起侧栏" style="width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:#526071;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M6 2.5v11" stroke="#547dd0" stroke-width="1.4"/></svg>
+        </button>
+      </div>
+
+      <div style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:0 12px">
+        <div style="height:28px;padding:4px 12px;border-radius:6px;background:#ffffff;border:1px solid #e4e6ea;display:inline-flex;align-items:center;gap:8px;color:#20242c;font-weight:500">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 2.5h6l3 3v8h-9v-11z" fill="#c9d8f3" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 8h5M5.5 10.5h3.5" stroke="#547dd0" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span>日常常用</span>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:6px;flex:none">
+        <!-- 窄窗顶栏汇总胶囊：批注 · N -->
+        <sc-if value="{{isNarrow}}" hint-placeholder-val="{{true}}">
+          <button type="button" onClick="{{toggleSheet}}" style="height:28px;padding:0 10px;border:1px solid #547dd0;border-radius:14px;background:#e5edfc;color:#20242c;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+            <span style="width:6px;height:6px;border-radius:3px;background:#547dd0"></span>
+            <span>批注 · {{activeCount}}</span>
+          </button>
+        </sc-if>
+
+        <sc-if value="{{hasPending}}" hint-placeholder-val="{{false}}">
+          <button type="button" onClick="{{generateAll}}" style="height:28px;padding:4px 10px;border:0;border-radius:6px;background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+            <span>交给 AI 修改 ({{pendingCount}})</span>
+          </button>
+        </sc-if>
+
+        <sc-if value="{{hasGenerated}}" hint-placeholder-val="{{true}}">
+          <div style="display:inline-flex;align-items:center;gap:6px">
+            <button type="button" onClick="{{applyAll}}" style="height:28px;padding:4px 10px;border:0;border-radius:6px;background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+              <span>全部应用 ({{generatedCount}})</span>
+            </button>
+            <button type="button" onClick="{{resetPending}}" style="height:28px;padding:4px 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#526071;cursor:pointer">全部还原</button>
+          </div>
+        </sc-if>
+      </div>
+    </header>
+
+    <div style="flex:1;min-height:0;display:flex">
+      <!-- 左侧文件树 -->
+      <aside style="width:{{sidebarW}};flex:none;background:#fafafa;border-right:1px solid #e6e6e6;display:flex;flex-direction:column;justify-content:space-between;padding:12px 10px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:6px;padding:0 2px 8px">
+            <div style="flex:1;min-width:0;height:32px;padding:6px 10px;border-radius:6px;background:#ffffff;border:1px solid #dcdcdc;display:flex;align-items:center;justify-content:space-between;color:#526071">
+              <span>搜索</span>
+            </div>
+            <button type="button" aria-label="新建笔记" style="width:32px;height:32px;flex:none;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#20242c;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">+</button>
+          </div>
+          <div style="height:32px;padding:6px 10px;border-radius:6px;display:flex;align-items:center;color:#526071">Gemini</div>
+          <div style="height:32px;padding:6px 10px;border-radius:6px;display:flex;align-items:center;color:#526071;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">实际落地业务采集</div>
+          <div style="height:32px;padding:6px 10px;border-radius:6px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;display:flex;align-items:center;justify-content:space-between;color:#20242c;font-weight:500">
+            <span>日常常用</span>
+            <span style="color:#526071;font-family:'JetBrains Mono',monospace">{{activeCount}}</span>
+          </div>
+          <div style="height:32px;padding:6px 10px;border-radius:6px;display:flex;align-items:center;color:#526071">视频生成</div>
+        </div>
+
+        <div style="padding-top:10px;border-top:1px solid #e6e6e6;display:flex;align-items:center;justify-content:space-between;color:#526071">
+          <span style="padding:0 6px">本地笔记</span>
+          <button type="button" aria-label="设置" style="width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:#526071;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">⚙</button>
+        </div>
+      </aside>
+
+      <!-- 编辑区 -->
+      <main style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;background:#ffffff;position:relative">
+        <div style="display:flex;justify-content:center;gap:24px;padding:36px 24px 28px;align-items:flex-start">
+          <article style="flex:1;min-width:0;max-width:672px;color:#20242c;font-size:16px;line-height:28px">
+            <div style="display:flex;align-items:center;gap:6px;color:#547dd0;font-size:20px;line-height:28px;font-weight:600;margin-bottom:18px">
+              <span style="color:#526071;font-size:14px">›</span>
+              <span>Design</span>
+            </div>
+
+            <h2 style="margin:0 0 14px;font-size:20px;line-height:28px;font-weight:600">
+              <button type="button" class="span-btn" onClick="{{focus1}}" style="background:{{spanBg1}};box-shadow:{{spanRing1}};border-radius:4px;padding:2px 6px;font-size:20px;line-height:28px;font-weight:600">{{text1}}</button>
+            </h2>
+
+            <div style="background:#fafafa;border:1px solid #e6e6e6;border-radius:10px;padding:16px 18px;font-family:'JetBrains Mono',Menlo,'PingFang SC',monospace;font-size:14px;line-height:24px;color:#20242c">
+              <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+                <span style="padding:2px 8px;border-radius:4px;background:#ffffff;border:1px solid #dcdcdc;color:#526071;font-size:14px">markdown</span>
+              </div>
+              <p style="margin:0 0 10px">执行步骤：/goal 完整执行以下步骤，尽量多个 sub agent 一起执行。</p>
+
+              <p style="margin:0 0 10px">
+                <span>- 要求：主会话只跟你对齐、做决定、收总结。</span>
+                <button type="button" class="span-btn" onClick="{{focus2}}" style="background:{{spanBg2}};box-shadow:{{spanRing2}};border-radius:4px;padding:2px 5px">{{text2}}</button>
+              </p>
+
+              <p style="margin:0 0 10px">- 调研：技术栈变更参考社区活跃方案、开源优先，查看评论区是否有更优推荐；</p>
+
+              <p style="margin:0">
+                <span>- </span>
+                <button type="button" class="span-btn" onClick="{{focus3}}" style="background:{{spanBg3}};box-shadow:{{spanRing3}};border-radius:4px;padding:2px 5px">{{text3}}</button>
+              </p>
+            </div>
+
+            <div style="margin-top:20px;padding:12px 16px;border-radius:8px;background:#fafafa;border:1px solid #e6e6e6;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;color:#526071">
+              <span>{{modeHint}}</span>
+              <div style="display:flex;gap:6px;flex:none">
+                <button type="button" onClick="{{resetPending}}" style="height:28px;padding:4px 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#20242c;cursor:pointer">1. 待发态</button>
+                <button type="button" onClick="{{generateAll}}" style="height:28px;padding:4px 10px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;color:#20242c;cursor:pointer">2. 生成后</button>
+              </div>
+            </div>
+          </article>
+
+          <!-- 宽屏形态 C：无外框页边眉批 -->
+          <sc-if value="{{isWide}}" hint-placeholder-val="{{false}}">
+            <aside style="width:208px;flex:none;display:flex;flex-direction:column;gap:12px;padding-top:46px">
+
+              <sc-if value="{{showCard1}}" hint-placeholder-val="{{true}}">
+                <div style="border-left:2px solid {{bar1}};padding:2px 0 2px 10px;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+                    <button type="button" onClick="{{focus1}}" style="border:0;background:transparent;padding:0;color:#526071;font-size:14px;text-align:left;cursor:pointer">改成专业小节标题</button>
+                    <div style="display:inline-flex;align-items:center;gap:4px;flex:none">
+                      <sc-if value="{{isGenerated1}}" hint-placeholder-val="{{true}}">
+                        <button type="button" onClick="{{apply1}}" style="border:0;background:transparent;padding:2px 4px;color:#547dd0;font-weight:600;cursor:pointer">✓</button>
+                      </sc-if>
+                      <button type="button" onClick="{{revert1}}" style="border:0;background:transparent;padding:2px 4px;color:#526071;cursor:pointer">×</button>
+                    </div>
+                  </div>
+                  <sc-if value="{{expandWide1}}" hint-placeholder-val="{{true}}">
+                    <div style="display:flex;gap:4px">
+                      <label for="note-chat-1" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">追问眉批 1</label>
+                      <input id="note-chat-1" type="text" value="{{follow1}}" onInput="{{onFollow1}}" placeholder="继续微调…" style="flex:1;min-width:0;height:26px;padding:4px 8px;border:1px solid #dcdcdc;border-radius:5px;background:#fafafa;color:#20242c" />
+                      <button type="button" onClick="{{regen1}}" style="height:26px;padding:2px 8px;border:1px solid #547dd0;border-radius:5px;background:#e5edfc;color:#20242c;cursor:pointer">↵</button>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{showCard2}}" hint-placeholder-val="{{true}}">
+                <div style="border-left:2px solid {{bar2}};padding:2px 0 2px 10px;display:flex;flex-direction:column;gap:6px;margin-top:48px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+                    <button type="button" onClick="{{focus2}}" style="border:0;background:transparent;padding:0;color:#526071;font-size:14px;text-align:left;cursor:pointer">精简成书面规则</button>
+                    <div style="display:inline-flex;align-items:center;gap:4px;flex:none">
+                      <sc-if value="{{isGenerated2}}" hint-placeholder-val="{{true}}">
+                        <button type="button" onClick="{{apply2}}" style="border:0;background:transparent;padding:2px 4px;color:#547dd0;font-weight:600;cursor:pointer">✓</button>
+                      </sc-if>
+                      <button type="button" onClick="{{revert2}}" style="border:0;background:transparent;padding:2px 4px;color:#526071;cursor:pointer">×</button>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{showCard3}}" hint-placeholder-val="{{true}}">
+                <div style="border-left:2px solid {{bar3}};padding:2px 0 2px 10px;display:flex;flex-direction:column;gap:6px;margin-top:34px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+                    <button type="button" onClick="{{focus3}}" style="border:0;background:transparent;padding:0;color:#526071;font-size:14px;text-align:left;cursor:pointer">补全出 3 个版本</button>
+                    <div style="display:inline-flex;align-items:center;gap:4px;flex:none">
+                      <sc-if value="{{isGenerated3}}" hint-placeholder-val="{{true}}">
+                        <button type="button" onClick="{{apply3}}" style="border:0;background:transparent;padding:2px 4px;color:#547dd0;font-weight:600;cursor:pointer">✓</button>
+                      </sc-if>
+                      <button type="button" onClick="{{revert3}}" style="border:0;background:transparent;padding:2px 4px;color:#526071;cursor:pointer">×</button>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+
+            </aside>
+          </sc-if>
+        </div>
+
+        <!-- 窄窗底部悬浮抽屉面板 Bottom Sheet -->
+        <sc-if value="{{showBottomSheet}}" hint-placeholder-val="{{true}}">
+          <div style="margin:0 20px 14px;padding:12px 16px;border-radius:10px;background:#ffffff;border:1px solid #547dd0;box-shadow:0 8px 24px rgba(0,0,0,0.08);display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                <button type="button" onClick="{{prevActive}}" style="height:26px;padding:0 8px;border:1px solid #dcdcdc;border-radius:6px;background:#fafafa;color:#20242c;cursor:pointer">‹ 上一条</button>
+                <button type="button" onClick="{{nextActive}}" style="height:26px;padding:0 8px;border:1px solid #dcdcdc;border-radius:6px;background:#fafafa;color:#20242c;cursor:pointer">下一条 ›</button>
+                <span style="font-weight:500;color:#20242c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{sheetTitle}}</span>
+              </div>
+              <div style="display:inline-flex;align-items:center;gap:6px;flex:none">
+                <button type="button" onClick="{{applyCurrent}}" style="height:26px;padding:0 10px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;color:#20242c;cursor:pointer">✓ 应用当前</button>
+                <button type="button" onClick="{{revertCurrent}}" style="height:26px;padding:0 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#526071;cursor:pointer">↺ 还原</button>
+                <button type="button" onClick="{{closeSheet}}" style="height:26px;padding:0 8px;border:0;border-radius:6px;background:#f1f1f1;color:#526071;cursor:pointer">收起</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <label for="sheet-chat-input" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">底部抽屉追问</label>
+              <input id="sheet-chat-input" type="text" value="{{currentFollow}}" onInput="{{onCurrentFollow}}" placeholder="继续对话微调当前批注…" style="flex:1;min-width:0;height:30px;padding:4px 10px;border:1px solid #dcdcdc;border-radius:6px;background:#fafafa;color:#20242c" />
+              <button type="button" onClick="{{regenCurrent}}" style="height:30px;padding:0 12px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;color:#20242c;font-weight:500;cursor:pointer">发送 ↵</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <footer style="height:28px;padding:0 18px;border-top:1px solid #e6e6e6;display:flex;align-items:center;justify-content:space-between;color:#526071;font-size:14px">
+          <span>已保存 · 内存会话就绪</span>
+          <span>{{footerRight}}</span>
+        </footer>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":920}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      narrow: true,
+      sheetOpen: true,
+      active: 1,
+      s1: 'generated',
+      s2: 'generated',
+      s3: 'generated',
+      follow1: '再简短一点，控制在 6 个字内',
+      follow2: '',
+      follow3: ''
+    };
+  }
+  renderVals() {
+    const { narrow, sheetOpen, active, s1, s2, s3, follow1, follow2, follow3 } = this.state;
+    const states = [s1, s2, s3];
+    const pendingCount = states.filter((s) => s === 'pending').length;
+    const generatedCount = states.filter((s) => s === 'generated' || s === 'iterated').length;
+    const activeCount = states.filter((s) => s !== 'applied').length;
+    const isGen = (st) => st === 'generated' || st === 'iterated';
+
+    const textFor = (idx, st) => {
+      if (idx === 1) return st === 'pending' ? '调研后工作' : (st === 'iterated' ? '调研与子代理分工' : '调研落地与子代理分工规范');
+      if (idx === 2) return st === 'pending' ? '凡是会写文件、跑命令、或可能重试的，一律子代理。主会话最多做一次只读、用来回答你当下那句的查找，保持上下文干净。' : '所有文件读写、命令执行与重试均交由子代理完成；主会话仅允许单次只读查询以保持上下文精简。';
+      return st === 'pending' ? '页面交互、流程变更生成改动内容的 html 页面，并且设计三个交互版本给我选择；只是流程变化' : '涉及界面交互与流程变更时，使用 /design 技能输出 3 个风格显著不同的可交互画板供选择，先确认视觉与流程再进入编码。';
+    };
+
+    const spanBg = (idx, st) => (st === 'applied' ? 'transparent' : (isGen(st) ? '#e5edfc' : (active === idx ? '#fdda8c' : '#fef0d1')));
+    const spanRing = (st) => (isGen(st) ? 'inset 0 0 0 1px #547dd0' : 'none');
+
+    const curIdx = active || 1;
+    const titles = {
+      1: '批注 1/3：改成专业一点的小节标题',
+      2: '批注 2/3：精简成书面规则，保留单次只读',
+      3: '批注 3/3：补全半句话：出 3 个交互版本'
+    };
+    const follows = { 1: follow1, 2: follow2, 3: follow3 };
+
+    return {
+      isNarrow: narrow,
+      isWide: !narrow,
+      canvasBg: narrow ? '#f1f1f1' : '#ffffff',
+      frameStyle: narrow
+        ? 'width:780px;min-height:820px;margin:20px auto;border:1px solid #dcdcdc;border-radius:12px;overflow:hidden;box-shadow:0 12px 32px rgba(0,0,0,0.08);display:flex;flex-direction:column;background:#ffffff'
+        : 'width:100%;flex:1;display:flex;flex-direction:column;background:#ffffff',
+      sidebarW: narrow ? '180px' : '260px',
+      narrowBtnBg: narrow ? '#e5edfc' : 'transparent',
+      narrowBtnCol: narrow ? '#20242c' : '#526071',
+      narrowBtnRing: narrow ? 'inset 0 0 0 1px #547dd0' : 'none',
+      wideBtnBg: !narrow ? '#e5edfc' : 'transparent',
+      wideBtnCol: !narrow ? '#20242c' : '#526071',
+      wideBtnRing: !narrow ? 'inset 0 0 0 1px #547dd0' : 'none',
+      modeHint: narrow
+        ? '窄窗模式（方案 C）：正文两侧 100% 洁净无右栏，顶栏显示「批注 · 3」胶囊，底部浮起抽屉面板切换与微调。'
+        : '宽屏模式（方案 C）：无卡片外框与阴影，仅一条左竖线 + 批注小字印在纸面留白。',
+      footerRight: narrow
+        ? '窄窗方案 C：顶栏汇总胶囊 + 底部悬浮抽屉 Sheet'
+        : '宽屏方案 C：零外框页边眉批',
+
+      hasPending: pendingCount > 0,
+      hasGenerated: generatedCount > 0,
+      pendingCount,
+      generatedCount,
+      activeCount,
+      text1: textFor(1, s1),
+      text2: textFor(2, s2),
+      text3: textFor(3, s3),
+      spanBg1: spanBg(1, s1),
+      spanBg2: spanBg(2, s2),
+      spanBg3: spanBg(3, s3),
+      spanRing1: spanRing(s1),
+      spanRing2: spanRing(s2),
+      spanRing3: spanRing(s3),
+      showCard1: s1 !== 'applied',
+      showCard2: s2 !== 'applied',
+      showCard3: s3 !== 'applied',
+      isGenerated1: isGen(s1),
+      isGenerated2: isGen(s2),
+      isGenerated3: isGen(s3),
+      expandWide1: !narrow && active === 1 && isGen(s1),
+      bar1: isGen(s1) ? '#547dd0' : '#f5c84c',
+      bar2: isGen(s2) ? '#547dd0' : '#f5c84c',
+      bar3: isGen(s3) ? '#547dd0' : '#f5c84c',
+      follow1,
+      follow2,
+      follow3,
+      showBottomSheet: narrow && sheetOpen && activeCount > 0,
+      sheetTitle: titles[curIdx] || titles[1],
+      currentFollow: follows[curIdx] || '',
+
+      setNarrow: () => this.setState({ narrow: true, sheetOpen: true }),
+      setWide: () => this.setState({ narrow: false }),
+      toggleSheet: () => this.setState({ sheetOpen: !sheetOpen }),
+      closeSheet: () => this.setState({ sheetOpen: false }),
+      prevActive: () => this.setState({ active: curIdx <= 1 ? 3 : curIdx - 1, sheetOpen: true }),
+      nextActive: () => this.setState({ active: curIdx >= 3 ? 1 : curIdx + 1, sheetOpen: true }),
+      focus1: () => this.setState({ active: 1, sheetOpen: true }),
+      focus2: () => this.setState({ active: 2, sheetOpen: true }),
+      focus3: () => this.setState({ active: 3, sheetOpen: true }),
+      onFollow1: (e) => this.setState({ follow1: e && e.target ? e.target.value : follow1 }),
+      onCurrentFollow: (e) => {
+        const val = e && e.target ? e.target.value : '';
+        if (curIdx === 1) this.setState({ follow1: val });
+        else if (curIdx === 2) this.setState({ follow2: val });
+        else this.setState({ follow3: val });
+      },
+      regen1: () => this.setState({ s1: 'iterated', follow1: '' }),
+      regenCurrent: () => {
+        if (curIdx === 1) this.setState({ s1: 'iterated', follow1: '' });
+        else if (curIdx === 2) this.setState({ s2: 'iterated', follow2: '' });
+        else this.setState({ s3: 'iterated', follow3: '' });
+      },
+      applyCurrent: () => {
+        if (curIdx === 1) this.setState({ s1: 'applied', active: 2 });
+        else if (curIdx === 2) this.setState({ s2: 'applied', active: 3 });
+        else this.setState({ s3: 'applied', active: 1 });
+      },
+      revertCurrent: () => {
+        if (curIdx === 1) this.setState({ s1: 'pending' });
+        else if (curIdx === 2) this.setState({ s2: 'pending' });
+        else this.setState({ s3: 'pending' });
+      },
+      revert1: () => this.setState({ s1: 'pending' }),
+      revert2: () => this.setState({ s2: 'pending' }),
+      revert3: () => this.setState({ s3: 'pending' }),
+      apply1: () => this.setState({ s1: 'applied' }),
+      apply2: () => this.setState({ s2: 'applied' }),
+      apply3: () => this.setState({ s3: 'applied' }),
+      generateAll: () => this.setState({ s1: 'generated', s2: 'generated', s3: 'generated' }),
+      applyAll: () => this.setState({ s1: 'applied', s2: 'applied', s3: 'applied', sheetOpen: false }),
+      resetPending: () => this.setState({ active: 1, sheetOpen: true, s1: 'pending', s2: 'pending', s3: 'pending' })
+    };
+  }
+}
+</script>
+</body>
+</html>

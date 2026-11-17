@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>页面历史 A · 右侧版本栏（推荐）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400..500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button{font-family:inherit}
+button:focus-visible{outline:2px solid #547dd0;outline-offset:2px}
+.ib{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#526071;padding:0;cursor:pointer;flex:none}
+.ib:hover{background:#eef3fc;color:#20242c}
+.tab{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:28px;min-width:104px;max-width:196px;flex:0 1 176px;display:inline-flex;align-items:center;gap:6px;padding:0 8px 0 10px;border:0;border-radius:6px;background:transparent;color:#526071;cursor:pointer;box-sizing:border-box}
+.tab-active{background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0}
+.row{font:inherit;font-size:14px;line-height:20px;font-weight:400;width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#20242c;text-align:left;cursor:pointer;box-sizing:border-box}
+.row:hover{background:#eef3fc}
+.btn{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:32px;padding:0 12px;border-radius:8px;border:1px solid #dcdcdc;background:#ffffff;color:#20242c;display:inline-flex;align-items:center;gap:6px;cursor:pointer;box-sizing:border-box}
+.btn:hover:not(:disabled){background:#eef3fc}
+.btn:disabled{opacity:.48;cursor:not-allowed}
+.btn-pri{background:#547dd0;border-color:#547dd0;color:#ffffff}
+.btn-pri:hover:not(:disabled){background:#3d63b0;border-color:#3d63b0}
+.seg{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:28px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:#526071;cursor:pointer}
+.seg:hover{color:#20242c}
+.vitem{font:inherit;width:100%;padding:10px 12px;border:0;border-radius:8px;background:transparent;color:#20242c;text-align:left;display:flex;flex-direction:column;gap:4px;cursor:pointer;box-sizing:border-box}
+.vitem:hover{background:#eef3fc}
+.tag{display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;font-size:14px;line-height:18px;font-weight:460}
+@media (max-width:960px){.h-aside{width:100% !important;border-left:0 !important;border-top:1px solid #e6e6e6}}
+</style>
+</helmet>
+<div style="width:100%;min-height:960px;box-sizing:border-box;display:flex;flex-direction:column;background:#f1f1f1;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;font-size:14px;line-height:20px;position:relative">
+
+<header style="min-height:40px;flex:none;display:flex;flex-wrap:wrap;align-items:center;border-bottom:1px solid #e6e6e6;box-sizing:border-box;background:#f1f1f1">
+<div style="width:{{leftHeaderW}};flex:none;height:40px;box-sizing:border-box;display:flex;align-items:center;padding:0 10px 0 16px;border-right:1px solid #e6e6e6">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<button class="ib" type="button" onClick="{{closeHistory}}" aria-label="切换侧栏与编辑视图" style="margin-left:auto">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="#c9d8f3"></path><rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect><path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5"></path></svg>
+</button>
+</div>
+<nav aria-label="已打开标签页" style="flex:1;min-width:200px;height:40px;display:flex;align-items:center;gap:4px;padding:0 10px;overflow:hidden">
+<button class="tab tab-active" type="button"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="1.6" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="#c9d8f3" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg><span>周会 11-03</span></button>
+<button class="tab" type="button"><span>产品原则</span></button>
+<button class="tab" type="button"><span>发布清单</span></button>
+</nav>
+<div style="display:flex;align-items:center;gap:6px;padding:0 12px;height:40px;border-left:1px solid #e6e6e6">
+<sc-if value="{{historyOpen}}" hint-placeholder-val="{{true}}">
+<span style="color:#526071">正在查看页面历史（只读）</span>
+</sc-if>
+<button class="ib" type="button" onClick="{{toggleMenu}}" aria-label="页面更多操作" style="background:{{menuBtnBg}};color:{{menuBtnColor}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="18" cy="12" r="1.6"></circle></svg>
+</button>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap;position:relative">
+
+<sc-if value="{{showFileSidebar}}" hint-placeholder-val="{{false}}">
+<aside aria-label="文件列表" style="width:260px;flex:none;background:#fafafa;border-right:1px solid #e6e6e6;padding:12px 8px;box-sizing:border-box;display:flex;flex-direction:column;gap:4px">
+<div style="padding:4px 8px;color:#526071;font-weight:560">本地笔记</div>
+<button class="row" type="button" style="background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;font-weight:460">周会 11-03</button>
+<button class="row" type="button">需求评审</button>
+<button class="row" type="button">产品原则</button>
+<button class="row" type="button">发布清单</button>
+</aside>
+</sc-if>
+
+<main style="flex:999 1 560px;min-width:0;background:#ffffff;display:flex;flex-direction:column;position:relative">
+
+<sc-if value="{{menuOpen}}" hint-placeholder-val="{{false}}">
+<div role="menu" aria-label="页面更多菜单" style="position:absolute;top:8px;right:12px;z-index:20;width:236px;padding:4px;background:#ffffff;border:1px solid #e4e6ea;border-radius:8px;box-shadow:0 10px 28px rgba(32,36,44,.12);display:flex;flex-direction:column;gap:2px;box-sizing:border-box">
+<button class="row" type="button" role="menuitem" onClick="{{openHistoryFromMenu}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#20242c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.25" fill="#c9d8f3" stroke="none"></circle><path d="M4.5 8.5V4.5H8.5"></path><path d="M4.8 13.5A7.5 7.5 0 1 0 6.5 6.8L4.5 8.5"></path><path d="M12 8v4.5l3 1.8" stroke="#547dd0"></path></svg>
+<span style="flex:1">页面历史…</span>
+</button>
+<button class="row" type="button" role="menuitem"><span>生成图片…</span></button>
+<button class="row" type="button" role="menuitem"><span>复制 Markdown</span></button>
+</div>
+</sc-if>
+
+<sc-if value="{{toastVisible}}" hint-placeholder-val="{{false}}">
+<div role="status" style="margin:12px 28px 0;padding:10px 14px;border-radius:8px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+<span>{{toastText}}</span>
+<div style="display:flex;align-items:center;gap:8px">
+<sc-if value="{{canUndoRestore}}" hint-placeholder-val="{{true}}">
+<button class="btn" type="button" onClick="{{undoRestore}}">撤销恢复</button>
+</sc-if>
+<button class="ib" type="button" onClick="{{dismissToast}}" aria-label="关闭提示"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{historyOpen}}" hint-placeholder-val="{{true}}">
+<div style="padding:10px 28px;border-bottom:1px solid #e4e6ea;background:#fafafa;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+<span style="font-weight:560">{{selTitle}}</span>
+<span class="tag" style="background:{{selBadgeBg}};color:{{selBadgeColor}}">{{selBadge}}</span>
+<span style="color:#526071">{{selSummary}}</span>
+</div>
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+<div role="group" aria-label="预览模式" style="display:inline-flex;background:#f1f1f1;border:1px solid #e4e6ea;border-radius:8px;padding:2px;gap:2px">
+<button class="seg" type="button" onClick="{{setDiffMode}}" style="background:{{diffTabBg}};color:{{diffTabColor}};box-shadow:{{diffTabShadow}}">与当前对比</button>
+<button class="seg" type="button" onClick="{{setCleanMode}}" style="background:{{cleanTabBg}};color:{{cleanTabColor}};box-shadow:{{cleanTabShadow}}">只读原文</button>
+</div>
+<button class="btn btn-pri" type="button" disabled="{{restoreDisabled}}" onClick="{{openConfirm}}">{{restoreBtnText}}</button>
+<button class="btn" type="button" onClick="{{closeHistory}}" aria-label="退出页面历史">关闭历史</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isEditingMode}}" hint-placeholder-val="{{false}}">
+<div style="padding:10px 28px;border-bottom:1px solid #e4e6ea;background:#fafafa;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+<span style="color:#526071">当前处于正常编辑状态（已归还焦点与原滚动位置）。可点右上角「⋯ → 页面历史…」重新进入。</span>
+<button class="btn" type="button" onClick="{{openHistoryFromMenu}}">打开页面历史</button>
+</div>
+</sc-if>
+
+<div style="box-sizing:border-box;width:100%;max-width:760px;margin:0 auto;padding:36px 28px 64px;display:flex;flex-direction:column;gap:16px">
+<h1 style="max-width:700px;margin:0;font-size:28px;line-height:1.35;font-weight:560;letter-spacing:-0.01em">把周会改成异步</h1>
+
+<p style="max-width:700px;margin:0;font-size:16px;line-height:1.65;color:#1f1e1d">{{p1Text}}</p>
+
+<sc-if value="{{showDiffView}}" hint-placeholder-val="{{true}}">
+<div style="max-width:700px;padding:12px 14px;border-radius:8px;background:#f8f8f8;border:1px solid #e4e6ea;display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:center;gap:8px"><span class="tag" style="background:#ececec;color:#526071">已删除 · 所选旧版原有</span></div>
+<p style="margin:0;font-size:16px;line-height:1.65;color:#526071;text-decoration:line-through">{{diffDeletedP2}}</p>
+</div>
+<div style="max-width:700px;padding:12px 14px;border-radius:8px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:center;gap:8px"><span class="tag" style="background:#ffffff;color:#3d63b0">+ 当前版本新增</span></div>
+<p style="margin:0;font-size:16px;line-height:1.65;color:#1f1e1d">{{diffAddedP2}}</p>
+</div>
+</sc-if>
+
+<sc-if value="{{showPlainParagraph}}" hint-placeholder-val="{{false}}">
+<p style="max-width:700px;margin:0;font-size:16px;line-height:1.65;color:#1f1e1d">{{p2Text}}</p>
+</sc-if>
+
+<blockquote style="max-width:700px;margin:0;padding:4px 0 4px 14px;border-left:2px solid #dbd9d4;font-size:16px;line-height:1.65;color:#1f1e1d">会议是例外，不是节奏。一段文字能说清的，不要再约三十分钟。</blockquote>
+
+<h2 style="max-width:700px;margin:8px 0 0;font-size:20px;line-height:1.4;font-weight:560">保留下来的三件事</h2>
+
+<div style="max-width:700px;display:flex;flex-direction:column;gap:8px;font-size:16px;line-height:1.6">
+<div>1. 周一前写好本周目标，一句话即可</div>
+<div>2. 阻塞写在文档里，直接点名负责人</div>
+<sc-if value="{{showDiffView}}" hint-placeholder-val="{{true}}">
+<div style="padding:8px 12px;border-radius:8px;background:#f8f8f8;border:1px solid #e4e6ea;color:#526071;text-decoration:line-through"><span class="tag" style="background:#ececec;color:#526071;margin-right:8px">已删除</span>{{diffDeletedItem3}}</div>
+<div style="padding:8px 12px;border-radius:8px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;color:#1f1e1d"><span class="tag" style="background:#ffffff;color:#3d63b0;margin-right:8px">+ 新增</span>{{diffAddedItem3}}</div>
+</sc-if>
+<sc-if value="{{showPlainParagraph}}" hint-placeholder-val="{{false}}">
+<div>{{item3Text}}</div>
+</sc-if>
+</div>
+</div>
+</main>
+
+<sc-if value="{{historyOpen}}" hint-placeholder-val="{{true}}">
+<aside class="h-aside" aria-label="页面历史版本列表" onKeyDown="{{onPanelKeyDown}}" style="width:320px;flex:none;background:#fafafa;border-left:1px solid #e6e6e6;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between">
+<div style="padding:14px 12px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px">
+<span style="font-size:15px;font-weight:560">页面历史</span>
+<button class="ib" type="button" onClick="{{closeHistory}}" aria-label="关闭页面历史侧栏">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+</button>
+</div>
+<div style="padding:0 4px;color:#526071">按日期倒序 · 打开历史时已自动保存当前修改</div>
+<div role="listbox" aria-label="历史版本" style="display:flex;flex-direction:column;gap:4px">
+<sc-for list="{{versionItems}}" as="v" hint-placeholder-count="4">
+<button class="vitem" type="button" role="option" aria-selected="{{v.selected}}" onClick="{{v.pick}}" style="background:{{v.bg}};box-shadow:{{v.shadow}}">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%">
+<span style="font-weight:560">{{v.time}}</span>
+<span class="tag" style="background:{{v.badgeBg}};color:{{v.badgeColor}}">{{v.badge}}</span>
+</div>
+<div style="color:#526071">{{v.desc}}</div>
+</button>
+</sc-for>
+</div>
+</div>
+<div style="padding:12px 16px;border-top:1px solid #e4e6ea;color:#526071;display:flex;flex-direction:column;gap:6px">
+<div>方向：所选旧版 → 当前版本</div>
+<div>支持 ↑ / ↓ 切换版本，Esc 关闭</div>
+</div>
+</aside>
+</sc-if>
+
+</div>
+
+<sc-if value="{{confirmOpen}}" hint-placeholder-val="{{false}}">
+<div role="dialog" aria-modal="true" aria-label="确认恢复到此版本" onKeyDown="{{onModalKeyDown}}" style="position:fixed;inset:0;z-index:50;background:rgba(32,36,44,.28);display:flex;align-items:center;justify-content:center;padding:24px">
+<div style="width:100%;max-width:440px;background:#ffffff;border:1px solid #e4e6ea;border-radius:14px;box-shadow:0 16px 40px rgba(32,36,44,.16);padding:20px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="font-size:16px;font-weight:560">恢复到「{{selTitle}}」？</span>
+<button class="ib" type="button" onClick="{{cancelConfirm}}" aria-label="关闭确认弹窗"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</div>
+<p style="margin:0;color:#526071;font-size:14px;line-height:1.6">恢复前会先为当前内容保存快照，并将「{{selTitle}}」作为最新当前版本写入，不会删除任何中间历史记录。</p>
+<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+<button class="btn" type="button" onClick="{{cancelConfirm}}">取消</button>
+<button class="btn btn-pri" type="button" onClick="{{confirmRestore}}">确认恢复</button>
+</div>
+</div>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"defaultView":{"editor":"enum","default":"diff","options":["diff","clean"],"label":"默认对比视图"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.baseVersions = [
+      {
+        id: 'v-cur',
+        time: '今天 14:32',
+        badge: '当前版本',
+        desc: '自动保存 · 补充周五复盘规则与阻塞点名',
+        isCurrent: true,
+        sameAsCurrent: true,
+        p1: '上周排了三场同步会，两场结束时没有结论。人到齐，并不等于事情被推进。',
+        p2: '与其等所有人空出同一段时间，不如把状态写在这里：这周要什么、卡在哪、需要谁看一眼。',
+        item3: '3. 周五只回看偏差，不复述进度'
+      },
+      {
+        id: 'v-1108',
+        time: '今天 11:08',
+        badge: '自动快照',
+        desc: '停止编辑 30s 保存 · 初拟三项行动清单',
+        isCurrent: false,
+        sameAsCurrent: false,
+        p1: '上周排了三场同步会，两场结束时没有结论。人到齐，并不等于事情被推进。',
+        p2: '我们决定先停掉周三例会，改成在群里发一段文字同步本周进展。',
+        item3: '3. 周五下午四点集中核对一次待办列表'
+      },
+      {
+        id: 'v-yest',
+        time: '昨天 18:40',
+        badge: '手动保存',
+        desc: '初稿 · 记录同步会痛点与改异步提议',
+        isCurrent: false,
+        sameAsCurrent: false,
+        p1: '这周的三场同步会占掉了两个整下午，真正需要拍板的事反而拖到了会后私聊。',
+        p2: '先试行两周书面同步：每个人只写阻碍和需要协助的人，不写流水账。',
+        item3: '3. 试行两周后再决定是否彻底取消周会'
+      },
+      {
+        id: 'v-nov1',
+        time: '11月1日 09:15',
+        badge: '内容相同',
+        desc: '恢复前快照 · 与当前正文内容完全一致',
+        isCurrent: false,
+        sameAsCurrent: true,
+        p1: '上周排了三场同步会，两场结束时没有结论。人到齐，并不等于事情被推进。',
+        p2: '与其等所有人空出同一段时间，不如把状态写在这里：这周要什么、卡在哪、需要谁看一眼。',
+        item3: '3. 周五只回看偏差，不复述进度'
+      }
+    ];
+    this.state = {
+      historyOpen: true,
+      menuOpen: false,
+      selectedId: 'v-1108',
+      mode: null,
+      confirmOpen: false,
+      restoredFrom: null,
+      toastText: '',
+      canUndoRestore: false
+    };
+  }
+  getVersions() {
+    if (!this.state.restoredFrom) return this.baseVersions;
+    const target = this.baseVersions.find(v => v.id === this.state.restoredFrom) || this.baseVersions[1];
+    return [
+      {
+        id: 'v-restored',
+        time: '刚刚 14:36',
+        badge: '当前版本',
+        desc: '从「' + target.time + '」恢复的新版本',
+        isCurrent: true,
+        sameAsCurrent: true,
+        p1: target.p1,
+        p2: target.p2,
+        item3: target.item3
+      },
+      ...this.baseVersions.map(v => ({
+        ...v,
+        isCurrent: false,
+        badge: v.id === 'v-cur' ? '恢复前快照' : v.badge,
+        sameAsCurrent: v.id === target.id
+      }))
+    ];
+  }
+  renderVals() {
+    const versions = this.getVersions();
+    const cur = versions[0];
+    const sel = versions.find(v => v.id === this.state.selectedId) || versions[0];
+    const mode = this.state.mode ?? (this.props.defaultView === 'clean' ? 'clean' : 'diff');
+    const historyOpen = !!this.state.historyOpen;
+    const isDiff = historyOpen && mode === 'diff' && !sel.sameAsCurrent;
+    const restoreDisabled = sel.isCurrent || sel.sameAsCurrent;
+    const versionItems = versions.map(v => {
+      const selected = v.id === sel.id;
+      return {
+        ...v,
+        selected,
+        bg: selected ? '#e5edfc' : 'transparent',
+        shadow: selected ? 'inset 0 0 0 1px #547dd0' : 'none',
+        badgeBg: v.isCurrent ? '#c9d8f3' : '#f1f1f1',
+        badgeColor: v.isCurrent ? '#20242c' : '#526071',
+        pick: () => this.setState({ selectedId: v.id })
+      };
+    });
+    return {
+      historyOpen,
+      isEditingMode: !historyOpen,
+      showFileSidebar: !historyOpen,
+      leftHeaderW: historyOpen ? '116px' : '260px',
+      menuOpen: !!this.state.menuOpen,
+      menuBtnBg: this.state.menuOpen ? '#e5edfc' : 'transparent',
+      menuBtnColor: this.state.menuOpen ? '#20242c' : '#526071',
+      versionItems,
+      selTitle: sel.time,
+      selBadge: sel.badge,
+      selBadgeBg: sel.isCurrent ? '#c9d8f3' : '#f1f1f1',
+      selBadgeColor: '#20242c',
+      selSummary: sel.desc,
+      diffTabBg: mode === 'diff' ? '#e5edfc' : 'transparent',
+      diffTabColor: mode === 'diff' ? '#20242c' : '#526071',
+      diffTabShadow: mode === 'diff' ? 'inset 0 0 0 1px #547dd0' : 'none',
+      cleanTabBg: mode === 'clean' ? '#e5edfc' : 'transparent',
+      cleanTabColor: mode === 'clean' ? '#20242c' : '#526071',
+      cleanTabShadow: mode === 'clean' ? 'inset 0 0 0 1px #547dd0' : 'none',
+      restoreDisabled,
+      restoreBtnText: sel.isCurrent ? '当前版本不可恢复' : (sel.sameAsCurrent ? '与当前内容相同' : '恢复到此版本'),
+      p1Text: historyOpen ? sel.p1 : cur.p1,
+      p2Text: historyOpen ? sel.p2 : cur.p2,
+      item3Text: historyOpen ? sel.item3 : cur.item3,
+      showDiffView: isDiff,
+      showPlainParagraph: !isDiff,
+      diffDeletedP2: sel.p2,
+      diffAddedP2: cur.p2,
+      diffDeletedItem3: sel.item3,
+      diffAddedItem3: cur.item3,
+      confirmOpen: !!this.state.confirmOpen,
+      toastVisible: !!this.state.toastText,
+      toastText: this.state.toastText,
+      canUndoRestore: !!this.state.canUndoRestore,
+      toggleMenu: () => this.setState({ menuOpen: !this.state.menuOpen }),
+      openHistoryFromMenu: () => this.setState({ menuOpen: false, historyOpen: true, selectedId: 'v-1108' }),
+      closeHistory: () => this.setState({ historyOpen: false, menuOpen: false, confirmOpen: false }),
+      setDiffMode: () => this.setState({ mode: 'diff' }),
+      setCleanMode: () => this.setState({ mode: 'clean' }),
+      openConfirm: () => { if (!restoreDisabled) this.setState({ confirmOpen: true }); },
+      cancelConfirm: () => this.setState({ confirmOpen: false }),
+      confirmRestore: () => this.setState({
+        confirmOpen: false,
+        restoredFrom: sel.id,
+        selectedId: 'v-restored',
+        historyOpen: false,
+        toastText: '已恢复到「' + sel.time + '」，并创建新版本记录（原内容已存为快照）。',
+        canUndoRestore: true
+      }),
+      undoRestore: () => this.setState({
+        restoredFrom: null,
+        selectedId: 'v-cur',
+        toastText: '已撤销恢复，重新回到恢复前的版本（已追加新快照记录）。',
+        canUndoRestore: false
+      }),
+      dismissToast: () => this.setState({ toastText: '' }),
+      onPanelKeyDown: (e) => {
+        if (e.key === 'Escape') this.setState({ historyOpen: false });
+      },
+      onModalKeyDown: (e) => {
+        if (e.key === 'Escape') this.setState({ confirmOpen: false });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

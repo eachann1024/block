@@ -168,6 +168,7 @@ type AppState struct {
 	FolderRules           []FolderRule        `json:"folder_rules,omitempty"`
 	ShortcutSearch        string              `json:"shortcut_search,omitempty"`
 	ShortcutQuick         string              `json:"shortcut_quick,omitempty"`
+	CustomShortcuts       map[string]string   `json:"custom_shortcuts,omitempty"`
 	OpenTabs              []string            `json:"open_tabs,omitempty"`
 	ActiveTab             string              `json:"active_tab,omitempty"`
 	LastFormatColors      *LastFormatColors   `json:"last_format_colors,omitempty"`
