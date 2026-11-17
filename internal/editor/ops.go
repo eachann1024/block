@@ -14,6 +14,390 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+// --- Selection Snapshots & Markdown Copy ---
+
+type toolbarCaps struct {
+	BlockType bool
+	RichText  bool
+	Bold      bool
+	Link      bool
+}
+
+func (s *Session) selectionSupportsToolbar() bool {
+	if !s.hasNonEmptySelection() || s.doc == nil {
+		return false
+	}
+	a, b := s.orderedSelection()
+	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
+		if a.Block != b.Block && idx == b.Block && b.Offset == 0 {
+			break
+		}
+		k := s.doc.Blocks[idx].Kind
+		if k != model.BlockImage && k != model.BlockDivider {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Session) toolbarCapabilities() toolbarCaps {
+	if !s.isMarkdownNote() || !s.hasNonEmptySelection() || s.doc == nil {
+		return toolbarCaps{}
+	}
+	a, b := s.orderedSelection()
+	caps := toolbarCaps{BlockType: true, RichText: true, Bold: true}
+	hasTable := false
+	tableMultiCell := false
+	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
+		if a.Block != b.Block && idx == b.Block && b.Offset == 0 {
+			break
+		}
+		blk := &s.doc.Blocks[idx]
+		rich := blk.Kind != model.BlockCode && blk.Kind != model.BlockRawHTML && blk.Kind != model.BlockImage && blk.Kind != model.BlockDivider
+		if blk.Kind == model.BlockTable {
+			hasTable = true
+			lo, hi := s.selectionSpanRange(idx, a, b)
+			if _, _, _, _, ok := tableCellAtRuneRange(blk.Table, lo, hi); !ok {
+				tableMultiCell = true
+			}
+		}
+		caps.BlockType = caps.BlockType && rich && blk.Kind != model.BlockTable
+		caps.RichText = caps.RichText && rich
+		caps.Bold = caps.Bold && rich && !blk.Kind.IsHeading()
+	}
+	multiBlockTable := hasTable && a.Block != b.Block && !(b.Block == a.Block+1 && b.Offset == 0)
+	caps.Link = caps.RichText && !multiBlockTable && !tableMultiCell
+	return caps
+}
+
+func (s *Session) SelectedDoc() *model.Doc {
+	if !s.hasNonEmptySelection() || s.doc == nil {
+		return nil
+	}
+	a, b := s.orderedSelection()
+	if a.Block < 0 || b.Block >= len(s.doc.Blocks) {
+		return nil
+	}
+
+	if a.Block == b.Block {
+		blk := &s.doc.Blocks[a.Block]
+		rlen := len([]rune(blk.PlainText()))
+		whole := a.Offset == 0 && b.Offset == rlen
+
+		if blk.Kind == model.BlockTable && blk.Table != nil && !whole {
+			if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
+				spans := sliceSpans(blk.Table.Rows[row][col].Spans, relLo, relHi)
+				return &model.Doc{
+					Blocks:       []model.Block{{ID: model.NewBlockID(), Kind: model.BlockParagraph, Spans: spans, Dirty: true}},
+					TrailingLine: "\n",
+				}
+			}
+			if sliced, ok := sliceTableSelection(blk, a.Offset, b.Offset); ok {
+				return &model.Doc{
+					Blocks:       []model.Block{sliced},
+					TrailingLine: "\n",
+				}
+			}
+		}
+
+		if whole && (blk.Kind == model.BlockTable || blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider) {
+			cp := blk.Clone()
+			cp.Dirty = true
+			cp.CleanSource = ""
+			return &model.Doc{Blocks: []model.Block{cp}, TrailingLine: "\n"}
+		}
+
+		part := s.sliceBlockForSelection(a.Block, a.Offset, b.Offset, false)
+		return &model.Doc{Blocks: []model.Block{part}, TrailingLine: "\n"}
+	}
+
+	// Single trailing newline boundary between adjacent blocks.
+	first := &s.doc.Blocks[a.Block]
+	firstLen := len([]rune(first.PlainText()))
+	if a.Block+1 == b.Block && a.Offset == firstLen && firstLen > 0 && b.Offset == 0 {
+		return &model.Doc{
+			Blocks:       []model.Block{{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}},
+			TrailingLine: "\n",
+		}
+	}
+
+	var blocks []model.Block
+	for idx := a.Block; idx <= b.Block; idx++ {
+		if idx == b.Block && a.Block != b.Block && b.Offset == 0 {
+			continue
+		}
+		cur := &s.doc.Blocks[idx]
+		curLen := len([]rune(cur.PlainText()))
+		if idx == a.Block && a.Block != b.Block && a.Offset == curLen && curLen > 0 {
+			continue
+		}
+		lo, hi := s.selectionSpanRange(idx, a, b)
+		if lo < hi || curLen == 0 {
+			blocks = append(blocks, s.sliceBlockForSelection(idx, lo, hi, true))
+		}
+	}
+	if len(blocks) == 0 {
+		return nil
+	}
+	normalizeCopiedBlocks(blocks)
+	return &model.Doc{Blocks: blocks, TrailingLine: "\n"}
+}
+
+func (s *Session) SelectedMarkdown() string {
+	if !s.hasNonEmptySelection() || s.doc == nil {
+		return ""
+	}
+	a, b := s.orderedSelection()
+	if a.Block == b.Block {
+		blk := &s.doc.Blocks[a.Block]
+		rlen := len([]rune(blk.PlainText()))
+		whole := a.Offset == 0 && b.Offset == rlen
+
+		if blk.Kind == model.BlockTable && blk.Table != nil && !whole {
+			if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
+				spans := sliceSpans(blk.Table.Rows[row][col].Spans, relLo, relHi)
+				return serializeInlineBlockMarkdown(spans, s.codec)
+			}
+			// Partial multi-cell table slice preserves cell inline formatting across tabs/newlines.
+			return serializeTableMultiCellMarkdown(blk.Table, a.Offset, b.Offset, s.codec)
+		}
+
+		if whole && (blk.Kind == model.BlockTable || blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider) {
+			doc := s.SelectedDoc()
+			if doc == nil {
+				return ""
+			}
+			return strings.TrimSuffix(s.serializeBlocks(doc.Blocks), "\n")
+		}
+
+		// Single-block text selections carry only inline formatting (not heading/list container).
+		if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML {
+			runes := []rune(blk.Code)
+			lo := clampInt(a.Offset, 0, len(runes))
+			hi := clampInt(b.Offset, lo, len(runes))
+			return string(runes[lo:hi])
+		}
+		spans := sliceSpans(blk.Spans, a.Offset, b.Offset)
+		return serializeInlineBlockMarkdown(spans, s.codec)
+	}
+
+	first := &s.doc.Blocks[a.Block]
+	firstLen := len([]rune(first.PlainText()))
+	if a.Block+1 == b.Block && a.Offset == firstLen && firstLen > 0 && b.Offset == 0 {
+		return "\n"
+	}
+
+	doc := s.SelectedDoc()
+	if doc == nil {
+		return ""
+	}
+	return strings.TrimSuffix(s.serializeBlocks(doc.Blocks), "\n")
+}
+
+func serializeInlineBlockMarkdown(spans []model.Span, codec model.MarkdownCodec) string {
+	if len(spans) == 0 {
+		return ""
+	}
+	// Split on explicit '\n' so inline lines don't collapse.
+	rawText := model.PlainTextOfSpans(spans)
+	if !strings.Contains(rawText, "\n") {
+		blk := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Spans: spans, Dirty: true}
+		if codec != nil {
+			md := codec.Serialize(&model.Doc{Blocks: []model.Block{blk}, TrailingLine: "\n"})
+			return strings.TrimSuffix(md, "\n")
+		}
+		return serializeSpansFallback(spans)
+	}
+	lines := strings.Split(rawText, "\n")
+	parts := make([]string, 0, len(lines))
+	pos := 0
+	for _, ln := range lines {
+		lnLen := len([]rune(ln))
+		sub := sliceSpans(spans, pos, pos+lnLen)
+		pos += lnLen + 1
+		parts = append(parts, serializeInlineBlockMarkdown(sub, codec))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func serializeTableMultiCellMarkdown(tbl *model.TableData, startRune, endRune int, codec model.MarkdownCodec) string {
+	if tbl == nil || startRune >= endRune {
+		return ""
+	}
+	var rowLines []string
+	pos := 0
+	for rIdx, r := range tbl.Rows {
+		var cellParts []string
+		rowTouched := false
+		for cIdx, cell := range r {
+			clen := len([]rune(cell.PlainText()))
+			cStart, cEnd := pos, pos+clen
+			ovLo := max(startRune, cStart) - cStart
+			ovHi := min(endRune, cEnd) - cStart
+			if ovLo < ovHi {
+				rowTouched = true
+				sub := sliceSpans(cell.Spans, ovLo, ovHi)
+				cellParts = append(cellParts, serializeInlineBlockMarkdown(sub, codec))
+			} else if startRune <= cEnd && endRune >= cStart && (startRune < cStart || endRune > cEnd) {
+				rowTouched = true
+				cellParts = append(cellParts, "")
+			}
+			pos = cEnd
+			if cIdx+1 < len(r) {
+				pos++ // '\t'
+			}
+		}
+		if rowTouched {
+			rowLines = append(rowLines, strings.Join(cellParts, "\t"))
+		}
+		if rIdx+1 < len(tbl.Rows) {
+			pos++ // '\n'
+		}
+	}
+	return strings.Join(rowLines, "\n")
+}
+
+func sliceTableSelection(blk *model.Block, startRune, endRune int) (model.Block, bool) {
+	if blk == nil || blk.Table == nil || startRune >= endRune {
+		return model.Block{}, false
+	}
+	tbl := blk.Table
+	rMin, rMax := len(tbl.Rows), -1
+	cMin, cMax := 1<<30, -1
+	pos := 0
+	type overlap struct {
+		r, c, lo, hi int
+	}
+	var hits []overlap
+	for rIdx, r := range tbl.Rows {
+		for cIdx, cell := range r {
+			clen := len([]rune(cell.PlainText()))
+			cStart, cEnd := pos, pos+clen
+			ovLo := max(startRune, cStart) - cStart
+			ovHi := min(endRune, cEnd) - cStart
+			if ovLo < ovHi {
+				rMin = min(rMin, rIdx)
+				rMax = max(rMax, rIdx)
+				cMin = min(cMin, cIdx)
+				cMax = max(cMax, cIdx)
+				hits = append(hits, overlap{r: rIdx, c: cIdx, lo: ovLo, hi: ovHi})
+			}
+			pos = cEnd
+			if cIdx+1 < len(r) {
+				pos++
+			}
+		}
+		if rIdx+1 < len(tbl.Rows) {
+			pos++
+		}
+	}
+	if len(hits) == 0 || rMax < rMin || cMax < cMin {
+		return model.Block{}, false
+	}
+	rows := make([][]model.TableCell, rMax-rMin+1)
+	for r := range rows {
+		rows[r] = make([]model.TableCell, cMax-cMin+1)
+	}
+	for _, h := range hits {
+		cell := tbl.Rows[h.r][h.c]
+		rows[h.r-rMin][h.c-cMin] = model.TableCell{Spans: sliceSpans(cell.Spans, h.lo, h.hi)}
+	}
+	var aligns []model.ColAlign
+	for c := cMin; c <= cMax; c++ {
+		if c < len(tbl.Aligns) {
+			aligns = append(aligns, tbl.Aligns[c])
+		} else {
+			aligns = append(aligns, model.ColAlignNone)
+		}
+	}
+	return model.Block{
+		ID:    model.NewBlockID(),
+		Kind:  model.BlockTable,
+		Table: &model.TableData{Aligns: aligns, Rows: rows},
+		Dirty: true,
+	}, true
+}
+
+func (s *Session) sliceBlockForSelection(idx, lo, hi int, preserveContainer bool) model.Block {
+	blk := &s.doc.Blocks[idx]
+	rlen := len([]rune(blk.PlainText()))
+	if lo == 0 && hi == rlen && preserveContainer {
+		cp := blk.Clone()
+		cp.ID = model.NewBlockID()
+		cp.Dirty = true
+		cp.CleanSource = ""
+		if cp.Kind == model.BlockNumbered {
+			cp.ListIndex = s.numberedListIndex(idx)
+		}
+		return cp
+	}
+	if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML {
+		runes := []rune(blk.Code)
+		s0 := clampInt(lo, 0, len(runes))
+		s1 := clampInt(hi, s0, len(runes))
+		return model.Block{
+			ID:    model.NewBlockID(),
+			Kind:  model.BlockParagraph,
+			Spans: []model.Span{{Text: string(runes[s0:s1])}},
+			Dirty: true,
+		}
+	}
+	if blk.Kind == model.BlockTable || blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider {
+		runes := []rune(blk.PlainText())
+		s0 := clampInt(lo, 0, len(runes))
+		s1 := clampInt(hi, s0, len(runes))
+		return model.Block{
+			ID:    model.NewBlockID(),
+			Kind:  model.BlockParagraph,
+			Spans: []model.Span{{Text: string(runes[s0:s1])}},
+			Dirty: true,
+		}
+	}
+	spans := sliceSpans(blk.Spans, lo, hi)
+	if !preserveContainer {
+		return model.Block{
+			ID:    model.NewBlockID(),
+			Kind:  model.BlockParagraph,
+			Spans: spans,
+			Dirty: true,
+		}
+	}
+	cp := blk.Clone()
+	cp.ID = model.NewBlockID()
+	cp.Spans = spans
+	cp.Dirty = true
+	cp.CleanSource = ""
+	if cp.Kind == model.BlockNumbered {
+		cp.ListIndex = s.numberedListIndex(idx)
+	}
+	return cp
+}
+
+func normalizeCopiedBlocks(blocks []model.Block) {
+	type ancestor struct {
+		orig int
+		next int
+	}
+	var ancestors []ancestor
+	for i := range blocks {
+		b := &blocks[i]
+		isList := b.Kind.IsList()
+		orig := b.Indent
+		for len(ancestors) > 0 && ancestors[len(ancestors)-1].orig >= orig {
+			ancestors = ancestors[:len(ancestors)-1]
+		}
+		if len(ancestors) > 0 {
+			top := ancestors[len(ancestors)-1]
+			b.Indent = max(orig-(top.orig-top.next), 0)
+		} else if orig > 0 && (isList || b.Kind != model.BlockParagraph) {
+			b.Indent = 0
+		}
+		if isList {
+			ancestors = append(ancestors, ancestor{orig: orig, next: b.Indent})
+		}
+	}
+}
+
 // --- Markdown Serialization & Paste ---
 
 func (s *Session) Markdown() string {
@@ -665,6 +1049,26 @@ func (s *Session) selectionColors() (fgName, bgName string) {
 		}
 	}
 	return fgName, bgName
+}
+
+func (s *Session) setCalloutKind(blockID model.BlockID, kind *model.CalloutKind) {
+	idx := s.blockIndexByID(blockID)
+	if idx < 0 {
+		return
+	}
+	b := &s.doc.Blocks[idx]
+	s.pushUndo()
+	if kind == nil {
+		b.Kind = model.BlockParagraph
+		b.Callout = ""
+	} else {
+		b.Kind = model.BlockCallout
+		b.Callout = *kind
+	}
+	b.Dirty = true
+	b.CleanSource = ""
+	s.calloutMenuBlock = 0
+	s.markDirty()
 }
 
 func (s *Session) SetSelectionBlockKind(kind model.BlockKind, toggleIfSame bool) {
@@ -1706,15 +2110,7 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 		s.deleteBlock(idx)
 		return
 	case cmdAI:
-		s.pushUndo()
-		if isSlashClear {
-			b.SetText("")
-		}
-		s.selAnchor = Position{Block: idx, Offset: 0}
-		s.selHead = Position{Block: idx, Offset: len([]rune(b.PlainText()))}
-		s.toolbarPop = "ai"
-		s.aiFocusPending = true
-		s.markDirty()
+		s.OpenInlineAIOnBlock(idx)
 		return
 	}
 

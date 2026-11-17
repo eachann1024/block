@@ -97,7 +97,222 @@ func (s *Session) renderFindBar(c *ui.Context) {
 	})
 }
 
-// --- 2. Selection Floating Toolbar & Format Popovers ---
+// --- 2. Single-Row Adaptive Selection Floating Toolbar & Format Popovers ---
+
+type toolbarItemKind uint8
+
+const (
+	tbAIRewrite toolbarItemKind = iota
+	tbComment
+	tbReaction
+	tbTextType
+	tbBold
+	tbItalic
+	tbUnderline
+	tbStrike
+	tbCode
+	tbPalette
+	tbLists
+	tbLink
+)
+
+type toolbarItemSpec struct {
+	Kind       toolbarItemKind
+	ID         string
+	Group      uint8
+	Width      float32
+	Icon       icons.Icon
+	Label      string
+	Shortcut   string
+	HasSubmenu bool
+}
+
+func (s *Session) enabledToolbarItems(caps toolbarCaps) []toolbarItemSpec {
+	var items []toolbarItemSpec
+	if !s.readOnly && s.isMarkdownNote() && s.canReplaceSelection() && s.hasNonEmptySelection() {
+		w := float32(96)
+		if theme.IsEn() {
+			w = 116
+		}
+		items = append(items, toolbarItemSpec{
+			Kind: tbAIRewrite, ID: "tb-ai", Group: 0, Width: w,
+			Icon: icons.Sparkles, Label: theme.Tr("AI 改写", "AI Rewrite"),
+		})
+	}
+	items = append(items,
+		toolbarItemSpec{
+			Kind: tbComment, ID: "tb-comment", Group: 1, Width: 28,
+			Icon: icons.TbComment, Label: theme.Tr("添加批注", "Add annotation"),
+			Shortcut: formatShortcutDisplay("⌥⌘M", "Ctrl+Alt+M"),
+		},
+		toolbarItemSpec{
+			Kind: tbReaction, ID: "tb-reaction", Group: 1, Width: 28,
+			Icon: icons.TbReaction, Label: theme.Tr("添加表情回应", "Add reaction"),
+		},
+	)
+	if caps.BlockType {
+		items = append(items, toolbarItemSpec{
+			Kind: tbTextType, ID: "tb-type", Group: 2, Width: 41,
+			Icon: icons.TbType, Label: theme.Tr("文字类型", "Text type"), HasSubmenu: true,
+		})
+	}
+	if caps.RichText {
+		if caps.Bold {
+			items = append(items, toolbarItemSpec{
+				Kind: tbBold, ID: "tb-bold", Group: 3, Width: 28,
+				Icon: icons.TbBold, Label: theme.Tr("粗体", "Bold"),
+				Shortcut: formatShortcutDisplay("⌘B", "Ctrl+B"),
+			})
+		}
+		items = append(items,
+			toolbarItemSpec{
+				Kind: tbItalic, ID: "tb-italic", Group: 3, Width: 28,
+				Icon: icons.TbItalic, Label: theme.Tr("斜体", "Italic"),
+				Shortcut: formatShortcutDisplay("⌘I", "Ctrl+I"),
+			},
+			toolbarItemSpec{
+				Kind: tbUnderline, ID: "tb-underline", Group: 3, Width: 28,
+				Icon: icons.TbUnderline, Label: theme.Tr("下划线", "Underline"),
+				Shortcut: formatShortcutDisplay("⌘U", "Ctrl+U"),
+			},
+			toolbarItemSpec{
+				Kind: tbStrike, ID: "tb-strike", Group: 3, Width: 28,
+				Icon: icons.TbStrike, Label: theme.Tr("删除线", "Strikethrough"),
+				Shortcut: formatShortcutDisplay("⇧⌘S", "Ctrl+Shift+S"),
+			},
+			toolbarItemSpec{
+				Kind: tbCode, ID: "tb-code", Group: 3, Width: 28,
+				Icon: icons.TbCode, Label: theme.Tr("行内代码", "Inline code"),
+				Shortcut: formatShortcutDisplay("⌘E", "Ctrl+E"),
+			},
+			toolbarItemSpec{
+				Kind: tbPalette, ID: "tb-palette", Group: 3, Width: 41,
+				Icon: icons.TbPalette, Label: theme.Tr("文本与高亮颜色", "Text and highlight color"), HasSubmenu: true,
+			},
+		)
+	}
+	if caps.BlockType {
+		items = append(items, toolbarItemSpec{
+			Kind: tbLists, ID: "tb-list", Group: 4, Width: 41,
+			Icon: icons.TbList, Label: theme.Tr("列表", "Lists"), HasSubmenu: true,
+		})
+	}
+	if caps.Link {
+		items = append(items, toolbarItemSpec{
+			Kind: tbLink, ID: "tb-link", Group: 5, Width: 28,
+			Icon: icons.TbLink, Label: theme.Tr("链接", "Link"),
+			Shortcut: formatShortcutDisplay("⇧⌘K", "Ctrl+Shift+K"),
+		})
+	}
+	return items
+}
+
+func sequenceToolbarWidth(items []toolbarItemSpec, withMore bool) float32 {
+	if len(items) == 0 && !withMore {
+		return 0
+	}
+	w := float32(14)
+	hasPrev := false
+	var prevGroup uint8
+	for _, it := range items {
+		if hasPrev {
+			if prevGroup == it.Group {
+				w += 2
+			} else {
+				w += 13
+			}
+		}
+		w += it.Width
+		prevGroup = it.Group
+		hasPrev = true
+	}
+	if withMore {
+		if hasPrev {
+			w += 13
+		}
+		w += 28
+	}
+	return w
+}
+
+func splitForRoom(enabled []toolbarItemSpec, room float32) (keep int, width float32) {
+	full := sequenceToolbarWidth(enabled, false)
+	if full <= room {
+		return len(enabled), full
+	}
+	for k := len(enabled) - 1; k >= 0; k-- {
+		if w := sequenceToolbarWidth(enabled[:k], true); w <= room {
+			return k, w
+		}
+	}
+	return 0, sequenceToolbarWidth(nil, true)
+}
+
+func (s *Session) toolbarItemActive(kind toolbarItemKind) bool {
+	switch kind {
+	case tbBold:
+		return s.selectionHasMark(model.MarkBold)
+	case tbItalic:
+		return s.selectionHasMark(model.MarkItalic)
+	case tbUnderline:
+		return s.selectionHasMark(model.MarkUnderline)
+	case tbStrike:
+		return s.selectionHasMark(model.MarkStrike)
+	case tbCode:
+		return s.selectionHasMark(model.MarkCode)
+	case tbPalette:
+		fg, bg := s.selectionColors()
+		return fg != "default" || bg != "default" || s.toolbarPop == "palette"
+	case tbLink:
+		return s.selectionLinkURL() != "" || s.toolbarPop == "link"
+	case tbComment:
+		return s.toolbarPop == "comment"
+	case tbReaction:
+		return s.toolbarPop == "reactions"
+	case tbTextType:
+		return s.toolbarPop == "kinds"
+	case tbLists:
+		return s.toolbarPop == "lists"
+	default:
+		return false
+	}
+}
+
+func (s *Session) runToolbarItem(kind toolbarItemKind, fromMore bool) {
+	if fromMore && kind != tbTextType && kind != tbPalette && kind != tbLists {
+		s.toolbarPop = ""
+	}
+	switch kind {
+	case tbAIRewrite:
+		s.OpenInlineAIOnSelection()
+	case tbComment:
+		s.toggleToolbarPop("comment")
+	case tbReaction:
+		s.toggleToolbarPop("reactions")
+	case tbTextType:
+		s.toggleToolbarPop("kinds")
+	case tbBold:
+		s.ToggleMarkOnSelection(model.MarkBold)
+	case tbItalic:
+		s.ToggleMarkOnSelection(model.MarkItalic)
+	case tbUnderline:
+		s.ToggleMarkOnSelection(model.MarkUnderline)
+	case tbStrike:
+		s.ToggleMarkOnSelection(model.MarkStrike)
+	case tbCode:
+		s.ToggleMarkOnSelection(model.MarkCode)
+	case tbPalette:
+		s.toggleToolbarPop("palette")
+	case tbLists:
+		s.toggleToolbarPop("lists")
+	case tbLink:
+		if s.toolbarPop != "link" {
+			s.linkDraft = s.selectionLinkURL()
+			s.linkFocusPending = true
+		}
+		s.toggleToolbarPop("link")
+	}
+}
 
 func (s *Session) renderSelectionToolbar(c *ui.Context) {
 	if !s.IsSelectionToolbarOpen() && s.toolbarPop == "" {
@@ -116,15 +331,26 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 			}
 		}
 	}
-	maxToolbarW := max(s.viewportWidth-24, 240)
-	if anchorX+460 > s.viewportWidth-12 {
-		anchorX = max(s.viewportWidth-472, 12)
+
+	availW := s.viewportWidth
+	if s.editorRect.W > 0 && s.editorRect.W < availW {
+		availW = s.editorRect.W
 	}
+	room := max(availW-16, 48)
+	caps := s.toolbarCapabilities()
+	enabled := s.enabledToolbarItems(caps)
+	keep, barW := splitForRoom(enabled, room)
+	inline := enabled[:keep]
+	overflow := enabled[keep:]
+	if s.toolbarPop == "more" && len(overflow) == 0 {
+		s.toolbarPop = ""
+	}
+	anchorX = clampFloat32(anchorX, 8, max(s.viewportWidth-barW-8, 8))
 
 	ui.Overlay(c, func() {
 		if s.IsSelectionToolbarOpen() {
 			bar := ui.Row(c.Key("selection-toolbar")).Absolute().Left(anchorX).Top(anchorY).
-				MaxWidth(maxToolbarW).Wrap().Padding(4, 6).Gap(3).AlignItems(ui.Center).
+				Height(38).Padding(4, 6).Gap(2).AlignItems(ui.Center).
 				Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.Hairline).
 				Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
 			bar.DrawOver(func(_ *ui.Painter, r ui.Rect) {
@@ -134,107 +360,80 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 			appUi.Probe(bar, "selection-toolbar")
 
 			bar.Children(func() {
-				// AI Rewrite
-				aiBtn := ui.ButtonBase(c.Key("tb-ai")).Height(28).PaddingX(8).Gap(4).
-					AlignItems(ui.Center).Radius(6).Background(pal.Selected).
-					Border(1, pal.Accent).Cursor(ui.CursorPointer).
-					Label(theme.Tr("AI 改写", "AI Rewrite"))
-				aiBtn.Children(func() {
-					icons.Draw(c, icons.Sparkles, 15, pal.MonoIconColors(pal.Accent))
-					ui.Text(c, theme.Tr("AI 改写", "AI Rewrite")).FontSize(14).TextColor(pal.Text).SingleLine()
-				})
-				appUi.Probe(aiBtn, "tb-ai")
-				if aiBtn.Clicked() {
-					s.toggleToolbarPop("ai")
+				hasPrev := false
+				var prevGroup uint8
+				for _, item := range inline {
+					it := item
+					if hasPrev && prevGroup != it.Group {
+						toolbarDivider(c)
+					}
+					hasPrev = true
+					prevGroup = it.Group
+
+					if it.Kind == tbAIRewrite {
+						aiBtn := ui.ButtonBase(c.Key("tb-ai")).Height(28).PaddingX(8).Gap(4).
+							AlignItems(ui.Center).Radius(6).Background(pal.Selected).
+							Border(1, pal.Accent).Cursor(ui.CursorPointer).
+							Label(it.Label)
+						aiBtn.Children(func() {
+							icons.Draw(c, icons.Sparkles, 15, pal.MonoIconColors(pal.Accent))
+							ui.Text(c, it.Label).FontSize(14).TextColor(pal.Text).SingleLine()
+						})
+						appUi.Probe(aiBtn, "tb-ai")
+						if aiBtn.Clicked() {
+							s.runToolbarItem(tbAIRewrite, false)
+						}
+						continue
+					}
+
+					active := s.toolbarItemActive(it.Kind)
+					if it.HasSubmenu {
+						btn := ui.ButtonBase(c.Key(it.ID)).Height(28).MinWidth(41).PaddingX(5).Gap(2).
+							Center().Radius(6).Cursor(ui.CursorPointer).Label(it.Label)
+						if active {
+							btn.Background(pal.Selected)
+						} else if btn.Hovered() {
+							btn.Background(pal.Hover)
+						}
+						btn.Children(func() {
+							ic := pal.MonoIconColors(pal.TextSecondary)
+							if active || btn.Hovered() {
+								ic = pal.DuoIconColors(pal.Text)
+							}
+							icons.Draw(c, it.Icon, 16, ic)
+							icons.Draw(c, icons.TbChevron, 10, pal.MonoIconColors(pal.TextSecondary))
+						})
+						appUi.Probe(btn, it.ID)
+						if btn.Clicked() {
+							s.runToolbarItem(it.Kind, false)
+						}
+					} else {
+						btn := appUi.IconButton(c, it.Icon, appUi.IconButtonOptions{
+							ID: it.ID, Label: it.Label, Size: 28, IconSize: 16, Active: active,
+						})
+						if btn.Clicked() {
+							s.runToolbarItem(it.Kind, false)
+						}
+					}
 				}
 
-				toolbarDivider(c)
-
-				// Comment / Annotation
-				cmtBtn := appUi.IconButton(c, icons.TbComment, appUi.IconButtonOptions{
-					ID: "tb-comment", Label: theme.Tr("添加批注", "Add annotation"), Size: 28, IconSize: 16,
-					Active: s.toolbarPop == "comment",
-				})
-				if cmtBtn.Clicked() {
-					s.toggleToolbarPop("comment")
-				}
-
-				// Reaction
-				rxBtn := appUi.IconButton(c, icons.TbReaction, appUi.IconButtonOptions{
-					ID: "tb-reaction", Label: theme.Tr("添加表情回应", "Add reaction"), Size: 28, IconSize: 16,
-					Active: s.toolbarPop == "reactions",
-				})
-				if rxBtn.Clicked() {
-					s.toggleToolbarPop("reactions")
-				}
-
-				toolbarDivider(c)
-
-				// Text Type dropdown
-				typeBtn := appUi.IconButton(c, icons.TbType, appUi.IconButtonOptions{
-					ID: "tb-type", Label: theme.Tr("文字类型", "Text type"), Size: 28, IconSize: 16,
-					Active: s.toolbarPop == "kinds",
-				})
-				if typeBtn.Clicked() {
-					s.toggleToolbarPop("kinds")
-				}
-
-				toolbarDivider(c)
-
-				// Marks: Bold / Italic / Underline / Strike / Inline Code
-				markSpecs := []struct {
-					id    string
-					glyph icons.Icon
-					mark  model.Mark
-					label string
-				}{
-					{"tb-bold", icons.TbBold, model.MarkBold, theme.Tr("粗体", "Bold")},
-					{"tb-italic", icons.TbItalic, model.MarkItalic, theme.Tr("斜体", "Italic")},
-					{"tb-underline", icons.TbUnderline, model.MarkUnderline, theme.Tr("下划线", "Underline")},
-					{"tb-strike", icons.TbStrike, model.MarkStrike, theme.Tr("删除线", "Strikethrough")},
-					{"tb-code", icons.TbCode, model.MarkCode, theme.Tr("行内代码", "Inline code")},
-				}
-				for _, ms := range markSpecs {
-					btn := appUi.IconButton(c, ms.glyph, appUi.IconButtonOptions{
-						ID: ms.id, Label: ms.label, Size: 28, IconSize: 16, Active: s.selectionHasMark(ms.mark),
+				if len(overflow) > 0 {
+					if hasPrev {
+						toolbarDivider(c)
+					}
+					moreActive := s.toolbarPop == "more"
+					for _, ov := range overflow {
+						if s.toolbarItemActive(ov.Kind) {
+							moreActive = true
+							break
+						}
+					}
+					moreBtn := appUi.IconButton(c, icons.More, appUi.IconButtonOptions{
+						ID: "tb-more", Label: theme.Tr("更多格式", "More formatting"), Size: 28, IconSize: 16, Active: moreActive,
 					})
-					if btn.Clicked() {
-						s.ToggleMarkOnSelection(ms.mark)
+					if moreBtn.Clicked() {
+						s.toggleToolbarPop("more")
 					}
-				}
-
-				// Palette
-				fgCol, bgCol := s.selectionColors()
-				palBtn := appUi.IconButton(c, icons.TbPalette, appUi.IconButtonOptions{
-					ID: "tb-palette", Label: theme.Tr("调色板", "Color & Highlight"), Size: 28, IconSize: 16,
-					Active: s.toolbarPop == "palette" || fgCol != "default" || bgCol != "default",
-				})
-				if palBtn.Clicked() {
-					s.toggleToolbarPop("palette")
-				}
-
-				toolbarDivider(c)
-
-				// Lists dropdown
-				listBtn := appUi.IconButton(c, icons.TbList, appUi.IconButtonOptions{
-					ID: "tb-list", Label: theme.Tr("列表", "Lists"), Size: 28, IconSize: 16,
-					Active: s.toolbarPop == "lists",
-				})
-				if listBtn.Clicked() {
-					s.toggleToolbarPop("lists")
-				}
-
-				// Link card
-				linkBtn := appUi.IconButton(c, icons.TbLink, appUi.IconButtonOptions{
-					ID: "tb-link", Label: theme.Tr("链接", "Link"), Size: 28, IconSize: 16,
-					Active: s.toolbarPop == "link" || s.selectionLinkURL() != "",
-				})
-				if linkBtn.Clicked() {
-					if s.toolbarPop != "link" {
-						s.linkDraft = s.selectionLinkURL()
-						s.linkFocusPending = true
-					}
-					s.toggleToolbarPop("link")
 				}
 			})
 		}
@@ -251,6 +450,8 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 		}
 
 		switch s.toolbarPop {
+		case "more":
+			s.renderToolbarMoreMenu(c, popX+max(barW-228, 0), popY, overflow)
 		case "kinds":
 			s.renderToolbarKindsMenu(c, popX, popY, false)
 		case "lists":
@@ -263,10 +464,50 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 			s.renderReactionPicker(c, popX+60, popY)
 		case "comment":
 			s.renderCommentComposer(c, popX+40, popY)
-		case "ai":
-			s.renderAIRewritePopover(c, popX, popY)
 		}
 	})
+}
+
+func (s *Session) renderToolbarMoreMenu(c *ui.Context, x, y float32, overflow []toolbarItemSpec) {
+	if len(overflow) == 0 {
+		return
+	}
+	pal := theme.Ocean()
+	menuW := float32(228)
+	x = clampFloat32(x, 8, max(s.viewportWidth-menuW-8, 8))
+
+	panel := ui.Column(c.Key("toolbar-more-menu")).Absolute().Left(x).Top(y).Width(menuW).
+		Padding(4).Gap(2).Radius(theme.RadiusCard).Background(pal.Menu).Border(1, pal.Hairline).
+		Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
+	appUi.Probe(panel, "toolbar-more-menu")
+
+	panel.Children(func() {
+		hasPrev := false
+		var prevGroup uint8
+		for i, item := range overflow {
+			it := item
+			if hasPrev && prevGroup != it.Group {
+				appUi.MenuRow(c, appUi.MenuItemSpec{Separator: true}, false)
+			}
+			hasPrev = true
+			prevGroup = it.Group
+			ic := it.Icon
+			appUi.MenuRow(c, appUi.MenuItemSpec{
+				ID:         fmt.Sprintf("toolbar-more-item-%d", i),
+				Label:      it.Label,
+				Shortcut:   it.Shortcut,
+				Icon:       &ic,
+				Checked:    s.toolbarItemActive(it.Kind),
+				HasSubmenu: it.HasSubmenu,
+				OnClick: func() {
+					s.runToolbarItem(it.Kind, true)
+				},
+			}, false)
+		}
+	})
+	if panel.PressedOutside() {
+		s.toolbarPop = ""
+	}
 }
 
 func toolbarDivider(c *ui.Context) {
@@ -282,8 +523,6 @@ func (s *Session) toggleToolbarPop(name string) {
 	s.toolbarPop = name
 	if name == "comment" {
 		s.commentFocusPending = true
-	} else if name == "ai" {
-		s.aiFocusPending = true
 	}
 }
 
@@ -549,50 +788,148 @@ func (s *Session) renderCommentComposer(c *ui.Context, x, y float32) {
 	}
 }
 
-func (s *Session) renderAIRewritePopover(c *ui.Context, x, y float32) {
-	pal := theme.Ocean()
-	w := float32(340)
-	x = clampFloat32(x, 8, max(s.viewportWidth-w-8, 8))
+// Callout 5-state semantic style & dropdown menu (aligned with src/ui/callout_controls.rs)
 
-	card := ui.Column(c.Key("ai-rewrite-pop")).Absolute().Left(x).Top(y).Width(w).
-		Padding(10).Gap(8).Radius(theme.RadiusCard).Background(pal.Menu).
-		Border(1, pal.Accent).Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
-	appUi.Probe(card, "ai-rewrite-pop")
+type calloutStyle struct {
+	BG       ui.Color
+	Border   ui.Color
+	Accent   ui.Color
+	IconFill ui.Color
+	Text     ui.Color
+}
 
-	card.Children(func() {
-		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-			in := ui.TextInputBase(c.Key("ai-rewrite-input"), &s.aiRewriteDraft).Grow(1).Height(30).
-				PaddingX(8).Radius(6).Border(1, pal.BtnBorder).FontSize(14).TextColor(pal.Text).
-				Placeholder(theme.Tr("输入改写要求…", "Describe rewrite…")).Label("ai-rewrite-prompt").
-				Bind(&s.aiRewriteHandle)
-			if s.aiFocusPending {
-				in.Focus()
-				s.aiFocusPending = false
-			}
-			apply := func() {
-				prompt := strings.TrimSpace(s.aiRewriteDraft)
-				if prompt == "" {
-					return
-				}
-				ann := s.AddAnnotation(prompt)
-				if ann != nil {
-					ann.RewritePrompt = prompt
-				}
-				s.aiRewriteDraft = ""
-				s.toolbarPop = ""
-			}
-			if in.Submitted() {
-				apply()
-			}
-			btn := appUi.ActionButton(c, "ai-rewrite-submit", theme.Tr("生成", "Rewrite"), nil, appUi.ButtonPrimary, false)
-			if btn.Clicked() {
-				apply()
-			}
-		})
-	})
-	if card.PressedOutside() {
-		s.toolbarPop = ""
+var allCalloutKinds = []model.CalloutKind{
+	model.CalloutNote,
+	model.CalloutTip,
+	model.CalloutImportant,
+	model.CalloutWarning,
+	model.CalloutCaution,
+}
+
+func calloutTone(kind model.CalloutKind, dark bool) calloutStyle {
+	switch {
+	case kind == model.CalloutTip && !dark:
+		return calloutStyle{BG: ui.Hex("#edf7f2"), Border: ui.Hex("#bce3cf"), Accent: ui.Hex("#1f8a5b"), IconFill: ui.Hex("#d3efe1"), Text: ui.Hex("#166541")}
+	case kind == model.CalloutImportant && !dark:
+		return calloutStyle{BG: ui.Hex("#f3f0fb"), Border: ui.Hex("#d6ccf2"), Accent: ui.Hex("#6e56cf"), IconFill: ui.Hex("#e4ddf8"), Text: ui.Hex("#4c389e")}
+	case kind == model.CalloutWarning && !dark:
+		return calloutStyle{BG: ui.Hex("#fdf5e8"), Border: ui.Hex("#edd4a8"), Accent: ui.Hex("#b86b11"), IconFill: ui.Hex("#f7e2be"), Text: ui.Hex("#8a4e08")}
+	case kind == model.CalloutCaution && !dark:
+		return calloutStyle{BG: ui.Hex("#fceeee"), Border: ui.Hex("#f1c4c4"), Accent: ui.Hex("#c93b3b"), IconFill: ui.Hex("#f8dada"), Text: ui.Hex("#962727")}
+	case !dark:
+		return calloutStyle{BG: ui.Hex("#eef3fc"), Border: ui.Hex("#c9d8f3"), Accent: ui.Hex("#547dd0"), IconFill: ui.Hex("#dce7fa"), Text: ui.Hex("#2c4c8c")}
+	case kind == model.CalloutTip && dark:
+		return calloutStyle{BG: ui.Hex("#182923"), Border: ui.Hex("#284d3e"), Accent: ui.Hex("#4fd69c"), IconFill: ui.Hex("#203d31"), Text: ui.Hex("#7ce8b8")}
+	case kind == model.CalloutImportant && dark:
+		return calloutStyle{BG: ui.Hex("#231e34"), Border: ui.Hex("#3f3366"), Accent: ui.Hex("#a78bfa"), IconFill: ui.Hex("#312750"), Text: ui.Hex("#c4b5fd")}
+	case kind == model.CalloutWarning && dark:
+		return calloutStyle{BG: ui.Hex("#2b2316"), Border: ui.Hex("#544021"), Accent: ui.Hex("#f5a623"), IconFill: ui.Hex("#3d2f19"), Text: ui.Hex("#f8c165")}
+	case kind == model.CalloutCaution && dark:
+		return calloutStyle{BG: ui.Hex("#2d1b1e"), Border: ui.Hex("#592e34"), Accent: ui.Hex("#f26d6d"), IconFill: ui.Hex("#422328"), Text: ui.Hex("#ff9b9b")}
+	default:
+		return calloutStyle{BG: ui.Hex("#1b2434"), Border: ui.Hex("#2f4368"), Accent: ui.Hex("#7aa2f7"), IconFill: ui.Hex("#253552"), Text: ui.Hex("#9ab8ff")}
 	}
+}
+
+func calloutLabel(kind model.CalloutKind) string {
+	switch kind {
+	case model.CalloutTip:
+		return theme.Tr("技巧", "Tip")
+	case model.CalloutImportant:
+		return theme.Tr("重要", "Important")
+	case model.CalloutWarning:
+		return theme.Tr("警告", "Warning")
+	case model.CalloutCaution:
+		return theme.Tr("注意", "Caution")
+	default:
+		return theme.Tr("提示", "Note")
+	}
+}
+
+func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
+	if s.calloutMenuBlock == 0 {
+		return
+	}
+	idx := s.blockIndexByID(s.calloutMenuBlock)
+	if idx < 0 || s.doc.Blocks[idx].Kind != model.BlockCallout {
+		s.calloutMenuBlock = 0
+		return
+	}
+	pal := theme.Ocean()
+	dark := theme.IsDark()
+	b := &s.doc.Blocks[idx]
+	curKind := b.Callout
+	if curKind == "" {
+		curKind = model.CalloutNote
+	}
+
+	trigger, ok := appUi.TargetBounds(fmt.Sprintf("callout-pill-%d", b.ID))
+	if !ok {
+		trigger = s.blockRects[b.ID]
+	}
+	if trigger.W <= 0 {
+		trigger = ui.Rect{X: 120, Y: 100, W: 140, H: 28}
+	}
+	menuW := float32(204)
+	spec := appUi.PlaceBelow(trigger).WithGap(4).WithMargin(8)
+	x, y := appUi.ResolveOrigin(spec, menuW, 240, s.viewportWidth, s.viewportHeight)
+
+	ui.Overlay(c, func() {
+		shell := ui.Column(c.Key("callout-kind-menu")).Absolute().Left(x).Top(y).Width(menuW).
+			Padding(4).Gap(2).Radius(theme.RadiusCard).Background(pal.Menu).Border(1, pal.Hairline).
+			Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
+		appUi.Probe(shell, "callout-kind-menu")
+
+		shell.Children(func() {
+			for ix, k := range allCalloutKinds {
+				kind := k
+				st := calloutTone(kind, dark)
+				checked := kind == curKind
+				highlighted := s.calloutMenuIndex == ix
+				row := ui.ButtonBase(c.Key(fmt.Sprintf("callout-opt-%d", ix))).FillWidth().Height(32).
+					PaddingX(10).Gap(8).AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).
+					Label(calloutLabel(kind))
+				if checked {
+					row.Background(pal.Selected).Border(1, pal.Accent)
+				} else if highlighted || row.Hovered() {
+					row.Background(pal.Hover)
+				}
+				row.Children(func() {
+					ui.Box(c).Size(10, 10).Shrink(0).Radius(5).Background(st.BG).Border(1, st.Accent)
+					ui.Text(c, calloutLabel(kind)).FontSize(14).FontWeight(boolToWeight(checked)).TextColor(pal.Text).Grow(1).SingleLine()
+					ui.Text(c, string(kind)).Font("monospace").FontSize(12).TextColor(pal.TextSecondary).SingleLine()
+				})
+				appUi.Probe(row, fmt.Sprintf("callout-opt-%d", ix))
+				if row.Clicked() {
+					s.setCalloutKind(b.ID, &kind)
+				}
+			}
+
+			ui.Box(c).FillWidth().Height(1).MarginY(4).Background(pal.Hairline)
+
+			plainHighlighted := s.calloutMenuIndex == len(allCalloutKinds)
+			ic := icons.Text
+			appUi.MenuRow(c, appUi.MenuItemSpec{
+				ID:    "callout-opt-plain",
+				Label: theme.Tr("转为普通段落", "Convert to Text"),
+				Icon:  &ic,
+				OnClick: func() {
+					s.setCalloutKind(b.ID, nil)
+				},
+			}, plainHighlighted)
+		})
+
+		if shell.PressedOutside() {
+			s.calloutMenuBlock = 0
+		}
+	})
+}
+
+func boolToWeight(on bool) int {
+	if on {
+		return 600
+	}
+	return 400
 }
 
 // --- 3. Slash & Handle Block Menu Overlay (with internal scroll containment) ---

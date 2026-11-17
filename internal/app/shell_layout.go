@@ -2,10 +2,11 @@ package app
 
 // ShellLayout constants mirror thinkly-fast/src/ui/shell_layout.rs 1:1.
 const (
-	NoteFloor     float32 = 480
-	SettingsFloor float32 = 680
-	WindowMinW    float32 = 680
-	WindowMinH    float32 = 480
+	NoteFloor            float32 = 480
+	ThreeColumnNoteFloor float32 = 560
+	SettingsFloor        float32 = 680
+	WindowMinW           float32 = 680
+	WindowMinH           float32 = 480
 
 	SidebarMinW     float32 = 240
 	SidebarDefaultW float32 = 252
@@ -74,15 +75,50 @@ func ClampChatWidth(w float32) float32 {
 	return w
 }
 
-// ResolveShellLayout resolves sidebar docking/yielding and AI panel docking/overlay
+// FitsSaved reports whether the saved sidebar and chat widths fit beside the page floor.
+func FitsSaved(in ShellInput) bool {
+	floor := NoteFloor
+	if in.InSettings {
+		floor = SettingsFloor
+	}
+	sidebar := float32(0)
+	if in.SidebarVisible {
+		sidebar = ClampSidebarWidth(in.SidebarDesiredW)
+	}
+	if in.ChatVisible && !in.InSettings && !in.ChatFullscreen {
+		threeCol := max(floor, ThreeColumnNoteFloor)
+		return sidebar+threeCol+ClampChatWidth(in.ChatDesiredW) <= in.WindowWidth+0.5
+	}
+	return sidebar+floor <= in.WindowWidth+0.5
+}
+
+// ChatLimit returns the widest chat width a drag may commit without pushing the note under its floor.
+func ChatLimit(windowW, sidebarW float32, sidebarCollapsed bool, chatMin, chatMax float32) float32 {
+	threeColFloor := max(NoteFloor, ThreeColumnNoteFloor)
+	docks := !sidebarCollapsed && sidebarW+threeColFloor+chatMin <= windowW+0.5
+	var room float32
+	if docks {
+		room = windowW - sidebarW - threeColFloor
+	} else {
+		room = windowW - NoteFloor
+	}
+	if room < chatMin {
+		return chatMin
+	}
+	if room > chatMax {
+		return chatMax
+	}
+	return room
+}
+
+// ResolveShellLayout resolves sidebar docking/yielding and AI panel docking
 // using the exact priority rules from thinkly-fast/src/ui/shell_layout.rs:
-//  1. Content floor (480 for Note, 680 for Settings) is always guaranteed.
-//  2. Sidebar docks when sidebarWidth + floor <= windowWidth + 0.5; otherwise it
-//     yields (hides automatically, or opens as a floating drawer if SidebarPinned).
-//  3. In Settings, AI panel is never shown. Otherwise if ChatFullscreen is active,
-//     chat takes the full workspace width after any docked sidebar.
-//  4. Otherwise Chat docks when remaining width >= floor + chatWidth (shrinking
-//     chatWidth down toward ChatMinW if needed), else overlays on the right.
+//  1. When space runs short with AI Chat open, the left file tree steps aside first
+//     (requiring ThreeColumnNoteFloor = 560 beside sidebar + chatMin = 320).
+//  2. The right AI chat panel stays docked rather than floating over the page,
+//     shrinking down toward ChatMinW (320) only after the file tree has yielded.
+//  3. The yielded file tree remains reachable as a floating drawer when SidebarPinned.
+//  4. Settings blocks AI panel and enforces SettingsFloor (680).
 func ResolveShellLayout(in ShellInput) ShellLayout {
 	winW := in.WindowWidth
 	if winW < WindowMinW {
@@ -93,34 +129,29 @@ func ResolveShellLayout(in ShellInput) ShellLayout {
 		floor = SettingsFloor
 	}
 	sbW := ClampSidebarWidth(in.SidebarDesiredW)
-	chatW := ClampChatWidth(in.ChatDesiredW)
+	desiredChat := ClampChatWidth(in.ChatDesiredW)
 
 	out := ShellLayout{
 		ContentFloor: floor,
 		SidebarWidth: sbW,
-		ChatWidth:    chatW,
+		ChatWidth:    desiredChat,
 	}
 
-	if in.SidebarVisible {
-		if sbW+floor <= winW+0.5 {
-			out.SidebarDocked = true
-		} else {
-			out.SidebarYielded = true
-			if in.SidebarPinned {
-				out.SidebarDrawer = true
+	chatVis := in.ChatVisible && !in.InSettings
+	if !chatVis || in.ChatFullscreen {
+		if in.SidebarVisible {
+			if sbW+floor <= winW+0.5 {
+				out.SidebarDocked = true
+			} else {
+				out.SidebarYielded = true
+				out.SidebarDrawer = in.SidebarPinned
 			}
 		}
-	}
-
-	availAfterSidebar := winW
-	if out.SidebarDocked {
-		availAfterSidebar -= sbW
-	}
-
-	// Settings page blocks AI panel per workspace contract.
-	chatVis := in.ChatVisible && !in.InSettings
-	if chatVis {
-		if in.ChatFullscreen {
+		availAfterSidebar := winW
+		if out.SidebarDocked {
+			availAfterSidebar -= sbW
+		}
+		if chatVis && in.ChatFullscreen {
 			out.ChatFullscreen = true
 			out.ChatDocked = true
 			out.ChatWidth = availAfterSidebar
@@ -128,32 +159,43 @@ func ResolveShellLayout(in ShellInput) ShellLayout {
 			out.ShowOutline = false
 			return out
 		}
-		maxDockChat := availAfterSidebar - floor
-		if maxDockChat+0.5 >= ChatMinW {
-			out.ChatDocked = true
-			if chatW > maxDockChat {
-				chatW = maxDockChat
-				if chatW < ChatMinW {
-					chatW = ChatMinW
-				}
-			}
-			out.ChatWidth = chatW
-		} else {
-			out.ChatOverlay = true
-			if chatW > winW-32 {
-				chatW = winW - 32
-				if chatW < ChatMinW {
-					chatW = ChatMinW
-				}
-			}
-			out.ChatWidth = chatW
-		}
+		out.MainWidth = max(availAfterSidebar, 0)
+		out.ShowOutline = !in.InSettings && winW >= OutlineShowMin && out.MainWidth >= 620
+		return out
 	}
 
-	mainW := availAfterSidebar
-	if out.ChatDocked {
-		mainW -= out.ChatWidth
+	threeColFloor := max(floor, ThreeColumnNoteFloor)
+	canDockSidebar := in.SidebarVisible && sbW+threeColFloor+ChatMinW <= winW+0.5
+	if canDockSidebar {
+		out.SidebarDocked = true
+	} else if in.SidebarVisible {
+		out.SidebarYielded = true
+		out.SidebarDrawer = in.SidebarPinned
 	}
+
+	dockedSidebar := float32(0)
+	pageFloor := floor
+	if out.SidebarDocked {
+		dockedSidebar = sbW
+		pageFloor = threeColFloor
+	}
+
+	free := winW - dockedSidebar - pageFloor
+	cw := free
+	if cw < ChatMinW {
+		cw = ChatMinW
+	}
+	if cw > desiredChat {
+		cw = desiredChat
+	}
+	if cw > winW {
+		cw = winW
+	}
+	out.ChatDocked = true
+	out.ChatOverlay = false
+	out.ChatWidth = cw
+
+	mainW := winW - dockedSidebar - out.ChatWidth
 	if mainW < 0 {
 		mainW = 0
 	}

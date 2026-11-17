@@ -1,11 +1,13 @@
 package files
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"block/internal/model"
 	"block/internal/theme"
@@ -341,5 +343,258 @@ func TestHistorySnapshotsAndMyersDiff(t *testing.T) {
 		if diff[i] != want[i] {
 			t.Fatalf("DiffLines[%d] = %+v, want %+v", i, diff[i], want[i])
 		}
+	}
+}
+
+func TestClassifyHelpers(t *testing.T) {
+	for _, img := range []string{"a.png", "b.JPG", "c.jpeg", "d.gif", "e.webp", "f.bmp", "g.ico", "h.avif", "i.SVG"} {
+		if !IsImagePath(img) {
+			t.Fatalf("IsImagePath(%q) = false, want true", img)
+		}
+	}
+	if IsImagePath("notes.md") || IsImagePath("readme") {
+		t.Fatal("expected non-image paths to return false for IsImagePath")
+	}
+	if !IsSVGPath("icon.SVG") || IsSVGPath("icon.png") {
+		t.Fatal("IsSVGPath mismatch")
+	}
+
+	langCases := map[string]string{
+		"index.html": "html",
+		"page.xhtml": "html",
+		"data.json":  "json",
+		"cfg.yaml":   "yaml",
+		"cfg.yml":    "yaml",
+		"cfg.toml":   "plaintext",
+		"app.mjs":    "javascript",
+		"app.tsx":    "typescript",
+		"app.mts":    "typescript",
+		"main.go":    "go",
+		"lib.rs":     "rust",
+		"run.sh":     "bash",
+		"init.fish":  "bash",
+		"icon.svg":   "xml",
+		"style.xsl":  "xml",
+		"README":     "plaintext",
+		"app.log":    "plaintext",
+		".env":       "plaintext",
+	}
+	for p, want := range langCases {
+		if got := LanguageTagForPath(p); got != want {
+			t.Fatalf("LanguageTagForPath(%q) = %q, want %q", p, got, want)
+		}
+	}
+}
+
+func TestClassifyFileImagesAndSVG(t *testing.T) {
+	dir := t.TempDir()
+
+	// Raster image > 5MB with binary bytes still returns Preview without reading body.
+	bigPNG := filepath.Join(dir, "huge.png")
+	f, err := os.Create(bigPNG)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(TextLimit + 1024); err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	for _, ext := range []string{"png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"} {
+		p := bigPNG
+		if ext != "png" {
+			p = filepath.Join(dir, "sample."+ext)
+			if err := os.WriteFile(p, []byte{0x00, 0xFF, 0x01}, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got, err := ClassifyFile(p)
+		if err != nil {
+			t.Fatalf("ClassifyFile(%s): %v", p, err)
+		}
+		if got.Kind != model.OpenKindPreview || got.Source != nil {
+			t.Fatalf("ClassifyFile(%s) = %+v, want Preview with nil Source", p, got)
+		}
+	}
+
+	// Editable SVG with BOM.
+	svgBody := "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n"
+	svgPath := filepath.Join(dir, "editable.svg")
+	if _, err := WriteRawFileAtomic(svgPath, svgBody, true); err != nil {
+		t.Fatal(err)
+	}
+	gotSVG, err := ClassifyFile(svgPath)
+	if err != nil {
+		t.Fatalf("ClassifyFile(svg): %v", err)
+	}
+	if gotSVG.Kind != model.OpenKindPreview || gotSVG.Source == nil {
+		t.Fatalf("expected editable SVG Preview, got %+v", gotSVG)
+	}
+	if !gotSVG.Source.SVG || !gotSVG.Source.BOM || gotSVG.Source.Language != "xml" || gotSVG.Source.Text != svgBody {
+		t.Fatalf("unexpected SVG source: %+v", gotSVG.Source)
+	}
+
+	// Read-only SVG fallbacks: binary byte, long line, >5MB.
+	badSVG := filepath.Join(dir, "bin.svg")
+	if err := os.WriteFile(badSVG, []byte("<svg>\x00</svg>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ClassifyFile(badSVG); err != nil || got.Kind != model.OpenKindPreview || got.Source != nil {
+		t.Fatalf("expected read-only SVG for binary byte, got (%+v, %v)", got, err)
+	}
+
+	longLineSVG := filepath.Join(dir, "long.svg")
+	if err := os.WriteFile(longLineSVG, bytes.Repeat([]byte("a"), lineLimit+1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ClassifyFile(longLineSVG); err != nil || got.Kind != model.OpenKindPreview || got.Source != nil {
+		t.Fatalf("expected read-only SVG for long line, got (%+v, %v)", got, err)
+	}
+
+	hugeSVG := filepath.Join(dir, "huge.svg")
+	if err := os.WriteFile(hugeSVG, bytes.Repeat([]byte(" "), int(TextLimit)+10), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ClassifyFile(hugeSVG); err != nil || got.Kind != model.OpenKindPreview || got.Source != nil {
+		t.Fatalf("expected read-only SVG for >5MB, got (%+v, %v)", got, err)
+	}
+}
+
+func TestClassifyFileMarkdownSourceBOMAndBlocks(t *testing.T) {
+	theme.SetLanguage(model.LangEn)
+	t.Cleanup(func() { theme.SetLanguage(model.LangZh) })
+
+	dir := t.TempDir()
+
+	// Markdown valid.
+	mdPath := filepath.Join(dir, "note.md")
+	if err := os.WriteFile(mdPath, []byte("# Title\nBody\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gotMD, err := ClassifyFile(mdPath)
+	if err != nil || gotMD.Kind != model.OpenKindMarkdown || gotMD.Text != "# Title\nBody\n" {
+		t.Fatalf("valid markdown got (%+v, %v)", gotMD, err)
+	}
+
+	// Markdown long line blocked.
+	mdLong := filepath.Join(dir, "long.md")
+	if err := os.WriteFile(mdLong, bytes.Repeat([]byte("x"), lineLimit+1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ClassifyFile(mdLong); err != nil || got.Kind != model.OpenKindBlocked || got.Reason != "A line is too long to preview" {
+		t.Fatalf("long markdown got (%+v, %v)", got, err)
+	}
+
+	// Markdown invalid UTF-8 blocked.
+	mdBadUTF8 := filepath.Join(dir, "bad.md")
+	if err := os.WriteFile(mdBadUTF8, []byte{0xff, 0xfe, 0xfd}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ClassifyFile(mdBadUTF8); err != nil || got.Kind != model.OpenKindBlocked || got.Reason != "Not valid UTF-8" {
+		t.Fatalf("invalid UTF-8 markdown got (%+v, %v)", got, err)
+	}
+
+	// Source UTF-8 BOM roundtrip + HTML flag + highlight boundary.
+	htmlPath := filepath.Join(dir, "page.xhtml")
+	htmlText := "<html><body>Hello</body></html>\n"
+	if _, err := WriteRawFileAtomic(htmlPath, htmlText, true); err != nil {
+		t.Fatal(err)
+	}
+	gotHTML, err := ClassifyFile(htmlPath)
+	if err != nil || gotHTML.Kind != model.OpenKindSource || gotHTML.Source == nil {
+		t.Fatalf("ClassifyFile(xhtml) = (%+v, %v)", gotHTML, err)
+	}
+	if !gotHTML.Source.BOM || !gotHTML.Source.HTML || !gotHTML.Source.Highlight || gotHTML.Source.Language != "html" || gotHTML.Source.Text != htmlText {
+		t.Fatalf("unexpected xhtml Source: %+v", gotHTML.Source)
+	}
+	if _, err := WriteRawFileAtomic(htmlPath, gotHTML.Source.Text+"<!-- edited -->\n", gotHTML.Source.BOM); err != nil {
+		t.Fatal(err)
+	}
+	rawDisk, err := os.ReadFile(htmlPath)
+	if err != nil || !bytes.HasPrefix(rawDisk, []byte{0xEF, 0xBB, 0xBF}) {
+		t.Fatalf("expected UTF-8 BOM preserved on writeback, got %v (err=%v)", rawDisk[:min(3, len(rawDisk))], err)
+	}
+
+	// Extensionless plain text & >128KB highlight off.
+	plainPath := filepath.Join(dir, "README")
+	largeText := strings.Repeat("line\n", (HighlightLimit/5)+100)
+	if _, err := WriteRawFileAtomic(plainPath, largeText, false); err != nil {
+		t.Fatal(err)
+	}
+	gotPlain, err := ClassifyFile(plainPath)
+	if err != nil || gotPlain.Kind != model.OpenKindSource || gotPlain.Source == nil {
+		t.Fatalf("ClassifyFile(README) = (%+v, %v)", gotPlain, err)
+	}
+	if gotPlain.Source.BOM || gotPlain.Source.Highlight || gotPlain.Source.Language != "plaintext" {
+		t.Fatalf("unexpected large plain Source: %+v", gotPlain.Source)
+	}
+
+	// Binary known text blocked.
+	binJSON := filepath.Join(dir, "data.json")
+	if err := os.WriteFile(binJSON, []byte("{\"a\":\x001}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ClassifyFile(binJSON); err != nil || got.Kind != model.OpenKindBlocked || got.Reason != "File contains binary data" {
+		t.Fatalf("binary json got (%+v, %v)", got, err)
+	}
+
+	// >5MB text blocked.
+	bigLog := filepath.Join(dir, "big.log")
+	if err := os.WriteFile(bigLog, bytes.Repeat([]byte("a\n"), int(TextLimit/2)+10), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ClassifyFile(bigLog); err != nil || got.Kind != model.OpenKindBlocked || got.Reason != "File is larger than 5 MB" {
+		t.Fatalf("big log got (%+v, %v)", got, err)
+	}
+
+	// Unsupported binary file blocked.
+	binUnknown := filepath.Join(dir, "archive.bin")
+	if err := os.WriteFile(binUnknown, []byte{0x50, 0x4b, 0x03, 0x04, 0x00, 0xff}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ClassifyFile(binUnknown); err != nil || got.Kind != model.OpenKindBlocked || got.Reason != "This file type is not supported" {
+		t.Fatalf("unknown binary got (%+v, %v)", got, err)
+	}
+}
+
+func TestLatestRecoveryDraft(t *testing.T) {
+	dataDir := setupTestDataDir(t)
+	if _, _, ok := LatestRecoveryDraft(); ok {
+		t.Fatal("expected ok=false when Recovery directory does not exist")
+	}
+
+	nb := t.TempDir()
+	p1 := filepath.Join(nb, "first.md")
+	p2 := filepath.Join(nb, "second.md")
+
+	if err := SaveRecovery(p1, "older draft"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveRecovery(p2, "newer draft"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Ensure distinct mtimes even on coarse filesystems, plus ignore corrupt JSON.
+	rec1, _ := recoveryDraftPath(p1)
+	rec2, _ := recoveryDraftPath(p2)
+	now := time.Now()
+	_ = os.Chtimes(rec1, now.Add(-10*time.Second), now.Add(-10*time.Second))
+	_ = os.Chtimes(rec2, now.Add(-2*time.Second), now.Add(-2*time.Second))
+	corrupt := filepath.Join(dataDir, "Recovery", "zzzz-corrupt.json")
+	if err := os.WriteFile(corrupt, []byte("{bad"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Chtimes(corrupt, now, now)
+
+	gotPath, gotContent, ok := LatestRecoveryDraft()
+	if !ok || gotPath != p2 || gotContent != "newer draft" {
+		t.Fatalf("LatestRecoveryDraft() = (%q, %q, %v), want (%q, %q, true)", gotPath, gotContent, ok, p2, "newer draft")
+	}
+
+	ClearRecovery(p2)
+	gotPath, gotContent, ok = LatestRecoveryDraft()
+	if !ok || gotPath != p1 || gotContent != "older draft" {
+		t.Fatalf("LatestRecoveryDraft() after ClearRecovery = (%q, %q, %v), want (%q, %q, true)", gotPath, gotContent, ok, p1, "older draft")
 	}
 }

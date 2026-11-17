@@ -106,16 +106,20 @@ type Session struct {
 	blockMenu *blockMenuState
 
 	// Selection floating toolbar & format popovers
-	toolbarPop          string // "", "kinds", "lists", "palette", "link", "ai", "reactions", "comment"
+	toolbarPop          string // "", "more", "kinds", "lists", "palette", "link", "reactions", "comment"
 	linkDraft           string
 	linkInputHandle     ui.Handle
 	linkFocusPending    bool
-	aiRewriteDraft      string
-	aiRewriteHandle     ui.Handle
-	aiFocusPending      bool
 	commentDraft        string
 	commentHandle       ui.Handle
 	commentFocusPending bool
+
+	// Inline AI
+	dataDir           string
+	promptStore       *inlinePromptStore
+	inlineAIResponder func(ctx, orig, draft, instruction string) string
+	inlineAI          *inlineAISession
+	copyPending       bool
 
 	// Find bar
 	findOpen         bool
@@ -152,13 +156,20 @@ type Session struct {
 	codeCopiedBlock   model.BlockID
 	codeCopiedUntil   time.Time
 
+	// Callout block UI
+	calloutMenuBlock model.BlockID
+	calloutMenuIndex int
+
 	// Image block UI
-	imagePopBlock  model.BlockID
-	imagePopKind   string // "", "more", "alt", "size", "crop"
-	imageAltDraft  string
-	imageAltHandle ui.Handle
-	imageCache     map[string]ui.ImageSource
-	imageFailed    map[string]bool
+	imagePopBlock     model.BlockID
+	imagePopKind      string // "", "more", "alt", "size", "crop"
+	imageAltDraft     string
+	imageAltHandle    ui.Handle
+	imageCache        map[string]ui.ImageSource
+	imageFailed       map[string]bool
+	imgResizeBlock    model.BlockID
+	imgResizeStartPct float32
+	imgResizeCurPct   float32
 
 	// Table block UI
 	tableActiveBlock model.BlockID
@@ -244,9 +255,15 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.firstLineDeleteArmed = false
 	s.blockMenu = nil
 	s.toolbarPop = ""
+	s.cancelInlineAI()
+	s.inlineAI = nil
+	s.copyPending = false
 	s.codeLangMenuBlock = 0
+	s.calloutMenuBlock = 0
+	s.calloutMenuIndex = 0
 	s.imagePopBlock = 0
 	s.imagePopKind = ""
+	s.imgResizeBlock = 0
 	s.tableMenuBlock = 0
 	s.tableMenuKind = ""
 	s.highlightedBlockID = 0
@@ -326,7 +343,7 @@ func (s *Session) IsSlashMenuOpen() bool {
 }
 
 func (s *Session) IsSelectionToolbarOpen() bool {
-	return !s.readOnly && s.hasNonEmptySelection() && !s.findOpen
+	return !s.readOnly && s.hasNonEmptySelection() && !s.findOpen && s.inlineAI == nil && s.selectionSupportsToolbar()
 }
 
 func (s *Session) Annotations() []*model.Annotation {
@@ -448,6 +465,11 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 	s.firstLineDeleteArmed = false
 	s.blockMenu = nil
 	s.toolbarPop = ""
+	s.cancelInlineAI()
+	s.inlineAI = nil
+	s.copyPending = false
+	s.calloutMenuBlock = 0
+	s.imgResizeBlock = 0
 	if s.findOpen {
 		s.recomputeFind(false)
 	}
@@ -510,18 +532,23 @@ func (s *Session) SelectRange(startBlock, startOff, endBlock, endOff int) {
 func (s *Session) hasAnyOverlayOpen() bool {
 	return s.blockMenu != nil ||
 		s.toolbarPop != "" ||
+		s.inlineAI != nil ||
 		s.findOpen ||
 		s.codeLangMenuBlock != 0 ||
+		s.calloutMenuBlock != 0 ||
 		s.imagePopKind != "" ||
 		s.tableMenuKind != "" ||
 		s.activeAnnotID != "" ||
-		s.editingAnnotID != ""
+		s.editingAnnotID != "" ||
+		s.hasNonEmptySelection()
 }
 
 func (s *Session) closeTransientOverlays() {
 	s.blockMenu = nil
 	s.toolbarPop = ""
 	s.codeLangMenuBlock = 0
+	s.calloutMenuBlock = 0
+	s.calloutMenuIndex = 0
 	s.imagePopBlock = 0
 	s.imagePopKind = ""
 	s.tableMenuBlock = 0

@@ -478,3 +478,149 @@ func TestExportAllFormats(t *testing.T) {
 		t.Fatalf("ExportToFile dark theme output invalid: err=%v", err)
 	}
 }
+
+func TestExportAll12PaperThemesAndOptions(t *testing.T) {
+	dir := t.TempDir()
+	notePath := filepath.Join(dir, "paper-themes.md")
+
+	src := strings.Join([]string{
+		"# 纸面主题导出",
+		"",
+		"正文段落包含 [普通链接](https://example.com/body) 与 **加粗**。",
+		"",
+		"| 列名 | 链接 |",
+		"| --- | --- |",
+		"| 文档 | [表格链接](https://example.com/table) |",
+		"",
+		"> 引用文本",
+		"",
+		"- 列表项",
+		"- [x] 已完成",
+		"",
+		"```go",
+		"fmt.Println(1)",
+		"```",
+	}, "\n") + "\n"
+	doc := ParseMarkdown(src)
+
+	allThemes := []model.ExportTheme{
+		model.ExportThemeMono,
+		model.ExportThemeJournal,
+		model.ExportThemeRiso,
+		model.ExportThemePress,
+		model.ExportThemePoster,
+		model.ExportThemeMist,
+		model.ExportThemeInk,
+		model.ExportThemeKraft,
+		model.ExportThemeNeon,
+		model.ExportThemeFilm,
+		model.ExportThemeNight,
+		model.ExportThemeTerminal,
+	}
+
+	for _, th := range allThemes {
+		spec := PaperTheme(th)
+		prefs := model.ExportPreferences{
+			Style: th,
+			Title: "自定义标题",
+		}
+
+		// PNG (2x)
+		pngBytes, err := ExportDocument(doc, notePath, model.ExportPNG, prefs)
+		if err != nil {
+			t.Fatalf("theme %s ExportPNG failed: %v", th, err)
+		}
+		cfg, err := png.DecodeConfig(bytes.NewReader(pngBytes))
+		if err != nil || cfg.Width != defaultExportWidth*2 || cfg.Height < 200 {
+			t.Fatalf("theme %s invalid 2x PNG %dx%d err=%v", th, cfg.Width, cfg.Height, err)
+		}
+
+		// HTML: defaults ShowTitle=true, Watermark=true ("Block"), table link preserves theme color, no extra theme badge
+		htmlBytes, err := ExportDocument(doc, notePath, model.ExportHTML, prefs)
+		if err != nil {
+			t.Fatalf("theme %s ExportHTML failed: %v", th, err)
+		}
+		htmlStr := string(htmlBytes)
+		linkCSS := uiColorCSS(spec.LinkFG())
+		if !strings.Contains(htmlStr, "自定义标题") {
+			t.Fatalf("theme %s HTML missing custom Title", th)
+		}
+		if !strings.Contains(htmlStr, `<footer class="doc-footer"><span>Block</span>`) {
+			t.Fatalf("theme %s HTML missing default Block watermark", th)
+		}
+		if !strings.Contains(htmlStr, "table a,th a,td a{color:"+linkCSS) {
+			t.Fatalf("theme %s HTML missing themed table link CSS color %s", th, linkCSS)
+		}
+		if strings.Contains(htmlStr, "theme-badge") || strings.Contains(htmlStr, "theme-tag") {
+			t.Fatalf("theme %s HTML unexpectedly emitted extra theme badge", th)
+		}
+
+		// PDF
+		pdfBytes, err := ExportDocument(doc, notePath, model.ExportPDF, prefs)
+		if err != nil || !strings.HasPrefix(string(pdfBytes), "%PDF-1.4") {
+			t.Fatalf("theme %s ExportPDF failed: err=%v", th, err)
+		}
+
+		// DOCX
+		docxBytes, err := ExportDocument(doc, notePath, model.ExportDOCX, prefs)
+		if err != nil {
+			t.Fatalf("theme %s ExportDOCX failed: %v", th, err)
+		}
+		zr, err := zip.NewReader(bytes.NewReader(docxBytes), int64(len(docxBytes)))
+		if err != nil {
+			t.Fatalf("theme %s DOCX invalid zip: %v", th, err)
+		}
+		var docXML string
+		for _, f := range zr.File {
+			if f.Name == "word/document.xml" {
+				rc, _ := f.Open()
+				var b bytes.Buffer
+				_, _ = b.ReadFrom(rc)
+				_ = rc.Close()
+				docXML = b.String()
+			}
+		}
+		if !strings.Contains(docXML, "自定义标题") || !strings.Contains(docXML, "Block") {
+			t.Fatalf("theme %s DOCX missing title or Block watermark", th)
+		}
+	}
+
+	// Verify ShowTitle=false and Watermark=false suppress header & footer.
+	fBool := false
+	hiddenPrefs := model.ExportPreferences{
+		Style:     model.ExportThemeJournal,
+		ShowTitle: &fBool,
+		Watermark: &fBool,
+		Title:     "隐藏标题测试",
+	}
+	htmlNoMeta, err := ExportDocument(doc, notePath, model.ExportHTML, hiddenPrefs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	htmlNoMetaStr := string(htmlNoMeta)
+	if strings.Contains(htmlNoMetaStr, `<footer class="doc-footer">`) {
+		t.Fatalf("expected watermark footer suppressed when Watermark=false")
+	}
+	if bodyIdx := strings.Index(htmlNoMetaStr, "<body>"); bodyIdx >= 0 && strings.Contains(htmlNoMetaStr[bodyIdx:], "隐藏标题测试") {
+		t.Fatalf("expected custom title suppressed in body when ShowTitle=false")
+	}
+
+	// Markdown: ShowTitle=true prepends prefs.Title when not duplicated; ShowTitle=false omits it.
+	plainDoc := ParseMarkdown("Only body paragraph.\n")
+	tBool := true
+	mdWithTitle, err := ExportDocument(plainDoc, notePath, model.ExportMarkdown, model.ExportPreferences{
+		ShowTitle: &tBool,
+		Title:     "Injected Title",
+	})
+	if err != nil || !strings.HasPrefix(string(mdWithTitle), "# Injected Title\n\n") {
+		t.Fatalf("expected prepended title in Markdown, got %q (err=%v)", string(mdWithTitle), err)
+	}
+	mdWithoutTitle, err := ExportDocument(plainDoc, notePath, model.ExportMarkdown, model.ExportPreferences{
+		ShowTitle: &fBool,
+		Title:     "Injected Title",
+	})
+	if err != nil || strings.Contains(string(mdWithoutTitle), "Injected Title") {
+		t.Fatalf("expected no prepended title when ShowTitle=false, got %q", string(mdWithoutTitle))
+	}
+}
+

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"block/internal/ai"
 	"block/internal/editor"
+	"block/internal/export"
 	"block/internal/files"
 	"block/internal/icons"
 	"block/internal/markdown"
@@ -23,7 +25,8 @@ import (
 )
 
 // Workspace coordinates the entire Block desktop application: state persistence,
-// notebooks & file tree, multi-tab Block Editor sessions, AI Assistant panel,
+// notebooks & file tree, multi-tab Block Editor & non-Markdown file surfaces,
+// full-window 12-theme Export stage, full-window Page History, AI Assistant panel,
 // Settings & Modal dialogs, Quick Note floating window, shortcuts, and file watching.
 type Workspace struct {
 	mu sync.RWMutex
@@ -41,12 +44,20 @@ type Workspace struct {
 
 	codec    *markdown.Codec
 	sessions map[string]*editor.Session
+	surfaces map[string]*TabSurface
 	nav      *NavHistory
 	closed   *ClosedTabs
 	tabOps   TabStripOps
 
 	tabMenu   *TabMenuState
 	sidebarUI *SidebarUIState
+
+	exportCtrl   *export.Controller
+	historyView  *PageHistoryView
+	historyToast *HistoryToast
+
+	recoveryPath    string
+	recoveryContent string
 
 	ai     *ai.Controller
 	modals *modals.Manager
@@ -74,16 +85,23 @@ func NewWorkspace(dataDir string) *Workspace {
 		virtualPreview: make(map[string]bool),
 		codec:          codec,
 		sessions:       make(map[string]*editor.Session),
+		surfaces:       make(map[string]*TabSurface),
 		nav:            NewNavHistory(),
 		closed:         NewClosedTabs(),
 		tabMenu:        &TabMenuState{},
 		sidebarUI:      NewSidebarUIState(),
+		historyView:    &PageHistoryView{Mode: "diff"},
 		lastSnapAt:     make(map[string]time.Time),
 	}
 	if st.SidebarWidth != nil && *st.SidebarWidth > 0 {
 		w.sidebarWidth = ClampSidebarWidth(*st.SidebarWidth)
 	}
+	if recPath, recContent, ok := files.LatestRecoveryDraft(); ok {
+		w.recoveryPath = recPath
+		w.recoveryContent = recContent
+	}
 
+	w.exportCtrl = export.NewController(actualDir, w.RequestRedraw)
 	w.ai = ai.NewController(actualDir, w, codec)
 	w.modals = modals.NewManager(actualDir, w)
 	w.quick = modals.NewQuickNoteController(actualDir, w, codec)
@@ -103,6 +121,73 @@ func applyThemeFromState(st model.AppState) {
 	theme.SetTypography(st.EditorFont, st.CodeFont, st.LineHeight)
 	theme.SetFolderRules(st.FolderRules)
 	theme.SetIgnoredSearchFolders(st.IgnoredSearchFolders)
+}
+
+func (w *Workspace) newEditorSession(cleanPath string, doc *model.Doc) *editor.Session {
+	sess := editor.NewSession(cleanPath, doc, w.codec, w)
+	sess.SetDataDir(w.dataDir)
+	sess.SetInlineAIResponder(w.inlineAIRespond)
+	return sess
+}
+
+func (w *Workspace) inlineAIRespond(ctxText, orig, draft, instruction string) string {
+	inst := strings.TrimSpace(instruction)
+	instLower := strings.ToLower(inst)
+	src := strings.TrimSpace(orig)
+	if src == "" {
+		src = strings.TrimSpace(draft)
+	}
+
+	// Empty-block generation modes (续写 / 列大纲 / 待办清单 / 头脑风暴 / 自定义)
+	if strings.TrimSpace(orig) == "" {
+		topic := strings.TrimSpace(ctxText)
+		if idx := strings.LastIndex(topic, "\n"); idx >= 0 {
+			lastLine := strings.TrimSpace(topic[idx+1:])
+			if lastLine != "" {
+				topic = lastLine
+			}
+		}
+		topic = strings.TrimLeft(topic, "#>-* ")
+		if topic == "" {
+			topic = theme.Tr("当前主题", "Current Topic")
+		}
+		switch {
+		case strings.Contains(inst, "大纲") || strings.Contains(instLower, "outline"):
+			return fmt.Sprintf("### %s 核心脉络\n\n- 背景与目标界定\n- 关键执行步骤\n- 风险与验收标准", topic)
+		case strings.Contains(inst, "待办") || strings.Contains(instLower, "to-do") || strings.Contains(instLower, "todo") || strings.Contains(inst, "- [ ]"):
+			return fmt.Sprintf("- [ ] 梳理 %s 的核心需求\n- [ ] 完成方案设计与实现\n- [ ] 执行端到端验证与复盘", topic)
+		case strings.Contains(inst, "风暴") || strings.Contains(instLower, "brainstorm") || strings.Contains(inst, "发散"):
+			return fmt.Sprintf("- 从用户高频痛点切入优化 %s\n- 简化交互层级，保持单屏直达\n- 引入自动化回归保障稳定性\n- 沉淀可复用的模块化组件", topic)
+		default:
+			return fmt.Sprintf("围绕「%s」，进一步明确核心边界与落地路径，让整体结构紧凑清晰、易于推进。", topic)
+		}
+	}
+
+	// Selection / block edit modes (润色 / 精简 / 通俗一点 / 翻译 / 自定义)
+	switch {
+	case strings.Contains(inst, "翻译") || strings.Contains(instLower, "translate"):
+		hasCJK := false
+		for _, r := range src {
+			if r >= 0x4E00 && r <= 0x9FFF {
+				hasCJK = true
+				break
+			}
+		}
+		if hasCJK {
+			return fmt.Sprintf("Translated: %s", src)
+		}
+		return fmt.Sprintf("译文：%s", src)
+	case strings.Contains(inst, "精简") || strings.Contains(instLower, "simplify"):
+		runes := []rune(src)
+		if len(runes) > 24 {
+			return string(runes[:24])
+		}
+		return strings.TrimSuffix(strings.TrimSuffix(src, "。"), ".")
+	case strings.Contains(inst, "通俗") || strings.Contains(instLower, "plain"):
+		return fmt.Sprintf("通俗来说：%s", src)
+	default:
+		return fmt.Sprintf("%s（已润色）", strings.TrimSuffix(strings.TrimSuffix(src, "。"), "."))
+	}
 }
 
 func (w *Workspace) wireModalCallbacks() {
@@ -230,12 +315,12 @@ func (w *Workspace) hydrateInitialWorkspace() {
 	w.state.OpenTabs = validTabs
 	w.state.ActiveTab = active
 	if active != "" {
-		_ = w.ensureSessionLoaded(active)
+		_ = w.ensureTabLoaded(active)
 		w.nav.Push(active)
 	}
 }
 
-// AttachWindow binds the main *mygo.Window, starts folder file watching, and attaches Quick Note.
+// AttachWindow binds the main *mygo.Window and starts folder file watching.
 func (w *Workspace) AttachWindow(win *mygo.Window) {
 	w.mu.Lock()
 	w.win = win
@@ -257,6 +342,9 @@ func (w *Workspace) Window() *mygo.Window {
 // AI returns the workspace's AI Controller.
 func (w *Workspace) AI() *ai.Controller { return w.ai }
 
+// Export returns the workspace's full-window 12-theme Export Controller.
+func (w *Workspace) Export() *export.Controller { return w.exportCtrl }
+
 // Modals returns the workspace's Modals & Settings Manager.
 func (w *Workspace) Modals() *modals.Manager { return w.modals }
 
@@ -265,6 +353,46 @@ func (w *Workspace) QuickNote() *modals.QuickNoteController { return w.quick }
 
 // Codec returns the workspace's MarkdownCodec.
 func (w *Workspace) Codec() *markdown.Codec { return w.codec }
+
+// PendingRecoveryDraft returns any unsaved crash-recovery draft found on startup.
+func (w *Workspace) PendingRecoveryDraft() (notePath string, content string, ok bool) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if w.recoveryPath == "" {
+		return "", "", false
+	}
+	return w.recoveryPath, w.recoveryContent, true
+}
+
+// ApplyPendingRecoveryDraft restores the startup crash-recovery draft into its note and clears the draft file.
+func (w *Workspace) ApplyPendingRecoveryDraft() (string, error) {
+	w.mu.Lock()
+	p, c := w.recoveryPath, w.recoveryContent
+	w.recoveryPath = ""
+	w.recoveryContent = ""
+	w.mu.Unlock()
+	if p == "" {
+		return "", nil
+	}
+	if err := w.WriteNote(p, c); err != nil {
+		return p, err
+	}
+	_ = w.OpenNote(p, 0)
+	return p, nil
+}
+
+// DismissPendingRecoveryDraft discards the startup crash-recovery draft.
+func (w *Workspace) DismissPendingRecoveryDraft() {
+	w.mu.Lock()
+	p := w.recoveryPath
+	w.recoveryPath = ""
+	w.recoveryContent = ""
+	w.mu.Unlock()
+	if p != "" {
+		files.ClearRecovery(p)
+	}
+	w.RequestRedraw()
+}
 
 // State returns a snapshot of the persisted AppState.
 func (w *Workspace) State() model.AppState {
@@ -287,7 +415,26 @@ func (w *Workspace) Entries() []model.FileEntry {
 	return append([]model.FileEntry(nil), w.entries...)
 }
 
-// SessionFor returns the active *editor.Session for path, loading it from disk if needed.
+// SurfaceFor returns the non-Markdown *TabSurface for path if path is a non-Markdown open file.
+func (w *Workspace) SurfaceFor(path string) *TabSurface {
+	if path == "" {
+		return nil
+	}
+	clean := filepath.Clean(path)
+	w.mu.RLock()
+	surf := w.surfaces[clean]
+	_, hasSess := w.sessions[clean]
+	w.mu.RUnlock()
+	if surf != nil || hasSess {
+		return surf
+	}
+	_ = w.ensureTabLoaded(clean)
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.surfaces[clean]
+}
+
+// SessionFor returns the active *editor.Session for path (nil for non-Markdown surfaces).
 func (w *Workspace) SessionFor(path string) *editor.Session {
 	if path == "" {
 		return nil
@@ -295,11 +442,12 @@ func (w *Workspace) SessionFor(path string) *editor.Session {
 	clean := filepath.Clean(path)
 	w.mu.RLock()
 	sess := w.sessions[clean]
+	_, hasSurf := w.surfaces[clean]
 	w.mu.RUnlock()
-	if sess != nil {
+	if sess != nil || hasSurf {
 		return sess
 	}
-	_ = w.ensureSessionLoaded(clean)
+	_ = w.ensureTabLoaded(clean)
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	return w.sessions[clean]
@@ -310,25 +458,122 @@ func (w *Workspace) ActiveSession() *editor.Session {
 	return w.SessionFor(w.ActiveNotePath())
 }
 
-func (w *Workspace) ensureSessionLoaded(path string) error {
+// ActiveSurface returns the non-Markdown *TabSurface of the currently active tab, or nil.
+func (w *Workspace) ActiveSurface() *TabSurface {
+	return w.SurfaceFor(w.ActiveNotePath())
+}
+
+func (w *Workspace) ensureTabLoaded(path string) error {
 	clean := filepath.Clean(path)
 	w.mu.RLock()
 	if _, ok := w.sessions[clean]; ok {
 		w.mu.RUnlock()
 		return nil
 	}
+	if _, ok := w.surfaces[clean]; ok {
+		w.mu.RUnlock()
+		return nil
+	}
 	w.mu.RUnlock()
 
-	raw, _, err := files.ReadNote(clean)
+	cf, err := files.ClassifyFile(clean)
 	if err != nil {
 		return err
 	}
-	doc := w.codec.Parse(raw)
-	sess := editor.NewSession(clean, doc, w.codec, w)
+	if cf.Kind == model.OpenKindMarkdown {
+		doc := w.codec.Parse(cf.Text)
+		sess := w.newEditorSession(clean, doc)
+		w.mu.Lock()
+		delete(w.surfaces, clean)
+		w.sessions[clean] = sess
+		w.mu.Unlock()
+		return nil
+	}
+
+	surf := NewTabSurface(clean, cf)
 	w.mu.Lock()
-	w.sessions[clean] = sess
+	delete(w.sessions, clean)
+	w.surfaces[clean] = surf
 	w.mu.Unlock()
 	return nil
+}
+
+// OpenExportStage opens the full-window 12-theme A-Export stage for the active Markdown note.
+func (w *Workspace) OpenExportStage() bool {
+	active := w.ActiveNotePath()
+	if active == "" {
+		return false
+	}
+	sess := w.SessionFor(active)
+	if sess == nil {
+		return false
+	}
+	w.FlushDirtySessions()
+	w.tabMenu.Close()
+	w.sidebarUI.ClosePopups()
+	w.modals.CloseSettings()
+	w.historyView.Close()
+
+	title := noteDisplayTitle(active, false)
+	w.exportCtrl.Open(title, active, sess.Doc(), sess.SelectedDoc())
+	w.RequestRedraw()
+	return true
+}
+
+// IsPageHistoryOpen reports whether the full-window Page History stage is currently open.
+func (w *Workspace) IsPageHistoryOpen() bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.historyView != nil && w.historyView.Open
+}
+
+// OpenPageHistory opens the full-window Page History stage (`app_history_view.rs` 1:1) for the active Markdown note.
+func (w *Workspace) OpenPageHistory() bool {
+	active := w.ActiveNotePath()
+	if active == "" {
+		return false
+	}
+	sess := w.SessionFor(active)
+	if sess == nil {
+		return false
+	}
+	w.FlushDirtySessions()
+	w.tabMenu.Close()
+	w.sidebarUI.ClosePopups()
+	w.modals.CloseSettings()
+	w.exportCtrl.Close()
+
+	curText := sess.Markdown()
+	snaps, err := files.ListHistorySnapshots(active)
+	if err == nil && len(snaps) == 0 {
+		// Ensure at least one baseline snapshot exists when opening history on an existing note.
+		_, _ = files.RecordHistorySnapshot(active, curText, theme.Tr("当前版本", "Current version"))
+		snaps, _ = files.ListHistorySnapshots(active)
+	}
+
+	w.mu.Lock()
+	w.historyView.OpenForNote(
+		active,
+		curText,
+		snaps,
+		func(id string) (string, error) {
+			return files.ReadHistorySnapshot(active, id)
+		},
+		files.DiffLines,
+	)
+	w.mu.Unlock()
+	w.RequestRedraw()
+	return true
+}
+
+// ClosePageHistory exits the full-window Page History stage.
+func (w *Workspace) ClosePageHistory() {
+	w.mu.Lock()
+	if w.historyView != nil {
+		w.historyView.Close()
+	}
+	w.mu.Unlock()
+	w.RequestRedraw()
 }
 
 // --- model.WorkspaceHost implementation ---
@@ -382,9 +627,13 @@ func (w *Workspace) ReadNote(absPath string) (string, error) {
 	clean := filepath.Clean(absPath)
 	w.mu.RLock()
 	sess := w.sessions[clean]
+	surf := w.surfaces[clean]
 	w.mu.RUnlock()
 	if sess != nil {
 		return sess.Markdown(), nil
+	}
+	if surf != nil && surf.IsEditableSource() {
+		return surf.Source.Text, nil
 	}
 	content, _, err := files.ReadNote(clean)
 	return content, err
@@ -395,6 +644,24 @@ func (w *Workspace) WriteNote(absPath string, content string) error {
 	if err := os.MkdirAll(filepath.Dir(clean), 0o755); err != nil {
 		return err
 	}
+	if !files.IsMarkdown(clean) {
+		w.mu.RLock()
+		existingSurf := w.surfaces[clean]
+		w.mu.RUnlock()
+		bom := existingSurf != nil && existingSurf.Source.BOM
+		if _, err := files.WriteRawFileAtomic(clean, content, bom); err != nil {
+			return err
+		}
+		if cf, err := files.ClassifyFile(clean); err == nil {
+			w.mu.Lock()
+			w.surfaces[clean] = NewTabSurface(clean, cf)
+			w.mu.Unlock()
+		}
+		w.RescanNotebook()
+		w.RequestRedraw()
+		return nil
+	}
+
 	if _, err := files.WriteNoteAtomic(clean, content); err != nil {
 		return err
 	}
@@ -404,11 +671,12 @@ func (w *Workspace) WriteNote(absPath string, content string) error {
 	doc := w.codec.Parse(content)
 	w.mu.Lock()
 	delete(w.virtualPreview, clean)
+	delete(w.surfaces, clean)
 	if sess, ok := w.sessions[clean]; ok {
 		sess.SetDoc(doc)
 		sess.MarkSaved()
 	} else {
-		w.sessions[clean] = editor.NewSession(clean, doc, w.codec, w)
+		w.sessions[clean] = w.newEditorSession(clean, doc)
 	}
 	w.mu.Unlock()
 
@@ -426,16 +694,17 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 		return errors.New("empty note path")
 	}
 	clean := filepath.Clean(absPath)
-	if err := w.ensureSessionLoaded(clean); err != nil {
+	if err := w.ensureTabLoaded(clean); err != nil {
 		return err
 	}
 
 	w.modals.CloseSettings()
+	w.exportCtrl.Close()
+	w.historyView.Close()
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
 
 	w.mu.Lock()
-	// Expand ancestor directories inside active notebook so the note is visible in tree.
 	if w.state.Folder != "" && strings.HasPrefix(clean, w.state.Folder+string(filepath.Separator)) {
 		dir := filepath.Dir(clean)
 		for dir != "" && dir != w.state.Folder && strings.HasPrefix(dir, w.state.Folder) {
@@ -502,13 +771,13 @@ func (w *Workspace) PreviewPlanInEditor(plan *model.BatchPlan) error {
 	}
 	firstTarget := w.resolvePlanTargetPath(plan, plan.Ops[0].Page)
 	if _, err := os.Stat(firstTarget); errors.Is(err, os.ErrNotExist) {
-		// Virtual createNote preview: do NOT write to disk until accepted!
 		previewDoc := w.codec.Parse(plan.Ops[0].New)
-		sess := editor.NewSession(firstTarget, previewDoc, w.codec, w)
+		sess := w.newEditorSession(firstTarget, previewDoc)
 		sess.SetActivePlan(plan)
 
 		w.mu.Lock()
 		w.virtualPreview[firstTarget] = true
+		delete(w.surfaces, firstTarget)
 		w.sessions[firstTarget] = sess
 		w.state.OpenTabs, w.state.ActiveTab = w.tabOps.OpenOrFocus(w.state.OpenTabs, w.state.ActiveTab, firstTarget)
 		w.mu.Unlock()
@@ -545,8 +814,6 @@ func (w *Workspace) ApplyBatchPlan(plan *model.BatchPlan) error {
 			}
 		}
 
-		// If the caller (e.g. ai.Controller.AcceptPlan) already wrote selective diff text to disk,
-		// prefer the freshly written content when op.Kind == PlanOpCreateNote or op.Old is absent.
 		nextContent := op.New
 		if prevErr == nil && op.Kind == model.PlanOpCreateNote {
 			nextContent = prevContent
@@ -564,12 +831,13 @@ func (w *Workspace) ApplyBatchPlan(plan *model.BatchPlan) error {
 		doc := w.codec.Parse(nextContent)
 		w.mu.Lock()
 		delete(w.virtualPreview, target)
+		delete(w.surfaces, target)
 		if sess, ok := w.sessions[target]; ok {
 			sess.SetActivePlan(nil)
 			sess.SetDoc(doc)
 			sess.MarkSaved()
 		} else {
-			w.sessions[target] = editor.NewSession(target, doc, w.codec, w)
+			w.sessions[target] = w.newEditorSession(target, doc)
 		}
 		w.state.OpenTabs, w.state.ActiveTab = w.tabOps.OpenOrFocus(w.state.OpenTabs, w.state.ActiveTab, target)
 		tabs := append([]string(nil), w.state.OpenTabs...)
@@ -668,6 +936,8 @@ func (w *Workspace) UndoLastPlan(plan *model.BatchPlan) error {
 func (w *Workspace) OpenSettings(tab string) {
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	w.exportCtrl.Close()
+	w.historyView.Close()
 	w.modals.OpenSettings(tab)
 	w.RequestRedraw()
 }
@@ -681,7 +951,7 @@ func (w *Workspace) RequestRedraw() {
 	}
 }
 
-// --- Notebook, File, and Tab Operations ---
+// --- Notebook, File, Reorder, and Tab Operations ---
 
 // SetNotebook switches the active notebook folder (adding it to recent notebooks),
 // scans its file tree, and persists state.json.
@@ -697,8 +967,16 @@ func (w *Workspace) SetNotebook(folder string) error {
 
 	next, saveErr := files.UpdateState(func(st *model.AppState) {
 		st.Folder = clean
-		// Prepend or deduplicate in NormalizeState.
-		st.Notebooks = append([]string{clean}, st.Notebooks...)
+		already := false
+		for _, nb := range st.Notebooks {
+			if filepath.Clean(nb) == clean {
+				already = true
+				break
+			}
+		}
+		if !already {
+			st.Notebooks = append([]string{clean}, st.Notebooks...)
+		}
 	})
 	w.mu.Lock()
 	if saveErr == nil {
@@ -714,6 +992,121 @@ func (w *Workspace) SetNotebook(folder string) error {
 	}
 	w.RequestRedraw()
 	return nil
+}
+
+// ReorderNotebooks moves a notebook entry from fromIdx to toIdx and persists `state.Notebooks`.
+func (w *Workspace) ReorderNotebooks(fromIdx, toIdx int) {
+	next, err := files.UpdateState(func(st *model.AppState) {
+		if fromIdx < 0 || fromIdx >= len(st.Notebooks) || toIdx < 0 || toIdx >= len(st.Notebooks) || fromIdx == toIdx {
+			return
+		}
+		list := append([]string(nil), st.Notebooks...)
+		item := list[fromIdx]
+		list = append(list[:fromIdx], list[fromIdx+1:]...)
+		list = append(list[:toIdx], append([]string{item}, list[toIdx:]...)...)
+		st.Notebooks = list
+	})
+	if err == nil {
+		w.mu.Lock()
+		w.state = next
+		w.mu.Unlock()
+	}
+	w.RequestRedraw()
+}
+
+// ReorderSibling reorders srcPath relative to targetPath inside parentDir and persists `state.FileOrder[parentDir]`.
+func (w *Workspace) ReorderSibling(parentDir, srcPath, targetPath string, after bool) {
+	cleanParent := filepath.Clean(parentDir)
+	srcBase := filepath.Base(srcPath)
+	dstBase := filepath.Base(targetPath)
+	if srcBase == "" || dstBase == "" || srcBase == dstBase {
+		return
+	}
+
+	w.mu.RLock()
+	sibs := findSameKindSiblings(w.entries, srcPath)
+	var allInDir []model.FileEntry
+	if filepath.Clean(w.state.Folder) == cleanParent {
+		allInDir = w.entries
+	} else {
+		var walkDir func(items []model.FileEntry) []model.FileEntry
+		walkDir = func(items []model.FileEntry) []model.FileEntry {
+			for _, it := range items {
+				if it.IsDir {
+					if filepath.Clean(it.Path) == cleanParent {
+						return it.Children
+					}
+					if got := walkDir(it.Children); got != nil {
+						return got
+					}
+				}
+			}
+			return nil
+		}
+		allInDir = walkDir(w.entries)
+	}
+	w.mu.RUnlock()
+
+	if len(sibs) < 2 {
+		return
+	}
+
+	// Build reordered same-kind basename list, preserving relative order of other-kind items.
+	orderedKind := make([]string, 0, len(sibs))
+	for _, s := range sibs {
+		base := filepath.Base(s.Path)
+		if base != srcBase {
+			orderedKind = append(orderedKind, base)
+		}
+	}
+	inserted := false
+	nextKind := make([]string, 0, len(sibs))
+	for _, b := range orderedKind {
+		if b == dstBase {
+			if after {
+				nextKind = append(nextKind, b, srcBase)
+			} else {
+				nextKind = append(nextKind, srcBase, b)
+			}
+			inserted = true
+		} else {
+			nextKind = append(nextKind, b)
+		}
+	}
+	if !inserted {
+		nextKind = append(nextKind, srcBase)
+	}
+
+	srcIsDir := sibs[0].IsDir
+	var dirs, regularFiles []string
+	for _, it := range allInDir {
+		b := filepath.Base(it.Path)
+		if it.IsDir {
+			dirs = append(dirs, b)
+		} else {
+			regularFiles = append(regularFiles, b)
+		}
+	}
+	if srcIsDir {
+		dirs = nextKind
+	} else {
+		regularFiles = nextKind
+	}
+	combined := append(dirs, regularFiles...)
+
+	nextState, err := files.UpdateState(func(st *model.AppState) {
+		if st.FileOrder == nil {
+			st.FileOrder = make(map[string][]string)
+		}
+		st.FileOrder[cleanParent] = combined
+	})
+	if err == nil {
+		w.mu.Lock()
+		w.state = nextState
+		w.mu.Unlock()
+	}
+	w.RescanNotebook()
+	w.RequestRedraw()
 }
 
 // ForgetNotebook removes root from recent Notebooks without touching files on disk.
@@ -819,7 +1212,7 @@ func (w *Workspace) CreateNewFolder() (string, error) {
 	return created, nil
 }
 
-// RenameWorkspaceItem renames oldPath to newName on disk and rebases open tabs, sessions, and history.
+// RenameWorkspaceItem renames oldPath to newName on disk and rebases open tabs, sessions, surfaces, and history.
 func (w *Workspace) RenameWorkspaceItem(oldPath, newName string) (string, error) {
 	w.FlushDirtySessions()
 	newPath, err := files.RenameItem(oldPath, newName)
@@ -828,12 +1221,16 @@ func (w *Workspace) RenameWorkspaceItem(oldPath, newName string) (string, error)
 		return "", err
 	}
 	w.rebaseRenamedPaths(oldPath, newPath)
+	nextState := files.LoadState()
+	w.mu.Lock()
+	w.state.FileOrder = nextState.FileOrder
+	w.mu.Unlock()
 	w.RescanNotebook()
 	w.RequestRedraw()
 	return newPath, nil
 }
 
-// MoveWorkspaceItem moves srcPath into dstDir and rebases open tabs, sessions, and history.
+// MoveWorkspaceItem moves srcPath into dstDir and rebases open tabs, sessions, surfaces, and history.
 func (w *Workspace) MoveWorkspaceItem(srcPath, dstDir string) (string, error) {
 	w.FlushDirtySessions()
 	newPath, err := files.MoveItem(srcPath, dstDir)
@@ -843,6 +1240,10 @@ func (w *Workspace) MoveWorkspaceItem(srcPath, dstDir string) (string, error) {
 	}
 	w.sidebarUI.ExpandedDirs[filepath.Clean(dstDir)] = true
 	w.rebaseRenamedPaths(srcPath, newPath)
+	nextState := files.LoadState()
+	w.mu.Lock()
+	w.state.FileOrder = nextState.FileOrder
+	w.mu.Unlock()
 	w.RescanNotebook()
 	w.RequestRedraw()
 	return newPath, nil
@@ -895,6 +1296,18 @@ func (w *Workspace) rebaseRenamedPaths(from, to string) {
 		}
 	}
 	w.sessions = nextSessions
+
+	nextSurfaces := make(map[string]*TabSurface, len(w.surfaces))
+	for k, surf := range w.surfaces {
+		if next, ok := rebase(k); ok {
+			surf.Path = next
+			nextSurfaces[next] = surf
+		} else {
+			nextSurfaces[k] = surf
+		}
+	}
+	w.surfaces = nextSurfaces
+
 	tabs := append([]string(nil), w.state.OpenTabs...)
 	active := w.state.ActiveTab
 	w.mu.Unlock()
@@ -915,6 +1328,13 @@ func (w *Workspace) removeClosedOrDeletedPath(target string) {
 		if matches(k) {
 			delete(w.sessions, k)
 			delete(w.virtualPreview, k)
+			w.closed.Remove(k)
+			w.nav.RemovePath(k)
+		}
+	}
+	for k := range w.surfaces {
+		if matches(k) {
+			delete(w.surfaces, k)
 			w.closed.Remove(k)
 			w.nav.RemovePath(k)
 		}
@@ -956,6 +1376,7 @@ func (w *Workspace) CloseTab(path string) {
 	w.state.OpenTabs = nextTabs
 	w.state.ActiveTab = nextActive
 	delete(w.sessions, clean)
+	delete(w.surfaces, clean)
 	if !isVirtual {
 		w.closed.Push(clean)
 	}
@@ -963,13 +1384,13 @@ func (w *Workspace) CloseTab(path string) {
 	w.mu.Unlock()
 
 	if nextActive != "" {
-		_ = w.ensureSessionLoaded(nextActive)
+		_ = w.ensureTabLoaded(nextActive)
 	}
 	w.persistTabs(tabs, nextActive)
 	w.RequestRedraw()
 }
 
-// CloseActiveTab closes the active tab (or closes window when 0 tabs remain).
+// CloseActiveTab closes the active tab.
 func (w *Workspace) CloseActiveTab() {
 	active := w.ActiveNotePath()
 	if active != "" {
@@ -1004,6 +1425,7 @@ func (w *Workspace) CloseOtherTabs(keepPath string) {
 		}
 		delete(w.virtualPreview, p)
 		delete(w.sessions, p)
+		delete(w.surfaces, p)
 	}
 	w.state.OpenTabs = nextTabs
 	w.state.ActiveTab = nextActive
@@ -1025,6 +1447,7 @@ func (w *Workspace) CloseTabsToRight(pivotPath string) {
 		}
 		delete(w.virtualPreview, p)
 		delete(w.sessions, p)
+		delete(w.surfaces, p)
 	}
 	w.state.OpenTabs = nextTabs
 	w.state.ActiveTab = nextActive
@@ -1045,6 +1468,7 @@ func (w *Workspace) CloseAllTabs() {
 	}
 	w.virtualPreview = make(map[string]bool)
 	w.sessions = make(map[string]*editor.Session)
+	w.surfaces = make(map[string]*TabSurface)
 	w.state.OpenTabs = nil
 	w.state.ActiveTab = ""
 	w.mu.Unlock()
@@ -1094,8 +1518,6 @@ func (w *Workspace) ToggleSidebar(viewportWidth float32) {
 	w.mu.Lock()
 	layout := ResolveShellLayout(w.shellInputLocked(viewportWidth))
 	if layout.SidebarDrawer {
-		// Dismissing the narrow-viewport floating drawer keeps SidebarCollapsed=false
-		// so widening the window re-docks the sidebar naturally.
 		w.sidebarPinned = false
 	} else if layout.SidebarDocked {
 		w.state.SidebarCollapsed = true
@@ -1259,8 +1681,7 @@ func (w *Workspace) shellInputLocked(winW float32) ShellInput {
 }
 
 func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
-	// Never steal keystrokes while Settings is recording a custom shortcut!
-	if w.modals.IsRecordingShortcut() {
+	if w.modals.IsRecordingShortcut() || w.exportCtrl.IsOpen() || w.IsPageHistoryOpen() {
 		return
 	}
 
@@ -1329,9 +1750,7 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		return
 	}
 	if matchSpec("", "cmd-shift-e") {
-		if active := w.ActiveNotePath(); active != "" {
-			w.modals.OpenExport(active)
-		}
+		w.OpenExportStage()
 		return
 	}
 	if c.Shortcut(ui.Ctrl, ui.KeyTab) {
@@ -1384,23 +1803,79 @@ func (w *Workspace) Render(c *ui.Context) {
 	theme.SetZoom(zoom)
 
 	edFont, _, _ := theme.Typography()
-	uiTheme := theme.Ocean().ToUITheme(edFont)
+	pal := theme.Ocean()
+	uiTheme := pal.ToUITheme(edFont)
 	c.SetTheme(&uiTheme)
+
+	// Full-window 12-theme A-Export stage covers the entire window when active.
+	if w.exportCtrl.IsOpen() {
+		c.Key("workspace-root")
+		root := ui.Column(c).Fill().Background(pal.Shell).TextColor(pal.Text).Clip()
+		blockui.Probe(root, "workspace-root")
+		root.Children(func() {
+			w.exportCtrl.Render(c)
+			blockui.RenderSmokeHUD(c)
+		})
+		return
+	}
+
+	// Full-window Page History stage covers the entire window when active.
+	if w.IsPageHistoryOpen() {
+		c.Key("workspace-root")
+		root := ui.Column(c).Fill().Background(pal.Shell).TextColor(pal.Text).Clip()
+		blockui.Probe(root, "workspace-root")
+		root.Children(func() {
+			notePath := w.historyView.NotePath
+			w.historyView.Render(
+				c,
+				func() { w.ClosePageHistory() },
+				func(id string) {
+					w.historyView.SelectVersion(id, func(snapID string) (string, error) {
+						return files.ReadHistorySnapshot(notePath, snapID)
+					}, files.DiffLines)
+					w.RequestRedraw()
+				},
+				func(delta int) {
+					w.historyView.Navigate(delta, func(snapID string) (string, error) {
+						return files.ReadHistorySnapshot(notePath, snapID)
+					}, files.DiffLines)
+					w.RequestRedraw()
+				},
+				func() { w.OpenPageHistory() },
+				func(_ string, restoredText string) {
+					preRestore, _ := w.ReadNote(notePath)
+					_, _ = files.RecordHistorySnapshot(notePath, preRestore, theme.Tr("恢复前快照", "Before restore"))
+					_ = w.WriteNote(notePath, restoredText)
+					w.historyView.Close()
+					w.mu.Lock()
+					w.historyToast = &HistoryToast{
+						Active:      true,
+						NotePath:    notePath,
+						Message:     theme.Tr("已恢复到所选历史版本", "Restored selected snapshot"),
+						UndoContent: preRestore,
+						CanUndo:     preRestore != restoredText,
+					}
+					w.mu.Unlock()
+					w.RequestRedraw()
+				},
+			)
+			w.modals.RenderModals(c)
+			blockui.RenderSmokeHUD(c)
+		})
+		return
+	}
 
 	vpW, _ := c.Size()
 	if vpW <= 0 {
 		vpW = 1100
 	}
 
-	// Route global workspace shortcuts before child inputs when appropriate.
 	w.handleAppShortcuts(c, vpW)
-
-	// Flush dirty active editor changes seamlessly so disk state stays live.
 	w.FlushDirtySessions()
 
 	w.mu.Lock()
 	in := w.shellInputLocked(vpW)
-	if w.sidebarPinned && in.SidebarDesiredW+NoteFloor <= vpW+0.5 && !in.InSettings {
+	if w.sidebarPinned && FitsSaved(in) && !in.InSettings {
 		w.sidebarPinned = false
 		in.SidebarPinned = false
 	}
@@ -1412,15 +1887,21 @@ func (w *Workspace) Render(c *ui.Context) {
 	entries := append([]model.FileEntry(nil), w.entries...)
 	notice := w.notice
 	hasFBDraft := w.state.FeedbackDraft != nil
+	toast := w.historyToast
+	recPath := w.recoveryPath
 	w.mu.Unlock()
 
-	pal := theme.Ocean()
 	inSettings := w.modals.IsSettingsOpen()
 	aiImmersive := layout.ChatFullscreen && !inSettings
 	sidebarWide := !in.InSettings && (layout.SidebarDocked || layout.SidebarDrawer)
 	sidebarAutoHidden := layout.SidebarYielded && !layout.SidebarDrawer
 
-	activeSess := w.SessionFor(activeTab)
+	activeSurf := w.SurfaceFor(activeTab)
+	var activeSess *editor.Session
+	if activeSurf == nil {
+		activeSess = w.SessionFor(activeTab)
+	}
+
 	pendingAnnots := 0
 	if activeSess != nil {
 		for _, a := range activeSess.Annotations() {
@@ -1428,6 +1909,19 @@ func (w *Workspace) Render(c *ui.Context) {
 				pendingAnnots++
 			}
 		}
+	}
+
+	tbSurface := SurfaceEmpty
+	var srcStatus, zoomPctStr string
+	var zoomFit, svgShowSource bool
+	if activeSurf != nil {
+		tbSurface = activeSurf.TitlebarSurface()
+		srcStatus = activeSurf.SourceStatusLabel()
+		zoomPctStr = activeSurf.ZoomPctString()
+		zoomFit = activeSurf.ZoomFitMode
+		svgShowSource = activeSurf.SVGShowSource
+	} else if activeSess != nil {
+		tbSurface = SurfaceNote
 	}
 
 	c.Key("workspace-root")
@@ -1454,8 +1948,16 @@ func (w *Workspace) Render(c *ui.Context) {
 					if s := w.sessions[path]; s != nil {
 						return s.Dirty()
 					}
+					if sf := w.surfaces[path]; sf != nil {
+						return sf.IsDirty()
+					}
 					return false
 				},
+				ActiveSurface:      tbSurface,
+				SourceStatus:       srcStatus,
+				PreviewZoomPct:     zoomPctStr,
+				PreviewZoomFit:     zoomFit,
+				SVGShowSource:      svgShowSource,
 				CanBack:            w.nav.CanBack(),
 				CanForward:         w.nav.CanForward(),
 				ZoomPct:            w.ZoomPct(),
@@ -1490,19 +1992,18 @@ func (w *Workspace) Render(c *ui.Context) {
 					w.ToggleAIPanel()
 				},
 				OnOpenHistory: func() {
-					if activeTab != "" {
-						cur, _ := w.ReadNote(activeTab)
-						w.modals.OpenHistory(activeTab, cur)
-					}
+					w.OpenPageHistory()
 				},
 				OnOpenExport: func() {
-					if activeTab != "" {
-						w.modals.OpenExport(activeTab)
-					}
+					w.OpenExportStage()
 				},
 				OnCopyMarkdown: func() {
 					if activeSess != nil && mygo.App.IsReady() {
-						mygo.Clipboard.WriteText(activeSess.Markdown())
+						txt := activeSess.SelectedMarkdown()
+						if txt == "" {
+							txt = activeSess.Markdown()
+						}
+						mygo.Clipboard.WriteText(txt)
 					}
 				},
 				OnRevealActive: func() {
@@ -1516,6 +2017,39 @@ func (w *Workspace) Render(c *ui.Context) {
 					}
 				},
 				OnSetZoom: w.SetZoomPct,
+				OnPreviewZoomStep: func(factor float32) {
+					if activeSurf != nil {
+						activeSurf.ZoomStep(factor)
+						w.RequestRedraw()
+					}
+				},
+				OnPreviewActual: func() {
+					if activeSurf != nil {
+						activeSurf.ZoomActual()
+						w.RequestRedraw()
+					}
+				},
+				OnPreviewFit: func() {
+					if activeSurf != nil {
+						activeSurf.ZoomFit()
+						w.RequestRedraw()
+					}
+				},
+				OnSelectSVGSource: func(showSource bool) {
+					if activeSurf != nil {
+						activeSurf.SVGShowSource = showSource
+						w.RequestRedraw()
+					}
+				},
+				OnOpenInBrowser: func() {
+					if activeTab != "" {
+						if mygo.App.IsReady() {
+							_ = mygo.Shell.OpenPath(activeTab)
+						} else {
+							c.OpenURL("file://" + activeTab)
+						}
+					}
+				},
 			})
 		}
 
@@ -1529,41 +2063,75 @@ func (w *Workspace) Render(c *ui.Context) {
 
 			// Docked Sidebar
 			if !aiImmersive && layout.SidebarDocked {
-				w.renderSidebarColumn(c, activeNB, notebooks, entries, activeTab, notice)
+				w.renderSidebarColumn(c, activeNB, notebooks, entries, activeTab, notice, false)
 			}
 
-			// Center Content (Note Editor or Empty Mascot State)
+			// Center Content (Note Editor, Non-Markdown Surface, or Empty Mascot State)
 			if !aiImmersive {
 				mainCol := ui.Column(c).Grow(1).MinWidth(0).FillHeight().Background(pal.Paper)
 				mainCol.Children(func() {
-					if activeSess != nil {
+					if recPath != "" {
+						w.renderRecoveryBanner(c, recPath)
+					}
+					if toast != nil && toast.Active && toast.NotePath == activeTab {
+						toast.RenderBanner(
+							c,
+							func() {
+								undoTxt := toast.UndoContent
+								target := toast.NotePath
+								w.mu.Lock()
+								w.historyToast = nil
+								w.mu.Unlock()
+								_ = w.WriteNote(target, undoTxt)
+							},
+							func() {
+								w.mu.Lock()
+								w.historyToast = nil
+								w.mu.Unlock()
+								w.RequestRedraw()
+							},
+						)
+					}
+
+					switch {
+					case activeSurf != nil:
+						activeSurf.Render(
+							c,
+							func(p, text string, bom bool) error {
+								_, err := files.WriteRawFileAtomic(p, text, bom)
+								return err
+							},
+							func(p string) {
+								if mygo.App.IsReady() {
+									mygo.Shell.ShowItemInFolder(p)
+								}
+							},
+							func(p string) {
+								if mygo.App.IsReady() {
+									_ = mygo.Shell.OpenPath(p)
+								}
+							},
+						)
+					case activeSess != nil:
 						activeSess.SetOutlineForceNarrow(!layout.ShowOutline)
 						activeSess.Render(c, layout.MainWidth, false)
-					} else {
+					default:
 						w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0)
 					}
 				})
 			}
 
-			// Docked or Fullscreen AI Panel
+			// Docked or Fullscreen AI Panel (stays docked even on narrow viewports per shell_layout.rs)
 			if layout.ChatDocked {
 				if !aiImmersive {
 					chatW := w.ai.PanelWidth()
-					if blockui.VerticalResizeHandle(c, "ai-panel-resize", &chatW, ChatMinW, ChatMaxW, true) {
+					maxChat := ChatLimit(vpW, w.sidebarWidth, w.state.SidebarCollapsed, ChatMinW, ChatMaxW)
+					if blockui.VerticalResizeHandle(c, "ai-panel-resize", &chatW, ChatMinW, maxChat, true) {
 						w.ai.SetPanelWidth(chatW)
 					}
 				}
 				w.ai.SetPanelWidth(layout.ChatWidth)
 				w.ai.RenderPanel(c)
-			}
-
-			// Overlay AI Panel when window is narrow
-			if layout.ChatOverlay && !aiImmersive {
-				ui.Box(c).Absolute().Top(0).Right(0).Bottom(0).Width(layout.ChatWidth).
-					Shadow(-8, 0, 28, 0, ui.RGBA(0, 0, 0, 0.18)).Children(func() {
-					w.ai.SetPanelWidth(layout.ChatWidth)
-					w.ai.RenderPanel(c)
-				})
 			}
 
 			// Floating Sidebar Drawer + Scrim when narrow and explicitly toggled open
@@ -1578,16 +2146,44 @@ func (w *Workspace) Render(c *ui.Context) {
 				drawer := ui.Row(c).Absolute().Left(0).Top(0).Bottom(0).Width(w.sidebarWidth).
 					Shadow(8, 0, 28, 0, ui.RGBA(0, 0, 0, 0.22))
 				drawer.Children(func() {
-					w.renderSidebarColumn(c, activeNB, notebooks, entries, activeTab, notice)
+					w.renderSidebarColumn(c, activeNB, notebooks, entries, activeTab, notice, true)
 				})
 			}
 		})
 
-		// 3. Modal Overlays (Search, About, Feedback, Performance, History, Export, Updater).
+		// 3. Modal Overlays (Search, About, Feedback, Performance, Updater).
 		w.modals.RenderModals(c)
 
 		// 4. Visual Smoke HUD (click ripple + step banner when smoke mode is enabled).
 		blockui.RenderSmokeHUD(c)
+	})
+}
+
+func (w *Workspace) renderRecoveryBanner(c *ui.Context, recPath string) {
+	pal := theme.Ocean()
+	c.Key("recovery-banner")
+	row := ui.Row(c).FillWidth().Margin(12, 28, 0, 28).Padding(10, 12, 10, 14).
+		Radius(theme.RadiusControl).Background(pal.Selected).Border(1, pal.Accent).
+		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12)
+	blockui.Probe(row, "recovery-banner")
+	row.Children(func() {
+		msg := fmt.Sprintf("%s：%s", theme.Tr("发现未保存的恢复草稿", "Found unsaved recovery draft"), filepath.Base(recPath))
+		ui.Text(c, msg).FontSize(14).FontWeight(500).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(8).Children(func() {
+			applyBtn := blockui.ActionButton(c, "recovery-restore", theme.Tr("恢复草稿", "Recover Draft"), nil, blockui.ButtonPrimary, false)
+			if applyBtn.Clicked() {
+				_, _ = w.ApplyPendingRecoveryDraft()
+			}
+			dismissBtn := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{
+				ID:       "recovery-dismiss",
+				Size:     26,
+				IconSize: 14,
+				Tooltip:  theme.Tr("忽略草稿", "Discard"),
+			})
+			if dismissBtn.Clicked() {
+				w.DismissPendingRecoveryDraft()
+			}
+		})
 	})
 }
 
@@ -1598,6 +2194,7 @@ func (w *Workspace) renderSidebarColumn(
 	entries []model.FileEntry,
 	activeNote string,
 	notice string,
+	isDrawer bool,
 ) {
 	RenderSidebar(c, SidebarProps{
 		State: w.sidebarUI,
@@ -1625,6 +2222,11 @@ func (w *Workspace) renderSidebarColumn(
 			_, _ = w.CreateNewNote()
 		},
 		OnOpenNote: func(path string, inNewTab bool) {
+			if isDrawer {
+				w.mu.Lock()
+				w.sidebarPinned = false
+				w.mu.Unlock()
+			}
 			_ = w.openNoteInternal(path, inNewTab, true, 0)
 		},
 		OnRenameItem: func(oldPath, newName string) {
@@ -1633,6 +2235,8 @@ func (w *Workspace) renderSidebarColumn(
 		OnMoveItem: func(srcPath, dstDir string) {
 			_, _ = w.MoveWorkspaceItem(srcPath, dstDir)
 		},
+		OnReorderSibling:   w.ReorderSibling,
+		OnReorderNotebooks: w.ReorderNotebooks,
 		OnTrashItem: func(path string) {
 			_ = w.TrashWorkspaceItem(path)
 		},

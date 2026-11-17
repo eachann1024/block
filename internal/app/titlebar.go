@@ -49,6 +49,12 @@ type TitlebarProps struct {
 	ActiveTab    string
 	IsDirty      func(path string) bool
 
+	ActiveSurface  TitlebarSurfaceKind
+	SourceStatus   string
+	PreviewZoomPct string
+	PreviewZoomFit bool
+	SVGShowSource  bool
+
 	CanBack    bool
 	CanForward bool
 	ZoomPct    int // 90, 100, 110
@@ -58,23 +64,28 @@ type TitlebarProps struct {
 
 	MenuState *TabMenuState
 
-	OnToggleSidebar func()
-	OnBack          func()
-	OnForward       func()
-	OnSelectTab     func(path string)
-	OnCloseTab      func(path string)
-	OnCloseOthers   func(keepPath string)
-	OnCloseRight    func(pivotPath string)
-	OnCloseAll      func()
-	OnNewNote       func()
-	OnToggleFeedback func()
-	OnToggleAI      func()
-	OnOpenHistory   func()
-	OnOpenExport    func()
-	OnCopyMarkdown  func()
-	OnRevealActive  func()
-	OnDeleteActive  func()
-	OnSetZoom       func(pct int)
+	OnToggleSidebar   func()
+	OnBack            func()
+	OnForward         func()
+	OnSelectTab       func(path string)
+	OnCloseTab        func(path string)
+	OnCloseOthers     func(keepPath string)
+	OnCloseRight      func(pivotPath string)
+	OnCloseAll        func()
+	OnNewNote         func()
+	OnToggleFeedback  func()
+	OnToggleAI        func()
+	OnOpenHistory     func()
+	OnOpenExport      func()
+	OnCopyMarkdown    func()
+	OnRevealActive    func()
+	OnDeleteActive    func()
+	OnSetZoom         func(pct int)
+	OnPreviewZoomStep func(factor float32)
+	OnPreviewActual   func()
+	OnPreviewFit      func()
+	OnSelectSVGSource func(showSource bool)
+	OnOpenInBrowser   func()
 }
 
 func noteDisplayTitle(p string, isDir bool) string {
@@ -319,15 +330,26 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 			ui.Box(c).Grow(1).MinWidth(16).FillHeight().DragWindow()
 		})
 
-		// 3. Right tail: Feedback, AI Panel, Page More menu (hidden in Settings / AI Immersive).
+		// 3. Right tail: contextual file tools + Feedback + AI Panel + Page More menu.
 		if !p.InSettings && !p.AIImmersive {
 			tailPad := float32(10)
 			if !theme.IsMacOS() && tb.Right > 0 {
 				tailPad = tb.Right + 8
 			}
+			surface := p.ActiveSurface
+			if len(p.Tabs) == 0 {
+				surface = SurfaceEmpty
+			} else if surface == SurfaceEmpty {
+				surface = SurfaceNote
+			}
+
 			tail := ui.Row(c).FillHeight().Shrink(0).AlignItems(ui.Center).Gap(4).Padding(0, tailPad, 0, 0)
 			tail.Children(func() {
-				if p.PendingAnnotations > 0 && p.OnSendAnnotations != nil {
+				if surface != SurfaceNote {
+					renderNonNoteTitlebarTools(c, p, surface)
+				}
+
+				if surface == SurfaceNote && p.PendingAnnotations > 0 && p.OnSendAnnotations != nil {
 					lbl := fmt.Sprintf("%s (%d)", theme.Tr("统一发送", "Send all"), p.PendingAnnotations)
 					sendBtn := blockui.ActionButton(c, "annotations-send-all", lbl, nil, blockui.ButtonPrimary, false)
 					if sendBtn.Clicked() {
@@ -353,7 +375,7 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 					p.OnToggleAI()
 				}
 
-				if len(p.Tabs) > 0 {
+				if surface == SurfaceNote && len(p.Tabs) > 0 {
 					moreOpen := p.MenuState != nil && p.MenuState.PageMenuOpen
 					moreBtn := blockui.IconButton(c, icons.More, blockui.IconButtonOptions{
 						ID:      "titlebar-more",
@@ -374,6 +396,117 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 	})
 
 	renderTitlebarMenus(c, p)
+}
+
+func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface TitlebarSurfaceKind) {
+	pal := theme.Ocean()
+	switch surface {
+	case SurfaceImagePreview:
+		renderZoomCluster(c, "tb-img-zoom", p)
+		renderRevealButton(c, p)
+	case SurfaceSVG:
+		if p.SourceStatus != "" {
+			ui.Text(c, p.SourceStatus).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+		}
+		svgIdx := 0
+		if p.SVGShowSource {
+			svgIdx = 1
+		}
+		if blockui.SegmentedControl(c, "svg-mode", &svgIdx, []blockui.SegmentOption{
+			{ID: "svg-mode-preview", Label: theme.Tr("预览", "Preview")},
+			{ID: "svg-mode-source", Label: theme.Tr("源码", "Source")},
+		}) && p.OnSelectSVGSource != nil {
+			p.OnSelectSVGSource(svgIdx == 1)
+		}
+		if !p.SVGShowSource {
+			renderZoomCluster(c, "tb-svg-zoom", p)
+		}
+		renderRevealButton(c, p)
+	case SurfaceHTML:
+		if p.SourceStatus != "" {
+			ui.Text(c, p.SourceStatus).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+		}
+		icOpen := icons.LinkOpen
+		openBtn := blockui.ActionButton(c, "html-browser", theme.Tr("浏览器打开", "Open in Browser"), &icOpen, blockui.ButtonSecondary, false)
+		if openBtn.Clicked() && p.OnOpenInBrowser != nil {
+			p.OnOpenInBrowser()
+		}
+		renderRevealButton(c, p)
+	case SurfaceCode:
+		if p.SourceStatus != "" {
+			ui.Text(c, p.SourceStatus).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+		}
+		renderRevealButton(c, p)
+	}
+}
+
+func renderZoomCluster(c *ui.Context, id string, p TitlebarProps) {
+	pal := theme.Ocean()
+	pct := p.PreviewZoomPct
+	if pct == "" {
+		pct = "100%"
+	}
+	c.Key(id)
+	cluster := ui.Row(c).Height(28).PaddingX(4).Gap(2).AlignItems(ui.Center).
+		Radius(theme.RadiusControl).Background(pal.Card).Border(1, pal.BtnBorder)
+	blockui.Probe(cluster, id)
+	cluster.Children(func() {
+		outBtn := blockui.IconButton(c, icons.TbMinus, blockui.IconButtonOptions{
+			ID:       id + "-out",
+			Size:     22,
+			IconSize: 13,
+			Tooltip:  theme.Tr("缩小", "Zoom Out"),
+		})
+		if outBtn.Clicked() && p.OnPreviewZoomStep != nil {
+			p.OnPreviewZoomStep(1.0 / 1.2)
+		}
+		c.Key(id + "-pct")
+		pctBtn := ui.ButtonBase(c).Height(22).PaddingX(6).Center().Radius(4).Cursor(ui.CursorPointer).Label(pct)
+		if pctBtn.Hovered() {
+			pctBtn.Background(pal.Hover)
+		}
+		pctBtn.Children(func() {
+			ui.Text(c, pct).FontSize(14).TextColor(pal.Text).SingleLine()
+		})
+		blockui.Probe(pctBtn, id+"-pct")
+		if pctBtn.Clicked() && p.OnPreviewActual != nil {
+			p.OnPreviewActual()
+		}
+		inBtn := blockui.IconButton(c, icons.TbPlus, blockui.IconButtonOptions{
+			ID:       id + "-in",
+			Size:     22,
+			IconSize: 13,
+			Tooltip:  theme.Tr("放大", "Zoom In"),
+		})
+		if inBtn.Clicked() && p.OnPreviewZoomStep != nil {
+			p.OnPreviewZoomStep(1.2)
+		}
+		c.Key(id + "-fit")
+		fitBtn := ui.ButtonBase(c).Height(22).PaddingX(6).Center().Radius(4).Cursor(ui.CursorPointer).
+			Label(theme.Tr("适应", "Fit"))
+		if p.PreviewZoomFit {
+			fitBtn.Background(pal.Selected)
+		} else if fitBtn.Hovered() {
+			fitBtn.Background(pal.Hover)
+		}
+		fitBtn.Children(func() {
+			ui.Text(c, theme.Tr("适应", "Fit")).FontSize(14).TextColor(pal.Text).SingleLine()
+		})
+		blockui.Probe(fitBtn, id+"-fit")
+		if fitBtn.Clicked() && p.OnPreviewFit != nil {
+			p.OnPreviewFit()
+		}
+	})
+}
+
+func renderRevealButton(c *ui.Context, p TitlebarProps) {
+	revBtn := blockui.IconButton(c, icons.FolderReveal, blockui.IconButtonOptions{
+		ID:      "tb-reveal",
+		Tooltip: theme.Tr("在访达中显示", "Reveal in File Manager"),
+	})
+	if revBtn.Clicked() && p.OnRevealActive != nil {
+		p.OnRevealActive()
+	}
 }
 
 func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {

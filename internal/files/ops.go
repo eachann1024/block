@@ -7,6 +7,7 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -348,7 +349,21 @@ func ReadNote(path string) (string, int64, error) {
 // WriteNoteAtomic atomically writes content to path via a temp file in the same
 // directory and returns the new content fingerprint.
 func WriteNoteAtomic(path, content string) (int64, error) {
-	data := []byte(content)
+	return WriteRawFileAtomic(path, content, false)
+}
+
+// WriteRawFileAtomic atomically writes text to path via a temp file in the same
+// directory, prepending a UTF-8 BOM (0xEF 0xBB 0xBF) when bom is true, and
+// returns the written byte fingerprint.
+func WriteRawFileAtomic(path, text string, bom bool) (int64, error) {
+	var data []byte
+	if bom {
+		data = make([]byte, len(utf8BOM)+len(text))
+		copy(data, utf8BOM)
+		copy(data[len(utf8BOM):], text)
+	} else {
+		data = []byte(text)
+	}
 	if err := writeBytesAtomic(path, data, true); err != nil {
 		return 0, err
 	}
@@ -459,6 +474,58 @@ func ClearRecovery(notePath string) {
 	if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
 		LogWarnf("clear recovery %s failed: %v", target, err)
 	}
+}
+
+// LatestRecoveryDraft scans AppDataDir()/Recovery and returns the newest
+// valid crash-recovery draft by modification time.
+func LatestRecoveryDraft() (notePath string, content string, ok bool) {
+	recoveryDir := filepath.Join(AppDataDir(), "Recovery")
+	entries, err := os.ReadDir(recoveryDir)
+	if err != nil {
+		return "", "", false
+	}
+
+	type candidate struct {
+		path    string
+		name    string
+		modTime time.Time
+	}
+	var candidates []candidate
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".json") {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			continue
+		}
+		candidates = append(candidates, candidate{
+			path:    filepath.Join(recoveryDir, entry.Name()),
+			name:    entry.Name(),
+			modTime: info.ModTime(),
+		})
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if !candidates[i].modTime.Equal(candidates[j].modTime) {
+			return candidates[i].modTime.After(candidates[j].modTime)
+		}
+		return candidates[i].name > candidates[j].name
+	})
+
+	for _, c := range candidates {
+		data, readErr := os.ReadFile(c.path)
+		if readErr != nil {
+			continue
+		}
+		var draft struct {
+			Path   string `json:"path"`
+			Source string `json:"source"`
+		}
+		if json.Unmarshal(data, &draft) == nil && draft.Path != "" {
+			return draft.Path, draft.Source, true
+		}
+	}
+	return "", "", false
 }
 
 func normalizeAbsPath(p string) (string, error) {

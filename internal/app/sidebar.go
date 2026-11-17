@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"block/internal/files"
 	"block/internal/icons"
 	"block/internal/model"
 	"block/internal/theme"
@@ -13,7 +14,7 @@ import (
 )
 
 // SidebarUIState holds transient sidebar UI state (expanded directories, inline rename,
-// notebook switcher popup, and tree item right-click context menu + cascading Move submenu).
+// drag-and-drop reorder state, notebook switcher popup, and tree item context menu + Move submenu).
 type SidebarUIState struct {
 	ExpandedDirs map[string]bool
 
@@ -21,6 +22,14 @@ type SidebarUIState struct {
 	RenamingDir  bool
 	RenameBuffer string
 	RenameFocus  bool
+
+	DraggingPath   string
+	DraggingIsDir  bool
+	DragStartY     float32
+	DragActive     bool
+	DropTargetPath string
+	DropAfter      bool
+	DropIntoDir    bool
 
 	SwitcherOpen   bool
 	SwitcherBounds ui.Rect
@@ -66,6 +75,16 @@ func (s *SidebarUIState) CancelRename() {
 	s.RenameFocus = false
 }
 
+// ClearDrag resets drag-and-drop tracking.
+func (s *SidebarUIState) ClearDrag() {
+	s.DraggingPath = ""
+	s.DraggingIsDir = false
+	s.DragActive = false
+	s.DropTargetPath = ""
+	s.DropAfter = false
+	s.DropIntoDir = false
+}
+
 // SidebarProps supplies current workspace state and callbacks to RenderSidebar.
 type SidebarProps struct {
 	State          *SidebarUIState
@@ -82,19 +101,21 @@ type SidebarProps struct {
 	SettingsOpen bool
 	HasUpdate    bool
 
-	OnOpenSearch      func()
-	OnNewFolder       func()
-	OnNewNote         func()
-	OnOpenNote        func(path string, inNewTab bool)
-	OnRenameItem      func(oldPath, newName string)
-	OnMoveItem        func(srcPath, dstDir string)
-	OnTrashItem       func(path string)
-	OnRevealItem      func(path string)
-	OnSwitchNotebook  func(root string)
-	OnForgetNotebook  func(root string)
-	OnChooseNotebook  func()
-	OnOpenSettings    func()
-	OnOpenUpdater     func()
+	OnOpenSearch       func()
+	OnNewFolder        func()
+	OnNewNote          func()
+	OnOpenNote         func(path string, inNewTab bool)
+	OnRenameItem       func(oldPath, newName string)
+	OnMoveItem         func(srcPath, dstDir string)
+	OnReorderSibling   func(parentDir, srcPath, targetPath string, after bool)
+	OnReorderNotebooks func(fromIdx, toIdx int)
+	OnTrashItem        func(path string)
+	OnRevealItem       func(path string)
+	OnSwitchNotebook   func(root string)
+	OnForgetNotebook   func(root string)
+	OnChooseNotebook   func()
+	OnOpenSettings     func()
+	OnOpenUpdater      func()
 }
 
 type flatTreeRow struct {
@@ -114,6 +135,85 @@ func flattenEntries(entries []model.FileEntry, depth int, expanded map[string]bo
 		if exp && len(e.Children) > 0 {
 			flattenEntries(e.Children, depth+1, expanded, out)
 		}
+	}
+}
+
+func findSameKindSiblings(entries []model.FileEntry, targetPath string) []model.FileEntry {
+	parent := filepath.Dir(filepath.Clean(targetPath))
+	var search func(items []model.FileEntry, curDir string) []model.FileEntry
+	search = func(items []model.FileEntry, curDir string) []model.FileEntry {
+		if curDir == parent {
+			var targetIsDir bool
+			found := false
+			for _, it := range items {
+				if filepath.Clean(it.Path) == filepath.Clean(targetPath) {
+					targetIsDir = it.IsDir
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil
+			}
+			var sibs []model.FileEntry
+			for _, it := range items {
+				if it.IsDir == targetIsDir {
+					sibs = append(sibs, it)
+				}
+			}
+			return sibs
+		}
+		for _, it := range items {
+			if it.IsDir {
+				if got := search(it.Children, filepath.Clean(it.Path)); got != nil {
+					return got
+				}
+			}
+		}
+		return nil
+	}
+	return search(entries, filepath.Clean(parentRootOfEntries(entries, parent)))
+}
+
+func parentRootOfEntries(entries []model.FileEntry, fallback string) string {
+	if len(entries) == 0 {
+		return fallback
+	}
+	return filepath.Dir(filepath.Clean(entries[0].Path))
+}
+
+func fileEntryIcon(name string) icons.Icon {
+	if files.IsMarkdown(name) {
+		return icons.Note
+	}
+	ext := strings.ToLower(filepath.Ext(name))
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg":
+		return icons.Image
+	case ".html", ".htm":
+		return icons.LangHtml
+	case ".json":
+		return icons.LangJson
+	case ".yaml", ".yml":
+		return icons.LangYaml
+	case ".js", ".mjs", ".cjs":
+		return icons.LangJs
+	case ".ts", ".tsx":
+		return icons.LangTs
+	case ".py":
+		return icons.LangPython
+	case ".rs":
+		return icons.LangRust
+	case ".css":
+		return icons.LangCss
+	case ".sh", ".zsh", ".bash":
+		return icons.LangBash
+	case ".sql":
+		return icons.LangSql
+	case ".xml":
+		return icons.LangXml
+	default:
+		return icons.Code
 	}
 }
 
@@ -148,7 +248,6 @@ func collectMoveDestinations(root string, entries []model.FileEntry, srcPath str
 				continue
 			}
 			cleanDir := filepath.Clean(it.Path)
-			// Skip self and descendants when moving a folder.
 			if srcIsDir && (cleanDir == cleanSrc || strings.HasPrefix(cleanDir, cleanSrc+string(filepath.Separator))) {
 				continue
 			}
@@ -167,7 +266,7 @@ func collectMoveDestinations(root string, entries []model.FileEntry, srcPath str
 }
 
 // RenderSidebar renders the Ocean Paper notebook sidebar (header search + new buttons,
-// virtualized/scrollable file tree with inline rename, footer notebook switcher + settings,
+// scrollable file tree with inline rename & sibling reorder, footer notebook switcher + settings,
 // right-edge resize handle, and anchored switcher/context/cascading-move popups).
 func RenderSidebar(c *ui.Context, p SidebarProps) {
 	pal := theme.Ocean()
@@ -256,8 +355,30 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					return
 				}
 
+				anyPressed := false
 				for _, row := range rows {
-					renderTreeRow(c, p, row)
+					if renderTreeRow(c, p, row) {
+						anyPressed = true
+					}
+				}
+				// Commit drag drop on pointer release.
+				if p.State.DraggingPath != "" && !anyPressed {
+					if p.State.DragActive && p.State.DropTargetPath != "" && p.State.DropTargetPath != p.State.DraggingPath {
+						src := p.State.DraggingPath
+						dst := p.State.DropTargetPath
+						intoDir := p.State.DropIntoDir
+						after := p.State.DropAfter
+						p.State.ClearDrag()
+						if intoDir {
+							if p.OnMoveItem != nil {
+								p.OnMoveItem(src, dst)
+							}
+						} else if p.OnReorderSibling != nil && filepath.Dir(src) == filepath.Dir(dst) {
+							p.OnReorderSibling(filepath.Dir(src), src, dst, after)
+						}
+					} else {
+						p.State.ClearDrag()
+					}
 				}
 			})
 
@@ -343,7 +464,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 	renderSidebarPopups(c, p)
 }
 
-func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) {
+func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) bool {
 	pal := theme.Ocean()
 	entry := r.Entry
 	indent := float32(8 + min(r.Depth, 8)*14)
@@ -354,7 +475,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) {
 		box := ui.Row(c).FillWidth().Height(32).Padding(0, 8, 0, indent).Gap(6).AlignItems(ui.Center).
 			Radius(theme.RadiusControl).Background(pal.Paper).Border(1, pal.Accent)
 		box.Children(func() {
-			glyph := icons.Note
+			glyph := fileEntryIcon(filepath.Base(entry.Path))
 			if entry.IsDir {
 				glyph = icons.Folder
 			}
@@ -386,24 +507,60 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) {
 				p.OnRenameItem(targetPath, trimmed)
 			}
 		}
-		return
+		return false
 	}
 
 	selected := !entry.IsDir && entry.Path == p.ActiveNote
 	menuTarget := p.State.ContextOpen && p.State.ContextPath == entry.Path
+	isDropTarget := p.State.DragActive && p.State.DropTargetPath == entry.Path
 
 	c.Key(rowKey)
 	btn := ui.ButtonBase(c).FillWidth().Height(32).Padding(0, 8, 0, indent).Gap(6).
 		AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
 		Role(ui.RoleTreeItem).Selected(selected).Label(entry.Name)
 	hovered := btn.Hovered()
+	pressed := btn.Pressed()
+
 	switch {
+	case isDropTarget && p.State.DropIntoDir:
+		btn.Background(pal.Selected).Border(1, pal.Accent)
+	case isDropTarget && !p.State.DropAfter:
+		btn.BorderWidth(2, 0, 0, 0).BorderColor(pal.Accent).Background(pal.Hover)
+	case isDropTarget && p.State.DropAfter:
+		btn.BorderWidth(0, 0, 2, 0).BorderColor(pal.Accent).Background(pal.Hover)
 	case selected:
 		btn.Background(pal.Selected)
 	case menuTarget:
 		btn.Background(pal.Hover).Border(1, pal.Accent)
 	case hovered:
 		btn.Background(pal.Hover)
+	}
+
+	// Track drag-and-drop sibling reorder & folder move.
+	if pressed {
+		b := btn.Bounds()
+		_, py, hasPos := btn.PointerPosition()
+		absY := b.Y + py
+		if p.State.DraggingPath == "" {
+			p.State.DraggingPath = entry.Path
+			p.State.DraggingIsDir = entry.IsDir
+			p.State.DragStartY = absY
+		} else if hasPos && (absY-p.State.DragStartY > 6 || p.State.DragStartY-absY > 6) {
+			p.State.DragActive = true
+		}
+	}
+	if p.State.DragActive && hovered && entry.Path != p.State.DraggingPath {
+		b := btn.Bounds()
+		_, py, _ := btn.PointerPosition()
+		if entry.IsDir && (filepath.Dir(p.State.DraggingPath) != filepath.Dir(entry.Path) || (py > 8 && py < b.H-8)) {
+			p.State.DropTargetPath = entry.Path
+			p.State.DropIntoDir = true
+			p.State.DropAfter = false
+		} else if filepath.Dir(p.State.DraggingPath) == filepath.Dir(entry.Path) && p.State.DraggingIsDir == entry.IsDir {
+			p.State.DropTargetPath = entry.Path
+			p.State.DropIntoDir = false
+			p.State.DropAfter = py >= b.H*0.5
+		}
 	}
 
 	btn.Children(func() {
@@ -427,7 +584,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) {
 			if selected || hovered {
 				ic = pal.DuoIconColors(pal.Text)
 			}
-			icons.Draw(c, icons.Note, 16, ic)
+			icons.Draw(c, fileEntryIcon(filepath.Base(entry.Path)), 16, ic)
 		}
 		fg := pal.Text
 		weight := 400
@@ -444,6 +601,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) {
 		if px, py, ok := btn.PointerPosition(); ok {
 			cx, cy = b.X+px, b.Y+py
 		}
+		p.State.ClearDrag()
 		p.State.SwitcherOpen = false
 		p.State.ContextOpen = true
 		p.State.ContextPath = entry.Path
@@ -451,7 +609,8 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) {
 		p.State.ContextX = cx
 		p.State.ContextY = cy
 		p.State.MoveSubmenuOpen = false
-	} else if btn.Clicked() {
+	} else if btn.Clicked() && !p.State.DragActive {
+		p.State.ClearDrag()
 		p.State.ClosePopups()
 		if entry.IsDir {
 			p.State.ExpandedDirs[entry.Path] = !p.State.ExpandedDirs[entry.Path]
@@ -460,6 +619,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) {
 			p.OnOpenNote(entry.Path, inNewTab)
 		}
 	}
+	return pressed
 }
 
 func renderSidebarPopups(c *ui.Context, p SidebarProps) {
@@ -501,11 +661,12 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			blockui.Probe(card, "notebook-switcher-pop")
 			card.Children(func() {
 				ui.Scroll(c).MaxHeight(maxH - 12).Children(func() {
-					for _, nb := range p.Notebooks {
+					for ix, nb := range p.Notebooks {
+						ix := ix
 						nb := nb
 						checked := nb == p.ActiveNotebook
 						c.Key("nb-item:" + nb)
-						row := ui.Row(c).FillWidth().Height(32).PaddingX(8).Gap(6).AlignItems(ui.Center).Radius(6)
+						row := ui.Row(c).FillWidth().Height(32).PaddingX(8).Gap(4).AlignItems(ui.Center).Radius(6)
 						if row.Hovered() {
 							row.Background(pal.Hover)
 						}
@@ -524,6 +685,30 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 								p.State.ClosePopups()
 								if nb != p.ActiveNotebook && p.OnSwitchNotebook != nil {
 									p.OnSwitchNotebook(nb)
+								}
+							}
+							if len(p.Notebooks) > 1 && p.OnReorderNotebooks != nil {
+								if ix > 0 {
+									upBtn := blockui.IconButton(c, icons.ArrowUp, blockui.IconButtonOptions{
+										ID:       "nb-up:" + nb,
+										Size:     20,
+										IconSize: 12,
+										Tooltip:  theme.Tr("上移", "Move Up"),
+									})
+									if upBtn.Clicked() {
+										p.OnReorderNotebooks(ix, ix-1)
+									}
+								}
+								if ix+1 < len(p.Notebooks) {
+									dnBtn := blockui.IconButton(c, icons.ArrowDown, blockui.IconButtonOptions{
+										ID:       "nb-down:" + nb,
+										Size:     20,
+										IconSize: 12,
+										Tooltip:  theme.Tr("下移", "Move Down"),
+									})
+									if dnBtn.Clicked() {
+										p.OnReorderNotebooks(ix, ix+1)
+									}
 								}
 							}
 							if !checked && p.OnForgetNotebook != nil {
@@ -570,7 +755,18 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			icReveal := icons.FolderReveal
 			icRename := icons.Pencil
 			icMove := icons.ArrowRight
+			icUp := icons.ArrowUp
+			icDown := icons.ArrowDown
 			icTrash := icons.Trash
+
+			sibs := findSameKindSiblings(p.Entries, targetPath)
+			sibIdx := -1
+			for i, s := range sibs {
+				if filepath.Clean(s.Path) == filepath.Clean(targetPath) {
+					sibIdx = i
+					break
+				}
+			}
 
 			var items []blockui.MenuItemSpec
 			if !targetDir {
@@ -620,6 +816,38 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 						p.State.MoveSubmenuOpen = !p.State.MoveSubmenuOpen
 					},
 				},
+			)
+			if len(sibs) > 1 && p.OnReorderSibling != nil {
+				canUp := sibIdx > 0
+				canDown := sibIdx >= 0 && sibIdx+1 < len(sibs)
+				items = append(items,
+					blockui.MenuItemSpec{
+						ID:       "tree-reorder-up",
+						Label:    theme.Tr("上移", "Move Up"),
+						Icon:     &icUp,
+						Disabled: !canUp,
+						OnClick: func() {
+							p.State.ClosePopups()
+							if canUp {
+								p.OnReorderSibling(filepath.Dir(targetPath), targetPath, sibs[sibIdx-1].Path, false)
+							}
+						},
+					},
+					blockui.MenuItemSpec{
+						ID:       "tree-reorder-down",
+						Label:    theme.Tr("下移", "Move Down"),
+						Icon:     &icDown,
+						Disabled: !canDown,
+						OnClick: func() {
+							p.State.ClosePopups()
+							if canDown {
+								p.OnReorderSibling(filepath.Dir(targetPath), targetPath, sibs[sibIdx+1].Path, true)
+							}
+						},
+					},
+				)
+			}
+			items = append(items,
 				blockui.MenuItemSpec{Separator: true},
 				blockui.MenuItemSpec{
 					ID:       "trash",
@@ -638,7 +866,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 
 			estH := estimateMenuHeight(items)
 			mainSpec := blockui.PlaceAtPoint(p.State.ContextX, p.State.ContextY)
-			maxH := blockui.MaxHeightForSpec(mainSpec, vpW, vpH, 340)
+			maxH := blockui.MaxHeightForSpec(mainSpec, vpW, vpH, 380)
 			popH := min(estH, maxH)
 			ox, oy := blockui.ResolveOrigin(mainSpec, menuW, popH, vpW, vpH)
 

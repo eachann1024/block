@@ -7,7 +7,7 @@ func TestFullWorkspaceClickAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("smoke acceptance failed: %v (passed=%d failed=%d)", err, rep.PassedCount, rep.FailedCount)
 	}
-	if rep.FailedCount != 0 || rep.PassedCount != 15 {
+	if rep.FailedCount != 0 || rep.PassedCount != 20 {
 		t.Fatalf("unexpected step counts: passed=%d failed=%d", rep.PassedCount, rep.FailedCount)
 	}
 	for _, s := range rep.Steps {

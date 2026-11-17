@@ -80,11 +80,71 @@ const (
 	ExportZIP      ExportFormat = "zip"
 )
 
+// ExportTheme enumerates the 12 paper styles (6 light + 6 dark) from thinkly-fast/src/export/palette.rs.
+type ExportTheme string
+
+const (
+	ExportThemeMono     ExportTheme = "mono"
+	ExportThemeJournal  ExportTheme = "journal"
+	ExportThemeRiso     ExportTheme = "riso"
+	ExportThemePress    ExportTheme = "press"
+	ExportThemePoster   ExportTheme = "poster"
+	ExportThemeMist     ExportTheme = "mist"
+	ExportThemeInk      ExportTheme = "ink"
+	ExportThemeKraft    ExportTheme = "kraft"
+	ExportThemeNeon     ExportTheme = "neon"
+	ExportThemeFilm     ExportTheme = "film"
+	ExportThemeNight    ExportTheme = "night"
+	ExportThemeTerminal ExportTheme = "terminal"
+)
+
+func (t ExportTheme) IsDark() bool {
+	switch t {
+	case ExportThemeInk, ExportThemeKraft, ExportThemeNeon, ExportThemeFilm, ExportThemeNight, ExportThemeTerminal:
+		return true
+	default:
+		return false
+	}
+}
+
 type ExportPreferences struct {
 	Format      ExportFormat `json:"format,omitempty"`
-	Theme       string       `json:"theme,omitempty"` // "light", "dark", "current"
+	Theme       string       `json:"theme,omitempty"` // legacy alias ("light", "dark", "current") or ExportTheme name
+	Style       ExportTheme  `json:"style,omitempty"`
+	LightStyle  ExportTheme  `json:"light_style,omitempty"`
+	DarkStyle   ExportTheme  `json:"dark_style,omitempty"`
+	ShowTitle   *bool        `json:"show_title,omitempty"`
+	Watermark   *bool        `json:"watermark,omitempty"`
 	IncludeMeta bool         `json:"includeMeta,omitempty"`
 	Width       int          `json:"width,omitempty"`
+	Title       string       `json:"-"`
+}
+
+// OpenKind classifies any opened file in a tab (matching thinkly-fast/src/files/classify.rs).
+type OpenKind uint8
+
+const (
+	OpenKindMarkdown OpenKind = iota
+	OpenKindSource
+	OpenKindPreview
+	OpenKindBlocked
+)
+
+type SourceFile struct {
+	Text      string
+	BOM       bool
+	Language  string
+	Highlight bool
+	HTML      bool
+	SVG       bool
+}
+
+type ClassifiedFile struct {
+	Kind    OpenKind
+	Text    string      // For OpenKindMarkdown
+	Source  *SourceFile // For OpenKindSource, or editable SVG when Kind == OpenKindPreview
+	Reason  string      // For OpenKindBlocked
+	RawSize int64
 }
 
 // AppState matches ~/Library/Application Support/Block/state.json 1:1.
