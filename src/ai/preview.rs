@@ -562,6 +562,7 @@ pub(in crate::editor) fn render_stream_row(
 
     let left_pad = (HANDLE_WIDTH + ROW_GAP - 8. * zoom).max(0.);
     let right_pad = if editor.minimal { 0. } else { (RIGHT_INSET - 8. * zoom).max(0.) };
+    let preview_input = s.input.clone();
 
     Some(
         div()
@@ -580,6 +581,10 @@ pub(in crate::editor) fn render_stream_row(
                     .max_w(theme.content_width + px(16. * zoom))
                     .px(px(8. * zoom))
                     .py(px(8. * zoom))
+                    .on_mouse_down(gpui::MouseButton::Left, move |_, window, cx| {
+                        preview_input.update(cx, |i, cx| i.focus(window, cx));
+                        cx.stop_propagation();
+                    })
                     .child(outline_canvas)
                     .child(
                         div()

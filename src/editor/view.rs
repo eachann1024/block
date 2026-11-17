@@ -113,8 +113,17 @@ impl Editor {
     pub fn status_text(&self) -> &str { &self.status }
     pub fn is_dirty(&self) -> bool { self.dirty }
     pub(crate) fn dismiss_dropdowns(&mut self) -> bool {
+        let format_closed = match &mut self.format {
+            Some(super::format_cmds::FormatPop::Ai(s)) => {
+                let had_sub = s.menu != super::ai::session::AiMenu::None;
+                s.menu = super::ai::session::AiMenu::None;
+                s.menu_index = 0;
+                had_sub
+            }
+            other => other.take().is_some(),
+        };
         self.block_menu.take().is_some() | self.table_menu.take().is_some()
-            | self.format.take().is_some() | self.image_menu.take().is_some()
+            | format_closed | self.image_menu.take().is_some()
             | super::code_block::close_menus() | crate::ui::callout_controls::close_menu()
     }
     pub fn focus_content(&mut self, reset_to_start: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -158,7 +167,13 @@ impl Render for Editor {
         let input_editor = cx.entity();
         let input = gpui::canvas(|_, _, _| (), move |bounds, (), window, cx| {
             super::image_resize::track(&input_editor, input_editor.read(cx).focus.is_focused(window), window, cx);
-            input_editor.update(cx, |this, cx| { this.track_block_drag(window, cx); this.painted_rows.clear(); this.layouts.clear(); this.source_layouts.clear(); });
+            input_editor.update(cx, |this, cx| {
+                this.track_block_drag(window, cx);
+                this.painted_rows.clear();
+                this.layouts.clear();
+                this.source_layouts.clear();
+                super::ai::preview::clear_preview_bounds(cx.entity_id());
+            });
             let editor = input_editor.read(cx);
             if editor.path.is_some() { window.handle_input(&editor.focus, gpui::ElementInputHandler::new(bounds, input_editor.clone()), cx); }
         }).absolute().size_full();
