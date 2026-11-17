@@ -95,6 +95,7 @@ icons! {
     ArrowLeft => "arrow-left" [Fill, Line, Accent],
     ArrowRight => "arrow-right" [Fill, Line, Accent],
     Sparkles => "sparkles" [Fill, Line, Accent],
+    Star => "star" [Fill, Line, Accent],
     Close => "close" [Fill, Line, Accent],
     More => "more" [Fill, Line, Accent],
     FindSearch => "search" [Fill, Line, Accent],

@@ -1102,6 +1102,16 @@
       "w": 1440,
       "x": 3040,
       "y": 4840
+    },
+    "InlineAi-V1-PaperStream.dc.html": {
+      "expand": "fill",
+      "h": 940,
+      "is_interactive": true,
+      "page": "inline-ai",
+      "title": "行内 AI 全流程（极简傻瓜版）· 默认标签 + 12字最近输入与星标收藏 + 原生 Block 流式渲染",
+      "w": 1440,
+      "x": 0,
+      "y": 0
     }
   },
   "createdOnFiles": {
@@ -1118,7 +1128,7 @@
     }
   ],
   "launch": {
-    "page": "settings",
+    "page": "inline-ai",
     "view": "canvas"
   },
   "notes": {
@@ -1388,9 +1398,14 @@
     "Outline-V3-PinnableTree.dc.html",
     "AiAgentCards-V1-FiveUpRow.dc.html",
     "AiAgentCards-V2-CompactPills.dc.html",
-    "AiAgentCards-V3-ListRows.dc.html"
+    "AiAgentCards-V3-ListRows.dc.html",
+    "InlineAi-V1-PaperStream.dc.html"
   ],
   "pages": [
+    {
+      "id": "inline-ai",
+      "name": "行内 AI 全流程"
+    },
     {
       "id": "ai-assistant",
       "name": "AI 助手与全屏模式"
