@@ -1,168 +1,282 @@
-//! Compact Ocean Paper inline AI bar: 360px width, 8px padding, headerless two-row layout.
-use gpui::{AnyElement, Entity, SharedString, div, point, prelude::*, px, rgb};
+//! Minimalist Ocean Paper inline AI floating bar (396px):
+//! - No model switcher, no `@`, no gear or close icons (Esc / click outside closes).
+//! - Input mode: plain-language default tags + starred/recent user prompt row (`<=12 chars…` + hover Tooltip + `☆/★`).
+//! - Streaming mode: single clean row (`● 正在生成… [停止]`), while blocks stream live on paper.
+//! - Review mode: Enter accepts (`完成 ↵` / `替换 ↵`), typing refines in place, plus `插入下方` / `重写` / `放弃`.
+use gpui::{AnyElement, Entity, FontWeight, SharedString, div, point, prelude::*, px, rgb};
 use gpui_component::input::Input;
 
 use super::super::view;
-use super::session::{AiMenu, AiSession, AiStatus, Preset, ticker_line};
+use super::inline_prompts;
+use super::session::{AiMenu, AiSession, AiStatus, EMPTY_PRESETS, Preset, SEL_PRESETS};
 use crate::editor::view::Editor;
 use crate::icons::{Icon, icon};
 use crate::theme::{Theme, tr};
-use crate::ui::ai_controls::{PANEL_WIDTH, action_chip, diff_legend, icon_chip, input_capsule, panel_shell, send_button};
+use crate::ui::ai_controls::{
+    PANEL_WIDTH, action_chip, action_chip_hint, input_capsule, panel_shell, saved_prompt_chip, send_button,
+};
 
-fn preset_icon(p: Preset) -> Icon {
-    match p {
-        Preset::Polish => Icon::AiPolish,
-        Preset::Simplify => Icon::AiSimplify,
-        Preset::English => Icon::AiTransEn,
-        Preset::Chinese => Icon::AiTransZh,
-        Preset::Jargon => Icon::AiJargon,
-        Preset::Colloquial => Icon::AiColloquial,
-        Preset::List => Icon::AiList,
-        Preset::Tasks => Icon::AiTasks,
-    }
-}
-
-fn tag(
+fn tag_button(
     id: impl Into<SharedString>,
-    lead: Option<Icon>,
     label: impl Into<SharedString>,
+    hint: Option<&'static str>,
     primary: bool,
     open: bool,
     editor: &Entity<Editor>,
     run: impl Fn(&mut Editor, &mut gpui::Window, &mut gpui::Context<Editor>) + 'static,
 ) -> gpui_base::Button {
     let editor = editor.clone();
-    action_chip(id, lead, label, primary, open, move |_, window, cx| {
+    action_chip_hint(id, None, label, hint, primary, open, move |_, window, cx| {
         editor.update(cx, |this, cx| run(this, window, cx));
         cx.stop_propagation();
     })
 }
 
-fn menu_tag(id: &'static str, label: &'static str, which: AiMenu, current: AiMenu, editor: &Entity<Editor>) -> gpui_base::Button {
+fn translate_tag(current: AiMenu, editor: &Entity<Editor>) -> gpui_base::Button {
     let theme = Theme::ocean();
-    tag(id, None, label, false, current == which, editor, move |this, _, cx| this.ai_toggle_menu(which, cx))
-        .child(div().text_color(theme.text_secondary).text_size(px(12.)).child(if current == which { "▴" } else { "▾" }))
-}
-
-fn menu_item(p: Preset, highlighted: bool, editor: &Entity<Editor>) -> gpui_base::Button {
-    let editor = editor.clone();
-    crate::dropdown::row_with(SharedString::from(format!("ai-item-{p:?}")), crate::dropdown::RowSpec {
-        icon: Some(preset_icon(p)), label: p.label().into(), highlighted, ..Default::default()
+    let open = current == AiMenu::Translate;
+    let ed = editor.clone();
+    action_chip("ai-translate", None, tr("翻译", "Translate"), false, open, move |_, _, cx| {
+        ed.update(cx, |this, cx| this.ai_toggle_menu(AiMenu::Translate, cx));
+        cx.stop_propagation();
     })
-        .on_mouse_down(gpui::MouseButton::Left, move |_, window, cx| {
-            editor.update(cx, |this, cx| this.ai_preset(p, window, cx));
-            cx.stop_propagation();
-        })
+    .child(div().text_color(theme.text_secondary).text_size(px(11.)).child(if open { "▴" } else { "▾" }))
 }
 
-fn preset_tag(p: Preset, editor: &Entity<Editor>) -> gpui_base::Button {
-    tag(SharedString::from(format!("ai-preset-{p:?}")), Some(preset_icon(p)), p.label(), false, false, editor, move |this, w, cx| this.ai_preset(p, w, cx))
+fn submenu_item(p: Preset, highlighted: bool, editor: &Entity<Editor>) -> gpui_base::Button {
+    let editor = editor.clone();
+    crate::dropdown::row_with(
+        SharedString::from(format!("ai-item-{p:?}")),
+        crate::dropdown::RowSpec {
+            label: p.label().into(),
+            highlighted,
+            ..Default::default()
+        },
+    )
+    .on_mouse_down(gpui::MouseButton::Left, move |_, window, cx| {
+        editor.update(cx, |this, cx| this.ai_preset(p, window, cx));
+        cx.stop_propagation();
+    })
 }
 
-pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession, phase: crate::ui::motion::PopupMotion, pop_gen: u64) -> AnyElement {
+fn preset_chip(p: Preset, editor: &Entity<Editor>) -> gpui_base::Button {
+    tag_button(
+        SharedString::from(format!("ai-preset-{p:?}")),
+        p.label(),
+        None,
+        false,
+        false,
+        editor,
+        move |this, w, cx| this.ai_preset(p, w, cx),
+    )
+    .h(px(26.))
+}
+
+pub(in crate::editor) fn render(
+    editor: Entity<Editor>,
+    s: &AiSession,
+    phase: crate::ui::motion::PopupMotion,
+    pop_gen: u64,
+) -> AnyElement {
     let theme = Theme::ocean();
     let busy = matches!(s.status, AiStatus::Thinking { .. });
+    let empty_ctx = s.is_empty_ctx();
     let del_fg = rgb(0xb42318);
 
-    let err_row: Option<AnyElement> = match &s.status {
-        AiStatus::Error { message } => Some(
-            div().px(px(4.)).text_size(px(14.)).text_color(del_fg)
-                .child(SharedString::from(if message.is_empty() {
-                    tr("生成中断，未对正文进行修改", "Generation interrupted; text unchanged").to_owned()
-                } else {
-                    message.clone()
-                }))
-                .into_any_element(),
-        ),
-        _ => None,
-    };
-
-    let result = match &s.status {
-        AiStatus::Review { draft } => Some((draft.as_str(), false)),
-        AiStatus::Thinking { partial, .. } if !partial.is_empty() => Some((partial.as_str(), true)),
-        _ => None,
-    }.map(|(source, streaming)| {
-        div().id("inline-ai-result-scroll").w_full().min_w_0().max_h(px(280.)).overflow_y_scroll()
-            .p(px(10.)).rounded(crate::ui::radius::CONTROL).bg(gpui::hsla(152. / 360., 0.6, 0.4, 0.08))
-            .on_scroll(|_, _, cx| cx.stop_propagation())
-            .child(crate::ui::editor_content::markdown(format!("inline-ai-result-{:?}", editor.entity_id()), source)
-                .selectable(!streaming))
+    let err_row: Option<AnyElement> = s.error.as_ref().map(|message| {
+        div()
+            .px(px(4.))
+            .text_size(px(13.))
+            .line_height(px(18.))
+            .text_color(del_fg)
+            .child(SharedString::from(message.clone()))
+            .into_any_element()
     });
+
     let field = input_capsule(busy);
-    let prompt_row = if let AiStatus::Thinking { tick, partial, reasoning } = &s.status {
-        let line = if partial.trim().is_empty() { ticker_line(reasoning) } else { String::new() };
-        let line = if !line.is_empty() {
-            line
-        } else if !reasoning.is_empty() {
-            tr("正在思考并生成…", "Thinking and writing…").to_owned()
+    let prompt_row = if let AiStatus::Thinking { tick, reasoning, partial, .. } = &s.status {
+        let phase_wave = (((*tick % 24) as f32 / 24.0) * std::f32::consts::TAU).cos() * 0.5 + 0.5;
+        let label = if partial.is_empty() && !reasoning.is_empty() {
+            tr("正在思考…", "Thinking…")
         } else {
-            tr("思考中", "Thinking").to_owned()
+            tr("正在生成…", "Generating…")
         };
         field
-            .child(div().size(px(8.)).flex_none().rounded_full().bg(theme.accent).opacity(0.35 + 0.65 * ((*tick % 16) as f32 / 15.)))
-            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(14.)).text_color(theme.text_secondary).child(SharedString::from(line)))
-            .child(tag("ai-stop", Some(Icon::Stop), tr("停止", "Stop"), false, false, &editor, |this, w, cx| this.ai_stop(w, cx)))
+            .pl(px(12.))
+            .pr(px(8.))
+            .child(
+                div()
+                    .size(px(8.))
+                    .flex_none()
+                    .rounded_full()
+                    .bg(theme.accent)
+                    .opacity(0.42 + 0.58 * phase_wave),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .text_size(px(14.))
+                    .font_weight(FontWeight(460.))
+                    .text_color(theme.text.opacity(0.65 + 0.35 * phase_wave))
+                    .child(label),
+            )
+            .child(
+                tag_button("ai-stop", tr("停止", "Stop"), None, false, false, &editor, |this, w, cx| {
+                    this.ai_stop(w, cx)
+                })
+                .h(px(26.))
+                .text_color(theme.text_secondary),
+            )
     } else {
         let send_ed = editor.clone();
         field
             .child(icon(Icon::Sparkles, px(crate::ui::icon_size::ROW), theme.icon_colors(theme.accent)))
-            .child(div().flex_1().min_w_0().h(px(26.)).text_size(px(14.)).child(Input::new(&s.input).appearance(false).bordered(false).focus_bordered(false).h(px(26.))))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .h(px(26.))
+                    .text_size(px(14.))
+                    .child(Input::new(&s.input).appearance(false).bordered(false).focus_bordered(false).h(px(26.))),
+            )
             .child(send_button("ai-send", move |_, window, cx| {
                 send_ed.update(cx, |this, cx| this.ai_submit_input(window, cx));
                 cx.stop_propagation();
             }))
     };
 
-    let mut footer = div().flex().flex_wrap().items_center().gap(px(4.));
+    let mut bottom_area: Option<AnyElement> = None;
     let mut submenu: Option<gpui::Stateful<gpui::Div>> = None;
+
     match &s.status {
         AiStatus::Input => {
-            let set_ed = editor.clone();
-            let close_ed = editor.clone();
-            footer = footer
-                .child(preset_tag(Preset::Polish, &editor))
-                .child(preset_tag(Preset::Simplify, &editor))
-                .child(menu_tag("ai-translate", tr("翻译", "Translate"), AiMenu::Translate, s.menu, &editor))
-                .child(menu_tag("ai-more", tr("更多", "More"), AiMenu::More, s.menu, &editor))
-                .child(div().flex_1())
-                .child(icon_chip("ai-settings", Icon::Sliders, tr("打开 AI 设置", "Open AI Settings"), move |_, w, cx| {
-                    set_ed.update(cx, |this, cx| this.ai_open_settings(w, cx));
-                    cx.stop_propagation();
-                }))
-                .child(icon_chip("ai-close", Icon::Close, tr("关闭 (Esc)", "Close (Esc)"), move |_, w, cx| {
-                    close_ed.update(cx, |this, cx| this.ai_close(w, cx));
-                    cx.stop_propagation();
-                }));
-            let items: &[Preset] = match s.menu {
-                AiMenu::Translate => &[Preset::English, Preset::Chinese],
-                AiMenu::More => &[Preset::Jargon, Preset::Colloquial, Preset::List, Preset::Tasks],
-                AiMenu::None => &[],
-            };
-            if !items.is_empty() {
+            let defaults = if empty_ctx { EMPTY_PRESETS } else { SEL_PRESETS };
+            let mut default_row = div().flex().flex_wrap().items_center().gap(px(2.));
+            for p in defaults {
+                default_row = default_row.child(preset_chip(*p, &editor));
+            }
+            if !empty_ctx {
+                default_row = default_row.child(translate_tag(s.menu, &editor).h(px(26.)));
+            }
+
+            let saved = inline_prompts::list();
+            let user_row = (!saved.is_empty()).then(|| {
+                let mut row = div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap(px(5.))
+                    .pt(px(5.))
+                    .border_t_1()
+                    .border_color(theme.hairline);
+                for (ix, item) in saved.into_iter().enumerate() {
+                    let short = inline_prompts::trunc12(&item.text);
+                    let full = item.text;
+                    let run_text = full.clone();
+                    let star_text = full.clone();
+                    let run_ed = editor.clone();
+                    let star_ed = editor.clone();
+                    row = row.child(saved_prompt_chip(
+                        ix,
+                        short,
+                        full,
+                        item.starred,
+                        move |_, window, cx| {
+                            let t = run_text.clone();
+                            run_ed.update(cx, |this, cx| this.ai_run_saved_prompt(t, window, cx));
+                            cx.stop_propagation();
+                        },
+                        move |_, _, cx| {
+                            let t = star_text.clone();
+                            star_ed.update(cx, |this, cx| this.ai_toggle_saved_star(&t, cx));
+                            cx.stop_propagation();
+                        },
+                    ));
+                }
+                row
+            });
+
+            if !empty_ctx && s.menu == AiMenu::Translate {
+                let items = [Preset::English, Preset::Chinese];
                 submenu = Some(
-                    items.iter().enumerate().fold(crate::dropdown::shell("ai-submenu").w(px(176.)), |d, (ix, p)| {
-                        d.child(menu_item(*p, ix == s.menu_index, &editor))
+                    items.iter().enumerate().fold(crate::dropdown::shell("ai-submenu").w(px(148.)), |d, (ix, p)| {
+                        d.child(submenu_item(*p, ix == s.menu_index, &editor))
                     }),
                 );
             }
+
+            bottom_area = Some(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(5.))
+                    .child(default_row)
+                    .children(user_row)
+                    .into_any_element(),
+            );
         }
         AiStatus::Thinking { .. } => {}
         AiStatus::Review { .. } => {
-            footer = footer
-                .child(tag("ai-accept", None, tr("应用修改", "Apply Changes"), true, false, &editor, |this, w, cx| this.ai_accept(w, cx)))
-                .child(tag("ai-discard", None, tr("放弃", "Discard"), false, false, &editor, |this, w, cx| this.ai_close(w, cx)))
-                .child(tag("ai-retry", None, tr("重新生成", "Regenerate"), false, false, &editor, |this, w, cx| this.ai_retry(w, cx)))
-                .child(div().flex_1())
-                .child(diff_legend());
-        }
-        AiStatus::Error { .. } => {
-            if !s.prompt.is_empty() {
-                footer = footer.child(tag("ai-retry", None, tr("重试", "Retry"), true, false, &editor, |this, w, cx| this.ai_retry(w, cx)));
+            let accept_label = if empty_ctx {
+                tr("完成", "Done")
+            } else {
+                tr("替换", "Replace")
+            };
+            let mut row = div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(4.))
+                .child(tag_button(
+                    "ai-accept",
+                    accept_label,
+                    Some("↵"),
+                    true,
+                    false,
+                    &editor,
+                    |this, w, cx| this.ai_accept(w, cx),
+                ));
+            if !empty_ctx {
+                row = row.child(tag_button(
+                    "ai-insert-below",
+                    tr("插入下方", "Insert Below"),
+                    None,
+                    false,
+                    false,
+                    &editor,
+                    |this, w, cx| this.ai_insert_below(w, cx),
+                ));
             }
-            footer = footer.child(tag("ai-discard", None, tr("关闭", "Close"), false, false, &editor, |this, w, cx| this.ai_close(w, cx)));
+            row = row
+                .child(tag_button(
+                    "ai-retry",
+                    tr("重写", "Regenerate"),
+                    None,
+                    false,
+                    false,
+                    &editor,
+                    |this, w, cx| this.ai_retry(w, cx),
+                ))
+                .child(div().flex_1())
+                .child(
+                    tag_button(
+                        "ai-discard",
+                        tr("放弃", "Discard"),
+                        None,
+                        false,
+                        false,
+                        &editor,
+                        |this, w, cx| this.ai_close(w, cx),
+                    )
+                    .text_color(theme.text_secondary),
+                );
+            bottom_area = Some(row.into_any_element());
         }
     }
-    let show_footer = !busy;
 
     let key_editor = editor.clone();
     let target_ids: Vec<u64> = s.parts.iter().map(|(id, _)| *id).collect();
@@ -176,17 +290,22 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession, phase: cr
         ("inline-ai-pop", pop_gen),
         move |_, cx| {
             let ed = pos_editor.read(cx);
-            let trigger = target_ids
-                .iter()
-                .filter_map(|id| ed.block_trigger_bounds(editor_id, *id))
-                .reduce(|a, b| a.union(&b))
+            let trigger = super::preview::live_preview_bounds(editor_id)
+                .or_else(|| {
+                    target_ids
+                        .iter()
+                        .filter_map(|id| ed.block_trigger_bounds(editor_id, *id))
+                        .reduce(|a, b| a.union(&b))
+                })
                 .unwrap_or(fallback_trigger);
             crate::ui::placement::PlacementSpec::below(trigger)
                 .viewport(ed.list.viewport_bounds())
-                .gap(px(6.))
+                .gap(px(10.))
                 .margin(px(12.))
         },
         panel_shell("inline-ai")
+            .p(px(8.))
+            .gap(px(6.))
             .on_action(|_: &view::Backspace, _, _| {})
             .on_action(|_: &view::Delete, _, _| {})
             .on_action(|_: &view::Left, _, _| {})
@@ -197,13 +316,17 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession, phase: cr
             .capture_action({
                 let ed = editor.clone();
                 move |_: &gpui_component::input::MoveUp, _, cx| {
-                    if ed.update(cx, |this, cx| this.ai_step_menu(false, cx)) { cx.stop_propagation(); }
+                    if ed.update(cx, |this, cx| this.ai_step_menu(false, cx)) {
+                        cx.stop_propagation();
+                    }
                 }
             })
             .capture_action({
                 let ed = editor.clone();
                 move |_: &gpui_component::input::MoveDown, _, cx| {
-                    if ed.update(cx, |this, cx| this.ai_step_menu(true, cx)) { cx.stop_propagation(); }
+                    if ed.update(cx, |this, cx| this.ai_step_menu(true, cx)) {
+                        cx.stop_propagation();
+                    }
                 }
             })
             .on_action(|_: &view::Up, _, _| {})
@@ -245,9 +368,8 @@ pub(in crate::editor) fn render(editor: Entity<Editor>, s: &AiSession, phase: cr
                 }
             })
             .children(err_row)
-            .children(result)
             .child(prompt_row)
-            .when(show_footer, |d| d.child(footer))
+            .children(bottom_area)
             .children(submenu),
         phase,
         2,

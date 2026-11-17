@@ -150,3 +150,39 @@ pub fn icon_toggle_button(
         .child(lead)
         .when(!open, |b| b.tooltip_above(tooltip(tip)))
 }
+
+pub fn ai_action_button(
+    id: impl Into<ElementId>,
+    label: &'static str,
+    open: bool,
+    on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
+) -> gpui_base::Button {
+    let theme = Theme::ocean();
+    let id: ElementId = id.into();
+    gpui_base::Button::new(id.clone())
+        .focusable(false)
+        .role(gpui::Role::Button)
+        .selected(open)
+        .accessibility_label(label)
+        .relative()
+        .h(px(28.))
+        .px(px(10.))
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(5.))
+        .rounded(px(6.))
+        .bg(theme.selected)
+        .border_1()
+        .border_color(theme.accent)
+        .text_size(px(14.))
+        .line_height(px(20.))
+        .font_weight(gpui::FontWeight(460.))
+        .text_color(theme.text)
+        .cursor(CursorStyle::PointingHand)
+        .hover(move |s| s.bg(theme.hover))
+        .children(crate::ui::smoke_overlay::probe_for(&id))
+        .child(crate::icons::icon(Icon::Sparkles, px(crate::ui::icon_size::INLINE), theme.icon_colors(theme.accent)))
+        .child(label)
+        .on_mouse_down(gpui::MouseButton::Left, on_click)
+}
