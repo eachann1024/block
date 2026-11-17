@@ -39,17 +39,8 @@ pub(super) fn kind_icon(kind: Kind) -> Icon {
     }
 }
 
-pub(super) fn is_divider(block: &Block) -> bool {
-    block.meta.raw_source.as_deref().is_some_and(|s| {
-        let t = s.trim();
-        (t.len() >= 3 && ['-', '*', '_'].iter().any(|c| t.chars().all(|v| v == *c)))
-            || t.eq_ignore_ascii_case("<hr>")
-            || t.eq_ignore_ascii_case("<hr/>")
-            || t.eq_ignore_ascii_case("<hr />")
-    })
-}
-fn raw_block(text: &str) -> Block {
-    let mut block = Block::new(0, Kind::Paragraph, text.to_owned()); block.meta.raw_source = Some(text.to_owned()); block
+pub(crate) fn is_divider(block: &Block) -> bool {
+    block.meta.divider
 }
 fn paragraph() -> Block { Block::new(0, Kind::Paragraph, String::new()) }
 
@@ -142,7 +133,7 @@ impl Editor {
         self.commit_composition(cx);
         let Some(index) = self.doc.index_of(id) else { return };
         let Some(block) = self.doc.get(id) else { return };
-        let slash_target = mode == Mode::Slash && block.meta.table.is_none() && block.meta.raw_source.is_none()
+        let slash_target = mode == Mode::Slash && block.meta.table.is_none() && !block.is_atomic()
             && block.meta.code_language.is_none() && (block.text.is_empty() || block.text.starts_with('/'))
             && block.kind == Kind::Paragraph;
         let before = self.snapshot();
@@ -170,13 +161,13 @@ impl Editor {
                 let was_code = self.doc.get(id).is_some_and(|b| b.meta.code_language.is_some());
                 if slash_target { self.doc.set_text(id, String::new()); self.doc.set_kind(id, Kind::Paragraph); }
                 else if mode == Mode::Handle && self.doc.get(id).is_some_and(|b| b.meta.code_language.is_none()) { self.doc.set_kind(id, Kind::Paragraph); }
-                if let Some(b) = self.doc.get_mut(id) { if b.meta.table.is_none() && b.meta.raw_source.is_none() { b.meta.code_language = Some(language.to_owned()); } }
+                if let Some(b) = self.doc.get_mut(id) { if b.meta.table.is_none() && !b.is_atomic() { b.meta.code_language = Some(language.to_owned()); b.meta.clean_source = None; } }
                 self.doc.refresh_block(id);
                 changes.push(ListChange { start: index, before: 1, after: 1 });
                 if !was_code { caret = Some(Position { block: id, offset: 0 }); }
             }
             Cmd::Table | Cmd::Divider => {
-                let new = if cmd == Cmd::Table { Block::from_table(0, Table::blank(3, 3)) } else { raw_block("***\n") };
+                let new = if cmd == Cmd::Table { Block::from_table(0, Table::blank(3, 3)) } else { Block::divider(0) };
                 let trailing = index + 1 >= self.doc.blocks.len() || cmd == Cmd::Divider;
                 let mut blocks = vec![new];
                 if trailing { blocks.push(paragraph()); }

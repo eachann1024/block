@@ -137,7 +137,7 @@ impl Editor {
         let before = self.snapshot();
         let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
         if ai == bi && self.doc.get(a.block).is_some_and(|blk| blk.meta.code_language.is_some()
-            || blk.meta.raw_source.is_some() || blk.meta.table.as_ref().is_some_and(|t|
+            || blk.is_atomic() || blk.meta.table.as_ref().is_some_and(|t|
                 t.cell_at_range(&(a.offset..b.offset)).is_some())) {
             self.doc.replace_range(a.block, a.offset..b.offset, &normalized);
             let at = Position { block: a.block, offset: a.offset + normalized.len() };

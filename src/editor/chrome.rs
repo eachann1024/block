@@ -2,7 +2,7 @@
 use gpui::{CursorStyle, MouseButton, Pixels, div, prelude::*, px, rgb, transparent_black};
 use crate::{
     icons::{Icon, IconColors, icon},
-    theme::{Theme, is_dark, tr},
+    theme::{Theme, is_dark},
     ui::reveal::{delete_arm_button, fold_button, handle_button},
 };
 pub(super) use crate::ui::reveal::grip_button;
@@ -103,7 +103,7 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
     let nowrap = nowrap && block.meta.code_language.is_some();
     let focus_editor = editor.clone();
     let callout = block.meta.callout;
-    let blank = block.kind == Kind::Paragraph && block.meta.code_language.is_none() && block.text.is_empty() && !is_table && block.meta.raw_source.is_none() && callout.is_none();
+    let blank = block.kind == Kind::Paragraph && block.meta.code_language.is_none() && block.text.is_empty() && !is_table && !block.is_atomic() && callout.is_none();
     // Images and dividers are atomic blocks and never expose their Markdown/HTML source line.
     let static_view = image.is_some() || rule;
     let code_lang = block.meta.code_language.clone();
@@ -168,9 +168,6 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                 .when_some(callout, |body, kind| {
                     crate::ui::callout_controls::style_card(body, kind, zoom)
                 })
-                .when_some(block.meta.unsupported_reason.clone().filter(|_| image.is_none() && !rule), |body, reason| body.child(
-                    div().text_size(px(11. * zoom)).text_color(theme.text_secondary).pb(px(4. * zoom))
-                        .child(format!("{} · {}", tr("已保留源码", "Source preserved"), unsupported_reason_label(&reason)))))
                 .when_some(image, |body, (path, spec)| body.child(super::image_view::image_block(focus_editor.clone(), id, path, spec, active, image_pop, zoom, has_overlay, cx)))
                 .when(static_view && rule, |body| body.child(
                     div().id(("rule", id as usize)).h(px(16. * zoom)).flex().items_center().cursor(CursorStyle::PointingHand)
@@ -211,39 +208,6 @@ fn todo_box(checked: bool, top: f32, zoom: f32, toggle: impl Fn(&mut gpui::App) 
         .when(checked, |b| b.bg(rgb(0x4774cf)).child(icon(Icon::Check, px(12. * zoom),
             IconColors { line: rgb(0xffffff).into(), fill: transparent_black(), accent: rgb(0xffffff).into() })))
         .on_mouse_down(MouseButton::Left, move |_, _, cx| { toggle(cx); cx.stop_propagation(); })
-}
-fn unsupported_reason_label(reason: &str) -> &str {
-    if crate::theme::is_en() {
-        return reason;
-    }
-    match reason {
-        "Unsupported table cell syntax is retained as original Markdown" => "不支持的表格单元格语法，已保留原始 Markdown",
-        "Nested or indented code is retained as source" => "嵌套或缩进代码块，已保留为源码",
-        "Unsupported Markdown or HTML is retained as editable source" => "不支持的 Markdown 或 HTML，已保留为可编辑源码",
-        "Malformed or unsupported HTML block is retained as source" => "格式有误或不支持的 HTML 块，已保留为源码",
-        "Empty HTML block source" => "HTML 块源码为空",
-        "Incomplete HTML block" => "未闭合的 HTML 块",
-        "Unsupported HTML wrapper is retained as original HTML" => "不支持的 HTML 包装标签，已保留原始 HTML",
-        "Unsupported paragraph wrapper is retained as original HTML" => "不支持的段落包装标签，已保留原始 HTML",
-        "Block contains unsupported HTML; the original HTML is retained" => "块内包含不支持的 HTML，已保留原始 HTML",
-        "HTML contains unsupported or malformed tokens" => "HTML 包含不支持或格式错误的标记",
-        "Text outside a table cell cannot be represented visually" => "表格单元格外的文本无法可视化呈现",
-        "Table tags are not explicitly balanced" => "表格标签未正确闭合",
-        "Nested or unbalanced cells are retained as original HTML" => "嵌套或未闭合的单元格，已保留原始 HTML",
-        "A table cell has no explicit closing tag" => "表格单元格缺少闭合标签",
-        "Cell contains unsupported HTML; the original table is retained" => "单元格包含不支持的 HTML，已保留原始表格",
-        "Invalid table cell span" => "无效的单元格跨度",
-        "Table cell span exceeds the visual editor limit" => "单元格跨度超出可视化编辑上限",
-        "Table exceeds the visual editor limit; original HTML is retained" => "表格规模超出可视化编辑上限，已保留原始 HTML",
-        "Unsupported table structure is retained as original HTML" => "不支持的表格结构，已保留原始 HTML",
-        "Non-void table elements cannot be self-closing" => "表格元素不能自闭合",
-        "Incomplete HTML table" => "未闭合的 HTML 表格",
-        "Table spans extend outside the supported grid" => "单元格跨度超出表格网格范围",
-        "Overlapping merged cells are retained as original HTML" => "重叠的合并单元格，已保留原始 HTML",
-        "Irregular table grid is retained as original HTML" => "不规则的表格网格，已保留原始 HTML",
-        "Column widths do not match the table grid" => "列宽数量与表格列数不一致",
-        _ => reason,
-    }
 }
 fn table_grip_button(id: (&'static str, usize), active: bool, zoom: f32, listener: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> gpui::Stateful<gpui::Div> {
     grip_button(id, active, zoom, listener).mr(px(4. * zoom))

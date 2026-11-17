@@ -6,7 +6,7 @@ enum Rule { Code(String), Numbered(u64), Bullet, Todo(bool), Heading(u8), Quote,
 
 /// Paragraph that holds ordinary rich text (no code, table, raw source or imported HTML shell).
 pub(super) fn plain(block: &Block) -> bool {
-    block.kind == Kind::Paragraph && block.meta.table.is_none() && block.meta.raw_source.is_none()
+    block.kind == Kind::Paragraph && block.meta.table.is_none() && !block.is_atomic()
         && block.meta.code_language.is_none() && block.meta.html_paragraph.is_none()
 }
 fn strip_space(prefix: &str) -> &str {
@@ -82,10 +82,7 @@ fn is_divider(text: &str) -> bool {
     if !chars.all(|c| c == first) { return false; }
     (matches!(first, '-' | '*' | '_' | '－' | '＊' | '＿') && count >= 3) || (first == '—' && count >= 2)
 }
-fn raw_divider() -> Block {
-    let mut block = Block::new(0, Kind::Paragraph, "***\n".to_owned());
-    block.meta.raw_source = Some("***\n".to_owned()); block
-}
+fn raw_divider() -> Block { Block::divider(0) }
 
 impl Editor {
     /// Run inside `replace_selection` right after a space was typed (caret at `offset`).
@@ -110,7 +107,7 @@ impl Editor {
             return;
         }
         let heading = matches!(block.kind, Kind::H1 | Kind::H2 | Kind::H3)
-            && block.meta.table.is_none() && block.meta.raw_source.is_none()
+            && block.meta.table.is_none() && !block.is_atomic()
             && block.meta.code_language.is_none() && block.meta.html_paragraph.is_none();
         if !plain(block) && !heading { return; }
         let prefix = raw_prefix.to_owned();
@@ -135,7 +132,7 @@ impl Editor {
         }
     }
     fn set_meta(&mut self, id: u64, edit: impl FnOnce(&mut Block)) {
-        if let Some(block) = self.doc.get_mut(id) { edit(block); }
+        if let Some(block) = self.doc.get_mut(id) { block.meta.clean_source = None; edit(block); }
         self.doc.refresh_block(id);
     }
     /// Convert a plain paragraph whose entire text just became `---`, `***`, `___`, or `——` into a divider immediately.
@@ -193,7 +190,7 @@ impl Editor {
         let at = self.caret.head;
         if !self.caret.is_empty() || self.caret.composing.is_some() { return; }
         let Some(block) = self.doc.get(at.block) else { return };
-        if block.meta.table.is_some() || block.meta.raw_source.is_some() || block.meta.code_language.is_some() { return; }
+        if block.meta.table.is_some() || block.is_atomic() || block.meta.code_language.is_some() { return; }
         let Some(before_caret) = block.text.get(..at.offset) else { return };
         let Some((pattern, arrow)) = [
             ("->", "→"), ("-》", "→"), ("—>", "→"), ("—》", "→"),

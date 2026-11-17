@@ -4,7 +4,7 @@ use super::{input::transactions::ListChange, model::{Block, Kind, MarkKind}, vie
 pub(crate) const MARKDOWN_CLIPBOARD_V1: &str = "com.block.editor.markdown.v1";
 
 fn structured(block: &Block) -> bool {
-    block.kind != Kind::Paragraph || block.meta.table.is_some() || block.meta.raw_source.is_some()
+    block.kind != Kind::Paragraph || block.meta.table.is_some() || block.is_atomic()
         || block.meta.code_language.is_some() || block.meta.html_paragraph.is_some()
         || block.meta.indent > 0 || block.meta.callout.is_some()
 }
@@ -18,7 +18,7 @@ impl Editor {
         let (a, b, first, last) = self.ordered();
         if first != last { return false; }
         let block = &self.doc.blocks[first];
-        if block.meta.code_language.is_some() || block.meta.raw_source.is_some() { return true; }
+        if block.meta.code_language.is_some() || block.is_atomic() { return true; }
         let range = a.offset..b.offset;
         let (leaf, range) = if let Some(table) = &block.meta.table {
             let Some((row, cell, range)) = table.cell_at_range(&range) else { return false; };
@@ -127,9 +127,7 @@ impl Editor {
             self.record_changes(before, vec![ListChange { start:ai, before:1, after:1 }], true, cx);
             return;
         }
-        let atomic = |block: &Block| block.meta.table.is_some() || block.meta.raw_source.is_some()
-            || block.meta.code_language.is_some() || super::image_source::spec_of(block).is_some()
-            || super::block_menu::is_divider(block);
+        let atomic = |block: &Block| block.meta.table.is_some() || block.is_atomic() || block.meta.code_language.is_some();
         if (ai..=bi).any(|index| atomic(&self.doc.blocks[index])) {
             self.insert_paste_blocks(vec![fragment.clone()], cx); return;
         }
@@ -159,9 +157,7 @@ impl Editor {
         let (start_offset, end_offset) = if selected.is_some() { (0, end.text.len()) } else { (a.offset, b.offset) };
         if start_offset > start.text.len() || end_offset > end.text.len()
             || !start.text.is_char_boundary(start_offset) || !end.text.is_char_boundary(end_offset) { return false; }
-        let atomic = |block: &Block| block.meta.table.is_some() || block.meta.raw_source.is_some()
-            || block.meta.code_language.is_some() || super::image_source::spec_of(block).is_some()
-            || super::block_menu::is_divider(block);
+        let atomic = |block: &Block| block.meta.table.is_some() || block.is_atomic() || block.meta.code_language.is_some();
         if selected.is_none() && ((atomic(start) && start_offset != 0 && start_offset != start.text.len())
             || (atomic(end) && end_offset != 0 && end_offset != end.text.len())) {
             self.table_edit_rejected(cx); return false;

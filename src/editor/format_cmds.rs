@@ -102,7 +102,7 @@ impl Editor {
         for index in first..=last {
             if first != last && index == last && end.offset == 0 { break; }
             let block = &self.doc.blocks[index];
-            let rich = block.meta.raw_source.is_none() && block.meta.code_language.is_none();
+            let rich = !block.is_atomic() && block.meta.code_language.is_none();
             table |= block.meta.table.is_some();
             available.block_type &= rich && block.meta.table.is_none();
             available.rich_text &= rich;

@@ -125,7 +125,7 @@ fn is_list(block: &Block) -> bool {
     matches!(block.kind, Kind::Bullet | Kind::Numbered | Kind::Todo)
         && block.meta.table.is_none()
         && block.meta.code_language.is_none()
-        && block.meta.raw_source.is_none()
+        && !block.is_atomic()
         && block.meta.callout.is_none()
 }
 
@@ -185,12 +185,8 @@ pub(crate) fn render_blocks(blocks: &[Block]) -> String {
             } else {
                 out.push_str(&format!("<p>{}</p>\n", esc(&image.alt)));
             }
-        } else if block.meta.raw_source.is_some() {
-            if is_rule(block) {
-                out.push_str("<hr>\n");
-            } else {
-                out.push_str(&format!("<pre>{}</pre>\n", esc(&block.text)));
-            }
+        } else if is_rule(block) {
+            out.push_str("<hr>\n");
         } else if let Some(callout) = block.meta.callout {
             out.push_str(&format!(
                 "<div class=\"callout callout-{}\"><div class=\"callout-title\">{}</div><p>{}</p></div>\n",
@@ -225,8 +221,7 @@ pub(crate) fn heading_level(block: &Block) -> Option<u8> {
     }
 }
 
-/// An unsupported-source block that is just a thematic break.
+/// Thematic break block (`---`, `***`, `___`, `<hr>`).
 pub(crate) fn is_rule(block: &Block) -> bool {
-    let hit = |line: &str| matches!(line.trim(), "---" | "***" | "___");
-    block.meta.raw_source.as_deref().is_some_and(|raw| hit(raw) || hit(&block.text))
+    block.meta.divider
 }

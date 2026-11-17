@@ -66,9 +66,7 @@ impl Element for BlockText {
                     let weight = FontWeight(if is_h6 { 500. } else { 600. });
                     for run in &mut runs { run.font.weight = weight; if is_h6 { run.color = theme.text_secondary; } }
                 }
-                let language = block.meta.code_language.as_deref().or_else(|| {
-                    block.meta.raw_source.as_ref().map(|_| if text.trim_start().starts_with('<') { "html" } else { "markdown" })
-                });
+                let language = block.meta.code_language.as_deref();
                 if let Some(language) = language {
                     let code_fg: gpui::Hsla = if crate::theme::is_dark() { theme.text } else { rgb(0x393a34).into() };
                     let mut base = plain(text.len(), code_fg); base.font.family = crate::theme::mono_font_family().into(); base.font.fallbacks = None;
@@ -243,7 +241,7 @@ impl Element for BlockText {
 }
 pub(super) use crate::ui::editor_content::heading_metrics;
 fn placeholder_text(block: &super::model::Block, delete_armed: bool) -> Option<&'static str> {
-    if !block.text.is_empty() || block.meta.table.is_some() || block.meta.raw_source.is_some()
+    if !block.text.is_empty() || block.meta.table.is_some() || block.is_atomic()
         || block.meta.code_language.is_some() { return None; }
     use crate::theme::tr;
     Some(match (block.kind, block.meta.heading_level) {

@@ -9,7 +9,7 @@ use super::{clipboard_files::is_image, image_source, input::transactions::ListCh
 pub(super) enum Place { Replace, After, Before, Nested { after: bool, indent: usize } }
 
 fn raw_block(text: &str) -> Block {
-    let mut block = Block::new(0, Kind::Paragraph, text.to_owned()); block.meta.raw_source = Some(text.to_owned()); block
+    Block::image(0, text.to_owned())
 }
 fn asset_name(ext: &str, assets: &Path) -> String {
     loop {

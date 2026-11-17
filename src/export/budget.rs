@@ -117,16 +117,10 @@ impl Tally {
             },
             0,
         )?;
-        for value in [&block.meta.code_language, &block.meta.unsupported_reason] {
-            self.add(value.as_ref().map_or(0, String::len), 0)?;
-        }
+        self.add(block.meta.code_language.as_ref().map_or(0, String::len), 0)?;
         self.add(
-            block.meta.raw_source.as_ref().map_or(0, |s| {
-                if table.is_some() || range == (0..block.text.len()) {
-                    s.len()
-                } else {
-                    range.len()
-                }
+            block.meta.image.as_ref().map_or(0, |s| {
+                if table.is_some() || range == (0..block.text.len()) { s.len() } else { range.len() }
             }),
             0,
         )?;
@@ -193,18 +187,7 @@ impl Tally {
                     self.block(&cell.original, None)?;
                 }
             }
-        } else if block.meta.raw_source.is_some()
-            && block.meta.unsupported_reason.is_some()
-            && block
-                .text
-                .as_bytes()
-                .windows(6)
-                .any(|part| part.eq_ignore_ascii_case(b"<table"))
-        {
-            return Err(ExportError::UnsupportedTable(crate::theme::tr(
-                "不支持的非结构化 HTML 表格",
-                "Unsupported unstructured HTML table",
-            )));
+
         }
         Ok(())
     }
