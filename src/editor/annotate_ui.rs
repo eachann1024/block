@@ -192,6 +192,12 @@ fn reaction_button(origin: Point<Pixels>) -> Bounds<Pixels> {
 }
 
 fn reaction_trigger(editor: &Editor, window: &Window, fallback: Point<Pixels>) -> Bounds<Pixels> {
+    if !editor.caret.is_empty()
+        && let Some(bounds) = super::toolbar::tracked_button(crate::theme::tr("添加表情回应", "Add reaction"))
+            .or_else(|| super::toolbar::tracked_button(super::toolbar::more_key()))
+    {
+        return bounds;
+    }
     let viewport = editor.list.viewport_bounds();
     if let Some(origin) = editor.selection_toolbar_anchor(viewport, window) {
         return reaction_button(origin);
@@ -203,9 +209,9 @@ fn reaction_trigger(editor: &Editor, window: &Window, fallback: Point<Pixels>) -
             layout.rects(range).into_iter().next()
         }).min_by(|a, b| a.top().partial_cmp(&b.top()).unwrap_or(std::cmp::Ordering::Equal))
     {
-        use super::chrome::{TOOLBAR_HEIGHT, TOOLBAR_WIDTH};
-        let height = if viewport.size.width - px(16.) < TOOLBAR_WIDTH { TOOLBAR_HEIGHT * 2. - px(8.) } else { TOOLBAR_HEIGHT };
-        let x = rect.left().max(viewport.left() + px(8.)).min((viewport.right() - TOOLBAR_WIDTH - px(8.)).max(viewport.left()));
+        let height = super::chrome::TOOLBAR_HEIGHT;
+        let bar_w = editor.selection_toolbar_width(viewport.size.width - px(16.));
+        let x = rect.left().max(viewport.left() + px(8.)).min((viewport.right() - bar_w - px(8.)).max(viewport.left()));
         let above = rect.top() - height - px(8.);
         let y = if above >= viewport.top() { above } else { rect.bottom() + px(8.) };
         let y = y.min((viewport.bottom() - height).max(viewport.top())).max(viewport.top());
