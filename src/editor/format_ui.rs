@@ -36,16 +36,28 @@ pub(super) fn popover(editor: Entity<Editor>, pop: &FormatPop, phase: crate::ui:
                 toolbar_drop_spec(tr("列表", "Lists"), fallback, &placed, cx)
             }, super::toolbar::menu(editor, false, current), phase, 2)
         }
+        FormatPop::More { spec } => {
+            let fallback = *spec;
+            let placed = editor.clone();
+            dropdown::anchored_motion_with(
+                ("format-pop", pop_gen),
+                move |_, cx| toolbar_drop_spec(super::toolbar::more_key(), fallback, &placed, cx),
+                super::toolbar::MorePopover { editor },
+                phase,
+                2,
+            )
+        }
     }
 }
 
-/// Live button bounds while the selection toolbar is painted; the frozen spec covers
-/// the frame before the button has measured, and keeps that frame's viewport current.
+/// Live button bounds while the selection toolbar is painted (or `•••` when that button is overflowed);
+/// the frozen spec covers the frame before the button has measured.
 fn toolbar_drop_spec(
     key: &'static str, fallback: dropdown::PlacementSpec, editor: &Entity<Editor>, cx: &gpui::App,
 ) -> dropdown::PlacementSpec {
     let viewport = editor.read(cx).list.viewport_bounds();
     super::toolbar::tracked_button(key)
+        .or_else(|| super::toolbar::tracked_button(super::toolbar::more_key()))
         .map(|trigger| dropdown::PlacementSpec::below(trigger).align_x(dropdown::AlignX::Left).viewport(viewport).gap(px(4.)))
         .unwrap_or_else(|| fallback.viewport(viewport))
 }

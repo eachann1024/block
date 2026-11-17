@@ -362,14 +362,13 @@ impl Editor {
         if self.path.is_none() || self.caret.is_empty() || self.selecting || self.dragging.is_some()
             || self.caret.composing.is_some() || (!window.is_window_active() && !crate::ui::smoke_overlay::is_smoke_active()) || !self.focus.is_focused(window) { return None; }
         let viewport = self.list.viewport_bounds();
-        use crate::editor::chrome::{TOOLBAR_HEIGHT, TOOLBAR_WIDTH};
-        let height = if viewport.size.width - px(16.) < TOOLBAR_WIDTH { TOOLBAR_HEIGHT * 2. - px(8.) } else { TOOLBAR_HEIGHT };
+        let height = crate::editor::chrome::TOOLBAR_HEIGHT;
+        let bar_w = self.selection_toolbar_width(viewport.size.width - px(16.));
         if let Some((table_id, sel)) = self.table_sel {
             if sel != crate::editor::table_actions::TableSel::Whole { return None; }
             let tbl = self.table_chrome.as_ref().filter(|c| c.block == table_id).map(|c| c.bounds)
                 .or_else(|| self.layouts.get(&table_id).and_then(crate::editor::table_layout::grid_rect))?;
             if tbl.bottom() <= viewport.top() || tbl.top() >= viewport.bottom() { return None; }
-            let bar_w = px(396.);
             let x = (tbl.left() + (tbl.size.width - bar_w) / 2.)
                 .max(bounds.left() + px(8.)).min((bounds.right() - bar_w - px(8.)).max(bounds.left()));
             let above = tbl.top() - height - px(8.);
@@ -381,7 +380,7 @@ impl Editor {
             if range.is_empty() { return None; }
             layout.rects(range).into_iter().find(|r| r.bottom() > viewport.top() && r.top() < viewport.bottom())
         }).min_by(|a, b| a.top().partial_cmp(&b.top()).unwrap_or(std::cmp::Ordering::Equal))?;
-        let x = rect.left().max(bounds.left()+px(8.)).min((bounds.right()-TOOLBAR_WIDTH-px(8.)).max(bounds.left()));
+        let x = rect.left().max(bounds.left()+px(8.)).min((bounds.right()-bar_w-px(8.)).max(bounds.left()));
         let above = rect.top() - height - px(8.);
         let y = if above >= viewport.top() { above } else { rect.bottom()+px(8.) };
         Some(point(x, y.min((viewport.bottom()-height).max(viewport.top())).max(viewport.top())))
