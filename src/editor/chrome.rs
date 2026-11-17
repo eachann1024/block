@@ -251,6 +251,7 @@ fn table_grip_button(id: (&'static str, usize), active: bool, zoom: f32, listene
 pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Context<Editor>) -> gpui::AnyElement {
     #[cfg(not(target_family = "wasm"))]
     if let Some(row) = super::ai::plan_link::render_linked_row(this, index, cx) { return row; }
+    if let Some(row) = super::ai::preview::render_stream_row(this, index, cx) { return row; }
     let block = &this.doc.blocks[index];
     let number = (block.kind == Kind::Numbered).then(|| this.doc.list_number(block.id)).flatten();
     let edge = this.drag_over.filter(|target| if target.after { target.slot.saturating_sub(1) == index } else { target.slot == index }).map(|target| (target.after, target.indent, target.nested));

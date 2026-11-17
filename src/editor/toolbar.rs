@@ -4,7 +4,7 @@ use gpui::{Bounds, Context, Entity, MouseButton, Pixels, Point, SharedString, Wi
     prelude::*, px, rgb};
 use crate::{icons::{Icon, stateful_icon}, theme::{Theme, tr}};
 pub(super) use crate::ui::floating_bar::{
-    ToolbarColors, animate as animate_bar, duo_icon_colors, icon_toggle_button, sep, shell as pill,
+    ToolbarColors, ai_action_button, animate as animate_bar, duo_icon_colors, icon_toggle_button, sep, shell as pill,
 };
 use super::{format_cmds::FormatPop, model::{Kind, MarkKind}, view::Editor};
 
@@ -37,10 +37,12 @@ pub(super) struct SelectionToolbar { editor: Entity<Editor>, anchor: Point<Pixel
 impl RenderOnce for SelectionToolbar {
     fn render(self, _: &mut Window, cx: &mut gpui::App) -> impl IntoElement {
         let editor = self.editor;
-        let (state, kinds_open, lists_open, palette_open, link_open, comment_open, reaction_open) = {
+        let (state, ai_open, can_ai, kinds_open, lists_open, palette_open, link_open, comment_open, reaction_open) = {
             let ed = editor.read(cx);
             (
                 ed.toolbar_state(),
+                matches!(ed.format, Some(FormatPop::Ai(_))),
+                !ed.minimal && ed.is_markdown_note() && ed.can_replace_selection() && !ed.selection_ranges().is_empty(),
                 matches!(ed.format, Some(FormatPop::Kinds { .. })),
                 matches!(ed.format, Some(FormatPop::Lists { .. })),
                 matches!(ed.format, Some(FormatPop::Palette { .. })),
@@ -54,7 +56,14 @@ impl RenderOnce for SelectionToolbar {
         // Narrow editors (AI 助手 open): wrap onto a second row inside the editor
         // instead of running under the chat panel.
         let room = editor.read(cx).list.viewport_bounds().size.width - px(16.);
+        let ai_ed = editor.clone();
         let bar = pill().px(px(4.)).py(px(6.)).gap(px(4.)).id("selection-toolbar").max_w(room).flex_wrap().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .when(can_ai, |bar| bar
+                .child(ai_action_button("toolbar-ai-rewrite", tr("AI 改写", "AI Rewrite"), ai_open, move |_, window, cx| {
+                    ai_ed.update(cx, |this, cx| this.open_ai_selection(window, cx));
+                    cx.stop_propagation();
+                }))
+                .child(sep()))
             .child(button(Icon::TbComment, tr("添加批注", "Add annotation"), false, comment_open, false, editor.clone(), |this, w, cx| this.start_annotation(w, cx)))
             .child(button(Icon::TbReaction, tr("添加表情回应", "Add reaction"), false, reaction_open, false, editor.clone(), |this, w, cx| this.open_reactions(w, cx)))
             .when(available.block_type, |bar| bar

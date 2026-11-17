@@ -6,11 +6,11 @@ use gpui::{
 use gpui_base::Button;
 use crate::{
     dropdown,
-    icons::{Icon, icon, stateful_icon},
-    theme::{Theme, tooltip, tr},
+    icons::{Icon, IconColors, icon, stateful_icon},
+    theme::{Theme, is_dark, tooltip, tr},
 };
 
-pub const PANEL_WIDTH: f32 = 360.;
+pub const PANEL_WIDTH: f32 = 396.;
 
 pub fn enable_action_button(id: impl Into<SharedString>, label: impl Into<SharedString>,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> Button {
@@ -195,6 +195,18 @@ pub fn action_chip(
     open: bool,
     on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> Button {
+    action_chip_hint(id, lead, label, None, primary, open, on_click)
+}
+
+pub fn action_chip_hint(
+    id: impl Into<SharedString>,
+    lead: Option<Icon>,
+    label: impl Into<SharedString>,
+    hint: Option<&'static str>,
+    primary: bool,
+    open: bool,
+    on_click: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
+) -> Button {
     let theme = Theme::ocean();
     let id: SharedString = id.into();
     let label = label.into();
@@ -204,8 +216,8 @@ pub fn action_chip(
         .h(px(28.)).px(px(8.)).flex_none().flex().items_center().gap(px(4.))
         .rounded(px(6.)).text_size(px(14.)).line_height(px(20.)).cursor(CursorStyle::PointingHand)
         .when(primary, |d| {
-            d.px(px(10.)).bg(theme.selected).border_1().border_color(theme.accent)
-                .text_color(theme.text).font_weight(FontWeight(500.))
+            d.px(px(12.)).gap(px(6.)).bg(theme.selected).border_1().border_color(theme.accent)
+                .text_color(theme.text).font_weight(FontWeight(460.))
                 .hover(move |s| s.bg(theme.hover))
         })
         .when(!primary && open, |d| {
@@ -218,7 +230,97 @@ pub fn action_chip(
             d.child(stateful_icon(id, ic, px(14.), open || primary, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.accent)))
         })
         .child(label)
+        .when_some(hint, |d, h| {
+            d.child(div().font_family(crate::theme::mono_font_family()).text_size(px(12.)).text_color(theme.accent).child(h))
+        })
         .on_mouse_down(MouseButton::Left, on_click)
+}
+
+pub fn saved_prompt_chip(
+    index: usize,
+    short_text: impl Into<SharedString>,
+    full_text: impl Into<SharedString>,
+    starred: bool,
+    on_run: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
+    on_toggle_star: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut gpui::App) + 'static,
+) -> Div {
+    let theme = Theme::ocean();
+    let dark = is_dark();
+    let short_text: SharedString = short_text.into();
+    let full_text: SharedString = full_text.into();
+    let (bg, border) = match (starred, dark) {
+        (true, false) => (rgb(0xeef3fc), rgb(0xc9d8f3)),
+        (true, true) => (rgb(0x2b3548), rgb(0x455f91)),
+        (false, false) => (rgb(0xf3f1ec), rgb(0xe4e6ea)),
+        (false, true) => (rgb(0x2a2a2a), rgb(0x3d3d3d)),
+    };
+    let star_colors = if starred {
+        IconColors { line: theme.accent, fill: theme.accent, accent: gpui::transparent_black() }
+    } else {
+        IconColors { line: theme.text_secondary, fill: gpui::transparent_black(), accent: gpui::transparent_black() }
+    };
+    let star_tip = if starred {
+        tr("取消收藏该提示词", "Unstar prompt")
+    } else {
+        tr("收藏该提示词（防被新输入顶掉）", "Star prompt to keep permanently")
+    };
+    let run_id = ElementId::from(SharedString::from(format!("ai-saved-prompt-{index}")));
+    let star_id = ElementId::from(SharedString::from(format!("ai-saved-star-{index}")));
+    let run_probe = crate::ui::smoke_overlay::probe_for(&run_id);
+    let star_probe = crate::ui::smoke_overlay::probe_for(&star_id);
+
+    div()
+        .h(px(26.))
+        .pl(px(8.))
+        .pr(px(4.))
+        .rounded(px(6.))
+        .bg(bg)
+        .border_1()
+        .border_color(border)
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(2.))
+        .child(
+            Button::new(run_id)
+                .focusable(false)
+                .accessibility_label(full_text.clone())
+                .relative()
+                .children(run_probe)
+                .h(px(22.))
+                .px(px(2.))
+                .rounded(px(4.))
+                .flex()
+                .items_center()
+                .text_size(px(13.))
+                .line_height(px(20.))
+                .text_color(theme.text)
+                .whitespace_nowrap()
+                .cursor(CursorStyle::PointingHand)
+                .hover(move |s| s.text_color(theme.accent))
+                .tooltip_above(crate::ui::tooltip::tooltip(full_text))
+                .child(short_text)
+                .on_mouse_down(MouseButton::Left, on_run),
+        )
+        .child(
+            Button::new(star_id)
+                .focusable(false)
+                .selected(starred)
+                .accessibility_label(star_tip)
+                .relative()
+                .children(star_probe)
+                .size(px(20.))
+                .flex_none()
+                .rounded(px(4.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor(CursorStyle::PointingHand)
+                .hover(move |s| s.bg(theme.hover))
+                .tooltip_above(tooltip(star_tip))
+                .child(icon(Icon::Star, px(13.), star_colors))
+                .on_mouse_down(MouseButton::Left, on_toggle_star),
+        )
 }
 
 pub fn icon_chip(

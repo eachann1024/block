@@ -8,6 +8,7 @@ pub(crate) mod backend;
 mod anthropic;
 pub(crate) mod provider;
 pub(super) mod session;
+pub(super) mod inline_prompts;
 #[cfg(not(target_family = "wasm"))]
 pub(in crate::editor) mod inline_backend;
 #[cfg(not(target_family = "wasm"))]
