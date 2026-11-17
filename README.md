@@ -5,7 +5,7 @@
 
 - **官方网站（中文）**：[https://block.cooool.top/](https://block.cooool.top/)
 - **Official Website (English)**：[https://block.cooool.top/en/](https://block.cooool.top/en/)
-- **Markdown 与块笔记对比（Notion / Obsidian / Typora / Logseq / 思源笔记 / 语雀）**：[https://block.cooool.top/compare/](https://block.cooool.top/compare/) · [English Comparison](https://block.cooool.top/en/compare/)
+- **主流 Markdown 与块笔记横向对比**：[https://block.cooool.top/#compare](https://block.cooool.top/#compare) · [Comparison](https://block.cooool.top/en/#compare)
 
 ## 核心特性
 
