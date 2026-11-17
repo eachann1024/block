@@ -168,7 +168,7 @@ impl Workspace {
                                             theme.icon_colors(theme.text)
                                         };
                                         let left = div().flex().items_center().gap(px(10.)).flex_1().min_w_0()
-                                            .child(icon(Icon::Code, px(15.), code_colors))
+                                            .child(icon(Icon::Code, px(crate::ui::icon_size::ROW), code_colors))
                                             .child(div().min_w_0().truncate().font(mono_font()).text_size(px(14.)).text_color(theme.text).child(format!("/{}/", rule.pattern)));
                                         let seg = folder_visibility_segmented(
                                             ("folder-seg-regex", ix),

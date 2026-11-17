@@ -3,7 +3,7 @@
 use crate::ui::tooltip::TooltipExt;
 use std::{rc::Rc, time::Duration};
 use gpui::{
-    Animation, AnimationExt, App, BoxShadow, CursorStyle, Div, ElementId, Entity, FontWeight, Hsla,
+    Animation, AnimationExt, App, BoxShadow, CursorStyle, Div, ElementId, Entity, Hsla,
     IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString, Stateful, Styled,
     Transformation, Window, div, linear_color_stop, linear_gradient, percentage, point, prelude::*,
     px, relative, rgb, rgba, svg,
@@ -12,7 +12,7 @@ use gpui_component::input::{Input, InputState};
 use crate::{
     icons::{Icon, icon, stateful_icon},
     theme::{Theme, is_dark, tooltip, tr},
-    ui::{annotation_actions::{BatchTone, batch_button}, fade, motion},
+    ui::{annotation_actions::{BatchTone, batch_button}, fade, icon_size, motion, type_scale},
 };
 
 pub type PressFn = Rc<dyn Fn(&MouseDownEvent, &mut Window, &mut App)>;
@@ -27,7 +27,7 @@ fn accent_hover() -> Hsla {
 
 /// Spinning 14×14 arc icon (`0.9s linear infinite`).
 pub fn spinner(id: impl Into<ElementId>, color: Hsla) -> impl IntoElement {
-    svg().path("icons/spinner.line.svg").size(px(14.)).flex_none().text_color(color).with_animation(
+    svg().path("icons/spinner.line.svg").size(px(icon_size::INLINE)).flex_none().text_color(color).with_animation(
         id,
         Animation::new(Duration::from_millis(900)).repeat(),
         |el, delta| el.with_transformation(Transformation::rotate(percentage(delta))),
@@ -63,9 +63,9 @@ pub fn send_all_button(
         .when(active, |s| s.bg(theme.selected))
         .when(!active, |s| s.bg(gpui::transparent_black()).opacity(0.55))
         .text_color(fg)
-        .text_size(px(14.))
+        .text_size(type_scale::BODY)
         .line_height(px(20.))
-        .font_weight(FontWeight(460.));
+        .font_weight(type_scale::CONTROL);
 
     if generating {
         btn = btn.child(spinner("titlebar-annotate-spin", theme.accent));
@@ -79,7 +79,7 @@ pub fn send_all_button(
         btn = btn.child(
             div()
                 .text_color(theme.accent)
-                .font_weight(FontWeight(600.))
+                .font_weight(type_scale::TITLE)
                 .child(SharedString::from(n.to_string())),
         );
     }
@@ -130,7 +130,7 @@ pub fn card_shell(id: impl Into<ElementId>, accent_border: bool) -> Stateful<Div
     let theme = Theme::ocean();
     div().id(id).w_full().px(px(12.)).py(px(10.)).rounded(px(10.)).bg(theme.menu).border_1()
         .border_color(if accent_border { theme.accent } else { theme.hairline })
-        .flex().flex_col().gap(px(10.)).text_size(px(14.)).line_height(px(20.)).text_color(theme.text)
+        .flex().flex_col().gap(px(10.)).text_size(type_scale::BODY).line_height(px(20.)).text_color(theme.text)
 }
 
 /// 30×30 bordered icon button (`.ib` / `.ib-ok` in `AnnotateFlow.dc.html`).
@@ -143,9 +143,9 @@ fn icon_box_button(
     let id: ElementId = id.into();
     let group = SharedString::from(format!("ann-ib-{id:?}"));
     let glyph_el = if filled_accent {
-        icon(glyph, px(14.), theme.mono_icon_colors(fg))
+        icon(glyph, px(icon_size::INLINE), theme.mono_icon_colors(fg))
     } else {
-        stateful_icon(group.clone(), glyph, px(14.), false, theme.mono_icon_colors(fg), theme.icon_colors(theme.text))
+        stateful_icon(group.clone(), glyph, px(icon_size::INLINE), false, theme.mono_icon_colors(fg), theme.icon_colors(theme.text))
     };
     div().id(id).group(group).size(px(30.)).flex_none().rounded(px(6.)).border_1()
         .border_color(if filled_accent { theme.accent } else { theme.btn_border })
@@ -165,7 +165,7 @@ fn ghost_icon_button(id: impl Into<ElementId>, glyph: Icon, tip: &'static str, h
     div().id(id).group(group.clone()).size(px(26.)).flex_none().rounded(px(6.)).flex().items_center().justify_center()
         .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover)).tooltip_above(tooltip(tip))
         .on_mouse_down(MouseButton::Left, move |ev, window, cx| handler(ev, window, cx))
-        .child(stateful_icon(group, glyph, px(14.), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
+        .child(stateful_icon(group, glyph, px(icon_size::INLINE), false, theme.mono_icon_colors(theme.text_secondary), theme.icon_colors(theme.text)))
 }
 
 fn skeleton_bar(id: impl Into<ElementId>, width_ratio: f32) -> impl IntoElement {
@@ -209,7 +209,7 @@ pub fn render_card_state(id: u64, state: CardState) -> Div {
             div().w_full().flex().items_start().gap(px(8.))
                 // Text row is padded to the 26px ghost-button height so a single line sits centered.
                 .child(div().size(px(8.)).mt(px(9.)).flex_none().rounded_full().bg(rgb(0xf5c84c)))
-                .child(div().flex_1().min_w_0().py(px(3.)).text_size(px(14.)).line_height(px(20.)).text_color(theme.text).child(body))
+                .child(div().flex_1().min_w_0().py(px(3.)).text_size(type_scale::BODY).line_height(px(20.)).text_color(theme.text).child(body))
                 .child(ghost_icon_button(("ann-edit", id), Icon::Pencil, tr("编辑批注", "Edit annotation"), on_edit).children(crate::ui::smoke_overlay::probe(format!("annotation-edit-{id}"))))
                 .child(ghost_icon_button(("ann-del", id), Icon::Trash, tr("删除批注", "Delete annotation"), on_delete).children(crate::ui::smoke_overlay::probe(format!("annotation-delete-{id}")))),
         ),
@@ -229,7 +229,7 @@ pub fn render_card_state(id: u64, state: CardState) -> Div {
             root.child(
                 div().w_full().flex().items_center().gap(px(8.)).text_color(theme.text_secondary)
                     .child(spinner(("ann-card-spin", id), theme.accent))
-                    .child(div().flex_1().min_w_0().text_size(px(14.)).line_height(px(20.)).child(body)),
+                    .child(div().flex_1().min_w_0().text_size(type_scale::BODY).line_height(px(20.)).child(body)),
             )
             .child(
                 div().w_full().p(px(10.)).rounded(px(6.)).bg(sk_bg).flex().flex_col().gap(px(8.))
@@ -263,11 +263,11 @@ pub fn render_card_state(id: u64, state: CardState) -> Div {
             )),
         CardState::Accepted { on_undo } => root.child(
             div().w_full().flex().items_center().gap(px(8.)).text_color(theme.text_secondary)
-                .child(icon(Icon::Check, px(14.), theme.mono_icon_colors(theme.accent)))
-                .child(div().flex_1().min_w_0().text_size(px(14.)).line_height(px(20.)).child(tr("已替换", "Replaced")))
+                .child(icon(Icon::Check, px(icon_size::INLINE), theme.mono_icon_colors(theme.accent)))
+                .child(div().flex_1().min_w_0().text_size(type_scale::BODY).line_height(px(20.)).child(tr("已替换", "Replaced")))
                 .child(
                     div().id(("ann-undo", id)).h(px(26.)).px(px(8.)).rounded(px(6.)).flex_none()
-                        .flex().items_center().justify_center().text_size(px(14.)).line_height(px(20.)).text_color(theme.accent)
+                        .flex().items_center().justify_center().text_size(type_scale::BODY).line_height(px(20.)).text_color(theme.accent)
                         .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
                         .on_mouse_down(MouseButton::Left, move |ev, w, cx| on_undo(ev, w, cx))
                         .child(tr("撤销", "Undo")),
@@ -277,7 +277,7 @@ pub fn render_card_state(id: u64, state: CardState) -> Div {
             let err_fg: Hsla = if is_dark() { rgb(0xf97066).into() } else { rgb(0xb42318).into() };
             root.child(
                 div().w_full().flex().items_center().gap(px(6.))
-                    .child(div().flex_1().min_w_0().text_size(px(14.)).line_height(px(20.)).text_color(err_fg).child(message))
+                    .child(div().flex_1().min_w_0().text_size(type_scale::BODY).line_height(px(20.)).text_color(err_fg).child(message))
                     .child(icon_box_button(("ann-retry", id), Icon::Refresh, false, tr("重试", "Retry"), on_retry))
                     .child(ghost_icon_button(("ann-err-del", id), Icon::Trash, tr("删除批注", "Delete annotation"), on_delete).children(crate::ui::smoke_overlay::probe(format!("annotation-delete-{id}")))),
             )

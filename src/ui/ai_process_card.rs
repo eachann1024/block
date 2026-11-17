@@ -1,10 +1,10 @@
 use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, rc::Rc, time::Duration};
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, BoxShadow, CursorStyle, FontWeight, IntoElement,
+    Animation, AnimationExt, AnyElement, App, BoxShadow, CursorStyle, IntoElement,
     MouseButton, MouseDownEvent, ScrollHandle, SharedString, Window, canvas, div, point,
     prelude::*, px, rgba, size,
 };
-use crate::{icons::{Icon, icon}, theme::{is_en, tr}, ui::smoke_overlay};
+use crate::{icons::{Icon, icon}, theme::{is_en, tr}, ui::{icon_size, smoke_overlay, type_scale}};
 pub use super::ai_process_status::{
     DetailTone, LoaderPattern, ProcessDetailLine, ProcessDiffChip, ProcessElapsed,
     ProcessStepIcon, ProcessStepMeta, TaskStatus, ThinkingVariant,
@@ -102,21 +102,21 @@ pub fn process_card_with_options(
     };
     let header_symbol = match status {
         TaskStatus::Running => ai_process_status::status_icon_with_pattern(key, status, options.loader),
-        TaskStatus::Failed => icon(Icon::Close, px(12.), theme.mono_icon_colors(ai_process_status::diff_red())).into_any_element(),
-        TaskStatus::Stopped => icon(Icon::Stop, px(12.), theme.mono_icon_colors(ai_process_status::ink_3())).into_any_element(),
+        TaskStatus::Failed => icon(Icon::Close, px(icon_size::MICRO), theme.mono_icon_colors(ai_process_status::diff_red())).into_any_element(),
+        TaskStatus::Stopped => icon(Icon::Stop, px(icon_size::MICRO), theme.mono_icon_colors(ai_process_status::ink_3())).into_any_element(),
         TaskStatus::Completed | TaskStatus::Unknown => icon(
             if spec.steps_expanded { Icon::TbChevron } else { Icon::TbChevronRight },
-            px(12.), theme.mono_icon_colors(ai_process_status::ink_3()),
+            px(icon_size::MICRO), theme.mono_icon_colors(ai_process_status::ink_3()),
         ).into_any_element(),
     };
     let badge = div().relative().children(smoke_overlay::probe("ai-process-stage-badge"))
         .children(smoke_overlay::probe(status_probe)).size(px(14.)).flex_none().flex().items_center().justify_center().child(header_symbol);
     let headline = if done {
-        div().text_size(px(12.5)).text_color(theme.text_secondary).child(spec.headline.clone()).into_any_element()
+        div().text_size(type_scale::META).text_color(theme.text_secondary).child(spec.headline.clone()).into_any_element()
     } else {
         let chars: Vec<char> = spec.headline.chars().collect();
         let total = chars.len().max(1);
-        let mut text = div().flex().items_center().text_size(px(12.5)).font_weight(FontWeight(500.));
+        let mut text = div().flex().items_center().text_size(type_scale::META).font_weight(type_scale::CONTROL);
         for (idx, ch) in chars.into_iter().enumerate() {
             let (base, peak) = (ai_process_status::ink_3(), theme.text);
             text = text.child(div().child(ch.to_string()).with_animation(
@@ -170,7 +170,7 @@ pub fn process_card_with_options(
                 let mut row = div().id(SharedString::from(format!("ai-process-row-{key}-{index}"))).group(row_group.clone())
                     .mx(px(-3.)).px(px(3.)).h(px(28.)).flex_none().flex().items_center().gap(px(8.)).rounded(crate::ui::radius::CONTROL).hover(|s| s.bg(ai_process_status::row_hover_bg()))
                     .child(ai_process_status::row_icon_slot(&row_group, icon_kind, is_open, has_detail))
-                    .child(div().flex_none().text_size(px(12.5)).font_weight(FontWeight(500.)).text_color(theme.text).child(label))
+                    .child(div().flex_none().text_size(type_scale::META).font_weight(type_scale::CONTROL).text_color(theme.text).child(label))
                     .child(chip);
                 if has_detail {
                     let (row_key, on_details_changed, scroll) = (key.clone(), options.on_details_changed.clone(), scroll_handle);
@@ -194,7 +194,7 @@ pub fn process_card_with_options(
                             };
                             div().w_full().min_w_0()
                                 .when(detail_mono, |el| el.font_family(crate::theme::mono_font_family()).overflow_hidden().whitespace_nowrap().text_ellipsis())
-                                .text_size(px(11.5)).line_height(px(18.4)).text_color(color).child(line.text)
+                                .text_size(type_scale::META).line_height(px(18.)).text_color(color).child(line.text)
                         }))
                         .with_animation(SharedString::from(format!("{key}-detail-open-{index}")),
                             Animation::new(Duration::from_millis(220)).with_easing(crate::ui::motion::ease_out_expo()),
@@ -219,7 +219,7 @@ pub fn process_card_with_options(
                     .h(px(28.)).max_w_full().px(px(8.)).rounded(px(6.)).border_1().border_color(theme.btn_border).bg(theme.paper)
                     .shadow(vec![BoxShadow { color: rgba(0x0000000d).into(), offset: point(px(0.), px(1.)), blur_radius: px(2.), spread_radius: px(0.), inset: false }])
                     .hover(|s| s.bg(theme.hover)).cursor(CursorStyle::PointingHand).flex().items_center().gap(px(6.))
-                    .font_family(crate::theme::mono_font_family()).text_size(px(11.5)).text_color(theme.text)
+                    .font_family(crate::theme::mono_font_family()).text_size(type_scale::META).text_color(theme.text)
                     .on_hover(move |hovered, window, cx| {
                         let changed = HOVERED_CHIP.with(|state| {
                             let mut state = state.borrow_mut();
@@ -255,7 +255,7 @@ pub fn process_card_with_options(
                     .id(SharedString::from(format!("ai-process-notes-{}-{key}", if expanded { "less" } else { "more" })))
                     .relative().when(spec.steps_expanded, |d| d.children(smoke_overlay::probe(if expanded { "ai-process-notes-less" } else { "ai-process-notes-more" })))
                     .h(px(28.)).px(px(6.)).rounded(px(6.)).flex().items_center()
-                    .font_family(crate::theme::mono_font_family()).text_size(px(11.5)).text_color(ai_process_status::ink_3())
+                    .font_family(crate::theme::mono_font_family()).text_size(type_scale::META).text_color(ai_process_status::ink_3())
                     .hover(|s| s.text_color(theme.text_secondary).underline()).cursor(CursorStyle::PointingHand)
                     .on_mouse_down(MouseButton::Left, move |ev, window, cx| { cx.stop_propagation(); on_toggle_notes(ev, window, cx); })
                     .child(more_label));

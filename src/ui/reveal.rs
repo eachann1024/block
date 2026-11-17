@@ -137,7 +137,7 @@ pub fn delete_arm_button(id: (&'static str, usize), zoom: f32, listener: impl Fn
     div().id(id).size(px(24. * zoom)).flex_none().rounded(px(6. * zoom)).flex().items_center().justify_center()
         .bg(bg).border_1().border_color(border).hover(move |s| s.bg(hover_bg)).cursor(CursorStyle::PointingHand)
         .children(crate::ui::smoke_overlay::probe("first-line-delete-badge"))
-        .child(icon(Icon::KeyBackspace, px(15. * zoom), theme.mono_icon_colors(fg)))
+        .child(icon(Icon::KeyBackspace, px(crate::ui::icon_size::INLINE * zoom), theme.mono_icon_colors(fg)))
         .tooltip_above(move |window, cx| build_tooltip(delete_arm_placeholder_text(), window, cx))
         .on_mouse_down(MouseButton::Left, listener)
 }

@@ -3,6 +3,7 @@ use gpui::{
 };
 use crate::icons::{Icon, IconColors, icon};
 use crate::theme::Theme;
+use crate::ui::{icon_size, type_scale};
 
 thread_local! {
     static TRIGGER_BOUNDS: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>> = Default::default();
@@ -16,10 +17,10 @@ pub fn trigger_capsule(id: impl Into<ElementId>, label: impl Into<SharedString>,
         .when(open, |row| row.bg(theme.selected).border_1().border_color(theme.accent))
         .when(!open, |row| row.bg(theme.sidebar).border_1().border_color(theme.btn_border)
             .hover(move |row| row.bg(theme.hover).border_color(theme.accent)))
-        .child(icon(Icon::Folder, px(15.), IconColors { line, fill: theme.icon_fill, accent: theme.accent }))
+        .child(icon(Icon::Folder, px(icon_size::ROW), IconColors { line, fill: theme.icon_fill, accent: theme.accent }))
         .child(div().max_w(px(136.)).overflow_hidden().whitespace_nowrap().text_ellipsis()
-            .text_size(px(14.)).line_height(px(20.)).text_color(theme.text).child(label.into()))
-        .child(icon(Icon::ChevronDown, px(13.), theme.mono_icon_colors(line)))
+            .text_size(type_scale::BODY).line_height(px(20.)).text_color(theme.text).child(label.into()))
+        .child(icon(Icon::ChevronDown, px(icon_size::INLINE), theme.mono_icon_colors(line)))
         .child(crate::ui::placement::track_bounds(TRIGGER_BOUNDS.with(Clone::clone), open))
         .when_some(crate::ui::smoke_overlay::probe("search-scope-trigger"), |row, probe| row.child(probe))
 }

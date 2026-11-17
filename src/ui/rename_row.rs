@@ -1,12 +1,13 @@
 //! Scheme B (`Rename-V2-RowCapsule`): whole-row inline rename focus capsule for sidebar rows.
 use std::path::Path;
 use gpui::{
-    AnyElement, App, CursorStyle, Div, Entity, Focusable, FontWeight, Hsla, MouseButton,
+    AnyElement, App, CursorStyle, Div, Entity, Focusable, Hsla, MouseButton,
     Stateful, div, prelude::*, px, rgb,
 };
 use gpui_component::input::{Input, InputState};
 use crate::icons::IconColors;
 use crate::theme::{Theme, is_dark, tr};
+use crate::ui::type_scale;
 
 pub struct RenameVisual {
     pub border: Hsla,
@@ -83,9 +84,9 @@ pub fn trailing_slot(input: &Entity<InputState>, visual: &RenameVisual) -> AnyEl
             .justify_center()
             .rounded(crate::ui::radius::MICRO_SM)
             .bg(fill)
-            .text_size(px(11.))
+            .text_size(type_scale::META)
             .line_height(px(12.))
-            .font_weight(FontWeight(500.))
+            .font_weight(type_scale::CONTROL)
             .text_color(danger)
             .child(label)
             .into_any_element();

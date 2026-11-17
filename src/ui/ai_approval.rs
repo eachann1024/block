@@ -1,9 +1,9 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Duration};
-use gpui::{Animation, AnimationExt, AnyElement, App, CursorStyle, ElementId, Entity, FontWeight,
+use gpui::{Animation, AnimationExt, AnyElement, App, CursorStyle, ElementId, Entity,
     IntoElement, MouseButton, SharedString, Subscription, Window, div, prelude::*, px};
 use gpui_component::input::{Input, InputEvent, InputState};
 use serde::{Deserialize, Serialize};
-use crate::{editor::ai::backend::ApprovalResponse, icons::{Icon, icon}, theme::tr, ui::{ai_theme, motion, smoke_overlay}};
+use crate::{editor::ai::backend::ApprovalResponse, icons::{Icon, icon}, theme::tr, ui::{ai_theme, icon_size, motion, smoke_overlay, type_scale}};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -110,7 +110,7 @@ fn option(id: &'static str, label: &'static str, choice: Choice, state: Rc<RefCe
         .child(div().size(px(16.)).flex_none().rounded_full().border_1().border_color(if selected { theme.text } else { theme.btn_border })
             .when(selected, |r| r.bg(theme.text)).flex().items_center().justify_center()
             .when(selected, |r| r.child(div().size(px(6.)).rounded_full().bg(theme.paper))))
-        .child(div().text_size(px(13.)).text_color(if selected { theme.text } else { theme.text_secondary }).child(label))
+        .child(div().text_size(type_scale::SMALL).text_color(if selected { theme.text } else { theme.text_secondary }).child(label))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             cx.stop_propagation();
             let mut s = state.borrow_mut();
@@ -126,7 +126,7 @@ pub(crate) fn approval_card(state: Rc<RefCell<ApprovalState>>, title: String, de
     let (skip_response, skip_state, continue_state) = (response.clone(), state.clone(), state.clone());
     let continue_button = div().id("ai-approval-continue").relative().children(smoke_overlay::probe("ai-approval-continue"))
         .when(!enabled, |b| b.children(smoke_overlay::probe("ai-approval-continue-disabled")))
-        .h(px(27.)).px(px(12.)).rounded_full().flex().items_center().justify_center().text_size(px(13.)).font_weight(FontWeight(500.))
+        .h(px(27.)).px(px(12.)).rounded_full().flex().items_center().justify_center().text_size(type_scale::SMALL).font_weight(type_scale::CONTROL)
         .bg(theme.accent).text_color(gpui::rgb(0xffffff)).when(!enabled, |b| b.opacity(0.5))
         .when(enabled, |b| b.cursor(CursorStyle::PointingHand).hover(|s| s.opacity(0.85))).child(tr("继续", "Continue"))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -137,7 +137,7 @@ pub(crate) fn approval_card(state: Rc<RefCell<ApprovalState>>, title: String, de
             }
         });
     let skip = div().id("ai-approval-skip").relative().children(smoke_overlay::probe("ai-approval-skip"))
-        .h(px(27.)).px(px(12.)).rounded_full().flex().items_center().justify_center().text_size(px(13.)).text_color(theme.text).bg(theme.selected)
+        .h(px(27.)).px(px(12.)).rounded_full().flex().items_center().justify_center().text_size(type_scale::SMALL).text_color(theme.text).bg(theme.selected)
         .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.btn_border)).child(tr("跳过", "Skip"))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             cx.stop_propagation();
@@ -146,14 +146,14 @@ pub(crate) fn approval_card(state: Rc<RefCell<ApprovalState>>, title: String, de
         });
     let card = div().relative().children(smoke_overlay::probe("ai-approval-card")).w_full().max_w(px(320.)).rounded(px(12.)).border_1().border_color(theme.hairline).bg(theme.paper)
         .text_color(theme.text).flex().flex_col()
-        .child(div().p(px(14.)).flex().flex_col().child(div().text_size(px(14.)).font_weight(FontWeight(500.)).child(title))
-            .when(!detail.is_empty(), |b| b.child(div().mt(px(4.)).text_size(px(13.)).text_color(theme.text_secondary).child(detail)))
+        .child(div().p(px(14.)).flex().flex_col().child(div().text_size(type_scale::BODY).font_weight(type_scale::CONTROL).child(title))
+            .when(!detail.is_empty(), |b| b.child(div().mt(px(4.)).text_size(type_scale::SMALL).text_color(theme.text_secondary).child(detail)))
             .child(div().mt(px(10.)).flex().flex_col().gap(px(4.)).child(option("ai-approval-option-allow", tr("允许一次", "Allow once"), Choice::Allow, state.clone()))
                 .child(option("ai-approval-option-deny", tr("拒绝", "Deny"), Choice::Deny, state))))
         .child(div().px(px(14.)).pb(px(12.)).pt(px(4.)).flex().items_center().justify_between()
-            .child(div().flex().items_center().gap(px(4.)).text_size(px(12.)).text_color(theme.text_secondary)
-                .child(div().opacity(0.3).child(icon(Icon::ChevronUp, px(14.), theme.mono_icon_colors(theme.text_secondary)))).child("1 / 1")
-                .child(div().opacity(0.3).child(icon(Icon::ChevronDown, px(14.), theme.mono_icon_colors(theme.text_secondary)))))
+            .child(div().flex().items_center().gap(px(4.)).text_size(type_scale::META).text_color(theme.text_secondary)
+                .child(div().opacity(0.3).child(icon(Icon::ChevronUp, px(icon_size::INLINE), theme.mono_icon_colors(theme.text_secondary)))).child("1 / 1")
+                .child(div().opacity(0.3).child(icon(Icon::ChevronDown, px(icon_size::INLINE), theme.mono_icon_colors(theme.text_secondary)))))
             .child(div().flex().items_center().gap(px(6.)).child(skip).child(continue_button)));
     motion::fade_up(card, "ai-approval-enter")
 }
@@ -193,7 +193,7 @@ pub(crate) fn question_card(state: Rc<RefCell<ApprovalState>>, questions: Vec<Ap
         let st = state.clone();
         return div().id("ai-question-reopen").relative().children(smoke_overlay::probe("ai-question-reopen"))
             .h(px(30.)).px(px(12.)).rounded(px(8.)).border_1().border_color(theme.btn_border).bg(theme.paper)
-            .flex().items_center().gap(px(6.)).text_size(px(12.5)).font_weight(FontWeight(500.)).text_color(theme.text)
+            .flex().items_center().gap(px(6.)).text_size(type_scale::META).font_weight(type_scale::CONTROL).text_color(theme.text)
             .cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover)).child(tr("展开待确认问题", "Open approval"))
             .on_mouse_down(MouseButton::Left, move |_, window, cx| { cx.stop_propagation(); st.borrow_mut().dismissed = false; window.refresh(); }).into_any_element();
     }
@@ -214,8 +214,8 @@ pub(crate) fn question_card(state: Rc<RefCell<ApprovalState>>, questions: Vec<Ap
             .child(div().size(px(16.)).flex_none().rounded(if is_radio { px(99.) } else { px(5.) }).border_1()
                 .border_color(if on { theme.text } else { theme.btn_border }).when(on, |b| b.bg(theme.text)).flex().items_center().justify_center()
                 .when(on, |b| if is_radio { b.child(div().size(px(6.)).rounded_full().bg(theme.paper)) }
-                    else { b.child(icon(Icon::Check, px(11.), theme.mono_icon_colors(theme.paper))) }))
-            .child(div().flex_1().min_w_0().text_size(px(13.)).line_height(px(18.)).text_color(if on { theme.text } else { theme.text_secondary }).child(opt.clone()))
+                    else { b.child(icon(Icon::Check, px(icon_size::MICRO), theme.mono_icon_colors(theme.paper))) }))
+            .child(div().flex_1().min_w_0().text_size(type_scale::SMALL).line_height(px(18.)).text_color(if on { theme.text } else { theme.text_secondary }).child(opt.clone()))
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                 cx.stop_propagation();
                 let seq = {
@@ -243,37 +243,37 @@ pub(crate) fn question_card(state: Rc<RefCell<ApprovalState>>, questions: Vec<Ap
     }
     opts = opts.child(div().id("ai-question-custom").relative().children(smoke_overlay::probe("ai-question-custom"))
         .w_full().min_h(px(28.)).pl(px(4.)).pr(px(8.)).py(px(2.)).flex().items_center().rounded(px(6.)).hover(move |s| s.bg(theme.hover))
-        .child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).w_full().h(px(24.)).px(px(2.)).text_size(px(13.))));
+        .child(Input::new(&input).appearance(false).bordered(false).focus_bordered(false).w_full().h(px(24.)).px(px(2.)).text_size(type_scale::SMALL)));
     let (st_dismiss, st_prev, st_next, st_skip, st_cont) = (state.clone(), state.clone(), state.clone(), state.clone(), state.clone());
     let (qs_skip, sub_skip, qs_cont, sub_cont) = (questions.clone(), submit_fn.clone(), questions.clone(), submit_fn.clone());
     let seq = state.borrow().nav_seq;
     let slide_up = state.borrow().qi >= state.borrow().prev_qi;
     let body = div().p(px(14.)).flex().flex_col().overflow_hidden().child(
-        div().flex().flex_col().child(div().pr(px(24.)).text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight(500.)).child(q.q)).child(opts)
+        div().flex().flex_col().child(div().pr(px(24.)).text_size(type_scale::BODY).line_height(px(20.)).font_weight(type_scale::CONTROL).child(q.q)).child(opts)
             .with_animation(SharedString::from(format!("ai-question-slide-{seq}")),
                 Animation::new(Duration::from_millis(320)).with_easing(motion::ease_out_quart()),
                 move |el, d| if seq == 0 { el } else { el.opacity(d).relative().top(px((if slide_up { 12. } else { -12. }) * (1. - d))) }));
     let footer = div().px(px(14.)).pb(px(12.)).pt(px(4.)).flex().items_center().justify_between().gap(px(12.))
-        .child(div().flex().items_center().gap(px(4.)).text_size(px(12.)).font_weight(FontWeight(500.)).text_color(theme.text_secondary)
+        .child(div().flex().items_center().gap(px(4.)).text_size(type_scale::META).font_weight(type_scale::CONTROL).text_color(theme.text_secondary)
             .child(div().id("ai-question-prev").relative().children(smoke_overlay::probe("ai-question-prev")).size(px(18.)).rounded(px(5.)).flex().items_center().justify_center()
                 .when(qi == 0, |b| b.opacity(0.3)).when(qi > 0, |b| b.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover)))
-                .child(icon(Icon::ChevronUp, px(14.), theme.mono_icon_colors(theme.text_secondary)))
+                .child(icon(Icon::ChevronUp, px(icon_size::INLINE), theme.mono_icon_colors(theme.text_secondary)))
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| { cx.stop_propagation(); if qi > 0 { step_to(&st_prev, qi - 1); window.refresh(); } }))
             .child(step_counter(&state.borrow(), total))
             .child(div().id("ai-question-next").relative().children(smoke_overlay::probe("ai-question-next")).size(px(18.)).rounded(px(5.)).flex().items_center().justify_center()
                 .when(last, |b| b.opacity(0.3)).when(!last, |b| b.cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover)))
-                .child(icon(Icon::ChevronDown, px(14.), theme.mono_icon_colors(theme.text_secondary)))
+                .child(icon(Icon::ChevronDown, px(icon_size::INLINE), theme.mono_icon_colors(theme.text_secondary)))
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| { cx.stop_propagation(); if !last { step_to(&st_next, qi + 1); window.refresh(); } })))
         .child(div().flex().items_center().gap(px(6.))
             .child(div().id("ai-question-skip").relative().children(smoke_overlay::probe("ai-question-skip")).h(px(27.)).px(px(12.)).rounded_full().flex().items_center().justify_center()
-                .text_size(px(13.)).font_weight(FontWeight(500.)).text_color(theme.text).bg(theme.selected).cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.btn_border))
+                .text_size(type_scale::SMALL).font_weight(type_scale::CONTROL).text_color(theme.text).bg(theme.selected).cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.btn_border))
                 .child(tr("跳过", "Skip")).on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     cx.stop_propagation();
                     st_skip.borrow_mut().answers.remove(&qi);
                     if !last { step_to(&st_skip, qi + 1); window.refresh(); } else { finish_submit(&st_skip, &qs_skip, &sub_skip, true, window, cx); }
                 }))
             .child(div().id("ai-question-continue").relative().children(smoke_overlay::probe("ai-question-continue")).h(px(27.)).px(px(12.)).rounded_full().flex().items_center().justify_center()
-                .text_size(px(13.)).font_weight(FontWeight(500.)).bg(theme.accent).text_color(gpui::rgb(0xffffff)).when(!has_answer, |b| b.opacity(0.5))
+                .text_size(type_scale::SMALL).font_weight(type_scale::CONTROL).bg(theme.accent).text_color(gpui::rgb(0xffffff)).when(!has_answer, |b| b.opacity(0.5))
                 .when(has_answer, |b| b.cursor(CursorStyle::PointingHand).hover(|s| s.opacity(0.85)))
                 .child(if last { tr("发送", "Send") } else { tr("继续", "Continue") })
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -284,7 +284,7 @@ pub(crate) fn question_card(state: Rc<RefCell<ApprovalState>>, questions: Vec<Ap
         .shadow(crate::ui::dropdown::shadows()).text_color(theme.text).flex().flex_col()
         .child(div().id("ai-question-dismiss").relative().children(smoke_overlay::probe("ai-question-dismiss")).absolute().right(px(10.)).top(px(10.)).size(px(22.)).rounded(px(6.))
             .flex().items_center().justify_center().cursor(CursorStyle::PointingHand).hover(move |s| s.bg(theme.hover))
-            .child(icon(Icon::Close, px(13.), theme.mono_icon_colors(theme.text_secondary)))
+            .child(icon(Icon::Close, px(icon_size::INLINE), theme.mono_icon_colors(theme.text_secondary)))
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                 cx.stop_propagation();
                 finish_submit(&st_dismiss, &questions, &submit_fn, true, window, cx);

@@ -84,7 +84,7 @@ fn button(g: Icon, tip: &'static str, on: bool, open: bool, dropdown: bool, edit
     let ink = if on { tc.on_ink } else { tc.ink };
     let group = SharedString::from(format!("fb-btn-{:?}", gpui::ElementId::from(tip)));
     icon_toggle_button(tip, g, tip, on, open).h(px(28.)).min_w(px(28.))
-        .when(dropdown, |b| b.child(stateful_icon(group, Icon::TbChevron, px(10.), on || open, Theme::ocean().mono_icon_colors(rgb(ink).into()), duo_icon_colors(tc, on))))
+        .when(dropdown, |b| b.child(stateful_icon(group, Icon::TbChevron, px(crate::ui::icon_size::MICRO), on || open, Theme::ocean().mono_icon_colors(rgb(ink).into()), duo_icon_colors(tc, on))))
         .child(gpui::canvas(move |bounds, _, _| { BOUNDS.with(|m| { m.borrow_mut().insert(tip, bounds); }); }, |_, _, _, _| {})
             .absolute().top_0().left_0().size_full())
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {

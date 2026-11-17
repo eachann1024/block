@@ -100,7 +100,7 @@ pub fn font_picker_popover(
     let search_bar = div()
         .flex_none().flex().items_center().gap(px(8.)).px(px(8.)).pb(px(4.)).mb(px(4.))
         .border_b_1().border_color(pal.sep)
-        .child(icon(Icon::FindSearch, px(14.), theme.mono_icon_colors(theme.text_secondary)))
+        .child(icon(Icon::FindSearch, px(crate::ui::icon_size::ROW), theme.mono_icon_colors(theme.text_secondary)))
         .child(div().flex_1().min_w_0().child(Input::new(search_input).appearance(false).bordered(false).focus_bordered(false).h(px(28.)).text_size(px(14.))));
 
     let list_h = if items.is_empty() {

@@ -1,13 +1,13 @@
 //! 320px right sidebar panel displaying the reverse chronological version history list.
 use std::rc::Rc;
 use gpui::{
-    App, CursorStyle, FontWeight, IntoElement, MouseButton, MouseDownEvent,
+    App, CursorStyle, IntoElement, MouseButton, MouseDownEvent,
     ParentElement, Stateful, Styled, Window, div, prelude::*, px,
 };
 use crate::{
     icons::{Icon, stateful_icon},
     theme::{tr, Theme},
-    ui::radius,
+    ui::{icon_size, radius, type_scale},
 };
 use super::types::HistoryVersion;
 
@@ -57,8 +57,8 @@ fn render_panel_header(
         .justify_between()
         .child(
             div()
-                .text_size(px(14.))
-                .font_weight(FontWeight(500.))
+                .text_size(type_scale::BODY)
+                .font_weight(type_scale::CONTROL)
                 .text_color(theme.text_secondary)
                 .child(tr("版本记录", "Versions")),
         )
@@ -77,7 +77,7 @@ fn render_panel_header(
                 .child(stateful_icon(
                     "history-panel-close",
                     Icon::Close,
-                    px(14.),
+                    px(icon_size::INLINE),
                     false,
                     theme.mono_icon_colors(theme.text_secondary),
                     theme.icon_colors(theme.text),
@@ -106,7 +106,7 @@ fn render_panel_content(
             .p(px(16.))
             .child(
                 div()
-                    .text_size(px(14.))
+                    .text_size(type_scale::BODY)
                     .text_color(theme.text_secondary)
                     .child(err.to_string()),
             )
@@ -119,7 +119,7 @@ fn render_panel_content(
                     .bg(theme.paper)
                     .border_1()
                     .border_color(theme.btn_border)
-                    .text_size(px(14.))
+                    .text_size(type_scale::BODY)
                     .text_color(theme.text)
                     .flex()
                     .items_center()
@@ -138,7 +138,7 @@ fn render_panel_content(
             .flex()
             .items_center()
             .justify_center()
-            .text_size(px(14.))
+            .text_size(type_scale::BODY)
             .text_color(theme.text_secondary)
             .child(tr("正在加载历史…", "Loading history…"))
             .into_any_element();
@@ -150,7 +150,7 @@ fn render_panel_content(
             .flex()
             .items_center()
             .justify_center()
-            .text_size(px(14.))
+            .text_size(type_scale::BODY)
             .text_color(theme.text_secondary)
             .child(tr("暂无历史版本", "No history versions yet"))
             .into_any_element();
@@ -215,14 +215,14 @@ fn render_version_row(
         })
         .child(
             div()
-                .text_size(px(14.))
-                .font_weight(FontWeight(560.))
+                .text_size(type_scale::BODY)
+                .font_weight(type_scale::TITLE)
                 .child(version.display_time.clone()),
         )
         .when(!current_label.is_empty(), |row| {
             row.child(
                 div()
-                    .text_size(px(14.))
+                    .text_size(type_scale::BODY)
                     .text_color(theme.text_secondary)
                     .child(current_label),
             )

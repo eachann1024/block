@@ -1,8 +1,8 @@
 //! Floating image toolbar (7 actions), `⋯` 4-item menu, and AltText / Size / Crop popovers.
 use std::cell::Cell;
-use gpui::{Bounds, Context, CursorStyle, Entity, FontWeight, MouseButton, Pixels, Window, div, prelude::*, px, rgb};
+use gpui::{Bounds, Context, CursorStyle, Entity, MouseButton, Pixels, Window, div, prelude::*, px, rgb};
 use gpui_component::input::{Escape, InputState};
-use crate::{dropdown::{self, RowSpec}, icons::Icon, theme::tr, ui::{floating_bar, popover}};
+use crate::{dropdown::{self, RowSpec}, icons::Icon, theme::tr, ui::{floating_bar, popover, type_scale}};
 use super::{
     image_edit::ImagePop,
     image_source::{Align, spec_of},
@@ -178,7 +178,7 @@ fn size_popover(editor: &Entity<Editor>, id: u64, percent: u32) -> impl IntoElem
         let on = (percent as i32 - pct as i32).abs() <= 4;
         let ed = editor.clone();
         row = row.child(div().id(("img-pct", id as usize * 8 + idx)).h(px(28.)).px(px(8.)).rounded(crate::ui::radius::CONTROL)
-            .flex().items_center().cursor(CursorStyle::PointingHand).text_size(px(12.)).font_weight(FontWeight(500.))
+            .flex().items_center().cursor(CursorStyle::PointingHand).text_size(type_scale::META).font_weight(type_scale::CONTROL)
             .when(on, |b| b.bg(rgb(tc.on_bg)).text_color(rgb(tc.on_ink)))
             .when(!on && image_cursor() == idx, |b| b.bg(rgb(tc.hover)))
             .when(!on, |b| b.hover(move |s| s.bg(rgb(tc.hover))).text_color(rgb(tc.ink)))
@@ -191,7 +191,7 @@ fn size_popover(editor: &Entity<Editor>, id: u64, percent: u32) -> impl IntoElem
     row.child(sep())
         .child(tb_btn(editor, id, 8, Icon::TbMinus, tr("缩小", "Zoom out"), false, false, image_cursor() == 4,
             move |this, _, cx| this.step_image(id, -10, cx)))
-        .child(div().min_w(px(38.)).flex().justify_center().text_size(px(12.)).text_color(rgb(tc.ink)).child(format!("{percent}%")))
+        .child(div().min_w(px(38.)).flex().justify_center().text_size(type_scale::META).text_color(rgb(tc.ink)).child(format!("{percent}%")))
         .child(tb_btn(editor, id, 9, Icon::TbPlus, tr("放大", "Zoom in"), false, false, image_cursor() == 5,
             move |this, _, cx| this.step_image(id, 10, cx)))
         .child(tb_btn(editor, id, 10, Icon::TbReset, tr("最大宽度", "Maximum width"), false, false, image_cursor() == 6,
@@ -211,7 +211,7 @@ fn crop_popover(editor: &Entity<Editor>, id: u64) -> impl IntoElement {
     for (idx, (label, ratio)) in presets.into_iter().enumerate() {
         let ed = editor.clone();
         row = row.child(div().id(("img-crop-opt", id as usize * 8 + idx)).h(px(28.)).px(px(10.)).rounded(crate::ui::radius::CONTROL)
-            .flex().items_center().cursor(CursorStyle::PointingHand).text_size(px(12.)).font_weight(FontWeight(500.))
+            .flex().items_center().cursor(CursorStyle::PointingHand).text_size(type_scale::META).font_weight(type_scale::CONTROL)
             .text_color(rgb(tc.ink))
             .when(image_cursor() == idx, |b| b.bg(rgb(tc.hover)))
             .hover(move |s| s.bg(rgb(tc.hover)))

@@ -6,7 +6,7 @@ use gpui::{
 use crate::{
     icons::Icon,
     theme::{Theme, tr},
-    ui::{icon_button::dock_icon_button_px, radius},
+    ui::{icon_button::titlebar_icon_button, icon_size, radius},
 };
 
 /// Compact zoom group: out, percent reset, in, and fit.
@@ -27,18 +27,18 @@ pub fn zoom_cluster(
         .flex()
         .items_center()
         .gap(px(2.))
-        .child(dock_icon_button_px(
+        .child(titlebar_icon_button(
             SharedString::from(format!("{prefix}-out")),
             Icon::Minus,
             false,
+            true,
             tr("缩小", "Zoom out"),
-            18.,
             on_out,
         ))
         .child(
             div()
                 .id(SharedString::from(format!("{prefix}-pct")))
-                .h(px(28.))
+                .h(px(icon_size::CHROME_BOX))
                 .min_w(px(50.))
                 .px(px(6.))
                 .flex_none()
@@ -55,20 +55,20 @@ pub fn zoom_cluster(
                 .on_mouse_down(MouseButton::Left, on_reset)
                 .child(pct_label),
         )
-        .child(dock_icon_button_px(
+        .child(titlebar_icon_button(
             SharedString::from(format!("{prefix}-in")),
             Icon::Plus,
             false,
+            true,
             tr("放大", "Zoom in"),
-            18.,
             on_in,
         ))
-        .child(dock_icon_button_px(
+        .child(titlebar_icon_button(
             SharedString::from(format!("{prefix}-fit")),
             Icon::WindowMax,
             fit_active,
+            true,
             tr("适应窗口", "Fit"),
-            18.,
             on_fit,
         ))
 }
@@ -121,7 +121,7 @@ pub fn reveal_button(
     id: impl Into<SharedString>,
     on_click: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> gpui_base::Button {
-    dock_icon_button_px(id.into(), Icon::FolderReveal, false, crate::files::ops::reveal_label(), 18., on_click)
+    titlebar_icon_button(id.into(), Icon::FolderReveal, false, true, crate::files::ops::reveal_label(), on_click)
 }
 
 fn zoom_hit(

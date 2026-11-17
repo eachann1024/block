@@ -128,7 +128,7 @@ fn motion_icon(id: &'static str, glyph: Icon, on: bool, state: TogglePillState) 
     } else {
         theme.mono_icon_colors(theme.text_secondary)
     };
-    let glyph = div().relative().child(icon(glyph, px(15.), colors));
+    let glyph = div().relative().child(icon(glyph, px(crate::ui::icon_size::ROW), colors));
     let leapt = if state.toggle_seq > 0 && on {
         glyph
             .with_animation(

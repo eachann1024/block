@@ -1,6 +1,6 @@
-use gpui::{FontWeight, div, prelude::*, px};
+use gpui::{div, prelude::*, px};
 use super::chat::AiChat;
-use crate::{theme::{Theme, tr}, ui::ai_controls};
+use crate::{theme::{Theme, tr}, ui::{ai_controls, type_scale}};
 
 pub(super) fn builtin_blocked(chat: &AiChat) -> bool {
     let config = super::provider::config();
@@ -20,7 +20,7 @@ pub(super) fn enable_cover(fullscreen: bool, cx: &mut gpui::Context<AiChat>) -> 
     let max_w = if fullscreen { 160. } else { 128. };
     div().id("ai-empty-state").size_full().px(px(24.)).flex().flex_col().items_center().justify_center().text_center()
         .child(crate::mascot::illustration_within(crate::mascot::MascotState::AiDisabled, max_w))
-        .child(div().mt(px(22.)).text_size(px(18.)).line_height(px(26.)).font_weight(FontWeight(600.)).text_color(theme.text).child(title))
+        .child(div().mt(px(22.)).text_size(px(18.)).line_height(px(26.)).font_weight(type_scale::TITLE).text_color(theme.text).child(title))
         .child(ai_controls::enable_action_button("ai-enable-cover", cta, cx.listener(|chat, _, window, cx| {
             cx.stop_propagation();
             chat.input.update(cx, |i, cx| i.focus(window, cx));
@@ -46,6 +46,6 @@ pub(super) fn view(chat: &AiChat, cx: &mut gpui::Context<AiChat>) -> impl IntoEl
     let max_w = if chat.fullscreen { 160. } else { 128. };
     div().id("ai-empty-state").py(px(36.)).px(px(16.)).flex().flex_col().items_center().gap(px(14.))
         .child(crate::mascot::ai_greeting_within(max_w))
-        .child(div().text_size(px(16.)).font_weight(FontWeight(560.)).text_color(theme.text).child(tr("有什么可以帮你处理？", "How can I help with this note?")))
+        .child(div().text_size(px(16.)).font_weight(type_scale::TITLE).text_color(theme.text).child(tr("有什么可以帮你处理？", "How can I help with this note?")))
         .child(actions)
 }
