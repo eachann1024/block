@@ -2,6 +2,7 @@ package editor
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -971,5 +972,148 @@ func TestCalloutFiveStateHeaderMenuAndImageResize(t *testing.T) {
 	tt.Release(rightR.X+rightR.W*0.5-120, rightR.Y+rightR.H*0.5)
 	if s.Doc().Blocks[1].ImageWidth <= 0 || s.Doc().Blocks[1].ImageWidth >= 100 {
 		t.Fatalf("expected resized ImageWidth in (0, 100), got %v", s.Doc().Blocks[1].ImageWidth)
+	}
+}
+
+func TestEditorZeroHoverAndFocusJitter(t *testing.T) {
+	appUi.ResetSmoke()
+	origEd, origCd, origLH := theme.Typography()
+	defer theme.SetTypography(origEd, origCd, origLH)
+
+	doc := &model.Doc{
+		Blocks: []model.Block{
+			{ID: 1, Kind: model.BlockHeading1, Spans: []model.Span{{Text: "Title H1"}}},
+			{ID: 2, Kind: model.BlockHeading2, Spans: []model.Span{{Text: "Section H2"}}},
+			{ID: 3, Kind: model.BlockParagraph, Spans: []model.Span{{Text: "Body paragraph with text"}}},
+			{ID: 4, Kind: model.BlockParagraph},
+			{ID: 5, Kind: model.BlockBullet, Indent: 0, Spans: []model.Span{{Text: "Bullet item"}}},
+			{ID: 6, Kind: model.BlockBullet, Indent: 1, Spans: []model.Span{{Text: "Nested bullet"}}},
+			{ID: 7, Kind: model.BlockNumbered, Indent: 0, Spans: []model.Span{{Text: "Numbered item"}}},
+			{ID: 8, Kind: model.BlockTodo, Checked: true, Spans: []model.Span{{Text: "Todo item"}}},
+			{ID: 9, Kind: model.BlockQuote, Spans: []model.Span{{Text: "Quoted text"}}},
+			{ID: 10, Kind: model.BlockCallout, Callout: model.CalloutTip, Spans: []model.Span{{Text: "Callout body"}}},
+			{ID: 11, Kind: model.BlockCode, Language: "go", Code: "fmt.Println(\"hi\")"},
+			{ID: 12, Kind: model.BlockCode, Language: "mermaid", Code: "flowchart LR\nA --> B"},
+			{ID: 13, Kind: model.BlockTable, Table: &model.TableData{
+				Rows: [][]model.TableCell{
+					{{Spans: []model.Span{{Text: "H1"}}}, {Spans: []model.Span{{Text: "H2"}}}},
+					{{Spans: []model.Span{{Text: "C1"}}}, {Spans: []model.Span{{Text: "C2"}}}},
+				},
+			}},
+			{ID: 14, Kind: model.BlockDivider},
+			{ID: 15, Kind: model.BlockImage, ImageSrc: "missing.png", ImageAlt: "Hero"},
+		},
+	}
+
+	s := NewSession("", doc, nil, nil)
+	tt := ui.NewTester(makeSessionView(s, false), 1080, 960)
+	tt.Move(-20, -20)
+	tt.Frame()
+
+	captureAll := func(phase string) map[model.BlockID]ui.Rect {
+		out := make(map[model.BlockID]ui.Rect, len(doc.Blocks))
+		for _, b := range doc.Blocks {
+			r, ok := appUi.TargetBounds(fmt.Sprintf("block-%d", b.ID))
+			if !ok {
+				t.Fatalf("%s: missing bounds for block-%d", phase, b.ID)
+			}
+			out[b.ID] = r
+		}
+		return out
+	}
+
+	baseline := captureAll("baseline")
+
+	assertMatchesBaseline := func(phase string) {
+		t.Helper()
+		for _, b := range doc.Blocks {
+			base := baseline[b.ID]
+			r, ok := appUi.TargetBounds(fmt.Sprintf("block-%d", b.ID))
+			if !ok {
+				t.Fatalf("%s: missing bounds for block-%d", phase, b.ID)
+			}
+			if math.Abs(float64(r.Y-base.Y)) >= 0.05 || math.Abs(float64(r.H-base.H)) >= 0.05 {
+				t.Fatalf("%s: block-%d (%v) jittered: base=%+v got=%+v", phase, b.ID, b.Kind, base, r)
+			}
+		}
+	}
+
+	// Adversarial hover sweep in 8px increments across entire viewport height.
+	for y := float32(24); y <= 920; y += 8 {
+		tt.Move(420, y)
+		assertMatchesBaseline(fmt.Sprintf("hover-y=%.0f", y))
+	}
+	tt.Move(-20, -20)
+
+	// Focus sweep across every block type (including empty paragraph, code, mermaid, table, divider, image).
+	for i, b := range doc.Blocks {
+		s.FocusBlock(i)
+		tt.Frame()
+		assertMatchesBaseline(fmt.Sprintf("focus-block-%d(%v)", b.ID, b.Kind))
+	}
+
+	// Verify typography LineHeightMode and EditorFont sync in blockTextMetrics.
+	theme.SetTypography("Georgia", "JetBrains Mono", model.LineHeightTight)
+	if _, _, lh := blockTextMetrics(model.BlockParagraph); math.Abs(float64(lh-1.38)) > 0.001 {
+		t.Fatalf("expected LineHeightTight=1.38, got %v", lh)
+	}
+	theme.SetTypography("", "", model.LineHeightNormal)
+	if _, _, lh := blockTextMetrics(model.BlockParagraph); math.Abs(float64(lh-1.5)) > 0.001 {
+		t.Fatalf("expected LineHeightNormal=1.5, got %v", lh)
+	}
+	theme.SetTypography("", "", model.LineHeightLoose)
+	if _, _, lh := blockTextMetrics(model.BlockParagraph); math.Abs(float64(lh-1.7)) > 0.001 {
+		t.Fatalf("expected LineHeightLoose=1.7, got %v", lh)
+	}
+	theme.SetTypography(origEd, origCd, origLH)
+
+	// Verify batch AI annotation rewrite + accept/dismiss flow.
+	s.FocusBlock(2)
+	s.SelectRange(2, 0, 2, 4) // "Body"
+	ann1 := s.AddAnnotation("Make clearer")
+	if ann1 == nil {
+		t.Fatalf("expected annotation created")
+	}
+	s.SelectRange(2, 5, 2, 14) // "paragraph"
+	ann2 := s.AddAnnotation("Shorten")
+	if ann2 == nil {
+		t.Fatalf("expected second annotation created")
+	}
+	s.SelectRange(2, 0, 2, 0)
+	s.MarkSaved()
+
+	s.SetAnnotationAIResponder(func(docMarkdown string, pending []*model.Annotation) map[string]string {
+		if !strings.Contains(docMarkdown, "Body paragraph") || len(pending) != 2 {
+			t.Fatalf("unexpected responder args: pending=%d", len(pending))
+		}
+		return map[string]string{
+			ann1.ID: "Main",
+			ann2.ID: "para",
+		}
+	})
+	if n := s.GeneratePendingAnnotations(); n != 2 {
+		t.Fatalf("expected 2 updated annotations, got %d", n)
+	}
+	if s.Dirty() {
+		t.Fatalf("expected session not dirty until rewrite accepted")
+	}
+	tt.Frame()
+	if _, ok := appUi.TargetBounds("ann-accept-" + ann1.ID); !ok {
+		t.Fatalf("expected ann-accept-%s button", ann1.ID)
+	}
+	if _, ok := appUi.TargetBounds("ann-dismiss-" + ann2.ID); !ok {
+		t.Fatalf("expected ann-dismiss-%s button", ann2.ID)
+	}
+
+	clickProbe(t, tt, "ann-dismiss-"+ann2.ID)
+	if ann2.RewriteResult != "" {
+		t.Fatalf("expected ann2 RewriteResult cleared on dismiss, got %q", ann2.RewriteResult)
+	}
+	clickProbe(t, tt, "ann-accept-"+ann1.ID)
+	if !s.Dirty() || !s.CanUndo() {
+		t.Fatalf("expected dirty and undoable after accepting annotation rewrite")
+	}
+	if !strings.HasPrefix(s.Doc().Blocks[2].PlainText(), "Main ") {
+		t.Fatalf("expected rewritten block text, got %q", s.Doc().Blocks[2].PlainText())
 	}
 }

@@ -1295,7 +1295,6 @@ func (s *Session) renderInlineAIPreviewRow(c *ui.Context, idx int, readOnly bool
 			ai.PreviewRect = r
 			appUi.RecordBounds("inline-ai-preview", r)
 		})
-		appUi.Probe(box, "inline-ai-preview")
 
 		box.Children(func() {
 			if !ai.isEmptyCtx() {
@@ -1478,11 +1477,14 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 	} else if ai.Status == aiStatusReview {
 		estH = 92
 	}
+	minX, maxX, winW, winH := s.overlayBounds(c)
 	spec := appUi.PlaceBelow(trigger).WithGap(10).WithMargin(12)
-	x, y := appUi.ResolveOrigin(spec, inlineAIPanelWidth, estH, s.viewportWidth, s.viewportHeight)
+	panelW := min(inlineAIPanelWidth, max(maxX-minX, 260))
+	x, y := appUi.ResolveOrigin(spec, panelW, estH, winW, winH)
+	x = clampFloat32(x, minX, max(maxX-panelW, minX))
 
 	ui.Overlay(c, func() {
-		shell := ui.Column(c.Key("inline-ai")).Absolute().Left(x).Top(y).Width(inlineAIPanelWidth).
+		shell := ui.Column(c.Key("inline-ai")).Absolute().Left(x).Top(y).Width(panelW).
 			Padding(8).Gap(6).Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.Hairline).
 			Shadow(0, 10, 28, 0, ui.RGBA(0, 0, 0, 0.18))
 		appUi.Probe(shell, "inline-ai")

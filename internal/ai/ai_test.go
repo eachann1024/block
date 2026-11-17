@@ -2,6 +2,7 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -761,5 +762,552 @@ func TestUIPanelCoverDraftsPickerAndCards(t *testing.T) {
 	}
 	if ctrl.ProviderConfig().Provider != "openai" {
 		t.Fatalf("expected openai provider selected, got %q", ctrl.ProviderConfig().Provider)
+	}
+}
+
+func TestSetRenderWidthPreservesPanelWidth(t *testing.T) {
+	bui.ResetSmoke()
+	bui.EnableSmokeMode()
+	defer bui.DisableSmokeMode()
+
+	ctrl, _, _ := setupReadyController(t)
+	ctrl.SetOpen(true)
+	ctrl.SetPanelWidth(500)
+	if ctrl.PanelWidth() != 500 {
+		t.Fatalf("PanelWidth = %v, want 500", ctrl.PanelWidth())
+	}
+
+	ctrl.SetRenderWidth(320)
+	if ctrl.PanelWidth() != 500 {
+		t.Fatalf("SetRenderWidth overwrote PanelWidth: got %v, want 500", ctrl.PanelWidth())
+	}
+
+	tt := ui.NewTester(ctrl.RenderPanel, 640, 720)
+	b, ok := bui.TargetBounds("ai-chat-panel")
+	if !ok {
+		t.Fatal("missing ai-chat-panel bounds")
+	}
+	if b.W < 319 || b.W > 321 {
+		t.Fatalf("expected rendered width 320 when renderWidth=320, got %v", b.W)
+	}
+
+	ctrl.SetRenderWidth(0)
+	tt.Frame()
+	b, _ = bui.TargetBounds("ai-chat-panel")
+	if b.W < 499 || b.W > 501 {
+		t.Fatalf("expected fallback to PanelWidth 500, got %v", b.W)
+	}
+
+	ctrl.SetRenderWidth(320)
+	ctrl.SetFullscreen(true)
+	tt.Frame()
+	b, _ = bui.TargetBounds("ai-chat-panel")
+	if b.W < 639 {
+		t.Fatalf("expected fullscreen width 640, got %v", b.W)
+	}
+}
+
+func TestRealOpenAISSEToolLoopAndBatchPlanE2E(t *testing.T) {
+	dataDir := t.TempDir()
+	nbRoot := t.TempDir()
+	host := newFakeHost(nbRoot)
+	notePath := filepath.Join(nbRoot, "target.md")
+	const origContent = "# Target\n\nOld body\n\n| Item | Keep |\n| --- | --- |\n| Base | yes |\n"
+	if err := host.WriteNote(notePath, origContent); err != nil {
+		t.Fatal(err)
+	}
+	host.activeNote = notePath
+
+	var mu sync.Mutex
+	var sawToolResults int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"gpt-4.1-live"},{"id":"deepseek-chat"}]}`))
+			return
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/chat/completions":
+			var req struct {
+				Stream   bool `json:"stream"`
+				Messages []struct {
+					Role    string `json:"role"`
+					Content any    `json:"content"`
+				} `json:"messages"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if !req.Stream {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"id":"ping","choices":[{"message":{"role":"assistant","content":"pong"}}]}`))
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			flusher, _ := w.(http.Flusher)
+
+			if len(req.Messages) > 0 {
+				if sys, _ := req.Messages[0].Content.(string); strings.Contains(sys, "Inline rewrite system") {
+					fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"第一段改写，"}}]}`)
+					fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"第二段完成。"}}]}`)
+					fmt.Fprintln(w, `data: {"choices":[{"finish_reason":"stop","delta":{}}]}`)
+					fmt.Fprintln(w, `data: [DONE]`)
+					if flusher != nil {
+						flusher.Flush()
+					}
+					return
+				}
+			}
+
+			toolCount := 0
+			for _, m := range req.Messages {
+				if m.Role == "tool" {
+					toolCount++
+				}
+			}
+			if toolCount == 0 {
+				fmt.Fprintln(w, `data: {"choices":[{"delta":{"reasoning_content":"先列出笔记本文件、搜索并读取 target.md，再生成变更计划。"}}]}`)
+				fmt.Fprintln(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"tc_list","function":{"name":"listNotebookFiles","arguments":"{}"}}]}}]}`)
+				fmt.Fprintln(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":1,"id":"tc_search","function":{"name":"searchNotes","arguments":"{\"query\":\"Target\"}"}}]}}]}`)
+				fmt.Fprintln(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":2,"id":"tc_read","function":{"name":"readNote","arguments":"{\"pageId\":\"target\"}"}}]}}]}`)
+				planArgs, _ := json.Marshal(map[string]any{
+					"title":   "更新 Target",
+					"summary": "更新 target.md 并补充条目",
+					"operations": []map[string]any{{
+						"type":      "search_replace",
+						"pageId":    "target",
+						"oldString": "Old body\n\n| Item | Keep |\n| --- | --- |\n| Base | yes |",
+						"newString": "Updated body\n\n| Item | Keep |\n| --- | --- |\n| Base | yes |\n| Keep item | yes |\n| Skip item | no |",
+					}},
+				})
+				tcChunk, _ := json.Marshal(map[string]any{
+					"choices": []map[string]any{{
+						"delta": map[string]any{
+							"tool_calls": []map[string]any{{
+								"index": 3,
+								"id":    "tc_plan",
+								"function": map[string]any{
+									"name":      "executeBatchPlan",
+									"arguments": string(planArgs),
+								},
+							}},
+						},
+					}},
+				})
+				fmt.Fprintf(w, "data: %s\n", tcChunk)
+				fmt.Fprintln(w, `data: {"choices":[{"finish_reason":"tool_calls","delta":{}}]}`)
+				fmt.Fprintln(w, `data: [DONE]`)
+			} else {
+				mu.Lock()
+				sawToolResults = toolCount
+				mu.Unlock()
+				replyChunk, _ := json.Marshal(map[string]any{
+					"choices": []map[string]any{{
+						"delta": map[string]any{
+							"content": "已完成 [target](target.md) 的变更方案：\n\n```go\nfunc updated() bool { return true }\n```",
+						},
+					}},
+				})
+				fmt.Fprintf(w, "data: %s\n", replyChunk)
+				fmt.Fprintln(w, `data: {"choices":[{"finish_reason":"stop","delta":{}}]}`)
+				fmt.Fprintln(w, `data: [DONE]`)
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+			return
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	ctrl := NewController(dataDir, host, nil)
+	if err := ctrl.SaveProviderConfig(model.AIProviderConfig{
+		Enabled:  true,
+		Provider: "openai",
+		Protocol: model.ProtocolOpenAI,
+		BaseURL:  srv.URL + "/v1",
+		APIKey:   "live-key",
+		Model:    "gpt-4.1-live",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !ctrl.IsLiveProviderReady() {
+		t.Fatal("expected IsLiveProviderReady() == true")
+	}
+
+	models, err := ctrl.RefreshBuiltinModels(context.Background())
+	if err != nil {
+		t.Fatalf("RefreshBuiltinModels: %v", err)
+	}
+	if len(models) != 2 || models[0].Value != "gpt-4.1-live" || models[1].Value != "deepseek-chat" {
+		t.Fatalf("unexpected models: %+v", models)
+	}
+	if err := ctrl.TestConnection(context.Background()); err != nil {
+		t.Fatalf("TestConnection: %v", err)
+	}
+
+	ctrl.SendPrompt("请整理 target.md")
+	waitUntil(t, 4*time.Second, func() bool {
+		c := ctrl.CurrentConversation()
+		return c != nil && !ctrl.IsStreaming() && ctrl.ActivePlan() != nil && len(c.Messages) >= 7
+	})
+
+	mu.Lock()
+	gotToolResults := sawToolResults
+	mu.Unlock()
+	if gotToolResults != 4 {
+		t.Fatalf("expected 4 tool results sent back on turn 2, got %d", gotToolResults)
+	}
+
+	conv := ctrl.CurrentConversation()
+	var stepTools []string
+	hasThink := false
+	hasCodeReply := false
+	for _, m := range conv.Messages {
+		for _, st := range m.Process {
+			if st.Kind == model.ToolKindThink {
+				hasThink = true
+			}
+			if st.ToolName != "" {
+				stepTools = append(stepTools, st.ToolName)
+			}
+		}
+		if m.Role == "assistant" && strings.Contains(m.Content, "[target](target.md)") && strings.Contains(m.Content, "```go") {
+			hasCodeReply = true
+		}
+	}
+	if !hasThink || len(stepTools) < 4 || !hasCodeReply {
+		t.Fatalf("missing process trace or summary reply: think=%v tools=%v codeReply=%v", hasThink, stepTools, hasCodeReply)
+	}
+
+	preview := ctrl.ActivePlan()
+	if preview == nil || preview.IsCreate || preview.Page != "target" {
+		t.Fatalf("unexpected ActivePlan: %+v", preview)
+	}
+	lines := ctrl.PlanDiffLines(preview.ConvID, preview.MsgIndex, preview.Page, preview.BeforeText, preview.AfterText)
+	for _, dl := range lines {
+		if dl.Change > 0 && strings.Contains(dl.Text, "Skip item") {
+			ctrl.TogglePlanDiffLine(preview.ConvID, preview.MsgIndex, preview.Page, dl.SelectionIndex)
+		}
+	}
+	if err := ctrl.AcceptPlan(preview.ConvID, preview.MsgIndex); err != nil {
+		t.Fatalf("AcceptPlan: %v", err)
+	}
+	updatedDisk, err := os.ReadFile(notePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(updatedDisk), "Updated body") || !strings.Contains(string(updatedDisk), "Keep item") || strings.Contains(string(updatedDisk), "Skip item") {
+		t.Fatalf("unexpected updated note content: %q", string(updatedDisk))
+	}
+	if err := ctrl.UndoPlan(preview.ConvID, preview.MsgIndex); err != nil {
+		t.Fatalf("UndoPlan: %v", err)
+	}
+	revertedDisk, err := os.ReadFile(notePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(revertedDisk) != origContent {
+		t.Fatalf("expected reverted content %q, got %q", origContent, string(revertedDisk))
+	}
+
+	inlineOut, err := ctrl.CompletePrompt(context.Background(), "Inline rewrite system", "Rewrite this note")
+	if err != nil {
+		t.Fatalf("CompletePrompt: %v", err)
+	}
+	if inlineOut != "第一段改写，第二段完成。" {
+		t.Fatalf("unexpected CompletePrompt output: %q", inlineOut)
+	}
+}
+
+func TestRealAnthropicSSEStreamAndQuestionToolE2E(t *testing.T) {
+	bui.ResetSmoke()
+	bui.EnableSmokeMode()
+	defer bui.DisableSmokeMode()
+
+	dataDir := t.TempDir()
+	host := newFakeHost(t.TempDir())
+
+	var sawAnswer string
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("x-api-key") != "sk-ant-live" || r.Header.Get("anthropic-version") != "2023-06-01" {
+			http.Error(w, "missing anthropic headers", http.StatusUnauthorized)
+			return
+		}
+		var req struct {
+			System   string `json:"system"`
+			Messages []struct {
+				Role    string `json:"role"`
+				Content any    `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+
+		if strings.Contains(req.System, "Anthropic inline") {
+			fmt.Fprintln(w, `event: message_start`)
+			fmt.Fprintln(w, `data: {"type":"message_start","message":{"id":"msg_inline","role":"assistant"}}`)
+			fmt.Fprintln(w, `event: content_block_start`)
+			fmt.Fprintln(w, `data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
+			fmt.Fprintln(w, `event: content_block_delta`)
+			fmt.Fprintln(w, `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Anthropic Complete OK"}}`)
+			fmt.Fprintln(w, `event: message_stop`)
+			fmt.Fprintln(w, `data: {"type":"message_stop"}`)
+			if flusher != nil {
+				flusher.Flush()
+			}
+			return
+		}
+
+		rawMsgs, _ := json.Marshal(req.Messages)
+		if !strings.Contains(string(rawMsgs), `"tool_result"`) {
+			fmt.Fprintln(w, `event: message_start`)
+			fmt.Fprintln(w, `data: {"type":"message_start","message":{"id":"msg_1","role":"assistant"}}`)
+			fmt.Fprintln(w, `event: content_block_start`)
+			fmt.Fprintln(w, `data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`)
+			fmt.Fprintln(w, `event: content_block_delta`)
+			fmt.Fprintln(w, `data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"先通过交互卡片确认导出格式。"}}`)
+			fmt.Fprintln(w, `event: content_block_stop`)
+			fmt.Fprintln(w, `data: {"type":"content_block_stop","index":0}`)
+			fmt.Fprintln(w, `event: content_block_start`)
+			fmt.Fprintln(w, `data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}`)
+			fmt.Fprintln(w, `event: content_block_delta`)
+			fmt.Fprintln(w, `data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"请先确认格式："}}`)
+			fmt.Fprintln(w, `event: content_block_stop`)
+			fmt.Fprintln(w, `data: {"type":"content_block_stop","index":1}`)
+			fmt.Fprintln(w, `event: content_block_start`)
+			fmt.Fprintln(w, `data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_q1","name":"askQuestion","input":{}}}`)
+			fmt.Fprintln(w, `event: content_block_delta`)
+			fmt.Fprintln(w, `data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"questions\":[{\"q\":\"选择导出格式\","}}`)
+			fmt.Fprintln(w, `event: content_block_delta`)
+			fmt.Fprintln(w, `data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"\"type\":\"radio\",\"options\":[\"Markdown\",\"PDF\"]}]}"}}`)
+			fmt.Fprintln(w, `event: content_block_stop`)
+			fmt.Fprintln(w, `data: {"type":"content_block_stop","index":2}`)
+			fmt.Fprintln(w, `event: message_stop`)
+			fmt.Fprintln(w, `data: {"type":"message_stop"}`)
+		} else {
+			mu.Lock()
+			sawAnswer = string(rawMsgs)
+			mu.Unlock()
+			fmt.Fprintln(w, `event: message_start`)
+			fmt.Fprintln(w, `data: {"type":"message_start","message":{"id":"msg_2","role":"assistant"}}`)
+			fmt.Fprintln(w, `event: content_block_start`)
+			fmt.Fprintln(w, `data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
+			fmt.Fprintln(w, `event: content_block_delta`)
+			fmt.Fprintln(w, `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"已按 Markdown 偏好完成处理。"}}`)
+			fmt.Fprintln(w, `event: message_stop`)
+			fmt.Fprintln(w, `data: {"type":"message_stop"}`)
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}))
+	defer srv.Close()
+
+	ctrl := NewController(dataDir, host, nil)
+	if err := ctrl.SaveProviderConfig(model.AIProviderConfig{
+		Enabled:  true,
+		Provider: "anthropic",
+		Protocol: model.ProtocolAnthropic,
+		BaseURL:  srv.URL + "/v1",
+		APIKey:   "sk-ant-live",
+		Model:    "claude-sonnet-4-6",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctrl.SetOpen(true)
+	ctrl.SendPrompt("帮我导出笔记")
+	waitUntil(t, 4*time.Second, func() bool {
+		c := ctrl.CurrentConversation()
+		if c == nil || ctrl.IsStreaming() {
+			return false
+		}
+		for _, m := range c.Messages {
+			if m.Question != nil {
+				return true
+			}
+		}
+		return false
+	})
+
+	conv := ctrl.CurrentConversation()
+	hasThink := false
+	for _, m := range conv.Messages {
+		for _, st := range m.Process {
+			if st.Kind == model.ToolKindThink && strings.Contains(st.Detail, "确认导出格式") {
+				hasThink = true
+			}
+		}
+	}
+	if !hasThink {
+		t.Fatalf("expected thinking trace in Anthropic turn, got %+v", conv.Messages)
+	}
+
+	tt := ui.NewTester(ctrl.RenderPanel, 440, 760)
+	if _, ok := bui.TargetBounds("ai-question-card"); !ok {
+		t.Fatal("expected ai-question-card rendered")
+	}
+	optPt, ok := bui.TargetCenter("ai-question-opt-0-0")
+	if !ok {
+		t.Fatal("missing ai-question-opt-0-0")
+	}
+	tt.ClickAt(optPt.X, optPt.Y)
+	contPt, ok := bui.TargetCenter("ai-question-continue")
+	if !ok {
+		t.Fatal("missing ai-question-continue")
+	}
+	tt.ClickAt(contPt.X, contPt.Y)
+
+	waitUntil(t, 4*time.Second, func() bool {
+		c := ctrl.CurrentConversation()
+		if c == nil || ctrl.IsStreaming() {
+			return false
+		}
+		for _, m := range c.Messages {
+			if m.Role == "assistant" && strings.Contains(m.Content, "已按 Markdown 偏好完成处理") {
+				return true
+			}
+		}
+		return false
+	})
+
+	mu.Lock()
+	ansPayload := sawAnswer
+	mu.Unlock()
+	if !strings.Contains(ansPayload, "Markdown") {
+		t.Fatalf("expected Markdown answer forwarded to Anthropic turn 2, got %s", ansPayload)
+	}
+
+	completeOut, err := ctrl.CompletePrompt(context.Background(), "Anthropic inline", "test")
+	if err != nil {
+		t.Fatalf("Anthropic CompletePrompt: %v", err)
+	}
+	if completeOut != "Anthropic Complete OK" {
+		t.Fatalf("unexpected Anthropic CompletePrompt output: %q", completeOut)
+	}
+}
+
+func TestRealCLISubprocessCodexAndClaudeJSONLStream(t *testing.T) {
+	binDir := t.TempDir()
+	claudeScript := `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "2.1.320 (Claude Code)"
+  exit 0
+fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  echo '{"loggedIn":true}'
+  exit 0
+fi
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"claude-sess-e2e"}'
+printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Inspecting workspace note"},{"type":"tool_use","id":"tu_1","name":"readPage","input":{"pageId":"daily"}}]}}'
+printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Claude CLI E2E reply OK"}]}}'
+printf '%s\n' '{"type":"result","subtype":"success","session_id":"claude-sess-e2e"}'
+`
+	codexScript := `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "codex-cli 0.2.0"
+  exit 0
+fi
+if [ "$1" = "login" ] && [ "$2" = "status" ]; then
+  echo "Logged in"
+  exit 0
+fi
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"turn/start"'*)
+      printf '%s\n' '{"method":"thread/started","params":{"thread":{"id":"codex-thread-e2e"}}}'
+      printf '%s\n' '{"method":"item/started","params":{"item":{"id":"it_1","type":"mcpToolCall","tool":"readPage","arguments":{"pageId":"daily"}}}}'
+      printf '%s\n' '{"method":"item/completed","params":{"item":{"id":"it_1","type":"mcpToolCall","tool":"readPage","arguments":{"pageId":"daily"},"status":"completed"}}}'
+      printf '%s\n' '{"method":"item/agentMessage/delta","params":{"delta":"Codex CLI "}}'
+      printf '%s\n' '{"method":"item/agentMessage/delta","params":{"delta":"E2E reply OK"}}'
+      printf '%s\n' '{"method":"turn/completed","params":{"turn":{"id":"t1","status":"completed"}}}'
+      exit 0
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(binDir, "claude"), []byte(claudeScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "codex"), []byte(codexScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	codexSt := ProbeBackend(model.BackendCodex)
+	if codexSt.State != BackendStateReady {
+		t.Fatalf("ProbeBackend(Codex) = %+v, want Ready", codexSt)
+	}
+	claudeSt := ProbeBackend(model.BackendClaude)
+	if claudeSt.State != BackendStateReady {
+		t.Fatalf("ProbeBackend(Claude) = %+v, want Ready", claudeSt)
+	}
+
+	ctrl, _, _ := setupReadyController(t)
+
+	if err := ctrl.SetActiveBackend(model.BackendClaude); err != nil {
+		t.Fatalf("SetActiveBackend(Claude): %v", err)
+	}
+	ctrl.SendPrompt("run claude cli")
+	waitUntil(t, 4*time.Second, func() bool {
+		c := ctrl.CurrentConversation()
+		return c != nil && !ctrl.IsStreaming() && len(c.Messages) >= 2
+	})
+	claudeConv := ctrl.CurrentConversation()
+	if claudeConv.NativeSessionID != "claude-sess-e2e" {
+		t.Fatalf("expected Claude NativeSessionID claude-sess-e2e, got %q", claudeConv.NativeSessionID)
+	}
+	var gotClaudeText, gotClaudeTool bool
+	for _, m := range claudeConv.Messages {
+		if m.Role == "assistant" && strings.Contains(m.Content, "Claude CLI E2E reply OK") {
+			gotClaudeText = true
+		}
+		for _, st := range m.Process {
+			if st.ToolName == "readPage" {
+				gotClaudeTool = true
+			}
+		}
+	}
+	if !gotClaudeText || !gotClaudeTool {
+		t.Fatalf("expected Claude streamed text & tool trace, got %+v", claudeConv.Messages)
+	}
+
+	if err := ctrl.SetActiveBackend(model.BackendCodex); err != nil {
+		t.Fatalf("SetActiveBackend(Codex): %v", err)
+	}
+	ctrl.SendPrompt("run codex cli")
+	waitUntil(t, 4*time.Second, func() bool {
+		c := ctrl.CurrentConversation()
+		return c != nil && !ctrl.IsStreaming() && len(c.Messages) >= 2
+	})
+	codexConv := ctrl.CurrentConversation()
+	if codexConv.NativeSessionID != "codex-thread-e2e" {
+		t.Fatalf("expected Codex NativeSessionID codex-thread-e2e, got %q", codexConv.NativeSessionID)
+	}
+	var gotCodexText, gotCodexTool bool
+	for _, m := range codexConv.Messages {
+		if m.Role == "assistant" && strings.Contains(m.Content, "Codex CLI E2E reply OK") {
+			gotCodexText = true
+		}
+		for _, st := range m.Process {
+			if st.ToolName == "readPage" && st.Done {
+				gotCodexTool = true
+			}
+		}
+	}
+	if !gotCodexText || !gotCodexTool {
+		t.Fatalf("expected Codex streamed text & tool trace, got %+v", codexConv.Messages)
 	}
 }

@@ -345,7 +345,8 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 	if s.toolbarPop == "more" && len(overflow) == 0 {
 		s.toolbarPop = ""
 	}
-	anchorX = clampFloat32(anchorX, 8, max(s.viewportWidth-barW-8, 8))
+	minX, maxX, _, _ := s.overlayBounds(c)
+	anchorX = clampFloat32(anchorX, minX, max(maxX-barW, minX))
 
 	ui.Overlay(c, func() {
 		if s.IsSelectionToolbarOpen() {
@@ -357,7 +358,6 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 				s.toolbarRect = r
 				appUi.RecordBounds("selection-toolbar", r)
 			})
-			appUi.Probe(bar, "selection-toolbar")
 
 			bar.Children(func() {
 				hasPrev := false
@@ -474,7 +474,8 @@ func (s *Session) renderToolbarMoreMenu(c *ui.Context, x, y float32, overflow []
 	}
 	pal := theme.Ocean()
 	menuW := float32(228)
-	x = clampFloat32(x, 8, max(s.viewportWidth-menuW-8, 8))
+	minX, maxX, _, _ := s.overlayBounds(c)
+	x = clampFloat32(x, minX, max(maxX-menuW, minX))
 
 	panel := ui.Column(c.Key("toolbar-more-menu")).Absolute().Left(x).Top(y).Width(menuW).
 		Padding(4).Gap(2).Radius(theme.RadiusCard).Background(pal.Menu).Border(1, pal.Hairline).
@@ -529,7 +530,8 @@ func (s *Session) toggleToolbarPop(name string) {
 func (s *Session) renderToolbarKindsMenu(c *ui.Context, x, y float32, listsOnly bool) {
 	pal := theme.Ocean()
 	menuW := float32(206)
-	x = clampFloat32(x, 8, max(s.viewportWidth-menuW-8, 8))
+	minX, maxX, _, _ := s.overlayBounds(c)
+	x = clampFloat32(x, minX, max(maxX-menuW, minX))
 
 	items := []struct {
 		id    string
@@ -588,7 +590,8 @@ func (s *Session) renderPalettePanel(c *ui.Context, x, y float32) {
 	pal := theme.Ocean()
 	dark := theme.IsDark()
 	menuW := float32(196)
-	x = clampFloat32(x, 8, max(s.viewportWidth-menuW-8, 8))
+	minX, maxX, _, _ := s.overlayBounds(c)
+	x = clampFloat32(x, minX, max(maxX-menuW, minX))
 	curFG, curBG := s.selectionColors()
 
 	panel := ui.Column(c.Key("palette-panel")).Absolute().Left(x).Top(y).Width(menuW).
@@ -671,7 +674,8 @@ func (s *Session) renderPalettePanel(c *ui.Context, x, y float32) {
 func (s *Session) renderLinkCardPopover(c *ui.Context, x, y float32) {
 	pal := theme.Ocean()
 	cardW := float32(320)
-	x = clampFloat32(x, 8, max(s.viewportWidth-cardW-8, 8))
+	minX, maxX, _, _ := s.overlayBounds(c)
+	x = clampFloat32(x, minX, max(maxX-cardW, minX))
 
 	card := ui.Row(c.Key("format-link-card")).Absolute().Left(x).Top(y).Width(cardW).
 		Padding(8, 10).Gap(6).AlignItems(ui.Center).
@@ -718,7 +722,8 @@ var reactionEmojis = []string{"👍", "❤️", "🎉", "🤔", "👀", "🔥", 
 func (s *Session) renderReactionPicker(c *ui.Context, x, y float32) {
 	pal := theme.Ocean()
 	w := float32(288)
-	x = clampFloat32(x, 8, max(s.viewportWidth-w-8, 8))
+	minX, maxX, _, _ := s.overlayBounds(c)
+	x = clampFloat32(x, minX, max(maxX-w, minX))
 
 	bar := ui.Row(c.Key("annotate-reactions")).Absolute().Left(x).Top(y).Padding(6, 8).Gap(4).
 		AlignItems(ui.Center).Radius(theme.RadiusSurface).Background(pal.Menu).
@@ -751,7 +756,8 @@ func (s *Session) renderReactionPicker(c *ui.Context, x, y float32) {
 func (s *Session) renderCommentComposer(c *ui.Context, x, y float32) {
 	pal := theme.Ocean()
 	w := float32(280)
-	x = clampFloat32(x, 8, max(s.viewportWidth-w-8, 8))
+	minX, maxX, _, _ := s.overlayBounds(c)
+	x = clampFloat32(x, minX, max(maxX-w, minX))
 
 	card := ui.Row(c.Key("annotate-composer")).Absolute().Left(x).Top(y).Width(w).
 		Padding(8, 10).Gap(6).AlignItems(ui.Center).
@@ -871,8 +877,10 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 		trigger = ui.Rect{X: 120, Y: 100, W: 140, H: 28}
 	}
 	menuW := float32(204)
+	minX, maxX, winW, winH := s.overlayBounds(c)
 	spec := appUi.PlaceBelow(trigger).WithGap(4).WithMargin(8)
-	x, y := appUi.ResolveOrigin(spec, menuW, 240, s.viewportWidth, s.viewportHeight)
+	x, y := appUi.ResolveOrigin(spec, menuW, 240, winW, winH)
+	x = clampFloat32(x, minX, max(maxX-menuW, minX))
 
 	ui.Overlay(c, func() {
 		shell := ui.Column(c.Key("callout-kind-menu")).Absolute().Left(x).Top(y).Width(menuW).
@@ -954,10 +962,12 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 		}
 	}
 
+	minX, maxX, winW, winH := s.overlayBounds(c)
 	spec := appUi.PlaceBelow(trigger).WithGap(4).WithMargin(8).WithReserveHeight(260)
-	maxH := appUi.MaxHeightForSpec(spec, s.viewportWidth, s.viewportHeight, 320)
+	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 320)
 	estH := min(float32(len(entries))*34+12, maxH)
-	x, y := appUi.ResolveOrigin(spec, menuW, estH, s.viewportWidth, s.viewportHeight)
+	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
+	x = clampFloat32(x, minX, max(maxX-menuW, minX))
 
 	ui.Overlay(c, func() {
 		// Absorb wheel events inside the menu so boundary scrolling never leaks to the document body!
@@ -1077,9 +1087,11 @@ func (s *Session) renderCodeLangMenuOverlay(c *ui.Context) {
 		trigger = ui.Rect{X: 200, Y: 100, W: 300, H: 40}
 	}
 	menuW := float32(200)
+	minX, maxX, winW, winH := s.overlayBounds(c)
 	spec := appUi.PlaceBelow(trigger).WithAlignX(appUi.AlignX{Kind: appUi.AlignRight}).WithGap(4)
-	maxH := appUi.MaxHeightForSpec(spec, s.viewportWidth, s.viewportHeight, 300)
-	x, y := appUi.ResolveOrigin(spec, menuW, maxH, s.viewportWidth, s.viewportHeight)
+	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 300)
+	x, y := appUi.ResolveOrigin(spec, menuW, maxH, winW, winH)
+	x = clampFloat32(x, minX, max(maxX-menuW, minX))
 
 	ui.Overlay(c, func() {
 		shell := ui.Column(c.Key("code-lang-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).
@@ -1143,8 +1155,10 @@ func (s *Session) renderTableMenuOverlay(c *ui.Context) {
 		trigger = ui.Rect{X: 160, Y: 120, W: 300, H: 60}
 	}
 	menuW := float32(210)
+	minX, maxX, winW, winH := s.overlayBounds(c)
 	spec := appUi.PlaceBelow(trigger).WithAlignX(appUi.AlignX{Kind: appUi.AlignRight}).WithGap(4)
-	x, y := appUi.ResolveOrigin(spec, menuW, 240, s.viewportWidth, s.viewportHeight)
+	x, y := appUi.ResolveOrigin(spec, menuW, 240, winW, winH)
+	x = clampFloat32(x, minX, max(maxX-menuW, minX))
 
 	ui.Overlay(c, func() {
 		shell := ui.Column(c.Key("table-menu")).Absolute().Left(x).Top(y).Width(menuW).
@@ -1333,8 +1347,11 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 								AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(item.Title)
 							if isActive {
 								row.Background(pal.Selected).Border(1, pal.Accent)
-							} else if row.Hovered() {
-								row.Background(pal.Hover)
+							} else {
+								row.Border(1, ui.Transparent)
+								if row.Hovered() {
+									row.Background(pal.Hover)
+								}
 							}
 							row.Children(func() {
 								barW := outlineBarWidth(item.Level)
@@ -1475,8 +1492,17 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 
 					// Actions row
 					if !s.readOnly {
-						ui.Row(c).FillWidth().Justify(ui.End).Gap(4).Children(func() {
-							if ann.RewritePrompt != "" && ann.RewriteResult == "" {
+						ui.Row(c).FillWidth().Wrap().Justify(ui.End).AlignItems(ui.Center).Gap(4).Children(func() {
+							if ann.RewriteResult != "" {
+								dismiss := appUi.ActionButton(c, "ann-dismiss-"+ann.ID, theme.Tr("忽略", "Dismiss"), nil, appUi.ButtonGhost, false)
+								if dismiss.Clicked() {
+									ann.RewriteResult = ""
+								}
+								acc := appUi.ActionButton(c, "ann-accept-"+ann.ID, theme.Tr("应用", "Apply"), nil, appUi.ButtonPrimary, false)
+								if acc.Clicked() {
+									s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
+								}
+							} else if ann.RewritePrompt != "" {
 								acc := appUi.ActionButton(c, "annotation-accept-"+ann.ID, theme.Tr("应用", "Apply"), nil, appUi.ButtonPrimary, false)
 								if acc.Clicked() {
 									s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)

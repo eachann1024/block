@@ -507,6 +507,9 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 						style = internalui.ButtonPrimary
 					}
 					btn := internalui.ActionButton(c, chipID, label, nil, style, false)
+					if selected {
+						btn.Border(1, ui.Transparent)
+					}
 					if btn.Clicked() && m.feedbackCategory != cat.code {
 						m.feedbackCategory = cat.code
 						m.feedbackErr = ""
@@ -722,7 +725,9 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 						if selected {
 							row.Background(pal.Selected).Border(1, pal.Accent)
 						} else if row.Hovered() {
-							row.Background(pal.Hover)
+							row.Background(pal.Hover).Border(1, ui.Transparent)
+						} else {
+							row.Border(1, ui.Transparent)
 						}
 						row.Children(func() {
 							ui.Column(c).FillWidth().Gap(2).Children(func() {
@@ -1034,10 +1039,14 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 				ui.Row(c).FillWidth().Wrap().Gap(8).Children(func() {
 					for _, item := range formats {
 						style := internalui.ButtonSecondary
-						if m.exportFormat == item.fmt {
+						selected := m.exportFormat == item.fmt
+						if selected {
 							style = internalui.ButtonPrimary
 						}
 						btn := internalui.ActionButton(c, "export-fmt-"+string(item.fmt), item.label, nil, style, false)
+						if selected {
+							btn.Border(1, ui.Transparent)
+						}
 						if btn.Clicked() && m.exportFormat != item.fmt {
 							m.exportFormat = item.fmt
 							m.exportOutPath = replaceExportExt(m.exportOutPath, item.fmt)

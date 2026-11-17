@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"block/internal/theme"
@@ -14,11 +15,15 @@ func ParseShortcut(spec string) (ui.Modifiers, ui.Key, bool) {
 	if s == "" {
 		return 0, ui.KeyUnknown, false
 	}
+	trailingMinus := strings.HasSuffix(s, "--") || strings.HasSuffix(s, "+-")
 	s = strings.ReplaceAll(s, "+", "-")
 	parts := strings.Split(s, "-")
 	var mods ui.Modifiers
 	var key ui.Key = ui.KeyUnknown
 	for _, p := range parts {
+		if p == "" {
+			continue
+		}
 		switch p {
 		case "cmd", "cmdorctrl", "meta", "super", "command":
 			mods |= ui.Cmd
@@ -44,6 +49,14 @@ func ParseShortcut(spec string) (ui.Modifiers, ui.Key, bool) {
 			key = ui.KeyPeriod
 		case "/", "slash":
 			key = ui.KeySlash
+		case "\\", "backslash":
+			key = ui.KeyBackslash
+		case ";", "semicolon":
+			key = ui.KeySemicolon
+		case "'", "quote", "apostrophe":
+			key = ui.KeyQuote
+		case "`", "backquote", "grave":
+			key = ui.KeyBackquote
 		case "-", "minus":
 			key = ui.KeyMinus
 		case "=", "equal", "plus":
@@ -53,6 +66,13 @@ func ParseShortcut(spec string) (ui.Modifiers, ui.Key, bool) {
 		case "]", "bracketright":
 			key = ui.KeyBracketRight
 		default:
+			if len(p) >= 2 && p[0] == 'f' {
+				var fn int
+				if _, err := fmt.Sscanf(p[1:], "%d", &fn); err == nil && fn >= 1 && fn <= 12 {
+					key = ui.KeyF1 + ui.Key(fn-1)
+					continue
+				}
+			}
 			if len(p) == 1 {
 				ch := p[0]
 				switch {
@@ -63,6 +83,9 @@ func ParseShortcut(spec string) (ui.Modifiers, ui.Key, bool) {
 				}
 			}
 		}
+	}
+	if trailingMinus && key == ui.KeyUnknown {
+		key = ui.KeyMinus
 	}
 	return mods, key, key != ui.KeyUnknown
 }
@@ -124,7 +147,16 @@ func ToMyGoAccelerator(spec string) string {
 	if mods&ui.Shift != 0 {
 		parts = append(parts, "Shift")
 	}
-	parts = append(parts, keyDisplayName(key))
+	keyStr := keyDisplayName(key)
+	if key == ui.KeyBackspace {
+		keyStr = "Backspace"
+	} else if key == ui.KeyEscape {
+		keyStr = "Escape"
+	}
+	if keyStr == "" {
+		return ""
+	}
+	parts = append(parts, keyStr)
 	return strings.Join(parts, "+")
 }
 
@@ -136,6 +168,14 @@ func keyDisplayName(k ui.Key) string {
 		return "."
 	case ui.KeySlash:
 		return "/"
+	case ui.KeyBackslash:
+		return "\\"
+	case ui.KeySemicolon:
+		return ";"
+	case ui.KeyQuote:
+		return "'"
+	case ui.KeyBackquote:
+		return "`"
 	case ui.KeyMinus:
 		return "-"
 	case ui.KeyEqual:
@@ -155,6 +195,9 @@ func keyDisplayName(k ui.Key) string {
 	case ui.KeyBackspace:
 		return "⌫"
 	default:
+		if k >= ui.KeyF1 && k <= ui.KeyF12 {
+			return fmt.Sprintf("F%d", 1+int(k-ui.KeyF1))
+		}
 		if k >= ui.KeyA && k <= ui.KeyZ {
 			return string(rune('A' + (k - ui.KeyA)))
 		}
