@@ -252,9 +252,12 @@ impl Editor {
     }
     /// A selected image or HTML block has no text range: copy it whole so paste recreates the same block.
     pub(super) fn copy_whole_block(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(block) = self.doc.get(self.caret.head.block).filter(|b| structural(b) && b.meta.code_language.is_none()).cloned() else { return false };
+        let Some(mut block) = self.doc.get(self.caret.head.block).filter(|b| structural(b) && b.meta.code_language.is_none()).cloned() else { return false };
         if super::image_source::spec_of(&block).is_some() {
             return self.copy_image(block.id, cx);
+        }
+        if let Some(number) = self.doc.list_number(block.id) {
+            block.meta.list_start = Some(number);
         }
         cx.write_to_clipboard(super::paste_clipboard::blocks_item(vec![block]));
         true
