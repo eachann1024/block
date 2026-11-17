@@ -16,10 +16,12 @@ impl Editor {
     }
 
     pub(crate) fn toggle_annotation_detail(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        self.annotate.foot_picker_note = None;
         if self.annotate.active_annotation == Some(id) {
             self.annotate.active_annotation = None;
             self.annotate.followup = None;
             self.annotate.editing = None;
+            self.remeasure_annotation_rows();
             window.focus(&self.focus, cx);
             cx.notify();
             return;
@@ -29,13 +31,33 @@ impl Editor {
         self.annotate.followup = None;
         self.annotate.editing = None;
         self.toolbar_anchor = None;
-        if let Some((block_id, range, _)) = resolve_annotation_span(&self.doc, &note) {
-            self.ensure_block_visible(block_id);
-            self.caret.anchor = Position { block: block_id, offset: range.start };
-            self.caret.head = self.caret.anchor;
-            self.caret_hidden = true;
-            self.table_sel = None;
-            if !note.body.is_empty() { self.reveal_caret = true; }
+        let std_w = super::super::chrome::standard_width(crate::theme::Theme::ocean().content_width);
+        let wide = super::super::annotate_ui::can_fit_wide_rail(self, std_w);
+        if wide {
+            if let Some((block_id, range, _)) = resolve_annotation_span(&self.doc, &note) {
+                self.ensure_block_visible(block_id);
+                self.caret.anchor = Position { block: block_id, offset: range.start };
+                self.caret.head = self.caret.anchor;
+                self.caret_hidden = true;
+                self.table_sel = None;
+                if !note.body.is_empty() { self.reveal_caret = true; }
+            }
+        } else {
+            let spans = resolve_annotation_spans(&self.doc, &note);
+            for &(bid, _, _) in &spans {
+                self.ensure_block_visible(bid);
+            }
+            if let Some((block_id, offset)) = spans.last().map(|&(bid, ref r, _)| (bid, r.end))
+                .or_else(|| super::super::annotate_foot::anchor_block_for_note(self, &note).map(|bid| (bid, 0)))
+            {
+                self.ensure_block_visible(block_id);
+                let clamped = self.doc.get(block_id).map_or(0, |b| offset.min(b.text.len()));
+                self.caret.anchor = Position { block: block_id, offset: clamped };
+                self.caret.head = self.caret.anchor;
+                self.caret_hidden = true;
+                self.table_sel = None;
+            }
+            self.remeasure_annotation_rows();
         }
         cx.notify();
     }
@@ -84,12 +106,14 @@ impl Editor {
             self.annotate.active_annotation = None;
             self.annotate.followup = None;
             self.annotate.editing = None;
+            self.remeasure_annotation_rows();
             return;
         }
         if self.annotate.annotations.iter().any(|note| note.id == id) {
             self.annotate.active_annotation = Some(id);
             self.annotate.followup = None;
             self.annotate.editing = None;
+            self.remeasure_annotation_rows();
         }
     }
 
@@ -104,7 +128,9 @@ impl Editor {
         let focus_input = input.clone();
         self.annotate.active_annotation = Some(id);
         self.annotate.followup = None;
+        self.annotate.foot_picker_note = None;
         self.annotate.editing = Some(AnnotationEdit { annotation_id: id, input, _sub: sub });
+        self.remeasure_annotation_rows();
         cx.defer_in(window, move |_, window, cx| { focus_input.update(cx, |s, cx| s.focus(window, cx)); });
         cx.notify();
     }
@@ -120,12 +146,14 @@ impl Editor {
             }
             self.record_annotation_change(before, cx);
         }
+        self.remeasure_annotation_rows();
         window.focus(&self.focus, cx);
         cx.notify();
     }
 
     pub(crate) fn cancel_edit_annotation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.annotate.editing.take().is_some() {
+            self.remeasure_annotation_rows();
             window.focus(&self.focus, cx);
             cx.notify();
         }
@@ -144,6 +172,7 @@ impl Editor {
         self.normalize_annotations();
         self.persist_annotations();
         self.caret_hidden = true;
+        self.remeasure_annotation_rows();
         self.record_annotation_change(before, cx);
         window.focus(&self.focus, cx);
         cx.notify();
@@ -160,13 +189,16 @@ impl Editor {
         let focus_input = input.clone();
         self.annotate.active_annotation = Some(id);
         self.annotate.editing = None;
+        self.annotate.foot_picker_note = None;
         self.annotate.followup = Some(AnnotationFollowup { annotation_id: id, input, _sub: sub });
+        self.remeasure_annotation_rows();
         cx.defer_in(window, move |_, window, cx| { focus_input.update(cx, |s, cx| s.focus(window, cx)); });
         cx.notify();
     }
 
     pub(crate) fn close_annotation_followup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.annotate.followup.take().is_some() {
+            self.remeasure_annotation_rows();
             window.focus(&self.focus, cx);
             cx.notify();
         }

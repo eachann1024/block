@@ -1,4 +1,4 @@
-use gpui::{CursorStyle, Div, ElementId, Hsla, IntoElement, MouseButton, SharedString, Stateful, div, prelude::*, px, rgb, rgba};
+use gpui::{CursorStyle, Div, ElementId, Hsla, IntoElement, MouseButton, SharedString, Stateful, div, prelude::*, px, relative, rgb, rgba};
 use crate::{
     icons::{Icon, icon, stateful_icon},
     theme::{Theme, is_dark, tooltip, tr},
@@ -95,6 +95,7 @@ pub fn inline_reaction_bar(id: impl Into<ElementId>) -> Stateful<Div> {
     let theme = Theme::ocean();
     div()
         .id(id)
+        .max_w(relative(1.))
         .px(px(6.))
         .py(px(2.))
         .rounded(radius::CONTROL)
@@ -102,6 +103,7 @@ pub fn inline_reaction_bar(id: impl Into<ElementId>) -> Stateful<Div> {
         .border_1()
         .border_color(theme.hairline)
         .flex()
+        .flex_wrap()
         .items_center()
         .gap(px(2.))
 }
@@ -216,7 +218,8 @@ pub fn foot_note_chip(
         FootChipKind::Draft { body, on_toggle, on_edit, on_delete } => div()
             .id(id)
             .min_h(px(28.))
-            .max_w(px(460.))
+            .min_w_0()
+            .max_w(relative(1.))
             .pl(px(10.))
             .pr(px(4.))
             .py(px(2.))
@@ -267,7 +270,8 @@ pub fn foot_note_chip(
         FootChipKind::Generating { body, on_toggle } => div()
             .id(id)
             .min_h(px(28.))
-            .max_w(px(460.))
+            .min_w_0()
+            .max_w(relative(1.))
             .px(px(10.))
             .py(px(3.))
             .rounded(radius::CONTROL)
@@ -296,7 +300,8 @@ pub fn foot_note_chip(
             div()
                 .id(id)
                 .min_h(px(28.))
-                .max_w(px(460.))
+                .min_w_0()
+                .max_w(relative(1.))
                 .pl(px(10.))
                 .pr(px(if expanded { 10. } else { 4. }))
                 .py(px(2.))

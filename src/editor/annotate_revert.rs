@@ -90,6 +90,10 @@ impl Editor {
             }
             changed = true;
         }
-        if changed { self.persist_annotations(); cx.notify(); }
+        if changed {
+            self.persist_annotations();
+            self.remeasure_annotation_rows();
+            cx.notify();
+        }
     }
 }

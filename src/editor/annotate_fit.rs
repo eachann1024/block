@@ -136,12 +136,26 @@ pub(super) fn refresh_from_render(editor: &mut Editor) {
 }
 
 pub(super) fn sync_after_paint(editor: &mut Editor, bounds: Bounds<Pixels>) -> bool {
+    let width_changed = editor.annotate.editor_width != bounds.size.width;
     let mut changed = editor.annotate.editor_left != bounds.left()
         || editor.annotate.editor_top != bounds.top()
-        || editor.annotate.editor_width != bounds.size.width
+        || width_changed
         || editor.annotate.editor_height != bounds.size.height;
     (editor.annotate.editor_left, editor.annotate.editor_top, editor.annotate.editor_width, editor.annotate.editor_height) =
         (bounds.left(), bounds.top(), bounds.size.width, bounds.size.height);
+    let std_w = super::chrome::standard_width(crate::theme::Theme::ocean().content_width);
+    let now_wide = super::annotate_ui::can_fit_wide_rail(editor, std_w);
+    let mode_flipped = editor.annotate.was_wide_rail != Some(now_wide);
+    if mode_flipped {
+        editor.annotate.was_wide_rail = Some(now_wide);
+        if now_wide {
+            editor.annotate.foot_picker_note = None;
+        }
+    }
+    if editor.annotate.has_visible_rail() && (mode_flipped || (!now_wide && width_changed)) {
+        editor.remeasure_annotation_rows();
+        changed = true;
+    }
     if !editor.layouts.is_empty() {
         let next = build_snapshot(editor, bounds.top(), bounds.size.width, bounds.size.height);
         if editor.annotate.fit_snapshot.signature != next.signature {
