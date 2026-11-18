@@ -3102,8 +3102,12 @@ func (w *Workspace) Render(c *ui.Context) {
 
 	activeSurf := w.SurfaceFor(activeTab)
 	var activeSess *editor.Session
+	var noteStats func() (characters, blocks int)
 	if activeSurf == nil {
 		activeSess = w.SessionFor(activeTab)
+		if activeSess != nil {
+			noteStats = activeSess.NoteStats
+		}
 	}
 
 	var annDrafts int
@@ -3257,11 +3261,8 @@ func (w *Workspace) Render(c *ui.Context) {
 						mygo.Clipboard.WriteText(txt)
 					}
 				},
-				OnRevealActive: func() {
-					if activeTab != "" && mygo.App.IsReady() {
-						mygo.Shell.ShowItemInFolder(activeTab)
-					}
-				},
+				OnRevealPath: w.revealInShell,
+				NoteStats:    noteStats,
 				OnPreviewZoomStep: func(factor float32) {
 					if activeSurf != nil {
 						activeSurf.ZoomStep(factor)
@@ -3653,7 +3654,7 @@ func (w *Workspace) shortcutForSidebar(stSnap model.AppState) string {
 }
 
 func (w *Workspace) revealInShell(path string) {
-	if mygo.App.IsReady() {
+	if path != "" && mygo.App.IsReady() {
 		mygo.Shell.ShowItemInFolder(path)
 	}
 }
