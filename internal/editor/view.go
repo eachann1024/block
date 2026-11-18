@@ -446,9 +446,10 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	}
 	rightPad := max(s.rightContentInset()-rowBleed, 0)
 
+	isAtomic := b.Kind == model.BlockImage || b.Kind == model.BlockDivider
 	row := ui.Column(c.Key(id)).FillWidth().Padding(topGap, rightPad, 0, leftPad)
 	if !readOnly {
-		if b.Kind == model.BlockImage || b.Kind == model.BlockDivider {
+		if isAtomic {
 			row.Cursor(ui.CursorDefault)
 		} else {
 			row.Cursor(ui.CursorText)
@@ -456,8 +457,13 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	}
 	isHovered := row.Hovered()
 	isFocused := s.focusedBlock == idx
-	// The remembered editing block does not imply that this note owns keyboard focus.
-	hasBlockFocus := isFocused && (row.FocusWithin() || s.detachedFocus.Focused(c))
+	hasBlockFocus := isFocused && isAtomic && (row.FocusWithin() || s.detachedFocus.Focused(c))
+	hoveredForHandles := isHovered
+	if isHovered && isFocused && !isAtomic && !s.minimal && !readOnly {
+		// The active editor keeps its gutter quiet while the pointer is over text.
+		x, _, over := row.PointerPosition()
+		hoveredForHandles = over && x < s.leftContentGutter()
+	}
 	isHighlighted := s.jump.block == id && s.jump.row < 0
 	deleteArmed := idx == 0 && s.firstLineDeleteArmed && s.canArmFirstLineDelete()
 
@@ -507,8 +513,8 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	isDraggingAny := isDraggingBlock || s.isMouseDragging() || s.isTableExtending()
 	tableWholeActive := b.Kind == model.BlockTable && s.isTableWholeSelected(id)
 	showIdleHandles := !overlayBlocking && !isDraggingAny && s.typingPointer == nil
-	showHandles := !s.minimal && !readOnly && ((showIdleHandles && (isHovered || hasBlockFocus)) || (!overlayBlocking && s.dragBlockID == id) || tableWholeActive)
-	showBlankAdd := !s.minimal && !readOnly && showIdleHandles && (isHovered || s.hoveredBlock == idx)
+	showHandles := !s.minimal && !readOnly && ((showIdleHandles && (hoveredForHandles || hasBlockFocus)) || (!overlayBlocking && s.dragBlockID == id) || tableWholeActive)
+	showBlankAdd := !s.minimal && !readOnly && showIdleHandles && (hoveredForHandles || (!isFocused && s.hoveredBlock == idx))
 	isFolded := !s.minimal && !readOnly && b.Kind.IsHeading() && s.folded[id]
 	blankPara := isPlainEmptyParagraph(b)
 	listCtx := meta.List
@@ -527,7 +533,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 		line := ui.Row(c.Key("row-inner")).FillWidth().AlignItems(ui.Start)
 		line.Children(func() {
 			if !s.minimal {
-				// Left handle gutter (54px wide + 14px gap), strictly only shown on hover or focus!
+				// Keep the gutter width fixed as controls appear and disappear.
 				showDeleteArm := !readOnly && !overlayBlocking && !isDraggingAny && deleteArmed
 				showFold := !readOnly && b.Kind.IsHeading() && !overlayBlocking && (!isDraggingBlock || s.dragBlockID == id) && (showHandles || isFolded)
 				hasGutterControls := showDeleteArm || (blankPara && showBlankAdd) || (!blankPara && showHandles) || showFold
