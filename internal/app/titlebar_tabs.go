@@ -279,6 +279,7 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 		if px, py, ok := pill.PointerPosition(); ok {
 			tx, ty = b.X+px, b.Y+py
 		}
+		p.MenuState.MenuCursor = -1
 		p.MenuState.PageMenuOpen = false
 		p.MenuState.TabMenuOpen = true
 		p.MenuState.TabMenuIndex = ix
