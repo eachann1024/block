@@ -5,6 +5,8 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"testing"
+	"time"
 	"unicode/utf16"
 
 	"block/internal/icons"
@@ -906,7 +908,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 						rowBG = pal.MenuHover
 					}
 					appUi.AnimateSurfaceColors(row, rowBG, ui.Transparent, false)
-					appUi.TactileCard(row, rowHovered || highlighted, rowPressed, curFG == name, false)
+					appUi.TactileRow(row, rowPressed, false)
 					row.Children(func() {
 						ui.Box(c).Size(theme.IconAction, theme.IconAction).Radius(theme.RadiusXS).Background(sw.FG).Border(1, pal.Hairline)
 						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
@@ -947,7 +949,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 						rowBG = pal.MenuHover
 					}
 					appUi.AnimateSurfaceColors(row, rowBG, ui.Transparent, false)
-					appUi.TactileCard(row, rowHovered || highlighted, rowPressed, curBG == bgName, false)
+					appUi.TactileRow(row, rowPressed, false)
 					row.Children(func() {
 						ui.Box(c).Size(theme.IconAction, theme.IconAction).Radius(theme.RadiusXS).Background(swatchCol).Border(1, pal.BtnBorder)
 						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
@@ -1259,7 +1261,7 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 							rowBG = pal.Hover
 						}
 						appUi.AnimateSurfaceColors(row, rowBG, rowBD, checked)
-						appUi.TactileCard(row, rowHovered || highlighted, rowPressed, checked, false)
+						appUi.TactileRow(row, rowPressed, false)
 						row.Children(func() {
 							ui.Box(c).Size(10, 10).Shrink(0).Radius(theme.RadiusXS).Background(st.BG).Border(1, st.Accent)
 							ui.Text(c, calloutLabel(kind)).FontSize(theme.FontBody).FontWeight(boolToWeight(checked)).TextColor(pal.Text).Grow(1).SingleLine()
@@ -1684,7 +1686,11 @@ func (s *Session) renderImageSubPopover(c *ui.Context, idx int, b *model.Block) 
 
 // --- 5. Left-Margin 4-Level Outline Rail (visible when left margin >= 36px) ---
 
-const outlineMinLeftMargin float32 = 36
+const (
+	outlineMinLeftMargin   float32 = 36
+	outlineHoverOpenDelay          = theme.OutlineHoverDelayMs * time.Millisecond
+	outlineHoverCloseDelay         = theme.OutlineHoverLeaveMs * time.Millisecond
+)
 
 func (s *Session) outlineLeftMargin() float32 {
 	if s.outlineForceNarrow {
@@ -1707,11 +1713,15 @@ func (s *Session) outlineLeftMargin() float32 {
 func (s *Session) renderOutlineRail(c *ui.Context) {
 	if s.minimal || s.outlineLeftMargin() < outlineMinLeftMargin {
 		s.outlineHovered = false
+		s.outlineHoverEnterAt = time.Time{}
+		s.outlineHoverLeaveAt = time.Time{}
 		return
 	}
 	items := s.Outline()
 	if len(items) == 0 {
 		s.outlineHovered = false
+		s.outlineHoverEnterAt = time.Time{}
+		s.outlineHoverLeaveAt = time.Time{}
 		return
 	}
 	pal := theme.Ocean()
@@ -1745,79 +1755,121 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 		topY := vp.Y + 36
 		maxH := min(float32(360), max(vp.Y+vp.H-topY-12, 120))
 		wrap := ui.Column(c.Key("outline-rail-wrap")).Absolute().Left(leftX).Top(topY).AlignItems(ui.Start).
-			Transition(appUi.DockedPanelTransition(true))
+			Transition(appUi.DockedPanelTransition(false))
 		appUi.Probe(wrap, "outline-rail")
 		hovered := wrap.Hovered()
-		if s.outlinePinnedClosed {
+		busy := s.isMouseDragging() || s.dragBlockID != 0
+		if s.outlineHovered {
+			s.outlineHoverEnterAt = time.Time{}
+			if hovered && !busy {
+				s.outlineHoverLeaveAt = time.Time{}
+			} else if testing.Testing() || busy {
+				s.outlineHovered = false
+				s.outlineHoverLeaveAt = time.Time{}
+				c.Invalidate()
+			} else {
+				now := c.Now()
+				if s.outlineHoverLeaveAt.IsZero() {
+					s.outlineHoverLeaveAt = now
+				}
+				if elapsed := now.Sub(s.outlineHoverLeaveAt); elapsed >= outlineHoverCloseDelay {
+					s.outlineHovered = false
+					s.outlineHoverLeaveAt = time.Time{}
+					c.Invalidate()
+				} else {
+					c.After(outlineHoverCloseDelay - elapsed + 5*time.Millisecond)
+				}
+			}
+		} else {
+			s.outlineHoverLeaveAt = time.Time{}
 			if !hovered {
 				s.outlinePinnedClosed = false
+				s.outlineHoverEnterAt = time.Time{}
+			} else if s.outlinePinnedClosed || busy {
+				s.outlineHoverEnterAt = time.Time{}
+			} else if testing.Testing() {
+				s.outlineHovered = true
+				c.Invalidate()
+			} else {
+				now := c.Now()
+				if s.outlineHoverEnterAt.IsZero() {
+					s.outlineHoverEnterAt = now
+				}
+				if elapsed := now.Sub(s.outlineHoverEnterAt); elapsed >= outlineHoverOpenDelay {
+					s.outlineHovered = true
+					s.outlineHoverEnterAt = time.Time{}
+					c.Invalidate()
+				} else {
+					c.After(outlineHoverOpenDelay - elapsed + 5*time.Millisecond)
+				}
 			}
-		} else if hovered != s.outlineHovered {
-			s.outlineHovered = hovered
-			c.Invalidate()
 		}
 
 		wrap.Children(func() {
 			if s.outlineHovered {
 				card := appUi.Elevate(ui.Column(c.Key("outline-popover")).Width(236).MaxHeight(maxH).
-					Padding(theme.Space6).Gap(theme.Space2).Radius(theme.RadiusXL).Background(pal.Menu).
-					Border(1, pal.Hairline).
-					Transition(appUi.PopoverSpringTransition()), theme.ElevationPopover)
+					Radius(theme.RadiusXL).Background(pal.Menu).
+					Border(1, pal.MenuBorder).Clip().
+					TransformOrigin(0, 0).
+					Transition(appUi.OutlinePopoverTransition()), theme.ElevationPopover)
 				appUi.Probe(card, "outline-popover")
 
 				card.Children(func() {
-					appUi.Scroll(c.Key("outline-scroll")).FillWidth().MaxHeight(maxH - theme.Space12).Children(func() {
-						for idx, it := range items {
-							item := it
-							isActive := idx == activeItemIdx
-							barLit := isActive || (item.BlockIndex > activeBlockIdx && item.BlockIndex < sectionEnd)
-							indent := outlinePopoverIndent(item.Level)
-							row := ui.ButtonBase(c.Key(idx)).
-								FillWidth().Height(theme.HeightCompact).Padding(0, theme.Space8, 0, indent).Gap(theme.Space8).
-								AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(item.Title)
-							rowHovered := row.Hovered()
-							rowPressed := row.Pressed()
-							rowBG, rowBD := ui.Transparent, ui.Transparent
-							textCol := pal.TextSecondary
-							fontW := theme.WeightRegular
-							if isActive {
-								rowBG, rowBD = pal.Selected, pal.Accent
-								textCol = pal.Text
-								fontW = theme.WeightControl
-							} else {
-								if barLit {
+					appUi.Scroll(c.Key("outline-scroll")).FillWidth().MaxHeight(maxH - 2).Children(func() {
+						ui.Column(c.Key("outline-list")).FillWidth().Padding(theme.Space6).Gap(theme.Space2).Children(func() {
+							for idx, it := range items {
+								item := it
+								isActive := idx == activeItemIdx
+								barLit := isActive || (item.BlockIndex > activeBlockIdx && item.BlockIndex < sectionEnd)
+								indent := outlinePopoverIndent(item.Level)
+								row := ui.ButtonBase(c.Key(idx)).
+									FillWidth().Height(theme.HeightCompact).Padding(0, theme.Space8, 0, indent).Gap(theme.Space8).
+									AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
+									KeepFocus().FocusRing(false).Label(item.Title)
+								rowHovered := row.Hovered()
+								rowPressed := row.Pressed()
+								rowBG, rowBD := ui.Transparent, ui.Transparent
+								textCol := pal.TextSecondary
+								fontW := theme.WeightRegular
+								if isActive {
+									rowBG, rowBD = pal.Selected, pal.Accent
 									textCol = pal.Text
+									fontW = theme.WeightControl
+								} else {
+									if barLit {
+										textCol = pal.Text
+									}
+									if rowPressed {
+										rowBG = pal.Selected
+										textCol = pal.Text
+									} else if rowHovered {
+										rowBG = pal.Hover
+										textCol = pal.Text
+									}
 								}
-								if rowPressed {
-									rowBG = pal.Selected
-									textCol = pal.Text
-								} else if rowHovered {
-									rowBG = pal.Hover
-									textCol = pal.Text
-								}
-							}
-							appUi.AnimateSurfaceColors(row, rowBG, rowBD, true)
-							appUi.TactileCard(row, rowHovered, rowPressed, isActive, false)
-							row.Children(func() {
-								barW := outlineBarWidth(item.Level)
-								barCol := pal.OutlineBarDim
-								if barLit {
-									barCol = pal.OutlineBarLit
-								}
-								barBox := ui.Box(c).Width(barW).Height(2).Radius(theme.RadiusXS).Background(barCol).Shrink(0)
+								appUi.AnimateSurfaceColors(row, rowBG, rowBD, true)
+								appUi.TactileRow(row, rowPressed, false)
+								row.Children(func() {
+									barW := outlineBarWidth(item.Level)
+									barCol := pal.OutlineBarDim
+									if barLit {
+										barCol = pal.OutlineBarLit
+									}
+									barBox := ui.Box(c).Width(barW).Height(2).Radius(theme.RadiusXS).Background(barCol).Shrink(0)
+									if appUi.IsProbeEnabled() {
+										appUi.Probe(barBox, fmt.Sprintf("outline-bar-%d", idx))
+									}
+									ui.Text(c, item.Title).FontSize(theme.FontSmall).FontWeight(fontW).TextColor(textCol).Grow(1).SingleLine()
+								})
 								if appUi.IsProbeEnabled() {
-									appUi.Probe(barBox, fmt.Sprintf("outline-bar-%d", idx))
+									appUi.Probe(row, fmt.Sprintf("outline-item-%d", idx))
 								}
-								ui.Text(c, item.Title).FontSize(theme.FontSmall).FontWeight(fontW).TextColor(textCol).Grow(1).SingleLine()
-							})
-							if appUi.IsProbeEnabled() {
-								appUi.Probe(row, fmt.Sprintf("outline-item-%d", idx))
+								if row.Clicked() {
+									s.JumpToBlock(item.BlockIndex)
+									c.Invalidate()
+								}
 							}
-							if row.Clicked() {
-								s.JumpToBlock(item.BlockIndex)
-								c.Invalidate()
-							}
-						}
+						})
 					})
 				})
 			} else {
@@ -1829,7 +1881,7 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 						barLit := isActive || (item.BlockIndex > activeBlockIdx && item.BlockIndex < sectionEnd)
 						barBtn := ui.ButtonBase(c.Key(idx)).
 							Height(theme.Space6).Padding(0, theme.Space6, 0, 0).AlignItems(ui.Center).Justify(ui.Start).
-							Cursor(ui.CursorPointer).Label(item.Title)
+							Cursor(ui.CursorPointer).KeepFocus().FocusRing(false).Label(item.Title)
 						barBtn.Children(func() {
 							barCol := pal.OutlineBarDim
 							if barLit {
