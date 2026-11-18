@@ -16,7 +16,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// ---- DOCX Export (OOXML zip, aligned with 12 paper styles) ----
+// ---- DOCX Export (OOXML zip, aligned with 12 paper themes & PaperStyle) ----
 
 const (
 	docxNS = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ` +
@@ -70,6 +70,16 @@ func docxHex(c ui.Color) string {
 	return fmt.Sprintf("%02X%02X%02X", c.R, c.G, c.B)
 }
 
+func docxHexOn(c, base ui.Color) string {
+	if c.A == 0 {
+		return docxHex(base)
+	}
+	if c.A < 255 {
+		c = mixUIColor(base, c, float32(c.A)/255.0)
+	}
+	return docxHex(c)
+}
+
 func docxTwips(px float32) int {
 	v := int(px*15 + 0.5)
 	if v < 0 {
@@ -87,10 +97,29 @@ func docxHalfPt(px float32) int {
 }
 
 func docxFontXML(fam string) string {
-	if fam == fontMono {
-		return `<w:rFonts w:ascii="Menlo" w:hAnsi="Menlo" w:eastAsia="PingFang SC" w:cs="Menlo"/>`
+	latin, east := splitFontPair(fam)
+	l := escapeAttrValue(latin)
+	e := escapeAttrValue(east)
+	return fmt.Sprintf(`<w:rFonts w:ascii="%s" w:hAnsi="%s" w:eastAsia="%s" w:cs="%s"/>`, l, l, e, l)
+}
+
+func docxBorderVal(ls LineStyle) string {
+	switch ls {
+	case LineDashed:
+		return "dashed"
+	case LineDotted:
+		return "dotted"
+	default:
+		return "single"
 	}
-	return fmt.Sprintf(`<w:rFonts w:ascii="%s" w:hAnsi="%s" w:eastAsia="%s" w:cs="%s"/>`, fam, fam, fam, fam)
+}
+
+func docxBorderSz(px float32) int {
+	sz := int(px*6 + 0.5)
+	if sz < 4 {
+		return 4
+	}
+	return sz
 }
 
 func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) ([]byte, error) {
@@ -109,12 +138,23 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 
 	showTitle := resolveShowTitle(prefs)
 	title := resolveTitleText(doc, notePath, prefs)
+	vars := newTemplateVars(notePath, title, time.Now().UTC())
 	if showTitle {
+		if !legacy {
+			body.WriteString(renderDOCXMeta(pal, vars, contentW))
+		}
 		body.WriteString(renderDOCXTitle(pal, legacy, title, pageW, topM, rightM, leftM))
 	}
 
 	bodyBlocks := exportBodyBlocks(doc.Blocks, title, showTitle)
 	var num listNumbering
+	h2Count := 0
+	quoteOrd := 0
+	paraJC := ""
+	if !legacy && pal.Style.Justify {
+		paraJC = `<w:jc w:val="both"/>`
+	}
+
 	for i := range bodyBlocks {
 		b := &bodyBlocks[i]
 		ord := num.next(b)
@@ -126,10 +166,26 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 
 		switch {
 		case b.Kind == model.BlockDivider:
-			body.WriteString(fmt.Sprintf(
-				`<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="%s"/></w:pBdr><w:spacing w:before="120" w:after="160"/></w:pPr></w:p>`,
-				docxHex(pal.Divider),
-			))
+			ds := pal.Style.Divider
+			divCol := orC(ds.Color, pal.Divider)
+			if !legacy && ds.Kind == DividerText && ds.Text != "" {
+				body.WriteString(fmt.Sprintf(
+					`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="120" w:after="160"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="22"/></w:rPr>%s</w:r></w:p>`,
+					docxHex(divCol), docxTextXML(ds.Text),
+				))
+			} else if !legacy && ds.Kind == DividerRepeat && ds.Text != "" {
+				rep := strings.Repeat(ds.Text, 32)
+				body.WriteString(fmt.Sprintf(
+					`<w:p><w:pPr><w:spacing w:before="120" w:after="160"/></w:pPr><w:r><w:rPr>%s<w:color w:val="%s"/><w:sz w:val="20"/></w:rPr>%s</w:r></w:p>`,
+					docxFontXML(fontMono), docxHex(divCol), docxTextXML(rep),
+				))
+			} else {
+				sz := docxBorderSz(orF(ds.Width, 1))
+				body.WriteString(fmt.Sprintf(
+					`<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="%d" w:space="1" w:color="%s"/></w:pBdr><w:spacing w:before="120" w:after="160"/></w:pPr></w:p>`,
+					sz, docxHex(divCol),
+				))
+			}
 
 		case b.Kind == model.BlockImage:
 			if lp, ok := resolveLocalImagePath(b.ImageSrc, notePath); ok {
@@ -178,26 +234,11 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 			))
 
 		case b.Kind == model.BlockTable && b.Table != nil:
-			body.WriteString(renderDOCXTable(b.Table, avail, indentPx, pal, assets))
+			body.WriteString(renderDOCXTable(b.Table, avail, indentPx, pal, legacy, assets))
 			body.WriteString(`<w:p><w:pPr><w:spacing w:before="0" w:after="100" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`)
 
 		case b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML:
-			var inner strings.Builder
-			if b.Language != "" {
-				inner.WriteString(fmt.Sprintf(
-					`<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="%s"/><w:sz w:val="20"/></w:rPr>%s</w:r></w:p>`,
-					docxHex(pal.Secondary), docxTextXML(strings.ToUpper(b.Language)),
-				))
-			}
-			inner.WriteString(fmt.Sprintf(
-				`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="320" w:lineRule="auto"/></w:pPr><w:r><w:rPr>%s<w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="%s"/></w:rPr>%s</w:r></w:p>`,
-				docxFontXML(fontMono), docxHex(pal.Text), docxTextXML(b.Code),
-			))
-			borders := fmt.Sprintf(
-				`<w:top w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:left w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:right w:val="single" w:sz="6" w:space="0" w:color="%s"/>`,
-				docxHex(pal.CodeBorder), docxHex(pal.CodeBorder), docxHex(pal.CodeBorder), docxHex(pal.CodeBorder),
-			)
-			body.WriteString(renderDOCXBox(inner.String(), avail, indentPx, pal.CodeBG, borders))
+			body.WriteString(renderDOCXCode(b, avail, indentPx, pal, legacy))
 
 		case b.Kind == model.BlockCallout:
 			bg, border, accent, cTitle := pal.CalloutColors(b.Callout)
@@ -208,7 +249,7 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 			))
 			inner.WriteString(fmt.Sprintf(
 				`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
-				line240, renderDOCXRuns(b.Spans, pal, false, bodyHalfPt, pal.Text, assets),
+				line240, renderDOCXRuns(b.Spans, pal, legacy, false, false, bodyHalfPt, pal.Text, assets),
 			))
 			borders := fmt.Sprintf(
 				`<w:top w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:left w:val="single" w:sz="24" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:right w:val="single" w:sz="6" w:space="0" w:color="%s"/>`,
@@ -217,88 +258,30 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 			body.WriteString(renderDOCXBox(inner.String(), avail, indentPx, bg, borders))
 
 		case b.Kind == model.BlockQuote:
-			inner := fmt.Sprintf(
-				`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
-				line240, renderDOCXRuns(b.Spans, pal, false, bodyHalfPt, pal.QuoteFG, assets),
-			)
-			borders := fmt.Sprintf(`<w:left w:val="single" w:sz="24" w:space="0" w:color="%s"/>`, docxHex(pal.QuoteBar))
-			if !legacy && pal.Theme == model.ExportThemePress {
-				borders = fmt.Sprintf(
-					`<w:top w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="6" w:space="0" w:color="%s"/>`,
-					docxHex(pal.QuoteBar), docxHex(pal.QuoteBar),
-				)
-			}
-			bg := pal.QuoteBG
-			if bg.A == 0 {
-				bg = pal.InnerCanvas
-			}
-			body.WriteString(renderDOCXBox(inner, avail, indentPx, bg, borders))
+			quoteOrd++
+			body.WriteString(renderDOCXQuote(b, quoteOrd, avail, indentPx, line240, bodyHalfPt, pal, legacy, assets))
 
 		case b.Kind.IsList():
-			marker := "•"
-			if !legacy && pal.UsesSquareBullets() {
-				marker = "▪"
-			}
-			if b.Kind == model.BlockNumbered {
-				if ord <= 0 {
-					ord = 1
-				}
-				marker = fmt.Sprintf("%d.", ord)
-			} else if b.Kind == model.BlockTodo {
-				if b.Checked {
-					marker = "☑"
-				} else {
-					marker = "☐"
-				}
-			}
-			gutter := float32(24)
-			runs := renderDOCXRuns(b.Spans, pal, false, bodyHalfPt, pal.Text, assets)
-			body.WriteString(fmt.Sprintf(
-				`<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="%d"/></w:tabs><w:ind w:left="%d" w:hanging="%d"/><w:spacing w:before="0" w:after="80" w:line="%d" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/></w:rPr>%s</w:r><w:r><w:tab/></w:r>%s</w:p>`,
-				docxTwips(indentPx+gutter), docxTwips(indentPx+gutter), docxTwips(gutter), line240,
-				docxHex(pal.Accent), docxTextXML(marker), runs,
-			))
+			body.WriteString(renderDOCXListItem(b, ord, indentPx, line240, bodyHalfPt, pal, legacy, assets))
 
 		case b.Kind.IsHeading():
 			lvl := b.Kind.HeadingLevel()
-			px := pal.BodySize
-			switch lvl {
-			case 1:
-				px = pal.HeadSizes[0]
-			case 2:
-				px = pal.HeadSizes[1]
-			case 3:
-				px = pal.HeadSizes[2]
-			case 4:
-				px = pal.BodySize * 1.12
+			if lvl == 2 {
+				h2Count++
 			}
-			halfPts := docxHalfPt(px)
-			bold := lvl != 6
-			runs := renderDOCXRuns(b.Spans, pal, bold, halfPts, pal.Title, assets)
-			bdr := ""
-			if lvl == 2 && !legacy && pal.Theme == model.ExportThemePress {
-				bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="%s"/></w:pBdr>`, docxHex(pal.Divider))
-			}
-			body.WriteString(fmt.Sprintf(
-				`<w:p><w:pPr><w:pStyle w:val="Heading%d"/>%s<w:spacing w:before="200" w:after="120"/></w:pPr>%s</w:p>`,
-				lvl, bdr, runs,
-			))
+			body.WriteString(renderDOCXHeading(b, lvl, h2Count, pal, legacy, assets))
 
 		default:
-			runs := renderDOCXRuns(b.Spans, pal, false, bodyHalfPt, pal.Text, assets)
+			runs := renderDOCXRuns(b.Spans, pal, legacy, false, false, bodyHalfPt, pal.Text, assets)
 			body.WriteString(fmt.Sprintf(
-				`<w:p><w:pPr><w:ind w:left="%d"/><w:spacing w:before="0" w:after="140" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
-				docxTwips(indentPx), line240, runs,
+				`<w:p><w:pPr>%s<w:ind w:left="%d"/><w:spacing w:before="0" w:after="140" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
+				paraJC, docxTwips(indentPx), line240, runs,
 			))
 		}
 	}
 
 	if resolveWatermark(prefs) {
-		dateStr := time.Now().UTC().Format("2006.01.02")
-		body.WriteString(fmt.Sprintf(
-			`<w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="6" w:space="6" w:color="%s"/></w:pBdr><w:tabs><w:tab w:val="right" w:pos="%d"/></w:tabs><w:spacing w:before="280" w:after="0"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="21"/></w:rPr>%s<w:tab/>%s</w:r></w:p>`,
-			docxHex(pal.Divider), docxTwips(contentW), docxHex(pal.Secondary), docxTextXML(watermarkLabel), docxTextXML(dateStr),
-		))
+		body.WriteString(renderDOCXFooter(pal, legacy, vars, contentW))
 	}
 
 	body.WriteString(fmt.Sprintf(
@@ -368,14 +351,66 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 	return zipBuf.Bytes(), nil
 }
 
+func renderDOCXMeta(pal PaperThemeSpec, vars templateVars, contentW float32) string {
+	ms := pal.Style.Meta
+	left := vars.expand(ms.Left)
+	right := vars.expand(ms.Right)
+	mast := vars.expand(ms.Masthead)
+	if left == "" && right == "" && mast == "" {
+		return ""
+	}
+	if ms.Upper {
+		left = strings.ToUpper(left)
+		right = strings.ToUpper(right)
+	}
+	var out strings.Builder
+	famXML := docxFontXML(orS(ms.Family, pal.BodyFamily))
+	hp := docxHalfPt(orF(ms.Size, 12))
+	col := docxHex(orC(ms.Color, pal.Secondary))
+	rCol := docxHex(orC(ms.RightColor, orC(ms.Color, pal.Secondary)))
+	itXML := ""
+	if ms.Italic {
+		itXML = "<w:i/><w:iCs/>"
+	}
+
+	if mast != "" {
+		mHP := docxHalfPt(orF(ms.MastheadSize, 42))
+		out.WriteString(fmt.Sprintf(
+			`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="60"/></w:pPr><w:r><w:rPr>%s<w:b/><w:bCs/><w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr>%s</w:r></w:p>`,
+			docxFontXML(orS(ms.MastheadFamily, pal.TitleFamily)), docxHex(pal.Title), mHP, mHP, docxTextXML(mast),
+		))
+	}
+	bdr := ""
+	switch ms.Rule {
+	case MetaRuleSingle:
+		bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(orC(ms.RuleColor, pal.Divider)))
+	case MetaRuleDouble:
+		bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="double" w:sz="12" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(orC(ms.RuleColor, pal.Title)))
+	}
+	prefix := ""
+	if ms.Moon {
+		prefix = "☾ "
+	}
+	rightXML := ""
+	if right != "" {
+		rightXML = fmt.Sprintf(`<w:r><w:tab/></w:r><w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr>%s</w:r>`,
+			famXML, itXML, rCol, hp, hp, docxTextXML(right))
+	}
+	out.WriteString(fmt.Sprintf(
+		`<w:p><w:pPr>%s<w:tabs><w:tab w:val="right" w:pos="%d"/></w:tabs><w:spacing w:before="0" w:after="180"/></w:pPr><w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr>%s</w:r>%s</w:p>`,
+		bdr, docxTwips(contentW), famXML, itXML, col, hp, hp, docxTextXML(prefix+left), rightXML,
+	))
+	return out.String()
+}
+
 func renderDOCXTitle(pal PaperThemeSpec, legacy bool, title string, pageW, topM, rightM, leftM float32) string {
-	fam := pal.HeadingFamily
-	if isASCII(title) {
-		fam = pal.TitleFamily
+	fam := pal.TitleFamily
+	if fam == "" || (legacy && !isASCII(title)) {
+		fam = pal.HeadingFamily
 	}
 	halfPt := docxHalfPt(pal.TitleSize)
 	boldXML := ""
-	if pal.TitleBold {
+	if pal.TitleBold || pal.Style.Title.Weight >= 600 {
 		boldXML = "<w:b/><w:bCs/>"
 	}
 	fg := pal.Title
@@ -385,37 +420,365 @@ func renderDOCXTitle(pal PaperThemeSpec, legacy bool, title string, pageW, topM,
 	hl := ""
 	if !legacy && pal.Mark == TitleMarkHighlight {
 		hl = fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(pal.HighlightBG()))
+	} else if !legacy && pal.Mark == TitleMarkOffset {
+		rc := orC(pal.Style.Title.RuleColor, pal.Accent2)
+		hl = fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(mixUIColor(pal.InnerCanvas, rc, 0.45)))
 	}
-	run := fmt.Sprintf(`<w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/>%s</w:rPr>%s</w:r>`,
-		docxFontXML(fam), boldXML, docxHex(fg), halfPt, halfPt, hl, docxTextXML(title))
+
+	var run strings.Builder
+	if !legacy && pal.Style.Title.Prefix != "" {
+		run.WriteString(fmt.Sprintf(`<w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr>%s</w:r>`,
+			docxFontXML(fam), boldXML, docxHex(pal.Secondary), halfPt, halfPt, docxTextXML(pal.Style.Title.Prefix)))
+	}
+	run.WriteString(fmt.Sprintf(`<w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/>%s</w:rPr>%s</w:r>`,
+		docxFontXML(fam), boldXML, docxHex(fg), halfPt, halfPt, hl, docxTextXML(title)))
 	if !legacy && pal.Mark == TitleMarkCursor {
-		run += fmt.Sprintf(`<w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr><w:t> ▌</w:t></w:r>`, docxHex(pal.Accent), halfPt)
+		run.WriteString(fmt.Sprintf(`<w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr><w:t> ▌</w:t></w:r>`, docxHex(pal.Accent), halfPt))
 	}
 	if !legacy && pal.Mark == TitleMarkBand {
 		full := docxTwips(pageW)
 		return fmt.Sprintf(
 			`<w:tbl><w:tblPr><w:tblW w:w="%d" w:type="dxa"/><w:tblInd w:w="-%d" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="%d" w:type="dxa"/><w:left w:w="%d" w:type="dxa"/><w:bottom w:w="660" w:type="dxa"/><w:right w:w="%d" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="%d"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="%s"/></w:tcPr><w:p><w:pPr><w:keepNext/><w:spacing w:before="0" w:after="0"/></w:pPr>%s</w:p></w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:before="0" w:after="240" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`,
-			full, docxTwips(leftM), docxTwips(topM), docxTwips(leftM), docxTwips(rightM), full, full, docxHex(pal.Accent), run,
+			full, docxTwips(leftM), docxTwips(topM), docxTwips(leftM), docxTwips(rightM), full, full, docxHex(pal.Accent), run.String(),
 		)
 	}
 	jc := ""
+	if (!legacy && pal.Style.Title.Center) || pal.Mark == TitleMarkDoubleRule {
+		jc = `<w:jc w:val="center"/>`
+	}
 	bdr := fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="12" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(pal.Accent))
 	if !legacy {
+		rc := orC(pal.Style.Title.RuleColor, pal.Accent)
 		switch pal.Mark {
-		case TitleMarkDoubleRule:
-			jc = `<w:jc w:val="center"/>`
-			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="double" w:sz="8" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(pal.Divider))
-		case TitleMarkRule:
-			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="12" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(pal.Title))
-		case TitleMarkWavy:
-			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="wave" w:sz="8" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(pal.Accent))
-		case TitleMarkHighlight, TitleMarkCursor:
+		case TitleMarkNone, TitleMarkHighlight, TitleMarkCursor, TitleMarkOffset:
 			bdr = ""
+		case TitleMarkDoubleRule:
+			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="double" w:sz="8" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(orC(pal.Style.Title.RuleColor, pal.Divider)))
+		case TitleMarkRule:
+			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="%d" w:space="6" w:color="%s"/></w:pBdr>`,
+				docxBorderSz(orF(pal.Style.Title.RuleThick, 1.5)), docxHex(orC(pal.Style.Title.RuleColor, pal.Title)))
+		case TitleMarkRing, TitleMarkBar:
+			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="8" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(rc))
+		case TitleMarkWavy:
+			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="wave" w:sz="8" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(rc))
 		}
 	}
 	return fmt.Sprintf(
 		`<w:p><w:pPr><w:pStyle w:val="Heading1"/><w:keepNext/>%s%s<w:spacing w:before="0" w:after="260"/></w:pPr>%s</w:p>`,
-		jc, bdr, run,
+		jc, bdr, run.String(),
+	)
+}
+
+func renderDOCXHeading(b *model.Block, lvl, h2Idx int, pal PaperThemeSpec, legacy bool, assets *docxAssets) string {
+	px := pal.BodySize
+	switch lvl {
+	case 1:
+		px = pal.HeadSizes[0]
+	case 2:
+		px = pal.HeadSizes[1]
+	case 3:
+		px = pal.HeadSizes[2]
+	case 4:
+		px = pal.BodySize * 1.12
+	}
+	halfPts := docxHalfPt(px)
+	hs := pal.Style.Heading
+	bold := lvl != 6 && (legacy || hs.Weight == 0 || hs.Weight >= 600)
+	headCol := pal.Title
+	if !legacy && hs.Color.A > 0 {
+		headCol = hs.Color
+	}
+
+	var pre strings.Builder
+	if !legacy {
+		switch {
+		case hs.Prefix == HeadPrefixHashes:
+			pre.WriteString(fmt.Sprintf(`<w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr>%s</w:r>`,
+				docxHex(orC(hs.PrefixColor, pal.Secondary)), halfPts, halfPts, docxTextXML(strings.Repeat("#", lvl)+" ")))
+		case lvl == 2 && hs.Prefix == HeadPrefixDot:
+			dc := orC(hs.Accent, pal.Accent)
+			if h2Idx%2 == 0 && hs.Accent2.A > 0 {
+				dc = hs.Accent2
+			}
+			pre.WriteString(fmt.Sprintf(`<w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr><w:t>● </w:t></w:r>`, docxHex(dc), halfPts))
+		case lvl == 2 && (hs.Prefix == HeadPrefixTag || hs.Prefix == HeadPrefixNumber || hs.Prefix == HeadPrefixLabel):
+			pc := orC(hs.PrefixColor, orC(hs.Accent, pal.Accent))
+			pre.WriteString(fmt.Sprintf(`<w:r><w:rPr>%s<w:b/><w:color w:val="%s"/><w:sz w:val="22"/></w:rPr>%s</w:r>`,
+				docxFontXML(orS(hs.PrefixFont, fontMono)), docxHex(pc), docxTextXML(fmt.Sprintf("%02d  ", max(h2Idx, 1)))))
+		}
+	}
+
+	runs := renderDOCXRuns(b.Spans, pal, legacy, bold, false, halfPts, headCol, assets)
+	bdr := ""
+	if lvl == 2 && !legacy && hs.Underline {
+		bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="%s"/></w:pBdr>`, docxHex(orC(hs.RuleColor, pal.Divider)))
+	}
+	return fmt.Sprintf(
+		`<w:p><w:pPr><w:pStyle w:val="Heading%d"/>%s<w:spacing w:before="200" w:after="120"/></w:pPr>%s%s</w:p>`,
+		lvl, bdr, pre.String(), runs,
+	)
+}
+
+func renderDOCXCode(b *model.Block, avail, indentPx float32, pal PaperThemeSpec, legacy bool) string {
+	cs := pal.Style.Code
+	fg := pal.Text
+	lblCol := pal.Secondary
+	szHP := 22
+	if !legacy {
+		fg = orC(cs.FG, pal.Text)
+		lblCol = orC(cs.Label, pal.Secondary)
+		szHP = docxHalfPt(orF(cs.Size, 13.5))
+	}
+	lang := strings.TrimSpace(b.Language)
+	if strings.EqualFold(lang, "yaml-frontmatter") || strings.EqualFold(lang, "frontmatter") {
+		lang = "yaml"
+	}
+
+	if !legacy && cs.Kind == CodePlain {
+		return fmt.Sprintf(
+			`<w:p><w:pPr><w:ind w:left="%d"/><w:spacing w:before="60" w:after="140" w:line="320" w:lineRule="auto"/></w:pPr><w:r><w:rPr>%s<w:sz w:val="%d"/><w:szCs w:val="%d"/><w:color w:val="%s"/></w:rPr>%s</w:r></w:p>`,
+			docxTwips(indentPx), docxFontXML(fontMono), szHP, szHP, docxHex(fg), docxTextXML(b.Code),
+		)
+	}
+	if !legacy && cs.Kind == CodeFenced {
+		inner := fmt.Sprintf(
+			`<w:p><w:pPr><w:spacing w:before="0" w:after="20"/></w:pPr><w:r><w:rPr>%s<w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr>%s</w:r></w:p>`+
+				`<w:p><w:pPr><w:spacing w:before="0" w:after="20" w:line="320" w:lineRule="auto"/></w:pPr><w:r><w:rPr>%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr>%s</w:r></w:p>`+
+				`<w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr><w:r><w:rPr>%s<w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr>%s</w:r></w:p>`,
+			docxFontXML(fontMono), docxHex(lblCol), szHP, docxTextXML("```"+lang),
+			docxFontXML(fontMono), docxHex(fg), szHP, szHP, docxTextXML(b.Code),
+			docxFontXML(fontMono), docxHex(lblCol), szHP, docxTextXML("```"),
+		)
+		borders := fmt.Sprintf(`<w:left w:val="single" w:sz="12" w:space="0" w:color="%s"/>`, docxHex(pal.CodeBorder))
+		return renderDOCXBox(inner, avail, indentPx, pal.InnerCanvas, borders)
+	}
+
+	var inner strings.Builder
+	if lang != "" && (legacy || !cs.NoLabel) {
+		inner.WriteString(fmt.Sprintf(
+			`<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="%s"/><w:sz w:val="20"/></w:rPr>%s</w:r></w:p>`,
+			docxHex(lblCol), docxTextXML(strings.ToUpper(lang)),
+		))
+	}
+	inner.WriteString(fmt.Sprintf(
+		`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="320" w:lineRule="auto"/></w:pPr><w:r><w:rPr>%s<w:sz w:val="%d"/><w:szCs w:val="%d"/><w:color w:val="%s"/></w:rPr>%s</w:r></w:p>`,
+		docxFontXML(fontMono), szHP, szHP, docxHex(fg), docxTextXML(b.Code),
+	))
+	borders := ""
+	if legacy || cs.BorderW >= 0 {
+		val := "single"
+		if !legacy && cs.Dashed {
+			val = "dashed"
+		}
+		sz := 6
+		if !legacy {
+			sz = docxBorderSz(orF(cs.BorderW, 1))
+		}
+		bc := docxHexOn(pal.CodeBorder, pal.InnerCanvas)
+		borders = fmt.Sprintf(
+			`<w:top w:val="%s" w:sz="%d" w:space="0" w:color="%s"/><w:left w:val="%s" w:sz="%d" w:space="0" w:color="%s"/><w:bottom w:val="%s" w:sz="%d" w:space="0" w:color="%s"/><w:right w:val="%s" w:sz="%d" w:space="0" w:color="%s"/>`,
+			val, sz, bc, val, sz, bc, val, sz, bc, val, sz, bc,
+		)
+	}
+	bg := pal.CodeBG
+	if bg.A == 0 {
+		bg = pal.InnerCanvas
+	} else if bg.A < 255 {
+		bg = mixUIColor(pal.InnerCanvas, bg, float32(bg.A)/255.0)
+	}
+	return renderDOCXBox(inner.String(), avail, indentPx, bg, borders)
+}
+
+func renderDOCXQuote(b *model.Block, ord int, avail, indentPx float32, line240, bodyHalfPt int, pal PaperThemeSpec, legacy bool, assets *docxAssets) string {
+	qs := pal.Style.Quote
+	hp := bodyHalfPt
+	bold := false
+	if !legacy {
+		hp = docxHalfPt(orF(qs.Size, pal.BodySize))
+		bold = qs.Weight >= 600
+	}
+	accent := orC(qs.Accent, pal.QuoteBar)
+
+	if !legacy && qs.Kind == QuoteIndent {
+		runs := renderDOCXRuns(b.Spans, pal, legacy, bold, false, hp, pal.QuoteFG, assets)
+		return fmt.Sprintf(
+			`<w:p><w:pPr><w:ind w:left="%d"/><w:spacing w:before="80" w:after="160" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
+			docxTwips(indentPx+qs.Indent), line240, runs,
+		)
+	}
+	if !legacy && qs.Kind == QuotePrefix {
+		pre := fmt.Sprintf(`<w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr><w:t xml:space="preserve">&gt; </w:t></w:r>`, docxHex(accent), hp)
+		runs := renderDOCXRuns(b.Spans, pal, legacy, bold, false, hp, pal.QuoteFG, assets)
+		return fmt.Sprintf(
+			`<w:p><w:pPr><w:ind w:left="%d"/><w:spacing w:before="60" w:after="140" w:line="%d" w:lineRule="auto"/></w:pPr>%s%s</w:p>`,
+			docxTwips(indentPx), line240, pre, runs,
+		)
+	}
+	if !legacy && qs.Kind == QuotePull {
+		openQ := fmt.Sprintf(`<w:r><w:rPr><w:b/><w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr><w:t>「</w:t></w:r>`, docxHex(accent), hp)
+		closeQ := fmt.Sprintf(`<w:r><w:rPr><w:b/><w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr><w:t>」</w:t></w:r>`, docxHex(accent), hp)
+		inner := fmt.Sprintf(
+			`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr>%s%s%s</w:p>`,
+			line240, openQ, renderDOCXRuns(b.Spans, pal, legacy, bold, false, hp, pal.QuoteFG, assets), closeQ,
+		)
+		bc := docxHex(pal.QuoteBar)
+		borders := fmt.Sprintf(`<w:top w:val="single" w:sz="18" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="6" w:space="0" w:color="%s"/>`, bc, bc)
+		return renderDOCXBox(inner, avail, indentPx, pal.InnerCanvas, borders)
+	}
+
+	var inner strings.Builder
+	if !legacy && qs.Kind == QuoteFramed && qs.Label != "" {
+		lbl := strings.ReplaceAll(qs.Label, "{n}", fmt.Sprintf("%02d", ord))
+		inner.WriteString(fmt.Sprintf(
+			`<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr><w:r><w:rPr>%s<w:color w:val="%s"/><w:sz w:val="18"/></w:rPr>%s</w:r></w:p>`,
+			docxFontXML(fontMono), docxHex(accent), docxTextXML(lbl),
+		))
+	}
+	inner.WriteString(fmt.Sprintf(
+		`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
+		line240, renderDOCXRuns(b.Spans, pal, legacy, bold, false, hp, pal.QuoteFG, assets),
+	))
+
+	acHex := docxHex(accent)
+	borders := fmt.Sprintf(`<w:left w:val="single" w:sz="24" w:space="0" w:color="%s"/>`, docxHex(pal.QuoteBar))
+	if !legacy {
+		switch qs.Kind {
+		case QuoteFramed, QuoteOffset:
+			borders = fmt.Sprintf(
+				`<w:top w:val="single" w:sz="8" w:space="0" w:color="%s"/><w:left w:val="single" w:sz="8" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="8" w:space="0" w:color="%s"/><w:right w:val="single" w:sz="8" w:space="0" w:color="%s"/>`,
+				acHex, acHex, acHex, acHex,
+			)
+		case QuoteSticky, QuoteBigMark:
+			if pal.QuoteBG.A > 0 {
+				borders = ""
+			} else {
+				borders = fmt.Sprintf(`<w:left w:val="single" w:sz="12" w:space="0" w:color="%s"/>`, acHex)
+			}
+		default:
+			borders = fmt.Sprintf(`<w:left w:val="single" w:sz="%d" w:space="0" w:color="%s"/>`, docxBorderSz(orF(qs.BarW, 3)), acHex)
+		}
+	}
+	bg := pal.QuoteBG
+	if bg.A == 0 {
+		bg = pal.InnerCanvas
+	}
+	return renderDOCXBox(inner.String(), avail, indentPx, bg, borders)
+}
+
+func renderDOCXListItem(b *model.Block, ord int, indentPx float32, line240, bodyHalfPt int, pal PaperThemeSpec, legacy bool, assets *docxAssets) string {
+	ls := pal.Style.List
+	marker := "•"
+	mCol := pal.Accent
+	if !legacy {
+		mCol = orC(ls.BulletColor, pal.Accent)
+		switch ls.Bullet {
+		case BulletSquare:
+			marker = "▪"
+		case BulletRing:
+			marker = "◦"
+		case BulletDash:
+			marker = "–"
+		case BulletArrow:
+			marker = "→"
+		case BulletMiddot:
+			marker = "·"
+		}
+	}
+	if b.Kind == model.BlockNumbered {
+		if legacy {
+			if ord <= 0 {
+				ord = 1
+			}
+			marker = fmt.Sprintf("%d.", ord)
+		} else {
+			marker = formatListOrdinal(ord, ls.Number)
+			mCol = orC(ls.NumberColor, pal.Title)
+		}
+	} else if b.Kind == model.BlockTodo {
+		if !legacy && ls.Todo == TodoText {
+			if b.Checked {
+				marker = "[x]"
+				mCol = orC(ls.TodoCheck, pal.Accent)
+			} else {
+				marker = "[ ]"
+				mCol = orC(ls.TodoBorder, pal.Accent)
+			}
+		} else if !legacy && ls.Todo == TodoRing {
+			if b.Checked {
+				marker = "◉"
+				mCol = orC(ls.TodoCheck, pal.Accent)
+			} else {
+				marker = "○"
+				mCol = orC(ls.TodoBorder, pal.Accent)
+			}
+		} else if b.Checked {
+			marker = "☑"
+			if !legacy {
+				mCol = orC(ls.TodoCheck, pal.Accent)
+			}
+		} else {
+			marker = "☐"
+			if !legacy {
+				mCol = orC(ls.TodoBorder, pal.Accent)
+			}
+		}
+	}
+
+	itemFG := pal.Text
+	strike := false
+	if !legacy && b.Kind == model.BlockTodo && b.Checked {
+		if ls.DoneFG.A > 0 {
+			itemFG = ls.DoneFG
+		}
+		strike = ls.DoneStrike
+	}
+
+	gutter := float32(28)
+	runs := renderDOCXRuns(b.Spans, pal, legacy, false, strike, bodyHalfPt, itemFG, assets)
+	return fmt.Sprintf(
+		`<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="%d"/></w:tabs><w:ind w:left="%d" w:hanging="%d"/><w:spacing w:before="0" w:after="80" w:line="%d" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr>%s</w:r><w:r><w:tab/></w:r>%s</w:p>`,
+		docxTwips(indentPx+gutter), docxTwips(indentPx+gutter), docxTwips(gutter), line240,
+		docxHex(mCol), bodyHalfPt, docxTextXML(marker), runs,
+	)
+}
+
+func renderDOCXFooter(pal PaperThemeSpec, legacy bool, vars templateVars, contentW float32) string {
+	if legacy {
+		return fmt.Sprintf(
+			`<w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="6" w:space="6" w:color="%s"/></w:pBdr><w:tabs><w:tab w:val="right" w:pos="%d"/></w:tabs><w:spacing w:before="280" w:after="0"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="21"/></w:rPr>%s<w:tab/>%s</w:r></w:p>`,
+			docxHex(pal.Divider), docxTwips(contentW), docxHex(pal.Secondary), docxTextXML(watermarkLabel), docxTextXML(vars.expand("{date}")),
+		)
+	}
+	fs := pal.Style.Footer
+	left := vars.expand(fs.Left)
+	center := vars.expand(fs.Center)
+	right := vars.expand(fs.Right)
+	if left == "" && center == "" && right == "" {
+		left = watermarkLabel
+		right = vars.expand("{date}")
+	}
+	bdr := ""
+	rc := docxHex(orC(fs.RuleColor, pal.Divider))
+	switch fs.Rule {
+	case FooterLine:
+		bdr = fmt.Sprintf(`<w:pBdr><w:top w:val="single" w:sz="6" w:space="6" w:color="%s"/></w:pBdr>`, rc)
+	case FooterDashed, FooterFlank:
+		bdr = fmt.Sprintf(`<w:pBdr><w:top w:val="dashed" w:sz="6" w:space="6" w:color="%s"/></w:pBdr>`, rc)
+	}
+	col := docxHex(orC(fs.Color, pal.Secondary))
+	rCol := docxHex(orC(fs.RightColor, orC(fs.Color, pal.Secondary)))
+	hp := docxHalfPt(orF(fs.Size, 12))
+	famXML := docxFontXML(orS(fs.Family, pal.BodyFamily))
+
+	if center != "" && left == "" && right == "" {
+		return fmt.Sprintf(
+			`<w:p><w:pPr>%s<w:jc w:val="center"/><w:spacing w:before="280" w:after="0"/></w:pPr><w:r><w:rPr>%s<w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr>%s</w:r></w:p>`,
+			bdr, famXML, col, hp, docxTextXML(center),
+		)
+	}
+	return fmt.Sprintf(
+		`<w:p><w:pPr>%s<w:tabs><w:tab w:val="right" w:pos="%d"/></w:tabs><w:spacing w:before="280" w:after="0"/></w:pPr><w:r><w:rPr>%s<w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr>%s</w:r><w:r><w:tab/></w:r><w:r><w:rPr>%s<w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr>%s</w:r></w:p>`,
+		bdr, docxTwips(contentW), famXML, col, hp, docxTextXML(left), famXML, rCol, hp, docxTextXML(right),
 	)
 }
 
@@ -497,30 +860,52 @@ func escapeXMLText(s string) string {
 	return b.String()
 }
 
-func renderDOCXRuns(spans []model.Span, pal PaperThemeSpec, baseBold bool, halfPt int, baseFG ui.Color, assets *docxAssets) string {
+func renderDOCXRuns(spans []model.Span, pal PaperThemeSpec, legacy, baseBold, baseStrike bool, halfPt int, baseFG ui.Color, assets *docxAssets) string {
 	if len(spans) == 0 {
 		return ""
 	}
 	linkFG := pal.LinkFG()
+	inl := pal.Style.Inline
 	var out strings.Builder
 	for _, sp := range spans {
 		var rpr strings.Builder
-		if sp.Marks&model.MarkCode != 0 {
+		if sp.Marks&model.MarkCode != 0 || (!legacy && sp.Link != "" && inl.LinkMono) {
 			rpr.WriteString(docxFontXML(fontMono))
 		}
-		if baseBold || sp.Marks&model.MarkBold != 0 {
+		isHi := !legacy && isDefaultHighlightSpan(sp) && inl.Highlight != nil
+		if baseBold || sp.Marks&model.MarkBold != 0 || (isHi && inl.Highlight.Weight >= 600) {
 			rpr.WriteString("<w:b/><w:bCs/>")
 		}
 		if sp.Marks&model.MarkItalic != 0 {
 			rpr.WriteString("<w:i/><w:iCs/>")
 		}
-		if sp.Marks&model.MarkStrike != 0 {
+		if baseStrike || sp.Marks&model.MarkStrike != 0 {
 			rpr.WriteString("<w:strike/>")
 		}
-		if sp.Marks&model.MarkUnderline != 0 || sp.Link != "" {
+		if sp.Link != "" {
+			uVal := "single"
+			if !legacy {
+				if inl.LinkWavy {
+					uVal = "wave"
+				} else if inl.LinkDotted {
+					uVal = "dotted"
+				}
+			}
+			rpr.WriteString(fmt.Sprintf(`<w:u w:val="%s"/>`, uVal))
+		} else if sp.Marks&model.MarkUnderline != 0 || (isHi && inl.Highlight.Rule.A > 0) {
 			rpr.WriteString(`<w:u w:val="single"/>`)
 		}
+
 		fg := baseFG
+		if !legacy && sp.Marks&model.MarkBold != 0 && inl.BoldColor.A > 0 {
+			fg = inl.BoldColor
+		}
+		if !legacy && sp.Marks&model.MarkCode != 0 && inl.CodeFG.A > 0 {
+			fg = inl.CodeFG
+		}
+		if isHi && inl.Highlight.FG.A > 0 {
+			fg = inl.Highlight.FG
+		}
 		if sp.Link != "" {
 			fg = linkFG
 		}
@@ -529,10 +914,18 @@ func renderDOCXRuns(spans []model.Span, pal PaperThemeSpec, baseBold bool, halfP
 		}
 		rpr.WriteString(fmt.Sprintf(`<w:color w:val="%s"/>`, docxHex(fg)))
 		rpr.WriteString(fmt.Sprintf(`<w:sz w:val="%d"/><w:szCs w:val="%d"/>`, halfPt, halfPt))
-		if c, ok := resolveSpanColor(sp.BGColor, true, pal); ok {
+
+		if isHi {
+			if inl.Highlight.BG.A > 0 {
+				rpr.WriteString(fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(mixUIColor(pal.InnerCanvas, inl.Highlight.BG, float32(inl.Highlight.BG.A)/255.0))))
+			}
+		} else if c, ok := resolveSpanColor(sp.BGColor, true, pal); ok {
 			rpr.WriteString(fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(c)))
 		} else if sp.Marks&model.MarkCode != 0 {
-			rpr.WriteString(fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(pal.CodeBG)))
+			cbg := orC(inl.CodeBG, pal.CodeBG)
+			if cbg.A > 0 {
+				rpr.WriteString(fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(cbg)))
+			}
 		}
 		run := fmt.Sprintf(`<w:r><w:rPr>%s</w:rPr>%s</w:r>`, rpr.String(), docxTextXML(sp.Text))
 		if sp.Link != "" {
@@ -548,16 +941,22 @@ func renderDOCXRuns(spans []model.Span, pal PaperThemeSpec, baseBold bool, halfP
 func renderDOCXBox(content string, widthPx, indentPx float32, bg ui.Color, borders string) string {
 	wTwips := docxTwips(widthPx)
 	iTwips := docxTwips(indentPx)
+	bdrTag := ""
+	if borders != "" {
+		bdrTag = "<w:tblBorders>" + borders + "</w:tblBorders>"
+	}
 	return fmt.Sprintf(
-		`<w:tbl><w:tblPr><w:tblW w:w="%d" w:type="dxa"/><w:tblInd w:w="%d" w:type="dxa"/><w:tblBorders>%s</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="150" w:type="dxa"/><w:bottom w:w="150" w:type="dxa"/><w:left w:w="210" w:type="dxa"/><w:right w:w="210" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="%d"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="%s"/></w:tcPr>%s</w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:before="0" w:after="120" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`,
-		wTwips, iTwips, borders, wTwips, wTwips, docxHex(bg), content,
+		`<w:tbl><w:tblPr><w:tblW w:w="%d" w:type="dxa"/><w:tblInd w:w="%d" w:type="dxa"/>%s<w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="150" w:type="dxa"/><w:bottom w:w="150" w:type="dxa"/><w:left w:w="210" w:type="dxa"/><w:right w:w="210" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="%d"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="%s"/></w:tcPr>%s</w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:before="0" w:after="120" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`,
+		wTwips, iTwips, bdrTag, wTwips, wTwips, docxHex(bg), content,
 	)
 }
 
-func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal PaperThemeSpec, assets *docxAssets) string {
+func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal PaperThemeSpec, legacy bool, assets *docxAssets) string {
 	cols := 0
-	if len(t.Rows) > 0 {
-		cols = len(t.Rows[0])
+	for _, r := range t.Rows {
+		if len(r) > cols {
+			cols = len(r)
+		}
 	}
 	if cols == 0 {
 		return ""
@@ -586,39 +985,108 @@ func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal PaperThe
 	for _, cw := range colWidths {
 		grid.WriteString(fmt.Sprintf(`<w:gridCol w:w="%d"/>`, cw))
 	}
-	bc := docxHex(pal.TableBorder)
-	borders := fmt.Sprintf(
-		`<w:top w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:left w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:right w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="%s"/>`,
-		bc, bc, bc, bc, bc, bc,
-	)
+
+	ts := pal.Style.Table
+	if legacy {
+		ts = TableStyle{}
+	}
+	rcHex := docxHexOn(orC(ts.RuleColor, pal.TableBorder), pal.InnerCanvas)
+	scHex := docxHexOn(orC(ts.StrongColor, orC(ts.RuleColor, pal.TableBorder)), pal.InnerCanvas)
+
+	var borders string
+	if !ts.Rules {
+		borders = fmt.Sprintf(
+			`<w:top w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:left w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:right w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="%s"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="%s"/>`,
+			rcHex, rcHex, rcHex, rcHex, rcHex, rcHex,
+		)
+	} else {
+		var b strings.Builder
+		if ts.Outer > 0 {
+			sz := docxBorderSz(ts.Outer)
+			b.WriteString(fmt.Sprintf(
+				`<w:top w:val="single" w:sz="%d" w:space="0" w:color="%s"/><w:left w:val="single" w:sz="%d" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="%d" w:space="0" w:color="%s"/><w:right w:val="single" w:sz="%d" w:space="0" w:color="%s"/>`,
+				sz, scHex, sz, scHex, sz, scHex, sz, scHex,
+			))
+		} else {
+			if ts.Top > 0 {
+				b.WriteString(fmt.Sprintf(`<w:top w:val="single" w:sz="%d" w:space="0" w:color="%s"/>`, docxBorderSz(ts.Top), scHex))
+			}
+			if ts.Bottom > 0 {
+				b.WriteString(fmt.Sprintf(`<w:bottom w:val="single" w:sz="%d" w:space="0" w:color="%s"/>`, docxBorderSz(ts.Bottom), scHex))
+			}
+		}
+		if ts.RowSep > 0 {
+			b.WriteString(fmt.Sprintf(`<w:insideH w:val="%s" w:sz="%d" w:space="0" w:color="%s"/>`,
+				docxBorderVal(ts.RowSepLine), docxBorderSz(ts.RowSep), rcHex))
+		}
+		if ts.ColSep > 0 {
+			b.WriteString(fmt.Sprintf(`<w:insideV w:val="%s" w:sz="%d" w:space="0" w:color="%s"/>`,
+				docxBorderVal(ts.ColSepLine), docxBorderSz(ts.ColSep), rcHex))
+		}
+		borders = b.String()
+	}
+
 	var out strings.Builder
+	bdrTag := ""
+	if borders != "" {
+		bdrTag = "<w:tblBorders>" + borders + "</w:tblBorders>"
+	}
 	out.WriteString(fmt.Sprintf(
-		`<w:tbl><w:tblPr><w:tblW w:w="%d" w:type="dxa"/><w:tblInd w:w="%d" w:type="dxa"/><w:tblBorders>%s</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="90" w:type="dxa"/><w:bottom w:w="90" w:type="dxa"/><w:left w:w="120" w:type="dxa"/><w:right w:w="120" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>%s</w:tblGrid>`,
-		totalTwips, docxTwips(indentPx), borders, grid.String(),
+		`<w:tbl><w:tblPr><w:tblW w:w="%d" w:type="dxa"/><w:tblInd w:w="%d" w:type="dxa"/>%s<w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="90" w:type="dxa"/><w:bottom w:w="90" w:type="dxa"/><w:left w:w="120" w:type="dxa"/><w:right w:w="120" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>%s</w:tblGrid>`,
+		totalTwips, docxTwips(indentPx), bdrTag, grid.String(),
 	))
-	headerBG := pal.TableHeaderBG()
+
+	var defaultHeaderBG ui.Color
+	if ts.Rules {
+		defaultHeaderBG = ts.HeaderBG
+	} else {
+		defaultHeaderBG = orC(ts.HeaderBG, pal.TableHeaderBG())
+	}
+
 	for r, row := range t.Rows {
-		isHeader := r == 0
+		isHeader := r == 0 && !t.NoHeaderRow
 		out.WriteString("<w:tr>")
 		for c := 0; c < cols; c++ {
 			var cellSpans []model.Span
 			if c < len(row) {
 				cellSpans = row[c].Spans
 			}
+			plain := model.PlainTextOfSpans(cellSpans)
+			isNum := !legacy && !isHeader && ts.NumFamily != "" && isNumericCellText(plain)
+
 			shd := ""
+			cellBdr := ""
 			baseFG := pal.Text
-			if isHeader {
-				shd = fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(headerBG))
-				baseFG = pal.Title
+			if !isHeader {
+				if c == 0 && ts.FirstColor.A > 0 {
+					baseFG = ts.FirstColor
+				} else if c > 0 && ts.Secondary.A > 0 {
+					baseFG = ts.Secondary
+				}
+				if isNum && ts.NumColor.A > 0 {
+					baseFG = ts.NumColor
+				}
+			} else {
+				if defaultHeaderBG.A > 0 {
+					shd = fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(defaultHeaderBG))
+				}
+				baseFG = orC(ts.HeaderFG, pal.Title)
+				if ts.Rules && ts.HeadSep > 0 {
+					cellBdr = fmt.Sprintf(`<w:tcBorders><w:bottom w:val="%s" w:sz="%d" w:space="0" w:color="%s"/></w:tcBorders>`,
+						docxBorderVal(ts.HeadSepLine), docxBorderSz(ts.HeadSep), scHex)
+				}
 			}
+
 			jc := "left"
 			if c < len(t.Aligns) && t.Aligns[c] != model.ColAlignNone {
 				jc = string(t.Aligns[c])
+			} else if isNum {
+				jc = "right"
 			}
-			runs := renderDOCXRuns(cellSpans, pal, isHeader, 22, baseFG, assets)
+			runs := renderDOCXRuns(cellSpans, pal, legacy, isHeader && orI(ts.HeaderWt, 700) >= 600, false, 22, baseFG, assets)
 			out.WriteString(fmt.Sprintf(
-				`<w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/>%s<w:vAlign w:val="top"/></w:tcPr><w:p><w:pPr><w:jc w:val="%s"/><w:spacing w:before="0" w:after="0" w:line="320" w:lineRule="auto"/></w:pPr>%s</w:p></w:tc>`,
-				colWidths[c], shd, jc, runs,
+				`<w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/>%s%s<w:vAlign w:val="top"/></w:tcPr><w:p><w:pPr><w:jc w:val="%s"/><w:spacing w:before="0" w:after="0" w:line="320" w:lineRule="auto"/></w:pPr>%s</w:p></w:tc>`,
+				colWidths[c], cellBdr, shd, jc, runs,
 			))
 		}
 		out.WriteString("</w:tr>")

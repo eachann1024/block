@@ -179,8 +179,11 @@ func (s PaperThemeSpec) BlockRadius() float32 { return s.Radius }
 
 func (s PaperThemeSpec) UsesSquareBullets() bool { return s.Style.List.Bullet == BulletSquare }
 
-// LinkFG returns Accent when WCAG AA contrast against InnerCanvas is >= 4.5, otherwise Title.
+// LinkFG returns Inline.LinkColor when set, else Accent when WCAG AA contrast against InnerCanvas is >= 4.5, otherwise Title.
 func (s PaperThemeSpec) LinkFG() ui.Color {
+	if s.Style.Inline.LinkColor.A > 0 {
+		return s.Style.Inline.LinkColor
+	}
 	lum := func(c ui.Color) float64 {
 		lin := func(v uint8) float64 {
 			x := float64(v) / 255.0
