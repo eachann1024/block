@@ -22,7 +22,9 @@ type SupervisorConfig struct {
 	AppDataDir      string
 	HostVersion     string
 	GetNotebookRoot func() string
+	GetActiveNote   func() string
 	GetLocale       func() string
+	PickDirectory   func(title string, onPicked func(path string))
 	OnChanged       func()
 }
 
@@ -75,6 +77,45 @@ func (s *Supervisor) NotebookRoot() string {
 		return strings.TrimSpace(s.cfg.GetNotebookRoot())
 	}
 	return ""
+}
+
+func (s *Supervisor) ActiveNoteRel() string {
+	if s.cfg.GetActiveNote == nil {
+		return ""
+	}
+	activeAbs := strings.TrimSpace(s.cfg.GetActiveNote())
+	nbRoot := s.NotebookRoot()
+	if activeAbs == "" || nbRoot == "" {
+		return ""
+	}
+	rootClean, err1 := filepath.Abs(nbRoot)
+	noteClean, err2 := filepath.Abs(activeAbs)
+	if err1 != nil || err2 != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(rootClean, noteClean)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
+func (s *Supervisor) CanPickDirectory() bool {
+	return s.cfg.PickDirectory != nil
+}
+
+func (s *Supervisor) PickDirectory(title string, onPicked func(path string)) {
+	if s.cfg.PickDirectory == nil || onPicked == nil {
+		return
+	}
+	s.cfg.PickDirectory(title, func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return
+		}
+		onPicked(p)
+		s.notifyChanged()
+	})
 }
 
 func (s *Supervisor) notifyChanged() {
@@ -306,6 +347,7 @@ func (s *Supervisor) loadAndRenderPlugin(pluginID string) {
 	}
 
 	rt.SetNotebookRoot(s.NotebookRoot())
+	rt.SetActiveNote(s.ActiveNoteRel())
 	page, err := rt.Render(ctx, SurfaceSettingsPage)
 	s.mu.Lock()
 	if vs := s.views[pluginID]; vs != nil {
@@ -337,6 +379,7 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID string) (*Runti
 	s.mu.RUnlock()
 	if existing != nil && !existing.closed.Load() {
 		existing.SetNotebookRoot(s.NotebookRoot())
+		existing.SetActiveNote(s.ActiveNoteRel())
 		return existing, nil
 	}
 
@@ -352,6 +395,7 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID string) (*Runti
 		PluginDir:    inst.InstallDir,
 		DataDir:      inst.DataDir,
 		NotebookRoot: s.NotebookRoot(),
+		ActiveNote:   s.ActiveNoteRel(),
 		Locale:       s.Locale(),
 		HostVersion:  hostVer,
 	})
@@ -407,6 +451,7 @@ func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
 		var res *ActionResult
 		if err == nil {
 			rt.SetNotebookRoot(s.NotebookRoot())
+			rt.SetActiveNote(s.ActiveNoteRel())
 			res, err = rt.Action(ctx, SurfaceSettingsPage, actionID, valsCopy)
 		}
 

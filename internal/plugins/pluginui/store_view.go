@@ -147,6 +147,14 @@ func renderManualInstallCard(c *ui.Context, ctrl *Controller, installingID strin
 			submitted := in.Submitted()
 
 			manualBusy := installingID == "__manual__"
+			if ctrl.sup != nil && ctrl.sup.CanPickDirectory() {
+				pickBtn := bui.ActionButton(c, "app-store-manual-browse", theme.Tr("本地目录…", "Browse…"), nil, bui.ButtonSecondary, installingID != "")
+				if pickBtn.Clicked() {
+					ctrl.sup.PickDirectory(theme.Tr("选择本地插件目录", "Choose Local Plugin Directory"), func(chosen string) {
+						ctrl.setManualSpec(chosen)
+					})
+				}
+			}
 			disabled := installingID != "" || strings.TrimSpace(spec) == ""
 			btnLbl := theme.Tr("安装", "Install")
 			if manualBusy {

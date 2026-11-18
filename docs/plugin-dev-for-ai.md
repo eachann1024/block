@@ -158,11 +158,13 @@ block-sync/
    - 全量：`params: {}` -> `{"data": {...}}`
 2. **`host.storage.set`**（需 `"storage"`）
    - `params: {"key": "config", "value": {...}}` -> `{"ok": true}`
-3. **`host.notes.list`**（需 `"notes:read"`）
+3. **`host.notes.active`**（需 `"notes:read"`）
+   - `params: {}` -> `{"path": "welcome.md"}`（返回用户当前正在编辑的笔记相对路径；未打开笔记时返回 `""`）。
+4. **`host.notes.list`**（需 `"notes:read"`）
    - `params: {}` -> `{"notes": [{"path": "welcome.md", "size": 42, "mod_time": "2026-11-18T10:00:00Z"}]}`
-4. **`host.notes.read`**（需 `"notes:read"`）
+5. **`host.notes.read`**（需 `"notes:read"`）
    - `params: {"path": "welcome.md"}` -> `{"path": "welcome.md", "content": "# 欢迎..."}`
-5. **`host.notes.write`**（需 `"notes:write"`）
+6. **`host.notes.write`**（需 `"notes:write"`）
    - `params: {"path": "notes/synced.md", "content": "# 内容"}` -> `{"ok": true}`（仅限相对路径，任何 `..` 或绝对路径越界均被宿主拦截）。
 
 ---
@@ -193,7 +195,16 @@ block-sync/
 - `header_actions`：可选顶栏动作按钮数组；每项含 `id`（必填唯一）、`label`（必填）、`variant`（仅限 `"primary"` | `"secondary"` | `"danger"`）。
 - `cards`：必填非空数组；每项含 `id`（必填唯一）、`title`（必填）、`items`（必填非空数组）。
 
-### 8 种 `UIItem` 控件（按 `kind` 区分）
+### 10 种 `UIItem` 控件（按 `kind` 区分）
+
+任意 `UIItem` 均支持可选字段 **`visible_when`**，用于按其他表单控件当前值**零延迟动态显隐对应配置项**（例如切换不同同步协议或图床通道时，只显示该通道专属的输入框）：
+```json
+"visible_when": { "control_id": "protocol", "equals": "webdav" }
+```
+或匹配多个枚举值：
+```json
+"visible_when": { "control_id": "provider", "in": ["r2", "s3"] }
+```
 
 1. **`segmented`（分段切换）**：`id`、`label` 必填，`options` 至少 2 项，`value`（`string`）必须命中某个 `options[].value`：
    ```json
@@ -214,14 +225,15 @@ block-sync/
    ```json
    {
      "kind": "input",
-     "id": "target_path",
-     "label": "目标路径或地址",
+     "id": "endpoint_url",
+     "label": "服务器地址",
      "value": "",
-     "placeholder": "留空默认使用插件数据目录下的 mirror 文件夹，或填 WebDAV / Git 地址"
+     "placeholder": "https://dav.example.com/dav"
    }
    ```
-4. **`secret`（密码/凭证输入框）**：字段同 `input`，`value` 必须为 `string`（宿主自动掩码显示）。
-5. **`switch`（布尔开关）**：`id`、`label` 必填，`value` 必须为 `bool`：
+4. **`folder`（本地目录选择框）**：字段同 `input`（`id`、`label`、`value` string、`placeholder` 可选），宿主自动使用等宽字体并在右侧渲染系统原生「选择…」文件夹选择按钮。
+5. **`secret`（密码/凭证输入框）**：字段同 `input`，`value` 必须为 `string`（宿主自动掩码并支持显示/隐藏切换）。
+6. **`switch`（布尔开关）**：`id`、`label` 必填，`value` 必须为 `bool`：
    ```json
    {
      "kind": "switch",
@@ -230,7 +242,7 @@ block-sync/
      "value": true
    }
    ```
-6. **`actions`（卡片内操作按钮行）**：不含 `id`/`label`，仅含非空 `buttons` 数组：
+7. **`actions`（卡片内操作按钮行）**：不含 `id`/`label`，仅含非空 `buttons` 数组：
    ```json
    {
      "kind": "actions",
@@ -240,7 +252,17 @@ block-sync/
      ]
    }
    ```
-7. **`kv`（只读状态键值行）**：不含 `id`/`label`，仅含非空 `rows` 数组（每项 `label` 与 `value` 均必填非空）：
+8. **`metrics`（多列数据指标宫格）**：不含 `id`/`label`，仅含非空 `metrics` 数组（每项 `label` 与 `value` 均必填非空，宿主自动渲染为 2–4 列等宽指标卡片）：
+   ```json
+   {
+     "kind": "metrics",
+     "metrics": [
+       { "label": "笔记篇数", "value": "128" },
+       { "label": "附件体积", "value": "14.2 MB" }
+     ]
+   }
+   ```
+9. **`kv`（只读状态键值行）**：不含 `id`/`label`，仅含非空 `rows` 数组（每项 `label` 与 `value` 均必填非空）：
    ```json
    {
      "kind": "kv",
@@ -249,16 +271,16 @@ block-sync/
      ]
    }
    ```
-8. **`log_list`（运行记录列表）**：不含 `id`/`label`，`empty_text` 必填非空，`entries` 可为空数组（每项 `title` 与 `time` 必填非空，`status` 可选）：
-   ```json
-   {
-     "kind": "log_list",
-     "empty_text": "暂无同步记录",
-     "entries": [
-       { "title": "welcome.md", "time": "12:30:00", "status": "已同步" }
-     ]
-   }
-   ```
+10. **`log_list`（运行记录列表）**：不含 `id`/`label`，`empty_text` 必填非空，`entries` 可为空数组（每项 `title` 与 `time` 必填非空，`status` 可选）：
+    ```json
+    {
+      "kind": "log_list",
+      "empty_text": "暂无同步记录",
+      "entries": [
+        { "title": "welcome.md", "time": "12:30:00", "status": "已同步" }
+      ]
+    }
+    ```
 
 ---
 

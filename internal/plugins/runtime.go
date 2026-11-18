@@ -35,6 +35,7 @@ type HostConfig struct {
 	PluginDir    string
 	DataDir      string
 	NotebookRoot string
+	ActiveNote   string
 	Locale       string
 	HostVersion  string
 }
@@ -72,10 +73,22 @@ func (rt *Runtime) SetNotebookRoot(root string) {
 	rt.cfgMu.Unlock()
 }
 
+func (rt *Runtime) SetActiveNote(relPath string) {
+	rt.cfgMu.Lock()
+	rt.cfg.ActiveNote = filepath.ToSlash(strings.TrimSpace(relPath))
+	rt.cfgMu.Unlock()
+}
+
 func (rt *Runtime) notebookRoot() string {
 	rt.cfgMu.RLock()
 	defer rt.cfgMu.RUnlock()
 	return rt.cfg.NotebookRoot
+}
+
+func (rt *Runtime) activeNote() string {
+	rt.cfgMu.RLock()
+	defer rt.cfgMu.RUnlock()
+	return rt.cfg.ActiveNote
 }
 
 func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, error) {
@@ -395,6 +408,12 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 			return nil, &rpcError{Code: -32002, Message: err.Error()}
 		}
 		return map[string]any{"ok": true}, nil
+
+	case "host.notes.active":
+		if !rt.manifest.HasPermission(PermNotesRead) {
+			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:read"}
+		}
+		return map[string]any{"path": rt.activeNote()}, nil
 
 	case "host.notes.list":
 		if !rt.manifest.HasPermission(PermNotesRead) {
