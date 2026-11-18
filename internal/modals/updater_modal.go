@@ -46,28 +46,6 @@ func updaterTr(showEn bool, zh, en string) string {
 	return zh
 }
 
-func updaterChannelLabel(channel string, showEn bool) string {
-	switch channel {
-	case "mirror":
-		return updaterTr(showEn, "国内镜像", "CN Mirror")
-	case "github":
-		return "GitHub"
-	default:
-		return ""
-	}
-}
-
-func updaterPingLabel(snap updater.Snapshot, showEn bool) string {
-	ch := updaterChannelLabel(snap.ActiveChannel, showEn)
-	if snap.FetchLatencyMs > 0 && ch != "" {
-		return fmt.Sprintf("%d ms · %s", snap.FetchLatencyMs, ch)
-	}
-	if snap.FetchLatencyMs > 0 {
-		return fmt.Sprintf("%d ms", snap.FetchLatencyMs)
-	}
-	return ch
-}
-
 func formatMegabytes(bytes int64) string {
 	return fmt.Sprintf("%.1f MB", float64(bytes)/(1024.0*1024.0))
 }
@@ -99,7 +77,7 @@ func updaterIdleInfoText(snap updater.Snapshot, showEn bool) string {
 		}
 		return fmt.Sprintf("%s v%s", updaterTr(showEn, "当前版本", "Installed"), snap.CurrentVersion)
 	default:
-		return fmt.Sprintf("%s · v%s", updaterTr(showEn, "当前已是最新版本", "You're up to date"), snap.CurrentVersion)
+		return updaterTr(showEn, "已是最新版", "Up to date")
 	}
 }
 
@@ -135,10 +113,9 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 		Centered:  true,
 	}, func() {
 		ui.Column(c).FillWidth().Clip().Children(func() {
-			// 1. Header: icon box + title/version stack + close.
 			ui.Row(c.Key("updater-header")).FillWidth().
 				Padding(theme.Space16, theme.Space20, theme.Space12, theme.Space20).
-				AlignItems(ui.Start).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
+				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space12).Grow(1).MinWidth(0).Children(func() {
 					ui.Box(c.Key("updater-app-icon")).
 						Width(theme.UpdaterHeaderIconBox).Height(theme.UpdaterHeaderIconBox).
@@ -169,25 +146,24 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 						} else if snap.LatestVersion != "" && updater.CompareVersion(snap.CurrentVersion, snap.LatestVersion) < 0 {
 							verLabel = fmt.Sprintf("v%s → v%s", snap.CurrentVersion, snap.LatestVersion)
 						}
-						ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
-							ui.Text(c, verLabel).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-								FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine()
-							if pubDate := updater.ShortDate(snap.PublishedAt); pubDate != "" {
-								ui.Text(c, "·").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).TextColor(pal.Placeholder)
-								ui.Text(c, pubDate).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-									TextColor(pal.Placeholder).SingleLine()
-							}
-						})
+						ui.Text(c, verLabel).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+							TextColor(pal.TextSecondary).SingleLine()
 					})
 				})
 
-				cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-					ID:    "updater-close",
-					Label: updaterTr(showEn, "关闭", "Close"),
+				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space12).Shrink(0).Children(func() {
+					if pubDate := updater.ShortDate(snap.PublishedAt); pubDate != "" {
+						ui.Text(c, pubDate).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+							TextColor(pal.TextSecondary).SingleLine()
+					}
+					cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
+						ID:    "updater-close",
+						Label: updaterTr(showEn, "关闭", "Close"),
+					})
+					if cls.Clicked() {
+						m.CloseUpdater()
+					}
 				})
-				if cls.Clicked() {
-					m.CloseUpdater()
-				}
 			})
 
 			ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
@@ -222,7 +198,7 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 						srcIdx = 2
 					}
 					if internalui.SegmentedControlWithOptions(c, "updater-source-seg", &srcIdx, []internalui.SegmentOption{
-						{ID: "updater-src-auto", Label: updaterTr(showEn, "自动优选", "Auto")},
+						{ID: "updater-src-auto", Label: updaterTr(showEn, "自动", "Auto")},
 						{ID: "updater-src-mirror", Label: updaterTr(showEn, "国内镜像", "CN Mirror")},
 						{ID: "updater-src-github", Label: "GitHub"},
 					}, internalui.SegmentedControlOptions{CardTrack: true}) {
@@ -240,8 +216,8 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 						}
 					}
 
-					if ping := updaterPingLabel(snap, showEn); ping != "" {
-						ui.Text(c, ping).Font("monospace").FontSize(theme.FontMeta).
+					if snap.FetchLatencyMs > 0 {
+						ui.Text(c, fmt.Sprintf("%d ms", snap.FetchLatencyMs)).Font("monospace").FontSize(theme.FontMeta).
 							FixedLineHeight(theme.LineMeta).TextColor(pal.TextSecondary).SingleLine()
 					}
 				})
