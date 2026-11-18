@@ -163,9 +163,9 @@ func AnimateSurfaceColors(el ui.Element, bg, border ui.Color, hasBorder bool) ui
 	return el
 }
 
-// DockedPanelTransition animates docked left/right sidebars (File Tree, Settings Nav,
-// AI Assistant, Export Options, Outline Rail) springing open and collapsing shut
-// while leaving steady-state drag resizing lag-free.
+// DockedPanelTransition animates docked side rails inside a surface (Export Options,
+// Outline Rail) opening and collapsing shut while leaving drag resizing lag-free.
+// The shell's file tree and AI panel use DockPanel, which moves the layout itself.
 func DockedPanelTransition(fromRight bool) ui.ElementTransition {
 	if testing.Testing() {
 		return ui.ElementTransition{Duration: -1}
@@ -182,16 +182,6 @@ func DockedPanelTransition(fromRight bool) ui.ElementTransition {
 		Enter:        &ui.Motion{Collapse: true, X: dx, Opacity: 0.02},
 		Exit:         &ui.Motion{Collapse: true, X: dx, Opacity: 0},
 	}
-}
-
-// DockedSplitTransition keeps both the panel and its splitter opaque as they slide.
-func DockedSplitTransition(fromRight bool) ui.ElementTransition {
-	transition := DockedPanelTransition(fromRight)
-	if transition.Enter != nil {
-		transition.Enter.Opacity = 1
-		transition.Exit.Opacity = 1
-	}
-	return transition
 }
 
 // PanelContentSwapTransition cross-fades what a persistent panel shows (the

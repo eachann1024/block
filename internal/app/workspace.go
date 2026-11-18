@@ -3231,9 +3231,10 @@ func (w *Workspace) Render(c *ui.Context) {
 			// Docked Sidebar (File Tree in workspace mode, Category Nav in Settings mode).
 			// One persistent slot keeps its width across workspace ↔ settings and only
 			// cross-fades its content, so the main column never collapses and regrows.
-			if !aiImmersive && layout.SidebarDocked {
-				ui.Row(c.Key("docked-sidebar-slot")).Shrink(0).FillHeight().
-					Transition(blockui.DockedPanelTransition(false)).Children(func() {
+			// Skipped while the narrow drawer shows the same sidebar, so the two never
+			// render it in one frame.
+			if !layout.SidebarDrawer {
+				blockui.DockPanel(c, "docked-sidebar-slot", !aiImmersive && layout.SidebarDocked, layout.SidebarWidth, false, func() {
 					if inSettings {
 						ui.Row(c.Key("docked-sidebar-settings")).Shrink(0).FillHeight().
 							Transition(blockui.PanelContentSwapTransition()).Children(func() {
@@ -3315,26 +3316,27 @@ func (w *Workspace) Render(c *ui.Context) {
 			}
 
 			// Docked or Fullscreen AI Panel (stays docked even on narrow viewports per shell_layout.rs)
-			if layout.ChatDocked {
-				if aiImmersive {
+			// Immersive AI owns the panel; the docked slot is not built then, so the
+			// panel is never rendered twice in one frame.
+			if aiImmersive {
+				if layout.ChatDocked {
 					ui.Column(c.Key("stage-ai-immersive")).Grow(1).MinWidth(0).FillHeight().
 						Transition(blockui.SurfaceStageTransition()).Children(func() {
 						w.ai.SetRenderWidth(layout.ChatWidth)
 						w.ai.RenderPanel(c)
 					})
-				} else {
-					ui.Row(c.Key("docked-ai-slot")).Shrink(0).FillHeight().
-						Transition(blockui.DockedSplitTransition(true)).Children(func() {
-						chatW := w.ai.PanelWidth()
-						maxChat := ChatLimit(vpW, w.sidebarWidth, w.state.SidebarCollapsed, ChatMinW, ChatMaxW)
-						if blockui.VerticalResizeHandle(c, "ai-panel-resize", &chatW, ChatMinW, maxChat, true) {
-							w.ai.SyncPanelWidth(chatW)
-							c.Invalidate()
-						}
-						w.ai.SetRenderWidth(layout.ChatWidth)
-						w.ai.RenderPanel(c)
-					})
 				}
+			} else {
+				blockui.DockPanel(c, "docked-ai-slot", layout.ChatDocked, layout.ChatWidth, true, func() {
+					chatW := w.ai.PanelWidth()
+					maxChat := ChatLimit(vpW, w.sidebarWidth, w.state.SidebarCollapsed, ChatMinW, ChatMaxW)
+					if blockui.VerticalResizeHandle(c, "ai-panel-resize", &chatW, ChatMinW, maxChat, true) {
+						w.ai.SyncPanelWidth(chatW)
+						c.Invalidate()
+					}
+					w.ai.SetRenderWidth(layout.ChatWidth)
+					w.ai.RenderPanel(c)
+				})
 			}
 
 			// Scheme A Edge-Summoned Floating Sidebar / AI Cards & Colored Edge Hot-Zones.
