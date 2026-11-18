@@ -49,7 +49,7 @@ const plistKeys = [
     [
       {
         CFBundleURLName: bundleId,
-        CFBundleURLSchemes: ["block"],
+        CFBundleURLSchemes: ["block", "blockmd"],
       },
     ],
   ],

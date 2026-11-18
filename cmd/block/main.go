@@ -349,6 +349,21 @@ func main() {
 			if p := u.Query().Get("path"); p != "" {
 				_ = ws.OpenNote(p, 0)
 			}
+		case "store", "install":
+			revealMainWindow()
+			ws.OpenSettings(modals.TabAppStore)
+			target := strings.TrimSpace(u.Query().Get("repo"))
+			if target == "" {
+				target = strings.TrimSpace(u.Query().Get("url"))
+			}
+			if target == "" {
+				target = strings.TrimSpace(u.Query().Get("id"))
+			}
+			if target != "" && ws.Plugins() != nil {
+				ws.Plugins().InstallFromSourceAsync(target, func(pluginID string) {
+					ws.OpenSettings(modals.TabPluginPrefix + pluginID)
+				})
+			}
 		}
 	})
 
@@ -373,6 +388,9 @@ func main() {
 		ws.FlushWindowBounds()
 		ws.FlushDirtySessions()
 		ws.QuickNote().Flush()
+		if sup := ws.Plugins(); sup != nil {
+			sup.ShutdownAll()
+		}
 	})
 
 	mygo.App.OnQuitCanceled(func() {
