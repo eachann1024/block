@@ -1498,43 +1498,8 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 		if b.Table == nil || len(b.Table.Rows) == 0 || len(b.Table.Rows[0]) == 0 {
 			return
 		}
-		aipCols := len(b.Table.Rows[0])
-		colSpans := make([][2]float32, aipCols)
-		rowBottoms := make([]float32, len(b.Table.Rows))
-		tblColors := pal.Table()
-		aipGrid := ui.Column(c.Key(fmt.Sprintf("aip-tbl-%d", idx))).FillWidth().Padding(1).Gap(1).
-			Radius(theme.RadiusSM).Background(pal.Paper).Clip()
-		aipGrid.DrawOver(func(p *ui.Painter, gr ui.Rect) {
-			paintSingleTableBorders(p, gr, colSpans, rowBottoms, tblColors.Border, theme.RadiusSM)
-		})
-		aipGrid.Children(func() {
-			for rIdx, row := range b.Table.Rows {
-				rCopy := rIdx
-				rEl := ui.Row(c.Key(fmt.Sprintf("aip-tr-%d-%d", idx, rIdx))).FillWidth().AlignItems(ui.Stretch).Gap(1)
-				rEl.Draw(func(_ *ui.Painter, rr ui.Rect) {
-					rowBottoms[rCopy] = rr.Y + rr.H
-				})
-				rEl.Children(func() {
-					for cIdx := 0; cIdx < aipCols && cIdx < len(row); cIdx++ {
-						cCopy := cIdx
-						cell := row[cIdx]
-						cellBox := ui.Column(c).Basis(0).Grow(1).Shrink(0).MinWidth(0).Justify(ui.Center).Padding(6, 8)
-						if rIdx == 0 {
-							cellBox.Background(tblColors.HeaderBG)
-							cellBox.Draw(func(_ *ui.Painter, cr ui.Rect) {
-								colSpans[cCopy] = [2]float32{cr.X, cr.W}
-							})
-						}
-						cellBox.Children(func() {
-							t := ui.Text(c, cell.PlainText()).FontSize(theme.FontBody).TextColor(pal.Text).FillWidth()
-							if rIdx == 0 {
-								t.FontWeight(theme.WeightTitle)
-							}
-						})
-					}
-				})
-			}
-		})
+		grid := appUi.TableGrid(c.Key(fmt.Sprintf("aip-tbl-%d", idx)), pal.Table().Border).FillWidth()
+		renderPlainTableRows(c, grid, b.Table.Rows, theme.FontBody, 1, model.TableCell.PlainText)
 	case model.BlockBullet, model.BlockNumbered, model.BlockTodo:
 		depth := min(max(b.Indent, 0)/2, 3)
 		indentPx := float32(min(max(b.Indent, 0), 12)) * editorIndentStep

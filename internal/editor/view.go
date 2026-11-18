@@ -1827,71 +1827,26 @@ func (s *Session) cachedCodePreviewFor(id model.BlockID, canon, src string) cach
 func (s *Session) renderCodePreview(c *ui.Context, id model.BlockID, canon, src string) {
 	pal := theme.Ocean()
 	f14 := s.scale(14)
+	prev := s.cachedCodePreviewFor(id, canon, src)
+	if canon == "csv" && len(prev.csvRows) > 0 {
+		grid := appUi.TableGrid(c.Key("code-preview"), pal.Table().Border).FillWidth()
+		if appUi.IsProbeEnabled() {
+			appUi.Probe(grid, fmt.Sprintf("code-preview-%d", id))
+		}
+		renderPlainTableRows(c, grid, prev.csvRows, f14, s.zoom(), func(cell string) string { return cell })
+		return
+	}
+
 	box := ui.Column(c.Key("code-preview")).FillWidth().
 		Padding(s.scale(12), s.scale(14)).Radius(theme.RadiusSM).Background(pal.Paper).Border(1, pal.Hairline).Gap(s.scale(8))
 	if appUi.IsProbeEnabled() {
 		appUi.Probe(box, fmt.Sprintf("code-preview-%d", id))
 	}
 
-	prev := s.cachedCodePreviewFor(id, canon, src)
 	box.Children(func() {
 		switch canon {
 		case "csv":
-			rows := prev.csvRows
-			if len(rows) == 0 {
-				ui.Text(c, theme.Tr("CSV 内容为空", "Empty CSV")).FontSize(f14).TextColor(pal.TextSecondary)
-				return
-			}
-			csvCols := 0
-			for _, r := range rows {
-				if len(r) > csvCols {
-					csvCols = len(r)
-				}
-			}
-			if csvCols == 0 {
-				return
-			}
-			colSpans := make([][2]float32, csvCols)
-			rowBottoms := make([]float32, len(rows))
-			tblBorder := pal.Table().Border
-			csvGrid := ui.Column(c.Key("csv-grid")).FillWidth().Padding(1).Gap(1).
-				Radius(theme.RadiusSM).Background(pal.Paper).Clip()
-			csvGrid.DrawOver(func(p *ui.Painter, gr ui.Rect) {
-				paintSingleTableBorders(p, gr, colSpans, rowBottoms, tblBorder, theme.RadiusSM)
-			})
-			csvGrid.Children(func() {
-				for rIdx, row := range rows {
-					rCopy := rIdx
-					tr := ui.Row(c.Key(tableRowUIKey{row: rIdx})).FillWidth().AlignItems(ui.Stretch).Gap(1)
-					tr.Draw(func(_ *ui.Painter, rr ui.Rect) {
-						rowBottoms[rCopy] = rr.Y + rr.H
-					})
-					tr.Children(func() {
-						for cIdx := 0; cIdx < csvCols; cIdx++ {
-							cCopy := cIdx
-							cell := ""
-							if cIdx < len(row) {
-								cell = row[cIdx]
-							}
-							tc := ui.Column(c.Key(tableCellPosKey{row: rIdx, col: cIdx})).
-								Basis(0).Grow(1).Shrink(0).MinWidth(0).Justify(ui.Center).
-								Padding(s.scale(6), s.scale(8))
-							if rIdx == 0 {
-								tc.Background(pal.CodeBlockBG)
-								tc.Draw(func(_ *ui.Painter, cr ui.Rect) {
-									colSpans[cCopy] = [2]float32{cr.X, cr.W}
-								})
-							}
-							tc.Children(func() {
-								t := ui.Text(c, cell).FontSize(f14).TextColor(pal.Text).FillWidth()
-								if rIdx == 0 {
-									t.FontWeight(theme.WeightTitle)
-								}
-							})
-						}
-					})
-				}
-			})
+			ui.Text(c, theme.Tr("CSV 内容为空", "Empty CSV")).FontSize(f14).TextColor(pal.TextSecondary)
 		case "latex":
 			formatted, errMsg := prev.mathText, prev.mathErr
 			if formatted != "" {
@@ -2019,7 +1974,7 @@ const (
 func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFocused, isHovered, readOnly bool) {
 	pal := theme.Ocean()
 	id := b.ID
-	if b.Table == nil || len(b.Table.Rows) == 0 {
+	if b.Table == nil || len(b.Table.Rows) == 0 || len(b.Table.Rows[0]) == 0 {
 		return
 	}
 	tbl := b.Table
@@ -2062,26 +2017,23 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 			indentPx := float32(min(max(b.Indent, 0), 12)) * s.indentStep()
 			availGrid := max(s.standardWidth()-indentPx, s.scale(240)) + 2*bleed
 			if s.viewportWidth > 0 {
-				availGrid = min(availGrid, max(s.viewportWidth-s.leftContentGutter()-s.rightContentInset()-indentPx+2*bleed, s.scale(200)))
+				availGrid = min(availGrid, max(s.viewportWidth-s.leftContentGutter()-s.rightContentInset()-indentPx+2*bleed, 0))
 			}
 			colWidths, needHScroll := s.resolveTableColWidths(id, tbl, availGrid)
 			var totalHScrollW float32
 			for _, cw := range colWidths {
 				totalHScrollW += cw
 			}
-			totalHScrollW += float32(cols + 1)
+			totalHScrollW += float32(cols+1) * appUi.TableGridRuleWidth
 
 			buildGrid := func() {
-				colSpans := make([][2]float32, cols)
-				rowBottoms := make([]float32, len(tbl.Rows))
-				grid := ui.Column(c.Key("table-grid")).Padding(1).Gap(1).
-					Radius(theme.RadiusSM).Background(pal.Paper).Clip()
+				grid := appUi.TableGrid(c.Key("table-grid"), borderCol)
 				if needHScroll {
 					grid.Width(max(totalHScrollW, float32(cols)*tMinColW)).Shrink(0)
 				} else {
 					grid.FillWidth()
 				}
-				grid.DrawOver(func(p *ui.Painter, gr ui.Rect) {
+				grid.DrawOver(func(_ *ui.Painter, gr ui.Rect) {
 					docY := gr.Y - s.scrollRect.Y + s.bodyScroll.Y
 					prev, ok := s.tableGridGeoms[id]
 					if !ok || math.Abs(float64(prev.docY-docY)) > 0.5 || math.Abs(float64(prev.h-gr.H)) > 0.5 {
@@ -2094,28 +2046,18 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 							c.Invalidate()
 						}
 					}
-					paintSingleTableBorders(p, gr, colSpans, rowBottoms, borderCol, theme.RadiusSM)
 				})
 				grid.Children(func() {
 					for rIdx := range tbl.Rows {
-						rCopy := rIdx
 						row := tbl.Rows[rIdx]
-						rowEl := ui.Row(c.Key(tableRowUIKey{row: rIdx})).FillWidth().MinHeight(tMinRowH).
-							AlignItems(ui.Stretch).Gap(1)
-						rowEl.Draw(func(_ *ui.Painter, rr ui.Rect) {
-							rowBottoms[rCopy] = rr.Y + rr.H
-						})
+						rowEl := appUi.TableGridRow(c.Key(tableRowUIKey{row: rIdx})).MinHeight(tMinRowH)
 						rowEl.Children(func() {
-							for cIdx := 0; cIdx < cols && cIdx < len(row); cIdx++ {
-								colW := tMinColW
-								if cIdx < len(colWidths) {
-									colW = colWidths[cIdx]
+							for cIdx, colW := range colWidths {
+								if cIdx < len(row) {
+									s.renderTableCell(c, idx, id, tbl, rIdx, cIdx, colW, headerBG, needHScroll, readOnly)
+								} else {
+									tableGridCell(c, rIdx, cIdx, colW, needHScroll).Background(pal.Paper)
 								}
-								var spanOut *[2]float32
-								if rIdx == 0 {
-									spanOut = &colSpans[cIdx]
-								}
-								s.renderTableCell(c, idx, id, tbl, rIdx, cIdx, colW, headerBG, needHScroll, readOnly, spanOut)
 							}
 						})
 					}
@@ -2197,7 +2139,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 	})
 }
 
-func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.BlockID, tbl *model.TableData, rIdx, cIdx int, colW float32, headerBG ui.Color, needHScroll, readOnly bool, colSpanOut *[2]float32) {
+func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.BlockID, tbl *model.TableData, rIdx, cIdx int, colW float32, headerBG ui.Color, needHScroll, readOnly bool) {
 	pal := theme.Ocean()
 	tFontSz, tLineH, _, _, _, tPadY, tPadX := s.tableMetrics()
 	cell := &tbl.Rows[rIdx][cIdx]
@@ -2212,31 +2154,22 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 	cellSelected := hasBlockSel && (s.hasMultiBlockSelection() || !(selLo >= cellBase && selHi <= cellBase+cellLen)) &&
 		((cellLen == 0 && selLo <= cellBase && selHi >= cellBase) || (selHi > cellBase && selLo < cellBase+cellLen))
 
-	box := ui.Column(c.Key(tableCellPosKey{row: rIdx, col: cIdx})).
-		Justify(ui.Center).AlignItems(ui.Stretch).MinWidth(0).Padding(tPadY, tPadX)
-	if needHScroll {
-		box.Width(colW).Shrink(0)
-	} else {
-		box.Basis(0).Grow(colW).Shrink(0)
-	}
-	if colSpanOut != nil {
-		box.Draw(func(_ *ui.Painter, r ui.Rect) {
-			*colSpanOut = [2]float32{r.X, r.W}
-		})
-	}
+	box := tableGridCell(c, rIdx, cIdx, colW, needHScroll).Padding(tPadY, tPadX)
 	box.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 		s.recordTableCellRect(blockID, rIdx, cIdx, r)
 	})
 	if !readOnly {
 		box.Cursor(ui.CursorText)
 	}
+	bg := pal.Paper
 	if cellSelected {
-		box.Background(pal.SelectionBG.Alpha(0.42))
+		bg = pal.SelectionBG.Alpha(0.42).Over(bg)
 	} else if isCellFocused {
-		box.Background(pal.Selected)
+		bg = pal.Selected
 	} else if rIdx == 0 {
-		box.Background(headerBG)
+		bg = headerBG
 	}
+	box.Background(bg)
 	weight := 400
 	textCol := pal.Text
 	if rIdx == 0 {
