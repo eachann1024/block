@@ -1359,6 +1359,9 @@ func parseFullOrHalfDigits(s string) (int, bool) {
 func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, int, bool) {
 	b := &s.doc.Blocks[idx]
 	r := []rune(text)
+	if len(r) == 0 {
+		return 0, 0, false // emptied block (e.g. Backspace on the last char): no rule can match
+	}
 	if caretRune <= 0 || caretRune > len(r) {
 		caretRune = len(r)
 	}
