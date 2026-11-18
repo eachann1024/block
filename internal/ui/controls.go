@@ -587,6 +587,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 				FontSize:   theme.FontMeta,
 				LineHeight: theme.LineMeta,
 				Color:      hintCol,
+				IsShortcut: true,
 			})
 		}
 		if item.HasSubmenu {
