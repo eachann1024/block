@@ -20,9 +20,15 @@ func renderStoreHeaderExtras(c *ui.Context, ctrl *Controller) {
 
 	ui.Row(c.Key("app-store-header-extras")).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
 		filterIdx := ctrl.storeFilterValue()
-		if bui.SegmentedControl(c, "app-store-filter", &filterIdx, []bui.SegmentOption{
+		if bui.SegmentedControlWithOptions(c, "app-store-filter", &filterIdx, []bui.SegmentOption{
 			{ID: "app-store-filter-all", Label: theme.Tr("全部", "All")},
 			{ID: "app-store-filter-installed", Label: theme.Tr("已安装", "Installed")},
+		}, bui.SegmentedControlOptions{
+			TrackHeight:   theme.SegmentedControlHeight,
+			TrackPadding:  theme.Space2,
+			SegmentHeight: theme.SegmentedInnerHeight,
+			SegmentRadius: theme.RadiusSM,
+			CardTrack:     true,
 		}) {
 			ctrl.setStoreFilter(filterIdx)
 		}

@@ -66,9 +66,16 @@ type builtinSeed struct {
 }
 
 var (
-	builtinMu    sync.RWMutex
-	builtinSeeds = map[string]builtinSeed{}
+	builtinMu             sync.RWMutex
+	builtinSeeds          = map[string]builtinSeed{}
+	embeddedFallbackIndex *StoreIndex
 )
+
+func setEmbeddedFallbackIndex(idx *StoreIndex) {
+	builtinMu.Lock()
+	embeddedFallbackIndex = idx
+	builtinMu.Unlock()
+}
 
 // RegisterBuiltinCatalogApp registers an embedded official catalog package so the App Store
 // works seamlessly offline (extracting into apps/<id> ONLY when the user clicks Install).
@@ -81,6 +88,11 @@ func RegisterBuiltinCatalogApp(entry StoreAppEntry, files fs.FS, subDir string) 
 func DefaultSeedIndex() *StoreIndex {
 	builtinMu.RLock()
 	defer builtinMu.RUnlock()
+	if len(builtinSeeds) == 0 && embeddedFallbackIndex != nil {
+		cp := *embeddedFallbackIndex
+		cp.Apps = append([]StoreAppEntry(nil), embeddedFallbackIndex.Apps...)
+		return &cp
+	}
 	apps := make([]StoreAppEntry, 0, len(builtinSeeds))
 	for _, s := range builtinSeeds {
 		apps = append(apps, s.Entry)
@@ -102,8 +114,9 @@ func DefaultSeedIndex() *StoreIndex {
 
 // DefaultStoreIndexURLs lists the CDN / mirror endpoints for the auto-crawled blockmd-plugin index.
 var DefaultStoreIndexURLs = []string{
-	"https://cdn.jsdelivr.net/gh/blockmd-community/store-index@main/store-index.json",
-	"https://raw.githubusercontent.com/blockmd-community/store-index/main/store-index.json",
+	"https://cdn.jsdelivr.net/gh/blockmd-plugins/store-index@main/store-index.json",
+	"https://ghfast.top/https://raw.githubusercontent.com/blockmd-plugins/store-index/main/store-index.json",
+	"https://raw.githubusercontent.com/blockmd-plugins/store-index/main/store-index.json",
 }
 
 // StoreManager manages isolated plugin installations under <BlockAppData>/apps/<id>/,
@@ -415,22 +428,20 @@ func (s *StoreManager) InstallFromArchiveURL(ctx context.Context, rawURL string,
 	if err := s.EnsureDirs(); err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, err
+	candidates := []string{rawURL}
+	if strings.HasPrefix(rawURL, "https://github.com/") {
+		candidates = append(candidates, "https://ghfast.top/"+rawURL)
 	}
-	req.Header.Set("User-Agent", "Block-AppStore/1.0 (blockmd)")
-	resp, err := s.HTTP.Do(req)
-	if err != nil {
-		return nil, err
+	var data []byte
+	var dlErr error
+	for _, candURL := range candidates {
+		data, dlErr = s.fetchArchiveBytes(ctx, candURL)
+		if dlErr == nil {
+			break
+		}
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("download %s: HTTP %d", rawURL, resp.StatusCode)
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024*1024))
-	if err != nil {
-		return nil, err
+	if dlErr != nil {
+		return nil, dlErr
 	}
 	if expectedSHA256 != "" {
 		sum := sha256.Sum256(data)
@@ -453,6 +464,23 @@ func (s *StoreManager) InstallFromArchiveURL(ctx context.Context, rawURL string,
 		return nil, err
 	}
 	return s.InstallFromDirectory(pluginRoot)
+}
+
+func (s *StoreManager) fetchArchiveBytes(ctx context.Context, rawURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Block-AppStore/1.0 (blockmd)")
+	resp, err := s.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download %s: HTTP %d", rawURL, resp.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 64*1024*1024))
 }
 
 func (s *StoreManager) installBuiltin(id string) (*InstalledApp, error) {
