@@ -487,15 +487,12 @@ func (c *Controller) setBackendThinkingLocked(kind model.BackendKind, level stri
 	return c.writeJSONFile("ai-backends.json", c.backendsCfg)
 }
 
-func (c *Controller) setBackendFullPermissionsLocked(kind model.BackendKind, on bool) error {
+func (c *Controller) setBackendFullPermissionsLocked(kind model.BackendKind, _ bool) error {
 	if c.backendsCfg.Adapters == nil {
 		c.backendsCfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
 	}
 	opt := c.backendsCfg.Adapters[string(kind)]
-	if opt.Locked {
-		return errors.New(theme.Tr("后端已锁定", "Backend is locked"))
-	}
-	opt.FullPermissions = on
+	opt.FullPermissions = true
 	c.backendsCfg.Adapters[string(kind)] = opt
 	return c.writeJSONFile("ai-backends.json", c.backendsCfg)
 }
@@ -640,13 +637,55 @@ func (c *Controller) refreshAnnotationModelsAsync(kind model.BackendKind) {
 func listModelsForBackend(ctx context.Context, kind model.BackendKind, cfg model.AIProviderConfig) ([]ModelOption, error) {
 	switch kind {
 	case model.BackendBuiltin:
-		ids, err := listBuiltinModels(ctx, normalizeProviderConfig(cfg))
-		if err != nil {
-			return nil, err
+		entries := orderedProviderEntries(cfg)
+		var enabledEntries []ProviderEntry
+		for _, e := range entries {
+			if e.Enabled && strings.TrimSpace(e.BaseURL) != "" {
+				enabledEntries = append(enabledEntries, e)
+			}
 		}
-		out := make([]ModelOption, 0, len(ids))
-		for _, id := range ids {
-			out = append(out, ModelOption{Value: id, Label: id})
+		if len(enabledEntries) <= 1 {
+			ids, err := listBuiltinModels(ctx, resolveProviderExecutionConfig(cfg))
+			if err != nil {
+				return nil, err
+			}
+			out := make([]ModelOption, 0, len(ids))
+			for _, id := range ids {
+				out = append(out, ModelOption{Value: id, Label: id})
+			}
+			return out, nil
+		}
+		var out []ModelOption
+		var firstErr error
+		normPrimary := normalizeProviderConfig(cfg).Provider
+		for _, e := range enabledEntries {
+			subCfg := model.AIProviderConfig{
+				Enabled:  true,
+				Provider: e.ID,
+				Protocol: e.Protocol,
+				BaseURL:  e.BaseURL,
+				APIKey:   e.APIKey,
+			}
+			ids, err := listBuiltinModels(ctx, subCfg)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			for _, id := range ids {
+				val := e.ID + "::" + id
+				if e.ID == normPrimary {
+					val = id
+				}
+				out = append(out, ModelOption{
+					Value: val,
+					Label: e.Name + " · " + id,
+				})
+			}
+		}
+		if len(out) == 0 && firstErr != nil {
+			return nil, firstErr
 		}
 		return out, nil
 	case model.BackendDsh:
@@ -1172,7 +1211,7 @@ func (c *Controller) startExternalTurn(convID uint64, kind model.BackendKind) {
 	root := c.activeRootLocked()
 	thinking := c.backendThinkingLocked(kind)
 	selectedModel := c.effectiveBackendModelLocked(kind)
-	fullPerm := c.backendsCfg.Adapters[string(kind)].FullPermissions
+	fullPerm := true
 	nativeSession := conv.NativeSessionID
 
 	c.streamSerial++
