@@ -1,0 +1,323 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-18T15:20:00Z"
+  },
+  "title": "Block 顶栏与侧栏（参照 T3 Code）",
+  "launch": {
+    "view": "canvas",
+    "page": "brand"
+  },
+  "pages": [
+    {
+      "id": "shell",
+      "name": "顶栏侧栏两版"
+    },
+    {
+      "id": "brand",
+      "name": "品牌装饰"
+    },
+    {
+      "id": "settings",
+      "name": "设置与弹窗"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1200,
+      "h": 760,
+      "title": "A · 石墨一体侧栏 · 展开",
+      "page": "shell",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "A-Collapsed.dc.html": {
+      "x": 1280,
+      "y": 0,
+      "w": 1200,
+      "h": 760,
+      "title": "A · 收起",
+      "page": "shell",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "A-Search.dc.html": {
+      "x": 2560,
+      "y": 0,
+      "w": 1200,
+      "h": 760,
+      "title": "A · 搜索面板",
+      "page": "shell",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "ShellB.dc.html": {
+      "x": 0,
+      "y": 1160,
+      "w": 1200,
+      "h": 760,
+      "title": "B · 纸面浮卡 · 展开",
+      "page": "shell",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "B-Collapsed.dc.html": {
+      "x": 1280,
+      "y": 1160,
+      "w": 1200,
+      "h": 760,
+      "title": "B · 收起",
+      "page": "shell",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "B-Search.dc.html": {
+      "x": 2560,
+      "y": 1160,
+      "w": 1200,
+      "h": 760,
+      "title": "B · 搜索面板（输入中）",
+      "page": "shell",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Brand.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1200,
+      "h": 760,
+      "title": "浅色 · 随时段（默认）",
+      "page": "brand",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Brand-Breeze.dc.html": {
+      "x": 1280,
+      "y": 0,
+      "w": 1200,
+      "h": 760,
+      "title": "浅色 · 草原微风",
+      "page": "brand",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Brand-Search.dc.html": {
+      "x": 2560,
+      "y": 0,
+      "w": 1200,
+      "h": 760,
+      "title": "浅色 · 草原 · 搜索",
+      "page": "brand",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Brand-Night.dc.html": {
+      "x": 0,
+      "y": 1160,
+      "w": 1200,
+      "h": 760,
+      "title": "深色 · 寂静的星空",
+      "page": "brand",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Brand-Moon.dc.html": {
+      "x": 1280,
+      "y": 1160,
+      "w": 1200,
+      "h": 760,
+      "title": "深色 · 新月与流星",
+      "page": "brand",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Brand-NightSearch.dc.html": {
+      "x": 2560,
+      "y": 1160,
+      "w": 1200,
+      "h": 760,
+      "title": "深色 · 星空 · 搜索",
+      "page": "brand",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Brand-Dawn.dc.html": {
+      "x": 3840,
+      "y": 0,
+      "w": 1200,
+      "h": 760,
+      "title": "浅色 · 晨雾 05–10",
+      "page": "brand",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Brand-Dusk.dc.html": {
+      "x": 5120,
+      "y": 0,
+      "w": 1200,
+      "h": 760,
+      "title": "浅色 · 晚霞 18–05",
+      "page": "brand",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Brand-Daybreak.dc.html": {
+      "x": 3840,
+      "y": 1160,
+      "w": 1200,
+      "h": 760,
+      "title": "深色 · 破晓 04–07",
+      "page": "brand",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Brand-Firefly.dc.html": {
+      "x": 5120,
+      "y": 1160,
+      "w": 1200,
+      "h": 760,
+      "title": "深色 · 萤火 07–20",
+      "page": "brand",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Settings.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1200,
+      "h": 760,
+      "title": "浅色 · 外观与字体",
+      "page": "settings",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Settings-Dark.dc.html": {
+      "x": 1280,
+      "y": 0,
+      "w": 1200,
+      "h": 760,
+      "title": "深色 · 外观与字体",
+      "page": "settings",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Settings-Keys.dc.html": {
+      "x": 2560,
+      "y": 0,
+      "w": 1200,
+      "h": 760,
+      "title": "快捷键",
+      "page": "settings",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Settings-Store.dc.html": {
+      "x": 0,
+      "y": 1160,
+      "w": 1200,
+      "h": 760,
+      "title": "应用商店",
+      "page": "settings",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Settings-Update.dc.html": {
+      "x": 1280,
+      "y": 1160,
+      "w": 1200,
+      "h": 760,
+      "title": "发现新版本",
+      "page": "settings",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Settings-Hidden.dc.html": {
+      "x": 2560,
+      "y": 1160,
+      "w": 1200,
+      "h": 760,
+      "title": "隐藏 Logo 与日月",
+      "page": "settings",
+      "is_interactive": true,
+      "radius": 12
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "A-Collapsed.dc.html",
+    "A-Search.dc.html",
+    "ShellB.dc.html",
+    "B-Collapsed.dc.html",
+    "B-Search.dc.html",
+    "Brand.dc.html",
+    "Brand-Breeze.dc.html",
+    "Brand-Search.dc.html",
+    "Brand-Night.dc.html",
+    "Brand-Moon.dc.html",
+    "Brand-NightSearch.dc.html",
+    "Brand-Dawn.dc.html",
+    "Brand-Dusk.dc.html",
+    "Brand-Daybreak.dc.html",
+    "Brand-Firefly.dc.html",
+    "Settings.dc.html",
+    "Settings-Dark.dc.html",
+    "Settings-Keys.dc.html",
+    "Settings-Store.dc.html",
+    "Settings-Update.dc.html",
+    "Settings-Hidden.dc.html"
+  ],
+  "notes": {
+    "row-a": {
+      "x": 0,
+      "y": -260,
+      "text": "A · 石墨一体侧栏",
+      "kind": "title1",
+      "page": "shell",
+      "maxW": 3760
+    },
+    "row-b": {
+      "x": 0,
+      "y": 900,
+      "text": "B · 纸面浮卡",
+      "kind": "title1",
+      "page": "shell",
+      "maxW": 3760
+    },
+    "brand-light": {
+      "x": 0,
+      "y": -260,
+      "text": "浅色 · 晨雾 / 草原 / 微风 / 晚霞",
+      "kind": "title1",
+      "page": "brand",
+      "maxW": 6320
+    },
+    "brand-dark": {
+      "x": 0,
+      "y": 900,
+      "text": "深色 · 破晓 / 萤火 / 星空 / 新月",
+      "kind": "title1",
+      "page": "brand",
+      "maxW": 6320
+    },
+    "set-1": {
+      "x": 0,
+      "y": -260,
+      "text": "设置 · 外观与快捷键",
+      "kind": "title1",
+      "page": "settings",
+      "maxW": 3760
+    },
+    "set-2": {
+      "x": 0,
+      "y": 900,
+      "text": "应用商店与弹窗",
+      "kind": "title1",
+      "page": "settings",
+      "maxW": 3760
+    }
+  },
+  "designSystems": []
+}
