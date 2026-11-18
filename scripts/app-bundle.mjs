@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -15,6 +15,8 @@ export const installedExecutable = `${installPath}/Contents/MacOS/block`;
 export const legacyBundleId = ["dev.eachann", ["thinkly", "fast"].join("-")].join(".");
 export const legacyInstallPath = `/Applications/${["Thinkly", "Fast"].join(" ")}.app`;
 export const legacyInstalledExecutable = `${legacyInstallPath}/Contents/MacOS/${["thinkly", "fast"].join("-")}`;
+export const lsregisterPath =
+  "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 export const logDir = join(homedir(), "Library/Application Support/Block/logs");
 export const runtimeLogPath = join(logDir, "block.log");
 
@@ -58,11 +60,26 @@ const plistKeys = [
     [
       {
         CFBundleTypeName: "Markdown Document",
+        CFBundleTypeIconFile: "DocumentIcon.icns",
         CFBundleTypeRole: "Editor",
-        LSHandlerRank: "Alternate",
-        LSItemContentTypes: ["net.daringfireball.markdown", "public.markdown", "public.plain-text"],
+        LSHandlerRank: "Owner",
         CFBundleTypeExtensions: markdownExtensions,
         CFBundleTypeMIMETypes: ["text/markdown", "text/x-markdown"],
+        CFBundleTypeOSTypes: ["TEXT", "utxt", "TUTX", "****"],
+      },
+      {
+        CFBundleTypeName: "Markdown Content",
+        CFBundleTypeIconFile: "DocumentIcon.icns",
+        CFBundleTypeRole: "Editor",
+        LSHandlerRank: "Default",
+        LSItemContentTypes: ["net.daringfireball.markdown", "public.markdown"],
+      },
+      {
+        CFBundleTypeName: "Plain Text Document",
+        CFBundleTypeIconFile: "DocumentIcon.icns",
+        CFBundleTypeRole: "Editor",
+        LSHandlerRank: "Alternate",
+        LSItemContentTypes: ["public.plain-text"],
       },
     ],
   ],
@@ -72,7 +89,8 @@ const plistKeys = [
       {
         UTTypeIdentifier: "net.daringfireball.markdown",
         UTTypeDescription: "Markdown Document",
-        UTTypeConformsTo: ["public.plain-text", "public.text"],
+        UTTypeIconFile: "DocumentIcon.icns",
+        UTTypeConformsTo: ["public.utf8-plain-text", "public.plain-text", "public.text"],
         UTTypeTagSpecification: {
           "public.filename-extension": markdownExtensions,
           "public.mime-type": ["text/markdown", "text/x-markdown"],
@@ -104,6 +122,7 @@ export function plist(version = readAppVersion()) {
 
 function tag(value, indent = "") {
   if (typeof value === "boolean") return `${indent}<${value}/>`;
+  if (typeof value === "number") return `${indent}<integer>${value}</integer>`;
   if (Array.isArray(value)) {
     const items = value.map((item) => tag(item, `${indent}  `)).join("\n");
     return `${indent}<array>\n${items}\n${indent}</array>`;
@@ -226,23 +245,111 @@ export function assertWritable(directory) {
   }
 }
 
+export function markNeverIndex(dir) {
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, ".metadata_never_index"), "");
+  } catch {}
+}
+
+export function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+export function unregisterMacBundle(bundlePath) {
+  if (process.platform !== "darwin" || !bundlePath) return;
+  spawnSync(lsregisterPath, ["-u", bundlePath], { stdio: "ignore" });
+}
+
+export function refreshUserIconCache() {
+  if (process.platform !== "darwin") return;
+  try {
+    const res = spawnSync("getconf", ["DARWIN_USER_CACHE_DIR"], { encoding: "utf8" });
+    const cacheDir = (res.stdout || "").trim();
+    if (cacheDir && existsSync(cacheDir)) {
+      for (const name of readdirSync(cacheDir)) {
+        if (name.startsWith("com.apple.iconservices")) {
+          rmSync(join(cacheDir, name), { recursive: true, force: true });
+        }
+      }
+    }
+    spawnSync("killall", ["iconservicesagent"], { stdio: "ignore" });
+  } catch {}
+}
+
+export function pruneLaunchServicesRegistrations(canonicalPath = installPath) {
+  if (process.platform !== "darwin") return;
+  const canonical = resolve(canonicalPath);
+  const res = spawnSync(lsregisterPath, ["-dump"], {
+    encoding: "utf8",
+    maxBuffer: 128 * 1024 * 1024,
+  });
+  if (res.status === 0 && typeof res.stdout === "string") {
+    const stale = new Set();
+    let curPath = "";
+    let curId = "";
+    const flush = () => {
+      if (curPath && (acceptedBundleIds.has(curId) || curId === legacyBundleId)) {
+        if (resolve(curPath) !== canonical) stale.add(curPath);
+      }
+      curPath = "";
+      curId = "";
+    };
+    for (const rawLine of res.stdout.split("\n")) {
+      const line = rawLine.replace(/\r$/, "");
+      if (line.startsWith("--------------------------------------------------------------------------------")) {
+        flush();
+        continue;
+      }
+      if (!curPath && line.startsWith("path:")) {
+        curPath = line
+          .slice(5)
+          .replace(/\s+\(0x[0-9a-fA-F]+\)\s*$/, "")
+          .trim();
+      } else if (!curId && line.startsWith("identifier:")) {
+        curId = line
+          .slice(11)
+          .replace(/\s+\(0x[0-9a-fA-F]+\)\s*$/, "")
+          .trim();
+      }
+    }
+    flush();
+    for (const path of stale) {
+      unregisterMacBundle(path);
+    }
+  }
+  if (existsSync(canonical)) {
+    spawnSync(lsregisterPath, ["-f", canonical], { stdio: "ignore" });
+  }
+}
+
 export function sameVolumeTemp(path) {
   const root = dirname(path);
   mkdirSync(root, { recursive: true });
   const staging = join(root, `.block-install.${process.pid}.${randomBytes(4).toString("hex")}`);
   mkdirSync(staging);
+  markNeverIndex(staging);
   return staging;
 }
 
 export function workspaceTemp() {
   const prefix = `block-app.${process.pid}.`;
+  let dir;
   try {
-    return mkdtempSync(join(tmpdir(), prefix));
+    dir = mkdtempSync(join(tmpdir(), prefix));
   } catch (error) {
     if (!["ENOENT", "ENOTDIR", "EACCES", "EPERM", "EROFS"].includes(error?.code)) throw error;
     // A runner can remove its private TMPDIR before the build starts.
-    return mkdtempSync(join("/tmp", prefix));
+    dir = mkdtempSync(join("/tmp", prefix));
   }
+  markNeverIndex(dir);
+  return dir;
 }
 
 export function remove(path) {
