@@ -455,8 +455,21 @@ func (s *Service) StartDownload() {
 		s.mu.Unlock()
 		return
 	}
-	if s.latestEntry == nil || s.targetAsset == nil || s.cfg.DataDir == "" {
+	if s.latestEntry == nil || s.cfg.DataDir == "" {
 		s.mu.Unlock()
+		return
+	}
+	if s.targetAsset == nil {
+		ver := s.latestEntry.Version
+		s.status = StatusError
+		if s.cfg.IsEn != nil && s.cfg.IsEn() {
+			s.errorMsg = "No compatible installer found for this platform; open Releases to update manually"
+		} else {
+			s.errorMsg = "未找到适配当前系统架构的安装包，请前往下载页手动升级"
+		}
+		s.mu.Unlock()
+		logError("download.missing_platform_asset", "version", ver, "os", runtime.GOOS, "arch", runtime.GOARCH)
+		s.notify()
 		return
 	}
 	entry := *s.latestEntry
