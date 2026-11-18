@@ -1628,6 +1628,44 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 		return true
 	}
 
+	// Keep the existing block's ID, annotations and metadata with its content.
+	if !s.hasNonEmptySelection() && caretRune == 0 && len(r) > 0 && b.Kind != model.BlockQuote {
+		s.pushUndo()
+		blank := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
+		if b.Kind.IsList() {
+			blank.Kind = b.Kind
+			blank.ListIndex, b.ListIndex = b.ListIndex, 0
+			b.CleanSource = ""
+			b.Dirty = true
+		}
+		if b.Kind.IsList() || b.Kind == model.BlockParagraph {
+			blank.Indent = b.Indent
+		}
+		s.spliceBlocks(idx, idx, []model.Block{blank})
+		s.FocusBlock(idx + 1)
+		s.markDirty()
+		return true
+	}
+	if b.Kind == model.BlockQuote && len(r) > 0 && !s.hasNonEmptySelection() {
+		s.pushUndo()
+		if caretRune == len(r) && r[caretRune-1] == '\n' {
+			b.Spans = sliceSpans(b.Spans, 0, caretRune-1)
+			b.CleanSource = ""
+			b.Dirty = true
+			s.spliceBlocks(idx+1, idx+1, []model.Block{{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}})
+			s.FocusBlock(idx + 1)
+		} else {
+			b.Spans = spliceSpansByTextEdit(b.Spans, string(r), string(r[:caretRune])+"\n"+string(r[caretRune:]))
+			b.Dirty = true
+			b.CleanSource = ""
+			s.FocusBlock(idx)
+			s.selHead.Offset = caretRune + 1
+			s.selAnchor = s.selHead
+		}
+		s.markDirty()
+		return true
+	}
+
 	// Split block into [idx] and [idx+1].
 	s.pushUndo()
 	leftSpans := sliceSpans(b.Spans, 0, caretRune)

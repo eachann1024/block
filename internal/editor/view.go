@@ -216,7 +216,7 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if readOnly {
 		return
 	}
-	if s.rootHandle.FocusWithin(c) && !s.hasAnyOverlayOpen() && !s.findOpen && s.editingAnnotID == "" {
+	if s.rootHandle.FocusWithin(c) && !s.hasBlockingOverlay() {
 		for _, mods := range []ui.Modifiers{ui.Alt, ui.Cmd | ui.Alt} {
 			if c.Shortcut(mods, ui.KeyUp) {
 				s.rangeShortcut(mods, ui.KeyUp)
