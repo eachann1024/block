@@ -767,57 +767,45 @@ func (s *Session) renderToolbarMoreMenu(c *ui.Context, vp ui.Rect, winW, winH fl
 	if len(overflow) == 0 {
 		return
 	}
-	s.toolbarMoreIndex = clampInt(s.toolbarMoreIndex, 0, len(overflow)-1)
-	if c.Shortcut(0, ui.KeyDown) {
-		s.toolbarMoreIndex = (s.toolbarMoreIndex + 1) % len(overflow)
-	} else if c.Shortcut(0, ui.KeyUp) {
-		s.toolbarMoreIndex = (s.toolbarMoreIndex - 1 + len(overflow)) % len(overflow)
-	} else if c.Shortcut(0, ui.KeyEnter) {
-		s.runToolbarItem(overflow[s.toolbarMoreIndex].Kind, true)
-		return
-	}
 	menuW := float32(228)
 	spec := s.toolbarDropSpec("tb-more", appUi.AlignRight, 4, vp)
 	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 304)
 	sepCount := 0
+	specs := make([]appUi.MenuItemSpec, 0, len(overflow)+4)
 	var prevGroup uint8
-	for i, it := range overflow {
+	for i, item := range overflow {
+		it := item
 		if i > 0 && prevGroup != it.Group {
 			sepCount++
+			specs = append(specs, appUi.MenuItemSpec{Separator: true})
 		}
 		prevGroup = it.Group
+		ic := it.Icon
+		specs = append(specs, appUi.MenuItemSpec{
+			ID:         fmt.Sprintf("toolbar-more-item-%d", i),
+			Label:      it.Label,
+			Shortcut:   it.Shortcut,
+			Icon:       &ic,
+			Checked:    s.toolbarItemActive(it.Kind),
+			HasSubmenu: it.HasSubmenu,
+			OnClick: func() {
+				s.runToolbarItem(it.Kind, true)
+			},
+		})
 	}
 	estH := min(estimateEditorMenuHeight(len(overflow), sepCount), maxH)
 	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
 
 	panel := appUi.MenuSurface(ui.Column(c.Key("toolbar-more-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
+	appUi.NavigateMenu(c, panel, specs, &s.toolbarMoreIndex)
 	appUi.Probe(panel, "toolbar-more-menu")
 	s.recordOverlayPanel("toolbar-more-menu", panel)
 
 	panel.Children(func() {
-		appUi.Scroll(c.Key("toolbar-more-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+		appUi.Scroll(c.Key("toolbar-more-scroll")).FillWidth().MaxHeight(appUi.MenuInnerMaxHeight(maxH)).Children(func() {
 			ui.Column(c.Key("toolbar-more-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
-				hasPrev := false
-				var lastGroup uint8
-				for i, item := range overflow {
-					it := item
-					if hasPrev && lastGroup != it.Group {
-						appUi.MenuRow(c, appUi.MenuItemSpec{Separator: true}, false)
-					}
-					hasPrev = true
-					lastGroup = it.Group
-					ic := it.Icon
-					appUi.MenuRow(c, appUi.MenuItemSpec{
-						ID:         fmt.Sprintf("toolbar-more-item-%d", i),
-						Label:      it.Label,
-						Shortcut:   it.Shortcut,
-						Icon:       &ic,
-						Checked:    s.toolbarItemActive(it.Kind),
-						HasSubmenu: it.HasSubmenu,
-						OnClick: func() {
-							s.runToolbarItem(it.Kind, true)
-						},
-					}, i == s.toolbarMoreIndex)
+				for i, sp := range specs {
+					appUi.MenuRow(c, sp, i == s.toolbarMoreIndex)
 				}
 			})
 		})
@@ -838,7 +826,7 @@ func (s *Session) toggleToolbarPop(name string) {
 		return
 	}
 	s.toolbarPop = name
-	s.toolbarMoreIndex = 0
+	s.toolbarMoreIndex = -1
 	if name == "comment" {
 		s.commentFocusPending = true
 	}
@@ -864,11 +852,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 
 	panel := appUi.MenuSurface(ui.Column(c.Key("palette-panel")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 	cur := ui.Local(panel, localMenuCursorKey{}, func() int { return -1 })
-	panel.ObserveInput(func(ev ui.InputEvent) {
-		if ev.Kind == ui.InputPointerMove && *cur >= 0 {
-			*cur = -1
-		}
-	})
+	appUi.ObserveMenuPointer(c, panel, cur)
 	if totalChoices > 0 {
 		down := panel.OverlayShortcut(0, ui.KeyDown)
 		right := panel.OverlayShortcut(0, ui.KeyRight)
@@ -899,7 +883,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 	s.recordOverlayPanel("palette-panel", panel)
 
 	panel.Children(func() {
-		appUi.Scroll(c.Key("palette-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+		appUi.Scroll(c.Key("palette-scroll")).FillWidth().MaxHeight(appUi.MenuInnerMaxHeight(maxH)).Children(func() {
 			ui.Column(c.Key("palette-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
 				ui.Text(c, theme.Tr("文字颜色", "Text color")).FontSize(theme.FontSmall).FontWeight(theme.WeightTitle).
 					TextColor(pal.MenuMuted).Padding(theme.Space4, theme.Space10)
@@ -1093,20 +1077,20 @@ func (s *Session) renderReactionPicker(c *ui.Context, vp ui.Rect, winW, winH flo
 
 func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH float32) {
 	pal := theme.Ocean()
-	w := min(float32(260), max(vp.W-16, 200))
-	_, h := s.measuredOrEstSize("annotate-composer", w, 44)
+	w := min(annotationRailWidth, max(vp.W-16, 180))
+	_, h := s.measuredOrEstSize("annotate-composer", w, 32)
 	spec := s.toolbarDropSpec("tb-comment", appUi.AlignLeft, 6, vp)
 	x, y := appUi.ResolveOrigin(spec, w, h, winW, winH)
 
 	card := appUi.PopoverSurface(ui.Row(c.Key("annotate-composer")).Absolute().Left(x).Top(y).Width(w).
-		Padding(theme.Space6, theme.Space10).Gap(theme.Space8).AlignItems(ui.Center).Clip()).
-		Border(1, pal.Accent)
+		Padding(theme.Space4, theme.Space6, theme.Space4, theme.Space10).Gap(theme.Space6).AlignItems(ui.Center).Clip()).
+		Radius(theme.RadiusMD).Border(1, pal.Accent)
 	appUi.Probe(card, "annotate-composer")
 	s.recordOverlayPanel("annotate-composer", card)
 
 	card.Children(func() {
-		ui.Box(c).Size(theme.Space8, theme.Space8).Shrink(0).Radius(theme.RadiusXS).Background(pal.AnnotSendDot)
-		in := ui.TextInputBase(c.Key("comment-input"), &s.commentDraft).Grow(1).MinWidth(0).Height(theme.HeightCompact).
+		ui.Box(c).Size(theme.Space6, theme.Space6).Shrink(0).Radius(theme.RadiusPill).Background(pal.AnnotSendDot)
+		in := ui.TextInputBase(c.Key("comment-input"), &s.commentDraft).Grow(1).MinWidth(0).Height(theme.HeightMicro).
 			Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).CaretColor(pal.Accent).
 			Placeholder(theme.Tr("添加批注…", "Add annotation…")).Label("annotation-note").
 			Bind(&s.commentHandle)
@@ -1136,7 +1120,7 @@ func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH fl
 		if hasText {
 			btnBG = pal.Accent
 		}
-		btn := ui.ButtonBase(c.Key("annotate-submit")).Size(theme.HeightChrome, theme.HeightChrome).Shrink(0).Center().
+		btn := ui.ButtonBase(c.Key("annotate-submit")).Size(theme.HeightMicro, theme.HeightMicro).Shrink(0).Center().
 			Radius(theme.RadiusPill).Disabled(!hasText).Cursor(ui.CursorPointer).
 			Label(theme.Tr("保存", "Save"))
 		btnHovered := btn.Hovered() && hasText
@@ -1224,11 +1208,7 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 
 	ui.Overlay(c, func() {
 		shell := appUi.MenuSurface(ui.Column(c.Key("callout-kind-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
-		shell.ObserveInput(func(ev ui.InputEvent) {
-			if ev.Kind == ui.InputPointerMove && s.calloutMenuIndex >= 0 {
-				s.calloutMenuIndex = -1
-			}
-		})
+		appUi.ObserveMenuPointer(c, shell, &s.calloutMenuIndex)
 		total := len(allCalloutKinds) + 1
 		down := shell.OverlayShortcut(0, ui.KeyDown)
 		right := shell.OverlayShortcut(0, ui.KeyRight)
@@ -1257,7 +1237,7 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 		s.recordOverlayPanel("callout-kind-menu", shell)
 
 		shell.Children(func() {
-			appUi.Scroll(c.Key("callout-kind-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+			appUi.Scroll(c.Key("callout-kind-scroll")).FillWidth().MaxHeight(appUi.MenuInnerMaxHeight(maxH)).Children(func() {
 				ui.Column(c.Key("callout-kind-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
 					for ix, k := range allCalloutKinds {
 						kind := k
@@ -1296,9 +1276,10 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 					plainHighlighted := s.calloutMenuIndex == len(allCalloutKinds)
 					ic := icons.Text
 					appUi.MenuRow(c, appUi.MenuItemSpec{
-						ID:    "callout-opt-plain",
-						Label: theme.Tr("转为普通段落", "Convert to Text"),
-						Icon:  &ic,
+						ID:            "callout-opt-plain",
+						Label:         theme.Tr("转为普通段落", "Convert to Text"),
+						Icon:          &ic,
+						SuppressHover: s.calloutMenuIndex >= 0,
 						OnClick: func() {
 							s.setCalloutKind(b.ID, nil)
 						},
@@ -1386,18 +1367,24 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 				shell.Focusable().AutoFocus()
 			}
 		}
-		shell.ObserveInput(func(ev ui.InputEvent) {
+		svc := c.Services()
+		shell.HandleInput(func(ev ui.InputEvent) bool {
 			switch ev.Kind {
 			case ui.InputPointerMove:
-				menu.PointerActive = true
-				menu.ActiveIndex = -1
-			case ui.InputScroll:
-				// 滚轮同样视为鼠标接管：滚动后悬停行可立即高亮、点击选中。
-				if !menu.PointerActive {
+				if !menu.PointerActive || menu.ActiveIndex >= 0 {
 					menu.PointerActive = true
 					menu.ActiveIndex = -1
+					return true
+				}
+			case ui.InputScroll:
+				// 滚轮同样视为鼠标接管：不吞事件以便内部 Scroll 正常滚动，同时让悬停立即接管高亮。
+				if !menu.PointerActive || menu.ActiveIndex >= 0 {
+					menu.PointerActive = true
+					menu.ActiveIndex = -1
+					svc.Invalidate()
 				}
 			}
+			return false
 		})
 		down := shell.OverlayShortcut(0, ui.KeyDown)
 		right := shell.OverlayShortcut(0, ui.KeyRight)
@@ -1419,7 +1406,7 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 		s.recordOverlayPanel("block-menu", shell)
 
 		shell.Children(func() {
-			sc := appUi.Scroll(c.Key("block-menu-scroll"), &menu.Scroll).FillWidth().MaxHeight(maxH - theme.MenuPadding*2)
+			sc := appUi.Scroll(c.Key("block-menu-scroll"), &menu.Scroll).FillWidth().MaxHeight(appUi.MenuInnerMaxHeight(maxH))
 			sc.Children(func() {
 				list := ui.Column(c.Key("block-menu-list")).FillWidth().Gap(theme.MenuGap)
 				list.Children(func() {
@@ -1557,12 +1544,15 @@ func (s *Session) renderCodeLangMenuOverlay(c *ui.Context) {
 	ui.Overlay(c, func() {
 		shell := appUi.MenuSurface(ui.Column(c.Key("code-lang-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
 			Focusable().AutoFocus()
-		cur := ui.Local(shell, localMenuCursorKey{}, func() int { return -1 })
-		appUi.NavigateMenu(shell, specs, cur)
+		cur := ui.Local(shell, localMenuCursorKey{}, func() int {
+			s.codeLangScroll = ui.ScrollState{}
+			return -1
+		})
+		appUi.NavigateMenu(c, shell, specs, cur)
 		appUi.Probe(shell, "code-lang-menu")
 		s.recordOverlayPanel("code-lang-menu", shell)
 		shell.Children(func() {
-			appUi.Scroll(c.Key("code-lang-scroll"), &s.codeLangScroll).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).
+			appUi.Scroll(c.Key("code-lang-scroll"), &s.codeLangScroll).FillWidth().MaxHeight(appUi.MenuInnerMaxHeight(maxH)).
 				Children(func() {
 					ui.Column(c.Key("code-lang-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
 						for i, sp := range specs {
@@ -1661,11 +1651,11 @@ func (s *Session) renderTableMenuOverlay(c *ui.Context) {
 	ui.Overlay(c, func() {
 		shell := appUi.MenuSurface(ui.Column(c.Key("table-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 		cur := ui.Local(shell, localMenuCursorKey{}, func() int { return -1 })
-		appUi.NavigateMenu(shell, entries, cur)
+		appUi.NavigateMenu(c, shell, entries, cur)
 		appUi.Probe(shell, "table-menu")
 		s.recordOverlayPanel("table-menu", shell)
 		shell.Children(func() {
-			appUi.Scroll(c.Key("table-menu-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+			appUi.Scroll(c.Key("table-menu-scroll")).FillWidth().MaxHeight(appUi.MenuInnerMaxHeight(maxH)).Children(func() {
 				ui.Column(c.Key("table-menu-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
 					for i, it := range entries {
 						appUi.MenuRow(c, it, i == *cur)
@@ -1985,8 +1975,10 @@ func outlineBarWidth(level int) float32 {
 // --- 6. Annotation Rail (Wide) & Block-Foot Strip (Narrow) ---
 
 const (
-	annotationRailWidth float32 = 224
-	annotationRailSlot  float32 = annotationRailWidth + 8
+	annotationRailWidth    float32 = 224
+	annotationRailMaxWidth float32 = 380
+	annotationCardMinWidth float32 = 96
+	annotationRailSlot     float32 = annotationRailWidth + 8
 )
 
 func (s *Session) canFitWideAnnotationRail() bool {
@@ -2035,118 +2027,200 @@ func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annota
 	}
 }
 
-func (s *Session) renderAnnotationCardContent(c *ui.Context, ann *model.Annotation, isNarrow bool) {
+func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, maxW float32, hoveredOut *string) {
 	pal := theme.Ocean()
 	if s.editingAnnotID == ann.ID {
-		ui.Row(c).FillWidth().MinWidth(0).Height(theme.HeightControl).PaddingX(theme.Space8).Radius(theme.RadiusSM).Background(pal.Shell).
-			Border(1, pal.Accent).AlignItems(ui.Center).Clip().Children(func() {
+		card := ui.Row(c.Key("annotation-card-"+ann.ID)).Width(maxW).MinWidth(0).
+			Padding(theme.Space4, theme.Space6, theme.Space4, theme.Space10).
+			Gap(theme.Space6).AlignItems(ui.Center).Radius(theme.RadiusMD).Clip().
+			Background(pal.Menu).Border(1, pal.Accent)
+		if card.Hovered() {
+			*hoveredOut = ann.ID
+		}
+		appUi.Probe(card, "annotation-card-"+ann.ID)
+		card.Children(func() {
+			ui.Box(c).Size(theme.Space6, theme.Space6).Shrink(0).Radius(theme.RadiusPill).Background(pal.AnnotSendDot)
 			in := ui.TextInputBase(c.Key("edit-ann-"+ann.ID), &s.editingAnnotText).Grow(1).MinWidth(0).
-				Height(theme.HeightCompact).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
+				Height(theme.HeightMicro).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
 				CaretColor(pal.Accent).Bind(&s.editingHandle)
+			in.OnTextKey(func(k ui.TextKey) bool {
+				if k.Key == ui.KeyEscape {
+					s.editingAnnotID = ""
+					return true
+				}
+				return false
+			})
+			if s.editingFocusPending {
+				in.Focus()
+				s.editingFocusPending = false
+			}
 			if in.Submitted() {
 				s.updateAnnotationNote(ann.ID, s.editingAnnotText)
 			}
+			ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(theme.Space2).Children(func() {
+				cancel := appUi.IconButton(c, icons.Close, appUi.IconButtonOptions{
+					ID: "ann-edit-cancel-" + ann.ID, Label: theme.Tr("取消", "Cancel"), Size: theme.HeightMicro, IconSize: theme.IconInline,
+				})
+				if cancel.Clicked() {
+					s.editingAnnotID = ""
+				}
+				save := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
+					ID: "ann-edit-save-" + ann.ID, Label: theme.Tr("保存", "Save"), Size: theme.HeightMicro, IconSize: theme.IconInline, Active: true,
+				})
+				if save.Clicked() {
+					s.updateAnnotationNote(ann.ID, s.editingAnnotText)
+				}
+			})
 		})
-		ui.Row(c).FillWidth().Justify(ui.End).Gap(theme.Space6).Children(func() {
-			cancel := appUi.ActionButton(c, "ann-edit-cancel-"+ann.ID, theme.Tr("取消", "Cancel"), nil, appUi.ButtonGhost, false)
-			if cancel.Clicked() {
-				s.editingAnnotID = ""
-			}
-			save := appUi.ActionButton(c, "ann-edit-save-"+ann.ID, theme.Tr("保存", "Save"), nil, appUi.ButtonPrimary, false)
-			if save.Clicked() {
-				s.updateAnnotationNote(ann.ID, s.editingAnnotText)
-			}
-		})
+		if card.PressedOutside() {
+			s.editingAnnotID = ""
+		}
 		return
 	}
 
 	if ann.RewriteResult != "" {
-		ui.Box(c).FillWidth().MinWidth(0).Padding(theme.Space10).Radius(theme.RadiusSM).Background(pal.Selected).Clip().Children(func() {
-			ui.Text(c, ann.RewriteResult).FillWidth().MinWidth(0).FontSize(theme.FontBody).TextColor(pal.SelectionFG)
-		})
-		if !s.readOnly {
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
-				acc := ui.ButtonBase(c.Key("ann-accept-"+ann.ID)).Size(theme.HeightControl, theme.HeightControl).Shrink(0).Center().
-					Radius(theme.RadiusSM).
-					Cursor(ui.CursorPointer).Label(theme.Tr("同意，替换原文", "Accept and replace"))
-				accHovered := acc.Hovered()
-				accPressed := acc.Pressed()
-				accBG := pal.Accent
-				if accHovered || accPressed {
-					accBG = pal.AccentHover
-				}
-				appUi.AnimateSurfaceColors(acc, accBG, pal.Accent, true)
-				appUi.TactileButton(acc, accHovered, accPressed, false)
-				acc.Children(func() {
-					icons.DrawAnimated(c, icons.Check, theme.IconInline, pal.MonoIconColors(pal.AccentText), accHovered || accPressed)
-				})
-				appUi.Probe(acc, "ann-accept-"+ann.ID)
-				if acc.Clicked() {
-					s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
-				}
-
-				ui.Box(c).Grow(1)
-
-				dismiss := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
-					ID: "ann-dismiss-" + ann.ID, Label: theme.Tr("忽略", "Dismiss"), Size: theme.HeightChrome, IconSize: theme.IconInline, Danger: true,
-				})
-				if dismiss.Clicked() {
-					s.dismissAnnotationRewrite(ann.ID)
-				}
-			})
+		card := ui.Column(c.Key("annotation-card-"+ann.ID)).MinWidth(min(annotationRailWidth, maxW)).MaxWidth(maxW).
+			Padding(theme.Space8, theme.Space10).Gap(theme.Space8).Radius(theme.RadiusLG).Clip().
+			Transition(appUi.GutterHandleTransition())
+		cardHovered := card.Hovered()
+		if cardHovered {
+			*hoveredOut = ann.ID
 		}
+		borderCol := pal.Hairline
+		if cardHovered || s.hoveredAnnotID == ann.ID {
+			borderCol = pal.Accent
+		}
+		appUi.AnimateSurfaceColors(card, pal.Menu, borderCol, true)
+		appUi.Probe(card, "annotation-card-"+ann.ID)
+		card.Children(func() {
+			ui.Box(c).FillWidth().MinWidth(0).Padding(theme.Space8, theme.Space10).Radius(theme.RadiusSM).Background(pal.Selected).Clip().Children(func() {
+				ui.Text(c, ann.RewriteResult).FillWidth().MinWidth(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.SelectionFG)
+			})
+			if !s.readOnly {
+				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
+					acc := ui.ButtonBase(c.Key("ann-accept-"+ann.ID)).Size(theme.HeightCompact, theme.HeightCompact).Shrink(0).Center().
+						Radius(theme.RadiusSM).
+						Cursor(ui.CursorPointer).Label(theme.Tr("同意，替换原文", "Accept and replace"))
+					accHovered := acc.Hovered()
+					accPressed := acc.Pressed()
+					accBG := pal.Accent
+					if accHovered || accPressed {
+						accBG = pal.AccentHover
+					}
+					appUi.AnimateSurfaceColors(acc, accBG, pal.Accent, true)
+					appUi.TactileButton(acc, accHovered, accPressed, false)
+					acc.Children(func() {
+						icons.DrawAnimated(c, icons.Check, theme.IconInline, pal.MonoIconColors(pal.AccentText), accHovered || accPressed)
+					})
+					appUi.Probe(acc, "ann-accept-"+ann.ID)
+					if acc.Clicked() {
+						s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
+					}
+
+					ui.Box(c).Grow(1)
+
+					dismiss := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
+						ID: "ann-dismiss-" + ann.ID, Label: theme.Tr("忽略", "Dismiss"), Size: theme.HeightCompact, IconSize: theme.IconInline, Danger: true,
+					})
+					if dismiss.Clicked() {
+						s.dismissAnnotationRewrite(ann.ID)
+					}
+				})
+			}
+		})
 		return
 	}
 
-	ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Start).Gap(theme.Space8).Children(func() {
-		ui.Box(c).Size(theme.Space8, theme.Space8).Margin(theme.Space6, 0, 0, 0).Shrink(0).Radius(theme.RadiusXS).Background(pal.AnnotSendDot)
+	minW := min(annotationCardMinWidth, maxW)
+	if ann.RewritePrompt != "" {
+		minW = min(annotationCardMinWidth+theme.HeightMicro, maxW)
+	}
+	card := ui.Row(c.Key("annotation-card-"+ann.ID)).MinWidth(minW).MaxWidth(maxW).
+		Padding(theme.Space6, theme.Space10).
+		Gap(theme.Space8).AlignItems(ui.Start).Radius(theme.RadiusMD).Clip().
+		Transition(appUi.GutterHandleTransition())
+	cardHovered := card.Hovered()
+	if cardHovered {
+		*hoveredOut = ann.ID
+	}
+	isActive := s.activeAnnotID == ann.ID
+	borderCol := pal.Hairline
+	if cardHovered || isActive || s.hoveredAnnotID == ann.ID {
+		borderCol = pal.Accent
+	}
+	appUi.AnimateSurfaceColors(card, pal.Menu, borderCol, true)
+	appUi.Probe(card, "annotation-card-"+ann.ID)
+	card.Children(func() {
+		ui.Row(c).Height(theme.LineTitle).Shrink(0).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Size(theme.Space6, theme.Space6).Shrink(0).Radius(theme.RadiusPill).Background(pal.AnnotSendDot)
+		})
 		noteTxt := ann.Note
 		if noteTxt == "" && ann.RewritePrompt != "" {
 			noteTxt = ann.RewritePrompt
 		}
-		ui.Text(c, noteTxt).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).Shrink(1).MinWidth(0)
+		ui.Text(c, noteTxt).FontSize(theme.FontBody).FixedLineHeight(theme.LineTitle).TextColor(pal.Text).Shrink(1).MinWidth(0)
 		if !s.readOnly {
-			ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(theme.Space2).Children(func() {
-				if ann.RewritePrompt != "" {
-					acc := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
-						ID: "annotation-accept-" + ann.ID, Label: theme.Tr("应用", "Apply"), Size: theme.IconButtonBox, IconSize: theme.IconInline,
-					})
-					if acc.Clicked() {
-						s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)
+			showActions := cardHovered || isActive
+			targetOp := float32(0)
+			if showActions {
+				targetOp = 1
+			}
+			actBar := appUi.Elevate(ui.Row(c.Key("annotation-actions-"+ann.ID)).Absolute().Top(theme.Space4).Right(theme.Space4).
+				Padding(theme.Space2).Gap(theme.Space2).AlignItems(ui.Center).
+				Radius(theme.RadiusSM).Background(pal.Menu).Border(1, pal.BtnBorder).
+				IgnoreInput(!showActions).AccessHidden(!showActions), theme.ElevationRaised)
+			op := actBar.AnimateTo("op", targetOp, appUi.FadeColor)
+			actBar.Opacity(op)
+			if op > 0.01 || showActions {
+				actBar.Children(func() {
+					if ann.RewritePrompt != "" {
+						acc := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
+							ID: "annotation-accept-" + ann.ID, Label: theme.Tr("应用", "Apply"), Size: theme.HeightMicro, IconSize: theme.IconInline,
+						})
+						if acc.Clicked() {
+							s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)
+						}
 					}
-				}
-				editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
-					ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: theme.IconButtonBox, IconSize: theme.IconInline,
+					editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
+						ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline,
+					})
+					if editBtn.Clicked() {
+						s.editingAnnotID = ann.ID
+						s.editingAnnotText = ann.Note
+						s.editingFocusPending = true
+					}
+					delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
+						ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline, Danger: true,
+					})
+					if delBtn.Clicked() {
+						s.deleteAnnotationByID(ann.ID)
+					}
 				})
-				if editBtn.Clicked() {
-					s.editingAnnotID = ann.ID
-					s.editingAnnotText = ann.Note
-				}
-				delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
-					ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: theme.IconButtonBox, IconSize: theme.IconInline, Danger: true,
-				})
-				if delBtn.Clicked() {
-					s.deleteAnnotationByID(ann.ID)
-				}
-			})
+			}
 		}
 	})
-	_ = isNarrow
+	if card.Clicked() {
+		if s.activeAnnotID == ann.ID {
+			s.activeAnnotID = ""
+		} else {
+			s.activeAnnotID = ann.ID
+		}
+	}
 }
 
 func estimateAnnotationRowMetrics(ann *model.Annotation, isEditing bool) (height, stepGap float32) {
 	if isReactionOnlyAnnotation(ann) {
 		return 24, 4
 	}
-	stepGap = 12
+	stepGap = 8
 	switch {
 	case isEditing:
-		height = 88
+		height = 34
 	case ann.RewriteResult != "":
-		height = 96
+		height = 92
 	default:
-		lines := max((len([]rune(ann.Note))+13)/14, 1)
-		height = 46 + float32(lines-1)*20
+		lines := max((len([]rune(ann.Note))+19)/20, 1)
+		height = 34 + float32(lines-1)*theme.LineTitle
 	}
 	if len(ann.Reactions) > 0 {
 		height += 28
@@ -2158,7 +2232,6 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 	if s.minimal || !s.hasVisibleAnnotationRail() || !s.canFitWideAnnotationRail() {
 		return
 	}
-	pal := theme.Ocean()
 	editorW := s.viewportWidth
 	if editorW <= 0 {
 		editorW = s.editorRect.W
@@ -2168,7 +2241,9 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 	flowLeft := s.editorRect.X + (editorW-flowW)*0.5
 	bodyRightX := flowLeft + flowW - s.rightContentInset()
 	editorRight := s.editorRect.X + editorW
-	railLeft := min(bodyRightX+16, editorRight-12-annotationRailWidth)
+	rightMargin := max(theme.ScrollGutter, theme.Space16)
+	railLeft := min(bodyRightX+theme.Space16, editorRight-rightMargin-annotationRailWidth)
+	railMaxW := min(max(editorRight-rightMargin-railLeft, annotationRailWidth), annotationRailMaxWidth)
 	railTop := s.editorRect.Y
 	railHeight := max(s.editorRect.H, s.viewportHeight-railTop)
 
@@ -2206,8 +2281,7 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 	nextHovered := ""
 	ui.Overlay(c, func() {
 		rail := ui.Box(c.Key("annotation-rail")).Absolute().Left(railLeft).Top(railTop).
-			Width(annotationRailWidth).Height(railHeight).PassThrough().
-			Transition(appUi.DockedPanelTransition(true))
+			Width(railMaxW).Height(railHeight).PassThrough()
 		appUi.Probe(rail, "annotation-rail")
 		rail.Children(func() {
 			bottom := float32(12)
@@ -2215,11 +2289,10 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 				ann := row.ann
 				top := max(row.targetY, bottom+row.gap)
 				bottom = top + row.height
-				isActive := s.activeAnnotID == ann.ID
-				isHighlighted := isActive || s.hoveredAnnotID == ann.ID
+				isHighlighted := s.activeAnnotID == ann.ID || s.hoveredAnnotID == ann.ID
 
 				slot := ui.Column(c.Key("annotation-wrap-" + ann.ID)).Absolute().Top(top).Left(0).
-					Width(annotationRailWidth).Gap(theme.Space4)
+					Width(railMaxW).AlignItems(ui.Start).Gap(theme.Space4)
 				slot.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 					if r.H > 0 {
 						if s.annotRowHeights == nil {
@@ -2241,29 +2314,7 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 						return
 					}
 
-					borderCol := pal.Hairline
-					if isActive || s.editingAnnotID == ann.ID {
-						borderCol = pal.Accent
-					}
-					card := ui.Column(c.Key("annotation-card-"+ann.ID)).FillWidth().MinWidth(0).
-						Padding(theme.Space10, theme.Space12).Gap(theme.Space10).Radius(theme.RadiusLG).Clip()
-					cardHovered := card.Hovered()
-					if cardHovered {
-						nextHovered = ann.ID
-					}
-					appUi.AnimateSurfaceColors(card, pal.Menu, borderCol, true)
-					appUi.TactileCard(card, cardHovered, card.Pressed(), isActive || s.editingAnnotID == ann.ID, false)
-					appUi.Probe(card, "annotation-card-"+ann.ID)
-					card.Children(func() {
-						s.renderAnnotationCardContent(c, ann, false)
-					})
-					if card.Clicked() {
-						if s.activeAnnotID == ann.ID {
-							s.activeAnnotID = ""
-						} else {
-							s.activeAnnotID = ann.ID
-						}
-					}
+					s.renderAnnotationItem(c, ann, railMaxW, &nextHovered)
 
 					if len(ann.Reactions) > 0 {
 						ui.Row(c).FillWidth().Wrap().AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
@@ -2340,10 +2391,9 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 	if b.Kind == model.BlockTable {
 		botPad = theme.Space10
 	}
-	minChipW := min(float32(200), max(s.viewportWidth-48, 120))
-	maxChipW := float32(340)
+	maxChipW := annotationRailMaxWidth
 	if s.viewportWidth > 0 {
-		maxChipW = min(float32(340), max(s.viewportWidth-32, minChipW))
+		maxChipW = min(annotationRailMaxWidth, max(s.viewportWidth-32, 160))
 	}
 
 	strip := ui.Column(c.Key(fmt.Sprintf("annotate-foot-%d", b.ID))).FillWidth().MinWidth(0).
@@ -2410,103 +2460,11 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 			}
 		}
 
-		for _, a := range anchored {
-			ann := a
+		for _, ann := range anchored {
 			if isReactionOnlyAnnotation(ann) {
 				continue
 			}
-			isActive := s.activeAnnotID == ann.ID || s.editingAnnotID == ann.ID
-			isHighlighted := isActive || s.hoveredAnnotID == ann.ID
-			if isActive {
-				card := ui.Column(c.Key("annotation-card-"+ann.ID)).FillWidth().MinWidth(minChipW).MaxWidth(maxChipW).
-					Padding(theme.Space10, theme.Space12).Gap(theme.Space10).Radius(theme.RadiusLG).Clip().Background(pal.Menu).
-					Border(1, pal.Accent)
-				if card.Hovered() {
-					nextHovered = ann.ID
-				}
-				appUi.Probe(card, "annotation-card-"+ann.ID)
-				card.Children(func() {
-					s.renderAnnotationCardContent(c, ann, true)
-				})
-				if card.Clicked() && s.editingAnnotID != ann.ID {
-					s.activeAnnotID = ""
-				}
-				continue
-			}
-
-			// Compact inline capsule with safe minimum width so trailing buttons never clip
-			capsuleBG := pal.Sidebar
-			capsuleBorder := pal.Hairline
-			if ann.RewriteResult != "" {
-				capsuleBG = pal.Selected
-			}
-			if isHighlighted {
-				capsuleBorder = pal.Accent
-			}
-			chip := ui.Row(c.Key("annotation-foot-chip-"+ann.ID)).MinWidth(minChipW).MaxWidth(maxChipW).MinHeight(theme.HeightCompact).
-				Padding(theme.Space4, theme.Space4, theme.Space4, theme.Space10).Gap(theme.Space6).AlignItems(ui.Center).
-				Radius(theme.RadiusMD).Clip().Background(capsuleBG).Border(1, capsuleBorder)
-			if chip.Hovered() {
-				nextHovered = ann.ID
-			}
-			chip.Children(func() {
-				preview := strings.Join(strings.Fields(ann.Note), " ")
-				if ann.RewriteResult != "" {
-					preview = theme.Tr("建议改写：", "Suggested: ") + strings.Join(strings.Fields(ann.RewriteResult), " ")
-				}
-				toggle := ui.ButtonBase(c.Key("foot-toggle-" + ann.ID)).Grow(1).Shrink(1).MinWidth(0).AlignItems(ui.Center).Gap(theme.Space6).
-					Cursor(ui.CursorPointer).Label(preview)
-				toggle.Children(func() {
-					if ann.RewriteResult != "" {
-						icons.Draw(c, icons.TbComment, theme.IconInline, pal.DuoIconColors(pal.Accent))
-					} else {
-						ui.Box(c).Size(7, 7).Shrink(0).Radius(theme.RadiusXS).Background(pal.AnnotSendDot)
-					}
-					ui.Text(c, preview).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).Shrink(1).MinWidth(0)
-				})
-				if toggle.Clicked() {
-					s.activeAnnotID = ann.ID
-				}
-				if !s.readOnly {
-					ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(theme.Space2).Children(func() {
-						if ann.RewriteResult != "" {
-							acc := ui.ButtonBase(c.Key("ann-accept-"+ann.ID)).Size(theme.HeightMicro, theme.HeightMicro).Shrink(0).Center().
-								Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
-								Label(theme.Tr("同意，替换原文", "Accept and replace"))
-							accHovered := acc.Hovered()
-							accPressed := acc.Pressed()
-							accBG := pal.Accent
-							if accHovered || accPressed {
-								accBG = pal.AccentHover
-							}
-							appUi.AnimateSurfaceColors(acc, accBG, ui.Transparent, false)
-							appUi.TactileButton(acc, accHovered, accPressed, false)
-							acc.Children(func() {
-								icons.DrawAnimated(c, icons.Check, theme.IconInline, pal.MonoIconColors(pal.AccentText), accHovered || accPressed)
-							})
-							appUi.Probe(acc, "ann-accept-"+ann.ID)
-							if acc.Clicked() {
-								s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
-							}
-						} else {
-							editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
-								ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline,
-							})
-							if editBtn.Clicked() {
-								s.activeAnnotID = ann.ID
-								s.editingAnnotID = ann.ID
-								s.editingAnnotText = ann.Note
-							}
-							delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
-								ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline, Danger: true,
-							})
-							if delBtn.Clicked() {
-								s.deleteAnnotationByID(ann.ID)
-							}
-						}
-					})
-				}
-			})
+			s.renderAnnotationItem(c, ann, maxChipW, &nextHovered)
 		}
 	})
 	if nextHovered != s.hoveredAnnotID {
