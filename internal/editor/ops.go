@@ -1665,6 +1665,7 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 	if lang, ok := matchCodeFencePrefix(rawPrefix); ok {
 		b.Kind = model.BlockCode
 		b.Language = canonicalLangTag(lang)
+		b.ShowSource = isPreviewLang(b.Language)
 		b.Code = rest
 		b.Spans = nil
 		b.Dirty = true
@@ -1807,6 +1808,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 				s.pushUndo()
 				b.Kind = model.BlockCode
 				b.Language = canonicalLangTag(lang)
+				b.ShowSource = isPreviewLang(b.Language)
 				b.Code = ""
 				b.Spans = nil
 				b.Dirty = true
@@ -2175,22 +2177,22 @@ func (s *Session) deleteBlock(idx int) {
 func allSlashItems() []blockMenuItem {
 	return []blockMenuItem{
 		{Kind: cmdAI, Label: theme.Tr("AI 写作", "AI Write"), Keywords: "ai write polish xiezuo runse 写作 润色"},
-		{Kind: cmdTurnH1, Label: theme.Tr("一级标题", "Heading 1"), Keywords: "h1 heading title biaoti", Hint: "⌘⌥1"},
-		{Kind: cmdTurnH2, Label: theme.Tr("二级标题", "Heading 2"), Keywords: "h2 heading", Hint: "⌘⌥2"},
-		{Kind: cmdTurnH3, Label: theme.Tr("三级标题", "Heading 3"), Keywords: "h3 heading", Hint: "⌘⌥3"},
+		{Kind: cmdTurnH1, Label: theme.Tr("一级标题", "Heading 1"), Keywords: "h1 heading title biaoti", Hint: "#"},
+		{Kind: cmdTurnH2, Label: theme.Tr("二级标题", "Heading 2"), Keywords: "h2 heading", Hint: "##"},
+		{Kind: cmdTurnH3, Label: theme.Tr("三级标题", "Heading 3"), Keywords: "h3 heading", Hint: "###"},
 		{Kind: cmdTable, Label: theme.Tr("表格", "Table"), Keywords: "table biaoge"},
 		{Separator: true},
-		{Kind: cmdTurnBullet, Label: theme.Tr("无序列表", "Bulleted list"), Keywords: "bullet list ul liebiao", Hint: "⌘⌥5"},
-		{Kind: cmdTurnTodo, Label: theme.Tr("待办清单", "Checklist"), Keywords: "todo task check daiban", Hint: "⌘⌥4"},
-		{Kind: cmdCode, Label: theme.Tr("代码块", "Code Block"), Keywords: "code daima", Hint: "⌘⌥8"},
-		{Kind: cmdDivider, Label: theme.Tr("分隔线", "Divider"), Keywords: "divider hr line fengexian"},
+		{Kind: cmdTurnBullet, Label: theme.Tr("无序列表", "Bulleted list"), Keywords: "bullet list ul liebiao", Hint: "-"},
+		{Kind: cmdTurnTodo, Label: theme.Tr("待办清单", "Checklist"), Keywords: "todo task check daiban", Hint: "[]"},
+		{Kind: cmdCode, Label: theme.Tr("代码块", "Code Block"), Keywords: "code daima", Hint: "```"},
+		{Kind: cmdDivider, Label: theme.Tr("分隔线", "Divider"), Keywords: "divider hr line fengexian", Hint: "---"},
 		{Kind: cmdImage, Label: theme.Tr("图片", "Image"), Keywords: "image picture photo tupian"},
-		{Kind: cmdTurnNumbered, Label: theme.Tr("有序列表", "Numbered list"), Keywords: "number ordered list ol", Hint: "⌘⌥6"},
-		{Kind: cmdTurnQuote, Label: theme.Tr("引用", "Quote"), Keywords: "quote yinyong", Hint: "⌘⌥9"},
-		{Kind: cmdCallout, Label: theme.Tr("标注", "Callout"), Keywords: "callout note tip warning alert biaozhu 标注 提示"},
+		{Kind: cmdTurnNumbered, Label: theme.Tr("有序列表", "Numbered list"), Keywords: "number ordered list ol", Hint: "1."},
+		{Kind: cmdTurnQuote, Label: theme.Tr("引用", "Quote"), Keywords: "quote yinyong", Hint: ">"},
+		{Kind: cmdCallout, Label: theme.Tr("标注", "Callout"), Keywords: "callout note tip warning alert biaozhu 标注 提示", Hint: "[!note]"},
 		{Separator: true},
-		{Kind: cmdCodeMermaid, Label: theme.Tr("Mermaid 图表", "Mermaid Diagram"), Keywords: "mermaid diagram flow"},
-		{Kind: cmdCodeMath, Label: theme.Tr("数学公式", "Math Formula"), Keywords: "math latex formula gongshi"},
+		{Kind: cmdCodeMermaid, Label: theme.Tr("Mermaid 图表", "Mermaid Diagram"), Keywords: "mermaid diagram flow", Hint: "```mermaid"},
+		{Kind: cmdCodeMath, Label: theme.Tr("数学公式", "Math Formula"), Keywords: "math latex formula gongshi", Hint: "$$"},
 	}
 }
 
@@ -2264,7 +2266,8 @@ func (s *Session) slashMenuEntries() []blockMenuItem {
 		}
 		lbl := strings.ToLower(it.Label)
 		kw := strings.ToLower(it.Keywords)
-		if strings.Contains(lbl, q) || strings.Contains(kw, q) {
+		ht := strings.ToLower(it.Hint)
+		if strings.Contains(lbl, q) || strings.Contains(kw, q) || (ht != "" && strings.Contains(ht, q)) {
 			hits = append(hits, it)
 		}
 	}
