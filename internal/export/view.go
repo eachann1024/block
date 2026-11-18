@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"block/internal/files"
 	"block/internal/icons"
 	"block/internal/markdown"
 	"block/internal/model"
@@ -648,7 +649,7 @@ func (c *Controller) triggerSave() {
 	}
 	ext := exportExtension(format)
 	go func() {
-		chosen, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
+		chosen, err := files.SaveDialog(nil, mygo.SaveDialogOptions{
 			Title:             saveButtonLabel(format),
 			DefaultPath:       filepath.Join(dir, name),
 			CreateDirectories: true,
