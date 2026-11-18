@@ -2816,8 +2816,7 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				}
 			})
 
-			// Scheme A: solid Ocean Accent capsule with 2px Paper halo straddling the left & right
-			// selection borders; shown exclusively when the image itself is selected (or dragging).
+			// Keep the visible grip compact while retaining a larger target for dragging.
 			if showResizeHandles {
 				scale := float32(1)
 				if b.ImageAlign == model.ImageAlignCenter {
@@ -2831,7 +2830,6 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				}
 				hitW := s.scale(theme.ImageResizeHitWidth)
 				hitH := s.scale(theme.ImageResizeHitHeight)
-				haloW := s.scale(theme.ImageResizeHaloWidth)
 				edgeOffset := -hitW*0.5 + borderW*0.5
 
 				anyHeld := false
@@ -2857,22 +2855,16 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 							Width(hitW).Height(hitH).MaxHeightPercent(88).Center().Cursor(ui.CursorResizeEW)
 						hovered := h.Hovered()
 						dx, _, held := h.Dragged()
-						pillW := theme.ImageResizePillWidth
-						pillH := theme.ImageResizePillHeight
 						pillFill := pal.Accent
 						if held {
-							pillW, pillH = theme.ImageResizePillHotWidth, theme.ImageResizePillHotH
 							pillFill = pal.AccentPressed
 						} else if hovered {
-							pillW, pillH = theme.ImageResizePillHotWidth, theme.ImageResizePillHotH
 							pillFill = pal.AccentHover
 						}
 						h.Children(func() {
-							pill := ui.Box(c).MaxHeightPercent(100).
-								Radius(theme.RadiusPill).Background(pillFill).Border(haloW, pal.Paper)
-							pill.Width(s.scale(appUi.SpringTo(pill, "w", pillW)))
-							pill.Height(s.scale(appUi.SpringTo(pill, "h", pillH)))
-							appUi.Elevate(pill, theme.ElevationRaised)
+							ui.Box(c).Width(s.scale(theme.ImageResizePillWidth)).
+								Height(s.scale(theme.ImageResizePillHeight)).MaxHeightPercent(100).
+								Radius(theme.RadiusPill).Background(pillFill).IgnoreInput(true)
 						})
 						appUi.Probe(h, side.probe)
 						if held {
