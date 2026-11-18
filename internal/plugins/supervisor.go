@@ -160,6 +160,18 @@ func (s *Supervisor) StoreStatus() (refreshing bool, installingID string, errMsg
 	return s.storeRefreshing, s.installingID, s.storeErr, s.storeNotice
 }
 
+func (s *Supervisor) ClearStoreMessage() {
+	s.mu.Lock()
+	if s.storeErr == "" && s.storeNotice == "" {
+		s.mu.Unlock()
+		return
+	}
+	s.storeErr = ""
+	s.storeNotice = ""
+	s.mu.Unlock()
+	s.notifyChanged()
+}
+
 func (s *Supervisor) RefreshCatalogAsync() {
 	s.mu.Lock()
 	if s.storeRefreshing {
@@ -201,7 +213,7 @@ func (s *Supervisor) InstallEntryAsync(entry StoreAppEntry, onInstalled func(plu
 	s.notifyChanged()
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
 		inst, err := s.store.InstallEntry(ctx, entry)
 		installedList, _ := s.store.ListInstalled()
@@ -242,7 +254,7 @@ func (s *Supervisor) InstallFromSourceAsync(spec string, onInstalled func(plugin
 	s.notifyChanged()
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
 		inst, err := s.store.InstallFromSource(ctx, spec)
 		installedList, _ := s.store.ListInstalled()
