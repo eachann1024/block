@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>行内 AI 全流程（极简傻瓜版）· 默认标签 + 12字最近输入与星标收藏 + 原生 Block 流式渲染</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#3d63b0}a:hover{color:#2c4c8c}
+*{box-sizing:border-box}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+::selection{background:#cde2fb;color:#184f95}
+.ib{width:28px;height:28px;border:0;border-radius:6px;background:transparent;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;flex:none}
+.ib:hover{background:#eef3fc}
+.seg{height:30px;padding:0 10px;border:0;border-radius:6px;background:transparent;font-size:14px;font-weight:460;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.chip{height:28px;padding:0 8px;border:0;border-radius:6px;background:transparent;font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;flex:none}
+.chip:hover{background:#eef3fc}
+.chip-pri{height:28px;padding:0 12px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;color:#20242c;font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;flex:none}
+.chip-pri:hover{background:#dce8fb}
+.mi{width:100%;height:32px;padding:0 10px;border:0;border-radius:6px;background:transparent;display:flex;align-items:center;gap:8px;font-size:14px;text-align:left;cursor:pointer}
+.mi:hover{background:#eef3fc}
+.kbd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:16px;padding:1px 5px;border-radius:5px;border:1px solid #dcdcdc;background:#f1f1f1;color:#526071;flex:none}
+.code-pill{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13.5px;line-height:20px;padding:1px 6px;border-radius:4px;background:#f3f1ec;color:#b42318}
+.shimmer{background:linear-gradient(90deg,#526071 0%,#526071 35%,#20242c 50%,#526071 65%,#526071 100%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:shimmer-sweep 1.6s linear infinite}
+.ink-caret{display:inline-block;width:2px;height:18px;background:#547dd0;vertical-align:-3px;margin-left:2px;border-radius:1px;animation:caret-pulse 0.9s ease-in-out infinite}
+.dot-pulse{width:8px;height:8px;border-radius:4px;background:#547dd0;flex:none;animation:dot-breathe 1.2s ease-in-out infinite}
+.blk-enter{animation:blk-rise 180ms cubic-bezier(0.16,1,0.3,1) both}
+.tip-anchor{position:relative;display:inline-flex;align-items:center}
+.goose-tip{position:absolute;left:50%;bottom:calc(100% + 6px);transform:translate(-50%,3px);opacity:0;pointer-events:none;z-index:50;height:30px;padding:0 12px;border-radius:8px;background:#0f0f0f;color:#ffffff;font-size:13px;font-weight:450;line-height:18px;white-space:nowrap;display:inline-flex;align-items:center;box-shadow:0 4px 12px rgba(15,15,15,0.18);transition:opacity 120ms ease,transform 120ms cubic-bezier(0.16,1,0.3,1)}
+.tip-anchor:hover .goose-tip,.tip-anchor:focus-within .goose-tip{opacity:1;transform:translate(-50%,0)}
+.tip-show .goose-tip{opacity:1;transform:translate(-50%,0)}
+@keyframes shimmer-sweep{from{background-position:140% 0}to{background-position:-40% 0}}
+@keyframes caret-pulse{0%,100%{opacity:1}50%{opacity:0.2}}
+@keyframes dot-breathe{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(0.75);opacity:0.45}}
+@keyframes blk-rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.shimmer,.ink-caret,.dot-pulse,.blk-enter{animation:none}.shimmer{-webkit-text-fill-color:#526071}}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:940px;display:flex;flex-direction:column;background:{{pageBg}};color:{{textPri}};font-size:14px;line-height:20px">
+
+  <!-- 顶部演示切换条（仅用于原型快速跳步与验证「多聊几次收藏不丢」） -->
+  <div style="min-height:46px;flex:none;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:7px 18px;background:{{barBg}};border-bottom:1px solid {{shellBorder}}">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+        <button type="button" class="seg" onClick="{{pickEmptyCtx}}" style="background:{{ctxEmptyBg}};color:{{ctxEmptyFg}};box-shadow:{{ctxEmptyRing}}">空行起草</button>
+        <button type="button" class="seg" onClick="{{pickSelCtx}}" style="background:{{ctxSelBg}};color:{{ctxSelFg}};box-shadow:{{ctxSelRing}}">选中改写</button>
+      </div>
+
+      <sc-if value="{{isStageInput}}" hint-placeholder-val="{{true}}">
+        <button type="button" class="chip" onClick="{{simulateNewChat}}" style="border:1px solid {{btnBorder}};background:{{paperBg}};color:{{textPri}}">
+          <span>模拟再聊一句新词（测试顶掉未收藏）</span>
+        </button>
+        <button type="button" class="chip" onClick="{{toggleDemoTip}}" style="border:1px solid {{btnBorder}};background:{{tipBtnBg}};color:{{textPri}}">
+          <span>{{tipBtnLabel}}</span>
+        </button>
+      </sc-if>
+
+      <sc-if value="{{isStageStream}}" hint-placeholder-val="{{false}}">
+        <button type="button" class="chip" onClick="{{replayStream}}" style="border:1px solid {{btnBorder}};background:{{paperBg}};color:{{textPri}}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg>
+          <span>重播 Block 渲染动画</span>
+        </button>
+      </sc-if>
+    </div>
+
+    <div role="tablist" aria-label="极简行内 AI 五步流程" style="display:inline-flex;flex-wrap:wrap;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+      <sc-for list="{{stageTabs}}" as="st" hint-placeholder-count="5">
+        <button type="button" role="tab" aria-selected="{{st.active}}" class="seg" onClick="{{st.pick}}" style="background:{{st.bg}};color:{{st.fg}};box-shadow:{{st.ring}}">{{st.label}}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- Block 标准 40px 窗口顶栏 -->
+  <header style="height:40px;flex:none;display:flex;align-items:center;background:{{shellBg}};border-bottom:1px solid {{shellBorder}}">
+    <div style="width:260px;height:100%;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 14px;border-right:1px solid {{shellBorder}}">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+      </div>
+      <button type="button" class="ib" aria-label="切换侧栏" style="color:{{textSec}}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{duoFill}}"></path>
+          <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
+          <path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5"></path>
+        </svg>
+      </button>
+    </div>
+
+    <nav aria-label="已打开标签页" style="flex:1;min-width:0;display:flex;align-items:center;gap:4px;padding:0 10px;overflow:hidden">
+      <button type="button" style="height:28px;padding:0 12px;border:0;border-radius:6px;background:{{selBg}};box-shadow:inset 0 0 0 1px {{accentCol}};color:{{textPri}};font-weight:500;display:inline-flex;align-items:center;gap:7px;cursor:pointer">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accentCol}}" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="{{duoFill}}" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+        <span>发布就绪与回滚规范</span>
+      </button>
+      <button type="button" style="height:28px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:{{textSec}};display:inline-flex;align-items:center;gap:7px;cursor:pointer">
+        <span>产品原则</span>
+      </button>
+    </nav>
+  </header>
+
+  <!-- 主体（260px 侧栏 + 672px 标准纸面） -->
+  <div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+
+    <aside aria-label="工作区文件树" style="width:260px;flex:none;background:{{barBg}};border-right:1px solid {{shellBorder}};padding:12px 10px;display:flex;flex-direction:column;gap:4px">
+      <div style="height:32px;padding:0 10px;border-radius:6px;background:{{selBg}};box-shadow:inset 0 0 0 1px {{accentCol}};color:{{textPri}};font-weight:460;display:flex;align-items:center;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accentCol}}" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="{{duoFill}}" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path></svg>
+        <span>发布就绪与回滚规范</span>
+      </div>
+      <div style="height:32px;padding:0 10px;border-radius:6px;color:{{textSec}};display:flex;align-items:center;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z"></path></svg>
+        <span>产品原则</span>
+      </div>
+    </aside>
+
+    <!-- 标准 672px 编辑纸面 -->
+    <main style="flex:999 1 560px;min-width:0;background:{{paperBg}};padding:48px 40px 140px;display:flex;justify-content:center;overflow-y:auto">
+      <article style="width:100%;max-width:672px;display:flex;flex-direction:column;gap:16px;font-size:16px;line-height:28px;color:{{editorFg}}">
+
+        <h1 style="margin:0;font-size:30px;line-height:38px;font-weight:600;color:{{textPri}}">发布就绪与回滚规范</h1>
+
+        <p style="margin:0;color:{{editorFg}}">每次生产变更需在灰度放量前完成双人交叉核验。数据库结构变更必须兼容上一稳定版本，禁止在同一批次内同时执行字段重命名与旧列删除。</p>
+
+        <!-- 当前操作块与极简悬浮卡片锚定容器 -->
+        <div style="position:relative;margin-top:2px">
+
+          <!-- 悬停块把手 + -->
+          <button type="button" onClick="{{goTrigger}}" aria-label="块菜单" style="position:absolute;left:-32px;top:4px;width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:{{textSec}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          </button>
+
+          <!-- 01 唤出态 -->
+          <sc-if value="{{isStageTrigger}}" hint-placeholder-val="{{false}}">
+            <sc-if value="{{isEmptyCtx}}" hint-placeholder-val="{{true}}">
+              <div style="padding:4px 2px;display:flex;align-items:center;gap:2px">
+                <span style="font-family:'JetBrains Mono',monospace;color:{{accentCol}};font-weight:500">/</span>
+                <span class="ink-caret"></span>
+              </div>
+
+              <div role="menu" aria-label="斜杠菜单" style="margin-top:6px;width:232px;padding:5px;border-radius:10px;background:{{menuBg}};border:1px solid {{borderCol}};box-shadow:0 10px 28px rgba(32,36,44,0.12);display:flex;flex-direction:column;gap:2px">
+                <button type="button" role="menuitem" class="mi" onClick="{{goInput}}" style="background:{{selBg}};box-shadow:inset 0 0 0 1px {{accentCol}};color:{{textPri}};font-weight:500">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3z" fill="{{duoFill}}" stroke="{{accentCol}}" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+                  <span style="flex:1">AI 写作</span>
+                  <span class="kbd">空格</span>
+                </button>
+                <div style="height:1px;background:{{borderCol}};margin:3px 6px"></div>
+                <button type="button" role="menuitem" class="mi" onClick="{{goInput}}" style="color:{{textPri}}">
+                  <span style="width:16px;text-align:center;font-weight:600;color:{{textSec}};font-size:13px">H1</span>
+                  <span style="flex:1">一级标题</span>
+                  <span class="kbd">⌘⌥1</span>
+                </button>
+                <button type="button" role="menuitem" class="mi" onClick="{{goInput}}" style="color:{{textPri}}">
+                  <span style="width:16px;text-align:center;font-weight:600;color:{{textSec}};font-size:13px">H2</span>
+                  <span style="flex:1">二级标题</span>
+                  <span class="kbd">⌘⌥2</span>
+                </button>
+                <button type="button" role="menuitem" class="mi" onClick="{{goInput}}" style="color:{{textPri}}">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{textSec}}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8.5 12.5l2.3 2.3 4.7-4.8"></path></svg>
+                  <span style="flex:1">待办清单</span>
+                  <span class="kbd">⌘⌥4</span>
+                </button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{isSelCtx}}" hint-placeholder-val="{{false}}">
+              <div role="toolbar" aria-label="选区工具条" style="margin-bottom:8px;display:inline-flex;align-items:center;gap:3px;padding:4px;border-radius:8px;background:{{menuBg}};border:1px solid {{borderCol}};box-shadow:0 8px 22px rgba(32,36,44,0.12)">
+                <button type="button" class="chip-pri" onClick="{{goInput}}">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3z" fill="{{duoFill}}" stroke="{{accentCol}}" stroke-width="1.7" stroke-linejoin="round"></path></svg>
+                  <span>AI 改写</span>
+                </button>
+                <div style="width:1px;height:16px;background:{{borderCol}};margin:0 2px"></div>
+                <button type="button" class="chip" style="color:{{textPri}};font-weight:600">B</button>
+                <button type="button" class="chip" style="color:{{textPri}};font-style:italic">I</button>
+                <button type="button" class="chip" style="color:{{textPri}};font-family:'JetBrains Mono',monospace">&lt;/&gt;</button>
+              </div>
+              <div style="padding:4px 6px;border-radius:6px;background:#cde2fb;color:#184f95">
+                灰度发布前需要把所有零散的环境变量、特性开关还有出问题怎么切回老版本的步骤全部人工对一遍，确保不会漏掉关键项。
+              </div>
+            </sc-if>
+          </sc-if>
+
+          <!-- 02..04 纸面目标块虚线环（paint_outline 1px dashed #547dd0，内部 100% 原生 Block 渲染） -->
+          <sc-if value="{{showDashedOutline}}" hint-placeholder-val="{{true}}">
+            <div style="padding:8px 12px;margin:0 -12px;border-radius:10px;border:1px dashed {{accentCol}};background:{{outlineTint}}">
+
+              <!-- 02 输入态下的正文块 -->
+              <sc-if value="{{isStageInput}}" hint-placeholder-val="{{true}}">
+                <sc-if value="{{isEmptyCtx}}" hint-placeholder-val="{{true}}">
+                  <span style="color:{{textSec}}">输入 / 打开菜单，或直接开始输入…</span>
+                </sc-if>
+                <sc-if value="{{isSelCtx}}" hint-placeholder-val="{{false}}">
+                  <span>灰度发布前需要把所有零散的环境变量、特性开关还有出问题怎么切回老版本的步骤全部人工对一遍，确保不会漏掉关键项。</span>
+                </sc-if>
+              </sc-if>
+
+              <!-- 03 生成动画 & 04 确认态：全程使用原生 Block 组件渲染（H3标题块 + Todo复选框块 + 行内代码胶囊 + 提示标注块） -->
+              <sc-if value="{{showRenderedBlocks}}" hint-placeholder-val="{{false}}">
+                <sc-if value="{{isEmptyCtx}}" hint-placeholder-val="{{true}}">
+                  <div style="display:flex;flex-direction:column;gap:10px">
+
+                    <!-- 原生 Block 1：三级标题块 Kind::H3 -->
+                    <sc-if value="{{showBlk1}}" hint-placeholder-val="{{true}}">
+                      <h3 class="blk-enter" style="margin:0;font-size:19px;line-height:26px;font-weight:600;color:{{textPri}}">
+                        <span>{{blk1Text}}</span>
+                        <sc-if value="{{caretAtBlk1}}" hint-placeholder-val="{{false}}"><span class="ink-caret"></span></sc-if>
+                      </h3>
+                    </sc-if>
+
+                    <!-- 原生 Block 2：待办清单块 Kind::Todo + 行内代码胶囊 -->
+                    <sc-if value="{{showBlk2}}" hint-placeholder-val="{{true}}">
+                      <div class="blk-enter" style="display:flex;align-items:flex-start;gap:10px;line-height:26px">
+                        <span style="margin-top:5px;width:16px;height:16px;border-radius:4px;border:1.5px solid {{accentCol}};background:{{paperBg}};flex:none"></span>
+                        <div style="flex:1;color:{{editorFg}}">
+                          <span>{{blk2Lead}}</span>
+                          <sc-if value="{{showBlk2Code}}" hint-placeholder-val="{{true}}">
+                            <code class="code-pill" style="background:{{codeBg}}">MAX_RETRY = 3</code>
+                          </sc-if>
+                          <span>{{blk2Tail}}</span>
+                          <sc-if value="{{caretAtBlk2}}" hint-placeholder-val="{{false}}"><span class="ink-caret"></span></sc-if>
+                        </div>
+                      </div>
+                    </sc-if>
+
+                    <!-- 原生 Block 3：待办清单块 Kind::Todo + 行内代码胶囊 -->
+                    <sc-if value="{{showBlk3}}" hint-placeholder-val="{{true}}">
+                      <div class="blk-enter" style="display:flex;align-items:flex-start;gap:10px;line-height:26px">
+                        <span style="margin-top:5px;width:16px;height:16px;border-radius:4px;border:1.5px solid {{accentCol}};background:{{paperBg}};flex:none"></span>
+                        <div style="flex:1;color:{{editorFg}}">
+                          <span>{{blk3Lead}}</span>
+                          <sc-if value="{{showBlk3Code}}" hint-placeholder-val="{{true}}">
+                            <code class="code-pill" style="background:{{codeBg}}">fast_fallback</code>
+                          </sc-if>
+                          <span>{{blk3Tail}}</span>
+                          <sc-if value="{{caretAtBlk3}}" hint-placeholder-val="{{false}}"><span class="ink-caret"></span></sc-if>
+                        </div>
+                      </div>
+                    </sc-if>
+
+                    <!-- 原生 Block 4：Ocean Paper 提示标注块 CalloutKind::Note -->
+                    <sc-if value="{{showBlk4}}" hint-placeholder-val="{{true}}">
+                      <div class="blk-enter" style="position:relative;margin-top:2px;padding:10px 14px 10px 40px;border-radius:8px;background:{{calloutBg}};border:1px solid {{calloutBorder}};font-size:15px;line-height:24px;color:{{editorFg}}">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="position:absolute;left:12px;top:13px">
+                          <rect x="3.5" y="3.5" width="17" height="17" rx="4.5" fill="{{duoFill}}" stroke="{{accentCol}}" stroke-width="1.6"></rect>
+                          <path d="M12 8v4.5M12 16h.01" stroke="{{accentCol}}" stroke-width="1.8" stroke-linecap="round"></path>
+                        </svg>
+                        <span>{{blk4Text}}</span>
+                        <sc-if value="{{caretAtBlk4}}" hint-placeholder-val="{{false}}"><span class="ink-caret"></span></sc-if>
+                      </div>
+                    </sc-if>
+
+                  </div>
+                </sc-if>
+
+                <!-- 选中改写态下的原生 Block 渲染（原文红线划除 + 下方紧跟干净的新段落 Block） -->
+                <sc-if value="{{isSelCtx}}" hint-placeholder-val="{{false}}">
+                  <div style="display:flex;flex-direction:column;gap:8px">
+                    <div style="color:#b42318;background:#fbe9e7;text-decoration:line-through;padding:4px 8px;border-radius:6px;font-size:15px;line-height:24px">
+                      灰度发布前需要把所有零散的环境变量、特性开关还有出问题怎么切回老版本的步骤全部人工对一遍，确保不会漏掉关键项。
+                    </div>
+                    <div class="blk-enter" style="padding:4px 2px;color:{{editorFg}};line-height:28px">
+                      <span>{{selStreamLead}}</span>
+                      <sc-if value="{{showSelCode}}" hint-placeholder-val="{{true}}">
+                        <code class="code-pill" style="background:{{codeBg}}">fast_fallback</code>
+                      </sc-if>
+                      <span>{{selStreamTail}}</span>
+                      <sc-if value="{{isStageStream}}" hint-placeholder-val="{{false}}"><span class="ink-caret"></span></sc-if>
+                    </div>
+                  </div>
+                </sc-if>
+              </sc-if>
+
+            </div>
+          </sc-if>
+
+          <!-- 05 完成落定态：浮层彻底消失，生成的 Block 直接就是普通可编辑文档块 -->
+          <sc-if value="{{isStageDone}}" hint-placeholder-val="{{false}}">
+            <sc-if value="{{isEmptyCtx}}" hint-placeholder-val="{{true}}">
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <h3 style="margin:0;font-size:19px;line-height:26px;font-weight:600;color:{{textPri}}">灰度放量前必查项</h3>
+                <div style="display:flex;align-items:flex-start;gap:10px;line-height:26px">
+                  <span style="margin-top:5px;width:16px;height:16px;border-radius:4px;border:1.5px solid #526071;background:{{paperBg}};flex:none"></span>
+                  <div>确认新增环境变量已注入灰度集群，核对重试上限 <code class="code-pill" style="background:{{codeBg}}">MAX_RETRY = 3</code>。</div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:10px;line-height:26px">
+                  <span style="margin-top:5px;width:16px;height:16px;border-radius:4px;border:1.5px solid #526071;background:{{paperBg}};flex:none"></span>
+                  <div>验证特性开关 <code class="code-pill" style="background:{{codeBg}}">fast_fallback</code> 可在 10 秒内切回旧版本链路。</div>
+                </div>
+                <div style="position:relative;margin-top:2px;padding:10px 14px 10px 40px;border-radius:8px;background:{{calloutBg}};border:1px solid {{calloutBorder}};font-size:15px;line-height:24px;color:{{editorFg}}">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="position:absolute;left:12px;top:13px">
+                    <rect x="3.5" y="3.5" width="17" height="17" rx="4.5" fill="{{duoFill}}" stroke="{{accentCol}}" stroke-width="1.6"></rect>
+                    <path d="M12 8v4.5M12 16h.01" stroke="{{accentCol}}" stroke-width="1.8" stroke-linecap="round"></path>
+                  </svg>
+                  <span>{{doneFinalNote}}</span><span class="ink-caret"></span>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{isSelCtx}}" hint-placeholder-val="{{false}}">
+              <p style="margin:0;color:{{editorFg}}">
+                灰度发布前需逐项核验核心环境变量，确认降级开关 <code class="code-pill" style="background:{{codeBg}}">fast_fallback</code> 支持 10 秒内一键回切旧链路。<span class="ink-caret"></span>
+              </p>
+            </sc-if>
+          </sc-if>
+
+          <!-- 极简清爽双层 AI 浮条（396px · 无模型切换 · 无 @ · 点击外部或 Esc 即关） -->
+          <sc-if value="{{showAiBar}}" hint-placeholder-val="{{true}}">
+            <div role="dialog" aria-label="AI 写作" style="position:relative;margin-top:10px;width:396px;max-width:100%;padding:8px;border-radius:10px;background:{{menuBg}};border:1px solid {{borderCol}};box-shadow:0 10px 28px rgba(32,36,44,0.13);display:flex;flex-direction:column;gap:6px">
+
+              <!-- 03 生成中：仅一行干净呼吸提示 + 停止 -->
+              <sc-if value="{{isStageStream}}" hint-placeholder-val="{{false}}">
+                <div style="min-height:36px;padding:0 8px 0 12px;border-radius:8px;background:{{codeBg}};border:1px solid {{borderCol}};display:flex;align-items:center;gap:8px">
+                  <span class="dot-pulse"></span>
+                  <span class="shimmer" style="flex:1;font-size:14px;font-weight:460">正在生成…</span>
+                  <button type="button" class="chip" onClick="{{goInput}}" style="height:26px;padding:0 8px;color:{{textSec}}">停止</button>
+                </div>
+              </sc-if>
+
+              <!-- 02 输入态 & 04 确认态：极简输入框 -->
+              <sc-if value="{{showInputRow}}" hint-placeholder-val="{{true}}">
+                <div style="min-height:36px;padding:0 6px 0 10px;border-radius:8px;background:{{codeBg}};border:1px solid {{btnBorder}};display:flex;align-items:center;gap:8px">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+                    <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3z" fill="{{duoFill}}" stroke="{{accentCol}}" stroke-width="1.6" stroke-linejoin="round"></path>
+                  </svg>
+                  <label style="flex:1;min-width:0;display:flex;align-items:center">
+                    <span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">输入提示词</span>
+                    <input value="{{promptValue}}" onChange="{{onPromptChange}}" placeholder="{{inputPlaceholder}}" style="width:100%;border:0;outline:0;background:transparent;color:{{textPri}};font-size:14px">
+                  </label>
+                  <button type="button" onClick="{{submitPrompt}}" aria-label="发送（回车）" style="width:24px;height:24px;border:0;border-radius:6px;background:#20242c;color:#ffffff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"></path></svg>
+                  </button>
+                </div>
+              </sc-if>
+
+              <!-- 02 输入态底部：第一层内置默认标签 + 第二层用户收藏与上次输入（≤12字 + … + 悬停全文 Tooltip + ☆/★ 手动收藏） -->
+              <sc-if value="{{isStageInput}}" hint-placeholder-val="{{true}}">
+                <div style="display:flex;flex-direction:column;gap:5px">
+
+                  <!-- 默认标签行 -->
+                  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:2px">
+                    <sc-for list="{{defaultTags}}" as="dt" hint-placeholder-count="4">
+                      <button type="button" class="chip" onClick="{{dt.run}}" style="height:26px;padding:0 8px;color:{{textPri}};font-size:13.5px">{{dt.label}}</button>
+                    </sc-for>
+                    <sc-if value="{{isSelCtx}}" hint-placeholder-val="{{false}}">
+                      <button type="button" class="chip" onClick="{{toggleTransMenu}}" style="height:26px;padding:0 8px;background:{{transBtnBg}};box-shadow:{{transBtnRing}};color:{{textPri}};font-size:13.5px">
+                        <span>翻译</span>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{{textSec}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+                      </button>
+                    </sc-if>
+                  </div>
+
+                  <!-- 用户自定义记录行：已收藏（★ 永远保留） + 上次输入（☆ 最多 12 字…，悬停黑底 Tooltip 看全文，点 ☆ 变收藏） -->
+                  <sc-if value="{{hasUserChips}}" hint-placeholder-val="{{true}}">
+                    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding-top:4px;border-top:1px solid {{borderCol}}">
+                      <sc-for list="{{userPromptChips}}" as="uc" hint-placeholder-count="2">
+                        <div class="{{uc.wrapClass}}" style="height:26px;padding:0 4px 0 8px;border-radius:6px;background:{{uc.bg}};border:1px solid {{uc.border}};display:inline-flex;align-items:center;gap:2px">
+                          <button type="button" onClick="{{uc.run}}" style="border:0;background:transparent;padding:0;color:{{textPri}};font-size:13px;line-height:20px;cursor:pointer;white-space:nowrap">{{uc.shortText}}</button>
+                          <button type="button" onClick="{{uc.toggleStar}}" aria-label="{{uc.starAria}}" style="width:20px;height:20px;border:0;border-radius:4px;background:transparent;color:{{uc.starColor}};display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;flex:none">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="{{uc.starFill}}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+                              <path d="M12 3.2l2.6 5.3 5.9.8-4.2 4.1 1 5.8L12 16.4l-5.3 2.8 1-5.8-4.2-4.1 5.9-.8L12 3.2z"></path>
+                            </svg>
+                          </button>
+                          <!-- 全局统一规范 Tooltip（#0f0f0f · 30px高 · 8px圆角）：鼠标移上去显示完整提示词 -->
+                          <span role="tooltip" class="goose-tip" style="background:{{tipBg}};color:{{tipFg}}">{{uc.fullText}}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+
+                </div>
+              </sc-if>
+
+              <!-- 04 傻瓜式确认底栏：回车即完成，不满意直接在上面打字改，零多余概念 -->
+              <sc-if value="{{isStageReview}}" hint-placeholder-val="{{false}}">
+                <div style="display:flex;align-items:center;gap:4px">
+                  <button type="button" class="chip-pri" onClick="{{acceptDone}}">
+                    <span>{{acceptLabel}}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#3d63b0">↵</span>
+                  </button>
+                  <sc-if value="{{isSelCtx}}" hint-placeholder-val="{{false}}">
+                    <button type="button" class="chip" onClick="{{acceptDone}}" style="color:{{textPri}}">插入下方</button>
+                  </sc-if>
+                  <button type="button" class="chip" onClick="{{runStreamAuto}}" style="color:{{textPri}}">重写</button>
+                  <span style="flex:1"></span>
+                  <button type="button" class="chip" onClick="{{goInput}}" style="color:{{textSec}}">放弃</button>
+                </div>
+              </sc-if>
+
+              <!-- 选区模式下的极简翻译子菜单 -->
+              <sc-if value="{{showTransMenu}}" hint-placeholder-val="{{false}}">
+                <div role="menu" aria-label="选择目标语言" style="position:absolute;left:162px;top:76px;z-index:30;width:140px;padding:4px;border-radius:8px;background:{{menuBg}};border:1px solid {{borderCol}};box-shadow:0 10px 24px rgba(32,36,44,0.14);display:flex;flex-direction:column;gap:2px">
+                  <button type="button" role="menuitem" class="mi" onClick="{{runStreamAuto}}" style="color:{{textPri}}">译成英文</button>
+                  <button type="button" role="menuitem" class="mi" onClick="{{runStreamAuto}}" style="color:{{textPri}}">译成中文</button>
+                </div>
+              </sc-if>
+
+            </div>
+          </sc-if>
+
+        </div>
+
+        <p style="margin:12px 0 0;color:{{editorFg}}">通过自动化门禁检查后，发布流水线将按 5% → 25% → 100% 三阶段推进。</p>
+
+      </article>
+    </main>
+  </div>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"themeMode":{"editor":"enum","default":"light","options":["light","dark"]},"contextMode":{"editor":"enum","default":"empty","options":["empty","selection"]},"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      ctx: null,
+      stage: 'input',
+      prompt: '',
+      transOpen: false,
+      forceShowFirstTip: false,
+      chatSeed: 0,
+      refinedOnce: false,
+      savedPrompts: [
+        { id: 'fav-1', text: '按结论先行的结构提炼成三条可执行检查项，保留关键指标', starred: true },
+        { id: 'recent-1', text: '用通俗大白话改写并标出配置项，去掉生僻缩写', starred: false }
+      ],
+      streamTick: 24,
+      autoFinish: false
+    };
+    this._timer = null;
+  }
+
+  componentWillUnmount() {
+    if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
+  }
+
+  trunc12(str) {
+    const chars = Array.from((str || '').trim());
+    if (chars.length <= 12) return chars.join('');
+    return chars.slice(0, 12).join('') + '…';
+  }
+
+  recordUserPrompt(raw) {
+    const clean = (raw || '').trim();
+    if (!clean) return;
+    const list = (this.state.savedPrompts || []).slice();
+    const hitIdx = list.findIndex((item) => item.text === clean);
+    if (hitIdx >= 0) {
+      this.setState({ prompt: '' });
+      return;
+    }
+    const starredOnly = list.filter((item) => item.starred);
+    starredOnly.push({
+      id: 'recent-' + Date.now(),
+      text: clean,
+      starred: false
+    });
+    this.setState({ savedPrompts: starredOnly, prompt: '' });
+  }
+
+  startBlockStream(autoFinish, isFollowup) {
+    if (this._timer) clearInterval(this._timer);
+    this.setState({
+      stage: 'stream',
+      streamTick: 0,
+      autoFinish: Boolean(autoFinish),
+      transOpen: false,
+      refinedOnce: Boolean(isFollowup) || Boolean(this.state.refinedOnce)
+    });
+    this._timer = setInterval(() => {
+      const next = (this.state.streamTick ?? 0) + 1;
+      if (next >= 28) {
+        clearInterval(this._timer);
+        this._timer = null;
+        if (this.state.autoFinish) {
+          this.setState({ stage: 'review', streamTick: 28 });
+        } else {
+          this.setState({ streamTick: 26 });
+        }
+      } else {
+        this.setState({ streamTick: next });
+      }
+    }, 95);
+  }
+
+  renderVals() {
+    const dark = (this.props.themeMode ?? 'light') === 'dark';
+    const ctx = this.state.ctx ?? (this.props.contextMode ?? 'empty');
+    const isEmptyCtx = ctx === 'empty';
+    const stage = this.state.stage ?? 'input';
+    const tick = this.state.streamTick ?? 24;
+
+    const activeBg = dark ? '#343434' : '#e5edfc';
+    const activeFg = dark ? '#ececec' : '#20242c';
+    const mutedFg = dark ? '#b4b4b4' : '#526071';
+    const accent = dark ? '#779de8' : '#547dd0';
+
+    const stages = [
+      { id: 'trigger', label: '01 / 唤出' },
+      { id: 'input', label: '02 默认词与收藏' },
+      { id: 'stream', label: '03 Block 渲染动画' },
+      { id: 'review', label: '04 回车确认 / 追问' },
+      { id: 'done', label: '05 落定正文' }
+    ];
+
+    const stageTabs = stages.map((s) => ({
+      label: s.label,
+      active: stage === s.id,
+      bg: stage === s.id ? activeBg : 'transparent',
+      fg: stage === s.id ? activeFg : mutedFg,
+      ring: stage === s.id ? ('inset 0 0 0 1px ' + accent) : 'none',
+      pick: () => {
+        if (s.id === 'stream') {
+          this.startBlockStream(false, false);
+        } else {
+          if (this._timer) { clearInterval(this._timer); this._timer = null; }
+          this.setState({ stage: s.id, transOpen: false });
+        }
+      }
+    }));
+
+    const isStageTrigger = stage === 'trigger';
+    const isStageInput = stage === 'input';
+    const isStageStream = stage === 'stream';
+    const isStageReview = stage === 'review';
+    const isStageDone = stage === 'done';
+
+    const defaultLabels = isEmptyCtx
+      ? ['续写', '列大纲', '待办清单', '头脑风暴']
+      : ['润色', '精简', '通俗一点'];
+    const defaultTags = defaultLabels.map((label) => ({
+      label,
+      run: () => this.startBlockStream(true, false)
+    }));
+
+    const rawSaved = this.state.savedPrompts || [];
+    const orderedSaved = rawSaved
+      .filter((x) => x.starred)
+      .concat(rawSaved.filter((x) => !x.starred));
+
+    const forceTip = Boolean(this.state.forceShowFirstTip);
+    const userPromptChips = orderedSaved.map((item, idx) => ({
+      shortText: this.trunc12(item.text),
+      fullText: item.text,
+      wrapClass: forceTip && idx === orderedSaved.length - 1 ? 'tip-anchor tip-show' : 'tip-anchor',
+      bg: item.starred ? (dark ? '#2b3548' : '#eef3fc') : (dark ? '#2a2a2a' : '#f3f1ec'),
+      border: item.starred ? (dark ? '#455f91' : '#c9d8f3') : (dark ? '#3d3d3d' : '#e4e6ea'),
+      starFill: item.starred ? accent : 'none',
+      starColor: item.starred ? accent : mutedFg,
+      starAria: item.starred ? '取消收藏该提示词' : '手动收藏该提示词（防被新对话顶掉）',
+      run: () => this.startBlockStream(true, false),
+      toggleStar: () => {
+        const updated = (this.state.savedPrompts || []).map((p) =>
+          p.id === item.id ? { id: p.id, text: p.text, starred: !p.starred } : p
+        );
+        this.setState({ savedPrompts: updated });
+      }
+    }));
+
+    const sampleChats = [
+      '帮我检查这段流程有没有遗漏回滚步骤并补齐监控指标',
+      '改写成适合发在团队周报里的三句话精简总结',
+      '按照故障等级从高到低拆成清晰的值班响应步骤'
+    ];
+
+    // 原生 Block 分段流式揭晓进度计算（0..28 tick）
+    const fullB1 = '灰度放量前必查项';
+    const fullB2L = '确认新增环境变量已注入灰度集群，核对重试上限 ';
+    const fullB2T = '。';
+    const fullB3L = '验证特性开关 ';
+    const fullB3T = ' 可在 10 秒内切回旧版本链路。';
+    const fullB4 = this.state.refinedOnce
+      ? '观察窗口不少于 15 分钟。'
+      : '灰度观察窗口不少于 15 分钟，期间禁止清理旧版索引。';
+
+    const fullSelL = '灰度发布前需逐项核验核心环境变量，确认降级开关 ';
+    const fullSelT = ' 支持 10 秒内一键回切旧链路。';
+
+    const fullMode = isStageReview;
+    const t = fullMode ? 28 : tick;
+
+    const showBlk1 = t >= 1;
+    const showBlk2 = t >= 6;
+    const showBlk3 = t >= 14;
+    const showBlk4 = t >= 21;
+
+    const sliceBy = (s, start, span) => {
+      if (fullMode || t >= start + span) return s;
+      if (t <= start) return '';
+      const chars = Array.from(s);
+      const n = Math.max(1, Math.floor(chars.length * ((t - start) / span)));
+      return chars.slice(0, n).join('');
+    };
+
+    const blk1Text = sliceBy(fullB1, 1, 4);
+    const blk2Lead = sliceBy(fullB2L, 6, 5);
+    const showBlk2Code = fullMode || t >= 11;
+    const blk2Tail = showBlk2Code ? sliceBy(fullB2T, 12, 2) : '';
+
+    const blk3Lead = sliceBy(fullB3L, 14, 3);
+    const showBlk3Code = fullMode || t >= 17;
+    const blk3Tail = showBlk3Code ? sliceBy(fullB3T, 18, 3) : '';
+
+    const blk4Text = sliceBy(fullB4, 21, 7);
+
+    const selStreamLead = sliceBy(fullSelL, 2, 11);
+    const showSelCode = fullMode || t >= 14;
+    const selStreamTail = showSelCode ? sliceBy(fullSelT, 15, 11) : '';
+
+    return {
+      pageBg: dark ? '#181818' : '#f1f1f1',
+      shellBg: dark ? '#343434' : '#f1f1f1',
+      barBg: dark ? '#222222' : '#fafafa',
+      paperBg: dark ? '#181818' : '#ffffff',
+      menuBg: dark ? '#222222' : '#ffffff',
+      codeBg: dark ? '#242424' : '#f3f1ec',
+      calloutBg: dark ? '#222b3a' : '#eef3fc',
+      calloutBorder: dark ? '#35496e' : '#c9d8f3',
+      outlineTint: isStageInput ? 'transparent' : (dark ? 'rgba(52,72,110,0.18)' : 'rgba(238,243,252,0.55)'),
+      selBg: activeBg,
+      textPri: activeFg,
+      textSec: mutedFg,
+      editorFg: dark ? '#ececec' : '#1f1e1d',
+      accentCol: accent,
+      duoFill: dark ? '#31456a' : '#c9d8f3',
+      borderCol: dark ? '#2e2e2e' : '#e4e6ea',
+      shellBorder: dark ? '#333333' : '#e6e6e6',
+      btnBorder: dark ? '#444444' : '#dcdcdc',
+      tipBg: dark ? '#202020' : '#0f0f0f',
+      tipFg: dark ? '#ececec' : '#ffffff',
+
+      isEmptyCtx,
+      isSelCtx: !isEmptyCtx,
+      ctxEmptyBg: isEmptyCtx ? activeBg : 'transparent',
+      ctxEmptyFg: isEmptyCtx ? activeFg : mutedFg,
+      ctxEmptyRing: isEmptyCtx ? ('inset 0 0 0 1px ' + accent) : 'none',
+      ctxSelBg: !isEmptyCtx ? activeBg : 'transparent',
+      ctxSelFg: !isEmptyCtx ? activeFg : mutedFg,
+      ctxSelRing: !isEmptyCtx ? ('inset 0 0 0 1px ' + accent) : 'none',
+      pickEmptyCtx: () => this.setState({ ctx: 'empty', transOpen: false }),
+      pickSelCtx: () => this.setState({ ctx: 'selection', transOpen: false }),
+
+      stageTabs,
+      isStageTrigger,
+      isStageInput,
+      isStageStream,
+      isStageReview,
+      isStageDone,
+      showDashedOutline: isStageInput || isStageStream || isStageReview,
+      showRenderedBlocks: isStageStream || isStageReview,
+      showAiBar: isStageInput || isStageStream || isStageReview,
+      showInputRow: isStageInput || isStageReview,
+
+      showBlk1,
+      showBlk2,
+      showBlk3,
+      showBlk4,
+      blk1Text,
+      blk2Lead,
+      showBlk2Code,
+      blk2Tail,
+      blk3Lead,
+      showBlk3Code,
+      blk3Tail,
+      blk4Text,
+      caretAtBlk1: isStageStream && t >= 1 && t < 6,
+      caretAtBlk2: isStageStream && t >= 6 && t < 14,
+      caretAtBlk3: isStageStream && t >= 14 && t < 21,
+      caretAtBlk4: isStageStream && t >= 21,
+
+      selStreamLead,
+      showSelCode,
+      selStreamTail,
+      doneFinalNote: fullB4,
+
+      promptValue: this.state.prompt ?? '',
+      onPromptChange: (e) => this.setState({ prompt: e && e.target ? e.target.value : '' }),
+      inputPlaceholder: isStageReview
+        ? '不满意？直接打字继续改，或按回车完成…'
+        : (isEmptyCtx ? '写点什么，或直接点下面标签…' : '怎么改这段话，或直接点下面标签…'),
+
+      submitPrompt: () => {
+        const val = (this.state.prompt || '').trim();
+        if (val) {
+          this.recordUserPrompt(val);
+          this.startBlockStream(true, isStageReview);
+        } else if (isStageReview) {
+          this.setState({ stage: 'done' });
+        } else {
+          this.startBlockStream(true, false);
+        }
+      },
+
+      defaultTags,
+      hasUserChips: userPromptChips.length > 0,
+      userPromptChips,
+
+      simulateNewChat: () => {
+        const idx = (this.state.chatSeed ?? 0) % sampleChats.length;
+        this.recordUserPrompt(sampleChats[idx]);
+        this.setState({ chatSeed: (this.state.chatSeed ?? 0) + 1 });
+      },
+      tipBtnBg: forceTip ? activeBg : (dark ? '#181818' : '#ffffff'),
+      tipBtnLabel: forceTip ? '隐藏 Tooltip 预览' : '预览悬停全文 Tooltip',
+      toggleDemoTip: () => this.setState({ forceShowFirstTip: !this.state.forceShowFirstTip }),
+
+      transBtnBg: this.state.transOpen ? activeBg : 'transparent',
+      transBtnRing: this.state.transOpen ? ('inset 0 0 0 1px ' + accent) : 'none',
+      showTransMenu: isStageInput && !isEmptyCtx && Boolean(this.state.transOpen),
+      toggleTransMenu: () => this.setState({ transOpen: !this.state.transOpen }),
+
+      acceptLabel: isEmptyCtx ? '完成' : '替换',
+      goTrigger: () => this.setState({ stage: 'trigger', transOpen: false }),
+      goInput: () => {
+        if (this._timer) { clearInterval(this._timer); this._timer = null; }
+        this.setState({ stage: 'input', transOpen: false });
+      },
+      runStreamAuto: () => this.startBlockStream(true, false),
+      replayStream: () => this.startBlockStream(false, false),
+      acceptDone: () => this.setState({ stage: 'done', transOpen: false })
+    };
+  }
+}
+</script>
+</body>
+</html>

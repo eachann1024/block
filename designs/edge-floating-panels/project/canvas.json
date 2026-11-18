@@ -1,0 +1,66 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-18T10:42:00Z"
+  },
+  "title": "窄窗边缘唤出浮动侧栏与 AI（不遮挡块把手）",
+  "launch": {
+    "view": "canvas",
+    "page": "edge-float"
+  },
+  "pages": [
+    {
+      "id": "edge-float",
+      "name": "窄窗边缘浮动方案"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1200,
+      "h": 820,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "edge-float",
+      "title": "方案 A（推荐）· 贴边驻留唤出 + 正文让位保把手"
+    },
+    "VariantB-ShoulderZone.dc.html": {
+      "x": 1280,
+      "y": 0,
+      "w": 1200,
+      "h": 820,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "edge-float",
+      "title": "方案 B · 顶肩热区唤出 + 半高悬浮舱（零重叠避让）"
+    },
+    "VariantC-EdgeRailPush.dc.html": {
+      "x": 2560,
+      "y": 0,
+      "w": 1200,
+      "h": 820,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "edge-float",
+      "title": "方案 C · 双侧微导轨胶囊 + 临时内推分栏"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "VariantB-ShoulderZone.dc.html",
+    "VariantC-EdgeRailPush.dc.html"
+  ],
+  "notes": {
+    "row-title": {
+      "x": 0,
+      "y": -260,
+      "text": "窄窗边缘唤出浮动侧栏与 AI · 不遮挡块把手",
+      "kind": "title1",
+      "page": "edge-float",
+      "maxW": 3760
+    }
+  },
+  "designSystems": []
+}

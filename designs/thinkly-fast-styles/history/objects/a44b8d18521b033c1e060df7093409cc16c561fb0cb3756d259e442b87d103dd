@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>设置 · 独立页面（左侧分类导航单页切换 + 方案 C 三联 AI 服务商直选）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input{font-family:inherit}
+.ib{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;padding:0;cursor:pointer;flex:none}
+.row{font:inherit;font-size:14px;line-height:20px;width:100%;height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;border:0;border-radius:6px;background:transparent;text-align:left;cursor:pointer;box-sizing:border-box}
+.btn{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:34px;padding:0 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;white-space:nowrap;flex:none}
+.seg{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:32px;padding:0 12px;border:0;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;white-space:nowrap}
+.pcard{font:inherit;flex:1;min-width:0;padding:10px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:8px;text-align:left;box-sizing:border-box}
+.field-input{font:inherit;font-size:14px;line-height:20px;height:34px;padding:0 10px;border-radius:8px;box-sizing:border-box;outline:none}
+.tray-btn{font:inherit;height:32px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;gap:4px;border-radius:8px;cursor:pointer;box-sizing:border-box}
+.tray-static{font:inherit;height:32px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;gap:4px;border-radius:8px;box-sizing:border-box}
+.keycap{font-family:'JetBrains Mono',Inter,ui-monospace,monospace;font-variant-numeric:tabular-nums;height:22px;min-width:22px;padding:0 6px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;line-height:14px;font-weight:500;box-sizing:border-box;white-space:nowrap}
+.keycap-sym{font-family:Inter,-apple-system,'SF Pro Text',system-ui,sans-serif;height:22px;min-width:22px;padding:0 5px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;line-height:14px;font-weight:500;box-sizing:border-box;white-space:nowrap}
+.menu-opt{font:inherit;font-size:14px;line-height:20px;width:100%;height:32px;padding:0 8px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;text-align:left;box-sizing:border-box}
+.ai-toggle{position:relative;transition:transform 240ms cubic-bezier(.22,1,.36,1),box-shadow 240ms cubic-bezier(.22,1,.36,1),background 160ms linear,border-color 160ms linear}
+.ai-toggle:hover{transform:translateY(-1.5px);box-shadow:0 5px 14px color-mix(in srgb, var(--accent) 16%, transparent);border-color:var(--accent);background:var(--idle-hover, var(--on-bg))}
+.ai-toggle.is-on:hover,.ai-toggle.is-on-rest:hover{background:var(--on-bg)}
+.ai-spark{position:relative;width:15px;height:15px;display:inline-flex;flex:none}
+.ai-toggle:hover .ai-spark{animation:ai-float 340ms linear}
+.ai-toggle.is-on{animation:ai-pop 340ms linear}
+.ai-toggle.is-on .ai-spark{animation:ai-leap 340ms linear}
+.ai-toggle.is-off{animation:ai-settle 180ms cubic-bezier(.22,1,.36,1)}
+.twinkle{position:absolute;border-radius:99px;background:var(--accent);opacity:0;pointer-events:none}
+.ai-toggle:hover .twinkle{animation:ai-twinkle 460ms linear both}
+.tw1{left:-2px;top:-1px;width:3.6px;height:3.6px}
+.tw2{left:11px;top:2px;width:4.8px;height:4.8px}
+.tw3{left:3px;top:11px;width:4.2px;height:4.2px}
+.halo{position:absolute;inset:0;border-radius:8px;border:1px solid transparent;pointer-events:none}
+.ai-toggle.is-on .halo{animation:ai-halo 480ms cubic-bezier(.16,1,.3,1)}
+.puff{position:absolute;top:16px;border-radius:99px;opacity:0;pointer-events:none}
+.ai-toggle.is-on .puff{animation:ai-puff var(--dur) cubic-bezier(.215,.61,.355,1) both}
+@keyframes ai-float{0%{transform:none}50%{transform:translate(0.8px,-1.4px)}100%{transform:none}}
+@keyframes ai-leap{0%{transform:none}50%{transform:translateY(-2.6px)}100%{transform:none}}
+@keyframes ai-pop{0%{transform:none}28%{transform:translateY(1.4px)}60%{transform:translateY(-2.2px)}100%{transform:none}}
+@keyframes ai-settle{0%{transform:none}50%{transform:translateY(1.2px)}100%{transform:none}}
+@keyframes ai-twinkle{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(1)}}
+@keyframes ai-halo{0%{inset:0;border-color:color-mix(in srgb, var(--accent) 62%, transparent)}100%{inset:-6px;border-color:transparent}}
+@keyframes ai-puff{0%{opacity:.9;transform:translate(-50%,-50%) scale(.2)}100%{opacity:0;transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(1)}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}.ai-toggle,.ai-toggle *{animation:none!important}}
+</style>
+</helmet>
+<div style="width:100%;min-height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:{{shellBg}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:{{textPrimary}};font-size:14px;line-height:20px;overflow:hidden;-webkit-font-smoothing:antialiased">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;border-bottom:1px solid {{sidebarBorder}};box-sizing:border-box;background:{{shellBg}}">
+<div style="width:260px;flex:none;height:100%;box-sizing:border-box;display:flex;align-items:center;padding:0 10px 0 16px;border-right:1px solid {{sidebarBorder}}">
+<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+</sc-if>
+<button type="button" class="ib" aria-label="收起侧栏" style="margin-left:auto;color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{iconFill}}"></path>
+<rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+<path d="M15.75 9.75L13.25 12L15.75 14.25" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+
+<div style="flex:1;min-width:0;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 16px;box-sizing:border-box">
+<div style="display:flex;align-items:center;gap:6px;color:{{textSecondary}}">
+<span style="color:{{textSecondary}}">设置</span>
+<span>/</span>
+<span style="color:{{textPrimary}};font-weight:460">{{activeTabTitle}}</span>
+</div>
+
+<div style="display:flex;align-items:center;gap:8px">
+<button type="button" class="btn" onClick="{{toggleDarkPreview}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">{{themeToggleLabel}}</button>
+</div>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex">
+
+<aside aria-label="设置分类导航" style="width:260px;flex:none;background:{{sidebarBg}};border-right:1px solid {{sidebarBorder}};box-sizing:border-box;display:flex;flex-direction:column;min-height:0">
+<div style="padding:18px 16px 10px;display:flex;align-items:center;justify-content:space-between">
+<span style="font-size:18px;line-height:24px;font-weight:560;color:{{textPrimary}}">设置</span>
+</div>
+
+<nav aria-label="设置分类" style="flex:1;min-height:0;padding:4px 10px;display:flex;flex-direction:column;gap:4px">
+<button type="button" class="row" onClick="{{selectAi}}" style="background:{{navAiBg}};color:{{navAiCol}};box-shadow:{{navAiRing}};font-weight:{{navAiWeight}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<path d="M12 3.5L14.2 9.3L20 11.5L14.2 13.7L12 19.5L9.8 13.7L4 11.5L9.8 9.3L12 3.5Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+<path d="M18.5 4V7M17 5.5H20" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path>
+</svg>
+<span>AI 助手</span>
+</button>
+
+<button type="button" class="row" onClick="{{selectAppearance}}" style="background:{{navAppBg}};color:{{navAppCol}};box-shadow:{{navAppRing}};font-weight:{{navAppWeight}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<rect x="3.5" y="4.5" width="17" height="12" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M8 20H16M12 16.5V20" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path>
+</svg>
+<span>外观与字体</span>
+</button>
+
+<button type="button" class="row" onClick="{{selectGeneral}}" style="background:{{navGenBg}};color:{{navGenCol}};box-shadow:{{navGenRing}};font-weight:{{navGenWeight}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+<circle cx="9" cy="7" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle>
+<circle cx="15" cy="12" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle>
+<circle cx="10" cy="17" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle>
+</svg>
+<span>通用与编辑</span>
+</button>
+
+<button type="button" class="row" onClick="{{selectShortcuts}}" style="background:{{navScBg}};color:{{navScCol}};box-shadow:{{navScRing}};font-weight:{{navScWeight}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<rect x="3.25" y="5.75" width="17.5" height="12.5" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M7 10H8.5M11.25 10H12.75M15.5 10H17M7.5 14H16.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path>
+</svg>
+<span>基础快捷键</span>
+</button>
+</nav>
+
+<div style="flex:none;height:44px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-top:1px solid {{sidebarBorder}}">
+<span style="color:{{textSecondary}}">本地笔记</span>
+<button type="button" onClick="{{selectAi}}" style="height:28px;padding:0 10px;border:1px solid {{btnBorder}};border-radius:6px;background:{{cardBg}};color:{{textPrimary}};font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 6.25L4.75 12L10.5 17.75"></path><path d="M5.25 12H19.25"></path></svg>
+<span>返回笔记</span>
+</button>
+</div>
+</aside>
+
+<main style="flex:1;min-width:0;background:{{settingsBg}};overflow:auto">
+<div style="box-sizing:border-box;width:100%;max-width:720px;margin:0 auto;padding:40px 28px 64px;display:flex;flex-direction:column;gap:24px">
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+<h1 style="margin:0;font-size:24px;line-height:32px;font-weight:560;color:{{textPrimary}}">{{activeTabTitle}}</h1>
+<button type="button" class="btn" onClick="{{selectAi}}" style="background:{{cardBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">返回编辑</button>
+</div>
+
+<sc-if value="{{isTabAi}}" hint-placeholder-val="{{true}}">
+<section aria-label="AI 服务商与连接" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">服务商与连接</h2>
+<button type="button" class="ai-toggle {{aiToggleState}}" onClick="{{toggleAiEnabled}}" style="--accent:{{accent}};--on-bg:{{selectedBg}};--idle-hover:{{aiIdleHover}};height:32px;padding:0 12px;border-radius:8px;border:1px solid {{aiToggleBorder}};background:{{aiToggleBg}};color:{{textPrimary}};font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:7px;cursor:pointer;box-sizing:border-box">
+<span class="ai-spark" aria-hidden="true">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+<path d="M10 3.5L11.75 8.25L16.5 10L11.75 11.75L10 16.5L8.25 11.75L3.5 10L8.25 8.25Z" fill="{{aiSparkFill}}" stroke="{{aiIconCol}}" stroke-width="1.5" stroke-linejoin="round"></path>
+<path d="M18 14L18.9 16.6L21.5 17.5L18.9 18.4L18 21L17.1 18.4L14.5 17.5L17.1 16.6Z" fill="{{aiIconCol}}"></path>
+<path d="M18 4.25V7.75M16.25 6H19.75" stroke="{{aiIconCol}}" stroke-width="1.5" stroke-linecap="round"></path>
+</svg>
+<i class="twinkle tw1"></i><i class="twinkle tw2"></i><i class="twinkle tw3"></i>
+</span>
+<span>{{aiToggleLabel}}</span>
+<span class="halo" aria-hidden="true"></span>
+<i class="puff" style="left:10%;--dx:-42px;--dy:-30px;--dur:880ms;width:12px;height:12px;background:{{iconFill}}"></i>
+<i class="puff" style="left:22%;--dx:-24px;--dy:-46px;--dur:1040ms;width:16px;height:16px;background:{{accent}}"></i>
+<i class="puff" style="left:34%;--dx:2px;--dy:-50px;--dur:920ms;width:11px;height:11px;background:{{iconFill}}"></i>
+<i class="puff" style="left:48%;--dx:22px;--dy:-44px;--dur:1120ms;width:18px;height:18px;background:{{accent}}"></i>
+<i class="puff" style="left:62%;--dx:46px;--dy:-28px;--dur:980ms;width:13px;height:13px;background:{{iconFill}}"></i>
+<i class="puff" style="left:78%;--dx:58px;--dy:-8px;--dur:1080ms;width:15px;height:15px;background:{{accent}}"></i>
+<i class="puff" style="left:18%;--dx:-52px;--dy:16px;--dur:1000ms;width:14px;height:14px;background:{{iconFill}}"></i>
+<i class="puff" style="left:55%;--dx:28px;--dy:18px;--dur:900ms;width:12px;height:12px;background:{{accent}}"></i>
+<i class="puff" style="left:84%;--dx:40px;--dy:10px;--dur:1100ms;width:10px;height:10px;background:{{iconFill}}"></i>
+</button>
+</div>
+
+<div style="display:flex;gap:10px">
+<button type="button" class="pcard" onClick="{{selectDeepseek}}" style="background:{{cardDsBg}};border:1px solid {{cardDsBorder}};box-shadow:{{cardDsRing}}">
+<div style="width:28px;height:28px;border-radius:6px;background:{{cardIconWellBg}};border:1px solid {{borderCol}};display:flex;align-items:center;justify-content:center;flex:none;color:{{textPrimary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="#4D6BFE" aria-hidden="true">
+<path d="M23.748 4.482c-.254-.124-.364.113-.512.234-.051.039-.094.09-.137.136-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.156-.708-.311-.955-.65-.172-.241-.219-.51-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.093.172.187.129.323-.082.28-.18.552-.266.833-.055.179-.137.217-.329.14a5.526 5.526 0 01-1.736-1.18c-.857-.828-1.631-1.742-2.597-2.458a11.365 11.365 0 00-.689-.471c-.985-.957.13-1.743.388-1.836.27-.098.093-.432-.779-.428-.872.004-1.67.295-2.687.684a3.055 3.055 0 01-.465.137 9.597 9.597 0 00-2.883-.102c-1.885.21-3.39 1.102-4.497 2.623C.082 8.606-.231 10.684.152 12.85c.403 2.284 1.569 4.175 3.36 5.653 1.858 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.133-.284 4.994-1.86.47.234.962.327 1.78.397.63.059 1.236-.03 1.705-.128.735-.156.684-.837.419-.961-2.155-1.004-1.682-.595-2.113-.926 1.096-1.296 2.746-2.642 3.392-7.003.05-.347.007-.565 0-.845-.004-.17.035-.237.23-.256a4.173 4.173 0 001.545-.475c1.396-.763 1.96-2.015 2.093-3.517.02-.23-.004-.467-.247-.588z"></path>
+</svg>
+</div>
+<div style="flex:1;min-width:0;font-size:14px;line-height:20px;font-weight:500;color:{{textPrimary}};overflow:hidden;white-space:nowrap;text-overflow:ellipsis">DeepSeek</div>
+</button>
+
+<button type="button" class="pcard" onClick="{{selectOpenai}}" style="background:{{cardOaBg}};border:1px solid {{cardOaBorder}};box-shadow:{{cardOaRing}}">
+<div style="width:28px;height:28px;border-radius:6px;background:{{cardIconWellBg}};border:1px solid {{borderCol}};display:flex;align-items:center;justify-content:center;flex:none;color:{{textPrimary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="#10A37F" aria-hidden="true">
+<path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"></path>
+</svg>
+</div>
+<div style="flex:1;min-width:0;font-size:14px;line-height:20px;font-weight:500;color:{{textPrimary}};overflow:hidden;white-space:nowrap;text-overflow:ellipsis">OpenAI 协议</div>
+</button>
+
+<button type="button" class="pcard" onClick="{{selectClaude}}" style="background:{{cardClBg}};border:1px solid {{cardClBorder}};box-shadow:{{cardClRing}}">
+<div style="width:28px;height:28px;border-radius:6px;background:{{cardIconWellBg}};border:1px solid {{borderCol}};display:flex;align-items:center;justify-content:center;flex:none;color:{{textPrimary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="#D97757" aria-hidden="true">
+<path d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z"></path>
+</svg>
+</div>
+<div style="flex:1;min-width:0;font-size:14px;line-height:20px;font-weight:500;color:{{textPrimary}};overflow:hidden;white-space:nowrap;text-overflow:ellipsis">Claude 协议</div>
+</button>
+</div>
+
+<div style="width:100%;min-width:0;min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+<label for="ai-base-url" style="flex:none;white-space:nowrap;color:{{textPrimary}}">Base URL</label>
+<div style="flex:1;min-width:0;max-width:380px;display:flex">
+<input id="ai-base-url" type="url" value="{{currentBaseUrl}}" onInput="{{onBaseUrlInput}}" class="field-input" style="flex:1;min-width:0;width:100%;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textPrimary}};font-family:'JetBrains Mono',monospace">
+</div>
+</div>
+
+<div style="width:100%;min-width:0;min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+<label for="ai-api-key" style="flex:none;white-space:nowrap;color:{{textPrimary}}">API Key</label>
+<div style="flex:1;min-width:0;max-width:380px;display:flex;align-items:center;gap:8px">
+<input id="ai-api-key" type="{{apiKeyInputType}}" value="{{currentApiKey}}" onInput="{{onApiKeyInput}}" class="field-input" style="flex:1;min-width:0;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textPrimary}};font-family:'JetBrains Mono',monospace">
+<button type="button" class="btn" onClick="{{toggleShowKey}}" style="background:{{shellBg}};color:{{textSecondary}};border:1px solid {{borderCol}}">{{showKeyLabel}}</button>
+</div>
+</div>
+</section>
+
+<section aria-label="AI 模型与连接" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">模型与连接</h2>
+
+<div style="width:100%;min-width:0;min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;position:relative">
+<span style="flex:none;white-space:nowrap;color:{{textPrimary}}">默认模型</span>
+<div style="flex:1;min-width:0;max-width:380px;display:flex;align-items:center;gap:8px;position:relative">
+<button type="button" onClick="{{toggleModelMenu}}" style="flex:1;min-width:0;height:34px;padding:0 10px;border-radius:8px;background:{{shellBg}};border:1px solid {{modelTriggerBorder}};color:{{textPrimary}};font-family:'JetBrains Mono',monospace;font-size:14px;display:inline-flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer;box-sizing:border-box">
+<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{currentModel}}</span>
+<span style="color:{{textSecondary}};flex:none">▾</span>
+</button>
+<button type="button" class="btn" onClick="{{refreshModels}}" style="background:{{shellBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">{{refreshBtnLabel}}</button>
+<button type="button" class="btn" onClick="{{runTestConnection}}" style="background:{{testBtnBg}};color:{{testBtnCol}};border:1px solid {{testBtnBorder}}">{{testBtnLabel}}</button>
+
+<sc-if value="{{modelMenuOpen}}" hint-placeholder-val="{{false}}">
+<div style="position:absolute;top:40px;left:0;width:260px;z-index:20;padding:6px;border-radius:8px;background:{{cardBg}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:2px">
+<button type="button" class="menu-opt" onClick="{{pickModel0}}" style="background:{{m0Bg}};color:{{textPrimary}};box-shadow:{{m0Ring}}">
+<span style="font-family:'JetBrains Mono',monospace">{{m0Name}}</span>
+<span style="color:{{textSecondary}}">{{m0Desc}}</span>
+</button>
+<button type="button" class="menu-opt" onClick="{{pickModel1}}" style="background:{{m1Bg}};color:{{textPrimary}};box-shadow:{{m1Ring}}">
+<span style="font-family:'JetBrains Mono',monospace">{{m1Name}}</span>
+<span style="color:{{textSecondary}}">{{m1Desc}}</span>
+</button>
+<button type="button" class="menu-opt" onClick="{{pickModel2}}" style="background:{{m2Bg}};color:{{textPrimary}};box-shadow:{{m2Ring}}">
+<span style="font-family:'JetBrains Mono',monospace">{{m2Name}}</span>
+<span style="color:{{textSecondary}}">{{m2Desc}}</span>
+</button>
+</div>
+</sc-if>
+</div>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{isTabAppearance}}" hint-placeholder-val="{{false}}">
+<section aria-label="外观与字体" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">主题与语言</h2>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">外观主题</span>
+<div role="group" aria-label="外观主题" style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+<button type="button" class="seg" onClick="{{setThemeSystem}}" style="background:{{thSysBg}};color:{{thSysCol}};box-shadow:{{thSysRing}}">跟随系统</button>
+<button type="button" class="seg" onClick="{{setThemeLight}}" style="background:{{thLightBg}};color:{{thLightCol}};box-shadow:{{thLightRing}}">浅色</button>
+<button type="button" class="seg" onClick="{{setThemeDark}}" style="background:{{thDarkBg}};color:{{thDarkCol}};box-shadow:{{thDarkRing}}">深色</button>
+</div>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">界面语言</span>
+<div role="group" aria-label="界面语言" style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+<button type="button" class="seg" onClick="{{setLangSystem}}" style="background:{{langSysBg}};color:{{langSysCol}};box-shadow:{{langSysRing}}">跟随系统</button>
+<button type="button" class="seg" onClick="{{setLangZh}}" style="background:{{langZhBg}};color:{{langZhCol}};box-shadow:{{langZhRing}}">简体中文</button>
+<button type="button" class="seg" onClick="{{setLangEn}}" style="background:{{langEnBg}};color:{{langEnCol}};box-shadow:{{langEnRing}}">English</button>
+</div>
+</div>
+</section>
+
+<section aria-label="字体与排版" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">正文字体</h2>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">正文字体</span>
+<div role="group" aria-label="正文字体" style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+<button type="button" class="seg" onClick="{{setFontSans}}" style="background:{{fontSansBg}};color:{{fontSansCol}};box-shadow:{{fontSansRing}}">无衬线</button>
+<button type="button" class="seg" onClick="{{setFontSerif}}" style="background:{{fontSerifBg}};color:{{fontSerifCol}};box-shadow:{{fontSerifRing}}">衬线</button>
+</div>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{isTabGeneral}}" hint-placeholder-val="{{false}}">
+<section aria-label="通用与编辑行为" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">编辑与行为</h2>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">标准阅读版心</span>
+<span style="height:32px;padding:0 12px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}};display:inline-flex;align-items:center;font-family:'JetBrains Mono',monospace">672px</span>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">块把手触发方式</span>
+<span style="height:32px;padding:0 12px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}};display:inline-flex;align-items:center">悬停与聚焦时显示</span>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">自动保存笔记修改</span>
+<span style="height:32px;padding:0 12px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}};display:inline-flex;align-items:center">实时写入本地文件</span>
+</div>
+</section>
+
+<section aria-label="静态资源存放" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">静态资源</h2>
+<sc-if value="{{assetsDirCustom}}" hint-placeholder-val="{{false}}">
+<button type="button" class="btn" onClick="{{resetAssetsDir}}" style="height:30px;background:{{shellBg}};color:{{textSecondary}};border:1px solid {{borderCol}}">恢复默认</button>
+</sc-if>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<label for="assets-folder-input" style="color:{{textPrimary}}">全局资源文件夹名</label>
+<div style="display:flex;align-items:center;gap:8px">
+<input id="assets-folder-input" type="text" value="{{assetsDirName}}" onInput="{{onAssetsDirInput}}" placeholder="assets" class="field-input" style="width:168px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textPrimary}};font-family:'JetBrains Mono',monospace">
+<span style="height:34px;padding:0 10px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}};font-family:'JetBrains Mono',monospace;display:inline-flex;align-items:center">{{assetsPreviewPath}}</span>
+</div>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">列表与搜索可见性</span>
+<div role="group" aria-label="列表与搜索可见性" style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+<button type="button" class="seg" onClick="{{setAssetsHidden}}" style="background:{{assetsHideBg}};color:{{assetsHideCol}};box-shadow:{{assetsHideRing}}">默认隐藏</button>
+<button type="button" class="seg" onClick="{{setAssetsVisible}}" style="background:{{assetsShowBg}};color:{{assetsShowCol}};box-shadow:{{assetsShowRing}}">始终显示</button>
+</div>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{isTabShortcuts}}" hint-placeholder-val="{{false}}">
+<section aria-label="基础快捷键" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">基础快捷键</h2>
+<button type="button" class="btn" onClick="{{resetShortcuts}}" style="height:30px;background:{{shellBg}};color:{{textSecondary}};border:1px solid {{borderCol}}">{{resetScLabel}}</button>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">搜索与全局唤起</span>
+<button type="button" class="tray-btn" onClick="{{recordSc0}}" style="background:{{sc0TrayBg}};border:1px solid {{sc0TrayBorder}}">
+<sc-if value="{{sc0Recording}}" hint-placeholder-val="{{false}}">
+<span style="padding:0 6px;font-weight:500;color:{{accent}}">按下快捷键…</span>
+</sc-if>
+<sc-if value="{{sc0Normal}}" hint-placeholder-val="{{true}}">
+<span class="keycap-sym" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">⇧</span>
+<span class="keycap-sym" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">⌘</span>
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">K</span>
+</sc-if>
+</button>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">速记小窗</span>
+<button type="button" class="tray-btn" onClick="{{recordSc1}}" style="background:{{sc1TrayBg}};border:1px solid {{sc1TrayBorder}}">
+<sc-if value="{{sc1Recording}}" hint-placeholder-val="{{false}}">
+<span style="padding:0 6px;font-weight:500;color:{{accent}}">按下快捷键…</span>
+</sc-if>
+<sc-if value="{{sc1Normal}}" hint-placeholder-val="{{true}}">
+<span class="keycap-sym" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">⌥</span>
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">N</span>
+</sc-if>
+</button>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">当前笔记查找</span>
+<span class="tray-static" style="background:{{shellBg}};border:1px solid {{borderCol}}">
+<span class="keycap-sym" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">⌘</span>
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">F</span>
+</span>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">新建笔记</span>
+<span class="tray-static" style="background:{{shellBg}};border:1px solid {{borderCol}}">
+<span class="keycap-sym" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">⌘</span>
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">N</span>
+</span>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">AI 助手面板</span>
+<span class="tray-static" style="background:{{shellBg}};border:1px solid {{borderCol}}">
+<span class="keycap-sym" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">⌘</span>
+<span class="keycap" style="background:{{keycapBg}};border:1px solid {{keycapBorder}};color:{{textPrimary}}">J</span>
+</span>
+</div>
+</section>
+</sc-if>
+
+</div>
+</main>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"platform":{"editor":"enum","options":["macos","windows"],"default":"macos"},"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"defaultProvider":{"editor":"enum","options":["deepseek","openai","claude"],"default":"deepseek"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      activeTab: 'ai',
+      provider: null,
+      darkOverride: null,
+      aiEnabled: true,
+      showKey: false,
+      modelMenuOpen: false,
+      testConnected: false,
+      refreshed: false,
+      fontChoice: 'sans',
+      langChoice: 'system',
+      recordingIdx: null,
+      scResetDone: false,
+      assetsDir: 'assets',
+      hideAssets: true,
+      configs: {
+        deepseek: {
+          baseUrl: 'https://api.deepseek.com/v1',
+          apiKey: 'sk-ds-9f82a4c71e034b6d8a21c5e9f',
+          modelIdx: 0,
+          models: [
+            { name: 'deepseek-chat', desc: 'DeepSeek-V3' },
+            { name: 'deepseek-reasoner', desc: 'DeepSeek-R1' },
+            { name: 'deepseek-coder', desc: 'Coder' }
+          ]
+        },
+        openai: {
+          baseUrl: 'https://api.openai.com/v1',
+          apiKey: 'sk-proj-7b31e9a04c28d15f6e8a',
+          modelIdx: 0,
+          models: [
+            { name: 'gpt-5', desc: '通用旗舰' },
+            { name: 'gpt-5-mini', desc: '轻量极速' },
+            { name: 'qwen-max-latest', desc: '兼容网关' }
+          ]
+        },
+        claude: {
+          baseUrl: 'https://api.anthropic.com/v1',
+          apiKey: 'sk-ant-api03-5d91c8e24a70b3',
+          modelIdx: 0,
+          models: [
+            { name: 'claude-sonnet-5-5', desc: 'Sonnet 5.5' },
+            { name: 'claude-opus-5-5', desc: 'Opus 5.5' },
+            { name: 'claude-haiku-5-5', desc: 'Haiku 5.5' }
+          ]
+        }
+      }
+    };
+  }
+
+  renderVals() {
+    const st = this.state || {};
+    const props = this.props || {};
+    const os = props.platform ?? 'macos';
+    const mode = st.darkOverride ?? (props.theme ?? 'light');
+    const dark = mode === 'dark';
+    const p = st.provider ?? (props.defaultProvider ?? 'deepseek');
+    const configs = st.configs || {};
+    const cfg = configs[p] || configs.deepseek;
+    const curModelObj = cfg.models[cfg.modelIdx] || cfg.models[0];
+
+    const shellBg = dark ? '#343434' : '#f1f1f1';
+    const sidebarBg = dark ? '#222222' : '#fafafa';
+    const settingsBg = dark ? '#181818' : '#f8f8f8';
+    const cardBg = dark ? '#222222' : '#ffffff';
+    const textPrimary = dark ? '#ececec' : '#20242c';
+    const textSecondary = dark ? '#b4b4b4' : '#526071';
+    const accent = dark ? '#779de8' : '#547dd0';
+    const iconFill = dark ? '#31456a' : '#c9d8f3';
+    const selectedBg = dark ? '#343434' : '#e5edfc';
+    const borderCol = dark ? '#2e2e2e' : '#e4e6ea';
+    const sidebarBorder = dark ? '#333333' : '#e6e6e6';
+    const btnBorder = dark ? '#444444' : '#dcdcdc';
+    const keycapBg = dark ? '#343434' : '#ffffff';
+    const keycapBorder = dark ? '#444444' : '#dcdcdc';
+    const activeRing = 'inset 0 0 0 1px ' + accent;
+
+    const tab = st.activeTab || 'ai';
+    const tabTitles = {
+      ai: 'AI 助手',
+      appearance: '外观与字体',
+      general: '通用与编辑',
+      shortcuts: '基础快捷键'
+    };
+
+    const navItem = (key) => {
+      const act = tab === key;
+      return {
+        bg: act ? selectedBg : 'transparent',
+        col: act ? textPrimary : textSecondary,
+        ring: act ? activeRing : 'none',
+        weight: act ? '460' : '400'
+      };
+    };
+
+    const nAi = navItem('ai');
+    const nApp = navItem('appearance');
+    const nGen = navItem('general');
+    const nSc = navItem('shortcuts');
+
+    const pCard = (key) => {
+      const act = p === key;
+      return {
+        bg: act ? selectedBg : shellBg,
+        border: act ? accent : borderCol,
+        ring: act ? activeRing : 'none'
+      };
+    };
+
+    const cDs = pCard('deepseek');
+    const cOa = pCard('openai');
+    const cCl = pCard('claude');
+
+    const segItem = (act) => ({
+      bg: act ? selectedBg : 'transparent',
+      col: act ? textPrimary : textSecondary,
+      ring: act ? activeRing : 'none'
+    });
+
+    const thSys = segItem(false);
+    const thLight = segItem(!dark);
+    const thDark = segItem(dark);
+
+    const lang = st.langChoice || 'system';
+    const lSys = segItem(lang === 'system');
+    const lZh = segItem(lang === 'zh');
+    const lEn = segItem(lang === 'en');
+
+    const fSans = segItem(st.fontChoice === 'sans');
+    const fSerif = segItem(st.fontChoice === 'serif');
+
+    const hideAssets = st.hideAssets !== false;
+    const aHide = segItem(hideAssets);
+    const aShow = segItem(!hideAssets);
+    const rawAssets = (st.assetsDir ?? 'assets').trim();
+    const cleanAssets = rawAssets || 'assets';
+
+    const pickModel = (idx) => {
+      const nextConfigs = {
+        ...configs,
+        [p]: { ...cfg, modelIdx: idx }
+      };
+      this.setState({ configs: nextConfigs, modelMenuOpen: false });
+    };
+
+    const updateField = (field, val) => {
+      const nextConfigs = {
+        ...configs,
+        [p]: { ...cfg, [field]: val }
+      };
+      this.setState({ configs: nextConfigs });
+    };
+
+    const aiOn = !!st.aiEnabled;
+
+    return {
+      shellBg,
+      sidebarBg,
+      settingsBg,
+      cardBg,
+      textPrimary,
+      textSecondary,
+      accent,
+      iconFill,
+      selectedBg,
+      borderCol,
+      sidebarBorder,
+      btnBorder,
+      keycapBg,
+      keycapBorder,
+      cardIconWellBg: cardBg,
+
+      isMac: os === 'macos',
+      activeTabTitle: tabTitles[tab] || 'AI 助手',
+      themeToggleLabel: dark ? '深色' : '浅色',
+
+      isTabAi: tab === 'ai',
+      isTabAppearance: tab === 'appearance',
+      isTabGeneral: tab === 'general',
+      isTabShortcuts: tab === 'shortcuts',
+
+      navAiBg: nAi.bg, navAiCol: nAi.col, navAiRing: nAi.ring, navAiWeight: nAi.weight,
+      navAppBg: nApp.bg, navAppCol: nApp.col, navAppRing: nApp.ring, navAppWeight: nApp.weight,
+      navGenBg: nGen.bg, navGenCol: nGen.col, navGenRing: nGen.ring, navGenWeight: nGen.weight,
+      navScBg: nSc.bg, navScCol: nSc.col, navScRing: nSc.ring, navScWeight: nSc.weight,
+
+      aiToggleBg: aiOn ? selectedBg : shellBg,
+      aiToggleBorder: aiOn ? accent : btnBorder,
+      aiIconCol: aiOn ? accent : textSecondary,
+      aiSparkFill: aiOn ? iconFill : 'transparent',
+      aiIdleHover: aiOn ? selectedBg : (dark ? '#2c2c2c' : '#eef3fc'),
+      aiToggleState: st.aiToggleSeen ? (aiOn ? 'is-on' : 'is-off') : (aiOn ? 'is-on-rest' : ''),
+      aiToggleLabel: aiOn ? '已开启' : '已关闭',
+
+      cardDsBg: cDs.bg, cardDsBorder: cDs.border, cardDsRing: cDs.ring,
+      cardOaBg: cOa.bg, cardOaBorder: cOa.border, cardOaRing: cOa.ring,
+      cardClBg: cCl.bg, cardClBorder: cCl.border, cardClRing: cCl.ring,
+
+      currentBaseUrl: cfg.baseUrl,
+      currentApiKey: cfg.apiKey,
+      apiKeyInputType: st.showKey ? 'text' : 'password',
+      showKeyLabel: st.showKey ? '隐藏' : '显示',
+
+      currentModel: curModelObj.name,
+      modelTriggerBorder: st.modelMenuOpen ? accent : borderCol,
+      modelMenuOpen: !!st.modelMenuOpen,
+      m0Name: cfg.models[0].name, m0Desc: cfg.models[0].desc, m0Bg: cfg.modelIdx === 0 ? selectedBg : 'transparent', m0Ring: cfg.modelIdx === 0 ? activeRing : 'none',
+      m1Name: cfg.models[1].name, m1Desc: cfg.models[1].desc, m1Bg: cfg.modelIdx === 1 ? selectedBg : 'transparent', m1Ring: cfg.modelIdx === 1 ? activeRing : 'none',
+      m2Name: cfg.models[2].name, m2Desc: cfg.models[2].desc, m2Bg: cfg.modelIdx === 2 ? selectedBg : 'transparent', m2Ring: cfg.modelIdx === 2 ? activeRing : 'none',
+
+      refreshBtnLabel: st.refreshed ? '已同步 3 个模型' : '重新获取模型',
+      testBtnBg: st.testConnected ? selectedBg : shellBg,
+      testBtnCol: textPrimary,
+      testBtnBorder: st.testConnected ? accent : btnBorder,
+      testBtnLabel: st.testConnected ? '连接正常' : '连接测试',
+
+      thSysBg: thSys.bg, thSysCol: thSys.col, thSysRing: thSys.ring,
+      thLightBg: thLight.bg, thLightCol: thLight.col, thLightRing: thLight.ring,
+      thDarkBg: thDark.bg, thDarkCol: thDark.col, thDarkRing: thDark.ring,
+
+      langSysBg: lSys.bg, langSysCol: lSys.col, langSysRing: lSys.ring,
+      langZhBg: lZh.bg, langZhCol: lZh.col, langZhRing: lZh.ring,
+      langEnBg: lEn.bg, langEnCol: lEn.col, langEnRing: lEn.ring,
+
+      fontSansBg: fSans.bg, fontSansCol: fSans.col, fontSansRing: fSans.ring,
+      fontSerifBg: fSerif.bg, fontSerifCol: fSerif.col, fontSerifRing: fSerif.ring,
+
+      resetScLabel: st.scResetDone ? '已恢复默认' : '恢复默认',
+      sc0Recording: st.recordingIdx === 0, sc0Normal: st.recordingIdx !== 0,
+      sc0TrayBg: st.recordingIdx === 0 ? selectedBg : shellBg,
+      sc0TrayBorder: st.recordingIdx === 0 ? accent : btnBorder,
+
+      sc1Recording: st.recordingIdx === 1, sc1Normal: st.recordingIdx !== 1,
+      sc1TrayBg: st.recordingIdx === 1 ? selectedBg : shellBg,
+      sc1TrayBorder: st.recordingIdx === 1 ? accent : btnBorder,
+
+      assetsDirName: st.assetsDir ?? 'assets',
+      assetsPreviewPath: './' + cleanAssets + '/',
+      assetsDirCustom: cleanAssets !== 'assets' || !hideAssets,
+      assetsHideBg: aHide.bg, assetsHideCol: aHide.col, assetsHideRing: aHide.ring,
+      assetsShowBg: aShow.bg, assetsShowCol: aShow.col, assetsShowRing: aShow.ring,
+
+      selectAi: () => this.setState({ activeTab: 'ai', modelMenuOpen: false }),
+      selectAppearance: () => this.setState({ activeTab: 'appearance', modelMenuOpen: false }),
+      selectGeneral: () => this.setState({ activeTab: 'general', modelMenuOpen: false }),
+      selectShortcuts: () => this.setState({ activeTab: 'shortcuts', modelMenuOpen: false }),
+
+      selectDeepseek: () => this.setState({ provider: 'deepseek', modelMenuOpen: false, testConnected: false, refreshed: false }),
+      selectOpenai: () => this.setState({ provider: 'openai', modelMenuOpen: false, testConnected: false, refreshed: false }),
+      selectClaude: () => this.setState({ provider: 'claude', modelMenuOpen: false, testConnected: false, refreshed: false }),
+
+      toggleDarkPreview: () => this.setState({ darkOverride: dark ? 'light' : 'dark' }),
+
+      setThemeSystem: () => this.setState({ darkOverride: 'light' }),
+      setThemeLight: () => this.setState({ darkOverride: 'light' }),
+      setThemeDark: () => this.setState({ darkOverride: 'dark' }),
+
+      setLangSystem: () => this.setState({ langChoice: 'system' }),
+      setLangZh: () => this.setState({ langChoice: 'zh' }),
+      setLangEn: () => this.setState({ langChoice: 'en' }),
+
+      toggleAiEnabled: () => this.setState({ aiEnabled: !st.aiEnabled, aiToggleSeen: true }),
+      toggleShowKey: () => this.setState({ showKey: !st.showKey }),
+      toggleModelMenu: () => this.setState({ modelMenuOpen: !st.modelMenuOpen }),
+
+      pickModel0: () => pickModel(0),
+      pickModel1: () => pickModel(1),
+      pickModel2: () => pickModel(2),
+
+      onBaseUrlInput: (e) => { if (e && e.target) updateField('baseUrl', e.target.value); },
+      onApiKeyInput: (e) => { if (e && e.target) updateField('apiKey', e.target.value); },
+      refreshModels: () => this.setState({ refreshed: true }),
+      runTestConnection: () => this.setState({ testConnected: true }),
+
+      setFontSans: () => this.setState({ fontChoice: 'sans' }),
+      setFontSerif: () => this.setState({ fontChoice: 'serif' }),
+
+      resetShortcuts: () => this.setState({ recordingIdx: null, scResetDone: true }),
+      recordSc0: () => this.setState({ recordingIdx: st.recordingIdx === 0 ? null : 0, scResetDone: false }),
+      recordSc1: () => this.setState({ recordingIdx: st.recordingIdx === 1 ? null : 1, scResetDone: false }),
+      onAssetsDirInput: (e) => { if (e && e.target) this.setState({ assetsDir: e.target.value }); },
+      setAssetsHidden: () => this.setState({ hideAssets: true }),
+      setAssetsVisible: () => this.setState({ hideAssets: false }),
+      resetAssetsDir: () => this.setState({ assetsDir: 'assets', hideAssets: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

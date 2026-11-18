@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>方案 A · 实心蓝条白护边</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #256abf; text-decoration: none; }
+    a:hover { color: #1a4f91; text-decoration: underline; }
+    button { font-family: inherit; cursor: pointer; }
+    button:focus-visible { outline: 2px solid #547dd0; outline-offset: 2px; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 100%; min-height: 860px; display: flex; flex-direction: column; background: {{paperBg}}; color: {{editorText}}; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; font-size: 14px; line-height: 20px; -webkit-font-smoothing: antialiased">
+
+  <header style="min-height: 44px; padding: 6px 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; background: {{shellBg}}; border-bottom: 1px solid {{sidebarBorder}}">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <div aria-hidden="true" style="display: flex; align-items: center; gap: 8px; margin-right: 6px">
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #ff5f57"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #febc2e"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #28c840"></span>
+      </div>
+      <span style="font-size: 14px; font-weight: 560; color: {{uiText}}">需要优化项</span>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+      <div role="group" aria-label="交互状态切换" style="display: inline-flex; padding: 3px; gap: 2px; background: {{paperBg}}; border: 1px solid {{hairline}}; border-radius: 8px">
+        <sc-for list="{{stateTabs}}" as="tab" hint-placeholder-count="3">
+          <button type="button" onClick="{{tab.pick}}" style="height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: {{tab.bg}}; box-shadow: {{tab.ring}}; color: {{tab.col}}; font-size: 14px; font-weight: {{tab.weight}}">{{tab.label}}</button>
+        </sc-for>
+      </div>
+
+      <div role="group" aria-label="图片宽度切换" style="display: inline-flex; padding: 3px; gap: 2px; background: {{paperBg}}; border: 1px solid {{hairline}}; border-radius: 8px">
+        <sc-for list="{{widthTabs}}" as="w" hint-placeholder-count="3">
+          <button type="button" onClick="{{w.pick}}" style="height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: {{w.bg}}; box-shadow: {{w.ring}}; color: {{w.col}}; font-size: 14px; font-weight: {{w.weight}}">{{w.label}}</button>
+        </sc-for>
+      </div>
+
+      <button type="button" onClick="{{toggleTheme}}" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid {{btnBorder}}; background: {{cardBg}}; color: {{uiText}}; font-size: 14px; font-weight: 460">{{themeLabel}}</button>
+    </div>
+  </header>
+
+  <main style="flex: 1; display: flex; flex-direction: column; align-items: center; padding: 52px 32px 72px; background: {{paperBg}}">
+    <div style="width: 100%; max-width: 740px; display: flex; flex-direction: column; gap: 28px">
+
+      <div style="padding-left: 34px">
+        <h1 style="margin: 0; font-size: 26px; line-height: 36px; font-weight: 600; color: {{editorText}}">需要优化项</h1>
+      </div>
+
+      <div style="position: relative; display: flex; align-items: flex-start; gap: 10px">
+        <div style="width: 24px; padding-top: 12px; display: flex; justify-content: center; flex: none">
+          <sc-if value="{{firstSelected}}" hint-placeholder-val="{{true}}">
+            <button type="button" aria-label="拖拽排序块" style="width: 22px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: {{uiMuted}}; display: inline-flex; align-items: center; justify-content: center">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <circle cx="5.5" cy="3.5" r="1.25"></circle><circle cx="10.5" cy="3.5" r="1.25"></circle>
+                <circle cx="5.5" cy="8" r="1.25"></circle><circle cx="10.5" cy="8" r="1.25"></circle>
+                <circle cx="5.5" cy="12.5" r="1.25"></circle><circle cx="10.5" cy="12.5" r="1.25"></circle>
+              </svg>
+            </button>
+          </sc-if>
+        </div>
+
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: {{imgAlign}}; gap: 10px; position: relative">
+
+          <sc-if value="{{showToolbar}}" hint-placeholder-val="{{true}}">
+            <div role="toolbar" aria-label="图片操作栏" style="position: absolute; top: -48px; left: 50%; transform: translateX(-50%); z-index: 10; height: 38px; padding: 0 8px; border-radius: 12px; background: {{cardBg}}; border: 1px solid {{hairline}}; box-shadow: {{toolbarShadow}}; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap">
+              <button type="button" aria-label="添加批注" style="width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: {{editorText}}; display: inline-flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-4 3v-13.5A1.5 1.5 0 0 1 5 5.5Z"></path><path d="M8.5 10h7M8.5 13h4.5"></path></svg>
+              </button>
+              <button type="button" aria-label="添加回应" style="width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: {{editorText}}; display: inline-flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-6-7.75"></path><path d="M9 14.5c.8 1 1.8 1.5 3 1.5s2.2-.5 3-1.5"></path><circle cx="9.2" cy="10.2" r="1" fill="currentColor" stroke="none"></circle><circle cx="14.8" cy="10.2" r="1" fill="currentColor" stroke="none"></circle><path d="M19 3.5v4.5M16.75 5.75h4.5"></path></svg>
+              </button>
+              <span aria-hidden="true" style="width: 1px; height: 18px; background: {{hairline}}; margin: 0 3px"></span>
+              <sc-for list="{{alignBtns}}" as="ab" hint-placeholder-count="3">
+                <button type="button" aria-label="{{ab.label}}" onClick="{{ab.pick}}" style="width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: {{ab.bg}}; box-shadow: {{ab.ring}}; color: {{ab.col}}; display: inline-flex; align-items: center; justify-content: center">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="{{ab.path}}"></path></svg>
+                </button>
+              </sc-for>
+              <span aria-hidden="true" style="width: 1px; height: 18px; background: {{hairline}}; margin: 0 3px"></span>
+              <button type="button" aria-label="裁剪图片" style="width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: {{editorText}}; display: inline-flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"></path><path d="M18 22V8a2 2 0 0 0-2-2H2"></path></svg>
+              </button>
+              <button type="button" aria-label="设置图片尺寸" style="width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: {{editorText}}; display: inline-flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
+              </button>
+              <button type="button" aria-label="删除图片" style="width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: {{editorText}}; display: inline-flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7"></path></svg>
+              </button>
+            </div>
+          </sc-if>
+
+          <div style="position: relative; width: {{imgWidthCss}}; border-radius: 8px; border: {{firstBorder}}; background: #ffffff; color: #1f1e1d">
+            <button type="button" onClick="{{selectFirst}}" aria-label="点击选中第一张截图" style="display: block; width: 100%; padding: 18px 22px; border: 0; border-radius: 7px; background: transparent; color: #1f1e1d; text-align: left">
+              <div style="font-size: 17px; line-height: 26px; font-weight: 600; margin-bottom: 8px">三、官网（yangvela.com）深度诊断与询盘转化建议</div>
+              <div style="font-size: 15px; line-height: 25px; color: #2d2c29">
+                我仔细阅读了你们的官网代码和内容。首先必须肯定：<strong style="font-weight: 600; color: #111111">你们的网站审美、英文文案专业度、产品参数清晰度（如精确到 40.5g、密度对比 4.51 vs 7.93 g/cm³）超越了国内 90% 的外贸工厂站</strong>，非常符合欧美 B 端买家的阅读习惯！
+              </div>
+            </button>
+
+            <sc-if value="{{firstSelected}}" hint-placeholder-val="{{true}}">
+              <button type="button" onClick="{{cycleActiveState}}" aria-label="左侧缩放把手" style="position: absolute; left: {{handleOffsetCss}}; top: 50%; transform: translateY(-50%); width: {{handleW}}; height: {{handleH}}; padding: 0; border: 0; border-radius: 999px; background: {{handleFill}}; box-shadow: {{handleHalo}}; cursor: ew-resize"></button>
+              <button type="button" onClick="{{cycleActiveState}}" aria-label="右侧缩放把手" style="position: absolute; right: {{handleOffsetCss}}; top: 50%; transform: translateY(-50%); width: {{handleW}}; height: {{handleH}}; padding: 0; border: 0; border-radius: 999px; background: {{handleFill}}; box-shadow: {{handleHalo}}; cursor: ew-resize"></button>
+            </sc-if>
+
+            <sc-if value="{{isDraggingFirst}}" hint-placeholder-val="{{false}}">
+              <div style="position: absolute; right: 12px; bottom: 10px; height: 24px; padding: 0 8px; border-radius: 6px; background: #1f1e1d; color: #ffffff; font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 24px; font-weight: 500">{{imgWidthCss}}</div>
+            </sc-if>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 6px; align-self: flex-start">
+            <button type="button" aria-label="回应计数" style="height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid {{reactionBorder}}; background: {{selectedBg}}; color: {{reactionText}}; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9 15c.8.8 1.8 1.2 3 1.2s2.2-.4 3-1.2"></path><circle cx="9" cy="10" r="1" fill="currentColor" stroke="none"></circle><circle cx="15" cy="10" r="1" fill="currentColor" stroke="none"></circle></svg>
+              <span>1</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <div style="padding-left: 34px; font-size: 16px; line-height: 28px; color: {{editorText}}">
+        下方为未选中状态对比：未选中图片仅保留细边框，不显示左右缩放把手；点击任一图片即可切换选中态。
+      </div>
+
+      <div style="position: relative; display: flex; align-items: flex-start; gap: 10px">
+        <div style="width: 24px; padding-top: 12px; display: flex; justify-content: center; flex: none">
+          <sc-if value="{{secondSelected}}" hint-placeholder-val="{{false}}">
+            <button type="button" aria-label="拖拽排序块" style="width: 22px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: {{uiMuted}}; display: inline-flex; align-items: center; justify-content: center">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <circle cx="5.5" cy="3.5" r="1.25"></circle><circle cx="10.5" cy="3.5" r="1.25"></circle>
+                <circle cx="5.5" cy="8" r="1.25"></circle><circle cx="10.5" cy="8" r="1.25"></circle>
+                <circle cx="5.5" cy="12.5" r="1.25"></circle><circle cx="10.5" cy="12.5" r="1.25"></circle>
+              </svg>
+            </button>
+          </sc-if>
+        </div>
+
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start">
+          <div style="position: relative; width: 78%; border-radius: 8px; border: {{secondBorder}}; background: {{photoSurface}}">
+            <button type="button" onClick="{{selectSecond}}" aria-label="点击选中第二张产品图" style="display: flex; width: 100%; height: 148px; padding: 20px 24px; border: 0; border-radius: 7px; background: transparent; color: {{editorText}}; align-items: center; justify-content: space-between; gap: 20px; text-align: left">
+              <div style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: 16px; line-height: 24px; font-weight: 600; color: {{editorText}}">纯钛调色棒与便携皮套美甲组 · 首屏主视觉</span>
+                <span style="font-size: 14px; line-height: 22px; color: {{uiMuted}}">深浅底通用：2px 纸面护边将实心蓝条与图片内容干净剥离</span>
+              </div>
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="{{accent}}" stroke-width="1.6" aria-hidden="true">
+                <rect x="6" y="10" width="36" height="28" rx="5" fill="{{iconFill}}"></rect>
+                <circle cx="17" cy="20" r="3"></circle>
+                <path d="M10 34l9-9 7 6 6-5 8 8" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+            </button>
+
+            <sc-if value="{{secondSelected}}" hint-placeholder-val="{{false}}">
+              <button type="button" onClick="{{cycleActiveState}}" aria-label="左侧缩放把手" style="position: absolute; left: {{handleOffsetCss}}; top: 50%; transform: translateY(-50%); width: {{handleW}}; height: {{handleH}}; padding: 0; border: 0; border-radius: 999px; background: {{handleFill}}; box-shadow: {{handleHalo}}; cursor: ew-resize"></button>
+              <button type="button" onClick="{{cycleActiveState}}" aria-label="右侧缩放把手" style="position: absolute; right: {{handleOffsetCss}}; top: 50%; transform: translateY(-50%); width: {{handleW}}; height: {{handleH}}; padding: 0; border: 0; border-radius: 999px; background: {{handleFill}}; box-shadow: {{handleHalo}}; cursor: ew-resize"></button>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"light","options":["light","dark"]},"handleLength":{"editor":"range","default":44,"min":28,"max":64,"step":4,"unit":"px"},"handleThickness":{"editor":"range","default":8,"min":6,"max":12,"step":1,"unit":"px"},"$preview":{"width":1280,"height":860}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      theme: null,
+      selectedImg: 1,
+      mode: 'selected',
+      widthPct: 100,
+      align: 'left'
+    };
+  }
+
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const mode = this.state.mode;
+    const selectedImg = mode === 'unselected' ? 0 : this.state.selectedImg;
+    const widthPct = this.state.widthPct;
+    const align = this.state.align;
+
+    const baseLen = Number(this.props.handleLength ?? 44);
+    const baseThick = Number(this.props.handleThickness ?? 8);
+    const hot = mode === 'dragging';
+    const w = hot ? baseThick + 2 : baseThick;
+    const h = hot ? baseLen + 8 : baseLen;
+    const offset = -Math.round(w / 2) - 1;
+
+    const shellBg = isDark ? '#343434' : '#f1f1f1';
+    const paperBg = isDark ? '#181818' : '#ffffff';
+    const cardBg = isDark ? '#222222' : '#ffffff';
+    const photoSurface = isDark ? '#242832' : '#f4f6fa';
+    const uiText = isDark ? '#ececec' : '#20242c';
+    const editorText = isDark ? '#ececec' : '#1f1e1d';
+    const uiMuted = isDark ? '#b4b4b4' : '#526071';
+    const accent = isDark ? '#779de8' : '#547dd0';
+    const accentHot = isDark ? '#9dbcf5' : '#3d63b0';
+    const iconFill = isDark ? '#31456a' : '#c9d8f3';
+    const selectedBg = isDark ? '#343434' : '#e5edfc';
+    const hairline = isDark ? '#2e2e2e' : '#e4e6ea';
+    const sidebarBorder = isDark ? '#333333' : '#e6e6e6';
+    const btnBorder = isDark ? '#444444' : '#dcdcdc';
+    const reactionBorder = isDark ? '#465b86' : '#c8daf8';
+    const reactionText = isDark ? '#9dbcf5' : '#1f56a4';
+
+    const handleFill = hot ? accentHot : accent;
+    const haloColor = isDark ? '#181818' : '#ffffff';
+    const handleHalo = '0 0 0 2px ' + haloColor + ', 0 2px 6px rgba(15, 23, 42, 0.22)';
+    const toolbarShadow = isDark
+      ? '0 10px 28px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3)'
+      : '0 8px 24px rgba(31, 30, 29, 0.09), 0 1px 3px rgba(31, 30, 29, 0.05)';
+
+    const firstSelected = selectedImg === 1;
+    const secondSelected = selectedImg === 2;
+
+    const states = [
+      { id: 'selected', label: '已选中' },
+      { id: 'dragging', label: '悬停 / 拖拽中' },
+      { id: 'unselected', label: '未选中（隐藏把手）' }
+    ];
+    const stateTabs = states.map((s) => ({
+      label: s.label,
+      bg: mode === s.id ? selectedBg : 'transparent',
+      ring: mode === s.id ? ('inset 0 0 0 1px ' + accent) : 'none',
+      col: mode === s.id ? uiText : uiMuted,
+      weight: mode === s.id ? '560' : '400',
+      pick: () => this.setState({
+        mode: s.id,
+        selectedImg: s.id === 'unselected' ? 0 : (this.state.selectedImg || 1)
+      })
+    }));
+
+    const widths = [100, 76, 56];
+    const widthTabs = widths.map((pct) => ({
+      label: pct + '%',
+      bg: widthPct === pct ? selectedBg : 'transparent',
+      ring: widthPct === pct ? ('inset 0 0 0 1px ' + accent) : 'none',
+      col: widthPct === pct ? uiText : uiMuted,
+      weight: widthPct === pct ? '560' : '400',
+      pick: () => this.setState({
+        widthPct: pct,
+        mode: this.state.mode === 'unselected' ? 'selected' : this.state.mode,
+        selectedImg: 1
+      })
+    }));
+
+    const aligns = [
+      { id: 'left', label: '左对齐', path: 'M4 6h16M4 10h10M4 14h16M4 18h10' },
+      { id: 'center', label: '居中对齐', path: 'M4 6h16M7 10h10M4 14h16M7 18h10' },
+      { id: 'right', label: '右对齐', path: 'M4 6h16M10 10h10M4 14h16M10 18h10' }
+    ];
+    const alignBtns = aligns.map((a) => ({
+      label: a.label,
+      path: a.path,
+      bg: align === a.id ? selectedBg : 'transparent',
+      ring: align === a.id ? ('inset 0 0 0 1px ' + accent) : 'none',
+      col: align === a.id ? accent : editorText,
+      pick: () => this.setState({ align: a.id })
+    }));
+
+    const imgAlign = align === 'center' ? 'center' : (align === 'right' ? 'flex-end' : 'flex-start');
+
+    return {
+      shellBg, paperBg, cardBg, photoSurface, uiText, editorText, uiMuted,
+      accent, iconFill, selectedBg, hairline, sidebarBorder, btnBorder,
+      reactionBorder, reactionText,
+      toolbarShadow,
+      firstSelected,
+      secondSelected,
+      showToolbar: firstSelected && !hot,
+      isDraggingFirst: firstSelected && hot,
+      firstBorder: firstSelected ? ('1.5px solid ' + accent) : ('1px solid ' + hairline),
+      secondBorder: secondSelected ? ('1.5px solid ' + accent) : ('1px solid ' + hairline),
+      handleW: w + 'px',
+      handleH: h + 'px',
+      handleOffsetCss: offset + 'px',
+      handleFill,
+      handleHalo,
+      imgWidthCss: widthPct + '%',
+      imgAlign,
+      stateTabs,
+      widthTabs,
+      alignBtns,
+      themeLabel: isDark ? '深色' : '浅色',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      selectFirst: () => this.setState({ selectedImg: 1, mode: this.state.mode === 'unselected' ? 'selected' : this.state.mode }),
+      selectSecond: () => this.setState({ selectedImg: 2, mode: this.state.mode === 'unselected' ? 'selected' : this.state.mode }),
+      cycleActiveState: () => this.setState({ mode: mode === 'dragging' ? 'selected' : 'dragging' })
+    };
+  }
+}
+</script>
+</body>
+</html>

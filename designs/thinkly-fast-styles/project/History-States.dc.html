@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>页面历史 · 空状态、失败与冲突</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400..500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button{font-family:inherit}
+button:focus-visible{outline:2px solid #547dd0;outline-offset:2px}
+.ib{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#526071;padding:0;cursor:pointer;flex:none}
+.ib:hover{background:#eef3fc;color:#20242c}
+.tab{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:28px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#526071;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.tab-active{background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0}
+.btn{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:32px;padding:0 12px;border-radius:8px;border:1px solid #dcdcdc;background:#ffffff;color:#20242c;display:inline-flex;align-items:center;gap:6px;cursor:pointer;box-sizing:border-box}
+.btn:hover:not(:disabled){background:#eef3fc}
+.btn:disabled{opacity:.48;cursor:not-allowed}
+.btn-pri{background:#547dd0;border-color:#547dd0;color:#ffffff}
+.btn-pri:hover:not(:disabled){background:#3d63b0;border-color:#3d63b0}
+.vitem{font:inherit;font-size:14px;line-height:20px;width:100%;height:36px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#20242c;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:8px;box-sizing:border-box}
+@media (max-width:960px){.s-aside{width:100% !important;border-left:0 !important;border-top:1px solid #e6e6e6}}
+</style>
+</helmet>
+<div style="width:100%;min-height:1000px;box-sizing:border-box;display:flex;flex-direction:column;background:#f1f1f1;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;font-size:14px;line-height:20px;position:relative">
+
+<header style="min-height:40px;flex:none;display:flex;flex-wrap:wrap;align-items:center;border-bottom:1px solid #e6e6e6;background:#f1f1f1;box-sizing:border-box">
+<div style="width:116px;flex:none;height:40px;box-sizing:border-box;display:flex;align-items:center;padding:0 10px 0 16px;border-right:1px solid #e6e6e6">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+</div>
+<nav aria-label="已打开标签页" style="flex:1;min-width:200px;height:40px;display:flex;align-items:center;gap:4px;padding:0 10px">
+<button class="tab tab-active" type="button"><span>周会 11-03</span></button>
+<button class="tab" type="button"><span>产品原则</span></button>
+</nav>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+
+<main style="flex:999 1 560px;min-width:0;background:#ffffff;display:flex;flex-direction:column">
+
+<div style="padding:10px 28px;border-bottom:1px solid #e4e6ea;background:#fafafa;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+<span style="font-weight:560">{{topBarTitle}}</span>
+<div style="display:flex;align-items:center;gap:8px">
+<button class="btn btn-pri" type="button" disabled="{{restoreBtnDisabled}}" title="{{restoreBtnHint}}" aria-label="{{restoreBtnHint}}" onClick="{{triggerRestore}}">恢复此版本</button>
+</div>
+</div>
+
+<sc-if value="{{isRestoreError}}" hint-placeholder-val="{{false}}">
+<div role="alert" style="margin:14px 28px 0;padding:10px 14px;border-radius:8px;background:#fff5f5;border:1px solid #e0b4b4;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+<span style="color:#8a1f1f">恢复失败，当前内容未更改。</span>
+<button class="btn" type="button" onClick="{{retryAction}}">重试</button>
+</div>
+</sc-if>
+
+<sc-if value="{{isConflictState}}" hint-placeholder-val="{{false}}">
+<div role="alert" style="margin:14px 28px 0;padding:10px 14px;border-radius:8px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+<span style="color:#20242c">页面已更新，请重新对比。</span>
+<button class="btn btn-pri" type="button" onClick="{{refreshConflict}}">重新对比</button>
+</div>
+</sc-if>
+
+<sc-if value="{{isReadonlyState}}" hint-placeholder-val="{{false}}">
+<div role="status" style="margin:14px 28px 0;padding:10px 14px;border-radius:8px;background:#f8f8f8;border:1px solid #e4e6ea;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<span style="color:#20242c">此页面只读，无法恢复。</span>
+</div>
+</sc-if>
+
+<sc-if value="{{feedbackNotice}}" hint-placeholder-val="{{false}}">
+<div role="status" style="margin:14px 28px 0;padding:10px 14px;border-radius:8px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<span>{{feedbackNotice}}</span>
+<button class="ib" type="button" onClick="{{clearFeedback}}" aria-label="关闭提示"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</div>
+</sc-if>
+
+<div style="box-sizing:border-box;width:100%;max-width:760px;margin:0 auto;padding:36px 28px 64px;display:flex;flex-direction:column;gap:16px">
+<h1 style="max-width:700px;margin:0;font-size:28px;line-height:1.35;font-weight:560">把周会改成异步</h1>
+<p style="max-width:700px;margin:0;font-size:16px;line-height:1.65;color:#1f1e1d">上周排了三场同步会，两场结束时没有结论。人到齐，并不等于事情被推进。</p>
+<p style="max-width:700px;margin:0;font-size:16px;line-height:1.65;color:#1f1e1d">{{bodyParagraph2}}</p>
+<blockquote style="max-width:700px;margin:0;padding:4px 0 4px 14px;border-left:2px solid #dbd9d4;font-size:16px;line-height:1.65;color:#1f1e1d">会议是例外，不是节奏。一段文字能说清的，不要再约三十分钟。</blockquote>
+<h2 style="max-width:700px;margin:8px 0 0;font-size:20px;line-height:1.4;font-weight:560">保留下来的三件事</h2>
+<div style="max-width:700px;display:flex;flex-direction:column;gap:8px;font-size:16px;line-height:1.6">
+<div>1. 周一前写好本周目标，一句话即可</div>
+<div>2. 阻塞写在文档里，直接点名负责人</div>
+<div>3. 周五只回看偏差，不复述进度</div>
+</div>
+</div>
+
+</main>
+
+<aside class="s-aside" aria-label="页面历史状态侧栏" style="width:320px;flex:none;background:#fafafa;border-left:1px solid #e6e6e6;padding:14px 12px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px">
+<span style="font-size:15px;font-weight:560">页面历史</span>
+</div>
+
+<sc-if value="{{isEmptyState}}" hint-placeholder-val="{{false}}">
+<div style="padding:28px 16px;border-radius:10px;background:#ffffff;border:1px solid #e4e6ea;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.25" fill="#c9d8f3" stroke="none"></circle><circle cx="12" cy="12" r="8.25"></circle><path d="M12 8v4.5l3 1.8" stroke="#547dd0"></path></svg>
+<div style="font-size:14px;color:#526071">暂无历史版本</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isLoadingState}}" hint-placeholder-val="{{false}}">
+<div aria-busy="true" aria-label="正在加载历史版本" style="padding:12px;border-radius:10px;background:#ffffff;border:1px solid #e4e6ea;display:flex;flex-direction:column;gap:8px">
+<div style="height:36px;border-radius:8px;background:#f1f1f1"></div>
+<div style="height:36px;border-radius:8px;background:#f1f1f1"></div>
+<div style="height:36px;border-radius:8px;background:#f1f1f1"></div>
+</div>
+</sc-if>
+
+<sc-if value="{{isLoadErrorState}}" hint-placeholder-val="{{false}}">
+<div role="alert" style="padding:16px;border-radius:10px;background:#ffffff;border:1px solid #e4e6ea;display:flex;flex-direction:column;gap:10px">
+<div style="font-size:14px;color:#20242c">历史记录加载失败</div>
+<div>
+<button class="btn" type="button" onClick="{{retryAction}}">重试</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{hasVersionList}}" hint-placeholder-val="{{true}}">
+<div role="listbox" aria-label="历史版本列表" style="display:flex;flex-direction:column;gap:4px">
+<div class="vitem" role="option" aria-selected="false">
+<span style="font-weight:560">今天 14:32</span>
+<span style="color:#526071">当前</span>
+</div>
+<div class="vitem" role="option" aria-selected="true" style="background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0">
+<span style="font-weight:560">今天 11:08</span>
+<span></span>
+</div>
+<div class="vitem" role="option" aria-selected="false">
+<span style="font-weight:560">昨天 18:40</span>
+<span></span>
+</div>
+</div>
+</sc-if>
+
+</aside>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"scene":{"editor":"enum","default":"conflict","options":["empty","loading","load_error","restore_error","conflict","readonly"],"label":"产品状态场景"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      lastPropScene: p.scene,
+      resolvedScene: null,
+      feedbackNotice: ''
+    };
+  }
+  renderVals() {
+    const propScene = this.props.scene || 'conflict';
+    const s = (this.state.resolvedScene && this.state.lastPropScene === propScene)
+      ? this.state.resolvedScene
+      : propScene;
+    const isEmpty = s === 'empty';
+    const isLoading = s === 'loading';
+    const isLoadError = s === 'load_error';
+    const isRestoreError = s === 'restore_error';
+    const isConflict = s === 'conflict';
+    const isReadonly = s === 'readonly';
+    const isNormal = s === 'normal';
+    const hasVersionList = isRestoreError || isConflict || isReadonly || isNormal;
+
+    const topBarTitle = (isEmpty || isLoading || isLoadError) ? '今天 14:32' : '今天 11:08';
+    const restoreBtnDisabled = !isNormal;
+    const restoreBtnHint = isReadonly ? '此页面只读，无法恢复' : (restoreBtnDisabled ? '当前状态不可恢复' : '恢复此版本');
+
+    return {
+      isEmptyState: isEmpty,
+      isLoadingState: isLoading,
+      isLoadErrorState: isLoadError,
+      isRestoreError,
+      isConflictState: isConflict,
+      isReadonlyState: isReadonly,
+      hasVersionList,
+      topBarTitle,
+      restoreBtnDisabled,
+      restoreBtnHint,
+      bodyParagraph2: hasVersionList
+        ? '我们决定先停掉周三例会，改成在群里发一段文字同步本周进展。'
+        : '与其等所有人空出同一段时间，不如把状态写在这里：这周要什么、卡在哪、需要谁看一眼。',
+      feedbackNotice: this.state.feedbackNotice,
+      retryAction: () => this.setState({
+        lastPropScene: propScene,
+        resolvedScene: 'normal',
+        feedbackNotice: isRestoreError ? '已恢复到「今天 11:08」' : ''
+      }),
+      refreshConflict: () => this.setState({
+        lastPropScene: propScene,
+        resolvedScene: 'normal',
+        feedbackNotice: ''
+      }),
+      triggerRestore: () => {
+        if (!restoreBtnDisabled) {
+          this.setState({ feedbackNotice: '已恢复到「今天 11:08」' });
+        }
+      },
+      clearFeedback: () => this.setState({ feedbackNotice: '' })
+    };
+  }
+}
+</script>
+</body>
+</html>

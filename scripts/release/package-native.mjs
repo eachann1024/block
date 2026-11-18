@@ -3,20 +3,18 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { installerFor } from "./allowed-assets.mjs";
-import { run } from "./cargo-release.mjs";
+import { goRelease, releaseBinaryPath, run } from "./go-release.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 const DEB_DEPENDS = [
   "libc6",
-  "libgcc-s1",
   "libxkbcommon0",
   "libxkbcommon-x11-0",
   "libxcb1",
   "libxcb-xkb1",
   "libxau6",
   "libxdmcp6",
-  "libbsd0",
   "libwayland-client0",
   "libwayland-egl1",
   "libvulkan1",
@@ -79,7 +77,10 @@ export async function packageNative() {
   assert.equal(process.platform, "linux", "Linux is required to build the deb package");
   const version = applyReleasePlanVersion();
   const names = archNames();
-  const binary = resolve(ROOT, "target/release/block");
+  let binary = releaseBinaryPath("linux", names.deb);
+  if (!existsSync(binary)) {
+    binary = goRelease({ goos: "linux", goarch: names.deb, outFile: binary });
+  }
   assert.ok(existsSync(binary), `Release binary missing at ${binary}`);
   mkdirSync(RELEASE_DIR, { recursive: true });
   buildDeb(binary, version, names);

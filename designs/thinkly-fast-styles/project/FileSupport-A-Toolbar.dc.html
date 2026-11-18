@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>文件查看与编辑 · 精简版</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;background:#ffffff;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+button,input,textarea{font-family:inherit;font-size:14px}
+::selection{background:#cde2fb;color:#184f95}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #547dd0;outline-offset:1px}
+.mono{font-family:'JetBrains Mono',Menlo,Monaco,ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.ib{width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:#526071;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.ib:hover,.tbtn:hover{background:#eef3fc;color:#20242c}
+.tbtn{height:28px;padding:0 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#20242c;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+.row:hover{background:#eef3fc}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:900px;display:flex;flex-direction:column;background:#ffffff;color:#20242c;font-size:14px;line-height:20px">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;background:#f1f1f1;border-bottom:1px solid #e6e6e6">
+<div style="width:260px;flex:none;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 14px;border-right:1px solid #e6e6e6">
+<div aria-hidden="true" style="display:flex;gap:8px"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<button type="button" class="ib" onClick="{{toggleSidebar}}" aria-label="切换侧栏">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H9.5V20H5.5A1.5 1.5 0 0 1 4 18.5V5.5Z" fill="#c9d8f3"></path><rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" stroke-width="1.5"></rect><path d="M9.5 4V20" stroke="currentColor" stroke-width="1.5"></path></svg>
+</button>
+</div>
+
+<div style="flex:1;min-width:0;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 16px;gap:12px">
+<div style="display:flex;align-items:center;gap:10px;min-width:0">
+<span class="mono" style="font-weight:560;color:#20242c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{activeName}}</span>
+<sc-if value="{{hasSaveNotice}}" hint-placeholder-val="{{false}}">
+<span style="color:#526071">{{saveNotice}}</span>
+</sc-if>
+</div>
+
+<div style="display:flex;align-items:center;gap:8px;flex:none">
+<sc-if value="{{isSvgFile}}" hint-placeholder-val="{{false}}">
+<div role="group" aria-label="SVG 视图模式" style="display:inline-flex;padding:2px;border-radius:7px;background:#e4e6ea;gap:2px">
+<button type="button" onClick="{{setSvgPreview}}" style="height:24px;padding:0 10px;border:0;border-radius:5px;background:{{svgPrevBg}};color:#20242c;box-shadow:{{svgPrevRing}};cursor:pointer">预览</button>
+<button type="button" onClick="{{setSvgSource}}" style="height:24px;padding:0 10px;border:0;border-radius:5px;background:{{svgSrcBg}};color:#20242c;box-shadow:{{svgSrcRing}};cursor:pointer">源码</button>
+</div>
+</sc-if>
+
+<sc-if value="{{isHtmlFile}}" hint-placeholder-val="{{false}}">
+<button type="button" class="tbtn" onClick="{{openExternal}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 5H19V10M19 5L11 13M19 14V18.5A1.5 1.5 0 0 1 17.5 20H5.5A1.5 1.5 0 0 1 4 18.5V6.5A1.5 1.5 0 0 1 5.5 5H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>浏览器打开</span>
+</button>
+</sc-if>
+
+<sc-if value="{{showStageControls}}" hint-placeholder-val="{{true}}">
+<div style="display:inline-flex;align-items:center;gap:2px">
+<button type="button" class="ib" onClick="{{zoomOut}}" aria-label="缩小">−</button>
+<button type="button" class="ib mono" onClick="{{zoomReset100}}" aria-label="重置为 100% 缩放" style="width:auto;min-width:52px;padding:0 8px;color:#20242c">{{zoomPctLabel}}</button>
+<button type="button" class="ib" onClick="{{zoomIn}}" aria-label="放大">+</button>
+<button type="button" class="ib" onClick="{{zoomFit}}" aria-label="适应窗口" style="background:{{fitBtnBg}};box-shadow:{{fitBtnRing}};color:#20242c">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4H18.5A1.5 1.5 0 0 1 20 5.5V9M20 15V18.5A1.5 1.5 0 0 1 18.5 20H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</button>
+</div>
+</sc-if>
+</div>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+<sc-if value="{{sidebarOpen}}" hint-placeholder-val="{{true}}">
+<aside aria-label="文件列表" style="width:260px;flex:none;background:#fafafa;border-right:1px solid #e6e6e6;display:flex;flex-direction:column;min-height:0">
+<div style="padding:10px 10px 6px">
+<label style="height:32px;padding:0 9px;border-radius:8px;background:#ffffff;border:1px solid #dcdcdc;display:flex;align-items:center;gap:6px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:#526071;flex:none"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.5"></circle><path d="M15.5 15.5L20 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+<input type="text" value="{{query}}" onInput="{{onQueryInput}}" placeholder="筛选文件…" aria-label="筛选文件" style="flex:1;min-width:0;border:0;outline:0;background:transparent;color:#20242c;padding:0" />
+<sc-if value="{{hasQuery}}" hint-placeholder-val="{{false}}">
+<button type="button" onClick="{{clearQuery}}" aria-label="清除筛选" style="border:0;background:transparent;color:#526071;padding:0;cursor:pointer">×</button>
+</sc-if>
+</label>
+</div>
+
+<div style="flex:1;min-height:0;overflow:auto;padding:4px 8px 12px;display:flex;flex-direction:column;gap:2px">
+<sc-for list="{{filteredFiles}}" as="f" hint-placeholder-count="8">
+<button type="button" class="row" onClick="{{f.pick}}" style="width:100%;height:32px;padding:0 10px;border:0;border-radius:6px;background:{{f.bg}};color:#20242c;box-shadow:{{f.ring}};font-weight:{{f.weight}};display:flex;align-items:center;gap:8px;text-align:left;cursor:pointer">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none;color:{{f.iconColor}}"><path d="M6.5 3.75H13.5L18.5 8.75V18.5A1.75 1.75 0 0 1 16.75 20.25H6.5A1.75 1.75 0 0 1 4.75 18.5V5.5A1.75 1.75 0 0 1 6.5 3.75Z" fill="#c9d8f3" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="{{f.glyph}}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{f.name}}</span>
+</button>
+</sc-for>
+</div>
+</aside>
+</sc-if>
+
+<main style="flex:999 1 560px;min-width:0;background:#ffffff;display:flex;flex-direction:column;min-height:860px;position:relative">
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{false}}">
+<div role="status" style="padding:8px 16px;background:#e5edfc;border-bottom:1px solid #e4e6ea;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<span>{{toast}}</span>
+<button type="button" onClick="{{dismissToast}}" style="border:0;background:transparent;color:#20242c;font-weight:500;cursor:pointer">关闭</button>
+</div>
+</sc-if>
+
+<sc-if value="{{showStage}}" hint-placeholder-val="{{true}}">
+<div ref="{{setStageRef}}" onDoubleClick="{{onStageDblClick}}" onPointerDown="{{onStagePointerDown}}" onPointerMove="{{onStagePointerMove}}" onPointerUp="{{onStagePointerUp}}" onPointerCancel="{{onStagePointerUp}}" style="flex:1;height:860px;position:relative;overflow:hidden;background:#ffffff;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none;cursor:{{stageCursor}}">
+<sc-if value="{{isRasterImage}}" hint-placeholder-val="{{true}}">
+<img src="/_blob/66c6955d7ad40d92535cdcb2e5ba7c69" alt="cover.png" onLoad="{{onImgLoad}}" draggable="false" style="display:block;max-width:none;user-select:none;pointer-events:none;transform:{{stageTransform}};transform-origin:center center" />
+</sc-if>
+<sc-if value="{{isSvgPreviewOk}}" hint-placeholder-val="{{false}}">
+<div style="pointer-events:none;transform:{{stageTransform}};transform-origin:center center;display:flex;align-items:center;justify-content:center">
+<svg width="{{svgW}}" height="{{svgH}}" viewBox="{{svgViewBox}}" fill="none" role="img" aria-label="diagram.svg 预览">
+<sc-for list="{{svgNodes}}" as="n" hint-placeholder-count="6">
+<g transform="{{n.transform}}">
+<sc-if value="{{n.isRect}}" hint-placeholder-val="{{true}}"><rect x="{{n.x}}" y="{{n.y}}" width="{{n.width}}" height="{{n.height}}" rx="{{n.rx}}" fill="{{n.fill}}" stroke="{{n.stroke}}" stroke-width="{{n.strokeWidth}}"></rect></sc-if>
+<sc-if value="{{n.isCircle}}" hint-placeholder-val="{{false}}"><circle cx="{{n.cx}}" cy="{{n.cy}}" r="{{n.r}}" fill="{{n.fill}}" stroke="{{n.stroke}}" stroke-width="{{n.strokeWidth}}"></circle></sc-if>
+<sc-if value="{{n.isEllipse}}" hint-placeholder-val="{{false}}"><ellipse cx="{{n.cx}}" cy="{{n.cy}}" rx="{{n.rx}}" ry="{{n.ry}}" fill="{{n.fill}}" stroke="{{n.stroke}}" stroke-width="{{n.strokeWidth}}"></ellipse></sc-if>
+<sc-if value="{{n.isLine}}" hint-placeholder-val="{{false}}"><line x1="{{n.x1}}" y1="{{n.y1}}" x2="{{n.x2}}" y2="{{n.y2}}" stroke="{{n.stroke}}" stroke-width="{{n.strokeWidth}}" stroke-linecap="round"></line></sc-if>
+<sc-if value="{{n.isPath}}" hint-placeholder-val="{{false}}"><path d="{{n.d}}" fill="{{n.fill}}" stroke="{{n.stroke}}" stroke-width="{{n.strokeWidth}}" stroke-linecap="round" stroke-linejoin="round"></path></sc-if>
+<sc-if value="{{n.isPolygon}}" hint-placeholder-val="{{false}}"><polygon points="{{n.points}}" fill="{{n.fill}}" stroke="{{n.stroke}}" stroke-width="{{n.strokeWidth}}"></polygon></sc-if>
+<sc-if value="{{n.isPolyline}}" hint-placeholder-val="{{false}}"><polyline points="{{n.points}}" fill="{{n.fill}}" stroke="{{n.stroke}}" stroke-width="{{n.strokeWidth}}"></polyline></sc-if>
+<sc-if value="{{n.isText}}" hint-placeholder-val="{{false}}"><text x="{{n.x}}" y="{{n.y}}" fill="{{n.fill}}" font-size="{{n.fontSize}}" text-anchor="{{n.anchor}}" font-family="Inter,system-ui,sans-serif">{{n.text}}</text></sc-if>
+</g>
+</sc-for>
+</svg>
+</div>
+</sc-if>
+<sc-if value="{{isSvgPreviewErr}}" hint-placeholder-val="{{false}}">
+<div style="color:#526071;text-align:center;padding:24px">显示错误：{{svgError}}</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{showEditor}}" hint-placeholder-val="{{false}}">
+<div style="flex:1;overflow:auto;padding:36px 28px 64px;background:#ffffff">
+<div style="max-width:720px;margin:0 auto;display:flex;align-items:flex-start;gap:16px">
+<div aria-hidden="true" class="mono" style="flex:none;min-width:28px;text-align:right;color:#526071;font-size:{{editorFontPx}};line-height:24px;user-select:none;padding-top:1px">
+<sc-for list="{{lineNumbers}}" as="ln" hint-placeholder-count="12"><div>{{ln.num}}</div></sc-for>
+</div>
+<div style="position:relative;flex:1;min-width:0;min-height:{{editorHeightPx}}">
+<pre aria-hidden="true" class="mono" style="margin:0;padding:0;font-size:{{editorFontPx}};line-height:24px;white-space:pre-wrap;word-break:break-word;color:#20242c;pointer-events:none;min-height:{{editorHeightPx}}"><sc-for list="{{tokens}}" as="tk" hint-placeholder-count="16"><span style="color:{{tk.color}}">{{tk.text}}</span></sc-for>
+</pre>
+<textarea value="{{currentText}}" onInput="{{onTextInput}}" spellcheck="false" aria-label="文件内容编辑器" class="mono" style="position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;outline:0;resize:none;background:transparent;color:transparent;caret-color:#547dd0;font-size:{{editorFontPx}};line-height:24px;white-space:pre-wrap;word-break:break-word;overflow:hidden"></textarea>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{showUnsupported}}" hint-placeholder-val="{{false}}">
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;gap:8px;background:#ffffff;text-align:center">
+<h2 style="margin:0;font-size:16px;line-height:24px;font-weight:560;color:#20242c">无法预览此文件</h2>
+<p style="margin:0 0 8px;color:#526071">此文件类型暂不支持</p>
+<button type="button" class="tbtn" onClick="{{openExternal}}" style="height:32px;padding:0 14px">使用默认应用打开</button>
+</div>
+</sc-if>
+</main>
+</div>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"fontSize":{"editor":"int","default":14,"min":12,"max":18},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.stageEl = null;
+    this.ro = null;
+    this.ptrs = new Map();
+    this.pinchDist = 0;
+    this.gestureBase = 1;
+    this.saveTimer = null;
+    const initSvg = '<svg width="420" height="260" viewBox="0 0 420 260">\n  <rect x="24" y="24" width="372" height="212" rx="12" fill="#f8fafc" stroke="#547dd0" stroke-width="2"/>\n  <circle cx="110" cy="130" r="36" fill="#c9d8f3" stroke="#547dd0" stroke-width="2"/>\n  <rect x="240" y="94" width="96" height="72" rx="8" fill="#e5edfc" stroke="#547dd0" stroke-width="2"/>\n  <line x1="146" y1="130" x2="240" y2="130" stroke="#547dd0" stroke-width="2"/>\n  <text x="110" y="135" fill="#20242c" font-size="14" text-anchor="middle">Node</text>\n  <text x="288" y="135" fill="#20242c" font-size="14" text-anchor="middle">View</text>\n</svg>';
+    this.state = {
+      sidebarOpen: true,
+      query: '',
+      activeId: 'cover.png',
+      svgMode: 'preview',
+      toast: '',
+      saveNotice: '',
+      stageW: 1120,
+      stageH: 800,
+      natW: 1024,
+      natH: 768,
+      viewByFile: {},
+      dragging: false,
+      contents: {
+        'diagram.svg': initSvg,
+        'index.html': '<!doctype html>\n<html lang="zh-CN">\n<head>\n  <meta charset="utf-8">\n  <title>Block 页面示例</title>\n</head>\n<body>\n  <main>\n    <h1>轻量源码视图</h1>\n    <p>直接在白底页面编辑源码，切换文件时保留修改内容。</p>\n  </main>\n</body>\n</html>',
+        'settings.json': '{\n  "workspace": "thinkly-fast",\n  "autosave": true,\n  "editorMaxWidth": 720,\n  "imageViewer": {\n    "initialZoom": "fit",\n    "wheelZoom": true\n  }\n}',
+        'notes.txt': '工作区备忘\n\n1. 图片与 SVG 默认居中展示，支持滚轮缩放、触控板捏合与拖拽平移。\n2. 源码与纯文本文件直接在白底版心中编辑，修改后自动保存。\n3. 不支持直接预览的格式提供系统默认应用打开入口。'
+      },
+      svgParsed: this.parseSvgSafe(initSvg)
+    };
+    this.setStageRef = (el) => {
+      if (this.stageEl === el) return;
+      this.detachStage();
+      this.stageEl = el;
+      if (el) this.attachStage(el);
+    };
+    this.onWheel = (e) => {
+      e.preventDefault();
+      if (!this.stageEl) return;
+      const v = this.getCurView();
+      if (e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        this.updateCurView({ mode: v.mode, scale: v.scale, panX: v.panX - (e.deltaX || e.deltaY), panY: v.panY - (e.deltaX ? e.deltaY : 0) });
+        return;
+      }
+      const rect = this.stageEl.getBoundingClientRect();
+      const ox = e.clientX - rect.left - rect.width / 2;
+      const oy = e.clientY - rect.top - rect.height / 2;
+      const factor = Math.exp(-e.deltaY * (e.ctrlKey || e.metaKey ? 0.01 : 0.0025));
+      this.zoomAt(ox, oy, v.scale * factor);
+    };
+    this.onGestureStart = (e) => { e.preventDefault(); this.gestureBase = this.getCurView().scale; };
+    this.onGestureChange = (e) => {
+      e.preventDefault();
+      if (!this.stageEl) return;
+      const rect = this.stageEl.getBoundingClientRect();
+      const ox = (e.clientX || rect.left + rect.width / 2) - rect.left - rect.width / 2;
+      const oy = (e.clientY || rect.top + rect.height / 2) - rect.top - rect.height / 2;
+      this.zoomAt(ox, oy, this.gestureBase * (e.scale || 1));
+    };
+  }
+  attachStage(el) {
+    el.addEventListener('wheel', this.onWheel, { passive: false });
+    el.addEventListener('gesturestart', this.onGestureStart, { passive: false });
+    el.addEventListener('gesturechange', this.onGestureChange, { passive: false });
+    const measure = () => {
+      const w = el.clientWidth || 1120;
+      const h = el.clientHeight || 800;
+      if (Math.abs(w - this.state.stageW) > 1 || Math.abs(h - this.state.stageH) > 1) {
+        this.setState({ stageW: w, stageH: h });
+      }
+    };
+    measure();
+    if (typeof ResizeObserver !== 'undefined') {
+      this.ro = new ResizeObserver(measure);
+      this.ro.observe(el);
+    }
+  }
+  detachStage() {
+    if (this.stageEl) {
+      this.stageEl.removeEventListener('wheel', this.onWheel);
+      this.stageEl.removeEventListener('gesturestart', this.onGestureStart);
+      this.stageEl.removeEventListener('gesturechange', this.onGestureChange);
+    }
+    if (this.ro) { this.ro.disconnect(); this.ro = null; }
+  }
+  componentWillUnmount() {
+    this.detachStage();
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+  }
+  getMediaSize(id) {
+    if (id === 'diagram.svg') {
+      const sp = this.state.svgParsed;
+      return { w: (sp && sp.w) || 420, h: (sp && sp.h) || 260 };
+    }
+    return { w: this.state.natW || 1024, h: this.state.natH || 768 };
+  }
+  getFitScale(id) {
+    const m = this.getMediaSize(id || this.state.activeId);
+    const sw = Math.max(120, this.state.stageW - 64);
+    const sh = Math.max(120, this.state.stageH - 64);
+    return Math.max(0.1, Math.min(1, Math.min(sw / m.w, sh / m.h)));
+  }
+  getCurView() {
+    const id = this.state.activeId;
+    const saved = this.state.viewByFile[id];
+    const fit = this.getFitScale(id);
+    if (!saved || saved.mode === 'fit') return { mode: 'fit', scale: fit, panX: 0, panY: 0 };
+    return saved;
+  }
+  updateCurView(next) {
+    const id = this.state.activeId;
+    this.setState({ viewByFile: Object.assign({}, this.state.viewByFile, { [id]: next }) });
+  }
+  zoomAt(ox, oy, rawScale) {
+    const v = this.getCurView();
+    const nextScale = Math.min(5, Math.max(0.1, rawScale));
+    const ratio = nextScale / v.scale;
+    const panX = ox - (ox - v.panX) * ratio;
+    const panY = oy - (oy - v.panY) * ratio;
+    this.updateCurView({ mode: 'custom', scale: nextScale, panX, panY });
+  }
+  parseSvgSafe(src) {
+    if (!src || src.length > 16000 || typeof DOMParser === 'undefined') return { ok: false, err: 'SVG 内容过长或解析器不可用' };
+    const doc = new DOMParser().parseFromString(src, 'image/svg+xml');
+    if (doc.querySelector('parsererror')) return { ok: false, err: 'XML 语法格式错误' };
+    const root = doc.documentElement;
+    if (!root || root.tagName.toLowerCase() !== 'svg') return { ok: false, err: '根节点必须为 <svg>' };
+    const allow = { svg: 1, g: 1, rect: 1, circle: 1, ellipse: 1, line: 1, path: 1, polygon: 1, polyline: 1, text: 1 };
+    const all = root.querySelectorAll('*');
+    if (all.length > 60) return { ok: false, err: '节点数量超出精简预览上限' };
+    const checkAttrs = (el) => {
+      for (let i = 0; i < el.attributes.length; i++) {
+        const a = el.attributes[i];
+        const nm = a.name.toLowerCase();
+        const vl = (a.value || '').trim();
+        if (nm.startsWith('on') || nm === 'href' || nm === 'xlink:href' || nm === 'style') return false;
+        if (/url\s*\(|javascript:|data:|https?:/i.test(vl)) return false;
+      }
+      return true;
+    };
+    if (!checkAttrs(root)) return { ok: false, err: '包含不受支持的属性或外部引用' };
+    const vb = root.getAttribute('viewBox') || '';
+    const vbParts = vb.trim().split(/[\s,]+/).map(Number);
+    const w = parseFloat(root.getAttribute('width')) || (vbParts.length === 4 ? vbParts[2] : 420) || 420;
+    const h = parseFloat(root.getAttribute('height')) || (vbParts.length === 4 ? vbParts[3] : 260) || 260;
+    const nodes = [];
+    const walk = (el, inh) => {
+      for (let i = 0; i < el.children.length; i++) {
+        const c = el.children[i];
+        const tag = c.tagName.toLowerCase();
+        if (!allow[tag] || !checkAttrs(c)) throw new Error('包含不受支持的 SVG 标签或属性');
+        const tf = [inh.transform, c.getAttribute('transform') || ''].filter(Boolean).join(' ');
+        const fill = c.getAttribute('fill') || inh.fill || (tag === 'line' || tag === 'polyline' ? 'none' : '#20242c');
+        const stroke = c.getAttribute('stroke') || inh.stroke || 'none';
+        const strokeWidth = c.getAttribute('stroke-width') || inh.strokeWidth || '1.5';
+        if (tag === 'g') {
+          walk(c, { transform: tf, fill, stroke, strokeWidth });
+        } else {
+          nodes.push({
+            transform: tf, fill, stroke, strokeWidth,
+            isRect: tag === 'rect', isCircle: tag === 'circle', isEllipse: tag === 'ellipse',
+            isLine: tag === 'line', isPath: tag === 'path', isPolygon: tag === 'polygon',
+            isPolyline: tag === 'polyline', isText: tag === 'text',
+            x: c.getAttribute('x') || '0', y: c.getAttribute('y') || '0',
+            width: c.getAttribute('width') || '0', height: c.getAttribute('height') || '0',
+            rx: c.getAttribute('rx') || '0', ry: c.getAttribute('ry') || '0',
+            cx: c.getAttribute('cx') || '0', cy: c.getAttribute('cy') || '0', r: c.getAttribute('r') || '0',
+            x1: c.getAttribute('x1') || '0', y1: c.getAttribute('y1') || '0',
+            x2: c.getAttribute('x2') || '0', y2: c.getAttribute('y2') || '0',
+            d: c.getAttribute('d') || '', points: c.getAttribute('points') || '',
+            fontSize: c.getAttribute('font-size') || '14', anchor: c.getAttribute('text-anchor') || 'start',
+            text: (c.textContent || '').slice(0, 120)
+          });
+        }
+      }
+    };
+    try { walk(root, { transform: '', fill: root.getAttribute('fill') || '', stroke: root.getAttribute('stroke') || '', strokeWidth: root.getAttribute('stroke-width') || '1.5' }); }
+    catch (e) { return { ok: false, err: e.message || '包含不受支持的 SVG 特性' }; }
+    return { ok: true, w, h, viewBox: vb || `0 0 ${w} ${h}`, nodes };
+  }
+  tokenize(text, lang) {
+    if (lang === 'plain') return [{ text, color: '#20242c' }];
+    const re = /(<\/?[a-zA-Z0-9!-]+|\b(?:true|false|null)\b|"[^"\n]*"|\b\d+(?:\.\d+)?\b|[{}[\]:,<>=/])/g;
+    const out = [];
+    let last = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) out.push({ text: text.slice(last, m.index), color: '#20242c' });
+      const tk = m[0];
+      let c = '#526071';
+      if (tk.startsWith('"')) c = (lang === 'json' && text.slice(m.index + tk.length).trimStart().startsWith(':')) ? '#116329' : '#0a3069';
+      else if (tk.startsWith('<')) c = '#116329';
+      else if (/^(true|false|null)$/.test(tk)) c = '#cf222e';
+      else if (/^\d/.test(tk)) c = '#0550ae';
+      out.push({ text: tk, color: c });
+      last = m.index + tk.length;
+    }
+    if (last < text.length) out.push({ text: text.slice(last), color: '#20242c' });
+    return out;
+  }
+  renderVals() {
+    const files = [
+      { id: 'cover.png', name: 'cover.png', kind: 'image', lang: 'plain', glyph: 'M8 13.5L10.5 11L14.5 15M13.5 9.5H13.51' },
+      { id: 'diagram.svg', name: 'diagram.svg', kind: 'svg', lang: 'xml', glyph: 'M9 14L12 9L15 14Z' },
+      { id: 'index.html', name: 'index.html', kind: 'text', lang: 'html', glyph: 'M9.5 11L7.5 13L9.5 15M14.5 11L16.5 13L14.5 15' },
+      { id: 'settings.json', name: 'settings.json', kind: 'text', lang: 'json', glyph: 'M9 11H15M9 14.5H13' },
+      { id: 'notes.txt', name: 'notes.txt', kind: 'text', lang: 'plain', glyph: 'M9 11H15M9 14.5H15' },
+      { id: 'guide.pdf', name: 'guide.pdf', kind: 'unsupported', lang: 'plain', glyph: 'M9 12.5H15' },
+      { id: 'video.mp4', name: 'video.mp4', kind: 'unsupported', lang: 'plain', glyph: 'M10.5 10.5L15 13L10.5 15.5V10.5Z' },
+      { id: 'archive.zip', name: 'archive.zip', kind: 'unsupported', lang: 'plain', glyph: 'M12 9.5V15.5M10.5 11.5H13.5M10.5 14H13.5' }
+    ];
+    const q = this.state.query.trim().toLowerCase();
+    const filtered = files.filter((f) => !q || f.name.toLowerCase().includes(q));
+    const cur = files.find((f) => f.id === this.state.activeId) || files[0];
+    const isSvgFile = cur.id === 'diagram.svg';
+    const showStage = cur.kind === 'image' || (isSvgFile && this.state.svgMode === 'preview');
+    const showEditor = cur.kind === 'text' || (isSvgFile && this.state.svgMode === 'source');
+    const showUnsupported = cur.kind === 'unsupported';
+    const v = this.getCurView();
+    const rawText = this.state.contents[cur.id] || '';
+    const lineTotal = Math.max(1, rawText.split('\n').length);
+    const lineNumbers = Array.from({ length: lineTotal }, (_, i) => ({ num: String(i + 1) }));
+    const sp = this.state.svgParsed || { ok: false, err: '解析错误' };
+    const fontSz = Math.min(18, Math.max(12, Number(this.props.fontSize ?? 14)));
+    return {
+      sidebarOpen: this.state.sidebarOpen,
+      toggleSidebar: () => this.setState({ sidebarOpen: !this.state.sidebarOpen }),
+      query: this.state.query,
+      hasQuery: q.length > 0,
+      onQueryInput: (e) => this.setState({ query: e && e.target ? e.target.value : '' }),
+      clearQuery: () => this.setState({ query: '' }),
+      filteredFiles: filtered.map((f) => ({
+        ...f,
+        bg: f.id === cur.id ? '#e5edfc' : 'transparent',
+        ring: f.id === cur.id ? 'inset 0 0 0 1px #547dd0' : 'none',
+        weight: f.id === cur.id ? '500' : '400',
+        iconColor: f.id === cur.id ? '#547dd0' : '#526071',
+        pick: () => { this.ptrs.clear(); this.setState({ activeId: f.id, toast: '', saveNotice: '' }); }
+      })),
+      activeName: cur.name,
+      hasSaveNotice: Boolean(this.state.saveNotice),
+      saveNotice: this.state.saveNotice,
+      isSvgFile,
+      svgPrevBg: this.state.svgMode === 'preview' ? '#ffffff' : 'transparent',
+      svgPrevRing: this.state.svgMode === 'preview' ? 'inset 0 0 0 1px #dcdcdc' : 'none',
+      svgSrcBg: this.state.svgMode === 'source' ? '#ffffff' : 'transparent',
+      svgSrcRing: this.state.svgMode === 'source' ? 'inset 0 0 0 1px #dcdcdc' : 'none',
+      setSvgPreview: () => this.setState({ svgMode: 'preview', svgParsed: this.parseSvgSafe(this.state.contents['diagram.svg']) }),
+      setSvgSource: () => this.setState({ svgMode: 'source' }),
+      isHtmlFile: cur.id === 'index.html',
+      showStageControls: showStage,
+      zoomPctLabel: `${Math.round(v.scale * 100)}%`,
+      fitBtnBg: v.mode === 'fit' ? '#e5edfc' : 'transparent',
+      fitBtnRing: v.mode === 'fit' ? 'inset 0 0 0 1px #547dd0' : 'none',
+      zoomOut: () => this.zoomAt(0, 0, v.scale / 1.2),
+      zoomIn: () => this.zoomAt(0, 0, v.scale * 1.2),
+      zoomReset100: () => this.updateCurView({ mode: '100', scale: 1, panX: 0, panY: 0 }),
+      zoomFit: () => this.updateCurView({ mode: 'fit', scale: this.getFitScale(cur.id), panX: 0, panY: 0 }),
+      hasToast: Boolean(this.state.toast),
+      toast: this.state.toast,
+      dismissToast: () => this.setState({ toast: '' }),
+      openExternal: () => this.setState({ toast: '原型演示：使用默认应用打开…' }),
+      showStage,
+      showEditor,
+      showUnsupported,
+      setStageRef: this.setStageRef,
+      stageCursor: this.state.dragging ? 'grabbing' : 'grab',
+      stageTransform: `translate3d(${Math.round(v.panX)}px, ${Math.round(v.panY)}px, 0) scale(${v.scale.toFixed(4)})`,
+      isRasterImage: cur.kind === 'image',
+      isSvgPreviewOk: isSvgFile && this.state.svgMode === 'preview' && sp.ok,
+      isSvgPreviewErr: isSvgFile && this.state.svgMode === 'preview' && !sp.ok,
+      svgW: String(sp.w || 420),
+      svgH: String(sp.h || 260),
+      svgViewBox: sp.viewBox || '0 0 420 260',
+      svgNodes: sp.nodes || [],
+      svgError: sp.err || '无法解析 SVG',
+      onImgLoad: (e) => {
+        const t = e && e.target;
+        if (t && t.naturalWidth && (t.naturalWidth !== this.state.natW || t.naturalHeight !== this.state.natH)) {
+          this.setState({ natW: t.naturalWidth, natH: t.naturalHeight });
+        }
+      },
+      onStageDblClick: () => {
+        if (v.mode === 'fit') this.updateCurView({ mode: '100', scale: 1, panX: 0, panY: 0 });
+        else this.updateCurView({ mode: 'fit', scale: this.getFitScale(cur.id), panX: 0, panY: 0 });
+      },
+      onStagePointerDown: (e) => {
+        if (!e || e.button > 0) return;
+        if (e.currentTarget && e.currentTarget.setPointerCapture) {
+          try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+        }
+        this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (this.ptrs.size === 2) {
+          const pts = Array.from(this.ptrs.values());
+          this.pinchDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) || 1;
+        }
+        this.setState({ dragging: true });
+      },
+      onStagePointerMove: (e) => {
+        if (!e || !this.ptrs.has(e.pointerId)) return;
+        const prev = this.ptrs.get(e.pointerId);
+        this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (this.ptrs.size === 1) {
+          const dx = e.clientX - prev.x;
+          const dy = e.clientY - prev.y;
+          this.updateCurView({ mode: 'custom', scale: v.scale, panX: v.panX + dx, panY: v.panY + dy });
+        } else if (this.ptrs.size === 2 && this.stageEl) {
+          const pts = Array.from(this.ptrs.values());
+          const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) || 1;
+          const rect = this.stageEl.getBoundingClientRect();
+          const cx = (pts[0].x + pts[1].x) / 2 - rect.left - rect.width / 2;
+          const cy = (pts[0].y + pts[1].y) / 2 - rect.top - rect.height / 2;
+          if (this.pinchDist > 0) this.zoomAt(cx, cy, v.scale * (dist / this.pinchDist));
+          this.pinchDist = dist;
+        }
+      },
+      onStagePointerUp: (e) => {
+        if (e) this.ptrs.delete(e.pointerId);
+        if (this.ptrs.size < 2) this.pinchDist = 0;
+        if (this.ptrs.size === 0 && this.state.dragging) this.setState({ dragging: false });
+      },
+      editorFontPx: `${fontSz}px`,
+      editorHeightPx: `${Math.max(560, lineTotal * 24 + 48)}px`,
+      lineNumbers,
+      currentText: rawText,
+      tokens: this.tokenize(rawText, cur.lang),
+      onTextInput: (e) => {
+        const val = e && e.target ? e.target.value : '';
+        const nextContents = Object.assign({}, this.state.contents, { [cur.id]: val });
+        const patch = { contents: nextContents, saveNotice: '已自动保存' };
+        if (cur.id === 'diagram.svg') patch.svgParsed = this.parseSvgSafe(val);
+        this.setState(patch);
+        if (this.saveTimer) clearTimeout(this.saveTimer);
+        this.saveTimer = setTimeout(() => this.setState({ saveNotice: '' }), 1600);
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

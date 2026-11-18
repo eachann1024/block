@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>全局 Tooltip 规范 · 浅色 / 深色统一令牌与全场景对照</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+button{font-family:inherit}
+.tip-light{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;background:#0f0f0f;color:#ffffff;font-size:13px;font-weight:450;line-height:18px;letter-spacing:-0.01em;white-space:nowrap;box-shadow:0 4px 12px rgba(15,15,15,.16)}
+.tip-dark{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;background:#202020;color:#ececec;border:1px solid rgba(255,255,255,.07);font-size:13px;font-weight:450;line-height:18px;letter-spacing:-0.01em;white-space:nowrap;box-shadow:0 6px 16px rgba(0,0,0,.45)}
+.col-pill-l{width:26px;height:14px;border-radius:999px;border:1px solid #aba9a3;background:#ffffff;display:inline-flex;align-items:center;justify-content:center;padding:0;box-sizing:border-box}
+.col-pill-d{width:26px;height:14px;border-radius:999px;border:1px solid #6b6b6b;background:#1e1e1e;display:inline-flex;align-items:center;justify-content:center;padding:0;box-sizing:border-box}
+.fold-l{width:28px;height:28px;border-radius:8px;border:0;background:#f2f1ef;color:#37352f;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.fold-d{width:28px;height:28px;border-radius:8px;border:0;background:#2a2a2a;color:#dedede;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.token-row{display:grid;grid-template-columns:180px 1fr 1fr 220px;gap:12px;padding:10px 14px;border-bottom:1px solid #eceae4;font-size:14px;align-items:center}
+.code-chip{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;padding:2px 6px;border-radius:4px;background:#f2f1ee;color:#37352f}
+</style>
+</helmet>
+<div style="width:100%;height:980px;box-sizing:border-box;display:flex;flex-direction:column;background:#f7f7f5;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#1f1e1d;font-size:14px;line-height:20px;overflow:hidden">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;padding:0 16px;gap:12px;background:#f7f7f5;border-bottom:1px solid #ececea">
+<div aria-hidden="true" style="display:flex;gap:8px;width:52px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<div style="flex:1;text-align:center;font-size:13px;color:#5e5d59">全局统一 Tooltip 视觉规范（浅色模式图 5 vs 深色模式图 6）</div>
+<div style="width:52px;flex:none"></div>
+</header>
+
+<main style="flex:1;min-height:0;background:#ffffff;overflow:auto;padding:32px 56px 48px;box-sizing:border-box;display:flex;flex-direction:column;gap:32px">
+
+<section style="max-width:1080px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px">
+<div style="font-size:14px;font-weight:600;color:#1f1e1d">1. 浅色模式 vs 深色模式 1:1 还原对照（无小三角箭头 · 8px 圆角 · 6px 触发间距 · 中点符分隔双动作）</div>
+
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:24px">
+
+<div style="border:1px solid #e5e3de;border-radius:12px;background:#ffffff;padding:24px;display:flex;flex-direction:column;gap:24px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<strong style="font-size:14px;color:#1f1e1d">浅色模式（Light Mode · 对齐图 3 &amp; 图 5）</strong>
+<span class="code-chip">bg: #0f0f0f · text: #ffffff</span>
+</div>
+
+<div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 0 0;background:#ffffff;border:1px solid #eceae4;border-radius:10px;overflow:hidden">
+<span class="tip-light">Click for column options · drag to move</span>
+<div style="position:relative;width:100%;margin-top:4px">
+<div style="display:flex;justify-content:center;margin-bottom:-7px;position:relative;z-index:2">
+<button class="col-pill-l" aria-label="列把手">
+<svg width="12" height="6" viewBox="0 0 12 6" fill="#787670" aria-hidden="true"><circle cx="2.5" cy="1.5" r="1"/><circle cx="6" cy="1.5" r="1"/><circle cx="9.5" cy="1.5" r="1"/><circle cx="2.5" cy="4.5" r="1"/><circle cx="6" cy="4.5" r="1"/><circle cx="9.5" cy="4.5" r="1"/></svg>
+</button>
+</div>
+<div style="height:42px;background:#f5f3ef;border-top:1px solid #e3e1dc;display:flex;align-items:center;padding:0 18px;color:#5e5d59;font-size:15px">有驾照</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column; gap:10px;padding:16px 20px;background:#faf9f7;border:1px solid #eceae4;border-radius:10px">
+<div style="display:flex;align-items:center;gap:16px">
+<div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px">
+<span class="tip-light">Collapse section</span>
+<div style="display:flex;align-items:center;gap:10px;padding-left:20px">
+<button class="fold-l" aria-label="折叠章节">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+</button>
+<span style="font-family:'Songti SC',Georgia,serif;font-size:20px;font-weight:600;color:#141413">先定返程：周日从潮汕站走</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div style="border:1px solid #2b2b2b;border-radius:12px;background:#0d0d0d;padding:24px;display:flex;flex-direction:column;gap:24px;color:#ececec">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<strong style="font-size:14px;color:#ececec">深色模式（Dark Mode · 对齐图 6）</strong>
+<span class="code-chip" style="background:#222222;color:#cfcfcf">bg: #202020 · text: #ececec</span>
+</div>
+
+<div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 0 0;background:#111111;border:1px solid #262626;border-radius:10px;overflow:hidden">
+<span class="tip-dark">Click for column options · drag to move</span>
+<div style="position:relative;width:100%;margin-top:4px">
+<div style="display:flex;justify-content:center;margin-bottom:-7px;position:relative;z-index:2">
+<button class="col-pill-d" aria-label="深色列把手">
+<svg width="12" height="6" viewBox="0 0 12 6" fill="#9e9e9e" aria-hidden="true"><circle cx="2.5" cy="1.5" r="1"/><circle cx="6" cy="1.5" r="1"/><circle cx="9.5" cy="1.5" r="1"/><circle cx="2.5" cy="4.5" r="1"/><circle cx="6" cy="4.5" r="1"/><circle cx="9.5" cy="4.5" r="1"/></svg>
+</button>
+</div>
+<div style="height:42px;background:#1a1a1a;border-top:1px solid #2e2e2e;display:flex;align-items:center;padding:0 18px;color:#b4b4b4;font-size:15px">有驾照</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:10px;padding:16px 20px;background:#141414;border:1px solid #262626;border-radius:10px">
+<div style="display:flex;align-items:center;gap:16px">
+<div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px">
+<span class="tip-dark">Collapse section</span>
+<div style="display:flex;align-items:center;gap:10px;padding-left:20px">
+<button class="fold-d" aria-label="折叠章节">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+</button>
+<span style="font-family:'Songti SC',Georgia,serif;font-size:20px;font-weight:600;color:#ececec">先定返程：周日从潮汕站走</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</section>
+
+<section style="max-width:1080px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px">
+<div style="font-size:14px;font-weight:600;color:#1f1e1d">2. 全局复用场景预览（侧栏导航 · 选区工具栏 · 表格把手 · 标题折叠，全部统一消费 `.goose-tooltip`）</div>
+
+<div style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:16px">
+<div style="padding:16px;border:1px solid #e5e3de;border-radius:10px;background:#faf9f7;display:flex;flex-direction:column;gap:10px">
+<span style="font-size:13px;color:#5e5d59">表格列／行把手</span>
+<div><span class="tip-light">Click for column options · drag to move</span></div>
+<div><span class="tip-light">Click for row options · drag to move</span></div>
+</div>
+
+<div style="padding:16px;border:1px solid #e5e3de;border-radius:10px;background:#faf9f7;display:flex;flex-direction:column;gap:10px">
+<span style="font-size:13px;color:#5e5d59">标题章节折叠与锚点</span>
+<div><span class="tip-light">Collapse section</span></div>
+<div><span class="tip-light">Expand section</span></div>
+</div>
+
+<div style="padding:16px;border:1px solid #e5e3de;border-radius:10px;background:#faf9f7;display:flex;flex-direction:column;gap:10px">
+<span style="font-size:13px;color:#5e5d59">选区工具栏与快捷键</span>
+<div><span class="tip-light">Bold · ⌘B</span></div>
+<div><span class="tip-light">Add link · ⌘K</span></div>
+</div>
+
+<div style="padding:16px;border:1px solid #2b2b2b;border-radius:10px;background:#141414;display:flex;flex-direction:column;gap:10px">
+<span style="font-size:13px;color:#b4b4b4">深色全站同步</span>
+<div><span class="tip-dark">Select table</span></div>
+<div><span class="tip-dark">Global search · ⌘⇧K</span></div>
+</div>
+</div>
+</section>
+
+<section style="max-width:1080px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:10px">
+<div style="font-size:14px;font-weight:600;color:#1f1e1d">3. 全局 CSS 变量与几何规格表</div>
+<div style="border:1px solid #e5e3de;border-radius:10px;background:#ffffff;overflow:hidden">
+<div class="token-row" style="background:#f5f3ef;font-weight:600;color:#37352f">
+<span>属性</span>
+<span>浅色模式（Light）</span>
+<span>深色模式（Dark）</span>
+<span>全局令牌 / 规则</span>
+</div>
+<div class="token-row">
+<span>背景与描边</span>
+<span><span class="code-chip">#0f0f0f</span>（无边框）</span>
+<span><span class="code-chip">#202020</span> + <span class="code-chip">1px rgba(255,255,255,.07)</span></span>
+<span><span class="code-chip">--goose-tooltip-bg</span> / <span class="code-chip">--goose-tooltip-border</span></span>
+</div>
+<div class="token-row">
+<span>文字与字号</span>
+<span><span class="code-chip">#ffffff</span> · 13px / 18px · 字重 450</span>
+<span><span class="code-chip">#ececec</span> · 13px / 18px · 字重 450</span>
+<span><span class="code-chip">--goose-tooltip-fg</span> · 双动作以 <span class="code-chip">·</span> 分隔</span>
+</div>
+<div class="token-row" style="border-bottom:0">
+<span>几何与动效</span>
+<span>高 30px · 左右内边距 12px · 圆角 8px</span>
+<span>距触发源 6px · 无小三角箭头</span>
+<span>150ms opacity + translateY(2px)</span>
+</div>
+</div>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

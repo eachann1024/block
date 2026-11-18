@@ -1,0 +1,17 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-11-18T13:10:00Z"},
+  "title": "Block 侧栏顶部工具行精简",
+  "launch": {"view": "canvas", "page": "sidebar-variants"},
+  "pages": [{"id": "sidebar-variants", "name": "侧栏精简三方案"}],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 1200, "h": 760, "title": "方案 A · 纯净文件树（⌘K + 右键）", "page": "sidebar-variants", "is_interactive": true},
+    "VariantB-Titlebar.dc.html": {"x": 1280, "y": 0, "w": 1200, "h": 760, "title": "方案 B · 顶栏左列收纳图标", "page": "sidebar-variants", "is_interactive": true},
+    "VariantC-GhostRow.dc.html": {"x": 2560, "y": 0, "w": 1200, "h": 760, "title": "方案 C · 树尾新建行 + 底栏搜索", "page": "sidebar-variants", "is_interactive": true}
+  },
+  "order": ["Main.dc.html", "VariantB-Titlebar.dc.html", "VariantC-GhostRow.dc.html"],
+  "notes": {
+    "row-heading": {"x": 0, "y": -260, "text": "侧栏顶部工具行精简 · 三版对比", "kind": "title1", "page": "sidebar-variants", "maxW": 3760}
+  },
+  "designSystems": []
+}

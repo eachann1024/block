@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方案：收敛后的统一尺度</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1240px; box-sizing: border-box; padding: 48px 56px; background: #f8f8f8; color: #20242c; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; font-size: 14px; line-height: 20px; display: flex; flex-direction: column; gap: 24px">
+  <h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 560">方案：收敛后的统一尺度</h1>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+
+    <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+      <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">圆角 6 档</h2>
+      <div style="display: flex; gap: 18px; align-items: flex-end">
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: center"><div style="width: 64px; height: 64px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; border-radius: 4px"></div><b style="font-weight: 560">XS 4</b><span style="color: #526071">键帽 · 微按钮</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: center"><div style="width: 64px; height: 64px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; border-radius: 6px"></div><b style="font-weight: 560">SM 6</b><span style="color: #526071">列表行 · 菜单项</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: center"><div style="width: 64px; height: 64px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; border-radius: 8px"></div><b style="font-weight: 560">MD 8</b><span style="color: #526071">按钮 · 输入框</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: center"><div style="width: 64px; height: 64px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; border-radius: 10px"></div><b style="font-weight: 560">LG 10</b><span style="color: #526071">卡片 · 浮层</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: center"><div style="width: 64px; height: 64px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; border-radius: 14px"></div><b style="font-weight: 560">XL 14</b><span style="color: #526071">对话框 · 面板</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: center"><div style="width: 64px; height: 32px; margin-top: 32px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; border-radius: 999px"></div><b style="font-weight: 560">Pill</b><span style="color: #526071">开关 · 胶囊</span></div>
+      </div>
+      <div style="color: #526071">1 / 2 / 3.5 / 5 → 4；12 → 10；13 由 XL − 1 推导，不再写死。</div>
+    </section>
+
+    <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+      <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">字号 6 档 · 字重 3 档（等宽另加 500）</h2>
+      <div style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 72px; gap: 8px 14px; align-items: baseline">
+        <span style="color: #526071">Meta 12</span><span style="font-size: 12px; line-height: 16px">快捷键提示 · 计数</span><span style="color: #526071">400</span>
+        <span style="color: #526071">Small 13</span><span style="font-size: 13px; line-height: 18px">tooltip · 次级说明</span><span style="color: #526071">400</span>
+        <span style="color: #526071">Body 14</span><span style="font-size: 14px; font-weight: 460">控件 · 列表 · 正文 UI</span><span style="color: #526071">400 / 460</span>
+        <span style="color: #526071">Title 15</span><span style="font-size: 15px; line-height: 22px; font-weight: 560">卡片标题 · 对话框标题</span><span style="color: #526071">560</span>
+        <span style="color: #526071">Heading 18</span><span style="font-size: 18px; line-height: 26px; font-weight: 560">面板大标题</span><span style="color: #526071">560</span>
+        <span style="color: #526071">Page 24</span><span style="font-size: 24px; line-height: 32px; font-weight: 560">设置页标题</span><span style="color: #526071">560</span>
+      </div>
+      <div style="color: #526071">11 / 11.5 / 12.5 → 12 或 13；16 → 15；22 → 24。字重 600 → 560，500 → 460，550 → 560。</div>
+    </section>
+
+    <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+      <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">阴影 3 级 Elevation</h2>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; padding: 4px 4px 12px">
+        <div style="display: flex; flex-direction: column; gap: 12px"><div style="height: 76px; background: #fff; border: 1px solid #e4e4e4; border-radius: 10px; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.08)"></div><b style="font-weight: 560">Popover</b><span style="color: #526071">菜单 · tooltip · 工具条</span></div>
+        <div style="display: flex; flex-direction: column; gap: 12px"><div style="height: 76px; background: #fff; border: 1px solid #e4e6ea; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,.08), 0 12px 32px rgba(0,0,0,.12)"></div><b style="font-weight: 560">Dialog</b><span style="color: #526071">模态框 · 搜索 · 导出</span></div>
+        <div style="display: flex; flex-direction: column; gap: 12px"><div style="height: 76px; background: #fff; border-radius: 14px; box-shadow: 8px 0 28px rgba(0,0,0,.18)"></div><b style="font-weight: 560">Drawer</b><span style="color: #526071">侧滑面板 · 窄屏侧栏</span></div>
+      </div>
+      <div style="color: #526071">放进 theme.Elevation(pal, level)，深色自动加深透明度；去掉偏蓝阴影。</div>
+    </section>
+
+    <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+      <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">控件高度 5 档 · 间距 9 档</h2>
+      <div style="display: flex; gap: 14px; align-items: flex-end">
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: center"><div style="width: 72px; height: 22px; border: 1px solid #dcdcdc; border-radius: 4px"></div><span>22 Micro</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: center"><div style="width: 72px; height: 26px; border: 1px solid #dcdcdc; border-radius: 6px"></div><span>26 Chrome</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: center"><div style="width: 72px; height: 28px; border: 1px solid #dcdcdc; border-radius: 6px"></div><span>28 Compact</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: center"><div style="width: 72px; height: 32px; border: 1px solid #547dd0; border-radius: 8px; background: #e5edfc"></div><b style="font-weight: 560">32 Control</b></div>
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: center"><div style="width: 72px; height: 36px; border: 1px solid #dcdcdc; border-radius: 8px"></div><span>36 Large</span></div>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: flex-end">
+        <div style="display: flex; flex-direction: column; gap: 4px; align-items: center"><div style="width: 2px; height: 24px; background: #547dd0"></div><span>2</span></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; align-items: center"><div style="width: 4px; height: 24px; background: #547dd0"></div><span>4</span></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; align-items: center"><div style="width: 6px; height: 24px; background: #547dd0"></div><span>6</span></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; align-items: center"><div style="width: 8px; height: 24px; background: #547dd0"></div><span>8</span></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; align-items: center"><div style="width: 10px; height: 24px; background: #547dd0"></div><span>10</span></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; align-items: center"><div style="width: 12px; height: 24px; background: #547dd0"></div><span>12</span></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; align-items: center"><div style="width: 16px; height: 24px; background: #547dd0"></div><span>16</span></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; align-items: center"><div style="width: 20px; height: 24px; background: #547dd0"></div><span>20</span></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; align-items: center"><div style="width: 24px; height: 24px; background: #547dd0"></div><span>24</span></div>
+      </div>
+      <div style="color: #526071">高度 24 / 30 / 34 / 38 / 40 → 就近归档；间距 3 / 7 / 9 / 14 / 18 / 28 → 就近归档。</div>
+    </section>
+
+  </div>
+
+  <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+    <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">颜色：Palette 补齐缺口、合并别名</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 28px">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <b style="font-weight: 560">新增</b>
+        <span>KeycapBG · TableHeaderBG · Scrim</span>
+        <span>Syntax.{Keyword, String, Comment, Number, Type, Func}</span>
+        <span>ReactionPill.{FG, BG, Hover, Border}</span>
+        <span>CalloutTone[kind]（移出 overlays.go）</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <b style="font-weight: 560">合并</b>
+        <span>MenuChecked → Selected</span>
+        <span>BtnHover / MenuHover → Hover（保留一个透明叠加版）</span>
+        <span>UIText / TooltipFG → Text；FontUISize → FontBody</span>
+        <span>TooltipDanger / MenuDangerFG → Danger 色阶</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <b style="font-weight: 560">修正深色</b>
+        <div style="display: flex; gap: 8px; align-items: center"><div style="width: 24px; height: 20px; border-radius: 4px; background: #252a31"></div><span>→</span><div style="width: 24px; height: 20px; border-radius: 4px; background: #2c2c2c; border: 1px solid #444"></div><span>键帽 / 胶囊回到中性灰</span></div>
+        <div style="display: flex; gap: 8px; align-items: center"><div style="width: 24px; height: 20px; border-radius: 4px; background: #1d2026"></div><span>→</span><div style="width: 24px; height: 20px; border-radius: 4px; background: #242424"></div><span>代码块 = CodeBG</span></div>
+        <div style="display: flex; gap: 8px; align-items: center"><div style="width: 24px; height: 20px; border-radius: 4px; background: #256abf"></div><span>→</span><div style="width: 24px; height: 20px; border-radius: 4px; background: #779de8"></div><span>深色 Link = Accent</span></div>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,12 +9,13 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 export const appName = "Block";
 export const bundleId = "dev.eachann.block";
+export const acceptedBundleIds = new Set([bundleId, "com.block.notes"]);
 export const installPath = "/Applications/Block.app";
 export const installedExecutable = `${installPath}/Contents/MacOS/block`;
 export const legacyBundleId = ["dev.eachann", ["thinkly", "fast"].join("-")].join(".");
 export const legacyInstallPath = `/Applications/${["Thinkly", "Fast"].join(" ")}.app`;
 export const legacyInstalledExecutable = `${legacyInstallPath}/Contents/MacOS/${["thinkly", "fast"].join("-")}`;
-export const logDir = join(homedir(), "Library/Logs/Block");
+export const logDir = join(homedir(), "Library/Application Support/Block/logs");
 export const runtimeLogPath = join(logDir, "block.log");
 
 export function logIssue(level, msg) {
@@ -27,7 +28,7 @@ export function logIssue(level, msg) {
   } catch {}
 }
 
-const markdownExtensions = ["md", "markdown", "mdown", "mkd", "mkdn", "mdwn", "mdtxt", "mdtext", "mdx"];
+export const markdownExtensions = ["md", "markdown", "mdown", "mkd", "mkdn", "mdwn", "mdtxt", "mdtext", "mdx"];
 
 const plistKeys = [
   ["CFBundleName", appName],
@@ -40,6 +41,18 @@ const plistKeys = [
   ["CFBundleShortVersionString", "1.0.0"],
   ["LSMinimumSystemVersion", "12.0"],
   ["NSHighResolutionCapable", true],
+  ["NSHumanReadableCopyright", "Copyright © 2026 Block Contributors"],
+  ["NSPrincipalClass", "NSApplication"],
+  ["NSSupportsAutomaticGraphicsSwitching", true],
+  [
+    "CFBundleURLTypes",
+    [
+      {
+        CFBundleURLName: bundleId,
+        CFBundleURLSchemes: ["block", "blockmd"],
+      },
+    ],
+  ],
   [
     "CFBundleDocumentTypes",
     [
@@ -75,9 +88,8 @@ export function readAppVersion(root = repoRoot) {
     if (typeof pkg.version === "string" && /^\d+\.\d+\.\d+$/.test(pkg.version)) return pkg.version;
   } catch {}
   try {
-    const cargo = readFileSync(join(root, "Cargo.toml"), "utf8");
-    const match = /^version\s*=\s*"(\d+\.\d+\.\d+)"/m.exec(cargo);
-    if (match) return match[1];
+    const mygo = JSON.parse(readFileSync(join(root, "mygo.json"), "utf8"));
+    if (typeof mygo.version === "string" && /^\d+\.\d+\.\d+$/.test(mygo.version)) return mygo.version;
   } catch {}
   return "1.0.0";
 }
@@ -115,77 +127,86 @@ export function run(command, args, options = {}) {
   return result.stdout ?? "";
 }
 
-export function cargoArgs(profile = "release", options = {}) {
-  const args = ["build", ...(profile === "release" ? ["--locked", "--release"] : ["--profile", profile]), "--message-format", "json"];
-  const target = options.target === undefined ? process.env.CARGO_BUILD_TARGET : options.target;
-  if (target) args.push("--target", target);
-  if (options.timings === true) args.push("--timings");
-  return args;
+export function normalizePlatform(raw = process.platform) {
+  const v = String(raw || "").toLowerCase();
+  if (v === "darwin" || v === "macos" || v === "mac") return "darwin";
+  if (v === "win32" || v === "windows" || v === "win") return "windows";
+  if (v === "linux") return "linux";
+  throw new Error(`unsupported platform: ${raw}`);
 }
 
-export function binaryPath(root, profile = "release", options = {}) {
-  const args = cargoArgs(profile, options);
-  const result = spawnSync("cargo", args, {
-    cwd: root,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (result.error) throw result.error;
-  const entries = (result.stdout ?? "")
-    .split("\n")
-    .filter(Boolean)
-    .flatMap((line) => {
-      try { return [JSON.parse(line)]; } catch { return []; }
-    });
-  const rendered = [];
-  const errors = [];
-  const errorLocations = [];
-  for (const entry of entries) {
-    if (entry.reason === "compiler-message" && entry.message?.rendered) {
-      const msg = entry.message.rendered.trim();
-      rendered.push(msg);
-      if (entry.message.level === "error") {
-        logIssue("ERROR", msg);
-        errors.push(msg);
-        const span = entry.message.spans?.find((s) => s.is_primary) || entry.message.spans?.[0];
-        const loc = span?.file_name ? `${span.file_name}:${span.line_start}` : "cargo";
-        errorLocations.push(`${loc} (${entry.message.message})`);
-      }
+export function normalizeArch(raw = process.arch) {
+  const v = String(raw || "").toLowerCase();
+  if (v === "arm64" || v === "aarch64") return "arm64";
+  if (v === "x64" || v === "x86_64" || v === "amd64") return "amd64";
+  throw new Error(`unsupported arch: ${raw}`);
+}
+
+export function goBuild({ root = repoRoot, goos, goarch, outFile, profile = "fast", useMygo = false, tempDir } = {}) {
+  mkdirSync(dirname(outFile), { recursive: true });
+  const env = { ...process.env, CGO_ENABLED: "0" };
+  if (tempDir) env.TMPDIR = tempDir;
+  if (useMygo) {
+    const result = spawnSync(
+      "go",
+      ["tool", "mygo", "build", "-platform", `${goos}/${goarch}`, "-skip-dmg", "-skip-installer", "-o", join(root, "dist")],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env,
+        maxBuffer: 64 * 1024 * 1024,
+      },
+    );
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+      const detail = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim();
+      throw new Error(detail || `go tool mygo build exited ${result.status}`);
     }
   }
+  const ldflags = [];
+  if (profile === "release" || goos !== "darwin") {
+    ldflags.push("-s", "-w");
+  }
+  if (goos === "windows") {
+    ldflags.push("-H=windowsgui");
+  }
+  const args = ["build"];
+  if (ldflags.length) {
+    args.push(`-ldflags=${ldflags.join(" ")}`);
+  }
+  args.push("-o", outFile, "./cmd/block");
+  const result = spawnSync("go", args, {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...env, GOOS: goos, GOARCH: goarch },
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.error) throw result.error;
   if (result.status !== 0) {
-    const fallback = (result.stderr ?? "").trim();
-    const detail = (errors.length ? errors : rendered).join("\n\n") || fallback || `cargo exited ${result.status}`;
-    const summary = errorLocations.length ? `\n\n[BUILD FAILED] 失败位置与原因: ${errorLocations.slice(0, 5).join(" | ")}` : "";
-    throw new Error(`${detail}${summary}`);
+    const detail = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim();
+    throw new Error(detail || `go build exited ${result.status}`);
   }
-  const built = entries.filter(
-    (entry) => entry.reason === "compiler-artifact" && entry.target?.name === "block" && entry.target?.kind?.includes("bin") && entry.executable
-  );
-  const executable = built.at(-1)?.executable;
-  if (!executable?.startsWith("/") || !executable.endsWith("/block") || !existsSync(executable)) {
-    throw new Error("release build did not report the block executable");
+  if (!existsSync(outFile)) {
+    throw new Error(`go build did not produce ${outFile}`);
   }
-  return executable;
+  return outFile;
 }
 
 export function assertSystemLibraries(executable) {
+  if (process.platform !== "darwin") return;
   const linked = run("otool", ["-L", executable])
     .split("\n")
     .slice(1)
     .map((line) => line.trim().split(/\s+/)[0])
     .filter(Boolean);
   const external = linked.filter((path) => !path.startsWith("/System/Library/") && !path.startsWith("/usr/lib/"));
-  if (external.length || !linked.length) throw new Error(`external dylibs must be bundled first: ${external.join(", ") || "none listed"}`);
+  if (external.length || !linked.length) {
+    throw new Error(`external dylibs must be bundled first: ${external.join(", ") || "none listed"}`);
+  }
 }
 
 export function sign(bundle, { development = false } = {}) {
   run("plutil", ["-lint", join(bundle, "Contents/Info.plist")]);
-  // Preserve symbol table and DWARF line tables so release backtraces and macOS .ips crash logs resolve file:line.
-  // Local ad-hoc builds otherwise use a changing cdhash as their designated
-  // requirement, invalidating macOS folder grants after every rebuild. The
-  // identifier-only requirement is for local development, never distribution.
   const requirements = development
     ? ["--identifier", bundleId, "--requirements", `=designated => identifier "${bundleId}"`]
     : [];
@@ -214,9 +235,14 @@ export function sameVolumeTemp(path) {
 }
 
 export function workspaceTemp() {
-  const staging = join(tmpdir(), `block-app.${process.pid}.${randomBytes(4).toString("hex")}`);
-  mkdirSync(staging);
-  return staging;
+  const prefix = `block-app.${process.pid}.`;
+  try {
+    return mkdtempSync(join(tmpdir(), prefix));
+  } catch (error) {
+    if (!["ENOENT", "ENOTDIR", "EACCES", "EPERM", "EROFS"].includes(error?.code)) throw error;
+    // A runner can remove its private TMPDIR before the build starts.
+    return mkdtempSync(join("/tmp", prefix));
+  }
 }
 
 export function remove(path) {
@@ -234,6 +260,8 @@ export function assertInstallTarget(path) {
   if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error(`${path} is not an app bundle directory`);
   const info = join(path, "Contents/Info.plist");
   const id = run("plutil", ["-extract", "CFBundleIdentifier", "raw", "-o", "-", info]).trim();
-  if (id !== bundleId) throw new Error(`${path} is ${id}, not ${bundleId}`);
+  if (!acceptedBundleIds.has(id) && id !== legacyBundleId) {
+    throw new Error(`${path} is ${id}, not ${bundleId}`);
+  }
   return true;
 }

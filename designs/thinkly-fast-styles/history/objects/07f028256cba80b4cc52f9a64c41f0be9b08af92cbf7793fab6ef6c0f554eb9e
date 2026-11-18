@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>行内 AI 全流程 B · 672px 版心内嵌工作台 + 分段对照预览舱</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#3d63b0}a:hover{color:#2c4c8c}
+*{box-sizing:border-box}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+::selection{background:#cde2fb;color:#184f95}
+.ib{width:28px;height:28px;border:0;border-radius:6px;background:transparent;display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;flex:none}
+.ib:hover{background:#eef3fc}
+.seg{height:30px;padding:0 10px;border:0;border-radius:6px;background:transparent;font-size:14px;font-weight:460;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.seg-sm{height:26px;padding:0 9px;border:0;border-radius:5px;background:transparent;font-size:13px;font-weight:460;cursor:pointer;display:inline-flex;align-items:center;white-space:nowrap}
+.pill{height:28px;padding:0 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#20242c;font-size:13px;font-weight:460;display:inline-flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}
+.pill:hover{background:#eef3fc;border-color:#547dd0}
+.btn-pri{height:30px;padding:0 12px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;color:#20242c;font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+.btn-pri:hover{background:#dce8fb}
+.btn-sec{height:30px;padding:0 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#20242c;font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}
+.btn-sec:hover{background:#eef3fc;border-color:#547dd0}
+.kbd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:16px;padding:1px 5px;border-radius:5px;border:1px solid #dcdcdc;background:#f1f1f1;color:#526071;flex:none}
+.shimmer{background:linear-gradient(90deg,#526071 0%,#526071 35%,#20242c 50%,#526071 65%,#526071 100%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:wb-shimmer 1.6s linear infinite}
+.spin-ring{display:inline-block;width:12px;height:12px;border:1.8px solid #c9d8f3;border-top-color:#547dd0;border-radius:6px;animation:wb-spin 0.9s linear infinite;flex:none}
+@keyframes wb-shimmer{from{background-position:140% 0}to{background-position:-40% 0}}
+@keyframes wb-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.shimmer,.spin-ring{animation:none}.shimmer{-webkit-text-fill-color:#526071}}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:980px;display:flex;flex-direction:column;background:{{pageBg}};color:{{textPri}};font-size:14px;line-height:20px">
+
+  <!-- 顶部阶段与模式控制栏 -->
+  <div style="min-height:48px;flex:none;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:8px 18px;background:{{barBg}};border-bottom:1px solid {{shellBorder}}">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+        <button type="button" class="seg" onClick="{{pickEmptyCtx}}" style="background:{{ctxEmptyBg}};color:{{ctxEmptyFg}};box-shadow:{{ctxEmptyRing}}">/ai 直达生成</button>
+        <button type="button" class="seg" onClick="{{pickSelCtx}}" style="background:{{ctxSelBg}};color:{{ctxSelFg}};box-shadow:{{ctxSelRing}}">段落改写对照</button>
+      </div>
+      <sc-if value="{{isStageStream}}" hint-placeholder-val="{{false}}">
+        <button type="button" class="btn-sec" onClick="{{replayStream}}" style="height:30px">
+          <span>重播步骤动画</span>
+        </button>
+      </sc-if>
+    </div>
+
+    <div role="tablist" aria-label="内嵌工作台流程阶段" style="display:inline-flex;flex-wrap:wrap;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+      <sc-for list="{{stageTabs}}" as="st" hint-placeholder-count="6">
+        <button type="button" role="tab" aria-selected="{{st.active}}" class="seg" onClick="{{st.pick}}" style="background:{{st.bg}};color:{{st.fg}};box-shadow:{{st.ring}}">{{st.label}}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- 标准 40px 窗口标题栏 -->
+  <header style="height:40px;flex:none;display:flex;align-items:center;background:{{shellBg}};border-bottom:1px solid {{shellBorder}}">
+    <div style="width:260px;height:100%;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 14px;border-right:1px solid {{shellBorder}}">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+      </div>
+      <button type="button" class="ib" aria-label="切换侧栏" style="color:{{textSec}}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{duoFill}}"></path>
+          <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
+          <path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5"></path>
+        </svg>
+      </button>
+    </div>
+
+    <nav aria-label="已打开标签页" style="flex:1;min-width:0;display:flex;align-items:center;gap:4px;padding:0 10px;overflow:hidden">
+      <button type="button" style="height:28px;padding:0 12px;border:0;border-radius:6px;background:{{selBg}};box-shadow:inset 0 0 0 1px {{accentCol}};color:{{textPri}};font-weight:500;display:inline-flex;align-items:center;gap:7px;cursor:pointer">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accentCol}}" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="{{duoFill}}" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+        <span>灰度风险与回滚矩阵</span>
+      </button>
+      <button type="button" style="height:28px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:{{textSec}};display:inline-flex;align-items:center;gap:7px;cursor:pointer">
+        <span>架构评审记录</span>
+      </button>
+    </nav>
+
+    <div style="height:100%;display:flex;align-items:center;gap:6px;padding:0 12px;border-left:1px solid {{shellBorder}}">
+      <button type="button" class="ib" onClick="{{toggleSidebar}}" aria-label="右侧 AI 助手" style="background:{{chatBtnBg}};box-shadow:{{chatBtnRing}};color:{{textPri}}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3z" fill="{{duoFill}}" stroke="{{accentCol}}" stroke-width="1.6" stroke-linejoin="round"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- 主体 -->
+  <div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+
+    <!-- 左侧文件树 -->
+    <aside aria-label="工作区文件列表" style="width:260px;flex:none;background:{{barBg}};border-right:1px solid {{shellBorder}};padding:12px 10px;display:flex;flex-direction:column;gap:4px">
+      <div style="height:32px;padding:0 10px;border-radius:6px;background:{{selBg}};box-shadow:inset 0 0 0 1px {{accentCol}};color:{{textPri}};font-weight:460;display:flex;align-items:center;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accentCol}}" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="{{duoFill}}" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path></svg>
+        <span>灰度风险与回滚矩阵</span>
+      </div>
+      <div style="height:32px;padding:0 10px;border-radius:6px;color:{{textSec}};display:flex;align-items:center;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z"></path></svg>
+        <span>架构评审记录</span>
+      </div>
+      <div style="height:32px;padding:0 10px;border-radius:6px;color:{{textSec}};display:flex;align-items:center;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z"></path></svg>
+        <span>线上发布规范</span>
+      </div>
+    </aside>
+
+    <!-- 正文编辑区（672px 标准版心，工作台与正文等宽嵌入文档流，不遮挡下文） -->
+    <main style="flex:999 1 560px;min-width:0;background:{{paperBg}};padding:44px 40px 100px;display:flex;justify-content:center;overflow-y:auto">
+      <article style="width:100%;max-width:672px;display:flex;flex-direction:column;gap:16px;font-size:16px;line-height:28px;color:{{editorFg}}">
+
+        <h1 style="margin:0;font-size:28px;line-height:36px;font-weight:600;color:{{textPri}}">灰度风险与回滚矩阵</h1>
+
+        <p style="margin:0;color:{{editorFg}}">核心支付与账务服务在切流期间采用双写校验策略。任何单机错误率超过 0.5% 或 P99 延迟翻倍时，值班工程师需立即执行一级回滚预案。</p>
+
+        <!-- 选区改写模式下：上方原文完全保留不动，仅以左侧 2px Ocean 竖线标示锚定关系 -->
+        <sc-if value="{{showOriginalAnchor}}" hint-placeholder-val="{{false}}">
+          <div style="padding:8px 14px;border-left:2.5px solid {{accentCol}};background:{{hoverBg}};border-radius:0 8px 8px 0;color:{{editorFg}}">
+            接口超时重试目前是写死 3 次每次等 2 秒，如果下游数据库抖动很容易把连接池打满，需要改成指数退避并且加上熔断开关，出问题直接走本地缓存兜底。
+          </div>
+        </sc-if>
+
+        <!-- 阶段 01：支持 /ai 带参直达语法（无需先点菜单再填框的两步跳转） -->
+        <sc-if value="{{isStageTrigger}}" hint-placeholder-val="{{false}}">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="padding:8px 12px;border-radius:8px;background:{{hoverBg}};border:1px solid {{accentCol}};display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+              <span style="height:22px;padding:0 8px;border-radius:5px;background:{{selBg}};box-shadow:inset 0 0 0 1px {{accentCol}};font-family:'JetBrains Mono',monospace;font-size:13px;color:{{textPri}};font-weight:500">/ai</span>
+              <span style="color:{{textPri}};font-size:15px">{{slashDirectPreview}}</span>
+              <span style="flex:1"></span>
+              <button type="button" class="btn-pri" onClick="{{runStream}}" style="height:26px;padding:0 10px;font-size:13px">回车直接生成 ↵</button>
+              <button type="button" class="btn-sec" onClick="{{goInput}}" style="height:26px;padding:0 10px;font-size:13px">Tab 展开工作台</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- 阶段 02..05：672px 版心同宽内嵌工作台（Embedded Workbench） -->
+        <sc-if value="{{showWorkbench}}" hint-placeholder-val="{{true}}">
+          <section aria-label="版心内嵌 AI 创作工作台" style="width:100%;border-radius:10px;background:{{barBg}};border:1px solid {{wbBorderCol}};overflow:hidden;display:flex;flex-direction:column">
+
+            <!-- 工作台顶栏：范围标识 + @挂载参考 + 视图分段器（审阅态） + 模型胶囊 + 关闭 -->
+            <div style="min-height:40px;padding:6px 12px;background:{{shellBg}};border-bottom:1px solid {{borderCol}};display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;position:relative">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3z" fill="{{duoFill}}" stroke="{{accentCol}}" stroke-width="1.6" stroke-linejoin="round"></path>
+                </svg>
+                <span style="font-size:13px;font-weight:560;color:{{textPri}}">{{scopeBadgeText}}</span>
+                <button type="button" onClick="{{toggleRef}}" style="height:24px;padding:0 8px;border-radius:5px;border:1px solid {{refBorder}};background:{{refBg}};color:{{textPri}};font-size:12px;display:inline-flex;align-items:center;gap:4px;cursor:pointer">
+                  <span>{{refChipLabel}}</span>
+                </button>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:6px">
+                <!-- 审阅态专属：新稿预览 / 红绿对比 / 双栏对照 三视图分段器 -->
+                <sc-if value="{{isStageReview}}" hint-placeholder-val="{{false}}">
+                  <div role="tablist" aria-label="审阅对比模式" style="display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:7px;background:{{paperBg}};border:1px solid {{borderCol}}">
+                    <button type="button" class="seg-sm" onClick="{{setViewClean}}" style="background:{{vCleanBg}};color:{{vCleanFg}};box-shadow:{{vCleanRing}}">新稿预览</button>
+                    <button type="button" class="seg-sm" onClick="{{setViewDiff}}" style="background:{{vDiffBg}};color:{{vDiffFg}};box-shadow:{{vDiffRing}}">红绿对比</button>
+                    <button type="button" class="seg-sm" onClick="{{setViewSplit}}" style="background:{{vSplitBg}};color:{{vSplitFg}};box-shadow:{{vSplitRing}}">双栏对照</button>
+                  </div>
+                </sc-if>
+
+                <button type="button" onClick="{{cycleModel}}" style="height:26px;padding:0 8px;border-radius:6px;border:1px solid {{btnBorder}};background:{{paperBg}};color:{{textPri}};font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:5px;cursor:pointer">
+                  <span>{{modelLabel}}</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{{textSec}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+                </button>
+
+                <button type="button" class="ib" onClick="{{goTrigger}}" aria-label="收起工作台 (Esc)" style="width:26px;height:26px;color:{{textSec}}">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+                </button>
+              </div>
+
+              <!-- 流式生成时的 2px 顶栏底边进度条 -->
+              <sc-if value="{{isStageStream}}" hint-placeholder-val="{{false}}">
+                <div style="position:absolute;left:0;bottom:-1px;height:2px;width:{{streamProgressPct}};background:#547dd0;transition:width 0.12s linear"></div>
+              </sc-if>
+            </div>
+
+            <!-- 02 输入态主体：宽敞无截断指令框 + 完整平铺预设胶囊 -->
+            <sc-if value="{{isStageInput}}" hint-placeholder-val="{{true}}">
+              <div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+                <div style="min-height:42px;padding:0 8px 0 12px;border-radius:8px;background:{{paperBg}};border:1px solid {{btnBorder}};display:flex;align-items:center;gap:8px">
+                  <label style="flex:1;min-width:0;display:flex;align-items:center">
+                    <span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">输入 AI 创作或改写指令</span>
+                    <input value="{{promptValue}}" onChange="{{onPromptInput}}" placeholder="{{inputPlaceholder}}" style="width:100%;border:0;outline:0;background:transparent;color:{{textPri}};font-size:14px">
+                  </label>
+                  <button type="button" class="btn-pri" onClick="{{runStream}}" style="height:30px;padding:0 12px">
+                    <span>生成</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#3d63b0">↵</span>
+                  </button>
+                </div>
+
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+                  <sc-for list="{{presetPills}}" as="pp" hint-placeholder-count="5">
+                    <button type="button" class="pill" onClick="{{pp.run}}" style="background:{{paperBg}};border-color:{{btnBorder}};color:{{textPri}}">{{pp.label}}</button>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- 03 步骤轨与行级流式显影动画 -->
+            <sc-if value="{{isStageStream}}" hint-placeholder-val="{{false}}">
+              <div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;font-size:13px">
+                  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
+                    <span style="color:#087443;display:inline-flex;align-items:center;gap:4px">
+                      <span>✓</span>
+                      <span>读取上文与《线上发布规范》</span>
+                    </span>
+                    <span style="display:inline-flex;align-items:center;gap:6px;font-weight:500">
+                      <span class="spin-ring"></span>
+                      <span class="shimmer">{{stepHeadline}}</span>
+                    </span>
+                  </div>
+                  <button type="button" class="btn-sec" onClick="{{stopToInterrupt}}" style="height:26px;padding:0 10px;font-size:13px">停止生成</button>
+                </div>
+
+                <!-- 逐行显影的结构化表格预览井 -->
+                <div style="border-radius:8px;background:{{paperBg}};border:1px solid {{borderCol}};overflow-x:auto">
+                  <table style="width:100%;border-collapse:collapse;font-size:14px;line-height:22px">
+                    <thead>
+                      <tr style="background:{{shellBg}};border-bottom:1px solid {{borderCol}};text-align:left">
+                        <th style="padding:8px 12px;font-weight:560;color:{{textPri}}">风险场景</th>
+                        <th style="padding:8px 12px;font-weight:560;color:{{textPri}}">触发阈值</th>
+                        <th style="padding:8px 12px;font-weight:560;color:{{textPri}}">自动兜底动作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <sc-for list="{{streamingRows}}" as="sr" hint-placeholder-count="3">
+                        <tr style="border-bottom:1px solid {{borderCol}};opacity:{{sr.opacity}}">
+                          <td style="padding:8px 12px;font-weight:500;color:{{textPri}}">{{sr.col1}}</td>
+                          <td style="padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:13px;color:{{textSec}}">{{sr.col2}}</td>
+                          <td style="padding:8px 12px;color:{{textPri}}">{{sr.col3}}</td>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- 04 审阅对照与多轮微调 -->
+            <sc-if value="{{isStageReview}}" hint-placeholder-val="{{false}}">
+              <div style="padding:12px 14px;display:flex;flex-direction:column;gap:12px">
+
+                <!-- 视图 1：新稿预览（支持结构化表格 / 干净改写段落） -->
+                <sc-if value="{{isViewClean}}" hint-placeholder-val="{{true}}">
+                  <sc-if value="{{isEmptyCtx}}" hint-placeholder-val="{{true}}">
+                    <div style="border-radius:8px;background:{{paperBg}};border:1px solid {{borderCol}};overflow-x:auto">
+                      <table style="width:100%;border-collapse:collapse;font-size:14px;line-height:22px">
+                        <thead>
+                          <tr style="background:{{shellBg}};border-bottom:1px solid {{borderCol}};text-align:left">
+                            <th style="padding:8px 12px;font-weight:560;color:{{textPri}}">风险场景</th>
+                            <th style="padding:8px 12px;font-weight:560;color:{{textPri}}">触发阈值</th>
+                            <th style="padding:8px 12px;font-weight:560;color:{{textPri}}">自动兜底动作</th>
+                            <sc-if value="{{hasExtraCol}}" hint-placeholder-val="{{false}}">
+                              <th style="padding:8px 12px;font-weight:560;color:#3d63b0">回滚耗时</th>
+                            </sc-if>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <sc-for list="{{finalTableRows}}" as="fr" hint-placeholder-count="3">
+                            <tr style="border-bottom:1px solid {{borderCol}}">
+                              <td style="padding:8px 12px;font-weight:500;color:{{textPri}}">{{fr.col1}}</td>
+                              <td style="padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:13px;color:{{textSec}}">{{fr.col2}}</td>
+                              <td style="padding:8px 12px;color:{{textPri}}">{{fr.col3}}</td>
+                              <sc-if value="{{hasExtraCol}}" hint-placeholder-val="{{false}}">
+                                <td style="padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:13px;color:#087443">{{fr.col4}}</td>
+                              </sc-if>
+                            </tr>
+                          </sc-for>
+                        </tbody>
+                      </table>
+                    </div>
+                  </sc-if>
+
+                  <sc-if value="{{isSelCtx}}" hint-placeholder-val="{{false}}">
+                    <div style="padding:12px 14px;border-radius:8px;background:{{paperBg}};border:1px solid {{borderCol}};font-size:15px;line-height:26px;color:{{textPri}}">
+                      接口重试策略由固定间隔调整为<strong>指数退避（初始 200ms，上限 3 次）</strong>，并接入连接池熔断开关；下游数据库异常抖动时立即切换本地只读缓存兜底。
+                    </div>
+                  </sc-if>
+                </sc-if>
+
+                <!-- 视图 2：红绿对比 -->
+                <sc-if value="{{isViewDiff}}" hint-placeholder-val="{{false}}">
+                  <div style="padding:12px 14px;border-radius:8px;background:{{paperBg}};border:1px solid {{borderCol}};font-size:15px;line-height:26px;color:{{textPri}}">
+                    <span>接口超时重试由 </span>
+                    <span style="background:#fbe9e7;color:#b42318;text-decoration:line-through;padding:1px 6px;border-radius:4px">写死 3 次每次等 2 秒</span>
+                    <span> 升级为 </span>
+                    <span style="background:#e3f6ec;color:#087443;padding:1px 6px;border-radius:4px">指数退避（200ms 起，最多 3 次）与连接池熔断开关</span>
+                    <span>，下游抖动时自动切入 </span>
+                    <span style="background:#e3f6ec;color:#087443;padding:1px 6px;border-radius:4px">本地只读缓存兜底</span>
+                    <span>。</span>
+                  </div>
+                </sc-if>
+
+                <!-- 视图 3：双栏并排对照（672px 宽幅专属优势） -->
+                <sc-if value="{{isViewSplit}}" hint-placeholder-val="{{false}}">
+                  <div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:10px">
+                    <div style="padding:10px 12px;border-radius:8px;background:{{paperBg}};border:1px solid {{borderCol}};font-size:14px;line-height:22px">
+                      <div style="font-size:12px;font-weight:560;color:{{textSec}};margin-bottom:6px">修改前原文</div>
+                      <div style="color:{{textSec}}">接口超时重试目前是写死 3 次每次等 2 秒，如果下游数据库抖动很容易把连接池打满，需要改成指数退避并且加上熔断开关。</div>
+                    </div>
+                    <div style="padding:10px 12px;border-radius:8px;background:{{hoverBg}};border:1px solid {{accentCol}};font-size:14px;line-height:22px">
+                      <div style="font-size:12px;font-weight:560;color:#2c4c8c;margin-bottom:6px">AI 改写新稿</div>
+                      <div style="color:{{textPri}}">采用指数退避重试（初始 200ms，上限 3 次）配合连接池熔断保护；下游异常时秒级降级至本地只读缓存。</div>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <!-- 原位多轮追问框 -->
+                <div style="min-height:38px;padding:0 6px 0 12px;border-radius:8px;background:{{paperBg}};border:1px solid {{btnBorder}};display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+                  <label style="flex:1;min-width:180px;display:flex;align-items:center">
+                    <span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">输入追问指令</span>
+                    <input value="{{followupVal}}" onChange="{{onFollowupInput}}" placeholder="继续追问微调（如：增加「回滚耗时」列、精简一半）…" style="width:100%;border:0;outline:0;background:transparent;color:{{textPri}};font-size:14px">
+                  </label>
+                  <button type="button" class="pill" onClick="{{addTableColumn}}" style="height:26px;font-size:12px;color:#2c4c8c;background:#eef3fc;border-color:#c9d8f3">+ 增加「回滚耗时」列</button>
+                  <button type="button" onClick="{{addTableColumn}}" aria-label="提交追问" style="width:26px;height:26px;border:0;border-radius:6px;background:#20242c;color:#ffffff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">↑</button>
+                </div>
+
+                <!-- 收尾多动作栏 -->
+                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px">
+                  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+                    <button type="button" class="btn-pri" onClick="{{acceptToDone}}">
+                      <span>{{primaryAcceptLabel}}</span>
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#3d63b0">↵</span>
+                    </button>
+                    <button type="button" class="btn-sec" onClick="{{acceptToDone}}">追加到下方</button>
+                    <button type="button" class="btn-sec" onClick="{{copyDraft}}">{{copyBtnLabel}}</button>
+                    <button type="button" class="btn-sec" onClick="{{openSidebarWithDraft}}" style="color:#3d63b0">转右侧助手 ↗</button>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:{{textSec}}">版本 {{verBadge}}</span>
+                    <button type="button" class="btn-sec" onClick="{{goInput}}" style="color:{{textSec}}">放弃</button>
+                  </div>
+                </div>
+
+              </div>
+            </sc-if>
+
+            <!-- 05 中途停止与草稿保护态（原文零污染） -->
+            <sc-if value="{{isStageInterrupt}}" hint-placeholder-val="{{false}}">
+              <div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+                <div style="padding:8px 12px;border-radius:8px;background:#fdf5e8;border:1px solid #edd4a8;color:#8a4e08;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+                  <span>生成已暂停 · 上方原文保持完好，工作台内已保留前 2 行结构化草稿</span>
+                  <span style="font-family:'JetBrains Mono',monospace">2/3 行</span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+                  <button type="button" class="btn-pri" onClick="{{acceptToDone}}">仅插入已生成部分</button>
+                  <button type="button" class="btn-sec" onClick="{{replayStream}}">继续生成剩余部分</button>
+                  <button type="button" class="btn-sec" onClick="{{openSidebarWithDraft}}" style="color:#3d63b0">带草稿转入右侧助手 ↗</button>
+                  <span style="flex:1"></span>
+                  <button type="button" class="btn-sec" onClick="{{goInput}}" style="color:{{textSec}}">丢弃草稿</button>
+                </div>
+              </div>
+            </sc-if>
+
+          </section>
+        </sc-if>
+
+        <!-- 阶段 06：落盘融合后的正式正文（表格/段落无缝成为纸面一部分） -->
+        <sc-if value="{{isStageDone}}" hint-placeholder-val="{{false}}">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="border-radius:8px;background:{{paperBg}};border:1px solid {{borderCol}};overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:14px;line-height:22px">
+                <thead>
+                  <tr style="background:{{shellBg}};border-bottom:1px solid {{borderCol}};text-align:left">
+                    <th style="padding:8px 12px;font-weight:560;color:{{textPri}}">风险场景</th>
+                    <th style="padding:8px 12px;font-weight:560;color:{{textPri}}">触发阈值</th>
+                    <th style="padding:8px 12px;font-weight:560;color:{{textPri}}">自动兜底动作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <sc-for list="{{finalTableRows}}" as="fr" hint-placeholder-count="3">
+                    <tr style="border-bottom:1px solid {{borderCol}}">
+                      <td style="padding:8px 12px;font-weight:500;color:{{textPri}}">{{fr.col1}}</td>
+                      <td style="padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:13px;color:{{textSec}}">{{fr.col2}}</td>
+                      <td style="padding:8px 12px;color:{{textPri}}">{{fr.col3}}</td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+
+            <div style="display:inline-flex;align-items:center;gap:8px;align-self:flex-start;padding:4px 10px;border-radius:6px;background:{{shellBg}};border:1px solid {{borderCol}};font-size:13px;color:{{textSec}}">
+              <span style="color:#087443;font-weight:600">✓</span>
+              <span>已落盘为标准 Markdown 表格</span>
+              <button type="button" onClick="{{goReview}}" style="border:0;background:transparent;padding:0;color:#3d63b0;font-weight:500;cursor:pointer;font-size:13px">撤销 ⌘Z</button>
+              <span>·</span>
+              <button type="button" onClick="{{goReview}}" style="border:0;background:transparent;padding:0;color:{{textSec}};cursor:pointer;font-size:13px">重开工作台微调</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <p style="margin:6px 0 0;color:{{editorFg}}">回滚完成后需在 30 分钟内输出时间线快照，并同步更新演练检查表。</p>
+
+      </article>
+    </main>
+
+    <!-- 右侧 AI 助手联动抽屉 -->
+    <sc-if value="{{sidebarOpen}}" hint-placeholder-val="{{false}}">
+      <aside aria-label="右侧 AI 助手工作台接力" style="width:320px;flex:none;background:{{barBg}};border-left:1px solid {{shellBorder}};padding:14px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-weight:560;color:{{textPri}}">AI 助手 · 工作台草稿接力</span>
+          <button type="button" class="ib" onClick="{{toggleSidebar}}" aria-label="关闭侧栏" style="color:{{textSec}}">×</button>
+        </div>
+        <div style="padding:10px 12px;border-radius:8px;background:{{selBg}};box-shadow:inset 0 0 0 1px {{accentCol}};font-size:13px;color:{{textPri}}">
+          已挂载《灰度风险与回滚矩阵》表格草稿与《线上发布规范》引用。
+        </div>
+        <div style="padding:10px 12px;border-radius:8px;background:{{paperBg}};border:1px solid {{borderCol}};font-size:14px;color:{{textPri}};line-height:22px">
+          可以在此继续跨多篇笔记核对报警阈值，完成后一键生成批改方案回写编辑器。
+        </div>
+      </aside>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"themeMode":{"editor":"enum","default":"light","options":["light","dark"]},"contextMode":{"editor":"enum","default":"empty","options":["empty","selection"]},"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      ctx: null,
+      stage: 'review',
+      viewMode: 'clean',
+      hasRef: true,
+      modelIdx: 0,
+      prompt: '',
+      followup: '',
+      extraCol: false,
+      copied: false,
+      streamStep: 12,
+      autoAdvance: false,
+      sidebarOpen: false
+    };
+    this._timer = null;
+  }
+
+  componentWillUnmount() {
+    if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
+  }
+
+  startStream(autoAdvance) {
+    if (this._timer) clearInterval(this._timer);
+    this.setState({ stage: 'stream', streamStep: 0, autoAdvance: Boolean(autoAdvance) });
+    this._timer = setInterval(() => {
+      const next = (this.state.streamStep ?? 0) + 1;
+      if (next >= 22) {
+        clearInterval(this._timer);
+        this._timer = null;
+        if (this.state.autoAdvance) {
+          this.setState({ stage: 'review', streamStep: 22 });
+        } else {
+          this.setState({ streamStep: 20 });
+        }
+      } else {
+        this.setState({ streamStep: next });
+      }
+    }, 110);
+  }
+
+  renderVals() {
+    const dark = (this.props.themeMode ?? 'light') === 'dark';
+    const ctx = this.state.ctx ?? (this.props.contextMode ?? 'empty');
+    const isEmptyCtx = ctx === 'empty';
+    const stage = this.state.stage ?? 'review';
+    const viewMode = this.state.viewMode ?? 'clean';
+    const step = this.state.streamStep ?? 12;
+
+    const activeBg = dark ? '#343434' : '#e5edfc';
+    const activeFg = dark ? '#ececec' : '#20242c';
+    const mutedFg = dark ? '#b4b4b4' : '#526071';
+    const accent = dark ? '#779de8' : '#547dd0';
+
+    const stages = [
+      { id: 'trigger', label: '01 /ai 直达' },
+      { id: 'input', label: '02 宽幅输入' },
+      { id: 'stream', label: '03 步骤动画' },
+      { id: 'review', label: '04 三视图审阅' },
+      { id: 'interrupt', label: '05 暂停保护' },
+      { id: 'done', label: '06 落盘融合' }
+    ];
+
+    const stageTabs = stages.map((s) => ({
+      label: s.label,
+      active: stage === s.id,
+      bg: stage === s.id ? activeBg : 'transparent',
+      fg: stage === s.id ? activeFg : mutedFg,
+      ring: stage === s.id ? ('inset 0 0 0 1px ' + accent) : 'none',
+      pick: () => {
+        if (s.id === 'stream') {
+          this.startStream(false);
+        } else {
+          if (this._timer) { clearInterval(this._timer); this._timer = null; }
+          this.setState({ stage: s.id });
+        }
+      }
+    }));
+
+    const baseRows = [
+      { col1: '连接池耗尽', col2: '活跃连接 > 85%', col3: '触发熔断开关，切本地只读缓存', col4: '< 5s' },
+      { col1: '账务双写不一致', col2: '对账偏差 >= 1 笔', col3: '冻结灰度放量，回切旧版写入链路', col4: '< 12s' },
+      { col1: '下游网关超时', col2: 'P99 > 1200ms', col3: '指数退避重试 3 次后降级静态兜底', col4: '< 8s' }
+    ];
+
+    const visibleCount = step < 6 ? 1 : (step < 13 ? 2 : 3);
+    const streamingRows = baseRows.slice(0, visibleCount).map((r, idx) => ({
+      col1: r.col1,
+      col2: r.col2,
+      col3: r.col3,
+      opacity: idx === visibleCount - 1 && step < 19 ? '0.68' : '1'
+    }));
+
+    const models = ['Claude Sonnet 4', 'DeepSeek V3', 'GPT-5 Mini'];
+    const modelLabel = models[this.state.modelIdx ?? 0] || models[0];
+
+    const presetList = isEmptyCtx
+      ? ['生成风险对比表', '续写回滚步骤', '拆解值班待办', '提炼执行摘要', '生成演练脚本']
+      : ['改为技术规范语体', '精简 50% 字数', '转为结构化表格', '中英双语对照', '提取行动清单'];
+    const presetPills = presetList.map((label) => ({
+      label,
+      run: () => this.startStream(true)
+    }));
+
+    const isStageTrigger = stage === 'trigger';
+    const isStageInput = stage === 'input';
+    const isStageStream = stage === 'stream';
+    const isStageReview = stage === 'review';
+    const isStageInterrupt = stage === 'interrupt';
+    const isStageDone = stage === 'done';
+
+    return {
+      pageBg: dark ? '#181818' : '#f1f1f1',
+      shellBg: dark ? '#343434' : '#f1f1f1',
+      barBg: dark ? '#222222' : '#fafafa',
+      paperBg: dark ? '#181818' : '#ffffff',
+      hoverBg: dark ? '#242c3d' : '#eef3fc',
+      selBg: activeBg,
+      textPri: activeFg,
+      textSec: mutedFg,
+      editorFg: dark ? '#ececec' : '#1f1e1d',
+      accentCol: accent,
+      duoFill: dark ? '#31456a' : '#c9d8f3',
+      borderCol: dark ? '#2e2e2e' : '#e4e6ea',
+      shellBorder: dark ? '#333333' : '#e6e6e6',
+      btnBorder: dark ? '#444444' : '#dcdcdc',
+      wbBorderCol: isStageStream || isStageReview ? accent : (dark ? '#2e2e2e' : '#e4e6ea'),
+
+      isEmptyCtx,
+      isSelCtx: !isEmptyCtx,
+      ctxEmptyBg: isEmptyCtx ? activeBg : 'transparent',
+      ctxEmptyFg: isEmptyCtx ? activeFg : mutedFg,
+      ctxEmptyRing: isEmptyCtx ? ('inset 0 0 0 1px ' + accent) : 'none',
+      ctxSelBg: !isEmptyCtx ? activeBg : 'transparent',
+      ctxSelFg: !isEmptyCtx ? activeFg : mutedFg,
+      ctxSelRing: !isEmptyCtx ? ('inset 0 0 0 1px ' + accent) : 'none',
+      pickEmptyCtx: () => this.setState({ ctx: 'empty', viewMode: 'clean' }),
+      pickSelCtx: () => this.setState({ ctx: 'selection', viewMode: 'split' }),
+
+      stageTabs,
+      isStageTrigger,
+      isStageInput,
+      isStageStream,
+      isStageReview,
+      isStageInterrupt,
+      isStageDone,
+      showWorkbench: isStageInput || isStageStream || isStageReview || isStageInterrupt,
+      showOriginalAnchor: !isEmptyCtx && !isStageDone,
+
+      slashDirectPreview: isEmptyCtx ? '生成三类灰度异常的触发阈值与自动兜底矩阵' : '将上方口语化重试描述改写为严谨架构规范',
+      scopeBadgeText: isEmptyCtx ? 'AI 创作工作台 · 当前空块' : 'AI 改写工作台 · 已锚定上方段落（68 字）',
+      refChipLabel: this.state.hasRef ? '@线上发布规范 ×' : '+ 引用工作区笔记',
+      refBg: this.state.hasRef ? activeBg : (dark ? '#181818' : '#ffffff'),
+      refBorder: this.state.hasRef ? accent : (dark ? '#444444' : '#dcdcdc'),
+      toggleRef: () => this.setState({ hasRef: !this.state.hasRef }),
+
+      modelLabel,
+      cycleModel: () => this.setState({ modelIdx: ((this.state.modelIdx ?? 0) + 1) % models.length }),
+
+      promptValue: this.state.prompt ?? '',
+      onPromptInput: (e) => this.setState({ prompt: e && e.target ? e.target.value : '' }),
+      inputPlaceholder: isEmptyCtx
+        ? '描述你想生成的段落、表格或清单（支持 @笔记 挂载上下文）…'
+        : '输入改写指令，上方原文在采纳前始终保持完好…',
+      presetPills,
+
+      stepHeadline: step < 8 ? '正在提炼阈值指标与兜底策略…' : '正在流式渲染 Markdown 表格（第 ' + visibleCount + '/3 行）…',
+      streamProgressPct: Math.min(100, Math.round((step / 22) * 100)) + '%',
+      streamingRows,
+      runStream: () => this.startStream(true),
+      replayStream: () => this.startStream(false),
+      stopToInterrupt: () => {
+        if (this._timer) { clearInterval(this._timer); this._timer = null; }
+        this.setState({ stage: 'interrupt' });
+      },
+
+      isViewClean: viewMode === 'clean',
+      isViewDiff: viewMode === 'diff',
+      isViewSplit: viewMode === 'split',
+      vCleanBg: viewMode === 'clean' ? activeBg : 'transparent',
+      vCleanFg: viewMode === 'clean' ? activeFg : mutedFg,
+      vCleanRing: viewMode === 'clean' ? ('inset 0 0 0 1px ' + accent) : 'none',
+      vDiffBg: viewMode === 'diff' ? activeBg : 'transparent',
+      vDiffFg: viewMode === 'diff' ? activeFg : mutedFg,
+      vDiffRing: viewMode === 'diff' ? ('inset 0 0 0 1px ' + accent) : 'none',
+      vSplitBg: viewMode === 'split' ? activeBg : 'transparent',
+      vSplitFg: viewMode === 'split' ? activeFg : mutedFg,
+      vSplitRing: viewMode === 'split' ? ('inset 0 0 0 1px ' + accent) : 'none',
+      setViewClean: () => this.setState({ viewMode: 'clean' }),
+      setViewDiff: () => this.setState({ viewMode: 'diff' }),
+      setViewSplit: () => this.setState({ viewMode: 'split' }),
+
+      finalTableRows: baseRows,
+      hasExtraCol: Boolean(this.state.extraCol),
+      followupVal: this.state.followup ?? '',
+      onFollowupInput: (e) => this.setState({ followup: e && e.target ? e.target.value : '' }),
+      addTableColumn: () => this.setState({ extraCol: true, viewMode: 'clean', ctx: 'empty' }),
+      verBadge: this.state.extraCol ? '2/2' : '1/1',
+
+      primaryAcceptLabel: isEmptyCtx ? '插入正文' : '替换上方原文',
+      copyBtnLabel: this.state.copied ? '已复制 Markdown' : '复制 Markdown',
+      copyDraft: () => this.setState({ copied: true }),
+
+      goTrigger: () => this.setState({ stage: 'trigger' }),
+      goInput: () => this.setState({ stage: 'input' }),
+      goReview: () => this.setState({ stage: 'review' }),
+      acceptToDone: () => this.setState({ stage: 'done' }),
+
+      sidebarOpen: Boolean(this.state.sidebarOpen),
+      chatBtnBg: this.state.sidebarOpen ? activeBg : 'transparent',
+      chatBtnRing: this.state.sidebarOpen ? ('inset 0 0 0 1px ' + accent) : 'none',
+      toggleSidebar: () => this.setState({ sidebarOpen: !this.state.sidebarOpen }),
+      openSidebarWithDraft: () => this.setState({ sidebarOpen: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>AI 助手设置 B 「内置 AI / 已扫描 Agent」双轨分区卡 + 下方一体化检视舱</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+button:focus-visible,input:focus-visible{outline:2px solid #779de8;outline-offset:1px}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.nav-row{width:100%;height:34px;padding:0 10px;border-radius:8px;display:flex;align-items:center;gap:8px;cursor:pointer;box-sizing:border-box;text-align:left;background:transparent}
+.tbtn{height:28px;padding:0 10px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;box-sizing:border-box;white-space:nowrap;font-weight:460}
+.abtn{height:34px;padding:0 12px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;box-sizing:border-box;white-space:nowrap;font-weight:460;flex:none}
+.seg{height:32px;padding:0 14px;border:0;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-weight:460;white-space:nowrap}
+.acard{position:relative;padding:12px 14px;border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;box-sizing:border-box;text-align:left}
+.pcard{flex:1;min-width:0;padding:10px 12px;border-radius:8px;display:flex;align-items:center;gap:8px;cursor:pointer;box-sizing:border-box;text-align:left}
+.chip{height:30px;padding:0 12px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;box-sizing:border-box;white-space:nowrap}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:940px;box-sizing:border-box;display:flex;flex-direction:column;background:{{shellBg}};color:{{textPrimary}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;overflow:hidden;-webkit-font-smoothing:antialiased">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;background:{{shellBg}};border-bottom:1px solid {{shellBorder}};box-sizing:border-box">
+<div style="width:260px;flex:none;height:100%;padding:0 10px 0 16px;border-right:1px solid {{shellBorder}};display:flex;align-items:center;justify-content:space-between;box-sizing:border-box">
+<div aria-hidden="true" style="display:flex;align-items:center;gap:8px;flex:none">
+<span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+<span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+<span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+</div>
+<button type="button" class="tbtn" onClick="{{toggleThemeMode}}" style="background:{{cardBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">
+<span>{{themeBtnLabel}}</span>
+</button>
+</div>
+
+<div style="flex:1;min-width:0;height:100%;padding:0 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-sizing:border-box">
+<div style="display:flex;align-items:center;gap:6px;min-width:0">
+<span style="color:{{textSecondary}}">设置</span>
+<span style="color:{{textSecondary}}">/</span>
+<span style="color:{{textPrimary}};font-weight:460">AI 助手</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px;flex:none">
+<span class="mono" style="height:26px;padding:0 10px;border-radius:6px;background:{{sidebarBg}};border:1px solid {{borderCol}};color:{{textSecondary}};display:inline-flex;align-items:center">{{priorityChainText}}</span>
+</div>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex">
+
+<aside aria-label="设置分类导航" style="width:260px;flex:none;background:{{sidebarBg}};border-right:1px solid {{shellBorder}};display:flex;flex-direction:column;justify-content:space-between;padding:12px 10px;box-sizing:border-box">
+<nav aria-label="设置分类" style="display:flex;flex-direction:column;gap:4px">
+<button type="button" class="nav-row" style="background:{{selectedBg}};color:{{textPrimary}};border:1px solid {{accent}};font-weight:500">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<path d="M12 3.5L14.2 9.3L20 11.5L14.2 13.7L12 19.5L9.8 13.7L4 11.5L9.8 9.3L12 3.5Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+<path d="M18.5 4V7M17 5.5H20" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path>
+</svg>
+<span>AI 助手</span>
+</button>
+<button type="button" class="nav-row" style="color:{{textSecondary}};border:1px solid transparent">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+<circle cx="9" cy="7" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle>
+<circle cx="15" cy="12" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle>
+<circle cx="10" cy="17" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle>
+</svg>
+<span>外观与字体</span>
+</button>
+<button type="button" class="nav-row" style="color:{{textSecondary}};border:1px solid transparent">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<path d="M3.75 6.75A1.75 1.75 0 0 1 5.5 5H9.6l2 2.25H18.5A1.75 1.75 0 0 1 20.25 9v8.25A1.75 1.75 0 0 1 18.5 19H5.5a1.75 1.75 0 0 1-1.75-1.75V6.75Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+</svg>
+<span>文件夹</span>
+</button>
+<button type="button" class="nav-row" style="color:{{textSecondary}};border:1px solid transparent">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<rect x="3.25" y="5.75" width="17.5" height="12.5" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M7.5 10h2M11 10h2M14.5 10h2M7.5 14h9" stroke="{{accent}}" stroke-width="1.5" stroke-linecap="round"></path>
+</svg>
+<span>基础快捷键</span>
+</button>
+</nav>
+</aside>
+
+<main style="flex:1;min-width:0;background:{{settingsBg}};overflow-y:auto">
+<div style="max-width:720px;margin:0 auto;padding:36px 28px 64px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+<h1 style="margin:0;font-size:24px;line-height:32px;font-weight:560;color:{{textPrimary}}">AI 助手</h1>
+<div style="display:flex;align-items:center;gap:8px">
+<button type="button" class="tbtn" onClick="{{rescanAgents}}" style="height:32px;background:{{cardBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">{{scanBtnLabel}}</button>
+<button type="button" class="abtn" onClick="{{toggleMasterAi}}" style="height:32px;background:{{masterBtnBg}};border:1px solid {{masterBtnBorder}};color:{{textPrimary}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M12 3.5L14.2 9.3L20 11.5L14.2 13.7L12 19.5L9.8 13.7L4 11.5L9.8 9.3L12 3.5Z" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.6" stroke-linejoin="round"></path>
+<path d="M18.5 4V7M17 5.5H20" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path>
+</svg>
+<span>{{masterBtnLabel}}</span>
+</button>
+</div>
+</div>
+
+<sc-if value="{{isMasterOff}}" hint-placeholder-val="{{false}}">
+<section style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:28px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+<span style="color:{{textSecondary}}">AI 助手总开关已关闭，开启后可分别启用内置 AI 或本机 Agent</span>
+<button type="button" class="abtn" onClick="{{toggleMasterAi}}" style="background:{{selectedBg}};border:1px solid {{accent}};color:{{textPrimary}}">开启 AI</button>
+</section>
+</sc-if>
+
+<sc-if value="{{isMasterOn}}" hint-placeholder-val="{{true}}">
+<div style="display:flex;gap:14px;align-items:stretch">
+
+<section aria-label="内置 AI" style="width:206px;flex:none;background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:14px;display:flex;flex-direction:column;justify-content:space-between;gap:12px;box-sizing:border-box">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">1. 内置 AI</span>
+<sc-if value="{{builtinHasRank}}" hint-placeholder-val="{{false}}">
+<span class="mono" style="height:22px;padding:0 7px;border-radius:5px;background:{{selectedBg}};border:1px solid {{accent}};color:{{accent}};display:inline-flex;align-items:center;font-weight:600">{{builtinRank}}</span>
+</sc-if>
+</div>
+
+<div role="button" tabindex="0" onClick="{{onBuiltinCardClick}}" style="flex:1;padding:14px 12px;border-radius:8px;background:{{builtinCardBg}};border:1px solid {{builtinCardBorder}};box-shadow:{{builtinCardRing}};display:flex;flex-direction:column;justify-content:space-between;gap:12px;cursor:pointer">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="width:30px;height:30px;border-radius:8px;background:{{cardBg}};border:1px solid {{borderCol}};display:inline-flex;align-items:center;justify-content:center;color:{{accent}};font-weight:600" class="mono">AI</span>
+<span role="checkbox" aria-checked="{{builtinEnabled}}" onClick="{{onBuiltinCheckClick}}" style="width:20px;height:20px;border-radius:6px;background:{{builtinCheckBg}};border:1px solid {{builtinCheckBorder}};display:inline-flex;align-items:center;justify-content:center">
+<sc-if value="{{builtinEnabled}}" hint-placeholder-val="{{false}}">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M5 12.5L9.5 17L19 7.5" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</sc-if>
+</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:2px">
+<span style="font-weight:500;color:{{textPrimary}}">内置 AI</span>
+<span style="color:{{textSecondary}}">{{builtinSubText}}</span>
+</div>
+</div>
+</section>
+
+<section aria-label="扫描到的 Agent" style="flex:1;min-width:0;background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">2. 扫描到的 Agent</span>
+<span style="color:{{textSecondary}}">点击卡片切换配置，右上角打勾启用</span>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+<sc-for list="{{scannedAgents}}" as="ag" hint-placeholder-count="4">
+<div role="button" tabindex="0" class="acard" onClick="{{ag.onCardClick}}" style="background:{{ag.bg}};border:1px solid {{ag.border}};box-shadow:{{ag.ring}};color:{{textPrimary}}">
+<div style="display:flex;align-items:center;gap:10px;min-width:0">
+<span style="width:28px;height:28px;border-radius:8px;background:{{cardBg}};border:1px solid {{borderCol}};display:inline-flex;align-items:center;justify-content:center;flex:none;color:{{ag.col}};font-weight:600" class="mono">{{ag.glyph}}</span>
+<span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ag.name}}</span>
+</div>
+<div style="display:flex;align-items:center;gap:6px;flex:none">
+<sc-if value="{{ag.hasRank}}" hint-placeholder-val="{{false}}">
+<span class="mono" style="height:20px;padding:0 6px;border-radius:5px;background:{{cardBg}};border:1px solid {{borderCol}};color:{{accent}};display:inline-flex;align-items:center;font-weight:600">{{ag.rank}}</span>
+</sc-if>
+<span role="checkbox" aria-checked="{{ag.enabled}}" onClick="{{ag.onCheckClick}}" style="width:20px;height:20px;border-radius:6px;background:{{ag.checkBg}};border:1px solid {{ag.checkBorder}};display:inline-flex;align-items:center;justify-content:center">
+<sc-if value="{{ag.enabled}}" hint-placeholder-val="{{false}}">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M5 12.5L9.5 17L19 7.5" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</sc-if>
+</span>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+</div>
+
+<section aria-label="当前选中后端配置舱" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:14px;border-bottom:1px solid {{borderCol}};flex-wrap:wrap">
+<div style="display:flex;align-items:center;gap:10px">
+<span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">{{focusedTitle}}</span>
+<span class="mono" style="height:24px;padding:0 8px;border-radius:6px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}};display:inline-flex;align-items:center">{{focusedBadge}}</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<sc-if value="{{canPromoteFocused}}" hint-placeholder-val="{{true}}">
+<button type="button" class="tbtn" onClick="{{promoteFocusedToFirst}}" style="background:{{shellBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">设为第一优先级 (P1)</button>
+</sc-if>
+<button type="button" class="tbtn" onClick="{{toggleFocusedEnable}}" style="background:{{enableBtnBg}};border:1px solid {{enableBtnBorder}};color:{{textPrimary}}">
+<span>{{enableBtnText}}</span>
+</button>
+</div>
+</div>
+
+<sc-if value="{{isFocusedDisabled}}" hint-placeholder-val="{{true}}">
+<div style="padding:10px 14px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;gap:12px">
+<span style="color:{{textSecondary}}">该项当前未勾选启用，可浏览下方配置项，勾选右上角打勾后即可编辑</span>
+<button type="button" class="tbtn" onClick="{{toggleFocusedEnable}}" style="background:{{selectedBg}};border:1px solid {{accent}};color:{{textPrimary}}">打勾启用</button>
+</div>
+</sc-if>
+
+<div style="display:flex;flex-direction:column;gap:16px;opacity:{{bodyOpacity}};pointer-events:{{bodyEvents}}">
+<sc-if value="{{isBuiltinView}}" hint-placeholder-val="{{false}}">
+<div style="display:flex;gap:10px">
+<button type="button" class="pcard" onClick="{{selectDeepseek}}" style="background:{{cardDsBg}};border:1px solid {{cardDsBorder}};color:{{textPrimary}}">
+<span style="width:28px;height:28px;border-radius:8px;background:{{cardBg}};border:1px solid {{borderCol}};display:inline-flex;align-items:center;justify-content:center;flex:none">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="7" fill="#4d6bfe"></circle><path d="M8.5 12.5c1.5-2 4.5-2 6.5 0" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round"></path></svg>
+</span>
+<span style="font-weight:500">DeepSeek</span>
+</button>
+<button type="button" class="pcard" onClick="{{selectOpenai}}" style="background:{{cardOaBg}};border:1px solid {{cardOaBorder}};color:{{textPrimary}}">
+<span style="width:28px;height:28px;border-radius:8px;background:{{cardBg}};border:1px solid {{borderCol}};display:inline-flex;align-items:center;justify-content:center;flex:none">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="7" stroke="#10a37f" stroke-width="1.8"></circle><circle cx="12" cy="12" r="2.6" fill="#10a37f"></circle></svg>
+</span>
+<span style="font-weight:500">OpenAI 协议</span>
+</button>
+<button type="button" class="pcard" onClick="{{selectClaudeProto}}" style="background:{{cardClBg}};border:1px solid {{cardClBorder}};color:{{textPrimary}}">
+<span style="width:28px;height:28px;border-radius:8px;background:{{cardBg}};border:1px solid {{borderCol}};display:inline-flex;align-items:center;justify-content:center;flex:none">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4.5v15M4.5 12h15M6.7 6.7l10.6 10.6M17.3 6.7L6.7 17.3" stroke="#d97757" stroke-width="1.8" stroke-linecap="round"></path></svg>
+</span>
+<span style="font-weight:500">Claude 协议</span>
+</button>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+<label for="b2-base-url" style="color:{{textPrimary}};font-weight:460">接口地址</label>
+<input id="b2-base-url" type="text" value="{{baseUrl}}" onInput="{{onBaseUrlInput}}" style="width:380px;max-width:100%;height:34px;padding:0 12px;border-radius:8px;border:1px solid {{btnBorder}};background:{{shellBg}};color:{{textPrimary}};box-sizing:border-box" class="mono" />
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+<label for="b2-api-key" style="color:{{textPrimary}};font-weight:460">API 密钥</label>
+<div style="width:380px;max-width:100%;display:flex;align-items:center;gap:8px">
+<input id="b2-api-key" type="{{apiKeyType}}" value="{{apiKey}}" onInput="{{onApiKeyInput}}" style="flex:1;min-width:0;height:34px;padding:0 12px;border-radius:8px;border:1px solid {{btnBorder}};background:{{shellBg}};color:{{textPrimary}};box-sizing:border-box" class="mono" />
+<button type="button" class="abtn" onClick="{{toggleShowKey}}" style="background:{{shellBg}};border:1px solid {{btnBorder}};color:{{textPrimary}}">{{showKeyLabel}}</button>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:6px;border-top:1px solid {{borderCol}};flex-wrap:wrap">
+<span style="color:{{textPrimary}};font-weight:460">默认模型</span>
+<div style="display:flex;flex-wrap:wrap;gap:8px">
+<sc-for list="{{builtinModelChips}}" as="bm" hint-placeholder-count="4">
+<button type="button" class="chip mono" onClick="{{bm.pick}}" style="background:{{bm.bg}};border:1px solid {{bm.border}};color:{{bm.col}}">
+<span>{{bm.id}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isAgentView}}" hint-placeholder-val="{{true}}">
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<label for="b2-agent-args" style="color:{{textPrimary}};font-weight:460">启动参数</label>
+<input id="b2-agent-args" type="text" class="mono" value="{{agentLaunchArgs}}" onInput="{{onAgentArgsInput}}" style="width:420px;max-width:100%;height:34px;padding:0 12px;border-radius:8px;border:1px solid {{btnBorder}};background:{{shellBg}};color:{{textPrimary}};box-sizing:border-box" />
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:6px;border-top:1px solid {{borderCol}};flex-wrap:wrap">
+<span style="color:{{textPrimary}};font-weight:460">默认模型</span>
+<div style="display:flex;flex-wrap:wrap;gap:8px">
+<sc-for list="{{agentModelChips}}" as="am" hint-placeholder-count="4">
+<button type="button" class="chip mono" onClick="{{am.pick}}" style="background:{{am.bg}};border:1px solid {{am.border}};color:{{am.col}}">
+<sc-if value="{{am.active}}" hint-placeholder-val="{{false}}">
+<span style="width:6px;height:6px;border-radius:3px;background:{{accent}};flex:none"></span>
+</sc-if>
+<span>{{am.id}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+</div>
+
+</section>
+</sc-if>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"defaultFocused":{"editor":"enum","options":["codex","claude","pi","dsh","builtin"],"default":"codex"},"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      darkOverride: null,
+      masterAiEnabled: true,
+      rescanned: false,
+      focused: null,
+      enabledMap: {
+        builtin: false,
+        codex: false,
+        claude: true,
+        dsh: false,
+        pi: true
+      },
+      priorityOrder: ['claude', 'pi', 'codex', 'builtin', 'dsh'],
+      provider: 'openai',
+      baseUrl: 'http://127.0.0.1:3425/v1',
+      apiKey: 'sk-magpie-local-proxy',
+      showKey: false,
+      selectedBuiltinModel: 'gemini-3.8-flash',
+      agentConfigs: {
+        codex: { model: 'gpt-6.1-terra', args: 'app-server --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust' },
+        claude: { model: 'Default (recommended)', args: '-p --verbose --dangerously-skip-permissions --permission-mode bypassPermissions' },
+        dsh: { model: 'Default (recommended)', args: '--profile sdk-minimal' },
+        pi: { model: 'gemini-3.8-flash', args: '--mode json --approve' }
+      }
+    };
+  }
+
+  renderVals() {
+    const st = this.state;
+    const mode = st.darkOverride || this.props.theme || 'light';
+    const dark = mode === 'dark';
+    const focused = st.focused || this.props.defaultFocused || 'codex';
+
+    const shellBg = dark ? '#343434' : '#f1f1f1';
+    const shellBorder = dark ? '#333333' : '#e6e6e6';
+    const sidebarBg = dark ? '#222222' : '#fafafa';
+    const settingsBg = dark ? '#181818' : '#f8f8f8';
+    const cardBg = dark ? '#222222' : '#ffffff';
+    const textPrimary = dark ? '#ececec' : '#20242c';
+    const textSecondary = dark ? '#b4b4b4' : '#526071';
+    const accent = dark ? '#779de8' : '#547dd0';
+    const iconFill = dark ? '#31456a' : '#c9d8f3';
+    const selectedBg = dark ? '#343434' : '#e5edfc';
+    const borderCol = dark ? '#2e2e2e' : '#e4e6ea';
+    const btnBorder = dark ? '#444444' : '#dcdcdc';
+    const activeRing = 'inset 0 0 0 1px ' + accent;
+
+    const meta = {
+      builtin: { name: '内置 AI', glyph: 'AI', col: accent },
+      codex: { name: 'Codex', glyph: 'Cx', col: '#10a37f' },
+      claude: { name: 'Claude', glyph: 'Cl', col: '#d97757' },
+      dsh: { name: 'dsh', glyph: 'ds', col: '#4d6bfe' },
+      pi: { name: 'Pi', glyph: 'Pi', col: '#7c5cff' }
+    };
+
+    const enabledList = st.priorityOrder.filter((k) => !!st.enabledMap[k]);
+    const chainNames = enabledList.map((k, idx) => 'P' + (idx + 1) + ' ' + meta[k].name).join(' → ');
+    const priorityChainText = !st.masterAiEnabled
+      ? 'AI 总开关：已关闭'
+      : (enabledList.length ? ('优先级：' + chainNames) : '未勾选启用后端');
+
+    const toggleEnable = (key) => {
+      this.setState({
+        enabledMap: { ...st.enabledMap, [key]: !st.enabledMap[key] }
+      });
+    };
+
+    const builtinEn = !!st.enabledMap.builtin;
+    const builtinRankIdx = enabledList.indexOf('builtin');
+    const isBuiltinFoc = focused === 'builtin';
+
+    const agentKeys = ['codex', 'claude', 'dsh', 'pi'];
+    const scannedAgents = agentKeys.map((key) => {
+      const isFoc = focused === key;
+      const isEn = !!st.enabledMap[key];
+      const rIdx = enabledList.indexOf(key);
+      return {
+        key,
+        name: meta[key].name,
+        glyph: meta[key].glyph,
+        col: meta[key].col,
+        enabled: isEn,
+        hasRank: rIdx >= 0,
+        rank: rIdx >= 0 ? ('P' + (rIdx + 1)) : '',
+        bg: isFoc ? selectedBg : shellBg,
+        border: isFoc ? accent : btnBorder,
+        ring: isFoc ? activeRing : 'none',
+        checkBg: isEn ? accent : cardBg,
+        checkBorder: isEn ? accent : btnBorder,
+        onCardClick: () => {
+          if (focused === key) {
+            toggleEnable(key);
+          } else {
+            this.setState({ focused: key });
+          }
+        },
+        onCheckClick: (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          toggleEnable(key);
+        }
+      };
+    });
+
+    const isFocusedEnabled = !!st.enabledMap[focused];
+    const focusedRankIdx = enabledList.indexOf(focused);
+
+    const builtinModels = ['gemini-3.8-flash', 'gpt-6-astra', 'gpt-6.1-terra', 'deepseek-chat'];
+    const builtinModelChips = builtinModels.map((id) => {
+      const active = st.selectedBuiltinModel === id;
+      return {
+        id,
+        active,
+        bg: active ? selectedBg : shellBg,
+        border: active ? accent : btnBorder,
+        col: active ? textPrimary : textSecondary,
+        pick: () => { if (isFocusedEnabled) this.setState({ selectedBuiltinModel: id }); }
+      };
+    });
+
+    const agModelsMap = {
+      codex: ['Default (recommended)', 'gpt-6.1-terra', 'gpt-6-astra', 'gpt-6-luna'],
+      claude: ['Default (recommended)', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+      dsh: ['Default (recommended)', 'gemini-4-argon', 'gemini-3.8-flash', 'gpt-6.1-terra'],
+      pi: ['Default (recommended)', 'gemini-3.8-flash', 'claude-sonnet-4-6', 'gpt-6-astra']
+    };
+    const curAg = st.agentConfigs[focused] || st.agentConfigs.codex;
+    const agentModelChips = (agModelsMap[focused] || agModelsMap.codex).map((id) => {
+      const active = curAg.model === id;
+      return {
+        id,
+        active,
+        bg: active ? selectedBg : shellBg,
+        border: active ? accent : btnBorder,
+        col: active ? textPrimary : textSecondary,
+        pick: () => {
+          if (!isFocusedEnabled) return;
+          this.setState({
+            agentConfigs: {
+              ...st.agentConfigs,
+              [focused]: { ...curAg, model: id }
+            }
+          });
+        }
+      };
+    });
+
+    const setAgField = (field, val) => {
+      if (!isFocusedEnabled) return;
+      this.setState({
+        agentConfigs: {
+          ...st.agentConfigs,
+          [focused]: { ...curAg, [field]: val }
+        }
+      });
+    };
+
+    return {
+      shellBg,
+      shellBorder,
+      sidebarBg,
+      settingsBg,
+      cardBg,
+      textPrimary,
+      textSecondary,
+      accent,
+      iconFill,
+      selectedBg,
+      borderCol,
+      btnBorder,
+
+      themeBtnLabel: dark ? '深色' : '浅色',
+      priorityChainText,
+      scanBtnLabel: st.rescanned ? '已扫描 4 个 Agent' : '重新扫描 Agent',
+
+      isMasterOn: !!st.masterAiEnabled,
+      isMasterOff: !st.masterAiEnabled,
+      masterBtnBg: st.masterAiEnabled ? selectedBg : shellBg,
+      masterBtnBorder: st.masterAiEnabled ? accent : btnBorder,
+      masterBtnLabel: st.masterAiEnabled ? 'AI 已开启' : 'AI 已关闭',
+
+      builtinEnabled: builtinEn,
+      builtinHasRank: builtinRankIdx >= 0,
+      builtinRank: builtinRankIdx >= 0 ? ('P' + (builtinRankIdx + 1)) : '',
+      builtinCardBg: isBuiltinFoc ? selectedBg : shellBg,
+      builtinCardBorder: isBuiltinFoc ? accent : btnBorder,
+      builtinCardRing: isBuiltinFoc ? activeRing : 'none',
+      builtinCheckBg: builtinEn ? accent : cardBg,
+      builtinCheckBorder: builtinEn ? accent : btnBorder,
+      builtinSubText: builtinEn ? '已启用' : '已关闭（不影响全局 AI）',
+
+      scannedAgents,
+
+      focusedTitle: meta[focused].name + (focused === 'builtin' ? ' 设置' : ' 启动配置'),
+      focusedBadge: isFocusedEnabled ? ('已启用 P' + (focusedRankIdx + 1)) : '未启用 配置锁定',
+      canPromoteFocused: isFocusedEnabled && focusedRankIdx > 0,
+      enableBtnBg: isFocusedEnabled ? selectedBg : shellBg,
+      enableBtnBorder: isFocusedEnabled ? accent : btnBorder,
+      enableBtnText: isFocusedEnabled ? '✓ 已打勾启用' : '打勾启用',
+
+      isFocusedDisabled: !isFocusedEnabled,
+      bodyOpacity: isFocusedEnabled ? '1' : '0.46',
+      bodyEvents: isFocusedEnabled ? 'auto' : 'none',
+      isBuiltinView: focused === 'builtin',
+      isAgentView: focused !== 'builtin',
+
+      cardDsBg: st.provider === 'deepseek' ? selectedBg : shellBg,
+      cardDsBorder: st.provider === 'deepseek' ? accent : btnBorder,
+      cardOaBg: st.provider === 'openai' ? selectedBg : shellBg,
+      cardOaBorder: st.provider === 'openai' ? accent : btnBorder,
+      cardClBg: st.provider === 'claude' ? selectedBg : shellBg,
+      cardClBorder: st.provider === 'claude' ? accent : btnBorder,
+      baseUrl: st.baseUrl,
+      apiKey: st.apiKey,
+      apiKeyType: st.showKey ? 'text' : 'password',
+      showKeyLabel: st.showKey ? '隐藏' : '显示',
+      builtinModelChips,
+
+      agentLaunchArgs: curAg.args,
+      agentModelChips,
+
+      toggleThemeMode: () => this.setState({ darkOverride: dark ? 'light' : 'dark' }),
+      toggleMasterAi: () => this.setState({ masterAiEnabled: !st.masterAiEnabled }),
+      rescanAgents: () => this.setState({ rescanned: true }),
+      onBuiltinCardClick: () => {
+        if (focused === 'builtin') {
+          toggleEnable('builtin');
+        } else {
+          this.setState({ focused: 'builtin' });
+        }
+      },
+      onBuiltinCheckClick: (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        toggleEnable('builtin');
+      },
+      toggleFocusedEnable: () => toggleEnable(focused),
+      promoteFocusedToFirst: () => {
+        const rest = st.priorityOrder.filter((k) => k !== focused);
+        this.setState({ priorityOrder: [focused, ...rest] });
+      },
+      selectDeepseek: () => { if (isFocusedEnabled) this.setState({ provider: 'deepseek' }); },
+      selectOpenai: () => { if (isFocusedEnabled) this.setState({ provider: 'openai' }); },
+      selectClaudeProto: () => { if (isFocusedEnabled) this.setState({ provider: 'claude' }); },
+      onBaseUrlInput: (e) => { if (isFocusedEnabled && e && e.target) this.setState({ baseUrl: e.target.value }); },
+      onApiKeyInput: (e) => { if (isFocusedEnabled && e && e.target) this.setState({ apiKey: e.target.value }); },
+      toggleShowKey: () => { if (isFocusedEnabled) this.setState({ showKey: !st.showKey }); },
+      onAgentArgsInput: (e) => { if (e && e.target) setAgField('args', e.target.value); }
+    };
+  }
+}
+</script>
+</body>
+</html>

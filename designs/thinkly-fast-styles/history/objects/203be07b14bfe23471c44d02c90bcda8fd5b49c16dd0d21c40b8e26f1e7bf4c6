@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>页面历史 C · 底部时间轴</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400..500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#779de8}a:hover{color:#9dbcf5}
+button{font-family:inherit}
+button:focus-visible{outline:2px solid #779de8;outline-offset:2px}
+.ib{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#b4b4b4;padding:0;cursor:pointer;flex:none}
+.ib:hover{background:#2c2c2c;color:#ececec}
+.btn{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:32px;padding:0 12px;border-radius:8px;border:1px solid #444444;background:#222222;color:#ececec;display:inline-flex;align-items:center;gap:6px;cursor:pointer;box-sizing:border-box}
+.btn:hover:not(:disabled){background:#2c2c2c}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-pri{background:#547dd0;border-color:#779de8;color:#ffffff}
+.btn-pri:hover:not(:disabled){background:#3d63b0}
+.seg{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:28px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:#b4b4b4;cursor:pointer}
+.seg:hover{color:#ececec}
+.tnode{font:inherit;min-width:196px;flex:1 1 196px;padding:10px 12px;border-radius:10px;border:1px solid #2e2e2e;background:#181818;color:#ececec;text-align:left;display:flex;flex-direction:column;gap:4px;cursor:pointer;box-sizing:border-box}
+.tnode:hover{background:#2c2c2c}
+.tag{display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;font-size:14px;line-height:18px;font-weight:460}
+</style>
+</helmet>
+<div style="width:100%;min-height:960px;box-sizing:border-box;display:flex;flex-direction:column;background:#181818;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#ececec;font-size:14px;line-height:20px;position:relative">
+
+<header style="min-height:44px;flex:none;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:6px 16px;background:#343434;border-bottom:1px solid #333333;box-sizing:border-box">
+<div style="display:flex;align-items:center;gap:12px">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<span style="font-size:15px;font-weight:560">周会 11-03 · 时间轴回看（Ocean Dark）</span>
+<span class="tag" style="background:#31456a;color:#ececec">{{selTitle}} · {{selBadge}}</span>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+<div role="group" aria-label="视图切换" style="display:inline-flex;background:#222222;border:1px solid #444444;border-radius:8px;padding:2px;gap:2px">
+<button class="seg" type="button" onClick="{{setDiffMode}}" style="background:{{diffBg}};color:{{diffColor}};box-shadow:{{diffShadow}}">变更对照</button>
+<button class="seg" type="button" onClick="{{setCleanMode}}" style="background:{{cleanBg}};color:{{cleanColor}};box-shadow:{{cleanShadow}}">只读原文</button>
+</div>
+<button class="btn btn-pri" type="button" disabled="{{restoreDisabled}}" onClick="{{openConfirm}}">{{restoreBtnText}}</button>
+<button class="btn" type="button" onClick="{{toggleDock}}">{{dockToggleText}}</button>
+</div>
+</header>
+
+<sc-if value="{{toastVisible}}" hint-placeholder-val="{{false}}">
+<div role="status" style="margin:12px auto 0;width:100%;max-width:720px;padding:10px 14px;border-radius:8px;background:#31456a;box-shadow:inset 0 0 0 1px #779de8;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;box-sizing:border-box">
+<span>{{toastText}}</span>
+<div style="display:flex;align-items:center;gap:8px">
+<sc-if value="{{canUndo}}" hint-placeholder-val="{{true}}">
+<button class="btn" type="button" onClick="{{undoRestore}}">撤销恢复</button>
+</sc-if>
+<button class="ib" type="button" onClick="{{dismissToast}}" aria-label="关闭通知"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</div>
+</div>
+</sc-if>
+
+<main style="flex:1;min-height:0;overflow:auto;padding:32px 24px">
+<article style="max-width:720px;width:100%;margin:0 auto;background:#222222;border:1px solid #2e2e2e;border-radius:14px;padding:32px 28px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+
+<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding-bottom:12px;border-bottom:1px solid #2e2e2e">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="font-weight:560">{{selTitle}}</span>
+<span style="color:#b4b4b4">{{selDesc}}</span>
+</div>
+<span style="color:#b4b4b4">标准版心 720px · 只读可复制</span>
+</div>
+
+<h1 style="margin:0;font-size:28px;line-height:1.35;font-weight:560;color:#ececec">把周会改成异步</h1>
+
+<p style="margin:0;font-size:16px;line-height:1.65;color:#ececec">{{p1Text}}</p>
+
+<sc-if value="{{showDiffView}}" hint-placeholder-val="{{true}}">
+<div style="padding:12px 14px;border-radius:8px;background:#181818;border:1px solid #2e2e2e;display:flex;flex-direction:column;gap:6px">
+<div><span class="tag" style="background:#343434;color:#b4b4b4">已删除 · 所选旧版原有</span></div>
+<p style="margin:0;font-size:16px;line-height:1.65;color:#b4b4b4;text-decoration:line-through">{{diffDeletedP2}}</p>
+</div>
+<div style="padding:12px 14px;border-radius:8px;background:#31456a;box-shadow:inset 0 0 0 1px #779de8;display:flex;flex-direction:column;gap:6px">
+<div><span class="tag" style="background:#222222;color:#9dbcf5">+ 当前版本新增</span></div>
+<p style="margin:0;font-size:16px;line-height:1.65;color:#ececec">{{diffAddedP2}}</p>
+</div>
+</sc-if>
+
+<sc-if value="{{showPlainView}}" hint-placeholder-val="{{false}}">
+<p style="margin:0;font-size:16px;line-height:1.65;color:#ececec">{{p2Text}}</p>
+</sc-if>
+
+<blockquote style="margin:0;padding:4px 0 4px 14px;border-left:2px solid #484848;font-size:16px;line-height:1.65;color:#ececec">会议是例外，不是节奏。一段文字能说清的，不要再约三十分钟。</blockquote>
+
+<h2 style="margin:6px 0 0;font-size:20px;line-height:1.4;font-weight:560;color:#ececec">保留下来的三件事</h2>
+
+<div style="display:flex;flex-direction:column;gap:8px;font-size:16px;line-height:1.6">
+<div>1. 周一前写好本周目标，一句话即可</div>
+<div>2. 阻塞写在文档里，直接点名负责人</div>
+<sc-if value="{{showDiffView}}" hint-placeholder-val="{{true}}">
+<div style="padding:8px 12px;border-radius:8px;background:#181818;border:1px solid #2e2e2e;color:#b4b4b4;text-decoration:line-through"><span class="tag" style="background:#343434;color:#b4b4b4;margin-right:8px">已删除</span>{{diffDeletedItem3}}</div>
+<div style="padding:8px 12px;border-radius:8px;background:#31456a;box-shadow:inset 0 0 0 1px #779de8;color:#ececec"><span class="tag" style="background:#222222;color:#9dbcf5;margin-right:8px">+ 新增</span>{{diffAddedItem3}}</div>
+</sc-if>
+<sc-if value="{{showPlainView}}" hint-placeholder-val="{{false}}">
+<div>{{item3Text}}</div>
+</sc-if>
+</div>
+
+</article>
+</main>
+
+<sc-if value="{{dockOpen}}" hint-placeholder-val="{{true}}">
+<footer aria-label="底部横向版本时间轴" onKeyDown="{{onDockKeyDown}}" style="flex:none;background:#222222;border-top:1px solid #333333;padding:14px 20px 18px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;align-items:center;gap:10px">
+<span style="font-size:15px;font-weight:560">版本时间轴（按时间倒序排列）</span>
+<span style="color:#b4b4b4">点击节点或按「上一版 / 下一版」逐版回看</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<button class="btn" type="button" disabled="{{newerDisabled}}" onClick="{{stepNewer}}">← 较新版本</button>
+<button class="btn" type="button" disabled="{{olderDisabled}}" onClick="{{stepOlder}}">较旧版本 →</button>
+</div>
+</div>
+
+<div role="listbox" aria-label="时间轴版本节点" style="display:flex;flex-wrap:wrap;gap:10px">
+<sc-for list="{{versionNodes}}" as="n" hint-placeholder-count="4">
+<button class="tnode" type="button" role="option" aria-selected="{{n.selected}}" onClick="{{n.pick}}" style="background:{{n.bg}};box-shadow:{{n.shadow}};border-color:{{n.border}}">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%">
+<span style="display:inline-flex;align-items:center;gap:6px;font-weight:560">
+<span style="width:8px;height:8px;border-radius:4px;background:{{n.dotColor}}"></span>
+<span>{{n.time}}</span>
+</span>
+<span class="tag" style="background:{{n.badgeBg}};color:{{n.badgeColor}}">{{n.badge}}</span>
+</div>
+<div style="color:#b4b4b4">{{n.desc}}</div>
+</button>
+</sc-for>
+</div>
+</footer>
+</sc-if>
+
+<sc-if value="{{confirmOpen}}" hint-placeholder-val="{{false}}">
+<div role="dialog" aria-modal="true" aria-label="确认恢复版本" onKeyDown="{{onModalKeyDown}}" style="position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:24px">
+<div style="width:100%;max-width:440px;background:#222222;border:1px solid #444444;border-radius:14px;box-shadow:0 16px 40px rgba(0,0,0,.45);padding:20px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="font-size:16px;font-weight:560;color:#ececec">恢复到「{{selTitle}}」？</span>
+<button class="ib" type="button" onClick="{{cancelConfirm}}" aria-label="关闭确认框"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</div>
+<p style="margin:0;color:#b4b4b4;font-size:14px;line-height:1.6">恢复操作会将当前版本保存为快照，并以「{{selTitle}}」创建新的当前版本节点，时间轴中的所有既有节点均会保留。</p>
+<div style="display:flex;justify-content:flex-end;gap:8px">
+<button class="btn" type="button" onClick="{{cancelConfirm}}">取消</button>
+<button class="btn btn-pri" type="button" onClick="{{confirmRestore}}">确认恢复</button>
+</div>
+</div>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"defaultMode":{"editor":"enum","default":"diff","options":["diff","clean"],"label":"默认显示模式"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.baseVersions = [
+      {
+        id: 'v-cur',
+        time: '今天 14:32',
+        badge: '当前版本',
+        desc: '自动保存 · 补充周五复盘规则与阻塞点名',
+        isCurrent: true,
+        sameAsCurrent: true,
+        p1: '上周排了三场同步会，两场结束时没有结论。人到齐，并不等于事情被推进。',
+        p2: '与其等所有人空出同一段时间，不如把状态写在这里：这周要什么、卡在哪、需要谁看一眼。',
+        item3: '3. 周五只回看偏差，不复述进度'
+      },
+      {
+        id: 'v-1108',
+        time: '今天 11:08',
+        badge: '自动快照',
+        desc: '停止编辑 30s 保存 · 初拟三项行动清单',
+        isCurrent: false,
+        sameAsCurrent: false,
+        p1: '上周排了三场同步会，两场结束时没有结论。人到齐，并不等于事情被推进。',
+        p2: '我们决定先停掉周三例会，改成在群里发一段文字同步本周进展。',
+        item3: '3. 周五下午四点集中核对一次待办列表'
+      },
+      {
+        id: 'v-yest',
+        time: '昨天 18:40',
+        badge: '手动保存',
+        desc: '初稿 · 记录同步会痛点与改异步提议',
+        isCurrent: false,
+        sameAsCurrent: false,
+        p1: '这周的三场同步会占掉了两个整下午，真正需要拍板的事反而拖到了会后私聊。',
+        p2: '先试行两周书面同步：每个人只写阻碍和需要协助的人，不写流水账。',
+        item3: '3. 试行两周后再决定是否彻底取消周会'
+      },
+      {
+        id: 'v-nov1',
+        time: '11月1日 09:15',
+        badge: '内容相同',
+        desc: '恢复前快照 · 与当前正文内容完全一致',
+        isCurrent: false,
+        sameAsCurrent: true,
+        p1: '上周排了三场同步会，两场结束时没有结论。人到齐，并不等于事情被推进。',
+        p2: '与其等所有人空出同一段时间，不如把状态写在这里：这周要什么、卡在哪、需要谁看一眼。',
+        item3: '3. 周五只回看偏差，不复述进度'
+      }
+    ];
+    this.state = {
+      selectedIndex: 1,
+      mode: null,
+      dockOpen: true,
+      confirmOpen: false,
+      restoredFrom: null,
+      toastText: '',
+      canUndo: false
+    };
+  }
+  getVersions() {
+    if (!this.state.restoredFrom) return this.baseVersions;
+    const target = this.baseVersions.find(v => v.id === this.state.restoredFrom) || this.baseVersions[1];
+    return [
+      {
+        id: 'v-restored',
+        time: '刚刚 14:36',
+        badge: '当前版本',
+        desc: '从「' + target.time + '」恢复的新版本',
+        isCurrent: true,
+        sameAsCurrent: true,
+        p1: target.p1,
+        p2: target.p2,
+        item3: target.item3
+      },
+      ...this.baseVersions.map(v => ({
+        ...v,
+        isCurrent: false,
+        badge: v.id === 'v-cur' ? '恢复前快照' : v.badge,
+        sameAsCurrent: v.id === target.id
+      }))
+    ];
+  }
+  renderVals() {
+    const versions = this.getVersions();
+    const idx = Math.max(0, Math.min(versions.length - 1, this.state.selectedIndex));
+    const cur = versions[0];
+    const sel = versions[idx];
+    const mode = this.state.mode ?? (this.props.defaultMode === 'clean' ? 'clean' : 'diff');
+    const isDiff = mode === 'diff' && !sel.sameAsCurrent;
+    const restoreDisabled = sel.isCurrent || sel.sameAsCurrent;
+    const versionNodes = versions.map((v, i) => {
+      const selected = i === idx;
+      return {
+        ...v,
+        selected,
+        bg: selected ? '#343434' : '#181818',
+        border: selected ? '#779de8' : '#2e2e2e',
+        shadow: selected ? 'inset 0 0 0 1px #779de8' : 'none',
+        dotColor: selected ? '#779de8' : (v.isCurrent ? '#c9d8f3' : '#b4b4b4'),
+        badgeBg: v.isCurrent ? '#31456a' : '#2c2c2c',
+        badgeColor: '#ececec',
+        pick: () => this.setState({ selectedIndex: i })
+      };
+    });
+    return {
+      versionNodes,
+      selTitle: sel.time,
+      selBadge: sel.badge,
+      selDesc: sel.desc,
+      p1Text: sel.p1,
+      p2Text: sel.p2,
+      item3Text: sel.item3,
+      showDiffView: isDiff,
+      showPlainView: !isDiff,
+      diffDeletedP2: sel.p2,
+      diffAddedP2: cur.p2,
+      diffDeletedItem3: sel.item3,
+      diffAddedItem3: cur.item3,
+      diffBg: mode === 'diff' ? '#343434' : 'transparent',
+      diffColor: mode === 'diff' ? '#ececec' : '#b4b4b4',
+      diffShadow: mode === 'diff' ? 'inset 0 0 0 1px #779de8' : 'none',
+      cleanBg: mode === 'clean' ? '#343434' : 'transparent',
+      cleanColor: mode === 'clean' ? '#ececec' : '#b4b4b4',
+      cleanShadow: mode === 'clean' ? 'inset 0 0 0 1px #779de8' : 'none',
+      restoreDisabled,
+      restoreBtnText: sel.isCurrent ? '当前版本不可恢复' : (sel.sameAsCurrent ? '与当前内容相同' : '恢复到此版本'),
+      newerDisabled: idx <= 0,
+      olderDisabled: idx >= versions.length - 1,
+      dockOpen: !!this.state.dockOpen,
+      dockToggleText: this.state.dockOpen ? '收起时间轴并返回编辑' : '展开底部时间轴',
+      confirmOpen: !!this.state.confirmOpen,
+      toastVisible: !!this.state.toastText,
+      toastText: this.state.toastText,
+      canUndo: !!this.state.canUndo,
+      setDiffMode: () => this.setState({ mode: 'diff' }),
+      setCleanMode: () => this.setState({ mode: 'clean' }),
+      stepNewer: () => { if (idx > 0) this.setState({ selectedIndex: idx - 1 }); },
+      stepOlder: () => { if (idx < versions.length - 1) this.setState({ selectedIndex: idx + 1 }); },
+      toggleDock: () => this.setState({ dockOpen: !this.state.dockOpen }),
+      openConfirm: () => { if (!restoreDisabled) this.setState({ confirmOpen: true }); },
+      cancelConfirm: () => this.setState({ confirmOpen: false }),
+      confirmRestore: () => this.setState({
+        confirmOpen: false,
+        restoredFrom: sel.id,
+        selectedIndex: 0,
+        toastText: '已恢复到「' + sel.time + '」，时间轴顶部已新增恢复版本节点。',
+        canUndo: true
+      }),
+      undoRestore: () => this.setState({
+        restoredFrom: null,
+        selectedIndex: 1,
+        toastText: '已撤销恢复，重新回到恢复前状态。',
+        canUndo: false
+      }),
+      dismissToast: () => this.setState({ toastText: '' }),
+      onDockKeyDown: (e) => {
+        if (e.key === 'Escape') this.setState({ dockOpen: false });
+      },
+      onModalKeyDown: (e) => {
+        if (e.key === 'Escape') this.setState({ confirmOpen: false });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

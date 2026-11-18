@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>更新图标动效 B · 气泡涌出 + 图标落位 + 涂鸦折返乱线团</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400..500&amp;display=swap">
+<style>
+body{margin:0}
+button{font-family:inherit;cursor:pointer}
+
+/* ===== 方案 B：1. 气泡向上喷涌 -> 2. 图标跳跃落位 -> 3. 四角折返涂鸦毛线团炸裂 ===== */
+@keyframes puffB1{
+  0%{transform:translate(0,12px) scale(.18);opacity:0}
+  6%{opacity:.95}
+  26%{transform:translate(-58px,-54px) scale(1.06);opacity:0}
+  100%{transform:translate(-58px,-54px) scale(1.06);opacity:0}
+}
+@keyframes puffB2{
+  0%,2%{transform:translate(0,12px) scale(.18);opacity:0}
+  7%{opacity:.95}
+  28%{transform:translate(-22px,-76px) scale(1.12);opacity:0}
+  100%{transform:translate(-22px,-76px) scale(1.12);opacity:0}
+}
+@keyframes puffB3{
+  0%,3%{transform:translate(0,12px) scale(.18);opacity:0}
+  8%{opacity:.95}
+  27%{transform:translate(24px,-74px) scale(1.02);opacity:0}
+  100%{transform:translate(24px,-74px) scale(1.02);opacity:0}
+}
+@keyframes puffB4{
+  0%,1%{transform:translate(0,12px) scale(.18);opacity:0}
+  6%{opacity:.95}
+  29%{transform:translate(64px,-46px) scale(1.08);opacity:0}
+  100%{transform:translate(64px,-46px) scale(1.08);opacity:0}
+}
+@keyframes puffB5{
+  0%,4%{transform:translate(0,12px) scale(.18);opacity:0}
+  9%{opacity:.95}
+  30%{transform:translate(-70px,-10px) scale(.96);opacity:0}
+  100%{transform:translate(-70px,-10px) scale(.96);opacity:0}
+}
+@keyframes puffB6{
+  0%,2%{transform:translate(0,12px) scale(.18);opacity:0}
+  7%{opacity:.95}
+  28%{transform:translate(72px,4px) scale(.98);opacity:0}
+  100%{transform:translate(72px,4px) scale(.98);opacity:0}
+}
+@keyframes puffB7{
+  0%,5%{transform:translate(0,12px) scale(.18);opacity:0}
+  10%{opacity:.95}
+  31%{transform:translate(0px,-88px) scale(.9);opacity:0}
+  100%{transform:translate(0px,-88px) scale(.9);opacity:0}
+}
+
+/* 第 2 步：气泡涌出后，图标上跃回弹显示 */
+@keyframes iconJumpB{
+  0%,18%{transform:translateY(18px) scale(0);opacity:0}
+  27%{transform:translateY(-8px) scale(1.12);opacity:1}
+  33%{transform:translateY(2px) scale(.97);opacity:1}
+  38%,90%{transform:translateY(0) scale(1);opacity:1}
+  96%,100%{transform:translateY(10px) scale(0);opacity:0}
+}
+
+/* 第 3 步：图标显示后，头顶与四周炸出折返乱涂毛线团 */
+@keyframes tangleDrawB{
+  0%,36%{stroke-dashoffset:520;opacity:0}
+  39%{opacity:1}
+  66%{stroke-dashoffset:0;opacity:1}
+  84%{stroke-dashoffset:0;opacity:.92}
+  95%,100%{stroke-dashoffset:-520;opacity:0}
+}
+@keyframes zigDrawB{
+  0%,41%{stroke-dashoffset:320;opacity:0}
+  44%{opacity:1}
+  72%{stroke-dashoffset:0;opacity:1}
+  86%{stroke-dashoffset:0;opacity:.88}
+  96%,100%{stroke-dashoffset:-320;opacity:0}
+}
+
+/* 单次触发重播组 */
+@keyframes puffOnceB1{0%{transform:translate(0,12px) scale(.2);opacity:0}14%{opacity:.95}100%{transform:translate(-58px,-54px) scale(1.06);opacity:0}}
+@keyframes puffOnceB2{0%{transform:translate(0,12px) scale(.2);opacity:0}14%{opacity:.95}100%{transform:translate(-22px,-76px) scale(1.12);opacity:0}}
+@keyframes puffOnceB3{0%{transform:translate(0,12px) scale(.2);opacity:0}14%{opacity:.95}100%{transform:translate(24px,-74px) scale(1.02);opacity:0}}
+@keyframes puffOnceB4{0%{transform:translate(0,12px) scale(.2);opacity:0}14%{opacity:.95}100%{transform:translate(64px,-46px) scale(1.08);opacity:0}}
+@keyframes puffOnceB5{0%{transform:translate(0,12px) scale(.2);opacity:0}14%{opacity:.95}100%{transform:translate(-70px,-10px) scale(.96);opacity:0}}
+@keyframes puffOnceB6{0%{transform:translate(0,12px) scale(.2);opacity:0}14%{opacity:.95}100%{transform:translate(72px,4px) scale(.98);opacity:0}}
+@keyframes puffOnceB7{0%{transform:translate(0,12px) scale(.2);opacity:0}14%{opacity:.95}100%{transform:translate(0px,-88px) scale(.9);opacity:0}}
+@keyframes iconOnceB{
+  0%,25%{transform:translateY(18px) scale(0);opacity:0}
+  44%{transform:translateY(-8px) scale(1.12);opacity:1}
+  56%{transform:translateY(2px) scale(.97);opacity:1}
+  66%,100%{transform:translateY(0) scale(1);opacity:1}
+}
+@keyframes tangleOnceB{
+  0%,50%{stroke-dashoffset:520;opacity:0}
+  54%{opacity:1}
+  90%,100%{stroke-dashoffset:0;opacity:1}
+}
+@keyframes zigOnceB{
+  0%,56%{stroke-dashoffset:320;opacity:0}
+  60%{opacity:1}
+  94%,100%{stroke-dashoffset:0;opacity:1}
+}
+
+.stage-loop .p1{animation:puffB1 var(--dur,3.4s) cubic-bezier(.215,.61,.355,1) infinite}
+.stage-loop .p2{animation:puffB2 var(--dur,3.4s) cubic-bezier(.215,.61,.355,1) infinite}
+.stage-loop .p3{animation:puffB3 var(--dur,3.4s) cubic-bezier(.215,.61,.355,1) infinite}
+.stage-loop .p4{animation:puffB4 var(--dur,3.4s) cubic-bezier(.215,.61,.355,1) infinite}
+.stage-loop .p5{animation:puffB5 var(--dur,3.4s) cubic-bezier(.215,.61,.355,1) infinite}
+.stage-loop .p6{animation:puffB6 var(--dur,3.4s) cubic-bezier(.215,.61,.355,1) infinite}
+.stage-loop .p7{animation:puffB7 var(--dur,3.4s) cubic-bezier(.215,.61,.355,1) infinite}
+.stage-loop .u-icon{animation:iconJumpB var(--dur,3.4s) cubic-bezier(.22,1,.36,1) infinite}
+.stage-loop .s-tangle{stroke-dasharray:520;animation:tangleDrawB var(--dur,3.4s) cubic-bezier(.22,1,.36,1) infinite}
+.stage-loop .s-zig{stroke-dasharray:320;animation:zigDrawB var(--dur,3.4s) cubic-bezier(.22,1,.36,1) infinite}
+
+.stage-once-a .p1,.stage-once-b .p1{animation:puffOnceB1 .88s cubic-bezier(.215,.61,.355,1) forwards}
+.stage-once-a .p2,.stage-once-b .p2{animation:puffOnceB2 .94s cubic-bezier(.215,.61,.355,1) .03s forwards}
+.stage-once-a .p3,.stage-once-b .p3{animation:puffOnceB3 .86s cubic-bezier(.215,.61,.355,1) .05s forwards}
+.stage-once-a .p4,.stage-once-b .p4{animation:puffOnceB4 .98s cubic-bezier(.215,.61,.355,1) .02s forwards}
+.stage-once-a .p5,.stage-once-b .p5{animation:puffOnceB5 .92s cubic-bezier(.215,.61,.355,1) .06s forwards}
+.stage-once-a .p6,.stage-once-b .p6{animation:puffOnceB6 .96s cubic-bezier(.215,.61,.355,1) .04s forwards}
+.stage-once-a .p7,.stage-once-b .p7{animation:puffOnceB7 .90s cubic-bezier(.215,.61,.355,1) .07s forwards}
+.stage-once-a .u-icon,.stage-once-b .u-icon{animation:iconOnceB 1.4s cubic-bezier(.22,1,.36,1) forwards}
+.stage-once-a .s-tangle,.stage-once-b .s-tangle{stroke-dasharray:520;animation:tangleOnceB 1.75s cubic-bezier(.22,1,.36,1) forwards}
+.stage-once-a .s-zig,.stage-once-b .s-zig{stroke-dasharray:320;animation:zigOnceB 1.88s cubic-bezier(.22,1,.36,1) forwards}
+
+/* 单步定格模式 */
+.stage-step1 .p1{transform:translate(-36px,-34px) scale(.88);opacity:.9}
+.stage-step1 .p2{transform:translate(-14px,-50px) scale(.96);opacity:.92}
+.stage-step1 .p3{transform:translate(16px,-48px) scale(.88);opacity:.9}
+.stage-step1 .p4{transform:translate(42px,-30px) scale(.92);opacity:.9}
+.stage-step1 .p5{transform:translate(-46px,-6px) scale(.84);opacity:.85}
+.stage-step1 .p6{transform:translate(48px,4px) scale(.86);opacity:.86}
+.stage-step1 .p7{transform:translate(0px,-58px) scale(.82);opacity:.86}
+.stage-step1 .u-icon{transform:scale(0);opacity:0}
+.stage-step1 .s-tangle,.stage-step1 .s-zig{opacity:0}
+
+.stage-step2 .p1,.stage-step2 .p2,.stage-step2 .p3,.stage-step2 .p4,.stage-step2 .p5,.stage-step2 .p6,.stage-step2 .p7{opacity:0}
+.stage-step2 .u-icon{transform:scale(1);opacity:1}
+.stage-step2 .s-tangle,.stage-step2 .s-zig{opacity:0}
+
+.stage-step3 .p1,.stage-step3 .p2,.stage-step3 .p3,.stage-step3 .p4,.stage-step3 .p5,.stage-step3 .p6,.stage-step3 .p7{opacity:0}
+.stage-step3 .u-icon{transform:scale(1);opacity:1}
+.stage-step3 .s-tangle,.stage-step3 .s-zig{stroke-dasharray:none;stroke-dashoffset:0;opacity:1}
+
+.puff{position:absolute;top:50%;left:50%;border-radius:50%;background:rgba(84,125,208,0.28);box-shadow:inset 0 0 0 1.5px rgba(84,125,208,0.52);pointer-events:none}
+.ctrl-btn{height:32px;padding:0 12px;border-radius:8px;border:1px solid #d5dbe3;background:#ffffff;color:#20242c;font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.ctrl-btn:hover{background:#eef3fc;border-color:#547dd0}
+.ctrl-btn-active{height:32px;padding:0 12px;border-radius:8px;border:1px solid #476ec2;background:#e5edfc;color:#1d3f8a;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+</style>
+</helmet>
+
+<div style="width:840px;height:680px;box-sizing:border-box;padding:24px 28px;background:#f4f5f7;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;display:flex;flex-direction:column;gap:18px;{{durVar}}">
+
+  <!-- 顶部标题与交互控制栏 -->
+  <header style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <h1 style="margin:0;font-size:18px;line-height:26px;font-weight:600;color:#20242c">方案 B · 气泡喷泉 + 图标落位 + 涂鸦折返乱线团</h1>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <button type="button" class="ctrl-btn-active" onClick="{{triggerOnce}}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg>
+        <span>点击单次触发</span>
+      </button>
+      <button type="button" class="{{loopBtnClass}}" onClick="{{setLoopMode}}">循环演示</button>
+      <button type="button" class="{{slowBtnClass}}" onClick="{{toggleSlow}}">{{slowLabel}}</button>
+    </div>
+  </header>
+
+  <!-- 三步拆解可交互切换条 -->
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+    <button type="button" onClick="{{showStep1}}" style="padding:10px 14px;border-radius:10px;border:1px solid {{step1Bd}};background:{{step1Bg}};text-align:left;display:flex;flex-direction:column;gap:4px">
+      <span style="font-size:14px;font-weight:600;color:#1d3f8a">1. 气泡动画先出来</span>
+      <span style="font-size:14px;color:#526071">0–260ms · 7 颗圆泡自底向上喷涌散开</span>
+    </button>
+    <button type="button" onClick="{{showStep2}}" style="padding:10px 14px;border-radius:10px;border:1px solid {{step2Bd}};background:{{step2Bg}};text-align:left;display:flex;flex-direction:column;gap:4px">
+      <span style="font-size:14px;font-weight:600;color:#1d3f8a">2. 然后显示图标</span>
+      <span style="font-size:14px;color:#526071">220–460ms · 更新图标向上跃起回弹落位</span>
+    </button>
+    <button type="button" onClick="{{showStep3}}" style="padding:10px 14px;border-radius:10px;border:1px solid {{step3Bd}};background:{{step3Bg}};text-align:left;display:flex;flex-direction:column;gap:4px">
+      <span style="font-size:14px;font-weight:600;color:#1d3f8a">3. 接着乱糟糟线条动画</span>
+      <span style="font-size:14px;color:#526071">440–1180ms · 四角爆出折返涂鸦毛线团</span>
+    </button>
+  </div>
+
+  <!-- 中央 3 倍放大交互特写舞台 -->
+  <div class="{{stageClass}}" onClick="{{triggerOnce}}" style="flex:1;min-height:0;border-radius:14px;background:#ffffff;border:1px solid #e4e6ea;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden;cursor:pointer">
+
+    <div style="position:relative;width:240px;height:210px;display:flex;align-items:center;justify-content:center">
+      <!-- 第 1 步：7 颗向上喷涌的「关于」风气泡 -->
+      <div aria-hidden="true" style="position:absolute;inset:0;pointer-events:none">
+        <span class="puff p1" style="width:28px;height:28px;margin-left:-14px;margin-top:-14px"></span>
+        <span class="puff p2" style="width:40px;height:40px;margin-left:-20px;margin-top:-20px"></span>
+        <span class="puff p3" style="width:26px;height:26px;margin-left:-13px;margin-top:-13px"></span>
+        <span class="puff p4" style="width:36px;height:36px;margin-left:-18px;margin-top:-18px"></span>
+        <span class="puff p5" style="width:22px;height:22px;margin-left:-11px;margin-top:-11px"></span>
+        <span class="puff p6" style="width:30px;height:30px;margin-left:-15px;margin-top:-15px"></span>
+        <span class="puff p7" style="width:24px;height:24px;margin-left:-12px;margin-top:-12px"></span>
+      </div>
+
+      <!-- 第 3 步：图标头顶与四周乱糟糟的涂鸦毛线团 + Z 字折返线条 -->
+      <svg width="240" height="210" viewBox="0 0 240 210" fill="none" aria-hidden="true" style="position:absolute;left:0;top:0;pointer-events:none;overflow:visible">
+        <!-- 头顶纠缠毛线团 -->
+        <path class="s-tangle" d="M 88 46 C 72 18, 126 10, 112 42 C 96 70, 152 14, 146 46 C 140 74, 82 32, 124 18 C 162 6, 174 52, 134 54" stroke="#2f5ec4" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
+        <!-- 左上与右上 Z 字高频乱划折返线 -->
+        <path class="s-zig" d="M 56 76 L 24 54 L 52 50 L 18 32 L 48 28 M 184 74 L 216 52 L 188 46 L 222 28 L 194 24 M 54 140 L 22 156 L 48 164 L 26 180 M 186 140 L 218 154 L 192 164 L 214 178" stroke="#547dd0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+
+      <!-- 第 2 步：更新图标本体 -->
+      <div class="u-icon" style="width:78px;height:78px;border-radius:18px;background:#eef3fc;border:2.5px solid #547dd0;box-shadow:0 10px 26px rgba(71,110,194,0.22);display:flex;align-items:center;justify-content:center;position:relative;color:#23468c">
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.5" fill="#c9d8f3" stroke="currentColor" stroke-width="1.6"></circle>
+          <path d="M12 8V15.25M12 15.25L8.75 12M12 15.25L15.25 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+        <span aria-hidden="true" style="position:absolute;top:8px;right:8px;width:12px;height:12px;border-radius:6px;background:#2f5ec4;box-shadow:0 0 0 2px #eef3fc"></span>
+      </div>
+    </div>
+
+    <!-- 底部 1:1 真实侧栏底栏尺寸同步预览 -->
+    <div style="position:absolute;bottom:18px;left:24px;right:24px;display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#fafafa;border:1px solid #e4e6ea;border-radius:10px">
+      <span style="font-size:14px;color:#526071">左下角侧栏底栏 1:1 真实尺寸同步效果（点击舞台任意处重播）</span>
+      <div style="width:240px;padding:6px 8px;background:#ffffff;border:1px solid #e4e6ea;border-radius:8px;display:flex;align-items:center;gap:6px">
+        <span style="flex:1;font-size:14px;font-weight:500;color:#20242c;padding-left:4px">本地笔记</span>
+        <div style="position:relative;width:30px;height:30px;display:flex;align-items:center;justify-content:center">
+          <svg width="60" height="54" viewBox="0 0 240 210" fill="none" aria-hidden="true" style="position:absolute;left:-15px;top:-14px;pointer-events:none">
+            <path class="s-tangle" d="M 88 46 C 72 18, 126 10, 112 42 C 96 70, 152 14, 146 46 C 140 74, 82 32, 124 18" stroke="#2f5ec4" stroke-width="5.5" stroke-linecap="round"></path>
+            <path class="s-zig" d="M 56 76 L 24 54 L 52 50 L 18 32 M 184 74 L 216 52 L 188 46 L 222 28" stroke="#547dd0" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+          <div class="u-icon" style="width:30px;height:30px;border-radius:6px;background:#eef3fc;border:1px solid #547dd0;display:flex;align-items:center;justify-content:center;color:#23468c;position:relative">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.5" fill="#c9d8f3" stroke="currentColor" stroke-width="1.5"></circle>
+              <path d="M12 8V15.25M12 15.25L8.75 12M12 15.25L15.25 12" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+            <span aria-hidden="true" style="position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:3px;background:#2f5ec4"></span>
+          </div>
+        </div>
+        <div style="width:1px;height:16px;background:#e4e6ea"></div>
+        <div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;color:#526071">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6.5H20M4 12H20M4 17.5H20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","default":"loop","options":[{"value":"loop","label":"自动循环演示（1.气泡 -> 2.图标 -> 3.乱线）"},{"value":"once","label":"单次触发播放"},{"value":"step1","label":"定格第 1 步：气泡动画先出来"},{"value":"step2","label":"定格第 2 步：然后显示图标"},{"value":"step3","label":"定格第 3 步：接着出现乱糟糟线条"}]},"slow":{"editor":"boolean","default":false,"label":"0.4x 慢放看清三步细节"},"$preview":{"width":840,"height":680}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { mode: null, slow: null, toggleFlip: false };
+  }
+  triggerOnce() {
+    this.setState({ mode: 'once', toggleFlip: !this.state.toggleFlip });
+  }
+  setLoopMode() {
+    this.setState({ mode: 'loop' });
+  }
+  toggleSlow() {
+    const cur = this.state.slow === null ? !!this.props.slow : this.state.slow;
+    this.setState({ slow: !cur, mode: 'loop' });
+  }
+  showStep1() { this.setState({ mode: 'step1' }); }
+  showStep2() { this.setState({ mode: 'step2' }); }
+  showStep3() { this.setState({ mode: 'step3' }); }
+  renderVals() {
+    const m = this.state.mode === null ? (this.props.mode || 'loop') : this.state.mode;
+    const isSlow = this.state.slow === null ? !!this.props.slow : this.state.slow;
+    let stageClass = 'stage-loop';
+    if (m === 'once') stageClass = this.state.toggleFlip ? 'stage-once-a' : 'stage-once-b';
+    else if (m === 'step1') stageClass = 'stage-step1';
+    else if (m === 'step2') stageClass = 'stage-step2';
+    else if (m === 'step3') stageClass = 'stage-step3';
+
+    return {
+      stageClass,
+      durVar: isSlow ? '--dur:7.5s' : '--dur:3.4s',
+      loopBtnClass: m === 'loop' ? 'ctrl-btn-active' : 'ctrl-btn',
+      slowBtnClass: isSlow ? 'ctrl-btn-active' : 'ctrl-btn',
+      slowLabel: isSlow ? '慢放中 0.4x' : '慢放 0.4x',
+      step1Bg: m === 'step1' ? '#e5edfc' : '#ffffff',
+      step1Bd: m === 'step1' ? '#476ec2' : '#e4e6ea',
+      step2Bg: m === 'step2' ? '#e5edfc' : '#ffffff',
+      step2Bd: m === 'step2' ? '#476ec2' : '#e4e6ea',
+      step3Bg: m === 'step3' ? '#e5edfc' : '#ffffff',
+      step3Bd: m === 'step3' ? '#476ec2' : '#e4e6ea'
+    };
+  }
+}
+</script>
+</body>
+</html>
