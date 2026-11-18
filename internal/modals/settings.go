@@ -204,9 +204,9 @@ type Manager struct {
 	exportErr         string
 
 	// Updater modal state.
-	Updater             *updater.Service
-	updaterOpen         bool
-	updaterScroll       ui.ScrollState
+	Updater       *updater.Service
+	updaterOpen   bool
+	updaterScroll ui.ScrollState
 }
 
 // NewManager creates a modal and settings manager bound to `dataDir` and `host`.
