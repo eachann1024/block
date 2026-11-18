@@ -2,7 +2,7 @@
   "app": "blockmd",
   "schema_version": 1,
   "topic": "blockmd-plugin",
-  "updated_at": "2026-11-18T10:43:48Z",
+  "updated_at": "2026-11-18T11:18:35Z",
   "apps": [
     {
       "app": "blockmd",
@@ -19,8 +19,9 @@
         "en": "Incremental notebook sync via local mirror, WebDAV, and Git"
       },
       "download_url": "builtin://block-sync",
+      "downloads": 1280,
       "verified": true,
-      "updated_at": "2026-11-18T10:43:48Z",
+      "updated_at": "2026-11-18T11:18:35Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -43,6 +44,174 @@
         "accent_paths": [
           "M16.5 5.8V8.8H13.5",
           "M7.5 18.2V15.2H10.5"
+        ]
+      }
+    },
+    {
+      "app": "blockmd",
+      "id": "block-image-host",
+      "name": {
+        "zh": "图床上传",
+        "en": "Image Host"
+      },
+      "version": "1.0.0",
+      "author": "Block Community",
+      "repo": "blockmd-community/block-image-host",
+      "summary": {
+        "zh": "支持 Cloudflare R2、S3 兼容存储与 GitHub 仓库的笔记图片自动上传",
+        "en": "Upload local note images to Cloudflare R2, S3-compatible storage, or GitHub"
+      },
+      "download_url": "builtin://block-image-host",
+      "downloads": 940,
+      "verified": true,
+      "updated_at": "2026-11-18T11:18:35Z",
+      "permissions": [
+        "storage",
+        "notes:read",
+        "notes:write",
+        "network",
+        "events:note_saved"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"
+        ],
+        "stroke_paths": [
+          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z",
+          "M4.5 16.5l4.2-4.2a1.4 1.4 0 0 1 2 0L14 15.6"
+        ],
+        "accent_paths": [
+          "M16.5 14V7.5",
+          "M14 10l2.5-2.5L19 10",
+          "M9 9.25a1.25 1.25 0 1 0 0 .01"
+        ]
+      }
+    },
+    {
+      "app": "blockmd",
+      "id": "block-publisher",
+      "name": {
+        "zh": "发布与导出",
+        "en": "Publisher"
+      },
+      "version": "1.0.0",
+      "author": "Block Community",
+      "repo": "blockmd-community/block-publisher",
+      "summary": {
+        "zh": "将笔记导出为静态博客站点、微信公众号排版 HTML 与小红书图文分段稿",
+        "en": "Export notes to static blog sites, WeChat MP HTML, and Xiaohongshu card drafts"
+      },
+      "download_url": "builtin://block-publisher",
+      "downloads": 760,
+      "verified": true,
+      "updated_at": "2026-11-18T11:18:35Z",
+      "permissions": [
+        "storage",
+        "notes:read"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M5 4h9l5 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"
+        ],
+        "stroke_paths": [
+          "M5 4h9l5 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z",
+          "M14 4v5h5",
+          "M8 15h8"
+        ],
+        "accent_paths": [
+          "M12 10l3 3",
+          "M12 10l-3 3",
+          "M12 10v7"
+        ]
+      }
+    },
+    {
+      "app": "blockmd",
+      "id": "block-migrator",
+      "name": {
+        "zh": "笔记迁移",
+        "en": "Migrator"
+      },
+      "version": "1.0.0",
+      "author": "Block Community",
+      "repo": "blockmd-community/block-migrator",
+      "summary": {
+        "zh": "从 Obsidian、Notion 与语雀导出目录迁移笔记，自动清洗语法并拷贝附件",
+        "en": "Migrate notes from Obsidian, Notion, and Yuque exports with syntax cleanup and asset copy"
+      },
+      "download_url": "builtin://block-migrator",
+      "downloads": 615,
+      "verified": true,
+      "updated_at": "2026-11-18T11:18:35Z",
+      "permissions": [
+        "storage",
+        "notes:read",
+        "notes:write"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"
+        ],
+        "stroke_paths": [
+          "M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z",
+          "M8 13h8"
+        ],
+        "accent_paths": [
+          "M13 10l3 3-3 3",
+          "M8 16h3"
+        ]
+      }
+    },
+    {
+      "app": "blockmd",
+      "id": "block-diagnostics",
+      "name": {
+        "zh": "性能与诊断",
+        "en": "Diagnostics"
+      },
+      "version": "1.0.0",
+      "author": "Block Community",
+      "repo": "blockmd-community/block-diagnostics",
+      "summary": {
+        "zh": "统计工作区体积、附件占用与进程内存，巡检孤立附件与失效链接",
+        "en": "Inspect workspace size, process RSS memory, orphan assets, and broken relative links"
+      },
+      "download_url": "builtin://block-diagnostics",
+      "downloads": 320,
+      "verified": true,
+      "updated_at": "2026-11-18T11:18:35Z",
+      "permissions": [
+        "storage",
+        "notes:read"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z"
+        ],
+        "stroke_paths": [
+          "M4.6 16.5A9 9 0 1 1 19.4 16.5",
+          "M12 4.5V6.5",
+          "M4.5 12H6.5",
+          "M17.5 12H19.5"
+        ],
+        "accent_paths": [
+          "M6.5 13.5H9L10.8 9L13.2 16L15 12.5H17.5"
         ]
       }
     }

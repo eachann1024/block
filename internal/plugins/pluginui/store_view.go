@@ -1,6 +1,8 @@
 package pluginui
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 
 	"block/internal/icons"
@@ -81,11 +83,32 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 			return
 		}
 
+		vpW, _ := c.Size()
+		twoCol := vpW == 0 || vpW >= 920
+
 		ui.Column(c.Key("app-store-list")).FillWidth().MinWidth(0).Gap(theme.Space16).Children(func() {
-			for _, item := range entries {
-				entry := item
-				_, isInstalled := installedMap[entry.ID]
-				renderStoreAppCard(c, ctrl, entry, locale, isInstalled, installingID, onSelectTab)
+			if !twoCol {
+				for _, item := range entries {
+					entry := item
+					_, isInstalled := installedMap[entry.ID]
+					renderStoreAppCard(c, ctrl, entry, locale, isInstalled, installingID, onSelectTab, false)
+				}
+				return
+			}
+			for i := 0; i < len(entries); i += 2 {
+				rowIdx := i / 2
+				ui.Row(c.Key(fmt.Sprintf("app-store-row-%d", rowIdx))).FillWidth().MinWidth(0).Gap(theme.Space16).AlignItems(ui.Stretch).Children(func() {
+					left := entries[i]
+					_, leftInstalled := installedMap[left.ID]
+					renderStoreAppCard(c, ctrl, left, locale, leftInstalled, installingID, onSelectTab, true)
+					if i+1 < len(entries) {
+						right := entries[i+1]
+						_, rightInstalled := installedMap[right.ID]
+						renderStoreAppCard(c, ctrl, right, locale, rightInstalled, installingID, onSelectTab, true)
+					} else {
+						ui.Box(c.Key("app-store-grid-spacer")).Grow(1).Basis(0).MinWidth(0)
+					}
+				})
 			}
 		})
 	})
@@ -151,90 +174,161 @@ func renderStoreAppCard(
 	isInstalled bool,
 	installingID string,
 	onSelectTab func(nextTab string),
+	inGrid bool,
 ) {
 	pal := theme.Ocean()
-	c.Key("app-store-card-" + entry.ID)
-	bui.Card(c, func() {
-		ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space16).AlignItems(ui.Start).Justify(ui.SpaceBetween).Children(func() {
-			ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space12).AlignItems(ui.Start).Children(func() {
-				ui.Box(c).Size(theme.HeightLarge, theme.HeightLarge).Shrink(0).Center().
-					Radius(theme.RadiusLG).Background(pal.Shell).Border(1, pal.Hairline).Children(func() {
-					DrawDuoSpec(c, entry.Icon, theme.IconChrome, pal.DuoIconColors(pal.Text))
-				})
+	downloads := entry.Downloads
+	if downloads < 0 {
+		downloads = 0
+	}
+	if store := ctrl.sup.Store(); store != nil {
+		downloads = store.EffectiveDownloads(entry)
+	}
+	dlStr := formatDownloadCount(downloads)
 
-				ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space6).Children(func() {
-					ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, entry.Name.Resolve(locale)).
-							FontSize(theme.FontTitle).
-							FixedLineHeight(theme.LineTitle).
-							FontWeight(theme.WeightTitle).
-							TextColor(pal.Text).
-							SingleLine().
-							Ellipsis("…")
-						ui.Text(c, "v"+entry.Version).
-							Font("monospace").
-							FontSize(theme.FontSmall).
-							FixedLineHeight(theme.LineSmall).
-							TextColor(pal.TextSecondary).
-							SingleLine()
-						renderVerifiedBadge(c, entry.Verified)
-						if author := strings.TrimSpace(entry.Author); author != "" {
-							ui.Text(c, author).
-								FontSize(theme.FontSmall).
-								FixedLineHeight(theme.LineSmall).
-								TextColor(pal.TextSecondary).
-								SingleLine().
-								Ellipsis("…")
-						}
+	card := ui.Column(c.Key("app-store-card-" + entry.ID)).
+		Padding(theme.CardPadY, theme.CardPadX, theme.CardPadY, theme.CardPadX).
+		Gap(theme.CardGap).
+		Radius(theme.RadiusXL).
+		Background(pal.Card).
+		Border(1, pal.Hairline).
+		Justify(ui.SpaceBetween)
+	if inGrid {
+		card.Grow(1).Basis(0).MinWidth(0)
+	} else {
+		card.FillWidth().MinWidth(0)
+	}
+
+	card.Children(func() {
+		ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space12).Children(func() {
+			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Start).Justify(ui.SpaceBetween).Children(func() {
+				ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space12).AlignItems(ui.Start).Children(func() {
+					ui.Box(c).Size(theme.HeightLarge, theme.HeightLarge).Shrink(0).Center().
+						Radius(theme.RadiusLG).Background(pal.Shell).Border(1, pal.Hairline).Children(func() {
+						DrawDuoSpec(c, entry.Icon, theme.IconChrome, pal.DuoIconColors(pal.Text))
 					})
 
-					if summary := entry.Summary.Resolve(locale); summary != "" {
-						ui.Text(c, summary).
-							FontSize(theme.FontBody).
-							FixedLineHeight(theme.LineBody).
-							TextColor(pal.TextSecondary)
+					ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space4).Children(func() {
+						ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, entry.Name.Resolve(locale)).
+								FontSize(theme.FontTitle).
+								FixedLineHeight(theme.LineTitle).
+								FontWeight(theme.WeightTitle).
+								TextColor(pal.Text).
+								SingleLine().
+								Ellipsis("…")
+							if ver := strings.TrimSpace(entry.Version); ver != "" {
+								ui.Text(c, "v"+strings.TrimPrefix(ver, "v")).
+									Font("monospace").
+									FontSize(theme.FontSmall).
+									FixedLineHeight(theme.LineSmall).
+									TextColor(pal.TextSecondary).
+									SingleLine()
+							}
+						})
+
+						ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
+							renderVerifiedBadge(c, entry.Verified)
+							if author := strings.TrimSpace(entry.Author); author != "" {
+								ui.Text(c, author).
+									FontSize(theme.FontSmall).
+									FixedLineHeight(theme.LineSmall).
+									TextColor(pal.TextSecondary).
+									SingleLine().
+									Ellipsis("…")
+							}
+						})
+					})
+				})
+
+				ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
+					if isInstalled {
+						openBtn := bui.ActionButton(c, "app-store-open-"+entry.ID, theme.Tr("打开", "Open"), nil, bui.ButtonSecondary, false)
+						if openBtn.Clicked() && onSelectTab != nil {
+							onSelectTab(modals.TabPluginPrefix + entry.ID)
+						}
+						uninstBtn := bui.ActionButton(c, "app-store-uninstall-"+entry.ID, theme.Tr("卸载", "Uninstall"), nil, bui.ButtonDanger, false)
+						if uninstBtn.Clicked() {
+							ctrl.uninstallPlugin(entry.ID, nil)
+						}
+						return
 					}
 
-					if len(entry.Permissions) > 0 {
-						ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space6).Children(func() {
-							for _, perm := range entry.Permissions {
-								renderPermissionCapsule(c, plugins.PermissionLabel(perm, locale))
+					isThisInstalling := installingID == entry.ID
+					lbl := theme.Tr("安装", "Install")
+					if isThisInstalling {
+						lbl = theme.Tr("安装中…", "Installing…")
+					}
+					instBtn := bui.ActionButton(c, "app-store-install-"+entry.ID, lbl, nil, bui.ButtonPrimary, installingID != "")
+					if instBtn.Clicked() {
+						appEntry := entry
+						ctrl.sup.InstallEntryAsync(appEntry, func(pluginID string) {
+							if onSelectTab != nil {
+								onSelectTab(modals.TabPluginPrefix + pluginID)
 							}
 						})
 					}
 				})
 			})
 
-			ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
-				if isInstalled {
-					openBtn := bui.ActionButton(c, "app-store-open-"+entry.ID, theme.Tr("打开", "Open"), nil, bui.ButtonSecondary, false)
-					if openBtn.Clicked() && onSelectTab != nil {
-						onSelectTab(modals.TabPluginPrefix + entry.ID)
-					}
-					uninstBtn := bui.ActionButton(c, "app-store-uninstall-"+entry.ID, theme.Tr("卸载", "Uninstall"), nil, bui.ButtonDanger, false)
-					if uninstBtn.Clicked() {
-						ctrl.uninstallPlugin(entry.ID, nil)
-					}
-					return
-				}
+			if summary := strings.TrimSpace(entry.Summary.Resolve(locale)); summary != "" {
+				ui.Text(c, summary).
+					FontSize(theme.FontBody).
+					FixedLineHeight(theme.LineBody).
+					TextColor(pal.TextSecondary).
+					MaxLines(2).
+					Ellipsis("…")
+			}
+		})
 
-				isThisInstalling := installingID == entry.ID
-				lbl := theme.Tr("安装", "Install")
-				if isThisInstalling {
-					lbl = theme.Tr("安装中…", "Installing…")
-				}
-				instBtn := bui.ActionButton(c, "app-store-install-"+entry.ID, lbl, nil, bui.ButtonPrimary, installingID != "")
-				if instBtn.Clicked() {
-					appEntry := entry
-					ctrl.sup.InstallEntryAsync(appEntry, func(pluginID string) {
-						if onSelectTab != nil {
-							onSelectTab(modals.TabPluginPrefix + pluginID)
+		ui.Row(c).FillWidth().MinWidth(0).
+			Padding(theme.Space10, 0, 0, 0).
+			BorderWidth(1, 0, 0, 0).
+			BorderColor(pal.Hairline).
+			Gap(theme.Space12).
+			AlignItems(ui.Center).
+			Justify(ui.SpaceBetween).
+			Children(func() {
+				ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
+					icons.Draw(c, icons.Download, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+					ui.Text(c, theme.Tr(dlStr+" 次下载", dlStr+" downloads")).
+						FontSize(theme.FontMeta).
+						FixedLineHeight(theme.LineMeta).
+						TextColor(pal.TextSecondary).
+						SingleLine()
+				})
+
+				if len(entry.Permissions) > 0 {
+					ui.Row(c).Grow(1).MinWidth(0).Wrap().Gap(theme.Space4).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+						for _, perm := range entry.Permissions {
+							renderPermissionCapsule(c, plugins.PermissionLabel(perm, locale))
 						}
 					})
 				}
 			})
-		})
 	})
+}
+
+func formatDownloadCount(n int) string {
+	if n < 0 {
+		n = 0
+	}
+	s := strconv.Itoa(n)
+	if len(s) <= 3 {
+		return s
+	}
+	var out []byte
+	rem := len(s) % 3
+	if rem > 0 {
+		out = append(out, s[:rem]...)
+	}
+	for i := rem; i < len(s); i += 3 {
+		if len(out) > 0 {
+			out = append(out, ',')
+		}
+		out = append(out, s[i:i+3]...)
+	}
+	return string(out)
 }
 
 func renderVerifiedBadge(c *ui.Context, verified bool) {

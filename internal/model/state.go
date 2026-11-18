@@ -186,7 +186,7 @@ type AppState struct {
 
 func DefaultAppState(defaultLang LanguageMode) AppState {
 	hideAssets := true
-	hideNonMD := false
+	hideNonMD := true
 	return AppState{
 		Theme:                ThemeSystem,
 		Language:             defaultLang,
