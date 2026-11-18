@@ -50,6 +50,21 @@ func (s *Session) tableMetrics() (fontSize, lineHeight, minRowH, minColW, maxCol
 		tableMinColWidth * z, tableMaxColWidth * z, 6 * z, 10 * z
 }
 
+const editorBandBleed float32 = 8
+
+func isSurfaceBleedBlock(kind model.BlockKind) bool {
+	switch kind {
+	case model.BlockCode, model.BlockRawHTML, model.BlockCallout, model.BlockTable, model.BlockImage, model.BlockDivider:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Session) bandBleed() float32 {
+	return editorBandBleed * s.zoom()
+}
+
 func (s *Session) outerFlowWidth() float32 {
 	return s.standardWidth() + s.leftContentGutter() + s.rightContentInset()
 }
