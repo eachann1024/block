@@ -273,7 +273,7 @@ func (m *Manager) searchScanOptions() files.ScanOptions {
 }
 
 func scanOptionsFromAppState(st model.AppState) files.ScanOptions {
-	hideNonMD := st.HideNonMarkdownFiles != nil && *st.HideNonMarkdownFiles
+	hideNonMD := st.HideNonMarkdownFiles == nil || *st.HideNonMarkdownFiles
 	hideAssets := st.HideAssetsFolder == nil || *st.HideAssetsFolder
 	assets := strings.TrimSpace(st.AssetsFolder)
 	if assets == "" {

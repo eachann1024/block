@@ -1,0 +1,44 @@
+{
+  "app": "blockmd",
+  "schema_version": 1,
+  "id": "block-image-host",
+  "name": {
+    "zh": "图床上传",
+    "en": "Image Host"
+  },
+  "version": "1.0.0",
+  "author": "Block Community",
+  "repo": "blockmd-community/block-image-host",
+  "summary": {
+    "zh": "支持 Cloudflare R2、S3 兼容存储与 GitHub 仓库的笔记图片自动上传",
+    "en": "Upload local note images to Cloudflare R2, S3-compatible storage, or GitHub"
+  },
+  "entry": {
+    "command": ["python3", "-u", "main.py"]
+  },
+  "permissions": [
+    "storage",
+    "notes:read",
+    "notes:write",
+    "network",
+    "events:note_saved"
+  ],
+  "surfaces": [
+    "settings_page"
+  ],
+  "icon": {
+    "view_box": "0 0 24 24",
+    "fill_paths": [
+      "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"
+    ],
+    "stroke_paths": [
+      "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z",
+      "M4.5 16.5l4.2-4.2a1.4 1.4 0 0 1 2 0L14 15.6"
+    ],
+    "accent_paths": [
+      "M16.5 14V7.5",
+      "M14 10l2.5-2.5L19 10",
+      "M9 9.25a1.25 1.25 0 1 0 0 .01"
+    ]
+  }
+}

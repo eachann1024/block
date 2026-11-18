@@ -40,7 +40,6 @@ var shortcutActionSpecs = []shortcutActionSpec{
 	{action: "toggle_sidebar", buttonID: "settings-rec-sidebar", def: "alt-b", zh: "显示或隐藏侧栏", en: "Toggle Sidebar"},
 	{action: "toggle_ai", buttonID: "settings-rec-ai", def: "cmd-j", zh: "AI 助手面板", en: "AI Assistant Panel"},
 	{action: "export_image", buttonID: "settings-rec-export", def: "cmd-shift-e", zh: "导出与生成图片", en: "Export & Image"},
-	{action: "performance", buttonID: "settings-rec-perf", def: "cmd-shift-m", zh: "性能与占用", en: "Performance & Usage"},
 }
 
 // AllShortcutDefaults returns a fresh map of every customizable shortcut action ID to its default chord.
@@ -77,6 +76,8 @@ func EffectiveShortcut(st model.AppState, action string) string {
 		return defaultQuickShortcut
 	case "find":
 		return "cmd-f"
+	case "performance":
+		return "cmd-shift-m"
 	default:
 		if st.CustomShortcuts != nil {
 			if v := strings.TrimSpace(st.CustomShortcuts[action]); v != "" {
@@ -1328,64 +1329,39 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 	pal := theme.Ocean()
 	st := m.currentState()
-	hideNonMD := st.HideNonMarkdownFiles != nil && *st.HideNonMarkdownFiles
+	hideNonMD := st.HideNonMarkdownFiles == nil || *st.HideNonMarkdownFiles
+	showNonMD := !hideNonMD
 	hideAssets := st.HideAssetsFolder == nil || *st.HideAssetsFolder
 	assetsName := st.AssetsFolder
 	if strings.TrimSpace(assetsName) == "" {
 		assetsName = "assets"
 	}
 
-	ui.Column(c.Key("settings-folders-body")).FillWidth().Gap(24).Children(func() {
-		// Card 1: Full-row Hide Non-Markdown Files checkbox (app_settings_folders_view.rs:111-122).
+	ui.Column(c.Key("settings-folders-body")).FillWidth().Gap(theme.Space24).Children(func() {
+		// Card 1: Workspace Folder & File Visibility Rules.
 		internalui.Card(c, func() {
-			label := theme.Tr("不显示 MD 格式以外的文件", "Hide Non-Markdown Files")
-			rowBG := pal.Shell
-			borderCol := pal.Hairline
-			if hideNonMD {
-				rowBG = pal.Selected
-				borderCol = pal.Accent
-			}
-			chkRow := ui.ButtonBase(c.Key("folder-row-non-md")).FillWidth().MinHeight(46).
-				Padding(8, 14, 8, 14).Radius(theme.RadiusXL).
-				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).
-				Cursor(ui.CursorPointer).Label(label)
-			chkHover := chkRow.Hovered()
-			chkPress := chkRow.Pressed()
-			if chkHover || chkPress {
-				borderCol = pal.Accent
-			}
-			internalui.AnimateSurfaceColors(chkRow, rowBG, borderCol, true)
-			internalui.TactileCard(chkRow, chkHover, chkPress, hideNonMD, false)
-			chkRow.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+			cardTitle(c, theme.Tr("工作区文件夹清单", "Workspace Folder Rules"))
+
+			showRow := ui.Row(c.Key("folder-row-non-md")).FillWidth().MinHeight(theme.HeightLarge).
+				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space16)
+			showRow.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 				internalui.RecordBounds("folder-hide-non-md", r)
 				internalui.RecordBounds("settings-hide-non-md", r)
 			})
-			chkRow.Children(func() {
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
-					icCol := pal.DuoIconColors(pal.Text)
-					if hideNonMD {
-						icCol = pal.DuoIconColors(pal.Accent)
-					}
-					icons.DrawAnimated(c, icons.Note, theme.IconRow, icCol, hideNonMD || chkHover || chkPress)
-					ui.Text(c, label).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).AccessHidden(true)
-				})
-				folderCheckBox(c, hideNonMD, chkHover || chkPress)
-			})
-			if chkRow.Clicked() {
-				nextVal := !hideNonMD
-				m.mutateState(func(s *model.AppState) {
-					v := nextVal
-					s.HideNonMarkdownFiles = &v
-				})
-			}
-		})
-
-		// Card 2: Workspace Folder Rules (app_settings_folders_view.rs:123-188).
-		internalui.Card(c, func() {
-			ui.Column(c).FillWidth().Gap(theme.Space2).Children(func() {
-				cardTitle(c, theme.Tr("工作区文件夹清单", "Workspace Folder Rules"))
-				ui.Text(c, theme.Tr("隐藏影响侧栏与搜索，不删除文件", "Hiding affects sidebar & search; files are not deleted")).
-					FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+			showRow.Children(func() {
+				ui.Text(c, theme.Tr("显示非 Markdown 文件", "Show Non-Markdown Files")).
+					FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
+				pillLbl := theme.Tr("已关闭", "Off")
+				if showNonMD {
+					pillLbl = theme.Tr("已开启", "On")
+				}
+				if internalui.TogglePill(c, "settings-show-non-md-pill", pillLbl, &showNonMD, false) {
+					nextHide := !showNonMD
+					m.mutateState(func(s *model.AppState) {
+						v := nextHide
+						s.HideNonMarkdownFiles = &v
+					})
+				}
 			})
 
 			rules := append([]model.FolderRule(nil), st.FolderRules...)
@@ -1493,123 +1469,6 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 				})
 				if m.folderRuleError != "" {
 					ui.Text(c, m.folderRuleError).FontSize(theme.FontBody).TextColor(pal.Accent)
-				}
-			})
-
-			// Advanced Regex collapsible section (pt=12, border-top hairline, gap=10).
-			var regexCount int
-			for _, r := range rules {
-				if r.Regex {
-					regexCount++
-				}
-			}
-			ui.Column(c).FillWidth().Padding(12, 0, 0, 0).Gap(10).
-				BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
-				ui.Row(c).FillWidth().Justify(ui.Start).Children(func() {
-					advBtn := ui.ButtonBase(c.Key("settings-regex-toggle")).Gap(6).
-						AlignItems(ui.Center).Justify(ui.Start).Cursor(ui.CursorPointer).
-						Label(theme.Tr("高级规则（正则表达式）", "Advanced Rules (Regex)"))
-					advHover := advBtn.Hovered()
-					advPress := advBtn.Pressed()
-					internalui.TactileCard(advBtn, advHover, advPress, m.advancedRulesOpen, false)
-					advBtn.Children(func() {
-						chevron := icons.ChevronRight
-						if m.advancedRulesOpen {
-							chevron = icons.ChevronDown
-						}
-						ic := pal.MonoIconColors(pal.TextSecondary)
-						if m.advancedRulesOpen || advHover || advPress {
-							ic = pal.DuoIconColors(pal.Text)
-						}
-						icons.DrawAnimated(c, chevron, 14, ic, m.advancedRulesOpen || advHover || advPress)
-						ui.Text(c, theme.Tr("高级规则（正则表达式）", "Advanced Rules (Regex)")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
-						if regexCount > 0 {
-							ui.Box(c).Padding(1, 6, 1, 6).Radius(theme.RadiusMD).
-								Background(pal.Shell).Border(1, pal.Hairline).Children(func() {
-								ui.Text(c, fmt.Sprintf("%d", regexCount)).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
-							})
-						}
-					})
-					internalui.Probe(advBtn, "settings-regex-toggle")
-					if advBtn.Clicked() {
-						m.advancedRulesOpen = !m.advancedRulesOpen
-					}
-				})
-
-				if m.advancedRulesOpen {
-					ui.Column(c.Key("settings-regex-panel")).FillWidth().Gap(8).
-						Transition(internalui.CascadeRowTransition(0)).Children(func() {
-						ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-							var submitted bool
-							ui.Row(c.Key("regex-slash-affix")).Grow(1).MinWidth(0).Height(34).PaddingX(10).
-								AlignItems(ui.Center).Radius(theme.RadiusMD).
-								Background(pal.Shell).Border(1, pal.BtnBorder).Children(func() {
-								ui.Text(c, "/").Font("monospace").FontSize(theme.FontBody).FontWeight(theme.WeightMono).TextColor(pal.TextSecondary)
-								in := ui.TextInput(c.Key("settings-regex-rule-input"), &m.regexRuleDraft).
-									Placeholder("temp|cache").
-									Label(theme.Tr("正则表达式", "Regex Pattern")).
-									Font("monospace").FontSize(theme.FontBody).Height(32).PaddingX(4).
-									Background(ui.Transparent).Border(0, ui.Transparent).Grow(1).MinWidth(0)
-								internalui.Probe(in, "settings-regex-rule-input")
-								submitted = in.Submitted()
-								if in.Changed() {
-									m.regexRuleError = ""
-								}
-								ui.Text(c, "/").Font("monospace").FontSize(theme.FontBody).FontWeight(theme.WeightMono).TextColor(pal.TextSecondary)
-							})
-							addBtn := internalui.ActionButton(c, "settings-regex-rule-add", theme.Tr("添加正则", "Add Regex"), nil, internalui.ButtonSecondary, false)
-							if addBtn.Clicked() || submitted {
-								m.addFolderRule(true)
-							}
-						})
-						if m.regexRuleError != "" {
-							ui.Text(c, m.regexRuleError).FontSize(theme.FontBody).TextColor(pal.Accent)
-						}
-						if regexCount > 0 {
-							ui.Column(c).FillWidth().Padding(4, 0, 0, 0).Gap(8).Children(func() {
-								for i, r := range rules {
-									if !r.Regex {
-										continue
-									}
-									idx := i
-									rule := r
-									folderTableRow(c, "folder-regex-row-"+rule.Pattern, rule.Hidden,
-										func() {
-											icCol := pal.DuoIconColors(pal.Text)
-											if rule.Hidden {
-												icCol = pal.MonoIconColors(pal.TextSecondary)
-											}
-											icons.Draw(c, icons.Code, theme.IconRow, icCol)
-											ui.Text(c, "/"+rule.Pattern+"/").Font("monospace").FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-										},
-										func() {
-											visIdx := 0
-											if !rule.Hidden {
-												visIdx = 1
-											}
-											if internalui.SegmentedControl(c, "folder-regex-vis-"+rule.Pattern, &visIdx, []internalui.SegmentOption{
-												{Label: theme.Tr("隐藏", "Hidden")},
-												{Label: theme.Tr("显示", "Show")},
-											}) {
-												rules[idx].Hidden = visIdx == 0
-												m.saveFolderRules(rules)
-											}
-											ui.Row(c).MinWidth(28).Justify(ui.End).Children(func() {
-												del := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-													ID:    "folder-regex-del-" + rule.Pattern,
-													Label: theme.Tr("删除正则规则", "Remove Regex Rule"),
-												})
-												if del.Clicked() {
-													next := append(rules[:idx], rules[idx+1:]...)
-													m.saveFolderRules(next)
-												}
-											})
-										},
-									)
-								}
-							})
-						}
-					})
 				}
 			})
 		})
@@ -1926,9 +1785,6 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 		})
 		settingRow(c, theme.Tr("AI 助手面板", "AI Assistant Panel"), func() {
 			staticKeycapTray(c, "settings-keycap-ai", EffectiveShortcut(st, "toggle_ai"))
-		})
-		settingRow(c, theme.Tr("性能与占用", "Performance & Usage"), func() {
-			staticKeycapTray(c, "settings-keycap-perf", EffectiveShortcut(st, "performance"))
 		})
 	})
 }

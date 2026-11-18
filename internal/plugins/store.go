@@ -33,6 +33,7 @@ type StoreAppEntry struct {
 	Summary        LocalizedText `json:"summary"`
 	DownloadURL    string        `json:"download_url"`
 	SHA256         string        `json:"sha256,omitempty"`
+	Downloads      int           `json:"downloads"`
 	Stars          int           `json:"stars,omitempty"`
 	Verified       bool          `json:"verified,omitempty"`
 	UpdatedAt      string        `json:"updated_at,omitempty"`
@@ -84,7 +85,12 @@ func DefaultSeedIndex() *StoreIndex {
 	for _, s := range builtinSeeds {
 		apps = append(apps, s.Entry)
 	}
-	sort.Slice(apps, func(i, j int) bool { return apps[i].ID < apps[j].ID })
+	sort.Slice(apps, func(i, j int) bool {
+		if apps[i].Downloads != apps[j].Downloads {
+			return apps[i].Downloads > apps[j].Downloads
+		}
+		return apps[i].ID < apps[j].ID
+	})
 	return &StoreIndex{
 		App:           TargetApp,
 		SchemaVersion: CurrentSchemaVersion,
@@ -109,6 +115,7 @@ type StoreManager struct {
 	CacheRoot string
 	IndexURLs []string
 	HTTP      *http.Client
+	dlMu      sync.Mutex
 }
 
 func NewStoreManager(blockAppDataDir string) *StoreManager {
@@ -136,6 +143,49 @@ func (s *StoreManager) EnsureDirs() error {
 
 func (s *StoreManager) cacheIndexPath() string {
 	return filepath.Join(s.CacheRoot, "store-index.json")
+}
+
+func (s *StoreManager) downloadCountsPath() string {
+	return filepath.Join(s.CacheRoot, "download-counts.json")
+}
+
+func (s *StoreManager) loadDownloadDeltasLocked() map[string]int {
+	out := map[string]int{}
+	raw, err := os.ReadFile(s.downloadCountsPath())
+	if err != nil {
+		return out
+	}
+	_ = json.Unmarshal(raw, &out)
+	return out
+}
+
+// IncrementDownloads records a completed download/install for pluginID in apps-cache/download-counts.json.
+func (s *StoreManager) IncrementDownloads(pluginID string) int {
+	if strings.TrimSpace(pluginID) == "" {
+		return 0
+	}
+	_ = s.EnsureDirs()
+	s.dlMu.Lock()
+	defer s.dlMu.Unlock()
+	deltas := s.loadDownloadDeltasLocked()
+	deltas[pluginID]++
+	next := deltas[pluginID]
+	if raw, err := json.MarshalIndent(deltas, "", "  "); err == nil {
+		_ = os.WriteFile(s.downloadCountsPath(), raw, 0o644)
+	}
+	return next
+}
+
+// EffectiveDownloads returns the catalog download baseline plus local recorded downloads for entry.ID.
+func (s *StoreManager) EffectiveDownloads(entry StoreAppEntry) int {
+	s.dlMu.Lock()
+	deltas := s.loadDownloadDeltasLocked()
+	s.dlMu.Unlock()
+	base := entry.Downloads
+	if base < 0 {
+		base = 0
+	}
+	return base + deltas[entry.ID]
 }
 
 // LoadCachedOrSeedCatalog returns the cached store-index.json merged with built-in official catalog entries.
@@ -256,8 +306,17 @@ func (s *StoreManager) ListInstalled() ([]InstalledApp, error) {
 	return out, nil
 }
 
-// InstallEntry installs a catalog StoreAppEntry via builtin:// seed, file:// directory, or HTTPS archive with SHA256 check.
+// InstallEntry installs a catalog StoreAppEntry via builtin:// seed, file:// directory, or HTTPS archive with SHA256 check,
+// and increments the persistent download counter on success.
 func (s *StoreManager) InstallEntry(ctx context.Context, entry StoreAppEntry) (*InstalledApp, error) {
+	inst, err := s.installEntryCore(ctx, entry)
+	if err == nil && inst != nil {
+		s.IncrementDownloads(inst.Manifest.ID)
+	}
+	return inst, err
+}
+
+func (s *StoreManager) installEntryCore(ctx context.Context, entry StoreAppEntry) (*InstalledApp, error) {
 	u := strings.TrimSpace(entry.DownloadURL)
 	switch {
 	case strings.HasPrefix(u, "builtin://"):
@@ -279,12 +338,20 @@ func (s *StoreManager) InstallEntry(ctx context.Context, entry StoreAppEntry) (*
 		}
 		return installed, nil
 	default:
-		return s.InstallFromSource(ctx, u)
+		return s.installFromSourceCore(ctx, u)
 	}
 }
 
 // InstallFromSource supports local directory paths, archive URLs, or Magpie-style GitHub shorthand (owner/repo or github:owner/repo).
 func (s *StoreManager) InstallFromSource(ctx context.Context, spec string) (*InstalledApp, error) {
+	inst, err := s.installFromSourceCore(ctx, spec)
+	if err == nil && inst != nil {
+		s.IncrementDownloads(inst.Manifest.ID)
+	}
+	return inst, err
+}
+
+func (s *StoreManager) installFromSourceCore(ctx context.Context, spec string) (*InstalledApp, error) {
 	spec = strings.TrimSpace(spec)
 	if spec == "" {
 		return nil, errors.New("empty plugin source")
@@ -322,7 +389,7 @@ func (s *StoreManager) InstallFromSource(ctx context.Context, spec string) (*Ins
 	cat := s.LoadCachedOrSeedCatalog()
 	for _, app := range cat.Apps {
 		if app.ID == spec {
-			return s.InstallEntry(ctx, app)
+			return s.installEntryCore(ctx, app)
 		}
 	}
 	return nil, fmt.Errorf("unsupported plugin source %q", spec)

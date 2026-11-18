@@ -22,7 +22,8 @@
     .nav-row { width: 100%; height: 32px; padding: 0 10px; border-radius: 8px; display: flex; align-items: center; gap: 8px; text-align: left; white-space: nowrap; }
     .btn { height: 32px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-weight: 460; white-space: nowrap; flex: none; }
     .seg { height: 28px; padding: 0 12px; border: 0; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-weight: 460; white-space: nowrap; }
-    .inp { height: 32px; padding: 0 10px; border-radius: 8px; outline: none; }
+    .inp { height: 34px; padding: 0 10px; border-radius: 8px; outline: none; }
+    .keycap { min-width: 24px; height: 24px; padding: 0 7px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; line-height: 14px; font-weight: 500; }
   </style>
 </helmet>
 
@@ -120,54 +121,167 @@
           </button>
         </sc-if>
 
+        <sc-if value="{{imgInstalled}}" hint-placeholder-val="{{false}}">
+          <button type="button" class="nav-row" onClick="{{goImageHost}}" style="background: {{nImBg}}; border: 1px solid {{nImBd}}; color: {{nImCol}}; font-weight: {{nImW}}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex: none">
+              <rect x="3.5" y="5" width="17" height="14" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+              <circle cx="8.5" cy="9.5" r="1.4" fill="{{accent}}"></circle>
+              <path d="M6 16.5L10.5 12L14 15.2L16.5 13L19 16.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+            <span style="flex: 1">图床上传</span>
+          </button>
+        </sc-if>
+
         <sc-if value="{{pubInstalled}}" hint-placeholder-val="{{false}}">
-          <button type="button" class="nav-row" onClick="{{goPub}}" style="background: {{nPbBg}}; border: 1px solid {{nPbBd}}; color: {{nPbCol}}; font-weight: {{nPbW}}">
+          <button type="button" class="nav-row" onClick="{{goPublisher}}" style="background: {{nPbBg}}; border: 1px solid {{nPbBd}}; color: {{nPbCol}}; font-weight: {{nPbW}}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex: none">
               <rect x="4" y="4.5" width="16" height="15" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
               <path d="M8.5 13.5L12 10L15.5 13.5M12 10V16.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
             </svg>
-            <span style="flex: 1">静态发布</span>
+            <span style="flex: 1">发布与导出</span>
+          </button>
+        </sc-if>
+
+        <sc-if value="{{migInstalled}}" hint-placeholder-val="{{false}}">
+          <button type="button" class="nav-row" onClick="{{goMigrator}}" style="background: {{nMgBg}}; border: 1px solid {{nMgBd}}; color: {{nMgCol}}; font-weight: {{nMgW}}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex: none">
+              <rect x="3.75" y="5.5" width="7.5" height="13" rx="1.6" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+              <rect x="12.75" y="5.5" width="7.5" height="13" rx="1.6" stroke="currentColor" stroke-width="1.5"></rect>
+              <path d="M9.5 12H14.5M12.5 9.8L14.7 12L12.5 14.2" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+            <span style="flex: 1">笔记迁移</span>
+          </button>
+        </sc-if>
+
+        <sc-if value="{{diagInstalled}}" hint-placeholder-val="{{false}}">
+          <button type="button" class="nav-row" onClick="{{goDiagnostics}}" style="background: {{nDgBg}}; border: 1px solid {{nDgBd}}; color: {{nDgCol}}; font-weight: {{nDgW}}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex: none">
+              <rect x="3.75" y="4.5" width="16.5" height="15" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+              <path d="M6.5 13H9.5L11.2 9L13.5 15.5L15.2 12H17.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+            <span style="flex: 1">性能与诊断</span>
           </button>
         </sc-if>
       </nav>
     </aside>
 
-    <main style="flex: 1; min-width: 0; padding: 40px 28px 64px; overflow: auto">
-      <div style="width: 100%; max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px">
+    <main style="flex: 1; min-width: 0; padding: 36px 28px 56px; overflow: auto">
+      <div style="width: 100%; max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px">
 
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
           <div style="display: flex; align-items: center; gap: 10px">
             <h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 560; color: {{textCol}}">{{crumbTitle}}</h1>
-            <sc-if value="{{isSyncView}}" hint-placeholder-val="{{true}}">
-              <span style="height: 24px; padding: 0 10px; border-radius: 99px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}; font-size: 13px; display: inline-flex; align-items: center">{{syncBadge}}</span>
+            <sc-if value="{{isSyncView}}" hint-placeholder-val="{{false}}">
+              <span style="height: 24px; padding: 0 10px; border-radius: 99px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}; font-size: 12px; display: inline-flex; align-items: center">{{syncBadge}}</span>
+            </sc-if>
+            <sc-if value="{{isDiagnosticsView}}" hint-placeholder-val="{{false}}">
+              <span style="height: 24px; padding: 0 10px; border-radius: 99px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}; font-size: 12px; display: inline-flex; align-items: center">{{diagBadge}}</span>
             </sc-if>
           </div>
-          <button type="button" class="ib" aria-label="关闭设置" onClick="{{goStore}}" style="width: 28px; height: 28px; color: {{mutedCol}}">
+          <button type="button" class="ib" aria-label="返回应用商店" onClick="{{goStore}}" style="width: 28px; height: 28px; color: {{mutedCol}}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
               <path d="M6 6L18 18M18 6L6 18"></path>
             </svg>
           </button>
         </div>
 
-        <sc-if value="{{isSyncView}}" hint-placeholder-val="{{true}}">
-          <section aria-label="存储目标" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+        <sc-if value="{{isStoreView}}" hint-placeholder-val="{{true}}">
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <sc-for list="{{storeApps}}" as="app" hint-placeholder-count="5">
+              <section aria-label="{{app.name}}" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 14px">
+                <div style="display: flex; flex-direction: column; gap: 12px">
+                  <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+                    <div style="display: flex; align-items: center; gap: 12px; min-width: 0">
+                      <div style="width: 40px; height: 40px; border-radius: 10px; background: {{shellBg}}; border: 1px solid {{hairline}}; display: flex; align-items: center; justify-content: center; flex: none; color: {{textCol}}">
+                        <sc-if value="{{app.isSync}}" hint-placeholder-val="{{true}}">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <circle cx="12" cy="12" r="8" fill="{{iconFill}}"></circle>
+                            <path d="M7.5 10.5A5 5 0 0 1 16.2 8.5M16.5 13.5A5 5 0 0 1 7.8 15.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+                            <path d="M16.5 5.8V8.8H13.5M7.5 18.2V15.2H10.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                          </svg>
+                        </sc-if>
+                        <sc-if value="{{app.isImageHost}}" hint-placeholder-val="{{false}}">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <rect x="3.5" y="5" width="17" height="14" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+                            <circle cx="8.5" cy="9.5" r="1.4" fill="{{accent}}"></circle>
+                            <path d="M6 16.5L10.5 12L14 15.2L16.5 13L19 16.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                          </svg>
+                        </sc-if>
+                        <sc-if value="{{app.isPublisher}}" hint-placeholder-val="{{false}}">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <rect x="4" y="4.5" width="16" height="15" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+                            <path d="M8.5 13.5L12 10L15.5 13.5M12 10V16.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                          </svg>
+                        </sc-if>
+                        <sc-if value="{{app.isMigrator}}" hint-placeholder-val="{{false}}">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <rect x="3.75" y="5.5" width="7.5" height="13" rx="1.6" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+                            <rect x="12.75" y="5.5" width="7.5" height="13" rx="1.6" stroke="currentColor" stroke-width="1.5"></rect>
+                            <path d="M9.5 12H14.5M12.5 9.8L14.7 12L12.5 14.2" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                          </svg>
+                        </sc-if>
+                        <sc-if value="{{app.isDiagnostics}}" hint-placeholder-val="{{false}}">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <rect x="3.75" y="4.5" width="16.5" height="15" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+                            <path d="M6.5 13H9.5L11.2 9L13.5 15.5L15.2 12H17.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                          </svg>
+                        </sc-if>
+                      </div>
+
+                      <div style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
+                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+                          <span style="font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">{{app.name}}</span>
+                          <span class="mono" style="font-size: 12px; color: {{mutedCol}}">{{app.version}}</span>
+                          <span style="height: 20px; padding: 0 7px; border-radius: 99px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}; font-size: 12px; display: inline-flex; align-items: center">官方认证</span>
+                        </div>
+                        <span style="font-size: 12px; color: {{mutedCol}}">{{app.author}}</span>
+                      </div>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 6px; flex: none">
+                      <sc-if value="{{app.installed}}" hint-placeholder-val="{{false}}">
+                        <div style="display: flex; align-items: center; gap: 6px">
+                          <button type="button" class="btn" onClick="{{app.open}}" style="height: 30px; padding: 0 11px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">打开</button>
+                          <button type="button" class="btn" onClick="{{app.uninstall}}" style="height: 30px; padding: 0 10px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">卸载</button>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{app.notInstalled}}" hint-placeholder-val="{{true}}">
+                        <button type="button" class="btn" onClick="{{app.install}}" style="height: 30px; padding: 0 12px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">安装</button>
+                      </sc-if>
+                    </div>
+                  </div>
+
+                  <p style="margin: 0; font-size: 13px; line-height: 20px; color: {{mutedCol}}; min-height: 40px">{{app.desc}}</p>
+                </div>
+
+                <div style="padding-top: 12px; border-top: 1px solid {{hairline}}; display: flex; align-items: center; justify-content: space-between; gap: 10px">
+                  <span class="mono" style="font-size: 12px; color: {{textCol}}">{{app.downloadsText}}</span>
+                  <span style="height: 22px; padding: 0 8px; border-radius: 6px; background: {{shellBg}}; border: 1px solid {{hairline}}; font-size: 12px; color: {{mutedCol}}; display: inline-flex; align-items: center">{{app.perm}}</span>
+                </div>
+              </section>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{isSyncView}}" hint-placeholder-val="{{false}}">
+          <section aria-label="同步方式与存储目标" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
               <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">存储目标</h2>
               <div role="group" aria-label="同步方式" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <button type="button" class="seg" onClick="{{pickMirror}}" style="background: {{pMrBg}}; box-shadow: {{pMrRing}}; color: {{pMrCol}}">目录镜像</button>
                 <button type="button" class="seg" onClick="{{pickWebdav}}" style="background: {{pWdBg}}; box-shadow: {{pWdRing}}; color: {{pWdCol}}">WebDAV</button>
                 <button type="button" class="seg" onClick="{{pickGit}}" style="background: {{pGtBg}}; box-shadow: {{pGtRing}}; color: {{pGtCol}}">Git 仓库</button>
-                <button type="button" class="seg" onClick="{{pickMirror}}" style="background: {{pMrBg}}; box-shadow: {{pMrRing}}; color: {{pMrCol}}">本地镜像</button>
               </div>
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
-              <label for="a-ep" style="color: {{textCol}}; white-space: nowrap">{{epLabel}}</label>
-              <input id="a-ep" type="text" value="{{epVal}}" onInput="{{onEpInput}}" class="inp mono" style="width: 360px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              <label for="sync-ep" style="color: {{textCol}}; white-space: nowrap">{{epLabel}}</label>
+              <input id="sync-ep" type="text" value="{{epVal}}" onInput="{{onEpInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
-              <label for="a-dir" style="color: {{textCol}}; white-space: nowrap">远端目录</label>
-              <input id="a-dir" type="text" value="/BlockVault" class="inp mono" style="width: 360px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              <label for="sync-dir" style="color: {{textCol}}; white-space: nowrap">目标路径</label>
+              <input id="sync-dir" type="text" value="{{syncDirVal}}" onInput="{{onSyncDirInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
             </div>
 
             <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px">
@@ -176,8 +290,8 @@
             </div>
           </section>
 
-          <section aria-label="同步策略" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
-            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">同步策略</h2>
+          <section aria-label="自动同步与冲突策略" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">自动同步与冲突策略</h2>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
               <span style="color: {{textCol}}">保存笔记后自动同步</span>
@@ -185,8 +299,8 @@
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
-              <span style="color: {{textCol}}">冲突处理</span>
-              <div role="group" aria-label="冲突处理" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+              <span style="color: {{textCol}}">冲突策略</span>
+              <div role="group" aria-label="冲突策略" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
                 <button type="button" class="seg" onClick="{{pickKeepBoth}}" style="background: {{cKbBg}}; box-shadow: {{cKbRing}}; color: {{cKbCol}}">保留双份副本</button>
                 <button type="button" class="seg" onClick="{{pickRemote}}" style="background: {{cRmBg}}; box-shadow: {{cRmRing}}; color: {{cRmCol}}">远端优先</button>
                 <button type="button" class="seg" onClick="{{pickLocal}}" style="background: {{cLcBg}}; box-shadow: {{cLcRing}}; color: {{cLcCol}}">本地优先</button>
@@ -194,76 +308,445 @@
             </div>
           </section>
 
-          <section aria-label="最近同步记录" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+          <section aria-label="同步记录" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
-              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">最近同步记录</h2>
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">同步记录</h2>
               <button type="button" class="btn" onClick="{{uninstallSync}}" style="height: 28px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">卸载应用</button>
             </div>
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid {{hairline}}">
-              <span style="color: {{textCol}}">welcome.md</span>
-              <span class="mono" style="font-size: 13px; color: {{mutedCol}}">{{lastSyncTime}}</span>
+              <span class="mono" style="color: {{textCol}}">welcome.md</span>
+              <span class="mono" style="font-size: 13px; color: {{mutedCol}}">{{lastSyncTime}} · 已同步</span>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid {{hairline}}">
+              <span class="mono" style="color: {{textCol}}">notes/ideas.md</span>
+              <span class="mono" style="font-size: 13px; color: {{mutedCol}}">12:42 · 已同步</span>
             </div>
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0">
-              <span style="color: {{textCol}}">notes/ideas.md</span>
-              <span class="mono" style="font-size: 13px; color: {{mutedCol}}">12:42</span>
+              <span class="mono" style="color: {{textCol}}">daily/2026-11-18.md</span>
+              <span class="mono" style="font-size: 13px; color: {{mutedCol}}">11:15 · 已同步</span>
             </div>
           </section>
         </sc-if>
 
-        <sc-if value="{{isStoreView}}" hint-placeholder-val="{{false}}">
-          <section aria-label="同步商店卡片" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px">
-            <div style="display: flex; align-items: center; gap: 14px; min-width: 0">
-              <div style="width: 40px; height: 40px; border-radius: 10px; background: {{shellBg}}; border: 1px solid {{hairline}}; display: flex; align-items: center; justify-content: center; flex: none; color: {{textCol}}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <circle cx="12" cy="12" r="8" fill="{{iconFill}}"></circle>
-                  <path d="M7.5 10.5A5 5 0 0 1 16.2 8.5M16.5 13.5A5 5 0 0 1 7.8 15.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
-                  <path d="M16.5 5.8V8.8H13.5M7.5 18.2V15.2H10.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
-                </svg>
-              </div>
-              <div style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
-                <div style="display: flex; align-items: center; gap: 8px">
-                  <span style="font-size: 15px; font-weight: 560; color: {{textCol}}">同步</span>
-                  <span class="mono" style="font-size: 12px; color: {{mutedCol}}">v1.0.0</span>
-                </div>
-                <span style="color: {{mutedCol}}">支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步</span>
-              </div>
-            </div>
-            <button type="button" class="btn" onClick="{{storeSyncClick}}" style="background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">{{storeSyncBtn}}</button>
-          </section>
-
-          <section aria-label="静态发布商店卡片" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px">
-            <div style="display: flex; align-items: center; gap: 14px; min-width: 0">
-              <div style="width: 40px; height: 40px; border-radius: 10px; background: {{shellBg}}; border: 1px solid {{hairline}}; display: flex; align-items: center; justify-content: center; flex: none; color: {{textCol}}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <rect x="4" y="4.5" width="16" height="15" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
-                  <path d="M8.5 13.5L12 10L15.5 13.5M12 10V16.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
-                </svg>
-              </div>
-              <div style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
-                <div style="display: flex; align-items: center; gap: 8px">
-                  <span style="font-size: 15px; font-weight: 560; color: {{textCol}}">静态发布</span>
-                  <span class="mono" style="font-size: 12px; color: {{mutedCol}}">v0.9.4</span>
-                </div>
-                <span style="color: {{mutedCol}}">将指定笔记本文件夹一键导出并生成干净的静态站点</span>
-              </div>
-            </div>
-            <button type="button" class="btn" onClick="{{storePubClick}}" style="background: {{pubBtnBg}}; border: 1px solid {{pubBtnBd}}; color: {{textCol}}">{{storePubBtn}}</button>
-          </section>
-        </sc-if>
-
-        <sc-if value="{{isPubView}}" hint-placeholder-val="{{false}}">
-          <section aria-label="静态发布设置" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px">
-            <span style="color: {{textCol}}">输出目录：./public</span>
-            <button type="button" class="btn" onClick="{{uninstallPub}}" style="background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">卸载应用</button>
-          </section>
-        </sc-if>
-
-        <sc-if value="{{isNativeView}}" hint-placeholder-val="{{false}}">
-          <section aria-label="原生设置无侵入验证" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
-            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">原生「{{crumbTitle}}」保持零侵入</h2>
+        <sc-if value="{{isImageHostView}}" hint-placeholder-val="{{false}}">
+          <section aria-label="图床存储配置" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
-              <span style="color: {{mutedCol}}">上方原生 4 项与现有代码完全一致，扩展仅挂载在左侧分割线下方</span>
-              <button type="button" class="btn" onClick="{{goStore}}" style="background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">切到应用商店</button>
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">图床服务</h2>
+              <div role="group" aria-label="图床提供商" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <button type="button" class="seg" onClick="{{pickR2}}" style="background: {{ihR2Bg}}; box-shadow: {{ihR2Ring}}; color: {{ihR2Col}}">Cloudflare R2</button>
+                <button type="button" class="seg" onClick="{{pickS3}}" style="background: {{ihS3Bg}}; box-shadow: {{ihS3Ring}}; color: {{ihS3Col}}">S3 兼容</button>
+                <button type="button" class="seg" onClick="{{pickGhImg}}" style="background: {{ihGhBg}}; box-shadow: {{ihGhRing}}; color: {{ihGhCol}}">GitHub 图床</button>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <label for="img-bucket" style="color: {{textCol}}; white-space: nowrap">{{imgBucketLabel}}</label>
+              <input id="img-bucket" type="text" value="{{imgBucketVal}}" onInput="{{onImgBucketInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <label for="img-domain" style="color: {{textCol}}; white-space: nowrap">自定义域名</label>
+              <input id="img-domain" type="text" value="{{imgDomainVal}}" onInput="{{onImgDomainInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <label for="img-secret" style="color: {{textCol}}; white-space: nowrap">访问密钥</label>
+              <input id="img-secret" type="password" value="{{imgSecretVal}}" onInput="{{onImgSecretInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px">
+              <button type="button" class="btn" onClick="{{verifyImgHost}}" style="background: {{selectedBg}}; border: 1px solid {{imgVerifyBd}}; color: {{textCol}}">{{imgVerifyText}}</button>
+            </div>
+          </section>
+
+          <section aria-label="上传策略与扫描" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">自动上传与扫描</h2>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">保存笔记自动上传本地图片</span>
+              <button type="button" class="btn" onClick="{{toggleImgAuto}}" style="height: 30px; border-radius: 99px; background: {{imgAutoBg}}; border: 1px solid {{imgAutoBd}}; color: {{textCol}}">{{imgAutoText}}</button>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{mutedCol}}">{{imgScanStatus}}</span>
+              <div style="display: flex; align-items: center; gap: 8px">
+                <button type="button" class="btn" onClick="{{scanPendingImgs}}" style="background: {{shellBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">扫描待上传</button>
+                <button type="button" class="btn" onClick="{{uploadPendingImgs}}" style="background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">{{imgUploadBtnText}}</button>
+              </div>
+            </div>
+          </section>
+
+          <section aria-label="上传记录" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">上传记录</h2>
+              <button type="button" class="btn" onClick="{{uninstallImageHost}}" style="height: 28px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">卸载应用</button>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid {{hairline}}">
+              <span class="mono" style="color: {{textCol}}">architecture-flow.png</span>
+              <span class="mono" style="font-size: 13px; color: {{mutedCol}}">{{imgLastTime}} · 248 KB</span>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0">
+              <span class="mono" style="color: {{textCol}}">ocean-palette.webp</span>
+              <span class="mono" style="font-size: 13px; color: {{mutedCol}}">11:34 · 112 KB</span>
+            </div>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{isPublisherView}}" hint-placeholder-val="{{false}}">
+          <section aria-label="导出目标与排版风格" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">导出目标</h2>
+              <div role="group" aria-label="导出格式" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <button type="button" class="seg" onClick="{{pickPubSite}}" style="background: {{pbStBg}}; box-shadow: {{pbStRing}}; color: {{pbStCol}}">静态博客站点</button>
+                <button type="button" class="seg" onClick="{{pickPubWechat}}" style="background: {{pbWcBg}}; box-shadow: {{pbWcRing}}; color: {{pbWcCol}}">微信公众号排版</button>
+                <button type="button" class="seg" onClick="{{pickPubXhs}}" style="background: {{pbXhBg}}; box-shadow: {{pbXhRing}}; color: {{pbXhCol}}">小红书图文分段导出</button>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">排版风格</span>
+              <div role="group" aria-label="排版风格" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <button type="button" class="seg" onClick="{{pickStylePaper}}" style="background: {{psPrBg}}; box-shadow: {{psPrRing}}; color: {{psPrCol}}">极简纸感</button>
+                <button type="button" class="seg" onClick="{{pickStyleMag}}" style="background: {{psMgBg}}; box-shadow: {{psMgRing}}; color: {{psMgCol}}">杂志双栏</button>
+                <button type="button" class="seg" onClick="{{pickStyleTech}}" style="background: {{psTcBg}}; box-shadow: {{psTcRing}}; color: {{psTcCol}}">技术文档</button>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <label for="pub-out" style="color: {{textCol}}; white-space: nowrap">输出目录</label>
+              <input id="pub-out" type="text" value="{{pubOutDir}}" onInput="{{onPubOutInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px">
+              <button type="button" class="btn" onClick="{{exportNow}}" style="background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">{{pubExportText}}</button>
+            </div>
+          </section>
+
+          <section aria-label="发布历史" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">发布历史</h2>
+              <button type="button" class="btn" onClick="{{uninstallPublisher}}" style="height: 28px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">卸载应用</button>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid {{hairline}}">
+              <span style="color: {{textCol}}">产品周报 · 第 14 期</span>
+              <span class="mono" style="font-size: 13px; color: {{mutedCol}}">{{pubLastTarget}} · {{pubLastTime}}</span>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0">
+              <span style="color: {{textCol}}">Block 知识库站点</span>
+              <span class="mono" style="font-size: 13px; color: {{mutedCol}}">静态博客站点 · 昨天 21:05</span>
+            </div>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{isMigratorView}}" hint-placeholder-val="{{false}}">
+          <section aria-label="迁移来源配置" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">迁移来源</h2>
+              <div role="group" aria-label="迁移来源类型" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <button type="button" class="seg" onClick="{{pickMigObs}}" style="background: {{mgObBg}}; box-shadow: {{mgObRing}}; color: {{mgObCol}}">Obsidian 库</button>
+                <button type="button" class="seg" onClick="{{pickMigNot}}" style="background: {{mgNtBg}}; box-shadow: {{mgNtRing}}; color: {{mgNtCol}}">Notion 导出包</button>
+                <button type="button" class="seg" onClick="{{pickMigYuq}}" style="background: {{mgYqBg}}; box-shadow: {{mgYqRing}}; color: {{mgYqCol}}">语雀目录</button>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <label for="mig-src" style="color: {{textCol}}; white-space: nowrap">源路径</label>
+              <input id="mig-src" type="text" value="{{migSrcPath}}" onInput="{{onMigSrcInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <label for="mig-dst" style="color: {{textCol}}; white-space: nowrap">目标笔记本</label>
+              <input id="mig-dst" type="text" value="{{migDstVal}}" onInput="{{onMigDstInput}}" class="inp" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+            </div>
+          </section>
+
+          <section aria-label="链接与附件归集策略" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">双向链接与附件归集</h2>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">双向链接转换</span>
+              <div role="group" aria-label="双向链接转换" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <button type="button" class="seg" onClick="{{pickLinkBlock}}" style="background: {{mlBkBg}}; box-shadow: {{mlBkRing}}; color: {{mlBkCol}}">转为 Block 双链</button>
+                <button type="button" class="seg" onClick="{{pickLinkRel}}" style="background: {{mlRlBg}}; box-shadow: {{mlRlRing}}; color: {{mlRlCol}}">转为相对路径</button>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">附件归集策略</span>
+              <div role="group" aria-label="附件归集策略" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <button type="button" class="seg" onClick="{{pickAttAssets}}" style="background: {{maAsBg}}; box-shadow: {{maAsRing}}; color: {{maAsCol}}">归集至 assets</button>
+                <button type="button" class="seg" onClick="{{pickAttKeep}}" style="background: {{maKpBg}}; box-shadow: {{maKpRing}}; color: {{maKpCol}}">保留原目录</button>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{mutedCol}}">{{migPreviewText}}</span>
+              <div style="display: flex; align-items: center; gap: 8px">
+                <button type="button" class="btn" onClick="{{scanMigrate}}" style="background: {{shellBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">扫描预览</button>
+                <button type="button" class="btn" onClick="{{runMigrate}}" style="background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">{{migRunText}}</button>
+              </div>
+            </div>
+          </section>
+
+          <section aria-label="迁入记录" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">迁入记录</h2>
+              <button type="button" class="btn" onClick="{{uninstallMigrator}}" style="height: 28px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">卸载应用</button>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid {{hairline}}">
+              <span class="mono" style="color: {{textCol}}">Research-Vault</span>
+              <span class="mono" style="font-size: 13px; color: {{mutedCol}}">Obsidian 库 · 86 篇 · {{migLastTime}}</span>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0">
+              <span class="mono" style="color: {{textCol}}">Product-Spec</span>
+              <span class="mono" style="font-size: 13px; color: {{mutedCol}}">Notion 导出包 · 54 篇 · 昨天</span>
+            </div>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{isDiagnosticsView}}" hint-placeholder-val="{{false}}">
+          <section aria-label="工作区指标" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">工作区指标</h2>
+            <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+              <div style="background: {{shellBg}}; border: 1px solid {{hairline}}; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 12px; color: {{mutedCol}}">笔记篇数</span>
+                <span class="mono" style="font-size: 20px; line-height: 26px; font-weight: 560; color: {{textCol}}">348</span>
+              </div>
+              <div style="background: {{shellBg}}; border: 1px solid {{hairline}}; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 12px; color: {{mutedCol}}">总字数</span>
+                <span class="mono" style="font-size: 20px; line-height: 26px; font-weight: 560; color: {{textCol}}">184,920</span>
+              </div>
+              <div style="background: {{shellBg}}; border: 1px solid {{hairline}}; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 12px; color: {{mutedCol}}">附件体积</span>
+                <span class="mono" style="font-size: 20px; line-height: 26px; font-weight: 560; color: {{textCol}}">42.6 MB</span>
+              </div>
+              <div style="background: {{shellBg}}; border: 1px solid {{hairline}}; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 12px; color: {{mutedCol}}">内存占用</span>
+                <span class="mono" style="font-size: 20px; line-height: 26px; font-weight: 560; color: {{textCol}}">{{diagMemVal}}</span>
+              </div>
+            </div>
+          </section>
+
+          <section aria-label="巡检开关" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">巡检项目</h2>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">孤立未引用附件检测</span>
+              <button type="button" class="btn" onClick="{{toggleDiagOrphan}}" style="height: 30px; border-radius: 99px; background: {{dOrpBg}}; border: 1px solid {{dOrpBd}}; color: {{textCol}}">{{dOrpText}}</button>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">死链与缺失图片检测</span>
+              <button type="button" class="btn" onClick="{{toggleDiagDeadlink}}" style="height: 30px; border-radius: 99px; background: {{dDlBg}}; border: 1px solid {{dDlBd}}; color: {{textCol}}">{{dDlText}}</button>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{mutedCol}}">{{diagStatusText}}</span>
+              <button type="button" class="btn" onClick="{{runDiagnostics}}" style="background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">{{diagRunText}}</button>
+            </div>
+          </section>
+
+          <section aria-label="巡检明细记录" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">巡检明细记录</h2>
+              <button type="button" class="btn" onClick="{{uninstallDiagnostics}}" style="height: 28px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">卸载应用</button>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid {{hairline}}">
+              <span class="mono" style="color: {{textCol}}">assets/draft-v1.png</span>
+              <span style="font-size: 13px; color: {{mutedCol}}">孤立未引用附件 · 1.4 MB</span>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid {{hairline}}">
+              <span class="mono" style="color: {{textCol}}">notes/roadmap.md</span>
+              <span style="font-size: 13px; color: {{mutedCol}}">死链 [[q3-review]]</span>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0">
+              <span class="mono" style="color: {{textCol}}">notes/archive.md</span>
+              <span style="font-size: 13px; color: {{mutedCol}}">缺失图片 ./old-cover.png</span>
+            </div>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{isFoldersView}}" hint-placeholder-val="{{false}}">
+          <section aria-label="工作区文件夹清单" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">工作区文件夹清单</h2>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 36px">
+              <span style="color: {{textCol}}">显示非 Markdown 文件</span>
+              <button type="button" class="btn" onClick="{{toggleShowNonMd}}" style="height: 30px; border-radius: 99px; background: {{nonMdBg}}; border: 1px solid {{nonMdBd}}; color: {{textCol}}">{{nonMdText}}</button>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 8px">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex: none; color: {{textCol}}">
+                    <path d="M3.75 6.75A1.75 1.75 0 0 1 5.5 5H9.6l2 2.25H18.5A1.75 1.75 0 0 1 20.25 9v8.25A1.75 1.75 0 0 1 18.5 19H5.5a1.75 1.75 0 0 1-1.75-1.75V6.75Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+                  </svg>
+                  <input aria-label="资源目录名" type="text" value="{{assetsName}}" onInput="{{onAssetsInput}}" class="inp mono" style="flex: 1; min-width: 0; height: 32px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; flex: none">
+                  <div role="group" aria-label="资源目录可见性" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{cardBg}}; border: 1px solid {{hairline}}">
+                    <button type="button" class="seg" onClick="{{hideAssetsYes}}" style="background: {{asHdBg}}; box-shadow: {{asHdRing}}; color: {{asHdCol}}">隐藏</button>
+                    <button type="button" class="seg" onClick="{{hideAssetsNo}}" style="background: {{asShBg}}; box-shadow: {{asShRing}}; color: {{asShCol}}">显示</button>
+                  </div>
+                  <span style="min-width: 28px; text-align: right; color: {{mutedCol}}">系统</span>
+                </div>
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex: none; color: {{mutedCol}}">
+                    <path d="M3.75 6.75A1.75 1.75 0 0 1 5.5 5H9.6l2 2.25H18.5A1.75 1.75 0 0 1 20.25 9v8.25A1.75 1.75 0 0 1 18.5 19H5.5a1.75 1.75 0 0 1-1.75-1.75V6.75Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+                  </svg>
+                  <span class="mono" style="color: {{textCol}}">.git</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; flex: none">
+                  <div role="group" aria-label=".git 目录可见性" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{cardBg}}; border: 1px solid {{hairline}}">
+                    <button type="button" class="seg" onClick="{{hideGitYes}}" style="background: {{gtHdBg}}; box-shadow: {{gtHdRing}}; color: {{gtHdCol}}">隐藏</button>
+                    <button type="button" class="seg" onClick="{{hideGitNo}}" style="background: {{gtShBg}}; box-shadow: {{gtShRing}}; color: {{gtShCol}}">显示</button>
+                  </div>
+                  <button type="button" class="ib" aria-label="删除规则" style="color: {{mutedCol}}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+                      <path d="M6 6L18 18M18 6L6 18"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex: none; color: {{textCol}}">
+                    <path d="M3.75 6.75A1.75 1.75 0 0 1 5.5 5H9.6l2 2.25H18.5A1.75 1.75 0 0 1 20.25 9v8.25A1.75 1.75 0 0 1 18.5 19H5.5a1.75 1.75 0 0 1-1.75-1.75V6.75Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+                  </svg>
+                  <span class="mono" style="color: {{textCol}}">drafts</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; flex: none">
+                  <div role="group" aria-label="drafts 目录可见性" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{cardBg}}; border: 1px solid {{hairline}}">
+                    <button type="button" class="seg" onClick="{{hideDraftsYes}}" style="background: {{drHdBg}}; box-shadow: {{drHdRing}}; color: {{drHdCol}}">隐藏</button>
+                    <button type="button" class="seg" onClick="{{hideDraftsNo}}" style="background: {{drShBg}}; box-shadow: {{drShRing}}; color: {{drShCol}}">显示</button>
+                  </div>
+                  <button type="button" class="ib" aria-label="删除规则" style="color: {{mutedCol}}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+                      <path d="M6 6L18 18M18 6L6 18"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px">
+              <input aria-label="文件夹名称" type="text" placeholder="输入文件夹名称，如 build 或 drafts" value="{{folderRuleDraft}}" onInput="{{onFolderDraftInput}}" class="inp" style="flex: 1; min-width: 0; background: {{shellBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">
+              <button type="button" class="btn" style="background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">添加文件夹</button>
+            </div>
+          </section>
+
+          <section aria-label="全局搜索忽略列表" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">全局搜索忽略列表</h2>
+            <div style="display: flex; flex-direction: column; gap: 8px">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <div style="display: flex; align-items: center; gap: 10px; min-width: 0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex: none; color: {{textCol}}">
+                    <path d="M3.75 6.75A1.75 1.75 0 0 1 5.5 5H9.6l2 2.25H18.5A1.75 1.75 0 0 1 20.25 9v8.25A1.75 1.75 0 0 1 18.5 19H5.5a1.75 1.75 0 0 1-1.75-1.75V6.75Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+                  </svg>
+                  <span class="mono" style="color: {{textCol}}">work-notes</span>
+                  <span class="mono" style="color: {{mutedCol}}">~/Documents/Block/work-notes</span>
+                </div>
+                <button type="button" class="btn" onClick="{{toggleIgnoreWork}}" style="height: 28px; border-radius: 99px; background: {{igWkBg}}; border: 1px solid {{igWkBd}}; color: {{textCol}}">{{igWkText}}</button>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <div style="display: flex; align-items: center; gap: 10px; min-width: 0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex: none; color: {{mutedCol}}">
+                    <path d="M3.75 6.75A1.75 1.75 0 0 1 5.5 5H9.6l2 2.25H18.5A1.75 1.75 0 0 1 20.25 9v8.25A1.75 1.75 0 0 1 18.5 19H5.5a1.75 1.75 0 0 1-1.75-1.75V6.75Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+                  </svg>
+                  <span class="mono" style="color: {{textCol}}">reading-archive</span>
+                  <span class="mono" style="color: {{mutedCol}}">~/Documents/Block/reading-archive</span>
+                </div>
+                <button type="button" class="btn" onClick="{{toggleIgnoreArchive}}" style="height: 28px; border-radius: 99px; background: {{igArBg}}; border: 1px solid {{igArBd}}; color: {{textCol}}">{{igArText}}</button>
+              </div>
+            </div>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{isShortcutsView}}" hint-placeholder-val="{{false}}">
+          <section aria-label="快捷键" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">快捷键</h2>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; min-height: 36px">
+              <span style="color: {{textCol}}">全局唤出</span>
+              <div style="height: 32px; padding: 0 5px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{btnBorder}}; display: inline-flex; align-items: center; gap: 4px">
+                <span class="keycap" style="background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">⌘</span>
+                <span class="keycap" style="background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">Space</span>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; min-height: 36px">
+              <span style="color: {{textCol}}">速记小窗</span>
+              <div style="height: 32px; padding: 0 5px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{btnBorder}}; display: inline-flex; align-items: center; gap: 4px">
+                <span class="keycap" style="background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">⌘</span>
+                <span class="keycap" style="background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">⇧</span>
+                <span class="keycap" style="background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">K</span>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; min-height: 36px">
+              <span style="color: {{textCol}}">搜索笔记</span>
+              <div style="display: inline-flex; align-items: center; gap: 4px">
+                <span class="keycap" style="background: {{shellBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">⌘</span>
+                <span class="keycap" style="background: {{shellBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">P</span>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; min-height: 36px">
+              <span style="color: {{textCol}}">当前笔记查找</span>
+              <div style="display: inline-flex; align-items: center; gap: 4px">
+                <span class="keycap" style="background: {{shellBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">⌘</span>
+                <span class="keycap" style="background: {{shellBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">F</span>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; min-height: 36px">
+              <span style="color: {{textCol}}">新建笔记</span>
+              <div style="display: inline-flex; align-items: center; gap: 4px">
+                <span class="keycap" style="background: {{shellBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">⌘</span>
+                <span class="keycap" style="background: {{shellBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">N</span>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; min-height: 36px">
+              <span style="color: {{textCol}}">AI 助手面板</span>
+              <div style="display: inline-flex; align-items: center; gap: 4px">
+                <span class="keycap" style="background: {{shellBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">⌘</span>
+                <span class="keycap" style="background: {{shellBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">L</span>
+              </div>
+            </div>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{isAiView}}" hint-placeholder-val="{{false}}">
+          <section aria-label="AI 服务配置" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">AI 助手配置</h2>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <label for="ai-ep" style="color: {{textCol}}; white-space: nowrap">接口地址</label>
+              <input id="ai-ep" type="text" value="https://api.openai.com/v1" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <label for="ai-model" style="color: {{textCol}}; white-space: nowrap">默认模型</label>
+              <input id="ai-model" type="text" value="gpt-5" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+            </div>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{isAppearanceView}}" hint-placeholder-val="{{false}}">
+          <section aria-label="外观与字体" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">主题与排版</h2>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">界面外观</span>
+              <button type="button" class="btn" onClick="{{toggleTheme}}" style="background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">{{themeLabel}}</button>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">正文字号</span>
+              <span class="mono" style="color: {{mutedCol}}">16 px · 1.65 行高</span>
             </div>
           </section>
         </sc-if>
@@ -274,21 +757,71 @@
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"initialTab":{"editor":"enum","options":["sync","store","ai"],"default":"sync"},"$preview":{"width":1360,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"initialTab":{"editor":"enum","options":["store","sync","image_host","publisher","migrator","diagnostics","folders","shortcuts","ai","appearance"],"default":"store"},"$preview":{"width":1360,"height":900}}'>
 class Component extends DCLogic {
   constructor(p) {
     super(p);
     this.state = {
       tab: null,
       darkOverride: null,
-      syncInstalled: true,
-      pubInstalled: false,
+
+      installed: {
+        sync: true,
+        image_host: false,
+        publisher: false,
+        migrator: false,
+        diagnostics: false
+      },
+      downloads: {
+        sync: 1280,
+        image_host: 940,
+        publisher: 760,
+        migrator: 615,
+        diagnostics: 320
+      },
+
       proto: 'webdav',
       epVal: 'https://dav.example.com/notes',
+      syncDirVal: '/BlockVault',
       autoOn: true,
       conflict: 'keep_both',
       synced: false,
-      tested: false
+      tested: false,
+
+      imgProvider: 'r2',
+      imgBucketVal: 'block-assets',
+      imgDomainVal: 'https://img.example.com',
+      imgSecretVal: 'r2_live_8f2a91c0d4',
+      imgAutoOn: true,
+      imgVerified: false,
+      imgScanned: false,
+      imgUploaded: false,
+
+      pubTarget: 'wechat',
+      pubStyle: 'paper',
+      pubOutDir: './dist/wechat',
+      pubExported: false,
+
+      migSource: 'obsidian',
+      migSrcPath: '~/Documents/ObsidianVault',
+      migDstVal: '工作知识库',
+      migLinkMode: 'block',
+      migAttachMode: 'assets',
+      migScanned: false,
+      migDone: false,
+
+      diagOrphan: true,
+      diagDeadlink: true,
+      diagChecked: false,
+
+      showNonMd: false,
+      assetsName: 'assets',
+      hideAssets: true,
+      hideGit: true,
+      hideDrafts: false,
+      folderRuleDraft: '',
+      ignoreWork: false,
+      ignoreArchive: true
     };
   }
 
@@ -301,8 +834,8 @@ class Component extends DCLogic {
     const sidebarBg = dark ? '#222222' : '#fafafa';
     const settingsBg = dark ? '#181818' : '#f8f8f8';
     const cardBg = dark ? '#222222' : '#ffffff';
-    const textCol = dark ? '#ececec' : '#1f1e1d';
-    const mutedCol = dark ? '#b4b4b4' : '#52514e';
+    const textCol = dark ? '#ececec' : '#20242c';
+    const mutedCol = dark ? '#b4b4b4' : '#526071';
     const accent = dark ? '#779de8' : '#547dd0';
     const iconFill = dark ? '#31456a' : '#c9d8f3';
     const selectedBg = dark ? '#343434' : '#e5edfc';
@@ -311,26 +844,154 @@ class Component extends DCLogic {
     const btnBorder = dark ? '#444444' : '#dcdcdc';
     const ring = 'inset 0 0 0 1px ' + accent;
 
-    let tab = st.tab ?? (props.initialTab ?? 'sync');
-    if (tab === 'sync' && !st.syncInstalled) tab = 'store';
-    if (tab === 'pub' && !st.pubInstalled) tab = 'store';
+    const inst = st.installed || {};
+    const dl = st.downloads || {};
 
-    const names = { ai: 'AI 助手', appearance: '外观与字体', folders: '文件夹', shortcuts: '快捷键', store: '应用商店', sync: '同步', pub: '静态发布' };
+    let tab = st.tab ?? (props.initialTab ?? 'store');
+    if (tab === 'sync' && !inst.sync) tab = 'store';
+    if (tab === 'image_host' && !inst.image_host) tab = 'store';
+    if (tab === 'publisher' && !inst.publisher) tab = 'store';
+    if (tab === 'migrator' && !inst.migrator) tab = 'store';
+    if (tab === 'diagnostics' && !inst.diagnostics) tab = 'store';
+
+    const names = {
+      ai: 'AI 助手',
+      appearance: '外观与字体',
+      folders: '文件夹',
+      shortcuts: '快捷键',
+      store: '应用商店',
+      sync: '同步',
+      image_host: '图床上传',
+      publisher: '发布与导出',
+      migrator: '笔记迁移',
+      diagnostics: '性能与诊断'
+    };
+
     const nav = (k) => {
       const act = tab === k;
       return { bg: act ? selectedBg : 'transparent', bd: act ? accent : 'transparent', col: act ? textCol : mutedCol, w: act ? '460' : '400' };
     };
     const seg = (act) => ({ bg: act ? selectedBg : 'transparent', ring: act ? ring : 'none', col: act ? textCol : mutedCol });
+    const pill = (on) => ({ bg: on ? selectedBg : shellBg, bd: on ? accent : btnBorder, text: on ? '已开启' : '已关闭' });
 
-    const nAi = nav('ai'), nAp = nav('appearance'), nFl = nav('folders'), nSc = nav('shortcuts'), nSt = nav('store'), nSy = nav('sync'), nPb = nav('pub');
+    const fmtNum = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+    const appsMeta = [
+      {
+        id: 'sync',
+        pkg: 'block-sync',
+        name: '同步',
+        version: 'v1.2.0',
+        author: 'Block 官方',
+        desc: '支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步，自动保留版本与冲突副本。',
+        perm: '读写笔记 · 网络同步'
+      },
+      {
+        id: 'image_host',
+        pkg: 'block-image-host',
+        name: '图床上传',
+        version: 'v1.1.0',
+        author: 'Block 官方',
+        desc: '将本地粘贴与拖拽图片自动上传至 Cloudflare R2、S3 或 GitHub，并替换正文引用链接。',
+        perm: '读写附件 · 网络请求'
+      },
+      {
+        id: 'publisher',
+        pkg: 'block-publisher',
+        name: '发布与导出',
+        version: 'v1.0.4',
+        author: 'Block 官方',
+        desc: '将笔记本一键导出为静态博客站点，或生成微信公众号排版与小红书图文分段包。',
+        perm: '读取笔记 · 导出文件'
+      },
+      {
+        id: 'migrator',
+        pkg: 'block-migrator',
+        name: '笔记迁移',
+        version: 'v1.0.2',
+        author: 'Block 官方',
+        desc: '无损导入 Obsidian 库、Notion 导出压缩包与语雀知识库目录，自动转换双链与附件。',
+        perm: '读取外部库 · 写入笔记'
+      },
+      {
+        id: 'diagnostics',
+        pkg: 'block-diagnostics',
+        name: '性能与诊断',
+        version: 'v1.0.0',
+        author: 'Block 官方',
+        desc: '实时统计工作区篇数、总字数、附件体积与内存占用，自动巡检孤立附件与死链。',
+        perm: '只读工作区 · 本地诊断'
+      }
+    ];
+
+    const installApp = (id) => {
+      const nextInst = Object.assign({}, inst, { [id]: true });
+      const nextDl = Object.assign({}, dl, { [id]: (dl[id] || 0) + 1 });
+      this.setState({ installed: nextInst, downloads: nextDl });
+    };
+
+    const uninstallApp = (id) => {
+      const nextInst = Object.assign({}, inst, { [id]: false });
+      const nextTab = tab === id ? 'store' : tab;
+      this.setState({ installed: nextInst, tab: nextTab });
+    };
+
+    const storeApps = appsMeta.map((a) => {
+      const isInst = !!inst[a.id];
+      const count = dl[a.id] ?? 0;
+      return {
+        id: a.id,
+        name: a.name,
+        version: a.version,
+        author: a.author,
+        desc: a.desc,
+        perm: a.perm,
+        installed: isInst,
+        notInstalled: !isInst,
+        isSync: a.id === 'sync',
+        isImageHost: a.id === 'image_host',
+        isPublisher: a.id === 'publisher',
+        isMigrator: a.id === 'migrator',
+        isDiagnostics: a.id === 'diagnostics',
+        downloadsText: fmtNum(count) + ' 次下载',
+        install: () => installApp(a.id),
+        open: () => this.setState({ tab: a.id }),
+        uninstall: () => uninstallApp(a.id)
+      };
+    });
+
+    const installedCount = ['sync', 'image_host', 'publisher', 'migrator', 'diagnostics'].reduce((sum, k) => sum + (inst[k] ? 1 : 0), 0);
+
+    const nAi = nav('ai'), nAp = nav('appearance'), nFl = nav('folders'), nSc = nav('shortcuts'), nSt = nav('store');
+    const nSy = nav('sync'), nIm = nav('image_host'), nPb = nav('publisher'), nMg = nav('migrator'), nDg = nav('diagnostics');
+
     const pWd = seg(st.proto === 'webdav'), pGt = seg(st.proto === 'git'), pMr = seg(st.proto === 'mirror');
     const cKb = seg(st.conflict === 'keep_both'), cRm = seg(st.conflict === 'remote'), cLc = seg(st.conflict === 'local');
+    const autoP = pill(!!st.autoOn);
+
+    const ihR2 = seg(st.imgProvider === 'r2'), ihS3 = seg(st.imgProvider === 's3'), ihGh = seg(st.imgProvider === 'github');
+    const imgAutoP = pill(!!st.imgAutoOn);
+
+    const pbSt = seg(st.pubTarget === 'site'), pbWc = seg(st.pubTarget === 'wechat'), pbXh = seg(st.pubTarget === 'xiaohongshu');
+    const psPr = seg(st.pubStyle === 'paper'), psMg = seg(st.pubStyle === 'magazine'), psTc = seg(st.pubStyle === 'tech');
+
+    const mgOb = seg(st.migSource === 'obsidian'), mgNt = seg(st.migSource === 'notion'), mgYq = seg(st.migSource === 'yuque');
+    const mlBk = seg(st.migLinkMode === 'block'), mlRl = seg(st.migLinkMode === 'relative');
+    const maAs = seg(st.migAttachMode === 'assets'), maKp = seg(st.migAttachMode === 'keep');
+
+    const dOrp = pill(!!st.diagOrphan), dDl = pill(!!st.diagDeadlink);
+    const nonMdP = pill(!!st.showNonMd);
+    const asHd = seg(!!st.hideAssets), asSh = seg(!st.hideAssets);
+    const gtHd = seg(!!st.hideGit), gtSh = seg(!st.hideGit);
+    const drHd = seg(!!st.hideDrafts), drSh = seg(!st.hideDrafts);
+
+    const pubTargetLabels = { site: '静态博客站点', wechat: '微信公众号排版', xiaohongshu: '小红书图文分段导出' };
 
     return {
       shellBg, sidebarBg, settingsBg, cardBg, textCol, mutedCol, accent, iconFill, selectedBg, hairline, sidebarBorder, btnBorder,
       themeLabel: dark ? '深色' : '浅色',
-      crumbTitle: names[tab] || '同步',
-      installedCount: String((st.syncInstalled ? 1 : 0) + (st.pubInstalled ? 1 : 0)),
+      crumbTitle: names[tab] || '应用商店',
+      installedCount: String(installedCount),
 
       nAiBg: nAi.bg, nAiBd: nAi.bd, nAiCol: nAi.col, nAiW: nAi.w,
       nApBg: nAp.bg, nApBd: nAp.bd, nApCol: nAp.col, nApW: nAp.w,
@@ -338,38 +999,106 @@ class Component extends DCLogic {
       nScBg: nSc.bg, nScBd: nSc.bd, nScCol: nSc.col, nScW: nSc.w,
       nStBg: nSt.bg, nStBd: nSt.bd, nStCol: nSt.col, nStW: nSt.w,
       nSyBg: nSy.bg, nSyBd: nSy.bd, nSyCol: nSy.col, nSyW: nSy.w,
+      nImBg: nIm.bg, nImBd: nIm.bd, nImCol: nIm.col, nImW: nIm.w,
       nPbBg: nPb.bg, nPbBd: nPb.bd, nPbCol: nPb.col, nPbW: nPb.w,
+      nMgBg: nMg.bg, nMgBd: nMg.bd, nMgCol: nMg.col, nMgW: nMg.w,
+      nDgBg: nDg.bg, nDgBd: nDg.bd, nDgCol: nDg.col, nDgW: nDg.w,
 
-      syncInstalled: !!st.syncInstalled,
-      pubInstalled: !!st.pubInstalled,
-      isSyncView: tab === 'sync',
+      syncInstalled: !!inst.sync,
+      imgInstalled: !!inst.image_host,
+      pubInstalled: !!inst.publisher,
+      migInstalled: !!inst.migrator,
+      diagInstalled: !!inst.diagnostics,
+
       isStoreView: tab === 'store',
-      isPubView: tab === 'pub',
-      isNativeView: tab === 'ai' || tab === 'appearance' || tab === 'folders' || tab === 'shortcuts',
+      isSyncView: tab === 'sync',
+      isImageHostView: tab === 'image_host',
+      isPublisherView: tab === 'publisher',
+      isMigratorView: tab === 'migrator',
+      isDiagnosticsView: tab === 'diagnostics',
+      isFoldersView: tab === 'folders',
+      isShortcutsView: tab === 'shortcuts',
+      isAiView: tab === 'ai',
+      isAppearanceView: tab === 'appearance',
 
-      syncBadge: st.synced ? '刚刚已同步 2 篇' : '已连接 · 2 分钟前',
+      storeApps,
+
+      syncBadge: st.synced ? '刚刚已同步 3 篇' : '已连接 · 2 分钟前',
       pWdBg: pWd.bg, pWdRing: pWd.ring, pWdCol: pWd.col,
       pGtBg: pGt.bg, pGtRing: pGt.ring, pGtCol: pGt.col,
       pMrBg: pMr.bg, pMrRing: pMr.ring, pMrCol: pMr.col,
       epLabel: st.proto === 'mirror' ? '本地镜像路径' : (st.proto === 'git' ? 'Git 远端地址' : '服务器地址'),
       epVal: st.epVal,
+      syncDirVal: st.syncDirVal,
       connBd: st.tested ? accent : hairline,
       connText: st.tested ? '连接可用' : '测试连接',
       syncBtnText: st.synced ? '已同步' : '立即同步',
       lastSyncTime: st.synced ? '刚刚' : '12:58',
-
-      autoBg: st.autoOn ? selectedBg : shellBg,
-      autoBd: st.autoOn ? accent : btnBorder,
-      autoText: st.autoOn ? '已开启' : '已关闭',
-
+      autoBg: autoP.bg, autoBd: autoP.bd, autoText: autoP.text,
       cKbBg: cKb.bg, cKbRing: cKb.ring, cKbCol: cKb.col,
       cRmBg: cRm.bg, cRmRing: cRm.ring, cRmCol: cRm.col,
       cLcBg: cLc.bg, cLcRing: cLc.ring, cLcCol: cLc.col,
 
-      storeSyncBtn: st.syncInstalled ? '打开' : '安装',
-      pubBtnBg: st.pubInstalled ? selectedBg : cardBg,
-      pubBtnBd: st.pubInstalled ? accent : btnBorder,
-      storePubBtn: st.pubInstalled ? '打开' : '安装',
+      ihR2Bg: ihR2.bg, ihR2Ring: ihR2.ring, ihR2Col: ihR2.col,
+      ihS3Bg: ihS3.bg, ihS3Ring: ihS3.ring, ihS3Col: ihS3.col,
+      ihGhBg: ihGh.bg, ihGhRing: ihGh.ring, ihGhCol: ihGh.col,
+      imgBucketLabel: st.imgProvider === 'github' ? 'GitHub 仓库' : 'Bucket 名称',
+      imgBucketVal: st.imgBucketVal,
+      imgDomainVal: st.imgDomainVal,
+      imgSecretVal: st.imgSecretVal,
+      imgVerifyBd: st.imgVerified ? accent : accent,
+      imgVerifyText: st.imgVerified ? '凭证验证通过' : '验证凭证',
+      imgAutoBg: imgAutoP.bg, imgAutoBd: imgAutoP.bd, imgAutoText: imgAutoP.text,
+      imgScanStatus: st.imgUploaded ? '全部本地图片已上传' : (st.imgScanned ? '发现 3 张待上传本地图片' : '尚未扫描待上传图片'),
+      imgUploadBtnText: st.imgUploaded ? '已全部上传' : '一键上传',
+      imgLastTime: st.imgUploaded ? '刚刚' : '12:18',
+
+      pbStBg: pbSt.bg, pbStRing: pbSt.ring, pbStCol: pbSt.col,
+      pbWcBg: pbWc.bg, pbWcRing: pbWc.ring, pbWcCol: pbWc.col,
+      pbXhBg: pbXh.bg, pbXhRing: pbXh.ring, pbXhCol: pbXh.col,
+      psPrBg: psPr.bg, psPrRing: psPr.ring, psPrCol: psPr.col,
+      psMgBg: psMg.bg, psMgRing: psMg.ring, psMgCol: psMg.col,
+      psTcBg: psTc.bg, psTcRing: psTc.ring, psTcCol: psTc.col,
+      pubOutDir: st.pubOutDir,
+      pubExportText: st.pubExported ? '已导出到目标目录' : '一键导出',
+      pubLastTarget: pubTargetLabels[st.pubTarget] || '微信公众号排版',
+      pubLastTime: st.pubExported ? '刚刚' : '14:20',
+
+      mgObBg: mgOb.bg, mgObRing: mgOb.ring, mgObCol: mgOb.col,
+      mgNtBg: mgNt.bg, mgNtRing: mgNt.ring, mgNtCol: mgNt.col,
+      mgYqBg: mgYq.bg, mgYqRing: mgYq.ring, mgYqCol: mgYq.col,
+      migSrcPath: st.migSrcPath,
+      migDstVal: st.migDstVal,
+      mlBkBg: mlBk.bg, mlBkRing: mlBk.ring, mlBkCol: mlBk.col,
+      mlRlBg: mlRl.bg, mlRlRing: mlRl.ring, mlRlCol: mlRl.col,
+      maAsBg: maAs.bg, maAsRing: maAs.ring, maAsCol: maAs.col,
+      maKpBg: maKp.bg, maKpRing: maKp.ring, maKpCol: maKp.col,
+      migPreviewText: st.migDone ? '迁入完成：共导入 142 篇笔记与 38 个附件' : (st.migScanned ? '预览：142 篇笔记、38 个附件、19 条双链' : '点击扫描预览以核对目录内容'),
+      migRunText: st.migDone ? '迁入完成' : '开始迁入',
+      migLastTime: st.migDone ? '刚刚' : '今天 10:30',
+
+      diagBadge: st.diagChecked ? '刚刚完成巡检' : '工作区健康 · 3 条提醒',
+      diagMemVal: st.diagChecked ? '114 MB' : '118 MB',
+      dOrpBg: dOrp.bg, dOrpBd: dOrp.bd, dOrpText: dOrp.text,
+      dDlBg: dDl.bg, dDlBd: dDl.bd, dDlText: dDl.text,
+      diagStatusText: st.diagChecked ? '最近巡检：刚刚（发现 3 项可清理或修复条目）' : '上次巡检：今天 09:00（3 项待处理）',
+      diagRunText: st.diagChecked ? '已完成巡检' : '立即巡检',
+
+      nonMdBg: nonMdP.bg, nonMdBd: nonMdP.bd, nonMdText: nonMdP.text,
+      assetsName: st.assetsName,
+      asHdBg: asHd.bg, asHdRing: asHd.ring, asHdCol: asHd.col,
+      asShBg: asSh.bg, asShRing: asSh.ring, asShCol: asSh.col,
+      gtHdBg: gtHd.bg, gtHdRing: gtHd.ring, gtHdCol: gtHd.col,
+      gtShBg: gtSh.bg, gtShRing: gtSh.ring, gtShCol: gtSh.col,
+      drHdBg: drHd.bg, drHdRing: drHd.ring, drHdCol: drHd.col,
+      drShBg: drSh.bg, drShRing: drSh.ring, drShCol: drSh.col,
+      folderRuleDraft: st.folderRuleDraft,
+      igWkBg: st.ignoreWork ? selectedBg : cardBg,
+      igWkBd: st.ignoreWork ? accent : btnBorder,
+      igWkText: st.ignoreWork ? '已排除搜索' : '参与全局搜索',
+      igArBg: st.ignoreArchive ? selectedBg : cardBg,
+      igArBd: st.ignoreArchive ? accent : btnBorder,
+      igArText: st.ignoreArchive ? '已排除搜索' : '参与全局搜索',
 
       toggleTheme: () => this.setState({ darkOverride: dark ? 'light' : 'dark' }),
       goAi: () => this.setState({ tab: 'ai' }),
@@ -378,27 +1107,75 @@ class Component extends DCLogic {
       goShortcuts: () => this.setState({ tab: 'shortcuts' }),
       goStore: () => this.setState({ tab: 'store' }),
       goSync: () => this.setState({ tab: 'sync' }),
-      goPub: () => this.setState({ tab: 'pub' }),
+      goImageHost: () => this.setState({ tab: 'image_host' }),
+      goPublisher: () => this.setState({ tab: 'publisher' }),
+      goMigrator: () => this.setState({ tab: 'migrator' }),
+      goDiagnostics: () => this.setState({ tab: 'diagnostics' }),
+
       pickWebdav: () => this.setState({ proto: 'webdav', epVal: 'https://dav.example.com/notes', tested: false }),
       pickGit: () => this.setState({ proto: 'git', epVal: 'git@github.com:user/block-vault.git', tested: false }),
       pickMirror: () => this.setState({ proto: 'mirror', epVal: '~/iCloud/BlockMirror', tested: false }),
       onEpInput: (e) => { if (e && e.target) this.setState({ epVal: e.target.value }); },
+      onSyncDirInput: (e) => { if (e && e.target) this.setState({ syncDirVal: e.target.value }); },
       testConn: () => this.setState({ tested: true }),
       syncNow: () => this.setState({ synced: true }),
       toggleAuto: () => this.setState({ autoOn: !st.autoOn }),
       pickKeepBoth: () => this.setState({ conflict: 'keep_both' }),
       pickRemote: () => this.setState({ conflict: 'remote' }),
       pickLocal: () => this.setState({ conflict: 'local' }),
-      uninstallSync: () => this.setState({ syncInstalled: false, tab: 'store' }),
-      uninstallPub: () => this.setState({ pubInstalled: false, tab: 'store' }),
-      storeSyncClick: () => {
-        if (st.syncInstalled) this.setState({ tab: 'sync' });
-        else this.setState({ syncInstalled: true, tab: 'sync' });
-      },
-      storePubClick: () => {
-        if (st.pubInstalled) this.setState({ tab: 'pub' });
-        else this.setState({ pubInstalled: true, tab: 'pub' });
-      }
+      uninstallSync: () => uninstallApp('sync'),
+
+      pickR2: () => this.setState({ imgProvider: 'r2', imgBucketVal: 'block-assets', imgDomainVal: 'https://img.example.com', imgVerified: false }),
+      pickS3: () => this.setState({ imgProvider: 's3', imgBucketVal: 'notes-media-prod', imgDomainVal: 'https://cdn.example.com', imgVerified: false }),
+      pickGhImg: () => this.setState({ imgProvider: 'github', imgBucketVal: 'user/block-images', imgDomainVal: 'https://cdn.jsdelivr.net/gh/user/block-images', imgVerified: false }),
+      onImgBucketInput: (e) => { if (e && e.target) this.setState({ imgBucketVal: e.target.value }); },
+      onImgDomainInput: (e) => { if (e && e.target) this.setState({ imgDomainVal: e.target.value }); },
+      onImgSecretInput: (e) => { if (e && e.target) this.setState({ imgSecretVal: e.target.value }); },
+      verifyImgHost: () => this.setState({ imgVerified: true }),
+      toggleImgAuto: () => this.setState({ imgAutoOn: !st.imgAutoOn }),
+      scanPendingImgs: () => this.setState({ imgScanned: true, imgUploaded: false }),
+      uploadPendingImgs: () => this.setState({ imgUploaded: true }),
+      uninstallImageHost: () => uninstallApp('image_host'),
+
+      pickPubSite: () => this.setState({ pubTarget: 'site', pubOutDir: './dist/site', pubExported: false }),
+      pickPubWechat: () => this.setState({ pubTarget: 'wechat', pubOutDir: './dist/wechat', pubExported: false }),
+      pickPubXhs: () => this.setState({ pubTarget: 'xiaohongshu', pubOutDir: './dist/redbook', pubExported: false }),
+      pickStylePaper: () => this.setState({ pubStyle: 'paper' }),
+      pickStyleMag: () => this.setState({ pubStyle: 'magazine' }),
+      pickStyleTech: () => this.setState({ pubStyle: 'tech' }),
+      onPubOutInput: (e) => { if (e && e.target) this.setState({ pubOutDir: e.target.value }); },
+      exportNow: () => this.setState({ pubExported: true }),
+      uninstallPublisher: () => uninstallApp('publisher'),
+
+      pickMigObs: () => this.setState({ migSource: 'obsidian', migSrcPath: '~/Documents/ObsidianVault', migScanned: false, migDone: false }),
+      pickMigNot: () => this.setState({ migSource: 'notion', migSrcPath: '~/Downloads/notion-export.zip', migScanned: false, migDone: false }),
+      pickMigYuq: () => this.setState({ migSource: 'yuque', migSrcPath: '~/Documents/YuqueExport', migScanned: false, migDone: false }),
+      onMigSrcInput: (e) => { if (e && e.target) this.setState({ migSrcPath: e.target.value }); },
+      onMigDstInput: (e) => { if (e && e.target) this.setState({ migDstVal: e.target.value }); },
+      pickLinkBlock: () => this.setState({ migLinkMode: 'block' }),
+      pickLinkRel: () => this.setState({ migLinkMode: 'relative' }),
+      pickAttAssets: () => this.setState({ migAttachMode: 'assets' }),
+      pickAttKeep: () => this.setState({ migAttachMode: 'keep' }),
+      scanMigrate: () => this.setState({ migScanned: true }),
+      runMigrate: () => this.setState({ migDone: true }),
+      uninstallMigrator: () => uninstallApp('migrator'),
+
+      toggleDiagOrphan: () => this.setState({ diagOrphan: !st.diagOrphan }),
+      toggleDiagDeadlink: () => this.setState({ diagDeadlink: !st.diagDeadlink }),
+      runDiagnostics: () => this.setState({ diagChecked: true }),
+      uninstallDiagnostics: () => uninstallApp('diagnostics'),
+
+      toggleShowNonMd: () => this.setState({ showNonMd: !st.showNonMd }),
+      onAssetsInput: (e) => { if (e && e.target) this.setState({ assetsName: e.target.value }); },
+      hideAssetsYes: () => this.setState({ hideAssets: true }),
+      hideAssetsNo: () => this.setState({ hideAssets: false }),
+      hideGitYes: () => this.setState({ hideGit: true }),
+      hideGitNo: () => this.setState({ hideGit: false }),
+      hideDraftsYes: () => this.setState({ hideDrafts: true }),
+      hideDraftsNo: () => this.setState({ hideDrafts: false }),
+      onFolderDraftInput: (e) => { if (e && e.target) this.setState({ folderRuleDraft: e.target.value }); },
+      toggleIgnoreWork: () => this.setState({ ignoreWork: !st.ignoreWork }),
+      toggleIgnoreArchive: () => this.setState({ ignoreArchive: !st.ignoreArchive })
     };
   }
 }
