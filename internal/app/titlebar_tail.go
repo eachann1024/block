@@ -81,22 +81,40 @@ func renderAIButton(c *ui.Context, p TitlebarProps) {
 }
 
 // renderPageMorePill is thinkly-fast titlebar_split_pill: the page more button,
-// joined with the annotation send segment when the note has annotations.
+// joined with the annotation send segment when the note has annotations. The
+// pill always exists so the segment can unfold out of the more button and fold
+// back into it, while the pill's chrome and inset ease in and out with it.
 func renderPageMorePill(c *ui.Context, p TitlebarProps) {
 	pal := theme.Ocean()
 	split := p.AnnotHasAny
 	open := p.MenuState != nil && p.MenuState.PageMenuOpen
-	more := func() {
-		opts := blockui.IconButtonOptions{
+	c.Key("titlebar-action-pill")
+	pill := ui.Row(c).Shrink(0).AlignItems(ui.Center).Radius(theme.RadiusMD)
+	bg, border := ui.Transparent, ui.Transparent
+	targetInset := float32(0)
+	if split {
+		bg, border, targetInset = pal.Menu, pal.BtnBorder, pillInset
+	}
+	inset := blockui.SpringTo(pill, "pillInset", targetInset)
+	pill.Height(theme.HeightChrome + inset).Padding(inset)
+	blockui.AnimateSurfaceColors(pill, bg, border, true)
+	pill.Children(func() {
+		if split {
+			c.Key("titlebar-send-group")
+			ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(pillInset).Padding(0, pillInset, 0, 0).
+				Transition(blockui.InlineRevealTransition()).Children(func() {
+				renderSendAllSegment(c, p)
+				ui.Box(c).Size(1, 14).Shrink(0).Background(pal.BtnBorder)
+			})
+		}
+		btn := blockui.IconButton(c, icons.More, blockui.IconButtonOptions{
 			ID:          "titlebar-more",
 			Label:       theme.Tr("页面操作", "Page Actions"),
 			Active:      open,
 			ActiveStyle: blockui.ActiveAccent,
-		}
-		if split {
-			opts.Size, opts.Radius = 24, 6
-		}
-		btn := blockui.IconButton(c, icons.More, opts)
+			Size:        theme.HeightChrome - inset,
+			Radius:      theme.RadiusMD - inset,
+		})
 		if b := btn.Bounds(); p.MenuState != nil && b.W > 0 {
 			p.MenuState.PageMenuAnchor = b
 		}
@@ -105,20 +123,11 @@ func renderPageMorePill(c *ui.Context, p TitlebarProps) {
 			p.MenuState.TabMenuOpen = false
 			p.MenuState.PageMenuOpen = !p.MenuState.PageMenuOpen
 		}
-	}
-	if !split {
-		more()
-		return
-	}
-	c.Key("titlebar-action-pill")
-	ui.Row(c).Height(28).Padding(2).Gap(2).Shrink(0).AlignItems(ui.Center).
-		Radius(theme.RadiusMD).Border(1, pal.BtnBorder).Background(pal.Menu).
-		Transition(blockui.PopoverSpringTransition()).Children(func() {
-		renderSendAllSegment(c, p)
-		ui.Box(c).Size(1, 14).Shrink(0).Background(pal.BtnBorder)
-		more()
 	})
 }
+
+// pillInset is the split pill's padding and its segments' gap.
+const pillInset = 2
 
 // renderSendAllSegment is thinkly-fast send_all_button: `统一发送 n` / `生成中…`.
 func renderSendAllSegment(c *ui.Context, p TitlebarProps) {
