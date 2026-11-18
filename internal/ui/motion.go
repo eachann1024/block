@@ -434,6 +434,8 @@ func ResizeHandleTransition(inward float32) ui.ElementTransition {
 		Delay:  130 * time.Millisecond,
 	}
 	return ui.ElementTransition{
+		// Keep the rail's position and height tied to the image during resize.
+		Colors:       true,
 		Animation:    &anim,
 		ExitDuration: 120 * time.Millisecond,
 		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
