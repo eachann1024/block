@@ -39,12 +39,17 @@ type tabDragItem struct {
 	Path string
 }
 
+// NewTabMenuState returns a TabMenuState with no active keyboard menu selection.
+func NewTabMenuState() *TabMenuState {
+	return &TabMenuState{MenuCursor: -1}
+}
+
 // Close dismisses any open titlebar menu.
 func (s *TabMenuState) Close() bool {
 	had := s.TabMenuOpen || s.PageMenuOpen
 	s.TabMenuOpen = false
 	s.PageMenuOpen = false
-	s.MenuCursor = 0
+	s.MenuCursor = -1
 	return had
 }
 
@@ -87,6 +92,12 @@ type TitlebarProps struct {
 	OnSendAnnotations func()
 
 	MenuState *TabMenuState
+
+	// Sidebar actions shown in the left cell while the sidebar is expanded.
+	SearchOpen      bool
+	ShortcutSearch  string
+	ShortcutNewNote string
+	OnOpenSearch    func()
 
 	OnToggleSidebar   func()
 	OnBack            func()
@@ -157,6 +168,9 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 	if showFwd {
 		navCount++
 	}
+	if p.SidebarWide && !p.InSettings {
+		navCount += 2 // Search + New Note
+	}
 	leftW := leftLead + 8 + theme.ChromeBoxSize + float32(navCount)*(theme.ChromeBoxSize+2)
 	if p.AIImmersive {
 		leftW = leftLead
@@ -203,6 +217,9 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 					if fwdBtn.Clicked() && !p.Busy && p.OnForward != nil {
 						p.OnForward()
 					}
+				}
+				if p.SidebarWide && !p.InSettings {
+					renderTitlebarSidebarActions(c, p)
 				}
 				glyph := icons.SidebarExpand
 				if p.SidebarWide {
@@ -611,5 +628,28 @@ func buildTabContextItems(p TitlebarProps) []blockui.MenuItemSpec {
 				}
 			},
 		},
+	}
+}
+
+// renderTitlebarSidebarActions draws Search and New Note beside the sidebar toggle,
+// replacing the sidebar's own header toolbar.
+func renderTitlebarSidebarActions(c *ui.Context, p TitlebarProps) {
+	searchBtn := blockui.IconButton(c, icons.FindSearch, blockui.IconButtonOptions{
+		ID:       "search-button",
+		Tooltip:  theme.Tr("搜索", "Search"),
+		Shortcut: blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutSearch, "cmd-k")),
+		Active:   p.SearchOpen,
+	})
+	if searchBtn.Clicked() && p.OnOpenSearch != nil {
+		p.OnOpenSearch()
+	}
+	newBtn := blockui.IconButton(c, icons.NotePlus, blockui.IconButtonOptions{
+		ID:       "new-note",
+		Tooltip:  theme.Tr("新建笔记", "New Note"),
+		Shortcut: blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewNote, "cmd-n")),
+		Disabled: p.Busy,
+	})
+	if newBtn.Clicked() && !p.Busy && p.OnNewNote != nil {
+		p.OnNewNote()
 	}
 }
