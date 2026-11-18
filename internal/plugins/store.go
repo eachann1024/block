@@ -115,7 +115,7 @@ func DefaultSeedIndex() *StoreIndex {
 // DefaultStoreIndexURLs lists the CDN / mirror endpoints for the auto-crawled blockmd-plugin index.
 var DefaultStoreIndexURLs = []string{
 	"https://cdn.jsdelivr.net/gh/blockmd-plugins/store-index@main/store-index.json",
-	"https://ghfast.top/https://raw.githubusercontent.com/blockmd-plugins/store-index/main/store-index.json",
+	"https://gh-proxy.com/https://raw.githubusercontent.com/blockmd-plugins/store-index/main/store-index.json",
 	"https://raw.githubusercontent.com/blockmd-plugins/store-index/main/store-index.json",
 }
 
@@ -141,7 +141,7 @@ func NewStoreManager(blockAppDataDir string) *StoreManager {
 		DataRoot:  filepath.Join(blockAppDataDir, "apps-data"),
 		CacheRoot: filepath.Join(blockAppDataDir, "apps-cache"),
 		IndexURLs: urls,
-		HTTP:      &http.Client{Timeout: 12 * time.Second},
+		HTTP:      &http.Client{Timeout: 20 * time.Second},
 	}
 }
 
@@ -339,17 +339,20 @@ func (s *StoreManager) installEntryCore(ctx context.Context, entry StoreAppEntry
 		return s.InstallFromDirectory(strings.TrimPrefix(u, "file://"))
 	case strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://"):
 		installed, err := s.InstallFromArchiveURL(ctx, u, entry.SHA256)
-		if err != nil {
-			// If an official seed exists for the same ID and network is unreachable, fall back cleanly.
-			builtinMu.RLock()
-			_, hasBuiltin := builtinSeeds[entry.ID]
-			builtinMu.RUnlock()
-			if hasBuiltin {
-				return s.installBuiltin(entry.ID)
-			}
-			return nil, err
+		if err == nil {
+			return installed, nil
 		}
-		return installed, nil
+		if fallbackInst, fbErr := s.installCatalogRepoFallback(ctx, entry); fbErr == nil {
+			return fallbackInst, nil
+		}
+		// If an official seed exists for the same ID and network is unreachable, fall back cleanly.
+		builtinMu.RLock()
+		_, hasBuiltin := builtinSeeds[entry.ID]
+		builtinMu.RUnlock()
+		if hasBuiltin {
+			return s.installBuiltin(entry.ID)
+		}
+		return nil, err
 	default:
 		return s.installFromSourceCore(ctx, u)
 	}
@@ -408,10 +411,67 @@ func (s *StoreManager) installFromSourceCore(ctx context.Context, spec string) (
 	return nil, fmt.Errorf("unsupported plugin source %q", spec)
 }
 
+func (s *StoreManager) installCatalogRepoFallback(ctx context.Context, entry StoreAppEntry) (*InstalledApp, error) {
+	slug := strings.TrimSpace(entry.Repo)
+	if !repoSlugRe.MatchString(slug) {
+		return nil, errors.New("no valid repo slug for fallback")
+	}
+	var urls []string
+	if ver := strings.TrimPrefix(strings.TrimSpace(entry.Version), "v"); semverRe.MatchString(ver) {
+		urls = append(urls,
+			fmt.Sprintf("https://codeload.github.com/%s/tar.gz/refs/tags/v%s", slug, ver),
+			fmt.Sprintf("https://gh-proxy.com/https://github.com/%s/archive/refs/tags/v%s.tar.gz", slug, ver),
+		)
+	}
+	urls = append(urls,
+		fmt.Sprintf("https://codeload.github.com/%s/tar.gz/HEAD", slug),
+		fmt.Sprintf("https://gh-proxy.com/https://github.com/%s/archive/HEAD.tar.gz", slug),
+	)
+	var lastErr error
+	for _, cand := range urls {
+		inst, err := s.installUnpinnedArchive(ctx, cand, entry.ID)
+		if err == nil {
+			return inst, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
+func (s *StoreManager) installUnpinnedArchive(ctx context.Context, candURL string, expectedID string) (*InstalledApp, error) {
+	data, err := s.fetchArchiveBytes(ctx, candURL)
+	if err != nil {
+		return nil, err
+	}
+	tmpExtract, err := os.MkdirTemp(s.CacheRoot, "extract-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmpExtract)
+
+	if err := ExtractPluginArchive(data, candURL, tmpExtract); err != nil {
+		return nil, err
+	}
+	pluginRoot, err := FindManifestRoot(tmpExtract)
+	if err != nil {
+		return nil, err
+	}
+	if expectedID != "" {
+		m, err := LoadManifest(pluginRoot)
+		if err != nil {
+			return nil, err
+		}
+		if m.ID != expectedID {
+			return nil, fmt.Errorf("manifest id mismatch: got %q, want %q", m.ID, expectedID)
+		}
+	}
+	return s.InstallFromDirectory(pluginRoot)
+}
+
 func (s *StoreManager) installFromGitHubRepo(ctx context.Context, slug string) (*InstalledApp, error) {
 	candidates := []string{
 		fmt.Sprintf("https://codeload.github.com/%s/tar.gz/HEAD", slug),
-		fmt.Sprintf("https://ghfast.top/https://github.com/%s/archive/HEAD.tar.gz", slug),
+		fmt.Sprintf("https://gh-proxy.com/https://github.com/%s/archive/HEAD.tar.gz", slug),
 	}
 	var lastErr error
 	for _, u := range candidates {
@@ -430,18 +490,21 @@ func (s *StoreManager) InstallFromArchiveURL(ctx context.Context, rawURL string,
 	}
 	candidates := []string{rawURL}
 	if strings.HasPrefix(rawURL, "https://github.com/") {
-		candidates = append(candidates, "https://ghfast.top/"+rawURL)
+		candidates = append(candidates, "https://gh-proxy.com/"+rawURL)
 	}
 	var data []byte
-	var dlErr error
+	var firstErr, lastErr error
 	for _, candURL := range candidates {
-		data, dlErr = s.fetchArchiveBytes(ctx, candURL)
-		if dlErr == nil {
+		data, lastErr = s.fetchArchiveBytes(ctx, candURL)
+		if lastErr == nil {
 			break
 		}
+		if firstErr == nil {
+			firstErr = lastErr
+		}
 	}
-	if dlErr != nil {
-		return nil, dlErr
+	if lastErr != nil {
+		return nil, firstErr
 	}
 	if expectedSHA256 != "" {
 		sum := sha256.Sum256(data)
