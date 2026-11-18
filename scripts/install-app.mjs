@@ -1,9 +1,22 @@
 import { spawn, spawnSync } from "node:child_process";
-import { cpSync, lstatSync, renameSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { assertInstallTarget, assertWritable, bundleId, installPath, installedExecutable, legacyInstallPath, remove, sameVolumeTemp, verifySignature } from "./app-bundle.mjs";
+import { fileURLToPath } from "node:url";
+import {
+  assertInstallTarget,
+  assertWritable,
+  bundleId,
+  installPath,
+  installedExecutable,
+  legacyInstallPath,
+  remove,
+  sameVolumeTemp,
+  verifySignature,
+} from "./app-bundle.mjs";
 import { appPids } from "./stop-app.mjs";
 
+const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const readyWaitMs = 8000;
 
 export function prepareInstall(bundle) {
@@ -21,6 +34,8 @@ export function prepareInstall(bundle) {
 }
 
 export function commitInstall(plan) {
+  // Never kill or stop any running Block process; atomically replace on disk so the
+  // running process stays undisturbed and the next launch opens the new build.
   if (plan.present) {
     plan.keep = true;
     renameSync(installPath, plan.backup);
@@ -43,6 +58,97 @@ export function commitInstall(plan) {
   plan.keep = false;
   const lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
   spawnSync(lsregister, ["-f", installPath], { stdio: "ignore" });
+  return installPath;
+}
+
+export function installWindows(exePath) {
+  const localAppData = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+  const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+  const installDir = join(localAppData, "Programs", "Block");
+  const targetExe = join(installDir, "block.exe");
+  mkdirSync(installDir, { recursive: true });
+
+  const staged = join(installDir, `.block.exe.staging-${process.pid}`);
+  const backup = join(installDir, `block.exe.old-${process.pid}`);
+  copyFileSync(exePath, staged);
+
+  let movedOld = false;
+  try {
+    if (existsSync(targetExe)) {
+      renameSync(targetExe, backup);
+      movedOld = true;
+    }
+    renameSync(staged, targetExe);
+  } catch (error) {
+    if (movedOld && !existsSync(targetExe)) {
+      try { renameSync(backup, targetExe); } catch {}
+    }
+    rmSync(staged, { force: true });
+    throw error;
+  }
+
+  for (const name of readdirSync(installDir)) {
+    if (name.startsWith("block.exe.old-")) {
+      try { rmSync(join(installDir, name), { force: true }); } catch {}
+    }
+  }
+
+  const startMenuDir = join(appData, "Microsoft", "Windows", "Start Menu", "Programs");
+  mkdirSync(startMenuDir, { recursive: true });
+  const shortcut = join(startMenuDir, "Block.lnk");
+  const psScript = [
+    "$ws = New-Object -ComObject WScript.Shell;",
+    `$s = $ws.CreateShortcut('${shortcut.replaceAll("'", "''")}');`,
+    `$s.TargetPath = '${targetExe.replaceAll("'", "''")}';`,
+    `$s.WorkingDirectory = '${installDir.replaceAll("'", "''")}';`,
+    `$s.IconLocation = '${targetExe.replaceAll("'", "''")},0';`,
+    "$s.Save();",
+  ].join(" ");
+  spawnSync("powershell", ["-NoProfile", "-Command", psScript], { stdio: "ignore" });
+  return targetExe;
+}
+
+export function installLinux(binPath) {
+  const home = process.env.HOME || homedir();
+  const binDir = join(home, ".local", "bin");
+  const targetBin = join(binDir, "block");
+  mkdirSync(binDir, { recursive: true });
+
+  const staged = join(binDir, `.block.staging-${process.pid}`);
+  copyFileSync(binPath, staged);
+  chmodSync(staged, 0o755);
+  try {
+    renameSync(staged, targetBin);
+  } catch (error) {
+    rmSync(staged, { force: true });
+    throw error;
+  }
+
+  const dataHome = process.env.XDG_DATA_HOME || join(home, ".local", "share");
+  const iconDir = join(dataHome, "icons", "hicolor", "1024x1024", "apps");
+  const appDir = join(dataHome, "applications");
+  mkdirSync(iconDir, { recursive: true });
+  mkdirSync(appDir, { recursive: true });
+
+  const srcIcon = join(repoRoot, "assets", "app-icon", "icon-1024.png");
+  if (existsSync(srcIcon)) {
+    copyFileSync(srcIcon, join(iconDir, "block.png"));
+  }
+  writeFileSync(
+    join(appDir, "block.desktop"),
+    [
+      "[Desktop Entry]",
+      "Type=Application",
+      "Name=Block",
+      `Exec=${targetBin} %F`,
+      "Icon=block",
+      "Categories=Office;TextEditor;Utility;",
+      "MimeType=text/markdown;text/x-markdown;",
+      "Terminal=false",
+      "",
+    ].join("\n"),
+  );
+  return targetBin;
 }
 
 function restore(plan, error) {
@@ -86,8 +192,6 @@ function backgroundLaunch() {
   return process.env.BLOCK_BACKGROUND_LAUNCH === "1";
 }
 
-// Detached launch of the installed binary. An immediate exit is not success; the caller
-// still has to observe that pid via the same installed-executable check as `open`.
 function spawnInstalledBackground() {
   return new Promise((resolve, reject) => {
     let child;
@@ -160,7 +264,6 @@ export async function openInstalled(previous) {
   if (launch?.exited) throw launch.error ?? new Error("installed executable exited before it was ready");
   if (!running.length) throw new Error(`open returned but no new process has executable ${installedExecutable}`);
   if (!background) {
-    // `open` from a background build leaves the app hidden; activate unhides its windows.
     const activated = spawnSync("osascript", ["-e", `tell application id "${bundleId}" to activate`], {
       encoding: "utf8",
       timeout: 4000,

@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>墨夜方案 A · 书脊光尺与景深壁纸桌面</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:#141720;color:#ececec;font-family:Inter,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#ececec;text-decoration:none}
+a:hover{color:#ffffff}
+button{font:inherit;cursor:pointer}
+@keyframes caretBlink{50%{opacity:0}}
+.caret{display:inline-block;width:2px;height:1.15em;background:#779de8;vertical-align:-0.18em;margin-left:2px;animation:caretBlink 1.05s steps(1) infinite}
+@media (max-width: 960px){
+  .split-2{grid-template-columns:minmax(0,1fr) !important}
+}
+</style>
+</helmet>
+
+<div style="width:100%;display:flex;flex-direction:column;background:#141720;color:#ececec">
+
+  <!-- ==================== 第一部分：轻快（书脊光尺 + Ocean Dark 原生分段条） ==================== -->
+  <section style="position:relative;padding:96px 40px 104px;background:radial-gradient(920px 460px at 74% 38%,rgba(119,157,232,0.10),transparent 72%),#141720;border-bottom:1px solid #252936">
+    <div class="split-2" style="max-width:1180px;margin:0 auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:56px;align-items:center">
+
+      <!-- 左侧标题 + Ocean Dark 一体化切换卡片（替代原土味橙色三栏） -->
+      <div style="display:flex;flex-direction:column;gap:28px">
+        <h2 style="margin:0;font-size:44px;line-height:1.22;font-weight:700;letter-spacing:-0.015em;color:#f4f6fa">笔记攒得再厚，翻开还是第一天那样快</h2>
+        <p style="margin:0;font-size:18px;line-height:1.72;color:#b2b9c8">从三五行的随手备忘，到写了一整年的几十万字书稿，点开那一刻正文就在眼前，滚动与落笔没有一丝拖泥带水。</p>
+
+        <!-- Ocean Dark 主题色切换组 -->
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+          <sc-for list="{{pillars}}" as="item" hint-placeholder-count="3">
+            <button type="button" onClick="{{item.pick}}" style="{{item.cardStyle}}">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <span style="{{item.dotStyle}}"></span>
+                  <span style="font-size:17px;font-weight:600;color:#f2f4f8">{{item.title}}</span>
+                </div>
+                <span style="font-size:15px;color:#aeb6c6">{{item.desc}}</span>
+              </div>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- 右侧：长卷书脊切面视窗（定格整万段位锚点，不乱跳叠字、不画碎格子） -->
+      <div style="background:#181a22;border:1px solid #2b3040;border-radius:14px;box-shadow:0 28px 72px rgba(0,0,0,0.52);overflow:hidden;display:flex;flex-direction:column">
+        <div style="height:42px;padding:0 16px;background:#1f222c;border-bottom:1px solid #2b3040;display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="width:11px;height:11px;border-radius:50%;background:#404554"></span>
+            <span style="width:11px;height:11px;border-radius:50%;background:#404554"></span>
+            <span style="width:11px;height:11px;border-radius:50%;background:#404554"></span>
+          </div>
+          <span style="font-size:13.5px;color:#a8b0c0">旧城建筑与田野长编.md</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#9dbcf5;background:rgba(119,157,232,0.14);border:1px solid rgba(119,157,232,0.34);padding:2px 10px;border-radius:999px">{{activeChapter.badge}}</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 172px;min-height:390px">
+          <!-- 正文阅读面：整洁定格呈现当前章节 -->
+          <div style="padding:32px 30px;display:flex;flex-direction:column;gap:16px;justify-content:center">
+            <div style="font-size:23px;font-weight:650;line-height:1.4;color:#f4f6fb">{{activeChapter.heading}}</div>
+            <p style="margin:0;font-size:15.5px;line-height:1.82;color:#cfd5e2">{{activeChapter.p1}}</p>
+            <div style="border-left:3px solid {{accent}};padding-left:14px;font-size:15px;line-height:1.76;color:#aeb8cc">{{activeChapter.quote}}</div>
+            <p style="margin:0;font-size:15.5px;line-height:1.82;color:#cfd5e2">{{activeChapter.p2}}<span class="caret"></span></p>
+          </div>
+
+          <!-- 右侧书脊刻度光尺（点击或自动阶梯定位，清晰优雅） -->
+          <div style="border-left:1px solid #262b38;background:#151820;padding:22px 14px;display:flex;flex-direction:column;justify-content:space-between;gap:8px">
+            <sc-for list="{{chapters}}" as="ch" hint-placeholder-count="4">
+              <button type="button" onClick="{{ch.pick}}" style="{{ch.rowStyle}}">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:{{ch.numColor}};font-weight:500">{{ch.mark}}</span>
+                <span style="font-size:13px;color:{{ch.lblColor}};text-align:left">{{ch.short}}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== 第二部分：桌面级全局 ⌥N 速记小窗（景深暗夜桌面） ==================== -->
+  <section style="position:relative;padding:96px 40px 112px;background:#181818">
+    <div style="max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:44px">
+
+      <div style="max-width:680px;margin:0 auto;text-align:center;display:flex;flex-direction:column;gap:14px">
+        <h2 style="margin:0;font-size:42px;line-height:1.22;font-weight:700;color:#f4f6fa">不切回软件，在桌面任何角落按 ⌥N 就能记</h2>
+        <p style="margin:0;font-size:18px;line-height:1.7;color:#b2b9c8">看网页、查文献或开会时闪过一句话，直接在当前画面上方唤出独立悬浮便签；记完收起，值得深写的再一键转入笔记库。</p>
+      </div>
+
+      <!-- 真实 macOS 桌面视口舞台 -->
+      <div style="position:relative;border-radius:16px;border:1px solid #2e3342;overflow:hidden;box-shadow:0 32px 84px rgba(0,0,0,0.62);background:radial-gradient(820px 500px at 18% 20%,#23314d 0%,transparent 65%),radial-gradient(760px 480px at 86% 82%,#1e2940 0%,transparent 65%),#11141c;min-height:580px;display:flex;flex-direction:column">
+
+        <!-- macOS 顶部系统菜单栏（明确传达这是电脑全局桌面，而非软件内部） -->
+        <div style="height:32px;padding:0 18px;background:rgba(15,17,24,0.82);border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#d6dce8">
+          <div style="display:flex;align-items:center;gap:18px">
+            <span style="font-weight:700;color:#ffffff">Safari</span>
+            <span style="color:#9da6b8">文件</span>
+            <span style="color:#9da6b8">编辑</span>
+            <span style="color:#9da6b8">显示</span>
+            <span style="color:#9da6b8">书签</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px">
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:5px;background:rgba(119,157,232,0.18);border:1px solid rgba(119,157,232,0.42);color:#e8effd;font-size:12px;font-weight:500">
+              <img src="/_blob/9b52e670533ab8f9c6df70d44b57da15" alt="" style="width:14px;height:14px;border-radius:3px">
+              <span>速记 ⌥N</span>
+            </span>
+            <span style="color:#b8c0d0;font-family:'JetBrains Mono',monospace;font-size:12.5px">周二 22:18</span>
+          </div>
+        </div>
+
+        <!-- 桌面工作区：后景是正在浏览的网页窗口，前景凌空悬浮独立的 Block 速记小窗 -->
+        <div style="position:relative;flex:1;padding:34px 40px 44px;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));align-items:center;gap:24px">
+
+          <!-- 后景其他应用窗口（Safari 阅读文章页，证明不在 Block 软件内） -->
+          <div style="grid-column:1 / span 8;background:rgba(26,29,38,0.86);border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden;box-shadow:0 18px 44px rgba(0,0,0,0.38);opacity:0.74">
+            <div style="height:38px;padding:0 14px;background:#202430;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:12px">
+              <div style="display:flex;gap:7px">
+                <span style="width:10px;height:10px;border-radius:50%;background:#4a5060"></span>
+                <span style="width:10px;height:10px;border-radius:50%;background:#4a5060"></span>
+                <span style="width:10px;height:10px;border-radius:50%;background:#4a5060"></span>
+              </div>
+              <div style="flex:1;max-width:360px;margin:0 auto;height:24px;border-radius:6px;background:#171a22;display:flex;align-items:center;justify-content:center;font-size:12.5px;color:#959fb2">arch-journal.org · 岭南传统街巷营造笔记</div>
+            </div>
+            <div style="padding:28px 34px 36px;display:flex;flex-direction:column;gap:14px;color:#9ea7b8">
+              <div style="font-size:21px;font-weight:600;color:#cfd6e4">骑楼街巷的尺度与日常烟火</div>
+              <p style="margin:0;font-size:14.5px;line-height:1.8">传统商业街巷之所以让人愿意慢走，不在于立面装饰有多繁复，而在于廊下遮阳避雨的灰空间尺度刚好容得下一张竹椅与一壶茶。</p>
+              <p style="margin:0;font-size:14.5px;line-height:1.8">当步行者的视线每隔十几步就能遇见一处转折或老铺招牌，路途本身便不再枯燥。做笔记其实也是同样的道理……</p>
+              <div style="height:86px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05)"></div>
+            </div>
+          </div>
+
+          <!-- 前景凌空浮现：独立桌面级 Block 速记原生窗口（带独立红黄绿控制点 + 景深光晕） -->
+          <div style="grid-column:6 / span 7;margin-top:26px;position:relative;z-index:3;background:#20232d;border:1px solid rgba(119,157,232,0.48);border-radius:14px;box-shadow:0 34px 90px rgba(0,0,0,0.76),0 0 0 1px rgba(119,157,232,0.18),0 0 48px rgba(119,157,232,0.12);overflow:hidden">
+
+            <!-- 独立原生窗口顶栏（严格还原 src/quick/header.rs：左红黄绿 + 居中三圆点 dot_pager + 右侧存入笔记图标按钮） -->
+            <div style="height:44px;padding:0 12px 0 16px;background:#181818;border-bottom:1px solid #2b2f3c;display:flex;align-items:center;justify-content:space-between;position:relative">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:12px;height:12px;border-radius:50%;background:#ec6a5e"></span>
+                <span style="width:12px;height:12px;border-radius:50%;background:#f4bf4f"></span>
+                <span style="width:12px;height:12px;border-radius:50%;background:#61c554"></span>
+              </div>
+
+              <!-- 真实 dot_pager（src/ui/dot_pager.rs：选中 18x6 海雾蓝胶囊，其余 6x6 圆点） -->
+              <div style="display:flex;align-items:center;gap:2px">
+                <sc-for list="{{slots}}" as="sl" hint-placeholder-count="3">
+                  <button type="button" aria-label="{{sl.label}}" onClick="{{sl.pick}}" style="width:22px;height:24px;border:0;background:transparent;padding:0;display:inline-flex;align-items:center;justify-content:center">
+                    <span style="{{sl.dotStyle}}"></span>
+                  </button>
+                </sc-for>
+              </div>
+
+              <button type="button" aria-label="{{saveLabel}}" onClick="{{toggleSaved}}" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(119,157,232,0.42);background:#242938;color:#eaf0ff;display:inline-flex;align-items:center;justify-content:center">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#779de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 3v5a1 1 0 0 0 1 1h5"></path>
+                  <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <path d="M9 15l2 2 4-4"></path>
+                </svg>
+              </button>
+            </div>
+
+            <!-- 速记正文 -->
+            <div style="padding:24px 26px 28px;display:flex;flex-direction:column;gap:12px;min-height:208px">
+              <div style="font-size:18px;font-weight:600;color:#f5f7fb">{{activeSlot.heading}}</div>
+              <p style="margin:0;font-size:15.5px;line-height:1.8;color:#dce2ee">{{activeSlot.body}}<span class="caret"></span></p>
+              <div style="margin-top:auto;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#98a2b6">
+                <span>全局快捷键 ⌥N 唤出 · Esc 收回后台</span>
+                <span style="font-family:'JetBrains Mono',monospace;color:#9dbcf5">⌘1 – ⌘3 切换槽位</span>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#779de8","options":["#779de8","#6fa8dc","#8ab4f8"]},"autoPlay":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":1920}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = { chIdx: 3, slotIdx: 1, saved: false };
+    this._timer = null;
+  }
+  componentDidMount() {
+    this._syncTimer();
+  }
+  componentDidUpdate() {
+    this._syncTimer();
+  }
+  componentWillUnmount() {
+    if (this._timer) clearInterval(this._timer);
+  }
+  _syncTimer() {
+    const auto = this.props.autoPlay ?? true;
+    if (auto && !this._timer) {
+      this._timer = setInterval(() => {
+        this.setState((s) => ({
+          chIdx: (s.chIdx + 1) % 4,
+          slotIdx: (s.slotIdx + 1) % 3,
+          saved: false
+        }));
+      }, 3200);
+    } else if (!auto && this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#779de8';
+    const rawCh = [
+      {
+        mark: '第 1 段',
+        short: '序章 · 初冬动笔',
+        badge: '第 1 / 100,000 段',
+        heading: '序章：把散落的念头重新拢回本地',
+        p1: '推开书房窗户的时候天刚蒙蒙亮，硬盘里那座写了四年的笔记文件夹点开便直接停在昨晚未完的那一行，没有任何加载框打断思绪。',
+        quote: '好的工具像顺手的钢笔，拔开笔帽的那一刻墨水就已经贴在纸上。',
+        p2: '不用等云端同步转圈，也不用关掉各种弹窗提醒，坐下来就能接着往下写'
+      },
+      {
+        mark: '第 24,000 段',
+        short: '卷二 · 春季田野录',
+        badge: '第 24,000 / 100,000 段',
+        heading: '第二十四章：潮州古巷与骑楼测绘手记',
+        p1: '翻到两万四千段处的春季走访长卷，夹杂着几十张日程表与长段访谈实录，上下滑动依然像翻动几行短备忘一样轻快跟手。',
+        quote: '街巷宽度与步速成反比，越是从容的记录越经得起日后反复检索。',
+        p2: '顺手把两段访谈挪换位置，整章排版在落指瞬间便已悄然就位'
+      },
+      {
+        mark: '第 68,000 段',
+        short: '卷五 · 旧城器物考',
+        badge: '第 68,000 / 100,000 段',
+        heading: '第六十八章：手工作坊里的木作与纸张',
+        p1: '笔记攒到第六万八千段，早已是一整部厚书的体量。无论从目录跳往哪一节，正文都在眨眼之前清清楚楚铺展在眼前。',
+        quote: '器物的耐看，往往藏在那些不抢戏却处处妥帖的接缝里。',
+        p2: '整天挂在后台随时翻阅批注，机身安静清凉，听不到一丝风扇声响'
+      },
+      {
+        mark: '第 100,000 段',
+        short: '终卷 · 十万段长编',
+        badge: '第 100,000 段 · 秒开如初',
+        heading: '第一百章：写满十万段，翻开还是第一天那样快',
+        p1: '哪怕把整整十万段读书摘录、游记与年度总结装进同一个工作区，打开、跳转与连续敲字依然保持着第一天新建空文档时的轻盈手感。',
+        quote: '文字留在自己硬盘里的踏实感，加上毫无察觉的响应速度，才是长久写作的底气。',
+        p2: '十万段只是起点，再写十年，每一篇仍是干干净净的纯正 Markdown'
+      }
+    ];
+
+    const pillarRaw = [
+      { title: '即点即开', desc: '十万段长稿翻开即见正文，无需盯着加载圈等待', target: 3 },
+      { title: '落笔生字', desc: '打字与排版实时同步，写得再快也绝不卡顿掉拍', target: 1 },
+      { title: '安静常驻', desc: '轻量原生架构，全天挂在后台风扇也不会响', target: 2 }
+    ];
+
+    const activePillar = this.state.chIdx === 1 ? 1 : (this.state.chIdx === 2 ? 2 : 0);
+    const pillars = pillarRaw.map((p, idx) => {
+      const on = idx === activePillar;
+      return {
+        ...p,
+        pick: () => this.setState({ chIdx: p.target }),
+        cardStyle: 'width:100%;padding:15px 18px;border-radius:10px;text-align:left;background:' + (on ? '#202534' : '#191c26') + ';border:1px solid ' + (on ? accent : '#282d3d') + ';box-shadow:' + (on ? 'inset 0 0 0 1px ' + accent : 'none') + ';transition:all 180ms ease',
+        dotStyle: 'width:8px;height:8px;border-radius:50%;background:' + (on ? accent : '#4a5268')
+      };
+    });
+
+    const chapters = rawCh.map((c, idx) => {
+      const on = idx === this.state.chIdx;
+      return {
+        ...c,
+        pick: () => this.setState({ chIdx: idx }),
+        rowStyle: 'width:100%;padding:11px 10px;border-radius:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-start;background:' + (on ? 'rgba(119,157,232,0.15)' : 'transparent') + ';border:1px solid ' + (on ? 'rgba(119,157,232,0.45)' : 'transparent') + ';transition:all 160ms ease',
+        numColor: on ? '#9dbcf5' : '#7b8498',
+        lblColor: on ? '#f2f5fc' : '#9ca5b8'
+      };
+    });
+
+    const rawSlots = [
+      {
+        label: '便签 1',
+        heading: '周末旧书店淘书备忘',
+        body: '周六下午顺路去文德路街角那家旧书店，找找八十年代布面精装的散文选集，顺便买两本空白方格速写本。'
+      },
+      {
+        label: '便签 2',
+        heading: '读《岭南街巷营造》随手摘记',
+        body: '骑楼廊下那一步灰空间最迷人——外面下着大雨，廊下还能支起小桌慢慢喝茶。写文章分段也该留出这样的呼吸余地。'
+      },
+      {
+        label: '便签 3',
+        heading: '下期播客聊天提纲灵感',
+        body: '开场不聊宏大概念，直接从「为什么存在自己电脑文件夹里的纯文本最让人安心」聊起，举三个日常整理书稿的小例子。'
+      }
+    ];
+
+    const slots = rawSlots.map((s, idx) => {
+      const on = idx === this.state.slotIdx;
+      return {
+        ...s,
+        pick: () => this.setState({ slotIdx: idx, saved: false }),
+        dotStyle: 'width:' + (on ? '18px' : '6px') + ';height:6px;border-radius:999px;background:' + (on ? accent : '#384152') + ';transition:all 180ms ease'
+      };
+    });
+
+    return {
+      accent,
+      pillars,
+      chapters,
+      activeChapter: rawCh[this.state.chIdx],
+      slots,
+      activeSlot: rawSlots[this.state.slotIdx],
+      saveLabel: this.state.saved ? '已转入笔记库' : '存入笔记库 ⌘⇧S',
+      toggleSaved: () => this.setState((s) => ({ saved: !s.saved }))
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>性能监控 · 方案 A · 分段长条单卡</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400..500&amp;display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+.pill-btn{display:flex;align-items:center;gap:10px;width:100%;height:42px;padding:0 16px;border-radius:8px;font:inherit;cursor:pointer;text-align:left;transition:background-color .15s ease,border-color .15s ease}
+.seg-chunk{height:100%;border:0;padding:0;cursor:pointer;transition:opacity .15s ease,transform .15s ease}
+.seg-chunk:hover{transform:scaleY(1.08)}
+.seg-chunk:focus-visible,.pill-btn:focus-visible,.tab-btn:focus-visible,.icon-btn:focus-visible{outline:2px solid #779de8;outline-offset:2px}
+.tab-btn{height:28px;padding:0 10px;border-radius:6px;border:0;font:inherit;font-size:13px;cursor:pointer;transition:background-color .15s ease,color .15s ease}
+.row-item{display:flex;align-items:center;gap:10px;width:100%;padding:7px 8px;border-radius:8px;border:0;background:transparent;font:inherit;color:inherit;cursor:pointer;text-align:left;transition:background-color .15s ease}
+.icon-btn{width:28px;height:28px;border-radius:6px;border:0;background:transparent;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:inherit}
+</style>
+</helmet>
+<div style="width:1120px;height:760px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:36px;padding:32px;background:{{t.backdrop}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;color:{{t.text}}">
+
+<section aria-label="关于弹窗入口" style="width:356px;flex:none;display:flex;flex-direction:column;align-items:center;gap:18px;padding:28px 24px 22px;background:{{t.menu}};border:1px solid {{t.border}};border-radius:14px;position:relative">
+<button type="button" class="icon-btn" aria-label="切换深浅色" onClick="{{toggleTheme}}" style="position:absolute;top:12px;right:12px;color:{{t.sub}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+</button>
+<img src="/_blob/6768a211187044ad08d09ce47a61554d" alt="Block 图标" style="width:80px;height:80px">
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+<h1 style="margin:0;font-size:22px;line-height:28px;font-weight:560;letter-spacing:-0.02em">Block</h1>
+<p style="margin:0;color:{{t.sub}};font-family:'JetBrains Mono',Menlo,monospace">版本 1.0.301</p>
+<p style="margin:0;color:{{t.sub}}">作者 eachann</p>
+</div>
+
+<div style="width:100%;display:flex;flex-direction:column;gap:10px;border-top:1px solid {{t.border}};padding-top:16px">
+<a href="https://github.com/eachann1024/block" target="_blank" rel="noopener noreferrer" class="pill-btn" style="background:{{t.paper}};border:1px solid {{t.btn}};color:{{t.text}};text-decoration:none">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l-4 3 4 3"></path><path d="M16 9l4 3-4 3"></path><path d="M13.5 7l-3 10"></path></svg>
+<span style="flex:1;font-weight:460">项目源码</span>
+<span style="color:{{t.sub}};font-family:'JetBrains Mono',Menlo,monospace;font-size:13px">eachann1024/block</span>
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.sub}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"></path><path d="M9 7h8v8"></path></svg>
+</a>
+
+<button type="button" class="pill-btn" onClick="{{cycleSeg}}" style="background:{{t.selected}};border:1px solid {{t.accent}};color:{{t.text}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"></path></svg>
+<span style="flex:1;font-weight:500">性能与占用</span>
+<span style="color:{{t.accent}};font-family:'JetBrains Mono',Menlo,monospace;font-size:13px">64.2 MB · 48.6 MB</span>
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg>
+</button>
+</div>
+
+<button type="button" class="pill-btn" style="justify-content:center;height:38px;background:{{t.paper}};border:1px solid {{t.btn}};color:{{t.text}};font-weight:460">关闭</button>
+</section>
+
+<section aria-label="性能与体积监控面板" style="width:520px;flex:none;display:flex;flex-direction:column;gap:18px;padding:22px 24px;background:{{t.menu}};border:1px solid {{t.border}};border-radius:14px">
+<header style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;align-items:center;gap:10px">
+<span style="font-size:16px;line-height:22px;font-weight:560;letter-spacing:-0.01em">性能与占用</span>
+<span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;background:{{t.liveBg}};color:{{t.liveFg}};font-size:12px;font-weight:500">
+<span style="width:6px;height:6px;border-radius:50%;background:{{t.liveDot}}"></span>实时
+</span>
+</div>
+<span style="color:{{t.sub}};font-family:'JetBrains Mono',Menlo,monospace;font-size:13px">PID 48210 · Apple Silicon 原生</span>
+</header>
+
+<div style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:8px">
+<div style="padding:10px 12px;border-radius:10px;background:{{t.paper}};border:1px solid {{t.border}};display:flex;flex-direction:column;gap:2px">
+<span style="color:{{t.sub}};font-size:13px">运行内存</span>
+<strong style="font-family:'JetBrains Mono',Menlo,monospace;font-size:16px;font-weight:560">64.2 MB</strong>
+<span style="color:{{t.sub}};font-size:12px">系统占比 0.4%</span>
+</div>
+<div style="padding:10px 12px;border-radius:10px;background:{{t.paper}};border:1px solid {{t.border}};display:flex;flex-direction:column;gap:2px">
+<span style="color:{{t.sub}};font-size:13px">处理器负载</span>
+<strong style="font-family:'JetBrains Mono',Menlo,monospace;font-size:16px;font-weight:560">0.4%</strong>
+<span style="color:{{t.sub}};font-size:12px">静默省电待机</span>
+</div>
+<div style="padding:10px 12px;border-radius:10px;background:{{t.paper}};border:1px solid {{t.border}};display:flex;flex-direction:column;gap:2px">
+<span style="color:{{t.sub}};font-size:13px">画面流畅度</span>
+<strong style="font-family:'JetBrains Mono',Menlo,monospace;font-size:16px;font-weight:560">120 FPS</strong>
+<span style="color:{{t.sub}};font-size:12px">单帧 0.8 ms</span>
+</div>
+<div style="padding:10px 12px;border-radius:10px;background:{{t.paper}};border:1px solid {{t.border}};display:flex;flex-direction:column;gap:2px">
+<span style="color:{{t.sub}};font-size:13px">搜索与保存</span>
+<strong style="font-family:'JetBrains Mono',Menlo,monospace;font-size:16px;font-weight:560">1.2 ms</strong>
+<span style="color:{{t.sub}};font-size:12px">128 篇实时索引</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:12px;background:{{t.paper}};border:1px solid {{t.border}}">
+<div style="display:flex;align-items:baseline;justify-content:space-between">
+<div style="display:flex;align-items:baseline;gap:8px">
+<strong style="font-size:24px;line-height:30px;font-family:'JetBrains Mono',Menlo,monospace;font-weight:560;letter-spacing:-0.02em">48.6 MB</strong>
+<span style="color:{{t.sub}};font-size:13px">当前应用与数据总体积</span>
+</div>
+<span style="color:{{t.sub}};font-size:13px">悬停色段查看用途</span>
+</div>
+
+<div role="group" aria-label="体积构成进度条" style="display:flex;align-items:center;gap:3px;height:18px;padding:2px;border-radius:8px;background:{{t.shell}}">
+<button type="button" class="seg-chunk" aria-label="应用核心 38.8 MB" onMouseEnter="{{pick0}}" onClick="{{pick0}}" style="width:62%;background:#547dd0;border-radius:5px 2px 2px 5px;opacity:{{op0}}"></button>
+<button type="button" class="seg-chunk" aria-label="笔记与插图 6.4 MB" onMouseEnter="{{pick1}}" onClick="{{pick1}}" style="width:16%;background:#3ba57b;border-radius:2px;opacity:{{op1}}"></button>
+<button type="button" class="seg-chunk" aria-label="历史快照 2.1 MB" onMouseEnter="{{pick2}}" onClick="{{pick2}}" style="width:9%;background:#d4943a;border-radius:2px;opacity:{{op2}}"></button>
+<button type="button" class="seg-chunk" aria-label="AI 会话 0.9 MB" onMouseEnter="{{pick3}}" onClick="{{pick3}}" style="width:7%;background:#8b6fd6;border-radius:2px;opacity:{{op3}}"></button>
+<button type="button" class="seg-chunk" aria-label="配置与日志 0.4 MB" onMouseEnter="{{pick4}}" onClick="{{pick4}}" style="width:6%;background:#8792a2;border-radius:2px 5px 5px 2px;opacity:{{op4}}"></button>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:8px;background:{{t.shell}};border:1px solid {{t.border}}">
+<div style="display:flex;align-items:center;gap:10px;min-width:0">
+<span style="width:10px;height:10px;border-radius:3px;flex:none;background:{{cur.color}}"></span>
+<strong style="font-weight:560;white-space:nowrap">{{cur.name}}</strong>
+<span style="color:{{t.sub}};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{cur.purpose}}</span>
+</div>
+<span style="font-family:'JetBrains Mono',Menlo,monospace;font-size:13px;font-weight:500;color:{{t.text}};white-space:nowrap">{{cur.size}} · {{cur.pct}}</span>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:12px;padding-top:2px">
+<button type="button" onMouseEnter="{{pick0}}" onClick="{{pick0}}" style="border:0;background:transparent;padding:0;color:{{t.sub}};font:inherit;font-size:13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><span style="width:8px;height:8px;border-radius:2px;background:#547dd0"></span>应用核心 38.8M</button>
+<button type="button" onMouseEnter="{{pick1}}" onClick="{{pick1}}" style="border:0;background:transparent;padding:0;color:{{t.sub}};font:inherit;font-size:13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><span style="width:8px;height:8px;border-radius:2px;background:#3ba57b"></span>笔记与插图 6.4M</button>
+<button type="button" onMouseEnter="{{pick2}}" onClick="{{pick2}}" style="border:0;background:transparent;padding:0;color:{{t.sub}};font:inherit;font-size:13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><span style="width:8px;height:8px;border-radius:2px;background:#d4943a"></span>历史快照 2.1M</button>
+<button type="button" onMouseEnter="{{pick3}}" onClick="{{pick3}}" style="border:0;background:transparent;padding:0;color:{{t.sub}};font:inherit;font-size:13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><span style="width:8px;height:8px;border-radius:2px;background:#8b6fd6"></span>AI 会话 0.9M</button>
+<button type="button" onMouseEnter="{{pick4}}" onClick="{{pick4}}" style="border:0;background:transparent;padding:0;color:{{t.sub}};font:inherit;font-size:13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer"><span style="width:8px;height:8px;border-radius:2px;background:#8792a2"></span>配置与日志 0.4M</button>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="color:{{t.sub}};font-size:13px;font-weight:500">分项明细</span>
+<div style="display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:{{t.shell}};border:1px solid {{t.border}}">
+<button type="button" class="tab-btn" onClick="{{tabAll}}" style="background:{{tabBgAll}};color:{{tabFgAll}}">全部</button>
+<button type="button" class="tab-btn" onClick="{{tabStorage}}" style="background:{{tabBgStorage}};color:{{tabFgStorage}}">体积构成</button>
+<button type="button" class="tab-btn" onClick="{{tabRuntime}}" style="background:{{tabBgRuntime}};color:{{tabFgRuntime}}">内存构成</button>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:4px">
+<sc-for list="{{rows}}" as="r">
+<button type="button" class="row-item" onMouseEnter="{{r.pick}}" onClick="{{r.pick}}" style="background:{{r.bg}}">
+<span style="width:8px;height:8px;border-radius:2px;flex:none;background:{{r.color}}"></span>
+<span style="width:92px;flex:none;font-weight:460">{{r.name}}</span>
+<span style="flex:1;color:{{t.sub}};font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{r.purpose}}</span>
+<span style="width:68px;flex:none;height:5px;border-radius:999px;background:{{t.shell}};overflow:hidden;display:inline-flex"><span style="width:{{r.bar}};height:100%;background:{{r.color}};border-radius:999px"></span></span>
+<span style="width:58px;flex:none;text-align:right;font-family:'JetBrains Mono',Menlo,monospace;font-size:13px">{{r.size}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":true},"$preview":{"width":1120,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const dark = s.dark !== undefined ? s.dark : (this.props.dark ?? true);
+    const idx = s.idx ?? 0;
+    const tab = s.tab || 'all';
+    const t = dark
+      ? { backdrop:'#141414', menu:'#222222', paper:'#181818', shell:'#2a2a2a', selected:'#2b3548', text:'#ececec', sub:'#b4b4b4', border:'#2e2e2e', btn:'#444444', accent:'#779de8', liveBg:'#193226', liveFg:'#6fd89c', liveDot:'#38c172' }
+      : { backdrop:'#eef0f3', menu:'#ffffff', paper:'#f8f8f8', shell:'#f1f1f1', selected:'#e5edfc', text:'#20242c', sub:'#526071', border:'#e4e6ea', btn:'#dcdcdc', accent:'#547dd0', liveBg:'#e6f6ed', liveFg:'#1f7a46', liveDot:'#28a75c' };
+    const pick0 = () => this.setState({ idx: 0 });
+    const pick1 = () => this.setState({ idx: 1 });
+    const pick2 = () => this.setState({ idx: 2 });
+    const pick3 = () => this.setState({ idx: 3 });
+    const pick4 = () => this.setState({ idx: 4 });
+    const segs = [
+      { name:'应用核心', size:'38.8 MB', pct:'79.8%', bar:'80%', color:'#547dd0', kind:'storage', purpose:'原生编辑器与 GPUI 渲染引擎，保障离线秒开', pick: pick0 },
+      { name:'笔记与插图', size:'6.4 MB', pct:'13.2%', bar:'36%', color:'#3ba57b', kind:'storage', purpose:'当前工作区 Markdown 文档与本地图片资源', pick: pick1 },
+      { name:'历史快照', size:'2.1 MB', pct:'4.3%', bar:'22%', color:'#d4943a', kind:'storage', purpose:'后台自动归档的页面版本，支持随时对比恢复', pick: pick2 },
+      { name:'AI 会话记录', size:'0.9 MB', pct:'1.9%', bar:'14%', color:'#8b6fd6', kind:'runtime', purpose:'本地保存的 AI 助手上下文与修改建议草稿', pick: pick3 },
+      { name:'配置与日志', size:'0.4 MB', pct:'0.8%', bar:'9%', color:'#8792a2', kind:'runtime', purpose:'界面偏好设置、标题折叠状态与诊断日志', pick: pick4 }
+    ];
+    const filtered = segs
+      .map((item, i) => ({ ...item, bg: i === idx ? t.selected : 'transparent' }))
+      .filter(item => tab === 'all' || item.kind === tab);
+    return {
+      t,
+      cur: segs[idx],
+      op0: idx === 0 ? '1' : '0.68',
+      op1: idx === 1 ? '1' : '0.68',
+      op2: idx === 2 ? '1' : '0.68',
+      op3: idx === 3 ? '1' : '0.68',
+      op4: idx === 4 ? '1' : '0.68',
+      pick0, pick1, pick2, pick3, pick4,
+      cycleSeg: () => this.setState({ idx: (idx + 1) % 5 }),
+      toggleTheme: () => this.setState({ dark: !dark }),
+      tabAll: () => this.setState({ tab: 'all' }),
+      tabStorage: () => this.setState({ tab: 'storage' }),
+      tabRuntime: () => this.setState({ tab: 'runtime' }),
+      tabBgAll: tab === 'all' ? t.selected : 'transparent',
+      tabFgAll: tab === 'all' ? t.text : t.sub,
+      tabBgStorage: tab === 'storage' ? t.selected : 'transparent',
+      tabFgStorage: tab === 'storage' ? t.text : t.sub,
+      tabBgRuntime: tab === 'runtime' ? t.selected : 'transparent',
+      tabFgRuntime: tab === 'runtime' ? t.text : t.sub,
+      rows: filtered
+    };
+  }
+}
+</script>
+</body>
+</html>

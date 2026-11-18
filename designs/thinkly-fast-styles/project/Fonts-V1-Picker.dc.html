@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>自定义字体 · 方案 A 分角色分文种下拉</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Noto+Sans+SC:wght@400;500;600&amp;family=Noto+Serif+SC:wght@400;600&amp;family=LXGW+WenKai+TC:wght@400;700&amp;family=Source+Serif+4:opsz,wght@8..60,400;600&amp;family=Fira+Code:wght@400;500&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Lora:wght@400;600&amp;family=Crimson+Pro:wght@400;600&amp;family=ZCOOL+XiaoWei&amp;family=Source+Code+Pro:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input{font-family:inherit}
+.row{font:inherit;font-size:14px;line-height:20px;width:100%;height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;border:0;border-radius:6px;background:transparent;text-align:left;cursor:pointer;box-sizing:border-box;transition:background-color 140ms ease-out}
+.row:hover{background:var(--hover)}
+.seg{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:32px;padding:0 12px;border:0;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;white-space:nowrap;transition:background-color 160ms cubic-bezier(.16,1,.3,1),box-shadow 160ms cubic-bezier(.16,1,.3,1),color 160ms ease-out}
+.trigger{font:inherit;font-size:15px;line-height:20px;width:248px;height:36px;padding:0 10px 0 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;box-sizing:border-box;text-align:left;transition:box-shadow 160ms cubic-bezier(.16,1,.3,1),border-color 160ms ease-out,background-color 160ms ease-out}
+.trigger:hover{background:var(--hover)}
+.trigger .chev{transition:transform 200ms cubic-bezier(.16,1,.3,1)}
+.opt{font-size:15px;line-height:20px;width:100%;height:36px;padding:0 10px;border:0;border-radius:6px;background:transparent;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;text-align:left;box-sizing:border-box;transition:background-color 120ms ease-out}
+.opt:hover{background:var(--hover)}
+.step{font:inherit;width:32px;height:32px;border:0;border-radius:6px;background:transparent;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color 120ms ease-out}
+.step:hover{background:var(--hover)}
+.import{font:inherit;font-size:14px;line-height:20px;width:100%;height:36px;padding:0 10px;border:0;border-radius:6px;background:transparent;display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left;box-sizing:border-box;transition:background-color 120ms ease-out}
+.import:hover{background:var(--hover)}
+.search{font:inherit;font-size:14px;line-height:20px;width:100%;height:32px;border:0;background:transparent;outline:none;padding:0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</helmet>
+<div style="width:100%;min-height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:{{shellBg}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:{{textPrimary}};font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;--hover:{{hoverBg}};transition:background-color 200ms ease-out,color 200ms ease-out">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;border-bottom:1px solid {{sidebarBorder}};box-sizing:border-box">
+<div style="width:260px;flex:none;height:100%;box-sizing:border-box;display:flex;align-items:center;padding:0 16px;border-right:1px solid {{sidebarBorder}}">
+<div aria-hidden="true" style="display:flex;gap:8px"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+</div>
+<div style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:0 16px;color:{{textSecondary}}">
+<span>设置</span><span>/</span><span style="color:{{textPrimary}};font-weight:460">外观与字体</span>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex">
+
+<aside aria-label="设置分类导航" style="width:260px;flex:none;background:{{sidebarBg}};border-right:1px solid {{sidebarBorder}};box-sizing:border-box;display:flex;flex-direction:column">
+<div style="padding:18px 16px 10px"><span style="font-size:18px;line-height:24px;font-weight:560">设置</span></div>
+<nav aria-label="设置分类" style="padding:4px 10px;display:flex;flex-direction:column;gap:4px">
+<button type="button" class="row" style="color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M12 3.5L14.2 9.3L20 11.5L14.2 13.7L12 19.5L9.8 13.7L4 11.5L9.8 9.3L12 3.5Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="M18.5 4V7M17 5.5H20" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path></svg>
+<span>AI 助手</span>
+</button>
+<button type="button" class="row" aria-current="page" style="background:{{selectedBg}};color:{{textPrimary}};box-shadow:inset 0 0 0 1px {{accent}};font-weight:460">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><rect x="3.5" y="4.5" width="17" height="12" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect><path d="M8 20H16M12 16.5V20" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path></svg>
+<span>外观与字体</span>
+</button>
+<button type="button" class="row" style="color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path><circle cx="9" cy="7" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle><circle cx="15" cy="12" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle><circle cx="10" cy="17" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle></svg>
+<span>通用与编辑</span>
+</button>
+<button type="button" class="row" style="color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><rect x="3.25" y="5.75" width="17.5" height="12.5" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect><path d="M7 10H8.5M11.25 10H12.75M15.5 10H17M7.5 14H16.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path></svg>
+<span>基础快捷键</span>
+</button>
+</nav>
+</aside>
+
+
+<main style="flex:1;min-width:0;background:{{settingsBg}};overflow:auto;position:relative;transition:background-color 200ms ease-out">
+<sc-if value="{{anyOpen}}" hint-placeholder-val="{{false}}">
+<button type="button" aria-label="关闭字体菜单" tabindex="-1" onClick="{{closeAll}}" style="position:fixed;inset:0;border:0;background:transparent;z-index:5;cursor:default"></button>
+</sc-if>
+<div style="max-width:720px;margin:0 auto;padding:40px 28px 160px;display:flex;flex-direction:column;gap:24px">
+<h1 style="margin:0;font-size:24px;line-height:32px;font-weight:560">外观与字体</h1>
+
+<section style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:16px;transition:background-color 200ms ease-out,border-color 200ms ease-out">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560">主题与语言</h2>
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span>外观主题</span>
+<div role="group" aria-label="外观主题" style="display:flex;gap:2px;padding:3px;background:{{shellBg}};border:1px solid {{borderCol}};border-radius:8px">
+<sc-for list="{{themeSegs}}" as="s" hint-placeholder-count="3">
+<button type="button" class="seg" aria-pressed="{{s.on}}" onClick="{{s.pick}}" style="background:{{s.bg}};color:{{s.col}};box-shadow:{{s.ring}}">{{s.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span>界面语言</span>
+<div role="group" aria-label="界面语言" style="display:flex;gap:2px;padding:3px;background:{{shellBg}};border:1px solid {{borderCol}};border-radius:8px">
+<sc-for list="{{langSegs}}" as="s" hint-placeholder-count="3">
+<button type="button" class="seg" aria-pressed="{{s.on}}" onClick="{{s.pick}}" style="background:{{s.bg}};color:{{s.col}};box-shadow:{{s.ring}}">{{s.label}}</button>
+</sc-for>
+</div>
+</div>
+</section>
+
+<section style="position:relative;z-index:6;background:{{cardBg}};border:1px solid {{borderCol}};border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:16px;transition:background-color 200ms ease-out,border-color 200ms ease-out">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560">编辑器</h2>
+
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="2">
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;position:relative;z-index:{{r.z}}">
+<span>{{r.label}}</span>
+<div style="position:relative">
+<button type="button" class="trigger" aria-haspopup="listbox" aria-expanded="{{r.open}}" aria-label="{{r.label}}" onClick="{{r.toggle}}" style="background:{{shellBg}};border:1px solid {{r.border}};box-shadow:{{r.ring}};color:{{textPrimary}}">
+<span style="font-family:{{r.fam}};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{r.name}}</span>
+<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{textSecondary}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;transform:{{r.chev}}"><path d="M6 9l6 6 6-6"></path></svg>
+</button>
+
+<div role="listbox" aria-label="{{r.label}}" style="position:absolute;top:42px;right:0;width:300px;box-sizing:border-box;background:{{menuBg}};border:1px solid {{borderCol}};border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,{{shadowA}}),0 2px 6px rgba(15,23,42,0.06);padding:6px;transform-origin:top right;opacity:{{r.popOpacity}};transform:{{r.popTransform}};visibility:{{r.popVis}};pointer-events:{{r.popPe}};transition:{{r.popTrans}}">
+<div style="display:flex;align-items:center;gap:8px;padding:0 8px;margin-bottom:4px;border-bottom:1px solid {{borderCol}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{textSecondary}}" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="flex:none"><circle cx="11" cy="11" r="6.5"></circle><path d="M20 20l-4.2-4.2"></path></svg>
+<label style="flex:1;display:flex"><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">搜索字体</span><input class="search" type="text" placeholder="搜索字体" value="{{query}}" onChange="{{onQuery}}" onKeyDown="{{onKey}}" style="color:{{textPrimary}}"></label>
+</div>
+<div style="max-height:296px;overflow:auto;display:flex;flex-direction:column;gap:2px">
+<sc-for list="{{r.groups}}" as="g" hint-placeholder-count="2">
+<div style="padding:8px 10px 4px;color:{{textSecondary}};font-size:14px;line-height:20px">{{g.title}}</div>
+<sc-for list="{{g.items}}" as="it" hint-placeholder-count="3">
+<button type="button" class="opt" role="option" aria-selected="{{it.on}}" onClick="{{it.pick}}" style="color:{{textPrimary}};background:{{it.bg}};transition:background-color 600ms ease-out">
+<span style="font-family:{{it.fam}};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{it.name}}</span>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;opacity:{{it.check}};transition:opacity 140ms ease-out"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+</button>
+</sc-for>
+</sc-for>
+<sc-if value="{{r.empty}}" hint-placeholder-val="{{false}}">
+<div style="padding:16px 10px;color:{{textSecondary}}">没有匹配的字体</div>
+</sc-if>
+</div>
+<div style="margin-top:4px;padding-top:4px;border-top:1px solid {{borderCol}}">
+<sc-if value="{{r.importing}}" hint-placeholder-val="{{false}}">
+<div style="height:36px;padding:0 10px;display:flex;flex-direction:column;justify-content:center;gap:6px">
+<span style="color:{{textSecondary}}">{{r.importFile}}</span>
+<div style="height:3px;border-radius:2px;background:{{shellBg}};overflow:hidden"><div style="height:100%;width:{{progress}}%;background:{{accent}};border-radius:2px;transition:width 900ms cubic-bezier(.22,1,.36,1)"></div></div>
+</div>
+</sc-if>
+<sc-if value="{{r.canImport}}" hint-placeholder-val="{{true}}">
+<button type="button" class="import" onClick="{{r.startImport}}" style="color:{{accent}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M5 17v1.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>
+<span>导入字体文件…</span>
+</button>
+</sc-if>
+</div>
+</div>
+</div>
+</div>
+</sc-for>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span>行高</span>
+<div role="group" aria-label="行高" style="display:flex;gap:2px;padding:3px;background:{{shellBg}};border:1px solid {{borderCol}};border-radius:8px">
+<sc-for list="{{lhSegs}}" as="s" hint-placeholder-count="3">
+<button type="button" class="seg" aria-pressed="{{s.on}}" onClick="{{s.pick}}" style="background:{{s.bg}};color:{{s.col}};box-shadow:{{s.ring}}">{{s.label}}</button>
+</sc-for>
+</div>
+</div>
+</section>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      themeMode: 'system', lang: 'system', lineHeight: 'normal',
+      open: null, query: '', flash: null,
+      fonts: { body: 'sys-sans', code: 'sys-mono' },
+      imported: {}, importing: null, progress: 0
+    };
+  }
+
+  catalog() {
+    return {
+      body: [
+        { id: 'sys-sans', name: '系统无衬线', fam: "-apple-system,'PingFang SC',system-ui,sans-serif", grp: 'sys' },
+        { id: 'sys-serif', name: '系统衬线', fam: "'Songti SC','Noto Serif SC',serif", grp: 'sys' },
+        { id: 'notosans', name: '思源黑体', fam: "'Noto Sans SC',sans-serif", grp: 'cjk' },
+        { id: 'notoserif', name: '思源宋体', fam: "'Noto Serif SC',serif", grp: 'cjk' },
+        { id: 'wenkai', name: '霞鹜文楷', fam: "'LXGW WenKai TC','Noto Serif SC',serif", grp: 'cjk' },
+        { id: 'inter', name: 'Inter', fam: 'Inter,sans-serif', grp: 'latin' },
+        { id: 'sourceserif', name: 'Source Serif 4', fam: "'Source Serif 4',serif", grp: 'latin' },
+        { id: 'lora', name: 'Lora', fam: 'Lora,serif', grp: 'latin' }
+      ],
+      code: [
+        { id: 'sys-mono', name: 'Menlo', fam: 'Menlo,ui-monospace,monospace', grp: 'sys' },
+        { id: 'jetbrains', name: 'JetBrains Mono', fam: "'JetBrains Mono',ui-monospace,monospace", grp: 'mono' },
+        { id: 'fira', name: 'Fira Code', fam: "'Fira Code',ui-monospace,monospace", grp: 'mono' },
+        { id: 'plex', name: 'IBM Plex Mono', fam: "'IBM Plex Mono',ui-monospace,monospace", grp: 'mono' }
+      ],
+      imports: {
+        body: { id: 'crimson', name: 'Crimson Pro', fam: "'Crimson Pro',serif", grp: 'imported', file: 'CrimsonPro-Regular.ttf' },
+        code: { id: 'sourcecode', name: 'Source Code Pro', fam: "'Source Code Pro',ui-monospace,monospace", grp: 'imported', file: 'SourceCodePro-Regular.otf' }
+      }
+    };
+  }
+
+  pick(row, id) {
+    this.setState((s) => ({ open: null, query: '', fonts: { ...s.fonts, [row]: id } }));
+  }
+
+  startImport(row) {
+    this.setState({ importing: row, progress: 0 });
+    setTimeout(() => this.setState({ progress: 100 }), 30);
+    setTimeout(() => {
+      const f = this.catalog().imports[row];
+      this.setState((s) => ({ importing: null, imported: { ...s.imported, [row]: true }, flash: f.id, fonts: { ...s.fonts, [row]: f.id } }));
+      setTimeout(() => this.setState({ flash: null }), 700);
+    }, 1000);
+  }
+
+  renderVals() {
+    const st = this.state;
+    const sysDark = (this.props.theme ?? 'light') === 'dark';
+    const dark = st.themeMode === 'system' ? sysDark : st.themeMode === 'dark';
+    const t = {
+      shellBg: dark ? '#343434' : '#f1f1f1', sidebarBg: dark ? '#222222' : '#fafafa', settingsBg: dark ? '#181818' : '#f8f8f8',
+      cardBg: dark ? '#222222' : '#ffffff', menuBg: dark ? '#222222' : '#ffffff',
+      textPrimary: dark ? '#ececec' : '#20242c', textSecondary: dark ? '#b4b4b4' : '#526071',
+      accent: dark ? '#779de8' : '#547dd0', iconFill: dark ? '#31456a' : '#c9d8f3', selectedBg: dark ? '#343434' : '#e5edfc',
+      hoverBg: dark ? '#2c2c2c' : '#eef3fc', borderCol: dark ? '#2e2e2e' : '#e4e6ea', sidebarBorder: dark ? '#333333' : '#e6e6e6',
+      btnBorder: dark ? '#444444' : '#dcdcdc', shadowA: dark ? '0.5' : '0.12'
+    };
+    const ring = 'inset 0 0 0 1px ' + t.accent;
+    const ease = 'cubic-bezier(.16,1,.3,1)';
+    const cat = this.catalog();
+    const q = st.query.trim().toLowerCase();
+    const grpTitles = { imported: '已导入', sys: '系统', cjk: '中文', latin: '西文', mono: '等宽' };
+    const grpOrder = { body: ['imported', 'sys', 'cjk', 'latin'], code: ['imported', 'sys', 'mono'] };
+    const labels = { body: '正文字体', code: '代码字体' };
+    const rows = ['body', 'code'].map((key) => {
+      const list = (st.imported[key] ? [cat.imports[key]] : []).concat(cat[key]);
+      const cur = st.fonts[key];
+      const curF = list.find((f) => f.id === cur) || list[0];
+      const open = st.open === key;
+      const groups = grpOrder[key].map((g) => ({
+        title: grpTitles[g],
+        items: list.filter((f) => f.grp === g && (!q || f.name.toLowerCase().includes(q))).map((f) => ({
+          name: f.name, fam: f.fam, on: cur === f.id, check: cur === f.id ? 1 : 0,
+          bg: st.flash === f.id ? t.selectedBg : 'transparent', pick: () => this.pick(key, f.id)
+        }))
+      })).filter((g) => g.items.length);
+      const importing = st.importing === key;
+      return {
+        label: labels[key], open, z: open ? 3 : 1, name: curF.name, fam: curF.fam,
+        toggle: () => this.setState({ open: open ? null : key, query: '' }),
+        border: open ? t.accent : t.btnBorder, ring: open ? ring : 'none', chev: open ? 'rotate(180deg)' : 'rotate(0deg)',
+        groups, empty: !groups.length,
+        importing, importFile: cat.imports[key].file,
+        canImport: !importing && !st.imported[key], startImport: () => this.startImport(key),
+        popOpacity: open ? 1 : 0, popTransform: open ? 'translateY(0) scale(1)' : 'translateY(-4px) scale(0.98)',
+        popVis: open ? 'visible' : 'hidden', popPe: open ? 'auto' : 'none',
+        popTrans: open ? 'opacity 160ms ' + ease + ', transform 160ms ' + ease + ', visibility 0s' : 'opacity 120ms ease-out, transform 120ms ease-out, visibility 0s linear 120ms'
+      };
+    });
+    const seg = (on) => ({ on, bg: on ? t.selectedBg : 'transparent', col: on ? t.textPrimary : t.textSecondary, ring: on ? ring : 'none' });
+    const themeSegs = [['system', '跟随系统'], ['light', '浅色'], ['dark', '深色']].map(([k, label]) => ({ label, pick: () => this.setState({ themeMode: k }), ...seg(st.themeMode === k) }));
+    const langSegs = [['system', '跟随系统'], ['zh', '简体中文'], ['en', 'English']].map(([k, label]) => ({ label, pick: () => this.setState({ lang: k }), ...seg(st.lang === k) }));
+    const lhSegs = [['tight', '紧凑'], ['normal', '标准'], ['loose', '宽松']].map(([k, label]) => ({ label, pick: () => this.setState({ lineHeight: k }), ...seg(st.lineHeight === k) }));
+    return {
+      ...t, rows, themeSegs, langSegs, lhSegs, anyOpen: !!st.open,
+      query: st.query, onQuery: (e) => this.setState({ query: e.target.value }),
+      onKey: (e) => { if (e.key === 'Escape') this.setState({ open: null, query: '' }); },
+      closeAll: () => this.setState({ open: null, query: '' }),
+      progress: st.progress
+    };
+  }
+}
+</script>
+</body>
+</html>

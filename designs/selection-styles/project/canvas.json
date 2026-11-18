@@ -1,0 +1,63 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-18T04:45:00Z"
+  },
+  "title": "选中文字与空行背景样式",
+  "launch": {
+    "view": "canvas",
+    "page": "main"
+  },
+  "pages": [
+    {
+      "id": "main",
+      "name": "选区背景对比"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1360,
+      "h": 880,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "main",
+      "title": "方案 A（推荐）· 整行通栏圆角柔蓝底（文字行与空行 100% 同宽同底 + 局部选词同色胶囊）"
+    },
+    "V2-InlineSoft.dc.html": {
+      "x": 1440,
+      "y": 0,
+      "w": 1360,
+      "h": 880,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "main",
+      "title": "方案 B · 贴字同色圆角柔蓝底（空行保持通栏柔条 + 文字换同色圆角底且随字宽收尾）"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "V2-InlineSoft.dc.html"
+  ],
+  "notes": {
+    "row-title": {
+      "x": 0,
+      "y": -250,
+      "text": "选中文字与空行背景统一 · 方案 A 通栏同宽 vs 方案 B 随字宽同色",
+      "kind": "title1",
+      "maxW": 2800,
+      "page": "main"
+    }
+  },
+  "designSystems": [
+    {
+      "title": "Ocean Paper",
+      "namespace": "ocean-paper",
+      "artifact": "designs/thinkly-fast-styles/project/ds/ocean-paper",
+      "version": null,
+      "copiedAt": "2026-11-18T04:45:00Z"
+    }
+  ]
+}

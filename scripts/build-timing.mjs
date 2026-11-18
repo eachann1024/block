@@ -3,7 +3,6 @@ import { dirname, join } from "node:path";
 
 const ERROR_LIMIT = 4000;
 
-// Monotonic elapsed wall time. Date timestamps below are labels only.
 export function elapsedMs(startNs, endNs = process.hrtime.bigint()) {
   return signedElapsedMs(endNs - startNs);
 }
@@ -22,12 +21,12 @@ export function clipError(error) {
   return { error: text.slice(0, ERROR_LIMIT), error_truncated: true };
 }
 
-export function resolveCargoTimings({ explicit, env = process.env, argv = process.argv } = {}) {
+export function resolveGoTimings({ explicit, env = process.env, argv = process.argv } = {}) {
   if (typeof explicit === "boolean") return explicit;
-  return env.BLOCK_CARGO_TIMINGS === "1" || argv.includes("--cargo-timings");
+  return env.BLOCK_GO_TIMINGS === "1" || argv.includes("--timings");
 }
 
-export function createBuildTimer({ dest, profile, install, cargoTimings }) {
+export function createBuildTimer({ dest, profile, install, platform, arch }) {
   const startedNs = process.hrtime.bigint();
   const startedAt = new Date().toISOString();
   const stages = [];
@@ -119,11 +118,9 @@ export function createBuildTimer({ dest, profile, install, cargoTimings }) {
       pid: process.pid,
       ok: options.ok === true && failedStage == null,
       profile,
+      platform,
+      arch,
       install: Boolean(install),
-      cargo_timings: Boolean(cargoTimings),
-      cargo_timings_dir: cargoTimings ? options.cargoTimingsDir ?? null : null,
-      cargo_timings_report: cargoTimings ? options.cargoTimingsReport ?? null : null,
-      cargo_timings_format: cargoTimings ? "html" : null,
       report_path: dest,
       clock: "process.hrtime.bigint",
       started_at: startedAt,

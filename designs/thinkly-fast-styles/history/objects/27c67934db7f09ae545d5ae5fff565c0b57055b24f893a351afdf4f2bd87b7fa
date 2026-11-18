@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>生成图片 · 触发入口（顶栏更多菜单与右键上下文）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button{font-family:inherit}
+.ib{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#526071;padding:0;cursor:pointer;flex:none;box-sizing:border-box}
+.ib:hover{background:#eef3fc;color:#20242c}
+.ib-open{background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0}
+.tab{font:inherit;font-size:13px;line-height:18px;font-weight:460;height:28px;min-width:104px;max-width:196px;flex:0 1 176px;display:inline-flex;align-items:center;gap:6px;padding:0 8px 0 10px;border:0;border-radius:6px;background:transparent;color:#526071;cursor:pointer;box-sizing:border-box}
+.tab:hover{background:#eef3fc;color:#20242c}
+.tab-active{background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0}
+.tab-label{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-align:left}
+.row{font:inherit;font-size:14px;line-height:20px;font-weight:400;width:100%;height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#20242c;text-align:left;cursor:pointer;box-sizing:border-box}
+.row:hover{background:#eef3fc}
+.kbd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:16px;padding:1px 6px;border-radius:4px;background:#f3f4f6;color:#20242c;border:1px solid #dcdcdc}
+.menu{background:#ffffff;border:1px solid #e4e4e4;border-radius:8px;box-shadow:0 10px 28px rgba(32,36,44,.12);padding:4px;display:flex;flex-direction:column;gap:2px;box-sizing:border-box}
+.mi{font:inherit;width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#20242c;font-size:14px;line-height:20px;text-align:left;cursor:pointer;box-sizing:border-box}
+.mi:hover,.mi-hov{background:#eef3fc}
+.mi .k{margin-left:auto;font-size:12px;color:#526071;font-family:'JetBrains Mono',ui-monospace,monospace}
+.div-h{height:1px;background:#ececec;margin:3px 6px}
+.sel{background:#cfe0fb;color:#20242c;border-radius:3px;padding:1px 0}
+.wbtn{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#526071;padding:0;cursor:pointer;flex:none}
+.wbtn:hover{background:#eef3fc;color:#20242c}
+.wbtn-close:hover{background:#e81123;color:#ffffff}
+</style>
+</helmet>
+<div style="width:100%;height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:#f1f1f1;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;font-size:14px;line-height:20px;overflow:hidden">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;border-bottom:1px solid #e6e6e6;box-sizing:border-box;background:#f1f1f1">
+<div style="width:260px;flex:none;height:100%;box-sizing:border-box;display:flex;align-items:center;padding:{{leftHeaderPad}};border-right:1px solid #e6e6e6">
+<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+</sc-if>
+<button class="ib" type="button" aria-label="收起侧栏" style="margin-left:{{toggleMargin}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="#c9d8f3"></path>
+<rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+<path d="M15.75 9.75L13.25 12L15.75 14.25" stroke="#547dd0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+
+<nav aria-label="已打开标签页" style="flex:1;min-width:0;height:100%;display:flex;align-items:center;gap:4px;padding:0 10px;overflow:hidden">
+<button class="tab tab-active" type="button">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M6 3.75h8l4 4V20.25H6z" fill="#c9d8f3" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span class="tab-label">周会 11-03</span>
+</button>
+<button class="tab" type="button">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span class="tab-label">产品原则</span>
+</button>
+<button class="tab" type="button">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>
+<span class="tab-label">发布清单</span>
+</button>
+<button class="ib" type="button" aria-label="新建标签页"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+</nav>
+
+<div style="display:flex;align-items:center;gap:4px;padding:0 10px;height:100%;border-left:1px solid #e6e6e6;box-sizing:border-box">
+<button class="ib ib-open" type="button" aria-label="页面更多操作">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="18" cy="12" r="1.6"></circle></svg>
+</button>
+<sc-if value="{{isWin}}" hint-placeholder-val="{{false}}">
+<div aria-hidden="true" style="width:1px;height:16px;background:#e0e0e0;margin:0 4px"></div>
+<button class="wbtn" type="button" aria-label="最小化"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M2 6h8"></path></svg></button>
+<button class="wbtn" type="button" aria-label="最大化"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1"></rect></svg></button>
+<button class="wbtn wbtn-close" type="button" aria-label="关闭窗口"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"></path></svg></button>
+</sc-if>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+
+<aside aria-label="文件列表" style="position:relative;width:260px;flex:none;background:#fafafa;border-right:1px solid #e6e6e6;box-sizing:border-box;display:flex;flex-direction:column;min-height:0">
+<div style="padding:12px 12px 8px">
+<button type="button" style="font:inherit;font-size:14px;font-weight:460;width:100%;height:34px;padding:0 10px;border-radius:8px;background:#ffffff;color:#20242c;border:1px solid #dcdcdc;display:flex;align-items:center;gap:8px;cursor:pointer;box-sizing:border-box">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#c9d8f3" stroke="none"></path><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>
+<span style="flex:1;text-align:left">本地笔记</span>
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+</button>
+</div>
+<div style="padding:0 12px 8px">
+<button type="button" style="font:inherit;font-size:14px;width:100%;height:32px;padding:0 10px;border-radius:8px;background:#ffffff;color:#526071;border:1px solid #dcdcdc;display:flex;align-items:center;gap:8px;cursor:pointer;box-sizing:border-box">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="#c9d8f3" stroke="none"></circle><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4.2 4.2"></path></svg>
+<span style="flex:1;text-align:left">搜索笔记</span>
+<span class="kbd">{{kSearch}}</span>
+</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;padding:4px 8px 12px;display:flex;flex-direction:column;gap:2px">
+<button class="row" type="button"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="#c9d8f3" stroke="none"></path><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>会议记录</button>
+<button class="row" type="button" aria-pressed="true" style="padding-left:28px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;font-weight:460"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z" fill="#c9d8f3" stroke="none"></path><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>周会 11-03</button>
+<button class="row" type="button" style="padding-left:28px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>需求评审</button>
+<button class="row" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.75h8l4 4V20.25H6z"></path><path d="M14 3.75v4h4"></path></svg>产品原则</button>
+</div>
+
+<div class="menu" role="menu" aria-label="文件树右键菜单" style="position:absolute;top:172px;left:128px;z-index:8;width:236px">
+<button class="mi mi-hov" type="button" role="menuitem">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#20242c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M3.75 16.5L8.75 11.5L12.75 15.5L15.75 13.25L20.25 16.75A2 2 0 0 1 18.25 18.75H5.75A2 2 0 0 1 3.75 16.75Z" fill="#c9d8f3" stroke="none"></path>
+<rect x="3.75" y="5.25" width="16.5" height="13.5" rx="2"></rect>
+<path d="M3.75 16.5L8.75 11.5L12.75 15.5L15.75 13.25L20.25 16.75"></path>
+<path d="M16.5 6.75Q16.75 8.5 18.5 8.75Q16.75 9 16.5 10.75Q16.25 9 14.5 8.75Q16.25 8.5 16.5 6.75Z" fill="#547dd0" stroke="none"></path>
+</svg>
+<span>生成图片…</span><span class="k">{{kExport}}</span>
+</button>
+<div class="div-h" aria-hidden="true"></div>
+<button class="mi" type="button" role="menuitem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M14 13h-5M11.5 10.5L14 13l-2.5 2.5"></path></svg><span>{{revealText}}</span></button>
+<button class="mi" type="button" role="menuitem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"></path></svg><span>重命名</span><span class="k">↵</span></button>
+<button class="mi" type="button" role="menuitem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><span>移动到…</span></button>
+<div class="div-h" aria-hidden="true"></div>
+<button class="mi" type="button" role="menuitem" style="color:#c2362b"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg><span>{{trashText}}</span><span class="k">{{kTrash}}</span></button>
+</div>
+
+<div style="padding:6px 8px;border-top:1px solid #ececec">
+<button class="row" type="button" style="color:#526071"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path><circle cx="9" cy="7" r="2" fill="#c9d8f3"></circle><circle cx="15" cy="12" r="2" fill="#c9d8f3"></circle><circle cx="10" cy="17" r="2" fill="#c9d8f3"></circle></svg><span style="flex:1">设置</span><span class="kbd">{{kSettings}}</span></button>
+</div>
+</aside>
+
+<main style="flex:999 1 560px;min-width:0;background:#ffffff;overflow:auto;position:relative">
+
+<div class="menu" role="menu" aria-label="页面更多菜单" style="position:absolute;top:8px;right:14px;z-index:10;width:248px">
+<button class="mi mi-hov" type="button" role="menuitem">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#20242c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M3.75 16.5L8.75 11.5L12.75 15.5L15.75 13.25L20.25 16.75A2 2 0 0 1 18.25 18.75H5.75A2 2 0 0 1 3.75 16.75Z" fill="#c9d8f3" stroke="none"></path>
+<rect x="3.75" y="5.25" width="16.5" height="13.5" rx="2"></rect>
+<path d="M3.75 16.5L8.75 11.5L12.75 15.5L15.75 13.25L20.25 16.75"></path>
+<path d="M16.5 6.75Q16.75 8.5 18.5 8.75Q16.75 9 16.5 10.75Q16.25 9 14.5 8.75Q16.25 8.5 16.5 6.75Z" fill="#547dd0" stroke="none"></path>
+</svg>
+<span>生成图片…</span><span class="k">{{kExport}}</span>
+</button>
+<button class="mi" type="button" role="menuitem">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8.25" y="8.25" width="12" height="12" rx="2"></rect><path d="M15.75 8.25V5.75A2 2 0 0 0 13.75 3.75H5.75A2 2 0 0 0 3.75 5.75V13.75A2 2 0 0 0 5.75 15.75H8.25"></path></svg>
+<span>复制 Markdown</span><span class="k">{{kCopyMd}}</span>
+</button>
+<div class="div-h" aria-hidden="true"></div>
+<button class="mi" type="button" role="menuitem">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M14 13h-5M11.5 10.5L14 13l-2.5 2.5"></path></svg>
+<span>{{revealText}}</span>
+</button>
+</div>
+
+<div style="box-sizing:border-box;width:100%;max-width:816px;margin:0 auto;padding:36px 28px 64px;display:flex;flex-direction:column;gap:16px">
+
+<div style="padding:12px 16px;border-radius:10px;background:#f7f9fc;border:1px solid #dce6f7;font-size:14px;line-height:22px;color:#20242c;max-width:520px">
+<strong>生成图片触发规范</strong>：主界面与选区工具栏不常驻导出按钮，入口统一收纳至<strong>顶栏更多菜单 <code>⋯</code></strong>、<strong>文件树 / 标签页右键菜单</strong>以及<strong>编辑区选区右键菜单</strong>（快捷键 <code>{{kExport}}</code>）。
+</div>
+
+<div style="display:flex;align-items:flex-start;gap:8px;margin-top:8px">
+<div style="width:44px;flex:none"></div>
+<h1 style="flex:1;min-width:0;max-width:720px;margin:0;font-size:28px;line-height:1.35;font-weight:560;letter-spacing:-0.01em">把周会改成异步</h1>
+</div>
+
+<div style="display:flex;align-items:flex-start;gap:8px">
+<div style="width:44px;flex:none"></div>
+<p style="flex:1;min-width:0;max-width:720px;margin:0;font-size:17px;line-height:1.5">上周排了三场同步会，两场结束时没有结论。人到齐，并不等于事情被推进。</p>
+</div>
+
+<div style="position:relative;display:flex;align-items:flex-start;gap:8px">
+<div style="width:44px;flex:none"></div>
+<p style="flex:1;min-width:0;max-width:720px;margin:0;font-size:17px;line-height:1.5"><span class="sel">与其等所有人空出同一段时间，不如把状态写在这里：这周要什么、卡在哪、需要谁看一眼。</span></p>
+
+<div class="menu" role="menu" aria-label="选区右键菜单" style="position:absolute;top:34px;left:220px;z-index:9;width:264px">
+<button class="mi mi-hov" type="button" role="menuitem">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#20242c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<rect x="6.75" y="6.75" width="10.5" height="10.5" rx="2" fill="#c9d8f3" stroke="none"></rect>
+<rect x="6.75" y="6.75" width="10.5" height="10.5" rx="2"></rect>
+<path d="M9.75 9.75H14.25M9.75 14.25H12.75"></path>
+<path d="M3.75 7.5V5.75A2 2 0 0 1 5.75 3.75H7.5M20.25 16.5V18.25A2 2 0 0 1 18.25 20.25H16.5" stroke="#547dd0"></path>
+</svg>
+<span>选中内容生成图片…</span><span class="k">{{kExport}}</span>
+</button>
+<div class="div-h" aria-hidden="true"></div>
+<button class="mi" type="button" role="menuitem">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4a8 8 0 0 1 8 8 8 8 0 0 1-8 8H5.5a1.5 1.5 0 0 1-1.5-1.5V12a8 8 0 0 1 8-8z"></path></svg>
+<span>添加批注</span><span class="k">{{kComment}}</span>
+</button>
+<button class="mi" type="button" role="menuitem">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8.25" y="8.25" width="12" height="12" rx="2"></rect><path d="M15.75 8.25V5.75A2 2 0 0 0 13.75 3.75H5.75A2 2 0 0 0 3.75 5.75V13.75A2 2 0 0 0 5.75 15.75H8.25"></path></svg>
+<span>复制</span><span class="k">{{kCopy}}</span>
+</button>
+</div>
+</div>
+
+<div style="display:flex;align-items:flex-start;gap:8px;margin-top:116px">
+<div style="width:44px;flex:none"></div>
+<blockquote style="flex:1;min-width:0;max-width:720px;margin:0;padding:2px 0 2px 14px;border-left:2px solid #d5dbe3;font-size:17px;line-height:1.5">会议是例外，不是节奏。一段文字能说清的，不要再约三十分钟。</blockquote>
+</div>
+
+<div style="margin-top:20px;margin-left:52px;max-width:720px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+<div style="padding:12px 14px;border-radius:10px;border:1px solid #e6e6e6;background:#fafafa;display:flex;flex-direction:column;gap:4px">
+<div style="font-size:14px;font-weight:560;color:#20242c">1. 顶栏更多菜单 ⋯</div>
+<p style="margin:0;font-size:14px;line-height:20px;color:#526071">收纳整篇笔记级低频操作（生成图片、复制 Markdown、在访达中显示）。</p>
+</div>
+<div style="padding:12px 14px;border-radius:10px;border:1px solid #e6e6e6;background:#fafafa;display:flex;flex-direction:column;gap:4px">
+<div style="font-size:14px;font-weight:560;color:#20242c">2. 文件树与标签页右键</div>
+<p style="margin:0;font-size:14px;line-height:20px;color:#526071">在左侧文件列表或顶部标签页上右键，首项直接提供「生成图片…」。</p>
+</div>
+<div style="padding:12px 14px;border-radius:10px;border:1px solid #e6e6e6;background:#fafafa;display:flex;flex-direction:column;gap:4px">
+<div style="font-size:14px;font-weight:560;color:#20242c">3. 正文选区右键菜单</div>
+<p style="margin:0;font-size:14px;line-height:20px;color:#526071">框选任意段落或表格后右键，点击「选中内容生成图片…」导出选区。</p>
+</div>
+</div>
+
+</div>
+</main>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"platform":{"editor":"enum","default":"macOS","options":["macOS","Windows / Linux"],"label":"系统平台"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const isWin = this.props.platform === 'Windows / Linux';
+const isMac = !isWin;
+return {
+isMac,
+isWin,
+leftHeaderPad: isMac ? '0 10px 0 16px' : '0 10px',
+toggleMargin: isMac ? 'auto' : '0',
+kSearch: isMac ? '⇧⌘K' : 'Ctrl+Shift+K',
+kSettings: isMac ? '⌘,' : 'Ctrl+,',
+kExport: isMac ? '⇧⌘E' : 'Ctrl+Shift+E',
+kCopyMd: isMac ? '⌥⌘C' : 'Ctrl+Alt+C',
+kComment: isMac ? '⌥⌘M' : 'Ctrl+Alt+M',
+kCopy: isMac ? '⌘C' : 'Ctrl+C',
+kTrash: isMac ? '⌘⌫' : 'Del',
+revealText: isMac ? '在访达中显示' : '在资源管理器中显示',
+trashText: isMac ? '移到废纸篓' : '移到回收站'
+};
+}
+}
+</script>
+</body>
+</html>

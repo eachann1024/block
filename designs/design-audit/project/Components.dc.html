@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方案：组件收敛与落地顺序</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1240px; box-sizing: border-box; padding: 48px 56px; background: #f8f8f8; color: #20242c; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; font-size: 14px; line-height: 20px; display: flex; flex-direction: column; gap: 24px">
+  <h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 560">方案：组件收敛与落地顺序</h1>
+
+  <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+    <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">前后对比</h2>
+    <div style="display: grid; grid-template-columns: 200px minmax(0, 1fr) minmax(0, 1fr); gap: 16px 24px; align-items: center">
+      <span></span><b style="font-weight: 560; color: #526071">现在</b><b style="font-weight: 560; color: #526071">收敛后</b>
+
+      <span>分段控制器</span>
+      <div style="display: flex; gap: 16px">
+        <div style="display: flex; background: #f1f1f1; border-radius: 6px; padding: 2px; gap: 2px"><span style="padding: 4px 12px; border-radius: 4px; background: #fff; font-weight: 600">PDF</span><span style="padding: 4px 12px">PNG</span></div>
+        <div style="display: flex; background: #f1f1f1; border: 1px solid #e4e6ea; border-radius: 8px; padding: 3px; gap: 2px"><span style="padding: 6px 12px; border-radius: 6px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0">浅色</span><span style="padding: 6px 12px">深色</span></div>
+      </div>
+      <div style="display: flex; gap: 16px">
+        <div style="display: flex; background: #f1f1f1; border: 1px solid #e4e6ea; border-radius: 8px; padding: 3px; gap: 2px"><span style="padding: 6px 12px; border-radius: 6px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; font-weight: 460">PDF</span><span style="padding: 6px 12px; font-weight: 460">PNG</span></div>
+        <div style="display: flex; background: #f1f1f1; border: 1px solid #e4e6ea; border-radius: 8px; padding: 3px; gap: 2px"><span style="padding: 6px 12px; border-radius: 6px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; font-weight: 460">浅色</span><span style="padding: 6px 12px; font-weight: 460">深色</span></div>
+      </div>
+
+      <span>键帽</span>
+      <div style="display: flex; gap: 16px; align-items: center">
+        <span style="font-family: 'JetBrains Mono', Menlo, monospace; font-size: 11px; padding: 0 5px; height: 18px; line-height: 18px; border-radius: 4px; background: #f4f4f2; border: 1px solid #dcdcdc">⌘ K</span>
+        <span style="font-family: 'JetBrains Mono', Menlo, monospace; font-size: 11px; padding: 1px 6px; border-radius: 5px; background: #f1f1f1">⌘ K</span>
+      </div>
+      <div style="display: flex; gap: 16px; align-items: center">
+        <span style="font-family: 'JetBrains Mono', Menlo, monospace; font-size: 12px; font-weight: 500; padding: 0 5px; height: 18px; line-height: 18px; border-radius: 4px; background: #f3f1ec; border: 1px solid #dcdcdc">⌘ K</span>
+        <span style="font-family: 'JetBrains Mono', Menlo, monospace; font-size: 12px; font-weight: 500; padding: 0 5px; height: 18px; line-height: 18px; border-radius: 4px; background: #f3f1ec; border: 1px solid #dcdcdc">⌘ K</span>
+      </div>
+
+      <span>动作按钮 / 芯片</span>
+      <div style="display: flex; gap: 12px; align-items: center">
+        <button style="font: inherit; height: 30px; padding: 0 14px; border-radius: 6px; border: 1px solid #c9d8f3; background: #eef3fc; color: #20242c; font-weight: 600">接受</button>
+        <button style="font: inherit; height: 34px; padding: 0 16px; border-radius: 8px; border: 0; background: #547dd0; color: #fff; font-weight: 500">保存</button>
+        <button style="font: inherit; height: 28px; padding: 0 12px; border-radius: 10px; border: 1px solid #e4e6ea; background: #f3f1ec; color: #20242c">重写</button>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center">
+        <button style="font: inherit; height: 32px; padding: 0 14px; border-radius: 8px; border: 0; background: #547dd0; color: #fff; font-weight: 460">接受</button>
+        <button style="font: inherit; height: 32px; padding: 0 14px; border-radius: 8px; border: 0; background: #547dd0; color: #fff; font-weight: 460">保存</button>
+        <button style="font: inherit; height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fff; color: #20242c; font-weight: 460">重写</button>
+      </div>
+
+      <span>浮层菜单</span>
+      <div style="display: flex; gap: 16px">
+        <div style="width: 150px; background: #fff; border: 1px solid #e4e4e4; border-radius: 10px; padding: 4px; box-shadow: 0 12px 32px rgba(0,0,0,.12)"><div style="height: 28px; line-height: 28px; padding: 0 8px; border-radius: 6px; background: #eef3fc">复制链接</div><div style="height: 28px; line-height: 28px; padding: 0 8px">打开</div></div>
+        <div style="width: 150px; background: #fff; border: 1px solid #d8dee9; border-radius: 12px; padding: 6px; box-shadow: 0 8px 24px rgba(15,23,42,.10)"><div style="height: 30px; line-height: 30px; padding: 0 10px; border-radius: 8px; background: rgba(11,11,11,.05)">替换图片</div><div style="height: 30px; line-height: 30px; padding: 0 10px">下载</div></div>
+      </div>
+      <div style="display: flex; gap: 16px">
+        <div style="width: 150px; background: #fff; border: 1px solid #e4e4e4; border-radius: 10px; padding: 4px; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.08)"><div style="height: 28px; line-height: 28px; padding: 0 8px; border-radius: 6px; background: #eef3fc">复制链接</div><div style="height: 28px; line-height: 28px; padding: 0 8px">打开</div></div>
+        <div style="width: 150px; background: #fff; border: 1px solid #e4e4e4; border-radius: 10px; padding: 4px; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.08)"><div style="height: 28px; line-height: 28px; padding: 0 8px; border-radius: 6px; background: #eef3fc">替换图片</div><div style="height: 28px; line-height: 28px; padding: 0 8px">下载</div></div>
+      </div>
+    </div>
+  </section>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+    <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">internal/ui 补齐与替换</h2>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 8px 14px">
+        <b style="font-weight: 560">ui.Card</b><span style="color: #526071">替换 settingsCard、ai.settingsCardSurface</span>
+        <b style="font-weight: 560">ui.Popover</b><span style="color: #526071">替换 overlays.go 5 处手写浮层、search 范围菜单</span>
+        <b style="font-weight: 560">ui.Chip</b><span style="color: #526071">替换 inlineAIActionChip、reaction 胶囊</span>
+        <b style="font-weight: 560">ui.Keycap</b><span style="color: #526071">替换 settings.keycapChip</span>
+        <b style="font-weight: 560">ui.SegmentedControl</b><span style="color: #526071">替换 renderExportSegmented</span>
+        <b style="font-weight: 560">ui.ActionButton / TogglePill</b><span style="color: #526071">替换 renderFooterButton、renderSwitchRow</span>
+        <b style="font-weight: 560">ui.TableHeader 样式</b><span style="color: #526071">ai/view.go 与 editor/view.go 共用</span>
+      </div>
+    </section>
+
+    <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">落地顺序</h2>
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; gap: 12px"><span style="width: 28px; height: 22px; border-radius: 6px; background: #e5edfc; color: #20242c; text-align: center; font-weight: 560; flex-shrink: 0">P0</span><span>定真相源：DESIGN.md 与 tokens.go 对齐（侧栏宽、卡片圆角、Accent 悬停），补齐圆角 / 字号 / Elevation / 高度 / 间距 token</span></div>
+        <div style="display: flex; gap: 12px"><span style="width: 28px; height: 22px; border-radius: 6px; background: #e5edfc; color: #20242c; text-align: center; font-weight: 560; flex-shrink: 0">P1</span><span>按模块机械替换字面量：editor/overlays → editor/view → inline_ai → ai/view → 其余</span></div>
+        <div style="display: flex; gap: 12px"><span style="width: 28px; height: 22px; border-radius: 6px; background: #e5edfc; color: #20242c; text-align: center; font-weight: 560; flex-shrink: 0">P2</span><span>组件收敛到 internal/ui，删除业务包里的自绘副本</span></div>
+        <div style="display: flex; gap: 12px"><span style="width: 28px; height: 22px; border-radius: 6px; background: #e5edfc; color: #20242c; text-align: center; font-weight: 560; flex-shrink: 0">P3</span><span>bun run check 加一条字面量扫描，拦截 internal/ui、theme 以外的新硬编码</span></div>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

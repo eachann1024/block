@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>标注与斜杠 AI 方案 C · 纸面 1px 语义细框配左上角类型胶囊轮换 + 版心同宽内嵌 AI 写作条</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;font-family:-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;background:#f1f1f1;-webkit-font-smoothing:antialiased}
+a{color:#3d63b0}a:hover{color:#2c4c8c}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+*{box-sizing:border-box}
+::selection{background:#cde2fb;color:#184f95}
+.seg-btn{height:30px;padding:4px 12px;border:0;border-radius:6px;background:transparent;color:#526071;font-size:14px;font-weight:460;cursor:pointer}
+.seg-btn:hover{color:#20242c}
+.inline-tag{height:28px;padding:4px 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#20242c;font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+.inline-tag:hover{background:#eef3fc;border-color:#547dd0}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:960px;display:flex;flex-direction:column;background:#ffffff;color:#20242c;font-size:14px;line-height:20px">
+
+  <!-- 顶部演示切换栏 -->
+  <div style="min-height:48px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:8px 20px;background:#fafafa;border-bottom:1px solid #e6e6e6">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-weight:560;color:#20242c">方案 C · 纸面 1px 语义细框配左上角类型胶囊轮换 + 版心同宽内嵌 AI 写作条</span>
+      <span style="color:#526071">标注保持白纸底色与 1px 描边；斜杠 AI 嵌入段落下方与版心同宽，不弹出遮挡浮层</span>
+    </div>
+    <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:#f1f1f1;border:1px solid #dcdcdc">
+      <button type="button" class="seg-btn" onClick="{{cycleType}}" style="background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0">点击轮换标注类型 ({{cLabel}})</button>
+      <button type="button" class="seg-btn" onClick="{{toggleInlineMode}}" style="background:{{modeBtnBg}};color:#20242c">{{modeBtnLabel}}</button>
+    </div>
+  </div>
+
+  <!-- 模拟主窗口顶栏 -->
+  <header style="min-height:44px;flex:none;display:flex;align-items:center;background:#f1f1f1;border-bottom:1px solid #e6e6e6">
+    <div style="width:260px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:8px 12px 8px 14px;border-right:1px solid #e6e6e6">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+      </div>
+      <span style="color:#526071;font-weight:500">工作区笔记</span>
+    </div>
+    <div style="flex:1;display:flex;align-items:center;justify-content:space-between;padding:8px 16px">
+      <div style="padding:4px 12px;border-radius:6px;background:#ffffff;border:1px solid #e4e6ea;display:inline-flex;align-items:center;gap:8px;color:#20242c;font-weight:500">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 2.5h6l3 3v8h-9v-11z" fill="#c9d8f3" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path><path d="M5.5 8h5M5.5 10.5h3.5" stroke="#547dd0" stroke-width="1.4" stroke-linecap="round"></path></svg>
+        <span>架构设计与发布检查清单</span>
+      </div>
+      <span style="color:#526071">标准版心 672px</span>
+    </div>
+  </header>
+
+  <div style="flex:1;min-height:0;display:flex">
+    <aside style="width:260px;flex:none;background:#fafafa;border-right:1px solid #e6e6e6;padding:12px 10px;display:flex;flex-direction:column;gap:4px">
+      <div style="padding:6px 10px;border-radius:8px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;display:flex;align-items:center;color:#20242c;font-weight:500">
+        <span>架构设计与发布检查清单</span>
+      </div>
+      <div style="padding:6px 10px;border-radius:8px;display:flex;align-items:center;color:#526071">接口幂等与重试约定</div>
+      <div style="padding:6px 10px;border-radius:8px;display:flex;align-items:center;color:#526071">本地存储迁移方案</div>
+    </aside>
+
+    <main style="flex:1;min-width:0;background:#ffffff;padding:36px 48px;display:flex;justify-content:center;overflow-y:auto">
+      <article style="width:100%;max-width:672px;display:flex;flex-direction:column;gap:18px;font-size:16px;line-height:28px;color:#1f1e1d">
+
+        <h1 style="margin:0;font-size:28px;line-height:36px;font-weight:600;color:#20242c">架构设计与发布检查清单</h1>
+
+        <!-- 方案 C 标注块：纯白纸面 + 1px 语义细框 + 左上角可点击轮换的语义胶囊 -->
+        <div style="border-radius:8px;background:#ffffff;border:1px solid {{cBorder}};box-shadow:inset 0 0 0 1px {{cBorder}};padding:12px 16px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <button type="button" onClick="{{cycleType}}" style="padding:4px 10px;border:1px solid {{cBorder}};border-radius:6px;background:{{cSoftBg}};color:{{cText}};font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="3.5" y="3.5" width="17" height="17" rx="4.5" fill="{{cIconFill}}" stroke="{{cAccent}}" stroke-width="1.6"></rect>
+                <path d="M12 8v4.5M12 16h.01" stroke="{{cAccent}}" stroke-width="1.8" stroke-linecap="round"></path>
+              </svg>
+              <span>{{cLabel}}</span>
+              <span style="color:#526071;font-size:14px">↻</span>
+            </button>
+
+            <div style="display:inline-flex;align-items:center;gap:6px">
+              <button type="button" class="inline-tag" onClick="{{cycleType}}">切换语义</button>
+              <button type="button" class="inline-tag" onClick="{{toggleInlineMode}}">转为普通引用</button>
+            </div>
+          </div>
+
+          <div style="color:#1f1e1d;font-size:16px;line-height:26px">{{cBody}}</div>
+        </div>
+
+        <!-- 方案 C 斜杠 AI：版心同宽（672px）单行内嵌式 AI 写作条，不悬浮不遮挡 -->
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="padding:10px 14px;border-radius:8px;background:#eef3fc;box-shadow:inset 0 0 0 1px #547dd0;color:#1f1e1d">
+            <span>发布前需核对所有零散配置项，确保数据库迁移脚本与回滚开关均已就绪。</span>
+          </div>
+
+          <div role="region" aria-label="内嵌 AI 写作条" style="width:100%;padding:8px 10px 8px 12px;border-radius:8px;background:#f8f8f8;border:1px solid #547dd0;box-shadow:inset 0 0 0 1px #547dd0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+              <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3z" fill="#c9d8f3" stroke="#547dd0" stroke-width="1.6" stroke-linejoin="round"></path>
+            </svg>
+            <label style="flex:1;min-width:180px;display:flex;align-items:center">
+              <span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">内嵌 AI 指令输入</span>
+              <input value="{{inlinePrompt}}" placeholder="输入 AI 写作或改写指令…" readonly="readonly" style="width:100%;border:0;outline:0;background:transparent;color:#20242c;font-size:14px">
+            </label>
+
+            <sc-if value="{{isEditBar}}" hint-placeholder-val="{{true}}">
+              <div style="display:inline-flex;align-items:center;gap:4px;flex:none">
+                <button type="button" class="inline-tag" onClick="{{toggleInlineMode}}">润色</button>
+                <button type="button" class="inline-tag" onClick="{{toggleInlineMode}}">精简</button>
+                <button type="button" class="inline-tag" onClick="{{toggleInlineMode}}">翻译</button>
+                <button type="button" onClick="{{toggleInlineMode}}" style="padding:4px 10px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;color:#20242c;font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:4px;cursor:pointer">
+                  <span>发送</span>
+                </button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{isReviewBar}}" hint-placeholder-val="{{false}}">
+              <div style="display:inline-flex;align-items:center;gap:6px;flex:none">
+                <button type="button" onClick="{{toggleInlineMode}}" style="padding:4px 10px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;color:#20242c;font-size:14px;font-weight:500;cursor:pointer">应用修改</button>
+                <button type="button" class="inline-tag" onClick="{{toggleInlineMode}}">放弃</button>
+              </div>
+            </sc-if>
+          </div>
+
+          <p style="margin:4px 0 0;color:#526071;font-size:16px;line-height:28px">下方紧邻的正文段落不会被浮层遮挡，内嵌条随文档流自然推开，按 Esc 即可收起。</p>
+        </div>
+
+      </article>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      idx: 2,
+      reviewMode: false
+    };
+  }
+  renderVals() {
+    const types = [
+      { name: '提示', softBg: '#eef3fc', border: '#547dd0', accent: '#547dd0', iconFill: '#dce7fa', text: '#2c4c8c', body: '纯白纸面配 1px 语义细框，左上角胶囊点击即可在提示、技巧、重要、警告、注意之间快速轮换。' },
+      { name: '技巧', softBg: '#edf7f2', border: '#1f8a5b', accent: '#1f8a5b', iconFill: '#d3efe1', text: '#166541', body: '技巧胶囊以清爽绿框点缀左上角，大段文字阅读时不产生色块压迫感。' },
+      { name: '重要', softBg: '#f3f0fb', border: '#6e56cf', accent: '#6e56cf', iconFill: '#e4ddf8', text: '#4c389e', body: '重要胶囊标示关键架构决策，保持纸面呼吸感与高对比可读性。' },
+      { name: '警告', softBg: '#fdf5e8', border: '#b86b11', accent: '#b86b11', iconFill: '#f7e2be', text: '#8a4e08', body: '警告胶囊提示配置迁移注意事项，点击胶囊一键切换下一类型。' },
+      { name: '注意', softBg: '#fceeee', border: '#c93b3b', accent: '#c93b3b', iconFill: '#f8dada', text: '#962727', body: '注意胶囊用于生产环境操作前确认。' }
+    ];
+    const idx = this.state.idx ?? 2;
+    const reviewMode = Boolean(this.state.reviewMode);
+    const cur = types[idx] || types[0];
+    return {
+      cSoftBg: cur.softBg,
+      cBorder: cur.border,
+      cAccent: cur.accent,
+      cIconFill: cur.iconFill,
+      cText: cur.text,
+      cLabel: cur.name,
+      cBody: cur.body,
+      cycleType: () => this.setState({ idx: ((this.state.idx ?? 2) + 1) % types.length }),
+      isEditBar: !reviewMode,
+      isReviewBar: reviewMode,
+      inlinePrompt: reviewMode ? '已生成改写建议，可直接应用或继续追问' : '提炼为三条简明检查项',
+      modeBtnBg: reviewMode ? '#e5edfc' : 'transparent',
+      modeBtnLabel: reviewMode ? '切回内嵌输入态' : '切换内嵌审阅态',
+      toggleInlineMode: () => this.setState({ reviewMode: !this.state.reviewMode })
+    };
+  }
+}
+</script>
+</body>
+</html>

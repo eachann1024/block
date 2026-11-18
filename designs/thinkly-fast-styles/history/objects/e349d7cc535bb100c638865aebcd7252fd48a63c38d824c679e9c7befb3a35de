@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>文件查看与编辑 · 方案 B 文件信息栏</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#779de8;text-decoration:none}a:hover{color:#9dbcf5}
+button,input,select,textarea{font-family:inherit;font-size:14px}
+*{box-sizing:border-box}
+::selection{background:#2d426b;color:#9dbcf5}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #779de8;outline-offset:1px}
+.mono{font-family:'JetBrains Mono',Menlo,Monaco,ui-monospace,monospace;font-feature-settings:"liga" 0;font-variant-numeric:tabular-nums}
+.ib{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;padding:0;cursor:pointer;flex:none}
+.btn{height:32px;padding:0 10px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-weight:460;white-space:nowrap}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:900px;display:flex;flex-direction:column;background:{{shellBg}};color:{{fg}};font-size:14px;line-height:20px">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;border-bottom:1px solid {{sideBorder}};background:{{shellBg}}">
+<div style="width:260px;flex:none;height:100%;display:flex;align-items:center;gap:4px;padding:0 10px 0 16px;border-right:1px solid {{sideBorder}}">
+<div aria-hidden="true" style="display:flex;gap:8px;margin-right:auto"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<button type="button" class="ib" onClick="{{toggleSidebar}}" aria-label="切换左侧文件栏" style="color:{{subFg}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{iconFill}}"></path><rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect><path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5"></path></svg>
+</button>
+</div>
+<nav aria-label="已打开标签页" style="flex:1;min-width:0;height:100%;display:flex;align-items:center;gap:8px;padding:0 12px;overflow:hidden">
+<button type="button" style="height:28px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;border:0;border-radius:6px;background:{{selBg}};color:{{fg}};box-shadow:inset 0 0 0 1px {{accent}};font-weight:500;cursor:pointer">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></path></svg>
+<span class="mono">{{activeName}}</span>
+</button>
+<span style="color:{{subFg}}">{{saveLabel}}</span>
+</nav>
+<div style="display:flex;align-items:center;gap:8px;padding:0 12px">
+<button type="button" onClick="{{toggleInspector}}" aria-label="展开或收起右侧文件信息栏" style="height:28px;padding:0 10px;border-radius:6px;border:1px solid {{btnBorder}};background:{{inspBtnBg}};color:{{fg}};box-shadow:{{inspBtnRing}};display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect><path d="M14.75 4.75V19.25" stroke="{{accent}}" stroke-width="1.5"></path></svg>
+<span>文件信息栏</span>
+</button>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+<sc-if value="{{sidebarOpen}}" hint-placeholder-val="{{true}}">
+<aside aria-label="文件列表" style="width:260px;flex:none;background:{{sideBg}};border-right:1px solid {{sideBorder}};display:flex;flex-direction:column;min-height:0">
+<div style="padding:10px 10px 8px;display:flex;align-items:center;gap:6px">
+<label style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;background:{{paperBg}};border:1px solid {{btnBorder}};display:flex;align-items:center;gap:6px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:{{subFg}};flex:none"><circle cx="10.5" cy="10.5" r="6.5" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></circle><path d="M15.25 15.25L20 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+<input type="text" value="{{query}}" onInput="{{onQueryInput}}" placeholder="筛选文件名或后缀…" aria-label="筛选文件名" style="flex:1;min-width:0;border:0;outline:0;background:transparent;color:{{fg}};padding:0" />
+<sc-if value="{{hasQuery}}" hint-placeholder-val="{{false}}">
+<button type="button" onClick="{{clearQuery}}" aria-label="清空筛选" style="border:0;background:transparent;color:{{subFg}};padding:0;cursor:pointer">×</button>
+</sc-if>
+</label>
+</div>
+
+<div style="flex:1;min-height:0;overflow:auto;padding:0 8px 12px;display:flex;flex-direction:column;gap:2px">
+<sc-for list="{{filteredFiles}}" as="f" hint-placeholder-count="9">
+<button type="button" onClick="{{f.pick}}" style="width:100%;height:32px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 10px;border:0;border-radius:6px;background:{{f.rowBg}};color:{{fg}};box-shadow:{{f.rowRing}};font-weight:{{f.rowWeight}};text-align:left;cursor:pointer">
+<span style="display:flex;align-items:center;gap:7px;min-width:0;flex:1">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none;color:{{f.iconCol}}"><path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></path></svg>
+<span class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{f.name}}</span>
+</span>
+<span style="color:{{subFg}};flex:none">{{f.badge}}</span>
+</button>
+</sc-for>
+<sc-if value="{{noMatch}}" hint-placeholder-val="{{false}}">
+<div style="padding:18px 10px;display:flex;flex-direction:column;gap:8px;color:{{subFg}}">
+<span>未找到匹配的文件</span>
+<button type="button" class="btn" onClick="{{clearQuery}}" style="align-self:flex-start;background:{{paperBg}};color:{{fg}};border:1px solid {{btnBorder}}">清空筛选条件</button>
+</div>
+</sc-if>
+</div>
+
+<div style="padding:8px 10px;border-top:1px solid {{sideBorder}};display:flex;align-items:center;justify-content:space-between;color:{{subFg}}">
+<span>workspace-demo</span>
+<span class="mono">9 项</span>
+</div>
+</aside>
+</sc-if>
+
+<main style="flex:999 1 520px;min-width:0;background:{{paperBg}};display:flex;flex-direction:column;min-height:0">
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{false}}">
+<div role="status" style="padding:8px 24px;background:{{selBg}};border-bottom:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;gap:12px">
+<span>{{toastMsg}}</span>
+<button type="button" onClick="{{dismissToast}}" style="border:0;background:transparent;color:{{fg}};font-weight:500;cursor:pointer">知道了</button>
+</div>
+</sc-if>
+
+<div style="flex:1;min-height:0;overflow:auto;padding:32px 24px 56px">
+<div style="width:100%;max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:10px;border-bottom:1px solid {{borderCol}}">
+<div style="display:flex;align-items:center;gap:10px">
+<span class="mono" style="font-size:16px;font-weight:560;color:{{fg}}">{{activeName}}</span>
+<span style="color:{{subFg}}">{{activeSummary}}</span>
+</div>
+<span class="mono" style="color:{{subFg}}">{{activePath}}</span>
+</div>
+
+<sc-if value="{{isLargeLog}}" hint-placeholder-val="{{false}}">
+<div style="padding:12px 14px;border-radius:8px;background:{{sideBg}};border:1px solid {{borderCol}};display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px">
+<span>大文件只读保护（示例 48.6 MB）：当前仅展示尾部日志片段，完整分析请从右侧信息栏调用外部工具。</span>
+<button type="button" class="btn" onClick="{{openSystemDefault}}" style="background:{{selBg}};color:{{fg}};border:1px solid {{accent}}">外部工具打开</button>
+</div>
+</sc-if>
+
+<sc-if value="{{isEncodingLocked}}" hint-placeholder-val="{{false}}">
+<div style="padding:12px 14px;border-radius:8px;background:{{sideBg}};border:1px solid {{borderCol}};display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px">
+<span>编码待确认只读保护：请在右侧信息栏或此处确认字符编码后再编辑，防止静默损坏原文件。</span>
+<button type="button" class="btn" onClick="{{confirmEncodingEdit}}" style="background:{{selBg}};color:{{fg}};border:1px solid {{accent}}">按 {{legacyEncoding}} 解锁编辑</button>
+</div>
+</sc-if>
+
+<sc-if value="{{isTextView}}" hint-placeholder-val="{{false}}">
+<div style="border:1px solid #30363d;border-radius:10px;background:#1d2026;color:#e6edf3;overflow:hidden">
+<div style="padding:8px 14px;border-bottom:1px solid #30363d;background:#21252d;display:flex;align-items:center;justify-content:space-between;color:#8b949e">
+<span class="mono">{{editorModeLabel}} · GitHub Ice Dark</span>
+<span class="mono">行 {{lineCount}} · 字符 {{charCount}}</span>
+</div>
+<div style="position:relative;min-height:480px">
+<pre aria-hidden="true" class="mono" style="margin:0;padding:16px 18px;font-size:14px;line-height:22px;white-space:{{preWrap}};word-break:{{wordBreak}};color:#e6edf3;pointer-events:none;min-height:480px"><sc-for list="{{tokens}}" as="tk" hint-placeholder-count="16"><span style="color:{{tk.color}}">{{tk.text}}</span></sc-for>
+</pre>
+<sc-if value="{{canEditText}}" hint-placeholder-val="{{true}}">
+<textarea value="{{currentText}}" onInput="{{onTextInput}}" spellcheck="false" aria-label="源码编辑器" class="mono" style="position:absolute;inset:0;width:100%;height:100%;margin:0;padding:16px 18px;border:0;outline:0;resize:none;background:transparent;color:transparent;caret-color:#79c0ff;font-size:14px;line-height:22px;white-space:{{preWrap}};word-break:{{wordBreak}};overflow:hidden"></textarea>
+</sc-if>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isImageView}}" hint-placeholder-val="{{true}}">
+<div style="border:1px solid {{borderCol}};border-radius:10px;background:{{sideBg}};padding:18px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+<span style="color:{{subFg}}">画布图片视图 · 可通过右侧信息栏或下方按钮调节缩放比例</span>
+<div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+<button type="button" onClick="{{zoomOut}}" aria-label="缩小" style="height:26px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:{{fg}};cursor:pointer">−</button>
+<button type="button" onClick="{{zoomFit}}" style="height:26px;padding:0 8px;border:0;border-radius:6px;background:{{fitBtnBg}};color:{{fg}};box-shadow:{{fitBtnRing}};cursor:pointer">适应</button>
+<button type="button" onClick="{{zoom100}}" style="height:26px;padding:0 8px;border:0;border-radius:6px;background:{{oneBtnBg}};color:{{fg}};box-shadow:{{oneBtnRing}};cursor:pointer">100%</button>
+<button type="button" onClick="{{zoomIn}}" aria-label="放大" style="height:26px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:{{fg}};cursor:pointer">+</button>
+</div>
+</div>
+<div style="min-height:430px;max-height:540px;overflow:auto;border-radius:8px;background:#14161a;border:1px solid {{borderCol}};display:flex;align-items:center;justify-content:center;padding:20px">
+<img src="/_blob/66c6955d7ad40d92535cdcb2e5ba7c69" alt="cover.png 项目吉祥物图标集预览" style="width:{{imgWidthPx}};height:auto;max-width:{{imgMaxWidth}};border-radius:8px;display:block" />
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isExternalView}}" hint-placeholder-val="{{false}}">
+<div style="border:1px solid {{borderCol}};border-radius:10px;background:{{sideBg}};padding:32px 24px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px">
+<div style="width:48px;height:48px;border-radius:12px;background:{{selBg}};border:1px solid {{accent}};display:flex;align-items:center;justify-content:center;color:{{accent}}">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.6"></path></svg>
+</div>
+<div class="mono" style="font-size:16px;font-weight:560;color:{{fg}}">{{activeName}} ({{activeSize}})</div>
+<div style="max-width:480px;color:{{subFg}}">{{externalDesc}}</div>
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px">
+<button type="button" class="btn" onClick="{{openSystemDefault}}" style="background:{{selBg}};color:{{fg}};border:1px solid {{accent}};font-weight:500">使用系统默认应用打开</button>
+<button type="button" class="btn" onClick="{{revealInFinder}}" style="background:{{paperBg}};color:{{fg}};border:1px solid {{btnBorder}}">在访达中显示</button>
+</div>
+</div>
+</sc-if>
+
+</div>
+</div>
+</main>
+
+<sc-if value="{{inspectorOpen}}" hint-placeholder-val="{{true}}">
+<aside aria-label="文件信息与上下文操作栏" style="width:280px;flex:none;background:{{sideBg}};border-left:1px solid {{sideBorder}};padding:16px 14px;display:flex;flex-direction:column;gap:18px;min-height:0;overflow:auto">
+<div>
+<div style="font-weight:560;color:{{fg}};margin-bottom:10px">文件属性（示例元数据）</div>
+<div style="display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:8px;background:{{paperBg}};border:1px solid {{borderCol}}">
+<div style="display:flex;justify-content:space-between;gap:8px"><span style="color:{{subFg}}">名称</span><span class="mono" style="color:{{fg}};font-weight:500">{{activeName}}</span></div>
+<div style="display:flex;justify-content:space-between;gap:8px"><span style="color:{{subFg}}">路径</span><span class="mono" style="color:{{fg}}">{{activePath}}</span></div>
+<div style="display:flex;justify-content:space-between;gap:8px"><span style="color:{{subFg}}">类型</span><span class="mono" style="color:{{fg}}">{{activeMime}}</span></div>
+<div style="display:flex;justify-content:space-between;gap:8px"><span style="color:{{subFg}}">大小</span><span class="mono" style="color:{{fg}}">{{activeSize}}</span></div>
+<div style="display:flex;justify-content:space-between;gap:8px"><span style="color:{{subFg}}">状态</span><span style="color:{{fg}}">{{saveLabel}}</span></div>
+</div>
+</div>
+
+<sc-if value="{{isTextView}}" hint-placeholder-val="{{false}}">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font-weight:560;color:{{fg}}">源码视图配置</div>
+<label style="display:flex;flex-direction:column;gap:4px;color:{{subFg}}">
+<span>语法高亮模式</span>
+<select value="{{activeLang}}" onChange="{{onLangChange}}" style="height:32px;padding:0 8px;border-radius:8px;border:1px solid {{btnBorder}};background:{{paperBg}};color:{{fg}}">
+<option value="html">HTML</option>
+<option value="json">JSON</option>
+<option value="plain">纯文本 (Plain)</option>
+</select>
+</label>
+<button type="button" class="btn" onClick="{{toggleWrap}}" style="width:100%;background:{{wrapBtnBg}};color:{{fg}};border:1px solid {{btnBorder}};box-shadow:{{wrapBtnRing}}">{{wrapLabel}}</button>
+</div>
+</sc-if>
+
+<sc-if value="{{isLegacyFile}}" hint-placeholder-val="{{false}}">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font-weight:560;color:{{fg}}">字符编码确认</div>
+<select value="{{legacyEncoding}}" onChange="{{onEncodingChange}}" aria-label="选择字符编码" style="height:32px;padding:0 8px;border-radius:8px;border:1px solid {{btnBorder}};background:{{paperBg}};color:{{fg}}">
+<option value="GB18030">GB18030 (中文扩展)</option>
+<option value="UTF-8">UTF-8</option>
+</select>
+<button type="button" class="btn" onClick="{{confirmEncodingEdit}}" style="width:100%;background:{{selBg}};color:{{fg}};border:1px solid {{accent}}">确认编码并允许编辑</button>
+</div>
+</sc-if>
+
+<sc-if value="{{isImageView}}" hint-placeholder-val="{{true}}">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-weight:560;color:{{fg}}">图片缩放 ({{zoomText}})</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px">
+<button type="button" class="btn" onClick="{{zoomFit}}" style="background:{{fitBtnBg}};color:{{fg}};border:1px solid {{btnBorder}};box-shadow:{{fitBtnRing}}">适应画布</button>
+<button type="button" class="btn" onClick="{{zoom100}}" style="background:{{oneBtnBg}};color:{{fg}};border:1px solid {{btnBorder}};box-shadow:{{oneBtnRing}}">原始 100%</button>
+<button type="button" class="btn" onClick="{{zoomOut}}" style="background:{{paperBg}};color:{{fg}};border:1px solid {{btnBorder}}">缩小 −25%</button>
+<button type="button" class="btn" onClick="{{zoomIn}}" style="background:{{paperBg}};color:{{fg}};border:1px solid {{btnBorder}}">放大 +25%</button>
+</div>
+</div>
+</sc-if>
+
+<div style="display:flex;flex-direction:column;gap:8px;margin-top:auto">
+<div style="font-weight:560;color:{{fg}}">系统接力操作（演示）</div>
+<sc-if value="{{isHtmlFile}}" hint-placeholder-val="{{false}}">
+<button type="button" class="btn" onClick="{{openInBrowser}}" style="width:100%;background:{{selBg}};color:{{fg}};border:1px solid {{accent}}">在默认浏览器中打开</button>
+</sc-if>
+<button type="button" class="btn" onClick="{{openSystemDefault}}" style="width:100%;background:{{paperBg}};color:{{fg}};border:1px solid {{btnBorder}}">使用系统默认应用打开</button>
+<button type="button" class="btn" onClick="{{revealInFinder}}" style="width:100%;background:{{paperBg}};color:{{subFg}};border:1px solid {{btnBorder}}">在访达中显示</button>
+</div>
+</aside>
+</sc-if>
+
+</div>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["dark","light"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.timers = {};
+    this.state = {
+      sidebarOpen: true,
+      inspectorOpen: true,
+      query: '',
+      activeId: 'cover.png',
+      wrap: true,
+      zoomMode: 'fit',
+      zoomPct: 100,
+      toast: '',
+      legacyEncoding: 'GB18030',
+      legacyUnlocked: false,
+      saveStatus: {},
+      langOverride: {},
+      contents: {
+        'index.html': '<!doctype html>\n<html lang="zh-CN">\n<head>\n  <meta charset="utf-8">\n  <title>Block 静态页面示例</title>\n</head>\n<body>\n  <main class="container">\n    <h1>三栏检查器布局</h1>\n    <p>中间保持 720px 标准宽度，文件属性与外部接力收纳于右侧信息栏。</p>\n  </main>\n</body>\n</html>',
+        'settings.json': '{\n  "workspace": "thinkly-fast",\n  "theme": "ocean-dark",\n  "codeWell": "github-ice-dark",\n  "inspectorVisible": true,\n  "maxInlineSizeMB": 10\n}',
+        'notes.txt': '纯文本备忘录（未知语言回退为无着色纯文本）\n- 编辑修改后自动暂存到组件状态，无需手动保存按钮。\n- 右侧检查器集中展示路径、MIME 类型、编码与外部打开动作。',
+        'huge.log': '[2026-11-05 09:14:02] WARN  indexer::scan skipped 3 binary blobs (>20MB)\n[2026-11-05 09:14:08] ERROR sync::worker connection reset by peer (retry 1/3)\n[2026-11-05 09:14:15] WARN  buffer::guard file exceeds inline edit threshold, switched to read-only tail view',
+        'legacy.txt': '【GB18030 历史归档记录】\n编号：ARCHIVE-2019-08\n说明：检测到非 UTF-8 字节流。明确选择编码并确认后，方可转为可编辑状态。'
+      }
+    };
+  }
+  scheduleSave(id) {
+    if (this.timers[id]) clearTimeout(this.timers[id]);
+    this.timers[id] = setTimeout(() => {
+      const next = Object.assign({}, this.state.saveStatus);
+      next[id] = 'saved';
+      this.setState({ saveStatus: next });
+    }, 420);
+  }
+  tokenize(text, lang) {
+    if (lang === 'plain') return [{ text, color: '#e6edf3' }];
+    const re = /(&lt;\/?[a-zA-Z0-9!-]+|\b(?:true|false|null)\b|"[^"\n]*"|\b\d+(?:\.\d+)?\b|[{}[\]:,&lt;&gt;=/])/g;
+    const out = [];
+    let last = 0;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) out.push({ text: text.slice(last, m.index), color: '#e6edf3' });
+      const tk = m[0];
+      let c = '#8b949e';
+      if (tk.startsWith('"')) c = (lang === 'json' && text.slice(m.index + tk.length).trimStart().startsWith(':')) ? '#7ee787' : '#a5d6ff';
+      else if (tk.startsWith('<')) c = '#7ee787';
+      else if (/^(true|false|null)$/.test(tk)) c = '#ff7b72';
+      else if (/^\d/.test(tk)) c = '#79c0ff';
+      out.push({ text: tk, color: c });
+      last = m.index + tk.length;
+    }
+    if (last < text.length) out.push({ text: text.slice(last), color: '#e6edf3' });
+    return out;
+  }
+  renderVals() {
+    const dark = (this.props.theme ?? 'dark') === 'dark';
+    const files = [
+      { id: 'index.html', name: 'index.html', badge: 'HTML', kind: 'text', lang: 'html', size: '4.2 KB', mime: 'text/html', path: 'docs/index.html', summary: 'HTML 源码 · UTF-8' },
+      { id: 'settings.json', name: 'settings.json', badge: 'JSON', kind: 'text', lang: 'json', size: '1.8 KB', mime: 'application/json', path: 'config/settings.json', summary: 'JSON 配置 · UTF-8' },
+      { id: 'notes.txt', name: 'notes.txt', badge: 'TXT', kind: 'text', lang: 'plain', size: '2.1 KB', mime: 'text/plain', path: 'notes/notes.txt', summary: '纯文本回退 · UTF-8' },
+      { id: 'cover.png', name: 'cover.png', badge: 'PNG', kind: 'image', lang: 'plain', size: '312 KB', mime: 'image/png', path: 'assets/cover.png', summary: '图片预览 · 1024×768' },
+      { id: 'walkthrough.mp4', name: 'walkthrough.mp4', badge: 'MP4', kind: 'external', lang: 'plain', size: '18.4 MB', mime: 'video/mp4', path: 'media/walkthrough.mp4', summary: '视频文件 · 外部打开', desc: '视频文件（示例数据）：不内嵌音视频解码器，交由系统默认播放器打开。' },
+      { id: 'guide.pdf', name: 'guide.pdf', badge: 'PDF', kind: 'external', lang: 'plain', size: '3.6 MB', mime: 'application/pdf', path: 'docs/guide.pdf', summary: 'PDF 文档 · 外部打开', desc: 'PDF 文档（示例数据）：不内嵌 PDF 渲染器，交由系统默认阅读器打开。' },
+      { id: 'archive.zip', name: 'archive.zip', badge: 'ZIP', kind: 'external', lang: 'plain', size: '9.1 MB', mime: 'application/zip', path: 'releases/archive.zip', summary: '二进制归档 · 外部打开', desc: '二进制压缩归档（示例数据）：不支持直接作为文本编辑，请使用系统归档工具打开。' },
+      { id: 'huge.log', name: 'huge.log', badge: 'LOG', kind: 'text', lang: 'plain', size: '48.6 MB', mime: 'text/plain', path: 'logs/huge.log', summary: '大文件只读 · UTF-8' },
+      { id: 'legacy.txt', name: 'legacy.txt', badge: '编码待定', kind: 'text', lang: 'plain', size: '6.4 KB', mime: 'text/plain', path: 'archive/legacy.txt', summary: '编码待确认 · 只读保护' }
+    ];
+    const q = this.state.query.trim().toLowerCase();
+    const filtered = files.filter((f) => !q || f.name.toLowerCase().includes(q) || f.badge.toLowerCase().includes(q));
+    const cur = files.find((f) => f.id === this.state.activeId) || files[0];
+    const activeLang = this.state.langOverride[cur.id] || cur.lang;
+    let rawText = this.state.contents[cur.id] || '';
+    if (cur.id === 'legacy.txt' && this.state.legacyEncoding === 'UTF-8' && !this.state.legacyUnlocked) {
+      rawText = '【GB18030 】\n编号：ARCHIVE-2019-08\n说明：UTF-8 解码存在替换符（），请在右侧切换 GB18030 并解锁。';
+    }
+    const isLargeLog = cur.id === 'huge.log';
+    const isEncodingLocked = cur.id === 'legacy.txt' && !this.state.legacyUnlocked;
+    const canEditText = cur.kind === 'text' && !isLargeLog && !isEncodingLocked;
+    const st = this.state.saveStatus[cur.id];
+    const saveLabel = st === 'saving' ? '正在暂存…' : (st === 'saved' ? '已暂存（演示）' : '自动暂存就绪（演示）');
+    const lines = rawText ? rawText.split('\n').length : 1;
+    const accent = dark ? '#779de8' : '#547dd0';
+    const selBg = dark ? '#343434' : '#e5edfc';
+    return {
+      shellBg: dark ? '#343434' : '#f1f1f1',
+      sideBg: dark ? '#222222' : '#fafafa',
+      paperBg: dark ? '#181818' : '#ffffff',
+      fg: dark ? '#ececec' : '#20242c',
+      subFg: dark ? '#b4b4b4' : '#526071',
+      accent,
+      iconFill: dark ? '#31456a' : '#c9d8f3',
+      selBg,
+      borderCol: dark ? '#2e2e2e' : '#e4e6ea',
+      sideBorder: dark ? '#333333' : '#e6e6e6',
+      btnBorder: dark ? '#444444' : '#dcdcdc',
+      sidebarOpen: this.state.sidebarOpen,
+      toggleSidebar: () => this.setState({ sidebarOpen: !this.state.sidebarOpen }),
+      inspectorOpen: this.state.inspectorOpen,
+      toggleInspector: () => this.setState({ inspectorOpen: !this.state.inspectorOpen }),
+      inspBtnBg: this.state.inspectorOpen ? selBg : 'transparent',
+      inspBtnRing: this.state.inspectorOpen ? `inset 0 0 0 1px ${accent}` : 'none',
+      query: this.state.query,
+      hasQuery: q.length > 0,
+      noMatch: filtered.length === 0,
+      onQueryInput: (e) => this.setState({ query: e && e.target ? e.target.value : '' }),
+      clearQuery: () => this.setState({ query: '' }),
+      filteredFiles: filtered.map((f) => ({
+        ...f,
+        rowBg: f.id === cur.id ? selBg : 'transparent',
+        rowRing: f.id === cur.id ? `inset 0 0 0 1px ${accent}` : 'none',
+        rowWeight: f.id === cur.id ? '500' : '400',
+        iconCol: f.id === cur.id ? accent : (dark ? '#b4b4b4' : '#526071'),
+        pick: () => this.setState({ activeId: f.id, toast: '' })
+      })),
+      activeName: cur.name,
+      activePath: cur.path,
+      activeSummary: cur.summary,
+      activeMime: cur.mime,
+      activeSize: cur.size,
+      externalDesc: cur.desc || '',
+      isTextView: cur.kind === 'text',
+      isImageView: cur.kind === 'image',
+      isExternalView: cur.kind === 'external',
+      isHtmlFile: cur.id === 'index.html',
+      isLegacyFile: cur.id === 'legacy.txt',
+      isLargeLog,
+      isEncodingLocked,
+      canEditText,
+      saveLabel,
+      activeLang,
+      onLangChange: (e) => {
+        const v = e && e.target ? e.target.value : 'plain';
+        this.setState({ langOverride: Object.assign({}, this.state.langOverride, { [cur.id]: v }) });
+      },
+      wrapLabel: this.state.wrap ? '自动换行：已开启' : '自动换行：已关闭',
+      wrapBtnBg: this.state.wrap ? selBg : 'transparent',
+      wrapBtnRing: this.state.wrap ? `inset 0 0 0 1px ${accent}` : 'none',
+      toggleWrap: () => this.setState({ wrap: !this.state.wrap }),
+      preWrap: this.state.wrap ? 'pre-wrap' : 'pre',
+      wordBreak: this.state.wrap ? 'break-all' : 'normal',
+      editorModeLabel: canEditText ? `可编辑源码 (${activeLang.toUpperCase()})` : '只读源码视图 (Read-only)',
+      lineCount: String(lines),
+      charCount: String(rawText.length),
+      currentText: rawText,
+      tokens: this.tokenize(rawText, activeLang),
+      onTextInput: (e) => {
+        if (!canEditText) return;
+        const val = e && e.target ? e.target.value : '';
+        const id = cur.id;
+        this.setState({
+          contents: Object.assign({}, this.state.contents, { [id]: val }),
+          saveStatus: Object.assign({}, this.state.saveStatus, { [id]: 'saving' })
+        });
+        this.scheduleSave(id);
+      },
+      legacyEncoding: this.state.legacyEncoding,
+      onEncodingChange: (e) => this.setState({ legacyEncoding: e && e.target ? e.target.value : 'GB18030' }),
+      confirmEncodingEdit: () => this.setState({
+        legacyUnlocked: true,
+        toast: `原型演示：已确认按 ${this.state.legacyEncoding} 解码 legacy.txt，现已允许编辑。`
+      }),
+      zoomText: this.state.zoomMode === 'fit' ? '自适应' : `${this.state.zoomPct}%`,
+      fitBtnBg: this.state.zoomMode === 'fit' ? selBg : 'transparent',
+      fitBtnRing: this.state.zoomMode === 'fit' ? `inset 0 0 0 1px ${accent}` : 'none',
+      oneBtnBg: (this.state.zoomMode === 'pct' && this.state.zoomPct === 100) ? selBg : 'transparent',
+      oneBtnRing: (this.state.zoomMode === 'pct' && this.state.zoomPct === 100) ? `inset 0 0 0 1px ${accent}` : 'none',
+      imgWidthPx: this.state.zoomMode === 'fit' ? '100%' : `${Math.round(520 * this.state.zoomPct / 100)}px`,
+      imgMaxWidth: this.state.zoomMode === 'fit' ? '520px' : 'none',
+      zoomFit: () => this.setState({ zoomMode: 'fit' }),
+      zoom100: () => this.setState({ zoomMode: 'pct', zoomPct: 100 }),
+      zoomIn: () => this.setState({ zoomMode: 'pct', zoomPct: Math.min(200, (this.state.zoomMode === 'fit' ? 100 : this.state.zoomPct) + 25) }),
+      zoomOut: () => this.setState({ zoomMode: 'pct', zoomPct: Math.max(50, (this.state.zoomMode === 'fit' ? 100 : this.state.zoomPct) - 25) }),
+      hasToast: Boolean(this.state.toast),
+      toastMsg: this.state.toast,
+      dismissToast: () => this.setState({ toast: '' }),
+      openInBrowser: () => this.setState({ toast: `原型演示：将使用默认浏览器打开 ${cur.name}` }),
+      openSystemDefault: () => this.setState({ toast: `原型演示：将使用系统默认应用打开 ${cur.name}` }),
+      revealInFinder: () => this.setState({ toast: `原型演示：将在访达中显示 ${cur.path}` })
+    };
+  }
+}
+</script>
+</body>
+</html>

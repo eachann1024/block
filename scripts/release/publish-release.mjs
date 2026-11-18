@@ -7,8 +7,7 @@ import {
   gh,
   REPO,
   ROOT,
-  setCargoLockVersion,
-  setCargoTomlVersion,
+  setMyGoJsonVersion,
   setPackageJsonVersion,
 } from "./select-release.mjs";
 
@@ -24,9 +23,8 @@ function writebackVersionCommit(version, tag) {
     const head = JSON.parse(gh(["api", `repos/${REPO}/git/ref/heads/main`])).object.sha;
     const commit = JSON.parse(gh(["api", `repos/${REPO}/git/commits/${head}`]));
     const files = {
-      "Cargo.toml": setCargoTomlVersion(readRemoteFile(head, "Cargo.toml"), version),
-      "Cargo.lock": setCargoLockVersion(readRemoteFile(head, "Cargo.lock"), version),
       "package.json": setPackageJsonVersion(readRemoteFile(head, "package.json"), version),
+      "mygo.json": setMyGoJsonVersion(readRemoteFile(head, "mygo.json"), version),
     };
     const tree = JSON.parse(gh(["api", "--method", "POST", `repos/${REPO}/git/trees`, "--input", "-"], JSON.stringify({
       base_tree: commit.tree.sha,

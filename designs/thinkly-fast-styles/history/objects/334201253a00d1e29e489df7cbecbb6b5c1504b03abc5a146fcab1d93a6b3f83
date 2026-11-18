@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>关于 Block · 方案 C · 信息清单</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#3d63b0}a:hover{color:#2f4f92}
+.row{display:grid;grid-template-columns:96px 1fr;align-items:center;min-height:40px;padding:0 4px}
+.row a{text-decoration:none}
+.row a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width:640px;height:560px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;background:{{t.backdrop}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;color:{{t.text}}">
+<section aria-labelledby="about-title-c" style="width:400px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px;padding:24px;background:{{t.menu}};border:1px solid {{t.border}};border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,0.12)">
+<div style="display:flex;align-items:center;gap:12px">
+<img src="/_blob/6768a211187044ad08d09ce47a61554d" alt="" style="width:40px;height:40px">
+<h1 id="about-title-c" style="margin:0;font-size:18px;line-height:26px;font-weight:560;flex:1">Block</h1>
+<button type="button" aria-label="{{s.close}}" style="width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:{{t.sub}};display:flex;align-items:center;justify-content:center;cursor:pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+</button>
+</div>
+<dl style="margin:0;display:flex;flex-direction:column;border-top:1px solid {{t.border}};padding-top:8px">
+<div class="row"><dt style="color:{{t.sub}}">{{s.version}}</dt><dd style="margin:0;font-family:'JetBrains Mono',Menlo,monospace">0.1.0</dd></div>
+<div class="row"><dt style="color:{{t.sub}}">{{s.author}}</dt><dd style="margin:0">eachann</dd></div>
+<div class="row"><dt style="color:{{t.sub}}">GitHub</dt><dd style="margin:0"><a href="https://github.com/eachann1024" style="color:{{t.accent}}">github.com/eachann1024</a></dd></div>
+<div class="row"><dt style="color:{{t.sub}}">{{s.repo}}</dt><dd style="margin:0"><a href="https://github.com/eachann1024/block" style="color:{{t.accent}}">eachann1024/block</a></dd></div>
+<div class="row"><dt style="color:{{t.sub}}">{{s.license}}</dt><dd style="margin:0">Apache-2.0</dd></div>
+</dl>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["zh","en"],"default":"zh"},"dark":{"editor":"boolean","default":false},"$preview":{"width":640,"height":560}}'>
+class Component extends DCLogic {
+renderVals() {
+const dark = this.props.dark ?? false;
+const en = (this.props.lang ?? 'zh') === 'en';
+const t = dark
+? { backdrop:'#111111', menu:'#222222', text:'#ececec', sub:'#b4b4b4', border:'#383838', accent:'#779de8' }
+: { backdrop:'#d9dadc', menu:'#ffffff', text:'#1f1e1d', sub:'#52514e', border:'#e4e4e4', accent:'#3d63b0' };
+const s = en
+? { version:'Version', author:'Author', repo:'Source', license:'License', close:'Close' }
+: { version:'版本', author:'作者', repo:'源码', license:'许可证', close:'关闭' };
+return { t, s };
+}
+}
+</script>
+</body>
+</html>

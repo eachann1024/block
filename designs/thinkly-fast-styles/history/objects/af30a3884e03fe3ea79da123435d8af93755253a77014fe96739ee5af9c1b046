@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>通用与编辑 · 全局静态资源文件夹（默认 assets + 列表与搜索默认隐藏）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input{font-family:inherit}
+.ib{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;padding:0;cursor:pointer;flex:none}
+.row{font:inherit;font-size:14px;line-height:20px;width:100%;height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;border:0;border-radius:6px;background:transparent;text-align:left;cursor:pointer;box-sizing:border-box}
+.tree-row{font:inherit;font-size:14px;line-height:20px;width:100%;height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border:0;border-radius:6px;background:transparent;text-align:left;cursor:pointer;box-sizing:border-box}
+.btn{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:34px;padding:0 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;white-space:nowrap;flex:none}
+.seg{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:32px;padding:0 12px;border:0;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;white-space:nowrap}
+.field-input{font:inherit;font-size:14px;line-height:20px;height:34px;padding:0 10px;border-radius:8px;box-sizing:border-box;outline:none}
+.hit-item{width:100%;display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:6px;box-sizing:border-box}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</helmet>
+<div style="width:100%;min-height:920px;box-sizing:border-box;display:flex;flex-direction:column;background:{{shellBg}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:{{textPrimary}};font-size:14px;line-height:20px;overflow:hidden;-webkit-font-smoothing:antialiased">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;border-bottom:1px solid {{sidebarBorder}};box-sizing:border-box;background:{{shellBg}}">
+<div style="width:260px;flex:none;height:100%;box-sizing:border-box;display:flex;align-items:center;padding:0 10px 0 16px;border-right:1px solid {{sidebarBorder}}">
+<sc-if value="{{isMac}}" hint-placeholder-val="{{true}}">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+</sc-if>
+<button type="button" class="ib" aria-label="收起侧栏" style="margin-left:auto;color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{iconFill}}"></path>
+<rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+<path d="M15.75 9.75L13.25 12L15.75 14.25" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+
+<div style="flex:1;min-width:0;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 16px;box-sizing:border-box">
+<div style="display:flex;align-items:center;gap:6px;color:{{textSecondary}}">
+<span style="color:{{textSecondary}}">设置</span>
+<span>/</span>
+<span style="color:{{textPrimary}};font-weight:460">通用与编辑</span>
+</div>
+
+<div style="display:flex;align-items:center;gap:8px">
+<button type="button" class="btn" onClick="{{toggleDarkPreview}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">{{themeToggleLabel}}</button>
+</div>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+
+<aside aria-label="设置分类导航" style="width:260px;flex:none;background:{{sidebarBg}};border-right:1px solid {{sidebarBorder}};box-sizing:border-box;display:flex;flex-direction:column;min-height:0">
+<div style="padding:18px 16px 10px;display:flex;align-items:center;justify-content:space-between">
+<span style="font-size:18px;line-height:24px;font-weight:560;color:{{textPrimary}}">设置</span>
+</div>
+
+<nav aria-label="设置分类" style="flex:1;min-height:0;padding:4px 10px;display:flex;flex-direction:column;gap:4px">
+<button type="button" class="row" style="color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<path d="M12 3.5L14.2 9.3L20 11.5L14.2 13.7L12 19.5L9.8 13.7L4 11.5L9.8 9.3L12 3.5Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+<path d="M18.5 4V7M17 5.5H20" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path>
+</svg>
+<span>AI 助手</span>
+</button>
+
+<button type="button" class="row" style="color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<rect x="3.5" y="4.5" width="17" height="12" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M8 20H16M12 16.5V20" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path>
+</svg>
+<span>外观与字体</span>
+</button>
+
+<button type="button" class="row" style="background:{{selectedBg}};color:{{textPrimary}};box-shadow:{{activeRing}};font-weight:460">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+<circle cx="9" cy="7" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle>
+<circle cx="15" cy="12" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle>
+<circle cx="10" cy="17" r="2" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5"></circle>
+</svg>
+<span>通用与编辑</span>
+</button>
+
+<button type="button" class="row" style="color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+<rect x="3.25" y="5.75" width="17.5" height="12.5" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M7 10H8.5M11.25 10H12.75M15.5 10H17M7.5 14H16.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path>
+</svg>
+<span>基础快捷键</span>
+</button>
+</nav>
+
+<div style="flex:none;height:44px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-top:1px solid {{sidebarBorder}}">
+<span style="color:{{textSecondary}}">本地笔记</span>
+<button type="button" style="height:28px;padding:0 10px;border:1px solid {{btnBorder}};border-radius:6px;background:{{cardBg}};color:{{textPrimary}};font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 6.25L4.75 12L10.5 17.75"></path><path d="M5.25 12H19.25"></path></svg>
+<span>返回笔记</span>
+</button>
+</div>
+</aside>
+
+<main style="flex:999 1 560px;min-width:0;background:{{settingsBg}};overflow:auto">
+<div style="box-sizing:border-box;width:100%;max-width:720px;margin:0 auto;padding:40px 28px 64px;display:flex;flex-direction:column;gap:24px">
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+<h1 style="margin:0;font-size:24px;line-height:32px;font-weight:560;color:{{textPrimary}}">通用与编辑</h1>
+<button type="button" class="btn" style="background:{{cardBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">返回编辑</button>
+</div>
+
+
+
+<section aria-label="全局静态资源" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">静态资源</h2>
+<sc-if value="{{assetsDirCustom}}" hint-placeholder-val="{{false}}">
+<button type="button" class="btn" onClick="{{resetAssetsDir}}" style="height:30px;background:{{shellBg}};color:{{textSecondary}};border:1px solid {{borderCol}}">恢复默认</button>
+</sc-if>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<label for="storage-assets-folder" style="color:{{textPrimary}}">全局资源文件夹名</label>
+<div style="display:flex;align-items:center;gap:8px">
+<input id="storage-assets-folder" type="text" value="{{assetsDirName}}" onInput="{{onAssetsDirInput}}" placeholder="assets" class="field-input" style="width:176px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textPrimary}};font-family:'JetBrains Mono',monospace">
+<span style="height:34px;padding:0 10px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textSecondary}};font-family:'JetBrains Mono',monospace;display:inline-flex;align-items:center">{{assetsPreviewPath}}</span>
+</div>
+</div>
+
+<div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+<span style="color:{{textPrimary}}">列表与搜索可见性</span>
+<div role="group" aria-label="列表与搜索可见性" style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+<button type="button" class="seg" onClick="{{setAssetsHidden}}" style="background:{{assetsHideBg}};color:{{assetsHideCol}};box-shadow:{{assetsHideRing}}">默认隐藏</button>
+<button type="button" class="seg" onClick="{{setAssetsVisible}}" style="background:{{assetsShowBg}};color:{{assetsShowCol}};box-shadow:{{assetsShowRing}}">始终显示</button>
+</div>
+</div>
+</section>
+
+<section aria-label="过滤生效预览" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">全局过滤效果预览</h2>
+<span style="height:28px;padding:0 10px;border-radius:6px;background:{{statusPillBg}};color:{{statusPillCol}};border:1px solid {{statusPillBorder}};display:inline-flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace">
+<span>{{statusPillText}}</span>
+</span>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+
+<div style="background:{{sidebarBg}};border:1px solid {{borderCol}};border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="font-weight:500;color:{{textPrimary}}">侧栏文件列表</span>
+<span style="color:{{textSecondary}};font-family:'JetBrains Mono',monospace">{{treeCountLabel}}</span>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:2px">
+<sc-if value="{{showAssetsInPreview}}" hint-placeholder-val="{{false}}">
+<button type="button" class="tree-row" style="color:{{textSecondary}};background:{{shellBg}}">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+</svg>
+<span style="font-family:'JetBrains Mono',monospace;color:{{textPrimary}}">{{cleanAssetsName}}</span>
+</button>
+</sc-if>
+
+<button type="button" class="tree-row" style="color:{{textPrimary}}">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="{{textSecondary}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+</svg>
+<span>产品设计</span>
+</button>
+
+<button type="button" class="tree-row" style="padding-left:28px;background:{{selectedBg}};color:{{textPrimary}};box-shadow:{{activeRing}};font-weight:460">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.5" stroke-linejoin="round"></path>
+</svg>
+<span>视觉规范</span>
+</button>
+
+<button type="button" class="tree-row" style="padding-left:28px;color:{{textPrimary}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+</svg>
+<span>组件清单</span>
+</button>
+
+<button type="button" class="tree-row" style="color:{{textPrimary}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+</svg>
+<span>发布记录</span>
+</button>
+</div>
+</div>
+
+<div style="background:{{sidebarBg}};border:1px solid {{borderCol}};border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="font-weight:500;color:{{textPrimary}}">全局搜索 ⌘⇧K</span>
+<span style="color:{{textSecondary}};font-family:'JetBrains Mono',monospace">{{searchCountLabel}}</span>
+</div>
+
+<div style="height:32px;padding:0 10px;border-radius:6px;background:{{cardBg}};border:1px solid {{borderCol}};display:flex;align-items:center;gap:8px;color:{{textPrimary}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{textSecondary}}" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg>
+<span>图标</span>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:4px">
+<div class="hit-item" style="background:{{selectedBg}};box-shadow:{{activeRing}}">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<span style="font-weight:500;color:{{textPrimary}}">视觉规范</span>
+<span style="color:{{textSecondary}}">产品设计</span>
+</div>
+<span style="color:{{textSecondary}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">双色语义图标与粘贴图片统一存入 {{assetsPreviewPath}}</span>
+</div>
+
+<div class="hit-item" style="background:{{cardBg}};border:1px solid {{borderCol}}">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<span style="font-weight:500;color:{{textPrimary}}">组件清单</span>
+<span style="color:{{textSecondary}}">产品设计</span>
+</div>
+<span style="color:{{textSecondary}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">工具栏图标按钮尺寸固定 28px</span>
+</div>
+
+<sc-if value="{{showAssetsInPreview}}" hint-placeholder-val="{{false}}">
+<div class="hit-item" style="background:{{shellBg}};border:1px solid {{borderCol}}">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<span style="font-weight:500;color:{{textPrimary}}">图库索引</span>
+<span style="color:{{textSecondary}};font-family:'JetBrains Mono',monospace">{{cleanAssetsName}} / 图库索引</span>
+</div>
+<span style="color:{{textSecondary}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">静态资源目录内的说明文档</span>
+</div>
+</sc-if>
+</div>
+</div>
+
+</div>
+</section>
+
+</div>
+</main>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"platform":{"editor":"enum","options":["macos","windows"],"default":"macos"},"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"hideAssets":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":920}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      darkOverride: null,
+      assetsDir: 'assets',
+      hideOverride: null
+    };
+  }
+
+  renderVals() {
+    const st = this.state || {};
+    const props = this.props || {};
+    const os = props.platform ?? 'macos';
+    const mode = st.darkOverride ?? (props.theme ?? 'light');
+    const dark = mode === 'dark';
+    const hideAssets = st.hideOverride === null ? (props.hideAssets !== false) : st.hideOverride;
+
+    const shellBg = dark ? '#343434' : '#f1f1f1';
+    const sidebarBg = dark ? '#222222' : '#fafafa';
+    const settingsBg = dark ? '#181818' : '#f8f8f8';
+    const cardBg = dark ? '#222222' : '#ffffff';
+    const textPrimary = dark ? '#ececec' : '#20242c';
+    const textSecondary = dark ? '#b4b4b4' : '#526071';
+    const accent = dark ? '#779de8' : '#547dd0';
+    const iconFill = dark ? '#31456a' : '#c9d8f3';
+    const selectedBg = dark ? '#343434' : '#e5edfc';
+    const borderCol = dark ? '#2e2e2e' : '#e4e6ea';
+    const sidebarBorder = dark ? '#333333' : '#e6e6e6';
+    const btnBorder = dark ? '#444444' : '#dcdcdc';
+    const activeRing = 'inset 0 0 0 1px ' + accent;
+
+    const segItem = (act) => ({
+      bg: act ? selectedBg : 'transparent',
+      col: act ? textPrimary : textSecondary,
+      ring: act ? activeRing : 'none'
+    });
+
+    const aHide = segItem(hideAssets);
+    const aShow = segItem(!hideAssets);
+    const rawAssets = (st.assetsDir ?? 'assets').trim();
+    const cleanAssets = rawAssets || 'assets';
+
+    return {
+      shellBg,
+      sidebarBg,
+      settingsBg,
+      cardBg,
+      textPrimary,
+      textSecondary,
+      accent,
+      iconFill,
+      selectedBg,
+      borderCol,
+      sidebarBorder,
+      btnBorder,
+      activeRing,
+
+      isMac: os === 'macos',
+      themeToggleLabel: dark ? '深色' : '浅色',
+
+      assetsDirName: st.assetsDir ?? 'assets',
+      cleanAssetsName: cleanAssets,
+      assetsPreviewPath: './' + cleanAssets + '/',
+      assetsDirCustom: cleanAssets !== 'assets' || !hideAssets,
+
+      assetsHideBg: aHide.bg, assetsHideCol: aHide.col, assetsHideRing: aHide.ring,
+      assetsShowBg: aShow.bg, assetsShowCol: aShow.col, assetsShowRing: aShow.ring,
+
+      showAssetsInPreview: !hideAssets,
+      statusPillBg: hideAssets ? selectedBg : shellBg,
+      statusPillCol: textPrimary,
+      statusPillBorder: hideAssets ? accent : borderCol,
+      statusPillText: hideAssets ? '已隐藏 ' + cleanAssets + '/' : '显示 ' + cleanAssets + '/',
+      treeCountLabel: hideAssets ? '已过滤 ' + cleanAssets + '/' : '包含 ' + cleanAssets + '/',
+      searchCountLabel: hideAssets ? '2 条匹配' : '3 条匹配',
+
+      toggleDarkPreview: () => this.setState({ darkOverride: dark ? 'light' : 'dark' }),
+      onAssetsDirInput: (e) => { if (e && e.target) this.setState({ assetsDir: e.target.value }); },
+      setAssetsHidden: () => this.setState({ hideAssets: true, hideOverride: true }),
+      setAssetsVisible: () => this.setState({ hideAssets: false, hideOverride: false }),
+      resetAssetsDir: () => this.setState({ assetsDir: 'assets', hideOverride: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

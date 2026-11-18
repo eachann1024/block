@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>深色代码块 A（推荐）· 石墨微框与悬浮合一胶囊</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#ececec;background:#181818;-webkit-font-smoothing:antialiased}
+a{color:#779de8;text-decoration:none}a:hover{color:#9dbcf5}
+button{font-family:inherit;font-size:14px}
+*{box-sizing:border-box}
+::selection{background:#2d426b;color:#9dbcf5}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-feature-settings:"liga" 0}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:980px;display:flex;flex-direction:column;background:{{pageBg}};color:{{textPrimary}};font-size:14px;line-height:20px">
+
+  <!-- 顶部控制栏 -->
+  <header style="height:46px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:{{barBg}};border-bottom:1px solid {{borderCol}}">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+      </div>
+      <span style="font-weight:560;color:{{textPrimary}}">深色代码块 A（推荐）· 石墨微框 + 悬浮合一微舱</span>
+      <span style="color:{{textSecondary}}">消除 34px 顶部空黑洞 · 修复浅色高亮误用导致 key 隐形与刺眼绿串 · 对齐 Ocean Dark 石墨灰</span>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
+        <button type="button" onClick="{{setIdle}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{idleBtnBg}};color:{{idleBtnCol}};box-shadow:{{idleBtnRing}};font-weight:460;cursor:pointer">闲置态</button>
+        <button type="button" onClick="{{setHover}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{hoverBtnBg}};color:{{hoverBtnCol}};box-shadow:{{hoverBtnRing}};font-weight:460;cursor:pointer">悬停 / 光标态</button>
+        <button type="button" onClick="{{setMenu}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{menuBtnBg}};color:{{menuBtnCol}};box-shadow:{{menuBtnRing}};font-weight:460;cursor:pointer">语言下拉</button>
+      </div>
+
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
+        <button type="button" onClick="{{setDark}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{darkBtnBg}};color:{{darkBtnCol}};box-shadow:{{darkBtnRing}};font-weight:460;cursor:pointer">深色 Ocean Dark</button>
+        <button type="button" onClick="{{setLight}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{lightBtnBg}};color:{{lightBtnCol}};box-shadow:{{lightBtnRing}};font-weight:460;cursor:pointer">浅色 Ocean Light</button>
+      </div>
+    </div>
+  </header>
+
+  <main style="flex:1;max-width:1220px;width:100%;margin:0 auto;padding:28px 28px 56px;display:flex;flex-direction:column;gap:24px">
+
+    <!-- 1. 截图原场景左右对比 -->
+    <section style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:20px 24px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">截图原场景对比 · 为什么现状丑 &amp; 方案 A 如何重构</span>
+        <span style="font-size:14px;color:{{textSecondary}}">内边距从 34px/12px/10px 改为四边均衡 14px 16px · 键名对比度从 1.8:1 提升至 7.8:1</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px">
+        <!-- 左侧：当前丑陋现状复现 -->
+        <div style="padding:16px 18px;border-radius:8px;background:{{subSurface}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:14px;font-weight:500;color:{{textSecondary}}">当前现状（截图复现）</span>
+            <span style="font-size:14px;color:#e57368">顶部 34px 空洞 · 键名乌黑隐形 · 刺眼草绿</span>
+          </div>
+
+          <!-- 模拟编辑器画布 -->
+          <div style="padding:16px 16px 16px 36px;border-radius:8px;background:#181818;border:1px solid #262626;position:relative">
+            <!-- 块把手 -->
+            <span aria-hidden="true" style="position:absolute;left:12px;top:24px;color:#787878;display:inline-flex">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"></circle><circle cx="10.5" cy="3.5" r="1.2"></circle><circle cx="5.5" cy="8" r="1.2"></circle><circle cx="10.5" cy="8" r="1.2"></circle><circle cx="5.5" cy="12.5" r="1.2"></circle><circle cx="10.5" cy="12.5" r="1.2"></circle></svg>
+            </span>
+            <!-- 旧代码块：#16191e 偏蓝黑无边，顶部 34px 空隙 -->
+            <div class="mono" style="position:relative;padding:34px 12px 10px;border-radius:6px;background:#16191e;font-size:14px;line-height:22px;color:#ececec;word-break:break-all">
+              <div style="position:absolute;top:6px;right:6px;display:flex;align-items:center;gap:4px">
+                <span style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;color:#9aa3b2">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+                </span>
+                <span style="height:22px;padding:0 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:#1f2228;color:#9aa3b2;font-family:Inter,sans-serif;font-size:12px;display:inline-flex;align-items:center">yaml</span>
+              </div>
+              <div>{</div>
+              <div style="padding-left:16px"><span style="color:#48484a">goose-id</span>: <span style="color:#268026">local-mvezjy17iwf4mlovmr-%E5%BC%95%E4%BD%93%E5%90%91%E4%B8%8A(%E5%BC%B9%E5%8A%9B%E5%B8%A6_%E8%87%AA%E9%87%8D_%E8%B4%9F%E9%87%8D%E5%BC%95%E4%BD%93).md</span></div>
+              <div>}<span style="display:inline-block;width:2px;height:16px;background:#779de8;vertical-align:middle;margin-left:1px"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧：方案 A 重构效果 -->
+        <div style="padding:16px 18px;border-radius:8px;background:{{selectedSurface}};border:1px solid {{accentCol}};display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:14px;font-weight:560;color:{{textPrimary}}">方案 A · 石墨微框卡片 + 均衡内距 + Ocean Dark 语法色</span>
+            <span style="font-size:14px;color:{{accentCol}};font-weight:500">1px 石墨细框 · 冰川蓝键名 · 鼠尾草绿</span>
+          </div>
+
+          <div style="padding:16px 16px 16px 36px;border-radius:8px;background:{{paperBg}};border:1px solid {{borderCol}};position:relative">
+            <!-- 块把手 -->
+            <span aria-hidden="true" style="position:absolute;left:12px;top:27px;color:{{handleCol}};display:inline-flex">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"></circle><circle cx="10.5" cy="3.5" r="1.2"></circle><circle cx="5.5" cy="8" r="1.2"></circle><circle cx="10.5" cy="8" r="1.2"></circle><circle cx="5.5" cy="12.5" r="1.2"></circle><circle cx="10.5" cy="12.5" r="1.2"></circle></svg>
+            </span>
+            <!-- 新代码块 A -->
+            <div class="mono" style="position:relative;padding:14px 16px;border-radius:8px;background:{{codeBg}};border:1px solid {{codeBorder}};font-size:14px;line-height:22px;color:{{synText}};word-break:break-all">
+              <!-- 右上角合一悬浮微舱 -->
+              <div style="position:absolute;top:8px;right:8px;height:24px;padding:0 3px;border-radius:6px;background:{{pillClusterBg}};border:1px solid {{pillClusterBorder}};display:inline-flex;align-items:center;gap:2px">
+                <button type="button" onClick="{{triggerCopy}}" aria-label="复制代码" style="width:20px;height:20px;border:0;border-radius:4px;background:transparent;color:{{pillFg}};display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer">
+                  <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+                </button>
+                <span style="width:1px;height:12px;background:{{pillSep}}"></span>
+                <button type="button" onClick="{{toggleMenu}}" style="height:20px;padding:0 6px;border:0;border-radius:4px;background:transparent;color:{{pillFg}};font-family:Inter,sans-serif;font-size:12px;font-weight:460;display:inline-flex;align-items:center;gap:3px;cursor:pointer">
+                  <span>{{langLabel}}</span>
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 6.5L8 10l3.5-3.5"></path></svg>
+                </button>
+              </div>
+              <div><span style="color:{{synPunct}}">{</span></div>
+              <div style="padding-left:18px"><span style="color:{{synKey}}">goose-id</span><span style="color:{{synPunct}}">:</span> <span style="color:{{synStr}}">local-mvezjy17iwf4mlovmr-</span><span style="color:{{synStrMuted}}">%E5%BC%95%E4%BD%93%E5%90%91%E4%B8%8A</span><span style="color:{{synStr}}">(</span><span style="color:{{synStrMuted}}">%E5%BC%B9%E5%8A%9B%E5%B8%A6_%E8%87%AA%E9%87%8D_%E8%B4%9F%E9%87%8D%E5%BC%95%E4%BD%93</span><span style="color:{{synStr}})">.md</span></div>
+              <div><span style="color:{{synPunct}}">}</span><span style="display:inline-block;width:2px;height:16px;background:{{accentCol}};vertical-align:middle;margin-left:2px"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 真实编辑器标准版心（700px）交互体验 -->
+    <section style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:26px 32px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid {{borderCol}};padding-bottom:14px">
+        <span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">编辑器标准版心（700px）· 短配置块与多行代码实时交互</span>
+        <span style="font-size:14px;color:{{textSecondary}}">点击右上角复制图标或语言胶囊可体验反馈与语言选择下拉</span>
+      </div>
+
+      <div style="max-width:700px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px;padding:8px 0">
+        <p style="margin:0;font-size:16px;line-height:26px;color:{{editorText}}">笔记头部的文档索引元数据块（已消除多余顶栏留白，把手与首行代码光学对齐）：</p>
+
+        <!-- 可交互代码块 1 -->
+        <div style="position:relative;padding-left:28px">
+          <sc-if value="{{showChrome}}" hint-placeholder-val="{{true}}">
+            <span aria-hidden="true" style="position:absolute;left:2px;top:15px;color:{{handleCol}};display:inline-flex">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"></circle><circle cx="10.5" cy="3.5" r="1.2"></circle><circle cx="5.5" cy="8" r="1.2"></circle><circle cx="10.5" cy="8" r="1.2"></circle><circle cx="5.5" cy="12.5" r="1.2"></circle><circle cx="10.5" cy="12.5" r="1.2"></circle></svg>
+            </span>
+          </sc-if>
+
+          <div class="mono" style="position:relative;padding:14px 16px;border-radius:8px;background:{{codeBg}};border:1px solid {{codeBorder}};font-size:14px;line-height:22px;color:{{synText}}">
+            <sc-if value="{{showChrome}}" hint-placeholder-val="{{true}}">
+              <div style="position:absolute;top:8px;right:8px;height:24px;padding:0 3px;border-radius:6px;background:{{pillClusterBg}};border:1px solid {{pillClusterBorder}};display:inline-flex;align-items:center;gap:2px;z-index:10">
+                <button type="button" onClick="{{triggerCopy}}" aria-label="复制代码" style="height:20px;padding:0 6px;border:0;border-radius:4px;background:transparent;color:{{copyFg}};display:inline-flex;align-items:center;gap:4px;font-family:Inter,sans-serif;font-size:12px;cursor:pointer">
+                  <sc-if value="{{isCopied}}" hint-placeholder-val="{{false}}">
+                    <span style="display:inline-flex;align-items:center;gap:3px">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>
+                      <span>已复制</span>
+                    </span>
+                  </sc-if>
+                  <sc-if value="{{notCopied}}" hint-placeholder-val="{{true}}">
+                    <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+                  </sc-if>
+                </button>
+                <span style="width:1px;height:12px;background:{{pillSep}}"></span>
+                <button type="button" onClick="{{toggleMenu}}" style="height:20px;padding:0 6px;border:0;border-radius:4px;background:{{langBtnBg}};color:{{langBtnFg}};font-family:Inter,sans-serif;font-size:12px;font-weight:460;display:inline-flex;align-items:center;gap:3px;cursor:pointer">
+                  <span>{{langLabel}}</span>
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 6.5L8 10l3.5-3.5"></path></svg>
+                </button>
+              </div>
+            </sc-if>
+
+            <!-- 语言选择下拉菜单 -->
+            <sc-if value="{{menuOpen}}" hint-placeholder-val="{{false}}">
+              <div role="menu" style="position:absolute;top:36px;right:8px;width:188px;padding:4px;border-radius:10px;background:{{menuSurface}};border:1px solid {{menuBorder}};box-shadow:0 10px 28px rgba(0,0,0,0.38);font-family:Inter,sans-serif;font-size:14px;z-index:30;display:flex;flex-direction:column;gap:2px">
+                <sc-for list="{{langItems}}" as="it" hint-placeholder-count="5">
+                  <button type="button" role="menuitemradio" aria-checked="{{it.checked}}" onClick="{{it.pick}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{it.rowBg}};color:{{it.rowFg}};display:flex;align-items:center;justify-content:space-between;cursor:pointer;text-align:left">
+                    <span>{{it.label}}</span>
+                    <sc-if value="{{it.checked}}" hint-placeholder-val="{{false}}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accentCol}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>
+                    </sc-if>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <div><span style="color:{{synComment}}"># 笔记同步与本地缓存配置</span></div>
+            <div><span style="color:{{synKey}}">goose-id</span><span style="color:{{synPunct}}">:</span> <span style="color:{{synStr}}">"local-mvezjy17iwf4mlovmr-引体向上(弹力带_自重_负重引体).md"</span></div>
+            <div><span style="color:{{synKey}}">sync-interval</span><span style="color:{{synPunct}}">:</span> <span style="color:{{synNum}}">1500</span></div>
+            <div><span style="color:{{synKey}}">preserve-raw-fence</span><span style="color:{{synPunct}}">:</span> <span style="color:{{synKw}}">true</span></div>
+          </div>
+        </div>
+
+        <p style="margin:4px 0 0 28px;font-size:16px;line-height:26px;color:{{editorText}}">多行 Rust 代码块中的 Ocean Dark 语法色阶表现（关键字、函数、类型、宏与注释层次分明）：</p>
+
+        <!-- 代码块 2：Rust 示例 -->
+        <div style="position:relative;padding-left:28px">
+          <div class="mono" style="position:relative;padding:14px 16px;border-radius:8px;background:{{codeBg}};border:1px solid {{codeBorder}};font-size:14px;line-height:22px;color:{{synText}}">
+            <sc-if value="{{showChrome}}" hint-placeholder-val="{{true}}">
+              <div style="position:absolute;top:8px;right:8px;height:24px;padding:0 3px;border-radius:6px;background:{{pillClusterBg}};border:1px solid {{pillClusterBorder}};display:inline-flex;align-items:center;gap:2px">
+                <span style="width:20px;height:20px;color:{{pillFg}};display:inline-flex;align-items:center;justify-content:center">
+                  <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+                </span>
+                <span style="width:1px;height:12px;background:{{pillSep}}"></span>
+                <span style="height:20px;padding:0 6px;color:{{pillFg}};font-family:Inter,sans-serif;font-size:12px;font-weight:460;display:inline-flex;align-items:center;gap:3px">rust</span>
+              </div>
+            </sc-if>
+            <div><span style="color:{{synKw}}">pub fn</span> <span style="color:{{synFn}}">resolve_highlight_theme</span><span style="color:{{synPunct}}">(</span>dark<span style="color:{{synPunct}}">:</span> <span style="color:{{synType}}">bool</span><span style="color:{{synPunct}}">) -&gt; &amp;&#39;static</span> <span style="color:{{synType}}">HighlightTheme</span> <span style="color:{{synPunct}}">{</span></div>
+            <div style="padding-left:20px"><span style="color:{{synComment}}">// 深色模式切换为 Ocean Dark 高对比度语法色板，不再误用 default_light()</span></div>
+            <div style="padding-left:20px"><span style="color:{{synKw}}">if</span> dark <span style="color:{{synPunct}}">{</span> <span style="color:{{synType}}">HighlightTheme</span><span style="color:{{synPunct}}">::</span><span style="color:{{synFn}}">ocean_dark</span><span style="color:{{synPunct}}">() }</span> <span style="color:{{synKw}}">else</span> <span style="color:{{synPunct}}">{</span> <span style="color:{{synType}}">HighlightTheme</span><span style="color:{{synPunct}}">::</span><span style="color:{{synFn}}">ocean_light</span><span style="color:{{synPunct}}">() }</span></div>
+            <div><span style="color:{{synPunct}}">}</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. 方案 A 改造要点与 Token 规范 -->
+    <section style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px">
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">1. 石墨底色与四边对称留白</span>
+          <span class="mono" style="font-size:13px;color:{{accentCol}}">code_block.rs</span>
+        </div>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          弃用偏蓝乌黑 <span class="mono" style="color:{{textPrimary}}">#16191e</span> 与 <span class="mono" style="color:{{textPrimary}}">PAD_TOP: 34px</span>。改用 Ocean Dark 标准石墨底 <span class="mono" style="color:{{textPrimary}}">#222222</span> + <span class="mono" style="color:{{textPrimary}}">1px solid #2e2e2e</span> 细边框，圆角 <span class="mono" style="color:{{textPrimary}}">8px</span>，四边内边距统一为 <span class="mono" style="color:{{textPrimary}}">14px 16px</span>。
+        </p>
+      </div>
+
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">2. Ocean Dark 专属语法高亮</span>
+          <span class="mono" style="font-size:13px;color:{{accentCol}}">syntax.rs</span>
+        </div>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          修复 <span class="mono" style="color:{{textPrimary}}">syntax.rs</span> 固定使用 <span class="mono" style="color:{{textPrimary}}">default_light()</span> 的缺陷：深色下键名 <span class="mono" style="color:#8ab4f8">#8ab4f8</span>、字符串 <span class="mono" style="color:#98c379">#98c379</span>、关键字 <span class="mono" style="color:#c792ea">#c792ea</span>、标点柔化为 <span class="mono" style="color:#9e9e9e">#9e9e9e</span>。
+        </p>
+      </div>
+
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">3. 右上角合一悬浮微舱</span>
+          <span class="mono" style="font-size:13px;color:{{accentCol}}">top_controls</span>
+        </div>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          将散落的复制图标与粗白框胶囊合并为 <span class="mono" style="color:{{textPrimary}}">24px</span> 高的紧凑微舱（底 <span class="mono" style="color:{{textPrimary}}">#2a2a2a</span>、边 <span class="mono" style="color:{{textPrimary}}">#383838</span>、中间 <span class="mono" style="color:{{textPrimary}}">1px</span> 分隔线），悬停或聚焦时显现。
+        </p>
+      </div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { dark: true, mode: 'hover', lang: 'yaml', copied: false };
+  }
+
+  renderVals() {
+    const d = this.state.dark;
+    const m = this.state.mode;
+    const lang = this.state.lang;
+    const copied = this.state.copied;
+
+    const activeBg = d ? '#343434' : '#e5edfc';
+    const activeCol = d ? '#ececec' : '#20242c';
+    const activeRing = d ? 'inset 0 0 0 1px #779de8' : 'inset 0 0 0 1px #547dd0';
+    const idleCol = d ? '#b4b4b4' : '#526071';
+    const langs = ['yaml', 'rust', 'typescript', 'json', 'python', 'bash'];
+
+    return {
+      pageBg: d ? '#181818' : '#f8f8f8',
+      barBg: d ? '#222222' : '#fafafa',
+      shellBg: d ? '#343434' : '#f1f1f1',
+      cardBg: d ? '#222222' : '#ffffff',
+      paperBg: d ? '#181818' : '#ffffff',
+      subSurface: d ? '#1b1b1b' : '#f8f8f8',
+      selectedSurface: d ? '#1f2633' : '#f3f7fe',
+      borderCol: d ? '#2e2e2e' : '#e4e6ea',
+      btnBorder: d ? '#444444' : '#dcdcdc',
+      textPrimary: d ? '#ececec' : '#20242c',
+      textSecondary: d ? '#b4b4b4' : '#526071',
+      editorText: d ? '#ececec' : '#1f1e1d',
+      handleCol: d ? '#6e6e6e' : '#b0afa9',
+      accentCol: d ? '#779de8' : '#547dd0',
+
+      codeBg: d ? '#222222' : '#f6f5f1',
+      codeBorder: d ? '#2e2e2e' : '#e4e2dc',
+      pillClusterBg: d ? '#2a2a2a' : '#ffffff',
+      pillClusterBorder: d ? '#3a3a3a' : '#dcdad3',
+      pillSep: d ? '#3a3a3a' : '#e4e2dc',
+      pillFg: d ? '#b4b4b4' : '#52514e',
+      copyFg: copied ? (d ? '#8ce0b1' : '#2e6b34') : (d ? '#b4b4b4' : '#52514e'),
+      langBtnBg: m === 'menu' ? (d ? '#343434' : '#eef3fc') : 'transparent',
+      langBtnFg: m === 'menu' ? (d ? '#ececec' : '#20242c') : (d ? '#b4b4b4' : '#52514e'),
+
+      synText: d ? '#e6e6e6' : '#2c2e33',
+      synPunct: d ? '#909090' : '#6e6d68',
+      synKey: d ? '#8ab4f8' : '#245bb2',
+      synStr: d ? '#98c379' : '#366f2b',
+      synStrMuted: d ? '#6d9b65' : '#5d8753',
+      synNum: d ? '#f0b97a' : '#974e08',
+      synKw: d ? '#c792ea' : '#7b3aa8',
+      synFn: d ? '#779de8' : '#245bb2',
+      synType: d ? '#e5c07b' : '#855600',
+      synComment: d ? '#767676' : '#8b8a84',
+
+      menuSurface: d ? '#252525' : '#ffffff',
+      menuBorder: d ? '#383838' : '#e4e4e4',
+
+      showChrome: m !== 'idle',
+      menuOpen: m === 'menu',
+      langLabel: lang,
+      isCopied: copied,
+      notCopied: !copied,
+
+      setIdle: () => this.setState({ mode: 'idle' }),
+      setHover: () => this.setState({ mode: 'hover' }),
+      setMenu: () => this.setState({ mode: 'menu' }),
+      setDark: () => this.setState({ dark: true }),
+      setLight: () => this.setState({ dark: false }),
+      triggerCopy: () => this.setState({ copied: !this.state.copied }),
+      toggleMenu: () => this.setState({ mode: m === 'menu' ? 'hover' : 'menu' }),
+
+      langItems: langs.map((l) => ({
+        label: l,
+        checked: l === lang,
+        rowBg: l === lang ? (d ? '#323232' : '#eef3fc') : 'transparent',
+        rowFg: d ? '#ececec' : '#1f1e1d',
+        pick: () => this.setState({ lang: l, mode: 'hover' })
+      })),
+
+      idleBtnBg: m === 'idle' ? activeBg : 'transparent',
+      idleBtnCol: m === 'idle' ? activeCol : idleCol,
+      idleBtnRing: m === 'idle' ? activeRing : 'none',
+
+      hoverBtnBg: m === 'hover' ? activeBg : 'transparent',
+      hoverBtnCol: m === 'hover' ? activeCol : idleCol,
+      hoverBtnRing: m === 'hover' ? activeRing : 'none',
+
+      menuBtnBg: m === 'menu' ? activeBg : 'transparent',
+      menuBtnCol: m === 'menu' ? activeCol : idleCol,
+      menuBtnRing: m === 'menu' ? activeRing : 'none',
+
+      darkBtnBg: d ? activeBg : 'transparent',
+      darkBtnCol: d ? activeCol : idleCol,
+      darkBtnRing: d ? activeRing : 'none',
+
+      lightBtnBg: !d ? activeBg : 'transparent',
+      lightBtnCol: !d ? activeCol : idleCol,
+      lightBtnRing: !d ? activeRing : 'none'
+    };
+  }
+}
+</script>
+</body>
+</html>

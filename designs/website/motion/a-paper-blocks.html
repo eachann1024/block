@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Block — 文字之隅，落笔即成</title>
+<link rel="icon" href="../../../assets/app-icon/icon-1024.png">
+<style>
+:root{--bg:#FAF9F5;--ink:#141413;--gray:#5E5D59;--accent:#D97757;--accent2:#C4613F}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font:16px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0}
+nav{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;align-items:center;gap:32px;padding:18px max(28px,4vw);background:linear-gradient(var(--bg) 45%,rgba(250,249,245,0))}
+nav .brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:17px}
+nav .brand img{width:28px;height:28px;border-radius:7px}
+nav .links{display:flex;gap:28px;margin-left:auto;font-size:15px}
+nav .links a{color:var(--gray);transition:color .2s}
+nav .links a:hover,nav .links a.dl{color:var(--ink)}
+nav .links a.dl{font-weight:600}
+main{position:relative;z-index:1}
+section{position:relative}
+.pin{position:sticky;top:0;height:100vh;display:flex;align-items:center;padding:0 0 0 max(32px,8vw);pointer-events:none}
+.copy{max-width:440px;pointer-events:auto}
+.motion .copy{opacity:0;transform:translateY(28px);transition:opacity .9s ease,transform 1.2s cubic-bezier(.2,.7,.1,1)}
+.motion section.on .copy{opacity:1;transform:none}
+h1{font-size:clamp(44px,5.4vw,80px);line-height:1.14;font-weight:600;letter-spacing:-.01em}
+h2{font-size:clamp(32px,3.3vw,48px);line-height:1.22;font-weight:600}
+.lead{margin-top:22px;font-size:18px;color:var(--gray)}
+.btn{display:inline-flex;align-items:center;gap:10px;margin-top:36px;padding:14px 28px;border-radius:999px;background:var(--accent);color:#fff;font-weight:600;font-size:16px;box-shadow:0 10px 28px -12px rgba(196,97,63,.7);transition:background .2s,transform .2s}
+.btn:hover{background:var(--accent2);transform:translateY(-1px)}
+.btn svg{width:18px;height:18px}
+.metrics{margin-top:40px;display:grid;gap:28px}
+.metric b{display:block;font-size:46px;line-height:1;font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.metric b small{font-size:22px;margin-left:4px;font-weight:600}
+.metric span{display:block;margin-top:10px;color:var(--gray);font-size:16px}
+.metric{opacity:.25;transition:opacity .6s}
+.metric.on{opacity:1}
+.steps{list-style:none;margin-top:34px;display:grid;gap:20px}
+.steps li{color:var(--gray);font-size:16px;opacity:.38;transition:opacity .6s}
+.steps li b{display:block;color:var(--ink);font-size:18px;font-weight:600;margin-bottom:2px}
+.steps li.on{opacity:1}
+.papers{display:flex;flex-wrap:wrap;gap:12px 26px;margin-top:30px;font-size:18px;font-weight:600}
+.papers span{opacity:.3;transition:opacity .6s}
+.papers span.on{opacity:1}
+.icon{width:88px;height:88px;border-radius:20px;display:block;margin-bottom:28px;box-shadow:0 14px 34px -18px rgba(20,20,19,.45)}
+footer{position:relative;z-index:1;padding:26px 24px;color:var(--gray);font-size:14px;text-align:center}
+@media (max-width:820px){
+  .pin{align-items:flex-start;padding:92px 20px 0}
+  .copy{max-width:none;background:rgba(250,249,245,.86);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);padding:20px 22px;border-radius:18px}
+  nav .links a:not(.dl){display:none}
+  .metrics{grid-template-columns:repeat(3,1fr);gap:12px}
+  .metric b{font-size:30px}.metric b small{font-size:16px}
+  .steps{gap:10px;margin-top:20px}
+  .steps li b{font-size:16px}
+  .steps li span{display:none}
+  .steps li.on span{display:block}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .motion .copy,.metric,.steps li,.papers span{transition:none}
+}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<nav>
+  <a class="brand" href="#top"><img src="../../../assets/app-icon/icon-1024.png" alt="">Block</a>
+  <div class="links">
+    <a href="#perf">性能</a>
+    <a href="#editor">块编辑器</a>
+    <a href="#ai">AI</a>
+    <a href="#image">生成图片</a>
+    <a class="dl" href="#download">下载</a>
+  </div>
+</nav>
+
+<main>
+  <section id="top" data-k="0" style="height:100vh">
+    <div class="pin"><div class="copy">
+      <h1>文字之隅，<br>落笔即成</h1>
+      <p class="lead">Mac 上的 Markdown 块编辑器。<br>十万块的长文，也能打开就写。</p>
+      <a class="btn" href="#download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>下载 Block</a>
+    </div></div>
+  </section>
+
+  <section id="perf" data-k="1" style="height:300vh">
+    <div class="pin"><div class="copy">
+      <h2>十万块，即开即写</h2>
+      <p class="lead">整本书放进一篇笔记，打开、输入、拖动都在毫秒之间。</p>
+      <div class="metrics">
+        <div class="metric"><b data-to="120">0<small>ms</small></b><span>打开十万块文档</span></div>
+        <div class="metric"><b data-to="4">0<small>ms</small></b><span>按下一个键到字出现</span></div>
+        <div class="metric"><b data-to="8">0<small>ms</small></b><span>拖动一个块的每一帧</span></div>
+      </div>
+    </div></div>
+  </section>
+
+  <section id="editor" data-k="2" style="height:540vh">
+    <div class="pin"><div class="copy">
+      <h2>每一段，都是一个块</h2>
+      <ol class="steps">
+        <li><b>拖动重排</b><span>按住把手，把一段拖到任何位置。</span></li>
+        <li><b>折叠章节</b><span>收起一个标题下的全部内容。</span></li>
+        <li><b>随时转换</b><span>行首输入 #，段落就成了标题。</span></li>
+        <li><b>中文直接触发</b><span>全角「》」「【】」不用切换输入法。</span></li>
+        <li><b>表格、代码、流程图、公式</b><span>写下就能看到排好的样子。</span></li>
+      </ol>
+    </div></div>
+  </section>
+
+  <section id="ai" data-k="3" style="height:380vh">
+    <div class="pin"><div class="copy">
+      <h2>AI 改写，你来定稿</h2>
+      <ol class="steps">
+        <li><b>选中就能改</b><span>选中一段，选择润色、精简或翻译。</span></li>
+        <li><b>审阅后写入</b><span>看清每处改动，点「应用修改」才落到笔记里，不满意就「放弃」。</span></li>
+        <li><b>侧边对话，随时撤回</b><span>在旁边接着聊这篇笔记，每次修改都能撤回。</span></li>
+      </ol>
+    </div></div>
+  </section>
+
+  <section id="image" data-k="4" style="height:340vh">
+    <div class="pin"><div class="copy">
+      <h2>一篇笔记，一张长图</h2>
+      <p class="lead">整篇或选中的内容，生成可以直接分享的长图。</p>
+      <div class="papers"><span>黑白素纸</span><span>手账便签</span><span>野性孔版</span></div>
+    </div></div>
+  </section>
+
+  <section id="download" data-k="5" style="height:100vh">
+    <div class="pin"><div class="copy">
+      <img class="icon" src="../../../assets/app-icon/icon-1024.png" alt="Block">
+      <h2>在 Mac 上开始写</h2>
+      <p class="lead">适用于 Apple 芯片的 Mac。<br>每篇笔记都是本地的 Markdown 文件。</p>
+      <a class="btn" href="#" id="download-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>下载 Block</a>
+    </div></div>
+  </section>
+</main>
+
+<footer>© 2026 Block · eachann1024</footer>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+/* ───────── 基础工具 ───────── */
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+document.documentElement.classList.add('motion');
+
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const mix = (a, b, t) => a + (b - a) * t;
+const seg = (p, a, b) => clamp((p - a) / (b - a));
+const sm = v => { v = clamp(v); return v * v * (3 - 2 * v); };
+const inout = v => { v = clamp(v); return v < .5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2; };
+const expo = v => { v = clamp(v); return v === 1 ? 1 : 1 - Math.pow(2, -10 * v); };
+const hump = q => 1 - Math.abs(2 * clamp(q) - 1);
+let seed = 11;
+const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+/* ───────── 滚动与文案 ───────── */
+const secEls = [...document.querySelectorAll('[data-k]')];
+const SNAP = [1, 1, 5, 3, 3, 1];
+let secTop = [], secLen = [];
+function measure() {
+  secTop = secEls.map(el => el.offsetTop);
+  secLen = secEls.map((el, i) => i === 0 ? innerHeight : Math.max(1, el.offsetHeight - innerHeight));
+}
+function readScroll() {
+  const y = scrollY;
+  let k = 0;
+  for (let i = 0; i < secEls.length; i++) if (secTop[i] <= y + innerHeight * .5) k = i;
+  let p = clamp((y - secTop[k]) / secLen[k]);
+  if (reduced) p = Math.min(1, Math.round(p * SNAP[k] + .499) / SNAP[k]);
+  return { k, p, S: k + Math.min(p, .9999) };
+}
+
+const metricEls = [...document.querySelectorAll('.metric')];
+const editorSteps = [...document.querySelectorAll('#editor .steps li')];
+const aiSteps = [...document.querySelectorAll('#ai .steps li')];
+const paperEls = [...document.querySelectorAll('.papers span')];
+function updateCopy({ k, p }) {
+  secEls.forEach((el, i) => el.classList.toggle('on', i === k));
+  metricEls.forEach((el, i) => {
+    const r = k > 1 ? 1 : k < 1 ? 0 : (reduced ? 1 : seg(p, .12 + i * .18, .34 + i * .18));
+    el.classList.toggle('on', r > 0);
+    const b = el.querySelector('b'), to = +b.dataset.to;
+    const v = Math.round(to * (1 - Math.pow(1 - r, 3)));
+    if (b.firstChild.nodeValue !== String(v)) b.firstChild.nodeValue = String(v);
+  });
+  const ei = Math.min(4, Math.floor(p * 5));
+  editorSteps.forEach((el, i) => el.classList.toggle('on', i === ei));
+  const ai = p < .35 ? 0 : p < .74 ? 1 : 2;
+  aiSteps.forEach((el, i) => el.classList.toggle('on', i === ai));
+  const pi = p < .5 ? 0 : p < .72 ? 1 : 2;
+  paperEls.forEach((el, i) => el.classList.toggle('on', i <= pi));
+}
+measure();
+addEventListener('resize', measure);
+document.fonts && document.fonts.ready.then(measure);
+
+/* ───────── 纸面绘制 ───────── */
+const PX = 280;
+const INK = '#141413', GRAY = '#5E5D59', PAPER = '#FFFEFB', LINE = '#E6E2D8', SOFT = '#F3F1EB';
+const SANS = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",-apple-system,sans-serif';
+const MONO = '"SF Mono",Menlo,Consolas,monospace';
+const SERIF = '"Times New Roman","Songti SC",Georgia,serif';
+const u = v => v * PX;
+const font = (g, w, size, fam = SANS) => { g.font = `${w} ${Math.round(u(size))}px ${fam}`; };
+let maxAniso = 4;
+
+function paint(w, h, fn, bg = PAPER) {
+  const c = document.createElement('canvas');
+  c.width = Math.round(u(w)); c.height = Math.round(u(h));
+  const g = c.getContext('2d');
+  g.fillStyle = bg; g.fillRect(0, 0, c.width, c.height);
+  g.textBaseline = 'middle';
+  fn(g, c.width, c.height);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = maxAniso;
+  return t;
+}
+function wrapLines(g, text, maxW) {
+  const out = []; let line = '';
+  for (const ch of text) {
+    const t = line + ch;
+    if (g.measureText(t).width > maxW && line) { out.push(line); line = ch; } else line = t;
+  }
+  if (line) out.push(line);
+  return out;
+}
+const X0 = u(.32);
+function para(g, H, text, o = {}) {
+  font(g, o.weight || 400, o.size || .15);
+  let x = X0;
+  if (o.quote) {
+    g.fillStyle = '#D6D1C6'; g.fillRect(X0, H * .24, u(.028), H * .52); x = X0 + u(.17);
+  }
+  if (o.prefix) {
+    g.fillStyle = GRAY; g.fillText(o.prefix, x, H / 2);
+    x += g.measureText(o.prefix).width + u(.02);
+    g.fillStyle = INK; g.fillRect(x - u(.012), H / 2 - u(.1), 3, u(.2));
+    x += u(.02);
+  }
+  if (o.sel) {
+    const tw = g.measureText(text).width;
+    g.fillStyle = '#E9E3D4'; g.beginPath(); g.roundRect(x - 8, H / 2 - u(.13), tw + 16, u(.26), 8); g.fill();
+  }
+  g.fillStyle = o.color || INK;
+  g.fillText(text, x, H / 2);
+}
+function marker(g, H, folded) {
+  const cx = u(.16), cy = H / 2, s = u(.05);
+  g.fillStyle = GRAY; g.beginPath();
+  if (folded) { g.moveTo(cx - s * .6, cy - s); g.lineTo(cx + s * .9, cy); g.lineTo(cx - s * .6, cy + s); }
+  else { g.moveTo(cx - s, cy - s * .6); g.lineTo(cx + s, cy - s * .6); g.lineTo(cx, cy + s * .9); }
+  g.closePath(); g.fill();
+}
+
+const W = 4.2, DEPTH = .06, GAP = .1, DOC_TOP = 2.5;
+const SPECS = [
+  { h: .66, faces: { base: (g, W_, H) => { font(g, 600, .27); g.fillStyle = INK; g.fillText('四月读书笔记', X0, H / 2); } } },
+  { h: .46, faces: {
+      base: (g, W_, H) => para(g, H, '把读过的句子留在一个地方'),
+      typed: (g, W_, H) => para(g, H, '把读过的句子留在一个地方', { prefix: '##' }),
+      h2: (g, W_, H) => para(g, H, '把读过的句子留在一个地方', { weight: 600, size: .2 }) }, flip: true },
+  { h: .52, faces: {
+      base: (g, W_, H) => para(g, H, '一、关于留白', { weight: 600, size: .2 }),
+      open: (g, W_, H) => { marker(g, H, false); para(g, H, '一、关于留白', { weight: 600, size: .2 }); },
+      fold: (g, W_, H) => { marker(g, H, true); para(g, H, '一、关于留白', { weight: 600, size: .2 }); } } },
+  { h: .46, faces: {
+      base: (g, W_, H) => para(g, H, '好的版面，空白和文字一样有分量。'),
+      typed: (g, W_, H) => para(g, H, '好的版面，空白和文字一样有分量。', { prefix: '》' }),
+      quote: (g, W_, H) => para(g, H, '好的版面，空白和文字一样有分量。', { quote: true, color: GRAY }) }, flip: true },
+  { h: .74, faces: { base: (g, W_, H) => {
+      font(g, 400, .15);
+      ['少用加粗，重要的话自己会站出来', '段落之间，留一行呼吸'].forEach((t, i) => {
+        const y = H / 2 + (i - .5) * u(.27);
+        g.fillStyle = INK; g.beginPath(); g.arc(X0 + u(.035), y, u(.026), 0, Math.PI * 2); g.fill();
+        g.fillText(t, X0 + u(.2), y);
+      }); } } },
+  { h: .52, faces: { base: (g, W_, H) => para(g, H, '二、摘抄', { weight: 600, size: .2 }) } },
+  { h: .5, faces: { base: (g, W_, H) => para(g, H, '文字之隅，落笔即成。', { quote: true, color: GRAY }) } },
+  { h: .46, faces: {
+      base: (g, W_, H) => para(g, H, '晚上整理成长图，发给朋友。'),
+      sel: (g, W_, H) => para(g, H, '晚上整理成长图，发给朋友。', { sel: true }),
+      new: (g, W_, H) => para(g, H, '晚上把今天的摘抄排成一张长图，发给朋友。') }, flip: true },
+];
+const RICH = [
+  { h: 1.1, faces: { base: (g, W_, H) => {
+      const x0 = X0, x1 = W_ - X0, y0 = u(.14), y1 = H - u(.14), rh = (y1 - y0) / 3;
+      const cols = [x0, x0 + (x1 - x0) * .42, x0 + (x1 - x0) * .74, x1];
+      const rows = [['书名', '作者', '进度'], ['写作这回事', '斯蒂芬·金', '读完'], ['文心', '夏丏尊', '一半']];
+      g.fillStyle = SOFT; g.fillRect(x0, y0, x1 - x0, rh);
+      g.strokeStyle = LINE; g.lineWidth = 2; g.strokeRect(x0, y0, x1 - x0, y1 - y0);
+      for (let r = 1; r < 3; r++) { g.beginPath(); g.moveTo(x0, y0 + rh * r); g.lineTo(x1, y0 + rh * r); g.stroke(); }
+      for (let c = 1; c < 3; c++) { g.beginPath(); g.moveTo(cols[c], y0); g.lineTo(cols[c], y1); g.stroke(); }
+      rows.forEach((row, r) => row.forEach((t, c) => {
+        font(g, r ? 400 : 600, .14); g.fillStyle = INK; g.fillText(t, cols[c] + u(.14), y0 + rh * (r + .5));
+      })); } } },
+  { h: .92, faces: { base: (g, W_, H) => {
+      g.fillStyle = SOFT; g.beginPath(); g.roundRect(u(.16), u(.12), W_ - u(.32), H - u(.24), u(.06)); g.fill();
+      const lines = [
+        [['function ', '#8B6F4E'], ['count', INK], ['(text) {', GRAY]],
+        [['  return ', '#8B6F4E'], ['text', INK], ['.length', '#4A6178']],
+        [['}', GRAY]]];
+      font(g, 400, .13, MONO);
+      lines.forEach((ln, i) => { let x = X0 + u(.04); const y = u(.12) + u(.2) + i * u(.22);
+        ln.forEach(([t, c]) => { g.fillStyle = c; g.fillText(t, x, y); x += g.measureText(t).width; }); }); } } },
+  { h: 1.15, faces: { base: (g, W_, H) => {
+      const names = ['想法', '草稿', '成文'], bw = u(.95), bh = u(.42), cy = H / 2;
+      const xs = names.map((_, i) => W_ * (.2 + i * .3));
+      g.strokeStyle = GRAY; g.lineWidth = 3; g.fillStyle = GRAY;
+      for (let i = 0; i < 2; i++) {
+        const a = xs[i] + bw / 2 + u(.06), b = xs[i + 1] - bw / 2 - u(.08);
+        g.beginPath(); g.moveTo(a, cy); g.lineTo(b, cy); g.stroke();
+        g.beginPath(); g.moveTo(b + u(.04), cy); g.lineTo(b - u(.03), cy - u(.04)); g.lineTo(b - u(.03), cy + u(.04)); g.closePath(); g.fill();
+      }
+      names.forEach((t, i) => {
+        g.fillStyle = '#FFFFFF'; g.strokeStyle = INK; g.lineWidth = 3;
+        g.beginPath(); g.roundRect(xs[i] - bw / 2, cy - bh / 2, bw, bh, u(.08)); g.fill(); g.stroke();
+        font(g, 500, .15); g.fillStyle = INK; g.textAlign = 'center'; g.fillText(t, xs[i], cy); g.textAlign = 'left';
+      }); } } },
+  { h: .62, faces: { base: (g, W_, H) => {
+      const big = Math.round(u(.26)), small = Math.round(u(.16));
+      const parts = [['e', big, 0], ['iπ', small, -u(.1)], [' + 1 = 0', big, 0]];
+      let total = 0;
+      parts.forEach(([t, s]) => { g.font = `italic 400 ${s}px ${SERIF}`; total += g.measureText(t).width; });
+      let x = (W_ - total) / 2; g.fillStyle = INK;
+      parts.forEach(([t, s, dy]) => { g.font = `italic 400 ${s}px ${SERIF}`; g.fillText(t, x, H / 2 + dy); x += g.measureText(t).width; }); } } },
+];
+
+function chips(g, H, active) {
+  let x = u(.24);
+  font(g, 500, .15);
+  ['润色', '精简', '翻译'].forEach((t, i) => {
+    const tw = g.measureText(t).width, w = tw + u(.36), h = u(.38);
+    g.fillStyle = active && i === 0 ? INK : SOFT;
+    g.beginPath(); g.roundRect(x, H / 2 - h / 2, w, h, h / 2); g.fill();
+    g.fillStyle = active && i === 0 ? '#FFFFFF' : INK;
+    g.fillText(t, x + u(.18), H / 2);
+    x += w + u(.14);
+  });
+}
+function review(g, W_, H, pressed) {
+  font(g, 400, .14);
+  const old = '晚上整理成长图，发给朋友。', neu = '晚上把今天的摘抄排成一张长图，发给朋友。';
+  g.fillStyle = GRAY; g.fillText(old, u(.28), u(.34));
+  const ow = g.measureText(old).width;
+  g.fillStyle = GRAY; g.fillRect(u(.28), u(.34), ow, 2);
+  const nw = g.measureText(neu).width;
+  g.fillStyle = '#ECE6D8'; g.beginPath(); g.roundRect(u(.28) - 6, u(.66) - u(.13), nw + 12, u(.26), 8); g.fill();
+  g.fillStyle = INK; g.fillText(neu, u(.28), u(.66));
+  font(g, 500, .14);
+  const by = H - u(.32), bh = u(.36);
+  const aw = g.measureText('应用修改').width + u(.36), dw = g.measureText('放弃').width + u(.36);
+  const ax = W_ - u(.24) - aw, dx = ax - u(.14) - dw;
+  g.strokeStyle = LINE; g.lineWidth = 3; g.fillStyle = '#FFFFFF';
+  g.beginPath(); g.roundRect(dx, by - bh / 2, dw, bh, bh / 2); g.fill(); g.stroke();
+  g.fillStyle = INK; g.fillText('放弃', dx + u(.18), by);
+  if (pressed) { g.fillStyle = '#D9D5CC'; g.beginPath(); g.roundRect(ax - 6, by - bh / 2 - 6, aw + 12, bh + 12, bh / 2 + 6); g.fill(); }
+  g.fillStyle = INK; g.beginPath(); g.roundRect(ax, by - bh / 2, aw, bh, bh / 2); g.fill();
+  g.fillStyle = '#FFFFFF'; g.fillText('应用修改', ax + u(.18), by);
+}
+function chatPanel(g, W_, H) {
+  font(g, 600, .16); g.fillStyle = INK; g.fillText('对话', u(.24), u(.32));
+  g.fillStyle = LINE; g.fillRect(u(.24), u(.56), W_ - u(.48), 2);
+  let y = u(.82);
+  const msgs = [
+    [1, '这篇笔记还缺点什么？'],
+    [0, '可以在「摘抄」后面补一句自己的感想，让结尾落到你身上。'],
+    [1, '把最后一段写得具体一点'],
+    [0, '已经改好，审阅后再应用。'],
+  ];
+  font(g, 400, .14);
+  const maxW = W_ - u(.9);
+  msgs.forEach(([me, t]) => {
+    const lines = wrapLines(g, t, maxW), lh = u(.22);
+    const bw = Math.max(...lines.map(l => g.measureText(l).width)) + u(.3), bh = lines.length * lh + u(.18);
+    const x = me ? W_ - u(.24) - bw : u(.24);
+    if (me) { g.fillStyle = SOFT; g.beginPath(); g.roundRect(x, y, bw, bh, u(.12)); g.fill(); }
+    g.fillStyle = INK;
+    lines.forEach((l, i) => g.fillText(l, x + (me ? u(.15) : 0), y + u(.09) + lh * (i + .5)));
+    y += bh + u(.16);
+  });
+  const ih = u(.44), iy = H - u(.24) - ih;
+  g.strokeStyle = LINE; g.lineWidth = 3; g.beginPath(); g.roundRect(u(.24), iy, W_ - u(.48), ih, ih / 2); g.stroke();
+  g.fillStyle = GRAY; g.fillText('接着问这篇笔记', u(.44), iy + ih / 2);
+}
+function longImage(style) {
+  const st = {
+    plain: { bg: '#FFFFFF', ink: INK, sub: GRAY, fam: SANS },
+    note: { bg: '#FBF4DF', ink: '#3A3226', sub: '#7A6A55', fam: '"Kaiti SC","STKaiti","KaiTi",' + SANS },
+    riso: { bg: '#F3EEE4', ink: '#1F3FA8', sub: '#3550B5', fam: SANS, pink: '#EE5A9C' },
+  }[style];
+  return paint(2.2, 4.6, (g, W_, H) => {
+    if (style === 'note') {
+      g.strokeStyle = 'rgba(140,110,60,.16)'; g.lineWidth = 2;
+      for (let y = u(.66); y < H - u(.3); y += u(.24)) { g.beginPath(); g.moveTo(u(.16), y); g.lineTo(W_ - u(.16), y); g.stroke(); }
+      g.save(); g.translate(W_ / 2, u(.1)); g.rotate(-.05); g.fillStyle = 'rgba(160,192,176,.8)'; g.fillRect(-u(.4), -u(.08), u(.8), u(.18)); g.restore();
+    }
+    if (style === 'riso') {
+      const r = (() => { let s = 3; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
+      for (let i = 0; i < 6000; i++) { g.fillStyle = `rgba(31,63,168,${r() * .09})`; g.fillRect(r() * W_, r() * H, 2, 2); }
+      g.globalCompositeOperation = 'multiply'; g.globalAlpha = .9; g.fillStyle = st.pink;
+      g.beginPath(); g.arc(W_ - u(.42), u(.5), u(.3), 0, Math.PI * 2); g.fill();
+      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    }
+    g.textBaseline = 'alphabetic';
+    const X = u(.22), maxW = W_ - u(.44);
+    let y = u(.4);
+    const text = (str, size, weight, color, lh, o = {}) => {
+      font(g, weight, size, st.fam);
+      const ind = o.indent ? u(o.indent) : 0;
+      const lines = wrapLines(g, str, maxW - ind);
+      const top = y;
+      lines.forEach(L => {
+        y += u(lh);
+        if (o.offset && st.pink) {
+          g.globalCompositeOperation = 'multiply'; g.fillStyle = st.pink; g.fillText(L, X + ind + u(.014), y + u(.012));
+          g.globalCompositeOperation = 'source-over';
+        }
+        g.fillStyle = color; g.fillText(L, X + ind, y);
+      });
+      if (o.bar) { g.fillStyle = style === 'riso' ? st.pink : '#D6D1C6'; g.fillRect(X, top + u(lh * .45), u(.02), y - top - u(lh * .3)); }
+      if (o.bullet) {}
+    };
+    text('四月读书笔记', .21, 700, st.ink, .3, { offset: true });
+    y += u(.08);
+    text('把读过的句子留在一个地方', .13, 600, st.ink, .28, { offset: true });
+    text('一、关于留白', .13, 600, st.ink, .34, { offset: true });
+    text('好的版面，空白和文字一样有分量。', .1, 400, st.sub, .22, { indent: .1, bar: true });
+    y += u(.04);
+    text('· 少用加粗，重要的话自己会站出来', .1, 400, st.ink, .22);
+    text('· 段落之间，留一行呼吸', .1, 400, st.ink, .2);
+    text('二、摘抄', .13, 600, st.ink, .36, { offset: true });
+    text('文字之隅，落笔即成。', .1, 400, st.sub, .22, { indent: .1, bar: true });
+    y += u(.06);
+    text('晚上把今天的摘抄排成一张长图，发给朋友。', .1, 400, st.ink, .24);
+    if (style === 'plain') { g.fillStyle = LINE; g.fillRect(X, H - u(.42), maxW, 2); }
+    font(g, 500, .09, st.fam); g.fillStyle = st.sub; g.fillText('Block', X, H - u(.2));
+  }, st.bg);
+}
+function handleTex() {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 96;
+  const g = c.getContext('2d'); g.fillStyle = '#A8A49B';
+  for (let r = 0; r < 3; r++) for (let k = 0; k < 2; k++) { g.beginPath(); g.arc(22 + k * 20, 24 + r * 24, 5.5, 0, Math.PI * 2); g.fill(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function linesTex() {
+  return paint(W, .5, (g, W_, H) => {
+    g.fillStyle = '#E9E5DC';
+    g.beginPath(); g.roundRect(X0, H * .3, W_ * .62, H * .14, H * .07); g.fill();
+    g.beginPath(); g.roundRect(X0, H * .56, W_ * .4, H * .14, H * .07); g.fill();
+  });
+}
+
+/* ───────── 场景 ───────── */
+let renderer = null;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('stage'), antialias: true });
+} catch (e) { document.getElementById('stage').remove(); }
+
+const loop = [];
+if (renderer) buildScene();
+
+function buildScene() {
+  maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const BG = new THREE.Color('#FAF9F5');
+  const scene = new THREE.Scene();
+  scene.background = BG;
+  scene.fog = new THREE.Fog(BG, 24, 72);
+
+  const camera = new THREE.PerspectiveCamera(32, 1, .1, 200);
+  scene.add(new THREE.HemisphereLight('#FFFFFF', '#E8E2D4', 1.35));
+  const sun = new THREE.DirectionalLight('#FFFFFF', 2.3);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8, near: .5, far: 40 });
+  sun.shadow.bias = -.0004; sun.shadow.normalBias = .02; sun.shadow.radius = 6;
+  scene.add(sun, sun.target);
+
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(400, 800), new THREE.ShadowMaterial({ opacity: .09 }));
+  wall.position.z = -.4; wall.receiveShadow = true; scene.add(wall);
+
+  const sideMat = () => new THREE.MeshStandardMaterial({ color: '#ECE9E1', roughness: 1, transparent: true });
+  const all = [];
+  function makeSlab(w, h, faces, home, depth = DEPTH) {
+    const tex = {};
+    for (const k in faces) tex[k] = paint(w, h, faces[k]);
+    const front = new THREE.MeshStandardMaterial({ map: tex.base || Object.values(tex)[0], roughness: 1, transparent: true });
+    const side = sideMat();
+    const mesh = new THREE.Mesh(new RoundedBoxGeometry(w, h, depth, 3, Math.min(.035, depth / 2.2)), [side, side, side, side, front, side]);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    scene.add(mesh);
+    const o = { m: mesh, front, side, tex, w, h, home, key: Object.keys(tex)[0], defKey: Object.keys(tex)[0], t: {}, c: null };
+    all.push(o);
+    return o;
+  }
+
+  const D = SPECS.map((s, i) => {
+    const o = makeSlab(W, s.h, s.faces, { x: 0, y: 0, z: 0 });
+    o.flip = !!s.flip;
+    o.scatter = { x: (rnd() - .5) * 16, y: (rnd() - .5) * 9, z: 3 + rnd() * 7, rx: (rnd() - .5) * 2.4, ry: (rnd() - .5) * 2.4, rz: (rnd() - .5) * 1.2 };
+    return o;
+  });
+  const R = RICH.map(s => makeSlab(W, s.h, s.faces, { x: 0, y: -5, z: 0 }));
+  const card1 = makeSlab(2.9, .74, { base: (g, W_, H) => chips(g, H, false), pick: (g, W_, H) => chips(g, H, true) }, { x: .5, y: 0, z: 1 });
+  const card2 = makeSlab(3.7, 1.4, { base: (g, W_, H) => review(g, W_, H, false), apply: (g, W_, H) => review(g, W_, H, true) }, { x: .5, y: 0, z: 1 });
+  const chat = makeSlab(2.5, 3.9, { base: chatPanel }, { x: 5.5, y: 0, z: .9 });
+  [card1, card2, chat].forEach(o => o.side.color.set('#E7E3DA'));
+  const papers = ['plain', 'note', 'riso'].map((s, i) => {
+    const tex = longImage(s);
+    const o = makeSlab(2.2, 4.6, { base: (g) => {} }, { x: 0, y: 0, z: -.2 }, .03);
+    o.front.map = tex; o.tex.base = tex;
+    return o;
+  });
+  const handle = (() => {
+    const mat = new THREE.MeshBasicMaterial({ map: handleTex(), transparent: true, depthWrite: false });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(.2, .3), mat);
+    scene.add(mesh);
+    const o = { m: mesh, mats: [mat], home: { x: -2.4, y: 0, z: 0 }, t: {}, c: null, plane: true };
+    all.push(o);
+    return o;
+  })();
+
+  /* 十万块：实例化长列 */
+  const N = 640;
+  const linesMap = linesTex();
+  const instFront = new THREE.MeshStandardMaterial({ map: linesMap, roughness: 1 });
+  const instSide = new THREE.MeshStandardMaterial({ color: '#ECE9E1', roughness: 1 });
+  const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, DEPTH), [instSide, instSide, instSide, instSide, instFront, instSide], N);
+  inst.castShadow = true; inst.frustumCulled = false;
+  scene.add(inst);
+  const instY = [], instH = [], instSideSign = [];
+  const pattern = [.46, .46, .52, .74, .46, .66, .46, .5];
+  const dummy = new THREE.Object3D();
+  let instVis = 0, instFront_ = 0;
+
+  /* 布局 */
+  const ORDER_A = [0, 1, 2, 3, 4, 5, 6, 7], ORDER_B = [0, 1, 7, 2, 3, 4, 5, 6];
+  function layout(order, fold = 0) {
+    let y = DOC_TOP; const ys = {};
+    for (const i of order) {
+      const f = (i === 3 || i === 4) ? fold : 0;
+      const eh = D[i].h * (1 - f);
+      ys[i] = y - eh / 2;
+      y -= eh + GAP * (1 - f);
+    }
+    const bottom = y + GAP;
+    const rs = [];
+    R.forEach((r, j) => { rs[j] = y - r.h / 2; y -= r.h + GAP; });
+    return { ys, rs, bottom, mid: (DOC_TOP + bottom) / 2, end: y + GAP };
+  }
+  const LA = layout(ORDER_A), LB = layout(ORDER_B);
+  {
+    let y = LA.bottom - GAP;
+    for (let i = 0; i < N; i++) { const h = pattern[i % pattern.length]; instH[i] = h; instY[i] = y - h / 2; y -= h + GAP; instSideSign[i] = rnd() < .5 ? -1 : 1; }
+  }
+  D.forEach((o, i) => { o.home = { x: 0, y: LA.ys[i], z: 0 }; });
+  R.forEach((o, j) => { o.home = { x: 0, y: LB.rs[j] - .8, z: .6 }; });
+
+  /* 状态 */
+  const cam = { t: { fx: 0, fy: 0, fz: 0, ox: 1.8, oy: .6, oz: 11.5, ly: 0 }, c: null };
+  function reset(o) {
+    Object.assign(o.t, { x: o.home.x, y: o.home.y, z: o.home.z, rx: 0, ry: 0, rz: 0, s: .94, sy: 1, op: 0 });
+    o.key = o.defKey;
+  }
+  function show(o, x, y, z, extra) { Object.assign(o.t, { x, y, z, op: 1, s: 1 }, extra || {}); }
+  function setCam(fx, fy, ox, oy, oz, ly = 0, fz = 0) { Object.assign(cam.t, { fx, fy, fz, ox, oy, oz, ly }); }
+  function flipTo(o, q, a, b) {
+    const qq = clamp(q);
+    o.t.rx = -(Math.PI / 2) * hump(sm(qq));
+    o.key = qq < .5 ? a : b;
+  }
+  function finalKeys() { D[1].key = 'h2'; D[3].key = 'quote'; }
+  function placeDoc(L, order) { order.forEach(i => show(D[i], 0, L.ys[i], 0)); }
+
+  const t0 = performance.now() / 1000;
+  const poses = [
+    // 首屏：纸片飞入、落成一篇
+    (p, time) => {
+      const L = LA;
+      D.forEach((o, i) => {
+        const e = reduced ? 1 : expo((time - t0 - .35 - i * .09) / 1.6);
+        const sc = o.scatter;
+        Object.assign(o.t, {
+          x: mix(sc.x, 0, e), y: mix(sc.y, L.ys[i], e), z: mix(sc.z, 0, e),
+          rx: sc.rx * (1 - e), ry: sc.ry * (1 - e), rz: sc.rz * (1 - e), op: clamp(e * 2.5), s: 1,
+        });
+      });
+      setCam(0, L.mid, 1.8, .6, 11.5);
+    },
+    // 性能：文档向下延展成十万块长列，镜头俯冲
+    (p) => {
+      placeDoc(LA, ORDER_A);
+      instFront_ = 6 + p * 420;
+      const turn = sm(p / .25), dive = inout(p);
+      setCam(0, mix(LA.mid, LA.mid - 72, dive), mix(1.8, 5.5, turn), mix(.6, 4.2, turn), mix(11.5, 10, turn), -2.6 * turn);
+    },
+    // 块编辑器
+    (p) => {
+      const s5 = p * 5;
+      const a = clamp(s5), b = clamp(s5 - 1), c = clamp(s5 - 2), d = clamp(s5 - 3), e = clamp(s5 - 4);
+      const fold = sm(b / .4) * (1 - sm((b - .8) / .2));
+      const order = a < .5 ? ORDER_A : ORDER_B;
+      const L = layout(order, fold);
+      order.forEach(i => {
+        const f = (i === 3 || i === 4) ? fold : 0;
+        show(D[i], 0, L.ys[i], -.06 * f, { sy: Math.max(.02, 1 - f), op: 1 - sm(f * 1.4) });
+      });
+      // 拖动：抬起、移动、落下
+      const lift = sm(a / .15) * (1 - sm((a - .85) / .15));
+      const mv = sm((a - .15) / .7);
+      if (a > 0 && a < 1) {
+        const o = D[7];
+        o.t.y = mix(LA.ys[7], LB.ys[7], mv);
+        o.t.z = .85 * lift; o.t.rz = -.035 * lift; o.t.ry = .06 * lift; o.t.s = 1 + .03 * lift;
+        Object.assign(handle.t, { x: -W / 2 - .24, y: o.t.y, z: o.t.z + .04, op: lift, s: 1 });
+      }
+      // 折叠
+      if (b > 0 && b < .95) D[2].key = fold > .5 ? 'fold' : 'open';
+      // ## 变标题
+      if (c > 0) flipTo(D[1], (c - .4) / .32, c > .18 ? 'typed' : 'base', 'h2');
+      // 》变引用
+      if (d > 0) flipTo(D[3], (d - .4) / .32, d > .18 ? 'typed' : 'base', 'quote');
+      if (c >= 1) D[1].t.rx = 0;
+      if (d >= 1) D[3].t.rx = 0;
+      // 表格、代码、流程图、公式
+      R.forEach((o, j) => {
+        const r = sm((e - j * .14) / .42);
+        Object.assign(o.t, { x: 0, y: LB.rs[j] - 1.3 * (1 - r), z: 1.6 * (1 - r), rx: -.55 * (1 - r), op: r, s: .92 + .08 * r });
+      });
+      const ef = inout(e);
+      setCam(0, mix(L.mid, (LB.bottom + LB.end) / 2 + .6, ef), 1.4, .7, mix(11.5, 15.5, ef));
+    },
+    // AI
+    (p) => {
+      placeDoc(LB, ORDER_B); finalKeys();
+      const o = D[7], y7 = LB.ys[7];
+      if (p > .06) o.key = 'sel';
+      o.t.z = .12 * sm(seg(p, .04, .1)) * (1 - sm(seg(p, .7, .76)));
+      const q1 = sm(seg(p, .1, .22)) * (1 - sm(seg(p, .33, .4)));
+      const cy1 = y7 - .7;
+      Object.assign(card1.t, { x: -.2, y: mix(y7, cy1, sm(seg(p, .1, .22))), z: mix(.2, 1.1, q1), ry: -.05, op: q1, s: .9 + .1 * q1 });
+      card1.key = p > .25 ? 'pick' : 'base';
+      const q2 = sm(seg(p, .35, .45));
+      const m = sm(seg(p, .58, .68));
+      const cy2 = y7 - 1.05;
+      Object.assign(card2.t, { x: mix(.25, 0, m), y: mix(cy2, y7, m), z: mix(1.2, .1, m), ry: -.05 * (1 - m), op: q2 * (1 - m), s: mix(.92 + .08 * q2, .4, m) });
+      card2.key = p > .52 ? 'apply' : 'base';
+      const fq = seg(p, .62, .74);
+      if (fq > 0) flipTo(o, fq, 'sel', 'new');
+      if (fq >= 1) { o.t.rx = 0; o.key = 'new'; }
+      const c = sm(seg(p, .76, .9));
+      Object.assign(chat.t, { x: mix(6, 3.15, c), y: LB.mid + .1, z: .9, ry: -.32, op: c, s: 1 });
+      const focus = sm(seg(p, 0, .1)) * (1 - c);
+      setCam(mix(0, 1.3, c), mix(LB.mid, y7 - .6, focus), 1.2, .5, mix(11.5, 12.5, c));
+    },
+    // 生成图片
+    (p) => {
+      finalKeys(); D[7].key = 'new';
+      const PY = LB.mid, k = .44;
+      const ph = sm(p / .3), fade = 1 - sm(seg(p, .2, .32));
+      ORDER_B.forEach(i => {
+        const y = LB.ys[i];
+        show(D[i], 0, mix(y, PY + 1.05 + (y - DOC_TOP) * k + .02, ph), mix(0, .1, ph), { s: mix(1, k, ph), op: fade });
+      });
+      const q0 = sm(seg(p, .12, .28)), q1 = sm(seg(p, .38, .62)), q2 = sm(seg(p, .6, .84));
+      const spread = 2.55;
+      Object.assign(papers[0].t, { x: -spread * q1, y: PY, z: 0, ry: .16 * q1, op: q0, s: .95 + .05 * q0 });
+      Object.assign(papers[1].t, { x: 0, y: PY, z: mix(-.45, .05, q1), op: sm(q1 * 3), s: 1 });
+      Object.assign(papers[2].t, { x: spread * q2, y: PY, z: mix(-.45, 0, q2), ry: -.16 * q2, op: sm(q2 * 3), s: 1 });
+      setCam(0, PY, .8, .3, mix(11.5, 15.5, q1));
+    },
+    // 下载：块收成一摞
+    (p, time) => {
+      finalKeys(); D[7].key = 'new';
+      const sway = reduced ? 0 : Math.sin(time * .35) * .12;
+      ORDER_A.forEach((i, n) => {
+        show(D[i], -.55 + n * .14, 1.15 - n * .33, -n * .14, { ry: sway - .12, rz: (n - 3.5) * .006 });
+      });
+      papers.forEach((o, j) => Object.assign(o.t, { x: (j - 1) * 2.5, y: LB.mid + 6, z: -1, op: 0 }));
+      setCam(0, 0, 1.5, .8, 11.5);
+    },
+  ];
+
+  /* 帧循环 */
+  const init = o => {
+    reset(o);
+    o.c = { ...o.t };
+    if (o.scatter) Object.assign(o.c, o.scatter, { op: 0 });
+  };
+  all.forEach(init);
+  cam.c = { ...cam.t };
+  let shift = 0, shiftY = 0, dist = 1;
+  function resize() {
+    const w = innerWidth, h = innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    const narrow = w <= 820;
+    shift = narrow ? 0 : .2;
+    shiftY = narrow ? -.16 : 0;
+    dist = Math.max(1, (narrow ? .7 : 1.15) / camera.aspect);
+    camera.setViewOffset(w, h, -w * shift, h * shiftY, w, h);
+    camera.updateProjectionMatrix();
+  }
+  resize();
+  addEventListener('resize', resize);
+
+  let last = performance.now(), Ss = readScroll().S;
+  const keys = ['x', 'y', 'z', 'rx', 'ry', 'rz', 's', 'sy', 'op'];
+  function frame(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    const time = now / 1000;
+    const st = readScroll();
+    Ss = reduced ? st.S : mix(Ss, st.S, 1 - Math.exp(-7 * dt));
+    const k = Math.min(5, Math.floor(Ss)), p = clamp(Ss - k);
+    all.forEach(reset);
+    poses[k](reduced ? st.p : p, time);
+
+    const kObj = reduced ? 1 : 1 - Math.exp(-9 * dt);
+    all.forEach((o, i) => {
+      const t = o.t, c = o.c;
+      for (const n of keys) c[n] += (t[n] - c[n]) * kObj;
+      const bob = reduced ? 0 : Math.sin(time * .7 + i * 1.3) * .012;
+      o.m.position.set(c.x, c.y, c.z + bob);
+      o.m.rotation.set(c.rx, c.ry, c.rz);
+      o.m.scale.set(c.s, c.s * c.sy, c.s);
+      const op = clamp(c.op);
+      o.m.visible = op > .01;
+      if (o.plane) { o.mats[0].opacity = op; return; }
+      o.front.opacity = o.side.opacity = op;
+      o.m.castShadow = op > .6;
+      if (o.front.map !== o.tex[o.key]) {
+        const edge = Math.abs(c.rx) > 1.25 || Math.abs(t.rx) < .01 || !o.flip || reduced;
+        if (edge) o.front.map = o.tex[o.key];
+      }
+    });
+
+    // 长列
+    instVis += ((k === 1 ? 1 : 0) - instVis) * (reduced ? 1 : 1 - Math.exp(-6 * dt));
+    if (instVis > .002) {
+      inst.visible = true;
+      for (let i = 0; i < N; i++) {
+        const e = (1 - Math.pow(1 - clamp((instFront_ - i) / 18), 3)) * instVis;
+        const sc = Math.max(e, .0001);
+        dummy.position.set((1 - e) * instSideSign[i] * 2.2, instY[i], (1 - e) * 4);
+        dummy.rotation.set((1 - e) * -.7, 0, (1 - e) * instSideSign[i] * .25);
+        dummy.scale.set(W * sc, instH[i] * sc, sc);
+        dummy.updateMatrix();
+        inst.setMatrixAt(i, dummy.matrix);
+      }
+      inst.instanceMatrix.needsUpdate = true;
+    } else inst.visible = false;
+
+    // 镜头
+    const kc = reduced ? 1 : 1 - Math.exp(-4.5 * dt);
+    for (const n in cam.t) cam.c[n] += (cam.t[n] - cam.c[n]) * kc;
+    const C = cam.c, sway = reduced ? 0 : Math.sin(time * .22) * .35;
+    camera.position.set(C.fx + (C.ox + sway) * dist, C.fy + C.oy * dist, C.fz + C.oz * dist);
+    camera.lookAt(C.fx, C.fy + C.ly, C.fz);
+    sun.position.set(C.fx - 4, C.fy + 6, 9);
+    sun.target.position.set(C.fx, C.fy, 0);
+
+    updateCopy(st);
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  loop.push(frame);
+}
+
+if (!renderer) {
+  const tick = () => { updateCopy(readScroll()); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-18T10:52:00Z"
+  },
+  "title": "批注卡片与编辑交互重设计",
+  "launch": {
+    "view": "canvas",
+    "page": "annotation-redesign"
+  },
+  "pages": [
+    {
+      "id": "annotation-redesign",
+      "name": "批注交互三方案"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1160,
+      "h": 760,
+      "title": "A · 页边札记",
+      "page": "annotation-redesign",
+      "is_interactive": true
+    },
+    "VariantB-QuoteHeader.dc.html": {
+      "x": 1240,
+      "y": 0,
+      "w": 1160,
+      "h": 760,
+      "title": "B · 引文卡片",
+      "page": "annotation-redesign",
+      "is_interactive": true
+    },
+    "VariantC-MarginPopover.dc.html": {
+      "x": 2480,
+      "y": 0,
+      "w": 1160,
+      "h": 760,
+      "title": "C · 原文浮层",
+      "page": "annotation-redesign",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "VariantB-QuoteHeader.dc.html",
+    "VariantC-MarginPopover.dc.html"
+  ],
+  "notes": {
+    "row-heading": {
+      "x": 0,
+      "y": -260,
+      "text": "批注交互",
+      "kind": "title1",
+      "page": "annotation-redesign",
+      "maxW": 3640
+    }
+  },
+  "designSystems": []
+}
