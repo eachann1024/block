@@ -232,6 +232,7 @@ type Session struct {
 	imageCache        map[string]ui.ImageSource
 	imageFailed       map[string]bool
 	videoPlayers      map[string]*ui.VideoPlayer
+	previewMedia      func(src string, video, load bool) PreviewAsset
 	videoFailed       map[string]bool
 	imageDocRects     map[model.BlockID]ui.Rect
 	imgResizeBlock    model.BlockID
