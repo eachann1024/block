@@ -15,14 +15,16 @@ import (
 )
 
 const (
-	minimalTopPad    float32 = 12
-	minimalBottomPad float32 = 20
+	minimalTopPad     float32 = 6
+	minimalBottomPad  float32 = 16
+	minimalLeftInset  float32 = 16
+	minimalRightInset float32 = 14
 )
 
-// SetMinimal enables or disables Quick Note compact editor mode:
-// compact vertical padding while retaining full Block Editor capabilities
-// (block side handles, drag-reorder, heading fold, selection toolbar, full slash menu, inline AI)
-// and omitting formal-note-only annotation/outline side rails.
+// SetMinimal enables or disables Quick Note compact editor mode (matching original Thinkly QuickNoteApp):
+// compact 16px/14px horizontal insets without the 56px left side-menu gutter or empty-paragraph grey band,
+// while retaining full Block Editor capabilities (Slash menu, selection formatting toolbar, tables,
+// code blocks, callouts, math/mermaid, images, inline AI, and block shortcuts).
 func (s *Session) SetMinimal(minimal bool) {
 	s.minimal = minimal
 }
@@ -100,10 +102,16 @@ func (s *Session) EnsureEditorFocus() {
 }
 
 func (s *Session) leftContentGutter() float32 {
+	if s.minimal {
+		return minimalLeftInset
+	}
 	return editorHandleWidth + editorRowGap
 }
 
 func (s *Session) rightContentInset() float32 {
+	if s.minimal {
+		return minimalRightInset
+	}
 	return editorRightInset
 }
 

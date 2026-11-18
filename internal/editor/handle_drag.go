@@ -309,8 +309,8 @@ func (s *Session) paintBlockDropMarker(p *ui.Painter, r ui.Rect, b *model.Block,
 		return
 	}
 	indentPx := float32(min(max(s.dragIndent, 0), 12)) * editorIndentStep
-	leftX := r.X + editorHandleWidth + editorRowGap + indentPx
-	rightX := r.X + r.W - editorRightInset
+	leftX := r.X + s.leftContentGutter() + indentPx
+	rightX := r.X + r.W - s.rightContentInset()
 	lineW := max(rightX-leftX, 0)
 	if lineW <= 0 {
 		return

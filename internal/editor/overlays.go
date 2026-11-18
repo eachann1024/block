@@ -468,9 +468,9 @@ func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bo
 		if a.Offset == 0 && b.Offset >= rlen {
 			if r, ok := s.blockRects[blk.ID]; ok && r.W > 0 {
 				tbl := ui.Rect{
-					X: r.X + editorHandleWidth + editorRowGap,
+					X: r.X + s.leftContentGutter(),
 					Y: r.Y,
-					W: max(r.W-editorHandleWidth-editorRowGap-editorRightInset, 40),
+					W: max(r.W-s.leftContentGutter()-s.rightContentInset(), 40),
 					H: r.H,
 				}
 				return tbl, true, inVP(tbl)
@@ -536,9 +536,9 @@ func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bo
 		if r, ok := s.blockRects[blk.ID]; ok && r.W > 0 {
 			sawMeasured = true
 			cand := ui.Rect{
-				X: r.X + editorHandleWidth + editorRowGap,
+				X: r.X + s.leftContentGutter(),
 				Y: r.Y,
-				W: max(r.W-editorHandleWidth-editorRowGap-editorRightInset, 24),
+				W: max(r.W-s.leftContentGutter()-s.rightContentInset(), 24),
 				H: max(r.H, 24),
 			}
 			if inVP(cand) && (!found || cand.Y < best.Y) {

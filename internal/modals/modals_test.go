@@ -508,7 +508,18 @@ func TestQuickNoteParityPagerScrollZoomAndCallbacks(t *testing.T) {
 		t.Fatalf("expected negative DY after cooldown to move back to slot 0, got %d", got)
 	}
 
-	// Block Editor features in Quick Note: block handles (⋮⋮ grip + ▾ heading fold) & full Slash menu.
+	// Quick Note matches original Thinkly QuickNoteApp:
+	// - NO empty-line grey hint band ("开始输入… / 、 菜单") and NO 56px left side-handle gutter;
+	// - Full Block Editor capabilities (selection toolbar, slash menu, rich blocks) stay enabled.
+	q.SetText("")
+	internalui.ClearTargets()
+	tt.Frame()
+	for _, unwantedProbe := range []string{"empty-line-band", "empty-hint-menu-keys"} {
+		if _, ok := internalui.TargetBounds(unwantedProbe); ok {
+			t.Fatalf("unexpected probe %q rendered in Quick Note", unwantedProbe)
+		}
+	}
+
 	q.SetText("# Heading\nBody paragraph")
 	internalui.ClearTargets()
 	tt.Frame()
@@ -517,16 +528,8 @@ func TestQuickNoteParityPagerScrollZoomAndCallbacks(t *testing.T) {
 		t.Fatalf("expected 2 blocks in quick note, got %d", len(doc.Blocks))
 	}
 	headingID := doc.Blocks[0].ID
-	q.Session().FocusBlock(0)
-	internalui.ClearTargets()
-	tt.Frame()
-	for _, handleProbe := range []string{
-		fmt.Sprintf("block-grip-%d", headingID),
-		fmt.Sprintf("block-fold-%d", headingID),
-	} {
-		if _, ok := internalui.TargetBounds(handleProbe); !ok {
-			t.Fatalf("expected block handle probe %q rendered in Quick Note", handleProbe)
-		}
+	if _, ok := internalui.TargetBounds(fmt.Sprintf("block-grip-%d", headingID)); ok {
+		t.Fatalf("expected 56px side-handle grip omitted in compact Quick Note")
 	}
 	q.Session().SelectAllBlocks()
 	if !q.Session().IsSelectionToolbarOpen() {
