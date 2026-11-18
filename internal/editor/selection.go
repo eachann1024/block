@@ -1047,20 +1047,22 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 			if pt.X > contentLeft+40 {
 				off = s.blockSelectionLen(idx)
 			}
-			s.focusedBlock = idx
+			s.FocusBlock(idx)
 			s.selAnchor = Position{Block: idx, Offset: off}
 			s.selHead = s.selAnchor
-			s.focusPending = !readOnly
 			s.focusPreventScroll = true
-			s.selSyncPending = !readOnly
-			s.multiSelFocusPending = false
+			if readOnly {
+				s.focusPending = false
+				s.selSyncPending = false
+			}
 			s.scheduleRebuild(c)
 		}
 		return
 	}
 
+	idx := clampInt(s.selHead.Block, 0, len(s.doc.Blocks)-1)
+	s.focusedBlock = idx
 	if s.needsDetachedSelectionFocus() {
-		s.focusedBlock = clampInt(s.selHead.Block, 0, len(s.doc.Blocks)-1)
 		s.multiSelFocusPending = true
 		s.focusPending = false
 		s.selSyncPending = false
@@ -1069,8 +1071,6 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 	}
 
 	a, b := s.orderedSelection()
-	idx := clampInt(s.selHead.Block, 0, len(s.doc.Blocks)-1)
-	s.focusedBlock = idx
 	s.multiSelFocusPending = false
 
 	blk := &s.doc.Blocks[idx]
