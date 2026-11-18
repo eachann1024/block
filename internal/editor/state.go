@@ -145,7 +145,7 @@ type Session struct {
 	blockMenu *blockMenuState
 
 	// Selection floating toolbar & format popovers
-	toolbarPop          string // "", "more", "kinds", "lists", "palette", "link", "reactions", "comment"
+	toolbarPop          string // "", "more", "palette", "link", "reactions", "comment"
 	toolbarMoreIndex    int
 	linkDraft           string
 	linkInputHandle     ui.Handle

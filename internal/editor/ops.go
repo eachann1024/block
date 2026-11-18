@@ -17,10 +17,9 @@ import (
 // --- Selection Snapshots & Markdown Copy ---
 
 type toolbarCaps struct {
-	BlockType bool
-	RichText  bool
-	Bold      bool
-	Link      bool
+	RichText bool
+	Bold     bool
+	Link     bool
 }
 
 func (s *Session) selectionSupportsToolbar() bool {
@@ -45,7 +44,7 @@ func (s *Session) toolbarCapabilities() toolbarCaps {
 		return toolbarCaps{}
 	}
 	a, b := s.orderedSelection()
-	caps := toolbarCaps{BlockType: true, RichText: true, Bold: true}
+	caps := toolbarCaps{RichText: true, Bold: true}
 	hasTable := false
 	tableMultiCell := false
 	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
@@ -61,7 +60,6 @@ func (s *Session) toolbarCapabilities() toolbarCaps {
 				tableMultiCell = true
 			}
 		}
-		caps.BlockType = caps.BlockType && rich && blk.Kind != model.BlockTable
 		caps.RichText = caps.RichText && rich
 		caps.Bold = caps.Bold && rich && !blk.Kind.IsHeading()
 	}
