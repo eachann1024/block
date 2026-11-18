@@ -1859,7 +1859,7 @@ func (s *Session) outlineLeftMargin() float32 {
 	if editorW <= 0 {
 		editorW = s.editorRect.W
 	}
-	stdW := theme.EditorStandardWidth + editorHandleWidth + editorRowGap + editorRightInset
+	stdW := theme.EditorStandardWidth + s.leftContentGutter() + s.rightContentInset()
 	railSlot := float32(0)
 	if s.hasVisibleAnnotationRail() && s.canFitWideAnnotationRail() {
 		railSlot = annotationRailSlot
@@ -2033,7 +2033,7 @@ const (
 )
 
 func (s *Session) canFitWideAnnotationRail() bool {
-	stdW := theme.EditorStandardWidth + editorHandleWidth + editorRowGap + editorRightInset
+	stdW := theme.EditorStandardWidth + s.leftContentGutter() + s.rightContentInset()
 	minW := stdW + annotationRailSlot + theme.ScrollGutter
 	editorW := s.viewportWidth
 	if editorW <= 0 {
@@ -2217,10 +2217,12 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 	if editorW <= 0 {
 		editorW = s.editorRect.W
 	}
-	stdW := theme.EditorStandardWidth + editorHandleWidth + editorRowGap + editorRightInset
-	bodyRightX := s.editorRect.X + (editorW+stdW)*0.5
+	outerW := theme.EditorStandardWidth + s.leftContentGutter() + s.rightContentInset()
+	flowW := min(editorW, outerW)
+	flowLeft := s.editorRect.X + (editorW-flowW)*0.5
+	bodyRightX := flowLeft + flowW - s.rightContentInset()
 	editorRight := s.editorRect.X + editorW
-	railLeft := min(bodyRightX+8, editorRight-12-annotationRailWidth)
+	railLeft := min(bodyRightX+16, editorRight-12-annotationRailWidth)
 	railTop := s.editorRect.Y
 	railHeight := max(s.editorRect.H, s.viewportHeight-railTop)
 
