@@ -16,7 +16,13 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// ---- HTML Export ----
+// ---- HTML Export (12 Differentiated Paper Themes + Legacy Ocean Fallback) ----
+
+type htmlRenderState struct {
+	num      listNumbering
+	h2Count  int
+	quoteOrd int
+}
 
 func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) string {
 	pal, legacy := resolveExportPaper(prefs)
@@ -24,6 +30,7 @@ func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 	showTitle := resolveShowTitle(prefs)
 	watermark := resolveWatermark(prefs)
 	title := resolveTitleText(doc, notePath, prefs)
+	vars := newTemplateVars(notePath, title, time.Now().UTC())
 	css := buildHTMLStylesheet(pal, legacy, width, title)
 
 	var out strings.Builder
@@ -33,37 +40,105 @@ func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 	out.WriteString(escapeHTMLText(title))
 	out.WriteString("</title><style>")
 	out.WriteString(css)
-	out.WriteString("</style></head><body><div class=\"page\"><article class=\"paper\">")
+	out.WriteString("</style></head><body><div class=\"page\">")
 
-	if showTitle {
-		out.WriteString(renderHTMLHeader(pal, legacy, title))
+	if !legacy {
+		out.WriteString(renderHTMLOrnaments(pal, vars, showTitle))
 	}
 
 	bodyBlocks := exportBodyBlocks(doc.Blocks, title, showTitle)
-	var num listNumbering
-	for i := 0; i < len(bodyBlocks); i++ {
-		b := &bodyBlocks[i]
+	var st htmlRenderState
+
+	switch {
+	case !legacy && pal.Style.Sections != nil:
+		var intro []model.Block
+		var runs [][]model.Block
+		idx := 0
+		for idx < len(bodyBlocks) && bodyBlocks[idx].Kind != model.BlockHeading2 {
+			intro = append(intro, bodyBlocks[idx])
+			idx++
+		}
+		hasIntro := showTitle || len(intro) > 0 || len(bodyBlocks) == 0
+		for idx < len(bodyBlocks) {
+			start := idx
+			idx++
+			for idx < len(bodyBlocks) && bodyBlocks[idx].Kind != model.BlockHeading2 {
+				idx++
+			}
+			runs = append(runs, bodyBlocks[start:idx])
+		}
+		if hasIntro {
+			out.WriteString(`<section class="paper-section">`)
+			if showTitle {
+				out.WriteString(renderHTMLMeta(pal, vars))
+				out.WriteString(renderHTMLHeader(pal, legacy, title))
+			}
+			renderHTMLBlockSlice(&out, intro, notePath, pal, legacy, &st)
+			out.WriteString(`</section>`)
+		}
+		for _, run := range runs {
+			out.WriteString(`<section class="paper-section">`)
+			renderHTMLBlockSlice(&out, run, notePath, pal, legacy, &st)
+			out.WriteString(`</section>`)
+		}
+		if watermark {
+			out.WriteString(renderHTMLFooter(pal, legacy, vars))
+		}
+
+	case !legacy && pal.Card != nil && pal.Card.BodyOnly:
+		if showTitle {
+			out.WriteString(renderHTMLMeta(pal, vars))
+		}
+		out.WriteString(`<article class="paper">`)
+		out.WriteString(renderHTMLCardLabel(pal, vars))
+		if showTitle {
+			out.WriteString(renderHTMLHeader(pal, legacy, title))
+		}
+		renderHTMLBlockSlice(&out, bodyBlocks, notePath, pal, legacy, &st)
+		out.WriteString(`</article>`)
+		if watermark {
+			out.WriteString(renderHTMLFooter(pal, legacy, vars))
+		}
+
+	default:
+		out.WriteString(`<article class="paper">`)
+		if !legacy {
+			out.WriteString(renderHTMLCardLabel(pal, vars))
+		}
+		if showTitle {
+			if !legacy {
+				out.WriteString(renderHTMLMeta(pal, vars))
+			}
+			out.WriteString(renderHTMLHeader(pal, legacy, title))
+		}
+		renderHTMLBlockSlice(&out, bodyBlocks, notePath, pal, legacy, &st)
+		if watermark {
+			out.WriteString(renderHTMLFooter(pal, legacy, vars))
+		} else {
+			out.WriteString(`<div style="height:16px"></div>`)
+		}
+		out.WriteString(`</article>`)
+	}
+
+	out.WriteString("</div></body></html>\n")
+	return out.String()
+}
+
+func renderHTMLBlockSlice(out *strings.Builder, blocks []model.Block, notePath string, pal PaperThemeSpec, legacy bool, st *htmlRenderState) {
+	for i := 0; i < len(blocks); i++ {
+		b := &blocks[i]
 		if b.Kind.IsList() {
 			start := i
 			kind := b.Kind
-			for i+1 < len(bodyBlocks) && bodyBlocks[i+1].Kind == kind {
+			for i+1 < len(blocks) && blocks[i+1].Kind == kind {
 				i++
 			}
-			renderHTMLList(&out, bodyBlocks[start:i+1], &num, pal)
+			renderHTMLList(out, blocks[start:i+1], &st.num, pal, legacy)
 			continue
 		}
-		num.next(b)
-		renderHTMLBlock(&out, b, notePath, pal)
+		st.num.next(b)
+		renderHTMLBlock(out, b, notePath, pal, legacy, st)
 	}
-
-	if watermark {
-		now := time.Now().UTC().Format("2006.01.02")
-		out.WriteString(fmt.Sprintf(`<footer class="doc-footer"><span>%s</span><span>%s</span></footer>`, watermarkLabel, now))
-	} else {
-		out.WriteString(`<div style="height:16px"></div>`)
-	}
-	out.WriteString("</article></div></body></html>\n")
-	return out.String()
 }
 
 func isASCII(s string) bool {
@@ -83,137 +158,570 @@ func htmlFontStack(fam string) string {
 		return `"Kaiti SC","STKaiti",cursive,serif`
 	case fontMono:
 		return `"Menlo","JetBrains Mono",monospace`
+	case fontGeorgiaSong:
+		return `Georgia,"Songti SC","Noto Serif SC",serif`
+	case fontAvenir:
+		return `"Avenir Next",Avenir,"PingFang SC",sans-serif`
+	case fontDidot:
+		return `Didot,"Bodoni 72","Songti SC",serif`
+	case fontMonoCJK:
+		return `"Menlo","JetBrains Mono","PingFang SC",monospace`
 	default:
 		return `-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif`
 	}
 }
 
+func htmlLineStyleCSS(ls LineStyle) string {
+	switch ls {
+	case LineDashed:
+		return "dashed"
+	case LineDotted:
+		return "dotted"
+	default:
+		return "solid"
+	}
+}
+
+func buildHTMLSubstrateCSS(pal PaperThemeSpec, legacy bool) string {
+	base := fmt.Sprintf("background-color:%s;", uiColorCSS(pal.Canvas))
+	if legacy || len(pal.Style.Substrate) == 0 {
+		return base
+	}
+	var imgs, sizes []string
+	for _, layer := range pal.Style.Substrate {
+		switch layer.Kind {
+		case SubstrateGradient:
+			if layer.Color3.A > 0 {
+				imgs = append(imgs, fmt.Sprintf("linear-gradient(%.0fdeg,%s 0%%,%s 55%%,%s 100%%)",
+					layer.Angle, uiColorCSS(layer.Color), uiColorCSS(layer.Color2), uiColorCSS(layer.Color3)))
+			} else {
+				imgs = append(imgs, fmt.Sprintf("linear-gradient(%.0fdeg,%s,%s)",
+					layer.Angle, uiColorCSS(layer.Color), uiColorCSS(layer.Color2)))
+			}
+			sizes = append(sizes, "100% 100%")
+		case SubstrateGlow:
+			imgs = append(imgs, fmt.Sprintf("radial-gradient(circle at %.0f%% %.0f%%,%s 0,transparent %.0f%%)",
+				layer.At.X*100, layer.At.Y*100, uiColorCSS(layer.Color), layer.Radius*100))
+			sizes = append(sizes, "100% 100%")
+		case SubstrateGrid:
+			gap := orF(layer.Gap, 16)
+			sz := orF(layer.Size, 1)
+			c := uiColorCSS(layer.Color)
+			imgs = append(imgs,
+				fmt.Sprintf("linear-gradient(%s %.1fpx,transparent %.1fpx)", c, sz, sz),
+				fmt.Sprintf("linear-gradient(90deg,%s %.1fpx,transparent %.1fpx)", c, sz, sz))
+			sizes = append(sizes, fmt.Sprintf("%.0fpx %.0fpx", gap, gap), fmt.Sprintf("%.0fpx %.0fpx", gap, gap))
+		case SubstrateDots, SubstrateGrain:
+			gap := maxFloat32(layer.Gap, 4)
+			r := orF(layer.Size, 0.8)
+			imgs = append(imgs, fmt.Sprintf("radial-gradient(%s %.1fpx,transparent %.1fpx)", uiColorCSS(layer.Color), r, r+0.3))
+			sizes = append(sizes, fmt.Sprintf("%.0fpx %.0fpx", gap, gap))
+		case SubstrateScanlines:
+			gap := maxFloat32(layer.Gap, 3)
+			sz := orF(layer.Size, 1)
+			imgs = append(imgs, fmt.Sprintf("repeating-linear-gradient(%s 0 %.1fpx,transparent %.1fpx %.1fpx)",
+				uiColorCSS(layer.Color), sz, sz, gap))
+			sizes = append(sizes, "100% 100%")
+		case SubstrateVignette:
+			imgs = append(imgs, fmt.Sprintf("radial-gradient(ellipse at center,rgba(0,0,0,0) 55%%,%s 100%%)", uiColorCSS(layer.Color)))
+			sizes = append(sizes, "100% 100%")
+		}
+	}
+	if len(imgs) == 0 {
+		return base
+	}
+	return fmt.Sprintf("%sbackground-image:%s;background-size:%s;", base, strings.Join(imgs, ","), strings.Join(sizes, ","))
+}
+
 func buildHTMLStylesheet(pal PaperThemeSpec, legacy bool, width int, title string) string {
-	var inset, radius float32
-	borderCSS := "0 0 0 transparent"
-	shadowCSS := ""
-	if pal.Card != nil {
-		inset = pal.Card.Inset
-		radius = pal.Card.Radius
-		if pal.Card.HasBorder {
-			borderCSS = fmt.Sprintf("inset 0 0 0 1px %s", uiColorCSS(pal.Card.Border))
+	substrateCSS := buildHTMLSubstrateCSS(pal, legacy)
+	pagePad := "0px"
+	paperCSS := fmt.Sprintf("background:%s;padding:%.0fpx %.0fpx %.0fpx %.0fpx;",
+		uiColorCSS(pal.InnerCanvas), pal.PadTop, pal.PadRight, pal.PadBottom, pal.PadLeft)
+
+	if !legacy && pal.Style.Sections != nil {
+		sec := pal.Style.Sections
+		pagePad = fmt.Sprintf("%.0fpx %.0fpx %.0fpx %.0fpx", pal.PadTop, pal.PadRight, pal.PadBottom, pal.PadLeft)
+		paperCSS = fmt.Sprintf("background:%s;border:1px solid %s;border-radius:%.0fpx;box-shadow:0 8px 24px %s;padding:%.0fpx %.0fpx;",
+			uiColorCSS(sec.Fill), uiColorCSS(sec.Border), sec.Radius, uiColorCSS(sec.Shadow), sec.PadY, sec.PadX)
+	} else if pal.Card != nil {
+		c := pal.Card
+		pagePad = fmt.Sprintf("%.0fpx %.0fpx %.0fpx %.0fpx", c.top(), c.Inset, c.Inset, c.Inset)
+		var pBuf strings.Builder
+		if c.Kind == CardOutline {
+			pBuf.WriteString("background:transparent;")
+		} else {
+			pBuf.WriteString(fmt.Sprintf("background:%s;", uiColorCSS(orC(c.Fill, pal.InnerCanvas))))
 		}
-		if pal.Card.Shadow.A > 0 {
-			shadowCSS = fmt.Sprintf(",0 8px 14px %s", uiColorCSS(pal.Card.Shadow))
+		pBuf.WriteString(fmt.Sprintf("border-radius:%.0fpx;", c.Radius))
+		if c.HasBorder {
+			pBuf.WriteString(fmt.Sprintf("border:%.1fpx solid %s;", orF(c.BorderW, 1), uiColorCSS(c.Border)))
+		}
+		if c.TopEdge.A > 0 {
+			pBuf.WriteString(fmt.Sprintf("border-top-color:%s;", uiColorCSS(c.TopEdge)))
+		}
+		if c.Shadow.A > 0 {
+			pBuf.WriteString(fmt.Sprintf("box-shadow:0 %.0fpx %.0fpx %s;", orF(c.ShadowY, 8), orF(c.Blur, 16), uiColorCSS(c.Shadow)))
+		}
+		pBuf.WriteString(fmt.Sprintf("padding:%.0fpx %.0fpx %.0fpx %.0fpx;", pal.PadTop, pal.PadRight, pal.PadBottom, pal.PadLeft))
+		paperCSS = pBuf.String()
+	}
+
+	titleFam := pal.TitleFamily
+	if titleFam == "" || (legacy && !isASCII(title)) {
+		titleFam = pal.HeadingFamily
+	}
+	titleWeight := pal.Style.Title.Weight
+	if titleWeight == 0 {
+		if pal.TitleBold {
+			titleWeight = 700
+		} else {
+			titleWeight = 400
 		}
 	}
-	titleFam := pal.HeadingFamily
-	if isASCII(title) {
-		titleFam = pal.TitleFamily
+	titleLead := orF(pal.Style.Title.Leading, 1.3)
+	titleTrack := ""
+	if !legacy && pal.Style.Title.Track != 0 {
+		titleTrack = fmt.Sprintf(";letter-spacing:%.3fem", pal.Style.Title.Track)
 	}
-	titleWeight := 400
-	if pal.TitleBold {
-		titleWeight = 700
+	if !legacy && pal.Style.Title.Glow.A > 0 {
+		titleTrack += fmt.Sprintf(";text-shadow:0 0 10px %s", uiColorCSS(pal.Style.Title.Glow))
 	}
+
+	textGlowCSS := ""
+	if !legacy && pal.Style.TextGlow.A > 0 {
+		textGlowCSS = fmt.Sprintf(";text-shadow:0 0 6px %s", uiColorCSS(pal.Style.TextGlow))
+	}
+	paraJustify := ""
+	if !legacy && pal.Style.Justify {
+		paraJustify = ";text-align:justify"
+	}
+
 	linkColor := uiColorCSS(pal.LinkFG())
-	blockRadius := pal.BlockRadius()
-	quoteCSS := fmt.Sprintf(
-		"margin:0 0 16px;padding:12px 20px;border-left:4px solid %s;background:%s;border-radius:%.0fpx;color:%s",
-		uiColorCSS(pal.QuoteBar), uiColorCSS(pal.QuoteBG), blockRadius, uiColorCSS(pal.QuoteFG),
-	)
-	if !legacy && pal.Theme == model.ExportThemePress {
-		quoteCSS = fmt.Sprintf(
-			"margin:0 0 16px;padding:12px 4px;border-top:1px solid %s;border-bottom:1px solid %s;color:%s",
-			uiColorCSS(pal.QuoteBar), uiColorCSS(pal.QuoteBar), uiColorCSS(pal.QuoteFG),
-		)
+	linkDeco := "text-decoration:underline"
+	if !legacy {
+		inl := pal.Style.Inline
+		decoKind := "underline"
+		if inl.LinkWavy {
+			decoKind = "underline wavy"
+		} else if inl.LinkDotted {
+			decoKind = "underline dotted"
+		}
+		linkDeco = fmt.Sprintf("text-decoration:%s;text-decoration-color:%s", decoKind, uiColorCSS(orC(inl.LinkDeco, pal.LinkFG())))
+		if inl.LinkThick > 0 {
+			linkDeco += fmt.Sprintf(";text-decoration-thickness:%.1fpx", inl.LinkThick)
+		}
+		if inl.LinkOffset != 0 {
+			linkDeco += fmt.Sprintf(";text-underline-offset:%.1fpx", inl.LinkOffset)
+		}
+		if inl.LinkMono {
+			linkDeco += fmt.Sprintf(";font-family:%s;font-size:.9em", htmlFontStack(fontMono))
+		}
 	}
-	bulletStyle := ""
-	if !legacy && pal.UsesSquareBullets() {
-		bulletStyle = "ul{list-style-type:square}"
+
+	headCol := uiColorCSS(orC(pal.Style.Heading.Color, pal.Title))
+	headWt := 700
+	if !legacy && pal.Style.Heading.Weight > 0 {
+		headWt = pal.Style.Heading.Weight
 	}
-	h2Rule := ""
-	if !legacy && pal.Theme == model.ExportThemePress {
-		h2Rule = fmt.Sprintf("h2{padding-bottom:6px;border-bottom:1px solid %s}", uiColorCSS(pal.Divider))
-	} else if !legacy && pal.Theme == model.ExportThemePoster {
-		h2Rule = fmt.Sprintf("h2{padding-left:12px;border-left:5px solid %s}", uiColorCSS(pal.Accent))
-	} else if !legacy && pal.Theme == model.ExportThemeRiso {
-		ink := ui.Color{R: pal.Accent.R, G: pal.Accent.G, B: pal.Accent.B, A: 80}
-		h2Rule = fmt.Sprintf("h2 span.riso-h2{background:linear-gradient(transparent 55%%,%s 55%%,%s 90%%,transparent 90%%);box-decoration-break:clone}", uiColorCSS(ink), uiColorCSS(ink))
+	headTrack := ""
+	if !legacy && pal.Style.Heading.Track != 0 {
+		headTrack = fmt.Sprintf(";letter-spacing:%.3fem", pal.Style.Heading.Track)
+	}
+
+	codeBG := uiColorCSS(pal.CodeBG)
+	codeFG := uiColorCSS(orC(pal.Style.Code.FG, pal.Text))
+	inlineCodeBG := uiColorCSS(orC(pal.Style.Inline.CodeBG, pal.CodeBG))
+	inlineCodeFG := ""
+	if !legacy && pal.Style.Inline.CodeFG.A > 0 {
+		inlineCodeFG = ";color:" + uiColorCSS(pal.Style.Inline.CodeFG)
+	}
+
+	preBorder := fmt.Sprintf("border:1px solid %s;", uiColorCSS(pal.CodeBorder))
+	if !legacy {
+		cs := pal.Style.Code
+		switch {
+		case cs.Kind == CodePlain:
+			codeBG = "transparent"
+			preBorder = "border:0;padding:2px 0;"
+		case cs.Kind == CodeFenced:
+			codeBG = "transparent"
+			preBorder = fmt.Sprintf("border:0;border-left:2px solid %s;border-radius:0;padding:6px 0 6px 14px;", uiColorCSS(pal.CodeBorder))
+		case cs.BorderW < 0:
+			preBorder = "border:0;"
+		default:
+			ls := "solid"
+			if cs.Dashed {
+				ls = "dashed"
+			}
+			preBorder = fmt.Sprintf("border:%.1fpx %s %s;", orF(cs.BorderW, 1), ls, uiColorCSS(pal.CodeBorder))
+		}
+	}
+
+	tableCSS := buildHTMLTableCSS(pal, legacy)
+	secGap := float32(16)
+	if pal.Style.Sections != nil {
+		secGap = orF(pal.Style.Sections.Gap, 16)
 	}
 
 	return fmt.Sprintf(`*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:%s;color:%s;font-family:%s}
-.page{width:%dpx;max-width:100%%;margin:0 auto;padding:%.0fpx;background:%s}
-.paper{background:%s;border-radius:%.0fpx;box-shadow:%s%s;padding:%.0fpx %.0fpx %.0fpx %.0fpx;font-size:%.1fpx;line-height:%.2f;color:%s;overflow-wrap:anywhere}
-.doc-header{margin-bottom:28px}.doc-title{margin:0;font-family:%s;font-size:%.1fpx;line-height:1.3;font-weight:%d;color:%s}
-.doc-footer{display:flex;justify-content:space-between;margin-top:28px;padding-top:16px;border-top:1px solid %s;font-size:14px;line-height:19.6px;color:%s}
-h1,h2,h3,h4,h5,h6{margin:18px 0 8px;line-height:1.35;font-family:%s;color:%s;font-weight:700}
+html,body{margin:0;padding:0;background:%s;color:%s;font-family:%s%s}
+.page{position:relative;overflow:hidden;width:%dpx;max-width:100%%;margin:0 auto;padding:%s;%sdisplay:flex;flex-direction:column;gap:%.0fpx}
+.paper,.paper-section{position:relative;%sfont-size:%.1fpx;line-height:%.2f;color:%s;overflow-wrap:anywhere}
+.doc-header{margin-bottom:28px}.doc-title{margin:0;font-family:%s;font-size:%.1fpx;line-height:%.2f;font-weight:%d;color:%s%s}
+.doc-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:28px;font-size:14px;line-height:19.6px;color:%s}
+h1,h2,h3,h4,h5,h6{margin:18px 0 8px;line-height:1.35;font-family:%s;color:%s;font-weight:%d%s}
 h1{font-size:%.1fpx}h2{font-size:%.1fpx}h3{font-size:%.1fpx}h4{font-size:%.1fpx}h5,h6{font-size:%.1fpx;font-weight:500}
-%s
-p{margin:0 0 10px}
-ul,ol{margin:0 0 10px;padding-left:26px}%s ul.todo-list{list-style:none;padding-left:4px}li{margin:4px 0}
-blockquote{%s}
+p{margin:0 0 10px%s}
+ul,ol{margin:0 0 10px;padding-left:26px}ul.custom-list{list-style:none;padding-left:0}li{margin:4px 0}
+blockquote{margin:0 0 16px}
 .callout{margin:0 0 14px;padding:12px 16px;border-radius:8px;border-left:4px solid}
 .callout-title{font-size:14px;font-weight:700;letter-spacing:.04em;margin-bottom:6px}
-pre{margin:0 0 16px;padding:14px 18px;background:%s;border:1px solid %s;border-radius:%.0fpx;overflow-x:auto;font-family:%s;font-size:14.5px;line-height:1.6}
-code{font-family:%s;font-size:.9em;background:%s;padding:1px 5px;border-radius:4px}
-pre code{background:transparent;padding:0}
-table{width:100%%;border-collapse:collapse;margin:0 0 14px}
-th,td{border:1px solid %s;padding:8px 12px;text-align:left;vertical-align:top}
-th{background:%s;color:%s;font-weight:600}
+pre{margin:0 0 16px;padding:14px 18px;background:%s;%sborder-radius:%.0fpx;overflow-x:auto;font-family:%s;font-size:%.1fpx;line-height:%.2f;color:%s}
+code{font-family:%s;font-size:.9em;background:%s;padding:1px 5px;border-radius:4px%s}
+pre code{background:transparent;padding:0;color:inherit}
+%s
 hr{border:0;border-top:1px solid %s;margin:18px 0}
-a,table a,th a,td a{color:%s;text-decoration:underline}
-img{max-width:100%%;height:auto;border-radius:6px}`,
-		uiColorCSS(pal.Canvas), uiColorCSS(pal.Text), htmlFontStack(pal.BodyFamily),
-		width, inset, uiColorCSS(pal.Canvas),
-		uiColorCSS(pal.InnerCanvas), radius, borderCSS, shadowCSS,
-		pal.PadTop, pal.PadRight, pal.PadBottom, pal.PadLeft, pal.BodySize, pal.Leading, uiColorCSS(pal.Text),
-		htmlFontStack(titleFam), pal.TitleSize, titleWeight, uiColorCSS(pal.Title),
-		uiColorCSS(pal.Divider), uiColorCSS(pal.Secondary),
-		htmlFontStack(pal.HeadingFamily), uiColorCSS(pal.Title),
+a,table a,th a,td a{color:%s;%s}
+img{max-width:100%%;height:auto;border-radius:%.0fpx}`,
+		uiColorCSS(pal.Canvas), uiColorCSS(pal.Text), htmlFontStack(pal.BodyFamily), textGlowCSS,
+		width, pagePad, substrateCSS, secGap,
+		paperCSS, pal.BodySize, pal.Leading, uiColorCSS(pal.Text),
+		htmlFontStack(titleFam), pal.TitleSize, titleLead, titleWeight, uiColorCSS(pal.Title), titleTrack,
+		uiColorCSS(pal.Secondary),
+		htmlFontStack(pal.HeadingFamily), headCol, headWt, headTrack,
 		pal.HeadSizes[0], pal.HeadSizes[1], pal.HeadSizes[2], pal.BodySize*1.12, pal.BodySize,
-		h2Rule,
-		bulletStyle,
-		quoteCSS,
-		uiColorCSS(pal.CodeBG), uiColorCSS(pal.CodeBorder), blockRadius, htmlFontStack(fontMono),
-		htmlFontStack(fontMono), uiColorCSS(pal.CodeBG),
-		uiColorCSS(pal.TableBorder),
-		uiColorCSS(pal.TableHeaderBG()), uiColorCSS(pal.Title),
+		paraJustify,
+		codeBG, preBorder, pal.BlockRadius(), htmlFontStack(fontMono), orF(pal.Style.Code.Size, 14.5), orF(pal.Style.Code.Leading, 1.6), codeFG,
+		htmlFontStack(fontMono), inlineCodeBG, inlineCodeFG,
+		tableCSS,
 		uiColorCSS(pal.Divider),
-		linkColor,
+		linkColor, linkDeco,
+		maxFloat32(pal.BlockRadius(), 2),
 	)
 }
 
+func buildHTMLTableCSS(pal PaperThemeSpec, legacy bool) string {
+	ts := pal.Style.Table
+	if legacy || !ts.Rules {
+		rc := uiColorCSS(orC(ts.RuleColor, pal.TableBorder))
+		hbg := uiColorCSS(orC(ts.HeaderBG, pal.TableHeaderBG()))
+		hfg := uiColorCSS(orC(ts.HeaderFG, pal.Title))
+		px, py := orF(ts.PadX, 12), orF(ts.PadY, 8)
+		return fmt.Sprintf(`table{width:100%%;border-collapse:collapse;margin:0 0 14px;font-size:%.1fpx;line-height:%.2f}
+th,td{border:1px solid %s;padding:%.0fpx %.0fpx;text-align:left;vertical-align:top}
+th{background:%s;color:%s;font-weight:600}`,
+			orF(ts.Size, 14), orF(ts.Leading, 1.45), rc, py, px, hbg, hfg)
+	}
+
+	rc := uiColorCSS(orC(ts.RuleColor, pal.TableBorder))
+	sc := uiColorCSS(orC(ts.StrongColor, orC(ts.RuleColor, pal.TableBorder)))
+	px, py := orF(ts.PadX, 8), orF(ts.PadY, 8)
+	var b strings.Builder
+	if ts.Outer > 0 {
+		b.WriteString(fmt.Sprintf("table{width:100%%;border-collapse:separate;border-spacing:0;margin:0 0 14px;border:%.1fpx solid %s;border-radius:%.0fpx;overflow:hidden;font-size:%.1fpx;line-height:%.2f}\n",
+			ts.Outer, sc, ts.OuterRadius, orF(ts.Size, 14.5), orF(ts.Leading, 1.55)))
+	} else {
+		topRule := ""
+		botRule := ""
+		if ts.Top > 0 {
+			topRule = fmt.Sprintf("border-top:%.1fpx solid %s;", ts.Top, sc)
+		}
+		if ts.Bottom > 0 {
+			botRule = fmt.Sprintf("border-bottom:%.1fpx solid %s;", ts.Bottom, sc)
+		}
+		b.WriteString(fmt.Sprintf("table{width:100%%;border-collapse:collapse;margin:0 0 14px;%s%sfont-size:%.1fpx;line-height:%.2f}\n",
+			topRule, botRule, orF(ts.Size, 14.5), orF(ts.Leading, 1.55)))
+	}
+	b.WriteString(fmt.Sprintf("th,td{padding:%.0fpx %.0fpx;text-align:left;vertical-align:top}\n", py, px))
+	if ts.ColSep > 0 {
+		b.WriteString(fmt.Sprintf("th+th,td+td{border-left:%.1fpx %s %s}\n", ts.ColSep, htmlLineStyleCSS(ts.ColSepLine), rc))
+	}
+	hbg := "transparent"
+	if ts.HeaderBG.A > 0 {
+		hbg = uiColorCSS(ts.HeaderBG)
+	}
+	hfg := uiColorCSS(orC(ts.HeaderFG, pal.Title))
+	hwt := orI(ts.HeaderWt, 700)
+	hsz := orF(ts.HeaderSize, orF(ts.Size, 14))
+	hfam := htmlFontStack(orS(ts.HeaderFont, pal.BodyFamily))
+	upper := ""
+	if ts.HeaderUpper {
+		upper = ";text-transform:uppercase"
+	}
+	track := ""
+	if ts.HeaderTrack != 0 {
+		track = fmt.Sprintf(";letter-spacing:%.2fem", ts.HeaderTrack)
+	}
+	headSep := ""
+	if ts.HeadSep > 0 {
+		headSep = fmt.Sprintf(";border-bottom:%.1fpx %s %s", ts.HeadSep, htmlLineStyleCSS(ts.HeadSepLine), sc)
+	}
+	b.WriteString(fmt.Sprintf("th{background:%s;color:%s;font-family:%s;font-size:%.1fpx;font-weight:%d%s%s%s}\n",
+		hbg, hfg, hfam, hsz, hwt, upper, track, headSep))
+	if ts.RowSep > 0 {
+		b.WriteString(fmt.Sprintf("tbody tr+tr td{border-top:%.1fpx %s %s}", ts.RowSep, htmlLineStyleCSS(ts.RowSepLine), rc))
+	}
+	return b.String()
+}
+
+func renderHTMLOrnaments(pal PaperThemeSpec, vars templateVars, showTitle bool) string {
+	var out strings.Builder
+	for _, o := range pal.Style.Ornaments {
+		if !showTitle && (o.Kind == OrnamentStamp || o.Kind == OrnamentSeal) {
+			continue
+		}
+		switch o.Kind {
+		case OrnamentEdgeRule:
+			pos := fmt.Sprintf("left:%.0fpx", o.X)
+			if o.X < 0 {
+				pos = fmt.Sprintf("right:%.0fpx", -o.X)
+			}
+			tb := "top:0;bottom:0"
+			if orF(o.W, 1) < 1 {
+				tb = fmt.Sprintf("top:%.0fpx;bottom:%.0fpx", pal.PadTop, pal.PadBottom)
+			}
+			out.WriteString(fmt.Sprintf(`<div aria-hidden="true" style="position:absolute;%s;%s;width:%.1fpx;background:%s;pointer-events:none;z-index:1"></div>`,
+				pos, tb, orF(o.W, 1), uiColorCSS(o.Color)))
+		case OrnamentSprockets:
+			pitch := maxFloat32(o.Y, 36)
+			h := orF(o.H, 16)
+			pad := (pitch - h) * 0.5
+			grad := fmt.Sprintf("repeating-linear-gradient(transparent 0 %.1fpx,%s %.1fpx %.1fpx,transparent %.1fpx %.1fpx)",
+				pad, uiColorCSS(o.Color), pad, pad+h, pad+h, pitch)
+			out.WriteString(fmt.Sprintf(`<div aria-hidden="true" style="position:absolute;left:%.0fpx;top:0;bottom:0;width:%.0fpx;background:%s;pointer-events:none;z-index:1"></div>`,
+				o.X, orF(o.W, 20), grad))
+			out.WriteString(fmt.Sprintf(`<div aria-hidden="true" style="position:absolute;right:%.0fpx;top:0;bottom:0;width:%.0fpx;background:%s;pointer-events:none;z-index:1"></div>`,
+				o.X, orF(o.W, 20), grad))
+		case OrnamentSideText:
+			txt := escapeHTMLText(vars.expand(o.Text))
+			out.WriteString(fmt.Sprintf(`<div aria-hidden="true" style="position:absolute;right:%.0fpx;top:%.0fpx;writing-mode:vertical-rl;font-family:%s;font-size:%.0fpx;letter-spacing:%.2fem;color:%s;pointer-events:none;z-index:2">%s</div>`,
+				o.X, o.Y, htmlFontStack(orS(o.Family, fontMono)), orF(o.Size, 11), o.Track, uiColorCSS(o.Color), txt))
+		case OrnamentTape:
+			out.WriteString(fmt.Sprintf(`<div aria-hidden="true" style="position:absolute;top:%.0fpx;left:50%%;margin-left:%.0fpx;width:%.0fpx;height:%.0fpx;background:%s;background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.3) 0 6px,transparent 6px 12px);transform:rotate(%.1fdeg);pointer-events:none;z-index:3"></div>`,
+				o.Y, -orF(o.W, 120)*0.5+o.X, orF(o.W, 120), orF(o.H, 30), uiColorCSS(o.Color), o.Angle))
+		case OrnamentStamp:
+			txt := escapeHTMLText(vars.expand(o.Text))
+			it := ""
+			if o.Italic {
+				it = "font-style:italic;"
+			}
+			out.WriteString(fmt.Sprintf(`<div aria-hidden="true" style="position:absolute;right:%.0fpx;top:%.0fpx;font-family:%s;font-size:%.0fpx;%scolor:%s;transform:rotate(%.1fdeg);pointer-events:none;z-index:3">%s</div>`,
+				o.X, o.Y, htmlFontStack(orS(o.Family, fontGeorgiaSong)), orF(o.Size, 20), it, uiColorCSS(o.Color), o.Angle, txt))
+		case OrnamentSeal:
+			inset := float32(0)
+			if pal.Card != nil {
+				inset = pal.Card.Inset
+			}
+			d := orF(o.W, 90)
+			c := uiColorCSS(o.Color)
+			t1 := escapeHTMLText(vars.expand(o.Text))
+			t2 := escapeHTMLText(vars.expand(o.Text2))
+			out.WriteString(fmt.Sprintf(`<div aria-hidden="true" style="position:absolute;right:%.0fpx;top:%.0fpx;width:%.0fpx;height:%.0fpx;border:1.5px solid %s;border-radius:50%%;display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(%.1fdeg);color:%s;pointer-events:none;z-index:3"><div style="position:absolute;inset:4px;border:0.5px solid %s;border-radius:50%%"></div><span style="font-family:%s;font-size:15px;font-weight:600;line-height:1.1">%s</span><span style="font-family:%s;font-size:9px;letter-spacing:.12em;margin-top:3px">%s</span></div>`,
+				inset+o.X, inset+o.X+o.Y, d, d, c, o.Angle, c, c, htmlFontStack(orS(o.Family, fontGeorgiaSong)), t1, htmlFontStack(fontMono), t2))
+		}
+	}
+	return out.String()
+}
+
+func renderHTMLCardLabel(pal PaperThemeSpec, vars templateVars) string {
+	if pal.Card == nil || pal.Card.Label == "" {
+		return ""
+	}
+	lbl := escapeHTMLText(vars.expand(pal.Card.Label))
+	col := uiColorCSS(orC(pal.Card.LabelColor, pal.Card.Border))
+	return fmt.Sprintf(`<span style="position:absolute;left:18px;top:-11px;background:%s;padding:0 8px;color:%s;font-size:12px;line-height:20px">%s</span>`,
+		uiColorCSS(pal.Canvas), col, lbl)
+}
+
+func renderHTMLMeta(pal PaperThemeSpec, vars templateVars) string {
+	ms := pal.Style.Meta
+	left := vars.expand(ms.Left)
+	right := vars.expand(ms.Right)
+	mast := vars.expand(ms.Masthead)
+	if left == "" && right == "" && mast == "" {
+		return ""
+	}
+	if ms.Upper {
+		left = strings.ToUpper(left)
+		right = strings.ToUpper(right)
+	}
+	fam := htmlFontStack(orS(ms.Family, pal.BodyFamily))
+	sz := orF(ms.Size, 12)
+	col := uiColorCSS(orC(ms.Color, pal.Secondary))
+	rCol := uiColorCSS(orC(ms.RightColor, orC(ms.Color, pal.Secondary)))
+	it := ""
+	if ms.Italic {
+		it = "font-style:italic;"
+	}
+	moonHTML := ""
+	if ms.Moon {
+		moonHTML = fmt.Sprintf(`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="%s" stroke-width="1.8" style="vertical-align:-2px;margin-right:8px" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>`, uiColorCSS(pal.Accent))
+	}
+
+	var out strings.Builder
+	out.WriteString(fmt.Sprintf(`<div class="doc-meta" style="margin-bottom:%.0fpx;font-family:%s;font-size:%.0fpx;%sletter-spacing:%.2fem;color:%s">`,
+		orF(ms.Gap, 24), fam, sz, it, ms.Track, col))
+	if mast != "" {
+		rc := uiColorCSS(orC(ms.RuleColor, pal.Title))
+		out.WriteString(`<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px">`)
+		out.WriteString(fmt.Sprintf(`<span style="border:1px solid %s;padding:4px 8px">%s</span>`, rc, escapeHTMLText(left)))
+		out.WriteString(fmt.Sprintf(`<span style="font-family:%s;font-size:%.0fpx;font-weight:700;letter-spacing:%.2fem;color:%s;line-height:1">%s</span>`,
+			htmlFontStack(orS(ms.MastheadFamily, pal.TitleFamily)), orF(ms.MastheadSize, 48), ms.MastheadTrack, uiColorCSS(pal.Title), escapeHTMLText(mast)))
+		out.WriteString(fmt.Sprintf(`<span style="border:1px solid %s;padding:4px 8px;color:%s">%s</span>`, rc, rCol, escapeHTMLText(right)))
+		out.WriteString(`</div>`)
+	} else {
+		out.WriteString(`<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">`)
+		out.WriteString(`<span>` + moonHTML + escapeHTMLText(left) + `</span>`)
+		if right != "" {
+			out.WriteString(fmt.Sprintf(`<span style="color:%s">%s</span>`, rCol, escapeHTMLText(right)))
+		}
+		out.WriteString(`</div>`)
+	}
+	switch ms.Rule {
+	case MetaRuleSingle:
+		out.WriteString(fmt.Sprintf(`<div style="height:1px;margin-top:10px;background:%s"></div>`, uiColorCSS(orC(ms.RuleColor, pal.Divider))))
+	case MetaRuleDouble:
+		rc := uiColorCSS(orC(ms.RuleColor, pal.Title))
+		out.WriteString(fmt.Sprintf(`<div style="height:3px;margin-top:12px;border-top:3px solid %s;border-bottom:1px solid %s"></div>`, rc, rc))
+	}
+	out.WriteString(`</div>`)
+	return out.String()
+}
+
+func renderHTMLTitleContent(pal PaperThemeSpec, legacy bool, title string) string {
+	ts := pal.Style.Title
+	var b strings.Builder
+	if !legacy && ts.Prefix != "" {
+		b.WriteString(fmt.Sprintf(`<span style="color:%s">%s</span>`, uiColorCSS(pal.Secondary), escapeHTMLText(ts.Prefix)))
+	}
+	if !legacy && ts.Accent != nil {
+		head, tail := splitTitleAccent(title)
+		if tail != "" {
+			b.WriteString(escapeHTMLText(head))
+			var st strings.Builder
+			st.WriteString("color:" + uiColorCSS(orC(ts.Accent.FG, pal.Title)) + ";")
+			if ts.Accent.BG.A > 0 {
+				st.WriteString("background:" + uiColorCSS(ts.Accent.BG) + ";padding:0 8px;")
+			}
+			if ts.Accent.Glow.A > 0 {
+				st.WriteString(fmt.Sprintf("text-shadow:0 0 14px %s;", uiColorCSS(ts.Accent.Glow)))
+			}
+			b.WriteString(fmt.Sprintf(`<span style="%s">%s</span>`, st.String(), escapeHTMLText(tail)))
+			return b.String()
+		}
+	}
+	b.WriteString(escapeHTMLText(title))
+	return b.String()
+}
+
 func renderHTMLHeader(pal PaperThemeSpec, legacy bool, title string) string {
-	escTitle := escapeHTMLText(title)
 	if legacy {
 		return fmt.Sprintf(`<header class="doc-header"><h1 class="doc-title">%s</h1><div style="height:2px;margin-top:14px;background:%s"></div></header>`,
-			escTitle, uiColorCSS(pal.Accent))
+			escapeHTMLText(title), uiColorCSS(pal.Accent))
 	}
+	ts := pal.Style.Title
+	gap := orF(ts.Gap, 34)
+	centerCSS := ""
+	if ts.Center || pal.Mark == TitleMarkDoubleRule {
+		centerCSS = ` style="text-align:center"`
+	}
+	inner := renderHTMLTitleContent(pal, legacy, title)
+	ruleCol := uiColorCSS(orC(ts.RuleColor, pal.Accent))
+
 	switch pal.Mark {
+	case TitleMarkNone:
+		return fmt.Sprintf(`<header style="margin-bottom:%.0fpx"><h1 class="doc-title"%s>%s</h1></header>`, gap, centerCSS, inner)
 	case TitleMarkBar:
-		return fmt.Sprintf(`<header style="margin-bottom:34px"><h1 class="doc-title">%s</h1><div style="height:4px;width:48px;border-radius:2px;margin-top:18px;background:%s"></div></header>`,
-			escTitle, uiColorCSS(pal.Accent))
+		return fmt.Sprintf(`<header style="margin-bottom:%.0fpx"><h1 class="doc-title"%s>%s</h1><div style="height:4px;width:48px;border-radius:2px;margin-top:18px;background:%s"></div></header>`,
+			gap, centerCSS, inner, ruleCol)
 	case TitleMarkWavy:
-		return fmt.Sprintf(`<header style="margin-bottom:30px"><h1 class="doc-title">%s</h1><svg width="150" height="12" style="display:block;margin-top:8px"><path d="M0 6 Q6 0 12 6 T24 6 T36 6 T48 6 T60 6 T72 6 T84 6 T96 6 T108 6 T120 6 T132 6 T144 6 T156 6" fill="none" stroke="%s" stroke-width="2"/></svg></header>`,
-			escTitle, uiColorCSS(pal.Accent))
+		return fmt.Sprintf(`<header style="margin-bottom:%.0fpx"><h1 class="doc-title"%s>%s</h1><svg width="240" height="12" style="display:block;margin-top:8px" aria-hidden="true"><path d="M2 6 Q9 0 16 6 T30 6 T44 6 T58 6 T72 6 T86 6 T100 6 T114 6 T128 6 T142 6 T156 6 T170 6 T184 6 T198 6 T212 6 T226 6" fill="none" stroke="%s" stroke-width="2" stroke-linecap="round"/></svg></header>`,
+			gap, centerCSS, inner, ruleCol)
 	case TitleMarkDoubleRule:
-		return fmt.Sprintf(`<header style="margin-bottom:34px"><h1 class="doc-title" style="text-align:center">%s</h1><div style="height:7px;margin-top:18px;border-top:3px solid %s;border-bottom:1px solid %s"></div></header>`,
-			escTitle, uiColorCSS(pal.Divider), uiColorCSS(pal.Divider))
+		dc := uiColorCSS(orC(ts.RuleColor, pal.Divider))
+		return fmt.Sprintf(`<header style="margin-bottom:%.0fpx"><h1 class="doc-title" style="text-align:center">%s</h1><div style="height:7px;margin-top:18px;border-top:3px solid %s;border-bottom:1px solid %s"></div></header>`,
+			gap, inner, dc, dc)
+	case TitleMarkRing:
+		return fmt.Sprintf(`<header style="margin-bottom:%.0fpx"><h1 class="doc-title"%s>%s</h1><div style="display:flex;align-items:center;gap:10px;margin-top:18px"><span style="width:10px;height:10px;border-radius:50%%;border:1.2px solid %s;flex-shrink:0"></span><div style="flex:1;height:1px;background:%s"></div></div></header>`,
+			gap, centerCSS, inner, ruleCol, ruleCol)
+	case TitleMarkOffset:
+		return fmt.Sprintf(`<header style="position:relative;margin-bottom:%.0fpx;padding-bottom:8px"><div style="position:absolute;left:6px;top:10px;right:18%%;bottom:0;background:%s"></div><h1 class="doc-title" style="position:relative">%s</h1></header>`,
+			gap, ruleCol, inner)
 	case TitleMarkHighlight:
-		ink := uiColorCSS(ui.Color{R: pal.Accent.R, G: pal.Accent.G, B: pal.Accent.B, A: 105})
-		return fmt.Sprintf(`<header style="margin-bottom:36px"><h1 class="doc-title"><span style="background:linear-gradient(transparent 50%%,%s 50%%,%s 88%%,transparent 88%%);box-decoration-break:clone">%s</span></h1></header>`,
-			ink, ink, escTitle)
+		rc := orC(ts.RuleColor, pal.Accent)
+		ink := uiColorCSS(ui.Color{R: rc.R, G: rc.G, B: rc.B, A: 105})
+		return fmt.Sprintf(`<header style="margin-bottom:%.0fpx"><h1 class="doc-title"><span style="background:linear-gradient(transparent 50%%,%s 50%%,%s 88%%,transparent 88%%);box-decoration-break:clone">%s</span></h1></header>`,
+			gap, ink, ink, inner)
 	case TitleMarkCursor:
-		return fmt.Sprintf(`<header style="margin-bottom:36px"><h1 class="doc-title">%s<span style="display:inline-block;vertical-align:middle;margin-left:10px;width:%.1fpx;height:%.1fpx;background:%s"></span></h1></header>`,
-			escTitle, pal.TitleSize*0.55, pal.TitleSize*0.91, uiColorCSS(pal.Accent))
+		return fmt.Sprintf(`<header style="margin-bottom:%.0fpx"><h1 class="doc-title">%s<span style="display:inline-block;vertical-align:middle;margin-left:8px;width:%.1fpx;height:%.1fpx;background:%s"></span></h1></header>`,
+			gap, inner, pal.TitleSize*0.52, pal.TitleSize*0.88, uiColorCSS(pal.Accent))
 	case TitleMarkBand:
 		top, right, _, left := pal.Margins()
 		return fmt.Sprintf(`<header style="margin:-%.0fpx -%.0fpx 52px -%.0fpx;padding:%.0fpx %.0fpx 44px %.0fpx;background:%s"><h1 class="doc-title" style="color:%s">%s</h1></header>`,
-			top, right, left, top, right, left, uiColorCSS(pal.Accent), uiColorCSS(pal.Accent2), escTitle)
+			top, right, left, top, right, left, uiColorCSS(pal.Accent), uiColorCSS(pal.Accent2), inner)
 	default: // TitleMarkRule
-		return fmt.Sprintf(`<header style="margin-bottom:36px"><h1 class="doc-title">%s</h1><div style="height:2px;margin-top:20px;background:%s"></div></header>`,
-			escTitle, uiColorCSS(pal.Title))
+		rc := uiColorCSS(orC(ts.RuleColor, pal.Title))
+		rw := orF(ts.RuleWidth, 1) * 100
+		rh := orF(ts.RuleThick, 2)
+		return fmt.Sprintf(`<header style="margin-bottom:%.0fpx"><h1 class="doc-title"%s>%s</h1><div style="width:%.0f%%;height:%.1fpx;margin-top:20px;background:%s"></div></header>`,
+			gap, centerCSS, inner, rw, rh, rc)
 	}
 }
 
-func renderHTMLSpans(out *strings.Builder, spans []model.Span, pal PaperThemeSpec) {
+func renderHTMLFooter(pal PaperThemeSpec, legacy bool, vars templateVars) string {
+	if legacy {
+		return fmt.Sprintf(`<footer class="doc-footer" style="padding-top:16px;border-top:1px solid %s"><span>%s</span><span>%s</span></footer>`,
+			uiColorCSS(pal.Divider), watermarkLabel, vars.expand("{date}"))
+	}
+	fs := pal.Style.Footer
+	left := vars.expand(fs.Left)
+	center := vars.expand(fs.Center)
+	right := vars.expand(fs.Right)
+	if left == "" && center == "" && right == "" {
+		left = watermarkLabel
+		right = vars.expand("{date}")
+	}
+	if fs.Upper {
+		left = strings.ToUpper(left)
+		center = strings.ToUpper(center)
+		right = strings.ToUpper(right)
+	}
+	fam := htmlFontStack(orS(fs.Family, pal.BodyFamily))
+	sz := orF(fs.Size, 13)
+	col := uiColorCSS(orC(fs.Color, pal.Secondary))
+	rCol := uiColorCSS(orC(fs.RightColor, orC(fs.Color, pal.Secondary)))
+	rc := uiColorCSS(orC(fs.RuleColor, pal.Divider))
+
+	var bdr string
+	switch fs.Rule {
+	case FooterLine:
+		bdr = fmt.Sprintf("padding-top:14px;border-top:1px solid %s;", rc)
+	case FooterDashed:
+		bdr = fmt.Sprintf("padding-top:14px;border-top:1.5px dashed %s;", rc)
+	}
+	style := fmt.Sprintf(`%smargin-top:%.0fpx;font-family:%s;font-size:%.0fpx;letter-spacing:%.2fem;color:%s`,
+		bdr, orF(fs.Gap, 24), fam, sz, fs.Track, col)
+
+	if fs.Rule == FooterFlank && center != "" {
+		return fmt.Sprintf(`<footer class="doc-footer" style="%s"><span style="flex:1;border-top:1px dotted %s"></span><span>%s</span><span style="flex:1;border-top:1px dotted %s"></span></footer>`,
+			style, rc, escapeHTMLText(center), rc)
+	}
+	if center != "" && left == "" && right == "" {
+		return fmt.Sprintf(`<footer class="doc-footer" style="%s;justify-content:center"><span>%s</span></footer>`, style, escapeHTMLText(center))
+	}
+
+	var chips strings.Builder
+	for _, sw := range fs.Swatches {
+		chips.WriteString(fmt.Sprintf(`<span style="display:inline-block;width:12px;height:12px;background:%s;margin-left:4px;vertical-align:middle"></span>`, uiColorCSS(sw)))
+	}
+	return fmt.Sprintf(`<footer class="doc-footer" style="%s"><span>%s%s</span><span style="color:%s">%s</span></footer>`,
+		style, escapeHTMLText(left), chips.String(), rCol, escapeHTMLText(right))
+}
+
+func renderHTMLSpans(out *strings.Builder, spans []model.Span, pal PaperThemeSpec, legacy bool) {
 	linkFG := pal.LinkFG()
+	inl := pal.Style.Inline
 	for _, sp := range spans {
 		var openTags, closeTags []string
 		fgColor, hasFG := resolveSpanColor(sp.FGColor, false, pal)
@@ -222,23 +730,39 @@ func renderHTMLSpans(out *strings.Builder, spans []model.Span, pal PaperThemeSpe
 			if hasFG {
 				linkStyle = uiColorCSS(fgColor)
 			}
-			openTags = append(openTags, fmt.Sprintf(`<a href="%s" style="color:%s;text-decoration:underline">`, escapeAttrValue(sp.Link), linkStyle))
+			openTags = append(openTags, fmt.Sprintf(`<a href="%s" style="color:%s">`, escapeAttrValue(sp.Link), linkStyle))
 			closeTags = append(closeTags, "</a>")
 		}
 		var css strings.Builder
-		if hasFG {
-			css.WriteString("color:")
-			css.WriteString(uiColorCSS(fgColor))
-			css.WriteByte(';')
-		} else if sp.Link != "" {
-			css.WriteString("color:")
-			css.WriteString(uiColorCSS(linkFG))
-			css.WriteByte(';')
+		if !legacy && isDefaultHighlightSpan(sp) && inl.Highlight != nil {
+			hl := inl.Highlight
+			if hl.BG.A > 0 {
+				css.WriteString("background-color:" + uiColorCSS(hl.BG) + ";padding:1px 3px;border-radius:3px;")
+			}
+			if hl.FG.A > 0 && !hasFG {
+				css.WriteString("color:" + uiColorCSS(hl.FG) + ";")
+			}
+			if hl.Weight > 0 {
+				css.WriteString(fmt.Sprintf("font-weight:%d;", hl.Weight))
+			}
+			if hl.Rule.A > 0 {
+				css.WriteString(fmt.Sprintf("border-bottom:%.1fpx solid %s;", orF(hl.RuleW, 1.5), uiColorCSS(hl.Rule)))
+			}
+			if hasFG {
+				css.WriteString("color:" + uiColorCSS(fgColor) + ";")
+			}
+		} else {
+			if hasFG {
+				css.WriteString("color:" + uiColorCSS(fgColor) + ";")
+			} else if !legacy && sp.Marks&model.MarkBold != 0 && inl.BoldColor.A > 0 {
+				css.WriteString("color:" + uiColorCSS(inl.BoldColor) + ";")
+			}
+			if c, ok := resolveSpanColor(sp.BGColor, true, pal); ok {
+				css.WriteString("background-color:" + uiColorCSS(c) + ";padding:1px 3px;border-radius:3px;")
+			}
 		}
-		if c, ok := resolveSpanColor(sp.BGColor, true, pal); ok {
-			css.WriteString("background-color:")
-			css.WriteString(uiColorCSS(c))
-			css.WriteString(";padding:1px 3px;border-radius:3px;")
+		if !legacy && sp.Marks&model.MarkBold != 0 && inl.BoldWeight > 0 {
+			css.WriteString(fmt.Sprintf("font-weight:%d;", inl.BoldWeight))
 		}
 		if css.Len() > 0 {
 			openTags = append(openTags, fmt.Sprintf(`<span style="%s">`, css.String()))
@@ -274,69 +798,160 @@ func renderHTMLSpans(out *strings.Builder, spans []model.Span, pal PaperThemeSpe
 	}
 }
 
-func renderHTMLList(out *strings.Builder, items []model.Block, num *listNumbering, pal PaperThemeSpec) {
+func renderHTMLList(out *strings.Builder, items []model.Block, num *listNumbering, pal PaperThemeSpec, legacy bool) {
 	if len(items) == 0 {
 		return
 	}
 	first := items[0]
-	openTag, closeTag := "<ul>", "</ul>"
-	switch first.Kind {
-	case model.BlockNumbered:
-		if first.ListIndex > 1 {
-			openTag = fmt.Sprintf(`<ol start="%d">`, first.ListIndex)
-		} else {
-			openTag = "<ol>"
+	if legacy {
+		openTag, closeTag := "<ul>", "</ul>"
+		switch first.Kind {
+		case model.BlockNumbered:
+			if first.ListIndex > 1 {
+				openTag = fmt.Sprintf(`<ol start="%d">`, first.ListIndex)
+			} else {
+				openTag = "<ol>"
+			}
+			closeTag = "</ol>"
+		case model.BlockTodo:
+			openTag = `<ul class="custom-list">`
 		}
-		closeTag = "</ol>"
-	case model.BlockTodo:
-		openTag = `<ul class="todo-list">`
+		out.WriteString(openTag + "\n")
+		for i := range items {
+			it := &items[i]
+			num.next(it)
+			styleAttr := ""
+			if it.Indent > 0 {
+				styleAttr = fmt.Sprintf(` style="margin-left:%dpx"`, it.Indent*10)
+			}
+			if it.Kind == model.BlockTodo {
+				chk := ""
+				if it.Checked {
+					chk = " checked"
+				}
+				out.WriteString(fmt.Sprintf(`<li%s><input type="checkbox" disabled%s> `, styleAttr, chk))
+			} else {
+				out.WriteString(fmt.Sprintf(`<li%s>`, styleAttr))
+			}
+			renderHTMLSpans(out, it.Spans, pal, legacy)
+			out.WriteString("</li>\n")
+		}
+		out.WriteString(closeTag + "\n")
+		return
 	}
-	out.WriteString(openTag)
-	out.WriteByte('\n')
+
+	ls := pal.Style.List
+	out.WriteString(`<ul class="custom-list">` + "\n")
 	for i := range items {
 		it := &items[i]
-		num.next(it)
-		styleAttr := ""
+		ord := num.next(it)
+		indentCSS := ""
 		if it.Indent > 0 {
-			styleAttr = fmt.Sprintf(` style="margin-left:%dpx"`, it.Indent*10)
+			indentCSS = fmt.Sprintf("margin-left:%dpx;", it.Indent*12)
 		}
-		if it.Kind == model.BlockTodo {
-			chk := ""
-			if it.Checked {
-				chk = " checked"
+		out.WriteString(fmt.Sprintf(`<li style="%sdisplay:flex;gap:10px;align-items:baseline;margin:%.0fpx 0">`, indentCSS, orF(ls.Gap, 4)))
+		out.WriteString(renderHTMLListMarker(it, ord, pal))
+		var bodyWrapOpen, bodyWrapClose string
+		if it.Kind == model.BlockTodo && it.Checked {
+			var st strings.Builder
+			if ls.DoneFG.A > 0 {
+				st.WriteString("color:" + uiColorCSS(ls.DoneFG) + ";")
 			}
-			out.WriteString(fmt.Sprintf(`<li%s><input type="checkbox" disabled%s> `, styleAttr, chk))
-		} else {
-			out.WriteString(fmt.Sprintf(`<li%s>`, styleAttr))
+			if ls.DoneStrike {
+				st.WriteString("text-decoration:line-through;")
+			}
+			if st.Len() > 0 {
+				bodyWrapOpen = fmt.Sprintf(`<span style="%s">`, st.String())
+				bodyWrapClose = `</span>`
+			}
 		}
-		renderHTMLSpans(out, it.Spans, pal)
-		out.WriteString("</li>\n")
+		out.WriteString(`<span>` + bodyWrapOpen)
+		renderHTMLSpans(out, it.Spans, pal, legacy)
+		out.WriteString(bodyWrapClose + `</span></li>` + "\n")
 	}
-	out.WriteString(closeTag)
-	out.WriteByte('\n')
+	out.WriteString("</ul>\n")
 }
 
-func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal PaperThemeSpec) {
+func renderHTMLListMarker(it *model.Block, ord int, pal PaperThemeSpec) string {
+	ls := pal.Style.List
+	switch it.Kind {
+	case model.BlockNumbered:
+		nfam := htmlFontStack(orS(ls.NumberFont, pal.BodyFamily))
+		ncol := uiColorCSS(orC(ls.NumberColor, pal.Title))
+		return fmt.Sprintf(`<span style="font-family:%s;font-weight:600;color:%s;flex-shrink:0">%s</span>`,
+			nfam, ncol, escapeHTMLText(formatListOrdinal(ord, ls.Number)))
+	case model.BlockTodo:
+		bd := uiColorCSS(orC(ls.TodoBorder, pal.Accent))
+		ck := uiColorCSS(orC(ls.TodoCheck, pal.Accent))
+		switch ls.Todo {
+		case TodoText:
+			if it.Checked {
+				return fmt.Sprintf(`<span style="font-family:%s;color:%s;flex-shrink:0">[x]</span>`, htmlFontStack(fontMono), ck)
+			}
+			return fmt.Sprintf(`<span style="font-family:%s;color:%s;flex-shrink:0">[ ]</span>`, htmlFontStack(fontMono), bd)
+		case TodoRing:
+			bg := "transparent"
+			if it.Checked {
+				bg = ck
+			}
+			return fmt.Sprintf(`<span style="display:inline-block;width:11px;height:11px;border-radius:50%%;border:1.3px solid %s;background:%s;flex-shrink:0;transform:translateY(1px)"></span>`, bd, bg)
+		default:
+			mark := ""
+			if it.Checked {
+				mark = fmt.Sprintf(`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="%s" stroke-width="3" aria-hidden="true"><path d="M4 13l5 5 11-12"/></svg>`, ck)
+			}
+			return fmt.Sprintf(`<span style="display:inline-flex;width:14px;height:14px;border:1.5px solid %s;border-radius:3px;align-items:center;justify-content:center;flex-shrink:0;transform:translateY(2px)">%s</span>`, bd, mark)
+		}
+	default:
+		bcol := uiColorCSS(orC(ls.BulletColor, pal.Accent))
+		sz := orF(ls.BulletSize, 6.5)
+		switch ls.Bullet {
+		case BulletSquare:
+			return fmt.Sprintf(`<span style="display:inline-block;width:%.0fpx;height:%.0fpx;background:%s;flex-shrink:0;transform:translateY(-1px)"></span>`, sz, sz, bcol)
+		case BulletRing:
+			return fmt.Sprintf(`<span style="display:inline-block;width:%.0fpx;height:%.0fpx;border-radius:50%%;border:1.3px solid %s;flex-shrink:0"></span>`, sz, sz, bcol)
+		case BulletDash:
+			return fmt.Sprintf(`<span style="font-family:%s;color:%s;flex-shrink:0">–</span>`, htmlFontStack(fontMono), bcol)
+		case BulletArrow:
+			return fmt.Sprintf(`<span style="font-family:%s;color:%s;flex-shrink:0">→</span>`, htmlFontStack(fontMono), bcol)
+		case BulletMiddot:
+			return fmt.Sprintf(`<span style="color:%s;font-weight:700;flex-shrink:0">·</span>`, bcol)
+		default:
+			return fmt.Sprintf(`<span style="display:inline-block;width:%.0fpx;height:%.0fpx;border-radius:50%%;background:%s;flex-shrink:0;transform:translateY(-1px)"></span>`, sz, sz, bcol)
+		}
+	}
+}
+
+func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal PaperThemeSpec, legacy bool, st *htmlRenderState) {
 	switch {
 	case b.Kind.IsHeading():
 		lvl := b.Kind.HeadingLevel()
-		out.WriteString(fmt.Sprintf("<h%d>", lvl))
-		if lvl == 2 && pal.Theme == model.ExportThemeRiso {
-			out.WriteString(`<span class="riso-h2">`)
-			renderHTMLSpans(out, b.Spans, pal)
-			out.WriteString(`</span>`)
-		} else {
-			renderHTMLSpans(out, b.Spans, pal)
+		if lvl == 2 {
+			st.h2Count++
 		}
-		out.WriteString(fmt.Sprintf("</h%d>\n", lvl))
+		renderHTMLHeading(out, b, lvl, st.h2Count, pal, legacy)
 
 	case b.Kind == model.BlockDivider:
-		out.WriteString("<hr>\n")
+		ds := pal.Style.Divider
+		if !legacy && ds.Kind == DividerText && ds.Text != "" {
+			out.WriteString(fmt.Sprintf(`<div role="separator" style="text-align:center;margin:20px 0;color:%s;letter-spacing:%.2fem">%s</div>`+"\n",
+				uiColorCSS(orC(ds.Color, pal.Divider)), orF(ds.Track, 0.25), escapeHTMLText(ds.Text)))
+		} else if !legacy && ds.Kind == DividerRepeat && ds.Text != "" {
+			out.WriteString(fmt.Sprintf(`<div role="separator" style="margin:18px 0;color:%s;font-family:%s;overflow:hidden;white-space:nowrap">%s</div>`+"\n",
+				uiColorCSS(orC(ds.Color, pal.Divider)), htmlFontStack(fontMono), escapeHTMLText(strings.Repeat(ds.Text, 80))))
+		} else {
+			w := float32(1)
+			c := pal.Divider
+			if !legacy {
+				w = orF(ds.Width, 1)
+				c = orC(ds.Color, pal.Divider)
+			}
+			out.WriteString(fmt.Sprintf(`<hr style="border-top:%.1fpx solid %s">`+"\n", w, uiColorCSS(c)))
+		}
 
 	case b.Kind == model.BlockQuote:
-		out.WriteString("<blockquote><p>")
-		renderHTMLSpans(out, b.Spans, pal)
-		out.WriteString("</p></blockquote>\n")
+		st.quoteOrd++
+		renderHTMLQuote(out, b, st.quoteOrd, pal, legacy)
 
 	case b.Kind == model.BlockCallout:
 		bg, border, accent, title := pal.CalloutColors(b.Callout)
@@ -344,50 +959,31 @@ func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal 
 			`<div class="callout callout-%s" style="background:%s;border-left-color:%s;box-shadow:inset 0 0 0 1px %s"><div class="callout-title" style="color:%s">%s</div><div>`,
 			strings.ToLower(title), uiColorCSS(bg), uiColorCSS(accent), uiColorCSS(border), uiColorCSS(accent), title,
 		))
-		renderHTMLSpans(out, b.Spans, pal)
+		renderHTMLSpans(out, b.Spans, pal, legacy)
 		out.WriteString("</div></div>\n")
 
 	case b.Kind == model.BlockCode:
 		cls := ""
-		if b.Language != "" && b.Language != "yaml-frontmatter" {
-			cls = fmt.Sprintf(` class="language-%s"`, escapeAttrValue(b.Language))
+		lang := strings.TrimSpace(b.Language)
+		if lang != "" && lang != "yaml-frontmatter" {
+			cls = fmt.Sprintf(` class="language-%s"`, escapeAttrValue(lang))
 		}
-		out.WriteString(fmt.Sprintf("<pre><code%s>%s</code></pre>\n", cls, escapeHTMLText(b.Code)))
+		cs := pal.Style.Code
+		if !legacy && cs.Kind == CodeFenced {
+			lbl := uiColorCSS(orC(cs.Label, pal.Secondary))
+			out.WriteString(fmt.Sprintf("<pre><span style=\"color:%s\">```%s</span>\n<code%s>%s</code>\n<span style=\"color:%s\">```</span></pre>\n",
+				lbl, escapeHTMLText(lang), cls, escapeHTMLText(b.Code), lbl))
+		} else {
+			lblHTML := ""
+			if !legacy && cs.Kind == CodeBox && !cs.NoLabel && lang != "" && lang != "yaml-frontmatter" {
+				lblHTML = fmt.Sprintf(`<div style="font-size:11px;font-weight:600;letter-spacing:.08em;color:%s;margin-bottom:6px">%s</div>`,
+					uiColorCSS(orC(cs.Label, pal.Secondary)), escapeHTMLText(strings.ToUpper(lang)))
+			}
+			out.WriteString(fmt.Sprintf("<pre>%s<code%s>%s</code></pre>\n", lblHTML, cls, escapeHTMLText(b.Code)))
+		}
 
 	case b.Kind == model.BlockTable && b.Table != nil:
-		t := b.Table
-		out.WriteString("<table>\n")
-		if len(t.Widths) > 0 {
-			var total float32
-			for _, w := range t.Widths {
-				total += w
-			}
-			if total > 0 {
-				out.WriteString("<colgroup>")
-				for _, w := range t.Widths {
-					out.WriteString(fmt.Sprintf(`<col style="width:%.2f%%">`, w/total*100))
-				}
-				out.WriteString("</colgroup>\n")
-			}
-		}
-		for r, row := range t.Rows {
-			out.WriteString("<tr>")
-			tag := "td"
-			if r == 0 {
-				tag = "th"
-			}
-			for c, cell := range row {
-				style := ""
-				if c < len(t.Aligns) && t.Aligns[c] != model.ColAlignNone {
-					style = fmt.Sprintf(` style="text-align:%s"`, t.Aligns[c])
-				}
-				out.WriteString("<" + tag + style + ">")
-				renderHTMLSpans(out, cell.Spans, pal)
-				out.WriteString("</" + tag + ">")
-			}
-			out.WriteString("</tr>\n")
-		}
-		out.WriteString("</table>\n")
+		renderHTMLTable(out, b.Table, pal, legacy)
 
 	case b.Kind == model.BlockImage:
 		src := b.ImageSrc
@@ -433,9 +1029,220 @@ func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal 
 			style = fmt.Sprintf(` style="margin-left:%dpx"`, b.Indent*12)
 		}
 		out.WriteString("<p" + style + ">")
-		renderHTMLSpans(out, b.Spans, pal)
+		renderHTMLSpans(out, b.Spans, pal, legacy)
 		out.WriteString("</p>\n")
 	}
+}
+
+func renderHTMLHeading(out *strings.Builder, b *model.Block, lvl, h2Idx int, pal PaperThemeSpec, legacy bool) {
+	hs := pal.Style.Heading
+	if legacy {
+		out.WriteString(fmt.Sprintf("<h%d>", lvl))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString(fmt.Sprintf("</h%d>\n", lvl))
+		return
+	}
+	uCSS := ""
+	if lvl == 2 && hs.Underline {
+		uCSS = fmt.Sprintf(";padding-bottom:5px;border-bottom:1px solid %s", uiColorCSS(orC(hs.RuleColor, pal.Divider)))
+	}
+	if hs.Prefix == HeadPrefixHashes {
+		out.WriteString(fmt.Sprintf(`<h%d style="margin-top:%.0fpx%s"><span style="color:%s">%s </span>`,
+			lvl, orF(hs.TopGap, 16), uCSS, uiColorCSS(orC(hs.PrefixColor, pal.Secondary)), strings.Repeat("#", lvl)))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString(fmt.Sprintf("</h%d>\n", lvl))
+		return
+	}
+	if lvl == 2 {
+		switch hs.Prefix {
+		case HeadPrefixDot:
+			dc := orC(hs.Accent, pal.Accent)
+			if h2Idx%2 == 0 && hs.Accent2.A > 0 {
+				dc = hs.Accent2
+			}
+			out.WriteString(fmt.Sprintf(`<h2 style="display:flex;align-items:center;gap:10px;margin-top:%.0fpx%s"><span style="width:12px;height:12px;border-radius:50%%;background:%s;flex-shrink:0"></span><span>`,
+				orF(hs.TopGap, 18), uCSS, uiColorCSS(dc)))
+			renderHTMLSpans(out, b.Spans, pal, legacy)
+			out.WriteString("</span></h2>\n")
+			return
+		case HeadPrefixTag:
+			out.WriteString(fmt.Sprintf(`<div style="display:flex;align-items:center;gap:12px;margin:%.0fpx 0 10px"><span style="font-family:%s;font-size:13px;font-weight:700;color:%s;background:%s;padding:2px 6px">%02d</span><h2 style="margin:0">`,
+				orF(hs.TopGap, 20), htmlFontStack(orS(hs.PrefixFont, fontMono)), uiColorCSS(orC(hs.TagFG, ui.RGB(255, 255, 255))), uiColorCSS(orC(hs.Accent, pal.Accent)), max(h2Idx, 1)))
+			renderHTMLSpans(out, b.Spans, pal, legacy)
+			out.WriteString(fmt.Sprintf(`</h2><div style="flex:1;height:4px;background:%s"></div></div>`+"\n", uiColorCSS(orC(hs.RuleColor, pal.Accent))))
+			return
+		case HeadPrefixLabel:
+			pc := uiColorCSS(orC(hs.PrefixColor, pal.Accent))
+			rc := orC(hs.RuleColor, pal.Accent)
+			out.WriteString(fmt.Sprintf(`<div style="display:flex;align-items:center;gap:12px;margin:%.0fpx 0 6px;font-family:%s;font-size:11px;letter-spacing:.24em;color:%s"><span>%02d —</span><div style="flex:1;height:1px;background:linear-gradient(90deg,%s,transparent)"></div></div><h2 style="margin:0 0 10px">`,
+				orF(hs.TopGap, 20), htmlFontStack(orS(hs.PrefixFont, fontMono)), pc, max(h2Idx, 1), uiColorCSS(rc.Alpha(0.6))))
+			renderHTMLSpans(out, b.Spans, pal, legacy)
+			out.WriteString("</h2>\n")
+			return
+		case HeadPrefixNumber:
+			out.WriteString(fmt.Sprintf(`<div style="display:flex;align-items:baseline;gap:14px;margin:%.0fpx 0 10px"><span style="font-family:%s;font-size:12px;letter-spacing:.18em;color:%s">%02d</span><h2 style="margin:0">`,
+				orF(hs.TopGap, 20), htmlFontStack(orS(hs.PrefixFont, fontMono)), uiColorCSS(orC(hs.PrefixColor, pal.Accent)), max(h2Idx, 1)))
+			renderHTMLSpans(out, b.Spans, pal, legacy)
+			out.WriteString("</h2></div>\n")
+			return
+		}
+	}
+	out.WriteString(fmt.Sprintf(`<h%d style="margin-top:%.0fpx%s">`, lvl, orF(hs.TopGap, 16), uCSS))
+	renderHTMLSpans(out, b.Spans, pal, legacy)
+	out.WriteString(fmt.Sprintf("</h%d>\n", lvl))
+}
+
+func renderHTMLQuote(out *strings.Builder, b *model.Block, ord int, pal PaperThemeSpec, legacy bool) {
+	if legacy {
+		out.WriteString(fmt.Sprintf(`<blockquote style="padding:12px 20px;border-left:4px solid %s;background:%s;border-radius:%.0fpx;color:%s"><p style="margin:0">`,
+			uiColorCSS(pal.QuoteBar), uiColorCSS(pal.QuoteBG), pal.BlockRadius(), uiColorCSS(pal.QuoteFG)))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString("</p></blockquote>\n")
+		return
+	}
+	qs := pal.Style.Quote
+	fam := htmlFontStack(orS(qs.Family, pal.BodyFamily))
+	sz := orF(qs.Size, pal.BodySize)
+	lead := orF(qs.Leading, pal.Leading)
+	wt := orI(qs.Weight, 400)
+	it := ""
+	if qs.Italic {
+		it = "font-style:italic;"
+	}
+	accent := uiColorCSS(orC(qs.Accent, pal.QuoteBar))
+	fg := uiColorCSS(pal.QuoteFG)
+	fontCSS := fmt.Sprintf("font-family:%s;font-size:%.1fpx;line-height:%.2f;font-weight:%d;%scolor:%s;", fam, sz, lead, wt, it, fg)
+
+	switch qs.Kind {
+	case QuoteIndent:
+		out.WriteString(fmt.Sprintf(`<blockquote style="%smargin-left:%.0fpx;padding:%.0fpx 0">`, fontCSS, qs.Indent, qs.PadY))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString("</blockquote>\n")
+	case QuoteSticky:
+		out.WriteString(fmt.Sprintf(`<blockquote style="%smargin:18px 0 18px auto;max-width:%.0fpx;background:%s;padding:%.0fpx %.0fpx;transform:rotate(%.1fdeg);box-shadow:0 6px 14px rgba(110,80,20,.16)">`,
+			fontCSS, orF(qs.Width, 330), uiColorCSS(pal.QuoteBG), orF(qs.PadY, 16), orF(qs.PadX, 20), qs.Angle))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString("</blockquote>\n")
+	case QuoteOffset:
+		out.WriteString(fmt.Sprintf(`<div style="position:relative;margin:18px 6px 24px 0"><div style="position:absolute;left:6px;top:6px;right:-6px;bottom:-6px;border:2px solid %s"></div><blockquote style="position:relative;margin:0;background:%s;padding:%.0fpx %.0fpx;%s">`,
+			accent, uiColorCSS(pal.QuoteBG), orF(qs.PadY, 18), orF(qs.PadX, 24), fontCSS))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString("</blockquote></div>\n")
+	case QuotePull:
+		barCol := uiColorCSS(pal.QuoteBar)
+		out.WriteString(fmt.Sprintf(`<blockquote style="%stext-align:center;border-top:3px solid %s;border-bottom:1px solid %s;padding:%.0fpx 16px"><span style="color:%s">「</span>`,
+			fontCSS, barCol, barCol, orF(qs.PadY, 20), accent))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString(fmt.Sprintf(`<span style="color:%s">」</span></blockquote>`+"\n", accent))
+	case QuoteBigMark:
+		cardCSS := ""
+		if qs.Card {
+			cardCSS = fmt.Sprintf("background:%s;border:1px solid %s;border-radius:14px;", uiColorCSS(pal.QuoteBG), uiColorCSS(pal.CodeBorder))
+		}
+		out.WriteString(fmt.Sprintf(`<blockquote style="position:relative;%s%spadding:%.0fpx %.0fpx"><div aria-hidden="true" style="font-family:Georgia,serif;font-size:48px;line-height:.7;color:%s;margin-bottom:6px">“</div>`,
+			cardCSS, fontCSS, orF(qs.PadY, 16), orF(qs.PadX, 24), accent))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString("</blockquote>\n")
+	case QuoteFramed:
+		lblHTML := ""
+		if qs.Label != "" {
+			lbl := strings.ReplaceAll(qs.Label, "{n}", fmt.Sprintf("%02d", ord))
+			lblHTML = fmt.Sprintf(`<span style="position:absolute;left:12px;top:-8px;background:%s;padding:0 6px;font-family:%s;font-size:10px;letter-spacing:.2em;color:%s">%s</span>`,
+				uiColorCSS(pal.InnerCanvas), htmlFontStack(fontMono), accent, escapeHTMLText(lbl))
+		}
+		out.WriteString(fmt.Sprintf(`<blockquote style="position:relative;border:1px solid %s;padding:%.0fpx %.0fpx;%s">%s`,
+			accent, orF(qs.PadY, 20), orF(qs.PadX, 24), fontCSS, lblHTML))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString("</blockquote>\n")
+	case QuotePrefix:
+		out.WriteString(fmt.Sprintf(`<blockquote style="%spadding:0"><span style="color:%s">&gt; </span>`, fontCSS, accent))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString("</blockquote>\n")
+	default: // QuoteBar
+		bgCSS := ""
+		if pal.QuoteBG.A > 0 {
+			bgCSS = fmt.Sprintf("background:%s;border-radius:%.0fpx;", uiColorCSS(pal.QuoteBG), pal.BlockRadius())
+		}
+		glowCSS := ""
+		if qs.Glow.A > 0 {
+			glowCSS = fmt.Sprintf("box-shadow:-6px 0 14px -8px %s;", uiColorCSS(qs.Glow))
+		}
+		out.WriteString(fmt.Sprintf(`<blockquote style="%s%s%sborder-left:%.0fpx solid %s;padding:%.0fpx %.0fpx">`,
+			fontCSS, bgCSS, glowCSS, orF(qs.BarW, 4), accent, orF(qs.PadY, 6), orF(qs.PadX, 20)))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString("</blockquote>\n")
+	}
+}
+
+func renderHTMLTable(out *strings.Builder, t *model.TableData, pal PaperThemeSpec, legacy bool) {
+	ts := pal.Style.Table
+	out.WriteString("<table>\n")
+	if len(t.Widths) > 0 {
+		var total float32
+		for _, w := range t.Widths {
+			total += w
+		}
+		if total > 0 {
+			out.WriteString("<colgroup>")
+			for _, w := range t.Widths {
+				out.WriteString(fmt.Sprintf(`<col style="width:%.2f%%">`, w/total*100))
+			}
+			out.WriteString("</colgroup>\n")
+		}
+	}
+	for r, row := range t.Rows {
+		isHeader := r == 0 && !t.NoHeaderRow
+		if isHeader {
+			out.WriteString("<thead><tr>")
+		} else if r == 0 || (r == 1 && !t.NoHeaderRow) {
+			out.WriteString("<tbody><tr>")
+		} else {
+			out.WriteString("<tr>")
+		}
+		tag := "td"
+		if isHeader {
+			tag = "th"
+		}
+		for c, cell := range row {
+			var cellCSS strings.Builder
+			plain := cell.PlainText()
+			isNum := !legacy && !isHeader && ts.NumFamily != "" && isNumericCellText(plain)
+			if c < len(t.Aligns) && t.Aligns[c] != model.ColAlignNone {
+				cellCSS.WriteString(fmt.Sprintf("text-align:%s;", t.Aligns[c]))
+			} else if isNum {
+				cellCSS.WriteString("text-align:right;")
+			}
+			if !legacy && !isHeader {
+				if c == 0 && ts.FirstColor.A > 0 {
+					cellCSS.WriteString("color:" + uiColorCSS(ts.FirstColor) + ";")
+				} else if c > 0 && ts.Secondary.A > 0 {
+					cellCSS.WriteString("color:" + uiColorCSS(ts.Secondary) + ";")
+				}
+				if isNum {
+					cellCSS.WriteString("font-family:" + htmlFontStack(ts.NumFamily) + ";")
+					if ts.NumColor.A > 0 {
+						cellCSS.WriteString("color:" + uiColorCSS(ts.NumColor) + ";")
+					}
+				}
+			}
+			styleAttr := ""
+			if cellCSS.Len() > 0 {
+				styleAttr = fmt.Sprintf(` style="%s"`, cellCSS.String())
+			}
+			out.WriteString("<" + tag + styleAttr + ">")
+			renderHTMLSpans(out, cell.Spans, pal, legacy)
+			out.WriteString("</" + tag + ">")
+		}
+		if isHeader {
+			out.WriteString("</tr></thead>\n")
+		} else {
+			out.WriteString("</tr>\n")
+		}
+	}
+	if len(t.Rows) > 1 || (len(t.Rows) == 1 && t.NoHeaderRow) {
+		out.WriteString("</tbody>")
+	}
+	out.WriteString("</table>\n")
 }
 
 func escapeHTMLText(s string) string {
