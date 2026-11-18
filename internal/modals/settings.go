@@ -1071,7 +1071,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 						row.Background(pal.MenuHover)
 					}
 					if highlighted && m.fontScrollToCursor {
-						row.ScrollIntoView()
+						internalui.RevealActiveItem(row)
 						m.fontScrollToCursor = false
 					}
 					row.Children(func() {

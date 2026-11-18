@@ -879,6 +879,8 @@ func (s *Session) toggleToolbarPop(name string) {
 	}
 }
 
+type localMenuCursorKey struct{}
+
 func (s *Session) renderToolbarKindsMenu(c *ui.Context, vp ui.Rect, winW, winH float32, listsOnly bool) {
 	btnID := "tb-type"
 	if listsOnly {
@@ -919,27 +921,35 @@ func (s *Session) renderToolbarKindsMenu(c *ui.Context, vp ui.Rect, winW, winH f
 		curKind = s.doc.Blocks[s.focusedBlock].Kind
 	}
 
+	specs := make([]appUi.MenuItemSpec, 0, len(items))
+	for _, item := range items {
+		it := item
+		ic := it.icon
+		specs = append(specs, appUi.MenuItemSpec{
+			ID:      it.id,
+			Label:   it.label,
+			Icon:    &ic,
+			Checked: curKind == it.kind,
+			OnClick: func() {
+				s.SetSelectionBlockKind(it.kind, listsOnly)
+				s.toolbarPop = ""
+			},
+		})
+	}
+
 	panel := appUi.MenuSurface(ui.Column(c.Key("toolbar-kind-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
 		HandleInput(func(ev ui.InputEvent) bool {
 			return ev.Kind == ui.InputScroll
 		})
+	cur := ui.Local(panel, localMenuCursorKey{}, func() int { return -1 })
+	appUi.NavigateMenu(panel, specs, cur)
 	appUi.Probe(panel, "toolbar-kind-menu")
 	s.recordOverlayPanel("toolbar-kind-menu", panel)
 	panel.Children(func() {
 		appUi.Scroll(c.Key("toolbar-kind-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
 			ui.Column(c.Key("toolbar-kind-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
-				for _, it := range items {
-					ic := it.icon
-					appUi.MenuRow(c, appUi.MenuItemSpec{
-						ID:      it.id,
-						Label:   it.label,
-						Icon:    &ic,
-						Checked: curKind == it.kind,
-						OnClick: func() {
-							s.SetSelectionBlockKind(it.kind, listsOnly)
-							s.toolbarPop = ""
-						},
-					}, false)
+				for i, sp := range specs {
+					appUi.MenuRow(c, sp, i == *cur)
 				}
 			})
 		})
@@ -960,10 +970,42 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
 	curFG, curBG := s.selectionColors()
 
+	swatches := theme.FormatPalette(dark)
+	limit := min(len(swatches), 6)
+	bgChoices := []string{"default", "yellow"}
+	totalChoices := limit + len(bgChoices)
+
 	panel := appUi.MenuSurface(ui.Column(c.Key("palette-panel")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
 		HandleInput(func(ev ui.InputEvent) bool {
 			return ev.Kind == ui.InputScroll
 		})
+	cur := ui.Local(panel, localMenuCursorKey{}, func() int { return -1 })
+	panel.ObserveInput(func(ev ui.InputEvent) {
+		if ev.Kind == ui.InputPointerMove && *cur >= 0 {
+			*cur = -1
+		}
+	})
+	if totalChoices > 0 {
+		switch {
+		case panel.OverlayShortcut(0, ui.KeyDown):
+			*cur = (*cur + 1 + totalChoices) % totalChoices
+		case panel.OverlayShortcut(0, ui.KeyUp):
+			if *cur < 0 {
+				*cur = totalChoices - 1
+			} else {
+				*cur = (*cur - 1 + totalChoices) % totalChoices
+			}
+		case panel.OverlayShortcut(0, ui.KeyEnter) && *cur >= 0 && *cur < totalChoices:
+			if *cur < limit {
+				name := swatches[*cur].Name
+				s.ApplyColorOnSelection(&name, nil)
+			} else {
+				bg := bgChoices[*cur-limit]
+				s.ApplyColorOnSelection(nil, &bg)
+			}
+			s.toolbarPop = ""
+		}
+	}
 	appUi.Probe(panel, "palette-panel")
 	s.recordOverlayPanel("palette-panel", panel)
 
@@ -972,19 +1014,19 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 			ui.Column(c.Key("palette-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
 				ui.Text(c, theme.Tr("文字颜色", "Text color")).FontSize(theme.FontSmall).FontWeight(theme.WeightTitle).
 					TextColor(pal.MenuMuted).Padding(4, 10)
-				swatches := theme.FormatPalette(dark)
-				limit := min(len(swatches), 6)
-				for _, sw := range swatches[:limit] {
+				for i, sw := range swatches[:limit] {
 					name := sw.Name
 					lbl := sw.Zh
 					if theme.IsEn() {
 						lbl = sw.En
 					}
+					highlighted := *cur == i
 					row := ui.ButtonBase(c.Key("fg-sw-" + name)).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(8).
 						AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(lbl)
+					appUi.RevealOnHighlight(row, highlighted)
 					if curFG == name {
 						row.Background(pal.MenuChecked)
-					} else if row.Hovered() {
+					} else if highlighted || (*cur < 0 && row.Hovered()) {
 						row.Background(pal.MenuHover)
 					}
 					row.Children(func() {
@@ -1014,11 +1056,13 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 							swatchCol = cVal
 						}
 					}
+					highlighted := *cur == limit+j
 					row := ui.ButtonBase(c.Key("bg-sw-" + bgName)).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(8).
 						AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(lbl)
+					appUi.RevealOnHighlight(row, highlighted)
 					if curBG == bgName {
 						row.Background(pal.MenuChecked)
-					} else if row.Hovered() {
+					} else if highlighted || (*cur < 0 && row.Hovered()) {
 						row.Background(pal.MenuHover)
 					}
 					row.Children(func() {
@@ -1317,6 +1361,7 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 						row := ui.ButtonBase(c.Key(fmt.Sprintf("callout-opt-%d", ix))).FillWidth().Height(32).
 							PaddingX(10).Gap(8).AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).
 							Label(calloutLabel(kind))
+						appUi.RevealOnHighlight(row, highlighted)
 						if checked {
 							row.Background(pal.Selected).Border(1, pal.Accent)
 						} else if highlighted || row.Hovered() {
@@ -1428,6 +1473,23 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 				}
 				return false
 			})
+		shell.ObserveInput(func(ev ui.InputEvent) {
+			if ev.Kind == ui.InputPointerMove {
+				menu.PointerActive = true
+			}
+		})
+		if menu.Mode == menuHandle || s.needsDetachedSelectionFocus() {
+			switch {
+			case shell.OverlayShortcut(0, ui.KeyDown):
+				s.stepSlashMenu(true)
+			case shell.OverlayShortcut(0, ui.KeyUp):
+				s.stepSlashMenu(false)
+			case shell.OverlayShortcut(0, ui.KeyEnter):
+				if s.activateSlashMenu() {
+					return
+				}
+			}
+		}
 		appUi.Probe(shell, "block-menu")
 		s.recordOverlayPanel("block-menu", shell)
 
@@ -1444,17 +1506,18 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 						cmd := item.Kind
 						ic := cmdIcon(cmd)
 						row := appUi.MenuRow(c, appUi.MenuItemSpec{
-							ID:       fmt.Sprintf("block-menu-item-%d", i),
-							Label:    item.Label,
-							Shortcut: item.Hint,
-							Icon:     &ic,
-							Danger:   item.Danger,
+							ID:            fmt.Sprintf("block-menu-item-%d", i),
+							Label:         item.Label,
+							Shortcut:      item.Hint,
+							Icon:          &ic,
+							Danger:        item.Danger,
+							SuppressHover: !menu.PointerActive,
 							OnClick: func() {
 								s.executeBlockCmd(menu.BlockIdx, menu.Mode, cmd)
 							},
-						}, i == menu.ActiveIndex)
-						if i == menu.ActiveIndex && s.focusPending {
-							row.ScrollIntoView()
+						}, !menu.PointerActive && i == menu.ActiveIndex)
+						if menu.PointerActive && row.Hovered() {
+							menu.ActiveIndex = i
 						}
 					}
 				})
@@ -1552,27 +1615,16 @@ func (s *Session) renderCodeLangMenuOverlay(c *ui.Context) {
 				}
 				return false
 			})
+		cur := ui.Local(shell, localMenuCursorKey{}, func() int { return -1 })
+		appUi.NavigateMenu(shell, specs, cur)
 		appUi.Probe(shell, "code-lang-menu")
 		s.recordOverlayPanel("code-lang-menu", shell)
 		shell.Children(func() {
 			appUi.Scroll(c.Key("code-lang-scroll"), &s.codeLangScroll).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).
 				Children(func() {
 					ui.Column(c.Key("code-lang-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
-						for i, lang := range codeLanguages {
-							opt := lang
-							appUi.MenuRow(c, appUi.MenuItemSpec{
-								ID:      fmt.Sprintf("code-lang-item-%d", i),
-								Label:   opt.Label,
-								Checked: curCanon == opt.Tag,
-								OnClick: func() {
-									s.pushUndo()
-									b.Language = opt.Tag
-									b.Dirty = true
-									b.CleanSource = ""
-									s.codeLangMenuBlock = 0
-									s.markDirty()
-								},
-							}, false)
+						for i, sp := range specs {
+							appUi.MenuRow(c, sp, i == *cur)
 						}
 					})
 				})
@@ -1669,13 +1721,15 @@ func (s *Session) renderTableMenuOverlay(c *ui.Context) {
 			HandleInput(func(ev ui.InputEvent) bool {
 				return ev.Kind == ui.InputScroll
 			})
+		cur := ui.Local(shell, localMenuCursorKey{}, func() int { return -1 })
+		appUi.NavigateMenu(shell, entries, cur)
 		appUi.Probe(shell, "table-menu")
 		s.recordOverlayPanel("table-menu", shell)
 		shell.Children(func() {
 			appUi.Scroll(c.Key("table-menu-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
 				ui.Column(c.Key("table-menu-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
-					for _, it := range entries {
-						appUi.MenuRow(c, it, false)
+					for i, it := range entries {
+						appUi.MenuRow(c, it, i == *cur)
 					}
 				})
 			})

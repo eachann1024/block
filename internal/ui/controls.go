@@ -344,16 +344,17 @@ func TogglePill(c *ui.Context, id, label string, value *bool, disabled bool) boo
 
 // MenuItemSpec describes a row in an Ocean Paper floating menu.
 type MenuItemSpec struct {
-	ID         string
-	Label      string
-	Shortcut   string
-	Icon       *icons.Icon
-	Checked    bool
-	Danger     bool
-	Separator  bool
-	Disabled   bool
-	HasSubmenu bool
-	OnClick    func()
+	ID            string
+	Label         string
+	Shortcut      string
+	Icon          *icons.Icon
+	Checked       bool
+	Danger        bool
+	Separator     bool
+	Disabled      bool
+	HasSubmenu    bool
+	SuppressHover bool
+	OnClick       func()
 }
 
 // MenuRow renders one dropdown/context-menu row (thinkly-fast ui/dropdown.rs):
@@ -374,7 +375,9 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 	row := ui.ButtonBase(c).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(8).
 		AlignItems(ui.Center).Justify(ui.Start).
 		Radius(theme.RadiusControl).Cursor(cursor).Disabled(item.Disabled).DimDisabled(false).Label(item.Label)
-	hovered := (row.Hovered() || highlighted) && !item.Disabled
+	RevealOnHighlight(row, highlighted && !item.Disabled)
+	rawHover := row.Hovered() && !item.SuppressHover
+	hovered := (rawHover || highlighted) && !item.Disabled
 	pressed := row.Pressed() && !item.Disabled
 	active := hovered || pressed
 	fg, iconLine := pal.Text, pal.MenuIcon
