@@ -251,7 +251,9 @@ func (s *Session) enabledToolbarItems(caps toolbarCaps) []toolbarItemSpec {
 	var items []toolbarItemSpec
 	if !s.readOnly && s.isMarkdownNote() && s.canReplaceSelection() && s.hasNonEmptySelection() {
 		w := float32(96)
-		if theme.IsEn() {
+		if s.minimal {
+			w = 28
+		} else if theme.IsEn() {
 			w = 116
 		}
 		items = append(items, toolbarItemSpec{
@@ -516,7 +518,7 @@ func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bo
 				layout = s.cachedShapeBlock(blk.ID, plain, nil, 0, resolvedCodeFont(), 14, theme.WeightRegular, 1.5, tr.W, false)
 			} else if blk.Kind != model.BlockTable && blk.Kind != model.BlockImage && blk.Kind != model.BlockDivider {
 				plain = blk.PlainText()
-				fontSize, weight, lh := blockTextMetrics(blk.Kind)
+				fontSize, weight, lh := s.textMetrics(blk.Kind)
 				layout = s.cachedShapeBlock(blk.ID, plain, blk.Spans, idx, resolvedEditorFont(), fontSize, weight, lh, tr.W, true)
 			}
 			if layout != nil {
@@ -668,10 +670,15 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 					prevGroup = it.Group
 
 					if it.Kind == tbAIRewrite {
-						aiBtn := ui.ButtonBase(c.Key("tb-ai")).Height(28).PaddingX(8).Gap(4).
+						aiBtn := ui.ButtonBase(c.Key("tb-ai")).Height(28).
 							AlignItems(ui.Center).Radius(6).Background(pal.Selected).
 							Border(1, pal.Accent).Cursor(ui.CursorPointer).
 							Label(it.Label)
+						if s.minimal {
+							aiBtn.Width(28).Center()
+						} else {
+							aiBtn.PaddingX(8).Gap(4)
+						}
 						appUi.RichTooltip(c, aiBtn, appUi.TooltipSpec{
 							Pill:      true,
 							Placement: appUi.TooltipAbove,
@@ -679,7 +686,9 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 						})
 						aiBtn.Children(func() {
 							icons.Draw(c, icons.Sparkles, 15, pal.MonoIconColors(pal.Accent))
-							ui.Text(c, it.Label).FontSize(14).TextColor(pal.Text).SingleLine()
+							if !s.minimal {
+								ui.Text(c, it.Label).FontSize(14).TextColor(pal.Text).SingleLine()
+							}
 						})
 						appUi.Probe(aiBtn, "tb-ai")
 						s.recordOverlayBtn("tb-ai", aiBtn)

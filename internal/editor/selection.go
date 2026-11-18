@@ -1585,7 +1585,7 @@ func (s *Session) hitOffsetInRichBlock(idx int, b *model.Block, rowRect ui.Rect,
 	if ly > tr.H+4 {
 		return rlen
 	}
-	fontSize, weight, lh := blockTextMetrics(b.Kind)
+	fontSize, weight, lh := s.textMetrics(b.Kind)
 	layout := s.cachedShapeBlock(b.ID, plain, b.Spans, idx, resolvedEditorFont(), fontSize, weight, lh, tr.W, true)
 	if layout == nil {
 		return rlen
