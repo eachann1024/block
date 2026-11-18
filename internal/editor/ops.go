@@ -1840,6 +1840,11 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 		return true
 	}
 
+	// Enter on a folded heading appends a visible paragraph after its hidden section while keeping the fold shut.
+	if !s.minimal && s.isMarkdownNote() && !s.hasNonEmptySelection() && caretRune > 0 && b.Kind.IsHeading() && s.folded[b.ID] {
+		return s.enterOnFoldedHeading(idx)
+	}
+
 	// Keep the existing block's ID, annotations and metadata with its content.
 	if !s.hasNonEmptySelection() && caretRune == 0 && len(r) > 0 && b.Kind != model.BlockQuote {
 		s.pushUndo()
@@ -1918,14 +1923,13 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 }
 
 func (s *Session) canArmFirstLineDelete() bool {
-	if s.doc == nil || len(s.doc.Blocks) <= 1 {
+	if s.minimal || s.readOnly || !s.isMarkdownNote() || s.doc == nil || len(s.doc.Blocks) <= 1 {
 		return false
 	}
-	first := &s.doc.Blocks[0]
-	return first.Kind == model.BlockParagraph &&
-		first.Indent == 0 &&
-		first.PlainText() == "" &&
-		first.Table == nil
+	if s.hasNonEmptySelection() {
+		return false
+	}
+	return isPlainEmptyParagraph(&s.doc.Blocks[0])
 }
 
 func (s *Session) handleBackspaceOnBlock(idx int, text string, caretRune int) bool {
@@ -2014,6 +2018,9 @@ func (s *Session) handleBackspaceOnBlock(idx int, text string, caretRune int) bo
 	if b.PlainText() != text {
 		b.Spans = spliceSpansByTextEdit(b.Spans, b.PlainText(), text)
 	}
+	if s.handleFoldGapBackspace(idx, b) {
+		return true
+	}
 	prev := &s.doc.Blocks[idx-1]
 	s.pushUndo()
 
@@ -2074,6 +2081,7 @@ func (s *Session) spliceBlocks(start, end int, insert []model.Block) {
 	if s.doc == nil {
 		return
 	}
+	afterSplice := s.syncFoldTailsBeforeSplice(start, end, insert)
 	start = clampInt(start, 0, len(s.doc.Blocks))
 	end = clampInt(end, start, len(s.doc.Blocks))
 	next := make([]model.Block, 0, len(s.doc.Blocks)-(end-start)+len(insert))
@@ -2084,6 +2092,9 @@ func (s *Session) spliceBlocks(start, end int, insert []model.Block) {
 		next = []model.Block{{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}}
 	}
 	s.doc.Blocks = next
+	if afterSplice != nil {
+		afterSplice()
+	}
 }
 
 func (s *Session) ToggleTodo(idx int) {
@@ -2221,6 +2232,16 @@ func (s *Session) slashMenuEntries() []blockMenuItem {
 		return allHandleMenuItems(s.blockMenu.BlockIdx, n, hasFM)
 	}
 	all := allSlashItems()
+	if s.minimal {
+		filtered := make([]blockMenuItem, 0, len(all))
+		for _, it := range all {
+			if it.Kind == cmdImage {
+				continue
+			}
+			filtered = append(filtered, it)
+		}
+		all = filtered
+	}
 	q := strings.ToLower(strings.TrimSpace(s.blockMenu.Filter))
 	if q == "" {
 		return all
@@ -2669,6 +2690,7 @@ func (s *Session) ensureBlockUnfolded(idx int) {
 			lvl := prev.Kind.HeadingLevel()
 			if lvl < bLevel {
 				delete(s.folded, prev.ID)
+				delete(s.foldTails, prev.ID)
 				bLevel = lvl
 			}
 		}

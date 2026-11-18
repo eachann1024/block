@@ -94,7 +94,7 @@ func NewWorkspace(dataDir string) *Workspace {
 		surfaces:       make(map[string]*TabSurface),
 		nav:            NewNavHistory(),
 		closed:         NewClosedTabs(),
-		tabMenu:        &TabMenuState{},
+		tabMenu:        NewTabMenuState(),
 		sidebarUI:      NewSidebarUIState(),
 		historyView:    &PageHistoryView{Mode: "diff"},
 		lastSnapAt:     make(map[string]time.Time),

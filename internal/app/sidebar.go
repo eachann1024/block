@@ -49,6 +49,8 @@ type SidebarUIState struct {
 func NewSidebarUIState() *SidebarUIState {
 	return &SidebarUIState{
 		ExpandedDirs: make(map[string]bool),
+		MenuCursor:   -1,
+		MoveCursor:   -1,
 	}
 }
 
@@ -57,7 +59,7 @@ func NewSidebarUIState() *SidebarUIState {
 func (s *SidebarUIState) OpenBlankContextMenu(x, y float32) {
 	s.ClearDrag()
 	s.SwitcherOpen = false
-	s.MenuCursor, s.MoveCursor = 0, 0
+	s.MenuCursor, s.MoveCursor = -1, -1
 	s.ContextOpen = true
 	s.ContextPath = ""
 	s.ContextIsDir = false
@@ -81,7 +83,7 @@ func (s *SidebarUIState) ClosePopups() bool {
 	s.SwitcherOpen = false
 	s.ContextOpen = false
 	s.MoveSubmenuOpen = false
-	s.MenuCursor, s.MoveCursor = 0, 0
+	s.MenuCursor, s.MoveCursor = -1, -1
 	return had
 }
 
@@ -409,7 +411,6 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 						p.State.PendingMiddleOpenPath = ""
 					})
 				})
-
 				// Right-click on blank tree space (rows consume their own right-clicks).
 				if treeFocus.RightClicked() && p.ActiveNotebook != "" && sidebarContextSnapshot(p.State) == rowMenuBefore {
 					b := treeFocus.Bounds()
@@ -741,7 +742,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 	openContextMenu := func(cx, cy float32) {
 		p.State.ClearDrag()
 		p.State.SwitcherOpen = false
-		p.State.MenuCursor, p.State.MoveCursor = 0, 0
+		p.State.MenuCursor, p.State.MoveCursor = -1, -1
 		p.State.ContextOpen = true
 		p.State.ContextPath = entry.Path
 		p.State.ContextIsDir = entry.IsDir
@@ -825,6 +826,29 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 
 			c.Key("notebook-switcher-pop")
 			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
+			icPlus := icons.FolderPlus
+			add := blockui.MenuItemSpec{
+				ID:    "add-notebook",
+				Label: theme.Tr("选择文件夹…", "Choose Folder…"),
+				Icon:  &icPlus,
+				OnClick: func() {
+					p.State.ClosePopups()
+					if p.OnChooseNotebook != nil {
+						p.OnChooseNotebook()
+					}
+				},
+			}
+			choices := make([]blockui.MenuItemSpec, 0, len(p.Notebooks)+1)
+			for _, nb := range p.Notebooks {
+				choices = append(choices, blockui.MenuItemSpec{OnClick: func() {
+					p.State.ClosePopups()
+					if nb != p.ActiveNotebook && p.OnSwitchNotebook != nil {
+						p.OnSwitchNotebook(nb)
+					}
+				}})
+			}
+			choices = append(choices, add)
+			blockui.NavigateMenu(card, choices, &p.State.MenuCursor)
 			blockui.Probe(card, "notebook-switcher-pop")
 			card.Children(func() {
 				blockui.Scroll(c).MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
@@ -887,10 +911,11 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 								}
 							}
 							rowHover := row.Hovered()
+							kbActive := ix == p.State.MenuCursor
 							switch {
 							case checked:
 								row.Background(pal.MenuChecked)
-							case rowHover || nbDrop:
+							case rowHover || kbActive || nbDrop:
 								row.Background(pal.MenuHover)
 							}
 							row.Children(func() {
@@ -898,7 +923,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 									Cursor(ui.CursorPointer).Label(noteDisplayTitle(nb, true))
 								sel.Children(func() {
 									ic := pal.MonoIconColors(pal.MenuIcon)
-									if checked || rowHover {
+									if checked || rowHover || kbActive {
 										ic = pal.DuoIconColors(pal.MenuIcon)
 									}
 									icons.Draw(c, icons.Folder, theme.IconRow, ic)
@@ -909,10 +934,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 								})
 								blockui.Probe(sel, "nb-select:"+nb)
 								if sel.Clicked() {
-									p.State.ClosePopups()
-									if nb != p.ActiveNotebook && p.OnSwitchNotebook != nil {
-										p.OnSwitchNotebook(nb)
-									}
+									choices[ix].OnClick()
 								}
 								if rowHover && len(p.Notebooks) > 1 && p.OnReorderNotebooks != nil {
 									if ix > 0 {
@@ -966,18 +988,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 						if len(p.Notebooks) > 0 {
 							ui.Box(c).FillWidth().Height(1).MarginY(3).Background(pal.MenuSeparator)
 						}
-						icPlus := icons.FolderPlus
-						blockui.MenuRow(c, blockui.MenuItemSpec{
-							ID:    "add-notebook",
-							Label: theme.Tr("选择文件夹…", "Choose Folder…"),
-							Icon:  &icPlus,
-							OnClick: func() {
-								p.State.ClosePopups()
-								if p.OnChooseNotebook != nil {
-									p.OnChooseNotebook()
-								}
-							},
-						}, false)
+						blockui.MenuRow(c, add, p.State.MenuCursor == len(p.Notebooks))
 					})
 				})
 			})
@@ -1057,7 +1068,10 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 						HasSubmenu: true,
 						OnClick: func() {
 							// Hover already opens the cascade; a click must not close it again.
-							p.State.MoveSubmenuOpen = true
+							if !p.State.MoveSubmenuOpen {
+								p.State.MoveSubmenuOpen = true
+								p.State.MoveCursor = -1
+							}
 						},
 					},
 				)
@@ -1129,11 +1143,13 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 						if b := el.Bounds(); b.W > 0 {
 							p.State.MoveRowBounds = b
 						}
-						if el.Hovered() {
+						if el.Hovered() && !p.State.MoveSubmenuOpen {
 							p.State.MoveSubmenuOpen = true
+							p.State.MoveCursor = -1
 						}
-					} else if !it.Separator && el.Hovered() {
+					} else if !it.Separator && el.Hovered() && p.State.MoveSubmenuOpen {
 						p.State.MoveSubmenuOpen = false
+						p.State.MoveCursor = -1
 					}
 				}
 			})
@@ -1169,6 +1185,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 				blockui.NavigateMenu(subCard, choices, &p.State.MoveCursor)
 				if subCard.OverlayShortcut(0, ui.KeyLeft) {
 					p.State.MoveSubmenuOpen = false
+					p.State.MoveCursor = -1
 				}
 
 				subCard.Children(func() {
@@ -1218,6 +1235,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			if scrim.OverlayShortcut(0, ui.KeyEscape) {
 				if p.State.MoveSubmenuOpen {
 					p.State.MoveSubmenuOpen = false
+					p.State.MoveCursor = -1
 				} else {
 					p.State.ClosePopups()
 				}
