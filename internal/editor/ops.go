@@ -29,7 +29,7 @@ func (s *Session) selectionSupportsToolbar() bool {
 	}
 	a, b := s.orderedSelection()
 	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
-		if a.Block != b.Block && idx == b.Block && b.Offset == 0 {
+		if a.Block != b.Block && idx == b.Block && b.Offset == 0 && s.blockSelectionLen(idx) > 0 {
 			break
 		}
 		k := s.doc.Blocks[idx].Kind
@@ -81,8 +81,8 @@ func (s *Session) SelectedDoc() *model.Doc {
 
 	if a.Block == b.Block {
 		blk := &s.doc.Blocks[a.Block]
-		rlen := len([]rune(blk.PlainText()))
-		whole := a.Offset == 0 && b.Offset == rlen
+		rlen := s.blockSelectionLen(a.Block)
+		whole := a.Offset == 0 && b.Offset >= rlen
 
 		if blk.Kind == model.BlockTable && blk.Table != nil && !whole {
 			if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
@@ -123,12 +123,20 @@ func (s *Session) SelectedDoc() *model.Doc {
 
 	var blocks []model.Block
 	for idx := a.Block; idx <= b.Block; idx++ {
-		if idx == b.Block && a.Block != b.Block && b.Offset == 0 {
+		cur := &s.doc.Blocks[idx]
+		curLen := s.blockSelectionLen(idx)
+		if idx == b.Block && a.Block != b.Block && b.Offset == 0 && curLen > 0 {
 			continue
 		}
-		cur := &s.doc.Blocks[idx]
-		curLen := len([]rune(cur.PlainText()))
-		if idx == a.Block && a.Block != b.Block && a.Offset == curLen && curLen > 0 {
+		if idx == a.Block && a.Block != b.Block && a.Offset >= curLen && curLen > 0 {
+			continue
+		}
+		if cur.Kind == model.BlockImage {
+			cp := cur.Clone()
+			cp.ID = model.NewBlockID()
+			cp.Dirty = true
+			cp.CleanSource = ""
+			blocks = append(blocks, cp)
 			continue
 		}
 		lo, hi := s.selectionSpanRange(idx, a, b)
@@ -150,8 +158,8 @@ func (s *Session) SelectedMarkdown() string {
 	a, b := s.orderedSelection()
 	if a.Block == b.Block {
 		blk := &s.doc.Blocks[a.Block]
-		rlen := len([]rune(blk.PlainText()))
-		whole := a.Offset == 0 && b.Offset == rlen
+		rlen := s.blockSelectionLen(a.Block)
+		whole := a.Offset == 0 && b.Offset >= rlen
 
 		if blk.Kind == model.BlockTable && blk.Table != nil && !whole {
 			if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
@@ -562,6 +570,9 @@ func (s *Session) PasteText(raw string) {
 		norm = strings.ReplaceAll(norm, "\r", "\n")
 	}
 	if norm == "" {
+		return
+	}
+	if s.pasteOverMultiSelection(norm) {
 		return
 	}
 	idx := s.focusedBlock

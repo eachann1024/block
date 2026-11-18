@@ -335,19 +335,24 @@ func (s *Session) runToolbarItem(kind toolbarItemKind, fromMore bool) {
 }
 
 func (s *Session) renderSelectionToolbar(c *ui.Context) {
-	if !s.IsSelectionToolbarOpen() && s.toolbarPop == "" {
+	if (!s.IsSelectionToolbarOpen() && s.toolbarPop == "") || s.isMouseDragging() {
 		return
 	}
 	pal := theme.Ocean()
-	a, _ := s.orderedSelection()
+	a, b := s.orderedSelection()
 	anchorY := float32(60)
 	anchorX := float32(120)
 	if a.Block >= 0 && a.Block < len(s.doc.Blocks) {
 		if r, ok := s.blockRects[s.doc.Blocks[a.Block].ID]; ok && r.W > 0 {
 			anchorX = max(r.X+editorHandleWidth, 16)
 			anchorY = r.Y - 46
-			if anchorY < 10 {
-				anchorY = r.Y + r.H + 6
+			minVisibleY := max(s.scrollRect.Y+8, 10)
+			if anchorY < minVisibleY {
+				if rb, okB := s.blockRects[s.doc.Blocks[b.Block].ID]; okB && rb.W > 0 && rb.Y+rb.H+48 < s.viewportHeight {
+					anchorY = max(rb.Y+rb.H+6, minVisibleY)
+				} else {
+					anchorY = minVisibleY
+				}
 			}
 		}
 	}
