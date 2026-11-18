@@ -23,7 +23,7 @@ type TabMenuState struct {
 	PageMenuOpen   bool
 	PageMenuAnchor ui.Rect
 
-	// tabCenterW is the tab cell width the pills were last sized from.
+	// tabCenterW is the tab cell width the pills were last sized from (-1: not laid out yet).
 	tabCenterW float32
 }
 
