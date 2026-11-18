@@ -178,11 +178,20 @@ const (
 	SegmentedInnerHeight           = HeightChrome
 )
 
-// Sidebar file tree metrics.
+// Sidebar file tree & updater metrics.
 const (
 	TreeRowPitch    float32 = 34 // 32 row + 2 gap
 	TreeIndentStep  float32 = 20
 	TreeOuterPadX           = Space12
 	TreeRowPadLeft          = Space8
 	TreeMoreBtnSize         = HeightMicro
+
+	// Updater modal & sidebar badge metrics.
+	UpdaterModalWidth      float32 = 600
+	UpdaterModalMaxHeight  float32 = 640
+	UpdaterNotesMaxHeight  float32 = 360
+	UpdaterProgressHeight  float32 = 6
+	UpdaterBadgeButtonSize float32 = 30
+	UpdaterBadgeDotSize    float32 = 6
+	UpdaterBulletDotWidth  float32 = 10
 )

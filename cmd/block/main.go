@@ -104,6 +104,13 @@ func main() {
 		OnAbout: func() {
 			ws.Modals().OpenAbout()
 		},
+		OnCheckUpdates: func() {
+			revealMainWindow()
+			ws.Modals().OpenUpdater()
+			if ws.Updater() != nil {
+				ws.Updater().CheckAsync(true)
+			}
+		},
 		OnPerformance: func() {
 			ws.Modals().OpenPerformance()
 		},
@@ -418,6 +425,9 @@ func main() {
 		ws.QuickNote().AttachDesktop()
 		ws.SearchWindow().AttachDesktop()
 		syncMenuAndHotkeys(ws.State())
+		if (!isIsolatedRun || os.Getenv("BLOCK_MOCK_UPDATE") == "1") && ws.Updater() != nil {
+			ws.Updater().StartAutomatic()
+		}
 	})
 
 	if err := mygo.App.Run(); err != nil {
