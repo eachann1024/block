@@ -598,3 +598,45 @@ func TestLatestRecoveryDraft(t *testing.T) {
 		t.Fatalf("LatestRecoveryDraft() after ClearRecovery = (%q, %q, %v), want (%q, %q, true)", gotPath, gotContent, ok, p1, "older draft")
 	}
 }
+
+func TestAnnotationStoreNeverClobbersOtherNotes(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "annotations.json")
+	corrupt := `{"notes":{"/a.md":[{"id":1,"block_index":0,"start":0,"end":1,"quote":"x","body":"","reactions":[]}],}}`
+	if err := os.WriteFile(p, []byte(corrupt), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveNoteAnnotations(dir, "/c.md", []StoredAnnotation{{ID: 2, Quote: "y", Reactions: []string{}}}); err == nil {
+		t.Fatalf("expected save to refuse an unreadable store")
+	}
+	if b, _ := os.ReadFile(p); string(b) != corrupt {
+		t.Fatalf("unreadable store was rewritten: %s", b)
+	}
+}
+
+func TestMoveNoteAnnotationsFollowsFolder(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "nb")
+	for _, n := range []string{filepath.Join(root, "f", "a.md"), filepath.Join(root, "f", "sub", "b.md"), filepath.Join(root, "other.md")} {
+		if err := SaveNoteAnnotations(dir, n, []StoredAnnotation{{ID: 1, Quote: "q", Reactions: []string{}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := MoveNoteAnnotations(dir, filepath.Join(root, "f"), filepath.Join(root, "g")); err != nil {
+		t.Fatal(err)
+	}
+	for n, want := range map[string]bool{
+		filepath.Join(root, "g", "a.md"):        true,
+		filepath.Join(root, "g", "sub", "b.md"): true,
+		filepath.Join(root, "f", "a.md"):        false,
+		filepath.Join(root, "other.md"):         true,
+	} {
+		got, err := LoadNoteAnnotations(dir, n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (len(got) > 0) != want {
+			t.Fatalf("%s: have=%v want=%v", n, len(got) > 0, want)
+		}
+	}
+}
