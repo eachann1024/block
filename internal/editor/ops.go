@@ -1706,7 +1706,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 }
 
 func (s *Session) canArmFirstLineDelete() bool {
-	if s.doc == nil || len(s.doc.Blocks) <= 1 {
+	if s.minimal || s.doc == nil || len(s.doc.Blocks) <= 1 {
 		return false
 	}
 	first := &s.doc.Blocks[0]
@@ -1989,6 +1989,9 @@ func (s *Session) slashMenuEntries() []blockMenuItem {
 		return allHandleMenuItems(s.blockMenu.BlockIdx, n)
 	}
 	all := allSlashItems()
+	if s.minimal {
+		all = minimalSlashItems()
+	}
 	q := strings.ToLower(strings.TrimSpace(s.blockMenu.Filter))
 	if q == "" {
 		return all
@@ -2127,9 +2130,28 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
 		return
 	}
+	if s.minimal && (cmd == cmdAI || cmd == cmdCallout || cmd == cmdCodeMermaid || cmd == cmdCodeMath) {
+		return
+	}
 	b := &s.doc.Blocks[idx]
 	isSlashClear := mode == menuSlash && b.Kind == model.BlockParagraph &&
 		(b.PlainText() == "" || strings.HasPrefix(b.PlainText(), "/") || strings.HasPrefix(b.PlainText(), "、"))
+
+	if cmd == cmdImage && s.OnPickImages != nil {
+		targetID := b.ID
+		if isSlashClear {
+			b.Spans = nil
+			b.Code = ""
+			b.Dirty = true
+			b.CleanSource = ""
+			s.selAnchor = Position{Block: idx, Offset: 0}
+			s.selHead = s.selAnchor
+			s.selSyncPending = true
+			s.markDirty()
+		}
+		s.OnPickImages(targetID, isSlashClear)
+		return
+	}
 
 	switch cmd {
 	case cmdDuplicate:
