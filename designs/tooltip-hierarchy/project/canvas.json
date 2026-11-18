@@ -1,0 +1,63 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-18T12:30:00Z"
+  },
+  "title": "Block Tooltip 深浅色字体层级设计",
+  "launch": {
+    "view": "canvas",
+    "page": "tooltip-designs"
+  },
+  "pages": [
+    {
+      "id": "tooltip-designs",
+      "name": "Tooltip 深浅层级三方案"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 940,
+      "title": "方案 A · 石墨双阶字色（Notion 极简流）",
+      "page": "tooltip-designs",
+      "is_interactive": true
+    },
+    "VariantB-Keycap.dc.html": {
+      "x": 1360,
+      "y": 0,
+      "w": 1280,
+      "h": 940,
+      "title": "方案 B · 暗槽微键帽（机械触感流）",
+      "page": "tooltip-designs",
+      "is_interactive": true
+    },
+    "VariantC-PaperGlass.dc.html": {
+      "x": 2720,
+      "y": 0,
+      "w": 1280,
+      "h": 940,
+      "title": "方案 C · 纸面明亮浮签（Ocean 同源流）",
+      "page": "tooltip-designs",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "VariantB-Keycap.dc.html",
+    "VariantC-PaperGlass.dc.html"
+  ],
+  "notes": {
+    "row-heading": {
+      "x": 0,
+      "y": -260,
+      "text": "Block 全局 Tooltip 深浅色字体巧思 · 三版对比",
+      "kind": "title1",
+      "page": "tooltip-designs",
+      "maxW": 4000
+    }
+  },
+  "designSystems": []
+}

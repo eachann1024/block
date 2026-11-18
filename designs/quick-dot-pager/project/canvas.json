@@ -1,0 +1,88 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-18T05:44:00Z"
+  },
+  "title": "速记圆点指示器",
+  "launch": {
+    "view": "canvas",
+    "page": "p-header"
+  },
+  "pages": [
+    {
+      "id": "p-header",
+      "name": "顶栏与圆点整体方案"
+    },
+    {
+      "id": "p-dots",
+      "name": "圆点选中方案"
+    }
+  ],
+  "boards": {
+    "HeaderV1-PurePaper.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 560,
+      "h": 720,
+      "title": "V1 纯白纸 · 嵌槽圆珠 + 原版双色单图标",
+      "page": "p-header",
+      "is_interactive": true
+    },
+    "HeaderV2-ShellBar.dc.html": {
+      "x": 640,
+      "y": 0,
+      "w": 560,
+      "h": 720,
+      "title": "V2 壳层顶栏 · 白芯蓝环 + 分体胶囊组",
+      "page": "p-header",
+      "is_interactive": true
+    },
+    "HeaderV3-AxisScale.dc.html": {
+      "x": 1280,
+      "y": 0,
+      "w": 560,
+      "h": 720,
+      "title": "V3 书眉刻度轴 · 断口蓝圆 + 主次分层按钮",
+      "page": "p-header",
+      "is_interactive": true
+    },
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 560,
+      "h": 700,
+      "title": "A 同心双环",
+      "page": "p-dots",
+      "is_interactive": true
+    },
+    "TrackBead.dc.html": {
+      "x": 640,
+      "y": 0,
+      "w": 560,
+      "h": 700,
+      "title": "B 嵌槽圆珠",
+      "page": "p-dots",
+      "is_interactive": true
+    },
+    "HaloRing.dc.html": {
+      "x": 1280,
+      "y": 0,
+      "w": 560,
+      "h": 700,
+      "title": "C 纸晕空心环",
+      "page": "p-dots",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "HeaderV1-PurePaper.dc.html",
+    "HeaderV2-ShellBar.dc.html",
+    "HeaderV3-AxisScale.dc.html",
+    "Main.dc.html",
+    "TrackBead.dc.html",
+    "HaloRing.dc.html"
+  ],
+  "notes": {},
+  "designSystems": []
+}

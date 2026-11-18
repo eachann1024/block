@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>方案 C · 纸面明亮浮签</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    button { font: inherit; }
+    .sc-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      height: 19px;
+      box-sizing: border-box;
+      font-family: Inter, -apple-system, system-ui, sans-serif;
+      font-size: 11.5px;
+      font-weight: 560;
+      line-height: 1;
+      letter-spacing: 0.01em;
+    }
+    .sc-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      vertical-align: -1.5px;
+    }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 940px; box-sizing: border-box; padding: 36px 40px; background: {{canvasBg}}; color: {{textPrimary}}; display: flex; flex-direction: column; gap: 24px">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+    <h1 style="margin: 0; font-size: 22px; line-height: 30px; font-weight: 600; color: {{textPrimary}}">方案 C · 纸面明亮浮签（Ocean 同源卡片 + 矢量等高修饰键）</h1>
+    <button type="button" onClick="{{toggleTheme}}" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid {{borderCol}}; background: {{cardBg}}; color: {{textPrimary}}; font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+      <span>{{themeBtnLabel}}</span>
+    </button>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; flex: 1; min-height: 0">
+    <!-- 场景 1：编辑器块把手 -->
+    <div style="background: {{cardBg}}; border: 1px solid {{borderCol}}; border-radius: 12px; padding: 24px 26px; display: flex; flex-direction: column; gap: 22px">
+      <div style="font-size: 15px; font-weight: 600; color: {{textPrimary}}">编辑器块把手（浅色随主题纸面浮卡，细线分隔上下动作）</div>
+
+      <!-- + 号把手 -->
+      <div style="padding: 16px 18px 76px 18px; border-radius: 10px; background: {{stageBg}}; border: 1px solid {{hairlineCol}}; position: relative; display: flex; align-items: center; gap: 10px">
+        <div style="display: flex; align-items: center; gap: 4px">
+          <button type="button" aria-label="插入块" style="width: 26px; height: 26px; border-radius: 6px; border: none; background: {{hoverBg}}; color: {{textPrimary}}; display: flex; align-items: center; justify-content: center; cursor: pointer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          </button>
+          <button type="button" aria-label="块操作" style="width: 26px; height: 26px; border-radius: 6px; border: none; background: transparent; color: {{textSecondary}}; display: flex; align-items: center; justify-content: center; cursor: grab">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>
+          </button>
+        </div>
+        <span style="font-size: 16px; color: {{textPrimary}}; font-weight: 500">产品最终落地安排</span>
+
+        <!-- 纸面同源 Tooltip -->
+        <div style="position: absolute; left: 16px; top: 48px; background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 10px; padding: 0; box-shadow: {{tipShadow}}; overflow: hidden; display: flex; flex-direction: column">
+          <div style="padding: 6px 12px; font-size: 12.5px; line-height: 17px; white-space: nowrap; display: flex; align-items: center; gap: 5px">
+            <span style="color: {{tipAccent}}; font-weight: 600">点击</span><span style="color: {{tipMuted}}; font-weight: 400">在下方插入新块</span>
+          </div>
+          <div style="height: 1px; background: {{tipDivider}}"></div>
+          <div style="padding: 6px 12px; font-size: 12.5px; line-height: 17px; white-space: nowrap; display: flex; align-items: center; gap: 5px">
+            <span style="color: {{tipAccent}}; font-weight: 600; display: inline-flex; align-items: center; gap: 2px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 6.9H9.7L14.3 17.7H18.5M14.1 6.9H18.5"></path></svg>
+              <span>+ 点击</span>
+            </span>
+            <span style="color: {{tipMuted}}; font-weight: 400">在上方插入新块</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 六点手柄 + 章节折叠 -->
+      <div style="padding: 16px 18px 76px 18px; border-radius: 10px; background: {{stageBg}}; border: 1px solid {{hairlineCol}}; position: relative; display: flex; align-items: center; gap: 10px">
+        <div style="display: flex; align-items: center; gap: 4px">
+          <button type="button" aria-label="块操作菜单" style="width: 26px; height: 26px; border-radius: 6px; border: none; background: {{hoverBg}}; color: {{textPrimary}}; display: flex; align-items: center; justify-content: center; cursor: grab">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>
+          </button>
+          <button type="button" aria-label="折叠章节" style="width: 24px; height: 24px; border-radius: 6px; border: none; background: {{hoverBg}}; color: {{textPrimary}}; display: flex; align-items: center; justify-content: center; cursor: pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+          </button>
+        </div>
+        <span style="font-size: 18px; color: {{textPrimary}}; font-weight: 600">二、里程碑与交付节奏</span>
+
+        <div style="position: absolute; left: 16px; top: 48px; background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 10px; box-shadow: {{tipShadow}}; overflow: hidden; display: flex; flex-direction: column">
+          <div style="padding: 6px 12px; font-size: 12.5px; line-height: 17px; white-space: nowrap; display: flex; align-items: center; gap: 5px">
+            <span style="color: {{tipAccent}}; font-weight: 600">拖动</span><span style="color: {{tipMuted}}">调整块顺序</span>
+          </div>
+          <div style="height: 1px; background: {{tipDivider}}"></div>
+          <div style="padding: 6px 12px; font-size: 12.5px; line-height: 17px; white-space: nowrap; display: flex; align-items: center; gap: 5px">
+            <span style="color: {{tipAccent}}; font-weight: 600">点击</span><span style="color: {{tipMuted}}">打开块菜单</span>
+          </div>
+        </div>
+
+        <div style="position: absolute; left: 206px; top: 54px; background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 9px; padding: 6px 11px; box-shadow: {{tipShadow}}; display: flex; align-items: center; gap: 7px">
+          <span style="font-size: 12.5px; color: {{tipInk}}; font-weight: 600">折叠章节</span>
+          <span style="width: 1px; height: 12px; background: {{tipDivider}}"></span>
+          <span style="font-size: 12.5px; color: {{tipMuted}}">收起 4 项</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 场景 2：选区浮动工具栏 -->
+    <div style="background: {{cardBg}}; border: 1px solid {{borderCol}}; border-radius: 12px; padding: 24px 26px; display: flex; flex-direction: column; gap: 22px">
+      <div style="font-size: 15px; font-weight: 600; color: {{textPrimary}}">浮动选区工具栏（轻盈纸面胶囊，⌘ 矢量图标与大写字母等高）</div>
+
+      <div style="padding: 60px 18px 20px 18px; border-radius: 10px; background: {{stageBg}}; border: 1px solid {{hairlineCol}}; position: relative; display: flex; flex-direction: column; gap: 16px">
+        <div style="position: absolute; left: 170px; top: 14px; background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 99px; padding: 5px 11px; box-shadow: {{tipShadow}}; display: flex; align-items: center; gap: 7px">
+          <span style="font-size: 12.5px; color: {{tipInk}}; font-weight: 600">粗体</span>
+          <span class="sc-pill" style="color: {{tipPillFg}}; background: {{tipPillBg}}; border: 1px solid {{tipPillBorder}}; border-radius: 99px; padding: 0 7px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 7v10a2.5 2.5 0 1 0 2.5-2.5H7a2.5 2.5 0 1 0 2.5 2.5V7a2.5 2.5 0 1 0-2.5 2.5h10a2.5 2.5 0 1 0-2.5-2.5Z"></path></svg>
+            <span>B</span>
+          </span>
+        </div>
+
+        <div style="position: absolute; left: 306px; top: 14px; background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 99px; padding: 5px 11px; box-shadow: {{tipShadow}}; display: flex; align-items: center; gap: 7px">
+          <span style="font-size: 12.5px; color: {{tipInk}}; font-weight: 600">行内代码</span>
+          <span class="sc-pill" style="color: {{tipPillFg}}; background: {{tipPillBg}}; border: 1px solid {{tipPillBorder}}; border-radius: 99px; padding: 0 7px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 7v10a2.5 2.5 0 1 0 2.5-2.5H7a2.5 2.5 0 1 0 2.5 2.5V7a2.5 2.5 0 1 0-2.5 2.5h10a2.5 2.5 0 1 0-2.5-2.5Z"></path></svg>
+            <span>E</span>
+          </span>
+        </div>
+
+        <!-- 模拟选区工具栏 -->
+        <div style="align-self: flex-start; height: 38px; padding: 0 6px; border-radius: 12px; background: {{menuBg}}; border: 1px solid {{borderCol}}; box-shadow: 0 8px 24px rgba(0,0,0,0.10); display: flex; align-items: center; gap: 3px">
+          <button type="button" style="height: 28px; padding: 0 9px; border-radius: 6px; border: 1px solid #547dd0; background: {{selectedBg}}; color: {{textPrimary}}; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 5px; cursor: pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="1.8" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"></path></svg>
+            <span>AI 改写</span>
+          </button>
+          <div style="width: 1px; height: 18px; background: {{borderCol}}; margin: 0 3px"></div>
+          <button type="button" aria-label="添加批注" style="width: 28px; height: 28px; border-radius: 6px; border: none; background: transparent; color: {{textSecondary}}; display: flex; align-items: center; justify-content: center; cursor: pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          </button>
+          <div style="width: 1px; height: 18px; background: {{borderCol}}; margin: 0 3px"></div>
+          <button type="button" aria-label="粗体" style="width: 28px; height: 28px; border-radius: 6px; border: none; background: {{hoverBg}}; color: {{textPrimary}}; font-weight: 700; cursor: pointer">B</button>
+          <button type="button" aria-label="斜体" style="width: 28px; height: 28px; border-radius: 6px; border: none; background: transparent; color: {{textSecondary}}; font-style: italic; cursor: pointer">I</button>
+          <button type="button" aria-label="下划线" style="width: 28px; height: 28px; border-radius: 6px; border: none; background: transparent; color: {{textSecondary}}; text-decoration: underline; cursor: pointer">U</button>
+          <button type="button" aria-label="删除线" style="width: 28px; height: 28px; border-radius: 6px; border: none; background: transparent; color: {{textSecondary}}; text-decoration: line-through; cursor: pointer">S</button>
+          <button type="button" aria-label="行内代码" style="width: 28px; height: 28px; border-radius: 6px; border: none; background: {{hoverBg}}; color: {{textPrimary}}; font-family: monospace; font-size: 12px; cursor: pointer">&lt;/&gt;</button>
+          <button type="button" aria-label="添加链接" style="width: 28px; height: 28px; border-radius: 6px; border: none; background: transparent; color: {{textSecondary}}; display: flex; align-items: center; justify-content: center; cursor: pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          </button>
+        </div>
+
+        <div style="font-size: 15px; line-height: 24px; color: {{textPrimary}}">
+          延续 Block 自身的 <span style="background: {{selTextBg}}; color: {{selTextFg}}; padding: 2px 5px; border-radius: 4px">Ocean Paper 温润纸感</span>，提示层与浮动菜单材质统一、呼吸感更强。
+        </div>
+      </div>
+
+      <div style="padding: 15px 18px; border-radius: 10px; background: {{stageBg}}; border: 1px solid {{hairlineCol}}; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap">
+        <div style="background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 99px; padding: 5px 11px; box-shadow: {{tipShadow}}; display: flex; align-items: center; gap: 7px">
+          <span style="font-size: 12.5px; color: {{tipInk}}; font-weight: 600">添加批注</span>
+          <span class="sc-pill" style="color: {{tipPillFg}}; background: {{tipPillBg}}; border: 1px solid {{tipPillBorder}}; border-radius: 99px; padding: 0 7px">
+            <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 6.9H9.7L14.3 17.7H18.5M14.1 6.9H18.5"></path></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 7v10a2.5 2.5 0 1 0 2.5-2.5H7a2.5 2.5 0 1 0 2.5 2.5V7a2.5 2.5 0 1 0-2.5 2.5h10a2.5 2.5 0 1 0-2.5-2.5Z"></path></svg>
+            <span>M</span>
+          </span>
+        </div>
+        <div style="background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 99px; padding: 5px 11px; box-shadow: {{tipShadow}}; display: flex; align-items: center; gap: 7px">
+          <span style="font-size: 12.5px; color: {{tipInk}}; font-weight: 600">添加链接</span>
+          <span class="sc-pill" style="color: {{tipPillFg}}; background: {{tipPillBg}}; border: 1px solid {{tipPillBorder}}; border-radius: 99px; padding: 0 7px">
+            <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5L17.8 12.3H14.8V18.1H9.2V12.3H6.2L12 6.5Z"></path></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 7v10a2.5 2.5 0 1 0 2.5-2.5H7a2.5 2.5 0 1 0 2.5 2.5V7a2.5 2.5 0 1 0-2.5 2.5h10a2.5 2.5 0 1 0-2.5-2.5Z"></path></svg>
+            <span>K</span>
+          </span>
+        </div>
+        <div style="background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 99px; padding: 5px 11px; box-shadow: {{tipShadow}}; display: flex; align-items: center; gap: 5px">
+          <span style="font-size: 12.5px; color: {{tipAccent}}; font-weight: 600; display: inline-flex; align-items: center; gap: 2px">
+            <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 7v10a2.5 2.5 0 1 0 2.5-2.5H7a2.5 2.5 0 1 0 2.5 2.5V7a2.5 2.5 0 1 0-2.5 2.5h10a2.5 2.5 0 1 0-2.5-2.5Z"></path></svg>
+            <span>+ 点击</span>
+          </span>
+          <span style="font-size: 12.5px; color: {{tipMuted}}">访问链接</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 场景 3：侧边栏、标题栏与查找栏 -->
+    <div style="background: {{cardBg}}; border: 1px solid {{borderCol}}; border-radius: 12px; padding: 24px 26px; display: flex; flex-direction: column; gap: 18px">
+      <div style="font-size: 15px; font-weight: 600; color: {{textPrimary}}">侧边栏、标题栏与查找栏（深墨标题 + 浅灰圆角快捷键签）</div>
+
+      <div style="padding: 16px 18px 56px 18px; border-radius: 10px; background: {{stageBg}}; border: 1px solid {{hairlineCol}}; position: relative; display: flex; align-items: center; justify-content: space-between">
+        <div style="display: flex; align-items: center; gap: 8px">
+          <button type="button" aria-label="切换侧边栏" style="width: 28px; height: 28px; border-radius: 7px; border: 1px solid {{borderCol}}; background: {{cardBg}}; color: {{textPrimary}}; display: flex; align-items: center; justify-content: center; cursor: pointer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path></svg>
+          </button>
+          <button type="button" aria-label="新建笔记" style="width: 28px; height: 28px; border-radius: 7px; border: 1px solid {{borderCol}}; background: {{cardBg}}; color: {{textPrimary}}; display: flex; align-items: center; justify-content: center; cursor: pointer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px">
+          <button type="button" aria-label="AI 助手" style="width: 28px; height: 28px; border-radius: 7px; border: 1px solid #547dd0; background: {{selectedBg}}; color: #547dd0; display: flex; align-items: center; justify-content: center; cursor: pointer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"></path></svg>
+          </button>
+          <button type="button" aria-label="设置" style="width: 28px; height: 28px; border-radius: 7px; border: 1px solid {{borderCol}}; background: {{cardBg}}; color: {{textSecondary}}; display: flex; align-items: center; justify-content: center; cursor: pointer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9"></path></svg>
+          </button>
+        </div>
+
+        <div style="position: absolute; left: 16px; top: 52px; background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 9px; padding: 5px 10px; box-shadow: {{tipShadow}}; display: flex; align-items: center; gap: 7px">
+          <span style="font-size: 12.5px; color: {{tipInk}}; font-weight: 600">收起侧栏</span>
+          <span class="sc-pill" style="color: {{tipPillFg}}; background: {{tipPillBg}}; border: 1px solid {{tipPillBorder}}; border-radius: 5px; padding: 0 6px">
+            <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 6.9H9.7L14.3 17.7H18.5M14.1 6.9H18.5"></path></svg>
+            <span>B</span>
+          </span>
+        </div>
+
+        <div style="position: absolute; left: 148px; top: 52px; background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 9px; padding: 5px 10px; box-shadow: {{tipShadow}}; display: flex; align-items: center; gap: 7px">
+          <span style="font-size: 12.5px; color: {{tipInk}}; font-weight: 600">新建笔记</span>
+          <span class="sc-pill" style="color: {{tipPillFg}}; background: {{tipPillBg}}; border: 1px solid {{tipPillBorder}}; border-radius: 5px; padding: 0 6px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 7v10a2.5 2.5 0 1 0 2.5-2.5H7a2.5 2.5 0 1 0 2.5 2.5V7a2.5 2.5 0 1 0-2.5 2.5h10a2.5 2.5 0 1 0-2.5-2.5Z"></path></svg>
+            <span>N</span>
+          </span>
+        </div>
+
+        <div style="position: absolute; right: 16px; top: 52px; background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 9px; padding: 5px 10px; box-shadow: {{tipShadow}}; display: flex; align-items: center; gap: 7px">
+          <span style="font-size: 12.5px; color: {{tipInk}}; font-weight: 600">AI 助手</span>
+          <span class="sc-pill" style="color: {{tipPillFg}}; background: {{tipPillBg}}; border: 1px solid {{tipPillBorder}}; border-radius: 5px; padding: 0 6px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 7v10a2.5 2.5 0 1 0 2.5-2.5H7a2.5 2.5 0 1 0 2.5 2.5V7a2.5 2.5 0 1 0-2.5 2.5h10a2.5 2.5 0 1 0-2.5-2.5Z"></path></svg>
+            <span>J</span>
+          </span>
+        </div>
+      </div>
+
+      <div style="padding: 14px 18px; border-radius: 10px; background: {{stageBg}}; border: 1px solid {{hairlineCol}}; display: flex; align-items: center; justify-content: space-between; gap: 10px">
+        <span style="font-size: 13.5px; color: {{textSecondary}}">页内查找栏：</span>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <div style="background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 9px; padding: 5px 10px; box-shadow: {{tipShadow}}; display: flex; align-items: center; gap: 7px">
+            <span style="font-size: 12.5px; color: {{tipInk}}; font-weight: 600">上一处</span>
+            <span class="sc-pill" style="color: {{tipPillFg}}; background: {{tipPillBg}}; border: 1px solid {{tipPillBorder}}; border-radius: 5px; padding: 0 6px">
+              <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5L17.8 12.3H14.8V18.1H9.2V12.3H6.2L12 6.5Z"></path></svg>
+              <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.4 6.7V10.9A3 3 0 0 1 15.4 13.9H5.6M9.6 9.9L5.6 13.9L9.6 17.9"></path></svg>
+            </span>
+          </div>
+          <div style="background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 9px; padding: 5px 10px; box-shadow: {{tipShadow}}; display: flex; align-items: center; gap: 7px">
+            <span style="font-size: 12.5px; color: {{tipInk}}; font-weight: 600">下一处</span>
+            <span class="sc-pill" style="color: {{tipPillFg}}; background: {{tipPillBg}}; border: 1px solid {{tipPillBorder}}; border-radius: 5px; padding: 0 6px">
+              <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.4 6.7V10.9A3 3 0 0 1 15.4 13.9H5.6M9.6 9.9L5.6 13.9L9.6 17.9"></path></svg>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 场景 4：特殊语义与复合操作 -->
+    <div style="background: {{cardBg}}; border: 1px solid {{borderCol}}; border-radius: 12px; padding: 24px 26px; display: flex; flex-direction: column; gap: 18px">
+      <div style="font-size: 15px; font-weight: 600; color: {{textPrimary}}">复合动作与防呆确认（语义色主词 + 分隔细线）</div>
+
+      <div style="padding: 15px 18px; border-radius: 10px; background: {{stageBg}}; border: 1px solid {{hairlineCol}}; display: flex; align-items: center; justify-content: space-between; gap: 16px">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <button type="button" aria-label="删除空行" style="width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(214,69,69,0.4); background: rgba(214,69,69,0.12); color: #d64545; display: flex; align-items: center; justify-content: center; cursor: pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path><path d="M18 9l-6 6M12 9l6 6"></path></svg>
+          </button>
+          <span style="font-size: 14px; color: {{textSecondary}}">首行删除徽章</span>
+        </div>
+        <div style="background: {{tipSurface}}; border: 1px solid {{tipDangerBorder}}; border-radius: 9px; padding: 6px 11px; box-shadow: {{tipShadow}}; display: flex; align-items: center; gap: 5px">
+          <span style="font-size: 12.5px; color: {{tipDanger}}; font-weight: 600; display: inline-flex; align-items: center; gap: 2px">
+            <span>再按</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.8 6.7H16.9A1.45 1.45 0 0 1 18.35 8.15V16.45A1.45 1.45 0 0 1 16.9 17.9H10.8L5.6 12.3L10.8 6.7Z"></path></svg>
+            <span>或点击</span>
+          </span>
+          <span style="font-size: 12.5px; color: {{tipMuted}}">删除首行</span>
+        </div>
+      </div>
+
+      <div style="padding: 13px 18px; border-radius: 10px; background: {{stageBg}}; border: 1px solid {{hairlineCol}}; display: flex; align-items: center; justify-content: space-between; gap: 16px">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <button type="button" aria-label="发送消息" style="width: 30px; height: 30px; border-radius: 8px; border: none; background: #547dd0; color: #ffffff; display: flex; align-items: center; justify-content: center; cursor: pointer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"></path></svg>
+          </button>
+          <span style="font-size: 14px; color: {{textSecondary}}">AI 面板发送按钮</span>
+        </div>
+        <div style="background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 10px; box-shadow: {{tipShadow}}; overflow: hidden; display: flex; flex-direction: column">
+          <div style="padding: 5px 11px; font-size: 12.5px; line-height: 17px; display: flex; align-items: center; gap: 6px">
+            <span style="color: {{tipAccent}}; font-weight: 600">Enter</span><span style="color: {{tipMuted}}">发送消息</span>
+          </div>
+          <div style="height: 1px; background: {{tipDivider}}"></div>
+          <div style="padding: 5px 11px; font-size: 12.5px; line-height: 17px; display: flex; align-items: center; gap: 6px">
+            <span style="color: {{tipInk}}; font-weight: 600; display: inline-flex; align-items: center; gap: 2px">
+              <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5L17.8 12.3H14.8V18.1H9.2V12.3H6.2L12 6.5Z"></path></svg>
+              <span>+ Enter</span>
+            </span>
+            <span style="color: {{tipMuted}}">换行输入</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding: 13px 18px; border-radius: 10px; background: {{stageBg}}; border: 1px solid {{hairlineCol}}; display: flex; align-items: center; justify-content: space-between; gap: 16px">
+        <div style="display: flex; align-items: center; gap: 8px">
+          <span style="width: 8px; height: 8px; border-radius: 99px; background: #547dd0; display: inline-block"></span>
+          <span style="width: 7px; height: 7px; border-radius: 99px; background: {{borderCol}}; display: inline-block"></span>
+          <span style="width: 7px; height: 7px; border-radius: 99px; background: {{borderCol}}; display: inline-block"></span>
+          <span style="font-size: 14px; color: {{textSecondary}}; margin-left: 4px">速记槽位圆点</span>
+        </div>
+        <div style="background: {{tipSurface}}; border: 1px solid {{tipBorder}}; border-radius: 9px; padding: 5px 11px; box-shadow: {{tipShadow}}; display: flex; align-items: center; gap: 7px">
+          <span style="font-size: 12.5px; color: {{tipInk}}; font-weight: 600">速记页 2</span>
+          <span style="width: 1px; height: 12px; background: {{tipDivider}}"></span>
+          <span style="font-size: 12.5px; color: {{tipMuted}}">点击或滚轮切换</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"darkMode":{"editor":"boolean","default":false,"section":"Appearance"},"$preview":{"width":1280,"height":940}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { darkOverride: null };
+  }
+  renderVals() {
+    const dark = this.state.darkOverride !== null ? this.state.darkOverride : Boolean(this.props.darkMode);
+    return {
+      dark,
+      themeBtnLabel: dark ? '当前：深色画布（点击切浅色）' : '当前：浅色画布（点击切深色）',
+      toggleTheme: () => this.setState({ darkOverride: !dark }),
+      canvasBg: dark ? '#181818' : '#F6F7F9',
+      cardBg: dark ? '#222222' : '#FFFFFF',
+      stageBg: dark ? '#1B1B1B' : '#FAFAFA',
+      menuBg: dark ? '#242424' : '#FFFFFF',
+      borderCol: dark ? '#323232' : '#E4E6EA',
+      hairlineCol: dark ? '#2B2B2B' : '#ECEEF2',
+      hoverBg: dark ? '#2E2E2C' : '#F1F0EC',
+      selectedBg: dark ? '#2B364B' : '#E5EDFC',
+      textPrimary: dark ? '#ECECEC' : '#1F1E1D',
+      textSecondary: dark ? '#A8A8A8' : '#526071',
+      selTextBg: dark ? '#2D426B' : '#CDE2FB',
+      selTextFg: dark ? '#9DBCF5' : '#184F95',
+      tipSurface: dark ? '#25272D' : '#FFFFFF',
+      tipBorder: dark ? '#3A3E48' : '#D8DEE9',
+      tipDivider: dark ? '#343842' : '#EDF0F5',
+      tipShadow: dark ? '0 10px 26px rgba(0,0,0,0.36)' : '0 8px 24px rgba(15,23,42,0.10), 0 1px 3px rgba(15,23,42,0.06)',
+      tipInk: dark ? '#F2F4F8' : '#1F1E1D',
+      tipAccent: dark ? '#8BB0F9' : '#2F57A6',
+      tipMuted: dark ? '#A8B0BF' : '#586272',
+      tipPillBg: dark ? '#30343E' : '#F2F4F8',
+      tipPillBorder: dark ? '#434957' : '#DFE4ED',
+      tipPillFg: dark ? '#DCE3F0' : '#3E4C63',
+      tipDanger: dark ? '#FF8F8F' : '#B82E2E',
+      tipDangerBorder: dark ? '#5A3238' : '#F1C6C6'
+    };
+  }
+}
+</script>
+</body>
+</html>

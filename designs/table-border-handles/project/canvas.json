@@ -1,0 +1,63 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-18T10:50:00Z"
+  },
+  "title": "表格边框把手与交互菜单",
+  "launch": {
+    "view": "canvas",
+    "page": "table-handles"
+  },
+  "pages": [
+    {
+      "id": "table-handles",
+      "name": "表格边框把手方案"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 880,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "table-handles",
+      "title": "版本 A · Notion 极简贴边药丸把手 + 上下文下拉菜单"
+    },
+    "VariantB-FeishuRails.dc.html": {
+      "x": 1360,
+      "y": 0,
+      "w": 1280,
+      "h": 880,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "table-handles",
+      "title": "版本 B · 飞书分段边框导轨 + 就地浮动快捷工具条"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "VariantB-FeishuRails.dc.html"
+  ],
+  "notes": {
+    "row-title": {
+      "x": 0,
+      "y": -250,
+      "text": "表格边框把手与选框菜单 · Notion vs 飞书双版本",
+      "kind": "title1",
+      "maxW": 2640,
+      "page": "table-handles"
+    }
+  },
+  "designSystems": [
+    {
+      "title": "Ocean Paper",
+      "namespace": "ocean-paper",
+      "artifact": "designs/selection-styles/project/ds/ocean-paper",
+      "version": null,
+      "copiedAt": "2026-11-18T10:50:00Z"
+    }
+  ]
+}

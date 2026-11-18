@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V1 纯白纸 · 嵌槽圆珠 + 原版双色单图标</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#395fb0}
+button{font-family:inherit;padding:0;border:0;background:transparent;cursor:pointer}
+button:focus-visible{outline:2px solid #547dd0;outline-offset:2px}
+.v1-save{transition:background-color .15s ease,border-color .15s ease,transform .18s cubic-bezier(.22,1,.36,1)}
+.v1-save:hover{transform:translateY(-1px)}
+.v1-dot-close .x-glyph{opacity:0;transition:opacity .15s ease}
+.v1-dot-close:hover .x-glyph{opacity:1}
+</style>
+</helmet>
+<div style="width: 560px; height: 720px; box-sizing: border-box; padding: 32px 60px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; background: {{stageBg}}; font-family: Inter, -apple-system, 'PingFang SC', system-ui, sans-serif; color: {{textCol}}">
+
+<div style="width: 440px; height: 104px; box-sizing: border-box; padding: 0 26px; border-radius: 14px; background: {{paperBg}}; border: 1px solid {{winBorder}}; box-shadow: {{loupeShadow}}; display: flex; align-items: center; justify-content: space-between">
+<div style="height: 52px; padding: 0 18px; border-radius: 999px; background: {{trackBg}}; border: 1.5px solid {{trackBorder}}; box-shadow: {{trackInset}}; display: flex; align-items: center; gap: 18px">
+<sc-for list="{{macroDots}}" as="m" hint-placeholder-count="3">
+<button type="button" onClick="{{m.pick}}" aria-label="{{m.label}}" aria-pressed="{{m.active}}" style="width: 42px; height: 42px; border-radius: 999px; display: flex; align-items: center; justify-content: center">
+<span style="width: {{m.beadSize}}; height: {{m.beadSize}}; box-sizing: border-box; border-radius: 999px; background: {{m.beadBg}}; border: {{m.beadBorder}}; box-shadow: {{m.beadShadow}}; display: flex; align-items: center; justify-content: center; transition: all .22s cubic-bezier(.22, 1, .36, 1)">
+<span style="width: {{m.pipSize}}; height: {{m.pipSize}}; border-radius: 999px; background: {{m.pipBg}}; transition: all .18s ease"></span>
+</span>
+</button>
+</sc-for>
+</div>
+<div style="width: 1px; height: 36px; background: {{hairline}}"></div>
+<button type="button" onClick="{{toggleSaved}}" aria-label="放大检视 存入正式笔记" style="width: 54px; height: 54px; box-sizing: border-box; border-radius: 12px; background: {{macroSaveBg}}; border: {{macroSaveBorder}}; box-shadow: {{macroSaveRing}}; display: flex; align-items: center; justify-content: center; transition: all .16s ease">
+<svg aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none">
+<path d="M6.75 3.75H13.5V8.25A1 1 0 0 0 14.5 9.25H18.75V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}"></path>
+<path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75ZM13.5 3.75V8A1 1 0 0 0 14.5 9H18.75" stroke="{{iconLine}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M8.75 14.25L11 16.5L15.5 11.75" stroke="{{accent}}" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+
+<div style="width: 440px; height: 520px; box-sizing: border-box; border-radius: 14px; background: {{paperBg}}; border: 1px solid {{winBorder}}; box-shadow: {{winShadow}}; display: flex; flex-direction: column; overflow: hidden; position: relative">
+
+<header onWheel="{{onHeaderWheel}}" style="height: 44px; flex-shrink: 0; padding: 0 12px 0 16px; display: flex; align-items: center; justify-content: space-between; position: relative; user-select: none">
+<button type="button" class="v1-dot-close" onMouseEnter="{{enterClose}}" onMouseLeave="{{leaveClose}}" aria-label="隐藏速记 (Esc)" style="width: 24px; height: 24px; margin-left: -4px; border-radius: 999px; display: flex; align-items: center; justify-content: center">
+<span style="width: 12px; height: 12px; box-sizing: border-box; border-radius: 999px; background: {{closeTrafficBg}}; border: 1px solid {{closeTrafficBorder}}; display: flex; align-items: center; justify-content: center; transition: all .15s ease">
+<svg class="x-glyph" aria-hidden="true" width="6.5" height="6.5" viewBox="0 0 10 10" fill="none" stroke="{{closeTrafficFg}}" stroke-width="1.5" stroke-linecap="round">
+<path d="M2.2 2.2L7.8 7.8M7.8 2.2L2.2 7.8"></path>
+</svg>
+</span>
+</button>
+
+<nav aria-label="速记页切换" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none">
+<div style="height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; background: {{trackBg}}; border: 1px solid {{trackBorder}}; box-shadow: {{trackInset}}; display: flex; align-items: center; gap: 2px; pointer-events: auto">
+<sc-for list="{{dots}}" as="d" hint-placeholder-count="3">
+<button type="button" onClick="{{d.pick}}" onMouseEnter="{{d.enter}}" onMouseLeave="{{clearHover}}" aria-label="{{d.label}}" aria-pressed="{{d.active}}" style="width: 20px; height: 20px; border-radius: 999px; display: flex; align-items: center; justify-content: center">
+<span style="width: {{d.beadSize}}; height: {{d.beadSize}}; box-sizing: border-box; border-radius: 999px; background: {{d.beadBg}}; border: {{d.beadBorder}}; box-shadow: {{d.beadShadow}}; display: flex; align-items: center; justify-content: center; transition: all .22s cubic-bezier(.22, 1, .36, 1)">
+<span style="width: {{d.pipSize}}; height: {{d.pipSize}}; border-radius: 999px; background: {{d.pipBg}}; transition: all .18s ease"></span>
+</span>
+</button>
+</sc-for>
+</div>
+</nav>
+
+<button type="button" class="v1-save" onClick="{{toggleSaved}}" onMouseEnter="{{enterSave}}" onMouseLeave="{{leaveSave}}" aria-label="存入正式笔记" style="width: 28px; height: 28px; box-sizing: border-box; border-radius: 7px; background: {{saveBtnBg}}; border: {{saveBtnBorder}}; box-shadow: {{saveBtnRing}}; display: flex; align-items: center; justify-content: center">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none">
+<path d="M6.75 3.75H13.5V8.25A1 1 0 0 0 14.5 9.25H18.75V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}"></path>
+<path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75ZM13.5 3.75V8A1 1 0 0 0 14.5 9H18.75" stroke="{{iconLine}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M8.75 14.25L11 16.5L15.5 11.75" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</header>
+
+<sc-if value="{{showTip}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; top: 44px; left: 50%; transform: translateX(-50%); z-index: 10; height: 30px; padding: 0 12px; border-radius: 10px; background: {{tipBg}}; border: 1px solid {{tipBorder}}; box-shadow: 0 4px 12px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 7px; pointer-events: none; white-space: nowrap">
+<span style="font-size: 13px; font-weight: 560; color: {{tipFg}}">{{tipTitle}}</span>
+<span style="width: 1px; height: 12px; background: {{tipDivider}}"></span>
+<span style="font-size: 13px; color: {{tipMuted}}">点击或上下滚动切换</span>
+</div>
+</sc-if>
+
+<main style="flex: 1; padding: 18px 28px 28px; display: flex; flex-direction: column; gap: 14px">
+<sc-if value="{{on1}}" hint-placeholder-val="{{false}}">
+<h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 560; color: {{textCol}}">产品双周复盘备忘</h2>
+<p style="margin: 0; font-size: 16px; line-height: 26px; color: {{textCol}}">把导航层级收敛在一屏之内，不增加多余入口。</p>
+<p style="margin: 0; font-size: 16px; line-height: 26px; color: {{textSecondary}}">居中保留嵌槽圆珠与浅灰蓝胶囊底，右上角恢复原版双色单图标。</p>
+</sc-if>
+<sc-if value="{{on2}}" hint-placeholder-val="{{false}}">
+<h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 560; color: {{textCol}}">阅读摘录</h2>
+<p style="margin: 0; font-size: 16px; line-height: 26px; color: {{textCol}}">好的设计尽可能少，把注意力留给正在书写的内容本身。</p>
+<p style="margin: 0; font-size: 16px; line-height: 26px; color: {{textSecondary}}">《设计中的设计》· 留白与器物秩序</p>
+</sc-if>
+<sc-if value="{{on3}}" hint-placeholder-val="{{true}}">
+<h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 560; color: {{textCol}}">周末采购清单</h2>
+<p style="margin: 0; font-size: 16px; line-height: 26px; color: {{textCol}}">浅烘手冲豆、A5 方格笔记本、桌面理线夹。</p>
+<p style="margin: 0; font-size: 16px; line-height: 26px; color: {{textSecondary}}">左上微圆点、居中嵌槽圆珠、右上双色存入图标三点平衡。</p>
+</sc-if>
+</main>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"浅色","options":["浅色","深色"]},"saveStyle":{"editor":"enum","default":"纯净无底框","options":["纯净无底框","同色微衬底"]},"$preview":{"width":560,"height":720}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = { slot: 3, hover: 0, saveHover: false, closeHover: false, saved: false };
+    this._lastWheel = 0;
+  }
+  renderVals() {
+    const dark = (this.props.theme ?? '浅色') === '深色';
+    const saveBacked = (this.props.saveStyle ?? '纯净无底框') === '同色微衬底';
+    const slot = this.state.slot || 3;
+    const hover = this.state.hover || 0;
+    const saveHover = !!this.state.saveHover;
+    const closeHover = !!this.state.closeHover;
+    const saved = !!this.state.saved;
+
+    const accent = dark ? '#779de8' : '#547dd0';
+    const rimCol = dark ? '#181818' : '#ffffff';
+    const pipCol = '#eef4ff';
+    const trackBg = dark ? '#24272f' : '#f1f3f7';
+    const trackBorder = dark ? '#333844' : '#e2e6ee';
+    const idleDot = dark ? '#4d5565' : '#bcc4d2';
+    const hoverDot = dark ? '#8d97ab' : '#7b869a';
+    const iconFill = dark ? '#31456a' : '#c9d8f3';
+    const iconLine = saveHover || saved ? (dark ? '#ececec' : '#1f1e1d') : (dark ? '#b4b4b4' : '#52514e');
+
+    const ids = [1, 2, 3];
+    const dots = ids.map((id) => {
+      const active = slot === id;
+      const isHover = hover === id;
+      return {
+        label: '速记页 ' + id,
+        active,
+        beadSize: active ? '12px' : (isHover ? '5.5px' : '4.5px'),
+        beadBg: active ? accent : (isHover ? hoverDot : idleDot),
+        beadBorder: active ? ('2px solid ' + rimCol) : '0px solid transparent',
+        beadShadow: active
+          ? (dark ? '0 1px 3px rgba(0,0,0,0.65)' : '0 1px 3px rgba(46,79,150,0.32)')
+          : 'none',
+        pipSize: active ? '2.5px' : '0px',
+        pipBg: active ? pipCol : 'transparent',
+        pick: () => this.setState({ slot: id }),
+        enter: () => this.setState({ hover: id })
+      };
+    });
+
+    const macroDots = ids.map((id) => {
+      const active = slot === id;
+      return {
+        label: '放大检视 速记页 ' + id,
+        active,
+        beadSize: active ? '34px' : '13px',
+        beadBg: active ? accent : idleDot,
+        beadBorder: active ? ('5px solid ' + rimCol) : '0px solid transparent',
+        beadShadow: active
+          ? (dark ? '0 3px 8px rgba(0,0,0,0.65)' : '0 3px 9px rgba(46,79,150,0.32)')
+          : 'none',
+        pipSize: active ? '7px' : '0px',
+        pipBg: active ? pipCol : 'transparent',
+        pick: () => this.setState({ slot: id })
+      };
+    });
+
+    const selectedBg = dark ? '#343434' : '#e5edfc';
+    const hoverBg = dark ? '#2c2c2c' : '#eef3fc';
+    const baseSaveBg = saveBacked ? trackBg : 'transparent';
+    const baseSaveBorder = saveBacked ? ('1px solid ' + trackBorder) : '1px solid transparent';
+
+    return {
+      stageBg: dark ? '#111215' : '#f3f4f6',
+      paperBg: rimCol,
+      trackBg,
+      trackBorder,
+      trackInset: dark ? 'inset 0 1px 2px rgba(0,0,0,0.35)' : 'inset 0 1px 2px rgba(15,23,42,0.04)',
+      winBorder: dark ? '#2e2e2e' : '#e4e6ea',
+      hairline: dark ? '#2e2e2e' : '#e4e6ea',
+      loupeShadow: dark ? '0 8px 24px rgba(0,0,0,0.35)' : '0 4px 14px rgba(15,23,42,0.04)',
+      winShadow: dark ? '0 18px 44px rgba(0,0,0,0.5)' : '0 14px 36px rgba(15,23,42,0.08)',
+      textCol: dark ? '#ececec' : '#1f1e1d',
+      textSecondary: dark ? '#b4b4b4' : '#52514e',
+      accent,
+      iconFill,
+      iconLine,
+      saveBtnBg: saved ? selectedBg : (saveHover ? hoverBg : baseSaveBg),
+      saveBtnBorder: saved ? ('1px solid ' + accent) : (saveHover ? ('1px solid ' + (dark ? '#3a4254' : '#d8e3f8')) : baseSaveBorder),
+      saveBtnRing: 'none',
+      macroSaveBg: saved ? selectedBg : (saveBacked ? trackBg : hoverBg),
+      macroSaveBorder: saved ? ('1.5px solid ' + accent) : (saveBacked ? ('1.5px solid ' + trackBorder) : '1.5px solid transparent'),
+      macroSaveRing: 'none',
+      closeTrafficBg: closeHover ? (dark ? '#3a2020' : '#fdeeee') : trackBg,
+      closeTrafficBorder: closeHover ? (dark ? '#6e3232' : '#f3c7c7') : trackBorder,
+      closeTrafficFg: closeHover ? (dark ? '#ef6b6b' : '#d64545') : (dark ? '#b4b4b4' : '#52514e'),
+      tipBg: dark ? '#25272d' : '#ffffff',
+      tipBorder: dark ? '#3a3e48' : '#e4e6ea',
+      tipFg: dark ? '#f2f4f8' : '#1f1e1d',
+      tipDivider: dark ? '#3a3e48' : '#e4e6ea',
+      tipMuted: dark ? '#b4bccb' : '#52514e',
+      showTip: hover > 0,
+      tipTitle: '速记页 ' + (hover || slot),
+      on1: slot === 1,
+      on2: slot === 2,
+      on3: slot === 3,
+      dots,
+      macroDots,
+      clearHover: () => this.setState({ hover: 0 }),
+      enterSave: () => this.setState({ saveHover: true }),
+      leaveSave: () => this.setState({ saveHover: false }),
+      enterClose: () => this.setState({ closeHover: true }),
+      leaveClose: () => this.setState({ closeHover: false }),
+      toggleSaved: () => this.setState({ saved: !saved }),
+      onHeaderWheel: (e) => {
+        if (!e) return;
+        if (e.preventDefault) e.preventDefault();
+        const now = Date.now();
+        if (now - this._lastWheel < 160) return;
+        const raw = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        if (Math.abs(raw) < 2) return;
+        this._lastWheel = now;
+        const dir = raw > 0 ? 1 : -1;
+        const next = ((slot - 1 + dir + 3) % 3) + 1;
+        this.setState({ slot: next });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

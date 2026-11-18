@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>大字海报</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#141414;text-decoration:none;background:linear-gradient(#e2471b,#e2471b) 0 100%/100% 3px no-repeat}a:hover{color:#e2471b}
+</style>
+</helmet>
+<div style="width:816px;height:1240px;box-sizing:border-box;background-color:#f2efe9;background-image:radial-gradient(rgba(20,20,20,.045) 0.7px,transparent 0.9px);background-size:4px 4px;padding:64px 64px 56px;font-family:'PingFang SC',sans-serif;color:#141414;display:flex;flex-direction:column;position:relative;overflow:hidden">
+<div style="position:absolute;right:28px;top:64px;font-family:Menlo,monospace;font-size:12px;letter-spacing:.3em;writing-mode:vertical-rl">2026.11.18 — NO.12</div>
+<div style="font-family:Menlo,monospace;font-size:13px;letter-spacing:.2em">READING CLUB</div>
+<h1 style="margin:18px 0 0;font-weight:900;font-size:132px;line-height:.98;letter-spacing:-.04em">周末<br><span style="background:#e2471b;color:#f2efe9;padding:0 10px;margin-left:-10px">读书</span>会</h1>
+<div style="margin-top:22px;font-weight:800;font-size:30px;letter-spacing:-.01em">第 12 期选书</div>
+<p style="margin:36px 0 0;width:520px;font-size:17px;line-height:1.85;color:#2b2b2b">这一期把范围收窄到 <b style="font-weight:900">三本可以在一个周末读完</b> 的书，每本都在 300 页以内，适合<span style="color:#e2471b;font-weight:700">边读边做笔记</span>。报名与座位请看<a href="#">活动页</a>。</p>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin-top:52px;border-top:6px solid #141414">
+<div style="padding:16px 18px 0 0"><div style="font-family:Menlo,monospace;font-size:44px;font-weight:700;letter-spacing:-.04em">176</div><div style="font-weight:800;font-size:19px;margin-top:6px">观看之道</div><div style="font-size:13px;color:#5b5b5b;margin-top:2px">约翰·伯格</div></div>
+<div style="padding:16px 18px 0;border-left:1px solid #141414"><div style="font-family:Menlo,monospace;font-size:44px;font-weight:700;letter-spacing:-.04em">288</div><div style="font-weight:800;font-size:19px;margin-top:6px">小于一</div><div style="font-size:13px;color:#5b5b5b;margin-top:2px">布罗茨基</div></div>
+<div style="padding:16px 0 0 18px;border-left:1px solid #141414"><div style="font-family:Menlo,monospace;font-size:44px;font-weight:700;letter-spacing:-.04em">232</div><div style="font-weight:800;font-size:19px;margin-top:6px">秋园</div><div style="font-size:13px;color:#5b5b5b;margin-top:2px">杨本芬</div></div>
+</div>
+<div style="font-family:Menlo,monospace;font-size:11px;letter-spacing:.2em;color:#5b5b5b;margin-top:10px">PAGES / 本期书单</div>
+<blockquote style="margin:60px 0 0;font-weight:900;font-size:40px;line-height:1.25;letter-spacing:-.02em">读书不是为了记住，<br>而是为了<span style="color:#e2471b">改变</span>看事情的方式。</blockquote>
+<div style="margin-top:auto;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:32px;align-items:end">
+<div>
+<div style="font-weight:900;font-size:15px;letter-spacing:.1em;margin-bottom:8px">读前准备</div>
+<div style="font-size:15px;line-height:1.75">→ 每人准备一段想分享的摘抄<br>→ 提前十分钟到场<br>→ 带一支顺手的笔</div>
+</div>
+<pre style="margin:0;font-family:Menlo,monospace;font-size:11px;line-height:1.6;background:#141414;color:#f2efe9;padding:10px 12px">const 书单 = ["观看之道",
+  "小于一", "秋园"]</pre>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":816,"height":1240}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V2 壳层顶栏 · 白芯蓝环 + 分体胶囊组</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#395fb0}
+button{font-family:inherit;padding:0;border:0;background:transparent;cursor:pointer}
+button:focus-visible{outline:2px solid #547dd0;outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 560px; height: 720px; box-sizing: border-box; padding: 32px 60px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; background: {{stageBg}}; font-family: Inter, -apple-system, 'PingFang SC', system-ui, sans-serif; color: {{textCol}}">
+
+<div style="width: 440px; height: 104px; box-sizing: border-box; padding: 0 24px; border-radius: 14px; background: {{shellBg}}; border: 1px solid {{shellBorder}}; box-shadow: {{loupeShadow}}; display: flex; align-items: center; justify-content: space-between">
+<div style="display: flex; align-items: center; gap: 20px">
+<sc-for list="{{macroDots}}" as="m" hint-placeholder-count="3">
+<button type="button" onClick="{{m.pick}}" aria-label="{{m.label}}" aria-pressed="{{m.active}}" style="width: 42px; height: 42px; border-radius: 999px; display: flex; align-items: center; justify-content: center">
+<span style="width: {{m.size}}; height: {{m.size}}; box-sizing: border-box; border-radius: 999px; background: {{m.fill}}; border: {{m.border}}; transition: all .22s cubic-bezier(.22, 1, .36, 1)"></span>
+</button>
+</sc-for>
+</div>
+<div style="height: 52px; padding: 4px; border-radius: 14px; background: {{pillBg}}; border: 1.5px solid {{btnBorder}}; display: flex; align-items: center; gap: 4px">
+<button type="button" onClick="{{toggleSaved}}" aria-label="放大检视 存入正式笔记" style="width: 44px; height: 44px; border-radius: 10px; background: {{macroSaveBg}}; box-shadow: {{macroSaveRing}}; display: flex; align-items: center; justify-content: center; transition: all .15s ease">
+<svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none">
+<path d="M6.75 3.75H13.5V8.25A1 1 0 0 0 14.5 9.25H18.75V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}"></path>
+<path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75ZM13.5 3.75V8A1 1 0 0 0 14.5 9H18.75" stroke="{{iconLine}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M8.75 14.25L11 16.5L15.5 11.75" stroke="{{accent}}" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+<span style="width: 1.5px; height: 26px; background: {{hairline}}"></span>
+<button type="button" aria-label="放大检视 关闭" style="width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: {{iconLine}}">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+<path d="M6.75 6.75L17.25 17.25M17.25 6.75L6.75 17.25"></path>
+</svg>
+</button>
+</div>
+</div>
+
+<div style="width: 440px; height: 520px; box-sizing: border-box; border-radius: 14px; background: {{paperBg}}; border: 1px solid {{winBorder}}; box-shadow: {{winShadow}}; display: flex; flex-direction: column; overflow: hidden; position: relative">
+
+<header onWheel="{{onHeaderWheel}}" style="height: 40px; flex-shrink: 0; padding: 0 10px 0 16px; background: {{shellBg}}; border-bottom: 1px solid {{shellBorder}}; display: flex; align-items: center; justify-content: flex-end; position: relative; user-select: none">
+<nav aria-label="速记页切换" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none">
+<div style="display: flex; align-items: center; gap: 4px; pointer-events: auto">
+<sc-for list="{{dots}}" as="d" hint-placeholder-count="3">
+<button type="button" onClick="{{d.pick}}" onMouseEnter="{{d.enter}}" onMouseLeave="{{clearHover}}" aria-label="{{d.label}}" aria-pressed="{{d.active}}" style="width: 22px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center">
+<span style="width: {{d.size}}; height: {{d.size}}; box-sizing: border-box; border-radius: 999px; background: {{d.fill}}; border: {{d.border}}; transition: all .22s cubic-bezier(.22, 1, .36, 1)"></span>
+</button>
+</sc-for>
+</div>
+</nav>
+
+<div style="height: 26px; padding: 2px; box-sizing: border-box; border-radius: 8px; background: {{pillBg}}; border: 1px solid {{btnBorder}}; display: flex; align-items: center; gap: 2px">
+<button type="button" onClick="{{toggleSaved}}" onMouseEnter="{{enterSave}}" onMouseLeave="{{leaveSave}}" aria-label="存入正式笔记" style="width: 22px; height: 20px; border-radius: 5px; background: {{saveSegBg}}; box-shadow: {{saveSegRing}}; display: flex; align-items: center; justify-content: center; transition: background-color .15s ease">
+<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none">
+<path d="M6.75 3.75H13.5V8.25A1 1 0 0 0 14.5 9.25H18.75V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75Z" fill="{{iconFill}}"></path>
+<path d="M6.75 3.75H13.5L18.75 9V18.5A1.75 1.75 0 0 1 17 20.25H6.75A1.75 1.75 0 0 1 5 18.5V5.5A1.75 1.75 0 0 1 6.75 3.75ZM13.5 3.75V8A1 1 0 0 0 14.5 9H18.75" stroke="{{iconLine}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M8.75 14.25L11 16.5L15.5 11.75" stroke="{{accent}}" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+<span style="width: 1px; height: 12px; background: {{hairline}}"></span>
+<button type="button" onMouseEnter="{{enterClose}}" onMouseLeave="{{leaveClose}}" aria-label="关闭 (Esc)" style="width: 22px; height: 20px; border-radius: 5px; background: {{closeSegBg}}; color: {{closeSegFg}}; display: flex; align-items: center; justify-content: center; transition: all .15s ease">
+<svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round">
+<path d="M6.75 6.75L17.25 17.25M17.25 6.75L6.75 17.25"></path>
+</svg>
+</button>
+</div>
+</header>
+
+<sc-if value="{{showTip}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; top: 42px; left: 50%; transform: translateX(-50%); z-index: 10; height: 30px; padding: 0 12px; border-radius: 10px; background: {{tipBg}}; border: 1px solid {{tipBorder}}; box-shadow: 0 4px 12px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 7px; pointer-events: none; white-space: nowrap">
+<span style="font-size: 13px; font-weight: 560; color: {{tipFg}}">{{tipTitle}}</span>
+<span style="width: 1px; height: 12px; background: {{tipDivider}}"></span>
+<span style="font-size: 13px; color: {{tipMuted}}">点击或上下滚动切换</span>
+</div>
+</sc-if>
+
+<main style="flex: 1; padding: 20px 28px 28px; display: flex; flex-direction: column; gap: 14px">
+<sc-if value="{{on1}}" hint-placeholder-val="{{false}}">
+<h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 560; color: {{textCol}}">产品双周复盘备忘</h2>
+<p style="margin: 0; font-size: 16px; line-height: 26px; color: {{textCol}}">把导航层级收敛在一屏之内，不增加多余入口。</p>
+<p style="margin: 0; font-size: 16px; line-height: 26px; color: {{textSecondary}}">顶栏复用 Ocean Paper 安静壳层 #f1f1f1，滚轮切页区域一目了然。</p>
+</sc-if>
+<sc-if value="{{on2}}" hint-placeholder-val="{{true}}">
+<h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 560; color: {{textCol}}">阅读摘录</h2>
+<p style="margin: 0; font-size: 16px; line-height: 26px; color: {{textCol}}">好的设计尽可能少，把注意力留给正在书写的内容本身。</p>
+<p style="margin: 0; font-size: 16px; line-height: 26px; color: {{textSecondary}}">《设计中的设计》· 留白与器物秩序</p>
+</sc-if>
+<sc-if value="{{on3}}" hint-placeholder-val="{{false}}">
+<h2 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 560; color: {{textCol}}">周末采购清单</h2>
+<p style="margin: 0; font-size: 16px; line-height: 26px; color: {{textCol}}">浅烘手冲豆、A5 方格笔记本、桌面理线夹。</p>
+</sc-if>
+</main>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"浅色","options":["浅色","深色"]},"$preview":{"width":560,"height":720}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = { slot: 2, hover: 0, saveHover: false, closeHover: false, saved: false };
+    this._lastWheel = 0;
+  }
+  renderVals() {
+    const dark = (this.props.theme ?? '浅色') === '深色';
+    const slot = this.state.slot || 2;
+    const hover = this.state.hover || 0;
+    const saveHover = !!this.state.saveHover;
+    const closeHover = !!this.state.closeHover;
+    const saved = !!this.state.saved;
+
+    const accent = dark ? '#779de8' : '#547dd0';
+    const paperCol = dark ? '#181818' : '#ffffff';
+    const shellBg = dark ? '#343434' : '#f1f1f1';
+    const shellBorder = dark ? '#2a2a2a' : '#e6e6e6';
+    const pillBg = dark ? '#222222' : '#ffffff';
+    const btnBorder = dark ? '#444444' : '#dcdcdc';
+    const iconFill = dark ? '#31456a' : '#c9d8f3';
+    const iconLine = saveHover || saved ? (dark ? '#ececec' : '#1f1e1d') : (dark ? '#b4b4b4' : '#52514e');
+    const idleDot = dark ? '#6e727a' : '#b8bec8';
+    const hoverDot = dark ? '#a0a6b2' : '#737c8c';
+
+    const ids = [1, 2, 3];
+    const dots = ids.map((id) => {
+      const active = slot === id;
+      const isHover = hover === id;
+      return {
+        label: '速记页 ' + id,
+        active,
+        size: active ? '11px' : (isHover ? '6px' : '5px'),
+        fill: active ? paperCol : (isHover ? hoverDot : idleDot),
+        border: active ? ('2.25px solid ' + accent) : '0px solid transparent',
+        pick: () => this.setState({ slot: id }),
+        enter: () => this.setState({ hover: id })
+      };
+    });
+
+    const macroDots = ids.map((id) => {
+      const active = slot === id;
+      return {
+        label: '放大检视 速记页 ' + id,
+        active,
+        size: active ? '28px' : '13px',
+        fill: active ? paperCol : idleDot,
+        border: active ? ('6px solid ' + accent) : '0px solid transparent',
+        pick: () => this.setState({ slot: id })
+      };
+    });
+
+    const selectedBg = dark ? '#343434' : '#e5edfc';
+    const hoverBg = dark ? '#2c2c2c' : '#eef3fc';
+
+    return {
+      stageBg: dark ? '#111215' : '#f3f4f6',
+      paperBg: paperCol,
+      shellBg,
+      shellBorder,
+      pillBg,
+      btnBorder,
+      winBorder: dark ? '#2e2e2e' : '#e4e6ea',
+      hairline: dark ? '#383838' : '#e4e6ea',
+      loupeShadow: dark ? '0 8px 24px rgba(0,0,0,0.35)' : '0 4px 14px rgba(15,23,42,0.04)',
+      winShadow: dark ? '0 18px 44px rgba(0,0,0,0.5)' : '0 14px 36px rgba(15,23,42,0.08)',
+      textCol: dark ? '#ececec' : '#1f1e1d',
+      textSecondary: dark ? '#b4b4b4' : '#52514e',
+      accent,
+      iconFill,
+      iconLine,
+      saveSegBg: saved ? selectedBg : (saveHover ? hoverBg : 'transparent'),
+      saveSegRing: saved ? ('inset 0 0 0 1px ' + accent) : 'none',
+      macroSaveBg: saved ? selectedBg : hoverBg,
+      macroSaveRing: saved ? ('inset 0 0 0 1.5px ' + accent) : 'none',
+      closeSegBg: closeHover ? (dark ? '#3a2020' : '#fdeeee') : 'transparent',
+      closeSegFg: closeHover ? (dark ? '#ef6b6b' : '#d64545') : (dark ? '#b4b4b4' : '#52514e'),
+      tipBg: dark ? '#25272d' : '#ffffff',
+      tipBorder: dark ? '#3a3e48' : '#e4e6ea',
+      tipFg: dark ? '#f2f4f8' : '#1f1e1d',
+      tipDivider: dark ? '#3a3e48' : '#e4e6ea',
+      tipMuted: dark ? '#b4bccb' : '#52514e',
+      showTip: hover > 0,
+      tipTitle: '速记页 ' + (hover || slot),
+      on1: slot === 1,
+      on2: slot === 2,
+      on3: slot === 3,
+      dots,
+      macroDots,
+      clearHover: () => this.setState({ hover: 0 }),
+      enterSave: () => this.setState({ saveHover: true }),
+      leaveSave: () => this.setState({ saveHover: false }),
+      enterClose: () => this.setState({ closeHover: true }),
+      leaveClose: () => this.setState({ closeHover: false }),
+      toggleSaved: () => this.setState({ saved: !saved }),
+      onHeaderWheel: (e) => {
+        if (!e) return;
+        if (e.preventDefault) e.preventDefault();
+        const now = Date.now();
+        if (now - this._lastWheel < 160) return;
+        const raw = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        if (Math.abs(raw) < 2) return;
+        this._lastWheel = now;
+        const dir = raw > 0 ? 1 : -1;
+        const next = ((slot - 1 + dir + 3) % 3) + 1;
+        this.setState({ slot: next });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>
