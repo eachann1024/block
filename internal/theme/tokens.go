@@ -135,9 +135,9 @@ const (
 	EdgeFloatInset               = Space10
 	EdgeFloatGutterGap           = Space6
 	EdgeFloatSafeClear   float32 = 10 // minimum clearance between edge strip and 54px handle gutter
-	EdgeFloatHoverBuffer float32 = 18 // forgiving pointer buffer outside open floating cards
+	EdgeFloatHoverBuffer         = Space6
 	EdgeFloatDwellMs             = 140
-	EdgeFloatLeaveMs             = 160
+	EdgeFloatLeaveMs             = 120
 )
 
 // Sidebar file tree metrics.
