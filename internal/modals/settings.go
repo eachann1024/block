@@ -494,8 +494,12 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 										ui.Text(c, ent.CountText).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 											FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
 									} else if ent.StatusDot {
+										dotColor := pal.Accent
+										if ent.HasError {
+											dotColor = pal.Danger
+										}
 										ui.Box(c).Size(theme.StoreStatusDotSize, theme.StoreStatusDotSize).Shrink(0).
-											Radius(theme.RadiusPill).Background(pal.Accent)
+											Radius(theme.RadiusPill).Background(dotColor)
 									}
 								})
 								internalui.Probe(btn, navID)
