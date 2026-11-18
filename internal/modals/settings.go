@@ -368,21 +368,22 @@ func (m *Manager) RenderSettings(c *ui.Context) {
 	st := m.currentState()
 	showDockedSidebar := !st.SidebarCollapsed && sbW+680 <= vpW+0.5
 
-	ui.Row(c.Key("settings-standalone-root")).Fill().Background(pal.SettingsBG).Children(func() {
+	ui.Row(c.Key("settings-standalone-root")).Fill().Background(pal.ShellChrome().Ground).Children(func() {
 		if showDockedSidebar {
 			m.RenderSettingsSidebar(c, false, nil)
 		}
-		m.RenderSettingsBody(c, false, nil)
+		m.renderSettingsBody(c, false, nil, true)
 	})
 }
 
 // RenderSettingsSidebar draws the left category navigation column (docked or inside the narrow floating drawer),
-// matching thinkly-fast/src/app_settings_sidebar.rs 1:1.
+// matching Settings.dc.html.
 func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissDrawer func()) {
 	if !m.settingsOpen {
 		return
 	}
 	pal := theme.Ocean()
+	chrome := pal.ShellChrome()
 	tab := m.ActiveSettingsTab()
 	sbW := theme.SidebarMinWidth
 	if m.SidebarWidth != nil && *m.SidebarWidth > 0 {
@@ -392,31 +393,53 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 	// The docked slot and its open/close motion belong to the workspace shell.
 	wrap := ui.Row(c.Key("settings-sidebar-wrap")).Shrink(0).FillHeight()
 	wrap.Children(func() {
-		ui.Column(c.Key("settings-sidebar")).Width(sbW).FillHeight().Shrink(0).
-			Background(pal.Sidebar).BorderWidth(0, 1, 0, 0).BorderColor(pal.SidebarBorder).
-			Children(func() {
-				ui.Box(c).Padding(18, 16, 10, 16).Children(func() {
-					ui.Text(c, theme.Tr("设置", "Settings")).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+		col := ui.Column(c.Key("settings-sidebar")).Width(sbW).FillHeight().Shrink(0)
+		if isDrawer {
+			col.Background(pal.Sidebar)
+		}
+		col.Children(func() {
+			ui.Column(c).Padding(4, 8, 8, 12).Gap(2).Grow(1).Children(func() {
+				backRow := ui.ButtonBase(c.Key("settings-sidebar-back")).FillWidth().Height(32).PaddingX(8).Gap(9).
+					Margin(0, 0, 8, 0).AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusSM).
+					Cursor(ui.CursorPointer).Label(theme.Tr("返回", "Back"))
+				backHov := backRow.Hovered()
+				backPress := backRow.Pressed()
+				backBG := ui.Transparent
+				backFG := pal.TextSecondary
+				if backHov || backPress {
+					backBG = chrome.Hover
+					backFG = pal.Text
+				}
+				internalui.AnimateSurfaceColors(backRow, backBG, ui.Transparent, false)
+				internalui.TactileCard(backRow, backHov, backPress, false, false)
+				backRow.Children(func() {
+					icons.Draw(c, icons.ArrowLeft, 16, pal.MonoIconColors(backFG))
+					ui.Text(c, theme.Tr("返回", "Back")).FontSize(theme.FontBody).TextColor(backFG).SingleLine()
 				})
-				ui.Column(c).PaddingX(10).Gap(2).Grow(1).Children(func() {
-					for i, spec := range settingsTabs {
-						active := tab == spec.id
-						navID := "settings-tab-" + spec.id
-						title := theme.Tr(spec.zh, spec.en)
-						btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(32).PaddingX(10).Gap(8).
-							AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
-							Label(title).Transition(internalui.CascadeRowTransition(i))
-						hovered := btn.Hovered()
-						pressed := btn.Pressed()
-						if active {
-							btn.Background(pal.Selected).Border(1, pal.Accent)
-						} else if pressed {
-							btn.Background(pal.Selected).Border(1, ui.Transparent)
-						} else if hovered {
-							btn.Background(pal.Hover).Border(1, ui.Transparent)
-						} else {
-							btn.Border(1, ui.Transparent)
-						}
+				internalui.Probe(backRow, "settings-sidebar-back")
+				if backRow.Clicked() {
+					if isDrawer && onDismissDrawer != nil {
+						onDismissDrawer()
+					}
+					m.CloseSettings()
+				}
+
+				for i, spec := range settingsTabs {
+					active := tab == spec.id
+					navID := "settings-tab-" + spec.id
+					title := theme.Tr(spec.zh, spec.en)
+					btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(32).PaddingX(8).Gap(9).
+						AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
+						Label(title).Transition(internalui.CascadeRowTransition(i))
+					hovered := btn.Hovered()
+					pressed := btn.Pressed()
+					if active {
+						btn.Background(pal.Selected).Border(1, pal.Accent)
+					} else if pressed || hovered {
+						btn.Background(chrome.Hover).Border(1, ui.Transparent)
+					} else {
+						btn.Border(1, ui.Transparent)
+					}
 						internalui.TactileCard(btn, hovered, pressed, active, false)
 						btn.Children(func() {
 							ic := pal.MonoIconColors(pal.TextSecondary)
@@ -463,10 +486,8 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 								pressed := btn.Pressed()
 								if active {
 									btn.Background(pal.Selected).Border(1, pal.Accent)
-								} else if pressed {
-									btn.Background(pal.Selected).Border(1, ui.Transparent)
-								} else if hovered {
-									btn.Background(pal.Hover).Border(1, ui.Transparent)
+								} else if pressed || hovered {
+									btn.Background(chrome.Hover).Border(1, ui.Transparent)
 								} else {
 									btn.Border(1, ui.Transparent)
 								}
@@ -515,23 +536,27 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 				})
 			})
 		if !isDrawer && m.SidebarWidth != nil {
-			if internalui.VerticalResizeHandle(c, "settings-sidebar-resize", m.SidebarWidth, theme.SidebarMinWidth, theme.SidebarMaxWidth, false) && m.OnSidebarWidthChanged != nil {
+			if internalui.SeamlessResizeHandle(c, "settings-sidebar-resize", m.SidebarWidth, theme.SidebarMinWidth, theme.SidebarMaxWidth, theme.SidebarDefaultWidth) && m.OnSidebarWidthChanged != nil {
 				m.OnSidebarWidthChanged(*m.SidebarWidth)
 			}
 		}
 	})
 }
 
-// RenderSettingsBody draws the scrollable Settings content page (right column or full-width when sidebar yields),
-// matching thinkly-fast/src/app_settings_view.rs 1:1.
+// RenderSettingsBody draws the scrollable Settings content page inside the workspace floating card.
 func (m *Manager) RenderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDrawer func()) {
+	m.renderSettingsBody(c, drawerOpen, onDismissDrawer, false)
+}
+
+func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDrawer func(), showCloseBtn bool) {
 	if !m.settingsOpen {
 		return
 	}
 	pal := theme.Ocean()
+	cardBG := pal.ShellChrome().Card
 	tab := m.ActiveSettingsTab()
 
-	root := ui.Column(c.Key("settings-page")).Grow(1).MinWidth(0).Fill().Background(pal.SettingsBG).
+	root := ui.Column(c.Key("settings-page")).Grow(1).MinWidth(0).Fill().Background(cardBG).
 		TabStop(false).Bind(&m.settingsFocusHandle)
 	internalui.Probe(root, "settings-page")
 
@@ -549,7 +574,7 @@ func (m *Manager) RenderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 		}
 	})
 
-	padX := float32(28)
+	padX := float32(32)
 	if b := root.Bounds(); b.W > 0 && b.W < 560 {
 		padX = 16
 	} else if b.W <= 0 {
@@ -560,25 +585,30 @@ func (m *Manager) RenderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 
 	root.Children(func() {
 		internalui.Scroll(c.Key("settings-scroll"), &m.settingsScroll).Grow(1).MinWidth(0).Fill().
-			Background(pal.SettingsBG).Padding(40, padX, 64, padX).Gap(28).Children(func() {
+			Background(cardBG).Padding(28, padX, 48, padX).Gap(28).Children(func() {
 			ui.Row(c.Key("settings-header")).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
 				ui.Text(c, m.resolveSettingsTabTitle(tab)).FontSize(theme.FontPage).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
-					if IsPluginSystemTab(tab) && m.PluginHost != nil {
-						m.PluginHost.RenderHeaderExtras(c, tab, m.selectSettingsTab)
-					}
-					backBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-						ID:         "settings-back",
-						Label:      theme.Tr("返回", "Back"),
-						Tooltip:    theme.Tr("关闭设置", "Close Settings"),
-						Variant:    internalui.IconBordered,
-						IconSize:   theme.IconAction,
-						CardBorder: true,
+				hasExtras := IsPluginSystemTab(tab) && m.PluginHost != nil
+				if hasExtras || showCloseBtn {
+					ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
+						if hasExtras {
+							m.PluginHost.RenderHeaderExtras(c, tab, m.selectSettingsTab)
+						}
+						if showCloseBtn {
+							backBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
+								ID:         "settings-back",
+								Label:      theme.Tr("返回", "Back"),
+								Tooltip:    theme.Tr("关闭设置", "Close Settings"),
+								Variant:    internalui.IconBordered,
+								IconSize:   theme.IconAction,
+								CardBorder: true,
+							})
+							if backBtn.Clicked() {
+								m.CloseSettings()
+							}
+						}
 					})
-					if backBtn.Clicked() {
-						m.CloseSettings()
-					}
-				})
+				}
 			})
 
 			ui.Column(c.Key("settings-tab-stage-" + tab)).FillWidth().MinWidth(0).
@@ -706,6 +736,9 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 				}
 			})
 		})
+
+		// Card 1b: Brand Decoration (window landscape scenes, orb & brand mark visibility).
+		m.renderBrandDecoCard(c, st)
 
 		// Card 2: Editor Typography & Fonts (app_settings_tabs.rs:67-70).
 		edFont, cdFont, lh := theme.Typography()

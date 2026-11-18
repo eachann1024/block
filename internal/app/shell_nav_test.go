@@ -360,12 +360,14 @@ func TestSingleTabTitleStyleHasNoBackground(t *testing.T) {
 	blockui.ClearTargets()
 	tt := ui.NewTester(func(c *ui.Context) {
 		c.SetTheme(&th)
-		RenderTitlebar(c, TitlebarProps{
-			Tabs:         tabs,
-			ActiveTab:    active,
-			SidebarWide:  true,
-			SidebarWidth: 220,
-			MenuState:    menu,
+		ui.Box(c).Fill().Background(pal.ShellChrome().Ground).Children(func() {
+			RenderTitlebar(c, TitlebarProps{
+				Tabs:         tabs,
+				ActiveTab:    active,
+				SidebarWide:  true,
+				SidebarWidth: 240,
+				MenuState:    menu,
+			})
 		})
 	}, 960, 80)
 	tt.Frame()

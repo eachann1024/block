@@ -46,10 +46,11 @@ type IconButtonOptions struct {
 	// ActiveStyle refines how Active is drawn.
 	ActiveStyle IconActiveStyle
 	// AlwaysDuo renders Scheme A two-tone semantic fills & accents at rest too.
-	AlwaysDuo  bool
-	CardBorder bool
-	Disabled   bool
-	Danger     bool
+	AlwaysDuo   bool
+	ChromeHover bool
+	CardBorder  bool
+	Disabled    bool
+	Danger      bool
 }
 
 func (o IconButtonOptions) metrics() (box, glyph, radius float32) {
@@ -141,9 +142,17 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 		bdCol = pal.Accent
 		hasBorder = true
 	case pressed:
-		bgCol = pal.Selected
+		if opts.ChromeHover {
+			bgCol = pal.ShellChrome().Hover
+		} else {
+			bgCol = pal.Selected
+		}
 	case hovered:
-		bgCol = pal.Hover
+		if opts.ChromeHover {
+			bgCol = pal.ShellChrome().Hover
+		} else {
+			bgCol = pal.Hover
+		}
 	}
 	AnimateSurfaceColors(btn, bgCol, bdCol, hasBorder)
 	TactileButton(btn, hovered, pressed, opts.Disabled)
@@ -744,6 +753,16 @@ func VerticalResizeHandle(c *ui.Context, id string, width *float32, minW, maxW f
 // Matches thinkly-fast ui/resize_handle.rs: 8px hit centred on the edge, 2px line,
 // menu-border on hover, accent while dragging.
 func ResizeHandle(c *ui.Context, id string, width *float32, minW, maxW float32, invert bool, reset float32) bool {
+	return resizeHandle(c, id, width, minW, maxW, invert, reset, true)
+}
+
+// SeamlessResizeHandle is ResizeHandle without an idle 1px divider line, used beside
+// floating cards that already carry their own 1px rounded contour.
+func SeamlessResizeHandle(c *ui.Context, id string, width *float32, minW, maxW, reset float32) bool {
+	return resizeHandle(c, id, width, minW, maxW, false, reset, false)
+}
+
+func resizeHandle(c *ui.Context, id string, width *float32, minW, maxW float32, invert bool, reset float32, idleLine bool) bool {
 	pal := theme.Ocean()
 	if id != "" {
 		c.Key(id + "-slot")
@@ -776,12 +795,19 @@ func ResizeHandle(c *ui.Context, id string, width *float32, minW, maxW float32, 
 		}
 		hovered := h.Hovered()
 		h.Draw(func(p *ui.Painter, r ui.Rect) {
-			lineW, color := float32(1), pal.SidebarBorder
+			var lineW float32
+			var color ui.Color
+			if idleLine {
+				lineW, color = 1, pal.SidebarBorder
+			}
 			switch {
 			case held:
 				lineW, color = theme.ResizeLineWidth, pal.Accent
 			case hovered:
 				lineW, color = theme.ResizeLineWidth, pal.MenuBorder
+			}
+			if lineW <= 0 {
+				return
 			}
 			edge := r.X + r.W*0.5
 			lineX := edge - lineW/2
@@ -789,7 +815,14 @@ func ResizeHandle(c *ui.Context, id string, width *float32, minW, maxW float32, 
 				// The right panel clips to its left edge while opening.
 				lineX = edge
 			}
-			p.Fill(ui.Rect{X: lineX, Y: r.Y, W: lineW, H: r.H}, color, 0)
+			y, lh := r.Y, r.H
+			var rad float32
+			if !idleLine {
+				y = r.Y + 8
+				lh = max(r.H-16, 16)
+				rad = lineW * 0.5
+			}
+			p.Fill(ui.Rect{X: lineX, Y: y, W: lineW, H: lh}, color, rad)
 		})
 		if id != "" {
 			Probe(h, id)

@@ -60,6 +60,7 @@ type TitlebarProps struct {
 	SidebarWidth      float32
 	InSettings        bool
 	SettingsTabLabel  string
+	HideMark          bool
 	AIImmersive       bool
 	AIOpen            bool
 	FeedbackOpen      bool
@@ -101,6 +102,8 @@ type TitlebarProps struct {
 	OnOpenSearch    func()
 
 	OnToggleSidebar   func()
+	OnCloseSettings   func()
+	OnClickNotebook   func()
 	OnBack            func()
 	OnForward         func()
 	OnSelectTab       func(path string)
@@ -150,138 +153,133 @@ func localizeSettingsTabLabel(tab string) string {
 	}
 }
 
-// RenderTitlebar renders the 40px Ocean Paper custom title bar (`Tabs-1-Titlebar`)
+// RenderTitlebar renders the 40px T3-inspired floating-shell title bar
 // plus any anchored tab context menu or page "More" menu.
 func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 	pal := theme.Ocean()
 	tb := c.TitleBar()
 	leftLead := float32(10)
 	if theme.IsMacOS() {
-		leftLead = max(82, tb.Left+12)
+		leftLead = max(80, tb.Left+12)
 	}
 
-	showBack := !p.InSettings && p.CanBack
-	showFwd := !p.InSettings && p.CanForward
-	navCount := 0
-	if showBack {
-		navCount++
-	}
-	if showFwd {
-		navCount++
-	}
-	if p.SidebarWide && !p.InSettings {
-		navCount += 2 // Search + New Note
-	}
-	leftW := leftLead + 8 + theme.ChromeBoxSize + float32(navCount)*(theme.ChromeBoxSize+2)
+	leftW := leftLead + theme.ChromeBoxSize + 6
 	if p.AIImmersive {
 		leftW = leftLead
 	} else if p.SidebarWide {
-		leftW = max(p.SidebarWidth, leftW)
+		leftW = max(p.SidebarWidth, SidebarMinW)
 	}
 
 	c.Key("titlebar")
-	bar := ui.Row(c).FillWidth().Height(TitlebarHeight).Shrink(0).AlignItems(ui.Center).
-		Background(pal.Shell).BorderWidth(0, 0, 1, 0).BorderColor(pal.SidebarBorder)
+	bar := ui.Row(c).FillWidth().Height(TitlebarHeight).Shrink(0).AlignItems(ui.Center)
 	blockui.Probe(bar, "titlebar")
 
 	bar.Children(func() {
-		// 1. Left cell: traffic-light clearance, optional Back/Forward, sidebar toggle.
+		// 1. Left cell: traffic-light clearance, fixed sidebar toggle, brand mark, and Back/Forward.
 		c.Key("titlebar-left")
 		left := ui.Row(c).Width(leftW).FillHeight().Shrink(0).AlignItems(ui.Center).
-			Padding(0, 8, 0, leftLead).DragWindow()
-		if !p.AIImmersive {
-			left.BorderWidth(0, 1, 0, 0).BorderColor(pal.SidebarBorder)
-		}
+			Padding(0, 6, 0, leftLead).DragWindow()
 		blockui.Probe(left, "titlebar-left")
 		left.Children(func() {
 			if p.AIImmersive {
 				return
 			}
+			sidebarOpen := p.SidebarWide || p.SidebarFloating
+			glyph := icons.SidebarExpand
+			if sidebarOpen {
+				glyph = icons.SidebarCollapse
+			}
+			sbSc := nonEmptyOr(p.ShortcutSidebar, "alt-b")
+			var tip string
+			if p.InSettings {
+				if sidebarOpen {
+					tip = theme.Tr("收起导航", "Collapse Navigation")
+				} else {
+					tip = theme.Tr("展开导航", "Expand Navigation")
+				}
+			} else {
+				if sidebarOpen {
+					tip = theme.Tr("收起侧栏", "Collapse Sidebar")
+				} else {
+					tip = theme.Tr("展开侧栏", "Expand Sidebar")
+				}
+			}
+			sbBtn := blockui.IconButton(c, glyph, blockui.IconButtonOptions{
+				ID:          "sidebar-toggle",
+				Tooltip:     tip,
+				Shortcut:    blockui.FormatShortcutDisplay(sbSc),
+				Active:      p.SidebarFloating,
+				ActiveStyle: blockui.ActiveAccent,
+				ChromeHover: true,
+			})
+			if sbBtn.Clicked() && p.OnToggleSidebar != nil {
+				p.OnToggleSidebar()
+			}
+
+			if !p.SidebarWide {
+				return
+			}
+
+			if !p.HideMark {
+				blockui.AppMark(c).Margin(0, 0, 0, 4)
+			}
 			ui.Spacer(c)
-			ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
-				if showBack {
-					backBtn := blockui.IconButton(c, icons.ChevronLeft, blockui.IconButtonOptions{
-						ID:       "nav-back",
-						Tooltip:  theme.Tr("后退", "Back"),
-						Disabled: p.Busy,
+
+			if !p.InSettings {
+				ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
+					backBtn := blockui.IconButton(c, icons.ArrowLeft, blockui.IconButtonOptions{
+						ID:          "nav-back",
+						Size:        26,
+						IconSize:    16,
+						Tooltip:     theme.Tr("后退", "Back"),
+						Shortcut:    blockui.FormatShortcutDisplay("cmd-["),
+						Disabled:    p.Busy || !p.CanBack,
+						ChromeHover: true,
 					})
-					if backBtn.Clicked() && !p.Busy && p.OnBack != nil {
+					if backBtn.Clicked() && !p.Busy && p.CanBack && p.OnBack != nil {
 						p.OnBack()
 					}
-				}
-				if showFwd {
-					fwdBtn := blockui.IconButton(c, icons.ChevronRight, blockui.IconButtonOptions{
-						ID:       "nav-forward",
-						Tooltip:  theme.Tr("前进", "Forward"),
-						Disabled: p.Busy,
+					fwdBtn := blockui.IconButton(c, icons.ArrowRight, blockui.IconButtonOptions{
+						ID:          "nav-forward",
+						Size:        26,
+						IconSize:    16,
+						Tooltip:     theme.Tr("前进", "Forward"),
+						Shortcut:    blockui.FormatShortcutDisplay("cmd-]"),
+						Disabled:    p.Busy || !p.CanForward,
+						ChromeHover: true,
 					})
-					if fwdBtn.Clicked() && !p.Busy && p.OnForward != nil {
+					if fwdBtn.Clicked() && !p.Busy && p.CanForward && p.OnForward != nil {
 						p.OnForward()
 					}
-				}
-				if p.SidebarWide && !p.InSettings {
-					renderTitlebarSidebarActions(c, p)
-				}
-				sidebarOpen := p.SidebarWide || p.SidebarFloating
-				glyph := icons.SidebarExpand
-				if sidebarOpen {
-					glyph = icons.SidebarCollapse
-				}
-				sbSc := p.ShortcutSidebar
-				if sbSc == "" {
-					sbSc = "alt-b"
-				}
-				var tip string
-				if p.InSettings {
-					if sidebarOpen {
-						tip = theme.Tr("收起导航", "Collapse Navigation")
-					} else {
-						tip = theme.Tr("展开导航", "Expand Navigation")
-					}
-				} else {
-					if sidebarOpen {
-						tip = theme.Tr("收起侧栏", "Collapse Sidebar")
-					} else {
-						tip = theme.Tr("展开侧栏", "Expand Sidebar")
-					}
-				}
-				sbShortcut := blockui.FormatShortcutDisplay(sbSc)
-				sbBtn := blockui.IconButton(c, glyph, blockui.IconButtonOptions{
-					ID:          "sidebar-toggle",
-					Tooltip:     tip,
-					Shortcut:    sbShortcut,
-					Active:      p.SidebarFloating,
-					ActiveStyle: blockui.ActiveAccent,
 				})
-				if sbBtn.Clicked() && p.OnToggleSidebar != nil {
-					p.OnToggleSidebar()
-				}
-			})
+			}
 		})
 
-		// 2. Center cell: settings breadcrumb, empty title, or multi-tab strip.
+		// 2. Center cell: settings breadcrumb, empty notebook title, single-tab breadcrumb, or multi-tab strip.
 		c.Key("titlebar-tabs")
-		center := ui.Row(c).Grow(1).MinWidth(0).FillHeight().AlignItems(ui.Center).Gap(4).PaddingX(10).Clip()
+		center := ui.Row(c).Grow(1).MinWidth(0).FillHeight().AlignItems(ui.Center).Gap(4).PaddingX(4).Clip()
 		blockui.Probe(center, "titlebar-tabs")
 		centerW := center.Bounds().W
 		center.Children(func() {
 			if p.InSettings {
-				crumb := ui.Row(c).Fill().MinWidth(0).AlignItems(ui.Center).Gap(6).PaddingX(6).DragWindow()
+				crumb := ui.Row(c).Fill().MinWidth(0).AlignItems(ui.Center).Gap(4).PaddingX(6).DragWindow()
 				crumb.Children(func() {
 					ui.Text(c, theme.Tr("设置", "Settings")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
-					ui.Text(c, "/").FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+					ui.Text(c, "/").FontSize(theme.FontTitle).TextColor(pal.Placeholder).SingleLine().Shrink(0)
 					ui.Text(c, localizeSettingsTabLabel(p.SettingsTabLabel)).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 				})
 				return
 			}
 			if len(p.Tabs) == 0 {
-				title := "Block"
-				if p.NotebookPath != "" {
-					title = noteDisplayTitle(p.NotebookPath, true)
-				}
-				drag := ui.Row(c).Fill().MinWidth(0).AlignItems(ui.Center).DragWindow()
+				drag := ui.Row(c).Fill().MinWidth(0).AlignItems(ui.Center).Gap(7).PaddingX(6).DragWindow()
 				drag.Children(func() {
-					ui.Text(c, title).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					if p.NotebookPath != "" {
+						nbTitle := noteDisplayTitle(p.NotebookPath, true)
+						blockui.MonogramBadge(c, nbTitle)
+						ui.Text(c, nbTitle).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					} else {
+						ui.Text(c, "Block").FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					}
 				})
 				return
 			}
@@ -291,12 +289,13 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 
 			if multi {
 				newTabBtn := blockui.IconButton(c, icons.Plus, blockui.IconButtonOptions{
-					ID:       "tab-new",
-					Size:     theme.ChromeBoxSize,
-					IconSize: 16,
-					Tooltip:  theme.Tr("新建标签页", "New Tab"),
-					Shortcut: blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewTab, "cmd-t")),
-					Disabled: p.Busy,
+					ID:          "tab-new",
+					Size:        theme.ChromeBoxSize,
+					IconSize:    16,
+					Tooltip:     theme.Tr("新建标签页", "New Tab"),
+					Shortcut:    blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewTab, "cmd-t")),
+					Disabled:    p.Busy,
+					ChromeHover: true,
 				})
 				if newTabBtn.Clicked() && !p.Busy && p.OnNewNote != nil {
 					p.OnNewNote()
@@ -331,8 +330,27 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 			}
 		})
 
-		// 3. Right tail: contextual file tools + Feedback + AI Panel + Page More pill.
-		if !p.InSettings && !p.AIImmersive {
+		// 3. Right tail: Settings close button, or contextual file tools + Feedback + AI Panel + Page More pill.
+		if p.InSettings {
+			pad := float32(titlebarActionTrailing)
+			if !theme.IsMacOS() {
+				pad = 0
+				if tb.Right > 0 {
+					pad = tb.Right + 8
+				}
+			}
+			ui.Row(c).FillHeight().Shrink(0).AlignItems(ui.Center).Padding(0, pad, 0, 0).Children(func() {
+				closeBtn := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{
+					ID:          "settings-back",
+					Label:       theme.Tr("关闭设置", "Close Settings"),
+					Tooltip:     theme.Tr("关闭设置", "Close Settings"),
+					ChromeHover: true,
+				})
+				if closeBtn.Clicked() && p.OnCloseSettings != nil {
+					p.OnCloseSettings()
+				}
+			})
+		} else if !p.AIImmersive {
 			renderTitlebarTail(c, p, tb.Right)
 		}
 	})
@@ -445,8 +463,9 @@ func renderZoomCluster(c *ui.Context, id string, p TitlebarProps) {
 
 func renderRevealButton(c *ui.Context, p TitlebarProps) {
 	revBtn := blockui.IconButton(c, icons.FolderReveal, blockui.IconButtonOptions{
-		ID:      "tb-reveal",
-		Tooltip: theme.Tr("在访达中显示", "Reveal in File Manager"),
+		ID:          "tb-reveal",
+		Tooltip:     theme.Tr("在访达中显示", "Reveal in File Manager"),
+		ChromeHover: true,
 	})
 	if revBtn.Clicked() && p.OnRevealActive != nil {
 		p.OnRevealActive()
@@ -641,25 +660,4 @@ func buildTabContextItems(p TitlebarProps) []blockui.MenuItemSpec {
 	}
 }
 
-// renderTitlebarSidebarActions draws Search and New Note beside the sidebar toggle,
-// replacing the sidebar's own header toolbar.
-func renderTitlebarSidebarActions(c *ui.Context, p TitlebarProps) {
-	searchBtn := blockui.IconButton(c, icons.FindSearch, blockui.IconButtonOptions{
-		ID:       "search-button",
-		Tooltip:  theme.Tr("搜索", "Search"),
-		Shortcut: blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutSearch, "cmd-k")),
-		Active:   p.SearchOpen,
-	})
-	if searchBtn.Clicked() && p.OnOpenSearch != nil {
-		p.OnOpenSearch()
-	}
-	newBtn := blockui.IconButton(c, icons.NotePlus, blockui.IconButtonOptions{
-		ID:       "new-note",
-		Tooltip:  theme.Tr("新建笔记", "New Note"),
-		Shortcut: blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewNote, "cmd-n")),
-		Disabled: p.Busy,
-	})
-	if newBtn.Clicked() && !p.Busy && p.OnNewNote != nil {
-		p.OnNewNote()
-	}
-}
+

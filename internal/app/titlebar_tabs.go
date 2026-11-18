@@ -114,18 +114,46 @@ func tabTitle(path string) string {
 	return theme.Tr("未命名", "Untitled")
 }
 
-// renderSingleTab: a lone tab is a plain title on the drag area, faded past 240px.
+// renderSingleTab renders the notebook badge + breadcrumb + active page title on the drag area.
 func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
 	pal := theme.Ocean()
+	chrome := pal.ShellChrome()
 	dirty := p.IsDirty != nil && p.IsDirty(path)
+
+	if p.NotebookPath != "" {
+		nbTitle := noteDisplayTitle(p.NotebookPath, true)
+		c.Key("titlebar-nb-crumb")
+		crumb := ui.ButtonBase(c).Height(tabPillH).PaddingX(6).Gap(7).Shrink(0).
+			Radius(theme.RadiusSM).AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(nbTitle)
+		crumbHov := crumb.Hovered()
+		crumbPress := crumb.Pressed()
+		crumbBG := ui.Transparent
+		crumbFG := pal.TextSecondary
+		if crumbHov || crumbPress {
+			crumbBG = chrome.Hover
+			crumbFG = pal.Text
+		}
+		blockui.AnimateSurfaceColors(crumb, crumbBG, ui.Transparent, false)
+		crumb.Children(func() {
+			blockui.MonogramBadge(c, nbTitle)
+			ui.Text(c, nbTitle).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).
+				TextColor(crumbFG).SingleLine().Shrink(0)
+		})
+		blockui.Probe(crumb, "titlebar-nb-crumb")
+		if crumb.Clicked() && p.OnClickNotebook != nil {
+			p.OnClickNotebook()
+		}
+		ui.Text(c, "/").FontSize(theme.FontTitle).TextColor(pal.Placeholder).SingleLine().Shrink(0)
+	}
+
 	c.Key("tab:" + path)
 	pill := ui.Row(c).Height(tabPillH).MinWidth(0).MaxWidth(singleTabMaxW).Shrink(1).
-		Padding(0, 10, 0, 10).Radius(theme.RadiusMD).AlignItems(ui.Center).Clip().DragWindow().
+		Padding(0, 8, 0, 6).Radius(theme.RadiusMD).AlignItems(ui.Center).Clip().DragWindow().
 		Role(ui.RoleTab).AccessSelected(true).Label(tabTitle(path))
 	pill.Children(func() {
 		ui.Row(c).Shrink(1).MinWidth(0).FillHeight().AlignItems(ui.Center).Clip().Children(func() {
 			tabLabel(c, tabTitle(path), pal.Text)
-			tabFade(c, pal.Shell).Absolute().Top(0).Bottom(0).Left(singleTabMaxW - 20 - tabFadeW)
+			tabFade(c, chrome.Ground).Absolute().Top(0).Bottom(0).Left(singleTabMaxW - 14 - tabFadeW)
 		})
 		if dirty {
 			tabDirtyDot(c).Margin(0, 0, 0, 6)
@@ -195,13 +223,14 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 	}
 
 	hovered := pill.Hovered()
+	chrome := pal.ShellChrome()
 	fg := pal.TextSecondary
 	switch {
 	case active:
 		pill.Background(pal.Selected).Border(1, pal.Accent)
 		fg = pal.Text
 	case hovered || isDropTarget:
-		pill.Background(pal.Hover).Border(1, ui.Transparent)
+		pill.Background(chrome.Hover).Border(1, ui.Transparent)
 		fg = pal.Text
 	default:
 		pill.Border(1, ui.Transparent)
@@ -241,13 +270,13 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 			end := ui.Row(c).Absolute().Top(0).Bottom(0).Right(0).AlignItems(ui.Center)
 			end.Children(func() {
 				if hovered {
-					tabFade(c, pal.Hover)
-					ui.Row(c).Width(18).FillHeight().Background(pal.Hover).Center().Children(closeBtn)
+					tabFade(c, chrome.Hover)
+					ui.Row(c).Width(18).FillHeight().Background(chrome.Hover).Center().Children(closeBtn)
 					return
 				}
-				tabFade(c, pal.Shell)
+				tabFade(c, chrome.Ground)
 				if dirty {
-					ui.Row(c).Width(14).FillHeight().Background(pal.Shell).Center().Children(func() { tabDirtyDot(c) })
+					ui.Row(c).Width(14).FillHeight().Background(chrome.Ground).Center().Children(func() { tabDirtyDot(c) })
 				}
 			})
 		})

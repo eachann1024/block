@@ -8,6 +8,7 @@ type Elevation uint8
 
 const (
 	ElevationRaised  Elevation = iota // switch knobs, floating pills, small chips
+	ElevationCard                     // main floating paper card resting over the window ground
 	ElevationPopover                  // menus, tooltips, toolbars, popovers
 	ElevationDialog                   // modal dialogs, search, export, command panels
 	ElevationDrawer                   // side drawers sliding over content
@@ -30,6 +31,11 @@ func (p Palette) Shadows(e Elevation) []Shadow {
 	switch e {
 	case ElevationRaised:
 		return []Shadow{{0, 1, 2, 0, black(0.12)}}
+	case ElevationCard:
+		if p.Dark {
+			return []Shadow{{0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.22)}}
+		}
+		return []Shadow{{0, 1, 3, 0, ui.RGBA(0x20, 0x24, 0x2c, 0.05)}}
 	case ElevationDialog:
 		return []Shadow{{0, 2, 6, 0, black(0.08)}, {0, 12, 32, 0, black(0.14)}}
 	case ElevationDrawer:
