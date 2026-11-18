@@ -1495,6 +1495,10 @@ func spliceSpansByTextEdit(spans []model.Span, oldText, newText string) []model.
 				template.Text = inserted
 			}
 		}
+		// Typing at the end of a link keeps the surrounding style and exits the link.
+		if template.Link != "" && pref+suf == len(oldR) && (len(right) == 0 || right[0].Link != template.Link) {
+			template.Link = ""
+		}
 		mid = []model.Span{template}
 	}
 	var merged []model.Span
