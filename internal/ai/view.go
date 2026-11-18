@@ -262,6 +262,32 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 			Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.MenuBorder).
 			Clip().
 			Transition(probeSafeTransition(bui.PopoverSpringTransition())), theme.ElevationPopover)
+		type histMenuCursorKey struct{}
+		histCursor := ui.Local(panel, histMenuCursorKey{}, func() int { return -1 })
+		bui.ObserveMenuPointer(cUI, panel, histCursor)
+		if len(convs) > 0 {
+			if *histCursor >= len(convs) {
+				*histCursor = len(convs) - 1
+			}
+			down := panel.OverlayShortcut(0, ui.KeyDown)
+			right := panel.OverlayShortcut(0, ui.KeyRight)
+			up := panel.OverlayShortcut(0, ui.KeyUp)
+			left := panel.OverlayShortcut(0, ui.KeyLeft)
+			enter := panel.OverlayShortcut(0, ui.KeyEnter)
+			switch {
+			case down || right:
+				*histCursor = (*histCursor + 1 + len(convs)) % len(convs)
+			case up || left:
+				if *histCursor < 0 {
+					*histCursor = len(convs) - 1
+				} else {
+					*histCursor = (*histCursor - 1 + len(convs)) % len(convs)
+				}
+			case enter && *histCursor >= 0 && *histCursor < len(convs):
+				c.SelectConversation(convs[*histCursor].ID)
+				return
+			}
+		}
 		bui.Probe(panel, "ai-history-list")
 
 		panel.Children(func() {
@@ -272,16 +298,18 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 			}
 
 			bui.Scroll(cUI.Key("ai-history-scroll"), &c.historyScroll).
-				FillWidth().MaxHeight(max(maxH-theme.MenuPadding*2, 48)).Children(func() {
+				FillWidth().MaxHeight(max(bui.MenuInnerMaxHeight(maxH), 48)).Children(func() {
 				ui.Column(cUI).FillWidth().Gap(2).Children(func() {
 					for idx, conv := range convs {
 						convID := conv.ID
 						active := convID == curID
+						highlighted := idx == *histCursor
 						rowID := fmt.Sprintf("conv-%d", convID)
 						row := ui.Row(cUI.Key(rowID)).FillWidth().Height(32).PaddingX(8).Gap(8).
 							AlignItems(ui.Center).Radius(theme.RadiusMD).
 							Transition(probeSafeTransition(bui.CascadeItemTransition(idx, false)))
-						hovered := row.Hovered()
+						bui.RevealOnHighlight(row, highlighted)
+						hovered := highlighted || (*histCursor < 0 && row.Hovered())
 						ais := pal.AISurface()
 						bg := ui.Transparent
 						if active {
@@ -1724,6 +1752,34 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 	wrap.Children(func() {
 		card := bui.Elevate(ui.Column(cUI.Key(probeID)).FillWidth().MaxHeight(pickerMaxH).Radius(theme.RadiusXL).
 			Background(pal.Menu).Border(1, pal.MenuBorder).Clip(), theme.ElevationPopover)
+		type pickerNavKey struct{}
+		type pickerNavState struct {
+			lastSelected int
+			pointerMode  bool
+		}
+		nav := ui.Local(card, pickerNavKey{}, func() pickerNavState {
+			return pickerNavState{lastSelected: selected}
+		})
+		if selected != nav.lastSelected {
+			nav.lastSelected = selected
+			nav.pointerMode = false
+		}
+		svc := cUI.Services()
+		card.HandleInput(func(ev ui.InputEvent) bool {
+			switch ev.Kind {
+			case ui.InputPointerMove:
+				if !nav.pointerMode {
+					nav.pointerMode = true
+					return true
+				}
+			case ui.InputScroll:
+				if !nav.pointerMode {
+					nav.pointerMode = true
+					svc.Invalidate()
+				}
+			}
+			return false
+		})
 		bui.Probe(card, probeID)
 		card.Children(func() {
 			ui.Text(cUI, headerTitle).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).Padding(8, 12, 4, 12)
@@ -1745,10 +1801,10 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 				rowID := fmt.Sprintf("ai-pick-%d", i)
 				row := ui.ButtonBase(cUI.Key(rowID)).FillWidth().Height(36).PaddingX(10).Gap(8).
 					AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(it.label)
-				bui.RevealOnHighlight(row, i == selected)
-				hovered := row.Hovered()
+				isSel := !nav.pointerMode && i == selected
+				bui.RevealOnHighlight(row, isSel)
+				hovered := nav.pointerMode && row.Hovered()
 				pressed := row.Pressed()
-				isSel := i == selected
 				ais := pal.AISurface()
 				bg := ui.Transparent
 				if isSel || pressed {
@@ -1867,12 +1923,16 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 					} else {
 						c.pickIndex = len(items) - 1
 					}
-					c.pickerList.ScrollIntoView(c.pickIndex)
+					if first, last := c.pickerList.Visible(); c.pickIndex < first || c.pickIndex > last {
+						c.pickerList.ScrollTo(c.pickIndex, ui.Center)
+					}
 					c.mu.Unlock()
 					return true
 				case k.Key == ui.KeyDown && open && len(items) > 0:
 					c.pickIndex = (c.pickIndex + 1) % len(items)
-					c.pickerList.ScrollIntoView(c.pickIndex)
+					if first, last := c.pickerList.Visible(); c.pickIndex < first || c.pickIndex > last {
+						c.pickerList.ScrollTo(c.pickIndex, ui.Center)
+					}
 					c.mu.Unlock()
 					return true
 				case k.Key == ui.KeyTab && k.Mods == 0 && open && len(items) > 0:
@@ -2287,11 +2347,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 						centerCol := ui.Column(cUI).Grow(1).MinWidth(0)
 						type deckModelCursorKey struct{}
 						deckCursor := ui.Local(centerCol, deckModelCursorKey{}, func() int { return -1 })
-						centerCol.ObserveInput(func(ev ui.InputEvent) {
-							if ev.Kind == ui.InputPointerMove && *deckCursor >= 0 {
-								*deckCursor = -1
-							}
-						})
+						bui.ObserveMenuPointer(cUI, centerCol, deckCursor)
 						lowQ := strings.ToLower(strings.TrimSpace(search))
 						var filtered []ModelOption
 						for _, m := range models {
@@ -3371,7 +3427,24 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 			})
 
 			// 2. Center model search + list (+ compact bottom thinking row when !widePop)
-			ui.Column(cUI).Grow(1).MinWidth(0).Children(func() {
+			annotCol := ui.Column(cUI).Grow(1).MinWidth(0)
+			type annotModelCursorKey struct{}
+			annotCursor := ui.Local(annotCol, annotModelCursorKey{}, func() int { return -1 })
+			bui.ObserveMenuPointer(cUI, annotCol, annotCursor)
+			type indexedAnnotChoice struct {
+				idx int
+				opt ModelOption
+			}
+			var filteredAnnot []indexedAnnotChoice
+			for idx, m := range choices {
+				if query == "" || strings.Contains(strings.ToLower(m.Value), query) || strings.Contains(strings.ToLower(m.Label), query) {
+					filteredAnnot = append(filteredAnnot, indexedAnnotChoice{idx: idx, opt: m})
+				}
+			}
+			if *annotCursor >= len(filteredAnnot) {
+				*annotCursor = len(filteredAnnot) - 1
+			}
+			annotCol.Children(func() {
 				ui.Row(cUI).FillWidth().Height(40).PaddingX(10).Gap(8).AlignItems(ui.Center).
 					BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
 					icons.Draw(cUI, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
@@ -3380,12 +3453,45 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 						CaretColor(pal.Accent).CaretWidth(2).
 						Placeholder(theme.Tr("搜索模型…", "Search models…")).Bind(&c.annotSearchHandle).AutoFocus()
 					bui.Probe(in, "annotation-model-search")
+					if in.Changed() {
+						*annotCursor = 0
+					}
 					in.OnTextKey(func(k ui.TextKey) bool {
-						if k.Key == ui.KeyEscape {
+						switch k.Key {
+						case ui.KeyEscape:
 							c.mu.Lock()
 							c.annotMenuOpen = false
 							c.mu.Unlock()
 							return true
+						case ui.KeyDown:
+							if len(filteredAnnot) > 0 {
+								*annotCursor = (*annotCursor + 1 + len(filteredAnnot)) % len(filteredAnnot)
+							}
+							return true
+						case ui.KeyUp:
+							if len(filteredAnnot) > 0 {
+								if *annotCursor <= 0 {
+									*annotCursor = len(filteredAnnot) - 1
+								} else {
+									*annotCursor--
+								}
+							}
+							return true
+						case ui.KeyEnter:
+							if *annotCursor >= 0 && *annotCursor < len(filteredAnnot) {
+								pickVal := filteredAnnot[*annotCursor].opt.Value
+								c.mu.Lock()
+								next := c.annotCfg
+								next.Backend = activeKind
+								if activeKind == model.BackendBuiltin && c.providerCfg.Provider != "" {
+									next.Provider = c.providerCfg.Provider
+								}
+								next.Model = pickVal
+								_ = c.saveAnnotationConfigLocked(next)
+								c.annotMenuOpen = false
+								c.mu.Unlock()
+								return true
+							}
 						}
 						return false
 					})
@@ -3393,19 +3499,17 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 
 				bui.Scroll(cUI.Key("annotation-model-list"), &c.annotMenuScroll).
 					Grow(1).MinHeight(0).FillWidth().Padding(6).Gap(2).Children(func() {
-					matched := 0
-					for idx, m := range choices {
-						opt := m
-						if query != "" && !strings.Contains(strings.ToLower(opt.Value), query) && !strings.Contains(strings.ToLower(opt.Label), query) {
-							continue
-						}
-						matched++
+					for pos, entry := range filteredAnnot {
+						idx := entry.idx
+						opt := entry.opt
 						isAct := annotCfg.Backend == activeKind && annotCfg.Model == opt.Value
+						highlighted := pos == *annotCursor
 						rowID := fmt.Sprintf("annotation-model-%d", idx)
 						row := ui.ButtonBase(cUI.Key(rowID)).FillWidth().Height(34).PaddingX(10).Gap(8).
 							AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(opt.Label).
-							Transition(probeSafeTransition(bui.CascadeItemTransition(matched-1, false)))
-						hovered := row.Hovered()
+							Transition(probeSafeTransition(bui.CascadeItemTransition(pos, false)))
+						bui.RevealOnHighlight(row, highlighted)
+						hovered := highlighted || (*annotCursor < 0 && row.Hovered())
 						pressed := row.Pressed()
 						bg := ui.Transparent
 						if isAct || pressed {
@@ -3440,7 +3544,7 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 							c.mu.Unlock()
 						}
 					}
-					if matched == 0 {
+					if len(filteredAnnot) == 0 {
 						msg := theme.Tr("暂无可选模型", "No models available")
 						if query != "" && len(choices) > 0 {
 							msg = theme.Tr("无匹配模型", "No matching models")

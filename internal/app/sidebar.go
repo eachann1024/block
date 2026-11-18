@@ -102,6 +102,11 @@ func (s *SidebarUIState) ClosePopups() bool {
 	return had
 }
 
+// HasActiveOverlay reports whether a sidebar popup or inline rename is active.
+func (s *SidebarUIState) HasActiveOverlay() bool {
+	return s != nil && (s.SwitcherOpen || s.ContextOpen || s.RenamingPath != "")
+}
+
 // StartRename enters inline rename mode for path.
 func (s *SidebarUIState) StartRename(path string, isDir bool) {
 	s.ClosePopups()
@@ -146,6 +151,7 @@ type SidebarProps struct {
 	State          *SidebarUIState
 	Width          *float32
 	OnWidthChanged func(w float32)
+	FloatingCard   bool
 
 	ActiveNotebook string
 	Notebooks      []string
@@ -575,15 +581,17 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 			})
 		})
 
-		// Right-edge resize splitter.
-		if p.Width != nil {
-			if blockui.ResizeHandle(c, "sidebar-resize", p.Width, SidebarMinW, SidebarMaxW, false, theme.SidebarDefaultWidth) {
-				if p.OnWidthChanged != nil {
-					p.OnWidthChanged(*p.Width)
+		// Right-edge resize splitter (omitted inside rounded floating edge card).
+		if !p.FloatingCard {
+			if p.Width != nil {
+				if blockui.ResizeHandle(c, "sidebar-resize", p.Width, SidebarMinW, SidebarMaxW, false, theme.SidebarDefaultWidth) {
+					if p.OnWidthChanged != nil {
+						p.OnWidthChanged(*p.Width)
+					}
 				}
+			} else {
+				ui.Box(c).Width(1).FillHeight().Background(pal.SidebarBorder)
 			}
-		} else {
-			ui.Box(c).Width(1).FillHeight().Background(pal.SidebarBorder)
 		}
 	})
 
@@ -944,7 +952,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 				}})
 			}
 			choices = append(choices, add)
-			blockui.NavigateMenu(card, choices, &p.State.MenuCursor)
+			blockui.NavigateMenu(c, card, choices, &p.State.MenuCursor)
 			blockui.Probe(card, "notebook-switcher-pop")
 			card.Children(func() {
 				if p.State.ConfirmForgetNotebook != "" {
@@ -959,7 +967,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 						p.State.ConfirmForgetNotebook = ""
 					}
 				}
-				blockui.Scroll(c).MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+				blockui.Scroll(c).FillWidth().MaxHeight(blockui.MenuInnerMaxHeight(maxH)).Children(func() {
 					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
 						for ix, nb := range p.Notebooks {
 							ix := ix
@@ -1023,8 +1031,9 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 									})
 								}
 							}
-							rowHover := row.Hovered()
 							kbActive := ix == p.State.MenuCursor
+							blockui.RevealOnHighlight(row, kbActive)
+							rowHover := !choices[ix].SuppressHover && row.Hovered()
 							nbBG := ui.Transparent
 							switch {
 							case checked:
@@ -1241,27 +1250,31 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			ox, oy := blockui.ResolveOrigin(mainSpec, menuW, popH, vpW, vpH)
 
 			c.Key("tree-menu-pop")
-			mainCard := blockui.MenuSurface(blockui.Scroll(c).Column().Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
+			mainCard := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 			if !p.State.MoveSubmenuOpen {
-				blockui.NavigateMenu(mainCard, items, &p.State.MenuCursor)
+				blockui.NavigateMenu(c, mainCard, items, &p.State.MenuCursor)
 			}
 			blockui.Probe(mainCard, "tree-menu-pop")
 			mainCard.Children(func() {
-				for i, it := range items {
-					el := blockui.MenuRow(c, it, i == p.State.MenuCursor || it.ID == "tree-move-row" && p.State.MoveSubmenuOpen)
-					if it.ID == "tree-move-row" {
-						if b := el.Bounds(); b.W > 0 {
-							p.State.MoveRowBounds = b
+				blockui.Scroll(c).FillWidth().MaxHeight(blockui.MenuInnerMaxHeight(maxH)).Children(func() {
+					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
+						for i, it := range items {
+							el := blockui.MenuRow(c, it, i == p.State.MenuCursor || it.ID == "tree-move-row" && p.State.MoveSubmenuOpen)
+							if it.ID == "tree-move-row" {
+								if b := el.Bounds(); b.W > 0 {
+									p.State.MoveRowBounds = b
+								}
+								if el.Hovered() && !p.State.MoveSubmenuOpen {
+									p.State.MoveSubmenuOpen = true
+									p.State.MoveCursor = -1
+								}
+							} else if !it.Separator && el.Hovered() && p.State.MoveSubmenuOpen {
+								p.State.MoveSubmenuOpen = false
+								p.State.MoveCursor = -1
+							}
 						}
-						if el.Hovered() && !p.State.MoveSubmenuOpen {
-							p.State.MoveSubmenuOpen = true
-							p.State.MoveCursor = -1
-						}
-					} else if !it.Separator && el.Hovered() && p.State.MoveSubmenuOpen {
-						p.State.MoveSubmenuOpen = false
-						p.State.MoveCursor = -1
-					}
-				}
+					})
+				})
 			})
 
 			var subCard ui.Element
@@ -1296,11 +1309,11 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 					p.State.MoveSubmenuOpen = false
 					p.State.MoveCursor = -1
 				} else {
-					blockui.NavigateMenu(subCard, choices, &p.State.MoveCursor)
+					blockui.NavigateMenu(c, subCard, choices, &p.State.MoveCursor)
 				}
 
 				subCard.Children(func() {
-					blockui.Scroll(c).MaxHeight(subMaxH - theme.MenuPadding*2).Children(func() {
+					blockui.Scroll(c).FillWidth().MaxHeight(blockui.MenuInnerMaxHeight(subMaxH)).Children(func() {
 						ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
 							if len(dests) == 0 {
 								ui.Row(c).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).AlignItems(ui.Center).Children(func() {
@@ -1318,7 +1331,9 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 								c.Key("move-dest:" + d.Dir)
 								row := ui.ButtonBase(c).FillWidth().Height(theme.MenuItemHeight).Padding(0, 10, 0, padL).Gap(8).
 									AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(d.Label)
-								rowHover := row.Hovered() || i == p.State.MoveCursor
+								kbActive := i == p.State.MoveCursor
+								blockui.RevealOnHighlight(row, kbActive)
+								rowHover := (!choices[i].SuppressHover && row.Hovered()) || kbActive
 								if rowHover {
 									row.Background(pal.MenuHover)
 								}

@@ -117,6 +117,7 @@ type Session struct {
 	codePreviewCache map[model.BlockID]cachedCodePreview
 	tableColCache    map[model.BlockID]cachedTableCols
 	tableGridGeoms   map[model.BlockID]tableGridGeom
+	tableHScrolls    map[model.BlockID]*ui.ScrollState
 	frameBlocks      []frameBlockMeta
 	docRev           uint64
 	outlineRev       uint64
@@ -232,6 +233,7 @@ type Session struct {
 	tableMenuBlock   model.BlockID
 	tableMenuKind    string // "", "row", "col", "cell"
 	tableMenuIndex   int
+	tableExtend      *tableExtendState
 
 	// Drag reorder
 	dragBlockID     model.BlockID
@@ -299,6 +301,7 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 		codePreviewCache:  make(map[model.BlockID]cachedCodePreview),
 		tableColCache:     make(map[model.BlockID]cachedTableCols),
 		tableGridGeoms:    make(map[model.BlockID]tableGridGeom),
+		tableHScrolls:     make(map[model.BlockID]*ui.ScrollState),
 		docRev:            1,
 		folded:            make(map[model.BlockID]bool),
 		foldTails:         make(map[model.BlockID]model.BlockID),
@@ -377,6 +380,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.imagePopBlock = 0
 	s.imagePopKind = ""
 	s.imgResizeBlock = 0
+	s.resetTableExtend()
 	s.tableMenuBlock = 0
 	s.tableMenuKind = ""
 	s.jump = editorJump{}
@@ -404,6 +408,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	clear(s.codePreviewCache)
 	clear(s.tableColCache)
 	clear(s.tableGridGeoms)
+	clear(s.tableHScrolls)
 	s.docRev++
 	s.virtReady = false
 	clear(s.overlayBtnRects)
@@ -588,8 +593,8 @@ func (s *Session) cloneAnnotations(src []*model.Annotation) []*model.Annotation 
 	return out
 }
 
-func (s *Session) pushUndo() {
-	snap := undoSnapshot{
+func (s *Session) captureUndoSnapshot() undoSnapshot {
+	return undoSnapshot{
 		Doc:         s.doc.Clone(),
 		FocusIdx:    s.focusedBlock,
 		Anchor:      s.selAnchor,
@@ -597,11 +602,18 @@ func (s *Session) pushUndo() {
 		Annotations: s.cloneAnnotations(s.annotations),
 		FoldTails:   cloneFoldTails(s.foldTails),
 	}
+}
+
+func (s *Session) pushUndoSnapshot(snap undoSnapshot) {
 	s.undoStack = append(s.undoStack, snap)
 	if len(s.undoStack) > 200 {
 		s.undoStack = s.undoStack[len(s.undoStack)-200:]
 	}
 	s.redoStack = nil
+}
+
+func (s *Session) pushUndo() {
+	s.pushUndoSnapshot(s.captureUndoSnapshot())
 }
 
 func (s *Session) Undo() bool {
@@ -673,6 +685,7 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 	s.copyPending = false
 	s.calloutMenuBlock = 0
 	s.imgResizeBlock = 0
+	s.resetTableExtend()
 	s.persistAnnotations()
 	if s.findOpen {
 		s.recomputeFind(false)

@@ -81,6 +81,7 @@ type TitlebarProps struct {
 	Busy       bool
 
 	ShortcutSidebar string
+	SidebarFloating bool
 	ShortcutNewTab  string
 	ShortcutAI      string
 	ShortcutExport  string
@@ -246,6 +247,7 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 					ID:       "sidebar-toggle",
 					Tooltip:  tip,
 					Shortcut: sbShortcut,
+					Active:   p.SidebarFloating,
 				})
 				if sbBtn.Clicked() && p.OnToggleSidebar != nil {
 					p.OnToggleSidebar()
@@ -470,10 +472,10 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 
 			c.Key("page-more-menu")
 			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
-			blockui.NavigateMenu(card, items, &p.MenuState.MenuCursor)
+			blockui.NavigateMenu(c, card, items, &p.MenuState.MenuCursor)
 			blockui.Probe(card, "page-more-menu")
 			card.Children(func() {
-				blockui.Scroll(c).MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+				blockui.Scroll(c).FillWidth().MaxHeight(blockui.MenuInnerMaxHeight(maxH)).Children(func() {
 					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
 						for i, it := range items {
 							blockui.MenuRow(c, it, i == p.MenuState.MenuCursor)
@@ -502,12 +504,16 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 
 			c.Key("tab-context-menu")
 			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
-			blockui.NavigateMenu(card, items, &p.MenuState.MenuCursor)
+			blockui.NavigateMenu(c, card, items, &p.MenuState.MenuCursor)
 			blockui.Probe(card, "tab-context-menu")
 			card.Children(func() {
-				for i, it := range items {
-					blockui.MenuRow(c, it, i == p.MenuState.MenuCursor)
-				}
+				blockui.Scroll(c).FillWidth().MaxHeight(blockui.MenuInnerMaxHeight(maxH)).Children(func() {
+					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
+						for i, it := range items {
+							blockui.MenuRow(c, it, i == p.MenuState.MenuCursor)
+						}
+					})
+				})
 			})
 			if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
 				p.MenuState.Close()

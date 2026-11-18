@@ -407,7 +407,7 @@ func (s *Session) computeTrailingAddSlot() (trailingAddSlot, bool) {
 	if s.minimal || s.readOnly || !s.isMarkdownNote() || s.doc == nil || len(s.doc.Blocks) == 0 {
 		return trailingAddSlot{}, false
 	}
-	if s.hasAnyOverlayOpen() || s.hoveredAnnotID != "" || s.imgResizeBlock != 0 || s.dragBlockID != 0 || s.isMouseDragging() {
+	if s.hasAnyOverlayOpen() || s.hoveredAnnotID != "" || s.imgResizeBlock != 0 || s.dragBlockID != 0 || s.isTableExtending() || s.isMouseDragging() {
 		return trailingAddSlot{}, false
 	}
 	_, lastVis := s.firstAndLastVisibleBlocks()
@@ -451,7 +451,7 @@ func (s *Session) updateTrailingAddHover(c *ui.Context, root ui.Element, nextHov
 		clearTrailing()
 		return nextHover
 	}
-	if s.hasAnyOverlayOpen() || s.hoveredAnnotID != "" || s.imgResizeBlock != 0 || s.dragBlockID != 0 || s.isMouseDragging() {
+	if s.hasAnyOverlayOpen() || s.hoveredAnnotID != "" || s.imgResizeBlock != 0 || s.dragBlockID != 0 || s.isTableExtending() || s.isMouseDragging() {
 		clearTrailing()
 		return nextHover
 	}
