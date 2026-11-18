@@ -194,15 +194,17 @@ func NewWorkspace(dataDir string) *Workspace {
 		GetLocale: func() string {
 			return string(theme.Language())
 		},
-		PickDirectory: func(title string, onPicked func(path string)) {
+		PickDirectory: func(title, defaultPath string, onPicked func(path string)) {
 			if !mygo.App.IsReady() {
 				return
 			}
 			win := w.Window()
 			go func() {
 				paths, err := files.OpenDialog(win, mygo.OpenDialogOptions{
-					Title:     title,
-					Directory: true,
+					Title:             title,
+					DefaultPath:       defaultPath,
+					Directory:         true,
+					CreateDirectories: true,
 				})
 				if err == nil && len(paths) > 0 && paths[0] != "" {
 					onPicked(paths[0])

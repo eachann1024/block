@@ -44,8 +44,9 @@ type UIButton struct {
 }
 
 type UIKVRow struct {
-	Label string `json:"label"`
-	Value string `json:"value"`
+	Label   string `json:"label"`
+	Value   string `json:"value"`
+	Tooltip string `json:"tooltip,omitempty"`
 }
 
 type UIMetric struct {
@@ -66,8 +67,8 @@ type UIPreviewCard struct {
 }
 
 type UIPreview struct {
-	Variant  string          `json:"variant,omitempty"`  // "article" | "cards" | "diff" | "plan"
-	Palette  string          `json:"palette,omitempty"`  // "ocean" | "paper" | "ink" | "warm"
+	Variant  string          `json:"variant,omitempty"` // "article" | "cards" | "diff" | "plan"
+	Palette  string          `json:"palette,omitempty"` // "ocean" | "paper" | "ink" | "warm"
 	Badge    string          `json:"badge,omitempty"`
 	Title    string          `json:"title"`
 	Subtitle string          `json:"subtitle,omitempty"`

@@ -104,10 +104,12 @@ block-sync/
        "downloads_dir": "/Users/name/Downloads",
        "notebook_root": "/abs/path/to/notebook",
        "locale": "zh",
-       "host_version": "1.0.379"
+       "host_version": "1.0.379",
+       "ui_capabilities": ["kv_tooltip"]
      }
      ```
      注：未打开笔记本文件夹时 `notebook_root` 可能为 `""`（此时 `host.notes.list` 返回 `[]`）。宿主同时提供 `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）**。
+     `ui_capabilities` 可能省略。插件可用它判断宿主支持的可选 UI 字段，例如 `kv_tooltip`。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**
@@ -120,10 +122,10 @@ block-sync/
      ```json
      {
        "surface": "settings_page",
-       "action_id": "sync_now",
+       "action_id": "save_config",
        "values": {
          "protocol": "local_mirror",
-         "mirror_preset": "downloads"
+         "mirror_dir": "/Users/name/Sync"
        }
      }
      ```
@@ -197,9 +199,10 @@ block-sync/
 
 ### 11 种 `UIItem` 控件（按 `kind` 区分）
 
-交互设计准则：
-- **优先提供交互式可选项**：凡涉及输出位置、子目录、目标笔记、文件名格式、远端路径前缀等，优先使用 `select`（原生下拉选单，支持动态扫描笔记本现有笔记/子目录及 `~/Downloads` 预设）或 `segmented`，仅在用户选中 `"custom"`（自定义…）时通过 `visible_when` 展示 `folder` 或 `input` 手动输入框。
-- **内置实时预览（`preview`）**：每个插件页面必须提供直观的实时预览区块（如排版主题与输出路径预览、小红书切页卡片预览、转换前后对比预览、同步/诊断待处理项预览），随控件切换实时更新。
+交互设计准则
+
+- 选择本地文件夹时直接使用 `folder`，点击即打开系统选择器。远端路径和分支等可编辑文本使用 `input`，并提供合适的默认值。`select` 用于真实的多项选择，例如笔记列表。
+- 页面只展示完成当前任务所需的设置和状态。路径优先显示名称，完整路径放进宿主提供的悬停提示。预览仅在需要核对结果或确认变更时展示。
 
 任意 `UIItem` 均支持可选字段 **`visible_when`**，用于按其他表单控件当前值**零延迟动态显隐对应配置项**：
 ```json
@@ -224,7 +227,7 @@ block-sync/
      ]
    }
    ```
-2. **`select`（原生下拉选单，适合路径预设、文件名模板、笔记/目录动态列表，支持 1–N 项）**：`id`、`label` 必填，`options` 至少 1 项，`value`（`string`）必须命中某个 `options[].value`。
+2. **`select`（下拉选单）**：`id`、`label` 必填，`options` 至少 1 项，`value`（`string`）必须命中某个 `options[].value`。
 3. **`input`（单行文本输入框）**：`id`、`label` 必填，`value` 必须为 `string`，`placeholder` 可选：
    ```json
    {
@@ -235,7 +238,10 @@ block-sync/
      "placeholder": "https://dav.example.com/dav"
    }
    ```
-4. **`folder`（本地目录选择框）**：字段同 `input`（`id`、`label`、`value` string、`placeholder` 可选），宿主自动使用等宽字体并在右侧渲染系统原生「选择…」文件夹选择按钮。
+4. **`folder`（本地文件夹）**：`id`、`label`、`value` 必填，`value` 传完整路径，未选择时传空字符串。宿主负责打开系统选择器、显示文件夹名称和完整路径的悬停提示。选择后，完整路径以 `id` 为键进入表单 `values`。
+   ```json
+   { "kind": "folder", "id": "mirror_dir", "label": "同步文件夹", "value": "" }
+   ```
 5. **`secret`（密码/凭证输入框）**：字段同 `input`，`value` 必须为 `string`（宿主自动掩码并支持显示/隐藏切换）。
 6. **`switch`（布尔开关）**：`id`、`label` 必填，`value` 必须为 `bool`：
    ```json
@@ -266,19 +272,19 @@ block-sync/
      ]
    }
    ```
-9. **`kv`（只读状态键值行）**：不含 `id`/`label`，仅含非空 `rows` 数组（每项 `label` 与 `value` 均必填非空）：
+9. **`kv`（只读状态键值行）**：`rows` 为非空数组，每行填写 `label` 与 `value`。如果 `plugin.initialize` 的 `ui_capabilities` 包含 `kv_tooltip`，可在行内加 `tooltip` 字符串，由 Block 的通用组件在悬停时显示。兼容旧宿主时省略该字段。内容只放补充信息，避免放入密码或访问令牌。
    ```json
    {
      "kind": "kv",
      "rows": [
-       { "label": "最近同步文件数", "value": "2 篇" }
+       { "label": "当前笔记本", "value": "团队笔记", "tooltip": "/Users/name/Documents/团队笔记" }
      ]
    }
    ```
 10. **`preview`（实时视觉预览卡片）**：不含 `id`/`label`，必填 `preview` 对象：
     - `variant`：`"article"`（主题化文章排版预览）| `"cards"`（多卡片切分预览，如小红书分页）| `"diff"`（处理前/处理后对照预览）| `"plan"`（目标路径与待执行清单预览）
     - `palette`：可选 `"ocean"`（默认）| `"paper"`（浅色纸感）| `"ink"`（暗色墨夜）| `"warm"`（暖纸衬线）
-    - `title`：必填标题；`badge`：可选右上角胶囊文本；`subtitle`：可选副标题（等宽字体，推荐展示解析后的完整输出文件路径，如 `/Users/name/Downloads/欢迎使用 Block.html`）
+    - `title`：必填标题。`badge`：可选的简短状态。`subtitle`：可选的简短副标题，例如输出文件名。
     - `body`：多行预览正文（`"article"` 支持 `# ` 一级标题、`## ` 二级标题、`> ` 引用块、`[1] ` 脚注行）
     - `before` / `after`：用于 `"diff"` 变体的转换前/转换后对照文本
     - `cards`：用于 `"cards"` 变体的卡片数组 `[{"badge": "封面", "title": "...", "body": "..."}]`
@@ -290,7 +296,7 @@ block-sync/
         "palette": "paper",
         "title": "实时排版预览 · 欢迎使用 Block",
         "badge": "海盐纸感 · 单文件 HTML",
-        "subtitle": "输出文件：/Users/name/Downloads/欢迎使用 Block.html",
+        "subtitle": "欢迎使用 Block.html",
         "body": "# 欢迎使用 Block\n## 核心特性\n> 模块化无侵入插件体系"
       }
     }
