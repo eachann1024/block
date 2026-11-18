@@ -1383,11 +1383,18 @@ func (s *Session) applyBlockTextEdit(idx int, newText string, caretHint int) {
 
 	// Check trailing space/fullwidth-space Markdown input rules.
 	if nextIdx, nextCaret, ok := s.trySpaceInputRule(idx, newText, caretHint); ok {
-		s.focusedBlock = nextIdx
-		s.selAnchor = Position{Block: nextIdx, Offset: nextCaret}
+		s.focusedBlock = clampInt(nextIdx, 0, len(s.doc.Blocks)-1)
+		s.selAnchor = Position{Block: s.focusedBlock, Offset: nextCaret}
 		s.selHead = s.selAnchor
-		s.focusPending = true
-		s.selSyncPending = true
+		if s.needsDetachedSelectionFocus() {
+			s.multiSelFocusPending = true
+			s.focusPending = false
+			s.selSyncPending = false
+		} else {
+			s.multiSelFocusPending = false
+			s.focusPending = true
+			s.selSyncPending = true
+		}
 		return
 	}
 
@@ -1635,7 +1642,7 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 
 	if b.Kind == model.BlockParagraph && isDividerLine(rawPrefix) && rest == "" {
 		s.convertBlockToDivider(idx)
-		return idx + 1, 0, true
+		return s.focusedBlock, 0, true
 	}
 
 	// Headings: 1..6 '#' or '＃'
@@ -1747,14 +1754,14 @@ func (s *Session) convertBlockToDivider(idx int) {
 		return
 	}
 	s.blockMenu = nil
-	s.doc.Blocks[idx] = model.Block{ID: s.doc.Blocks[idx].ID, Kind: model.BlockDivider, Dirty: true}
-	next := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
-	s.spliceBlocks(idx+1, idx+1, []model.Block{next})
-	s.focusedBlock = idx + 1
-	s.selAnchor = Position{Block: idx + 1, Offset: 0}
-	s.selHead = s.selAnchor
-	s.focusPending = true
-	s.selSyncPending = true
+	id := s.doc.Blocks[idx].ID
+	delete(s.richInputs, id)
+	s.doc.Blocks[idx] = model.Block{ID: id, Kind: model.BlockDivider, Dirty: true}
+	if next := s.stepVisibleBlock(idx, 1); next > idx {
+		s.FocusBlock(next)
+	} else {
+		s.FocusBlock(idx)
+	}
 	s.markDirty()
 }
 
@@ -2510,20 +2517,29 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 		s.tableActiveCol = 0
 	case cmdDivider:
 		div := model.Block{ID: model.NewBlockID(), Kind: model.BlockDivider, Dirty: true}
-		trail := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
+		divIdx := idx
 		if isSlashClear {
-			s.spliceBlocks(idx, idx+1, []model.Block{div, trail})
-			idx = idx + 1
+			div.ID = b.ID
+			delete(s.richInputs, b.ID)
+			s.doc.Blocks[idx] = div
 		} else {
-			s.spliceBlocks(idx+1, idx+1, []model.Block{div, trail})
-			idx = idx + 2
+			s.spliceBlocks(idx+1, idx+1, []model.Block{div})
+			divIdx = idx + 1
 		}
+		focusIdx := divIdx
+		if next := s.stepVisibleBlock(divIdx, 1); next > divIdx {
+			focusIdx = next
+		}
+		s.FocusBlock(focusIdx)
+		s.markDirty()
+		return
 	case cmdImage:
 		img := model.Block{
 			ID: model.NewBlockID(), Kind: model.BlockImage, ImageAlign: model.ImageAlignCenter, ImageWidth: 100, Dirty: true,
 		}
 		if isSlashClear {
 			img.ID = b.ID
+			delete(s.richInputs, b.ID)
 			s.doc.Blocks[idx] = img
 		} else {
 			s.spliceBlocks(idx+1, idx+1, []model.Block{img})
@@ -2537,8 +2553,15 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 	rlen := len([]rune(b.PlainText()))
 	s.selAnchor = Position{Block: s.focusedBlock, Offset: rlen}
 	s.selHead = s.selAnchor
-	s.focusPending = true
-	s.selSyncPending = true
+	if s.needsDetachedSelectionFocus() {
+		s.multiSelFocusPending = true
+		s.focusPending = false
+		s.selSyncPending = false
+	} else {
+		s.multiSelFocusPending = false
+		s.focusPending = true
+		s.selSyncPending = true
+	}
 	s.markDirty()
 }
 
