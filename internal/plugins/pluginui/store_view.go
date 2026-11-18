@@ -2,15 +2,16 @@ package pluginui
 
 import (
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"block/internal/icons"
 	"block/internal/modals"
 	"block/internal/plugins"
 	"block/internal/theme"
 	bui "block/internal/ui"
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -116,8 +117,13 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 			return
 		}
 
-		colCount := storeColumnCount(bodyW)
-		renderStoreMasonry(c, ctrl, entries, installedMap, locale, installingID, onSelectTab, colCount)
+		ui.Grid(c.Key("app-store-list")).FillWidth().MinWidth(0).
+			Columns(storeColumnCount(bodyW)).Gap(theme.Space16).Children(func() {
+			for _, entry := range entries {
+				app, isInstalled := installedMap[entry.ID]
+				renderStoreAppCard(c, ctrl, entry, locale, app, isInstalled, installingID, onSelectTab)
+			}
+		})
 	})
 }
 
@@ -127,74 +133,6 @@ func storeColumnCount(bodyW float32) int {
 	}
 	cols := int((bodyW + theme.Space16) / (theme.StoreMinColWidth + theme.Space16))
 	return min(max(cols, 1), 4)
-}
-
-// renderStoreMasonry distributes cards into shortest-first vertical columns so each card
-// expands naturally to fit as much summary copy as needed without row-stretch empty space.
-func renderStoreMasonry(
-	c *ui.Context,
-	ctrl *Controller,
-	entries []plugins.StoreAppEntry,
-	installedMap map[string]plugins.InstalledApp,
-	locale string,
-	installingID string,
-	onSelectTab func(nextTab string),
-	colCount int,
-) {
-	if colCount <= 1 {
-		ui.Column(c.Key("app-store-list")).FillWidth().MinWidth(0).Gap(theme.Space16).Children(func() {
-			for _, item := range entries {
-				entry := item
-				_, isInstalled := installedMap[entry.ID]
-				renderStoreAppCard(c, ctrl, entry, locale, isInstalled, installingID, onSelectTab, bodyColWidth(0, 1))
-			}
-		})
-		return
-	}
-
-	buckets := distributeMasonryEntries(entries, locale, colCount)
-	ui.Row(c.Key("app-store-list")).FillWidth().MinWidth(0).Gap(theme.Space16).AlignItems(ui.Start).Children(func() {
-		for colIdx := 0; colIdx < colCount; colIdx++ {
-			colItems := buckets[colIdx]
-			ui.Column(c.Key(fmt.Sprintf("app-store-col-%d", colIdx))).
-				Grow(1).Basis(0).MinWidth(0).Gap(theme.Space16).Children(func() {
-				for _, item := range colItems {
-					entry := item
-					_, isInstalled := installedMap[entry.ID]
-					renderStoreAppCard(c, ctrl, entry, locale, isInstalled, installingID, onSelectTab, 0)
-				}
-			})
-		}
-	})
-}
-
-func bodyColWidth(bodyW float32, cols int) float32 {
-	if bodyW <= 0 || cols <= 0 {
-		return 0
-	}
-	return (bodyW - float32(cols-1)*theme.Space16) / float32(cols)
-}
-
-func distributeMasonryEntries(entries []plugins.StoreAppEntry, locale string, colCount int) [][]plugins.StoreAppEntry {
-	buckets := make([][]plugins.StoreAppEntry, colCount)
-	heights := make([]int, colCount)
-	for _, entry := range entries {
-		bestCol := 0
-		for i := 1; i < colCount; i++ {
-			if heights[i] < heights[bestCol] {
-				bestCol = i
-			}
-		}
-		buckets[bestCol] = append(buckets[bestCol], entry)
-		heights[bestCol] += estimateStoreCardWeight(entry, locale)
-	}
-	return buckets
-}
-
-func estimateStoreCardWeight(entry plugins.StoreAppEntry, locale string) int {
-	summaryRunes := utf8.RuneCountInString(strings.TrimSpace(entry.Summary.Resolve(locale)))
-	lines := max((summaryRunes+23)/24, 1)
-	return 140 + lines*20
 }
 
 func renderManualInstallCard(c *ui.Context, ctrl *Controller, installingID string, onSelectTab func(nextTab string)) {
@@ -269,10 +207,10 @@ func renderStoreAppCard(
 	ctrl *Controller,
 	entry plugins.StoreAppEntry,
 	locale string,
+	installedApp plugins.InstalledApp,
 	isInstalled bool,
 	installingID string,
 	onSelectTab func(nextTab string),
-	_ float32,
 ) {
 	pal := theme.Ocean()
 	downloads := entry.Downloads
@@ -284,7 +222,7 @@ func renderStoreAppCard(
 	}
 	dlStr := formatDownloadCount(downloads)
 
-	card := ui.Column(c.Key("app-store-card-" + entry.ID)).
+	card := ui.Column(c.Key("app-store-card-"+entry.ID)).
 		FillWidth().
 		MinWidth(0).
 		Padding(theme.CardPadY, theme.CardPadX, theme.CardPadY, theme.CardPadX).
@@ -300,65 +238,70 @@ func renderStoreAppCard(
 		bui.Elevate(card, theme.ElevationRaised)
 	}
 
+	name := entry.Name.Resolve(locale)
+	readmeURL := plugins.RepositoryReadmeURL(entry.Repo)
+	if readmeURL == "" {
+		readmeURL = plugins.RepositoryReadmeURL(installedApp.Manifest.Repo)
+	}
+	var readmePath string
+	if readmeURL == "" && isInstalled {
+		readmePath = installedApp.ReadmePath()
+	}
+	hasReadme := readmeURL != "" || readmePath != ""
+	openReadme := false
+	if hasReadme {
+		card.Cursor(ui.CursorPointer)
+		openReadme = card.Clicked()
+	}
+
 	card.Children(func() {
-		// Top header row matching Main.dc.html: 40x40 rounded icon box + Title/Version/Badge + Author + trailing CTA.
-		ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Start).Justify(ui.SpaceBetween).Children(func() {
-			ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
+		ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space4).Children(func() {
+			ui.Row(c).FillWidth().MinWidth(0).Height(theme.StoreIconBoxSize).
+				Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(theme.StoreIconBoxSize, theme.StoreIconBoxSize).Shrink(0).Center().
 					Radius(theme.RadiusLG).Background(pal.Shell).Border(1, pal.Hairline).Children(func() {
 					DrawDuoSpec(c, entry.Icon, theme.StoreIconGlyphSize, pal.DuoIconColors(pal.Text))
 				})
 
-				ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space4).Children(func() {
-					ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, entry.Name.Resolve(locale)).
-							FontSize(theme.FontTitle).
-							FixedLineHeight(theme.LineTitle).
-							FontWeight(theme.WeightTitle).
-							TextColor(pal.Text).
-							SingleLine().
-							Ellipsis("…")
-						if ver := strings.TrimSpace(entry.Version); ver != "" {
-							ui.Text(c, "v"+strings.TrimPrefix(ver, "v")).
-								Font("monospace").
-								FontSize(theme.FontMeta).
-								FixedLineHeight(theme.LineMeta).
-								FontWeight(theme.WeightMono).
-								TextColor(pal.TextSecondary).
-								SingleLine()
-						}
-						renderVerifiedBadge(c, entry.Verified)
-					})
-
-					if author := strings.TrimSpace(entry.Author); author != "" {
-						ui.Text(c, author).
-							FontSize(theme.FontMeta).
-							FixedLineHeight(theme.LineMeta).
-							TextColor(pal.TextSecondary).
-							SingleLine().
-							Ellipsis("…")
+				title := ui.Text(c.Key("app-store-readme-"+entry.ID), name).
+					FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).FontWeight(theme.WeightTitle).
+					TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				if hasReadme {
+					title.Role(ui.RoleLink).Focusable().Cursor(ui.CursorPointer)
+					bui.Tooltip(c, title, theme.Tr("查看 README", "View README"))
+					if hovered {
+						title.TextColor(pal.Accent)
 					}
+					openReadme = title.Clicked() || openReadme
+				}
+
+				ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
+					hasUpdate := isInstalled && entry.DownloadURL != "" && strings.TrimSpace(entry.Version) != "" &&
+						strings.TrimPrefix(strings.TrimSpace(entry.Version), "v") != strings.TrimPrefix(strings.TrimSpace(installedApp.Manifest.Version), "v")
+					renderStoreCardActions(c, ctrl, entry, isInstalled, hasUpdate, installingID, onSelectTab)
 				})
 			})
 
-			ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
-				instApp, hasInst := ctrl.sup.GetInstalled(entry.ID)
-				hasUpdate := hasInst && entry.DownloadURL != "" && strings.TrimSpace(entry.Version) != "" &&
-					strings.TrimPrefix(strings.TrimSpace(entry.Version), "v") != strings.TrimPrefix(strings.TrimSpace(instApp.Manifest.Version), "v")
-				renderStoreCardActions(c, ctrl, entry, isInstalled, hasUpdate, installingID, onSelectTab)
+			ui.Row(c).FillWidth().MinWidth(0).Height(theme.HeightMicro).
+				Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
+				renderVerifiedBadge(c, entry.Verified)
+				if ver := strings.TrimSpace(entry.Version); ver != "" {
+					ui.Text(c, "v"+strings.TrimPrefix(ver, "v")).
+						Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+						FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).
+						MaxWidthPercent(35).MinWidth(0).SingleLine().Ellipsis("…")
+				}
+				if author := strings.TrimSpace(entry.Author); author != "" {
+					ui.Text(c, author).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+						TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				}
 			})
 		})
 
-		// Natural-height summary copy (no 2-line clamp; longer descriptions flow naturally in the masonry column).
-		if summary := strings.TrimSpace(entry.Summary.Resolve(locale)); summary != "" {
-			ui.Text(c, summary).
-				FontSize(theme.FontSmall).
-				FixedLineHeight(theme.LineBody).
-				TextColor(pal.TextSecondary)
-		}
+		bui.FadedTextPreview(c, strings.TrimSpace(entry.Summary.Resolve(locale)), 3,
+			theme.FontSmall, theme.LineBody, pal.TextSecondary, pal.Card)
 
-		// Clean single-line footer matching Main.dc.html: monospace downloads on left, joined permission pill on right.
-		ui.Row(c).FillWidth().MinWidth(0).
+		ui.Row(c).FillWidth().MinWidth(0).Height(theme.Space12+theme.HeightMicro+1).
 			Padding(theme.Space12, 0, 0, 0).
 			BorderWidth(1, 0, 0, 0).
 			BorderColor(pal.Hairline).
@@ -380,6 +323,14 @@ func renderStoreAppCard(
 				}
 			})
 	})
+
+	if openReadme {
+		if readmeURL != "" {
+			c.OpenURL(readmeURL)
+		} else if err := mygo.Shell.OpenPath(readmePath); err != nil {
+			slog.Warn("open plugin README", "plugin", entry.ID, "error", err)
+		}
+	}
 }
 
 func renderStoreCardActions(
