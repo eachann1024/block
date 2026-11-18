@@ -137,6 +137,14 @@ function summary(line) {
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${line}\n`);
 }
 
+function warnGeneration(notes) {
+  if (!notes?.generationFailed) return;
+  const reason = String(notes.reason || "grok-4.7 没有生成更新说明").replace(/[\r\n%]+/g, " ").replace(/::/g, " ").slice(0, 240);
+  const text = `grok-4.7 没有生成更新说明（${reason}）。本次发布说明不是模型结果。`;
+  console.log(`::warning title=release-notes::${text}`);
+  summary(text);
+}
+
 function writeOutputs(entries) {
   if (!process.env.GITHUB_OUTPUT) return;
   const lines = Object.entries(entries).map(([k, v]) => `${k}=${v}`).join("\n") + "\n";
@@ -242,10 +250,18 @@ async function main() {
   const commits = rangeSpec ? listCommits(ROOT, rangeSpec) : [];
   if (rangeSpec) summary(`更新说明区间 ${rangeSpec}，共 ${commits.length} 条提交。`);
   let notes = await buildReleaseNotes({ version, commits });
+  warnGeneration(notes);
 
   if (previous && notes.skip && !force) {
     summary(`自 ${previous.tag_name} 以来${notes.reason}（共扫描 ${commits.length} 条提交），跳过自动发布。`);
-    const plan = { shouldBuild: false, publish: false, version: currentVersion, tag: previous.tag_name, commit: headSha };
+    const plan = {
+      shouldBuild: false,
+      publish: false,
+      version: currentVersion,
+      tag: previous.tag_name,
+      commit: headSha,
+      ...(notes.generationFailed ? { notesSource: "fallback", generationFailed: true, generationFailure: notes.reason || "" } : {}),
+    };
     writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
     writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: currentVersion, release_tag: previous.tag_name });
     return;
@@ -257,7 +273,14 @@ async function main() {
       summary("没有新提交，因 force=true 使用手动发布说明。");
     } else {
       summary(`更新说明没有覆盖区间里的 ${commits.length} 条提交（${notes.reason || "空"}），停止发布。`);
-      const plan = { shouldBuild: false, publish: false, version, tag: `v${version}`, commit: headSha };
+      const plan = {
+        shouldBuild: false,
+        publish: false,
+        version,
+        tag: `v${version}`,
+        commit: headSha,
+        ...(notes.generationFailed ? { notesSource: "fallback", generationFailed: true, generationFailure: notes.reason || "" } : {}),
+      };
       writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
       writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version, release_tag: `v${version}` });
       return;
@@ -275,6 +298,9 @@ async function main() {
     commit: headSha,
     previousTag: previous?.tag_name || null,
     notesSource: notes.source || "fallback",
+    notesModel: notes.generationFailed ? "" : (notes.model || ""),
+    generationFailed: Boolean(notes.generationFailed),
+    generationFailure: notes.generationFailed ? (notes.reason || "") : "",
     releaseNotes: markdown,
   };
   writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
@@ -285,7 +311,12 @@ async function main() {
     release_tag: tag,
     auto_bump: autoBump,
   });
-  summary(`准备发布 Block ${tag}（autoBump=${autoBump}, notes=${plan.notesSource}）`);
+  const notesLabel = notes.source === "polished" && notes.model
+    ? `grok-4.7 响应模型 ${notes.model}`
+    : notes.generationFailed
+      ? "本地规则，grok-4.7 未生成"
+      : (notes.source || "fallback");
+  summary(`准备发布 Block ${tag}（autoBump=${autoBump}, notes=${notesLabel}）`);
 }
 
 if (import.meta.main) {
