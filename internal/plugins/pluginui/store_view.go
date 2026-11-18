@@ -71,15 +71,32 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 	body.Children(func() {
 		if storeErr != "" {
 			ui.Row(c.Key("app-store-error")).FillWidth().MinWidth(0).
-				Padding(theme.Space10, theme.Space12).Radius(theme.RadiusMD).
-				Background(pal.DangerSurface).Border(1, pal.Danger).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, storeErr).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Danger)
+				Padding(theme.Space10, theme.Space12).Gap(theme.Space8).Radius(theme.RadiusMD).
+				Background(pal.DangerSurface).Border(1, pal.Danger).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Text(c, storeErr).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Danger).Grow(1).MinWidth(0)
+				dismissBtn := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
+					ID:      "app-store-error-dismiss",
+					Label:   theme.Tr("关闭提示", "Dismiss"),
+					Variant: bui.IconPlain,
+					Danger:  true,
+				})
+				if dismissBtn.Clicked() {
+					ctrl.sup.ClearStoreMessage()
+				}
 			})
 		} else if storeNotice != "" {
 			ui.Row(c.Key("app-store-notice")).FillWidth().MinWidth(0).
-				Padding(theme.Space10, theme.Space12).Radius(theme.RadiusMD).
-				Background(pal.Selected).Border(1, pal.Accent).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, storeNotice).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text)
+				Padding(theme.Space10, theme.Space12).Gap(theme.Space8).Radius(theme.RadiusMD).
+				Background(pal.Selected).Border(1, pal.Accent).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Text(c, storeNotice).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).Grow(1).MinWidth(0)
+				dismissBtn := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
+					ID:      "app-store-notice-dismiss",
+					Label:   theme.Tr("关闭提示", "Dismiss"),
+					Variant: bui.IconPlain,
+				})
+				if dismissBtn.Clicked() {
+					ctrl.sup.ClearStoreMessage()
+				}
 			})
 		}
 
