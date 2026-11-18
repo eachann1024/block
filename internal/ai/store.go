@@ -143,6 +143,7 @@ type Controller struct {
 
 	mockResponder        bool
 	mockApprovalFailOnce bool
+	onDismissFloating    func()
 
 	activeExternal *runningExternalTurn
 	activePlan     *ActivePlanPreview
@@ -498,11 +499,45 @@ func (c *Controller) IsOpen() bool {
 	return c.open
 }
 
+// SetOnDismissFloating registers a callback invoked when the AI close button is
+// clicked while rendered inside a temporary floating edge card.
+func (c *Controller) SetOnDismissFloating(fn func()) {
+	c.mu.Lock()
+	c.onDismissFloating = fn
+	c.mu.Unlock()
+}
+
+// HasActiveOverlay reports whether the AI panel has an open popup (history, model deck,
+// or @/slash picker) that should keep a floating edge card alive while interacting.
+func (c *Controller) HasActiveOverlay() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	_, pickerOpen := activePickerToken(c.draftText, c.composerComposing, c.pickerDismissed)
+	return c.historyOpen || c.deckOpen || pickerOpen
+}
+
+// CloseTransientPopups closes transient AI header/composer popups.
+func (c *Controller) CloseTransientPopups() {
+	c.mu.Lock()
+	c.historyOpen = false
+	c.deckOpen = false
+	c.pickerDismissed = true
+	c.mu.Unlock()
+}
+
 // SetOpen sets the AI panel open state.
 func (c *Controller) SetOpen(open bool) {
 	c.mu.Lock()
+	dismissFn := c.onDismissFloating
 	if c.open == open {
+		if !open {
+			c.historyOpen = false
+			c.deckOpen = false
+		}
 		c.mu.Unlock()
+		if !open && dismissFn != nil {
+			dismissFn()
+		}
 		return
 	}
 	c.open = open
@@ -513,6 +548,9 @@ func (c *Controller) SetOpen(open bool) {
 		c.composerHandle.Focus()
 	}
 	c.mu.Unlock()
+	if !open && dismissFn != nil {
+		dismissFn()
+	}
 	c.requestRedraw()
 }
 
@@ -553,7 +591,12 @@ func (c *Controller) SetFullscreen(fs bool) {
 // ToggleFullscreen toggles fullscreen mode for the AI panel.
 func (c *Controller) ToggleFullscreen() {
 	c.mu.Lock()
-	c.fullscreen = !c.fullscreen
+	if !c.open {
+		c.open = true
+		c.fullscreen = true
+	} else {
+		c.fullscreen = !c.fullscreen
+	}
 	c.mu.Unlock()
 	c.requestRedraw()
 }
