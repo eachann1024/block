@@ -321,7 +321,14 @@ func (c *Controller) clearPluginState(pluginID string) {
 }
 
 func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
+	var pickDirectory func(controlID, title string)
+	if c.sup.CanPickDirectory() {
+		pickDirectory = func(controlID, title string) {
+			c.sup.PickDirectoryForControl(pluginID, controlID, title)
+		}
+	}
 	return &InputBindings{
+		PickDirectory: pickDirectory,
 		SelectState: func(controlID string) *bui.DropdownSelectState {
 			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
@@ -385,25 +392,6 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 			}
 			c.secretRevealed[stateKey][controlID] = !c.secretRevealed[stateKey][controlID]
 			c.mu.Unlock()
-		},
-		PickDirectory: func(controlID, title string) {
-			if c.sup == nil || !c.sup.CanPickDirectory() {
-				return
-			}
-			c.sup.PickDirectory(title, func(chosen string) {
-				stateKey := c.pluginStateKey(pluginID)
-				c.mu.Lock()
-				if c.drafts[stateKey] == nil {
-					c.drafts[stateKey] = make(map[string]string)
-				}
-				if c.lastSynced[stateKey] == nil {
-					c.lastSynced[stateKey] = make(map[string]string)
-				}
-				c.drafts[stateKey][controlID] = chosen
-				c.lastSynced[stateKey][controlID] = chosen
-				c.mu.Unlock()
-				c.sup.UpdateControlValue(pluginID, controlID, chosen, true)
-			})
 		},
 	}
 }

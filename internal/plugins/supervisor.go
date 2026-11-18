@@ -57,7 +57,7 @@ type SupervisorConfig struct {
 	GetNotebookRoot func() string
 	GetActiveNote   func() string
 	GetLocale       func() string
-	PickDirectory   func(title string, onPicked func(path string))
+	PickDirectory   func(title, defaultPath string, onPicked func(path string))
 	OnChanged       func()
 }
 
@@ -139,11 +139,39 @@ func (s *Supervisor) CanPickDirectory() bool {
 }
 
 func (s *Supervisor) PickDirectory(title string, onPicked func(path string)) {
-	if s.cfg.PickDirectory == nil || onPicked == nil {
+	s.pickDirectory(title, "", onPicked)
+}
+
+func (s *Supervisor) PickDirectoryForControl(pluginID, controlID, title string) {
+	if !s.CanPickDirectory() {
 		return
 	}
-	s.cfg.PickDirectory(title, func(p string) {
-		p = strings.TrimSpace(p)
+	nbRoot := s.NotebookRoot()
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	s.mu.RLock()
+	view := s.views[key]
+	if view == nil {
+		s.mu.RUnlock()
+		return
+	}
+	current, _ := view.Values[controlID].(string)
+	s.mu.RUnlock()
+	if !filepath.IsAbs(current) {
+		current = nbRoot
+	}
+	s.pickDirectory(title, current, func(p string) {
+		if s.NotebookRoot() != nbRoot {
+			return
+		}
+		s.updateControlValue(pluginID, nbRoot, controlID, p, true)
+	})
+}
+
+func (s *Supervisor) pickDirectory(title, defaultPath string, onPicked func(path string)) {
+	if !s.CanPickDirectory() || onPicked == nil {
+		return
+	}
+	s.cfg.PickDirectory(title, defaultPath, func(p string) {
 		if p == "" {
 			return
 		}
@@ -617,7 +645,10 @@ func (s *Supervisor) SetControlValue(pluginID, controlID string, val any) {
 }
 
 func (s *Supervisor) UpdateControlValue(pluginID, controlID string, val any, immediate bool) {
-	nbRoot := s.NotebookRoot()
+	s.updateControlValue(pluginID, s.NotebookRoot(), controlID, val, immediate)
+}
+
+func (s *Supervisor) updateControlValue(pluginID, nbRoot, controlID string, val any, immediate bool) {
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
 
 	s.mu.Lock()
