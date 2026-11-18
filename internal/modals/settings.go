@@ -393,10 +393,8 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 		sbW = min(max(*m.SidebarWidth, theme.SidebarMinWidth), theme.SidebarMaxWidth)
 	}
 
+	// The docked slot and its open/close motion belong to the workspace shell.
 	wrap := ui.Row(c.Key("settings-sidebar-wrap")).Shrink(0).FillHeight()
-	if !isDrawer {
-		wrap.Transition(internalui.DockedPanelTransition(false))
-	}
 	wrap.Children(func() {
 		ui.Column(c.Key("settings-sidebar")).Width(sbW).FillHeight().Shrink(0).
 			Background(pal.Sidebar).BorderWidth(0, 1, 0, 0).BorderColor(pal.SidebarBorder).
