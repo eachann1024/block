@@ -64,6 +64,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	s.frameRoot = root
 	defer func() { s.frameRoot = ui.Element{} }()
 
+	animEdgeL, animEdgeR := s.animatedEdgeInsets(c, root)
+	s.viewportWidth = max(viewportWidth-animEdgeL-animEdgeR, 240)
+
 	root.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 		s.editorRect = r
 		appUi.RecordBounds("editor", r)
@@ -105,7 +108,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 			// Center column: max 672px body + symmetric 68px left/right gutters (54px handle gutter + 14px gap) = 808px (scaled by editor zoom).
 			outerMaxW := s.outerFlowWidth()
 			col := ui.Column(c.Key("editor-canvas")).FillWidth().AlignItems(ui.Center).
-				Padding(topPad, 0, bottomPad, 0)
+				Padding(topPad, animEdgeR, bottomPad, animEdgeL)
 			if minCanvasH := max(s.minCanvasHeight, s.scrollRect.H); minCanvasH > 0 {
 				col.MinHeight(minCanvasH)
 			}

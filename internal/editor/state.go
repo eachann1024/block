@@ -181,6 +181,13 @@ type Session struct {
 	jumpAlpha           float32
 	outlineForceNarrow  bool
 
+	// Edge-float safe insets & scroll suppression
+	edgeInsetLeft     float32
+	edgeInsetRight    float32
+	edgeLastScrollY   float32
+	edgeScrollInit    bool
+	edgeScrollQuietAt time.Time
+
 	// Annotations
 	annotations           []*model.Annotation
 	annotLoadedPath       string

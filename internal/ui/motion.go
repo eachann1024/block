@@ -201,6 +201,40 @@ func FloatingDrawerTransition() ui.ElementTransition {
 	}
 }
 
+// EdgeFloatCardTransition animates Scheme A's rounded left/right edge-summoned
+// floating Sidebar and AI cards with SpringPanel slide, subtle scale settle, and elevation fade.
+func EdgeFloatCardTransition(fromRight bool) ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
+	dx := float32(-32)
+	if fromRight {
+		dx = 32
+	}
+	return ui.ElementTransition{
+		Animation:    &SpringPanel,
+		ExitDuration: 200 * time.Millisecond,
+		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
+		Colors:       true,
+		Shadows:      true,
+		Enter:        &ui.Motion{X: dx, Scale: 0.965, Opacity: 0.02},
+		Exit:         &ui.Motion{X: dx, Scale: 0.975, Opacity: 0},
+	}
+}
+
+// SpringPanelTo animates a layout scalar (such as handle-safe editor insets)
+// smoothly on SpringPanel, snapping immediately under tests or within 0.25 DIP.
+func SpringPanelTo(el ui.Element, key string, target float32) float32 {
+	if testing.Testing() {
+		return target
+	}
+	v := el.AnimateTo(key, target, SpringPanel)
+	if almostZero(v-target, 0.25) {
+		return target
+	}
+	return v
+}
+
 // ScrimFadeTransition fades modal and drawer backdrop scrims in and out cleanly.
 func ScrimFadeTransition() ui.ElementTransition {
 	if testing.Testing() {

@@ -125,10 +125,21 @@ const (
 	MotionMs = 160 // shared popup enter/exit duration
 
 	ThreeColumnMinMain float32 = 560 // narrowest editor column before the sidebar yields
-)
-
 
 	ComposerTailSpace = 2 * LineBody // blank lines kept below the caret in growing text areas
+
+	// Edge hot-zone & floating Sidebar / AI card metrics (Scheme A).
+	EdgeHotZoneWidth     float32 = 8  // outer window-edge pointer sensor width
+	EdgeStripIdleWidth   float32 = 3  // resting colored edge indicator bar width
+	EdgeStripHotWidth    float32 = 4  // hovered / active colored edge indicator bar width
+	EdgeFloatInset               = Space10
+	EdgeFloatGutterGap           = Space6
+	EdgeFloatSafeClear   float32 = 10 // minimum clearance between edge strip and 54px handle gutter
+	EdgeFloatHoverBuffer float32 = 18 // forgiving pointer buffer outside open floating cards
+	EdgeFloatDwellMs             = 140
+	EdgeFloatLeaveMs             = 160
+)
+
 // Sidebar file tree metrics.
 const (
 	TreeRowPitch    float32 = 34 // 32 row + 2 gap
