@@ -126,6 +126,7 @@ type Manager struct {
 	fontCursor             int
 	fontScrollToCursor     bool
 	fontFamilies           []ui.FontFamily
+	fontFamiliesEpoch      uint64
 	fontScroll             ui.ScrollState
 	assetsDraft            string
 	folderRuleDraft        string
@@ -708,12 +709,14 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 		if st.LineHeight != "" {
 			lh = st.LineHeight
 		}
-		if len(m.fontFamilies) == 0 {
+		curEpoch := theme.FontEpoch()
+		if len(m.fontFamilies) == 0 || m.fontFamiliesEpoch != curEpoch {
 			m.fontFamilies = ui.FontFamilies()
+			m.fontFamiliesEpoch = curEpoch
 		}
 		edDisplay := strings.TrimSpace(edFont)
 		if edDisplay == "" {
-			edDisplay = resolvedBodyFontName(m.fontFamilies)
+			edDisplay = defaultBodyFontLabel()
 		}
 		cdDisplay := strings.TrimSpace(cdFont)
 		if cdDisplay == "" {
@@ -769,7 +772,7 @@ func pickInstalledFont(families []ui.FontFamily, candidates []string, fallback s
 
 func resolvedBodyFontName(families []ui.FontFamily) string {
 	return pickInstalledFont(families, []string{
-		"PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC",
+		"HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC",
 		"Hiragino Sans GB", "Helvetica Neue", "Segoe UI", "DejaVu Sans",
 	}, defaultBodyFontName())
 }
@@ -781,15 +784,19 @@ func resolvedCodeFontName(families []ui.FontFamily) string {
 	}, defaultCodeFontName())
 }
 
-func defaultBodyFontName() string {
+func defaultBodyFontLabel() string {
 	switch runtime.GOOS {
 	case "darwin", "js":
-		return "PingFang SC"
+		return "SF Pro + HarmonyOS Sans SC"
 	case "windows":
-		return "Microsoft YaHei"
+		return "Segoe UI + HarmonyOS Sans SC"
 	default:
-		return "Noto Sans SC"
+		return theme.Tr("系统默认 + HarmonyOS Sans SC", "System UI + HarmonyOS Sans SC")
 	}
+}
+
+func defaultBodyFontName() string {
+	return "HarmonyOS Sans SC"
 }
 
 func defaultCodeFontName() string {
@@ -1109,9 +1116,6 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 		cdFont = st.CodeFont
 	}
 	current := strings.TrimSpace(edFont)
-	if current == "" {
-		current = resolvedBodyFontName(m.fontFamilies)
-	}
 	if role == "code" {
 		current = strings.TrimSpace(cdFont)
 		if current == "" {
@@ -1139,9 +1143,14 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 	listCapH := max(maxH-54, 48)
 
 	fonts := m.filteredFonts()
+	showDefaultBodyOpt := role == "body" && strings.TrimSpace(m.fontQuery) == ""
+	rowCount := len(fonts)
+	if showDefaultBodyOpt {
+		rowCount++
+	}
 	listH := float32(48)
-	if len(fonts) > 0 {
-		listH = min(float32(min(len(fonts), 7))*34, listCapH)
+	if rowCount > 0 {
+		listH = min(float32(min(rowCount, 7))*34, listCapH)
 	}
 	popH := min(listH+54, maxH)
 	x, y := internalui.ResolveOrigin(spec, popW, popH, winW, winH)
@@ -1206,17 +1215,48 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					})
 				})
 
+			curRows := len(fonts)
+			if role == "body" && strings.TrimSpace(m.fontQuery) == "" {
+				curRows++
+			}
 			curListH := float32(48)
-			if len(fonts) > 0 {
-				curListH = min(float32(min(len(fonts), 7))*34, listCapH)
+			if curRows > 0 {
+				curListH = min(float32(min(curRows, 7))*34, listCapH)
 			}
 			internalui.Scroll(c.Key("font-picker-list-"+role), &m.fontScroll).
 				FillWidth().Height(curListH).Gap(0).Children(func() {
-				if len(fonts) == 0 {
+				if curRows == 0 {
 					ui.Row(c).FillWidth().Height(48).PaddingX(10).AlignItems(ui.Center).Children(func() {
 						ui.Text(c, theme.Tr("没有匹配的字体", "No matching fonts")).FontSize(theme.FontBody).TextColor(pal.MenuMuted)
 					})
 					return
+				}
+				if role == "body" && strings.TrimSpace(m.fontQuery) == "" {
+					defLabel := defaultBodyFontLabel()
+					defSelected := current == ""
+					defRow := ui.ButtonBase(c.Key("font-row-default")).FillWidth().Height(34).PaddingX(10).
+						AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
+						Cursor(ui.CursorPointer).Label(defLabel)
+					defHov := defRow.Hovered()
+					defPressed := defRow.Pressed()
+					defBG := ui.Transparent
+					switch {
+					case defSelected, defPressed:
+						defBG = pal.Selected
+					case defHov:
+						defBG = pal.MenuHover
+					}
+					internalui.AnimateSurfaceColors(defRow, defBG, ui.Transparent, false)
+					internalui.TactileCard(defRow, defHov, defPressed, defSelected, false)
+					defRow.Children(func() {
+						ui.Text(c, defLabel).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Grow(1)
+						if defSelected {
+							icons.DrawAnimated(c, icons.Check, 16, pal.MonoIconColors(pal.Text), defSelected || defHov || defPressed)
+						}
+					})
+					if defRow.Clicked() {
+						m.selectFont(role, "")
+					}
 				}
 				for i, f := range fonts {
 					selected := strings.EqualFold(f.Name, current)
