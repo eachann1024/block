@@ -168,8 +168,8 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		})
 
 		if s.needsDetachedSelectionFocus() {
-			multiFocus := ui.Box(c.Key("multi-sel-focus")).Absolute().Left(0).Top(0).Size(0, 0).
-				Focusable().TextCaret(ui.Rect{W: 1, H: 16}).
+			multiFocus := ui.Box(c.Key("multi-sel-focus:" + s.notePath)).Absolute().Left(0).Top(0).Size(0, 0).
+				Bind(&s.detachedFocus).Focusable().TextCaret(ui.Rect{W: 1, H: 16}).
 				HandleInput(func(ev ui.InputEvent) bool {
 					return s.handleMultiSelectionInput(c, ev)
 				})
@@ -433,6 +433,8 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	}
 	isHovered := row.Hovered()
 	isFocused := s.focusedBlock == idx
+	// The remembered editing block does not imply that this note owns keyboard focus.
+	hasBlockFocus := isFocused && (row.FocusWithin() || s.detachedFocus.Focused(c))
 	isHighlighted := s.jump.block == id && s.jump.row < 0
 	deleteArmed := idx == 0 && s.firstLineDeleteArmed && s.canArmFirstLineDelete()
 
@@ -480,7 +482,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	overlayBlocking := s.hasAnyOverlayOpen() || s.hoveredAnnotID != "" || s.imgResizeBlock != 0
 	isDraggingBlock := s.dragBlockID != 0
 	isDraggingAny := isDraggingBlock || s.isMouseDragging()
-	showHandles := !s.minimal && !readOnly && !overlayBlocking && ((!isDraggingAny && (isHovered || isFocused)) || s.dragBlockID == id)
+	showHandles := !s.minimal && !readOnly && !overlayBlocking && ((!isDraggingAny && (isHovered || hasBlockFocus)) || s.dragBlockID == id)
 	showBlankAdd := !s.minimal && !readOnly && !overlayBlocking && !isDraggingAny && (isHovered || s.hoveredBlock == idx)
 	isFolded := !s.minimal && !readOnly && b.Kind.IsHeading() && s.folded[id]
 	blankPara := isPlainEmptyParagraph(b)
