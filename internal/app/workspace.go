@@ -325,6 +325,15 @@ func (w *Workspace) wireQuickNoteCallbacks() {
 		w.RescanNotebook()
 		_ = w.OpenNote(path, 0)
 	}
+	w.quick.OnSummonSearch = func() {
+		if w.win != nil {
+			w.win.Restore()
+			w.win.Show()
+			w.win.Focus()
+		}
+		w.modals.OpenSearch(false)
+		w.RequestRedraw()
+	}
 	w.quick.GetQuickZoom = func() float32 {
 		w.mu.RLock()
 		defer w.mu.RUnlock()
@@ -332,6 +341,12 @@ func (w *Workspace) wireQuickNoteCallbacks() {
 			return *w.state.QuickEditorZoom
 		}
 		return 1.0
+	}
+	w.quick.GetQuickShortcut = func() string {
+		w.mu.RLock()
+		st := w.state
+		w.mu.RUnlock()
+		return modals.EffectiveShortcut(st, "quick_note")
 	}
 	w.quick.OnQuickZoomChanged = func(zoom float32) {
 		z := zoom
@@ -402,6 +417,9 @@ func (w *Workspace) wireModalCallbacks() {
 		w.RescanNotebook()
 		if w.OnAppMenuOrHotkeysChanged != nil {
 			w.OnAppMenuOrHotkeysChanged(next)
+		}
+		if w.quick != nil {
+			w.quick.RefreshStyle()
 		}
 		w.RequestRedraw()
 	}
