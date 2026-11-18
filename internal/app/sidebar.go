@@ -52,6 +52,29 @@ func NewSidebarUIState() *SidebarUIState {
 	}
 }
 
+// OpenBlankContextMenu opens the tree context menu for blank space (no target entry):
+// New Note, New Folder and Reveal for the active notebook.
+func (s *SidebarUIState) OpenBlankContextMenu(x, y float32) {
+	s.ClearDrag()
+	s.SwitcherOpen = false
+	s.MenuCursor, s.MoveCursor = 0, 0
+	s.ContextOpen = true
+	s.ContextPath = ""
+	s.ContextIsDir = false
+	s.ContextX, s.ContextY = x, y
+	s.MoveSubmenuOpen = false
+}
+
+type sidebarContextKey struct {
+	open bool
+	path string
+	x, y float32
+}
+
+func sidebarContextSnapshot(s *SidebarUIState) sidebarContextKey {
+	return sidebarContextKey{s.ContextOpen, s.ContextPath, s.ContextX, s.ContextY}
+}
+
 // ClosePopups closes switcher and tree context menus.
 func (s *SidebarUIState) ClosePopups() bool {
 	had := s.SwitcherOpen || s.ContextOpen
@@ -113,14 +136,11 @@ type SidebarProps struct {
 	ActiveNote     string
 	Notice         string
 
-	SearchOpen   bool
 	SettingsOpen bool
 	HasUpdate    bool
 
-	ShortcutSearch  string
 	ShortcutNewNote string
 
-	OnOpenSearch       func()
 	OnNewFolder        func()
 	OnNewNote          func()
 	OnOpenNote         func(path string, inNewTab bool)
@@ -284,8 +304,9 @@ func collectMoveDestinations(root string, entries []model.FileEntry, srcPath str
 	return out
 }
 
-// RenderSidebar renders the Ocean Paper notebook sidebar (header search + new buttons,
-// scrollable file tree with inline rename & sibling reorder, footer notebook switcher + settings,
+// RenderSidebar renders the Ocean Paper notebook sidebar (scrollable file tree with
+// inline rename, sibling reorder and a blank-area New Note / New Folder context menu,
+// footer notebook switcher + settings,
 // right-edge resize handle, and anchored switcher/context/cascading-move popups).
 func RenderSidebar(c *ui.Context, p SidebarProps) {
 	pal := theme.Ocean()
@@ -300,11 +321,12 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 	root.Children(func() {
 		col := ui.Column(c).Grow(1).MinWidth(0).FillHeight()
 		col.Children(func() {
-			// 1. Header: Search button + New Folder + New Note.
+			// 1. Top drop strip: dropping here moves an entry before the first root sibling.
 			var rows []flatTreeRow
 			flattenEntries(p.Entries, 0, p.State.ExpandedDirs, &rows)
 
-			headerRow := ui.Row(c).FillWidth().Padding(10, 10, 8, 10).Gap(6).AlignItems(ui.Center)
+			c.Key("tree-top-drop")
+			topDrop := ui.Box(c).FillWidth().Height(8).Shrink(0)
 			canDropFirst := func(item treeDragItem) bool {
 				if p.State.RenamingPath != "" || len(rows) == 0 || p.ActiveNotebook == "" {
 					return false
@@ -315,61 +337,15 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					item.IsDir == first.IsDir &&
 					filepath.Clean(item.Path) != filepath.Clean(first.Path)
 			}
-			if dragged, over := ui.DragOver[treeDragItem](headerRow); over && canDropFirst(dragged) {
-				headerRow.BorderWidth(0, 0, 2, 0).BorderColor(pal.Accent)
+			if dragged, over := ui.DragOver[treeDragItem](topDrop); over && canDropFirst(dragged) {
+				topDrop.BorderWidth(0, 0, 2, 0).BorderColor(pal.Accent)
 			}
-			if dropped, ok := ui.Drop[treeDragItem](headerRow); ok && canDropFirst(dropped) {
+			if dropped, ok := ui.Drop[treeDragItem](topDrop); ok && canDropFirst(dropped) {
 				p.State.ClearDrag()
 				if p.OnReorderSibling != nil {
 					p.OnReorderSibling(p.ActiveNotebook, dropped.Path, rows[0].Entry.Path, false)
 				}
 			}
-			headerRow.Children(func() {
-				c.Key("search-button")
-				searchBtn := ui.ButtonBase(c).Grow(1).MinWidth(0).Height(theme.ControlHeight).PaddingX(9).Gap(6).
-					AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
-					Background(pal.Paper).Label(theme.Tr("搜索", "Search"))
-				borderCol := pal.BtnBorder
-				if p.SearchOpen {
-					borderCol = pal.Accent
-				}
-				searchBtn.Border(1, borderCol)
-				if searchBtn.Hovered() {
-					searchBtn.Background(pal.BtnHover)
-				}
-				searchBtn.Children(func() {
-					ic := pal.MonoIconColors(pal.TextSecondary)
-					if p.SearchOpen || searchBtn.Hovered() {
-						ic = pal.DuoIconColors(pal.Text)
-					}
-					icons.Draw(c, icons.FindSearch, theme.IconRow, ic)
-					ui.Text(c, theme.Tr("搜索", "Search")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).SingleLine().Ellipsis("…")
-					blockui.ShortcutKeycap(c, nonEmptyOr(p.ShortcutSearch, "cmd-k"))
-				})
-				blockui.Probe(searchBtn, "search-button")
-				if searchBtn.Clicked() && p.OnOpenSearch != nil {
-					p.OnOpenSearch()
-				}
-
-				nfBtn := blockui.IconButton(c, icons.FolderPlus, blockui.IconButtonOptions{
-					ID:      "new-folder",
-					Variant: blockui.IconBordered,
-					Tooltip: theme.Tr("新建文件夹", "New Folder"),
-				})
-				if nfBtn.Clicked() && p.OnNewFolder != nil {
-					p.OnNewFolder()
-				}
-
-				nnBtn := blockui.IconButton(c, icons.NotePlus, blockui.IconButtonOptions{
-					ID:       "new-note",
-					Variant:  blockui.IconBordered,
-					Tooltip:  theme.Tr("新建笔记", "New Note"),
-					Shortcut: blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewNote, "cmd-n")),
-				})
-				if nnBtn.Clicked() && p.OnNewNote != nil {
-					p.OnNewNote()
-				}
-			})
 
 			// 2. Scrollable File Tree + floating workspace notice.
 			treeContainer := ui.Box(c).Grow(1).MinHeight(0).FillWidth()
@@ -394,6 +370,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 						}
 					}
 				}
+				rowMenuBefore := sidebarContextSnapshot(p.State)
 				treeFocus.Children(func() {
 					c.Key("file-tree-root")
 					treeScroll := blockui.Scroll(c).Fill().Padding(0, theme.TreeOuterPadX, 8, theme.TreeOuterPadX)
@@ -413,7 +390,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 						if len(rows) == 0 {
 							ui.Column(c).FillWidth().Padding(28, 12, 16, 12).Gap(10).AlignItems(ui.Center).Children(func() {
 								icons.Mascot(c, icons.MascotEmptyFolder, 104)
-								ui.Text(c, theme.Tr("文件夹为空，点击右上角新建笔记", "Folder is empty")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+								ui.Text(c, theme.Tr("文件夹为空，右键新建笔记", "Folder is empty. Right-click to create a note")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 							})
 							return
 						}
@@ -432,6 +409,16 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 						p.State.PendingMiddleOpenPath = ""
 					})
 				})
+
+				// Right-click on blank tree space (rows consume their own right-clicks).
+				if treeFocus.RightClicked() && p.ActiveNotebook != "" && sidebarContextSnapshot(p.State) == rowMenuBefore {
+					b := treeFocus.Bounds()
+					cx, cy := b.X+24, b.Y+24
+					if px, py, ok := treeFocus.PointerPosition(); ok {
+						cx, cy = b.X+px, b.Y+py
+					}
+					p.State.OpenBlankContextMenu(cx, cy)
+				}
 
 				if p.Notice != "" {
 					noticeBar := ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).MaxHeight(48).
@@ -1022,101 +1009,106 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			}
 
 			var items []blockui.MenuItemSpec
-			if !targetDir {
+			if targetPath == "" {
+				items = blankTreeMenuItems(p)
+			} else {
+				if !targetDir {
+					items = append(items,
+						blockui.MenuItemSpec{
+							ID:       "open-new-tab",
+							Label:    theme.Tr("在新标签页打开", "Open in New Tab"),
+							Shortcut: theme.Tr("⌘+点击", "⌘+Click"),
+							Icon:     &icOpen,
+							OnClick: func() {
+								p.State.ClosePopups()
+								if p.OnOpenNote != nil {
+									p.OnOpenNote(targetPath, true)
+								}
+							},
+						},
+						blockui.MenuItemSpec{Separator: true},
+					)
+				}
 				items = append(items,
 					blockui.MenuItemSpec{
-						ID:       "open-new-tab",
-						Label:    theme.Tr("在新标签页打开", "Open in New Tab"),
-						Shortcut: theme.Tr("⌘+点击", "⌘+Click"),
-						Icon:     &icOpen,
+						ID:    "reveal",
+						Label: theme.Tr("在访达中显示", "Reveal in File Manager"),
+						Icon:  &icReveal,
 						OnClick: func() {
 							p.State.ClosePopups()
-							if p.OnOpenNote != nil {
-								p.OnOpenNote(targetPath, true)
+							if p.OnRevealItem != nil {
+								p.OnRevealItem(targetPath)
 							}
 						},
 					},
+					blockui.MenuItemSpec{
+						ID:       "rename",
+						Label:    theme.Tr("重命名", "Rename"),
+						Shortcut: "↵",
+						Icon:     &icRename,
+						OnClick: func() {
+							p.State.StartRename(targetPath, targetDir)
+						},
+					},
+					blockui.MenuItemSpec{
+						ID:         "tree-move-row",
+						Label:      theme.Tr("移动到…", "Move to…"),
+						Icon:       &icMove,
+						HasSubmenu: true,
+						OnClick: func() {
+							// Hover already opens the cascade; a click must not close it again.
+							p.State.MoveSubmenuOpen = true
+						},
+					},
+				)
+				if len(sibs) > 1 && p.OnReorderSibling != nil {
+					canUp := sibIdx > 0
+					canDown := sibIdx >= 0 && sibIdx+1 < len(sibs)
+					items = append(items,
+						blockui.MenuItemSpec{
+							ID:       "tree-reorder-up",
+							Label:    theme.Tr("上移", "Move Up"),
+							Icon:     &icUp,
+							Disabled: !canUp,
+							OnClick: func() {
+								p.State.ClosePopups()
+								if canUp {
+									p.OnReorderSibling(filepath.Dir(targetPath), targetPath, sibs[sibIdx-1].Path, false)
+								}
+							},
+						},
+						blockui.MenuItemSpec{
+							ID:       "tree-reorder-down",
+							Label:    theme.Tr("下移", "Move Down"),
+							Icon:     &icDown,
+							Disabled: !canDown,
+							OnClick: func() {
+								p.State.ClosePopups()
+								if canDown {
+									p.OnReorderSibling(filepath.Dir(targetPath), targetPath, sibs[sibIdx+1].Path, true)
+								}
+							},
+						},
+					)
+				}
+				items = append(items,
 					blockui.MenuItemSpec{Separator: true},
-				)
-			}
-			items = append(items,
-				blockui.MenuItemSpec{
-					ID:    "reveal",
-					Label: theme.Tr("在访达中显示", "Reveal in File Manager"),
-					Icon:  &icReveal,
-					OnClick: func() {
-						p.State.ClosePopups()
-						if p.OnRevealItem != nil {
-							p.OnRevealItem(targetPath)
-						}
-					},
-				},
-				blockui.MenuItemSpec{
-					ID:       "rename",
-					Label:    theme.Tr("重命名", "Rename"),
-					Shortcut: "↵",
-					Icon:     &icRename,
-					OnClick: func() {
-						p.State.StartRename(targetPath, targetDir)
-					},
-				},
-				blockui.MenuItemSpec{
-					ID:         "tree-move-row",
-					Label:      theme.Tr("移动到…", "Move to…"),
-					Icon:       &icMove,
-					HasSubmenu: true,
-					OnClick: func() {
-						// Hover already opens the cascade; a click must not close it again.
-						p.State.MoveSubmenuOpen = true
-					},
-				},
-			)
-			if len(sibs) > 1 && p.OnReorderSibling != nil {
-				canUp := sibIdx > 0
-				canDown := sibIdx >= 0 && sibIdx+1 < len(sibs)
-				items = append(items,
 					blockui.MenuItemSpec{
-						ID:       "tree-reorder-up",
-						Label:    theme.Tr("上移", "Move Up"),
-						Icon:     &icUp,
-						Disabled: !canUp,
+						ID:       "trash",
+						Label:    theme.Tr("移到废纸篓", "Move to Trash"),
+						Shortcut: blockui.FormatShortcutDisplay("cmd-backspace"),
+						Icon:     &icTrash,
+						Danger:   true,
 						OnClick: func() {
 							p.State.ClosePopups()
-							if canUp {
-								p.OnReorderSibling(filepath.Dir(targetPath), targetPath, sibs[sibIdx-1].Path, false)
-							}
-						},
-					},
-					blockui.MenuItemSpec{
-						ID:       "tree-reorder-down",
-						Label:    theme.Tr("下移", "Move Down"),
-						Icon:     &icDown,
-						Disabled: !canDown,
-						OnClick: func() {
-							p.State.ClosePopups()
-							if canDown {
-								p.OnReorderSibling(filepath.Dir(targetPath), targetPath, sibs[sibIdx+1].Path, true)
+							if p.OnTrashItem != nil {
+								p.OnTrashItem(targetPath)
 							}
 						},
 					},
 				)
+
 			}
-			items = append(items,
-				blockui.MenuItemSpec{Separator: true},
-				blockui.MenuItemSpec{
-					ID:       "trash",
-					Label:    theme.Tr("移到废纸篓", "Move to Trash"),
-					Shortcut: blockui.FormatShortcutDisplay("cmd-backspace"),
-					Icon:     &icTrash,
-					Danger:   true,
-					OnClick: func() {
-						p.State.ClosePopups()
-						if p.OnTrashItem != nil {
-							p.OnTrashItem(targetPath)
-						}
-					},
-				},
-			)
 
 			estH := estimateMenuHeight(items)
 			mainSpec := blockui.PlaceAtPoint(p.State.ContextX, p.State.ContextY)
@@ -1234,4 +1226,50 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			}
 		}
 	})
+}
+
+// blankTreeMenuItems lists the context menu for blank sidebar space.
+func blankTreeMenuItems(p SidebarProps) []blockui.MenuItemSpec {
+	icNote := icons.NotePlus
+	icFolder := icons.FolderPlus
+	icReveal := icons.FolderReveal
+	root := p.ActiveNotebook
+	return []blockui.MenuItemSpec{
+		{
+			ID:       "blank-new-note",
+			Label:    theme.Tr("新建笔记", "New Note"),
+			Shortcut: blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewNote, "cmd-n")),
+			Icon:     &icNote,
+			OnClick: func() {
+				p.State.ClosePopups()
+				if p.OnNewNote != nil {
+					p.OnNewNote()
+				}
+			},
+		},
+		{
+			ID:       "blank-new-folder",
+			Label:    theme.Tr("新建文件夹", "New Folder"),
+			Shortcut: blockui.FormatShortcutDisplay("cmd-shift-n"),
+			Icon:     &icFolder,
+			OnClick: func() {
+				p.State.ClosePopups()
+				if p.OnNewFolder != nil {
+					p.OnNewFolder()
+				}
+			},
+		},
+		{Separator: true},
+		{
+			ID:    "blank-reveal",
+			Label: theme.Tr("在访达中显示", "Reveal in File Manager"),
+			Icon:  &icReveal,
+			OnClick: func() {
+				p.State.ClosePopups()
+				if p.OnRevealItem != nil && root != "" {
+					p.OnRevealItem(root)
+				}
+			},
+		},
+	}
 }

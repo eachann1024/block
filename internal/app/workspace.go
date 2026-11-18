@@ -2611,9 +2611,15 @@ func (w *Workspace) Render(c *ui.Context) {
 				AnnotGenerating: annGenerating,
 				AnnotHasAny:     annHasAny,
 				ShortcutSidebar: modals.EffectiveShortcut(stSnap, "toggle_sidebar"),
-				ShortcutNewTab:  "cmd-t",
-				ShortcutAI:      modals.EffectiveShortcut(stSnap, "toggle_ai"),
-				ShortcutExport:  modals.EffectiveShortcut(stSnap, "export_image"),
+				ShortcutSearch:  modals.EffectiveShortcut(stSnap, "search"),
+				ShortcutNewNote: modals.EffectiveShortcut(stSnap, "new_note"),
+				SearchOpen:      w.modals.IsSearchOpen(),
+				OnOpenSearch: func() {
+					w.modals.OpenSearch(false)
+				},
+				ShortcutNewTab: "cmd-t",
+				ShortcutAI:     modals.EffectiveShortcut(stSnap, "toggle_ai"),
+				ShortcutExport: modals.EffectiveShortcut(stSnap, "export_image"),
 				OnSendAnnotations: func() {
 					if activeSess != nil {
 						activeSess.GeneratePendingAnnotations()
@@ -2836,13 +2842,8 @@ func (w *Workspace) renderSidebarColumn(
 		Entries:         entries,
 		ActiveNote:      activeNote,
 		Notice:          notice,
-		SearchOpen:      w.modals.IsSearchOpen(),
 		SettingsOpen:    w.modals.IsSettingsOpen(),
-		ShortcutSearch:  modals.EffectiveShortcut(stSnap, "search"),
 		ShortcutNewNote: modals.EffectiveShortcut(stSnap, "new_note"),
-		OnOpenSearch: func() {
-			w.modals.OpenSearch(false)
-		},
 		OnNewFolder: func() {
 			_, _ = w.CreateNewFolder()
 		},
