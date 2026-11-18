@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"block/internal/files"
 	"block/internal/icons"
 	"block/internal/model"
 	"block/internal/theme"
@@ -431,6 +432,12 @@ func (s *Session) openBlockLink(svc ui.Services, rawLink string) {
 	}
 	resolved := s.resolveMediaPath(link)
 	if abs, err := filepath.Abs(resolved); err == nil {
+		if files.IsMarkdown(abs) && s.host != nil {
+			if info, statErr := os.Stat(abs); statErr == nil && !info.IsDir() {
+				_ = s.host.OpenNote(abs, 0)
+				return
+			}
+		}
 		svc.OpenURL(localFileURL(abs))
 	}
 }
