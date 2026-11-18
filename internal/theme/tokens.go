@@ -122,15 +122,12 @@ const (
 	ResizeHitWidth  float32 = 8
 	ResizeLineWidth float32 = 2
 
-	ImageSelectBorderWidth  float32 = 1.5
-	JumpHighlightBorderW    float32 = 1.5
-	ImageResizeHitWidth     float32 = 18
-	ImageResizeHitHeight    float32 = 56
-	ImageResizePillWidth    float32 = 12 // 8px solid accent bar + 2px paper halo per side
-	ImageResizePillHotWidth float32 = 14 // 10px solid accent bar + 2px paper halo per side
-	ImageResizePillHeight   float32 = 48 // 44px solid accent bar + 2px paper halo top/bottom
-	ImageResizePillHotH     float32 = 56 // 52px solid accent bar + 2px paper halo top/bottom
-	ImageResizeHaloWidth    float32 = 2
+	ImageSelectBorderWidth float32 = 1.5
+	JumpHighlightBorderW   float32 = 1.5
+	ImageResizeHitWidth    float32 = 18
+	ImageResizeHitHeight   float32 = 56
+	ImageResizePillWidth   float32 = 5
+	ImageResizePillHeight  float32 = 26
 
 	// Table border handles, seam splitters & context menu metrics (Scheme A).
 	TableSelectBorderWidth float32 = 1.5
