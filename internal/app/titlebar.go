@@ -456,7 +456,7 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 			blockui.NavigateMenu(card, items, &p.MenuState.MenuCursor)
 			blockui.Probe(card, "page-more-menu")
 			card.Children(func() {
-				ui.Scroll(c).MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+				blockui.Scroll(c).MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
 					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
 						for i, it := range items {
 							blockui.MenuRow(c, it, i == p.MenuState.MenuCursor)

@@ -267,7 +267,7 @@ func (s *TabSurface) Render(
 		if !s.SVGShowSource || !s.HasSource {
 			s.reparseSVG()
 			c.Key("svg-preview-stage")
-			stage := ui.Scroll(c).Fill().Background(pal.Shell)
+			stage := blockui.Scroll(c).Fill().Background(pal.Shell)
 			blockui.Probe(stage, "svg-preview-stage")
 			stage.Children(func() {
 				vpW, vpH := c.Size()
@@ -309,7 +309,7 @@ func (s *TabSurface) Render(
 	case s.Kind == model.OpenKindPreview:
 		s.ensureImageLoaded()
 		c.Key("image-preview-stage")
-		stage := ui.Scroll(c).Fill().Background(pal.Shell)
+		stage := blockui.Scroll(c).Fill().Background(pal.Shell)
 		blockui.Probe(stage, "image-preview-stage")
 		stage.Children(func() {
 			vpW, vpH := c.Size()
@@ -363,7 +363,7 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context, onSave func(path, text st
 	outer.Children(func() {
 		lineCount := strings.Count(s.Source.Text, "\n") + 1
 		c.Key("source-scroll:" + s.Path)
-		scroll := ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(20, 28, 36, 20)
+		scroll := blockui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(20, 28, 36, 20)
 		scroll.Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Start).Gap(14).Children(func() {
 				gutter := ui.Column(c).Width(42).Shrink(0).AlignItems(ui.End).Padding(8, 6, 8, 0).
@@ -383,10 +383,10 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context, onSave func(path, text st
 
 				prev := s.Source.Text
 				c.Key("source-editor:" + s.Path)
-				ta := ui.TextAreaBase(c, &s.Source.Text).Grow(1).MinWidth(0).MinHeight(360).Padding(8).
+				ta := blockui.AutoHideScrollbars(c, ui.TextAreaBase(c, &s.Source.Text).Grow(1).MinWidth(0).MinHeight(360).Padding(8).
 					Font(codeFont).FontSize(14).LineHeight(1.55).TextColor(pal.Text).
 					CaretColor(pal.Accent).CaretWidth(2).
-					Background(ui.Transparent).BorderWidth(0)
+					Background(ui.Transparent).BorderWidth(0))
 				blockui.Probe(ta, "source-editor")
 				if s.Source.Text != prev {
 					if s.IsSVG {
@@ -698,7 +698,7 @@ func (h *PageHistoryView) Render(
 				if narrowHist {
 					previewPadX = 20
 				}
-				previewCol := ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(28, previewPadX, 40, previewPadX).Background(pal.Paper)
+				previewCol := blockui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(28, previewPadX, 40, previewPadX).Background(pal.Paper)
 				blockui.Probe(previewCol, "history-preview")
 				edFont, codeFont, _ := theme.Typography()
 				if strings.TrimSpace(codeFont) == "" {
@@ -767,7 +767,7 @@ func (h *PageHistoryView) Render(
 					ui.Text(c, fmt.Sprintf("%s (%d)", theme.Tr("历史版本", "Snapshots"), len(h.Entries))).
 						FontSize(14).FontWeight(600).TextColor(pal.Text)
 				})
-				ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(8).Children(func() {
+				blockui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(8).Children(func() {
 					ui.Column(c).FillWidth().Gap(4).Children(func() {
 						for ix, entry := range h.Entries {
 							entry := entry

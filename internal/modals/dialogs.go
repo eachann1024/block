@@ -308,6 +308,7 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 			msgIn := ui.TextArea(c.Key("feedback-message"), &m.feedbackMessage).
 				Placeholder(activePH).Label(theme.Tr("反馈内容", "Feedback message")).
 				FillWidth().Height(120)
+			internalui.AutoHideScrollbars(c, msgIn)
 			internalui.Probe(msgIn, "feedback-message")
 			if msgIn.Changed() {
 				m.feedbackErr = ""
@@ -491,7 +492,7 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 		// Two-column body: snapshot list + diff/preview pane.
 		ui.Row(c).FillWidth().Height(440).Children(func() {
 			// Left snapshot list.
-			ui.Scroll(c.Key("history-list")).Width(220).FillHeight().Padding(10).Gap(4).
+			internalui.Scroll(c.Key("history-list")).Width(220).FillHeight().Padding(10).Gap(4).
 				Background(pal.Sidebar).BorderWidth(0, 1, 0, 0).BorderColor(pal.SidebarBorder).
 				Children(func() {
 					if len(m.historySnapshots) == 0 {
@@ -533,7 +534,7 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 				})
 
 			// Right preview/diff pane.
-			ui.Scroll(c.Key("history-preview")).TrackScroll(&m.historyScroll).Grow(1).FillHeight().
+			internalui.Scroll(c.Key("history-preview"), &m.historyScroll).Grow(1).FillHeight().
 				Padding(14, 18, 14, 18).Gap(4).Children(func() {
 				if m.historyErr != "" {
 					ui.Text(c, m.historyErr).FontSize(14).TextColor(pal.Danger)
