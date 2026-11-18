@@ -494,6 +494,13 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 										col = pal.Text
 									}
 									ui.Text(c, ent.Title).FontSize(theme.FontBody).FontWeight(weight).TextColor(col).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+									if ent.CountText != "" {
+										ui.Text(c, ent.CountText).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+											FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+									} else if ent.StatusDot {
+										ui.Box(c).Size(theme.StoreStatusDotSize, theme.StoreStatusDotSize).Shrink(0).
+											Radius(theme.RadiusPill).Background(pal.Accent)
+									}
 								})
 								internalui.Probe(btn, navID)
 								if btn.Clicked() {

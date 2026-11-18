@@ -18,9 +18,11 @@ func IsPluginSystemTab(tab string) bool {
 
 // PluginNavEntry represents a lower-partition Settings sidebar row ("应用商店" or an installed app).
 type PluginNavEntry struct {
-	TabID    string
-	Title    string
-	DrawIcon func(c *ui.Context, size float32, colors theme.IconColors)
+	TabID     string
+	Title     string
+	CountText string
+	StatusDot bool
+	DrawIcon  func(c *ui.Context, size float32, colors theme.IconColors)
 }
 
 // PluginSettingsHost decouples Settings UI chrome from the App Store & out-of-process plugin runtime.

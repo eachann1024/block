@@ -1,6 +1,7 @@
 package pluginui
 
 import (
+	"strconv"
 	"strings"
 	"sync"
 
@@ -44,10 +45,15 @@ func (c *Controller) Supervisor() *plugins.Supervisor {
 // NavEntries returns the lower-partition Settings sidebar entries: App Store followed by installed plugins.
 func (c *Controller) NavEntries() []modals.PluginNavEntry {
 	storeSpec := plugins.AppStoreIconSpec()
+	var installed []plugins.InstalledApp
+	if c.sup != nil {
+		installed = c.sup.Installed()
+	}
 	entries := []modals.PluginNavEntry{
 		{
-			TabID: modals.TabAppStore,
-			Title: theme.Tr("应用商店", "App Store"),
+			TabID:     modals.TabAppStore,
+			Title:     theme.Tr("应用商店", "App Store"),
+			CountText: strconv.Itoa(len(installed)),
 			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors) {
 				DrawDuoSpec(ctx, storeSpec, size, colors)
 			},
@@ -57,11 +63,12 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 		return entries
 	}
 	locale := c.sup.Locale()
-	for _, inst := range c.sup.Installed() {
+	for _, inst := range installed {
 		app := inst
 		entries = append(entries, modals.PluginNavEntry{
-			TabID: modals.TabPluginPrefix + app.Manifest.ID,
-			Title: app.Manifest.Name.Resolve(locale),
+			TabID:     modals.TabPluginPrefix + app.Manifest.ID,
+			Title:     app.Manifest.Name.Resolve(locale),
+			StatusDot: app.Enabled,
 			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors) {
 				DrawDuoSpec(ctx, app.Manifest.Icon, size, colors)
 			},
