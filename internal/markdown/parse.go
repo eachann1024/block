@@ -818,10 +818,24 @@ func parseHTMLImageLine(s string) (model.Block, bool) {
 		}
 		rest = strings.TrimSpace(rest[consumed:])
 	}
-	if name != "img" {
+	if name != "img" && name != "video" {
 		return model.Block{}, false
 	}
-	if closing != "" {
+	if name == "video" {
+		if closing != "" {
+			restLower := strings.ToLower(rest)
+			endVideo := strings.Index(restLower, "</video>")
+			if endVideo < 0 {
+				return model.Block{}, false
+			}
+			rest = strings.TrimSpace(rest[endVideo+len("</video>"):])
+			if !strings.EqualFold(rest, closing) {
+				return model.Block{}, false
+			}
+		} else if rest != "" && !strings.EqualFold(rest, "</video>") {
+			return model.Block{}, false
+		}
+	} else if closing != "" {
 		if !strings.EqualFold(rest, closing) {
 			return model.Block{}, false
 		}
@@ -833,6 +847,9 @@ func parseHTMLImageLine(s string) (model.Block, bool) {
 		return model.Block{}, false
 	}
 	alt := attrVal(attrs, "alt")
+	if alt == "" && name == "video" {
+		alt = attrVal(attrs, "title")
+	}
 	w := parseImageWidth(attrVal(attrs, "width"))
 	if w == 0 {
 		if sw := cssProp(attrs, "width"); sw != "" {
