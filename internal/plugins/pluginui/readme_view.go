@@ -6,54 +6,64 @@ import (
 	"strings"
 	"time"
 
+	"block/internal/editor"
 	"block/internal/icons"
+	"block/internal/markdown"
+	"block/internal/model"
 	"block/internal/plugins"
 	"block/internal/theme"
 	bui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/markdown"
 )
 
 type readmeResult struct {
-	text string
-	err  error
+	doc    plugins.PluginReadme
+	blocks *model.Doc
+	err    error
 }
 
 type storeReadmePreview struct {
 	entry     plugins.StoreAppEntry
 	installed plugins.InstalledApp
 	cancel    context.CancelFunc
+	ctx       context.Context
 	pending   <-chan readmeResult
 	result    readmeResult
-	markdown  markdown.Options
+	editor    *editor.Session
+	media     *readmeMedia
 }
 
 func (ctrl *Controller) openStoreReadme(c *ui.Context, entry plugins.StoreAppEntry, installed plugins.InstalledApp) {
 	ctrl.closeStoreReadme()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan readmeResult, 1)
-	preview := &storeReadmePreview{entry: entry, installed: installed, cancel: cancel, pending: result}
-	preview.markdown.WrapCode = true
-	preview.markdown.OnLink = func(target string) {
-		if strings.HasPrefix(target, "#") {
-			preview.markdown.Anchor = target
-			preview.markdown.AnchorVersion++
-		}
-	}
-	ctrl.storeReadme = preview
+	ctrl.storeReadme = &storeReadmePreview{entry: entry, installed: installed, ctx: ctx, cancel: cancel, pending: result}
 
 	store, services := ctrl.sup.Store(), c.Services()
 	go func() {
-		defer cancel()
-		text, err := store.ReadPluginReadme(ctx, entry, installed)
-		result <- readmeResult{text: text, err: err}
-		services.Invalidate()
+		requestCtx, stop := context.WithTimeout(ctx, 10*time.Second)
+		defer stop()
+		doc, err := store.ReadPluginReadme(requestCtx, entry, installed)
+		reply := readmeResult{doc: doc, err: err}
+		if err == nil && ctx.Err() == nil {
+			reply.blocks = parseReadmeBlocks(doc.Text)
+		}
+		result <- reply
+		if ctx.Err() == nil {
+			services.Invalidate()
+		}
 	}()
 }
 
 func (ctrl *Controller) closeStoreReadme() {
 	if preview := ctrl.storeReadme; preview != nil {
 		preview.cancel()
+		if preview.editor != nil {
+			preview.editor.ClosePreview()
+		}
+		if preview.media != nil {
+			preview.media.close()
+		}
 		ctrl.storeReadme = nil
 	}
 }
@@ -66,6 +76,13 @@ func (ctrl *Controller) renderStoreReadme(c *ui.Context) {
 	select {
 	case preview.result = <-preview.pending:
 		preview.pending = nil
+		if preview.result.blocks != nil {
+			preview.media = &readmeMedia{
+				ctx: preview.ctx, doc: preview.result.doc, services: c.Services(),
+				slots: make(chan struct{}, 2), assets: make(map[readmeMediaKey]editor.PreviewAsset),
+			}
+			preview.editor = editor.NewReadOnlyPreview(preview.result.blocks, markdown.NewCodec(), preview.media.asset)
+		}
 	default:
 	}
 
@@ -90,11 +107,16 @@ func (ctrl *Controller) renderStoreReadme(c *ui.Context) {
 			}
 		})
 
+		if preview.editor != nil {
+			w, h := c.Size()
+			width := max(min(float32(680), w-40), 1)
+			height := max(min(float32(600), h-40)-52, 1)
+			ui.Box(c.Key("plugin-readme-" + preview.entry.ID)).FillWidth().Height(height).Clip().Children(func() {
+				preview.editor.Render(c, width, true)
+			})
+			return
+		}
 		ui.Column(c).FillWidth().MinWidth(0).Padding(theme.Space16, theme.Space20).Gap(theme.Space12).Children(func() {
-			if preview.result.text != "" {
-				markdown.View(c.Key("plugin-readme-"+preview.entry.ID), preview.result.text, &preview.markdown)
-				return
-			}
 			summary := strings.TrimSpace(preview.entry.Summary.Resolve(locale))
 			if summary != "" {
 				ui.Text(c, summary).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text)
@@ -119,4 +141,24 @@ func (ctrl *Controller) renderStoreReadme(c *ui.Context) {
 	if !open {
 		ctrl.closeStoreReadme()
 	}
+}
+
+func parseReadmeBlocks(text string) *model.Doc {
+	doc := markdown.NewCodec().Parse(text)
+	for i := range doc.Blocks {
+		b := &doc.Blocks[i]
+		if b.Kind != model.BlockParagraph || len(b.Spans) != 1 {
+			continue
+		}
+		span := b.Spans[0]
+		src := strings.TrimSpace(span.Link)
+		if src == "" && strings.HasPrefix(span.Text, "https://") {
+			src = strings.TrimSpace(span.Text)
+		}
+		if editor.IsPreviewVideo(src) {
+			b.Kind, b.ImageSrc, b.ImageAlt = model.BlockImage, src, span.Text
+			b.Spans = nil
+		}
+	}
+	return doc
 }
