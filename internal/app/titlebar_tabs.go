@@ -151,10 +151,8 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
 		Padding(0, 8, 0, 6).Radius(theme.RadiusMD).AlignItems(ui.Center).Clip().DragWindow().
 		Role(ui.RoleTab).AccessSelected(true).Label(tabTitle(path))
 	pill.Children(func() {
-		ui.Row(c).Shrink(1).MinWidth(0).FillHeight().AlignItems(ui.Center).Clip().Children(func() {
-			tabLabel(c, tabTitle(path), pal.Text)
-			tabFade(c, chrome.Ground).Absolute().Top(0).Bottom(0).Left(singleTabMaxW - 14 - tabFadeW)
-		})
+		ui.Text(c, tabTitle(path)).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).
+			FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if dirty {
 			tabDirtyDot(c).Margin(0, 0, 0, 6)
 		}
@@ -260,31 +258,25 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 	}
 
 	pill.Children(func() {
-		body := ui.Row(c).Grow(1).MinWidth(0).FillHeight().AlignItems(ui.Center).Clip()
-		body.Children(func() {
-			tabLabel(c, label, fg)
-			if active {
-				tabFade(c, pal.Selected).Absolute().Top(0).Bottom(0).Right(0)
-				return
-			}
-			end := ui.Row(c).Absolute().Top(0).Bottom(0).Right(0).AlignItems(ui.Center)
-			end.Children(func() {
-				if hovered {
-					tabFade(c, chrome.Hover)
-					ui.Row(c).Width(18).FillHeight().Background(chrome.Hover).Center().Children(closeBtn)
-					return
-				}
-				tabFade(c, chrome.Ground)
-				if dirty {
-					ui.Row(c).Width(14).FillHeight().Background(chrome.Ground).Center().Children(func() { tabDirtyDot(c) })
-				}
-			})
-		})
 		if active {
+			body := ui.Row(c).Grow(1).MinWidth(0).FillHeight().AlignItems(ui.Center).Clip()
+			body.Children(func() {
+				tabLabel(c, label, fg)
+				tabFade(c, pal.Selected).Absolute().Top(0).Bottom(0).Right(0)
+			})
 			if dirty {
 				tabDirtyDot(c).Margin(0, 4, 0, 0)
 			}
 			closeBtn()
+			return
+		}
+		ui.Text(c, label).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).
+			FontWeight(theme.WeightControl).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		switch {
+		case hovered:
+			closeBtn()
+		case dirty:
+			tabDirtyDot(c).Margin(0, 2, 0, 4)
 		}
 	})
 	if shouldReveal && active {
