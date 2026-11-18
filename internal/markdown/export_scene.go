@@ -109,6 +109,27 @@ type paintedBlock struct {
 	divKind  DividerKind
 	divWidth float32
 
+	// Shared by the callout, image and sub-heading looks.
+	radius     float32
+	angle      float32
+	shadowCol  ui.Color
+	ruleCol    ui.Color
+	tapeCol    ui.Color
+	barW       float32
+	frame      ui.Rect
+	frameKind  ImageFrame
+	subMark    SubMark
+	numShape   NumberShape
+	numFill    ui.Color
+	numStroke  ui.Color
+	numD       float32
+	todoFill   bool
+	topRuleCol ui.Color
+	topRuleW   float32
+	imgRadius  float32
+	imgOffset  float32
+	imgCorners bool
+
 	table *paintedTable
 	img   *paintedImage
 }
@@ -168,6 +189,7 @@ type spanStyleOpts struct {
 	defaultFG   ui.Color
 	isCodeBlock bool
 	strikeAll   bool
+	noGlow      bool
 }
 
 func toUISpansWith(spans []model.Span, pal PaperThemeSpec, legacy bool, o spanStyleOpts) []ui.Span {
@@ -188,10 +210,20 @@ func toUISpansWith(spans []model.Span, pal PaperThemeSpec, legacy bool, o spanSt
 			Strikethrough: o.strikeAll || sp.Marks&model.MarkStrike != 0,
 			LetterSpacing: o.track * o.size,
 		}
+		if !legacy && us.Strikethrough && inl.StrikeColor.A > 0 {
+			us.DecorationColor = inl.StrikeColor
+		}
+		if !legacy && us.Underline && inl.UnderColor.A > 0 {
+			us.DecorationColor = inl.UnderColor
+			if inl.UnderThick > 0 {
+				us.DecorationThickness = inl.UnderThick
+			}
+			us.UnderlineOffset = 3
+		}
 		if o.defaultFG.A > 0 {
 			us.Color = o.defaultFG
 		}
-		if !legacy && pal.Style.TextGlow.A > 0 {
+		if !legacy && pal.Style.TextGlow.A > 0 && !o.noGlow {
 			us.Shadow = ui.NewTextShadow(0, 0, 6, pal.Style.TextGlow)
 		}
 		if sp.Marks&model.MarkBold != 0 {
@@ -220,10 +252,16 @@ func toUISpansWith(spans []model.Span, pal PaperThemeSpec, legacy bool, o spanSt
 				}
 				us.Background = cbg
 				us.Radius = 4
+				if !legacy && inl.CodeRadius != 0 {
+					us.Radius = maxFloat32(inl.CodeRadius, 0.01)
+				}
 				us.PaddingX = 4
 				us.PaddingY = 1
 				if !legacy && inl.CodeFG.A > 0 {
 					us.Color = inl.CodeFG
+					if cbg.A > 160 && colorLuma(inl.CodeFG) < 0.35 {
+						us.Shadow = ui.TextShadow{}
+					}
 				}
 			}
 		}
@@ -857,9 +895,11 @@ func buildFooterScene(pal PaperThemeSpec, legacy bool, vars templateVars, x, y, 
 }
 
 type layoutCounters struct {
-	num      listNumbering
-	h2Count  int
-	quoteOrd int
+	num        listNumbering
+	h2Count    int
+	quoteOrd   int
+	calloutOrd int
+	imageOrd   int
 }
 
 // appendSceneBlocks lays out blocks starting at startY and returns the bottom Y
@@ -884,6 +924,9 @@ func appendSceneBlocks(
 		b := &blocks[i]
 		ord := st.num.next(b)
 		indent := float32(b.Indent) * 12
+		if !legacy && b.Kind.IsList() {
+			indent = float32(b.Indent) * orF(pal.Style.List.Gutter, 28)
+		}
 		if indent > contentW-120 {
 			indent = contentW - 120
 		}
@@ -934,7 +977,8 @@ func appendSceneBlocks(
 			y += bh + lastGap
 
 		case b.Kind == model.BlockImage:
-			if pb, ok := buildPaintedImage(b, notePath, bx, y, avail, pal); ok {
+			st.imageOrd++
+			if pb, ok := buildPaintedImage(b, notePath, bx, y, avail, pal, legacy, st.imageOrd); ok {
 				lastGap = 14
 				y += pb.h + lastGap
 				sc.blocks = append(sc.blocks, pb)
@@ -953,35 +997,11 @@ func appendSceneBlocks(
 			sc.blocks = append(sc.blocks, pb)
 
 		case b.Kind == model.BlockCallout:
-			bg, border, accent, cTitle := pal.CalloutColors(b.Callout)
-			padBoxX, padBoxY := float32(18), float32(12)
-			lf := ui.Font{Family: pal.BodyFamily, Size: 13, Weight: 700, LineHeight: 1.3}
-			labelLay := ui.ShapeRichTextWith([]ui.Span{{Text: cTitle, Font: pal.BodyFamily, Size: 13, Weight: 700}}, lf, ui.TextShape{Width: avail - 2*padBoxX})
-			_, lh := labelLay.Size()
-			bodyFont := ui.Font{Family: pal.BodyFamily, Size: pal.BodySize, LineHeight: pal.Leading}
-			spans := toUISpansWith(b.Spans, pal, legacy, spanStyleOpts{
-				family: pal.BodyFamily, size: pal.BodySize, defaultFG: pal.Text,
-			})
-			lay := ui.ShapeRichTextWith(spans, bodyFont, ui.TextShape{Width: avail - 2*padBoxX})
-			_, th := lay.Size()
-			bh := th + lh + 6 + 2*padBoxY
-			sc.blocks = append(sc.blocks, paintedBlock{
-				kind:      model.BlockCallout,
-				x:         bx,
-				y:         y,
-				w:         avail,
-				h:         bh,
-				textX:     bx + padBoxX,
-				textY:     y + padBoxY + lh + 6,
-				layout:    lay,
-				textColor: pal.Text,
-				bgColor:   bg,
-				borderCol: border,
-				accentCol: accent,
-				labelLay:  labelLay,
-			})
-			lastGap = 14
-			y += bh + lastGap
+			st.calloutOrd++
+			pb, gap := buildPaintedCallout(b, bx, y, avail, pal, legacy, st.calloutOrd)
+			lastGap = gap
+			y += pb.h + lastGap
+			sc.blocks = append(sc.blocks, pb)
 
 		case b.Kind == model.BlockQuote:
 			st.quoteOrd++
@@ -1089,6 +1109,28 @@ func buildPaintedHeading(
 	if !legacy {
 		track = hs.Track
 	}
+	headFam := pal.HeadingFamily
+	sub := pal.Style.Sub
+	isSub := !legacy && lvl >= 3
+	if isSub {
+		if sub.Size > 0 {
+			sz = sub.Size
+			if lvl >= 4 {
+				sz = maxFloat32(sub.Size*0.9, pal.BodySize)
+			}
+		}
+		headFam = orS(sub.Family, headFam)
+		if sub.Weight > 0 {
+			weight = sub.Weight
+		}
+		headCol = orC(sub.Color, headCol)
+		if sub.Track != 0 {
+			track = sub.Track
+		}
+		if sub.TopGap > 0 && !suppressTopGap {
+			y = curY + sub.TopGap
+		}
+	}
 
 	pb := paintedBlock{
 		kind:        b.Kind,
@@ -1108,7 +1150,7 @@ func buildPaintedHeading(
 		pCol := orC(hs.PrefixColor, pal.Secondary)
 		ps := ui.Span{
 			Text:          strings.Repeat("#", lvl) + " ",
-			Font:          orS(hs.PrefixFont, pal.HeadingFamily),
+			Font:          orS(hs.PrefixFont, headFam),
 			Size:          sz,
 			Weight:        weight,
 			Color:         pCol,
@@ -1119,11 +1161,32 @@ func buildPaintedHeading(
 		}
 		spans = append(spans, ps)
 	}
+	if isSub && sub.Prefix != "" {
+		ps := ui.Span{
+			Text:   sub.Prefix,
+			Font:   orS(sub.PrefixFont, headFam),
+			Size:   sz,
+			Weight: weight,
+			Color:  orC(sub.PrefixColor, pal.Accent),
+		}
+		if pal.Style.TextGlow.A > 0 {
+			ps.Shadow = ui.NewTextShadow(0, 0, 6, pal.Style.TextGlow)
+		}
+		spans = append(spans, ps)
+	}
 	spans = append(spans, toUISpansWith(b.Spans, pal, legacy, spanStyleOpts{
-		family: pal.HeadingFamily, size: sz, weight: weight, track: track, defaultFG: headCol,
+		family: headFam, size: sz, weight: weight, track: track, defaultFG: headCol,
 	})...)
 
 	textAvail := avail
+	if isSub && sub.Mark != SubMarkNone {
+		pb.subMark = sub.Mark
+		pb.accentCol = orC(sub.MarkColor, pal.Accent)
+		if sub.Mark == SubMarkSquare {
+			pb.textX = bx + 22
+			textAvail = maxFloat32(avail-22, 60)
+		}
+	}
 	if lvl == 2 && !legacy {
 		pb.headPrefix = hs.Prefix
 		pb.headRule = hs.Underline
@@ -1178,7 +1241,7 @@ func buildPaintedHeading(
 		}
 	}
 
-	font := ui.Font{Family: pal.HeadingFamily, Size: sz, Weight: weight, LineHeight: 1.35}
+	font := ui.Font{Family: headFam, Size: sz, Weight: weight, LineHeight: 1.35}
 	lay := ui.ShapeRichTextWith(spans, font, ui.TextShape{Width: textAvail})
 	_, th := lay.Size()
 	pb.layout = lay
@@ -1186,6 +1249,9 @@ func buildPaintedHeading(
 	botPad := float32(0)
 	if pb.headRule {
 		botPad = 7
+	}
+	if pb.subMark == SubMarkDashUnder {
+		botPad = 6
 	}
 	pb.h = (pb.textY - y) + th + botPad
 
@@ -1602,11 +1668,19 @@ func buildPaintedListItem(b *model.Block, ord int, bx, y, avail float32, pal Pap
 	}
 	var mLay *ui.TextLayout
 	mCol := pal.Title
+	numD := float32(0)
+	bulletKind, bulletSize, bulletCol := ls.Bullet, ls.BulletSize, orC(ls.BulletColor, pal.Accent)
+	nested := !legacy && b.Indent > 0 && (ls.Bullet2Size > 0 || ls.Bullet2Glyph != "" || ls.Bullet2Color.A > 0)
+	if nested {
+		bulletKind, bulletSize, bulletCol = ls.Bullet2, ls.Bullet2Size, orC(ls.Bullet2Color, pal.Secondary)
+	}
 
 	switch b.Kind {
 	case model.BlockNumbered:
 		var marker string
 		nfam := pal.BodyFamily
+		nsz := pal.BodySize
+		weight := 600
 		if legacy {
 			if ord <= 0 {
 				ord = 1
@@ -1616,14 +1690,27 @@ func buildPaintedListItem(b *model.Block, ord int, bx, y, avail float32, pal Pap
 			marker = formatListOrdinal(ord, ls.Number)
 			nfam = orS(ls.NumberFont, pal.BodyFamily)
 			mCol = orC(ls.NumberColor, pal.Title)
+			if ls.NumberShape != NumberShapeNone {
+				nsz = orF(ls.NumberSize, 12)
+			} else {
+				nsz = orF(ls.NumberSize, pal.BodySize)
+			}
 		}
-		mFont := ui.Font{Family: nfam, Size: pal.BodySize, Weight: 600, LineHeight: pal.Leading}
-		sp := ui.Span{Text: marker, Font: nfam, Size: pal.BodySize, Weight: 600}
+		lh := pal.Leading
+		if nsz != pal.BodySize {
+			lh = 1.2
+		}
+		mFont := ui.Font{Family: nfam, Size: nsz, Weight: weight, LineHeight: lh}
+		sp := ui.Span{Text: marker, Font: nfam, Size: nsz, Weight: weight}
 		if !legacy && pal.Style.TextGlow.A > 0 {
 			sp.Shadow = ui.NewTextShadow(0, 0, 5, pal.Style.TextGlow)
 		}
 		mLay = ui.ShapeRichTextWith([]ui.Span{sp}, mFont, ui.TextShape{Width: 72})
 		mw, _ := mLay.Size()
+		if !legacy && ls.NumberShape != NumberShapeNone {
+			numD = maxFloat32(mw+10, nsz*1.75)
+			mw = numD
+		}
 		if mw+10 > gutter {
 			gutter = mw + 10
 		}
@@ -1649,14 +1736,18 @@ func buildPaintedListItem(b *model.Block, ord int, bx, y, avail float32, pal Pap
 		}
 
 	default: // BlockBullet
-		if !legacy && (ls.Bullet == BulletArrow || ls.Bullet == BulletMiddot) {
+		if nested && ls.Bullet2Glyph != "" {
+			mCol = bulletCol
+			mFont := ui.Font{Family: fontMonoCJK, Size: pal.BodySize, LineHeight: pal.Leading}
+			mLay = ui.ShapeRichTextWith([]ui.Span{{Text: ls.Bullet2Glyph, Font: fontMonoCJK, Size: pal.BodySize}}, mFont, ui.TextShape{Width: 40})
+		} else if !legacy && (bulletKind == BulletArrow || bulletKind == BulletMiddot) {
 			glyph := "→"
 			gfam := fontMono
-			if ls.Bullet == BulletMiddot {
+			if bulletKind == BulletMiddot {
 				glyph = "·"
 				gfam = pal.BodyFamily
 			}
-			mCol = orC(ls.BulletColor, pal.Accent)
+			mCol = bulletCol
 			mFont := ui.Font{Family: gfam, Size: pal.BodySize, Weight: 700, LineHeight: pal.Leading}
 			mLay = ui.ShapeRichTextWith([]ui.Span{{Text: glyph, Font: gfam, Size: pal.BodySize, Weight: 700}}, mFont, ui.TextShape{Width: 32})
 		}
@@ -1693,17 +1784,23 @@ func buildPaintedListItem(b *model.Block, ord int, bx, y, avail float32, pal Pap
 		textColor:  itemFG,
 		markerLay:  mLay,
 		markerCol:  mCol,
-		accentCol:  orC(ls.BulletColor, pal.Accent),
-		bulletKind: ls.Bullet,
-		bulletSize: ls.BulletSize,
+		accentCol:  bulletCol,
+		bulletKind: bulletKind,
+		bulletSize: bulletSize,
 		todoKind:   ls.Todo,
 		todoBorder: orC(ls.TodoBorder, pal.Accent),
 		todoCheck:  orC(ls.TodoCheck, pal.Accent),
 		checked:    b.Checked,
+		radius:     ls.TodoRadius,
+		todoFill:   ls.TodoFill,
+		numShape:   ls.NumberShape,
+		numFill:    ls.NumberFill,
+		numStroke:  ls.NumberStroke,
+		numD:       numD,
 	}, gap
 }
 
-func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, pal PaperThemeSpec) (paintedBlock, bool) {
+func buildRawImage(b *model.Block, notePath string, bx, by, avail float32, pal PaperThemeSpec) (paintedBlock, bool) {
 	if localPath, ok := resolveLocalImagePath(b.ImageSrc, notePath); ok {
 		if raw, err := os.ReadFile(localPath); err == nil {
 			if bm, err := ui.DecodeBitmap(raw); err == nil {

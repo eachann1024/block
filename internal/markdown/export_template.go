@@ -8,6 +8,8 @@ import (
 	"unicode"
 
 	"block/internal/model"
+
+	"github.com/egoist/mygo/ui"
 )
 
 // templateVars fills the placeholders a theme's furniture text may use:
@@ -104,9 +106,75 @@ func formatListOrdinal(ord int, kind NumberKind) string {
 		return fmt.Sprintf("%02d", ord)
 	case NumberCJK:
 		return chineseOrdinal(ord) + "、"
+	case NumberRoman:
+		return romanOrdinal(ord) + "."
+	case NumberBare:
+		return fmt.Sprintf("%d", ord)
 	default:
 		return fmt.Sprintf("%d.", ord)
 	}
+}
+
+func romanOrdinal(n int) string {
+	if n <= 0 || n >= 4000 {
+		return fmt.Sprintf("%d", n)
+	}
+	vals := [...]int{1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1}
+	syms := [...]string{"m", "cm", "d", "cd", "c", "xc", "l", "xl", "x", "ix", "v", "iv", "i"}
+	var b strings.Builder
+	for i, v := range vals {
+		for n >= v {
+			b.WriteString(syms[i])
+			n -= v
+		}
+	}
+	return b.String()
+}
+
+// calloutIndex maps a callout kind to its slot in CalloutStyle.Labels / Tones.
+func calloutIndex(kind model.CalloutKind) int {
+	switch kind {
+	case model.CalloutTip:
+		return 1
+	case model.CalloutImportant:
+		return 2
+	case model.CalloutWarning:
+		return 3
+	case model.CalloutCaution:
+		return 4
+	default:
+		return 0
+	}
+}
+
+// resolveCallout returns the colours and label for a callout under the theme's CalloutStyle.
+func (s PaperThemeSpec) resolveCallout(kind model.CalloutKind, legacy bool) (tone CalloutTone, label string) {
+	bg, border, accent, title := s.CalloutColors(kind)
+	tone = CalloutTone{BG: bg, Border: border, Label: accent, FG: s.Text}
+	label = title
+	cs := s.Style.Callout
+	if legacy || !cs.Custom {
+		return tone, label
+	}
+	i := calloutIndex(kind)
+	t := cs.Tones[i]
+	tone = CalloutTone{
+		BG:       t.BG,
+		Border:   t.Border,
+		Label:    orC(t.Label, accent),
+		LabelBG:  t.LabelBG,
+		FG:       orC(t.FG, s.Text),
+		TopRule:  t.TopRule,
+		TopRuleW: t.TopRuleW,
+		Dashed:   cs.Dashed || t.Dashed,
+		Bold:     t.Bold,
+	}
+	label = orS(cs.Labels[i], title)
+	return tone, label
+}
+
+func colorLuma(c ui.Color) float32 {
+	return (0.299*float32(c.R) + 0.587*float32(c.G) + 0.114*float32(c.B)) / 255.0
 }
 
 func chineseOrdinal(n int) string {

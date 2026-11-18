@@ -19,9 +19,11 @@ import (
 // ---- HTML Export (12 Differentiated Paper Themes + Legacy Ocean Fallback) ----
 
 type htmlRenderState struct {
-	num      listNumbering
-	h2Count  int
-	quoteOrd int
+	num        listNumbering
+	h2Count    int
+	quoteOrd   int
+	calloutOrd int
+	imageOrd   int
 }
 
 func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) string {
@@ -331,10 +333,38 @@ func buildHTMLStylesheet(pal PaperThemeSpec, legacy bool, width int, title strin
 
 	codeBG := uiColorCSS(pal.CodeBG)
 	codeFG := uiColorCSS(orC(pal.Style.Code.FG, pal.Text))
-	inlineCodeBG := uiColorCSS(orC(pal.Style.Inline.CodeBG, pal.CodeBG))
-	inlineCodeFG := ""
-	if !legacy && pal.Style.Inline.CodeFG.A > 0 {
-		inlineCodeFG = ";color:" + uiColorCSS(pal.Style.Inline.CodeFG)
+	inlineCodeCol := orC(pal.Style.Inline.CodeBG, pal.CodeBG)
+	inlineCodeBG := uiColorCSS(inlineCodeCol)
+	inlineCodeExtra := ";border-radius:4px"
+	if !legacy {
+		inl := pal.Style.Inline
+		r := float32(4)
+		if inl.CodeRadius < 0 {
+			r = 0
+		} else if inl.CodeRadius > 0 {
+			r = inl.CodeRadius
+		}
+		inlineCodeExtra = fmt.Sprintf(";border-radius:%.0fpx", r)
+		if inl.CodeFG.A > 0 {
+			inlineCodeExtra += ";color:" + uiColorCSS(inl.CodeFG)
+			if pal.Style.TextGlow.A > 0 && inlineCodeCol.A > 160 && colorLuma(inl.CodeFG) < 0.35 {
+				inlineCodeExtra += ";text-shadow:none"
+			}
+		}
+	}
+	inlineDecoCSS := ""
+	if !legacy {
+		inl := pal.Style.Inline
+		if inl.StrikeColor.A > 0 {
+			inlineDecoCSS += fmt.Sprintf("\ndel,s{text-decoration-color:%s}", uiColorCSS(inl.StrikeColor))
+		}
+		if inl.UnderColor.A > 0 {
+			th := ""
+			if inl.UnderThick > 0 {
+				th = fmt.Sprintf(";text-decoration-thickness:%.1fpx", inl.UnderThick)
+			}
+			inlineDecoCSS += fmt.Sprintf("\nu{text-decoration-color:%s;text-underline-offset:3px%s}", uiColorCSS(inl.UnderColor), th)
+		}
 	}
 
 	preBorder := fmt.Sprintf("border:1px solid %s;", uiColorCSS(pal.CodeBorder))
@@ -378,7 +408,7 @@ blockquote{margin:0 0 16px}
 .callout{margin:0 0 14px;padding:12px 16px;border-radius:8px;border-left:4px solid}
 .callout-title{font-size:14px;font-weight:700;letter-spacing:.04em;margin-bottom:6px}
 pre{margin:0 0 16px;padding:14px 18px;background:%s;%sborder-radius:%.0fpx;overflow-x:auto;font-family:%s;font-size:%.1fpx;line-height:%.2f;color:%s}
-code{font-family:%s;font-size:.9em;background:%s;padding:1px 5px;border-radius:4px%s}
+code{font-family:%s;font-size:.9em;background:%s;padding:1px 5px%s}%s
 pre code{background:transparent;padding:0;color:inherit}
 %s
 hr{border:0;border-top:1px solid %s;margin:18px 0}
@@ -393,7 +423,7 @@ img{max-width:100%%;height:auto;border-radius:%.0fpx}`,
 		pal.HeadSizes[0], pal.HeadSizes[1], pal.HeadSizes[2], pal.BodySize*1.12, pal.BodySize,
 		paraJustify,
 		codeBG, preBorder, pal.BlockRadius(), htmlFontStack(fontMono), orF(pal.Style.Code.Size, 14.5), orF(pal.Style.Code.Leading, 1.6), codeFG,
-		htmlFontStack(fontMono), inlineCodeBG, inlineCodeFG,
+		htmlFontStack(fontMono), inlineCodeBG, inlineCodeExtra, inlineDecoCSS,
 		tableCSS,
 		uiColorCSS(pal.Divider),
 		linkColor, linkDeco,
@@ -841,15 +871,20 @@ func renderHTMLList(out *strings.Builder, items []model.Block, num *listNumberin
 	}
 
 	ls := pal.Style.List
+	gutter := int(orF(ls.Gutter, 28))
 	out.WriteString(`<ul class="custom-list">` + "\n")
 	for i := range items {
 		it := &items[i]
 		ord := num.next(it)
 		indentCSS := ""
 		if it.Indent > 0 {
-			indentCSS = fmt.Sprintf("margin-left:%dpx;", it.Indent*12)
+			indentCSS = fmt.Sprintf("margin-left:%dpx;", it.Indent*gutter)
 		}
-		out.WriteString(fmt.Sprintf(`<li style="%sdisplay:flex;gap:10px;align-items:baseline;margin:%.0fpx 0">`, indentCSS, orF(ls.Gap, 4)))
+		align := "baseline"
+		if it.Kind == model.BlockNumbered && ls.NumberShape != NumberShapeNone {
+			align = "center"
+		}
+		out.WriteString(fmt.Sprintf(`<li style="%sdisplay:flex;gap:10px;align-items:%s;margin:%.0fpx 0">`, indentCSS, align, orF(ls.Gap, 4)))
 		out.WriteString(renderHTMLListMarker(it, ord, pal))
 		var bodyWrapOpen, bodyWrapClose string
 		if it.Kind == model.BlockTodo && it.Checked {
@@ -859,6 +894,9 @@ func renderHTMLList(out *strings.Builder, items []model.Block, num *listNumberin
 			}
 			if ls.DoneStrike {
 				st.WriteString("text-decoration:line-through;")
+				if pal.Style.Inline.StrikeColor.A > 0 {
+					st.WriteString("text-decoration-color:" + uiColorCSS(pal.Style.Inline.StrikeColor) + ";")
+				}
 			}
 			if st.Len() > 0 {
 				bodyWrapOpen = fmt.Sprintf(`<span style="%s">`, st.String())
@@ -878,8 +916,26 @@ func renderHTMLListMarker(it *model.Block, ord int, pal PaperThemeSpec) string {
 	case model.BlockNumbered:
 		nfam := htmlFontStack(orS(ls.NumberFont, pal.BodyFamily))
 		ncol := uiColorCSS(orC(ls.NumberColor, pal.Title))
-		return fmt.Sprintf(`<span style="font-family:%s;font-weight:600;color:%s;flex-shrink:0">%s</span>`,
-			nfam, ncol, escapeHTMLText(formatListOrdinal(ord, ls.Number)))
+		text := escapeHTMLText(formatListOrdinal(ord, ls.Number))
+		if ls.NumberShape != NumberShapeNone {
+			nsz := orF(ls.NumberSize, 12)
+			d := maxFloat32(nsz*1.75, 20)
+			rad := "50%"
+			if ls.NumberShape == NumberShapeSquare {
+				rad = "0"
+			}
+			bg := "transparent"
+			if ls.NumberFill.A > 0 {
+				bg = uiColorCSS(ls.NumberFill)
+			}
+			bd := ""
+			if ls.NumberStroke.A > 0 {
+				bd = fmt.Sprintf("border:1.2px solid %s;", uiColorCSS(ls.NumberStroke))
+			}
+			return fmt.Sprintf(`<span style="display:inline-flex;width:%.0fpx;height:%.0fpx;border-radius:%s;background:%s;%sfont-family:%s;font-size:%.0fpx;font-weight:600;color:%s;align-items:center;justify-content:center;flex-shrink:0">%s</span>`,
+				d, d, rad, bg, bd, nfam, nsz, ncol, text)
+		}
+		return fmt.Sprintf(`<span style="font-family:%s;font-weight:600;color:%s;flex-shrink:0">%s</span>`, nfam, ncol, text)
 	case model.BlockTodo:
 		bd := uiColorCSS(orC(ls.TodoBorder, pal.Accent))
 		ck := uiColorCSS(orC(ls.TodoCheck, pal.Accent))
@@ -896,18 +952,39 @@ func renderHTMLListMarker(it *model.Block, ord int, pal PaperThemeSpec) string {
 			}
 			return fmt.Sprintf(`<span style="display:inline-block;width:11px;height:11px;border-radius:50%%;border:1.3px solid %s;background:%s;flex-shrink:0;transform:translateY(1px)"></span>`, bd, bg)
 		default:
+			r := orF(ls.TodoRadius, 3)
+			rad := fmt.Sprintf("%.0fpx", r)
+			if r >= 7 {
+				rad = "50%"
+			} else if r < 0.5 {
+				rad = "0"
+			}
+			if it.Checked && ls.TodoFill {
+				mark := fmt.Sprintf(`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="%s" stroke-width="3.2" aria-hidden="true"><path d="M4 13l5 5 11-12"/></svg>`, uiColorCSS(pal.InnerCanvas))
+				return fmt.Sprintf(`<span style="display:inline-flex;width:15px;height:15px;background:%s;border-radius:%s;align-items:center;justify-content:center;flex-shrink:0;transform:translateY(2px)">%s</span>`, ck, rad, mark)
+			}
 			mark := ""
 			if it.Checked {
 				mark = fmt.Sprintf(`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="%s" stroke-width="3" aria-hidden="true"><path d="M4 13l5 5 11-12"/></svg>`, ck)
 			}
-			return fmt.Sprintf(`<span style="display:inline-flex;width:14px;height:14px;border:1.5px solid %s;border-radius:3px;align-items:center;justify-content:center;flex-shrink:0;transform:translateY(2px)">%s</span>`, bd, mark)
+			return fmt.Sprintf(`<span style="display:inline-flex;width:14px;height:14px;border:1.5px solid %s;border-radius:%s;align-items:center;justify-content:center;flex-shrink:0;transform:translateY(2px)">%s</span>`, bd, rad, mark)
 		}
 	default:
-		bcol := uiColorCSS(orC(ls.BulletColor, pal.Accent))
-		sz := orF(ls.BulletSize, 6.5)
-		switch ls.Bullet {
+		bkind, bsz, bcolC := ls.Bullet, ls.BulletSize, orC(ls.BulletColor, pal.Accent)
+		if it.Indent > 0 && (ls.Bullet2Size > 0 || ls.Bullet2Glyph != "" || ls.Bullet2Color.A > 0) {
+			bcol := uiColorCSS(orC(ls.Bullet2Color, pal.Secondary))
+			if ls.Bullet2Glyph != "" {
+				return fmt.Sprintf(`<span style="font-family:%s;color:%s;flex-shrink:0">%s</span>`, htmlFontStack(fontMonoCJK), bcol, escapeHTMLText(ls.Bullet2Glyph))
+			}
+			bkind, bsz, bcolC = ls.Bullet2, ls.Bullet2Size, orC(ls.Bullet2Color, pal.Secondary)
+		}
+		bcol := uiColorCSS(bcolC)
+		sz := orF(bsz, 6.5)
+		switch bkind {
 		case BulletSquare:
 			return fmt.Sprintf(`<span style="display:inline-block;width:%.0fpx;height:%.0fpx;background:%s;flex-shrink:0;transform:translateY(-1px)"></span>`, sz, sz, bcol)
+		case BulletDiamond:
+			return fmt.Sprintf(`<span style="display:inline-block;width:%.0fpx;height:%.0fpx;background:%s;flex-shrink:0;transform:translateY(-1px) rotate(45deg)"></span>`, sz, sz, bcol)
 		case BulletRing:
 			return fmt.Sprintf(`<span style="display:inline-block;width:%.0fpx;height:%.0fpx;border-radius:50%%;border:1.3px solid %s;flex-shrink:0"></span>`, sz, sz, bcol)
 		case BulletDash:
@@ -939,6 +1016,9 @@ func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal 
 		} else if !legacy && ds.Kind == DividerRepeat && ds.Text != "" {
 			out.WriteString(fmt.Sprintf(`<div role="separator" style="margin:18px 0;color:%s;font-family:%s;overflow:hidden;white-space:nowrap">%s</div>`+"\n",
 				uiColorCSS(orC(ds.Color, pal.Divider)), htmlFontStack(fontMono), escapeHTMLText(strings.Repeat(ds.Text, 80))))
+		} else if !legacy && ds.Kind == DividerWave {
+			out.WriteString(fmt.Sprintf(`<div role="separator" style="margin:22px 0;text-align:center"><svg width="220" height="12" viewBox="0 0 220 12" aria-hidden="true"><path d="M2 6q5.5-6 11 0t11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0" fill="none" stroke="%s" stroke-width="%.1f" stroke-linecap="round"/></svg></div>`+"\n",
+				uiColorCSS(orC(ds.Color, pal.Divider)), orF(ds.Width, 1.5)))
 		} else {
 			w := float32(1)
 			c := pal.Divider
@@ -954,13 +1034,8 @@ func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal 
 		renderHTMLQuote(out, b, st.quoteOrd, pal, legacy)
 
 	case b.Kind == model.BlockCallout:
-		bg, border, accent, title := pal.CalloutColors(b.Callout)
-		out.WriteString(fmt.Sprintf(
-			`<div class="callout callout-%s" style="background:%s;border-left-color:%s;box-shadow:inset 0 0 0 1px %s"><div class="callout-title" style="color:%s">%s</div><div>`,
-			strings.ToLower(title), uiColorCSS(bg), uiColorCSS(accent), uiColorCSS(border), uiColorCSS(accent), title,
-		))
-		renderHTMLSpans(out, b.Spans, pal, legacy)
-		out.WriteString("</div></div>\n")
+		st.calloutOrd++
+		renderHTMLCallout(out, b, st.calloutOrd, pal, legacy)
 
 	case b.Kind == model.BlockCode:
 		cls := ""
@@ -986,34 +1061,8 @@ func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal 
 		renderHTMLTable(out, b.Table, pal, legacy)
 
 	case b.Kind == model.BlockImage:
-		src := b.ImageSrc
-		if localPath, ok := resolveLocalImagePath(src, notePath); ok {
-			if raw, err := os.ReadFile(localPath); err == nil {
-				mime := detectImageMime(localPath, raw)
-				src = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw)
-			}
-		}
-		align := string(b.ImageAlign)
-		if align == "" {
-			align = "left"
-		}
-		var imgCSS strings.Builder
-		if b.ImageWidth > 0 {
-			imgCSS.WriteString(fmt.Sprintf("width:%s%%;", formatFloat(b.ImageWidth)))
-		}
-		if !b.ImageCrop.IsZero() {
-			imgCSS.WriteString(fmt.Sprintf("clip-path:inset(%.2f%% %.2f%% %.2f%% %.2f%%);",
-				b.ImageCrop.Top*100, b.ImageCrop.Right*100, b.ImageCrop.Bottom*100, b.ImageCrop.Left*100))
-		}
-		out.WriteString(fmt.Sprintf(`<figure style="margin:12px 0;text-align:%s"><img src="%s" alt="%s"`, align, escapeAttrValue(src), escapeAttrValue(b.ImageAlt)))
-		if imgCSS.Len() > 0 {
-			out.WriteString(fmt.Sprintf(` style="%s"`, imgCSS.String()))
-		}
-		out.WriteByte('>')
-		if capText := strings.TrimSpace(b.ImageAlt); capText != "" {
-			out.WriteString(fmt.Sprintf(`<figcaption style="margin-top:6px;font-size:13px;color:%s">%s</figcaption>`, uiColorCSS(pal.Secondary), escapeHTMLText(capText)))
-		}
-		out.WriteString("</figure>\n")
+		st.imageOrd++
+		renderHTMLFigure(out, b, notePath, st.imageOrd, pal, legacy)
 
 	case b.Kind == model.BlockRawHTML:
 		out.WriteString(b.Code)
@@ -1086,6 +1135,58 @@ func renderHTMLHeading(out *strings.Builder, b *model.Block, lvl, h2Idx int, pal
 			out.WriteString("</h2></div>\n")
 			return
 		}
+	}
+	if lvl >= 3 && !legacy {
+		sub := pal.Style.Sub
+		var st strings.Builder
+		st.WriteString(fmt.Sprintf("margin-top:%.0fpx;", orF(sub.TopGap, 14)))
+		if sub.Family != "" {
+			st.WriteString("font-family:" + htmlFontStack(sub.Family) + ";")
+		}
+		if sub.Size > 0 {
+			sz := sub.Size
+			if lvl >= 4 {
+				sz = maxFloat32(sub.Size*0.9, pal.BodySize)
+			}
+			st.WriteString(fmt.Sprintf("font-size:%.1fpx;", sz))
+		}
+		if sub.Weight > 0 {
+			st.WriteString(fmt.Sprintf("font-weight:%d;", sub.Weight))
+		}
+		if sub.Color.A > 0 {
+			st.WriteString("color:" + uiColorCSS(sub.Color) + ";")
+		}
+		if sub.Track != 0 {
+			st.WriteString(fmt.Sprintf("letter-spacing:%.3fem;", sub.Track))
+		}
+		if sub.Mark == SubMarkSquare {
+			st.WriteString("display:flex;align-items:center;gap:8px;")
+		}
+		out.WriteString(fmt.Sprintf(`<h%d style="%s">`, lvl, st.String()))
+		if sub.Mark == SubMarkSquare {
+			out.WriteString(fmt.Sprintf(`<span style="display:inline-block;width:14px;height:14px;background:%s;flex-shrink:0"></span>`, uiColorCSS(orC(sub.MarkColor, pal.Accent))))
+		}
+		if sub.Prefix != "" {
+			pf := ""
+			if sub.PrefixFont != "" {
+				pf = "font-family:" + htmlFontStack(sub.PrefixFont) + ";"
+			}
+			out.WriteString(fmt.Sprintf(`<span style="%scolor:%s">%s</span>`, pf, uiColorCSS(orC(sub.PrefixColor, pal.Accent)), escapeHTMLText(sub.Prefix)))
+		}
+		wrapOpen, wrapClose := "", ""
+		switch sub.Mark {
+		case SubMarkBand:
+			wrapOpen = fmt.Sprintf(`<span style="background:linear-gradient(transparent 56%%,%s 56%%);padding:0 2px">`, uiColorCSS(orC(sub.MarkColor, pal.Accent)))
+			wrapClose = `</span>`
+		case SubMarkDashUnder:
+			wrapOpen = fmt.Sprintf(`<span style="border-bottom:1.5px dashed %s;padding-bottom:2px">`, uiColorCSS(orC(sub.MarkColor, pal.Accent)))
+			wrapClose = `</span>`
+		}
+		out.WriteString(wrapOpen)
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString(wrapClose)
+		out.WriteString(fmt.Sprintf("</h%d>\n", lvl))
+		return
 	}
 	out.WriteString(fmt.Sprintf(`<h%d style="margin-top:%.0fpx%s">`, lvl, orF(hs.TopGap, 16), uCSS))
 	renderHTMLSpans(out, b.Spans, pal, legacy)
@@ -1284,4 +1385,201 @@ func detectImageMime(path string, data []byte) string {
 		return "image/jpeg"
 	}
 	return "image/png"
+}
+
+func renderHTMLCallout(out *strings.Builder, b *model.Block, ord int, pal PaperThemeSpec, legacy bool) {
+	cs := pal.Style.Callout
+	if legacy || !cs.Custom {
+		bg, border, accent, title := pal.CalloutColors(b.Callout)
+		out.WriteString(fmt.Sprintf(
+			`<div class="callout callout-%s" style="background:%s;border-left-color:%s;box-shadow:inset 0 0 0 1px %s"><div class="callout-title" style="color:%s">%s</div><div>`,
+			strings.ToLower(title), uiColorCSS(bg), uiColorCSS(accent), uiColorCSS(border), uiColorCSS(accent), title,
+		))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString("</div></div>\n")
+		return
+	}
+
+	tone, label := pal.resolveCallout(b.Callout, legacy)
+	boxed := tone.BG.A > 0 || tone.Border.A > 0
+	padX, padY := orF(cs.PadX, 16), orF(cs.PadY, 11)
+	if !boxed {
+		padX, padY = orF(cs.PadX, 0), orF(cs.PadY, 10)
+	}
+	var box strings.Builder
+	box.WriteString(fmt.Sprintf("margin:0 0 %.0fpx;padding:%.0fpx %.0fpx;color:%s;",
+		orF(cs.Gap, 14), padY, padX, uiColorCSS(tone.FG)))
+	if tone.BG.A > 0 {
+		box.WriteString("background:" + uiColorCSS(tone.BG) + ";")
+		if pal.Style.TextGlow.A > 0 && tone.BG.A > 160 && colorLuma(tone.FG) < 0.35 {
+			box.WriteString("text-shadow:none;")
+		}
+	}
+	if cs.Radius > 0 {
+		box.WriteString(fmt.Sprintf("border-radius:%.0fpx;", cs.Radius))
+	}
+	if tone.Border.A > 0 {
+		ls := "solid"
+		if tone.Dashed {
+			ls = "dashed"
+		}
+		box.WriteString(fmt.Sprintf("border:%.1fpx %s %s;", orF(cs.BorderW, 1), ls, uiColorCSS(tone.Border)))
+	}
+	if tone.TopRule.A > 0 {
+		box.WriteString(fmt.Sprintf("border-top:%.1fpx solid %s;", orF(tone.TopRuleW, 1), uiColorCSS(tone.TopRule)))
+	}
+	if !boxed && cs.Bar > 0 {
+		box.WriteString(fmt.Sprintf("border-left:%.1fpx solid %s;", cs.Bar, uiColorCSS(tone.Label)))
+	}
+	if !boxed && cs.Rule.A > 0 {
+		box.WriteString(fmt.Sprintf("border-bottom:0.5px solid %s;", uiColorCSS(cs.Rule)))
+	}
+	if cs.Shadow.A > 0 {
+		box.WriteString(fmt.Sprintf("box-shadow:0 3px 8px %s;", uiColorCSS(cs.Shadow)))
+	}
+	if cs.Angle != 0 {
+		ang := cs.Angle
+		if ord%2 == 0 {
+			ang = -ang * 0.7
+		}
+		box.WriteString(fmt.Sprintf("transform:rotate(%.2fdeg);", ang))
+	}
+	if tone.Bold {
+		box.WriteString("font-weight:600;")
+	}
+
+	var lbl strings.Builder
+	lbl.WriteString(fmt.Sprintf("font-family:%s;font-size:%.1fpx;font-weight:%d;color:%s;",
+		htmlFontStack(orS(cs.LabelFamily, pal.BodyFamily)), orF(cs.LabelSize, 13), orI(cs.LabelWeight, 700), uiColorCSS(tone.Label)))
+	if cs.LabelTrack != 0 {
+		lbl.WriteString(fmt.Sprintf("letter-spacing:%.3fem;", cs.LabelTrack))
+	}
+	if tone.LabelBG.A > 0 {
+		lbl.WriteString(fmt.Sprintf("background:%s;padding:1px 6px;justify-self:start;align-self:start;", uiColorCSS(tone.LabelBG)))
+		if pal.Style.TextGlow.A > 0 && tone.LabelBG.A > 160 && colorLuma(tone.Label) < 0.35 {
+			lbl.WriteString("text-shadow:none;")
+		}
+	}
+
+	switch cs.LabelPos {
+	case CalloutLabelColumn:
+		box.WriteString(fmt.Sprintf("display:grid;grid-template-columns:%.0fpx minmax(0,1fr);gap:12px;align-items:baseline;", orF(cs.LabelW, 92)))
+		out.WriteString(fmt.Sprintf(`<div class="callout-row" style="%s"><span style="%s">%s</span><div>`, box.String(), lbl.String(), escapeHTMLText(label)))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString("</div></div>\n")
+	case CalloutLabelInline:
+		out.WriteString(fmt.Sprintf(`<div class="callout-row" style="%s"><span style="%smargin-right:8px">%s</span>`, box.String(), lbl.String(), escapeHTMLText(label)))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString("</div>\n")
+	default:
+		out.WriteString(fmt.Sprintf(`<div class="callout-row" style="%s"><div style="%smargin-bottom:4px">%s</div><div>`, box.String(), lbl.String(), escapeHTMLText(label)))
+		renderHTMLSpans(out, b.Spans, pal, legacy)
+		out.WriteString("</div></div>\n")
+	}
+}
+
+func renderHTMLFigure(out *strings.Builder, b *model.Block, notePath string, ord int, pal PaperThemeSpec, legacy bool) {
+	src := b.ImageSrc
+	if localPath, ok := resolveLocalImagePath(src, notePath); ok {
+		if raw, err := os.ReadFile(localPath); err == nil {
+			mime := detectImageMime(localPath, raw)
+			src = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw)
+		}
+	}
+	align := string(b.ImageAlign)
+	if align == "" {
+		align = "left"
+	}
+	var imgCSS strings.Builder
+	if b.ImageWidth > 0 {
+		imgCSS.WriteString(fmt.Sprintf("width:%s%%;", formatFloat(b.ImageWidth)))
+	}
+	if !b.ImageCrop.IsZero() {
+		imgCSS.WriteString(fmt.Sprintf("clip-path:inset(%.2f%% %.2f%% %.2f%% %.2f%%);",
+			b.ImageCrop.Top*100, b.ImageCrop.Right*100, b.ImageCrop.Bottom*100, b.ImageCrop.Left*100))
+	}
+
+	is := pal.Style.Image
+	if legacy || (is.Frame == ImageFrameNone && !is.Caption && is.Shadow.A == 0) {
+		out.WriteString(fmt.Sprintf(`<figure style="margin:12px 0;text-align:%s"><img src="%s" alt="%s"`, align, escapeAttrValue(src), escapeAttrValue(b.ImageAlt)))
+		if imgCSS.Len() > 0 {
+			out.WriteString(fmt.Sprintf(` style="%s"`, imgCSS.String()))
+		}
+		out.WriteByte('>')
+		if capText := strings.TrimSpace(b.ImageAlt); capText != "" {
+			out.WriteString(fmt.Sprintf(`<figcaption style="margin-top:6px;font-size:13px;color:%s">%s</figcaption>`, uiColorCSS(pal.Secondary), escapeHTMLText(capText)))
+		}
+		out.WriteString("</figure>\n")
+		return
+	}
+
+	outerR := orF(is.Radius, pal.Radius)
+	if outerR < 0.5 {
+		outerR = 0
+	}
+	imgR := is.InnerRadius
+	if imgR == 0 && (is.Frame == ImageFrameNone || is.Frame == ImageFrameBorder) && is.Offset == 0 {
+		imgR = outerR
+	}
+	imgCSS.WriteString(fmt.Sprintf("display:block;border-radius:%.0fpx;", imgR))
+	if is.Frame == ImageFrameBorder && is.Offset == 0 && is.Border.A > 0 {
+		imgCSS.WriteString(fmt.Sprintf("border:%.1fpx solid %s;", orF(is.BorderW, 1), uiColorCSS(is.Border)))
+	}
+
+	var figCSS strings.Builder
+	figCSS.WriteString(fmt.Sprintf("margin:18px 0;position:relative;text-align:%s;", align))
+	switch is.Frame {
+	case ImageFramePolaroid:
+		pad := orF(is.Pad, 12)
+		figCSS.WriteString(fmt.Sprintf("display:inline-block;max-width:76%%;padding:%.0fpx %.0fpx 14px;background:%s;border-radius:2px;",
+			pad, pad, uiColorCSS(orC(is.BG, pal.InnerCanvas))))
+	case ImageFrameMat:
+		pad := orF(is.Pad, 10)
+		figCSS.WriteString(fmt.Sprintf("padding:%.0fpx;background:%s;border-radius:%.0fpx;",
+			pad, uiColorCSS(orC(is.BG, pal.InnerCanvas)), outerR))
+		if is.Border.A > 0 {
+			figCSS.WriteString(fmt.Sprintf("border:%.1fpx solid %s;", orF(is.BorderW, 1), uiColorCSS(is.Border)))
+		}
+	}
+	if is.Shadow.A > 0 {
+		figCSS.WriteString(fmt.Sprintf("box-shadow:0 6px 16px %s;", uiColorCSS(is.Shadow)))
+	}
+	if is.Angle != 0 {
+		figCSS.WriteString(fmt.Sprintf("transform:rotate(%.2fdeg);", is.Angle))
+	}
+
+	out.WriteString(fmt.Sprintf(`<figure style="%s">`, figCSS.String()))
+	if is.Tape.A > 0 {
+		out.WriteString(fmt.Sprintf(`<span aria-hidden="true" style="position:absolute;top:-12px;left:50%%;margin-left:-44px;width:88px;height:24px;background:%s;transform:rotate(-4deg)"></span>`, uiColorCSS(is.Tape)))
+	}
+	if is.Corners && is.Border.A > 0 {
+		bc := uiColorCSS(is.Border)
+		out.WriteString(fmt.Sprintf(`<span aria-hidden="true" style="position:absolute;left:-6px;top:-6px;width:22px;height:22px;border-left:2px solid %s;border-top:2px solid %s"></span>`, bc, bc))
+		out.WriteString(fmt.Sprintf(`<span aria-hidden="true" style="position:absolute;right:-6px;bottom:-6px;width:22px;height:22px;border-right:2px solid %s;border-bottom:2px solid %s"></span>`, bc, bc))
+	}
+	if is.Offset > 0 && is.Border.A > 0 {
+		out.WriteString(fmt.Sprintf(`<div style="position:relative;display:inline-block;max-width:100%%"><span aria-hidden="true" style="position:absolute;left:%.0fpx;top:%.0fpx;right:-%.0fpx;bottom:-%.0fpx;border:%.1fpx solid %s"></span><img src="%s" alt="%s" style="position:relative;%s"></div>`,
+			is.Offset, is.Offset, is.Offset, is.Offset, orF(is.BorderW, 2), uiColorCSS(is.Border), escapeAttrValue(src), escapeAttrValue(b.ImageAlt), imgCSS.String()))
+	} else {
+		out.WriteString(fmt.Sprintf(`<img src="%s" alt="%s" style="%s">`, escapeAttrValue(src), escapeAttrValue(b.ImageAlt), imgCSS.String()))
+	}
+	if capText := strings.TrimSpace(b.ImageAlt); capText != "" && is.Caption {
+		if is.CaptionPrefix != "" {
+			capText = strings.ReplaceAll(is.CaptionPrefix, "{n}", fmt.Sprintf("%02d", max(ord, 1))) + capText
+		}
+		var capCSS strings.Builder
+		capCSS.WriteString(fmt.Sprintf("margin-top:8px;font-family:%s;font-size:%.1fpx;color:%s;",
+			htmlFontStack(orS(is.CaptionFamily, pal.BodyFamily)), orF(is.CaptionSize, 12), uiColorCSS(orC(is.CaptionColor, pal.Secondary))))
+		if is.CaptionItalic {
+			capCSS.WriteString("font-style:italic;")
+		}
+		if is.CaptionTrack != 0 {
+			capCSS.WriteString(fmt.Sprintf("letter-spacing:%.3fem;", is.CaptionTrack))
+		}
+		if is.CaptionCenter {
+			capCSS.WriteString("text-align:center;")
+		}
+		out.WriteString(fmt.Sprintf(`<figcaption style="%s">%s</figcaption>`, capCSS.String(), escapeHTMLText(capText)))
+	}
+	out.WriteString("</figure>\n")
 }

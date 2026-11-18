@@ -150,6 +150,7 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 	var num listNumbering
 	h2Count := 0
 	quoteOrd := 0
+	imageOrd := 0
 	paraJC := ""
 	if !legacy && pal.Style.Justify {
 		paraJC = `<w:jc w:val="both"/>`
@@ -159,6 +160,9 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 		b := &bodyBlocks[i]
 		ord := num.next(b)
 		indentPx := float32(b.Indent) * 12
+		if !legacy && b.Kind.IsList() {
+			indentPx = float32(b.Indent) * orF(pal.Style.List.Gutter, 28)
+		}
 		avail := contentW - indentPx
 		if avail < 120 {
 			avail = 120
@@ -172,6 +176,11 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 				body.WriteString(fmt.Sprintf(
 					`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="120" w:after="160"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="22"/></w:rPr>%s</w:r></w:p>`,
 					docxHex(divCol), docxTextXML(ds.Text),
+				))
+			} else if !legacy && ds.Kind == DividerWave {
+				body.WriteString(fmt.Sprintf(
+					`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="120" w:after="160"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="20"/></w:rPr><w:t>〰〰〰〰〰〰〰〰</w:t></w:r></w:p>`,
+					docxHex(divCol),
 				))
 			} else if !legacy && ds.Kind == DividerRepeat && ds.Text != "" {
 				rep := strings.Repeat(ds.Text, 32)
@@ -188,6 +197,7 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 			}
 
 		case b.Kind == model.BlockImage:
+			imageOrd++
 			if lp, ok := resolveLocalImagePath(b.ImageSrc, notePath); ok {
 				if raw, err := os.ReadFile(lp); err == nil {
 					if cfg, formatName, err := image.DecodeConfig(bytes.NewReader(raw)); err == nil && cfg.Width > 0 && cfg.Height > 0 {
@@ -212,10 +222,35 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 						} else if b.ImageAlign == model.ImageAlignRight {
 							jc = "right"
 						}
+						after := 160
+						is := pal.Style.Image
+						capText := strings.TrimSpace(b.ImageAlt)
+						hasCap := !legacy && is.Caption && capText != ""
+						if hasCap {
+							after = 60
+						}
 						body.WriteString(fmt.Sprintf(
-							`<w:p><w:pPr><w:jc w:val="%s"/><w:spacing w:before="0" w:after="160"/></w:pPr>%s</w:p>`,
-							jc, run,
+							`<w:p><w:pPr><w:jc w:val="%s"/><w:spacing w:before="0" w:after="%d"/></w:pPr>%s</w:p>`,
+							jc, after, run,
 						))
+						if hasCap {
+							if is.CaptionPrefix != "" {
+								capText = strings.ReplaceAll(is.CaptionPrefix, "{n}", fmt.Sprintf("%02d", imageOrd)) + capText
+							}
+							capJC := jc
+							if is.CaptionCenter {
+								capJC = "center"
+							}
+							capHP := docxHalfPt(orF(is.CaptionSize, 12))
+							itTag := ""
+							if is.CaptionItalic {
+								itTag = "<w:i/><w:iCs/>"
+							}
+							body.WriteString(fmt.Sprintf(
+								`<w:p><w:pPr><w:jc w:val="%s"/><w:spacing w:before="0" w:after="160"/></w:pPr><w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr>%s</w:r></w:p>`,
+								capJC, docxFontXML(orS(is.CaptionFamily, pal.BodyFamily)), itTag, docxHex(orC(is.CaptionColor, pal.Secondary)), capHP, capHP, docxTextXML(capText),
+							))
+						}
 						continue
 					}
 				}
@@ -241,21 +276,7 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 			body.WriteString(renderDOCXCode(b, avail, indentPx, pal, legacy))
 
 		case b.Kind == model.BlockCallout:
-			bg, border, accent, cTitle := pal.CalloutColors(b.Callout)
-			var inner strings.Builder
-			inner.WriteString(fmt.Sprintf(
-				`<w:p><w:pPr><w:spacing w:before="0" w:after="80"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="%s"/><w:sz w:val="22"/></w:rPr>%s</w:r></w:p>`,
-				docxHex(accent), docxTextXML(cTitle),
-			))
-			inner.WriteString(fmt.Sprintf(
-				`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
-				line240, renderDOCXRuns(b.Spans, pal, legacy, false, false, bodyHalfPt, pal.Text, assets),
-			))
-			borders := fmt.Sprintf(
-				`<w:top w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:left w:val="single" w:sz="24" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:right w:val="single" w:sz="6" w:space="0" w:color="%s"/>`,
-				docxHex(border), docxHex(accent), docxHex(border), docxHex(border),
-			)
-			body.WriteString(renderDOCXBox(inner.String(), avail, indentPx, bg, borders))
+			body.WriteString(renderDOCXCallout(b, avail, indentPx, line240, bodyHalfPt, pal, legacy, assets))
 
 		case b.Kind == model.BlockQuote:
 			quoteOrd++
@@ -483,10 +504,25 @@ func renderDOCXHeading(b *model.Block, lvl, h2Idx int, pal PaperThemeSpec, legac
 	}
 	halfPts := docxHalfPt(px)
 	hs := pal.Style.Heading
+	sub := pal.Style.Sub
+	isSub := !legacy && lvl >= 3
+	if isSub && sub.Size > 0 {
+		sz := sub.Size
+		if lvl >= 4 {
+			sz = maxFloat32(sub.Size*0.9, pal.BodySize)
+		}
+		halfPts = docxHalfPt(sz)
+	}
 	bold := lvl != 6 && (legacy || hs.Weight == 0 || hs.Weight >= 600)
+	if isSub && sub.Weight > 0 {
+		bold = sub.Weight >= 600
+	}
 	headCol := pal.Title
 	if !legacy && hs.Color.A > 0 {
 		headCol = hs.Color
+	}
+	if isSub && sub.Color.A > 0 {
+		headCol = sub.Color
 	}
 
 	var pre strings.Builder
@@ -495,6 +531,12 @@ func renderDOCXHeading(b *model.Block, lvl, h2Idx int, pal PaperThemeSpec, legac
 		case hs.Prefix == HeadPrefixHashes:
 			pre.WriteString(fmt.Sprintf(`<w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr>%s</w:r>`,
 				docxHex(orC(hs.PrefixColor, pal.Secondary)), halfPts, halfPts, docxTextXML(strings.Repeat("#", lvl)+" ")))
+		case isSub && sub.Mark == SubMarkSquare:
+			pre.WriteString(fmt.Sprintf(`<w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr><w:t xml:space="preserve">■ </w:t></w:r>`,
+				docxHex(orC(sub.MarkColor, pal.Accent)), halfPts))
+		case isSub && sub.Prefix != "":
+			pre.WriteString(fmt.Sprintf(`<w:r><w:rPr>%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr>%s</w:r>`,
+				docxFontXML(orS(sub.PrefixFont, orS(sub.Family, pal.HeadingFamily))), docxHex(orC(sub.PrefixColor, pal.Accent)), halfPts, halfPts, docxTextXML(sub.Prefix)))
 		case lvl == 2 && hs.Prefix == HeadPrefixDot:
 			dc := orC(hs.Accent, pal.Accent)
 			if h2Idx%2 == 0 && hs.Accent2.A > 0 {
@@ -512,6 +554,8 @@ func renderDOCXHeading(b *model.Block, lvl, h2Idx int, pal PaperThemeSpec, legac
 	bdr := ""
 	if lvl == 2 && !legacy && hs.Underline {
 		bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="%s"/></w:pBdr>`, docxHex(orC(hs.RuleColor, pal.Divider)))
+	} else if isSub && sub.Mark == SubMarkDashUnder {
+		bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="dashed" w:sz="6" w:space="3" w:color="%s"/></w:pBdr>`, docxHex(orC(sub.MarkColor, pal.Accent)))
 	}
 	return fmt.Sprintf(
 		`<w:p><w:pPr><w:pStyle w:val="Heading%d"/>%s<w:spacing w:before="200" w:after="120"/></w:pPr>%s%s</w:p>`,
@@ -670,10 +714,23 @@ func renderDOCXListItem(b *model.Block, ord int, indentPx float32, line240, body
 	marker := "•"
 	mCol := pal.Accent
 	if !legacy {
+		bkind := ls.Bullet
 		mCol = orC(ls.BulletColor, pal.Accent)
-		switch ls.Bullet {
+		if b.Indent > 0 && (ls.Bullet2Size > 0 || ls.Bullet2Glyph != "" || ls.Bullet2Color.A > 0) {
+			mCol = orC(ls.Bullet2Color, pal.Secondary)
+			if ls.Bullet2Glyph != "" {
+				bkind = 255
+				marker = ls.Bullet2Glyph
+			} else {
+				bkind = ls.Bullet2
+			}
+		}
+		switch bkind {
+		case 255:
 		case BulletSquare:
 			marker = "▪"
+		case BulletDiamond:
+			marker = "◆"
 		case BulletRing:
 			marker = "◦"
 		case BulletDash:
@@ -893,7 +950,13 @@ func renderDOCXRuns(spans []model.Span, pal PaperThemeSpec, legacy, baseBold, ba
 			}
 			rpr.WriteString(fmt.Sprintf(`<w:u w:val="%s"/>`, uVal))
 		} else if sp.Marks&model.MarkUnderline != 0 || (isHi && inl.Highlight.Rule.A > 0) {
-			rpr.WriteString(`<w:u w:val="single"/>`)
+			uCol := ""
+			if !legacy && sp.Marks&model.MarkUnderline != 0 && inl.UnderColor.A > 0 {
+				uCol = fmt.Sprintf(` w:color="%s"`, docxHex(inl.UnderColor))
+			} else if isHi && inl.Highlight.Rule.A > 0 {
+				uCol = fmt.Sprintf(` w:color="%s"`, docxHex(inl.Highlight.Rule))
+			}
+			rpr.WriteString(fmt.Sprintf(`<w:u w:val="single"%s/>`, uCol))
 		}
 
 		fg := baseFG
@@ -924,7 +987,7 @@ func renderDOCXRuns(spans []model.Span, pal PaperThemeSpec, legacy, baseBold, ba
 		} else if sp.Marks&model.MarkCode != 0 {
 			cbg := orC(inl.CodeBG, pal.CodeBG)
 			if cbg.A > 0 {
-				rpr.WriteString(fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(cbg)))
+				rpr.WriteString(fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHexOn(cbg, pal.InnerCanvas)))
 			}
 		}
 		run := fmt.Sprintf(`<w:r><w:rPr>%s</w:rPr>%s</w:r>`, rpr.String(), docxTextXML(sp.Text))
@@ -936,6 +999,88 @@ func renderDOCXRuns(spans []model.Span, pal PaperThemeSpec, legacy, baseBold, ba
 		}
 	}
 	return out.String()
+}
+
+func renderDOCXCallout(b *model.Block, avail, indentPx float32, line240, bodyHalfPt int, pal PaperThemeSpec, legacy bool, assets *docxAssets) string {
+	cs := pal.Style.Callout
+	if legacy || !cs.Custom {
+		bg, border, accent, cTitle := pal.CalloutColors(b.Callout)
+		var inner strings.Builder
+		inner.WriteString(fmt.Sprintf(
+			`<w:p><w:pPr><w:spacing w:before="0" w:after="80"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="%s"/><w:sz w:val="22"/></w:rPr>%s</w:r></w:p>`,
+			docxHex(accent), docxTextXML(cTitle),
+		))
+		inner.WriteString(fmt.Sprintf(
+			`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
+			line240, renderDOCXRuns(b.Spans, pal, legacy, false, false, bodyHalfPt, pal.Text, assets),
+		))
+		borders := fmt.Sprintf(
+			`<w:top w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:left w:val="single" w:sz="24" w:space="0" w:color="%s"/><w:bottom w:val="single" w:sz="6" w:space="0" w:color="%s"/><w:right w:val="single" w:sz="6" w:space="0" w:color="%s"/>`,
+			docxHex(border), docxHex(accent), docxHex(border), docxHex(border),
+		)
+		return renderDOCXBox(inner.String(), avail, indentPx, bg, borders)
+	}
+
+	tone, label := pal.resolveCallout(b.Callout, legacy)
+	boxed := tone.BG.A > 0 || tone.Border.A > 0
+	bg := pal.InnerCanvas
+	if tone.BG.A > 0 {
+		bg = mixUIColor(pal.InnerCanvas, tone.BG, float32(tone.BG.A)/255.0)
+	}
+	lHP := docxHalfPt(orF(cs.LabelSize, 13))
+	lFam := docxFontXML(orS(cs.LabelFamily, pal.BodyFamily))
+	lShd := ""
+	if tone.LabelBG.A > 0 {
+		lShd = fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHexOn(tone.LabelBG, bg))
+	}
+	lBold := ""
+	if orI(cs.LabelWeight, 700) >= 600 {
+		lBold = "<w:b/><w:bCs/>"
+	}
+
+	var inner strings.Builder
+	if cs.LabelPos == CalloutLabelInline || cs.LabelPos == CalloutLabelColumn {
+		lblRun := fmt.Sprintf(`<w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/>%s</w:rPr>%s</w:r>`,
+			lFam, lBold, docxHex(tone.Label), lHP, lHP, lShd, docxTextXML(label+"  "))
+		inner.WriteString(fmt.Sprintf(
+			`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr>%s%s</w:p>`,
+			line240, lblRun, renderDOCXRuns(b.Spans, pal, legacy, tone.Bold, false, bodyHalfPt, tone.FG, assets),
+		))
+	} else {
+		inner.WriteString(fmt.Sprintf(
+			`<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr><w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/>%s</w:rPr>%s</w:r></w:p>`,
+			lFam, lBold, docxHex(tone.Label), lHP, lHP, lShd, docxTextXML(label),
+		))
+		inner.WriteString(fmt.Sprintf(
+			`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
+			line240, renderDOCXRuns(b.Spans, pal, legacy, tone.Bold, false, bodyHalfPt, tone.FG, assets),
+		))
+	}
+
+	var bdrs strings.Builder
+	if tone.Border.A > 0 {
+		val := "single"
+		if tone.Dashed {
+			val = "dashed"
+		}
+		sz := docxBorderSz(orF(cs.BorderW, 1))
+		bc := docxHexOn(tone.Border, pal.InnerCanvas)
+		bdrs.WriteString(fmt.Sprintf(
+			`<w:top w:val="%s" w:sz="%d" w:space="0" w:color="%s"/><w:left w:val="%s" w:sz="%d" w:space="0" w:color="%s"/><w:bottom w:val="%s" w:sz="%d" w:space="0" w:color="%s"/><w:right w:val="%s" w:sz="%d" w:space="0" w:color="%s"/>`,
+			val, sz, bc, val, sz, bc, val, sz, bc, val, sz, bc,
+		))
+	} else {
+		if tone.TopRule.A > 0 {
+			bdrs.WriteString(fmt.Sprintf(`<w:top w:val="single" w:sz="%d" w:space="0" w:color="%s"/>`, docxBorderSz(orF(tone.TopRuleW, 1)), docxHexOn(tone.TopRule, pal.InnerCanvas)))
+		}
+		if !boxed && cs.Bar > 0 {
+			bdrs.WriteString(fmt.Sprintf(`<w:left w:val="single" w:sz="%d" w:space="0" w:color="%s"/>`, docxBorderSz(cs.Bar), docxHexOn(tone.Label, pal.InnerCanvas)))
+		}
+		if !boxed && cs.Rule.A > 0 {
+			bdrs.WriteString(fmt.Sprintf(`<w:bottom w:val="single" w:sz="4" w:space="0" w:color="%s"/>`, docxHexOn(cs.Rule, pal.InnerCanvas)))
+		}
+	}
+	return renderDOCXBox(inner.String(), avail, indentPx, bg, bdrs.String())
 }
 
 func renderDOCXBox(content string, widthPx, indentPx float32, bg ui.Color, borders string) string {
