@@ -2,7 +2,7 @@
   "app": "blockmd",
   "schema_version": 1,
   "topic": "blockmd-plugin",
-  "updated_at": "2026-11-18T11:18:35Z",
+  "updated_at": "2026-11-18T12:32:07Z",
   "apps": [
     {
       "app": "blockmd",
@@ -13,15 +13,16 @@
       },
       "version": "1.0.0",
       "author": "Block Community",
-      "repo": "blockmd-community/block-sync",
+      "repo": "blockmd-plugins/block-sync",
       "summary": {
         "zh": "支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步",
         "en": "Incremental notebook sync via local mirror, WebDAV, and Git"
       },
-      "download_url": "builtin://block-sync",
-      "downloads": 1280,
+      "download_url": "https://github.com/blockmd-plugins/block-sync/releases/download/v1.0.0/block-sync-v1.0.0.tar.gz",
+      "sha256": "ad3c68a3d45b2440769593fef0228681e5cc75bb6f781c786ed0a4c05ae9c5ae",
+      "downloads": 1281,
       "verified": true,
-      "updated_at": "2026-11-18T11:18:35Z",
+      "updated_at": "2026-11-18T12:09:03Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -56,15 +57,16 @@
       },
       "version": "1.0.0",
       "author": "Block Community",
-      "repo": "blockmd-community/block-image-host",
+      "repo": "blockmd-plugins/block-image-host",
       "summary": {
         "zh": "支持 Cloudflare R2、S3 兼容存储与 GitHub 仓库的笔记图片自动上传",
         "en": "Upload local note images to Cloudflare R2, S3-compatible storage, or GitHub"
       },
-      "download_url": "builtin://block-image-host",
-      "downloads": 940,
+      "download_url": "https://github.com/blockmd-plugins/block-image-host/releases/download/v1.0.0/block-image-host-v1.0.0.tar.gz",
+      "sha256": "dc2c416c32566463c5085e185c2269ac7973f24d7a148c338c819b9635ea3237",
+      "downloads": 941,
       "verified": true,
-      "updated_at": "2026-11-18T11:18:35Z",
+      "updated_at": "2026-11-18T12:09:27Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -100,15 +102,16 @@
       },
       "version": "1.0.0",
       "author": "Block Community",
-      "repo": "blockmd-community/block-publisher",
+      "repo": "blockmd-plugins/block-publisher",
       "summary": {
         "zh": "将笔记导出为静态博客站点、微信公众号排版 HTML 与小红书图文分段稿",
         "en": "Export notes to static blog sites, WeChat MP HTML, and Xiaohongshu card drafts"
       },
-      "download_url": "builtin://block-publisher",
-      "downloads": 760,
+      "download_url": "https://github.com/blockmd-plugins/block-publisher/releases/download/v1.0.0/block-publisher-v1.0.0.tar.gz",
+      "sha256": "8ff8bbfaefa59b27a9d2ff0bb433568a46b9040991b454a9107fec7d995876e5",
+      "downloads": 761,
       "verified": true,
-      "updated_at": "2026-11-18T11:18:35Z",
+      "updated_at": "2026-11-18T12:11:08Z",
       "permissions": [
         "storage",
         "notes:read"
@@ -142,15 +145,16 @@
       },
       "version": "1.0.0",
       "author": "Block Community",
-      "repo": "blockmd-community/block-migrator",
+      "repo": "blockmd-plugins/block-migrator",
       "summary": {
         "zh": "从 Obsidian、Notion 与语雀导出目录迁移笔记，自动清洗语法并拷贝附件",
         "en": "Migrate notes from Obsidian, Notion, and Yuque exports with syntax cleanup and asset copy"
       },
-      "download_url": "builtin://block-migrator",
-      "downloads": 615,
+      "download_url": "https://github.com/blockmd-plugins/block-migrator/releases/download/v1.0.0/block-migrator-v1.0.0.tar.gz",
+      "sha256": "14d7b9e3913cda8d83adffd377fb2ec5933f62ec802679fdb0bdba48bf30a499",
+      "downloads": 616,
       "verified": true,
-      "updated_at": "2026-11-18T11:18:35Z",
+      "updated_at": "2026-11-18T12:11:21Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -183,15 +187,16 @@
       },
       "version": "1.0.0",
       "author": "Block Community",
-      "repo": "blockmd-community/block-diagnostics",
+      "repo": "blockmd-plugins/block-diagnostics",
       "summary": {
         "zh": "统计工作区体积、附件占用与进程内存，巡检孤立附件与失效链接",
         "en": "Inspect workspace size, process RSS memory, orphan assets, and broken relative links"
       },
-      "download_url": "builtin://block-diagnostics",
-      "downloads": 320,
+      "download_url": "https://github.com/blockmd-plugins/block-diagnostics/releases/download/v1.0.0/block-diagnostics-v1.0.0.tar.gz",
+      "sha256": "8fb8edecafaa2073b83b9360f86759868de278f86cf7ed58fd362b1b8d8fdd7c",
+      "downloads": 321,
       "verified": true,
-      "updated_at": "2026-11-18T11:18:35Z",
+      "updated_at": "2026-11-18T12:11:33Z",
       "permissions": [
         "storage",
         "notes:read"
