@@ -575,10 +575,9 @@ func (s *Session) resolveTableCellFill(
 	if s.isTableWholeSelected(blockID) || s.isTableColSelected(blockID, cIdx) || s.isTableRowSelected(blockID, rIdx) {
 		bg = tblCols.SelectedTint
 	}
+	_ = isCellFocused
 	if cellSelected {
 		bg = pal.SelectionBG.Alpha(0.42).Over(bg)
-	} else if isCellFocused && s.tableMenuBlock != blockID {
-		bg = pal.Selected
 	}
 	return bg
 }
@@ -669,6 +668,7 @@ func (s *Session) renderTableBorderChrome(
 	needHScroll bool,
 	isFocused bool,
 ) {
+	_ = isFocused
 	if s.isTableExtendingBlock(id) {
 		return
 	}
@@ -810,13 +810,12 @@ func (s *Session) renderTableBorderChrome(
 		}
 		selected := s.isTableColSelected(id, cIdx)
 		draggingThis := s.tableDragBlock == id && s.tableDragKind == "col" && s.tableDragIndex == cIdx
-		activeCellCol := isFocused && s.tableActiveBlock == id && s.tableActiveCol == cIdx && s.tableMenuBlock != id
-		showColPill := selected || draggingThis || cIdx == hoverCol || activeCellCol
+		btnID := fmt.Sprintf("table-col-handle-%d-%d", id, cIdx)
+		showColPill := selected || draggingThis || cIdx == hoverCol || s.isOverlayBtnHovered(btnID)
 		if !showColPill || hoverSeamRow >= 0 || s.tableResizeBlock == id {
 			continue
 		}
 
-		btnID := fmt.Sprintf("table-col-handle-%d-%d", id, cIdx)
 		colName := strings.TrimSpace(tbl.Rows[0][cIdx].PlainText())
 		if colName == "" {
 			colName = fmt.Sprintf("#%d", cIdx+1)
@@ -897,13 +896,12 @@ func (s *Session) renderTableBorderChrome(
 		centerY := rowTops[rIdx] + rowHeights[rIdx]*0.5
 		selected := s.isTableRowSelected(id, rIdx)
 		draggingThis := s.tableDragBlock == id && s.tableDragKind == "row" && s.tableDragIndex == rIdx
-		activeCellRow := isFocused && s.tableActiveBlock == id && s.tableActiveRow == rIdx && s.tableMenuBlock != id
-		showRowPill := selected || draggingThis || rIdx == hoverRow || activeCellRow
+		btnID := fmt.Sprintf("table-row-handle-%d-%d", id, rIdx)
+		showRowPill := selected || draggingThis || rIdx == hoverRow || s.isOverlayBtnHovered(btnID)
 		if !showRowPill || hoverSeamRow >= 0 || s.tableResizeBlock == id {
 			continue
 		}
 
-		btnID := fmt.Sprintf("table-row-handle-%d-%d", id, rIdx)
 		btn := ui.ButtonBase(c.Key(btnID)).Absolute().
 			Left(-rowW * 0.5).Top(centerY - rowH*0.5).Size(rowW, rowH).
 			Radius(theme.RadiusXS).KeepFocus().
