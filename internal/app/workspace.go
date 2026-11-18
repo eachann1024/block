@@ -926,11 +926,11 @@ func (w *Workspace) OpenExportStage() bool {
 	if sess == nil {
 		return false
 	}
+	wholeDoc, selectionDoc := sess.Doc(), sess.SelectedDoc()
 	w.FlushDirtySessions()
-	if !sess.Dirty() {
+	if selectionDoc == nil && !sess.Dirty() {
 		if diskText, _, err := files.ReadNote(active); err == nil && diskText != sess.Markdown() {
-			sess.SetDoc(w.codec.Parse(diskText))
-			sess.MarkSaved()
+			wholeDoc = w.codec.Parse(diskText)
 		}
 	}
 	w.tabMenu.Close()
@@ -940,7 +940,7 @@ func (w *Workspace) OpenExportStage() bool {
 	w.historyView.Close()
 
 	title := noteDisplayTitle(active, false)
-	w.exportCtrl.Open(title, active, sess.Doc(), sess.SelectedDoc())
+	w.exportCtrl.OpenWithSelection(title, active, wholeDoc, selectionDoc)
 	w.RequestRedraw()
 	return true
 }
