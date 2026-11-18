@@ -70,6 +70,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	})
 
 	s.preUpdateBlockDrag(c)
+	s.preUpdateTableExtend(c)
 	s.preUpdateFocusedDrag(c, root)
 
 	root.Children(func() {
@@ -83,6 +84,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		}
 		if s.dragActive && s.dragSavedHeight > 0 {
 			bottomMinH += s.dragSavedHeight
+		}
+		if savedTableH := s.tableExtendSavedHeight(); savedTableH > 0 {
+			bottomMinH += savedTableH
 		}
 
 		// Main scrollable document body
@@ -214,6 +218,8 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if c.Shortcut(0, ui.KeyEscape) {
 		if s.dragBlockID != 0 {
 			s.cancelBlockDrag()
+		} else if s.isTableExtending() {
+			s.cancelTableExtend()
 		} else if s.inlineAI != nil {
 			s.aiEscape()
 		} else if s.findOpen {
@@ -384,7 +390,7 @@ func (s *Session) canVirtualizeBlock(idx int, id model.BlockID) (ui.Rect, bool) 
 	if s.inlineAI != nil || s.blockMenu != nil || s.findOpen || len(s.annotations) > 0 {
 		return ui.Rect{}, false
 	}
-	if s.calloutMenuBlock == id || s.codeLangMenuBlock == id || s.tableMenuBlock == id || s.imagePopBlock == id || s.imgResizeBlock == id {
+	if s.calloutMenuBlock == id || s.codeLangMenuBlock == id || s.tableMenuBlock == id || s.imagePopBlock == id || s.imgResizeBlock == id || s.isTableExtendingBlock(id) {
 		return ui.Rect{}, false
 	}
 	r, ok := s.blockRects[id]
@@ -482,9 +488,9 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 		row.Opacity(0.55)
 	}
 
-	overlayBlocking := s.hasAnyOverlayOpen() || s.hoveredAnnotID != "" || s.imgResizeBlock != 0
+	overlayBlocking := s.hasAnyOverlayOpen() || s.hoveredAnnotID != "" || s.imgResizeBlock != 0 || s.isTableExtending()
 	isDraggingBlock := s.dragBlockID != 0
-	isDraggingAny := isDraggingBlock || s.isMouseDragging()
+	isDraggingAny := isDraggingBlock || s.isMouseDragging() || s.isTableExtending()
 	showHandles := !s.minimal && !readOnly && !overlayBlocking && ((!isDraggingAny && (isHovered || hasBlockFocus)) || s.dragBlockID == id)
 	showBlankAdd := !s.minimal && !readOnly && !overlayBlocking && !isDraggingAny && (isHovered || s.hoveredBlock == idx)
 	isFolded := !s.minimal && !readOnly && b.Kind.IsHeading() && s.folded[id]
@@ -2042,7 +2048,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 	_, _, tMinRowH, tMinColW, _, _, _ := s.tableMetrics()
 	bleed := s.bandBleed()
 	wrap := ui.Column(c.Key("table-wrap")).FillWidth().Gap(s.scale(4))
-	showChrome := !readOnly && (isHovered || isFocused || s.tableMenuBlock == id)
+	showChrome := !readOnly && (isHovered || isFocused || s.tableMenuBlock == id || s.isTableExtendingBlock(id))
 	wrap.Children(func() {
 		// Top bar sits inside the top gutter so hover changes never shift blocks below.
 		if showChrome {
@@ -2120,7 +2126,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				})
 			}
 			if needHScroll {
-				hs := appUi.ScrollHorizontal(c.Key("table-hscroll")).Grow(1).Shrink(1)
+				hs := appUi.ScrollHorizontal(c.Key("table-hscroll"), s.tableHScroll(id)).Grow(1).Shrink(1)
 				hs.Children(func() {
 					buildGrid()
 				})
@@ -2141,19 +2147,24 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				colSlot.Children(func() {
 					iconSz := s.scale(14)
 					iconTop, stickyOK := s.tableAddColIconTop(id, slotInset, iconSz)
+					isColDrag := s.isTableExtendingAxis(id, tableExtendCol)
+					colCursor := ui.CursorPointer
+					if isColDrag {
+						colCursor = ui.CursorResizeColumn
+					}
 					addCol := ui.ButtonBase(c.Key("table-add-col")).Fill().
-						Radius(theme.RadiusXS).Cursor(ui.CursorPointer).
+						Radius(theme.RadiusXS).Cursor(colCursor).
 						Label(theme.Tr("添加列", "Add column"))
 					if !stickyOK {
 						addCol.Center()
 					}
-					addColActive := addCol.Hovered() || addCol.Pressed()
+					addColActive := addCol.Hovered() || addCol.Pressed() || isColDrag
 					addColBG := pal.CodeBlockBG
 					if addColActive {
 						addColBG = pal.Hover
 					}
 					appUi.AnimateSurfaceColors(addCol, addColBG, ui.Transparent, false)
-					appUi.TactileCard(addCol, addCol.Hovered(), addCol.Pressed(), false, false)
+					appUi.TactileCard(addCol, addCol.Hovered(), addCol.Pressed() && !isColDrag, false, isColDrag)
 					addCol.Children(func() {
 						if stickyOK {
 							ui.Box(c.Key("table-add-col-icon")).Absolute().Left(0).Right(0).Top(iconTop).Height(iconSz).
@@ -2165,9 +2176,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 						}
 					})
 					appUi.Probe(addCol, "table-add-col")
-					if addCol.Clicked() {
-						s.tableAddCol(id, len(tbl.Rows[0]))
-					}
+					s.handleTableExtendGesture(c, addCol, idx, id, tableExtendCol, colWidths)
 				})
 			}
 		})
@@ -2176,23 +2185,26 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 		rowSlot := ui.Box(c.Key("table-add-row-slot")).FillWidth().Height(s.scale(20))
 		if showChrome {
 			rowSlot.Children(func() {
+				isRowDrag := s.isTableExtendingAxis(id, tableExtendRow)
+				rowCursor := ui.CursorPointer
+				if isRowDrag {
+					rowCursor = ui.CursorResizeRow
+				}
 				addRow := ui.ButtonBase(c.Key("table-add-row")).Fill().Center().
-					Radius(theme.RadiusXS).Cursor(ui.CursorPointer).
+					Radius(theme.RadiusXS).Cursor(rowCursor).
 					Label(theme.Tr("添加行", "Add row"))
-				addRowActive := addRow.Hovered() || addRow.Pressed()
+				addRowActive := addRow.Hovered() || addRow.Pressed() || isRowDrag
 				addRowBG := pal.CodeBlockBG
 				if addRowActive {
 					addRowBG = pal.Hover
 				}
 				appUi.AnimateSurfaceColors(addRow, addRowBG, ui.Transparent, false)
-				appUi.TactileCard(addRow, addRow.Hovered(), addRow.Pressed(), false, false)
+				appUi.TactileCard(addRow, addRow.Hovered(), addRow.Pressed() && !isRowDrag, false, isRowDrag)
 				addRow.Children(func() {
 					icons.DrawAnimated(c, icons.Plus, s.scale(theme.IconAction), pal.HoverIconColors(addRowActive), addRowActive)
 				})
 				appUi.Probe(addRow, "table-add-row")
-				if addRow.Clicked() {
-					s.tableAddRow(id, len(tbl.Rows))
-				}
+				s.handleTableExtendGesture(c, addRow, idx, id, tableExtendRow, nil)
 			})
 		}
 	})
