@@ -161,6 +161,15 @@ const (
 	EdgeFloatHoverBuffer         = Space6
 	EdgeFloatDwellMs             = 140
 	EdgeFloatLeaveMs             = 120
+
+	// App Store masonry card metrics.
+	StoreCoverHeight       float32 = 96  // top visual banner height of a store feed card
+	StoreCoverEmblemBox    float32 = 48  // centered app emblem container inside the cover
+	StoreCoverEmblemGlyph  float32 = 24  // Duo icon size inside the cover emblem
+	StoreAuthorDotSize     float32 = 16  // compact author avatar circle in card footer
+	StoreTwoColMinWidth    float32 = 520 // minimum store body width for 2-column masonry
+	StoreThreeColMinWidth  float32 = 820 // minimum store body width for 3-column masonry
+	StorePermissionSummary         = 2   // inline permission capsules before "+N" collapse
 )
 
 // Sidebar file tree metrics.
