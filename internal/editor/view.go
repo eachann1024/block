@@ -404,8 +404,8 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 						if showDeleteArm {
 							delBtn := ui.ButtonBase(c.Key("first-line-delete-badge")).Size(24, 24).Center().
 								Radius(6).Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.4)).
-								KeepFocus().Cursor(ui.CursorPointer).Label(theme.Tr("删除空行", "Delete empty line")).
-								Tooltip(theme.Tr("再次按删除键删除此行", "Press Backspace again to delete this line"))
+								KeepFocus().Cursor(ui.CursorPointer).Label(theme.Tr("删除空行", "Delete empty line"))
+							appUi.Tooltip(c, delBtn, theme.Tr("再次按删除键删除此行", "Press Backspace again to delete this line"))
 							delBtn.Children(func() {
 								icons.Draw(c, icons.KeyBackspace, 14, pal.MonoIconColors(pal.Danger))
 							})
@@ -416,13 +416,15 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 							}
 						} else if blankPara {
 							if showBlankAdd {
+								addID := fmt.Sprintf("block-add-%d", id)
 								addBtn := appUi.IconButton(c, icons.Plus, appUi.IconButtonOptions{
-									ID:       fmt.Sprintf("block-add-%d", id),
+									ID:       addID,
 									Label:    theme.Tr("插入块", "Insert block"),
 									Size:     24,
 									IconSize: 14,
 								})
 								addBtn.KeepFocus()
+								s.recordOverlayBtn(addID, addBtn)
 								if addBtn.Clicked() {
 									s.pressJustBegan = false
 									s.FocusBlock(idx)
@@ -434,7 +436,8 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 								}
 							}
 						} else if showHandles {
-							grip := ui.ButtonBase(c.Key(fmt.Sprintf("block-grip-%d", id))).Size(26, 26).Center().
+							gripID := fmt.Sprintf("block-grip-%d", id)
+							grip := ui.ButtonBase(c.Key(gripID)).Size(26, 26).Center().
 								Radius(6).KeepFocus().Label(theme.Tr("块操作", "Block menu"))
 							if b.Kind == model.BlockTable {
 								grip.Margin(0, 4, 0, 0)
@@ -457,7 +460,8 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 							grip.Children(func() {
 								icons.Draw(c, icons.Drag, 14, pal.MonoIconColors(iconCol))
 							})
-							appUi.Probe(grip, fmt.Sprintf("block-grip-%d", id))
+							appUi.Probe(grip, gripID)
+							s.recordOverlayBtn(gripID, grip)
 							s.handleBlockGripGesture(c, grip, idx, id)
 						}
 						if showFold {
@@ -601,11 +605,25 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 	fontSize, weight, lh := blockTextMetrics(b.Kind)
 
 	wrap := ui.Column(c.Key("text-wrap")).FillWidth()
-	if b.Kind == model.BlockQuote {
-		wrap.Padding(2, 0, 2, 16).BorderWidth(0, 0, 0, 3).BorderColor(pal.QuoteBar)
-	} else if b.Kind == model.BlockCallout {
+	qDepth := b.QuoteDepth
+	if b.Kind == model.BlockQuote && qDepth < 1 {
+		qDepth = 1
+	}
+	if b.Kind == model.BlockCallout {
 		st := calloutTone(b.Callout, dark)
 		wrap.Padding(38, 16, 12, 44).Radius(theme.RadiusControl).Background(st.BG).Border(1, st.Border)
+	} else if qDepth > 0 {
+		wrap.Padding(2, 0, 2, float32(qDepth)*16).BorderWidth(0, 0, 0, 3).BorderColor(pal.QuoteBar)
+		if qDepth > 1 {
+			qbCol := pal.QuoteBar
+			depth := qDepth
+			wrap.Draw(func(p *ui.Painter, r ui.Rect) {
+				for d := 1; d < depth; d++ {
+					bx := r.X + float32(d)*16
+					p.Fill(ui.Rect{X: bx, Y: r.Y, W: 3, H: r.H}, qbCol, 0)
+				}
+			})
+		}
 	}
 
 	wrap.Children(func() {
@@ -653,7 +671,8 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 					toggleMenu()
 				}
 
-				pillBtn := ui.ButtonBase(c.Key(fmt.Sprintf("callout-pill-%d", b.ID))).Height(26).PaddingX(4).Gap(4).
+				pillID := fmt.Sprintf("callout-pill-%d", b.ID)
+				pillBtn := ui.ButtonBase(c.Key(pillID)).Height(26).PaddingX(4).Gap(4).
 					AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(calloutLabel(curKind))
 				if open {
 					pillBtn.Background(pal.Paper).Border(1, st.Accent)
@@ -666,8 +685,9 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 					ui.Text(c, calloutLabel(curKind)).FontSize(14).FontWeight(600).TextColor(st.Text).SingleLine()
 					icons.Draw(c, icons.TbChevron, 12, pal.MonoIconColors(st.Text))
 				})
-				appUi.Probe(pillBtn, fmt.Sprintf("callout-pill-%d", b.ID))
+				appUi.Probe(pillBtn, pillID)
 				appUi.Probe(pillBtn, "callout-pill")
+				s.recordOverlayBtn(pillID, pillBtn)
 				if pillBtn.Clicked() {
 					toggleMenu()
 				}
@@ -769,7 +789,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 		s.decorateEditInput(c, in, idx, b, draft, ranges, fontSize, weight, lh, deleteArmed)
 
 		in.OnPaste(func(pasted string) bool {
-			if strings.Contains(pasted, "\n") || looksLikeMarkdownBlock(pasted) {
+			if strings.ContainsAny(pasted, "\n\t") || looksLikeMarkdownBlock(pasted) || looksLikeInlineMarkdown(pasted) {
 				s.PasteText(pasted)
 				return true
 			}
@@ -777,6 +797,8 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 		})
 
 		in.OnTextKey(func(k ui.TextKey) bool {
+			s.caretHidden = false
+			s.footPickerAnnotID = ""
 			curText := k.Text()
 			caretEstimate := s.estimateCaret(idx, oldText, curText)
 
@@ -898,6 +920,8 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 		}
 
 		if in.Changed() {
+			s.caretHidden = false
+			s.footPickerAnnotID = ""
 			_, selEnd := in.TextSelection()
 			if selEnd == 0 && draft != "" {
 				selEnd = estimateCaretAfterEdit(oldText, draft)
@@ -1214,7 +1238,8 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 						pillBG = ui.Hex("#262a33")
 						pillHoverBG = ui.Hex("#323844")
 					}
-					langBtn := ui.ButtonBase(c.Key(fmt.Sprintf("code-lang-%d", id))).Height(22).PaddingX(8).
+					langID := fmt.Sprintf("code-lang-%d", id)
+					langBtn := ui.ButtonBase(c.Key(langID)).Height(22).PaddingX(8).
 						Radius(6).Center().Background(pillBG).Border(1, pal.MenuSeparator).
 						Cursor(ui.CursorPointer).Label(languageDisplayLabel(b.Language))
 					langFG := pillFG
@@ -1226,7 +1251,8 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 						ui.Text(c, languageDisplayLabel(b.Language)).FontSize(theme.FontMeta).LineHeight(1.5).
 							FontWeight(theme.WeightRegular).TextColor(langFG).SingleLine()
 					})
-					appUi.Probe(langBtn, fmt.Sprintf("code-lang-%d", id))
+					appUi.Probe(langBtn, langID)
+					s.recordOverlayBtn(langID, langBtn)
 					if langBtn.Clicked() && !readOnly {
 						if s.codeLangMenuBlock == id {
 							s.codeLangMenuBlock = 0
@@ -1545,12 +1571,14 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 		if showChrome {
 			bar := ui.Row(c.Key("table-top-bar")).Absolute().Top(-24).Right(26).Height(22).Justify(ui.End).Gap(4)
 			bar.Children(func() {
+				moreID := fmt.Sprintf("table-more-%d", id)
 				more := appUi.IconButton(c, icons.More, appUi.IconButtonOptions{
-					ID:       fmt.Sprintf("table-more-%d", id),
+					ID:       moreID,
 					Label:    theme.Tr("表格操作", "Table options"),
 					Size:     22,
 					IconSize: 14,
 				})
+				s.recordOverlayBtn(moreID, more)
 				if more.Clicked() {
 					if s.tableMenuBlock == id {
 						s.tableMenuBlock = 0
@@ -1680,13 +1708,22 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 	box.Children(func() {
 		if isCellFocused {
 			draft := cell.PlainText()
+			oldDraft := draft
 			in := ui.TextInputBase(c.Key("cell-in"), &draft).FillWidth().
 				FontSize(tableCellFontSize).LineHeight(lhFactor).MinHeight(tableCellLineHeight).
 				FontWeight(weight).TextColor(textCol).SelectionColor(pal.SelectionBG).CaretColor(pal.Accent).CaretWidth(2)
 			if edFont != "" {
 				in.Font(edFont)
 			}
+			in.OnPaste(func(pasted string) bool {
+				if strings.ContainsAny(pasted, "\t\n") || looksLikeInlineMarkdown(pasted) {
+					s.PasteText(pasted)
+					return true
+				}
+				return false
+			})
 			in.OnTextKey(func(k ui.TextKey) bool {
+				s.caretHidden = false
 				if k.Key == ui.KeyTab {
 					if k.Mods == ui.Shift {
 						s.stepTableCell(blockID, tbl, rIdx, cIdx, -1)
@@ -1707,8 +1744,9 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				s.focusPending = false
 			}
 			if in.Changed() {
+				s.caretHidden = false
 				s.pushUndo()
-				cell.Spans = []model.Span{{Text: draft}}
+				cell.Spans = spliceSpansByTextEdit(cell.Spans, oldDraft, draft)
 				s.doc.Blocks[blockIdx].Dirty = true
 				s.doc.Blocks[blockIdx].CleanSource = ""
 				s.markDirty()
@@ -1975,145 +2013,136 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 	})
 
 	// Floating Image Toolbar rendered in Overlay above picBox so focus shifts 0px below.
-	if isFocused && !readOnly && !dragging && !s.hasMultiBlockSelection() && !s.isMouseDragging() {
+	if isFocused && !readOnly && !dragging && !s.hasMultiBlockSelection() && !s.isMouseDragging() && !s.findOpen && s.inlineAI == nil {
 		s.renderImageToolbar(c, idx, b)
 	}
 }
 
 func (s *Session) overlayBounds(c *ui.Context) (minX, maxX, winW, winH float32) {
-	winW, winH = c.Size()
-	if winW <= 0 {
-		winW = max(s.editorRect.X+s.viewportWidth, s.viewportWidth)
-	}
-	if winH <= 0 {
-		winH = s.viewportHeight
-	}
-	minX = 8
-	maxX = winW - 8
-	if s.editorRect.W > 0 {
-		minX = s.editorRect.X + 8
-		maxX = s.editorRect.X + s.editorRect.W - 8
-	}
-	return minX, maxX, winW, winH
+	vp, winW, winH := s.overlayViewport(c)
+	return vp.X + 8, max(vp.X+vp.W-8, vp.X+8), winW, winH
 }
 
 func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 	pal := theme.Ocean()
 	id := b.ID
-	minX, maxX, winW, winH := s.overlayBounds(c)
+	vp, winW, winH := s.overlayViewport(c)
 	trigger := s.imageRects[id]
 	if trigger.W <= 0 {
 		trigger = s.blockRects[id]
 	}
 	if trigger.W <= 0 {
-		trigger = ui.Rect{X: minX + 112, Y: 120, W: 400, H: 120}
+		trigger = ui.Rect{X: vp.X + 120, Y: vp.Y + 120, W: 400, H: 120}
 	}
-	spec := appUi.PlaceAbove(trigger).WithAlignX(appUi.AlignX{Kind: appUi.AlignCenter}).WithGap(6).WithMargin(8)
-	barW, barH := float32(284), float32(38)
+	spec := appUi.PlaceAbove(trigger).WithViewport(vp).WithAlignX(appUi.AlignX{Kind: appUi.AlignCenter}).WithGap(6).WithMargin(8)
+	barW, barH := s.measuredOrEstSize("image-toolbar", 275, 38)
 	x, y := appUi.ResolveOrigin(spec, barW, barH, winW, winH)
-	x = clampFloat32(x, minX, max(maxX-barW, minX))
 
 	ui.Overlay(c, func() {
-		col := ui.Column(c.Key(fmt.Sprintf("image-toolbar-ov-%d", id))).Absolute().Left(x).Top(y).
-			AlignItems(ui.Center).Gap(6)
-		col.Children(func() {
-			bar := ui.Row(c.Key("image-toolbar")).Height(38).PaddingX(6).Gap(3).AlignItems(ui.Center).
-				Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.Hairline).
-				Shadow(0, 6, 18, 0, ui.RGBA(0, 0, 0, 0.14))
-			appUi.Probe(bar, "image-toolbar")
+		bar := ui.Row(c.Key(fmt.Sprintf("image-toolbar-%d", id))).Absolute().Left(x).Top(y).
+			Height(38).PaddingX(6).Gap(3).AlignItems(ui.Center).
+			Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.Hairline).
+			Shadow(0, 6, 18, 0, ui.RGBA(0, 0, 0, 0.14)).
+			Transition(appUi.PopupTransition())
+		appUi.Probe(bar, "image-toolbar")
+		s.recordOverlayPanel("image-toolbar", bar)
 
-			bar.Children(func() {
-				if !s.minimal {
-					commentBtn := appUi.IconButton(c, icons.TbComment, appUi.IconButtonOptions{
-						ID: "img-tb-comment", Label: theme.Tr("添加批注", "Add annotation"), Size: 28, IconSize: 16,
-					})
-					if commentBtn.Clicked() {
-						s.FocusBlock(idx)
-						s.toolbarPop = "comment"
-						s.commentFocusPending = true
-					}
-
-					reactBtn := appUi.IconButton(c, icons.TbReaction, appUi.IconButtonOptions{
-						ID: "img-tb-reaction", Label: theme.Tr("添加表情回应", "Add reaction"), Size: 28, IconSize: 16,
-					})
-					if reactBtn.Clicked() {
-						s.FocusBlock(idx)
-						s.toolbarPop = "reactions"
-					}
-
-					ui.Box(c).Width(1).Height(20).MarginX(2).Background(pal.Hairline)
+		bar.Children(func() {
+			if !s.minimal {
+				commentBtn := appUi.IconButton(c, icons.TbComment, appUi.IconButtonOptions{
+					ID: "img-tb-comment", Label: theme.Tr("添加批注", "Add annotation"), Size: 28, IconSize: 16,
+					Active: s.toolbarPop == "comment",
+				})
+				s.recordOverlayBtn("img-tb-comment", commentBtn)
+				if commentBtn.Clicked() {
+					s.FocusBlock(idx)
+					s.toggleToolbarPop("comment")
 				}
 
-				for _, item := range []struct {
-					id    string
-					glyph icons.Icon
-					align model.ImageAlign
-					label string
-				}{
-					{"img-align-left", icons.AlignLeft, model.ImageAlignLeft, theme.Tr("左对齐", "Align left")},
-					{"img-align-center", icons.AlignCenter, model.ImageAlignCenter, theme.Tr("居中对齐", "Align center")},
-					{"img-align-right", icons.AlignRight, model.ImageAlignRight, theme.Tr("右对齐", "Align right")},
-				} {
-					btn := appUi.IconButton(c, item.glyph, appUi.IconButtonOptions{
-						ID: item.id, Label: item.label, Size: 28, IconSize: 16, Active: b.ImageAlign == item.align,
-					})
-					if btn.Clicked() {
-						s.pushUndo()
-						b.ImageAlign = item.align
-						b.Dirty = true
-						s.markDirty()
-					}
+				reactBtn := appUi.IconButton(c, icons.TbReaction, appUi.IconButtonOptions{
+					ID: "img-tb-reaction", Label: theme.Tr("添加表情回应", "Add reaction"), Size: 28, IconSize: 16,
+					Active: s.toolbarPop == "reactions",
+				})
+				s.recordOverlayBtn("img-tb-reaction", reactBtn)
+				if reactBtn.Clicked() {
+					s.FocusBlock(idx)
+					s.toggleToolbarPop("reactions")
 				}
 
 				ui.Box(c).Width(1).Height(20).MarginX(2).Background(pal.Hairline)
+			}
 
-				cropBtn := appUi.IconButton(c, icons.Crop, appUi.IconButtonOptions{
-					ID:       "img-crop",
-					Label:    theme.Tr("裁剪图片", "Crop image"),
-					Size:     28,
-					IconSize: 16,
-					Active:   s.imagePopBlock == id && s.imagePopKind == "crop",
+			for _, item := range []struct {
+				id    string
+				glyph icons.Icon
+				align model.ImageAlign
+				label string
+			}{
+				{"img-align-left", icons.AlignLeft, model.ImageAlignLeft, theme.Tr("左对齐", "Align left")},
+				{"img-align-center", icons.AlignCenter, model.ImageAlignCenter, theme.Tr("居中对齐", "Align center")},
+				{"img-align-right", icons.AlignRight, model.ImageAlignRight, theme.Tr("右对齐", "Align right")},
+			} {
+				btn := appUi.IconButton(c, item.glyph, appUi.IconButtonOptions{
+					ID: item.id, Label: item.label, Size: 28, IconSize: 16, Active: b.ImageAlign == item.align,
 				})
-				if cropBtn.Clicked() {
-					if s.imagePopBlock == id && s.imagePopKind == "crop" {
-						s.imagePopKind = ""
-					} else {
-						s.imagePopBlock = id
-						s.imagePopKind = "crop"
-					}
+				if btn.Clicked() {
+					s.pushUndo()
+					b.ImageAlign = item.align
+					b.Dirty = true
+					s.markDirty()
 				}
+			}
 
-				sizeBtn := appUi.IconButton(c, icons.Sliders, appUi.IconButtonOptions{
-					ID:       "img-size",
-					Label:    theme.Tr("设置图片尺寸", "Set image size"),
-					Size:     28,
-					IconSize: 16,
-					Active:   s.imagePopBlock == id && s.imagePopKind == "size",
-				})
-				if sizeBtn.Clicked() {
-					if s.imagePopBlock == id && s.imagePopKind == "size" {
-						s.imagePopKind = ""
-					} else {
-						s.imagePopBlock = id
-						s.imagePopKind = "size"
-					}
-				}
+			ui.Box(c).Width(1).Height(20).MarginX(2).Background(pal.Hairline)
 
-				delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
-					ID: "img-delete", Label: theme.Tr("删除图片", "Delete image"), Size: 28, IconSize: 16, Danger: true,
-				})
-				if delBtn.Clicked() {
-					s.imagePopBlock = 0
-					s.imagePopKind = ""
-					s.deleteBlock(idx)
-				}
+			cropBtn := appUi.IconButton(c, icons.Crop, appUi.IconButtonOptions{
+				ID:       "img-crop",
+				Label:    theme.Tr("裁剪图片", "Crop image"),
+				Size:     28,
+				IconSize: 16,
+				Active:   s.imagePopBlock == id && s.imagePopKind == "crop",
 			})
+			s.recordOverlayBtn("img-crop", cropBtn)
+			if cropBtn.Clicked() {
+				if s.imagePopBlock == id && s.imagePopKind == "crop" {
+					s.imagePopKind = ""
+				} else {
+					s.imagePopBlock = id
+					s.imagePopKind = "crop"
+				}
+			}
 
-			// Image sub-popovers (Crop / Size / Alt)
-			if s.imagePopBlock == id && s.imagePopKind != "" {
-				s.renderImageSubPopover(c, idx, b)
+			sizeBtn := appUi.IconButton(c, icons.Sliders, appUi.IconButtonOptions{
+				ID:       "img-size",
+				Label:    theme.Tr("设置图片尺寸", "Set image size"),
+				Size:     28,
+				IconSize: 16,
+				Active:   s.imagePopBlock == id && s.imagePopKind == "size",
+			})
+			s.recordOverlayBtn("img-size", sizeBtn)
+			if sizeBtn.Clicked() {
+				if s.imagePopBlock == id && s.imagePopKind == "size" {
+					s.imagePopKind = ""
+				} else {
+					s.imagePopBlock = id
+					s.imagePopKind = "size"
+				}
+			}
+
+			delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
+				ID: "img-delete", Label: theme.Tr("删除图片", "Delete image"), Size: 28, IconSize: 16, Danger: true,
+			})
+			if delBtn.Clicked() {
+				s.imagePopBlock = 0
+				s.imagePopKind = ""
+				s.deleteBlock(idx)
 			}
 		})
+
+		// Image sub-popovers (Crop / Size / Alt) anchored independently to their trigger buttons
+		if s.imagePopBlock == id && s.imagePopKind != "" {
+			s.renderImageSubPopover(c, idx, b)
+		}
 	})
 }
 

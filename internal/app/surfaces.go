@@ -385,6 +385,7 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context, onSave func(path, text st
 				c.Key("source-editor:" + s.Path)
 				ta := ui.TextAreaBase(c, &s.Source.Text).Grow(1).MinWidth(0).MinHeight(360).Padding(8).
 					Font(codeFont).FontSize(14).LineHeight(1.55).TextColor(pal.Text).
+					CaretColor(pal.Accent).CaretWidth(2).
 					Background(ui.Transparent).BorderWidth(0)
 				blockui.Probe(ta, "source-editor")
 				if s.Source.Text != prev {
@@ -788,43 +789,34 @@ func (h *PageHistoryView) Render(
 	})
 
 	// 3. Restore confirmation modal overlay.
-	if h.ConfirmOpen {
-		ui.Overlay(c, func() {
-			scrim := ui.Column(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).Center().
-				Background(ui.RGBA(0, 0, 0, 0.36))
-			var card ui.Element
-			scrim.Children(func() {
-				c.Key("history-confirm-modal")
-				card = ui.Column(c).Width(400).Padding(20).Gap(14).Radius(theme.RadiusSurface).
-					Background(pal.Paper).Border(1, pal.Hairline).Shadow(0, 14, 36, 0, ui.RGBA(0, 0, 0, 0.22))
-				blockui.Probe(card, "history-confirm-modal")
-				card.Children(func() {
-					ui.Text(c, theme.Tr("确认恢复此历史版本？", "Restore this snapshot?")).
-						FontSize(16).FontWeight(600).TextColor(pal.Text)
-					ui.Text(c, fmt.Sprintf("%s (%s)", theme.Tr("当前笔记内容将被替换为所选版本，恢复前会自动保存一份当前快照。", "Current note content will be replaced; a snapshot of the current text is saved first."), h.selectedTimestamp())).
-						FontSize(14).LineHeight(1.5).TextColor(pal.TextSecondary)
-					ui.Row(c).FillWidth().Justify(ui.End).Gap(8).Children(func() {
-						cancelBtn := blockui.ActionButton(c, "history-cancel-restore", theme.Tr("取消", "Cancel"), nil, blockui.ButtonSecondary, false)
-						if cancelBtn.Clicked() {
-							h.ConfirmOpen = false
-						}
-						okBtn := blockui.ActionButton(c, "history-confirm-restore", theme.Tr("确认恢复", "Restore"), nil, blockui.ButtonPrimary, false)
-						if okBtn.Clicked() {
-							snapID := h.SelectedID
-							txt := h.SelectedText
-							h.ConfirmOpen = false
-							if onConfirmRestore != nil {
-								onConfirmRestore(snapID, txt)
-							}
-						}
-					})
-				})
+	title := fmt.Sprintf(theme.Tr("恢复到「%s」？", `Restore to "%s"?`), h.selectedTimestamp())
+	blockui.ModalCard(c, "history-confirm-modal", title, &h.ConfirmOpen, 400, 0, func() {
+		ui.Column(c).FillWidth().Padding(20).Gap(14).Children(func() {
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Text(c, title).FontSize(16).FontWeight(560).TextColor(pal.Text)
+				btn := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{ID: "history-restore-close", Label: theme.Tr("关闭", "Close")})
+				if btn.Clicked() {
+					h.ConfirmOpen = false
+				}
 			})
-			if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
-				h.ConfirmOpen = false
-			}
+			ui.Text(c, theme.Tr("当前内容会保留在历史中。", "Current content will be retained in history.")).FontSize(14).TextColor(pal.TextSecondary)
+			ui.Row(c).FillWidth().Justify(ui.End).Gap(8).Children(func() {
+				cancelBtn := blockui.ActionButton(c, "history-cancel-restore", theme.Tr("取消", "Cancel"), nil, blockui.ButtonSecondary, false)
+				if cancelBtn.Clicked() {
+					h.ConfirmOpen = false
+				}
+				okBtn := blockui.ActionButton(c, "history-confirm-restore", theme.Tr("确认恢复", "Restore"), nil, blockui.ButtonPrimary, false)
+				if okBtn.Clicked() {
+					snapID := h.SelectedID
+					txt := h.SelectedText
+					h.ConfirmOpen = false
+					if onConfirmRestore != nil {
+						onConfirmRestore(snapID, txt)
+					}
+				}
+			})
 		})
-	}
+	})
 }
 
 func renderHistoryCleanMarkdown(c *ui.Context, rawText, edFont, codeFont string) {

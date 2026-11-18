@@ -186,6 +186,11 @@ func (c *Controller) TestConnection(ctx context.Context) error {
 
 // CompletePrompt runs a single-shot streaming SSE completion against the configured live provider.
 func (c *Controller) CompletePrompt(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+	return c.StreamPrompt(ctx, systemPrompt, userPrompt, nil)
+}
+
+// StreamPrompt runs a streaming SSE completion and invokes onDelta on each incremental chunk.
+func (c *Controller) StreamPrompt(ctx context.Context, systemPrompt, userPrompt string, onDelta func(chunk string)) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -206,6 +211,9 @@ func (c *Controller) CompletePrompt(ctx context.Context, systemPrompt, userPromp
 	for ev := range events {
 		if ev.delta != "" {
 			sb.WriteString(ev.delta)
+			if onDelta != nil {
+				onDelta(ev.delta)
+			}
 		}
 		if ev.err != "" {
 			return "", errors.New(ev.err)

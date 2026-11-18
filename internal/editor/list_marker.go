@@ -104,7 +104,7 @@ func (s *Session) renderListMarker(c *ui.Context, idx int, b *model.Block, ctx l
 		}
 		cell := ui.Row(c.Key("num-cell")).Height(lineH).Padding(0, 8, 0, 0).AlignItems(ui.Center)
 		cell.Children(func() {
-			txt := ui.Text(c, fmt.Sprintf("%d.", max(ctx.Number, 1))).Font(resolvedCodeFont()).
+			txt := ui.Text(c, fmt.Sprintf("%d", max(ctx.Number, 1))).Font(resolvedCodeFont()).
 				FontSize(size * 0.84).FontWeight(theme.WeightMonoMedium).TextColor(col).SingleLine()
 			appUi.Probe(txt, fmt.Sprintf("list-number-%d", b.ID))
 		})

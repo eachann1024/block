@@ -140,6 +140,26 @@ func (s *Session) SelectedDoc() *model.Doc {
 			continue
 		}
 		lo, hi := s.selectionSpanRange(idx, a, b)
+		if cur.Kind == model.BlockTable && cur.Table != nil && !(lo == 0 && hi == curLen) {
+			if lo < hi {
+				cellMD := serializeTableMultiCellMarkdown(cur.Table, lo, hi, s.codec)
+				if strings.Trim(cellMD, "\t\n ") != "" {
+					for _, rowLine := range strings.Split(cellMD, "\n") {
+						lineText := strings.ReplaceAll(rowLine, "\t", "  ")
+						if strings.TrimSpace(lineText) == "" {
+							continue
+						}
+						blocks = append(blocks, model.Block{
+							ID:    model.NewBlockID(),
+							Kind:  model.BlockParagraph,
+							Spans: s.parseInlineSpans(lineText),
+							Dirty: true,
+						})
+					}
+				}
+			}
+			continue
+		}
 		if lo < hi || curLen == 0 {
 			blocks = append(blocks, s.sliceBlockForSelection(idx, lo, hi, true))
 		}
@@ -171,11 +191,13 @@ func (s *Session) SelectedMarkdown() string {
 		}
 
 		if whole && (blk.Kind == model.BlockTable || blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider) {
-			doc := s.SelectedDoc()
-			if doc == nil {
-				return ""
-			}
-			return strings.TrimSuffix(s.serializeBlocks(doc.Blocks), "\n")
+			cp := blk.Clone()
+			cp.ID = model.NewBlockID()
+			cp.Dirty = true
+			cp.CleanSource = ""
+			single := []model.Block{cp}
+			normalizeCopiedBlocks(single)
+			return strings.TrimSuffix(s.serializeBlocks(single), "\n")
 		}
 
 		// Single-block text selections carry only inline formatting (not heading/list container).
@@ -343,6 +365,14 @@ func (s *Session) sliceBlockForSelection(idx, lo, hi int, preserveContainer bool
 		runes := []rune(blk.Code)
 		s0 := clampInt(lo, 0, len(runes))
 		s1 := clampInt(hi, s0, len(runes))
+		if preserveContainer {
+			cp := blk.Clone()
+			cp.ID = model.NewBlockID()
+			cp.Code = string(runes[s0:s1])
+			cp.Dirty = true
+			cp.CleanSource = ""
+			return cp
+		}
 		return model.Block{
 			ID:    model.NewBlockID(),
 			Kind:  model.BlockParagraph,
@@ -397,7 +427,10 @@ func normalizeCopiedBlocks(blocks []model.Block) {
 		if len(ancestors) > 0 {
 			top := ancestors[len(ancestors)-1]
 			b.Indent = max(orig-(top.orig-top.next), 0)
-		} else if orig > 0 && (isList || b.Kind != model.BlockParagraph) {
+			if b.Kind == model.BlockDivider || b.Kind == model.BlockImage {
+				b.Indent = min(b.Indent, top.next+3)
+			}
+		} else if orig > 0 {
 			b.Indent = 0
 		}
 		if isList {
@@ -475,7 +508,7 @@ func serializeSpansFallback(spans []model.Span) string {
 }
 
 func serializeBlockFallback(b *model.Block) string {
-	indent := strings.Repeat("  ", max(b.Indent, 0))
+	indent := strings.Repeat(" ", max(b.Indent, 0))
 	text := serializeSpansFallback(b.Spans)
 	switch b.Kind {
 	case model.BlockHeading1:
@@ -589,8 +622,31 @@ func (s *Session) PasteText(raw string) {
 		return
 	}
 
-	// Single-line plain text without markdown block markers inserts inline at selection.
-	if !strings.Contains(norm, "\n") && !looksLikeMarkdownBlock(norm) {
+	// Table block pastes TSV grid across rows/cols or inline spans into active cell.
+	if b.Kind == model.BlockTable && b.Table != nil {
+		s.pasteIntoTableBlock(idx, norm)
+		return
+	}
+
+	// Empty paragraph receiving TSV text converts directly into a table block.
+	if b.Kind == model.BlockParagraph && b.PlainText() == "" && strings.Contains(norm, "\t") {
+		if tbl := s.buildTableFromTSV(norm); tbl != nil {
+			b.Kind = model.BlockTable
+			b.Table = tbl
+			b.Spans = nil
+			b.Dirty = true
+			b.CleanSource = ""
+			s.tableActiveBlock = b.ID
+			s.tableActiveRow = 0
+			s.tableActiveCol = 0
+			s.focusPending = true
+			s.markDirty()
+			return
+		}
+	}
+
+	// Single-line plain text without markdown block/inline markers inserts inline at selection.
+	if !strings.Contains(norm, "\n") && !looksLikeMarkdownBlock(norm) && !looksLikeInlineMarkdown(norm) && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
 		s.replaceCurrentSelectionInBlock(idx, norm)
 		return
 	}
@@ -602,7 +658,9 @@ func (s *Session) PasteText(raw string) {
 		parsed = fallbackParsePaste(norm)
 	}
 	if parsed == nil || len(parsed.Blocks) == 0 {
-		s.replaceCurrentSelectionInBlock(idx, norm)
+		if b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
+			s.replaceCurrentSelectionInBlock(idx, norm)
+		}
 		return
 	}
 	for i := range parsed.Blocks {
@@ -612,8 +670,8 @@ func (s *Session) PasteText(raw string) {
 		parsed.Blocks[i].Dirty = true
 	}
 
-	if len(parsed.Blocks) == 1 && parsed.Blocks[0].Kind == model.BlockParagraph {
-		s.replaceCurrentSelectionInBlock(idx, parsed.Blocks[0].PlainText())
+	if len(parsed.Blocks) == 1 && parsed.Blocks[0].Kind == model.BlockParagraph && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
+		s.replaceSelectionWithSpansInBlock(idx, parsed.Blocks[0].Spans)
 		return
 	}
 
@@ -663,6 +721,135 @@ func looksLikeMarkdownBlock(line string) bool {
 	return strings.HasPrefix(t, "# ") || strings.HasPrefix(t, "## ") || strings.HasPrefix(t, "### ") ||
 		strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* ") || strings.HasPrefix(t, "> ") ||
 		strings.HasPrefix(t, "```") || t == "---" || strings.HasPrefix(t, "|")
+}
+
+func looksLikeInlineMarkdown(line string) bool {
+	return strings.ContainsAny(line, "*_`~[") || strings.Contains(line, "<span") || strings.Contains(line, "<u>")
+}
+
+func (s *Session) parseInlineSpans(text string) []model.Span {
+	if text == "" {
+		return nil
+	}
+	if s.codec != nil {
+		if doc := s.codec.Parse(text); doc != nil && len(doc.Blocks) == 1 && doc.Blocks[0].Kind == model.BlockParagraph {
+			return doc.Blocks[0].Spans
+		}
+	}
+	return []model.Span{{Text: text}}
+}
+
+func (s *Session) replaceSelectionWithSpansInBlock(idx int, insertSpans []model.Span) {
+	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return
+	}
+	b := &s.doc.Blocks[idx]
+	curLen := len([]rune(b.PlainText()))
+	a, endPos := s.orderedSelection()
+	lo, hi := curLen, curLen
+	if a.Block == idx && endPos.Block == idx {
+		lo = clampInt(a.Offset, 0, curLen)
+		hi = clampInt(endPos.Offset, lo, curLen)
+	}
+	var merged []model.Span
+	merged = append(merged, sliceSpans(b.Spans, 0, lo)...)
+	merged = append(merged, insertSpans...)
+	merged = append(merged, sliceSpans(b.Spans, hi, curLen)...)
+	b.Spans = normalizeSpans(merged)
+	b.Dirty = true
+	b.CleanSource = ""
+	insLen := len([]rune(model.PlainTextOfSpans(insertSpans)))
+	s.selAnchor = Position{Block: idx, Offset: lo + insLen}
+	s.selHead = s.selAnchor
+	s.focusPending = true
+	s.selSyncPending = true
+	s.markDirty()
+}
+
+func (s *Session) buildTableFromTSV(tsv string) *model.TableData {
+	rawRows := strings.Split(tsv, "\n")
+	maxCols := 0
+	var grid [][]string
+	for _, rLine := range rawRows {
+		if rLine == "" && len(grid) > 0 && rLine == rawRows[len(rawRows)-1] {
+			continue
+		}
+		cols := strings.Split(rLine, "\t")
+		if len(cols) > maxCols {
+			maxCols = len(cols)
+		}
+		grid = append(grid, cols)
+	}
+	if len(grid) == 0 || maxCols < 2 {
+		return nil
+	}
+	rows := make([][]model.TableCell, max(len(grid), 2))
+	for r := range rows {
+		rows[r] = make([]model.TableCell, maxCols)
+		if r < len(grid) {
+			for c := 0; c < len(grid[r]); c++ {
+				rows[r][c] = model.TableCell{Spans: s.parseInlineSpans(grid[r][c])}
+			}
+		}
+	}
+	aligns := make([]model.ColAlign, maxCols)
+	return &model.TableData{Aligns: aligns, Rows: rows}
+}
+
+func (s *Session) pasteIntoTableBlock(idx int, norm string) {
+	b := &s.doc.Blocks[idx]
+	tbl := b.Table
+	if tbl == nil || len(tbl.Rows) == 0 {
+		return
+	}
+	startR := clampInt(s.tableActiveRow, 0, len(tbl.Rows)-1)
+	startC := clampInt(s.tableActiveCol, 0, max(len(tbl.Rows[0])-1, 0))
+	if !strings.Contains(norm, "\t") && !strings.Contains(norm, "\n") {
+		cell := &tbl.Rows[startR][startC]
+		cell.Spans = append(cell.Spans, s.parseInlineSpans(norm)...)
+		cell.Spans = normalizeSpans(cell.Spans)
+		b.Dirty = true
+		b.CleanSource = ""
+		s.focusPending = true
+		s.markDirty()
+		return
+	}
+	rawRows := strings.Split(norm, "\n")
+	if len(rawRows) > 1 && rawRows[len(rawRows)-1] == "" {
+		rawRows = rawRows[:len(rawRows)-1]
+	}
+	neededCols := len(tbl.Rows[0])
+	for _, rLine := range rawRows {
+		cols := strings.Split(rLine, "\t")
+		if startC+len(cols) > neededCols {
+			neededCols = startC + len(cols)
+		}
+	}
+	for len(tbl.Aligns) < neededCols {
+		tbl.Aligns = append(tbl.Aligns, model.ColAlignNone)
+	}
+	neededRows := max(len(tbl.Rows), startR+len(rawRows))
+	for len(tbl.Rows) < neededRows {
+		tbl.Rows = append(tbl.Rows, make([]model.TableCell, neededCols))
+	}
+	for r := range tbl.Rows {
+		for len(tbl.Rows[r]) < neededCols {
+			tbl.Rows[r] = append(tbl.Rows[r], model.TableCell{})
+		}
+	}
+	for dr, rLine := range rawRows {
+		cols := strings.Split(rLine, "\t")
+		for dc, cellText := range cols {
+			tbl.Rows[startR+dr][startC+dc] = model.TableCell{Spans: s.parseInlineSpans(cellText)}
+		}
+	}
+	b.Dirty = true
+	b.CleanSource = ""
+	s.tableActiveRow = startR + len(rawRows) - 1
+	lastCols := strings.Split(rawRows[len(rawRows)-1], "\t")
+	s.tableActiveCol = startC + len(lastCols) - 1
+	s.focusPending = true
+	s.markDirty()
 }
 
 func fallbackParsePaste(src string) *model.Doc {
@@ -1062,23 +1249,34 @@ func (s *Session) selectionColors() (fgName, bgName string) {
 	return fgName, bgName
 }
 
+func isFrontmatterBlock(idx int, b *model.Block) bool {
+	return idx == 0 && b != nil && b.Kind == model.BlockCode && b.Language == "yaml-frontmatter"
+}
+
 func (s *Session) setCalloutKind(blockID model.BlockID, kind *model.CalloutKind) {
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
 	}
 	b := &s.doc.Blocks[idx]
-	s.pushUndo()
+	s.calloutMenuBlock = 0
 	if kind == nil {
+		if b.Kind == model.BlockParagraph && b.Callout == "" {
+			return
+		}
+		s.pushUndo()
 		b.Kind = model.BlockParagraph
 		b.Callout = ""
 	} else {
+		if b.Kind == model.BlockCallout && b.Callout == *kind {
+			return
+		}
+		s.pushUndo()
 		b.Kind = model.BlockCallout
 		b.Callout = *kind
 	}
 	b.Dirty = true
 	b.CleanSource = ""
-	s.calloutMenuBlock = 0
 	s.markDirty()
 }
 
@@ -1105,10 +1303,24 @@ func (s *Session) SetSelectionBlockKind(kind model.BlockKind, toggleIfSame bool)
 			kind = model.BlockParagraph
 		}
 	}
+	willChange := false
+	for i := lo; i <= hi; i++ {
+		b := &s.doc.Blocks[i]
+		if b.Kind == model.BlockTable || b.Kind == model.BlockImage || b.Kind == model.BlockDivider || isFrontmatterBlock(i, b) {
+			continue
+		}
+		if b.Kind != kind || b.Callout != "" {
+			willChange = true
+			break
+		}
+	}
+	if !willChange {
+		return
+	}
 	s.pushUndo()
 	for i := lo; i <= hi; i++ {
 		b := &s.doc.Blocks[i]
-		if b.Kind == model.BlockTable || b.Kind == model.BlockImage || b.Kind == model.BlockDivider {
+		if b.Kind == model.BlockTable || b.Kind == model.BlockImage || b.Kind == model.BlockDivider || isFrontmatterBlock(i, b) {
 			continue
 		}
 		convertTextBlock(b, kind)
@@ -1811,6 +2023,9 @@ func (s *Session) handleBackspaceOnBlock(idx int, text string, caretRune int) bo
 			s.spliceBlocks(idx, idx+1, nil)
 			s.focusedBlock = idx - 1
 			endOff := len([]rune(s.doc.Blocks[idx-1].PlainText()))
+			if s.doc.Blocks[idx-1].Kind == model.BlockDivider || s.doc.Blocks[idx-1].Kind == model.BlockImage {
+				endOff = 0
+			}
 			s.selAnchor = Position{Block: idx - 1, Offset: endOff}
 			s.selHead = s.selAnchor
 			s.focusPending = true
@@ -1889,6 +2104,9 @@ func (s *Session) moveBlock(fromIdx, toIdx int) {
 	if s.doc == nil || fromIdx < 0 || fromIdx >= len(s.doc.Blocks) || toIdx < 0 || toIdx >= len(s.doc.Blocks) || fromIdx == toIdx {
 		return
 	}
+	if len(s.doc.Blocks) > 0 && isFrontmatterBlock(0, &s.doc.Blocks[0]) && (fromIdx == 0 || toIdx == 0) {
+		return
+	}
 	s.pushUndo()
 	blk := s.doc.Blocks[fromIdx]
 	rest := make([]model.Block, 0, len(s.doc.Blocks)-1)
@@ -1905,6 +2123,9 @@ func (s *Session) moveBlock(fromIdx, toIdx int) {
 }
 
 func (s *Session) duplicateBlock(idx int) {
+	if s.doc != nil && idx == 0 && len(s.doc.Blocks) > 0 && isFrontmatterBlock(0, &s.doc.Blocks[0]) {
+		return
+	}
 	s.duplicateRange(idx, idx)
 }
 
@@ -1951,7 +2172,12 @@ func allSlashItems() []blockMenuItem {
 	}
 }
 
-func allHandleMenuItems(idx, count int) []blockMenuItem {
+func allHandleMenuItems(idx, count int, hasFrontmatter bool) []blockMenuItem {
+	if hasFrontmatter && idx == 0 {
+		return []blockMenuItem{
+			{Kind: cmdDelete, Label: theme.Tr("删除", "Delete"), Hint: "⌫", Danger: true},
+		}
+	}
 	items := []blockMenuItem{
 		{Kind: cmdTurnParagraph, Label: theme.Tr("正文", "Text"), Keywords: "text paragraph", Hint: "⌘⌥0"},
 		{Kind: cmdTurnH1, Label: theme.Tr("一级标题", "Heading 1"), Hint: "⌘⌥1"},
@@ -1966,7 +2192,11 @@ func allHandleMenuItems(idx, count int) []blockMenuItem {
 		{Separator: true},
 		{Kind: cmdDuplicate, Label: theme.Tr("复制块", "Duplicate"), Hint: "⌘D"},
 	}
-	if idx > 0 {
+	minMoveIdx := 0
+	if hasFrontmatter {
+		minMoveIdx = 1
+	}
+	if idx > minMoveIdx {
 		items = append(items, blockMenuItem{Kind: cmdMoveUp, Label: theme.Tr("上移", "Move Up")})
 	}
 	if idx+1 < count {
@@ -1983,10 +2213,12 @@ func (s *Session) slashMenuEntries() []blockMenuItem {
 	}
 	if s.blockMenu.Mode == menuHandle {
 		n := 0
+		hasFM := false
 		if s.doc != nil {
 			n = len(s.doc.Blocks)
+			hasFM = n > 0 && isFrontmatterBlock(0, &s.doc.Blocks[0])
 		}
-		return allHandleMenuItems(s.blockMenu.BlockIdx, n)
+		return allHandleMenuItems(s.blockMenu.BlockIdx, n, hasFM)
 	}
 	all := allSlashItems()
 	q := strings.ToLower(strings.TrimSpace(s.blockMenu.Filter))
@@ -2489,6 +2721,7 @@ func (s *Session) AddAnnotation(note string) *model.Annotation {
 	if !ok {
 		return nil
 	}
+	s.pushUndo()
 	s.nextAnnotSeq++
 	ann := &model.Annotation{
 		ID:            nextAnnotationID(),
@@ -2502,7 +2735,7 @@ func (s *Session) AddAnnotation(note string) *model.Annotation {
 	}
 	s.annotations = append(s.annotations, ann)
 	s.activeAnnotID = ann.ID
-	s.markDirty()
+	s.caretHidden = true
 	s.persistAnnotations()
 	return ann
 }
@@ -2529,6 +2762,7 @@ func (s *Session) AddReaction(emoji string) {
 		}
 	}
 
+	s.pushUndo()
 	s.nextAnnotSeq++
 	ann := &model.Annotation{
 		ID:            nextAnnotationID(),
@@ -2541,7 +2775,7 @@ func (s *Session) AddReaction(emoji string) {
 		CreatedAtUnix: time.Now().Unix(),
 	}
 	s.annotations = append(s.annotations, ann)
-	s.markDirty()
+	s.caretHidden = true
 	s.persistAnnotations()
 }
 
@@ -2549,6 +2783,7 @@ func (s *Session) toggleReactionOnIndex(idx int, emoji string) {
 	if idx < 0 || idx >= len(s.annotations) {
 		return
 	}
+	s.pushUndo()
 	ann := s.annotations[idx]
 	if slices.Contains(ann.Reactions, emoji) {
 		ann.Reactions = nil
@@ -2561,7 +2796,7 @@ func (s *Session) toggleReactionOnIndex(idx int, emoji string) {
 	} else {
 		ann.Reactions = []string{emoji}
 	}
-	s.markDirty()
+	s.caretHidden = true
 	s.persistAnnotations()
 }
 
@@ -2569,6 +2804,7 @@ func (s *Session) deleteAnnotationByID(id string) bool {
 	s.ensureAnnotationsLoaded()
 	for i, ann := range s.annotations {
 		if ann.ID == id {
+			s.pushUndo()
 			s.annotations = append(s.annotations[:i], s.annotations[i+1:]...)
 			if s.activeAnnotID == id {
 				s.activeAnnotID = ""
@@ -2576,7 +2812,9 @@ func (s *Session) deleteAnnotationByID(id string) bool {
 			if s.editingAnnotID == id {
 				s.editingAnnotID = ""
 			}
-			s.markDirty()
+			if s.footPickerAnnotID == id {
+				s.footPickerAnnotID = ""
+			}
 			s.persistAnnotations()
 			return true
 		}
@@ -2588,9 +2826,14 @@ func (s *Session) updateAnnotationNote(id, note string) bool {
 	s.ensureAnnotationsLoaded()
 	for _, ann := range s.annotations {
 		if ann.ID == id {
-			ann.Note = strings.TrimSpace(note)
+			trimmed := strings.TrimSpace(note)
+			if ann.Note == trimmed {
+				s.editingAnnotID = ""
+				return true
+			}
+			s.pushUndo()
+			ann.Note = trimmed
 			s.editingAnnotID = ""
-			s.markDirty()
 			s.persistAnnotations()
 			return true
 		}
