@@ -1513,7 +1513,7 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 						return &internalui.TooltipSpec{
 							Rows: []internalui.TooltipRow{{
 								Trigger:     fmt.Sprintf(theme.Tr("速记页 %d", "Note %d"), slot+1),
-								Detail:      theme.Tr("点击或滚轮切换", "Click or scroll"),
+								Detail:      theme.Tr("点击或上下滚动切换", "Click or scroll"),
 								SplitDetail: true,
 							}},
 						}
