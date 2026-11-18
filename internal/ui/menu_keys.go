@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"time"
-
 	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
 )
@@ -13,14 +11,6 @@ func MenuInnerMaxHeight(maxH float32) float32 {
 	return max(maxH-theme.MenuPadding*2-2, 1)
 }
 
-// MenuFollowSpring is a critically-damped zero-overshoot spring (~200ms) used when stepping
-// through menus, pickers, or tab strips by keyboard so scrolling tracks smoothly without bounce.
-var MenuFollowSpring = ui.Animation{
-	Spring: ui.SpringOptions{
-		Duration: 200 * time.Millisecond,
-	},
-}
-
 // MenuFollowScrollOptions returns ScrollIntoViewOptions that smoothly center-align the active
 // item on both vertical and horizontal axes once selection crosses the container midpoint,
 // clamping cleanly at 0 and maxScroll.
@@ -28,7 +18,7 @@ func MenuFollowScrollOptions() ui.ScrollIntoViewOptions {
 	return ui.ScrollIntoViewOptions{
 		Block:     ui.ScrollCenter,
 		Inline:    ui.ScrollCenter,
-		Animation: &MenuFollowSpring,
+		Animation: &SpringTactile,
 	}
 }
 
