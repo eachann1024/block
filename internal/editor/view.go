@@ -267,7 +267,7 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if c.Shortcut(ui.Cmd, ui.KeyE) {
 		s.ToggleMarkOnSelection(model.MarkCode)
 	}
-	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyX) {
+	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyX) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyS) {
 		s.ToggleMarkOnSelection(model.MarkStrike)
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyX) && s.inlineAI == nil && !s.findOpen && (s.hasMultiBlockSelection() || s.hasWholeAtomicSelection()) {
@@ -1233,7 +1233,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 				case mods == ui.Cmd && key == ui.KeyE:
 					s.ToggleMarkOnSelection(model.MarkCode)
 					return true
-				case mods == ui.Cmd|ui.Shift && key == ui.KeyX:
+				case mods == ui.Cmd|ui.Shift && (key == ui.KeyX || key == ui.KeyS):
 					s.ToggleMarkOnSelection(model.MarkStrike)
 					return true
 				case mods == ui.Cmd && key == ui.KeyF:
@@ -2382,8 +2382,24 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 						s.ToggleMarkOnSelection(model.MarkItalic)
 						return true
 					}
+					if mods == ui.Cmd && key == ui.KeyU {
+						s.ToggleMarkOnSelection(model.MarkUnderline)
+						return true
+					}
 					if mods == ui.Cmd && key == ui.KeyE {
 						s.ToggleMarkOnSelection(model.MarkCode)
+						return true
+					}
+					if mods == ui.Cmd|ui.Shift && (key == ui.KeyX || key == ui.KeyS) {
+						s.ToggleMarkOnSelection(model.MarkStrike)
+						return true
+					}
+					if mods == ui.Cmd|ui.Shift && key == ui.KeyH {
+						s.toggleHighlightOnSelection()
+						return true
+					}
+					if mods == ui.Cmd|ui.Shift && key == ui.KeyBackslash {
+						s.ClearFormattingOnSelection()
 						return true
 					}
 					return false
