@@ -1,4 +1,12 @@
 [
   "block-sync",
-  "blockmd-community/block-sync"
+  "block-image-host",
+  "block-publisher",
+  "block-migrator",
+  "block-diagnostics",
+  "blockmd-community/block-sync",
+  "blockmd-community/block-image-host",
+  "blockmd-community/block-publisher",
+  "blockmd-community/block-migrator",
+  "blockmd-community/block-diagnostics"
 ]

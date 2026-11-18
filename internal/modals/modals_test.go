@@ -127,15 +127,15 @@ func TestSettingsNavigationControlsAndShortcutRecording(t *testing.T) {
 		t.Fatalf("expected LangEn, got %q", state.Language)
 	}
 
-	// Switch to Folders tab, toggle hide-non-md and add exact rule.
+	// Switch to Folders tab, toggle show-non-md and add exact rule.
 	if err := tt.Click("Folders"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.Click("Hide Non-Markdown Files"); err != nil {
+	if err := tt.Click("Off"); err != nil {
 		t.Fatal(err)
 	}
-	if state.HideNonMarkdownFiles == nil || !*state.HideNonMarkdownFiles {
-		t.Fatalf("expected HideNonMarkdownFiles to toggle true")
+	if state.HideNonMarkdownFiles == nil || *state.HideNonMarkdownFiles {
+		t.Fatalf("expected HideNonMarkdownFiles to toggle false when Show Non-Markdown Files is turned On")
 	}
 	if err := tt.Click("Folder Name"); err != nil {
 		t.Fatal(err)
@@ -569,7 +569,7 @@ func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T
 
 	m, _, state := setupManager(t)
 	defs := AllShortcutDefaults()
-	for _, k := range []string{"global_summon", "quick_note", "search", "new_note", "toggle_sidebar", "toggle_ai", "export_image", "performance"} {
+	for _, k := range []string{"global_summon", "quick_note", "search", "new_note", "toggle_sidebar", "toggle_ai", "export_image"} {
 		if defs[k] == "" {
 			t.Fatalf("expected default for %q", k)
 		}
@@ -585,14 +585,7 @@ func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T
 		})
 	}, 1000, 760)
 
-	// Verify exact 7-row Shortcuts ordering from top to bottom (matching thinkly-fast 1:1):
-	// 1. settings-rec-search (全局唤出)
-	// 2. settings-rec-quick (速记小窗)
-	// 3. settings-keycap-search (搜索笔记)
-	// 4. settings-keycap-find (当前笔记查找)
-	// 5. settings-keycap-new (新建笔记)
-	// 6. settings-keycap-ai (AI 助手面板)
-	// 7. settings-keycap-perf (性能与占用)
+	// Verify exact 6-row Shortcuts ordering from top to bottom (performance extracted to plugin):
 	wantShortcutOrder := []string{
 		"settings-rec-search",
 		"settings-rec-quick",
@@ -600,7 +593,6 @@ func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T
 		"settings-keycap-find",
 		"settings-keycap-new",
 		"settings-keycap-ai",
-		"settings-keycap-perf",
 	}
 	var prevY float32 = -1
 	for _, id := range wantShortcutOrder {

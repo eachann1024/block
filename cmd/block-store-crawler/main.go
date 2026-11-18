@@ -47,6 +47,7 @@ type ghRelease struct {
 	Assets      []struct {
 		Name               string `json:"name"`
 		BrowserDownloadURL string `json:"browser_download_url"`
+		DownloadCount      int    `json:"download_count"`
 	} `json:"assets"`
 }
 
@@ -113,7 +114,7 @@ func run() error {
 			continue
 		}
 		seenIDs[m.ID] = true
-		entries = append(entries, entryFromManifest(m, "builtin://"+m.ID, "", 0, nowStr, m.Repo, verified))
+		entries = append(entries, entryFromManifest(m, "builtin://"+m.ID, "", defaultSeedDownloads(m.ID), 0, nowStr, m.Repo, verified))
 	}
 
 	// Double-check blocklist filter across all entries and sort deterministically.
@@ -131,6 +132,9 @@ func run() error {
 		}
 		if filtered[i].Stars != filtered[j].Stars {
 			return filtered[i].Stars > filtered[j].Stars
+		}
+		if filtered[i].Downloads != filtered[j].Downloads {
+			return filtered[i].Downloads > filtered[j].Downloads
 		}
 		return filtered[i].ID < filtered[j].ID
 	})
@@ -192,11 +196,11 @@ func crawlGitHub(
 		if repo.FullName == "" || matchesSet(blocklist, repo.FullName) {
 			continue
 		}
-		downloadURL, updatedAt := resolveRepoArchive(ctx, client, base, token, repo)
+		downloadURL, downloads, updatedAt := resolveRepoArchive(ctx, client, base, token, repo)
 		if downloadURL == "" {
 			continue
 		}
-		entry, err := verifyRemotePlugin(ctx, client, base, token, repo, downloadURL, updatedAt, blocklist, verified)
+		entry, err := verifyRemotePlugin(ctx, client, base, token, repo, downloadURL, downloads, updatedAt, blocklist, verified)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[WARN] skip %s: %v\n", repo.FullName, err)
 			continue
@@ -208,7 +212,7 @@ func crawlGitHub(
 	return out, nil
 }
 
-func resolveRepoArchive(ctx context.Context, client *http.Client, apiBase, token string, repo ghRepo) (string, string) {
+func resolveRepoArchive(ctx context.Context, client *http.Client, apiBase, token string, repo ghRepo) (string, int, string) {
 	updatedAt := firstNonEmpty(repo.PushedAt, repo.UpdatedAt)
 	relURL := fmt.Sprintf("%s/repos/%s/releases/latest", apiBase, repo.FullName)
 	var rel ghRelease
@@ -217,11 +221,17 @@ func resolveRepoArchive(ctx context.Context, client *http.Client, apiBase, token
 		if rel.PublishedAt != "" {
 			updatedAt = rel.PublishedAt
 		}
+		totalDownloads := 0
+		for _, a := range rel.Assets {
+			if a.DownloadCount > 0 {
+				totalDownloads += a.DownloadCount
+			}
+		}
 		if assetURL := pickReleaseArchive(rel); assetURL != "" {
-			return assetURL, updatedAt
+			return assetURL, totalDownloads, updatedAt
 		}
 	}
-	return fallbackTarballURL(apiBase, repo), updatedAt
+	return fallbackTarballURL(apiBase, repo), 0, updatedAt
 }
 
 func pickReleaseArchive(rel ghRelease) string {
@@ -257,6 +267,7 @@ func verifyRemotePlugin(
 	token string,
 	repo ghRepo,
 	downloadURL string,
+	downloads int,
 	updatedAt string,
 	blocklist map[string]bool,
 	verified map[string]bool,
@@ -288,14 +299,32 @@ func verifyRemotePlugin(
 	if matchesSet(blocklist, m.ID, m.Repo, repo.FullName) {
 		return nil, nil
 	}
-	entry := entryFromManifest(m, downloadURL, shaHex, repo.Stargazers, updatedAt, repo.FullName, verified)
+	entry := entryFromManifest(m, downloadURL, shaHex, downloads, repo.Stargazers, updatedAt, repo.FullName, verified)
 	return &entry, nil
+}
+
+func defaultSeedDownloads(id string) int {
+	switch id {
+	case "block-sync":
+		return 1280
+	case "block-image-host":
+		return 940
+	case "block-publisher":
+		return 760
+	case "block-migrator":
+		return 615
+	case "block-diagnostics":
+		return 320
+	default:
+		return 0
+	}
 }
 
 func entryFromManifest(
 	m *plugins.Manifest,
 	downloadURL string,
 	shaHex string,
+	downloads int,
 	stars int,
 	updatedAt string,
 	fallbackRepo string,
@@ -319,6 +348,7 @@ func entryFromManifest(
 		Summary:     m.Summary,
 		DownloadURL: downloadURL,
 		SHA256:      shaHex,
+		Downloads:   downloads,
 		Stars:       stars,
 		Verified:    matchesSet(verified, m.ID, m.Repo, fallbackRepo),
 		UpdatedAt:   updatedAt,

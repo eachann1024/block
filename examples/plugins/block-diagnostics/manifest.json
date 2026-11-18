@@ -1,0 +1,41 @@
+{
+  "app": "blockmd",
+  "schema_version": 1,
+  "id": "block-diagnostics",
+  "name": {
+    "zh": "性能与诊断",
+    "en": "Diagnostics"
+  },
+  "version": "1.0.0",
+  "author": "Block Community",
+  "repo": "blockmd-community/block-diagnostics",
+  "summary": {
+    "zh": "统计工作区体积、附件占用与进程内存，巡检孤立附件与失效链接",
+    "en": "Inspect workspace size, process RSS memory, orphan assets, and broken relative links"
+  },
+  "entry": {
+    "command": ["python3", "-u", "main.py"]
+  },
+  "permissions": [
+    "storage",
+    "notes:read"
+  ],
+  "surfaces": [
+    "settings_page"
+  ],
+  "icon": {
+    "view_box": "0 0 24 24",
+    "fill_paths": [
+      "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z"
+    ],
+    "stroke_paths": [
+      "M4.6 16.5A9 9 0 1 1 19.4 16.5",
+      "M12 4.5V6.5",
+      "M4.5 12H6.5",
+      "M17.5 12H19.5"
+    ],
+    "accent_paths": [
+      "M6.5 13.5H9L10.8 9L13.2 16L15 12.5H17.5"
+    ]
+  }
+}

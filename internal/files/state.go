@@ -52,7 +52,7 @@ func normalizeState(st *model.AppState) {
 		st.HideAssetsFolder = &v
 	}
 	if st.HideNonMarkdownFiles == nil {
-		v := false
+		v := true
 		st.HideNonMarkdownFiles = &v
 	}
 	if st.EditorZoom != nil {
