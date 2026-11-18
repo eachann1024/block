@@ -563,9 +563,12 @@ func (m *Manager) RenderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 						m.PluginHost.RenderHeaderExtras(c, tab, m.selectSettingsTab)
 					}
 					backBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-						ID:      "settings-back",
-						Label:   theme.Tr("返回", "Back"),
-						Tooltip: theme.Tr("关闭设置", "Close Settings"),
+						ID:         "settings-back",
+						Label:      theme.Tr("返回", "Back"),
+						Tooltip:    theme.Tr("关闭设置", "Close Settings"),
+						Variant:    internalui.IconBordered,
+						IconSize:   theme.IconAction,
+						CardBorder: true,
 					})
 					if backBtn.Clicked() {
 						m.CloseSettings()

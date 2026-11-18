@@ -45,6 +45,7 @@ type IconButtonOptions struct {
 	Active       bool
 	// ActiveStyle refines how Active is drawn.
 	ActiveStyle IconActiveStyle
+	CardBorder  bool
 	Disabled    bool
 	Danger      bool
 }
@@ -84,7 +85,11 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 	btn := ui.ButtonBase(c).Size(boxSize, boxSize).Shrink(0).Center().
 		Radius(radius).Cursor(cursor).Disabled(opts.Disabled).DimDisabled(false)
 	if opts.Variant == IconBordered {
-		btn.Background(pal.Paper).Border(1, pal.BtnBorder)
+		if opts.CardBorder {
+			btn.Background(pal.Card).Border(1, pal.BtnBorder)
+		} else {
+			btn.Background(pal.Paper).Border(1, pal.BtnBorder)
+		}
 	}
 	if opts.Label != "" {
 		btn.Label(opts.Label)
@@ -117,6 +122,9 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 	hasBorder := opts.Variant == IconBordered || (opts.Active && opts.ActiveStyle != ActiveAccentFlat)
 	if opts.Variant == IconBordered {
 		bgCol = pal.Paper
+		if opts.CardBorder {
+			bgCol = pal.Card
+		}
 		bdCol = pal.BtnBorder
 	}
 	switch {
@@ -326,6 +334,7 @@ type SegmentedControlOptions struct {
 	SegmentHeight float32
 	SegmentRadius float32
 	ShellTrack    bool
+	CardTrack     bool
 }
 
 // SegmentedControl renders an Ocean Paper segmented radio track.
@@ -360,11 +369,13 @@ func SegmentedControlWithOptions(c *ui.Context, id string, active *int, options 
 		segRad = theme.RadiusSM
 	}
 	trackBG, trackBorder := pal.Paper, pal.BtnBorder
-	if opts.ShellTrack {
+	if opts.CardTrack {
+		trackBG, trackBorder = pal.Card, pal.BtnBorder
+	} else if opts.ShellTrack {
 		trackBG, trackBorder = pal.Shell, pal.Hairline
 	}
 	seg := ui.SegmentedBase(c, active, len(options))
-	track := seg.Track.Height(trackH).Padding(trackPad).Gap(theme.Space2).Radius(theme.RadiusMD).
+	track := seg.Track.Height(trackH).Padding(trackPad).Gap(theme.Space2).AlignItems(ui.Center).Radius(theme.RadiusMD).
 		Background(trackBG).Border(1, trackBorder)
 	if opts.FillWidth {
 		track.FillWidth()
