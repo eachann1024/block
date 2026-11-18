@@ -1908,8 +1908,19 @@ func (w *Workspace) targetCreateDir(root string) string {
 	return cleanRoot
 }
 
-// CreateNewNote creates an Untitled.md / 未命名.md note in the target notebook folder,
-// opens it in a tab, and focuses block 0.
+func (w *Workspace) beginCreatedItemRename(root, path string, isDir bool) {
+	root = filepath.Clean(root)
+	for dir := filepath.Dir(path); dir != root && isSameOrDescendant(dir, root); dir = filepath.Dir(dir) {
+		w.sidebarUI.ExpandedDirs[dir] = true
+	}
+	w.modals.CloseSettings()
+	w.ai.SetFullscreen(false)
+	w.sidebarUI.StartRename(path, isDir)
+	w.sidebarUI.RenamingNewItem = true
+	w.RequestRedraw()
+}
+
+// CreateNewNote creates an Untitled.md / 未命名.md note and starts inline rename.
 func (w *Workspace) CreateNewNote() (string, error) {
 	folder := w.ActiveNotebook()
 	if folder == "" {
@@ -1921,18 +1932,8 @@ func (w *Workspace) CreateNewNote() (string, error) {
 		w.setNotice(err.Error())
 		return "", err
 	}
-	if targetDir != filepath.Clean(folder) {
-		w.mu.Lock()
-		w.sidebarUI.ExpandedDirs[targetDir] = true
-		w.mu.Unlock()
-	}
 	w.RescanNotebook()
-	if err := w.openNoteInternal(created, true, true, 0); err != nil {
-		return created, err
-	}
-	if sess := w.SessionFor(created); sess != nil {
-		sess.FocusBlock(0)
-	}
+	w.beginCreatedItemRename(folder, created, false)
 	return created, nil
 }
 
@@ -1948,15 +1949,25 @@ func (w *Workspace) CreateNewFolder() (string, error) {
 		w.setNotice(err.Error())
 		return "", err
 	}
-	if targetDir != filepath.Clean(folder) {
-		w.mu.Lock()
-		w.sidebarUI.ExpandedDirs[targetDir] = true
-		w.mu.Unlock()
-	}
 	w.RescanNotebook()
-	w.sidebarUI.StartRename(created, true)
-	w.RequestRedraw()
+	w.beginCreatedItemRename(folder, created, true)
 	return created, nil
+}
+
+func (w *Workspace) finishSidebarRename(oldPath, newName string) error {
+	newNote := w.sidebarUI.RenamingNewItem && !w.sidebarUI.RenamingDir
+	path, err := w.RenameWorkspaceItem(oldPath, newName)
+	if err != nil {
+		return err
+	}
+	if newNote {
+		if err := w.openNoteInternal(path, true, true, 0); err != nil {
+			w.setNotice(err.Error())
+		} else if sess := w.SessionFor(path); sess != nil {
+			sess.FocusBlock(0)
+		}
+	}
+	return nil
 }
 
 // RenameWorkspaceItem renames oldPath to newName on disk and rebases open tabs, sessions, surfaces, and history.
@@ -2548,6 +2559,7 @@ func (w *Workspace) ToggleSidebar(viewportWidth float32) {
 	w.sidebarUI.ClosePopups()
 	w.edgeFloat.DismissAll(w)
 	if wasEdgeLeft {
+		w.sidebarUI.CancelRename()
 		w.RequestRedraw()
 		return
 	}
@@ -2570,6 +2582,7 @@ func (w *Workspace) ToggleSidebar(viewportWidth float32) {
 		viewportWidth = 1100
 	}
 	layout := ResolveShellLayout(w.shellInputLocked(viewportWidth))
+	w.sidebarUI.CancelRename()
 	if layout.SidebarDrawer {
 		w.sidebarPinned = false
 	} else if layout.SidebarDocked {
@@ -2883,11 +2896,12 @@ func (w *Workspace) startWatching(folder string) {
 
 func (w *Workspace) shellInputLocked(winW float32) ShellInput {
 	inSettings := w.modals.IsSettingsOpen()
+	renameVisible := w.sidebarUI.RenamingNewItem && !inSettings
 	return ShellInput{
 		WindowWidth:     winW,
 		InSettings:      inSettings,
-		SidebarVisible:  !w.state.SidebarCollapsed,
-		SidebarPinned:   w.sidebarPinned,
+		SidebarVisible:  !w.state.SidebarCollapsed || renameVisible,
+		SidebarPinned:   w.sidebarPinned || renameVisible,
 		SidebarDesiredW: w.sidebarWidth,
 		ChatVisible:     w.ai.IsOpen(),
 		ChatFullscreen:  w.ai.IsFullscreen(),
@@ -3669,9 +3683,7 @@ func (w *Workspace) renderSidebarColumn(
 			}
 			_ = w.openNoteInternal(path, inNewTab, true, 0)
 		},
-		OnRenameItem: func(oldPath, newName string) {
-			_, _ = w.RenameWorkspaceItem(oldPath, newName)
-		},
+		OnRenameItem: w.finishSidebarRename,
 		OnMoveItem: func(srcPath, dstDir string) {
 			_, _ = w.MoveWorkspaceItem(srcPath, dstDir)
 		},

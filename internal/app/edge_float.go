@@ -530,7 +530,6 @@ func (w *Workspace) renderFloatingSidebarCard(
 			_, _ = w.CreateNewFolder()
 		},
 		OnNewNote: func() {
-			w.edgeFloat.DismissAll(w)
 			_, _ = w.CreateNewNote()
 		},
 		OnOpenNote: func(path string, inNewTab bool) {
@@ -539,9 +538,7 @@ func (w *Workspace) renderFloatingSidebarCard(
 			}
 			_ = w.openNoteInternal(path, inNewTab, true, 0)
 		},
-		OnRenameItem: func(oldPath, newName string) {
-			_, _ = w.RenameWorkspaceItem(oldPath, newName)
-		},
+		OnRenameItem: w.finishSidebarRename,
 		OnMoveItem: func(srcPath, dstDir string) {
 			_, _ = w.MoveWorkspaceItem(srcPath, dstDir)
 		},
