@@ -815,7 +815,9 @@ func (s *Session) buildDisplaySpan(idx int, b *model.Block, sp model.Span, s0, s
 	if sp.Marks&model.MarkCode != 0 {
 		u.Font = resolvedCodeFont()
 		u.Size = baseSize
-		u.Weight = max(u.Weight, theme.WeightMonoMedium)
+		// MyGo snaps the mono face's 500 to its bold cut; 400 matches the
+		// original's medium chip text visually.
+		u.Weight = max(u.Weight, theme.WeightRegular)
 		u.Color = codeFG
 		u.Background = codeBG
 		u.Radius = codeRadius
@@ -916,7 +918,7 @@ func (s *Session) buildInputTextRanges(idx int, b *model.Block) []ui.TextRange {
 		if sp.Marks&model.MarkCode != 0 {
 			tr.Start, tr.End, tr.Color = s0, s1, pal.InlineCodeFG
 			if tr.Weight == 0 {
-				tr.Weight = theme.WeightMonoMedium
+				tr.Weight = theme.WeightRegular
 			}
 			hasStyle = true
 		}
