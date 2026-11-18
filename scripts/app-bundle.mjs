@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -142,8 +142,10 @@ export function normalizeArch(raw = process.arch) {
   throw new Error(`unsupported arch: ${raw}`);
 }
 
-export function goBuild({ root = repoRoot, goos, goarch, outFile, profile = "fast", useMygo = false } = {}) {
+export function goBuild({ root = repoRoot, goos, goarch, outFile, profile = "fast", useMygo = false, tempDir } = {}) {
   mkdirSync(dirname(outFile), { recursive: true });
+  const env = { ...process.env, CGO_ENABLED: "0" };
+  if (tempDir) env.TMPDIR = tempDir;
   if (useMygo) {
     const result = spawnSync(
       "go",
@@ -151,7 +153,7 @@ export function goBuild({ root = repoRoot, goos, goarch, outFile, profile = "fas
       {
         cwd: root,
         encoding: "utf8",
-        env: { ...process.env, CGO_ENABLED: "0" },
+        env,
         maxBuffer: 64 * 1024 * 1024,
       },
     );
@@ -176,7 +178,7 @@ export function goBuild({ root = repoRoot, goos, goarch, outFile, profile = "fas
   const result = spawnSync("go", args, {
     cwd: root,
     encoding: "utf8",
-    env: { ...process.env, CGO_ENABLED: "0", GOOS: goos, GOARCH: goarch },
+    env: { ...env, GOOS: goos, GOARCH: goarch },
     maxBuffer: 64 * 1024 * 1024,
   });
   if (result.error) throw result.error;
@@ -233,9 +235,14 @@ export function sameVolumeTemp(path) {
 }
 
 export function workspaceTemp() {
-  const staging = join(tmpdir(), `block-app.${process.pid}.${randomBytes(4).toString("hex")}`);
-  mkdirSync(staging);
-  return staging;
+  const prefix = `block-app.${process.pid}.`;
+  try {
+    return mkdtempSync(join(tmpdir(), prefix));
+  } catch (error) {
+    if (!["ENOENT", "ENOTDIR", "EACCES", "EPERM", "EROFS"].includes(error?.code)) throw error;
+    // A runner can remove its private TMPDIR before the build starts.
+    return mkdtempSync(join("/tmp", prefix));
+  }
 }
 
 export function remove(path) {
