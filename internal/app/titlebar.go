@@ -57,15 +57,18 @@ type TitlebarProps struct {
 
 	CanBack    bool
 	CanForward bool
-	ZoomPct    int // 90, 100, 110
+	Busy       bool
 
 	ShortcutSidebar string
 	ShortcutNewTab  string
 	ShortcutAI      string
 	ShortcutExport  string
 
-	PendingAnnotations int
-	OnSendAnnotations  func()
+	// Annotation summary for the titlebar send segment (thinkly-fast annotation_summary).
+	AnnotDrafts       int
+	AnnotGenerating   bool
+	AnnotHasAny       bool
+	OnSendAnnotations func()
 
 	MenuState *TabMenuState
 
@@ -84,8 +87,6 @@ type TitlebarProps struct {
 	OnOpenExport      func()
 	OnCopyMarkdown    func()
 	OnRevealActive    func()
-	OnDeleteActive    func()
-	OnSetZoom         func(pct int)
 	OnPreviewZoomStep func(factor float32)
 	OnPreviewActual   func()
 	OnPreviewFit      func()
@@ -216,13 +217,11 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 		blockui.Probe(center, "titlebar-tabs")
 		center.Children(func() {
 			if p.InSettings {
-				crumb := ui.Row(c).Fill().AlignItems(ui.Center).Gap(6).DragWindow()
+				crumb := ui.Row(c).Fill().AlignItems(ui.Center).Gap(6).PaddingX(6).DragWindow()
 				crumb.Children(func() {
-					ui.Text(c, theme.Tr("设置", "Settings")).FontSize(14).FontWeight(500).TextColor(pal.TextSecondary).SingleLine()
-					if p.SettingsTabLabel != "" {
-						ui.Text(c, "/").FontSize(14).TextColor(pal.TextSecondary)
-						ui.Text(c, localizeSettingsTabLabel(p.SettingsTabLabel)).FontSize(14).FontWeight(500).TextColor(pal.Text).SingleLine()
-					}
+					ui.Text(c, theme.Tr("设置", "Settings")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+					ui.Text(c, "/").FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+					ui.Text(c, localizeSettingsTabLabel(p.SettingsTabLabel)).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 				})
 				return
 			}
@@ -233,111 +232,13 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 				}
 				drag := ui.Row(c).Fill().AlignItems(ui.Center).DragWindow()
 				drag.Children(func() {
-					ui.Text(c, title).FontSize(14).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+					ui.Text(c, title).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 				})
 				return
 			}
 
 			multi := len(p.Tabs) > 1
-			c.Key("titlebar-tab-strip")
-			strip := ui.ScrollHorizontal(c).FillHeight().Shrink(1).MinWidth(0)
-			blockui.Probe(strip, "titlebar-tab-strip")
-			strip.Children(func() {
-				ui.Row(c).FillHeight().AlignItems(ui.Center).Gap(4).Children(func() {
-					for ix, tabPath := range p.Tabs {
-						tabPath := tabPath
-						ix := ix
-						active := !multi || tabPath == p.ActiveTab
-						dirty := p.IsDirty != nil && p.IsDirty(tabPath)
-						label := noteDisplayTitle(tabPath, false)
-						if label == "" {
-							label = theme.Tr("未命名", "Untitled")
-						}
-						tabID := fmt.Sprintf("tab-%d", ix)
-						c.Key(tabID)
-						maxW := float32(220)
-						padR := float32(6)
-						minW := float32(76)
-						if !multi {
-							maxW = 240
-							padR = 10
-							minW = 0
-						}
-						pill := ui.ButtonBase(c).Height(28).MinWidth(minW).MaxWidth(maxW).Padding(0, padR, 0, 10).
-							Gap(6).AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
-							Role(ui.RoleTab).Selected(active).Label(label)
-						hovered := pill.Hovered()
-						switch {
-						case active && multi:
-							pill.Background(pal.Selected).Border(1, pal.Accent)
-						case hovered && multi:
-							pill.Background(pal.Hover).Border(1, ui.Transparent)
-						default:
-							pill.Background(ui.Transparent).Border(1, ui.Transparent)
-						}
-						var closeClicked bool
-						pill.Children(func() {
-							fg := pal.TextSecondary
-							if active || (multi && hovered) {
-								fg = pal.Text
-							}
-							ui.Text(c, label).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-							if multi {
-								if hovered || active {
-									if active && dirty {
-										ui.Box(c).Size(6, 6).Shrink(0).Radius(theme.RadiusPill).Background(pal.Accent)
-									}
-									closeID := fmt.Sprintf("tab-close-%d", ix)
-									c.Key(closeID)
-									cb := ui.ButtonBase(c).Size(18, 18).Shrink(0).Center().Radius(theme.RadiusMicroSM).Cursor(ui.CursorPointer).
-										Label(theme.Tr("关闭标签页", "Close Tab"))
-									closeHover := cb.Hovered()
-									if closeHover {
-										cb.Background(pal.SelectionBG)
-									}
-									cb.Children(func() {
-										ic := pal.MonoIconColors(pal.TextSecondary)
-										if closeHover {
-											ic = pal.DuoIconColors(pal.Text)
-										}
-										icons.Draw(c, icons.Close, theme.IconInline, ic)
-									})
-									blockui.Probe(cb, closeID)
-									if cb.Clicked() {
-										closeClicked = true
-									}
-								} else if dirty {
-									ui.Box(c).Size(6, 6).Shrink(0).Radius(theme.RadiusPill).Background(pal.Accent)
-								}
-							} else if dirty {
-								ui.Box(c).Size(6, 6).Shrink(0).Radius(theme.RadiusPill).Background(pal.Accent)
-							}
-						})
-						blockui.Probe(pill, tabID)
-						blockui.Probe(pill, "tab:"+tabPath)
-
-						if closeClicked {
-							if p.OnCloseTab != nil {
-								p.OnCloseTab(tabPath)
-							}
-						} else if pill.RightClicked() && p.MenuState != nil {
-							b := pill.Bounds()
-							tx, ty := b.X+8, b.Y+b.H+4
-							if px, py, ok := pill.PointerPosition(); ok {
-								tx, ty = b.X+px, b.Y+py
-							}
-							p.MenuState.PageMenuOpen = false
-							p.MenuState.TabMenuOpen = true
-							p.MenuState.TabMenuIndex = ix
-							p.MenuState.TabMenuPath = tabPath
-							p.MenuState.TabMenuX = tx
-							p.MenuState.TabMenuY = ty
-						} else if pill.Clicked() && p.OnSelectTab != nil {
-							p.OnSelectTab(tabPath)
-						}
-					}
-				})
-			})
+			renderTabStrip(c, p)
 
 			if multi {
 				newTabBtn := blockui.IconButton(c, icons.Plus, blockui.IconButtonOptions{
@@ -354,72 +255,9 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 			ui.Box(c).Grow(1).MinWidth(16).FillHeight().DragWindow()
 		})
 
-		// 3. Right tail: contextual file tools + Feedback + AI Panel + Page More menu.
+		// 3. Right tail: contextual file tools + Feedback + AI Panel + Page More pill.
 		if !p.InSettings && !p.AIImmersive {
-			tailPad := float32(10)
-			if !theme.IsMacOS() && tb.Right > 0 {
-				tailPad = tb.Right + 8
-			}
-			surface := p.ActiveSurface
-			if len(p.Tabs) == 0 {
-				surface = SurfaceEmpty
-			} else if surface == SurfaceEmpty {
-				surface = SurfaceNote
-			}
-
-			tail := ui.Row(c).FillHeight().Shrink(0).AlignItems(ui.Center).Gap(4).Padding(0, tailPad, 0, 0)
-			tail.Children(func() {
-				if surface != SurfaceNote {
-					renderNonNoteTitlebarTools(c, p, surface)
-				}
-
-				if surface == SurfaceNote && p.PendingAnnotations > 0 && p.OnSendAnnotations != nil {
-					lbl := fmt.Sprintf("%s (%d)", theme.Tr("统一发送", "Send all"), p.PendingAnnotations)
-					sendBtn := blockui.ActionButton(c, "annotations-send-all", lbl, nil, blockui.ButtonPrimary, false)
-					if sendBtn.Clicked() {
-						p.OnSendAnnotations()
-					}
-				}
-
-				fbBtn := blockui.IconButton(c, icons.MessageSquare, blockui.IconButtonOptions{
-					ID:      "titlebar-feedback",
-					Tooltip: theme.Tr("反馈与建议", "Feedback"),
-					Active:  p.FeedbackOpen || p.HasFeedbackDraft,
-				})
-				if fbBtn.Clicked() && p.OnToggleFeedback != nil {
-					p.OnToggleFeedback()
-				}
-
-				aiSc := p.ShortcutAI
-				if aiSc == "" {
-					aiSc = "cmd-j"
-				}
-				aiBtn := blockui.IconButton(c, icons.Sparkles, blockui.IconButtonOptions{
-					ID:      "titlebar-ai",
-					Tooltip: fmt.Sprintf("%s %s", theme.Tr("AI 助手", "AI Assistant"), blockui.FormatShortcutDisplay(aiSc)),
-					Active:  p.AIOpen,
-				})
-				if aiBtn.Clicked() && p.OnToggleAI != nil {
-					p.OnToggleAI()
-				}
-
-				if surface == SurfaceNote && len(p.Tabs) > 0 {
-					moreOpen := p.MenuState != nil && p.MenuState.PageMenuOpen
-					moreBtn := blockui.IconButton(c, icons.More, blockui.IconButtonOptions{
-						ID:      "titlebar-more",
-						Tooltip: theme.Tr("页面操作", "Page Actions"),
-						Active:  moreOpen,
-					})
-					bounds := moreBtn.Bounds()
-					if p.MenuState != nil && bounds.W > 0 {
-						p.MenuState.PageMenuAnchor = bounds
-					}
-					if moreBtn.Clicked() && p.MenuState != nil {
-						p.MenuState.TabMenuOpen = false
-						p.MenuState.PageMenuOpen = !p.MenuState.PageMenuOpen
-					}
-				}
-			})
+			renderTitlebarTail(c, p, tb.Right)
 		}
 	})
 
@@ -510,10 +348,10 @@ func renderZoomCluster(c *ui.Context, id string, p TitlebarProps) {
 			p.OnPreviewZoomStep(1.2)
 		}
 		c.Key(id + "-fit")
-		fitBtn := ui.ButtonBase(c).Height(22).PaddingX(6).Center().Radius(4).Cursor(ui.CursorPointer).
+		fitBtn := ui.ButtonBase(c).Height(22).PaddingX(6).Center().Radius(4).Border(1, ui.Transparent).Cursor(ui.CursorPointer).
 			Label(theme.Tr("适应", "Fit"))
 		if p.PreviewZoomFit {
-			fitBtn.Background(pal.Selected)
+			fitBtn.Background(pal.Selected).Border(1, pal.Accent)
 		} else if fitBtn.Hovered() {
 			fitBtn.Background(pal.Hover)
 		}
@@ -546,7 +384,7 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 		}
 		scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
 		if p.MenuState.PageMenuOpen {
-			menuW := float32(228)
+			menuW := float32(216)
 			items := buildPageMenuItems(p)
 			estH := estimateMenuHeight(items)
 			anchor := p.MenuState.PageMenuAnchor
@@ -577,7 +415,7 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 		}
 
 		if p.MenuState.TabMenuOpen {
-			menuW := float32(208)
+			menuW := float32(204)
 			items := buildTabContextItems(p)
 			estH := estimateMenuHeight(items)
 			spec := blockui.PlaceAtPoint(p.MenuState.TabMenuX, p.MenuState.TabMenuY)
@@ -615,110 +453,26 @@ func estimateMenuHeight(items []blockui.MenuItemSpec) float32 {
 	return h
 }
 
+// buildPageMenuItems mirrors thinkly-fast page-more-menu.
 func buildPageMenuItems(p TitlebarProps) []blockui.MenuItemSpec {
 	icHist := icons.History
 	icImg := icons.Image
 	icCopy := icons.Copy
 	icReveal := icons.FolderReveal
-	icTrash := icons.Trash
-	zoom := p.ZoomPct
-	if zoom == 0 {
-		zoom = 100
+	item := func(id, label, shortcut string, ic *icons.Icon, fn func()) blockui.MenuItemSpec {
+		return blockui.MenuItemSpec{ID: id, Label: label, Shortcut: shortcut, Icon: ic, OnClick: func() {
+			p.MenuState.Close()
+			if fn != nil {
+				fn()
+			}
+		}}
 	}
 	return []blockui.MenuItemSpec{
-		{
-			ID:    "page-history",
-			Label: theme.Tr("页面历史…", "Page History…"),
-			Icon:  &icHist,
-			OnClick: func() {
-				p.MenuState.Close()
-				if p.OnOpenHistory != nil {
-					p.OnOpenHistory()
-				}
-			},
-		},
-		{
-			ID:       "page-export-image",
-			Label:    theme.Tr("导出与生成图片…", "Export & Image…"),
-			Shortcut: blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutExport, "cmd-shift-e")),
-			Icon:     &icImg,
-			OnClick: func() {
-				p.MenuState.Close()
-				if p.OnOpenExport != nil {
-					p.OnOpenExport()
-				}
-			},
-		},
-		{
-			ID:       "page-copy-md",
-			Label:    theme.Tr("复制 Markdown", "Copy Markdown"),
-			Shortcut: blockui.FormatShortcutDisplay("alt-cmd-c"),
-			Icon:     &icCopy,
-			OnClick: func() {
-				p.MenuState.Close()
-				if p.OnCopyMarkdown != nil {
-					p.OnCopyMarkdown()
-				}
-			},
-		},
+		item("page-history", theme.Tr("页面历史…", "Page History…"), "", &icHist, p.OnOpenHistory),
+		item("page-export-image", theme.Tr("生成图片…", "Export as Image…"), blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutExport, "cmd-shift-e")), &icImg, p.OnOpenExport),
+		item("page-copy-md", theme.Tr("复制 Markdown", "Copy Markdown"), blockui.FormatShortcutDisplay("alt-cmd-c"), &icCopy, p.OnCopyMarkdown),
 		{Separator: true},
-		{
-			ID:      "page-zoom-90",
-			Label:   theme.Tr("缩放 90%", "Zoom 90%"),
-			Checked: zoom == 90,
-			OnClick: func() {
-				p.MenuState.Close()
-				if p.OnSetZoom != nil {
-					p.OnSetZoom(90)
-				}
-			},
-		},
-		{
-			ID:      "page-zoom-100",
-			Label:   theme.Tr("缩放 100%", "Zoom 100%"),
-			Checked: zoom == 100,
-			OnClick: func() {
-				p.MenuState.Close()
-				if p.OnSetZoom != nil {
-					p.OnSetZoom(100)
-				}
-			},
-		},
-		{
-			ID:      "page-zoom-110",
-			Label:   theme.Tr("缩放 110%", "Zoom 110%"),
-			Checked: zoom == 110,
-			OnClick: func() {
-				p.MenuState.Close()
-				if p.OnSetZoom != nil {
-					p.OnSetZoom(110)
-				}
-			},
-		},
-		{Separator: true},
-		{
-			ID:    "page-reveal",
-			Label: theme.Tr("在访达中显示", "Reveal in File Manager"),
-			Icon:  &icReveal,
-			OnClick: func() {
-				p.MenuState.Close()
-				if p.OnRevealActive != nil {
-					p.OnRevealActive()
-				}
-			},
-		},
-		{
-			ID:     "page-delete",
-			Label:  theme.Tr("移到废纸篓", "Move to Trash"),
-			Icon:   &icTrash,
-			Danger: true,
-			OnClick: func() {
-				p.MenuState.Close()
-				if p.OnDeleteActive != nil {
-					p.OnDeleteActive()
-				}
-			},
-		},
+		item("page-reveal", theme.Tr("在访达中显示", "Reveal in Finder"), "", &icReveal, p.OnRevealActive),
 	}
 }
 
