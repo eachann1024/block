@@ -207,9 +207,15 @@ type Session struct {
 	tableMenuIndex   int
 
 	// Drag reorder
-	dragBlockID model.BlockID
-	dragOverIdx int
-	dragActive  bool
+	dragBlockID     model.BlockID
+	dragOverIdx     int
+	dragAfter       bool
+	dragActive      bool
+	dragCanceled    bool
+	dragStartPt     ui.Point
+	dragDropPending bool
+	dragDropFrom    int
+	dragDropTo      int
 
 	// Layout & Scroll
 	bodyScroll     ui.ScrollState
@@ -234,6 +240,8 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 		focusedBlock:     0,
 		hoveredBlock:     -1,
 		dragOverIdx:      -1,
+		dragDropFrom:     -1,
+		dragDropTo:       -1,
 		mouseOriginBlock: -1,
 		blockHandles:     make(map[model.BlockID]ui.Handle),
 		blockRects:       make(map[model.BlockID]ui.Rect),
@@ -296,6 +304,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.mouseOriginBlock = -1
 	s.mouseDragged = false
 	s.pressJustBegan = false
+	s.resetBlockDrag()
 	s.firstLineDeleteArmed = false
 	s.blockMenu = nil
 	s.toolbarPop = ""
@@ -514,6 +523,7 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 	s.dirty = true
 	s.focusPending = true
 	s.selSyncPending = true
+	s.resetBlockDrag()
 	s.firstLineDeleteArmed = false
 	s.blockMenu = nil
 	s.toolbarPop = ""
