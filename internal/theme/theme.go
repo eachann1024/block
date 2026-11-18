@@ -127,6 +127,7 @@ type Palette struct {
 	InlineCodeFG      ui.Color
 	InlineCodeBG      ui.Color
 	InlineCodeHoverBG ui.Color
+	InlineCodeEditBG  ui.Color
 	CodeBlockBG       ui.Color
 	HintBand          ui.Color
 	ListGuide         ui.Color
@@ -212,6 +213,7 @@ var OceanLight = Palette{
 	InlineCodeFG:      ui.Hex("#eb5757"),
 	InlineCodeBG:      ui.RGBA(135, 131, 120, 0.15),
 	InlineCodeHoverBG: ui.RGBA(135, 131, 120, 0.22),
+	InlineCodeEditBG:  ui.RGBA(135, 131, 120, 0.24),
 	CodeBlockBG:       ui.Hex("#f8f8f6"),
 	HintBand:          ui.Hex("#f8f8f6"),
 	ListGuide:         ui.Hex("#e6e4df"),
@@ -297,6 +299,7 @@ var OceanDark = Palette{
 	InlineCodeFG:      ui.Hex("#ff7369"),
 	InlineCodeBG:      ui.RGBA(255, 255, 255, 0.094),
 	InlineCodeHoverBG: ui.RGBA(255, 255, 255, 0.14),
+	InlineCodeEditBG:  ui.RGBA(255, 255, 255, 0.15),
 	CodeBlockBG:       ui.Hex("#1d2026"),
 	HintBand:          ui.Hex("#1e1e1e"),
 	ListGuide:         ui.Hex("#333333"),
