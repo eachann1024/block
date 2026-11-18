@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, cpSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -6,12 +6,15 @@ import {
   assertSystemLibraries,
   goBuild,
   installPath,
+  isProcessAlive,
   logIssue,
+  markNeverIndex,
   normalizeArch,
   normalizePlatform,
   plist,
   remove,
   sign,
+  unregisterMacBundle,
   workspaceTemp,
 } from "./app-bundle.mjs";
 import { commitInstall, installLinux, installWindows, prepareInstall } from "./install-app.mjs";
@@ -43,7 +46,7 @@ if (import.meta.main) {
 
     const result = await buildApp({ install, profile, platform, arch, useMygo });
     console.log(result.artifact);
-    if (result.installedPath) console.log(result.installedPath);
+    if (result.installedPath && result.installedPath !== result.artifact) console.log(result.installedPath);
   } catch (error) {
     const detail = error instanceof Error ? error.stack || error.message : String(error);
     logIssue("ERROR", detail);
@@ -122,16 +125,23 @@ export async function buildApp({
 
       const distArchApp = join(root, "dist", `darwin-${targetArch}`, `${appName}.app`);
       const distRootApp = join(root, "dist", `${appName}.app`);
+      if (canInstall) {
+        timer.measure("dist_publish", () => pruneLocalDistBundles());
+        const installedPath = timer.measure("install_commit", () => commitInstall(job.plan));
+        return { artifact: installedPath, archArtifact: installedPath, binary: distBin, installedPath };
+      }
+
       timer.measure("dist_publish", () => {
+        markNeverIndex(join(root, "dist"));
+        markNeverIndex(join(root, "dist", `darwin-${targetArch}`));
         publishDir(bundle, distArchApp);
         publishDir(bundle, distRootApp);
+        if (pathExists(installPath)) {
+          unregisterMacBundle(distArchApp);
+          unregisterMacBundle(distRootApp);
+        }
       });
-
-      let installedPath = null;
-      if (canInstall) {
-        installedPath = timer.measure("install_commit", () => commitInstall(job.plan));
-      }
-      return { artifact: distRootApp, archArtifact: distArchApp, binary: distBin, installedPath };
+      return { artifact: distRootApp, archArtifact: distArchApp, binary: distBin, installedPath: null };
     }
 
     if (targetPlatform === "windows") {
@@ -180,6 +190,10 @@ function assembleMacBundle(bundle, executable, profile) {
   const resources = join(bundle, "Contents/Resources");
   mkdirSync(resources, { recursive: true });
   cpSync(join(root, "assets/app-icon/AppIcon.icns"), join(resources, "AppIcon.icns"));
+  const docIcon = join(root, "assets/app-icon/DocumentIcon.icns");
+  if (pathExists(docIcon)) {
+    cpSync(docIcon, join(resources, "DocumentIcon.icns"));
+  }
   const notices = join(root, "THIRD_PARTY_NOTICES.md");
   if (profile === "release" || pathExists(notices)) {
     copyFileSync(notices, join(resources, "THIRD_PARTY_NOTICES.md"));
@@ -204,8 +218,8 @@ function publishFile(src, dest, mode = 0o755) {
 function publishDir(srcDir, finalDir) {
   const parent = join(finalDir, "..");
   mkdirSync(parent, { recursive: true });
-  const staged = join(parent, `.${appName}.app.staging-${process.pid}`);
-  const previous = join(parent, `.${appName}.app.previous-${process.pid}`);
+  const staged = join(parent, `.${appName}.staging-${process.pid}`);
+  const previous = join(parent, `.${appName}.previous-${process.pid}`);
   remove(staged);
   cpSync(srcDir, staged, { recursive: true });
   let aside = false;
@@ -224,6 +238,37 @@ function publishDir(srcDir, finalDir) {
   return finalDir;
 }
 
+function pruneLocalDistBundles() {
+  const distDir = join(root, "dist");
+  markNeverIndex(distDir);
+  let entries = [];
+  try {
+    entries = readdirSync(distDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const ent of entries) {
+    const full = join(distDir, ent.name);
+    if (ent.isDirectory() && ent.name.endsWith(".app")) {
+      unregisterMacBundle(full);
+      remove(full);
+      continue;
+    }
+    if (ent.isDirectory() && ent.name.startsWith("darwin-")) {
+      try {
+        for (const sub of readdirSync(full, { withFileTypes: true })) {
+          if (sub.isDirectory() && sub.name.endsWith(".app")) {
+            const subPath = join(full, sub.name);
+            unregisterMacBundle(subPath);
+            remove(subPath);
+          }
+        }
+      } catch {}
+      remove(full);
+    }
+  }
+}
+
 function pathExists(path) {
   try {
     lstatSync(path);
@@ -234,18 +279,8 @@ function pathExists(path) {
   }
 }
 
-function isProcessAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error?.code === "EPERM";
-  }
-}
-
 async function acquireLock(detail) {
-  mkdirSync(join(root, "dist"), { recursive: true });
+  markNeverIndex(join(root, "dist"));
   const deadline = Date.now() + 90_000;
   let sleepNs = 0n;
   const publish = () => {
@@ -281,7 +316,10 @@ async function acquireLock(detail) {
 }
 
 function cleanup(job) {
-  if (job.staging) remove(job.staging);
+  if (job.staging) {
+    unregisterMacBundle(join(job.staging, `${appName}.app`));
+    remove(job.staging);
+  }
   if (job.plan && !job.plan.keep) remove(job.plan.staging);
   job.release?.();
   job.staging = "";

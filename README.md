@@ -43,7 +43,7 @@ bun run smoke
 bun run build
 ```
 
-- **macOS**：编译 `dist/block`，组装并签名 `dist/darwin-arm64/Block.app` 与 `dist/Block.app`（Bundle ID：`dev.eachann.block`），并原子替换 `/Applications/Block.app`（不杀正在运行的旧进程）。
+- **macOS**：编译 `dist/block`，在临时目录组装并签名应用包（Bundle ID：`dev.eachann.block`），原子替换 `/Applications/Block.app`（不杀正在运行的旧进程，并清理重复 LaunchServices 注册）。
 - **Windows**：可通过 `bun run build:windows` 交叉编译 `dist/windows-amd64/block.exe`；在 Windows 本机运行 `bun run build` 时通过重命名旧可执行文件无感更新 `%LOCALAPPDATA%\Programs\Block\block.exe` 并创建开始菜单快捷方式。
 - **Linux**：可通过 `bun run build:linux` 交叉编译 `dist/linux-amd64/block`；在 Linux 本机运行 `bun run build` 时原子替换 `~/.local/bin/block` 并写入图标与 `.desktop` 文件。
 - **仅构建不安装（CI）**：`bun run build:ci`（或 `--no-install`）。

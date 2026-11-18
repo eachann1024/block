@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,9 +9,13 @@ import {
   bundleId,
   installPath,
   installedExecutable,
+  isProcessAlive,
   legacyInstallPath,
+  pruneLaunchServicesRegistrations,
+  refreshUserIconCache,
   remove,
   sameVolumeTemp,
+  unregisterMacBundle,
   verifySignature,
 } from "./app-bundle.mjs";
 import { appPids } from "./stop-app.mjs";
@@ -21,16 +25,17 @@ const readyWaitMs = 8000;
 
 export function prepareInstall(bundle) {
   const present = assertInstallTarget(installPath);
+  const hadDocumentIcon = present && pathExists(join(installPath, "Contents/Resources/DocumentIcon.icns"));
   assertWritable(dirname(installPath));
   const staging = sameVolumeTemp(installPath);
-  const staged = join(staging, "Block.app");
+  const staged = join(staging, "staged-bundle");
   try {
     cpSync(bundle, staged, { recursive: true });
   } catch (error) {
     remove(staging);
     throw error;
   }
-  return { staging, staged, backup: join(staging, "previous.app"), present, keep: false };
+  return { staging, staged, backup: join(staging, "previous-bundle"), present, hadDocumentIcon, keep: false };
 }
 
 export function commitInstall(plan) {
@@ -54,11 +59,48 @@ export function commitInstall(plan) {
     throw error;
   }
   if (plan.present) remove(plan.backup);
-  if (pathExists(legacyInstallPath)) remove(legacyInstallPath);
+  if (pathExists(legacyInstallPath)) {
+    unregisterMacBundle(legacyInstallPath);
+    remove(legacyInstallPath);
+  }
+  cleanStaleInstallStaging(dirname(installPath), plan.staging);
   plan.keep = false;
-  const lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
-  spawnSync(lsregister, ["-f", installPath], { stdio: "ignore" });
+  try {
+    const now = new Date();
+    utimesSync(installPath, now, now);
+  } catch {}
+  pruneLaunchServicesRegistrations(installPath);
+  spawnSync("open", ["-n", "-g", "-j", installPath, "--args", "--version"], {
+    stdio: "ignore",
+    env: detachedLaunchEnv(),
+  });
+  if (!plan.hadDocumentIcon) {
+    refreshUserIconCache();
+  }
   return installPath;
+}
+
+function cleanStaleInstallStaging(appsDir, currentStaging) {
+  let entries = [];
+  try {
+    entries = readdirSync(appsDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory() || !ent.name.startsWith(".block-install.")) continue;
+    const candidate = join(appsDir, ent.name);
+    if (candidate === currentStaging) continue;
+    const parts = ent.name.split(".");
+    const pid = Number.parseInt(parts[2] || "", 10);
+    if (isProcessAlive(pid)) continue;
+    try {
+      for (const sub of readdirSync(candidate)) {
+        if (sub.endsWith(".app")) unregisterMacBundle(join(candidate, sub));
+      }
+    } catch {}
+    remove(candidate);
+  }
 }
 
 export function installWindows(exePath) {
