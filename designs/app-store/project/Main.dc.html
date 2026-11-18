@@ -186,6 +186,20 @@
         </div>
 
         <sc-if value="{{isStoreView}}" hint-placeholder-val="{{true}}">
+          <section aria-label="手动安装本地插件" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">手动安装</h2>
+              <sc-if value="{{manualInstallDone}}" hint-placeholder-val="{{false}}">
+                <span style="height: 22px; padding: 0 9px; border-radius: 99px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}; font-size: 12px; display: inline-flex; align-items: center">{{manualInstallStatus}}</span>
+              </sc-if>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px">
+              <input aria-label="本地插件目录或压缩包路径" type="text" placeholder="输入本地插件目录或 manifest.json 路径" value="{{manualPath}}" onInput="{{onManualPathInput}}" class="inp mono" style="flex: 1; min-width: 0; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              <button type="button" class="btn" onClick="{{pickManualDir}}" style="height: 34px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">本地目录…</button>
+              <button type="button" class="btn" onClick="{{installManual}}" style="height: 34px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">安装</button>
+            </div>
+          </section>
+
           <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
             <sc-for list="{{storeApps}}" as="app" hint-placeholder-count="5">
               <section aria-label="{{app.name}}" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 14px">
@@ -264,6 +278,24 @@
         </sc-if>
 
         <sc-if value="{{isSyncView}}" hint-placeholder-val="{{false}}">
+          <section aria-label="同步运行指标" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">同步状态</h2>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+              <div style="background: {{shellBg}}; border: 1px solid {{hairline}}; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 12px; color: {{mutedCol}}">已同步笔记</span>
+                <span class="mono" style="font-size: 20px; line-height: 26px; font-weight: 560; color: {{textCol}}">{{syncNotesCount}}</span>
+              </div>
+              <div style="background: {{shellBg}}; border: 1px solid {{hairline}}; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 12px; color: {{mutedCol}}">待推送变更</span>
+                <span class="mono" style="font-size: 20px; line-height: 26px; font-weight: 560; color: {{textCol}}">{{syncPendingCount}}</span>
+              </div>
+              <div style="background: {{shellBg}}; border: 1px solid {{hairline}}; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 12px; color: {{mutedCol}}">最近同步耗时</span>
+                <span class="mono" style="font-size: 20px; line-height: 26px; font-weight: 560; color: {{textCol}}">{{syncDurationVal}}</span>
+              </div>
+            </div>
+          </section>
+
           <section aria-label="同步方式与存储目标" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
               <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">存储目标</h2>
@@ -274,15 +306,52 @@
               </div>
             </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
-              <label for="sync-ep" style="color: {{textCol}}; white-space: nowrap">{{epLabel}}</label>
-              <input id="sync-ep" type="text" value="{{epVal}}" onInput="{{onEpInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
-            </div>
+            <sc-if value="{{isSyncMirror}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="sync-mirror-dir" style="color: {{textCol}}; white-space: nowrap">镜像目录</label>
+                <div style="width: 420px; max-width: 100%; display: flex; align-items: center; gap: 8px">
+                  <input id="sync-mirror-dir" type="text" value="{{syncMirrorDir}}" onInput="{{onSyncMirrorDirInput}}" class="inp mono" style="flex: 1; min-width: 0; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+                  <button type="button" class="btn" onClick="{{pickSyncMirrorDir}}" style="height: 34px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">选择…</button>
+                </div>
+              </div>
+            </sc-if>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
-              <label for="sync-dir" style="color: {{textCol}}; white-space: nowrap">目标路径</label>
-              <input id="sync-dir" type="text" value="{{syncDirVal}}" onInput="{{onSyncDirInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
-            </div>
+            <sc-if value="{{isSyncWebdav}}" hint-placeholder-val="{{true}}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="sync-dav-url" style="color: {{textCol}}; white-space: nowrap">WebDAV 地址</label>
+                <input id="sync-dav-url" type="text" value="{{syncDavUrl}}" onInput="{{onSyncDavUrlInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="sync-dav-dir" style="color: {{textCol}}; white-space: nowrap">远端目录</label>
+                <div style="width: 420px; max-width: 100%; display: flex; align-items: center; gap: 8px">
+                  <input id="sync-dav-dir" type="text" value="{{syncDavDir}}" onInput="{{onSyncDavDirInput}}" class="inp mono" style="flex: 1; min-width: 0; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+                  <button type="button" class="btn" onClick="{{pickSyncDavDir}}" style="height: 34px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">选择…</button>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="sync-dav-user" style="color: {{textCol}}; white-space: nowrap">用户名</label>
+                <input id="sync-dav-user" type="text" value="{{syncDavUser}}" onInput="{{onSyncDavUserInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="sync-dav-pass" style="color: {{textCol}}; white-space: nowrap">密码</label>
+                <input id="sync-dav-pass" type="password" value="{{syncDavPass}}" onInput="{{onSyncDavPassInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
+            </sc-if>
+
+            <sc-if value="{{isSyncGit}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="sync-git-repo" style="color: {{textCol}}; white-space: nowrap">Git 仓库</label>
+                <input id="sync-git-repo" type="text" value="{{syncGitRepo}}" onInput="{{onSyncGitRepoInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="sync-git-branch" style="color: {{textCol}}; white-space: nowrap">分支</label>
+                <input id="sync-git-branch" type="text" value="{{syncGitBranch}}" onInput="{{onSyncGitBranchInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="sync-git-token" style="color: {{textCol}}; white-space: nowrap">访问令牌</label>
+                <input id="sync-git-token" type="password" value="{{syncGitToken}}" onInput="{{onSyncGitTokenInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
+            </sc-if>
 
             <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px">
               <button type="button" class="btn" onClick="{{testConn}}" style="background: {{shellBg}}; border: 1px solid {{connBd}}; color: {{textCol}}">{{connText}}</button>
@@ -290,12 +359,32 @@
             </div>
           </section>
 
-          <section aria-label="自动同步与冲突策略" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
-            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">自动同步与冲突策略</h2>
+          <section aria-label="自动同步与安全策略" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">自动同步与保护策略</h2>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
               <span style="color: {{textCol}}">保存笔记后自动同步</span>
               <button type="button" class="btn" onClick="{{toggleAuto}}" style="height: 30px; border-radius: 99px; background: {{autoBg}}; border: 1px solid {{autoBd}}; color: {{textCol}}">{{autoText}}</button>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">同步间隔</span>
+              <div role="group" aria-label="同步间隔" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <button type="button" class="seg" onClick="{{pickSyncIntReal}}" style="background: {{siRlBg}}; box-shadow: {{siRlRing}}; color: {{siRlCol}}">实时</button>
+                <button type="button" class="seg" onClick="{{pickSyncInt5}}" style="background: {{si5Bg}}; box-shadow: {{si5Ring}}; color: {{si5Col}}">5 分钟</button>
+                <button type="button" class="seg" onClick="{{pickSyncInt15}}" style="background: {{si15Bg}}; box-shadow: {{si15Ring}}; color: {{si15Col}}">15 分钟</button>
+                <button type="button" class="seg" onClick="{{pickSyncIntManual}}" style="background: {{siMnBg}}; box-shadow: {{siMnRing}}; color: {{siMnCol}}">手动</button>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">同步 assets 图片附件</span>
+              <button type="button" class="btn" onClick="{{toggleSyncAssets}}" style="height: 30px; border-radius: 99px; background: {{sAstBg}}; border: 1px solid {{sAstBd}}; color: {{textCol}}">{{sAstText}}</button>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">远端批量删除保护</span>
+              <button type="button" class="btn" onClick="{{toggleSyncDelGuard}}" style="height: 30px; border-radius: 99px; background: {{sDelBg}}; border: 1px solid {{sDelBd}}; color: {{textCol}}">{{sDelText}}</button>
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
@@ -339,20 +428,54 @@
               </div>
             </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
-              <label for="img-bucket" style="color: {{textCol}}; white-space: nowrap">{{imgBucketLabel}}</label>
-              <input id="img-bucket" type="text" value="{{imgBucketVal}}" onInput="{{onImgBucketInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
-            </div>
+            <sc-if value="{{isImgObjStore}}" hint-placeholder-val="{{true}}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="img-endpoint" style="color: {{textCol}}; white-space: nowrap">Endpoint</label>
+                <input id="img-endpoint" type="text" value="{{imgEndpointVal}}" onInput="{{onImgEndpointInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
-              <label for="img-domain" style="color: {{textCol}}; white-space: nowrap">自定义域名</label>
-              <input id="img-domain" type="text" value="{{imgDomainVal}}" onInput="{{onImgDomainInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
-            </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="img-bucket" style="color: {{textCol}}; white-space: nowrap">Bucket</label>
+                <input id="img-bucket" type="text" value="{{imgBucketVal}}" onInput="{{onImgBucketInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
-              <label for="img-secret" style="color: {{textCol}}; white-space: nowrap">访问密钥</label>
-              <input id="img-secret" type="password" value="{{imgSecretVal}}" onInput="{{onImgSecretInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
-            </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="img-ak" style="color: {{textCol}}; white-space: nowrap">Access Key ID</label>
+                <input id="img-ak" type="text" value="{{imgAccessKeyVal}}" onInput="{{onImgAccessKeyInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="img-secret" style="color: {{textCol}}; white-space: nowrap">Secret Key</label>
+                <input id="img-secret" type="password" value="{{imgSecretVal}}" onInput="{{onImgSecretInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="img-domain" style="color: {{textCol}}; white-space: nowrap">自定义域名</label>
+                <input id="img-domain" type="text" value="{{imgDomainVal}}" onInput="{{onImgDomainInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
+            </sc-if>
+
+            <sc-if value="{{isImgGithub}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="img-gh-repo" style="color: {{textCol}}; white-space: nowrap">GitHub 仓库</label>
+                <input id="img-gh-repo" type="text" value="{{imgGhRepoVal}}" onInput="{{onImgGhRepoInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="img-gh-branch" style="color: {{textCol}}; white-space: nowrap">分支</label>
+                <input id="img-gh-branch" type="text" value="{{imgGhBranchVal}}" onInput="{{onImgGhBranchInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="img-gh-token" style="color: {{textCol}}; white-space: nowrap">Token</label>
+                <input id="img-gh-token" type="password" value="{{imgGhTokenVal}}" onInput="{{onImgGhTokenInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <span style="color: {{textCol}}">jsDelivr 加速</span>
+                <button type="button" class="btn" onClick="{{toggleImgJsdelivr}}" style="height: 30px; border-radius: 99px; background: {{imgJsdBg}}; border: 1px solid {{imgJsdBd}}; color: {{textCol}}">{{imgJsdText}}</button>
+              </div>
+            </sc-if>
 
             <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px">
               <button type="button" class="btn" onClick="{{verifyImgHost}}" style="background: {{selectedBg}}; border: 1px solid {{imgVerifyBd}}; color: {{textCol}}">{{imgVerifyText}}</button>
@@ -360,11 +483,29 @@
           </section>
 
           <section aria-label="上传策略与扫描" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
-            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">自动上传与扫描</h2>
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">上传策略与处理规则</h2>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
               <span style="color: {{textCol}}">保存笔记自动上传本地图片</span>
               <button type="button" class="btn" onClick="{{toggleImgAuto}}" style="height: 30px; border-radius: 99px; background: {{imgAutoBg}}; border: 1px solid {{imgAutoBd}}; color: {{textCol}}">{{imgAutoText}}</button>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">命名规则</span>
+              <div role="group" aria-label="命名规则" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <button type="button" class="seg" onClick="{{pickImgNameHash}}" style="background: {{inHsBg}}; box-shadow: {{inHsRing}}; color: {{inHsCol}}">日期 + 哈希</button>
+                <button type="button" class="seg" onClick="{{pickImgNameOrig}}" style="background: {{inOrBg}}; box-shadow: {{inOrRing}}; color: {{inOrCol}}">原文件名</button>
+                <button type="button" class="seg" onClick="{{pickImgNameUuid}}" style="background: {{inIdBg}}; box-shadow: {{inIdRing}}; color: {{inIdCol}}">UUID</button>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">原图处理策略</span>
+              <div role="group" aria-label="原图处理策略" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <button type="button" class="seg" onClick="{{pickImgProcWebp}}" style="background: {{ipWbBg}}; box-shadow: {{ipWbRing}}; color: {{ipWbCol}}">转 WebP 压缩</button>
+                <button type="button" class="seg" onClick="{{pickImgProcRaw}}" style="background: {{ipRwBg}}; box-shadow: {{ipRwRing}}; color: {{ipRwCol}}">保留原图</button>
+                <button type="button" class="seg" onClick="{{pickImgProcLarge}}" style="background: {{ipLgBg}}; box-shadow: {{ipLgRing}}; color: {{ipLgCol}}">大图压缩</button>
+              </div>
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
@@ -399,25 +540,94 @@
               <div role="group" aria-label="导出格式" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
                 <button type="button" class="seg" onClick="{{pickPubSite}}" style="background: {{pbStBg}}; box-shadow: {{pbStRing}}; color: {{pbStCol}}">静态博客站点</button>
                 <button type="button" class="seg" onClick="{{pickPubWechat}}" style="background: {{pbWcBg}}; box-shadow: {{pbWcRing}}; color: {{pbWcCol}}">微信公众号排版</button>
-                <button type="button" class="seg" onClick="{{pickPubXhs}}" style="background: {{pbXhBg}}; box-shadow: {{pbXhRing}}; color: {{pbXhCol}}">小红书图文分段导出</button>
+                <button type="button" class="seg" onClick="{{pickPubXhs}}" style="background: {{pbXhBg}}; box-shadow: {{pbXhRing}}; color: {{pbXhCol}}">小红书图文切分</button>
               </div>
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
-              <span style="color: {{textCol}}">排版风格</span>
-              <div role="group" aria-label="排版风格" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
-                <button type="button" class="seg" onClick="{{pickStylePaper}}" style="background: {{psPrBg}}; box-shadow: {{psPrRing}}; color: {{psPrCol}}">极简纸感</button>
-                <button type="button" class="seg" onClick="{{pickStyleMag}}" style="background: {{psMgBg}}; box-shadow: {{psMgRing}}; color: {{psMgCol}}">杂志双栏</button>
-                <button type="button" class="seg" onClick="{{pickStyleTech}}" style="background: {{psTcBg}}; box-shadow: {{psTcRing}}; color: {{psTcCol}}">技术文档</button>
+              <span style="color: {{textCol}}">导出范围</span>
+              <div role="group" aria-label="导出范围" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                <button type="button" class="seg" onClick="{{pickPubScopeNote}}" style="background: {{psNtBg}}; box-shadow: {{psNtRing}}; color: {{psNtCol}}">当前打开笔记</button>
+                <button type="button" class="seg" onClick="{{pickPubScopeDir}}" style="background: {{psDrBg}}; box-shadow: {{psDrRing}}; color: {{psDrCol}}">指定子目录</button>
+                <button type="button" class="seg" onClick="{{pickPubScopeAll}}" style="background: {{psAlBg}}; box-shadow: {{psAlRing}}; color: {{psAlCol}}">整个笔记本</button>
               </div>
             </div>
+
+            <sc-if value="{{isPubScopeDir}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="pub-scope-dir" style="color: {{textCol}}; white-space: nowrap">指定子目录</label>
+                <div style="width: 420px; max-width: 100%; display: flex; align-items: center; gap: 8px">
+                  <input id="pub-scope-dir" type="text" value="{{pubScopeDir}}" onInput="{{onPubScopeDirInput}}" class="inp mono" style="flex: 1; min-width: 0; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+                  <button type="button" class="btn" onClick="{{browsePubScopeDir}}" style="height: 34px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">选择…</button>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{isPubSite}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <label for="pub-site-title" style="color: {{textCol}}; white-space: nowrap">站点标题</label>
+                <input id="pub-site-title" type="text" value="{{pubSiteTitle}}" onInput="{{onPubSiteTitleInput}}" class="inp" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <span style="color: {{textCol}}">站点主题风格</span>
+                <div role="group" aria-label="站点主题风格" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                  <button type="button" class="seg" onClick="{{pickStylePaper}}" style="background: {{psPrBg}}; box-shadow: {{psPrRing}}; color: {{psPrCol}}">极简纸感</button>
+                  <button type="button" class="seg" onClick="{{pickStyleMag}}" style="background: {{psMgBg}}; box-shadow: {{psMgRing}}; color: {{psMgCol}}">杂志双栏</button>
+                  <button type="button" class="seg" onClick="{{pickStyleTech}}" style="background: {{psTcBg}}; box-shadow: {{psTcRing}}; color: {{psTcCol}}">技术文档</button>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <span style="color: {{textCol}}">生成 RSS 与站点地图</span>
+                <button type="button" class="btn" onClick="{{togglePubRss}}" style="height: 30px; border-radius: 99px; background: {{pRssBg}}; border: 1px solid {{pRssBd}}; color: {{textCol}}">{{pRssText}}</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{isPubWechat}}" hint-placeholder-val="{{true}}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <span style="color: {{textCol}}">排版风格</span>
+                <div role="group" aria-label="排版风格" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                  <button type="button" class="seg" onClick="{{pickStylePaper}}" style="background: {{psPrBg}}; box-shadow: {{psPrRing}}; color: {{psPrCol}}">极简纸感</button>
+                  <button type="button" class="seg" onClick="{{pickStyleMag}}" style="background: {{psMgBg}}; box-shadow: {{psMgRing}}; color: {{psMgCol}}">杂志双栏</button>
+                  <button type="button" class="seg" onClick="{{pickStyleTech}}" style="background: {{psTcBg}}; box-shadow: {{psTcRing}}; color: {{psTcCol}}">技术文档</button>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <span style="color: {{textCol}}">外链自动转文末脚注</span>
+                <button type="button" class="btn" onClick="{{togglePubFootnote}}" style="height: 30px; border-radius: 99px; background: {{pFnBg}}; border: 1px solid {{pFnBd}}; color: {{textCol}}">{{pFnText}}</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{isPubXhs}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <span style="color: {{textCol}}">切页方式</span>
+                <div role="group" aria-label="切页方式" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                  <button type="button" class="seg" onClick="{{pickXhsSplitH2}}" style="background: {{xsH2Bg}}; box-shadow: {{xsH2Ring}}; color: {{xsH2Col}}">按二级标题</button>
+                  <button type="button" class="seg" onClick="{{pickXhsSplitHr}}" style="background: {{xsHrBg}}; box-shadow: {{xsHrRing}}; color: {{xsHrCol}}">按分隔线</button>
+                  <button type="button" class="seg" onClick="{{pickXhsSplitLen}}" style="background: {{xsLnBg}}; box-shadow: {{xsLnRing}}; color: {{xsLnCol}}">固定字数</button>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <span style="color: {{textCol}}">单页字数上限</span>
+                <div role="group" aria-label="单页字数上限" style="display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: {{shellBg}}; border: 1px solid {{hairline}}">
+                  <button type="button" class="seg" onClick="{{pickXhsMax300}}" style="background: {{xm3Bg}}; box-shadow: {{xm3Ring}}; color: {{xm3Col}}">300 字</button>
+                  <button type="button" class="seg" onClick="{{pickXhsMax500}}" style="background: {{xm5Bg}}; box-shadow: {{xm5Ring}}; color: {{xm5Col}}">500 字</button>
+                  <button type="button" class="seg" onClick="{{pickXhsMax800}}" style="background: {{xm8Bg}}; box-shadow: {{xm8Ring}}; color: {{xm8Col}}">800 字</button>
+                </div>
+              </div>
+            </sc-if>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
               <label for="pub-out" style="color: {{textCol}}; white-space: nowrap">输出目录</label>
-              <input id="pub-out" type="text" value="{{pubOutDir}}" onInput="{{onPubOutInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              <div style="width: 420px; max-width: 100%; display: flex; align-items: center; gap: 8px">
+                <input id="pub-out" type="text" value="{{pubOutDir}}" onInput="{{onPubOutInput}}" class="inp mono" style="flex: 1; min-width: 0; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+                <button type="button" class="btn" onClick="{{pickPubOutDir}}" style="height: 34px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">选择…</button>
+              </div>
             </div>
 
             <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px">
+              <sc-if value="{{isPubWechat}}" hint-placeholder-val="{{true}}">
+                <button type="button" class="btn" onClick="{{copyWechatHtml}}" style="background: {{shellBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">{{wechatCopyText}}</button>
+              </sc-if>
               <button type="button" class="btn" onClick="{{exportNow}}" style="background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">{{pubExportText}}</button>
             </div>
           </section>
@@ -450,8 +660,11 @@
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
-              <label for="mig-src" style="color: {{textCol}}; white-space: nowrap">源路径</label>
-              <input id="mig-src" type="text" value="{{migSrcPath}}" onInput="{{onMigSrcInput}}" class="inp mono" style="width: 420px; max-width: 100%; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              <label for="mig-src" style="color: {{textCol}}; white-space: nowrap">源目录</label>
+              <div style="width: 420px; max-width: 100%; display: flex; align-items: center; gap: 8px">
+                <input id="mig-src" type="text" value="{{migSrcPath}}" onInput="{{onMigSrcInput}}" class="inp mono" style="flex: 1; min-width: 0; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+                <button type="button" class="btn" onClick="{{pickMigSrcDir}}" style="height: 34px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">选择…</button>
+              </div>
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
@@ -460,8 +673,41 @@
             </div>
           </section>
 
-          <section aria-label="链接与附件归集策略" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
-            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">双向链接与附件归集</h2>
+          <section aria-label="清洗规则与附件归集" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">语法清洗与附件归集</h2>
+
+            <sc-if value="{{isMigObsidian}}" hint-placeholder-val="{{true}}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <span style="color: {{textCol}}">转换 Obsidian 双链与嵌入块</span>
+                <button type="button" class="btn" onClick="{{toggleMigObsWiki}}" style="height: 30px; border-radius: 99px; background: {{moWkBg}}; border: 1px solid {{moWkBd}}; color: {{textCol}}">{{moWkText}}</button>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <span style="color: {{textCol}}">转换 Callout 提示块为引用块</span>
+                <button type="button" class="btn" onClick="{{toggleMigObsCallout}}" style="height: 30px; border-radius: 99px; background: {{moClBg}}; border: 1px solid {{moClBd}}; color: {{textCol}}">{{moClText}}</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{isMigNotion}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <span style="color: {{textCol}}">剥离标题与文件名 32 位哈希</span>
+                <button type="button" class="btn" onClick="{{toggleMigNotHash}}" style="height: 30px; border-radius: 99px; background: {{mnHsBg}}; border: 1px solid {{mnHsBd}}; color: {{textCol}}">{{mnHsText}}</button>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <span style="color: {{textCol}}">CSV 数据库转为 Markdown 表格</span>
+                <button type="button" class="btn" onClick="{{toggleMigNotCsv}}" style="height: 30px; border-radius: 99px; background: {{mnCsBg}}; border: 1px solid {{mnCsBd}}; color: {{textCol}}">{{mnCsText}}</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{isMigYuque}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <span style="color: {{textCol}}">清洗语雀 HTML 锚点与冗余标签</span>
+                <button type="button" class="btn" onClick="{{toggleMigYuqAnchor}}" style="height: 30px; border-radius: 99px; background: {{myAnBg}}; border: 1px solid {{myAnBd}}; color: {{textCol}}">{{myAnText}}</button>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+                <span style="color: {{textCol}}">保留语雀目录层级结构</span>
+                <button type="button" class="btn" onClick="{{toggleMigYuqTree}}" style="height: 30px; border-radius: 99px; background: {{myTrBg}}; border: 1px solid {{myTrBd}}; color: {{textCol}}">{{myTrText}}</button>
+              </div>
+            </sc-if>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
               <span style="color: {{textCol}}">双向链接转换</span>
@@ -518,7 +764,7 @@
               </div>
               <div style="background: {{shellBg}}; border: 1px solid {{hairline}}; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px">
                 <span style="font-size: 12px; color: {{mutedCol}}">附件体积</span>
-                <span class="mono" style="font-size: 20px; line-height: 26px; font-weight: 560; color: {{textCol}}">42.6 MB</span>
+                <span class="mono" style="font-size: 20px; line-height: 26px; font-weight: 560; color: {{textCol}}">{{diagAssetSize}}</span>
               </div>
               <div style="background: {{shellBg}}; border: 1px solid {{hairline}}; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px">
                 <span style="font-size: 12px; color: {{mutedCol}}">内存占用</span>
@@ -541,8 +787,16 @@
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+              <span style="color: {{textCol}}">空白笔记检测</span>
+              <button type="button" class="btn" onClick="{{toggleDiagEmpty}}" style="height: 30px; border-radius: 99px; background: {{dEmpBg}}; border: 1px solid {{dEmpBd}}; color: {{textCol}}">{{dEmpText}}</button>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
               <span style="color: {{mutedCol}}">{{diagStatusText}}</span>
-              <button type="button" class="btn" onClick="{{runDiagnostics}}" style="background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">{{diagRunText}}</button>
+              <div style="display: flex; align-items: center; gap: 8px">
+                <button type="button" class="btn" onClick="{{archiveOrphans}}" style="background: {{shellBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">{{archiveOrphanText}}</button>
+                <button type="button" class="btn" onClick="{{runDiagnostics}}" style="background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">{{diagRunText}}</button>
+              </div>
             </div>
           </section>
 
@@ -553,7 +807,7 @@
             </div>
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid {{hairline}}">
               <span class="mono" style="color: {{textCol}}">assets/draft-v1.png</span>
-              <span style="font-size: 13px; color: {{mutedCol}}">孤立未引用附件 · 1.4 MB</span>
+              <span style="font-size: 13px; color: {{mutedCol}}">{{diagOrphanRowStatus}}</span>
             </div>
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid {{hairline}}">
               <span class="mono" style="color: {{textCol}}">notes/roadmap.md</span>
@@ -779,32 +1033,65 @@ class Component extends DCLogic {
         migrator: 615,
         diagnostics: 320
       },
+      manualPath: '',
+      manualInstallDone: false,
 
       proto: 'webdav',
-      epVal: 'https://dav.example.com/notes',
-      syncDirVal: '/BlockVault',
+      syncMirrorDir: '~/iCloud/BlockMirror',
+      syncDavUrl: 'https://dav.example.com/notes',
+      syncDavDir: '/BlockVault',
+      syncDavUser: 'eachann',
+      syncDavPass: 'app_pwd_9821',
+      syncGitRepo: 'git@github.com:user/block-vault.git',
+      syncGitBranch: 'main',
+      syncGitToken: 'ghp_sync_4k91m2x8',
+      syncInterval: '5m',
+      syncAssetsOn: true,
+      syncDelGuardOn: true,
       autoOn: true,
       conflict: 'keep_both',
       synced: false,
       tested: false,
 
       imgProvider: 'r2',
+      imgEndpointVal: 'https://9a8f12c.r2.cloudflarestorage.com',
       imgBucketVal: 'block-assets',
-      imgDomainVal: 'https://img.example.com',
+      imgAccessKeyVal: 'ak_r2_4920f8a1',
       imgSecretVal: 'r2_live_8f2a91c0d4',
+      imgDomainVal: 'https://img.example.com',
+      imgGhRepoVal: 'user/block-images',
+      imgGhBranchVal: 'main',
+      imgGhTokenVal: 'ghp_img_7d12b4a9',
+      imgJsdelivrOn: true,
+      imgNameRule: 'date_hash',
+      imgProcMode: 'webp',
       imgAutoOn: true,
       imgVerified: false,
       imgScanned: false,
       imgUploaded: false,
 
       pubTarget: 'wechat',
+      pubScope: 'note',
+      pubScopeDir: './notes/weekly',
+      pubSiteTitle: 'Block 知识库',
+      pubRssOn: true,
       pubStyle: 'paper',
+      pubFootnoteOn: true,
+      pubWechatCopied: false,
+      pubXhsSplit: 'h2',
+      pubXhsMaxChars: '500',
       pubOutDir: './dist/wechat',
       pubExported: false,
 
       migSource: 'obsidian',
       migSrcPath: '~/Documents/ObsidianVault',
       migDstVal: '工作知识库',
+      migObsWikiOn: true,
+      migObsCalloutOn: true,
+      migNotHashOn: true,
+      migNotCsvOn: true,
+      migYuqAnchorOn: true,
+      migYuqTreeOn: true,
       migLinkMode: 'block',
       migAttachMode: 'assets',
       migScanned: false,
@@ -812,6 +1099,8 @@ class Component extends DCLogic {
 
       diagOrphan: true,
       diagDeadlink: true,
+      diagEmpty: false,
+      diagArchived: false,
       diagChecked: false,
 
       showNonMd: false,
@@ -901,7 +1190,7 @@ class Component extends DCLogic {
         name: '发布与导出',
         version: 'v1.0.4',
         author: 'Block 官方',
-        desc: '将笔记本一键导出为静态博客站点，或生成微信公众号排版与小红书图文分段包。',
+        desc: '将笔记本一键导出为静态博客站点，或生成微信公众号排版与小红书图文切分包。',
         perm: '读取笔记 · 导出文件'
       },
       {
@@ -966,26 +1255,38 @@ class Component extends DCLogic {
     const nSy = nav('sync'), nIm = nav('image_host'), nPb = nav('publisher'), nMg = nav('migrator'), nDg = nav('diagnostics');
 
     const pWd = seg(st.proto === 'webdav'), pGt = seg(st.proto === 'git'), pMr = seg(st.proto === 'mirror');
+    const siRl = seg(st.syncInterval === 'real'), si5 = seg(st.syncInterval === '5m'), si15 = seg(st.syncInterval === '15m'), siMn = seg(st.syncInterval === 'manual');
+    const sAst = pill(!!st.syncAssetsOn), sDel = pill(!!st.syncDelGuardOn);
     const cKb = seg(st.conflict === 'keep_both'), cRm = seg(st.conflict === 'remote'), cLc = seg(st.conflict === 'local');
     const autoP = pill(!!st.autoOn);
 
     const ihR2 = seg(st.imgProvider === 'r2'), ihS3 = seg(st.imgProvider === 's3'), ihGh = seg(st.imgProvider === 'github');
+    const imgJsd = pill(!!st.imgJsdelivrOn);
     const imgAutoP = pill(!!st.imgAutoOn);
+    const inHs = seg(st.imgNameRule === 'date_hash'), inOr = seg(st.imgNameRule === 'orig'), inId = seg(st.imgNameRule === 'uuid');
+    const ipWb = seg(st.imgProcMode === 'webp'), ipRw = seg(st.imgProcMode === 'raw'), ipLg = seg(st.imgProcMode === 'large');
 
     const pbSt = seg(st.pubTarget === 'site'), pbWc = seg(st.pubTarget === 'wechat'), pbXh = seg(st.pubTarget === 'xiaohongshu');
+    const psNt = seg(st.pubScope === 'note'), psDr = seg(st.pubScope === 'dir'), psAl = seg(st.pubScope === 'all');
     const psPr = seg(st.pubStyle === 'paper'), psMg = seg(st.pubStyle === 'magazine'), psTc = seg(st.pubStyle === 'tech');
+    const pRss = pill(!!st.pubRssOn), pFn = pill(!!st.pubFootnoteOn);
+    const xsH2 = seg(st.pubXhsSplit === 'h2'), xsHr = seg(st.pubXhsSplit === 'hr'), xsLn = seg(st.pubXhsSplit === 'len');
+    const xm3 = seg(st.pubXhsMaxChars === '300'), xm5 = seg(st.pubXhsMaxChars === '500'), xm8 = seg(st.pubXhsMaxChars === '800');
 
     const mgOb = seg(st.migSource === 'obsidian'), mgNt = seg(st.migSource === 'notion'), mgYq = seg(st.migSource === 'yuque');
+    const moWk = pill(!!st.migObsWikiOn), moCl = pill(!!st.migObsCalloutOn);
+    const mnHs = pill(!!st.migNotHashOn), mnCs = pill(!!st.migNotCsvOn);
+    const myAn = pill(!!st.migYuqAnchorOn), myTr = pill(!!st.migYuqTreeOn);
     const mlBk = seg(st.migLinkMode === 'block'), mlRl = seg(st.migLinkMode === 'relative');
     const maAs = seg(st.migAttachMode === 'assets'), maKp = seg(st.migAttachMode === 'keep');
 
-    const dOrp = pill(!!st.diagOrphan), dDl = pill(!!st.diagDeadlink);
+    const dOrp = pill(!!st.diagOrphan), dDl = pill(!!st.diagDeadlink), dEmp = pill(!!st.diagEmpty);
     const nonMdP = pill(!!st.showNonMd);
     const asHd = seg(!!st.hideAssets), asSh = seg(!st.hideAssets);
     const gtHd = seg(!!st.hideGit), gtSh = seg(!st.hideGit);
     const drHd = seg(!!st.hideDrafts), drSh = seg(!st.hideDrafts);
 
-    const pubTargetLabels = { site: '静态博客站点', wechat: '微信公众号排版', xiaohongshu: '小红书图文分段导出' };
+    const pubTargetLabels = { site: '静态博客站点', wechat: '微信公众号排版', xiaohongshu: '小红书图文切分' };
 
     return {
       shellBg, sidebarBg, settingsBg, cardBg, textCol, mutedCol, accent, iconFill, selectedBg, hairline, sidebarBorder, btnBorder,
@@ -1021,20 +1322,40 @@ class Component extends DCLogic {
       isAiView: tab === 'ai',
       isAppearanceView: tab === 'appearance',
 
+      manualPath: st.manualPath,
+      manualInstallDone: !!st.manualInstallDone,
+      manualInstallStatus: st.manualPath ? '已加载本地插件' : '已安装本地示例插件',
       storeApps,
 
       syncBadge: st.synced ? '刚刚已同步 3 篇' : '已连接 · 2 分钟前',
+      syncNotesCount: st.synced ? '351 篇' : '348 篇',
+      syncPendingCount: st.synced ? '0 项' : '3 项',
+      syncDurationVal: st.synced ? '0.8 s' : '1.2 s',
       pWdBg: pWd.bg, pWdRing: pWd.ring, pWdCol: pWd.col,
       pGtBg: pGt.bg, pGtRing: pGt.ring, pGtCol: pGt.col,
       pMrBg: pMr.bg, pMrRing: pMr.ring, pMrCol: pMr.col,
-      epLabel: st.proto === 'mirror' ? '本地镜像路径' : (st.proto === 'git' ? 'Git 远端地址' : '服务器地址'),
-      epVal: st.epVal,
-      syncDirVal: st.syncDirVal,
+      isSyncMirror: st.proto === 'mirror',
+      isSyncWebdav: st.proto === 'webdav',
+      isSyncGit: st.proto === 'git',
+      syncMirrorDir: st.syncMirrorDir,
+      syncDavUrl: st.syncDavUrl,
+      syncDavDir: st.syncDavDir,
+      syncDavUser: st.syncDavUser,
+      syncDavPass: st.syncDavPass,
+      syncGitRepo: st.syncGitRepo,
+      syncGitBranch: st.syncGitBranch,
+      syncGitToken: st.syncGitToken,
       connBd: st.tested ? accent : hairline,
       connText: st.tested ? '连接可用' : '测试连接',
       syncBtnText: st.synced ? '已同步' : '立即同步',
       lastSyncTime: st.synced ? '刚刚' : '12:58',
       autoBg: autoP.bg, autoBd: autoP.bd, autoText: autoP.text,
+      siRlBg: siRl.bg, siRlRing: siRl.ring, siRlCol: siRl.col,
+      si5Bg: si5.bg, si5Ring: si5.ring, si5Col: si5.col,
+      si15Bg: si15.bg, si15Ring: si15.ring, si15Col: si15.col,
+      siMnBg: siMn.bg, siMnRing: siMn.ring, siMnCol: siMn.col,
+      sAstBg: sAst.bg, sAstBd: sAst.bd, sAstText: sAst.text,
+      sDelBg: sDel.bg, sDelBd: sDel.bd, sDelText: sDel.text,
       cKbBg: cKb.bg, cKbRing: cKb.ring, cKbCol: cKb.col,
       cRmBg: cRm.bg, cRmRing: cRm.ring, cRmCol: cRm.col,
       cLcBg: cLc.bg, cLcRing: cLc.ring, cLcCol: cLc.col,
@@ -1042,13 +1363,26 @@ class Component extends DCLogic {
       ihR2Bg: ihR2.bg, ihR2Ring: ihR2.ring, ihR2Col: ihR2.col,
       ihS3Bg: ihS3.bg, ihS3Ring: ihS3.ring, ihS3Col: ihS3.col,
       ihGhBg: ihGh.bg, ihGhRing: ihGh.ring, ihGhCol: ihGh.col,
-      imgBucketLabel: st.imgProvider === 'github' ? 'GitHub 仓库' : 'Bucket 名称',
+      isImgObjStore: st.imgProvider !== 'github',
+      isImgGithub: st.imgProvider === 'github',
+      imgEndpointVal: st.imgEndpointVal,
       imgBucketVal: st.imgBucketVal,
-      imgDomainVal: st.imgDomainVal,
+      imgAccessKeyVal: st.imgAccessKeyVal,
       imgSecretVal: st.imgSecretVal,
+      imgDomainVal: st.imgDomainVal,
+      imgGhRepoVal: st.imgGhRepoVal,
+      imgGhBranchVal: st.imgGhBranchVal,
+      imgGhTokenVal: st.imgGhTokenVal,
+      imgJsdBg: imgJsd.bg, imgJsdBd: imgJsd.bd, imgJsdText: imgJsd.text,
       imgVerifyBd: st.imgVerified ? accent : accent,
       imgVerifyText: st.imgVerified ? '凭证验证通过' : '验证凭证',
       imgAutoBg: imgAutoP.bg, imgAutoBd: imgAutoP.bd, imgAutoText: imgAutoP.text,
+      inHsBg: inHs.bg, inHsRing: inHs.ring, inHsCol: inHs.col,
+      inOrBg: inOr.bg, inOrRing: inOr.ring, inOrCol: inOr.col,
+      inIdBg: inId.bg, inIdRing: inId.ring, inIdCol: inId.col,
+      ipWbBg: ipWb.bg, ipWbRing: ipWb.ring, ipWbCol: ipWb.col,
+      ipRwBg: ipRw.bg, ipRwRing: ipRw.ring, ipRwCol: ipRw.col,
+      ipLgBg: ipLg.bg, ipLgRing: ipLg.ring, ipLgCol: ipLg.col,
       imgScanStatus: st.imgUploaded ? '全部本地图片已上传' : (st.imgScanned ? '发现 3 张待上传本地图片' : '尚未扫描待上传图片'),
       imgUploadBtnText: st.imgUploaded ? '已全部上传' : '一键上传',
       imgLastTime: st.imgUploaded ? '刚刚' : '12:18',
@@ -1056,9 +1390,27 @@ class Component extends DCLogic {
       pbStBg: pbSt.bg, pbStRing: pbSt.ring, pbStCol: pbSt.col,
       pbWcBg: pbWc.bg, pbWcRing: pbWc.ring, pbWcCol: pbWc.col,
       pbXhBg: pbXh.bg, pbXhRing: pbXh.ring, pbXhCol: pbXh.col,
+      psNtBg: psNt.bg, psNtRing: psNt.ring, psNtCol: psNt.col,
+      psDrBg: psDr.bg, psDrRing: psDr.ring, psDrCol: psDr.col,
+      psAlBg: psAl.bg, psAlRing: psAl.ring, psAlCol: psAl.col,
+      isPubScopeDir: st.pubScope === 'dir',
+      pubScopeDir: st.pubScopeDir,
+      isPubSite: st.pubTarget === 'site',
+      isPubWechat: st.pubTarget === 'wechat',
+      isPubXhs: st.pubTarget === 'xiaohongshu',
+      pubSiteTitle: st.pubSiteTitle,
+      pRssBg: pRss.bg, pRssBd: pRss.bd, pRssText: pRss.text,
       psPrBg: psPr.bg, psPrRing: psPr.ring, psPrCol: psPr.col,
       psMgBg: psMg.bg, psMgRing: psMg.ring, psMgCol: psMg.col,
       psTcBg: psTc.bg, psTcRing: psTc.ring, psTcCol: psTc.col,
+      pFnBg: pFn.bg, pFnBd: pFn.bd, pFnText: pFn.text,
+      xsH2Bg: xsH2.bg, xsH2Ring: xsH2.ring, xsH2Col: xsH2.col,
+      xsHrBg: xsHr.bg, xsHrRing: xsHr.ring, xsHrCol: xsHr.col,
+      xsLnBg: xsLn.bg, xsLnRing: xsLn.ring, xsLnCol: xsLn.col,
+      xm3Bg: xm3.bg, xm3Ring: xm3.ring, xm3Col: xm3.col,
+      xm5Bg: xm5.bg, xm5Ring: xm5.ring, xm5Col: xm5.col,
+      xm8Bg: xm8.bg, xm8Ring: xm8.ring, xm8Col: xm8.col,
+      wechatCopyText: st.pubWechatCopied ? '已复制排版稿' : '复制排版稿',
       pubOutDir: st.pubOutDir,
       pubExportText: st.pubExported ? '已导出到目标目录' : '一键导出',
       pubLastTarget: pubTargetLabels[st.pubTarget] || '微信公众号排版',
@@ -1067,8 +1419,17 @@ class Component extends DCLogic {
       mgObBg: mgOb.bg, mgObRing: mgOb.ring, mgObCol: mgOb.col,
       mgNtBg: mgNt.bg, mgNtRing: mgNt.ring, mgNtCol: mgNt.col,
       mgYqBg: mgYq.bg, mgYqRing: mgYq.ring, mgYqCol: mgYq.col,
+      isMigObsidian: st.migSource === 'obsidian',
+      isMigNotion: st.migSource === 'notion',
+      isMigYuque: st.migSource === 'yuque',
       migSrcPath: st.migSrcPath,
       migDstVal: st.migDstVal,
+      moWkBg: moWk.bg, moWkBd: moWk.bd, moWkText: moWk.text,
+      moClBg: moCl.bg, moClBd: moCl.bd, moClText: moCl.text,
+      mnHsBg: mnHs.bg, mnHsBd: mnHs.bd, mnHsText: mnHs.text,
+      mnCsBg: mnCs.bg, mnCsBd: mnCs.bd, mnCsText: mnCs.text,
+      myAnBg: myAn.bg, myAnBd: myAn.bd, myAnText: myAn.text,
+      myTrBg: myTr.bg, myTrBd: myTr.bd, myTrText: myTr.text,
       mlBkBg: mlBk.bg, mlBkRing: mlBk.ring, mlBkCol: mlBk.col,
       mlRlBg: mlRl.bg, mlRlRing: mlRl.ring, mlRlCol: mlRl.col,
       maAsBg: maAs.bg, maAsRing: maAs.ring, maAsCol: maAs.col,
@@ -1077,12 +1438,16 @@ class Component extends DCLogic {
       migRunText: st.migDone ? '迁入完成' : '开始迁入',
       migLastTime: st.migDone ? '刚刚' : '今天 10:30',
 
-      diagBadge: st.diagChecked ? '刚刚完成巡检' : '工作区健康 · 3 条提醒',
+      diagBadge: st.diagArchived ? '已归档孤立附件' : (st.diagChecked ? '刚刚完成巡检' : '工作区健康 · 3 条提醒'),
+      diagAssetSize: st.diagArchived ? '41.2 MB' : '42.6 MB',
       diagMemVal: st.diagChecked ? '114 MB' : '118 MB',
       dOrpBg: dOrp.bg, dOrpBd: dOrp.bd, dOrpText: dOrp.text,
       dDlBg: dDl.bg, dDlBd: dDl.bd, dDlText: dDl.text,
-      diagStatusText: st.diagChecked ? '最近巡检：刚刚（发现 3 项可清理或修复条目）' : '上次巡检：今天 09:00（3 项待处理）',
+      dEmpBg: dEmp.bg, dEmpBd: dEmp.bd, dEmpText: dEmp.text,
+      diagStatusText: st.diagArchived ? '已将 1 个孤立附件移至 .trash-assets（1.4 MB）' : (st.diagChecked ? '最近巡检：刚刚（发现 3 项可清理或修复条目）' : '上次巡检：今天 09:00（3 项待处理）'),
+      archiveOrphanText: st.diagArchived ? '已归档至 .trash-assets' : '归档孤立附件至 .trash-assets',
       diagRunText: st.diagChecked ? '已完成巡检' : '立即巡检',
+      diagOrphanRowStatus: st.diagArchived ? '已移至 .trash-assets · 1.4 MB' : '孤立未引用附件 · 1.4 MB',
 
       nonMdBg: nonMdP.bg, nonMdBd: nonMdP.bd, nonMdText: nonMdP.text,
       assetsName: st.assetsName,
@@ -1112,38 +1477,84 @@ class Component extends DCLogic {
       goMigrator: () => this.setState({ tab: 'migrator' }),
       goDiagnostics: () => this.setState({ tab: 'diagnostics' }),
 
-      pickWebdav: () => this.setState({ proto: 'webdav', epVal: 'https://dav.example.com/notes', tested: false }),
-      pickGit: () => this.setState({ proto: 'git', epVal: 'git@github.com:user/block-vault.git', tested: false }),
-      pickMirror: () => this.setState({ proto: 'mirror', epVal: '~/iCloud/BlockMirror', tested: false }),
-      onEpInput: (e) => { if (e && e.target) this.setState({ epVal: e.target.value }); },
-      onSyncDirInput: (e) => { if (e && e.target) this.setState({ syncDirVal: e.target.value }); },
+      onManualPathInput: (e) => { if (e && e.target) this.setState({ manualPath: e.target.value, manualInstallDone: false }); },
+      pickManualDir: () => this.setState({ manualPath: st.manualPath === '~/Downloads/block-custom-plugin' ? '~/Projects/block-mermaid-pack' : '~/Downloads/block-custom-plugin', manualInstallDone: false }),
+      installManual: () => this.setState({ manualInstallDone: true }),
+
+      pickWebdav: () => this.setState({ proto: 'webdav', tested: false }),
+      pickGit: () => this.setState({ proto: 'git', tested: false }),
+      pickMirror: () => this.setState({ proto: 'mirror', tested: false }),
+      onSyncMirrorDirInput: (e) => { if (e && e.target) this.setState({ syncMirrorDir: e.target.value }); },
+      pickSyncMirrorDir: () => this.setState({ syncMirrorDir: st.syncMirrorDir === '~/iCloud/BlockMirror' ? '~/Dropbox/BlockMirror' : '~/iCloud/BlockMirror' }),
+      onSyncDavUrlInput: (e) => { if (e && e.target) this.setState({ syncDavUrl: e.target.value }); },
+      onSyncDavDirInput: (e) => { if (e && e.target) this.setState({ syncDavDir: e.target.value }); },
+      pickSyncDavDir: () => this.setState({ syncDavDir: st.syncDavDir === '/BlockVault' ? '/Notes/MainVault' : '/BlockVault' }),
+      onSyncDavUserInput: (e) => { if (e && e.target) this.setState({ syncDavUser: e.target.value }); },
+      onSyncDavPassInput: (e) => { if (e && e.target) this.setState({ syncDavPass: e.target.value }); },
+      onSyncGitRepoInput: (e) => { if (e && e.target) this.setState({ syncGitRepo: e.target.value }); },
+      onSyncGitBranchInput: (e) => { if (e && e.target) this.setState({ syncGitBranch: e.target.value }); },
+      onSyncGitTokenInput: (e) => { if (e && e.target) this.setState({ syncGitToken: e.target.value }); },
       testConn: () => this.setState({ tested: true }),
       syncNow: () => this.setState({ synced: true }),
       toggleAuto: () => this.setState({ autoOn: !st.autoOn }),
+      pickSyncIntReal: () => this.setState({ syncInterval: 'real' }),
+      pickSyncInt5: () => this.setState({ syncInterval: '5m' }),
+      pickSyncInt15: () => this.setState({ syncInterval: '15m' }),
+      pickSyncIntManual: () => this.setState({ syncInterval: 'manual' }),
+      toggleSyncAssets: () => this.setState({ syncAssetsOn: !st.syncAssetsOn }),
+      toggleSyncDelGuard: () => this.setState({ syncDelGuardOn: !st.syncDelGuardOn }),
       pickKeepBoth: () => this.setState({ conflict: 'keep_both' }),
       pickRemote: () => this.setState({ conflict: 'remote' }),
       pickLocal: () => this.setState({ conflict: 'local' }),
       uninstallSync: () => uninstallApp('sync'),
 
-      pickR2: () => this.setState({ imgProvider: 'r2', imgBucketVal: 'block-assets', imgDomainVal: 'https://img.example.com', imgVerified: false }),
-      pickS3: () => this.setState({ imgProvider: 's3', imgBucketVal: 'notes-media-prod', imgDomainVal: 'https://cdn.example.com', imgVerified: false }),
-      pickGhImg: () => this.setState({ imgProvider: 'github', imgBucketVal: 'user/block-images', imgDomainVal: 'https://cdn.jsdelivr.net/gh/user/block-images', imgVerified: false }),
+      pickR2: () => this.setState({ imgProvider: 'r2', imgEndpointVal: 'https://9a8f12c.r2.cloudflarestorage.com', imgBucketVal: 'block-assets', imgDomainVal: 'https://img.example.com', imgVerified: false }),
+      pickS3: () => this.setState({ imgProvider: 's3', imgEndpointVal: 'https://s3.ap-northeast-1.amazonaws.com', imgBucketVal: 'notes-media-prod', imgDomainVal: 'https://cdn.example.com', imgVerified: false }),
+      pickGhImg: () => this.setState({ imgProvider: 'github', imgVerified: false }),
+      onImgEndpointInput: (e) => { if (e && e.target) this.setState({ imgEndpointVal: e.target.value }); },
       onImgBucketInput: (e) => { if (e && e.target) this.setState({ imgBucketVal: e.target.value }); },
+      onImgAccessKeyInput: (e) => { if (e && e.target) this.setState({ imgAccessKeyVal: e.target.value }); },
       onImgDomainInput: (e) => { if (e && e.target) this.setState({ imgDomainVal: e.target.value }); },
       onImgSecretInput: (e) => { if (e && e.target) this.setState({ imgSecretVal: e.target.value }); },
+      onImgGhRepoInput: (e) => { if (e && e.target) this.setState({ imgGhRepoVal: e.target.value }); },
+      onImgGhBranchInput: (e) => { if (e && e.target) this.setState({ imgGhBranchVal: e.target.value }); },
+      onImgGhTokenInput: (e) => { if (e && e.target) this.setState({ imgGhTokenVal: e.target.value }); },
+      toggleImgJsdelivr: () => this.setState({ imgJsdelivrOn: !st.imgJsdelivrOn }),
       verifyImgHost: () => this.setState({ imgVerified: true }),
       toggleImgAuto: () => this.setState({ imgAutoOn: !st.imgAutoOn }),
+      pickImgNameHash: () => this.setState({ imgNameRule: 'date_hash' }),
+      pickImgNameOrig: () => this.setState({ imgNameRule: 'orig' }),
+      pickImgNameUuid: () => this.setState({ imgNameRule: 'uuid' }),
+      pickImgProcWebp: () => this.setState({ imgProcMode: 'webp' }),
+      pickImgProcRaw: () => this.setState({ imgProcMode: 'raw' }),
+      pickImgProcLarge: () => this.setState({ imgProcMode: 'large' }),
       scanPendingImgs: () => this.setState({ imgScanned: true, imgUploaded: false }),
       uploadPendingImgs: () => this.setState({ imgUploaded: true }),
       uninstallImageHost: () => uninstallApp('image_host'),
 
-      pickPubSite: () => this.setState({ pubTarget: 'site', pubOutDir: './dist/site', pubExported: false }),
-      pickPubWechat: () => this.setState({ pubTarget: 'wechat', pubOutDir: './dist/wechat', pubExported: false }),
-      pickPubXhs: () => this.setState({ pubTarget: 'xiaohongshu', pubOutDir: './dist/redbook', pubExported: false }),
+      pickPubSite: () => this.setState({ pubTarget: 'site', pubOutDir: './dist/site', pubExported: false, pubWechatCopied: false }),
+      pickPubWechat: () => this.setState({ pubTarget: 'wechat', pubOutDir: './dist/wechat', pubExported: false, pubWechatCopied: false }),
+      pickPubXhs: () => this.setState({ pubTarget: 'xiaohongshu', pubOutDir: './dist/redbook', pubExported: false, pubWechatCopied: false }),
+      pickPubScopeNote: () => this.setState({ pubScope: 'note', pubExported: false }),
+      pickPubScopeDir: () => this.setState({ pubScope: 'dir', pubExported: false }),
+      pickPubScopeAll: () => this.setState({ pubScope: 'all', pubExported: false }),
+      onPubScopeDirInput: (e) => { if (e && e.target) this.setState({ pubScopeDir: e.target.value }); },
+      browsePubScopeDir: () => this.setState({ pubScopeDir: st.pubScopeDir === './notes/weekly' ? './notes/architecture' : './notes/weekly' }),
+      onPubSiteTitleInput: (e) => { if (e && e.target) this.setState({ pubSiteTitle: e.target.value }); },
+      togglePubRss: () => this.setState({ pubRssOn: !st.pubRssOn }),
       pickStylePaper: () => this.setState({ pubStyle: 'paper' }),
       pickStyleMag: () => this.setState({ pubStyle: 'magazine' }),
       pickStyleTech: () => this.setState({ pubStyle: 'tech' }),
+      togglePubFootnote: () => this.setState({ pubFootnoteOn: !st.pubFootnoteOn }),
+      copyWechatHtml: () => this.setState({ pubWechatCopied: true }),
+      pickXhsSplitH2: () => this.setState({ pubXhsSplit: 'h2' }),
+      pickXhsSplitHr: () => this.setState({ pubXhsSplit: 'hr' }),
+      pickXhsSplitLen: () => this.setState({ pubXhsSplit: 'len' }),
+      pickXhsMax300: () => this.setState({ pubXhsMaxChars: '300' }),
+      pickXhsMax500: () => this.setState({ pubXhsMaxChars: '500' }),
+      pickXhsMax800: () => this.setState({ pubXhsMaxChars: '800' }),
       onPubOutInput: (e) => { if (e && e.target) this.setState({ pubOutDir: e.target.value }); },
+      pickPubOutDir: () => this.setState({ pubOutDir: st.pubOutDir === './dist/export' ? './dist/' + (st.pubTarget === 'xiaohongshu' ? 'redbook' : st.pubTarget) : './dist/export' }),
       exportNow: () => this.setState({ pubExported: true }),
       uninstallPublisher: () => uninstallApp('publisher'),
 
@@ -1151,7 +1562,20 @@ class Component extends DCLogic {
       pickMigNot: () => this.setState({ migSource: 'notion', migSrcPath: '~/Downloads/notion-export.zip', migScanned: false, migDone: false }),
       pickMigYuq: () => this.setState({ migSource: 'yuque', migSrcPath: '~/Documents/YuqueExport', migScanned: false, migDone: false }),
       onMigSrcInput: (e) => { if (e && e.target) this.setState({ migSrcPath: e.target.value }); },
+      pickMigSrcDir: () => {
+        const defaults = { obsidian: '~/Documents/ObsidianVault', notion: '~/Downloads/notion-export', yuque: '~/Documents/YuqueExport' };
+        const alt = { obsidian: '~/Desktop/WorkVault', notion: '~/Downloads/Notion-Workspace-Export', yuque: '~/Desktop/YuqueDocs' };
+        const cur = st.migSrcPath;
+        const src = st.migSource || 'obsidian';
+        this.setState({ migSrcPath: cur === alt[src] ? defaults[src] : alt[src] });
+      },
       onMigDstInput: (e) => { if (e && e.target) this.setState({ migDstVal: e.target.value }); },
+      toggleMigObsWiki: () => this.setState({ migObsWikiOn: !st.migObsWikiOn }),
+      toggleMigObsCallout: () => this.setState({ migObsCalloutOn: !st.migObsCalloutOn }),
+      toggleMigNotHash: () => this.setState({ migNotHashOn: !st.migNotHashOn }),
+      toggleMigNotCsv: () => this.setState({ migNotCsvOn: !st.migNotCsvOn }),
+      toggleMigYuqAnchor: () => this.setState({ migYuqAnchorOn: !st.migYuqAnchorOn }),
+      toggleMigYuqTree: () => this.setState({ migYuqTreeOn: !st.migYuqTreeOn }),
       pickLinkBlock: () => this.setState({ migLinkMode: 'block' }),
       pickLinkRel: () => this.setState({ migLinkMode: 'relative' }),
       pickAttAssets: () => this.setState({ migAttachMode: 'assets' }),
@@ -1162,6 +1586,8 @@ class Component extends DCLogic {
 
       toggleDiagOrphan: () => this.setState({ diagOrphan: !st.diagOrphan }),
       toggleDiagDeadlink: () => this.setState({ diagDeadlink: !st.diagDeadlink }),
+      toggleDiagEmpty: () => this.setState({ diagEmpty: !st.diagEmpty }),
+      archiveOrphans: () => this.setState({ diagArchived: true }),
       runDiagnostics: () => this.setState({ diagChecked: true }),
       uninstallDiagnostics: () => uninstallApp('diagnostics'),
 

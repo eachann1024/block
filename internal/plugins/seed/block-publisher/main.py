@@ -2,25 +2,54 @@
 import html
 import json
 import os
+import posixpath
 import re
 import shutil
+import subprocess
 import sys
 from datetime import datetime
 
 
 CHANNEL_OPTIONS = [
     {"value": "static_site", "label": "静态博客站点"},
-    {"value": "wechat_mp", "label": "微信公众号排版 HTML"},
-    {"value": "xiaohongshu", "label": "小红书图文分段稿"},
+    {"value": "wechat_mp", "label": "微信公众号排版"},
+    {"value": "xiaohongshu", "label": "小红书图文分段"},
 ]
 CHANNEL_LABELS = {opt["value"]: opt["label"] for opt in CHANNEL_OPTIONS}
 
-THEME_OPTIONS = [
-    {"value": "ocean_paper", "label": "海盐纸白"},
+SCOPE_OPTIONS = [
+    {"value": "active_note", "label": "当前打开笔记"},
+    {"value": "subfolder", "label": "指定子目录"},
+    {"value": "all", "label": "整个笔记本"},
+]
+SCOPE_LABELS = {opt["value"]: opt["label"] for opt in SCOPE_OPTIONS}
+
+SITE_THEME_OPTIONS = [
+    {"value": "ocean_paper", "label": "海盐纸感"},
     {"value": "ink_minimal", "label": "墨夜极简"},
     {"value": "serif_magazine", "label": "杂志衬线"},
 ]
-THEME_LABELS = {opt["value"]: opt["label"] for opt in THEME_OPTIONS}
+SITE_THEME_LABELS = {opt["value"]: opt["label"] for opt in SITE_THEME_OPTIONS}
+
+MP_THEME_OPTIONS = [
+    {"value": "minimal_blue", "label": "极简海蓝"},
+    {"value": "ink_classic", "label": "墨黑经典"},
+    {"value": "warm_magazine", "label": "暖纸杂志"},
+]
+MP_THEME_LABELS = {opt["value"]: opt["label"] for opt in MP_THEME_OPTIONS}
+
+XHS_SPLIT_OPTIONS = [
+    {"value": "divider", "label": "按分割线 --- 切页"},
+    {"value": "heading2", "label": "按二级标题 ## 切页"},
+    {"value": "word_count", "label": "按字数切页"},
+]
+XHS_SPLIT_LABELS = {opt["value"]: opt["label"] for opt in XHS_SPLIT_OPTIONS}
+
+XHS_LIMIT_OPTIONS = [
+    {"value": "300", "label": "300 字/页"},
+    {"value": "500", "label": "500 字/页"},
+]
+XHS_LIMIT_VALUES = {opt["value"] for opt in XHS_LIMIT_OPTIONS}
 
 THEMES = {
     "ocean_paper": {
@@ -56,20 +85,63 @@ THEMES = {
         "code_bg": "#F3ECE1",
         "font": "'Songti SC', 'Noto Serif SC', Georgia, serif",
     },
+    "minimal_blue": {
+        "bg": "#F5F8FC",
+        "surface": "#FFFFFF",
+        "text": "#1E293B",
+        "muted": "#64748B",
+        "accent": "#1D4ED8",
+        "accent_soft": "#EFF6FF",
+        "border": "#DCE6F2",
+        "code_bg": "#F1F5F9",
+        "font": "-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif",
+    },
+    "ink_classic": {
+        "bg": "#F4F4F5",
+        "surface": "#FFFFFF",
+        "text": "#18181B",
+        "muted": "#52525B",
+        "accent": "#18181B",
+        "accent_soft": "#F4F4F5",
+        "border": "#E4E4E7",
+        "code_bg": "#F4F4F5",
+        "font": "-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif",
+    },
+    "warm_magazine": {
+        "bg": "#FAF6EF",
+        "surface": "#FFFDF8",
+        "text": "#2D241C",
+        "muted": "#786B5D",
+        "accent": "#9A3412",
+        "accent_soft": "#FEF3C7",
+        "border": "#E6DDD0",
+        "code_bg": "#F5EFE6",
+        "font": "'Songti SC', 'Noto Serif SC', Georgia, serif",
+    },
 }
 
 DEFAULT_CONFIG = {
     "channel": "static_site",
+    "scope": "active_note",
+    "scope_dir": "",
     "output_dir": "",
     "site_title": "Block 数字花园",
-    "theme": "ocean_paper",
-    "generate_index": True,
+    "site_theme": "ocean_paper",
+    "build_index": True,
+    "mp_theme": "minimal_blue",
+    "links_to_footnotes": True,
+    "xhs_split": "divider",
+    "xhs_limit": "300",
+    "xhs_cover": True,
 }
 
 DEFAULT_STATS = {
     "last_count": 0,
     "last_output": "",
     "last_channel": "static_site",
+    "last_scope": "active_note",
+    "last_latest_file": "",
+    "last_latest_title": "",
 }
 
 
@@ -125,19 +197,36 @@ class PublisherPlugin:
 
     def sanitize_config(self, raw):
         cfg = dict(DEFAULT_CONFIG)
-        if isinstance(raw, dict):
-            if raw.get("channel") in CHANNEL_LABELS:
-                cfg["channel"] = raw["channel"]
-            if isinstance(raw.get("output_dir"), str):
-                cfg["output_dir"] = raw["output_dir"].strip()
-            if isinstance(raw.get("site_title"), str) and raw["site_title"].strip():
-                cfg["site_title"] = raw["site_title"].strip()
-            elif isinstance(raw.get("site_title"), str):
-                cfg["site_title"] = ""
-            if raw.get("theme") in THEME_LABELS:
-                cfg["theme"] = raw["theme"]
-            if isinstance(raw.get("generate_index"), bool):
-                cfg["generate_index"] = raw["generate_index"]
+        if not isinstance(raw, dict):
+            return cfg
+        if raw.get("channel") in CHANNEL_LABELS:
+            cfg["channel"] = raw["channel"]
+        if raw.get("scope") in SCOPE_LABELS:
+            cfg["scope"] = raw["scope"]
+        if isinstance(raw.get("scope_dir"), str):
+            cfg["scope_dir"] = sanitize_rel_dir(raw["scope_dir"])
+        if isinstance(raw.get("output_dir"), str):
+            cfg["output_dir"] = raw["output_dir"].strip()
+        if isinstance(raw.get("site_title"), str):
+            cfg["site_title"] = raw["site_title"].strip()
+        if raw.get("site_theme") in SITE_THEME_LABELS:
+            cfg["site_theme"] = raw["site_theme"]
+        elif raw.get("theme") in SITE_THEME_LABELS:
+            cfg["site_theme"] = raw["theme"]
+        if isinstance(raw.get("build_index"), bool):
+            cfg["build_index"] = raw["build_index"]
+        elif isinstance(raw.get("generate_index"), bool):
+            cfg["build_index"] = raw["generate_index"]
+        if raw.get("mp_theme") in MP_THEME_LABELS:
+            cfg["mp_theme"] = raw["mp_theme"]
+        if isinstance(raw.get("links_to_footnotes"), bool):
+            cfg["links_to_footnotes"] = raw["links_to_footnotes"]
+        if raw.get("xhs_split") in XHS_SPLIT_LABELS:
+            cfg["xhs_split"] = raw["xhs_split"]
+        if str(raw.get("xhs_limit") or "") in XHS_LIMIT_VALUES:
+            cfg["xhs_limit"] = str(raw["xhs_limit"])
+        if isinstance(raw.get("xhs_cover"), bool):
+            cfg["xhs_cover"] = raw["xhs_cover"]
         return cfg
 
     def load_state(self, bridge):
@@ -155,6 +244,12 @@ class PublisherPlugin:
                 stats["last_output"] = val["last_output"]
             if val.get("last_channel") in CHANNEL_LABELS:
                 stats["last_channel"] = val["last_channel"]
+            if val.get("last_scope") in SCOPE_LABELS:
+                stats["last_scope"] = val["last_scope"]
+            if isinstance(val.get("last_latest_file"), str):
+                stats["last_latest_file"] = val["last_latest_file"]
+            if isinstance(val.get("last_latest_title"), str):
+                stats["last_latest_title"] = val["last_latest_title"]
 
         history = []
         if hist_res.get("found") and isinstance(hist_res.get("value"), list):
@@ -177,21 +272,24 @@ class PublisherPlugin:
         base = self.data_dir or os.getcwd()
         return os.path.abspath(os.path.join(base, expanded))
 
+    def format_scope_metric(self, cfg):
+        scope = cfg["scope"]
+        if scope == "subfolder" and cfg.get("scope_dir"):
+            return f"目录：{cfg['scope_dir']}"
+        return SCOPE_LABELS[scope]
+
     def build_page(self, cfg, stats, history, status_text=None):
         channel = cfg["channel"]
-        out_path = stats.get("last_output") or self.resolve_output_dir(cfg.get("output_dir"))
-        if not out_path:
-            out_path = "data_dir/dist"
         return {
             "title": "发布与导出",
             "status": status_text or f"{CHANNEL_LABELS[channel]} · 已就绪",
             "header_actions": [
-                {"id": "build_now", "label": "一键构建导出", "variant": "primary"}
+                {"id": "build_now", "label": "一键构建导出", "variant": "primary"},
             ],
             "cards": [
                 {
                     "id": "channel-card",
-                    "title": "导出渠道与目录",
+                    "title": "导出渠道与范围",
                     "items": [
                         {
                             "kind": "segmented",
@@ -201,43 +299,100 @@ class PublisherPlugin:
                             "options": CHANNEL_OPTIONS,
                         },
                         {
+                            "kind": "segmented",
+                            "id": "scope",
+                            "label": "导出范围",
+                            "value": cfg["scope"],
+                            "options": SCOPE_OPTIONS,
+                        },
+                        {
                             "kind": "input",
+                            "id": "scope_dir",
+                            "label": "子目录名",
+                            "value": cfg["scope_dir"],
+                            "placeholder": "例如：notes 或 docs/2026",
+                            "visible_when": {"control_id": "scope", "equals": "subfolder"},
+                        },
+                        {
+                            "kind": "folder",
                             "id": "output_dir",
-                            "label": "输出目录",
+                            "label": "导出文件夹",
                             "value": cfg["output_dir"],
                             "placeholder": "留空默认输出到插件数据目录下的 dist 文件夹",
-                        },
-                        {
-                            "kind": "input",
-                            "id": "site_title",
-                            "label": "站点或专栏标题",
-                            "value": cfg["site_title"],
-                            "placeholder": "例如：Block 数字花园",
-                        },
-                        {
-                            "kind": "actions",
-                            "buttons": [
-                                {"id": "save_config", "label": "保存配置", "variant": "primary"}
-                            ],
                         },
                     ],
                 },
                 {
                     "id": "layout-card",
-                    "title": "排版与内容选项",
+                    "title": "渠道专属排版设置",
                     "items": [
                         {
+                            "kind": "input",
+                            "id": "site_title",
+                            "label": "站点标题",
+                            "value": cfg["site_title"],
+                            "placeholder": "例如：Block 数字花园",
+                            "visible_when": {"control_id": "channel", "equals": "static_site"},
+                        },
+                        {
                             "kind": "segmented",
-                            "id": "theme",
-                            "label": "排版主题",
-                            "value": cfg["theme"],
-                            "options": THEME_OPTIONS,
+                            "id": "site_theme",
+                            "label": "站点主题",
+                            "value": cfg["site_theme"],
+                            "options": SITE_THEME_OPTIONS,
+                            "visible_when": {"control_id": "channel", "equals": "static_site"},
                         },
                         {
                             "kind": "switch",
-                            "id": "generate_index",
-                            "label": "自动生成目录索引页",
-                            "value": bool(cfg["generate_index"]),
+                            "id": "build_index",
+                            "label": "自动生成首页目录索引",
+                            "value": bool(cfg["build_index"]),
+                            "visible_when": {"control_id": "channel", "equals": "static_site"},
+                        },
+                        {
+                            "kind": "segmented",
+                            "id": "mp_theme",
+                            "label": "公众号主题",
+                            "value": cfg["mp_theme"],
+                            "options": MP_THEME_OPTIONS,
+                            "visible_when": {"control_id": "channel", "equals": "wechat_mp"},
+                        },
+                        {
+                            "kind": "switch",
+                            "id": "links_to_footnotes",
+                            "label": "自动将外部超链接转为文末脚注引用",
+                            "value": bool(cfg["links_to_footnotes"]),
+                            "visible_when": {"control_id": "channel", "equals": "wechat_mp"},
+                        },
+                        {
+                            "kind": "segmented",
+                            "id": "xhs_split",
+                            "label": "分页切分方式",
+                            "value": cfg["xhs_split"],
+                            "options": XHS_SPLIT_OPTIONS,
+                            "visible_when": {"control_id": "channel", "equals": "xiaohongshu"},
+                        },
+                        {
+                            "kind": "segmented",
+                            "id": "xhs_limit",
+                            "label": "单页字数上限",
+                            "value": cfg["xhs_limit"],
+                            "options": XHS_LIMIT_OPTIONS,
+                            "visible_when": {"control_id": "channel", "equals": "xiaohongshu"},
+                        },
+                        {
+                            "kind": "switch",
+                            "id": "xhs_cover",
+                            "label": "单独生成首张标题封面稿",
+                            "value": bool(cfg["xhs_cover"]),
+                            "visible_when": {"control_id": "channel", "equals": "xiaohongshu"},
+                        },
+                        {
+                            "kind": "actions",
+                            "buttons": [
+                                {"id": "save_config", "label": "保存配置", "variant": "primary"},
+                                {"id": "copy_latest", "label": "复制最新排版稿到剪贴板", "variant": "secondary"},
+                            ],
                         },
                     ],
                 },
@@ -246,11 +401,11 @@ class PublisherPlugin:
                     "title": "导出概览与历史",
                     "items": [
                         {
-                            "kind": "kv",
-                            "rows": [
+                            "kind": "metrics",
+                            "metrics": [
                                 {"label": "当前渠道", "value": CHANNEL_LABELS[channel]},
-                                {"label": "最近构建篇数", "value": f"{stats['last_count']} 篇"},
-                                {"label": "输出路径", "value": out_path},
+                                {"label": "导出范围", "value": self.format_scope_metric(cfg)},
+                                {"label": "最近生成篇数", "value": f"{stats['last_count']} 篇"},
                             ],
                         },
                         {
@@ -287,6 +442,9 @@ class PublisherPlugin:
                 page = self.build_page(cfg, stats, history, status_text=status)
                 return {"values": cfg, "page": page, "status": status}
 
+            if action_id == "copy_latest":
+                return self.copy_latest(cfg, stats, history)
+
             if action_id == "build_now":
                 return self.run_build(bridge, cfg, stats, history)
 
@@ -298,17 +456,59 @@ class PublisherPlugin:
 
         return {}
 
+    def select_notes_for_scope(self, bridge, cfg):
+        notes_meta = bridge.call_host("host.notes.list", {}).get("notes") or []
+        scope = cfg["scope"]
+        if scope == "active_note":
+            active_path = ""
+            try:
+                active_res = bridge.call_host("host.notes.active", {})
+                active_path = normalize_rel_path(active_res.get("path") or "")
+            except RuntimeError:
+                active_path = ""
+            if active_path:
+                for meta in notes_meta:
+                    if normalize_rel_path(meta.get("path") or "") == active_path:
+                        return [meta], f"当前笔记：{active_path}"
+                return [{"path": active_path}], f"当前笔记：{active_path}"
+            if notes_meta:
+                first_meta = notes_meta[0]
+                return [first_meta], f"回退首篇：{first_meta.get('path', '')}"
+            return [], "当前笔记本暂无笔记"
+
+        if scope == "subfolder":
+            subdir = sanitize_rel_dir(cfg.get("scope_dir") or "")
+            if not subdir:
+                return [], "未指定子目录"
+            selected = []
+            for meta in notes_meta:
+                rel = normalize_rel_path(meta.get("path") or "")
+                if rel == subdir or rel.startswith(subdir + "/"):
+                    selected.append(meta)
+            return selected, f"子目录：{subdir}"
+
+        return notes_meta, "整个笔记本"
+
     def run_build(self, bridge, cfg, stats, history):
         out_dir = self.resolve_output_dir(cfg["output_dir"])
         os.makedirs(out_dir, exist_ok=True)
 
-        notes_meta = bridge.call_host("host.notes.list", {}).get("notes") or []
+        target_notes, scope_note = self.select_notes_for_scope(bridge, cfg)
         site_title = cfg["site_title"] or "Block 数字花园"
-        theme = THEMES[cfg["theme"]]
         channel = cfg["channel"]
 
+        if channel == "static_site":
+            theme = THEMES[cfg["site_theme"]]
+        elif channel == "wechat_mp":
+            theme = THEMES[cfg["mp_theme"]]
+        else:
+            theme = THEMES["ocean_paper"]
+
         exported = []
-        for meta in notes_meta:
+        latest_file = ""
+        latest_title = ""
+
+        for meta in target_notes:
             rel_path = meta.get("path") or ""
             if not rel_path:
                 continue
@@ -320,19 +520,41 @@ class PublisherPlugin:
             if channel == "static_site":
                 target_rel = change_ext(rel_path, ".html")
                 html_doc = render_static_article(title, body_md, site_title, theme, rel_path)
-                write_text_file(os.path.join(out_dir, target_rel), html_doc)
+                abs_out = os.path.join(out_dir, target_rel)
+                write_text_file(abs_out, html_doc)
                 exported.append({"title": title, "rel": target_rel, "excerpt": excerpt, "source": rel_path, "extra": ""})
+                latest_file = abs_out
+                latest_title = title
             elif channel == "wechat_mp":
                 target_rel = change_ext(rel_path, ".wechat.html")
-                html_doc = render_wechat_article(title, body_md, site_title, theme)
-                write_text_file(os.path.join(out_dir, target_rel), html_doc)
+                html_doc = render_wechat_article(
+                    title,
+                    body_md,
+                    site_title,
+                    theme,
+                    links_to_footnotes=bool(cfg["links_to_footnotes"]),
+                )
+                abs_out = os.path.join(out_dir, target_rel)
+                write_text_file(abs_out, html_doc)
                 exported.append({"title": title, "rel": target_rel, "excerpt": excerpt, "source": rel_path, "extra": ""})
+                latest_file = abs_out
+                latest_title = title
             elif channel == "xiaohongshu":
-                pages = split_xiaohongshu_pages(title, body_md)
+                pages = split_xiaohongshu_pages(
+                    title,
+                    body_md,
+                    split_mode=cfg["xhs_split"],
+                    char_limit=int(cfg["xhs_limit"]),
+                    with_cover=bool(cfg["xhs_cover"]),
+                    site_title=site_title,
+                    excerpt=excerpt,
+                )
                 md_rel = change_ext(rel_path, ".xhs.md")
                 html_rel = change_ext(rel_path, ".xhs.html")
-                write_text_file(os.path.join(out_dir, md_rel), render_xhs_text(title, pages))
-                write_text_file(os.path.join(out_dir, html_rel), render_xhs_html(title, pages, site_title, theme))
+                abs_md = os.path.join(out_dir, md_rel)
+                abs_html = os.path.join(out_dir, html_rel)
+                write_text_file(abs_md, render_xhs_text(title, pages))
+                write_text_file(abs_html, render_xhs_html(title, pages, site_title, theme))
                 exported.append({
                     "title": title,
                     "rel": html_rel,
@@ -340,8 +562,10 @@ class PublisherPlugin:
                     "source": rel_path,
                     "extra": f"共 {len(pages)} 页图文卡片",
                 })
+                latest_file = abs_md
+                latest_title = title
 
-        if cfg["generate_index"]:
+        if channel == "static_site" and cfg["build_index"]:
             index_html = render_index_page(site_title, channel, exported, theme)
             write_text_file(os.path.join(out_dir, "index.html"), index_html)
 
@@ -351,22 +575,51 @@ class PublisherPlugin:
             "last_count": count,
             "last_output": out_dir,
             "last_channel": channel,
+            "last_scope": cfg["scope"],
+            "last_latest_file": latest_file,
+            "last_latest_title": latest_title,
         }
         bridge.call_host("host.storage.set", {"key": "stats", "value": stats})
 
         entry = {
-            "title": f"{CHANNEL_LABELS[channel]} ({count} 篇)",
+            "title": f"{CHANNEL_LABELS[channel]} ({count} 篇 · {scope_note})",
             "time": now_str,
-            "status": "已导出" if count > 0 else "已初始化空目录",
+            "status": "已导出" if count > 0 else "空范围",
         }
         history = [entry] + history[:19]
         bridge.call_host("host.storage.set", {"key": "history", "value": history})
 
         if count > 0:
             status = f"导出完成：共 {count} 篇（{CHANNEL_LABELS[channel]}）"
+        elif cfg["scope"] == "subfolder" and not cfg.get("scope_dir"):
+            status = "导出完成：请先填写要导出的子目录名"
         else:
-            status = "导出完成：当前笔记本暂无笔记，已初始化输出目录"
+            status = f"导出完成：匹配范围内暂无笔记（{scope_note}）"
 
+        page = self.build_page(cfg, stats, history, status_text=status)
+        return {"values": cfg, "page": page, "status": status}
+
+    def copy_latest(self, cfg, stats, history):
+        latest_file = (stats.get("last_latest_file") or "").strip()
+        if not latest_file or not os.path.isfile(latest_file):
+            status = "暂无最新排版稿，请先执行「一键构建导出」"
+            page = self.build_page(cfg, stats, history, status_text=status)
+            return {"values": cfg, "page": page, "status": status}
+
+        try:
+            with open(latest_file, "r", encoding="utf-8") as f:
+                text = f.read()
+        except OSError as exc:
+            status = f"读取最新排版稿失败：{exc}"
+            page = self.build_page(cfg, stats, history, status_text=status)
+            return {"values": cfg, "page": page, "status": status}
+
+        copied, reason = copy_text_to_clipboard(text)
+        title_label = stats.get("last_latest_title") or os.path.basename(latest_file)
+        if copied:
+            status = f"已复制最新排版稿「{title_label}」到剪贴板（{len(text)} 字符）"
+        else:
+            status = f"剪贴板不可用（{reason}），排版稿位于 {latest_file}"
         page = self.build_page(cfg, stats, history, status_text=status)
         return {"values": cfg, "page": page, "status": status}
 
@@ -387,6 +640,44 @@ class PublisherPlugin:
                 dst = os.path.join(out_dir, rel_asset)
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 shutil.copy2(src_candidate, dst)
+
+
+def copy_text_to_clipboard(text):
+    candidates = []
+    if shutil.which("pbcopy"):
+        candidates.append(["pbcopy"])
+    if shutil.which("xclip"):
+        candidates.append(["xclip", "-selection", "clipboard"])
+    if shutil.which("xsel"):
+        candidates.append(["xsel", "--clipboard", "--input"])
+    if not candidates:
+        return False, "未检测到 pbcopy 等系统剪贴板工具"
+    last_err = "执行失败"
+    for cmd in candidates:
+        try:
+            subprocess.run(cmd, input=text.encode("utf-8"), check=True, timeout=3)
+            return True, ""
+        except Exception as exc:
+            last_err = str(exc) or cmd[0]
+    return False, last_err
+
+
+def sanitize_rel_dir(raw):
+    parts = []
+    for seg in (raw or "").replace("\\", "/").split("/"):
+        seg = seg.strip()
+        if not seg or seg in (".", ".."):
+            continue
+        parts.append(seg)
+    return "/".join(parts)
+
+
+def normalize_rel_path(path):
+    cleaned = (path or "").replace("\\", "/").lstrip("/")
+    if not cleaned:
+        return ""
+    norm = posixpath.normpath(cleaned)
+    return "" if norm == "." else norm
 
 
 def change_ext(rel_path, new_ext):
@@ -437,6 +728,62 @@ def extract_meta_and_body(rel_path, content):
             break
     excerpt = " ".join(plain_lines)[:120]
     return title, text.strip(), excerpt
+
+
+def extract_wechat_footnotes(body_md):
+    lines = body_md.replace("\r\n", "\n").splitlines()
+    out_lines = []
+    footnotes = []
+    url_to_index = {}
+    in_fence = False
+    fence_char = ""
+
+    ext_link_re = re.compile(r'(?<!!)\[([^\]]+)\]\((https?://[^)\s]+)(?:\s+"[^"]*")?\)')
+
+    for line in lines:
+        stripped = line.strip()
+        m_fence = re.match(r'^(`{3,}|~{3,})', stripped)
+        if m_fence:
+            marker = m_fence.group(1)[0]
+            if not in_fence:
+                in_fence = True
+                fence_char = marker
+            elif stripped.startswith(fence_char * 3):
+                in_fence = False
+                fence_char = ""
+            out_lines.append(line)
+            continue
+
+        if in_fence:
+            out_lines.append(line)
+            continue
+
+        code_holders = {}
+
+        def hold_code(m):
+            key = f"\x00INLCODE{len(code_holders)}\x00"
+            code_holders[key] = m.group(0)
+            return key
+
+        masked = re.sub(r'`[^`]+`', hold_code, line)
+
+        def repl_ext_link(m):
+            label = m.group(1).strip()
+            url = m.group(2).strip()
+            if url in url_to_index:
+                idx = url_to_index[url]
+            else:
+                idx = len(footnotes) + 1
+                url_to_index[url] = idx
+                footnotes.append({"index": idx, "label": label, "url": url})
+            return f"{label}[{idx}]"
+
+        masked = ext_link_re.sub(repl_ext_link, masked)
+        for key, raw_code in code_holders.items():
+            masked = masked.replace(key, raw_code)
+        out_lines.append(masked)
+
+    return "\n".join(out_lines), footnotes
 
 
 def render_inline(text, inline_styles=None):
@@ -683,7 +1030,7 @@ def render_static_article(title, body_md, site_title, theme, rel_path):
 """
 
 
-def render_wechat_article(title, body_md, site_title, theme):
+def render_wechat_article(title, body_md, site_title, theme, links_to_footnotes=True):
     inline_styles = {
         "h1": f"font-size:22px;font-weight:700;color:{theme['text']};margin:24px 0 14px;line-height:1.4;",
         "h2": f"font-size:18px;font-weight:700;color:{theme['accent']};margin:22px 0 12px;padding-left:10px;border-left:3px solid {theme['accent']};line-height:1.4;",
@@ -702,7 +1049,27 @@ def render_wechat_article(title, body_md, site_title, theme):
         "th": f"border:1px solid {theme['border']};background:{theme['accent_soft']};padding:8px 10px;text-align:left;color:{theme['text']};",
         "td": f"border:1px solid {theme['border']};padding:8px 10px;text-align:left;color:{theme['text']};",
     }
-    body_html = markdown_to_html(body_md, inline_styles=inline_styles)
+    footnotes = []
+    processed_md = body_md
+    if links_to_footnotes:
+        processed_md, footnotes = extract_wechat_footnotes(body_md)
+    body_html = markdown_to_html(processed_md, inline_styles=inline_styles)
+
+    footnotes_html = ""
+    if footnotes:
+        rows = []
+        for fn in footnotes:
+            rows.append(
+                f'<p style="font-size:13px;color:{theme["muted"]};line-height:1.6;margin:0 0 6px;word-break:break-all;">'
+                f'[{fn["index"]}] {html.escape(fn["label"])}：{html.escape(fn["url"])}</p>'
+            )
+        footnotes_html = (
+            f'<section style="margin-top:26px;padding-top:16px;border-top:1px solid {theme["border"]};">'
+            f'<p style="font-size:14px;font-weight:700;color:{theme["accent"]};margin:0 0 10px;">参考链接</p>'
+            f'{"".join(rows)}'
+            f'</section>'
+        )
+
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -715,16 +1082,70 @@ def render_wechat_article(title, body_md, site_title, theme):
     <p style="font-size:12px;color:{theme['muted']};margin:0 0 8px;">{html.escape(site_title)}</p>
     <h1 style="font-size:24px;font-weight:700;color:{theme['text']};margin:0 0 20px;line-height:1.35;">{html.escape(title)}</h1>
     {body_html}
+    {footnotes_html}
   </section>
 </body>
 </html>
 """
 
 
-def split_xiaohongshu_pages(title, body_md):
+def paginate_body(heading, body_part, char_limit):
+    if len(body_part) <= char_limit:
+        return [{"heading": heading, "body": body_part}]
+    chunks = []
+    buf = []
+    buf_len = 0
+    for para in re.split(r'\n\s*\n', body_part):
+        p = para.strip()
+        if not p:
+            continue
+        if len(p) > char_limit:
+            if buf:
+                chunks.append("\n\n".join(buf))
+                buf = []
+                buf_len = 0
+            start = 0
+            while start < len(p):
+                chunks.append(p[start:start + char_limit])
+                start += char_limit
+            continue
+        if buf and buf_len + len(p) > char_limit:
+            chunks.append("\n\n".join(buf))
+            buf = [p]
+            buf_len = len(p)
+        else:
+            buf.append(p)
+            buf_len += len(p)
+    if buf:
+        chunks.append("\n\n".join(buf))
+    result = []
+    for ci, chunk in enumerate(chunks):
+        suffix = f" ({ci + 1}/{len(chunks)})" if len(chunks) > 1 else ""
+        result.append({"heading": heading + suffix, "body": chunk})
+    return result
+
+
+def split_xiaohongshu_pages(title, body_md, split_mode="divider", char_limit=300, with_cover=True, site_title="", excerpt=""):
     text = body_md.replace("\r\n", "\n").strip()
-    raw_sections = re.split(r'\n(?:---+|(?=#{2}\s+))', text)
     pages = []
+
+    if with_cover:
+        cover_lines = []
+        if site_title:
+            cover_lines.append(f"**{site_title}**")
+        if excerpt:
+            cover_lines.append(excerpt)
+        if not cover_lines:
+            cover_lines.append(title)
+        pages.append({"heading": title, "body": "\n\n".join(cover_lines), "is_cover": True})
+
+    if split_mode == "word_count":
+        raw_sections = [text] if text else []
+    elif split_mode == "heading2":
+        raw_sections = re.split(r'\n(?=#{2}\s+)', text)
+    else:
+        raw_sections = re.split(r'\n-{3,}\n', text)
+
     for sec in raw_sections:
         sec = sec.strip()
         if not sec:
@@ -741,28 +1162,7 @@ def split_xiaohongshu_pages(title, body_md):
         body_part = "\n".join(content_lines).strip()
         if not body_part:
             continue
-        if len(body_part) <= 320:
-            pages.append({"heading": heading, "body": body_part})
-        else:
-            chunks = []
-            buf = []
-            buf_len = 0
-            for para in re.split(r'\n\s*\n', body_part):
-                p = para.strip()
-                if not p:
-                    continue
-                if buf and buf_len + len(p) > 300:
-                    chunks.append("\n\n".join(buf))
-                    buf = [p]
-                    buf_len = len(p)
-                else:
-                    buf.append(p)
-                    buf_len += len(p)
-            if buf:
-                chunks.append("\n\n".join(buf))
-            for ci, chunk in enumerate(chunks):
-                suffix = f" ({ci + 1}/{len(chunks)})" if len(chunks) > 1 else ""
-                pages.append({"heading": heading + suffix, "body": chunk})
+        pages.extend(paginate_body(heading, body_part, char_limit))
 
     if not pages:
         pages.append({"heading": title, "body": text or title})
@@ -773,7 +1173,8 @@ def render_xhs_text(title, pages):
     parts = [f"# {title}", ""]
     total = len(pages)
     for idx, p in enumerate(pages, 1):
-        parts.append(f"=== 第 {idx}/{total} 页：{p['heading']} ===")
+        tag = "封面" if p.get("is_cover") else f"第 {idx}/{total} 页"
+        parts.append(f"=== {tag}：{p['heading']} ===")
         parts.append(p["body"])
         parts.append("")
     return "\n".join(parts)
@@ -784,11 +1185,13 @@ def render_xhs_html(title, pages, site_title, theme):
     total = len(pages)
     for idx, p in enumerate(pages, 1):
         body_html = markdown_to_html(p["body"])
+        badge = "封面" if p.get("is_cover") else f"{idx} / {total}"
+        cover_cls = " xhs-cover" if p.get("is_cover") else ""
         cards_html.append(f"""
-        <div class="xhs-card">
+        <div class="xhs-card{cover_cls}">
           <div class="card-head">
             <span>{html.escape(site_title)}</span>
-            <span>{idx} / {total}</span>
+            <span>{badge}</span>
           </div>
           <h2>{html.escape(p["heading"])}</h2>
           <div class="card-body">{body_html}</div>
@@ -827,6 +1230,10 @@ def render_xhs_html(title, pages, site_title, theme):
     min-height: 380px;
     display: flex;
     flex-direction: column;
+  }}
+  .xhs-cover {{
+    background: {theme["accent_soft"]};
+    justify-content: center;
   }}
   .card-head {{
     display: flex;

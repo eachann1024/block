@@ -17,22 +17,30 @@ import urllib.request
 
 DEFAULT_CONFIG = {
     "provider": "r2",
-    "endpoint": "",
-    "bucket_prefix": "",
+    "s3_endpoint": "",
+    "s3_bucket": "",
+    "s3_access_key": "",
+    "s3_secret_key": "",
     "public_domain": "",
-    "access_secret": "",
+    "gh_repo": "",
+    "gh_branch": "main",
+    "gh_token": "",
+    "gh_cdn": "jsdelivr",
     "auto_upload": True,
-    "post_process": "replace_keep",
+    "naming_rule": "ym_hash",
+    "after_upload": "replace_keep",
 }
 
 PROVIDER_LABELS = {
     "r2": "Cloudflare R2",
-    "s3": "AWS S3 兼容",
+    "s3": "S3 兼容存储",
     "github": "GitHub 仓库图床",
 }
 
 VALID_PROVIDERS = {"r2", "s3", "github"}
-VALID_POST_PROCESS = {"replace_keep", "replace_clean"}
+VALID_GH_CDNS = {"jsdelivr", "raw"}
+VALID_NAMING_RULES = {"ym_hash", "note_dir", "original"}
+VALID_AFTER_UPLOAD = {"replace_keep", "replace_clean"}
 MAX_LOGS = 20
 
 IMAGE_PATTERN = re.compile(r"!\[([^\]]*)\]\(([^)\n]+)\)")
@@ -55,6 +63,9 @@ class HostBridge:
             line = sys.stdin.readline()
             if not line:
                 raise RuntimeError("stdin closed while awaiting host response")
+            line = line.strip()
+            if not line:
+                continue
             msg = json.loads(line)
             if str(msg.get("id")) == req_id:
                 if "error" in msg and msg["error"]:
@@ -132,14 +143,61 @@ class ImageHostPlugin:
         provider = str(raw.get("provider", cfg["provider"])).strip()
         if provider in VALID_PROVIDERS:
             cfg["provider"] = provider
-        for key in ("endpoint", "bucket_prefix", "public_domain", "access_secret"):
+
+        str_fields = (
+            "s3_endpoint",
+            "s3_bucket",
+            "s3_access_key",
+            "s3_secret_key",
+            "public_domain",
+            "gh_repo",
+            "gh_branch",
+            "gh_token",
+        )
+        for key in str_fields:
             if key in raw and raw[key] is not None:
                 cfg[key] = str(raw[key]).strip()
+
+        # Backward compatibility with legacy config keys
+        legacy_endpoint = str(raw.get("endpoint") or "").strip()
+        if legacy_endpoint:
+            if cfg["provider"] in ("r2", "s3") and not cfg["s3_endpoint"]:
+                cfg["s3_endpoint"] = legacy_endpoint
+            elif cfg["provider"] == "github" and not cfg["gh_repo"]:
+                cfg["gh_repo"] = legacy_endpoint
+
+        legacy_bucket = str(raw.get("bucket_prefix") or "").strip()
+        if legacy_bucket and cfg["provider"] in ("r2", "s3") and not cfg["s3_bucket"]:
+            cfg["s3_bucket"] = legacy_bucket
+
+        legacy_secret = str(raw.get("access_secret") or "").strip()
+        if legacy_secret:
+            if cfg["provider"] in ("r2", "s3") and not cfg["s3_access_key"] and not cfg["s3_secret_key"]:
+                if ":" in legacy_secret:
+                    ak, sk = legacy_secret.split(":", 1)
+                    cfg["s3_access_key"] = ak.strip()
+                    cfg["s3_secret_key"] = sk.strip()
+            elif cfg["provider"] == "github" and not cfg["gh_token"]:
+                cfg["gh_token"] = legacy_secret
+
+        if not cfg["gh_branch"]:
+            cfg["gh_branch"] = "main"
+
+        gh_cdn = str(raw.get("gh_cdn", cfg["gh_cdn"])).strip()
+        if gh_cdn in VALID_GH_CDNS:
+            cfg["gh_cdn"] = gh_cdn
+
         if "auto_upload" in raw:
             cfg["auto_upload"] = bool(raw["auto_upload"])
-        post_process = str(raw.get("post_process", cfg["post_process"])).strip()
-        if post_process in VALID_POST_PROCESS:
-            cfg["post_process"] = post_process
+
+        naming_rule = str(raw.get("naming_rule", cfg["naming_rule"])).strip()
+        if naming_rule in VALID_NAMING_RULES:
+            cfg["naming_rule"] = naming_rule
+
+        after_upload = str(raw.get("after_upload", raw.get("post_process", cfg["after_upload"]))).strip()
+        if after_upload in VALID_AFTER_UPLOAD:
+            cfg["after_upload"] = after_upload
+
         return cfg
 
     # ---- Markdown & local asset scanning ----
@@ -253,56 +311,34 @@ class ImageHostPlugin:
     # ---- Config parsing & validation ----
 
     def _parse_s3_credentials(self, config):
-        raw_secret = config.get("access_secret", "").strip()
-        if not raw_secret:
-            return None, "未配置访问密钥凭证（格式: AccessKeyId:SecretAccessKey）"
-        access_key = ""
-        secret_key = ""
-        region = "auto" if config["provider"] == "r2" else "us-east-1"
-
-        if raw_secret.startswith("{"):
-            try:
-                obj = json.loads(raw_secret)
-                access_key = str(obj.get("access_key", "")).strip()
-                secret_key = str(obj.get("secret_key", "")).strip()
-                if obj.get("region"):
-                    region = str(obj["region"]).strip()
-            except Exception:
-                return None, "访问密钥 JSON 格式无效"
-        else:
-            parts = raw_secret.split(":")
-            if len(parts) < 2:
-                return None, "访问密钥格式应为 AccessKeyId:SecretAccessKey（可选 :region）"
-            access_key = parts[0].strip()
-            secret_key = parts[1].strip()
-            if len(parts) >= 3 and parts[2].strip():
-                region = parts[2].strip()
-
-        if not access_key or not secret_key:
-            return None, "AccessKeyId 与 SecretAccessKey 均不能为空"
-
-        endpoint = config.get("endpoint", "").strip()
+        endpoint = config.get("s3_endpoint", "").strip()
         if not endpoint:
-            return None, "请填写 S3/R2 接口地址（endpoint）"
+            return None, "请填写 Endpoint 地址"
         if not endpoint.startswith(("http://", "https://")):
             endpoint = "https://" + endpoint
         parsed = urllib.parse.urlparse(endpoint)
         if not parsed.netloc:
-            return None, "接口地址格式无效"
+            return None, "Endpoint 地址格式无效"
 
-        if config["provider"] == "s3" and region == "us-east-1":
-            host_match = re.search(r"s3[.-]([a-z0-9-]+)\.amazonaws\.com", parsed.netloc)
-            if host_match:
-                region = host_match.group(1)
-
-        bp = config.get("bucket_prefix", "").strip().strip("/")
+        bp = config.get("s3_bucket", "").strip().strip("/")
         if not bp:
-            return None, "请填写存储桶名称（bucket 或 bucket/prefix）"
+            return None, "请填写 Bucket 存储桶名"
         bp_parts = bp.split("/", 1)
         bucket = bp_parts[0].strip()
         prefix = bp_parts[1].strip("/") if len(bp_parts) > 1 else ""
         if not bucket:
-            return None, "存储桶名称不能为空"
+            return None, "Bucket 存储桶名不能为空"
+
+        access_key = config.get("s3_access_key", "").strip()
+        secret_key = config.get("s3_secret_key", "").strip()
+        if not access_key or not secret_key:
+            return None, "请完整填写 Access Key ID 与 Secret Access Key"
+
+        region = "auto" if config["provider"] == "r2" else "us-east-1"
+        if config["provider"] == "s3":
+            host_match = re.search(r"s3[.-]([a-z0-9-]+)\.amazonaws\.com", parsed.netloc)
+            if host_match:
+                region = host_match.group(1)
 
         public_domain = config.get("public_domain", "").strip().rstrip("/")
         if public_domain and not public_domain.startswith(("http://", "https://")):
@@ -320,37 +356,39 @@ class ImageHostPlugin:
         }, None
 
     def _parse_github_credentials(self, config):
-        token = config.get("access_secret", "").strip()
-        if not token:
-            return None, "未配置 GitHub 访问令牌（Personal Access Token）"
-        repo_spec = config.get("endpoint", "").strip()
+        repo_spec = config.get("gh_repo", "").strip()
         if not repo_spec:
-            return None, "请填写 GitHub 仓库标识（格式: owner/repo 或 owner/repo@branch）"
+            return None, "请填写 GitHub 仓库（格式: owner/repo）"
         if repo_spec.startswith(("http://", "https://")):
             parsed = urllib.parse.urlparse(repo_spec)
             repo_spec = parsed.path.strip("/")
             if repo_spec.endswith(".git"):
                 repo_spec = repo_spec[:-4]
-        branch = "main"
+        branch = config.get("gh_branch", "").strip() or "main"
         if "@" in repo_spec:
             repo_spec, branch_part = repo_spec.split("@", 1)
-            if branch_part.strip():
+            if branch_part.strip() and not config.get("gh_branch", "").strip():
                 branch = branch_part.strip()
         repo_parts = [p for p in repo_spec.split("/") if p]
         if len(repo_parts) != 2:
-            return None, "GitHub 仓库标识格式应为 owner/repo"
+            return None, "GitHub 仓库格式应为 owner/repo"
         owner, repo = repo_parts[0], repo_parts[1]
-        prefix = config.get("bucket_prefix", "").strip().strip("/")
-        public_domain = config.get("public_domain", "").strip().rstrip("/")
-        if public_domain and not public_domain.startswith(("http://", "https://")):
-            public_domain = "https://" + public_domain
+
+        token = config.get("gh_token", "").strip()
+        if not token:
+            return None, "请填写 GitHub Personal Access Token"
+
+        gh_cdn = config.get("gh_cdn", "jsdelivr")
+        if gh_cdn not in VALID_GH_CDNS:
+            gh_cdn = "jsdelivr"
+
         return {
             "owner": owner,
             "repo": repo,
             "branch": branch,
-            "prefix": prefix,
-            "public_domain": public_domain,
+            "prefix": "",
             "token": token,
+            "gh_cdn": gh_cdn,
         }, None
 
     # ---- Network upload & connection test ----
@@ -449,19 +487,42 @@ class ImageHostPlugin:
             raw = resp.read()
             return resp.status, (json.loads(raw.decode("utf-8")) if raw else {})
 
-    def _build_remote_key(self, prefix, file_bytes, rel_asset_path):
-        digest = hashlib.sha256(file_bytes).hexdigest()[:8]
+    def _build_remote_key(self, naming_rule, prefix, note_path, file_bytes, rel_asset_path):
         filename = os.path.basename(urllib.parse.unquote(rel_asset_path)) or "image.png"
         safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", filename)
-        object_name = f"{digest}-{safe_name}"
-        if prefix:
-            return f"{prefix}/{object_name}"
-        return object_name
 
-    def _upload_file(self, config, creds, local_path, rel_asset_path):
+        if naming_rule == "note_dir":
+            stem = note_path.replace("\\", "/")
+            if stem.endswith(".md"):
+                stem = stem[:-3]
+            safe_parts = [
+                re.sub(r"[^A-Za-z0-9._-]", "_", part)
+                for part in stem.split("/")
+                if part and part not in (".", "..")
+            ]
+            folder = "/".join(safe_parts) or "notes"
+            object_key = f"{folder}/{safe_name}"
+        elif naming_rule == "original":
+            object_key = safe_name
+        else:
+            now_ym = datetime.datetime.now().strftime("%Y/%m")
+            digest = hashlib.sha256(file_bytes).hexdigest()[:8]
+            object_key = f"{now_ym}/{digest}-{safe_name}"
+
+        if prefix:
+            return f"{prefix}/{object_key}"
+        return object_key
+
+    def _upload_file(self, config, creds, note_path, local_path, rel_asset_path):
         with open(local_path, "rb") as fh:
             file_bytes = fh.read()
-        remote_key = self._build_remote_key(creds["prefix"], file_bytes, rel_asset_path)
+        remote_key = self._build_remote_key(
+            config.get("naming_rule", "ym_hash"),
+            creds.get("prefix", ""),
+            note_path,
+            file_bytes,
+            rel_asset_path,
+        )
         content_type, _ = mimetypes.guess_type(local_path)
         content_type = content_type or "application/octet-stream"
 
@@ -503,12 +564,10 @@ class ImageHostPlugin:
             payload["sha"] = existing_sha
 
         self._github_api_request(creds, "PUT", api_url, payload=payload)
-        if creds["public_domain"]:
-            return f"{creds['public_domain']}/{encoded_path}"
-        return (
-            f"https://raw.githubusercontent.com/{creds['owner']}/{creds['repo']}"
-            f"/{urllib.parse.quote(creds['branch'], safe='')}/{encoded_path}"
-        )
+        branch_quoted = urllib.parse.quote(creds["branch"], safe="")
+        if creds["gh_cdn"] == "jsdelivr":
+            return f"https://cdn.jsdelivr.net/gh/{creds['owner']}/{creds['repo']}@{branch_quoted}/{encoded_path}"
+        return f"https://raw.githubusercontent.com/{creds['owner']}/{creds['repo']}/{branch_quoted}/{encoded_path}"
 
     def _test_connection(self, config):
         if config["provider"] in ("r2", "s3"):
@@ -591,6 +650,7 @@ class ImageHostPlugin:
         uploaded_count = 0
         failed_count = 0
         updated_notes = 0
+        naming_rule = config.get("naming_rule", "ym_hash")
 
         for note_path, content, refs in note_items:
             pieces = []
@@ -606,12 +666,12 @@ class ImageHostPlugin:
                     cursor = end
                     continue
 
-                cache_key = os.path.realpath(local_path)
+                cache_key = (os.path.realpath(local_path), note_path if naming_rule == "note_dir" else "")
                 if cache_key in uploaded_cache:
                     remote_url = uploaded_cache[cache_key]
                 else:
                     try:
-                        remote_url = self._upload_file(config, creds, local_path, rel_path)
+                        remote_url = self._upload_file(config, creds, note_path, local_path, rel_path)
                         uploaded_cache[cache_key] = remote_url
                         uploaded_count += 1
                         stats["uploaded_total"] = int(stats.get("uploaded_total", 0)) + 1
@@ -650,7 +710,7 @@ class ImageHostPlugin:
                     failed_count += 1
                     logs = self._append_log(logs, note_path, f"写回笔记失败: {err}")
 
-        if config.get("post_process") == "replace_clean" and archived_candidates:
+        if config.get("after_upload") == "replace_clean" and archived_candidates:
             self._archive_local_files(bridge, archived_candidates)
 
         self._save_stats(bridge, stats)
@@ -675,7 +735,8 @@ class ImageHostPlugin:
 
     def _build_page(self, config, stats, logs, pending_count, status_override=None):
         provider_label = PROVIDER_LABELS.get(config["provider"], config["provider"])
-        page_status = status_override or f"{provider_label} · 待上传 {pending_count} 处"
+        page_status = status_override or f"{provider_label} · 待上传 {pending_count} 张"
+        uploaded_total = int(stats.get("uploaded_total", 0) or 0)
 
         return {
             "title": "图床上传",
@@ -699,37 +760,84 @@ class ImageHostPlugin:
                             "value": config["provider"],
                             "options": [
                                 {"value": "r2", "label": "Cloudflare R2"},
-                                {"value": "s3", "label": "AWS S3 兼容"},
+                                {"value": "s3", "label": "S3 兼容存储"},
                                 {"value": "github", "label": "GitHub 仓库图床"},
                             ],
                         },
                         {
                             "kind": "input",
-                            "id": "endpoint",
-                            "label": "接口地址或仓库标识",
-                            "value": config["endpoint"],
-                            "placeholder": "R2/S3 填 https://<account>.r2.cloudflarestorage.com；GitHub 填 owner/repo@branch",
+                            "id": "s3_endpoint",
+                            "label": "Endpoint 地址",
+                            "value": config["s3_endpoint"],
+                            "placeholder": "例如 https://<account>.r2.cloudflarestorage.com 或 S3 Endpoint",
+                            "visible_when": {"control_id": "provider", "in": ["r2", "s3"]},
                         },
                         {
                             "kind": "input",
-                            "id": "bucket_prefix",
-                            "label": "存储桶与路径前缀",
-                            "value": config["bucket_prefix"],
-                            "placeholder": "R2/S3 填 bucket/prefix；GitHub 填仓库内目录前缀（如 images）",
+                            "id": "s3_bucket",
+                            "label": "Bucket 存储桶名",
+                            "value": config["s3_bucket"],
+                            "placeholder": "填写存储桶名称（支持 bucket/prefix 前缀）",
+                            "visible_when": {"control_id": "provider", "in": ["r2", "s3"]},
+                        },
+                        {
+                            "kind": "input",
+                            "id": "s3_access_key",
+                            "label": "Access Key ID",
+                            "value": config["s3_access_key"],
+                            "placeholder": "对象存储访问公钥 ID",
+                            "visible_when": {"control_id": "provider", "in": ["r2", "s3"]},
+                        },
+                        {
+                            "kind": "secret",
+                            "id": "s3_secret_key",
+                            "label": "Secret Access Key",
+                            "value": config["s3_secret_key"],
+                            "placeholder": "对象存储访问密钥",
+                            "visible_when": {"control_id": "provider", "in": ["r2", "s3"]},
                         },
                         {
                             "kind": "input",
                             "id": "public_domain",
                             "label": "公开访问域名",
                             "value": config["public_domain"],
-                            "placeholder": "例如 https://cdn.example.com（GitHub 可留空默认 raw 地址）",
+                            "placeholder": "例如 https://img.example.com（可留空使用默认地址）",
+                            "visible_when": {"control_id": "provider", "in": ["r2", "s3"]},
+                        },
+                        {
+                            "kind": "input",
+                            "id": "gh_repo",
+                            "label": "仓库 (owner/repo)",
+                            "value": config["gh_repo"],
+                            "placeholder": "例如 username/image-assets",
+                            "visible_when": {"control_id": "provider", "equals": "github"},
+                        },
+                        {
+                            "kind": "input",
+                            "id": "gh_branch",
+                            "label": "分支名",
+                            "value": config["gh_branch"],
+                            "placeholder": "main",
+                            "visible_when": {"control_id": "provider", "equals": "github"},
                         },
                         {
                             "kind": "secret",
-                            "id": "access_secret",
-                            "label": "访问密钥凭证",
-                            "value": config["access_secret"],
-                            "placeholder": "R2/S3 填 AccessKeyId:SecretAccessKey；GitHub 填 Personal Access Token",
+                            "id": "gh_token",
+                            "label": "Personal Access Token",
+                            "value": config["gh_token"],
+                            "placeholder": "具备 repo 写入权限的 GitHub Token",
+                            "visible_when": {"control_id": "provider", "equals": "github"},
+                        },
+                        {
+                            "kind": "segmented",
+                            "id": "gh_cdn",
+                            "label": "外链加速方式",
+                            "value": config["gh_cdn"],
+                            "options": [
+                                {"value": "jsdelivr", "label": "jsDelivr 加速"},
+                                {"value": "raw", "label": "GitHub 原生"},
+                            ],
+                            "visible_when": {"control_id": "provider", "equals": "github"},
                         },
                         {
                             "kind": "actions",
@@ -742,7 +850,7 @@ class ImageHostPlugin:
                 },
                 {
                     "id": "policy-card",
-                    "title": "自动化策略",
+                    "title": "上传与路径策略",
                     "items": [
                         {
                             "kind": "switch",
@@ -752,11 +860,22 @@ class ImageHostPlugin:
                         },
                         {
                             "kind": "segmented",
-                            "id": "post_process",
-                            "label": "上传后处理",
-                            "value": config["post_process"],
+                            "id": "naming_rule",
+                            "label": "远端路径命名",
+                            "value": config["naming_rule"],
                             "options": [
-                                {"value": "replace_keep", "label": "替换外链并保留原图"},
+                                {"value": "ym_hash", "label": "按年月哈希归档"},
+                                {"value": "note_dir", "label": "按笔记同名目录"},
+                                {"value": "original", "label": "保持原文件名"},
+                            ],
+                        },
+                        {
+                            "kind": "segmented",
+                            "id": "after_upload",
+                            "label": "上传后处理",
+                            "value": config["after_upload"],
+                            "options": [
+                                {"value": "replace_keep", "label": "替换外链并保留本地原图"},
                                 {"value": "replace_clean", "label": "替换外链并归档原图"},
                             ],
                         },
@@ -764,14 +883,14 @@ class ImageHostPlugin:
                 },
                 {
                     "id": "status-card",
-                    "title": "图床状态与上传记录",
+                    "title": "图床概览与记录",
                     "items": [
                         {
-                            "kind": "kv",
-                            "rows": [
+                            "kind": "metrics",
+                            "metrics": [
                                 {"label": "当前通道", "value": provider_label},
-                                {"label": "待上传本地图片引用数", "value": f"{pending_count} 处"},
-                                {"label": "累计上传图片数", "value": f"{int(stats.get('uploaded_total', 0))} 张"},
+                                {"label": "待上传本地图片数", "value": f"{pending_count} 张"},
+                                {"label": "累计已上传张数", "value": f"{uploaded_total} 张"},
                             ],
                         },
                         {
@@ -811,7 +930,7 @@ class ImageHostPlugin:
             if action_id == "save_config":
                 _, pending_count, _ = self._scan_notes(bridge)
                 provider_label = PROVIDER_LABELS.get(config["provider"], config["provider"])
-                status = f"配置已保存 · 当前通道 {provider_label}，待上传本地图片 {pending_count} 处"
+                status = f"配置已保存 · 当前通道 {provider_label}，待上传本地图片 {pending_count} 张"
                 page = self._build_page(config, stats, logs, pending_count, status_override=status)
                 return {"values": config, "page": page, "status": status}
 
@@ -820,10 +939,10 @@ class ImageHostPlugin:
                 ok, msg = self._test_connection(config)
                 if ok:
                     logs = self._append_log(logs, f"连接测试 ({PROVIDER_LABELS[config['provider']]})", "成功")
-                    status = f"{msg} · 已扫描 {scanned_notes} 篇笔记（待上传 {pending_count} 处）"
+                    status = f"{msg} · 已扫描 {scanned_notes} 篇笔记（待上传 {pending_count} 张）"
                 else:
                     logs = self._append_log(logs, f"连接测试 ({PROVIDER_LABELS[config['provider']]})", "未就绪")
-                    status = f"{msg}（已扫描 {scanned_notes} 篇笔记，待上传 {pending_count} 处）"
+                    status = f"{msg}（已扫描 {scanned_notes} 篇笔记，待上传 {pending_count} 张）"
                 self._save_logs(bridge, logs)
                 page = self._build_page(config, stats, logs, pending_count, status_override=status)
                 return {"values": config, "page": page, "status": status}

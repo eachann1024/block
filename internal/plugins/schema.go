@@ -13,11 +13,13 @@ type ItemKind string
 const (
 	KindSegmented ItemKind = "segmented"
 	KindInput     ItemKind = "input"
+	KindFolder    ItemKind = "folder"
 	KindSecret    ItemKind = "secret"
 	KindSelect    ItemKind = "select"
 	KindSwitch    ItemKind = "switch"
 	KindActions   ItemKind = "actions"
 	KindKV        ItemKind = "kv"
+	KindMetrics   ItemKind = "metrics"
 	KindLogList   ItemKind = "log_list"
 )
 
@@ -45,23 +47,37 @@ type UIKVRow struct {
 	Value string `json:"value"`
 }
 
+type UIMetric struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
 type UILogEntry struct {
 	Title  string `json:"title"`
 	Time   string `json:"time"`
 	Status string `json:"status,omitempty"`
 }
 
+// UIVisibleWhen conditionally shows a UIItem based on another form control's current value.
+type UIVisibleWhen struct {
+	ControlID string   `json:"control_id"`
+	Equals    any      `json:"equals,omitempty"`
+	In        []string `json:"in,omitempty"`
+}
+
 type UIItem struct {
-	Kind        ItemKind     `json:"kind"`
-	ID          string       `json:"id,omitempty"`
-	Label       string       `json:"label,omitempty"`
-	Value       any          `json:"value,omitempty"`
-	Placeholder string       `json:"placeholder,omitempty"`
-	Options     []UIOption   `json:"options,omitempty"`
-	Buttons     []UIButton   `json:"buttons,omitempty"`
-	Rows        []UIKVRow    `json:"rows,omitempty"`
-	EmptyText   string       `json:"empty_text,omitempty"`
-	Entries     []UILogEntry `json:"entries,omitempty"`
+	Kind        ItemKind       `json:"kind"`
+	ID          string         `json:"id,omitempty"`
+	Label       string         `json:"label,omitempty"`
+	Value       any            `json:"value,omitempty"`
+	Placeholder string         `json:"placeholder,omitempty"`
+	Options     []UIOption     `json:"options,omitempty"`
+	Buttons     []UIButton     `json:"buttons,omitempty"`
+	Rows        []UIKVRow      `json:"rows,omitempty"`
+	Metrics     []UIMetric     `json:"metrics,omitempty"`
+	EmptyText   string         `json:"empty_text,omitempty"`
+	Entries     []UILogEntry   `json:"entries,omitempty"`
+	VisibleWhen *UIVisibleWhen `json:"visible_when,omitempty"`
 }
 
 type UICard struct {
@@ -88,6 +104,40 @@ func DecodePageStrict(raw json.RawMessage) (*UIPage, error) {
 		return nil, err
 	}
 	return &page, nil
+}
+
+// IsItemVisible evaluates item.VisibleWhen against the current form control values map.
+func IsItemVisible(item UIItem, values map[string]any) bool {
+	cond := item.VisibleWhen
+	if cond == nil || strings.TrimSpace(cond.ControlID) == "" {
+		return true
+	}
+	cur, exists := values[cond.ControlID]
+	if !exists {
+		return false
+	}
+	if len(cond.In) > 0 {
+		curStr := fmt.Sprintf("%v", cur)
+		for _, allowed := range cond.In {
+			if curStr == allowed {
+				return true
+			}
+		}
+		return false
+	}
+	if cond.Equals != nil {
+		switch want := cond.Equals.(type) {
+		case bool:
+			got, ok := cur.(bool)
+			return ok && got == want
+		case string:
+			got, ok := cur.(string)
+			return ok && got == want
+		default:
+			return fmt.Sprintf("%v", cur) == fmt.Sprintf("%v", want)
+		}
+	}
+	return true
 }
 
 func (p *UIPage) Validate() error {
@@ -139,7 +189,7 @@ func (p *UIPage) ExtractDefaultValues() map[string]any {
 	for _, card := range p.Cards {
 		for _, item := range card.Items {
 			switch item.Kind {
-			case KindSegmented, KindInput, KindSecret, KindSelect, KindSwitch:
+			case KindSegmented, KindInput, KindFolder, KindSecret, KindSelect, KindSwitch:
 				if item.ID != "" {
 					out[item.ID] = item.Value
 				}
@@ -168,6 +218,15 @@ func (p *UIPage) CollectActionIDs() []string {
 }
 
 func validateItem(prefix string, item UIItem, seenControls, seenActions map[string]bool) error {
+	if item.VisibleWhen != nil {
+		if strings.TrimSpace(item.VisibleWhen.ControlID) == "" {
+			return fmt.Errorf("%s.visible_when.control_id is required", prefix)
+		}
+		if item.VisibleWhen.Equals == nil && len(item.VisibleWhen.In) == 0 {
+			return fmt.Errorf("%s.visible_when requires equals or in", prefix)
+		}
+	}
+
 	switch item.Kind {
 	case KindSegmented, KindSelect:
 		if err := registerControl(prefix, item.ID, item.Label, seenControls); err != nil {
@@ -195,7 +254,7 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 		if !matched {
 			return fmt.Errorf("%s.value %q does not match any option", prefix, strVal)
 		}
-	case KindInput, KindSecret:
+	case KindInput, KindFolder, KindSecret:
 		if err := registerControl(prefix, item.ID, item.Label, seenControls); err != nil {
 			return err
 		}
@@ -230,6 +289,18 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 				return err
 			}
 			if err := checkText(fmt.Sprintf("%s.rows[%d].value", prefix, ri), row.Value, true); err != nil {
+				return err
+			}
+		}
+	case KindMetrics:
+		if len(item.Metrics) == 0 {
+			return fmt.Errorf("%s.metrics must contain at least 1 metric", prefix)
+		}
+		for mi, m := range item.Metrics {
+			if err := checkText(fmt.Sprintf("%s.metrics[%d].label", prefix, mi), m.Label, true); err != nil {
+				return err
+			}
+			if err := checkText(fmt.Sprintf("%s.metrics[%d].value", prefix, mi), m.Value, true); err != nil {
 				return err
 			}
 		}
