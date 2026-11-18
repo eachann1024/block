@@ -305,6 +305,14 @@ func (p Palette) DuoIconColors(line ui.Color) IconColors {
 	}
 }
 
+// HoverIconColors returns the idle (secondary mono) or hovered/pressed (duo) icon tint.
+func (p Palette) HoverIconColors(hot bool) IconColors {
+	if hot {
+		return p.DuoIconColors(p.Text)
+	}
+	return p.MonoIconColors(p.TextSecondary)
+}
+
 func (p Palette) MonoIconColors(c ui.Color) IconColors {
 	return IconColors{
 		Line:   c,

@@ -670,7 +670,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 				if expanded {
 					chev = icons.ChevronDown
 				}
-				icons.Draw(cUI, chev, 14, pal.MonoIconColors(pal.TextSecondary))
+				icons.Draw(cUI, chev, 14, pal.HoverIconColors(toggleBtn.Hovered()))
 			}
 			ui.Text(cUI, headline).FontSize(14).FontWeight(500).TextColor(pal.TextSecondary).Grow(1).SingleLine()
 		})
@@ -792,7 +792,7 @@ func (c *Controller) renderSourcesCard(cUI *ui.Context, pal theme.Palette, turnK
 				btn.Children(func() {
 					icons.Draw(cUI, icons.Note, theme.IconRow, pal.DuoIconColors(pal.Text))
 					ui.Text(cUI, src.Title+".md").FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).SingleLine()
-					icons.Draw(cUI, icons.ChevronRight, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+					icons.Draw(cUI, icons.ChevronRight, theme.IconInline, pal.HoverIconColors(btn.Hovered()))
 				})
 				if btn.Clicked() && c.host != nil {
 					_ = c.host.OpenNote(src.Path, 0)
