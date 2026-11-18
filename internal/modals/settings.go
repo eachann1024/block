@@ -821,7 +821,7 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			}
 			settingRow(c, theme.Tr("更新源", "Update Source"), func() {
 				if internalui.SegmentedControl(c, "settings-update-source-seg", &srcIdx, []internalui.SegmentOption{
-					{ID: "settings-upd-src-auto", Label: theme.Tr("自动优选", "Auto")},
+					{ID: "settings-upd-src-auto", Label: theme.Tr("自动", "Auto")},
 					{ID: "settings-upd-src-mirror", Label: theme.Tr("国内加速", "Mirror")},
 					{ID: "settings-upd-src-github", Label: "GitHub"},
 				}) {

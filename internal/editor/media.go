@@ -417,6 +417,9 @@ func (s *Session) resolveMediaPath(src string) string {
 }
 
 func (s *Session) openBlockLink(svc ui.Services, rawLink string) {
+	if s.previewMedia != nil {
+		return
+	}
 	link := strings.TrimSpace(rawLink)
 	if link == "" {
 		return
@@ -464,18 +467,30 @@ func (s *Session) resolveVideoPlayer(src string) (*ui.VideoPlayer, bool) {
 	if s.videoFailed[src] {
 		return nil, false
 	}
-	resolved := s.resolveMediaPath(src)
-	st, err := os.Stat(resolved)
-	if err != nil || st.IsDir() || st.Size() == 0 {
-		s.videoFailed[src] = true
-		return nil, false
+	var player *ui.VideoPlayer
+	var err error
+	if s.previewMedia != nil {
+		asset := s.previewMedia(src, true, false)
+		if len(asset.Video) == 0 {
+			return nil, false
+		}
+		player, err = video.OpenData(asset.Video)
+	} else {
+		resolved := s.resolveMediaPath(src)
+		st, statErr := os.Stat(resolved)
+		if statErr != nil || st.IsDir() || st.Size() == 0 {
+			s.videoFailed[src] = true
+			return nil, false
+		}
+		player, err = video.Open(resolved)
 	}
-	player, err := video.Open(resolved)
 	if err != nil {
 		s.videoFailed[src] = true
 		return nil, false
 	}
-	player.Pause()
+	if s.previewMedia == nil {
+		player.Pause()
+	}
 	s.videoPlayers[src] = player
 	return player, true
 }
@@ -504,6 +519,8 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 						player.Play()
 					}
 				}
+			} else if s.previewMedia != nil {
+				ui.Video(c, player).FillWidth().Height(160).Fit(ui.Contain).Label(lbl)
 			} else {
 				ph := ui.Row(c.Key("vid-loading")).FillWidth().Height(160).Center().Gap(theme.Space8).Background(pal.CodeBlockBG)
 				ph.Children(func() {
@@ -539,6 +556,9 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 					ui.Text(c, lbl).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
 				})
 
+				if s.previewMedia != nil {
+					return
+				}
 				openBtn := appUi.IconButton(c, icons.LinkOpen, appUi.IconButtonOptions{
 					ID:       fmt.Sprintf("vid-open-%d", id),
 					Label:    theme.Tr("用默认播放器打开", "Open in default player"),
@@ -551,6 +571,23 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 					s.openBlockLink(c.Services(), b.ImageSrc)
 				}
 			})
+		})
+		return
+	}
+
+	if s.previewMedia != nil {
+		asset := s.previewMedia(b.ImageSrc, true, false)
+		label := theme.Tr("播放视频", "Play video")
+		if asset.Loading {
+			label = theme.Tr("正在加载视频…", "Loading video…")
+		} else if asset.Unavailable || asset.Video != nil || s.videoFailed[b.ImageSrc] {
+			label = theme.Tr("视频无法播放", "Video unavailable")
+		}
+		ui.Row(c).FillWidth().Height(72).Center().Background(pal.CodeBlockBG).Children(func() {
+			btn := appUi.ActionButton(c, fmt.Sprintf("preview-video-%d", id), label, nil, appUi.ButtonSecondary, asset.Loading || asset.Unavailable || asset.Video != nil || s.videoFailed[b.ImageSrc])
+			if btn.Clicked() {
+				s.previewMedia(b.ImageSrc, true, true)
+			}
 		})
 		return
 	}

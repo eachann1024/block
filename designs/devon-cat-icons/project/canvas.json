@@ -1,0 +1,74 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-05T07:01:42Z"
+ },
+ "title": "德文猫图标",
+ "launch": {
+  "view": "canvas"
+ },
+ "pages": [],
+ "boards": {
+  "Main.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 480,
+   "h": 480,
+   "title": "大耳 · 杏眼"
+  },
+  "Profile.dc.html": {
+   "x": 560,
+   "y": 0,
+   "w": 480,
+   "h": 480,
+   "title": "眯眼"
+  },
+  "Peek.dc.html": {
+   "x": 1120,
+   "y": 0,
+   "w": 480,
+   "h": 480,
+   "title": "圆眼 · 抬头看"
+  },
+  "Box.dc.html": {
+   "x": 0,
+   "y": 600,
+   "w": 480,
+   "h": 480,
+   "title": "扒着页边探头"
+  },
+  "Wink.dc.html": {
+   "x": 560,
+   "y": 600,
+   "w": 480,
+   "h": 480,
+   "title": "歪头"
+  },
+  "Curl.dc.html": {
+   "x": 1120,
+   "y": 600,
+   "w": 480,
+   "h": 480,
+   "title": "眨一只眼"
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "Profile.dc.html",
+  "Peek.dc.html",
+  "Box.dc.html",
+  "Wink.dc.html",
+  "Curl.dc.html"
+ ],
+ "notes": {
+  "t1": {
+   "x": 0,
+   "y": -300,
+   "text": "德文猫 App 图标 · 简洁版",
+   "kind": "title1",
+   "maxW": 1600
+  }
+ },
+ "designSystems": []
+}
