@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { installerFor } from "./allowed-assets.mjs";
-import { cargoRelease, run } from "./cargo-release.mjs";
+import { goRelease, run } from "./go-release.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
 const WINDOWS_ARCH = process.env.BLOCK_ARCH || process.arch;
-if (WINDOWS_ARCH !== "x64") throw new Error(`Windows installers are built for x64 only, got ${WINDOWS_ARCH}`);
-const SETUP_NAME = installerFor({ platform: "windows", arch: WINDOWS_ARCH, kind: "exe" });
+if (WINDOWS_ARCH !== "x64" && WINDOWS_ARCH !== "amd64") {
+  throw new Error(`Windows installers are built for x64 only, got ${WINDOWS_ARCH}`);
+}
+const SETUP_NAME = installerFor({ platform: "windows", arch: "x64", kind: "exe" });
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 
 export async function packageWindows() {
@@ -15,8 +17,7 @@ export async function packageWindows() {
   assert.equal(process.arch, "x64", `Windows installers are built for x64 only, got ${process.arch}`);
   const version = applyReleasePlanVersion();
   assert.match(version, /^\d+\.\d+\.\d+$/);
-  cargoRelease();
-  const binary = resolve(ROOT, "target/release/block.exe");
+  const binary = goRelease({ goos: "windows", goarch: "amd64" });
   assert.ok(existsSync(binary), `Release binary missing at ${binary}`);
   mkdirSync(RELEASE_DIR, { recursive: true });
   const outfile = join(RELEASE_DIR, SETUP_NAME);
