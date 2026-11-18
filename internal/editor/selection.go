@@ -517,9 +517,14 @@ func (s *Session) handleFocusedAtomicInput(c *ui.Context, ev ui.InputEvent) bool
 				s.deleteBlock(idx)
 			}
 			return true
-		case "paste", "pasteAndMatchStyle":
+		case "paste":
 			if !s.readOnly {
 				s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
+			}
+			return true
+		case "pasteAndMatchStyle":
+			if !s.readOnly {
+				s.PastePlainFromClipboard(c.Services(), c.ReadClipboard(), false)
 			}
 			return true
 		case "selectAll":
@@ -576,6 +581,11 @@ func (s *Session) handleFocusedAtomicInput(c *ui.Context, ev ui.InputEvent) bool
 				s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
 			}
 			return true
+		case (ev.Mods == (ui.Cmd|ui.Shift) || ev.Mods == (ui.Cmd|ui.Shift|ui.Alt)) && ev.Key == ui.KeyV:
+			if !s.readOnly {
+				s.PastePlainFromClipboard(c.Services(), c.ReadClipboard(), false)
+			}
+			return true
 		case !s.readOnly && ev.Mods == 0 && (ev.Key == ui.KeyBackspace || ev.Key == ui.KeyDelete):
 			s.deleteBlock(idx)
 			return true
@@ -626,11 +636,17 @@ func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) boo
 			return true
 		case "cut":
 			return s.CutSelection(c)
-		case "paste", "pasteAndMatchStyle":
+		case "paste":
 			if s.readOnly {
 				return true
 			}
 			s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
+			return true
+		case "pasteAndMatchStyle":
+			if s.readOnly {
+				return true
+			}
+			s.PastePlainFromClipboard(c.Services(), c.ReadClipboard(), false)
 			return true
 		case "selectAll":
 			s.SelectAllBlocks()
@@ -693,6 +709,11 @@ func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) boo
 		case ev.Mods == ui.Cmd && ev.Key == ui.KeyV:
 			if !s.readOnly {
 				s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
+			}
+			return true
+		case (ev.Mods == (ui.Cmd|ui.Shift) || ev.Mods == (ui.Cmd|ui.Shift|ui.Alt)) && ev.Key == ui.KeyV:
+			if !s.readOnly {
+				s.PastePlainFromClipboard(c.Services(), c.ReadClipboard(), false)
 			}
 			return true
 		case !s.readOnly && ev.Mods == 0 && (ev.Key == ui.KeyBackspace || ev.Key == ui.KeyDelete):
@@ -1935,7 +1956,7 @@ func (s *Session) pasteOverMultiSelection(norm string) bool {
 	if !s.hasMultiBlockSelection() && !s.hasWholeAtomicSelection() {
 		return false
 	}
-	if !s.isMarkdownNote() || (!strings.Contains(norm, "\n") && !looksLikeMarkdownBlock(norm)) {
+	if !s.isMarkdownNote() || (!strings.Contains(norm, "\n") && !looksLikeMarkdownBlock(norm) && !looksLikeInlineMarkdown(norm)) {
 		return s.ReplaceSelectionWithText(norm)
 	}
 	if s.ReplaceAIMarkdown(norm) {

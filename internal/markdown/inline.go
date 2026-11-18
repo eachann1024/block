@@ -33,7 +33,7 @@ func parseInlineWithDefs(raw string, defs map[string]refDef) []model.Span {
 	if len(defs) == 0 && !hasASCIIPunct(raw) {
 		return []model.Span{{Text: raw}}
 	}
-	toks := scanInlineTokens(raw, defs)
+	toks := scanInlineTokensWithCtx(raw, defs, false)
 	resolveDelimiters(toks)
 	spans := emitSpans(toks)
 	return coalesceSpans(spans)
@@ -160,8 +160,13 @@ func classifyDelim(s string, start, end int, ch byte) (canOpen, canClose bool) {
 }
 
 func scanInlineTokens(s string, defs map[string]refDef) []*inlineTok {
+	return scanInlineTokensWithCtx(s, defs, false)
+}
+
+func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*inlineTok {
 	var toks []*inlineTok
 	pairedUnknown := scanPairedUnknownTags(s)
+	htmlLinkDepth := 0
 	n := len(s)
 	i := 0
 	for i < n {
@@ -260,7 +265,7 @@ func scanInlineTokens(s string, defs map[string]refDef) []*inlineTok {
 			}
 			if label, dest, consumed, ok := tryParseLinkOrImage(s[i:], defs, false); ok {
 				toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: dest}})
-				innerToks := scanInlineTokens(label, defs)
+				innerToks := scanInlineTokensWithCtx(label, defs, true)
 				resolveDelimiters(innerToks)
 				toks = append(toks, innerToks...)
 				toks = append(toks, &inlineTok{kind: tokLinkClose})
@@ -286,6 +291,13 @@ func scanInlineTokens(s string, defs map[string]refDef) []*inlineTok {
 			}
 			if rawTag, tok, consumed, ok := tryParseHTMLTag(s[i:], pairedUnknown); ok {
 				if tok != nil {
+					for _, t := range tok {
+						if t.kind == tokOpenStyle && t.tag == "a" && t.hasLnk {
+							htmlLinkDepth++
+						} else if t.kind == tokCloseStyle && t.tag == "a" && htmlLinkDepth > 0 {
+							htmlLinkDepth--
+						}
+					}
 					toks = append(toks, tok...)
 				} else {
 					toks = append(toks, &inlineTok{kind: tokText, text: rawTag})
@@ -306,6 +318,17 @@ func scanInlineTokens(s string, defs map[string]refDef) []*inlineTok {
 			i++
 
 		default:
+			if !inLink && htmlLinkDepth == 0 && (b == 'h' || b == 'H') {
+				if disp, linkURL, consumed, ok := tryParseBareAutolink(s, i); ok {
+					toks = append(toks,
+						&inlineTok{kind: tokLinkOpen, style: inlineStyle{link: linkURL}},
+						&inlineTok{kind: tokText, text: disp},
+						&inlineTok{kind: tokLinkClose},
+					)
+					i += consumed
+					continue
+				}
+			}
 			start := i
 			_, size := utf8.DecodeRuneInString(s[i:])
 			i += size
@@ -314,6 +337,11 @@ func scanInlineTokens(s string, defs map[string]refDef) []*inlineTok {
 				if nb == '\\' || nb == '`' || nb == '*' || nb == '_' || nb == '~' || nb == '!' || nb == '[' || nb == '<' || nb == '&' {
 					break
 				}
+				if !inLink && htmlLinkDepth == 0 && (nb == 'h' || nb == 'H') {
+					if _, _, _, ok := tryParseBareAutolink(s, i); ok {
+						break
+					}
+				}
 				_, sz := utf8.DecodeRuneInString(s[i:])
 				i += sz
 			}
@@ -321,6 +349,90 @@ func scanInlineTokens(s string, defs map[string]refDef) []*inlineTok {
 		}
 	}
 	return toks
+}
+
+func tryParseBareAutolink(s string, start int) (display, linkURL string, consumed int, ok bool) {
+	rem := s[start:]
+	schemeLen := 0
+	if len(rem) > 8 && strings.EqualFold(rem[:8], "https://") {
+		schemeLen = 8
+	} else if len(rem) > 7 && strings.EqualFold(rem[:7], "http://") {
+		schemeLen = 7
+	} else {
+		return "", "", 0, false
+	}
+
+	if start > 0 {
+		prev, _ := utf8.DecodeLastRuneInString(s[:start])
+		if isASCIIAlpha(byte(prev)) && prev < 0x80 {
+			return "", "", 0, false
+		}
+		if (prev >= '0' && prev <= '9') || prev == '/' || prev == '.' || prev == '-' || prev == '_' || prev == '@' {
+			return "", "", 0, false
+		}
+	}
+
+	end := start + schemeLen
+	for end < len(s) {
+		r, sz := utf8.DecodeRuneInString(s[end:])
+		if r <= 0x20 || r >= 0x7F || r == '<' || r == '>' || r == '"' || r == '`' {
+			break
+		}
+		end += sz
+	}
+
+	// Strip GFM trailing punctuation & unmatched closing brackets/parens.
+	for end > start+schemeLen {
+		last := s[end-1]
+		switch last {
+		case '.', ',', ';', ':', '!', '?', '\'', '*', '_', '~':
+			end--
+			continue
+		case ')':
+			body := s[start+schemeLen : end]
+			if strings.Count(body, ")") > strings.Count(body, "(") {
+				end--
+				continue
+			}
+		case ']':
+			body := s[start+schemeLen : end]
+			if strings.Count(body, "]") > strings.Count(body, "[") {
+				end--
+				continue
+			}
+		}
+		break
+	}
+
+	if end <= start+schemeLen {
+		return "", "", 0, false
+	}
+	rest := s[start+schemeLen : end]
+	host := rest
+	if cut := strings.IndexAny(rest, "/?#"); cut >= 0 {
+		host = rest[:cut]
+	}
+	if host == "" || strings.HasPrefix(host, ".") || strings.HasSuffix(host, ".") {
+		return "", "", 0, false
+	}
+	hasAlphaNum := false
+	for i := 0; i < len(host); i++ {
+		c := host[i]
+		if isASCIIAlpha(c) || (c >= '0' && c <= '9') {
+			hasAlphaNum = true
+			break
+		}
+	}
+	if !hasAlphaNum {
+		return "", "", 0, false
+	}
+	if !strings.ContainsRune(host, '.') && !strings.ContainsRune(host, ':') && !strings.EqualFold(host, "localhost") {
+		return "", "", 0, false
+	}
+
+	raw := s[start:end]
+	normURL := strings.ToLower(raw[:schemeLen]) + raw[schemeLen:]
+	return raw, normURL, end - start, true
 }
 
 func findClosingBackticks(s string, from, count int) int {
@@ -1182,12 +1294,16 @@ func SerializeInline(spans []model.Span) string {
 	if len(norm) == 0 {
 		return ""
 	}
-	md := serializeInlineWithMode(norm, false)
-	if spansEqual(ParseInline(md), norm) {
-		return md
+	mdBare := serializeInlineWithMode(norm, false, true)
+	if spansEqual(ParseInline(mdBare), norm) {
+		return mdBare
+	}
+	mdExplicit := serializeInlineWithMode(norm, false, false)
+	if spansEqual(ParseInline(mdExplicit), norm) {
+		return mdExplicit
 	}
 	// Fallback to HTML formatting tags for non-round-tripping delimiter edge cases.
-	htmlCandidate := serializeInlineWithMode(norm, true)
+	htmlCandidate := serializeInlineWithMode(norm, true, false)
 	if spansEqual(ParseInline(htmlCandidate), norm) {
 		return htmlCandidate
 	}
@@ -1212,9 +1328,11 @@ type inlineWrapper struct {
 	useHT bool
 }
 
-func wrappersForSpan(s model.Span, forceHTML bool) []inlineWrapper {
+func wrappersForSpan(s model.Span, forceHTML, allowBareURL bool) []inlineWrapper {
 	var w []inlineWrapper
-	if s.Link != "" {
+	isBareSelfLink := allowBareURL && !forceHTML && s.Link != "" &&
+		s.Marks == 0 && s.FGColor == "" && s.BGColor == "" && isExactBareAutolink(s.Text, s.Link)
+	if s.Link != "" && !isBareSelfLink {
 		w = append(w, inlineWrapper{kind: wrapLink, val1: s.Link, useHT: forceHTML})
 	}
 	if s.FGColor != "" || s.BGColor != "" {
@@ -1235,7 +1353,15 @@ func wrappersForSpan(s model.Span, forceHTML bool) []inlineWrapper {
 	return w
 }
 
-func serializeInlineWithMode(spans []model.Span, forceHTML bool) string {
+func isExactBareAutolink(text, link string) bool {
+	if text == "" || link == "" {
+		return false
+	}
+	disp, url, consumed, ok := tryParseBareAutolink(text, 0)
+	return ok && consumed == len(text) && disp == text && url == link
+}
+
+func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) string {
 	var out strings.Builder
 	var opened []inlineWrapper
 
@@ -1329,7 +1455,7 @@ func serializeInlineWithMode(spans []model.Span, forceHTML bool) string {
 				useHTML = true
 			}
 		}
-		target := wrappersForSpan(sp, useHTML)
+		target := wrappersForSpan(sp, useHTML, allowBareURL)
 		common := 0
 		for common < len(opened) && common < len(target) && opened[common] == target[common] {
 			common++
@@ -1344,8 +1470,10 @@ func serializeInlineWithMode(spans []model.Span, forceHTML bool) string {
 
 		if sp.Marks&model.MarkCode != 0 {
 			writeInlineCode(&out, sp.Text)
+		} else if allowBareURL && !useHTML && sp.Link != "" && len(opened) == 0 && isExactBareAutolink(sp.Text, sp.Link) {
+			out.WriteString(sp.Text)
 		} else {
-			writeInlineText(&out, sp.Text, len(opened) > 0 && opened[0].kind == wrapLink && !opened[0].useHT, useHTML)
+			writeInlineText(&out, sp.Text, len(opened) > 0 && opened[0].kind == wrapLink && !opened[0].useHT, useHTML, sp.Link == "")
 		}
 	}
 	for k := len(opened) - 1; k >= 0; k-- {
@@ -1379,7 +1507,7 @@ func writeInlineCode(out *strings.Builder, text string) {
 	out.WriteString(fence)
 }
 
-func writeInlineText(out *strings.Builder, text string, inMarkdownLink, htmlCtx bool) {
+func writeInlineText(out *strings.Builder, text string, inMarkdownLink, htmlCtx, escapeBareURL bool) {
 	for i := 0; i < len(text); {
 		r, sz := utf8.DecodeRuneInString(text[i:])
 		switch r {
@@ -1405,6 +1533,13 @@ func writeInlineText(out *strings.Builder, text string, inMarkdownLink, htmlCtx 
 			} else {
 				out.WriteByte('>')
 			}
+		case ':':
+			if escapeBareURL && !inMarkdownLink && !htmlCtx && strings.HasPrefix(text[i:], "://") &&
+				((i >= 4 && strings.EqualFold(text[i-4:i], "http")) || (i >= 5 && strings.EqualFold(text[i-5:i], "https"))) {
+				out.WriteString(`\:`)
+			} else {
+				out.WriteByte(':')
+			}
 		case '\\', '`', '*', '~', '_':
 			out.WriteByte('\\')
 			out.WriteRune(r)
@@ -1429,7 +1564,7 @@ func simplifyInlineEscapes(src string, expected []model.Span) string {
 		return src
 	}
 	exp := coalesceSpans(expected)
-	for _, ch := range []byte{'~', '*', '_', '[', ']', '`', '<', '&', '\\'} {
+	for _, ch := range []byte{'~', '*', '_', '[', ']', '`', '<', '&', ':', '\\'} {
 		pos := 0
 		for pos+1 < len(src) {
 			idx := strings.IndexByte(src[pos:], '\\')
@@ -1705,11 +1840,26 @@ func normalizePastedLine(line string) string {
 		}
 	}
 
-	// Normalize fullwidth bullet markers & common CJK bullet characters (`•`, `·`, `▪`, `●`, `－`, `＊`).
-	for _, bullet := range []string{"－", "＊", "•", "·", "▪", "●", "-", "*", "+"} {
+	// Normalize standalone checkbox markers (`☐ Task`, `☑ Task`, `[ ] Task`, `【】 Task`) without a leading `- `.
+	if todoBody, checked, ok := matchStandaloneTodoLine(rest); ok {
+		box := "- [ ]"
+		if checked {
+			box = "- [x]"
+		}
+		if todoBody == "" {
+			return prefix + box
+		}
+		return prefix + box + " " + normalizeFullwidthInlineDelims(todoBody)
+	}
+
+	// Normalize fullwidth bullet markers & common CJK/Unicode bullet characters.
+	for _, bullet := range []string{"－", "＊", "•", "◦", "‣", "▸", "▹", "►", "◆", "◇", "❖", "·", "▪", "●", "–", "-", "*", "+"} {
 		if strings.HasPrefix(rest, bullet) {
 			after := rest[len(bullet):]
 			if after == "" {
+				if bullet == "–" {
+					break
+				}
 				if bullet == "-" || bullet == "*" || bullet == "+" {
 					return prefix + bullet
 				}
@@ -1718,16 +1868,17 @@ func normalizePastedLine(line string) string {
 			if strings.HasPrefix(after, " ") || strings.HasPrefix(after, "\t") || strings.HasPrefix(after, "\u3000") {
 				trimmedAfter := strings.TrimLeft(after, " \t\u3000")
 				normalizedAfter := normalizeFullwidthInlineDelims(normalizeTodoPrefix(trimmedAfter))
-				if bullet == "－" || bullet == "•" || bullet == "·" || bullet == "▪" || bullet == "●" {
-					return prefix + "- " + normalizedAfter
-				}
 				if bullet == "＊" {
 					return prefix + "* " + normalizedAfter
 				}
-				return prefix + bullet + " " + normalizedAfter
+				if bullet == "-" || bullet == "*" || bullet == "+" {
+					return prefix + bullet + " " + normalizedAfter
+				}
+				return prefix + "- " + normalizedAfter
 			}
-			// For explicit CJK bullet symbols like `•内容`, insert space automatically.
-			if bullet == "•" || bullet == "▪" || bullet == "●" {
+			// For explicit Unicode bullet glyphs like `•内容` or `◦内容`, insert space automatically.
+			switch bullet {
+			case "•", "◦", "‣", "▸", "▹", "►", "◆", "◇", "❖", "▪", "●":
 				return prefix + "- " + normalizeFullwidthInlineDelims(normalizeTodoPrefix(after))
 			}
 		}
@@ -1748,27 +1899,72 @@ func normalizePastedLine(line string) string {
 	return prefix + rest
 }
 
-func normalizeTodoPrefix(s string) string {
-	for _, pair := range [][2]string{
-		{"［ ］", "[ ]"},
-		{"［　］", "[ ]"},
-		{"［］", "[ ]"},
-		{"[]", "[ ]"},
-		{"[　]", "[ ]"},
-		{"［x］", "[x]"},
-		{"［X］", "[x]"},
-		{"［ｘ］", "[x]"},
-		{"［Ｘ］", "[x]"},
-		{"[ｘ]", "[x]"},
-		{"[Ｘ]", "[x]"},
-	} {
-		if strings.HasPrefix(s, pair[0]) {
-			after := strings.TrimLeft(s[len(pair[0]):], " \t\u3000")
-			if after == "" {
-				return pair[1]
-			}
-			return pair[1] + " " + after
+var todoPrefixMarkers = []struct {
+	raw          string
+	checked      bool
+	requireSpace bool
+}{
+	{"☐", false, false},
+	{"☑", true, false},
+	{"☒", true, false},
+	{"［ ］", false, false},
+	{"［　］", false, false},
+	{"［］", false, false},
+	{"【 】", false, false},
+	{"【　】", false, false},
+	{"【】", false, false},
+	{"[ ]", false, true},
+	{"[]", false, true},
+	{"[　]", false, false},
+	{"［x］", true, false},
+	{"［X］", true, false},
+	{"［ｘ］", true, false},
+	{"［Ｘ］", true, false},
+	{"【x】", true, false},
+	{"【X】", true, false},
+	{"[x]", true, true},
+	{"[X]", true, true},
+	{"[ｘ]", true, false},
+	{"[Ｘ]", true, false},
+}
+
+func matchStandaloneTodoLine(s string) (body string, checked, ok bool) {
+	for _, m := range todoPrefixMarkers {
+		if !strings.HasPrefix(s, m.raw) {
+			continue
 		}
+		after := s[len(m.raw):]
+		if after == "" {
+			return "", m.checked, true
+		}
+		hasWS := strings.HasPrefix(after, " ") || strings.HasPrefix(after, "\t") || strings.HasPrefix(after, "\u3000")
+		if m.requireSpace && !hasWS {
+			continue
+		}
+		return strings.TrimLeft(after, " \t\u3000"), m.checked, true
+	}
+	return "", false, false
+}
+
+func normalizeTodoPrefix(s string) string {
+	for _, m := range todoPrefixMarkers {
+		if !strings.HasPrefix(s, m.raw) {
+			continue
+		}
+		after := s[len(m.raw):]
+		hasWS := after == "" || strings.HasPrefix(after, " ") || strings.HasPrefix(after, "\t") || strings.HasPrefix(after, "\u3000")
+		if m.requireSpace && !hasWS {
+			continue
+		}
+		box := "[ ]"
+		if m.checked {
+			box = "[x]"
+		}
+		trimmed := strings.TrimLeft(after, " \t\u3000")
+		if trimmed == "" {
+			return box
+		}
+		return box + " " + trimmed
 	}
 	return s
 }
