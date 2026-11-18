@@ -2,12 +2,14 @@ module block
 
 go 1.27.3
 
-require github.com/egoist/mygo v0.9.2
+require (
+	github.com/ebitengine/purego v0.11.1
+	github.com/egoist/mygo v0.9.2
+)
 
 require (
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
 	github.com/cloudflare/circl v1.6.2 // indirect
-	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/go-text/typesetting v0.3.5 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect

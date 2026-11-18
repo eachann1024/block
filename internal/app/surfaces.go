@@ -721,7 +721,8 @@ func (h *PageHistoryView) Render(
 				}
 				previewCol := blockui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(28, previewPadX, 40, previewPadX).Background(pal.Paper)
 				blockui.Probe(previewCol, "history-preview")
-				edFont, codeFont, _ := theme.Typography()
+				_, codeFont, _ := theme.Typography()
+				edFont := theme.ResolvedEditorFont()
 				if strings.TrimSpace(codeFont) == "" {
 					codeFont = "monospace"
 				}

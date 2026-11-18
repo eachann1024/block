@@ -338,9 +338,8 @@ func (s *SearchWindowController) openHit(idx int) {
 
 // RenderView renders the standalone 680x460 floating search window.
 func (s *SearchWindowController) RenderView(c *ui.Context) {
-	edFont, _, _ := theme.Typography()
 	pal := theme.Ocean()
-	uiTheme := pal.ToUITheme(edFont)
+	uiTheme := pal.ToUITheme("")
 	uiTheme.ScrollbarStyle = ui.ScrollbarStyle{
 		TrackWidth: theme.ScrollGutter,
 		ThumbWidth: theme.ScrollThumbWidth,
