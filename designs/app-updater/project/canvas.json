@@ -1,0 +1,54 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-18T13:55:00Z"
+  },
+  "title": "Block 应用更新交互设计",
+  "launch": {
+    "view": "canvas",
+    "page": "updater-variants"
+  },
+  "pages": [
+    {
+      "id": "updater-variants",
+      "name": "应用更新三方案"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 720,
+      "h": 660,
+      "title": "方案 A · 紧凑汇总模态卡",
+      "page": "updater-variants",
+      "is_interactive": true
+    },
+    "SplitTimeline.dc.html": {
+      "x": 800,
+      "y": 0,
+      "w": 960,
+      "h": 660,
+      "title": "方案 B · 双栏时间轴阅读器",
+      "page": "updater-variants",
+      "is_interactive": true
+    },
+    "CompactDrawer.dc.html": {
+      "x": 1840,
+      "y": 0,
+      "w": 620,
+      "h": 660,
+      "title": "方案 C · 侧栏悬浮轻卡片",
+      "page": "updater-variants",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "SplitTimeline.dc.html",
+    "CompactDrawer.dc.html"
+  ],
+  "notes": {},
+  "designSystems": []
+}

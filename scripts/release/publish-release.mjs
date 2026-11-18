@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { assertReleaseAsset, RELEASE_ASSETS } from "./allowed-assets.mjs";
@@ -10,6 +11,7 @@ import {
   setMyGoJsonVersion,
   setPackageJsonVersion,
 } from "./select-release.mjs";
+import { fetchGithubReleaseByTag, syncFeedFromGithub } from "./update-feed.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 
@@ -18,14 +20,19 @@ function readRemoteFile(ref, path) {
   return Buffer.from(String(data.content).replaceAll("\n", ""), "base64").toString("utf8");
 }
 
-function writebackVersionCommit(version, tag) {
+function writebackVersionCommit(version, tag, { autoBump = true, feedJson } = {}) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const head = JSON.parse(gh(["api", `repos/${REPO}/git/ref/heads/main`])).object.sha;
     const commit = JSON.parse(gh(["api", `repos/${REPO}/git/commits/${head}`]));
-    const files = {
-      "package.json": setPackageJsonVersion(readRemoteFile(head, "package.json"), version),
-      "mygo.json": setMyGoJsonVersion(readRemoteFile(head, "mygo.json"), version),
-    };
+    const files = {};
+    if (autoBump) {
+      files["package.json"] = setPackageJsonVersion(readRemoteFile(head, "package.json"), version);
+      files["mygo.json"] = setMyGoJsonVersion(readRemoteFile(head, "mygo.json"), version);
+    }
+    if (typeof feedJson === "string") {
+      files["updates/feed.json"] = feedJson;
+    }
+    if (Object.keys(files).length === 0) return;
     const tree = JSON.parse(gh(["api", "--method", "POST", `repos/${REPO}/git/trees`, "--input", "-"], JSON.stringify({
       base_tree: commit.tree.sha,
       tree: Object.entries(files).map(([path, content]) => ({ path, mode: "100644", type: "blob", content })),
@@ -102,9 +109,16 @@ export async function publishRelease() {
     gh(["release", "upload", tag, ...assetPaths, "--repo", REPO, "--clobber"]);
   }
 
-  if (autoBump) {
-    writebackVersionCommit(version, tag);
-  }
+  const fallbackHashes = Object.fromEntries(
+    assets.map((name) => [name, createHash("sha256").update(readFileSync(join(RELEASE_DIR, name))).digest("hex")]),
+  );
+  const publishedRelease = fetchGithubReleaseByTag(tag);
+  const { json: feedJson } = syncFeedFromGithub({
+    tagRelease: publishedRelease,
+    fallbackHashes,
+  });
+
+  writebackVersionCommit(version, tag, { autoBump: Boolean(autoBump), feedJson });
 
   const summary = `已发布 ${title} (${tag})\n\n${releaseNotes}\n`;
   console.log(summary);

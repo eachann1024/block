@@ -20,6 +20,8 @@ const ROOT = resolve(DIR, "../..");
 const PROMPT_PATH = resolve(DIR, "changelog-prompt.md");
 const MAX_ATTEMPTS = 2;
 const TIMEOUT_MS = 90_000;
+const BATCH_THRESHOLD = 50;
+const BATCH_SIZE = 40;
 const BOT_AUTHORS = new Set(["github-actions[bot]", "github-actions"]);
 const VERSION_BUMP = /^chore\(release\):\s*v\d+\.\d+\.\d+\s*$/i;
 
@@ -38,7 +40,7 @@ function splitNote(raw = "") {
 }
 
 export function listCommits(root = ROOT, rangeSpec = "-n 20") {
-  const args = ["log", "--no-merges", "--reverse", "--date=format-local:%Y-%m-%d", "--format=%H%x00%an%x00%cd%x00%s%x00%(trailers:key=Release-Note,valueonly,separator=%x20)%x00%(trailers:key=Release-Note-En,valueonly,separator=%x20)"];
+  const args = ["log", "--first-parent", "--no-merges", "--reverse", "--date=format-local:%Y-%m-%d", "--format=%H%x00%an%x00%cd%x00%s%x00%(trailers:key=Release-Note,valueonly,separator=%x20)%x00%(trailers:key=Release-Note-En,valueonly,separator=%x20)"];
   if (rangeSpec.startsWith("-n")) args.push(...rangeSpec.split(/\s+/));
   else args.push(rangeSpec);
   const out = execFileSync("git", args, { cwd: root, encoding: "utf8", env: { ...process.env, TZ: "Asia/Shanghai" } }).trimEnd();
@@ -96,18 +98,9 @@ function commitLines(commits) {
   });
 }
 
-export async function polishReleaseNotes({ version, commits, env = process.env }) {
-  const baseUrl = env.MAGPIE_BASE_URL?.trim();
-  if (!baseUrl) return { status: "fallback", reason: "未配置 MAGPIE_BASE_URL" };
-  const caFile = env.MAGPIE_CA_CERT?.trim();
-  const fetchImpl = caFile ? pinnedFetch(resolve(ROOT, caFile)) : fetch;
-  const model = magpieModel(env);
+async function polishBatch({ version, commits, env, fetchImpl, url, headers, model, system }) {
   const inputLines = commitLines(commits);
   if (!inputLines.length) return { status: "empty", model };
-  const url = `${baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "")}/v1/chat/completions`;
-  const headers = { "content-type": "application/json" };
-  if (env.MAGPIE_API_KEY?.trim()) headers.authorization = `Bearer ${env.MAGPIE_API_KEY.trim()}`;
-  const system = readFileSync(PROMPT_PATH, "utf8");
   const asked = `These are the only commits for Block ${version} since the previous tag (${inputLines.length}):\n\n${inputLines.join("\n")}`;
   let lastError = "";
   let lastRaw = "";
@@ -141,6 +134,81 @@ export async function polishReleaseNotes({ version, commits, env = process.env }
     }
   }
   return { status: "fallback", reason: lastError };
+}
+
+function collectHalfBuckets(half, sections, buckets, lang) {
+  let index = -1;
+  for (const rawLine of half.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const section = sections.indexOf(line);
+    if (section >= 0) {
+      index = section;
+      continue;
+    }
+    if (line === "### Download" || line === "### 下载" || line.startsWith("Website:") || line.startsWith("官网：")) {
+      break;
+    }
+    const bullet = /^[-*•]\s+(.+)$/.exec(line);
+    if (bullet && index >= 0) {
+      buckets[index][lang].push(bullet[1].trim());
+    }
+  }
+}
+
+function mergePolishedBatches(markdowns) {
+  const buckets = [{ zh: [], en: [] }, { zh: [], en: [] }, { zh: [], en: [] }, { zh: [], en: [] }];
+  for (const markdown of markdowns) {
+    const [enHalf = "", zhHalf = ""] = markdown.split(/\n\s*---\s*\n/);
+    collectHalfBuckets(enHalf, EN_SECTIONS, buckets, "en");
+    collectHalfBuckets(zhHalf, ZH_SECTIONS, buckets, "zh");
+  }
+  const en = renderHalf("## English", EN_SECTIONS, buckets, "en");
+  const zh = renderHalf("## 中文", ZH_SECTIONS, buckets, "zh");
+  if (!en || !zh) return "";
+  return validateReleaseNotes(`${en}\n\n---\n\n${zh}`);
+}
+
+export async function polishReleaseNotes({ version, commits, env = process.env }) {
+  const baseUrl = env.MAGPIE_BASE_URL?.trim();
+  if (!baseUrl) return { status: "fallback", reason: "未配置 MAGPIE_BASE_URL" };
+  const caFile = env.MAGPIE_CA_CERT?.trim();
+  const fetchImpl = caFile ? pinnedFetch(resolve(ROOT, caFile)) : fetch;
+  const model = magpieModel(env);
+  if (!commits.length) return { status: "empty", model };
+  const url = `${baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "")}/v1/chat/completions`;
+  const headers = { "content-type": "application/json" };
+  if (env.MAGPIE_API_KEY?.trim()) headers.authorization = `Bearer ${env.MAGPIE_API_KEY.trim()}`;
+  const system = readFileSync(PROMPT_PATH, "utf8");
+
+  if (commits.length <= BATCH_THRESHOLD) {
+    return polishBatch({ version, commits, env, fetchImpl, url, headers, model, system });
+  }
+
+  const batchMarkdowns = [];
+  let usedModel = model;
+  for (let offset = 0; offset < commits.length; offset += BATCH_SIZE) {
+    const batch = commits.slice(offset, offset + BATCH_SIZE);
+    const result = await polishBatch({ version, commits: batch, env, fetchImpl, url, headers, model, system });
+    if (result.status !== "polished") {
+      return result.status === "fallback"
+        ? result
+        : { status: "fallback", reason: `batch ${offset / BATCH_SIZE + 1} returned empty` };
+    }
+    usedModel = result.model || usedModel;
+    batchMarkdowns.push(result.markdown);
+  }
+  try {
+    const markdown = mergePolishedBatches(batchMarkdowns);
+    if (!markdown) return { status: "empty", model: usedModel };
+    const listed = listedItems(markdown);
+    if (listed < commits.length) {
+      return { status: "fallback", reason: `notes list ${listed} items for ${commits.length} commits` };
+    }
+    return { status: "polished", markdown, model: usedModel };
+  } catch (err) {
+    return { status: "fallback", reason: err?.message || String(err) };
+  }
 }
 
 function listedItems(markdown) {

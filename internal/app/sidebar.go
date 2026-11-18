@@ -159,8 +159,11 @@ type SidebarProps struct {
 	ActiveNote     string
 	Notice         string
 
-	SettingsOpen bool
-	HasUpdate    bool
+	SettingsOpen  bool
+	HasUpdate     bool
+	UpdateBusy    bool
+	UpdateReady   bool
+	UpdateTooltip string
 
 	ShortcutNewNote string
 
@@ -537,10 +540,14 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				}
 
 				if p.HasUpdate {
+					tip := p.UpdateTooltip
+					if tip == "" {
+						tip = theme.Tr("有可用更新", "Update available")
+					}
 					c.Key("updater-badge-button")
-					upBtn := ui.ButtonBase(c).Size(30, 30).Shrink(0).Center().
+					upBtn := ui.ButtonBase(c).Size(theme.UpdaterBadgeButtonSize, theme.UpdaterBadgeButtonSize).Shrink(0).Center().
 						Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
-						Label(theme.Tr("有可用更新", "Update available"))
+						Label(tip)
 					upHover := upBtn.Hovered()
 					upPress := upBtn.Pressed()
 					upBG := pal.Paper
@@ -551,14 +558,22 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					}
 					blockui.AnimateSurfaceColors(upBtn, upBG, pal.BtnBorder, true)
 					blockui.TactileButton(upBtn, upHover, upPress, false)
-					blockui.Tooltip(c, upBtn, theme.Tr("有可用更新", "Update available"))
+					blockui.Tooltip(c, upBtn, tip)
 					upBtn.Children(func() {
 						ic := pal.MonoIconColors(pal.TextSecondary)
-						if upHover || upPress {
+						if p.UpdateReady || upHover || upPress {
 							ic = pal.DuoIconColors(pal.Text)
 						}
-						icons.DrawAnimated(c, icons.Download, theme.IconChrome, ic, upHover || upPress)
-						ui.Box(c).Absolute().Top(3).Right(3).Size(5, 5).Radius(theme.RadiusPill).Background(pal.Accent)
+						glyph := icons.Download
+						if p.UpdateBusy {
+							glyph = icons.UpdateTangle
+						}
+						icons.DrawAnimated(c, glyph, theme.IconChrome, ic, p.UpdateBusy || upHover || upPress)
+						if p.UpdateReady || !p.UpdateBusy {
+							dotSize := theme.UpdaterBadgeDotSize
+							ui.Box(c).Absolute().Top(theme.Space2).Right(theme.Space2).Size(dotSize, dotSize).
+								Radius(theme.RadiusPill).Background(pal.UpdaterColors().BadgeDot)
+						}
 					})
 					blockui.Probe(upBtn, "updater-badge-button")
 					if upBtn.Clicked() && p.OnOpenUpdater != nil {
