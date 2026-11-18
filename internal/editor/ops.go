@@ -32,7 +32,7 @@ func (s *Session) selectionSupportsToolbar() bool {
 			break
 		}
 		k := s.doc.Blocks[idx].Kind
-		if k != model.BlockImage && k != model.BlockDivider {
+		if k != model.BlockImage && k != model.BlockDivider && k != model.BlockTable {
 			return true
 		}
 	}
@@ -45,26 +45,16 @@ func (s *Session) toolbarCapabilities() toolbarCaps {
 	}
 	a, b := s.orderedSelection()
 	caps := toolbarCaps{RichText: true, Bold: true}
-	hasTable := false
-	tableMultiCell := false
 	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
 		if a.Block != b.Block && idx == b.Block && b.Offset == 0 {
 			break
 		}
 		blk := &s.doc.Blocks[idx]
-		rich := blk.Kind != model.BlockCode && blk.Kind != model.BlockRawHTML && blk.Kind != model.BlockImage && blk.Kind != model.BlockDivider
-		if blk.Kind == model.BlockTable {
-			hasTable = true
-			lo, hi := s.selectionSpanRange(idx, a, b)
-			if _, _, _, _, ok := tableCellAtRuneRange(blk.Table, lo, hi); !ok {
-				tableMultiCell = true
-			}
-		}
+		rich := blk.Kind != model.BlockCode && blk.Kind != model.BlockRawHTML && blk.Kind != model.BlockImage && blk.Kind != model.BlockDivider && blk.Kind != model.BlockTable
 		caps.RichText = caps.RichText && rich
 		caps.Bold = caps.Bold && rich && !blk.Kind.IsHeading()
 	}
-	multiBlockTable := hasTable && a.Block != b.Block && !(b.Block == a.Block+1 && b.Offset == 0)
-	caps.Link = caps.RichText && !multiBlockTable && !tableMultiCell
+	caps.Link = caps.RichText
 	return caps
 }
 
@@ -1083,23 +1073,41 @@ func (s *Session) selectionSpanRange(idx int, a, b Position) (int, int) {
 	return start, end
 }
 
+func singleCellSpansInSelection(blk *model.Block, a, b Position, lo, hi int) (*[]model.Span, int, int, bool) {
+	if a.Block != b.Block || blk.Kind != model.BlockTable || blk.Table == nil {
+		return nil, 0, 0, false
+	}
+	row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, lo, hi)
+	if !ok || relLo >= relHi {
+		return nil, 0, 0, false
+	}
+	return &blk.Table.Rows[row][col].Spans, relLo, relHi, true
+}
+
 func (s *Session) selectionHasMark(m model.Mark) bool {
-	if !s.hasNonEmptySelection() {
+	if !s.hasNonEmptySelection() || s.doc == nil {
 		return false
 	}
 	a, b := s.orderedSelection()
 	saw := false
 	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
 		blk := &s.doc.Blocks[idx]
-		if blk.Kind == model.BlockCode || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage || blk.Kind == model.BlockTable {
-			continue
-		}
 		lo, hi := s.selectionSpanRange(idx, a, b)
 		if lo >= hi {
 			continue
 		}
+		spans := blk.Spans
+		if blk.Kind == model.BlockTable {
+			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
+			if !ok {
+				continue
+			}
+			spans, lo, hi = *cellSpans, cLo, cHi
+		} else if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
+			continue
+		}
 		saw = true
-		if !spansAllMatch(blk.Spans, lo, hi, func(sp model.Span) bool { return sp.Marks&m != 0 }) {
+		if !spansAllMatch(spans, lo, hi, func(sp model.Span) bool { return sp.Marks&m != 0 }) {
 			return false
 		}
 	}
@@ -1107,22 +1115,33 @@ func (s *Session) selectionHasMark(m model.Mark) bool {
 }
 
 func (s *Session) ToggleMarkOnSelection(m model.Mark) {
-	if !s.hasNonEmptySelection() {
+	if !s.hasNonEmptySelection() || s.doc == nil {
 		return
 	}
 	a, b := s.orderedSelection()
 	clearMark := s.selectionHasMark(m)
-	s.pushUndo()
+	pushedUndo := false
 	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
 		blk := &s.doc.Blocks[idx]
-		if blk.Kind == model.BlockCode || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage || blk.Kind == model.BlockTable {
-			continue
-		}
 		lo, hi := s.selectionSpanRange(idx, a, b)
 		if lo >= hi {
 			continue
 		}
-		blk.Spans = applySpanTransform(blk.Spans, lo, hi, func(sp model.Span) model.Span {
+		targetSpans := &blk.Spans
+		if blk.Kind == model.BlockTable {
+			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
+			if !ok {
+				continue
+			}
+			targetSpans, lo, hi = cellSpans, cLo, cHi
+		} else if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
+			continue
+		}
+		if !pushedUndo {
+			s.pushUndo()
+			pushedUndo = true
+		}
+		*targetSpans = applySpanTransform(*targetSpans, lo, hi, func(sp model.Span) model.Span {
 			if clearMark {
 				sp.Marks &^= m
 			} else {
@@ -1133,19 +1152,29 @@ func (s *Session) ToggleMarkOnSelection(m model.Mark) {
 		blk.Dirty = true
 		blk.CleanSource = ""
 	}
-	s.markDirty()
+	if pushedUndo {
+		s.markDirty()
+	}
 }
 
 func (s *Session) selectionLinkURL() string {
-	if !s.hasNonEmptySelection() {
+	if !s.hasNonEmptySelection() || s.doc == nil {
 		return ""
 	}
 	a, b := s.orderedSelection()
 	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
 		blk := &s.doc.Blocks[idx]
 		lo, hi := s.selectionSpanRange(idx, a, b)
+		spans := blk.Spans
+		if blk.Kind == model.BlockTable {
+			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
+			if !ok {
+				continue
+			}
+			spans, lo, hi = *cellSpans, cLo, cHi
+		}
 		pos := 0
-		for _, sp := range blk.Spans {
+		for _, sp := range spans {
 			n := len([]rune(sp.Text))
 			s0, s1 := pos, pos+n
 			pos = s1
@@ -1158,46 +1187,70 @@ func (s *Session) selectionLinkURL() string {
 }
 
 func (s *Session) ApplyLinkOnSelection(url string) {
-	if !s.hasNonEmptySelection() {
+	if !s.hasNonEmptySelection() || s.doc == nil {
 		return
 	}
 	a, b := s.orderedSelection()
-	s.pushUndo()
+	pushedUndo := false
 	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
 		blk := &s.doc.Blocks[idx]
-		if blk.Kind == model.BlockCode || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
-			continue
-		}
 		lo, hi := s.selectionSpanRange(idx, a, b)
 		if lo >= hi {
 			continue
 		}
-		blk.Spans = applySpanTransform(blk.Spans, lo, hi, func(sp model.Span) model.Span {
+		targetSpans := &blk.Spans
+		if blk.Kind == model.BlockTable {
+			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
+			if !ok {
+				continue
+			}
+			targetSpans, lo, hi = cellSpans, cLo, cHi
+		} else if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
+			continue
+		}
+		if !pushedUndo {
+			s.pushUndo()
+			pushedUndo = true
+		}
+		*targetSpans = applySpanTransform(*targetSpans, lo, hi, func(sp model.Span) model.Span {
 			sp.Link = strings.TrimSpace(url)
 			return sp
 		})
 		blk.Dirty = true
 		blk.CleanSource = ""
 	}
-	s.markDirty()
+	if pushedUndo {
+		s.markDirty()
+	}
 }
 
 func (s *Session) ApplyColorOnSelection(fgColor, bgColor *string) {
-	if !s.hasNonEmptySelection() {
+	if !s.hasNonEmptySelection() || s.doc == nil {
 		return
 	}
 	a, b := s.orderedSelection()
-	s.pushUndo()
+	pushedUndo := false
 	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
 		blk := &s.doc.Blocks[idx]
-		if blk.Kind == model.BlockCode || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
-			continue
-		}
 		lo, hi := s.selectionSpanRange(idx, a, b)
 		if lo >= hi {
 			continue
 		}
-		blk.Spans = applySpanTransform(blk.Spans, lo, hi, func(sp model.Span) model.Span {
+		targetSpans := &blk.Spans
+		if blk.Kind == model.BlockTable {
+			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
+			if !ok {
+				continue
+			}
+			targetSpans, lo, hi = cellSpans, cLo, cHi
+		} else if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
+			continue
+		}
+		if !pushedUndo {
+			s.pushUndo()
+			pushedUndo = true
+		}
+		*targetSpans = applySpanTransform(*targetSpans, lo, hi, func(sp model.Span) model.Span {
 			if fgColor != nil {
 				if *fgColor == "default" {
 					sp.FGColor = ""
@@ -1217,20 +1270,30 @@ func (s *Session) ApplyColorOnSelection(fgColor, bgColor *string) {
 		blk.Dirty = true
 		blk.CleanSource = ""
 	}
-	s.markDirty()
+	if pushedUndo {
+		s.markDirty()
+	}
 }
 
 func (s *Session) selectionColors() (fgName, bgName string) {
 	fgName, bgName = "default", "default"
-	if !s.hasNonEmptySelection() {
+	if !s.hasNonEmptySelection() || s.doc == nil {
 		return
 	}
 	a, b := s.orderedSelection()
 	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
 		blk := &s.doc.Blocks[idx]
 		lo, hi := s.selectionSpanRange(idx, a, b)
+		spans := blk.Spans
+		if blk.Kind == model.BlockTable {
+			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
+			if !ok {
+				continue
+			}
+			spans, lo, hi = *cellSpans, cLo, cHi
+		}
 		pos := 0
-		for _, sp := range blk.Spans {
+		for _, sp := range spans {
 			n := len([]rune(sp.Text))
 			s0, s1 := pos, pos+n
 			pos = s1
