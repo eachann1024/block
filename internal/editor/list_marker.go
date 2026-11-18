@@ -112,6 +112,14 @@ func (s *Session) prepareFrameBlocks() []frameBlockMeta {
 			}
 		}
 	}
+	if s.dragActive && s.dragCollapsed && s.dragBlockID != 0 {
+		if from := s.blockIndexByID(s.dragBlockID); from >= 0 {
+			end := s.dragSubtreeEnd(from)
+			for i := from + 1; i <= end && i < n; i++ {
+				meta[i].Hidden = true
+			}
+		}
+	}
 
 	var prevVis *model.Block
 	var runLen [13]int

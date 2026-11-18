@@ -234,9 +234,14 @@ type Session struct {
 	// Drag reorder
 	dragBlockID     model.BlockID
 	dragOverIdx     int
+	dragTargetIdx   int
+	dragSlot        int
 	dragAfter       bool
-	dragNested      bool
 	dragIndent      int
+	dragLevelKey    [2]int
+	dragLevelOffset int
+	dragCollapsed   bool
+	dragSavedHeight float32
 	dragDropIndent  int
 	dragActive      bool
 	dragCanceled    bool
@@ -274,6 +279,9 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 		focusedBlock:      0,
 		hoveredBlock:      -1,
 		dragOverIdx:       -1,
+		dragTargetIdx:     -1,
+		dragSlot:          -1,
+		dragLevelKey:      [2]int{-2, -2},
 		dragDropFrom:      -1,
 		dragDropTo:        -1,
 		mouseOriginBlock:  -1,
