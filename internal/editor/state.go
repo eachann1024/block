@@ -616,8 +616,7 @@ func (s *Session) hasBlockingOverlay() bool {
 		s.imagePopKind != "" ||
 		s.tableMenuKind != "" ||
 		s.activeAnnotID != "" ||
-		s.editingAnnotID != "" ||
-		s.hasNonEmptySelection()
+		s.editingAnnotID != ""
 }
 
 func (s *Session) closeTransientOverlays() {
