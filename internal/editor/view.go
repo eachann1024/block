@@ -453,12 +453,12 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 							if gripActive || gripPressed || gripHovered {
 								grip.Background(gripHoverBG)
 							}
-							iconCol := pal.TextSecondary
+							gripIcon := pal.MonoIconColors(pal.TextSecondary)
 							if gripActive || gripPressed || gripHovered {
-								iconCol = pal.Text
+								gripIcon = pal.DuoIconColors(pal.Text)
 							}
 							grip.Children(func() {
-								icons.Draw(c, icons.Drag, 14, pal.MonoIconColors(iconCol))
+								icons.Draw(c, icons.Drag, 14, gripIcon)
 							})
 							appUi.Probe(grip, gripID)
 							s.recordOverlayBtn(gripID, grip)
@@ -1199,7 +1199,7 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 						if srcOpen {
 							g = icons.ChevronDown
 						}
-						icons.Draw(c, g, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+						icons.Draw(c, g, theme.IconInline, pal.HoverIconColors(srcBtn.Hovered()))
 						ui.Text(c, theme.Tr("源码", "Source")).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
 					})
 					appUi.Probe(srcBtn, fmt.Sprintf("cb-source-toggle-%d", id))
@@ -1639,7 +1639,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 						Radius(4).Background(pal.Hover).Cursor(ui.CursorPointer).
 						Label(theme.Tr("添加列", "Add column"))
 					addCol.Children(func() {
-						icons.Draw(c, icons.Plus, 14, pal.MonoIconColors(pal.TextSecondary))
+						icons.Draw(c, icons.Plus, 14, pal.HoverIconColors(addCol.Hovered() || addCol.Pressed()))
 					})
 					appUi.Probe(addCol, "table-add-col")
 					if addCol.Clicked() {
@@ -1657,7 +1657,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 					Radius(4).Background(pal.Hover).Cursor(ui.CursorPointer).
 					Label(theme.Tr("添加行", "Add row"))
 				addRow.Children(func() {
-					icons.Draw(c, icons.Plus, 14, pal.MonoIconColors(pal.TextSecondary))
+					icons.Draw(c, icons.Plus, 14, pal.HoverIconColors(addRow.Hovered() || addRow.Pressed()))
 				})
 				appUi.Probe(addRow, "table-add-row")
 				if addRow.Clicked() {
