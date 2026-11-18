@@ -1876,9 +1876,8 @@ func outlineBarWidth(level int) float32 {
 // --- 6. Annotation Rail (Wide) & Block-Foot Strip (Narrow) ---
 
 const (
-	annotationRailWidth    float32 = 208
-	annotationRailMaxWidth float32 = 480
-	annotationRailSlot     float32 = annotationRailWidth + 8
+	annotationRailWidth float32 = 208
+	annotationRailSlot  float32 = annotationRailWidth + 8
 )
 
 func (s *Session) canFitWideAnnotationRail() bool {
@@ -2169,9 +2168,9 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 	bodyRightX := flowLeft + flowW - s.rightContentInset()
 	editorRight := s.editorRect.X + editorW
 	rightMargin := max(theme.ScrollGutter, theme.Space16)
-	// The rail starts beside the body and grows into the free right margin.
+	// The rail starts beside the body and fills the whole free right margin.
 	railLeft := min(bodyRightX+theme.Space16, editorRight-rightMargin-annotationRailWidth)
-	railW := min(max(editorRight-rightMargin-railLeft, annotationRailWidth), annotationRailMaxWidth)
+	railW := max(editorRight-rightMargin-railLeft, annotationRailWidth)
 	railTop := s.editorRect.Y
 	railHeight := max(s.editorRect.H, s.viewportHeight-railTop)
 
