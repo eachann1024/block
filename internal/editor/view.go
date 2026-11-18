@@ -2456,57 +2456,72 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 	}
 
 	_, _, _, imgSelected := s.blockSelectionSpanRange(idx)
+	showResizeHandles := !readOnly && ((isFocused && !s.hasMultiBlockSelection()) || dragging)
+	borderHighlighted := isFocused || dragging || imgSelected
+	borderW := s.scale(theme.ImageSelectBorderWidth)
+	picBorder := pal.Hairline
+	if borderHighlighted {
+		picBorder = pal.Accent
+	}
+
 	outer := ui.Column(c.Key("img-outer")).FillWidth().AlignItems(align)
 	outer.Children(func() {
-		picBox := ui.Box(c.Key(fmt.Sprintf("img-frame-%d", id))).WidthPercent(widthPct).Radius(theme.RadiusSM).Clip().
-			Cursor(ui.CursorPointer)
-		picBorder := pal.Hairline
-		if isFocused || dragging || imgSelected {
-			picBorder = pal.Accent
-		}
-		picBox.Border(1, picBorder)
-		picBox.DrawOver(func(p *ui.Painter, r ui.Rect) {
-			appUi.RecordBounds(fmt.Sprintf("image-%d", id), r)
-			if s.imageRects == nil {
-				s.imageRects = make(map[model.BlockID]ui.Rect)
-			}
-			if prev, ok := s.imageRects[id]; !ok || prev != r {
-				s.imageRects[id] = r
-				if isFocused {
-					c.Invalidate()
+		frameWrap := ui.Box(c.Key(fmt.Sprintf("img-wrap-%d", id))).WidthPercent(widthPct)
+		frameWrap.Children(func() {
+			picBox := ui.Box(c.Key(fmt.Sprintf("img-frame-%d", id))).FillWidth().Radius(theme.RadiusSM).Clip().
+				Cursor(ui.CursorPointer).Border(1, picBorder)
+			picBox.DrawOver(func(p *ui.Painter, r ui.Rect) {
+				appUi.RecordBounds(fmt.Sprintf("image-%d", id), r)
+				if s.imageRects == nil {
+					s.imageRects = make(map[model.BlockID]ui.Rect)
 				}
-			}
-			if imgSelected && s.hasMultiBlockSelection() {
-				p.Fill(r, pal.SelectionBG.Alpha(0.28), theme.RadiusSM)
-			}
-		})
-		isVideo := IsSupportedVideoPath(b.ImageSrc)
-		if !isVideo && !b.ImageCrop.IsZero() {
-			picBox.ClipInsetPercent(b.ImageCrop.Top*100, b.ImageCrop.Right*100, b.ImageCrop.Bottom*100, b.ImageCrop.Left*100, theme.RadiusSM)
-		}
-
-		picBox.Children(func() {
-			if isVideo {
-				s.renderVideoContent(c, id, b)
-			} else if imgSrc, ok := s.resolveImageSource(b.ImageSrc); ok {
-				ui.Image(c, imgSrc).FillWidth()
-			} else {
-				ph := ui.Row(c.Key("img-ph")).FillWidth().Height(120).Center().Gap(theme.Space8).Background(pal.CodeBlockBG)
-				ph.Children(func() {
-					icons.Draw(c, icons.Image, 20, pal.MonoIconColors(pal.TextSecondary))
-					lbl := b.ImageAlt
-					if lbl == "" {
-						lbl = b.ImageSrc
+				if prev, ok := s.imageRects[id]; !ok || prev != r {
+					s.imageRects[id] = r
+					if isFocused {
+						c.Invalidate()
 					}
-					if lbl == "" {
-						lbl = theme.Tr("图片", "Image")
-					}
-					ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
-				})
+				}
+				if borderHighlighted && r.W > borderW && r.H > borderW {
+					p.Stroke(ui.Rect{
+						X: r.X + borderW*0.5,
+						Y: r.Y + borderW*0.5,
+						W: r.W - borderW,
+						H: r.H - borderW,
+					}, pal.Accent, theme.RadiusSM, borderW)
+				}
+				if imgSelected && s.hasMultiBlockSelection() {
+					p.Fill(r, pal.SelectionBG.Alpha(0.28), theme.RadiusSM)
+				}
+			})
+			isVideo := IsSupportedVideoPath(b.ImageSrc)
+			if !isVideo && !b.ImageCrop.IsZero() {
+				picBox.ClipInsetPercent(b.ImageCrop.Top*100, b.ImageCrop.Right*100, b.ImageCrop.Bottom*100, b.ImageCrop.Left*100, theme.RadiusSM)
 			}
 
-			// Left & Right drag-resize side handles (aligned with src/editor/image_resize.rs)
-			if !readOnly && (isFocused || dragging || picBox.Hovered()) {
+			picBox.Children(func() {
+				if isVideo {
+					s.renderVideoContent(c, id, b)
+				} else if imgSrc, ok := s.resolveImageSource(b.ImageSrc); ok {
+					ui.Image(c, imgSrc).FillWidth()
+				} else {
+					ph := ui.Row(c.Key("img-ph")).FillWidth().Height(120).Center().Gap(theme.Space8).Background(pal.CodeBlockBG)
+					ph.Children(func() {
+						icons.Draw(c, icons.Image, 20, pal.MonoIconColors(pal.TextSecondary))
+						lbl := b.ImageAlt
+						if lbl == "" {
+							lbl = b.ImageSrc
+						}
+						if lbl == "" {
+							lbl = theme.Tr("图片", "Image")
+						}
+						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+					})
+				}
+			})
+
+			// Scheme A: solid Ocean Accent capsule with 2px Paper halo straddling the left & right
+			// selection borders; shown exclusively when the image itself is selected (or dragging).
+			if showResizeHandles {
 				scale := float32(1)
 				if b.ImageAlign == model.ImageAlignCenter {
 					scale = 2
@@ -2517,6 +2532,12 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				if availW <= 0 {
 					availW = stdW
 				}
+				hitW := s.scale(theme.ImageResizeHitWidth)
+				hitH := s.scale(theme.ImageResizeHitHeight)
+				haloW := s.scale(theme.ImageResizeHaloWidth)
+				edgeOffset := -hitW*0.5 + borderW*0.5
+
+				anyHeld := false
 				for _, side := range []struct {
 					probe string
 					left  bool
@@ -2525,45 +2546,85 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 					{"img-resize-left", true, -1},
 					{"img-resize-right", false, 1},
 				} {
-					h := ui.Box(c.Key(fmt.Sprintf("%s-%d", side.probe, id))).Absolute().
-						TopPercent(25).BottomPercent(25).Width(12).Center().Cursor(ui.CursorResizeColumn)
+					rail := ui.Column(c.Key(fmt.Sprintf("%s-rail-%d", side.probe, id))).Absolute().
+						Top(0).Bottom(0).Width(hitW).Center()
 					if side.left {
-						h.Left(2)
+						rail.Left(edgeOffset)
 					} else {
-						h.Right(2)
+						rail.Right(edgeOffset)
 					}
-					h.Children(func() {
-						ui.Box(c).Width(4).FillHeight().Radius(theme.RadiusXS).Background(pal.Editor().ResizeHandleBG).Border(1, pal.Hairline)
-					})
-					appUi.Probe(h, side.probe)
-					dx, _, held := h.Dragged()
-					if held {
-						if s.imgResizeBlock != id {
-							s.imgResizeBlock = id
-							s.imgResizeStartPct = widthPct
-							s.imgResizeCurPct = widthPct
+					var h ui.Element
+					rail.Children(func() {
+						h = ui.Box(c.Key(fmt.Sprintf("%s-%d", side.probe, id))).
+							Width(hitW).Height(hitH).MaxHeightPercent(88).Center().Cursor(ui.CursorResizeColumn)
+						hovered := h.Hovered()
+						dx, _, held := h.Dragged()
+						hot := held || hovered
+						pillW := s.scale(theme.ImageResizePillWidth)
+						pillH := s.scale(theme.ImageResizePillHeight)
+						pillFill := pal.Accent
+						if held {
+							pillW = s.scale(theme.ImageResizePillHotWidth)
+							pillH = s.scale(theme.ImageResizePillHotH)
+							pillFill = pal.AccentPressed
+						} else if hovered {
+							pillW = s.scale(theme.ImageResizePillHotWidth)
+							pillH = s.scale(theme.ImageResizePillHotH)
+							pillFill = pal.AccentHover
 						}
-						if dx != 0 {
-							deltaPct := (dx * side.dir * scale / availW) * 100
-							s.imgResizeCurPct = clampFloat32(s.imgResizeCurPct+deltaPct, 10, 100)
-						}
-					} else if s.imgResizeBlock == id {
-						finalPct := clampFloat32(s.imgResizeCurPct, 10, 100)
-						startPct := s.imgResizeStartPct
-						s.imgResizeBlock = 0
-						if math.Abs(float64(finalPct-startPct)) >= 0.5 {
-							s.pushUndo()
-							if finalPct >= 99.5 {
-								b.ImageWidth = 0
-							} else {
-								b.ImageWidth = float32(math.Round(float64(finalPct)))
+						h.Children(func() {
+							pill := ui.Box(c).Width(pillW).Height(pillH).MaxHeightPercent(100).
+								Radius(theme.RadiusPill).Background(pillFill).Border(haloW, pal.Paper)
+							appUi.Elevate(pill, theme.ElevationRaised)
+							_ = hot
+						})
+						appUi.Probe(h, side.probe)
+						if held {
+							anyHeld = true
+							if s.imgResizeBlock != id {
+								s.imgResizeBlock = id
+								s.imgResizeStartPct = widthPct
+								s.imgResizeCurPct = widthPct
 							}
-							b.Dirty = true
-							b.CleanSource = ""
-							s.markDirty()
+							if dx != 0 {
+								deltaPct := (dx * side.dir * scale / availW) * 100
+								s.imgResizeCurPct = clampFloat32(s.imgResizeCurPct+deltaPct, 10, 100)
+							}
 						}
+					})
+				}
+				if !anyHeld && s.imgResizeBlock == id {
+					finalPct := clampFloat32(s.imgResizeCurPct, 10, 100)
+					startPct := s.imgResizeStartPct
+					s.imgResizeBlock = 0
+					if math.Abs(float64(finalPct-startPct)) >= 0.5 {
+						s.pushUndo()
+						if finalPct >= 99.5 {
+							b.ImageWidth = 0
+						} else {
+							b.ImageWidth = float32(math.Round(float64(finalPct)))
+						}
+						b.Dirty = true
+						b.CleanSource = ""
+						s.markDirty()
 					}
 				}
+			}
+
+			if dragging {
+				pctText := fmt.Sprintf("%d%%", int(math.Round(float64(widthPct))))
+				badge := ui.Row(c.Key(fmt.Sprintf("img-pct-%d", id))).Absolute().
+					Right(theme.Space12).Bottom(theme.Space10).Height(theme.HeightCompact).
+					PaddingX(theme.Space8).Center().Radius(theme.RadiusSM).
+					Background(pal.TooltipBG).Border(1, pal.TooltipBorder).IgnoreInput(true)
+				appUi.Elevate(badge, theme.ElevationRaised)
+				badge.Children(func() {
+					t := ui.Text(c, pctText).FontSize(theme.FontBody).FontWeight(theme.WeightMono).
+						TextColor(pal.Text).SingleLine()
+					if cdFont := resolvedCodeFont(); cdFont != "" {
+						t.Font(cdFont)
+					}
+				})
 			}
 		})
 	})
