@@ -83,6 +83,43 @@ func normalizeState(st *model.AppState) {
 		dedup = dedup[:maxNotebooks]
 	}
 	st.Notebooks = dedup
+
+	// Deduplicate open tabs preserving order and skipping empty entries.
+	if len(st.OpenTabs) > 0 {
+		cleanTabs := make([]string, 0, len(st.OpenTabs))
+		seenTabs := make(map[string]bool, len(st.OpenTabs))
+		for _, t := range st.OpenTabs {
+			t = strings.TrimSpace(t)
+			if t == "" {
+				continue
+			}
+			clean := filepath.Clean(t)
+			if seenTabs[clean] {
+				continue
+			}
+			seenTabs[clean] = true
+			cleanTabs = append(cleanTabs, clean)
+		}
+		st.OpenTabs = cleanTabs
+	}
+	st.ActiveTab = strings.TrimSpace(st.ActiveTab)
+	if st.ActiveTab != "" {
+		st.ActiveTab = filepath.Clean(st.ActiveTab)
+	}
+	if len(st.OpenTabs) == 0 {
+		st.ActiveTab = ""
+	} else if st.ActiveTab != "" {
+		foundActive := false
+		for _, t := range st.OpenTabs {
+			if t == st.ActiveTab {
+				foundActive = true
+				break
+			}
+		}
+		if !foundActive {
+			st.ActiveTab = st.OpenTabs[0]
+		}
+	}
 }
 
 func loadStateLocked(path string) (model.AppState, error) {

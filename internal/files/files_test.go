@@ -101,6 +101,21 @@ func TestStateLoadSaveUpdateAndCorruptBackup(t *testing.T) {
 	if got := LoadState().Theme; got != model.ThemeDark {
 		t.Fatalf("expected dark theme after SaveState, got %v", got)
 	}
+
+	// OpenTabs deduplication and ActiveTab normalization.
+	tabState, err := UpdateState(func(s *model.AppState) {
+		s.OpenTabs = []string{"", "/tmp/nb-00/./a.md", "/tmp/nb-00/b.md", "/tmp/nb-00/a.md"}
+		s.ActiveTab = "/tmp/nb-00/missing.md"
+	})
+	if err != nil {
+		t.Fatalf("UpdateState tabs: %v", err)
+	}
+	if len(tabState.OpenTabs) != 2 || tabState.OpenTabs[0] != "/tmp/nb-00/a.md" || tabState.OpenTabs[1] != "/tmp/nb-00/b.md" {
+		t.Fatalf("unexpected normalized OpenTabs: %v", tabState.OpenTabs)
+	}
+	if tabState.ActiveTab != "/tmp/nb-00/a.md" {
+		t.Fatalf("expected fallback ActiveTab /tmp/nb-00/a.md, got %q", tabState.ActiveTab)
+	}
 }
 
 func TestScanNotebookSortingFilteringAndFileOrder(t *testing.T) {

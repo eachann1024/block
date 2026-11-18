@@ -1,5 +1,10 @@
 package app
 
+import (
+	"path/filepath"
+	"strings"
+)
+
 // NavHistory implements browser-style Back/Forward note history (Cmd+[ / Cmd+]),
 // mirroring thinkly-fast/src/app_nav.rs.
 type NavHistory struct {
@@ -75,6 +80,58 @@ func (h *NavHistory) ReplacePath(oldPath, newPath string) {
 			h.entries[i] = newPath
 		}
 	}
+	h.dedupPreservingCursor()
+}
+
+// Rebase updates every history entry matching oldPrefix (or under oldPrefix/) to newPrefix.
+func (h *NavHistory) Rebase(oldPrefix, newPrefix string) {
+	if oldPrefix == "" || newPrefix == "" {
+		return
+	}
+	cleanFrom := filepath.Clean(oldPrefix)
+	cleanTo := filepath.Clean(newPrefix)
+	sepPrefix := cleanFrom + string(filepath.Separator)
+	changed := false
+	for i, p := range h.entries {
+		cp := filepath.Clean(p)
+		if cp == cleanFrom {
+			h.entries[i] = cleanTo
+			changed = true
+		} else if strings.HasPrefix(cp, sepPrefix) {
+			h.entries[i] = filepath.Join(cleanTo, strings.TrimPrefix(cp, sepPrefix))
+			changed = true
+		}
+	}
+	if changed {
+		h.dedupPreservingCursor()
+	}
+}
+
+func (h *NavHistory) dedupPreservingCursor() {
+	if len(h.entries) < 2 {
+		return
+	}
+	deduped := make([]string, 0, len(h.entries))
+	newCursor := h.cursor
+	for i, p := range h.entries {
+		if len(deduped) > 0 && deduped[len(deduped)-1] == p {
+			if i <= h.cursor {
+				newCursor--
+			}
+			continue
+		}
+		deduped = append(deduped, p)
+	}
+	h.entries = deduped
+	if len(h.entries) == 0 {
+		h.cursor = -1
+	} else if newCursor < 0 {
+		h.cursor = 0
+	} else if newCursor >= len(h.entries) {
+		h.cursor = len(h.entries) - 1
+	} else {
+		h.cursor = newCursor
+	}
 }
 
 // RemovePath removes deleted paths and clamps cursor.
@@ -112,10 +169,53 @@ func (h *NavHistory) RemovePath(target string) {
 	}
 }
 
+// RemoveUnder removes target and any descendant paths under target/ and clamps cursor.
+func (h *NavHistory) RemoveUnder(target string) {
+	if target == "" || len(h.entries) == 0 {
+		return
+	}
+	cleanTarget := filepath.Clean(target)
+	sepPrefix := cleanTarget + string(filepath.Separator)
+	next := make([]string, 0, len(h.entries))
+	newCursor := h.cursor
+	for i, p := range h.entries {
+		cp := filepath.Clean(p)
+		if cp == cleanTarget || strings.HasPrefix(cp, sepPrefix) {
+			if i <= h.cursor {
+				newCursor--
+			}
+			continue
+		}
+		if len(next) > 0 && next[len(next)-1] == p {
+			if i <= h.cursor {
+				newCursor--
+			}
+			continue
+		}
+		next = append(next, p)
+	}
+	h.entries = next
+	if len(h.entries) == 0 {
+		h.cursor = -1
+	} else if newCursor < 0 {
+		h.cursor = 0
+	} else if newCursor >= len(h.entries) {
+		h.cursor = len(h.entries) - 1
+	} else {
+		h.cursor = newCursor
+	}
+}
+
+// ClosedTabEntry records a closed tab path together with its original strip index.
+type ClosedTabEntry struct {
+	Path  string
+	Index int
+}
+
 // ClosedTabs maintains a LIFO stack of recently closed tab paths for Cmd+Shift+T,
 // mirroring thinkly-fast/src/app_tabs_reopen.rs.
 type ClosedTabs struct {
-	stack []string
+	stack []ClosedTabEntry
 }
 
 // NewClosedTabs creates an empty closed-tab stack.
@@ -125,31 +225,67 @@ func NewClosedTabs() *ClosedTabs {
 
 // Push records one closed tab path on top of the stack.
 func (c *ClosedTabs) Push(path string) {
+	c.PushAt(path, -1)
+}
+
+// PushAt records one closed tab path with its original tab index on top of the stack.
+func (c *ClosedTabs) PushAt(path string, index int) {
 	if path == "" {
 		return
 	}
 	// Remove older occurrence so the latest close wins.
 	for i := len(c.stack) - 1; i >= 0; i-- {
-		if c.stack[i] == path {
+		if c.stack[i].Path == path {
 			c.stack = append(c.stack[:i], c.stack[i+1:]...)
 		}
 	}
-	const maxClosed = 32
-	c.stack = append(c.stack, path)
+	const maxClosed = 64
+	c.stack = append(c.stack, ClosedTabEntry{Path: path, Index: index})
 	if len(c.stack) > maxClosed {
-		c.stack = append([]string(nil), c.stack[len(c.stack)-maxClosed:]...)
+		c.stack = append([]ClosedTabEntry(nil), c.stack[len(c.stack)-maxClosed:]...)
+	}
+}
+
+// RecordOthers pushes every tab except keepPath right-to-left so successive reopens restore left-to-right order.
+func (c *ClosedTabs) RecordOthers(tabs []string, keepPath string, skip func(string) bool) {
+	for i := len(tabs) - 1; i >= 0; i-- {
+		p := tabs[i]
+		if p == keepPath || (skip != nil && skip(p)) {
+			continue
+		}
+		c.PushAt(p, i)
+	}
+}
+
+// RecordFrom pushes removed tabs starting at startIdx right-to-left so successive reopens restore order.
+func (c *ClosedTabs) RecordFrom(startIdx int, removed []string, skip func(string) bool) {
+	for i := len(removed) - 1; i >= 0; i-- {
+		p := removed[i]
+		if skip != nil && skip(p) {
+			continue
+		}
+		c.PushAt(p, startIdx+i)
 	}
 }
 
 // Pop removes and returns the most recently closed tab path, or "".
 func (c *ClosedTabs) Pop() string {
+	entry, ok := c.PopEntry()
+	if !ok {
+		return ""
+	}
+	return entry.Path
+}
+
+// PopEntry removes and returns the most recently closed tab entry.
+func (c *ClosedTabs) PopEntry() (ClosedTabEntry, bool) {
 	n := len(c.stack)
 	if n == 0 {
-		return ""
+		return ClosedTabEntry{}, false
 	}
 	top := c.stack[n-1]
 	c.stack = c.stack[:n-1]
-	return top
+	return top, true
 }
 
 // Len returns the number of reopenable tabs.
@@ -160,8 +296,50 @@ func (c *ClosedTabs) Len() int {
 // Remove drops a deleted note path from the closed-tab stack.
 func (c *ClosedTabs) Remove(path string) {
 	for i := len(c.stack) - 1; i >= 0; i-- {
-		if c.stack[i] == path {
+		if c.stack[i].Path == path {
 			c.stack = append(c.stack[:i], c.stack[i+1:]...)
+		}
+	}
+}
+
+// RemoveUnder drops target and any descendant paths under target/ from the closed-tab stack.
+func (c *ClosedTabs) RemoveUnder(target string) {
+	if target == "" {
+		return
+	}
+	cleanTarget := filepath.Clean(target)
+	sepPrefix := cleanTarget + string(filepath.Separator)
+	for i := len(c.stack) - 1; i >= 0; i-- {
+		cp := filepath.Clean(c.stack[i].Path)
+		if cp == cleanTarget || strings.HasPrefix(cp, sepPrefix) {
+			c.stack = append(c.stack[:i], c.stack[i+1:]...)
+		}
+	}
+}
+
+// Rebase updates closed-tab entries when a file or folder is renamed or moved.
+func (c *ClosedTabs) Rebase(from, to string) {
+	if from == "" || to == "" {
+		return
+	}
+	cleanFrom := filepath.Clean(from)
+	cleanTo := filepath.Clean(to)
+	sepPrefix := cleanFrom + string(filepath.Separator)
+	for i := range c.stack {
+		cp := filepath.Clean(c.stack[i].Path)
+		if cp == cleanFrom {
+			c.stack[i].Path = cleanTo
+		} else if strings.HasPrefix(cp, sepPrefix) {
+			c.stack[i].Path = filepath.Join(cleanTo, strings.TrimPrefix(cp, sepPrefix))
+		}
+	}
+	for i := len(c.stack) - 1; i >= 0; i-- {
+		p := c.stack[i].Path
+		for j := len(c.stack) - 1; j > i; j-- {
+			if c.stack[j].Path == p {
+				c.stack = append(c.stack[:i], c.stack[i+1:]...)
+				break
+			}
 		}
 	}
 }
@@ -280,7 +458,7 @@ func (TabStripOps) Cycle(tabs []string, activeTab string, delta int) string {
 			break
 		}
 	}
-	next := ((cur + delta) % n + n) % n
+	next := ((cur+delta)%n + n) % n
 	return tabs[next]
 }
 
@@ -297,4 +475,72 @@ func (TabStripOps) SelectOneBased(tabs []string, num int) string {
 		return ""
 	}
 	return tabs[num-1]
+}
+
+// ReorderTab moves srcPath before (after==false) or after (after==true) targetPath in tabs.
+func (TabStripOps) ReorderTab(tabs []string, srcPath, targetPath string, after bool) ([]string, bool) {
+	if srcPath == "" || targetPath == "" || srcPath == targetPath {
+		return tabs, false
+	}
+	from, to := -1, -1
+	for i, t := range tabs {
+		if t == srcPath {
+			from = i
+		}
+		if t == targetPath {
+			to = i
+		}
+	}
+	if from < 0 || to < 0 {
+		return tabs, false
+	}
+	slot := to
+	if after {
+		slot++
+	}
+	if from < slot {
+		slot--
+	}
+	if from == slot {
+		return tabs, false
+	}
+	out := make([]string, 0, len(tabs))
+	out = append(out, tabs[:from]...)
+	out = append(out, tabs[from+1:]...)
+	res := make([]string, 0, len(tabs))
+	res = append(res, out[:slot]...)
+	res = append(res, srcPath)
+	res = append(res, out[slot:]...)
+	return res, true
+}
+
+// MoveToIndex moves path (if present in tabs) to targetIdx clamped to [0, len(tabs)-1].
+func (TabStripOps) MoveToIndex(tabs []string, path string, targetIdx int) ([]string, bool) {
+	if len(tabs) <= 1 || targetIdx < 0 {
+		return tabs, false
+	}
+	curIdx := -1
+	for i, t := range tabs {
+		if t == path {
+			curIdx = i
+			break
+		}
+	}
+	if curIdx < 0 {
+		return tabs, false
+	}
+	if targetIdx >= len(tabs) {
+		targetIdx = len(tabs) - 1
+	}
+	if curIdx == targetIdx {
+		return tabs, false
+	}
+	out := make([]string, 0, len(tabs))
+	out = append(out, tabs[:curIdx]...)
+	out = append(out, tabs[curIdx+1:]...)
+	res := make([]string, 0, len(tabs))
+	res = append(res, out[:targetIdx]...)
+	res = append(res, path)
+	res = append(res, out[targetIdx:]...)
+	return res, true
 }

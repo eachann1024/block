@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -468,6 +469,18 @@ func (w *Workspace) scanOptionsLocked() files.ScanOptions {
 	}
 }
 
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func (w *Workspace) hydrateInitialWorkspace() {
 	if w.state.Folder != "" {
 		if info, err := os.Stat(w.state.Folder); err == nil && info.IsDir() {
@@ -475,9 +488,18 @@ func (w *Workspace) hydrateInitialWorkspace() {
 		}
 	}
 	validTabs := make([]string, 0, len(w.state.OpenTabs))
+	seen := make(map[string]bool, len(w.state.OpenTabs))
 	for _, p := range w.state.OpenTabs {
-		if info, err := os.Stat(p); err == nil && !info.IsDir() {
-			validTabs = append(validTabs, filepath.Clean(p))
+		if strings.TrimSpace(p) == "" {
+			continue
+		}
+		clean := filepath.Clean(p)
+		if seen[clean] {
+			continue
+		}
+		if info, err := os.Stat(clean); err == nil && info.Mode().IsRegular() {
+			seen[clean] = true
+			validTabs = append(validTabs, clean)
 		}
 	}
 	active := filepath.Clean(w.state.ActiveTab)
@@ -498,9 +520,24 @@ func (w *Workspace) hydrateInitialWorkspace() {
 			active = ""
 		}
 	}
+	changed := active != w.state.ActiveTab || !stringSlicesEqual(validTabs, w.state.OpenTabs)
 	w.state.OpenTabs = validTabs
 	w.state.ActiveTab = active
+	if changed {
+		w.persistTabs(validTabs, active)
+	}
 	if active != "" {
+		if w.state.Folder != "" && strings.HasPrefix(active, w.state.Folder+string(filepath.Separator)) {
+			dir := filepath.Dir(active)
+			for dir != "" && dir != w.state.Folder && strings.HasPrefix(dir, w.state.Folder) {
+				w.sidebarUI.ExpandedDirs[dir] = true
+				parent := filepath.Dir(dir)
+				if parent == dir {
+					break
+				}
+				dir = parent
+			}
+		}
 		_ = w.ensureTabLoaded(active)
 		w.nav.Push(active)
 	}
@@ -884,7 +921,7 @@ func (w *Workspace) WriteNote(absPath string, content string) error {
 }
 
 func (w *Workspace) OpenNote(absPath string, lineHint int) error {
-	return w.openNoteInternal(absPath, false, true, lineHint)
+	return w.openNoteInternal(absPath, true, true, lineHint)
 }
 
 func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav bool, lineHint int) error {
@@ -904,6 +941,9 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 	w.sidebarUI.FocusDir = ""
 
 	w.mu.Lock()
+	if w.historyToast != nil && filepath.Clean(w.historyToast.NotePath) != clean {
+		w.historyToast = nil
+	}
 	if w.state.Folder != "" && strings.HasPrefix(clean, w.state.Folder+string(filepath.Separator)) {
 		dir := filepath.Dir(clean)
 		for dir != "" && dir != w.state.Folder && strings.HasPrefix(dir, w.state.Folder) {
@@ -916,25 +956,30 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 		}
 	}
 
-	if forceNewTab || len(w.state.OpenTabs) == 0 {
-		w.state.OpenTabs, w.state.ActiveTab = w.tabOps.OpenOrFocus(w.state.OpenTabs, w.state.ActiveTab, clean)
-	} else {
-		already := false
-		for _, t := range w.state.OpenTabs {
-			if t == clean {
-				already = true
+	prevTabs := append([]string(nil), w.state.OpenTabs...)
+	prevActive := w.state.ActiveTab
+	if !forceNewTab && !slices.Contains(w.state.OpenTabs, clean) {
+		for i, path := range w.state.OpenTabs {
+			if path == prevActive {
+				w.state.OpenTabs[i] = clean
 				break
 			}
 		}
-		if already {
-			w.state.ActiveTab = clean
-		} else {
-			w.state.OpenTabs, w.state.ActiveTab = w.tabOps.OpenOrFocus(w.state.OpenTabs, w.state.ActiveTab, clean)
-		}
 	}
+	w.state.OpenTabs, w.state.ActiveTab = w.tabOps.OpenOrFocus(w.state.OpenTabs, prevActive, clean)
+
 	sess := w.sessions[clean]
 	tabs := append([]string(nil), w.state.OpenTabs...)
 	active := w.state.ActiveTab
+	tabsChanged := active != prevActive || len(tabs) != len(prevTabs)
+	if !tabsChanged {
+		for i := range tabs {
+			if tabs[i] != prevTabs[i] {
+				tabsChanged = true
+				break
+			}
+		}
+	}
 	w.mu.Unlock()
 
 	if recordNav {
@@ -944,7 +989,9 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 		blockIdx := min(max(lineHint-1, 0), max(len(sess.Doc().Blocks)-1, 0))
 		sess.FocusBlock(blockIdx)
 	}
-	w.persistTabs(tabs, active)
+	if tabsChanged {
+		w.persistTabs(tabs, active)
+	}
 	w.RequestRedraw()
 	return nil
 }
@@ -1164,7 +1211,28 @@ func (w *Workspace) SetNotebook(folder string) error {
 		return errors.New("notebook path is not a directory")
 	}
 
+	w.mu.RLock()
+	prevFolder := ""
+	if w.state.Folder != "" {
+		prevFolder = filepath.Clean(w.state.Folder)
+	}
+	w.mu.RUnlock()
+	switched := prevFolder != clean
+	if switched {
+		if err := w.flushDirtySessions(); err != nil {
+			return err
+		}
+	}
+
 	next, saveErr := files.UpdateState(func(st *model.AppState) {
+		savedPrev := ""
+		if st.Folder != "" {
+			savedPrev = filepath.Clean(st.Folder)
+		}
+		if savedPrev != clean {
+			st.OpenTabs = nil
+			st.ActiveTab = ""
+		}
 		st.Folder = clean
 		already := false
 		for _, nb := range st.Notebooks {
@@ -1177,11 +1245,27 @@ func (w *Workspace) SetNotebook(folder string) error {
 			st.Notebooks = append([]string{clean}, st.Notebooks...)
 		}
 	})
+	if saveErr != nil {
+		return saveErr
+	}
 	w.mu.Lock()
-	if saveErr == nil {
-		w.state = next
-	} else {
-		w.state.Folder = clean
+	w.state = next
+	if switched {
+		w.sessions = make(map[string]*editor.Session)
+		w.surfaces = make(map[string]*TabSurface)
+		w.virtualPreview = make(map[string]bool)
+		w.lastSnapAt = make(map[string]time.Time)
+		w.closed = NewClosedTabs()
+		w.nav = NewNavHistory()
+		w.historyToast = nil
+		if w.historyView != nil {
+			w.historyView.Close()
+		}
+		w.tabMenu.Close()
+		w.sidebarUI.ClosePopups()
+		w.sidebarUI.FocusDir = ""
+		w.sidebarUI.CancelRename()
+		w.sidebarUI.ClearDrag()
 	}
 	w.mu.Unlock()
 
@@ -1372,17 +1456,49 @@ func (w *Workspace) RescanNotebook() {
 	w.mu.Unlock()
 }
 
-// CreateNewNote creates an Untitled.md / 未命名.md note in the active notebook,
+func (w *Workspace) targetCreateDir(root string) string {
+	cleanRoot := filepath.Clean(root)
+	w.mu.RLock()
+	focusDir := w.sidebarUI.FocusDir
+	active := w.state.ActiveTab
+	w.mu.RUnlock()
+
+	if focusDir != "" {
+		cleanFocus := filepath.Clean(focusDir)
+		if cleanFocus == cleanRoot || strings.HasPrefix(cleanFocus, cleanRoot+string(filepath.Separator)) {
+			if st, err := os.Stat(cleanFocus); err == nil && st.IsDir() {
+				return cleanFocus
+			}
+		}
+	}
+	if active != "" {
+		parent := filepath.Dir(filepath.Clean(active))
+		if parent != cleanRoot && strings.HasPrefix(parent, cleanRoot+string(filepath.Separator)) {
+			if st, err := os.Stat(parent); err == nil && st.IsDir() {
+				return parent
+			}
+		}
+	}
+	return cleanRoot
+}
+
+// CreateNewNote creates an Untitled.md / 未命名.md note in the target notebook folder,
 // opens it in a tab, and focuses block 0.
 func (w *Workspace) CreateNewNote() (string, error) {
 	folder := w.ActiveNotebook()
 	if folder == "" {
 		return "", errors.New(theme.Tr("请先打开一个笔记本文件夹", "Open a notebook folder first"))
 	}
-	created, err := files.CreateNewNote(folder, theme.IsEn())
+	targetDir := w.targetCreateDir(folder)
+	created, err := files.CreateNewNote(targetDir, theme.IsEn())
 	if err != nil {
 		w.setNotice(err.Error())
 		return "", err
+	}
+	if targetDir != filepath.Clean(folder) {
+		w.mu.Lock()
+		w.sidebarUI.ExpandedDirs[targetDir] = true
+		w.mu.Unlock()
 	}
 	w.RescanNotebook()
 	if err := w.openNoteInternal(created, true, true, 1); err != nil {
@@ -1394,16 +1510,22 @@ func (w *Workspace) CreateNewNote() (string, error) {
 	return created, nil
 }
 
-// CreateNewFolder creates a new subfolder in the active notebook and starts inline rename.
+// CreateNewFolder creates a new subfolder in the target notebook folder and starts inline rename.
 func (w *Workspace) CreateNewFolder() (string, error) {
 	folder := w.ActiveNotebook()
 	if folder == "" {
 		return "", errors.New(theme.Tr("请先打开一个笔记本文件夹", "Open a notebook folder first"))
 	}
-	created, err := files.CreateNewFolder(folder, theme.IsEn())
+	targetDir := w.targetCreateDir(folder)
+	created, err := files.CreateNewFolder(targetDir, theme.IsEn())
 	if err != nil {
 		w.setNotice(err.Error())
 		return "", err
+	}
+	if targetDir != filepath.Clean(folder) {
+		w.mu.Lock()
+		w.sidebarUI.ExpandedDirs[targetDir] = true
+		w.mu.Unlock()
 	}
 	w.RescanNotebook()
 	w.sidebarUI.StartRename(created, true)
@@ -1480,20 +1602,57 @@ func (w *Workspace) rebaseRenamedPaths(from, to string) {
 	}
 
 	w.mu.Lock()
-	for i, t := range w.state.OpenTabs {
-		if next, ok := rebase(t); ok {
-			w.state.OpenTabs[i] = next
-			w.nav.ReplacePath(t, next)
+	rebasedTabs := make([]string, 0, len(w.state.OpenTabs))
+	seenTabs := make(map[string]bool, len(w.state.OpenTabs))
+	for _, t := range w.state.OpenTabs {
+		next, _ := rebase(t)
+		cleanNext := filepath.Clean(next)
+		if !seenTabs[cleanNext] {
+			seenTabs[cleanNext] = true
+			rebasedTabs = append(rebasedTabs, cleanNext)
 		}
 	}
+	w.state.OpenTabs = rebasedTabs
 	if next, ok := rebase(w.state.ActiveTab); ok {
 		w.state.ActiveTab = next
 	}
+	w.nav.Rebase(cleanFrom, cleanTo)
+	w.closed.Rebase(cleanFrom, cleanTo)
 	if w.sidebarUI.FocusDir != "" {
 		if next, ok := rebase(w.sidebarUI.FocusDir); ok {
 			w.sidebarUI.FocusDir = next
 		}
 	}
+	if w.historyToast != nil {
+		if next, ok := rebase(w.historyToast.NotePath); ok {
+			w.historyToast.NotePath = next
+		}
+	}
+	if w.tabMenu.TabMenuOpen {
+		if next, ok := rebase(w.tabMenu.TabMenuPath); ok {
+			w.tabMenu.TabMenuPath = next
+		}
+	}
+	nextVirtual := make(map[string]bool, len(w.virtualPreview))
+	for k, v := range w.virtualPreview {
+		if next, ok := rebase(k); ok {
+			nextVirtual[next] = v
+		} else {
+			nextVirtual[k] = v
+		}
+	}
+	w.virtualPreview = nextVirtual
+
+	nextSnap := make(map[string]time.Time, len(w.lastSnapAt))
+	for k, v := range w.lastSnapAt {
+		if next, ok := rebase(k); ok {
+			nextSnap[next] = v
+		} else {
+			nextSnap[k] = v
+		}
+	}
+	w.lastSnapAt = nextSnap
+
 	nextSessions := make(map[string]*editor.Session, len(w.sessions))
 	for k, sess := range w.sessions {
 		if next, ok := rebase(k); ok {
@@ -1536,30 +1695,52 @@ func (w *Workspace) removeClosedOrDeletedPath(target string) {
 		if matches(k) {
 			delete(w.sessions, k)
 			delete(w.virtualPreview, k)
-			w.closed.Remove(k)
-			w.nav.RemovePath(k)
+			delete(w.lastSnapAt, k)
 		}
 	}
 	for k := range w.surfaces {
 		if matches(k) {
 			delete(w.surfaces, k)
-			w.closed.Remove(k)
-			w.nav.RemovePath(k)
 		}
 	}
+	w.closed.RemoveUnder(cleanTarget)
+	w.nav.RemoveUnder(cleanTarget)
+
+	activeIdx := -1
 	surviving := make([]string, 0, len(w.state.OpenTabs))
-	for _, t := range w.state.OpenTabs {
+	for i, t := range w.state.OpenTabs {
+		if t == w.state.ActiveTab {
+			activeIdx = i
+		}
 		if !matches(t) {
 			surviving = append(surviving, t)
 		}
 	}
 	w.state.OpenTabs = surviving
+	nextActive := w.state.ActiveTab
 	if matches(w.state.ActiveTab) {
 		if len(surviving) > 0 {
-			w.state.ActiveTab = surviving[len(surviving)-1]
+			pick := activeIdx
+			if pick < 0 {
+				pick = 0
+			}
+			if pick >= len(surviving) {
+				pick = len(surviving) - 1
+			}
+			nextActive = surviving[pick]
 		} else {
-			w.state.ActiveTab = ""
+			nextActive = ""
 		}
+		w.state.ActiveTab = nextActive
+	}
+	if w.historyToast != nil && matches(w.historyToast.NotePath) {
+		w.historyToast = nil
+	}
+	if w.historyView != nil && w.historyView.Open && matches(w.historyView.NotePath) {
+		w.historyView.Close()
+	}
+	if w.tabMenu.TabMenuOpen && matches(w.tabMenu.TabMenuPath) {
+		w.tabMenu.Close()
 	}
 	if w.sidebarUI.FocusDir != "" && matches(w.sidebarUI.FocusDir) {
 		w.sidebarUI.FocusDir = ""
@@ -1568,18 +1749,58 @@ func (w *Workspace) removeClosedOrDeletedPath(target string) {
 	active := w.state.ActiveTab
 	w.mu.Unlock()
 
+	if active != "" {
+		_ = w.ensureTabLoaded(active)
+	}
 	w.persistTabs(tabs, active)
+}
+
+// ReorderTab moves srcPath before (after==false) or after (after==true) targetPath and persists state.json.
+func (w *Workspace) ReorderTab(srcPath, targetPath string, after bool) bool {
+	if w.isBusy() {
+		return false
+	}
+	cleanSrc := filepath.Clean(srcPath)
+	cleanDst := filepath.Clean(targetPath)
+	w.mu.Lock()
+	nextTabs, moved := w.tabOps.ReorderTab(w.state.OpenTabs, cleanSrc, cleanDst, after)
+	if !moved {
+		w.mu.Unlock()
+		return false
+	}
+	w.state.OpenTabs = nextTabs
+	tabs := append([]string(nil), nextTabs...)
+	active := w.state.ActiveTab
+	w.mu.Unlock()
+
+	w.persistTabs(tabs, active)
+	w.RequestRedraw()
+	return true
 }
 
 // CloseTab flushes dirty changes on path, pushes it to ClosedTabs, and closes the tab.
 func (w *Workspace) CloseTab(path string) {
+	if w.isBusy() {
+		return
+	}
 	clean := filepath.Clean(path)
+	w.tabMenu.Close()
+	w.sidebarUI.ClosePopups()
 	w.mu.Lock()
 	delete(w.lastSnapAt, clean)
 	w.mu.Unlock()
-	w.flushSingleSession(clean)
+	if err := w.flushSingleSession(clean); err != nil {
+		return
+	}
 
 	w.mu.Lock()
+	closedIdx := -1
+	for i, t := range w.state.OpenTabs {
+		if t == clean {
+			closedIdx = i
+			break
+		}
+	}
 	isVirtual := w.virtualPreview[clean]
 	delete(w.virtualPreview, clean)
 	nextTabs, nextActive, closed := w.tabOps.CloseTab(w.state.OpenTabs, w.state.ActiveTab, clean)
@@ -1591,8 +1812,14 @@ func (w *Workspace) CloseTab(path string) {
 	w.state.ActiveTab = nextActive
 	delete(w.sessions, clean)
 	delete(w.surfaces, clean)
+	if w.historyToast != nil && filepath.Clean(w.historyToast.NotePath) == clean {
+		w.historyToast = nil
+	}
+	if w.historyView != nil && w.historyView.Open && filepath.Clean(w.historyView.NotePath) == clean {
+		w.historyView.Close()
+	}
 	if !isVirtual {
-		w.closed.Push(clean)
+		w.closed.PushAt(clean, closedIdx)
 	}
 	tabs := append([]string(nil), nextTabs...)
 	w.mu.Unlock()
@@ -1606,21 +1833,59 @@ func (w *Workspace) CloseTab(path string) {
 
 // CloseActiveTab closes the active tab.
 func (w *Workspace) CloseActiveTab() {
+	if w.modals != nil && w.modals.IsSettingsOpen() {
+		return
+	}
 	active := w.ActiveNotePath()
 	if active != "" {
 		w.CloseTab(active)
 	}
 }
 
-// ReopenClosedTab pops the most recently closed tab (`Cmd+Shift+T`) and opens it.
+// ReopenClosedTab pops the most recently closed tab (`Cmd+Shift+T`) and restores it at its prior index.
 func (w *Workspace) ReopenClosedTab() bool {
-	for w.closed.Len() > 0 {
-		cand := w.closed.Pop()
-		if cand == "" {
+	if w.isBusy() {
+		return false
+	}
+	w.tabMenu.Close()
+	w.sidebarUI.ClosePopups()
+	for {
+		entry, ok := w.closed.PopEntry()
+		if !ok {
 			break
 		}
-		if info, err := os.Stat(cand); err == nil && !info.IsDir() {
-			_ = w.openNoteInternal(cand, true, true, 0)
+		if entry.Path == "" {
+			continue
+		}
+		w.mu.RLock()
+		alreadyOpen := false
+		for _, t := range w.state.OpenTabs {
+			if t == entry.Path {
+				alreadyOpen = true
+				break
+			}
+		}
+		w.mu.RUnlock()
+		if alreadyOpen {
+			continue
+		}
+		if info, err := os.Stat(entry.Path); err == nil && info.Mode().IsRegular() {
+			if err := w.openNoteInternal(entry.Path, true, true, 0); err != nil {
+				continue
+			}
+			if entry.Index >= 0 {
+				w.mu.Lock()
+				if nextTabs, moved := w.tabOps.MoveToIndex(w.state.OpenTabs, entry.Path, entry.Index); moved {
+					w.state.OpenTabs = nextTabs
+					tabs := append([]string(nil), nextTabs...)
+					active := w.state.ActiveTab
+					w.mu.Unlock()
+					w.persistTabs(tabs, active)
+					w.RequestRedraw()
+				} else {
+					w.mu.Unlock()
+				}
+			}
 			return true
 		}
 	}
@@ -1629,60 +1894,120 @@ func (w *Workspace) ReopenClosedTab() bool {
 
 // CloseOtherTabs closes every open tab except keepPath.
 func (w *Workspace) CloseOtherTabs(keepPath string) {
-	w.FlushDirtySessions()
+	if w.isBusy() {
+		return
+	}
+	w.tabMenu.Close()
+	w.sidebarUI.ClosePopups()
+	if err := w.flushDirtySessions(); err != nil {
+		return
+	}
 	clean := filepath.Clean(keepPath)
 	w.mu.Lock()
+	origTabs := append([]string(nil), w.state.OpenTabs...)
 	nextTabs, nextActive, closedPaths := w.tabOps.CloseOthers(w.state.OpenTabs, clean)
+	if len(closedPaths) == 0 {
+		w.mu.Unlock()
+		return
+	}
+	w.closed.RecordOthers(origTabs, clean, func(p string) bool { return w.virtualPreview[p] })
 	for _, p := range closedPaths {
-		if !w.virtualPreview[p] {
-			w.closed.Push(p)
-		}
 		delete(w.virtualPreview, p)
 		delete(w.sessions, p)
 		delete(w.surfaces, p)
+		delete(w.lastSnapAt, p)
+	}
+	if w.historyToast != nil && filepath.Clean(w.historyToast.NotePath) != clean {
+		w.historyToast = nil
+	}
+	if w.historyView != nil && w.historyView.Open && filepath.Clean(w.historyView.NotePath) != clean {
+		w.historyView.Close()
 	}
 	w.state.OpenTabs = nextTabs
 	w.state.ActiveTab = nextActive
 	tabs := append([]string(nil), nextTabs...)
 	w.mu.Unlock()
+
+	if nextActive != "" {
+		_ = w.ensureTabLoaded(nextActive)
+	}
 	w.persistTabs(tabs, nextActive)
 	w.RequestRedraw()
 }
 
 // CloseTabsToRight closes every open tab strictly to the right of pivotPath.
 func (w *Workspace) CloseTabsToRight(pivotPath string) {
-	w.FlushDirtySessions()
+	if w.isBusy() {
+		return
+	}
+	w.tabMenu.Close()
+	w.sidebarUI.ClosePopups()
+	if err := w.flushDirtySessions(); err != nil {
+		return
+	}
 	clean := filepath.Clean(pivotPath)
 	w.mu.Lock()
-	nextTabs, nextActive, closedPaths := w.tabOps.CloseToRight(w.state.OpenTabs, w.state.ActiveTab, clean)
-	for _, p := range closedPaths {
-		if !w.virtualPreview[p] {
-			w.closed.Push(p)
+	pivotIdx := -1
+	for i, t := range w.state.OpenTabs {
+		if t == clean {
+			pivotIdx = i
+			break
 		}
+	}
+	nextTabs, nextActive, closedPaths := w.tabOps.CloseToRight(w.state.OpenTabs, w.state.ActiveTab, clean)
+	if len(closedPaths) == 0 {
+		w.mu.Unlock()
+		return
+	}
+	if pivotIdx >= 0 {
+		w.closed.RecordFrom(pivotIdx+1, closedPaths, func(p string) bool { return w.virtualPreview[p] })
+	}
+	closedSet := make(map[string]bool, len(closedPaths))
+	for _, p := range closedPaths {
+		closedSet[p] = true
 		delete(w.virtualPreview, p)
 		delete(w.sessions, p)
 		delete(w.surfaces, p)
+		delete(w.lastSnapAt, p)
+	}
+	if w.historyToast != nil && closedSet[filepath.Clean(w.historyToast.NotePath)] {
+		w.historyToast = nil
+	}
+	if w.historyView != nil && w.historyView.Open && closedSet[filepath.Clean(w.historyView.NotePath)] {
+		w.historyView.Close()
 	}
 	w.state.OpenTabs = nextTabs
 	w.state.ActiveTab = nextActive
 	tabs := append([]string(nil), nextTabs...)
 	w.mu.Unlock()
+
+	if nextActive != "" {
+		_ = w.ensureTabLoaded(nextActive)
+	}
 	w.persistTabs(tabs, nextActive)
 	w.RequestRedraw()
 }
 
 // CloseAllTabs closes all open tabs.
 func (w *Workspace) CloseAllTabs() {
-	w.FlushDirtySessions()
-	w.mu.Lock()
-	for _, p := range w.state.OpenTabs {
-		if !w.virtualPreview[p] {
-			w.closed.Push(p)
-		}
+	if w.isBusy() {
+		return
 	}
+	w.tabMenu.Close()
+	w.sidebarUI.ClosePopups()
+	if err := w.flushDirtySessions(); err != nil {
+		return
+	}
+	w.mu.Lock()
+	w.closed.RecordFrom(0, w.state.OpenTabs, func(p string) bool { return w.virtualPreview[p] })
 	w.virtualPreview = make(map[string]bool)
 	w.sessions = make(map[string]*editor.Session)
 	w.surfaces = make(map[string]*TabSurface)
+	w.lastSnapAt = make(map[string]time.Time)
+	w.historyToast = nil
+	if w.historyView != nil && w.historyView.Open {
+		w.historyView.Close()
+	}
 	w.state.OpenTabs = nil
 	w.state.ActiveTab = ""
 	w.mu.Unlock()
@@ -1692,6 +2017,12 @@ func (w *Workspace) CloseAllTabs() {
 
 // StepTab cycles forward (+1) or backward (-1) across open tabs (`Ctrl+Tab` / `Ctrl+Shift+Tab`).
 func (w *Workspace) StepTab(delta int) {
+	if w.modals != nil && w.modals.IsSettingsOpen() {
+		return
+	}
+	if w.isBusy() {
+		return
+	}
 	w.mu.RLock()
 	next := w.tabOps.Cycle(w.state.OpenTabs, w.state.ActiveTab, delta)
 	w.mu.RUnlock()
@@ -1702,6 +2033,9 @@ func (w *Workspace) StepTab(delta int) {
 
 // SelectTabOneBased selects tab 1..9 (`Cmd+9` selects the last tab).
 func (w *Workspace) SelectTabOneBased(num int) {
+	if w.isBusy() {
+		return
+	}
 	w.mu.RLock()
 	next := w.tabOps.SelectOneBased(w.state.OpenTabs, num)
 	w.mu.RUnlock()
@@ -1712,15 +2046,35 @@ func (w *Workspace) SelectTabOneBased(num int) {
 
 // NavigateBack navigates backward in note history (`Cmd+[`).
 func (w *Workspace) NavigateBack() {
-	if target := w.nav.Back(); target != "" {
-		_ = w.openNoteInternal(target, false, false, 0)
+	if w.modals != nil && w.modals.IsSettingsOpen() {
+		return
+	}
+	for {
+		target := w.nav.Back()
+		if target == "" {
+			w.RequestRedraw()
+			return
+		}
+		if err := w.openNoteInternal(target, false, false, 0); err == nil {
+			return
+		}
 	}
 }
 
 // NavigateForward navigates forward in note history (`Cmd+]`).
 func (w *Workspace) NavigateForward() {
-	if target := w.nav.Forward(); target != "" {
-		_ = w.openNoteInternal(target, false, false, 0)
+	if w.modals != nil && w.modals.IsSettingsOpen() {
+		return
+	}
+	for {
+		target := w.nav.Forward()
+		if target == "" {
+			w.RequestRedraw()
+			return
+		}
+		if err := w.openNoteInternal(target, false, false, 0); err == nil {
+			return
+		}
 	}
 }
 
@@ -1800,7 +2154,9 @@ func (w *Workspace) setNotice(msg string) {
 }
 
 // FlushDirtySessions writes all modified non-virtual editor sessions to disk atomically.
-func (w *Workspace) FlushDirtySessions() {
+func (w *Workspace) FlushDirtySessions() { _ = w.flushDirtySessions() }
+
+func (w *Workspace) flushDirtySessions() error {
 	w.mu.RLock()
 	paths := make([]string, 0, len(w.sessions))
 	for p, sess := range w.sessions {
@@ -1809,25 +2165,29 @@ func (w *Workspace) FlushDirtySessions() {
 		}
 	}
 	w.mu.RUnlock()
+	var firstErr error
 	for _, p := range paths {
-		w.flushSingleSession(p)
+		if err := w.flushSingleSession(p); err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
+	return firstErr
 }
 
-func (w *Workspace) flushSingleSession(path string) {
+func (w *Workspace) flushSingleSession(path string) error {
 	w.mu.RLock()
 	sess := w.sessions[path]
 	isVirtual := w.virtualPreview[path]
 	lastSnap := w.lastSnapAt[path]
 	w.mu.RUnlock()
 	if sess == nil || !sess.Dirty() || isVirtual {
-		return
+		return nil
 	}
 	md := sess.Markdown()
 	if _, err := files.WriteNoteAtomic(path, md); err != nil {
 		files.LogWarnf("auto-save failed for %s: %v", path, err)
 		_ = files.SaveRecovery(path, md)
-		return
+		return err
 	}
 	sess.MarkSaved()
 	files.ClearRecovery(path)
@@ -1838,6 +2198,7 @@ func (w *Workspace) flushSingleSession(path string) {
 		w.lastSnapAt[path] = now
 		w.mu.Unlock()
 	}
+	return nil
 }
 
 func (w *Workspace) startWatching(folder string) {
@@ -1971,19 +2332,21 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		w.OpenExportStage()
 		return
 	}
-	if c.Shortcut(ui.Ctrl, ui.KeyTab) {
+	if c.Shortcut(ui.Ctrl, ui.KeyTab) || c.Shortcut(ui.Ctrl, ui.KeyPageDown) ||
+		c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketRight) || c.Shortcut(ui.Cmd|ui.Alt, ui.KeyRight) {
 		w.StepTab(1)
 		return
 	}
-	if c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyTab) {
+	if c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyTab) || c.Shortcut(ui.Ctrl, ui.KeyPageUp) ||
+		c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketLeft) || c.Shortcut(ui.Cmd|ui.Alt, ui.KeyLeft) {
 		w.StepTab(-1)
 		return
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyBracketLeft) {
+	if c.Shortcut(ui.Cmd, ui.KeyBracketLeft) || (!theme.IsMacOS() && c.Shortcut(ui.Alt, ui.KeyLeft)) {
 		w.NavigateBack()
 		return
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyBracketRight) {
+	if c.Shortcut(ui.Cmd, ui.KeyBracketRight) || (!theme.IsMacOS() && c.Shortcut(ui.Alt, ui.KeyRight)) {
 		w.NavigateForward()
 		return
 	}
@@ -2216,6 +2579,9 @@ func (w *Workspace) Render(c *ui.Context) {
 				OnCloseOthers: w.CloseOtherTabs,
 				OnCloseRight:  w.CloseTabsToRight,
 				OnCloseAll:    w.CloseAllTabs,
+				OnReorderTab: func(srcPath, targetPath string, after bool) {
+					w.ReorderTab(srcPath, targetPath, after)
+				},
 				OnNewNote: func() {
 					_, _ = w.CreateNewNote()
 				},
@@ -2498,4 +2864,18 @@ func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, e
 			}
 		}
 	})
+}
+
+func (w *Workspace) isBusy() bool {
+	if w.ai != nil && w.ai.IsStreaming() {
+		return true
+	}
+	w.mu.RLock()
+	active := w.state.ActiveTab
+	sess := w.sessions[active]
+	w.mu.RUnlock()
+	if sess != nil && sess.IsBusy() {
+		return true
+	}
+	return false
 }

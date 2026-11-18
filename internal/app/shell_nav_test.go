@@ -1,6 +1,12 @@
 package app
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"block/internal/files"
+)
 
 func TestResolveShellLayout(t *testing.T) {
 	// 1. Wide window: sidebar docks + chat docks + outline shows.
@@ -210,5 +216,131 @@ func TestNavHistoryAndTabs(t *testing.T) {
 	}
 	if last := ops.SelectOneBased(tabs, 9); last != "/2.md" {
 		t.Fatalf("expected Cmd+9 to select last tab /2.md, got %q", last)
+	}
+
+	reordered, moved := ops.ReorderTab(tabs, "/1.md", "/2.md", true)
+	if !moved || len(reordered) != 3 || reordered[0] != "/new.md" || reordered[1] != "/2.md" || reordered[2] != "/1.md" {
+		t.Fatalf("unexpected ReorderTab result: %v moved=%v", reordered, moved)
+	}
+	movedTabs, ok := ops.MoveToIndex(reordered, "/1.md", 0)
+	if !ok || movedTabs[0] != "/1.md" || movedTabs[1] != "/new.md" {
+		t.Fatalf("unexpected MoveToIndex result: %v ok=%v", movedTabs, ok)
+	}
+}
+
+func TestWorkspaceTabsReorderReopenPersistenceAndNotebookSwitch(t *testing.T) {
+	dataDir := t.TempDir()
+	files.SetDataDirOverride(dataDir)
+	t.Cleanup(func() { files.SetDataDirOverride("") })
+
+	nb1 := filepath.Join(t.TempDir(), "nb1")
+	nb2 := filepath.Join(t.TempDir(), "nb2")
+	subDir := filepath.Join(nb1, "sub")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(nb2, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	pA := filepath.Join(nb1, "A.md")
+	pB := filepath.Join(nb1, "B.md")
+	pC := filepath.Join(subDir, "C.md")
+	for _, p := range []string{pA, pB, pC} {
+		if err := os.WriteFile(p, []byte("# "+filepath.Base(p)+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ws := NewWorkspace(dataDir)
+	if err := ws.SetNotebook(nb1); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.OpenNote(pA, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.OpenNote(pB, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.OpenNote(pC, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	// ReorderTab: move C before A -> [C, A, B]
+	if !ws.ReorderTab(pC, pA, false) {
+		t.Fatal("expected ReorderTab to succeed")
+	}
+	tabs := ws.Tabs()
+	if len(tabs) != 3 || tabs[0] != pC || tabs[1] != pA || tabs[2] != pB {
+		t.Fatalf("unexpected tab order after reorder: %v", tabs)
+	}
+
+	// Reload workspace from persisted state.json -> order & active tab survive!
+	wsReloaded := NewWorkspace(dataDir)
+	tabsReloaded := wsReloaded.Tabs()
+	if len(tabsReloaded) != 3 || tabsReloaded[0] != pC || tabsReloaded[1] != pA || tabsReloaded[2] != pB {
+		t.Fatalf("persisted tab order mismatch: %v", tabsReloaded)
+	}
+	if wsReloaded.ActiveNotePath() != pC {
+		t.Fatalf("expected active tab %s after reload, got %s", pC, wsReloaded.ActiveNotePath())
+	}
+
+	// Close A at index 1, then ReopenClosedTab -> A returns to index 1!
+	wsReloaded.CloseTab(pA)
+	if got := wsReloaded.Tabs(); len(got) != 2 || got[0] != pC || got[1] != pB {
+		t.Fatalf("unexpected tabs after CloseTab(A): %v", got)
+	}
+	if !wsReloaded.ReopenClosedTab() {
+		t.Fatal("expected ReopenClosedTab to reopen A")
+	}
+	if got := wsReloaded.Tabs(); len(got) != 3 || got[0] != pC || got[1] != pA || got[2] != pB {
+		t.Fatalf("expected A reopened at index 1, got %v", got)
+	}
+
+	// Rename B -> B2, then close B2, then rename sub -> sub2: nav & closed tabs rebase too!
+	pB2, err := wsReloaded.RenameWorkspaceItem(pB, "B2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wsReloaded.CloseTab(pB2)
+	if _, err := wsReloaded.RenameWorkspaceItem(subDir, "sub2"); err != nil {
+		t.Fatal(err)
+	}
+	pC2 := filepath.Join(nb1, "sub2", "C.md")
+	if wsReloaded.ActiveNotePath() != pC2 && wsReloaded.Tabs()[0] != pC2 {
+		t.Fatalf("expected C rebased to %s, got tabs=%v active=%s", pC2, wsReloaded.Tabs(), wsReloaded.ActiveNotePath())
+	}
+
+	// Select the rebased note before creating its sibling.
+	if err := wsReloaded.OpenNote(pC2, 0); err != nil {
+		t.Fatal(err)
+	}
+	createdSub, err := wsReloaded.CreateNewNote()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(createdSub) != filepath.Join(nb1, "sub2") {
+		t.Fatalf("expected CreateNewNote in active subfolder sub2, got %s", createdSub)
+	}
+
+	// CloseOtherTabs keeps C2 and records others in left-to-right reopen order.
+	wsReloaded.CloseOtherTabs(pC2)
+	if len(wsReloaded.Tabs()) != 1 {
+		t.Fatalf("expected 1 tab after CloseOtherTabs, got %v", wsReloaded.Tabs())
+	}
+	if !wsReloaded.ReopenClosedTab() {
+		t.Fatal("expected ReopenClosedTab after CloseOtherTabs")
+	}
+
+	// Switching to a different notebook clears previous notebook's open tabs!
+	if err := wsReloaded.SetNotebook(nb2); err != nil {
+		t.Fatal(err)
+	}
+	if len(wsReloaded.Tabs()) != 0 || wsReloaded.ActiveNotePath() != "" {
+		t.Fatalf("expected tabs cleared after switching notebook, got tabs=%v active=%q", wsReloaded.Tabs(), wsReloaded.ActiveNotePath())
+	}
+	persisted := files.LoadState()
+	if len(persisted.OpenTabs) != 0 || persisted.ActiveTab != "" {
+		t.Fatalf("expected persisted tabs cleared on notebook switch, got %+v", persisted)
 	}
 }
