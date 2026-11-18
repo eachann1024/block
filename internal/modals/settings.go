@@ -153,7 +153,7 @@ type Manager struct {
 
 	// Search modal state.
 	searchPalette     searchPaletteState
-	onOpenSearchHit   func(path string, line int)
+	onOpenSearchHit   func(hit model.SearchHit)
 	searchOpen        bool
 	searchQuery       string
 	searchLastQuery   string
