@@ -279,6 +279,10 @@ func renderStoreAppCard(
 					ui.Text(c, author).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 						TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				}
+				if isInstalled && !installedApp.Enabled {
+					ui.Text(c, theme.Tr("已停用", "Disabled")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+						TextColor(pal.TextSecondary).Shrink(0).SingleLine()
+				}
 			})
 		})
 
