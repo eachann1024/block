@@ -228,10 +228,11 @@ type Session struct {
 	scrollRect     ui.Rect
 	rootHandle     ui.Handle
 	frameRoot      ui.Element
-	toolbarRect    ui.Rect
-	readOnly       bool
-	minimal        bool
-	OnPickImages   func(blockID model.BlockID, replace bool)
+	toolbarRect     ui.Rect
+	readOnly        bool
+	minimal         bool
+	minCanvasHeight float32
+	OnPickImages    func(blockID model.BlockID, replace bool)
 }
 
 // NewSession constructs a Session for a note path and document.
@@ -408,7 +409,7 @@ func (s *Session) IsSlashMenuOpen() bool {
 }
 
 func (s *Session) IsSelectionToolbarOpen() bool {
-	return !s.minimal && !s.readOnly && s.hasNonEmptySelection() && !s.findOpen && s.inlineAI == nil && s.selectionSupportsToolbar()
+	return !s.readOnly && s.hasNonEmptySelection() && !s.findOpen && s.inlineAI == nil && s.selectionSupportsToolbar()
 }
 
 func (s *Session) Annotations() []*model.Annotation {
