@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"block/internal/editor"
-	"block/internal/icons"
 	"block/internal/markdown"
 	"block/internal/model"
 	"block/internal/plugins"
 	"block/internal/theme"
 	bui "block/internal/ui"
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -33,13 +33,43 @@ type storeReadmePreview struct {
 	media     *readmeMedia
 }
 
-func (ctrl *Controller) openStoreReadme(c *ui.Context, entry plugins.StoreAppEntry, installed plugins.InstalledApp) {
+func (ctrl *Controller) openStoreReadme(entry plugins.StoreAppEntry, installed plugins.InstalledApp) {
+	if !mygo.App.IsReady() {
+		return
+	}
+	title := entry.Name.Resolve(ctrl.sup.Locale())
+	win := ctrl.storeReadmeWindow
+	if win == nil || win.IsDestroyed() {
+		win = mygo.NewWindow(mygo.WindowOptions{
+			Title: title, Width: 760, Height: 680, MinWidth: 400, MinHeight: 280,
+			Hidden: true, Content: ui.View(ctrl.renderStoreReadme),
+			BackgroundColor: "light-dark(#ffffff, #222222)",
+		})
+		ctrl.storeReadmeWindow = win
+		win.OnClosed(func() {
+			if ctrl.storeReadmeWindow == win {
+				ctrl.storeReadmeWindow = nil
+				ctrl.closeStoreReadme()
+			}
+		})
+	} else {
+		win.SetTitle(title)
+	}
+	if ctrl.storeReadme == nil || ctrl.storeReadme.entry.ID != entry.ID {
+		ctrl.loadStoreReadme(win, entry, installed)
+	}
+	win.Show()
+	win.Focus()
+}
+
+func (ctrl *Controller) loadStoreReadme(win *mygo.Window, entry plugins.StoreAppEntry, installed plugins.InstalledApp) {
 	ctrl.closeStoreReadme()
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan readmeResult, 1)
 	ctrl.storeReadme = &storeReadmePreview{entry: entry, installed: installed, ctx: ctx, cancel: cancel, pending: result}
 
-	store, services := ctrl.sup.Store(), c.Services()
+	store := ctrl.sup.Store()
+	win.Invalidate()
 	go func() {
 		requestCtx, stop := context.WithTimeout(ctx, 10*time.Second)
 		defer stop()
@@ -50,7 +80,7 @@ func (ctrl *Controller) openStoreReadme(c *ui.Context, entry plugins.StoreAppEnt
 		}
 		result <- reply
 		if ctx.Err() == nil {
-			services.Invalidate()
+			win.Invalidate()
 		}
 	}()
 }
@@ -86,34 +116,24 @@ func (ctrl *Controller) renderStoreReadme(c *ui.Context) {
 	default:
 	}
 
-	pal := theme.Ocean()
-	locale := ctrl.sup.Locale()
-	title := preview.entry.Name.Resolve(locale)
-	open := true
-	bui.Dialog(c, "app-store-readme-modal", title, &open, bui.ModalLayout{
-		Width: 680, MaxHeight: 600, Centered: true,
-	}, func() {
-		ui.Row(c).FillWidth().MinWidth(0).Padding(theme.Space12, theme.Space20).
-			Gap(theme.Space12).AlignItems(ui.Center).
-			BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-			ui.Text(c, title).Grow(1).MinWidth(0).
-				FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).FontWeight(theme.WeightTitle).
-				TextColor(pal.Text).SingleLine().Ellipsis("…")
-			closeButton := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
-				ID: "app-store-readme-close", Label: theme.Tr("关闭", "Close"),
-			})
-			if closeButton.Clicked() {
-				open = false
-			}
-		})
+	win := ctrl.storeReadmeWindow
+	if win != nil && (c.Shortcut(0, ui.KeyEscape) || c.Shortcut(ui.Cmd, ui.KeyW)) {
+		win.Update(win.Close)
+		return
+	}
 
+	pal := theme.Ocean()
+	uiTheme := pal.ToUITheme("")
+	uiTheme.ScrollbarStyle = ui.ScrollbarStyle{
+		TrackWidth: theme.ScrollGutter, ThumbWidth: theme.ScrollThumbWidth, MinLength: 32,
+		Thumb: pal.ScrollThumb, Hover: pal.ScrollThumbHover, Active: pal.ScrollThumbHover,
+	}
+	c.SetTheme(&uiTheme)
+	locale := ctrl.sup.Locale()
+	ui.Column(c.Key("plugin-readme-" + preview.entry.ID)).Fill().Background(pal.Paper).Children(func() {
 		if preview.editor != nil {
-			w, h := c.Size()
-			width := max(min(float32(680), w-40), 1)
-			height := max(min(float32(600), h-40)-52, 1)
-			ui.Box(c.Key("plugin-readme-" + preview.entry.ID)).FillWidth().Height(height).Clip().Children(func() {
-				preview.editor.Render(c, width, true)
-			})
+			w, _ := c.Size()
+			preview.editor.Render(c, w, true)
 			return
 		}
 		ui.Column(c).FillWidth().MinWidth(0).Padding(theme.Space16, theme.Space20).Gap(theme.Space12).Children(func() {
@@ -133,14 +153,13 @@ func (ctrl *Controller) renderStoreReadme(c *ui.Context) {
 			if preview.pending == nil && !errors.Is(preview.result.err, plugins.ErrReadmeUnavailable) {
 				retry := bui.ActionButton(c, "app-store-readme-retry", theme.Tr("重试", "Retry"), nil, bui.ButtonSecondary, false)
 				if retry.Clicked() {
-					ctrl.openStoreReadme(c, preview.entry, preview.installed)
+					if win != nil {
+						ctrl.loadStoreReadme(win, preview.entry, preview.installed)
+					}
 				}
 			}
 		})
 	})
-	if !open {
-		ctrl.closeStoreReadme()
-	}
 }
 
 func parseReadmeBlocks(text string) *model.Doc {
