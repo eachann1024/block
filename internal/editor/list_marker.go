@@ -23,8 +23,10 @@ type listAncestor struct {
 }
 
 type listCtx struct {
-	Number    int
-	Ancestors []listAncestor
+	Number       int
+	Ancestors    []listAncestor
+	HasSelfGuide bool
+	SelfGuide    listAncestor
 }
 
 type frameBlockMeta struct {
@@ -39,13 +41,45 @@ type foldFrameEntry struct {
 }
 
 type ancStackEntry struct {
-	idx int
-	anc listAncestor
+	idx         int
+	lastDescIdx int
+	anc         listAncestor
 }
 
 type listGuideUIKey struct {
 	id  model.BlockID
 	idx int
+}
+
+type listSelfGuideUIKey struct {
+	id model.BlockID
+}
+
+func isPlainEmptyListBridgeBlock(b *model.Block) bool {
+	return b.Kind == model.BlockParagraph && b.Indent == 0 && b.QuoteDepth == 0 && len(b.Spans) == 0
+}
+
+func listMarkerCenter(kind model.BlockKind) float32 {
+	if kind == model.BlockTodo {
+		return listTodoCenter
+	}
+	return listMarkCenter
+}
+
+func ancFitsLeftOfBlock(anc listAncestor, b *model.Block) bool {
+	if anc.Indent >= b.Indent {
+		return false
+	}
+	if b.Kind.IsList() {
+		return true
+	}
+	bleed := float32(0)
+	if isSurfaceBleedBlock(b.Kind) {
+		bleed = editorBandBleed
+	}
+	guideX := float32(min(anc.Indent, 12))*editorIndentStep + anc.Center
+	contentLeftX := float32(min(max(b.Indent, 0), 12))*editorIndentStep - bleed
+	return guideX+theme.Space2 <= contentLeftX
 }
 
 // prepareFrameBlocks computes fold visibility, previous visible sibling, and list
@@ -126,10 +160,26 @@ func (s *Session) prepareFrameBlocks() []frameBlockMeta {
 	var numBase [13]int
 	var ancStack [16]ancStackEntry
 	ancLen := 0
+	lastBlankIdx := -1
+
+	finalizeAnc := func(e ancStackEntry) {
+		if e.lastDescIdx <= e.idx {
+			return
+		}
+		meta[e.idx].List.HasSelfGuide = true
+		meta[e.idx].List.SelfGuide = e.anc
+		if lastBlankIdx > e.idx {
+			for j := e.idx + 1; j < e.lastDescIdx; j++ {
+				if !meta[j].Hidden && isPlainEmptyListBridgeBlock(&blocks[j]) {
+					meta[j].List.Ancestors = append(meta[j].List.Ancestors, e.anc)
+				}
+			}
+		}
+	}
 
 	for i := 0; i < n; i++ {
 		b := &blocks[i]
-		isPlainEmptyZero := b.Kind == model.BlockParagraph && b.Indent == 0 && len(b.Spans) == 0
+		isPlainEmptyZero := isPlainEmptyListBridgeBlock(b)
 		num := 0
 		if !isPlainEmptyZero {
 			ind := min(max(b.Indent, 0), 12)
@@ -154,42 +204,36 @@ func (s *Session) prepareFrameBlocks() []frameBlockMeta {
 				runLen[ind] = 0
 				numBase[ind] = 0
 			}
+
+			for ancLen > 0 && ancStack[ancLen-1].anc.Indent >= b.Indent {
+				ancLen--
+				finalizeAnc(ancStack[ancLen])
+			}
 		}
 
 		var ancestors []listAncestor
-		if !meta[i].Hidden && (b.Kind.IsList() || b.Indent > 0) && b.Indent > 0 && ancLen > 0 {
-			for k := ancLen - 1; k >= 0; k-- {
-				if i-ancStack[k].idx > listMaxScan {
-					break
+		if !meta[i].Hidden {
+			if isPlainEmptyZero {
+				lastBlankIdx = i
+			} else if (b.Kind.IsList() || b.Indent > 0) && b.Indent > 0 && ancLen > 0 {
+				for k := ancLen - 1; k >= 0; k-- {
+					if i-ancStack[k].idx > listMaxScan {
+						break
+					}
+					if ancFitsLeftOfBlock(ancStack[k].anc, b) {
+						ancestors = append(ancestors, ancStack[k].anc)
+						ancStack[k].lastDescIdx = i
+					}
 				}
-				if ancStack[k].anc.Indent < b.Indent {
-					ancestors = append(ancestors, ancStack[k].anc)
-				}
 			}
-		}
-
-		if !b.Kind.IsList() {
-			if b.Indent <= 0 {
-				ancLen = 0
-			}
-		} else {
-			for ancLen > 0 && ancStack[ancLen-1].anc.Indent >= b.Indent {
-				ancLen--
-			}
-			center := float32(listMarkCenter)
-			if b.Kind == model.BlockTodo {
-				center = listTodoCenter
-			}
-			if ancLen < len(ancStack) {
+			if b.Kind.IsList() && ancLen < len(ancStack) {
 				ancStack[ancLen] = ancStackEntry{
-					idx: i,
-					anc: listAncestor{Indent: b.Indent, Center: center},
+					idx:         i,
+					lastDescIdx: -1,
+					anc:         listAncestor{Indent: b.Indent, Center: listMarkerCenter(b.Kind)},
 				}
 				ancLen++
 			}
-		}
-
-		if !meta[i].Hidden {
 			meta[i].PrevVisible = prevVis
 			meta[i].List = listCtx{Number: num, Ancestors: ancestors}
 			prevVis = b
@@ -199,7 +243,35 @@ func (s *Session) prepareFrameBlocks() []frameBlockMeta {
 		}
 	}
 
+	for ancLen > 0 {
+		ancLen--
+		finalizeAnc(ancStack[ancLen])
+	}
+
 	return meta
+}
+
+func (s *Session) hasVisibleListDescendant(ancIdx, fromIdx int, anc listAncestor) bool {
+	if s.dragActive && s.dragCollapsed && s.dragBlockID == s.doc.Blocks[ancIdx].ID {
+		return false
+	}
+	limit := min(len(s.doc.Blocks)-1, ancIdx+listMaxScan)
+	for next := fromIdx; next <= limit; next++ {
+		if s.isBlockHiddenByFold(next) {
+			continue
+		}
+		nb := &s.doc.Blocks[next]
+		if isPlainEmptyListBridgeBlock(nb) {
+			continue
+		}
+		if nb.Indent <= anc.Indent {
+			return false
+		}
+		if ancFitsLeftOfBlock(anc, nb) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Session) computeListCtx(idx int) listCtx {
@@ -211,34 +283,85 @@ func (s *Session) computeListCtx(idx int) listCtx {
 	if b.Kind == model.BlockNumbered {
 		num = s.numberedListIndex(idx)
 	}
-	if !b.Kind.IsList() && b.Indent <= 0 {
+	if s.isBlockHiddenByFold(idx) {
 		return listCtx{Number: num}
 	}
+	isBridge := isPlainEmptyListBridgeBlock(b)
+	if !isBridge && !b.Kind.IsList() && b.Indent <= 0 {
+		return listCtx{Number: num}
+	}
+
 	var ancestors []listAncestor
 	threshold := b.Indent
+	if isBridge {
+		threshold = 13
+	}
 	start := max(idx-listMaxScan, 0)
 	for prev := idx - 1; prev >= start && threshold > 0; prev-- {
+		if s.isBlockHiddenByFold(prev) {
+			continue
+		}
 		pb := &s.doc.Blocks[prev]
+		if isPlainEmptyListBridgeBlock(pb) {
+			continue
+		}
 		if !pb.Kind.IsList() {
-			if pb.Indent > 0 {
-				continue
+			if pb.Indent < threshold {
+				threshold = pb.Indent
 			}
-			break
+			continue
 		}
 		if pb.Indent < threshold {
-			center := listMarkCenter
-			if pb.Kind == model.BlockTodo {
-				center = listTodoCenter
+			anc := listAncestor{Indent: pb.Indent, Center: listMarkerCenter(pb.Kind)}
+			if isBridge {
+				if s.hasVisibleListDescendant(prev, idx+1, anc) {
+					ancestors = append(ancestors, anc)
+				}
+			} else if ancFitsLeftOfBlock(anc, b) {
+				ancestors = append(ancestors, anc)
 			}
-			ancestors = append(ancestors, listAncestor{Indent: pb.Indent, Center: center})
 			threshold = pb.Indent
 		}
 	}
-	return listCtx{Number: num, Ancestors: ancestors}
+
+	ctx := listCtx{Number: num, Ancestors: ancestors}
+	if b.Kind.IsList() {
+		self := listAncestor{Indent: b.Indent, Center: listMarkerCenter(b.Kind)}
+		if s.hasVisibleListDescendant(idx, idx+1, self) {
+			ctx.HasSelfGuide = true
+			ctx.SelfGuide = self
+		}
+	}
+	return ctx
 }
 
-func drawListGuides(c *ui.Context, id model.BlockID, ctx listCtx, leftGutter, zoom float32) {
-	if len(ctx.Ancestors) == 0 {
+func listStemTopOffset(kind model.BlockKind, depth int, fontSize, lineH, zoom float32) float32 {
+	pad := theme.Space4 * zoom
+	var markerBottom float32
+	switch kind {
+	case model.BlockBullet:
+		d := float32(5) * zoom
+		if depth == 0 {
+			d = 6 * zoom
+		}
+		markerBottom = lineH*0.5 + d*0.5
+	case model.BlockNumbered:
+		markerBottom = lineH*0.5 + fontSize*0.42
+	case model.BlockTodo:
+		boxSz := 16 * zoom
+		markerBottom = max((lineH-boxSz)*0.5, 0) + boxSz
+	default:
+		return lineH
+	}
+	return min(markerBottom+pad, max(lineH-1, markerBottom))
+}
+
+func listGuideX(leftGutter, zoom float32, anc listAncestor) float32 {
+	return float32(math.Round(float64(leftGutter + float32(min(anc.Indent, 12))*editorIndentStep*zoom + anc.Center*zoom)))
+}
+
+func drawListGuides(c *ui.Context, id model.BlockID, ctx listCtx, leftGutter, zoom, selfStemTop float32, showSelfStem bool) {
+	if len(ctx.Ancestors) == 0 && !(showSelfStem && ctx.HasSelfGuide) {
 		return
 	}
 	if zoom <= 0 {
@@ -246,11 +369,19 @@ func drawListGuides(c *ui.Context, id model.BlockID, ctx listCtx, leftGutter, zo
 	}
 	pal := theme.Ocean()
 	for i, anc := range ctx.Ancestors {
-		x := float32(math.Round(float64(leftGutter + float32(min(anc.Indent, 12))*editorIndentStep*zoom + anc.Center*zoom)))
+		x := listGuideX(leftGutter, zoom, anc)
 		g := ui.Box(c.Key(listGuideUIKey{id: id, idx: i})).Absolute().Top(0).Bottom(0).Left(x).Width(1).
 			Background(pal.ListGuide).IgnoreInput(true)
 		if appUi.IsProbeEnabled() {
 			appUi.Probe(g, fmt.Sprintf("list-guide-%d-%d", id, i))
+		}
+	}
+	if showSelfStem && ctx.HasSelfGuide {
+		x := listGuideX(leftGutter, zoom, ctx.SelfGuide)
+		g := ui.Box(c.Key(listSelfGuideUIKey{id: id})).Absolute().Top(selfStemTop).Bottom(0).Left(x).Width(1).
+			Background(pal.ListGuide).IgnoreInput(true)
+		if appUi.IsProbeEnabled() {
+			appUi.Probe(g, fmt.Sprintf("list-stem-%d", id))
 		}
 	}
 }
