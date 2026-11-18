@@ -81,12 +81,12 @@ func (s *Session) DismissTransientOverlay() bool {
 		s.closeTransientOverlays()
 		return true
 	}
-	if s.hasMultiBlockSelection() {
+	if s.hasNonEmptySelection() {
 		s.selAnchor = s.selHead
 		s.focusedBlock = s.selHead.Block
-		s.multiSelFocusPending = false
-		s.focusPending = true
-		s.selSyncPending = true
+		s.multiSelFocusPending = s.needsDetachedSelectionFocus()
+		s.focusPending = !s.multiSelFocusPending
+		s.selSyncPending = !s.multiSelFocusPending
 		return true
 	}
 	return false
@@ -98,6 +98,11 @@ func (s *Session) EnsureEditorFocus() {
 		return
 	}
 	s.focusedBlock = clampInt(s.focusedBlock, 0, len(s.doc.Blocks)-1)
+	if s.needsDetachedSelectionFocus() {
+		s.multiSelFocusPending = true
+		s.focusPending = false
+		return
+	}
 	s.focusPending = true
 }
 
