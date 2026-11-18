@@ -222,14 +222,12 @@ const (
 	tbAIRewrite toolbarItemKind = iota
 	tbComment
 	tbReaction
-	tbTextType
 	tbBold
 	tbItalic
 	tbUnderline
 	tbStrike
 	tbCode
 	tbPalette
-	tbLists
 	tbLink
 )
 
@@ -247,14 +245,8 @@ type toolbarItemSpec struct {
 func (s *Session) enabledToolbarItems(caps toolbarCaps) []toolbarItemSpec {
 	var items []toolbarItemSpec
 	if !s.readOnly && s.isMarkdownNote() && s.canReplaceSelection() && s.hasNonEmptySelection() {
-		w := float32(96)
-		if s.minimal {
-			w = 28
-		} else if theme.IsEn() {
-			w = 116
-		}
 		items = append(items, toolbarItemSpec{
-			Kind: tbAIRewrite, ID: "tb-ai", Group: 0, Width: w,
+			Kind: tbAIRewrite, ID: "tb-ai", Group: 0, Width: theme.HeightCompact,
 			Icon: icons.Sparkles, Label: theme.Tr("AI 改写", "AI Rewrite"),
 		})
 	}
@@ -270,12 +262,6 @@ func (s *Session) enabledToolbarItems(caps toolbarCaps) []toolbarItemSpec {
 				Icon: icons.TbReaction, Label: theme.Tr("添加表情回应", "Add reaction"),
 			},
 		)
-	}
-	if caps.BlockType {
-		items = append(items, toolbarItemSpec{
-			Kind: tbTextType, ID: "tb-type", Group: 2, Width: 41,
-			Icon: icons.TbType, Label: theme.Tr("文字类型", "Text type"), HasSubmenu: true,
-		})
 	}
 	if caps.RichText {
 		if caps.Bold {
@@ -311,12 +297,6 @@ func (s *Session) enabledToolbarItems(caps toolbarCaps) []toolbarItemSpec {
 				Icon: icons.TbPalette, Label: theme.Tr("文本与高亮颜色", "Text and highlight color"), HasSubmenu: true,
 			},
 		)
-	}
-	if caps.BlockType {
-		items = append(items, toolbarItemSpec{
-			Kind: tbLists, ID: "tb-list", Group: 4, Width: 41,
-			Icon: icons.TbList, Label: theme.Tr("列表", "Lists"), HasSubmenu: true,
-		})
 	}
 	if caps.Link {
 		items = append(items, toolbarItemSpec{
@@ -390,17 +370,13 @@ func (s *Session) toolbarItemActive(kind toolbarItemKind) bool {
 		return s.toolbarPop == "comment"
 	case tbReaction:
 		return s.toolbarPop == "reactions"
-	case tbTextType:
-		return s.toolbarPop == "kinds"
-	case tbLists:
-		return s.toolbarPop == "lists"
 	default:
 		return false
 	}
 }
 
 func (s *Session) runToolbarItem(kind toolbarItemKind, fromMore bool) {
-	if fromMore && kind != tbTextType && kind != tbPalette && kind != tbLists {
+	if fromMore && kind != tbPalette {
 		s.toolbarPop = ""
 	}
 	switch kind {
@@ -410,8 +386,6 @@ func (s *Session) runToolbarItem(kind toolbarItemKind, fromMore bool) {
 		s.toggleToolbarPop("comment")
 	case tbReaction:
 		s.toggleToolbarPop("reactions")
-	case tbTextType:
-		s.toggleToolbarPop("kinds")
 	case tbBold:
 		s.ToggleMarkOnSelection(model.MarkBold)
 	case tbItalic:
@@ -424,8 +398,6 @@ func (s *Session) runToolbarItem(kind toolbarItemKind, fromMore bool) {
 		s.ToggleMarkOnSelection(model.MarkCode)
 	case tbPalette:
 		s.toggleToolbarPop("palette")
-	case tbLists:
-		s.toggleToolbarPop("lists")
 	case tbLink:
 		if s.toolbarPop != "link" {
 			s.linkDraft = s.selectionLinkURL()
@@ -666,8 +638,8 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 					prevGroup = it.Group
 
 					if it.Kind == tbAIRewrite {
-						aiBtn := ui.ButtonBase(c.Key("tb-ai")).Height(theme.HeightCompact).
-							AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
+						aiBtn := ui.ButtonBase(c.Key("tb-ai")).Height(theme.HeightCompact).Width(theme.HeightCompact).
+							Center().Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
 							Label(it.Label)
 						aiHovered := aiBtn.Hovered()
 						aiPressed := aiBtn.Pressed()
@@ -677,11 +649,6 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 						}
 						appUi.AnimateSurfaceColors(aiBtn, aiBG, pal.Accent, true)
 						appUi.TactileCard(aiBtn, aiHovered, aiPressed, true, false)
-						if s.minimal {
-							aiBtn.Width(theme.HeightCompact).Center()
-						} else {
-							aiBtn.PaddingX(theme.Space8).Gap(theme.Space4)
-						}
 						appUi.RichTooltip(c, aiBtn, appUi.TooltipSpec{
 							Pill:      true,
 							Placement: appUi.TooltipAbove,
@@ -689,9 +656,6 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 						})
 						aiBtn.Children(func() {
 							icons.DrawAnimated(c, icons.Sparkles, theme.IconAction, pal.MonoIconColors(pal.Accent), aiHovered || aiPressed)
-							if !s.minimal {
-								ui.Text(c, it.Label).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
-							}
 						})
 						appUi.Probe(aiBtn, "tb-ai")
 						s.recordOverlayBtn("tb-ai", aiBtn)
@@ -787,10 +751,6 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 		switch s.toolbarPop {
 		case "more":
 			s.renderToolbarMoreMenu(c, vp, winW, winH, overflow)
-		case "kinds":
-			s.renderToolbarKindsMenu(c, vp, winW, winH, false)
-		case "lists":
-			s.renderToolbarKindsMenu(c, vp, winW, winH, true)
 		case "palette":
 			s.renderPalettePanel(c, vp, winW, winH)
 		case "link":
@@ -885,81 +845,6 @@ func (s *Session) toggleToolbarPop(name string) {
 }
 
 type localMenuCursorKey struct{}
-
-func (s *Session) renderToolbarKindsMenu(c *ui.Context, vp ui.Rect, winW, winH float32, listsOnly bool) {
-	btnID := "tb-type"
-	if listsOnly {
-		btnID = "tb-list"
-	}
-	menuW := float32(206)
-	items := []struct {
-		id    string
-		kind  model.BlockKind
-		icon  icons.Icon
-		label string
-	}{
-		{"kind-p", model.BlockParagraph, icons.Text, theme.Tr("正文", "Text")},
-		{"kind-h1", model.BlockHeading1, icons.Heading1, theme.Tr("一级标题", "Heading 1")},
-		{"kind-h2", model.BlockHeading2, icons.Heading2, theme.Tr("二级标题", "Heading 2")},
-		{"kind-h3", model.BlockHeading3, icons.Heading3, theme.Tr("三级标题", "Heading 3")},
-	}
-	if listsOnly {
-		items = []struct {
-			id    string
-			kind  model.BlockKind
-			icon  icons.Icon
-			label string
-		}{
-			{"list-bullet", model.BlockBullet, icons.ListBullet, theme.Tr("无序列表", "Bulleted list")},
-			{"list-num", model.BlockNumbered, icons.ListNumbered, theme.Tr("有序列表", "Numbered list")},
-			{"list-todo", model.BlockTodo, icons.Todo, theme.Tr("待办清单", "Checklist")},
-		}
-	}
-
-	spec := s.toolbarDropSpec(btnID, appUi.AlignLeft, 4, vp)
-	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 304)
-	estH := min(estimateEditorMenuHeight(len(items), 0), maxH)
-	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
-
-	var curKind model.BlockKind
-	if s.focusedBlock >= 0 && s.focusedBlock < len(s.doc.Blocks) {
-		curKind = s.doc.Blocks[s.focusedBlock].Kind
-	}
-
-	specs := make([]appUi.MenuItemSpec, 0, len(items))
-	for _, item := range items {
-		it := item
-		ic := it.icon
-		specs = append(specs, appUi.MenuItemSpec{
-			ID:      it.id,
-			Label:   it.label,
-			Icon:    &ic,
-			Checked: curKind == it.kind,
-			OnClick: func() {
-				s.SetSelectionBlockKind(it.kind, listsOnly)
-				s.toolbarPop = ""
-			},
-		})
-	}
-
-	panel := appUi.MenuSurface(ui.Column(c.Key("toolbar-kind-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
-	cur := ui.Local(panel, localMenuCursorKey{}, func() int { return -1 })
-	appUi.NavigateMenu(panel, specs, cur)
-	appUi.Probe(panel, "toolbar-kind-menu")
-	s.recordOverlayPanel("toolbar-kind-menu", panel)
-	panel.Children(func() {
-		appUi.Scroll(c.Key("toolbar-kind-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
-			ui.Column(c.Key("toolbar-kind-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
-				for i, sp := range specs {
-					appUi.MenuRow(c, sp, i == *cur)
-				}
-			})
-		})
-	})
-	if panel.PressedOutside() {
-		s.toolbarPop = ""
-	}
-}
 
 func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float32) {
 	pal := theme.Ocean()
