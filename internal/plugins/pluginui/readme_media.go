@@ -1,0 +1,305 @@
+package pluginui
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"image"
+	"io"
+	"net"
+	"net/http"
+	"net/netip"
+	"net/url"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	"block/internal/editor"
+	"block/internal/plugins"
+	"github.com/egoist/mygo/ui"
+)
+
+const (
+	readmeImageLimit = 6 << 20
+	readmeVideoLimit = 24 << 20
+	readmePixelLimit = 8_000_000
+)
+
+type readmeMediaKey struct {
+	source string
+	video  bool
+}
+
+type readmeMedia struct {
+	ctx      context.Context
+	doc      plugins.PluginReadme
+	services ui.Services
+	slots    chan struct{}
+	pixels   atomic.Int64
+	mu       sync.Mutex
+	assets   map[readmeMediaKey]editor.PreviewAsset
+	videos   int
+}
+
+func (m *readmeMedia) asset(src string, video, load bool) editor.PreviewAsset {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := readmeMediaKey{src, video}
+	if a, ok := m.assets[key]; ok {
+		return a
+	}
+	if src == "" || len(m.assets) >= 24 || (video && m.videos >= 2) {
+		return editor.PreviewAsset{Unavailable: true}
+	}
+	if !load {
+		return editor.PreviewAsset{}
+	}
+	if video {
+		m.videos++
+	}
+	pending := editor.PreviewAsset{Loading: true}
+	m.assets[key] = pending
+	go m.load(key)
+	return pending
+}
+
+func (m *readmeMedia) load(key readmeMediaKey) {
+	select {
+	case m.slots <- struct{}{}:
+		defer func() { <-m.slots }()
+	case <-m.ctx.Done():
+		return
+	}
+	var asset editor.PreviewAsset
+	limit := int64(readmeImageLimit)
+	if key.video {
+		limit = readmeVideoLimit
+	}
+	data, err := m.read(key.source, limit)
+	if err == nil && m.ctx.Err() == nil {
+		if key.video && isReadmeVideoData(data) {
+			asset.Video = data
+		} else if !key.video {
+			asset.Animation = m.decodeAnimation(data)
+			if asset.Animation == nil {
+				asset.Image = m.decodeImage(data)
+			}
+		}
+	}
+	asset.Unavailable = len(asset.Video) == 0 && asset.Image == nil && asset.Animation == nil
+	m.mu.Lock()
+	if m.ctx.Err() != nil {
+		m.mu.Unlock()
+		if asset.Animation != nil {
+			asset.Animation.Close()
+		}
+		return
+	}
+	m.assets[key] = asset
+	if key.video && asset.Unavailable {
+		m.videos--
+	}
+	m.mu.Unlock()
+	if m.ctx.Err() == nil {
+		m.services.Invalidate()
+	}
+}
+
+func (m *readmeMedia) close() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, asset := range m.assets {
+		if asset.Animation != nil {
+			asset.Animation.Close()
+		}
+	}
+	clear(m.assets)
+}
+
+func (m *readmeMedia) decodeAnimation(data []byte) *ui.VideoPlayer {
+	pixels := gifAnimationPixels(data)
+	if pixels == 0 {
+		return nil
+	}
+	if m.pixels.Add(pixels) <= 3*readmePixelLimit {
+		if decoder, err := ui.NewGIFDecoder(data); err == nil {
+			if player, err := ui.NewVideoPlayer(decoder); err == nil {
+				return player.SetLoop(true)
+			}
+		}
+	}
+	m.pixels.Add(-pixels)
+	return nil
+}
+
+func isReadmeVideoData(data []byte) bool {
+	if len(data) < 12 {
+		return false
+	}
+	switch string(data[4:8]) {
+	case "ftyp", "moov", "mdat", "wide":
+		return true
+	}
+	return bytes.HasPrefix(data, []byte{0x1a, 0x45, 0xdf, 0xa3}) ||
+		bytes.HasPrefix(data, []byte("OggS")) ||
+		(string(data[:4]) == "RIFF" && string(data[8:12]) == "AVI ")
+}
+
+func (m *readmeMedia) decodeImage(data []byte) ui.ImageSource {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err == nil && cfg.Width > 0 && cfg.Height > 0 && cfg.Width <= readmePixelLimit/cfg.Height {
+		pixels := int64(cfg.Width) * int64(cfg.Height)
+		if m.pixels.Add(pixels) <= 3*readmePixelLimit {
+			if img, err := ui.DecodeBitmap(data); err == nil {
+				return img
+			}
+		}
+		m.pixels.Add(-pixels)
+	} else if err != nil && len(data) <= 256<<10 {
+		if svg, err := ui.ParseSVG(data); err == nil {
+			w, h := svg.Size()
+			if w > 0 && h > 0 && w <= 4096 && h <= 4096 {
+				return svg
+			}
+		}
+	}
+	return nil
+}
+
+var errReadmeMedia = errors.New("README media unavailable")
+
+func (m *readmeMedia) read(src string, limit int64) ([]byte, error) {
+	ref, err := url.Parse(strings.TrimSpace(src))
+	if err != nil || ref.Path == "" || strings.Contains(ref.Path, "\\") {
+		return nil, errReadmeMedia
+	}
+	if ref.Scheme == "" && ref.Host == "" {
+		if m.doc.LocalRoot != "" {
+			return readLocalMedia(m.doc.LocalRoot, ref.Path, limit)
+		}
+		if m.doc.RemoteBase == nil {
+			return nil, errReadmeMedia
+		}
+		base := m.doc.RemoteBase
+		parts := strings.SplitN(base.Path, "/", 5)
+		if len(parts) < 5 {
+			return nil, errReadmeMedia
+		}
+		repoRoot := strings.Join(parts[:4], "/") + "/"
+		if strings.HasPrefix(ref.Path, "/") {
+			ref.Path = repoRoot + strings.TrimLeft(ref.Path, "/")
+		}
+		ref = base.ResolveReference(ref)
+		if !strings.HasPrefix(ref.Path, repoRoot) {
+			return nil, errReadmeMedia
+		}
+	}
+	if !validReadmeMediaURL(ref) {
+		return nil, errReadmeMedia
+	}
+	if strings.EqualFold(ref.Hostname(), "github.com") {
+		parts := strings.SplitN(ref.Path, "/", 6)
+		if len(parts) == 6 && parts[3] == "blob" {
+			ref.Host = "raw.githubusercontent.com"
+			ref.Path = "/" + path.Join(parts[1], parts[2], parts[4], parts[5])
+			ref.RawPath, ref.RawQuery = "", ""
+		}
+	}
+	ctx, cancel := context.WithTimeout(m.ctx, 20*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ref.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := readmeMediaClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.ContentLength > limit {
+		return nil, errReadmeMedia
+	}
+	return readMediaBytes(resp.Body, limit)
+}
+
+func readLocalMedia(dir, name string, limit int64) ([]byte, error) {
+	name = filepath.FromSlash(path.Clean(name))
+	if !filepath.IsLocal(name) {
+		return nil, errReadmeMedia
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	st, err := root.Stat(name)
+	if err != nil || !st.Mode().IsRegular() || st.Size() > limit {
+		return nil, errReadmeMedia
+	}
+	f, err := root.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return readMediaBytes(f, limit)
+}
+
+func readMediaBytes(r io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil || len(data) == 0 || int64(len(data)) > limit {
+		return nil, errReadmeMedia
+	}
+	return data, nil
+}
+
+func validReadmeMediaURL(u *url.URL) bool {
+	return u.Scheme == "https" && u.Hostname() != "" && u.User == nil && (u.Port() == "" || u.Port() == "443")
+}
+
+var privateMediaNetworks = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("2001::/32"),
+	netip.MustParsePrefix("2002::/16"),
+}
+
+var publicIPv6Network = netip.MustParsePrefix("2000::/3")
+
+var readmeMediaClient = &http.Client{
+	Transport: &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: 5 * time.Second,
+			Control: func(_, addr string, _ syscall.RawConn) error {
+				host, _, err := net.SplitHostPort(addr)
+				if err != nil {
+					return err
+				}
+				ip, err := netip.ParseAddr(host)
+				ip = ip.Unmap()
+				if err != nil || !ip.IsGlobalUnicast() || ip.IsPrivate() || (ip.Is6() && !publicIPv6Network.Contains(ip)) {
+					return errReadmeMedia
+				}
+				for _, subnet := range privateMediaNetworks {
+					if subnet.Contains(ip) {
+						return errReadmeMedia
+					}
+				}
+				return nil
+			},
+		}).DialContext,
+		DisableKeepAlives: true,
+	},
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 || !validReadmeMediaURL(req.URL) {
+			return errReadmeMedia
+		}
+		return nil
+	},
+}
