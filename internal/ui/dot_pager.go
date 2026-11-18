@@ -31,20 +31,8 @@ type DotPagerOptions struct {
 // driven by Scheme B ("灵动弹簧 · Tactile Spring") physics.
 func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
 	pal := theme.Ocean()
-	trackBG := ui.Hex("#f1f3f7")
-	trackBorder := ui.Hex("#e2e6ee")
-	idleDot := ui.Hex("#bcc4d2")
-	hoverDot := ui.Hex("#7b869a")
-	beadShadow := ui.RGBA(46, 79, 150, 0.32)
-	if pal.Dark {
-		trackBG = ui.Hex("#24272f")
-		trackBorder = ui.Hex("#333844")
-		idleDot = ui.Hex("#4d5565")
-		hoverDot = ui.Hex("#8d97ab")
-		beadShadow = ui.RGBA(0, 0, 0, 0.65)
-	}
+	dp := pal.DotPager()
 	rimCol := pal.Paper
-	coreCol := ui.Hex("#eef4ff")
 
 	pagerID := opts.PagerID
 	if pagerID == "" {
@@ -52,7 +40,7 @@ func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
 	}
 	pager := ui.Row(c.Key(pagerID)).Height(dotPagerTrackH).PaddingX(dotPagerTrackPad).
 		AlignItems(ui.Center).Radius(theme.RadiusPill)
-	AnimateSurfaceColors(pager, trackBG, trackBorder, true)
+	AnimateSurfaceColors(pager, dp.TrackBG, dp.TrackBorder, true)
 	Probe(pager, pagerID)
 
 	pager.Children(func() {
@@ -86,18 +74,18 @@ func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
 
 				targetPipSize := float32(4.5)
 				targetPipLift := float32(0)
-				targetPipCol := idleDot
+				targetPipCol := dp.Idle
 				switch {
 				case isActive:
 					targetPipSize = 3.5
 				case pressed:
 					targetPipSize = 4.0
 					targetPipLift = 0.3
-					targetPipCol = hoverDot
+					targetPipCol = dp.Hover
 				case hovered:
 					targetPipSize = 6.0
 					targetPipLift = -0.6
-					targetPipCol = hoverDot
+					targetPipCol = dp.Hover
 				}
 				pipSize := btn.AnimateTo("pipSz", targetPipSize, SpringTactile)
 				pipLift := btn.AnimateTo("pipY", targetPipLift, SpringTactile)
@@ -153,14 +141,13 @@ func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
 				sy := sc * (1.0 - 0.06*travel)
 
 				beadWrap.Children(func() {
-					bead := ui.Row(c).Size(dotPagerBeadSize, dotPagerBeadSize).Center().
-						Radius(theme.RadiusPill).Background(beadCol).Border(2, beadRim).
-						Shadow(0, 1, 3, 0, beadShadow)
+					bead := Elevate(ui.Row(c).Size(dotPagerBeadSize, dotPagerBeadSize).Center().
+						Radius(theme.RadiusPill).Background(beadCol).Border(2, beadRim), theme.ElevationRaised)
 					if !almostZero(sx-1, 0.002) || !almostZero(sy-1, 0.002) || !almostZero(dy, 0.02) {
 						bead.Translate(0, dy).Scale(sx, sy)
 					}
 					bead.Children(func() {
-						ui.Box(c).Size(coreSz, coreSz).Radius(theme.RadiusPill).Background(coreCol)
+						ui.Box(c).Size(coreSz, coreSz).Radius(theme.RadiusPill).Background(dp.Core)
 					})
 				})
 			}
