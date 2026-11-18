@@ -12,8 +12,10 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// TabMenuState tracks open titlebar floating menus (tab context menu or page "more" menu).
+// TabMenuState tracks open titlebar floating menus (tab context menu or page "more" menu),
+// plus horizontal tab strip scroll, middle-click close, and drag-reorder state.
 type TabMenuState struct {
+	MenuCursor   int
 	TabMenuOpen  bool
 	TabMenuIndex int
 	TabMenuPath  string
@@ -25,6 +27,17 @@ type TabMenuState struct {
 
 	// tabCenterW is the tab cell width the pills were last sized from (-1: not laid out yet).
 	tabCenterW float32
+
+	TabScroll       ui.ScrollState
+	LastActiveTab   string
+	LastTabCount    int
+	DragTargetPath  string
+	DragAfter       bool
+	MiddleClosePath string
+}
+
+type tabDragItem struct {
+	Path string
 }
 
 // Close dismisses any open titlebar menu.
@@ -32,6 +45,7 @@ func (s *TabMenuState) Close() bool {
 	had := s.TabMenuOpen || s.PageMenuOpen
 	s.TabMenuOpen = false
 	s.PageMenuOpen = false
+	s.MenuCursor = 0
 	return had
 }
 
@@ -83,6 +97,7 @@ type TitlebarProps struct {
 	OnCloseOthers     func(keepPath string)
 	OnCloseRight      func(pivotPath string)
 	OnCloseAll        func()
+	OnReorderTab      func(srcPath, targetPath string, after bool)
 	OnNewNote         func()
 	OnToggleFeedback  func()
 	OnToggleAI        func()
@@ -172,19 +187,21 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 			ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
 				if showBack {
 					backBtn := blockui.IconButton(c, icons.ChevronLeft, blockui.IconButtonOptions{
-						ID:      "nav-back",
-						Tooltip: theme.Tr("后退", "Back"),
+						ID:       "nav-back",
+						Tooltip:  theme.Tr("后退", "Back"),
+						Disabled: p.Busy,
 					})
-					if backBtn.Clicked() && p.OnBack != nil {
+					if backBtn.Clicked() && !p.Busy && p.OnBack != nil {
 						p.OnBack()
 					}
 				}
 				if showFwd {
 					fwdBtn := blockui.IconButton(c, icons.ChevronRight, blockui.IconButtonOptions{
-						ID:      "nav-forward",
-						Tooltip: theme.Tr("前进", "Forward"),
+						ID:       "nav-forward",
+						Tooltip:  theme.Tr("前进", "Forward"),
+						Disabled: p.Busy,
 					})
-					if fwdBtn.Clicked() && p.OnForward != nil {
+					if fwdBtn.Clicked() && !p.Busy && p.OnForward != nil {
 						p.OnForward()
 					}
 				}
@@ -249,14 +266,40 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 					ID:       "tab-new",
 					Size:     theme.ChromeBoxSize,
 					IconSize: 16,
-					Tooltip:  fmt.Sprintf("%s %s", theme.Tr("新建标签页", "New Tab"), blockui.FormatShortcutDisplay("cmd-t")),
+					Tooltip:  fmt.Sprintf("%s %s", theme.Tr("新建标签页", "New Tab"), blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewTab, "cmd-t"))),
+					Disabled: p.Busy,
 				})
-				if newTabBtn.Clicked() && p.OnNewNote != nil {
+				if newTabBtn.Clicked() && !p.Busy && p.OnNewNote != nil {
 					p.OnNewNote()
 				}
 			}
 
-			ui.Box(c).Grow(1).MinWidth(16).FillHeight().DragWindow()
+			dragSpacer := ui.Box(c).Grow(1).MinWidth(16).FillHeight().DragWindow()
+			if multi && p.OnReorderTab != nil && len(p.Tabs) > 0 {
+				lastTab := p.Tabs[len(p.Tabs)-1]
+				spacerDrop := false
+				if dragged, over := ui.DragOver[tabDragItem](dragSpacer); over && dragged.Path != "" && dragged.Path != lastTab {
+					spacerDrop = true
+					if p.MenuState != nil {
+						p.MenuState.DragTargetPath = lastTab
+						p.MenuState.DragAfter = true
+					}
+				}
+				if dropped, ok := ui.Drop[tabDragItem](dragSpacer); ok {
+					if p.MenuState != nil {
+						p.MenuState.DragTargetPath = ""
+						p.MenuState.DragAfter = false
+					}
+					if dropped.Path != "" && dropped.Path != lastTab {
+						p.OnReorderTab(dropped.Path, lastTab, true)
+					}
+				}
+				if spacerDrop {
+					dragSpacer.DrawOver(func(pt *ui.Painter, rect ui.Rect) {
+						pt.Fill(ui.Rect{X: rect.X, Y: rect.Y + 6, W: 2, H: max(rect.H-12, 12)}, pal.Accent, 1)
+					})
+				}
+			}
 		})
 
 		// 3. Right tail: contextual file tools + Feedback + AI Panel + Page More pill.
@@ -388,7 +431,7 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 		}
 		scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
 		if p.MenuState.PageMenuOpen {
-			menuW := float32(216)
+			menuW := min(float32(216), max(vpW-16, 1))
 			items := buildPageMenuItems(p)
 			estH := estimateMenuHeight(items)
 			anchor := p.MenuState.PageMenuAnchor
@@ -396,18 +439,19 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 				anchor = ui.Rect{X: vpW - 40, Y: 6, W: theme.ChromeBoxSize, H: theme.ChromeBoxSize}
 			}
 			spec := blockui.PlaceBelow(anchor).WithAlignX(blockui.AlignX{Kind: blockui.AlignRight})
-			maxH := blockui.MaxHeightForSpec(spec, vpW, vpH, 380)
+			maxH := blockui.MaxHeightForSpec(spec, vpW, vpH, 304)
 			popH := min(estH, maxH)
 			ox, oy := blockui.ResolveOrigin(spec, menuW, popH, vpW, vpH)
 
 			c.Key("page-more-menu")
 			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
+			blockui.NavigateMenu(card, items, &p.MenuState.MenuCursor)
 			blockui.Probe(card, "page-more-menu")
 			card.Children(func() {
 				ui.Scroll(c).MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
 					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
-						for _, it := range items {
-							blockui.MenuRow(c, it, false)
+						for i, it := range items {
+							blockui.MenuRow(c, it, i == p.MenuState.MenuCursor)
 						}
 					})
 				})
@@ -419,20 +463,25 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 		}
 
 		if p.MenuState.TabMenuOpen {
-			menuW := float32(204)
 			items := buildTabContextItems(p)
+			if len(items) == 0 {
+				p.MenuState.Close()
+				return
+			}
+			menuW := min(float32(204), max(vpW-16, 1))
 			estH := estimateMenuHeight(items)
 			spec := blockui.PlaceAtPoint(p.MenuState.TabMenuX, p.MenuState.TabMenuY)
-			maxH := blockui.MaxHeightForSpec(spec, vpW, vpH, 320)
+			maxH := blockui.MaxHeightForSpec(spec, vpW, vpH, 304)
 			popH := min(estH, maxH)
 			ox, oy := blockui.ResolveOrigin(spec, menuW, popH, vpW, vpH)
 
 			c.Key("tab-context-menu")
 			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
+			blockui.NavigateMenu(card, items, &p.MenuState.MenuCursor)
 			blockui.Probe(card, "tab-context-menu")
 			card.Children(func() {
-				for _, it := range items {
-					blockui.MenuRow(c, it, false)
+				for i, it := range items {
+					blockui.MenuRow(c, it, i == p.MenuState.MenuCursor)
 				}
 			})
 			if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
@@ -489,15 +538,18 @@ func nonEmptyOr(val, fallback string) string {
 
 func buildTabContextItems(p TitlebarProps) []blockui.MenuItemSpec {
 	target := p.MenuState.TabMenuPath
-	ix := p.MenuState.TabMenuIndex
+	ix := -1
 	for i, t := range p.Tabs {
 		if t == target {
 			ix = i
 			break
 		}
 	}
+	if ix < 0 {
+		return nil
+	}
 	hasOthers := len(p.Tabs) > 1
-	hasRight := ix >= 0 && ix+1 < len(p.Tabs)
+	hasRight := ix+1 < len(p.Tabs)
 	icClose := icons.TabClose
 	icOthers := icons.TabCloseOthers
 	icRight := icons.TabCloseRight

@@ -1,6 +1,9 @@
 package editor
 
-import "block/internal/model"
+import (
+	"block/internal/model"
+	"github.com/egoist/mygo/ui"
+)
 
 // subtreeEnd includes contiguous, more deeply indented list items.
 func (s *Session) subtreeEnd(first int) int {
@@ -109,4 +112,20 @@ func convertTextBlock(b *model.Block, kind model.BlockKind) {
 	b.Callout = ""
 	b.Dirty = true
 	b.CleanSource = ""
+}
+
+func (s *Session) rangeShortcut(mods ui.Modifiers, key ui.Key) bool {
+	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 {
+		return false
+	}
+	lo, hi := s.activeBlockRange()
+	switch {
+	case mods == ui.Cmd && key == ui.KeyD:
+		s.duplicateRange(lo, hi)
+	case (mods == ui.Alt || mods == ui.Cmd|ui.Alt) && (key == ui.KeyUp || key == ui.KeyDown):
+		s.stepBlockRange(lo, hi, key == ui.KeyDown)
+	default:
+		return false
+	}
+	return true
 }

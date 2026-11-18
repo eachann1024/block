@@ -28,9 +28,15 @@ type SidebarUIState struct {
 	DropAfter      bool
 	DropIntoDir    bool
 
+	PendingMiddleOpenPath string
+	NBDragTarget          string
+	NBDragAfter           bool
+
 	SwitcherOpen   bool
 	SwitcherBounds ui.Rect
 
+	MenuCursor      int
+	MoveCursor      int
 	ContextOpen     bool
 	ContextPath     string
 	ContextIsDir    bool
@@ -53,6 +59,7 @@ func (s *SidebarUIState) ClosePopups() bool {
 	s.SwitcherOpen = false
 	s.ContextOpen = false
 	s.MoveSubmenuOpen = false
+	s.MenuCursor, s.MoveCursor = 0, 0
 	return had
 }
 
@@ -82,6 +89,11 @@ func (s *SidebarUIState) ClearDrag() {
 type treeDragItem struct {
 	Path  string
 	IsDir bool
+}
+
+type nbDragItem struct {
+	Path  string
+	Index int
 }
 
 func isSameOrDescendant(path, ancestor string) bool {
@@ -417,6 +429,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 						if !anyDragOver && p.State.DropTargetPath != "" {
 							p.State.ClearDrag()
 						}
+						p.State.PendingMiddleOpenPath = ""
 					})
 				})
 
@@ -582,6 +595,13 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
 		FocusRing(false).Role(ui.RoleTreeItem).Selected(highlighted).Label(entry.Name)
 	btn.Drag(treeDragItem{Path: entry.Path, IsDir: entry.IsDir})
+	if !entry.IsDir {
+		btn.ObserveInput(func(ev ui.InputEvent) {
+			if ev.Kind == ui.InputPointerDown && ev.Button == 2 {
+				p.State.PendingMiddleOpenPath = entry.Path
+			}
+		})
+	}
 
 	resolveDropMode := func(dragged treeDragItem) (ok, intoDir, after bool) {
 		if dragged.Path == "" || filepath.Clean(dragged.Path) == filepath.Clean(entry.Path) {
@@ -733,6 +753,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 	openContextMenu := func(cx, cy float32) {
 		p.State.ClearDrag()
 		p.State.SwitcherOpen = false
+		p.State.MenuCursor, p.State.MoveCursor = 0, 0
 		p.State.ContextOpen = true
 		p.State.ContextPath = entry.Path
 		p.State.ContextIsDir = entry.IsDir
@@ -741,7 +762,18 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		p.State.MoveSubmenuOpen = false
 	}
 
-	if moreClicked {
+	if p.State.PendingMiddleOpenPath == entry.Path {
+		p.State.PendingMiddleOpenPath = ""
+		treeFocus.Focus()
+		p.State.ClearDrag()
+		p.State.ClosePopups()
+		if !entry.IsDir {
+			p.State.FocusDir = ""
+			if p.OnOpenNote != nil {
+				p.OnOpenNote(entry.Path, true)
+			}
+		}
+	} else if moreClicked {
 		cx, cy := moreBounds.X, moreBounds.Y+moreBounds.H+2
 		if moreBounds.W <= 0 {
 			b := btn.Bounds()
@@ -788,9 +820,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			if p.Width != nil && *p.Width > 0 {
 				menuW = ClampSidebarWidth(*p.Width)
 			}
-			if menuW > theme.MenuMaxWidth {
-				menuW = theme.MenuMaxWidth
-			}
+			menuW = min(menuW, max(vpW-16, 1))
 			rowCount := len(p.Notebooks) + 1
 			estH := theme.MenuPadding*2 + float32(rowCount)*theme.MenuItemHeight + float32(max(rowCount-1, 0))*theme.MenuGap
 			if len(p.Notebooks) > 0 {
@@ -801,7 +831,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 				anchor = ui.Rect{X: 8, Y: vpH - 42, W: menuW, H: 30}
 			}
 			spec := blockui.PlaceAbove(anchor)
-			maxH := blockui.MaxHeightForSpec(spec, vpW, vpH, 340)
+			maxH := blockui.MaxHeightForSpec(spec, vpW, vpH, 304)
 			popH := min(estH, maxH)
 			ox, oy := blockui.ResolveOrigin(spec, menuW, popH, vpW, vpH)
 
@@ -817,11 +847,62 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							checked := nb == p.ActiveNotebook
 							c.Key("nb-item:" + nb)
 							row := ui.Row(c).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(4).AlignItems(ui.Center).Radius(theme.RadiusControl)
+							nbDrop := false
+							nbAfter := false
+							if len(p.Notebooks) > 1 && p.OnReorderNotebooks != nil {
+								row.Drag(nbDragItem{Path: nb, Index: ix})
+								if dragged, over := ui.DragOver[nbDragItem](row); over && dragged.Path != "" && dragged.Path != nb {
+									b := row.Bounds()
+									_, py, hasPos := row.PointerPosition()
+									if hasPos && b.H > 0 {
+										nbAfter = py >= b.H*0.5
+									} else if p.State.NBDragTarget == nb {
+										nbAfter = p.State.NBDragAfter
+									}
+									nbDrop = true
+									p.State.NBDragTarget = nb
+									p.State.NBDragAfter = nbAfter
+								}
+								if dropped, ok := ui.Drop[nbDragItem](row); ok {
+									after := nbAfter
+									if !nbDrop && p.State.NBDragTarget == nb {
+										after = p.State.NBDragAfter
+									} else {
+										b := row.Bounds()
+										if _, py, hasPos := row.PointerPosition(); hasPos && b.H > 0 {
+											after = py >= b.H*0.5
+										}
+									}
+									p.State.NBDragTarget = ""
+									p.State.NBDragAfter = false
+									if dropped.Path != "" && dropped.Path != nb {
+										slot := ix
+										if after {
+											slot++
+										}
+										if dropped.Index < slot {
+											slot--
+										}
+										if slot != dropped.Index {
+											p.OnReorderNotebooks(dropped.Index, slot)
+										}
+									}
+								}
+								if nbDrop {
+									row.DrawOver(func(pt *ui.Painter, rect ui.Rect) {
+										y := rect.Y
+										if nbAfter {
+											y = rect.Y + rect.H - 2
+										}
+										pt.Fill(ui.Rect{X: rect.X + 6, Y: y, W: max(rect.W-12, 16), H: 2}, pal.Accent, 1)
+									})
+								}
+							}
 							rowHover := row.Hovered()
 							switch {
 							case checked:
 								row.Background(pal.MenuChecked)
-							case rowHover:
+							case rowHover || nbDrop:
 								row.Background(pal.MenuHover)
 							}
 							row.Children(func() {
@@ -919,7 +1000,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 		}
 
 		if p.State.ContextOpen {
-			menuW := float32(232)
+			menuW := min(float32(232), max(vpW-16, 1))
 			targetPath := p.State.ContextPath
 			targetDir := p.State.ContextIsDir
 			icOpen := icons.NotePlus
@@ -1038,16 +1119,19 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 
 			estH := estimateMenuHeight(items)
 			mainSpec := blockui.PlaceAtPoint(p.State.ContextX, p.State.ContextY)
-			maxH := blockui.MaxHeightForSpec(mainSpec, vpW, vpH, 380)
+			maxH := blockui.MaxHeightForSpec(mainSpec, vpW, vpH, 304)
 			popH := min(estH, maxH)
 			ox, oy := blockui.ResolveOrigin(mainSpec, menuW, popH, vpW, vpH)
 
 			c.Key("tree-menu-pop")
-			mainCard := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
+			mainCard := blockui.MenuSurface(ui.Scroll(c).Column().Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
+			if !p.State.MoveSubmenuOpen {
+				blockui.NavigateMenu(mainCard, items, &p.State.MenuCursor)
+			}
 			blockui.Probe(mainCard, "tree-menu-pop")
 			mainCard.Children(func() {
-				for _, it := range items {
-					el := blockui.MenuRow(c, it, it.ID == "tree-move-row" && p.State.MoveSubmenuOpen)
+				for i, it := range items {
+					el := blockui.MenuRow(c, it, i == p.State.MenuCursor || it.ID == "tree-move-row" && p.State.MoveSubmenuOpen)
 					if it.ID == "tree-move-row" {
 						if b := el.Bounds(); b.W > 0 {
 							p.State.MoveRowBounds = b
@@ -1065,7 +1149,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			hasSub := p.State.MoveSubmenuOpen
 			if hasSub {
 				dests := collectMoveDestinations(p.ActiveNotebook, p.Entries, targetPath, targetDir)
-				subW := float32(232)
+				subW := menuW
 				subCount := max(len(dests), 1)
 				subEstH := theme.MenuPadding*2 + float32(subCount)*theme.MenuItemHeight + float32(max(subCount-1, 0))*theme.MenuGap
 				rowRect := p.State.MoveRowBounds
@@ -1073,13 +1157,27 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 					rowRect = ui.Rect{X: ox, Y: oy + 68, W: menuW, H: theme.MenuItemHeight}
 				}
 				subSpec := blockui.PlaceBelow(rowRect).WithAlignX(blockui.CascadeRight(8))
-				subMaxH := min(blockui.MaxHeightForSpec(subSpec, vpW, vpH, 300), float32(300))
+				subMaxH := min(max(vpH-16, 1), float32(300))
 				subPopH := min(subEstH, subMaxH)
 				sox, soy := blockui.ResolveOrigin(subSpec, subW, subPopH, vpW, vpH)
 
 				c.Key("tree-move-pop")
 				subCard = blockui.MenuSurface(ui.Column(c).Absolute().Left(sox).Top(soy).Width(subW).MaxHeight(subMaxH).Role(ui.RoleMenu))
 				blockui.Probe(subCard, "tree-move-pop")
+				choices := make([]blockui.MenuItemSpec, len(dests))
+				for i, d := range dests {
+					choices[i].OnClick = func() {
+						p.State.ClosePopups()
+						if p.OnMoveItem != nil {
+							p.OnMoveItem(targetPath, d.Dir)
+						}
+					}
+				}
+				blockui.NavigateMenu(subCard, choices, &p.State.MoveCursor)
+				if subCard.OverlayShortcut(0, ui.KeyLeft) {
+					p.State.MoveSubmenuOpen = false
+				}
+
 				subCard.Children(func() {
 					ui.Scroll(c).MaxHeight(subMaxH - theme.MenuPadding*2).Children(func() {
 						ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
@@ -1089,7 +1187,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 								})
 								return
 							}
-							for _, d := range dests {
+							for i, d := range dests {
 								d := d
 								glyph := icons.Folder
 								if d.IsRoot {
@@ -1099,7 +1197,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 								c.Key("move-dest:" + d.Dir)
 								row := ui.ButtonBase(c).FillWidth().Height(theme.MenuItemHeight).Padding(0, 10, 0, padL).Gap(8).
 									AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(d.Label)
-								rowHover := row.Hovered()
+								rowHover := row.Hovered() || i == p.State.MoveCursor
 								if rowHover {
 									row.Background(pal.MenuHover)
 								}

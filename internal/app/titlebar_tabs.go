@@ -79,6 +79,16 @@ func renderTabStrip(c *ui.Context, p TitlebarProps, centerW float32) {
 	tabW := multiTabWidth(centerW, len(p.Tabs))
 	c.Key("titlebar-tab-strip")
 	strip := ui.ScrollHorizontal(c).FillHeight().Shrink(1).MinWidth(0).AlignItems(ui.Center).Gap(tabStripGap).Scrollbars(false)
+	var middleClosePath string
+	shouldReveal := false
+	if p.MenuState != nil {
+		strip.TrackScroll(&p.MenuState.TabScroll)
+		if p.MenuState.MiddleClosePath != "" {
+			middleClosePath = p.MenuState.MiddleClosePath
+			p.MenuState.MiddleClosePath = ""
+		}
+		shouldReveal = p.MenuState.LastActiveTab != p.ActiveTab || p.MenuState.LastTabCount != len(p.Tabs)
+	}
 	blockui.Probe(strip, "titlebar-tab-strip")
 	strip.Children(func() {
 		if len(p.Tabs) == 1 {
@@ -86,9 +96,13 @@ func renderTabStrip(c *ui.Context, p TitlebarProps, centerW float32) {
 			return
 		}
 		for ix, tabPath := range p.Tabs {
-			renderMultiTab(c, p, ix, tabPath, tabW)
+			renderMultiTab(c, p, ix, tabPath, tabW, shouldReveal, middleClosePath)
 		}
 	})
+	if p.MenuState != nil {
+		p.MenuState.LastActiveTab = p.ActiveTab
+		p.MenuState.LastTabCount = len(p.Tabs)
+	}
 }
 
 func tabTitle(path string) string {
@@ -115,11 +129,13 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
 			tabDirtyDot(c).Margin(0, 0, 0, 6)
 		}
 	})
-	blockui.Probe(pill, "tab-0")
-	blockui.Probe(pill, "tab:"+path)
+	pill.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+		blockui.RecordBounds("tab-0", r)
+		blockui.RecordBounds("tab:"+path, r)
+	})
 }
 
-func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW float32) {
+func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW float32, shouldReveal bool, middleClosePath string) {
 	pal := theme.Ocean()
 	active := path == p.ActiveTab
 	dirty := p.IsDirty != nil && p.IsDirty(path)
@@ -128,13 +144,59 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 	pill := ui.ButtonBase(c).Width(tabW).Shrink(0).Height(tabPillH).Padding(0, 6, 0, 10).
 		Radius(theme.RadiusControl).AlignItems(ui.Center).Clip().Cursor(ui.CursorPointer).
 		Role(ui.RoleTab).Selected(active).Label(label).Transition(tabTransition())
+	if !p.Busy && p.OnReorderTab != nil {
+		pill.Drag(tabDragItem{Path: path})
+	}
+	pill.ObserveInput(func(ev ui.InputEvent) {
+		if ev.Kind == ui.InputPointerDown && ev.Button == 2 && !p.Busy && p.MenuState != nil {
+			p.MenuState.MiddleClosePath = path
+		}
+	})
+
+	isDropTarget := false
+	dropAfter := false
+	if !p.Busy && p.OnReorderTab != nil {
+		if dragged, over := ui.DragOver[tabDragItem](pill); over && dragged.Path != "" && dragged.Path != path {
+			b := pill.Bounds()
+			px, _, hasPos := pill.PointerPosition()
+			if hasPos && b.W > 0 {
+				dropAfter = px >= b.W*0.5
+			} else if p.MenuState != nil && p.MenuState.DragTargetPath == path {
+				dropAfter = p.MenuState.DragAfter
+			}
+			isDropTarget = true
+			if p.MenuState != nil {
+				p.MenuState.DragTargetPath = path
+				p.MenuState.DragAfter = dropAfter
+			}
+		}
+		if dropped, ok := ui.Drop[tabDragItem](pill); ok {
+			after := dropAfter
+			if !isDropTarget && p.MenuState != nil && p.MenuState.DragTargetPath == path {
+				after = p.MenuState.DragAfter
+			} else {
+				b := pill.Bounds()
+				if px, _, hasPos := pill.PointerPosition(); hasPos && b.W > 0 {
+					after = px >= b.W*0.5
+				}
+			}
+			if p.MenuState != nil {
+				p.MenuState.DragTargetPath = ""
+				p.MenuState.DragAfter = false
+			}
+			if dropped.Path != "" && dropped.Path != path {
+				p.OnReorderTab(dropped.Path, path, after)
+			}
+		}
+	}
+
 	hovered := pill.Hovered()
 	fg := pal.TextSecondary
 	switch {
 	case active:
 		pill.Background(pal.Selected).Border(1, pal.Accent)
 		fg = pal.Text
-	case hovered:
+	case hovered || isDropTarget:
 		pill.Background(pal.Hover).Border(1, ui.Transparent)
 		fg = pal.Text
 	default:
@@ -144,7 +206,7 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 	closeHover, closeClicked := false, false
 	closeBtn := func() {
 		id := fmt.Sprintf("tab-close-%d", ix)
-		c.Key(id)
+		c.Key("tab-close:" + path)
 		cb := ui.ButtonBase(c).Size(18, 18).Shrink(0).Center().Radius(theme.RadiusMicroSM).
 			Cursor(ui.CursorPointer).Label(theme.Tr("关闭标签页", "Close Tab"))
 		closeHover = cb.Hovered()
@@ -186,20 +248,32 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 			closeBtn()
 		}
 	})
-	blockui.Probe(pill, fmt.Sprintf("tab-%d", ix))
-	blockui.Probe(pill, "tab:"+path)
+	if shouldReveal && active {
+		pill.ScrollIntoView(ui.ScrollIntoViewOptions{Inline: ui.ScrollNearest})
+	}
+	pill.DrawOver(func(pt *ui.Painter, r ui.Rect) {
+		blockui.RecordBounds(fmt.Sprintf("tab-%d", ix), r)
+		blockui.RecordBounds("tab:"+path, r)
+		if isDropTarget {
+			x := r.X
+			if dropAfter {
+				x = r.X + r.W - 2
+			}
+			pt.Fill(ui.Rect{X: x, Y: r.Y + 2, W: 2, H: max(r.H-4, 8)}, pal.Accent, 1)
+		}
+	})
 
 	btn, pressing := pill.PressedButton()
+	midTriggered := middleClosePath == path || (p.MenuState == nil && pressing && btn == 2)
 	switch {
-	case closeClicked:
+	case (closeClicked || midTriggered) && !p.Busy:
+		if p.MenuState != nil {
+			p.MenuState.Close()
+		}
 		if p.OnCloseTab != nil {
 			p.OnCloseTab(path)
 		}
-	case pressing && btn == 2:
-		if p.OnCloseTab != nil {
-			p.OnCloseTab(path)
-		}
-	case pill.RightClicked() && p.MenuState != nil:
+	case pill.RightClicked() && !p.Busy && p.MenuState != nil:
 		b := pill.Bounds()
 		tx, ty := b.X+8, b.Y+b.H+4
 		if px, py, ok := pill.PointerPosition(); ok {
@@ -211,7 +285,10 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 		p.MenuState.TabMenuPath = path
 		p.MenuState.TabMenuX = tx
 		p.MenuState.TabMenuY = ty
-	case ((pressing && btn == 0) || pill.Clicked()) && !closeHover && !active && !p.Busy:
+	case ((pressing && btn == 0) || pill.Clicked()) && !closeHover && !active && !p.Busy && !pill.Dragging():
+		if p.MenuState != nil {
+			p.MenuState.Close()
+		}
 		// thinkly-fast activates on mouse down; Clicked covers a press and
 		// release landing in one frame.
 		if p.OnSelectTab != nil {
