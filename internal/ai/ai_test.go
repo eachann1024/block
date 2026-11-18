@@ -752,16 +752,62 @@ func TestUIPanelCoverDraftsPickerAndCards(t *testing.T) {
 		t.Fatalf("expected Pi selected after click, got %v", ctrl.BackendsConfig().Selected)
 	}
 
-	// Test Settings Tab rendering & interaction.
-	ttSet := ui.NewTester(ctrl.RenderSettingsTab, 760, 620)
+	// Test Settings Tab rendering & interaction (1:1 thinkly-fast layout & list order).
+	for _, k := range model.AllBackends {
+		if k != model.BackendBuiltin {
+			ctrl.SetBackendStatusOverride(k, &BackendStatus{State: BackendStateReady, Version: "1.2.0"})
+		}
+	}
+	ttSet := ui.NewTester(ctrl.RenderSettingsTab, 820, 760)
 	if _, ok := bui.TargetBounds("ai-settings-section"); !ok {
 		t.Fatal("missing ai-settings-section")
 	}
+	if !ttSet.HasText("内置 AI") || !ttSet.HasText("普通功能") || !ttSet.HasText("标注功能") {
+		t.Fatal("missing expected AI Settings labels (内置 AI / 普通功能 / 标注功能)")
+	}
+
+	// Verify exact top-to-bottom rail order: Builtin -> Codex -> Claude -> Dsh -> Pi -> Agy.
+	var prevRailY float32 = -1
+	for _, suffix := range []string{"Builtin", "Codex", "Claude", "Dsh", "Pi", "Agy"} {
+		rb, ok := bui.TargetBounds("ai-backend-card-" + suffix)
+		if !ok {
+			t.Fatalf("missing ai-backend-card-%s", suffix)
+		}
+		if rb.Y <= prevRailY {
+			t.Fatalf("ai-backend-card-%s out of vertical order: Y=%v <= %v", suffix, rb.Y, prevRailY)
+		}
+		prevRailY = rb.Y
+	}
+
+	// Verify exact left-to-right provider card order: deepseek -> openai -> anthropic (Claude 协议).
+	var prevProvX float32 = -1
+	for _, pid := range []string{"deepseek", "openai", "anthropic"} {
+		pb, ok := bui.TargetBounds("ai-pcard-" + pid)
+		if !ok {
+			t.Fatalf("missing ai-pcard-%s", pid)
+		}
+		if pb.X <= prevProvX {
+			t.Fatalf("ai-pcard-%s out of horizontal order: X=%v <= %v", pid, pb.X, prevProvX)
+		}
+		prevProvX = pb.X
+	}
+
 	if err := ttSet.Click("OpenAI 协议"); err != nil {
 		t.Fatalf("click OpenAI provider card: %v", err)
 	}
 	if ctrl.ProviderConfig().Provider != "openai" {
 		t.Fatalf("expected openai provider selected, got %q", ctrl.ProviderConfig().Provider)
+	}
+	annRect, ok := bui.TargetBounds("annotation-model-trigger")
+	if !ok {
+		t.Fatal("missing annotation-model-trigger")
+	}
+	if annRect.Y <= prevRailY {
+		t.Fatalf("expected annotation-model-trigger below agent rail: Y=%v <= %v", annRect.Y, prevRailY)
+	}
+	ttSet.ClickAt(annRect.X+annRect.W*0.5, annRect.Y+annRect.H*0.5)
+	if _, ok := bui.TargetBounds("annotation-model-menu"); !ok {
+		t.Fatal("missing annotation-model-menu popover after clicking trigger")
 	}
 }
 
