@@ -192,6 +192,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		s.renderOutlineRail(c)
 		s.renderAnnotationRail(c)
 		s.renderPlanDiffCard(c)
+		if s.hasMenuPopupOpen() {
+			appUi.ReserveMenuNavKeys(c)
+		}
 	})
 }
 
