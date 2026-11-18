@@ -1689,6 +1689,7 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 				rowID := fmt.Sprintf("ai-pick-%d", i)
 				row := ui.ButtonBase(cUI.Key(rowID)).FillWidth().Height(36).PaddingX(10).Gap(8).
 					AlignItems(ui.Center).Radius(6).Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(it.label)
+				bui.RevealOnHighlight(row, i == selected)
 				if i == selected {
 					row.Background(pal.Selected).Border(1, pal.Accent)
 				} else if row.Hovered() {
@@ -2170,7 +2171,25 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 				})
 
 				// 2. Center search + model list (+ compact thinking row when !wide).
-				ui.Column(cUI).Grow(1).MinWidth(0).Children(func() {
+				centerCol := ui.Column(cUI).Grow(1).MinWidth(0)
+				type deckModelCursorKey struct{}
+				deckCursor := ui.Local(centerCol, deckModelCursorKey{}, func() int { return -1 })
+				centerCol.ObserveInput(func(ev ui.InputEvent) {
+					if ev.Kind == ui.InputPointerMove && *deckCursor >= 0 {
+						*deckCursor = -1
+					}
+				})
+				lowQ := strings.ToLower(strings.TrimSpace(search))
+				var filtered []ModelOption
+				for _, m := range models {
+					if lowQ == "" || strings.Contains(strings.ToLower(m.Value), lowQ) || strings.Contains(strings.ToLower(m.Label), lowQ) {
+						filtered = append(filtered, m)
+					}
+				}
+				if *deckCursor >= len(filtered) {
+					*deckCursor = len(filtered) - 1
+				}
+				centerCol.Children(func() {
 					ui.Row(cUI).FillWidth().Height(headerH).PaddingX(headerPX).Gap(8).AlignItems(ui.Center).
 						BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
 						icons.Draw(cUI, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
@@ -2182,28 +2201,45 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 							Bind(&c.deckSearchHandle).AutoFocus()
 						bui.Probe(sInput, "ai-deck-search")
 						if sInput.Changed() {
+							*deckCursor = 0
 							c.mu.Lock()
 							c.deckSearch = q
 							c.mu.Unlock()
 						}
 						sInput.OnTextKey(func(k ui.TextKey) bool {
-							if k.Key == ui.KeyEscape {
+							switch k.Key {
+							case ui.KeyEscape:
 								c.mu.Lock()
 								c.deckOpen = false
 								c.mu.Unlock()
 								return true
+							case ui.KeyDown:
+								if len(filtered) > 0 {
+									*deckCursor = (*deckCursor + 1 + len(filtered)) % len(filtered)
+								}
+								return true
+							case ui.KeyUp:
+								if len(filtered) > 0 {
+									if *deckCursor <= 0 {
+										*deckCursor = len(filtered) - 1
+									} else {
+										*deckCursor--
+									}
+								}
+								return true
+							case ui.KeyEnter:
+								if *deckCursor >= 0 && *deckCursor < len(filtered) {
+									pickVal := filtered[*deckCursor].Value
+									c.mu.Lock()
+									_ = c.setBackendModelLocked(selected, pickVal)
+									c.deckOpen = false
+									c.mu.Unlock()
+									return true
+								}
 							}
 							return false
 						})
 					})
-
-					lowQ := strings.ToLower(strings.TrimSpace(search))
-					var filtered []ModelOption
-					for _, m := range models {
-						if lowQ == "" || strings.Contains(strings.ToLower(m.Value), lowQ) || strings.Contains(strings.ToLower(m.Label), lowQ) {
-							filtered = append(filtered, m)
-						}
-					}
 
 					bui.Scroll(cUI.Key("ai-deck-models"), &c.deckScroll).
 						FillWidth().Height(effectiveListH).Padding(listPad).Gap(listGap).Children(func() {
@@ -2221,13 +2257,15 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 						}
 						for idx, m := range filtered {
 							active := m.Value == curModel
+							highlighted := idx == *deckCursor
 							mID := fmt.Sprintf("ai-model-%d", idx)
 							row := ui.ButtonBase(cUI.Key(mID)).FillWidth().Height(rowH).PaddingX(rowPX).Gap(8).
 								AlignItems(ui.Center).Radius(theme.RadiusControl).Border(1, ui.Transparent).
 								Cursor(ui.CursorPointer).Label(m.Label)
+							bui.RevealOnHighlight(row, highlighted)
 							if active {
 								row.Background(pal.Selected).Border(1, pal.Accent)
-							} else if row.Hovered() {
+							} else if highlighted || (*deckCursor < 0 && row.Hovered()) {
 								row.Background(pal.Hover)
 							}
 							bui.Probe(row, mID)
