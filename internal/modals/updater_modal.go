@@ -16,7 +16,6 @@ import (
 // OpenUpdater opens the application update dialog and triggers an initial check if idle.
 func (m *Manager) OpenUpdater() {
 	m.updaterOpen = true
-	m.updaterLangOverride = ""
 	if m.Updater != nil {
 		snap := m.Updater.Snapshot()
 		if snap.Status == updater.StatusIdle {
@@ -38,17 +37,6 @@ func (m *Manager) CloseUpdater() {
 // IsUpdaterOpen reports whether the updater dialog is open.
 func (m *Manager) IsUpdaterOpen() bool {
 	return m.updaterOpen
-}
-
-func (m *Manager) updaterShowEn() bool {
-	switch m.updaterLangOverride {
-	case "en":
-		return true
-	case "zh":
-		return false
-	default:
-		return theme.IsEn()
-	}
 }
 
 func updaterTr(showEn bool, zh, en string) string {
@@ -119,7 +107,7 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 	pal := theme.Ocean()
 	uPal := pal.UpdaterColors()
 	open := true
-	showEn := m.updaterShowEn()
+	showEn := theme.IsEn()
 
 	var snap updater.Snapshot
 	if m.Updater != nil {
@@ -148,7 +136,7 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 		Centered:  true,
 	}, func() {
 		ui.Column(c).FillWidth().Clip().Children(func() {
-			// 1. Scheme A Header: 36x36 Tinted Icon Box + 2-Line Title/Version Stack + Language Toggle + Close.
+			// 1. Header: icon box + title/version stack + close.
 			ui.Row(c.Key("updater-header")).FillWidth().
 				Padding(theme.Space16, theme.Space20, theme.Space12, theme.Space20).
 				AlignItems(ui.Start).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
@@ -187,44 +175,20 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 								FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine()
 							if pubDate := updater.ShortDate(snap.PublishedAt); pubDate != "" {
 								ui.Text(c, "·").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).TextColor(pal.Placeholder)
-								dateLabel := fmt.Sprintf("%s %s", updaterTr(showEn, "更新摘要 ·", "Summary ·"), pubDate)
-								ui.Text(c, dateLabel).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+								ui.Text(c, pubDate).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 									TextColor(pal.Placeholder).SingleLine()
 							}
 						})
 					})
 				})
 
-				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).Shrink(0).Children(func() {
-					langLabel := "English"
-					if showEn {
-						langLabel = "中文"
-					}
-					langBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
-						ID:            "updater-lang-toggle",
-						Label:         langLabel,
-						Style:         internalui.ButtonSecondary,
-						Height:        theme.HeightChrome,
-						PaddingX:      theme.Space8,
-						RegularWeight: true,
-					})
-					if langBtn.Clicked() {
-						if showEn {
-							m.updaterLangOverride = "zh"
-						} else {
-							m.updaterLangOverride = "en"
-						}
-						m.requestRedraw()
-					}
-
-					cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-						ID:    "updater-close",
-						Label: updaterTr(showEn, "关闭", "Close"),
-					})
-					if cls.Clicked() {
-						m.CloseUpdater()
-					}
+				cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
+					ID:    "updater-close",
+					Label: updaterTr(showEn, "关闭", "Close"),
 				})
+				if cls.Clicked() {
+					m.CloseUpdater()
+				}
 			})
 
 			ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
@@ -566,12 +530,9 @@ func (m *Manager) renderUpdaterFooter(
 		ui.Row(c.Key("updater-footer-ready")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Grow(1).MinWidth(0).Children(func() {
 				icons.Draw(c, icons.Check, theme.IconAction, pal.DuoIconColors(pal.Success))
-				readyText := fmt.Sprintf("v%s %s",
-					snap.LatestVersion,
-					updaterTr(showEn, "已下载就绪，重启后完成替换", "ready to install on restart"),
-				)
-				ui.Text(c, readyText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-					FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0)
+				ui.Text(c, updaterTr(showEn, "重启时自动保存笔记", "Notes are saved on restart")).
+					FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+					TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine()
 			})
 
 			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Shrink(0).Children(func() {
