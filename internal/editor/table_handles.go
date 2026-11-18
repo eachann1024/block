@@ -730,7 +730,6 @@ func (s *Session) renderTableBorderChrome(
 	// Pointer hit-testing in window space (expanded by TableHandleHoverBand so moving onto edge pills never flickers).
 	hoverBand := s.scale(theme.TableHandleHoverBand)
 	hoverCol, hoverRow := -1, -1
-	hoverSeamRow := -1
 	ptrWin, hasPtr := s.windowPointerStatus()
 	if hasPtr && hasFirst {
 		relX := ptrWin.X - gridWinLeft
@@ -749,16 +748,6 @@ func (s *Session) renderTableBorderChrome(
 				if relY >= rowTops[ri]-ruleW && relY <= rowTops[ri]+rowHeights[ri]+ruleW {
 					hoverRow = ri
 					break
-				}
-			}
-			splitHit := s.scale(theme.TableSplitHitSize)
-			if relX >= -hoverBand*1.6 && relX <= hoverBand*2.8 && s.tableResizeBlock == 0 && s.tableDragBlock == 0 {
-				for ri := 0; ri < rows-1; ri++ {
-					seamY := rowTops[ri] + rowHeights[ri] + ruleW*0.5
-					if float32(math.Abs(float64(relY-seamY))) <= splitHit*0.85 {
-						hoverSeamRow = ri
-						break
-					}
 				}
 			}
 		}
@@ -812,7 +801,7 @@ func (s *Session) renderTableBorderChrome(
 		draggingThis := s.tableDragBlock == id && s.tableDragKind == "col" && s.tableDragIndex == cIdx
 		btnID := fmt.Sprintf("table-col-handle-%d-%d", id, cIdx)
 		showColPill := selected || draggingThis || cIdx == hoverCol || s.isOverlayBtnHovered(btnID)
-		if !showColPill || hoverSeamRow >= 0 || s.tableResizeBlock == id {
+		if !showColPill || s.tableResizeBlock == id {
 			continue
 		}
 
@@ -898,7 +887,7 @@ func (s *Session) renderTableBorderChrome(
 		draggingThis := s.tableDragBlock == id && s.tableDragKind == "row" && s.tableDragIndex == rIdx
 		btnID := fmt.Sprintf("table-row-handle-%d-%d", id, rIdx)
 		showRowPill := selected || draggingThis || rIdx == hoverRow || s.isOverlayBtnHovered(btnID)
-		if !showRowPill || hoverSeamRow >= 0 || s.tableResizeBlock == id {
+		if !showRowPill || s.tableResizeBlock == id {
 			continue
 		}
 
@@ -975,10 +964,8 @@ func (s *Session) renderTableBorderChrome(
 		s.tableDragMoved = false
 	}
 
-	// 3. Vertical column border seams: drag to resize width, double-click to auto-fit, top intersection '+' to insert column.
+	// 3. Vertical column border seams: drag to resize width, double-click to auto-fit.
 	splitHitW := s.scale(theme.TableSplitHitSize)
-	pinSz := s.scale(theme.TableSplitPinSize)
-	haloW := s.scale(theme.TableSplitHaloWidth)
 	lineW := s.scale(theme.ResizeLineWidth)
 	z := s.zoom()
 
@@ -997,10 +984,7 @@ func (s *Session) renderTableBorderChrome(
 		seamHov := seam.Hovered()
 		resizingThis := s.tableResizeBlock == id && s.tableResizeCol == cIdx
 
-		pinID := fmt.Sprintf("table-insert-col-at-%d-%d", id, cIdx+1)
-		showPin := (seamHov || s.isOverlayBtnHovered(pinID)) && !held && !resizingThis && s.tableMenuBlock != id
-
-		if seamHov || held || resizingThis || showPin {
+		if (seamHov && s.tableMenuBlock != id) || held || resizingThis {
 			seam.DrawOver(func(p *ui.Painter, r ui.Rect) {
 				lx := r.X + r.W*0.5 - lineW*0.5
 				p.Fill(ui.Rect{X: lx, Y: r.Y, W: lineW, H: r.H}, pal.Accent, lineW*0.5)
@@ -1057,23 +1041,6 @@ func (s *Session) renderTableBorderChrome(
 				ui.Text(c, badgeText).Font(resolvedCodeFont()).FontSize(s.scale(theme.FontMeta)).
 					FontWeight(theme.WeightMono).TextColor(pal.Text).SingleLine()
 			})
-		} else if showPin {
-			pin := ui.ButtonBase(c.Key(pinID)).Absolute().
-				Left(seamX - pinSz*0.5).Top(-pinSz * 0.5).Size(pinSz, pinSz).
-				Center().Radius(theme.RadiusPill).Cursor(ui.CursorPointer).KeepFocus().
-				Background(tblCols.HandleActiveBG).Border(haloW, pal.Paper).
-				Label(theme.Tr("在此处插入列", "Insert column here"))
-			appUi.Elevate(pin, theme.ElevationRaised)
-			appUi.TactileButton(pin, pin.Hovered(), pin.Pressed(), false)
-			pin.Children(func() {
-				icons.Draw(c, icons.Plus, s.scale(theme.IconMicro), pal.MonoIconColors(tblCols.HandleActiveFG))
-			})
-			appUi.Probe(pin, pinID)
-			appUi.Probe(pin, "table-insert-col-pin")
-			s.recordOverlayBtn(pinID, pin)
-			if pin.Clicked() {
-				s.tableAddCol(id, cIdx+1)
-			}
 		}
 	}
 
@@ -1099,40 +1066,6 @@ func (s *Session) renderTableBorderChrome(
 			s.doc.Blocks[idx].Dirty = true
 			s.doc.Blocks[idx].CleanSource = ""
 			s.markDirty()
-		}
-	}
-
-	// 4. Horizontal row border intersection '+' pins (insert row between rIdx and rIdx+1).
-	for ri := 0; ri < rows-1; ri++ {
-		rIdx := ri
-		pinID := fmt.Sprintf("table-insert-row-at-%d-%d", id, rIdx+1)
-		if hoverSeamRow != rIdx && !s.isOverlayBtnHovered(pinID) {
-			continue
-		}
-		if s.tableMenuBlock == id || s.tableResizeBlock == id {
-			continue
-		}
-		seamY := rowTops[rIdx] + rowHeights[rIdx] + ruleW*0.5
-		guide := ui.Box(c.Key(fmt.Sprintf("table-row-seam-line-%d-%d", id, rIdx))).Absolute().
-			Left(0).Width(visW).Top(seamY - lineW*0.5).Height(lineW).
-			Background(pal.Accent).IgnoreInput(true)
-		_ = guide
-
-		pin := ui.ButtonBase(c.Key(pinID)).Absolute().
-			Left(-pinSz * 0.5).Top(seamY - pinSz*0.5).Size(pinSz, pinSz).
-			Center().Radius(theme.RadiusPill).Cursor(ui.CursorPointer).KeepFocus().
-			Background(tblCols.HandleActiveBG).Border(haloW, pal.Paper).
-			Label(theme.Tr("在此处插入行", "Insert row here"))
-		appUi.Elevate(pin, theme.ElevationRaised)
-		appUi.TactileButton(pin, pin.Hovered(), pin.Pressed(), false)
-		pin.Children(func() {
-			icons.Draw(c, icons.Plus, s.scale(theme.IconMicro), pal.MonoIconColors(tblCols.HandleActiveFG))
-		})
-		appUi.Probe(pin, pinID)
-		appUi.Probe(pin, "table-insert-row-pin")
-		s.recordOverlayBtn(pinID, pin)
-		if pin.Clicked() {
-			s.tableAddRow(id, rIdx+1)
 		}
 	}
 }
@@ -1244,7 +1177,7 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 		s.tableMenuKind = ""
 	}
 
-	var headerTitle, headerBadge string
+	var headerTitle string
 	var entries []appUi.MenuItemSpec
 	var showAlignBar, showTintBar bool
 	var deleteAction func()
@@ -1255,8 +1188,7 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 		if colLabel == "" {
 			colLabel = fmt.Sprintf(theme.Tr("第 %d 列", "Column %d"), targetCol+1)
 		}
-		headerTitle = fmt.Sprintf("%s · %s", theme.Tr("列边框", "Column"), colLabel)
-		headerBadge = fmt.Sprintf("Col %d", targetCol+1)
+		headerTitle = colLabel
 		showAlignBar = true
 		showTintBar = true
 		deleteAction = func() {
@@ -1299,11 +1231,10 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 
 	case "row":
 		if targetRow == 0 && !tbl.NoHeaderRow {
-			headerTitle = theme.Tr("表头行 · 边框操作", "Header row")
+			headerTitle = theme.Tr("表头行", "Header row")
 		} else {
-			headerTitle = fmt.Sprintf(theme.Tr("第 %d 行 · 边框操作", "Row %d"), targetRow+1)
+			headerTitle = fmt.Sprintf(theme.Tr("第 %d 行", "Row %d"), targetRow+1)
 		}
-		headerBadge = fmt.Sprintf("Row %d", targetRow+1)
 		showTintBar = true
 		deleteAction = func() {
 			if rows > 1 {
@@ -1350,8 +1281,6 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 		)
 
 	case "table":
-		headerTitle = theme.Tr("整表边框 · 全局操作", "Table options")
-		headerBadge = fmt.Sprintf("%d×%d", rows, cols)
 		deleteAction = func() {
 			closeMenu()
 			s.deleteBlock(idx)
@@ -1462,12 +1391,10 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 				ui.Column(c.Key("table-menu-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
 					if headerTitle != "" {
 						hdr := ui.Row(c.Key("table-menu-hdr")).FillWidth().Height(theme.HeightCompact).
-							PaddingX(theme.Space10).AlignItems(ui.Center).Justify(ui.SpaceBetween)
+							PaddingX(theme.Space10).AlignItems(ui.Center)
 						hdr.Children(func() {
 							ui.Text(c, headerTitle).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
 								TextColor(pal.MenuMuted).Grow(1).SingleLine()
-							ui.Text(c, headerBadge).Font(resolvedCodeFont()).FontSize(theme.FontMeta).
-								FontWeight(theme.WeightMono).TextColor(pal.MenuMuted).SingleLine()
 						})
 					}
 
