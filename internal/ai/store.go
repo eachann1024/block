@@ -141,6 +141,7 @@ type Controller struct {
 	approvalUI          map[string]*approvalUIState
 
 	settingsFocused     model.BackendKind
+	settingsProbedOnce  bool
 	settingsShowKey     bool
 	settingsTesting     bool
 	settingsTestOK      bool
@@ -149,6 +150,14 @@ type Controller struct {
 	settingsBaseURL     string
 	settingsAPIKey      string
 	settingsModel       string
+
+	annotCfg            model.AnnotationConfig
+	annotMenuOpen       bool
+	annotMenuBackend    model.BackendKind
+	annotMenuSearch     string
+	annotMenuTriggerBox ui.Rect
+	annotMenuScroll     ui.ScrollState
+	annotSearchHandle   ui.Handle
 }
 
 // NewController initializes an AI Controller backed by dataDir, host, and codec.
@@ -208,6 +217,47 @@ func (c *Controller) loadAllFromDisk() {
 		c.retryDraft = &cp
 	}
 	c.ensureValidSelectionLocked()
+	c.loadOrSeedAnnotationConfigLocked()
+}
+
+func (c *Controller) loadOrSeedAnnotationConfigLocked() {
+	var cfg model.AnnotationConfig
+	if c.readJSONFile("ai-annotations.json", &cfg) && cfg.Backend != "" {
+		if cfg.Thinking == "" {
+			cfg.Thinking = "high"
+		}
+		c.annotCfg = cfg
+		c.annotMenuBackend = cfg.Backend
+		return
+	}
+	sel := c.selectedBackendLocked()
+	mdl := c.backendModelLocked(sel)
+	prov := c.providerCfg.Provider
+	if prov == "" {
+		prov = "deepseek"
+	}
+	c.annotCfg = model.AnnotationConfig{
+		Backend:  sel,
+		Provider: prov,
+		Model:    mdl,
+		Thinking: c.backendThinkingLocked(sel),
+	}
+	c.annotMenuBackend = sel
+	_ = c.writeJSONFile("ai-annotations.json", c.annotCfg)
+}
+
+func (c *Controller) saveAnnotationConfigLocked(cfg model.AnnotationConfig) error {
+	if cfg.Backend == "" {
+		cfg.Backend = model.BackendBuiltin
+	}
+	if cfg.Thinking == "" {
+		cfg.Thinking = "high"
+	}
+	if err := c.writeJSONFile("ai-annotations.json", cfg); err != nil {
+		return err
+	}
+	c.annotCfg = cfg
+	return nil
 }
 
 func (c *Controller) filePath(name string) string {

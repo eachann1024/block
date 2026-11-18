@@ -25,17 +25,17 @@ var AllBackends = []BackendKind{
 func (b BackendKind) DisplayName() string {
 	switch b {
 	case BackendBuiltin:
-		return "Built-in"
+		return "Built-in AI"
 	case BackendCodex:
 		return "Codex"
 	case BackendClaude:
 		return "Claude"
 	case BackendDsh:
-		return "DSH"
+		return "dsh"
 	case BackendPi:
 		return "Pi"
 	case BackendAgy:
-		return "Antigravity"
+		return "agy"
 	default:
 		return string(b)
 	}
@@ -225,4 +225,11 @@ type SkillSpec struct {
 	Name        string
 	Description string
 	Content     string
+}
+
+type AnnotationConfig struct {
+	Backend  BackendKind `json:"backend"`
+	Provider string      `json:"provider"`
+	Model    string      `json:"model"`
+	Thinking string      `json:"thinking"`
 }

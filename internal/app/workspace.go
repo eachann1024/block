@@ -407,6 +407,14 @@ func (w *Workspace) wireModalCallbacks() {
 	w.modals.RenderAISettings = func(c *ui.Context) {
 		w.ai.RenderSettingsTab(c)
 	}
+	w.modals.SidebarWidth = &w.sidebarWidth
+	w.modals.OnSidebarWidthChanged = func(nw float32) {
+		clamped := ClampSidebarWidth(nw)
+		_, _ = files.UpdateState(func(st *model.AppState) {
+			st.SidebarWidth = &clamped
+		})
+	}
+	w.modals.OnForgetNotebook = w.ForgetNotebook
 	w.modals.SearchFn = func(query string, allNotebooks bool) ([]model.SearchHit, error) {
 		return w.SearchWorkspace(query, allNotebooks)
 	}
