@@ -1495,25 +1495,42 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 			ui.RichText(c, s.buildDisplaySpans(0, b, fontSize, weight)...).FontSize(fontSize).LineHeight(lh).TextColor(pal.Text).FillWidth()
 		})
 	case model.BlockTable:
-		if b.Table == nil {
+		if b.Table == nil || len(b.Table.Rows) == 0 || len(b.Table.Rows[0]) == 0 {
 			return
 		}
-		ui.Column(c.Key(fmt.Sprintf("aip-tbl-%d", idx))).FillWidth().Radius(theme.RadiusSM).Border(1, pal.Hairline).Clip().Children(func() {
+		aipCols := len(b.Table.Rows[0])
+		colSpans := make([][2]float32, aipCols)
+		rowBottoms := make([]float32, len(b.Table.Rows))
+		tblColors := pal.Table()
+		aipGrid := ui.Column(c.Key(fmt.Sprintf("aip-tbl-%d", idx))).FillWidth().Padding(1).Gap(1).
+			Radius(theme.RadiusSM).Background(pal.Paper).Clip()
+		aipGrid.DrawOver(func(p *ui.Painter, gr ui.Rect) {
+			paintSingleTableBorders(p, gr, colSpans, rowBottoms, tblColors.Border, theme.RadiusSM)
+		})
+		aipGrid.Children(func() {
 			for rIdx, row := range b.Table.Rows {
-				rEl := ui.Row(c.Key(fmt.Sprintf("aip-tr-%d-%d", idx, rIdx))).FillWidth().
-					BorderWidth(0, 0, boolToBorder(rIdx+1 < len(b.Table.Rows)), 0).BorderColor(pal.Hairline)
-				if rIdx == 0 {
-					rEl.Background(pal.CodeBlockBG)
-				} else {
-					rEl.Background(pal.Paper)
-				}
+				rCopy := rIdx
+				rEl := ui.Row(c.Key(fmt.Sprintf("aip-tr-%d-%d", idx, rIdx))).FillWidth().AlignItems(ui.Stretch).Gap(1)
+				rEl.Draw(func(_ *ui.Painter, rr ui.Rect) {
+					rowBottoms[rCopy] = rr.Y + rr.H
+				})
 				rEl.Children(func() {
-					for cIdx, cell := range row {
-						ui.Box(c).Grow(1).Shrink(1).Padding(6, 8).
-							BorderWidth(0, boolToBorder(cIdx+1 < len(row)), 0, 0).BorderColor(pal.Hairline).
-							Children(func() {
-								ui.Text(c, cell.PlainText()).FontSize(theme.FontBody).TextColor(pal.Text).FillWidth()
+					for cIdx := 0; cIdx < aipCols && cIdx < len(row); cIdx++ {
+						cCopy := cIdx
+						cell := row[cIdx]
+						cellBox := ui.Column(c).Basis(0).Grow(1).Shrink(0).MinWidth(0).Justify(ui.Center).Padding(6, 8)
+						if rIdx == 0 {
+							cellBox.Background(tblColors.HeaderBG)
+							cellBox.Draw(func(_ *ui.Painter, cr ui.Rect) {
+								colSpans[cCopy] = [2]float32{cr.X, cr.W}
 							})
+						}
+						cellBox.Children(func() {
+							t := ui.Text(c, cell.PlainText()).FontSize(theme.FontBody).TextColor(pal.Text).FillWidth()
+							if rIdx == 0 {
+								t.FontWeight(theme.WeightTitle)
+							}
+						})
 					}
 				})
 			}

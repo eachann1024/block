@@ -115,6 +115,8 @@ type Session struct {
 	textLayoutCache  map[model.BlockID]cachedBlockLayout
 	codeSyntaxCache  map[model.BlockID]cachedCodeSyntax
 	codePreviewCache map[model.BlockID]cachedCodePreview
+	tableColCache    map[model.BlockID]cachedTableCols
+	tableGridGeoms   map[model.BlockID]tableGridGeom
 	frameBlocks      []frameBlockMeta
 	docRev           uint64
 	outlineRev       uint64
@@ -294,6 +296,8 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 		textLayoutCache:   make(map[model.BlockID]cachedBlockLayout),
 		codeSyntaxCache:   make(map[model.BlockID]cachedCodeSyntax),
 		codePreviewCache:  make(map[model.BlockID]cachedCodePreview),
+		tableColCache:     make(map[model.BlockID]cachedTableCols),
+		tableGridGeoms:    make(map[model.BlockID]tableGridGeom),
 		docRev:            1,
 		folded:            make(map[model.BlockID]bool),
 		foldTails:         make(map[model.BlockID]model.BlockID),
@@ -397,6 +401,8 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	clear(s.textLayoutCache)
 	clear(s.codeSyntaxCache)
 	clear(s.codePreviewCache)
+	clear(s.tableColCache)
+	clear(s.tableGridGeoms)
 	s.docRev++
 	s.virtReady = false
 	clear(s.overlayBtnRects)
