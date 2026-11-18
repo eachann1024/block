@@ -45,9 +45,11 @@ type IconButtonOptions struct {
 	Active       bool
 	// ActiveStyle refines how Active is drawn.
 	ActiveStyle IconActiveStyle
-	CardBorder  bool
-	Disabled    bool
-	Danger      bool
+	// AlwaysDuo renders Scheme A two-tone semantic fills & accents at rest too.
+	AlwaysDuo  bool
+	CardBorder bool
+	Disabled   bool
+	Danger     bool
 }
 
 func (o IconButtonOptions) metrics() (box, glyph, radius float32) {
@@ -158,6 +160,8 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 			ic = pal.DuoIconColors(pal.Accent)
 		case opts.Active || hovered || pressed:
 			ic = pal.DuoIconColors(pal.Text)
+		case opts.AlwaysDuo:
+			ic = pal.DuoIconColors(pal.TextSecondary)
 		case opts.Variant == IconBordered:
 			ic = pal.MonoIconColors(pal.Text)
 		default:

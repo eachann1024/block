@@ -2,32 +2,35 @@ package theme
 
 import "github.com/egoist/mygo/ui"
 
-// DotPagerColors holds recessed-track tactile bead colours for DotPager.
+// DotPagerColors holds recessed-track tactile bead and companion header dot colours.
 type DotPagerColors struct {
-	TrackBG     ui.Color
-	TrackBorder ui.Color
-	Idle        ui.Color
-	Hover       ui.Color
-	Core        ui.Color
+	TrackBG          ui.Color
+	TrackBorder      ui.Color
+	Idle             ui.Color
+	Hover            ui.Color
+	Core             ui.Color
+	CloseHoverBorder ui.Color
 }
 
 // DotPager returns the DotPager colour set for p.
 func (p Palette) DotPager() DotPagerColors {
 	if p.Dark {
 		return DotPagerColors{
-			TrackBG:     ui.Hex("#24272f"),
-			TrackBorder: ui.Hex("#333844"),
-			Idle:        ui.Hex("#4d5565"),
-			Hover:       ui.Hex("#8d97ab"),
-			Core:        ui.Hex("#eef4ff"),
+			TrackBG:          ui.Hex("#24272f"),
+			TrackBorder:      ui.Hex("#333844"),
+			Idle:             ui.Hex("#4d5565"),
+			Hover:            ui.Hex("#8d97ab"),
+			Core:             ui.Hex("#eef4ff"),
+			CloseHoverBorder: ui.Hex("#6e3232"),
 		}
 	}
 	return DotPagerColors{
-		TrackBG:     ui.Hex("#f1f3f7"),
-		TrackBorder: ui.Hex("#e2e6ee"),
-		Idle:        ui.Hex("#bcc4d2"),
-		Hover:       ui.Hex("#7b869a"),
-		Core:        ui.Hex("#eef4ff"),
+		TrackBG:          ui.Hex("#f1f3f7"),
+		TrackBorder:      ui.Hex("#e2e6ee"),
+		Idle:             ui.Hex("#bcc4d2"),
+		Hover:            ui.Hex("#7b869a"),
+		Core:             ui.Hex("#eef4ff"),
+		CloseHoverBorder: ui.Hex("#f3c7c7"),
 	}
 }
 

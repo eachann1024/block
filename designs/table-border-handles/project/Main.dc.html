@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>版本 A · Notion 贴边药丸把手与边框下拉菜单</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #779de8; text-decoration: none; }
+    a:hover { color: #9dbcf5; text-decoration: underline; }
+    button { font-family: inherit; cursor: pointer; }
+    button:focus-visible { outline: 2px solid #547dd0; outline-offset: 2px; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 100%; min-height: 880px; display: flex; flex-direction: column; background: {{paperBg}}; color: {{textPrimary}}; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; font-size: 14px; line-height: 20px; -webkit-font-smoothing: antialiased">
+
+  <header style="min-height: 44px; padding: 6px 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; background: {{shellBg}}; border-bottom: 1px solid {{sidebarBorder}}">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <div aria-hidden="true" style="display: flex; align-items: center; gap: 8px; margin-right: 6px">
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #ff5f57"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #febc2e"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #28c840"></span>
+      </div>
+      <span style="font-size: 14px; font-weight: 560; color: {{textPrimary}}">账号与订阅清单</span>
+      <span style="height: 22px; padding: 0 8px; border-radius: 5px; background: {{selectedBg}}; box-shadow: inset 0 0 0 1px {{accent}}; color: {{textPrimary}}; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center">版本 A · Notion 贴边药丸把手</span>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+      <div role="group" aria-label="边框把手状态切换" style="display: inline-flex; flex-wrap: wrap; padding: 3px; gap: 2px; background: {{paperBg}}; border: 1px solid {{borderCol}}; border-radius: 8px">
+        <sc-for list="{{modeTabs}}" as="tab" hint-placeholder-count="4">
+          <button type="button" onClick="{{tab.pick}}" style="height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: {{tab.bg}}; box-shadow: {{tab.ring}}; color: {{tab.fg}}; font-size: 14px; font-weight: {{tab.weight}}">{{tab.label}}</button>
+        </sc-for>
+      </div>
+
+      <button type="button" onClick="{{toggleTheme}}" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid {{btnBorder}}; background: {{menuBg}}; color: {{textPrimary}}; font-size: 14px; font-weight: 460">{{themeBtnLabel}}</button>
+    </div>
+  </header>
+
+  <main style="flex: 1; display: flex; flex-direction: column; align-items: center; padding: 40px 28px 96px; background: {{paperBg}}">
+    <div style="width: 100%; max-width: 960px; display: flex; flex-direction: column; gap: 22px">
+
+      <div style="padding-left: 38px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+        <h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 600; color: {{textPrimary}}">服务账号与 2FA 备份表</h1>
+        <span style="font-size: 14px; color: {{textSecondary}}">{{statusHint}}</span>
+      </div>
+
+      <div style="position: relative; display: flex; align-items: flex-start; gap: 10px">
+
+        <div style="width: 28px; padding-top: 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0">
+          <button type="button" onClick="{{selectWholeTable}}" aria-label="选中整张表格并打开表格菜单" style="width: 24px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: {{blockGripBg}}; box-shadow: {{blockGripRing}}; color: {{blockGripFg}}; display: inline-flex; align-items: center; justify-content: center">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <circle cx="5.5" cy="3.5" r="1.3"></circle><circle cx="10.5" cy="3.5" r="1.3"></circle>
+              <circle cx="5.5" cy="8" r="1.3"></circle><circle cx="10.5" cy="8" r="1.3"></circle>
+              <circle cx="5.5" cy="12.5" r="1.3"></circle><circle cx="10.5" cy="12.5" r="1.3"></circle>
+            </svg>
+          </button>
+        </div>
+
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; position: relative">
+
+          <div style="display: flex; align-items: stretch; gap: 6px; position: relative">
+
+            <div style="flex: 1; min-width: 0; position: relative; border-radius: 8px; border: {{outerTableBorder}}; box-shadow: {{outerTableRing}}; background: {{paperBg}}">
+
+              <div style="overflow-x: auto; border-radius: 7px">
+                <div style="min-width: 820px; display: flex; flex-direction: column">
+
+                  <sc-for list="{{tableRows}}" as="row" hint-placeholder-count="5">
+                    <div style="position: relative; display: grid; grid-template-columns: 52px 196px 124px 206px 114px minmax(128px, 1fr); border-bottom: {{row.bottomRule}}; background: {{row.rowBg}}; box-shadow: {{row.rowRing}}">
+                      <sc-for list="{{row.cells}}" as="cell" hint-placeholder-count="6">
+                        <button type="button" onClick="{{cell.pick}}" style="min-height: {{row.minH}}; padding: 10px 12px; border: 0; border-right: {{cell.rightRule}}; background: {{cell.bg}}; box-shadow: {{cell.colRing}}; color: {{cell.fg}}; font-family: {{cell.font}}; font-size: {{cell.size}}; line-height: 20px; font-weight: {{cell.weight}}; text-align: {{cell.align}}; display: flex; align-items: center; justify-content: {{cell.justify}}; word-break: break-all">{{cell.text}}</button>
+                      </sc-for>
+                    </div>
+                  </sc-for>
+
+                </div>
+              </div>
+
+              <div style="position: absolute; top: -8px; left: 0; right: 0; height: 16px; display: grid; grid-template-columns: 52px 196px 124px 206px 114px minmax(128px, 1fr); pointer-events: none">
+                <sc-for list="{{colHandles}}" as="ch" hint-placeholder-count="6">
+                  <div style="display: flex; align-items: center; justify-content: center; position: relative">
+                    <button type="button" onClick="{{ch.pick}}" aria-label="{{ch.aria}}" style="pointer-events: auto; width: 28px; height: 14px; padding: 0; border: 1px solid {{ch.border}}; border-radius: 5px; background: {{ch.bg}}; color: {{ch.fg}}; display: inline-flex; align-items: center; justify-content: center; opacity: {{ch.opacity}}">
+                      <svg width="12" height="6" viewBox="0 0 12 6" fill="currentColor" aria-hidden="true">
+                        <circle cx="2.5" cy="1.7" r="1"></circle><circle cx="6" cy="1.7" r="1"></circle><circle cx="9.5" cy="1.7" r="1"></circle>
+                        <circle cx="2.5" cy="4.3" r="1"></circle><circle cx="6" cy="4.3" r="1"></circle><circle cx="9.5" cy="4.3" r="1"></circle>
+                      </svg>
+                    </button>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="position: absolute; left: -8px; top: 0; bottom: 0; width: 16px; display: flex; flex-direction: column; pointer-events: none">
+                <sc-for list="{{rowHandles}}" as="rh" hint-placeholder-count="5">
+                  <div style="flex: {{rh.flex}}; display: flex; align-items: center; justify-content: center">
+                    <button type="button" onClick="{{rh.pick}}" aria-label="{{rh.aria}}" style="pointer-events: auto; width: 14px; height: 26px; padding: 0; border: 1px solid {{rh.border}}; border-radius: 5px; background: {{rh.bg}}; color: {{rh.fg}}; display: inline-flex; align-items: center; justify-content: center; opacity: {{rh.opacity}}">
+                      <svg width="6" height="12" viewBox="0 0 6 12" fill="currentColor" aria-hidden="true">
+                        <circle cx="1.7" cy="2.5" r="1"></circle><circle cx="4.3" cy="2.5" r="1"></circle>
+                        <circle cx="1.7" cy="6" r="1"></circle><circle cx="4.3" cy="6" r="1"></circle>
+                        <circle cx="1.7" cy="9.5" r="1"></circle><circle cx="4.3" cy="9.5" r="1"></circle>
+                      </svg>
+                    </button>
+                  </div>
+                </sc-for>
+              </div>
+
+              <sc-if value="{{isSplitMode}}" hint-placeholder-val="{{false}}">
+                <div aria-hidden="true" style="position: absolute; top: 0; bottom: 0; left: 371px; width: 2px; background: {{accent}}; pointer-events: none"></div>
+                <button type="button" onClick="{{insertSplitCol}}" aria-label="在密码与2FA密钥之间插入新列" style="position: absolute; top: -11px; left: 361px; width: 22px; height: 22px; padding: 0; border: 2px solid {{paperBg}}; border-radius: 11px; background: {{solidAccentBg}}; color: {{solidAccentFg}}; display: inline-flex; align-items: center; justify-content: center">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>
+                </button>
+                <div style="position: absolute; top: 14px; left: 380px; height: 24px; padding: 0 8px; border-radius: 6px; background: {{menuBg}}; border: 1px solid {{accent}}; color: {{textPrimary}}; font-family: 'JetBrains Mono', monospace; font-size: 12px; display: inline-flex; align-items: center; gap: 6px">
+                  <span>拖拽调宽 · 124px</span>
+                </div>
+
+                <div aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 162px; height: 2px; background: {{accent}}; pointer-events: none"></div>
+                <button type="button" onClick="{{insertSplitRow}}" aria-label="在第2行与第3行之间插入新行" style="position: absolute; top: 152px; left: -11px; width: 22px; height: 22px; padding: 0; border: 2px solid {{paperBg}}; border-radius: 11px; background: {{solidAccentBg}}; color: {{solidAccentFg}}; display: inline-flex; align-items: center; justify-content: center">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>
+                </button>
+              </sc-if>
+
+              <sc-if value="{{showContextMenu}}" hint-placeholder-val="{{true}}">
+                <div role="menu" aria-label="{{menuTitle}}" style="position: absolute; top: {{menuTop}}; left: {{menuLeft}}; z-index: 30; width: 236px; padding: 6px; border-radius: 10px; background: {{menuBg}}; border: 1px solid {{borderCol}}; box-shadow: {{menuShadow}}; display: flex; flex-direction: column; gap: 2px">
+
+                  <div style="height: 28px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; color: {{textSecondary}}; font-size: 13px; font-weight: 500">
+                    <span>{{menuTitle}}</span>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px">{{menuBadge}}</span>
+                  </div>
+
+                  <sc-if value="{{isColMenu}}" hint-placeholder-val="{{true}}">
+                    <div style="height: 34px; padding: 0 8px 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px">
+                      <span style="font-size: 14px; color: {{textPrimary}}">列对齐</span>
+                      <div role="group" aria-label="列对齐方式" style="display: inline-flex; padding: 2px; gap: 2px; border-radius: 6px; background: {{shellBg}}; border: 1px solid {{borderCol}}">
+                        <sc-for list="{{alignOptions}}" as="al" hint-placeholder-count="3">
+                          <button type="button" onClick="{{al.pick}}" aria-label="{{al.aria}}" style="width: 26px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: {{al.bg}}; box-shadow: {{al.ring}}; color: {{al.fg}}; display: inline-flex; align-items: center; justify-content: center">
+                            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="{{al.path}}"></path></svg>
+                          </button>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-if>
+
+                  <sc-for list="{{menuItems}}" as="item" hint-placeholder-count="5">
+                    <button type="button" role="menuitem" onClick="{{item.run}}" style="height: 32px; padding: 0 10px; border: 0; border-radius: 6px; background: {{item.bg}}; color: {{item.fg}}; font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left">
+                      <span style="display: inline-flex; align-items: center; gap: 9px">
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="{{item.iconStroke}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{item.iconPath}}"></path></svg>
+                        <span>{{item.label}}</span>
+                      </span>
+                      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{textSecondary}}">{{item.kbd}}</span>
+                    </button>
+                  </sc-for>
+
+                  <div aria-hidden="true" style="height: 1px; margin: 3px 6px; background: {{borderCol}}"></div>
+
+                  <div style="height: 34px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px">
+                    <span style="font-size: 14px; color: {{textPrimary}}">底色标记</span>
+                    <div role="group" aria-label="底色标记选择" style="display: inline-flex; align-items: center; gap: 6px">
+                      <sc-for list="{{tintSwatches}}" as="sw" hint-placeholder-count="4">
+                        <button type="button" onClick="{{sw.pick}}" aria-label="{{sw.aria}}" style="width: 18px; height: 18px; padding: 0; border-radius: 9px; border: 1px solid {{sw.border}}; background: {{sw.fill}}; box-shadow: {{sw.ring}}"></button>
+                      </sc-for>
+                    </div>
+                  </div>
+
+                  <div aria-hidden="true" style="height: 1px; margin: 3px 6px; background: {{borderCol}}"></div>
+
+                  <button type="button" role="menuitem" onClick="{{runDangerAction}}" style="height: 32px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: {{dangerFg}}; font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left">
+                    <span style="display: inline-flex; align-items: center; gap: 9px">
+                      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4.5h11M6 4.5V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M4 4.5l.7 8.5a1 1 0 0 0 1 1h4.6a1 1 0 0 0 1-1l.7-8.5"></path></svg>
+                      <span>{{dangerLabel}}</span>
+                    </span>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{dangerFg}}">⌫</span>
+                  </button>
+
+                </div>
+              </sc-if>
+
+            </div>
+
+            <button type="button" onClick="{{appendCol}}" aria-label="在右侧末尾添加一列" style="width: 24px; border: 1px solid {{borderCol}}; border-radius: 6px; background: {{addBarBg}}; color: {{textSecondary}}; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>
+            </button>
+
+          </div>
+
+          <div style="padding-right: 30px">
+            <button type="button" onClick="{{appendRow}}" aria-label="在底部末尾添加一行" style="width: 100%; height: 24px; border: 1px solid {{borderCol}}; border-radius: 6px; background: {{addBarBg}}; color: {{textSecondary}}; display: flex; align-items: center; justify-content: center">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["dark","light"],"section":"Appearance"},"initialMode":{"editor":"enum","default":"col","options":["col","row","split","table"],"section":"Interaction"},"$preview":{"width":1280,"height":880}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = {
+      themeOverride: null,
+      modeOverride: null,
+      activeCol: 1,
+      activeRow: 2,
+      headerRowOn: true,
+      colAligns: ['left', 'left', 'left', 'left', 'left', 'left'],
+      colTints: ['none', 'none', 'none', 'none', 'none', 'none'],
+      rowTints: ['none', 'none', 'none', 'none', 'none'],
+      sortAsc: true,
+      feedback: '',
+      rows: [
+        ['#', '账号', '密码', '2FA密钥', '订阅到期', '备注'],
+        ['1', 'i.sedudip@example.com', 'BcOisyfPkICN', 'lz3bwbtlkjvswprn6ji4zr6te2nvwyx6', '2026-09-29', ''],
+        ['2', 'poliana.m16@example.com', 'ap2rkp9tc', '3ap6dpugj33mquerwbc5gsfqr2wldmns', '2026-09-29', '双重验证已通过'],
+        ['3', 'anshad.k@example.com', '89316904', 'ipsikhmpxo7sht3b4m44pvr4ufkcjaqh', '2026-09-29', '备用号；双重验证已通过'],
+        ['4', 'giulia.nd@example.com', 'uajt1fduydk', '46higai2hocpinm6g3dek25d4vvc35ih', '2026-09-29', '双重验证已通过']
+      ]
+    };
+  }
+
+  renderVals() {
+    const theme = this.state.themeOverride ?? this.props.theme ?? 'dark';
+    const isDark = theme === 'dark';
+    const mode = this.state.modeOverride ?? this.props.initialMode ?? 'col';
+
+    const pal = isDark ? {
+      shellBg: '#343434',
+      sidebarBorder: '#333333',
+      paperBg: '#181818',
+      menuBg: '#222222',
+      headerBg: '#242424',
+      addBarBg: '#222222',
+      borderCol: '#2e2e2e',
+      btnBorder: '#444444',
+      textPrimary: '#ececec',
+      textSecondary: '#b4b4b4',
+      accent: '#779de8',
+      linkFg: '#8bb0f6',
+      hoverBg: '#2c2c2c',
+      selectedBg: '#343434',
+      selTint: '#1f2b40',
+      solidAccentBg: '#779de8',
+      solidAccentFg: '#141820',
+      dangerFg: '#f28b82',
+      menuShadow: '0 14px 34px rgba(0, 0, 0, 0.50)',
+      tints: {
+        none: 'transparent',
+        slate: '#2a2d32',
+        ocean: '#1f2d46',
+        emerald: '#1c3329'
+      }
+    } : {
+      shellBg: '#f1f1f1',
+      sidebarBorder: '#e6e6e6',
+      paperBg: '#ffffff',
+      menuBg: '#ffffff',
+      headerBg: '#f3f1ec',
+      addBarBg: '#f5f4f0',
+      borderCol: '#e4e6ea',
+      btnBorder: '#dcdcdc',
+      textPrimary: '#1f1e1d',
+      textSecondary: '#52514e',
+      accent: '#547dd0',
+      linkFg: '#256abf',
+      hoverBg: '#eef3fc',
+      selectedBg: '#e5edfc',
+      selTint: '#eef3fc',
+      solidAccentBg: '#3d63b0',
+      solidAccentFg: '#ffffff',
+      dangerFg: '#c5342d',
+      menuShadow: '0 12px 28px rgba(15, 23, 42, 0.14)',
+      tints: {
+        none: 'transparent',
+        slate: '#f1f3f6',
+        ocean: '#e8f0fe',
+        emerald: '#e7f5ee'
+      }
+    };
+
+    const modeList = [
+      { id: 'col', label: '列边框选中' },
+      { id: 'row', label: '行边框选中' },
+      { id: 'split', label: '边框交点插入与列宽' },
+      { id: 'table', label: '整表边框选中' }
+    ];
+    const modeTabs = modeList.map((m) => {
+      const on = mode === m.id;
+      return {
+        label: m.label,
+        bg: on ? pal.selectedBg : 'transparent',
+        ring: on ? ('inset 0 0 0 1px ' + pal.accent) : 'none',
+        fg: on ? pal.textPrimary : pal.textSecondary,
+        weight: on ? 500 : 400,
+        pick: () => this.setState({ modeOverride: m.id, feedback: '' })
+      };
+    });
+
+    const rows = this.state.rows;
+    const rowCount = rows.length;
+    const colCount = rows[0].length;
+    const activeCol = Math.min(this.state.activeCol, colCount - 1);
+    const activeRow = Math.min(this.state.activeRow, rowCount - 1);
+
+    const tableRows = rows.map((rCells, rIdx) => {
+      const isHeader = rIdx === 0 && this.state.headerRowOn;
+      const isRowSelected = mode === 'row' && rIdx === activeRow;
+      const rTintKey = this.state.rowTints[rIdx] || 'none';
+
+      const cells = rCells.map((txt, cIdx) => {
+        const isColSelected = mode === 'col' && cIdx === activeCol;
+        const cTintKey = this.state.colTints[cIdx] || 'none';
+        let bg = isHeader ? pal.headerBg : pal.paperBg;
+        if (cTintKey !== 'none') bg = pal.tints[cTintKey];
+        if (rTintKey !== 'none') bg = pal.tints[rTintKey];
+        if (isColSelected || isRowSelected || mode === 'table') {
+          bg = pal.selTint;
+        }
+
+        let colRing = 'none';
+        if (isColSelected) {
+          const topS = rIdx === 0 ? ('inset 0 1.5px 0 0 ' + pal.accent + ',') : '';
+          const botS = rIdx === rowCount - 1 ? ('inset 0 -1.5px 0 0 ' + pal.accent + ',') : '';
+          colRing = topS + botS + 'inset 1.5px 0 0 0 ' + pal.accent + ', inset -1.5px 0 0 0 ' + pal.accent;
+        }
+
+        const align = this.state.colAligns[cIdx] || 'left';
+        const justify = align === 'center' ? 'center' : (align === 'right' ? 'flex-end' : 'flex-start');
+        const isEmailLink = rIdx > 1 && cIdx === 1 && txt.indexOf('@') > -1;
+        const isMonoCol = rIdx > 0 && (cIdx === 2 || cIdx === 3 || cIdx === 4);
+
+        return {
+          text: txt,
+          bg,
+          colRing,
+          rightRule: cIdx < colCount - 1 ? ('1px solid ' + pal.borderCol) : '0',
+          fg: isEmailLink ? pal.linkFg : (isHeader ? pal.textSecondary : pal.textPrimary),
+          font: isMonoCol ? "'JetBrains Mono', ui-monospace, monospace" : 'inherit',
+          size: isMonoCol ? '13px' : '14px',
+          weight: isHeader ? 560 : 400,
+          align,
+          justify,
+          pick: () => this.setState({ modeOverride: 'col', activeCol: cIdx, activeRow: rIdx, feedback: '' })
+        };
+      });
+
+      return {
+        minH: rIdx === 0 ? '42px' : '58px',
+        bottomRule: rIdx < rowCount - 1 ? ('1px solid ' + pal.borderCol) : '0',
+        rowBg: 'transparent',
+        rowRing: isRowSelected ? ('inset 0 0 0 1.5px ' + pal.accent) : 'none',
+        cells
+      };
+    });
+
+    const colHandles = rows[0].map((colName, cIdx) => {
+      const selected = mode === 'col' && cIdx === activeCol;
+      return {
+        aria: '选中第 ' + (cIdx + 1) + ' 列（' + (colName || '新列') + '）边框把手',
+        bg: selected ? pal.solidAccentBg : pal.menuBg,
+        fg: selected ? pal.solidAccentFg : pal.textSecondary,
+        border: selected ? pal.accent : pal.btnBorder,
+        opacity: selected ? '1' : '0.92',
+        pick: () => this.setState({ modeOverride: 'col', activeCol: cIdx, feedback: '' })
+      };
+    });
+
+    const rowHandles = rows.map((_, rIdx) => {
+      const selected = mode === 'row' && rIdx === activeRow;
+      return {
+        aria: rIdx === 0 ? '选中表头行边框把手' : ('选中第 ' + rIdx + ' 行边框把手'),
+        flex: rIdx === 0 ? '0 0 42px' : '1 1 58px',
+        bg: selected ? pal.solidAccentBg : pal.menuBg,
+        fg: selected ? pal.solidAccentFg : pal.textSecondary,
+        border: selected ? pal.accent : pal.btnBorder,
+        opacity: selected ? '1' : '0.92',
+        pick: () => this.setState({ modeOverride: 'row', activeRow: rIdx, feedback: '' })
+      };
+    });
+
+    const curAlign = this.state.colAligns[activeCol] || 'left';
+    const alignDefs = [
+      { id: 'left', aria: '左对齐', path: 'M2.5 4h11M2.5 8h7.5M2.5 12h9.5' },
+      { id: 'center', aria: '居中对齐', path: 'M2.5 4h11M4.5 8h7M3.5 12h9' },
+      { id: 'right', aria: '右对齐', path: 'M2.5 4h11M6 8h7.5M4 12h9.5' }
+    ];
+    const alignOptions = alignDefs.map((a) => {
+      const on = curAlign === a.id;
+      return {
+        aria: a.aria,
+        path: a.path,
+        bg: on ? pal.selectedBg : 'transparent',
+        ring: on ? ('inset 0 0 0 1px ' + pal.accent) : 'none',
+        fg: on ? pal.textPrimary : pal.textSecondary,
+        pick: () => {
+          const next = this.state.colAligns.slice();
+          next[activeCol] = a.id;
+          this.setState({ colAligns: next, feedback: '已将「' + rows[0][activeCol] + '」设为' + a.aria });
+        }
+      };
+    });
+
+    let menuItems = [];
+    let menuTitle = '';
+    let menuBadge = '';
+    let menuTop = '16px';
+    let menuLeft = '136px';
+    let dangerLabel = '删除当前列';
+
+    if (mode === 'col') {
+      const colLabel = rows[0][activeCol] || ('第 ' + (activeCol + 1) + ' 列');
+      menuTitle = '列边框 · ' + colLabel;
+      menuBadge = 'Col ' + (activeCol + 1);
+      const colOffsets = [16, 86, 260, 412, 540, 560];
+      menuLeft = (colOffsets[Math.min(activeCol, 5)] || 120) + 'px';
+      menuTop = '14px';
+      dangerLabel = '删除当前列';
+      menuItems = [
+        {
+          label: this.state.sortAsc ? '按 A → Z 升序排列' : '按 Z → A 降序排列',
+          kbd: '⌘⇧S',
+          iconPath: 'M5 3v10M5 13l-2.5-2.5M5 13l2.5-2.5M10 4h4M10 8h3M10 12h2',
+          iconStroke: pal.accent,
+          bg: 'transparent',
+          fg: pal.textPrimary,
+          run: () => {
+            const head = rows[0];
+            const body = rows.slice(1).sort((a, b) => {
+              const va = String(a[activeCol] || '');
+              const vb = String(b[activeCol] || '');
+              return this.state.sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+            });
+            this.setState({ rows: [head, ...body], sortAsc: !this.state.sortAsc, feedback: '已按「' + colLabel + '」排序' });
+          }
+        },
+        {
+          label: '左侧插入列',
+          kbd: '⌥←',
+          iconPath: 'M9.5 3h3.5v10H9.5M4.5 8h4M6.5 6v4',
+          iconStroke: pal.textSecondary,
+          bg: 'transparent',
+          fg: pal.textPrimary,
+          run: () => this.insertColAt(activeCol)
+        },
+        {
+          label: '右侧插入列',
+          kbd: '⌥→',
+          iconPath: 'M3 3h3.5v10H3M8.5 8h4M10.5 6v4',
+          iconStroke: pal.textSecondary,
+          bg: 'transparent',
+          fg: pal.textPrimary,
+          run: () => this.insertColAt(activeCol + 1)
+        },
+        {
+          label: '清空本列内容',
+          kbd: '',
+          iconPath: 'M3 8h10M5.5 4.5l5 7M10.5 4.5l-5 7',
+          iconStroke: pal.textSecondary,
+          bg: 'transparent',
+          fg: pal.textPrimary,
+          run: () => {
+            const next = rows.map((r, ri) => r.map((c, ci) => (ri > 0 && ci === activeCol ? '—' : c)));
+            this.setState({ rows: next, feedback: '已清空「' + colLabel + '」列数据' });
+          }
+        }
+      ];
+    } else if (mode === 'row') {
+      menuTitle = activeRow === 0 ? '表头行 · 边框操作' : ('第 ' + activeRow + ' 行 · 边框操作');
+      menuBadge = 'Row ' + (activeRow + 1);
+      menuLeft = '22px';
+      menuTop = Math.min(34 + activeRow * 54, 210) + 'px';
+      dangerLabel = '删除当前行';
+      menuItems = [
+        {
+          label: this.state.headerRowOn ? '固定为标题行（已开启）' : '设为标题行',
+          kbd: '⌘⇧H',
+          iconPath: 'M2.5 3.5h11v3h-11zM2.5 6.5v6h11v-6',
+          iconStroke: pal.accent,
+          bg: 'transparent',
+          fg: pal.textPrimary,
+          run: () => this.setState({ headerRowOn: !this.state.headerRowOn })
+        },
+        {
+          label: '上方插入行',
+          kbd: '⌥↑',
+          iconPath: 'M3 9.5h10V13H3zM8 3.5v4M6 5.5h4',
+          iconStroke: pal.textSecondary,
+          bg: 'transparent',
+          fg: pal.textPrimary,
+          run: () => this.insertRowAt(Math.max(1, activeRow))
+        },
+        {
+          label: '下方插入行',
+          kbd: '⌥↓',
+          iconPath: 'M3 3h10v3.5H3zM8 8.5v4M6 10.5h4',
+          iconStroke: pal.textSecondary,
+          bg: 'transparent',
+          fg: pal.textPrimary,
+          run: () => this.insertRowAt(activeRow + 1)
+        },
+        {
+          label: '复制当前行到下方',
+          kbd: '⌘D',
+          iconPath: 'M5.5 5.5h7v7h-7zM3.5 10.5v-7h7',
+          iconStroke: pal.textSecondary,
+          bg: 'transparent',
+          fg: pal.textPrimary,
+          run: () => {
+            const copy = rows[activeRow].slice();
+            const next = rows.slice(0, activeRow + 1).concat([copy], rows.slice(activeRow + 1));
+            this.setState({ rows: next, feedback: '已复制第 ' + activeRow + ' 行' });
+          }
+        }
+      ];
+    } else if (mode === 'table') {
+      menuTitle = '整表边框 · 全局操作';
+      menuBadge = rowCount + '×' + colCount;
+      menuLeft = '18px';
+      menuTop = '14px';
+      dangerLabel = '删除整张表格';
+      menuItems = [
+        {
+          label: this.state.headerRowOn ? '标题行背景（已开启）' : '开启标题行背景',
+          kbd: '',
+          iconPath: 'M2.5 3.5h11v3h-11zM2.5 6.5v6h11v-6',
+          iconStroke: pal.accent,
+          bg: 'transparent',
+          fg: pal.textPrimary,
+          run: () => this.setState({ headerRowOn: !this.state.headerRowOn })
+        },
+        {
+          label: '复制为 Markdown 表格',
+          kbd: '⌘⇧C',
+          iconPath: 'M5.5 5.5h7v7h-7zM3.5 10.5v-7h7',
+          iconStroke: pal.textSecondary,
+          bg: 'transparent',
+          fg: pal.textPrimary,
+          run: () => this.setState({ feedback: '已复制 Markdown 源码到剪贴板' })
+        },
+        {
+          label: '均分自动列宽',
+          kbd: '',
+          iconPath: 'M2.5 8h11M5 5.5L2.5 8 5 10.5M11 5.5L13.5 8 11 10.5',
+          iconStroke: pal.textSecondary,
+          bg: 'transparent',
+          fg: pal.textPrimary,
+          run: () => this.setState({ feedback: '已按正文标准版心自适应列宽' })
+        }
+      ];
+    }
+
+    const activeTint = mode === 'row' ? (this.state.rowTints[activeRow] || 'none') : (this.state.colTints[activeCol] || 'none');
+    const swatchDefs = [
+      { id: 'none', aria: '默认无底色', fill: pal.paperBg },
+      { id: 'slate', aria: '中性石墨底色', fill: isDark ? '#3a3f47' : '#dfe4ec' },
+      { id: 'ocean', aria: 'Ocean 海蓝底色', fill: isDark ? '#314972' : '#c9d8f3' },
+      { id: 'emerald', aria: '翠绿标记底色', fill: isDark ? '#275340' : '#bce6d1' }
+    ];
+    const tintSwatches = swatchDefs.map((sw) => {
+      const on = activeTint === sw.id;
+      return {
+        aria: sw.aria,
+        fill: sw.fill,
+        border: on ? pal.accent : pal.btnBorder,
+        ring: on ? ('0 0 0 2px ' + pal.accent) : 'none',
+        pick: () => {
+          if (mode === 'row') {
+            const next = this.state.rowTints.slice();
+            next[activeRow] = sw.id;
+            this.setState({ rowTints: next, feedback: '已更新行底色' });
+          } else {
+            const next = this.state.colTints.slice();
+            next[activeCol] = sw.id;
+            this.setState({ colTints: next, feedback: '已更新列底色' });
+          }
+        }
+      };
+    });
+
+    const defaultHints = {
+      col: '点击顶部任意列药丸把手，精准框选整列并展开排序 / 对齐 / 底色菜单',
+      row: '点击左侧任意行药丸把手，框选整行并支持插入、复制与行级底色',
+      split: '悬停内部分隔线：竖线拖拽调列宽，顶/左边框交点浮现 + 圆钮指哪插哪',
+      table: '点击左上块把手 ⋮⋮，整表外框高亮并唤出标题行与 Markdown 复制菜单'
+    };
+
+    return {
+      ...pal,
+      themeBtnLabel: isDark ? '切换浅色' : '切换深色',
+      toggleTheme: () => this.setState({ themeOverride: isDark ? 'light' : 'dark' }),
+      modeTabs,
+      statusHint: this.state.feedback || defaultHints[mode],
+      selectWholeTable: () => this.setState({ modeOverride: 'table', feedback: '' }),
+      blockGripBg: mode === 'table' ? pal.selectedBg : pal.hoverBg,
+      blockGripRing: mode === 'table' ? ('inset 0 0 0 1px ' + pal.accent) : 'none',
+      blockGripFg: mode === 'table' ? pal.accent : pal.textSecondary,
+      outerTableBorder: mode === 'table' ? ('1.5px solid ' + pal.accent) : ('1px solid ' + pal.borderCol),
+      outerTableRing: mode === 'table' ? ('0 0 0 2px ' + (isDark ? 'rgba(119,157,232,0.22)' : 'rgba(84,125,208,0.20)')) : 'none',
+      tableRows,
+      colHandles,
+      rowHandles,
+      isSplitMode: mode === 'split',
+      insertSplitCol: () => this.insertColAt(3),
+      insertSplitRow: () => this.insertRowAt(3),
+      showContextMenu: mode === 'col' || mode === 'row' || mode === 'table',
+      isColMenu: mode === 'col',
+      menuTitle,
+      menuBadge,
+      menuTop,
+      menuLeft,
+      menuItems,
+      alignOptions,
+      tintSwatches,
+      dangerLabel,
+      runDangerAction: () => {
+        if (mode === 'col' && colCount > 2) {
+          const next = rows.map((r) => r.filter((_, ci) => ci !== activeCol));
+          this.setState({ rows: next, activeCol: Math.max(0, activeCol - 1), feedback: '已删除选中列' });
+        } else if (mode === 'row' && rowCount > 2) {
+          const idxToDel = Math.max(1, activeRow);
+          const next = rows.filter((_, ri) => ri !== idxToDel);
+          this.setState({ rows: next, activeRow: Math.max(1, idxToDel - 1), feedback: '已删除选中行' });
+        } else {
+          this.setState({ feedback: '已触发整表删除确认（演示保留示例数据）' });
+        }
+      },
+      appendCol: () => this.insertColAt(colCount),
+      appendRow: () => this.insertRowAt(rowCount)
+    };
+  }
+
+  insertColAt(idx) {
+    const rows = this.state.rows;
+    if (rows[0].length >= 8) {
+      this.setState({ feedback: '演示画板最多保留 8 列' });
+      return;
+    }
+    const next = rows.map((r, ri) => {
+      const val = ri === 0 ? '新列' : '—';
+      return r.slice(0, idx).concat([val], r.slice(idx));
+    });
+    const aligns = this.state.colAligns.slice(0, idx).concat(['left'], this.state.colAligns.slice(idx));
+    const tints = this.state.colTints.slice(0, idx).concat(['none'], this.state.colTints.slice(idx));
+    this.setState({ rows: next, colAligns: aligns, colTints: tints, modeOverride: 'col', activeCol: idx, feedback: '已在第 ' + (idx + 1) + ' 列位置插入新列' });
+  }
+
+  insertRowAt(idx) {
+    const rows = this.state.rows;
+    if (rows.length >= 8) {
+      this.setState({ feedback: '演示画板最多保留 8 行' });
+      return;
+    }
+    const colCount = rows[0].length;
+    const emptyRow = Array.from({ length: colCount }, (_, ci) => (ci === 0 ? String(rows.length) : (ci === 4 ? '2026-10-15' : '—')));
+    const next = rows.slice(0, idx).concat([emptyRow], rows.slice(idx));
+    const rTints = this.state.rowTints.slice(0, idx).concat(['none'], this.state.rowTints.slice(idx));
+    this.setState({ rows: next, rowTints: rTints, modeOverride: 'row', activeRow: idx, feedback: '已在第 ' + idx + ' 行位置插入新行' });
+  }
+}
+</script>
+</body>
+</html>

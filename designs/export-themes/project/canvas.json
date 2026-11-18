@@ -1,0 +1,23 @@
+{"v":3,"createdOnFiles":{"v":1,"at":"2026-11-18T15:12:33Z"},"title":"导出纸面主题","launch":{"view":"canvas"},"pages":[],
+"boards":{
+"Main.dc.html":{"x":0,"y":0,"w":360,"h":1240,"title":"主题选择器"},
+"Mono.dc.html":{"x":440,"y":0,"w":816,"h":1240,"title":"黑白素纸"},
+"Journal.dc.html":{"x":1336,"y":0,"w":816,"h":1240,"title":"手账便签"},
+"Riso.dc.html":{"x":2232,"y":0,"w":816,"h":1240,"title":"孔版双色"},
+"Press.dc.html":{"x":3128,"y":0,"w":816,"h":1240,"title":"铅字报刊"},
+"Poster.dc.html":{"x":4024,"y":0,"w":816,"h":1240,"title":"大字海报"},
+"Mist.dc.html":{"x":4920,"y":0,"w":816,"h":1240,"title":"雾面卡片"},
+"Ink.dc.html":{"x":440,"y":1660,"w":816,"h":1240,"title":"墨黑"},
+"Kraft.dc.html":{"x":1336,"y":1660,"w":816,"h":1240,"title":"黑卡手账"},
+"Neon.dc.html":{"x":2232,"y":1660,"w":816,"h":1240,"title":"霓虹夜色"},
+"Film.dc.html":{"x":3128,"y":1660,"w":816,"h":1240,"title":"暗房胶片"},
+"Night.dc.html":{"x":4024,"y":1660,"w":816,"h":1240,"title":"夜读卡片"},
+"Terminal.dc.html":{"x":4920,"y":1660,"w":816,"h":1240,"title":"终端绿屏"}
+},
+"order":["Main.dc.html","Mono.dc.html","Journal.dc.html","Riso.dc.html","Press.dc.html","Poster.dc.html","Mist.dc.html","Ink.dc.html","Kraft.dc.html","Neon.dc.html","Film.dc.html","Night.dc.html","Terminal.dc.html"],
+"notes":{
+"light":{"x":440,"y":-300,"text":"浅色 · 6","kind":"title1","maxW":5296},
+"dark":{"x":440,"y":1360,"text":"深色 · 6","kind":"title1","maxW":5296},
+"dims":{"x":0,"y":1660,"w":360,"size":"s","fill":"orange","text":"设计维度（每个主题都要各自回答）\n1 字体角色：标题 / 正文 / 元信息三套气质\n2 纸张：底色 + 纹理（方格、网点、颗粒、扫描线）\n3 套色：单墨 / 双色叠印 / 单信号色\n4 卡片与边框：书口线、胶带、齿孔、ASCII 框、圆角\n5 标题装饰：发丝线、波浪、错位、报头、提示符\n6 引用：缩进、便签、大引号、底片格、>\n7 表格：无线、栏线、股票表、字符对齐\n8 代码：打字机、终端、液晶屏\n9 列表与分隔：符号与分隔形态\n10 链接与高亮：笔触、叠印、洗色、反白\n11 页眉页脚与水印：页码、耳题、帧号、日期章"}
+},
+"designSystems":[]}
