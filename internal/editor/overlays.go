@@ -1975,10 +1975,8 @@ func outlineBarWidth(level int) float32 {
 // --- 6. Annotation Rail (Wide) & Block-Foot Strip (Narrow) ---
 
 const (
-	annotationRailWidth    float32 = 224
-	annotationRailMaxWidth float32 = 380
-	annotationCardMinWidth float32 = 96
-	annotationRailSlot     float32 = annotationRailWidth + 8
+	annotationRailWidth float32 = 208
+	annotationRailSlot  float32 = annotationRailWidth + 8
 )
 
 func (s *Session) canFitWideAnnotationRail() bool {
@@ -2079,7 +2077,7 @@ func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, max
 	}
 
 	if ann.RewriteResult != "" {
-		card := ui.Column(c.Key("annotation-card-"+ann.ID)).MinWidth(min(annotationRailWidth, maxW)).MaxWidth(maxW).
+		card := ui.Column(c.Key("annotation-card-"+ann.ID)).Width(maxW).MinWidth(0).
 			Padding(theme.Space8, theme.Space10).Gap(theme.Space8).Radius(theme.RadiusLG).Clip().
 			Transition(appUi.GutterHandleTransition())
 		cardHovered := card.Hovered()
@@ -2131,27 +2129,22 @@ func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, max
 		return
 	}
 
-	minW := min(annotationCardMinWidth, maxW)
-	if ann.RewritePrompt != "" {
-		minW = min(annotationCardMinWidth+theme.HeightMicro, maxW)
-	}
-	card := ui.Row(c.Key("annotation-card-"+ann.ID)).MinWidth(minW).MaxWidth(maxW).
-		Padding(theme.Space6, theme.Space10).
-		Gap(theme.Space8).AlignItems(ui.Start).Radius(theme.RadiusMD).Clip().
+	card := ui.Row(c.Key("annotation-card-"+ann.ID)).MaxWidth(maxW).MinWidth(0).
+		Padding(theme.Space4, theme.Space6, theme.Space4, theme.Space10).
+		Gap(theme.Space6).AlignItems(ui.Start).Radius(theme.RadiusMD).Clip().
 		Transition(appUi.GutterHandleTransition())
 	cardHovered := card.Hovered()
 	if cardHovered {
 		*hoveredOut = ann.ID
 	}
-	isActive := s.activeAnnotID == ann.ID
 	borderCol := pal.Hairline
-	if cardHovered || isActive || s.hoveredAnnotID == ann.ID {
+	if cardHovered || s.hoveredAnnotID == ann.ID {
 		borderCol = pal.Accent
 	}
 	appUi.AnimateSurfaceColors(card, pal.Menu, borderCol, true)
 	appUi.Probe(card, "annotation-card-"+ann.ID)
 	card.Children(func() {
-		ui.Row(c).Height(theme.LineTitle).Shrink(0).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Height(theme.HeightMicro).Shrink(0).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Size(theme.Space6, theme.Space6).Shrink(0).Radius(theme.RadiusPill).Background(pal.AnnotSendDot)
 		})
 		noteTxt := ann.Note
@@ -2160,52 +2153,32 @@ func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, max
 		}
 		ui.Text(c, noteTxt).FontSize(theme.FontBody).FixedLineHeight(theme.LineTitle).TextColor(pal.Text).Shrink(1).MinWidth(0)
 		if !s.readOnly {
-			showActions := cardHovered || isActive
-			targetOp := float32(0)
-			if showActions {
-				targetOp = 1
-			}
-			actBar := appUi.Elevate(ui.Row(c.Key("annotation-actions-"+ann.ID)).Absolute().Top(theme.Space4).Right(theme.Space4).
-				Padding(theme.Space2).Gap(theme.Space2).AlignItems(ui.Center).
-				Radius(theme.RadiusSM).Background(pal.Menu).Border(1, pal.BtnBorder).
-				IgnoreInput(!showActions).AccessHidden(!showActions), theme.ElevationRaised)
-			op := actBar.AnimateTo("op", targetOp, appUi.FadeColor)
-			actBar.Opacity(op)
-			if op > 0.01 || showActions {
-				actBar.Children(func() {
-					if ann.RewritePrompt != "" {
-						acc := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
-							ID: "annotation-accept-" + ann.ID, Label: theme.Tr("应用", "Apply"), Size: theme.HeightMicro, IconSize: theme.IconInline,
-						})
-						if acc.Clicked() {
-							s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)
-						}
-					}
-					editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
-						ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline,
+			ui.Row(c).Height(theme.HeightMicro).Shrink(0).AlignItems(ui.Center).Gap(theme.Space2).Children(func() {
+				if ann.RewritePrompt != "" {
+					acc := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
+						ID: "annotation-accept-" + ann.ID, Label: theme.Tr("应用", "Apply"), Size: theme.HeightMicro, IconSize: theme.IconInline,
 					})
-					if editBtn.Clicked() {
-						s.editingAnnotID = ann.ID
-						s.editingAnnotText = ann.Note
-						s.editingFocusPending = true
+					if acc.Clicked() {
+						s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)
 					}
-					delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
-						ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline, Danger: true,
-					})
-					if delBtn.Clicked() {
-						s.deleteAnnotationByID(ann.ID)
-					}
+				}
+				editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
+					ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline,
 				})
-			}
+				if editBtn.Clicked() {
+					s.editingAnnotID = ann.ID
+					s.editingAnnotText = ann.Note
+					s.editingFocusPending = true
+				}
+				delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
+					ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline, Danger: true,
+				})
+				if delBtn.Clicked() {
+					s.deleteAnnotationByID(ann.ID)
+				}
+			})
 		}
 	})
-	if card.Clicked() {
-		if s.activeAnnotID == ann.ID {
-			s.activeAnnotID = ""
-		} else {
-			s.activeAnnotID = ann.ID
-		}
-	}
 }
 
 func estimateAnnotationRowMetrics(ann *model.Annotation, isEditing bool) (height, stepGap float32) {
@@ -2215,12 +2188,12 @@ func estimateAnnotationRowMetrics(ann *model.Annotation, isEditing bool) (height
 	stepGap = 8
 	switch {
 	case isEditing:
-		height = 34
+		height = 32
 	case ann.RewriteResult != "":
 		height = 92
 	default:
-		lines := max((len([]rune(ann.Note))+19)/20, 1)
-		height = 34 + float32(lines-1)*theme.LineTitle
+		lines := max((len([]rune(ann.Note))+9)/10, 1)
+		height = 32 + float32(lines-1)*theme.LineTitle
 	}
 	if len(ann.Reactions) > 0 {
 		height += 28
@@ -2243,7 +2216,6 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 	editorRight := s.editorRect.X + editorW
 	rightMargin := max(theme.ScrollGutter, theme.Space16)
 	railLeft := min(bodyRightX+theme.Space16, editorRight-rightMargin-annotationRailWidth)
-	railMaxW := min(max(editorRight-rightMargin-railLeft, annotationRailWidth), annotationRailMaxWidth)
 	railTop := s.editorRect.Y
 	railHeight := max(s.editorRect.H, s.viewportHeight-railTop)
 
@@ -2281,7 +2253,7 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 	nextHovered := ""
 	ui.Overlay(c, func() {
 		rail := ui.Box(c.Key("annotation-rail")).Absolute().Left(railLeft).Top(railTop).
-			Width(railMaxW).Height(railHeight).PassThrough()
+			Width(annotationRailWidth).Height(railHeight).PassThrough()
 		appUi.Probe(rail, "annotation-rail")
 		rail.Children(func() {
 			bottom := float32(12)
@@ -2292,7 +2264,7 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 				isHighlighted := s.activeAnnotID == ann.ID || s.hoveredAnnotID == ann.ID
 
 				slot := ui.Column(c.Key("annotation-wrap-" + ann.ID)).Absolute().Top(top).Left(0).
-					Width(railMaxW).AlignItems(ui.Start).Gap(theme.Space4)
+					Width(annotationRailWidth).AlignItems(ui.Start).Gap(theme.Space4)
 				slot.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 					if r.H > 0 {
 						if s.annotRowHeights == nil {
@@ -2314,7 +2286,7 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 						return
 					}
 
-					s.renderAnnotationItem(c, ann, railMaxW, &nextHovered)
+					s.renderAnnotationItem(c, ann, annotationRailWidth, &nextHovered)
 
 					if len(ann.Reactions) > 0 {
 						ui.Row(c).FillWidth().Wrap().AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
@@ -2391,9 +2363,9 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 	if b.Kind == model.BlockTable {
 		botPad = theme.Space10
 	}
-	maxChipW := annotationRailMaxWidth
+	maxChipW := annotationRailWidth
 	if s.viewportWidth > 0 {
-		maxChipW = min(annotationRailMaxWidth, max(s.viewportWidth-32, 160))
+		maxChipW = min(annotationRailWidth, max(s.viewportWidth-32, 160))
 	}
 
 	strip := ui.Column(c.Key(fmt.Sprintf("annotate-foot-%d", b.ID))).FillWidth().MinWidth(0).
