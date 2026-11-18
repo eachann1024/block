@@ -1928,7 +1928,7 @@ func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annota
 
 func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, maxW float32, hoveredOut *string) {
 	pal := theme.Ocean()
-	editing := s.editingAnnotID == ann.ID
+	editing := s.editingAnnotID == ann.ID && !s.readOnly
 	isResult := !editing && ann.RewriteResult != ""
 
 	card := ui.Column(c.Key("annotation-card-"+ann.ID)).Width(maxW).MinWidth(0).
@@ -1982,12 +1982,6 @@ func (s *Session) renderAnnotationHeader(c *ui.Context, ann *model.Annotation, i
 		if !showActions {
 			return
 		}
-		editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
-			ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline,
-		})
-		if editBtn.Clicked() {
-			s.beginAnnotationEdit(ann)
-		}
 		delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
 			ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline, Danger: true,
 		})
@@ -2004,8 +1998,20 @@ func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation) {
 		noteTxt = ann.RewritePrompt
 	}
 	if noteTxt != "" {
-		ui.Text(c, noteTxt).FillWidth().MinWidth(0).
-			FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text)
+		if s.readOnly {
+			ui.Text(c, noteTxt).FillWidth().MinWidth(0).
+				FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text)
+		} else {
+			body := ui.ButtonBase(c.Key("annotation-edit-"+ann.ID)).FillWidth().MinWidth(0).
+				Cursor(ui.CursorText).Label(theme.Tr("编辑批注", "Edit annotation"))
+			body.Children(func() {
+				ui.Text(c, noteTxt).FillWidth().MinWidth(0).
+					FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text)
+			})
+			if body.Clicked() {
+				s.beginAnnotationEdit(ann)
+			}
+		}
 	}
 	if ann.RewritePrompt == "" || s.readOnly {
 		return
@@ -2049,7 +2055,7 @@ func (s *Session) renderAnnotationResult(c *ui.Context, ann *model.Annotation) {
 	})
 }
 
-// renderAnnotationEditor edits the note in place: Enter saves, Shift+Enter breaks the line, Esc cancels.
+// renderAnnotationEditor edits the note in place: Enter or clicking outside saves, Shift+Enter breaks the line, Esc cancels.
 func (s *Session) renderAnnotationEditor(c *ui.Context, ann *model.Annotation) {
 	pal := theme.Ocean()
 	in := ui.TextAreaBase(c.Key("edit-ann-"+ann.ID), &s.editingAnnotText).FillWidth().MinWidth(0).Lines(1, 8).
@@ -2072,23 +2078,21 @@ func (s *Session) renderAnnotationEditor(c *ui.Context, ann *model.Annotation) {
 		in.Focus()
 		s.editingFocusPending = false
 	}
-	ui.Row(c).FillWidth().Padding(theme.Space4, 0, 0, 0).Justify(ui.End).AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
-		cancel := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
-			ID: "ann-edit-cancel-" + ann.ID, Label: theme.Tr("取消", "Cancel"), Style: appUi.ButtonGhost, Height: theme.HeightCompact,
-		})
-		if cancel.Clicked() {
-			s.editingAnnotID = ""
-		}
-		save := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
-			ID: "ann-edit-save-" + ann.ID, Label: theme.Tr("保存", "Save"), Style: appUi.ButtonPrimary, Height: theme.HeightCompact,
-		})
-		if save.Clicked() {
-			s.commitAnnotationEdit(ann.ID)
-		}
-	})
 }
 
+// flushAnnotationEdit saves an open annotation draft before the editor drops its transient state.
+func (s *Session) flushAnnotationEdit() {
+	if s.editingAnnotID != "" {
+		s.commitAnnotationEdit(s.editingAnnotID)
+	}
+}
+
+// beginAnnotationEdit opens the card for editing, first saving any other card left open.
 func (s *Session) beginAnnotationEdit(ann *model.Annotation) {
+	if s.editingAnnotID == ann.ID {
+		return
+	}
+	s.flushAnnotationEdit()
 	s.editingAnnotID = ann.ID
 	s.editingAnnotText = ann.Note
 	if s.editingAnnotText == "" {
@@ -2134,7 +2138,7 @@ func estimateAnnotationRowMetrics(ann *model.Annotation, isEditing bool) (height
 	stepGap = 8
 	switch {
 	case isEditing:
-		height = 100
+		height = 64
 	case ann.RewriteResult != "":
 		height = 122
 	default:
