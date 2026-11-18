@@ -97,19 +97,20 @@ func (c *Controller) renderPanelHeader(cUI *ui.Context, pal theme.Palette, fulls
 	histOpen := c.historyOpen
 	c.mu.RUnlock()
 
-	leftPad := float32(16)
-	rightPad := float32(16)
+	leftPad := theme.Space16
+	rightPad := theme.Space12
 	if fullscreen {
 		tb := cUI.TitleBar()
 		if theme.IsMacOS() {
-			leftPad = max(82, tb.Left+12)
+			leftPad = max(theme.TrafficLeadingMacOS, tb.Left+theme.Space12)
+			rightPad = theme.TitleBarActionTrailing()
 		} else if tb.Right > 0 {
-			rightPad = tb.Right + 8
+			rightPad = tb.Right + theme.Space8
 		}
 	}
 
-	header := ui.Row(cUI.Key("ai-header")).FillWidth().Height(52).Shrink(0).
-		Padding(0, rightPad, 0, leftPad).Gap(6).
+	header := ui.Row(cUI.Key("ai-header")).FillWidth().Height(theme.TitleBarHeight).Shrink(0).
+		Padding(0, rightPad, 0, leftPad).Gap(theme.Space4).
 		AlignItems(ui.Center).Background(pal.Paper).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
 	if fullscreen {
 		header.DragWindow()
@@ -117,7 +118,17 @@ func (c *Controller) renderPanelHeader(cUI *ui.Context, pal theme.Palette, fulls
 
 	var histAnchor ui.Element
 	header.Children(func() {
-		ui.Text(cUI, title).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Text(cUI, title).
+			FontSize(theme.FontBody).
+			LineHeight(theme.LineBody / theme.FontBody).
+			FontWeight(theme.WeightTitle).
+			TextColor(pal.Text).
+			MaxWidth(theme.TitleBarTitleMaxWidth).
+			Shrink(1).
+			MinWidth(0).
+			SingleLine().
+			Ellipsis("…")
+		ui.Spacer(cUI)
 
 		if !blocked {
 			newBtn := bui.IconButton(cUI, icons.AiPlus, bui.IconButtonOptions{
@@ -219,7 +230,12 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 		panelBox = ui.Rect{X: px, Y: 0, W: panelW, H: winH}
 	}
 	if trigger.W <= 0 {
-		trigger = ui.Rect{X: max(panelBox.X+panelBox.W-42, 8), Y: panelBox.Y + 13, W: 26, H: 26}
+		trigger = ui.Rect{
+			X: max(panelBox.X+panelBox.W-42, 8),
+			Y: panelBox.Y + (theme.TitleBarHeight-theme.ChromeBoxSize)/2,
+			W: theme.ChromeBoxSize,
+			H: theme.ChromeBoxSize,
+		}
 	}
 
 	menuRoom := panelW
@@ -243,7 +259,7 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 
 	ui.Overlay(cUI, func() {
 		scrim := ui.Box(cUI.Key("ai-history-scrim")).Absolute().
-			Left(panelBox.X).Top(panelBox.Y + 52).Width(panelBox.W).Height(max(panelBox.H-52, 0)).
+			Left(panelBox.X).Top(panelBox.Y + theme.TitleBarHeight).Width(panelBox.W).Height(max(panelBox.H-theme.TitleBarHeight, 0)).
 			Background(pal.Scrim()).
 			Transition(ui.ElementTransition{
 				Duration: time.Duration(theme.MotionMs) * time.Millisecond,

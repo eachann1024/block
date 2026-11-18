@@ -93,6 +93,8 @@ const (
 	MenuGap                = Space2
 	MenuMaxWidth   float32 = 320
 
+	TitleBarTitleMaxWidth float32 = 240
+
 	CardPadY float32 = 18
 	CardPadX         = Space20
 	CardGap          = Space16
