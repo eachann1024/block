@@ -30,6 +30,7 @@ type SidebarUIState struct {
 	PendingMiddleOpenPath string
 	NBDragTarget          string
 	NBDragAfter           bool
+	ConfirmForgetNotebook string
 
 	SwitcherOpen   bool
 	SwitcherBounds ui.Rect
@@ -81,6 +82,7 @@ func sidebarContextSnapshot(s *SidebarUIState) sidebarContextKey {
 func (s *SidebarUIState) ClosePopups() bool {
 	had := s.SwitcherOpen || s.ContextOpen
 	s.SwitcherOpen = false
+	s.ConfirmForgetNotebook = ""
 	s.ContextOpen = false
 	s.MoveSubmenuOpen = false
 	s.MenuCursor, s.MoveCursor = -1, -1
@@ -851,18 +853,33 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			blockui.NavigateMenu(card, choices, &p.State.MenuCursor)
 			blockui.Probe(card, "notebook-switcher-pop")
 			card.Children(func() {
+				if p.State.ConfirmForgetNotebook != "" {
+					stillValid := false
+					for _, nb := range p.Notebooks {
+						if nb == p.State.ConfirmForgetNotebook && nb != p.ActiveNotebook {
+							stillValid = true
+							break
+						}
+					}
+					if !stillValid {
+						p.State.ConfirmForgetNotebook = ""
+					}
+				}
 				blockui.Scroll(c).MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
 					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
 						for ix, nb := range p.Notebooks {
 							ix := ix
 							nb := nb
 							checked := nb == p.ActiveNotebook
+							confirming := !checked && p.State.ConfirmForgetNotebook == nb
 							c.Key("nb-item:" + nb)
-							row := ui.Row(c).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(4).AlignItems(ui.Center).Radius(theme.RadiusControl)
+							row := ui.Row(c).FillWidth().Height(theme.MenuItemHeight).Padding(0, 7, 0, 10).Gap(4).AlignItems(ui.Center).Radius(theme.RadiusControl)
 							nbDrop := false
 							nbAfter := false
 							if len(p.Notebooks) > 1 && p.OnReorderNotebooks != nil {
-								row.Drag(nbDragItem{Path: nb, Index: ix})
+								if !confirming {
+									row.Drag(nbDragItem{Path: nb, Index: ix})
+								}
 								if dragged, over := ui.DragOver[nbDragItem](row); over && dragged.Path != "" && dragged.Path != nb {
 									b := row.Bounds()
 									_, py, hasPos := row.PointerPosition()
@@ -874,6 +891,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 									nbDrop = true
 									p.State.NBDragTarget = nb
 									p.State.NBDragAfter = nbAfter
+									p.State.ConfirmForgetNotebook = ""
 								}
 								if dropped, ok := ui.Drop[nbDragItem](row); ok {
 									after := nbAfter
@@ -887,6 +905,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 									}
 									p.State.NBDragTarget = ""
 									p.State.NBDragAfter = false
+									p.State.ConfirmForgetNotebook = ""
 									if dropped.Path != "" && dropped.Path != nb {
 										slot := ix
 										if after {
@@ -915,7 +934,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							switch {
 							case checked:
 								row.Background(pal.MenuChecked)
-							case rowHover || kbActive || nbDrop:
+							case confirming || rowHover || kbActive || nbDrop:
 								row.Background(pal.MenuHover)
 							}
 							row.Children(func() {
@@ -923,64 +942,51 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 									Cursor(ui.CursorPointer).Label(noteDisplayTitle(nb, true))
 								sel.Children(func() {
 									ic := pal.MonoIconColors(pal.MenuIcon)
-									if checked || rowHover || kbActive {
+									if checked || confirming || rowHover || kbActive {
 										ic = pal.DuoIconColors(pal.MenuIcon)
 									}
 									icons.Draw(c, icons.Folder, theme.IconRow, ic)
 									ui.Text(c, noteDisplayTitle(nb, true)).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 									if checked {
-										icons.Draw(c, icons.Check, 16, pal.MonoIconColors(pal.Text))
+										ui.Box(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0).Center().Children(func() {
+											icons.Draw(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text))
+										})
 									}
 								})
 								blockui.Probe(sel, "nb-select:"+nb)
 								if sel.Clicked() {
-									choices[ix].OnClick()
-								}
-								if rowHover && len(p.Notebooks) > 1 && p.OnReorderNotebooks != nil {
-									if ix > 0 {
-										upBtn := blockui.IconButton(c, icons.ArrowUp, blockui.IconButtonOptions{
-											ID:       "nb-up:" + nb,
-											Size:     20,
-											IconSize: theme.IconMicro,
-											Tooltip:  theme.Tr("上移", "Move Up"),
-										})
-										if upBtn.Clicked() {
-											p.OnReorderNotebooks(ix, ix-1)
-										}
-									}
-									if ix+1 < len(p.Notebooks) {
-										dnBtn := blockui.IconButton(c, icons.ArrowDown, blockui.IconButtonOptions{
-											ID:       "nb-down:" + nb,
-											Size:     20,
-											IconSize: theme.IconMicro,
-											Tooltip:  theme.Tr("下移", "Move Down"),
-										})
-										if dnBtn.Clicked() {
-											p.OnReorderNotebooks(ix, ix+1)
-										}
+									if confirming {
+										p.State.ConfirmForgetNotebook = ""
+									} else {
+										choices[ix].OnClick()
 									}
 								}
-								if rowHover && !checked && p.OnForgetNotebook != nil {
+								if !checked && p.OnForgetNotebook != nil {
 									fgID := "nb-forget:" + nb
-									c.Key(fgID)
-									fgBtn := ui.ButtonBase(c).Size(20, 20).Shrink(0).Center().
-										Radius(theme.RadiusMicroSM).Cursor(ui.CursorPointer).
-										Label(theme.Tr("从列表移除", "Remove from list"))
-									fgHover := fgBtn.Hovered()
-									if fgHover {
-										fgBtn.Background(pal.BtnHover)
-									}
-									blockui.Tooltip(c, fgBtn, theme.Tr("从列表移除", "Remove from list"))
-									fgBtn.Children(func() {
-										ic := pal.MonoIconColors(pal.TextSecondary)
-										if fgHover {
-											ic = pal.DuoIconColors(pal.Text)
+									if confirming {
+										confirmed, cancelled := blockui.InlineConfirm(c, blockui.InlineConfirmOptions{
+											ID:           fgID,
+											ConfirmLabel: theme.Tr("移除", "Remove"),
+											Danger:       true,
+										})
+										if cancelled {
+											p.State.ConfirmForgetNotebook = ""
+										} else if confirmed {
+											p.State.ConfirmForgetNotebook = ""
+											p.OnForgetNotebook(nb)
 										}
-										icons.Draw(c, icons.Close, theme.IconMicro, ic)
-									})
-									blockui.Probe(fgBtn, fgID)
-									if fgBtn.Clicked() {
-										p.OnForgetNotebook(nb)
+									} else if rowHover {
+										fgBtn := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{
+											ID:       fgID,
+											Size:     theme.TreeMoreBtnSize,
+											IconSize: theme.IconMenuCheck,
+											Radius:   theme.RadiusMicroMD,
+											Tooltip:  theme.Tr("从列表移除", "Remove from list"),
+											Danger:   true,
+										})
+										if fgBtn.Clicked() {
+											p.State.ConfirmForgetNotebook = nb
+										}
 									}
 								}
 							})
@@ -992,8 +998,14 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 					})
 				})
 			})
-			if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
+			if card.PressedOutside() {
 				p.State.ClosePopups()
+			} else if scrim.OverlayShortcut(0, ui.KeyEscape) {
+				if p.State.ConfirmForgetNotebook != "" {
+					p.State.ConfirmForgetNotebook = ""
+				} else {
+					p.State.ClosePopups()
+				}
 			}
 			return
 		}
