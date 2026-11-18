@@ -822,6 +822,32 @@ func (s *Session) windowPointerStatus() (pt ui.Point, ok bool) {
 	return ui.Point{X: s.editorRect.X + rx, Y: s.editorRect.Y + ry}, true
 }
 
+// blockHitBoundsY returns the vertical hit-test territory of visible block idx,
+// splitting inter-block topGaps at their midpoints so top and bottom edges behave symmetrically.
+func (s *Session) blockHitBoundsY(idx int) (top, bottom float32, ok bool) {
+	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return 0, 0, false
+	}
+	r, hasRect := s.blockRects[s.doc.Blocks[idx].ID]
+	if !hasRect || r.H <= 0 {
+		return 0, 0, false
+	}
+	top = r.Y
+	if prev := s.stepVisibleBlock(idx, -1); prev >= 0 && prev < idx {
+		topGap := min(s.blockGap(&s.doc.Blocks[prev], &s.doc.Blocks[idx]), max(r.H-1, 0))
+		top = r.Y + topGap*0.5
+	}
+	bottom = r.Y + r.H
+	if next := s.stepVisibleBlock(idx, 1); next > idx && next < len(s.doc.Blocks) {
+		nextGap := s.blockGap(&s.doc.Blocks[idx], &s.doc.Blocks[next])
+		if nextR, hasNext := s.blockRects[s.doc.Blocks[next].ID]; hasNext && nextR.H > 0 {
+			nextGap = min(nextGap, max(nextR.H-1, 0))
+		}
+		bottom = r.Y + r.H + nextGap*0.5
+	}
+	return top, bottom, true
+}
+
 // preUpdateFocusedDrag updates cross-block selection ahead of building rows when an
 // already-focused block input is being dragged across other blocks, ensuring 0-frame lag
 // even when dragging upwards to earlier blocks.
@@ -839,9 +865,7 @@ func (s *Session) preUpdateFocusedDrag(c *ui.Context, root ui.Element) {
 	if math.Hypot(float64(wx-s.mouseStartPt.X), float64(wy-s.mouseStartPt.Y)) > 3 {
 		s.mouseDragged = true
 	}
-	originID := s.doc.Blocks[s.mouseOriginBlock].ID
-	r, ok := s.blockRects[originID]
-	if ok && r.H > 0 && (wy < r.Y || wy > r.Y+r.H) {
+	if topY, botY, ok := s.blockHitBoundsY(s.mouseOriginBlock); ok && (wy < topY || wy > botY) {
 		s.selAnchor = s.mouseTextAnchor
 		s.selHead = s.hitPositionAtPoint(wx, wy)
 		s.autoScrollOnDrag(c, wy)
@@ -1062,24 +1086,22 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 			return
 		}
 		idx := s.nearestVisibleBlockAtY(pt.Y)
-		if idx >= 0 {
-			r := s.blockRects[s.doc.Blocks[idx].ID]
-			contentLeft := r.X + s.leftContentGutter()
-			off := 0
-			if pt.X > contentLeft+40 {
-				off = s.blockSelectionLen(idx)
-			}
+		if idx < 0 {
+			return
+		}
+		if k := s.doc.Blocks[idx].Kind; k == model.BlockDivider || k == model.BlockImage {
 			s.FocusBlock(idx)
-			s.selAnchor = Position{Block: idx, Offset: off}
-			s.selHead = s.selAnchor
 			s.focusPreventScroll = true
 			if readOnly {
 				s.focusPending = false
 				s.selSyncPending = false
 			}
 			s.scheduleRebuild(c)
+			return
 		}
-		return
+		pos := s.hitPositionAtPoint(pt.X, pt.Y)
+		s.selAnchor = pos
+		s.selHead = pos
 	}
 
 	idx := clampInt(s.selHead.Block, 0, len(s.doc.Blocks)-1)
@@ -1134,8 +1156,8 @@ func (s *Session) updateFocusedInputDrag(c *ui.Context, root, in ui.Element, idx
 	if held {
 		wx, wy := s.windowPointer(root)
 		anchorOff, caretOff := in.TextAnchorCaret()
-		r, hasRect := s.blockRects[s.doc.Blocks[idx].ID]
-		outsideBlock := hasRect && r.H > 0 && (wy < r.Y || wy > r.Y+r.H)
+		topY, botY, hasBounds := s.blockHitBoundsY(idx)
+		outsideBlock := hasBounds && (wy < topY || wy > botY)
 
 		if s.mouseMode == mouseSelNone || s.mouseOriginBlock != idx || s.pressJustBegan {
 			s.pressJustBegan = false
@@ -1180,6 +1202,9 @@ func (s *Session) updateFocusedInputDrag(c *ui.Context, root, in ui.Element, idx
 		s.mouseDragged = false
 		s.pressJustBegan = false
 		if s.needsDetachedSelectionFocus() {
+			if s.doc != nil && len(s.doc.Blocks) > 0 {
+				s.focusedBlock = clampInt(s.selHead.Block, 0, len(s.doc.Blocks)-1)
+			}
 			s.multiSelFocusPending = true
 			s.focusPending = false
 			s.scheduleRebuild(c)
@@ -1235,6 +1260,9 @@ func (s *Session) updateFocusedTableCellDrag(c *ui.Context, root, in ui.Element,
 		s.mouseDragged = false
 		s.pressJustBegan = false
 		if s.needsDetachedSelectionFocus() {
+			if s.doc != nil && len(s.doc.Blocks) > 0 {
+				s.focusedBlock = clampInt(s.selHead.Block, 0, len(s.doc.Blocks)-1)
+			}
 			s.multiSelFocusPending = true
 			s.focusPending = false
 			s.scheduleRebuild(c)
@@ -1249,8 +1277,8 @@ func (s *Session) updateFocusedRichInputDrag(c *ui.Context, root ui.Element, st 
 	if st != nil && st.Dragging() {
 		wx, wy := s.windowPointer(root)
 		anchorOff, caretOff := st.SelectionRunes()
-		r, hasRect := s.blockRects[s.doc.Blocks[idx].ID]
-		outsideBlock := hasRect && r.H > 0 && (wy < r.Y || wy > r.Y+r.H)
+		topY, botY, hasBounds := s.blockHitBoundsY(idx)
+		outsideBlock := hasBounds && (wy < topY || wy > botY)
 
 		if s.mouseMode == mouseSelNone || s.mouseOriginBlock != idx || s.pressJustBegan {
 			s.pressJustBegan = false
@@ -1295,6 +1323,9 @@ func (s *Session) updateFocusedRichInputDrag(c *ui.Context, root ui.Element, st 
 		s.mouseDragged = false
 		s.pressJustBegan = false
 		if s.needsDetachedSelectionFocus() {
+			if s.doc != nil && len(s.doc.Blocks) > 0 {
+				s.focusedBlock = clampInt(s.selHead.Block, 0, len(s.doc.Blocks)-1)
+			}
 			s.multiSelFocusPending = true
 			s.focusPending = false
 			s.scheduleRebuild(c)
@@ -1349,6 +1380,9 @@ func (s *Session) updateFocusedRichTableCellDrag(c *ui.Context, root ui.Element,
 		s.mouseDragged = false
 		s.pressJustBegan = false
 		if s.needsDetachedSelectionFocus() {
+			if s.doc != nil && len(s.doc.Blocks) > 0 {
+				s.focusedBlock = clampInt(s.selHead.Block, 0, len(s.doc.Blocks)-1)
+			}
 			s.multiSelFocusPending = true
 			s.focusPending = false
 			s.scheduleRebuild(c)
@@ -1510,26 +1544,36 @@ func (s *Session) nearestVisibleBlockAtY(wy float32) int {
 	firstVis, lastVis := -1, -1
 	bestIdx := -1
 	bestDist := float32(1e9)
+	var prevVis *model.Block
 	for i := range s.doc.Blocks {
 		if s.isBlockHiddenByFold(i) {
 			continue
 		}
-		r, ok := s.blockRects[s.doc.Blocks[i].ID]
+		cur := &s.doc.Blocks[i]
+		r, ok := s.blockRects[cur.ID]
 		if !ok || r.H <= 0 {
+			prevVis = cur
 			continue
 		}
 		if firstVis < 0 {
 			firstVis = i
 		}
 		lastVis = i
-		if wy >= r.Y && wy <= r.Y+r.H {
+		topGap := float32(0)
+		if prevVis != nil {
+			topGap = min(s.blockGap(prevVis, cur), max(r.H-1, 0))
+		}
+		prevVis = cur
+		vTop := r.Y + topGap
+		vBot := r.Y + r.H
+		if wy >= vTop && wy <= vBot {
 			return i
 		}
 		var d float32
-		if wy < r.Y {
-			d = r.Y - wy
+		if wy < vTop {
+			d = vTop - wy
 		} else {
-			d = wy - (r.Y + r.H)
+			d = wy - vBot
 		}
 		if d < bestDist {
 			bestDist = d
