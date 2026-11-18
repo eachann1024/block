@@ -2782,7 +2782,7 @@ func (s *Session) AddAnnotation(note string) *model.Annotation {
 		CreatedAtUnix: time.Now().Unix(),
 	}
 	s.annotations = append(s.annotations, ann)
-	s.activeAnnotID = ann.ID
+	s.activeAnnotID = ""
 	s.caretHidden = true
 	s.persistAnnotations()
 	return ann

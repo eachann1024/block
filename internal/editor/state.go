@@ -201,6 +201,7 @@ type Session struct {
 	hoveredAnnotID        string
 	editingAnnotID        string
 	editingAnnotText      string
+	editingFocusPending   bool
 	editingHandle         ui.Handle
 	nextAnnotSeq          int
 
@@ -398,6 +399,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.activeAnnotID = ""
 	s.hoveredAnnotID = ""
 	s.editingAnnotID = ""
+	s.editingFocusPending = false
 	s.footPickerAnnotID = ""
 	s.caretHidden = false
 	s.toolbarMoreIndex = 0
@@ -802,6 +804,7 @@ func (s *Session) closeTransientOverlays() {
 	s.tableMenuKind = ""
 	s.activeAnnotID = ""
 	s.editingAnnotID = ""
+	s.editingFocusPending = false
 	s.footPickerAnnotID = ""
 	s.trailingPlus = false
 }
