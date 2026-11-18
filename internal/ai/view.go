@@ -261,7 +261,7 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 			Width(menuW).MaxHeight(maxH).Padding(theme.MenuPadding).Gap(theme.Space2).
 			Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.MenuBorder).
 			Clip().
-			Transition(bui.PopupTransition()), theme.ElevationPopover)
+			Transition(probeSafeTransition(bui.PopoverSpringTransition())), theme.ElevationPopover)
 		bui.Probe(panel, "ai-history-list")
 
 		panel.Children(func() {
@@ -274,17 +274,24 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 			bui.Scroll(cUI.Key("ai-history-scroll"), &c.historyScroll).
 				FillWidth().MaxHeight(max(maxH-theme.MenuPadding*2, 48)).Children(func() {
 				ui.Column(cUI).FillWidth().Gap(2).Children(func() {
-					for _, conv := range convs {
+					for idx, conv := range convs {
 						convID := conv.ID
 						active := convID == curID
 						rowID := fmt.Sprintf("conv-%d", convID)
 						row := ui.Row(cUI.Key(rowID)).FillWidth().Height(32).PaddingX(8).Gap(8).
-							AlignItems(ui.Center).Radius(theme.RadiusMD).Border(1, ui.Transparent)
+							AlignItems(ui.Center).Radius(theme.RadiusMD).
+							Transition(probeSafeTransition(bui.CascadeItemTransition(idx, false)))
+						hovered := row.Hovered()
+						bg := ui.Transparent
+						bd := ui.Transparent
 						if active {
-							row.Background(pal.Selected).Border(1, pal.Accent)
-						} else if row.Hovered() {
-							row.Background(pal.Hover)
+							bg = pal.Selected
+							bd = pal.Accent
+						} else if hovered {
+							bg = pal.Hover
 						}
+						bui.AnimateSurfaceColors(row, bg, bd, true)
+						bui.TactileCard(row, hovered, false, active, false)
 						bui.Probe(row, rowID)
 						row.Children(func() {
 							selBtn := ui.ButtonBase(cUI.Key("sel-" + rowID)).Grow(1).MinWidth(0).FillHeight().
@@ -502,7 +509,8 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 }
 
 func (c *Controller) renderUserMessage(cUI *ui.Context, pal theme.Palette, convID uint64, idx int, text string) {
-	ui.Row(cUI.Key(fmt.Sprintf("user-row-%d-%d", convID, idx))).FillWidth().Justify(ui.End).Children(func() {
+	ui.Row(cUI.Key(fmt.Sprintf("user-row-%d-%d", convID, idx))).FillWidth().Justify(ui.End).
+		Transition(probeSafeTransition(bui.CascadeItemTransition(idx, true))).Children(func() {
 		bubble := ui.Box(cUI).MaxWidth(320).Padding(8, 12).Radius(theme.RadiusXL).Background(pal.Hover)
 		bui.Probe(bubble, "ai-user-message")
 		bubble.Children(func() {
@@ -513,7 +521,8 @@ func (c *Controller) renderUserMessage(cUI *ui.Context, pal theme.Palette, convI
 
 func (c *Controller) renderAssistantReply(cUI *ui.Context, pal theme.Palette, convID uint64, replyIdx int, text string, copyable bool, isStreaming bool) {
 	boxKey := fmt.Sprintf("reply-%d-%d", convID, replyIdx)
-	wrap := ui.Column(cUI.Key(boxKey)).FillWidth().Gap(4)
+	wrap := ui.Column(cUI.Key(boxKey)).FillWidth().Gap(4).
+		Transition(probeSafeTransition(bui.CascadeItemTransition(replyIdx, false)))
 	hoveredWrap := wrap.Hovered()
 	mdOpts := c.markdownOptions(pal)
 
@@ -667,7 +676,8 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 	}
 
 	card := ui.Column(cUI.Key("ai-process-card-"+turnKey)).FillWidth().Padding(8, 10).Gap(6).
-		Radius(theme.RadiusMD).Background(pal.Shell).Border(1, pal.Hairline)
+		Radius(theme.RadiusMD).Background(pal.Shell).Border(1, pal.Hairline).
+		Transition(probeSafeTransition(bui.CascadeItemTransition(0, false)))
 	bui.Probe(card, "ai-process-card")
 
 	card.Children(func() {
@@ -683,7 +693,8 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 				if expanded {
 					chev = icons.ChevronDown
 				}
-				icons.Draw(cUI, chev, 14, pal.HoverIconColors(toggleBtn.Hovered()))
+				chevActive := toggleBtn.Hovered() || toggleBtn.Pressed()
+				icons.DrawAnimated(cUI, chev, 14, pal.HoverIconColors(chevActive), chevActive)
 			}
 			ui.Text(cUI, headline).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).Grow(1).SingleLine()
 		})
@@ -706,10 +717,18 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 
 						chipID := fmt.Sprintf("ai-process-tool-chip-%d", i)
 						row := ui.ButtonBase(cUI.Key(chipID+"-"+turnKey)).FillWidth().MinHeight(28).PaddingX(6).Gap(8).
-							AlignItems(ui.Center).Radius(theme.RadiusSM).Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(st.Title)
-						if row.Hovered() {
-							row.Background(pal.Hover)
+							AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(st.Title).
+							Transition(probeSafeTransition(bui.CascadeItemTransition(i, false)))
+						hovered := row.Hovered()
+						pressed := row.Pressed()
+						bg := ui.Transparent
+						if pressed {
+							bg = pal.Selected
+						} else if hovered {
+							bg = pal.Hover
 						}
+						bui.AnimateSurfaceColors(row, bg, ui.Transparent, true)
+						bui.TactileCard(row, hovered, pressed, detailOpen, false)
 						bui.Probe(row, chipID)
 
 						row.Children(func() {
@@ -722,7 +741,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 							case model.ToolKindRun:
 								iconGlyph = icons.ToolRun
 							}
-							icons.Draw(cUI, iconGlyph, 14, pal.MonoIconColors(pal.TextSecondary))
+							icons.DrawAnimated(cUI, iconGlyph, 14, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || detailOpen)
 							ui.Text(cUI, st.Title).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 							if st.Detail != "" {
 								ui.Text(cUI, st.Detail).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).SingleLine()
@@ -773,7 +792,8 @@ func (c *Controller) renderSourcesCard(cUI *ui.Context, pal theme.Palette, turnK
 	expanded := c.expandedSources[turnKey]
 	c.mu.RUnlock()
 
-	card := ui.Column(cUI.Key("ai-sources-" + turnKey)).FillWidth().Gap(6)
+	card := ui.Column(cUI.Key("ai-sources-" + turnKey)).FillWidth().Gap(6).
+		Transition(probeSafeTransition(bui.CascadeItemTransition(0, false)))
 	bui.Probe(card, "ai-context-card")
 	card.Children(func() {
 		toggle := ui.ButtonBase(cUI.Key("ai-sources-toggle-" + turnKey)).Height(28).PaddingX(6).Gap(8).
@@ -796,16 +816,24 @@ func (c *Controller) renderSourcesCard(cUI *ui.Context, pal theme.Palette, turnK
 			for i, src := range sources {
 				srcID := fmt.Sprintf("ai-source-%s-%d", turnKey, i)
 				btn := ui.ButtonBase(cUI.Key(srcID)).FillWidth().Padding(8, 10).Gap(8).
-					AlignItems(ui.Center).Radius(theme.RadiusMD).
-					Background(pal.Shell).Border(1, pal.BtnBorder).Cursor(ui.CursorPointer).Label(src.Title)
-				bui.Probe(btn, srcID)
-				if btn.Hovered() {
-					btn.Background(pal.Hover)
+					AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(src.Title).
+					Transition(probeSafeTransition(bui.CascadeItemTransition(i, false)))
+				hovered := btn.Hovered()
+				pressed := btn.Pressed()
+				bg := pal.Shell
+				if pressed {
+					bg = pal.Selected
+				} else if hovered {
+					bg = pal.Hover
 				}
+				bui.AnimateSurfaceColors(btn, bg, pal.BtnBorder, true)
+				bui.TactileCard(btn, hovered, pressed, false, false)
+				bui.Probe(btn, srcID)
 				btn.Children(func() {
-					icons.Draw(cUI, icons.Note, theme.IconRow, pal.DuoIconColors(pal.Text))
+					active := hovered || pressed
+					icons.DrawAnimated(cUI, icons.Note, theme.IconRow, pal.DuoIconColors(pal.Text), active)
 					ui.Text(cUI, src.Title+".md").FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).SingleLine()
-					icons.Draw(cUI, icons.ChevronRight, theme.IconInline, pal.HoverIconColors(btn.Hovered()))
+					icons.DrawAnimated(cUI, icons.ChevronRight, theme.IconInline, pal.HoverIconColors(active), active)
 				})
 				if btn.Clicked() && c.host != nil {
 					_ = c.host.OpenNote(src.Path, 0)
@@ -856,7 +884,8 @@ func parseDiffTableCells(trimmed string) []string {
 func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID uint64, msgIdx int, plan *model.BatchPlan) {
 	cardID := fmt.Sprintf("plan-op-%d-0", msgIdx)
 	card := ui.Column(cUI.Key(cardID)).FillWidth().Radius(theme.RadiusLG).Clip().
-		Background(pal.Paper).Border(1, pal.Hairline)
+		Background(pal.Paper).Border(1, pal.Hairline).
+		Transition(probeSafeTransition(bui.CascadeItemTransition(msgIdx, false)))
 	bui.Probe(card, "ai-plan-card")
 
 	pending := plan.Status == "pending"
@@ -885,12 +914,19 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 
 	card.Children(func() {
 		topBtn := ui.ButtonBase(cUI.Key("plan-open-"+cardID)).FillWidth().Padding(theme.Space10, theme.Space16).Gap(theme.Space6).
-			Radius(theme.RadiusLG, theme.RadiusLG, 0, 0).Background(pal.Shell).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
+			Radius(theme.RadiusLG, theme.RadiusLG, 0, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
 			Column().AlignItems(ui.Start).Cursor(ui.CursorPointer).Label(title)
+		topBG := pal.Shell
+		if topBtn.Pressed() {
+			topBG = pal.Selected
+		} else if topBtn.Hovered() {
+			topBG = pal.Hover
+		}
+		bui.AnimateSurfaceColors(topBtn, topBG, ui.Transparent, false)
 		bui.Probe(topBtn, cardID)
 		topBtn.Children(func() {
 			ui.Row(cUI).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-				icons.Draw(cUI, icons.Sparkles, 16, pal.MonoIconColors(pal.Accent))
+				icons.DrawAnimated(cUI, icons.Sparkles, 16, pal.MonoIconColors(pal.Accent), topBtn.Hovered() || topBtn.Pressed() || pending)
 				ui.Text(cUI, title).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).SingleLine()
 				if isCreate && pending {
 					ui.Box(cUI).Padding(2, 7).Radius(theme.RadiusXS).Background(pal.Selected).Children(func() {
@@ -1130,7 +1166,8 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 	last := qi+1 >= total
 
 	card := bui.Elevate(ui.Column(cUI.Key("ai-question-card-"+qKey)).FillWidth().Padding(theme.Space16).Gap(theme.Space10).
-		Radius(theme.RadiusLG).Background(pal.Paper).Border(1, pal.BtnBorder), theme.ElevationPopover)
+		Radius(theme.RadiusLG).Background(pal.Paper).Border(1, pal.BtnBorder).
+		Transition(probeSafeTransition(bui.CascadeItemTransition(0, false))), theme.ElevationPopover)
 	bui.Probe(card, "ai-question-card")
 
 	card.Children(func() {
@@ -1159,12 +1196,21 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 				optID := fmt.Sprintf("ai-question-opt-%d-%d", qi, idx)
 				on := pickedMap != nil && pickedMap[idx]
 				row := ui.ButtonBase(cUI.Key(optID+"-"+qKey)).FillWidth().MinHeight(32).Padding(6, 8).Gap(8).
-					AlignItems(ui.Center).Radius(theme.RadiusSM).Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(opt.Label)
+					AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(opt.Label)
+				hovered := row.Hovered()
+				pressed := row.Pressed()
+				bg := ui.Transparent
+				bd := ui.Transparent
 				if on {
-					row.Background(pal.Selected).Border(1, pal.Accent)
-				} else if row.Hovered() {
-					row.Background(pal.Hover)
+					bg = pal.Selected
+					bd = pal.Accent
+				} else if pressed {
+					bg = pal.Selected
+				} else if hovered {
+					bg = pal.Hover
 				}
+				bui.AnimateSurfaceColors(row, bg, bd, true)
+				bui.TactileCard(row, hovered, pressed, on, false)
 				bui.Probe(row, optID)
 				row.Children(func() {
 					ind := ui.Box(cUI).Size(16, 16).Shrink(0).Border(1, pal.BtnBorder).Center()
@@ -1177,9 +1223,13 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 						ind.BorderColor(pal.Text).Background(pal.Text)
 						ind.Children(func() {
 							if q.MultiSelect {
-								icons.Draw(cUI, icons.Check, 12, pal.MonoIconColors(pal.Paper))
+								icons.DrawAnimated(cUI, icons.Check, 12, pal.MonoIconColors(pal.Paper), on)
 							} else {
-								ui.Box(cUI).Size(6, 6).Radius(theme.RadiusPill).Background(pal.Paper)
+								dot := ui.Box(cUI.Key("qdot-"+optID)).Size(6, 6).Radius(theme.RadiusPill).Background(pal.Paper)
+								sc := dot.AnimateTo("qdotSc", 1.0, bui.SpringTactile)
+								if sc != 1.0 {
+									dot.Scale(sc, sc)
+								}
 							}
 						})
 					}
@@ -1303,7 +1353,8 @@ func (c *Controller) renderApprovalCard(cUI *ui.Context, pal theme.Palette, conv
 	c.mu.Unlock()
 
 	card := ui.Column(cUI.Key("ai-approval-card-"+aKey)).FillWidth().MaxWidth(340).Padding(14).Gap(10).
-		Radius(theme.RadiusLG).Background(pal.Paper).Border(1, pal.BtnBorder)
+		Radius(theme.RadiusLG).Background(pal.Paper).Border(1, pal.BtnBorder).
+		Transition(probeSafeTransition(bui.CascadeItemTransition(0, false)))
 	bui.Probe(card, "ai-approval-card")
 
 	card.Children(func() {
@@ -1318,12 +1369,21 @@ func (c *Controller) renderApprovalCard(cUI *ui.Context, pal theme.Palette, conv
 		renderOpt := func(id, label string, dec model.ApprovalDecision) {
 			selected := choice == dec
 			row := ui.ButtonBase(cUI.Key(id+"-"+aKey)).FillWidth().MinHeight(30).Padding(5, 8).Gap(8).
-				AlignItems(ui.Center).Radius(theme.RadiusSM).Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(label)
+				AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(label)
+			hovered := row.Hovered() && !submitted
+			pressed := row.Pressed() && !submitted
+			bg := ui.Transparent
+			bd := ui.Transparent
 			if selected {
-				row.Background(pal.Selected).Border(1, pal.Accent)
-			} else if row.Hovered() {
-				row.Background(pal.Hover)
+				bg = pal.Selected
+				bd = pal.Accent
+			} else if pressed {
+				bg = pal.Selected
+			} else if hovered {
+				bg = pal.Hover
 			}
+			bui.AnimateSurfaceColors(row, bg, bd, true)
+			bui.TactileCard(row, hovered, pressed, selected, submitted)
 			bui.Probe(row, id)
 			if selected {
 				bui.Probe(row, "ai-approval-selected-"+string(dec))
@@ -1654,7 +1714,7 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 	}
 
 	wrap := ui.Column(cUI.Key("ai-picker-wrap")).FillWidth().Padding(0, 16, 4, 16).
-		Transition(bui.PopupTransition())
+		Transition(probeSafeTransition(bui.PopoverSpringTransition()))
 	if fullscreen {
 		wrap.MaxWidth(720).Margin(0, ui.Auto)
 	}
@@ -1681,13 +1741,23 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 				it := items[i]
 				rowID := fmt.Sprintf("ai-pick-%d", i)
 				row := ui.ButtonBase(cUI.Key(rowID)).FillWidth().Height(36).PaddingX(10).Gap(8).
-					AlignItems(ui.Center).Radius(theme.RadiusSM).Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(it.label)
+					AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(it.label)
 				bui.RevealOnHighlight(row, i == selected)
-				if i == selected {
-					row.Background(pal.Selected).Border(1, pal.Accent)
-				} else if row.Hovered() {
-					row.Background(pal.Hover)
+				hovered := row.Hovered()
+				pressed := row.Pressed()
+				isSel := i == selected
+				bg := ui.Transparent
+				bd := ui.Transparent
+				if isSel {
+					bg = pal.Selected
+					bd = pal.Accent
+				} else if pressed {
+					bg = pal.Selected
+				} else if hovered {
+					bg = pal.Hover
 				}
+				bui.AnimateSurfaceColors(row, bg, bd, true)
+				bui.TactileCard(row, hovered, pressed, isSel, false)
 				bui.Probe(row, rowID)
 				row.Children(func() {
 					ic := icons.Sparkles
@@ -1697,13 +1767,14 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 					case pickPage:
 						ic = icons.Note
 					}
-					icons.Draw(cUI, ic, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+					active := isSel || hovered || pressed
+					icons.DrawAnimated(cUI, ic, theme.IconRow, pal.MonoIconColors(pal.TextSecondary), active)
 					ui.Text(cUI, it.label).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
 					if it.hint != "" {
 						ui.Text(cUI, it.hint).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 					}
 					if it.kind == pickFolder {
-						icons.Draw(cUI, icons.ChevronRight, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+						icons.DrawAnimated(cUI, icons.ChevronRight, theme.IconInline, pal.MonoIconColors(pal.TextSecondary), active)
 					}
 				})
 				if row.Clicked() {
@@ -1924,9 +1995,10 @@ func (c *Controller) renderDraftChip(cUI *ui.Context, pal theme.Palette, id stri
 		label = "/" + name
 		ic = icons.Sparkles
 	}
-	ui.Row(cUI.Key(id)).Padding(3, 8).Gap(6).AlignItems(ui.Center).Radius(theme.RadiusSM).
-		Background(pal.Paper).Border(1, pal.BtnBorder).Children(func() {
-		icons.Draw(cUI, ic, theme.IconRow, pal.MonoIconColors(pal.Accent))
+	chip := ui.Row(cUI.Key(id)).Padding(3, 8).Gap(6).AlignItems(ui.Center).Radius(theme.RadiusSM).
+		Background(pal.Paper).Border(1, pal.BtnBorder)
+	chip.Children(func() {
+		icons.DrawAnimated(cUI, ic, theme.IconRow, pal.MonoIconColors(pal.Accent), chip.Hovered())
 		ui.Text(cUI, label).FontSize(theme.FontBody).TextColor(pal.Text)
 		xBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
 			ID:       id + "-x",
@@ -1977,11 +2049,20 @@ func (c *Controller) renderDeckTrigger(cUI *ui.Context, pal theme.Palette) ui.El
 	btn := ui.ButtonBase(cUI.Key("ai-deck-trigger")).Height(30).PaddingX(10).Gap(6).
 		MaxWidth(maxTrigW).Shrink(1).MinWidth(0).
 		AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(label)
+	hovered := btn.Hovered()
+	pressed := btn.Pressed()
+	bg := pal.Paper
+	bd := pal.BtnBorder
 	if open {
-		btn.Background(pal.Selected).Border(1, pal.Accent)
-	} else {
-		btn.Background(pal.Paper).Border(1, pal.BtnBorder)
+		bg = pal.Selected
+		bd = pal.Accent
+	} else if pressed {
+		bg = pal.Selected
+	} else if hovered {
+		bg = pal.Hover
 	}
+	bui.AnimateSurfaceColors(btn, bg, bd, true)
+	bui.TactileCard(btn, hovered, pressed, open, false)
 	if b := btn.Bounds(); b.W > 0 {
 		c.mu.Lock()
 		c.deckTriggerBox = b
@@ -1997,7 +2078,7 @@ func (c *Controller) renderDeckTrigger(cUI *ui.Context, pal theme.Palette) ui.El
 		if open {
 			chev = icons.ChevronUp
 		}
-		icons.Draw(cUI, chev, 12, pal.MonoIconColors(pal.TextSecondary))
+		icons.DrawAnimated(cUI, chev, 12, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || open)
 	})
 	if btn.Clicked() {
 		c.mu.Lock()
@@ -2109,7 +2190,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 		panel := bui.Elevate(ui.Column(cUI.Key("ai-agent-deck")).Absolute().Left(x).Top(y).
 			Width(popW).MaxHeight(maxH).Radius(theme.RadiusXL).
 			Background(pal.Menu).Border(1, pal.MenuBorder).Clip().
-			Transition(bui.PopupTransition()), theme.ElevationPopover)
+			Transition(probeSafeTransition(bui.PopoverSpringTransition())), theme.ElevationPopover)
 		bui.Probe(panel, "ai-deck")
 
 		panel.Children(func() {
@@ -2133,24 +2214,41 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 							Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 							Label(backendLabel(k))
 						bui.Tooltip(cUI, btn, backendLabel(k))
+						hovered := btn.Hovered()
+						pressed := btn.Pressed()
+						bg := ui.Transparent
+						bd := ui.Transparent
 						if active {
-							btn.Background(pal.Selected).Border(1, pal.Accent)
-						} else {
-							if btn.Hovered() {
-								btn.Background(pal.Hover)
-							}
-							btn.Border(1, ui.Transparent)
+							bg = pal.Selected
+							bd = pal.Accent
+						} else if pressed {
+							bg = pal.Selected
+						} else if hovered {
+							bg = pal.Hover
 						}
+						bui.AnimateSurfaceColors(btn, bg, bd, true)
+						bui.TactileButton(btn, hovered, pressed, false)
 						bui.Probe(btn, cardID)
 						btn.Children(func() {
 							icCol := pal.TextSecondary
-							if active {
+							if active || hovered || pressed {
 								icCol = pal.Text
 							}
 							icons.Brand(cUI, k, icoSz, icCol)
+							dot := ui.Box(cUI.Key("dot-"+cardID)).Absolute().Right(4).Bottom(4).Size(5, 5).
+								Radius(theme.RadiusPill).Background(pal.TextSecondary)
+							targetDot := float32(0)
 							if !ready {
-								ui.Box(cUI).Absolute().Right(4).Bottom(4).Size(5, 5).
-									Radius(theme.RadiusPill).Background(pal.TextSecondary)
+								targetDot = 1.0
+								if hovered || active {
+									targetDot = 1.25
+								}
+							}
+							dotSc := dot.AnimateTo("dotSc", targetDot, bui.SpringTactile)
+							if dotSc > 0.02 {
+								dot.Scale(dotSc, dotSc).Opacity(min(dotSc, 1))
+							} else {
+								dot.Opacity(0)
 							}
 						})
 						if btn.Clicked() {
@@ -2270,20 +2368,30 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 							highlighted := idx == *deckCursor
 							mID := fmt.Sprintf("ai-model-%d", idx)
 							row := ui.ButtonBase(cUI.Key(mID)).FillWidth().Height(rowH).PaddingX(rowPX).Gap(8).
-								AlignItems(ui.Center).Radius(theme.RadiusMD).Border(1, ui.Transparent).
-								Cursor(ui.CursorPointer).Label(m.Label)
+								AlignItems(ui.Center).Radius(theme.RadiusMD).
+								Cursor(ui.CursorPointer).Label(m.Label).
+								Transition(probeSafeTransition(bui.CascadeItemTransition(idx, false)))
 							bui.RevealOnHighlight(row, highlighted)
+							hovered := highlighted || (*deckCursor < 0 && row.Hovered())
+							pressed := row.Pressed()
+							bg := ui.Transparent
+							bd := ui.Transparent
 							if active {
-								row.Background(pal.Selected).Border(1, pal.Accent)
-							} else if highlighted || (*deckCursor < 0 && row.Hovered()) {
-								row.Background(pal.Hover)
+								bg = pal.Selected
+								bd = pal.Accent
+							} else if pressed {
+								bg = pal.Selected
+							} else if hovered {
+								bg = pal.Hover
 							}
+							bui.AnimateSurfaceColors(row, bg, bd, true)
+							bui.TactileCard(row, hovered, pressed, active, false)
 							bui.Probe(row, mID)
 							row.Children(func() {
 								icons.Brand(cUI, selected, 15, pal.Text)
 								ui.Text(cUI, m.Label).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 								if active {
-									icons.Draw(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent))
+									icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), active)
 								}
 							})
 							if row.Clicked() {
@@ -2346,19 +2454,25 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 								btn := ui.ButtonBase(cUI.Key(btnID)).FillWidth().Height(36).PaddingX(12).
 									AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
 									Cursor(ui.CursorPointer).Label(lv.label)
+								hovered := btn.Hovered()
+								pressed := btn.Pressed()
+								bg := ui.Transparent
+								bd := ui.Transparent
 								if isAct {
-									btn.Background(pal.Selected).Border(1, pal.Accent)
-								} else {
-									if btn.Hovered() {
-										btn.Background(pal.Hover)
-									}
-									btn.Border(1, ui.Transparent)
+									bg = pal.Selected
+									bd = pal.Accent
+								} else if pressed {
+									bg = pal.Selected
+								} else if hovered {
+									bg = pal.Hover
 								}
+								bui.AnimateSurfaceColors(btn, bg, bd, true)
+								bui.TactileCard(btn, hovered, pressed, isAct, false)
 								bui.Probe(btn, btnID)
 								btn.Children(func() {
 									ui.Text(cUI, lv.label).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
 									if isAct {
-										icons.Draw(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent))
+										icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), isAct)
 									}
 								})
 								if btn.Clicked() {
@@ -2544,21 +2658,27 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 				swBtn := ui.ButtonBase(cUI.Key("ai-enabled-switch")).Height(32).PaddingX(12).Gap(6).Shrink(0).
 					AlignItems(ui.Center).Radius(theme.RadiusPill).Cursor(ui.CursorPointer).
 					Label(theme.Tr("启用 AI 助手", "Enable AI Assistant"))
+				hovered := swBtn.Hovered()
+				pressed := swBtn.Pressed()
+				bg := pal.Shell
+				bd := pal.BtnBorder
 				if cfg.Enabled {
-					swBtn.Background(selBG).Border(1, pal.Accent)
-				} else {
-					swBtn.Background(pal.Shell).Border(1, pal.BtnBorder)
-					if swBtn.Hovered() {
-						swBtn.Background(pal.Hover)
-					}
+					bg = selBG
+					bd = pal.Accent
+				} else if pressed {
+					bg = pal.Selected
+				} else if hovered {
+					bg = pal.Hover
 				}
+				bui.AnimateSurfaceColors(swBtn, bg, bd, true)
+				bui.TactileCard(swBtn, hovered, pressed, cfg.Enabled, false)
 				bui.Probe(swBtn, "ai-enabled-switch")
 				swBtn.Children(func() {
 					icCol := pal.TextSecondary
 					if cfg.Enabled {
 						icCol = pal.Accent
 					}
-					icons.Draw(cUI, icons.Sparkles, 14, pal.MonoIconColors(icCol))
+					icons.DrawAnimated(cUI, icons.Sparkles, 14, pal.MonoIconColors(icCol), cfg.Enabled || hovered || pressed)
 					ui.Text(cUI, enLbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 				})
 				if swBtn.Clicked() {
@@ -2596,20 +2716,25 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 					lbl := backendLabel(k)
 
 					card := ui.Row(cUI.Key(cardID)).FillWidth().MinWidth(0).Height(50).PaddingX(cardPadX).Gap(8).
-						AlignItems(ui.Center).Justify(ui.SpaceBetween)
+						AlignItems(ui.Center).Justify(ui.SpaceBetween).
+						Transition(probeSafeTransition(bui.CascadeRowTransition(idx)))
 					if idx+1 < total {
 						card.BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
 					}
+					cardHovered := card.Hovered()
+					cardBGCol := ui.Transparent
 					if isFocused {
-						card.Background(selBG)
-					} else if card.Hovered() {
-						card.Background(pal.Hover)
+						cardBGCol = selBG
+					} else if cardHovered {
+						cardBGCol = pal.Hover
 					}
+					bui.AnimateSurfaceColors(card, cardBGCol, ui.Transparent, false)
 					bui.Probe(card, cardID)
 
 					card.Children(func() {
 						selBtn := ui.ButtonBase(cUI.Key("focus-" + cardID)).Grow(1).MinWidth(0).FillHeight().Gap(9).
 							AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(lbl)
+						bui.TactileCard(selBtn, selBtn.Hovered() || cardHovered, selBtn.Pressed(), isFocused, false)
 						selBtn.Children(func() {
 							ui.Box(cUI).Size(26, 26).Shrink(0).Center().Radius(theme.RadiusSM).
 								Background(cardBG).Border(1, pal.Hairline).Children(func() {
@@ -2642,7 +2767,9 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 			}
 
 			renderDetailPane := func() {
-				ui.Column(cUI).Grow(1).FillWidth().MinWidth(0).Padding(16, detailPadX).Gap(14).Children(func() {
+				ui.Column(cUI.Key("ai-detail-" + string(focused))).Grow(1).FillWidth().MinWidth(0).
+					Padding(16, detailPadX).Gap(14).
+					Transition(probeSafeTransition(bui.SurfaceStageTransition())).Children(func() {
 					if focused == model.BackendBuiltin {
 						c.renderBuiltinSettings(cUI, pal, cfg, backends, baseURL, apiKey, showKey, testing, testOK, testErr, detailInnerW)
 					} else {
@@ -2792,20 +2919,25 @@ func (c *Controller) renderBuiltinSettings(cUI *ui.Context, pal theme.Palette, c
 			} else {
 				btn.Grow(1)
 			}
+			hovered := btn.Hovered()
+			pressed := btn.Pressed()
+			bg := pal.Shell
+			bd := pal.BtnBorder
 			if active {
-				btn.Background(selBG).Border(1, pal.Accent)
-			} else {
-				bg := pal.Shell
-				if btn.Hovered() {
-					bg = pal.Hover
-				}
-				btn.Background(bg).Border(1, pal.BtnBorder)
+				bg = selBG
+				bd = pal.Accent
+			} else if pressed {
+				bg = pal.Selected
+			} else if hovered {
+				bg = pal.Hover
 			}
+			bui.AnimateSurfaceColors(btn, bg, bd, true)
+			bui.TactileCard(btn, hovered, pressed, active, false)
 			bui.Probe(btn, "ai-pcard-"+preset.ID)
 			btn.Children(func() {
 				ui.Box(cUI).Size(26, 26).Shrink(0).Center().Radius(theme.RadiusSM).
 					Background(cardBG).Border(1, pal.Hairline).Children(func() {
-					icons.Draw(cUI, preset.Icon, 16, pal.MonoIconColors(preset.BrandColor))
+					icons.DrawAnimated(cUI, preset.Icon, 16, pal.MonoIconColors(preset.BrandColor), active || hovered || pressed)
 				})
 				ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).
 					Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
@@ -3036,15 +3168,20 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 					AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 					Label(lbl)
 				trigAnchor = trig
+				hovered := trig.Hovered()
+				pressed := trig.Pressed()
+				bg := pal.Shell
+				bd := pal.BtnBorder
 				if annotOpen {
-					trig.Background(settingsSelectedSurface(pal)).Border(1, pal.Accent)
-				} else {
-					bg := pal.Shell
-					if trig.Hovered() {
-						bg = pal.Hover
-					}
-					trig.Background(bg).Border(1, pal.BtnBorder)
+					bg = settingsSelectedSurface(pal)
+					bd = pal.Accent
+				} else if pressed {
+					bg = pal.Selected
+				} else if hovered {
+					bg = pal.Hover
 				}
+				bui.AnimateSurfaceColors(trig, bg, bd, true)
+				bui.TactileCard(trig, hovered, pressed, annotOpen, false)
 				trig.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 					c.mu.Lock()
 					c.annotMenuTriggerBox = r
@@ -3060,7 +3197,7 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 					if annotOpen {
 						chev = icons.ChevronUp
 					}
-					icons.Draw(cUI, chev, 14, pal.MonoIconColors(pal.TextSecondary))
+					icons.DrawAnimated(cUI, chev, 14, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || annotOpen)
 				})
 				if trig.Clicked() {
 					c.mu.Lock()
@@ -3130,7 +3267,7 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 	ui.Overlay(cUI, func() {
 		panel := bui.Elevate(ui.Row(cUI.Key("annotation-model-menu")).Absolute().Left(x).Top(y).Width(popW).Height(popH).
 			Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.MenuBorder).Clip().
-			Transition(bui.PopupTransition()), theme.ElevationPopover)
+			Transition(probeSafeTransition(bui.PopoverSpringTransition())), theme.ElevationPopover)
 		bui.Probe(panel, "annotation-model-menu")
 
 		panel.Children(func() {
@@ -3145,14 +3282,20 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 					btn := ui.ButtonBase(cUI.Key(id)).Size(34, 34).Center().Radius(theme.RadiusMD).
 						Cursor(ui.CursorPointer).Label(backendLabel(bk))
 					bui.Tooltip(cUI, btn, backendLabel(bk))
+					hovered := btn.Hovered()
+					pressed := btn.Pressed()
+					bg := ui.Transparent
+					bd := ui.Transparent
 					if sel {
-						btn.Background(settingsSelectedSurface(pal)).Border(1, pal.Accent)
-					} else {
-						if btn.Hovered() {
-							btn.Background(pal.Hover)
-						}
-						btn.Border(1, ui.Transparent)
+						bg = settingsSelectedSurface(pal)
+						bd = pal.Accent
+					} else if pressed {
+						bg = pal.Selected
+					} else if hovered {
+						bg = pal.Hover
 					}
+					bui.AnimateSurfaceColors(btn, bg, bd, true)
+					bui.TactileButton(btn, hovered, pressed, false)
 					bui.Probe(btn, id)
 					btn.Children(func() {
 						icons.Brand(cUI, bk, 16, pal.Text)
@@ -3200,21 +3343,28 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 						isAct := annotCfg.Backend == activeKind && annotCfg.Model == opt.Value
 						rowID := fmt.Sprintf("annotation-model-%d", idx)
 						row := ui.ButtonBase(cUI.Key(rowID)).FillWidth().Height(34).PaddingX(10).Gap(8).
-							AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(opt.Label)
+							AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(opt.Label).
+							Transition(probeSafeTransition(bui.CascadeItemTransition(matched-1, false)))
+						hovered := row.Hovered()
+						pressed := row.Pressed()
+						bg := ui.Transparent
+						bd := ui.Transparent
 						if isAct {
-							row.Background(settingsSelectedSurface(pal)).Border(1, pal.Accent)
-						} else {
-							if row.Hovered() {
-								row.Background(pal.Hover)
-							}
-							row.Border(1, ui.Transparent)
+							bg = settingsSelectedSurface(pal)
+							bd = pal.Accent
+						} else if pressed {
+							bg = pal.Selected
+						} else if hovered {
+							bg = pal.Hover
 						}
+						bui.AnimateSurfaceColors(row, bg, bd, true)
+						bui.TactileCard(row, hovered, pressed, isAct, false)
 						bui.Probe(row, rowID)
 						row.Children(func() {
 							icons.Brand(cUI, activeKind, 15, pal.Text)
 							ui.Text(cUI, opt.Label).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 							if isAct {
-								icons.Draw(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent))
+								icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), isAct)
 							}
 						})
 						if row.Clicked() {
@@ -3291,19 +3441,25 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 							btn := ui.ButtonBase(cUI.Key(btnID)).FillWidth().Height(32).PaddingX(10).
 								AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
 								Cursor(ui.CursorPointer).Label(lv.label)
+							hovered := btn.Hovered()
+							pressed := btn.Pressed()
+							bg := ui.Transparent
+							bd := ui.Transparent
 							if isAct {
-								btn.Background(settingsSelectedSurface(pal)).Border(1, pal.Accent)
-							} else {
-								if btn.Hovered() {
-									btn.Background(pal.Hover)
-								}
-								btn.Border(1, ui.Transparent)
+								bg = settingsSelectedSurface(pal)
+								bd = pal.Accent
+							} else if pressed {
+								bg = pal.Selected
+							} else if hovered {
+								bg = pal.Hover
 							}
+							bui.AnimateSurfaceColors(btn, bg, bd, true)
+							bui.TactileCard(btn, hovered, pressed, isAct, false)
 							bui.Probe(btn, btnID)
 							btn.Children(func() {
 								ui.Text(cUI, lv.label).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
 								if isAct {
-									icons.Draw(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent))
+									icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), isAct)
 								}
 							})
 							if btn.Clicked() {
@@ -3370,4 +3526,16 @@ func boolToBorder(v bool) float32 {
 		return 1
 	}
 	return 0
+}
+
+// probeSafeTransition keeps Scheme B enter/exit physics in normal app runs while
+// settling layout transitions immediately when layout probes are active so
+// frame-0 TargetBounds/TargetCenter probes match hit-test coordinates.
+func probeSafeTransition(tr ui.ElementTransition) ui.ElementTransition {
+	if bui.IsProbeEnabled() {
+		tr.Animation = nil
+		tr.Duration = -1
+		tr.ExitDuration = -1
+	}
+	return tr
 }

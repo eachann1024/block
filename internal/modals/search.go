@@ -684,7 +684,8 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 				MaxWidthPercent(100).MaxHeightPercent(100).
 				Radius(searchModalRadius).Background(pal.Menu).
 				Border(1, pal.MenuBorder).Clip().
-				Role(ui.RoleDialog).Label(theme.Tr("搜索笔记", "Search Notes"))
+				Role(ui.RoleDialog).Label(theme.Tr("搜索笔记", "Search Notes")).
+				Transition(internalui.ModalSpringTransition())
 			internalui.Elevate(card, theme.ElevationDialog)
 			internalui.Probe(card, "search-modal")
 
@@ -892,26 +893,37 @@ func renderSearchHeaderView(
 				AlignItems(ui.Center).Radius(theme.RadiusMD).
 				Cursor(ui.CursorPointer).TabStop(false).Label(scopeLabel)
 
+			hovered := scopeTrigger.Hovered()
+			pressed := scopeTrigger.Pressed()
+			bg := pal.Sidebar
+			bd := pal.BtnBorder
 			line := pal.TextSecondary
 			if st.scopeMenuOpen {
 				line = pal.Accent
-				scopeTrigger.Background(pal.Selected).Border(1, pal.Accent)
-			} else if scopeTrigger.Hovered() {
-				scopeTrigger.Background(pal.Hover).Border(1, pal.Accent)
-			} else {
-				scopeTrigger.Background(pal.Sidebar).Border(1, pal.BtnBorder)
+				bg = pal.Selected
+				bd = pal.Accent
+			} else if pressed {
+				line = pal.Accent
+				bg = pal.Selected
+				bd = pal.Accent
+			} else if hovered {
+				bg = pal.Hover
+				bd = pal.Accent
 			}
+			internalui.AnimateSurfaceColors(scopeTrigger, bg, bd, true)
+			internalui.TactileCard(scopeTrigger, hovered, pressed, st.scopeMenuOpen, false)
 			scopeTrigger.Children(func() {
-				icons.Draw(c, icons.Folder, theme.IconRow, theme.IconColors{
+				iconActive := st.scopeMenuOpen || hovered || pressed
+				icons.DrawAnimated(c, icons.Folder, theme.IconRow, theme.IconColors{
 					Line:   line,
 					Fill:   pal.IconFill,
 					Accent: pal.Accent,
-				})
+				}, iconActive)
 				ui.Box(c).MaxWidth(136).Children(func() {
 					ui.Text(c, scopeLabel).FontSize(theme.FontBody).LineHeight(20.0 / 14.0).
 						TextColor(pal.Text).SingleLine().Ellipsis("…")
 				})
-				icons.Draw(c, icons.ChevronDown, theme.IconInline, pal.MonoIconColors(line))
+				icons.DrawAnimated(c, icons.ChevronDown, theme.IconInline, pal.MonoIconColors(line), iconActive)
 			})
 			internalui.Probe(scopeTrigger, "search-scope-trigger")
 			if scopeTrigger.Clicked() {
@@ -939,7 +951,8 @@ func renderScopeMenuPopoverView(
 	}
 	ui.PopoverBase(c.Key("search-scope-menu"), trigger, &st.scopeMenuOpen, func(panel ui.Element) {
 		panel.AttachTo(trigger, ui.AnchorBottomRight, ui.AnchorTopRight).Margin(4, 0, 0, 0)
-		internalui.MenuSurface(panel).Width(searchScopeMenuW).MaxHeight(menuMaxH).Column()
+		internalui.MenuSurface(panel).Width(searchScopeMenuW).MaxHeight(menuMaxH).Column().
+			Transition(internalui.PopoverSpringTransition())
 		internalui.Probe(panel, "search-scope-menu")
 
 		folderIcon := icons.Folder
@@ -1017,7 +1030,8 @@ func renderSearchBodyView(
 	onOpenHit func(idx int),
 ) {
 	if errMsg != "" {
-		box := ui.Box(c).FillWidth().Center().Padding(16)
+		box := ui.Box(c.Key("search-error")).FillWidth().Center().Padding(16).
+			Transition(internalui.SurfaceStageTransition())
 		if fillHeight {
 			box.Grow(1).MinHeight(0)
 		} else {
@@ -1053,6 +1067,7 @@ func renderSearchBodyView(
 	scroll := internalui.Scroll(c.Key("search-results"), &st.resultsScroll).
 		FillWidth().
 		Padding(8, theme.ScrollGutter, 8, 8).Gap(2).
+		Transition(internalui.SurfaceStageTransition()).
 		ScrollbarStyle(ui.ScrollbarStyle{
 			TrackWidth: theme.ScrollGutter,
 			ThumbWidth: theme.ScrollThumbWidth,
@@ -1076,6 +1091,7 @@ func renderSearchBodyView(
 			{false, theme.Tr("正文匹配", "Content Matches")},
 		}
 		hasRows := false
+		rowOrder := 0
 		for _, g := range groups {
 			var indices []int
 			total := 0
@@ -1112,14 +1128,16 @@ func renderSearchBodyView(
 			})
 			for _, ix := range indices {
 				meta := hitMetaAt(st, ix, hits[ix], query)
-				renderSearchHitRowView(c, pal, st, ix, hits[ix], meta, ix == selected, onOpenHit)
+				renderSearchHitRowView(c, pal, st, ix, rowOrder, hits[ix], meta, ix == selected, onOpenHit)
+				rowOrder++
 			}
 		}
 	})
 }
 
 func renderSearchEmpty(c *ui.Context, pal theme.Palette, hint string, fillHeight bool) {
-	box := ui.Box(c).FillWidth().Center().Padding(0, 24, 0, 24)
+	box := ui.Box(c.Key("search-empty")).FillWidth().Center().Padding(0, 24, 0, 24).
+		Transition(internalui.SurfaceStageTransition())
 	if fillHeight {
 		box.Grow(1).MinHeight(0)
 	} else {
@@ -1135,6 +1153,7 @@ func renderSearchHitRowView(
 	pal theme.Palette,
 	st *searchPaletteState,
 	idx int,
+	orderIdx int,
 	hit model.SearchHit,
 	meta searchHitMeta,
 	selected bool,
@@ -1147,16 +1166,21 @@ func renderSearchHitRowView(
 	}
 
 	row := ui.ButtonBase(c.Key(rowID)).FillWidth().Padding(8, 12, 8, 12).Gap(2).
-		Radius(theme.RadiusMD).Cursor(ui.CursorPointer).TabStop(false).Label(label)
+		Radius(theme.RadiusMD).Cursor(ui.CursorPointer).TabStop(false).Label(label).
+		Transition(internalui.CascadeItemTransition(orderIdx, false))
 	hovered := row.Hovered()
+	pressed := row.Pressed()
 	switch {
 	case selected:
 		row.Background(pal.Selected).Border(1, pal.Accent)
+	case pressed:
+		row.Background(pal.Selected).Border(1, ui.Transparent)
 	case hovered:
 		row.Background(pal.Hover).Border(1, ui.Transparent)
 	default:
 		row.Border(1, ui.Transparent)
 	}
+	internalui.TactileCard(row, hovered, pressed, selected, false)
 
 	if selected && st.revealSelected {
 		internalui.RevealActiveItem(row)
@@ -1178,10 +1202,10 @@ func renderSearchHitRowView(
 				ic := pal.MonoIconColors(pal.TextSecondary)
 				if selected {
 					ic = pal.DuoIconColors(pal.Accent)
-				} else if hovered {
+				} else if hovered || pressed {
 					ic = pal.DuoIconColors(pal.Text)
 				}
-				icons.Draw(c, icons.Note, theme.IconRow, ic)
+				icons.DrawAnimated(c, icons.Note, theme.IconRow, ic, selected || hovered || pressed)
 
 				ui.Box(c).Grow(1).MinWidth(0).Children(func() {
 					renderHighlightedText(c, label, meta.titleMarks, theme.FontBody, theme.WeightControl, pal.Text, pal.SearchHighlight)

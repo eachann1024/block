@@ -580,11 +580,13 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 				active = &cats[0]
 			}
 			if active != nil {
-				ui.Row(c.Key("perf-detail-bar")).FillWidth().MinWidth(0).Padding(10, 12, 10, 12).Gap(12).
-					Radius(theme.RadiusMD).Background(pal.Shell).Border(1, pal.Hairline).
-					AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				detailBar := ui.Row(c.Key("perf-detail-bar")).FillWidth().MinWidth(0).Padding(10, 12, 10, 12).Gap(12).
+					Radius(theme.RadiusMD).AlignItems(ui.Center).Justify(ui.SpaceBetween)
+				internalui.AnimateSurfaceColors(detailBar, pal.Shell, pal.Hairline, true)
+				detailBar.Children(func() {
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
-						ui.Box(c).Size(10, 10).Shrink(0).Radius(theme.RadiusPill).Background(active.Color)
+						dot := ui.Box(c).Size(10, 10).Shrink(0).Radius(theme.RadiusPill)
+						dot.Background(dot.AnimateColor("perfDot", active.Color, internalui.FadeColor))
 						ui.Text(c, active.Label).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).Shrink(0).SingleLine()
 						ui.Text(c, active.Detail).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 					})
@@ -602,13 +604,20 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 					btn := ui.ButtonBase(c.Key(tileID)).Height(32).PaddingX(10).Gap(6).
 						AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 						Label(catCopy.Label)
+					hovered := btn.Hovered()
+					pressed := btn.Pressed()
+					bg := pal.Card
+					bd := pal.Hairline
 					if isSelected {
-						btn.Background(pal.Selected).Border(1, pal.Accent)
-					} else if btn.Hovered() {
-						btn.Background(pal.Hover).Border(1, pal.Hairline)
-					} else {
-						btn.Background(pal.Card).Border(1, pal.Hairline)
+						bg = pal.Selected
+						bd = pal.Accent
+					} else if pressed {
+						bg = pal.Selected
+					} else if hovered {
+						bg = pal.Hover
 					}
+					internalui.AnimateSurfaceColors(btn, bg, bd, true)
+					internalui.TactileCard(btn, hovered, pressed, isSelected, false)
 					btn.Children(func() {
 						ui.Box(c).Size(8, 8).Radius(theme.RadiusPill).Background(catCopy.Color)
 						ui.Text(c, catCopy.Label).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()

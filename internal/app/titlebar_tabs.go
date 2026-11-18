@@ -23,14 +23,16 @@ const (
 	tabDragSpacerW = 16
 )
 
-// tabTransition is the 150ms ease-out-quint open/close/reflow motion of a multi-tab pill.
+// tabTransition is Scheme B's tactile spring open/close/reflow motion of a multi-tab pill.
 func tabTransition() ui.ElementTransition {
 	return ui.ElementTransition{
-		Duration: tabAnimMs * time.Millisecond,
-		Ease:     ui.CubicBezier(0.22, 1, 0.36, 1),
-		Position: true,
-		Enter:    &ui.Motion{Collapse: true},
-		Exit:     &ui.Motion{Collapse: true},
+		Animation:    &blockui.SpringPanel,
+		ExitDuration: tabAnimMs * time.Millisecond,
+		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
+		Position:     true,
+		Colors:       true,
+		Enter:        &ui.Motion{Collapse: true, Scale: 0.94, Opacity: 0},
+		Exit:         &ui.Motion{Collapse: true, Scale: 0.94, Opacity: 0},
 	}
 }
 
@@ -211,12 +213,16 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 		cb := ui.ButtonBase(c).Size(18, 18).Shrink(0).Center().Radius(theme.RadiusXS).
 			Cursor(ui.CursorPointer).Label(theme.Tr("关闭标签页", "Close Tab"))
 		closeHover = cb.Hovered()
+		closePress := cb.Pressed()
 		ic := pal.MonoIconColors(pal.TextSecondary)
-		if closeHover {
-			cb.Background(pal.SelectionBG)
+		cbBG := ui.Transparent
+		if closeHover || closePress {
+			cbBG = pal.SelectionBG
 			ic = pal.DuoIconColors(pal.Text)
 		}
-		cb.Children(func() { icons.Draw(c, icons.Close, theme.IconInline, ic) })
+		blockui.AnimateSurfaceColors(cb, cbBG, ui.Transparent, false)
+		blockui.TactileButton(cb, closeHover, closePress, false)
+		cb.Children(func() { icons.DrawAnimated(c, icons.Close, theme.IconInline, ic, closeHover || closePress) })
 		if blockui.IsProbeEnabled() {
 			id := fmt.Sprintf("tab-close-%d", ix)
 			blockui.Probe(cb, id)

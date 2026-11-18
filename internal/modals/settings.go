@@ -368,7 +368,11 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 		sbW = min(max(*m.SidebarWidth, theme.SidebarMinWidth), theme.SidebarMaxWidth)
 	}
 
-	ui.Row(c.Key("settings-sidebar-wrap")).Shrink(0).FillHeight().Children(func() {
+	wrap := ui.Row(c.Key("settings-sidebar-wrap")).Shrink(0).FillHeight()
+	if !isDrawer {
+		wrap.Transition(internalui.DockedPanelTransition(false))
+	}
+	wrap.Children(func() {
 		ui.Column(c.Key("settings-sidebar")).Width(sbW).FillHeight().Shrink(0).
 			Background(pal.Sidebar).BorderWidth(0, 1, 0, 0).BorderColor(pal.SidebarBorder).
 			Children(func() {
@@ -376,35 +380,39 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 					ui.Text(c, theme.Tr("设置", "Settings")).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
 				})
 				ui.Column(c).PaddingX(10).Gap(2).Grow(1).Children(func() {
-					for _, spec := range settingsTabs {
+					for i, spec := range settingsTabs {
 						active := tab == spec.id
 						navID := "settings-tab-" + spec.id
 						title := theme.Tr(spec.zh, spec.en)
 						btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(32).PaddingX(10).Gap(8).
 							AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
-							Label(title)
+							Label(title).Transition(internalui.CascadeRowTransition(i))
+						hovered := btn.Hovered()
+						pressed := btn.Pressed()
 						if active {
 							btn.Background(pal.Selected).Border(1, pal.Accent)
+						} else if pressed {
+							btn.Background(pal.Selected).Border(1, ui.Transparent)
+						} else if hovered {
+							btn.Background(pal.Hover).Border(1, ui.Transparent)
 						} else {
-							if btn.Hovered() {
-								btn.Background(pal.Hover)
-							}
 							btn.Border(1, ui.Transparent)
 						}
+						internalui.TactileCard(btn, hovered, pressed, active, false)
 						btn.Children(func() {
+							ic := pal.MonoIconColors(pal.TextSecondary)
 							if active {
-								icons.Draw(c, spec.icon, theme.IconRow, pal.DuoIconColors(pal.Accent))
-							} else if btn.Hovered() {
-								icons.Draw(c, spec.icon, theme.IconRow, pal.DuoIconColors(pal.Text))
-							} else {
-								icons.Draw(c, spec.icon, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+								ic = pal.DuoIconColors(pal.Accent)
+							} else if hovered || pressed {
+								ic = pal.DuoIconColors(pal.Text)
 							}
+							icons.DrawAnimated(c, spec.icon, theme.IconRow, ic, active || hovered || pressed)
 							col := pal.TextSecondary
 							weight := 400
 							if active {
 								col = pal.Text
 								weight = 460
-							} else if btn.Hovered() {
+							} else if hovered || pressed {
 								col = pal.Text
 							}
 							ui.Text(c, title).FontSize(theme.FontBody).FontWeight(weight).TextColor(col).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
@@ -478,16 +486,19 @@ func (m *Manager) RenderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 				}
 			})
 
-			switch tab {
-			case "ai":
-				m.renderSettingsAITab(c)
-			case "appearance":
-				m.renderSettingsAppearanceTab(c)
-			case "folders":
-				m.renderSettingsFoldersTab(c)
-			case "shortcuts":
-				m.renderSettingsShortcutsTab(c)
-			}
+			ui.Column(c.Key("settings-tab-stage-" + tab)).FillWidth().MinWidth(0).
+				Transition(internalui.SurfaceStageTransition()).Children(func() {
+				switch tab {
+				case "ai":
+					m.renderSettingsAITab(c)
+				case "appearance":
+					m.renderSettingsAppearanceTab(c)
+				case "folders":
+					m.renderSettingsFoldersTab(c)
+				case "shortcuts":
+					m.renderSettingsShortcutsTab(c)
+				}
+			})
 		})
 	})
 
@@ -712,10 +723,17 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string) {
 	}
 	btn := ui.ButtonBase(c.Key(id)).Width(248).MaxWidthPercent(100).Shrink(1).MinWidth(120).Height(36).Padding(0, 10, 0, 12).
 		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Radius(theme.RadiusMD).
-		Background(pal.Shell).Border(1, borderCol).Cursor(ui.CursorPointer).Label(label)
-	if btn.Hovered() {
-		btn.Background(pal.Hover)
+		Cursor(ui.CursorPointer).Label(label)
+	hovered := btn.Hovered()
+	pressed := btn.Pressed()
+	bg := pal.Shell
+	if pressed {
+		bg = pal.Selected
+	} else if hovered {
+		bg = pal.Hover
 	}
+	internalui.AnimateSurfaceColors(btn, bg, borderCol, true)
+	internalui.TactileCard(btn, hovered, pressed, open, false)
 	btn.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 		if m.fontTriggerRects == nil {
 			m.fontTriggerRects = make(map[string]ui.Rect)
@@ -732,11 +750,11 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string) {
 		if open {
 			glyph = icons.ChevronUp
 		}
-		if open || btn.Hovered() {
-			icons.Draw(c, glyph, 14, pal.DuoIconColors(pal.Text))
-		} else {
-			icons.Draw(c, glyph, 14, pal.MonoIconColors(pal.TextSecondary))
+		ic := pal.MonoIconColors(pal.TextSecondary)
+		if open || hovered || pressed {
+			ic = pal.DuoIconColors(pal.Text)
 		}
+		icons.DrawAnimated(c, glyph, 14, ic, open || hovered || pressed)
 	})
 	if btn.Clicked() {
 		if open {
@@ -1045,7 +1063,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 		panel := internalui.Elevate(ui.Column(c.Key("font-picker-menu-"+role)).Absolute().Left(x).Top(y).
 			Width(popW).MaxHeight(maxH).Padding(theme.Space6).Gap(theme.Space4).Radius(theme.RadiusXL).
 			Background(pal.Menu).Border(1, pal.MenuBorder).Clip().
-			Transition(internalui.PopupTransition()), theme.ElevationPopover)
+			Transition(internalui.PopoverSpringTransition()), theme.ElevationPopover)
 		internalui.Probe(panel, "font-picker-menu")
 
 		panel.Children(func() {
@@ -1117,11 +1135,19 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					row := ui.ButtonBase(c.Key("font-row-" + f.Name)).FillWidth().Height(34).PaddingX(10).
 						AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
 						Cursor(ui.CursorPointer).Label(f.Name)
-					if selected {
-						row.Background(pal.Selected)
-					} else if highlighted || row.Hovered() {
-						row.Background(pal.MenuHover)
+					hovered := row.Hovered()
+					pressed := row.Pressed()
+					bg := ui.Transparent
+					switch {
+					case selected:
+						bg = pal.Selected
+					case pressed:
+						bg = pal.Selected
+					case highlighted || hovered:
+						bg = pal.MenuHover
 					}
+					internalui.AnimateSurfaceColors(row, bg, ui.Transparent, false)
+					internalui.TactileCard(row, hovered || highlighted, pressed, selected, false)
 					if highlighted && m.fontScrollToCursor {
 						internalui.RevealActiveItem(row)
 						m.fontScrollToCursor = false
@@ -1129,7 +1155,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					row.Children(func() {
 						ui.Text(c, f.Name).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Grow(1)
 						if selected {
-							icons.Draw(c, icons.Check, 16, pal.MonoIconColors(pal.Text))
+							icons.DrawAnimated(c, icons.Check, 16, pal.MonoIconColors(pal.Text), selected || hovered || pressed)
 						}
 					})
 					if row.Clicked() {
@@ -1169,10 +1195,13 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 				Padding(8, 14, 8, 14).Radius(theme.RadiusXL).
 				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).
 				Cursor(ui.CursorPointer).Label(label)
-			if chkRow.Hovered() {
+			chkHover := chkRow.Hovered()
+			chkPress := chkRow.Pressed()
+			if chkHover || chkPress {
 				borderCol = pal.Accent
 			}
-			chkRow.Background(rowBG).Border(1, borderCol)
+			internalui.AnimateSurfaceColors(chkRow, rowBG, borderCol, true)
+			internalui.TactileCard(chkRow, chkHover, chkPress, hideNonMD, false)
 			chkRow.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 				internalui.RecordBounds("folder-hide-non-md", r)
 				internalui.RecordBounds("settings-hide-non-md", r)
@@ -1183,10 +1212,10 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 					if hideNonMD {
 						icCol = pal.DuoIconColors(pal.Accent)
 					}
-					icons.Draw(c, icons.Note, theme.IconRow, icCol)
+					icons.DrawAnimated(c, icons.Note, theme.IconRow, icCol, hideNonMD || chkHover || chkPress)
 					ui.Text(c, label).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).AccessHidden(true)
 				})
-				folderCheckBox(c, hideNonMD)
+				folderCheckBox(c, hideNonMD, chkHover || chkPress)
 			})
 			if chkRow.Clicked() {
 				nextVal := !hideNonMD
@@ -1326,16 +1355,19 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 					advBtn := ui.ButtonBase(c.Key("settings-regex-toggle")).Gap(6).
 						AlignItems(ui.Center).Justify(ui.Start).Cursor(ui.CursorPointer).
 						Label(theme.Tr("高级规则（正则表达式）", "Advanced Rules (Regex)"))
+					advHover := advBtn.Hovered()
+					advPress := advBtn.Pressed()
+					internalui.TactileCard(advBtn, advHover, advPress, m.advancedRulesOpen, false)
 					advBtn.Children(func() {
 						chevron := icons.ChevronRight
 						if m.advancedRulesOpen {
 							chevron = icons.ChevronDown
 						}
-						if m.advancedRulesOpen || advBtn.Hovered() {
-							icons.Draw(c, chevron, 14, pal.DuoIconColors(pal.Text))
-						} else {
-							icons.Draw(c, chevron, 14, pal.MonoIconColors(pal.TextSecondary))
+						ic := pal.MonoIconColors(pal.TextSecondary)
+						if m.advancedRulesOpen || advHover || advPress {
+							ic = pal.DuoIconColors(pal.Text)
 						}
+						icons.DrawAnimated(c, chevron, 14, ic, m.advancedRulesOpen || advHover || advPress)
 						ui.Text(c, theme.Tr("高级规则（正则表达式）", "Advanced Rules (Regex)")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 						if regexCount > 0 {
 							ui.Box(c).Padding(1, 6, 1, 6).Radius(theme.RadiusMD).
@@ -1351,7 +1383,8 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 				})
 
 				if m.advancedRulesOpen {
-					ui.Column(c).FillWidth().Gap(8).Children(func() {
+					ui.Column(c.Key("settings-regex-panel")).FillWidth().Gap(8).
+						Transition(internalui.CascadeRowTransition(0)).Children(func() {
 						ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 							var submitted bool
 							ui.Row(c.Key("regex-slash-affix")).Grow(1).MinWidth(0).Height(34).PaddingX(10).
@@ -1472,11 +1505,14 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 							pill := ui.ButtonBase(c.Key(id + "-btn")).Height(32).PaddingX(10).Gap(8).
 								AlignItems(ui.Center).Radius(theme.RadiusMD).
 								Cursor(ui.CursorPointer).Label(pillLabel)
-							if pill.Hovered() {
+							pillHover := pill.Hovered()
+							pillPress := pill.Pressed()
+							if pillHover || pillPress {
 								pillBD = pal.Accent
 								pillFG = pal.Text
 							}
-							pill.Background(pillBG).Border(1, pillBD)
+							internalui.AnimateSurfaceColors(pill, pillBG, pillBD, true)
+							internalui.TactileCard(pill, pillHover, pillPress, ignored, false)
 							pill.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 								internalui.RecordBounds(id+"-btn", r)
 								if idx == 0 {
@@ -1484,7 +1520,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 								}
 							})
 							pill.Children(func() {
-								folderCheckBox(c, ignored)
+								folderCheckBox(c, ignored, pillHover || pillPress)
 								ui.Text(c, pillLabel).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pillFG).SingleLine()
 							})
 							if pill.Clicked() {
@@ -1512,16 +1548,17 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 	})
 }
 
-func folderCheckBox(c *ui.Context, checked bool) {
+func folderCheckBox(c *ui.Context, checked, active bool) {
 	pal := theme.Ocean()
 	bd := pal.BtnBorder
 	if checked {
 		bd = pal.Accent
 	}
-	ui.Box(c).Size(15, 15).Radius(theme.RadiusXS).Center().Shrink(0).
-		Background(pal.Card).Border(1, bd).Children(func() {
+	box := ui.Box(c).Size(15, 15).Radius(theme.RadiusXS).Center().Shrink(0)
+	internalui.AnimateSurfaceColors(box, pal.Card, bd, true)
+	box.Children(func() {
 		if checked {
-			icons.Draw(c, icons.Check, theme.IconMicro, pal.DuoIconColors(pal.Accent))
+			icons.DrawAnimated(c, icons.Check, theme.IconMicro, pal.DuoIconColors(pal.Accent), active)
 		}
 	})
 }
@@ -1682,9 +1719,16 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 				rstLabel := theme.Tr("恢复默认", "Reset")
 				rst := ui.ButtonBase(c.Key("settings-shortcuts-reset")).Padding(4, 8, 4, 8).
 					Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(rstLabel)
-				if rst.Hovered() {
-					rst.Background(pal.Hover)
+				rstHover := rst.Hovered()
+				rstPress := rst.Pressed()
+				rstBG := ui.Transparent
+				if rstPress {
+					rstBG = pal.Selected
+				} else if rstHover {
+					rstBG = pal.Hover
 				}
+				internalui.AnimateSurfaceColors(rst, rstBG, ui.Transparent, false)
+				internalui.TactileCard(rst, rstHover, rstPress, false, false)
 				rst.Children(func() {
 					ui.Text(c, rstLabel).FontSize(theme.FontBody).TextColor(pal.Accent).SingleLine()
 				})
@@ -1754,10 +1798,13 @@ func (m *Manager) shortcutRecorderTray(c *ui.Context, id, kind, spec string) {
 	btn := ui.ButtonBase(c.Key(id)).Height(32).PaddingX(5).Gap(4).
 		AlignItems(ui.Center).Justify(ui.Center).
 		Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(accLabel)
-	if !recording && btn.Hovered() {
+	hovered := btn.Hovered()
+	pressed := btn.Pressed()
+	if !recording && (hovered || pressed) {
 		borderCol = pal.Accent
 	}
-	btn.Background(trayBG).Border(1, borderCol)
+	internalui.AnimateSurfaceColors(btn, trayBG, borderCol, true)
+	internalui.TactileCard(btn, hovered, pressed, recording, false)
 	btn.Children(func() {
 		if recording {
 			ui.Box(c).PaddingX(6).Children(func() {

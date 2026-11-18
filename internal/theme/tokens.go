@@ -81,7 +81,7 @@ const (
 	IconMicro       float32 = 12 // icons beside 12px text
 	ChromeBoxSize           = HeightChrome
 	IconButtonBox   float32 = 24 // plain (non-chrome) icon button box
-	IconButtonGlyph         = IconInline
+	IconButtonGlyph         = IconAction
 )
 
 // Component metrics, expressed on the scales above.
