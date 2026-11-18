@@ -404,6 +404,7 @@ func (s *Session) ensureAnnotationsLoaded() {
 	s.annotLoadedPath = s.notePath
 	s.annotations = nil
 	s.annotAppliedRaw = nil
+	s.annotUnresolved = nil
 	stored, err := files.LoadNoteAnnotations(s.dataDir, s.notePath)
 	s.annotLoadFailed = err != nil
 	if err != nil {
@@ -411,14 +412,19 @@ func (s *Session) ensureAnnotationsLoaded() {
 	}
 	loaded := make([]*model.Annotation, 0, len(stored))
 	for _, raw := range stored {
-		if ann := storedToModelAnnotation(s.doc, raw); ann != nil {
-			loaded = append(loaded, ann)
-			if ann.Applied {
-				if s.annotAppliedRaw == nil {
-					s.annotAppliedRaw = make(map[string]files.StoredAnnotation)
-				}
-				s.annotAppliedRaw[ann.ID] = raw
+		ann := storedToModelAnnotation(s.doc, raw)
+		if ann == nil {
+			// Anchor not found in this document (e.g. edited elsewhere): keep the
+			// entry verbatim so saving this note never drops it.
+			s.annotUnresolved = append(s.annotUnresolved, raw)
+			continue
+		}
+		loaded = append(loaded, ann)
+		if ann.Applied {
+			if s.annotAppliedRaw == nil {
+				s.annotAppliedRaw = make(map[string]files.StoredAnnotation)
 			}
+			s.annotAppliedRaw[ann.ID] = raw
 		}
 	}
 	s.annotations = loaded
@@ -429,12 +435,13 @@ func (s *Session) persistAnnotations() {
 		return
 	}
 	s.annotLoadedPath = s.notePath
-	stored := make([]files.StoredAnnotation, 0, len(s.annotations))
+	stored := make([]files.StoredAnnotation, 0, len(s.annotations)+len(s.annotUnresolved))
 	for _, ann := range s.annotations {
 		if item, ok := modelToStoredAnnotation(s, ann); ok {
 			stored = append(stored, item)
 		}
 	}
+	stored = append(stored, s.annotUnresolved...)
 	_ = files.SaveNoteAnnotations(s.dataDir, s.notePath, stored)
 }
 
