@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -22,6 +23,20 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
+
+var appQuitting atomic.Bool
+
+// SetAppQuitting marks whether the application is in the middle of quitting,
+// so resident hidden windows (Quick Note, Search Window) allow close instead
+// of calling PreventDefault and aborting Cmd+Q.
+func SetAppQuitting(quitting bool) {
+	appQuitting.Store(quitting)
+}
+
+// IsAppQuitting reports whether an application quit is currently in progress.
+func IsAppQuitting() bool {
+	return appQuitting.Load()
+}
 
 const (
 	quickSlotCount      = 3
@@ -613,6 +628,10 @@ func (q *QuickNoteController) AttachDesktop() {
 			}
 		})
 		win.OnClose(func(e *mygo.CloseEvent) {
+			if IsAppQuitting() {
+				q.Flush()
+				return
+			}
 			e.PreventDefault()
 			q.Hide()
 		})
