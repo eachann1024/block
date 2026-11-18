@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>列表与空行 A · 静墨</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+*{box-sizing:border-box}
+button{font-family:inherit;font-size:14px;line-height:20px;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid #547dd0;outline-offset:1px}
+@keyframes qiBreath{0%,42%{opacity:1}58%,92%{opacity:.08}100%{opacity:1}}
+.qi-caret{animation:qiBreath 1.1s ease-in-out infinite}
+.qi-row{display:flex;align-items:flex-start;font-size:16px;line-height:26px}
+.qi-mark{flex:none;height:26px;display:flex;align-items:center;justify-content:flex-end;font-variant-numeric:tabular-nums}
+.qi-kbd{display:inline-flex;align-items:center;justify-content:center;height:19px;min-width:19px;padding:0 5px;margin:0 3px;border-radius:5px;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:12px;line-height:14px;transform:translateY(-1px)}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:1000px;display:flex;flex-direction:column;background:{{shellBg}};color:{{textPrimary}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased">
+
+  <header style="height:48px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:{{sidebarBg}};border-bottom:1px solid {{borderCol}};flex:none">
+    <span style="font-size:15px;font-weight:560">A · 静墨</span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:inline-flex;padding:3px;gap:2px;background:{{shellBg}};border:1px solid {{borderCol}};border-radius:8px">
+        <sc-for list="{{modeTabs}}" as="tab" hint-placeholder-count="2">
+          <button type="button" onClick="{{tab.pick}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{tab.bg}};box-shadow:{{tab.ring}};color:{{tab.col}};font-weight:{{tab.weight}}">{{tab.label}}</button>
+        </sc-for>
+      </div>
+      <button type="button" onClick="{{toggleTheme}}" style="height:30px;padding:0 12px;border-radius:8px;border:1px solid {{borderCol}};background:{{shellBg}};color:{{textPrimary}}">{{themeLabel}}</button>
+    </div>
+  </header>
+
+  <main style="flex:1;background:{{paperBg}};padding:64px 48px 80px">
+    <div style="width:100%;max-width:760px;margin:0 auto;display:flex;flex-direction:column;color:{{textPrimary}}">
+
+      <div style="font-size:30px;line-height:40px;font-weight:600;margin:0 0 18px 48px">读书笔记</div>
+
+      <sc-if value="{{isPara}}" hint-placeholder-val="{{true}}">
+        <div class="qi-row" style="margin-bottom:22px">
+          <div style="width:48px;height:26px;flex:none;display:flex;align-items:center;justify-content:flex-end;padding-right:12px">
+            <button type="button" aria-label="添加块" style="width:22px;height:22px;padding:0;border:0;border-radius:6px;background:transparent;color:{{handleCol}};display:inline-flex;align-items:center;justify-content:center">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+            </button>
+          </div>
+          <div style="flex:1;height:26px;display:flex;align-items:center">
+            <span class="qi-caret" style="width:2px;height:19px;border-radius:1px;background:{{accent}};flex:none"></span>
+            <span style="margin-left:6px;color:{{placeholderCol}};white-space:nowrap">输入<span class="qi-kbd" style="color:{{kbdText}};background:{{kbdBg}};box-shadow:inset 0 0 0 1px {{kbdBorder}}">/</span>或<span class="qi-kbd" style="color:{{kbdText}};background:{{kbdBg}};box-shadow:inset 0 0 0 1px {{kbdBorder}}">、</span>唤出菜单，或开始输入…</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isHeading}}" hint-placeholder-val="{{false}}">
+        <div style="display:flex;align-items:center;height:34px;margin-bottom:18px">
+          <div style="width:48px;flex:none"></div>
+          <span class="qi-caret" style="width:2px;height:25px;border-radius:1px;background:{{accent}};flex:none"></span>
+          <span style="margin-left:6px;font-size:22px;line-height:34px;font-weight:600;color:{{placeholderCol}}">标题 2</span>
+        </div>
+      </sc-if>
+
+      <div style="padding-left:48px;display:flex;flex-direction:column;gap:4px">
+        <div class="qi-row"><div class="qi-mark" style="width:24px;justify-content:flex-start;padding-left:7px"><span style="width:6px;height:6px;border-radius:50%;background:{{bulletCol}}"></span></div><div style="flex:1;min-width:0">先写下最想记住的一句话</div></div>
+        <div class="qi-row" style="padding-left:24px"><div class="qi-mark" style="width:24px;justify-content:flex-start;padding-left:7px"><span style="width:6px;height:6px;border-radius:50%;box-shadow:inset 0 0 0 1.5px {{bulletCol}}"></span></div><div style="flex:1;min-width:0">再补充它为什么重要。长句子会自然换行，第二行与第一行文字保持左对齐，不会钻到圆点下面，读起来更整齐。</div></div>
+        <div class="qi-row" style="padding-left:48px"><div class="qi-mark" style="width:24px;justify-content:flex-start;padding-left:8px"><span style="width:5px;height:5px;border-radius:1px;background:{{bulletCol}}"></span></div><div style="flex:1;min-width:0">第三层用来放细节和例子</div></div>
+        <div class="qi-row" style="padding-left:24px"><div class="qi-mark" style="width:24px;justify-content:flex-start;padding-left:7px"><span style="width:6px;height:6px;border-radius:50%;box-shadow:inset 0 0 0 1.5px {{bulletCol}}"></span></div><div style="flex:1;min-width:0">引用原文时标上页码</div></div>
+        <div class="qi-row"><div class="qi-mark" style="width:24px;justify-content:flex-start;padding-left:7px"><span style="width:6px;height:6px;border-radius:50%;background:{{bulletCol}}"></span></div><div style="flex:1;min-width:0">每天睡前回顾一次</div></div>
+      </div>
+
+      <div style="height:22px"></div>
+
+      <div style="padding-left:48px;display:flex;flex-direction:column;gap:4px">
+        <div class="qi-row"><div class="qi-mark" style="width:30px;padding-right:8px;color:{{numCol}}">8.</div><div style="flex:1;min-width:0">收集：把灵感先放进收件箱</div></div>
+        <div class="qi-row"><div class="qi-mark" style="width:30px;padding-right:8px;color:{{numCol}}">9.</div><div style="flex:1;min-width:0">整理：按主题归档，删掉重复的条目</div></div>
+        <div class="qi-row" style="padding-left:30px"><div class="qi-mark" style="width:26px;padding-right:8px;color:{{numCol}}">a.</div><div style="flex:1;min-width:0">先按项目分</div></div>
+        <div class="qi-row" style="padding-left:30px"><div class="qi-mark" style="width:26px;padding-right:8px;color:{{numCol}}">b.</div><div style="flex:1;min-width:0">再按时间排序，最近一周的内容放在最前面，方便第二天直接接着写。</div></div>
+        <div class="qi-row" style="padding-left:56px"><div class="qi-mark" style="width:26px;padding-right:8px;color:{{numCol}}">i.</div><div style="flex:1;min-width:0">标出待办</div></div>
+        <div class="qi-row"><div class="qi-mark" style="width:30px;padding-right:8px;color:{{numCol}}">10.</div><div style="flex:1;min-width:0">输出：写成一篇完整的文章</div></div>
+      </div>
+
+      <div style="height:22px"></div>
+
+      <div style="padding-left:48px;display:flex;flex-direction:column;gap:4px">
+        <div class="qi-row"><div class="qi-mark" style="width:24px;justify-content:flex-start;padding-left:2px"><span style="width:15px;height:15px;border-radius:4px;box-shadow:inset 0 0 0 1.5px {{boxBorder}}"></span></div><div style="flex:1;min-width:0">本周读完第三章</div></div>
+        <div class="qi-row"><div class="qi-mark" style="width:24px;justify-content:flex-start;padding-left:2px"><span style="width:15px;height:15px;border-radius:4px;background:{{accent}};display:inline-flex;align-items:center;justify-content:center;color:{{paperBg}}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span></div><div style="flex:1;min-width:0;color:{{doneCol}};text-decoration:line-through;text-decoration-color:{{doneLine}}">整理上周的摘抄</div></div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["dark","light"]},"mode":{"editor":"enum","default":"para","options":["para","heading"]},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'dark';
+    const mode = this.state.mode ?? this.props.mode ?? 'para';
+    const isDark = theme === 'dark';
+    const shellBg = isDark ? '#343434' : '#f1f1f1';
+    const sidebarBg = isDark ? '#222222' : '#fafafa';
+    const paperBg = isDark ? '#181818' : '#ffffff';
+    const textPrimary = isDark ? '#ececec' : '#1f1e1d';
+    const textSecondary = isDark ? '#b4b4b4' : '#52514e';
+    const accent = isDark ? '#779de8' : '#547dd0';
+    const selectedBg = isDark ? '#343434' : '#e5edfc';
+    const borderCol = isDark ? '#2e2e2e' : '#e4e6ea';
+    const tabs = [{ id: 'para', label: '正文空行' }, { id: 'heading', label: '标题空行' }];
+    return {
+      shellBg, sidebarBg, paperBg, textPrimary, accent, borderCol,
+      placeholderCol: isDark ? '#7a7975' : '#9b9a95',
+      handleCol: isDark ? '#6e6d68' : '#a8a7a2',
+      kbdText: isDark ? '#a5a4a0' : '#6f6e69',
+      kbdBg: isDark ? '#222222' : '#f6f5f2',
+      kbdBorder: isDark ? '#3a3a3a' : '#dedcd6',
+      bulletCol: isDark ? '#a9a8a4' : '#6f6e69',
+      numCol: textSecondary,
+      boxBorder: isDark ? '#6e6d68' : '#b7b6b1',
+      doneCol: isDark ? '#7a7975' : '#9b9a95',
+      doneLine: isDark ? '#5a5955' : '#c4c3be',
+      isPara: mode === 'para',
+      isHeading: mode === 'heading',
+      themeLabel: isDark ? '深色' : '浅色',
+      modeTabs: tabs.map((t) => ({
+        label: t.label,
+        bg: mode === t.id ? selectedBg : 'transparent',
+        ring: mode === t.id ? ('inset 0 0 0 1px ' + accent) : 'none',
+        col: mode === t.id ? textPrimary : textSecondary,
+        weight: mode === t.id ? '560' : '400',
+        pick: () => this.setState({ mode: t.id })
+      })),
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' })
+    };
+  }
+}
+</script>
+</body>
+</html>

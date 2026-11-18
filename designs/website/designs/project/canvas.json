@@ -2,14 +2,165 @@
   "v": 3,
   "attachments": {},
   "boards": {
-    "Download-C-Hairline-Seg.dc.html": {
+    "Main.dc.html": {
       "expand": "fill",
-      "h": 1380,
+      "h": 5240,
       "is_interactive": true,
-      "title": "下载方案 C · 无外框并排细线轻切（浅色版）",
+      "title": "版本一 · 书卷人文",
       "w": 1440,
       "x": 0,
-      "y": 0
+      "y": 0,
+      "page": "home"
+    },
+    "V2-Instrument-Grid.dc.html": {
+      "expand": "fill",
+      "h": 4780,
+      "is_interactive": true,
+      "title": "版本二 · 极简现代",
+      "w": 1440,
+      "x": 1520,
+      "y": 0,
+      "page": "home"
+    },
+    "V3-Kinetic-Atelier.dc.html": {
+      "expand": "fill",
+      "h": 4800,
+      "is_interactive": true,
+      "title": "版本三 · 柔和杂志",
+      "w": 1440,
+      "x": 3040,
+      "y": 0,
+      "page": "home"
+    },
+    "V4-Cobalt-Daylight.dc.html": {
+      "expand": "fill",
+      "h": 5200,
+      "is_interactive": true,
+      "title": "版本四 · 晴空钴蓝（瑞士光学工程）",
+      "w": 1440,
+      "x": 0,
+      "y": 5640,
+      "page": "home"
+    },
+    "V5-Obsidian-Precision.dc.html": {
+      "expand": "fill",
+      "h": 5200,
+      "is_interactive": true,
+      "title": "版本五 · 曜石暗夜（极客原生 Pro）",
+      "w": 1440,
+      "x": 1520,
+      "y": 5640,
+      "page": "home"
+    },
+    "V6-Botanical-Studio.dc.html": {
+      "expand": "fill",
+      "h": 5200,
+      "is_interactive": true,
+      "title": "版本六 · 松烟竹青（东方现代书房）",
+      "w": 1440,
+      "x": 3040,
+      "y": 5640,
+      "page": "home"
+    },
+    "Glow-A-Ink.dc.html": {
+      "expand": "fill",
+      "h": 1600,
+      "is_interactive": true,
+      "title": "光晕 A · 宣纸墨晕（白天）",
+      "w": 1440,
+      "x": 1520,
+      "y": 0,
+      "page": "hero-glow"
+    },
+    "Glow-B-Window.dc.html": {
+      "expand": "fill",
+      "h": 1600,
+      "is_interactive": true,
+      "title": "光晕 B · 窗格晨光（清晨）",
+      "w": 1440,
+      "x": 0,
+      "y": 0,
+      "page": "hero-glow"
+    },
+    "Glow-C-Field.dc.html": {
+      "expand": "fill",
+      "h": 1600,
+      "is_interactive": true,
+      "title": "光晕 C · 流场颗粒（备选）",
+      "w": 1440,
+      "x": 4560,
+      "y": 0,
+      "page": "hero-glow"
+    },
+    "Glow-D-Night.dc.html": {
+      "expand": "fill",
+      "h": 1600,
+      "is_interactive": true,
+      "title": "光晕 D · 暮色首屏（傍晚到夜里，全页深色）",
+      "w": 1440,
+      "x": 3040,
+      "y": 0,
+      "page": "hero-glow"
+    },
+    "Ink-Night-A-Bookspine.dc.html": {
+      "expand": "fill",
+      "h": 1920,
+      "is_interactive": true,
+      "title": "方案 A · 书脊光尺与景深壁纸桌面",
+      "w": 1440,
+      "x": 0,
+      "y": 0,
+      "page": "ink-night"
+    },
+    "Ink-Night-B-DepthStack.dc.html": {
+      "expand": "fill",
+      "h": 1920,
+      "is_interactive": true,
+      "title": "方案 B · 层叠手稿与分屏跨窗桌面",
+      "w": 1440,
+      "x": 1520,
+      "y": 0,
+      "page": "ink-night"
+    },
+    "Ink-Night-C-Spotlight.dc.html": {
+      "expand": "fill",
+      "h": 1920,
+      "is_interactive": true,
+      "title": "方案 C · 微光水线与聚光灯唤起桌面",
+      "w": 1440,
+      "x": 3040,
+      "y": 0,
+      "page": "ink-night"
+    },
+    "Nav-A-Pure-Float.dc.html": {
+      "expand": "fill",
+      "h": 1720,
+      "is_interactive": true,
+      "title": "顶栏方案 A · 纯净全透明悬浮",
+      "w": 1440,
+      "x": 0,
+      "y": 0,
+      "page": "top-nav"
+    },
+    "Nav-B-Center-Capsule.dc.html": {
+      "expand": "fill",
+      "h": 1720,
+      "is_interactive": true,
+      "title": "顶栏方案 B · 左右悬空 + 居中微光胶囊岛",
+      "w": 1440,
+      "x": 1520,
+      "y": 0,
+      "page": "top-nav"
+    },
+    "Nav-C-Corner-Editorial.dc.html": {
+      "expand": "fill",
+      "h": 1720,
+      "is_interactive": true,
+      "title": "顶栏方案 C · 双角极简留白 + 右侧书签刻度",
+      "w": 1440,
+      "x": 3040,
+      "y": 0,
+      "page": "top-nav"
     }
   },
   "createdOnFiles": {
@@ -18,12 +169,88 @@
   },
   "designSystems": [],
   "launch": {
-    "view": "canvas"
+    "view": "canvas",
+    "page": "top-nav"
   },
-  "notes": {},
+  "notes": {
+    "header_note": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "Block 官网首页 · 性能与块编辑器为主，AI 与生成图片为辅",
+      "w": 240,
+      "x": 0,
+      "y": -260,
+      "page": "home"
+    },
+    "row2_note": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "全新色板与高密度细节版 · 晴空钴蓝 / 曜石暗夜 / 松烟竹青",
+      "w": 240,
+      "x": 0,
+      "y": 5380,
+      "page": "home"
+    },
+    "glow_title": {
+      "kind": "title1",
+      "maxW": 5840,
+      "text": "首屏光晕特效 · 按时间段切换：清晨 B → 白天 A → 夜里 D",
+      "x": 0,
+      "y": -260,
+      "page": "hero-glow"
+    },
+    "ink_night_title": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "墨夜版改版三方案 · 轻快长卷与桌面级全局 ⌥N 速记（Ocean Dark 主题色）",
+      "x": 0,
+      "y": -260,
+      "page": "ink-night"
+    },
+    "top_nav_title": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "无底色顶栏三方案 · 彻底拿掉横条背景色与分割线，搭配十万段丝滑滚动",
+      "x": 0,
+      "y": -260,
+      "page": "top-nav"
+    }
+  },
   "order": [
-    "Download-C-Hairline-Seg.dc.html"
+    "Main.dc.html",
+    "V2-Instrument-Grid.dc.html",
+    "V3-Kinetic-Atelier.dc.html",
+    "V4-Cobalt-Daylight.dc.html",
+    "V5-Obsidian-Precision.dc.html",
+    "V6-Botanical-Studio.dc.html",
+    "Glow-A-Ink.dc.html",
+    "Glow-B-Window.dc.html",
+    "Glow-C-Field.dc.html",
+    "Glow-D-Night.dc.html",
+    "Ink-Night-A-Bookspine.dc.html",
+    "Ink-Night-B-DepthStack.dc.html",
+    "Ink-Night-C-Spotlight.dc.html",
+    "Nav-A-Pure-Float.dc.html",
+    "Nav-B-Center-Capsule.dc.html",
+    "Nav-C-Corner-Editorial.dc.html"
   ],
-  "pages": [],
+  "pages": [
+    {
+      "id": "home",
+      "name": "官网首页"
+    },
+    {
+      "id": "hero-glow",
+      "name": "首屏光晕特效"
+    },
+    {
+      "id": "ink-night",
+      "name": "墨夜版 · 轻快与桌面速记"
+    },
+    {
+      "id": "top-nav",
+      "name": "无底色顶栏设计"
+    }
+  ],
   "title": "Block 官网首页设计"
 }

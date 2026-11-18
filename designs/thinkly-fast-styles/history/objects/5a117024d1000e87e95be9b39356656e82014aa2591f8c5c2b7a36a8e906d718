@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>行内代码 B · 结构微芯片（1px 瓷白内高光 + 悬停一键复制 + 光标进入显式源码反引号）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;background:#f1f1f1;-webkit-font-smoothing:antialiased}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input,textarea{font-family:inherit;font-size:14px}
+*{box-sizing:border-box}
+::selection{background:#cde2fb;color:#184f95}
+.ic-v2-light{display:inline-flex;align-items:center;gap:4px;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:13px;line-height:19px;font-weight:500;padding:1px 7px;margin:0 4px;border-radius:6px;background:#f1f3f7;border:1px solid #d5dce6;box-shadow:inset 0 1px 0 #ffffff;color:#1e3a6e;vertical-align:baseline}
+.ic-v2-dark{display:inline-flex;align-items:center;gap:4px;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:13px;line-height:19px;font-weight:500;padding:1px 7px;margin:0 4px;border-radius:6px;background:#252a34;border:1px solid #3a4354;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);color:#adc6ff;vertical-align:baseline}
+.ic-v2-hover-light{display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:13px;line-height:19px;font-weight:500;padding:1px 7px;margin:0 4px;border-radius:6px;background:#e5edfc;border:1px solid #547dd0;box-shadow:inset 0 0 0 1px #547dd0;color:#184f95;vertical-align:baseline;cursor:pointer}
+.ic-v2-hover-dark{display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:13px;line-height:19px;font-weight:500;padding:1px 7px;margin:0 4px;border-radius:6px;background:#2d426b;border:1px solid #779de8;box-shadow:inset 0 0 0 1px #779de8;color:#9dbcf5;vertical-align:baseline;cursor:pointer}
+.ic-legacy-light{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:16px;background:#f3f1ec;color:#1f1e1d}
+.ic-legacy-dark{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:16px;background:#242424;color:#ececec}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:940px;display:flex;flex-direction:column;background:{{pageBg}};color:{{textPrimary}};font-size:14px;line-height:20px">
+
+  <!-- 顶部状态与明暗切换控制条 -->
+  <header style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:{{barBg}};border-bottom:1px solid {{borderCol}}">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+      </div>
+      <span style="font-weight:560;color:{{textPrimary}}">行内代码 B · 结构微芯片（Token 级清晰边界 + 悬停复制 + 光标进入还原反引号）</span>
+      <span style="color:{{textSecondary}}">适合高频记录字段名、配置 Key、环境变量与命令参数的技术笔记</span>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
+        <button type="button" onClick="{{setStateRead}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{readBg}};color:{{readCol}};box-shadow:{{readRing}};font-weight:460;cursor:pointer">常规阅读</button>
+        <button type="button" onClick="{{setStateHover}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{hoverBg}};color:{{hoverCol}};box-shadow:{{hoverRing}};font-weight:460;cursor:pointer">⌘+悬停一键复制</button>
+        <button type="button" onClick="{{setStateRaw}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{rawBg}};color:{{rawCol}};box-shadow:{{rawRing}};font-weight:460;cursor:pointer">光标步入展开 `反引号`</button>
+      </div>
+
+      <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:{{shellBg}};border:1px solid {{btnBorder}}">
+        <button type="button" onClick="{{setLight}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{lightBtnBg}};color:{{lightBtnCol}};box-shadow:{{lightBtnRing}};font-weight:460;cursor:pointer">浅色 Ocean Light</button>
+        <button type="button" onClick="{{setDark}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{darkBtnBg}};color:{{darkBtnCol}};box-shadow:{{darkBtnRing}};font-weight:460;cursor:pointer">深色 Ocean Dark</button>
+      </div>
+    </div>
+  </header>
+
+  <main style="flex:1;max-width:1180px;width:100%;margin:0 auto;padding:32px 28px 56px;display:flex;flex-direction:column;gap:24px">
+
+    <!-- 1. 问题复现 vs 方案 B 直观对比卡片 -->
+    <section style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">截图原场景对比 · 结构化参数 Token 识别度强化</span>
+        <span style="font-size:14px;color:{{textSecondary}}">字号 13px · 字重 500 · 左右内边距 7px · 外侧间距 4px · 圆角 6px · 1px 钢蓝灰边框</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <!-- 改动前 -->
+        <div style="padding:16px 18px;border-radius:8px;background:{{subSurface}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:14px;font-weight:500;color:{{textSecondary}}">当前现状（底色与连字符粘连）</span>
+            <span style="font-size:14px;color:#b42318">字段与分隔符混作一团</span>
+          </div>
+          <div style="padding:14px 12px;border-radius:6px;background:{{paperBg}};border:1px solid {{borderCol}};display:flex;align-items:center;gap:10px;font-size:16px;line-height:26px;color:{{editorText}}">
+            <span aria-hidden="true" style="color:{{handleCol}};display:inline-flex;align-items:center">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"/><circle cx="10.5" cy="3.5" r="1.2"/><circle cx="5.5" cy="8" r="1.2"/><circle cx="10.5" cy="8" r="1.2"/><circle cx="5.5" cy="12.5" r="1.2"/><circle cx="10.5" cy="12.5" r="1.2"/></svg>
+            </span>
+            <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #8a8984;display:inline-block;flex:none"></span>
+            <div>格式：邮箱----密码----邮箱<code class="{{legacyCodeCls}}">client_id</code>----邮箱<code class="{{legacyCodeCls}}">refresh_token</code></div>
+          </div>
+        </div>
+
+        <!-- 改动后：方案 B -->
+        <div style="padding:16px 18px;border-radius:8px;background:{{selectedSurface}};border:1px solid {{accentCol}};display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:14px;font-weight:560;color:{{textPrimary}}">方案 B · 结构微芯片（4px 独立外距 + 瓷白顶边微高光）</span>
+            <span style="font-size:14px;color:{{accentCol}};font-weight:500">参数边界一目了然</span>
+          </div>
+          <div style="padding:14px 12px;border-radius:6px;background:{{paperBg}};border:1px solid {{borderCol}};display:flex;align-items:center;gap:10px;font-size:16px;line-height:26px;color:{{editorText}}">
+            <span aria-hidden="true" style="color:{{handleCol}};display:inline-flex;align-items:center">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"/><circle cx="10.5" cy="3.5" r="1.2"/><circle cx="5.5" cy="8" r="1.2"/><circle cx="10.5" cy="8" r="1.2"/><circle cx="5.5" cy="12.5" r="1.2"/><circle cx="10.5" cy="12.5" r="1.2"/></svg>
+            </span>
+            <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #8a8984;display:inline-block;flex:none"></span>
+            <div>格式：邮箱----密码----邮箱<code class="{{v2CodeCls}}">client_id</code>----邮箱<code class="{{v2CodeCls}}">refresh_token</code></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 真实编辑器版心（700px）交互逻辑演示 -->
+    <section style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:28px 32px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid {{borderCol}};padding-bottom:14px">
+        <span style="font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">编辑器标准版心（700px）· 悬停复制与光标步入源码编辑逻辑</span>
+        <span style="font-size:14px;color:{{textSecondary}}">点击右上方按钮切换「⌘+悬停复制」与「光标步入展开反引号」</span>
+      </div>
+
+      <div style="max-width:700px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px;font-size:16px;line-height:26px;color:{{editorText}}">
+
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;margin:0 -8px;border-radius:6px;background:{{activeRowBg}}">
+          <span aria-hidden="true" style="color:{{handleCol}};display:inline-flex;align-items:center">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.2"/><circle cx="10.5" cy="3.5" r="1.2"/><circle cx="5.5" cy="8" r="1.2"/><circle cx="10.5" cy="8" r="1.2"/><circle cx="5.5" cy="12.5" r="1.2"/><circle cx="10.5" cy="12.5" r="1.2"/></svg>
+          </span>
+          <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #8a8984;display:inline-block;flex:none"></span>
+
+          <sc-if value="{{isRead}}" hint-placeholder-val="{{true}}">
+            <div>格式：邮箱----密码----邮箱<code class="{{v2CodeCls}}">client_id</code>----邮箱<code class="{{v2CodeCls}}">refresh_token</code></div>
+          </sc-if>
+
+          <sc-if value="{{isHover}}" hint-placeholder-val="{{false}}">
+            <div style="display:flex;align-items:center;flex-wrap:wrap;position:relative">
+              <span>格式：邮箱----密码----邮箱</span>
+              <span class="{{v2HoverCls}}">
+                <span>client_id</span>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/></svg>
+              </span>
+              <span>----邮箱</span>
+              <code class="{{v2CodeCls}}">refresh_token</code>
+              <span style="margin-left:8px;padding:2px 8px;border-radius:6px;background:#20242c;color:#ffffff;font-size:13px;line-height:18px">⌘+点击直接复制 `client_id`</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{isRaw}}" hint-placeholder-val="{{false}}">
+            <div style="display:flex;align-items:center;flex-wrap:wrap">
+              <span>格式：邮箱----密码----邮箱</span>
+              <span style="display:inline-flex;align-items:center;font-family:'JetBrains Mono',Menlo,monospace;font-size:13.5px;padding:1px 6px;margin:0 4px;border-radius:6px;background:{{selectedSurface}};border:1px dashed {{accentCol}};color:{{accentCol}}">
+                <span style="opacity:0.65">`</span>
+                <span style="color:{{textPrimary}}">client_id</span>
+                <span style="display:inline-block;width:1.5px;height:16px;background:{{accentCol}};margin:0 1px"></span>
+                <span style="opacity:0.65">`</span>
+              </span>
+              <span>----邮箱</span>
+              <code class="{{v2CodeCls}}">refresh_token</code>
+              <span style="margin-left:6px;font-size:14px;color:{{accentCol}}">← 光标移入时显式露出两侧反引号，删掉右侧 ` 即还原普通文本</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <p style="margin:4px 0 0 24px">
+          批量导入账号时，按行解析分隔符 <code class="{{v2CodeCls}}">----</code> 并提取第 3、4 列的 <code class="{{v2CodeCls}}">client_id</code> 与 <code class="{{v2CodeCls}}">refresh_token</code>；若遇到错误码 <code class="{{v2CodeCls}}">invalid_grant</code>，自动标记该条目。
+        </p>
+      </div>
+    </section>
+
+    <!-- 3. 方案 B 核心特性说明（3 栏） -->
+    <section style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">1. 蓝灰冷调微芯片视觉</span>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          采用 Ocean Paper 体系的冷蓝灰底（<code class="{{v2CodeCls}}">#f1f3f7</code> / 深色 <code class="{{v2CodeCls}}">#252a34</code>）配 <code class="{{v2CodeCls}}">1px</code> 边框与深海蓝字色 <code class="{{v2CodeCls}}">#1e3a6e</code>，即使夹在密集破折号与中文之间也像独立键帽般清晰。
+        </p>
+      </div>
+
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">2. 光标步入自动还原反引号</span>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          借鉴 Typora / Obsidian 的焦点展开逻辑：平时隐藏反引号呈现精致胶囊；当光标进入胶囊内部时，两端浮现半透明 <code class="{{v2CodeCls}}">`</code> 符号，用户一眼看清自己正在代码内还是代码外。
+        </p>
+      </div>
+
+      <div style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:15px;font-weight:560;color:{{textPrimary}}">3. 按住 ⌘ 悬停一键复制 Token</span>
+        <p style="margin:0;color:{{textSecondary}};font-size:14px;line-height:21px">
+          针对常需要复制 <code class="{{v2CodeCls}}">client_id</code>、命令参数或路径的场景，按住 <code class="{{v2CodeCls}}">⌘</code> 点击任意行内代码即可直接复制纯文本到剪贴板，免去手动拖选。
+        </p>
+      </div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = { dark: false, mode: 'read' };
+  }
+  setLight() { this.setState({ dark: false }); }
+  setDark() { this.setState({ dark: true }); }
+  setStateRead() { this.setState({ mode: 'read' }); }
+  setStateHover() { this.setState({ mode: 'hover' }); }
+  setStateRaw() { this.setState({ mode: 'raw' }); }
+
+  renderVals() {
+    const d = this.state.dark;
+    const m = this.state.mode;
+    const activeBg = d ? '#343434' : '#e5edfc';
+    const activeCol = d ? '#ececec' : '#20242c';
+    const activeRing = d ? 'inset 0 0 0 1px #779de8' : 'inset 0 0 0 1px #547dd0';
+    const idleCol = d ? '#b4b4b4' : '#526071';
+
+    return {
+      pageBg: d ? '#181818' : '#f8f8f8',
+      barBg: d ? '#222222' : '#fafafa',
+      shellBg: d ? '#343434' : '#f1f1f1',
+      cardBg: d ? '#222222' : '#ffffff',
+      paperBg: d ? '#181818' : '#ffffff',
+      subSurface: d ? '#1b1b1b' : '#f8f8f8',
+      selectedSurface: d ? '#232c3d' : '#f3f7fe',
+      activeRowBg: m === 'read' ? 'transparent' : (d ? '#232c3d' : '#f5f8fe'),
+      borderCol: d ? '#2e2e2e' : '#e4e6ea',
+      btnBorder: d ? '#444444' : '#dcdcdc',
+      textPrimary: d ? '#ececec' : '#20242c',
+      textSecondary: d ? '#b4b4b4' : '#526071',
+      editorText: d ? '#ececec' : '#1f1e1d',
+      handleCol: d ? '#6e6e6e' : '#b0afa9',
+      accentCol: d ? '#779de8' : '#547dd0',
+
+      v2CodeCls: d ? 'ic-v2-dark' : 'ic-v2-light',
+      v2HoverCls: d ? 'ic-v2-hover-dark' : 'ic-v2-hover-light',
+      legacyCodeCls: d ? 'ic-legacy-dark' : 'ic-legacy-light',
+
+      isRead: m === 'read',
+      isHover: m === 'hover',
+      isRaw: m === 'raw',
+
+      readBg: m === 'read' ? activeBg : 'transparent',
+      readCol: m === 'read' ? activeCol : idleCol,
+      readRing: m === 'read' ? activeRing : 'none',
+
+      hoverBg: m === 'hover' ? activeBg : 'transparent',
+      hoverCol: m === 'hover' ? activeCol : idleCol,
+      hoverRing: m === 'hover' ? activeRing : 'none',
+
+      rawBg: m === 'raw' ? activeBg : 'transparent',
+      rawCol: m === 'raw' ? activeCol : idleCol,
+      rawRing: m === 'raw' ? activeRing : 'none',
+
+      lightBtnBg: !d ? activeBg : 'transparent',
+      lightBtnCol: !d ? activeCol : idleCol,
+      lightBtnRing: !d ? activeRing : 'none',
+
+      darkBtnBg: d ? activeBg : 'transparent',
+      darkBtnCol: d ? activeCol : idleCol,
+      darkBtnRing: d ? activeRing : 'none'
+    };
+  }
+}
+</script>
+</body>
+</html>

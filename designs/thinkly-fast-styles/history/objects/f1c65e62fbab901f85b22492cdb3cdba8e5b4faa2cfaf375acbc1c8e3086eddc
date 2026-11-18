@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>图片工具栏功能对齐 · 选区浮条与更多菜单 · 暗色与亮色</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#2f6fe4}a:hover{color:#1f57c0}
+button,input{font-family:inherit}
+.d-bar{display:inline-flex;align-items:center;gap:4px;padding:6px 8px;background:#262626;border:1px solid #383838;border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.28)}
+.d-tb{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;background:transparent;color:#ebebea;padding:0;cursor:pointer;flex:none;box-sizing:border-box}
+.d-tb:hover{background:#343434}
+.d-tb.on{background:#243449;color:#4ea1ff}
+.d-tb.open{background:#3a3a3a;color:#ffffff}
+.d-sep{width:1px;height:20px;background:#3b3b3b;margin:0 4px;flex:none}
+.d-menu{background:#262626;border:1px solid #383838;border-radius:14px;box-shadow:0 16px 36px rgba(0,0,0,.5),0 2px 8px rgba(0,0,0,.3);padding:6px;width:176px;box-sizing:border-box}
+.d-mi{display:flex;align-items:center;height:36px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#ebebea;font-size:15px;font-weight:450;width:100%;text-align:left;cursor:pointer;box-sizing:border-box}
+.d-mi:hover{background:#343434}
+.d-mi.danger{color:#e26d68}
+.d-mi.danger:hover{background:#3a2727}
+.d-mdiv{height:1px;background:#353535;margin:4px 8px}
+
+.l-bar{display:inline-flex;align-items:center;gap:4px;padding:6px 8px;background:#ffffff;border:1px solid #ececea;border-radius:16px;box-shadow:0 10px 28px rgba(31,30,29,.12),0 1px 3px rgba(31,30,29,.06)}
+.l-tb{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;background:transparent;color:#37352f;padding:0;cursor:pointer;flex:none;box-sizing:border-box}
+.l-tb:hover{background:#f1f1ef}
+.l-tb.on{background:#e7effd;color:#2f6fe4}
+.l-tb.open{background:#efefed;color:#1f1e1d}
+.l-sep{width:1px;height:20px;background:#e6e6e3;margin:0 4px;flex:none}
+.l-menu{background:#ffffff;border:1px solid #ececea;border-radius:14px;box-shadow:0 14px 34px rgba(31,30,29,.14),0 2px 6px rgba(31,30,29,.06);padding:6px;width:176px;box-sizing:border-box}
+.l-mi{display:flex;align-items:center;height:36px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#1f1e1d;font-size:15px;font-weight:450;width:100%;text-align:left;cursor:pointer;box-sizing:border-box}
+.l-mi:hover{background:#f3f2ef}
+.l-mi.danger{color:#d94841}
+.l-mi.danger:hover{background:#fdf0ef}
+.l-mdiv{height:1px;background:#ececea;margin:4px 8px}
+
+.img-frame-dark{position:relative;border-radius:16px;padding:6px;background:#0c0c0d;border:2px solid #2b6be6;box-sizing:border-box}
+.img-frame-light{position:relative;border-radius:16px;padding:6px;background:#ffffff;border:2px solid #2f6fe4;box-sizing:border-box}
+.sub-card{background:#ffffff;border:1px solid #e6e5e0;border-radius:12px;padding:16px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px}
+.inp{height:32px;padding:0 10px;border-radius:8px;border:1px solid #dcdad4;background:#ffffff;color:#1f1e1d;font-size:14px;outline:0;box-sizing:border-box}
+.btn-pri{height:32px;padding:0 12px;border-radius:8px;border:0;background:#2f6fe4;color:#ffffff;font-size:14px;font-weight:500;cursor:pointer}
+.btn-sec{height:32px;padding:0 10px;border-radius:8px;border:1px solid #dcdad4;background:#ffffff;color:#37352f;font-size:14px;cursor:pointer}
+</style>
+</helmet>
+<div style="width:100%;height:980px;box-sizing:border-box;display:flex;flex-direction:column;background:#f7f7f5;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#1f1e1d;font-size:14px;line-height:20px;overflow:hidden">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;padding:0 16px;gap:12px;background:#f7f7f5;border-bottom:1px solid #ececea">
+<div aria-hidden="true" style="display:flex;gap:8px;width:52px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<div style="flex:1;text-align:center;font-size:14px;color:#5e5d59">图片工具栏功能对齐 · 7 项胶囊浮条（评论 / 表情 / 左中右对齐 / 裁剪 / 更多）+ 四项操作菜单</div>
+<div style="display:flex;gap:6px">
+<button onClick="{{setAlignLeft}}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #dcdad4;background:{{leftBtnBg}};color:#1f1e1d;font-size:13px;cursor:pointer">左对齐</button>
+<button onClick="{{setAlignCenter}}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #dcdad4;background:{{centerBtnBg}};color:#1f1e1d;font-size:13px;cursor:pointer">居中对齐</button>
+<button onClick="{{setAlignRight}}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #dcdad4;background:{{rightBtnBg}};color:#1f1e1d;font-size:13px;cursor:pointer">右对齐</button>
+</div>
+</header>
+
+<main style="flex:1;min-height:0;background:#ffffff;overflow:auto;padding:24px 40px 36px;box-sizing:border-box;display:flex;flex-direction:column;gap:24px">
+
+<section style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:28px;align-items:start">
+
+<div style="background:#050506;border-radius:16px;padding:20px 24px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;color:#ebebea">
+<div style="display:flex;align-items:center;justify-content:space-between;font-size:14px;color:#a0a0a5">
+<span>深色模式（1:1 还原参考图：选中蓝框 `#2b6be6` + 顶部居中胶囊 + `⋯` 下拉菜单）</span>
+</div>
+
+<div style="position:relative;padding-top:54px">
+<div style="position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:5">
+<div class="d-bar" role="toolbar" aria-label="图片操作工具栏（深色）">
+<button class="d-tb" aria-label="添加评论">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4a8 8 0 0 1 8 8 8 8 0 0 1-8 8H5.5a1.5 1.5 0 0 1-1.5-1.5V12a8 8 0 0 1 8-8z"/></svg>
+</button>
+<button class="d-tb" aria-label="添加表情回应">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-6-7.75"/><path d="M9 14.5c.8 1 1.8 1.5 3 1.5s2.2-.5 3-1.5"/><circle cx="9.2" cy="10.2" r="1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="10.2" r="1" fill="currentColor" stroke="none"/><path d="M19 3.5v4.5M16.75 5.75h4.5"/></svg>
+</button>
+<span class="d-sep" aria-hidden="true"></span>
+<button class="{{dLeftCls}}" onClick="{{setAlignLeft}}" aria-label="左对齐">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+</button>
+<button class="{{dCenterCls}}" onClick="{{setAlignCenter}}" aria-label="居中对齐">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M4 18h16"/></svg>
+</button>
+<button class="{{dRightCls}}" onClick="{{setAlignRight}}" aria-label="右对齐">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M10 12h10M4 18h16"/></svg>
+</button>
+<span class="d-sep" aria-hidden="true"></span>
+<button class="d-tb" aria-label="裁剪图片">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3v12.5a2 2 0 0 0 2 2H21"/><path d="M3 6.5h12.5a2 2 0 0 1 2 2V15"/><circle cx="19.5" cy="19.5" r=".9" fill="currentColor" stroke="none"/></svg>
+</button>
+<div style="position:relative;display:inline-flex">
+<button class="d-tb open" aria-label="更多图片操作" aria-expanded="true">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="17.5" cy="12" r="1.6"/></svg>
+</button>
+<div class="d-menu" role="menu" aria-label="图片更多菜单（深色）" style="position:absolute;top:calc(100% + 10px);left:0;z-index:10">
+<button class="d-mi" role="menuitem">Copy image</button>
+<button class="d-mi" role="menuitem">Edit alt text</button>
+<button class="d-mi" role="menuitem">Set image size</button>
+<div class="d-mdiv" role="separator"></div>
+<button class="d-mi danger" role="menuitem">Delete image</button>
+</div>
+</div>
+</div>
+</div>
+
+<div class="img-frame-dark">
+<div style="border-radius:12px;overflow:hidden;height:320px;background:#ffffff">
+<img src="/_blob/66c6955d7ad40d92535cdcb2e5ba7c69" alt="吉祥物图标合集" style="width:100%;height:390px;object-fit:cover;object-position:center bottom;display:block">
+</div>
+</div>
+</div>
+</div>
+
+<div style="background:#f7f7f5;border:1px solid #e6e5e0;border-radius:16px;padding:20px 24px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;color:#1f1e1d">
+<div style="display:flex;align-items:center;justify-content:space-between;font-size:14px;color:#5e5d59">
+<span>浅色模式（对齐 F-Toolbar 白底胶囊规范：激活项 `#e7effd` 蓝字 + 打开态 `#efefed`）</span>
+</div>
+
+<div style="position:relative;padding-top:54px">
+<div style="position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:5">
+<div class="l-bar" role="toolbar" aria-label="图片操作工具栏（浅色）">
+<button class="l-tb" aria-label="添加评论">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4a8 8 0 0 1 8 8 8 8 0 0 1-8 8H5.5a1.5 1.5 0 0 1-1.5-1.5V12a8 8 0 0 1 8-8z"/></svg>
+</button>
+<button class="l-tb" aria-label="添加表情回应">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-6-7.75"/><path d="M9 14.5c.8 1 1.8 1.5 3 1.5s2.2-.5 3-1.5"/><circle cx="9.2" cy="10.2" r="1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="10.2" r="1" fill="currentColor" stroke="none"/><path d="M19 3.5v4.5M16.75 5.75h4.5"/></svg>
+</button>
+<span class="l-sep" aria-hidden="true"></span>
+<button class="{{lLeftCls}}" onClick="{{setAlignLeft}}" aria-label="左对齐">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+</button>
+<button class="{{lCenterCls}}" onClick="{{setAlignCenter}}" aria-label="居中对齐">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M4 18h16"/></svg>
+</button>
+<button class="{{lRightCls}}" onClick="{{setAlignRight}}" aria-label="右对齐">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M10 12h10M4 18h16"/></svg>
+</button>
+<span class="l-sep" aria-hidden="true"></span>
+<button class="l-tb" aria-label="裁剪图片">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3v12.5a2 2 0 0 0 2 2H21"/><path d="M3 6.5h12.5a2 2 0 0 1 2 2V15"/><circle cx="19.5" cy="19.5" r=".9" fill="currentColor" stroke="none"/></svg>
+</button>
+<div style="position:relative;display:inline-flex">
+<button class="l-tb open" aria-label="更多图片操作" aria-expanded="true">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="17.5" cy="12" r="1.6"/></svg>
+</button>
+<div class="l-menu" role="menu" aria-label="图片更多菜单（浅色）" style="position:absolute;top:calc(100% + 10px);left:0;z-index:10">
+<button class="l-mi" role="menuitem">Copy image</button>
+<button class="l-mi" role="menuitem">Edit alt text</button>
+<button class="l-mi" role="menuitem">Set image size</button>
+<div class="l-mdiv" role="separator"></div>
+<button class="l-mi danger" role="menuitem">Delete image</button>
+</div>
+</div>
+</div>
+</div>
+
+<div class="img-frame-light">
+<div style="border-radius:12px;overflow:hidden;height:320px;background:#ffffff">
+<img src="/_blob/66c6955d7ad40d92535cdcb2e5ba7c69" alt="吉祥物图标合集" style="width:100%;height:390px;object-fit:cover;object-position:center bottom;display:block">
+</div>
+</div>
+</div>
+</div>
+
+</section>
+
+<section style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:20px">
+
+<div class="sub-card">
+<div style="font-size:14px;font-weight:600;color:#1f1e1d">二级交互 1 · Edit alt text（编辑替代文本）</div>
+<div style="font-size:14px;color:#5e5d59">点击菜单项后在图片上方/下方展开紧凑输入浮层，回车保存写入 Markdown `![alt](src)`：</div>
+<div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+<label style="flex:1;display:flex">
+<span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">替代文本</span>
+<input class="inp" style="width:100%" value="Thinkly 吉祥物六款配色图标">
+</label>
+<button class="btn-pri">Save</button>
+<button class="btn-sec">Cancel</button>
+</div>
+</div>
+
+<div class="sub-card">
+<div style="font-size:14px;font-weight:600;color:#1f1e1d">二级交互 2 · Set image size（设置图片尺寸）</div>
+<div style="font-size:14px;color:#5e5d59">支持百分比快捷档位（25% / 50% / 75% / 100%）或输入具体像素宽度，实时缩放图片：</div>
+<div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap">
+<button class="btn-sec" style="padding:0 8px">25%</button>
+<button class="btn-sec" style="padding:0 8px">50%</button>
+<button class="btn-sec" style="padding:0 8px;background:#e7effd;border-color:#b9cff7;color:#2f6fe4">75%</button>
+<button class="btn-sec" style="padding:0 8px">100%</button>
+<label style="display:inline-flex;align-items:center;gap:4px">
+<span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">宽度像素</span>
+<input class="inp" style="width:76px;text-align:right" value="540">
+<span style="font-size:14px;color:#5e5d59">px</span>
+</label>
+<button class="btn-pri">Apply</button>
+</div>
+</div>
+
+<div class="sub-card">
+<div style="font-size:14px;font-weight:600;color:#1f1e1d">二级交互 3 · 裁剪（Crop）与快捷键行为对齐</div>
+<div style="font-size:14px;color:#5e5d59">点击裁剪图标进入四角 L 形裁切框模式；`Copy image` 写系统剪贴板；`Delete image`（或选中按 Delete/Backspace）移除该块并保持前后块。</div>
+<div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+<span style="padding:4px 10px;border-radius:6px;background:#f1f1ef;color:#37352f;font-size:14px">Enter：下方新建空段落</span>
+<span style="padding:4px 10px;border-radius:6px;background:#fdf0ef;color:#d94841;font-size:14px">Delete：删除图片块</span>
+</div>
+</div>
+
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"align":{"editor":"enum","default":"left","options":["left","center","right"]},"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+constructor(p) {
+super(p);
+this.state = { align: null };
+}
+renderVals() {
+const a = this.state.align ?? this.props.align ?? 'left';
+return {
+leftBtnBg: a === 'left' ? '#e7effd' : '#ffffff',
+centerBtnBg: a === 'center' ? '#e7effd' : '#ffffff',
+rightBtnBg: a === 'right' ? '#e7effd' : '#ffffff',
+dLeftCls: a === 'left' ? 'd-tb on' : 'd-tb',
+dCenterCls: a === 'center' ? 'd-tb on' : 'd-tb',
+dRightCls: a === 'right' ? 'd-tb on' : 'd-tb',
+lLeftCls: a === 'left' ? 'l-tb on' : 'l-tb',
+lCenterCls: a === 'center' ? 'l-tb on' : 'l-tb',
+lRightCls: a === 'right' ? 'l-tb on' : 'l-tb',
+setAlignLeft: () => this.setState({ align: 'left' }),
+setAlignCenter: () => this.setState({ align: 'center' }),
+setAlignRight: () => this.setState({ align: 'right' })
+};
+}
+}
+</script>
+</body>
+</html>

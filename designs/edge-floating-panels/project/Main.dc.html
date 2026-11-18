@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>方案 A · 贴边驻留唤出与正文让位</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #256abf; text-decoration: none; }
+    a:hover { color: #184f95; text-decoration: underline; }
+    button { font-family: inherit; cursor: pointer; }
+    button:focus-visible { outline: 2px solid #547dd0; outline-offset: 2px; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 100%; min-height: 820px; padding: 28px 24px 36px; display: flex; flex-direction: column; align-items: center; gap: 20px; background: #e9eaec; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; color: #1f1e1d; -webkit-font-smoothing: antialiased">
+
+  <div style="width: 100%; max-width: 780px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px">
+    <div role="group" aria-label="边缘浮动状态" style="display: inline-flex; flex-wrap: wrap; padding: 3px; gap: 3px; background: #ffffff; border: 1px solid #d8dee9; border-radius: 10px; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05)">
+      <sc-for list="{{modeTabs}}" as="tab" hint-placeholder-count="3">
+        <button type="button" onClick="{{tab.pick}}" style="height: 32px; padding: 0 14px; border: 0; border-radius: 7px; background: {{tab.bg}}; color: {{tab.fg}}; font-size: 14px; font-weight: {{tab.weight}}">{{tab.label}}</button>
+      </sc-for>
+    </div>
+
+    <div role="group" aria-label="聚焦块切换" style="display: inline-flex; flex-wrap: wrap; padding: 3px; gap: 3px; background: #ffffff; border: 1px solid #d8dee9; border-radius: 10px; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05)">
+      <sc-for list="{{rowTabs}}" as="rt" hint-placeholder-count="3">
+        <button type="button" onClick="{{rt.pick}}" style="height: 32px; padding: 0 12px; border: 0; border-radius: 7px; background: {{rt.bg}}; color: {{rt.fg}}; font-size: 14px; font-weight: {{rt.weight}}">{{rt.label}}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="width: 100%; max-width: 780px; min-height: 696px; border-radius: 14px; overflow: hidden; background: #ffffff; box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.10), 0 18px 44px rgba(15, 23, 42, 0.14); display: flex; flex-direction: column; position: relative">
+
+    <header style="height: 40px; padding: 0 12px 0 16px; display: flex; align-items: center; gap: 8px; background: #f1f1f1; border-bottom: 1px solid #e6e6e6; flex-shrink: 0">
+      <div aria-hidden="true" style="display: flex; align-items: center; gap: 8px; margin-right: 6px">
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #ff5f57"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #febc2e"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #28c840"></span>
+      </div>
+      <button type="button" aria-label="切换侧栏" onClick="{{toggleLeft}}" style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: {{leftBtnBg}}; color: {{leftBtnFg}}; display: flex; align-items: center; justify-content: center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16"></path></svg>
+      </button>
+      <div style="height: 28px; padding: 0 12px; border-radius: 6px; background: #ffffff; border: 1px solid #e4e6ea; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: #1f1e1d">
+        <span>Q4 产品路线规划</span>
+      </div>
+      <span style="flex: 1"></span>
+      <button type="button" aria-label="切换 AI 面板" onClick="{{toggleRight}}" style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: {{rightBtnBg}}; color: {{rightBtnFg}}; display: flex; align-items: center; justify-content: center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4l1.6 4.4L16 10l-4.4 1.6L10 16l-1.6-4.4L4 10l4.4-1.6z"></path><path d="M18 4v4M16 6h4"></path></svg>
+      </button>
+      <button type="button" aria-label="更多操作" style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: #52514e; display: flex; align-items: center; justify-content: center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="18" cy="12" r="1.6"></circle></svg>
+      </button>
+    </header>
+
+    <div style="flex: 1; position: relative; display: flex; min-height: 0; background: #ffffff">
+
+      <button type="button" aria-label="左边缘贴边唤出侧栏" onMouseEnter="{{openLeft}}" onClick="{{openLeft}}" style="position: absolute; left: 0; top: 0; bottom: 0; width: 10px; padding: 0; border: 0; background: transparent; z-index: 20; display: flex; align-items: stretch">
+        <span style="width: 3px; height: 100%; background: {{leftEdgeLine}}; border-radius: 0 3px 3px 0"></span>
+      </button>
+
+      <button type="button" aria-label="右边缘贴边唤出 AI" onMouseEnter="{{openRight}}" onClick="{{openRight}}" style="position: absolute; right: 0; top: 0; bottom: 0; width: 10px; padding: 0; border: 0; background: transparent; z-index: 20; display: flex; justify-content: flex-end; align-items: stretch">
+        <span style="width: 3px; height: 100%; background: {{rightEdgeLine}}; border-radius: 3px 0 0 3px"></span>
+      </button>
+
+      <div style="flex: 1; min-width: 0; padding: {{editorPad}}; display: flex; flex-direction: column; gap: 14px">
+
+        <div style="display: flex; align-items: flex-start">
+          <div style="width: 54px; height: 32px; padding-right: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin-right: 14px">
+            <sc-if value="{{showRow0Handle}}" hint-placeholder-val="{{ true }}">
+              <button type="button" aria-label="折叠章节" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: #eef3fc; color: #1f1e1d; display: flex; align-items: center; justify-content: center">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+              </button>
+              <button type="button" aria-label="拖动或转换标题块" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: #eef3fc; color: #1f1e1d; display: flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7" fill="#547dd0"></circle><circle cx="15" cy="6" r="1.7"></circle><circle cx="9" cy="12" r="1.7"></circle><circle cx="15" cy="12" r="1.7" fill="#547dd0"></circle><circle cx="9" cy="18" r="1.7"></circle><circle cx="15" cy="18" r="1.7"></circle></svg>
+              </button>
+            </sc-if>
+          </div>
+          <button type="button" onClick="{{pickRow0}}" style="flex: 1; min-width: 0; padding: 2px 8px; border: 0; border-radius: 6px; background: {{row0Bg}}; text-align: left; font-size: 22px; line-height: 32px; font-weight: 600; color: #1f1e1d">
+            窄窗多栏自适应规则
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: flex-start">
+          <div style="width: 54px; height: 26px; padding-right: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin-right: 14px">
+            <sc-if value="{{showRow1Handle}}" hint-placeholder-val="{{ false }}">
+              <button type="button" aria-label="拖动或转换段落块" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: #eef3fc; color: #1f1e1d; display: flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7" fill="#547dd0"></circle><circle cx="15" cy="6" r="1.7"></circle><circle cx="9" cy="12" r="1.7"></circle><circle cx="15" cy="12" r="1.7" fill="#547dd0"></circle><circle cx="9" cy="18" r="1.7"></circle><circle cx="15" cy="18" r="1.7"></circle></svg>
+              </button>
+            </sc-if>
+          </div>
+          <button type="button" onClick="{{pickRow1}}" style="flex: 1; min-width: 0; padding: 2px 8px; border: 0; border-radius: 6px; background: {{row1Bg}}; text-align: left; font-size: 16px; line-height: 26px; font-weight: 400; color: #1f1e1d">
+            当窗口收窄导致文件树与 AI 面板双双收起时，光标贴近左右窗边 6px 驻留即可唤出圆角浮动抽屉；正文同步向对侧轻推，完整保留 54px 块把手走廊。
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: center">
+          <div style="width: 54px; height: 26px; padding-right: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; margin-right: 14px">
+            <sc-if value="{{showRow2Handle}}" hint-placeholder-val="{{ false }}">
+              <button type="button" aria-label="插入新块" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: #eef3fc; color: #2f57a6; display: flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+              </button>
+            </sc-if>
+          </div>
+          <button type="button" onClick="{{pickRow2}}" style="flex: 1; min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: {{row2Bg}}; text-align: left; font-size: 15px; line-height: 26px; color: #586272">
+            输入 / 唤出命令菜单…
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: flex-start">
+          <div style="width: 54px; height: 26px; padding-right: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; margin-right: 14px">
+          </div>
+          <div style="flex: 1; min-width: 0; padding: 12px 14px; border-radius: 10px; background: #f8f8f6; border: 1px solid #e4e6ea; display: flex; flex-direction: column; gap: 8px">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 15px; line-height: 22px; color: #1f1e1d">
+              <span style="width: 16px; height: 16px; border-radius: 4px; background: #2f57a6; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"></path></svg>
+              </span>
+              <span>贴边 6px + 140ms 驻留：横向点选块把手绝不误触抽屉</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 15px; line-height: 22px; color: #1f1e1d">
+              <span style="width: 16px; height: 16px; border-radius: 4px; background: #ffffff; border: 1.5px solid #586272; flex-shrink: 0"></span>
+              <span>拖拽块或开始打字时，浮动栏平滑收起归还全宽画布</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <sc-if value="{{isLeft}}" hint-placeholder-val="{{ true }}">
+        <aside aria-label="浮动文件侧栏" style="position: absolute; left: 10px; top: 10px; bottom: 10px; width: 228px; border-radius: 14px; background: #fafafa; border: 1px solid #d8dee9; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14); display: flex; flex-direction: column; z-index: 15; overflow: hidden">
+          <div style="height: 38px; padding: 0 10px 0 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e6e6e6">
+            <span style="font-size: 13px; font-weight: 560; color: #1f1e1d">创业团队</span>
+            <div style="display: flex; align-items: center; gap: 4px">
+              <button type="button" aria-label="收起浮动侧栏" onClick="{{setIdle}}" style="width: 26px; height: 26px; border: 0; border-radius: 6px; background: #eef3fc; color: #2f57a6; display: flex; align-items: center; justify-content: center">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div style="padding: 8px; display: flex; flex-direction: column; gap: 2px; flex: 1">
+            <div style="height: 32px; padding: 0 8px; border-radius: 6px; display: flex; align-items: center; gap: 8px; font-size: 14px; color: #1f1e1d">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#52514e" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#c9d8f3" stroke="#2f57a6" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+              <span>产品设计</span>
+            </div>
+            <div style="height: 32px; padding: 0 8px 0 28px; border-radius: 6px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: #1f1e1d">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="#c9d8f3" stroke="#2f57a6" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"></path></svg>
+              <span>Q4 产品路线规划</span>
+            </div>
+            <div style="height: 32px; padding: 0 8px 0 28px; border-radius: 6px; display: flex; align-items: center; gap: 8px; font-size: 14px; color: #1f1e1d">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"></path></svg>
+              <span>移动端适配纪要</span>
+            </div>
+            <div style="height: 32px; padding: 0 8px 0 28px; border-radius: 6px; display: flex; align-items: center; gap: 8px; font-size: 14px; color: #1f1e1d">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"></path></svg>
+              <span>快捷键规范</span>
+            </div>
+          </div>
+          <div style="height: 42px; padding: 0 12px; border-top: 1px solid #e6e6e6; display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #52514e">
+            <span>搜索笔记</span>
+            <span style="padding: 2px 6px; border-radius: 4px; background: #f2f4f8; border: 1px solid #dfe4ed; color: #3e4c63; font-family: 'JetBrains Mono', monospace">⌘K</span>
+          </div>
+        </aside>
+      </sc-if>
+
+      <sc-if value="{{isRight}}" hint-placeholder-val="{{ false }}">
+        <aside aria-label="浮动 AI 面板" style="position: absolute; right: 10px; top: 10px; bottom: 10px; width: 292px; border-radius: 14px; background: #ffffff; border: 1px solid #d8dee9; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14); display: flex; flex-direction: column; z-index: 15; overflow: hidden">
+          <div style="height: 38px; padding: 0 10px 0 14px; display: flex; align-items: center; justify-content: space-between; background: #fafafa; border-bottom: 1px solid #e6e6e6">
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 560; color: #1f1e1d">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="#c9d8f3" stroke="#2f57a6" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M10 4l1.6 4.4L16 10l-4.4 1.6L10 16l-1.6-4.4L4 10l4.4-1.6z"></path></svg>
+              <span>AI 助手</span>
+            </div>
+            <button type="button" aria-label="收起浮动 AI" onClick="{{setIdle}}" style="width: 26px; height: 26px; border: 0; border-radius: 6px; background: #eef3fc; color: #2f57a6; display: flex; align-items: center; justify-content: center">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg>
+            </button>
+          </div>
+          <div style="padding: 12px; display: flex; flex-direction: column; gap: 10px; flex: 1">
+            <div style="align-self: flex-end; max-width: 236px; padding: 8px 12px; border-radius: 10px; background: #e5edfc; color: #1f1e1d; font-size: 13px; line-height: 19px">
+              帮我提炼本页的窄窗交互要点
+            </div>
+            <div style="padding: 10px 12px; border-radius: 10px; background: #f8f8f6; border: 1px solid #e4e6ea; color: #1f1e1d; font-size: 13px; line-height: 20px">
+              已整理 2 条核心约束：左边缘热区避开块把手，浮动展开时自动保留 54px 把手槽位。
+            </div>
+          </div>
+          <div style="padding: 10px; border-top: 1px solid #e6e6e6">
+            <div style="height: 36px; padding: 0 10px; border-radius: 8px; background: #fafafa; border: 1px solid #dcdcdc; display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #586272">
+              <span>继续追问当前笔记…</span>
+              <span style="padding: 2px 6px; border-radius: 4px; background: #e5edfc; color: #184f95; font-family: 'JetBrains Mono', monospace; font-size: 12px">↵</span>
+            </div>
+          </div>
+        </aside>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"panelMode":{"editor":"enum","default":"left","options":["left","right","idle"],"section":"Edge Float"},"$preview":{"width":1200,"height":820}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: null, activeRow: 0 };
+  }
+  renderVals() {
+    const mode = this.state.mode ?? this.props.panelMode ?? 'left';
+    const row = this.state.activeRow ?? 0;
+    const isLeft = mode === 'left';
+    const isRight = mode === 'right';
+
+    const modeDefs = [
+      { id: 'left', label: '左边缘 · 浮动侧栏（正文右让保把手）' },
+      { id: 'right', label: '右边缘 · 浮动 AI（左槽把手常露）' },
+      { id: 'idle', label: '常态 · 双栏隐藏' }
+    ];
+    const modeTabs = modeDefs.map((m) => {
+      const sel = mode === m.id;
+      return {
+        label: m.label,
+        bg: sel ? '#2f57a6' : 'transparent',
+        fg: sel ? '#ffffff' : '#3d3c39',
+        weight: sel ? 560 : 460,
+        pick: () => this.setState({ mode: m.id })
+      };
+    });
+
+    const rowDefs = [
+      { id: 0, label: '标题块（▸ + ⠿）' },
+      { id: 1, label: '段落块（⠿）' },
+      { id: 2, label: '空行（+）' }
+    ];
+    const rowTabs = rowDefs.map((r) => {
+      const sel = row === r.id;
+      return {
+        label: r.label,
+        bg: sel ? '#e5edfc' : 'transparent',
+        fg: sel ? '#184f95' : '#3d3c39',
+        weight: sel ? 560 : 460,
+        pick: () => this.setState({ activeRow: r.id })
+      };
+    });
+
+    let editorPad = '56px 44px 40px 28px';
+    if (isLeft) {
+      editorPad = '56px 28px 40px 248px';
+    } else if (isRight) {
+      editorPad = '56px 312px 40px 14px';
+    }
+
+    return {
+      modeTabs,
+      rowTabs,
+      isLeft,
+      isRight,
+      editorPad,
+      leftEdgeLine: isLeft ? '#547dd0' : 'rgba(84, 125, 208, 0.25)',
+      rightEdgeLine: isRight ? '#547dd0' : 'rgba(84, 125, 208, 0.25)',
+      leftBtnBg: isLeft ? '#e5edfc' : 'transparent',
+      leftBtnFg: isLeft ? '#2f57a6' : '#52514e',
+      rightBtnBg: isRight ? '#e5edfc' : 'transparent',
+      rightBtnFg: isRight ? '#2f57a6' : '#52514e',
+      showRow0Handle: row === 0,
+      showRow1Handle: row === 1,
+      showRow2Handle: row === 2,
+      row0Bg: row === 0 ? '#f4f7fd' : 'transparent',
+      row1Bg: row === 1 ? '#f4f7fd' : 'transparent',
+      row2Bg: row === 2 ? '#f4f7fd' : 'transparent',
+      openLeft: () => this.setState({ mode: 'left' }),
+      openRight: () => this.setState({ mode: 'right' }),
+      toggleLeft: () => this.setState({ mode: isLeft ? 'idle' : 'left' }),
+      toggleRight: () => this.setState({ mode: isRight ? 'idle' : 'right' }),
+      setIdle: () => this.setState({ mode: 'idle' }),
+      pickRow0: () => this.setState({ activeRow: 0 }),
+      pickRow1: () => this.setState({ activeRow: 1 }),
+      pickRow2: () => this.setState({ activeRow: 2 })
+    };
+  }
+}
+</script>
+</body>
+</html>

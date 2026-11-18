@@ -6,10 +6,12 @@ const quitWaitMs = 8000;
 const quitRequestMs = 4000;
 
 export function appPids() {
+  if (process.platform !== "darwin") return [];
   return pidsFor(new Set([installedExecutable, legacyInstalledExecutable]));
 }
 
 export function matchingPids(releaseBinary) {
+  if (process.platform !== "darwin") return [];
   return pidsFor(new Set([installedExecutable, legacyInstalledExecutable, releaseBinary]));
 }
 
@@ -25,9 +27,10 @@ function pidsFor(binaries) {
 }
 
 export function requestQuit() {
+  if (process.platform !== "darwin") return false;
   if (!appPids().length) return false;
   let ok = false;
-  for (const id of [bundleId, legacyBundleId]) {
+  for (const id of [bundleId, legacyBundleId, "com.block.notes"]) {
     const result = spawnSync("osascript", ["-e", `tell application id "${id}" to quit`], {
       encoding: "utf8",
       timeout: quitRequestMs,

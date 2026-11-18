@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>文件夹设置 A（推荐）· 统一文件夹清单与独立用途分配</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input,select{font-family:inherit}
+.ib{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;padding:0;cursor:pointer;flex:none}
+.nav-row{font:inherit;font-size:14px;line-height:20px;width:100%;height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;border:0;border-radius:6px;background:transparent;text-align:left;cursor:pointer;box-sizing:border-box}
+.btn{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:34px;padding:0 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;white-space:nowrap;flex:none}
+.seg{font:inherit;font-size:13px;line-height:18px;font-weight:460;height:28px;padding:0 10px;border:0;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;white-space:nowrap}
+.field-input{font:inherit;font-size:14px;line-height:20px;height:34px;padding:0 10px;border-radius:8px;box-sizing:border-box;outline:none}
+.table-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:8px;box-sizing:border-box}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</helmet>
+<div style="width:100%;min-height:900px;box-sizing:border-box;display:flex;flex-direction:column;background:{{shellBg}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:{{textPrimary}};font-size:14px;line-height:20px;overflow:hidden;-webkit-font-smoothing:antialiased">
+
+<header style="height:40px;flex:none;display:flex;align-items:center;border-bottom:1px solid {{sidebarBorder}};box-sizing:border-box;background:{{shellBg}}">
+<div style="width:260px;flex:none;height:100%;box-sizing:border-box;display:flex;align-items:center;padding:0 10px 0 16px;border-right:1px solid {{sidebarBorder}}">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+<button type="button" class="ib" aria-label="收起侧栏" style="margin-left:auto;color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+<path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{iconFill}}"></path>
+<rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
+<path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+<path d="M15.75 9.75L13.25 12L15.75 14.25" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+
+<div style="flex:1;min-width:0;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 16px;box-sizing:border-box">
+<div style="display:flex;align-items:center;gap:6px;color:{{textSecondary}}">
+<span>设置</span>
+<span>/</span>
+<span style="color:{{textPrimary}};font-weight:460">文件夹</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<button type="button" class="btn" onClick="{{toggleDarkPreview}}" style="height:28px;padding:0 10px;background:{{cardBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">{{themeToggleLabel}}</button>
+</div>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+
+<aside aria-label="设置分类导航" style="width:260px;flex:none;background:{{sidebarBg}};border-right:1px solid {{sidebarBorder}};box-sizing:border-box;display:flex;flex-direction:column;min-height:0">
+<div style="padding:18px 16px 10px;display:flex;align-items:center;justify-content:space-between">
+<span style="font-size:18px;line-height:24px;font-weight:560;color:{{textPrimary}}">设置</span>
+</div>
+<nav aria-label="设置分类" style="flex:1;min-height:0;padding:4px 10px;display:flex;flex-direction:column;gap:4px">
+<button type="button" class="nav-row" style="color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M12 3.5L14.2 9.3L20 11.5L14.2 13.7L12 19.5L9.8 13.7L4 11.5L9.8 9.3L12 3.5Z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="M18.5 4V7M17 5.5H20" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path></svg>
+<span>AI 助手</span>
+</button>
+<button type="button" class="nav-row" style="color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><rect x="3.5" y="4.5" width="17" height="12" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect><path d="M8 20H16M12 16.5V20" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path></svg>
+<span>外观与字体</span>
+</button>
+<button type="button" class="nav-row" style="background:{{selectedBg}};color:{{textPrimary}};box-shadow:{{activeRing}};font-weight:460">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+<span>文件夹</span>
+</button>
+<button type="button" class="nav-row" style="color:{{textSecondary}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><rect x="3.25" y="5.75" width="17.5" height="12.5" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect><path d="M7 10H8.5M11.25 10H12.75M15.5 10H17M7.5 14H16.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round"></path></svg>
+<span>快捷键</span>
+</button>
+</nav>
+<div style="flex:none;height:44px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-top:1px solid {{sidebarBorder}}">
+<span style="color:{{textSecondary}}">本地笔记</span>
+<button type="button" style="height:28px;padding:0 10px;border:1px solid {{btnBorder}};border-radius:6px;background:{{cardBg}};color:{{textPrimary}};font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 6.25L4.75 12L10.5 17.75"></path><path d="M5.25 12H19.25"></path></svg>
+<span>返回笔记</span>
+</button>
+</div>
+</aside>
+
+<main style="flex:999 1 560px;min-width:0;background:{{settingsBg}};overflow:auto">
+<div style="box-sizing:border-box;width:100%;max-width:720px;margin:0 auto;padding:40px 28px 64px;display:flex;flex-direction:column;gap:20px">
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+<h1 style="margin:0;font-size:24px;line-height:32px;font-weight:560;color:{{textPrimary}}">文件夹设置</h1>
+<button type="button" class="btn" style="background:{{cardBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">完成</button>
+</div>
+
+<section aria-label="文件夹统一管理" style="background:{{cardBg}};border:1px solid {{borderCol}};border-radius:14px;padding:20px 22px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:{{textPrimary}}">工作区文件夹清单</h2>
+<span style="font-size:13px;color:{{textSecondary}}">隐藏影响侧栏与搜索，不删除文件</span>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+
+<div class="table-row" style="background:{{rowBg1}};border:1px solid {{borderCol}}">
+<div style="display:flex;align-items:center;gap:10px;min-width:0">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+<span style="font-family:'JetBrains Mono',monospace;font-weight:500;color:{{textPrimary}}">{{assetsDir}}</span>
+<span style="padding:2px 8px;border-radius:6px;background:{{selectedBg}};color:{{accent}};font-size:12px;font-weight:500;box-shadow:{{activeRing}}">图片保存目录</span>
+</div>
+<div style="display:flex;align-items:center;gap:10px;flex:none">
+<div role="group" aria-label="assets可见性" style="display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+<button type="button" class="seg" onClick="{{toggleAssetsHidden}}" style="background:{{assetsHideSegBg}};color:{{assetsHideSegCol}};box-shadow:{{assetsHideSegRing}}">隐藏</button>
+<button type="button" class="seg" onClick="{{toggleAssetsShown}}" style="background:{{assetsShowSegBg}};color:{{assetsShowSegCol}};box-shadow:{{assetsShowSegRing}}">显示</button>
+</div>
+<span style="width:48px;text-align:right;color:{{textSecondary}};font-size:13px">系统</span>
+</div>
+</div>
+
+<div class="table-row" style="background:{{rowBg2}};border:1px solid {{borderCol}}">
+<div style="display:flex;align-items:center;gap:10px;min-width:0">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="transparent" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+<span style="font-family:'JetBrains Mono',monospace;color:{{textPrimary}}">temp</span>
+<span style="color:{{textSecondary}};font-size:13px">临时文件</span>
+</div>
+<div style="display:flex;align-items:center;gap:10px;flex:none">
+<div role="group" aria-label="temp可见性" style="display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+<button type="button" class="seg" onClick="{{toggleTempHidden}}" style="background:{{tempHideSegBg}};color:{{tempHideSegCol}};box-shadow:{{tempHideSegRing}}">隐藏</button>
+<button type="button" class="seg" onClick="{{toggleTempShown}}" style="background:{{tempShowSegBg}};color:{{tempShowSegCol}};box-shadow:{{tempShowSegRing}}">显示</button>
+</div>
+<button type="button" class="ib" aria-label="移除 temp 规则" style="color:{{textSecondary}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+</button>
+</div>
+</div>
+
+<div class="table-row" style="background:{{rowBg3}};border:1px solid {{borderCol}}">
+<div style="display:flex;align-items:center;gap:10px;min-width:0">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="transparent" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+<span style="font-family:'JetBrains Mono',monospace;color:{{textPrimary}}">archive</span>
+<span style="color:{{textSecondary}};font-size:13px">归档存储</span>
+</div>
+<div style="display:flex;align-items:center;gap:10px;flex:none">
+<div role="group" aria-label="archive可见性" style="display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:8px;background:{{shellBg}};border:1px solid {{borderCol}}">
+<button type="button" class="seg" onClick="{{toggleArchiveHidden}}" style="background:{{archiveHideSegBg}};color:{{archiveHideSegCol}};box-shadow:{{archiveHideSegRing}}">隐藏</button>
+<button type="button" class="seg" onClick="{{toggleArchiveShown}}" style="background:{{archiveShowSegBg}};color:{{archiveShowSegCol}};box-shadow:{{archiveShowSegRing}}">显示</button>
+</div>
+<button type="button" class="ib" aria-label="移除 archive 规则" style="color:{{textSecondary}}">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+</button>
+</div>
+</div>
+
+</div>
+
+<div style="display:flex;align-items:center;gap:8px;padding-top:4px">
+<input type="text" placeholder="输入文件夹名称，如 build 或 drafts..." class="field-input" style="flex:1;background:{{shellBg}};border:1px solid {{borderCol}};color:{{textPrimary}}">
+<button type="button" class="btn" style="background:{{cardBg}};color:{{textPrimary}};border:1px solid {{btnBorder}}">添加文件夹</button>
+</div>
+
+<details style="margin-top:4px;border-top:1px solid {{borderCol}};padding-top:12px">
+<summary style="font-size:13px;color:{{textSecondary}};cursor:pointer;user-select:none">高级规则（正则表达式）</summary>
+<div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+<input type="text" placeholder="^(\..*|node_modules)$" class="field-input" style="background:{{shellBg}};border:1px solid {{borderCol}};color:{{textPrimary}};font-family:'JetBrains Mono',monospace">
+<span style="font-size:12px;color:{{textSecondary}}">普通文件夹直接在上表添加名称；正则规则用于多层级或批量排除。</span>
+</div>
+</details>
+
+</section>
+
+</div>
+</main>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"assetsHidden":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      darkOverride: null,
+      assetsHidden: false,
+      tempHidden: true,
+      archiveHidden: true
+    };
+  }
+
+  renderVals() {
+    const st = this.state || {};
+    const props = this.props || {};
+    const mode = st.darkOverride ?? (props.theme ?? 'light');
+    const dark = mode === 'dark';
+
+    const shellBg = dark ? '#343434' : '#f1f1f1';
+    const sidebarBg = dark ? '#222222' : '#fafafa';
+    const settingsBg = dark ? '#181818' : '#f8f8f8';
+    const cardBg = dark ? '#222222' : '#ffffff';
+    const textPrimary = dark ? '#ececec' : '#20242c';
+    const textSecondary = dark ? '#b4b4b4' : '#526071';
+    const accent = dark ? '#779de8' : '#547dd0';
+    const iconFill = dark ? '#31456a' : '#c9d8f3';
+    const selectedBg = dark ? '#343434' : '#e5edfc';
+    const borderCol = dark ? '#2e2e2e' : '#e4e6ea';
+    const sidebarBorder = dark ? '#333333' : '#e6e6e6';
+    const btnBorder = dark ? '#444444' : '#dcdcdc';
+    const activeRing = 'inset 0 0 0 1px ' + accent;
+
+    const seg = (active) => ({
+      bg: active ? selectedBg : 'transparent',
+      col: active ? textPrimary : textSecondary,
+      ring: active ? activeRing : 'none'
+    });
+
+    const isAssetsHidden = st.assetsHidden ?? false;
+    const aHide = seg(isAssetsHidden);
+    const aShow = seg(!isAssetsHidden);
+
+    const isTempHidden = st.tempHidden ?? true;
+    const tHide = seg(isTempHidden);
+    const tShow = seg(!isTempHidden);
+
+    const isArchiveHidden = st.archiveHidden ?? true;
+    const arcHide = seg(isArchiveHidden);
+    const arcShow = seg(!isArchiveHidden);
+
+    return {
+      shellBg, sidebarBg, settingsBg, cardBg, textPrimary, textSecondary,
+      accent, iconFill, selectedBg, borderCol, sidebarBorder, btnBorder, activeRing,
+      rowBg1: isAssetsHidden ? shellBg : cardBg,
+      rowBg2: isTempHidden ? shellBg : cardBg,
+      rowBg3: isArchiveHidden ? shellBg : cardBg,
+      assetsDir: 'assets',
+      themeToggleLabel: dark ? '深色' : '浅色',
+
+      assetsHideSegBg: aHide.bg, assetsHideSegCol: aHide.col, assetsHideSegRing: aHide.ring,
+      assetsShowSegBg: aShow.bg, assetsShowSegCol: aShow.col, assetsShowSegRing: aShow.ring,
+
+      tempHideSegBg: tHide.bg, tempHideSegCol: tHide.col, tempHideSegRing: tHide.ring,
+      tempShowSegBg: tShow.bg, tempShowSegCol: tShow.col, tempShowSegRing: tShow.ring,
+
+      archiveHideSegBg: arcHide.bg, archiveHideSegCol: arcHide.col, archiveHideSegRing: arcHide.ring,
+      archiveShowSegBg: arcShow.bg, archiveShowSegCol: arcShow.col, archiveShowSegRing: arcShow.ring,
+
+      toggleDarkPreview: () => this.setState({ darkOverride: dark ? 'light' : 'dark' }),
+      toggleAssetsHidden: () => this.setState({ assetsHidden: true }),
+      toggleAssetsShown: () => this.setState({ assetsHidden: false }),
+      toggleTempHidden: () => this.setState({ tempHidden: true }),
+      toggleTempShown: () => this.setState({ tempHidden: false }),
+      toggleArchiveHidden: () => this.setState({ archiveHidden: true }),
+      toggleArchiveShown: () => this.setState({ archiveHidden: false })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { appName, run, verifySignature } from "../app-bundle.mjs";
+import { appName, normalizeArch, run, verifySignature } from "../app-bundle.mjs";
 import { buildApp } from "../build-app.mjs";
 import { installerFor } from "./allowed-assets.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
-const DMG_NAME = installerFor({ platform: "macos", arch: process.env.BLOCK_ARCH || process.arch, kind: "dmg" });
+const TARGET_ARCH = process.env.BLOCK_ARCH || process.arch;
+const DMG_NAME = installerFor({ platform: "macos", arch: TARGET_ARCH, kind: "dmg" });
 
 function createDmgWithRetry(stageDir, outDmg) {
   let lastError;
@@ -37,7 +38,13 @@ function createDmgWithRetry(stageDir, outDmg) {
 export async function packageRelease() {
   const version = applyReleasePlanVersion();
 
-  const appBundle = await buildApp({ install: false });
+  const built = await buildApp({
+    install: false,
+    profile: "release",
+    platform: "darwin",
+    arch: normalizeArch(TARGET_ARCH),
+  });
+  const appBundle = built.artifact;
   assert.ok(existsSync(appBundle), `App bundle missing at ${appBundle}`);
   verifySignature(appBundle);
 

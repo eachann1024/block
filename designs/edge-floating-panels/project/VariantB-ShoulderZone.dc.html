@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>方案 B · 顶肩热区唤出与半高悬浮舱</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #256abf; text-decoration: none; }
+    a:hover { color: #184f95; text-decoration: underline; }
+    button { font-family: inherit; cursor: pointer; }
+    button:focus-visible { outline: 2px solid #547dd0; outline-offset: 2px; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 100%; min-height: 820px; padding: 28px 24px 36px; display: flex; flex-direction: column; align-items: center; gap: 20px; background: #e6ebf2; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; color: #1f1e1d; -webkit-font-smoothing: antialiased">
+
+  <div style="width: 100%; max-width: 760px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px">
+    <div role="group" aria-label="顶肩悬浮舱状态" style="display: inline-flex; flex-wrap: wrap; padding: 3px; gap: 3px; background: #ffffff; border: 1px solid #d8dee9; border-radius: 10px; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05)">
+      <sc-for list="{{podTabs}}" as="tab" hint-placeholder-count="3">
+        <button type="button" onClick="{{tab.pick}}" style="height: 32px; padding: 0 14px; border: 0; border-radius: 7px; background: {{tab.bg}}; color: {{tab.fg}}; font-size: 14px; font-weight: {{tab.weight}}">{{tab.label}}</button>
+      </sc-for>
+    </div>
+
+    <div role="group" aria-label="把手交互行" style="display: inline-flex; flex-wrap: wrap; padding: 3px; gap: 3px; background: #ffffff; border: 1px solid #d8dee9; border-radius: 10px; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05)">
+      <sc-for list="{{blockTabs}}" as="bt" hint-placeholder-count="2">
+        <button type="button" onClick="{{bt.pick}}" style="height: 32px; padding: 0 12px; border: 0; border-radius: 7px; background: {{bt.bg}}; color: {{bt.fg}}; font-size: 14px; font-weight: {{bt.weight}}">{{bt.label}}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="width: 100%; max-width: 760px; min-height: 696px; border-radius: 14px; overflow: hidden; background: #ffffff; box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.10), 0 18px 44px rgba(15, 23, 42, 0.14); display: flex; flex-direction: column; position: relative">
+
+    <header style="height: 40px; padding: 0 14px 0 16px; display: flex; align-items: center; gap: 8px; background: #f1f1f1; border-bottom: 1px solid #e6e6e6; flex-shrink: 0">
+      <div aria-hidden="true" style="display: flex; align-items: center; gap: 8px; margin-right: 8px">
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #ff5f57"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #febc2e"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #28c840"></span>
+      </div>
+      <div style="height: 28px; padding: 0 12px; border-radius: 6px; background: #ffffff; border: 1px solid #e4e6ea; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: #1f1e1d">
+        <span>设计评审记录</span>
+      </div>
+      <span style="flex: 1"></span>
+      <button type="button" aria-label="更多" style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: #52514e; display: flex; align-items: center; justify-content: center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="18" cy="12" r="1.6"></circle></svg>
+      </button>
+    </header>
+
+    <div style="flex: 1; position: relative; display: flex; flex-direction: column; background: #ffffff">
+
+      <div style="height: 64px; padding: 0; display: flex; align-items: center; justify-content: space-between; position: relative; flex-shrink: 0; background: linear-gradient(180deg, #f7f9fc 0%, #ffffff 100%)">
+        <button type="button" aria-label="左顶肩耳标唤出文件舱" onMouseEnter="{{openLeftPod}}" onClick="{{toggleLeftPod}}" style="height: 36px; padding: 0 12px 0 10px; border: 1px solid {{leftEarBorder}}; border-left: 0; border-radius: 0 18px 18px 0; background: {{leftEarBg}}; color: {{leftEarFg}}; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+          <span>文件</span>
+        </button>
+
+        <button type="button" aria-label="右顶肩耳标唤出 AI 舱" onMouseEnter="{{openRightPod}}" onClick="{{toggleRightPod}}" style="height: 36px; padding: 0 10px 0 12px; border: 1px solid {{rightEarBorder}}; border-right: 0; border-radius: 18px 0 0 18px; background: {{rightEarBg}}; color: {{rightEarFg}}; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4l1.6 4.4L16 10l-4.4 1.6L10 16l-1.6-4.4L4 10l4.4-1.6z"></path></svg>
+          <span>AI</span>
+        </button>
+      </div>
+
+      <div style="flex: 1; padding: 4px 40px 44px 12px; display: flex; flex-direction: column; gap: 16px">
+
+        <div style="display: flex; align-items: flex-start">
+          <div style="width: 54px; height: 32px; padding-right: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin-right: 14px">
+            <sc-if value="{{focusUpper}}" hint-placeholder-val="{{ false }}">
+              <button type="button" aria-label="折叠标题" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: #eef3fc; color: #1f1e1d; display: flex; align-items: center; justify-content: center">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+              </button>
+              <button type="button" aria-label="拖动标题块" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: #eef3fc; color: #1f1e1d; display: flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7" fill="#547dd0"></circle><circle cx="15" cy="6" r="1.7"></circle><circle cx="9" cy="12" r="1.7"></circle><circle cx="15" cy="12" r="1.7" fill="#547dd0"></circle><circle cx="9" cy="18" r="1.7"></circle><circle cx="15" cy="18" r="1.7"></circle></svg>
+              </button>
+            </sc-if>
+          </div>
+          <button type="button" onClick="{{focusTopAndDismiss}}" style="flex: 1; min-width: 0; padding: 2px 8px; border: 0; border-radius: 6px; background: {{upperRowBg}}; text-align: left; font-size: 22px; line-height: 32px; font-weight: 600; color: #1f1e1d">
+            顶肩分离热区：正文左槽零误触
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: flex-start">
+          <div style="width: 54px; height: 26px; flex-shrink: 0; margin-right: 14px"></div>
+          <div style="flex: 1; min-width: 0; padding: 0 8px; font-size: 16px; line-height: 26px; color: #1f1e1d">
+            编辑器首行上方天然留有 64px 页眉留白。把文件与 AI 的唤出耳标严格收束在这片顶肩安全走廊内，正文中下段左边缘整条 54px 把手槽不再绑定任何抽屉热区。
+          </div>
+        </div>
+
+        <div style="height: 1px; margin: 6px 8px 6px 68px; background: #e4e6ea"></div>
+
+        <div style="display: flex; align-items: flex-start">
+          <div style="width: 54px; height: 30px; padding-right: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin-right: 14px">
+            <sc-if value="{{focusLower}}" hint-placeholder-val="{{ true }}">
+              <button type="button" aria-label="折叠子章节" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: #eef3fc; color: #1f1e1d; display: flex; align-items: center; justify-content: center">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+              </button>
+              <button type="button" aria-label="拖动子章节块" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: #eef3fc; color: #1f1e1d; display: flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7" fill="#547dd0"></circle><circle cx="15" cy="6" r="1.7"></circle><circle cx="9" cy="12" r="1.7"></circle><circle cx="15" cy="12" r="1.7" fill="#547dd0"></circle><circle cx="9" cy="18" r="1.7"></circle><circle cx="15" cy="18" r="1.7"></circle></svg>
+              </button>
+            </sc-if>
+          </div>
+          <button type="button" onClick="{{focusBottomKeep}}" style="flex: 1; min-width: 0; padding: 2px 8px; border: 0; border-radius: 6px; background: {{lowerRowBg}}; text-align: left; font-size: 18px; line-height: 28px; font-weight: 600; color: #1f1e1d">
+            半高紧凑悬浮舱：写作焦点区把手常露
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: flex-start">
+          <div style="width: 54px; height: 26px; padding-right: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; margin-right: 14px">
+            <sc-if value="{{focusLower}}" hint-placeholder-val="{{ true }}">
+              <button type="button" aria-label="插入块" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: #eef3fc; color: #2f57a6; display: flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+              </button>
+            </sc-if>
+          </div>
+          <div style="flex: 1; min-width: 0; padding: 0 8px; font-size: 16px; line-height: 26px; color: #1f1e1d">
+            上方短幅悬浮舱只占窗口上半区（高 248px），正文无需水平重排；正在下方编辑的章节把手与加号完全裸露，若点选上方被盖住的行则悬浮舱自动退回耳标。
+          </div>
+        </div>
+
+      </div>
+
+      <sc-if value="{{isLeftPod}}" hint-placeholder-val="{{ false }}">
+        <aside aria-label="紧凑文件悬浮舱" style="position: absolute; left: 12px; top: 52px; width: 244px; border-radius: 14px; background: #fafafa; border: 1px solid #cfd8e6; box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16); display: flex; flex-direction: column; z-index: 20; overflow: hidden">
+          <div style="height: 36px; padding: 0 10px 0 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e6e6e6">
+            <span style="font-size: 13px; font-weight: 560; color: #1f1e1d">创业团队 · 快速切换</span>
+            <button type="button" aria-label="关闭文件舱" onClick="{{closePods}}" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: #52514e; display: flex; align-items: center; justify-content: center">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+            </button>
+          </div>
+          <div style="padding: 6px; display: flex; flex-direction: column; gap: 2px">
+            <div style="height: 30px; padding: 0 8px; border-radius: 6px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: #1f1e1d">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#c9d8f3" stroke="#2f57a6" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"></path></svg>
+              <span>设计评审记录</span>
+            </div>
+            <div style="height: 30px; padding: 0 8px; border-radius: 6px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #1f1e1d">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"></path></svg>
+              <span>Q4 产品路线规划</span>
+            </div>
+            <div style="height: 30px; padding: 0 8px; border-radius: 6px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #1f1e1d">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"></path></svg>
+              <span>发布检查单</span>
+            </div>
+          </div>
+          <div style="height: 34px; padding: 0 10px; border-top: 1px solid #e6e6e6; display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #52514e">
+            <span>新建页面</span>
+            <span style="font-family: 'JetBrains Mono', monospace; color: #3e4c63">⌘N</span>
+          </div>
+        </aside>
+      </sc-if>
+
+      <sc-if value="{{isRightPod}}" hint-placeholder-val="{{ true }}">
+        <aside aria-label="紧凑 AI 悬浮舱" style="position: absolute; right: 12px; top: 52px; width: 288px; border-radius: 14px; background: #ffffff; border: 1px solid #cfd8e6; box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16); display: flex; flex-direction: column; z-index: 20; overflow: hidden">
+          <div style="height: 36px; padding: 0 10px 0 12px; display: flex; align-items: center; justify-content: space-between; background: #fafafa; border-bottom: 1px solid #e6e6e6">
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 560; color: #1f1e1d">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#c9d8f3" stroke="#2f57a6" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M10 4l1.6 4.4L16 10l-4.4 1.6L10 16l-1.6-4.4L4 10l4.4-1.6z"></path></svg>
+              <span>AI 速览舱</span>
+            </div>
+            <button type="button" aria-label="关闭 AI 舱" onClick="{{closePods}}" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: #52514e; display: flex; align-items: center; justify-content: center">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+            </button>
+          </div>
+          <div style="padding: 10px 12px; display: flex; flex-direction: column; gap: 8px">
+            <div style="padding: 8px 10px; border-radius: 8px; background: #f8f8f6; border: 1px solid #e4e6ea; font-size: 13px; line-height: 19px; color: #1f1e1d">
+              顶肩胶囊限定在 y = 40..96px，彻底消除与正文块把手的热区冲突。
+            </div>
+            <div style="height: 34px; padding: 0 10px; border-radius: 8px; background: #fafafa; border: 1px solid #dcdcdc; display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #586272">
+              <span>快速提问或润色选中块…</span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #184f95">⌘J</span>
+            </div>
+          </div>
+        </aside>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"podState":{"editor":"enum","default":"right","options":["left","right","closed"],"section":"Shoulder Pod"},"$preview":{"width":1200,"height":820}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { pod: null, focusZone: 'lower' };
+  }
+  renderVals() {
+    const pod = this.state.pod ?? this.props.podState ?? 'right';
+    const focusZone = this.state.focusZone ?? 'lower';
+    const isLeftPod = pod === 'left';
+    const isRightPod = pod === 'right';
+
+    const podDefs = [
+      { id: 'left', label: '左顶肩 · 文件悬浮舱' },
+      { id: 'right', label: '右顶肩 · AI 悬浮舱' },
+      { id: 'closed', label: '收起 · 仅留顶肩微耳标' }
+    ];
+    const podTabs = podDefs.map((p) => {
+      const sel = pod === p.id;
+      return {
+        label: p.label,
+        bg: sel ? '#2f57a6' : 'transparent',
+        fg: sel ? '#ffffff' : '#3d3c39',
+        weight: sel ? 560 : 460,
+        pick: () => this.setState({ pod: p.id })
+      };
+    });
+
+    const blockDefs = [
+      { id: 'lower', label: '下段焦点（舱开也不挡把手）' },
+      { id: 'upper', label: '点选首行（自动收舱露把手）' }
+    ];
+    const blockTabs = blockDefs.map((b) => {
+      const sel = focusZone === b.id;
+      return {
+        label: b.label,
+        bg: sel ? '#e5edfc' : 'transparent',
+        fg: sel ? '#184f95' : '#3d3c39',
+        weight: sel ? 560 : 460,
+        pick: () => {
+          if (b.id === 'upper' && pod === 'left') {
+            this.setState({ focusZone: 'upper', pod: 'closed' });
+          } else {
+            this.setState({ focusZone: b.id });
+          }
+        }
+      };
+    });
+
+    return {
+      podTabs,
+      blockTabs,
+      isLeftPod,
+      isRightPod,
+      focusUpper: focusZone === 'upper',
+      focusLower: focusZone === 'lower',
+      upperRowBg: focusZone === 'upper' ? '#f4f7fd' : 'transparent',
+      lowerRowBg: focusZone === 'lower' ? '#f4f7fd' : 'transparent',
+      leftEarBg: isLeftPod ? '#e5edfc' : '#ffffff',
+      leftEarFg: isLeftPod ? '#184f95' : '#3d3c39',
+      leftEarBorder: isLeftPod ? '#547dd0' : '#d8dee9',
+      rightEarBg: isRightPod ? '#e5edfc' : '#ffffff',
+      rightEarFg: isRightPod ? '#184f95' : '#3d3c39',
+      rightEarBorder: isRightPod ? '#547dd0' : '#d8dee9',
+      openLeftPod: () => this.setState({ pod: 'left', focusZone: 'lower' }),
+      openRightPod: () => this.setState({ pod: 'right' }),
+      toggleLeftPod: () => this.setState({ pod: isLeftPod ? 'closed' : 'left', focusZone: 'lower' }),
+      toggleRightPod: () => this.setState({ pod: isRightPod ? 'closed' : 'right' }),
+      closePods: () => this.setState({ pod: 'closed' }),
+      focusTopAndDismiss: () => this.setState({ focusZone: 'upper', pod: isLeftPod ? 'closed' : pod }),
+      focusBottomKeep: () => this.setState({ focusZone: 'lower' })
+    };
+  }
+}
+</script>
+</body>
+</html>

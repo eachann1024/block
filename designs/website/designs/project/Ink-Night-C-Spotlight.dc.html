@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>墨夜方案 C · 微光水线与聚光灯唤起桌面</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:#12151e;color:#ececec;font-family:Inter,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#ececec;text-decoration:none}
+a:hover{color:#ffffff}
+button{font:inherit;cursor:pointer}
+@keyframes horizonSweep{
+  0%{transform:translateX(-35%);opacity:0.35}
+  50%{transform:translateX(0%);opacity:0.95}
+  100%{transform:translateX(35%);opacity:0.35}
+}
+.horizon-beam{animation:horizonSweep 6.5s ease-in-out infinite}
+@media (max-width: 960px){
+  .pill-bar{flex-direction:column !important;align-items:stretch !important}
+}
+</style>
+</helmet>
+
+<div style="width:100%;display:flex;flex-direction:column;background:#12151e;color:#ececec">
+
+  <!-- ==================== 第一部分：轻快（极简水线留白派 · 零数字翻滚、零密集格子） ==================== -->
+  <section style="position:relative;padding:112px 40px 108px;overflow:hidden;background:radial-gradient(960px 380px at 50% 48%,rgba(119,157,232,0.13),transparent 70%),#12151e;border-bottom:1px solid #232838">
+    <div style="max-width:1040px;margin:0 auto;display:flex;flex-direction:column;align-items:center;text-align:center;gap:28px">
+
+      <h2 style="margin:0;font-size:48px;line-height:1.18;font-weight:700;letter-spacing:-0.02em;color:#f6f8fc">笔记攒得再厚，翻开还是第一天那样快</h2>
+      <p style="margin:0;max-width:680px;font-size:18.5px;line-height:1.72;color:#aeb7c9">从三五行的随手备忘，到写了一整年的几十万字书稿，点开那一刻正文就在眼前，滚动与落笔没有一丝拖泥带水。</p>
+
+      <!-- 一道极简海雾蓝水线光轨 + 落笔特写镜（极致留白，不画杂乱网格） -->
+      <div style="width:100%;margin-top:16px;display:flex;flex-direction:column;gap:0">
+        <div style="position:relative;height:2px;width:100%;background:rgba(119,157,232,0.16);overflow:hidden;border-radius:2px">
+          <div class="horizon-beam" style="width:56%;height:100%;margin:0 auto;background:linear-gradient(90deg,transparent,{{accent}},#c7dbff,{{accent}},transparent)"></div>
+        </div>
+
+        <div style="background:rgba(24,28,39,0.9);border:1px solid #293042;border-top:0;border-radius:0 0 16px 16px;padding:38px 44px;text-align:left;display:flex;flex-direction:column;gap:18px;box-shadow:0 28px 68px rgba(0,0,0,0.48)">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid #242a3a">
+            <span style="font-size:14.5px;color:#cfd6e6;font-weight:500">{{currentScene.docName}}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#9dbcf5">{{currentScene.scaleTag}}</span>
+          </div>
+          <p style="margin:0;font-size:21px;line-height:1.75;color:#f2f5fb;font-weight:450">{{currentScene.excerpt}}</p>
+        </div>
+      </div>
+
+      <!-- 底部一体式深墨海雾蓝胶囊组（干净高级，完全融入墨夜色系） -->
+      <div class="pill-bar" style="margin-top:8px;padding:5px;border-radius:999px;background:#1a1e2b;border:1px solid #2b3246;display:inline-flex;align-items:center;gap:6px">
+        <sc-for list="{{scenes}}" as="sc" hint-placeholder-count="3">
+          <button type="button" onClick="{{sc.pick}}" style="{{sc.pillStyle}}">
+            <span style="font-weight:600">{{sc.label}}</span>
+            <span style="opacity:0.8;margin-left:8px;font-size:13.5px">{{sc.note}}</span>
+          </button>
+        </sc-for>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== 第二部分：Spotlight 聚光灯式 macOS 桌面全局速记 ==================== -->
+  <section style="position:relative;padding:104px 40px 116px;background:#151822">
+    <div style="max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:46px">
+
+      <div style="max-width:700px;margin:0 auto;text-align:center;display:flex;flex-direction:column;gap:14px">
+        <h2 style="margin:0;font-size:42px;line-height:1.22;font-weight:700;color:#f6f8fc">像系统聚光灯一样，随时在桌面中央接住闪念</h2>
+        <p style="margin:0;font-size:18px;line-height:1.7;color:#aeb7c9">无论当前屏幕停留在哪个应用，按下 ⌥N 即刻在桌面中央唤出独立三槽速记窗；写完 Esc 无痕退场。</p>
+      </div>
+
+      <!-- Spotlight 风格桌面舞台 -->
+      <div style="position:relative;border-radius:18px;border:1px solid #2b3144;background:radial-gradient(640px 360px at 50% 52%,rgba(119,157,232,0.20),transparent 72%),#0f121a;box-shadow:0 36px 92px rgba(0,0,0,0.66);overflow:hidden;min-height:560px;display:flex;flex-direction:column">
+
+        <!-- 顶部 macOS 桌面状态栏 -->
+        <div style="height:32px;padding:0 20px;background:rgba(14,16,23,0.88);border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:#c8d0e0">
+          <div style="display:flex;align-items:center;gap:16px">
+            <span style="font-weight:700;color:#ffffff">播客剪辑台</span>
+            <span style="color:#8f99ae">文件</span>
+            <span style="color:#8f99ae">轨道</span>
+            <span style="color:#8f99ae">标记</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <span style="padding:2px 8px;border-radius:4px;background:rgba(119,157,232,0.16);color:#b9d0fa;font-family:'JetBrains Mono',monospace;font-size:12px">⌥N 全局热键激活</span>
+            <span style="color:#9aa4b8">周二 22:30</span>
+          </div>
+        </div>
+
+        <!-- 背景压暗的桌面其他工作区（一眼看出并非在 Block 软件内） -->
+        <div style="position:relative;flex:1;padding:38px;display:flex;align-items:center;justify-content:center">
+
+          <!-- 底层虚化暗化的全屏工作窗口背景 -->
+          <div style="position:absolute;inset:26px 34px;border-radius:12px;border:1px solid rgba(255,255,255,0.05);background:#161923;padding:24px 28px;opacity:0.42;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between">
+            <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#8e97ab">
+              <span>正在播放参考访谈 · 00:41:18</span>
+              <span>全屏桌面空间 2</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px">
+              <div style="height:110px;border-radius:8px;background:#1e2331"></div>
+              <div style="height:110px;border-radius:8px;background:#1e2331"></div>
+              <div style="height:110px;border-radius:8px;background:#1e2331"></div>
+            </div>
+            <div style="height:54px;border-radius:8px;background:#1b202d"></div>
+          </div>
+
+          <!-- 桌面聚光中心：极具设计感的独立悬浮速记台 -->
+          <div style="position:relative;z-index:2;width:min(620px,94%);background:rgba(30,34,46,0.96);border:1px solid rgba(119,157,232,0.52);border-radius:16px;box-shadow:0 40px 100px rgba(0,0,0,0.84),0 0 0 1px rgba(255,255,255,0.06);overflow:hidden">
+
+            <div style="height:44px;padding:0 12px 0 18px;background:#181818;border-bottom:1px solid #2d3446;display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:12px;height:12px;border-radius:50%;background:#ec6a5e"></span>
+                <span style="width:12px;height:12px;border-radius:50%;background:#f4bf4f"></span>
+                <span style="width:12px;height:12px;border-radius:50%;background:#61c554"></span>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:2px">
+                <sc-for list="{{cards}}" as="cd" hint-placeholder-count="3">
+                  <button type="button" aria-label="{{cd.slotName}}" onClick="{{cd.pick}}" style="width:22px;height:24px;border:0;background:transparent;padding:0;display:inline-flex;align-items:center;justify-content:center">
+                    <span style="{{cd.dotBtn}}"></span>
+                  </button>
+                </sc-for>
+              </div>
+
+              <button type="button" aria-label="存入正式笔记" onClick="{{archiveNow}}" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(119,157,232,0.42);background:#242938;display:inline-flex;align-items:center;justify-content:center">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#779de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 3v5a1 1 0 0 0 1 1h5"></path>
+                  <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <path d="M9 15l2 2 4-4"></path>
+                </svg>
+              </button>
+            </div>
+
+            <div style="padding:28px 30px 26px;display:flex;flex-direction:column;gap:14px">
+              <div style="font-size:20px;font-weight:650;color:#f6f8fc">{{activeCard.title}}</div>
+              <p style="margin:0;font-size:16px;line-height:1.82;color:#d8dfee">{{activeCard.content}}</p>
+
+              <div style="margin-top:10px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+                <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#9ea8bc">
+                  <span style="padding:2px 8px;border-radius:5px;background:#1b1f2b;border:1px solid #32394d;font-family:'JetBrains Mono',monospace;color:#cfd8ea">Esc</span>
+                  <span>收起回桌面</span>
+                </div>
+                <button type="button" onClick="{{archiveNow}}" style="padding:6px 14px;border-radius:8px;border:1px solid {{accent}};background:rgba(119,157,232,0.18);color:#f2f6ff;font-size:13.5px;font-weight:500">
+                  {{archiveText}}
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#779de8","options":["#779de8","#6b99f0","#8ab4f8"]},"autoPlay":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":1920}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = { scIdx: 0, cardIdx: 0, archived: false };
+    this._tm = null;
+  }
+  componentDidMount() { this._sync(); }
+  componentDidUpdate() { this._sync(); }
+  componentWillUnmount() { if (this._tm) clearInterval(this._tm); }
+  _sync() {
+    const auto = this.props.autoPlay ?? true;
+    if (auto && !this._tm) {
+      this._tm = setInterval(() => {
+        this.setState((s) => ({
+          scIdx: (s.scIdx + 1) % 3,
+          cardIdx: (s.cardIdx + 1) % 3,
+          archived: false
+        }));
+      }, 3300);
+    } else if (!auto && this._tm) {
+      clearInterval(this._tm);
+      this._tm = null;
+    }
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#779de8';
+    const rawScenes = [
+      {
+        label: '即点即开',
+        note: '十万段无需等待',
+        docName: '长篇阅读与手稿总集.md',
+        scaleTag: '十万段长卷 · 首屏直达',
+        excerpt: '「点击文件名的那一刻，不需要盯着旋转图标等解析。哪怕这本笔记已经攒了整整十万段，上次写到一半的那句话依然在眨眼之前停在光标旁。」'
+      },
+      {
+        label: '落笔生字',
+        note: '疾书从不掉拍',
+        docName: '潮州周末慢游记.md',
+        scaleTag: '原生渲染 · 字随指落',
+        excerpt: '「在几万字的长文中间连续敲字、挪动段落或是折叠整章，画面没有一丝迟滞，就像在安静的纸页上顺手推开一张便签。」'
+      },
+      {
+        label: '安静常驻',
+        note: '全天冰凉低占',
+        docName: '年度整理归档.md',
+        scaleTag: '轻量后台 · 零噪音',
+        excerpt: '「没有臃肿的浏览器套壳开销。从清晨开到深夜，电脑依旧安静清凉，把所有注意力留给眼前的字句。」'
+      }
+    ];
+
+    const scenes = rawScenes.map((s, i) => {
+      const on = i === this.state.scIdx;
+      return {
+        ...s,
+        pick: () => this.setState({ scIdx: i }),
+        pillStyle: 'padding:9px 20px;border-radius:999px;border:1px solid ' + (on ? accent : 'transparent') + ';background:' + (on ? '#252d42' : 'transparent') + ';color:' + (on ? '#f4f7ff' : '#9aa4b8') + ';font-size:15px;transition:all 180ms ease'
+      };
+    });
+
+    const rawCards = [
+      {
+        slotName: '便签 1',
+        title: '听访谈第 41 分钟记下的金句',
+        content: '受访者说「真正能留十年的笔记，一定是不绑在任何一家云服务上的纯文本」——这句话很适合放到下周文章的开头。'
+      },
+      {
+        slotName: '便签 2',
+        title: '临时想到的周末出行物品',
+        content: '除了相机电池和晴雨伞，记得把那本还没读完的薄散文集塞进背包侧袋，动车上刚好能翻完最后两章。'
+      },
+      {
+        slotName: '便签 3',
+        title: '深夜读书旁批',
+        content: '好工具的分寸感：需要时按一下就在手边，不需要时彻底隐身，绝不弹窗打扰。'
+      }
+    ];
+
+    const cards = rawCards.map((c, i) => {
+      const on = i === this.state.cardIdx;
+      return {
+        ...c,
+        pick: () => this.setState({ cardIdx: i, archived: false }),
+        dotBtn: 'width:' + (on ? '18px' : '6px') + ';height:6px;border-radius:999px;background:' + (on ? accent : '#384152') + ';transition:all 180ms ease'
+      };
+    });
+
+    return {
+      accent,
+      scenes,
+      currentScene: rawScenes[this.state.scIdx],
+      cards,
+      activeCard: rawCards[this.state.cardIdx],
+      archiveText: this.state.archived ? '已写入本地 .md 笔记库' : '存入正式笔记 ⌘⇧S',
+      archiveNow: () => this.setState((s) => ({ archived: !s.archived }))
+    };
+  }
+}
+</script>
+</body>
+</html>

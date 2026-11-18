@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>性能监控 · 方案 B · 比例色块矩阵</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400..500&amp;display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+.pill-btn{display:flex;align-items:center;gap:10px;width:100%;height:42px;padding:0 16px;border-radius:8px;font:inherit;cursor:pointer;text-align:left;transition:background-color .15s ease,border-color .15s ease}
+.tile{display:flex;flex-direction:column;justify-content:space-between;padding:12px;border-radius:10px;text-align:left;font:inherit;color:inherit;cursor:pointer;transition:border-color .15s ease,transform .15s ease}
+.tile:hover{transform:translateY(-1px)}
+.tile:focus-visible,.pill-btn:focus-visible,.seg-btn:focus-visible,.icon-btn:focus-visible{outline:2px solid #779de8;outline-offset:2px}
+.seg-btn{height:28px;padding:0 12px;border-radius:6px;border:0;font:inherit;font-size:13px;cursor:pointer}
+.icon-btn{width:28px;height:28px;border-radius:6px;border:0;background:transparent;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:inherit}
+</style>
+</helmet>
+<div style="width:1120px;height:760px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:36px;padding:32px;background:{{t.backdrop}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;color:{{t.text}}">
+
+<section aria-label="关于弹窗入口" style="width:348px;flex:none;display:flex;flex-direction:column;align-items:center;gap:18px;padding:28px 24px 22px;background:{{t.menu}};border:1px solid {{t.border}};border-radius:14px;position:relative">
+<button type="button" class="icon-btn" aria-label="切换深浅色" onClick="{{toggleTheme}}" style="position:absolute;top:12px;right:12px;color:{{t.sub}}">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+</button>
+<img src="/_blob/6768a211187044ad08d09ce47a61554d" alt="Block 图标" style="width:80px;height:80px">
+<div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+<h1 style="margin:0;font-size:22px;line-height:28px;font-weight:560;letter-spacing:-0.02em">Block</h1>
+<p style="margin:0;color:{{t.sub}};font-family:'JetBrains Mono',Menlo,monospace">版本 1.0.301</p>
+<p style="margin:0;color:{{t.sub}}">作者 eachann</p>
+</div>
+
+<div style="width:100%;display:flex;flex-direction:column;gap:10px;border-top:1px solid {{t.border}};padding-top:16px">
+<a href="https://github.com/eachann1024/block" target="_blank" rel="noopener noreferrer" class="pill-btn" style="background:{{t.paper}};border:1px solid {{t.btn}};color:{{t.text}};text-decoration:none">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l-4 3 4 3"></path><path d="M16 9l4 3-4 3"></path><path d="M13.5 7l-3 10"></path></svg>
+<span style="flex:1;font-weight:460">项目源码</span>
+<span style="color:{{t.sub}};font-family:'JetBrains Mono',Menlo,monospace;font-size:13px">eachann1024/block</span>
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.sub}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"></path><path d="M9 7h8v8"></path></svg>
+</a>
+
+<button type="button" class="pill-btn" onClick="{{nextTile}}" style="background:{{t.selected}};border:1px solid {{t.accent}};color:{{t.text}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>
+<span style="flex:1;font-weight:500">性能监控</span>
+<span style="color:{{t.accent}};font-family:'JetBrains Mono',Menlo,monospace;font-size:13px">48.6 MB · 120 FPS</span>
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg>
+</button>
+</div>
+
+<button type="button" class="pill-btn" style="justify-content:center;height:38px;background:{{t.paper}};border:1px solid {{t.btn}};color:{{t.text}};font-weight:460">关闭</button>
+</section>
+
+<section aria-label="比例色块矩阵看板" style="width:556px;flex:none;display:flex;flex-direction:column;gap:14px;padding:22px 24px;background:{{t.menu}};border:1px solid {{t.border}};border-radius:14px">
+<header style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;align-items:center;gap:10px">
+<span style="font-size:16px;line-height:22px;font-weight:560">应用体积与性能构成</span>
+<span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;background:{{t.liveBg}};color:{{t.liveFg}};font-size:12px;font-weight:500">
+<span style="width:6px;height:6px;border-radius:50%;background:{{t.liveDot}}"></span>实时
+</span>
+</div>
+<div style="display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:{{t.shell}};border:1px solid {{t.border}}">
+<button type="button" class="seg-btn" onClick="{{modeStorage}}" style="background:{{bgStorage}};color:{{fgStorage}}">当前体积 48.6M</button>
+<button type="button" class="seg-btn" onClick="{{modeMem}}" style="background:{{bgMem}};color:{{fgMem}}">运行内存 64.2M</button>
+</div>
+</header>
+
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+<div style="display:flex;align-items:baseline;gap:10px">
+<strong style="font-size:28px;line-height:34px;font-family:'JetBrains Mono',Menlo,monospace;font-weight:560;letter-spacing:-0.02em">{{headlineTotal}}</strong>
+<span style="color:{{t.sub}};font-size:13px">{{headlineSub}}</span>
+</div>
+<div style="display:flex;align-items:center;gap:12px;font-family:'JetBrains Mono',Menlo,monospace;font-size:13px;color:{{t.sub}}">
+<span>CPU 0.4%</span>
+<span>·</span>
+<span>120 FPS</span>
+<span>·</span>
+<span>响应 0.8 ms</span>
+</div>
+</div>
+
+<div role="group" aria-label="构成面积矩阵" style="display:flex;gap:8px;height:212px">
+<button type="button" class="tile" onMouseEnter="{{pick0}}" onClick="{{pick0}}" style="width:44%;background:{{c0.bg}};border:1.5px solid {{c0.bd}}">
+<div>
+<div style="font-weight:560;color:{{c0.fg}}">{{c0.name}}</div>
+<div style="font-family:'JetBrains Mono',Menlo,monospace;font-size:13px;color:{{c0.sub}}">{{c0.size}} · {{c0.pct}}</div>
+</div>
+<div style="font-size:12px;color:{{c0.sub}}">原生渲染与离线内核</div>
+</button>
+
+<div style="width:30%;display:flex;flex-direction:column;gap:6px">
+<button type="button" class="tile" onMouseEnter="{{pick1}}" onClick="{{pick1}}" style="flex:6;background:{{c1.bg}};border:1.5px solid {{c1.bd}}">
+<div style="font-weight:560;color:{{c1.fg}}">{{c1.name}}</div>
+<div style="font-family:'JetBrains Mono',Menlo,monospace;font-size:13px;color:{{c1.sub}}">{{c1.size}} · {{c1.pct}}</div>
+</button>
+<button type="button" class="tile" onMouseEnter="{{pick2}}" onClick="{{pick2}}" style="flex:4;background:{{c2.bg}};border:1.5px solid {{c2.bd}}">
+<div style="font-weight:560;color:{{c2.fg}}">{{c2.name}}</div>
+<div style="font-family:'JetBrains Mono',Menlo,monospace;font-size:13px;color:{{c2.sub}}">{{c2.size}} · {{c2.pct}}</div>
+</button>
+</div>
+
+<div style="width:26%;display:flex;flex-direction:column;gap:6px">
+<button type="button" class="tile" onMouseEnter="{{pick3}}" onClick="{{pick3}}" style="flex:5;background:{{c3.bg}};border:1.5px solid {{c3.bd}}">
+<div style="font-weight:560;color:{{c3.fg}}">{{c3.name}}</div>
+<div style="font-family:'JetBrains Mono',Menlo,monospace;font-size:13px;color:{{c3.sub}}">{{c3.size}} · {{c3.pct}}</div>
+</button>
+<button type="button" class="tile" onMouseEnter="{{pick4}}" onClick="{{pick4}}" style="flex:5;background:{{c4.bg}};border:1.5px solid {{c4.bd}}">
+<div style="font-weight:560;color:{{c4.fg}}">{{c4.name}}</div>
+<div style="font-family:'JetBrains Mono',Menlo,monospace;font-size:13px;color:{{c4.sub}}">{{c4.size}} · {{c4.pct}}</div>
+</button>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:8px;background:{{t.paper}};border:1px solid {{t.border}}">
+<div style="display:flex;align-items:center;gap:9px;min-width:0">
+<span style="width:10px;height:10px;border-radius:3px;flex:none;background:{{cur.dot}}"></span>
+<strong style="font-weight:560;white-space:nowrap">{{cur.name}}</strong>
+<span style="color:{{t.sub}};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{cur.purpose}}</span>
+</div>
+<span style="font-family:'JetBrains Mono',Menlo,monospace;font-size:13px;color:{{t.text}};white-space:nowrap">{{cur.size}} ({{cur.pct}})</span>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:4px;border-top:1px solid {{t.border}};padding:12px 0 4px">
+<sc-for list="{{rows}}" as="r">
+<button type="button" onMouseEnter="{{r.pick}}" onClick="{{r.pick}}" style="display:flex;align-items:center;gap:10px;width:100%;padding:6px 8px;border-radius:7px;border:0;background:{{r.rowBg}};color:inherit;font:inherit;cursor:pointer;text-align:left">
+<span style="width:8px;height:8px;border-radius:2px;flex:none;background:{{r.dot}}"></span>
+<span style="width:96px;flex:none;font-weight:460">{{r.name}}</span>
+<span style="flex:1;color:{{t.sub}};font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{r.purpose}}</span>
+<span style="width:76px;flex:none;height:5px;border-radius:999px;background:{{t.shell}};overflow:hidden;display:inline-flex"><span style="width:{{r.bar}};height:100%;background:{{r.dot}};border-radius:999px"></span></span>
+<span style="width:58px;flex:none;text-align:right;font-family:'JetBrains Mono',Menlo,monospace;font-size:13px">{{r.size}}</span>
+</button>
+</sc-for>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":true},"$preview":{"width":1120,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const dark = s.dark !== undefined ? s.dark : (this.props.dark ?? true);
+    const mode = s.mode || 'storage';
+    const idx = s.idx ?? 0;
+    const t = dark
+      ? { backdrop:'#141414', menu:'#222222', paper:'#181818', shell:'#2a2a2a', selected:'#2b3548', text:'#ececec', sub:'#b4b4b4', border:'#2e2e2e', btn:'#444444', accent:'#779de8', liveBg:'#193226', liveFg:'#6fd89c', liveDot:'#38c172' }
+      : { backdrop:'#eef0f3', menu:'#ffffff', paper:'#f8f8f8', shell:'#f1f1f1', selected:'#e5edfc', text:'#20242c', sub:'#526071', border:'#e4e6ea', btn:'#dcdcdc', accent:'#547dd0', liveBg:'#e6f6ed', liveFg:'#1f7a46', liveDot:'#28a75c' };
+    const pick0 = () => this.setState({ idx: 0 });
+    const pick1 = () => this.setState({ idx: 1 });
+    const pick2 = () => this.setState({ idx: 2 });
+    const pick3 = () => this.setState({ idx: 3 });
+    const pick4 = () => this.setState({ idx: 4 });
+    const storageItems = [
+      { name:'应用核心', size:'38.8 MB', pct:'79.8%', bar:'82%', dot:'#547dd0', darkBg:'#222c3c', lightBg:'#e6eefb', purpose:'原生编辑器与 GPUI 图形渲染引擎，离线即开', pick: pick0 },
+      { name:'笔记与图片', size:'6.4 MB', pct:'13.2%', bar:'38%', dot:'#3ba57b', darkBg:'#1d3128', lightBg:'#e4f4ec', purpose:'知识库中的 Markdown 笔记正文与插图附件', pick: pick1 },
+      { name:'历史快照', size:'2.1 MB', pct:'4.3%', bar:'22%', dot:'#d4943a', darkBg:'#332a1d', lightBg:'#faefe0', purpose:'自动归档的历史版本快照，用于随时回滚恢复', pick: pick2 },
+      { name:'AI 会话记录', size:'0.9 MB', pct:'1.9%', bar:'14%', dot:'#8b6fd6', darkBg:'#2a2438', lightBg:'#eee9fa', purpose:'本地保存的 AI 助手对话上下文与修改草稿', pick: pick3 },
+      { name:'配置与日志', size:'0.4 MB', pct:'0.8%', bar:'9%', dot:'#8792a2', darkBg:'#272a2e', lightBg:'#ebedf0', purpose:'界面偏好设置、标题折叠状态与诊断日志', pick: pick4 }
+    ];
+    const memItems = [
+      { name:'纹理与字形图集', size:'26.4 MB', pct:'41.1%', bar:'74%', dot:'#547dd0', darkBg:'#222c3c', lightBg:'#e6eefb', purpose:'120Hz 高刷屏幕文字与图标硬件加速显存缓存', pick: pick0 },
+      { name:'文档树与全文索引', size:'16.8 MB', pct:'26.2%', bar:'52%', dot:'#3ba57b', darkBg:'#1d3128', lightBg:'#e4f4ec', purpose:'128 篇笔记的内存语法树与毫秒级搜索索引', pick: pick1 },
+      { name:'窗口与视图状态', size:'11.2 MB', pct:'17.4%', bar:'36%', dot:'#d4943a', darkBg:'#332a1d', lightBg:'#faefe0', purpose:'主窗口、侧栏与标签页布局结构状态缓冲', pick: pick2 },
+      { name:'AI 后台连接池', size:'6.2 MB', pct:'9.7%', bar:'24%', dot:'#8b6fd6', darkBg:'#2a2438', lightBg:'#eee9fa', purpose:'本地 Agent 桥接通道与流式响应缓冲区', pick: pick3 },
+      { name:'撤销栈与差异缓冲', size:'3.6 MB', pct:'5.6%', bar:'16%', dot:'#8792a2', darkBg:'#272a2e', lightBg:'#ebedf0', purpose:'当前打开文档的多步撤销记录与实时比对缓存', pick: pick4 }
+    ];
+    const raw = mode === 'storage' ? storageItems : memItems;
+    const mapped = raw.map((it, i) => ({
+      ...it,
+      bg: dark ? it.darkBg : it.lightBg,
+      bd: i === idx ? it.dot : (dark ? '#343840' : '#d5dce6'),
+      fg: dark ? '#f0f2f5' : '#1f2329',
+      sub: dark ? '#b8c0cc' : '#4a5568',
+      rowBg: i === idx ? t.selected : 'transparent'
+    }));
+    return {
+      t,
+      headlineTotal: mode === 'storage' ? '48.6 MB' : '64.2 MB',
+      headlineSub: mode === 'storage' ? '应用本体 38.8M + 本地数据 9.8M' : '仅占系统内存 0.4% · 静默省电',
+      bgStorage: mode === 'storage' ? t.selected : 'transparent',
+      fgStorage: mode === 'storage' ? t.text : t.sub,
+      bgMem: mode === 'mem' ? t.selected : 'transparent',
+      fgMem: mode === 'mem' ? t.text : t.sub,
+      modeStorage: () => this.setState({ mode: 'storage', idx: 0 }),
+      modeMem: () => this.setState({ mode: 'mem', idx: 0 }),
+      pick0, pick1, pick2, pick3, pick4,
+      nextTile: () => this.setState({ idx: (idx + 1) % 5 }),
+      toggleTheme: () => this.setState({ dark: !dark }),
+      c0: mapped[0], c1: mapped[1], c2: mapped[2], c3: mapped[3], c4: mapped[4],
+      cur: mapped[idx],
+      rows: mapped
+    };
+  }
+}
+</script>
+</body>
+</html>

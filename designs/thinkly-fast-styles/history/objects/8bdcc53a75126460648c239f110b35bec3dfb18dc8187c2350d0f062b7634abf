@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>紧凑批注 A（推荐）· 宽屏单行微字条 + 窄窗页边数字微章与点击原位浮层 Popover</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;background:#f1f1f1;-webkit-font-smoothing:antialiased}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input,textarea{font-family:inherit;font-size:14px}
+*{box-sizing:border-box}
+::selection{background:#cde2fb;color:#184f95}
+.span-btn{border:0;background:transparent;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer;display:inline}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:920px;display:flex;flex-direction:column;background:{{canvasBg}};color:#20242c;font-size:14px;line-height:20px">
+
+  <!-- 画板顶部视口模式切换栏 -->
+  <div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:#fafafa;border-bottom:1px solid #e6e6e6">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-weight:560;color:#20242c">方案 A · 页边数字微章 + 点击原位浮层 Popover</span>
+      <span style="color:#526071">窄窗无右侧余量时自动收起右栏，仅留 24×24 数字微章，点击原位浮出批注卡</span>
+    </div>
+    <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:#f1f1f1;border:1px solid #dcdcdc">
+      <button type="button" onClick="{{setNarrow}}" style="height:28px;padding:0 12px;border:0;border-radius:6px;background:{{narrowBtnBg}};color:{{narrowBtnCol}};box-shadow:{{narrowBtnRing}};font-weight:460;cursor:pointer">窄窗无侧边空间 (760px)</button>
+      <button type="button" onClick="{{setWide}}" style="height:28px;padding:0 12px;border:0;border-radius:6px;background:{{wideBtnBg}};color:{{wideBtnCol}};box-shadow:{{wideBtnRing}};font-weight:460;cursor:pointer">宽屏并排 (1440px)</button>
+    </div>
+  </div>
+
+  <!-- 模拟应用窗口容器：窄窗时 780px 居中卡片，宽屏时 100% 铺满 -->
+  <div style="{{frameStyle}}">
+
+    <!-- 顶部 40px 标题栏 -->
+    <header style="height:40px;flex:none;display:flex;align-items:center;background:#f1f1f1;border-bottom:1px solid #e6e6e6;padding:0 12px 0 0">
+      <div style="width:{{sidebarW}};height:100%;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 14px;border-right:1px solid #e6e6e6">
+        <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+          <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+          <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+          <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+        </div>
+        <button type="button" aria-label="收起侧栏" style="width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:#526071;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M6 2.5v11" stroke="#547dd0" stroke-width="1.4"/></svg>
+        </button>
+      </div>
+
+      <div style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:0 12px">
+        <div style="height:28px;padding:4px 12px;border-radius:6px;background:#ffffff;border:1px solid #e4e6ea;display:inline-flex;align-items:center;gap:8px;color:#20242c;font-weight:500">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 2.5h6l3 3v8h-9v-11z" fill="#c9d8f3" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 8h5M5.5 10.5h3.5" stroke="#547dd0" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span>日常常用</span>
+        </div>
+      </div>
+
+      <!-- 顶栏右侧：公共汇总操作 -->
+      <div style="display:flex;align-items:center;gap:6px;flex:none">
+        <sc-if value="{{hasPending}}" hint-placeholder-val="{{false}}">
+          <button type="button" onClick="{{generateAll}}" style="height:28px;padding:4px 10px;border:0;border-radius:6px;background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+            <span>交给 AI 修改 ({{pendingCount}})</span>
+          </button>
+        </sc-if>
+
+        <sc-if value="{{hasGenerated}}" hint-placeholder-val="{{true}}">
+          <div style="display:inline-flex;align-items:center;gap:6px">
+            <button type="button" onClick="{{applyAll}}" style="height:28px;padding:4px 10px;border:0;border-radius:6px;background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+              <span>全部应用 ({{generatedCount}})</span>
+            </button>
+            <button type="button" onClick="{{resetPending}}" style="height:28px;padding:4px 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#526071;cursor:pointer">全部还原</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{allDone}}" hint-placeholder-val="{{false}}">
+          <button type="button" onClick="{{resetPending}}" style="height:28px;padding:4px 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#526071;cursor:pointer">重置批注</button>
+        </sc-if>
+      </div>
+    </header>
+
+    <div style="flex:1;min-height:0;display:flex">
+      <!-- 左侧文件树 -->
+      <aside style="width:{{sidebarW}};flex:none;background:#fafafa;border-right:1px solid #e6e6e6;display:flex;flex-direction:column;justify-content:space-between;padding:12px 10px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:6px;padding:0 2px 8px">
+            <div style="flex:1;min-width:0;height:32px;padding:6px 10px;border-radius:6px;background:#ffffff;border:1px solid #dcdcdc;display:flex;align-items:center;justify-content:space-between;color:#526071">
+              <span>搜索</span>
+            </div>
+            <button type="button" aria-label="新建笔记" style="width:32px;height:32px;flex:none;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#20242c;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">+</button>
+          </div>
+          <div style="height:32px;padding:6px 10px;border-radius:6px;display:flex;align-items:center;color:#526071">Gemini</div>
+          <div style="height:32px;padding:6px 10px;border-radius:6px;display:flex;align-items:center;color:#526071;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">实际落地业务采集</div>
+          <div style="height:32px;padding:6px 10px;border-radius:6px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;display:flex;align-items:center;justify-content:space-between;color:#20242c;font-weight:500">
+            <span>日常常用</span>
+            <span style="color:#526071;font-family:'JetBrains Mono',monospace">{{activeCount}}</span>
+          </div>
+          <div style="height:32px;padding:6px 10px;border-radius:6px;display:flex;align-items:center;color:#526071">视频生成</div>
+        </div>
+
+        <div style="padding-top:10px;border-top:1px solid #e6e6e6;display:flex;align-items:center;justify-content:space-between;color:#526071">
+          <span style="padding:0 6px">本地笔记</span>
+          <button type="button" aria-label="设置" style="width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:#526071;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">⚙</button>
+        </div>
+      </aside>
+
+      <!-- 编辑区 -->
+      <main style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;background:#ffffff;position:relative">
+        <div style="display:flex;justify-content:center;gap:24px;padding:36px 24px 28px;align-items:flex-start">
+          <!-- 正文区：窄窗下自适应 100% 宽度，右侧留 32px 微章槽；宽屏下 672px -->
+          <article style="flex:1;min-width:0;max-width:672px;color:#20242c;font-size:16px;line-height:28px">
+            <div style="display:flex;align-items:center;gap:6px;color:#547dd0;font-size:20px;line-height:28px;font-weight:600;margin-bottom:18px">
+              <span style="color:#526071;font-size:14px">›</span>
+              <span>Design</span>
+            </div>
+
+            <!-- 段落 1 + 窄窗页边数字微章 1 + 点击原位 Popover -->
+            <div style="position:relative;margin-bottom:14px;padding-right:36px">
+              <h2 style="margin:0;font-size:20px;line-height:28px;font-weight:600">
+                <button type="button" class="span-btn" onClick="{{focus1}}" style="background:{{spanBg1}};box-shadow:{{spanRing1}};border-radius:4px;padding:2px 6px;font-size:20px;line-height:28px;font-weight:600">{{text1}}</button>
+              </h2>
+              <sc-if value="{{showNarrowBadge1}}" hint-placeholder-val="{{true}}">
+                <button type="button" onClick="{{focus1}}" aria-label="展开批注 1" style="position:absolute;top:2px;right:0;width:24px;height:24px;border-radius:12px;background:{{badgeBg1}};border:1px solid {{badgeBorder1}};color:#20242c;font-size:14px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">1</button>
+              </sc-if>
+              <sc-if value="{{showPopover1}}" hint-placeholder-val="{{true}}">
+                <div style="margin-top:8px;padding:12px 14px;border-radius:10px;background:#ffffff;border:1px solid #547dd0;box-shadow:0 8px 24px rgba(0,0,0,0.08);display:flex;flex-direction:column;gap:8px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                    <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                      <span style="width:8px;height:8px;border-radius:4px;background:{{dot1}};flex:none"></span>
+                      <span style="font-size:14px;line-height:20px;font-weight:500;color:#20242c">批注 #1：改成专业一点的小节标题</span>
+                    </div>
+                    <div style="display:inline-flex;align-items:center;gap:6px;flex:none">
+                      <sc-if value="{{isGenerated1}}" hint-placeholder-val="{{true}}">
+                        <button type="button" onClick="{{apply1}}" style="height:26px;padding:0 10px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;color:#20242c;font-size:14px;cursor:pointer">✓ 应用</button>
+                        <button type="button" onClick="{{revert1}}" style="height:26px;padding:0 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#526071;font-size:14px;cursor:pointer">↺ 还原</button>
+                      </sc-if>
+                      <button type="button" onClick="{{closeActive}}" style="height:26px;padding:0 8px;border:0;border-radius:6px;background:#f1f1f1;color:#526071;font-size:14px;cursor:pointer">收起</button>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:6px">
+                    <label for="pop-chat-1" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">追问批注 1</label>
+                    <input id="pop-chat-1" type="text" value="{{follow1}}" onInput="{{onFollow1}}" placeholder="继续对话微调…" style="flex:1;min-width:0;height:30px;padding:4px 10px;border:1px solid #dcdcdc;border-radius:6px;background:#fafafa;color:#20242c" />
+                    <button type="button" onClick="{{regen1}}" style="height:30px;padding:0 12px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;color:#20242c;font-weight:500;cursor:pointer">发送 ↵</button>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="background:#fafafa;border:1px solid #e6e6e6;border-radius:10px;padding:16px 18px;font-family:'JetBrains Mono',Menlo,'PingFang SC',monospace;font-size:14px;line-height:24px;color:#20242c">
+              <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+                <span style="padding:2px 8px;border-radius:4px;background:#ffffff;border:1px solid #dcdcdc;color:#526071;font-size:14px">markdown</span>
+              </div>
+              <p style="margin:0 0 10px">执行步骤：/goal 完整执行以下步骤，尽量多个 sub agent 一起执行。</p>
+
+              <!-- 段落 2 + 窄窗页边数字微章 2 + 点击原位 Popover -->
+              <div style="position:relative;margin-bottom:10px;padding-right:36px">
+                <p style="margin:0">
+                  <span>- 要求：主会话只跟你对齐、做决定、收总结。</span>
+                  <button type="button" class="span-btn" onClick="{{focus2}}" style="background:{{spanBg2}};box-shadow:{{spanRing2}};border-radius:4px;padding:2px 5px">{{text2}}</button>
+                </p>
+                <sc-if value="{{showNarrowBadge2}}" hint-placeholder-val="{{true}}">
+                  <button type="button" onClick="{{focus2}}" aria-label="展开批注 2" style="position:absolute;top:2px;right:0;width:24px;height:24px;border-radius:12px;background:{{badgeBg2}};border:1px solid {{badgeBorder2}};color:#20242c;font-size:14px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">2</button>
+                </sc-if>
+                <sc-if value="{{showPopover2}}" hint-placeholder-val="{{false}}">
+                  <div style="margin-top:8px;padding:12px 14px;border-radius:10px;background:#ffffff;border:1px solid #547dd0;box-shadow:0 8px 24px rgba(0,0,0,0.08);display:flex;flex-direction:column;gap:8px;font-family:Inter,-apple-system,sans-serif">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                      <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                        <span style="width:8px;height:8px;border-radius:4px;background:{{dot2}};flex:none"></span>
+                        <span style="font-size:14px;line-height:20px;font-weight:500;color:#20242c">批注 #2：精简成书面规则，保留单次只读</span>
+                      </div>
+                      <div style="display:inline-flex;align-items:center;gap:6px;flex:none">
+                        <sc-if value="{{isGenerated2}}" hint-placeholder-val="{{true}}">
+                          <button type="button" onClick="{{apply2}}" style="height:26px;padding:0 10px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;color:#20242c;font-size:14px;cursor:pointer">✓ 应用</button>
+                          <button type="button" onClick="{{revert2}}" style="height:26px;padding:0 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#526071;font-size:14px;cursor:pointer">↺ 还原</button>
+                        </sc-if>
+                        <button type="button" onClick="{{closeActive}}" style="height:26px;padding:0 8px;border:0;border-radius:6px;background:#f1f1f1;color:#526071;font-size:14px;cursor:pointer">收起</button>
+                      </div>
+                    </div>
+                    <div style="display:flex;gap:6px">
+                      <label for="pop-chat-2" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">追问批注 2</label>
+                      <input id="pop-chat-2" type="text" value="{{follow2}}" onInput="{{onFollow2}}" placeholder="继续对话微调…" style="flex:1;min-width:0;height:30px;padding:4px 10px;border:1px solid #dcdcdc;border-radius:6px;background:#fafafa;color:#20242c" />
+                      <button type="button" onClick="{{regen2}}" style="height:30px;padding:0 12px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;color:#20242c;font-weight:500;cursor:pointer">发送 ↵</button>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+
+              <p style="margin:0 0 10px">- 调研：技术栈变更参考社区活跃方案、开源优先，查看评论区是否有更优推荐；</p>
+
+              <!-- 段落 3 + 窄窗页边数字微章 3 + 点击原位 Popover -->
+              <div style="position:relative;padding-right:36px">
+                <p style="margin:0">
+                  <span>- </span>
+                  <button type="button" class="span-btn" onClick="{{focus3}}" style="background:{{spanBg3}};box-shadow:{{spanRing3}};border-radius:4px;padding:2px 5px">{{text3}}</button>
+                </p>
+                <sc-if value="{{showNarrowBadge3}}" hint-placeholder-val="{{true}}">
+                  <button type="button" onClick="{{focus3}}" aria-label="展开批注 3" style="position:absolute;top:2px;right:0;width:24px;height:24px;border-radius:12px;background:{{badgeBg3}};border:1px solid {{badgeBorder3}};color:#20242c;font-size:14px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">3</button>
+                </sc-if>
+                <sc-if value="{{showPopover3}}" hint-placeholder-val="{{false}}">
+                  <div style="margin-top:8px;padding:12px 14px;border-radius:10px;background:#ffffff;border:1px solid #547dd0;box-shadow:0 8px 24px rgba(0,0,0,0.08);display:flex;flex-direction:column;gap:8px;font-family:Inter,-apple-system,sans-serif">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                      <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                        <span style="width:8px;height:8px;border-radius:4px;background:{{dot3}};flex:none"></span>
+                        <span style="font-size:14px;line-height:20px;font-weight:500;color:#20242c">批注 #3：补全半句话：出 3 个交互版本</span>
+                      </div>
+                      <div style="display:inline-flex;align-items:center;gap:6px;flex:none">
+                        <sc-if value="{{isGenerated3}}" hint-placeholder-val="{{true}}">
+                          <button type="button" onClick="{{apply3}}" style="height:26px;padding:0 10px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;color:#20242c;font-size:14px;cursor:pointer">✓ 应用</button>
+                          <button type="button" onClick="{{revert3}}" style="height:26px;padding:0 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#526071;font-size:14px;cursor:pointer">↺ 还原</button>
+                        </sc-if>
+                        <button type="button" onClick="{{closeActive}}" style="height:26px;padding:0 8px;border:0;border-radius:6px;background:#f1f1f1;color:#526071;font-size:14px;cursor:pointer">收起</button>
+                      </div>
+                    </div>
+                    <div style="display:flex;gap:6px">
+                      <label for="pop-chat-3" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">追问批注 3</label>
+                      <input id="pop-chat-3" type="text" value="{{follow3}}" onInput="{{onFollow3}}" placeholder="继续对话微调…" style="flex:1;min-width:0;height:30px;padding:4px 10px;border:1px solid #dcdcdc;border-radius:6px;background:#fafafa;color:#20242c" />
+                      <button type="button" onClick="{{regen3}}" style="height:30px;padding:0 12px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;color:#20242c;font-weight:500;cursor:pointer">发送 ↵</button>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+
+            <div style="margin-top:20px;padding:12px 16px;border-radius:8px;background:#fafafa;border:1px solid #e6e6e6;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;color:#526071">
+              <span>{{modeHint}}</span>
+              <div style="display:flex;gap:6px;flex:none">
+                <button type="button" onClick="{{resetPending}}" style="height:28px;padding:4px 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#20242c;cursor:pointer">1. 待发态</button>
+                <button type="button" onClick="{{generateAll}}" style="height:28px;padding:4px 10px;border:1px solid #547dd0;border-radius:6px;background:#e5edfc;color:#20242c;cursor:pointer">2. 生成后</button>
+              </div>
+            </div>
+          </article>
+
+          <!-- 宽屏右侧极简批注轨（窄窗下自动隐藏，绝不挤压正文） -->
+          <sc-if value="{{isWide}}" hint-placeholder-val="{{false}}">
+            <aside style="width:224px;flex:none;display:flex;flex-direction:column;gap:10px;padding-top:44px">
+
+              <sc-if value="{{showCard1}}" hint-placeholder-val="{{true}}">
+                <div style="background:#ffffff;border:1px solid {{border1}};box-shadow:{{shadow1}};border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:8px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+                    <button type="button" onClick="{{focus1}}" style="flex:1;min-width:0;border:0;background:transparent;padding:0;display:flex;align-items:center;gap:6px;color:#20242c;text-align:left;cursor:pointer">
+                      <span style="width:6px;height:6px;border-radius:3px;background:{{dot1}};flex:none;display:inline-block"></span>
+                      <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">改成专业一点的小节标题</span>
+                    </button>
+                    <sc-if value="{{isGenerated1}}" hint-placeholder-val="{{true}}">
+                      <div style="display:inline-flex;align-items:center;gap:2px;flex:none">
+                        <button type="button" onClick="{{apply1}}" aria-label="单独应用批注 1" style="width:22px;height:22px;border:0;border-radius:4px;background:#e5edfc;color:#547dd0;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">✓</button>
+                        <button type="button" onClick="{{revert1}}" aria-label="还原批注 1" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#526071;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">↺</button>
+                      </div>
+                    </sc-if>
+                  </div>
+                  <sc-if value="{{expandWide1}}" hint-placeholder-val="{{true}}">
+                    <div style="display:flex;gap:4px;padding-top:6px;border-top:1px solid #e6e6e6">
+                      <label for="mini-chat-1" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">继续追问批注 1</label>
+                      <input id="mini-chat-1" type="text" value="{{follow1}}" onInput="{{onFollow1}}" placeholder="继续对话微调…" style="flex:1;min-width:0;height:28px;padding:4px 8px;border:1px solid #dcdcdc;border-radius:5px;background:#fafafa;color:#20242c" />
+                      <button type="button" onClick="{{regen1}}" aria-label="发送微调 1" style="width:28px;height:28px;border:1px solid #547dd0;border-radius:5px;background:#e5edfc;color:#20242c;display:inline-flex;align-items:center;justify-content:center;flex:none;cursor:pointer">↵</button>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{showCard2}}" hint-placeholder-val="{{true}}">
+                <div style="background:#ffffff;border:1px solid {{border2}};box-shadow:{{shadow2}};border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:8px;margin-top:46px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+                    <button type="button" onClick="{{focus2}}" style="flex:1;min-width:0;border:0;background:transparent;padding:0;display:flex;align-items:center;gap:6px;color:#20242c;text-align:left;cursor:pointer">
+                      <span style="width:6px;height:6px;border-radius:3px;background:{{dot2}};flex:none;display:inline-block"></span>
+                      <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">精简成书面规则，保留单次只读</span>
+                    </button>
+                    <sc-if value="{{isGenerated2}}" hint-placeholder-val="{{true}}">
+                      <div style="display:inline-flex;align-items:center;gap:2px;flex:none">
+                        <button type="button" onClick="{{apply2}}" aria-label="单独应用批注 2" style="width:22px;height:22px;border:0;border-radius:4px;background:#e5edfc;color:#547dd0;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">✓</button>
+                        <button type="button" onClick="{{revert2}}" aria-label="还原批注 2" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#526071;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">↺</button>
+                      </div>
+                    </sc-if>
+                  </div>
+                  <sc-if value="{{expandWide2}}" hint-placeholder-val="{{false}}">
+                    <div style="display:flex;gap:4px;padding-top:6px;border-top:1px solid #e6e6e6">
+                      <label for="mini-chat-2" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">继续追问批注 2</label>
+                      <input id="mini-chat-2" type="text" value="{{follow2}}" onInput="{{onFollow2}}" placeholder="继续对话微调…" style="flex:1;min-width:0;height:28px;padding:4px 8px;border:1px solid #dcdcdc;border-radius:5px;background:#fafafa;color:#20242c" />
+                      <button type="button" onClick="{{regen2}}" aria-label="发送微调 2" style="width:28px;height:28px;border:1px solid #547dd0;border-radius:5px;background:#e5edfc;color:#20242c;display:inline-flex;align-items:center;justify-content:center;flex:none;cursor:pointer">↵</button>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{showCard3}}" hint-placeholder-val="{{true}}">
+                <div style="background:#ffffff;border:1px solid {{border3}};box-shadow:{{shadow3}};border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:8px;margin-top:28px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+                    <button type="button" onClick="{{focus3}}" style="flex:1;min-width:0;border:0;background:transparent;padding:0;display:flex;align-items:center;gap:6px;color:#20242c;text-align:left;cursor:pointer">
+                      <span style="width:6px;height:6px;border-radius:3px;background:{{dot3}};flex:none;display:inline-block"></span>
+                      <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">补全半句话：出 3 个交互版本</span>
+                    </button>
+                    <sc-if value="{{isGenerated3}}" hint-placeholder-val="{{true}}">
+                      <div style="display:inline-flex;align-items:center;gap:2px;flex:none">
+                        <button type="button" onClick="{{apply3}}" aria-label="单独应用批注 3" style="width:22px;height:22px;border:0;border-radius:4px;background:#e5edfc;color:#547dd0;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">✓</button>
+                        <button type="button" onClick="{{revert3}}" aria-label="还原批注 3" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#526071;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">↺</button>
+                      </div>
+                    </sc-if>
+                  </div>
+                  <sc-if value="{{expandWide3}}" hint-placeholder-val="{{false}}">
+                    <div style="display:flex;gap:4px;padding-top:6px;border-top:1px solid #e6e6e6">
+                      <label for="mini-chat-3" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">继续追问批注 3</label>
+                      <input id="mini-chat-3" type="text" value="{{follow3}}" onInput="{{onFollow3}}" placeholder="继续对话微调…" style="flex:1;min-width:0;height:28px;padding:4px 8px;border:1px solid #dcdcdc;border-radius:5px;background:#fafafa;color:#20242c" />
+                      <button type="button" onClick="{{regen3}}" aria-label="发送微调 3" style="width:28px;height:28px;border:1px solid #547dd0;border-radius:5px;background:#e5edfc;color:#20242c;display:inline-flex;align-items:center;justify-content:center;flex:none;cursor:pointer">↵</button>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+            </aside>
+          </sc-if>
+        </div>
+
+        <footer style="height:28px;padding:0 18px;border-top:1px solid #e6e6e6;display:flex;align-items:center;justify-content:space-between;color:#526071;font-size:14px">
+          <span>已保存 · 内存会话就绪</span>
+          <span>{{footerRight}}</span>
+        </footer>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":920}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      narrow: true,
+      active: 1,
+      s1: 'generated',
+      s2: 'generated',
+      s3: 'generated',
+      follow1: '再简短一点，控制在 6 个字内',
+      follow2: '',
+      follow3: ''
+    };
+  }
+  renderVals() {
+    const { narrow, active, s1, s2, s3, follow1, follow2, follow3 } = this.state;
+    const states = [s1, s2, s3];
+    const pendingCount = states.filter((s) => s === 'pending').length;
+    const generatedCount = states.filter((s) => s === 'generated' || s === 'iterated').length;
+    const activeCount = states.filter((s) => s !== 'applied').length;
+    const isGen = (st) => st === 'generated' || st === 'iterated';
+
+    const textFor = (idx, st) => {
+      if (idx === 1) {
+        if (st === 'pending') return '调研后工作';
+        if (st === 'iterated') return '调研与子代理分工';
+        return '调研落地与子代理分工规范';
+      }
+      if (idx === 2) {
+        if (st === 'pending') return '凡是会写文件、跑命令、或可能重试的，一律子代理。主会话最多做一次只读、用来回答你当下那句的查找，保持上下文干净。';
+        if (st === 'iterated') return '（1）读写与命令均交子代理；（2）主会话仅限单次只读查询。';
+        return '所有文件读写、命令执行与重试均交由子代理完成；主会话仅允许单次只读查询以保持上下文精简。';
+      }
+      if (st === 'pending') return '页面交互、流程变更生成改动内容的 html 页面，并且设计三个交互版本给我选择；只是流程变化';
+      if (st === 'iterated') return '涉及界面或流程变更时，先用 /design 输出 3 个交互版本供选择（支持 Play 预览），确认后再编码。';
+      return '涉及界面交互与流程变更时，使用 /design 技能输出 3 个风格显著不同的可交互画板供选择，先确认视觉与流程再进入编码。';
+    };
+
+    const spanBg = (idx, st) => {
+      if (st === 'applied') return 'transparent';
+      if (isGen(st)) return '#e5edfc';
+      return active === idx ? '#fdda8c' : '#fef0d1';
+    };
+    const spanRing = (st) => (isGen(st) ? 'inset 0 0 0 1px #547dd0' : 'none');
+
+    return {
+      isNarrow: narrow,
+      isWide: !narrow,
+      canvasBg: narrow ? '#f1f1f1' : '#ffffff',
+      frameStyle: narrow
+        ? 'width:780px;min-height:820px;margin:20px auto;border:1px solid #dcdcdc;border-radius:12px;overflow:hidden;box-shadow:0 12px 32px rgba(0,0,0,0.08);display:flex;flex-direction:column;background:#ffffff'
+        : 'width:100%;flex:1;display:flex;flex-direction:column;background:#ffffff',
+      sidebarW: narrow ? '180px' : '260px',
+      narrowBtnBg: narrow ? '#e5edfc' : 'transparent',
+      narrowBtnCol: narrow ? '#20242c' : '#526071',
+      narrowBtnRing: narrow ? 'inset 0 0 0 1px #547dd0' : 'none',
+      wideBtnBg: !narrow ? '#e5edfc' : 'transparent',
+      wideBtnCol: !narrow ? '#20242c' : '#526071',
+      wideBtnRing: !narrow ? 'inset 0 0 0 1px #547dd0' : 'none',
+      modeHint: narrow
+        ? '窄窗模式（方案 A）：隐藏右栏，仅在段落右侧留 24×24 数字微章；点击微章或高亮文字原位浮起 Popover 卡片。'
+        : '宽屏模式（方案 A）：右侧并排 224px 单行微字条；点右侧 ✓ 直接单独应用，点文字展开追问。',
+      footerRight: narrow
+        ? '窄窗方案 A：页边 24×24 数字微章 + 原位浮层 Popover'
+        : '宽屏方案 A：平时仅 36px 高单行窄条，点击展开追问',
+
+      hasPending: pendingCount > 0,
+      hasGenerated: generatedCount > 0,
+      allDone: activeCount === 0,
+      pendingCount,
+      generatedCount,
+      activeCount,
+      text1: textFor(1, s1),
+      text2: textFor(2, s2),
+      text3: textFor(3, s3),
+      spanBg1: spanBg(1, s1),
+      spanBg2: spanBg(2, s2),
+      spanBg3: spanBg(3, s3),
+      spanRing1: spanRing(s1),
+      spanRing2: spanRing(s2),
+      spanRing3: spanRing(s3),
+      showCard1: s1 !== 'applied',
+      showCard2: s2 !== 'applied',
+      showCard3: s3 !== 'applied',
+      showNarrowBadge1: narrow && s1 !== 'applied',
+      showNarrowBadge2: narrow && s2 !== 'applied',
+      showNarrowBadge3: narrow && s3 !== 'applied',
+      showPopover1: narrow && active === 1 && s1 !== 'applied',
+      showPopover2: narrow && active === 2 && s2 !== 'applied',
+      showPopover3: narrow && active === 3 && s3 !== 'applied',
+      badgeBg1: isGen(s1) ? '#e5edfc' : '#fef0d1',
+      badgeBg2: isGen(s2) ? '#e5edfc' : '#fef0d1',
+      badgeBg3: isGen(s3) ? '#e5edfc' : '#fef0d1',
+      badgeBorder1: active === 1 || isGen(s1) ? '#547dd0' : '#dcdcdc',
+      badgeBorder2: active === 2 || isGen(s2) ? '#547dd0' : '#dcdcdc',
+      badgeBorder3: active === 3 || isGen(s3) ? '#547dd0' : '#dcdcdc',
+      isGenerated1: isGen(s1),
+      isGenerated2: isGen(s2),
+      isGenerated3: isGen(s3),
+      expandWide1: !narrow && active === 1 && isGen(s1),
+      expandWide2: !narrow && active === 2 && isGen(s2),
+      expandWide3: !narrow && active === 3 && isGen(s3),
+      dot1: isGen(s1) ? '#547dd0' : '#f5c84c',
+      dot2: isGen(s2) ? '#547dd0' : '#f5c84c',
+      dot3: isGen(s3) ? '#547dd0' : '#f5c84c',
+      border1: active === 1 ? '#547dd0' : '#e6e6e6',
+      border2: active === 2 ? '#547dd0' : '#e6e6e6',
+      border3: active === 3 ? '#547dd0' : '#e6e6e6',
+      shadow1: active === 1 ? 'inset 0 0 0 1px #547dd0' : 'none',
+      shadow2: active === 2 ? 'inset 0 0 0 1px #547dd0' : 'none',
+      shadow3: active === 3 ? 'inset 0 0 0 1px #547dd0' : 'none',
+      follow1,
+      follow2,
+      follow3,
+      setNarrow: () => this.setState({ narrow: true }),
+      setWide: () => this.setState({ narrow: false }),
+      closeActive: () => this.setState({ active: 0 }),
+      focus1: () => this.setState({ active: active === 1 ? 0 : 1 }),
+      focus2: () => this.setState({ active: active === 2 ? 0 : 2 }),
+      focus3: () => this.setState({ active: active === 3 ? 0 : 3 }),
+      onFollow1: (e) => this.setState({ follow1: e && e.target ? e.target.value : follow1 }),
+      onFollow2: (e) => this.setState({ follow2: e && e.target ? e.target.value : follow2 }),
+      onFollow3: (e) => this.setState({ follow3: e && e.target ? e.target.value : follow3 }),
+      regen1: () => this.setState({ s1: 'iterated', follow1: '' }),
+      regen2: () => this.setState({ s2: 'iterated', follow2: '' }),
+      regen3: () => this.setState({ s3: 'iterated', follow3: '' }),
+      revert1: () => this.setState({ s1: 'pending' }),
+      revert2: () => this.setState({ s2: 'pending' }),
+      revert3: () => this.setState({ s3: 'pending' }),
+      apply1: () => this.setState({ s1: 'applied', active: 0 }),
+      apply2: () => this.setState({ s2: 'applied', active: 0 }),
+      apply3: () => this.setState({ s3: 'applied', active: 0 }),
+      generateAll: () => this.setState({
+        s1: s1 === 'pending' ? 'generated' : s1,
+        s2: s2 === 'pending' ? 'generated' : s2,
+        s3: s3 === 'pending' ? 'generated' : s3
+      }),
+      applyAll: () => this.setState({
+        s1: 'applied',
+        s2: 'applied',
+        s3: 'applied',
+        active: 0
+      }),
+      resetPending: () => this.setState({
+        active: 1,
+        s1: 'pending',
+        s2: 'pending',
+        s3: 'pending'
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

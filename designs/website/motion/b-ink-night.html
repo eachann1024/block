@@ -1,0 +1,1894 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Block — 落笔成块，快若无物</title>
+<link rel="icon" href="./icons/block.png">
+<script>
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.documentElement.classList.add('js-intro');
+    setTimeout(function () { document.documentElement.classList.add('intro-done'); }, 4200);
+  }
+</script>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js" } }
+</script>
+<style>
+  /* Ocean Dark exact tokens from src/theme.rs & designs/thinkly-reference/DESIGN.md */
+  :root {
+    --canvas: #141720;
+    --paper: #181818;
+    --sidebar: #222222;
+    --menu: #222222;
+    --shell: #343434;
+    --selected: #343434;
+    --hover: #2c2c2c;
+    --line: #2e2e2e;
+    --shell-line: #333333;
+    --btn-border: #444444;
+    --code-bg: #242424;
+    --ink: #ececec;
+    --dim: #b4b4b4;
+    --muted: #8e8d88;
+    --ocean: #779de8;
+    --ocean-btn: #4774cf;
+    --icon-fill: #31456a;
+    --sel-bg: #2d426b;
+    --sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { background: var(--paper); color: var(--ink); font-family: var(--sans); scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+  body { overflow-x: hidden; font-size: 16px; line-height: 1.72; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; }
+
+  /* Top nav: Pure backgroundless floating header (zero bar fill, zero border) */
+  .nav { position: fixed; inset: 0 0 auto 0; z-index: 50; height: 68px; display: flex; align-items: center; justify-content: space-between; padding: 0 clamp(20px, 4vw, 44px); background: transparent; border: 0; pointer-events: none; transform: translateZ(0); }
+  .brand { pointer-events: auto; display: inline-flex; align-items: center; gap: 10px; height: 44px; font-weight: 600; font-size: 17px; color: #f4f6fa; text-shadow: 0 2px 14px rgba(10, 13, 20, 0.9); }
+  .brand img { width: 28px; height: 28px; border-radius: 7px; box-shadow: 0 4px 14px rgba(0,0,0,.45); }
+  .nav-links { pointer-events: auto; display: flex; align-items: center; gap: clamp(16px, 2.4vw, 30px); font-size: 15px; color: #cfd6e4; text-shadow: 0 2px 14px rgba(10, 13, 20, 0.92); }
+  .nav-links a:not(.btn) { display: inline-flex; align-items: center; height: 44px; transition: color .18s ease; }
+  .nav-links a:hover { color: #fff; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: var(--ocean-btn); border: 1px solid rgba(145,179,246,.42); color: #ffffff; font-weight: 600; border-radius: 10px; text-shadow: none; box-shadow: 0 12px 32px rgba(34,64,128,.36); transition: transform .18s, background .18s, border-color .18s; }
+  .btn:hover { background: #5380dc; border-color: rgba(168,196,252,.65); transform: translateY(-1px); }
+  .btn-sm { height: 36px; padding: 0 16px; font-size: 14px; border-radius: 999px; color: #fff !important; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.55); }
+  .btn-lg { height: 50px; padding: 0 32px; font-size: 17px; }
+  @media (max-width: 760px) { .nav-links a:not(.btn) { display: none; } }
+
+  /* Hero */
+  .hero { position: relative; height: 100vh; min-height: 640px; overflow: hidden; display: grid; place-items: center; text-align: center; contain: layout paint; background: var(--canvas); }
+  #hero-gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+  .hero-inner { position: relative; z-index: 2; padding: 0 20px; }
+  #title { font-size: clamp(46px, 9.2vw, 132px); font-weight: 700; line-height: 1.12; letter-spacing: .02em; color: #f4f6fb; white-space: nowrap; transition: opacity .95s ease; text-shadow: 0 0 36px rgba(119,157,232,.22); will-change: opacity; }
+  #title .ln { display: inline-block; }
+  @media (max-width: 640px) { #title .ln { display: block; } #title { white-space: normal; } }
+  .hero-sub { max-width: min(880px, 92vw); margin: 22px auto 0; font-size: clamp(17px, 1.7vw, 20px); line-height: 1.65; color: #cfd6e4; transition: opacity .9s ease .15s, transform .9s ease .15s; }
+  .hero-cta { margin-top: 36px; display: flex; flex-direction: column; align-items: center; gap: 14px; transition: opacity .9s ease .3s, transform .9s ease .3s; }
+  .hero-meta { font-size: 14px; color: #95a0b5; }
+  html.js-intro:not(.intro-done) #title { opacity: 0; }
+  html.js-intro:not(.intro-done) .hero-sub, html.js-intro:not(.intro-done) .hero-cta { opacity: 0; transform: translateY(14px); }
+
+  /* Section common */
+  section { position: relative; }
+  .sec { padding: clamp(88px, 10.5vh, 124px) clamp(16px, 4vw, 40px); contain: layout style; }
+  .sec-alt { background: #14161d; border-top: 1px solid #232630; border-bottom: 1px solid #232630; }
+  .h2 { font-size: clamp(32px, 4.4vw, 50px); font-weight: 700; line-height: 1.22; letter-spacing: -.01em; text-align: center; color: #f4f6fa; }
+  .lead { margin: 12px auto 0; max-width: min(920px, 92vw); text-align: center; font-size: clamp(16.5px, 1.4vw, 18.5px); line-height: 1.65; color: var(--dim); }
+  .rv { opacity: 0; transform: translateY(24px); transition: opacity .85s cubic-bezier(.2,.7,.2,1), transform .85s cubic-bezier(.2,.7,.2,1); }
+  .rv.in { opacity: 1; transform: none; }
+  .sub { margin-top: 18px; min-height: 28px; font-size: clamp(16px, 1.55vw, 18px); color: #e2e6ef; text-align: center; transition: opacity .24s, transform .24s; }
+  .sub.out { opacity: 0; transform: translateY(6px); }
+  .sub b, .sub q { quotes: none; color: var(--ocean); font-weight: 600; }
+  .sub q::before, .sub q::after { content: none !important; }
+
+  /* Scheme A Duo Icons (exact src/ui/dropdown.rs & src/theme.rs colors) */
+  .duo { width: 16px; height: 16px; flex: none; display: block; }
+  .duo .f { fill: transparent; transition: fill .16s; }
+  .duo .l { fill: none; stroke: #b4b4b4; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; transition: stroke .16s; }
+  .duo .lf { fill: #b4b4b4; stroke: none; transition: fill .16s; }
+  .duo .a { fill: none; stroke: #b4b4b4; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; transition: stroke .16s; }
+  .duo .af { fill: #b4b4b4; stroke: none; transition: fill .16s; }
+  .hot .duo .f, .on .duo .f, .duo.lit .f { fill: var(--icon-fill); }
+  .hot .duo .l, .on .duo .l, .duo.lit .l { stroke: #ececec; }
+  .hot .duo .lf, .on .duo .lf, .duo.lit .lf { fill: #ececec; }
+  .hot .duo .a, .on .duo .a, .duo.lit .a { stroke: var(--ocean); }
+  .hot .duo .af, .on .duo .af, .duo.lit .af { fill: var(--ocean); }
+
+  /* Shared authentic Segmented Control (src/ui/segmented_control.rs) */
+  .seg-track { display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 2px; background: var(--paper); border: 1px solid var(--btn-border); border-radius: 8px; }
+  .seg-track.w-full { display: flex; width: 100%; }
+  .seg-item { flex: 1; height: 100%; padding: 0 10px; border-radius: 6px; border: 1px solid transparent; display: inline-flex; align-items: center; justify-content: center; font-size: 13.5px; line-height: 20px; color: var(--dim); white-space: nowrap; transition: background .16s, border-color .16s, color .16s; }
+  .seg-item.on { background: var(--selected); border-color: var(--ocean); color: var(--ink); font-weight: 500; }
+
+  /* ==================== 1. 轻快（十万段 3D WebGL 镜头 + 60fps 丝滑纵向数字滚轮） ==================== */
+  .perf { position: relative; height: 100vh; min-height: 720px; background: var(--canvas); overflow: hidden; contain: layout paint; border-top: 1px solid #202432; border-bottom: 1px solid #202432; }
+  #perf-gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+  .perf-shade {
+    position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse 78% 62% at 50% 52%, transparent 42%, rgba(20, 23, 32, 0.66) 100%),
+      linear-gradient(180deg, #141720 0%, rgba(20, 23, 32, 0.86) 24%, rgba(20, 23, 32, 0.05) 40%, rgba(20, 23, 32, 0.08) 66%, rgba(20, 23, 32, 0.82) 86%, #141720 100%);
+  }
+  .perf-h { position: absolute; top: clamp(84px, 10.5vh, 114px); left: 0; right: 0; padding: 0 20px; z-index: 2; }
+  .perf-bottom { position: absolute; left: 0; right: 0; bottom: clamp(46px, 7.5vh, 84px); z-index: 2; display: flex; justify-content: center; padding: 0 20px; pointer-events: none; }
+  .perf-count { display: inline-flex; align-items: flex-end; gap: 12px; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+  .perf-count b {
+    display: inline-flex; align-items: center;
+    font-size: clamp(56px, 8.2vw, 112px); line-height: 1.14; font-weight: 700; letter-spacing: -.02em;
+    color: #f4f7ff; filter: drop-shadow(0 6px 28px rgba(8, 11, 20, 0.92)) drop-shadow(0 0 28px rgba(119, 157, 232, 0.24));
+  }
+  .od-slot {
+    position: relative; display: inline-block; height: 1.16em; overflow: hidden;
+    max-width: 0; opacity: 0;
+    transition: max-width .24s cubic-bezier(.2,.75,.2,1), opacity .2s ease;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+  }
+  .od-slot.is-comma { overflow: visible; -webkit-mask-image: none; mask-image: none; }
+  .od-slot.on { max-width: 0.8em; opacity: 1; }
+  .od-sizer { visibility: hidden; display: block; font-style: normal; height: 1.16em; line-height: 1.16em; }
+  .od-strip { position: absolute; left: 0; right: 0; top: 0; display: flex; flex-direction: column; will-change: transform; }
+  .od-strip i { font-style: normal; display: block; height: 1.16em; line-height: 1.16em; text-align: center; }
+  .perf-count > span { font-size: clamp(20px, 2.2vw, 28px); line-height: 1; margin-bottom: clamp(8px, 1.05vw, 15px); color: var(--ocean); font-weight: 600; }
+
+  .traffic { display: inline-flex; align-items: center; gap: 8px; }
+  .traffic i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .traffic i:nth-child(1) { background: #ec6a5e; } .traffic i:nth-child(2) { background: #f4bf4f; } .traffic i:nth-child(3) { background: #61c554; }
+
+  /* ==================== Shared App Window Chrome ==================== */
+  .stage { margin: 32px auto 0; display: flex; flex-direction: column; align-items: center; }
+  .win { position: relative; width: min(960px, 94vw); height: 500px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 26px 68px rgba(0,0,0,.54); contain: strict; }
+  .win-bar { height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px 0 16px; border-bottom: 1px solid var(--shell-line); background: var(--sidebar); font-size: 14px; color: var(--dim); }
+  .win-title { font-size: 14px; font-weight: 500; color: var(--ink); }
+  .doc { position: absolute; top: 40px; left: 0; right: 0; bottom: 0; overflow: hidden; padding: 28px 0 72px; transition: opacity .4s; }
+  .col { position: relative; width: min(640px, 80%); margin: 0 auto; padding-bottom: 120px; }
+  #ed-col { padding-bottom: 300px; }
+
+  /* Authentic Block rows & handles (src/editor/chrome.rs) */
+  .blk { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 5px 8px; margin: 2px -8px; min-height: 30px; font-size: 16px; line-height: 1.78; color: var(--ink); border-radius: 6px; transition: background .28s, opacity .28s, transform .28s; }
+  .blk.is-hidden { display: none; }
+  .blk.folding { opacity: 0; transform: translateY(-6px); }
+  .blk .gutter { position: absolute; left: -46px; top: 5px; width: 40px; height: 24px; display: flex; align-items: center; justify-content: flex-end; gap: 2px; pointer-events: none; }
+  .blk .hd, .blk .chev { width: 18px; height: 22px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; color: #787878; opacity: 0; transition: opacity .18s, color .18s, background .18s, transform .24s; }
+  .blk .hd svg { width: 14px; height: 14px; }
+  .blk .chev svg { width: 13px; height: 13px; transition: transform .24s; }
+  .blk.cur .hd, .blk.grab .hd { opacity: 1; }
+  .blk.grab { background: #252830; box-shadow: 0 10px 28px rgba(0,0,0,.42), inset 0 0 0 1px rgba(119,157,232,.45); z-index: 3; }
+  .blk.grab .hd { color: var(--ocean); background: rgba(119,157,232,.14); }
+  .blk.cur.foldable .chev, .blk.hover-fold .chev, .blk.folded .chev { opacity: 1; }
+  .blk.foldable:not(.folded) .chev svg { transform: rotate(90deg); }
+  .blk.folded .chev { opacity: 1; color: var(--ocean); background: rgba(119,157,232,.14); }
+
+  .blk .mk { display: none; flex: none; }
+  .blk .tx { flex: 1; min-width: 0; white-space: pre-wrap; }
+  .caret { display: inline-block; width: 2px; height: 1.15em; background: var(--ocean); vertical-align: -.2em; margin-left: 1px; }
+  .win.active .caret { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .blk.pop { animation: pop .6s ease; }
+  @keyframes pop { 0% { background: rgba(119,157,232,.18); } 100% { background: transparent; } }
+
+  .blk[data-t=h1] { margin-bottom: 6px; }
+  .blk[data-t=h1] .tx { font-size: 28px; font-weight: 700; line-height: 1.38; color: #f6f6f6; }
+  .blk[data-t=h1] .gutter { top: 9px; }
+  .blk[data-t=h2] { margin-top: 14px; margin-bottom: 2px; }
+  .blk[data-t=h2] .tx { font-size: 20px; font-weight: 600; line-height: 1.48; color: #f0f0f0; }
+  .blk[data-t=h2] .gutter { top: 6px; }
+  .blk[data-t=li] .mk { display: flex; align-items: center; justify-content: center; width: 16px; height: 28px; color: #9a9a9a; font-size: 16px; }
+  .blk[data-t=li] .mk::before { content: "•"; }
+  .blk[data-t=quote] .tx { border-left: 3px solid #484848; padding-left: 15px; color: #c2c2c2; }
+
+  /* Authentic todo_box (src/editor/chrome.rs:205-213) */
+  .blk[data-t=todo] .mk { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-top: 6px; border: 1px solid #858585; border-radius: 4px; background: transparent; transition: background .18s, border-color .18s; }
+  .blk[data-t=todo] .mk svg { width: 12px; height: 12px; opacity: 0; transform: scale(.8); transition: opacity .18s, transform .18s; }
+  .blk[data-t=todo].done .mk { background: #4774cf; border-color: #4774cf; }
+  .blk[data-t=todo].done .mk svg { opacity: 1; transform: scale(1); }
+  .blk[data-t=todo].done .tx { color: #868686; text-decoration: line-through; text-decoration-color: rgba(134,134,134,.65); }
+
+  .blk[data-t=table] { margin: 8px -8px; }
+  .blk[data-t=table] .tx table { width: 100%; border-collapse: collapse; font-size: 14.5px; line-height: 1.6; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .blk[data-t=table] th, .blk[data-t=table] td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+  .blk[data-t=table] th:nth-child(1), .blk[data-t=table] td:nth-child(1),
+  .blk[data-t=table] th:nth-child(2), .blk[data-t=table] td:nth-child(2) { white-space: nowrap; }
+  .blk[data-t=table] th { background: var(--sidebar); color: var(--ink); font-weight: 600; }
+  .blk[data-t=table] td { background: #1b1b1b; color: #d6d6d6; }
+  .blk[data-t=table] tr.r td { opacity: 0; transition: opacity .28s ease; }
+  .blk[data-t=table] tr.r.on td { opacity: 1; }
+
+  /* Authentic Slash Dropdown (src/ui/dropdown.rs + src/editor/block_menu_cmd.rs) */
+  .dd-menu {
+    position: absolute; z-index: 9; width: 224px; padding: 4px; background: var(--menu); border-radius: 8px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.095), 0 8px 24px rgba(0,0,0,.44), 0 2px 6px rgba(0,0,0,.28);
+    display: flex; flex-direction: column; gap: 2px; opacity: 0; transform: translateY(-4px) scale(.98);
+    transition: opacity .16s ease, transform .16s ease; pointer-events: none;
+  }
+  .dd-menu.on { opacity: 1; transform: none; }
+  .dd-row { height: 28px; padding: 0 10px; gap: 8px; border-radius: 6px; display: flex; align-items: center; font-size: 14px; line-height: 20px; color: var(--ink); }
+  .dd-row.hot { background: rgba(255,255,255,.075); }
+  .dd-lbl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dd-hint { font-family: var(--mono); font-size: 12px; color: var(--muted); flex: none; }
+  .dd-sep { height: 1px; margin: 4px 0; background: rgba(255,255,255,.10); flex: none; }
+
+  /* ==================== 3. 方案 A · 景深壁纸桌面 ⌥N 速记 + 顺滑抽屉式版本记录 ==================== */
+  .desk-stage {
+    width: min(1040px, 94vw); height: 516px; border-color: #2e3342;
+    background: radial-gradient(820px 500px at 18% 20%, #23314d 0%, transparent 65%),
+                radial-gradient(760px 480px at 86% 82%, #1e2940 0%, transparent 65%), #11141c;
+  }
+  .mac-menubar { position: absolute; inset: 0 0 auto 0; height: 32px; z-index: 6; padding: 0 18px; background: rgba(15, 17, 24, 0.84); border-bottom: 1px solid rgba(255,255,255,.07); display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #d6dce8; transition: opacity .26s ease; }
+  .mac-mb-l, .mac-mb-r { display: flex; align-items: center; gap: 16px; }
+  .mac-mb-l span { color: #9da6b8; }
+  .mac-tray { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 5px; background: rgba(119,157,232,.18); border: 1px solid rgba(119,157,232,.42); color: #e8effd; font-size: 12px; font-weight: 500; }
+  .mac-tray img { width: 14px; height: 14px; border-radius: 3px; }
+
+  /* 方案 A 后景 Safari 文章窗口（明确传达不在 Block 软件内，而是全局桌面） */
+  .safari-bg { position: absolute; left: 36px; top: 56px; width: 61%; bottom: 34px; background: rgba(26, 29, 38, 0.86); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; box-shadow: 0 18px 44px rgba(0,0,0,.38); overflow: hidden; opacity: .76; transition: opacity .26s ease; }
+  .win.in-note .safari-bg, .win.in-note .mac-menubar { opacity: 0; }
+  .safari-bar { height: 38px; padding: 0 14px; background: #202430; border-bottom: 1px solid rgba(255,255,255,.06); display: flex; align-items: center; gap: 12px; }
+  .safari-dots { display: flex; gap: 7px; }
+  .safari-dots i { width: 10px; height: 10px; border-radius: 50%; background: #4a5060; display: block; }
+  .safari-url { flex: 1; max-width: 340px; margin: 0 auto; height: 24px; border-radius: 6px; background: #171a22; display: flex; align-items: center; justify-content: center; font-size: 12.5px; color: #959fb2; }
+  .safari-body { padding: 22px 30px; display: flex; flex-direction: column; gap: 12px; color: #9ea7b8; font-size: 14.5px; line-height: 1.78; }
+  .safari-body h4 { font-size: 20px; color: #cfd6e4; font-weight: 600; }
+  .safari-fig { height: 64px; border-radius: 8px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.05); margin-top: 4px; }
+
+  /* 方案 A 前景独立桌面级 Block 速记原生窗口（带景深阴影与海雾蓝呼吸光晕） */
+  .quick-win {
+    position: absolute; z-index: 7; right: 38px; top: 82px; width: min(520px, 88%); min-height: 276px;
+    background: #20232d; border: 1px solid rgba(119,157,232,.48); border-radius: 14px;
+    box-shadow: 0 34px 90px rgba(0,0,0,.76), 0 0 0 1px rgba(119,157,232,.18), 0 0 48px rgba(119,157,232,.12);
+    display: flex; flex-direction: column; overflow: hidden;
+    opacity: 0; transform: translateY(16px) scale(.96);
+    transition: opacity .3s cubic-bezier(.2,.7,.2,1), transform .3s cubic-bezier(.2,.7,.2,1);
+    pointer-events: none;
+  }
+  .quick-win.on { opacity: 1; transform: none; }
+  .qn-hdr { height: 44px; padding: 0 12px 0 16px; background: var(--paper); border-bottom: 1px solid #2b2f3c; display: flex; align-items: center; justify-content: space-between; position: relative; }
+  .dot-pager { display: flex; align-items: center; gap: 8px; }
+  .dot-pager i { display: block; width: 6px; height: 6px; border-radius: 999px; background: #384152; transition: width .2s ease, background .2s ease; }
+  .dot-pager i.on { width: 18px; background: var(--ocean); }
+  .qn-save-ico { width: 28px; height: 28px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: #eaf0ff; background: #242938; border: 1px solid rgba(119,157,232,.42); transition: background .16s, border-color .16s, transform .14s; }
+  .qn-save-ico.hot { background: #313d58; border-color: var(--ocean); box-shadow: 0 0 0 1px var(--ocean); }
+  .qn-body { flex: 1; padding: 22px 26px 24px; display: flex; flex-direction: column; gap: 10px; font-size: 15.5px; line-height: 1.8; color: #dce2ee; position: relative; }
+  .qn-title { font-size: 18.5px; font-weight: 650; color: #f5f7fb; }
+  .qn-notice { position: absolute; right: 16px; bottom: 16px; height: 30px; padding: 0 12px; border-radius: 999px; background: var(--menu); border: 1px solid rgba(119,157,232,.45); font-size: 13px; color: #e4edff; display: inline-flex; align-items: center; gap: 6px; opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+  .qn-notice.on { opacity: 1; transform: none; }
+
+  /* 场景 B：顺滑抽屉式页面历史视图（src/page_history/preview.rs + panel.rs） */
+  .hist-layer { position: absolute; inset: 0; z-index: 8; background: var(--paper); display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity .42s ease; }
+  .win.in-note .hist-layer { opacity: 1; pointer-events: auto; }
+  .hist-top { height: 40px; padding: 0 14px 0 16px; background: var(--sidebar); border-bottom: 1px solid var(--shell-line); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .hist-top-acts { display: flex; align-items: center; gap: 10px; opacity: 0; transform: translateY(-4px); transition: opacity .28s ease, transform .28s ease; }
+  .win.in-hist .hist-top-acts { opacity: 1; transform: none; }
+  .hist-act-btn { height: 28px; padding: 0 12px; border-radius: 6px; background: var(--selected); border: 1px solid var(--ocean); color: var(--ink); font-size: 13.5px; font-weight: 500; display: inline-flex; align-items: center; transition: background .16s, transform .14s; }
+  .hist-act-btn.hot { background: #3f4f70; color: #fff; }
+  .hist-main { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+  .hist-paper { position: absolute; inset: 0; overflow: hidden; padding: 28px 36px 72px; transition: transform .52s cubic-bezier(.2,.7,.2,1); }
+  .win.in-hist .hist-paper { transform: translateX(-146px); }
+  .hist-col { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+  .hist-side { position: absolute; top: 0; right: 0; bottom: 0; width: 292px; background: var(--sidebar); border-left: 1px solid var(--line); padding: 12px; display: flex; flex-direction: column; gap: 10px; transform: translateX(100%); transition: transform .52s cubic-bezier(.2,.7,.2,1); }
+  .win.in-hist .hist-side { transform: none; }
+  @media (max-width: 960px) { .win.in-hist .hist-col { max-width: calc(100% - 300px); margin-left: 16px; margin-right: auto; } .win.in-hist .hist-paper { transform: none; } }
+  @media (max-width: 720px) { .hist-side { width: 220px; } .win.in-hist .hist-paper { transform: none; opacity: .2; } }
+  .hist-side-hdr { height: 28px; padding: 0 4px; display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 500; color: var(--dim); }
+  .hist-ver { padding: 9px 11px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--ink); font-size: 13.5px; display: flex; flex-direction: column; gap: 3px; transition: background .18s, border-color .18s; }
+  .hist-ver small { font-size: 12.5px; color: var(--muted); }
+  .hist-ver.on { background: var(--selected); border-color: var(--ocean); }
+  .hist-ver.on small { color: #b8cdf6; }
+
+  .diff-box { display: flex; flex-direction: column; gap: 6px; width: 100%; margin: 2px 0; }
+  .diff-del { background: rgba(180, 45, 36, .24); border-left: 3px solid #f28b82; color: #f28b82; padding: 7px 12px; border-radius: 6px; text-decoration: line-through; font-size: 15px; line-height: 1.72; }
+  .diff-ins { background: rgba(62, 160, 96, .18); border-left: 3px solid #7ee2a8; color: #d2f7e0; padding: 7px 12px; border-radius: 6px; font-size: 15px; line-height: 1.72; }
+
+  /* ==================== 4. 行内 AI 改写 + ⌘J 侧栏（exact src/editor/toolbar.rs & src/ai/panel.rs） ==================== */
+  .ai-doc { right: 0; transition: transform .5s cubic-bezier(.2,.7,.2,1), opacity .35s; }
+  .ai-doc .col { width: min(560px, 84%); }
+  .win.side .ai-doc { transform: translateX(-160px); }
+  .sel-span { background: transparent; border-radius: 4px; transition: background .3s, color .3s; }
+  .sel-span.on { background: var(--sel-bg); color: #e8f0ff; }
+  .blk.ai-dashed { outline: 1px dashed rgba(119, 157, 232, .85); outline-offset: 3px; border-radius: 8px; }
+
+  /* Authentic SelectionToolbar (src/editor/toolbar.rs:60-86) */
+  .sel-toolbar {
+    position: absolute; z-index: 7; display: flex; align-items: center; gap: 3px; padding: 4px 6px;
+    background: #26282d; border: 1px solid #3a3e46; border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.44), 0 1px 3px rgba(0,0,0,.28);
+    font-size: 13.5px; color: #e8eaee; opacity: 0; transform: translateY(5px);
+    transition: opacity .18s, transform .18s; pointer-events: none;
+  }
+  .sel-toolbar.on { opacity: 1; transform: none; }
+  .tb-ai { height: 28px; padding: 0 9px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; transition: background .15s, color .15s; }
+  .tb-ai.hot { background: #33415c; color: #9dbcf5; }
+  .tb-sep { width: 1px; height: 18px; margin: 0 3px; background: #454a53; }
+  .tb-ic { width: 28px; height: 28px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: #cfd4dc; font-size: 13.5px; font-weight: 600; }
+
+  /* Authentic 396px Inline AI Panel (src/ai/panel.rs + src/ui/ai_controls.rs) */
+  .inline-ai {
+    width: min(396px, 100%); margin: 10px 0 12px; padding: 8px; border-radius: 8px; background: var(--menu);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.095), 0 8px 24px rgba(0,0,0,.44), 0 2px 6px rgba(0,0,0,.28);
+    display: none; flex-direction: column; gap: 6px; font-size: 14px;
+  }
+  .inline-ai.on { display: flex; animation: rise .24s ease; }
+  @keyframes rise { from { opacity: 0; transform: translateY(5px); } }
+  .ai-capsule { height: 36px; padding: 0 6px 0 10px; border-radius: 8px; border: 1px solid var(--btn-border); background: var(--code-bg); display: flex; align-items: center; gap: 8px; }
+  .ai-capsule-tx { flex: 1; min-width: 0; font-size: 13.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ai-capsule-tx.busy { color: var(--ink); }
+  .ai-send { width: 24px; height: 24px; border-radius: 6px; background: var(--btn-border); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .ai-send.ready { background: var(--ink); color: var(--paper); }
+  .ai-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+  .ai-chip { height: 26px; padding: 0 9px; border-radius: 6px; background: var(--paper); border: 1px solid var(--line); color: var(--ink); font-size: 13px; display: inline-flex; align-items: center; gap: 5px; transition: background .15s, border-color .15s; }
+  .ai-chip i { font-style: normal; font-size: 11px; color: var(--ocean); }
+  .ai-chip.hot { background: var(--selected); border-color: var(--ocean); }
+  .ai-review-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .ai-act { height: 28px; padding: 0 9px; border-radius: 6px; font-size: 13.5px; color: var(--ink); display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; transition: background .15s, border-color .15s; }
+  .ai-act.pri { padding: 0 12px; background: var(--selected); border-color: var(--ocean); font-weight: 500; }
+  .ai-act.pri em { font-style: normal; font-family: var(--mono); font-size: 12px; color: var(--ocean); }
+  .ai-act.hot { background: #3f4f70; border-color: var(--ocean); color: #fff; }
+  .ai-act.muted { margin-left: auto; color: var(--dim); }
+
+  .keys { position: absolute; z-index: 9; left: 50%; top: 50%; display: flex; gap: 10px; transform: translate(-50%, -50%) scale(.92); opacity: 0; transition: opacity .18s, transform .18s; pointer-events: none; }
+  .keys.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .keys b { display: grid; place-items: center; min-width: 58px; height: 58px; padding: 0 14px; border-radius: 12px; background: #262626; border: 1px solid var(--btn-border); border-bottom-width: 3px; font-family: var(--mono); font-size: 23px; font-weight: 500; color: var(--ink); box-shadow: 0 16px 40px rgba(0,0,0,.5); }
+  .press { transform: scale(.95); }
+  .fade-swap { transition: opacity .26s; }
+
+  .ai-side { position: absolute; top: 40px; right: 0; bottom: 0; width: 320px; background: var(--paper); border-left: 1px solid var(--line); transform: translateX(100%); transition: transform .5s cubic-bezier(.2,.7,.2,1); display: flex; flex-direction: column; font-size: 13.5px; }
+  .win.side .ai-side { transform: none; }
+  .ai-side-top { height: 46px; padding: 0 12px 0 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); flex: none; }
+  .ai-side-acts { display: flex; align-items: center; gap: 4px; color: var(--dim); }
+  .ai-side-ic { width: 26px; height: 26px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; }
+  .ai-feed { flex: 1; padding: 12px 14px; overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 94%; padding: 9px 12px; border-radius: 8px; line-height: 1.68; opacity: 0; transform: translateY(8px); transition: opacity .26s, transform .26s; white-space: pre-wrap; }
+  .msg.on { opacity: 1; transform: none; }
+  .msg.me { align-self: flex-end; background: var(--hover); border: 1px solid var(--line); color: var(--ink); }
+  .msg.bot { align-self: flex-start; background: transparent; color: #dcdcdc; padding: 4px 2px; }
+  .ai-composer { margin: 0 12px 12px; padding: 8px 10px; border-radius: 8px; background: var(--hover); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; flex: none; }
+  .ai-ref-chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 6px; background: var(--selected); font-size: 12px; color: var(--ink); }
+  .ai-comp-ph { font-size: 12.5px; color: var(--muted); }
+  .ai-comp-bar { display: flex; align-items: center; justify-content: space-between; }
+  .ai-deck-pill { height: 24px; padding: 0 8px; border-radius: 6px; background: var(--paper); border: 1px solid var(--line); font-size: 12px; color: var(--ink); display: inline-flex; align-items: center; gap: 5px; }
+
+  /* ==================== 5. 生成图片（恢复双窗选中 + 光束扫描成图特效 + 真实孔版双色与色卡控件） ==================== */
+  .img-stage { margin: 32px auto 0; display: flex; align-items: center; justify-content: center; gap: clamp(28px, 4.5vw, 60px); flex-wrap: wrap; }
+  .note { width: min(470px, 92vw); height: 472px; }
+  .note .doc { padding: 22px 0 72px; }
+  .note .col { width: 84%; transition: background .35s, box-shadow .35s; padding: 8px 10px; border-radius: 8px; }
+  .note .blk { font-size: 15px; line-height: 1.74; }
+  .note .blk.in-sel { background: var(--sel-bg); color: #eef4ff; }
+  .note.whole .col { box-shadow: inset 0 0 0 1px rgba(119,157,232,.55); background: rgba(119,157,232,.05); }
+
+  .shot-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; width: min(420px, 92vw); }
+  .shot-bar { width: 100%; display: flex; align-items: center; justify-content: center; }
+  .shot {
+    position: relative; width: 100%; height: 400px; border-radius: 10px; overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0,0,0,.56); clip-path: inset(0 0 100% 0); will-change: clip-path; contain: strict;
+  }
+  .shot.gen { animation: print 1.2s cubic-bezier(.3,.6,.2,1) forwards; }
+  @keyframes print { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+  .shot .scan {
+    position: absolute; left: 0; right: 0; height: 2px; top: 0; z-index: 4;
+    background: var(--ocean); box-shadow: 0 0 16px 4px rgba(119,157,232,.72); opacity: 0; pointer-events: none;
+  }
+  .shot.gen .scan { animation: scan 1.2s cubic-bezier(.3,.6,.2,1) forwards; }
+  @keyframes scan { 0% { transform: translateY(0); opacity: 1; } 90% { opacity: 1; } 100% { transform: translateY(400px); opacity: 0; } }
+  .exp-scroll { width: 100%; height: 100%; overflow: hidden; position: relative; }
+
+  /* Authentic paper styles matching src/export/spec.rs & palette_colors.rs */
+  .exp-paper { min-height: 100%; padding: 36px 34px 44px; font-size: 14.5px; line-height: 1.82; transition: background-color .35s, color .35s; }
+  .exp-paper h4 { font-size: 23px; line-height: 1.32; margin-bottom: 14px; }
+  .exp-paper h5 { font-size: 16px; font-weight: 600; margin: 16px 0 6px; }
+  .exp-paper p, .exp-paper ul, .exp-paper blockquote { margin: 10px 0; }
+  .exp-paper ul { padding-left: 18px; }
+  .exp-paper li { margin: 4px 0; }
+  .exp-paper blockquote { padding: 8px 13px; border-left: 3px solid currentColor; }
+  .exp-paper .ft { margin-top: 22px; padding-top: 10px; border-top: 1px solid rgba(128,128,128,.25); font-size: 12px; opacity: .65; display: flex; justify-content: space-between; }
+  .exp-paper .x.hide { display: none; }
+
+  /* 1) Mono: 黑白素纸 */
+  .st-mono { background: #ffffff; color: #1f1e1d; }
+  .st-mono h4 { color: #111111; padding-bottom: 12px; border-bottom: 1.5px solid #111111; }
+  .st-mono blockquote { border-left-color: #111111; color: #3d3c39; }
+
+  /* 2) Journal: 手账便签 */
+  .st-journal { background: #fef9e7; color: #1f1e1d; padding: 22px; }
+  .st-journal .paper-inner { background: #fffef5; border: 1px solid #f0e8d0; border-radius: 12px; padding: 26px 24px 30px; box-shadow: 0 8px 24px rgba(90,60,10,.06); }
+  .st-journal h4, .st-journal h5 { font-family: "Kaiti SC", "STKaiti", "KaiTi", serif; color: #1f1e1d; }
+  .st-journal h4 { padding-bottom: 8px; border-bottom: 2px wavy #d97706; }
+  .st-journal blockquote { border-left-color: #d97706; color: #5e5d59; background: #faf5e6; border-radius: 0 6px 6px 0; }
+
+  /* 3) Riso: 孔版双色（真实配色，无错位重影） */
+  .st-riso { background: #f4efe4; color: #1f2a44; }
+  .st-riso h4 { color: #1d3fa8; display: inline-block; background: linear-gradient(transparent 58%, rgba(255,90,168,.38) 58%, rgba(255,90,168,.38) 92%, transparent 92%); padding: 0 4px; }
+  .st-riso h5 { color: #1d3fa8; }
+  .st-riso blockquote { background: #ffe4f0; border-left-color: #ff5aa8; color: #1f2a44; border-radius: 0 6px 6px 0; }
+
+  /* 4) Night: 夜读卡片 */
+  .st-night { background: #0d1117; color: #d1d7e0; padding: 20px; }
+  .st-night .paper-inner { background: #161b22; border: 1px solid #262c36; border-radius: 14px; padding: 26px 24px 30px; }
+  .st-night h4 { color: #f0f3f6; position: relative; padding-bottom: 12px; }
+  .st-night h4::after { content: ""; position: absolute; left: 0; bottom: 0; width: 38px; height: 3px; border-radius: 2px; background: #7aa2f7; }
+  .st-night h5 { color: #f0f3f6; }
+  .st-night blockquote { background: #1b2230; border-left-color: #7aa2f7; color: #d1d7e0; border-radius: 0 6px 6px 0; }
+
+  /* 真实 Ocean Dark 纸样色卡选择条（对齐 src/export/view_widgets.rs） */
+  .swatch-row { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  @media (max-width: 520px) { .swatch-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .swatch-btn { height: 40px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--btn-border); background: var(--paper); color: var(--dim); display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 13px; white-space: nowrap; transition: background .18s, border-color .18s, color .18s; }
+  .swatch-btn.on { background: var(--selected); border-color: var(--ocean); box-shadow: inset 0 0 0 1px var(--ocean); color: var(--ink); font-weight: 500; }
+  .sw-chip { width: 20px; height: 16px; border-radius: 3px; border: 1px solid #d8d2c5; display: flex; align-items: flex-end; justify-content: center; overflow: hidden; flex: none; }
+  .sw-chip.dk { border-color: #3a3a3a; }
+  .sw-chip i { display: block; width: 13px; height: 10px; }
+
+  /* ==================== 6. 一张表看懂差别（Ocean Dark 对比矩阵 + 真实软件图标 + 自动巡览聚光） ==================== */
+  .cmp-wrap {
+    max-width: 1120px; margin: 48px auto 0; border-radius: 12px; border: 1px solid var(--line);
+    background: #15171e; box-shadow: 0 26px 68px rgba(0,0,0,.52); overflow-x: auto;
+  }
+  .cmp-table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 14.5px; line-height: 22px; text-align: left; }
+  .cmp-table th, .cmp-table td { padding: 15px 14px; border-bottom: 1px solid #242834; vertical-align: middle; white-space: nowrap; transition: background .28s ease, color .28s ease; }
+  .cmp-table thead th { background: var(--sidebar); font-size: 14px; font-weight: 600; color: #d5dae5; padding-top: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+  .cmp-table thead th:first-child, .cmp-table tbody th { padding-left: 22px; font-size: 15px; font-weight: 600; color: #f2f5fa; }
+  .cmp-table thead th:last-child, .cmp-table tbody td:last-child { padding-right: 22px; }
+  .cmp-table tbody tr:last-child th, .cmp-table tbody tr:last-child td { border-bottom: none; }
+  .cmp-table th.is-block {
+    background: rgba(119, 157, 232, 0.17); color: #ffffff; font-size: 15.5px; font-weight: 700;
+    padding-left: 18px; padding-right: 18px;
+    box-shadow: inset 0 2px 0 var(--ocean);
+    border-left: 1px solid rgba(119, 157, 232, 0.26); border-right: 1px solid rgba(119, 157, 232, 0.26);
+  }
+  .cmp-table td.is-block {
+    background: rgba(119, 157, 232, 0.085); color: #f6f8fd; font-weight: 600; font-size: 15px;
+    padding-left: 18px; padding-right: 18px;
+    border-left: 1px solid rgba(119, 157, 232, 0.2); border-right: 1px solid rgba(119, 157, 232, 0.2);
+  }
+  .cmp-table tbody tr.spot th, .cmp-table tbody tr:hover th { background: rgba(255, 255, 255, 0.03); color: #ffffff; }
+  .cmp-table tbody tr.spot td:not(.is-block), .cmp-table tbody tr:hover td:not(.is-block) { background: rgba(255, 255, 255, 0.025); }
+  .cmp-table tbody tr.spot td.is-block, .cmp-table tbody tr:hover td.is-block { background: rgba(119, 157, 232, 0.17); }
+  .cmp-brand { display: inline-flex; align-items: center; gap: 8px; }
+  .cmp-brand img { width: 20px; height: 20px; border-radius: 5px; display: block; flex: none; box-shadow: 0 1px 3px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.1); }
+  .cmp-duo-icons { display: inline-flex; align-items: center; gap: 4px; }
+  .cmp-duo-icons img { width: 19px; height: 19px; }
+  .cmp-cell { display: inline-flex; align-items: center; gap: 7px; }
+  .cmp-ico { width: 18px; height: 18px; flex: none; display: inline-block; }
+  .cmp-cell--best .cmp-ico { width: 20px; height: 20px; transition: transform .24s ease, filter .24s ease; }
+  .cmp-table tbody tr.spot .cmp-cell--best .cmp-ico { transform: scale(1.07); filter: drop-shadow(0 0 8px rgba(119,157,232,.48)); }
+  .cmp-cell--yes { color: #d5dbe7; }
+  .cmp-cell--part { color: #969fb2; }
+  .cmp-cell--no { color: #7b8395; }
+
+  /* Download */
+  .dl { text-align: center; overflow: hidden; background: var(--canvas); border-top: 1px solid #222634; }
+  .dl::before { content: ""; position: absolute; left: 50%; top: 40%; width: 760px; height: 760px; margin: -380px 0 0 -380px; background: radial-gradient(closest-side, rgba(119,157,232,.14), transparent 70%); pointer-events: none; }
+  .dl img { width: 108px; height: 108px; border-radius: 24px; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+  .dl .h2 { margin-top: 28px; }
+  .dl .btn { margin-top: 34px; }
+  footer { padding: 30px 20px; text-align: center; font-size: 14px; color: #7e8594; background: var(--canvas); border-top: 1px solid #202432; }
+
+  @media (max-width: 640px) {
+    .win { height: 510px; }
+    .blk { font-size: 15px; }
+    .win.side .ai-doc { transform: none; opacity: .15; }
+    .ai-side { width: 86%; }
+    .safari-bg { width: 88%; }
+    .quick-win { right: 6%; left: 6%; width: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .rv { opacity: 1; transform: none; transition: none; }
+    .caret { animation: none !important; }
+    *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; animation-delay: 0s !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="brand" href="#top"><img src="./icons/block.png" alt="">Block</a>
+  <div class="nav-links">
+    <a href="#perf">秒开</a>
+    <a href="#editor">好写好改</a>
+    <a href="#memo">随手记</a>
+    <a href="#ai">AI 改稿</a>
+    <a href="#image">转长图</a>
+    <a href="#compare">对比</a>
+    <a class="btn btn-sm" href="/download?k=mac-arm64&to=mirror">免费下载</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <canvas id="hero-gl" aria-hidden="true"></canvas>
+  <div class="hero-inner">
+    <h1 id="title"><span class="ln">落笔成块，</span><span class="ln">快若无物</span></h1>
+    <p class="hero-sub">不用注册登录，打开就能写，笔记全存在自己电脑里。</p>
+    <div class="hero-cta">
+      <a class="btn btn-lg" href="/download?k=mac-arm64&to=mirror">免费下载 Block</a>
+      <span class="hero-meta">支持 Mac、Windows、Linux · 完全免费</span>
+    </div>
+  </div>
+</header>
+
+<!-- 1. 轻快：十万段 3D WebGL 镜头 + 精简阶梯里程碑计数 -->
+<section class="perf" id="perf">
+  <canvas id="perf-gl" aria-hidden="true"></canvas>
+  <div class="perf-shade"></div>
+  <div class="perf-h">
+    <h2 class="h2">笔记再多，也是秒开</h2>
+    <p class="lead">写上几十万字，打开和翻页还是跟新文档一样快。</p>
+  </div>
+  <div class="perf-bottom">
+    <div class="perf-count"><b id="cnt">1</b><span>段</span></div>
+  </div>
+</section>
+
+<!-- 2. 块编辑：真实 Ocean Dark 窗口与斜杠菜单 -->
+<section class="sec" id="editor">
+  <h2 class="h2 rv">排版不费劲，调顺序直接拖</h2>
+  <p class="lead rv">列清单、插表格、收起长章节，不用来回复制粘贴。</p>
+  <div class="stage rv">
+    <div class="win" id="ed-win">
+      <div class="win-bar"><span class="traffic"><i></i><i></i><i></i></span><span class="win-title">潮州周末慢游记</span><span style="width:52px"></span></div>
+      <div class="doc" id="ed-doc"><div class="col" id="ed-col"></div></div>
+      <div class="dd-menu" id="ed-menu" role="menu" aria-hidden="true">
+        <div class="dd-row" data-cmd="ai">
+          <svg class="duo" viewBox="0 0 24 24"><path class="f" d="M10 3.5L11.75 8.25L16.5 10L11.75 11.75L10 16.5L8.25 11.75L3.5 10L8.25 8.25Z"/><path class="l" d="M10 3.5L11.75 8.25L16.5 10L11.75 11.75L10 16.5L8.25 11.75L3.5 10L8.25 8.25Z"/><path class="af" d="M18 14L18.9 16.6L21.5 17.5L18.9 18.4L18 21L17.1 18.4L14.5 17.5L17.1 16.6Z"/><path class="a" d="M18 4.25V7.75M16.25 6H19.75"/></svg>
+          <span class="dd-lbl">AI 写作</span>
+        </div>
+        <div class="dd-row" data-cmd="h1">
+          <svg class="duo" viewBox="0 0 24 24"><rect class="f" x="3.25" y="5.25" width="9.5" height="13.5" rx="2"/><path class="l" d="M4.75 6.75V17.25M11.25 6.75V17.25M4.75 12H11.25"/><path class="a" d="M15.5 9.25L17.75 7.5V17.25M15.5 17.25H19.75"/></svg>
+          <span class="dd-lbl">一级标题</span><span class="dd-hint">⌘⌥1</span>
+        </div>
+        <div class="dd-row" data-cmd="h2">
+          <svg class="duo" viewBox="0 0 24 24"><rect class="f" x="3.25" y="5.25" width="9.5" height="13.5" rx="2"/><path class="l" d="M4.75 6.75V17.25M11.25 6.75V17.25M4.75 12H11.25"/><path class="a" d="M14.75 9.75A2.5 2.5 0 0 1 19.75 10C19.75 12.5 14.75 14.25 14.75 17.25H20"/></svg>
+          <span class="dd-lbl">二级标题</span><span class="dd-hint">⌘⌥2</span>
+        </div>
+        <div class="dd-row" data-cmd="h3">
+          <svg class="duo" viewBox="0 0 24 24"><rect class="f" x="3.25" y="5.25" width="9.5" height="13.5" rx="2"/><path class="l" d="M4.75 6.75V17.25M11.25 6.75V17.25M4.75 12H11.25"/><path class="a" d="M14.75 7.75H19.75L16.75 11.5A2.85 2.85 0 1 1 14.75 16.5"/></svg>
+          <span class="dd-lbl">三级标题</span><span class="dd-hint">⌘⌥3</span>
+        </div>
+        <div class="dd-row" data-cmd="table">
+          <svg class="duo" viewBox="0 0 24 24"><path class="f" d="M5.75 4.75H18.25A2 2 0 0 1 20.25 6.75V9.75H3.75V6.75A2 2 0 0 1 5.75 4.75Z"/><rect class="l" x="3.75" y="4.75" width="16.5" height="14.5" rx="2"/><path class="l" d="M3.75 14.5H20.25M9.5 9.75V19.25M14.75 9.75V19.25"/><path class="a" d="M3.75 9.75H20.25"/></svg>
+          <span class="dd-lbl">表格</span>
+        </div>
+        <div class="dd-sep"></div>
+        <div class="dd-row" data-cmd="li">
+          <svg class="duo" viewBox="0 0 24 24"><circle class="f" cx="6.25" cy="7" r="2.25"/><circle class="f" cx="6.25" cy="17" r="2.25"/><rect class="f" x="11.25" y="5.25" width="9" height="3.5" rx="1"/><circle class="l" cx="6.25" cy="7" r="2"/><circle class="l" cx="6.25" cy="17" r="2"/><path class="l" d="M11.75 12H20M11.75 17H20"/><path class="a" d="M11.75 7H20"/><circle class="af" cx="6.25" cy="12" r="1.6"/></svg>
+          <span class="dd-lbl">无序列表</span><span class="dd-hint">⌘⌥5</span>
+        </div>
+        <div class="dd-row" data-cmd="todo">
+          <svg class="duo" viewBox="0 0 24 24"><rect class="f" x="4.25" y="4.25" width="15.5" height="15.5" rx="3"/><rect class="l" x="4.25" y="4.25" width="15.5" height="15.5" rx="3"/><path class="a" d="M8.25 12.25L10.75 14.75L15.75 9.5"/></svg>
+          <span class="dd-lbl">待办清单</span><span class="dd-hint">⌘⌥4</span>
+        </div>
+        <div class="dd-row" data-cmd="quote">
+          <svg class="duo" viewBox="0 0 24 24"><rect class="f" x="3.75" y="11.25" width="6" height="6" rx="2"/><rect class="f" x="14.25" y="11.25" width="6" height="6" rx="2"/><rect class="l" x="3.75" y="11.25" width="6" height="6" rx="2"/><rect class="l" x="14.25" y="11.25" width="6" height="6" rx="2"/><path class="a" d="M3.75 13.25C3.75 9.75 5.25 7.5 8.25 6.75M14.25 13.25C14.25 9.75 15.75 7.5 18.75 6.75"/></svg>
+          <span class="dd-lbl">引用</span><span class="dd-hint">⌘⌥9</span>
+        </div>
+      </div>
+      <div class="keys" id="ed-keys"><b>⌘</b><b>⌥</b><b>4</b></div>
+    </div>
+    <div class="sub" id="ed-sub">&nbsp;</div>
+  </div>
+</section>
+
+<!-- 3. 随手记与旧稿找回：桌面独立 ⌥N 速记窗 + 版本记录 -->
+<section class="sec sec-alt" id="memo">
+  <h2 class="h2 rv">想到就记，删错了也能找回来</h2>
+  <p class="lead rv">看网页也能按 ⌥N 随手记，改稿自动留底，不怕误删。</p>
+  <div class="stage rv">
+    <div class="win desk-stage" id="memo-win">
+      <div class="mac-menubar">
+        <div class="mac-mb-l"><strong style="color:#fff">Safari</strong><span>文件</span><span>编辑</span><span>显示</span><span>书签</span></div>
+        <div class="mac-mb-r"><span class="mac-tray"><img src="./icons/block.png" alt=""><span>速记 ⌥N</span></span><span style="font-family:var(--mono)">周二 22:18</span></div>
+      </div>
+
+      <div class="safari-bg">
+        <div class="safari-bar">
+          <span class="safari-dots"><i></i><i></i><i></i></span>
+          <div class="safari-url">周末去哪儿 · 潮州老城两天一夜逛吃指南</div>
+        </div>
+        <div class="safari-body">
+          <h4>去潮州别只逛牌坊街，这几家巷口老铺更值得试</h4>
+          <p>周五晚上坐高铁过去，建议住在开元寺旁边的安静小巷里，早上出门走几步就能吃到刚出锅的沙茶粿条和热豆浆。</p>
+          <p>西马路那家开了三十年的老饼铺下午四点刚出炉，现烤腐乳饼外皮酥脆，走之前买两盒带回家配茶刚刚好……</p>
+          <div class="safari-fig"></div>
+        </div>
+      </div>
+
+      <div class="keys" id="memo-keys"><b>⌥</b><b>N</b></div>
+
+      <div class="quick-win" id="quick-win">
+        <div class="qn-hdr">
+          <span class="traffic"><i></i><i></i><i></i></span>
+          <div class="dot-pager" id="qn-dots"><i></i><i></i><i></i></div>
+          <span class="qn-save-ico" id="qn-save" aria-label="存入正式笔记">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#779de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M14 3v5a1 1 0 0 0 1 1h5"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 15l2 2 4-4"/>
+            </svg>
+          </span>
+        </div>
+        <div class="qn-body">
+          <div class="qn-title" id="qn-title">周五下班前要办的事</div>
+          <div><span id="qn-tx"></span><i class="caret"></i></div>
+          <div class="qn-notice" id="qn-notice">已存入正式笔记</div>
+        </div>
+      </div>
+
+      <div class="hist-layer" id="hist-layer">
+        <div class="hist-top">
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="traffic"><i></i><i></i><i></i></span>
+            <span class="win-title">潮州周末出行准备</span>
+          </div>
+          <div class="hist-top-acts">
+            <div class="seg-track" id="hist-seg">
+              <span class="seg-item">原文</span>
+              <span class="seg-item on">对比</span>
+            </div>
+            <span class="hist-act-btn" id="hi-btn">恢复此版本</span>
+          </div>
+        </div>
+        <div class="hist-main">
+          <div class="hist-paper" id="hist-paper">
+            <div class="hist-col">
+              <div class="blk" data-t="h1"><div class="tx">潮州周末出行准备</div></div>
+              <div class="blk"><div class="tx">周五下班直接去高铁站，两小时就能到潮汕。这次不赶景点，主要在老城区慢慢逛，吃几顿地道小吃。</div></div>
+              <div class="blk" data-t="h2"><div class="tx">一、车票与住宿安排</div></div>
+              <div class="blk" id="memo-diff-slot"><div class="tx">住宿订在开元寺附近，离大巴下车点不远。</div></div>
+              <div class="blk" data-t="h2"><div class="tx">二、想去的几家老店</div></div>
+              <div class="blk"><div class="tx">周六上午先去牌坊街吃早点，下午去江边吹吹风，避开人最多的旅行团时段。</div></div>
+              <div class="blk is-hidden" data-t="quote" id="memo-added"><div class="tx">西马路老饼铺下午四点出炉，返程前记得去买两盒现烤腐乳饼带给爸妈。</div></div>
+            </div>
+          </div>
+          <aside class="hist-side">
+            <div class="hist-side-hdr">
+              <span>版本记录</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </div>
+            <div class="hist-ver on" id="hi-now"><span>当前版本</span><small>刚刚 · 已转入便签内容</small></div>
+            <div class="hist-ver" id="hi-old"><span>今天 21:40</span><small>删掉民宿门牌号前</small></div>
+            <div class="hist-ver"><span>昨天 23:15</span><small>补充高铁车次时间</small></div>
+            <div class="hist-ver"><span>周三 20:08</span><small>新建周末出行准备</small></div>
+          </aside>
+        </div>
+      </div>
+    </div>
+    <div class="sub" id="memo-sub">&nbsp;</div>
+  </div>
+</section>
+
+<!-- 4. AI 改稿：浮动选择工具条 + 行内 AI 面板 + ⌘J 侧栏 -->
+<section class="sec" id="ai">
+  <h2 class="h2 rv">让 AI 帮忙改词句，换不换你说了算</h2>
+  <p class="lead rv">改了哪句先给你看对比，点确认才会放进正文。</p>
+  <div class="stage rv">
+    <div class="win" id="ai-win">
+      <div class="win-bar">
+        <span class="traffic"><i></i><i></i><i></i></span>
+        <span class="win-title">海边周末散记</span>
+        <span style="display:inline-flex;align-items:center;gap:8px;color:var(--dim)">
+          <svg class="duo lit" viewBox="0 0 24 24"><path class="f" d="M10 3.5L11.75 8.25L16.5 10L11.75 11.75L10 16.5L8.25 11.75L3.5 10L8.25 8.25Z"/><path class="l" d="M10 3.5L11.75 8.25L16.5 10L11.75 11.75L10 16.5L8.25 11.75L3.5 10L8.25 8.25Z"/><path class="af" d="M18 14L18.9 16.6L21.5 17.5L18.9 18.4L18 21L17.1 18.4L14.5 17.5L17.1 16.6Z"/></svg>
+        </span>
+      </div>
+      <div class="doc ai-doc" id="ai-doc">
+        <div class="col" id="ai-col">
+          <div class="blk" data-t="h1"><div class="tx">海边周末散记</div></div>
+          <div class="blk"><div class="tx">入秋以后城里连着下了好几天雨，周五傍晚看天气预报说南边海岸放晴，临时起意装了两件换洗衣服，搭最后一班动车往海边小镇去。出站时已经过了九点，空气里有一股清爽的咸味。</div></div>
+          <div class="blk" data-t="h2"><div class="tx">清晨的海岸线</div></div>
+          <div class="blk" id="ai-target-blk"><div class="tx" id="ai-p"></div></div>
+
+          <!-- 流式对比区 + 真实 396px 行内 AI 面板 (src/ai/panel.rs) -->
+          <div id="ai-stream-wrap" style="display:none;margin:6px 0"></div>
+          <div class="inline-ai" id="ai-panel">
+            <div class="ai-capsule">
+              <svg class="duo lit" viewBox="0 0 24 24"><path class="f" d="M10 3.5L11.75 8.25L16.5 10L11.75 11.75L10 16.5L8.25 11.75L3.5 10L8.25 8.25Z"/><path class="l" d="M10 3.5L11.75 8.25L16.5 10L11.75 11.75L10 16.5L8.25 11.75L3.5 10L8.25 8.25Z"/><path class="af" d="M18 14L18.9 16.6L21.5 17.5L18.9 18.4L18 21L17.1 18.4L14.5 17.5L17.1 16.6Z"/></svg>
+              <span class="ai-capsule-tx" id="ai-cap-tx">怎么改这段话，或直接点下面标签…</span>
+              <span class="ai-send" id="ai-send">↑</span>
+            </div>
+            <div class="ai-chips" id="ai-chips">
+              <span class="ai-chip">润色 <i>★</i></span>
+              <span class="ai-chip">精简 <i>★</i></span>
+              <span class="ai-chip">通俗一点 <i>★</i></span>
+              <span class="ai-chip">翻译 <i>★</i></span>
+            </div>
+            <div class="ai-review-row" id="ai-review" style="display:none">
+              <span class="ai-act pri" id="ai-replace">替换 <em>↵</em></span>
+              <span class="ai-act">插入下方</span>
+              <span class="ai-act">重写</span>
+              <span class="ai-act muted">放弃</span>
+            </div>
+          </div>
+
+          <div class="blk" data-t="h2"><div class="tx">堤岸等日落</div></div>
+          <div class="blk"><div class="tx">午后找了一家临街的小糖水铺歇脚，老板娘端来刚熬好的绿豆沙，坐在骑楼走廊下听对街老收音机慢悠悠地唱。</div></div>
+          <div class="blk"><div class="tx">傍晚的风渐渐凉下来，我们沿着长长的防波堤慢慢往灯塔走。夕阳把整片海面染成温润的橘红色，直到最后一抹亮光沉进远处的渔船背后，才踩着路灯的影子往回走。</div></div>
+        </div>
+      </div>
+
+      <!-- 真实 SelectionToolbar (src/editor/toolbar.rs) -->
+      <div class="sel-toolbar" id="ai-bar">
+        <span class="tb-ai" id="tb-ai-btn">
+          <svg class="duo lit" viewBox="0 0 24 24"><path class="f" d="M10 3.5L11.75 8.25L16.5 10L11.75 11.75L10 16.5L8.25 11.75L3.5 10L8.25 8.25Z"/><path class="l" d="M10 3.5L11.75 8.25L16.5 10L11.75 11.75L10 16.5L8.25 11.75L3.5 10L8.25 8.25Z"/><path class="af" d="M18 14L18.9 16.6L21.5 17.5L18.9 18.4L18 21L17.1 18.4L14.5 17.5L17.1 16.6Z"/></svg>
+          <span>AI 改写</span>
+        </span>
+        <span class="tb-sep"></span>
+        <span class="tb-ic">B</span>
+        <span class="tb-ic" style="font-style:italic;font-family:Georgia,serif">I</span>
+        <span class="tb-ic" style="text-decoration:underline">U</span>
+        <span class="tb-ic" style="text-decoration:line-through">S</span>
+      </div>
+
+      <div class="keys" id="ai-keys"><b>⌘</b><b>Z</b></div>
+
+      <div class="ai-side" id="ai-side">
+        <div class="ai-side-top">
+          <span style="font-weight:600;color:var(--ink)">行前备忘清单</span>
+          <div class="ai-side-acts">
+            <span class="ai-side-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            <span class="ai-side-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></span>
+            <span class="ai-side-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+            <span class="ai-side-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span>
+          </div>
+        </div>
+        <div class="ai-feed" id="ai-feed">
+          <div class="msg me" id="m1">@海边周末散记 根据这篇游记，帮我列一份下次带朋友去的准备清单</div>
+          <div class="msg bot" id="m2"></div>
+        </div>
+        <div class="ai-composer">
+          <span class="ai-ref-chip"><span style="color:var(--ocean)">@</span>海边周末散记</span>
+          <div class="ai-comp-ph">直接提问，或输入 @ 引用其他笔记…</div>
+          <div class="ai-comp-bar">
+            <span class="ai-deck-pill">Claude <span style="color:var(--muted)">▾</span></span>
+            <span class="ai-send ready" style="width:24px;height:24px;font-size:12px">↑</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sub" id="ai-sub">&nbsp;</div>
+  </div>
+</section>
+
+<!-- 5. 生成图片：双窗框选 + 光束扫描成图特效 + 纸面切换 -->
+<section class="sec sec-alt" id="image">
+  <h2 class="h2 rv">写完一键转长图，发出去更好看</h2>
+  <p class="lead rv">整篇笔记或挑几段话，直接生成排版干净的长图。</p>
+  <div class="img-stage rv">
+    <div class="win note" id="im-note">
+      <div class="win-bar">
+        <span class="traffic"><i></i><i></i><i></i></span>
+        <span class="win-title">海边周末散记</span>
+        <span style="width:52px"></span>
+      </div>
+      <div class="doc" id="im-doc"><div class="col">
+        <div class="blk" data-t="h1"><div class="tx">海边周末散记</div></div>
+        <div class="blk" data-k="a"><div class="tx">入秋以后城里连着下了几天雨，周五傍晚临时搭动车往海边小镇去。出站时空气里有一股清爽的咸味，街道安静得只听见风吹椰树叶的声音。</div></div>
+        <div class="blk" data-t="h2" data-k="b"><div class="tx">包里带的小物件</div></div>
+        <div class="blk" data-t="li" data-k="b"><span class="mk"></span><div class="tx">防晒霜与宽檐草帽，海边正午的阳光比想象中更晒</div></div>
+        <div class="blk" data-t="li" data-k="b"><span class="mk"></span><div class="tx">一件防风薄外套，傍晚坐在防波堤上看海会起凉风</div></div>
+        <div class="blk" data-t="li" data-k="b"><span class="mk"></span><div class="tx">一本翻了一半的书，走累了就在街角糖水铺读几页</div></div>
+        <div class="blk" data-t="quote" data-k="c"><div class="tx">不用急着赶每一个景点。顺着海风慢慢走，路边的渔船、晒网和晚霞就足够好看。</div></div>
+        <div class="blk" data-k="d"><div class="tx">返程动车开动的时候，包里还装着海边小店买的两袋陈皮手信。下次想挑个初冬周末再来，安安静静看一次海上日出。</div></div>
+      </div></div>
+    </div>
+
+    <div class="shot-wrap">
+      <div class="shot-bar">
+        <div class="seg-track" id="exp-scope">
+          <span class="seg-item on">整篇笔记</span>
+          <span class="seg-item">选中导出</span>
+        </div>
+      </div>
+      <div class="shot" id="im-shot">
+        <div class="exp-scroll" id="im-scroll">
+          <div class="exp-paper st-mono" id="im-paper">
+            <div class="paper-inner">
+              <h4 class="x" data-k="h">海边周末散记</h4>
+              <p class="x" data-k="a">入秋以后城里连着下了几天雨，周五傍晚临时搭动车往海边小镇去。出站时空气里有一股清爽的咸味，街道安静得只听见风吹椰树叶的声音。</p>
+              <h5 class="x" data-k="b">包里带的小物件</h5>
+              <ul class="x" data-k="b">
+                <li>防晒霜与宽檐草帽，海边正午的阳光比想象中更晒</li>
+                <li>一件防风薄外套，傍晚坐在防波堤上看海会起凉风</li>
+                <li>一本翻了一半的书，走累了就在街角糖水铺读几页</li>
+              </ul>
+              <blockquote class="x" data-k="c">不用急着赶每一个景点。顺着海风慢慢走，路边的渔船、晒网和晚霞就足够好看。</blockquote>
+              <p class="x" data-k="d">返程动车开动的时候，包里还装着海边小店买的两袋陈皮手信。下次想挑个初冬周末再来，安安静静看一次海上日出。</p>
+              <div class="ft"><span>海边周末散记</span><span>Block</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="scan"></div>
+      </div>
+      <div class="swatch-row" id="exp-swatches">
+        <div class="swatch-btn on" data-st="st-mono">
+          <span class="sw-chip" style="background:#ffffff"><i style="background:#ffffff;border-top:2px solid #111111"></i></span>
+          <span>黑白素纸</span>
+        </div>
+        <div class="swatch-btn" data-st="st-journal">
+          <span class="sw-chip" style="background:#fef9e7"><i style="background:#fffef5;border-top:2px solid #d97706"></i></span>
+          <span>手账便签</span>
+        </div>
+        <div class="swatch-btn" data-st="st-riso">
+          <span class="sw-chip" style="background:#f4efe4"><i style="background:#f4efe4;border-top:2px solid #ff5aa8"></i></span>
+          <span>孔版双色</span>
+        </div>
+        <div class="swatch-btn" data-st="st-night">
+          <span class="sw-chip dk" style="background:#0d1117"><i style="background:#161b22;border-top:2px solid #7aa2f7"></i></span>
+          <span>夜读卡片</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="sub" id="im-sub">&nbsp;</div>
+</section>
+
+<!-- 6. 对比：一张表看懂差别（不含 Logseq 与 Craft / Bear，配齐真实软件图标与 Ocean Dark 巡览聚光） -->
+<section class="sec" id="compare">
+  <svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+    <defs>
+      <symbol id="ico-best" viewBox="0 0 20 20">
+        <rect x="1" y="1" width="18" height="18" rx="5" fill="#4774cf" stroke="rgba(162,193,252,.55)" stroke-width="1"/>
+        <path d="M5.8 10.2L8.7 13.1L14.3 7.3" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="ico-yes" viewBox="0 0 18 18">
+        <path d="M4.2 9.4L7.4 12.6L13.8 5.8" fill="none" stroke="#6ee7a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="ico-part" viewBox="0 0 18 18">
+        <circle cx="9" cy="9" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.7"/>
+        <path d="M6.2 9H11.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.85"/>
+      </symbol>
+      <symbol id="ico-no" viewBox="0 0 18 18">
+        <path d="M5.6 5.6L12.4 12.4M12.4 5.6L5.6 12.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.6"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <h2 class="h2 rv">一张表看懂差别</h2>
+  <p class="lead rv">不用注册、不绑云端，打开就能安安静静写东西。</p>
+
+  <div class="cmp-wrap rv" id="cmp-wrap">
+    <table class="cmp-table" id="cmp-table">
+      <thead>
+        <tr>
+          <th scope="col">核心体验</th>
+          <th scope="col" class="is-block">
+            <span class="cmp-brand">
+              <img src="./icons/block.png" alt="" aria-hidden="true">
+              <span>Block</span>
+            </span>
+          </th>
+          <th scope="col">
+            <span class="cmp-brand">
+              <img src="./icons/notion.png" alt="" aria-hidden="true">
+              <span>Notion</span>
+            </span>
+          </th>
+          <th scope="col">
+            <span class="cmp-brand">
+              <img src="./icons/obsidian.png" alt="" aria-hidden="true">
+              <span>Obsidian</span>
+            </span>
+          </th>
+          <th scope="col">
+            <span class="cmp-brand">
+              <img src="./icons/typora.png" alt="" aria-hidden="true">
+              <span>Typora</span>
+            </span>
+          </th>
+          <th scope="col">
+            <span class="cmp-brand">
+              <img src="./icons/siyuan.png" alt="" aria-hidden="true">
+              <span>思源笔记</span>
+            </span>
+          </th>
+          <th scope="col">
+            <span class="cmp-brand">
+              <span class="cmp-duo-icons" aria-hidden="true">
+                <img src="./icons/yuque.png" alt="">
+                <img src="./icons/feishu.png" alt="">
+              </span>
+              <span>语雀 / 飞书</span>
+            </span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="spot">
+          <th scope="row">段落整块拖动、折叠</th>
+          <td class="is-block"><span class="cmp-cell cmp-cell--best"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-best"/></svg><span>随手拖</span></span></td>
+          <td><span class="cmp-cell cmp-cell--yes"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-yes"/></svg><span>支持</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>需找插件</span></span></td>
+          <td><span class="cmp-cell cmp-cell--no"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-no"/></svg><span>不支持</span></span></td>
+          <td><span class="cmp-cell cmp-cell--yes"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-yes"/></svg><span>支持</span></span></td>
+          <td><span class="cmp-cell cmp-cell--yes"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-yes"/></svg><span>支持</span></span></td>
+        </tr>
+        <tr>
+          <th scope="row">文件直接存在电脑里</th>
+          <td class="is-block"><span class="cmp-cell cmp-cell--best"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-best"/></svg><span>换软件也能开</span></span></td>
+          <td><span class="cmp-cell cmp-cell--no"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-no"/></svg><span>存海外云端</span></span></td>
+          <td><span class="cmp-cell cmp-cell--yes"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-yes"/></svg><span>可共用文件夹</span></span></td>
+          <td><span class="cmp-cell cmp-cell--yes"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-yes"/></svg><span>直接存</span></span></td>
+          <td><span class="cmp-cell cmp-cell--no"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-no"/></svg><span>专属格式</span></span></td>
+          <td><span class="cmp-cell cmp-cell--no"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-no"/></svg><span>存平台云端</span></span></td>
+        </tr>
+        <tr>
+          <th scope="row">不用注册，断网照常写</th>
+          <td class="is-block"><span class="cmp-cell cmp-cell--best"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-best"/></svg><span>100% 本地</span></span></td>
+          <td><span class="cmp-cell cmp-cell--no"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-no"/></svg><span>需登录联网</span></span></td>
+          <td><span class="cmp-cell cmp-cell--yes"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-yes"/></svg><span>免登录</span></span></td>
+          <td><span class="cmp-cell cmp-cell--yes"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-yes"/></svg><span>免登录</span></span></td>
+          <td><span class="cmp-cell cmp-cell--yes"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-yes"/></svg><span>免登录</span></span></td>
+          <td><span class="cmp-cell cmp-cell--no"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-no"/></svg><span>强制登录</span></span></td>
+        </tr>
+        <tr>
+          <th scope="row">十万字长文秒开不卡</th>
+          <td class="is-block"><span class="cmp-cell cmp-cell--best"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-best"/></svg><span>点开即看</span></span></td>
+          <td><span class="cmp-cell cmp-cell--no"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-no"/></svg><span>常转圈加载</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>插件多变慢</span></span></td>
+          <td><span class="cmp-cell cmp-cell--no"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-no"/></svg><span>长文易卡</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>较占内存</span></span></td>
+          <td><span class="cmp-cell cmp-cell--no"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-no"/></svg><span>弱网易卡</span></span></td>
+        </tr>
+        <tr>
+          <th scope="row">速记小窗 + 旧稿找回</th>
+          <td class="is-block"><span class="cmp-cell cmp-cell--best"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-best"/></svg><span>开箱自带</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>无桌面小窗</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>需配插件</span></span></td>
+          <td><span class="cmp-cell cmp-cell--no"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-no"/></svg><span>无</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>无速记小窗</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>仅限云端</span></span></td>
+        </tr>
+        <tr>
+          <th scope="row">AI 改稿先看红绿对比</th>
+          <td class="is-block"><span class="cmp-cell cmp-cell--best"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-best"/></svg><span>点确认才改</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>按月加购</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>需配插件</span></span></td>
+          <td><span class="cmp-cell cmp-cell--no"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-no"/></svg><span>无</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>直接覆盖</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>会员限额</span></span></td>
+        </tr>
+        <tr>
+          <th scope="row">Mac / Win / Linux 免费</th>
+          <td class="is-block"><span class="cmp-cell cmp-cell--best"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-best"/></svg><span>永久免费</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>团队付费</span></span></td>
+          <td><span class="cmp-cell cmp-cell--yes"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-yes"/></svg><span>个人免费</span></span></td>
+          <td><span class="cmp-cell cmp-cell--no"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-no"/></svg><span>买断收费</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>同步付费</span></span></td>
+          <td><span class="cmp-cell cmp-cell--part"><svg class="cmp-ico" aria-hidden="true"><use href="#ico-part"/></svg><span>会员收费</span></span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="sec dl" id="download">
+  <img class="rv" src="./icons/block.png" alt="Block">
+  <h2 class="h2 rv">写下来的字，只留在你电脑里</h2>
+  <p class="lead rv">免注册、没广告，今天写的笔记过多少年都能打开。</p>
+  <a class="btn btn-lg rv" href="/download?k=mac-arm64&to=mirror">免费下载 Block</a>
+</section>
+
+<footer>Block · © 2026</footer>
+
+<!-- Hero WebGL Ink Drop & Particle Convergence -->
+<script type="module">
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const root = document.documentElement;
+let THREE = null;
+try { THREE = await import('three'); } catch (e) { THREE = null; }
+if (!THREE) {
+  root.classList.add('intro-done');
+} else {
+  try { initHero(); } catch (e) { console.warn(e); root.classList.add('intro-done'); }
+  try { initPerf(); } catch (e) { console.warn(e); }
+}
+
+function initHero() {
+  const hero = document.getElementById('top');
+  const canvas = document.getElementById('hero-gl');
+  const h1 = document.getElementById('title');
+  const renderer = new THREE.WebGLRenderer({
+    canvas, antialias: false, alpha: false, depth: false, stencil: false, powerPreference: 'high-performance'
+  });
+  const dpr = Math.min(devicePixelRatio || 1, 1.25);
+  renderer.setPixelRatio(dpr);
+
+  const hasHalfFloat = renderer.capabilities.isWebGL2 &&
+    (renderer.extensions.get('EXT_color_buffer_half_float') || renderer.extensions.get('EXT_color_buffer_float'));
+  const fbmRT = new THREE.WebGLRenderTarget(768, 768, {
+    type: hasHalfFloat ? THREE.HalfFloatType : THREE.UnsignedByteType,
+    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false
+  });
+  {
+    const bakeScene = new THREE.Scene();
+    const bakeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const bakeGeo = new THREE.PlaneGeometry(2, 2);
+    const bakeMat = new THREE.ShaderMaterial({
+      depthTest: false, depthWrite: false,
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+      fragmentShader: `
+        precision highp float;
+        varying vec2 vUv;
+        float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float noise(vec2 p){
+          vec2 i = floor(p), f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+                     mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+        }
+        float fbm(vec2 p){
+          float v = 0.0, a = 0.5;
+          for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; }
+          return v;
+        }
+        void main(){
+          vec2 p = (vUv - 0.5) * 13.0;
+          gl_FragColor = vec4(fbm(p), 0.0, 0.0, 1.0);
+        }`
+    });
+    bakeScene.add(new THREE.Mesh(bakeGeo, bakeMat));
+    renderer.setRenderTarget(fbmRT);
+    renderer.render(bakeScene, bakeCam);
+    renderer.setRenderTarget(null);
+    bakeGeo.dispose();
+    bakeMat.dispose();
+  }
+
+  const scene = new THREE.Scene();
+  const cam = new THREE.OrthographicCamera(0, 1, 0, -1, -10, 10);
+  const bgMat = new THREE.ShaderMaterial({
+    depthTest: false, depthWrite: false,
+    uniforms: { uT: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) }, uC: { value: new THREE.Vector2() }, uFbm: { value: fbmRT.texture } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+    fragmentShader: `
+      precision highp float;
+      uniform float uT; uniform vec2 uRes; uniform vec2 uC; uniform sampler2D uFbm;
+      varying vec2 vUv;
+      float sampleFbm(vec2 p){ return texture2D(uFbm, p * 0.076923 + 0.5).r; }
+      float dither(vec2 p){ return fract(dot(p, vec2(0.06711056, 0.00583715)) * 52.9829189); }
+      void main(){
+        vec2 px = vec2(vUv.x * uRes.x, (1.0 - vUv.y) * uRes.y);
+        float s = min(uRes.x, uRes.y);
+        vec2 p = (px - uC) / s;
+        vec3 ocean = vec3(0.467, 0.616, 0.910);
+        vec3 col = vec3(0.088, 0.098, 0.13) * (1.0 - 0.42 * dot(p, p));
+        float tImp = 0.55;
+        if (uT < tImp) {
+          float k = uT / tImp;
+          vec2 dp = p - vec2(0.0, mix(-0.72, 0.0, k * k));
+          float d = length(dp * vec2(1.0, 0.65));
+          col += ocean * (smoothstep(0.014, 0.0, d) * 1.35 + smoothstep(0.09, 0.0, d) * 0.25 * k);
+        }
+        float t = max(uT - tImp, 0.0);
+        if (t > 0.0) {
+          float R = 1.06 * (1.0 - exp(-t * 0.62));
+          vec2 q = p * 2.2;
+          float w = sampleFbm(q * 2.0 + vec2(t * 0.04, -t * 0.03));
+          float n = sampleFbm(q * 1.5 + vec2(0.0, -t * 0.06) + w * 1.6);
+          float d = length(p * vec2(0.85, 1.0)) + (n - 0.5) * 0.5 * min(t, 1.0);
+          float ink = smoothstep(R, R - 0.4, d);
+          float sVal = 1.0 - abs(sin(n * 22.0 + t * 0.15));
+          float s2 = sVal * sVal; float s4 = s2 * s2; float fil = s4 * s4 * s2;
+          vec3 inkCol = mix(vec3(0.09, 0.115, 0.19), vec3(0.17, 0.25, 0.43), smoothstep(0.3, 0.8, n));
+          col = mix(col, inkCol, ink * 0.9);
+          col += ocean * fil * 0.16 * ink * (1.0 - smoothstep(0.0, R, d) * 0.6);
+          float r = length(p);
+          float front = t * 0.46;
+          float rp = sin((r - front) * 70.0) * exp(-abs(r - front) * 16.0) * exp(-t * 0.65);
+          col += ocean * max(rp, 0.0) * 0.22;
+          col += ocean * exp(-t * 5.0) * smoothstep(0.3, 0.0, r) * 0.65;
+        }
+        col += (dither(px) - 0.5) * 0.016;
+        gl_FragColor = vec4(col, 1.0);
+      }`
+  });
+  const bg = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMat);
+  bg.frustumCulled = false;
+  scene.add(bg);
+
+  const ptsMat = new THREE.ShaderMaterial({
+    transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { uT: { value: 0 }, uC: { value: new THREE.Vector2() }, uS: { value: 1 }, uDpr: { value: dpr }, uFade: { value: 1 } },
+    vertexShader: `
+      attribute vec2 aTarget; attribute vec4 aRand;
+      uniform float uT, uS, uDpr, uFade; uniform vec2 uC;
+      varying float vA, vE;
+      void main(){
+        if (uFade <= 0.001) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; return; }
+        float conv = clamp((uT - 0.95 - aRand.w * 0.7) / 1.35, 0.0, 1.0);
+        float e = conv < 0.5 ? 4.0*conv*conv*conv : 1.0 - pow(-2.0*conv + 2.0, 3.0) / 2.0;
+        float b = clamp((uT - 0.55) / 1.0, 0.0, 1.0); b = 1.0 - pow(1.0 - b, 3.0);
+        float ang = aRand.x * 6.2831 + (1.0 - e) * (1.8 + aRand.z * 2.2) * b;
+        float rad = (0.04 + pow(aRand.y, 0.7) * 0.56) * uS * b;
+        vec2 cloud = uC + vec2(cos(ang), sin(ang) * 0.62) * rad;
+        vec2 pos = mix(cloud, aTarget, e);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos.x, -pos.y, 0.0, 1.0);
+        gl_PointSize = (1.8 + aRand.z * 1.4) * uDpr * (1.0 + (1.0 - e) * 0.6);
+        vA = step(0.55, uT) * (0.3 + 0.7 * e);
+        vE = e;
+      }`,
+    fragmentShader: `
+      uniform float uFade; varying float vA, vE;
+      void main(){
+        float d = length(gl_PointCoord - 0.5);
+        float a = smoothstep(0.5, 0.0, d) * vA * uFade;
+        vec3 c = mix(vec3(0.467, 0.616, 0.910), vec3(0.96, 0.97, 1.0), vE);
+        gl_FragColor = vec4(c * a, a);
+      }`
+  });
+
+  let pts = null, W = 1, H = 1, settled = RM;
+  const SETTLE_T = 5.6;
+
+  function sample() {
+    const hr = hero.getBoundingClientRect();
+    const hb = h1.getBoundingClientRect();
+    ptsMat.uniforms.uC.value.set(hb.left - hr.left + hb.width / 2, hb.top - hr.top + hb.height / 2);
+    bgMat.uniforms.uC.value.set((hb.left - hr.left + hb.width / 2) * dpr, (hb.top - hr.top + hb.height / 2) * dpr);
+    ptsMat.uniforms.uS.value = Math.min(W, H);
+    if (settled) return;
+
+    const scale = 0.5, pad = 12;
+    const cw = Math.max(16, Math.ceil((hb.width + pad * 2) * scale));
+    const ch = Math.max(16, Math.ceil((hb.height + pad * 2) * scale));
+    const c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    const cs = getComputedStyle(h1);
+    const fs = parseFloat(cs.fontSize) * scale;
+    g.font = `${cs.fontWeight} ${fs}px ${cs.fontFamily}`;
+    g.fillStyle = '#fff';
+    g.textBaseline = 'middle';
+    h1.querySelectorAll('.ln').forEach(sp => {
+      const b = sp.getBoundingClientRect();
+      g.fillText(sp.textContent, (b.left - hb.left + pad) * scale, (b.top - hb.top + pad + b.height / 2) * scale + fs * 0.02);
+    });
+    const data = g.getImageData(0, 0, cw, ch).data;
+    const ox = hb.left - hr.left - pad, oy = hb.top - hr.top - pad;
+    const tg = [];
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        if (data[(y * cw + x) * 4 + 3] > 135) {
+          tg.push(ox + (x + (Math.random() - .5)) / scale, oy + (y + (Math.random() - .5)) / scale);
+        }
+      }
+    }
+    const n = tg.length / 2, max = 8500, keep = n > max ? max / n : 1;
+    const T = [], Rr = [];
+    for (let i = 0; i < n; i++) {
+      if (keep < 1 && Math.random() > keep) continue;
+      T.push(tg[i * 2], tg[i * 2 + 1]);
+      Rr.push(Math.random(), Math.random(), Math.random(), Math.random());
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(T.length / 2 * 3), 3));
+    geo.setAttribute('aTarget', new THREE.Float32BufferAttribute(T, 2));
+    geo.setAttribute('aRand', new THREE.Float32BufferAttribute(Rr, 4));
+    if (pts) { scene.remove(pts); pts.geometry.dispose(); }
+    pts = new THREE.Points(geo, ptsMat);
+    pts.frustumCulled = false;
+    scene.add(pts);
+  }
+
+  function resize() {
+    W = hero.clientWidth; H = hero.clientHeight;
+    renderer.setSize(W, H, false);
+    cam.left = 0; cam.right = W; cam.top = 0; cam.bottom = -H; cam.updateProjectionMatrix();
+    bgMat.uniforms.uRes.value.set(W * dpr, H * dpr);
+    sample();
+  }
+
+  let visible = true, rafId = 0, t0 = 0, introRevealed = false;
+  function draw(t) {
+    bgMat.uniforms.uT.value = t;
+    const fade = RM ? 0 : Math.max(0, 1 - Math.max(0, t - 2.7) * 1.15);
+    ptsMat.uniforms.uT.value = t;
+    ptsMat.uniforms.uFade.value = fade;
+    if (pts && fade <= 0.001 && pts.visible) { pts.visible = false; pts.geometry.dispose(); }
+    renderer.render(scene, cam);
+  }
+  function syncLoop() {
+    if (!settled && visible && !document.hidden) {
+      if (!rafId) rafId = requestAnimationFrame(loop);
+    } else if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+  }
+  function loop(now) {
+    rafId = 0;
+    const t = (now - t0) / 1000;
+    if (!introRevealed && t > 2.55) { introRevealed = true; root.classList.add('intro-done'); }
+    if (t >= SETTLE_T) { settled = true; draw(SETTLE_T); return; }
+    draw(t);
+    syncLoop();
+  }
+
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; syncLoop(); }).observe(hero);
+  document.addEventListener('visibilitychange', syncLoop);
+
+  const start = () => {
+    resize();
+    addEventListener('resize', () => { resize(); draw(settled ? SETTLE_T : Math.min(SETTLE_T, (performance.now() - t0) / 1000)); }, { passive: true });
+    if (RM) { root.classList.add('intro-done'); draw(SETTLE_T); return; }
+    t0 = performance.now();
+    syncLoop();
+  };
+  (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(start);
+}
+
+/* 十万段 3D WebGL 镜头（自动播放 + 方案 A 阶梯里程碑计数，杜绝 60fps 数字残影堆叠） */
+function initPerf() {
+  const sec = document.getElementById('perf');
+  const canvas = document.getElementById('perf-gl');
+  const cnt = document.getElementById('cnt');
+  const renderer = new THREE.WebGLRenderer({
+    canvas, antialias: false, alpha: false, depth: false, stencil: false, powerPreference: 'high-performance'
+  });
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.4));
+  renderer.setClearColor(0x141720, 1);
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(40, 1, 0.1, 6000);
+  const group = new THREE.Group();
+  scene.add(group);
+
+  const COLS = 44, ROWS = 34, LINES = 46, PAGES = COLS * ROWS;
+  const CC = 21.5, CR = 16.5;
+  let maxD = 0;
+  const pages = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const dist = Math.hypot(c - CC, (r - CR) * 1.25);
+      if (dist > maxD) maxD = dist;
+      pages.push({ r, c, dist });
+    }
+  }
+  pages.sort((a, b) => a.dist - b.dist);
+
+  let seed = 7;
+  const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+
+  const tmpLocal = [], tmpPage = [], tmpKind = [];
+  const pageDists = new Float32Array(PAGES);
+  const pageEndIdx = new Int32Array(PAGES);
+
+  for (let pi = 0; pi < PAGES; pi++) {
+    const pg = pages[pi];
+    const d = pg.dist / maxD;
+    const px = (pg.c - CC) * 28, py = (CR - pg.r) * 38;
+    pageDists[pi] = d;
+    let y = 13.5, para = 0, headingNext = rnd() < .5;
+    for (let l = 0; l < LINES; l++) {
+      let w = 0, kind = 0;
+      if (headingNext) { w = 7 + rnd() * 7; kind = 1; headingNext = false; para = -1; }
+      else if (para === -1) { w = 0; para = 2 + Math.floor(rnd() * 5); }
+      else if (para > 1) { w = 20; para--; }
+      else if (para === 1) { w = 5 + rnd() * 13; para = 0; }
+      else { w = 0; if (rnd() < .18) headingNext = true; else para = 2 + Math.floor(rnd() * 6); }
+      if (w > 0.1) {
+        tmpLocal.push(-10 + w / 2, y, w);
+        tmpPage.push(px, py, d);
+        tmpKind.push(kind);
+      }
+      y -= 0.58;
+    }
+    pageEndIdx[pi] = tmpKind.length;
+  }
+
+  const geo = new THREE.PlaneGeometry(1, 1);
+  geo.setAttribute('aLocal', new THREE.InstancedBufferAttribute(new Float32Array(tmpLocal), 3));
+  geo.setAttribute('aPage', new THREE.InstancedBufferAttribute(new Float32Array(tmpPage), 3));
+  geo.setAttribute('aKind', new THREE.InstancedBufferAttribute(new Float32Array(tmpKind), 1));
+
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthTest: false, depthWrite: false,
+    uniforms: { uP: { value: 0 } },
+    vertexShader: `
+      attribute vec3 aLocal; attribute vec3 aPage; attribute float aKind;
+      uniform float uP; varying float vA; varying float vK;
+      void main(){
+        float rv = clamp((uP * 1.15 - aPage.z * 0.95) / 0.16, 0.0, 1.0);
+        if (aPage.z < 0.001) rv = 1.0;
+        if (rv <= 0.002) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+        rv = rv * rv * (3.0 - 2.0 * rv);
+        vec2 sz = vec2(aLocal.z, aKind > 0.5 ? 0.46 : 0.24);
+        vec3 p = position * vec3(sz, 1.0) + vec3(aLocal.xy, 0.0) + vec3(aPage.xy * rv, (1.0 - rv) * -80.0);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        vA = rv * (1.0 - aPage.z * 0.28); vK = aKind;
+      }`,
+    fragmentShader: `
+      varying float vA; varying float vK;
+      void main(){
+        vec3 c = vK > 0.5 ? vec3(0.51, 0.67, 0.96) : vec3(0.84, 0.87, 0.94);
+        gl_FragColor = vec4(c, vA * (vK > 0.5 ? 1.0 : 0.62));
+      }`
+  });
+  const mesh = new THREE.InstancedMesh(geo, mat, tmpKind.length);
+  mesh.frustumCulled = false;
+  mesh.count = pageEndIdx[0];
+  group.add(mesh);
+
+  /* 60fps 丝滑受控转速纵向数字滚轮：既有飞速滚动感，又杜绝叠字残影与宽度抖动 */
+  function seqDigits(cycles) {
+    const arr = [''];
+    for (let c = 0; c < cycles; c++) {
+      for (let d = 1; d <= 9; d++) arr.push(String(d));
+      arr.push('0');
+    }
+    return arr;
+  }
+  const REEL_SPECS = [
+    { sizer: '0', items: ['', '1'],           at: 0.91 },
+    { sizer: '0', items: seqDigits(1),        at: 0.20 },
+    { sizer: '0', items: seqDigits(2),        at: 0.10 },
+    { sizer: ',', items: [','],               at: 0.10, fixed: true },
+    { sizer: '0', items: seqDigits(2),        at: 0.05 },
+    { sizer: '0', items: seqDigits(2),        at: 0.02 },
+    { sizer: '0', items: seqDigits(3).slice(1), at: 0.00, alwaysOn: true }
+  ];
+  cnt.innerHTML = '';
+  const reels = REEL_SPECS.map(sp => {
+    const slot = document.createElement('span');
+    slot.className = 'od-slot' + (sp.alwaysOn ? ' on' : '') + (sp.fixed ? ' is-comma' : '');
+    const sizer = document.createElement('i');
+    sizer.className = 'od-sizer';
+    sizer.setAttribute('aria-hidden', 'true');
+    sizer.textContent = sp.sizer;
+    const strip = document.createElement('span');
+    strip.className = 'od-strip';
+    sp.items.forEach(ch => {
+      const cell = document.createElement('i');
+      cell.textContent = ch || '\u00A0';
+      strip.appendChild(cell);
+    });
+    slot.append(sizer, strip);
+    cnt.appendChild(slot);
+    return { ...sp, slot, strip, maxIdx: sp.items.length - 1, on: !!sp.alwaysOn };
+  });
+
+  function updateOdometer(uP) {
+    const p = 1 - Math.pow(1 - uP, 2.45);
+    for (let i = 0; i < reels.length; i++) {
+      const r = reels[i];
+      const show = r.alwaysOn || p >= r.at;
+      if (show !== r.on) {
+        r.on = show;
+        r.slot.classList.toggle('on', show);
+      }
+      if (!r.fixed) {
+        const local = r.alwaysOn ? p : Math.max(0, Math.min(1, (p - r.at) / (1 - r.at)));
+        const idx = local * r.maxIdx;
+        r.strip.style.transform = `translate3d(0, ${(-idx / (r.maxIdx + 1)) * 100}%, 0)`;
+      }
+    }
+  }
+
+  const ease = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+  let visible = false, rafId = 0, startAt = 0;
+  const CYCLE = 8.6;
+
+  function measure() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    renderer.setSize(w, h, false);
+    cam.aspect = w / h;
+    cam.updateProjectionMatrix();
+  }
+
+  function drawAt(uP, drift) {
+    const e = ease(uP);
+    mat.uniforms.uP.value = uP;
+
+    const maxActiveDist = (uP * 1.15) / 0.95;
+    let lo = 0, hi = PAGES;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (pageDists[m] <= maxActiveDist) lo = m + 1; else hi = m;
+    }
+    const activePages = Math.max(1, lo);
+    mesh.count = pageEndIdx[Math.min(PAGES - 1, activePages - 1)];
+
+    const z = 46 * Math.pow(1480 / 46, e);
+    cam.position.set(Math.sin(drift) * 14 * e, -e * 34 + Math.cos(drift * 0.8) * 8 * e, z);
+    cam.lookAt(0, -e * 34, 0);
+    group.rotation.x = -0.40 * e;
+    group.rotation.z = 0.055 * e;
+    renderer.render(scene, cam);
+
+    updateOdometer(uP);
+  }
+
+  function tick(now) {
+    rafId = 0;
+    if (!visible || document.hidden) return;
+    if (!startAt) startAt = now;
+    const elapsed = ((now - startAt) / 1000) % CYCLE;
+    let uP;
+    if (elapsed < 3.8) {
+      uP = elapsed / 3.8;
+    } else if (elapsed < 7.0) {
+      uP = 1;
+    } else {
+      uP = 1 - (elapsed - 7.0) / 1.6;
+    }
+    drawAt(Math.min(1, Math.max(0, uP)), (now - startAt) * 0.0007);
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function sync() {
+    if (RM) { drawAt(1, 0); return; }
+    if (visible && !document.hidden) {
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    } else if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+  }
+
+  measure();
+  drawAt(RM ? 1 : 0.02, 0);
+  addEventListener('resize', () => { measure(); if (!rafId) drawAt(RM ? 1 : 0.5, 0); }, { passive: true });
+  document.addEventListener('visibilitychange', sync);
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; sync(); }, { threshold: 0.15 }).observe(sec);
+}
+</script>
+
+<!-- Authentic Block Self-Playing Auto-Scrolling Timelines -->
+<script>
+(function () {
+  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const $ = id => document.getElementById(id);
+
+  const GRIP_SVG = '<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="5.5" cy="3.5" r="1.25"/><circle cx="10.5" cy="3.5" r="1.25"/><circle cx="5.5" cy="8" r="1.25"/><circle cx="10.5" cy="8" r="1.25"/><circle cx="5.5" cy="12.5" r="1.25"/><circle cx="10.5" cy="12.5" r="1.25"/></svg>';
+  const CHEV_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>';
+  const CHECK_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.3l3 3L12.5 5"/></svg>';
+
+  let scrolling = false, scrollTimer = 0;
+  const scrollWaiters = [];
+  addEventListener('scroll', () => {
+    scrolling = true;
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(() => {
+      scrolling = false;
+      scrollWaiters.splice(0).forEach(fn => fn());
+    }, 110);
+  }, { passive: true });
+  const waitScrollIdle = () => scrolling ? new Promise(r => scrollWaiters.push(r)) : Promise.resolve();
+
+  const ro = new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('in'); ro.unobserve(e.target); }
+  }), { threshold: .15 });
+  document.querySelectorAll('.rv').forEach(el => ro.observe(el));
+
+  function gate(el) {
+    if (RM) return async () => {};
+    let vis = false; const q = [];
+    new IntersectionObserver(([e]) => {
+      vis = e.isIntersecting;
+      el.classList.toggle('active', vis);
+      if (vis) q.splice(0).forEach(f => f());
+    }, { threshold: .25 }).observe(el);
+    const ready = () => vis ? Promise.resolve() : new Promise(r => q.push(r));
+    return async ms => { await ready(); if (ms) await sleep(ms); await ready(); await waitScrollIdle(); };
+  }
+
+  function subtitle(el) {
+    return html => {
+      if (RM) { el.innerHTML = html; return; }
+      el.classList.add('out');
+      setTimeout(() => { el.innerHTML = html; el.classList.remove('out'); }, 200);
+    };
+  }
+
+  async function type(span, s, w, speed) {
+    const step = s.length > 36 ? 2 : 1;
+    for (let i = 0; i < s.length; i += step) {
+      span.textContent += s.slice(i, i + step);
+      await w((speed || 50) + Math.random() * 22);
+    }
+  }
+
+  function smoothScroll(box, targetTop, dur = 500) {
+    const token = (box._st = (box._st || 0) + 1);
+    const maxTop = Math.max(0, box.scrollHeight - box.clientHeight);
+    const to = Math.min(maxTop, Math.max(0, targetTop));
+    if (RM || dur <= 0) { box.scrollTop = to; return Promise.resolve(); }
+    const from = box.scrollTop;
+    if (Math.abs(to - from) < 2) return Promise.resolve();
+    return new Promise(resolve => {
+      const t0 = performance.now();
+      function step(now) {
+        if (box._st !== token) return resolve();
+        const k = Math.min(1, (now - t0) / dur);
+        const e = k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+        box.scrollTop = from + (to - from) * e;
+        if (k < 1) requestAnimationFrame(step); else resolve();
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  function loop(el, run) {
+    const w = gate(el);
+    (async () => {
+      if (RM) { await run(w, true); return; }
+      for (;;) { try { await run(w, false); } catch (e) { console.warn(e); await sleep(1000); } }
+    })();
+  }
+
+  /* ---------- 2. 块编辑：长篇游记自动滚动 + 真实斜杠菜单 ---------- */
+  (function () {
+    const win = $('ed-win'), doc = $('ed-doc'), col = $('ed-col'), menu = $('ed-menu'), edKeys = $('ed-keys');
+    const sub = subtitle($('ed-sub'));
+    const caret = document.createElement('i'); caret.className = 'caret';
+    const LV = { h1: 1, h2: 2 };
+
+    function makeBlock(t, text, foldable) {
+      const b = document.createElement('div');
+      b.className = 'blk' + (foldable ? ' foldable' : '');
+      if (t && t !== 'p') b.dataset.t = t;
+      const mkInner = t === 'todo' ? CHECK_SVG : '';
+      b.innerHTML = `<span class="gutter"><span class="chev">${CHEV_SVG}</span><span class="hd">${GRIP_SVG}</span></span>` +
+        `<span class="mk">${mkInner}</span><div class="tx"><span class="t"></span></div>`;
+      if (text) b.querySelector('.t').textContent = text;
+      return b;
+    }
+    function add(t, text) {
+      const b = makeBlock(t, text, t === 'h1' || t === 'h2');
+      col.appendChild(b); focus(b); follow(); return b;
+    }
+    const T = b => b.querySelector('.t');
+    function focus(b) {
+      col.querySelectorAll('.cur').forEach(x => x.classList.remove('cur'));
+      if (!b) { caret.remove(); return; }
+      b.classList.add('cur'); b.querySelector('.tx').appendChild(caret);
+    }
+    function conv(b, t) {
+      if (t === 'p') delete b.dataset.t; else b.dataset.t = t;
+      if (t === 'todo') b.querySelector('.mk').innerHTML = CHECK_SVG;
+      if (t === 'h1' || t === 'h2') b.classList.add('foldable');
+      T(b).textContent = '';
+      b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop');
+      follow();
+    }
+    function follow() {
+      const last = col.lastElementChild;
+      if (!last) return;
+      const bottom = last.offsetTop + last.offsetHeight;
+      smoothScroll(doc, Math.max(0, bottom + 96 - doc.clientHeight), 280);
+    }
+    async function drag(b, before, w) {
+      b.classList.add('grab', 'cur'); focus(null);
+      await w(520);
+      const items = [...col.children];
+      const first = new Map(items.map(i => [i, i.getBoundingClientRect().top]));
+      col.insertBefore(b, before);
+      items.forEach(i => {
+        const dy = first.get(i) - i.getBoundingClientRect().top;
+        if (dy && !RM) i.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: i === b ? 680 : 440, easing: 'cubic-bezier(.2,.75,.2,1)' });
+      });
+      await w(780);
+      b.classList.remove('grab', 'cur');
+    }
+    async function pickSlash(b, cmdKey, w) {
+      await smoothScroll(doc, Math.max(0, b.offsetTop - 140), 340);
+      const wr = win.getBoundingClientRect(), txr = b.querySelector('.tx').getBoundingClientRect();
+      menu.style.left = Math.max(16, txr.left - wr.left) + 'px';
+      menu.style.top = (txr.bottom - wr.top + 6) + 'px';
+      menu.classList.add('on');
+      const rows = [...menu.querySelectorAll('.dd-row')];
+      rows.forEach(r => r.classList.remove('hot'));
+      for (const r of rows) {
+        r.classList.add('hot');
+        await w(260);
+        if (r.dataset.cmd === cmdKey) break;
+        r.classList.remove('hot');
+      }
+      await w(500);
+      menu.classList.remove('on');
+      await w(200);
+    }
+    function section(h) {
+      const lv = LV[h.dataset.t]; const out = [];
+      let n = h.nextElementSibling;
+      while (n && !(LV[n.dataset.t] && LV[n.dataset.t] <= lv)) { out.push(n); n = n.nextElementSibling; }
+      return out;
+    }
+    async function fold(h, w) {
+      h.classList.add('foldable', 'folded');
+      const targets = section(h).filter(x => !x.classList.contains('is-hidden'));
+      targets.forEach(x => { x.dataset.fold = (x.dataset.fold || '') + h.dataset.t; x.classList.add('folding'); });
+      await w(280);
+      targets.forEach(x => { x.classList.add('is-hidden'); x.classList.remove('folding'); });
+    }
+    async function unfold(h, w) {
+      h.classList.remove('folded');
+      const targets = [];
+      section(h).forEach(x => {
+        x.dataset.fold = (x.dataset.fold || '').replace(h.dataset.t, '');
+        if (!x.dataset.fold) { x.classList.remove('is-hidden'); x.classList.add('folding'); targets.push(x); }
+      });
+      void col.offsetWidth;
+      targets.forEach(x => x.classList.remove('folding'));
+      await w(300);
+    }
+    function fillScheduleTable(b) {
+      conv(b, 'table');
+      b.querySelector('.tx').innerHTML = '<table><tr><th>时段</th><th>街巷路线</th><th>随记</th></tr>' +
+        '<tr class="r"><td>周六上午</td><td>牌坊街老铺 → 开元寺古巷</td><td>早起吃一碗热腾腾的沙茶粿条，趁游客未多慢慢逛骑楼</td></tr>' +
+        '<tr class="r"><td>周六午后</td><td>广济桥看梭船 → 韩文公祠</td><td>找一间临街老茶馆歇脚，听掌柜聊工夫茶冲泡讲究</td></tr>' +
+        '<tr class="r"><td>周日返程</td><td>西马路早市 → 潮汕站</td><td>带两盒现烤腐乳饼与老香黄手信分给家里人</td></tr></table>';
+    }
+
+    loop(win, async (w, still) => {
+      col.innerHTML = ''; doc.scrollTop = 0; doc.style.opacity = 1; menu.classList.remove('on'); edKeys.classList.remove('on');
+      const hTop = makeBlock('h1', '潮州周末慢游记', true);
+      const pIntro = makeBlock('p', '周五傍晚收好电脑从广州南出发，两个多小时动车就到了潮汕。这趟出门没排太满的行程，只想在老城沿着街巷走走停停，吃几顿热乎的地道小食。');
+      const hDay1 = makeBlock('h2', '一、行前准备与牌坊街夜色', true);
+      col.append(hTop, pIntro, hDay1);
+      await w(450);
+
+      sub('输入 <b>-</b> 加空格，直接开始列清单');
+      const b2 = add('p', ''); await type(T(b2), '- ', w, 90); await w(220); conv(b2, 'li');
+      await type(T(b2), '提前订好周五傍晚往返潮汕站的高铁票，选靠窗座位', w, 34);
+      const b3 = add('li', ''); await type(T(b3), '带一把轻便晴雨伞和薄外套，入秋后江边夜里风凉', w, 34);
+      const b4 = add('li', ''); await type(T(b4), '民宿定在牌坊街安静的内巷，下楼走五分钟就能吃早茶', w, 34);
+      await w(750);
+
+      sub('输入 <b>&gt;</b> 加空格，把想记的一句话标成引用');
+      const b5 = add('p', ''); await type(T(b5), '> ', w, 95); await w(220); conv(b5, 'quote');
+      await type(T(b5), '出门玩最舒服的节奏，是不赶景点关门时间，顺着街边茶香慢慢逛。', w, 34);
+      await w(550);
+
+      sub('设成待办事项，收拾完一件就随手打个勾');
+      const b6 = add('p', '');
+      edKeys.classList.add('on'); await w(580); edKeys.classList.remove('on'); await w(180);
+      conv(b6, 'todo');
+      await type(T(b6), '出发前把相机电池充满，顺便带上身份证和充电宝', w, 34);
+      await w(400); b6.classList.add('done'); await w(750);
+
+      sub('两条备忘想换个顺序，按住左边把手拖过去就行');
+      await drag(b4, b3, w); await w(600);
+
+      sub('中文输入时敲个顿号 <b>、</b> 就能选标题、表格和清单');
+      const hDay2 = add('p', '');
+      await type(T(hDay2), '、', w, 130); await w(240);
+      await pickSlash(hDay2, 'h2', w);
+      conv(hDay2, 'h2');
+      await type(T(hDay2), '二、两日慢逛路线与茶馆小坐', w, 44);
+      await w(500);
+
+      const pDay2 = add('p', '');
+      await type(T(pDay2), '周六睡到自然醒再出门。老城不大，从牌坊街溜达到韩江边也就十几分钟，走累了随时进街角茶馆喝两杯茶。', w, 32);
+      await w(500);
+
+      sub('插入表格自动对齐，不用自己调格子');
+      const t1 = add('p', '');
+      fillScheduleTable(t1); focus(null); follow();
+      for (const r of t1.querySelectorAll('tr.r')) { await w(250); r.classList.add('on'); }
+      await w(1250);
+      if (still) { focus(null); doc.scrollTop = 0; sub('排版不费劲，调顺序直接拖'); return; }
+
+      sub('写长了点一下标题就能收起，整篇清清爽爽');
+      focus(null);
+      await smoothScroll(doc, 0, 600);
+      hDay2.classList.add('hover-fold'); hDay1.classList.add('hover-fold');
+      await w(500);
+      await fold(hDay2, w); await w(800);
+      await fold(hDay1, w); await w(1200);
+      await unfold(hDay1, w); await w(580);
+      await unfold(hDay2, w); await w(850);
+      hDay2.classList.remove('hover-fold'); hDay1.classList.remove('hover-fold');
+      await w(300);
+      doc.style.opacity = 0; await w(480);
+    });
+  })();
+
+  /* ---------- 3. 桌面全局 ⌥N 速记窗 + 存入正文弹亮 + 版本记录找回 ---------- */
+  (function () {
+    const win = $('memo-win'), mkeys = $('memo-keys'), qwin = $('quick-win');
+    const dots = [...$('qn-dots').children], qsave = $('qn-save'), qtitle = $('qn-title'), qtx = $('qn-tx'), qnotice = $('qn-notice');
+    const hpaper = $('hist-paper'), added = $('memo-added');
+    const hsegs = [...$('hist-seg').children], hiNow = $('hi-now'), hiOld = $('hi-old'), hiBtn = $('hi-btn'), diffSlot = $('memo-diff-slot');
+    const sub = subtitle($('memo-sub'));
+    const tap = async (el, w) => { el.classList.add('hot'); await w(360); el.classList.add('press'); await w(140); el.classList.remove('press'); await w(220); };
+
+    const CUR_LINE = '住宿订在开元寺附近，离大巴下车点不远。';
+    const OLD_LINE = '民宿订在开元寺南门内巷 18 号，高铁快线下来步行五分钟就到，老板说前台可以免费寄放行李。';
+
+    const setDot = idx => dots.forEach((d, i) => d.classList.toggle('on', i === idx));
+
+    loop(win, async (w, still) => {
+      win.classList.remove('in-note', 'in-hist'); qwin.classList.remove('on'); qnotice.classList.remove('on');
+      qsave.classList.remove('hot', 'press'); hiBtn.classList.remove('hot', 'press');
+      added.classList.add('is-hidden'); added.classList.remove('pop');
+      hpaper.scrollTop = 0;
+      setDot(0);
+      qtitle.textContent = '周五下班前要办的事';
+      qtx.textContent = '把报销单贴好交到财务，顺手把充好电的相机电池塞进双肩包。';
+      diffSlot.innerHTML = '<div class="tx">' + CUR_LINE + '</div>';
+      hiNow.classList.add('on'); hiOld.classList.remove('on');
+      hsegs[0].classList.remove('on'); hsegs[1].classList.add('on');
+      if (still) { qwin.classList.add('on'); sub('看网页也能按 ⌥N 随手记，改稿自动留底'); return; }
+      await w(700);
+
+      sub('看网页时突然想到一件事，按 <b>⌥N</b> 就在手边弹出小便签');
+      mkeys.classList.add('on'); await w(720); mkeys.classList.remove('on'); await w(300);
+      qwin.classList.add('on'); await w(950);
+
+      sub('自带 3 张便签，买东西、记地址随手写下');
+      setDot(1); qtitle.textContent = '潮州买手信备忘'; qtx.textContent = ''; await w(300);
+      await type(qtx, '西马路老饼铺下午四点出炉，返程前记得去买两盒现烤腐乳饼带给爸妈。', w, 34);
+      await w(650);
+
+      sub('觉得这条以后还要用，点右上角一键存进正式笔记');
+      await tap(qsave, w);
+      qnotice.classList.add('on'); await w(650);
+      win.classList.add('in-note'); await w(420);
+      added.classList.remove('is-hidden');
+      await smoothScroll(hpaper, hpaper.scrollHeight, 500);
+      void added.offsetWidth; added.classList.add('pop');
+      await w(1250);
+
+      sub('不小心删掉了门牌号？打开 <b>版本记录</b> 对照一下就能找回');
+      await smoothScroll(hpaper, 0, 460);
+      win.classList.add('in-hist'); await w(780);
+      hiNow.classList.remove('on'); hiOld.classList.add('on'); await w(400);
+      diffSlot.innerHTML = '<div class="diff-box"><div class="diff-del">' + OLD_LINE + '</div><div class="diff-ins">' + CUR_LINE + '</div></div>';
+      await w(1600);
+      await tap(hiBtn, w);
+      hsegs[1].classList.remove('on'); hsegs[0].classList.add('on');
+      win.classList.remove('in-hist');
+      diffSlot.innerHTML = '<div class="tx">' + OLD_LINE + '</div>';
+      diffSlot.classList.remove('pop'); void diffSlot.offsetWidth; diffSlot.classList.add('pop');
+      await w(2000);
+    });
+  })();
+
+  /* ---------- 4. AI 改稿：浮动栏 → 行内面板 → 替换 ↵ → ⌘Z → ⌘J 侧栏 ---------- */
+  (function () {
+    const win = $('ai-win'), doc = $('ai-doc'), blk = $('ai-target-blk'), p = $('ai-p');
+    const bar = $('ai-bar'), tbAi = $('tb-ai-btn'), panel = $('ai-panel'), streamWrap = $('ai-stream-wrap');
+    const capTx = $('ai-cap-tx'), sendBtn = $('ai-send'), chips = $('ai-chips'), rev = $('ai-review'), repBtn = $('ai-replace');
+    const keys = $('ai-keys'), feed = $('ai-feed'), m1 = $('m1'), m2 = $('m2');
+    const sub = subtitle($('ai-sub'));
+    const ORIG = '周六早上我们起了个大早去海边散步，那天的天气真的特别好，海风吹在脸上感觉很舒服，沙滩上还没有多少人，我们沿着海边走了挺远的路，还捡到了几个好看的贝壳。';
+    const NEW = '周六一早趁人少去了海边。天气晴朗，海风微凉，沿着空旷的沙滩慢慢走了一大段，顺手捡了几枚好看的贝壳。';
+    const press = async (el, w) => { el.classList.add('hot'); await w(360); el.classList.add('press'); await w(140); el.classList.remove('press'); await w(200); };
+    const swap = async (text, w) => { p.style.opacity = 0; await w(240); p.textContent = text; p.style.opacity = 1; };
+    p.classList.add('fade-swap');
+
+    loop(win, async (w, still) => {
+      p.innerHTML = '<span class="sel-span">' + ORIG + '</span>'; p.style.opacity = 1;
+      blk.classList.remove('ai-dashed'); bar.classList.remove('on'); panel.classList.remove('on');
+      streamWrap.style.display = 'none'; streamWrap.innerHTML = '';
+      chips.style.display = 'flex'; rev.style.display = 'none';
+      capTx.textContent = '怎么改这段话，或直接点下面标签…'; capTx.classList.remove('busy'); sendBtn.classList.remove('ready');
+      [tbAi, ...chips.children, repBtn].forEach(x => x.classList.remove('hot'));
+      win.classList.remove('side'); m1.classList.remove('on'); m2.classList.remove('on'); m2.textContent = '';
+      doc.scrollTop = 0; feed.scrollTop = 0;
+      await w(650);
+
+      sub('选中觉得啰嗦的一段话，点 <b>AI 改写</b>');
+      await smoothScroll(doc, 72, 460);
+      p.firstChild.classList.add('on'); await w(800);
+      const wr = win.getBoundingClientRect(), pr = p.getBoundingClientRect();
+      bar.style.left = Math.max(16, pr.right - wr.left - bar.offsetWidth) + 'px';
+      bar.style.top = Math.max(46, pr.top - wr.top - 38) + 'px';
+      bar.classList.add('on'); await w(600);
+      await press(tbAi, w);
+      bar.classList.remove('on');
+
+      sub('不用自己想提示词，直接点一下 <b>润色 ★</b>');
+      p.firstChild.classList.remove('on');
+      blk.classList.add('ai-dashed');
+      panel.classList.add('on');
+      await smoothScroll(doc, 140, 380);
+      await w(650);
+      await press(chips.children[0], w);
+
+      chips.style.display = 'none';
+      capTx.textContent = '● 正在生成…'; capTx.classList.add('busy');
+      streamWrap.style.display = 'block';
+      streamWrap.innerHTML = '<div class="diff-box"><div class="diff-del">' + ORIG + '</div><div class="diff-ins" id="ai-ins"></div></div>';
+      blk.classList.remove('ai-dashed');
+      await smoothScroll(doc, 190, 380);
+      sub('删了哪句、改了哪句标得清清楚楚，点 <b>替换 ↵</b> 才生效');
+      await type($('ai-ins'), NEW, w, 28);
+
+      capTx.textContent = '不满意？直接打字继续改，或按回车完成…'; capTx.classList.remove('busy'); sendBtn.classList.add('ready');
+      rev.style.display = 'flex';
+      await w(950);
+      await press(repBtn, w);
+      panel.classList.remove('on'); streamWrap.style.display = 'none';
+      await swap(NEW, w);
+      await w(1200);
+      if (still) return;
+
+      sub('换完觉得还是自己写的顺眼，按 <b>⌘Z</b> 马上撤回');
+      keys.classList.add('on'); await w(700); keys.classList.remove('on');
+      await swap(ORIG, w); await w(1100);
+
+      sub('按 <b>⌘J</b> 打开侧边助手，让它读完这篇游记帮你列份行李清单');
+      await smoothScroll(doc, doc.scrollHeight, 520);
+      win.classList.add('side'); await w(700);
+      m1.classList.add('on'); await w(800);
+      m2.classList.add('on'); await w(240);
+      await type(m2, '已根据《海边周末散记》整理好清单：\n· 防风薄外套（傍晚防波堤风凉）\n· 宽檐草帽与防晒霜\n· 相机备用电池与充电宝\n· 留出下午去街角老铺喝绿豆沙\n· 返程前买两袋陈皮手信', w, 32);
+      feed.scrollTop = feed.scrollHeight;
+      await w(2200);
+    });
+  })();
+
+  /* ---------- 5. 生成图片：双窗框选 + 光束扫描成图特效 + 纸面切换 ---------- */
+  (function () {
+    const note = $('im-note'), ndoc = $('im-doc'), shot = $('im-shot'), pscroll = $('im-scroll'), paper = $('im-paper');
+    const scopeSegs = [...$('exp-scope').children];
+    const swatches = [...$('exp-swatches').querySelectorAll('.swatch-btn')];
+    const nb = [...note.querySelectorAll('.blk[data-k]')], px = [...paper.querySelectorAll('.x')];
+    const sub = subtitle($('im-sub'));
+
+    const pickTheme = stClass => {
+      paper.className = 'exp-paper ' + stClass;
+      swatches.forEach(b => b.classList.toggle('on', b.dataset.st === stClass));
+    };
+    const gen = async w => {
+      shot.classList.remove('gen'); void shot.offsetWidth; shot.classList.add('gen');
+      await w(1280);
+    };
+    const setScope = keys => {
+      const selOnly = !!keys;
+      scopeSegs[0].classList.toggle('on', !selOnly);
+      scopeSegs[1].classList.toggle('on', selOnly);
+      nb.forEach(b => b.classList.toggle('in-sel', selOnly && keys.includes(b.dataset.k)));
+      note.classList.toggle('whole', !selOnly);
+      px.forEach(x => x.classList.toggle('hide', selOnly && !['h', ...keys].includes(x.dataset.k)));
+    };
+
+    loop(note, async (w, still) => {
+      setScope(null); pickTheme('st-mono'); ndoc.scrollTop = 0; pscroll.scrollTop = 0;
+      if (still) { shot.style.clipPath = 'none'; sub('整篇笔记或挑几段话，直接生成排版干净的长图'); return; }
+      shot.classList.remove('gen'); await w(500);
+
+      sub('再长的笔记也能一键生成长图，不用一屏屏截图再拼接');
+      await gen(w); await w(650);
+      await Promise.all([
+        smoothScroll(ndoc, ndoc.scrollHeight, 1300),
+        smoothScroll(pscroll, pscroll.scrollHeight, 1300)
+      ]);
+      await w(800);
+
+      sub('内置 <b>黑白素纸</b>、<b>手账便签</b>、<b>孔版双色</b>、<b>夜读卡片</b> 四种纸面');
+      pickTheme('st-journal');
+      await smoothScroll(pscroll, 0, 900);
+      await w(1300);
+      pickTheme('st-riso');
+      await w(1450);
+      pickTheme('st-night');
+      await w(1450);
+
+      sub('只想发其中几句？切到 <b>选中导出</b>，选哪段就出哪段');
+      note.classList.remove('whole');
+      await smoothScroll(ndoc, ndoc.scrollHeight, 480);
+      setScope(['c', 'd']); pickTheme('st-journal'); pscroll.scrollTop = 0;
+      await w(650);
+      await gen(w); await w(1450);
+      pickTheme('st-mono'); await w(1500);
+    });
+  })();
+
+  /* ---------- 6. 对比：可见时逐行柔和巡览聚光（鼠标悬停时自动礼让） ---------- */
+  (function () {
+    const wrap = $('cmp-wrap'), tbl = $('cmp-table');
+    if (!wrap || !tbl) return;
+    const rows = [...tbl.querySelectorAll('tbody tr')];
+    let idx = 0, hovering = false;
+    tbl.addEventListener('pointerenter', () => { hovering = true; rows.forEach(r => r.classList.remove('spot')); });
+    tbl.addEventListener('pointerleave', () => { hovering = false; rows[idx]?.classList.add('spot'); });
+    loop(wrap, async (w, still) => {
+      if (still) return;
+      await w(2200);
+      if (hovering) return;
+      idx = (idx + 1) % rows.length;
+      rows.forEach((r, i) => r.classList.toggle('spot', i === idx));
+    });
+  })();
+})();
+</script>
+</body>
+</html>
