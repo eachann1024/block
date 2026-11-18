@@ -67,7 +67,7 @@ func SerializeMarkdown(doc *model.Doc) string {
 			}
 		}
 
-		if canUseCleanSource(b, n, defs) {
+		if canUseCleanSource(b, i == 0, n, defs) {
 			out.WriteString(b.CleanSource)
 			continue
 		}
@@ -105,7 +105,7 @@ func isDocUntouched(doc *model.Doc, defs map[string]refDef) bool {
 		if !isBlankBlock(b) {
 			n = num.next(b)
 		}
-		if !canUseCleanSource(b, n, defs) {
+		if !canUseCleanSource(b, i == 0, n, defs) {
 			return false
 		}
 		idx := strings.Index(decoded[cursor:], b.CleanSource)
@@ -147,8 +147,11 @@ func isIgnorableCleanGap(gap string, defs map[string]refDef) bool {
 	return true
 }
 
-func canUseCleanSource(b *model.Block, listNum int, defs map[string]refDef) bool {
+func canUseCleanSource(b *model.Block, isFirst bool, listNum int, defs map[string]refDef) bool {
 	if b.Dirty || b.CleanSource == "" {
+		return false
+	}
+	if b.Kind == model.BlockCode && b.Language == "yaml-frontmatter" && (!isFirst || b.Indent > 0 || b.QuoteDepth > 0) {
 		return false
 	}
 	if b.Kind == model.BlockNumbered && listNum > 0 {
