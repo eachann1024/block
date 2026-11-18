@@ -491,3 +491,63 @@ func TestEdgeHotZoneOnlyWhenYieldedAndHovered(t *testing.T) {
 		t.Fatal("expected floating sidebar card to open immediately on hover without dwell delay")
 	}
 }
+
+func TestBrandSceneStaysBehindCardAndTransparentSearch(t *testing.T) {
+	dataDir := t.TempDir()
+	files.SetDataDirOverride(dataDir)
+	t.Cleanup(func() {
+		files.SetDataDirOverride("")
+		theme.SetDark(false)
+	})
+
+	nb := filepath.Join(t.TempDir(), "nb")
+	if err := os.MkdirAll(nb, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	notePath := filepath.Join(nb, "Note.md")
+	if err := os.WriteFile(notePath, []byte("# Title\n\nBody\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws := NewWorkspace(dataDir)
+	if err := ws.SetNotebook(nb); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.OpenNote(notePath, 0); err != nil {
+		t.Fatal(err)
+	}
+	ws.state.Theme = "dark"
+	ws.state.BrandDeco.Mode = "pin"
+	ws.state.BrandDeco.PinDark = "moon"
+	theme.SetDark(true)
+	blockui.ClearTargets()
+
+	tt := ui.NewTester(ws.Render, 1200, 760)
+	tt.Frame()
+
+	cardRect, ok := blockui.TargetBounds("workspace-panel-card")
+	if !ok {
+		t.Fatal("expected workspace-panel-card bounds")
+	}
+	img := tt.Image()
+	// Sample inside the top 48px of the floating paper card (y = 60, inside the 88px brand scene band):
+	// must be exact dark card surface #181818, never covered by the #222222 / hill wave band.
+	gotCardTop := img.RGBAAt(int(cardRect.X+120), int(cardRect.Y+20))
+	wantCard := color.RGBA{R: 0x18, G: 0x18, B: 0x18, A: 0xff}
+	if gotCardTop != wantCard {
+		t.Fatalf("expected top of workspace-panel-card to cover brand scene with %+v, got %+v", wantCard, gotCardTop)
+	}
+
+	searchRect, ok := blockui.TargetBounds("search-button")
+	if !ok {
+		t.Fatal("expected search-button bounds")
+	}
+	// Sample the right side of search-button vs the gap just outside it on the same scanline:
+	// a transparent T3-style search button has no #2a2a2a FieldBG box or #303030 kbd box.
+	sampleY := int(searchRect.Y + searchRect.H/2)
+	gotSearchRight := img.RGBAAt(int(searchRect.X+searchRect.W-6), sampleY)
+	unwantedFieldBG := color.RGBA{R: 0x2a, G: 0x2a, B: 0x2a, A: 0xff}
+	if gotSearchRight == unwantedFieldBG {
+		t.Fatalf("expected transparent search-button without FieldBG %+v, got %+v", unwantedFieldBG, gotSearchRight)
+	}
+}

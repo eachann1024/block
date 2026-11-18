@@ -9,46 +9,53 @@ import (
 
 func noHitTest(_, _ float32, _ ui.Rect) bool { return false }
 
-// BrandSceneBand paints the 88px full-window-width landscape band at the top of the window,
-// smoothly fading into the window ground from 52% height down to 88px so the right paper
-// card appears to float over a continuous horizon.
-func BrandSceneBand(c *ui.Context, id BrandSceneID, showOrb bool) ui.Element {
+// PaintBrandSceneBand paints the 88px full-window-width landscape band onto el's own backdrop
+// (strictly behind all child elements such as the titlebar, sidebar controls, and right paper card),
+// smoothly fading into the window ground from 52% height down to 88px.
+func PaintBrandSceneBand(el ui.Element, id BrandSceneID, showOrb bool) {
 	ensureCompiledScenes()
 	sc := compiledByID[id]
-	c.Key("brand-scene-band")
-	band := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Height(BrandBandHeight).Clip().HitTest(noHitTest)
-	Probe(band, "brand-scene-band")
-	if sc == nil {
-		return band
+	if sc == nil || !el.Valid() {
+		return
 	}
-	band.Draw(func(p *ui.Painter, r ui.Rect) {
-		if r.W <= 0 || r.H <= 0 {
+	el.Draw(func(p *ui.Painter, r ui.Rect) {
+		bandH := min(float32(BrandBandHeight), r.H)
+		if r.W <= 0 || bandH <= 0 {
 			return
+		}
+		bandRect := ui.Rect{X: r.X, Y: r.Y, W: r.W, H: bandH}
+		if IsProbeEnabled() {
+			RecordBounds("brand-scene-band", bandRect)
 		}
 		reduced := p.Preferences().ReduceMotion
 		tSec := float64(0)
 		if !reduced {
 			tSec = float64(p.Now().UnixMilli()) * 0.001
 		}
-		paintScene(p, sc, r.X, r.Y, r.W, BrandBandHeight, tSec, showOrb, true)
+		p.Clip(bandRect, 0, func() {
+			paintScene(p, sc, bandRect.X, bandRect.Y, bandRect.W, BrandBandHeight, tSec, showOrb, true)
 
-		// Equivalent to CSS mask-image: linear-gradient(to bottom, #000 52%, transparent)
-		// composited directly over the solid Ground background.
-		var fade ui.Path
-		fade.MoveTo(r.X, r.Y).LineTo(r.X+r.W, r.Y).LineTo(r.X+r.W, r.Y+r.H).LineTo(r.X, r.Y+r.H).Close()
-		p.FillPathGradient(&fade, ui.LinearGradient{
-			Angle: 180,
-			Start: 0.52,
-			End:   1.0,
-			From:  sc.ground.Alpha(0),
-			To:    sc.ground,
+			// Equivalent to CSS mask-image: linear-gradient(to bottom, #000 52%, transparent)
+			// composited directly over the solid Ground background.
+			var fade ui.Path
+			fade.MoveTo(bandRect.X, bandRect.Y).
+				LineTo(bandRect.X+bandRect.W, bandRect.Y).
+				LineTo(bandRect.X+bandRect.W, bandRect.Y+BrandBandHeight).
+				LineTo(bandRect.X, bandRect.Y+BrandBandHeight).
+				Close()
+			p.FillPathGradient(&fade, ui.LinearGradient{
+				Angle: 180,
+				Start: 0.52,
+				End:   1.0,
+				From:  sc.ground.Alpha(0),
+				To:    sc.ground,
+			})
 		})
 
 		if !reduced {
 			p.After(33 * time.Millisecond)
 		}
 	})
-	return band
 }
 
 // BrandSceneThumbnail renders a 54px-tall cropped landscape preview tile for Settings.

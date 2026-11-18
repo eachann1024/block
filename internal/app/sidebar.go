@@ -646,38 +646,46 @@ func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
 	scSearch := blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutSearch, "cmd-k"))
 
 	ui.Row(c.Key("sidebar-header-bar")).FillWidth().Shrink(0).
-		Padding(4, 8, 6, 12).Gap(2).AlignItems(ui.Center).Children(func() {
+		Padding(4, 8, 4, 12).Gap(2).AlignItems(ui.Center).Children(func() {
+		searchLabel := theme.Tr("搜索", "Search")
 		c.Key("search-button")
-		searchBtn := blockui.Elevate(
-			ui.ButtonBase(c).Grow(1).MinWidth(0).Height(30).
-				Padding(0, 6, 0, 9).Margin(0, 4, 0, 0).Gap(7).
-				AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
-				Label(theme.Tr("搜索", "Search")),
-			theme.ElevationRaised,
-		)
+		searchBtn := ui.ButtonBase(c).Grow(1).MinWidth(0).Height(theme.HeightControl).
+			PaddingX(8).Gap(8).AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
+			Label(searchLabel)
 		sHov := searchBtn.Hovered()
 		sPress := searchBtn.Pressed()
-		sBG := chrome.FieldBG
-		sBD := chrome.FieldBorder
-		if p.SearchOpen {
-			sBD = pal.Accent
-		} else if sHov || sPress {
-			sBD = chrome.FieldBorderHover
+		hoverBG := chrome.Hover
+		if p.FloatingCard {
+			hoverBG = pal.Hover
 		}
-		blockui.AnimateSurfaceColors(searchBtn, sBG, sBD, true)
+		sBG := ui.Transparent
+		sBD := ui.Transparent
+		sFG := pal.TextSecondary
+		sIcon := pal.MonoIconColors(pal.TextSecondary)
+		switch {
+		case p.SearchOpen:
+			sBG = pal.Selected
+			sBD = pal.Accent
+			sFG = pal.Text
+			sIcon = pal.DuoIconColors(pal.Accent)
+		case sHov || sPress:
+			sBG = hoverBG
+			sFG = pal.Text
+			sIcon = pal.MonoIconColors(pal.Text)
+		}
+		blockui.AnimateSurfaceColors(searchBtn, sBG, sBD, p.SearchOpen)
 		blockui.TactileCard(searchBtn, sHov, sPress, p.SearchOpen, false)
+		blockui.RichTooltip(c, searchBtn, blockui.TooltipSpec{
+			Placement: blockui.TooltipBelow,
+			Rows: []blockui.TooltipRow{{
+				Trigger:  searchLabel,
+				Shortcut: scSearch,
+			}},
+		})
 		searchBtn.Children(func() {
-			icons.Draw(c, icons.FindSearch, 15, pal.MonoIconColors(pal.TextSecondary))
-			ui.Text(c, theme.Tr("搜索", "Search")).FontSize(theme.FontBody).
-				TextColor(pal.Placeholder).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-			if scSearch != "" {
-				ui.Box(c).Height(18).PaddingX(5).Shrink(0).Center().
-					Radius(theme.RadiusXS).Background(chrome.KbdBG).Border(1, chrome.FieldBorder).
-					Children(func() {
-						ui.Text(c, scSearch).Font("monospace").FontSize(theme.FontMicro).FixedLineHeight(18).
-							FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine()
-					})
-			}
+			icons.Draw(c, icons.FindSearch, theme.IconChrome, sIcon)
+			ui.Text(c, searchLabel).FontSize(theme.FontBody).
+				TextColor(sFG).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		})
 		blockui.Probe(searchBtn, "search-button")
 		if searchBtn.Clicked() && p.OnOpenSearch != nil {
