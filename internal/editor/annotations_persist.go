@@ -525,8 +525,7 @@ func (s *Session) splitSpansForHighlights(blockIdx int, blockID model.BlockID, s
 	}
 	hasAnn := len(s.annotations) > 0
 	hasFind := s.findOpen && len(s.findMatches) > 0
-	selLo, selHi, _, hasSel := s.blockSelectionSpanRange(blockIdx)
-	if !hasAnn && !hasFind && (!hasSel || selHi <= selLo) {
+	if !hasAnn && !hasFind {
 		return spans
 	}
 
@@ -539,10 +538,6 @@ func (s *Session) splitSpansForHighlights(blockIdx int, blockID model.BlockID, s
 	cuts = append(cuts, total)
 
 	addedCut := false
-	if hasSel && selHi > selLo {
-		cuts = append(cuts, clampInt(selLo, 0, total), clampInt(selHi, 0, total))
-		addedCut = true
-	}
 	for _, ann := range s.annotations {
 		if !isAnnotationVisible(ann) {
 			continue

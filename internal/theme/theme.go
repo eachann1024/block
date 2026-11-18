@@ -30,11 +30,13 @@ const (
 	AIPanelMaxWidth     float32 = 720
 	EditorStandardWidth float32 = 672
 	EditorMaxOuterWidth float32 = 720
-	RadiusControl       float32 = 8
-	RadiusCard          float32 = 14
-	RadiusSurface       float32 = 14
-	RadiusPill          float32 = 999
-	FontBodySize        float32 = 16
+	RadiusControl         float32 = 8
+	RadiusCard            float32 = 14
+	RadiusSurface         float32 = 14
+	RadiusPill            float32 = 999
+	EditorSelectionRadius float32 = 5
+	EditorSelectionPadX   float32 = 3
+	FontBodySize          float32 = 16
 	FontUISize          float32 = 14
 	FontSmallMinSize    float32 = 14
 )
@@ -345,6 +347,15 @@ func (p Palette) MonoIconColors(c ui.Color) IconColors {
 	}
 }
 
+// EditorSelectionBG returns the unified soft translucent selection fill shared by
+// empty-line bands and inline text selection pills (Option B).
+func (p Palette) EditorSelectionBG() ui.Color {
+	if p.Dark {
+		return p.SelectionBG.Alpha(0.65)
+	}
+	return p.SelectionBG.Alpha(0.55)
+}
+
 func (p Palette) ToUITheme(fontFamily string) ui.Theme {
 	base := *ui.LightTheme()
 	if p.Dark {
@@ -366,7 +377,7 @@ func (p Palette) ToUITheme(fontFamily string) ui.Theme {
 	base.Danger = p.Danger
 	base.Warning = p.Warning
 	base.Success = p.Success
-	base.Selection = p.SelectionBG
+	base.Selection = p.EditorSelectionBG()
 	base.Focus = p.Accent
 	base.FocusRingWidth = 2
 	base.FocusRingOffset = 1

@@ -10,6 +10,7 @@ import (
 
 	"block/internal/model"
 	"block/internal/theme"
+	appUi "block/internal/ui"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -29,6 +30,8 @@ type tableCellKey struct {
 
 type cachedBlockLayout struct {
 	text       string
+	spans      []model.Span
+	rich       bool
 	fontFamily string
 	fontSize   float32
 	weight     int
@@ -515,9 +518,7 @@ func (s *Session) handleFocusedAtomicInput(c *ui.Context, ev ui.InputEvent) bool
 			return true
 		case "paste", "pasteAndMatchStyle":
 			if !s.readOnly {
-				if clip := c.ReadClipboard(); clip != "" {
-					s.PasteText(clip)
-				}
+				s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
 			}
 			return true
 		case "selectAll":
@@ -571,9 +572,7 @@ func (s *Session) handleFocusedAtomicInput(c *ui.Context, ev ui.InputEvent) bool
 			return true
 		case ev.Mods == ui.Cmd && ev.Key == ui.KeyV:
 			if !s.readOnly {
-				if clip := c.ReadClipboard(); clip != "" {
-					s.PasteText(clip)
-				}
+				s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
 			}
 			return true
 		case !s.readOnly && ev.Mods == 0 && (ev.Key == ui.KeyBackspace || ev.Key == ui.KeyDelete):
@@ -628,9 +627,7 @@ func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) boo
 			if s.readOnly {
 				return true
 			}
-			if clip := c.ReadClipboard(); clip != "" {
-				s.PasteText(clip)
-			}
+			s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
 			return true
 		case "selectAll":
 			s.SelectAllBlocks()
@@ -692,9 +689,7 @@ func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) boo
 			return s.CutSelection(c)
 		case ev.Mods == ui.Cmd && ev.Key == ui.KeyV:
 			if !s.readOnly {
-				if clip := c.ReadClipboard(); clip != "" {
-					s.PasteText(clip)
-				}
+				s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
 			}
 			return true
 		case !s.readOnly && ev.Mods == 0 && (ev.Key == ui.KeyBackspace || ev.Key == ui.KeyDelete):
@@ -912,6 +907,9 @@ func (s *Session) updateCanvasMouseSelection(c *ui.Context, root, canvas ui.Elem
 		mode := s.mouseMode
 		dragged := s.mouseDragged
 		endPt := s.mouseCurPt
+		if !dragged && (s.mouseStartPt.X != 0 || s.mouseStartPt.Y != 0) {
+			endPt = s.mouseStartPt
+		}
 		s.mouseMode = mouseSelNone
 		s.mouseDragged = false
 		s.pressJustBegan = false
@@ -992,7 +990,7 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 			if link := spanLinkAtOffset(&s.doc.Blocks[pos.Block], pos.Offset); link != "" {
 				s.selAnchor = pos
 				s.selHead = pos
-				c.OpenURL(link)
+				s.openBlockLink(c.Services(), link)
 				s.scheduleRebuild(c)
 				return
 			}
@@ -1003,15 +1001,29 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 		if firstVis < 0 {
 			return
 		}
-		firstR := s.blockRects[s.doc.Blocks[firstVis].ID]
-		lastR := s.blockRects[s.doc.Blocks[lastVis].ID]
-		if !readOnly && firstR.H > 0 && pt.Y < firstR.Y {
+		if !readOnly && s.lastPressMods&(ui.Shift|ui.Alt) == 0 && s.tryBlankMarginInsert(pt.X, pt.Y) {
+			s.scheduleRebuild(c)
+			return
+		}
+		if !readOnly && s.isAboveFirstVisibleBlock(pt.Y) {
 			s.FocusBlock(firstVis)
 			s.scheduleRebuild(c)
 			return
 		}
-		if !readOnly && lastR.H > 0 && pt.Y > lastR.Y+lastR.H+8 {
-			s.focusOrInsertBottomParagraph()
+		if !readOnly && s.isBelowLastVisibleBlock(pt.Y) {
+			lastBlk := &s.doc.Blocks[lastVis]
+			switch lastBlk.Kind {
+			case model.BlockDivider, model.BlockImage, model.BlockTable, model.BlockCode, model.BlockRawHTML:
+				s.insertOrFocusBottomParagraph()
+			default:
+				endOff := s.blockSelectionLen(lastVis)
+				s.focusedBlock = lastVis
+				s.selAnchor = Position{Block: lastVis, Offset: endOff}
+				s.selHead = s.selAnchor
+				s.focusPending = true
+				s.selSyncPending = true
+				s.multiSelFocusPending = false
+			}
 			s.scheduleRebuild(c)
 			return
 		}
@@ -1027,6 +1039,7 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 			s.selAnchor = Position{Block: idx, Offset: off}
 			s.selHead = s.selAnchor
 			s.focusPending = !readOnly
+			s.focusPreventScroll = true
 			s.selSyncPending = !readOnly
 			s.multiSelFocusPending = false
 			s.scheduleRebuild(c)
@@ -1055,6 +1068,8 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 			s.tableActiveRow = rIdx
 			s.tableActiveCol = cIdx
 			s.focusPending = true
+			s.focusPreventScroll = true
+			s.selSyncPending = true
 			s.scheduleRebuild(c)
 			return
 		}
@@ -1063,6 +1078,8 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 			s.tableActiveRow = row
 			s.tableActiveCol = col
 			s.focusPending = true
+			s.focusPreventScroll = true
+			s.selSyncPending = true
 			s.scheduleRebuild(c)
 			return
 		}
@@ -1070,6 +1087,7 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 
 	if !readOnly {
 		s.focusPending = true
+		s.focusPreventScroll = true
 		s.selSyncPending = true
 	}
 	s.scheduleRebuild(c)
@@ -1191,17 +1209,126 @@ func (s *Session) updateFocusedTableCellDrag(c *ui.Context, root, in ui.Element,
 	return false
 }
 
+// updateFocusedRichInputDrag bridges an active pointer drag inside a RichInput into live
+// multi-block selection when the pointer crosses out of the block's vertical bounds.
+func (s *Session) updateFocusedRichInputDrag(c *ui.Context, root ui.Element, st *appUi.RichInputState, idx int) bool {
+	if st != nil && st.Dragging() {
+		wx, wy := s.windowPointer(root)
+		anchorOff, caretOff := st.SelectionRunes()
+		r, hasRect := s.blockRects[s.doc.Blocks[idx].ID]
+		outsideBlock := hasRect && r.H > 0 && (wy < r.Y || wy > r.Y+r.H)
+
+		if s.mouseMode == mouseSelNone || s.mouseOriginBlock != idx || s.pressJustBegan {
+			s.pressJustBegan = false
+			s.mouseMode = mouseSelText
+			s.mouseOriginBlock = idx
+			s.mouseStartPt = ui.Point{X: wx, Y: wy}
+			s.mouseCurPt = s.mouseStartPt
+			s.mouseDragged = false
+			s.closeTransientOverlays()
+			if s.lastPressMods&ui.Shift != 0 && s.selAnchor.Block != idx {
+				s.mouseTextAnchor = s.clampPos(s.selAnchor)
+			} else {
+				s.mouseTextAnchor = Position{Block: idx, Offset: anchorOff}
+			}
+		} else if !outsideBlock && s.lastPressMods&ui.Shift == 0 && s.lastPressClicks >= 2 {
+			s.mouseTextAnchor = Position{Block: idx, Offset: anchorOff}
+		}
+
+		s.mouseCurPt = ui.Point{X: wx, Y: wy}
+		if math.Hypot(float64(wx-s.mouseStartPt.X), float64(wy-s.mouseStartPt.Y)) > 3 {
+			s.mouseDragged = true
+		}
+
+		if outsideBlock || s.mouseTextAnchor.Block != idx {
+			prevHead := s.selHead
+			s.selAnchor = s.mouseTextAnchor
+			s.selHead = s.hitPositionAtPoint(wx, wy)
+			s.autoScrollOnDrag(c, wy)
+			if s.selHead != prevHead && s.selHead.Block < idx {
+				s.scheduleRebuild(c)
+			}
+		} else {
+			s.selAnchor = Position{Block: idx, Offset: anchorOff}
+			s.selHead = Position{Block: idx, Offset: caretOff}
+		}
+		return true
+	}
+
+	if s.mouseMode == mouseSelText && s.mouseOriginBlock == idx {
+		s.mouseMode = mouseSelNone
+		s.mouseOriginBlock = -1
+		s.mouseDragged = false
+		s.pressJustBegan = false
+		if s.needsDetachedSelectionFocus() {
+			s.multiSelFocusPending = true
+			s.focusPending = false
+			s.scheduleRebuild(c)
+		}
+	}
+	return false
+}
+
+// updateFocusedRichTableCellDrag promotes a drag inside a RichInput table cell into
+// multi-cell or multi-block selection when dragged outside that cell.
+func (s *Session) updateFocusedRichTableCellDrag(c *ui.Context, root ui.Element, st *appUi.RichInputState, blockIdx int, blockID model.BlockID, rIdx, cIdx int) bool {
+	if st != nil && st.Dragging() {
+		wx, wy := s.windowPointer(root)
+		anchorOff, caretOff := st.SelectionRunes()
+		cellBase := tableCellStartOffset(s.doc.Blocks[blockIdx].Table, rIdx, cIdx)
+
+		if s.mouseMode == mouseSelNone || s.mouseOriginBlock != blockIdx || s.pressJustBegan {
+			s.pressJustBegan = false
+			s.mouseMode = mouseSelText
+			s.mouseOriginBlock = blockIdx
+			s.mouseStartPt = ui.Point{X: wx, Y: wy}
+			s.mouseCurPt = s.mouseStartPt
+			s.mouseDragged = false
+			s.closeTransientOverlays()
+			if s.lastPressMods&ui.Shift != 0 && s.selAnchor.Block != blockIdx {
+				s.mouseTextAnchor = s.clampPos(s.selAnchor)
+			} else {
+				s.mouseTextAnchor = Position{Block: blockIdx, Offset: cellBase + anchorOff}
+			}
+		}
+
+		cellRect, hasCell := s.tableCellRects[tableCellKey{BlockID: blockID, Row: rIdx, Col: cIdx}]
+		inSameCell := hasCell && wx >= cellRect.X && wx <= cellRect.X+cellRect.W && wy >= cellRect.Y && wy <= cellRect.Y+cellRect.H
+		if inSameCell && s.mouseTextAnchor.Block == blockIdx {
+			s.selAnchor = Position{Block: blockIdx, Offset: cellBase + anchorOff}
+			s.selHead = Position{Block: blockIdx, Offset: cellBase + caretOff}
+		} else {
+			prevHead := s.selHead
+			s.selAnchor = s.mouseTextAnchor
+			s.selHead = s.hitPositionAtPoint(wx, wy)
+			s.autoScrollOnDrag(c, wy)
+			if s.selHead != prevHead {
+				s.scheduleRebuild(c)
+			}
+		}
+		return true
+	}
+
+	if s.mouseMode == mouseSelText && s.mouseOriginBlock == blockIdx {
+		s.mouseMode = mouseSelNone
+		s.mouseOriginBlock = -1
+		s.mouseDragged = false
+		s.pressJustBegan = false
+		if s.needsDetachedSelectionFocus() {
+			s.multiSelFocusPending = true
+			s.focusPending = false
+			s.scheduleRebuild(c)
+		}
+	}
+	return false
+}
+
 func (s *Session) isMarginBoxSelectStart(wx, wy float32) bool {
-	firstVis, lastVis := s.firstAndLastVisibleBlocks()
+	firstVis, _ := s.firstAndLastVisibleBlocks()
 	if firstVis < 0 {
 		return true
 	}
-	firstR := s.blockRects[s.doc.Blocks[firstVis].ID]
-	lastR := s.blockRects[s.doc.Blocks[lastVis].ID]
-	if firstR.H > 0 && wy < firstR.Y-4 {
-		return true
-	}
-	if lastR.H > 0 && wy > lastR.Y+lastR.H+8 {
+	if s.isAboveFirstVisibleBlock(wy) || s.isBelowLastVisibleBlock(wy) {
 		return true
 	}
 	idx := s.nearestVisibleBlockAtY(wy)
@@ -1570,12 +1697,23 @@ func (s *Session) hitOffsetInTableBlock(idx int, b *model.Block, rowRect ui.Rect
 		weight = 600
 	}
 	lh := tableCellLineHeight / tableCellFontSize
-	layout := ui.ShapeText(cellPlain, ui.Font{
+	cellBlock := model.Block{ID: b.ID, Kind: model.BlockParagraph, Spans: cell.Spans}
+	uiSpans := s.buildPureDisplaySpans(&cellBlock, tableCellFontSize, weight)
+	align := ui.Start
+	if cIdx < len(b.Table.Aligns) {
+		switch b.Table.Aligns[cIdx] {
+		case model.ColAlignCenter:
+			align = ui.Center
+		case model.ColAlignRight:
+			align = ui.End
+		}
+	}
+	layout := ui.ShapeRichTextWith(uiSpans, ui.Font{
 		Family:     resolvedEditorFont(),
 		Size:       tableCellFontSize,
 		Weight:     weight,
 		LineHeight: lh,
-	}, max(cr.W-20, 40))
+	}, ui.TextShape{Width: max(cr.W-20, 40), Align: align})
 	cp := layout.PositionAt(ui.Point{X: lx, Y: max(ly, 0)})
 	return clampInt(base+utf16OffsetToRuneOffset(cellPlain, cp.Index), 0, totalLen)
 }
@@ -1598,6 +1736,8 @@ func (s *Session) cachedShapeBlock(
 	wRounded := float32(math.Round(float64(width)*2) / 2)
 	if entry, ok := s.textLayoutCache[id]; ok &&
 		entry.text == plain &&
+		entry.rich == rich &&
+		slices.Equal(entry.spans, spans) &&
 		entry.fontFamily == fontFamily &&
 		entry.fontSize == fontSize &&
 		entry.weight == weight &&
@@ -1613,15 +1753,12 @@ func (s *Session) cachedShapeBlock(
 		LineHeight: lineHeight,
 	}
 	var layout *ui.TextLayout
-	if rich && len(spans) > 0 && s.doc != nil && idx >= 0 && idx < len(s.doc.Blocks) {
-		var uiSpans []ui.Span
+	if rich && len(spans) > 0 {
+		uiSpans := make([]ui.Span, 0, len(spans))
 		codeFG, codeBG, codePadX, codePadY, codeRadius := inlineCodeStyle(fontSize)
-		pos := 0
 		for _, sp := range spans {
-			n := utf8.RuneCountInString(sp.Text)
-			u, _ := s.buildDisplaySpan(idx, &s.doc.Blocks[idx], sp, pos, pos+n, fontSize, weight, codeFG, codeBG, codePadX, codePadY, codeRadius)
+			u, _ := buildPureSpan(sp, fontSize, weight, codeFG, codeBG, codePadX, codePadY, codeRadius)
 			uiSpans = append(uiSpans, u)
-			pos += n
 		}
 		layout = ui.ShapeRichText(uiSpans, font, max(wRounded, 1))
 	} else {
@@ -1629,6 +1766,8 @@ func (s *Session) cachedShapeBlock(
 	}
 	s.textLayoutCache[id] = cachedBlockLayout{
 		text:       plain,
+		spans:      slices.Clone(spans),
+		rich:       rich,
 		fontFamily: fontFamily,
 		fontSize:   fontSize,
 		weight:     weight,
@@ -1762,8 +1901,7 @@ func (s *Session) codeSyntaxSpansWithSelection(idx int, src, lang string) []ui.S
 		if midHi > midLo {
 			mid := sp
 			mid.Text = string(runes[midLo:midHi])
-			mid.Background = pal.SelectionBG
-			mid.Color = pal.SelectionFG
+			mid.Background = pal.EditorSelectionBG()
 			out = append(out, mid)
 		}
 		if s1 > selHi {
