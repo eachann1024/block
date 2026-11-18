@@ -26,6 +26,7 @@ const (
 
 // Render draws the block editor, its inline blocks, and all floating overlays/rails.
 func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
+	readOnly = readOnly || s.previewMedia != nil
 	if s.doc == nil {
 		s.doc = model.NewEmptyDoc()
 	}
@@ -200,7 +201,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		})
 
 		if s.needsDetachedSelectionFocus() {
-			multiFocus := ui.Box(c.Key("multi-sel-focus:" + s.notePath)).Absolute().Left(0).Top(0).Size(0, 0).
+			multiFocus := ui.Box(c.Key("multi-sel-focus:"+s.notePath)).Absolute().Left(0).Top(0).Size(0, 0).
 				Bind(&s.detachedFocus).Focusable().TextCaret(ui.Rect{W: 1, H: 16}).
 				HandleInput(func(ev ui.InputEvent) bool {
 					return s.handleMultiSelectionInput(c, ev)
@@ -239,6 +240,9 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 		if md := s.SelectedMarkdown(); md != "" {
 			c.WriteClipboard(md)
 		}
+	}
+	if s.previewMedia != nil {
+		return
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyF) {
 		s.OpenFind()
@@ -2635,10 +2639,20 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 		picBorder = pal.Accent
 	}
 	isVideo := IsSupportedVideoPath(b.ImageSrc)
+	if s.previewMedia != nil {
+		isVideo = IsPreviewVideo(b.ImageSrc) || strings.Contains(strings.ToLower(b.CleanSource), "<video ")
+	}
 	var imgSrc ui.ImageSource
+	var animation *ui.VideoPlayer
 	hasImage := false
 	if !isVideo {
-		imgSrc, hasImage = s.resolveImageSource(b.ImageSrc)
+		if s.previewMedia != nil {
+			asset := s.previewMedia(b.ImageSrc, false, true)
+			imgSrc, animation = asset.Image, asset.Animation
+			hasImage = imgSrc != nil || animation != nil
+		} else {
+			imgSrc, hasImage = s.resolveImageSource(b.ImageSrc)
+		}
 	}
 	picCursor := ui.CursorDefault
 	if !readOnly && (isVideo || !hasImage) {
@@ -2709,6 +2723,8 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 			picBox.Children(func() {
 				if isVideo {
 					s.renderVideoContent(c, id, b)
+				} else if animation != nil {
+					ui.Video(c, animation).FillWidth().Label(b.ImageAlt)
 				} else if hasImage {
 					ui.Image(c, imgSrc).FillWidth()
 				} else {
