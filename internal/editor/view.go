@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode/utf16"
 
 	"block/internal/icons"
 	"block/internal/model"
@@ -66,29 +65,40 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 
 	pal := theme.Ocean()
 	root := ui.Box(c.Key("editor-root")).Fill().Background(pal.Paper).Bind(&s.rootHandle)
+	s.frameRoot = root
+	defer func() { s.frameRoot = ui.Element{} }()
+
 	root.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 		s.editorRect = r
 		appUi.RecordBounds("editor", r)
 	})
 
+	s.preUpdateFocusedDrag(c, root)
+
 	root.Children(func() {
 		topPad := editorTopPad
 
 		// Main scrollable document body
-		scroll := ui.Scroll(c.Key("editor-scroll")).TrackScroll(&s.bodyScroll).Fill()
+		scroll := ui.Scroll(c.Key("editor-scroll")).TrackScroll(&s.bodyScroll).Fill().
+			ObserveInput(s.onScrollObserveInput)
+		scroll.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+			s.scrollRect = r
+		})
 		scroll.Children(func() {
 			// Center column: max 672px body + 56px handle gutter + 4px gap + 12px inset = 744px.
 			outerMaxW := theme.EditorStandardWidth + editorHandleWidth + editorRowGap + editorRightInset
 			col := ui.Column(c.Key("editor-canvas")).FillWidth().AlignItems(ui.Center).
 				Padding(topPad, 0, editorBottomPad, 0)
+			if !readOnly {
+				col.Cursor(ui.CursorText)
+			}
+			s.updateCanvasMouseSelection(c, root, col, readOnly)
+
 			col.Children(func() {
-				// Top margin click area to insert/focus top paragraph without shifting top padding.
+				// Top margin spacer preserved for layout symmetry; clicks & marquee drags handled by editor-canvas.
 				if !readOnly {
-					topClick := ui.Box(c.Key("editor-top-margin")).Absolute().Top(0).Left(0).Right(0).Height(topPad).
+					ui.Box(c.Key("editor-top-margin")).Absolute().Top(0).Left(0).Right(0).Height(topPad).
 						Cursor(ui.CursorText)
-					if topClick.Pressed() || topClick.Clicked() {
-						s.FocusBlock(0)
-					}
 				}
 
 				flow := ui.Column(c.Key("editor-flow")).FillWidth().MaxWidth(outerMaxW)
@@ -115,18 +125,28 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 					}
 				})
 
-				// Bottom blank space: clicking creates/focuses a trailing paragraph.
+				// Bottom blank space: clicking creates/focuses a trailing paragraph; dragging box-selects blocks.
 				if !readOnly {
-					bottomBlank := ui.Box(c.Key("editor-bottom-margin")).FillWidth().MaxWidth(outerMaxW).
+					ui.Box(c.Key("editor-bottom-margin")).FillWidth().MaxWidth(outerMaxW).
 						MinHeight(120).Grow(1).Cursor(ui.CursorText)
-					if bottomBlank.Pressed() || bottomBlank.Clicked() {
-						s.focusOrInsertBottomParagraph()
-					}
 				}
 			})
 		})
 
+		if s.needsDetachedSelectionFocus() {
+			multiFocus := ui.Box(c.Key("multi-sel-focus")).Absolute().Left(0).Top(0).Size(0, 0).
+				Focusable().TextCaret(ui.Rect{W: 1, H: 16}).
+				HandleInput(func(ev ui.InputEvent) bool {
+					return s.handleMultiSelectionInput(c, ev)
+				})
+			if s.multiSelFocusPending {
+				multiFocus.Focus(ui.FocusOptions{PreventScroll: true})
+				s.multiSelFocusPending = false
+			}
+		}
+
 		// Render floating overlays & margin rails
+		s.renderBoxSelectMarquee(c)
 		s.renderFindBar(c)
 		s.renderSelectionToolbar(c)
 		s.renderBlockMenuOverlay(c)
@@ -211,6 +231,12 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	}
 	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyX) {
 		s.ToggleMarkOnSelection(model.MarkStrike)
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyX) && s.inlineAI == nil && !s.findOpen && (s.hasMultiBlockSelection() || s.hasWholeAtomicSelection()) {
+		s.CutSelection(c)
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyA) && s.inlineAI == nil && !s.findOpen && s.needsDetachedSelectionFocus() {
+		s.SelectAllBlocks()
 	}
 }
 
@@ -428,17 +454,6 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 			})
 		})
 	})
-	if !readOnly && b.Kind != model.BlockTable && b.Kind != model.BlockImage && b.Kind != model.BlockDivider &&
-		(row.Pressed() || row.Clicked()) {
-		caretOff := len([]rune(b.PlainText()))
-		if px, py, ok := row.PointerPosition(); ok && (px < editorHandleWidth+editorRowGap || py < topGap) {
-			caretOff = 0
-		}
-		s.FocusBlock(idx)
-		s.selAnchor = Position{Block: idx, Offset: caretOff}
-		s.selHead = s.selAnchor
-		s.selSyncPending = true
-	}
 
 	return isHovered
 }
@@ -461,20 +476,21 @@ func (s *Session) renderBlockBody(c *ui.Context, idx int, b *model.Block, isFocu
 
 func (s *Session) renderDividerBlock(c *ui.Context, idx int, isFocused bool) {
 	pal := theme.Ocean()
+	_, _, _, isSel := s.blockSelectionSpanRange(idx)
 	box := ui.Row(c.Key("divider")).FillWidth().Height(18).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 	lineColor := pal.Hairline
 	lineH := float32(1)
-	if isFocused {
+	if isFocused || isSel {
 		lineColor = pal.Accent
 		lineH = 2
+	}
+	if isSel {
+		box.Background(pal.SelectionBG.Alpha(0.45)).Radius(4)
 	}
 	box.Children(func() {
 		ui.Box(c.Key("hr-line")).FillWidth().Height(lineH).Background(lineColor)
 	})
 	appUi.Probe(box, fmt.Sprintf("divider-%d", s.doc.Blocks[idx].ID))
-	if box.Clicked() {
-		s.FocusBlock(idx)
-	}
 }
 
 func resolvedEditorFont() string {
@@ -597,7 +613,8 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 				}
 			})
 		}
-		if isFocused && !readOnly {
+		inOriginDrag := s.isMouseDragging() && s.mouseOriginBlock == idx
+		if isFocused && !readOnly && !s.needsDetachedSelectionFocus() && (!s.hasMultiBlockSelection() || inOriginDrag) {
 			s.renderEditableTextBlock(c, idx, b, fontSize, weight, lh, deleteArmed)
 			return
 		}
@@ -610,6 +627,9 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 		if len(b.Spans) == 0 || b.PlainText() == "" {
 			rt = ui.Text(c.Key("rt-empty"), " ").FontSize(fontSize).FontWeight(weight).LineHeight(lh).
 				MinHeight(fontSize * lh).TextColor(pal.Placeholder).FillWidth()
+			if _, _, _, selOk := s.blockSelectionSpanRange(idx); selOk && s.hasMultiBlockSelection() {
+				rt.Background(pal.SelectionBG.Alpha(0.55)).Radius(3)
+			}
 		} else {
 			rt = ui.RichText(c.Key("rt")).FontSize(fontSize).FontWeight(weight).
 				LineHeight(lh).MinHeight(fontSize * lh).TextColor(textCol).FillWidth()
@@ -623,83 +643,10 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 		if !readOnly {
 			rt.Cursor(ui.CursorText)
 		}
-		if readOnly {
-			if rt.Clicked() {
-				caretOff := s.hitTestRichTextOffset(rt, idx, b, fontSize, weight, lh, edFont)
-				if link := spanLinkAtOffset(b, caretOff); link != "" {
-					c.OpenURL(link)
-				}
-			}
-			return
-		}
-		mods := c.Modifiers()
-		if rt.Clicked() && mods&ui.Cmd != 0 {
-			caretOff := s.hitTestRichTextOffset(rt, idx, b, fontSize, weight, lh, edFont)
-			if link := spanLinkAtOffset(b, caretOff); link != "" {
-				c.OpenURL(link)
-				return
-			}
-		}
-		if (rt.Pressed() && mods&ui.Cmd == 0) || rt.Clicked() {
-			caretOff := s.hitTestRichTextOffset(rt, idx, b, fontSize, weight, lh, edFont)
-			if mods&ui.Shift != 0 {
-				s.focusedBlock = idx
-				s.selHead = Position{Block: idx, Offset: caretOff}
-				s.focusPending = true
-				s.selSyncPending = true
-				s.firstLineDeleteArmed = false
-			} else {
-				s.FocusBlock(idx)
-				s.selAnchor = Position{Block: idx, Offset: caretOff}
-				s.selHead = s.selAnchor
-				s.selSyncPending = true
-			}
-		}
+		rt.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+			s.recordBlockTextRect(b.ID, r)
+		})
 	})
-}
-
-func (s *Session) hitTestRichTextOffset(rt ui.Element, idx int, b *model.Block, fontSize float32, weight int, lh float32, edFont string) int {
-	plain := b.PlainText()
-	if plain == "" {
-		return 0
-	}
-	rlen := len([]rune(plain))
-	px, py, ok := rt.PointerPosition()
-	if !ok {
-		return rlen
-	}
-	w := rt.Bounds().W
-	if w <= 0 {
-		w = theme.EditorStandardWidth
-	}
-	spans := s.buildDisplaySpans(idx, b, fontSize, weight)
-	if len(spans) == 0 {
-		return 0
-	}
-	tl := ui.ShapeRichText(spans, ui.Font{
-		Family:     edFont,
-		Size:       fontSize,
-		Weight:     weight,
-		LineHeight: lh,
-	}, w)
-	u16 := tl.IndexAt(ui.Point{X: px, Y: py})
-	return clampInt(utf16OffsetToRunes(plain, u16), 0, rlen)
-}
-
-func utf16OffsetToRunes(s string, u16 int) int {
-	if u16 <= 0 {
-		return 0
-	}
-	units := 0
-	runes := 0
-	for _, r := range s {
-		if units >= u16 {
-			return runes
-		}
-		units += utf16.RuneLen(r)
-		runes++
-	}
-	return runes
 }
 
 func spanLinkAtOffset(b *model.Block, off int) string {
@@ -735,9 +682,12 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 		in = ui.TextAreaBase(c.Key("input"), &draft).Lines(1, 500).FillWidth().
 			Padding(0).BorderWidth(0).Background(ui.Transparent).
 			FontSize(fontSize).FontWeight(weight).LineHeight(lh).MinHeight(fontSize * lh).
-			TextColor(textCol).CaretColor(pal.Accent).CaretWidth(2).Bind(&handle)
+			TextColor(textCol).SelectionColor(pal.SelectionBG).CaretColor(pal.Accent).CaretWidth(2).Bind(&handle)
 		if edFont := resolvedEditorFont(); edFont != "" {
 			in.Font(edFont)
+		}
+		if r := in.Bounds(); r.W > 0 {
+			s.recordBlockTextRect(b.ID, r)
 		}
 
 		if deleteArmed {
@@ -782,10 +732,21 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 
 			// Document-level shortcuts inside focused text area
 			switch {
+			case k.Mods == ui.Cmd && k.Key == ui.KeyA:
+				rlen := len([]rune(curText))
+				selLo, selHi := in.TextSelection()
+				if len(s.doc.Blocks) > 1 && (rlen == 0 || (selLo == 0 && selHi >= rlen)) {
+					s.SelectAllBlocks()
+					return true
+				}
 			case k.Mods == ui.Cmd && k.Key == ui.KeyC:
 				if s.hasNonEmptySelection() {
 					s.copyPending = true
 					return true
+				}
+			case k.Mods == ui.Cmd && k.Key == ui.KeyX:
+				if s.hasMultiBlockSelection() {
+					return s.CutSelection(c)
 				}
 			case k.Mods == ui.Cmd && k.Key == ui.KeyZ:
 				s.Undo()
@@ -815,8 +776,11 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 				if s.handleEnterOnBlock(idx, curText, caretEstimate) {
 					return true
 				}
-			case k.Mods == 0 && k.Key == ui.KeyBackspace:
-				if s.handleBackspaceOnBlock(idx, curText, caretEstimate) {
+			case k.Mods == 0 && (k.Key == ui.KeyBackspace || k.Key == ui.KeyDelete):
+				if s.hasMultiBlockSelection() {
+					return s.DeleteSelection()
+				}
+				if k.Key == ui.KeyBackspace && s.handleBackspaceOnBlock(idx, curText, caretEstimate) {
 					return true
 				}
 			case k.Mods == 0 && k.Key == ui.KeyTab:
@@ -849,6 +813,8 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			return false
 		})
 
+		inDragging := s.updateFocusedInputDrag(c, s.frameRoot, in, idx)
+
 		if s.focusPending {
 			in.Focus()
 			s.focusPending = false
@@ -864,7 +830,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 				selEnd = estimateCaretAfterEdit(oldText, draft)
 			}
 			s.applyBlockTextEdit(idx, draft, selEnd)
-		} else if !s.selSyncPending && in.Focused() {
+		} else if !s.selSyncPending && !inDragging && in.Focused() {
 			selStart, selEnd := in.TextSelection()
 			if s.selAnchor.Block == s.selHead.Block {
 				s.selAnchor = Position{Block: idx, Offset: selStart}
@@ -954,6 +920,17 @@ func (s *Session) buildDisplaySpan(idx int, b *model.Block, sp model.Span, s0, s
 			u.Radius = 2
 		}
 		hasOverrideBG = true
+	}
+	if s.doc != nil && idx >= 0 && idx < len(s.doc.Blocks) && s.doc.Blocks[idx].Kind != model.BlockTable {
+		if selLo, selHi, _, selOk := s.blockSelectionSpanRange(idx); selOk && selHi > selLo && s1 > selLo && s0 < selHi {
+			u.Background = pal.SelectionBG
+			u.Color = pal.SelectionFG
+			u.PaddingY = codePadY
+			if u.Radius == 0 {
+				u.Radius = 2
+			}
+			hasOverrideBG = true
+		}
 	}
 	return u, hasOverrideBG
 }
@@ -1092,6 +1069,9 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 
 	card := ui.Column(c.Key("code-card")).FillWidth().Radius(6).
 		Background(pal.CodeBlockBG).Padding(34, 11.7, 9.75, 11.7).Gap(8)
+	if _, _, _, selOk := s.blockSelectionSpanRange(idx); selOk && s.hasMultiBlockSelection() {
+		card.Border(1, pal.Accent)
+	}
 	appUi.Probe(card, fmt.Sprintf("code-card-%d", id))
 
 	card.Children(func() {
@@ -1192,18 +1172,30 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 			if dark {
 				codeFG = pal.Text
 			}
-			if isFocused && !readOnly {
+			inOriginDrag := s.isMouseDragging() && s.mouseOriginBlock == idx
+			if isFocused && !readOnly && !s.needsDetachedSelectionFocus() && (!s.hasMultiBlockSelection() || inOriginDrag) {
 				draft := b.Code
 				oldCode := draft
 				handle := *s.blockHandle(id)
 				ta := ui.TextAreaBase(c.Key("code-input"), &draft).Lines(1, 500).FillWidth().
 					Padding(0).BorderWidth(0).Background(ui.Transparent).
 					Font(cdFont).FontSize(14).LineHeight(1.5).TextColor(codeFG).
-					CaretColor(pal.Accent).CaretWidth(2).Bind(&handle)
+					SelectionColor(pal.SelectionBG).CaretColor(pal.Accent).CaretWidth(2).Bind(&handle)
+				ta.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+					s.recordBlockTextRect(id, r)
+				})
 				if ranges := codeSyntaxRanges(draft, canon); len(ranges) > 0 {
 					ta.TextRanges(ranges...)
 				}
 				ta.OnTextKey(func(k ui.TextKey) bool {
+					if k.Mods == ui.Cmd && k.Key == ui.KeyA {
+						rlen := len([]rune(k.Text()))
+						selLo, selHi := ta.TextSelection()
+						if len(s.doc.Blocks) > 1 && (rlen == 0 || (selLo == 0 && selHi >= rlen)) {
+							s.SelectAllBlocks()
+							return true
+						}
+					}
 					if k.Mods == ui.Cmd && k.Key == ui.KeyZ {
 						s.Undo()
 						return true
@@ -1212,25 +1204,37 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 						s.Redo()
 						return true
 					}
-					if k.Mods == 0 && k.Key == ui.KeyBackspace {
-						if k.Text() == "" {
+					if k.Mods == 0 && (k.Key == ui.KeyBackspace || k.Key == ui.KeyDelete) {
+						if s.hasMultiBlockSelection() {
+							return s.DeleteSelection()
+						}
+						if k.Key == ui.KeyBackspace && k.Text() == "" {
 							return s.handleBackspaceOnBlock(idx, "", 0)
 						}
 					}
 					return false
 				})
+				taDragging := s.updateFocusedInputDrag(c, s.frameRoot, ta, idx)
 				if s.focusPending {
 					ta.Focus()
 					s.focusPending = false
+				}
+				if s.selSyncPending && s.selAnchor.Block == idx && s.selHead.Block == idx {
+					ta.SetTextSelection(s.selAnchor.Offset, s.selHead.Offset)
+					s.selSyncPending = false
 				}
 				if ta.Changed() {
 					_, selEnd := ta.TextSelection()
 					s.applyBlockTextEdit(idx, draft, selEnd)
 					_ = oldCode
+				} else if !s.selSyncPending && !taDragging && ta.Focused() && s.selAnchor.Block == s.selHead.Block {
+					selStart, selEnd := ta.TextSelection()
+					s.selAnchor = Position{Block: idx, Offset: selStart}
+					s.selHead = Position{Block: idx, Offset: selEnd}
 				}
 				s.setBlockHandle(id, handle)
 			} else {
-				spans := codeSyntaxSpans(b.Code, canon)
+				spans := s.codeSyntaxSpansWithSelection(idx, b.Code, canon)
 				var rt ui.Element
 				if len(spans) == 0 {
 					rt = ui.Text(c.Key("code-empty"), theme.Tr("// 输入代码…", "// Write code…")).
@@ -1241,10 +1245,10 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 				}
 				if !readOnly {
 					rt.Cursor(ui.CursorText)
-					if rt.Pressed() || rt.Clicked() {
-						s.FocusBlock(idx)
-					}
 				}
+				rt.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+					s.recordBlockTextRect(id, r)
+				})
 			}
 		}
 	})
@@ -1536,16 +1540,29 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.BlockID, tbl *model.TableData, rIdx, cIdx int, borderCol ui.Color, readOnly bool) {
 	pal := theme.Ocean()
 	cell := &tbl.Rows[rIdx][cIdx]
+	inOriginDrag := s.isMouseDragging() && s.mouseOriginBlock == blockIdx
 	isCellFocused := !readOnly && s.focusedBlock == blockIdx &&
-		s.tableActiveBlock == blockID && s.tableActiveRow == rIdx && s.tableActiveCol == cIdx
+		s.tableActiveBlock == blockID && s.tableActiveRow == rIdx && s.tableActiveCol == cIdx &&
+		!s.needsDetachedSelectionFocus() && (!s.hasMultiBlockSelection() || inOriginDrag)
+
+	cellBase := tableCellStartOffset(tbl, rIdx, cIdx)
+	cellLen := len([]rune(cell.PlainText()))
+	selLo, selHi, _, hasBlockSel := s.blockSelectionSpanRange(blockIdx)
+	cellSelected := hasBlockSel && (s.hasMultiBlockSelection() || !(selLo >= cellBase && selHi <= cellBase+cellLen)) &&
+		((cellLen == 0 && selLo <= cellBase && selHi >= cellBase) || (selHi > cellBase && selLo < cellBase+cellLen))
 
 	box := ui.Box(c.Key(fmt.Sprintf("tc-%d-%d", rIdx, cIdx))).Grow(1).Shrink(1).
 		MinWidth(tableMinColWidth).MaxWidth(tableMaxColWidth).Padding(6, 10).
 		BorderWidth(0, boolToBorder(cIdx+1 < len(tbl.Rows[rIdx])), 0, 0).BorderColor(borderCol)
+	box.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+		s.recordTableCellRect(blockID, rIdx, cIdx, r)
+	})
 	if !readOnly {
 		box.Cursor(ui.CursorText)
 	}
-	if isCellFocused {
+	if cellSelected {
+		box.Background(pal.SelectionBG.Alpha(0.42))
+	} else if isCellFocused {
 		box.Background(pal.Selected)
 	}
 	weight := 400
@@ -1562,7 +1579,7 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 			draft := cell.PlainText()
 			in := ui.TextInputBase(c.Key("cell-in"), &draft).FillWidth().
 				FontSize(tableCellFontSize).LineHeight(lhFactor).MinHeight(tableCellLineHeight).
-				FontWeight(weight).TextColor(textCol).CaretColor(pal.Accent).CaretWidth(2)
+				FontWeight(weight).TextColor(textCol).SelectionColor(pal.SelectionBG).CaretColor(pal.Accent).CaretWidth(2)
 			if edFont != "" {
 				in.Font(edFont)
 			}
@@ -1581,6 +1598,7 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				}
 				return false
 			})
+			_ = s.updateFocusedTableCellDrag(c, s.frameRoot, in, blockIdx, blockID, rIdx, cIdx)
 			if s.focusPending {
 				in.Focus()
 				s.focusPending = false
@@ -1601,6 +1619,11 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 			} else {
 				cellBlock := model.Block{ID: blockID, Kind: model.BlockParagraph, Spans: cell.Spans}
 				spans := s.buildDisplaySpans(blockIdx, &cellBlock, tableCellFontSize, weight)
+				if hasBlockSel && selHi > cellBase && selLo < cellBase+cellLen {
+					relLo := max(selLo-cellBase, 0)
+					relHi := min(selHi-cellBase, cellLen)
+					spans = highlightTableCellSpans(spans, relLo, relHi, pal)
+				}
 				t = ui.RichText(c.Key("cell-txt"), spans...).FontSize(tableCellFontSize).LineHeight(lhFactor).
 					MinHeight(tableCellLineHeight).FontWeight(weight).TextColor(textCol).FillWidth()
 			}
@@ -1618,15 +1641,45 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 					t.TextAlign(ui.End)
 				}
 			}
-			if !readOnly && (box.Pressed() || box.Clicked() || t.Pressed() || t.Clicked()) {
-				s.focusedBlock = blockIdx
-				s.tableActiveBlock = blockID
-				s.tableActiveRow = rIdx
-				s.tableActiveCol = cIdx
-				s.focusPending = true
-			}
 		}
 	})
+}
+
+func highlightTableCellSpans(spans []ui.Span, relLo, relHi int, pal theme.Palette) []ui.Span {
+	if relHi <= relLo || len(spans) == 0 {
+		return spans
+	}
+	var out []ui.Span
+	pos := 0
+	for _, sp := range spans {
+		runes := []rune(sp.Text)
+		s0, s1 := pos, pos+len(runes)
+		pos = s1
+		if s1 <= relLo || s0 >= relHi {
+			out = append(out, sp)
+			continue
+		}
+		if s0 < relLo {
+			pre := sp
+			pre.Text = string(runes[:relLo-s0])
+			out = append(out, pre)
+		}
+		m0 := max(relLo-s0, 0)
+		m1 := min(relHi-s0, len(runes))
+		if m1 > m0 {
+			mid := sp
+			mid.Text = string(runes[m0:m1])
+			mid.Background = pal.SelectionBG
+			mid.Color = pal.SelectionFG
+			out = append(out, mid)
+		}
+		if s1 > relHi {
+			suf := sp
+			suf.Text = string(runes[relHi-s0:])
+			out = append(out, suf)
+		}
+	}
+	return out
 }
 
 func (s *Session) stepTableCell(id model.BlockID, tbl *model.TableData, r, c, delta int) {
@@ -1706,16 +1759,17 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 		widthPct = clampFloat32(s.imgResizeCurPct, 10, 100)
 	}
 
+	_, _, _, imgSelected := s.blockSelectionSpanRange(idx)
 	outer := ui.Column(c.Key("img-outer")).FillWidth().AlignItems(align)
 	outer.Children(func() {
 		picBox := ui.Box(c.Key(fmt.Sprintf("img-frame-%d", id))).WidthPercent(widthPct).Radius(6).Clip().
 			Cursor(ui.CursorPointer)
 		picBorder := pal.Hairline
-		if isFocused || dragging {
+		if isFocused || dragging || imgSelected {
 			picBorder = pal.Accent
 		}
 		picBox.Border(1, picBorder)
-		picBox.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+		picBox.DrawOver(func(p *ui.Painter, r ui.Rect) {
 			appUi.RecordBounds(fmt.Sprintf("image-%d", id), r)
 			if s.imageRects == nil {
 				s.imageRects = make(map[model.BlockID]ui.Rect)
@@ -1725,6 +1779,9 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				if isFocused {
 					c.Invalidate()
 				}
+			}
+			if imgSelected && s.hasMultiBlockSelection() {
+				p.Fill(r, pal.SelectionBG.Alpha(0.28), 6)
 			}
 		})
 		if !b.ImageCrop.IsZero() {
@@ -1812,13 +1869,10 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				}
 			}
 		})
-		if picBox.Clicked() && !readOnly && !dragging {
-			s.FocusBlock(idx)
-		}
 	})
 
 	// Floating Image Toolbar rendered in Overlay above picBox so focus shifts 0px below.
-	if isFocused && !readOnly && !dragging {
+	if isFocused && !readOnly && !dragging && !s.hasMultiBlockSelection() && !s.isMouseDragging() {
 		s.renderImageToolbar(c, idx, b)
 	}
 }

@@ -97,12 +97,30 @@ type Session struct {
 	selHead              Position
 	focusPending         bool
 	selSyncPending       bool
+	multiSelFocusPending bool
 	firstLineDeleteArmed bool
 	caretLineHint        int
 
-	blockHandles map[model.BlockID]ui.Handle
-	blockRects   map[model.BlockID]ui.Rect
-	folded       map[model.BlockID]bool
+	blockHandles    map[model.BlockID]ui.Handle
+	blockRects      map[model.BlockID]ui.Rect
+	blockTextRects  map[model.BlockID]ui.Rect
+	tableCellRects  map[tableCellKey]ui.Rect
+	textLayoutCache map[model.BlockID]cachedBlockLayout
+	folded          map[model.BlockID]bool
+
+	// Mouse multi-block / marquee selection
+	mouseMode        mouseSelMode
+	mouseOriginBlock int
+	mouseStartPt     ui.Point
+	mouseCurPt       ui.Point
+	mouseStartDocPt  ui.Point
+	mouseTextAnchor  Position
+	mouseUnitRange   [2]Position
+	mouseDragged     bool
+	lastPressMods    ui.Modifiers
+	lastPressClicks  int
+	lastPressLocal   ui.Point
+	pressJustBegan   bool
 
 	blockMenu *blockMenuState
 
@@ -198,7 +216,9 @@ type Session struct {
 	viewportWidth  float32
 	viewportHeight float32
 	editorRect     ui.Rect
+	scrollRect     ui.Rect
 	rootHandle     ui.Handle
+	frameRoot      ui.Element
 	toolbarRect    ui.Rect
 	readOnly       bool
 }
@@ -207,19 +227,23 @@ type Session struct {
 func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host model.WorkspaceHost) *Session {
 	d := normalizeDoc(doc)
 	s := &Session{
-		notePath:     notePath,
-		doc:          d,
-		codec:        codec,
-		host:         host,
-		focusedBlock: 0,
-		hoveredBlock: -1,
-		dragOverIdx:  -1,
-		blockHandles: make(map[model.BlockID]ui.Handle),
-		blockRects:   make(map[model.BlockID]ui.Rect),
-		folded:       make(map[model.BlockID]bool),
-		imageCache:   make(map[string]ui.ImageSource),
-		imageFailed:  make(map[string]bool),
-		imageRects:   make(map[model.BlockID]ui.Rect),
+		notePath:         notePath,
+		doc:              d,
+		codec:            codec,
+		host:             host,
+		focusedBlock:     0,
+		hoveredBlock:     -1,
+		dragOverIdx:      -1,
+		mouseOriginBlock: -1,
+		blockHandles:     make(map[model.BlockID]ui.Handle),
+		blockRects:       make(map[model.BlockID]ui.Rect),
+		blockTextRects:   make(map[model.BlockID]ui.Rect),
+		tableCellRects:   make(map[tableCellKey]ui.Rect),
+		textLayoutCache:  make(map[model.BlockID]cachedBlockLayout),
+		folded:           make(map[model.BlockID]bool),
+		imageCache:       make(map[string]ui.ImageSource),
+		imageFailed:      make(map[string]bool),
+		imageRects:       make(map[model.BlockID]ui.Rect),
 	}
 	return s
 }
@@ -267,6 +291,11 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.hoveredBlock = -1
 	s.selAnchor = Position{}
 	s.selHead = Position{}
+	s.multiSelFocusPending = false
+	s.mouseMode = mouseSelNone
+	s.mouseOriginBlock = -1
+	s.mouseDragged = false
+	s.pressJustBegan = false
 	s.firstLineDeleteArmed = false
 	s.blockMenu = nil
 	s.toolbarPop = ""
@@ -290,6 +319,10 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.hoveredAnnotID = ""
 	s.editingAnnotID = ""
 	clear(s.folded)
+	clear(s.blockRects)
+	clear(s.blockTextRects)
+	clear(s.tableCellRects)
+	clear(s.textLayoutCache)
 	s.ensureAnnotationsLoaded()
 	if s.findOpen {
 		s.recomputeFind(false)
@@ -332,6 +365,7 @@ func (s *Session) FocusBlock(idx int) {
 	s.selHead = Position{Block: idx, Offset: 0}
 	s.focusPending = true
 	s.selSyncPending = true
+	s.multiSelFocusPending = false
 	s.firstLineDeleteArmed = false
 }
 
@@ -530,7 +564,7 @@ func (s *Session) clampPos(p Position) Position {
 	if p.Block >= len(s.doc.Blocks) {
 		p.Block = len(s.doc.Blocks) - 1
 	}
-	rlen := len([]rune(s.doc.Blocks[p.Block].PlainText()))
+	rlen := s.blockSelectionLen(p.Block)
 	if p.Offset < 0 {
 		p.Offset = 0
 	}
@@ -544,7 +578,14 @@ func (s *Session) SelectRange(startBlock, startOff, endBlock, endOff int) {
 	s.selAnchor = s.clampPos(Position{Block: startBlock, Offset: startOff})
 	s.selHead = s.clampPos(Position{Block: endBlock, Offset: endOff})
 	s.focusedBlock = s.selHead.Block
-	s.selSyncPending = true
+	if s.needsDetachedSelectionFocus() {
+		s.multiSelFocusPending = true
+		s.focusPending = false
+		s.selSyncPending = false
+	} else {
+		s.multiSelFocusPending = false
+		s.selSyncPending = true
+	}
 	s.firstLineDeleteArmed = false
 }
 
