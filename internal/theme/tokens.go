@@ -108,6 +108,12 @@ const (
 	TooltipFontSize         = FontSmall
 	TooltipOffset           = Space6
 
+	// In-note Find bar geometry & top clearance when scrolling matches into view.
+	FindBarTopOffset          = Space12
+	FindBarBorderWidth float32 = 1
+	FindBarHeight             = HeightControl + Space4*2 + FindBarBorderWidth*2
+	FindBarJumpGap            = Space24 + Space8
+
 	ScrollGutter     float32 = 14
 	ScrollThumbWidth float32 = 6
 
