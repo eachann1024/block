@@ -140,6 +140,8 @@ type Session struct {
 	// Annotations
 	annotations           []*model.Annotation
 	annotLoadedPath       string
+	editMirror            *editLayout                       // mirrored layout of the focused input (edit_decor.go)
+	caretBlink            caretBlinkState                   // own caret blink cycle (edit_decor.go)
 	annotLoadFailed       bool                              // store unreadable: never write over it
 	annotAppliedRaw       map[string]files.StoredAnnotation // applied annotations' stored body/rewrite, kept on re-save
 	annotUnresolved       []files.StoredAnnotation          // stored entries whose anchor is not in this doc, written back verbatim
