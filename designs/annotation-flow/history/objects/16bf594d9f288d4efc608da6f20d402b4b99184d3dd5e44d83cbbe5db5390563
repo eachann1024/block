@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>批注 · 正文修订式</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button{font:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; display: flex; flex-direction: column; background: #ffffff; color: #1f1e1d; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; font-size: 14px; line-height: 20px; overflow: hidden">
+  <div style="height: 40px; flex: none; display: flex; align-items: center; background: #f1f1f1; border-bottom: 1px solid #e6e6e6">
+    <div style="width: 260px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 14px; box-sizing: border-box">
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #ff5f57"></span>
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #febc2e"></span>
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #28c840"></span>
+    </div>
+    <div style="flex: 1; padding: 0 12px; font-weight: 460">产品周报.md</div>
+    <div style="display: flex; align-items: center; gap: 4px; padding: 0 12px">
+      <button aria-label="上一条" style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#52514e" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 7.5l3-3 3 3"/></svg></button>
+      <span style="color: #52514e; min-width: 72px; text-align: center">修订 2 / 4</span>
+      <button aria-label="下一条" style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#52514e" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 4.5l3 3 3-3"/></svg></button>
+      <button style="height: 28px; padding: 0 10px; margin-left: 4px; border-radius: 6px; border: 1px solid #dcdcdc; background: #ffffff; color: #1f1e1d">全部采纳</button>
+    </div>
+  </div>
+  <div style="flex: 1; min-height: 0; display: flex">
+    <div style="width: 260px; flex: none; background: #fafafa; border-right: 1px solid #e6e6e6; padding: 12px 8px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px">
+      <div style="height: 32px; display: flex; align-items: center; padding: 0 8px; border-radius: 6px; color: #52514e">路线图.md</div>
+      <div style="height: 32px; display: flex; align-items: center; padding: 0 8px; border-radius: 6px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; font-weight: 460">产品周报.md</div>
+      <div style="height: 32px; display: flex; align-items: center; padding: 0 8px; border-radius: 6px; color: #52514e">访谈记录.md</div>
+    </div>
+    <div style="flex: 1; min-width: 0; display: flex; justify-content: center; padding: 48px 24px 0; box-sizing: border-box">
+      <div style="width: 672px; flex: none; font-size: 16px; line-height: 28px; display: flex; flex-direction: column; gap: 16px; position: relative">
+        <h1 style="margin: 0 0 4px; font-size: 28px; line-height: 36px; font-weight: 600">第 44 周产品周报</h1>
+        <div style="display: flex; gap: 12px; margin-left: -36px">
+          <button aria-label="笔记：数据要和财务再核对一次" style="width: 24px; height: 24px; flex: none; margin-top: 2px; border: 0; border-radius: 12px; background: #f1f1f1; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#52514e" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h9v6H6l-2.5 2V3z"/></svg></button>
+          <p style="margin: 0">本周重点放在编辑器体验上。<span style="border-bottom: 2px solid #f5c84c">导出 PDF 的成功率提升到了 98%</span>，剩余失败集中在超长表格。</p>
+        </div>
+        <div style="display: flex; gap: 12px; margin-left: -36px">
+          <span style="width: 24px; flex: none"></span>
+          <div style="display: flex; flex-direction: column; gap: 8px; flex: 1">
+            <p style="margin: 0"><span style="text-decoration: line-through; color: #8a8a8a">这周我们团队主要完成了非常多的工作，整体进展还是比较顺利的</span><span style="background: #e5edfc; color: #184f95; border-radius: 2px; box-shadow: inset 0 0 0 1px #547dd0">本周交付三项：表格列宽拖拽、批注采纳流程、启动提速 40%</span>。下周进入发布前的回归测试。</p>
+            <div style="align-self: flex-start; width: 420px; background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.08); padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 20px">
+              <div style="display: flex; align-items: center; gap: 8px">
+                <span style="width: 8px; height: 8px; border-radius: 4px; background: #547dd0; flex: none"></span>
+                <span style="flex: 1">太空泛了，写成具体交付</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px">
+                <label style="flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; padding: 0 8px; border-radius: 6px; background: #f1f1f1; border: 1px solid #dcdcdc">
+                  <input placeholder="再调整…" style="flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; outline: none">
+                </label>
+                <button style="height: 30px; padding: 0 10px; border-radius: 6px; border: 1px solid #dcdcdc; background: #ffffff; color: #1f1e1d">拒绝 <span style="font-family: 'JetBrains Mono', Menlo, monospace; font-size: 12px; color: #52514e">R</span></button>
+                <button style="height: 30px; padding: 0 10px; border-radius: 6px; border: 0; background: #547dd0; color: #ffffff; font-weight: 460">采纳 <span style="font-family: 'JetBrains Mono', Menlo, monospace; font-size: 12px; opacity: .8">A</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 12px; margin-left: -36px">
+          <span style="width: 24px; flex: none"></span>
+          <p style="margin: 0"><span style="text-decoration: line-through; color: #8a8a8a">用户反馈里提到最多的问题是同步偶尔会丢失最后几秒的输入，我们定位到是保存节流的窗口过长</span><span style="background: #e5edfc; color: #184f95; border-radius: 2px">反馈最多的是同步丢失最后几秒输入，原因是保存节流窗口过长</span>，修复已经合入。</p>
+        </div>
+        <div style="display: flex; gap: 12px; margin-left: -36px">
+          <span style="width: 24px; flex: none"></span>
+          <div style="display: flex; flex-direction: column; gap: 8px; flex: 1">
+            <p style="margin: 0">风险方面，<span style="background: #fef0d1; border-radius: 2px">图片粘贴在 Windows 上仍然不稳定</span>，需要在发布前补一轮手测。</p>
+            <div style="align-self: flex-start; width: 420px; background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.08); padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 20px">
+              <label style="height: 30px; display: flex; align-items: center; padding: 0 8px; border-radius: 6px; background: #f1f1f1; border: 1px solid #dcdcdc">
+                <input placeholder="写批注…" value="补一句平台差异" style="flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; outline: none">
+              </label>
+              <div style="display: flex; justify-content: flex-end; gap: 6px">
+                <button style="height: 30px; padding: 0 10px; border-radius: 6px; border: 1px solid #dcdcdc; background: #ffffff; color: #1f1e1d">保存笔记 <span style="font-family: 'JetBrains Mono', Menlo, monospace; font-size: 12px; color: #52514e">↵</span></button>
+                <button style="height: 30px; padding: 0 10px; border-radius: 6px; border: 0; background: #547dd0; color: #ffffff; font-weight: 460">让 AI 改 <span style="font-family: 'JetBrains Mono', Menlo, monospace; font-size: 12px; opacity: .8">⌘↵</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p style="margin: 0; color: #52514e">下周计划：发布 0.9 预览版，收集第一批外部反馈。</p>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
