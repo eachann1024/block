@@ -56,6 +56,7 @@ type Workspace struct {
 
 	tabMenu   *TabMenuState
 	sidebarUI *SidebarUIState
+	edgeFloat EdgeFloatController
 
 	exportCtrl   *export.Controller
 	historyView  *PageHistoryView
@@ -128,6 +129,10 @@ func NewWorkspace(dataDir string) *Workspace {
 
 	w.exportCtrl = export.NewController(actualDir, w.RequestRedraw)
 	w.ai = ai.NewController(actualDir, w, codec)
+	w.ai.SetOnDismissFloating(func() {
+		w.edgeFloat.DismissRightWithCooldown(w)
+		w.RequestRedraw()
+	})
 	w.modals = modals.NewManager(actualDir, w)
 	w.pluginsUI = pluginui.NewController(plugins.NewSupervisor(plugins.SupervisorConfig{
 		AppDataDir:  actualDir,
@@ -877,6 +882,7 @@ func (w *Workspace) OpenExportStage() bool {
 	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	w.edgeFloat.DismissAll(w)
 	w.modals.CloseSettings()
 	w.historyView.Close()
 
@@ -912,6 +918,7 @@ func (w *Workspace) OpenPageHistory() bool {
 	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	w.edgeFloat.DismissAll(w)
 	w.modals.CloseSettings()
 	w.exportCtrl.Close()
 
@@ -1138,6 +1145,7 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 	w.historyView.Close()
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	w.edgeFloat.DismissAll(w)
 	w.sidebarUI.FocusDir = ""
 
 	w.mu.Lock()
@@ -1386,6 +1394,7 @@ func (w *Workspace) OpenSettings(tab string) {
 	wasOpen := w.modals.IsSettingsOpen()
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	w.edgeFloat.DismissAll(w)
 	w.exportCtrl.Close()
 	w.historyView.Close()
 	if !wasOpen {
@@ -2033,6 +2042,7 @@ func (w *Workspace) CloseTab(path string) {
 	clean := filepath.Clean(path)
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	w.edgeFloat.DismissAll(w)
 	w.mu.Lock()
 	delete(w.lastSnapAt, clean)
 	w.mu.Unlock()
@@ -2096,6 +2106,7 @@ func (w *Workspace) ReopenClosedTab() bool {
 	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	w.edgeFloat.DismissAll(w)
 	for {
 		entry, ok := w.closed.PopEntry()
 		if !ok {
@@ -2146,6 +2157,7 @@ func (w *Workspace) CloseOtherTabs(keepPath string) {
 	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	w.edgeFloat.DismissAll(w)
 	if err := w.flushDirtySessions(); err != nil {
 		return
 	}
@@ -2189,6 +2201,7 @@ func (w *Workspace) CloseTabsToRight(pivotPath string) {
 	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	w.edgeFloat.DismissAll(w)
 	if err := w.flushDirtySessions(); err != nil {
 		return
 	}
@@ -2242,6 +2255,7 @@ func (w *Workspace) CloseAllTabs() {
 	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	w.edgeFloat.DismissAll(w)
 	if err := w.flushDirtySessions(); err != nil {
 		return
 	}
@@ -2352,6 +2366,7 @@ func (w *Workspace) ToggleSidebar(viewportWidth float32) {
 	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	w.edgeFloat.DismissAll(w)
 
 	w.mu.Lock()
 	if viewportWidth <= 0 {
@@ -2396,6 +2411,7 @@ func (w *Workspace) ToggleAIPanel() bool {
 	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	w.edgeFloat.DismissAll(w)
 	w.ai.ToggleOpen()
 	w.RequestRedraw()
 	return true
@@ -3010,17 +3026,22 @@ func (w *Workspace) Render(c *ui.Context) {
 	root := ui.Column(c).Fill().Background(pal.Shell).TextColor(pal.Text).Clip()
 	blockui.Probe(root, "workspace-root")
 
+	canEdgeLeft, canEdgeRight, edgeSafeL, edgeSafeR := w.edgeFloat.PrepareFrame(
+		c, w, vpW, layout, inSettings, aiImmersive, activeSess,
+	)
+
 	root.Children(func() {
 		// 1. Top 40px Titlebar (hidden in AI Immersive full-window mode).
 		if !aiImmersive {
 			RenderTitlebar(c, TitlebarProps{
 				SidebarWide:       sidebarWide,
 				SidebarAutoHidden: sidebarAutoHidden,
+				SidebarFloating:   w.edgeFloat.LeftOpen(),
 				SidebarWidth:      dockedSidebarWidth,
 				InSettings:        inSettings,
 				SettingsTabLabel:  w.modals.ActiveSettingsTabTitle(),
 				AIImmersive:       aiImmersive,
-				AIOpen:            w.ai.IsOpen(),
+				AIOpen:            w.ai.IsOpen() || w.edgeFloat.RightOpen(),
 				FeedbackOpen:      w.modals.IsFeedbackOpen(),
 				HasFeedbackDraft:  hasFBDraft,
 				NotebookPath:      activeNB,
@@ -3148,7 +3169,7 @@ func (w *Workspace) Render(c *ui.Context) {
 		}
 
 		// 2. Main Split Body.
-		body := ui.Row(c).Grow(1).MinHeight(0).FillWidth()
+		body := ui.Row(c.Key("workspace-body")).Grow(1).MinHeight(0).FillWidth()
 		body.Children(func() {
 			// Docked Sidebar (File Tree in workspace mode, Category Nav in Settings mode).
 			if !aiImmersive && layout.SidebarDocked {
@@ -3219,7 +3240,8 @@ func (w *Workspace) Render(c *ui.Context) {
 							},
 						)
 					case activeSess != nil:
-						activeSess.SetOutlineForceNarrow(!layout.ShowOutline)
+						activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
+						activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.LeftOpen())
 						activeSess.Render(c, layout.MainWidth, false)
 					default:
 						w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0)
@@ -3249,6 +3271,12 @@ func (w *Workspace) Render(c *ui.Context) {
 					})
 				}
 			}
+
+			// Scheme A Edge-Summoned Floating Sidebar / AI Cards & Colored Edge Hot-Zones.
+			w.edgeFloat.RenderBodyOverlays(
+				c, body, w, vpW, inSettings, canEdgeLeft, canEdgeRight,
+				stSnap, activeNB, notebooks, entries, activeTab, notice, activeSess,
+			)
 
 			// Floating Sidebar Drawer + Scrim when narrow and explicitly toggled open (Note or Settings).
 			if layout.SidebarDrawer && !aiImmersive {
@@ -3353,6 +3381,16 @@ func (w *Workspace) renderSidebarColumn(
 			w.modals.OpenUpdater()
 		},
 	})
+}
+
+func (w *Workspace) shortcutForSidebar(stSnap model.AppState) string {
+	return modals.EffectiveShortcut(stSnap, "new_note")
+}
+
+func (w *Workspace) revealInShell(path string) {
+	if mygo.App.IsReady() {
+		mygo.Shell.ShowItemInFolder(path)
+	}
 }
 
 func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, emptyFolder bool) {
