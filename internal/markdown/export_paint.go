@@ -1,6 +1,8 @@
 package markdown
 
 import (
+	"context"
+	"errors"
 	"image"
 	"image/color"
 	_ "image/gif"
@@ -15,11 +17,11 @@ import (
 // ---- PNG & PDF Painter (Substrates, Cards, Ornaments, Furniture & Blocks) ----
 
 type substrateTile struct {
-	bm     *ui.Bitmap
-	dipW   float32
-	dipH   float32
-	srcW   float32
-	srcH   float32
+	bm   *ui.Bitmap
+	dipW float32
+	dipH float32
+	srcW float32
+	srcH float32
 }
 
 // buildSubstrateTiles pre-renders small repeating RGBA tiles only for fine
@@ -117,17 +119,46 @@ func fillDotPremul(img *image.RGBA, cx, cy, r float32, col color.NRGBA) {
 	}
 }
 
-func renderDocRGBA(doc *model.Doc, notePath string, prefs model.ExportPreferences) (*image.RGBA, exportScene) {
-	sc := buildExportScene(doc, notePath, prefs)
-	w := int(sc.width)
-	h := int(sc.height + 0.5)
-	if h > 16000 {
-		h = 16000
+const maxExportHeight = 16000
+
+func renderDocRGBA(doc *model.Doc, notePath string, prefs model.ExportPreferences) *image.RGBA {
+	sc := buildExportScene(context.Background(), doc, notePath, prefs)
+	return paintExportRaster(context.Background(), sc, min(int(sc.height+0.5), maxExportHeight), exportScale)
+}
+
+// RenderExportPreview paints the same layout at screen density and reports the 4x output size.
+func RenderExportPreview(ctx context.Context, doc *model.Doc, notePath string, prefs model.ExportPreferences) (*image.RGBA, int, int, error) {
+	if doc == nil {
+		return nil, 0, 0, errors.New("cannot preview nil document")
 	}
+	sc := buildExportScene(ctx, doc, notePath, prefs)
+	if err := ctx.Err(); err != nil {
+		return nil, 0, 0, err
+	}
+	const maxSide = 8192
+	const maxPixels = 8 * 1024 * 1024
+	w := int(sc.width)
+	h := min(int(sc.height+0.5), maxExportHeight)
+	scale := min(float32(2), float32(maxSide)/float32(max(w, h)),
+		float32(math.Sqrt(float64(maxPixels)/float64(w*h))))
+	rgba := paintExportRaster(ctx, sc, h, scale)
+	if err := ctx.Err(); err != nil {
+		return nil, 0, 0, err
+	}
+	if rgba == nil || rgba.Bounds().Empty() {
+		return nil, 0, 0, errors.New("preview render returned empty image")
+	}
+	return rgba, w * exportScale, h * exportScale, nil
+}
+
+func paintExportRaster(ctx context.Context, sc exportScene, h int, scale float32) *image.RGBA {
 	tiles := buildSubstrateTiles(sc.pal, sc.legacy)
 
-	rgba := ui.Render(func(c *ui.Context) {
+	return ui.Render(func(c *ui.Context) {
 		ui.Box(c).Size(sc.width, float32(h)).Draw(func(p *ui.Painter, r ui.Rect) {
+			if ctx.Err() != nil {
+				return
+			}
 			paintSubstrate(p, r, sc.pal, sc.legacy, tiles)
 			paintCardsAndSections(p, sc)
 			paintOrnaments(p, sc, r)
@@ -138,14 +169,16 @@ func renderDocRGBA(doc *model.Doc, notePath string, prefs model.ExportPreference
 				paintExportHeader(p, sc)
 			}
 			for _, b := range sc.blocks {
+				if ctx.Err() != nil {
+					break
+				}
 				paintSceneBlock(p, b, sc.pal, sc.legacy)
 			}
 			if sc.footer.present {
 				paintFooter(p, sc.footer)
 			}
 		})
-	}, w, h, exportScale)
-	return rgba, sc
+	}, int(sc.width), h, scale)
 }
 
 func paintSubstrate(p *ui.Painter, r ui.Rect, pal PaperThemeSpec, legacy bool, tiles []substrateTile) {
