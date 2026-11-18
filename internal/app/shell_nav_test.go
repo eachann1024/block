@@ -402,3 +402,87 @@ func TestSingleTabTitleStyleHasNoBackground(t *testing.T) {
 		t.Fatalf("expected multi-tab active pill background %+v, got %+v", wantSelected, gotMulti)
 	}
 }
+
+func TestEdgeHotZoneOnlyWhenYieldedAndHovered(t *testing.T) {
+	dataDir := t.TempDir()
+	files.SetDataDirOverride(dataDir)
+	t.Cleanup(func() { files.SetDataDirOverride("") })
+
+	nb := filepath.Join(t.TempDir(), "nb")
+	if err := os.MkdirAll(nb, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	notePath := filepath.Join(nb, "Note.md")
+	if err := os.WriteFile(notePath, []byte("# Title\n\nBody\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws := NewWorkspace(dataDir)
+	if err := ws.SetNotebook(nb); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.OpenNote(notePath, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	tt := ui.NewTester(ws.Render, 1200, 760)
+	tt.Frame()
+
+	// 1. Wide window, sidebar docked, AI closed -> neither edge hot-zone exists.
+	if _, ok := blockui.TargetBounds("edge-hotzone-left"); ok {
+		t.Fatal("unexpected left edge hot-zone when sidebar is docked")
+	}
+	if _, ok := blockui.TargetBounds("edge-hotzone-right"); ok {
+		t.Fatal("unexpected right edge hot-zone when AI panel is closed")
+	}
+
+	// 2. User collapses sidebar explicitly -> still no left edge hot-zone!
+	ws.ToggleSidebar(1200)
+	tt.Frame()
+	if !ws.State().SidebarCollapsed {
+		t.Fatal("expected sidebar collapsed")
+	}
+	if _, ok := blockui.TargetBounds("edge-hotzone-left"); ok {
+		t.Fatal("unexpected left edge hot-zone when user explicitly collapsed sidebar")
+	}
+
+	// Narrow window while sidebar is still closed by user -> still no left or right hot-zone!
+	tt.SetSize(700, 760)
+	tt.Frame()
+	if _, ok := blockui.TargetBounds("edge-hotzone-left"); ok {
+		t.Fatal("unexpected left edge hot-zone on narrow window when sidebar was not opened by user")
+	}
+	if _, ok := blockui.TargetBounds("edge-hotzone-right"); ok {
+		t.Fatal("unexpected right edge hot-zone on narrow window when AI panel was not opened by user")
+	}
+
+	// 3. Re-expand sidebar at wide size, then shrink window so sidebar yields due to space:
+	// hot-zone exists, strip width is 0 at rest, and reveals only on hover.
+	tt.SetSize(1200, 760)
+	tt.Frame()
+	ws.ToggleSidebar(1200)
+	tt.Frame()
+	if ws.State().SidebarCollapsed {
+		t.Fatal("expected sidebar open")
+	}
+
+	tt.Move(400, 400)
+	tt.SetSize(680, 760)
+	ws.AI().SetOpen(true) // forces sidebar (240+560+320 > 680) to yield while sidebar is open
+	tt.Frame()
+
+	if _, ok := blockui.TargetBounds("edge-hotzone-left"); !ok {
+		t.Fatal("expected left edge hot-zone when open sidebar yielded due to narrow space")
+	}
+	if stripIdle, ok := blockui.TargetBounds("edge-strip-left"); ok && stripIdle.W > 0 {
+		t.Fatalf("expected left edge strip hidden (width 0) at rest, got %+v", stripIdle)
+	}
+
+	// Hovering over the left edge reveals the colored indicator strip.
+	tt.Move(2, 300)
+	tt.Frame()
+	stripHover, ok := blockui.TargetBounds("edge-strip-left")
+	if !ok || stripHover.W <= 0 {
+		t.Fatalf("expected left edge strip visible when hovered, got ok=%v rect=%+v", ok, stripHover)
+	}
+}

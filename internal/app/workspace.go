@@ -3385,7 +3385,7 @@ func (w *Workspace) Render(c *ui.Context) {
 					"edge-hotzone-left",
 					"edge-strip-left",
 					false,
-					true,
+					false,
 					efPal,
 					theme.Tr("收起侧栏", "Collapse Sidebar"),
 					func() {

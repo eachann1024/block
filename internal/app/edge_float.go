@@ -135,8 +135,8 @@ func (ef *EdgeFloatController) PrepareFrame(
 	activeSess *editor.Session,
 ) (canLeft, canRight bool, leftInset, rightInset float32) {
 	blocked := aiImmersive || w.IsPageHistoryOpen() || w.exportCtrl.IsOpen() || w.modals.HasActiveModal()
-	canLeft = !blocked && !layout.SidebarDocked && !layout.SidebarDrawer
-	canRight = !blocked && !inSettings && !layout.ChatDocked
+	canLeft = !blocked && layout.SidebarYielded && !layout.SidebarDrawer
+	canRight = !blocked && !inSettings && w.ai.IsOpen() && !layout.ChatDocked
 
 	if ef.active == edgeSideLeft && !canLeft {
 		ef.closeSide(w, edgeSideLeft, false)
@@ -171,9 +171,9 @@ func (ef *EdgeFloatController) PrepareFrame(
 	}
 
 	// Pure floating overlay: opening or closing an edge card never pushes or reflows
-	// the main editor column; only keep a static 10px edge clearance whenever undocked
-	// on narrow viewports so the 54px block-handle gutter never overlaps the 8px hot-zone.
-	if !blocked && !layout.SidebarDocked && activeSess != nil {
+	// the main editor column; only keep a static 10px edge clearance when a yielded panel
+	// exposes an edge hot-zone so the 54px block-handle gutter never overlaps the 8px hot-zone.
+	if (canLeft || layout.SidebarDrawer) && activeSess != nil {
 		naturalMargin := (layout.MainWidth - activeSess.OuterFlowWidth()) * 0.5
 		if naturalMargin < theme.EdgeFloatSafeClear {
 			leftInset = theme.EdgeFloatSafeClear
@@ -466,13 +466,13 @@ func renderColoredEdgeHotZone(
 
 	zone.Children(func() {
 		strip := ui.Box(c.Key(stripID)).Absolute().Top(theme.Space6).Bottom(theme.Space6)
-		targetW := theme.EdgeStripIdleWidth
+		targetW := float32(0)
 		if isLit {
 			targetW = theme.EdgeStripHotWidth
 		}
 		animW := blockui.SpringTo(strip, "ew", targetW)
 
-		colTarget := efPal.StripIdle
+		colTarget := ui.Transparent
 		if isLit {
 			colTarget = efPal.StripHot
 		}
@@ -482,9 +482,13 @@ func renderColoredEdgeHotZone(
 		}
 
 		// Offset 2px into the clipped outer edge so the outer side sits flush with the window
-		// while the inner side keeps crisp rounded corners.
+		// while the inner side keeps crisp rounded corners; collapse to 0 when unlit.
 		const outerBleed float32 = 2
-		strip.Width(animW + outerBleed).Radius(theme.RadiusXS).Background(stripCol)
+		barW := float32(0)
+		if animW > 0.05 {
+			barW = animW + outerBleed
+		}
+		strip.Width(barW).Radius(theme.RadiusXS).Background(stripCol)
 		if rightEdge {
 			strip.Right(-outerBleed)
 		} else {
