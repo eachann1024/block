@@ -5,7 +5,29 @@ use crate::{
     editor::view::Editor,
     ui::menu_nav::{self, Slot},
 };
-use super::{BlockMenu, Cmd, SLASH_MENU_WIDTH, live_block_bounds};
+use super::{BlockMenu, Cmd, Mode, SLASH_MENU_WIDTH, live_block_bounds};
+
+fn resolve_trigger(editor_ref: &Editor, editor_id: gpui::EntityId, id: u64, mode: Mode, fallback: gpui::Bounds<gpui::Pixels>) -> gpui::Bounds<gpui::Pixels> {
+    if mode == Mode::Handle {
+        editor_ref.grip_bounds(id).unwrap_or(fallback)
+    } else {
+        live_block_bounds(editor_id, id)
+            .or_else(|| editor_ref.layouts.get(&id).map(|l| l.bounds))
+            .unwrap_or(fallback)
+    }
+}
+
+fn resolve_viewport(editor_ref: &Editor, mode: Mode) -> gpui::Bounds<gpui::Pixels> {
+    if mode == Mode::Handle && editor_ref.editor_bounds.size.width > px(0.) {
+        let list_vp = editor_ref.list.viewport_bounds();
+        gpui::Bounds::from_corners(
+            gpui::point(editor_ref.editor_bounds.left(), list_vp.top()),
+            gpui::point(editor_ref.editor_bounds.right(), list_vp.bottom()),
+        )
+    } else {
+        editor_ref.list.viewport_bounds()
+    }
+}
 
 pub(in crate::editor) fn overlay(
     editor_ref: &Editor,
@@ -19,15 +41,15 @@ pub(in crate::editor) fn overlay(
     let id = menu.block;
     let mode = menu.mode;
     let editor_id = editor.entity_id();
-    let init_trigger = live_block_bounds(editor_id, id)
-        .or_else(|| editor_ref.layouts.get(&id).map(|l| l.bounds))
-        .unwrap_or(menu.trigger);
+    let init_trigger = resolve_trigger(editor_ref, editor_id, id, mode, menu.trigger);
+    let init_vp = resolve_viewport(editor_ref, mode);
     let init_spec = dropdown::PlacementSpec::below(init_trigger)
-        .viewport(editor_ref.list.viewport_bounds())
+        .viewport(init_vp)
         .gap(px(4.))
         .reserve_height(px(dropdown::MAX_HEIGHT));
     let max_h = dropdown::max_height_for_spec(&init_spec, window.viewport_size(), px(dropdown::MAX_HEIGHT));
 
+    let cur_block = editor_ref.doc.get(id);
     let slots: Vec<Slot> = entries.iter().map(|entry| if entry.is_some() { Slot::Item } else { Slot::Skip }).collect();
     let active_idx = menu_nav::clamp_index(menu.index, &slots);
     let mut list = dropdown::shell("block-menu")
@@ -41,13 +63,14 @@ pub(in crate::editor) fn overlay(
             None => list = list.child(dropdown::separator()),
             Some(cmd) => {
                 let active = index == active_idx;
+                let checked = (mode == Mode::Handle && cur_block.is_some_and(|b| cmd.is_active_on(b))) || cmd.checked();
                 let item_editor = editor.clone();
                 let item = dropdown::row_with(
                     ("block-menu-item", index),
                     RowSpec {
                         icon: cmd.leading(),
                         label: cmd.label().into(),
-                        checked: cmd.checked(),
+                        checked,
                         highlighted: active,
                         danger: cmd.danger(),
                         disabled: false,
@@ -68,11 +91,9 @@ pub(in crate::editor) fn overlay(
         ("block-menu-pop", pop_gen),
         move |_, cx| {
             let ed = pos_editor.read(cx);
-            let trigger = live_block_bounds(editor_id, id)
-                .or_else(|| ed.layouts.get(&id).map(|l| l.bounds))
-                .unwrap_or(init_trigger);
+            let trigger = resolve_trigger(ed, editor_id, id, mode, init_trigger);
             dropdown::PlacementSpec::below(trigger)
-                .viewport(ed.list.viewport_bounds())
+                .viewport(resolve_viewport(ed, mode))
                 .gap(px(4.))
                 .reserve_height(px(dropdown::MAX_HEIGHT))
         },

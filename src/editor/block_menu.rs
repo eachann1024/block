@@ -11,7 +11,7 @@ use crate::ui::menu_nav::{self, Slot};
 pub(super) use cmd::{Cmd, LANGUAGES, language_icon, language_label};
 pub(crate) use cmd::canonical_lang_tag;
 pub(super) use render::overlay;
-use cmd::{SLASH, SLASH_MINIMAL};
+use cmd::{SLASH, SLASH_MINIMAL, handle_entries_for};
 
 thread_local! {
     static LIVE_BLOCK_BOUNDS: RefCell<HashMap<(EntityId, u64), Bounds<Pixels>>> = Default::default();
@@ -55,10 +55,22 @@ impl Editor {
     pub(super) fn open_block_menu_at(&mut self, id: u64, trigger: Bounds<Pixels>, mode: Mode, cx: &mut Context<Self>) {
         self.table_menu = None;
         self.hover = None;
+        self.trailing_plus = false;
         self.block_menu_scroll.set_offset(Point::default());
         let anchor = point(trigger.left(), trigger.bottom() + px(4.));
         self.block_menu = Some(BlockMenu { block: id, anchor, trigger, mode, index: 0 });
         cx.notify();
+    }
+    pub(in crate::editor) fn toggle_handle_menu(&mut self, id: u64, fallback_pos: Point<Pixels>, cx: &mut Context<Self>) {
+        if self.block_menu.is_some_and(|m| m.mode == Mode::Handle && m.block == id) {
+            self.block_menu = None;
+            cx.notify();
+            return;
+        }
+        let trigger = self.grip_bounds(id).unwrap_or_else(|| {
+            Bounds::new(fallback_pos - point(px(13.), px(13.)), gpui::size(px(26.), px(26.)))
+        });
+        self.open_block_menu_at(id, trigger, Mode::Handle, cx);
     }
     pub(super) fn block_menu_entries_for(&self, menu: BlockMenu) -> Vec<Option<Cmd>> {
         match menu.mode {
@@ -66,7 +78,7 @@ impl Editor {
                 let Some(block) = self.doc.get(menu.block) else { return Vec::new() };
                 slash_entries_for_text(&block.text, self.minimal)
             }
-            Mode::Handle => Vec::new(),
+            Mode::Handle => self.doc.get(menu.block).map(handle_entries_for).unwrap_or_default(),
         }
     }
     fn entry_slots(entries: &[Option<Cmd>]) -> Vec<Slot> {
@@ -126,6 +138,26 @@ impl Editor {
             return;
         }
         match cmd {
+            Cmd::InsertAbove | Cmd::InsertBelow => {
+                let Some(index) = self.doc.index_of(id) else { return };
+                let insert_at = if cmd == Cmd::InsertAbove { index } else { self.list_subtree_end(index) + 1 };
+                if self.insert_paragraph_at(insert_at, cx) {
+                    let new_id = self.caret.head.block;
+                    window.focus(&self.focus, cx);
+                    if !self.minimal {
+                        let trigger = self.block_trigger_bounds(cx.entity_id(), new_id).unwrap_or_else(|| {
+                            Bounds::new(menu_anchor.unwrap_or_default(), gpui::size(px(SLASH_MENU_WIDTH), px(24.)))
+                        });
+                        self.open_block_menu_at(new_id, trigger, Mode::Slash, cx);
+                    }
+                }
+                return;
+            }
+            Cmd::Duplicate => {
+                let Some(index) = self.doc.index_of(id) else { return };
+                self.duplicate_block_at(index, window, cx);
+                return;
+            }
             Cmd::Ai => { self.open_ai_block(id, mode == Mode::Slash, menu_anchor, window, cx); return; }
             Cmd::SetLanguage(_, true) => { cx.notify(); return; }
             _ => {}

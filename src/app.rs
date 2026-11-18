@@ -100,6 +100,7 @@ impl Workspace {
                 let workspace = workspace.clone();
                 window.defer(cx, move |window, cx| {
                     workspace.update(cx, |this, cx| if !this.busy() {
+                        if this.shell_split(window, cx).sidebar_drawer { this.sidebar_pinned = false; }
                         this.close_settings(window, cx);
                         if in_new_tab { this.open_file_in_new_tab(path, cx); } else { this.open_file(path, cx); }
                     });
