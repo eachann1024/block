@@ -200,6 +200,11 @@ func (s *Session) editBands(idx int, b *model.Block, pal theme.Palette) []decorB
 			out = append(out, band)
 		}
 	}
+	if s.hasMultiBlockSelection() {
+		if selLo, selHi, _, selOk := s.blockSelectionSpanRange(idx); selOk && selHi > selLo {
+			out = append(out, decorBand{start: selLo, end: selHi, fill: pal.SelectionBG, radius: 2})
+		}
+	}
 	return out
 }
 
@@ -285,10 +290,13 @@ func (s *Session) decorateEditInput(c *ui.Context, in ui.Element, idx int, b *mo
 	}
 
 	// Own caret: 2px, round(size*1.125) tall, radius 1, accent, blinking.
+	// Hide native caret whenever any selection is active so no stray bar shows at the drag edge.
 	drawCaret := false
 	var caretRect ui.Rect
 	var caretCol ui.Color
-	if in.Focused() && c.WindowActive() && selA == selB {
+	if selA != selB || s.hasNonEmptySelection() {
+		in.CaretColor(ui.Transparent)
+	} else if in.Focused() && c.WindowActive() {
 		in.CaretColor(ui.Transparent)
 		now := c.Now()
 		if s.caretBlink.block != b.ID || s.caretBlink.pos != selA || s.caretBlink.epoch.IsZero() {
