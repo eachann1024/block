@@ -64,10 +64,17 @@ func tabDirtyDot(c *ui.Context) ui.Element {
 // renderTabStrip lays out the pills; past their 76px minimum the strip scrolls.
 func renderTabStrip(c *ui.Context, p TitlebarProps, centerW float32) {
 	// Pills are sized from the last frame's cell width: ask for one more
-	// frame whenever it changed so they settle on the current one.
-	if p.MenuState != nil && (centerW <= 0 || centerW != p.MenuState.tabCenterW) {
-		p.MenuState.tabCenterW = centerW
-		c.After(16 * time.Millisecond)
+	// frame whenever it changed so they settle on the current one. A cell
+	// with no width yet asks once (tabCenterW -1), never every frame.
+	if m := p.MenuState; m != nil {
+		switch {
+		case centerW > 0 && centerW != m.tabCenterW:
+			m.tabCenterW = centerW
+			c.After(16 * time.Millisecond)
+		case centerW <= 0 && m.tabCenterW >= 0:
+			m.tabCenterW = -1
+			c.After(16 * time.Millisecond)
+		}
 	}
 	tabW := multiTabWidth(centerW, len(p.Tabs))
 	c.Key("titlebar-tab-strip")
