@@ -22,6 +22,9 @@ type TabMenuState struct {
 
 	PageMenuOpen   bool
 	PageMenuAnchor ui.Rect
+
+	// tabCenterW is the tab cell width the pills were last sized from.
+	tabCenterW float32
 }
 
 // Close dismisses any open titlebar menu.
@@ -215,6 +218,7 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 		c.Key("titlebar-tabs")
 		center := ui.Row(c).Grow(1).MinWidth(0).FillHeight().AlignItems(ui.Center).Gap(4).PaddingX(10).Clip()
 		blockui.Probe(center, "titlebar-tabs")
+		centerW := center.Bounds().W
 		center.Children(func() {
 			if p.InSettings {
 				crumb := ui.Row(c).Fill().AlignItems(ui.Center).Gap(6).PaddingX(6).DragWindow()
@@ -238,7 +242,7 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 			}
 
 			multi := len(p.Tabs) > 1
-			renderTabStrip(c, p)
+			renderTabStrip(c, p, centerW)
 
 			if multi {
 				newTabBtn := blockui.IconButton(c, icons.Plus, blockui.IconButtonOptions{
@@ -272,7 +276,7 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 		renderRevealButton(c, p)
 	case SurfaceSVG:
 		if p.SourceStatus != "" {
-			ui.Text(c, p.SourceStatus).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+			ui.Text(c, p.SourceStatus).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
 		}
 		svgIdx := 0
 		if p.SVGShowSource {
@@ -290,7 +294,7 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 		renderRevealButton(c, p)
 	case SurfaceHTML:
 		if p.SourceStatus != "" {
-			ui.Text(c, p.SourceStatus).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+			ui.Text(c, p.SourceStatus).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
 		}
 		icOpen := icons.LinkOpen
 		openBtn := blockui.ActionButton(c, "html-browser", theme.Tr("浏览器打开", "Open in Browser"), &icOpen, blockui.ButtonSecondary, false)
@@ -300,7 +304,7 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 		renderRevealButton(c, p)
 	case SurfaceCode:
 		if p.SourceStatus != "" {
-			ui.Text(c, p.SourceStatus).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+			ui.Text(c, p.SourceStatus).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
 		}
 		renderRevealButton(c, p)
 	}
