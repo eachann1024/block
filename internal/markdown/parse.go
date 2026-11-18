@@ -4,6 +4,7 @@ import (
 	"html"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"block/internal/model"
 )
@@ -137,12 +138,22 @@ func stripColumns(line string, cols int) string {
 }
 
 func decodeRawBlockGuard(src string) string {
+	return decodeRawBlockGuardWithLines(src, nil)
+}
+
+func decodeRawBlockGuardWithLines(src string, sourceLines *[]int) string {
 	if !strings.Contains(src, "raw-block") {
 		return src
 	}
 	lines := splitLinesInclusive(src)
 	var out strings.Builder
 	out.Grow(len(src))
+	writeLine := func(i int) {
+		out.WriteString(lines[i])
+		if sourceLines != nil {
+			*sourceLines = append(*sourceLines, i+1)
+		}
+	}
 	i := 0
 	for i < len(lines) {
 		line := trimLineEnding(lines[i])
@@ -156,14 +167,14 @@ func decodeRawBlockGuard(src string) string {
 				stop = end + 1
 			}
 			for j := i; j < stop; j++ {
-				out.WriteString(lines[j])
+				writeLine(j)
 			}
 			i = end + 1
 			continue
 		}
 		marker, width, info, ok := parseFenceMax3(line)
 		if !ok {
-			out.WriteString(lines[i])
+			writeLine(i)
 			i++
 			continue
 		}
@@ -176,7 +187,7 @@ func decodeRawBlockGuard(src string) string {
 		}
 		if end < 0 {
 			for j := i; j < len(lines); j++ {
-				out.WriteString(lines[j])
+				writeLine(j)
 			}
 			break
 		}
@@ -190,11 +201,11 @@ func decodeRawBlockGuard(src string) string {
 				start++
 			}
 			for j := start; j < end; j++ {
-				out.WriteString(lines[j])
+				writeLine(j)
 			}
 		} else {
 			for j := i; j <= end; j++ {
-				out.WriteString(lines[j])
+				writeLine(j)
 			}
 		}
 		i = end + 1
@@ -1017,11 +1028,24 @@ func isPipeCandidate(lines []string, idx int) bool {
 }
 
 func splitPipeCells(line string) []string {
-	s := strings.TrimSpace(line)
+	var cells []string
+	walkPipeCells(line, func(_, start, end int) {
+		cells = append(cells, strings.TrimSpace(line[start:end]))
+	})
+	return cells
+}
+
+func walkPipeCells(line string, visit func(col, start, end int)) {
+	left := strings.TrimLeftFunc(line, unicode.IsSpace)
+	start := len(line) - len(left)
+	s := strings.TrimRightFunc(left, unicode.IsSpace)
 	if s == "" || s == "|" {
-		return nil
+		return
 	}
-	s = strings.TrimPrefix(s, "|")
+	if strings.HasPrefix(s, "|") {
+		s = s[1:]
+		start++
+	}
 	if strings.HasSuffix(s, "|") {
 		slashes := 0
 		for i := len(s) - 2; i >= 0 && s[i] == '\\'; i-- {
@@ -1031,19 +1055,19 @@ func splitPipeCells(line string) []string {
 			s = s[:len(s)-1]
 		}
 	}
-	var out []string
+	col := 0
 	prev := 0
 	escaped := false
 	for i := 0; i < len(s); i++ {
 		b := s[i]
 		if b == '|' && !escaped {
-			out = append(out, strings.TrimSpace(s[prev:i]))
+			visit(col, start+prev, start+i)
+			col++
 			prev = i + 1
 		}
 		escaped = b == '\\' && !escaped
 	}
-	out = append(out, strings.TrimSpace(s[prev:]))
-	return out
+	visit(col, start+prev, start+len(s))
 }
 
 func parsePipeTable(lines []string, defs map[string]refDef) (model.Block, int, bool) {
@@ -1126,7 +1150,7 @@ func parsePipeTable(lines []string, defs map[string]refDef) (model.Block, int, b
 	}
 
 	return model.Block{
-		ID: model.NewBlockID(),
+		ID:   model.NewBlockID(),
 		Kind: model.BlockTable,
 		Table: &model.TableData{
 			Aligns:  aligns,
@@ -1179,6 +1203,10 @@ func htmlTableLineCount(lines []string) int {
 }
 
 func parseHTMLTable(src string) (model.TableData, bool) {
+	return parseHTMLTableCells(src, nil)
+}
+
+func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (model.TableData, bool) {
 	lower := strings.ToLower(src)
 	if !strings.Contains(lower, "<table") {
 		return model.TableData{}, false
@@ -1242,6 +1270,9 @@ func parseHTMLTable(src string) (model.TableData, bool) {
 			}
 			bodyStart := i + consumed
 			bodyEnd, nextIdx := findHTMLCellClose(src, bodyStart, name)
+			if visit != nil {
+				visit(len(rows), len(curRow), bodyStart, bodyEnd)
+			}
 			inner := src[bodyStart:bodyEnd]
 			spans := ParseInline(strings.TrimSpace(inner))
 			if len(rows) == 0 {
@@ -1696,7 +1727,7 @@ func blockquoteNeedsStructuredParse(inner []string) bool {
 	return false
 }
 
-func parseBlockquoteBlocks(lines []string, defs map[string]refDef) ([]model.Block, int, bool) {
+func parseBlockquoteBlocks(lines []string, defs map[string]refDef, startLine int) ([]model.Block, int, bool) {
 	if len(lines) == 0 {
 		return nil, 0, false
 	}
@@ -1732,7 +1763,7 @@ func parseBlockquoteBlocks(lines []string, defs map[string]refDef) ([]model.Bloc
 			innerBuf.WriteString(l)
 			innerBuf.WriteByte('\n')
 		}
-		children := swallowSeparators(parseBlocksWithDefs(innerBuf.String(), defs, nil))
+		children := swallowSeparators(parseBlocksWithDefsAt(innerBuf.String(), defs, nil, startLine))
 		var out []model.Block
 		for _, ch := range children {
 			if isBlankBlock(&ch) && len(children) > 1 {
@@ -1762,11 +1793,13 @@ func parseBlockquoteBlocks(lines []string, defs map[string]refDef) ([]model.Bloc
 		}
 	}
 	return []model.Block{{
-		ID:          model.NewBlockID(),
-		Kind:        model.BlockQuote,
-		QuoteDepth:  1,
-		Spans:       coalesceSpans(spans),
-		CleanSource: origSrc,
+		ID:            model.NewBlockID(),
+		Kind:          model.BlockQuote,
+		QuoteDepth:    1,
+		Spans:         coalesceSpans(spans),
+		CleanSource:   origSrc,
+		SourceLine:    startLine,
+		SourceEndLine: startLine + end - 1,
 	}}, end, true
 }
 
@@ -1809,7 +1842,7 @@ func startsBlockInList(line string, nextRaw string, tail []string) bool {
 	return strings.ContainsRune(trimmed, '|') && nextRaw != "" && isPipeDelimiterLine(trimLineEnding(nextRaw))
 }
 
-func parseListItem(lines []string, defs map[string]refDef) ([]model.Block, int, bool) {
+func parseListItem(lines []string, defs map[string]refDef, startLine int) ([]model.Block, int, bool) {
 	if len(lines) == 0 {
 		return nil, 0, false
 	}
@@ -1834,20 +1867,24 @@ func parseListItem(lines []string, defs map[string]refDef) ([]model.Block, int, 
 		}
 		codeText := trimLineEnding(body.String())
 		parent := model.Block{
-			ID:          model.NewBlockID(),
-			Kind:        marker.kind,
-			Indent:      marker.indent,
-			ListIndex:   marker.start,
-			Checked:     marker.checked,
-			CleanSource: lines[0],
+			ID:            model.NewBlockID(),
+			Kind:          marker.kind,
+			Indent:        marker.indent,
+			ListIndex:     marker.start,
+			Checked:       marker.checked,
+			CleanSource:   lines[0],
+			SourceLine:    startLine,
+			SourceEndLine: startLine,
 		}
 		child := model.Block{
-			ID:          model.NewBlockID(),
-			Kind:        model.BlockCode,
-			Indent:      contentCol,
-			Language:    finfo,
-			Code:        codeText,
-			CleanSource: strings.Join(lines[1:end], ""),
+			ID:            model.NewBlockID(),
+			Kind:          model.BlockCode,
+			Indent:        contentCol,
+			Language:      finfo,
+			Code:          codeText,
+			CleanSource:   strings.Join(lines[1:end], ""),
+			SourceLine:    startLine + 1,
+			SourceEndLine: max(startLine+end-1, startLine+1),
 		}
 		return []model.Block{parent, child}, end, true
 	}
@@ -1892,12 +1929,14 @@ func parseListItem(lines []string, defs map[string]refDef) ([]model.Block, int, 
 
 	joinedBody := strings.Join(paraLines, "\n")
 	parent := model.Block{
-		ID:        model.NewBlockID(),
-		Kind:      marker.kind,
-		Indent:    marker.indent,
-		ListIndex: marker.start,
-		Checked:   marker.checked,
-		Spans:     parseInlineWithDefs(joinedBody, defs),
+		ID:            model.NewBlockID(),
+		Kind:          marker.kind,
+		Indent:        marker.indent,
+		ListIndex:     marker.start,
+		Checked:       marker.checked,
+		Spans:         parseInlineWithDefs(joinedBody, defs),
+		SourceLine:    startLine,
+		SourceEndLine: startLine + paraEnd - 1,
 	}
 	if firstChild < 0 {
 		parent.CleanSource = strings.Join(lines[:paraEnd], "")
@@ -1965,15 +2004,17 @@ func parseListItem(lines []string, defs map[string]refDef) ([]model.Block, int, 
 			childSource.WriteString(stripColumns(lines[i], stripCols))
 		}
 	}
-	children := parseBlocksWithDefs(childSource.String(), defs, nil)
+	children := parseBlocksWithDefsAt(childSource.String(), defs, nil, startLine+firstChild)
 
 	parent.CleanSource = strings.Join(lines[:paraEnd], "")
 	result := []model.Block{parent}
 	for i := paraEnd; i < firstChild; i++ {
 		result = append(result, model.Block{
-			ID:          model.NewBlockID(),
-			Kind:        model.BlockParagraph,
-			CleanSource: lines[i],
+			ID:            model.NewBlockID(),
+			Kind:          model.BlockParagraph,
+			CleanSource:   lines[i],
+			SourceLine:    startLine + i,
+			SourceEndLine: startLine + i,
 		})
 	}
 	origIdx := firstChild
@@ -2005,44 +2046,53 @@ func countCleanLines(s string) int {
 }
 
 func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[string]bool) []model.Block {
+	return parseBlocksWithDefsAt(src, defs, usedLabels, 1)
+}
+
+func parseBlocksWithDefsAt(src string, defs map[string]refDef, usedLabels map[string]bool, startLine int) []model.Block {
 	lines := splitLinesInclusive(src)
 	var result []model.Block
 	i := 0
+	appendBlock := func(b model.Block, count int) {
+		b.SourceLine = startLine + i
+		b.SourceEndLine = b.SourceLine + count - 1
+		result = append(result, b)
+	}
 	for i < len(lines) {
 		rawLine := lines[i]
 		line := trimLineEnding(rawLine)
 
 		if i == 0 {
 			if b, count, ok := parseFrontmatter(lines); ok {
-				result = append(result, b)
+				appendBlock(b, count)
 				i += count
 				continue
 			}
 		}
 		if isEmptyBlockComment(line) {
-			result = append(result, model.Block{
+			appendBlock(model.Block{
 				ID:          model.NewBlockID(),
 				Kind:        model.BlockParagraph,
 				CleanSource: rawLine,
-			})
+			}, 1)
 			i++
 			continue
 		}
 		if strings.TrimSpace(line) == "" {
-			result = append(result, model.Block{
+			appendBlock(model.Block{
 				ID:          model.NewBlockID(),
 				Kind:        model.BlockParagraph,
 				CleanSource: rawLine,
-			})
+			}, 1)
 			i++
 			continue
 		}
 		if isThematicBreak(line) {
-			result = append(result, model.Block{
+			appendBlock(model.Block{
 				ID:          model.NewBlockID(),
 				Kind:        model.BlockDivider,
 				CleanSource: rawLine,
-			})
+			}, 1)
 			i++
 			continue
 		}
@@ -2059,14 +2109,14 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 					img.ImageCrop = meta.crop
 				}
 				img.CleanSource = lines[i] + lines[i+1]
-				result = append(result, img)
+				appendBlock(img, 2)
 				i += 2
 				continue
 			}
 		}
 		if img, ok := parseImageLine(line); ok {
 			img.CleanSource = rawLine
-			result = append(result, img)
+			appendBlock(img, 1)
 			i++
 			continue
 		}
@@ -2075,27 +2125,27 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 			continue
 		}
 		if b, count, ok := parseCalloutBlock(lines[i:], defs); ok {
-			result = append(result, b)
+			appendBlock(b, count)
 			i += count
 			continue
 		}
-		if qBlocks, count, ok := parseBlockquoteBlocks(lines[i:], defs); ok {
+		if qBlocks, count, ok := parseBlockquoteBlocks(lines[i:], defs, startLine+i); ok {
 			result = append(result, qBlocks...)
 			i += count
 			continue
 		}
-		if items, count, ok := parseListItem(lines[i:], defs); ok {
+		if items, count, ok := parseListItem(lines[i:], defs, startLine+i); ok {
 			result = append(result, items...)
 			i += count
 			continue
 		}
 		if b, count, ok := parseCustomContainerBlock(lines[i:], defs); ok {
-			result = append(result, b)
+			appendBlock(b, count)
 			i += count
 			continue
 		}
 		if lowerTrim := strings.ToLower(strings.TrimLeft(line, " \t")); strings.HasPrefix(lowerTrim, "<ul") || strings.HasPrefix(lowerTrim, "<ol") {
-			if listBlocks, count, ok := parseHTMLListLines(lines[i:], defs); ok {
+			if listBlocks, count, ok := parseHTMLListLines(lines[i:], defs, startLine+i); ok {
 				result = append(result, listBlocks...)
 				i += count
 				continue
@@ -2105,19 +2155,19 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 			count := htmlTableLineCount(lines[i:])
 			orig := strings.Join(lines[i:i+count], "")
 			if td, ok := parseHTMLTable(orig); ok {
-				result = append(result, model.Block{
+				appendBlock(model.Block{
 					ID:          model.NewBlockID(),
 					Kind:        model.BlockTable,
 					Table:       &td,
 					CleanSource: orig,
-				})
+				}, count)
 			} else {
-				result = append(result, model.Block{
+				appendBlock(model.Block{
 					ID:          model.NewBlockID(),
 					Kind:        model.BlockRawHTML,
 					Code:        trimLineEnding(orig),
 					CleanSource: orig,
-				})
+				}, count)
 			}
 			i += count
 			continue
@@ -2126,19 +2176,19 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 			orig := strings.Join(lines[i:i+count], "")
 			trimmed := strings.TrimSpace(orig)
 			if strings.HasPrefix(strings.ToLower(trimmed), "<pre") {
-				result = append(result, model.Block{
+				appendBlock(model.Block{
 					ID:          model.NewBlockID(),
 					Kind:        model.BlockCode,
 					Code:        stripPreTags(trimmed),
 					CleanSource: orig,
-				})
+				}, count)
 			} else {
-				result = append(result, model.Block{
+				appendBlock(model.Block{
 					ID:          model.NewBlockID(),
 					Kind:        model.BlockRawHTML,
 					Code:        trimLineEnding(orig),
 					CleanSource: orig,
-				})
+				}, count)
 			}
 			i += count
 			continue
@@ -2146,13 +2196,13 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 		if _, ok := openHTMLProseTag(line); ok {
 			count := htmlProseLineCount(lines[i:])
 			orig := strings.Join(lines[i:i+count], "")
-			result = append(result, parseHTMLProseBlock(orig))
+			appendBlock(parseHTMLProseBlock(orig), count)
 			i += count
 			continue
 		}
 		if isPipeCandidate(lines, i) {
 			if b, count, ok := parsePipeTable(lines[i:], defs); ok {
-				result = append(result, b)
+				appendBlock(b, count)
 				i += count
 				continue
 			}
@@ -2161,14 +2211,14 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 			if indent > 3 {
 				indent = 3
 			}
-			result = append(result, model.Block{
+			appendBlock(model.Block{
 				ID:          model.NewBlockID(),
 				Kind:        model.BlockCode,
 				Indent:      indent,
 				Language:    "math",
 				Code:        math,
 				CleanSource: rawLine,
-			})
+			}, 1)
 			i++
 			continue
 		}
@@ -2188,14 +2238,14 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 			if indentCols > 3 {
 				indentCols = 3
 			}
-			result = append(result, model.Block{
+			appendBlock(model.Block{
 				ID:          model.NewBlockID(),
 				Kind:        model.BlockCode,
 				Indent:      indentCols,
 				Language:    info,
 				Code:        codeText,
 				CleanSource: orig,
-			})
+			}, end-i)
 			i = end
 			continue
 		}
@@ -2235,22 +2285,22 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 				}
 			}
 			orig := strings.Join(lines[i:contentEnd], "")
-			result = append(result, model.Block{
+			appendBlock(model.Block{
 				ID:          model.NewBlockID(),
 				Kind:        model.BlockCode,
 				Code:        trimLineEnding(body.String()),
 				CleanSource: orig,
-			})
+			}, contentEnd-i)
 			i = contentEnd
 			continue
 		}
 		if hKind, hText, ok := classifyHeading(line); ok {
-			result = append(result, model.Block{
+			appendBlock(model.Block{
 				ID:          model.NewBlockID(),
 				Kind:        hKind,
 				Spans:       parseInlineWithDefs(hText, defs),
 				CleanSource: rawLine,
-			})
+			}, 1)
 			i++
 			continue
 		}
@@ -2269,12 +2319,12 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 					}
 					if setextKind != 0 {
 						orig := lines[i] + lines[i+1]
-						result = append(result, model.Block{
+						appendBlock(model.Block{
 							ID:          model.NewBlockID(),
 							Kind:        setextKind,
 							Spans:       parseInlineWithDefs(bodyTrimmed, defs),
 							CleanSource: orig,
-						})
+						}, 2)
 						i += 2
 						continue
 					}
@@ -2284,19 +2334,19 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 		if indentCols > 12 {
 			indentCols = 12
 		}
-		result = append(result, model.Block{
+		appendBlock(model.Block{
 			ID:          model.NewBlockID(),
 			Kind:        model.BlockParagraph,
 			Indent:      indentCols,
 			Spans:       parseInlineWithDefs(bodyTrimmed, defs),
 			CleanSource: rawLine,
-		})
+		}, 1)
 		i++
 	}
 	return result
 }
 
-func parseHTMLListLines(lines []string, defs map[string]refDef) ([]model.Block, int, bool) {
+func parseHTMLListLines(lines []string, defs map[string]refDef, startLine int) ([]model.Block, int, bool) {
 	if len(lines) == 0 {
 		return nil, 0, false
 	}
@@ -2346,6 +2396,8 @@ func parseHTMLListLines(lines []string, defs map[string]refDef) ([]model.Block, 
 	inLI := false
 	liTodo := false
 	liChecked := false
+	line, liLine, lineCursor := startLine, startLine, 0
+	pos := 0
 
 	flushLI := func() {
 		if !inLI || len(stack) == 0 {
@@ -2369,18 +2421,19 @@ func parseHTMLListLines(lines []string, defs map[string]refDef) ([]model.Block, 
 			top.nextNum++
 		}
 		out = append(out, model.Block{
-			ID:        model.NewBlockID(),
-			Kind:      kind,
-			Indent:    indent,
-			ListIndex: listIdx,
-			Checked:   liChecked,
-			Spans:     parseInlineWithDefs(raw, defs),
+			ID:            model.NewBlockID(),
+			Kind:          kind,
+			Indent:        indent,
+			ListIndex:     listIdx,
+			SourceLine:    liLine,
+			SourceEndLine: line,
+			Checked:       liChecked,
+			Spans:         parseInlineWithDefs(raw, defs),
 		})
 		liTodo = false
 		liChecked = false
 	}
 
-	pos := 0
 	for pos < len(src) {
 		lt := strings.IndexByte(src[pos:], '<')
 		if lt < 0 {
@@ -2393,6 +2446,8 @@ func parseHTMLListLines(lines []string, defs map[string]refDef) ([]model.Block, 
 			curBuf.WriteString(src[pos : pos+lt])
 		}
 		pos += lt
+		line += strings.Count(src[lineCursor:pos], "\n")
+		lineCursor = pos
 		name, attrs, closed, empty, consumed, ok := parseTagRaw(src[pos:])
 		if !ok {
 			if inLI {
@@ -2424,6 +2479,7 @@ func parseHTMLListLines(lines []string, defs map[string]refDef) ([]model.Block, 
 			if !closed && !empty {
 				flushLI()
 				inLI = true
+				liLine = line
 				liTodo = false
 				liChecked = false
 			} else if closed {
@@ -2452,6 +2508,7 @@ func parseHTMLListLines(lines []string, defs map[string]refDef) ([]model.Block, 
 		}
 		pos += consumed
 	}
+	line = startLine + lineCount - 1
 	flushLI()
 	if len(out) == 0 {
 		return nil, 0, false

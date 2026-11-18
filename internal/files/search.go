@@ -61,7 +61,7 @@ func SearchNotebooks(roots []string, query string, opts ScanOptions) ([]model.Se
 		}
 
 		notebookName := filepath.Base(cleanRoot)
-		walkSearchDir(cleanRoot, notebookName, foldedQ, opts, 0, seenFiles, &titleHits, &bodyHits)
+		walkSearchDir(cleanRoot, notebookName, q, foldedQ, opts, 0, seenFiles, &titleHits, &bodyHits)
 	}
 
 	sort.Slice(titleHits, func(i, j int) bool {
@@ -118,6 +118,7 @@ func titleHitRank(h rankedSearchHit, query string) titleRank {
 func walkSearchDir(
 	dir string,
 	notebook string,
+	rawQuery string,
 	foldedQuery string,
 	opts ScanOptions,
 	depth int,
@@ -141,7 +142,7 @@ func walkSearchDir(
 			if isIgnoredDir(rawName, opts) || theme.IsSearchFolderIgnored(fullPath) {
 				continue
 			}
-			walkSearchDir(fullPath, notebook, foldedQuery, opts, depth+1, seenFiles, titleHits, bodyHits)
+			walkSearchDir(fullPath, notebook, rawQuery, foldedQuery, opts, depth+1, seenFiles, titleHits, bodyHits)
 			continue
 		}
 
@@ -164,7 +165,7 @@ func walkSearchDir(
 		}
 		seenFiles[fullPath] = true
 
-		if ranked, ok := inspectSearchFile(entry, fileInfo, fullPath, rawName, notebook, foldedQuery); ok {
+		if ranked, ok := inspectSearchFile(entry, fileInfo, fullPath, rawName, notebook, rawQuery, foldedQuery); ok {
 			if ranked.titleMatch {
 				*titleHits = append(*titleHits, ranked)
 			} else {
@@ -174,7 +175,7 @@ func walkSearchDir(
 	}
 }
 
-func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, rawName, notebook, foldedQuery string) (rankedSearchHit, bool) {
+func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, rawName, notebook, rawQuery, foldedQuery string) (rankedSearchHit, bool) {
 	stem := entryDisplayName(rawName, false)
 	titleStart, _, titleMatched := findFoldMatchFolded(stem, foldedQuery)
 
@@ -183,7 +184,6 @@ func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, rawName, n
 			info = entryInfo
 		}
 	}
-
 	var text string
 	if info != nil && info.Size() <= maxSearchFileBytes {
 		if data, readErr := os.ReadFile(fullPath); readErr == nil && utf8.Valid(data) {
@@ -191,7 +191,7 @@ func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, rawName, n
 		}
 	}
 
-	matchLine := 0
+	matchLine, matchColumn := 0, 0
 	var lineSnippet string
 	var mStart, mEnd int
 	bodyMatched := false
@@ -212,7 +212,7 @@ func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, rawName, n
 			line = strings.TrimSuffix(line, "\r")
 			if s, e, ok := findFoldMatchFolded(line, foldedQuery); ok {
 				bodyMatched = true
-				matchLine = lineNum
+				matchLine, matchColumn = lineNum, s
 				lineSnippet = snippetAround(line, s, e)
 				if ms, me, found := findFoldMatchFolded(lineSnippet, foldedQuery); found {
 					mStart, mEnd = ms, me
@@ -238,7 +238,9 @@ func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, rawName, n
 			Path:       fullPath,
 			Notebook:   notebook,
 			Title:      stem,
+			Query:      rawQuery,
 			Line:       matchLine,
+			Column:     matchColumn,
 			Snippet:    lineSnippet,
 			MatchStart: mStart,
 			MatchEnd:   mEnd,
@@ -299,6 +301,41 @@ func FindFoldMatches(text, needle string) [][2]int {
 		}
 	}
 	return out
+}
+
+// ResolveSearchMatch revalidates a search result against the open note. If edits
+// moved the match, prefer the occurrence nearest its original line and column.
+func ResolveSearchMatch(text string, hit model.SearchHit) (line, column int) {
+	if hit.Line <= 0 || hit.Query == "" {
+		return hit.Line, hit.Column
+	}
+	bestLineDistance, bestColumnDistance := len(text)+hit.Line, len(text)+hit.Column
+	var i int
+	for raw := range strings.SplitSeq(text, "\n") {
+		i++
+		lineDistance := absSearchDistance(i - hit.Line)
+		if lineDistance > bestLineDistance {
+			if i > hit.Line {
+				break
+			}
+			continue
+		}
+		for _, match := range FindFoldMatches(raw, hit.Query) {
+			columnDistance := absSearchDistance(match[0] - hit.Column)
+			if lineDistance < bestLineDistance || (lineDistance == bestLineDistance && columnDistance < bestColumnDistance) {
+				line, column = i, match[0]
+				bestLineDistance, bestColumnDistance = lineDistance, columnDistance
+			}
+		}
+		if bestLineDistance == 0 {
+			break
+		}
+	}
+	return line, column
+}
+
+func absSearchDistance(distance int) int {
+	return max(distance, -distance)
 }
 
 func findFoldMatch(text, needle string) (int, int, bool) {

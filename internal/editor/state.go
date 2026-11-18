@@ -176,8 +176,8 @@ type Session struct {
 	// Outline rail
 	outlineHovered      bool
 	outlinePinnedClosed bool
-	highlightedBlockID  model.BlockID
-	highlightUntil      time.Time
+	jump                editorJump
+	jumpAlpha           float32
 	outlineForceNarrow  bool
 
 	// Annotations
@@ -378,7 +378,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.imgResizeBlock = 0
 	s.tableMenuBlock = 0
 	s.tableMenuKind = ""
-	s.highlightedBlockID = 0
+	s.jump = editorJump{}
 	s.outlineHovered = false
 	s.outlinePinnedClosed = false
 	s.annotations = nil
@@ -486,7 +486,7 @@ func (s *Session) FirstLineDeleteArmed() bool {
 }
 
 func (s *Session) HighlightedBlockID() model.BlockID {
-	return s.highlightedBlockID
+	return s.jump.block
 }
 
 func (s *Session) IsFindOpen() bool {
