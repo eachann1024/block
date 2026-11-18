@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -76,6 +75,25 @@ func main() {
 	}
 	if notebookFlag != "" {
 		_ = ws.SetNotebook(notebookFlag)
+	}
+	if launchArgs := flag.Args(); len(launchArgs) > 0 {
+		launchWD, _ := os.Getwd()
+		for _, a := range launchArgs {
+			trimmed := strings.TrimSpace(a)
+			if trimmed == "" || strings.HasPrefix(trimmed, "-") {
+				continue
+			}
+			lower := strings.ToLower(trimmed)
+			if strings.HasPrefix(lower, "block://") || strings.HasPrefix(lower, "blockmd://") {
+				if u, err := url.Parse(trimmed); err == nil && u.Host == "open" {
+					if p := u.Query().Get("path"); p != "" {
+						_ = ws.OpenExternalFile(p)
+					}
+				}
+				continue
+			}
+			_ = ws.OpenExternalTarget(trimmed, launchWD)
+		}
 	}
 
 	st := ws.State()
@@ -342,32 +360,7 @@ func main() {
 		return win
 	}
 
-	mygo.App.OnSecondInstance(func(args []string, _ string) {
-		if w := openMainWindow(); w != nil {
-			w.Restore()
-			w.Focus()
-		}
-		for _, a := range args[1:] {
-			if !strings.HasPrefix(a, "-") && files.IsMarkdown(a) {
-				if abs, err := filepath.Abs(a); err == nil {
-					_ = ws.OpenNote(abs, 0)
-				}
-			}
-		}
-	})
-
-	mygo.App.OnOpenFile(func(path string) {
-		if path == "" {
-			return
-		}
-		if info, err := os.Stat(path); err == nil && info.IsDir() {
-			_ = ws.SetNotebook(path)
-			return
-		}
-		_ = ws.OpenNote(path, 0)
-	})
-
-	mygo.App.OnOpenURL(func(rawURL string) {
+	handleDeepLink := func(rawURL string) {
 		u, err := url.Parse(rawURL)
 		if err != nil {
 			return
@@ -377,7 +370,10 @@ func main() {
 			ws.QuickNote().Show()
 		case "open":
 			if p := u.Query().Get("path"); p != "" {
-				_ = ws.OpenNote(p, 0)
+				if mygo.App.IsReady() {
+					revealMainWindow()
+				}
+				_ = ws.OpenExternalFile(p)
 			}
 		case "store", "install":
 			revealMainWindow()
@@ -395,7 +391,35 @@ func main() {
 				})
 			}
 		}
+	}
+
+	mygo.App.OnSecondInstance(func(args []string, wd string) {
+		revealMainWindow()
+		for _, a := range args[1:] {
+			trimmed := strings.TrimSpace(a)
+			if trimmed == "" || strings.HasPrefix(trimmed, "-") {
+				continue
+			}
+			lower := strings.ToLower(trimmed)
+			if strings.HasPrefix(lower, "block://") || strings.HasPrefix(lower, "blockmd://") {
+				handleDeepLink(trimmed)
+				continue
+			}
+			_ = ws.OpenExternalTarget(trimmed, wd)
+		}
 	})
+
+	mygo.App.OnOpenFile(func(path string) {
+		if strings.TrimSpace(path) == "" {
+			return
+		}
+		if mygo.App.IsReady() {
+			revealMainWindow()
+		}
+		_ = ws.OpenExternalTarget(path, "")
+	})
+
+	mygo.App.OnOpenURL(handleDeepLink)
 
 	mygo.App.OnWindowAllClosed(func() {
 		if runtime.GOOS != "darwin" || isIsolatedRun {
