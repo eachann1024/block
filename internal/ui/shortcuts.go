@@ -43,6 +43,8 @@ func ParseShortcut(spec string) (ui.Modifiers, ui.Key, bool) {
 			key = ui.KeySpace
 		case "backspace":
 			key = ui.KeyBackspace
+		case "delete", "del":
+			key = ui.KeyDelete
 		case ",", "comma":
 			key = ui.KeyComma
 		case ".", "period":
@@ -194,6 +196,8 @@ func keyDisplayName(k ui.Key) string {
 		return "Space"
 	case ui.KeyBackspace:
 		return "⌫"
+	case ui.KeyDelete:
+		return "Del"
 	default:
 		if k >= ui.KeyF1 && k <= ui.KeyF12 {
 			return fmt.Sprintf("F%d", 1+int(k-ui.KeyF1))
@@ -206,4 +210,25 @@ func keyDisplayName(k ui.Key) string {
 		}
 		return ""
 	}
+}
+
+// TreeKeyAction identifies keyboard actions scoped to a focused file tree.
+type TreeKeyAction uint8
+
+const (
+	TreeKeyNone TreeKeyAction = iota
+	TreeKeyRename
+	TreeKeyTrash
+)
+
+// MatchTreeShortcut routes file-tree keyboard bindings (Enter / F2 rename,
+// Cmd+Backspace / Delete trash) only while el or one of its descendants holds focus.
+func MatchTreeShortcut(el ui.Element) TreeKeyAction {
+	if el.Shortcut(0, ui.KeyEnter) || el.Shortcut(0, ui.KeyF2) {
+		return TreeKeyRename
+	}
+	if el.Shortcut(ui.Cmd, ui.KeyBackspace) || el.Shortcut(0, ui.KeyDelete) {
+		return TreeKeyTrash
+	}
+	return TreeKeyNone
 }
