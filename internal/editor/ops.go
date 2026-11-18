@@ -3219,14 +3219,31 @@ func (s *Session) tableAddRow(blockID model.BlockID, at int) {
 		return
 	}
 	s.pushUndo()
+	oldLen := len(b.Table.Rows)
 	cols := len(b.Table.Rows[0])
 	newRow := make([]model.TableCell, cols)
-	at = clampInt(at, 0, len(b.Table.Rows))
-	rows := make([][]model.TableCell, 0, len(b.Table.Rows)+1)
+	at = clampInt(at, 0, oldLen)
+	rows := make([][]model.TableCell, 0, oldLen+1)
 	rows = append(rows, b.Table.Rows[:at]...)
 	rows = append(rows, newRow)
 	rows = append(rows, b.Table.Rows[at:]...)
 	b.Table.Rows = rows
+	if len(b.Table.RowTints) > 0 {
+		rt := make([]model.TableTint, oldLen+1)
+		for r := 0; r <= oldLen; r++ {
+			if r == at {
+				continue
+			}
+			src := r
+			if r > at {
+				src = r - 1
+			}
+			if src < len(b.Table.RowTints) {
+				rt[r] = b.Table.RowTints[src]
+			}
+		}
+		b.Table.RowTints = rt
+	}
 	b.Dirty = true
 	b.CleanSource = ""
 	s.markDirty()
@@ -3243,6 +3260,9 @@ func (s *Session) tableDeleteRow(blockID model.BlockID, row int) {
 	}
 	s.pushUndo()
 	b.Table.Rows = append(b.Table.Rows[:row], b.Table.Rows[row+1:]...)
+	if row < len(b.Table.RowTints) {
+		b.Table.RowTints = append(b.Table.RowTints[:row], b.Table.RowTints[row+1:]...)
+	}
 	b.Dirty = true
 	b.CleanSource = ""
 	s.markDirty()
@@ -3285,6 +3305,38 @@ func (s *Session) tableAddCol(blockID model.BlockID, at int) {
 		}
 	}
 	b.Table.Aligns = aligns
+	if len(b.Table.Widths) > 0 {
+		ws := make([]float32, cols+1)
+		for c := 0; c <= cols; c++ {
+			if c == at {
+				continue
+			}
+			src := c
+			if c > at {
+				src = c - 1
+			}
+			if src < len(b.Table.Widths) {
+				ws[c] = b.Table.Widths[src]
+			}
+		}
+		b.Table.Widths = ws
+	}
+	if len(b.Table.ColTints) > 0 {
+		ct := make([]model.TableTint, cols+1)
+		for c := 0; c <= cols; c++ {
+			if c == at {
+				continue
+			}
+			src := c
+			if c > at {
+				src = c - 1
+			}
+			if src < len(b.Table.ColTints) {
+				ct[c] = b.Table.ColTints[src]
+			}
+		}
+		b.Table.ColTints = ct
+	}
 	b.Dirty = true
 	b.CleanSource = ""
 	s.markDirty()
@@ -3308,6 +3360,12 @@ func (s *Session) tableDeleteCol(blockID model.BlockID, col int) {
 	}
 	if col < len(b.Table.Aligns) {
 		b.Table.Aligns = append(b.Table.Aligns[:col], b.Table.Aligns[col+1:]...)
+	}
+	if col < len(b.Table.Widths) {
+		b.Table.Widths = append(b.Table.Widths[:col], b.Table.Widths[col+1:]...)
+	}
+	if col < len(b.Table.ColTints) {
+		b.Table.ColTints = append(b.Table.ColTints[:col], b.Table.ColTints[col+1:]...)
 	}
 	b.Dirty = true
 	b.CleanSource = ""

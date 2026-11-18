@@ -92,35 +92,94 @@ func (s *Session) resolveTableColWidths(id model.BlockID, tbl *model.TableData, 
 
 	borderOverhead := float32(cols+1) * appUi.TableGridRuleWidth
 	innerAvail := max(availGrid-borderOverhead, float32(cols))
-	sumMin := float32(cols) * tMinColW
-	var sumWant float32
-	for _, w := range cached.wantW {
-		sumWant += w
+	z := s.zoom()
+
+	want := make([]float32, cols)
+	pinned := make([]bool, cols)
+	hasPinned := false
+	for c := 0; c < cols; c++ {
+		want[c] = cached.wantW[c]
+		if c < len(tbl.Widths) && tbl.Widths[c] > 0 {
+			want[c] = max(tbl.Widths[c]*z, tMinColW)
+			pinned[c] = true
+			hasPinned = true
+		}
+		if s.tableResizeBlock == id && s.tableResizeCol == c && s.tableResizeCurW > 0 {
+			want[c] = max(s.tableResizeCurW*z, tMinColW)
+			pinned[c] = true
+			hasPinned = true
+		}
+	}
+
+	var sumWant, sumMin float32
+	for c := 0; c < cols; c++ {
+		sumWant += want[c]
+		if pinned[c] {
+			sumMin += want[c]
+		} else {
+			sumMin += tMinColW
+		}
 	}
 
 	colWidths = make([]float32, cols)
 	if sumMin > innerAvail {
-		for c, w := range cached.wantW {
+		for c, w := range want {
 			colWidths[c] = float32(math.Round(float64(max(w, tMinColW))))
 		}
 		return colWidths, true
 	}
 
 	raw := make([]float32, cols)
-	if sumWant <= innerAvail {
-		extra := innerAvail - sumWant
-		for c, w := range cached.wantW {
-			if sumWant > 0 {
-				raw[c] = w + extra*(w/sumWant)
-			} else {
-				raw[c] = innerAvail / float32(cols)
+	if !hasPinned {
+		if sumWant <= innerAvail {
+			extra := innerAvail - sumWant
+			for c, w := range want {
+				if sumWant > 0 {
+					raw[c] = w + extra*(w/sumWant)
+				} else {
+					raw[c] = innerAvail / float32(cols)
+				}
+			}
+		} else {
+			room := innerAvail - sumMin
+			flexSpan := max(sumWant-sumMin, 1)
+			for c, w := range want {
+				raw[c] = tMinColW + room*(max(w-tMinColW, 0)/flexSpan)
 			}
 		}
 	} else {
-		room := innerAvail - sumMin
-		flexSpan := max(sumWant-sumMin, 1)
-		for c, w := range cached.wantW {
-			raw[c] = tMinColW + room*(max(w-tMinColW, 0)/flexSpan)
+		var pinnedSum, unpinnedWant, unpinnedMin float32
+		unpinnedCount := 0
+		for c, w := range want {
+			if pinned[c] {
+				pinnedSum += w
+			} else {
+				unpinnedWant += w
+				unpinnedMin += tMinColW
+				unpinnedCount++
+			}
+		}
+		rem := max(innerAvail-pinnedSum, unpinnedMin)
+		for c, w := range want {
+			if pinned[c] {
+				raw[c] = w
+				continue
+			}
+			if rem >= unpinnedWant {
+				extra := rem - unpinnedWant
+				if unpinnedWant > 0 {
+					raw[c] = w + extra*(w/unpinnedWant)
+				} else {
+					raw[c] = rem / float32(max(unpinnedCount, 1))
+				}
+			} else {
+				room := max(rem-unpinnedMin, 0)
+				flexSpan := max(unpinnedWant-unpinnedMin, 1)
+				raw[c] = tMinColW + room*(max(w-tMinColW, 0)/flexSpan)
+			}
+		}
+		if unpinnedCount == 0 && pinnedSum < innerAvail {
+			raw[cols-1] += innerAvail - pinnedSum
 		}
 	}
 

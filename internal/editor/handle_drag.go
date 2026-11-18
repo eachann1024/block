@@ -701,6 +701,10 @@ func (s *Session) handleBlockGripGesture(c *ui.Context, grip ui.Element, idx int
 	if grip.Clicked() {
 		s.pressJustBegan = false
 		s.firstLineDeleteArmed = false
+		if idx >= 0 && idx < len(s.doc.Blocks) && s.doc.Blocks[idx].Kind == model.BlockTable {
+			s.toggleTableWholeMenu(idx, id)
+			return
+		}
 		s.FocusBlock(idx)
 		trigger := grip.Bounds()
 		if trigger.W <= 0 {

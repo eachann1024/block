@@ -643,6 +643,88 @@ type imageMeta struct {
 	crop  model.ImageCrop
 }
 
+type tableMeta struct {
+	noHeaderRow bool
+	widths      []float32
+	colTints    []model.TableTint
+	rowTints    []model.TableTint
+}
+
+func parseTableTints(raw string) []model.TableTint {
+	parts := strings.Split(raw, ",")
+	out := make([]model.TableTint, len(parts))
+	for i, p := range parts {
+		switch strings.ToLower(strings.TrimSpace(p)) {
+		case "slate":
+			out[i] = model.TableTintSlate
+		case "ocean":
+			out[i] = model.TableTintOcean
+		case "emerald":
+			out[i] = model.TableTintEmerald
+		}
+	}
+	return out
+}
+
+func parseTableMetaComment(line string) (tableMeta, bool) {
+	s := strings.TrimSpace(line)
+	if !strings.HasPrefix(s, "<!--") || !strings.HasSuffix(s, "-->") {
+		return tableMeta{}, false
+	}
+	inner := strings.TrimSpace(s[4 : len(s)-3])
+	if !strings.HasPrefix(inner, "thinkly:table") {
+		return tableMeta{}, false
+	}
+	rest := strings.TrimSpace(inner[len("thinkly:table"):])
+	var meta tableMeta
+	for _, field := range strings.Fields(rest) {
+		k, v, ok := strings.Cut(field, "=")
+		if !ok {
+			continue
+		}
+		v = strings.Trim(v, `"'`)
+		switch strings.ToLower(k) {
+		case "header":
+			if v == "0" || strings.EqualFold(v, "false") {
+				meta.noHeaderRow = true
+			}
+		case "widths":
+			parts := strings.Split(v, ",")
+			ws := make([]float32, len(parts))
+			for idx, p := range parts {
+				p = strings.TrimSuffix(strings.TrimSpace(p), "px")
+				if f, err := strconv.ParseFloat(p, 32); err == nil && f > 0 {
+					ws[idx] = float32(f)
+				}
+			}
+			meta.widths = ws
+		case "coltints":
+			meta.colTints = parseTableTints(v)
+		case "rowtints":
+			meta.rowTints = parseTableTints(v)
+		}
+	}
+	return meta, true
+}
+
+func applyTableMeta(td *model.TableData, meta tableMeta) {
+	if td == nil {
+		return
+	}
+	if meta.noHeaderRow {
+		td.NoHeaderRow = true
+	}
+	if len(meta.widths) > 0 {
+		td.Widths = meta.widths
+	}
+	if len(meta.colTints) > 0 {
+		td.ColTints = meta.colTints
+	}
+	if len(meta.rowTints) > 0 {
+		td.RowTints = meta.rowTints
+	}
+}
+
 func parseImageMetaComment(line string) (imageMeta, bool) {
 	s := strings.TrimSpace(line)
 	if !strings.HasPrefix(s, "<!--") || !strings.HasSuffix(s, "-->") {
@@ -2171,6 +2253,32 @@ func parseBlocksWithDefsAt(src string, defs map[string]refDef, usedLabels map[st
 			}
 			i += count
 			continue
+		}
+		if meta, ok := parseTableMetaComment(line); ok && i+1 < len(lines) {
+			nextTrim := strings.ToLower(strings.TrimLeft(trimLineEnding(lines[i+1]), " \t"))
+			if strings.HasPrefix(nextTrim, "<table") {
+				count := htmlTableLineCount(lines[i+1:])
+				orig := strings.Join(lines[i+1:i+1+count], "")
+				if td, tOK := parseHTMLTable(orig); tOK {
+					applyTableMeta(&td, meta)
+					appendBlock(model.Block{
+						ID:          model.NewBlockID(),
+						Kind:        model.BlockTable,
+						Table:       &td,
+						CleanSource: lines[i] + orig,
+					}, 1+count)
+					i += 1 + count
+					continue
+				}
+			} else if isPipeCandidate(lines, i+1) {
+				if b, count, pOK := parsePipeTable(lines[i+1:], defs); pOK {
+					applyTableMeta(b.Table, meta)
+					b.CleanSource = lines[i] + b.CleanSource
+					appendBlock(b, 1+count)
+					i += 1 + count
+					continue
+				}
+			}
 		}
 		if count, ok := rawHTMLLineCount(lines[i:]); ok {
 			orig := strings.Join(lines[i:i+count], "")

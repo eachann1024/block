@@ -235,13 +235,23 @@ type Session struct {
 	imgResizeCurPct   float32
 
 	// Table block UI
-	tableActiveBlock model.BlockID
-	tableActiveRow   int
-	tableActiveCol   int
-	tableMenuBlock   model.BlockID
-	tableMenuKind    string // "", "row", "col", "cell"
-	tableMenuIndex   int
-	tableExtend      *tableExtendState
+	tableActiveBlock  model.BlockID
+	tableActiveRow    int
+	tableActiveCol    int
+	tableMenuBlock    model.BlockID
+	tableMenuKind     string // "", "row", "col", "table", "cell"
+	tableMenuIndex    int
+	tableExtend       *tableExtendState
+	tableResizeBlock  model.BlockID
+	tableResizeCol    int
+	tableResizeStartW float32
+	tableResizeCurW   float32
+	tableDragBlock    model.BlockID
+	tableDragKind     string // "", "col", "row"
+	tableDragIndex    int
+	tableDragStartPt  ui.Point
+	tableDragActive   bool
+	tableDragMoved    bool
 
 	// Drag reorder
 	dragBlockID     model.BlockID

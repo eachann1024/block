@@ -94,6 +94,15 @@ const (
 	ColAlignRight  ColAlign = "right"
 )
 
+type TableTint string
+
+const (
+	TableTintNone    TableTint = ""
+	TableTintSlate   TableTint = "slate"
+	TableTintOcean   TableTint = "ocean"
+	TableTintEmerald TableTint = "emerald"
+)
+
 type ImageCrop struct {
 	Top    float32 `json:"top,omitempty"`
 	Right  float32 `json:"right,omitempty"`
@@ -146,10 +155,13 @@ func (c TableCell) PlainText() string {
 }
 
 type TableData struct {
-	Aligns  []ColAlign    `json:"aligns,omitempty"`
-	Widths  []float32     `json:"widths,omitempty"`
-	Rows    [][]TableCell `json:"rows"` // Row 0 is the header row
-	WasHTML bool          `json:"wasHtml,omitempty"`
+	Aligns      []ColAlign    `json:"aligns,omitempty"`
+	Widths      []float32     `json:"widths,omitempty"`
+	ColTints    []TableTint   `json:"colTints,omitempty"`
+	RowTints    []TableTint   `json:"rowTints,omitempty"`
+	NoHeaderRow bool          `json:"noHeaderRow,omitempty"`
+	Rows        [][]TableCell `json:"rows"` // Row 0 is the header row unless NoHeaderRow is true
+	WasHTML     bool          `json:"wasHtml,omitempty"`
 }
 
 func (t *TableData) Clone() *TableData {
@@ -157,10 +169,13 @@ func (t *TableData) Clone() *TableData {
 		return nil
 	}
 	out := &TableData{
-		WasHTML: t.WasHTML,
-		Aligns:  append([]ColAlign(nil), t.Aligns...),
-		Widths:  append([]float32(nil), t.Widths...),
-		Rows:    make([][]TableCell, len(t.Rows)),
+		WasHTML:     t.WasHTML,
+		NoHeaderRow: t.NoHeaderRow,
+		Aligns:      append([]ColAlign(nil), t.Aligns...),
+		Widths:      append([]float32(nil), t.Widths...),
+		ColTints:    append([]TableTint(nil), t.ColTints...),
+		RowTints:    append([]TableTint(nil), t.RowTints...),
+		Rows:        make([][]TableCell, len(t.Rows)),
 	}
 	for r, row := range t.Rows {
 		out.Rows[r] = make([]TableCell, len(row))
