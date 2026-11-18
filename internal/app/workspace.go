@@ -3192,7 +3192,7 @@ func (w *Workspace) Render(c *ui.Context) {
 					})
 				} else {
 					ui.Row(c.Key("docked-ai-slot")).Shrink(0).FillHeight().
-						Transition(blockui.DockedPanelTransition(true)).Children(func() {
+						Transition(blockui.DockedSplitTransition(true)).Children(func() {
 						chatW := w.ai.PanelWidth()
 						maxChat := ChatLimit(vpW, w.sidebarWidth, w.state.SidebarCollapsed, ChatMinW, ChatMaxW)
 						if blockui.VerticalResizeHandle(c, "ai-panel-resize", &chatW, ChatMinW, maxChat, true) {

@@ -174,6 +174,16 @@ func DockedPanelTransition(fromRight bool) ui.ElementTransition {
 	}
 }
 
+// DockedSplitTransition keeps both the panel and its splitter opaque as they slide.
+func DockedSplitTransition(fromRight bool) ui.ElementTransition {
+	transition := DockedPanelTransition(fromRight)
+	if transition.Enter != nil {
+		transition.Enter.Opacity = 1
+		transition.Exit.Opacity = 1
+	}
+	return transition
+}
+
 // FloatingDrawerTransition animates the narrow-viewport floating sidebar drawer
 // with Scheme B elastic slide + subtle scale settle.
 func FloatingDrawerTransition() ui.ElementTransition {
