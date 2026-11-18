@@ -788,6 +788,14 @@ func (s *Session) windowPointer(root ui.Element) (wx, wy float32) {
 	return s.editorRect.X + rx, s.editorRect.Y + ry
 }
 
+func (s *Session) windowPointerStatus() (pt ui.Point, ok bool) {
+	rx, ry, over := s.frameRoot.PointerPosition()
+	if !over {
+		return ui.Point{}, false
+	}
+	return ui.Point{X: s.editorRect.X + rx, Y: s.editorRect.Y + ry}, true
+}
+
 // preUpdateFocusedDrag updates cross-block selection ahead of building rows when an
 // already-focused block input is being dragged across other blocks, ensuring 0-frame lag
 // even when dragging upwards to earlier blocks.
