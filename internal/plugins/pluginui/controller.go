@@ -17,7 +17,8 @@ var _ modals.PluginSettingsHost = (*Controller)(nil)
 
 // Controller bridges Block's Settings UI with the App Store catalog and installed plugin Supervisor.
 type Controller struct {
-	sup *plugins.Supervisor
+	sup         *plugins.Supervisor
+	storeReadme *storeReadmePreview
 
 	mu             sync.Mutex
 	storeFilter    int
