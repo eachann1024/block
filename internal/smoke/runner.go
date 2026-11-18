@@ -1395,7 +1395,7 @@ func RunAll(baseTempDir string) (*Report, error) {
 		if err := ws.OpenNote(jitterNote, 0); err != nil {
 			return "", err
 		}
-		tt.SetSize(1200, 1080)
+		tt.SetSize(1200, 1120)
 		tt.Move(-20, -20)
 		tt.Frame()
 

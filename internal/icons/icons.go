@@ -77,6 +77,7 @@ const (
 	More            Icon = "more"
 	FindSearch      Icon = "search"
 	Sliders         Icon = "sliders"
+	SortFilter      Icon = "sort-filter"
 	Stop            Icon = "stop"
 	MessageSquare   Icon = "message-square"
 	History         Icon = "history"

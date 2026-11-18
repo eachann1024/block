@@ -2,6 +2,49 @@ package theme
 
 import "github.com/egoist/mygo/ui"
 
+// ShellChromeColors holds the T3-inspired floating-card shell tokens:
+// quiet window ground, elevated paper card + contour, translucent chrome hover
+// over the brand landscape, sidebar search field, and notebook monogram badge.
+type ShellChromeColors struct {
+	Ground           ui.Color
+	Card             ui.Color
+	CardBorder       ui.Color
+	Hover            ui.Color
+	FieldBG          ui.Color
+	FieldBorder      ui.Color
+	FieldBorderHover ui.Color
+	KbdBG            ui.Color
+	BadgeFG          ui.Color
+}
+
+// ShellChrome returns the window shell and floating-card token set for p.
+func (p Palette) ShellChrome() ShellChromeColors {
+	if p.Dark {
+		return ShellChromeColors{
+			Ground:           ui.Hex("#222222"),
+			Card:             ui.Hex("#181818"),
+			CardBorder:       ui.Hex("#2e2e2e"),
+			Hover:            ui.RGBA(0xff, 0xff, 0xff, 0.07),
+			FieldBG:          ui.Hex("#2a2a2a"),
+			FieldBorder:      ui.Hex("#3a3a3a"),
+			FieldBorderHover: ui.Hex("#4c4c4c"),
+			KbdBG:            ui.Hex("#303030"),
+			BadgeFG:          ui.Hex("#b9cdf5"),
+		}
+	}
+	return ShellChromeColors{
+		Ground:           ui.Hex("#f1f1f1"),
+		Card:             ui.Hex("#ffffff"),
+		CardBorder:       ui.Hex("#e4e6ea"),
+		Hover:            ui.RGBA(0x20, 0x24, 0x2c, 0.07),
+		FieldBG:          ui.Hex("#ffffff"),
+		FieldBorder:      ui.Hex("#e1e4e9"),
+		FieldBorderHover: ui.Hex("#c9d1de"),
+		KbdBG:            ui.Hex("#f3f4f6"),
+		BadgeFG:          ui.Hex("#2f4f8f"),
+	}
+}
+
 // DotPagerColors holds recessed-track tactile bead and companion header dot colours.
 type DotPagerColors struct {
 	TrackBG          ui.Color

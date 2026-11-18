@@ -184,6 +184,36 @@ type AppState struct {
 	FeedbackDraft         *FeedbackDraft      `json:"feedback_draft,omitempty"`
 	UpdateSource          string              `json:"update_source,omitempty"`
 	LastUpdatedFrom       string              `json:"last_updated_from,omitempty"`
+	BrandDeco             BrandDeco           `json:"brand_deco,omitzero"`
+	TreeSort              TreeSortMode        `json:"tree_sort,omitempty"`
+}
+
+// TreeSortMode controls how sibling entries are ordered in the sidebar file tree.
+type TreeSortMode string
+
+const (
+	TreeSortManual   TreeSortMode = ""
+	TreeSortName     TreeSortMode = "name"
+	TreeSortModified TreeSortMode = "modified"
+)
+
+// BrandDecoMode chooses how the titlebar brand scene is picked; the zero value follows the clock.
+type BrandDecoMode string
+
+const (
+	BrandDecoByTime BrandDecoMode = ""
+	BrandDecoFixed  BrandDecoMode = "fixed"
+	BrandDecoOff    BrandDecoMode = "off"
+)
+
+// BrandDeco stores the window brand decoration preferences; its zero value is the default
+// (scene follows the time of day, sun/moon and logo shown).
+type BrandDeco struct {
+	Mode     BrandDecoMode `json:"mode,omitempty"`
+	PinLight string        `json:"pin_light,omitempty"`
+	PinDark  string        `json:"pin_dark,omitempty"`
+	HideOrb  bool          `json:"hide_orb,omitempty"`
+	HideMark bool          `json:"hide_mark,omitempty"`
 }
 
 func DefaultAppState(defaultLang LanguageMode) AppState {

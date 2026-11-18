@@ -35,8 +35,10 @@ type SidebarUIState struct {
 	NBDragAfter           bool
 	ConfirmForgetNotebook string
 
-	SwitcherOpen   bool
-	SwitcherBounds ui.Rect
+	SwitcherOpen     bool
+	SwitcherBounds   ui.Rect
+	SortFilterOpen   bool
+	SortFilterBounds ui.Rect
 
 	MenuCursor      int
 	MoveCursor      int
@@ -73,6 +75,7 @@ func (s *SidebarUIState) ToggleDir(path string) {
 func (s *SidebarUIState) OpenBlankContextMenu(x, y float32) {
 	s.ClearDrag()
 	s.SwitcherOpen = false
+	s.SortFilterOpen = false
 	s.MenuCursor, s.MoveCursor = -1, -1
 	s.ContextOpen = true
 	s.ContextPath = ""
@@ -91,10 +94,11 @@ func sidebarContextSnapshot(s *SidebarUIState) sidebarContextKey {
 	return sidebarContextKey{s.ContextOpen, s.ContextPath, s.ContextX, s.ContextY}
 }
 
-// ClosePopups closes switcher and tree context menus.
+// ClosePopups closes switcher, sort/filter, and tree context menus.
 func (s *SidebarUIState) ClosePopups() bool {
-	had := s.SwitcherOpen || s.ContextOpen
+	had := s.SwitcherOpen || s.SortFilterOpen || s.ContextOpen
 	s.SwitcherOpen = false
+	s.SortFilterOpen = false
 	s.ConfirmForgetNotebook = ""
 	s.ContextOpen = false
 	s.MoveSubmenuOpen = false
@@ -104,7 +108,7 @@ func (s *SidebarUIState) ClosePopups() bool {
 
 // HasActiveOverlay reports whether a sidebar popup or inline rename is active.
 func (s *SidebarUIState) HasActiveOverlay() bool {
-	return s != nil && (s.SwitcherOpen || s.ContextOpen || s.RenamingPath != "")
+	return s != nil && (s.SwitcherOpen || s.SortFilterOpen || s.ContextOpen || s.RenamingPath != "")
 }
 
 // StartRename enters inline rename mode for path.
@@ -160,13 +164,25 @@ type SidebarProps struct {
 	Notice         string
 
 	SettingsOpen  bool
+	SearchOpen    bool
+	Busy          bool
 	HasUpdate     bool
 	UpdateBusy    bool
 	UpdateReady   bool
 	UpdateTooltip string
 
-	ShortcutNewNote string
+	SortMode        model.TreeSortMode
+	HideNonMarkdown bool
+	HideAssets      bool
 
+	ShortcutSearch    string
+	ShortcutNewFolder string
+	ShortcutNewNote   string
+
+	OnOpenSearch       func()
+	OnSetSortMode      func(mode model.TreeSortMode)
+	OnToggleShowNonMD  func()
+	OnToggleShowAssets func()
 	OnNewFolder        func()
 	OnNewNote          func()
 	OnOpenNote         func(path string, inNewTab bool)
@@ -361,24 +377,31 @@ func collectMoveDestinations(root string, entries []model.FileEntry, srcPath str
 // right-edge resize handle, and anchored switcher/context/cascading-move popups).
 func RenderSidebar(c *ui.Context, p SidebarProps) {
 	pal := theme.Ocean()
+	chrome := pal.ShellChrome()
 	w := SidebarDefaultW
 	if p.Width != nil && *p.Width > 0 {
 		w = ClampSidebarWidth(*p.Width)
 	}
 
 	c.Key("sidebar")
-	root := ui.Row(c).Width(w).FillHeight().Shrink(0).Background(pal.Sidebar)
+	root := ui.Row(c).Width(w).FillHeight().Shrink(0)
+	if p.FloatingCard {
+		root.Background(pal.Sidebar)
+	}
 	blockui.Probe(root, "sidebar")
 	root.Children(func() {
 		col := ui.Column(c).Grow(1).MinWidth(0).FillHeight()
 		col.Children(func() {
+			// 0. Top action bar: Search field + Sort/Filter + New Folder + New Page.
+			renderSidebarHeaderBar(c, p)
+
 			// 1. Top drop strip: dropping here moves an entry before the first root sibling.
 			var rows []flatTreeRow
 			flattenEntries(p.Entries, 0, p.State.ExpandedDirs, &rows)
 			assignRevealOrder(rows, p.State.RevealRoot)
 
 			c.Key("tree-top-drop")
-			topDrop := ui.Box(c).FillWidth().Height(8).Shrink(0)
+			topDrop := ui.Box(c).FillWidth().Height(4).Shrink(0)
 			canDropFirst := func(item treeDragItem) bool {
 				if p.State.RenamingPath != "" || len(rows) == 0 || p.ActiveNotebook == "" {
 					return false
@@ -472,8 +495,12 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				}
 
 				if p.Notice != "" {
+					noticeBG := chrome.Ground
+					if p.FloatingCard {
+						noticeBG = pal.Sidebar
+					}
 					noticeBar := ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).MaxHeight(48).
-						Padding(4, 20, 4, 20).Background(pal.Sidebar)
+						Padding(4, 20, 4, 20).Background(noticeBG)
 					noticeBar.Children(func() {
 						blockui.Scroll(c).MaxHeight(40).Children(func() {
 							ui.Text(c, p.Notice).FontSize(theme.FontMeta).TextColor(pal.TextSecondary)
@@ -483,15 +510,18 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 			})
 
 			// 3. Footer: Notebook Switcher + Updater Badge + Settings Button.
-			ui.Row(c).FillWidth().Padding(6, 8, 6, 8).Gap(4).AlignItems(ui.Center).
-				BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Background(pal.Sidebar).Children(func() {
+			footer := ui.Row(c).FillWidth().Height(48).Shrink(0).Padding(0, 8, 8, 12).Gap(4).AlignItems(ui.Center)
+			if p.FloatingCard {
+				footer.BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Background(pal.Sidebar)
+			}
+			footer.Children(func() {
 				nbTitle := theme.Tr("选择笔记本", "Select Notebook")
 				if p.ActiveNotebook != "" {
 					nbTitle = noteDisplayTitle(p.ActiveNotebook, true)
 				}
 				c.Key("notebook-switcher")
-				sw := ui.ButtonBase(c).Grow(1).MinWidth(0).Height(30).PaddingX(8).Gap(7).
-					AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
+				sw := ui.ButtonBase(c).Grow(1).MinWidth(0).Height(32).PaddingX(8).Gap(8).
+					AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
 					Label(nbTitle)
 				swHovered := sw.Hovered()
 				swPressed := sw.Pressed()
@@ -500,21 +530,21 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				if p.State.SwitcherOpen {
 					swBG = pal.Selected
 					swBD = pal.Accent
-				} else if swPressed {
-					swBG = pal.Selected
-				} else if swHovered {
-					swBG = pal.Hover
+				} else if swPressed || swHovered {
+					swBG = chrome.Hover
 				}
-				blockui.AnimateSurfaceColors(sw, swBG, swBD, true)
+				blockui.AnimateSurfaceColors(sw, swBG, swBD, p.State.SwitcherOpen)
 				blockui.TactileCard(sw, swHovered, swPressed, p.State.SwitcherOpen, false)
 				sw.Children(func() {
-					ic := pal.MonoIconColors(pal.Text)
-					if p.State.SwitcherOpen {
-						ic = pal.DuoIconColors(pal.Accent)
-					} else if swHovered || swPressed {
-						ic = pal.DuoIconColors(pal.Text)
+					if p.ActiveNotebook != "" {
+						blockui.MonogramBadge(c, nbTitle)
+					} else {
+						ic := pal.MonoIconColors(pal.Text)
+						if p.State.SwitcherOpen {
+							ic = pal.DuoIconColors(pal.Accent)
+						}
+						icons.DrawAnimated(c, icons.FolderOpen, theme.IconRow, ic, swHovered || swPressed || p.State.SwitcherOpen)
 					}
-					icons.DrawAnimated(c, icons.FolderOpen, theme.IconRow, ic, swHovered || swPressed || p.State.SwitcherOpen)
 					ui.Text(c, nbTitle).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 					chevTarget := float32(0)
 					if p.State.SwitcherOpen {
@@ -581,14 +611,15 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					}
 				}
 
-				ui.Box(c).Size(1, 16).Shrink(0).Background(pal.SidebarBorder)
-
 				setBtn := blockui.IconButton(c, icons.Sliders, blockui.IconButtonOptions{
-					ID:       "settings-button",
-					Size:     30,
-					Tooltip:  theme.Tr("设置", "Settings"),
-					Shortcut: blockui.FormatShortcutDisplay("cmd-,"),
-					Active:   p.SettingsOpen,
+					ID:          "settings-button",
+					Size:        28,
+					IconSize:    16,
+					Radius:      theme.RadiusSM,
+					Tooltip:     theme.Tr("设置", "Settings"),
+					Shortcut:    blockui.FormatShortcutDisplay("cmd-,"),
+					Active:      p.SettingsOpen,
+					ChromeHover: !p.FloatingCard,
 				})
 				if setBtn.Clicked() && p.OnOpenSettings != nil {
 					p.OnOpenSettings()
@@ -597,20 +628,109 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 		})
 
 		// Right-edge resize splitter (omitted inside rounded floating edge card).
-		if !p.FloatingCard {
-			if p.Width != nil {
-				if blockui.ResizeHandle(c, "sidebar-resize", p.Width, SidebarMinW, SidebarMaxW, false, theme.SidebarDefaultWidth) {
-					if p.OnWidthChanged != nil {
-						p.OnWidthChanged(*p.Width)
-					}
+		if !p.FloatingCard && p.Width != nil {
+			if blockui.SeamlessResizeHandle(c, "sidebar-resize", p.Width, SidebarMinW, SidebarMaxW, theme.SidebarDefaultWidth) {
+				if p.OnWidthChanged != nil {
+					p.OnWidthChanged(*p.Width)
 				}
-			} else {
-				ui.Box(c).Width(1).FillHeight().Background(pal.SidebarBorder)
 			}
 		}
 	})
 
 	renderSidebarPopups(c, p)
+}
+
+func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
+	pal := theme.Ocean()
+	chrome := pal.ShellChrome()
+	scSearch := blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutSearch, "cmd-k"))
+
+	ui.Row(c.Key("sidebar-header-bar")).FillWidth().Shrink(0).
+		Padding(4, 8, 6, 12).Gap(2).AlignItems(ui.Center).Children(func() {
+		c.Key("search-button")
+		searchBtn := blockui.Elevate(
+			ui.ButtonBase(c).Grow(1).MinWidth(0).Height(30).
+				Padding(0, 6, 0, 9).Margin(0, 4, 0, 0).Gap(7).
+				AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
+				Label(theme.Tr("搜索", "Search")),
+			theme.ElevationRaised,
+		)
+		sHov := searchBtn.Hovered()
+		sPress := searchBtn.Pressed()
+		sBG := chrome.FieldBG
+		sBD := chrome.FieldBorder
+		if p.SearchOpen {
+			sBD = pal.Accent
+		} else if sHov || sPress {
+			sBD = chrome.FieldBorderHover
+		}
+		blockui.AnimateSurfaceColors(searchBtn, sBG, sBD, true)
+		blockui.TactileCard(searchBtn, sHov, sPress, p.SearchOpen, false)
+		searchBtn.Children(func() {
+			icons.Draw(c, icons.FindSearch, 15, pal.MonoIconColors(pal.TextSecondary))
+			ui.Text(c, theme.Tr("搜索", "Search")).FontSize(theme.FontBody).
+				TextColor(pal.Placeholder).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			if scSearch != "" {
+				ui.Box(c).Height(18).PaddingX(5).Shrink(0).Center().
+					Radius(theme.RadiusXS).Background(chrome.KbdBG).Border(1, chrome.FieldBorder).
+					Children(func() {
+						ui.Text(c, scSearch).Font("monospace").FontSize(theme.FontMicro).FixedLineHeight(18).
+							FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine()
+					})
+			}
+		})
+		blockui.Probe(searchBtn, "search-button")
+		if searchBtn.Clicked() && p.OnOpenSearch != nil {
+			p.OnOpenSearch()
+		}
+
+		sortBtn := blockui.IconButton(c, icons.SortFilter, blockui.IconButtonOptions{
+			ID:          "sidebar-sort-filter",
+			Size:        28,
+			IconSize:    16,
+			Radius:      theme.RadiusSM,
+			Tooltip:     theme.Tr("排序与筛选", "Sort & Filter"),
+			Active:      p.State.SortFilterOpen,
+			ActiveStyle: blockui.ActiveAccent,
+			ChromeHover: !p.FloatingCard,
+		})
+		if b := sortBtn.Bounds(); b.W > 0 {
+			p.State.SortFilterBounds = b
+		}
+		if sortBtn.Clicked() {
+			next := !p.State.SortFilterOpen
+			p.State.ClosePopups()
+			p.State.SortFilterOpen = next
+		}
+
+		folderBtn := blockui.IconButton(c, icons.FolderPlus, blockui.IconButtonOptions{
+			ID:          "new-folder",
+			Size:        28,
+			IconSize:    16,
+			Radius:      theme.RadiusSM,
+			Tooltip:     theme.Tr("新建文件夹", "New Folder"),
+			Shortcut:    blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewFolder, "cmd-shift-n")),
+			Disabled:    p.Busy || p.ActiveNotebook == "",
+			ChromeHover: !p.FloatingCard,
+		})
+		if folderBtn.Clicked() && !p.Busy && p.ActiveNotebook != "" && p.OnNewFolder != nil {
+			p.OnNewFolder()
+		}
+
+		noteBtn := blockui.IconButton(c, icons.NotePlus, blockui.IconButtonOptions{
+			ID:          "new-note",
+			Size:        28,
+			IconSize:    16,
+			Radius:      theme.RadiusSM,
+			Tooltip:     theme.Tr("新建页面", "New Page"),
+			Shortcut:    blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewNote, "cmd-n")),
+			Disabled:    p.Busy || p.ActiveNotebook == "",
+			ChromeHover: !p.FloatingCard,
+		})
+		if noteBtn.Clicked() && !p.Busy && p.ActiveNotebook != "" && p.OnNewNote != nil {
+			p.OnNewNote()
+		}
+	})
 }
 
 func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.Element) bool {
@@ -861,6 +981,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 	openContextMenu := func(cx, cy float32) {
 		p.State.ClearDrag()
 		p.State.SwitcherOpen = false
+		p.State.SortFilterOpen = false
 		p.State.MenuCursor, p.State.MoveCursor = -1, -1
 		p.State.ContextOpen = true
 		p.State.ContextPath = entry.Path
@@ -918,10 +1039,93 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 	vpW, vpH := c.Size()
 
 	ui.Overlay(c, func() {
-		if !p.State.SwitcherOpen && !p.State.ContextOpen {
+		if !p.State.SwitcherOpen && !p.State.SortFilterOpen && !p.State.ContextOpen {
 			return
 		}
 		scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
+
+		if p.State.SortFilterOpen {
+			items := []blockui.MenuItemSpec{
+				{
+					ID:      "sort-manual",
+					Label:   theme.Tr("手动排序", "Manual Order"),
+					Checked: p.SortMode == model.TreeSortManual,
+					OnClick: func() {
+						p.State.ClosePopups()
+						if p.OnSetSortMode != nil {
+							p.OnSetSortMode(model.TreeSortManual)
+						}
+					},
+				},
+				{
+					ID:      "sort-name",
+					Label:   theme.Tr("按名称", "By Name"),
+					Checked: p.SortMode == model.TreeSortName,
+					OnClick: func() {
+						p.State.ClosePopups()
+						if p.OnSetSortMode != nil {
+							p.OnSetSortMode(model.TreeSortName)
+						}
+					},
+				},
+				{
+					ID:      "sort-modified",
+					Label:   theme.Tr("按修改时间", "By Modified Time"),
+					Checked: p.SortMode == model.TreeSortModified,
+					OnClick: func() {
+						p.State.ClosePopups()
+						if p.OnSetSortMode != nil {
+							p.OnSetSortMode(model.TreeSortModified)
+						}
+					},
+				},
+				{Separator: true},
+				{
+					ID:      "filter-non-md",
+					Label:   theme.Tr("显示其他文件", "Show Non-Markdown Files"),
+					Checked: !p.HideNonMarkdown,
+					OnClick: func() {
+						if p.OnToggleShowNonMD != nil {
+							p.OnToggleShowNonMD()
+						}
+					},
+				},
+				{
+					ID:      "filter-assets",
+					Label:   theme.Tr("显示附件文件夹", "Show Assets Folder"),
+					Checked: !p.HideAssets,
+					OnClick: func() {
+						if p.OnToggleShowAssets != nil {
+							p.OnToggleShowAssets()
+						}
+					},
+				},
+			}
+			menuW := min(float32(204), max(vpW-16, 1))
+			estH := estimateMenuHeight(items)
+			anchor := p.State.SortFilterBounds
+			if anchor.W <= 0 {
+				anchor = ui.Rect{X: 168, Y: 44, W: 28, H: 28}
+			}
+			spec := blockui.PlaceBelow(anchor)
+			maxH := blockui.MaxHeightForSpec(spec, vpW, vpH, 304)
+			popH := min(estH, maxH)
+			ox, oy := blockui.ResolveOrigin(spec, menuW, popH, vpW, vpH)
+
+			c.Key("sidebar-sort-filter-menu")
+			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
+			blockui.NavigateMenu(c, card, items, &p.State.MenuCursor)
+			blockui.Probe(card, "sidebar-sort-filter-menu")
+			card.Children(func() {
+				for i, it := range items {
+					blockui.MenuRow(c, it, i == p.State.MenuCursor)
+				}
+			})
+			if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
+				p.State.ClosePopups()
+			}
+			return
+		}
 
 		if p.State.SwitcherOpen {
 			menuW := SidebarDefaultW
