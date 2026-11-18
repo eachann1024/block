@@ -20,6 +20,18 @@ const (
 	IconBordered
 )
 
+// IconActiveStyle picks how an Active icon button reads (thinkly-fast titlebar toggles).
+type IconActiveStyle uint8
+
+const (
+	// ActiveOutlined: selected fill + accent ring, glyph in text color.
+	ActiveOutlined IconActiveStyle = iota
+	// ActiveAccent: selected fill + accent ring, glyph in accent (AI panel, page more menu).
+	ActiveAccent
+	// ActiveAccentFlat: selected fill only, glyph in accent (feedback dialog).
+	ActiveAccentFlat
+)
+
 type IconButtonOptions struct {
 	ID       string
 	Label    string
@@ -27,9 +39,12 @@ type IconButtonOptions struct {
 	Variant  IconButtonVariant
 	Size     float32 // Outer square size override (default from Variant)
 	IconSize float32 // Inner glyph size override (default from Variant)
+	Radius   float32 // Corner radius override (default from Variant)
 	Active   bool
-	Disabled bool
-	Danger   bool
+	// ActiveStyle refines how Active is drawn.
+	ActiveStyle IconActiveStyle
+	Disabled    bool
+	Danger      bool
 }
 
 func (o IconButtonOptions) metrics() (box, glyph, radius float32) {
@@ -46,6 +61,9 @@ func (o IconButtonOptions) metrics() (box, glyph, radius float32) {
 	}
 	if o.IconSize > 0 {
 		glyph = o.IconSize
+	}
+	if o.Radius > 0 {
+		radius = o.Radius
 	}
 	return
 }
@@ -82,6 +100,10 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 		btn.Opacity(theme.DisabledOpacity)
 	case opts.Danger && (hovered || pressed):
 		btn.Background(pal.DangerSurface)
+	case opts.Active && opts.ActiveStyle == ActiveAccentFlat:
+		btn.Background(pal.Selected)
+	case opts.Active && opts.ActiveStyle == ActiveAccent:
+		btn.Background(pal.Selected).Border(1, pal.Accent)
 	case opts.Active:
 		btn.Background(pal.Selected)
 	case pressed:
@@ -97,6 +119,8 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 		switch {
 		case opts.Danger && (hovered || opts.Active):
 			ic = pal.MonoIconColors(pal.Danger)
+		case opts.Active && opts.ActiveStyle != ActiveOutlined:
+			ic = pal.DuoIconColors(pal.Accent)
 		case opts.Active || hovered:
 			ic = pal.DuoIconColors(pal.Text)
 		default:

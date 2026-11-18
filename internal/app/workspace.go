@@ -2128,12 +2128,16 @@ func (w *Workspace) Render(c *ui.Context) {
 		activeSess = w.SessionFor(activeTab)
 	}
 
-	pendingAnnots := 0
+	var annDrafts int
+	var annGenerating, annHasAny bool
 	if activeSess != nil {
 		for _, a := range activeSess.Annotations() {
-			if a.Note != "" && a.RewriteResult == "" && !a.RewriteBusy {
-				pendingAnnots++
+			body := strings.TrimSpace(a.Note) != ""
+			if body && a.RewriteResult == "" && !a.RewriteBusy {
+				annDrafts++
 			}
+			annGenerating = annGenerating || a.RewriteBusy
+			annHasAny = annHasAny || (body && !a.Applied)
 		}
 	}
 
@@ -2179,19 +2183,20 @@ func (w *Workspace) Render(c *ui.Context) {
 					}
 					return false
 				},
-				ActiveSurface:      tbSurface,
-				SourceStatus:       srcStatus,
-				PreviewZoomPct:     zoomPctStr,
-				PreviewZoomFit:     zoomFit,
-				SVGShowSource:      svgShowSource,
-				CanBack:            w.nav.CanBack(),
-				CanForward:         w.nav.CanForward(),
-				ZoomPct:            w.ZoomPct(),
-				PendingAnnotations: pendingAnnots,
-				ShortcutSidebar:    modals.EffectiveShortcut(stSnap, "toggle_sidebar"),
-				ShortcutNewTab:     "cmd-t",
-				ShortcutAI:         modals.EffectiveShortcut(stSnap, "toggle_ai"),
-				ShortcutExport:     modals.EffectiveShortcut(stSnap, "export_image"),
+				ActiveSurface:   tbSurface,
+				SourceStatus:    srcStatus,
+				PreviewZoomPct:  zoomPctStr,
+				PreviewZoomFit:  zoomFit,
+				SVGShowSource:   svgShowSource,
+				CanBack:         w.nav.CanBack(),
+				CanForward:      w.nav.CanForward(),
+				AnnotDrafts:     annDrafts,
+				AnnotGenerating: annGenerating,
+				AnnotHasAny:     annHasAny,
+				ShortcutSidebar: modals.EffectiveShortcut(stSnap, "toggle_sidebar"),
+				ShortcutNewTab:  "cmd-t",
+				ShortcutAI:      modals.EffectiveShortcut(stSnap, "toggle_ai"),
+				ShortcutExport:  modals.EffectiveShortcut(stSnap, "export_image"),
 				OnSendAnnotations: func() {
 					if activeSess != nil {
 						activeSess.GeneratePendingAnnotations()
@@ -2244,12 +2249,6 @@ func (w *Workspace) Render(c *ui.Context) {
 						mygo.Shell.ShowItemInFolder(activeTab)
 					}
 				},
-				OnDeleteActive: func() {
-					if activeTab != "" {
-						_ = w.TrashWorkspaceItem(activeTab)
-					}
-				},
-				OnSetZoom: w.SetZoomPct,
 				OnPreviewZoomStep: func(factor float32) {
 					if activeSurf != nil {
 						activeSurf.ZoomStep(factor)
