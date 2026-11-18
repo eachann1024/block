@@ -1158,6 +1158,9 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			SelRange:          multiSelRange,
 			OpaqueRanges:      blockOpaqueBGRanges(b),
 			HasChipBG:         blockHasChipBG(b),
+			OnBounds: func(r ui.Rect) {
+				s.recordBlockTextRect(b.ID, r)
+			},
 			OnChange: func(newText string, _, caret int) {
 				s.caretHidden = false
 				s.footPickerAnnotID = ""
@@ -1306,11 +1309,6 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 				}
 				return false
 			},
-		})
-
-		blockID := b.ID
-		in.DrawOver(func(_ *ui.Painter, r ui.Rect) {
-			s.recordBlockTextRect(blockID, r)
 		})
 
 		_ = s.updateFocusedRichInputDrag(c, s.frameRoot, st, idx)
@@ -2273,23 +2271,14 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 		bg = pal.EditorSelectionBG().Alpha(s.jumpAlpha).Over(bg)
 	}
 	box.Background(bg)
-	weight := theme.WeightRegular
+	weight := tableCellTextWeight(tbl, rIdx)
 	textCol := pal.Text
 	if rIdx == 0 && !tbl.NoHeaderRow {
-		weight = theme.WeightTitle
 		textCol = pal.TextSecondary
 	}
 	lhFactor := tableCellLineHeight / tableCellFontSize
 	edFont := resolvedEditorFont()
-	cellAlign := ui.Start
-	if cIdx < len(tbl.Aligns) {
-		switch tbl.Aligns[cIdx] {
-		case model.ColAlignCenter:
-			cellAlign = ui.Center
-		case model.ColAlignRight:
-			cellAlign = ui.End
-		}
-	}
+	cellAlign := tableCellTextAlign(tbl, cIdx)
 
 	box.Children(func() {
 		if jumpTarget {
