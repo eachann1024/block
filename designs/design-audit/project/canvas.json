@@ -1,0 +1,68 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-18T05:28:30Z"
+  },
+  "title": "Block 设计一致性审计",
+  "launch": {
+    "view": "canvas",
+    "page": "audit"
+  },
+  "pages": [
+    {
+      "id": "audit",
+      "name": "审计与方案"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1240,
+      "page": "audit",
+      "title": "① 现状：不统一清单"
+    },
+    "Tokens.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 1240,
+      "page": "audit",
+      "title": "② 方案：收敛后的统一尺度"
+    },
+    "Components.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 1240,
+      "page": "audit",
+      "title": "③ 方案：组件收敛与落地顺序"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Tokens.dc.html",
+    "Components.dc.html"
+  ],
+  "notes": {
+    "row-title": {
+      "x": 0,
+      "y": -260,
+      "text": "Block 设计一致性审计 · 现状 → 统一尺度 → 组件收敛",
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "audit"
+    }
+  },
+  "designSystems": [
+    {
+      "title": "Ocean Paper",
+      "namespace": "ocean-paper",
+      "artifact": "designs/thinkly-fast-styles/project/ds/ocean-paper",
+      "version": null,
+      "copiedAt": "2026-11-18T05:28:30Z"
+    }
+  ]
+}

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>性能监控 B · 无切换带空隙方块看板</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+*{box-sizing:border-box}
+body{margin:0}
+.entry,.icon,.refresh,.tile{font:inherit;cursor:pointer;user-select:none}
+.entry:focus-visible,.icon:focus-visible,.refresh:focus-visible,.tile:focus-visible{outline:2px solid #779de8;outline-offset:2px}
+.tile{position:relative;display:flex;flex-direction:column;justify-content:center;gap:3px;min-width:0;height:58px;padding:6px 10px;border-radius:8px;text-align:left;transition:background-color .14s ease,border-color .14s ease,transform .12s ease}
+.tile:hover{transform:translateY(-1px);z-index:4}
+.tip{display:none;position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%);width:max-content;max-width:260px;padding:6px 9px;border-radius:7px;background:#2b2d31;border:1px solid #454952;color:#f3f4f6;font-size:11px;line-height:16px;white-space:normal;box-shadow:0 6px 16px rgba(0,0,0,.38);pointer-events:none;z-index:10}
+.tile:hover .tip,.tile:focus-visible .tip{display:block}
+</style>
+</helmet>
+
+<div style="width:1120px;height:760px;display:flex;align-items:center;justify-content:center;gap:28px;padding:24px;background:{{t.backdrop}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;color:{{t.text}}">
+
+<section aria-label="性能与占用入口" style="width:328px;flex:none;display:flex;flex-direction:column;gap:16px;padding:26px 22px 20px;background:{{t.menu}};border:1px solid {{t.border}};border-radius:14px;position:relative">
+<button type="button" class="icon" aria-label="切换深浅色" onClick="{{toggleTheme}}" style="position:absolute;top:12px;right:12px;width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:{{t.sub}};display:inline-flex;align-items:center;justify-content:center">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+</button>
+<strong>macOS · Block 菜单</strong>
+<div style="display:flex;flex-direction:column;gap:2px;padding:8px;background:{{t.paper}};border:1px solid {{t.border}};border-radius:8px">
+<div style="padding:8px 10px">关于 Block</div>
+<button type="button" class="entry" onClick="{{onEntryClick}}" style="display:flex;align-items:center;justify-content:space-between;height:36px;padding:0 10px;border-radius:6px;background:{{entryBg}};border:1px solid {{entryBorder}};color:{{t.text}}"><span>性能与占用</span><span>⇧⌘M</span></button>
+</div>
+<strong>Windows · 设置侧栏</strong>
+<div style="display:flex;flex-direction:column;gap:2px;padding:8px;background:{{t.paper}};border:1px solid {{t.border}};border-radius:8px">
+<button type="button" class="entry" onClick="{{onEntryClick}}" style="display:flex;align-items:center;justify-content:space-between;height:36px;padding:0 10px;border-radius:6px;background:{{entryBg}};border:1px solid {{entryBorder}};color:{{t.text}}"><span>性能与占用</span><span>Ctrl+Shift+M</span></button>
+<div style="padding:8px 10px">关于 Block</div>
+</div>
+<a href="https://github.com/eachann1024/block" target="_blank" rel="noopener noreferrer" class="entry" style="color:{{t.sub}};text-decoration:none">项目源码 ↗</a>
+<button type="button" class="entry" onClick="{{toggleSkewedDemo}}" style="width:100%;height:36px;border-radius:8px;background:{{t.paper}};border:1px solid {{t.btn}};color:{{t.sub}};font-size:12px">{{demoBtnLabel}}</button>
+</section>
+
+<section aria-label="性能与占用" style="width:680px;max-height:420px;flex:none;display:{{panelDisplay}};flex-direction:column;gap:8px;padding:14px 18px 12px;background:{{t.menu}};border:1px solid {{t.border}};border-radius:14px">
+<header style="height:28px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px">
+<strong style="font-size:15px;font-weight:560">性能与占用</strong>
+<div style="display:flex;align-items:center;gap:6px">
+<button type="button" class="refresh" onClick="{{refresh}}" style="height:26px;padding:0 10px;border:1px solid {{t.btn}};border-radius:6px;background:{{t.paper}};color:{{t.text}};font-size:12px">{{refreshLabel}}</button>
+<button type="button" class="icon" aria-label="关闭性能与占用" onClick="{{closePanel}}" style="width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:{{t.sub}};font-size:18px;line-height:1">×</button>
+</div>
+</header>
+
+<div aria-label="实时运行指标" style="height:30px;flex:none;display:flex;align-items:center;gap:14px;padding:0 2px;font-size:13px">
+<div><span style="color:{{t.sub}}">文件体积 </span><strong>{{totalFilesText}}</strong></div>
+<div><span style="color:{{t.sub}}">运行内存 </span><strong>{{totalMemText}}</strong></div>
+<div><span style="color:{{t.sub}}">CPU </span><strong>{{cpuText}}</strong></div>
+<div><span style="color:{{t.sub}}">线程 </span><strong>{{threadText}}</strong></div>
+<div><span style="color:{{t.sub}}">统计时间 </span><strong>{{scanTimeText}}</strong></div>
+</div>
+
+<div aria-label="文件与进程方块矩阵" style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;gap:6px;width:100%">
+<sc-for list="{{row1}}" as="item" hint-placeholder-count="3">
+<button type="button" class="tile" onMouseEnter="{{item.pick}}" onFocus="{{item.pick}}" onClick="{{item.pick}}" style="flex:{{item.weight}} 1 0%;background:{{item.bg}};border:1px solid {{item.border}};color:{{t.text}}">
+<div style="width:100%;display:flex;align-items:center;gap:5px;font-size:13px">
+<span style="width:7px;height:7px;flex:none;border-radius:999px;background:{{item.dot}}"></span>
+<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">{{item.name}}</span>
+<span style="flex:none;font-variant-numeric:tabular-nums">{{item.size}}</span>
+</div>
+<div style="width:100%;font-size:12px;color:{{t.sub}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{item.pct}} · {{item.purpose}}</div>
+<span class="tip" role="tooltip">{{item.tip}}</span>
+</button>
+</sc-for>
+</div>
+
+<div style="display:flex;gap:6px;width:100%">
+<sc-for list="{{row2}}" as="item" hint-placeholder-count="2">
+<button type="button" class="tile" onMouseEnter="{{item.pick}}" onFocus="{{item.pick}}" onClick="{{item.pick}}" style="flex:{{item.weight}} 1 0%;background:{{item.bg}};border:1px solid {{item.border}};color:{{t.text}}">
+<div style="width:100%;display:flex;align-items:center;gap:5px;font-size:13px">
+<span style="width:7px;height:7px;flex:none;border-radius:999px;background:{{item.dot}}"></span>
+<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">{{item.name}}</span>
+<span style="flex:none;font-variant-numeric:tabular-nums">{{item.size}}</span>
+</div>
+<div style="width:100%;font-size:12px;color:{{t.sub}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{item.pct}} · {{item.purpose}}</div>
+<span class="tip" role="tooltip">{{item.tip}}</span>
+</button>
+</sc-for>
+</div>
+
+<div style="display:flex;gap:6px;width:100%">
+<sc-for list="{{row3}}" as="item" hint-placeholder-count="2">
+<button type="button" class="tile" onMouseEnter="{{item.pick}}" onFocus="{{item.pick}}" onClick="{{item.pick}}" style="flex:{{item.weight}} 1 0%;background:{{item.bg}};border:1px solid {{item.border}};color:{{t.text}}">
+<div style="width:100%;display:flex;align-items:center;gap:5px;font-size:13px">
+<span style="width:7px;height:7px;flex:none;border-radius:999px;background:{{item.dot}}"></span>
+<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">{{item.name}}</span>
+<span style="flex:none;font-variant-numeric:tabular-nums">{{item.size}}</span>
+</div>
+<div style="width:100%;font-size:12px;color:{{t.sub}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{item.pct}} · {{item.purpose}}</div>
+<span class="tip" role="tooltip">{{item.tip}}</span>
+</button>
+</sc-for>
+</div>
+
+<div style="display:flex;gap:6px;width:100%">
+<sc-for list="{{row4}}" as="item" hint-placeholder-count="2">
+<button type="button" class="tile" onMouseEnter="{{item.pick}}" onFocus="{{item.pick}}" onClick="{{item.pick}}" style="flex:{{item.weight}} 1 0%;background:{{item.bg}};border:1px solid {{item.border}};color:{{t.text}}">
+<div style="width:100%;display:flex;align-items:center;gap:5px;font-size:13px">
+<span style="width:7px;height:7px;flex:none;border-radius:999px;background:{{item.dot}}"></span>
+<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">{{item.name}}</span>
+<span style="flex:none;font-variant-numeric:tabular-nums">{{item.size}}</span>
+</div>
+<div style="width:100%;font-size:12px;color:{{t.sub}};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{item.pct}} · {{item.purpose}}</div>
+<span class="tip" role="tooltip">{{item.tip}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+
+<div aria-live="polite" style="height:24px;flex:none;display:flex;align-items:center;gap:6px;padding:0 2px;font-size:12px;color:{{t.sub}};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+<span style="width:7px;height:7px;flex:none;border-radius:999px;background:{{cur.dot}}"></span>
+<strong style="color:{{t.text}};font-weight:500">{{cur.name}}</strong>
+<span>· {{cur.size}} · {{cur.pct}} · {{cur.purpose}}</span>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":true},"$preview":{"width":1120,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const state = this.state || {};
+    const dark = state.dark !== undefined ? state.dark : (this.props.dark ?? true);
+    const index = state.index ?? 2;
+    const skewed = state.skewed !== undefined ? state.skewed : true;
+    const scanStep = state.scanStep ?? 0;
+    const panelOpen = state.panelOpen !== false;
+    const t = dark
+      ? {backdrop:'#141414',menu:'#222222',paper:'#181818',selected:'#2b3548',text:'#ececec',sub:'#b4b4b4',border:'#343434',btn:'#444444',accent:'#779de8'}
+      : {backdrop:'#eef0f3',menu:'#ffffff',paper:'#f8f8f8',selected:'#e5edfc',text:'#20242c',sub:'#526071',border:'#e4e6ea',btn:'#dcdcdc',accent:'#547dd0'};
+    const raw = skewed
+      ? [
+          {name:'应用',size:'40.3 MiB',bytes:'42,257,612 B',pct:'0.07%',purpose:'应用程序文件',dot:'#547dd0',dark:'#232d40',darkSel:'#2c3d59',light:'#e7eef9',lightSel:'#d5e3f8',weight:'1.35'},
+          {name:'笔记',size:'2.1 MiB',bytes:'2,202,009 B',pct:'<0.01%',purpose:'笔记本中的 Markdown 文件',dot:'#3ba57b',dark:'#20352d',darkSel:'#27473b',light:'#e7f3ed',lightSel:'#d2ebdf',weight:'1.22'},
+          {name:'附件及其他',size:'58.8 GiB',bytes:'63,134,598,774 B',pct:'99.92%',purpose:'笔记本中的其他文件，可能包含工程依赖或构建产物',dot:'#d4943a',dark:'#382d1f',darkSel:'#4d3b24',light:'#f5eee2',lightSel:'#ecdec6',weight:'1.78'},
+          {name:'历史版本',size:'289.3 KiB',bytes:'296,243 B',pct:'<0.01%',purpose:'用于恢复笔记的历史文件',dot:'#8b6fd6',dark:'#2d263b',darkSel:'#3d3154',light:'#f0eaf5',lightSel:'#e2d6ef',weight:'1.18'},
+          {name:'AI 会话',size:'97.6 KiB',bytes:'99,942 B',pct:'<0.01%',purpose:'本地会话与草稿文件',dot:'#d06b6b',dark:'#3a2527',darkSel:'#4f2e32',light:'#f7e8e8',lightSel:'#efd5d5',weight:'1.12'},
+          {name:'配置及其他',size:'350.6 KiB',bytes:'359,014 B',pct:'<0.01%',purpose:'应用数据中的其他文件',dot:'#5294a6',dark:'#223338',darkSel:'#2b454d',light:'#e6f1f4',lightSel:'#d1e6ec',weight:'1.19'},
+          {name:'缓存',size:'2.1 MiB',bytes:'2,201,500 B',pct:'<0.01%',purpose:'字体与远程图片等缓存',dot:'#8792a2',dark:'#2c3036',darkSel:'#393f47',light:'#eef0f2',lightSel:'#dfe3e8',weight:'1.25'},
+          {name:'主进程',size:'142.0 MiB',bytes:'148,897,792 B',pct:'86.59%',purpose:'block (1->50066) · CPU 1.4% · 线程 19 · 3420s',dot:'#547dd0',dark:'#232d40',darkSel:'#2c3d59',light:'#e7eef9',lightSel:'#d5e3f8',weight:'1.52'},
+          {name:'子进程',size:'22.0 MiB',bytes:'23,068,672 B',pct:'13.41%',purpose:'codex-bridge · CPU 0.4% · 线程 6 · 1280s',dot:'#3ba57b',dark:'#20352d',darkSel:'#27473b',light:'#e7f3ed',lightSel:'#d2ebdf',weight:'1.32'}
+        ]
+      : [
+          {name:'应用',size:'40.3 MiB',bytes:'42,257,612 B',pct:'69.60%',purpose:'应用程序文件',dot:'#547dd0',dark:'#232d40',darkSel:'#2c3d59',light:'#e7eef9',lightSel:'#d5e3f8',weight:'1.52'},
+          {name:'笔记',size:'8.4 MiB',bytes:'8,808,038 B',pct:'14.51%',purpose:'笔记本中的 Markdown 文件',dot:'#3ba57b',dark:'#20352d',darkSel:'#27473b',light:'#e7f3ed',lightSel:'#d2ebdf',weight:'1.34'},
+          {name:'附件及其他',size:'6.2 MiB',bytes:'6,501,171 B',pct:'10.71%',purpose:'笔记本中的其他文件',dot:'#d4943a',dark:'#382d1f',darkSel:'#4d3b24',light:'#f5eee2',lightSel:'#ecdec6',weight:'1.30'},
+          {name:'历史版本',size:'1.2 MiB',bytes:'1,258,291 B',pct:'2.07%',purpose:'用于恢复笔记的历史文件',dot:'#8b6fd6',dark:'#2d263b',darkSel:'#3d3154',light:'#f0eaf5',lightSel:'#e2d6ef',weight:'1.22'},
+          {name:'AI 会话',size:'640.0 KiB',bytes:'655,360 B',pct:'1.05%',purpose:'本地会话与草稿文件',dot:'#d06b6b',dark:'#3a2527',darkSel:'#4f2e32',light:'#f7e8e8',lightSel:'#efd5d5',weight:'1.16'},
+          {name:'配置及其他',size:'350.6 KiB',bytes:'359,014 B',pct:'0.59%',purpose:'应用数据中的其他文件',dot:'#5294a6',dark:'#223338',darkSel:'#2b454d',light:'#e6f1f4',lightSel:'#d1e6ec',weight:'1.14'},
+          {name:'缓存',size:'890.0 KiB',bytes:'911,360 B',pct:'1.47%',purpose:'字体与远程图片等缓存',dot:'#8792a2',dark:'#2c3036',darkSel:'#393f47',light:'#eef0f2',lightSel:'#dfe3e8',weight:'1.18'},
+          {name:'主进程',size:'138.4 MiB',bytes:'145,122,918 B',pct:'87.37%',purpose:'block (1->50066) · CPU 1.1% · 线程 18 · 3425s',dot:'#547dd0',dark:'#232d40',darkSel:'#2c3d59',light:'#e7eef9',lightSel:'#d5e3f8',weight:'1.52'},
+          {name:'子进程',size:'20.0 MiB',bytes:'20,971,520 B',pct:'12.63%',purpose:'codex-bridge · CPU 0.2% · 线程 6 · 1285s',dot:'#3ba57b',dark:'#20352d',darkSel:'#27473b',light:'#e7f3ed',lightSel:'#d2ebdf',weight:'1.32'}
+        ];
+    const items = raw.map((item, i) => {
+      const active = i === index;
+      return {
+        ...item,
+        bg: dark ? (active ? item.darkSel : item.dark) : (active ? item.lightSel : item.light),
+        border: active ? t.accent : (dark ? item.dot + '6b' : item.dot + '88'),
+        tip: item.name + ' · ' + item.bytes + ' · ' + item.pct + ' · ' + item.purpose,
+        pick: () => this.setState({index: i, panelOpen: true})
+      };
+    });
+    const times = ['22:05', '22:06', '22:07'];
+    const cpus = ['1.8%', '1.3%', '1.5%'];
+    return {
+      t,
+      row1: items.slice(0, 3),
+      row2: items.slice(3, 5),
+      row3: items.slice(5, 7),
+      row4: items.slice(7, 9),
+      cur: items[index] || items[0],
+      panelDisplay: panelOpen ? 'flex' : 'none',
+      entryBg: panelOpen ? t.selected : t.paper,
+      entryBorder: panelOpen ? t.accent : t.btn,
+      entryActionText: panelOpen ? '切换焦点方块 ›' : '打开监控 ›',
+      demoBtnLabel: skewed ? '演示数据：58.8 GiB 极端体积（点击切常规）' : '演示数据：57.9 MiB 常规体积（点击切 58.8 GiB）',
+      refreshLabel: scanStep % 2 === 1 ? '已刷新 ✓' : '重新统计',
+      totalFilesText: skewed ? '58.8 GiB' : '57.9 MiB',
+      totalMemText: skewed ? '164.0 MiB' : '158.4 MiB',
+      cpuText: cpus[scanStep % cpus.length],
+      threadText: skewed ? '25' : '24',
+      scanTimeText: times[scanStep % times.length],
+      toggleTheme: () => this.setState({dark: !dark}),
+      onEntryClick: () => {
+        if (!panelOpen) {
+          this.setState({panelOpen: true});
+        } else {
+          this.setState({index: (index + 1) % items.length});
+        }
+      },
+      toggleSkewedDemo: () => this.setState({skewed: !skewed, panelOpen: true}),
+      closePanel: () => this.setState({panelOpen: false}),
+      refresh: () => this.setState({scanStep: scanStep + 1, index: (index + 1) % 7})
+    };
+  }
+}
+</script>
+</body>
+</html>

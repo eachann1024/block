@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>页面历史 · 入口与恢复流程</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+</style>
+</helmet>
+<div style="position:relative;width:1440px;height:1000px;box-sizing:border-box;background:#f8f8f8;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;font-size:14px;line-height:20px;overflow:hidden">
+
+<div style="position:absolute;left:64px;top:128px;width:1312px;height:216px;background:#ffffff;border:1px solid #e4e6ea;border-radius:14px;box-sizing:border-box"></div>
+<div style="position:absolute;left:64px;top:372px;width:1312px;height:244px;background:#ffffff;border:1px solid #e4e6ea;border-radius:14px;box-sizing:border-box"></div>
+<div style="position:absolute;left:64px;top:644px;width:1312px;height:280px;background:#ffffff;border:1px solid #e4e6ea;border-radius:14px;box-sizing:border-box"></div>
+
+<svg width="79" height="8" viewBox="0 0 79 8" preserveAspectRatio="none" style="position:absolute;left:368px;top:244px;width:79px;height:8px;overflow:visible;fill:none;stroke:#547dd0;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><defs><marker id="dc-arrow-head-filled-1" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#547dd0" stroke="none" style="stroke:none;fill:#547dd0;fill:context-stroke"></path></marker></defs><path d="M 0 4 L 75 4" marker-end="url(#dc-arrow-head-filled-1)"></path></svg>
+
+<svg width="79" height="8" viewBox="0 0 79 8" preserveAspectRatio="none" style="position:absolute;left:744px;top:244px;width:79px;height:8px;overflow:visible;fill:none;stroke:#547dd0;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><defs><marker id="dc-arrow-head-filled-2" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#547dd0" stroke="none" style="stroke:none;fill:#547dd0;fill:context-stroke"></path></marker></defs><path d="M 0 4 L 75 4" marker-end="url(#dc-arrow-head-filled-2)"></path></svg>
+
+<svg width="8" height="143" viewBox="0 0 8 143" preserveAspectRatio="none" style="position:absolute;left:988px;top:296px;width:8px;height:143px;overflow:visible;fill:none;stroke:#547dd0;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><defs><marker id="dc-arrow-head-filled-3" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#547dd0" stroke="none" style="stroke:none;fill:#547dd0;fill:context-stroke"></path></marker></defs><path d="M 4 0 L 4 139" marker-end="url(#dc-arrow-head-filled-3)"></path></svg>
+
+<svg width="79" height="8" viewBox="0 0 79 8" preserveAspectRatio="none" style="position:absolute;left:745px;top:484px;width:79px;height:8px;overflow:visible;fill:none;stroke:#547dd0;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><defs><marker id="dc-arrow-head-filled-4" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#547dd0" stroke="none" style="stroke:none;fill:#547dd0;fill:context-stroke"></path></marker></defs><path d="M 79 4 L 4 4" marker-end="url(#dc-arrow-head-filled-4)"></path></svg>
+
+<svg width="79" height="8" viewBox="0 0 79 8" preserveAspectRatio="none" style="position:absolute;left:369px;top:484px;width:79px;height:8px;overflow:visible;fill:none;stroke:#526071;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><defs><marker id="dc-arrow-head-filled-5" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#526071" stroke="none" style="stroke:none;fill:#526071;fill:context-stroke"></path></marker></defs><path d="M 79 4 L 4 4" marker-end="url(#dc-arrow-head-filled-5)"></path></svg>
+
+<svg width="8" height="183" viewBox="0 0 8 183" preserveAspectRatio="none" style="position:absolute;left:592px;top:536px;width:8px;height:183px;overflow:visible;fill:none;stroke:#547dd0;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><defs><marker id="dc-arrow-head-filled-6" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#547dd0" stroke="none" style="stroke:none;fill:#547dd0;fill:context-stroke"></path></marker></defs><path d="M 4 0 L 4 179" marker-end="url(#dc-arrow-head-filled-6)"></path></svg>
+
+<svg width="248" height="8" viewBox="0 0 248 8" preserveAspectRatio="none" style="position:absolute;left:220px;top:764px;width:248px;height:8px;overflow:visible;fill:none;stroke:#526071;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M 248 4 L 0 4"></path></svg>
+
+<svg width="8" height="231" viewBox="0 0 8 231" preserveAspectRatio="none" style="position:absolute;left:216px;top:537px;width:8px;height:231px;overflow:visible;fill:none;stroke:#526071;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><defs><marker id="dc-arrow-head-filled-7" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#526071" stroke="none" style="stroke:none;fill:#526071;fill:context-stroke"></path></marker></defs><path d="M 4 231 L 4 4" marker-end="url(#dc-arrow-head-filled-7)"></path></svg>
+
+<svg width="99" height="8" viewBox="0 0 99 8" preserveAspectRatio="none" style="position:absolute;left:724px;top:764px;width:99px;height:8px;overflow:visible;fill:none;stroke:#547dd0;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><defs><marker id="dc-arrow-head-filled-8" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#547dd0" stroke="none" style="stroke:none;fill:#547dd0;fill:context-stroke"></path></marker></defs><path d="M 0 4 L 95 4" marker-end="url(#dc-arrow-head-filled-8)"></path></svg>
+
+<svg width="79" height="8" viewBox="0 0 79 8" preserveAspectRatio="none" style="position:absolute;left:1088px;top:764px;width:79px;height:8px;overflow:visible;fill:none;stroke:#547dd0;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><defs><marker id="dc-arrow-head-filled-9" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#547dd0" stroke="none" style="stroke:none;fill:#547dd0;fill:context-stroke"></path></marker></defs><path d="M 0 4 L 75 4" marker-end="url(#dc-arrow-head-filled-9)"></path></svg>
+
+<div style="position:absolute;left:64px;top:56px;font-size:24px;line-height:32px;font-weight:560;color:#20242c">页面历史 · 入口、只读对比与恢复流程</div>
+<div style="position:absolute;left:64px;top:92px;font-size:14px;line-height:20px;color:#526071">每个节点与连线均可独立选中与编辑；点击右上角更多菜单进入历史，恢复始终创建新版本且可撤销</div>
+
+<div style="position:absolute;left:88px;top:148px;font-size:14px;font-weight:560;color:#526071">阶段一 · 触发入口与当前保存</div>
+<div style="position:absolute;left:88px;top:392px;font-size:14px;font-weight:560;color:#526071">阶段二 · 只读预览、对比与退出</div>
+<div style="position:absolute;left:88px;top:664px;font-size:14px;font-weight:560;color:#526071">阶段三 · 确认恢复、追加新版本与成功后撤销</div>
+
+<div style="position:absolute;left:96px;top:200px;width:272px;height:96px;box-sizing:border-box;padding:12px 16px;display:flex;align-items:center;justify-content:center;text-align:center;background:#ffffff;border:1px solid #dcdcdc;border-radius:10px;font-size:15px;line-height:22px"><span><b>1. 页面更多菜单「⋯」</b><br>点击「页面历史…」进入</span></div>
+
+<div style="position:absolute;left:448px;top:200px;width:296px;height:96px;box-sizing:border-box;padding:12px 16px;display:flex;align-items:center;justify-content:center;text-align:center;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;border-radius:10px;font-size:15px;line-height:22px"><span><b>2. 先保存当前修改</b><br>有未落盘编辑时先生成当前快照</span></div>
+
+<div style="position:absolute;left:824px;top:200px;width:336px;height:96px;box-sizing:border-box;padding:12px 16px;display:flex;align-items:center;justify-content:center;text-align:center;background:#ffffff;border:1px solid #dcdcdc;border-radius:10px;font-size:15px;line-height:22px"><span><b>3. 按日期倒序加载版本列表</b><br>收起文件侧栏以保留 672–720px 版心</span></div>
+
+<div style="position:absolute;left:824px;top:440px;width:336px;height:96px;box-sizing:border-box;padding:12px 16px;display:flex;align-items:center;justify-content:center;text-align:center;background:#ffffff;border:1px solid #dcdcdc;border-radius:10px;font-size:15px;line-height:22px"><span><b>4. 选择历史版本只读预览</b><br>支持鼠标点击或面板内 ↑ / ↓ 切换</span></div>
+
+<div style="position:absolute;left:448px;top:440px;width:296px;height:96px;box-sizing:border-box;padding:12px 16px;display:flex;align-items:center;justify-content:center;text-align:center;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;border-radius:10px;font-size:15px;line-height:22px"><span><b>5. 与打开历史时当前版对比</b><br>可切「对比 / 原文」；同内容禁恢复</span></div>
+
+<div style="position:absolute;left:96px;top:440px;width:272px;height:96px;box-sizing:border-box;padding:12px 16px;display:flex;align-items:center;justify-content:center;text-align:center;background:#fafafa;border:1px solid #dcdcdc;border-radius:10px;font-size:15px;line-height:22px"><span><b>退出回原光标 / 滚动位置</b><br>按 Esc 或点「关闭历史」归还焦点</span></div>
+
+<div style="position:absolute;left:468px;top:720px;width:256px;height:96px;box-sizing:border-box;padding:12px 16px;display:flex;align-items:center;justify-content:center;text-align:center;background:#ffffff;border:1px solid #547dd0;border-radius:10px;font-size:15px;line-height:22px"><span><b>6. 确认恢复弹窗</b><br>校验当前页面指纹无外部冲突</span></div>
+
+<div style="position:absolute;left:824px;top:720px;width:264px;height:96px;box-sizing:border-box;padding:12px 16px;display:flex;align-items:center;justify-content:center;text-align:center;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;border-radius:10px;font-size:15px;line-height:22px"><span><b>7. 创建新版本并退出历史</b><br>追加为最新记录，不删既有历史</span></div>
+
+<div style="position:absolute;left:1168px;top:720px;width:184px;height:96px;box-sizing:border-box;padding:12px 14px;display:flex;align-items:center;justify-content:center;text-align:center;background:#ffffff;border:1px solid #dcdcdc;border-radius:10px;font-size:15px;line-height:22px"><span><b>8. 成功后撤销恢复</b><br>点击再次快照回退</span></div>
+
+<div style="position:absolute;left:372px;top:456px;width:72px;text-align:center;font-size:14px;line-height:18px;color:#526071">关闭 / Esc</div>
+<div style="position:absolute;left:608px;top:612px;width:136px;text-align:left;font-size:14px;line-height:18px;color:#3d63b0">点击「恢复到此版本」</div>
+<div style="position:absolute;left:284px;top:736px;width:128px;text-align:center;font-size:14px;line-height:18px;color:#526071">取消恢复 / 保留当前</div>
+<div style="position:absolute;left:736px;top:736px;width:76px;text-align:center;font-size:14px;line-height:18px;color:#3d63b0">确认恢复</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {};
+  }
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

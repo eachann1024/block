@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>AI 助手 B · 顶栏分段切换 + 二级后端直选环境条 + 全屏三栏原文对照</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button,input,textarea{font-family:inherit;font-size:14px;line-height:20px;color:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #547dd0;outline-offset:1px}
+*{box-sizing:border-box}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.ib{width:28px;height:28px;border:0;border-radius:8px;background:transparent;display:inline-flex;align-items:center;justify-content:center;padding:0;flex:none}
+.row{width:100%;height:32px;padding:0 8px;border:0;border-radius:8px;background:transparent;display:flex;align-items:center;gap:8px;text-align:left}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:940px;display:flex;flex-direction:column;background:{{shellBg}};color:{{textPrimary}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased">
+
+  <!-- 顶部演示切换栏 -->
+  <div style="min-height:48px;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:{{sidebarBg}};border-bottom:1px solid {{borderCol}};flex:none">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-weight:560">方案 B · 顶栏分段切换 + 二级后端直选条 + 全屏原文对照</span>
+      <div style="display:inline-flex;padding:3px;gap:2px;background:{{shellBg}};border-radius:8px">
+        <button type="button" onClick="{{setSidebarMode}}" style="height:26px;padding:0 10px;border:0;border-radius:6px;background:{{modeSidebarBg}};box-shadow:{{modeSidebarRing}}">侧栏模式</button>
+        <button type="button" onClick="{{setFullscreenMode}}" style="height:26px;padding:0 10px;border:0;border-radius:6px;background:{{modeFullBg}};box-shadow:{{modeFullRing}}">全屏对照工作台</button>
+      </div>
+      <button type="button" onClick="{{toggleTheme}}" style="height:28px;padding:4px 10px;border:0;border-radius:8px;background:{{shellBg}}">{{themeLabel}}</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+      <sc-for list="{{flowTabs}}" as="tab" hint-placeholder-count="6">
+        <button type="button" onClick="{{tab.pick}}" style="height:28px;padding:0 10px;border:0;border-radius:8px;background:{{tab.bg}};box-shadow:{{tab.ring}};color:{{tab.col}};font-weight:{{tab.weight}}">{{tab.label}}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- 应用 40px 顶栏（右上角含新增 AI 图标） -->
+  <header style="height:40px;display:flex;align-items:center;background:{{shellBg}};border-bottom:1px solid {{shellBorder}};flex:none">
+    <div style="width:260px;height:100%;padding:0 10px 0 16px;display:flex;align-items:center;justify-content:space-between;border-right:1px solid {{shellBorder}};flex:none">
+      <div aria-hidden="true" style="display:flex;gap:8px;align-items:center">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      </div>
+      <button type="button" class="ib" aria-label="收起侧栏" style="color:{{textSecondary}}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{iconFill}}"></path>
+          <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect>
+          <path d="M9.25 4.75V19.25" stroke="currentColor" stroke-width="1.5"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div style="flex:1;min-width:0;height:100%;padding:0 12px;display:flex;align-items:center;justify-content:space-between">
+      <span style="font-weight:500">Claude</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button type="button" class="ib" aria-label="意见反馈" style="color:{{textSecondary}}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H9l-4.5 3v-3H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5Z" stroke="currentColor" stroke-width="1.5"></path>
+          </svg>
+        </button>
+        <!-- 新增顶栏 AI 图标按钮 -->
+        <button type="button" class="ib" onClick="{{toggleLayoutMode}}" aria-label="切换 AI 助手" style="background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 3.5L14.2 9.1L19.8 11.3L14.2 13.5L12 19.1L9.8 13.5L4.2 11.3L9.8 9.1L12 3.5Z" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.6" stroke-linejoin="round"></path>
+          </svg>
+        </button>
+        <button type="button" class="ib" aria-label="页面更多操作" style="color:{{textSecondary}}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="5.75" cy="12" r="1.5" fill="currentColor"></circle>
+            <circle cx="12" cy="12" r="1.5" fill="{{accent}}"></circle>
+            <circle cx="18.25" cy="12" r="1.5" fill="currentColor"></circle>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主区域 -->
+  <div style="flex:1;min-height:0;display:flex;background:{{paperBg}}">
+
+    <!-- 侧栏模式下的左侧树与笔记区 -->
+    <sc-if value="{{isSidebar}}" hint-placeholder-val="{{true}}">
+      <aside style="width:260px;flex:none;background:{{sidebarBg}};border-right:1px solid {{shellBorder}};padding:12px 10px;display:flex;flex-direction:column;gap:4px">
+        <div style="height:32px;padding:6px 10px;margin-bottom:8px;border-radius:8px;background:{{shellBg}};display:flex;align-items:center;justify-content:space-between;color:{{textSecondary}}">
+          <span>搜索</span>
+          <span class="mono" style="font-size:12px">⌘K</span>
+        </div>
+        <button type="button" class="row" style="color:{{textSecondary}}"><span>assets</span></button>
+        <button type="button" class="row" style="color:{{textSecondary}}"><span>IDEA</span></button>
+        <button type="button" class="row" style="background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};font-weight:500"><span>Claude</span></button>
+        <button type="button" class="row" style="color:{{textSecondary}}"><span>Google 账号 Gemini</span></button>
+        <button type="button" class="row" style="color:{{textSecondary}}"><span>账号归档</span></button>
+      </aside>
+    </sc-if>
+
+    <sc-if value="{{isSidebar}}" hint-placeholder-val="{{true}}">
+      <main style="flex:1;min-width:0;padding:44px 48px;overflow:auto;background:{{paperBg}}">
+        <article style="max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:18px;font-size:16px;line-height:28px">
+          <div>格式：邮箱----密码----邮箱 client_id----邮箱 refresh_token</div>
+          <div class="mono" style="padding:14px 16px;border-radius:10px;background:{{codeBg}};border:1px solid {{borderCol}};font-size:14px;line-height:22px">
+            user_demo_469@outlook.com ---- demo_pass_6238 ---- client_9e5f94bc
+          </div>
+          <h2 style="margin:8px 0 0;font-size:18px;line-height:26px;font-weight:560">新号 2026 年 11 月 6 日</h2>
+          <p style="margin:0;color:{{textSecondary}}">右侧采用「顶栏分段模式切换 + 二级后端直选条」设计，切至全屏时可并排对照当前笔记原文与 AI 生成的改写结果。</p>
+        </article>
+      </main>
+    </sc-if>
+
+    <!-- AI 助手面板（方案 B：顶栏内嵌「侧栏 | 全屏」分段控制器 + 二级后端直选环境条） -->
+    <section aria-label="AI 助手工作台" style="width:{{aiPanelWidth}};flex:{{aiPanelFlex}};min-width:0;background:{{cardBg}};border-left:{{aiBorderLeft}};display:flex;flex-direction:column">
+
+      <!-- 第一层顶栏：标题 + 居中「侧栏 | 全屏」分段控制器 + 右侧「历史 / 新建 / 关闭」 -->
+      <div style="min-height:52px;padding:10px 16px;border-bottom:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none">
+        <div style="display:flex;align-items:center;gap:8px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 3.5L14.2 9.1L19.8 11.3L14.2 13.5L12 19.1L9.8 13.5L4.2 11.3L9.8 9.1L12 3.5Z" fill="{{iconFill}}" stroke="{{accent}}" stroke-width="1.6" stroke-linejoin="round"></path>
+          </svg>
+          <strong style="font-size:15px;font-weight:560">AI 助手</strong>
+        </div>
+
+        <!-- Ocean Paper 标准分段控制器：侧栏 | 全屏 -->
+        <div role="group" aria-label="视图模式切换" style="display:inline-flex;padding:3px;gap:2px;background:{{shellBg}};border-radius:8px">
+          <button type="button" onClick="{{setSidebarMode}}" style="height:26px;padding:0 12px;border:0;border-radius:6px;background:{{modeSidebarBg}};box-shadow:{{modeSidebarRing}};font-weight:460">侧栏</button>
+          <button type="button" onClick="{{setFullscreenMode}}" style="height:26px;padding:0 12px;border:0;border-radius:6px;background:{{modeFullBg}};box-shadow:{{modeFullRing}};font-weight:460">全屏</button>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:4px">
+          <button type="button" class="ib" onClick="{{pickHistory}}" aria-label="历史会话" style="color:{{textSecondary}}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l2.5 2.5"></path></svg>
+          </button>
+          <button type="button" class="ib" onClick="{{pickEmpty}}" aria-label="新建会话" style="color:{{textSecondary}}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          </button>
+          <button type="button" class="ib" aria-label="关闭 AI 助手" style="color:{{textSecondary}}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 第二层：38px 后端直选环境条（无需打开深层下拉即可一键切换 内置 AI / Codex / Claude / dsh 与配置） -->
+      <div style="min-height:42px;padding:8px 16px;background:{{shellBg}};border-bottom:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;flex:none">
+        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+          <sc-for list="{{backendPills}}" as="pill" hint-placeholder-count="4">
+            <button type="button" onClick="{{pill.pick}}" style="height:28px;padding:0 10px;border:0;border-radius:8px;background:{{pill.bg}};box-shadow:{{pill.ring}};color:{{pill.col}};display:inline-flex;align-items:center;gap:6px;font-weight:{{pill.weight}}">
+              <span style="width:6px;height:6px;border-radius:3px;background:{{pill.dot}}"></span>
+              <span>{{pill.name}}</span>
+            </button>
+          </sc-for>
+        </div>
+        <button type="button" onClick="{{pickDsh}}" style="height:28px;padding:4px 10px;border:0;border-radius:6px;background:{{cardBg}};color:{{textSecondary}}">
+          {{statusHint}}
+        </button>
+      </div>
+
+      <!-- 主体内容区（全屏模式下左会话 + 中对话 + 右原文对照三栏） -->
+      <div style="flex:1;min-height:0;display:flex;overflow:hidden">
+
+        <sc-if value="{{isFullscreen}}" hint-placeholder-val="{{false}}">
+          <aside style="width:240px;flex:none;background:{{sidebarBg}};border-right:1px solid {{borderCol}};padding:14px 10px;display:flex;flex-direction:column;gap:6px">
+            <div style="padding:4px 8px;color:{{textSecondary}};font-weight:560">会话历史</div>
+            <button type="button" onClick="{{pickPlan}}" class="row" style="height:36px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};font-weight:500"><span>整理 Claude 账号表格</span></button>
+            <button type="button" onClick="{{pickApproval}}" class="row" style="height:36px;color:{{textSecondary}}"><span>跨笔记排查重复邮箱</span></button>
+            <button type="button" onClick="{{pickEmpty}}" class="row" style="height:36px;color:{{textSecondary}}"><span>提炼周报核心结论</span></button>
+          </aside>
+        </sc-if>
+
+        <!-- 中央对话与空状态流 -->
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+          <div style="flex:1;min-height:0;overflow:auto;padding:20px 16px;display:flex;flex-direction:column;align-items:center">
+            <div style="width:100%;max-width:680px;display:flex;flex-direction:column;gap:14px">
+
+              <!-- 方案 B 空状态：2×2 卡片矩阵 + 上下文快捷条 -->
+              <sc-if value="{{isEmptyFlow}}" hint-placeholder-val="{{true}}">
+                <div style="display:flex;flex-direction:column;gap:14px">
+                  <div style="padding:14px 16px;border-radius:14px;background:{{shellBg}};border:1px solid {{borderCol}};display:flex;align-items:center;justify-content:space-between;gap:12px">
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <strong style="font-size:16px;font-weight:560">当前上下文：Claude.md</strong>
+                      <span style="color:{{textSecondary}}">后端 {{activeBackend}} 已就绪 · 点击下方场景直接执行</span>
+                    </div>
+                    <span style="padding:4px 10px;border-radius:8px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};font-weight:500">@Claude</span>
+                  </div>
+
+                  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+                    <button type="button" onClick="{{pickPlan}}" style="padding:14px;border-radius:12px;border:1px solid {{borderCol}};background:{{shellBg}};display:flex;flex-direction:column;gap:6px;text-align:left">
+                      <strong style="font-weight:560">规整为表格</strong>
+                      <span style="color:{{textSecondary}}">对齐邮箱、密码与 Token 列</span>
+                    </button>
+                    <button type="button" onClick="{{pickPlan}}" style="padding:14px;border-radius:12px;border:1px solid {{borderCol}};background:{{shellBg}};display:flex;flex-direction:column;gap:6px;text-align:left">
+                      <strong style="font-weight:560">敏感字段脱敏</strong>
+                      <span style="color:{{textSecondary}}">掩码处理密钥与凭据片段</span>
+                    </button>
+                    <button type="button" onClick="{{pickApproval}}" style="padding:14px;border-radius:12px;border:1px solid {{borderCol}};background:{{shellBg}};display:flex;flex-direction:column;gap:6px;text-align:left">
+                      <strong style="font-weight:560">跨页查重比对</strong>
+                      <span style="color:{{textSecondary}}">扫描账号归档中的重复项</span>
+                    </button>
+                    <button type="button" onClick="{{pickDsh}}" style="padding:14px;border-radius:12px;border:1px solid {{borderCol}};background:{{shellBg}};display:flex;flex-direction:column;gap:6px;text-align:left">
+                      <strong style="font-weight:560">配置本地 Agent</strong>
+                      <span style="color:{{textSecondary}}">管理 dsh / Codex 认证来源</span>
+                    </button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <!-- dsh 配置内联面板 -->
+              <sc-if value="{{isDshFlow}}" hint-placeholder-val="{{false}}">
+                <div style="padding:16px;border-radius:14px;background:{{shellBg}};border:1px solid {{accent}};display:flex;flex-direction:column;gap:12px">
+                  <div style="display:flex;align-items:center;justify-content:space-between">
+                    <strong style="font-size:15px;font-weight:560">dsh 配置（DeepSeek 官方协议）</strong>
+                    <button type="button" onClick="{{pickEmpty}}" style="height:26px;padding:0 8px;border:1px solid {{btnBorder}};border-radius:6px;background:{{cardBg}}">收起</button>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                    <span>认证来源</span>
+                    <div style="display:inline-flex;padding:2px;gap:2px;background:{{cardBg}};border:1px solid {{borderCol}};border-radius:8px">
+                      <button type="button" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}}">使用 Block 配置</button>
+                      <button type="button" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:{{textSecondary}}">使用 dsh 原生配置</button>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+
+              <!-- 变更计划与审批 -->
+              <sc-if value="{{isPlanFlow}}" hint-placeholder-val="{{false}}">
+                <div style="padding:14px;border-radius:14px;background:{{shellBg}};border:1px solid {{borderCol}};display:flex;flex-direction:column;gap:10px">
+                  <div style="display:flex;align-items:center;justify-content:space-between">
+                    <strong style="font-weight:560">笔记变更计划 · 规整 2026-11-06 账号表</strong>
+                    <span style="padding:2px 8px;border-radius:6px;background:{{selectedBg}};color:{{accent}}">待确认</span>
+                  </div>
+                  <div class="mono" style="padding:10px;border-radius:8px;background:{{addBg}};color:{{addText}};font-size:13px;line-height:20px">
+                    | saracho1072@hotmail.com | Ks4KcBTi4w | saracho1072@gu.uy | 2026-09-20 |
+                  </div>
+                  <div style="display:flex;gap:8px;justify-content:flex-end">
+                    <button type="button" onClick="{{pickEmpty}}" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid {{btnBorder}};background:{{cardBg}}">拒绝</button>
+                    <button type="button" style="height:32px;padding:0 14px;border-radius:8px;border:1px solid {{accent}};background:{{selectedBg}};font-weight:500">应用到笔记</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{isApprovalFlow}}" hint-placeholder-val="{{false}}">
+                <div style="padding:14px;border-radius:14px;background:{{shellBg}};border:1px solid {{accent}};display:flex;flex-direction:column;gap:10px">
+                  <strong style="font-weight:560">需要审批：执行本地脚本校验格式</strong>
+                  <div style="color:{{textSecondary}}">允许 {{activeBackend}} 读取当前工作区笔记列表以比对重复账号？</div>
+                  <div style="display:flex;gap:8px;justify-content:flex-end">
+                    <button type="button" onClick="{{pickEmpty}}" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid {{btnBorder}};background:{{cardBg}}">拒绝</button>
+                    <button type="button" onClick="{{pickPlan}}" style="height:32px;padding:0 14px;border-radius:8px;border:1px solid {{accent}};background:{{selectedBg}};font-weight:500">允许一次</button>
+                  </div>
+                </div>
+              </sc-if>
+
+            </div>
+          </div>
+
+          <!-- 底部输入区 -->
+          <div style="padding:12px 16px 16px;border-top:1px solid {{borderCol}};display:flex;justify-content:center;flex:none">
+            <div style="width:100%;max-width:680px;padding:12px 14px;border-radius:14px;background:{{shellBg}};border:1px solid {{btnBorder}};display:flex;flex-direction:column;gap:8px">
+              <textarea aria-label="输入消息" rows="2" placeholder="向 AI 提问，/ 调用指令或技能，@ 引用笔记或本地…" style="width:100%;border:0;outline:0;resize:none;background:transparent"></textarea>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <button type="button" style="height:30px;padding:4px 10px;border-radius:8px;border:0;background:{{cardBg}};display:inline-flex;align-items:center;gap:6px">
+                    <span class="mono">gemini-3.8-flash</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="{{textSecondary}}" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+                  </button>
+                  <button type="button" style="height:30px;padding:4px 8px;border-radius:8px;border:0;background:{{cardBg}};color:{{textSecondary}}">@</button>
+                  <button type="button" style="height:30px;padding:4px 8px;border-radius:8px;border:0;background:{{cardBg}};color:{{textSecondary}}">/</button>
+                </div>
+                <button type="button" onClick="{{pickPlan}}" style="height:32px;padding:4px 14px;border-radius:8px;border:0;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};font-weight:560">发送</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 全屏模式专属右侧：笔记原文与 Diff 实时对照栏 -->
+        <sc-if value="{{isFullscreen}}" hint-placeholder-val="{{false}}">
+          <aside style="width:360px;flex:none;background:{{sidebarBg}};border-left:1px solid {{borderCol}};padding:16px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-weight:560">当前笔记对照 · Claude.md</span>
+              <span style="color:{{accent}}">实时预览</span>
+            </div>
+            <div class="mono" style="padding:12px;border-radius:10px;background:{{cardBg}};border:1px solid {{borderCol}};font-size:13px;line-height:20px;display:flex;flex-direction:column;gap:8px">
+              <div style="color:{{textSecondary}}"># 新号 2026 年 11 月 6 日</div>
+              <div style="padding:6px;border-radius:6px;background:{{delBg}};color:{{delText}};text-decoration:line-through">saracho1072@hotmail.com Ks4KcBTi4w</div>
+              <div style="padding:6px;border-radius:6px;background:{{addBg}};color:{{addText}}">| saracho1072@hotmail.com | Ks4KcBTi4w |</div>
+            </div>
+          </aside>
+        </sc-if>
+
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["dark","light"]},"layoutMode":{"editor":"enum","default":"sidebar","options":["sidebar","fullscreen"]},"flow":{"editor":"enum","default":"empty","options":["empty","plan","approval","dsh","history"]},"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      theme: null,
+      layoutMode: null,
+      flow: null,
+      backendIdx: 0
+    };
+  }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'dark';
+    const isDark = theme === 'dark';
+    const layoutMode = this.state.layoutMode ?? this.props.layoutMode ?? 'sidebar';
+    const isFullscreen = layoutMode === 'fullscreen';
+    const isSidebar = !isFullscreen;
+    const flow = this.state.flow ?? this.props.flow ?? 'empty';
+
+    const shellBg = isDark ? '#343434' : '#f1f1f1';
+    const sidebarBg = isDark ? '#222222' : '#fafafa';
+    const paperBg = isDark ? '#181818' : '#ffffff';
+    const cardBg = isDark ? '#222222' : '#ffffff';
+    const textPrimary = isDark ? '#ececec' : '#20242c';
+    const textSecondary = isDark ? '#b4b4b4' : '#526071';
+    const accent = isDark ? '#779de8' : '#547dd0';
+    const iconFill = isDark ? '#31456a' : '#c9d8f3';
+    const selectedBg = isDark ? '#343434' : '#e5edfc';
+    const borderCol = isDark ? '#2e2e2e' : '#e4e6ea';
+    const shellBorder = isDark ? '#333333' : '#e6e6e6';
+    const btnBorder = isDark ? '#444444' : '#dcdcdc';
+    const codeBg = isDark ? '#242424' : '#f3f1ec';
+    const delBg = isDark ? '#3a2020' : '#fbe9e7';
+    const delText = isDark ? '#f9a8a8' : '#b42318';
+    const addBg = isDark ? '#1d3528' : '#e3f6ec';
+    const addText = isDark ? '#9be4b8' : '#087443';
+
+    const backends = [
+      { name: '内置 AI', ready: true, hint: '可用 · 默认配置' },
+      { name: 'Codex', ready: true, hint: '可用 · 本机 CLI' },
+      { name: 'Claude', ready: true, hint: '可用 · 本机 CLI' },
+      { name: 'dsh', ready: false, hint: '认证未知 · 点击配置' }
+    ];
+    const backendIdx = this.state.backendIdx ?? 0;
+    const curBackend = backends[backendIdx];
+    const backendPills = backends.map((b, idx) => ({
+      name: b.name,
+      bg: idx === backendIdx ? selectedBg : 'transparent',
+      ring: idx === backendIdx ? ('inset 0 0 0 1px ' + accent) : 'none',
+      col: idx === backendIdx ? textPrimary : textSecondary,
+      weight: idx === backendIdx ? '560' : '400',
+      dot: b.ready ? accent : textSecondary,
+      pick: () => this.setState({ backendIdx: idx, flow: idx === 3 ? 'dsh' : flow })
+    }));
+
+    const flows = [
+      { id: 'empty', label: '1. 2×2 空状态矩阵' },
+      { id: 'plan', label: '2. 笔记变更计划' },
+      { id: 'approval', label: '3. 工具审批' },
+      { id: 'dsh', label: '4. dsh 配置条' }
+    ];
+    const flowTabs = flows.map((f) => ({
+      label: f.label,
+      bg: flow === f.id ? selectedBg : 'transparent',
+      ring: flow === f.id ? ('inset 0 0 0 1px ' + accent) : 'none',
+      col: flow === f.id ? textPrimary : textSecondary,
+      weight: flow === f.id ? '560' : '400',
+      pick: () => this.setState({ flow: f.id })
+    }));
+
+    return {
+      shellBg, sidebarBg, paperBg, cardBg, textPrimary, textSecondary,
+      accent, iconFill, selectedBg, borderCol, shellBorder, btnBorder, codeBg,
+      delBg, delText, addBg, addText,
+      isFullscreen, isSidebar,
+      themeLabel: isDark ? '深色 Ocean Dark' : '浅色 Ocean Light',
+      modeSidebarBg: isSidebar ? selectedBg : 'transparent',
+      modeSidebarRing: isSidebar ? ('inset 0 0 0 1px ' + accent) : 'none',
+      modeFullBg: isFullscreen ? selectedBg : 'transparent',
+      modeFullRing: isFullscreen ? ('inset 0 0 0 1px ' + accent) : 'none',
+      aiPanelWidth: isFullscreen ? '100%' : '420px',
+      aiPanelFlex: isFullscreen ? '1' : 'none',
+      aiBorderLeft: isFullscreen ? '0' : ('1px solid ' + shellBorder),
+      activeBackend: curBackend.name,
+      statusHint: curBackend.hint,
+      backendPills,
+      flowTabs,
+      isEmptyFlow: flow === 'empty' || flow === 'history',
+      isPlanFlow: flow === 'plan',
+      isApprovalFlow: flow === 'approval',
+      isDshFlow: flow === 'dsh',
+      setSidebarMode: () => this.setState({ layoutMode: 'sidebar' }),
+      setFullscreenMode: () => this.setState({ layoutMode: 'fullscreen' }),
+      toggleLayoutMode: () => this.setState({ layoutMode: isFullscreen ? 'sidebar' : 'fullscreen' }),
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      pickEmpty: () => this.setState({ flow: 'empty' }),
+      pickPlan: () => this.setState({ flow: 'plan' }),
+      pickApproval: () => this.setState({ flow: 'approval' }),
+      pickDsh: () => this.setState({ flow: 'dsh' }),
+      pickHistory: () => this.setState({ layoutMode: 'fullscreen' })
+    };
+  }
+}
+</script>
+</body>
+</html>

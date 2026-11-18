@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方案 B · 贴字同色圆角柔蓝底</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1f56a4;text-decoration:none}a:hover{color:#163f7a;text-decoration:underline}
+button{font-family:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid #547dd0;outline-offset:1px}
+*{box-sizing:border-box}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:880px;display:flex;flex-direction:column;background:{{shellBg}};color:{{uiText}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased">
+
+  <header style="min-height:42px;display:flex;flex-wrap:wrap;align-items:center;background:{{shellBg}};border-bottom:1px solid {{sidebarBorder}};flex:none">
+    <div style="width:244px;height:42px;padding:0 12px 0 16px;display:flex;align-items:center;justify-content:space-between;border-right:1px solid {{sidebarBorder}};flex:none">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      </div>
+      <button type="button" aria-label="收起侧栏" style="width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:{{uiMuted}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect>
+          <path d="M9.5 4.5v15M14.5 10l-2 2 2 2"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div style="flex:1;min-width:280px;min-height:42px;padding:4px 12px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px">
+      <div style="display:flex;align-items:center;gap:6px">
+        <button type="button" style="height:30px;min-width:164px;padding:0 10px 0 12px;border:0;border-radius:8px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{uiText}};font-weight:500;display:inline-flex;align-items:center;justify-content:space-between;gap:12px">
+          <span>claude</span>
+          <span aria-hidden="true" style="color:{{uiMuted}};font-size:15px;line-height:1">×</span>
+        </button>
+        <button type="button" style="height:30px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:{{uiMuted}};display:inline-flex;align-items:center">明天汇报</button>
+        <button type="button" aria-label="新建标签页" style="width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:{{uiMuted}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+            <path d="M12 6v12M6 12h12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+        <div role="group" aria-label="选区状态切换" style="display:inline-flex;padding:2px;gap:2px;background:{{paperBg}};border:1px solid {{hairline}};border-radius:8px">
+          <sc-for list="{{sceneTabs}}" as="tab" hint-placeholder-count="4">
+            <button type="button" onClick="{{tab.pick}}" style="height:26px;padding:0 10px;border:0;border-radius:6px;background:{{tab.bg}};box-shadow:{{tab.ring}};color:{{tab.col}};font-size:13px;font-weight:{{tab.weight}}">{{tab.label}}</button>
+          </sc-for>
+        </div>
+        <button type="button" onClick="{{toggleTheme}}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{hairline}};background:{{paperBg}};color:{{uiText}};font-size:13px">{{themeLabel}}</button>
+      </div>
+    </div>
+  </header>
+
+  <div style="flex:1;display:flex;flex-wrap:wrap;min-height:0">
+    <aside aria-label="文件列表" style="width:244px;background:{{sidebarBg}};border-right:1px solid {{sidebarBorder}};display:flex;flex-direction:column;justify-content:space-between;padding:12px 10px;flex:none">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <button type="button" style="flex:1;height:32px;padding:0 10px;border-radius:8px;border:1px solid {{btnBorder}};background:{{paperBg}};color:{{uiMuted}};display:flex;align-items:center;gap:6px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="6.5"></circle>
+              <path d="M16 16l4.2 4.2"></path>
+            </svg>
+            <span style="flex:1;text-align:left">搜索</span>
+            <span style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;padding:1px 5px;border-radius:4px;background:{{shellBg}};color:{{uiMuted}}">⌘K</span>
+          </button>
+          <button type="button" aria-label="新建文件夹" style="width:32px;height:32px;border-radius:8px;border:1px solid {{btnBorder}};background:{{paperBg}};color:{{uiText}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-10Z"></path>
+              <path d="M12 11v5M9.5 13.5h5"></path>
+            </svg>
+          </button>
+          <button type="button" aria-label="新建笔记" style="width:32px;height:32px;border-radius:8px;border:1px solid {{btnBorder}};background:{{paperBg}};color:{{uiText}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6.5 3.5h7.5l4.5 4.5v11a1.5 1.5 0 0 1-1.5 1.5h-10.5a1.5 1.5 0 0 1-1.5-1.5v-14a1.5 1.5 0 0 1 1.5-1.5Z"></path>
+              <path d="M14 3.5v4.5h4.5M12 11.5v5M9.5 14h5"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <button type="button" style="height:34px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:{{uiText}};display:flex;align-items:center;gap:8px;text-align:left">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="{{uiMuted}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-10Z"></path></svg>
+            <span>backups</span>
+          </button>
+          <button type="button" style="height:34px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:{{uiText}};display:flex;align-items:center;gap:8px;text-align:left">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3.5h7.5l4.5 4.5v11a1.5 1.5 0 0 1-1.5 1.5h-10.5a1.5 1.5 0 0 1-1.5-1.5v-14a1.5 1.5 0 0 1 1.5-1.5Z"></path><path d="M9 12h6M9 15.5h4.5"></path></svg>
+            <span>更深入调研</span>
+          </button>
+          <button type="button" style="height:34px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:{{uiText}};display:flex;align-items:center;gap:8px;text-align:left">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3.5h7.5l4.5 4.5v11a1.5 1.5 0 0 1-1.5 1.5h-10.5a1.5 1.5 0 0 1-1.5-1.5v-14a1.5 1.5 0 0 1 1.5-1.5Z"></path><path d="M9 12h6M9 15.5h4.5"></path></svg>
+            <span>官网</span>
+          </button>
+          <button type="button" style="height:34px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:{{uiText}};display:flex;align-items:center;gap:8px;text-align:left">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3.5h7.5l4.5 4.5v11a1.5 1.5 0 0 1-1.5 1.5h-10.5a1.5 1.5 0 0 1-1.5-1.5v-14a1.5 1.5 0 0 1 1.5-1.5Z"></path><path d="M9 12h6M9 15.5h4.5"></path></svg>
+            <span>苹果账号购买</span>
+          </button>
+          <button type="button" style="height:34px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:{{uiText}};display:flex;align-items:center;gap:8px;text-align:left">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3.5h7.5l4.5 4.5v11a1.5 1.5 0 0 1-1.5 1.5h-10.5a1.5 1.5 0 0 1-1.5-1.5v-14a1.5 1.5 0 0 1 1.5-1.5Z"></path><path d="M9 12h6M9 15.5h4.5"></path></svg>
+            <span>明天汇报</span>
+          </button>
+          <button type="button" aria-current="page" style="height:34px;padding:0 10px;border:0;border-radius:8px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{uiText}};font-weight:500;display:flex;align-items:center;gap:8px;text-align:left">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3.5h7.5l4.5 4.5v11a1.5 1.5 0 0 1-1.5 1.5h-10.5a1.5 1.5 0 0 1-1.5-1.5v-14a1.5 1.5 0 0 1 1.5-1.5Z"></path><path d="M9 12h6M9 15.5h4.5"></path></svg>
+            <span>claude</span>
+          </button>
+        </div>
+      </div>
+
+      <div style="padding-top:10px;border-top:1px solid {{sidebarBorder}};display:flex;align-items:center;justify-content:space-between">
+        <button type="button" style="flex:1;height:32px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:{{uiText}};font-weight:500;display:flex;align-items:center;gap:8px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-10Z"></path></svg>
+          <span style="flex:1;text-align:left">创业团队</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="{{uiMuted}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg>
+        </button>
+        <button type="button" aria-label="设置" style="width:30px;height:30px;border:0;border-radius:6px;background:transparent;color:{{uiMuted}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
+        </button>
+      </div>
+    </aside>
+
+    <main style="flex:999 1 560px;min-width:0;background:{{paperBg}};padding:36px 48px 64px;display:flex;flex-direction:column;align-items:center">
+      <div style="width:100%;max-width:680px;display:flex;flex-direction:column">
+
+        <div role="toolbar" aria-label="选区格式工具栏" style="align-self:flex-start;margin-bottom:14px;padding:5px 7px;background:{{menuBg}};border:1px solid {{hairline}};border-radius:12px;box-shadow:{{toolbarShadow}};display:inline-flex;flex-wrap:wrap;align-items:center;gap:3px">
+          <button type="button" style="height:30px;padding:0 10px;border:0;border-radius:8px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{uiText}};font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:5px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z"></path><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z"></path></svg>
+            <span>AI 改写</span>
+          </button>
+          <button type="button" aria-label="添加批注" style="width:30px;height:30px;border:0;border-radius:7px;background:transparent;color:{{editorText}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-4 3v-13.5A1.5 1.5 0 0 1 5 5.5Z"></path><path d="M8.5 10h7M8.5 13h4.5"></path></svg>
+          </button>
+          <button type="button" aria-label="添加表情回应" style="width:30px;height:30px;border:0;border-radius:7px;background:transparent;color:{{editorText}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-6-7.75"></path><path d="M9 14.5c.8 1 1.8 1.5 3 1.5s2.2-.5 3-1.5"></path><circle cx="9.2" cy="10.2" r="1" fill="currentColor" stroke="none"></circle><circle cx="14.8" cy="10.2" r="1" fill="currentColor" stroke="none"></circle><path d="M19 3.5v4.5M16.75 5.75h4.5"></path></svg>
+          </button>
+          <span aria-hidden="true" style="width:1px;height:18px;background:{{hairline}};margin:0 3px"></span>
+          <button type="button" aria-label="段落类型" style="height:30px;padding:0 7px;border:0;border-radius:7px;background:transparent;color:{{editorText}};display:inline-flex;align-items:center;gap:3px;font-weight:500">
+            <span style="font-size:13px">T<small style="font-size:10px">T</small></span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="{{uiMuted}}" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+          </button>
+          <span aria-hidden="true" style="width:1px;height:18px;background:{{hairline}};margin:0 3px"></span>
+          <button type="button" aria-label="粗体" style="width:30px;height:30px;border:0;border-radius:7px;background:transparent;color:{{editorText}};font-weight:600;font-size:15px">B</button>
+          <button type="button" aria-label="斜体" style="width:30px;height:30px;border:0;border-radius:7px;background:transparent;color:{{editorText}};font-style:italic;font-family:Georgia,serif;font-size:16px">I</button>
+          <button type="button" aria-label="下划线" style="width:30px;height:30px;border:0;border-radius:7px;background:transparent;color:{{editorText}};text-decoration:underline;text-underline-offset:2px;font-size:15px">U</button>
+          <button type="button" aria-label="删除线" style="width:30px;height:30px;border:0;border-radius:7px;background:transparent;color:{{editorText}};text-decoration:line-through;font-size:15px">S</button>
+          <button type="button" aria-label="行内代码" style="width:30px;height:30px;border:0;border-radius:7px;background:transparent;color:{{editorText}};font-family:'JetBrains Mono',monospace;font-size:13px">{}</button>
+          <button type="button" aria-label="文字与高亮颜色" style="height:30px;padding:0 7px;border:0;border-radius:7px;background:transparent;color:{{editorText}};display:inline-flex;align-items:center;gap:3px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 0 0 0 18c1.2 0 1.8-.8 1.8-1.7 0-1.2-1-1.6-1-2.6 0-.9.7-1.7 1.8-1.7H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"></path><circle cx="7.5" cy="11" r="1"></circle><circle cx="10.5" cy="7" r="1"></circle><circle cx="15" cy="7.5" r="1"></circle></svg>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="{{uiMuted}}" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+          </button>
+          <span aria-hidden="true" style="width:1px;height:18px;background:{{hairline}};margin:0 3px"></span>
+          <button type="button" aria-label="列表" style="height:30px;padding:0 7px;border:0;border-radius:7px;background:transparent;color:{{editorText}};display:inline-flex;align-items:center;gap:3px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"></path><circle cx="4.5" cy="6" r="1" fill="currentColor"></circle><circle cx="4.5" cy="12" r="1" fill="currentColor"></circle><circle cx="4.5" cy="18" r="1" fill="currentColor"></circle></svg>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="{{uiMuted}}" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+          </button>
+          <span aria-hidden="true" style="width:1px;height:18px;background:{{hairline}};margin:0 3px"></span>
+          <button type="button" aria-label="链接" style="width:30px;height:30px;border:0;border-radius:8px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{accent}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"></path><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"></path></svg>
+          </button>
+        </div>
+
+        <sc-if value="{{isAll}}" hint-placeholder-val="{{true}}">
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:16px;line-height:28px;color:{{editorText}}">
+            <div style="width:100%;height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}"></div>
+            <div style="width:100%;min-height:28px">
+              <span style="display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}">我想咨询</span>
+            </div>
+            <div style="width:100%;min-height:28px">
+              <span style="display:inline-flex;align-items:center;gap:8px;min-height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}">
+                <span style="width:20px;color:{{listNumCol}};font-variant-numeric:tabular-nums;flex:none">1.</span>
+                <span>我可以注册一个新账号去过验证吗？</span>
+              </span>
+            </div>
+            <div style="width:100%;min-height:28px">
+              <span style="display:inline-flex;align-items:center;gap:8px;min-height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}">
+                <span style="width:20px;color:{{listNumCol}};font-variant-numeric:tabular-nums;flex:none">2.</span>
+                <span>过了之后只要是美国纯净的 ip 登录基本就不会出现再次封号的问题是吗？</span>
+              </span>
+            </div>
+            <div style="width:100%;height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}"></div>
+            <div style="width:100%;min-height:28px">
+              <span style="display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}">内容内容</span>
+            </div>
+            <div style="width:100%;min-height:28px">
+              <span style="display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}">门户验证</span>
+            </div>
+            <div style="width:100%;min-height:28px">
+              <span style="display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}">
+                <a href="https://wzyp.cn/item/xekcsr" style="color:{{linkCol}}">https://wzyp.cn/item/xekcsr</a>
+              </span>
+            </div>
+            <div style="width:100%;min-height:28px">
+              <span style="display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}">5x</span>
+            </div>
+            <div style="width:100%;min-height:28px">
+              <span style="display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}">
+                <a href="https://wzyp.cn/item/p3edhc" style="color:{{linkCol}}">https://wzyp.cn/item/p3edhc</a>
+              </span>
+            </div>
+            <div style="width:100%;height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}"></div>
+            <div style="width:100%;height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}"></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{isPartial}}" hint-placeholder-val="{{false}}">
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:16px;line-height:28px;color:{{editorText}}">
+            <div style="width:100%;height:28px;padding:0 10px"></div>
+            <div style="width:100%;min-height:28px;padding:0 10px">我想咨询</div>
+            <div style="width:100%;min-height:28px;padding:0 10px;display:flex;gap:8px">
+              <span style="width:20px;color:{{listNumCol}};font-variant-numeric:tabular-nums;flex:none">1.</span>
+              <span>我可以注册<span style="display:inline-flex;align-items:center;height:28px;padding:0 10px 0 6px;margin-left:1px;border-radius:{{radiusCss}};background:{{bandBg}}">一个新账号去过验证吗？</span></span>
+            </div>
+            <div style="width:100%;min-height:28px">
+              <span style="display:inline-flex;align-items:center;gap:8px;min-height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}">
+                <span style="width:20px;color:{{listNumCol}};font-variant-numeric:tabular-nums;flex:none">2.</span>
+                <span>过了之后只要是美国纯净的 ip 登录基本就不会出现再次封号的问题是吗？</span>
+              </span>
+            </div>
+            <div style="width:100%;height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}"></div>
+            <div style="width:100%;min-height:28px">
+              <span style="display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:{{radiusCss}};background:{{bandBg}}">内容内容</span>
+            </div>
+            <div style="width:100%;min-height:28px">
+              <span style="display:inline-flex;align-items:center;height:28px;padding:0 6px 0 10px;margin-right:1px;border-radius:{{radiusCss}};background:{{bandBg}}">门户</span><span>验证</span>
+            </div>
+            <div style="width:100%;min-height:28px;padding:0 10px"><a href="https://wzyp.cn/item/xekcsr" style="color:{{linkCol}}">https://wzyp.cn/item/xekcsr</a></div>
+            <div style="width:100%;min-height:28px;padding:0 10px">5x</div>
+            <div style="width:100%;min-height:28px;padding:0 10px"><a href="https://wzyp.cn/item/p3edhc" style="color:{{linkCol}}">https://wzyp.cn/item/p3edhc</a></div>
+            <div style="width:100%;height:28px;padding:0 10px"></div>
+            <div style="width:100%;height:28px;padding:0 10px"></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{isInline}}" hint-placeholder-val="{{false}}">
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:16px;line-height:28px;color:{{editorText}}">
+            <div style="width:100%;height:28px;padding:0 10px"></div>
+            <div style="width:100%;min-height:28px;padding:0 10px">我想咨询</div>
+            <div style="width:100%;min-height:28px;padding:0 10px;display:flex;gap:8px">
+              <span style="width:20px;color:{{listNumCol}};font-variant-numeric:tabular-nums;flex:none">1.</span>
+              <span>我可以注册一个新账号去过验证吗？</span>
+            </div>
+            <div style="width:100%;min-height:28px;padding:0 10px;display:flex;gap:8px">
+              <span style="width:20px;color:{{listNumCol}};font-variant-numeric:tabular-nums;flex:none">2.</span>
+              <span>过了之后只要是<span style="display:inline-block;height:26px;line-height:26px;padding:0 6px;margin:0 1px;border-radius:{{radiusCss}};background:{{bandBg}}">美国纯净的 ip</span> 登录基本就不会出现再次封号的问题是吗？</span>
+            </div>
+            <div style="width:100%;height:28px;padding:0 10px"></div>
+            <div style="width:100%;min-height:28px;padding:0 10px">内容内容</div>
+            <div style="width:100%;min-height:28px;padding:0 10px">门户验证</div>
+            <div style="width:100%;min-height:28px;padding:0 10px"><a href="https://wzyp.cn/item/xekcsr" style="color:{{linkCol}}">https://wzyp.cn/item/xekcsr</a></div>
+            <div style="width:100%;min-height:28px;padding:0 10px">5x</div>
+            <div style="width:100%;min-height:28px;padding:0 10px"><a href="https://wzyp.cn/item/p3edhc" style="color:{{linkCol}}">https://wzyp.cn/item/p3edhc</a></div>
+            <div style="width:100%;height:28px;padding:0 10px"></div>
+            <div style="width:100%;height:28px;padding:0 10px"></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{isLegacy}}" hint-placeholder-val="{{false}}">
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:16px;line-height:28px;color:{{editorText}}">
+            <div style="width:100%;height:28px;border-radius:3px;background:{{legacyEmptyBg}}"></div>
+            <div style="width:100%;min-height:28px"><span style="padding:2px 0;border-radius:2px;background:{{legacySelBg}};color:{{legacySelFg}}">我想咨询</span></div>
+            <div style="width:100%;min-height:28px;display:flex;gap:8px">
+              <span style="width:20px;color:{{accent}};font-variant-numeric:tabular-nums;flex:none">1.</span>
+              <span><span style="padding:2px 0;border-radius:2px;background:{{legacySelBg}};color:{{legacySelFg}}">我可以注册一个新账号去过验证吗？</span></span>
+            </div>
+            <div style="width:100%;min-height:28px;display:flex;gap:8px">
+              <span style="width:20px;color:{{accent}};font-variant-numeric:tabular-nums;flex:none">2.</span>
+              <span><span style="padding:2px 0;border-radius:2px;background:{{legacySelBg}};color:{{legacySelFg}}">过了之后只要是美国纯净的 ip 登录基本就不会出现再次封号的问题是吗？</span></span>
+            </div>
+            <div style="width:100%;height:28px;border-radius:3px;background:{{legacyEmptyBg}}"></div>
+            <div style="width:100%;min-height:28px"><span style="padding:2px 0;border-radius:2px;background:{{legacySelBg}};color:{{legacySelFg}}">内容内容</span></div>
+            <div style="width:100%;min-height:28px"><span style="padding:2px 0;border-radius:2px;background:{{legacySelBg}};color:{{legacySelFg}}">门户验证</span></div>
+            <div style="width:100%;min-height:28px"><span style="padding:2px 0;border-radius:2px;background:{{legacySelBg}};color:{{legacySelFg}}">https://wzyp.cn/item/xekcsr</span></div>
+            <div style="width:100%;min-height:28px"><span style="padding:2px 0;border-radius:2px;background:{{legacySelBg}};color:{{legacySelFg}}">5x</span></div>
+            <div style="width:100%;min-height:28px"><span style="padding:2px 0;border-radius:2px;background:{{legacySelBg}};color:{{legacySelFg}}">https://wzyp.cn/item/p3edhc</span></div>
+            <div style="width:100%;height:28px;border-radius:3px;background:{{legacyEmptyBg}}"></div>
+            <div style="width:100%;height:28px;border-radius:3px;background:{{legacyEmptyBg}}"></div>
+          </div>
+        </sc-if>
+
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"light","options":["light","dark"]},"scene":{"editor":"enum","default":"all","options":["all","partial","inline","legacy"]},"bandAlpha":{"editor":"range","default":55,"min":35,"max":85,"step":5,"unit":"%"},"bandRadius":{"editor":"range","default":5,"min":3,"max":10,"step":1,"unit":"px"},"$preview":{"width":1360,"height":880}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { theme: null, scene: null };
+  }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const scene = this.state.scene ?? this.props.scene ?? 'all';
+    const alphaPct = Number(this.props.bandAlpha ?? 55);
+    const radiusPx = Number(this.props.bandRadius ?? 5);
+
+    const shellBg = isDark ? '#343434' : '#f1f1f1';
+    const sidebarBg = isDark ? '#222222' : '#fafafa';
+    const paperBg = isDark ? '#181818' : '#ffffff';
+    const menuBg = isDark ? '#222222' : '#ffffff';
+    const uiText = isDark ? '#ececec' : '#20242c';
+    const editorText = isDark ? '#ececec' : '#1f1e1d';
+    const uiMuted = isDark ? '#a8b0bd' : '#526071';
+    const accent = isDark ? '#779de8' : '#547dd0';
+    const selectedBg = isDark ? '#343434' : '#e5edfc';
+    const hairline = isDark ? '#333333' : '#e4e6ea';
+    const sidebarBorder = isDark ? '#333333' : '#e6e6e6';
+    const btnBorder = isDark ? '#444444' : '#dcdcdc';
+    const linkCol = isDark ? '#8eb4f7' : '#1f56a4';
+    const listNumCol = isDark ? '#8eb4f7' : '#3562b5';
+
+    const a = Math.max(0.25, Math.min(0.9, alphaPct / 100));
+    const bandBg = isDark
+      ? ('rgba(64, 96, 158, ' + (a * 0.82).toFixed(2) + ')')
+      : ('rgba(205, 226, 251, ' + a.toFixed(2) + ')');
+    const legacyEmptyBg = isDark ? 'rgba(45, 66, 107, 0.55)' : '#e3effd';
+    const legacySelBg = isDark ? '#2d426b' : '#cde2fb';
+    const legacySelFg = isDark ? '#9dbcf5' : '#185095';
+    const toolbarShadow = isDark
+      ? '0 10px 28px rgba(0,0,0,0.42), 0 1px 3px rgba(0,0,0,0.28)'
+      : '0 8px 24px rgba(31,30,29,0.09), 0 1px 3px rgba(31,30,29,0.05)';
+
+    const scenes = [
+      { id: 'all', label: '跨行全选（贴字同色）' },
+      { id: 'partial', label: '跨行半句起止' },
+      { id: 'inline', label: '单行局部选词' },
+      { id: 'legacy', label: '当前旧版对比' }
+    ];
+    const sceneTabs = scenes.map((s) => ({
+      label: s.label,
+      bg: scene === s.id ? selectedBg : 'transparent',
+      ring: scene === s.id ? ('inset 0 0 0 1px ' + accent) : 'none',
+      col: scene === s.id ? uiText : uiMuted,
+      weight: scene === s.id ? '560' : '400',
+      pick: () => this.setState({ scene: s.id })
+    }));
+
+    return {
+      shellBg, sidebarBg, paperBg, menuBg, uiText, editorText, uiMuted,
+      accent, selectedBg, hairline, sidebarBorder, btnBorder, linkCol, listNumCol,
+      bandBg, radiusCss: radiusPx + 'px',
+      legacyEmptyBg, legacySelBg, legacySelFg, toolbarShadow,
+      isAll: scene === 'all',
+      isPartial: scene === 'partial',
+      isInline: scene === 'inline',
+      isLegacy: scene === 'legacy',
+      sceneTabs,
+      themeLabel: isDark ? '深色' : '浅色',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' })
+    };
+  }
+}
+</script>
+</body>
+</html>

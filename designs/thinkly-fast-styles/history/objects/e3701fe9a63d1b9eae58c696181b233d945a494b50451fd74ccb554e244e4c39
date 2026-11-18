@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>行内代码 E · 墨洗</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+*{box-sizing:border-box}
+.art{--bg:#f8f8f8;--card:#ffffff;--bd:#e4e6ea;--t1:#20242c;--t2:#526071;--ed:#1f1e1d;--acc:#547dd0;--sel:#cde2fb;--selt:#184f95;--shell:#f1f1f1;--on:#e5edfc;
+  --cbg:#edf1f7;--ct:#1e3a6e;--chov:#e3e9f3;--cedit:#e5ecf8;--bt:#8592a6;--tip:#20242c;--tipt:#ffffff;
+  font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:var(--t1);background:var(--bg);font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+.art.dark{--bg:#181818;--card:#222222;--bd:#2e2e2e;--t1:#ececec;--t2:#b4b4b4;--ed:#ececec;--acc:#779de8;--sel:#2d426b;--selt:#9dbcf5;--shell:#343434;--on:#343434;
+  --cbg:#262b33;--ct:#adc6ff;--chov:#2d333d;--cedit:#2b3240;--bt:#7d8798;--tip:#ececec;--tipt:#181818}
+.seg{display:inline-flex;gap:2px;padding:3px;border-radius:8px;background:var(--shell);border:1px solid var(--bd)}
+.seg button{height:30px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--t2);font:inherit;font-weight:460;cursor:pointer}
+.seg button.on{background:var(--on);color:var(--t1);box-shadow:inset 0 0 0 1px var(--acc)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.lab{font-size:15px;line-height:22px;font-weight:560}
+.ed{font-size:16px;line-height:24px;color:var(--ed)}
+.row{position:relative;white-space:nowrap;height:24px;line-height:24px}
+.g{position:absolute;left:-8px;right:-8px;height:0;border-top:1px dashed var(--acc);opacity:.7}
+.c{display:inline-block;vertical-align:middle;height:21px;line-height:21px;margin:0 3.5px;padding:0 5px;border-radius:4px;background:var(--cbg);color:var(--ct);font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:13.5px;position:relative;white-space:nowrap}
+.c.hov{background:var(--chov)}
+.c.edit{background:var(--cedit)}
+.c.all{background:var(--sel);color:var(--selt)}
+.c.jl{margin-left:0;border-top-left-radius:0;border-bottom-left-radius:0}.c.jr{margin-right:0;border-top-right-radius:0;border-bottom-right-radius:0}
+.c .s{height:21px;line-height:21px}
+.c .s.end{margin-right:-5px;padding-right:5px;border-radius:2px 4px 4px 2px}
+.s{display:inline-block;vertical-align:middle;height:21px;line-height:21px;background:var(--sel);color:var(--selt);border-radius:2px}
+.s.jr{padding-right:3.5px;border-top-right-radius:0;border-bottom-right-radius:0}
+.s.jl{padding-left:3.5px;border-top-left-radius:0;border-bottom-left-radius:0}
+.k{display:inline-block;vertical-align:middle;width:1.5px;height:18px;background:var(--acc);margin:0 -0.75px}
+.tip{position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%);padding:4px 8px;border-radius:6px;background:var(--tip);color:var(--tipt);font-family:Inter,'PingFang SC',sans-serif;font-size:14px;line-height:20px;white-space:nowrap}
+.h2{font-size:22px;line-height:29px;font-weight:600;color:var(--ed)}
+.h2 .c{height:27px;line-height:27px;font-size:19px;padding:0 6px;border-radius:5px}
+table{border-collapse:collapse;width:100%}
+td{border:1px solid var(--bd);padding:6px 10px;height:37px}
+.spec{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;color:var(--t2)}
+.spec b{color:var(--t1);font-weight:500;font-family:'JetBrains Mono',monospace;font-size:13.5px}
+</style>
+</helmet>
+
+<div class="{{rootCls}}" style="width:100%;min-height:1000px;display:flex;flex-direction:column">
+  <header style="height:56px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 28px;border-bottom:1px solid var(--bd);background:var(--card)">
+    <span class="lab">行内代码 E · 墨洗：无框冷蓝底，光标进入时底色加深</span>
+    <div class="seg">
+      <button type="button" class="{{lightOn}}" onClick="{{setLight}}">浅色</button>
+      <button type="button" class="{{darkOn}}" onClick="{{setDark}}">深色</button>
+    </div>
+  </header>
+
+  <main style="max-width:1280px;width:100%;margin:0 auto;padding:28px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px">
+
+    <section class="card">
+      <span class="lab">常规</span>
+      <div class="ed">请求携带<span class="c">grant_type</span>时，比对<span class="c">client_id</span>与<span class="c">refresh_token</span>。</div>
+    </section>
+
+    <section class="card">
+      <span class="lab">悬停 · ⌘ 点击复制</span>
+      <div class="ed" style="padding-top:30px">邮箱----<span class="c hov">client_id<span class="tip">⌘ 点击复制</span></span>----邮箱</div>
+    </section>
+
+    <section class="card">
+      <span class="lab">编辑 · 光标在胶囊内</span>
+      <div class="ed">邮箱----<span class="c edit">client<span class="k"></span>_id</span>----邮箱</div>
+      <div class="ed">邮箱----<span class="c edit">client_id<span class="k"></span></span>----邮箱</div>
+    </section>
+
+    <section class="card">
+      <span class="lab">编辑 · 光标在边界外</span>
+      <div class="ed">邮箱----<span class="c">client_id</span><span class="k"></span>----邮箱</div>
+      <div class="ed">邮箱----<span class="k"></span><span class="c">client_id</span>----邮箱</div>
+    </section>
+
+    <section class="card">
+      <span class="lab">部分选中 · 胶囊内</span>
+      <div class="ed row"><span class="g" style="top:1.5px"></span><span class="g" style="top:22.5px"></span>比对<span class="c edit">refresh<span class="s">_token</span></span>的绑定</div>
+    </section>
+
+    <section class="card">
+      <span class="lab">跨边界选中</span>
+      <div class="ed row"><span class="g" style="top:1.5px"></span><span class="g" style="top:22.5px"></span>比<span class="s jr">对</span><span class="c all jl">refresh_token</span>的绑定</div>
+      <div class="ed row"><span class="g" style="top:1.5px"></span><span class="g" style="top:22.5px"></span>比对<span class="c jr">refresh<span class="s end">_token</span></span><span class="s jl">的绑</span>定</div>
+    </section>
+
+    <section class="card">
+      <span class="lab">整段全选</span>
+      <div class="ed row"><span class="g" style="top:1.5px"></span><span class="g" style="top:22.5px"></span><span class="s jr">比对</span><span class="c all jl jr">client_id</span><span class="s jl jr">与</span><span class="c all jl jr">refresh_token</span><span class="s jl">的绑定</span></div>
+    </section>
+
+    <section class="card">
+      <span class="lab">双击选词</span>
+      <div class="ed">邮箱----<span class="c all">refresh_token</span>----邮箱</div>
+    </section>
+
+    <section class="card">
+      <span class="lab">折行</span>
+      <div class="ed" style="width:250px">打开文件<span class="c" style="border-top-right-radius:0;border-bottom-right-radius:0;margin-right:0">src/editor/</span><br><span class="c" style="margin-left:0;border-top-left-radius:0;border-bottom-left-radius:0">inline_code.rs</span>查看实现</div>
+    </section>
+
+    <section class="card">
+      <span class="lab">标题内</span>
+      <div class="h2">配置<span class="c">client_id</span>字段</div>
+      <div class="h2">配置<span class="c all">client_id</span>字段</div>
+    </section>
+
+    <section class="card">
+      <span class="lab">表格单元格内</span>
+      <table class="ed">
+        <tr><td>字段</td><td><span class="c" style="margin-left:0">client_id</span></td></tr>
+        <tr><td>令牌</td><td><span class="c edit" style="margin-left:0">refresh<span class="s">_token</span></span></td></tr>
+      </table>
+    </section>
+
+    <section class="card">
+      <span class="lab">几何</span>
+      <div class="spec">
+        <span>字号</span><b>0.85em · 13.5px</b>
+        <span>胶囊高</span><b>字号 + 5 → 21px</b>
+        <span>选区带高</span><b>= 胶囊高 21px</b>
+        <span>内距 / 外距</span><b>5px / 3.5px</b>
+        <span>圆角</span><b>4px · 折行断口直角</b>
+        <span>胶囊内选区</span><b>满高 21px，替换底色</b>
+      </div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor() { super(); this.state = { dark: false }; }
+  setLight() { this.setState({ dark: false }); }
+  setDark() { this.setState({ dark: true }); }
+  renderVals() {
+    const d = this.state.dark;
+    return { rootCls: d ? 'art dark' : 'art', lightOn: d ? '' : 'on', darkOn: d ? 'on' : '' };
+  }
+}
+</script>
+</body>
+</html>

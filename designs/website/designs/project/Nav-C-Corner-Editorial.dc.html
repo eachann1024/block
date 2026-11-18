@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>顶栏方案 C · 双角极简留白 + 右侧书签刻度</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:#141720;color:#ececec}
+a{color:#d2dae8;text-decoration:none}
+a:hover{color:#ffffff}
+button{font:inherit;cursor:pointer}
+@media (max-width: 900px){
+  .side-rail{display:none !important}
+}
+</style>
+</helmet>
+
+<div style="width:100%;display:flex;flex-direction:column;background:#141720;color:#ececec;font-family:Inter,-apple-system,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;-webkit-font-smoothing:antialiased">
+
+  <!-- ==================== 第一屏：顶部中央 100% 净空，仅保留左右双角 + 右缘极简书签刻度 ==================== -->
+  <section style="position:relative;min-height:860px;padding:0 44px 72px;background:radial-gradient(ellipse 72% 58% at 50% 52%,rgba(71,116,207,0.13),transparent 70%),#141720;border-bottom:1px solid #202534;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden">
+
+    <svg viewBox="0 0 1440 860" aria-hidden="true" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:0.42">
+      <g fill="#8da8db" opacity="0.55">
+        <rect x="250" y="220" width="54" height="4" rx="1"></rect><rect x="250" y="229" width="76" height="3" rx="1" fill="#8b95a8"></rect>
+        <rect x="366" y="216" width="58" height="4" rx="1"></rect><rect x="366" y="225" width="78" height="3" rx="1" fill="#8b95a8"></rect>
+        <rect x="486" y="212" width="62" height="4" rx="1"></rect><rect x="486" y="221" width="82" height="3" rx="1" fill="#8b95a8"></rect>
+        <rect x="610" y="210" width="60" height="4" rx="1"></rect><rect x="610" y="219" width="84" height="3" rx="1" fill="#8b95a8"></rect>
+        <rect x="734" y="210" width="58" height="4" rx="1"></rect><rect x="734" y="219" width="82" height="3" rx="1" fill="#8b95a8"></rect>
+        <rect x="858" y="212" width="62" height="4" rx="1"></rect><rect x="858" y="221" width="80" height="3" rx="1" fill="#8b95a8"></rect>
+        <rect x="980" y="216" width="56" height="4" rx="1"></rect><rect x="980" y="225" width="78" height="3" rx="1" fill="#8b95a8"></rect>
+        <rect x="1098" y="220" width="52" height="4" rx="1"></rect><rect x="1098" y="229" width="74" height="3" rx="1" fill="#8b95a8"></rect>
+      </g>
+      <g fill="#7c879c" opacity="0.38">
+        <rect x="210" y="302" width="82" height="34" rx="2"></rect><rect x="332" y="298" width="84" height="36" rx="2"></rect><rect x="456" y="294" width="88" height="38" rx="2"></rect><rect x="584" y="292" width="90" height="38" rx="2"></rect><rect x="714" y="292" width="90" height="38" rx="2"></rect><rect x="844" y="294" width="88" height="38" rx="2"></rect><rect x="972" y="298" width="84" height="36" rx="2"></rect><rect x="1096" y="302" width="82" height="34" rx="2"></rect>
+        <rect x="180" y="388" width="90" height="40" rx="2"></rect><rect x="310" y="384" width="92" height="42" rx="2"></rect><rect x="442" y="380" width="96" height="44" rx="2"></rect><rect x="578" y="378" width="98" height="44" rx="2"></rect><rect x="716" y="378" width="98" height="44" rx="2"></rect><rect x="854" y="380" width="96" height="44" rx="2"></rect><rect x="990" y="384" width="92" height="42" rx="2"></rect><rect x="1122" y="388" width="90" height="40" rx="2"></rect>
+        <rect x="150" y="482" width="98" height="46" rx="2"></rect><rect x="288" y="478" width="102" height="48" rx="2"></rect><rect x="430" y="474" width="104" height="50" rx="2"></rect><rect x="574" y="472" width="106" height="50" rx="2"></rect><rect x="720" y="472" width="106" height="50" rx="2"></rect><rect x="866" y="474" width="104" height="50" rx="2"></rect><rect x="1010" y="478" width="102" height="48" rx="2"></rect><rect x="1152" y="482" width="98" height="46" rx="2"></rect>
+        <rect x="124" y="582" width="106" height="52" rx="2"></rect><rect x="272" y="578" width="108" height="54" rx="2"></rect><rect x="422" y="574" width="112" height="56" rx="2"></rect><rect x="574" y="572" width="114" height="56" rx="2"></rect><rect x="728" y="572" width="114" height="56" rx="2"></rect><rect x="882" y="574" width="112" height="56" rx="2"></rect><rect x="1034" y="578" width="108" height="54" rx="2"></rect><rect x="1182" y="582" width="106" height="52" rx="2"></rect>
+      </g>
+    </svg>
+
+    <!-- 方案 C 顶栏：仅保留左上角品牌与右上角细描边下载键，中轴完全腾空给正文大标题 -->
+    <header style="position:relative;z-index:5;height:76px;max-width:1360px;width:100%;margin:0 auto;display:flex;align-items:center;justify-content:space-between">
+      <a href="#top" style="display:inline-flex;align-items:center;gap:10px;height:44px;font-size:17px;font-weight:650;color:#f5f7fc">
+        <img src="/_blob/9b52e670533ab8f9c6df70d44b57da15" alt="" style="width:28px;height:28px;border-radius:7px">
+        <span>Block</span>
+      </a>
+
+      <a href="#download" style="height:44px;padding:0 20px;border-radius:999px;background:rgba(47,92,184,0.24);border:1px solid rgba(148,184,255,0.52);color:#f4f7ff;font-size:14.5px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px">
+        <span>免费下载</span>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 3v7.5M4.5 7.5L8 11l3.5-3.5M3.5 13h9"></path>
+        </svg>
+      </a>
+    </header>
+
+    <!-- 右侧书签式纵向章节刻度（不占用顶部 1px 高度） -->
+    <nav class="side-rail" aria-label="右侧章节刻度" style="position:absolute;right:28px;top:50%;transform:translateY(-50%);z-index:6;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+      <sc-for list="{{railItems}}" as="item" hint-placeholder-count="6">
+        <button type="button" onClick="{{item.pick}}" style="height:44px;padding:0 6px;border:0;background:transparent;display:inline-flex;align-items:center;gap:10px">
+          <span style="{{item.labelStyle}}">{{item.label}}</span>
+          <span style="{{item.tickStyle}}"></span>
+        </button>
+      </sc-for>
+    </nav>
+
+    <!-- 顶部零干扰，标题一出来就是视觉绝对中心 -->
+    <div style="position:relative;z-index:3;max-width:880px;margin:4px auto 0;text-align:center;display:flex;flex-direction:column;gap:12px">
+      <h2 style="margin:0;font-size:50px;line-height:1.2;font-weight:700;letter-spacing:-0.015em;color:#f4f7ff">笔记再多，也是秒开</h2>
+      <p style="margin:0;font-size:18px;line-height:1.65;color:#c2cad9">写上几十万字，打开和翻页还是跟新文档一样快。</p>
+    </div>
+
+    <div style="position:relative;z-index:3;margin-top:auto;padding-top:270px;display:flex;flex-direction:column;align-items:center;gap:18px">
+      <div style="display:inline-flex;align-items:baseline;gap:12px;font-variant-numeric:tabular-nums">
+        <span style="font-size:104px;line-height:1;font-weight:700;letter-spacing:-0.02em;color:#f4f7ff;text-shadow:0 8px 36px rgba(8,11,20,0.92),0 0 36px rgba(119,157,232,0.28)">{{formattedCount}}</span>
+        <span style="font-size:26px;font-weight:600;color:{{accent}}">段</span>
+      </div>
+      <button type="button" onClick="{{replayRoll}}" style="height:44px;padding:0 18px;border-radius:999px;border:1px solid rgba(148,184,255,0.32);background:rgba(20,23,32,0.65);color:#d5e2ff;font-size:14px;display:inline-flex;align-items:center;gap:8px">
+        <span>重播快速滚动计数</span>
+      </button>
+    </div>
+
+  </section>
+
+  <!-- ==================== 第二屏：首屏视野对比 ==================== -->
+  <section style="position:relative;min-height:860px;padding:0 44px 80px;background:radial-gradient(640px 420px at 50% 46%,rgba(119,157,232,0.16),transparent 72%),#141720;display:flex;flex-direction:column;justify-content:space-between">
+
+    <header style="height:76px;max-width:1360px;width:100%;margin:0 auto;display:flex;align-items:center;justify-content:space-between">
+      <a href="#top" style="display:inline-flex;align-items:center;gap:10px;height:44px;font-size:17px;font-weight:650;color:#f5f7fc">
+        <img src="/_blob/9b52e670533ab8f9c6df70d44b57da15" alt="" style="width:28px;height:28px;border-radius:7px">
+        <span>Block</span>
+      </a>
+      <a href="#download" style="height:44px;padding:0 20px;border-radius:999px;background:rgba(47,92,184,0.24);border:1px solid rgba(148,184,255,0.52);color:#f4f7ff;font-size:14.5px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px">
+        <span>免费下载</span>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 3v7.5M4.5 7.5L8 11l3.5-3.5M3.5 13h9"></path>
+        </svg>
+      </a>
+    </header>
+
+    <div style="max-width:880px;margin:auto;text-align:center;display:flex;flex-direction:column;align-items:center;gap:22px">
+      <h1 style="margin:0;font-size:96px;line-height:1.1;font-weight:700;letter-spacing:0.01em;color:#f4f7ff">落笔成块，快若无物</h1>
+      <p style="margin:0;font-size:20px;line-height:1.65;color:#cfd6e4">不用注册登录，打开就能写，笔记全存在自己电脑里。</p>
+      <div style="margin-top:14px;display:flex;flex-direction:column;align-items:center;gap:12px">
+        <a href="#download" style="height:52px;padding:0 34px;border-radius:12px;background:{{ctaBg}};border:1px solid rgba(154,187,252,0.48);color:#ffffff;font-size:17px;font-weight:600;display:inline-flex;align-items:center;justify-content:center">免费下载 Block</a>
+        <span style="font-size:14px;color:#9da8be">支持 Mac、Windows、Linux · 完全免费</span>
+      </div>
+    </div>
+
+    <div style="height:24px"></div>
+  </section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#94b8ff","options":["#94b8ff","#779de8","#a8c7ff"]},"ctaBg":{"editor":"color","default":"#2f5cb8","options":["#2f5cb8","#3562be","#2850a4"]},"$preview":{"width":1440,"height":1720}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = { activeIdx: 0, count: 100000 };
+    this._raf = null;
+    this._start = 0;
+  }
+  componentDidMount() {
+    this._startRoll();
+  }
+  componentWillUnmount() {
+    if (this._raf) cancelAnimationFrame(this._raf);
+  }
+  _startRoll() {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    this._start = performance.now();
+    const step = (now) => {
+      const t = Math.min(1, (now - this._start) / 2600);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const val = t >= 1 ? 100000 : Math.max(1, Math.round((eased * 1000)) * 100);
+      this.setState({ count: val });
+      if (t < 1) {
+        this._raf = requestAnimationFrame(step);
+      } else {
+        this._raf = null;
+      }
+    };
+    this._raf = requestAnimationFrame(step);
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#94b8ff';
+    const ctaBg = this.props.ctaBg ?? '#2f5cb8';
+    const labels = ['秒开', '好写好改', '随手记', 'AI 改稿', '转长图', '对比'];
+    const railItems = labels.map((label, idx) => {
+      const on = idx === this.state.activeIdx;
+      return {
+        label,
+        pick: () => this.setState({ activeIdx: idx }),
+        labelStyle: 'font-size:13.5px;font-weight:' + (on ? '600' : '450') + ';color:' + (on ? '#f4f7ff' : '#9aa6bd') + ';transition:color 160ms ease',
+        tickStyle: 'width:' + (on ? '24px' : '10px') + ';height:2px;border-radius:999px;background:' + (on ? accent : '#4a556d') + ';transition:all 180ms ease'
+      };
+    });
+    return {
+      accent,
+      ctaBg,
+      railItems,
+      formattedCount: this.state.count.toLocaleString('en-US'),
+      replayRoll: () => this._startRoll()
+    };
+  }
+}
+</script>
+</body>
+</html>

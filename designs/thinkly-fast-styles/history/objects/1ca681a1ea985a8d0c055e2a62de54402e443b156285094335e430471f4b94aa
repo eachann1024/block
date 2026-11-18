@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>侧边大纲 A · 左上角极简横杠轨与悬停浮层</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button{font-family:inherit;font-size:14px;line-height:20px;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid #547dd0;outline-offset:1px}
+*{box-sizing:border-box}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:880px;display:flex;flex-direction:column;background:{{shellBg}};color:{{textPrimary}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased">
+
+  <header style="height:40px;padding:0 12px 0 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:{{shellBg}};border-bottom:1px solid {{shellBorder}};flex:none">
+    <div style="display:flex;align-items:center;gap:14px;min-width:0">
+      <div aria-hidden="true" style="display:flex;gap:8px;flex:none">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      </div>
+      <div style="display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 10px;border-radius:8px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{textPrimary}};font-weight:500;min-width:0">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none">
+          <path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" fill="{{iconFill}}" stroke="none"></path>
+          <path d="M3.75 6.75h5.5l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z"></path>
+        </svg>
+        <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">添加性能监控按钮与三版设计</span>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;flex:none">
+      <div style="display:inline-flex;padding:3px;gap:2px;background:{{sidebarBg}};border:1px solid {{borderCol}};border-radius:8px">
+        <sc-for list="{{modeTabs}}" as="tab" hint-placeholder-count="3">
+          <button type="button" onClick="{{tab.pick}}" style="height:26px;padding:0 10px;border:0;border-radius:6px;background:{{tab.bg}};box-shadow:{{tab.ring}};color:{{tab.col}};font-weight:{{tab.weight}}">{{tab.label}}</button>
+        </sc-for>
+      </div>
+      <button type="button" onClick="{{toggleTheme}}" style="height:28px;padding:0 10px;border-radius:8px;border:1px solid {{btnBorder}};background:{{sidebarBg}};color:{{textPrimary}}">{{themeLabel}}</button>
+    </div>
+  </header>
+
+  <div style="flex:1;min-height:0;display:flex;background:{{paperBg}}">
+
+    <aside aria-label="文件列表" style="width:240px;flex:none;background:{{sidebarBg}};border-right:1px solid {{borderCol}};display:flex;flex-direction:column;padding:12px 8px;gap:2px">
+      <button type="button" style="height:32px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:{{textSecondary}};display:flex;align-items:center;gap:8px;text-align:left">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">架构与设计记录</span>
+      </button>
+      <button type="button" style="height:32px;padding:0 8px 0 24px;border:0;border-radius:8px;background:{{selectedBg}};box-shadow:inset 0 0 0 1px {{accent}};color:{{textPrimary}};font-weight:500;display:flex;align-items:center;gap:8px;text-align:left">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 3.75h8l4 4V20.25H6z" fill="{{iconFill}}" stroke="none"></path>
+          <path d="M6 3.75h8l4 4V20.25H6z"></path>
+          <path d="M14 3.75v4h4"></path>
+        </svg>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">添加性能监控按钮与三版设计</span>
+      </button>
+      <button type="button" style="height:32px;padding:0 8px 0 24px;border:0;border-radius:8px;background:transparent;color:{{textSecondary}};display:flex;align-items:center;gap:8px;text-align:left">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 3.75h8l4 4V20.25H6z"></path>
+          <path d="M14 3.75v4h4"></path>
+        </svg>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">行内代码选区与光标规范</span>
+      </button>
+      <button type="button" style="height:32px;padding:0 8px 0 24px;border:0;border-radius:8px;background:transparent;color:{{textSecondary}};display:flex;align-items:center;gap:8px;text-align:left">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 3.75h8l4 4V20.25H6z"></path>
+          <path d="M14 3.75v4h4"></path>
+        </svg>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">多后端会话切换说明</span>
+      </button>
+    </aside>
+
+    <main style="flex:1;min-width:0;position:relative;display:flex;justify-content:center;background:{{paperBg}};overflow:hidden">
+
+      <sc-if value="{{showRail}}" hint-placeholder-val="{{true}}">
+        <nav aria-label="文档大纲" style="position:absolute;left:18px;top:36px;z-index:20;display:flex;align-items:flex-start">
+
+          <sc-if value="{{isCollapsedRail}}" hint-placeholder-val="{{true}}">
+            <div style="display:flex;flex-direction:column;align-items:flex-start;gap:7px;padding:6px 8px 6px 0">
+              <sc-for list="{{outlineItems}}" as="item" hint-placeholder-count="5">
+                <button type="button" onClick="{{item.pick}}" aria-label="{{item.title}}" title="{{item.title}}" style="height:10px;padding:4px 6px 4px 0;border:0;background:transparent;display:flex;align-items:center;justify-content:flex-start">
+                  <span style="width:{{item.barWidth}};height:2px;border-radius:1px;background:{{item.barColor}};display:block;transition:width .14s ease,background-color .14s ease"></span>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{isPopoverOpen}}" hint-placeholder-val="{{false}}">
+            <div style="width:236px;padding:6px;border-radius:10px;background:{{menuBg}};border:1px solid {{borderCol}};box-shadow:{{popoverShadow}};display:flex;flex-direction:column;gap:2px">
+              <sc-for list="{{outlineItems}}" as="item" hint-placeholder-count="5">
+                <button type="button" onClick="{{item.pick}}" style="width:100%;height:30px;padding:0 8px 0 {{item.indentPad}};border:0;border-radius:6px;background:{{item.rowBg}};box-shadow:{{item.rowRing}};color:{{item.rowText}};font-weight:{{item.rowWeight}};display:flex;align-items:center;gap:8px;text-align:left">
+                  <span style="width:{{item.barWidth}};height:2px;border-radius:1px;background:{{item.barColor}};flex:none"></span>
+                  <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{item.title}}</span>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+
+        </nav>
+      </sc-if>
+
+      <article style="width:100%;max-width:700px;padding:36px 28px 64px;display:flex;flex-direction:column;gap:22px">
+
+        <sc-for list="{{sections}}" as="sec" hint-placeholder-count="5">
+          <section style="display:flex;flex-direction:column;gap:8px;padding:8px 12px;margin:0 -12px;border-radius:8px;background:{{sec.blockBg}};box-shadow:{{sec.blockRing}}">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="mono" style="padding:1px 6px;border-radius:4px;background:{{codeBg}};color:{{textSecondary}};font-size:12px;line-height:18px;flex:none">{{sec.tag}}</span>
+              <h2 onClick="{{sec.pick}}" style="margin:0;font-size:{{sec.fontSize}};line-height:{{sec.lineHeight}};font-weight:560;color:{{sec.headColor}};cursor:pointer">{{sec.title}}</h2>
+            </div>
+            <p style="margin:0;font-size:16px;line-height:26px;color:{{textSecondary}}">{{sec.body}}</p>
+          </section>
+        </sc-for>
+
+      </article>
+
+    </main>
+
+    <sc-if value="{{isNarrowMode}}" hint-placeholder-val="{{false}}">
+      <aside aria-label="右侧分栏占用宽度" style="width:460px;flex:none;background:{{sidebarBg}};border-left:1px solid {{borderCol}};padding:20px;display:flex;flex-direction:column;justify-content:space-between">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-weight:560;color:{{textPrimary}}">AI 助手分栏（挤压编辑区宽度）</span>
+            <button type="button" onClick="{{restoreWide}}" style="height:28px;padding:0 10px;border-radius:6px;border:1px solid {{btnBorder}};background:{{paperBg}};color:{{textPrimary}}">收起分栏恢复大纲</button>
+          </div>
+          <div style="padding:14px;border-radius:10px;background:{{paperBg}};border:1px solid {{borderCol}};color:{{textSecondary}};display:flex;flex-direction:column;gap:6px">
+            <strong style="color:{{textPrimary}};font-weight:560">左侧页边净宽不足 64px，左上角大纲已自动隐藏</strong>
+            <span>当窗口收窄或右侧打开分栏导致正文左缘靠近侧栏分割线时，左上角横杠轨自动隐藏，避免与正文或标题折叠按钮重叠。</span>
+          </div>
+        </div>
+        <div style="padding:12px;border-radius:10px;background:{{paperBg}};border:1px solid {{borderCol}};color:{{textSecondary}}">
+          点击上方「1. 常态（极简横杠）」或「收起分栏恢复大纲」可恢复宽屏左缘大纲显示。
+        </div>
+      </aside>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["dark","light"]},"mode":{"editor":"enum","default":"rail","options":["rail","popover","narrow"]},"activeIdx":{"editor":"int","default":3,"min":0,"max":4},"$preview":{"width":1440,"height":880}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { theme: null, mode: null, activeIdx: null };
+  }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'dark';
+    const isDark = theme === 'dark';
+    const mode = this.state.mode ?? this.props.mode ?? 'rail';
+    const activeIdx = this.state.activeIdx ?? this.props.activeIdx ?? 3;
+
+    const shellBg = isDark ? '#343434' : '#f1f1f1';
+    const shellBorder = isDark ? '#333333' : '#e6e6e6';
+    const sidebarBg = isDark ? '#222222' : '#fafafa';
+    const paperBg = isDark ? '#181818' : '#ffffff';
+    const menuBg = isDark ? '#222222' : '#ffffff';
+    const textPrimary = isDark ? '#ececec' : '#20242c';
+    const textSecondary = isDark ? '#b4b4b4' : '#526071';
+    const accent = isDark ? '#779de8' : '#547dd0';
+    const iconFill = isDark ? '#31456a' : '#c9d8f3';
+    const selectedBg = isDark ? '#343434' : '#e5edfc';
+    const borderCol = isDark ? '#2e2e2e' : '#e4e6ea';
+    const btnBorder = isDark ? '#444444' : '#dcdcdc';
+    const codeBg = isDark ? '#242424' : '#f3f1ec';
+    const popoverShadow = isDark ? '0 10px 28px rgba(0,0,0,0.45)' : '0 10px 28px rgba(32,36,44,0.12)';
+
+    const barMuted = isDark ? '#464646' : '#cfd5de';
+    const barBright = isDark ? '#c6c6c6' : '#20242c';
+
+    const rawHeadings = [
+      { id: 0, level: 1, tag: 'H1', title: '背景与采样目标', body: '在桌面端高频写作场景下，性能监控与大纲指示都应保持静默退让，只在视线掠过或主动悬停时提供结构信息。' },
+      { id: 1, level: 1, tag: 'H1', title: '内存与索引体积拆解', body: '将工作区占用拆分为笔记正文、全文索引、历史快照与静态资源四项，避免混合统计造成误判。' },
+      { id: 2, level: 1, tag: 'H1', title: '三版监控面板取舍', body: '对比分段长条单卡、比例色块矩阵与双栏检视器后，优先采用单层分段条承载核心指标。' },
+      { id: 3, level: 2, tag: 'H2', title: '分段长条与悬停明细', body: '当前阅读章节：左上角大纲中对应 H2 横杠（14px）与下属 H3 横杠（10px）同步点亮，与截图状态完全一致。' },
+      { id: 4, level: 3, tag: 'H3', title: '窄窗与分栏避让阈值', body: '实时测量编辑区左缘到正文版心的可用净宽，低于 64px 时自动隐藏左上角横杠轨，绝不遮挡正文文字。' }
+    ];
+
+    const outlineItems = rawHeadings.map((h) => {
+      const isCurrent = h.id === activeIdx;
+      const isSubActive = activeIdx === 3 && (h.id === 3 || h.id === 4);
+      const lit = isCurrent || isSubActive;
+      const barWidth = h.level === 1 ? '20px' : (h.level === 2 ? '14px' : '10px');
+      const indentPad = h.level === 1 ? '8px' : (h.level === 2 ? '18px' : '28px');
+      return {
+        title: h.title,
+        barWidth,
+        indentPad,
+        barColor: lit ? barBright : barMuted,
+        rowBg: isCurrent ? selectedBg : 'transparent',
+        rowRing: isCurrent ? ('inset 0 0 0 1px ' + accent) : 'none',
+        rowText: lit ? textPrimary : textSecondary,
+        rowWeight: isCurrent ? '560' : '400',
+        pick: () => this.setState({ activeIdx: h.id })
+      };
+    });
+
+    const sections = rawHeadings.map((h) => {
+      const isCurrent = h.id === activeIdx;
+      return {
+        tag: h.tag,
+        title: h.title,
+        body: h.body,
+        fontSize: h.level === 1 ? '20px' : (h.level === 2 ? '17px' : '15px'),
+        lineHeight: h.level === 1 ? '28px' : '24px',
+        headColor: textPrimary,
+        blockBg: isCurrent ? (isDark ? '#202020' : '#f6f9ff') : 'transparent',
+        blockRing: isCurrent ? ('inset 0 0 0 1px ' + borderCol) : 'none',
+        pick: () => this.setState({ activeIdx: h.id })
+      };
+    });
+
+    const modes = [
+      { id: 'rail', label: '1. 常态（左上角横杠）' },
+      { id: 'popover', label: '2. 悬停展开浮层卡' },
+      { id: 'narrow', label: '3. 位置不够（自动隐藏）' }
+    ];
+    const modeTabs = modes.map((m) => ({
+      label: m.label,
+      bg: mode === m.id ? selectedBg : 'transparent',
+      ring: mode === m.id ? ('inset 0 0 0 1px ' + accent) : 'none',
+      col: mode === m.id ? textPrimary : textSecondary,
+      weight: mode === m.id ? '560' : '400',
+      pick: () => this.setState({ mode: m.id })
+    }));
+
+    const isNarrowMode = mode === 'narrow';
+
+    return {
+      shellBg, shellBorder, sidebarBg, paperBg, menuBg,
+      textPrimary, textSecondary, accent, iconFill,
+      selectedBg, borderCol, btnBorder, codeBg, popoverShadow,
+      showRail: !isNarrowMode,
+      isCollapsedRail: mode === 'rail',
+      isPopoverOpen: mode === 'popover',
+      isNarrowMode,
+      outlineItems,
+      sections,
+      modeTabs,
+      themeLabel: isDark ? '深色 Dark' : '浅色 Light',
+      restoreWide: () => this.setState({ mode: 'rail' }),
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' })
+    };
+  }
+}
+</script>
+</body>
+</html>

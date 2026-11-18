@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>页面历史 · 空状态、失败与冲突</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400..500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button{font-family:inherit}
+button:focus-visible{outline:2px solid #547dd0;outline-offset:2px}
+.ib{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:#526071;padding:0;cursor:pointer;flex:none}
+.ib:hover{background:#eef3fc;color:#20242c}
+.tab{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:28px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#526071;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.tab-active{background:#e5edfc;color:#20242c;box-shadow:inset 0 0 0 1px #547dd0}
+.btn{font:inherit;font-size:14px;line-height:20px;font-weight:460;height:32px;padding:0 12px;border-radius:8px;border:1px solid #dcdcdc;background:#ffffff;color:#20242c;display:inline-flex;align-items:center;gap:6px;cursor:pointer;box-sizing:border-box}
+.btn:hover:not(:disabled){background:#eef3fc}
+.btn:disabled{opacity:.48;cursor:not-allowed}
+.btn-pri{background:#547dd0;border-color:#547dd0;color:#ffffff}
+.btn-pri:hover:not(:disabled){background:#3d63b0;border-color:#3d63b0}
+.vitem{font:inherit;width:100%;padding:10px 12px;border:0;border-radius:8px;background:transparent;color:#20242c;text-align:left;display:flex;flex-direction:column;gap:4px;cursor:pointer;box-sizing:border-box}
+.vitem:hover{background:#eef3fc}
+.tag{display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;font-size:14px;line-height:18px;font-weight:460}
+@media (max-width:960px){.s-aside{width:100% !important;border-left:0 !important;border-top:1px solid #e6e6e6}}
+</style>
+</helmet>
+<div style="width:100%;min-height:1000px;box-sizing:border-box;display:flex;flex-direction:column;background:#f1f1f1;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;font-size:14px;line-height:20px;position:relative">
+
+<header style="min-height:40px;flex:none;display:flex;flex-wrap:wrap;align-items:center;border-bottom:1px solid #e6e6e6;background:#f1f1f1;box-sizing:border-box">
+<div style="width:116px;flex:none;height:40px;box-sizing:border-box;display:flex;align-items:center;padding:0 10px 0 16px;border-right:1px solid #e6e6e6">
+<div aria-hidden="true" style="display:flex;gap:8px;flex:none"><span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span></div>
+</div>
+<nav aria-label="已打开标签页" style="flex:1;min-width:200px;height:40px;display:flex;align-items:center;gap:4px;padding:0 10px">
+<button class="tab tab-active" type="button"><span>周会 11-03</span></button>
+<button class="tab" type="button"><span>产品原则</span></button>
+</nav>
+<div style="display:flex;align-items:center;gap:8px;padding:0 12px;height:40px;border-left:1px solid #e6e6e6">
+<span style="color:#526071">{{headerStatusText}}</span>
+</div>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;flex-wrap:wrap">
+
+<main style="flex:999 1 560px;min-width:0;background:#ffffff;display:flex;flex-direction:column">
+
+<div style="padding:10px 28px;border-bottom:1px solid #e4e6ea;background:#fafafa;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+<span style="font-weight:560">{{topBarTitle}}</span>
+<span class="tag" style="background:{{topBadgeBg}};color:{{topBadgeColor}}">{{topBadgeText}}</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<sc-if value="{{isConflictState}}" hint-placeholder-val="{{false}}">
+<button class="btn btn-pri" type="button" onClick="{{refreshConflict}}">刷新并重新对比</button>
+</sc-if>
+<sc-if value="{{showRestoreButton}}" hint-placeholder-val="{{true}}">
+<button class="btn btn-pri" type="button" disabled="{{restoreBtnDisabled}}" onClick="{{triggerRestore}}">{{restoreBtnLabel}}</button>
+</sc-if>
+</div>
+</div>
+
+<sc-if value="{{isRestoreError}}" hint-placeholder-val="{{false}}">
+<div role="alert" style="margin:14px 28px 0;padding:12px 16px;border-radius:10px;background:#fff5f5;border:1px solid #e0b4b4;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;flex-direction:column;gap:2px">
+<span style="font-weight:560;color:#8a1f1f">恢复失败 · 已保留当前页面内容</span>
+<span style="color:#526071">无法将快照原子写入磁盘（磁盘空间不足或写入被中断），当前文档未被覆盖。</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<button class="btn" type="button" onClick="{{retryAction}}">重试恢复</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isConflictState}}" hint-placeholder-val="{{false}}">
+<div role="alert" style="margin:14px 28px 0;padding:12px 16px;border-radius:10px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;flex-direction:column;gap:2px">
+<span style="font-weight:560;color:#20242c">检测到外部修改 · 恢复已暂停</span>
+<span style="color:#526071">打开历史后该文件已被外部程序或同步服务修改（内容指纹不一致），请先刷新当前基准再对比恢复。</span>
+</div>
+<button class="btn btn-pri" type="button" onClick="{{refreshConflict}}">刷新当前版本并重新对比</button>
+</div>
+</sc-if>
+
+<sc-if value="{{isReadonlyState}}" hint-placeholder-val="{{false}}">
+<div role="status" style="margin:14px 28px 0;padding:12px 16px;border-radius:10px;background:#f8f8f8;border:1px solid #e4e6ea;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;flex-direction:column;gap:2px">
+<span style="font-weight:560;color:#20242c">当前笔记文件为只读权限</span>
+<span style="color:#526071">可正常查看各历史版本并选择复制正文段落，但无法执行整页恢复写入。</span>
+</div>
+<span class="tag" style="background:#ececec;color:#526071">恢复已禁用</span>
+</div>
+</sc-if>
+
+<sc-if value="{{feedbackNotice}}" hint-placeholder-val="{{false}}">
+<div role="status" style="margin:14px 28px 0;padding:10px 14px;border-radius:8px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<span>{{feedbackNotice}}</span>
+<button class="btn" type="button" onClick="{{clearFeedback}}">知道了</button>
+</div>
+</sc-if>
+
+<div style="box-sizing:border-box;width:100%;max-width:760px;margin:0 auto;padding:36px 28px 64px;display:flex;flex-direction:column;gap:16px">
+<h1 style="max-width:700px;margin:0;font-size:28px;line-height:1.35;font-weight:560">把周会改成异步</h1>
+<p style="max-width:700px;margin:0;font-size:16px;line-height:1.65;color:#1f1e1d">上周排了三场同步会，两场结束时没有结论。人到齐，并不等于事情被推进。</p>
+<p style="max-width:700px;margin:0;font-size:16px;line-height:1.65;color:#1f1e1d">{{bodyParagraph2}}</p>
+<blockquote style="max-width:700px;margin:0;padding:4px 0 4px 14px;border-left:2px solid #dbd9d4;font-size:16px;line-height:1.65;color:#1f1e1d">会议是例外，不是节奏。一段文字能说清的，不要再约三十分钟。</blockquote>
+<h2 style="max-width:700px;margin:8px 0 0;font-size:20px;line-height:1.4;font-weight:560">保留下来的三件事</h2>
+<div style="max-width:700px;display:flex;flex-direction:column;gap:8px;font-size:16px;line-height:1.6">
+<div>1. 周一前写好本周目标，一句话即可</div>
+<div>2. 阻塞写在文档里，直接点名负责人</div>
+<div>3. 周五只回看偏差，不复述进度</div>
+</div>
+</div>
+
+</main>
+
+<aside class="s-aside" aria-label="页面历史状态侧栏" style="width:320px;flex:none;background:#fafafa;border-left:1px solid #e6e6e6;padding:14px 12px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;gap:14px">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px">
+<span style="font-size:15px;font-weight:560">页面历史</span>
+<span class="tag" style="background:#f1f1f1;color:#526071">{{panelStateBadge}}</span>
+</div>
+
+<sc-if value="{{isEmptyState}}" hint-placeholder-val="{{false}}">
+<div style="padding:28px 16px;border-radius:10px;background:#ffffff;border:1px solid #e4e6ea;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px">
+<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.25" fill="#c9d8f3" stroke="none"></circle><circle cx="12" cy="12" r="8.25"></circle><path d="M12 8v4.5l3 1.8" stroke="#547dd0"></path></svg>
+<div style="font-size:15px;font-weight:560">暂无历史版本记录</div>
+<p style="margin:0;color:#526071;font-size:14px;line-height:1.55">首次创建的页面在完成保存或继续编辑后，会自动按时间倒序在此生成历史版本。</p>
+</div>
+</sc-if>
+
+<sc-if value="{{isLoadingState}}" hint-placeholder-val="{{false}}">
+<div aria-busy="true" style="padding:16px 12px;border-radius:10px;background:#ffffff;border:1px solid #e4e6ea;display:flex;flex-direction:column;gap:12px">
+<div style="color:#526071">正在读取本地历史快照…</div>
+<div style="height:52px;border-radius:8px;background:#f1f1f1"></div>
+<div style="height:52px;border-radius:8px;background:#f1f1f1"></div>
+<div style="height:52px;border-radius:8px;background:#f1f1f1"></div>
+</div>
+</sc-if>
+
+<sc-if value="{{isLoadErrorState}}" hint-placeholder-val="{{false}}">
+<div role="alert" style="padding:20px 16px;border-radius:10px;background:#ffffff;border:1px solid #e4e6ea;display:flex;flex-direction:column;gap:10px">
+<div style="font-size:15px;font-weight:560;color:#20242c">无法读取历史版本列表</div>
+<p style="margin:0;color:#526071;font-size:14px;line-height:1.55">本地历史索引暂不可读或已被占用。当前正文编辑不受影响，可点击重试。</p>
+<div>
+<button class="btn btn-pri" type="button" onClick="{{retryAction}}">重试加载</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{hasVersionList}}" hint-placeholder-val="{{true}}">
+<div role="listbox" aria-label="历史版本列表" style="display:flex;flex-direction:column;gap:4px">
+<div class="vitem" role="option" aria-selected="false" style="background:transparent">
+<div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+<span style="font-weight:560">今天 14:32</span>
+<span class="tag" style="background:#c9d8f3;color:#20242c">当前版本</span>
+</div>
+<div style="color:#526071">自动保存 · 补充周五复盘规则</div>
+</div>
+<div class="vitem" role="option" aria-selected="true" style="background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0">
+<div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+<span style="font-weight:560">今天 11:08</span>
+<span class="tag" style="background:#ffffff;color:#3d63b0">正在预览</span>
+</div>
+<div style="color:#526071">停止编辑 30s 保存 · 初拟清单</div>
+</div>
+<div class="vitem" role="option" aria-selected="false" style="background:transparent">
+<div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+<span style="font-weight:560">昨天 18:40</span>
+<span class="tag" style="background:#f1f1f1;color:#526071">手动保存</span>
+</div>
+<div style="color:#526071">初稿 · 记录同步会痛点</div>
+</div>
+</div>
+</sc-if>
+
+</div>
+
+<div style="padding:12px 8px 4px;border-top:1px solid #e4e6ea;color:#526071;display:flex;flex-direction:column;gap:4px">
+<div>历史正文始终支持选择与复制</div>
+<div>可在画板 Tweaks 中切换 6 种状态</div>
+</div>
+</aside>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"scene":{"editor":"enum","default":"conflict","options":["empty","loading","load_error","restore_error","conflict","readonly"],"label":"产品状态场景"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      overrideScene: null,
+      feedbackNotice: ''
+    };
+  }
+  renderVals() {
+    const s = this.state.overrideScene ?? (this.props.scene || 'conflict');
+    const isEmpty = s === 'empty';
+    const isLoading = s === 'loading';
+    const isLoadError = s === 'load_error';
+    const isRestoreError = s === 'restore_error';
+    const isConflict = s === 'conflict';
+    const isReadonly = s === 'readonly';
+    const hasVersionList = isRestoreError || isConflict || isReadonly;
+
+    const metaMap = {
+      empty: {
+        header: '首次创建 · 尚无历史快照',
+        title: '当前版本（首次编辑）',
+        badge: '无历史记录',
+        panelBadge: '空状态',
+        btnLabel: '暂无可恢复版本',
+        btnDisabled: true
+      },
+      loading: {
+        header: '正在读取历史快照…',
+        title: '正在加载版本内容…',
+        badge: '加载中',
+        panelBadge: '读取中',
+        btnLabel: '恢复到此版本',
+        btnDisabled: true
+      },
+      load_error: {
+        header: '历史索引读取失败',
+        title: '当前版本（只读保护）',
+        badge: '加载失败',
+        panelBadge: '读取异常',
+        btnLabel: '恢复到此版本',
+        btnDisabled: true
+      },
+      restore_error: {
+        header: '恢复写入失败 · 已保留当前文档',
+        title: '今天 11:08（恢复未完成）',
+        badge: '写入失败',
+        panelBadge: '共 3 版',
+        btnLabel: '重试恢复到此版本',
+        btnDisabled: false
+      },
+      conflict: {
+        header: '检测到外部修改 · 需刷新对比',
+        title: '今天 11:08 vs 外部已更新的当前文档',
+        badge: '指纹冲突',
+        panelBadge: '需刷新',
+        btnLabel: '恢复到此版本',
+        btnDisabled: true
+      },
+      readonly: {
+        header: '只读文件 · 仅允许查看与复制',
+        title: '今天 11:08（只读文件预览）',
+        badge: '只读权限',
+        panelBadge: '只读文件',
+        btnLabel: '文件只读，不可恢复',
+        btnDisabled: true
+      }
+    };
+    const m = metaMap[s] || metaMap.conflict;
+
+    return {
+      isEmptyState: isEmpty,
+      isLoadingState: isLoading,
+      isLoadErrorState: isLoadError,
+      isRestoreError,
+      isConflictState: isConflict,
+      isReadonlyState: isReadonly,
+      hasVersionList,
+      headerStatusText: m.header,
+      topBarTitle: m.title,
+      topBadgeText: m.badge,
+      topBadgeBg: isConflict ? '#c9d8f3' : '#f1f1f1',
+      topBadgeColor: '#20242c',
+      panelStateBadge: m.panelBadge,
+      showRestoreButton: !isConflict,
+      restoreBtnDisabled: m.btnDisabled,
+      restoreBtnLabel: m.btnLabel,
+      bodyParagraph2: hasVersionList
+        ? '我们决定先停掉周三例会，改成在群里发一段文字同步本周进展。'
+        : '与其等所有人空出同一段时间，不如把状态写在这里：这周要什么、卡在哪、需要谁看一眼。',
+      feedbackNotice: this.state.feedbackNotice,
+      retryAction: () => this.setState({
+        feedbackNotice: '已重新发起请求并校验本地快照，当前状态运行正常。'
+      }),
+      refreshConflict: () => this.setState({
+        feedbackNotice: '已重新读取磁盘最新文档作为「当前版本」基准，现在可以安全对比或恢复。'
+      }),
+      triggerRestore: () => {
+        if (!m.btnDisabled) {
+          this.setState({ feedbackNotice: '已重新执行原子写入并成功恢复版本。' });
+        }
+      },
+      clearFeedback: () => this.setState({ feedbackNotice: '' })
+    };
+  }
+}
+</script>
+</body>
+</html>

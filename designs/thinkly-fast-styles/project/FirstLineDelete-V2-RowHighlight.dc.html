@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>首行删除 B · 原位垃圾桶标与整行待删柔底</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+button{font-family:inherit;font-size:14px;line-height:20px;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid #547dd0;outline-offset:1px}
+*{box-sizing:border-box}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-size:14px;line-height:22px}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:760px;display:flex;flex-direction:column;background:{{shellBg}};color:{{textPrimary}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased">
+
+  <header style="height:48px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:{{sidebarBg}};border-bottom:1px solid {{borderCol}};flex:none">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:15px;font-weight:560">方案 B · 原位垃圾桶标与整行待删柔底</span>
+      <button type="button" onClick="{{pressBackspace}}" style="height:30px;padding:0 12px;border-radius:8px;border:1px solid {{actionBorder}};background:{{actionBg}};color:{{actionText}};font-weight:500">按一次删除键 ⌫</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:inline-flex;padding:3px;gap:2px;background:{{shellBg}};border:1px solid {{borderCol}};border-radius:8px">
+        <sc-for list="{{stepTabs}}" as="tab" hint-placeholder-count="3">
+          <button type="button" onClick="{{tab.pick}}" style="height:28px;padding:0 10px;border:0;border-radius:6px;background:{{tab.bg}};box-shadow:{{tab.ring}};color:{{tab.col}};font-weight:{{tab.weight}}">{{tab.label}}</button>
+        </sc-for>
+      </div>
+      <button type="button" onClick="{{toggleTheme}}" style="height:30px;padding:0 12px;border-radius:8px;border:1px solid {{borderCol}};background:{{shellBg}}">{{themeLabel}}</button>
+    </div>
+  </header>
+
+  <main style="flex:1;display:flex;background:{{paperBg}};padding:72px 48px">
+    <div style="width:100%;max-width:720px;margin:0 auto;display:flex;flex-direction:column">
+
+      <sc-if value="{{showFirstLine}}" hint-placeholder-val="{{true}}">
+        <div style="display:flex;align-items:center;min-height:32px;margin-bottom:24px">
+          <div style="width:56px;padding-right:8px;display:flex;align-items:center;justify-content:flex-end;flex:none">
+            <sc-if value="{{isIdle}}" hint-placeholder-val="{{true}}">
+              <button type="button" onClick="{{pressBackspace}}" aria-label="添加块" style="width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:{{textSecondary}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14"></path>
+                </svg>
+              </button>
+            </sc-if>
+            <sc-if value="{{isArmed}}" hint-placeholder-val="{{false}}">
+              <button type="button" onClick="{{pressBackspace}}" aria-label="再次按删除键删除此行" style="width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:{{dangerFg}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M6.5 7h11l-.9 11.2a1.8 1.8 0 0 1-1.8 1.65H9.2a1.8 1.8 0 0 1-1.8-1.65L6.5 7Z" fill="{{dangerFill}}"></path>
+                  <path d="M4.5 7h15M9.5 7V5.2c0-.66.54-1.2 1.2-1.2h2.6c.66 0 1.2.54 1.2 1.2V7M6.5 7l.9 11.2a1.8 1.8 0 0 0 1.8 1.65h5.6a1.8 1.8 0 0 0 1.8-1.65L17.5 7M10 11v5M14 11v5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+              </button>
+            </sc-if>
+          </div>
+          <div style="flex:1;min-width:0;min-height:32px;padding:2px 8px;margin-left:-8px;border-radius:6px;background:{{rowBg}};box-shadow:{{rowRing}};display:flex;align-items:center;font-size:18px;line-height:28px;color:{{placeholderCol}}">
+            <span style="width:2px;height:22px;border-radius:1px;background:{{caretCol}};margin-right:2px;flex:none"></span>
+            <span>输入 / 或 、 唤出菜单，或开始输入...</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="display:flex;align-items:center;min-height:34px;margin-bottom:16px">
+        <div style="width:56px;padding-right:8px;display:flex;align-items:center;justify-content:flex-end;flex:none">
+          <sc-if value="{{isDeleted}}" hint-placeholder-val="{{false}}">
+            <button type="button" aria-label="折叠章节" style="width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:{{textSecondary}};display:inline-flex;align-items:center;justify-content:center;padding:0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M6 9l6 6 6-6"></path>
+              </svg>
+            </button>
+          </sc-if>
+        </div>
+        <div style="flex:1;min-width:0;display:flex;align-items:center;font-size:22px;line-height:32px;font-weight:600;color:{{headingCol}}">
+          <sc-if value="{{isDeleted}}" hint-placeholder-val="{{false}}">
+            <span style="width:2px;height:24px;border-radius:1px;background:{{accent}};margin-right:2px;flex:none"></span>
+          </sc-if>
+          <span>常用指令</span>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;min-height:28px;margin-bottom:12px">
+        <div style="width:56px;flex:none"></div>
+        <div style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;font-size:17px;line-height:26px">
+          <span class="mono" style="padding:2px 8px;border-radius:5px;background:{{codeBg}};color:{{codeFg}}">mkdir 文件夹名称</span>
+          <span>创建文件夹</span>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;min-height:28px">
+        <div style="width:56px;flex:none"></div>
+        <div style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;font-size:17px;line-height:26px">
+          <span class="mono" style="padding:2px 8px;border-radius:5px;background:{{codeBg}};color:{{codeFg}}">touch file.txt</span>
+          <span>创建文件</span>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["dark","light"]},"step":{"editor":"enum","default":"armed","options":["idle","armed","deleted"]},"$preview":{"width":1440,"height":760}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { theme: null, step: null };
+  }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'dark';
+    const isDark = theme === 'dark';
+    const step = this.state.step ?? this.props.step ?? 'armed';
+
+    const shellBg = isDark ? '#343434' : '#f1f1f1';
+    const sidebarBg = isDark ? '#222222' : '#fafafa';
+    const paperBg = isDark ? '#181818' : '#ffffff';
+    const textPrimary = isDark ? '#ececec' : '#20242c';
+    const textSecondary = isDark ? '#b4b4b4' : '#526071';
+    const placeholderCol = isDark ? '#9a9a9a' : '#526071';
+    const accent = isDark ? '#779de8' : '#547dd0';
+    const selectedBg = isDark ? '#343434' : '#e5edfc';
+    const borderCol = isDark ? '#2e2e2e' : '#e4e6ea';
+
+    const dangerFg = isDark ? '#ff857d' : '#b92d29';
+    const dangerFill = isDark ? 'rgba(255,115,105,0.26)' : 'rgba(212,76,71,0.18)';
+    const dangerBg = isDark ? 'rgba(255,115,105,0.09)' : 'rgba(212,76,71,0.08)';
+    const dangerRing = isDark ? 'rgba(255,115,105,0.34)' : 'rgba(185,45,41,0.28)';
+    const headingCol = isDark ? '#f2a88d' : '#b84a2c';
+    const codeBg = isDark ? '#262626' : '#f3f1ec';
+    const codeFg = isDark ? '#ff857d' : '#b92d29';
+
+    const isIdle = step === 'idle';
+    const isArmed = step === 'armed';
+    const isDeleted = step === 'deleted';
+
+    const steps = [
+      { id: 'idle', label: '1. 首行常态 (+)' },
+      { id: 'armed', label: '2. 首次按 ⌫（显示删除标识）' },
+      { id: 'deleted', label: '3. 再次按 ⌫（删行顶上）' }
+    ];
+    const stepTabs = steps.map((s) => ({
+      label: s.label,
+      bg: step === s.id ? selectedBg : 'transparent',
+      ring: step === s.id ? ('inset 0 0 0 1px ' + accent) : 'none',
+      col: step === s.id ? textPrimary : textSecondary,
+      weight: step === s.id ? '560' : '400',
+      pick: () => this.setState({ step: s.id })
+    }));
+
+    return {
+      shellBg, sidebarBg, paperBg, textPrimary, textSecondary, placeholderCol,
+      accent, borderCol, dangerFg, dangerFill, headingCol, codeBg, codeFg,
+      isIdle, isArmed, isDeleted,
+      showFirstLine: !isDeleted,
+      caretCol: isArmed ? dangerFg : accent,
+      rowBg: isArmed ? dangerBg : 'transparent',
+      rowRing: isArmed ? ('inset 0 0 0 1px ' + dangerRing) : 'none',
+      actionBg: isArmed ? dangerBg : selectedBg,
+      actionBorder: isArmed ? dangerFg : accent,
+      actionText: isArmed ? dangerFg : textPrimary,
+      themeLabel: isDark ? '深色 Dark' : '浅色 Light',
+      stepTabs,
+      pressBackspace: () => {
+        const next = step === 'idle' ? 'armed' : (step === 'armed' ? 'deleted' : 'idle');
+        this.setState({ step: next });
+      },
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' })
+    };
+  }
+}
+</script>
+</body>
+</html>

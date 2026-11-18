@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>页边札记</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.lt{--paper:#ffffff;--menu:#ffffff;--shell:#f1f1f1;--text:#1f1e1d;--text2:#52514e;--accent:#547dd0;--accentHover:#456ec2;--accentText:#ffffff;--iconFill:#c9d8f3;--hover:#eef3fc;--selected:#e5edfc;--hairline:#e4e6ea;--btnBorder:#dcdcdc;--annBg:#fef0d1;--annActive:#fdda8c;--dot:#f5c84c;--selFg:#184f95;--danger:#c93b3b}
+.dk{--paper:#181818;--menu:#222222;--shell:#343434;--text:#ececec;--text2:#b4b4b4;--accent:#779de8;--accentHover:#8aabee;--accentText:#14203a;--iconFill:#31456a;--hover:#2c2c2c;--selected:#343434;--hairline:#2e2e2e;--btnBorder:#444444;--annBg:#4a3c21;--annActive:#81611e;--dot:#f5c84c;--selFg:#9dbcf5;--danger:#f26d6d}
+.note-btn{all:unset;display:block;width:100%;cursor:text;overflow-wrap:anywhere;word-break:break-word}
+.ta{field-sizing:content;resize:none;outline:none;border:0;background:transparent;padding:0;margin:0;width:100%;min-height:22px;font:inherit;color:var(--text);caret-color:var(--accent);overflow-wrap:anywhere}
+.ta::selection{background:#cde2fb}
+.ib{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border:0;border-radius:6px;background:transparent;color:var(--text2);cursor:pointer;padding:0}
+.ib:hover{background:var(--hover);color:var(--text)}
+.ib.danger:hover{color:var(--danger)}
+.ghost{height:28px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:var(--text2);font:inherit;font-size:13px;font-weight:460;cursor:pointer}
+.ghost:hover{background:var(--hover);color:var(--text)}
+.primary{height:28px;padding:0 12px;border:0;border-radius:6px;background:var(--accent);color:var(--accentText);font:inherit;font-size:13px;font-weight:460;cursor:pointer}
+.primary:hover{background:var(--accentHover)}
+</style>
+</helmet>
+<div class="{{ themeClass }}" style="width: 1160px; height: 760px; box-sizing: border-box; background: var(--paper); color: var(--text); font-family: -apple-system, 'SF Pro Text', 'PingFang SC', 'HarmonyOS Sans SC', system-ui, sans-serif; display: flex; gap: 40px; padding: 72px 64px 0 120px; overflow: hidden">
+<div style="width: 640px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; font-size: 16px; line-height: 26px">
+<h1 style="margin: 0 0 8px; font-size: 28px; line-height: 36px; font-weight: 560">写作节奏的三个阶段</h1>
+<p style="margin: 0">第一阶段是<span style="{{ h1.style }}">快速倾倒</span>：不管结构，把脑子里的东西尽量写下来，数量比质量重要。</p>
+<p style="margin: 0">第二阶段是整理。把零散的段落按主题归类，<span style="{{ h2.style }}">删除重复的论点</span>，补上缺失的过渡。</p>
+<p style="margin: 0">第三阶段才是打磨。<span style="{{ h3.style }}">这一阶段需要反复朗读，留意每一句的呼吸感</span>，必要时换一个更准确的词。</p>
+<p style="margin: 0"><span style="{{ h4.style }}">{{ h4.text }}</span></p>
+</div>
+<div style="width: 224px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; padding-top: 52px; font-size: 14px; line-height: 22px">
+<sc-for list="{{ items }}" as="it" hint-placeholder-count="4">
+<sc-if value="{{ it.editing }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 6px 6px 6px 10px; border-radius: 8px; background: var(--menu); box-shadow: inset 0 0 0 1px var(--accent)">
+<div style="display: flex; gap: 8px; align-items: flex-start">
+<div style="height: 22px; display: flex; align-items: center; flex-shrink: 0"><div style="width: 6px; height: 6px; border-radius: 999px; background: var(--dot)"></div></div>
+<label style="display: flex; flex: 1; min-width: 0"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">批注内容</span><textarea class="ta" rows="1" value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKey }}" autoFocus="{{ true }}"></textarea></label>
+</div>
+<div style="display: flex; justify-content: flex-end; gap: 4px">
+<button class="ghost" onClick="{{ cancel }}">取消</button>
+<button class="primary" onClick="{{ save }}">保存</button>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ it.resting }}" hint-placeholder-val="{{ true }}">
+<div onMouseEnter="{{ it.enter }}" onMouseLeave="{{ leave }}" style="{{ it.rowStyle }}">
+<div style="display: flex; gap: 8px; align-items: flex-start">
+<div style="height: 22px; display: flex; align-items: center; flex-shrink: 0">
+<sc-if value="{{ it.isResult }}" hint-placeholder-val="{{ false }}">
+<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l1.6 4.2 4.4 1.3-4.4 1.3L8 12.5 6.4 8.3 2 7l4.4-1.3z" fill="var(--iconFill)" stroke="var(--accent)" stroke-width="1.4" stroke-linejoin="round"></path></svg>
+</sc-if>
+<sc-if value="{{ it.isNote }}" hint-placeholder-val="{{ true }}">
+<div style="width: 6px; height: 6px; border-radius: 999px; background: var(--dot)"></div>
+</sc-if>
+</div>
+<button class="note-btn" aria-label="编辑批注" onClick="{{ it.edit }}" style="{{ it.textStyle }}">{{ it.text }}</button>
+</div>
+<sc-if value="{{ it.showActions }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 4px; padding-left: 14px">
+<sc-if value="{{ it.isPrompt }}" hint-placeholder-val="{{ false }}">
+<button class="ghost" onClick="{{ it.apply }}" style="display: flex; align-items: center; gap: 6px; padding: 0 8px; color: var(--accent)"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l1.6 4.2 4.4 1.3-4.4 1.3L8 12.5 6.4 8.3 2 7l4.4-1.3z" fill="var(--iconFill)" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path></svg>改写</button>
+</sc-if>
+<sc-if value="{{ it.isResult }}" hint-placeholder-val="{{ false }}">
+<button class="primary" onClick="{{ it.accept }}">替换原文</button>
+<button class="ghost" onClick="{{ it.remove }}">忽略</button>
+</sc-if>
+<div style="flex: 1"></div>
+<sc-if value="{{ it.canDelete }}" hint-placeholder-val="{{ true }}">
+<button class="ib danger" aria-label="删除批注" onClick="{{ it.remove }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10"></path><path d="M6.5 4.5V3h3v1.5"></path><path d="M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="var(--iconFill)"></path></svg></button>
+</sc-if>
+</div>
+</sc-if>
+</div>
+</sc-if>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":true},"$preview":{"width":1160,"height":760}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      notes: [
+        { id: 'h1', kind: 'note', text: '可以举一个自己的例子' },
+        { id: 'h2', kind: 'note', text: '123 我就看看 1232132132131313213112313132132131313213133' },
+        { id: 'h3', kind: 'prompt', text: '改得更口语一点' },
+        { id: 'h4', kind: 'result', text: '说到底，好文章都是一遍遍改出来的。' }
+      ],
+      h4text: '总之，好的文字往往是改出来的，而不是一次写成的。',
+      editing: null, draft: '', hover: null
+    };
+  }
+  patch(id, fn) { this.setState({ notes: this.state.notes.map((n) => n.id === id ? fn(n) : n) }); }
+  drop(id) { this.setState({ notes: this.state.notes.filter((n) => n.id !== id), hover: null }); }
+  renderVals() {
+    const s = this.state;
+    const save = () => {
+      const t = s.draft.trim();
+      if (!t) { this.drop(s.editing); this.setState({ editing: null }); return; }
+      this.patch(s.editing, (n) => ({ ...n, text: t }));
+      this.setState({ editing: null });
+    };
+    const cancel = () => this.setState({ editing: null });
+    const hl = (id) => {
+      const has = s.notes.some((n) => n.id === id);
+      const hot = s.hover === id || s.editing === id;
+      return { style: has ? 'background: ' + (hot ? 'var(--annActive)' : 'var(--annBg)') + '; border-radius: 3px; padding: 1px 0; transition: background 160ms' : '' };
+    };
+    const items = s.notes.map((n) => {
+      const hot = s.hover === n.id;
+      return {
+        ...n,
+        editing: s.editing === n.id,
+        resting: s.editing !== n.id,
+        isNote: n.kind !== 'result',
+        isPrompt: n.kind === 'prompt',
+        isResult: n.kind === 'result',
+        canDelete: n.kind !== 'result',
+        showActions: hot,
+        rowStyle: 'display: flex; flex-direction: column; gap: 4px; padding: 6px 6px 6px 10px; border-radius: 8px; transition: background 160ms; background: ' + (hot ? 'var(--hover)' : 'transparent'),
+        textStyle: 'flex: 1; min-width: 0; color: ' + (n.kind === 'result' ? 'var(--selFg)' : (hot ? 'var(--text)' : 'var(--text2)')),
+        enter: () => this.setState({ hover: n.id }),
+        edit: () => this.setState({ editing: n.id, draft: n.text, hover: null }),
+        remove: () => this.drop(n.id),
+        apply: () => this.patch(n.id, (x) => ({ ...x, kind: 'result', text: '这一步要反复读出声，听听每句话顺不顺' })),
+        accept: () => { if (n.id === 'h4') this.setState({ h4text: n.text }); this.drop(n.id); }
+      };
+    });
+    return {
+      themeClass: (this.props.dark ?? true) ? 'dk' : 'lt',
+      items, draft: s.draft, save, cancel,
+      leave: () => this.setState({ hover: null }),
+      onDraft: (e) => this.setState({ draft: e.target.value }),
+      onKey: (e) => {
+        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) { e.preventDefault(); save(); }
+        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      },
+      h1: hl('h1'), h2: hl('h2'), h3: hl('h3'), h4: { ...hl('h4'), text: s.h4text }
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>标注与斜杠 AI 方案 B · 顶栏五态语义胶囊直切与折叠 + 340px 单行命令舱</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;font-family:-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;background:#f1f1f1;-webkit-font-smoothing:antialiased}
+a{color:#3d63b0}a:hover{color:#2c4c8c}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+*{box-sizing:border-box}
+::selection{background:#cde2fb;color:#184f95}
+.seg-btn{height:30px;padding:4px 12px;border:0;border-radius:6px;background:transparent;color:#526071;font-size:14px;font-weight:460;cursor:pointer}
+.seg-btn:hover{color:#20242c}
+.pill-btn{height:28px;padding:4px 10px;border:1px solid transparent;border-radius:6px;background:transparent;color:#526071;font-size:14px;font-weight:460;display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.pill-btn:hover{background:rgba(255,255,255,0.7);color:#20242c}
+.cmd-row{width:100%;height:32px;padding:6px 10px;border:0;border-radius:6px;background:transparent;color:#20242c;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;text-align:left;cursor:pointer}
+.cmd-row:hover{background:#eef3fc}
+</style>
+</helmet>
+
+<div style="width:100%;min-height:960px;display:flex;flex-direction:column;background:#ffffff;color:#20242c;font-size:14px;line-height:20px">
+
+  <!-- 顶部演示切换栏 -->
+  <div style="min-height:48px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:8px 20px;background:#fafafa;border-bottom:1px solid #e6e6e6">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-weight:560;color:#20242c">方案 B · 标注顶栏五态语义胶囊直切与折叠 + 340px 单行命令舱</span>
+      <span style="color:#526071">无需展开二级下拉，顶栏直切五种标注语义并支持一键折叠正文</span>
+    </div>
+    <div style="display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:8px;background:#f1f1f1;border:1px solid #dcdcdc">
+      <button type="button" class="seg-btn" onClick="{{toggleFold}}" style="background:{{foldBtnBg}};color:#20242c">{{foldBtnLabel}}</button>
+      <button type="button" class="seg-btn" onClick="{{toggleCmdList}}" style="background:{{cmdBtnBg}};color:#20242c">{{cmdBtnLabel}}</button>
+    </div>
+  </div>
+
+  <!-- 模拟主窗口顶栏 -->
+  <header style="min-height:44px;flex:none;display:flex;align-items:center;background:#f1f1f1;border-bottom:1px solid #e6e6e6">
+    <div style="width:260px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:8px 12px 8px 14px;border-right:1px solid #e6e6e6">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+      </div>
+      <span style="color:#526071;font-weight:500">工作区笔记</span>
+    </div>
+    <div style="flex:1;display:flex;align-items:center;justify-content:space-between;padding:8px 16px">
+      <div style="padding:4px 12px;border-radius:6px;background:#ffffff;border:1px solid #e4e6ea;display:inline-flex;align-items:center;gap:8px;color:#20242c;font-weight:500">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 2.5h6l3 3v8h-9v-11z" fill="#c9d8f3" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path><path d="M5.5 8h5M5.5 10.5h3.5" stroke="#547dd0" stroke-width="1.4" stroke-linecap="round"></path></svg>
+        <span>架构设计与发布检查清单</span>
+      </div>
+      <span style="color:#526071">标准版心 672px</span>
+    </div>
+  </header>
+
+  <div style="flex:1;min-height:0;display:flex">
+    <aside style="width:260px;flex:none;background:#fafafa;border-right:1px solid #e6e6e6;padding:12px 10px;display:flex;flex-direction:column;gap:4px">
+      <div style="padding:6px 10px;border-radius:8px;background:#e5edfc;box-shadow:inset 0 0 0 1px #547dd0;display:flex;align-items:center;color:#20242c;font-weight:500">
+        <span>架构设计与发布检查清单</span>
+      </div>
+      <div style="padding:6px 10px;border-radius:8px;display:flex;align-items:center;color:#526071">接口幂等与重试约定</div>
+      <div style="padding:6px 10px;border-radius:8px;display:flex;align-items:center;color:#526071">本地存储迁移方案</div>
+    </aside>
+
+    <main style="flex:1;min-width:0;background:#ffffff;padding:36px 48px;display:flex;justify-content:center;overflow-y:auto">
+      <article style="width:100%;max-width:672px;display:flex;flex-direction:column;gap:16px;font-size:16px;line-height:28px;color:#1f1e1d">
+
+        <h1 style="margin:0;font-size:28px;line-height:36px;font-weight:600;color:#20242c">架构设计与发布检查清单</h1>
+
+        <!-- 方案 B 标注块：双层结构（顶栏带五态直切胶囊与折叠键 + 下层正文区） -->
+        <div style="border-radius:10px;background:{{cBg}};border:1px solid {{cBorder}};overflow:hidden">
+          <div style="padding:8px 12px;border-bottom:{{headerDivider}};display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(255,255,255,0.45)">
+            <div style="display:inline-flex;align-items:center;gap:8px">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="3.5" y="3.5" width="17" height="17" rx="4.5" fill="{{cIconFill}}" stroke="{{cAccent}}" stroke-width="1.6"></rect>
+                <path d="M12 8v4.5M12 16h.01" stroke="{{cAccent}}" stroke-width="1.8" stroke-linecap="round"></path>
+              </svg>
+              <span style="font-size:14px;font-weight:560;color:{{cText}}">{{cLabel}}</span>
+            </div>
+
+            <!-- 顶栏右侧五态直选胶囊 + 折叠正文按钮 -->
+            <div style="display:inline-flex;align-items:center;gap:3px">
+              <sc-for list="{{pills}}" as="p" hint-placeholder-count="5">
+                <button type="button" class="pill-btn" onClick="{{p.pick}}" style="background:{{p.bg}};box-shadow:{{p.ring}};color:{{p.col}};font-weight:{{p.weight}}">
+                  <span style="width:8px;height:8px;border-radius:4px;background:{{p.dot}}"></span>
+                  <span>{{p.name}}</span>
+                </button>
+              </sc-for>
+              <div style="width:1px;height:14px;background:#dcdcdc;margin:0 4px"></div>
+              <button type="button" class="pill-btn" onClick="{{toggleFold}}" aria-label="折叠或展开标注正文">
+                <span>{{foldShort}}</span>
+              </button>
+            </div>
+          </div>
+
+          <sc-if value="{{isExpanded}}" hint-placeholder-val="{{true}}">
+            <div style="padding:12px 16px;color:#1f1e1d;font-size:16px;line-height:26px">
+              <span>{{cBody}}</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <!-- 方案 B 斜杠 AI：340px 极简一体命令舱（顶部 36px 输入舱 + 下方紧凑单列指令清单） -->
+        <div style="margin-top:8px;position:relative">
+          <div style="padding:10px 14px;border-radius:8px;background:#eef3fc;box-shadow:inset 0 0 0 1px #547dd0;color:#1f1e1d">
+            <span>发布前需核对所有零散配置项，确保数据库迁移脚本与回滚开关均已就绪。</span>
+          </div>
+
+          <div role="dialog" aria-label="AI 命令舱" style="margin-top:8px;width:340px;padding:8px;border-radius:10px;background:#ffffff;border:1px solid #e4e6ea;box-shadow:0 10px 28px rgba(32,36,44,0.12);display:flex;flex-direction:column;gap:6px">
+            <div style="padding:6px 8px 6px 10px;border-radius:8px;background:#f8f8f8;border:1px solid #547dd0;box-shadow:inset 0 0 0 1px #547dd0;display:flex;align-items:center;gap:8px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none">
+                <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3z" fill="#c9d8f3" stroke="#547dd0" stroke-width="1.6" stroke-linejoin="round"></path>
+              </svg>
+              <label style="flex:1;min-width:0;display:flex;align-items:center">
+                <span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">输入 AI 指令</span>
+                <input value="{{cmdInput}}" placeholder="输入改写要求，或直选下方动作…" readonly="readonly" style="width:100%;border:0;outline:0;background:transparent;color:#20242c;font-size:14px">
+              </label>
+              <button type="button" onClick="{{toggleCmdList}}" aria-label="执行指令" style="width:24px;height:24px;border:0;border-radius:6px;background:#3d63b0;color:#ffffff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"></path></svg>
+              </button>
+            </div>
+
+            <sc-if value="{{showCmdList}}" hint-placeholder-val="{{true}}">
+              <div style="display:flex;flex-direction:column;gap:2px;padding-top:2px">
+                <sc-for list="{{commands}}" as="cmd" hint-placeholder-count="4">
+                  <button type="button" class="cmd-row" onClick="{{cmd.pick}}" style="background:{{cmd.bg}};box-shadow:{{cmd.ring}};font-weight:{{cmd.weight}}">
+                    <span>{{cmd.label}}</span>
+                    <span style="color:#526071;font-family:'JetBrains Mono',monospace;font-size:14px">{{cmd.hint}}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+
+      </article>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = {
+      idx: 1,
+      folded: false,
+      showCmdList: true,
+      activeCmd: 0
+    };
+  }
+  renderVals() {
+    const types = [
+      { name: '提示', bg: '#eef3fc', border: '#c9d8f3', accent: '#547dd0', iconFill: '#dce7fa', text: '#2c4c8c', body: '顶栏直接铺开五态语义胶囊，鼠标悬停或编辑时一键切换，适合高频整理结构化文档。' },
+      { name: '技巧', bg: '#edf7f2', border: '#bce3cf', accent: '#1f8a5b', iconFill: '#d3efe1', text: '#166541', body: '技巧标注支持一键折叠长段补充说明，保持主干阅读流干净紧凑。' },
+      { name: '重要', bg: '#f3f0fb', border: '#d6ccf2', accent: '#6e56cf', iconFill: '#e4ddf8', text: '#4c389e', body: '重要标注通过柔和紫色描边与图标高亮关键决策约束。' },
+      { name: '警告', bg: '#fdf5e8', border: '#edd4a8', accent: '#b86b11', iconFill: '#f7e2be', text: '#8a4e08', body: '警告标注提醒升级迁移时的潜在兼容风险。' },
+      { name: '注意', bg: '#fceeee', border: '#f1c4c4', accent: '#c93b3b', iconFill: '#f8dada', text: '#962727', body: '注意标注用于高危操作前的强提醒。' }
+    ];
+    const idx = this.state.idx ?? 1;
+    const folded = Boolean(this.state.folded);
+    const showCmdList = Boolean(this.state.showCmdList);
+    const activeCmd = this.state.activeCmd ?? 0;
+    const cur = types[idx] || types[0];
+    const pills = types.map((t, i) => ({
+      name: t.name,
+      dot: t.accent,
+      bg: i === idx ? '#ffffff' : 'transparent',
+      ring: i === idx ? 'inset 0 0 0 1px ' + t.accent : 'none',
+      col: i === idx ? '#20242c' : '#526071',
+      weight: i === idx ? '500' : '400',
+      pick: () => this.setState({ idx: i })
+    }));
+    const cmdRaw = [
+      { label: '润色文本', hint: '↵' },
+      { label: '精简篇幅', hint: '⌘1' },
+      { label: '翻译成英文', hint: '⌘2' },
+      { label: '整理为待办清单', hint: '⌘3' }
+    ];
+    const commands = cmdRaw.map((c, i) => ({
+      label: c.label,
+      hint: c.hint,
+      bg: i === activeCmd ? '#e5edfc' : 'transparent',
+      ring: i === activeCmd ? 'inset 0 0 0 1px #547dd0' : 'none',
+      weight: i === activeCmd ? '500' : '400',
+      pick: () => this.setState({ activeCmd: i })
+    }));
+    return {
+      cBg: cur.bg,
+      cBorder: cur.border,
+      cAccent: cur.accent,
+      cIconFill: cur.iconFill,
+      cText: cur.text,
+      cLabel: cur.name,
+      cBody: cur.body,
+      pills,
+      isExpanded: !folded,
+      headerDivider: folded ? '0' : '1px solid ' + cur.border,
+      foldShort: folded ? '展开' : '折叠',
+      foldBtnBg: folded ? '#e5edfc' : 'transparent',
+      foldBtnLabel: folded ? '展开标注正文' : '折叠标注正文',
+      toggleFold: () => this.setState({ folded: !this.state.folded }),
+      showCmdList,
+      cmdBtnBg: showCmdList ? '#e5edfc' : 'transparent',
+      cmdBtnLabel: showCmdList ? '收起指令列表' : '展开指令列表',
+      toggleCmdList: () => this.setState({ showCmdList: !this.state.showCmdList }),
+      cmdInput: cmdRaw[activeCmd].label,
+      commands
+    };
+  }
+}
+</script>
+</body>
+</html>

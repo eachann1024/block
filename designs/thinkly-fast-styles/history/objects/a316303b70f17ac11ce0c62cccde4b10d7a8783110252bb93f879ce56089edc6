@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>公式 A · 一体面板</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;color:#20242c;background:#ffffff;-webkit-font-smoothing:antialiased}
+a{color:#547dd0;text-decoration:none}a:hover{color:#3d63b0;text-decoration:underline}
+button,input,textarea{font-family:inherit;font-size:14px}
+*{box-sizing:border-box}
+::selection{background:#cde2fb;color:#184f95}
+.mono{font-family:'JetBrains Mono',Menlo,Monaco,ui-monospace,monospace}
+.math-font{font-family:'KaTeX_Math','Cambria Math','Latin Modern Math','STIX Two Math','Times New Roman',serif}
+.tool-btn{height:36px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:#526071;display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:460;cursor:pointer;transition:all 120ms ease}
+.tool-btn:hover{background:rgba(0,0,0,.05);color:#20242c}
+.tool-btn:active{background:rgba(0,0,0,.08)}
+.action-btn{height:36px;padding:0 14px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#20242c;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:14px;font-weight:460;cursor:pointer;transition:all 120ms ease}
+.action-btn:hover{background:#f8f9fa;border-color:#cfcfcf}
+.action-btn:active{background:#f1f1f1}
+.sidebar-item{height:34px;padding:0 10px;border-radius:8px;display:flex;align-items:center;gap:10px;color:#526071;font-size:14px;cursor:pointer;border:0;background:transparent;width:100%;text-align:left;transition:all 120ms ease}
+.sidebar-item:hover{background:#eef3fc;color:#20242c}
+.sidebar-item.active{background:#e5edfc;color:#20242c;font-weight:500;box-shadow:inset 0 0 0 1px #547dd0}
+.src-area{width:100%;min-height:96px;padding:14px 18px;border:0;border-radius:0;background:#f1f3f6;color:#20242c;font-family:'JetBrains Mono',Menlo,monospace;font-size:14px;line-height:22px;resize:vertical;outline:none;display:block;box-sizing:border-box}
+.src-area:focus{box-shadow:inset 0 0 0 1px #547dd0;background:#eef2f8}
+.preset-chip{height:30px;padding:0 10px;border:1px solid #dcdcdc;border-radius:6px;background:#ffffff;color:#526071;font-size:13px;display:inline-flex;align-items:center;cursor:pointer;transition:all 120ms ease}
+.preset-chip:hover{border-color:#b4b4b4;color:#20242c}
+.preset-chip.active{background:#e5edfc;border-color:#547dd0;color:#20242c;font-weight:500}
+</style>
+</helmet>
+
+<div style="width:1440px;height:1000px;display:flex;flex-direction:column;background:#ffffff;color:#20242c;overflow:hidden">
+
+  <!-- 顶部 40px macOS 风格原生应用标题栏 -->
+  <header style="height:40px;flex:none;display:flex;align-items:center;background:#f1f1f1;border-bottom:1px solid #e6e6e6">
+    <div style="width:260px;height:100%;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px 0 16px;border-right:1px solid #e6e6e6;box-sizing:border-box">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e;display:inline-block"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840;display:inline-block"></span>
+      </div>
+      <button type="button" aria-label="切换侧边栏" class="tool-btn" style="height:28px;width:28px;padding:0;justify-content:center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+      </button>
+    </div>
+
+    <!-- 文档标签页 -->
+    <div style="flex:1;height:100%;display:flex;align-items:center;padding:0 12px;gap:8px;min-width:0">
+      <div style="height:30px;padding:0 14px;border-radius:6px;background:#ffffff;border:1px solid #e4e6ea;display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:#20242c">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 2.5h6l3 3v8h-9v-11z" fill="#c9d8f3" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 8h5M5.5 10.5h3.5" stroke="#547dd0" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span>深度学习优化目标与公式排版</span>
+        <span style="color:#526071;font-size:12px;margin-left:4px">Markdown</span>
+      </div>
+    </div>
+
+    <!-- 顶栏右侧辅助状态 -->
+    <div style="padding:0 18px;display:flex;align-items:center;gap:12px;flex:none;color:#526071;font-size:14px">
+      <span style="display:inline-flex;align-items:center;gap:6px">
+        <span style="width:7px;height:7px;border-radius:50%;background:#28c840;display:inline-block"></span>
+        <span>已自动保存</span>
+      </span>
+      <span style="color:#e4e6ea">|</span>
+      <span>字数 1,480</span>
+    </div>
+  </header>
+
+  <!-- 主体工作区：左侧 260px 侧边栏 + 右侧正文编辑器 -->
+  <div style="flex:1;display:flex;min-height:0">
+
+    <!-- 左侧 260px 导航树 -->
+    <aside style="width:260px;flex:none;background:#fafafa;border-right:1px solid #e6e6e6;padding:14px 10px;display:flex;flex-direction:column;justify-content:space-between;box-sizing:border-box">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          <div style="flex:1;height:32px;padding:0 10px;border-radius:6px;background:#f1f1f1;border:1px solid #dcdcdc;display:flex;align-items:center;justify-content:space-between;color:#526071;font-size:14px">
+            <span style="display:inline-flex;align-items:center;gap:6px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <span>搜索笔记</span>
+            </span>
+            <span class="mono" style="font-size:12px">⌘K</span>
+          </div>
+          <button type="button" aria-label="新建笔记" class="tool-btn" style="width:32px;height:32px;padding:0;justify-content:center;background:#f1f1f1;border:1px solid #dcdcdc">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+
+        <div style="padding:6px 10px 4px;font-size:13px;font-weight:560;color:#526071">最近打开</div>
+        <button type="button" class="sidebar-item active">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">深度学习优化目标与公式排版</span>
+        </button>
+        <button type="button" class="sidebar-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">注意力机制与 Transformer</span>
+        </button>
+        <button type="button" class="sidebar-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">强化学习策略梯度推导</span>
+        </button>
+        <button type="button" class="sidebar-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">贝叶斯先验与后验估计</span>
+        </button>
+      </div>
+
+      <!-- 侧边栏底部工作区信息 -->
+      <div style="border-top:1px solid #e6e6e6;padding-top:12px;display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:24px;height:24px;border-radius:6px;background:#547dd0;color:#ffffff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px">B</div>
+          <span style="font-size:14px;color:#20242c;font-weight:500">Block 笔记本</span>
+        </div>
+        <button type="button" aria-label="设置" class="tool-btn" style="width:28px;height:28px;padding:0;justify-content:center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- 右侧居中文档阅读与编辑区（宽 720px 规范版心） -->
+    <main style="flex:1;min-width:0;overflow-y:auto;background:#ffffff;padding:48px 24px 120px;display:flex;flex-direction:column;align-items:center">
+      <article style="width:100%;max-width:720px;display:flex;flex-direction:column;gap:24px">
+
+        <!-- 文档标题 -->
+        <h1 style="margin:0;font-size:32px;line-height:40px;font-weight:600;color:#20242c;letter-spacing:-0.02em">
+          深度学习优化目标与公式排版
+        </h1>
+
+        <!-- 正文引导段落 -->
+        <p style="margin:0;font-size:16px;line-height:28px;color:#20242c">
+          在构建生成式模型或判别模型时，负对数似然（Negative Log-Likelihood）配合参数正则项构成了最核心的训练损失函数。为保障推导逻辑清晰，正文中的数学表达式需要与上下文保持一致的字重与层次结构。
+        </p>
+
+        <!-- 静态展示的常态公式块（用于对比真实排版协调度） -->
+        <div style="background:#f8f9fa;border:1px solid #e4e6ea;border-radius:10px;padding:20px 24px;display:flex;align-items:center;justify-content:center;overflow-x:auto">
+          <div class="math-font" style="font-size:26px;line-height:1.5;color:#20242c;display:inline-flex;align-items:baseline;white-space:nowrap">
+            <span style="font-style:italic">H</span>
+            <span>(<span style="font-style:italic">p</span>, <span style="font-style:italic">q</span>) = &minus;</span>
+            <span style="font-size:1.3em;line-height:1;position:relative;top:2px;margin:0 4px">&sum;</span>
+            <sub style="font-size:0.65em;position:relative;top:8px;left:-14px;font-style:italic">x</sub>
+            <span style="font-style:italic">p</span><span>(<span style="font-style:italic">x</span>)</span>
+            <span style="margin:0 2px">log</span>
+            <span style="font-style:italic">q</span><span>(<span style="font-style:italic">x</span>)</span>
+          </div>
+        </div>
+
+        <p style="margin:0;font-size:16px;line-height:28px;color:#20242c">
+          下方是我们在参数调优时关注的经验期望损失。原先的设计在顶部漂浮着白色胶囊与深色杂乱边框；现在方案 A 将其重塑为纯净的<strong>一体化浅灰面板</strong>：统一底色、极简纯文本操作、单发丝线分割源码，回归沉浸写作。
+        </p>
+
+        <!-- 方案 A：一体面板（Formula-V1-Unified）核心公式块 -->
+        <section aria-label="数学公式块" style="border:1px solid #e4e6ea;border-radius:10px;background:#f8f9fa;display:flex;flex-direction:column;overflow:hidden">
+
+          <!-- 顶部一体化工具条：背景与面板完全一致，绝无漂浮白胶囊 -->
+          <div style="height:44px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;background:#f8f9fa;border-bottom:{{headerBorder}}">
+            <div style="display:flex;align-items:center;gap:8px">
+              <button type="button" onClick="{{toggleExpand}}" class="tool-btn" style="padding:0 10px;height:32px;color:#20242c;font-weight:500">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform:{{chevronRotate}};transition:transform 180ms ease"><path d="m6 9 6 6 6-6"/></svg>
+                <span>{{expandBtnText}}</span>
+              </button>
+              <span style="color:#8c95a6;font-size:13px">·</span>
+              <span style="color:#526071;font-size:14px">LaTeX 公式</span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:8px">
+              <button type="button" onClick="{{copySourceCode}}" class="tool-btn" style="height:32px;padding:0 10px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>{{copyLabel}}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 公式预览渲染区：与工具条共用背景，居中宽阔展示，公式字号 28px 满足 >= 26px 要求 -->
+          <div style="padding:28px 24px;display:flex;justify-content:center;align-items:center;overflow-x:auto;min-height:92px">
+
+            <!-- 状态 1：标准损失函数公式渲染 -->
+            <sc-if value="{{isLossEq}}" hint-placeholder-val="{{true}}">
+              <div class="math-font" style="font-size:28px;line-height:1.5;color:#20242c;display:inline-flex;align-items:baseline;white-space:nowrap;user-select:text">
+                <span style="font-style:italic;margin-right:2px">&#x2112;</span>
+                <span>(&theta;) = </span>
+                <span style="font-style:normal;margin:0 3px;font-size:1.05em">&#x1D53C;</span>
+                <sub style="font-size:0.62em;font-style:normal;margin-left:1px;position:relative;top:5px">
+                  <span style="font-style:italic">x</span> &sim; <span style="font-style:italic">p</span><sub style="font-size:0.75em;font-style:normal;font-family:Inter,system-ui,sans-serif">data</sub>
+                </sub>
+                <span style="font-size:1.15em;position:relative;top:1px;margin-left:4px">[</span>
+                <span style="margin:0 2px">&minus;log</span>
+                <span style="font-style:italic">p</span><sub style="font-size:0.62em;font-style:italic;position:relative;top:3px">&theta;</sub>
+                <span>(<span style="font-style:italic">x</span>)</span>
+                <span style="font-size:1.15em;position:relative;top:1px">]</span>
+                <span style="margin:0 8px">+</span>
+                <span style="font-style:italic">&lambda;</span>
+                <span style="margin:0 4px">&#x2225;<span style="font-style:italic">&theta;</span>&#x2225;</span><sub style="font-size:0.62em;font-style:normal;position:relative;top:3px">2</sub><sup style="font-size:0.62em;font-style:normal;position:relative;top:-9px">2</sup>
+              </div>
+            </sc-if>
+
+            <!-- 状态 2：欧拉公式预设渲染 -->
+            <sc-if value="{{isEulerEq}}" hint-placeholder-val="{{false}}">
+              <div class="math-font" style="font-size:30px;line-height:1.5;color:#20242c;display:inline-flex;align-items:baseline;white-space:nowrap">
+                <span style="font-style:italic">e</span>
+                <sup style="font-size:0.65em;position:relative;top:-9px"><span style="font-style:italic">i</span>&pi;</sup>
+                <span style="margin:0 8px">+</span>
+                <span>1 = 0</span>
+              </div>
+            </sc-if>
+
+            <!-- 状态 3：贝叶斯公式预设渲染 -->
+            <sc-if value="{{isBayesEq}}" hint-placeholder-val="{{false}}">
+              <div class="math-font" style="font-size:28px;line-height:1.5;color:#20242c;display:inline-flex;align-items:center;white-space:nowrap">
+                <span><span style="font-style:italic">P</span>(<span style="font-style:italic">A</span> | <span style="font-style:italic">B</span>) = </span>
+                <div style="display:inline-flex;flex-direction:column;align-items:center;margin:0 8px;vertical-align:middle">
+                  <span style="padding-bottom:2px;border-bottom:1.5px solid #20242c"><span style="font-style:italic">P</span>(<span style="font-style:italic">B</span> | <span style="font-style:italic">A</span>) &middot; <span style="font-style:italic">P</span>(<span style="font-style:italic">A</span>)</span>
+                  <span style="padding-top:2px"><span style="font-style:italic">P</span>(<span style="font-style:italic">B</span>)</span>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- 状态 4：空状态提示 -->
+            <sc-if value="{{isEmptyEq}}" hint-placeholder-val="{{false}}">
+              <div style="font-size:14px;color:#8c95a6;padding:12px 0;display:flex;align-items:center;gap:6px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span>公式源码为空，请在下方输入 LaTeX 表达式</span>
+              </div>
+            </sc-if>
+
+            <!-- 状态 5：非预设表达式的诚实源码状态 -->
+            <sc-if value="{{isCustomEq}}" hint-placeholder-val="{{false}}">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 0;text-align:center">
+                <div class="mono" style="font-size:15px;color:#20242c;background:rgba(0,0,0,0.04);padding:6px 14px;border-radius:6px;max-width:560px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                  {{sourceSnippet}}
+                </div>
+                <span style="font-size:13px;color:#526071">原型离线环境未载入完整动态数学解析器，编辑内容已完整保存在源码层</span>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- 源码展开抽屉：单发丝线分割，同色系浅灰一体过渡 -->
+          <sc-if value="{{isExpanded}}" hint-placeholder-val="{{true}}">
+            <div style="display:flex;flex-direction:column;border-top:1px solid #e4e6ea;background:#f1f3f6">
+              <textarea
+                class="src-area"
+                rows="3"
+                value="{{sourceCode}}"
+                onInput="{{onSourceInput}}"
+                spellcheck="false"
+                placeholder="输入 LaTeX 公式代码，例如 \mathcal{L}(\theta) = \mathbb{E}[-\log p_\theta(x)]"
+                aria-label="LaTeX 公式源码编辑框"
+              ></textarea>
+
+              <!-- 源码底部辅助操作栏（高度 44px 舒适触控） -->
+              <div style="height:44px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;background:#e9edf2;border-top:1px solid #e2e6ec">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-size:13px;color:#526071">快速载入示例：</span>
+                  <button type="button" onClick="{{loadLoss}}" class="{{lossBtnClass}}">正则化损失</button>
+                  <button type="button" onClick="{{loadEuler}}" class="{{eulerBtnClass}}">欧拉恒等式</button>
+                  <button type="button" onClick="{{loadBayes}}" class="{{bayesBtnClass}}">贝叶斯公式</button>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span class="mono" style="font-size:13px;color:#526071">{{charCountText}}</span>
+                  <button type="button" onClick="{{clearSource}}" class="tool-btn" style="height:30px;padding:0 8px;font-size:13px">清空</button>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+        </section>
+
+        <!-- 正文后续段落 -->
+        <p style="margin:0;font-size:16px;line-height:28px;color:#20242c">
+          公式中的第一项衡量生成分布对真实经验样本的拟合质量；第二项为权重衰减惩罚，用于约束模型容量以防止过拟合。在一体面板中，点击左上角的“收起源码”即可让公式回归纯净阅读状态，边框与背景一气呵成。
+        </p>
+
+      </article>
+    </main>
+  </div>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"defaultExpanded":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.DEFAULT_SRC = '\\mathcal{L}(\\theta) = \\mathbb{E}_{x \\sim p_{\\text{data}}}\\bigl[-\\log p_{\\theta}(x)\\bigr] + \\lambda \\|\\theta\\|_2^2';
+    this.EULER_SRC = 'e^{i\\pi} + 1 = 0';
+    this.BAYES_SRC = 'P(A|B) = \\frac{P(B|A)P(A)}{P(B)}';
+    this.state = {
+      isExpanded: true,
+      source: this.DEFAULT_SRC,
+      copied: false
+    };
+  }
+
+  renderVals() {
+    const isExpanded = this.state.isExpanded;
+    const source = this.state.source ?? '';
+    const trimmed = source.trim();
+
+    const isLossEq = trimmed.includes('\\mathcal{L}') || trimmed.includes('p_{\\text{data}}') || trimmed.includes('\\lambda');
+    const isEulerEq = trimmed.includes('e^{i\\pi}') || trimmed.includes('i\\pi');
+    const isBayesEq = trimmed.includes('P(A|B)') || trimmed.includes('P(B|A)');
+    const isEmptyEq = trimmed.length === 0;
+    const isCustomEq = !isLossEq && !isEulerEq && !isBayesEq && !isEmptyEq;
+
+    return {
+      isExpanded,
+      expandBtnText: isExpanded ? '收起源码' : '展开源码',
+      chevronRotate: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+      headerBorder: isExpanded ? '1px solid #e4e6ea' : 'none',
+      sourceCode: source,
+      copyLabel: this.state.copied ? '已复制' : '复制代码',
+      charCountText: `${source.length} 字符`,
+      sourceSnippet: source.length > 50 ? source.slice(0, 50) + '…' : source,
+
+      isLossEq,
+      isEulerEq,
+      isBayesEq,
+      isEmptyEq,
+      isCustomEq,
+
+      lossBtnClass: isLossEq ? 'preset-chip active' : 'preset-chip',
+      eulerBtnClass: isEulerEq ? 'preset-chip active' : 'preset-chip',
+      bayesBtnClass: isBayesEq ? 'preset-chip active' : 'preset-chip',
+
+      toggleExpand: () => this.setState({ isExpanded: !this.state.isExpanded }),
+      onSourceInput: (e) => this.setState({ source: e.target.value }),
+      loadLoss: () => this.setState({ source: this.DEFAULT_SRC }),
+      loadEuler: () => this.setState({ source: this.EULER_SRC }),
+      loadBayes: () => this.setState({ source: this.BAYES_SRC }),
+      clearSource: () => this.setState({ source: '' }),
+      copySourceCode: () => {
+        try {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(this.state.source);
+          }
+        } catch (_) {}
+        this.setState({ copied: true });
+        setTimeout(() => this.setState({ copied: false }), 2000);
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>
